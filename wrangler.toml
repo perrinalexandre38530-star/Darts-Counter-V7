@@ -1,0 +1,47 @@
+# =============================================
+# wrangler.toml — Worker ONLINE + Sync Cloud + Dart Scanner
+# =============================================
+
+name = "dc-online-v3"
+main = "src/online/server/worker.ts"
+compatibility_date = "2024-11-15"
+compatibility_flags = ["nodejs_compat"]
+
+# 🔑 Ton Account ID Cloudflare (celui que tu vois partout dans le dashboard)
+account_id = "d20710874f38557e1b8e34bb7c001812"
+
+[durable_objects]
+bindings = [
+  { name = "ROOMS", class_name = "RoomDO" }
+]
+
+[[migrations]]
+tag = "v1"
+new_classes = ["RoomDO"]
+
+# ➕ KV pour le cache des avatars IA (existant)
+[[kv_namespaces]]
+binding = "AVATAR_CACHE"
+id = "65729b90e2d44fbe90db28bda837cd63"
+
+# ➕ KV pour la synchronisation Cloud des stats (dc-sync)
+[[kv_namespaces]]
+binding = "DC_SYNC"
+id = "96adf0e2754949f88153f796c053d2cef"
+
+# 🔥 Ton bucket R2 réel
+[[r2_buckets]]
+binding = "DART_IMAGES_BUCKET"
+bucket_name = "dart-scans"
+
+# 🔹 Workers AI
+[ai]
+binding = "AI"
+
+# 🔹 Variables d'environnement (UN SEUL bloc [vars] !)
+[vars]
+# Liste vide => on accepte toutes les origines (dev + StackBlitz + app)
+ALLOW_ORIGINS = ""
+
+# URL publique de ton bucket R2
+PUBLIC_BASE_URL = "https://pub-170ceab787594ee9a09d6315358fb928.r2.dev"

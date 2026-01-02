@@ -1,0 +1,227 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="utf-8" />
+    <title>Test IA Avatar - Darts Counter</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <style>
+      body {
+        margin: 0;
+        padding: 16px;
+        font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
+          sans-serif;
+        background: #050712;
+        color: #f5f5f5;
+      }
+      h1 {
+        font-size: 18px;
+        margin-bottom: 12px;
+        color: #f6c256;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+      }
+      .card {
+        max-width: 960px;
+        margin: 0 auto;
+        background: #0b0d18;
+        border-radius: 16px;
+        padding: 16px;
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        box-shadow: 0 18px 36px rgba(0, 0, 0, 0.7);
+      }
+      label {
+        font-size: 13px;
+        display: block;
+        margin-bottom: 6px;
+      }
+      input[type="file"],
+      select,
+      button {
+        font-size: 13px;
+      }
+      select {
+        padding: 4px 8px;
+        border-radius: 999px;
+        border: 1px solid rgba(255, 255, 255, 0.3);
+        background: #050712;
+        color: #f5f5f5;
+      }
+      button {
+        padding: 6px 16px;
+        border-radius: 999px;
+        border: none;
+        font-weight: 600;
+        cursor: pointer;
+      }
+      button.primary {
+        background: linear-gradient(180deg, #f6c256, #f6c256aa);
+        color: #000;
+      }
+      button:disabled {
+        opacity: 0.5;
+        cursor: default;
+      }
+      .row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 16px;
+        margin-bottom: 12px;
+      }
+      .col {
+        flex: 1 1 260px;
+        min-width: 0;
+      }
+      .box {
+        border-radius: 12px;
+        border: 1px solid rgba(255, 255, 255, 0.15);
+        padding: 8px;
+        background: #050712;
+        font-size: 12px;
+      }
+      .status {
+        margin-top: 8px;
+        font-size: 12px;
+      }
+      .status.ok {
+        color: #8fe6aa;
+      }
+      .status.err {
+        color: #ff8a8a;
+      }
+      pre {
+        margin: 0;
+        white-space: pre-wrap;
+        word-break: break-word;
+        font-size: 11px;
+      }
+      img {
+        max-width: 100%;
+        border-radius: 12px;
+        display: block;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="card">
+      <h1>Test endpoint IA /api/avatar/cartoon</h1>
+
+      <p style="font-size: 12px; opacity: 0.8; margin-bottom: 12px">
+        Cette page envoie une image brute vers
+        <code>/api/avatar/cartoon</code> et affiche la réponse JSON +
+        l’image générée. Idéal pour débugger Workers&nbsp;AI sans passer par
+        toute l’appli React.
+      </p>
+
+      <div class="row">
+        <div class="col">
+          <label>1. Image de test</label>
+          <input id="fileInput" type="file" accept="image/*" />
+          <div style="font-size: 11px; opacity: 0.7; margin-top: 4px">
+            Utilise une photo simple (portrait, &lt; 5&nbsp;Mo de préférence).
+          </div>
+
+          <div style="margin-top: 12px">
+            <label for="styleSelect">2. Style de caricature</label>
+            <select id="styleSelect">
+              <option value="realistic">realistic</option>
+              <option value="comic">comic</option>
+              <option value="flat">flat</option>
+              <option value="exaggerated">exaggerated</option>
+            </select>
+          </div>
+
+          <div style="margin-top: 12px">
+            <button id="runBtn" class="primary">3. Envoyer à l’IA</button>
+          </div>
+
+          <div id="status" class="status"></div>
+        </div>
+
+        <div class="col">
+          <label>Résultat image (cartoonPng)</label>
+          <div class="box" style="text-align: center; min-height: 40px">
+            <img id="resultImg" alt="" />
+          </div>
+        </div>
+      </div>
+
+      <div>
+        <label>Réponse JSON brute</label>
+        <div class="box" style="max-height: 260px; overflow: auto">
+          <pre id="jsonOut">{}</pre>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      const fileInput = document.getElementById("fileInput");
+      const styleSelect = document.getElementById("styleSelect");
+      const runBtn = document.getElementById("runBtn");
+      const statusEl = document.getElementById("status");
+      const jsonOut = document.getElementById("jsonOut");
+      const resultImg = document.getElementById("resultImg");
+
+      const ENDPOINT = "/api/avatar/cartoon";
+
+      function setStatus(msg, ok) {
+        statusEl.textContent = msg;
+        statusEl.className = "status " + (ok ? "ok" : "err");
+      }
+
+      runBtn.addEventListener("click", async () => {
+        const file = fileInput.files && fileInput.files[0];
+        if (!file) {
+          setStatus("Choisis d’abord une image.", false);
+          return;
+        }
+
+        runBtn.disabled = true;
+        setStatus("Envoi à l’IA…", true);
+        jsonOut.textContent = "{}";
+        resultImg.src = "";
+
+        try {
+          const form = new FormData();
+          form.append("image", file);
+          form.append("style", styleSelect.value);
+
+          const res = await fetch(ENDPOINT, {
+            method: "POST",
+            body: form,
+          });
+
+          const text = await res.text();
+          let data;
+          try {
+            data = JSON.parse(text);
+          } catch {
+            data = { raw: text };
+          }
+
+          jsonOut.textContent = JSON.stringify(data, null, 2);
+
+          if (!res.ok || !data || data.ok === false) {
+            setStatus(
+              "Erreur HTTP " + res.status + " – vois le JSON ci-dessous.",
+              false
+            );
+          } else {
+            setStatus("Réponse IA OK.", true);
+          }
+
+          if (data && data.cartoonPng) {
+            resultImg.src = data.cartoonPng;
+          } else {
+            resultImg.removeAttribute("src");
+          }
+        } catch (err) {
+          console.error(err);
+          setStatus("Erreur JS : " + err, false);
+          jsonOut.textContent = String(err);
+        } finally {
+          runBtn.disabled = false;
+        }
+      });
+    </script>
+  </body>
+</html>

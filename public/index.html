@@ -1,0 +1,16 @@
+<link rel="manifest" href="/manifest.webmanifest" />
+<link rel="icon" type="image/x-icon" href="/favicon.ico" />
+<link rel="apple-touch-icon" sizes="192x192" href="/app-192.png" />
+<link rel="apple-touch-icon" sizes="512x512" href="/app-512.png" />
+
+<!-- ✅ CSP PATCH : autorise avatars Supabase + base64 -->
+<meta
+  http-equiv="Content-Security-Policy"
+  content="
+    default-src * 'self' data: blob:;
+    script-src * 'self' 'unsafe-inline' 'unsafe-eval' data: blob:;
+    style-src * 'self' 'unsafe-inline';
+    img-src * 'self' data: blob: https:;
+    connect-src * 'self' data: blob: https: wss:;
+    font-src * 'self' data: https:;
+  "

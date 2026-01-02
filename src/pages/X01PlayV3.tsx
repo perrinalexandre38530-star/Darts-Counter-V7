@@ -1,0 +1,3331 @@
+// =============================================================
+// src/pages/X01PlayV3.tsx
+// X01 V3 — moteur neuf + UI du "beau" X01Play
+// + Tour automatique des BOTS (isBot / botLevel)
+// + Sauvegarde Historique à la fin du match
+// + Autosave localStorage (reprise après coupure)
+// =============================================================
+
+import React from "react";
+
+import type {
+  X01ConfigV3,
+  X01PlayerId,
+  X01DartInputV3,
+} from "../types/x01v3";
+import { useX01EngineV3 } from "../hooks/useX01EngineV3";
+import type { Dart as UIDart } from "../lib/types";
+
+import Keypad from "../components/Keypad";
+import { DuelHeaderCompact } from "../components/DuelHeaderCompact";
+import X01LegOverlayV3 from "../lib/x01v3/x01LegOverlayV3";
+
+import { useTheme } from "../contexts/ThemeContext";
+import { useLang } from "../contexts/LangContext";
+import { History } from "../lib/history";
+
+import EndOfLegOverlay from "../components/EndOfLegOverlay";
+import type { LegStats } from "../lib/stats";
+import { buildLegStatsFromV3LiveForOverlay } from "../lib/x01v3/x01V3LegStatsAdapter";
+
+import { StatsBridge } from "../lib/statsBridge";
+import { loadBots } from "./ProfilesBots";
+
+import {
+  x01SfxV3Preload,
+  x01PlaySfxV3,
+  x01SfxV3Configure,      // ✅ AJOUT
+  x01EnsureAudioUnlocked, // ✅ AJOUT
+  isBull,
+  isDBull,
+  isDouble,
+  isTriple,
+  announceVisit,
+  announceEndGame,
+} from "../lib/x01SfxV3";
+
+// ---------------- Constantes visuelles / autosave ----------------
+
+const NAV_HEIGHT = 64;
+const CONTENT_MAX = 520;
+const AUTOSAVE_KEY = "x01v3:autosave";
+
+const miniCard: React.CSSProperties = {
+  width: "clamp(150px, 22vw, 190px)",
+  height: 86,
+  padding: 6,
+  borderRadius: 12,
+  background:
+    "linear-gradient(180deg,rgba(22,22,26,.96),rgba(14,14,16,.98))",
+  border: "1px solid rgba(255,255,255,.10)",
+  boxShadow: "0 10px 22px rgba(0,0,0,.35)",
+};
+
+const miniText: React.CSSProperties = {
+  fontSize: 12,
+  color: "#d9dbe3",
+  lineHeight: 1.25,
+};
+
+const miniRankRow: React.CSSProperties = {
+  display: "flex",
+  justifyContent: "space-between",
+  padding: "3px 6px",
+  borderRadius: 6,
+  background: "rgba(255,255,255,.04)",
+  marginBottom: 3,
+  fontSize: 11,
+  lineHeight: 1.15,
+};
+
+const miniRankName: React.CSSProperties = {
+  fontWeight: 700,
+  color: "#ffcf57",
+};
+
+const miniRankScore: React.CSSProperties = {
+  fontWeight: 800,
+  color: "#ffcf57",
+};
+
+const miniRankScoreFini: React.CSSProperties = {
+  fontWeight: 800,
+  color: "#7fe2a9",
+};
+
+// ---------------- Types & helpers locaux ----------------
+
+type Props = {
+  config: X01ConfigV3;
+  onExit?: () => void; // QUITTER -> Home (via App)
+  onShowSummary?: (matchId: string) => void; // RÉSUMÉ -> Historique détaillé
+  onReplayNewConfig?: () => void; // REJOUER -> changer paramètres (App)
+};
+
+type MiniRankingRow = {
+  id: X01PlayerId;
+  name: string;
+  score: number;
+  legsWon: number;
+  setsWon: number;
+  avg3: number;
+};
+
+type X01V3AutosaveSnapshot = {
+  id: string;
+  createdAt: number;
+  config: X01ConfigV3;
+  darts: X01DartInputV3[];
+};
+
+function fmt(d?: UIDart) {
+  if (!d) return "—";
+  if (d.v === 0) return "MISS";
+  if (d.v === 25) return d.mult === 2 ? "DBULL" : "BULL";
+  const prefix = d.mult === 3 ? "T" : d.mult === 2 ? "D" : "S";
+  return `${prefix}${d.v}`;
+}
+
+function chipStyle(d?: UIDart, red = false): React.CSSProperties {
+  if (!d)
+    return {
+      background: "rgba(255,255,255,.06)",
+      color: "#bbb",
+      border: "1px solid rgba(255,255,255,.08)",
+    };
+
+  if (red)
+    return {
+      background: "rgba(200,30,30,.18)",
+      color: "#ff8a8a",
+      border: "1px solid rgba(255,80,80,.35)",
+    };
+
+  if (d.v === 25 && d.mult === 2)
+    return {
+      background: "rgba(13,160,98,.18)",
+      color: "#8ee6bf",
+      border: "1px solid rgba(13,160,98,.35)",
+    };
+
+  if (d.v === 25)
+    return {
+      background: "rgba(13,160,98,.12)",
+      color: "#7bd6b0",
+      border: "1px solid rgba(13,160,98,.3)",
+    };
+
+  if (d.mult === 3)
+    return {
+      background: "rgba(179,68,151,.18)",
+      color: "#ffd0ff",
+      border: "1px solid rgba(179,68,151,.35)",
+    };
+
+  if (d.mult === 2)
+    return {
+      background: "rgba(46,150,193,.18)",
+      color: "#cfeaff",
+      border: "1px solid rgba(46,150,193,.35)",
+    };
+
+  return {
+    background: "rgba(255,187,51,.12)",
+    color: "#ffc63a",
+    border: "1px solid rgba(255,187,51,.4)",
+  };
+}
+
+function dartValue(d: UIDart) {
+  if (d.v === 25 && d.mult === 2) return 50;
+  return d.v * d.mult;
+}
+
+// Checkout suggestion à partir de la structure V3
+function formatCheckoutFromVisit(suggestion: any): string {
+  if (!suggestion?.darts || !Array.isArray(suggestion.darts)) return "";
+  return suggestion.darts
+    .map((d: any) => {
+      const seg = d.segment === 25 ? "BULL" : String(d.segment);
+      if (d.multiplier === 1) return seg;
+      if (d.multiplier === 2) return `D${seg}`;
+      if (d.multiplier === 3) return `T${seg}`;
+      return seg;
+    })
+    .join(" • ");
+}
+
+// Pastilles pour la dernière volée d’un joueur
+function renderLastVisitChips(
+  pid: string,
+  lastVisits: Record<string, UIDart[]>,
+  isBust?: boolean
+) {
+  const darts = lastVisits[pid] ?? [];
+  if (!darts.length) return null;
+
+  return (
+    <span style={{ display: "inline-flex", gap: 6 }}>
+      {darts.map((d, i) => {
+        const st = chipStyle(d, false);
+
+        const bg = isBust ? "rgba(200,30,30,.18)" : (st.background as string);
+        const bd = isBust ? "1px solid rgba(255,80,80,.35)" : (st.border as string);
+        const co = isBust ? "#ff8a8a" : (st.color as string);
+
+        return (
+          <span
+            key={i}
+            style={{
+              minWidth: 36,
+              padding: "2px 8px",
+              borderRadius: 10,
+              fontSize: 11,
+              fontWeight: 700,
+              background: bg,
+              border: bd,
+              color: co,
+            }}
+          >
+            {fmt(d)}
+          </span>
+        );
+      })}
+    </span>
+  );
+}
+
+
+/* ---------------------------------------------------
+   Petit "cerveau" BOT local (placeholder)
+   - plus tard tu pourras le déplacer dans ../lib/botBrain.ts
+--------------------------------------------------- */
+
+type BotLevel = "easy" | "medium" | "hard" | "pro" | "legend" | undefined;
+
+// =============================================================
+// ✅ External scoring (Scolia-ready) — AJOUT UNIQUEMENT
+// - Source de comptage: "manual" (Keypad) | "external" (événements)
+// - IMPORTANT: on ne touche pas au moteur. On injecte juste des X01DartInputV3.
+// - Événement public (bridge):
+//   window.dispatchEvent(new CustomEvent("dc:x01v3:dart", { detail: { segment: 20, multiplier: 3 } }))
+//   window.dispatchEvent(new CustomEvent("dc:x01v3:visit", { detail: { darts: [{segment:20,multiplier:3},{segment:20,multiplier:3},{segment:20,multiplier:3}] } }))
+// =============================================================
+type ScoringSource = "manual" | "external";
+
+const EXTERNAL_DART_EVENT = "dc:x01v3:dart";
+const EXTERNAL_VISIT_EVENT = "dc:x01v3:visit";
+
+function normalizeExternalDart(input: any): X01DartInputV3 | null {
+  if (!input || typeof input !== "object") return null;
+  const seg = Number((input as any).segment);
+  const mult = Number((input as any).multiplier);
+  if (!Number.isFinite(seg) || !Number.isFinite(mult)) return null;
+
+  // segment: 0 (MISS), 25 (bull), ou 1..20
+  const sOK = seg === 0 || seg === 25 || (seg >= 1 && seg <= 20);
+  if (!sOK) return null;
+
+  // multiplier: 1..3
+  const mOK = mult === 1 || mult === 2 || mult === 3;
+  if (!mOK) return null;
+
+  return { segment: seg, multiplier: mult as 1 | 2 | 3 };
+}
+
+function normalizeExternalVisit(input: any): X01DartInputV3[] {
+  const darts = (input as any)?.darts;
+  if (!Array.isArray(darts)) return [];
+  const out: X01DartInputV3[] = [];
+  for (const d of darts) {
+    const nd = normalizeExternalDart(d);
+    if (nd) out.push(nd);
+    if (out.length >= 3) break;
+  }
+  return out;
+}
+
+function randomInt(min: number, max: number) {
+  return Math.floor(Math.random() * (max - min + 1)) + min;
+}
+
+type BotStyle = "balanced" | "aggressive" | "safe" | "clutch";
+
+function computeBotVisit(
+  level: BotLevel,
+  currentScore: number,
+  doubleOut: boolean
+): UIDart[] {
+  const darts: UIDart[] = [];
+  const lvl = level || "easy";
+
+  // -----------------------------
+  // 1) NIVEAUX BOT
+  // -----------------------------
+  type EffLevel = "easy" | "medium" | "hard" | "pro" | "legend";
+
+  type BotSkillProfile = {
+    // scoring (T20, T19, etc.)
+    scoringExact: number;
+    scoringRing: number;
+    scoringNeighbor: number;
+    scoringBigMiss: number;
+
+    // doubles / checkouts
+    doubleExact: number;
+    doubleRing: number;
+    doubleNeighbor: number;
+    doubleBigMiss: number;
+  };
+
+  const SKILL: Record<EffLevel, BotSkillProfile> = {
+    easy: {
+      scoringExact: 0.35,
+      scoringRing: 0.20,
+      scoringNeighbor: 0.20,
+      scoringBigMiss: 0.25,
+      doubleExact: 0.25,
+      doubleRing: 0.25,
+      doubleNeighbor: 0.20,
+      doubleBigMiss: 0.30,
+    },
+    medium: {
+      scoringExact: 0.45,
+      scoringRing: 0.25,
+      scoringNeighbor: 0.18,
+      scoringBigMiss: 0.12,
+      doubleExact: 0.40,
+      doubleRing: 0.25,
+      doubleNeighbor: 0.20,
+      doubleBigMiss: 0.15,
+    },
+    hard: {
+      scoringExact: 0.55,
+      scoringRing: 0.25,
+      scoringNeighbor: 0.15,
+      scoringBigMiss: 0.05,
+      doubleExact: 0.60,
+      doubleRing: 0.20,
+      doubleNeighbor: 0.15,
+      doubleBigMiss: 0.05,
+    },
+    pro: {
+      // 🔥 PRO : très peu de gros MISS, bons sur les doubles
+      scoringExact: 0.70,
+      scoringRing: 0.20,
+      scoringNeighbor: 0.08,
+      scoringBigMiss: 0.02,
+      doubleExact: 0.80, // ~ 4 doubles sur 5
+      doubleRing: 0.12,
+      doubleNeighbor: 0.06,
+      doubleBigMiss: 0.02,
+    },
+    legend: {
+      // 🔥 LÉGENDE : quasi jamais loin de la cible
+      scoringExact: 0.80,
+      scoringRing: 0.15,
+      scoringNeighbor: 0.04,
+      scoringBigMiss: 0.01,
+      doubleExact: 0.90, // ~ 9 doubles sur 10
+      doubleRing: 0.06,
+      doubleNeighbor: 0.03,
+      doubleBigMiss: 0.01,
+    },
+  };
+
+  let effLevel: EffLevel = "easy";
+  if (lvl === "medium") effLevel = "medium";
+  else if (lvl === "hard") effLevel = "hard";
+  else if (lvl === "pro") effLevel = "pro";
+  else if (lvl === "legend") effLevel = "legend";
+
+  const skill = SKILL[effLevel];
+
+  // -----------------------------
+  // 2) NEIGHBORS RÉELS DE LA CIBLE (ordre de la board)
+  // -----------------------------
+  const BOARD_ORDER = [
+    20, 1, 18, 4, 13, 6, 10, 15, 2, 17,
+    3, 19, 7, 16, 8, 11, 14, 9, 12, 5,
+  ];
+
+  const NEIGHBORS: Record<number, [number, number]> = {
+    20: [5, 1],
+    1: [20, 18],
+    18: [1, 4],
+    4: [18, 13],
+    13: [4, 6],
+    6: [13, 10],
+    10: [6, 15],
+    15: [10, 2],
+    2: [15, 17],
+    17: [2, 3],
+    3: [17, 19],
+    19: [3, 7],
+    7: [19, 16],
+    16: [7, 8],
+    8: [16, 11],
+    11: [8, 14],
+    14: [11, 9],
+    9: [14, 12],
+    12: [9, 5],
+    5: [12, 20],
+  };
+
+  const allSingles = BOARD_ORDER.slice();
+
+  function dartScore(d: UIDart): number {
+    if (d.v === 25 && d.mult === 2) return 50;
+    return d.v * d.mult;
+  }
+
+  // -----------------------------
+  // 3) CHOIX D’UN "PLAN" / CIBLE LOGIQUE
+  // -----------------------------
+  function chooseIdealTarget(remaining: number, dartsLeft: number): UIDart {
+    // Cas sans double-out : on score surtout T20, mais on reste cohérent
+    if (!doubleOut) {
+      if (remaining > 100) return { v: 20, mult: 3 };
+      if (remaining > 60) return { v: 20, mult: 3 };
+      if (remaining > 40) return { v: 20, mult: 2 };
+      if (remaining > 20) return { v: 20, mult: 1 };
+      return { v: remaining, mult: 1 };
+    }
+
+    // DOUBLE-OUT : vraie stratégie
+    // 1) Finish direct si <= 50
+    if (remaining === 50) {
+      // DBULL
+      return { v: 25, mult: 2 };
+    }
+    if (remaining <= 40 && remaining >= 2 && remaining % 2 === 0) {
+      // D20, D16, D8, etc.
+      return { v: remaining / 2, mult: 2 };
+    }
+
+    // 2) Zone 51–110 : on essaie de préparer un finish propre (40, 32, etc.)
+    if (remaining > 50 && remaining <= 110 && dartsLeft >= 2) {
+      const candidateScores = [60, 57, 54, 51, 50, 48, 45, 40, 36, 32];
+      const SCORE_TO_TARGET: Record<number, UIDart> = {
+        60: { v: 20, mult: 3 }, // T20
+        57: { v: 19, mult: 3 }, // T19
+        54: { v: 18, mult: 3 }, // T18
+        51: { v: 17, mult: 3 }, // T17
+        50: { v: 25, mult: 2 }, // DBULL
+        48: { v: 16, mult: 3 }, // T16
+        45: { v: 15, mult: 3 }, // T15
+        40: { v: 20, mult: 2 }, // D20
+        36: { v: 18, mult: 2 }, // D18
+        32: { v: 16, mult: 2 }, // D16
+      };
+
+      for (const score of candidateScores) {
+        if (score >= remaining) continue;
+        const newRemaining = remaining - score;
+
+        if (
+          (newRemaining === 50) ||
+          (newRemaining <= 40 &&
+            newRemaining >= 2 &&
+            newRemaining % 2 === 0)
+        ) {
+          return SCORE_TO_TARGET[score];
+        }
+      }
+    }
+
+    // 3) Loin du finish : scoring lourd T20/T19
+    if (remaining > 170) {
+      return { v: 20, mult: 3 };
+    }
+
+    // 4) Zone 111–170 : on continue à bourriner T20
+    return { v: 20, mult: 3 };
+  }
+
+  // -----------------------------
+  // 4) "SCATTER" : COMMENT IL RÂTE AUTOUR DE LA CIBLE
+  // -----------------------------
+  function applyScatter(
+    target: UIDart,
+    mode: "scoring" | "double"
+  ): UIDart {
+    const s = skill;
+
+    let pExact: number;
+    let pRing: number;
+    let pNeighbor: number;
+    let pBig: number;
+
+    if (mode === "double") {
+      pExact = s.doubleExact;
+      pRing = s.doubleRing;
+      pNeighbor = s.doubleNeighbor;
+      pBig = s.doubleBigMiss;
+    } else {
+      pExact = s.scoringExact;
+      pRing = s.scoringRing;
+      pNeighbor = s.scoringNeighbor;
+      pBig = s.scoringBigMiss;
+    }
+
+    const r = Math.random();
+
+    // EXACT
+    if (r < pExact) {
+      return target;
+    }
+
+    // MÊME NOMBRE, AUTRE ANNEAU (simple au lieu de double, etc.)
+    if (r < pExact + pRing) {
+      // Bull à part
+      if (target.v === 25) {
+        if (target.mult === 2) {
+          // DBULL -> BULL
+          return { v: 25, mult: 1 };
+        }
+        // BULL raté -> complètement à côté
+        return { v: 0, mult: 1 };
+      }
+
+      let ringOptions: number[];
+      if (target.mult === 3) {
+        ringOptions = [1, 2]; // peut finir en simple ou double
+      } else if (target.mult === 2) {
+        ringOptions = [1]; // D -> S
+      } else {
+        // visait simple
+        ringOptions = mode === "double" ? [2] : [1, 2, 3];
+      }
+
+      const mult =
+        ringOptions[randomInt(0, ringOptions.length - 1)] as 1 | 2 | 3;
+
+      return { v: target.v, mult };
+    }
+
+    // NEIGHBORS (cases à côté, ex: vise 17 mais touche 2 ou 3)
+    if (r < pExact + pRing + pNeighbor) {
+      if (target.v === 25) {
+        // raté bull -> random simple sur la board
+        const v =
+          allSingles[randomInt(0, allSingles.length - 1)];
+        return { v, mult: 1 };
+      }
+
+      const neigh = NEIGHBORS[target.v] ?? [target.v, target.v];
+      const v = neigh[randomInt(0, neigh.length - 1)];
+
+      // Pour les doubles, le miss crédible c'est le simple voisin
+      const mult =
+        mode === "double"
+          ? 1
+          : target.mult === 1
+          ? 1
+          : target.mult;
+
+      return { v, mult };
+    }
+
+    // GROS MISS : complètement à côté
+    if (Math.random() < 0.5) {
+      return { v: 0, mult: 1 };
+    }
+    const v = allSingles[randomInt(0, allSingles.length - 1)];
+    return { v, mult: 1 };
+  }
+
+  // -----------------------------
+  // 5) BOUCLE SUR LES 3 FLÉCHETTES
+  // -----------------------------
+  let remaining = currentScore;
+
+  for (let i = 0; i < 3; i++) {
+    if (remaining <= 0) break;
+
+    const dartsLeft = 3 - i;
+
+    const ideal = chooseIdealTarget(remaining, dartsLeft);
+
+    // Si on vise un double -> on applique la précision "double"
+    const mode: "scoring" | "double" =
+      ideal.mult === 2 ? "double" : "scoring";
+
+    const hit = applyScatter(ideal, mode);
+
+    darts.push(hit);
+
+    const scored = dartScore(hit);
+
+    // On ne simule pas les busts ultra précisément ici,
+    // on s'aligne juste sur un plan cohérent
+    remaining = Math.max(remaining - scored, 0);
+  }
+
+  return darts;
+}
+
+// =============================================================
+// Composant principal X01PlayV3
+// =============================================================
+
+export default function X01PlayV3({
+  config,
+  onExit,
+  onShowSummary,
+  onReplayNewConfig,
+}: Props) {
+  const { theme } = useTheme();
+
+  // ✅ IMPORTANT : on récupère aussi la langue courante de l’app
+  const { t, lang } = useLang() as any;
+
+  // =====================================================
+  // 🔓 UNLOCK AUDIO (réutilisable)
+  // -> on le fait au mount, ET tu pourras l’appeler au 1er tir/1er clic
+  // =====================================================
+  const ensureAudioUnlockedNow = React.useCallback(() => {
+    try {
+      x01EnsureAudioUnlocked();
+    } catch {}
+  }, []);
+
+  // ✅ Preload + unlock audio + warm-up voices
+  React.useEffect(() => {
+    // ✅ installe l’unlock + preload sfx + warm-up voices
+    x01SfxV3Preload();
+
+    // ✅ tente un unlock immédiat (desktop / certains navigateurs)
+    ensureAudioUnlockedNow();
+
+    // ✅ warm-up voices (Chrome peut être vide au 1er getVoices)
+    try {
+      if (typeof window !== "undefined" && "speechSynthesis" in window) {
+        window.speechSynthesis.getVoices?.();
+        // certains navigateurs remplissent plus tard
+        const handler = () => {
+          try {
+            window.speechSynthesis.getVoices?.();
+          } catch {}
+        };
+        window.speechSynthesis.onvoiceschanged = handler;
+      }
+    } catch {}
+  }, [ensureAudioUnlockedNow]);
+
+  // ✅ Injecte la langue au module TTS pour éviter voix EN par défaut
+  React.useEffect(() => {
+    // lang attendu: "fr" | "it" | "en" | "es" ... (ou "fr-FR", etc.)
+    // fallback sûr: français
+    try {
+      (x01SfxV3Configure as any)?.({ ttsLang: (lang as any) || "fr" });
+    } catch {
+      // ignore
+    }
+
+    // ✅ re-warm voices au changement de langue (utile sur Chrome)
+    try {
+      if (typeof window !== "undefined" && "speechSynthesis" in window) {
+        window.speechSynthesis.getVoices?.();
+      }
+    } catch {}
+  }, [lang]);
+
+  // Pour éviter de sauvegarder le match plusieurs fois (History)
+  const hasSavedMatchRef = React.useRef(false);
+  // ID unique de la partie dans l'historique (même id pour "en cours" et "terminé")
+  const historyIdRef = React.useRef<string | null>(null);
+
+  // Autosave : log de toutes les fléchettes (dans l'ordre global)
+  const replayDartsRef = React.useRef<X01DartInputV3[]>([]);
+  const isReplayingRef = React.useRef(false);
+  const hasReplayedRef = React.useRef(false);
+
+ // =====================================================
+// ✅ Bot avatars fallback (si un BOT n'a pas avatarDataUrl dans config)
+// -> on charge la liste des bots et on résout l'avatar proprement
+// =====================================================
+
+const botsMap = React.useMemo(() => {
+  try {
+    const bots = (loadBots as any)?.() || [];
+    const m: Record<string, any> = {};
+    for (const b of bots) {
+      if (b?.id) m[String(b.id)] = b;
+    }
+    return m;
+  } catch {
+    return {};
+  }
+}, []);
+
+// ✅ AVATAR RESOLVER UNIQUE (humains + bots)
+const resolveAvatar = React.useCallback(
+  (p: any): string | null => {
+    if (!p) return null;
+
+    // 1) champs directs sur le player (humain ou bot)
+    const direct =
+      p.avatarDataUrl ??
+      p.avatarUrl ??
+      p.photoUrl ??
+      p.avatar ??
+      null;
+
+    if (direct) return direct;
+
+    // 2) fallback BOT : on tente via botsMap (id du player)
+    if (p.isBot) {
+      const b = botsMap[String(p.id)];
+      return (
+        b?.avatarDataUrl ??
+        b?.avatarUrl ??
+        b?.photoUrl ??
+        b?.avatar ??
+        null
+      );
+    }
+
+    return null;
+  },
+  [botsMap]
+);
+
+// Overlay "Résumé de la manche" (EndOfLegOverlay)
+const [summaryOpen, setSummaryOpen] = React.useState(false);
+const [summaryLegStats, setSummaryLegStats] = React.useState<LegStats | null>(
+  null
+);
+
+const summaryPlayersById = React.useMemo(() => {
+  return Object.fromEntries(
+    (config.players || []).map((p) => [
+      p.id,
+      {
+        id: p.id,
+        name: p.name || "Joueur",
+        avatarDataUrl: resolveAvatar(p),
+      },
+    ])
+  );
+}, [config.players, resolveAvatar]);
+
+  const {
+    state,
+    liveStatsByPlayer,
+    activePlayerId,
+    scores,
+    status,
+    throwDart,
+    undoLastDart, // 🔥 nouveau : UNDO illimité du moteur V3
+    startNextLeg,
+  } = useX01EngineV3({ config });
+
+  const players = config.players;
+  const activePlayer = players.find((p) => p.id === activePlayerId) || null;
+
+// =====================================================
+// ✅ BOT TURN — DOIT ÊTRE DÉCLARÉ AVANT TOUT useEffect QUI L’UTILISE
+// =====================================================
+const isBotTurn = React.useMemo(() => {
+  return !!activePlayer && Boolean((activePlayer as any).isBot);
+}, [activePlayer]);
+
+  // =====================================================
+  // ✅ Source de comptage (manual / external) — AJOUT UNIQUEMENT
+  // - manual  : Keypad (comportement actuel)
+  // - external: un système externe (ex: Scolia / bridge PC) envoie des darts via CustomEvent
+  // =====================================================
+  const scoringSource: ScoringSource =
+    ((config as any)?.scoringSource as ScoringSource) ||
+    (((config as any)?.externalScoring ? "external" : "manual") as ScoringSource);
+
+  // Y a-t-il AU MOINS un BOT dans la partie ?
+  const hasBots = React.useMemo(
+    () => players.some((p: any) => !!(p as any).isBot),
+    [players]
+  );
+
+  const setsTarget = config.setsToWin ?? 1;
+  const legsTarget = config.legsPerSet ?? 1;
+  const isDuel = players.length === 2;
+  const useSetsUi = isDuel && setsTarget > 1;
+
+  // ---------------- Avatars (depuis config.players) ----------------
+
+const profileById = React.useMemo(() => {
+  const m: Record<string, { avatarDataUrl: string | null; name: string }> = {};
+  for (const p of players as any[]) {
+    m[p.id] = {
+      avatarDataUrl: resolveAvatar(p),
+      name: p.name,
+    };
+  }
+  return m;
+}, [players]);
+
+  const currentScore =
+    (activePlayer && scores[activePlayer.id]) ?? config.startScore;
+
+  const currentVisit = state.visit;
+
+  // double-out ? on essaie de lire config
+  const doubleOut =
+    (config as any).doubleOut === true ||
+    (config as any).finishMode === "double" ||
+    (config as any).outMode === "double";
+
+  // =====================================================
+  // Autosave : persistance / reprise (A1 basé sur la liste des darts)
+  // =====================================================
+
+  const persistAutosave = React.useCallback(() => {
+    if (typeof window === "undefined") return;
+
+    try {
+      const engineMatchId: string | undefined = (state as any)?.matchId;
+      const matchId =
+        historyIdRef.current ||
+        engineMatchId ||
+        `x01v3-${config.startScore}-${Date.now().toString(16)}`;
+
+      historyIdRef.current = matchId;
+
+      const snap: X01V3AutosaveSnapshot = {
+        id: matchId,
+        createdAt: Date.now(),
+        config,
+        darts: replayDartsRef.current,
+      };
+      window.localStorage.setItem(AUTOSAVE_KEY, JSON.stringify(snap));
+
+      const lightPlayers = (config.players || []).map((p: any) => ({
+        id: p.id,
+        name: p.name,
+        avatarDataUrl:
+          p.avatarDataUrl ?? p.avatarUrl ?? p.photoUrl ?? null,
+      }));
+
+      const payload = {
+        mode: "x01_multi",
+        variant: "x01_v3",
+        game: "x01",
+        startScore: config.startScore,
+        matchId,
+        config: { ...config, players: lightPlayers },
+        darts: replayDartsRef.current,
+      };
+
+      const record: any = {
+        id: matchId,
+        kind: "x01",
+        status: "in_progress",
+        createdAt: snap.createdAt,
+        updatedAt: snap.createdAt,
+        players: lightPlayers,
+        winnerId: null,
+        summary: {
+          matchId,
+          status: "in_progress",
+        },
+        payload,
+      };
+
+      History.upsert(record).catch((err) => {
+        console.warn("[X01PlayV3] History.upsert(in_progress) failed", err);
+      });
+    } catch (e) {
+      console.warn("[X01PlayV3] persistAutosave failed", e);
+    }
+  }, [config, state]);
+
+  // Reprise auto : au premier rendu, on rejoue toutes les fléchettes sauvegardées
+  React.useEffect(() => {
+    if (hasReplayedRef.current) return;
+    hasReplayedRef.current = true;
+
+    if (typeof window === "undefined") return;
+    try {
+      const raw = window.localStorage.getItem(AUTOSAVE_KEY);
+      if (!raw) return;
+      const snap = JSON.parse(raw) as X01V3AutosaveSnapshot;
+      if (!snap || !Array.isArray(snap.darts)) return;
+
+      const snapPlayers = (snap.config?.players ?? []) as any[];
+
+      if (
+        snap.config?.startScore !== config.startScore ||
+        !Array.isArray(snapPlayers) ||
+        snapPlayers.length !== config.players.length
+      ) {
+        return;
+      }
+
+      const sameNames = snapPlayers.every((p, idx) => {
+        const target = config.players[idx] as any;
+        return p.name === target.name;
+      });
+      if (!sameNames) return;
+
+      isReplayingRef.current = true;
+      replayDartsRef.current = snap.darts.slice();
+
+      snap.darts.forEach((d) => {
+        throwDart(d);
+      });
+
+      isReplayingRef.current = false;
+    } catch (e) {
+      console.warn("[X01PlayV3] autosave resume failed", e);
+    }
+  }, [config, throwDart]);
+
+  // Quand le match est terminé : on vide l’autosave
+  React.useEffect(() => {
+    if (status === "match_end") {
+      replayDartsRef.current = [];
+      if (typeof window !== "undefined") {
+        try {
+          window.localStorage.removeItem(AUTOSAVE_KEY);
+        } catch (e) {
+          console.warn("[X01PlayV3] clear autosave failed", e);
+        }
+      }
+    }
+  }, [status]);
+
+  // ✅ NOTE :
+  // Tu peux maintenant appeler ensureAudioUnlockedNow() au 1er clic user (ex: pushDart/validateThrow)
+  // pour garantir que les SFX arcade partent.
+
+
+  // =====================================================
+  // AUDIO FLAGS (depuis config) + helpers SFX/VOICE
+  // =====================================================
+
+  // ⚙️ defaults = ON
+  const audioCfg = (config as any)?.audio ?? {};
+
+  // "Sons Arcade" : DBULL/BULL/180/DOUBLE/TRIPLE/BUST/VICTORY
+  const arcadeEnabled: boolean = audioCfg.arcadeEnabled !== false;
+
+  // "Bruitages" : dart-hit (et éventuellement d'autres "hits" secs)
+  const hitEnabled: boolean = audioCfg.hitEnabled !== false;
+
+  // "Voix IA" : announceVisit / announceEndGame
+  const voiceEnabled: boolean = audioCfg.voiceEnabled !== false;
+
+  // Voice sélectionnée (depuis écran Profil / paramètres joueur)
+  const voiceId: string | undefined = audioCfg.voiceId ?? undefined;
+
+  // Volume SFX global (si tu veux le brancher plus tard sur un slider)
+  const sfxVolume: number =
+    typeof audioCfg.sfxVolume === "number" ? audioCfg.sfxVolume : 0.75;
+
+  const playHitSfx = React.useCallback(
+    (kind: any, opts?: any) => {
+      if (!hitEnabled) return;
+      x01PlaySfxV3(kind, { volume: sfxVolume, ...(opts || {}) });
+    },
+    [hitEnabled, sfxVolume]
+  );
+
+  const playArcadeSfx = React.useCallback(
+    (kind: any, opts?: any) => {
+      if (!arcadeEnabled) return;
+      x01PlaySfxV3(kind, { volume: sfxVolume, ...(opts || {}) });
+    },
+    [arcadeEnabled, sfxVolume]
+  );
+
+  // =====================================================
+// 🧩 ARCADE KEY MAPPER (si les IDs audio ne matchent pas)
+// -> essaye plusieurs keys connues avant d'abandonner
+// =====================================================
+
+const tryPlayAny = React.useCallback(
+  (kinds: string[], opts?: any) => {
+    for (const k of kinds) {
+      try {
+        x01PlaySfxV3(k as any, opts);
+        return; // si ça ne throw pas, on considère OK
+      } catch {}
+    }
+    // debug (visible en console)
+    console.warn("[X01PlayV3] Arcade SFX: aucun key n'a matché", kinds);
+  },
+  [/* rien */]
+);
+
+const playArcadeMapped = React.useCallback(
+  (event: "dbull" | "bull" | "double" | "triple" | "bust" | "score_180" | "victory", opts?: any) => {
+    if (!arcadeEnabled) return;
+
+    // ⚠️ Variantes courantes selon l’implémentation du fichier x01SfxV3.ts
+    const MAP: Record<string, string[]> = {
+      dbull: ["dbull", "dBull", "double_bull", "dbull_hit", "arcade_dbull", "sfx_dbull"],
+      bull: ["bull", "oBull", "outer_bull", "bull_hit", "arcade_bull", "sfx_bull"],
+      double: ["double", "dbl", "hit_double", "arcade_double", "sfx_double"],
+      triple: ["triple", "tpl", "hit_triple", "arcade_triple", "sfx_triple"],
+      bust: ["bust", "busted", "arcade_bust", "sfx_bust"],
+      score_180: ["score_180", "180", "one_eighty", "arcade_180", "sfx_180"],
+      victory: ["victory", "win", "winner", "arcade_victory", "sfx_victory"],
+    };
+
+    tryPlayAny(MAP[event] || [event], { volume: sfxVolume, ...(opts || {}) });
+  },
+  [arcadeEnabled, sfxVolume, tryPlayAny]
+);
+
+  // =====================================================
+// 🗣️ VOIX IA — annonce de volée (langue + voix sélectionnée)
+// =====================================================
+
+const speakVisit = React.useCallback(
+  (playerName: string, visitScore: number) => {
+    if (!voiceEnabled) return;
+
+    // sécurité
+    const name = (playerName || "").trim();
+    if (!name) return;
+
+    try {
+      // ✅ Signature étendue : (name, score, { voiceId, lang })
+      (announceVisit as any)(
+        name,
+        visitScore,
+        {
+          voiceId: voiceId || undefined,
+          lang: lang || "fr", // ← LANGUE APP (fr / it / en / es…)
+        }
+      );
+    } catch {
+      try {
+        // fallback 1 : signature (name, score)
+        announceVisit(name, visitScore);
+      } catch {
+        // ignore total
+      }
+    }
+  },
+  [voiceEnabled, voiceId, lang]
+);
+
+  // =====================================================
+// ÉTAT LOCAL KEYPAD (logique v1 + synchro UNDO moteur)
+// =====================================================
+
+const [multiplier, setMultiplier] = React.useState<1 | 2 | 3>(1);
+const [currentThrow, setCurrentThrow] = React.useState<UIDart[]>([]);
+
+// ✅ ÉTAT: dernière volée par joueur (sert à PlayersListOnly + bust preview)
+const [lastVisitsByPlayer, setLastVisitsByPlayer] = React.useState<
+  Record<string, UIDart[]>
+>({});
+
+const [lastVisitIsBustByPlayer, setLastVisitIsBustByPlayer] = React.useState<
+  Record<string, boolean>
+>({});
+
+// 🔒 garde-fou anti double-validation HUMAIN
+const isValidatingRef = React.useRef(false);
+
+// 🔒 garde-fou BOT : (gardé si tu veux le réutiliser plus tard)
+const botUndoGuardRef = React.useRef(false);
+
+// 🔊 anti double-bust (bust preview déjà joué avant validation)
+const bustPreviewPlayedRef = React.useRef(false);
+
+// 🔊 timer pour déclencher le BUST avec délai
+const bustSoundTimeoutRef = React.useRef<number | null>(null);
+
+// 🔒 indique si currentThrow vient du moteur (rebuild / UNDO)
+//    ou de la saisie locale sur le keypad
+const currentThrowFromEngineRef = React.useRef(false);
+
+// 🔄 SYNC AVEC LE MOTEUR UNIQUEMENT POUR LES CAS "ENGINE-DRIVEN"
+//    (UNDO global, rebuild, etc.)
+React.useEffect(() => {
+  if (!currentThrowFromEngineRef.current) return;
+
+  const v: any = state.visit;
+
+  if (!v) {
+    setCurrentThrow([]);
+    return;
+  }
+
+  const raw: UIDart[] =
+    v.darts && Array.isArray(v.darts) && v.darts.length
+      ? v.darts.map((d: any) => ({
+          v: d.segment,
+          mult: d.multiplier as 1 | 2 | 3,
+        }))
+      : v.dartsThrown && Array.isArray(v.dartsThrown) && v.dartsThrown.length
+      ? v.dartsThrown.map((d: any) => ({
+          v: d.value,
+          mult: d.mult as 1 | 2 | 3,
+        }))
+      : [];
+
+  if (!raw.length) {
+    setCurrentThrow([]);
+    return;
+  }
+
+  setCurrentThrow((prev) => {
+    if (
+      prev.length === raw.length &&
+      prev.every((d, i) => d.v === raw[i].v && d.mult === raw[i].mult)
+    ) {
+      return prev;
+    }
+    return raw;
+  });
+}, [state]);
+
+// 🔄 CHANGEMENT DE JOUEUR ACTIF → on vide la volée locale
+//    (sauf en cas d'UNDO/rebuild où c'est le moteur qui pilote)
+React.useEffect(() => {
+  if (currentThrowFromEngineRef.current) return;
+  setCurrentThrow([]);
+  setMultiplier(1);
+}, [activePlayerId]);
+
+function pushDart(value: number) {
+  ensureAudioUnlockedNow();
+  currentThrowFromEngineRef.current = false;
+
+  if (!activePlayerId) return;
+  if (currentThrow.length >= 3) return;
+
+  const dart: UIDart = { v: value, mult: multiplier } as UIDart;
+
+  // 1) hit
+  playHitSfx("dart_hit", { rateLimitMs: 40, volume: 0.55 });
+
+  // 2) arcade bull/dbull + 3) double/triple (avec DBULL exclusif)
+  const isDbull = dart.v === 25 && dart.mult === 2;
+  const isBullNow = dart.v === 25 && dart.mult === 1;
+
+  if (isDbull) playArcadeMapped("dbull");
+  else if (isBullNow) playArcadeMapped("bull");
+
+  if (!isDbull) {
+    if (dart.mult === 3) playArcadeMapped("triple");
+    else if (dart.mult === 2) playArcadeMapped("double");
+  }
+
+  const nextThrow = [...currentThrow, dart];
+  setCurrentThrow(nextThrow);
+  setMultiplier(1);
+
+  // ---- BUST PREVIEW (dès que ça devient bust) + son BUST décalé 1.5s
+  if (bustSoundTimeoutRef.current) {
+    window.clearTimeout(bustSoundTimeoutRef.current);
+    bustSoundTimeoutRef.current = null;
+  }
+
+  try {
+    const scoreBefore = currentScore;
+
+    const visitScore = nextThrow.reduce(
+      (s, d) => s + (d.v === 25 && d.mult === 2 ? 50 : d.v * d.mult),
+      0
+    );
+
+    const remainingAfter = scoreBefore - visitScore;
+    const willBustNow =
+      remainingAfter < 0 || (doubleOut && remainingAfter === 1);
+
+    if (willBustNow) {
+      // ✅ afficher la volée bust en rouge (liste joueurs)
+      setLastVisitsByPlayer((m) => ({
+        ...m,
+        [activePlayerId]: nextThrow,
+      }));
+      setLastVisitIsBustByPlayer((m) => ({
+        ...m,
+        [activePlayerId]: true,
+      }));
+
+      if (!bustPreviewPlayedRef.current) {
+        bustPreviewPlayedRef.current = true;
+
+        bustSoundTimeoutRef.current = window.setTimeout(() => {
+          playArcadeMapped("bust", { rateLimitMs: 220 });
+          bustSoundTimeoutRef.current = null;
+        }, 1500);
+      }
+    } else {
+      bustPreviewPlayedRef.current = false;
+      setLastVisitIsBustByPlayer((m) => ({
+        ...m,
+        [activePlayerId]: false,
+      }));
+    }
+  } catch {
+    // ignore
+  }
+}
+
+const handleNumber = (value: number) => pushDart(value);
+const handleBull = () => pushDart(25);
+
+const handleBackspace = () => {
+  currentThrowFromEngineRef.current = false;
+
+  bustPreviewPlayedRef.current = false;
+  if (bustSoundTimeoutRef.current) {
+    window.clearTimeout(bustSoundTimeoutRef.current);
+    bustSoundTimeoutRef.current = null;
+  }
+
+  setCurrentThrow((prev) => prev.slice(0, -1));
+};
+
+const handleCancel = () => {
+  bustPreviewPlayedRef.current = false;
+  if (bustSoundTimeoutRef.current) {
+    window.clearTimeout(bustSoundTimeoutRef.current);
+    bustSoundTimeoutRef.current = null;
+  }
+
+  if (activePlayerId) {
+    setLastVisitIsBustByPlayer((m: Record<string, boolean>) => ({
+      ...m,
+      [activePlayerId]: false,
+    }));
+  }
+
+  // si on est en saisie locale -> retire juste 1 dart
+  if (currentThrow.length > 0 && !currentThrowFromEngineRef.current) {
+    setCurrentThrow((prev) => prev.slice(0, -1));
+    setMultiplier(1);
+    return;
+  }
+
+  // sinon -> UNDO moteur (si on a de l'historique)
+  if (!replayDartsRef.current.length) return;
+
+  botUndoGuardRef.current = true;
+
+  replayDartsRef.current.pop();
+  currentThrowFromEngineRef.current = true;
+
+  undoLastDart();
+  persistAutosave();
+
+  setTimeout(() => {
+    botUndoGuardRef.current = false;
+  }, 0);
+};
+
+const validateThrow = () => {
+  ensureAudioUnlockedNow();
+  if (!activePlayerId) return;
+  if (!currentThrow.length) return;
+
+  if (isValidatingRef.current) return;
+  isValidatingRef.current = true;
+
+  const toSend = [...currentThrow];
+  const pid = activePlayerId;
+
+  // ✅ on coupe tout timer bust “prévu”
+  bustPreviewPlayedRef.current = false;
+  if (bustSoundTimeoutRef.current) {
+    window.clearTimeout(bustSoundTimeoutRef.current);
+    bustSoundTimeoutRef.current = null;
+  }
+
+  try {
+    const playerName = activePlayer?.name || "Joueur";
+    const scoreBefore = scores[pid] ?? config.startScore;
+
+    const visitScore = toSend.reduce(
+      (s, d) => s + (d.v === 25 && d.mult === 2 ? 50 : d.v * d.mult),
+      0
+    );
+
+    const isBustNow =
+      scoreBefore - visitScore < 0 || (doubleOut && scoreBefore - visitScore === 1);
+
+    // ✅ 180 uniquement si pas bust
+    if (!isBustNow && visitScore === 180 && toSend.length === 3) {
+      playArcadeMapped("score_180", { rateLimitMs: 300 });
+    }
+
+    // ✅ voix IA
+    speakVisit(playerName, visitScore);
+
+    // ✅ volée validée : reset le flag rouge
+    setLastVisitIsBustByPlayer((m: Record<string, boolean>) => ({
+      ...m,
+      [pid]: false,
+    }));
+  } catch (e) {
+    console.warn("[X01PlayV3] end-of-visit sfx/voice failed", e);
+  }
+
+  setLastVisitsByPlayer((m: Record<string, UIDart[]>) => ({
+    ...m,
+    [pid]: toSend,
+  }));
+
+  const inputs: X01DartInputV3[] = toSend.map((d) => ({
+    segment: d.v === 25 ? 25 : d.v,
+    multiplier: d.mult as 1 | 2 | 3,
+  }));
+
+  setCurrentThrow([]);
+  setMultiplier(1);
+
+  currentThrowFromEngineRef.current = false;
+
+  replayDartsRef.current = replayDartsRef.current.concat(inputs);
+  persistAutosave();
+
+  inputs.forEach((input, index) => {
+    setTimeout(() => {
+      throwDart(input);
+
+      if (index === inputs.length - 1) {
+        isValidatingRef.current = false;
+      }
+    }, index * 10);
+  });
+
+  if (!inputs.length) isValidatingRef.current = false;
+};
+
+// =====================================================
+// 🎥 EXTERNAL SCORER (Scolia-ready) — AJOUT UNIQUEMENT
+// - En mode "external", on écoute des événements window et on pousse des darts dans le moteur.
+// - IMPORTANT: on ne modifie rien au moteur, on appelle throwDart(input).
+// - Events supportés:
+//   - dc:x01v3:dart  -> { segment, multiplier }
+//   - dc:x01v3:visit -> { darts: [{segment,multiplier}, ...] } (max 3)
+// =====================================================
+React.useEffect(() => {
+  if (typeof window === "undefined") return;
+  if (scoringSource !== "external") return;
+
+  // Si c'est un tour BOT, ou qu'on rejoue un autosave, on ignore les events externes
+  if (isBotTurn) return;
+
+  const onDart = (ev: any) => {
+    try {
+      const detail = ev?.detail;
+      const dart = normalizeExternalDart(detail);
+      if (!dart) return;
+
+      // ✅ alimente l’UI "dernière volée" (1→3 fléchettes) pour la PlayersListOnly
+      const pid = activePlayerId as string;
+      const uiDart: UIDart = {
+        v: dart.segment === 25 ? 25 : dart.segment,
+        mult: dart.multiplier as 1 | 2 | 3,
+      } as any;
+
+      setLastVisitsByPlayer((m) => {
+        const prev = m[pid] ?? [];
+        const next = [...prev, uiDart].slice(-3);
+        return { ...m, [pid]: next };
+      });
+
+      // 🔓 audio (si le bridge arrive via click/stream, on tente quand même)
+      ensureAudioUnlockedNow();
+
+      // On force un refresh UI via le moteur (moteur-driven)
+      currentThrowFromEngineRef.current = true;
+
+      // SFX minimal (optionnel)
+      try {
+        playHitSfx("dart_hit", { rateLimitMs: 40, volume: 0.55 });
+      } catch {}
+
+      // Pousse dans le moteur
+      throwDart(dart);
+
+      // Autosave + replay log
+      replayDartsRef.current = replayDartsRef.current.concat([dart]);
+      persistAutosave();
+    } catch (e) {
+      console.warn("[X01PlayV3] external dart failed", e);
+    }
+  };
+
+  const onVisit = (ev: any) => {
+    try {
+      const detail = ev?.detail;
+      const darts = normalizeExternalVisit(detail);
+      if (!darts.length) return;
+
+      // ✅ alimente l’UI "dernière volée" (3 fléchettes) pour la PlayersListOnly
+      const pid = activePlayerId as string;
+      const ui = darts.map(
+        (d) =>
+          ({
+            v: d.segment === 25 ? 25 : d.segment,
+            mult: d.multiplier as 1 | 2 | 3,
+          }) as any
+      ) as UIDart[];
+
+      setLastVisitsByPlayer((m) => ({ ...m, [pid]: ui.slice(-3) }));
+
+      ensureAudioUnlockedNow();
+      currentThrowFromEngineRef.current = true;
+
+      // Petits SFX (1 par dart, sans spam)
+      for (const d of darts) {
+        try {
+          playHitSfx("dart_hit", { rateLimitMs: 40, volume: 0.55 });
+        } catch {}
+        throwDart(d);
+      }
+
+      replayDartsRef.current = replayDartsRef.current.concat(darts);
+      persistAutosave();
+    } catch (e) {
+      console.warn("[X01PlayV3] external visit failed", e);
+    }
+  };
+
+  window.addEventListener(EXTERNAL_DART_EVENT, onDart as any);
+  window.addEventListener(EXTERNAL_VISIT_EVENT, onVisit as any);
+
+  return () => {
+    window.removeEventListener(EXTERNAL_DART_EVENT, onDart as any);
+    window.removeEventListener(EXTERNAL_VISIT_EVENT, onVisit as any);
+  };
+}, [
+  scoringSource,
+  isBotTurn,
+  activePlayerId, // ✅ important sinon pid stale
+  ensureAudioUnlockedNow,
+  throwDart,
+  persistAutosave,
+  playHitSfx,
+]);
+
+  // =====================================================
+  // STATS LIVE & MINI-RANKING
+  // =====================================================
+
+  const avg3ByPlayer: Record<string, number> = React.useMemo(() => {
+    const map: Record<string, number> = {};
+    for (const p of players as any[]) {
+      const pid = p.id as X01PlayerId;
+      const live = liveStatsByPlayer[pid];
+      const dartsThrown = live?.dartsThrown ?? 0;
+      if (!dartsThrown) {
+        map[pid] = 0;
+        continue;
+      }
+      const scoreNow = scores[pid] ?? config.startScore;
+      const scored = config.startScore - scoreNow;
+      if (scored <= 0) {
+        map[pid] = 0;
+        continue;
+      }
+      map[pid] = (scored / dartsThrown) * 3;
+    }
+    return map;
+  }, [players, liveStatsByPlayer, scores, config.startScore]);
+
+  const miniRanking: MiniRankingRow[] = React.useMemo(() => {
+    return players
+      .map((p: any) => {
+        const pid = p.id as X01PlayerId;
+        const avg3 = avg3ByPlayer[pid] ?? 0;
+        return {
+          id: pid,
+          name: p.name,
+          score: scores[pid] ?? config.startScore,
+          legsWon: (state as any).legsWon?.[pid] ?? 0,
+          setsWon: (state as any).setsWon?.[pid] ?? 0,
+          avg3,
+        };
+      })
+      .sort((a, b) => {
+        if (b.setsWon !== a.setsWon) return b.setsWon - a.setsWon;
+        if (b.legsWon !== a.legsWon) return b.legsWon - a.legsWon;
+        return a.score - b.score;
+      });
+  }, [players, scores, state, config.startScore, avg3ByPlayer]);
+
+  const liveRanking = React.useMemo(
+    () =>
+      miniRanking.map((r) => ({
+        id: r.id,
+        name: r.name,
+        score: r.score,
+      })),
+    [miniRanking]
+  );
+
+  // Stats joueur actif
+  const activeStats = activePlayer
+    ? liveStatsByPlayer[activePlayer.id]
+    : undefined;
+
+  const curDarts = activeStats?.dartsThrown ?? 0;
+  const curM3D = activePlayer
+    ? (avg3ByPlayer[activePlayer.id] ?? 0).toFixed(2)
+    : "0.00";
+  const bestVisit = activeStats?.bestVisit ?? 0;
+
+  // --- nouveaux compteurs live (garde pour Stats globales, pas affichés) ---
+  const missCount =
+    activeStats?.miss ??
+    activeStats?.missCount ??
+    activeStats?.misses ??
+    0;
+
+  const bustCount =
+    activeStats?.bust ??
+    activeStats?.bustCount ??
+    activeStats?.busts ??
+    0;
+
+  const dBullCount =
+    activeStats?.dBull ??
+    activeStats?.doubleBull ??
+    activeStats?.dBullCount ??
+    0;
+
+  const missPct =
+    curDarts > 0 ? ((missCount / curDarts) * 100).toFixed(0) : "0";
+  const bustPct =
+    curDarts > 0 ? ((bustCount / curDarts) * 100).toFixed(0) : "0";
+  const dBullPct =
+    curDarts > 0 ? ((dBullCount / curDarts) * 100).toFixed(0) : "0";
+
+  // =====================================================
+  // Mesure header & keypad (pour scroll zone joueurs)
+  // =====================================================
+
+  const headerWrapRef = React.useRef<HTMLDivElement | null>(null);
+  const [headerH, setHeaderH] = React.useState(0);
+
+  React.useEffect(() => {
+    const el = headerWrapRef.current;
+    if (!el) return;
+    const measure = () =>
+      setHeaderH(Math.ceil(el.getBoundingClientRect().height));
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    window.addEventListener("resize", measure);
+    return () => {
+      ro.disconnect();
+      window.removeEventListener("resize", measure);
+    };
+  }, []);
+
+  const keypadWrapRef = React.useRef<HTMLDivElement | null>(null);
+  const [keypadH, setKeypadH] = React.useState(0);
+
+  React.useEffect(() => {
+    const el = keypadWrapRef.current;
+    if (!el) return;
+    const measure = () =>
+      setKeypadH(Math.ceil(el.getBoundingClientRect().height));
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    window.addEventListener("resize", measure);
+    return () => {
+      ro.disconnect();
+      window.removeEventListener("resize", measure);
+    };
+  }, []);
+
+   // =====================================================
+  // Quitter / Rejouer / Résumé / Continuer
+  // =====================================================
+
+  function handleQuit() {
+    if (onExit) {
+      onExit();
+      return;
+    }
+    if (typeof window !== "undefined") {
+      window.history.back();
+    }
+  }
+
+  // REJOUER même config : on relance l'écran avec la même config
+  function handleReplaySameConfig() {
+    // 🔁 Pour l’instant: reload complet de la page -> recrée un match X01V3
+    if (typeof window !== "undefined") {
+      window.location.reload();
+      return;
+    }
+  }
+
+  // NOUVELLE PARTIE (retour écran de config)
+  function handleReplayNewConfigInternal() {
+    if (onReplayNewConfig) {
+      onReplayNewConfig();
+      return;
+    }
+    // fallback : on quitte
+    handleQuit();
+  }
+
+  // RÉSUMÉ : on construit un LegStats à partir du moteur V3 + liveStats
+  function handleShowSummary(_matchId: string) {
+    try {
+      const summaryRaw: any = (state as any)?.summary || {};
+      const legStats = buildLegStatsFromV3LiveForOverlay(
+        config,
+        state as any,
+        liveStatsByPlayer as any,
+        scores as any,
+        summaryRaw
+      );
+
+      setSummaryLegStats(legStats);
+      setSummaryOpen(true);
+    } catch (err) {
+      console.warn("[X01PlayV3] failed to build LegStats for summary", err);
+      // fallback : si jamais ça casse, on garde l'ancien comportement
+      if (onShowSummary) {
+        const id = _matchId || (state as any).matchId || "";
+        onShowSummary(id);
+      }
+    }
+  }
+
+  // CONTINUER (3+ joueurs) : on laisse le moteur passer à la suite
+  function handleContinueMulti() {
+    startNextLeg();
+  }
+
+// =====================================================
+// Sauvegarde du match dans l'Historique / Stats
+// + 🔊 FIN DE MATCH : victoire + voix classement (respecte arcadeEnabled/voiceEnabled)
+// =====================================================
+
+React.useEffect(() => {
+  if (status !== "match_end") return;
+  if (hasSavedMatchRef.current) return;
+  hasSavedMatchRef.current = true;
+
+  // =====================================================
+// 🔊 FIN DE MATCH : victoire + voix classement (langue + voiceId)
+// =====================================================
+try {
+  const rankingNames = (miniRanking || [])
+    .map((r) => r?.name)
+    .filter(Boolean) as string[];
+
+  const winnerName = rankingNames[0] || "Joueur";
+
+  // ✅ Son "victory" UNIQUEMENT si "Sons Arcade" activés
+  if (arcadeEnabled) {
+    playArcadeMapped("victory", { rateLimitMs: 800, volume: 0.25 });
+  }
+
+  // ✅ Voix IA UNIQUEMENT si "Voix IA" activée
+  if (voiceEnabled) {
+    const opts = {
+      voiceId: voiceId || undefined,
+      lang: lang || "fr", // ← langue de l'app
+    };
+
+    try {
+      // ✅ Signature étendue (recommandée) :
+      // announceEndGame({ winnerName, rankingNames, extra? }, opts?)
+      (announceEndGame as any)({ winnerName, rankingNames }, opts);
+    } catch {
+      try {
+        // fallback : certaines versions ont (payload, opts?) mais sans voiceId
+        announceEndGame({ winnerName, rankingNames } as any, { lang: opts.lang } as any);
+      } catch {
+        try {
+          // fallback ultime : signature simple sans opts
+          announceEndGame({ winnerName, rankingNames } as any);
+        } catch {
+          // ignore
+        }
+      }
+    }
+  }
+} catch (e) {
+  console.warn("[X01PlayV3] end-game sfx/voice failed", e);
+}
+
+  // =====================================================
+  // Sauvegarde Historique / Stats
+  // =====================================================
+  try {
+    saveX01V3MatchToHistory({
+      config,
+      state,
+      scores,
+      liveStatsByPlayer,
+    });
+  } catch (err) {
+    console.warn("[X01PlayV3] saveX01V3MatchToHistory failed", err);
+  }
+}, [
+  status,
+  config,
+  state,
+  scores,
+  liveStatsByPlayer,
+  miniRanking,
+  arcadeEnabled,
+  voiceEnabled,
+  voiceId,
+  lang, // ✅ AJOUT
+]);
+
+  // =====================================================
+  // BOT : tour auto si joueur courant est un BOT
+  // =====================================================
+
+  React.useEffect(() => {
+    console.log("[X01PlayV3][BOT] effect run", {
+      activePlayerId,
+      activePlayerName: activePlayer?.name,
+      isBotTurn,
+      status,
+      isReplaying: isReplayingRef.current,
+    });
+
+    // 0) Pendant la reprise depuis autosave, on NE JOUE PAS les bots
+    if (isReplayingRef.current) {
+      console.log("[X01PlayV3][BOT] stop: replaying autosave");
+      return;
+    }
+
+    // 🛡️ Pendant un UNDO global déclenché par ANNULER,
+    // on ne lance PAS une nouvelle volée de BOT.
+    if (botUndoGuardRef.current) {
+      console.log("[X01PlayV3][BOT] stop: undo in progress");
+      return;
+    }
+
+    // 1) Si ce n'est pas un tour de BOT → on ne fait rien
+    if (!isBotTurn || !activePlayer) {
+      console.log("[X01PlayV3][BOT] stop: not bot turn", {
+        isBotTurn,
+        hasActivePlayer: !!activePlayer,
+      });
+      return;
+    }
+
+    // 2) Si on est en fin de manche / set / match → on ne joue pas
+    if (
+      status === "leg_end" ||
+      status === "set_end" ||
+      status === "match_end"
+    ) {
+      console.log("[X01PlayV3][BOT] stop: end status", { status });
+      return;
+    }
+
+    const pid = activePlayer.id;
+    const scoreNow = scores[pid] ?? config.startScore;
+    const level = ((activePlayer as any).botLevel as BotLevel) ?? "easy";
+
+    console.log("[X01PlayV3][BOT] scheduling bot visit", {
+      pid,
+      name: activePlayer.name,
+      scoreNow,
+      level,
+    });
+
+    const timeout = window.setTimeout(() => {
+      console.log("[X01PlayV3][BOT] timeout fired", {
+        activePlayerId,
+        status,
+      });
+
+      // on relit le joueur courant AU MOMENT DU TIR
+      const currentActive = players.find(
+        (p: any) => p.id === activePlayerId
+      );
+      const stillBot =
+        !!currentActive && Boolean((currentActive as any).isBot);
+
+      if (!stillBot) {
+        console.log(
+          "[X01PlayV3][BOT] abort: no longer bot active",
+          { currentActiveName: currentActive?.name }
+        );
+        return;
+      }
+
+      if (
+        status === "leg_end" ||
+        status === "set_end" ||
+        status === "match_end"
+      ) {
+        console.log(
+          "[X01PlayV3][BOT] abort: status changed to end",
+          { status }
+        );
+        return;
+      }
+
+      const visit = computeBotVisit(level, scoreNow, doubleOut);
+      console.log("[X01PlayV3][BOT] visit computed", visit);
+
+      // UI : mémorise la volée du BOT
+      setLastVisitsByPlayer((m) => ({
+        ...m,
+        [pid]: visit,
+      }));
+
+      // Transforme la volée en inputs V3
+      const inputs: X01DartInputV3[] = visit.map((d) => {
+        if (d.v <= 0) {
+          // MISS
+          return { segment: 0, multiplier: 1 };
+        }
+        return {
+          segment: d.v === 25 ? 25 : d.v,
+          multiplier: d.mult as 1 | 2 | 3,
+        };
+      });
+
+      // Joue TOUTE la volée (3 darts)
+      inputs.forEach((input) => {
+        throwDart(input);
+      });
+
+      // Autosave : on enregistre aussi les volées des bots
+      replayDartsRef.current = replayDartsRef.current.concat(inputs);
+      persistAutosave();
+    }, 650);
+
+    return () => {
+      window.clearTimeout(timeout);
+    };
+  }, [
+    isBotTurn,
+    activePlayer,
+    activePlayerId,
+    status,
+    scores,
+    config.startScore,
+    doubleOut,
+    players,
+    throwDart,
+    persistAutosave,
+  ]);
+
+  // =====================================================
+  // Rendu principal : UI du "beau" X01Play
+  // =====================================================
+
+  return (
+    <div
+      className={`x01play-container theme-${theme.id}`}
+      style={{ overflow: "hidden", minHeight: "100vh" }}
+    >
+      {/* HEADER FIXE */}
+      <div
+        ref={headerWrapRef}
+        style={{
+          position: "fixed",
+          left: "50%",
+          transform: "translateX(-50%)",
+          top: 0,
+          zIndex: 60,
+          width: `min(100%, ${CONTENT_MAX}px)`,
+          paddingInline: 10,
+          paddingTop: 4,
+          paddingBottom: 4,
+        }}
+      >
+        {/* Barre haute */}
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            width: "100%",
+            marginBottom: 6,
+          }}
+        >
+          {/* BOUTON QUITTER */}
+          <button
+            onClick={handleQuit}
+            style={{
+              borderRadius: 10,
+              padding: "5px 11px",
+              border: "1px solid rgba(255,180,0,.3)",
+              background: "linear-gradient(180deg, #ffc63a, #ffaf00)",
+              color: "#1a1a1a",
+              fontWeight: 900,
+              boxShadow: "0 8px 18px rgba(255,170,0,.25)",
+              fontSize: 13,
+              whiteSpace: "nowrap",
+            }}
+          >
+            ← {t("common.quit", "Quitter")}
+          </button>
+
+          {/* HEADER COMPACT (AVATARS + SCORE) */}
+          <div
+            style={{
+              flex: 1,
+              display: "flex",
+              justifyContent: "center",
+            }}
+          >
+            {isDuel && useSetsUi && (
+              <DuelHeaderCompact
+                leftAvatarUrl={
+                  profileById[players[0].id]?.avatarDataUrl ?? ""
+                }
+                rightAvatarUrl={
+                  profileById[players[1].id]?.avatarDataUrl ?? ""
+                }
+                leftSets={(state as any).setsWon?.[players[0].id] ?? 0}
+                rightSets={(state as any).setsWon?.[players[1].id] ?? 0}
+                leftLegs={(state as any).legsWon?.[players[0].id] ?? 0}
+                rightLegs={(state as any).legsWon?.[players[1].id] ?? 0}
+              />
+            )}
+          </div>
+
+          {/* CAPSULE SET / LEG */}
+          <SetLegChip
+            currentSet={(state as any).currentSet ?? 1}
+            currentLegInSet={(state as any).currentLeg ?? 1}
+            setsTarget={setsTarget}
+            legsTarget={legsTarget}
+            useSets={useSetsUi}
+          />
+        </div>
+
+        {/* HEADER BLOCK (avatar + score + chips + mini ranking) */}
+        <div
+          style={{
+            maxWidth: CONTENT_MAX,
+            margin: "0 auto",
+          }}
+        >
+          <HeaderBlock
+            currentPlayer={activePlayer}
+            currentAvatar={
+              activePlayer
+                ? profileById[activePlayer.id]?.avatarDataUrl ?? null
+                : null
+            }
+            currentRemaining={currentScore}
+            currentThrow={currentThrow}
+            doubleOut={doubleOut}
+            liveRanking={liveRanking}
+            curDarts={curDarts}
+            curM3D={curM3D}
+            bestVisit={bestVisit}
+            legsWon={(state as any).legsWon ?? {}}
+            setsWon={(state as any).setsWon ?? {}}
+            useSets={useSetsUi}
+            currentVisit={currentVisit}
+          />
+        </div>
+      </div>
+
+      {/* ZONE JOUEURS — SCROLLABLE ENTRE HEADER ET KEYPAD */}
+      <div
+        style={{
+          position: "fixed",
+          left: "50%",
+          transform: "translateX(-50%)",
+          top: headerH,
+          bottom: NAV_HEIGHT + keypadH + 8,
+          width: `min(100%, ${CONTENT_MAX}px)`,
+          paddingInline: 10,
+          paddingTop: 4,
+          paddingBottom: 4,
+          overflowY: "auto",
+          zIndex: 40,
+        }}
+      >
+        <PlayersListOnly
+          players={players}
+          profileById={profileById}
+          liveStatsByPlayer={liveStatsByPlayer}
+          start={config.startScore}
+          scoresByPlayer={scores}
+          legsWon={(state as any).legsWon ?? {}}
+          setsWon={(state as any).setsWon ?? {}}
+          useSets={useSetsUi}
+          lastVisitsByPlayer={lastVisitsByPlayer}
+          lastVisitIsBustByPlayer={lastVisitIsBustByPlayer}
+          avg3ByPlayer={avg3ByPlayer}
+        />
+      </div>
+
+      {/* KEYPAD FIXE EN BAS, ALIGNÉ EN LARGEUR */}
+      <div
+        ref={keypadWrapRef}
+        style={{
+          position: "fixed",
+          left: "50%",
+          transform: "translateX(-50%)",
+          bottom: NAV_HEIGHT,
+          zIndex: 45,
+          padding: "0 10px 4px",
+          width: `min(100%, ${CONTENT_MAX}px)`,
+        }}
+      >
+        {isBotTurn ? (
+          <div
+            style={{
+              padding: 14,
+              borderRadius: 14,
+              border: "1px solid rgba(255,255,255,0.08)",
+              background:
+                "linear-gradient(180deg, rgba(10,10,12,.9), rgba(6,6,8,.95))",
+              textAlign: "center",
+              fontSize: 13,
+              color: "#e3e6ff",
+              boxShadow: "0 10px 24px rgba(0,0,0,.5)",
+            }}
+          >
+            🤖 {activePlayer?.name ?? t("x01v3.bot.name", "BOT")}{" "}
+            {t("x01v3.bot.playing", "joue son tour...")}
+          </div>
+        ) : scoringSource === "external" ? (
+          <div
+            style={{
+              padding: 14,
+              borderRadius: 14,
+              border: "1px solid rgba(255,255,255,0.08)",
+              background:
+                "linear-gradient(180deg, rgba(10,10,12,.9), rgba(6,6,8,.95))",
+              textAlign: "center",
+              fontSize: 13,
+              color: "#e3e6ff",
+              boxShadow: "0 10px 24px rgba(0,0,0,.5)",
+            }}
+          >
+            🎥 {t("x01v3.external.title", "Comptage externe en cours…")}
+            <div style={{ fontSize: 11.5, opacity: 0.75, marginTop: 6 }}>
+              {t(
+                "x01v3.external.hint",
+                "Les fléchettes sont injectées automatiquement (Scolia/bridge)."
+              )}
+            </div>
+          </div>
+        ) : (
+          <Keypad
+            currentThrow={currentThrow}
+            multiplier={multiplier}
+            onSimple={() => setMultiplier(1)}
+            onDouble={() => setMultiplier(2)}
+            onTriple={() => setMultiplier(3)}
+            onBackspace={handleBackspace}
+            onCancel={handleCancel}
+            onNumber={handleNumber}
+            onBull={handleBull}
+            onValidate={validateThrow}
+            hidePreview
+          />
+        )}
+      </div>
+
+      {/* OVERLAY FIN DE MANCHE / SET / MATCH (V3) */}
+      <X01LegOverlayV3
+        open={
+          status === "leg_end" ||
+          status === "set_end" ||
+          status === "match_end"
+        }
+        status={status}
+        config={config}
+        state={state}
+        liveStatsByPlayer={liveStatsByPlayer}
+        onNextLeg={startNextLeg}
+        onExitMatch={handleQuit}
+        onReplaySameConfig={handleReplaySameConfig}
+        onReplayNewConfig={handleReplayNewConfigInternal}
+        onShowSummary={handleShowSummary}
+        onContinueMulti={players.length >= 3 ? handleContinueMulti : undefined}
+      />
+
+      {/* OVERLAY RÉSUMÉ — gros tableau + graphs */}
+      <EndOfLegOverlay
+        open={summaryOpen && !!summaryLegStats}
+        result={summaryLegStats}
+        playersById={summaryPlayersById}
+        onClose={() => setSummaryOpen(false)}
+        onReplay={handleReplaySameConfig}
+      />
+    </div>
+  );
+}
+
+// =============================================================
+// Sous-composants UI (repris du beau X01Play, adaptés V3)
+// =============================================================
+
+function HeaderBlock(props: {
+  currentPlayer: any;
+  currentAvatar: string | null;
+  currentRemaining: number;
+  currentThrow: UIDart[];
+  doubleOut: boolean;
+  liveRanking: { id: string; name: string; score: number }[];
+  curDarts: number;
+  curM3D: string;
+  bestVisit: number;
+  useSets: boolean;
+  legsWon: Record<string, number>;
+  setsWon: Record<string, number>;
+  currentVisit: any;
+}) {
+  const {
+    currentPlayer,
+    currentAvatar,
+    currentRemaining,
+    currentThrow,
+    doubleOut, // pas encore utilisé
+    liveRanking,
+    curDarts,
+    curM3D,
+    bestVisit,
+    useSets,
+    legsWon,
+    setsWon,
+    currentVisit,
+  } = props;
+
+  const legsWonThisSet =
+    (currentPlayer && legsWon[currentPlayer.id]) ?? 0;
+  const setsWonTotal =
+    (currentPlayer && setsWon[currentPlayer.id]) ?? 0;
+
+  const remainingAfterAll = Math.max(
+    currentRemaining -
+      currentThrow.reduce(
+        (s: number, d: UIDart) => s + dartValue(d),
+        0
+      ),
+    0
+  );
+
+  return (
+    <div
+      style={{
+        background:
+          "radial-gradient(120% 140% at 0% 0%, rgba(255,195,26,.10), transparent 55%), linear-gradient(180deg, rgba(15,15,18,.9), rgba(10,10,12,.8))",
+        border: "1px solid rgba(255,255,255,.08)",
+        borderRadius: 18,
+        padding: 7,
+        boxShadow: "0 8px 26px rgba(0,0,0,.35)",
+      }}
+    >
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "auto 1fr",
+          gap: 8,
+          alignItems: "center",
+        }}
+      >
+        {/* AVATAR + STATS */}
+        <div
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            gap: 5,
+          }}
+        >
+          <div
+            style={{
+              width: 96,
+              height: 96,
+              borderRadius: "50%",
+              overflow: "hidden",
+              background:
+                "linear-gradient(180deg,#1b1b1f,#111114)",
+              boxShadow: "0 6px 22px rgba(0,0,0,.35)",
+            }}
+          >
+            {currentAvatar ? (
+              <img
+                src={currentAvatar}
+                style={{
+                  width: "100%",
+                  height: "100%",
+                  objectFit: "cover",
+                }}
+              />
+            ) : (
+              <div
+                style={{
+                  width: "100%",
+                  height: "100%",
+                  display: "flex",
+                  justifyContent: "center",
+                  alignItems: "center",
+                  color: "#999",
+                  fontWeight: 700,
+                }}
+              >
+                ?
+              </div>
+            )}
+          </div>
+          <div
+            style={{
+              fontWeight: 900,
+              fontSize: 17,
+              color: "#ffcf57",
+            }}
+          >
+            {currentPlayer?.name ?? "—"}
+          </div>
+          <div
+            style={{
+              fontSize: 11.5,
+              color: "#d9dbe3",
+            }}
+          >
+            {useSets ? (
+              <>
+                Manches : <b>{legsWonThisSet}</b> • Sets :{" "}
+                <b>{setsWonTotal}</b>
+              </>
+            ) : (
+              <>
+                Manches : <b>{legsWonThisSet}</b>
+              </>
+            )}
+          </div>
+
+          {/* Mini card stats joueur actif */}
+          <div
+            style={{
+              ...miniCard,
+              width: 176,
+              height: "auto",
+              padding: 7,
+            }}
+          >
+            <div style={miniText}>
+              <div>
+                Meilleure volée : <b>{bestVisit}</b>
+              </div>
+              <div>
+                Moy/3D : <b>{curM3D}</b>
+              </div>
+              <div>
+                Darts jouées : <b>{curDarts}</b>
+              </div>
+              <div>
+                Volée : <b>{currentThrow.length}/3</b>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* SCORE + PASTILLES + RANKING */}
+        <div
+          style={{
+            textAlign: "center",
+            display: "flex",
+            flexDirection: "column",
+            gap: 5,
+          }}
+        >
+          {/* SCORE CENTRAL */}
+          <div
+            style={{
+              fontSize: 64,
+              fontWeight: 900,
+              color: "#ffcf57",
+              textShadow: "0 4px 18px rgba(255,195,26,.25)",
+              lineHeight: 1.02,
+            }}
+          >
+            {remainingAfterAll}
+          </div>
+
+          {/* Pastilles live */}
+          <div
+            style={{
+              display: "flex",
+              gap: 5,
+              justifyContent: "center",
+            }}
+          >
+            {[0, 1, 2].map((i) => {
+              const d = currentThrow[i];
+
+              const wouldBust =
+                currentRemaining -
+                  currentThrow
+                    .slice(0, i + 1)
+                    .reduce(
+                      (s: number, x: UIDart) => s + dartValue(x),
+                      0
+                    ) <
+                0;
+
+              const st = chipStyle(d, wouldBust);
+
+              return (
+                <span
+                  key={i}
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    minWidth: 40,
+                    height: 28,
+                    padding: "0 10px",
+                    borderRadius: 10,
+                    border: st.border as string,
+                    background: st.background as string,
+                    color: st.color as string,
+                    fontWeight: 800,
+                    fontSize: 13,
+                  }}
+                >
+                  {fmt(d)}
+                </span>
+              );
+            })}
+          </div>
+
+          {/* Checkout suggestion (moteur V3) */}
+          {currentVisit?.checkoutSuggestion ? (
+            <div
+              style={{
+                marginTop: 3,
+                display: "flex",
+                justifyContent: "center",
+              }}
+            >
+              <div
+                style={{
+                  display: "inline-flex",
+                  padding: 5,
+                  borderRadius: 12,
+                  border: "1px solid rgba(255,255,255,.08)",
+                  background:
+                    "radial-gradient(120% 120% at 50% 0%, rgba(255,195,26,.10), rgba(30,30,34,.95))",
+                  minWidth: 170,
+                  gap: 6,
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}
+              >
+                <span
+                  style={{
+                    padding: "3px 8px",
+                    borderRadius: 8,
+                    border: "1px solid rgba(255,187,51,.4)",
+                    background: "rgba(255,187,51,.12)",
+                    color: "#ffc63a",
+                    fontWeight: 900,
+                    whiteSpace: "nowrap",
+                    fontSize: 13,
+                  }}
+                >
+                  {formatCheckoutFromVisit(
+                    currentVisit.checkoutSuggestion
+                  )}
+                </span>
+              </div>
+            </div>
+          ) : null}
+
+          {/* Mini ranking */}
+          <div
+            style={{
+              ...miniCard,
+              alignSelf: "center",
+              width: "min(310px,100%)",
+              height: "auto",
+              padding: 6,
+            }}
+          >
+            <div
+              style={{
+                maxHeight: 3 * 26,
+                overflow: liveRanking.length > 3 ? "auto" : "visible",
+              }}
+            >
+              {liveRanking.map((r, i) => (
+                <div key={r.id} style={miniRankRow}>
+                  <div style={miniRankName}>
+                    {i + 1}. {r.name}
+                  </div>
+                  <div
+                    style={
+                      r.score === 0
+                        ? miniRankScoreFini
+                        : miniRankScore
+                    }
+                  >
+                    {r.score === 0 ? "FINI" : r.score}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function PlayersListOnly(props: {
+  players: any[];
+  profileById: Record<string, { avatarDataUrl: string | null; name: string }>;
+  liveStatsByPlayer: Record<string, any>;
+  start: number;
+  scoresByPlayer: Record<string, number>;
+  legsWon: Record<string, number>;
+  setsWon: Record<string, number>;
+  useSets: boolean;
+  lastVisitsByPlayer: Record<string, UIDart[]>;
+  lastVisitIsBustByPlayer: Record<string, boolean>;
+  avg3ByPlayer: Record<string, number>;
+}) {
+  const {
+    players,
+    profileById,
+    liveStatsByPlayer,
+    start,
+    scoresByPlayer,
+    legsWon,
+    setsWon,
+    useSets,
+    lastVisitsByPlayer,
+    lastVisitIsBustByPlayer,
+    avg3ByPlayer,
+  } = props;
+
+
+  return (
+    <div
+      style={{
+        background:
+          "linear-gradient(180deg, rgba(15,15,18,.9), rgba(10,10,12,.85))",
+        border: "1px solid rgba(255,255,255,.08)",
+        borderRadius: 18,
+        padding: 9,
+        marginBottom: 8,
+        boxShadow: "0 8px 24px rgba(0,0,0,.35)",
+      }}
+    >
+      {players.map((p: any) => {
+        const prof = profileById[p.id];
+        const avatarSrc = prof?.avatarDataUrl ?? null;
+        const live = liveStatsByPlayer[p.id];
+
+        const dCount: number = live?.dartsThrown ?? 0;
+        const a3d =
+          dCount > 0 ? (avg3ByPlayer[p.id] ?? 0).toFixed(2) : "0.00";
+
+        const score = scoresByPlayer[p.id] ?? start;
+        const legsWonThisSet = legsWon?.[p.id] ?? 0;
+        const setsWonTotal = setsWon?.[p.id] ?? 0;
+
+        const isBot = !!(p as any).isBot;
+        const level = (p as any).botLevel as BotLevel;
+
+        return (
+          <div
+            key={p.id}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 9,
+              padding: "7px 9px",
+              borderRadius: 12,
+              background:
+                "linear-gradient(180deg, rgba(28,28,32,.65), rgba(18,18,20,.65))",
+              border: "1px solid rgba(255,255,255,.07)",
+              marginBottom: 5,
+            }}
+          >
+            {/* Avatar */}
+            <div
+              style={{
+                width: 36,
+                height: 36,
+                borderRadius: "50%",
+                overflow: "hidden",
+                background: "rgba(255,255,255,.06)",
+              }}
+            >
+              {avatarSrc ? (
+                <img
+                  src={avatarSrc}
+                  style={{
+                    width: "100%",
+                    height: "100%",
+                    objectFit: "cover",
+                  }}
+                />
+              ) : (
+                <div
+                  style={{
+                    width: "100%",
+                    height: "100%",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    fontWeight: 700,
+                    color: "#999",
+                  }}
+                >
+                  ?
+                </div>
+              )}
+            </div>
+
+            {/* Bloc central */}
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 8,
+                  flexWrap: "wrap",
+                }}
+              >
+                <div
+                  style={{
+                    fontWeight: 800,
+                    color: "#ffcf57",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  {p.name}
+                  {isBot && (
+                    <span
+                      style={{
+                        fontSize: 10,
+                        marginLeft: 4,
+                        color: "#9fa4ff",
+                        fontWeight: 700,
+                      }}
+                    >
+                      · BOT {(level || "easy").toUpperCase()}
+                    </span>
+                  )}
+                </div>
+
+                {/* Pastilles dernière volée */}
+                {renderLastVisitChips(p.id, lastVisitsByPlayer, (lastVisitIsBustByPlayer as any)?.[p.id])}
+              </div>
+              <div
+                style={{
+                  fontSize: 11.5,
+                  color: "#cfd1d7",
+                  marginTop: 2,
+                }}
+              >
+                Darts: {dCount} • Moy/3D: {a3d}
+              </div>
+              <div
+                style={{
+                  fontSize: 11.5,
+                  color: "#cfd1d7",
+                  marginTop: 1,
+                }}
+              >
+                {useSets
+                  ? `Manches : ${legsWonThisSet} • Sets : ${setsWonTotal}`
+                  : `Manches : ${legsWonThisSet}`}
+              </div>
+            </div>
+
+            {/* Score */}
+            <div
+              style={{
+                fontWeight: 900,
+                color: score === 0 ? "#7fe2a9" : "#ffcf57",
+              }}
+            >
+              {score}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function SetLegChip(props: {
+  currentSet: number;
+  currentLegInSet: number;
+  setsTarget: number;
+  legsTarget: number;
+  useSets: boolean;
+}) {
+  const { currentSet, currentLegInSet, setsTarget, legsTarget, useSets } =
+    props;
+
+  const st: React.CSSProperties = {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 8,
+    padding: "5px 9px",
+    border: "1px solid rgba(255,200,80,.35)",
+    background:
+      "linear-gradient(180deg, rgba(255,195,26,.12), rgba(30,30,34,.95))",
+    color: "#ffcf57",
+    fontWeight: 800,
+    fontSize: 11.5,
+    boxShadow: "0 6px 18px rgba(255,195,26,.15)",
+    whiteSpace: "nowrap",
+    borderRadius: 999,
+  };
+
+  if (!useSets) {
+    return (
+      <span style={st}>
+        <span>
+          Leg {currentLegInSet}/{legsTarget}
+        </span>
+      </span>
+    );
+  }
+
+  return (
+    <span style={st}>
+      <span>
+        Set {currentSet}/{setsTarget}
+      </span>
+      <span style={{ opacity: 0.6 }}>•</span>
+      <span>
+        Leg {currentLegInSet}/{legsTarget}
+      </span>
+    </span>
+  );
+}
+
+// =============================================================
+// Bridge X01 V3 -> Historique / Stats
+// =============================================================
+
+type X01V3HistoryPayload = {
+  config: X01ConfigV3;
+  state: any;
+  scores: Record<string, number>;
+  liveStatsByPlayer: Record<string, any>;
+};
+
+/* -------------------------------------------------------------
+   Helpers : extraction des stats détaillées depuis liveStatsByPlayer
+   Objectif : hitsS / hitsD / hitsT / miss / bull / dBull / bust
+   + bySegmentS / bySegmentD / bySegmentT
+------------------------------------------------------------- */
+
+function numOr0(...values: any[]): number {
+  for (const v of values) {
+    if (v === undefined || v === null) continue;
+    const n = Number(v);
+    if (Number.isFinite(n)) return n;
+  }
+  return 0;
+}
+
+function cloneNumberMap(obj: any | undefined): Record<string, number> {
+  const out: Record<string, number> = {};
+  if (!obj || typeof obj !== "object") return out;
+  for (const [k, v] of Object.entries(obj)) {
+    const n = Number(v);
+    if (Number.isFinite(n) && n !== 0) {
+      out[String(k)] = n;
+    }
+  }
+  return out;
+}
+
+function extractSegmentMapsFromLive(live: any) {
+  // 1) Si on a déjà bySegmentS/D/T, on les clone tels quels
+  let bySegmentS = cloneNumberMap(
+    live?.bySegmentS ?? live?.segmentsS ?? live?.hitsBySegmentS
+  );
+  let bySegmentD = cloneNumberMap(
+    live?.bySegmentD ?? live?.segmentsD ?? live?.hitsBySegmentD
+  );
+  let bySegmentT = cloneNumberMap(
+    live?.bySegmentT ?? live?.segmentsT ?? live?.hitsBySegmentT
+  );
+
+  // 2) Fallback : structure combinée { [seg]: {S,D,T} }
+  const combined =
+    live?.bySegment ??
+    live?.segmentHits ??
+    live?.segmentsAll ??
+    undefined;
+
+  if (combined && typeof combined === "object") {
+    for (const [segStr, entry] of Object.entries(combined)) {
+      const segKey = String(segStr);
+      if (!entry || typeof entry !== "object") continue;
+      const e: any = entry;
+      const s = numOr0(e.S, e.s, e.single, e.singles);
+      const d = numOr0(e.D, e.d, e.double, e.doubles);
+      const t = numOr0(e.T, e.t, e.triple, e.triples);
+      if (s) bySegmentS[segKey] = (bySegmentS[segKey] || 0) + s;
+      if (d) bySegmentD[segKey] = (bySegmentD[segKey] || 0) + d;
+      if (t) bySegmentT[segKey] = (bySegmentT[segKey] || 0) + t;
+    }
+  }
+
+  return { bySegmentS, bySegmentD, bySegmentT };
+}
+
+function extractDetailedStatsFromLive(live: any) {
+  const hitsS = numOr0(
+    live?.hitsS,
+    live?.S,
+    live?.singles,
+    live?.hitsSingle
+  );
+  const hitsD = numOr0(
+    live?.hitsD,
+    live?.D,
+    live?.doubles,
+    live?.hitsDouble
+  );
+  const hitsT = numOr0(
+    live?.hitsT,
+    live?.T,
+    live?.triples,
+    live?.hitsTriple
+  );
+
+  const miss = numOr0(
+    live?.miss,
+    live?.misses,
+    live?.missCount,
+    live?.nbMiss
+  );
+  const bull = numOr0(
+    live?.bull,
+    live?.bulls,
+    live?.bullHits,
+    live?.hitsBull
+  );
+  const dBull = numOr0(
+    live?.dBull,
+    live?.doubleBull,
+    live?.dbulls,
+    live?.bullDoubleHits
+  );
+  const bust = numOr0(
+    live?.bust,
+    live?.busts,
+    live?.bustCount,
+    live?.nbBust
+  );
+
+  let darts = numOr0(
+    live?.dartsThrown,
+    live?.darts,
+    live?.totalDarts
+  );
+  if (!darts) {
+    // fallback minimal si pas de compteur global
+    darts = hitsS + hitsD + hitsT + miss;
+  }
+
+  const { bySegmentS, bySegmentD, bySegmentT } =
+    extractSegmentMapsFromLive(live);
+
+  return {
+    darts,
+    hitsS,
+    hitsD,
+    hitsT,
+    miss,
+    bull,
+    dBull,
+    bust,
+    bySegmentS,
+    bySegmentD,
+    bySegmentT,
+  };
+}
+
+/* -------------------------------------------------------------
+   Sauvegarde X01 V3 dans l'Historique
+   - summary : toutes les stats utiles pour StatsHub / X01Multi
+   - payload : VERSION LÉGÈRE (sans engineState ni liveStatsByPlayer)
+     => évite les erreurs de quota
+------------------------------------------------------------- */
+
+function saveX01V3MatchToHistory({
+  config,
+  state,
+  scores,
+  liveStatsByPlayer,
+}: X01V3HistoryPayload) {
+  const players = config.players || [];
+
+  const matchId =
+    state?.matchId ||
+    `x01v3-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+
+  const createdAt = state?.createdAt || Date.now();
+
+  // -------------------------
+  // Maps compatibles Summary
+  // -------------------------
+  const avg3ByPlayer: Record<string, number> = {};
+  const bestVisitByPlayer: Record<string, number> = {};
+  const bestCheckoutByPlayer: Record<string, number> = {};
+  const perPlayer: any[] = [];
+  const detailedByPlayer: Record<string, any> = {};
+
+  // -------------------------
+  // Maps pour reconstruire un LegacyLegResult (summary.legacy)
+  // -------------------------
+  const legacyRemaining: Record<string, number> = {};
+  const legacyDarts: Record<string, number> = {};
+  const legacyVisits: Record<string, number> = {};
+  const legacyAvg3: Record<string, number> = {};
+  const legacyBestVisit: Record<string, number> = {};
+  const legacyBestCheckout: Record<string, number> = {};
+  const legacyDoubles: Record<string, number> = {};
+  const legacyTriples: Record<string, number> = {};
+  const legacyBulls: Record<string, number> = {};
+  const legacyDbulls: Record<string, number> = {};
+  const legacyMiss: Record<string, number> = {};
+  const legacyBust: Record<string, number> = {};
+  const legacyPoints: Record<string, number> = {};
+  const legacyHitsBySector: Record<string, Record<string, number>> = {};
+
+  let winnerId: string | null = null;
+
+  // -------------------------
+  // Stats détaillées par joueur
+  // -------------------------
+  for (const p of players as any[]) {
+    const pid = p.id as string;
+    const live = (liveStatsByPlayer && liveStatsByPlayer[pid]) || {};
+    const startScore = config.startScore ?? 501;
+    const scoreNow = scores[pid] ?? startScore;
+    const scored = startScore - scoreNow;
+
+    const dartsThrown = live.dartsThrown ?? live.darts ?? 0;
+
+    let avg3 = 0;
+    if (dartsThrown > 0 && scored > 0) {
+      avg3 = (scored / dartsThrown) * 3;
+    }
+
+    const bestVisit = live.bestVisit ?? 0;
+    const bestCheckout = live.bestCheckout ?? 0;
+
+    avg3ByPlayer[pid] = avg3;
+    bestVisitByPlayer[pid] = bestVisit;
+    bestCheckoutByPlayer[pid] = bestCheckout;
+
+    // 🔍 Stats détaillées (hits S/D/T, miss, bull, etc.)
+    const detail = extractDetailedStatsFromLive(live);
+    detailedByPlayer[pid] = detail;
+
+    // Reformatage compatible V2/V1 pour StatsHub et tous les dashboards
+    const segments = {
+      S: detail.bySegmentS,
+      D: detail.bySegmentD,
+      T: detail.bySegmentT,
+    };
+
+    const hits = {
+      S: detail.hitsS,
+      D: detail.hitsD,
+      T: detail.hitsT,
+      M: detail.miss,
+    };
+
+    perPlayer.push({
+      playerId: pid,
+      dartSetId: (p as any).dartSetId ?? null,
+      dartPresetId: (p as any).dartPresetId ?? null,
+    
+      avg3,
+      bestVisit,
+      bestCheckout,
+      darts: detail.darts,
+      hits,
+      bull: detail.bull,
+      dBull: detail.dBull,
+      bust: detail.bust,
+      segments,
+    });
+
+    // -------------------------
+    // Remplissage des maps "legacy" pour l'écran Historique détaillé
+    // -------------------------
+    legacyRemaining[pid] = scoreNow;
+    legacyDarts[pid] = detail.darts;
+    legacyVisits[pid] = detail.darts ? Math.ceil(detail.darts / 3) : 0;
+    legacyAvg3[pid] = avg3;
+    legacyBestVisit[pid] = bestVisit;
+    legacyBestCheckout[pid] = bestCheckout;
+
+    legacyDoubles[pid] = detail.hitsD;
+    legacyTriples[pid] = detail.hitsT;
+    legacyBulls[pid] = (detail.bull ?? 0) + (detail.dBull ?? 0);
+    legacyDbulls[pid] = detail.dBull ?? 0;
+    legacyMiss[pid] = detail.miss ?? 0;
+    legacyBust[pid] = detail.bust ?? 0;
+    legacyPoints[pid] = scored > 0 ? scored : 0;
+
+    // hits par secteur combinés (S + D + T + BULL / DBULL + MISS)
+    const sectorMap: Record<string, number> = {};
+
+    for (const [seg, v] of Object.entries(detail.bySegmentS || {})) {
+      const k = String(seg);
+      sectorMap[k] = (sectorMap[k] || 0) + Number(v || 0);
+    }
+    for (const [seg, v] of Object.entries(detail.bySegmentD || {})) {
+      const k = String(seg);
+      sectorMap[k] = (sectorMap[k] || 0) + Number(v || 0);
+    }
+    for (const [seg, v] of Object.entries(detail.bySegmentT || {})) {
+      const k = String(seg);
+      sectorMap[k] = (sectorMap[k] || 0) + Number(v || 0);
+    }
+
+    if (detail.bull) {
+      sectorMap["OB"] = (sectorMap["OB"] || 0) + detail.bull;
+    }
+    if (detail.dBull) {
+      sectorMap["IB"] = (sectorMap["IB"] || 0) + detail.dBull;
+    }
+    if (detail.miss) {
+      sectorMap["MISS"] = (sectorMap["MISS"] || 0) + detail.miss;
+    }
+
+    legacyHitsBySector[pid] = sectorMap;
+
+    // Gagnant simple : score à 0
+    if (scoreNow === 0 && !winnerId) {
+      winnerId = pid;
+    }
+  }
+
+  // -------------------------
+  // On récupère ce que le moteur a déjà mis dans state.summary :
+  // - rankings (avec legsWon / setsWon)
+  // - game (legsPerSet / setsToWin / startScore...)
+  // - winnerName éventuel
+  // -------------------------
+  const engineSummary: any = (state as any).summary || {};
+  const rankings = Array.isArray(engineSummary.rankings)
+    ? engineSummary.rankings
+    : [];
+
+  const engineGame = engineSummary.game || {};
+
+  const winnerName =
+    engineSummary.winnerName ||
+    (players.find((p: any) => p.id === winnerId)?.name ?? null);
+
+  // -------------------------
+  // EXTRACTION LEGS / SETS / SCORE FINAL
+  // -------------------------
+
+  // maps issus de l'état moteur (souvent "dernier set")
+  const legsMapState = (state as any).legsWon ?? {};
+  const setsMapState = (state as any).setsWon ?? {};
+
+  const legsByPlayer: Record<string, number> = {};
+  const setsByPlayer: Record<string, number> = {};
+  const legsPlayedByPlayer: Record<string, number> = {};
+  const setsPlayedByPlayer: Record<string, number> = {};
+
+  // Base : ce que dit l'état moteur
+  players.forEach((p: any) => {
+    const pid = p.id as string;
+    legsByPlayer[pid] = Number(legsMapState[pid] ?? 0);
+    setsByPlayer[pid] = Number(setsMapState[pid] ?? 0);
+  });
+
+  // Enrichissement avec engineSummary.rankings (totaux legs/sets gagnés + joués)
+  for (const r of rankings as any[]) {
+    const pid =
+      r.playerId ?? r.id ?? r.pid ?? r.player_id ?? undefined;
+    if (!pid) continue;
+
+    // legs gagnés / perdus / joués
+    const legsWon = numOr0(
+      r.legsWon,
+      r.legs_won,
+      r.legs,
+      r.wonLegs,
+      r.legs_for
+    );
+    const legsLost = numOr0(
+      r.legsLost,
+      r.legs_lost,
+      r.legsAgainst,
+      r.lostLegs,
+      r.legs_against
+    );
+    const legsPlayed = numOr0(
+      r.legsPlayed,
+      r.legs_played,
+      legsWon + legsLost
+    );
+
+    // sets gagnés / perdus / joués
+    const setsWon = numOr0(
+      r.setsWon,
+      r.sets_won,
+      r.sets,
+      r.wonSets,
+      r.sets_for
+    );
+    const setsLost = numOr0(
+      r.setsLost,
+      r.sets_lost,
+      r.setsAgainst,
+      r.lostSets,
+      r.sets_against
+    );
+    const setsPlayed = numOr0(
+      r.setsPlayed,
+      r.sets_played,
+      setsWon + setsLost
+    );
+
+    // On prend le max entre ce que dit l'état et ce que dit le ranking
+    if (legsWon > (legsByPlayer[pid] ?? 0)) {
+      legsByPlayer[pid] = legsWon;
+    }
+    if (setsWon > (setsByPlayer[pid] ?? 0)) {
+      setsByPlayer[pid] = setsWon;
+    }
+
+    if (legsPlayed > 0) {
+      legsPlayedByPlayer[pid] = legsPlayed;
+    }
+    if (setsPlayed > 0) {
+      setsPlayedByPlayer[pid] = setsPlayed;
+    }
+
+    // On pousse aussi ces infos dans detailedByPlayer pour usage futur
+    detailedByPlayer[pid] = {
+      ...(detailedByPlayer[pid] || {}),
+      legsWonTotal: legsWon,
+      legsPlayedTotal: legsPlayed,
+      setsWonTotal: setsWon,
+      setsPlayedTotal: setsPlayed,
+    };
+  }
+
+  // Score final DUEL (ex : 2–1)
+  let matchScore: { [pid: string]: number } = {};
+  if (players.length === 2) {
+    matchScore = {
+      [players[0].id]: setsByPlayer[players[0].id] || 0,
+      [players[1].id]: setsByPlayer[players[1].id] || 0,
+    };
+  } else {
+    // multi-joueurs : classement par sets puis legs
+    const sorted = [...players].sort((a, b) => {
+      const sa = setsByPlayer[a.id] ?? 0;
+      const sb = setsByPlayer[b.id] ?? 0;
+      if (sb !== sa) return sb - sa;
+      const la = legsByPlayer[a.id] ?? 0;
+      const lb = legsByPlayer[b.id] ?? 0;
+      return lb - la;
+    });
+
+    matchScore = {};
+    sorted.forEach((p, idx) => {
+      matchScore[p.id] = idx + 1; // 1er / 2e / 3e...
+    });
+  }
+
+  // -------------------------
+  // Objet legacy compatible avec l'ancien écran détaillé X01
+  // -------------------------
+  const legacy: any = {
+    legNo: 1,
+    winnerId,
+    finishedAt: createdAt,
+    remaining: legacyRemaining,
+    darts: legacyDarts,
+    visits: legacyVisits,
+    avg3: legacyAvg3,
+    bestVisit: legacyBestVisit,
+    bestCheckout: legacyBestCheckout,
+    doubles: legacyDoubles,
+    triples: legacyTriples,
+    bulls: legacyBulls,
+    dbulls: legacyDbulls,
+    misses: legacyMiss,
+    busts: legacyBust,
+    points: legacyPoints,
+    hitsBySector: legacyHitsBySector,
+    // Les buckets 60+/100+/140+/180 ne sont pas reconstruits ici,
+    // ils resteront à 0 faute de détail par volée (option future).
+  };
+
+  // -------------------------
+  // Summary.players : shape attendu par X01End / buildPerPlayerMetrics
+  // -------------------------
+  const summaryPlayers: Record<string, any> = {};
+  for (const p of players as any[]) {
+    const pid = p.id as string;
+    const darts = legacyDarts[pid] || 0;
+    const visits = legacyVisits[pid] || (darts ? Math.ceil(darts / 3) : 0);
+    const points = legacyPoints[pid] || 0;
+
+    summaryPlayers[pid] = {
+      id: pid,
+      name: p.name,
+      avg3: avg3ByPlayer[pid] ?? 0,
+      bestVisit: bestVisitByPlayer[pid] ?? 0,
+      bestCheckout: bestCheckoutByPlayer[pid] ?? 0,
+      darts,
+      visits,
+      _sumPoints: points,
+      _sumDarts: darts,
+      _sumVisits: visits || undefined,
+      matches: 1,
+      legs: legsPlayedByPlayer[pid] || 1,
+      buckets: {},
+      updatedAt: createdAt,
+    };
+  }
+
+  const summary = {
+    ...engineSummary,
+
+    kind: "x01" as const,
+    matchId,
+
+    game: {
+      ...engineGame,
+      mode: "x01",
+      startScore: config.startScore,
+      legsPerSet: config.legsPerSet ?? null,
+      setsToWin: config.setsToWin ?? null,
+    },
+
+    rankings,
+    winnerName,
+
+    updatedAt: createdAt,
+
+    // nouvelle map players (utilisée en priorité par X01End)
+    players: summaryPlayers,
+
+    // Alias compat pour les anciens agrégateurs
+    legsWon: legsByPlayer,
+    setsWon: setsByPlayer,
+    legsScore: legsByPlayer,
+    setsScore: setsByPlayer,
+
+    // 🔥 AJOUTS CRITIQUES POUR X01 MULTI
+    legsByPlayer,
+    setsByPlayer,
+    legsPlayedByPlayer,
+    setsPlayedByPlayer,
+    matchScore,
+
+    // Stats détaillées multi-joueurs
+    avg3ByPlayer,
+    bestVisitByPlayer,
+    bestCheckoutByPlayer,
+    perPlayer,
+    detailedByPlayer,
+
+    // Compatibilité rétro : l'ancien shape utilisé par History / LEO
+    legacy,
+  };
+
+  // -------------------------
+  // QUICK STATS PROFILS (dc-quick-stats pour ProfileStarRing)
+  // -------------------------
+  try {
+    // On considère tout le match comme un "leg" global pour les quick-stats
+    StatsBridge
+      .commitLegAndAccumulate({ perPlayer }, legacy)
+      .catch((err) => {
+        console.warn(
+          "[X01PlayV3] commitLegAndAccumulate failed",
+          err
+        );
+      });
+  } catch (err) {
+    console.warn(
+      "[X01PlayV3] quick-stats error (sync wrapper)",
+      err
+    );
+  }
+
+  // -------------------------
+  // Payload "léger" pour l'historique
+  // -------------------------
+
+  const lightPlayers = players.map((p: any) => ({
+    id: p.id,
+    name: p.name,
+    profileId: p.profileId ?? null,
+    isBot: !!p.isBot,
+    botLevel: p.botLevel ?? null,
+    avatarDataUrl: p.avatarDataUrl ?? null,
+  
+    // ✅ IMPORTANT : set de fléchettes associé
+    dartSetId: p.dartSetId ?? null, // ex: "myset-123"
+    dartPresetId: p.dartPresetId ?? null, // optionnel si tu utilises aussi les presets
+  }));
+
+  const lightConfig: X01ConfigV3 = {
+    ...config,
+    players: lightPlayers as any,
+  };
+
+  // Détermine un mode compatible avec les anciens agrégateurs
+  const isSolo = players.length === 1;
+  const hasTeams =
+    Array.isArray((config as any).teams) &&
+    (config as any).teams.length > 0;
+
+  let gameMode: "x01_solo" | "x01_multi" | "x01_teams" = "x01_multi";
+  if (isSolo) gameMode = "x01_solo";
+  else if (hasTeams) gameMode = "x01_teams";
+
+  const payload = {
+    mode: gameMode, // "x01_solo" | "x01_multi" | "x01_teams"
+    variant: "x01_v3",
+    game: "x01",
+    startScore: config.startScore,
+    matchId, // 🧷 idem summary
+    resumeId: matchId,
+    config: lightConfig,
+    finalScores: scores,
+
+    // 🔥 ICI on enregistre les maps "totales" (et plus juste le dernier set)
+    legsWon: legsByPlayer,
+    setsWon: setsByPlayer,
+  };
+
+  // -------------------------
+  // Record History (léger)
+  // -------------------------
+  const record: any = {
+    id: matchId,
+    resumeId: matchId, // pour matchLink() dans HistoryPage
+    kind: "x01",
+    status: "finished",
+    createdAt,
+    updatedAt: createdAt,
+    players: lightPlayers.map((p) => ({
+      id: p.id,
+      name: p.name,
+      avatarDataUrl: p.avatarDataUrl,
+      dartSetId: p.dartSetId ?? null,
+      dartPresetId: p.dartPresetId ?? null,
+    })),
+    winnerId,
+    summary,
+    payload,
+  };
+
+  try {
+    // 1) 🟡 Met à jour le sac "dc-quick-stats" utilisé par Profils / centre de stats
+    //    On construit un petit legacy minimal compatible avec StatsBridge.commitLegAndAccumulate
+    const quickLegacy: any = {
+      order: (players as any[]).map((p) => p.id as string),
+      winnerId,
+
+      remaining: legacyRemaining,
+      darts: legacyDarts,
+      visits: legacyVisits,
+      points: legacyPoints,
+
+      avg3: legacyAvg3,
+      bestVisit: legacyBestVisit,
+      bestCheckout: legacyBestCheckout,
+
+      // ces champs ne sont pas utilisés par commitLegAndAccumulate,
+      // mais on les passe pour rester compatibles avec le type LegacyMaps
+      h60: {},
+      h100: {},
+      h140: {},
+      h180: {},
+
+      miss: legacyMiss,
+      missPct: {},
+      bust: legacyBust,
+      bustPct: {},
+      dbull: legacyDbulls,
+      dbullPct: {},
+
+      doubles: legacyDoubles,
+      triples: legacyTriples,
+      bulls: legacyBulls,
+    };
+
+    // 🔥 met à jour dc-quick-stats (games, darts, avg3, bestVisit, bestCheckout, wins)
+    StatsBridge.commitLegAndAccumulate?.(null, quickLegacy);
+
+    // 2) 🟢 Sauvegarde "lourde" dans l'historique (IndexedDB + fallback LS)
+    History.upsert(record);
+  } catch (err) {
+    console.warn(
+      "[X01PlayV3] History/StatsBridge save failed",
+      err
+    );
+  }
+}
+

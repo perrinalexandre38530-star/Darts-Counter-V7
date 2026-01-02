@@ -1,0 +1,33 @@
+{
+    "version": 1,
+    "items": [
+      {
+        "id": "themes-neon",
+        "kind": "news",
+        "title": "Nouveaux thèmes néon",
+        "text": "Découvre les thèmes soft + dark (blueOcean, sage, darkTitanium…).",
+        "imageKey": "tipNews",
+        "since": "2025-12-01",
+        "until": "2026-03-01",
+        "weight": 5
+      },
+      {
+        "id": "tournaments-local",
+        "kind": "news",
+        "title": "Tournois (local) dispo",
+        "text": "Bracket + match-play + résultat auto : lance un tournoi en 30 secondes.",
+        "imageKey": "tipNews",
+        "since": "2025-12-10",
+        "weight": 7
+      },
+      {
+        "id": "dartsets-stats",
+        "kind": "tip",
+        "title": "Stats par fléchettes",
+        "text": "Associe un set favori : tes stats deviennent ultra parlantes par set.",
+        "imageKey": "tipAdvice",
+        "weight": 4
+      }
+    ]
+  }
+  

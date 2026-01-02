@@ -1,0 +1,175 @@
+// ============================================================
+// src/components/OnlineProfileForm.tsx
+// Formulaire d'Informations personnelles ONLINE
+// - Lit onlineProfile (supabase)
+// - Remplit automatiquement les champs au chargement
+// - Sauvegarde via onlineApi.updateProfile()
+// ============================================================
+
+import * as React from "react";
+import { useAuthOnline } from "../hooks/useAuthOnline";
+import { onlineApi } from "../lib/onlineApi";
+
+export default function OnlineProfileForm() {
+  const { user, profile, loading } = useAuthOnline();
+
+  const [form, setForm] = React.useState({
+    surname: "",
+    firstName: "",
+    lastName: "",
+    birthDate: "",
+    country: "",
+    city: "",
+    email: "",
+    phone: "",
+  });
+
+  const [saving, setSaving] = React.useState(false);
+
+  // ============================
+  // Hydrate les champs quand le profil arrive
+  // ============================
+  React.useEffect(() => {
+    if (!profile) return;
+
+    setForm({
+      surname: profile.surname || "",
+      firstName: profile.firstName || "",
+      lastName: profile.lastName || "",
+      birthDate: profile.birthDate || "",
+      country: profile.country || "",
+      city: profile.city || "",
+      email: profile.email || user?.email || "",
+      phone: profile.phone || "",
+    });
+  }, [profile, user]);
+
+  // ============================
+  // Handle inputs
+  // ============================
+  function handleChange(
+    e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>
+  ) {
+    const { name, value } = e.target;
+    setForm((prev) => ({ ...prev, [name]: value }));
+  }
+
+  // ============================
+  // Sauvegarder dans Supabase
+  // ============================
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!user) return;
+
+    try {
+      setSaving(true);
+
+      await onlineApi.updateProfile({
+        surname: form.surname,
+        firstName: form.firstName,
+        lastName: form.lastName,
+        birthDate: form.birthDate,
+        country: form.country,
+        city: form.city,
+        email: form.email,
+        phone: form.phone,
+      });
+
+      alert("Profil online mis à jour !");
+    } catch (err) {
+      console.error(err);
+      alert("Erreur lors de l'enregistrement du profil.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  if (loading && !profile) {
+    return <p>Chargement du profil...</p>;
+  }
+
+  if (!user) {
+    return <p>Connecte-toi pour éditer ton profil online.</p>;
+  }
+
+  // ============================
+  // RENDER FORMULAIRE
+  // ============================
+  return (
+    <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+
+      <label>Surnom</label>
+      <input
+        name="surname"
+        value={form.surname}
+        onChange={handleChange}
+        placeholder="Surnom"
+      />
+
+      <label>Prénom</label>
+      <input
+        name="firstName"
+        value={form.firstName}
+        onChange={handleChange}
+        placeholder="Prénom"
+      />
+
+      <label>Nom</label>
+      <input
+        name="lastName"
+        value={form.lastName}
+        onChange={handleChange}
+        placeholder="Nom"
+      />
+
+      <label>Date de naissance</label>
+      <input
+        type="date"
+        name="birthDate"
+        value={form.birthDate}
+        onChange={handleChange}
+      />
+
+      <label>Pays</label>
+      <input
+        name="country"
+        value={form.country}
+        onChange={handleChange}
+        placeholder="Pays"
+      />
+
+      <label>Ville</label>
+      <input
+        name="city"
+        value={form.city}
+        onChange={handleChange}
+        placeholder="Ville"
+      />
+
+      <label>Email</label>
+      <input
+        name="email"
+        type="email"
+        value={form.email}
+        onChange={handleChange}
+        placeholder="Email"
+      />
+
+      <label>Téléphone</label>
+      <input
+        name="phone"
+        value={form.phone}
+        onChange={handleChange}
+        placeholder="Téléphone"
+      />
+
+      <button
+        type="submit"
+        disabled={saving}
+        style={{ marginTop: 12 }}
+      >
+        {saving ? "Enregistrement..." : "Enregistrer"}
+      </button>
+    </form>
+  );
+}

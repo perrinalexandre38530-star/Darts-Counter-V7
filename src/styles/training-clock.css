@@ -1,0 +1,365 @@
+/* ===== Layout global ===== */
+
+.training-clock-root {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding-top: 8px;
+    color: #ffffff;
+  }
+  
+  .training-clock-header {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    width: 100%;
+  }
+  
+  /* ===== Pills header ===== */
+  
+  .tc-pill-small {
+    border-radius: 999px;
+    padding: 6px 16px;
+    border: none;
+    background: #f7c948; /* doré */
+    color: #2b1900;
+    font-weight: 700;
+    font-size: 12px;
+    text-transform: uppercase;
+    box-shadow: 0 0 12px rgba(247, 201, 72, 0.6);
+  }
+  
+  .tc-pill-main {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    border-radius: 999px;
+    padding: 8px 22px;
+    border: none;
+    background: linear-gradient(180deg, #ffd85c 0%, #b77b06 100%);
+    color: #2b1900;
+    font-weight: 800;
+    font-size: 14px;
+    text-transform: uppercase;
+    box-shadow: 0 0 16px rgba(255, 216, 92, 0.9);
+  }
+  
+  .tc-pill-main-label {
+    letter-spacing: 0.05em;
+  }
+  
+  .tc-pill-main-info {
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    background: #2b1900;
+    color: #ffd85c;
+    font-weight: 800;
+    font-size: 13px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+  
+  /* ===== Top row : avatar + stats ===== */
+  
+  .training-clock-content-wrapper {
+    display: flex;
+    justify-content: center;
+    width: 100%;
+  }
+  
+  .training-clock-content {
+    width: 100%;
+    padding: 8px 12px 16px;
+  }
+  
+  .tc-top-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+    margin-top: 8px;
+  }
+  
+  /* avatar + halo */
+  
+  .tc-player-info {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  
+  .tc-avatar-halo {
+    padding: 4px;
+    border-radius: 999px;
+    background: radial-gradient(circle, #ffde8b 0%, rgba(0, 0, 0, 0.1) 60%, transparent 100%);
+    box-shadow: 0 0 20px rgba(255, 222, 139, 0.9);
+  }
+  
+  .tc-avatar-img {
+    width: 52px;
+    height: 52px;
+    border-radius: 50%;
+    object-fit: cover;
+    border: 2px solid #f2c14f;
+    background: #000;
+  }
+  
+  .tc-player-text {
+    display: flex;
+    flex-direction: column;
+  }
+  
+  .tc-player-name {
+    font-weight: 700;
+    font-size: 15px;
+  }
+  
+  .tc-mode-chip {
+    margin-top: 2px;
+    font-size: 11px;
+    padding: 2px 10px;
+    border-radius: 999px;
+    background: #181818;
+    border: 1px solid #555;
+  }
+  
+  /* bloc Temps / Objectif / Fléchettes */
+  
+  .tc-session-info {
+    padding: 8px 12px;
+    border-radius: 12px;
+    background: #111;
+    border: 1px solid #444;
+    min-width: 150px;
+  }
+  
+  .tc-session-line {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 11px;
+    margin-bottom: 4px;
+  }
+  
+  .tc-session-line:last-child {
+    margin-bottom: 0;
+  }
+  
+  .tc-session-label {
+    opacity: 0.75;
+  }
+  
+  .tc-session-value {
+    font-weight: 700;
+  }
+  
+  .tc-objective-pill {
+    padding: 2px 10px;
+    border-radius: 999px;
+    background: #f7c948;
+    color: #3b2200;
+    box-shadow: 0 0 12px rgba(247, 201, 72, 0.6);
+  }
+  
+  /* ===== Derniers lancers ===== */
+  
+  .tc-last-throws {
+    margin-top: 10px;
+    display: flex;
+    justify-content: center;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  
+  .tc-last-empty {
+    font-size: 11px;
+    opacity: 0.7;
+  }
+  
+  .tc-last-pill {
+    padding: 4px 10px;
+    border-radius: 999px;
+    background: #000;
+    border: 1px solid #ffde8b;
+    color: #ffde8b;
+    font-size: 11px;
+    font-weight: 700;
+    box-shadow: 0 0 10px rgba(255, 222, 139, 0.6);
+  }
+  
+  /* ===== Carte keypad ===== */
+  
+  .tc-keypad-card {
+    margin-top: 12px;
+    padding: 12px;
+    border-radius: 16px;
+    background: #101010;
+    box-shadow: 0 0 24px rgba(0, 0, 0, 0.7);
+  }
+  
+  /* MISS / BULL */
+  
+  .tc-keypad-top-row {
+    display: flex;
+    justify-content: space-between;
+    gap: 8px;
+    margin-bottom: 10px;
+  }
+  
+  .tc-miss-btn,
+  .tc-bull-btn {
+    flex: 1;
+    border-radius: 999px;
+    padding: 8px 0;
+    font-weight: 800;
+    font-size: 13px;
+    text-transform: uppercase;
+    border: none;
+    outline: none;
+    box-shadow: 0 0 14px rgba(0, 0, 0, 0.7);
+  }
+  
+  /* MISS = bouton rouge / police rouge très clair */
+  
+  .tc-miss-btn {
+    background: #b00020;
+    color: #ffb3c1;
+  }
+  
+  .tc-miss-btn.is-active {
+    box-shadow: 0 0 16px rgba(255, 179, 193, 0.9);
+  }
+  
+  /* BULL = bouton vert style maquette */
+  
+  .tc-bull-btn {
+    background: #062c20;
+    color: #a4ffce;
+    border: 1px solid #00ff85;
+  }
+  
+  .tc-bull-btn.is-active {
+    box-shadow: 0 0 16px rgba(0, 255, 133, 0.9);
+  }
+  
+  /* Keypad 1–20 */
+  
+  .tc-keypad-grid {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 6px;
+    margin-bottom: 12px;
+  }
+  
+  .tc-keypad-number {
+    border-radius: 10px;
+    padding: 10px 0;
+    border: none;
+    background: #202020;
+    color: #f5f5f5;
+    font-weight: 600;
+    font-size: 14px;
+  }
+  
+  .tc-keypad-number.is-active {
+    box-shadow: 0 0 12px rgba(255, 216, 92, 0.9);
+    border: 1px solid #f7c948;
+  }
+  
+  /* ===== Multiplicateurs SIMPLE / DOUBLE / TRIPLE ===== */
+  
+  .training-multipliers {
+    display: flex;
+    justify-content: space-between;
+    gap: 8px;
+    margin-bottom: 12px;
+  }
+  
+  /* base */
+  .mult-btn {
+    flex: 1;
+    border-radius: 999px;
+    padding: 8px 0;
+    font-weight: 800;
+    font-size: 13px;
+    text-transform: uppercase;
+    border: none;
+    outline: none;
+    box-shadow: 0 0 14px rgba(0, 0, 0, 0.6);
+  }
+  
+  /* SIMPLE = fond doré / police marron foncé */
+  
+  .mult-simple {
+    background: linear-gradient(180deg, #ffd764 0%, #b77b06 100%);
+    color: #3b2200;
+  }
+  
+  /* DOUBLE = bleu pétrole / police bleu clair */
+  
+  .mult-double {
+    background: linear-gradient(180deg, #004b63 0%, #012835 100%);
+    color: #95e8ff;
+  }
+  
+  /* TRIPLE = violet / police prune */
+  
+  .mult-triple {
+    background: linear-gradient(180deg, #7e1f80 0%, #44104a 100%);
+    color: #ffb3ff;
+  }
+  
+  /* halo actif */
+  
+  .mult-btn.is-active {
+    transform: translateY(-1px);
+    box-shadow: 0 0 16px rgba(255, 255, 255, 0.8);
+  }
+  
+  /* ===== Boutons bas ===== */
+  
+  .tc-bottom-buttons {
+    display: flex;
+    justify-content: space-between;
+    gap: 8px;
+    margin-top: 4px;
+  }
+  
+  .tc-btn-cancel,
+  .tc-btn-validate {
+    flex: 1;
+    border-radius: 999px;
+    padding: 9px 0;
+    font-weight: 700;
+    font-size: 13px;
+    border: none;
+  }
+  
+  /* Annuler = gris */
+  
+  .tc-btn-cancel {
+    background: #404040;
+    color: #e0e0e0;
+  }
+  
+  /* Valider = doré comme la maquette */
+  
+  .tc-btn-validate {
+    background: linear-gradient(180deg, #ffd764 0%, #b77b06 100%);
+    color: #3b2200;
+    box-shadow: 0 0 16px rgba(255, 216, 92, 0.9);
+  }
+  
+  /* ===== Session terminée ===== */
+  
+  .tc-session-ended {
+    margin-top: 10px;
+    text-align: center;
+    font-size: 12px;
+    opacity: 0.8;
+  }
+  
