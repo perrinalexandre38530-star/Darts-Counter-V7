@@ -3,6 +3,7 @@
 // API Mode Online
 // - Auth / Profil / Matchs → Supabase
 // - Salons X01 (lobbies) → Supabase ("online_lobbies")
+// - Snapshot cloud du store → Supabase ("user_store") ✅ (table vue sur tes captures)
 // - Surface d'API unique pour le front
 // ============================================================
 
@@ -16,7 +17,7 @@ import type { UserAuth, OnlineProfile, OnlineMatch } from "./onlineTypes";
 // --------------------------------------------
 
 export type AuthSession = {
-  token: string;
+  token: string; // peut être "" si signup en attente de confirmation email
   user: UserAuth;
   profile: OnlineProfile | null;
 };
@@ -45,6 +46,9 @@ export type UpdateProfilePayload = {
   city?: string;
   email?: string;
   phone?: string;
+
+  // bonus (si tu veux l'éditer)
+  nickname?: string;
 };
 
 export type UploadMatchPayload = Omit<
@@ -106,11 +110,34 @@ function loadAuthFromLS(): AuthSession | null {
 
 function saveAuthToLS(session: AuthSession | null) {
   if (typeof window === "undefined") return;
-  if (!session) {
-    window.localStorage.removeItem(LS_AUTH_KEY);
-  } else {
-    window.localStorage.setItem(LS_AUTH_KEY, JSON.stringify(session));
-  }
+  if (!session) window.localStorage.removeItem(LS_AUTH_KEY);
+  else window.localStorage.setItem(LS_AUTH_KEY, JSON.stringify(session));
+}
+
+// ✅ Redirects STABLES (évite webcontainer/stackblitz)
+// - On force l'URL PROD via VITE_SITE_URL (Cloudflare Pages)
+// - Fallback hardcodé si la variable n'est pas set
+function getSiteUrl(): string {
+  const fromEnv =
+    (typeof import.meta !== "undefined" &&
+      (import.meta as any).env &&
+      (import.meta as any).env.VITE_SITE_URL) ||
+    "";
+
+  const SITE_URL = String(fromEnv || "https://darts-counter-v7.pages.dev").trim();
+
+  // Sécurités: pas de slash final
+  return SITE_URL.replace(/\/+$/, "");
+}
+
+function getEmailConfirmRedirect(): string {
+  // ⚠️ IMPORTANT : callback en hash car tu utilises HashRouter (#/)
+  return `${getSiteUrl()}/#/auth/callback`;
+}
+
+function getResetPasswordRedirect(): string {
+  // callback reset mdp
+  return `${getSiteUrl()}/#/auth/reset`;
 }
 
 // ============================================================
@@ -123,8 +150,7 @@ function dataUrlToBlob(dataUrl: string): Blob {
 
   const meta = parts[0] || "";
   const b64 = parts[1] || "";
-  const mime =
-    (meta.match(/data:(.*?);base64/i) || [])[1] || "image/png";
+  const mime = (meta.match(/data:(.*?);base64/i) || [])[1] || "image/png";
 
   const bin = atob(b64);
   const len = bin.length;
@@ -150,17 +176,17 @@ function extFromMime(mime: string) {
 // Mapping Supabase -> types de l'app
 // --------------------------------------------
 
-// Schéma actuel Supabase :
-// profiles_online (id, display_name, country, avatar_url, ... + colonnes perso)
+// ✅ D'après tes captures, la table s'appelle "profiles"
 type SupabaseProfileRow = {
   id: string;
+  nickname: string | null;
   display_name: string | null;
   avatar_url: string | null;
   country: string | null;
   created_at: string | null;
   updated_at: string | null;
 
-  // colonnes infos perso (si présentes)
+  // infos perso (si présentes)
   surname?: string | null;
   first_name?: string | null;
   last_name?: string | null;
@@ -177,9 +203,8 @@ type SupabaseProfileRow = {
 function mapProfile(row: SupabaseProfileRow): OnlineProfile {
   return {
     id: row.id,
-    // Dans notre app, OnlineProfile.userId = id Supabase (auth user)
     userId: row.id,
-    displayName: row.display_name ?? "",
+    displayName: row.display_name ?? row.nickname ?? "",
     avatarUrl: row.avatar_url ?? undefined,
     country: row.country ?? undefined,
 
@@ -204,8 +229,7 @@ function mapProfile(row: SupabaseProfileRow): OnlineProfile {
   };
 }
 
-// Table d’historique actuelle : "matches_online"
-// (id, user_id, mode, payload, created_at)
+// Table d’historique : "matches_online" (si elle existe chez toi)
 type SupabaseMatchRow = {
   id: string;
   user_id: string;
@@ -248,8 +272,7 @@ function mapLobbyRow(row: SupabaseLobbyRow): OnlineLobby {
     maxPlayers: Number(row.max_players ?? 2),
     hostUserId: String(row.host_user_id),
     hostNickname: row.host_nickname || "Hôte",
-    settings:
-      (row.settings as OnlineLobbySettings) || { start: 501, doubleOut: true },
+    settings: (row.settings as OnlineLobbySettings) || { start: 501, doubleOut: true },
     status: row.status || "waiting",
     createdAt: row.created_at || new Date().toISOString(),
   };
@@ -259,10 +282,16 @@ function mapLobbyRow(row: SupabaseLobbyRow): OnlineLobby {
 // Helpers AUTH Supabase
 // --------------------------------------------
 
-async function buildAuthSessionFromSupabase(): Promise<AuthSession | null> {
-  const { data: sessionData, error: sessionError } =
-    await supabase.auth.getSession();
+async function ensureAuthedUser() {
+  const { data, error } = await supabase.auth.getSession();
+  if (error) throw error;
+  const user = data?.session?.user;
+  if (!user) throw new Error("Non authentifié (reconnecte-toi).");
+  return { user, session: data.session! };
+}
 
+async function buildAuthSessionFromSupabase(): Promise<AuthSession | null> {
+  const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
   if (sessionError) {
     console.warn("[onlineApi] getSession error", sessionError);
     return null;
@@ -272,16 +301,18 @@ async function buildAuthSessionFromSupabase(): Promise<AuthSession | null> {
   const user = session?.user;
   if (!user) return null;
 
+  const meta = (user.user_metadata || {}) as any;
+
   const userAuth: UserAuth = {
     id: user.id,
     email: user.email ?? undefined,
-    nickname: (user.user_metadata as any)?.nickname || user.email || "Player",
+    nickname: meta?.nickname || user.email || "Player",
     createdAt: user.created_at ? Date.parse(user.created_at) : now(),
   };
 
-  // On lit / crée le profil en utilisant id = user.id (FK vers auth.users)
+  // ✅ Profil = table "profiles" (id == auth.users.id)
   const { data: profileRow, error: profileError } = await supabase
-    .from("profiles_online")
+    .from("profiles")
     .select("*")
     .eq("id", user.id)
     .limit(1)
@@ -290,15 +321,17 @@ async function buildAuthSessionFromSupabase(): Promise<AuthSession | null> {
   let profile: OnlineProfile | null = null;
 
   if (profileError) {
-    console.warn("[onlineApi] profiles_online select error", profileError);
+    console.warn("[onlineApi] profiles select error", profileError);
   } else if (profileRow) {
     profile = mapProfile(profileRow as unknown as SupabaseProfileRow);
   } else {
+    // création profil au 1er login
     const { data: created, error: createError } = await supabase
-      .from("profiles_online")
+      .from("profiles")
       .insert({
         id: user.id,
-        display_name: userAuth.nickname,
+        nickname: meta?.nickname ?? user.email ?? "Player",
+        display_name: meta?.nickname ?? user.email ?? "Player",
         country: null,
         avatar_url: null,
       })
@@ -306,7 +339,7 @@ async function buildAuthSessionFromSupabase(): Promise<AuthSession | null> {
       .single();
 
     if (createError) {
-      console.warn("[onlineApi] profiles_online insert error", createError);
+      console.warn("[onlineApi] profiles insert error", createError);
     } else {
       profile = mapProfile(created as unknown as SupabaseProfileRow);
     }
@@ -329,20 +362,19 @@ async function buildAuthSessionFromSupabase(): Promise<AuthSession | null> {
 async function signup(payload: SignupPayload): Promise<AuthSession> {
   const email = payload.email?.trim();
   const password = payload.password?.trim();
+  const nickname = payload.nickname?.trim() || email || "Player";
 
   if (!email || !password) {
-    throw new Error(
-      "Pour créer un compte online, email et mot de passe sont requis."
-    );
+    throw new Error("Pour créer un compte online, email et mot de passe sont requis.");
   }
 
-  const nickname = payload.nickname?.trim() || email;
-
-  const { error } = await supabase.auth.signUp({
+  const { data, error } = await supabase.auth.signUp({
     email,
     password,
     options: {
       data: { nickname },
+      // ✅ IMPORTANT : redirection stable (StackBlitz change souvent d'URL)
+      emailRedirectTo: getEmailConfirmRedirect(),
     },
   });
 
@@ -351,14 +383,29 @@ async function signup(payload: SignupPayload): Promise<AuthSession> {
     throw new Error(error.message);
   }
 
-  const session = await buildAuthSessionFromSupabase();
-  if (!session) {
-    throw new Error(
-      "Compte créé, mais impossible de récupérer la session. Vérifie tes mails si la confirmation est requise."
-    );
+  // ⚠️ Si confirmation email activée : pas de session tout de suite.
+  // On renvoie une session "pending" (token = "") pour que le front affiche "check tes mails".
+  const createdUser = data?.user;
+  const createdSession = data?.session;
+
+  if (!createdSession) {
+    const pending: AuthSession = {
+      token: "",
+      user: {
+        id: createdUser?.id || "pending",
+        email,
+        nickname,
+        createdAt: now(),
+      },
+      profile: null,
+    };
+    saveAuthToLS(pending);
+    return pending;
   }
 
-  return session;
+  const live = await buildAuthSessionFromSupabase();
+  if (!live) throw new Error("Compte créé mais session introuvable (réessaie).");
+  return live;
 }
 
 async function login(payload: LoginPayload): Promise<AuthSession> {
@@ -369,10 +416,7 @@ async function login(payload: LoginPayload): Promise<AuthSession> {
     throw new Error("Email et mot de passe sont requis pour se connecter.");
   }
 
-  const { error } = await supabase.auth.signInWithPassword({
-    email,
-    password,
-  });
+  const { error } = await supabase.auth.signInWithPassword({ email, password });
 
   if (error) {
     console.error("[onlineApi] login error", error);
@@ -402,10 +446,12 @@ async function restoreSession(): Promise<AuthSession | null> {
 
 async function logout(): Promise<void> {
   const { error } = await supabase.auth.signOut();
-  if (error) {
-    console.warn("[onlineApi] logout error", error);
-  }
+  if (error) console.warn("[onlineApi] logout error", error);
   saveAuthToLS(null);
+}
+
+async function getCurrentSession(): Promise<AuthSession | null> {
+  return await restoreSession();
 }
 
 // --------------------------------------------
@@ -414,10 +460,13 @@ async function logout(): Promise<void> {
 
 async function requestPasswordReset(email: string): Promise<void> {
   const trimmed = email.trim();
-  if (!trimmed) {
-    throw new Error("Adresse mail requise pour réinitialiser le mot de passe.");
-  }
-  const { error } = await supabase.auth.resetPasswordForEmail(trimmed);
+  if (!trimmed) throw new Error("Adresse mail requise pour réinitialiser le mot de passe.");
+
+  const { error } = await supabase.auth.resetPasswordForEmail(trimmed, {
+    // ✅ IMPORTANT : redirect stable
+    redirectTo: getResetPasswordRedirect(),
+  });
+
   if (error) {
     console.error("[onlineApi] requestPasswordReset error", error);
     throw new Error(error.message);
@@ -426,9 +475,8 @@ async function requestPasswordReset(email: string): Promise<void> {
 
 async function updateEmail(newEmail: string): Promise<void> {
   const trimmed = newEmail.trim();
-  if (!trimmed) {
-    throw new Error("Nouvelle adresse mail invalide.");
-  }
+  if (!trimmed) throw new Error("Nouvelle adresse mail invalide.");
+
   const { error } = await supabase.auth.updateUser({ email: trimmed });
   if (error) {
     console.error("[onlineApi] updateEmail error", error);
@@ -436,28 +484,18 @@ async function updateEmail(newEmail: string): Promise<void> {
   }
 }
 
-async function getCurrentSession(): Promise<AuthSession | null> {
-  return await restoreSession();
-}
-
 // --------------------------------------------
 // Fonctions publiques : PROFIL
 // --------------------------------------------
 
-async function updateProfile(
-  patch: UpdateProfilePayload
-): Promise<OnlineProfile> {
-  const session = await restoreSession();
-  if (!session?.user) {
-    throw new Error("Non authentifié");
-  }
-
-  const userId = session.user.id;
+async function updateProfile(patch: UpdateProfilePayload): Promise<OnlineProfile> {
+  const { user } = await ensureAuthedUser();
+  const userId = user.id;
 
   // DB patch → snake_case
-  const dbPatch: any = {
-    updated_at: new Date().toISOString(),
-  };
+  const dbPatch: any = { updated_at: new Date().toISOString() };
+
+  if (patch.nickname !== undefined) dbPatch.nickname = patch.nickname;
 
   if (patch.displayName !== undefined) dbPatch.display_name = patch.displayName;
   if (patch.avatarUrl !== undefined) dbPatch.avatar_url = patch.avatarUrl;
@@ -472,7 +510,7 @@ async function updateProfile(
   if (patch.phone !== undefined) dbPatch.phone = patch.phone;
 
   const { data, error } = await supabase
-    .from("profiles_online")
+    .from("profiles")
     .update(dbPatch)
     .eq("id", userId)
     .select()
@@ -485,29 +523,25 @@ async function updateProfile(
 
   const profile = mapProfile(data as unknown as SupabaseProfileRow);
 
-  const newSession: AuthSession = {
-    ...session,
-    profile,
-  };
-  saveAuthToLS(newSession);
+  // met à jour cache LS si on a une session
+  const current = loadAuthFromLS();
+  if (current?.user?.id === userId) {
+    saveAuthToLS({ ...current, profile });
+  }
 
   return profile;
 }
 
-// ✅ AVATAR (source unique) : Storage bucket "avatars" public
+// ✅ AVATAR : Storage bucket "avatars" (public)
 // Path : {userId}/avatar.ext
-async function uploadAvatarImage(args: {
-  dataUrl: string;
-}): Promise<{ publicUrl: string; path: string }> {
-  const session = await restoreSession();
-  if (!session?.user) throw new Error("Non authentifié");
+async function uploadAvatarImage(args: { dataUrl: string }): Promise<{ publicUrl: string; path: string }> {
+  const { user } = await ensureAuthedUser();
 
   const blob = dataUrlToBlob(args.dataUrl);
   const mime = (blob as any).type || "image/png";
   const ext = extFromMime(mime);
 
-  const userId = session.user.id;
-  const path = `${userId}/avatar.${ext}`;
+  const path = `${user.id}/avatar.${ext}`;
 
   const { error: upErr } = await supabase.storage
     .from("avatars")
@@ -520,11 +554,8 @@ async function uploadAvatarImage(args: {
 
   const { data } = supabase.storage.from("avatars").getPublicUrl(path);
   const publicUrl = data?.publicUrl;
-  if (!publicUrl) {
-    throw new Error("Impossible de récupérer l’URL publique de l’avatar.");
-  }
+  if (!publicUrl) throw new Error("Impossible de récupérer l’URL publique de l’avatar.");
 
-  // 🔗 DB = URL (source unique)
   await updateProfile({ avatarUrl: publicUrl });
 
   return { publicUrl, path };
@@ -535,17 +566,12 @@ async function uploadAvatarImage(args: {
 // --------------------------------------------
 
 async function uploadMatch(payload: UploadMatchPayload): Promise<OnlineMatch> {
-  const session = await restoreSession();
-  if (!session?.user) {
-    throw new Error("Non authentifié");
-  }
-
-  const userId = session.user.id;
+  const { user } = await ensureAuthedUser();
 
   const { data, error } = await supabase
     .from("matches_online")
     .insert({
-      user_id: userId,
+      user_id: user.id,
       mode: payload.mode,
       payload: payload.payload,
     })
@@ -561,9 +587,12 @@ async function uploadMatch(payload: UploadMatchPayload): Promise<OnlineMatch> {
 }
 
 async function listMatches(limit = 50): Promise<OnlineMatch[]> {
+  const { user } = await ensureAuthedUser();
+
   const { data, error } = await supabase
     .from("matches_online")
     .select("*")
+    .eq("user_id", user.id) // ✅ important : ne pas récupérer ceux des autres
     .order("created_at", { ascending: false })
     .limit(limit);
 
@@ -577,63 +606,65 @@ async function listMatches(limit = 50): Promise<OnlineMatch[]> {
 
 // ============================================================
 // 3) CLOUD STORE SNAPSHOT (SOURCE UNIQUE DES DONNÉES)
-// Table : dc_store_snapshots
-//   user_id uuid PRIMARY KEY references auth.users(id)
-//   payload jsonb NOT NULL
-//   updated_at timestamptz NOT NULL default now()
+// ✅ Table vue chez toi : "user_store"
+// colonnes: user_id (uuid), version (int), updated_at (timestamptz), data (jsonb)
 // ============================================================
 
-type StoreSnapshotRow = {
+type UserStoreRow = {
   user_id: string;
-  payload: any;
+  version: number | null;
   updated_at: string | null;
+  data: any;
 };
 
 async function pullStoreSnapshot(): Promise<{
   status: "ok" | "not_found" | "error";
   payload?: any;
   updatedAt?: string | null;
+  version?: number | null;
   error?: any;
-} > {
-  if (!supabase) return { status: "error", error: new Error("Supabase client not ready") };
+}> {
+  try {
+    const { user } = await ensureAuthedUser();
 
-  const userId = await getCurrentUserId();
-  if (!userId) return { status: "error", error: new Error("Not signed in") };
+    const { data, error } = await supabase
+      .from("user_store")
+      .select("data,updated_at,version")
+      .eq("user_id", user.id)
+      .limit(1)
+      .maybeSingle();
 
-  const { data, error } = await supabase
-    .from("dc_store_snapshots")
-    .select("payload,updated_at")
-    .eq("user_id", userId)
-    .limit(1)
-    .maybeSingle();
+    if (!data && !error) {
+      return { status: "not_found", payload: null, updatedAt: null, version: null };
+    }
 
-  // ✅ maybeSingle() : si aucune row -> data = null et error = null
-  if (!data && !error) {
-    return { status: "not_found", payload: null, updatedAt: null };
+    if (error) {
+      console.warn("[pullStoreSnapshot] error", error);
+      return { status: "error", error };
+    }
+
+    return {
+      status: "ok",
+      payload: (data as any)?.data ?? null,
+      updatedAt: (data as any)?.updated_at ?? null,
+      version: (data as any)?.version ?? null,
+    };
+  } catch (e) {
+    return { status: "error", error: e };
   }
-
-  if (error) {
-    console.warn("[pullStoreSnapshot] error", error);
-    return { status: "error", error };
-  }
-
-  return { status: "ok", payload: (data as any)?.payload, updatedAt: (data as any)?.updated_at ?? null };
 }
-async function pushStoreSnapshot(payload: any): Promise<void> {
-  const session = await restoreSession();
-  if (!session?.user?.id) throw new Error("Non authentifié");
 
-  const userId = session.user.id;
+async function pushStoreSnapshot(payload: any, version = 1): Promise<void> {
+  const { user } = await ensureAuthedUser();
 
-  const row: StoreSnapshotRow = {
-    user_id: userId,
-    payload,
+  const row: UserStoreRow = {
+    user_id: user.id,
+    version,
     updated_at: new Date().toISOString(),
+    data: payload,
   };
 
-  const { error } = await supabase
-    .from("dc_store_snapshots")
-    .upsert(row, { onConflict: "user_id" });
+  const { error } = await supabase.from("user_store").upsert(row, { onConflict: "user_id" });
 
   if (error) {
     console.warn("[onlineApi] pushStoreSnapshot error", error);
@@ -648,9 +679,7 @@ async function pushStoreSnapshot(payload: any): Promise<void> {
 function generateLobbyCode(): string {
   const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
   let out = "";
-  for (let i = 0; i < 4; i++) {
-    out += chars[Math.floor(Math.random() * chars.length)];
-  }
+  for (let i = 0; i < 4; i++) out += chars[Math.floor(Math.random() * chars.length)];
   return out;
 }
 
@@ -659,15 +688,8 @@ async function createLobby(args: {
   maxPlayers: number;
   settings: OnlineLobbySettings;
 }): Promise<OnlineLobby> {
-  const { mode, maxPlayers, settings } = args;
+  const { user } = await ensureAuthedUser();
 
-  const { data: sessData, error: sessError } = await supabase.auth.getSession();
-  if (sessError || !sessData?.session?.user) {
-    console.error("[onlineApi] createLobby no session", sessError);
-    throw new Error("Session online introuvable (reconnecte-toi).");
-  }
-
-  const user = sessData.session.user;
   const meta = (user.user_metadata || {}) as any;
   const nickname = meta.nickname || meta.displayName || user.email || "Hôte";
 
@@ -680,11 +702,11 @@ async function createLobby(args: {
       .from("online_lobbies")
       .insert({
         code,
-        mode,
-        max_players: maxPlayers,
+        mode: args.mode,
+        max_players: args.maxPlayers,
         host_user_id: user.id,
         host_nickname: nickname,
-        settings,
+        settings: args.settings,
         status: "waiting",
       })
       .select("*")
@@ -694,21 +716,14 @@ async function createLobby(args: {
 
     lastError = error;
     if (error && (error as any).code === "23505") continue; // code déjà pris
-
     console.error("[onlineApi] createLobby error", error);
     break;
   }
 
-  throw new Error(
-    lastError?.message || "Impossible de créer un salon online pour le moment."
-  );
+  throw new Error(lastError?.message || "Impossible de créer un salon online pour le moment.");
 }
 
-async function joinLobby(args: {
-  code: string;
-  userId: string;
-  nickname: string;
-}): Promise<OnlineLobby> {
+async function joinLobby(args: { code: string; userId: string; nickname: string }): Promise<OnlineLobby> {
   const codeUpper = args.code.trim().toUpperCase();
 
   const { data, error } = await supabase
@@ -721,13 +736,10 @@ async function joinLobby(args: {
 
   if (error) {
     console.error("[onlineApi] joinLobby error", error);
-    throw new Error(
-      error.message || "Impossible de rejoindre ce salon pour le moment."
-    );
+    throw new Error(error.message || "Impossible de rejoindre ce salon pour le moment.");
   }
 
   if (!data) throw new Error("Aucun salon trouvé avec ce code.");
-
   return mapLobbyRow(data as SupabaseLobbyRow);
 }
 
@@ -741,11 +753,11 @@ export const onlineApi = {
   login,
   restoreSession,
   logout,
+  getCurrentSession,
 
   // Gestion compte
   requestPasswordReset,
   updateEmail,
-  getCurrentSession,
 
   // Profil
   updateProfile,
@@ -766,6 +778,6 @@ export const onlineApi = {
   // Info
   USE_MOCK,
 
-  // (debug éventuel)
+  // debug
   loadAuthFromLS,
 };

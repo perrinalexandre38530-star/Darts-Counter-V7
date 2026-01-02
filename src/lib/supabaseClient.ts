@@ -9,6 +9,9 @@ import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string;
 const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
 
+console.log("[supabaseClient] SUPABASE_URL =", SUPABASE_URL);
+console.log("[supabaseClient] ANON_KEY(first10) =", (SUPABASE_ANON_KEY || "").slice(0, 10));
+
 if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
   console.warn("[supabaseClient] VITE_SUPABASE_URL ou VITE_SUPABASE_ANON_KEY manquants.");
 }

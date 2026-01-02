@@ -562,10 +562,10 @@ function extractX01PlayerStatsFromMatch(m: NormalizedMatch, profileId: string) {
     {};
 
   // 2) perPlayer direct
-  const darts = N(pstat.darts || pstat.dartsThrown, 0);
-  const avg3 = N(pstat.avg3 || pstat.avg_3 || pstat.avg3Darts || pstat.avg3D || pstat.average3, 0);
+  let darts = N(pstat.darts || pstat.dartsThrown, 0);
+  let avg3 = N(pstat.avg3 || pstat.avg_3 || pstat.avg3Darts || pstat.avg3D || pstat.average3, 0);
 
-  const points = (() => {
+  let points = (() => {
     // parfois points/score total dans summary
     const totalScore = N(pstat.totalScore || pstat.points || pstat.scored, 0);
     if (totalScore) return totalScore;
@@ -593,18 +593,23 @@ function extractX01PlayerStatsFromMatch(m: NormalizedMatch, profileId: string) {
   if (Array.isArray(pv)) {
     let darts2 = 0;
     let scored2 = 0;
-    let visits2 = 0;
 
     let bestVisit2 = 0;
     let bestCheckout2 = 0;
 
-    let h60_2 = 0, h100_2 = 0, h140_2 = 0, h180_2 = 0;
-    let bust2 = 0, miss2 = 0, doubles2 = 0, triples2 = 0, bulls2 = 0, dbull2 = 0;
+    let h60_2 = 0,
+      h100_2 = 0,
+      h140_2 = 0,
+      h180_2 = 0;
+    let bust2 = 0,
+      miss2 = 0,
+      doubles2 = 0,
+      triples2 = 0,
+      bulls2 = 0,
+      dbull2 = 0;
 
     for (const v of pv) {
       if (String(v?.p) !== pid) continue;
-
-      visits2 += 1;
 
       const segs = Array.isArray(v.segments) ? v.segments : [];
       darts2 += segs.length || 0;
@@ -627,32 +632,30 @@ function extractX01PlayerStatsFromMatch(m: NormalizedMatch, profileId: string) {
       for (const s2 of segs) {
         const vv = N(s2?.v, 0);
         const mm = N(s2?.mult, 1);
+
         if (vv === 0) miss2 += 1;
         if (mm === 2) doubles2 += 1;
         if (mm === 3) triples2 += 1;
+
+        // bull / dbull
         if (vv === 25) bulls2 += mm === 2 ? 1 : 0.5;
         if (vv === 25 && mm === 2) dbull2 += 1;
       }
     }
 
     // ✅ si perPlayer est vide ou incomplet, on complète depuis visits
-    if (!darts && darts2) {
-      // darts manquants -> on prend
-      (darts as any) = darts2;
-    }
-    if (!points && scored2) {
-      (points as any) = scored2;
-    }
+    if (!darts && darts2) darts = darts2;
+    if (!points && scored2) points = scored2;
+
     if ((!avg3 || avg3 === 0) && (darts || darts2) > 0) {
       const dd = darts || darts2;
       const pp = points || scored2;
-      (avg3 as any) = dd > 0 ? (pp / dd) * 3 : 0;
+      avg3 = dd > 0 ? (pp / dd) * 3 : 0;
     }
 
     if (!bestVisit) bestVisit = bestVisit2;
     if (!bestCheckout) bestCheckout = bestCheckout2;
 
-    // si ces compteurs étaient absents en summary, on les récup
     if (!h60 && h60_2) h60 = h60_2;
     if (!h100 && h100_2) h100 = h100_2;
     if (!h140 && h140_2) h140 = h140_2;
@@ -664,8 +667,6 @@ function extractX01PlayerStatsFromMatch(m: NormalizedMatch, profileId: string) {
     if (!triples && triples2) triples = triples2;
     if (!bulls && bulls2) bulls = bulls2;
     if (!dbull && dbull2) dbull = dbull2;
-
-    // visits n’existe pas dans ton return ici, mais tu peux l’ajouter plus tard si besoin
   }
 
   const finalDarts = N(darts, 0);

@@ -4,6 +4,7 @@
 // API principale : loadStore(), saveStore(), clearStore()
 // + Helpers : getKV()/setKV()/delKV(), exportAll(), importAll(), storageEstimate()
 // + Tools : nukeAll(), migrateFromLocalStorage(), nukeAllKeepActiveProfile()
+// + Cloud : exportCloudSnapshot(), importCloudSnapshot()
 // ============================================
 
 import type { Store, Profile } from "./types";
@@ -32,9 +33,7 @@ async function compressGzip(data: string): Promise<Uint8Array | string> {
   }
 }
 
-async function decompressGzip(
-  payload: ArrayBuffer | Uint8Array | string
-): Promise<string> {
+async function decompressGzip(payload: ArrayBuffer | Uint8Array | string): Promise<string> {
   if (typeof payload === "string") return payload;
 
   // Pas de support gzip : on essaye de décoder brut
@@ -149,8 +148,7 @@ async function idbClear(): Promise<void> {
 export async function storageEstimate() {
   try {
     const est =
-      (await (navigator.storage?.estimate?.() ??
-        Promise.resolve(undefined as any))) ?? null;
+      (await (navigator.storage?.estimate?.() ?? Promise.resolve(undefined as any))) ?? null;
 
     return {
       quota: est?.quota ?? null, // bytes
@@ -168,10 +166,7 @@ export async function storageEstimate() {
    => si avatarUrl (Supabase) ou avatarPath existe, et avatarDataUrl vide,
       on copie l’URL vers avatarDataUrl.
 ============================================================ */
-function normalizeStoreAvatarsCompatSync<T extends any>(store: T): {
-  store: T;
-  changed: boolean;
-} {
+function normalizeStoreAvatarsCompatSync<T extends any>(store: T): { store: T; changed: boolean } {
   try {
     const profiles = (store as any)?.profiles;
     if (!Array.isArray(profiles) || profiles.length === 0) {
@@ -184,10 +179,8 @@ function normalizeStoreAvatarsCompatSync<T extends any>(store: T): {
       if (!p || typeof p !== "object") return p;
 
       const avatarUrl = typeof p.avatarUrl === "string" ? p.avatarUrl.trim() : "";
-      const avatarPath =
-        typeof p.avatarPath === "string" ? p.avatarPath.trim() : "";
-      const avatarDataUrl =
-        typeof p.avatarDataUrl === "string" ? p.avatarDataUrl.trim() : "";
+      const avatarPath = typeof p.avatarPath === "string" ? p.avatarPath.trim() : "";
+      const avatarDataUrl = typeof p.avatarDataUrl === "string" ? p.avatarDataUrl.trim() : "";
 
       if (!avatarDataUrl) {
         if (avatarUrl) {
@@ -230,11 +223,7 @@ function isHugeImageDataUrl(s: any, minLen = 200_000): s is string {
   return typeof s === "string" && s.startsWith("data:image/") && s.length > minLen;
 }
 
-async function downscaleImageDataUrl(
-  dataUrl: string,
-  maxSize = 256,
-  quality = 0.82
-): Promise<string> {
+async function downscaleImageDataUrl(dataUrl: string, maxSize = 256, quality = 0.82): Promise<string> {
   // Pas de DOM/canvas (SSR) -> on garde tel quel
   if (typeof document === "undefined") return dataUrl;
 
@@ -274,14 +263,9 @@ async function downscaleImageDataUrl(
   });
 }
 
-async function normalizeStoreAvatarsPerf<T extends Store>(
-  store: T
-): Promise<{ store: T; changed: boolean }> {
+async function normalizeStoreAvatarsPerf<T extends Store>(store: T): Promise<{ store: T; changed: boolean }> {
   try {
-    const profiles: any[] = Array.isArray((store as any)?.profiles)
-      ? (store as any).profiles
-      : [];
-
+    const profiles: any[] = Array.isArray((store as any)?.profiles) ? (store as any).profiles : [];
     if (profiles.length === 0) return { store, changed: false };
 
     let changed = false;
@@ -291,8 +275,7 @@ async function normalizeStoreAvatarsPerf<T extends Store>(
         if (!p) return p;
 
         // Si avatarUrl existe (Supabase) -> on ne touche pas ici
-        const hasAvatarUrl =
-          typeof p.avatarUrl === "string" && p.avatarUrl.trim().length > 0;
+        const hasAvatarUrl = typeof p.avatarUrl === "string" && p.avatarUrl.trim().length > 0;
         if (hasAvatarUrl) return p;
 
         const raw = p.avatarDataUrl;
@@ -320,17 +303,12 @@ async function normalizeStoreAvatarsPerf<T extends Store>(
   }
 }
 
-async function normalizeStoreAll<T extends Store>(
-  store: T
-): Promise<{ store: T; changed: boolean }> {
+async function normalizeStoreAll<T extends Store>(store: T): Promise<{ store: T; changed: boolean }> {
   // 1) compat sync (copie avatarUrl->avatarDataUrl si besoin)
   const compat = normalizeStoreAvatarsCompatSync(store);
   // 2) perf async (downscale dataUrl énormes)
   const perf = await normalizeStoreAvatarsPerf(compat.store);
-  return {
-    store: perf.store,
-    changed: compat.changed || perf.changed,
-  };
+  return { store: perf.store, changed: compat.changed || perf.changed };
 }
 
 /* ---------- API publique principale ---------- */
@@ -339,14 +317,14 @@ async function normalizeStoreAll<T extends Store>(
 export async function loadStore<T extends Store>(): Promise<T | null> {
   try {
     // 1) IndexedDB
-    const raw =
-      (await idbGet<ArrayBuffer | Uint8Array | string>(STORE_KEY)) ?? null;
+    const raw = (await idbGet<ArrayBuffer | Uint8Array | string>(STORE_KEY)) ?? null;
 
     if (raw != null) {
       const json = await decompressGzip(raw as any);
       const parsed = JSON.parse(json) as T;
 
       const norm = await normalizeStoreAll(parsed);
+
       // ✅ si on a modifié, on persiste directement sans repasser par saveStore (évite boucles)
       if (norm.changed) {
         try {
@@ -386,10 +364,7 @@ type SaveOpts = {
 };
 
 /** Sauvegarde complète du store (écrase la valeur précédente). */
-export async function saveStore<T extends Store>(
-  store: T,
-  opts?: SaveOpts
-): Promise<void> {
+export async function saveStore<T extends Store>(store: T, opts?: SaveOpts): Promise<void> {
   try {
     // ✅ normalise toujours au minimum (compat)
     const compat = normalizeStoreAvatarsCompatSync(store);
@@ -408,9 +383,7 @@ export async function saveStore<T extends Store>(
     if (est.quota != null && est.usage != null && typeof payload !== "string") {
       const projected = est.usage + (payload as Uint8Array).byteLength;
       if (projected > est.quota * 0.98) {
-        console.warn(
-          "[storage] quota presque plein, tentative d’écriture quand même."
-        );
+        console.warn("[storage] quota presque plein, tentative d’écriture quand même.");
       }
     }
 
@@ -503,6 +476,32 @@ export async function importAll(dump: Record<string, any>): Promise<void> {
   }
 }
 
+/* ============================================================
+   ✅ CLOUD SNAPSHOT (Supabase user_store)
+   Snapshot complet de l'IndexedDB "kv"
+   - exportCloudSnapshot(): dump { key: any }
+   - importCloudSnapshot(): replace/merge local kv par le dump cloud
+============================================================ */
+
+export type CloudSnapshot = Record<string, any>;
+
+export async function exportCloudSnapshot(): Promise<CloudSnapshot> {
+  return await exportAll();
+}
+
+export async function importCloudSnapshot(
+  dump: CloudSnapshot,
+  opts?: { mode?: "replace" | "merge" }
+): Promise<void> {
+  const mode = opts?.mode ?? "replace";
+  if (mode === "replace") {
+    await nukeAll(); // wipe kv
+  }
+  for (const [k, v] of Object.entries(dump || {})) {
+    await setKV(k, v);
+  }
+}
+
 /** Efface toutes les clés du store IndexedDB (attention : destructif). */
 export async function nukeAll(): Promise<void> {
   try {
@@ -550,7 +549,7 @@ export async function nukeAllKeepActiveProfile(): Promise<void> {
       const txt = await decompressGzip(raw as any);
       const parsed = JSON.parse(txt) as Store;
 
-      const activeId = parsed.activeProfileId ?? null;
+      const activeId = (parsed as any).activeProfileId ?? null;
       if (activeId) {
         const prof = parsed.profiles?.find((p) => p.id === activeId) || null;
         activeProfile = prof ? { ...prof } : null;
@@ -574,10 +573,7 @@ export async function nukeAllKeepActiveProfile(): Promise<void> {
 
   // 4) Si on avait un profil actif → on recrée un store minimal
   if (activeProfile) {
-    const cleanProfile: Profile = {
-      ...activeProfile,
-      // si tu veux purger certains champs, fais-le ici
-    };
+    const cleanProfile: Profile = { ...activeProfile };
 
     const newStore: Store = {
       profiles: [cleanProfile],

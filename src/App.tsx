@@ -55,7 +55,7 @@ import { warmAggOnce } from "./boot/warmAgg";
 // Mode Online
 import { onlineApi } from "./lib/onlineApi";
 
-// ✅ Supabase client (à adapter si ton export est ailleurs)
+// ✅ Supabase client
 import { supabase } from "./lib/supabaseClient";
 
 // Types
@@ -106,7 +106,6 @@ import StatsCricket from "./pages/StatsCricket";
 import StatsLeaderboardsPage from "./pages/StatsLeaderboardsPage"; // ⭐ CLASSEMENTS
 
 // TOURNOI
-import Tournaments from "./pages/Tournaments";
 import TournamentCreate from "./pages/TournamentCreate";
 import TournamentView from "./pages/TournamentView";
 import TournamentMatchPlay from "./pages/TournamentMatchPlay";
@@ -158,7 +157,6 @@ function mergeProfilesSafe<T extends { id: string }>(base: T[], incoming: T[]) {
 // - renvoie publicUrl
 // =============================================================
 async function dataUrlToBlob(dataUrl: string): Promise<Blob> {
-  // fetch() supporte les dataURL (base64) dans les navigateurs modernes
   const res = await fetch(dataUrl);
   if (!res.ok) throw new Error("Impossible de convertir dataUrl -> Blob");
   return await res.blob();
@@ -166,25 +164,21 @@ async function dataUrlToBlob(dataUrl: string): Promise<Blob> {
 
 async function uploadAvatarToSupabase(opts: {
   bucket: string;
-  objectPath: string; // ex: `${profileId}/avatar.png`
+  objectPath: string;
   pngDataUrl: string;
 }): Promise<{ publicUrl: string }> {
   const blob = await dataUrlToBlob(opts.pngDataUrl);
 
-  const { error: upErr } = await supabase.storage
-    .from(opts.bucket)
-    .upload(opts.objectPath, blob, {
-      upsert: true,
-      contentType: "image/png",
-      cacheControl: "3600", // cache OK car cache-bust via avatarUpdatedAt
-    });
-
+  const { error: upErr } = await supabase.storage.from(opts.bucket).upload(opts.objectPath, blob, {
+    upsert: true,
+    contentType: "image/png",
+    cacheControl: "3600",
+  });
   if (upErr) throw upErr;
 
   const { data } = supabase.storage.from(opts.bucket).getPublicUrl(opts.objectPath);
   const publicUrl = (data as any)?.publicUrl || "";
   if (!publicUrl) throw new Error("getPublicUrl() a renvoyé une URL vide");
-
   return { publicUrl };
 }
 
@@ -212,14 +206,17 @@ function withAvatars(rec: any, profiles: any[]) {
 
 /* ============================================================
    ✅ FIX AVATAR (anti overwrite par undefined)
-   - Merge défensif : ne remplace JAMAIS les champs avatar par undefined
 ============================================================ */
-function buildChangelogSlides(
-  t: (k: string, d?: string) => string,
-  entries: ChangelogEntry[]
-): LiveTipSlide[] {
+function buildChangelogSlides(t: (k: string, d?: string) => string, entries: any[]): any[] {
   const list = Array.isArray(entries) ? entries : [];
   if (!list.length) return [];
+
+  const safeParseDateStr = (s: string) => {
+    const x = String(s || "").trim();
+    if (!x) return null;
+    const d = Date.parse(x);
+    return Number.isFinite(d) ? d : null;
+  };
 
   const sorted = [...list].sort((a, b) => {
     const ta = safeParseDateStr(a.date ?? "") ?? 0;
@@ -246,19 +243,15 @@ function buildChangelogSlides(
       text: `${String(e.title ?? "").trim()}\n${text}`.trim(),
       imageKey: "tipNews",
       weight: 9 - idx,
-
-      // ✅ TEST IMMÉDIAT : badge visible
       hot: true,
       forceNew: true,
       version: 1,
-    } as LiveTipSlide;
+    };
   });
 }
 
 /* ============================================================
    ✅ NEW: sanitizeStoreForCloud (anti base64 dans snapshot cloud)
-   - Retire avatarDataUrl "data:" des profils + history.players
-   - Objectif: éviter les snapshots énormes / erreurs quota / perfs
 ============================================================ */
 function sanitizeStoreForCloud(s: any) {
   let clone: any;
@@ -268,44 +261,38 @@ function sanitizeStoreForCloud(s: any) {
     clone = { ...(s || {}) };
   }
 
-  // profils
   if (Array.isArray(clone.profiles)) {
     clone.profiles = clone.profiles.map((p: any) => {
       const out = { ...(p || {}) };
       const v = out.avatarDataUrl;
-      if (typeof v === "string" && v.startsWith("data:")) {
-        delete out.avatarDataUrl;
-      }
+      if (typeof v === "string" && v.startsWith("data:")) delete out.avatarDataUrl;
       return out;
     });
   }
 
-  // history (players)
   if (Array.isArray(clone.history)) {
     clone.history = clone.history.map((r: any) => {
       const rr = { ...(r || {}) };
+
       if (Array.isArray(rr.players)) {
         rr.players = rr.players.map((pl: any) => {
           const pp = { ...(pl || {}) };
           const v = pp.avatarDataUrl;
-          if (typeof v === "string" && v.startsWith("data:")) {
-            delete pp.avatarDataUrl;
-          }
+          if (typeof v === "string" && v.startsWith("data:")) delete pp.avatarDataUrl;
           return pp;
         });
       }
-      // payload.players parfois doublonné
+
       if (rr.payload && Array.isArray(rr.payload.players)) {
         rr.payload = { ...(rr.payload || {}) };
         rr.payload.players = rr.payload.players.map((pl: any) => {
           const pp = { ...(pl || {}) };
           const v = pp.avatarDataUrl;
-          if (typeof v === "string" && v.startsWith("data:")) {
-            delete pp.avatarDataUrl;
-          }
+          if (typeof v === "string" && v.startsWith("data:")) delete pp.avatarDataUrl;
           return pp;
         });
       }
+
       return rr;
     });
   }
@@ -330,6 +317,7 @@ type Tab =
   | "profiles"
   | "profiles_bots"
   | "friends"
+  | "online"
   | "settings"
   | "stats"
   | "statsHub"
@@ -396,7 +384,7 @@ function AuthCallbackRoute({ go }: { go: (t: Tab, p?: any) => void }) {
           try {
             window.location.hash = "#/online";
           } catch {}
-          go("friends");
+          go("online");
           return;
         }
 
@@ -405,15 +393,13 @@ function AuthCallbackRoute({ go }: { go: (t: Tab, p?: any) => void }) {
             try {
               window.location.hash = "#/online";
             } catch {}
-            go("friends");
+            go("online");
           }
         });
 
         setTimeout(() => {
           if (alive) {
-            setMsg(
-              "Presque fini… si ça bloque : ouvre le DERNIER email reçu (les anciens liens expirent)."
-            );
+            setMsg("Presque fini… si ça bloque : ouvre le DERNIER email reçu (les anciens liens expirent).");
           }
         }, 900);
 
@@ -531,7 +517,7 @@ function AuthResetRoute({ go }: { go: (t: Tab, p?: any) => void }) {
     try {
       window.location.hash = "#/online";
     } catch {}
-    go("friends");
+    go("online");
   }
 
   return (
@@ -606,9 +592,7 @@ function StatsDetailRoute({ store, go, params }: any) {
       if (!matchId) return;
       try {
         const byId = await (History as any)?.get?.(matchId);
-        if (alive && byId) {
-          setRec(withAvatars(byId, store.profiles || []));
-        }
+        if (alive && byId) setRec(withAvatars(byId, store.profiles || []));
       } catch {}
     })();
     return () => {
@@ -697,7 +681,6 @@ function getX01DefaultStart(store: Store): 301 | 501 | 701 | 901 {
 
 /* BOTS LS */
 const LS_BOTS_KEY = "dc_bots_v1";
-
 /* ONLINE mirror LS (comme FriendsPage / StatsOnline) */
 const LS_ONLINE_MATCHES_KEY = "dc_online_matches_v1";
 
@@ -821,23 +804,19 @@ function App() {
   // ============================================================
   const online = useAuthOnline();
   const [cloudHydrated, setCloudHydrated] = React.useState(false);
-  // ✅ Cloud hydrate est "par user" : quand on se reconnecte (après clear site data),
-  // on doit forcer un nouveau pull du snapshot.
+
+  // ✅ Cloud hydrate "par user"
   const cloudHydratedUserRef = React.useRef<string>("");
 
   React.useEffect(() => {
     if (!online?.ready) return;
-    const uid = String(
-      (online as any)?.session?.user?.id || (online as any)?.user?.id || ""
-    );
+    const uid = String((online as any)?.session?.user?.id || (online as any)?.user?.id || "");
 
-    // Pas connecté : on ne marque pas l’hydratation pour un user.
     if (online.status !== "signed_in") {
       cloudHydratedUserRef.current = "";
       return;
     }
 
-    // Connecté : nouvel user => on réactive l’hydratation
     if (uid && cloudHydratedUserRef.current !== uid) {
       cloudHydratedUserRef.current = uid;
       setCloudHydrated(false);
@@ -854,22 +833,17 @@ function App() {
   // ✅ SPLASH gate (ne s'affiche pas pendant les flows auth)
   const [showSplash, setShowSplash] = React.useState(() => {
     const h = String(window.location.hash || "");
-    const isAuthFlow =
-      h.startsWith("#/auth/callback") ||
-      h.startsWith("#/auth/reset") ||
-      h.startsWith("#/auth/forgot");
+    const isAuthFlow = h.startsWith("#/auth/callback") || h.startsWith("#/auth/reset") || h.startsWith("#/auth/forgot");
     return !isAuthFlow;
   });
 
   // 🛟 SAFETY NET : ne JAMAIS bloquer l'app sur le splash
   React.useEffect(() => {
     if (!showSplash) return;
-
     const hardTimeout = window.setTimeout(() => {
       console.warn("[Splash] forced exit (safety timeout)");
       setShowSplash(false);
-    }, 8000); // max absolu
-
+    }, 8000);
     return () => window.clearTimeout(hardTimeout);
   }, [showSplash]);
 
@@ -877,7 +851,6 @@ function App() {
   React.useEffect(() => {
     ensurePersisted().catch(() => {});
     purgeLegacyLocalStorageIfNeeded();
-
     try {
       warmAggOnce();
     } catch {}
@@ -888,7 +861,7 @@ function App() {
     onlineApi.restoreSession().catch(() => {});
   }, []);
 
-  // ✅ NEW: détecte les liens email Supabase via hash
+  // ✅ NEW: détecte les liens email Supabase via hash (+ /online)
   React.useEffect(() => {
     const applyHashRoute = () => {
       const h = String(window.location.hash || "");
@@ -911,6 +884,11 @@ function App() {
         setTab("auth_forgot");
         return;
       }
+      if (h.startsWith("#/online")) {
+        setRouteParams(null);
+        setTab("online");
+        return;
+      }
     };
 
     applyHashRoute();
@@ -927,9 +905,7 @@ function App() {
   const [x01Config, setX01Config] = React.useState<any>(null);
 
   /* X01 v3 config */
-  const [x01ConfigV3, setX01ConfigV3] = React.useState<X01ConfigV3Type | null>(
-    null
-  );
+  const [x01ConfigV3, setX01ConfigV3] = React.useState<X01ConfigV3Type | null>(null);
 
   /* Navigation */
   function go(next: Tab, params?: any) {
@@ -944,9 +920,10 @@ function App() {
       if (next === "auth_callback") window.location.hash = "#/auth/callback";
       else if (next === "auth_reset") window.location.hash = "#/auth/reset";
       else if (next === "auth_forgot") window.location.hash = "#/auth/forgot";
+      else if (next === "online") window.location.hash = "#/online";
       else {
         const h = String(window.location.hash || "");
-        if (h.startsWith("#/auth/")) window.location.hash = "#/";
+        if (h.startsWith("#/auth/") || h.startsWith("#/online")) window.location.hash = "#/";
       }
     } catch {}
   }
@@ -983,7 +960,6 @@ function App() {
         }
 
         if (mounted) {
-          // ✅ FIX: ne jamais écraser les avatars par undefined (merge défensif)
           setStore((prev) => ({
             ...base,
             profiles: mergeProfilesSafe(prev.profiles ?? [], base.profiles ?? []),
@@ -993,10 +969,7 @@ function App() {
           const hasActive = !!base.activeProfileId;
 
           const h = String(window.location.hash || "");
-          const isAuthFlow =
-            h.startsWith("#/auth/callback") ||
-            h.startsWith("#/auth/reset") ||
-            h.startsWith("#/auth/forgot");
+          const isAuthFlow = h.startsWith("#/auth/callback") || h.startsWith("#/auth/reset") || h.startsWith("#/auth/forgot");
 
           if (!isAuthFlow) {
             if (!hasProfiles || !hasActive) {
@@ -1024,8 +997,9 @@ function App() {
 
   // ============================================================
   // ✅ CLOUD HYDRATE (source unique)
-  // - Quand on se CONNECTE (même après "Clear site data") => on PULL le snapshot cloud
-  // - On ne SEED le cloud que si on est sûr que le snapshot n’existe pas (not_found)
+  // - Quand on se CONNECTE => PULL snapshot cloud
+  // - ✅ FIX: on hydrate RAM + IDB avec la VERSION MERGÉE (pas "next" brut)
+  // - ✅ FIX: si on reçoit des profils + activeProfileId => on renvoie HOME
   // ============================================================
   React.useEffect(() => {
     let cancelled = false;
@@ -1033,11 +1007,7 @@ function App() {
     const run = async () => {
       if (loading) return;
       if (!online?.ready) return;
-
-      // Tant qu'on n'est pas connecté, on ne fait rien ici.
       if (online.status !== "signed_in") return;
-
-      // On hydrate une seule fois par user (reset géré par cloudHydratedUserRef)
       if (cloudHydrated) return;
 
       try {
@@ -1056,18 +1026,41 @@ function App() {
             };
 
             if (!cancelled) {
-              // ✅ merge défensif des profils (cloud peut être partiel)
-              setStore((prev) => ({
-                ...next,
-                profiles: mergeProfilesSafe(prev.profiles ?? [], next.profiles ?? []),
-              }));
-              try {
-                await saveStore(next);
-              } catch {}
+              let mergedFinal: Store | null = null;
+
+              setStore((prev) => {
+                const mergedProfiles = mergeProfilesSafe(prev.profiles ?? [], next.profiles ?? []);
+                mergedFinal = {
+                  ...next,
+                  profiles: mergedProfiles,
+                  // ✅ ne pas perdre un active local si le cloud est partiel
+                  activeProfileId: next.activeProfileId ?? prev.activeProfileId ?? null,
+                } as any;
+                return mergedFinal as any;
+              });
+
+              // ✅ attend 1 tick pour être sûr que mergedFinal a été calculé
+              await Promise.resolve();
+
+              if (mergedFinal) {
+                try {
+                  await saveStore(mergedFinal);
+                } catch {}
+                const hasProfiles = (mergedFinal.profiles ?? []).length > 0;
+                const hasActive = !!mergedFinal.activeProfileId;
+
+                const h = String(window.location.hash || "");
+                const isAuthFlow =
+                  h.startsWith("#/auth/callback") || h.startsWith("#/auth/reset") || h.startsWith("#/auth/forgot");
+
+                if (!isAuthFlow && hasProfiles && hasActive) {
+                  setRouteParams(null);
+                  setTab("home");
+                }
+              }
             }
           }
         } else if (res?.status === "not_found") {
-          // ✅ Pas de snapshot : on seed UNIQUEMENT si on a déjà des données locales utiles.
           const hasLocalData =
             (store?.profiles?.length || 0) > 0 ||
             !!(store as any)?.activeProfileId ||
@@ -1079,13 +1072,11 @@ function App() {
               kind: "dc_store_snapshot_v1",
               createdAt: new Date().toISOString(),
               app: "darts-counter-v5",
-              store: sanitizeStoreForCloud(store), // ✅ ne pousse pas les data: (avatars locaux)
+              store: sanitizeStoreForCloud(store),
             };
             await onlineApi.pushStoreSnapshot(payload);
           } else {
-            console.warn(
-              "[cloud] no snapshot yet + local empty -> skip seed (avoid wiping cloud by mistake)"
-            );
+            console.warn("[cloud] no snapshot yet + local empty -> skip seed (avoid wiping cloud by mistake)");
           }
         } else {
           console.warn("[cloud] hydrate error (skip seed)", res?.error || res);
@@ -1101,12 +1092,10 @@ function App() {
     return () => {
       cancelled = true;
     };
-    // ⚠️ store dans deps : si tu seed, on veut la version la plus récente.
   }, [loading, online?.ready, online?.status, cloudHydrated, store]);
 
   // ============================================================
   // ✅ CLOUD PUSH (debounce)
-  // - chaque changement de store -> snapshot cloud
   // ============================================================
   React.useEffect(() => {
     if (loading) return;
@@ -1124,7 +1113,7 @@ function App() {
           kind: "dc_store_snapshot_v1",
           createdAt: new Date().toISOString(),
           app: "darts-counter-v5",
-          store: sanitizeStoreForCloud(store), // ✅ CHANGED (ne pousse pas les data:)
+          store: sanitizeStoreForCloud(store),
         };
         await onlineApi.pushStoreSnapshot(payload);
       } catch (e) {
@@ -1180,9 +1169,7 @@ function App() {
       const work = async () => {
         try {
           const profiles = (__profilesRef.current ?? []) as any[];
-          await Promise.allSettled(
-            profiles.map((p) => rebuildStatsForProfile(String(p?.id)))
-          );
+          await Promise.allSettled(profiles.map((p) => rebuildStatsForProfile(String(p?.id))));
         } catch (e) {
           console.warn("[stats] rebuild error:", e);
         } finally {
@@ -1203,17 +1190,13 @@ function App() {
     window.addEventListener("dc-history-updated", schedule);
     return () => window.removeEventListener("dc-history-updated", schedule);
   }, [loading]);
-  // ============================================================
 
   /* --------------------------------------------
       pushHistory (FIN DE PARTIE)
   -------------------------------------------- */
   function pushHistory(m: MatchRecord) {
     const now = Date.now();
-    const id =
-      (m as any)?.id ||
-      (m as any)?.matchId ||
-      `x01-${now}-${Math.random().toString(36).slice(2, 8)}`;
+    const id = (m as any)?.id || (m as any)?.matchId || `x01-${now}-${Math.random().toString(36).slice(2, 8)}`;
 
     const rawPlayers = (m as any)?.players ?? (m as any)?.payload?.players ?? [];
     const players = rawPlayers.map((p: any) => {
@@ -1341,14 +1324,7 @@ function App() {
         break;
 
       case "home":
-        page = (
-          <Home
-            store={store}
-            update={update}
-            go={go}
-            onConnect={() => go("profiles", { view: "me", autoCreate: true })}
-          />
-        );
+        page = <Home store={store} update={update} go={go} onConnect={() => go("profiles", { view: "me", autoCreate: true })} />;
         break;
 
       case "games":
@@ -1368,51 +1344,17 @@ function App() {
         );
         break;
 
-      case "tournaments": {
-        page = <TournamentsHome store={store} go={go} update={update} source="local" />;
-        break;
-      }
-
-      case "tournament_view": {
-        const id = String(routeParams?.id ?? routeParams?.tournamentId ?? routeParams?.tid ?? "");
-        page = <TournamentView store={store} go={go} id={id} />;
-        break;
-      }
-
-      case "tournament_match_play": {
-        const tournamentId = String(
-          routeParams?.tournamentId ?? routeParams?.id ?? routeParams?.tid ?? ""
-        );
-        const matchId = String(routeParams?.matchId ?? "");
-
-        if (!tournamentId || !matchId) {
-          page = (
-            <div style={{ padding: 16 }}>
-              <button onClick={() => go("tournaments")}>← Retour</button>
-              <p>Paramètres manquants (tournamentId/matchId).</p>
-            </div>
-          );
-          break;
-        }
-
-        page = <TournamentMatchPlay store={store} go={go} params={{ tournamentId, matchId }} />;
-        break;
-      }
-
-      case "tournament_create":
-        page = <TournamentCreate store={store} go={go} />;
-        break;
-
-      case "tournament_roadmap":
-        page = <TournamentRoadmap go={go} />;
-        break;
-
       case "profiles_bots":
         page = <ProfilesBots store={store} go={go} />;
         break;
 
       case "friends":
         page = <FriendsPage store={store} update={update} go={go} />;
+        break;
+
+      case "online":
+        // ⚠️ Props exactes selon ton LobbyPick : on passe "store/go/update" en any
+        page = <LobbyPick store={store as any} update={update as any} go={go as any} />;
         break;
 
       case "settings":
@@ -1442,12 +1384,7 @@ function App() {
         break;
 
       case "cricket_stats":
-        page = (
-          <StatsCricket
-            profiles={store.profiles}
-            activeProfileId={routeParams?.profileId ?? store.activeProfileId ?? null}
-          />
-        );
+        page = <StatsCricket profiles={store.profiles} activeProfileId={routeParams?.profileId ?? store.activeProfileId ?? null} />;
         break;
 
       case "statsDetail":
@@ -1462,25 +1399,51 @@ function App() {
         page = <SyncCenter store={store} go={go} profileId={routeParams?.profileId ?? null} />;
         break;
 
+      case "tournaments":
+        page = <TournamentsHome store={store} go={go} update={update} source="local" />;
+        break;
+
+      case "tournament_create":
+        page = <TournamentCreate store={store} go={go} />;
+        break;
+
+      case "tournament_view": {
+        const id = String(routeParams?.id ?? routeParams?.tournamentId ?? routeParams?.tid ?? "");
+        page = <TournamentView store={store} go={go} id={id} />;
+        break;
+      }
+
+      case "tournament_match_play": {
+        const tournamentId = String(routeParams?.tournamentId ?? routeParams?.id ?? routeParams?.tid ?? "");
+        const matchId = String(routeParams?.matchId ?? "");
+
+        if (!tournamentId || !matchId) {
+          page = (
+            <div style={{ padding: 16 }}>
+              <button onClick={() => go("tournaments")}>← Retour</button>
+              <p>Paramètres manquants (tournamentId/matchId).</p>
+            </div>
+          );
+          break;
+        }
+
+        page = <TournamentMatchPlay store={store} go={go} params={{ tournamentId, matchId }} />;
+        break;
+      }
+
+      case "tournament_roadmap":
+        page = <TournamentRoadmap go={go} />;
+        break;
+
       case "x01setup":
         page = (
           <X01Setup
             profiles={store.profiles}
-            defaults={{
-              start: getX01DefaultStart(store),
-              doubleOut: store.settings.doubleOut,
-            }}
+            defaults={{ start: getX01DefaultStart(store), doubleOut: store.settings.doubleOut }}
             onCancel={() => go("games")}
             onStart={(opts) => {
-              const players = store.settings.randomOrder
-                ? opts.playerIds.slice().sort(() => Math.random() - 0.5)
-                : opts.playerIds;
-
-              setX01Config({
-                playerIds: players,
-                start: opts.start,
-                doubleOut: opts.doubleOut,
-              });
+              const players = store.settings.randomOrder ? opts.playerIds.slice().sort(() => Math.random() - 0.5) : opts.playerIds;
+              setX01Config({ playerIds: players, start: opts.start, doubleOut: opts.doubleOut });
               go("x01", { resumeId: null, fresh: Date.now() });
             }}
           />
@@ -1488,19 +1451,13 @@ function App() {
         break;
 
       case "x01_online_setup": {
-        const activeProfile =
-          store.profiles.find((p) => p.id === store.activeProfileId) ??
-          store.profiles[0] ??
-          null;
-
+        const activeProfile = store.profiles.find((p) => p.id === store.activeProfileId) ?? store.profiles[0] ?? null;
         const lobbyCode = routeParams?.lobbyCode ?? null;
 
         if (!activeProfile) {
           page = (
             <div className="container" style={{ padding: 16 }}>
-              <p style={{ marginBottom: 8 }}>
-                Aucun profil local n’est configuré pour lancer une manche online.
-              </p>
+              <p style={{ marginBottom: 8 }}>Aucun profil local n’est configuré pour lancer une manche online.</p>
               <button
                 onClick={() => go("profiles", { view: "me", autoCreate: true })}
                 style={{
@@ -1522,7 +1479,6 @@ function App() {
         }
 
         const storeForOnline: Store = { ...store, activeProfileId: activeProfile.id } as Store;
-
         page = <X01OnlineSetup store={storeForOnline} go={go} params={{ ...(routeParams || {}), lobbyCode }} />;
         break;
       }
@@ -1534,23 +1490,12 @@ function App() {
         let effectiveConfig = x01Config;
 
         if (!effectiveConfig && isOnline && !isResume) {
-          const activeProfile =
-            store.profiles.find((p) => p.id === store.activeProfileId) ??
-            store.profiles[0] ??
-            null;
-
+          const activeProfile = store.profiles.find((p) => p.id === store.activeProfileId) ?? store.profiles[0] ?? null;
           const startDefault = getX01DefaultStart(store);
           const start =
-            startDefault === 301 || startDefault === 501 || startDefault === 701 || startDefault === 901
-              ? startDefault
-              : 501;
+            startDefault === 301 || startDefault === 501 || startDefault === 701 || startDefault === 901 ? startDefault : 501;
 
-          effectiveConfig = {
-            start,
-            doubleOut: store.settings.doubleOut,
-            playerIds: activeProfile ? [activeProfile.id] : [],
-          };
-
+          effectiveConfig = { start, doubleOut: store.settings.doubleOut, playerIds: activeProfile ? [activeProfile.id] : [] };
           setX01Config(effectiveConfig);
         }
 
@@ -1569,7 +1514,6 @@ function App() {
 
         const outMode = effectiveConfig?.doubleOut ? "double" : "simple";
         const playerIds = effectiveConfig?.playerIds ?? [];
-
         const freshToken = routeParams?.fresh ?? Date.now();
         const key = isResume ? `resume-${routeParams.resumeId}` : `fresh-${freshToken}`;
 
@@ -1583,7 +1527,7 @@ function App() {
             inMode="simple"
             params={isResume ? { resumeId: routeParams.resumeId } : undefined}
             onFinish={(m) => pushHistory(m)}
-            onExit={() => (isOnline ? go("friends") : go("x01setup"))}
+            onExit={() => (isOnline ? go("online") : go("x01setup"))}
           />
         );
         break;
@@ -1697,13 +1641,7 @@ function App() {
         break;
 
       case "training_clock":
-        page = (
-          <TrainingClock
-            profiles={store.profiles ?? []}
-            activeProfileId={store.activeProfileId ?? null}
-            go={go}
-          />
-        );
+        page = <TrainingClock profiles={store.profiles ?? []} activeProfileId={store.activeProfileId ?? null} go={go} />;
         break;
 
       case "avatar": {
@@ -1740,59 +1678,30 @@ function App() {
               <button onClick={() => go(backTo)} style={{ marginBottom: 12 }}>
                 ← Retour
               </button>
-              <AvatarCreator
-                size={512}
-                defaultName={targetBot?.name || ""}
-                onSave={handleSaveAvatarBot}
-                isBotMode={true}
-              />
+              <AvatarCreator size={512} defaultName={targetBot?.name || ""} onSave={handleSaveAvatarBot} isBotMode={true} />
             </div>
           );
           break;
         }
 
-        const targetProfile =
-          store.profiles.find((p) => p.id === (profileIdFromParams || store.activeProfileId)) ??
-          null;
+        const targetProfile = store.profiles.find((p) => p.id === (profileIdFromParams || store.activeProfileId)) ?? null;
 
-        // ============================================================
-        // ✅ SAVE AVATAR PROFILE -> Upload Supabase + avatarUrl + avatarUpdatedAt
-        // - IMPORTANT: avatarDataUrl => null (sinon clear site data = perdu)
-        // - Fallback: si upload échoue => on garde avatarDataUrl local
-        // ============================================================
-        async function handleSaveAvatarProfile({
-          pngDataUrl,
-          name,
-        }: {
-          pngDataUrl: string;
-          name: string;
-        }) {
+        async function handleSaveAvatarProfile({ pngDataUrl, name }: { pngDataUrl: string; name: string }) {
           if (!targetProfile) return;
 
           const trimmedName = (name || "").trim();
           const now = Date.now();
 
-          // ✅ Bucket public + chemin par profileId (multi-profils OK)
           const bucket = "avatars";
           const objectPath = `${targetProfile.id}/avatar.png`;
 
           try {
-            const { publicUrl } = await uploadAvatarToSupabase({
-              bucket,
-              objectPath,
-              pngDataUrl,
-            });
+            const { publicUrl } = await uploadAvatarToSupabase({ bucket, objectPath, pngDataUrl });
 
             setProfiles((list) =>
               list.map((p) =>
                 p.id === targetProfile.id
-                  ? {
-                      ...p,
-                      name: trimmedName || p.name,
-                      avatarUrl: publicUrl,
-                      avatarUpdatedAt: now,
-                      avatarDataUrl: null,
-                    }
+                  ? { ...p, name: trimmedName || p.name, avatarUrl: publicUrl, avatarUpdatedAt: now, avatarDataUrl: null }
                   : p
               )
             );
@@ -1808,7 +1717,6 @@ function App() {
                       ...p,
                       name: trimmedName || p.name,
                       avatarDataUrl: pngDataUrl,
-                      // ⚠️ on ne touche pas avatarUrl/avatarUpdatedAt si déjà présents
                     }
                   : p
               )
@@ -1823,26 +1731,18 @@ function App() {
             <button onClick={() => go(backTo)} style={{ marginBottom: 12 }}>
               ← Retour
             </button>
-            <AvatarCreator
-              size={512}
-              defaultName={targetProfile?.name || ""}
-              onSave={handleSaveAvatarProfile}
-              isBotMode={isBotMode}
-            />
+            <AvatarCreator size={512} defaultName={targetProfile?.name || ""} onSave={handleSaveAvatarProfile} isBotMode={isBotMode} />
           </div>
         );
         break;
       }
 
+      case "cricket":
+        page = <CricketPlay profiles={store.profiles ?? []} onFinish={(m: any) => pushHistory(m)} />;
+        break;
+
       default:
-        page = (
-          <Home
-            store={store}
-            update={update}
-            go={go}
-            onConnect={() => go("profiles", { view: "me", autoCreate: true })}
-          />
-        );
+        page = <Home store={store} update={update} go={go} onConnect={() => go("profiles", { view: "me", autoCreate: true })} />;
     }
   }
 
@@ -1878,14 +1778,9 @@ function AppGate({
 }) {
   const { status } = useAuthSession();
 
-  const needsSession = tab === "stats_online" || tab === "x01_online_setup";
+  const needsSession = tab === "stats_online" || tab === "x01_online_setup" || tab === "online";
 
-  const isAuthFlow =
-    tab === "auth_reset" ||
-    tab === "auth_callback" ||
-    tab === "auth_forgot" ||
-    tab === "auth_start" ||
-    tab === "account_start";
+  const isAuthFlow = tab === "auth_reset" || tab === "auth_callback" || tab === "auth_forgot" || tab === "auth_start" || tab === "account_start";
 
   if (status === "checking") {
     return (
@@ -1939,8 +1834,7 @@ function AccountEntry({ go }: { go: (t: any, p?: any) => void }) {
           width: "min(380px, 92vw)",
           borderRadius: 22,
           padding: 14,
-          background:
-            "linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.03))",
+          background: "linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.03))",
           border: "1px solid rgba(255,255,255,.10)",
           boxShadow: "0 22px 70px rgba(0,0,0,.62)",
           backdropFilter: "blur(10px)",
@@ -1963,16 +1857,14 @@ function AccountEntry({ go }: { go: (t: any, p?: any) => void }) {
 
         <div style={{ display: "grid", gap: 12 }}>
           <div style={{ textAlign: "center", display: "grid", gap: 6 }}>
-            <div style={{ fontSize: 24, fontWeight: 950, color: "rgba(255,255,255,.96)" }}>
-              Compte
-            </div>
+            <div style={{ fontSize: 24, fontWeight: 950, color: "rgba(255,255,255,.96)" }}>Compte</div>
             <div style={{ fontSize: 12.8, opacity: 0.82, lineHeight: 1.35 }}>
               Connecte-toi pour synchroniser ton profil et tes stats sur tous tes appareils.
             </div>
           </div>
 
           <button
-            onClick={() => go("friends")}
+            onClick={() => go("online")}
             style={{
               width: "100%",
               borderRadius: 999,
@@ -1989,7 +1881,7 @@ function AccountEntry({ go }: { go: (t: any, p?: any) => void }) {
           </button>
 
           <button
-            onClick={() => go("friends")}
+            onClick={() => go("online")}
             style={{
               width: "100%",
               borderRadius: 999,
@@ -2021,9 +1913,7 @@ function AccountEntry({ go }: { go: (t: any, p?: any) => void }) {
               gap: 10,
             }}
           >
-            <div style={{ fontWeight: 950, fontSize: 13.5, opacity: 0.95 }}>
-              Mot de passe oublié
-            </div>
+            <div style={{ fontWeight: 950, fontSize: 13.5, opacity: 0.95 }}>Mot de passe oublié</div>
 
             <input
               value={email}
@@ -2074,12 +1964,7 @@ export default function AppRoot() {
         <AuthOnlineProvider>
           <AuthSessionProvider>
             {/* ✅ player audio global persistant (rien à voir avec SFX UI) */}
-            <audio
-              id="dc-splash-audio"
-              src={SplashJingle}
-              preload="auto"
-              style={{ display: "none" }}
-            />
+            <audio id="dc-splash-audio" src={SplashJingle} preload="auto" style={{ display: "none" }} />
             <App />
           </AuthSessionProvider>
         </AuthOnlineProvider>
