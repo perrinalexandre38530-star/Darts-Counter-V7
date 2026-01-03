@@ -62,6 +62,9 @@ import { onlineApi } from "./lib/onlineApi";
 // ✅ Supabase client
 import { supabase } from "./lib/supabaseClient";
 
+// ✅ PATCH A: seed / sync dartSets
+import { getAllDartSets } from "./lib/dartSetsStore";
+
 // Types
 import type { Store, Profile, MatchRecord } from "./lib/types";
 import type { X01ConfigV3 as X01ConfigV3Type } from "./types/x01v3";
@@ -267,11 +270,22 @@ function sanitizeStoreForCloud(s: any) {
     clone = { ...(s || {}) };
   }
 
+  // ✅ PATCH A: profils -> supprime avatarDataUrl base64 + supprime password
   if (Array.isArray(clone.profiles)) {
     clone.profiles = clone.profiles.map((p: any) => {
       const out = { ...(p || {}) };
+
+      // déjà: suppression avatarDataUrl base64
       const v = out.avatarDataUrl;
       if (typeof v === "string" && v.startsWith("data:")) delete out.avatarDataUrl;
+
+      // ✅ IMPORTANT: ne JAMAIS envoyer de mot de passe
+      if (out.privateInfo && typeof out.privateInfo === "object") {
+        const pi = { ...(out.privateInfo || {}) };
+        if ("password" in pi) delete pi.password;
+        out.privateInfo = pi;
+      }
+
       return out;
     });
   }
@@ -303,12 +317,14 @@ function sanitizeStoreForCloud(s: any) {
     });
   }
 
-  // ✅ NEW: dartSets -> évite base64 data: dans snapshot cloud
+  // ✅ PATCH A: dartSets -> supprime dataUrl énormes si présentes
   if (Array.isArray(clone.dartSets)) {
     clone.dartSets = clone.dartSets.map((ds: any) => {
       const out = { ...(ds || {}) };
-      if (typeof out.mainImageUrl === "string" && out.mainImageUrl.startsWith("data:")) delete out.mainImageUrl;
-      if (typeof out.thumbImageUrl === "string" && out.thumbImageUrl.startsWith("data:")) delete out.thumbImageUrl;
+      for (const k of ["photoDataUrl", "mainImageUrl", "thumbImageUrl"]) {
+        const v = out[k];
+        if (typeof v === "string" && v.startsWith("data:")) delete out[k];
+      }
       return out;
     });
   }
@@ -989,6 +1005,19 @@ function App() {
           base = { ...initialStore };
         }
 
+        // ✅ PATCH A: DartSets seed si absent dans IDB
+        try {
+          const fromLocal = getAllDartSets();
+          const has = Array.isArray((base as any).dartSets) && (base as any).dartSets.length > 0;
+          if (!has && Array.isArray(fromLocal) && fromLocal.length > 0) {
+            (base as any).dartSets = fromLocal;
+          } else if (!Array.isArray((base as any).dartSets)) {
+            (base as any).dartSets = [];
+          }
+        } catch {
+          (base as any).dartSets = Array.isArray((base as any).dartSets) ? (base as any).dartSets : [];
+        }
+
         if (mounted) {
           setStore((prev) => ({
             ...base,
@@ -1071,7 +1100,9 @@ function App() {
         const res: any = await onlineApi.pullStoreSnapshot();
 
         if (res?.status === "ok") {
-          const cloudStore = res?.payload?.store;
+          // ✅ PATCH A: accepte payload direct OU wrapper idb
+          const payload = res?.payload ?? null;
+          const cloudStore = payload?.store ?? payload?.idb?.store ?? null;
 
           if (cloudStore && typeof cloudStore === "object") {
             const next: Store = {
