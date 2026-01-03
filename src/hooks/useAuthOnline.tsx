@@ -16,6 +16,7 @@ import {
 } from "../lib/onlineApi";
 import type { OnlineProfile } from "../lib/onlineTypes";
 import { hydrateFromOnline, pushLocalSnapshotToOnline } from "../lib/hydrateFromOnline";
+import { startCloudSync, stopCloudSync } from "../lib/cloudSync";
 
 type AuthOnlineContextValue = {
   ready: boolean;
@@ -55,11 +56,20 @@ export function AuthOnlineProvider({ children }: { children: React.ReactNode }) 
       const s = await onlineApi.restoreSession();
       setSession(s);
 
-      // ✅ si connecté “vraiment” (token non vide), on tente un pull cloud
+      // ✅ PATCH 2: si session valide -> startCloudSync
       if (s?.token) {
-        // ne bloque pas ready si ça plante
+        try {
+          startCloudSync(); // ✅ démarre pull/push cloud
+        } catch {}
+
+        // ✅ si connecté “vraiment” (token non vide), on tente un pull cloud
         try {
           await hydrateFromOnline({ reload: false });
+        } catch {}
+      } else {
+        // pas de session => stop pour éviter un timer fantôme
+        try {
+          stopCloudSync();
         } catch {}
       }
 
@@ -79,6 +89,14 @@ export function AuthOnlineProvider({ children }: { children: React.ReactNode }) 
     try {
       const s = await onlineApi.signup(p);
       setSession(s);
+
+      // ✅ PATCH 2: si signup retourne un token, on démarre la sync
+      if (s?.token) {
+        try {
+          startCloudSync();
+        } catch {}
+      }
+
       return s;
     } finally {
       setLoading(false);
@@ -90,6 +108,13 @@ export function AuthOnlineProvider({ children }: { children: React.ReactNode }) 
     try {
       const s = await onlineApi.login(p);
       setSession(s);
+
+      // ✅ PATCH 2: session signée -> startCloudSync
+      if (s?.token) {
+        try {
+          startCloudSync(); // ✅ démarre pull/push cloud
+        } catch {}
+      }
 
       // ✅ pull cloud (si cloud plus récent) + reload pour tout recharger
       try {
@@ -107,6 +132,11 @@ export function AuthOnlineProvider({ children }: { children: React.ReactNode }) 
   const logout = React.useCallback(async () => {
     setLoading(true);
     try {
+      // ✅ PATCH 2: stop timer AVANT/pendant logout
+      try {
+        stopCloudSync();
+      } catch {}
+
       await onlineApi.logout();
       setSession(null);
     } finally {
@@ -130,6 +160,11 @@ export function AuthOnlineProvider({ children }: { children: React.ReactNode }) 
   const deleteAccount = React.useCallback(async () => {
     setLoading(true);
     try {
+      // ✅ sécurité: stop sync avant suppression
+      try {
+        stopCloudSync();
+      } catch {}
+
       await onlineApi.deleteAccount();
       setSession(null);
     } finally {
@@ -145,6 +180,14 @@ export function AuthOnlineProvider({ children }: { children: React.ReactNode }) 
       // refresh session cache
       const s = await onlineApi.getCurrentSession();
       setSession(s);
+
+      // (optionnel) si la session a expiré, on coupe la sync
+      if (!s?.token) {
+        try {
+          stopCloudSync();
+        } catch {}
+      }
+
       return prof;
     } finally {
       setLoading(false);
