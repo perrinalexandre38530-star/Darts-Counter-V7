@@ -8,9 +8,7 @@
 // ✅ Matchs online : désactivés (fallback safe) tant que tu ne crées pas une table dédiée
 // ============================================================
 
-// ✅ IMPORTANT : un seul client Supabase partout
 import { supabase } from "./supabaseClient";
-
 import type { UserAuth, OnlineProfile, OnlineMatch } from "./onlineTypes";
 
 // --------------------------------------------
@@ -26,16 +24,15 @@ export type AuthSession = {
 export type SignupPayload = {
   email?: string;
   nickname: string;
-  password?: string; // requis pour Supabase
+  password?: string;
 };
 
 export type LoginPayload = {
   email?: string;
   nickname?: string;
-  password?: string; // requis pour Supabase
+  password?: string;
 };
 
-// PATCH profil : on ajoute ici TOUTES les infos perso
 export type UpdateProfilePayload = {
   displayName?: string;
   avatarUrl?: string;
@@ -47,8 +44,6 @@ export type UpdateProfilePayload = {
   city?: string;
   email?: string;
   phone?: string;
-
-  // bonus (si tu veux l'éditer)
   nickname?: string;
 };
 
@@ -73,13 +68,13 @@ export type OnlineLobbySettings = {
 
 export type OnlineLobby = {
   id: string;
-  code: string; // "4F9Q"
-  mode: string; // "x01"
+  code: string;
+  mode: string;
   maxPlayers: number;
   hostUserId: string;
   hostNickname: string;
   settings: OnlineLobbySettings;
-  status: string; // "waiting" | "running" | ...
+  status: string;
   createdAt: string;
 };
 
@@ -87,11 +82,9 @@ export type OnlineLobby = {
 // Config / helpers locaux
 // --------------------------------------------
 
-// ⚠️ si tu avais un mode mock historique, garde-le
 const USE_MOCK = false;
 
 // ✅ IMPORTANT : on coupe les MATCHS ONLINE tant que tu n’as pas une table dédiée
-// (évite les erreurs "could not find table public.matches_online")
 const ONLINE_MATCHES_ENABLED = false;
 
 const LS_AUTH_KEY = "dc_online_auth_supabase_v1";
@@ -134,7 +127,6 @@ function getSiteUrl(): string {
 }
 
 function getEmailConfirmRedirect(): string {
-  // ⚠️ IMPORTANT : callback en hash car tu utilises HashRouter (#/)
   return `${getSiteUrl()}/#/auth/callback`;
 }
 
@@ -184,7 +176,6 @@ type SupabaseProfileRow = {
   created_at: string | null;
   updated_at: string | null;
 
-  // infos perso (si présentes)
   surname?: string | null;
   first_name?: string | null;
   last_name?: string | null;
@@ -193,7 +184,6 @@ type SupabaseProfileRow = {
   email?: string | null;
   phone?: string | null;
 
-  // compat
   bio?: string | null;
   stats?: any | null;
 };
@@ -301,7 +291,7 @@ async function buildAuthSessionFromSupabase(): Promise<AuthSession | null> {
   } else if (profileRow) {
     profile = mapProfile(profileRow as unknown as SupabaseProfileRow);
   } else {
-    // création profil au 1er login
+    // ✅ création profil au 1er login (nécessite RLS policy "insert own row")
     const { data: created, error: createError } = await supabase
       .from("profiles")
       .insert({
@@ -316,6 +306,8 @@ async function buildAuthSessionFromSupabase(): Promise<AuthSession | null> {
 
     if (createError) {
       console.warn("[onlineApi] profiles insert error", createError);
+      // fallback: on ne casse pas l'app
+      profile = null;
     } else {
       profile = mapProfile(created as unknown as SupabaseProfileRow);
     }
@@ -344,15 +336,6 @@ async function signup(payload: SignupPayload): Promise<AuthSession> {
     throw new Error("Pour créer un compte online, email et mot de passe sont requis.");
   }
 
-  // ✅ Si déjà connecté, on évite de recréer un compte par accident
-  try {
-    const { data: existing } = await supabase.auth.getSession();
-    if (existing?.session?.user) {
-      const s = await buildAuthSessionFromSupabase();
-      if (s) return s;
-    }
-  } catch {}
-
   const { data, error } = await supabase.auth.signUp({
     email,
     password,
@@ -372,18 +355,18 @@ async function signup(payload: SignupPayload): Promise<AuthSession> {
   const createdSession = data?.session;
 
   if (!createdSession) {
-    // ✅ CRITIQUE : on NE persiste PAS un "pending" en localStorage
-    // sinon l'app croit être connectée alors que non.
-    return {
+    const pending: AuthSession = {
       token: "",
       user: {
-        id: createdUser?.id || "",
+        id: createdUser?.id || "pending",
         email,
         nickname,
         createdAt: now(),
       },
       profile: null,
     };
+    saveAuthToLS(pending);
+    return pending;
   }
 
   const live = await buildAuthSessionFromSupabase();
@@ -412,15 +395,11 @@ async function login(payload: LoginPayload): Promise<AuthSession> {
 }
 
 async function restoreSession(): Promise<AuthSession | null> {
-  // Source de vérité : Supabase
   const live = await buildAuthSessionFromSupabase();
-
-  // Si pas de session Supabase, on purge le cache local
   if (!live?.user || !live.token) {
     saveAuthToLS(null);
     return null;
   }
-
   return live;
 }
 
@@ -435,7 +414,7 @@ async function getCurrentSession(): Promise<AuthSession | null> {
 }
 
 // --------------------------------------------
-// Fonctions publiques : GESTION COMPTE
+// Gestion compte
 // --------------------------------------------
 
 async function requestPasswordReset(email: string): Promise<void> {
@@ -464,14 +443,13 @@ async function updateEmail(newEmail: string): Promise<void> {
 }
 
 // --------------------------------------------
-// Fonctions publiques : PROFIL
+// Profil
 // --------------------------------------------
 
 async function updateProfile(patch: UpdateProfilePayload): Promise<OnlineProfile> {
   const { user } = await ensureAuthedUser();
   const userId = user.id;
 
-  // DB patch → snake_case
   const dbPatch: any = { updated_at: new Date().toISOString() };
 
   if (patch.nickname !== undefined) dbPatch.nickname = patch.nickname;
@@ -501,7 +479,6 @@ async function updateProfile(patch: UpdateProfilePayload): Promise<OnlineProfile
 
   const profile = mapProfile(data as unknown as SupabaseProfileRow);
 
-  // met à jour cache LS si on a une session
   const current = loadAuthFromLS();
   if (current?.user?.id === userId) {
     saveAuthToLS({ ...current, profile });
@@ -510,8 +487,7 @@ async function updateProfile(patch: UpdateProfilePayload): Promise<OnlineProfile
   return profile;
 }
 
-// ✅ AVATAR : Storage bucket "avatars" (public)
-// Path : {userId}/avatar.ext
+// ✅ AVATAR : Storage bucket "avatars"
 async function uploadAvatarImage(args: { dataUrl: string }): Promise<{ publicUrl: string; path: string }> {
   const { user } = await ensureAuthedUser();
 
@@ -540,9 +516,8 @@ async function uploadAvatarImage(args: { dataUrl: string }): Promise<{ publicUrl
 }
 
 // ============================================================
-// 2) CLOUD STORE SNAPSHOT (SOURCE UNIQUE DES DONNÉES)
-// ✅ Table : "user_store"
-// colonnes attendues: user_id (uuid), version (int), updated_at (timestamptz), data (jsonb)
+// 2) CLOUD STORE SNAPSHOT (SOURCE UNIQUE)
+// Table : user_store (user_id, version, updated_at, data)
 // ============================================================
 
 type UserStoreRow = {
@@ -608,7 +583,7 @@ async function pushStoreSnapshot(payload: any, version = 1): Promise<void> {
 }
 
 // ============================================================
-// 3) Salons X01 ONLINE (Supabase "online_lobbies")
+// 3) Salons X01 ONLINE (table: online_lobbies)
 // ============================================================
 
 function generateLobbyCode(): string {
@@ -619,7 +594,7 @@ function generateLobbyCode(): string {
 }
 
 async function createLobby(args: {
-  mode: string; // "x01"
+  mode: string;
   maxPlayers: number;
   settings: OnlineLobbySettings;
 }): Promise<OnlineLobby> {
