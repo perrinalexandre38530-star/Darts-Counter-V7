@@ -1863,8 +1863,13 @@ function AppGate({
 }) {
   const { status, ready } = useAuthOnline();
 
-  // pages qui nécessitent une session Supabase active
-  const needsSession = tab === "stats_online" || tab === "x01_online_setup" || tab === "online";
+  // ✅ IMPORTANT: ton BottomNav utilise "friends" comme onglet "Online"
+  // -> donc il faut aussi protéger "friends"
+  const needsSession =
+    tab === "stats_online" ||
+    tab === "x01_online_setup" ||
+    tab === "online" ||
+    tab === "friends";
 
   // pendant les flows auth, on ne gate pas
   const isAuthFlow =
@@ -1883,10 +1888,9 @@ function AppGate({
     );
   }
 
-  // ✅ Redirect automatique vers AuthStart si une page online est demandée sans session
   React.useEffect(() => {
     if (!isAuthFlow && needsSession && status !== "signed_in") {
-      go("auth_start");
+      go("account_start"); // ✅ flow unique
     }
   }, [isAuthFlow, needsSession, status, go]);
 
