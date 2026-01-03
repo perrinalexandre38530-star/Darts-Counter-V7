@@ -23,9 +23,29 @@ let lastHash = "";
 let running = false;
 let pushing = false;
 
-function stableStringify(obj: any) {
-  // stable minimal (niveau 1) : suffisant pour un "change detector"
-  return JSON.stringify(obj, Object.keys(obj || {}).sort());
+// ✅ FIX CRITIQUE : stringify stable SANS filtre (le 2e arg de JSON.stringify = FILTER)
+// -> sinon tu perds des clés comme dc_dart_sets_v1 dans localStorage => hash ne change jamais
+function stableStringify(value: any): string {
+  const seen = new WeakSet();
+
+  const walk = (v: any): any => {
+    if (v === null || v === undefined) return v;
+    if (typeof v !== "object") return v;
+
+    // sécurité anti-cycles (au cas où)
+    if (seen.has(v)) return "[Circular]";
+    seen.add(v);
+
+    if (Array.isArray(v)) return v.map(walk);
+
+    const out: any = {};
+    for (const k of Object.keys(v).sort()) {
+      out[k] = walk(v[k]);
+    }
+    return out;
+  };
+
+  return JSON.stringify(walk(value));
 }
 
 function hashString(s: string) {

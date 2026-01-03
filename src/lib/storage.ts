@@ -163,6 +163,7 @@ export async function storageEstimate() {
 /* ============================================================
    ✅ CLOUD SNAPSHOT (LOCAL) — inclut IndexedDB + localStorage(dc_* ET dc-*)
 ============================================================ */
+
 // ✅ IMPORTANT : ton app a des clés en dc_ ET en dc- selon les versions
 const LS_PREFIXES = ["dc_", "dc-"] as const;
 function isDcKey(k: string) {
@@ -185,22 +186,36 @@ const LS_EXCLUDE = new Set<string>([
 ]);
 
 /**
- * ✅ PATCH IMPORTANT:
- * Certaines features (dartSetsStore, prefs legacy, etc.) écrivent DIRECTEMENT dans localStorage.
- * Avant: ces changements n'étaient pas “vus” par la sync cloud (emitCloudChange appelé seulement via setKV/delKV).
- * Maintenant: on hook localStorage.setItem/removeItem/clear pour émettre un signal cloud pour les clés dc_* / dc-*
+ * ✅ IMPORTANT (anti boucle cloud):
+ * Pendant un restore/import cloud, on ne doit PAS spammer emitCloudChange().
+ * => mute global pour IDB + localStorage
  */
-let __suppressCloudLsEvents = 0;
+let __suppressCloudEvents = 0;
 
-function withSuppressedCloudLsEvents<T>(fn: () => T): T {
-  __suppressCloudLsEvents++;
+function withSuppressedCloudEvents<T>(fn: () => T): T {
+  __suppressCloudEvents++;
   try {
     return fn();
   } finally {
-    __suppressCloudLsEvents = Math.max(0, __suppressCloudLsEvents - 1);
+    __suppressCloudEvents = Math.max(0, __suppressCloudEvents - 1);
   }
 }
 
+function shouldEmitCloudForKey(k: string) {
+  if (__suppressCloudEvents > 0) return false;
+  if (!k) return false;
+  // On limite aux clés “dc” (évite bruit)
+  if (!isDcKey(k) && k !== STORE_KEY) return false;
+  if (LS_EXCLUDE.has(k)) return false;
+  return true;
+}
+
+/**
+ * ✅ PATCH IMPORTANT:
+ * Certaines features écrivent DIRECTEMENT dans localStorage.
+ * Maintenant: on hook localStorage.setItem/removeItem/clear pour émettre un signal cloud
+ * pour les clés dc_* / dc-* (hors exclude) — MAIS on respecte le mute global.
+ */
 function patchLocalStorageForCloud() {
   if (typeof window === "undefined") return;
 
@@ -216,10 +231,8 @@ function patchLocalStorageForCloud() {
   ls.setItem = ((key: string, value: string) => {
     origSetItem(key, value);
     try {
-      if (__suppressCloudLsEvents > 0) return;
-      if (!key) return;
-      if (!isDcKey(key)) return;
-      if (LS_EXCLUDE.has(key)) return;
+      if (!shouldEmitCloudForKey(key)) return;
+      // localStorage: signal cloud
       emitCloudChange(`ls:set:${key}`);
     } catch {}
   }) as any;
@@ -227,10 +240,7 @@ function patchLocalStorageForCloud() {
   ls.removeItem = ((key: string) => {
     origRemoveItem(key);
     try {
-      if (__suppressCloudLsEvents > 0) return;
-      if (!key) return;
-      if (!isDcKey(key)) return;
-      if (LS_EXCLUDE.has(key)) return;
+      if (!shouldEmitCloudForKey(key)) return;
       emitCloudChange(`ls:del:${key}`);
     } catch {}
   }) as any;
@@ -238,7 +248,7 @@ function patchLocalStorageForCloud() {
   ls.clear = (() => {
     origClear();
     try {
-      if (__suppressCloudLsEvents > 0) return;
+      if (__suppressCloudEvents > 0) return;
       emitCloudChange("ls:clear");
     } catch {}
   }) as any;
@@ -269,8 +279,8 @@ function importLocalStorageDc(map: Record<string, string>) {
   if (typeof window === "undefined") return;
   if (!map || typeof map !== "object") return;
 
-  // ✅ important: on supprime les events pendant un import (sinon tu push pendant un restore cloud)
-  withSuppressedCloudLsEvents(() => {
+  // ✅ pas d'events cloud pendant un import
+  withSuppressedCloudEvents(() => {
     for (const [k, v] of Object.entries(map)) {
       if (!k) continue;
       if (!isDcKey(k)) continue;
@@ -295,7 +305,7 @@ function clearLocalStorageDc(): void {
       toDelete.push(k);
     }
 
-    withSuppressedCloudLsEvents(() => {
+    withSuppressedCloudEvents(() => {
       for (const k of toDelete) {
         try {
           window.localStorage.removeItem(k);
@@ -552,8 +562,8 @@ export async function setKV(key: string, value: any): Promise<void> {
 
     await idbSet(key, payload);
 
-    // ✅ signal cloud après écriture OK
-    emitCloudChange(`idb:${key}`);
+    // ✅ signal cloud après écriture OK (si pas en restore)
+    if (shouldEmitCloudForKey(key)) emitCloudChange(`idb:${key}`);
   } catch (err) {
     console.error("[storage] setKV error:", key, err);
   }
@@ -564,8 +574,8 @@ export async function delKV(key: string): Promise<void> {
   try {
     await idbDel(key);
 
-    // ✅ signal cloud après suppression OK
-    emitCloudChange(`idb:${key}`);
+    // ✅ signal cloud après suppression OK (si pas en restore)
+    if (shouldEmitCloudForKey(key)) emitCloudChange(`idb:${key}`);
   } catch (err) {
     console.warn("[storage] delKV error:", key, err);
   }
@@ -602,15 +612,16 @@ export async function exportAll(): Promise<any> {
 export async function importAll(dump: any): Promise<void> {
   if (!dump) return;
 
+  // ✅ Nouveau format wrapper
   if (dump._v === 1 && dump.idb) {
     const idbDump = dump.idb || {};
     const lsDump = dump.localStorage || {};
 
-    // ✅ on évite d'émettre des centaines d'events pendant un import
-    await withSuppressedCloudLsEvents(async () => {
+    // ✅ Pas d'emitCloudChange pendant restore
+    await withSuppressedCloudEvents(async () => {
       for (const [k, v] of Object.entries(idbDump)) {
         try {
-          await setKV(k, v);
+          await setKV(String(k), v);
         } catch {}
       }
       importLocalStorageDc(lsDump);
@@ -619,11 +630,12 @@ export async function importAll(dump: any): Promise<void> {
     return;
   }
 
+  // ✅ Ancien format fallback : dump = idb map
   if (typeof dump === "object") {
-    await withSuppressedCloudLsEvents(async () => {
+    await withSuppressedCloudEvents(async () => {
       for (const [k, v] of Object.entries(dump)) {
         try {
-          await setKV(k, v);
+          await setKV(String(k), v);
         } catch {}
       }
     });
@@ -646,12 +658,19 @@ export async function importCloudSnapshot(
 ): Promise<void> {
   const mode = opts?.mode ?? "replace";
 
-  if (mode === "replace") {
-    await nukeAll();
-    clearLocalStorageDc();
-  }
+  // ✅ Tout le restore se fait en mute (sinon debounce/push part en boucle)
+  await withSuppressedCloudEvents(async () => {
+    if (mode === "replace") {
+      await nukeAll();
+      clearLocalStorageDc();
+    }
+    await importAll(dump);
+  });
 
-  await importAll(dump);
+  // ✅ une seule notif cloud “propre” à la fin (optionnel)
+  try {
+    emitCloudChange("cloud:import:done");
+  } catch {}
 }
 
 export async function nukeAll(): Promise<void> {
