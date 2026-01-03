@@ -184,100 +184,6 @@ type FriendLike = {
   };
 };
 
-function DebugAvatar({
-  size,
-  src,
-  label,
-}: {
-  size: number;
-  src?: string | null;
-  label?: string;
-}) {
-  const [ok, setOk] = React.useState(false);
-  const [err, setErr] = React.useState(false);
-
-  const s = (src || "").trim();
-
-  React.useEffect(() => {
-    setOk(false);
-    setErr(false);
-  }, [s]);
-
-  return (
-    <div
-      style={{
-        width: size,
-        height: size,
-        borderRadius: 999,
-        overflow: "hidden",
-        position: "relative",
-        background: "#111118",
-        outline: "2px solid rgba(255,0,0,.35)", // ✅ tu verras bien le conteneur
-      }}
-    >
-      {s && !err ? (
-        <img
-          key={s} // ✅ force rerender si URL change
-          src={s}
-          alt=""
-          onLoad={() => {
-            console.log("[DebugAvatar] ✅ IMG LOAD OK", s);
-            setOk(true);
-            setErr(false);
-          }}
-          onError={(e) => {
-            console.warn("[DebugAvatar] ❌ IMG ERROR", s, e);
-            setErr(true);
-            setOk(false);
-          }}
-          style={{
-            position: "absolute",
-            inset: 0,
-            width: "100%",
-            height: "100%",
-            objectFit: "cover",
-            objectPosition: "center",
-            zIndex: 1,
-            opacity: ok ? 1 : 1, // ✅ pas de fade, on veut voir direct
-          }}
-        />
-      ) : (
-        <div
-          style={{
-            position: "absolute",
-            inset: 0,
-            display: "grid",
-            placeItems: "center",
-            fontWeight: 900,
-            fontSize: Math.max(14, Math.floor(size * 0.42)),
-            color: "#F6C256",
-            zIndex: 2,
-          }}
-        >
-          {(label || "?").slice(0, 1).toUpperCase()}
-        </div>
-      )}
-
-      {/* mini badge debug */}
-      <div
-        style={{
-          position: "absolute",
-          bottom: 4,
-          left: 4,
-          zIndex: 3,
-          fontSize: 9,
-          padding: "2px 6px",
-          borderRadius: 999,
-          background: "rgba(0,0,0,.7)",
-          border: "1px solid rgba(255,255,255,.2)",
-          color: "#fff",
-        }}
-      >
-        {s ? (err ? "ERR" : ok ? "OK" : "LOAD") : "EMPTY"}
-      </div>
-    </div>
-  );
-}
 
 // ============================================
 // ✅ PROFILES CACHE (anti wipe store)
@@ -1731,10 +1637,11 @@ function ActiveProfileBlock({
           </div>
         )}
 
-        <DebugAvatar
+        <ProfileAvatar
           size={AVATAR}
-          src={avatarSrc}
+          dataUrl={avatarSrc}
           label={active?.name?.[0]?.toUpperCase() || "?"}
+          showStars={false}
         />
       </div>
 
