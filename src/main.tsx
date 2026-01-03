@@ -1,6 +1,7 @@
 // ============================================
 // src/main.tsx — Entrée principale Cloudflare + React + Tailwind
 // ✅ NEW: SAFE MODE anti "Aïe aïe aïe" (SW/caches)
+// ✅ NEW: ONE-SHOT PURGE (même sans crash) pour virer SW/caches foireux
 // ============================================
 import React from "react";
 import { createRoot } from "react-dom/client";
@@ -51,7 +52,11 @@ function isSafeMode(): boolean {
   }
 }
 
+/* ============================================================
+   SW/CACHES UTILITIES
+============================================================ */
 async function disableAllServiceWorkersAndCaches() {
+  // 1) unregister SW
   try {
     if ("serviceWorker" in navigator) {
       const regs = await navigator.serviceWorker.getRegistrations();
@@ -59,6 +64,7 @@ async function disableAllServiceWorkersAndCaches() {
     }
   } catch {}
 
+  // 2) delete caches
   try {
     if (typeof caches !== "undefined" && (caches as any).keys) {
       const keys = await (caches as any).keys();
@@ -67,6 +73,33 @@ async function disableAllServiceWorkersAndCaches() {
   } catch {}
 }
 
+/* ============================================================
+   ONE-SHOT PURGE (même sans crash)
+   -> exécute UNE fois: unregister SW + delete caches + reload
+   -> utile quand l'app est bloquée (pending / navigation morte)
+============================================================ */
+const SW_PURGE_ONCE_KEY = "dc_sw_purge_once_v1";
+
+async function purgeSWAndCachesOnce() {
+  try {
+    // évite boucle de reload
+    if (localStorage.getItem(SW_PURGE_ONCE_KEY) === "1") return;
+
+    // marque avant purge pour ne pas boucler si reload foire
+    localStorage.setItem(SW_PURGE_ONCE_KEY, "1");
+
+    await disableAllServiceWorkersAndCaches();
+
+    // reload dur
+    window.location.reload();
+  } catch (e) {
+    console.warn("[SW] purge once failed:", e);
+  }
+}
+
+/* ============================================================
+   UI boot screens
+============================================================ */
 function bootScreen(title: string, msg: string) {
   const el = document.getElementById("root") || document.body;
   el.innerHTML = `
@@ -153,12 +186,12 @@ function bootCrashScreen(payload: any) {
    Service Worker policy (avec SAFE MODE)
 ============================================================ */
 async function registerServiceWorkerProd() {
-  // ✅ si SAFE MODE : on coupe tout
+  // ✅ si SAFE MODE : on coupe tout et on affiche écran
   if (isSafeMode()) {
     await disableAllServiceWorkersAndCaches();
     bootScreen(
       "🧯 SAFE MODE",
-      "Service Worker + caches désactivés (anti crash). Si l’app marche ici, le problème vient du SW/cache."
+      "Service Worker + caches désactivés (anti crash). Si l’app marche ici, le problème venait du SW/cache."
     );
     return;
   }
@@ -167,7 +200,7 @@ async function registerServiceWorkerProd() {
 
   window.addEventListener("load", async () => {
     try {
-      // 1) Désenregistre tout SW hérité
+      // 1) Désenregistre tout SW hérité (sauf /sw.js)
       const regs = await navigator.serviceWorker.getRegistrations();
       await Promise.all(
         regs
@@ -202,18 +235,7 @@ async function registerServiceWorkerProd() {
 
 async function devUnregisterSW() {
   // ✅ DEV: on désactive TOUJOURS le SW + caches (évite 2 SW actifs, vieux chunks, intro bloquée)
-  if ("serviceWorker" in navigator) {
-    try {
-      const regs = await navigator.serviceWorker.getRegistrations();
-      await Promise.all(regs.map((r) => r.unregister().catch(() => {})));
-    } catch {}
-  }
-  if (typeof caches !== "undefined" && (caches as any).keys) {
-    try {
-      const keys = await (caches as any).keys();
-      await Promise.all(keys.map((k: string) => caches.delete(k)));
-    } catch {}
-  }
+  await disableAllServiceWorkersAndCaches();
 }
 
 /* ============================================================
@@ -238,6 +260,16 @@ async function devUnregisterSW() {
 ============================================================ */
 (async () => {
   try {
+    // ✅ IMPORTANT: si ton app est "bloquée" (pending, nav morte),
+    // active une purge ONE-SHOT en mettant cette clé à "0" dans localStorage
+    // puis reload. (par défaut, on ne purge pas en boucle)
+    //
+    // Pour forcer une purge maintenant: supprime dc_sw_purge_once_v1 dans localStorage puis reload.
+    //
+    // ⚠️ OPTION: si tu veux purger automatiquement à chaque nouveau déploiement,
+    // tu peux versionner la clé: "dc_sw_purge_once_v1_build_2026_01_03" etc.
+    await purgeSWAndCachesOnce();
+
     if (import.meta.env.PROD) await registerServiceWorkerProd();
     else await devUnregisterSW();
 
