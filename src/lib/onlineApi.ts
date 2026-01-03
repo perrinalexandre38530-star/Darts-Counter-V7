@@ -1,13 +1,11 @@
 // ============================================================
 // src/lib/onlineApi.ts
 // API Mode Online (V7 STABLE)
-//
 // - Auth / Profil → Supabase (table: profiles)
 // - Snapshot cloud du store → Supabase (table: user_store)
 // - Salons X01 (lobbies) → Supabase (table: online_lobbies)
-//
 // ✅ IMPORTANT : AUCUNE référence à profiles_online / matches_online
-// ✅ Matchs online : désactivés (fallback safe) tant que tu ne crées pas une table dédiée
+// ✅ Matchs online : désactivés (fallback safe)
 // ============================================================
 
 import { supabase } from "./supabaseClient";
@@ -18,7 +16,7 @@ import type { UserAuth, OnlineProfile, OnlineMatch } from "./onlineTypes";
 // --------------------------------------------
 
 export type AuthSession = {
-  token: string; // "" si signup en attente de confirmation email
+  token: string; // peut être "" si signup en attente de confirmation email
   user: UserAuth;
   profile: OnlineProfile | null;
 };
@@ -39,6 +37,7 @@ export type UpdateProfilePayload = {
   displayName?: string;
   avatarUrl?: string;
   country?: string;
+
   surname?: string;
   firstName?: string;
   lastName?: string;
@@ -46,6 +45,7 @@ export type UpdateProfilePayload = {
   city?: string;
   email?: string;
   phone?: string;
+
   nickname?: string;
 };
 
@@ -81,10 +81,12 @@ export type OnlineLobby = {
 };
 
 // --------------------------------------------
-// Config / helpers
+// Config
 // --------------------------------------------
 
 const USE_MOCK = false;
+
+// Matchs online désactivés tant que tu n’as pas de table dédiée
 const ONLINE_MATCHES_ENABLED = false;
 
 const LS_AUTH_KEY = "dc_online_auth_supabase_v1";
@@ -104,7 +106,8 @@ function safeParse<T>(raw: string | null, fallback: T): T {
 
 function loadAuthFromLS(): AuthSession | null {
   if (typeof window === "undefined") return null;
-  return safeParse<AuthSession | null>(window.localStorage.getItem(LS_AUTH_KEY), null);
+  const raw = window.localStorage.getItem(LS_AUTH_KEY);
+  return safeParse<AuthSession | null>(raw, null);
 }
 
 function saveAuthToLS(session: AuthSession | null) {
@@ -113,7 +116,7 @@ function saveAuthToLS(session: AuthSession | null) {
   else window.localStorage.setItem(LS_AUTH_KEY, JSON.stringify(session));
 }
 
-// ✅ Redirects STABLES (Cloudflare Pages)
+// ✅ Redirects stables (Cloudflare Pages)
 function getSiteUrl(): string {
   const fromEnv =
     (typeof import.meta !== "undefined" &&
@@ -133,9 +136,9 @@ function getResetPasswordRedirect(): string {
   return `${getSiteUrl()}/#/auth/reset`;
 }
 
-// --------------------------------------------
-// Helpers image
-// --------------------------------------------
+// ============================================================
+// Image helpers (dataUrl -> Blob)
+// ============================================================
 
 function dataUrlToBlob(dataUrl: string): Blob {
   const parts = String(dataUrl || "").split(",");
@@ -162,7 +165,7 @@ function extFromMime(mime: string) {
 }
 
 // ============================================================
-// DB mapping: profiles
+// DB mapping
 // ============================================================
 
 type SupabaseProfileRow = {
@@ -215,7 +218,6 @@ function mapProfile(row: SupabaseProfileRow): OnlineProfile {
   };
 }
 
-// Lobbies : online_lobbies
 type SupabaseLobbyRow = {
   id: string;
   code: string;
@@ -242,9 +244,9 @@ function mapLobbyRow(row: SupabaseLobbyRow): OnlineLobby {
   };
 }
 
-// --------------------------------------------
+// ============================================================
 // Auth helpers
-// --------------------------------------------
+// ============================================================
 
 async function ensureAuthedUser() {
   const { data, error } = await supabase.auth.getSession();
@@ -252,6 +254,47 @@ async function ensureAuthedUser() {
   const user = data?.session?.user;
   if (!user) throw new Error("Non authentifié (reconnecte-toi).");
   return { user, session: data.session! };
+}
+
+async function getOrCreateProfile(userId: string, fallbackNickname: string): Promise<OnlineProfile | null> {
+  // SELECT
+  const { data: profileRow, error: selErr } = await supabase
+    .from("profiles")
+    .select("*")
+    .eq("id", userId)
+    .limit(1)
+    .maybeSingle();
+
+  if (selErr) {
+    console.warn("[onlineApi] profiles select error", selErr);
+    return null;
+  }
+
+  if (profileRow) return mapProfile(profileRow as any);
+
+  // CREATE (upsert pour être safe)
+  const { data: created, error: upErr } = await supabase
+    .from("profiles")
+    .upsert(
+      {
+        id: userId,
+        nickname: fallbackNickname,
+        display_name: fallbackNickname,
+        country: null,
+        avatar_url: null,
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: "id" }
+    )
+    .select()
+    .single();
+
+  if (upErr) {
+    console.warn("[onlineApi] profiles upsert error", upErr);
+    return null;
+  }
+
+  return mapProfile(created as any);
 }
 
 async function buildAuthSessionFromSupabase(): Promise<AuthSession | null> {
@@ -267,45 +310,16 @@ async function buildAuthSessionFromSupabase(): Promise<AuthSession | null> {
 
   const meta = (user.user_metadata || {}) as any;
 
+  const nickname = meta?.nickname || user.email || "Player";
+
   const userAuth: UserAuth = {
     id: user.id,
     email: user.email ?? undefined,
-    nickname: meta?.nickname || user.email || "Player",
+    nickname,
     createdAt: user.created_at ? Date.parse(user.created_at) : now(),
   };
 
-  const { data: profileRow, error: profileError } = await supabase
-    .from("profiles")
-    .select("*")
-    .eq("id", user.id)
-    .limit(1)
-    .maybeSingle();
-
-  let profile: OnlineProfile | null = null;
-
-  if (profileError) {
-    console.warn("[onlineApi] profiles select error", profileError);
-  } else if (profileRow) {
-    profile = mapProfile(profileRow as unknown as SupabaseProfileRow);
-  } else {
-    const { data: created, error: createError } = await supabase
-      .from("profiles")
-      .insert({
-        id: user.id,
-        nickname: meta?.nickname ?? user.email ?? "Player",
-        display_name: meta?.nickname ?? user.email ?? "Player",
-        country: null,
-        avatar_url: null,
-      })
-      .select()
-      .single();
-
-    if (createError) {
-      console.warn("[onlineApi] profiles insert error", createError);
-    } else {
-      profile = mapProfile(created as unknown as SupabaseProfileRow);
-    }
-  }
+  const profile = await getOrCreateProfile(user.id, nickname);
 
   const authSession: AuthSession = {
     token: session?.access_token ?? "",
@@ -317,9 +331,9 @@ async function buildAuthSessionFromSupabase(): Promise<AuthSession | null> {
   return authSession;
 }
 
-// --------------------------------------------
-// Public: AUTH
-// --------------------------------------------
+// ============================================================
+// Public AUTH
+// ============================================================
 
 async function signup(payload: SignupPayload): Promise<AuthSession> {
   const email = payload.email?.trim();
@@ -341,13 +355,16 @@ async function signup(payload: SignupPayload): Promise<AuthSession> {
 
   if (error) throw new Error(error.message);
 
-  const createdUser = data?.user;
-  const createdSession = data?.session;
-
-  if (!createdSession) {
+  // Si email confirmation ON : session null au début
+  if (!data?.session) {
     const pending: AuthSession = {
       token: "",
-      user: { id: createdUser?.id || "pending", email, nickname, createdAt: now() },
+      user: {
+        id: data?.user?.id || "pending",
+        email,
+        nickname,
+        createdAt: now(),
+      },
       profile: null,
     };
     saveAuthToLS(pending);
@@ -362,7 +379,10 @@ async function signup(payload: SignupPayload): Promise<AuthSession> {
 async function login(payload: LoginPayload): Promise<AuthSession> {
   const email = payload.email?.trim();
   const password = payload.password?.trim();
-  if (!email || !password) throw new Error("Email et mot de passe sont requis pour se connecter.");
+
+  if (!email || !password) {
+    throw new Error("Email et mot de passe sont requis pour se connecter.");
+  }
 
   const { error } = await supabase.auth.signInWithPassword({ email, password });
   if (error) throw new Error(error.message);
@@ -391,18 +411,23 @@ async function getCurrentSession(): Promise<AuthSession | null> {
   return await restoreSession();
 }
 
-// --------------------------------------------
-// Public: account utils
-// --------------------------------------------
+// Petit helper pratique pour les écrans “profil”
+async function getProfile(): Promise<OnlineProfile | null> {
+  const s = await restoreSession();
+  return s?.profile ?? null;
+}
+
+// ============================================================
+// Gestion compte
+// ============================================================
 
 async function requestPasswordReset(email: string): Promise<void> {
   const trimmed = email.trim();
-  if (!trimmed) throw new Error("Adresse mail requise.");
+  if (!trimmed) throw new Error("Adresse mail requise pour réinitialiser le mot de passe.");
 
   const { error } = await supabase.auth.resetPasswordForEmail(trimmed, {
     redirectTo: getResetPasswordRedirect(),
   });
-
   if (error) throw new Error(error.message);
 }
 
@@ -414,9 +439,37 @@ async function updateEmail(newEmail: string): Promise<void> {
   if (error) throw new Error(error.message);
 }
 
-// --------------------------------------------
-// Public: profile
-// --------------------------------------------
+// ✅ Suppression compte : passe par une Edge Function (service role)
+async function deleteAccount(): Promise<void> {
+  const { user } = await ensureAuthedUser();
+
+  // IMPORTANT : cette function DOIT exister côté Supabase :
+  // supabase/functions/delete-account
+  // et supprimer :
+  // - auth user
+  // - profiles row
+  // - user_store row
+  // - storage avatars folder (optionnel)
+  const { data, error } = await supabase.functions.invoke("delete-account", {
+    body: { userId: user.id },
+  });
+
+  if (error) {
+    console.error("[onlineApi] deleteAccount invoke error", error);
+    throw new Error(error.message || "Suppression impossible (Edge Function).");
+  }
+
+  // Certains environnements renvoient { error: "..."} dans data
+  if ((data as any)?.error) {
+    throw new Error((data as any).error);
+  }
+
+  await logout();
+}
+
+// ============================================================
+// Profil
+// ============================================================
 
 async function updateProfile(patch: UpdateProfilePayload): Promise<OnlineProfile> {
   const { user } = await ensureAuthedUser();
@@ -446,14 +499,18 @@ async function updateProfile(patch: UpdateProfilePayload): Promise<OnlineProfile
 
   if (error) throw new Error(error.message);
 
-  const profile = mapProfile(data as unknown as SupabaseProfileRow);
+  const profile = mapProfile(data as any);
 
   const current = loadAuthFromLS();
-  if (current?.user?.id === userId) saveAuthToLS({ ...current, profile });
+  if (current?.user?.id === userId) {
+    saveAuthToLS({ ...current, profile });
+  }
 
   return profile;
 }
 
+// Avatar storage: bucket "avatars" (public)
+// path: {userId}/avatar.ext
 async function uploadAvatarImage(args: { dataUrl: string }): Promise<{ publicUrl: string; path: string }> {
   const { user } = await ensureAuthedUser();
 
@@ -474,11 +531,12 @@ async function uploadAvatarImage(args: { dataUrl: string }): Promise<{ publicUrl
   if (!publicUrl) throw new Error("Impossible de récupérer l’URL publique de l’avatar.");
 
   await updateProfile({ avatarUrl: publicUrl });
+
   return { publicUrl, path };
 }
 
 // ============================================================
-// Cloud store snapshot: user_store
+// Cloud store snapshot (user_store)
 // ============================================================
 
 type UserStoreRow = {
@@ -505,7 +563,10 @@ async function pullStoreSnapshot(): Promise<{
       .limit(1)
       .maybeSingle();
 
-    if (!data && !error) return { status: "not_found", payload: null, updatedAt: null, version: null };
+    if (!data && !error) {
+      return { status: "not_found", payload: null, updatedAt: null, version: null };
+    }
+
     if (error) return { status: "error", error };
 
     return {
@@ -534,7 +595,7 @@ async function pushStoreSnapshot(payload: any, version = 1): Promise<void> {
 }
 
 // ============================================================
-// Lobbies: online_lobbies
+// Lobbies (online_lobbies)
 // ============================================================
 
 function generateLobbyCode(): string {
@@ -550,6 +611,7 @@ async function createLobby(args: {
   settings: OnlineLobbySettings;
 }): Promise<OnlineLobby> {
   const { user } = await ensureAuthedUser();
+
   const meta = (user.user_metadata || {}) as any;
   const nickname = meta.nickname || meta.displayName || user.email || "Hôte";
 
@@ -572,17 +634,17 @@ async function createLobby(args: {
       .select("*")
       .single();
 
-    if (!error && data) return mapLobbyRow(data as SupabaseLobbyRow);
+    if (!error && data) return mapLobbyRow(data as any);
 
     lastError = error;
-    if (error && (error as any).code === "23505") continue;
+    if (error && (error as any).code === "23505") continue; // code déjà pris
     break;
   }
 
-  throw new Error(lastError?.message || "Impossible de créer un salon online.");
+  throw new Error(lastError?.message || "Impossible de créer un salon online pour le moment.");
 }
 
-async function joinLobby(args: { code: string; userId: string; nickname: string }): Promise<OnlineLobby> {
+async function joinLobby(args: { code: string }): Promise<OnlineLobby> {
   const codeUpper = args.code.trim().toUpperCase();
 
   const { data, error } = await supabase
@@ -593,13 +655,13 @@ async function joinLobby(args: { code: string; userId: string; nickname: string 
     .limit(1)
     .maybeSingle();
 
-  if (error) throw new Error(error.message || "Impossible de rejoindre ce salon.");
+  if (error) throw new Error(error.message || "Impossible de rejoindre ce salon pour le moment.");
   if (!data) throw new Error("Aucun salon trouvé avec ce code.");
-  return mapLobbyRow(data as SupabaseLobbyRow);
+  return mapLobbyRow(data as any);
 }
 
 // ============================================================
-// Online matches: disabled safe fallback
+// Matchs online — désactivés (fallback safe)
 // ============================================================
 
 async function uploadMatch(_payload: UploadMatchPayload): Promise<OnlineMatch> {
@@ -623,33 +685,45 @@ async function listMatches(_limit = 50): Promise<OnlineMatch[]> {
   throw new Error("Online matches disabled");
 }
 
-// --------------------------------------------
+// ============================================================
 // Export
-// --------------------------------------------
+// ============================================================
 
 export const onlineApi = {
+  // Auth
   signup,
   login,
   restoreSession,
   logout,
   getCurrentSession,
 
+  // Profil (helper)
+  getProfile,
+
+  // Gestion compte
   requestPasswordReset,
   updateEmail,
+  deleteAccount,
 
+  // Profil
   updateProfile,
   uploadAvatarImage,
 
+  // Snapshot cloud
   pullStoreSnapshot,
   pushStoreSnapshot,
 
+  // Salons
   createLobby,
   joinLobby,
 
+  // Matchs (safe)
   uploadMatch,
   listMatches,
 
+  // Info
   USE_MOCK,
 
+  // debug
   loadAuthFromLS,
 };
