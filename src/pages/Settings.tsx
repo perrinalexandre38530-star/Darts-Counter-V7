@@ -21,7 +21,7 @@ import { supabase } from "../lib/supabase";
 type Props = { go?: (tab: any, params?: any) => void };
 
 // ✅ Nom de la Edge Function (Supabase)
-const DELETE_USER_FN_NAME = "delete-user";
+const DELETE_USER_FN_NAME = "delete-account";
 
 // ---------------- Thèmes dispo + descriptions fallback ----------------
 

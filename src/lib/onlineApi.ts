@@ -1,10 +1,11 @@
 // ============================================================
 // src/lib/onlineApi.ts
-// API Mode Online
-// - Auth / Profil / Matchs → Supabase
-// - Salons X01 (lobbies) → Supabase ("online_lobbies")
-// - Snapshot cloud du store → Supabase ("user_store") ✅ (table vue sur tes captures)
-// - Surface d'API unique pour le front
+// API Mode Online (V7 STABLE)
+// - Auth / Profil → Supabase (table: profiles)
+// - Snapshot cloud du store → Supabase (table: user_store)
+// - Salons X01 (lobbies) → Supabase (table: online_lobbies)
+// ✅ IMPORTANT : AUCUNE référence à profiles_online / matches_online
+// ✅ Matchs online : désactivés (fallback safe) tant que tu ne crées pas une table dédiée
 // ============================================================
 
 // ✅ IMPORTANT : un seul client Supabase partout
@@ -13,7 +14,7 @@ import { supabase } from "./supabaseClient";
 import type { UserAuth, OnlineProfile, OnlineMatch } from "./onlineTypes";
 
 // --------------------------------------------
-// Types publics de l'API (auth / profils / matchs)
+// Types publics de l'API (auth / profils)
 // --------------------------------------------
 
 export type AuthSession = {
@@ -86,7 +87,13 @@ export type OnlineLobby = {
 // Config / helpers locaux
 // --------------------------------------------
 
+// ⚠️ si tu avais un mode mock historique, garde-le
 const USE_MOCK = false;
+
+// ✅ IMPORTANT : on coupe les MATCHS ONLINE tant que tu n’as pas une table dédiée
+// (évite les erreurs "could not find table public.matches_online")
+const ONLINE_MATCHES_ENABLED = false;
+
 const LS_AUTH_KEY = "dc_online_auth_supabase_v1";
 
 function now() {
@@ -115,8 +122,6 @@ function saveAuthToLS(session: AuthSession | null) {
 }
 
 // ✅ Redirects STABLES (évite webcontainer/stackblitz)
-// - On force l'URL PROD via VITE_SITE_URL (Cloudflare Pages)
-// - Fallback hardcodé si la variable n'est pas set
 function getSiteUrl(): string {
   const fromEnv =
     (typeof import.meta !== "undefined" &&
@@ -125,8 +130,6 @@ function getSiteUrl(): string {
     "";
 
   const SITE_URL = String(fromEnv || "https://darts-counter-v7.pages.dev").trim();
-
-  // Sécurités: pas de slash final
   return SITE_URL.replace(/\/+$/, "");
 }
 
@@ -136,7 +139,6 @@ function getEmailConfirmRedirect(): string {
 }
 
 function getResetPasswordRedirect(): string {
-  // callback reset mdp
   return `${getSiteUrl()}/#/auth/reset`;
 }
 
@@ -169,14 +171,10 @@ function extFromMime(mime: string) {
 }
 
 // ============================================================
-// 1) PARTIE SUPABASE (Auth / Profils / Matchs)
+// 1) PARTIE SUPABASE (Auth / Profils)
 // ============================================================
 
-// --------------------------------------------
-// Mapping Supabase -> types de l'app
-// --------------------------------------------
-
-// ✅ D'après tes captures, la table s'appelle "profiles"
+// ✅ Table : "profiles"
 type SupabaseProfileRow = {
   id: string;
   nickname: string | null;
@@ -226,28 +224,6 @@ function mapProfile(row: SupabaseProfileRow): OnlineProfile {
         bestCheckout: 0,
       },
     updatedAt: row.updated_at ? Date.parse(row.updated_at) : now(),
-  };
-}
-
-// Table d’historique : "matches_online" (si elle existe chez toi)
-type SupabaseMatchRow = {
-  id: string;
-  user_id: string;
-  mode: string;
-  payload: any;
-  created_at: string | null;
-};
-
-function mapMatch(row: SupabaseMatchRow): OnlineMatch {
-  const t = row.created_at ? Date.parse(row.created_at) : now();
-  return {
-    id: row.id,
-    userId: row.user_id,
-    mode: row.mode,
-    payload: row.payload,
-    isTraining: false,
-    startedAt: t,
-    finishedAt: t,
   };
 }
 
@@ -373,7 +349,6 @@ async function signup(payload: SignupPayload): Promise<AuthSession> {
     password,
     options: {
       data: { nickname },
-      // ✅ IMPORTANT : redirection stable (StackBlitz change souvent d'URL)
       emailRedirectTo: getEmailConfirmRedirect(),
     },
   });
@@ -383,8 +358,7 @@ async function signup(payload: SignupPayload): Promise<AuthSession> {
     throw new Error(error.message);
   }
 
-  // ⚠️ Si confirmation email activée : pas de session tout de suite.
-  // On renvoie une session "pending" (token = "") pour que le front affiche "check tes mails".
+  // ⚠️ Confirmation email activée : pas de session tout de suite.
   const createdUser = data?.user;
   const createdSession = data?.session;
 
@@ -424,23 +398,16 @@ async function login(payload: LoginPayload): Promise<AuthSession> {
   }
 
   const session = await buildAuthSessionFromSupabase();
-  if (!session) {
-    throw new Error("Impossible de récupérer la session après la connexion.");
-  }
-
+  if (!session) throw new Error("Impossible de récupérer la session après la connexion.");
   return session;
 }
 
 async function restoreSession(): Promise<AuthSession | null> {
-  // Source de vérité : Supabase (toujours)
   const live = await buildAuthSessionFromSupabase();
-
-  // Si Supabase dit "pas de session", on purge le cache local
   if (!live?.user || !live.token) {
     saveAuthToLS(null);
     return null;
   }
-
   return live;
 }
 
@@ -463,7 +430,6 @@ async function requestPasswordReset(email: string): Promise<void> {
   if (!trimmed) throw new Error("Adresse mail requise pour réinitialiser le mot de passe.");
 
   const { error } = await supabase.auth.resetPasswordForEmail(trimmed, {
-    // ✅ IMPORTANT : redirect stable
     redirectTo: getResetPasswordRedirect(),
   });
 
@@ -496,7 +462,6 @@ async function updateProfile(patch: UpdateProfilePayload): Promise<OnlineProfile
   const dbPatch: any = { updated_at: new Date().toISOString() };
 
   if (patch.nickname !== undefined) dbPatch.nickname = patch.nickname;
-
   if (patch.displayName !== undefined) dbPatch.display_name = patch.displayName;
   if (patch.avatarUrl !== undefined) dbPatch.avatar_url = patch.avatarUrl;
   if (patch.country !== undefined) dbPatch.country = patch.country;
@@ -561,53 +526,10 @@ async function uploadAvatarImage(args: { dataUrl: string }): Promise<{ publicUrl
   return { publicUrl, path };
 }
 
-// --------------------------------------------
-// Fonctions publiques : MATCHS ONLINE
-// --------------------------------------------
-
-async function uploadMatch(payload: UploadMatchPayload): Promise<OnlineMatch> {
-  const { user } = await ensureAuthedUser();
-
-  const { data, error } = await supabase
-    .from("matches_online")
-    .insert({
-      user_id: user.id,
-      mode: payload.mode,
-      payload: payload.payload,
-    })
-    .select()
-    .single();
-
-  if (error) {
-    console.error("[onlineApi] uploadMatch error", error);
-    throw new Error(error.message);
-  }
-
-  return mapMatch(data as unknown as SupabaseMatchRow);
-}
-
-async function listMatches(limit = 50): Promise<OnlineMatch[]> {
-  const { user } = await ensureAuthedUser();
-
-  const { data, error } = await supabase
-    .from("matches_online")
-    .select("*")
-    .eq("user_id", user.id) // ✅ important : ne pas récupérer ceux des autres
-    .order("created_at", { ascending: false })
-    .limit(limit);
-
-  if (error) {
-    console.error("[onlineApi] listMatches error", error);
-    throw new Error(error.message);
-  }
-
-  return (data as SupabaseMatchRow[]).map(mapMatch);
-}
-
 // ============================================================
-// 3) CLOUD STORE SNAPSHOT (SOURCE UNIQUE DES DONNÉES)
-// ✅ Table vue chez toi : "user_store"
-// colonnes: user_id (uuid), version (int), updated_at (timestamptz), data (jsonb)
+// 2) CLOUD STORE SNAPSHOT (SOURCE UNIQUE DES DONNÉES)
+// ✅ Table : "user_store"
+// colonnes attendues: user_id (uuid), version (int), updated_at (timestamptz), data (jsonb)
 // ============================================================
 
 type UserStoreRow = {
@@ -673,7 +595,7 @@ async function pushStoreSnapshot(payload: any, version = 1): Promise<void> {
 }
 
 // ============================================================
-// 2) Salons X01 ONLINE (Supabase "online_lobbies")
+// 3) Salons X01 ONLINE (Supabase "online_lobbies")
 // ============================================================
 
 function generateLobbyCode(): string {
@@ -743,6 +665,35 @@ async function joinLobby(args: { code: string; userId: string; nickname: string 
   return mapLobbyRow(data as SupabaseLobbyRow);
 }
 
+// ============================================================
+// 4) MATCHS ONLINE — DÉSACTIVÉS (fallback safe)
+// ============================================================
+
+async function uploadMatch(_payload: UploadMatchPayload): Promise<OnlineMatch> {
+  // ✅ Ne casse pas l'app si une page appelle ça
+  // (tu réactiveras quand tu auras créé une table "matches" ou "online_matches")
+  if (!ONLINE_MATCHES_ENABLED) {
+    console.warn("[onlineApi] uploadMatch ignored: ONLINE_MATCHES_ENABLED=false");
+    return {
+      id: `disabled_${now()}`,
+      userId: "disabled",
+      mode: _payload.mode,
+      payload: _payload.payload,
+      isTraining: !!_payload.isTraining,
+      startedAt: _payload.startedAt ?? now(),
+      finishedAt: _payload.finishedAt ?? now(),
+    } as any;
+  }
+
+  // Si tu veux réactiver plus tard, on implémentera proprement ici.
+  throw new Error("Online matches disabled");
+}
+
+async function listMatches(_limit = 50): Promise<OnlineMatch[]> {
+  if (!ONLINE_MATCHES_ENABLED) return [];
+  throw new Error("Online matches disabled");
+}
+
 // --------------------------------------------
 // Export API unique
 // --------------------------------------------
@@ -763,10 +714,6 @@ export const onlineApi = {
   updateProfile,
   uploadAvatarImage,
 
-  // Matchs
-  uploadMatch,
-  listMatches,
-
   // Snapshot cloud
   pullStoreSnapshot,
   pushStoreSnapshot,
@@ -774,6 +721,10 @@ export const onlineApi = {
   // Salons
   createLobby,
   joinLobby,
+
+  // Matchs (safe)
+  uploadMatch,
+  listMatches,
 
   // Info
   USE_MOCK,
