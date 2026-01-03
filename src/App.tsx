@@ -934,7 +934,16 @@ function App() {
     } catch {}
   }
 
-  // ✅ IMPORTANT: expose go globalement
+  /* centralized update */
+  function update(mut: (s: Store) => Store) {
+    setStore((s) => {
+      const next = mut({ ...s });
+      queueMicrotask(() => saveStore(next));
+      return next;
+    });
+  }
+
+  // ✅ IMPORTANT: expose go globalement + store “vivant”
   React.useEffect(() => {
     try {
       (window as any).__appGo = go;
@@ -942,8 +951,11 @@ function App() {
       (window as any).__appStore.go = go;
       (window as any).__appStore.store = store;
       (window as any).__appStore.tab = tab;
+
+      // ✅ NEW: permet aux listeners externes de muter le store
+      (window as any).__appStore.update = update;
     } catch {}
-  }, [store, tab]);
+  }, [store, tab, update]);
 
   /* Load store from IDB at boot + gate */
   React.useEffect(() => {
@@ -1137,17 +1149,15 @@ function App() {
 
   /* Save store each time it changes */
   React.useEffect(() => {
-    if (!loading) saveStore(store);
-  }, [store, loading]);
+    if (!loading) {
+      saveStore(store);
 
-  /* centralized update */
-  function update(mut: (s: Store) => Store) {
-    setStore((s) => {
-      const next = mut({ ...s });
-      queueMicrotask(() => saveStore(next));
-      return next;
-    });
-  }
+      // ✅ NEW: event global quand le store change
+      try {
+        window.dispatchEvent(new Event("dc-store-updated"));
+      } catch {}
+    }
+  }, [store, loading]);
 
   /* Profiles mutator (✅ FIX: merge défensif) */
   function setProfiles(fn: (p: Profile[]) => Profile[]) {

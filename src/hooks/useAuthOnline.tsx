@@ -1,301 +1,199 @@
-// @ts-nocheck
-// ============================================
+// ============================================================
 // src/hooks/useAuthOnline.tsx
-// Auth Online unifiée (MOCK ou Supabase réel)
-//
-// ✅ Objectifs V7 (stabilité + multi-comptes):
-// - Source de vérité = session Supabase (via onlineApi.restoreSession)
-// - ready = true quand restoreSession a fini (même si signed_out)
-// - Ne JAMAIS spammer Supabase sur des tables/colonnes absentes
-// - Aucun write "presence" tant que la DB n'est pas prête
-//
-// ✅ CRITIQUE (fix bugs "compte inexistant" après email confirm / reset):
-// - Listen Supabase auth state changes -> refresh automatique
-// - Ne persiste plus d'état "pending" côté LS (géré dans onlineApi)
-// - Ne mélange jamais 2 comptes: on reset état et on relit la session live
-//
-// ✅ IMPORTANT:
-// - SUPPRIME app_version / last_seen / device / presence ping
-// - Pas de profiles_online / matches_online ici
-// ============================================
+// Auth Online unifiée (V7 STABLE)
+// - Restore session au boot -> ready=true même si signed_out
+// - Aucun “presence ping” / aucun write DB tant que pas demandé
+// - Sync store: pull au login/restore (si cloud plus récent), push manuel
+// ============================================================
 
 import React from "react";
-import { onlineApi, type AuthSession, type UpdateProfilePayload } from "../lib/onlineApi";
-import type { UserAuth, OnlineProfile } from "../lib/onlineTypes";
-import { supabase } from "../lib/supabaseClient";
+import {
+  onlineApi,
+  type AuthSession,
+  type SignupPayload,
+  type LoginPayload,
+  type UpdateProfilePayload,
+} from "../lib/onlineApi";
+import type { OnlineProfile } from "../lib/onlineTypes";
+import { hydrateFromOnline, pushLocalSnapshotToOnline } from "../lib/hydrateFromOnline";
 
-type Status = "checking" | "signed_out" | "signed_in" | "pending";
-
-export type AuthOnlineContextValue = {
-  status: Status;
-  loading: boolean;
+type AuthOnlineContextValue = {
   ready: boolean;
+  loading: boolean;
+  session: AuthSession | null;
 
-  // ✅ infos user
-  user: UserAuth | null;
-  profile: OnlineProfile | null;
-
-  // ✅ vrai si mode mock
-  isMock: boolean;
-
-  // ✅ actions
-  signup: (p: { nickname: string; email?: string; password?: string }) => Promise<void>;
-  login: (p: { nickname?: string; email?: string; password?: string }) => Promise<void>;
+  // auth
+  signup: (p: SignupPayload) => Promise<AuthSession>;
+  login: (p: LoginPayload) => Promise<AuthSession>;
   logout: () => Promise<void>;
-  updateProfile: (patch: UpdateProfilePayload) => Promise<void>;
-  refresh: () => Promise<void>;
+  restore: () => Promise<AuthSession | null>;
+
+  // account
+  resendSignupConfirmation: (email: string) => Promise<void>;
+  requestPasswordReset: (email: string) => Promise<void>;
+  updateEmail: (newEmail: string) => Promise<void>;
+  deleteAccount: () => Promise<void>;
+
+  // profile
+  updateProfile: (patch: UpdateProfilePayload) => Promise<OnlineProfile>;
+
+  // cloud sync
+  syncPull: (opts?: { reload?: boolean }) => Promise<{ status: string; applied: boolean }>;
+  syncPush: () => Promise<void>;
 };
 
 const AuthOnlineContext = React.createContext<AuthOnlineContextValue | null>(null);
 
-// ============================================================
-// ✅ SAFETY FLAG — présence désactivée
-// ============================================================
-const PRESENCE_ENABLED = false;
-
-// ============================================================
-// Provider
-// ============================================================
 export function AuthOnlineProvider({ children }: { children: React.ReactNode }) {
-  const [status, setStatus] = React.useState<Status>("checking");
-  const [loading, setLoading] = React.useState(false);
   const [ready, setReady] = React.useState(false);
+  const [loading, setLoading] = React.useState(false);
+  const [session, setSession] = React.useState<AuthSession | null>(null);
 
-  const [user, setUser] = React.useState<UserAuth | null>(null);
-  const [profile, setProfile] = React.useState<OnlineProfile | null>(null);
+  const restore = React.useCallback(async () => {
+    setLoading(true);
+    try {
+      const s = await onlineApi.restoreSession();
+      setSession(s);
 
-  // Pour éviter les refresh multiples simultanés
-  const refreshInFlight = React.useRef<Promise<void> | null>(null);
+      // ✅ si connecté “vraiment” (token non vide), on tente un pull cloud
+      if (s?.token) {
+        // ne bloque pas ready si ça plante
+        try {
+          await hydrateFromOnline({ reload: false });
+        } catch {}
+      }
 
-  // Applique une session (ou null) : user + profil complet
-  const applySession = React.useCallback((session: AuthSession | null) => {
-    setReady(true);
-
-    if (!session) {
-      setStatus("signed_out");
-      setUser(null);
-      setProfile(null);
-      return;
+      return s;
+    } finally {
+      setLoading(false);
+      setReady(true);
     }
-
-    // ✅ Pending email confirmation (token vide)
-    if (!session.token) {
-      setStatus("pending");
-      setUser(session.user as any);
-      setProfile(null);
-      return;
-    }
-
-    setStatus("signed_in");
-    setUser(session.user as any);
-    setProfile(session.profile as any);
   }, []);
 
-  // Refresh "safe" : relit depuis Supabase (source de vérité)
-  const refreshSafe = React.useCallback(async () => {
-    if (refreshInFlight.current) return refreshInFlight.current;
-
-    refreshInFlight.current = (async () => {
-      try {
-        const session = await onlineApi.restoreSession();
-        applySession(session as any);
-      } catch (e) {
-        console.warn("[authOnline] refresh error:", e);
-        applySession(null);
-      } finally {
-        refreshInFlight.current = null;
-      }
-    })();
-
-    return refreshInFlight.current;
-  }, [applySession]);
-
-  // Restore au chargement (lecture via onlineApi)
   React.useEffect(() => {
-    let cancelled = false;
+    restore();
+  }, [restore]);
 
-    (async () => {
-      try {
-        setReady(false);
-        setStatus("checking");
-        const session = await onlineApi.restoreSession();
-        if (!cancelled) applySession(session as any);
-      } catch (e) {
-        console.warn("[authOnline] restore error:", e);
-        if (!cancelled) applySession(null);
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [applySession]);
-
-  // ============================================================
-  // ✅ LISTENER SUPABASE (LA CLÉ)
-  // - déclenché sur: SIGNED_IN, SIGNED_OUT, TOKEN_REFRESHED,
-  //   PASSWORD_RECOVERY, USER_UPDATED, etc.
-  // - résout "compte inexistant" après validation email / reset
-  // ============================================================
-  React.useEffect(() => {
-    if (onlineApi.USE_MOCK) return;
-
-    const { data: sub } = supabase.auth.onAuthStateChange(async (event) => {
-      // On évite les logs de token/sessions en clair
-      // console.info("[authOnline] event:", event);
-
-      // ⚠️ Sur SIGNED_OUT -> on purge immédiatement l'état
-      if (event === "SIGNED_OUT") {
-        applySession(null);
-        return;
-      }
-
-      // ✅ Sur tous les autres événements, on relit "live"
-      await refreshSafe();
-    });
-
-    return () => {
-      try {
-        sub?.subscription?.unsubscribe?.();
-      } catch {}
-    };
-  }, [applySession, refreshSafe]);
-
-  // ============================================================
-  // ✅ PRESENCE EFFECT (désactivé)
-  // ============================================================
-  React.useEffect(() => {
-    if (!PRESENCE_ENABLED) return;
-    if (onlineApi.USE_MOCK) return;
-    if (status !== "signed_in") return;
-
-    // Si tu veux réactiver plus tard :
-    // - créer table presence OU colonnes dans profiles
-    // - écrire "safe" sans colonnes inexistantes
-  }, [status, (user as any)?.id]);
-
-  // SIGNUP
-  async function signup(params: { nickname: string; email?: string; password?: string }) {
-    const nickname = (params.nickname || "").trim();
-    const email = (params.email || "").trim();
-    const password = (params.password || "").trim();
-
+  const signup = React.useCallback(async (p: SignupPayload) => {
     setLoading(true);
     try {
-      if (onlineApi.USE_MOCK) {
-        if (!nickname) throw new Error("Pseudo requis");
-        const session = await onlineApi.signup({ nickname } as any);
-        applySession(session as any);
-        return;
-      }
-
-      if (!email || !password) {
-        throw new Error("Email et mot de passe sont requis pour créer un compte.");
-      }
-
-      // ✅ Important : onlineApi.signup peut renvoyer token "" (pending)
-      const session = await onlineApi.signup({
-        email,
-        password,
-        nickname: nickname || email,
-      } as any);
-
-      applySession(session as any);
-
-      // ✅ Si pending -> l'utilisateur doit valider l'email.
-      // Le listener onAuthStateChange + callback route feront le reste.
+      const s = await onlineApi.signup(p);
+      setSession(s);
+      return s;
     } finally {
       setLoading(false);
     }
-  }
+  }, []);
 
-  // LOGIN
-  async function login(params: { nickname?: string; email?: string; password?: string }) {
-    const nickname = (params.nickname || "").trim();
-    const email = (params.email || "").trim();
-    const password = (params.password || "").trim();
-
+  const login = React.useCallback(async (p: LoginPayload) => {
     setLoading(true);
     try {
-      if (onlineApi.USE_MOCK) {
-        if (!nickname) throw new Error("Pseudo requis");
-        const session = await onlineApi.login({ nickname } as any);
-        applySession(session as any);
-        return;
+      const s = await onlineApi.login(p);
+      setSession(s);
+
+      // ✅ pull cloud (si cloud plus récent) + reload pour tout recharger
+      try {
+        await hydrateFromOnline({ reload: true });
+      } catch {
+        // si ça rate, on laisse la session quand même
       }
 
-      if (!email || !password) {
-        throw new Error("Email et mot de passe sont requis pour se connecter.");
-      }
-
-      const session = await onlineApi.login({
-        email,
-        password,
-        nickname: nickname || undefined,
-      } as any);
-
-      applySession(session as any);
+      return s;
     } finally {
       setLoading(false);
     }
-  }
+  }, []);
 
-  // LOGOUT
-  async function logout() {
+  const logout = React.useCallback(async () => {
     setLoading(true);
     try {
       await onlineApi.logout();
-      applySession(null);
+      setSession(null);
     } finally {
       setLoading(false);
+      setReady(true);
     }
-  }
+  }, []);
 
-  // UPDATE PROFILE
-  async function updateProfile(patch: UpdateProfilePayload) {
+  const resendSignupConfirmation = React.useCallback(async (email: string) => {
+    await onlineApi.resendSignupConfirmation(email);
+  }, []);
+
+  const requestPasswordReset = React.useCallback(async (email: string) => {
+    await onlineApi.requestPasswordReset(email);
+  }, []);
+
+  const updateEmail = React.useCallback(async (newEmail: string) => {
+    await onlineApi.updateEmail(newEmail);
+  }, []);
+
+  const deleteAccount = React.useCallback(async () => {
     setLoading(true);
     try {
-      const newProfile = await onlineApi.updateProfile(patch);
-      setProfile(newProfile as any);
+      await onlineApi.deleteAccount();
+      setSession(null);
     } finally {
       setLoading(false);
+      setReady(true);
     }
-  }
+  }, []);
 
-  // REFRESH manuel
-  async function refresh() {
+  const updateProfile = React.useCallback(async (patch: UpdateProfilePayload) => {
     setLoading(true);
     try {
-      await refreshSafe();
+      const prof = await onlineApi.updateProfile(patch);
+      // refresh session cache
+      const s = await onlineApi.getCurrentSession();
+      setSession(s);
+      return prof;
     } finally {
       setLoading(false);
     }
-  }
+  }, []);
 
-  return (
-    <AuthOnlineContext.Provider
-      value={{
-        status,
-        loading,
-        ready,
-        user,
-        profile,
-        isMock: !!onlineApi.USE_MOCK,
-        signup,
-        login,
-        logout,
-        updateProfile,
-        refresh,
-      }}
-    >
-      {children}
-    </AuthOnlineContext.Provider>
-  );
+  const syncPull = React.useCallback(async (opts?: { reload?: boolean }) => {
+    setLoading(true);
+    try {
+      const r = await hydrateFromOnline({ reload: opts?.reload ?? true });
+      return { status: r.status, applied: !!(r as any).applied };
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  const syncPush = React.useCallback(async () => {
+    setLoading(true);
+    try {
+      await pushLocalSnapshotToOnline();
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  const value: AuthOnlineContextValue = {
+    ready,
+    loading,
+    session,
+
+    signup,
+    login,
+    logout,
+    restore,
+
+    resendSignupConfirmation,
+    requestPasswordReset,
+    updateEmail,
+    deleteAccount,
+
+    updateProfile,
+
+    syncPull,
+    syncPush,
+  };
+
+  return <AuthOnlineContext.Provider value={value}>{children}</AuthOnlineContext.Provider>;
 }
 
-// ============================================
-// Hook
-// ============================================
 export function useAuthOnline(): AuthOnlineContextValue {
   const ctx = React.useContext(AuthOnlineContext);
   if (!ctx) throw new Error("useAuthOnline doit être utilisé dans un AuthOnlineProvider.");

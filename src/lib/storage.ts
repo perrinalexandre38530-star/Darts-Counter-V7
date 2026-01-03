@@ -147,8 +147,7 @@ async function idbClear(): Promise<void> {
 /* ---------- Estimation de quota (quand disponible) ---------- */
 export async function storageEstimate() {
   try {
-    const est =
-      (await (navigator.storage?.estimate?.() ?? Promise.resolve(undefined as any))) ?? null;
+    const est = (await (navigator.storage?.estimate?.() ?? Promise.resolve(undefined as any))) ?? null;
 
     return {
       quota: est?.quota ?? null, // bytes
@@ -158,6 +157,70 @@ export async function storageEstimate() {
   } catch {
     return { quota: null, usage: null, usageDetails: null };
   }
+}
+
+/* ============================================================
+   ✅ CLOUD SNAPSHOT (LOCAL) — inclut IndexedDB + localStorage(dc_*)
+============================================================ */
+const LS_PREFIX = "dc_";
+const LS_EXCLUDE = new Set<string>([
+  // auth online (ne jamais écraser)
+  "dc_online_auth_supabase_v1",
+
+  // si tu as des clés “presence/ping” anciennes
+  "dc_online_presence_v1",
+  "dc_presence_v1",
+
+  // divers flags techniques (optionnel)
+  "dc_sw_purge_once",
+  "dc_last_crash",
+]);
+
+function exportLocalStorageDc(): Record<string, string> {
+  if (typeof window === "undefined") return {};
+  const out: Record<string, string> = {};
+  try {
+    for (let i = 0; i < window.localStorage.length; i++) {
+      const k = window.localStorage.key(i) || "";
+      if (!k.startsWith(LS_PREFIX)) continue;
+      if (LS_EXCLUDE.has(k)) continue;
+      const v = window.localStorage.getItem(k);
+      if (v != null) out[k] = v;
+    }
+  } catch {}
+  return out;
+}
+
+function importLocalStorageDc(map: Record<string, string>) {
+  if (typeof window === "undefined") return;
+  if (!map || typeof map !== "object") return;
+
+  for (const [k, v] of Object.entries(map)) {
+    if (!k.startsWith(LS_PREFIX)) continue;
+    if (LS_EXCLUDE.has(k)) continue;
+    try {
+      window.localStorage.setItem(k, String(v ?? ""));
+    } catch {}
+  }
+}
+
+// Utile en mode "replace" : évite de garder des dc_* obsolètes
+function clearLocalStorageDc(): void {
+  if (typeof window === "undefined") return;
+  try {
+    const toDelete: string[] = [];
+    for (let i = 0; i < window.localStorage.length; i++) {
+      const k = window.localStorage.key(i) || "";
+      if (!k.startsWith(LS_PREFIX)) continue;
+      if (LS_EXCLUDE.has(k)) continue;
+      toDelete.push(k);
+    }
+    for (const k of toDelete) {
+      try {
+        window.localStorage.removeItem(k);
+      } catch {}
+    }
+  } catch {}
 }
 
 /* ============================================================
@@ -441,49 +504,73 @@ export async function delKV(key: string): Promise<void> {
   }
 }
 
-/* ---------- Export / Import utiles pour debug / sauvegardes ---------- */
-/** Exporte tout le contenu de l’object store "kv" en objet { key: any }. */
-export async function exportAll(): Promise<Record<string, any>> {
-  const out: Record<string, any> = {};
+/* ---------- Helpers export IDB (compat patch) ---------- */
+async function listKVKeys(): Promise<string[]> {
   const keys = await idbKeys();
-
-  for (const k of keys) {
-    const v = await idbGet<any>(k);
-    if (v === undefined) continue;
-
-    let data: any = v;
-    try {
-      if (typeof v !== "string") {
-        const text = await decompressGzip(v as any);
-        data = JSON.parse(text);
-      } else {
-        data = JSON.parse(v);
-      }
-    } catch {
-      data = v;
-    }
-
-    out[String(k)] = data;
-  }
-
-  return out;
+  return keys.map((k) => String(k));
 }
 
-/** Importe un dump { key: any } (remplace les valeurs existantes). */
-export async function importAll(dump: Record<string, any>): Promise<void> {
-  for (const [k, v] of Object.entries(dump)) {
-    await setKV(k, v);
+/* ============================================================
+   Export / Import ALL (IDB + localStorage dc_*)
+============================================================ */
+export async function exportAll(): Promise<any> {
+  // ✅ export IDB “kv” existant
+  const idbDump: Record<string, any> = {};
+  const keys = await listKVKeys();
+  for (const k of keys) {
+    try {
+      idbDump[k] = await getKV(k);
+    } catch {}
+  }
+
+  // ✅ export localStorage “dc_*”
+  const lsDump = exportLocalStorageDc();
+
+  // wrapper versionné (pour compat future)
+  return {
+    _v: 1,
+    idb: idbDump,
+    localStorage: lsDump,
+    exportedAt: new Date().toISOString(),
+  };
+}
+
+export async function importAll(dump: any): Promise<void> {
+  if (!dump) return;
+
+  // ✅ Nouveau format wrapper
+  if (dump._v === 1 && dump.idb) {
+    const idbDump = dump.idb || {};
+    const lsDump = dump.localStorage || {};
+
+    // restore IDB
+    for (const [k, v] of Object.entries(idbDump)) {
+      try {
+        await setKV(k, v);
+      } catch {}
+    }
+
+    // restore localStorage dc_*
+    importLocalStorageDc(lsDump);
+    return;
+  }
+
+  // ✅ Ancien format (fallback) : on considère que dump = idb map
+  if (typeof dump === "object") {
+    for (const [k, v] of Object.entries(dump)) {
+      try {
+        await setKV(k, v);
+      } catch {}
+    }
   }
 }
 
 /* ============================================================
    ✅ CLOUD SNAPSHOT (Supabase user_store)
-   Snapshot complet de l'IndexedDB "kv"
-   - exportCloudSnapshot(): dump { key: any }
-   - importCloudSnapshot(): replace/merge local kv par le dump cloud
+   Snapshot complet de l'IndexedDB "kv" + localStorage dc_*
 ============================================================ */
 
-export type CloudSnapshot = Record<string, any>;
+export type CloudSnapshot = any;
 
 export async function exportCloudSnapshot(): Promise<CloudSnapshot> {
   return await exportAll();
@@ -494,12 +581,14 @@ export async function importCloudSnapshot(
   opts?: { mode?: "replace" | "merge" }
 ): Promise<void> {
   const mode = opts?.mode ?? "replace";
+
   if (mode === "replace") {
-    await nukeAll(); // wipe kv
+    // wipe IDB + (optionnel) dc_* local (évite restes)
+    await nukeAll();
+    clearLocalStorageDc();
   }
-  for (const [k, v] of Object.entries(dump || {})) {
-    await setKV(k, v);
-  }
+
+  await importAll(dump);
 }
 
 /** Efface toutes les clés du store IndexedDB (attention : destructif). */
@@ -570,6 +659,9 @@ export async function nukeAllKeepActiveProfile(): Promise<void> {
   try {
     localStorage.removeItem(LEGACY_LS_KEY);
   } catch {}
+
+  // (optionnel) Si tu veux aussi purger dc_* lors d’un reset complet :
+  // clearLocalStorageDc();
 
   // 4) Si on avait un profil actif → on recrée un store minimal
   if (activeProfile) {
