@@ -3,18 +3,27 @@
 // Sync "store snapshot" ↔ Supabase table user_store
 // - Pull au login -> import local (CLOUD WINS)
 // - Push auto (poll + hash) -> cloud
+// - ✅ NEW: Push quasi temps réel sur changements locaux (event bus)
 // ============================================================
 
 import { onlineApi } from "./onlineApi";
 import { exportCloudSnapshot, importCloudSnapshot } from "./storage";
+import { onCloudChange } from "./cloudEvents"; // ✅ NEW
 
 // interval (ms) : ajustable
 const PUSH_EVERY = 15000; // 15s
 const PULL_ON_START = true;
 
+// ✅ NEW : debounce sur changements (évite spam)
+const CHANGE_DEBOUNCE_MS = 800;
+
 let timer: any = null;
 let lastHash = "";
 let running = false;
+
+// ✅ NEW
+let offChange: null | (() => void) = null;
+let changeTimer: any = null;
 
 function stableStringify(obj: any) {
   // JSON stable minimal : suffisant ici
@@ -93,10 +102,21 @@ export async function cloudPushNow(): Promise<{
  * Démarre la sync auto
  * - pull 1 fois au start (option)
  * - push périodique si changement
+ * - ✅ NEW: push debounced à chaque changement local (IDB/LS via events)
  */
 export async function startCloudSync() {
   if (running) return;
   running = true;
+
+  // ✅ NEW: écoute les changements locaux et push debounced
+  offChange?.();
+  offChange = onCloudChange(() => {
+    if (!running) return;
+    if (changeTimer) clearTimeout(changeTimer);
+    changeTimer = setTimeout(() => {
+      cloudPushNow();
+    }, CHANGE_DEBOUNCE_MS);
+  });
 
   if (PULL_ON_START) {
     await cloudPullAndImport();
@@ -118,6 +138,14 @@ export async function startCloudSync() {
 
 export function stopCloudSync() {
   running = false;
+
+  // ✅ NEW: stop debounce + listener
+  if (changeTimer) clearTimeout(changeTimer);
+  changeTimer = null;
+
+  offChange?.();
+  offChange = null;
+
   if (timer) clearInterval(timer);
   timer = null;
 }

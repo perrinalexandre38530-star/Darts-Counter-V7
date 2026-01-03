@@ -8,6 +8,7 @@
 // ============================================
 
 import type { Store, Profile } from "./types";
+import { emitCloudChange } from "./cloudEvents";
 
 /* ---------- Constantes ---------- */
 const DB_NAME = "darts-counter-v5";
@@ -490,6 +491,9 @@ export async function setKV(key: string, value: any): Promise<void> {
     const json = JSON.stringify(value);
     const payload = await compressGzip(json);
     await idbSet(key, payload);
+
+    // ✅ SIGNAL CLOUD : une écriture IDB a eu lieu
+    emitCloudChange(`idb:${key}`);
   } catch (err) {
     console.error("[storage] setKV error:", key, err);
   }
@@ -499,6 +503,9 @@ export async function setKV(key: string, value: any): Promise<void> {
 export async function delKV(key: string): Promise<void> {
   try {
     await idbDel(key);
+
+    // ✅ SIGNAL CLOUD : suppression IDB
+    emitCloudChange(`idb:${key}`);
   } catch (err) {
     console.warn("[storage] delKV error:", key, err);
   }
