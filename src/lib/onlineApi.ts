@@ -18,7 +18,7 @@ import type { UserAuth, OnlineProfile, OnlineMatch } from "./onlineTypes";
 // --------------------------------------------
 
 export type AuthSession = {
-  token: string; // peut être "" si signup en attente de confirmation email
+  token: string; // "" si signup en attente de confirmation email
   user: UserAuth;
   profile: OnlineProfile | null;
 };
@@ -344,6 +344,15 @@ async function signup(payload: SignupPayload): Promise<AuthSession> {
     throw new Error("Pour créer un compte online, email et mot de passe sont requis.");
   }
 
+  // ✅ Si déjà connecté, on évite de recréer un compte par accident
+  try {
+    const { data: existing } = await supabase.auth.getSession();
+    if (existing?.session?.user) {
+      const s = await buildAuthSessionFromSupabase();
+      if (s) return s;
+    }
+  } catch {}
+
   const { data, error } = await supabase.auth.signUp({
     email,
     password,
@@ -363,18 +372,18 @@ async function signup(payload: SignupPayload): Promise<AuthSession> {
   const createdSession = data?.session;
 
   if (!createdSession) {
-    const pending: AuthSession = {
+    // ✅ CRITIQUE : on NE persiste PAS un "pending" en localStorage
+    // sinon l'app croit être connectée alors que non.
+    return {
       token: "",
       user: {
-        id: createdUser?.id || "pending",
+        id: createdUser?.id || "",
         email,
         nickname,
         createdAt: now(),
       },
       profile: null,
     };
-    saveAuthToLS(pending);
-    return pending;
   }
 
   const live = await buildAuthSessionFromSupabase();
@@ -403,11 +412,15 @@ async function login(payload: LoginPayload): Promise<AuthSession> {
 }
 
 async function restoreSession(): Promise<AuthSession | null> {
+  // Source de vérité : Supabase
   const live = await buildAuthSessionFromSupabase();
+
+  // Si pas de session Supabase, on purge le cache local
   if (!live?.user || !live.token) {
     saveAuthToLS(null);
     return null;
   }
+
   return live;
 }
 
@@ -670,8 +683,6 @@ async function joinLobby(args: { code: string; userId: string; nickname: string 
 // ============================================================
 
 async function uploadMatch(_payload: UploadMatchPayload): Promise<OnlineMatch> {
-  // ✅ Ne casse pas l'app si une page appelle ça
-  // (tu réactiveras quand tu auras créé une table "matches" ou "online_matches")
   if (!ONLINE_MATCHES_ENABLED) {
     console.warn("[onlineApi] uploadMatch ignored: ONLINE_MATCHES_ENABLED=false");
     return {
@@ -684,8 +695,6 @@ async function uploadMatch(_payload: UploadMatchPayload): Promise<OnlineMatch> {
       finishedAt: _payload.finishedAt ?? now(),
     } as any;
   }
-
-  // Si tu veux réactiver plus tard, on implémentera proprement ici.
   throw new Error("Online matches disabled");
 }
 

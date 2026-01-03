@@ -3,12 +3,18 @@
 // src/hooks/useAuthOnline.tsx
 // Auth Online unifiée (MOCK ou Supabase réel)
 //
-// ✅ Objectifs V7 (stabilité):
-// - Ne JAMAIS spammer Supabase sur des tables/colonnes absentes
+// ✅ Objectifs V7 (stabilité + multi-comptes):
+// - Source de vérité = session Supabase (via onlineApi.restoreSession)
 // - ready = true quand restoreSession a fini (même si signed_out)
+// - Ne JAMAIS spammer Supabase sur des tables/colonnes absentes
 // - Aucun write "presence" tant que la DB n'est pas prête
 //
-// ✅ IMPORTANT (demandé):
+// ✅ CRITIQUE (fix bugs "compte inexistant" après email confirm / reset):
+// - Listen Supabase auth state changes -> refresh automatique
+// - Ne persiste plus d'état "pending" côté LS (géré dans onlineApi)
+// - Ne mélange jamais 2 comptes: on reset état et on relit la session live
+//
+// ✅ IMPORTANT:
 // - SUPPRIME app_version / last_seen / device / presence ping
 // - Pas de profiles_online / matches_online ici
 // ============================================
@@ -16,16 +22,23 @@
 import React from "react";
 import { onlineApi, type AuthSession, type UpdateProfilePayload } from "../lib/onlineApi";
 import type { UserAuth, OnlineProfile } from "../lib/onlineTypes";
+import { supabase } from "../lib/supabaseClient";
 
-type Status = "checking" | "signed_out" | "signed_in";
+type Status = "checking" | "signed_out" | "signed_in" | "pending";
 
 export type AuthOnlineContextValue = {
   status: Status;
   loading: boolean;
   ready: boolean;
+
+  // ✅ infos user
   user: UserAuth | null;
   profile: OnlineProfile | null;
+
+  // ✅ vrai si mode mock
   isMock: boolean;
+
+  // ✅ actions
   signup: (p: { nickname: string; email?: string; password?: string }) => Promise<void>;
   login: (p: { nickname?: string; email?: string; password?: string }) => Promise<void>;
   logout: () => Promise<void>;
@@ -37,7 +50,6 @@ const AuthOnlineContext = React.createContext<AuthOnlineContextValue | null>(nul
 
 // ============================================================
 // ✅ SAFETY FLAG — présence désactivée
-// (Tu pourras remettre plus tard quand tu auras une table/colonnes dédiées)
 // ============================================================
 const PRESENCE_ENABLED = false;
 
@@ -52,6 +64,9 @@ export function AuthOnlineProvider({ children }: { children: React.ReactNode }) 
   const [user, setUser] = React.useState<UserAuth | null>(null);
   const [profile, setProfile] = React.useState<OnlineProfile | null>(null);
 
+  // Pour éviter les refresh multiples simultanés
+  const refreshInFlight = React.useRef<Promise<void> | null>(null);
+
   // Applique une session (ou null) : user + profil complet
   const applySession = React.useCallback((session: AuthSession | null) => {
     setReady(true);
@@ -63,32 +78,88 @@ export function AuthOnlineProvider({ children }: { children: React.ReactNode }) 
       return;
     }
 
+    // ✅ Pending email confirmation (token vide)
+    if (!session.token) {
+      setStatus("pending");
+      setUser(session.user as any);
+      setProfile(null);
+      return;
+    }
+
     setStatus("signed_in");
     setUser(session.user as any);
     setProfile(session.profile as any);
   }, []);
 
+  // Refresh "safe" : relit depuis Supabase (source de vérité)
+  const refreshSafe = React.useCallback(async () => {
+    if (refreshInFlight.current) return refreshInFlight.current;
+
+    refreshInFlight.current = (async () => {
+      try {
+        const session = await onlineApi.restoreSession();
+        applySession(session as any);
+      } catch (e) {
+        console.warn("[authOnline] refresh error:", e);
+        applySession(null);
+      } finally {
+        refreshInFlight.current = null;
+      }
+    })();
+
+    return refreshInFlight.current;
+  }, [applySession]);
+
   // Restore au chargement (lecture via onlineApi)
   React.useEffect(() => {
     let cancelled = false;
 
-    async function restore() {
+    (async () => {
       try {
         setReady(false);
         setStatus("checking");
         const session = await onlineApi.restoreSession();
-        if (!cancelled) applySession(session);
+        if (!cancelled) applySession(session as any);
       } catch (e) {
         console.warn("[authOnline] restore error:", e);
         if (!cancelled) applySession(null);
       }
-    }
+    })();
 
-    restore();
     return () => {
       cancelled = true;
     };
   }, [applySession]);
+
+  // ============================================================
+  // ✅ LISTENER SUPABASE (LA CLÉ)
+  // - déclenché sur: SIGNED_IN, SIGNED_OUT, TOKEN_REFRESHED,
+  //   PASSWORD_RECOVERY, USER_UPDATED, etc.
+  // - résout "compte inexistant" après validation email / reset
+  // ============================================================
+  React.useEffect(() => {
+    if (onlineApi.USE_MOCK) return;
+
+    const { data: sub } = supabase.auth.onAuthStateChange(async (event) => {
+      // On évite les logs de token/sessions en clair
+      // console.info("[authOnline] event:", event);
+
+      // ⚠️ Sur SIGNED_OUT -> on purge immédiatement l'état
+      if (event === "SIGNED_OUT") {
+        applySession(null);
+        return;
+      }
+
+      // ✅ Sur tous les autres événements, on relit "live"
+      await refreshSafe();
+    });
+
+    return () => {
+      try {
+        sub?.subscription?.unsubscribe?.();
+      } catch {}
+    };
+  }, [applySession, refreshSafe]);
 
   // ============================================================
   // ✅ PRESENCE EFFECT (désactivé)
@@ -100,7 +171,7 @@ export function AuthOnlineProvider({ children }: { children: React.ReactNode }) 
 
     // Si tu veux réactiver plus tard :
     // - créer table presence OU colonnes dans profiles
-    // - réactiver ici avec un write "safe" (sans colonnes inexistantes)
+    // - écrire "safe" sans colonnes inexistantes
   }, [status, (user as any)?.id]);
 
   // SIGNUP
@@ -122,6 +193,7 @@ export function AuthOnlineProvider({ children }: { children: React.ReactNode }) 
         throw new Error("Email et mot de passe sont requis pour créer un compte.");
       }
 
+      // ✅ Important : onlineApi.signup peut renvoyer token "" (pending)
       const session = await onlineApi.signup({
         email,
         password,
@@ -129,6 +201,9 @@ export function AuthOnlineProvider({ children }: { children: React.ReactNode }) 
       } as any);
 
       applySession(session as any);
+
+      // ✅ Si pending -> l'utilisateur doit valider l'email.
+      // Le listener onAuthStateChange + callback route feront le reste.
     } finally {
       setLoading(false);
     }
@@ -187,12 +262,11 @@ export function AuthOnlineProvider({ children }: { children: React.ReactNode }) 
     }
   }
 
-  // REFRESH (re-lire la session complète)
+  // REFRESH manuel
   async function refresh() {
     setLoading(true);
     try {
-      const session = await onlineApi.restoreSession();
-      applySession(session as any);
+      await refreshSafe();
     } finally {
       setLoading(false);
     }
