@@ -634,8 +634,11 @@ export default function Profiles({
   
     // 2) si connecté online : upload Supabase Storage -> URL publique
     if (auth.status === "signed_in") {
+      const uid = auth.user?.id; // ✅ auth.uid()
+      if (!uid) return;
+
       try {
-        const { publicUrl } = await onlineApi.uploadAvatarImage({ dataUrl });
+        const { publicUrl } = await onlineApi.uploadAvatarImage({ dataUrl, folder: uid });
   
         const avatarPath = (() => {
           if (!publicUrl || typeof publicUrl !== "string") return undefined;
@@ -774,7 +777,10 @@ React.useEffect(() => {
     if (!dataUrl.startsWith("data:image/")) return;
 
     try {
-      const { publicUrl } = await onlineApi.uploadAvatarImage({ dataUrl });
+      const uid = auth.user?.id; // ✅ auth.uid()
+      if (!uid) return;
+
+      const { publicUrl } = await onlineApi.uploadAvatarImage({ dataUrl, folder: uid });
       if (cancelled) return;
       if (!publicUrl) return;
 

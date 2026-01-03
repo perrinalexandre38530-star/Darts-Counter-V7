@@ -26,6 +26,10 @@
 //
 // ✅ NEW: CRASH CATCHER (affiche l'erreur au lieu de "Aïe aïe aïe")
 // - Wrap l'app avec <CrashCatcher> pour capturer erreurs React + window.error + unhandledrejection
+//
+// ✅ PATCH D: AUTH UNIQUE
+// - On garde AuthOnlineProvider
+// - On enlève définitivement tout AuthProvider/AuthSessionProvider legacy
 // ============================================
 import React from "react";
 import BottomNav from "./components/BottomNav";
@@ -121,6 +125,8 @@ import SyncCenter from "./pages/SyncCenter";
 // Contexts
 import { ThemeProvider } from "./contexts/ThemeContext";
 import { LangProvider } from "./contexts/LangContext";
+import { StoreProvider } from "./contexts/StoreContext";
+import { AudioProvider } from "./contexts/AudioContext";
 import { AuthOnlineProvider, useAuthOnline } from "./hooks/useAuthOnline";
 
 // Dev helper
@@ -1324,7 +1330,14 @@ function App() {
         break;
 
       case "home":
-        page = <Home store={store} update={update} go={go} onConnect={() => go("profiles", { view: "me", autoCreate: true })} />;
+        page = (
+          <Home
+            store={store}
+            update={update}
+            go={go}
+            onConnect={() => go("profiles", { view: "me", autoCreate: true })}
+          />
+        );
         break;
 
       case "games":
@@ -1384,7 +1397,12 @@ function App() {
         break;
 
       case "cricket_stats":
-        page = <StatsCricket profiles={store.profiles} activeProfileId={routeParams?.profileId ?? store.activeProfileId ?? null} />;
+        page = (
+          <StatsCricket
+            profiles={store.profiles}
+            activeProfileId={routeParams?.profileId ?? store.activeProfileId ?? null}
+          />
+        );
         break;
 
       case "statsDetail":
@@ -1502,9 +1520,9 @@ function App() {
         if (!effectiveConfig && !isResume) {
           page = (
             <div className="container" style={{ padding: 16 }}>
-                <button onClick={() => go("x01setup")}>← Retour</button>
-                <p>Configuration X01 manquante.</p>
-              </div>
+              <button onClick={() => go("x01setup")}>← Retour</button>
+              <p>Configuration X01 manquante.</p>
+            </div>
           );
           break;
         }
@@ -1731,14 +1749,26 @@ function App() {
             <button onClick={() => go(backTo)} style={{ marginBottom: 12 }}>
               ← Retour
             </button>
-            <AvatarCreator size={512} defaultName={targetProfile?.name || ""} onSave={handleSaveAvatarProfile} isBotMode={isBotMode} />
+            <AvatarCreator
+              size={512}
+              defaultName={targetProfile?.name || ""}
+              onSave={handleSaveAvatarProfile}
+              isBotMode={isBotMode}
+            />
           </div>
         );
         break;
       }
 
       default:
-        page = <Home store={store} update={update} go={go} onConnect={() => go("profiles", { view: "me", autoCreate: true })} />;
+        page = (
+          <Home
+            store={store}
+            update={update}
+            go={go}
+            onConnect={() => go("profiles", { view: "me", autoCreate: true })}
+          />
+        );
     }
   }
 
@@ -1978,11 +2008,15 @@ export default function AppRoot() {
   return (
     <ThemeProvider>
       <LangProvider>
-        <AuthOnlineProvider>
-          {/* ✅ player audio global persistant (rien à voir avec SFX UI) */}
-          <audio id="dc-splash-audio" src={SplashJingle} preload="auto" style={{ display: "none" }} />
-          <App />
-        </AuthOnlineProvider>
+        <StoreProvider>
+          <AudioProvider>
+            <AuthOnlineProvider>
+              {/* ✅ player audio global persistant (rien à voir avec SFX UI) */}
+              <audio id="dc-splash-audio" src={SplashJingle} preload="auto" style={{ display: "none" }} />
+              <App />
+            </AuthOnlineProvider>
+          </AudioProvider>
+        </StoreProvider>
       </LangProvider>
     </ThemeProvider>
   );
