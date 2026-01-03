@@ -184,6 +184,69 @@ const LS_EXCLUDE = new Set<string>([
   "dc_last_crash",
 ]);
 
+/**
+ * ✅ PATCH IMPORTANT:
+ * Certaines features (dartSetsStore, prefs legacy, etc.) écrivent DIRECTEMENT dans localStorage.
+ * Avant: ces changements n'étaient pas “vus” par la sync cloud (emitCloudChange appelé seulement via setKV/delKV).
+ * Maintenant: on hook localStorage.setItem/removeItem/clear pour émettre un signal cloud pour les clés dc_* / dc-*
+ */
+let __suppressCloudLsEvents = 0;
+
+function withSuppressedCloudLsEvents<T>(fn: () => T): T {
+  __suppressCloudLsEvents++;
+  try {
+    return fn();
+  } finally {
+    __suppressCloudLsEvents = Math.max(0, __suppressCloudLsEvents - 1);
+  }
+}
+
+function patchLocalStorageForCloud() {
+  if (typeof window === "undefined") return;
+
+  const w = window as any;
+  if (w.__dc_ls_cloud_patched) return;
+  w.__dc_ls_cloud_patched = true;
+
+  const ls = window.localStorage;
+  const origSetItem = ls.setItem.bind(ls);
+  const origRemoveItem = ls.removeItem.bind(ls);
+  const origClear = ls.clear.bind(ls);
+
+  ls.setItem = ((key: string, value: string) => {
+    origSetItem(key, value);
+    try {
+      if (__suppressCloudLsEvents > 0) return;
+      if (!key) return;
+      if (!isDcKey(key)) return;
+      if (LS_EXCLUDE.has(key)) return;
+      emitCloudChange(`ls:set:${key}`);
+    } catch {}
+  }) as any;
+
+  ls.removeItem = ((key: string) => {
+    origRemoveItem(key);
+    try {
+      if (__suppressCloudLsEvents > 0) return;
+      if (!key) return;
+      if (!isDcKey(key)) return;
+      if (LS_EXCLUDE.has(key)) return;
+      emitCloudChange(`ls:del:${key}`);
+    } catch {}
+  }) as any;
+
+  ls.clear = (() => {
+    origClear();
+    try {
+      if (__suppressCloudLsEvents > 0) return;
+      emitCloudChange("ls:clear");
+    } catch {}
+  }) as any;
+}
+
+// ✅ On patch immédiatement au chargement du module côté navigateur
+patchLocalStorageForCloud();
+
 function exportLocalStorageDc(): Record<string, string> {
   if (typeof window === "undefined") return {};
   const out: Record<string, string> = {};
@@ -206,14 +269,17 @@ function importLocalStorageDc(map: Record<string, string>) {
   if (typeof window === "undefined") return;
   if (!map || typeof map !== "object") return;
 
-  for (const [k, v] of Object.entries(map)) {
-    if (!k) continue;
-    if (!isDcKey(k)) continue;
-    if (LS_EXCLUDE.has(k)) continue;
-    try {
-      window.localStorage.setItem(k, String(v ?? ""));
-    } catch {}
-  }
+  // ✅ important: on supprime les events pendant un import (sinon tu push pendant un restore cloud)
+  withSuppressedCloudLsEvents(() => {
+    for (const [k, v] of Object.entries(map)) {
+      if (!k) continue;
+      if (!isDcKey(k)) continue;
+      if (LS_EXCLUDE.has(k)) continue;
+      try {
+        window.localStorage.setItem(k, String(v ?? ""));
+      } catch {}
+    }
+  });
 }
 
 // Utile en mode "replace" : évite de garder des dc_* / dc-* obsolètes
@@ -228,11 +294,14 @@ function clearLocalStorageDc(): void {
       if (LS_EXCLUDE.has(k)) continue;
       toDelete.push(k);
     }
-    for (const k of toDelete) {
-      try {
-        window.localStorage.removeItem(k);
-      } catch {}
-    }
+
+    withSuppressedCloudLsEvents(() => {
+      for (const k of toDelete) {
+        try {
+          window.localStorage.removeItem(k);
+        } catch {}
+      }
+    });
   } catch {}
 }
 
@@ -483,11 +552,7 @@ export async function setKV(key: string, value: any): Promise<void> {
 
     await idbSet(key, payload);
 
-    // 🔥 NOUVEAU : sync index dart sets
-    if (key.startsWith("dartset:")) {
-      await syncDartSetsIndexToLocalStorage();
-    }
-
+    // ✅ signal cloud après écriture OK
     emitCloudChange(`idb:${key}`);
   } catch (err) {
     console.error("[storage] setKV error:", key, err);
@@ -499,10 +564,7 @@ export async function delKV(key: string): Promise<void> {
   try {
     await idbDel(key);
 
-    if (key.startsWith("dartset:")) {
-      await syncDartSetsIndexToLocalStorage();
-    }
-
+    // ✅ signal cloud après suppression OK
     emitCloudChange(`idb:${key}`);
   } catch (err) {
     console.warn("[storage] delKV error:", key, err);
@@ -544,53 +606,27 @@ export async function importAll(dump: any): Promise<void> {
     const idbDump = dump.idb || {};
     const lsDump = dump.localStorage || {};
 
-    for (const [k, v] of Object.entries(idbDump)) {
-      try {
-        await setKV(k, v);
-      } catch {}
-    }
+    // ✅ on évite d'émettre des centaines d'events pendant un import
+    await withSuppressedCloudLsEvents(async () => {
+      for (const [k, v] of Object.entries(idbDump)) {
+        try {
+          await setKV(k, v);
+        } catch {}
+      }
+      importLocalStorageDc(lsDump);
+    });
 
-    importLocalStorageDc(lsDump);
     return;
   }
 
   if (typeof dump === "object") {
-    for (const [k, v] of Object.entries(dump)) {
-      try {
-        await setKV(k, v);
-      } catch {}
-    }
-  }
-}
-
-/* ============================================================
-   ✅ DART SETS CLOUD INDEX
-   - expose dc_dart_sets_v1 dans localStorage
-   - contenu léger (ids + meta)
-============================================================ */
-
-const DARTSETS_INDEX_KEY = "dc_dart_sets_v1";
-const DARTSETS_IDB_PREFIX = "dartset:";
-
-/**
- * Génère un index léger des dart sets pour le cloud
- * (ids + timestamps, PAS les images)
- */
-async function syncDartSetsIndexToLocalStorage() {
-  try {
-    if (typeof window === "undefined") return;
-
-    const keys = await listKVKeys();
-    const dartSetKeys = keys.filter((k) => k.startsWith(DARTSETS_IDB_PREFIX));
-
-    const index = dartSetKeys.map((k) => {
-      const id = k.replace(DARTSETS_IDB_PREFIX, "");
-      return { id };
+    await withSuppressedCloudLsEvents(async () => {
+      for (const [k, v] of Object.entries(dump)) {
+        try {
+          await setKV(k, v);
+        } catch {}
+      }
     });
-
-    window.localStorage.setItem(DARTSETS_INDEX_KEY, JSON.stringify(index));
-  } catch (err) {
-    console.warn("[storage] syncDartSetsIndex error", err);
   }
 }
 
