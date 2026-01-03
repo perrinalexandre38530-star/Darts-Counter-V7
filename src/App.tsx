@@ -62,9 +62,6 @@ import { onlineApi } from "./lib/onlineApi";
 // ✅ Supabase client
 import { supabase } from "./lib/supabaseClient";
 
-// ✅ PATCH A: seed / sync dartSets
-import { getAllDartSets } from "./lib/dartSetsStore";
-
 // Types
 import type { Store, Profile, MatchRecord } from "./lib/types";
 import type { X01ConfigV3 as X01ConfigV3Type } from "./types/x01v3";
@@ -101,6 +98,9 @@ import ShanghaiEnd from "./pages/ShanghaiEnd";
 
 // Historique
 import { History } from "./lib/history";
+
+// ✅ DartSets localStorage store (synced into App store)
+import { getAllDartSets, replaceAllDartSets } from "./lib/dartSetsStore";
 
 // ✅ NEW: rebuild stats cache when history changes (FAST STATS HUB)
 import { rebuildStatsForProfile } from "./lib/stats/rebuildStats";
@@ -270,21 +270,20 @@ function sanitizeStoreForCloud(s: any) {
     clone = { ...(s || {}) };
   }
 
-  // ✅ PATCH A: profils -> supprime avatarDataUrl base64 + supprime password
   if (Array.isArray(clone.profiles)) {
     clone.profiles = clone.profiles.map((p: any) => {
       const out = { ...(p || {}) };
-
-      // déjà: suppression avatarDataUrl base64
       const v = out.avatarDataUrl;
       if (typeof v === "string" && v.startsWith("data:")) delete out.avatarDataUrl;
 
-      // ✅ IMPORTANT: ne JAMAIS envoyer de mot de passe
-      if (out.privateInfo && typeof out.privateInfo === "object") {
-        const pi = { ...(out.privateInfo || {}) };
-        if ("password" in pi) delete pi.password;
-        out.privateInfo = pi;
-      }
+      // 🔒 sécurité: ne JAMAIS pousser un mot de passe en cloud
+      try {
+        if (out.privateInfo && typeof out.privateInfo === "object") {
+          const pi: any = { ...(out.privateInfo as any) };
+          if (pi.password) delete pi.password;
+          out.privateInfo = pi;
+        }
+      } catch {}
 
       return out;
     });
@@ -317,15 +316,13 @@ function sanitizeStoreForCloud(s: any) {
     });
   }
 
-  // ✅ PATCH A: dartSets -> supprime dataUrl énormes si présentes
-  if (Array.isArray(clone.dartSets)) {
-    clone.dartSets = clone.dartSets.map((ds: any) => {
-      const out = { ...(ds || {}) };
-      for (const k of ["photoDataUrl", "mainImageUrl", "thumbImageUrl"]) {
-        const v = out[k];
-        if (typeof v === "string" && v.startsWith("data:")) delete out[k];
-      }
-      return out;
+  // ✅ DartSets : ne pas pousser de base64 (photoDataUrl) en cloud
+  if (Array.isArray((clone as any).dartSets)) {
+    (clone as any).dartSets = (clone as any).dartSets.map((ds: any) => {
+      const dso = { ...(ds || {}) };
+      const p = dso.photoDataUrl;
+      if (typeof p === "string" && p.startsWith("data:")) delete dso.photoDataUrl;
+      return dso;
     });
   }
 
@@ -685,7 +682,7 @@ const initialStore: Store = {
     neonTheme: true,
   } as any,
   history: [],
-  dartSets: [], // ✅ NEW: dartsets dans store (cloud sync)
+  dartSets: getAllDartSets(),
 } as any;
 
 /* --------------------------------------------
@@ -982,7 +979,7 @@ function App() {
       // ✅ NEW: permet aux listeners externes de muter le store
       (window as any).__appStore.update = update;
     } catch {}
-  }, [store, tab]);
+  }, [store, tab, update]);
 
   /* Load store from IDB at boot + gate */
   React.useEffect(() => {
@@ -996,63 +993,23 @@ function App() {
           base = {
             ...initialStore,
             ...saved,
-            profiles: (saved as any).profiles ?? [],
-            friends: (saved as any).friends ?? [],
-            history: (saved as any).history ?? [],
-            dartSets: (saved as any).dartSets ?? [], // ✅ NEW
+            profiles: saved.profiles ?? [],
+            friends: saved.friends ?? [],
+            history: saved.history ?? [],
+            dartSets: (saved as any).dartSets ?? getAllDartSets(),
           };
         } else {
           base = { ...initialStore };
         }
 
-        // ✅ PATCH A: DartSets seed si absent dans IDB
-        try {
-          const fromLocal = getAllDartSets();
-          const has = Array.isArray((base as any).dartSets) && (base as any).dartSets.length > 0;
-          if (!has && Array.isArray(fromLocal) && fromLocal.length > 0) {
-            (base as any).dartSets = fromLocal;
-          } else if (!Array.isArray((base as any).dartSets)) {
-            (base as any).dartSets = [];
-          }
-        } catch {
-          (base as any).dartSets = Array.isArray((base as any).dartSets) ? (base as any).dartSets : [];
-        }
-
         if (mounted) {
           setStore((prev) => ({
             ...base,
-            profiles: mergeProfilesSafe(prev.profiles ?? [], (base as any).profiles ?? []),
+            profiles: mergeProfilesSafe(prev.profiles ?? [], base.profiles ?? []),
           }));
 
-          // ✅ MIGRATION dartsets legacy (localStorage "dc_dart_sets_v1" → store.dartSets)
-          try {
-            const LS_KEY = "dc_dart_sets_v1"; // ⚠️ c’est TON ancienne clé
-            const raw = localStorage.getItem(LS_KEY);
-            if (raw) {
-              const legacy = JSON.parse(raw);
-              if (Array.isArray(legacy) && legacy.length) {
-                setStore((prev) => {
-                  const cur = Array.isArray((prev as any).dartSets) ? (prev as any).dartSets : [];
-                  const merged = [...cur];
-
-                  for (const it of legacy) {
-                    if (!it || !it.id) continue;
-                    if (!merged.some((x: any) => x?.id === it.id)) merged.push(it);
-                  }
-
-                  return { ...(prev as any), dartSets: merged } as any;
-                });
-
-                localStorage.removeItem(LS_KEY);
-                console.log("[migration] dartSets migrated from localStorage → store.dartSets");
-              }
-            }
-          } catch (e) {
-            console.warn("[migration] dartSets error", e);
-          }
-
-          const hasProfiles = ((base as any).profiles ?? []).length > 0;
-          const hasActive = !!(base as any).activeProfileId;
+          const hasProfiles = (base.profiles ?? []).length > 0;
+          const hasActive = !!base.activeProfileId;
 
           const h = String(window.location.hash || "");
           const isAuthFlow = h.startsWith("#/auth/callback") || h.startsWith("#/auth/reset") || h.startsWith("#/auth/forgot");
@@ -1100,8 +1057,7 @@ function App() {
         const res: any = await onlineApi.pullStoreSnapshot();
 
         if (res?.status === "ok") {
-          // ✅ PATCH A: accepte payload direct OU wrapper idb
-          const payload = res?.payload ?? null;
+          const payload = (res as any)?.payload ?? null;
           const cloudStore = payload?.store ?? payload?.idb?.store ?? null;
 
           if (cloudStore && typeof cloudStore === "object") {
@@ -1111,39 +1067,18 @@ function App() {
               profiles: (cloudStore as any).profiles ?? [],
               friends: (cloudStore as any).friends ?? [],
               history: (cloudStore as any).history ?? [],
-              dartSets: (cloudStore as any).dartSets ?? [], // ✅ NEW
             };
 
             if (!cancelled) {
               let mergedFinal: Store | null = null;
 
               setStore((prev) => {
-                const mergedProfiles = mergeProfilesSafe(prev.profiles ?? [], (next as any).profiles ?? []);
+                const mergedProfiles = mergeProfilesSafe(prev.profiles ?? [], next.profiles ?? []);
                 mergedFinal = {
-                  ...(next as any),
+                  ...next,
                   profiles: mergedProfiles,
                   // ✅ ne pas perdre un active local si le cloud est partiel
-                  activeProfileId: (next as any).activeProfileId ?? (prev as any).activeProfileId ?? null,
-                  // ✅ ne pas perdre dartSets locaux si cloud partiel (merge simple par id)
-                  dartSets: (() => {
-                    const a = Array.isArray((prev as any).dartSets) ? (prev as any).dartSets : [];
-                    const b = Array.isArray((next as any).dartSets) ? (next as any).dartSets : [];
-                    const out: any[] = [];
-                    const seen = new Set<string>();
-                    for (const it of b) {
-                      if (it?.id && !seen.has(it.id)) {
-                        seen.add(it.id);
-                        out.push(it);
-                      }
-                    }
-                    for (const it of a) {
-                      if (it?.id && !seen.has(it.id)) {
-                        seen.add(it.id);
-                        out.push(it);
-                      }
-                    }
-                    return out;
-                  })(),
+                  activeProfileId: next.activeProfileId ?? prev.activeProfileId ?? null,
                 } as any;
                 return mergedFinal as any;
               });
@@ -1155,8 +1090,13 @@ function App() {
                 try {
                   await saveStore(mergedFinal);
                 } catch {}
-                const hasProfiles = ((mergedFinal as any).profiles ?? []).length > 0;
-                const hasActive = !!(mergedFinal as any).activeProfileId;
+
+                // ✅ cloud wins -> sync dartsets localStorage
+                try {
+                  if ((mergedFinal as any).dartSets) replaceAllDartSets((mergedFinal as any).dartSets);
+                } catch {}
+                const hasProfiles = (mergedFinal.profiles ?? []).length > 0;
+                const hasActive = !!mergedFinal.activeProfileId;
 
                 const h = String(window.location.hash || "");
                 const isAuthFlow =
@@ -1171,11 +1111,10 @@ function App() {
           }
         } else if (res?.status === "not_found") {
           const hasLocalData =
-            ((store as any)?.profiles?.length || 0) > 0 ||
+            (store?.profiles?.length || 0) > 0 ||
             !!(store as any)?.activeProfileId ||
-            ((store as any)?.friends?.length || 0) > 0 ||
-            ((store as any)?.history?.length || 0) > 0 ||
-            (Array.isArray((store as any)?.dartSets) ? (store as any).dartSets.length : 0) > 0; // ✅ NEW
+            (store?.friends?.length || 0) > 0 ||
+            (store?.history?.length || 0) > 0;
 
           if (hasLocalData) {
             const payload = {
@@ -1239,6 +1178,23 @@ function App() {
     };
   }, [store, loading, cloudHydrated, online?.ready, online?.status]);
 
+  // ============================================================
+  // ✅ DartSets bridge: localStorage dartSetsStore -> App store
+  // - DartSetsPanel utilise dartSetsStore (localStorage)
+  // - App store garde une copie dans store.dartSets (pour cloud snapshot)
+  // ============================================================
+  React.useEffect(() => {
+    const sync = () => {
+      try {
+        const list = getAllDartSets();
+        setStore((prev) => ({ ...(prev as any), dartSets: list } as any));
+      } catch {}
+    };
+    sync();
+    window.addEventListener("dc-dartsets-updated", sync as any);
+    return () => window.removeEventListener("dc-dartsets-updated", sync as any);
+  }, []);
+
   /* Save store each time it changes */
   React.useEffect(() => {
     if (!loading) {
@@ -1255,7 +1211,7 @@ function App() {
   function setProfiles(fn: (p: Profile[]) => Profile[]) {
     update((s) => ({
       ...s,
-      profiles: mergeProfilesSafe((s as any).profiles ?? [], fn((s as any).profiles ?? [])),
+      profiles: mergeProfilesSafe(s.profiles ?? [], fn(s.profiles ?? [])),
     }));
   }
 
@@ -1264,8 +1220,8 @@ function App() {
   // ============================================================
   const __profilesRef = React.useRef<Profile[]>([]);
   React.useEffect(() => {
-    __profilesRef.current = ((store as any).profiles ?? []) as any;
-  }, [(store as any).profiles]);
+    __profilesRef.current = (store.profiles ?? []) as any;
+  }, [store.profiles]);
 
   const __rebuildLockRef = React.useRef(false);
 
@@ -1308,7 +1264,7 @@ function App() {
 
     const rawPlayers = (m as any)?.players ?? (m as any)?.payload?.players ?? [];
     const players = rawPlayers.map((p: any) => {
-      const prof = ((store as any).profiles || []).find((pr: any) => pr.id === p?.id);
+      const prof = (store.profiles || []).find((pr) => pr.id === p?.id);
       return {
         id: p?.id,
         name: p?.name ?? prof?.name ?? "",
@@ -1331,11 +1287,11 @@ function App() {
     };
 
     update((s) => {
-      const list = [...((s as any).history ?? [])];
+      const list = [...(s.history ?? [])];
       const i = list.findIndex((r: any) => r.id === saved.id);
       if (i >= 0) list[i] = saved;
       else list.unshift(saved);
-      return { ...(s as any), history: list } as any;
+      return { ...s, history: list };
     });
 
     try {
@@ -1377,8 +1333,8 @@ function App() {
   }
 
   const historyForUI = React.useMemo(
-    () => ((store as any).history || []).map((r: any) => withAvatars(r, (store as any).profiles || [])),
-    [(store as any).history, (store as any).profiles]
+    () => (store.history || []).map((r: any) => withAvatars(r, store.profiles || [])),
+    [store.history, store.profiles]
   );
 
   if (showSplash) {
@@ -1501,8 +1457,8 @@ function App() {
       case "cricket_stats":
         page = (
           <StatsCricket
-            profiles={(store as any).profiles}
-            activeProfileId={routeParams?.profileId ?? (store as any).activeProfileId ?? null}
+            profiles={store.profiles}
+            activeProfileId={routeParams?.profileId ?? store.activeProfileId ?? null}
           />
         );
         break;
@@ -1558,13 +1514,11 @@ function App() {
       case "x01setup":
         page = (
           <X01Setup
-            profiles={(store as any).profiles}
-            defaults={{ start: getX01DefaultStart(store), doubleOut: (store as any).settings.doubleOut }}
+            profiles={store.profiles}
+            defaults={{ start: getX01DefaultStart(store), doubleOut: store.settings.doubleOut }}
             onCancel={() => go("games")}
             onStart={(opts) => {
-              const players = (store as any).settings.randomOrder
-                ? opts.playerIds.slice().sort(() => Math.random() - 0.5)
-                : opts.playerIds;
+              const players = store.settings.randomOrder ? opts.playerIds.slice().sort(() => Math.random() - 0.5) : opts.playerIds;
               setX01Config({ playerIds: players, start: opts.start, doubleOut: opts.doubleOut });
               go("x01", { resumeId: null, fresh: Date.now() });
             }}
@@ -1573,10 +1527,7 @@ function App() {
         break;
 
       case "x01_online_setup": {
-        const activeProfile =
-          ((store as any).profiles || []).find((p: any) => p.id === (store as any).activeProfileId) ??
-          (store as any).profiles?.[0] ??
-          null;
+        const activeProfile = store.profiles.find((p) => p.id === store.activeProfileId) ?? store.profiles[0] ?? null;
         const lobbyCode = routeParams?.lobbyCode ?? null;
 
         if (!activeProfile) {
@@ -1603,7 +1554,7 @@ function App() {
           break;
         }
 
-        const storeForOnline: Store = { ...(store as any), activeProfileId: activeProfile.id } as Store;
+        const storeForOnline: Store = { ...store, activeProfileId: activeProfile.id } as Store;
         page = <X01OnlineSetup store={storeForOnline} go={go} params={{ ...(routeParams || {}), lobbyCode }} />;
         break;
       }
@@ -1615,17 +1566,12 @@ function App() {
         let effectiveConfig = x01Config;
 
         if (!effectiveConfig && isOnline && !isResume) {
-          const activeProfile =
-            ((store as any).profiles || []).find((p: any) => p.id === (store as any).activeProfileId) ??
-            (store as any).profiles?.[0] ??
-            null;
+          const activeProfile = store.profiles.find((p) => p.id === store.activeProfileId) ?? store.profiles[0] ?? null;
           const startDefault = getX01DefaultStart(store);
           const start =
-            startDefault === 301 || startDefault === 501 || startDefault === 701 || startDefault === 901
-              ? startDefault
-              : 501;
+            startDefault === 301 || startDefault === 501 || startDefault === 701 || startDefault === 901 ? startDefault : 501;
 
-          effectiveConfig = { start, doubleOut: (store as any).settings.doubleOut, playerIds: activeProfile ? [activeProfile.id] : [] };
+          effectiveConfig = { start, doubleOut: store.settings.doubleOut, playerIds: activeProfile ? [activeProfile.id] : [] };
           setX01Config(effectiveConfig);
         }
 
@@ -1650,7 +1596,7 @@ function App() {
         page = (
           <X01Play
             key={key}
-            profiles={(store as any).profiles}
+            profiles={store.profiles}
             playerIds={playerIds}
             start={startClamped}
             outMode={outMode}
@@ -1666,7 +1612,7 @@ function App() {
       case "x01_config_v3":
         page = (
           <X01ConfigV3
-            profiles={(store as any).profiles}
+            profiles={store.profiles}
             onBack={() => go("games")}
             onStart={(cfg) => {
               setX01ConfigV3(cfg);
@@ -1708,7 +1654,7 @@ function App() {
         break;
 
       case "cricket":
-        page = <CricketPlay profiles={(store as any).profiles ?? []} onFinish={(m: any) => pushHistory(m)} />;
+        page = <CricketPlay profiles={store.profiles ?? []} onFinish={(m: any) => pushHistory(m)} />;
         break;
 
       case "killer":
@@ -1771,7 +1717,7 @@ function App() {
         break;
 
       case "training_clock":
-        page = <TrainingClock profiles={(store as any).profiles ?? []} activeProfileId={(store as any).activeProfileId ?? null} go={go} />;
+        page = <TrainingClock profiles={store.profiles ?? []} activeProfileId={store.activeProfileId ?? null} go={go} />;
         break;
 
       case "avatar": {
@@ -1814,8 +1760,7 @@ function App() {
           break;
         }
 
-        const targetProfile =
-          ((store as any).profiles || []).find((p: any) => p.id === (profileIdFromParams || (store as any).activeProfileId)) ?? null;
+        const targetProfile = store.profiles.find((p) => p.id === (profileIdFromParams || store.activeProfileId)) ?? null;
 
         async function handleSaveAvatarProfile({ pngDataUrl, name }: { pngDataUrl: string; name: string }) {
           if (!targetProfile) return;
@@ -1831,10 +1776,10 @@ function App() {
 
             setProfiles((list) =>
               list.map((p) =>
-                (p as any).id === (targetProfile as any).id
-                  ? { ...(p as any), name: trimmedName || (p as any).name, avatarUrl: publicUrl, avatarUpdatedAt: now, avatarDataUrl: null }
+                p.id === targetProfile.id
+                  ? { ...p, name: trimmedName || p.name, avatarUrl: publicUrl, avatarUpdatedAt: now, avatarDataUrl: null }
                   : p
-              ) as any
+              )
             );
 
             go(backTo);
@@ -1843,10 +1788,14 @@ function App() {
 
             setProfiles((list) =>
               list.map((p) =>
-                (p as any).id === (targetProfile as any).id
-                  ? { ...(p as any), name: trimmedName || (p as any).name, avatarDataUrl: pngDataUrl }
+                p.id === targetProfile.id
+                  ? {
+                      ...p,
+                      name: trimmedName || p.name,
+                      avatarDataUrl: pngDataUrl,
+                    }
                   : p
-              ) as any
+              )
             );
 
             go(backTo);
@@ -1860,7 +1809,7 @@ function App() {
             </button>
             <AvatarCreator
               size={512}
-              defaultName={(targetProfile as any)?.name || ""}
+              defaultName={targetProfile?.name || ""}
               onSave={handleSaveAvatarProfile}
               isBotMode={isBotMode}
             />
