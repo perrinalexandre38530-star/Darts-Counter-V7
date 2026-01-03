@@ -16,7 +16,7 @@ import type { UserAuth, OnlineProfile, OnlineMatch } from "./onlineTypes";
 // --------------------------------------------
 
 export type AuthSession = {
-  token: string; // "" si signup en attente de confirmation email
+  token: string; // peut être "" si signup en attente de confirmation email
   user: UserAuth;
   profile: OnlineProfile | null;
 };
@@ -84,9 +84,10 @@ export type OnlineLobby = {
 
 const USE_MOCK = false;
 
-// ✅ IMPORTANT : on coupe les MATCHS ONLINE tant que tu n’as pas une table dédiée
+// ✅ on coupe les matches tant qu'il n'y a pas de table dédiée
 const ONLINE_MATCHES_ENABLED = false;
 
+// ✅ cache LS (juste debug / fallback, Supabase reste source de vérité)
 const LS_AUTH_KEY = "dc_online_auth_supabase_v1";
 
 function now() {
@@ -114,22 +115,19 @@ function saveAuthToLS(session: AuthSession | null) {
   else window.localStorage.setItem(LS_AUTH_KEY, JSON.stringify(session));
 }
 
-// ✅ Redirects STABLES (évite webcontainer/stackblitz)
+// ✅ Redirect stable (Pages)
 function getSiteUrl(): string {
   const fromEnv =
     (typeof import.meta !== "undefined" &&
       (import.meta as any).env &&
       (import.meta as any).env.VITE_SITE_URL) ||
     "";
-
   const SITE_URL = String(fromEnv || "https://darts-counter-v7.pages.dev").trim();
   return SITE_URL.replace(/\/+$/, "");
 }
-
 function getEmailConfirmRedirect(): string {
   return `${getSiteUrl()}/#/auth/callback`;
 }
-
 function getResetPasswordRedirect(): string {
   return `${getSiteUrl()}/#/auth/reset`;
 }
@@ -166,7 +164,6 @@ function extFromMime(mime: string) {
 // 1) PARTIE SUPABASE (Auth / Profils)
 // ============================================================
 
-// ✅ Table : "profiles"
 type SupabaseProfileRow = {
   id: string;
   nickname: string | null;
@@ -199,7 +196,7 @@ function mapProfile(row: SupabaseProfileRow): OnlineProfile {
     surname: row.surname ?? "",
     firstName: row.first_name ?? "",
     lastName: row.last_name ?? "",
-    birthDate: row.birth_date ?? null,
+    birthDate: (row.birth_date as any) ?? null,
     city: row.city ?? "",
     email: row.email ?? "",
     phone: row.phone ?? "",
@@ -217,7 +214,7 @@ function mapProfile(row: SupabaseProfileRow): OnlineProfile {
   };
 }
 
-// Lobbies : table "online_lobbies"
+// Lobbies
 type SupabaseLobbyRow = {
   id: string;
   code: string;
@@ -245,7 +242,7 @@ function mapLobbyRow(row: SupabaseLobbyRow): OnlineLobby {
 }
 
 // --------------------------------------------
-// Helpers AUTH Supabase
+// Helpers AUTH
 // --------------------------------------------
 
 async function ensureAuthedUser() {
@@ -276,7 +273,6 @@ async function buildAuthSessionFromSupabase(): Promise<AuthSession | null> {
     createdAt: user.created_at ? Date.parse(user.created_at) : now(),
   };
 
-  // ✅ Profil = table "profiles" (id == auth.users.id)
   const { data: profileRow, error: profileError } = await supabase
     .from("profiles")
     .select("*")
@@ -291,7 +287,7 @@ async function buildAuthSessionFromSupabase(): Promise<AuthSession | null> {
   } else if (profileRow) {
     profile = mapProfile(profileRow as unknown as SupabaseProfileRow);
   } else {
-    // ✅ création profil au 1er login (nécessite RLS policy "insert own row")
+    // création profil au 1er login (nécessite policy INSERT)
     const { data: created, error: createError } = await supabase
       .from("profiles")
       .insert({
@@ -300,14 +296,13 @@ async function buildAuthSessionFromSupabase(): Promise<AuthSession | null> {
         display_name: meta?.nickname ?? user.email ?? "Player",
         country: null,
         avatar_url: null,
+        updated_at: new Date().toISOString(),
       })
       .select()
       .single();
 
     if (createError) {
       console.warn("[onlineApi] profiles insert error", createError);
-      // fallback: on ne casse pas l'app
-      profile = null;
     } else {
       profile = mapProfile(created as unknown as SupabaseProfileRow);
     }
@@ -324,7 +319,7 @@ async function buildAuthSessionFromSupabase(): Promise<AuthSession | null> {
 }
 
 // --------------------------------------------
-// Fonctions publiques : AUTH
+// AUTH publics
 // --------------------------------------------
 
 async function signup(payload: SignupPayload): Promise<AuthSession> {
@@ -350,7 +345,7 @@ async function signup(payload: SignupPayload): Promise<AuthSession> {
     throw new Error(error.message);
   }
 
-  // ⚠️ Confirmation email activée : pas de session tout de suite.
+  // confirmation email => session peut être null
   const createdUser = data?.user;
   const createdSession = data?.session;
 
@@ -383,7 +378,6 @@ async function login(payload: LoginPayload): Promise<AuthSession> {
   }
 
   const { error } = await supabase.auth.signInWithPassword({ email, password });
-
   if (error) {
     console.error("[onlineApi] login error", error);
     throw new Error(error.message);
@@ -480,15 +474,14 @@ async function updateProfile(patch: UpdateProfilePayload): Promise<OnlineProfile
   const profile = mapProfile(data as unknown as SupabaseProfileRow);
 
   const current = loadAuthFromLS();
-  if (current?.user?.id === userId) {
-    saveAuthToLS({ ...current, profile });
-  }
+  if (current?.user?.id === userId) saveAuthToLS({ ...current, profile });
 
   return profile;
 }
 
-// ✅ AVATAR : Storage bucket "avatars"
-async function uploadAvatarImage(args: { dataUrl: string }): Promise<{ publicUrl: string; path: string }> {
+async function uploadAvatarImage(args: {
+  dataUrl: string;
+}): Promise<{ publicUrl: string; path: string }> {
   const { user } = await ensureAuthedUser();
 
   const blob = dataUrlToBlob(args.dataUrl);
@@ -516,8 +509,7 @@ async function uploadAvatarImage(args: { dataUrl: string }): Promise<{ publicUrl
 }
 
 // ============================================================
-// 2) CLOUD STORE SNAPSHOT (SOURCE UNIQUE)
-// Table : user_store (user_id, version, updated_at, data)
+// 2) CLOUD STORE SNAPSHOT (SOURCE UNIQUE DES DONNÉES)
 // ============================================================
 
 type UserStoreRow = {
@@ -583,7 +575,7 @@ async function pushStoreSnapshot(payload: any, version = 1): Promise<void> {
 }
 
 // ============================================================
-// 3) Salons X01 ONLINE (table: online_lobbies)
+// 3) Salons X01 ONLINE (Supabase "online_lobbies")
 // ============================================================
 
 function generateLobbyCode(): string {
@@ -625,7 +617,7 @@ async function createLobby(args: {
     if (!error && data) return mapLobbyRow(data as SupabaseLobbyRow);
 
     lastError = error;
-    if (error && (error as any).code === "23505") continue; // code déjà pris
+    if (error && (error as any).code === "23505") continue;
     console.error("[onlineApi] createLobby error", error);
     break;
   }
@@ -633,7 +625,11 @@ async function createLobby(args: {
   throw new Error(lastError?.message || "Impossible de créer un salon online pour le moment.");
 }
 
-async function joinLobby(args: { code: string; userId: string; nickname: string }): Promise<OnlineLobby> {
+async function joinLobby(args: {
+  code: string;
+  userId: string;
+  nickname: string;
+}): Promise<OnlineLobby> {
   const codeUpper = args.code.trim().toUpperCase();
 
   const { data, error } = await supabase
@@ -679,38 +675,31 @@ async function listMatches(_limit = 50): Promise<OnlineMatch[]> {
 }
 
 // --------------------------------------------
-// Export API unique
+// Export API
 // --------------------------------------------
 
 export const onlineApi = {
-  // Auth
   signup,
   login,
   restoreSession,
   logout,
   getCurrentSession,
 
-  // Gestion compte
   requestPasswordReset,
   updateEmail,
 
-  // Profil
   updateProfile,
   uploadAvatarImage,
 
-  // Snapshot cloud
   pullStoreSnapshot,
   pushStoreSnapshot,
 
-  // Salons
   createLobby,
   joinLobby,
 
-  // Matchs (safe)
   uploadMatch,
   listMatches,
 
-  // Info
   USE_MOCK,
 
   // debug

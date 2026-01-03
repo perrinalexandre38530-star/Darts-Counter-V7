@@ -29,7 +29,7 @@
 // ============================================
 import React from "react";
 import BottomNav from "./components/BottomNav";
-import { AuthSessionProvider, useAuthSession } from "./contexts/AuthSessionContext";
+
 import AuthStart from "./pages/AuthStart";
 import AccountStart from "./pages/AccountStart";
 
@@ -1502,9 +1502,9 @@ function App() {
         if (!effectiveConfig && !isResume) {
           page = (
             <div className="container" style={{ padding: 16 }}>
-              <button onClick={() => go("x01setup")}>← Retour</button>
-              <p>Configuration X01 manquante.</p>
-            </div>
+                <button onClick={() => go("x01setup")}>← Retour</button>
+                <p>Configuration X01 manquante.</p>
+              </div>
           );
           break;
         }
@@ -1737,10 +1737,6 @@ function App() {
         break;
       }
 
-      case "cricket":
-        page = <CricketPlay profiles={store.profiles ?? []} onFinish={(m: any) => pushHistory(m)} />;
-        break;
-
       default:
         page = <Home store={store} update={update} go={go} onConnect={() => go("profiles", { view: "me", autoCreate: true })} />;
     }
@@ -1766,6 +1762,7 @@ function App() {
 
 /* --------------------------------------------
    🔒 APP GATE — NE BLOQUE QUE LES PAGES ONLINE "post-login"
+   ✅ V7: compte unique -> useAuthOnline()
 -------------------------------------------- */
 function AppGate({
   go,
@@ -1776,13 +1773,21 @@ function AppGate({
   tab: any;
   children: React.ReactNode;
 }) {
-  const { status } = useAuthSession();
+  const { status, ready } = useAuthOnline();
 
+  // pages qui nécessitent une session Supabase active
   const needsSession = tab === "stats_online" || tab === "x01_online_setup" || tab === "online";
 
-  const isAuthFlow = tab === "auth_reset" || tab === "auth_callback" || tab === "auth_forgot" || tab === "auth_start" || tab === "account_start";
+  // pendant les flows auth, on ne gate pas
+  const isAuthFlow =
+    tab === "auth_reset" ||
+    tab === "auth_callback" ||
+    tab === "auth_forgot" ||
+    tab === "auth_start" ||
+    tab === "account_start";
 
-  if (status === "checking") {
+  // ✅ Tant que restoreSession / init n'a pas fini, on affiche un écran neutre
+  if (!ready) {
     return (
       <div className="container" style={{ padding: 40, textAlign: "center" }}>
         Vérification de la session…
@@ -1790,8 +1795,20 @@ function AppGate({
     );
   }
 
-  if (status === "signed_out" && needsSession && !isAuthFlow) {
-    return <AccountEntry go={go} />;
+  // ✅ Redirect automatique vers AuthStart si une page online est demandée sans session
+  React.useEffect(() => {
+    if (!isAuthFlow && needsSession && status !== "signed_in") {
+      go("auth_start");
+    }
+  }, [isAuthFlow, needsSession, status, go]);
+
+  // Pendant la redirection, on affiche un petit loader (évite flash UI)
+  if (!isAuthFlow && needsSession && status !== "signed_in") {
+    return (
+      <div className="container" style={{ padding: 40, textAlign: "center" }}>
+        Redirection vers la connexion…
+      </div>
+    );
   }
 
   return <>{children}</>;
@@ -1864,7 +1881,7 @@ function AccountEntry({ go }: { go: (t: any, p?: any) => void }) {
           </div>
 
           <button
-            onClick={() => go("online")}
+            onClick={() => go("auth_start")}
             style={{
               width: "100%",
               borderRadius: 999,
@@ -1881,7 +1898,7 @@ function AccountEntry({ go }: { go: (t: any, p?: any) => void }) {
           </button>
 
           <button
-            onClick={() => go("online")}
+            onClick={() => go("auth_start")}
             style={{
               width: "100%",
               borderRadius: 999,
@@ -1962,11 +1979,9 @@ export default function AppRoot() {
     <ThemeProvider>
       <LangProvider>
         <AuthOnlineProvider>
-          <AuthSessionProvider>
-            {/* ✅ player audio global persistant (rien à voir avec SFX UI) */}
-            <audio id="dc-splash-audio" src={SplashJingle} preload="auto" style={{ display: "none" }} />
-            <App />
-          </AuthSessionProvider>
+          {/* ✅ player audio global persistant (rien à voir avec SFX UI) */}
+          <audio id="dc-splash-audio" src={SplashJingle} preload="auto" style={{ display: "none" }} />
+          <App />
         </AuthOnlineProvider>
       </LangProvider>
     </ThemeProvider>
