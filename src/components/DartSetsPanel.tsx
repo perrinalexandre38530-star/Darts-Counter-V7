@@ -10,6 +10,7 @@
 // - Upload photo perso pour un set (stockée dans dartSetsStore)
 // ✅ FIX MOBILE: compression image + rendu <img> (évite backgroundImage + quota localStorage)
 // ✅ FIX FIT: photos en "cover" pour remplir le cadre comme un preset
+// ✅ PATCH CLOUD: sync dartsets -> __appStore.update (pour IDB + push cloud)
 // =============================================================
 
 import React from "react";
@@ -21,6 +22,7 @@ import DartSetScannerSheet from "./DartSetScannerSheet";
 
 import {
   type DartSet,
+  getAllDartSets, // ✅ PATCH B
   getDartSetsForProfile,
   createDartSet,
   deleteDartSet,
@@ -154,8 +156,7 @@ const DartImage: React.FC<{
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
-            fontSize:
-              typeof width === "number" ? Math.max(18, Math.round(width * 0.33)) : 22,
+            fontSize: typeof width === "number" ? Math.max(18, Math.round(width * 0.33)) : 22,
           }}
         >
           🎯
@@ -187,11 +188,13 @@ const DartImage: React.FC<{
 type DartSetImageUploaderProps = {
   dartSet: DartSet | null;
   onUpdated: (updated: DartSet) => void;
+  onAfterChange?: () => void; // ✅ PATCH B (pour sync app store)
 };
 
 const DartSetImageUploader: React.FC<DartSetImageUploaderProps> = ({
   dartSet,
   onUpdated,
+  onAfterChange,
 }) => {
   const { lang } = useLang();
 
@@ -261,6 +264,9 @@ const DartSetImageUploader: React.FC<DartSetImageUploaderProps> = ({
       };
 
       onUpdated(updated);
+      try {
+        onAfterChange?.(); // ✅ PATCH B
+      } catch {}
     } catch (err) {
       console.warn("[DartSetImageUploader] update error", err);
       alert(
@@ -389,6 +395,24 @@ const DartSetsPanel: React.FC<Props> = ({ profile }) => {
   // Carrousel
   const [activeIndex, setActiveIndex] = React.useState(0);
 
+  // ✅ PATCH B — helper: pousse TOUS les dartsets dans le store global (=> IDB => push cloud)
+  const syncAllDartSetsToAppStore = React.useCallback(() => {
+    try {
+      const all = getAllDartSets();
+      const u = (window as any).__appStore?.update;
+      if (typeof u === "function") {
+        u((s: any) => ({ ...(s || {}), dartSets: all }));
+      }
+    } catch (e) {
+      console.warn("[DartSetsPanel] syncAllDartSetsToAppStore error", e);
+    }
+  }, []);
+
+  // ✅ PATCH B — au mount
+  React.useEffect(() => {
+    syncAllDartSetsToAppStore();
+  }, [syncAllDartSetsToAppStore]);
+
   function sortSets(list: DartSet[]): DartSet[] {
     return list
       .slice()
@@ -410,10 +434,13 @@ const DartSetsPanel: React.FC<Props> = ({ profile }) => {
       const sorted = sortSets((all || []) as DartSet[]);
       setSets(sorted);
       setActiveIndex((idx) => (sorted.length === 0 ? 0 : Math.min(idx, sorted.length - 1)));
+
+      // ✅ PATCH B — après refresh, pousse aussi au store global
+      syncAllDartSetsToAppStore();
     } catch (err) {
       console.warn("[DartSetsPanel] load error", err);
     }
-  }, [profile?.id]);
+  }, [profile?.id, syncAllDartSetsToAppStore]);
 
   React.useEffect(() => {
     loadSets();
@@ -524,6 +551,9 @@ const DartSetsPanel: React.FC<Props> = ({ profile }) => {
       reloadSets();
       setForm(createEmptyForm(primary));
       setIsCreating(false);
+
+      // ✅ PATCH B
+      syncAllDartSetsToAppStore();
     } catch (err) {
       console.warn("[DartSetsPanel] create error", err);
       alert(
@@ -606,6 +636,9 @@ const DartSetsPanel: React.FC<Props> = ({ profile }) => {
       reloadSets();
       setEditingId(null);
       setEditForm(null);
+
+      // ✅ PATCH B
+      syncAllDartSetsToAppStore();
     } catch (err) {
       console.warn("[DartSetsPanel] update error", err);
       alert(lang === "fr" ? "Erreur : mise à jour impossible (quota mobile ?)." : "Error: update failed (mobile quota?).");
@@ -617,6 +650,10 @@ const DartSetsPanel: React.FC<Props> = ({ profile }) => {
     if (!window.confirm("Supprimer ce jeu de fléchettes ?")) return;
     deleteDartSet(set.id);
     reloadSets();
+
+    // ✅ PATCH B
+    syncAllDartSetsToAppStore();
+
     if (editingId === set.id) {
       setEditingId(null);
       setEditForm(null);
@@ -627,6 +664,9 @@ const DartSetsPanel: React.FC<Props> = ({ profile }) => {
     if (!profile?.id || !set) return;
     setFavoriteDartSet(profile.id, set.id);
     reloadSets();
+
+    // ✅ PATCH B
+    syncAllDartSetsToAppStore();
   };
 
   // ------------------------------------------------------------------
@@ -1131,7 +1171,15 @@ const DartSetsPanel: React.FC<Props> = ({ profile }) => {
           }}
         >
           <div style={{ gridColumn: "1 / span 2" }}>
-            <div style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: 1.6, color: "rgba(127,196,255,.95)", marginBottom: 4 }}>
+            <div
+              style={{
+                fontSize: 11,
+                textTransform: "uppercase",
+                letterSpacing: 1.6,
+                color: "rgba(127,196,255,.95)",
+                marginBottom: 4,
+              }}
+            >
               {lang === "fr" ? "Modifier ce set" : lang === "es" ? "Editar este set" : lang === "de" ? "Set bearbeiten" : "Edit this set"}
             </div>
           </div>
@@ -1227,6 +1275,7 @@ const DartSetsPanel: React.FC<Props> = ({ profile }) => {
           <DartSetImageUploader
             dartSet={sets.find((s) => s.id === editingId) || null}
             onUpdated={(updated) => setSets((prev) => prev.map((s) => (s.id === updated.id ? updated : s)))}
+            onAfterChange={syncAllDartSetsToAppStore} // ✅ PATCH B (save photo)
           />
 
           <div style={{ gridColumn: "1 / span 2", marginTop: 4 }}>
@@ -1441,12 +1490,29 @@ const DartSetsPanel: React.FC<Props> = ({ profile }) => {
                     </div>
 
                     {activeSet.brand && (
-                      <div style={{ fontSize: 11, color: "rgba(255,255,255,.75)", whiteSpace: "nowrap", textOverflow: "ellipsis", overflow: "hidden" }}>
+                      <div
+                        style={{
+                          fontSize: 11,
+                          color: "rgba(255,255,255,.75)",
+                          whiteSpace: "nowrap",
+                          textOverflow: "ellipsis",
+                          overflow: "hidden",
+                        }}
+                      >
                         {activeSet.brand}
                       </div>
                     )}
 
-                    <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11, color: "rgba(255,255,255,.8)", flexWrap: "wrap" }}>
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 8,
+                        fontSize: 11,
+                        color: "rgba(255,255,255,.8)",
+                        flexWrap: "wrap",
+                      }}
+                    >
                       {typeof activeSet.weightGrams === "number" && (
                         <span style={{ padding: "2px 8px", borderRadius: 999, border: "1px solid rgba(255,255,255,.25)", fontSize: 10 }}>
                           {activeSet.weightGrams} g
@@ -1577,6 +1643,8 @@ const DartSetsPanel: React.FC<Props> = ({ profile }) => {
           onClose={() => setScannerTarget(null)}
           onUpdated={(updated) => {
             setSets((prev) => sortSets(prev.map((s) => (s.id === updated.id ? updated : s))));
+            // ✅ PATCH B — après scan update
+            syncAllDartSetsToAppStore();
           }}
         />
       )}
