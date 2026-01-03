@@ -23,29 +23,12 @@ let lastHash = "";
 let running = false;
 let pushing = false;
 
-// ✅ FIX CRITIQUE : stringify stable SANS filtre (le 2e arg de JSON.stringify = FILTER)
-// -> sinon tu perds des clés comme dc_dart_sets_v1 dans localStorage => hash ne change jamais
-function stableStringify(value: any): string {
-  const seen = new WeakSet();
-
-  const walk = (v: any): any => {
-    if (v === null || v === undefined) return v;
-    if (typeof v !== "object") return v;
-
-    // sécurité anti-cycles (au cas où)
-    if (seen.has(v)) return "[Circular]";
-    seen.add(v);
-
-    if (Array.isArray(v)) return v.map(walk);
-
-    const out: any = {};
-    for (const k of Object.keys(v).sort()) {
-      out[k] = walk(v[k]);
-    }
-    return out;
-  };
-
-  return JSON.stringify(walk(value));
+// ✅ PATCH INDISPENSABLE : NE PAS utiliser JSON.stringify(obj, Object.keys(...).sort())
+// -> le 2e param (array) filtre les clés à tous les niveaux => hash ne “voit” pas les changements
+function stableStringify(obj: any) {
+  // pas besoin d’être 100% "stable" : on veut détecter les vrais changements
+  // (exportCloudSnapshot produit déjà un objet déterministe dans la pratique)
+  return JSON.stringify(obj);
 }
 
 function hashString(s: string) {
