@@ -37,7 +37,6 @@ async function compressGzip(data: string): Promise<Uint8Array | string> {
 async function decompressGzip(payload: ArrayBuffer | Uint8Array | string): Promise<string> {
   if (typeof payload === "string") return payload;
 
-  // Pas de support gzip : on essaye de décoder brut
   if (!supportsCompression) {
     return new TextDecoder().decode(payload as ArrayBufferLike);
   }
@@ -47,7 +46,6 @@ async function decompressGzip(payload: ArrayBuffer | Uint8Array | string): Promi
     const stream = new Blob([payload as ArrayBuffer]).stream().pipeThrough(ds);
     return await new Response(stream).text();
   } catch {
-    // Dernier recours
     return new TextDecoder().decode(payload as ArrayBufferLike);
   }
 }
@@ -111,7 +109,6 @@ async function idbKeys(): Promise<IDBValidKey[]> {
     const tx = db.transaction(STORE_NAME, "readonly");
     const store = tx.objectStore(STORE_NAME);
 
-    // getAllKeys n’est pas supporté partout -> fallback curseur
     if ("getAllKeys" in store) {
       const req = (store as any).getAllKeys();
       req.onsuccess = () => resolve(req.result as IDBValidKey[]);
@@ -151,8 +148,8 @@ export async function storageEstimate() {
     const est = (await (navigator.storage?.estimate?.() ?? Promise.resolve(undefined as any))) ?? null;
 
     return {
-      quota: est?.quota ?? null, // bytes
-      usage: est?.usage ?? null, // bytes
+      quota: est?.quota ?? null,
+      usage: est?.usage ?? null,
       usageDetails: est?.usageDetails ?? null,
     };
   } catch {
@@ -163,8 +160,6 @@ export async function storageEstimate() {
 /* ============================================================
    ✅ CLOUD SNAPSHOT (LOCAL) — inclut IndexedDB + localStorage(dc_* ET dc-*)
 ============================================================ */
-
-// ✅ IMPORTANT : ton app a des clés en dc_ ET en dc- selon les versions
 const LS_PREFIXES = ["dc_", "dc-"] as const;
 function isDcKey(k: string) {
   return LS_PREFIXES.some((p) => k.startsWith(p));
@@ -176,7 +171,7 @@ const LS_EXCLUDE = new Set<string>([
   "sb-auth-token",
   "supabase.auth.token",
 
-  // si tu as des clés “presence/ping” anciennes
+  // anciennes keys de presence/ping (à ne pas sync)
   "dc_online_presence_v1",
   "dc_presence_v1",
 
@@ -185,11 +180,11 @@ const LS_EXCLUDE = new Set<string>([
   "dc_last_crash",
 ]);
 
-/**
- * ✅ IMPORTANT (anti boucle cloud):
- * Pendant un restore/import cloud, on ne doit PAS spammer emitCloudChange().
- * => mute global pour IDB + localStorage
- */
+/* ============================================================
+   ✅ MUTE GLOBAL (anti boucle push pendant restore/import)
+   - Quand on importe un snapshot, setKV() / localStorage hook
+     ne doivent PAS spam emitCloudChange().
+============================================================ */
 let __suppressCloudEvents = 0;
 
 function withSuppressedCloudEvents<T>(fn: () => T): T {
@@ -201,47 +196,57 @@ function withSuppressedCloudEvents<T>(fn: () => T): T {
   }
 }
 
-function shouldEmitCloudForKey(k: string) {
+function shouldEmitCloudForKey(key: string) {
   if (__suppressCloudEvents > 0) return false;
-  if (!k) return false;
-  // On limite aux clés “dc” (évite bruit)
-  if (!isDcKey(k) && k !== STORE_KEY) return false;
-  if (LS_EXCLUDE.has(k)) return false;
-  return true;
+  if (!key) return false;
+  if (LS_EXCLUDE.has(key)) return false;
+
+  // On émet sur:
+  // - toutes les keys dc_ / dc-
+  // - + la clé "store" (qui est dans IDB, pas LS, mais utile au push)
+  if (key === STORE_KEY) return true;
+  if (isDcKey(key)) return true;
+
+  return false;
 }
 
-/**
- * ✅ PATCH IMPORTANT:
- * Certaines features écrivent DIRECTEMENT dans localStorage.
- * Maintenant: on hook localStorage.setItem/removeItem/clear pour émettre un signal cloud
- * pour les clés dc_* / dc-* (hors exclude) — MAIS on respecte le mute global.
- */
-function patchLocalStorageForCloud() {
+/* ============================================================
+   ✅ LOCALSTORAGE HOOK (déclenche push cloud)
+   Beaucoup de modules écrivent DIRECT dans localStorage.
+   Sans ce hook => pas de emitCloudChange => pas de push “temps réel”.
+============================================================ */
+let __dcLsHookInstalled = false;
+
+function installLocalStorageCloudHook() {
+  if (__dcLsHookInstalled) return;
   if (typeof window === "undefined") return;
 
-  const w = window as any;
-  if (w.__dc_ls_cloud_patched) return;
-  w.__dc_ls_cloud_patched = true;
-
   const ls = window.localStorage;
+  if (!ls) return;
+
+  const anyLs: any = ls as any;
+  if (anyLs.__dc_hooked) return;
+
+  __dcLsHookInstalled = true;
+  anyLs.__dc_hooked = true;
+
   const origSetItem = ls.setItem.bind(ls);
   const origRemoveItem = ls.removeItem.bind(ls);
   const origClear = ls.clear.bind(ls);
 
-  ls.setItem = ((key: string, value: string) => {
-    origSetItem(key, value);
+  ls.setItem = ((k: string, v: string) => {
+    origSetItem(k, v);
     try {
-      if (!shouldEmitCloudForKey(key)) return;
-      // localStorage: signal cloud
-      emitCloudChange(`ls:set:${key}`);
+      if (!shouldEmitCloudForKey(k)) return;
+      emitCloudChange(`ls:${k}`);
     } catch {}
   }) as any;
 
-  ls.removeItem = ((key: string) => {
-    origRemoveItem(key);
+  ls.removeItem = ((k: string) => {
+    origRemoveItem(k);
     try {
-      if (!shouldEmitCloudForKey(key)) return;
-      emitCloudChange(`ls:del:${key}`);
+      if (!shouldEmitCloudForKey(k)) return;
+      emitCloudChange(`ls:${k}`);
     } catch {}
   }) as any;
 
@@ -254,8 +259,8 @@ function patchLocalStorageForCloud() {
   }) as any;
 }
 
-// ✅ On patch immédiatement au chargement du module côté navigateur
-patchLocalStorageForCloud();
+// ✅ installé dès que storage.ts est importé (donc avant dartSetsStore dans la plupart des cas)
+installLocalStorageCloudHook();
 
 function exportLocalStorageDc(): Record<string, string> {
   if (typeof window === "undefined") return {};
@@ -279,7 +284,7 @@ function importLocalStorageDc(map: Record<string, string>) {
   if (typeof window === "undefined") return;
   if (!map || typeof map !== "object") return;
 
-  // ✅ pas d'events cloud pendant un import
+  // ✅ IMPORTANT: pendant import -> pas d'emitCloudChange via hook
   withSuppressedCloudEvents(() => {
     for (const [k, v] of Object.entries(map)) {
       if (!k) continue;
@@ -292,7 +297,6 @@ function importLocalStorageDc(map: Record<string, string>) {
   });
 }
 
-// Utile en mode "replace" : évite de garder des dc_* / dc-* obsolètes
 function clearLocalStorageDc(): void {
   if (typeof window === "undefined") return;
   try {
@@ -305,6 +309,7 @@ function clearLocalStorageDc(): void {
       toDelete.push(k);
     }
 
+    // ✅ évite spam emitCloudChange pendant un "replace"
     withSuppressedCloudEvents(() => {
       for (const k of toDelete) {
         try {
@@ -452,8 +457,8 @@ async function normalizeStoreAvatarsPerf<T extends Store>(store: T): Promise<{ s
 
 async function normalizeStoreAll<T extends Store>(store: T): Promise<{ store: T; changed: boolean }> {
   const compat = normalizeStoreAvatarsCompatSync(store);
-  const perf = await normalizeStoreAvatarsPerf(compat.store);
-  return { store: perf.store, changed: compat.changed || perf.changed };
+  const perf = await normalizeStoreAvatarsPerf(compat.store as T);
+  return { store: perf.store as T, changed: compat.changed || perf.changed };
 }
 
 /* ---------- API publique principale ---------- */
@@ -472,6 +477,8 @@ export async function loadStore<T extends Store>(): Promise<T | null> {
         try {
           const payload = await compressGzip(JSON.stringify(norm.store));
           await idbSet(STORE_KEY, payload);
+          // ⚠️ on émet seulement si pas en import
+          if (shouldEmitCloudForKey(STORE_KEY)) emitCloudChange(`idb:${STORE_KEY}`);
         } catch {}
       }
 
@@ -481,7 +488,6 @@ export async function loadStore<T extends Store>(): Promise<T | null> {
     const legacy = localStorage.getItem(LEGACY_LS_KEY);
     if (legacy) {
       const parsed = JSON.parse(legacy) as T;
-
       const norm = await normalizeStoreAll(parsed);
 
       await saveStore(norm.store);
@@ -524,6 +530,9 @@ export async function saveStore<T extends Store>(store: T, opts?: SaveOpts): Pro
     }
 
     await idbSet(STORE_KEY, payload);
+
+    // ✅ IMPORTANT : push rapide sur écriture store (hors import)
+    if (shouldEmitCloudForKey(STORE_KEY)) emitCloudChange(`idb:${STORE_KEY}`);
   } catch (err) {
     console.error("[storage] saveStore error:", err);
     try {
@@ -535,6 +544,7 @@ export async function saveStore<T extends Store>(store: T, opts?: SaveOpts): Pro
 export async function clearStore(): Promise<void> {
   try {
     await idbDel(STORE_KEY);
+    if (shouldEmitCloudForKey(STORE_KEY)) emitCloudChange(`idb:${STORE_KEY}`);
   } catch {}
   try {
     localStorage.removeItem(LEGACY_LS_KEY);
@@ -554,7 +564,6 @@ export async function getKV<T = unknown>(key: string): Promise<T | null> {
   }
 }
 
-/** Enregistre une valeur JSON (gzip si dispo). */
 export async function setKV(key: string, value: any): Promise<void> {
   try {
     const json = JSON.stringify(value);
@@ -562,19 +571,18 @@ export async function setKV(key: string, value: any): Promise<void> {
 
     await idbSet(key, payload);
 
-    // ✅ signal cloud après écriture OK (si pas en restore)
+    // ✅ signal cloud après écriture OK (hors import)
     if (shouldEmitCloudForKey(key)) emitCloudChange(`idb:${key}`);
   } catch (err) {
     console.error("[storage] setKV error:", key, err);
   }
 }
 
-/** Supprime une clé. */
 export async function delKV(key: string): Promise<void> {
   try {
     await idbDel(key);
 
-    // ✅ signal cloud après suppression OK (si pas en restore)
+    // ✅ signal cloud après suppression OK (hors import)
     if (shouldEmitCloudForKey(key)) emitCloudChange(`idb:${key}`);
   } catch (err) {
     console.warn("[storage] delKV error:", key, err);
@@ -612,12 +620,12 @@ export async function exportAll(): Promise<any> {
 export async function importAll(dump: any): Promise<void> {
   if (!dump) return;
 
-  // ✅ Nouveau format wrapper
+  // ✅ format wrapper
   if (dump._v === 1 && dump.idb) {
     const idbDump = dump.idb || {};
     const lsDump = dump.localStorage || {};
 
-    // ✅ Pas d'emitCloudChange pendant restore
+    // ✅ mute global pendant restore (sinon setKV spam emitCloudChange)
     await withSuppressedCloudEvents(async () => {
       for (const [k, v] of Object.entries(idbDump)) {
         try {
@@ -630,7 +638,7 @@ export async function importAll(dump: any): Promise<void> {
     return;
   }
 
-  // ✅ Ancien format fallback : dump = idb map
+  // ✅ fallback ancien format
   if (typeof dump === "object") {
     await withSuppressedCloudEvents(async () => {
       for (const [k, v] of Object.entries(dump)) {
@@ -658,24 +666,35 @@ export async function importCloudSnapshot(
 ): Promise<void> {
   const mode = opts?.mode ?? "replace";
 
-  // ✅ Tout le restore se fait en mute (sinon debounce/push part en boucle)
+  // ✅ mute global: évite boucle de push pendant un restore cloud
   await withSuppressedCloudEvents(async () => {
     if (mode === "replace") {
-      await nukeAll();
+      await nukeAll({ silent: true });
       clearLocalStorageDc();
     }
     await importAll(dump);
   });
 
-  // ✅ une seule notif cloud “propre” à la fin (optionnel)
+  // ✅ 1 seule notif “finale” (relance un push propre après restore)
   try {
     emitCloudChange("cloud:import:done");
   } catch {}
 }
 
-export async function nukeAll(): Promise<void> {
+export async function nukeAll(opts?: { silent?: boolean }): Promise<void> {
+  const silent = !!opts?.silent;
+
   try {
-    await idbClear();
+    // pendant clear, on mute aussi (sinon l'app peut déclencher du bruit)
+    await withSuppressedCloudEvents(async () => {
+      await idbClear();
+    });
+
+    if (!silent) {
+      try {
+        emitCloudChange("idb:clear");
+      } catch {}
+    }
   } catch (err) {
     console.error("[storage] nukeAll error:", err);
   }
@@ -693,7 +712,6 @@ export async function migrateFromLocalStorage(keys: string[]) {
     } catch {
       try {
         await idbSet(k, raw);
-        // (pas de emitCloudChange ici : c’est une migration legacy)
       } catch {}
     }
 
@@ -725,15 +743,18 @@ export async function nukeAllKeepActiveProfile(): Promise<void> {
     console.warn("[storage] unable to load existing store before reset", err);
   }
 
-  try {
-    await idbClear();
-  } catch (err) {
-    console.warn("[storage] idbClear error during reset", err);
-  }
+  // ✅ reset complet (mute) + purge legacy
+  await withSuppressedCloudEvents(async () => {
+    try {
+      await idbClear();
+    } catch (err) {
+      console.warn("[storage] idbClear error during reset", err);
+    }
 
-  try {
-    localStorage.removeItem(LEGACY_LS_KEY);
-  } catch {}
+    try {
+      localStorage.removeItem(LEGACY_LS_KEY);
+    } catch {}
+  });
 
   if (activeProfile) {
     const cleanProfile: Profile = { ...activeProfile };
@@ -747,6 +768,10 @@ export async function nukeAllKeepActiveProfile(): Promise<void> {
     try {
       const payload = await compressGzip(JSON.stringify(newStore));
       await idbSet(STORE_KEY, payload);
+      // ✅ relance un push propre après reset
+      try {
+        emitCloudChange(`idb:${STORE_KEY}`);
+      } catch {}
     } catch (err) {
       console.warn("[storage] unable to write minimal store after reset", err);
     }
