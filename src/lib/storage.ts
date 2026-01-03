@@ -483,7 +483,11 @@ export async function setKV(key: string, value: any): Promise<void> {
 
     await idbSet(key, payload);
 
-    // ✅ PATCH demandé : signal cloud après écriture OK
+    // 🔥 NOUVEAU : sync index dart sets
+    if (key.startsWith("dartset:")) {
+      await syncDartSetsIndexToLocalStorage();
+    }
+
     emitCloudChange(`idb:${key}`);
   } catch (err) {
     console.error("[storage] setKV error:", key, err);
@@ -495,7 +499,10 @@ export async function delKV(key: string): Promise<void> {
   try {
     await idbDel(key);
 
-    // ✅ PATCH demandé : signal cloud après suppression OK
+    if (key.startsWith("dartset:")) {
+      await syncDartSetsIndexToLocalStorage();
+    }
+
     emitCloudChange(`idb:${key}`);
   } catch (err) {
     console.warn("[storage] delKV error:", key, err);
@@ -553,6 +560,37 @@ export async function importAll(dump: any): Promise<void> {
         await setKV(k, v);
       } catch {}
     }
+  }
+}
+
+/* ============================================================
+   ✅ DART SETS CLOUD INDEX
+   - expose dc_dart_sets_v1 dans localStorage
+   - contenu léger (ids + meta)
+============================================================ */
+
+const DARTSETS_INDEX_KEY = "dc_dart_sets_v1";
+const DARTSETS_IDB_PREFIX = "dartset:";
+
+/**
+ * Génère un index léger des dart sets pour le cloud
+ * (ids + timestamps, PAS les images)
+ */
+async function syncDartSetsIndexToLocalStorage() {
+  try {
+    if (typeof window === "undefined") return;
+
+    const keys = await listKVKeys();
+    const dartSetKeys = keys.filter((k) => k.startsWith(DARTSETS_IDB_PREFIX));
+
+    const index = dartSetKeys.map((k) => {
+      const id = k.replace(DARTSETS_IDB_PREFIX, "");
+      return { id };
+    });
+
+    window.localStorage.setItem(DARTSETS_INDEX_KEY, JSON.stringify(index));
+  } catch (err) {
+    console.warn("[storage] syncDartSetsIndex error", err);
   }
 }
 
