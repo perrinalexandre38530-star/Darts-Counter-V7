@@ -161,12 +161,19 @@ export async function storageEstimate() {
 }
 
 /* ============================================================
-   ✅ CLOUD SNAPSHOT (LOCAL) — inclut IndexedDB + localStorage(dc_*)
+   ✅ CLOUD SNAPSHOT (LOCAL) — inclut IndexedDB + localStorage(dc_* ET dc-*)
 ============================================================ */
-const LS_PREFIX = "dc_";
+// ✅ IMPORTANT : ton app a des clés en dc_ ET en dc- selon les versions
+const LS_PREFIXES = ["dc_", "dc-"] as const;
+function isDcKey(k: string) {
+  return LS_PREFIXES.some((p) => k.startsWith(p));
+}
+
 const LS_EXCLUDE = new Set<string>([
   // auth online (ne jamais écraser)
   "dc_online_auth_supabase_v1",
+  "sb-auth-token",
+  "supabase.auth.token",
 
   // si tu as des clés “presence/ping” anciennes
   "dc_online_presence_v1",
@@ -181,11 +188,14 @@ function exportLocalStorageDc(): Record<string, string> {
   if (typeof window === "undefined") return {};
   const out: Record<string, string> = {};
   try {
-    for (let i = 0; i < window.localStorage.length; i++) {
-      const k = window.localStorage.key(i) || "";
-      if (!k.startsWith(LS_PREFIX)) continue;
+    const ls = window.localStorage;
+    for (let i = 0; i < ls.length; i++) {
+      const k = ls.key(i) || "";
+      if (!k) continue;
+      if (!isDcKey(k)) continue;
       if (LS_EXCLUDE.has(k)) continue;
-      const v = window.localStorage.getItem(k);
+
+      const v = ls.getItem(k);
       if (v != null) out[k] = v;
     }
   } catch {}
@@ -197,7 +207,8 @@ function importLocalStorageDc(map: Record<string, string>) {
   if (!map || typeof map !== "object") return;
 
   for (const [k, v] of Object.entries(map)) {
-    if (!k.startsWith(LS_PREFIX)) continue;
+    if (!k) continue;
+    if (!isDcKey(k)) continue;
     if (LS_EXCLUDE.has(k)) continue;
     try {
       window.localStorage.setItem(k, String(v ?? ""));
@@ -205,14 +216,15 @@ function importLocalStorageDc(map: Record<string, string>) {
   }
 }
 
-// Utile en mode "replace" : évite de garder des dc_* obsolètes
+// Utile en mode "replace" : évite de garder des dc_* / dc-* obsolètes
 function clearLocalStorageDc(): void {
   if (typeof window === "undefined") return;
   try {
     const toDelete: string[] = [];
     for (let i = 0; i < window.localStorage.length; i++) {
       const k = window.localStorage.key(i) || "";
-      if (!k.startsWith(LS_PREFIX)) continue;
+      if (!k) continue;
+      if (!isDcKey(k)) continue;
       if (LS_EXCLUDE.has(k)) continue;
       toDelete.push(k);
     }
@@ -226,9 +238,6 @@ function clearLocalStorageDc(): void {
 
 /* ============================================================
    ✅ NORMALISATION AVATARS (COMPAT)
-   Certains écrans legacy lisent uniquement profile.avatarDataUrl.
-   => si avatarUrl (Supabase) ou avatarPath existe, et avatarDataUrl vide,
-      on copie l’URL vers avatarDataUrl.
 ============================================================ */
 function normalizeStoreAvatarsCompatSync<T extends any>(store: T): { store: T; changed: boolean } {
   try {
@@ -280,15 +289,12 @@ function normalizeStoreAvatarsCompatSync<T extends any>(store: T): { store: T; c
 
 /* ============================================================
    ✅ NORMALISATION AVATAR (PERF)
-   Objectif : éviter les dataUrl énormes (RAM/latence + UI qui casse)
-   - si data:image/... trop gros => downscale JPEG 256px
 ============================================================ */
 function isHugeImageDataUrl(s: any, minLen = 200_000): s is string {
   return typeof s === "string" && s.startsWith("data:image/") && s.length > minLen;
 }
 
 async function downscaleImageDataUrl(dataUrl: string, maxSize = 256, quality = 0.82): Promise<string> {
-  // Pas de DOM/canvas (SSR) -> on garde tel quel
   if (typeof document === "undefined") return dataUrl;
 
   return new Promise<string>((resolve) => {
@@ -312,7 +318,6 @@ async function downscaleImageDataUrl(dataUrl: string, maxSize = 256, quality = 0
 
           ctx.drawImage(img, 0, 0, tw, th);
 
-          // JPEG compact ; si tu veux transparence => "image/webp"
           const out = canvas.toDataURL("image/jpeg", quality);
           resolve(out || dataUrl);
         } catch {
@@ -338,7 +343,6 @@ async function normalizeStoreAvatarsPerf<T extends Store>(store: T): Promise<{ s
       profiles.map(async (p) => {
         if (!p) return p;
 
-        // Si avatarUrl existe (Supabase) -> on ne touche pas ici
         const hasAvatarUrl = typeof p.avatarUrl === "string" && p.avatarUrl.trim().length > 0;
         if (hasAvatarUrl) return p;
 
@@ -368,19 +372,15 @@ async function normalizeStoreAvatarsPerf<T extends Store>(store: T): Promise<{ s
 }
 
 async function normalizeStoreAll<T extends Store>(store: T): Promise<{ store: T; changed: boolean }> {
-  // 1) compat sync (copie avatarUrl->avatarDataUrl si besoin)
   const compat = normalizeStoreAvatarsCompatSync(store);
-  // 2) perf async (downscale dataUrl énormes)
   const perf = await normalizeStoreAvatarsPerf(compat.store);
   return { store: perf.store, changed: compat.changed || perf.changed };
 }
 
 /* ---------- API publique principale ---------- */
 
-/** Charge le store depuis IndexedDB (et migre depuis localStorage si présent). */
 export async function loadStore<T extends Store>(): Promise<T | null> {
   try {
-    // 1) IndexedDB
     const raw = (await idbGet<ArrayBuffer | Uint8Array | string>(STORE_KEY)) ?? null;
 
     if (raw != null) {
@@ -389,7 +389,6 @@ export async function loadStore<T extends Store>(): Promise<T | null> {
 
       const norm = await normalizeStoreAll(parsed);
 
-      // ✅ si on a modifié, on persiste directement sans repasser par saveStore (évite boucles)
       if (norm.changed) {
         try {
           const payload = await compressGzip(JSON.stringify(norm.store));
@@ -400,7 +399,6 @@ export async function loadStore<T extends Store>(): Promise<T | null> {
       return norm.store;
     }
 
-    // 2) Migration depuis localStorage (legacy)
     const legacy = localStorage.getItem(LEGACY_LS_KEY);
     if (legacy) {
       const parsed = JSON.parse(legacy) as T;
@@ -423,17 +421,13 @@ export async function loadStore<T extends Store>(): Promise<T | null> {
 }
 
 type SaveOpts = {
-  /** évite l’étape async (downscale) si tu veux une écriture ultra rapide */
   skipAsyncNormalize?: boolean;
 };
 
-/** Sauvegarde complète du store (écrase la valeur précédente). */
 export async function saveStore<T extends Store>(store: T, opts?: SaveOpts): Promise<void> {
   try {
-    // ✅ normalise toujours au minimum (compat)
     const compat = normalizeStoreAvatarsCompatSync(store);
 
-    // ✅ perf (optionnel)
     const final =
       opts?.skipAsyncNormalize === true
         ? { store: compat.store as T, changed: compat.changed }
@@ -442,7 +436,6 @@ export async function saveStore<T extends Store>(store: T, opts?: SaveOpts): Pro
     const json = JSON.stringify(final.store);
     const payload = await compressGzip(json);
 
-    // Garde-fou quota (warning seulement)
     const est = await storageEstimate();
     if (est.quota != null && est.usage != null && typeof payload !== "string") {
       const projected = est.usage + (payload as Uint8Array).byteLength;
@@ -454,14 +447,12 @@ export async function saveStore<T extends Store>(store: T, opts?: SaveOpts): Pro
     await idbSet(STORE_KEY, payload);
   } catch (err) {
     console.error("[storage] saveStore error:", err);
-    // Dernier recours : mini-backup localStorage (seulement pour petits stores)
     try {
       localStorage.setItem(LEGACY_LS_KEY, JSON.stringify(store));
     } catch {}
   }
 }
 
-/** Vide la persistance (IDB + legacy localStorage). */
 export async function clearStore(): Promise<void> {
   try {
     await idbDel(STORE_KEY);
@@ -471,8 +462,7 @@ export async function clearStore(): Promise<void> {
   } catch {}
 }
 
-/* ---------- KV générique (pour sous-ensembles : history, stats, etc.) ---------- */
-/** Récupère une valeur JSON (avec décompression si binaire). */
+/* ---------- KV générique ---------- */
 export async function getKV<T = unknown>(key: string): Promise<T | null> {
   try {
     const raw = await idbGet<ArrayBuffer | Uint8Array | string>(key);
@@ -490,9 +480,10 @@ export async function setKV(key: string, value: any): Promise<void> {
   try {
     const json = JSON.stringify(value);
     const payload = await compressGzip(json);
+
     await idbSet(key, payload);
 
-    // ✅ SIGNAL CLOUD : une écriture IDB a eu lieu
+    // ✅ PATCH demandé : signal cloud après écriture OK
     emitCloudChange(`idb:${key}`);
   } catch (err) {
     console.error("[storage] setKV error:", key, err);
@@ -504,24 +495,23 @@ export async function delKV(key: string): Promise<void> {
   try {
     await idbDel(key);
 
-    // ✅ SIGNAL CLOUD : suppression IDB
+    // ✅ PATCH demandé : signal cloud après suppression OK
     emitCloudChange(`idb:${key}`);
   } catch (err) {
     console.warn("[storage] delKV error:", key, err);
   }
 }
 
-/* ---------- Helpers export IDB (compat patch) ---------- */
+/* ---------- Helpers export IDB ---------- */
 async function listKVKeys(): Promise<string[]> {
   const keys = await idbKeys();
   return keys.map((k) => String(k));
 }
 
 /* ============================================================
-   Export / Import ALL (IDB + localStorage dc_*)
+   Export / Import ALL (IDB + localStorage dc_* & dc-*)
 ============================================================ */
 export async function exportAll(): Promise<any> {
-  // ✅ export IDB “kv” existant
   const idbDump: Record<string, any> = {};
   const keys = await listKVKeys();
   for (const k of keys) {
@@ -530,10 +520,8 @@ export async function exportAll(): Promise<any> {
     } catch {}
   }
 
-  // ✅ export localStorage “dc_*”
   const lsDump = exportLocalStorageDc();
 
-  // wrapper versionné (pour compat future)
   return {
     _v: 1,
     idb: idbDump,
@@ -545,24 +533,20 @@ export async function exportAll(): Promise<any> {
 export async function importAll(dump: any): Promise<void> {
   if (!dump) return;
 
-  // ✅ Nouveau format wrapper
   if (dump._v === 1 && dump.idb) {
     const idbDump = dump.idb || {};
     const lsDump = dump.localStorage || {};
 
-    // restore IDB
     for (const [k, v] of Object.entries(idbDump)) {
       try {
         await setKV(k, v);
       } catch {}
     }
 
-    // restore localStorage dc_*
     importLocalStorageDc(lsDump);
     return;
   }
 
-  // ✅ Ancien format (fallback) : on considère que dump = idb map
   if (typeof dump === "object") {
     for (const [k, v] of Object.entries(dump)) {
       try {
@@ -574,7 +558,6 @@ export async function importAll(dump: any): Promise<void> {
 
 /* ============================================================
    ✅ CLOUD SNAPSHOT (Supabase user_store)
-   Snapshot complet de l'IndexedDB "kv" + localStorage dc_*
 ============================================================ */
 
 export type CloudSnapshot = any;
@@ -590,7 +573,6 @@ export async function importCloudSnapshot(
   const mode = opts?.mode ?? "replace";
 
   if (mode === "replace") {
-    // wipe IDB + (optionnel) dc_* local (évite restes)
     await nukeAll();
     clearLocalStorageDc();
   }
@@ -598,7 +580,6 @@ export async function importCloudSnapshot(
   await importAll(dump);
 }
 
-/** Efface toutes les clés du store IndexedDB (attention : destructif). */
 export async function nukeAll(): Promise<void> {
   try {
     await idbClear();
@@ -607,7 +588,7 @@ export async function nukeAll(): Promise<void> {
   }
 }
 
-/* ---------- Migration utilitaire (si d’autres clés legacy existent) ---------- */
+/* ---------- Migration utilitaire ---------- */
 export async function migrateFromLocalStorage(keys: string[]) {
   for (const k of keys) {
     const raw = localStorage.getItem(k);
@@ -617,9 +598,9 @@ export async function migrateFromLocalStorage(keys: string[]) {
       const parsed = JSON.parse(raw);
       await setKV(k, parsed);
     } catch {
-      // si ce n’est pas du JSON, on tente de sauvegarder tel quel
       try {
         await idbSet(k, raw);
+        // (pas de emitCloudChange ici : c’est une migration legacy)
       } catch {}
     }
 
@@ -631,12 +612,8 @@ export async function migrateFromLocalStorage(keys: string[]) {
 
 /* ============================================================
    RESET COMPLET : garder uniquement le profil actif (sans stats)
-   - Efface toutes les clés IndexedDB (store, stats, history...)
-   - Efface legacy localStorage
-   - Recharge un mini-store avec SEULEMENT le profil actif
 ============================================================ */
 export async function nukeAllKeepActiveProfile(): Promise<void> {
-  // 1) Charger l'ancien store AVANT suppression
   let activeProfile: Profile | null = null;
 
   try {
@@ -655,22 +632,16 @@ export async function nukeAllKeepActiveProfile(): Promise<void> {
     console.warn("[storage] unable to load existing store before reset", err);
   }
 
-  // 2) Supprimer TOUT le contenu d’IndexedDB
   try {
     await idbClear();
   } catch (err) {
     console.warn("[storage] idbClear error during reset", err);
   }
 
-  // 3) Effacer les éventuelles anciennes données du localStorage legacy
   try {
     localStorage.removeItem(LEGACY_LS_KEY);
   } catch {}
 
-  // (optionnel) Si tu veux aussi purger dc_* lors d’un reset complet :
-  // clearLocalStorageDc();
-
-  // 4) Si on avait un profil actif → on recrée un store minimal
   if (activeProfile) {
     const cleanProfile: Profile = { ...activeProfile };
 
