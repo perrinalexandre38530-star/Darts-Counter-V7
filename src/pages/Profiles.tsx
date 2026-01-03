@@ -585,32 +585,60 @@ export default function Profiles({
 
   async function delProfile(id: string) {
     const ok = window.confirm(
-      'Supprimer ce profil local ET toutes ses stats associées sur cet appareil ?'
+      "Supprimer ce profil local ET toutes ses stats associées sur cet appareil ?"
     );
     if (!ok) return;
   
-    // 1) On supprime le profil dans le store
-    setProfilesReplace((arr) => arr.filter((p) => p.id !== id));
+    // 1) On calcule la prochaine liste de profils depuis la source STORE (référence)
+    let nextStoreSnapshot: any = null;
   
-    if (store.activeProfileId === id) {
-      setActiveProfile(null);
+    update((s: any) => {
+      const prevProfiles = Array.isArray(s?.profiles) ? s.profiles : [];
+      const nextProfiles = prevProfiles.filter((p: any) => p.id !== id);
+  
+      const nextActive =
+        s?.activeProfileId === id ? (nextProfiles[0]?.id ?? null) : s?.activeProfileId ?? null;
+  
+      const nextStore = {
+        ...s,
+        profiles: nextProfiles,
+        activeProfileId: nextActive,
+      };
+  
+      nextStoreSnapshot = nextStore;
+      return nextStore;
+    });
+  
+    // 2) Persistance : on sauvegarde le snapshot store (la vraie source)
+    try {
+      if (nextStoreSnapshot) {
+        await saveStore(nextStoreSnapshot);
+      }
+    } catch (e) {
+      console.warn("[Profiles] saveStore after delete error", e);
     }
   
-    // 2) On nettoie le mini-cache des stats chargées côté UI
+    // 3) UI local state (si tu en as un séparé) : on aligne aussi, en mode removal autorisé
+    setProfilesReplace((arr) => (Array.isArray(arr) ? arr.filter((p) => p.id !== id) : []));
+  
+    // 4) Nettoie le mini-cache des stats côté UI
     setStatsMap((m) => {
       const c = { ...m };
       delete c[id];
       return c;
     });
   
-    // 3) On purge aussi les stats côté "lite" (localStorage / mini-cache)
+    // 5) Purge stats locales
     try {
       await purgeAllStatsForProfile(id);
       console.log("[Profiles] Stats locales purgées pour le profil", id);
     } catch (e) {
       console.warn("[Profiles] Erreur purgeAllStatsForProfile", e);
     }
+  
+    console.log("[Profiles] ✅ Profil supprimé (store + ui + persist)", id);
   }
+  
 
   async function addProfile(
     name: string,
