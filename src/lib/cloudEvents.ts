@@ -1,24 +1,29 @@
-// ============================================================
+// ============================================
 // src/lib/cloudEvents.ts
-// Event bus ultra simple pour notifier "quelque chose a changé"
-// (IDB / localStorage) afin de déclencher un push cloud debounced.
-// ============================================================
+// Event bus ultra léger pour déclencher la sync cloud (debounced)
+// ============================================
 
-export type CloudChangeDetail = { key: string; at: number };
+type CloudChangeListener = (reason: string) => void;
 
-const EVT = "dc:cloud-change";
+const listeners = new Set<CloudChangeListener>();
 
-export function emitCloudChange(key: string) {
-  if (typeof window === "undefined") return;
-  window.dispatchEvent(
-    new CustomEvent(EVT, { detail: { key: String(key || "unknown"), at: Date.now() } })
-  );
+/**
+ * Émet un signal "quelque chose a changé localement" -> cloudSync va debouncer le push.
+ * reason = string debug (idb:store, ls:dc_dart_sets_v1, etc.)
+ */
+export function emitCloudChange(reason: string) {
+  try {
+    for (const fn of listeners) fn(reason);
+  } catch {}
 }
 
-export function onCloudChange(cb: (detail: CloudChangeDetail) => void) {
-  if (typeof window === "undefined") return () => {};
-  const handler = (ev: any) =>
-    cb((ev?.detail || { key: "unknown", at: Date.now() }) as CloudChangeDetail);
-  window.addEventListener(EVT, handler as any);
-  return () => window.removeEventListener(EVT, handler as any);
+/**
+ * Abonne une fonction aux changements locaux.
+ * Retourne une fonction unsubscribe().
+ */
+export function onCloudChange(fn: CloudChangeListener) {
+  listeners.add(fn);
+  return () => {
+    listeners.delete(fn);
+  };
 }

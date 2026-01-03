@@ -1,152 +1,266 @@
-// ============================================================
+// ============================================
 // src/lib/cloudSync.ts
-// Sync "store snapshot" ↔ Supabase table user_store
-// - Pull au login -> import local (CLOUD WINS)
-// - Push auto (poll + hash) -> cloud
-// - + Push debounced immédiat via notifyLocalChange()
-// ============================================================
+// Pipeline de sync cloud (pull + push) debounced
+// - s'appuie sur emitCloudChange/onCloudChange
+// - exportCloudSnapshot/importCloudSnapshot depuis storage.ts
+// - onlineApi.pullStoreSnapshot/pushStoreSnapshot
+// ============================================
 
-import { onlineApi } from "./onlineApi";
+import { onCloudChange } from "./cloudEvents";
 import { exportCloudSnapshot, importCloudSnapshot } from "./storage";
+import { onlineApi } from "./onlineApi";
 
-// interval (ms) : ajustable
-const PUSH_EVERY = 15000; // 15s
-const PULL_ON_START = true;
+/** Ajuste si tu veux */
+const DEFAULT_DEBOUNCE_MS = 1200;
+const DEFAULT_PULL_INTERVAL_MS = 60_000;
 
-// push "quasi temps réel" (debounce)
-const DEBOUNCE_PUSH_MS = 900;
+/** Debug (mets true 2 minutes pour voir si ça push) */
+const DEBUG = true;
 
-let timer: any = null;
-let debounceTimer: any = null;
-
-let lastHash = "";
 let running = false;
-let pushing = false;
+let unsubscribe: null | (() => void) = null;
 
-// ✅ PATCH INDISPENSABLE : NE PAS utiliser JSON.stringify(obj, Object.keys(...).sort())
-// -> le 2e param (array) filtre les clés à tous les niveaux => hash ne “voit” pas les changements
-function stableStringify(obj: any) {
-  // pas besoin d’être 100% "stable" : on veut détecter les vrais changements
-  // (exportCloudSnapshot produit déjà un objet déterministe dans la pratique)
-  return JSON.stringify(obj);
+let pushTimer: number | null = null;
+let pullTimer: number | null = null;
+
+let lastReason = "";
+let lastLocalChangeAt = 0;
+let inFlightPush = false;
+let inFlightPull = false;
+
+// Hash du dernier snapshot local connu (pour skip si pas de vrai changement)
+let lastHash = "";
+
+// anti-loop (si import => écritures locales => emitCloudChange)
+let suppressEvents = 0;
+
+function log(...args: any[]) {
+  if (!DEBUG) return;
+  // eslint-disable-next-line no-console
+  console.log("[cloudSync]", ...args);
 }
 
+function withSuppressedEvents<T>(fn: () => T): T {
+  suppressEvents++;
+  try {
+    return fn();
+  } finally {
+    suppressEvents = Math.max(0, suppressEvents - 1);
+  }
+}
+
+/** Deep stable stringify (tri des clés + support array + anti-circular) */
+function stableStringifyDeep(obj: any): string {
+  const seen = new WeakSet();
+
+  const normalize = (v: any): any => {
+    if (v === null || typeof v !== "object") return v;
+    if (seen.has(v)) return "[Circular]";
+    seen.add(v);
+
+    if (Array.isArray(v)) return v.map(normalize);
+
+    const out: any = {};
+    for (const k of Object.keys(v).sort()) out[k] = normalize(v[k]);
+    return out;
+  };
+
+  return JSON.stringify(normalize(obj));
+}
+
+/** Hash léger (djb2) */
 function hashString(s: string) {
-  // hash léger (djb2)
   let h = 5381;
   for (let i = 0; i < s.length; i++) h = (h * 33) ^ s.charCodeAt(i);
   return (h >>> 0).toString(16);
 }
 
-/**
- * PULL cloud -> import local
- * "cloud wins" (si cloud existe)
- */
-export async function cloudPullAndImport(): Promise<{
-  status: "ok" | "not_found" | "skipped" | "error";
-  reason?: string;
-}> {
-  try {
-    const s = await onlineApi.getCurrentSession();
-    if (!s?.token) return { status: "skipped", reason: "no-session" };
+async function computeLocalHash(): Promise<{ hash: string; dump: any }> {
+  const dump = await exportCloudSnapshot(); // IDB + localStorage dc_*/dc-*
+  const str = stableStringifyDeep(dump);
+  const hash = hashString(str);
+  return { hash, dump };
+}
 
-    const res = await onlineApi.pullStoreSnapshot();
-    if (res.status === "not_found" || !res.payload) {
-      return { status: "not_found" };
+function schedulePush(debounceMs = DEFAULT_DEBOUNCE_MS) {
+  if (!running) return;
+  if (suppressEvents > 0) return;
+
+  if (pushTimer) {
+    window.clearTimeout(pushTimer);
+    pushTimer = null;
+  }
+
+  pushTimer = window.setTimeout(() => {
+    pushTimer = null;
+    cloudPushNow().catch(() => {});
+  }, debounceMs);
+}
+
+/**
+ * À appeler si tu veux forcer un push debounced sans passer par emitCloudChange.
+ * (mais normalement emitCloudChange() suffit)
+ */
+export function notifyLocalChange(reason = "manual") {
+  if (!running) return;
+  lastReason = reason;
+  lastLocalChangeAt = Date.now();
+  schedulePush(DEFAULT_DEBOUNCE_MS);
+}
+
+export async function cloudPullAndImport(): Promise<{
+  status: "ok" | "skip" | "not_found" | "error";
+  error?: any;
+}> {
+  if (inFlightPull) return { status: "skip" };
+  inFlightPull = true;
+
+  try {
+    const res: any = await onlineApi.pullStoreSnapshot();
+
+    if (res?.status === "not_signed_in") return { status: "skip" };
+    if (res?.status === "not_found") return { status: "not_found" };
+    if (res?.status !== "ok") return { status: "error", error: res?.error || res };
+
+    const dump = res?.payload?.store ?? res?.payload ?? null;
+    if (!dump) return { status: "error", error: "empty payload" };
+
+    // Import “replace” (source cloud) — on supprime la boucle d’events
+    await withSuppressedEvents(async () => {
+      await importCloudSnapshot(dump, { mode: "replace" });
+    });
+
+    // après import, on recalcule le hash local pour éviter un push immédiat “inutile”
+    try {
+      const { hash } = await computeLocalHash();
+      lastHash = hash;
+      log("PULL ok -> imported, lastHash=", lastHash);
+    } catch {}
+
+    return { status: "ok" };
+  } catch (e) {
+    return { status: "error", error: e };
+  } finally {
+    inFlightPull = false;
+  }
+}
+
+export async function cloudPushNow(): Promise<{
+  status: "ok" | "skip" | "error";
+  reason?: string;
+  error?: any;
+}> {
+  if (!running) return { status: "skip", reason: "not_running" };
+  if (inFlightPush) return { status: "skip", reason: "busy" };
+  if (suppressEvents > 0) return { status: "skip", reason: "suppressed" };
+
+  inFlightPush = true;
+
+  try {
+    // snapshot local complet (IDB + localStorage dc_* / dc-*)
+    const { hash, dump } = await computeLocalHash();
+
+    if (hash === lastHash) {
+      log("PUSH skip (no-change) hash=", hash, "reason=", lastReason);
+      return { status: "skip", reason: "no-change" };
     }
 
-    // ✅ IMPORT CLOUD → replace local kv entièrement
-    await importCloudSnapshot(res.payload, { mode: "replace" });
+    // garde-fou taille (évite de planter si payload énorme)
+    try {
+      const approx = JSON.stringify(dump).length;
+      if (approx > 6_000_000) {
+        console.warn("[cloudSync] snapshot très gros:", approx, "chars. Risque de rejet côté DB.");
+      }
+    } catch {}
 
-    // met à jour le hash local après import
-    const local = await exportCloudSnapshot();
-    lastHash = hashString(stableStringify(local));
+    const payload = {
+      kind: "dc_store_snapshot_v1",
+      createdAt: new Date().toISOString(),
+      reason: lastReason || "unknown",
+      changedAt: lastLocalChangeAt || Date.now(),
+      store: dump,
+    };
+
+    const res: any = await onlineApi.pushStoreSnapshot(payload);
+
+    if (res?.status === "not_signed_in") return { status: "skip", reason: "not_signed_in" };
+    if (res?.status !== "ok") return { status: "error", error: res?.error || res };
+
+    lastHash = hash;
+    log("PUSH ok hash=", lastHash, "reason=", lastReason);
 
     return { status: "ok" };
-  } catch (e: any) {
-    console.warn("[cloudSync] cloudPullAndImport error", e);
-    return { status: "error", reason: e?.message || String(e) };
-  }
-}
-
-/**
- * PUSH local -> cloud (si session)
- */
-export async function cloudPushNow(): Promise<{
-  status: "ok" | "skipped" | "error";
-  reason?: string;
-}> {
-  if (pushing) return { status: "skipped", reason: "busy" };
-
-  pushing = true;
-  try {
-    const s = await onlineApi.getCurrentSession();
-    if (!s?.token) return { status: "skipped", reason: "no-session" };
-
-    const payload = await exportCloudSnapshot();
-    const str = stableStringify(payload);
-    const h = hashString(str);
-
-    if (h === lastHash) return { status: "skipped", reason: "no-change" };
-
-    // version : tu peux l'incrémenter plus tard, on garde 1 pour l’instant
-    await onlineApi.pushStoreSnapshot(payload, 1);
-
-    lastHash = h;
-    return { status: "ok" };
-  } catch (e: any) {
-    console.warn("[cloudSync] cloudPushNow error", e);
-    return { status: "error", reason: e?.message || String(e) };
+  } catch (e) {
+    log("PUSH error", e);
+    return { status: "error", error: e };
   } finally {
-    pushing = false;
+    inFlightPush = false;
   }
 }
 
-/**
- * Appelle ceci quand tu sais qu’un changement important vient d’être écrit localement
- * (stats, prefs, profils, dartsets...)
- * => déclenche un push rapide (debounced)
- */
-export function notifyLocalChange() {
-  if (!running) return;
-  if (debounceTimer) clearTimeout(debounceTimer);
-  debounceTimer = setTimeout(() => {
-    cloudPushNow();
-  }, DEBOUNCE_PUSH_MS);
-}
-
-/**
- * Démarre la sync auto
- * - pull 1 fois au start (option)
- * - push périodique si changement
- */
-export async function startCloudSync() {
+export async function startCloudSync(opts?: {
+  debounceMs?: number;
+  pullIntervalMs?: number;
+  pullOnStart?: boolean;
+}) {
   if (running) return;
+
+  const debounceMs = opts?.debounceMs ?? DEFAULT_DEBOUNCE_MS;
+  const pullIntervalMs = opts?.pullIntervalMs ?? DEFAULT_PULL_INTERVAL_MS;
+  const pullOnStart = opts?.pullOnStart ?? true;
+
   running = true;
 
-  if (PULL_ON_START) {
-    await cloudPullAndImport();
+  // initialise lastHash au démarrage (évite un “push” immédiat si rien n’a changé)
+  try {
+    const { hash } = await computeLocalHash();
+    lastHash = hash;
+    log("start: lastHash init =", lastHash);
+  } catch {}
+
+  // écoute les changements locaux (idb + localStorage dc_*/dc-* via hook storage.ts)
+  unsubscribe = onCloudChange((reason) => {
+    if (!running) return;
+    if (suppressEvents > 0) return;
+
+    lastReason = reason;
+    lastLocalChangeAt = Date.now();
+    schedulePush(debounceMs);
+  });
+
+  // pull au démarrage
+  if (pullOnStart) {
+    cloudPullAndImport().catch(() => {});
   }
 
-  timer = setInterval(() => {
-    cloudPushNow();
-  }, PUSH_EVERY);
+  // pull périodique (anti-désynchro si 2 devices)
+  pullTimer = window.setInterval(() => {
+    if (!running) return;
+    cloudPullAndImport().catch(() => {});
+  }, pullIntervalMs) as any;
 
-  // push avant fermeture onglet
-  if (typeof window !== "undefined") {
-    window.addEventListener("beforeunload", () => {
-      cloudPushNow(); // best effort
-    });
-  }
+  log("running (debounce=", debounceMs, "pullInterval=", pullIntervalMs, "pullOnStart=", pullOnStart, ")");
+  return true;
 }
 
 export function stopCloudSync() {
   running = false;
-  if (timer) clearInterval(timer);
-  timer = null;
 
-  if (debounceTimer) clearTimeout(debounceTimer);
-  debounceTimer = null;
+  try {
+    if (unsubscribe) unsubscribe();
+  } catch {}
+  unsubscribe = null;
+
+  if (pushTimer) {
+    window.clearTimeout(pushTimer);
+    pushTimer = null;
+  }
+  if (pullTimer) {
+    window.clearInterval(pullTimer);
+    pullTimer = null;
+  }
+
+  log("stopped");
 }
 
 export function isCloudSyncRunning() {

@@ -1,112 +1,116 @@
 // =============================================================
 // src/lib/dartSetsStore.ts
-// Gestion des jeux de fléchettes ("Dart Sets")
-// - Stockage local via localStorage (clé "dc_dart_sets_v1")
-// - CRUD complet : list / get / create / update / delete
-// - Prévu pour être étendu plus tard (sync Supabase, etc.)
-// ✅ BONUS: officialise kind/presetId (évite incohérences + compat UI)
+// DARTSETS — STORE UNIQUE (plus de localStorage ici)
+// - API compatible avec ton ancien dartSetsStore.ts
+// - La vérité = window.__appStore.store.dartSets
 // =============================================================
 
 export type DartSetId = string;
 
 export interface DartSet {
-  id: DartSetId; // id unique
-  profileId: string; // profil auquel appartient ce jeu
-  name: string; // "Noir 22g Target"
-  brand?: string; // "Target", "Winmau"...
-  weightGrams?: number; // 18, 20, 22 etc.
+  id: DartSetId;
+  profileId: string;
+  name: string;
+  brand?: string;
+  weightGrams?: number;
   notes?: string;
 
-  mainImageUrl: string; // image cartoon principale (fond uni)
-  thumbImageUrl?: string; // miniature pour overlay avatar
-  bgColor?: string; // fond du thumb si pas d'image
+  mainImageUrl: string;
+  thumbImageUrl?: string;
+  bgColor?: string;
 
-  // ✅ Visuel (optionnel, compat)
   kind?: "plain" | "preset" | "photo";
   presetId?: string;
 
-  isFavorite?: boolean; // ce profil → set préféré ?
-  usageCount?: number; // nb de matchs joués avec ce set
-  lastUsedAt?: number; // timestamp dernier match
+  isFavorite?: boolean;
+  usageCount?: number;
+  lastUsedAt?: number;
 
-  // 👇 NOUVEAU : portée d'utilisation
-  // - "private" : utilisable seulement par le propriétaire
-  // - "public"  : visible par tous les profils du device
   scope: "private" | "public";
 
   createdAt: number;
   updatedAt: number;
 }
 
-const STORAGE_KEY = "dc_dart_sets_v1";
-
-// -------------------------------------------------------------
-// Helpers internes
-// -------------------------------------------------------------
-
-function safeParse(json: string | null): DartSet[] {
-  if (!json) return [];
-  try {
-    const arr = JSON.parse(json);
-    if (!Array.isArray(arr)) return [];
-
-    // Normalisation + compat anciens sets (sans scope / sans kind/presetId)
-    return arr.map((raw: any) => {
-      const scope: "private" | "public" =
-        raw.scope === "public" || raw.scope === "private" ? raw.scope : "private";
-
-      const kind: "plain" | "preset" | "photo" | undefined =
-        raw.kind === "photo" || raw.kind === "preset" || raw.kind === "plain"
-          ? raw.kind
-          : undefined;
-
-      const presetId: string | undefined =
-        typeof raw.presetId === "string" ? raw.presetId : undefined;
-
-      return {
-        ...raw,
-        scope,
-        kind,
-        presetId,
-      } as DartSet;
-    });
-  } catch {
-    return [];
+declare global {
+  interface Window {
+    __appStore?: {
+      store: any;
+      update: (fn: (s: any) => any) => void;
+    };
   }
 }
 
-function saveAll(list: DartSet[]) {
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(list));
-  } catch (err) {
-    console.warn("[dartSetsStore] saveAll error", err);
+function assertStore() {
+  const api = window.__appStore;
+  if (!api?.store || !api?.update) {
+    throw new Error("[dartSetsStore] window.__appStore not ready (store/update manquants)");
   }
+  if (!Array.isArray(api.store.dartSets)) api.store.dartSets = [];
+  return api;
 }
 
-function loadAll(): DartSet[] {
-  try {
-    return safeParse(localStorage.getItem(STORAGE_KEY));
-  } catch (err) {
-    console.warn("[dartSetsStore] loadAll error", err);
-    return [];
-  }
+function normalize(raw: any): DartSet {
+  const now = Date.now();
+  const scope: "private" | "public" = raw?.scope === "public" ? "public" : "private";
+  const kind: any = raw?.kind === "photo" || raw?.kind === "preset" || raw?.kind === "plain" ? raw.kind : undefined;
+  const presetId: string | undefined = typeof raw?.presetId === "string" ? raw.presetId : undefined;
+
+  return {
+    id: String(raw?.id || `dartset_${now}_${Math.random().toString(16).slice(2)}`),
+    profileId: String(raw?.profileId || ""),
+    name: String(raw?.name || "Mes fléchettes"),
+    brand: typeof raw?.brand === "string" ? raw.brand : undefined,
+    weightGrams: typeof raw?.weightGrams === "number" ? raw.weightGrams : undefined,
+    notes: typeof raw?.notes === "string" ? raw.notes : undefined,
+
+    mainImageUrl: String(raw?.mainImageUrl || ""),
+    thumbImageUrl: typeof raw?.thumbImageUrl === "string" ? raw.thumbImageUrl : undefined,
+    bgColor: typeof raw?.bgColor === "string" ? raw.bgColor : undefined,
+
+    kind,
+    presetId,
+
+    isFavorite: !!raw?.isFavorite,
+    usageCount: typeof raw?.usageCount === "number" ? raw.usageCount : 0,
+    lastUsedAt: typeof raw?.lastUsedAt === "number" ? raw.lastUsedAt : 0,
+
+    scope,
+    createdAt: typeof raw?.createdAt === "number" ? raw.createdAt : now,
+    updatedAt: typeof raw?.updatedAt === "number" ? raw.updatedAt : now,
+  };
+}
+
+function getAllFromStore(): DartSet[] {
+  const api = assertStore();
+  const list = Array.isArray(api.store.dartSets) ? api.store.dartSets : [];
+  // normalise au passage (compat anciens objets)
+  return list.map(normalize);
+}
+
+function writeAll(next: DartSet[]) {
+  const api = assertStore();
+  api.update((s) => {
+    s.dartSets = next.map(normalize);
+    return s;
+  });
 }
 
 // -------------------------------------------------------------
-// API publique
+// API publique (compat)
 // -------------------------------------------------------------
 
 export function getAllDartSets(): DartSet[] {
-  return loadAll();
+  return getAllFromStore();
 }
 
-// 👇 Désormais : sets du profil + tous les sets publics
+// sets du profil + tous les sets publics
 export function getDartSetsForProfile(profileId: string): DartSet[] {
-  return loadAll().filter((s) => s.scope === "public" || s.profileId === profileId);
+  return getAllFromStore().filter((s) => s.scope === "public" || s.profileId === profileId);
 }
 
 export function getDartSetById(id: DartSetId): DartSet | undefined {
-  return loadAll().find((s) => s.id === id);
+  return getAllFromStore().find((s) => s.id === id);
 }
 
 export function createDartSet(input: {
@@ -118,23 +122,19 @@ export function createDartSet(input: {
   mainImageUrl: string;
   thumbImageUrl?: string;
   bgColor?: string;
-
-  // ✅ BONUS: visuel
   kind?: "plain" | "preset" | "photo";
   presetId?: string | null;
-
-  // 👇 NOUVEAU : on laisse optionnel pour compat des appels existants
   scope?: "private" | "public";
 }): DartSet {
-  const all = loadAll();
+  const all = getAllFromStore();
   const now = Date.now();
 
   const alreadyForProfile = all.filter((s) => s.profileId === input.profileId);
 
-  const newSet: DartSet = {
+  const newSet: DartSet = normalize({
     id: `dartset_${now}_${Math.random().toString(16).slice(2)}`,
     profileId: input.profileId,
-    name: input.name.trim() || "Mes fléchettes",
+    name: input.name?.trim() || "Mes fléchettes",
     brand: input.brand?.trim() || undefined,
     weightGrams: input.weightGrams,
     notes: input.notes?.trim() || undefined,
@@ -143,25 +143,20 @@ export function createDartSet(input: {
     thumbImageUrl: input.thumbImageUrl,
     bgColor: input.bgColor,
 
-    // ✅ BONUS: persist visuel
     kind: input.kind,
     presetId: input.presetId ?? undefined,
 
     isFavorite: alreadyForProfile.length === 0, // premier = favori
-
     usageCount: 0,
     lastUsedAt: 0,
 
-    // 👇 si rien passé → privé par défaut
     scope: input.scope ?? "private",
-
     createdAt: now,
     updatedAt: now,
-  };
+  });
 
   all.push(newSet);
-  saveAll(all);
-
+  writeAll(all);
   return newSet;
 }
 
@@ -169,82 +164,74 @@ export function updateDartSet(
   id: DartSetId,
   patch: Partial<Omit<DartSet, "id" | "profileId" | "createdAt">>
 ): DartSet | undefined {
-  const all = loadAll();
+  const all = getAllFromStore();
   const index = all.findIndex((s) => s.id === id);
   if (index === -1) return undefined;
 
-  const updated: DartSet = {
+  const updated: DartSet = normalize({
     ...all[index],
     ...patch,
     updatedAt: Date.now(),
-  };
+  });
 
   all[index] = updated;
-  saveAll(all);
+  writeAll(all);
   return updated;
 }
 
 export function deleteDartSet(id: DartSetId) {
-  const filtered = loadAll().filter((s) => s.id !== id);
-  saveAll(filtered);
+  writeAll(getAllFromStore().filter((s) => s.id !== id));
 }
 
 export function setFavoriteDartSet(profileId: string, dartSetId: DartSetId) {
-  const all = loadAll();
+  const all = getAllFromStore();
   let changed = false;
 
   const updated = all.map((s) => {
-    // ⚠️ On ne touche qu'aux sets appartenant à ce profil,
-    // même s'il voit des sets "public" d'autres profils.
     if (s.profileId !== profileId) return s;
 
     if (s.id === dartSetId) {
       changed = true;
-      return { ...s, isFavorite: true, updatedAt: Date.now() };
+      return normalize({ ...s, isFavorite: true, updatedAt: Date.now() });
     }
     if (s.isFavorite) {
       changed = true;
-      return { ...s, isFavorite: false, updatedAt: Date.now() };
+      return normalize({ ...s, isFavorite: false, updatedAt: Date.now() });
     }
-
     return s;
   });
 
-  if (changed) saveAll(updated);
+  if (changed) writeAll(updated);
 }
 
 export function bumpDartSetUsage(dartSetId: DartSetId) {
-  const all = loadAll();
+  const all = getAllFromStore();
   const index = all.findIndex((s) => s.id === dartSetId);
   if (index === -1) return;
 
   const now = Date.now();
   const current = all[index];
 
-  all[index] = {
+  all[index] = normalize({
     ...current,
     usageCount: (current.usageCount ?? 0) + 1,
     lastUsedAt: now,
     updatedAt: now,
-  };
+  });
 
-  saveAll(all);
+  writeAll(all);
 }
 
 export function getFavoriteDartSetForProfile(profileId: string): DartSet | undefined {
   const visible = getDartSetsForProfile(profileId);
 
-  // 1) Favori parmi les sets appartenant au profil
   const favoriteOwn = visible.find((s) => s.profileId === profileId && s.isFavorite);
   if (favoriteOwn) return favoriteOwn;
 
-  // 2) Sinon : premier set créé appartenant au profil
   const ownSorted = visible
     .filter((s) => s.profileId === profileId)
     .sort((a, b) => a.createdAt - b.createdAt);
 
   if (ownSorted.length > 0) return ownSorted[0];
-
-  // 3) Ultime fallback : n'importe quel set visible (ex : que des publics)
   return visible[0];
 }
