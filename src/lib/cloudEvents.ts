@@ -17,7 +17,8 @@ export function emitCloudChange(key: string) {
 
 export function onCloudChange(cb: (detail: CloudChangeDetail) => void) {
   if (typeof window === "undefined") return () => {};
-  const handler = (ev: any) => cb((ev?.detail || { key: "unknown", at: Date.now() }) as CloudChangeDetail);
+  const handler = (ev: any) =>
+    cb((ev?.detail || { key: "unknown", at: Date.now() }) as CloudChangeDetail);
   window.addEventListener(EVT, handler as any);
   return () => window.removeEventListener(EVT, handler as any);
 }
