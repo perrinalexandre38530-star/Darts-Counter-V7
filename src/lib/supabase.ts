@@ -1,11 +1,8 @@
-// =============================================
+// ============================================
 // src/lib/supabase.ts
-// Client Supabase unique pour toute l'application
-// =============================================
+// ✅ BRIDGE vers le client unique
+// ⚠️ NE PAS recréer un client ici
+// ============================================
 
-import { createClient } from '@supabase/supabase-js';
-
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL!;
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY!;
-
-export const supabase = createClient(supabaseUrl, supabaseAnonKey);
+export { supabase } from "./supabaseClient";
+export type { SupabaseClient } from "@supabase/supabase-js";
