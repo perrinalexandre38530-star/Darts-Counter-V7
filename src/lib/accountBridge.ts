@@ -1,11 +1,9 @@
 // ============================================
 // src/lib/accountBridge.ts
 // Pont COMPTE ONLINE ↔ PROFIL LOCAL ACTIF
-// ✅ V6 FIX: Online mirror profile (anti-duplication)
-// - 1 seul profil local lié au compte Supabase
-// - ID stable: online:<user.id>
-// - Nettoie les doublons déjà présents dans le store (cloud ou local)
-// - Force store.activeProfileId sur ce mirror
+// - Garantit qu'un compte online est toujours lié à
+//   un profil local unique dans store.profiles
+// - Met à jour store.activeProfileId en conséquence
 // ============================================
 
 import type { Store, Profile } from "./types";
@@ -26,7 +24,6 @@ type PrivateInfoRaw = {
   email?: string;
   password?: string;
   onlineUserId?: string;
-  onlineEmail?: string;
   [k: string]: any;
 };
 
@@ -41,89 +38,14 @@ function withPrivateInfo(p: Profile, pi: PrivateInfoRaw): Profile {
   } as Profile;
 }
 
-/* ============================================================
-   ✅ Online mirror profile (anti-duplication)
-   - ID stable: online:<user.id>
-   - Nettoyage doublons + migration douce
-============================================================ */
-export function ensureOnlineMirrorProfile(store: any, user: any, onlineProfile?: any) {
-  if (!store || !user?.id) return store;
-
-  const mirrorId = `online:${user.id}`;
-  const email = (user.email || "").toLowerCase();
-
-  const profiles: any[] = Array.isArray(store.profiles) ? store.profiles : [];
-
-  const isSameAccount = (p: any) => {
-    const pi = p?.privateInfo || {};
-    const pid = String(p?.id || "");
-    const piUid = String(pi?.onlineUserId || "");
-    const piEmail = String(pi?.onlineEmail || "").toLowerCase();
-    return pid === mirrorId || (piUid && piUid === user.id) || (!!email && piEmail === email);
-  };
-
-  const matches = profiles.filter(isSameAccount);
-  let primary = matches.find((p) => p?.id === mirrorId) || matches[0];
-
-  // 1) Si aucun -> création UNE FOIS
-  if (!primary) {
-    const now = Date.now();
-    const name = onlineProfile?.nickname || user.email || "Player";
-    const mirror = {
-      id: mirrorId,
-      name,
-      createdAt: now,
-      updatedAt: now,
-      avatarUrl: onlineProfile?.avatarUrl || "",
-      country: onlineProfile?.country || "",
-      privateInfo: { onlineUserId: user.id, onlineEmail: email || user.email || "" },
-      isOnlineMirror: true,
-    };
-
-    return {
-      ...store,
-      profiles: [...profiles, mirror],
-      activeProfileId: mirrorId,
-    };
-  }
-
-  // 2) Migration douce : force l'ID stable sur le primaire
-  if (primary.id !== mirrorId) {
-    primary = { ...primary, id: mirrorId };
-  }
-
-  // 3) Update léger du primaire (sans toucher aux autres)
-  const updatedPrimary = {
-    ...primary,
-    name: onlineProfile?.nickname || primary.name,
-    avatarUrl: onlineProfile?.avatarUrl || primary.avatarUrl,
-    country: onlineProfile?.country || primary.country,
-    privateInfo: {
-      ...(primary.privateInfo || {}),
-      onlineUserId: user.id,
-      onlineEmail: email || user.email || "",
-    },
-    isOnlineMirror: true,
-    updatedAt: Date.now(),
-  };
-
-  // 4) Nettoyage doublons : on garde 1 seul profil lié au compte
-  const cleaned = profiles
-    .filter((p) => !isSameAccount(p) || String(p.id) === mirrorId)
-    .map((p) => (String(p.id) === mirrorId ? updatedPrimary : p));
-
-  return {
-    ...store,
-    profiles: cleaned,
-    activeProfileId: mirrorId,
-  };
-}
-
 /**
  * Lie l'identité online à un profil local :
- * ✅ V6: utilise le mirror stable online:<user.id> + nettoyage doublons
+ * - cherche d'abord par onlineUserId
+ * - puis par email
+ * - puis par displayName / nickname
+ * - sinon crée un nouveau profil local minimal
  *
- * Retourne le nouveau store + éventuellement le profil créé (mirror) si besoin.
+ * Retourne le nouveau store + éventuellement le profil créé.
  */
 export function linkOnlineIdentityToLocalProfile(
   identity: OnlineIdentity | null,
@@ -135,31 +57,103 @@ export function linkOnlineIdentityToLocalProfile(
     return { store, createdProfile: null };
   }
 
-  const user = identity.user as any;
-  const onlineProfile = (identity.profile || null) as any;
+  const user = identity.user;
+  const onlineProfile = identity.profile || null;
 
-  const beforeIds = new Set((store.profiles || []).map((p) => String((p as any)?.id || "")));
+  const email = (user.email || "").trim().toLowerCase();
+  const displayName =
+    onlineProfile?.displayName?.trim() ||
+    user.nickname?.trim() ||
+    email ||
+    "Joueur";
 
-  // ✅ applique mirror + cleanup
-  const mirrored = ensureOnlineMirrorProfile(store as any, user, onlineProfile) as Store;
+  const profiles = store.profiles || [];
 
-  // On déduit si le profil mirror a été créé (best-effort)
-  const afterIds = new Set((mirrored.profiles || []).map((p) => String((p as any)?.id || "")));
-  const mirrorId = `online:${user.id}`;
-  const created =
-    !beforeIds.has(mirrorId) && afterIds.has(mirrorId)
-      ? ((mirrored.profiles || []).find((p) => String((p as any).id) === mirrorId) as Profile) || null
-      : null;
+  // 1) Recherche par onlineUserId (liage déjà existant)
+  let match: Profile | undefined = profiles.find((p) => {
+    const pi = getPrivateInfo(p);
+    return !!pi.onlineUserId && pi.onlineUserId === user.id;
+  });
+
+  // 2) Sinon, recherche par email
+  if (!match && email) {
+    match = profiles.find((p) => {
+      const pi = getPrivateInfo(p);
+      const pe = (pi.email || "").trim().toLowerCase();
+      return pe && pe === email;
+    });
+  }
+
+  // 3) Sinon, recherche par nom affiché
+  if (!match && displayName) {
+    match = profiles.find((p) => (p.name || "").trim() === displayName);
+  }
+
+  let nextProfiles = profiles;
+  let createdProfile: Profile | null = null;
+  let activeProfileId = store.activeProfileId || null;
+
+  if (!match) {
+    // 4) Aucun profil ne correspond -> on en crée un nouveau minimal
+    const id =
+      typeof crypto !== "undefined" && crypto.randomUUID
+        ? crypto.randomUUID()
+        : `online-${user.id}-${Date.now()}`;
+
+    const pi: PrivateInfoRaw = {
+      email: email || undefined,
+      onlineUserId: user.id,
+    };
+
+    const newProfile: Profile = withPrivateInfo(
+      {
+        id,
+        name: displayName,
+        avatarDataUrl: undefined,
+      } as Profile,
+      pi
+    );
+
+    nextProfiles = [...profiles, newProfile];
+    createdProfile = newProfile;
+    activeProfileId = id;
+  } else {
+    // 5) Profil trouvé -> on s'assure que privateInfo est bien aligné
+    const matchId = match.id;
+    nextProfiles = profiles.map((p) => {
+      if (p.id !== matchId) return p;
+      const pi = { ...getPrivateInfo(p) };
+      let changed = false;
+
+      if (pi.onlineUserId !== user.id) {
+        pi.onlineUserId = user.id;
+        changed = true;
+      }
+
+      if (email && (pi.email || "").trim().toLowerCase() !== email) {
+        pi.email = email;
+        changed = true;
+      }
+
+      return changed ? withPrivateInfo(p, pi) : p;
+    });
+
+    if (!activeProfileId || activeProfileId !== matchId) {
+      activeProfileId = matchId;
+    }
+  }
 
   const nextStore: Store = {
-    ...mirrored,
+    ...store,
+    profiles: nextProfiles,
+    activeProfileId,
     // Si l'utilisateur est connecté et qu'aucun statut n'est défini,
     // on force "online" (mais on ne touche pas à "away" manuellement choisi).
     selfStatus:
-      mirrored.selfStatus === "online" || mirrored.selfStatus === "away"
-        ? mirrored.selfStatus
+      store.selfStatus === "online" || store.selfStatus === "away"
+        ? store.selfStatus
         : "online",
   };
 
-  return { store: nextStore, createdProfile: created };
+  return { store: nextStore, createdProfile };
 }
