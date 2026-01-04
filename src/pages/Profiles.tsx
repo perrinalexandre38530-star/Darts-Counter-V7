@@ -695,6 +695,169 @@ export default function Profiles({
   
   const active = profiles.find((p) => p.id === activeProfileId) || null;
 
+  // ------------------------------------------------------------
+  // ONLINE vs PROFILS LOCAUX (FIX)
+  // - Le compte Supabase doit rester une entité unique.
+  // - On le matérialise dans le store via UN seul profil "online:*" (id déterministe).
+  // - Ce profil n'apparaît JAMAIS dans "Profils locaux" (réservés aux amis/famille).
+  // - Cela évite les doublons ("NINEJALEX" x N) qui reviennent après sync.
+  // ------------------------------------------------------------
+
+  const normalizeEmail = (s: string) => (s || "").trim().toLowerCase();
+  const onlineEmail = normalizeEmail((user as any)?.email ?? "");
+  const onlineKey = onlineEmail || "";
+  const onlineId = onlineKey ? `online:${onlineKey}` : "";
+
+  const isOnlineProfile = (p: any) => typeof p?.id === "string" && p.id.startsWith("online:");
+  const isLinkedToOnline = (p: any) => {
+    if (!p) return false;
+    if (isOnlineProfile(p)) return true;
+    const pi = (p as any).privateInfo || {};
+    const pe = normalizeEmail(pi.email || "");
+    const pk = normalizeEmail(pi.onlineKey || "");
+    return !!onlineKey && (pe === onlineKey || pk === onlineKey);
+  };
+
+  const makeOnlineProfileId = (onlineKey: string) => `online:${onlineKey}`;
+
+  const pickBestLinkedProfile = (list: any[]) => {
+    if (!list.length) return null;
+    // Priorité: avatar + dartsets (si dispo), sinon premier
+    const score = (p: any) => {
+      let s = 0;
+      if (p?.avatarUrl) s += 10;
+      const ds = Array.isArray(p?.dartsets) ? p.dartsets.length : 0;
+      s += Math.min(9, ds);
+      return s;
+    };
+    return [...list].sort((a, b) => score(b) - score(a))[0];
+  };
+
+  const ensureOnlineProfile = React.useCallback(
+    async (reason: string) => {
+      if (auth?.status !== "signed_in" || !auth?.user?.email) return;
+      const onlineKey = String(auth.user.email).trim().toLowerCase();
+      const onlineId = makeOnlineProfileId(onlineKey);
+
+      setProfilesSafe((prev) => {
+        const linked = prev.filter((p) => isLinkedToOnline(p));
+        const best = pickBestLinkedProfile(linked);
+        const existingOnline = prev.find((p) => p?.id === onlineId) || null;
+
+        const base = {
+          ...(best || {}),
+          ...(existingOnline || {}),
+          id: onlineId,
+          privateInfo: {
+            ...(existingOnline?.privateInfo || {}),
+            onlineKey,
+            // ne stocke pas le mot de passe
+          },
+        };
+
+        // Si on a un profil Supabase, on synchronise 2-3 champs côté UI
+        const o = auth?.profile as any;
+        if (o) {
+          base.name = o.displayName || o.nickname || base.name;
+          base.country = o.country || base.country;
+          base.avatarUrl = o.avatarUrl || base.avatarUrl;
+        }
+
+        // Nettoyage: on supprime tous les autres profils liés à l'onlineKey
+        const cleaned = prev.filter((p) => !isLinkedToOnline(p) || p?.id === onlineId);
+        const idx = cleaned.findIndex((p) => p?.id === onlineId);
+        if (idx >= 0) cleaned[idx] = { ...cleaned[idx], ...base };
+        else cleaned.unshift(base);
+
+        persistProfilesCache(cleaned);
+        // on log en dev uniquement
+        console.log("[Profiles] ensureOnlineProfile", { reason, onlineId, removed: linked.length - 1 });
+        return cleaned;
+      });
+
+      // Assure un activeProfileId stable
+      setActiveProfileIdSafe(onlineId);
+    },
+    [auth?.status, auth?.user?.email, auth?.profile]
+  );
+
+  // Profils affichés dans la section "Profils locaux" (on exclut le compte online)
+  const localOnlyProfiles = React.useMemo(
+    () => profiles.filter((p: any) => !isLinkedToOnline(p)),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [profiles, onlineKey]
+  );
+
+  // Nettoyage automatique : si on détecte des doublons liés au compte online, on les compact...
+  React.useEffect(() => {
+    if (!onlineKey) return;
+
+    const linked = profiles.filter((p: any) => isLinkedToOnline(p));
+    if (!linked.length) return;
+
+    setProfilesSafe((prev) => {
+      const prevLinked = prev.filter((p: any) => {
+        const pi = (p as any).privateInfo || {};
+        const pe = normalizeEmail(pi.email || "");
+        const pk = normalizeEmail(pi.onlineKey || "");
+        return isOnlineProfile(p) || pe === onlineKey || pk === onlineKey;
+      });
+
+      // Choix "meilleur" candidat (priorité avatar/dartset)
+      const pickScore = (p: any) => {
+        const hasAvatar = !!p?.avatarUrl;
+        const hasDarts = Array.isArray(p?.dartSets) ? p.dartSets.length : p?.activeDartSetId ? 1 : 0;
+        return (hasAvatar ? 10 : 0) + hasDarts;
+      };
+      let best = prevLinked.sort((a: any, b: any) => pickScore(b) - pickScore(a))[0] || null;
+
+      // Assure un profil online déterministe
+      const next: any[] = [];
+      const seen = new Set<string>();
+
+      // Construit/merge le profil online déterministe
+      if (onlineId) {
+        const existingOnline = prev.find((p: any) => p?.id === onlineId) || null;
+        const base = best || existingOnline || null;
+        const displayName =
+          (profile as any)?.displayName ||
+          (profile as any)?.nickname ||
+          (user as any)?.user_metadata?.nickname ||
+          (user as any)?.email ||
+          base?.name ||
+          "Mon compte";
+
+        const merged = {
+          ...(existingOnline || {}),
+          ...(base || {}),
+          id: onlineId,
+          name: displayName,
+          privateInfo: { ...(base?.privateInfo || {}), onlineKey },
+        };
+
+        next.push(merged);
+        seen.add(onlineId);
+      }
+
+      // Ajoute tous les autres profils NON liés au compte online (on supprime donc les doublons)
+      for (const p of prev) {
+        if (!p?.id) continue;
+        if (seen.has(p.id)) continue;
+        if (isLinkedToOnline(p)) continue;
+        next.push(p);
+        seen.add(p.id);
+      }
+
+      // Si l'actif pointait un doublon supprimé, on le recale sur le profil online
+      const activeWasLinked = activeProfileId && prevLinked.some((p: any) => p.id === activeProfileId);
+      if (activeWasLinked && onlineId) {
+        setActiveProfileIdSafe(onlineId);
+      }
+      return next;
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [onlineKey]);
+
 // ✅ AUTO-UPLOAD AVATAR : si connecté online et qu'on a encore un avatar en base64 (dataUrl)
 // => on pousse vers Supabase Storage pour obtenir avatarUrl (synchro cross-device)
 React.useEffect(() => {
@@ -1018,6 +1181,14 @@ React.useEffect(() => {
     (f) => f.status === "online" || f.status === "away"
   ).length;
 
+  // Profil affiché sur "Mon profil":
+  // - si connecté Supabase: le profil "online:" (créé/maintenu par ensureOnlineProfile)
+  // - sinon: le profil actif local
+  const meProfile =
+    authStatus === "signed_in"
+      ? profiles.find((p) => p.id === onlineId) || active
+      : active;
+
   return (
     <>
       {/* Shimmer du nom de profil (utilise profileHeaderCss) */}
@@ -1100,11 +1271,11 @@ React.useEffect(() => {
 
             {view === "me" && (
               <>
-                <Card>
-  {active && !forceAuth ? (
+	              <Card>
+	  {meProfile && !forceAuth ? (
     <ActiveProfileBlock
       selfStatus={onlineStatusForUi}
-      active={active}
+	      active={meProfile as any}
       activeAvg3D={activeAvg3D}
       onToggleAway={() => {
         if (auth.status !== "signed_in") return;
@@ -1185,10 +1356,10 @@ React.useEffect(() => {
                 title={`${t(
                   "profiles.locals.title",
                   "Profils locaux"
-                )} (${profiles.filter((p) => p.id !== activeProfileId).length})`}
+                )} (${localOnlyProfiles.length})`}
               >
                 <LocalProfilesRefonte
-                  profiles={profiles}
+                  profiles={localOnlyProfiles}
                   activeProfileId={activeProfileId}
                   onCreate={addProfile}
                   onRename={renameProfile}
@@ -2461,70 +2632,16 @@ function UnifiedAuthBlock({
       console.warn("[profiles] sha256 error:", err);
     }
 
-    // 3) On cherche d’abord par onlineKey, sinon par email
-    let match =
-      profiles.find((p) => {
-        const pi = ((p as any).privateInfo || {}) as PrivateInfo;
-        const pe = (pi.email || "").trim().toLowerCase();
-        const ok = pi.onlineKey || null;
-
-        if (onlineKey && ok === onlineKey) return true;
-        if (pe && pe === emailNorm) return true;
-        return false;
-      }) || null;
-
-    // 4) Si aucun profil local ne correspond
-    if (!match) {
-      if (profiles.length > 0) {
-        // 👉 On RÉUTILISE un profil local existant
-        // (pour ne pas perdre avatar + infos déjà saisies)
-        match = profiles[0];
-
-        const pi = ((match as any).privateInfo || {}) as PrivateInfo;
-        const patched: Partial<PrivateInfo> = {
-          ...pi,
-          email: emailNorm,
-          password: pass,
-          onlineKey: onlineKey || pi.onlineKey,
-        };
-
-        onHydrateProfile?.(match.id, patched);
-      } else {
-        // 👉 Aucun profil local du tout → on en crée un (cas tout neuf)
-        let displayName = emailNorm;
-        try {
-          const session = await onlineApi.getCurrentSession();
-          displayName =
-            session?.user.nickname ||
-            session?.user.email ||
-            emailNorm;
-        } catch (err) {
-          console.warn("[profiles] getCurrentSession after login error:", err);
-        }
-
-        const privateInfo: Partial<PrivateInfo> = {
-          email: emailNorm,
-          password: pass,
-          onlineKey: onlineKey || undefined,
-        };
-
-        onCreate(displayName, null, privateInfo);
-        return;
-      }
-    }
-
-    // 5) Si un profil existe déjà, on s'assure qu'il a bien l’onlineKey
-    const pi = ((match as any).privateInfo || {}) as PrivateInfo;
-    if (!pi.onlineKey && onlineKey) {
-      const patched: Partial<PrivateInfo> = {
-        ...pi,
-        onlineKey,
-      };
-      onHydrateProfile?.(match.id, patched);
-    }
-
-    // 6) On sélectionne ce profil comme actif
-    onConnect(match.id);
+    // IMPORTANT:
+    // Avant, on "liait" la connexion Supabase à un profil local aléatoire,
+    // ce qui créait des DOUBLONS (Ninejalex...) et réinjectait des profils
+    // supprimés après un "clear site data".
+    //
+    // Désormais, on ne touche plus aux profils locaux ici.
+    // Le composant parent (Profiles) détecte l'état auth "signed_in" et
+    // crée/sélectionne automatiquement un profil ONLINE déterministe
+    // (id: online:<email>) via ensureOnlineProfile().
+    return;
   }
 
   async function submitCreate() {
