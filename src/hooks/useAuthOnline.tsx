@@ -1,239 +1,312 @@
 // ============================================================
-// src/hooks/useAuthOnline.tsx
-// V8 — 1 compte Supabase unique + auto-session
-// + Compat UI : fournit login/signup pour Profiles.tsx
+// src/hooks/useAuthOnline.ts
+// Auth ONLINE (Supabase) — robust anti-freeze
+// - init boot: getSession() + onAuthStateChange()
+// - ready=true GARANTI (finally + watchdog) pour éviter blocage AppGate
+// - expose: status, ready, loading, session, user, profile, login/signup/logout/refresh
 // ============================================================
 
-import React from "react";
-import {
-  onlineApi,
-  type AuthSession,
-  type UpdateProfilePayload,
-  type SignupPayload,
-  type LoginPayload,
-} from "../lib/onlineApi";
+import * as React from "react";
+import type { Session, User } from "@supabase/supabase-js";
+import { supabase } from "../lib/supabaseClient";
+import { onlineApi } from "../lib/onlineApi";
 import type { OnlineProfile } from "../lib/onlineTypes";
-import { hydrateFromOnline, pushLocalSnapshotToOnline } from "../lib/hydrateFromOnline";
-import { startCloudSync, stopCloudSync } from "../lib/cloudSync";
 
-type Status = "signed_in" | "signed_out";
+type AuthStatus = "signed_out" | "signed_in";
 
-type AuthOnlineContextValue = {
+type AuthState = {
   ready: boolean;
   loading: boolean;
-  status: Status;
-
-  session: AuthSession | null;
-  user: AuthSession["user"] | null;
+  status: AuthStatus;
+  session: Session | null;
+  user: User | null;
   profile: OnlineProfile | null;
-
-  // ✅ Compat Profiles.tsx
-  signup: (payload: SignupPayload) => Promise<AuthSession>;
-  login: (payload: LoginPayload) => Promise<AuthSession>;
-
-  refresh: () => Promise<AuthSession | null>;
-  logout: () => Promise<void>;
-  deleteAccount: () => Promise<void>;
-
-  updateProfile: (patch: UpdateProfilePayload) => Promise<OnlineProfile>;
-
-  syncPull: (opts?: { reload?: boolean }) => Promise<{ status: string; applied: boolean }>;
-  syncPush: () => Promise<void>;
+  error?: string | null;
 };
 
-const AuthOnlineContext = React.createContext<AuthOnlineContextValue | null>(null);
+const initial: AuthState = {
+  ready: false,
+  loading: true,
+  status: "signed_out",
+  session: null,
+  user: null,
+  profile: null,
+  error: null,
+};
+
+type Ctx = AuthState & {
+  signup: (payload: { email?: string; nickname: string; password?: string }) => Promise<boolean>;
+  login: (payload: { email?: string; nickname?: string; password?: string }) => Promise<boolean>;
+  logout: () => Promise<void>;
+  refresh: () => Promise<void>;
+};
+
+const AuthOnlineContext = React.createContext<Ctx | null>(null);
+
+async function safeGetSession(): Promise<Session | null> {
+  try {
+    const { data, error } = await supabase.auth.getSession();
+    if (error) throw error;
+    return data?.session ?? null;
+  } catch (e) {
+    console.warn("[useAuthOnline] getSession failed:", e);
+    return null;
+  }
+}
+
+async function safeLoadProfile(user: User): Promise<OnlineProfile | null> {
+  try {
+    // onlineApi.getMyProfile() si tu l'as, sinon fallback sur onlineApi.getProfile(user.id)
+    const api: any = onlineApi as any;
+
+    if (typeof api.getMyProfile === "function") {
+      const res = await api.getMyProfile();
+      return (res?.profile ?? res ?? null) as OnlineProfile | null;
+    }
+
+    if (typeof api.getProfile === "function") {
+      const res = await api.getProfile(user.id);
+      return (res?.profile ?? res ?? null) as OnlineProfile | null;
+    }
+
+    // Pas d'API profile => OK, on ne bloque pas.
+    return null;
+  } catch (e) {
+    console.warn("[useAuthOnline] loadProfile failed:", e);
+    return null;
+  }
+}
 
 export function AuthOnlineProvider({ children }: { children: React.ReactNode }) {
-  const [ready, setReady] = React.useState(false);
-  const [loading, setLoading] = React.useState(false);
-  const [session, setSession] = React.useState<AuthSession | null>(null);
+  const [state, setState] = React.useState<AuthState>(initial);
 
-  // ✅ "connecté" = on a un user (même si token vide tant que mail pas confirmé)
-  const status: Status = session?.user?.id ? "signed_in" : "signed_out";
-
-  const user = session?.user ?? null;
-  const profile = session?.profile ?? null;
-
-  const afterSignedIn = React.useCallback(async (s: AuthSession) => {
-    // démarre sync uniquement si on a un token utilisable
-    if (s?.token) {
-      // IMPORTANT : hydrate d'abord depuis le cloud
-      // sinon un store local vide peut être push et écraser le cloud.
-      try {
-        await hydrateFromOnline({ reload: false });
-      } catch {}
-
-      try {
-        startCloudSync();
-      } catch {}
-    } else {
-      // ex: signup en attente de confirmation email -> pas de sync
-      try {
-        stopCloudSync();
-      } catch {}
-    }
+  // watchdog anti-freeze (ex: Safari / SW / storage)
+  React.useEffect(() => {
+    const t = window.setTimeout(() => {
+      setState((s) => {
+        if (s.ready) return s;
+        console.warn("[useAuthOnline] WATCHDOG -> force ready=true");
+        return { ...s, ready: true, loading: false };
+      });
+    }, 2500);
+    return () => window.clearTimeout(t);
   }, []);
 
   const refresh = React.useCallback(async () => {
-    setLoading(true);
     try {
-      const s = await onlineApi.restoreSession();
-      setSession(s);
+      const session = await safeGetSession();
+      const user = session?.user ?? null;
 
-      if (s?.user?.id) {
-        try {
-          await afterSignedIn(s);
-        } catch {}
-      } else {
-        try {
-          stopCloudSync();
-        } catch {}
+      if (!session || !user) {
+        setState((s) => ({
+          ...s,
+          status: "signed_out",
+          session: null,
+          user: null,
+          profile: null,
+          loading: false,
+          ready: true,
+        }));
+        return;
       }
 
-      return s;
-    } finally {
-      setLoading(false);
-      setReady(true);
+      const profile = await safeLoadProfile(user);
+
+      setState((s) => ({
+        ...s,
+        status: "signed_in",
+        session,
+        user,
+        profile,
+        loading: false,
+        ready: true,
+      }));
+    } catch (e: any) {
+      console.warn("[useAuthOnline] refresh fatal:", e);
+      setState((s) => ({
+        ...s,
+        loading: false,
+        ready: true,
+        error: e?.message || "refresh error",
+      }));
     }
-  }, [afterSignedIn]);
+  }, []);
 
   React.useEffect(() => {
-    refresh();
+    let alive = true;
+
+    (async () => {
+      try {
+        // restoreSession best-effort (ne doit JAMAIS bloquer ready)
+        try {
+          await Promise.race([
+            onlineApi.restoreSession(),
+            new Promise((resolve) => setTimeout(resolve, 800)),
+          ]);
+        } catch {}
+
+        // init session
+        const session = await safeGetSession();
+        if (!alive) return;
+
+        const user = session?.user ?? null;
+        if (!session || !user) {
+          setState((s) => ({
+            ...s,
+            status: "signed_out",
+            session: null,
+            user: null,
+            profile: null,
+            loading: false,
+            ready: true,
+          }));
+        } else {
+          const profile = await safeLoadProfile(user);
+          if (!alive) return;
+          setState((s) => ({
+            ...s,
+            status: "signed_in",
+            session,
+            user,
+            profile,
+            loading: false,
+            ready: true,
+          }));
+        }
+
+        // subscribe auth changes
+        const { data } = supabase.auth.onAuthStateChange(async (event, nextSession) => {
+          try {
+            if (!alive) return;
+
+            if (event === "SIGNED_OUT" || !nextSession?.user) {
+              setState((s) => ({
+                ...s,
+                status: "signed_out",
+                session: null,
+                user: null,
+                profile: null,
+                loading: false,
+                ready: true,
+              }));
+              return;
+            }
+
+            if (event === "SIGNED_IN" || event === "TOKEN_REFRESHED" || event === "USER_UPDATED") {
+              const user = nextSession.user;
+              const profile = await safeLoadProfile(user);
+
+              if (!alive) return;
+
+              setState((s) => ({
+                ...s,
+                status: "signed_in",
+                session: nextSession,
+                user,
+                profile,
+                loading: false,
+                ready: true,
+              }));
+            }
+          } catch (e) {
+            console.warn("[useAuthOnline] onAuthStateChange handler error:", e);
+            // IMPORTANT: ne jamais bloquer ready
+            setState((s) => ({ ...s, loading: false, ready: true }));
+          }
+        });
+
+        return () => {
+          try {
+            data?.subscription?.unsubscribe();
+          } catch {}
+        };
+      } catch (e) {
+        console.warn("[useAuthOnline] boot fatal:", e);
+      } finally {
+        // ✅ ready garanti quoiqu'il arrive
+        if (alive) {
+          setState((s) => ({ ...s, loading: false, ready: true }));
+        }
+      }
+    })();
+
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  const signup = React.useCallback(async (payload: { email?: string; nickname: string; password?: string }) => {
+    try {
+      const ok = await (onlineApi as any).signup?.(payload);
+      // si signup() renvoie un objet, on considère ok si pas d'erreur
+      const success = typeof ok === "boolean" ? ok : !ok?.error;
+      // refresh derrière pour éviter état incohérent
+      await refresh();
+      return success;
+    } catch (e) {
+      console.warn("[useAuthOnline] signup error:", e);
+      await refresh();
+      return false;
+    }
   }, [refresh]);
 
-  // ✅ Compat: signup (Profiles.tsx)
-  const signup = React.useCallback(
-    async (payload: SignupPayload) => {
-      setLoading(true);
-      try {
-        const s = await onlineApi.signup(payload);
-        setSession(s);
-        if (s?.user?.id) await afterSignedIn(s);
-        return s;
-      } finally {
-        setLoading(false);
-        setReady(true);
-      }
-    },
-    [afterSignedIn]
-  );
-
-  // ✅ Compat: login (Profiles.tsx)
-  const login = React.useCallback(
-    async (payload: LoginPayload) => {
-      setLoading(true);
-      try {
-        const s = await onlineApi.login(payload);
-        setSession(s);
-        if (s?.user?.id) await afterSignedIn(s);
-        return s;
-      } finally {
-        setLoading(false);
-        setReady(true);
-      }
-    },
-    [afterSignedIn]
-  );
+  const login = React.useCallback(async (payload: { email?: string; nickname?: string; password?: string }) => {
+    try {
+      const ok = await (onlineApi as any).login?.(payload);
+      const success = typeof ok === "boolean" ? ok : !ok?.error;
+      await refresh();
+      return success;
+    } catch (e) {
+      console.warn("[useAuthOnline] login error:", e);
+      await refresh();
+      return false;
+    }
+  }, [refresh]);
 
   const logout = React.useCallback(async () => {
-    setLoading(true);
     try {
-      try {
-        stopCloudSync();
-      } catch {}
-      await onlineApi.logout();
-      setSession(null);
+      await supabase.auth.signOut();
+    } catch (e) {
+      console.warn("[useAuthOnline] signOut error:", e);
     } finally {
-      setLoading(false);
-      setReady(true);
+      // force state clean
+      setState((s) => ({
+        ...s,
+        status: "signed_out",
+        session: null,
+        user: null,
+        profile: null,
+        loading: false,
+        ready: true,
+      }));
     }
   }, []);
 
-  const deleteAccount = React.useCallback(async () => {
-    setLoading(true);
-    try {
-      try {
-        stopCloudSync();
-      } catch {}
-
-      await onlineApi.deleteAccount();
-      setSession(null);
-
-      // recrée une session anon neuve (comportement V8)
-      const s = await onlineApi.restoreSession();
-      setSession(s);
-
-      if (s?.user?.id) {
-        try {
-          await afterSignedIn(s);
-        } catch {}
-      }
-    } finally {
-      setLoading(false);
-      setReady(true);
-    }
-  }, [afterSignedIn]);
-
-  const updateProfile = React.useCallback(async (patch: UpdateProfilePayload) => {
-    setLoading(true);
-    try {
-      const prof = await onlineApi.updateProfile(patch);
-
-      // refresh cache session (profile)
-      const s = await onlineApi.getCurrentSession();
-      setSession(s);
-
-      return prof;
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  const syncPull = React.useCallback(async (opts?: { reload?: boolean }) => {
-    setLoading(true);
-    try {
-      const r = await hydrateFromOnline({ reload: opts?.reload ?? true });
-      return { status: r.status, applied: !!(r as any).applied };
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  const syncPush = React.useCallback(async () => {
-    setLoading(true);
-    try {
-      await pushLocalSnapshotToOnline();
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  const value: AuthOnlineContextValue = {
-    ready,
-    loading,
-    status,
-
-    session,
-    user,
-    profile,
-
-    signup,
-    login,
-
-    refresh,
-    logout,
-    deleteAccount,
-
-    updateProfile,
-    syncPull,
-    syncPush,
-  };
+  const value: Ctx = React.useMemo(
+    () => ({
+      ...state,
+      signup,
+      login,
+      logout,
+      refresh,
+    }),
+    [state, signup, login, logout, refresh]
+  );
 
   return <AuthOnlineContext.Provider value={value}>{children}</AuthOnlineContext.Provider>;
 }
 
-export function useAuthOnline(): AuthOnlineContextValue {
+export function useAuthOnline() {
   const ctx = React.useContext(AuthOnlineContext);
-  if (!ctx) throw new Error("useAuthOnline doit être utilisé dans un AuthOnlineProvider.");
+  if (!ctx) {
+    // fallback: évite crash si provider manquant
+    return {
+      ...initial,
+      signup: async () => false,
+      login: async () => false,
+      logout: async () => {},
+      refresh: async () => {},
+    } as Ctx;
+  }
   return ctx;
 }
