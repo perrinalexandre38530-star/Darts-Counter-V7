@@ -287,7 +287,8 @@ async function getOrCreateProfile(
   const { data: profileRow, error: selErr } = await supabase
     .from("profiles")
     .select("*")
-    .eq("id", userId)
+    // Our public.profiles schema uses `user_id` as the PK (uuid)
+    .eq("user_id", userId)
     .limit(1)
     .maybeSingle();
 
@@ -303,14 +304,14 @@ async function getOrCreateProfile(
     .from("profiles")
     .upsert(
       {
-        id: userId,
+        user_id: userId,
         nickname: fallbackNickname,
         display_name: fallbackNickname,
         country: null,
         avatar_url: null,
         updated_at: new Date().toISOString(),
       },
-      { onConflict: "id" }
+      { onConflict: "user_id" }
     )
     .select()
     .single();
@@ -592,7 +593,8 @@ async function updateProfile(patch: UpdateProfilePayload): Promise<OnlineProfile
   const { data, error } = await supabase
     .from("profiles")
     .update(dbPatch)
-    .eq("id", userId)
+    // Our public.profiles schema uses `user_id` as the PK (uuid)
+    .eq("user_id", userId)
     .select()
     .single();
 
