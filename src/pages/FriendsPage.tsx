@@ -1,20 +1,23 @@
 // ============================================
 // src/pages/FriendsPage.tsx
-// Mode Online & Amis — v3 FULLWEB (Supabase)
-// - Auth réelle via onlineApi (Supabase) + AuthOnlineProvider
-// - Session restaurée automatiquement AU BOOT par useAuthOnline()
-// - Cette page lit simplement l'état via useAuthOnline()
+// Mode Online & Amis — v8 FULLWEB (Supabase)
+//
+// ✅ V8 RULES (OBLIGATOIRE)
+// - AUCUN formulaire login/signup ici
+// - AUCUN bouton login / signup
+// - On affiche juste l'état via useAuthOnline()
+// - onlineApi.ensureAutoSession() est déclenché AU BOOT (dans App.tsx)
+//   => status sera (quasi) toujours "signed_in" une fois ready=true
+//
+// ✅ Features conservées
 // - Statut global store.selfStatus (online / away / offline)
-// - Statut cohérent sur Home / Profils / FriendsPage
 // - Présence locale lastSeen + ping toutes les 30s en "online"
-// - Lobbies ONLINE réels : création + join par code (Supabase)
-// - Affiche le DRAPEAU du pays du profil actif (privateInfo.country)
-//   via getCountryFlag() (src/lib/countryNames.ts)
-// - Bouton TEST SUPABASE (juste pour vérifier la connexion)
+// - Lobbies ONLINE : create + join par code
+// - Affiche drapeau pays du profil actif (privateInfo.country)
+// - Bouton TEST SUPABASE
 // - Bloc "Salons online" AU-DESSUS de l’historique
-// - ✅ Historique online DESIGN : cards + tri + regroupement (Aujourd’hui / 7 derniers jours / Avant)
-// - Bouton "Lancer maintenant" qui ouvre x01_online_setup
-//   avec le lobbyCode (salle d’attente temps réel via Worker DO).
+// - Historique online : cards + tri + regroupement (Aujourd’hui / 7 derniers jours / Avant)
+// - Bouton "Lancer maintenant" -> x01_online_setup avec lobbyCode
 // ============================================
 
 import React from "react";
@@ -46,10 +49,7 @@ type StoredPresence = {
 
 function savePresenceToLS(status: PresenceStatus) {
   if (typeof window === "undefined") return;
-  const payload: StoredPresence = {
-    status,
-    lastSeen: Date.now(),
-  };
+  const payload: StoredPresence = { status, lastSeen: Date.now() };
   try {
     window.localStorage.setItem(LS_PRESENCE_KEY, JSON.stringify(payload));
   } catch {
@@ -65,8 +65,7 @@ function loadPresenceFromLS(): StoredPresence | null {
     const parsed = JSON.parse(raw);
     if (!parsed || typeof parsed.lastSeen !== "number") return null;
     const st = parsed.status;
-    const status: PresenceStatus =
-      st === "online" || st === "away" || st === "offline" ? st : "offline";
+    const status: PresenceStatus = st === "online" || st === "away" || st === "offline" ? st : "offline";
     return { status, lastSeen: parsed.lastSeen };
   } catch {
     return null;
@@ -102,14 +101,7 @@ function SectionTitle({
   right?: React.ReactNode;
 }) {
   return (
-    <div
-      style={{
-        display: "flex",
-        alignItems: "flex-end",
-        gap: 10,
-        marginTop: 16,
-      }}
-    >
+    <div style={{ display: "flex", alignItems: "flex-end", gap: 10, marginTop: 16 }}>
       <div style={{ flex: 1, minWidth: 0 }}>
         <div
           style={{
@@ -122,11 +114,7 @@ function SectionTitle({
         >
           {title}
         </div>
-        {subtitle ? (
-          <div style={{ fontSize: 12, opacity: 0.78, marginTop: 2 }}>
-            {subtitle}
-          </div>
-        ) : null}
+        {subtitle ? <div style={{ fontSize: 12, opacity: 0.78, marginTop: 2 }}>{subtitle}</div> : null}
       </div>
       {right ? <div style={{ flexShrink: 0 }}>{right}</div> : null}
     </div>
@@ -184,11 +172,7 @@ function Pill({
     blue: ["rgba(79,180,255,.14)", "#4fb4ff", "rgba(79,180,255,.35)"],
     green: ["rgba(127,226,169,.14)", "#7fe2a9", "rgba(127,226,169,.35)"],
     red: ["rgba(255,90,90,.14)", "#ff5a5a", "rgba(255,90,90,.35)"],
-    gray: [
-      "rgba(255,255,255,.08)",
-      "rgba(255,255,255,.9)",
-      "rgba(255,255,255,.12)",
-    ],
+    gray: ["rgba(255,255,255,.08)", "rgba(255,255,255,.9)", "rgba(255,255,255,.12)"],
   };
   const [bg, fg, bd] = map[tone] || map.gray;
 
@@ -242,35 +226,20 @@ function groupMatchesPretty(list: any[]) {
   return { today, week, older };
 }
 
-function MatchMiniCard({
-  m,
-  title,
-  dateLabel,
-  playersLabel,
-  winner,
-  kindTone,
-}: any) {
+function MatchMiniCard({ m, title, dateLabel, playersLabel, winner, kindTone }: any) {
   return (
     <div
       style={{
         borderRadius: 14,
         padding: 10,
-        background:
-          "linear-gradient(180deg, rgba(255,255,255,.06), rgba(0,0,0,.25))",
+        background: "linear-gradient(180deg, rgba(255,255,255,.06), rgba(0,0,0,.25))",
         border: "1px solid rgba(255,255,255,.10)",
         boxShadow: "0 10px 20px rgba(0,0,0,.45)",
         display: "grid",
         gap: 6,
       }}
     >
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          gap: 8,
-        }}
-      >
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
         <div
           style={{
             fontWeight: 900,
@@ -283,35 +252,17 @@ function MatchMiniCard({
         >
           {title}
         </div>
-        <Pill
-          label={
-            m?.isTraining || (m?.payload as any)?.kind === "training_x01"
-              ? "Training"
-              : "Match"
-          }
-          tone={kindTone}
-        />
+        <Pill label={m?.isTraining || (m?.payload as any)?.kind === "training_x01" ? "Training" : "Match"} tone={kindTone} />
       </div>
 
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          gap: 10,
-        }}
-      >
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
         <div style={{ fontSize: 11, opacity: 0.82 }}>{dateLabel}</div>
         {winner ? (
-          <div style={{ fontSize: 11, color: "#ffd56a", fontWeight: 900 }}>
-            🏆 {winner}
-          </div>
+          <div style={{ fontSize: 11, color: "#ffd56a", fontWeight: 900 }}>🏆 {winner}</div>
         ) : null}
       </div>
 
-      <div style={{ fontSize: 11, opacity: 0.88, lineHeight: 1.2 }}>
-        {playersLabel}
-      </div>
+      <div style={{ fontSize: 11, opacity: 0.88, lineHeight: 1.2 }}>{playersLabel}</div>
     </div>
   );
 }
@@ -329,79 +280,33 @@ type Props = {
 export default function FriendsPage({ store, update, go }: Props) {
   // --- Profil local actif (fallback pseudo + avatar)
   const activeProfile =
-    (store.profiles || []).find((p) => p.id === store.activeProfileId) ||
-    (store.profiles || [])[0] ||
-    null;
+    (store.profiles || []).find((p) => p.id === store.activeProfileId) || (store.profiles || [])[0] || null;
 
-  // -------- AUTH ONLINE (via AuthOnlineProvider) --------
-  const {
-    status: authStatus,
-    loading: authLoading,
-    user,
-    profile,
-    signup: signupOnline,
-    login: loginOnline,
-    logout: logoutOnline,
-    refresh: refreshOnline,
-  } = useAuthOnline();
+  // -------- AUTH ONLINE (V8: AUTO SESSION) --------
+  const { ready, status, user, profile } = useAuthOnline();
 
-  // Champs formulaire
-  const [nickname, setNickname] = React.useState<string>(
-    () => activeProfile?.name || ""
-  );
-  const [email, setEmail] = React.useState<string>("");
-  const [password, setPassword] = React.useState<string>("");
+  // ✅ V8 : ne JAMAIS bloquer avec un login UI
+  if (!ready) {
+    return (
+      <div className="container" style={{ padding: 16, paddingBottom: 96, color: "#f5f5f7" }}>
+        Connexion en cours…
+      </div>
+    );
+  }
 
-  const [busy, setBusy] = React.useState(false);
-  const [error, setError] = React.useState<string | null>(null);
-  const [info, setInfo] = React.useState<string | null>(null);
-
-  const isSignedIn = authStatus === "signed_in" && !!user;
-
-  // --- Historique online (onlineApi.listMatches)
-  const [matches, setMatches] = React.useState<OnlineMatch[]>([]);
-  const [loadingMatches, setLoadingMatches] = React.useState(false);
-
-  // -------- LOBBIES ONLINE (réels) --------
-  const [creatingLobby, setCreatingLobby] = React.useState(false);
-  const [lastCreatedLobby, setLastCreatedLobby] =
-    React.useState<OnlineLobby | null>(null);
-
-  const [joinCode, setJoinCode] = React.useState("");
-  const [joiningLobby, setJoiningLobby] = React.useState(false);
-  const [joinedLobby, setJoinedLobby] = React.useState<OnlineLobby | null>(null);
-  const [joinError, setJoinError] = React.useState<string | null>(null);
-  const [joinInfo, setJoinInfo] = React.useState<string | null>(null);
+  const isSignedIn = status === "signed_in";
 
   // --- lastSeen (présence locale)
   const initialPresence = React.useMemo(() => loadPresenceFromLS(), []);
-  const [lastSeen, setLastSeen] = React.useState<number | null>(
-    initialPresence?.lastSeen ?? null
-  );
+  const [lastSeen, setLastSeen] = React.useState<number | null>(initialPresence?.lastSeen ?? null);
 
   // --- statut global de l'app : store.selfStatus
-  const selfStatus: PresenceStatus =
-    (store.selfStatus as PresenceStatus) || "offline";
+  const selfStatus: PresenceStatus = (store.selfStatus as PresenceStatus) || "offline";
 
-  const statusLabel =
-    selfStatus === "away"
-      ? "Absent"
-      : selfStatus === "online"
-      ? "En ligne"
-      : "Hors ligne";
+  const statusLabel = selfStatus === "away" ? "Absent" : selfStatus === "online" ? "En ligne" : "Hors ligne";
+  const statusColor = selfStatus === "away" ? "#ffb347" : selfStatus === "online" ? "#7fe2a9" : "#cccccc";
 
-  const statusColor =
-    selfStatus === "away"
-      ? "#ffb347"
-      : selfStatus === "online"
-      ? "#7fe2a9"
-      : "#cccccc";
-
-  const displayName =
-    activeProfile?.name ||
-    profile?.displayName ||
-    (user as any)?.nickname ||
-    "Profil online";
+  const displayName = activeProfile?.name || profile?.displayName || (user as any)?.nickname || "Joueur";
 
   const lastSeenLabel = formatLastSeenAgo(lastSeen);
 
@@ -410,24 +315,29 @@ export default function FriendsPage({ store, update, go }: Props) {
   const countryRaw = privateInfo.country || "";
   const countryFlag = getCountryFlag(countryRaw);
 
+  // --- Historique online (onlineApi.listMatches)
+  const [matches, setMatches] = React.useState<OnlineMatch[]>([]);
+  const [loadingMatches, setLoadingMatches] = React.useState(false);
+
+  // -------- LOBBIES ONLINE --------
+  const [creatingLobby, setCreatingLobby] = React.useState(false);
+  const [lastCreatedLobby, setLastCreatedLobby] = React.useState<OnlineLobby | null>(null);
+
+  const [joinCode, setJoinCode] = React.useState("");
+  const [joiningLobby, setJoiningLobby] = React.useState(false);
+  const [joinedLobby, setJoinedLobby] = React.useState<OnlineLobby | null>(null);
+  const [joinError, setJoinError] = React.useState<string | null>(null);
+  const [joinInfo, setJoinInfo] = React.useState<string | null>(null);
+
   /* -------------------------------------------------
       TEST SUPABASE
   --------------------------------------------------*/
   async function testSupabase() {
     console.log("[TEST] Supabase: démarrage…");
     try {
-      const { data, error } = await supabase
-        .from("profiles_online")
-        .select("*")
-        .limit(1);
-
+      const { data, error } = await supabase.from("profiles_online").select("*").limit(1);
       console.log("[TEST] Supabase result:", { data, error });
-
-      alert(
-        error
-          ? "Erreur Supabase (voir console)"
-          : "Connexion Supabase OK (voir console)"
-      );
+      alert(error ? "Erreur Supabase (voir console)" : "Connexion Supabase OK (voir console)");
     } catch (e) {
       console.error("[TEST] Supabase: exception", e);
       alert("Exception lors de l’appel Supabase (voir console)");
@@ -437,14 +347,13 @@ export default function FriendsPage({ store, update, go }: Props) {
   /* -------------------------------------------------
       Gestion présence locale (set + ping 30s)
   --------------------------------------------------*/
-
   function setPresence(newStatus: PresenceStatus) {
     update((st) => ({ ...st, selfStatus: newStatus as any }));
     savePresenceToLS(newStatus);
     setLastSeen(Date.now());
   }
 
-  // 🔁 Ping toutes les 30s quand connecté + en ligne
+  // 🔁 Ping toutes les 30s quand "online" (V8: auto-session => pas besoin de login)
   React.useEffect(() => {
     if (!isSignedIn || selfStatus !== "online") return;
     if (typeof window === "undefined") return;
@@ -457,24 +366,7 @@ export default function FriendsPage({ store, update, go }: Props) {
     return () => window.clearInterval(id);
   }, [isSignedIn, selfStatus]);
 
-  // Sync présence / formulaire quand l'état AuthOnline change
-  React.useEffect(() => {
-    if (authStatus === "signed_in" && user) {
-      setPresence("online");
-      setEmail((user as any)?.email || "");
-      setNickname(
-        profile?.displayName ||
-          (user as any)?.nickname ||
-          activeProfile?.name ||
-          ""
-      );
-    } else if (authStatus === "signed_out") {
-      setPresence("offline");
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [authStatus, user, profile, activeProfile]);
-
-  // Si on retrouve une ancienne présence locale très vieille, on bascule en "away"
+  // Boot présence (si on retrouve une ancienne présence locale très vieille -> away)
   React.useEffect(() => {
     if (!initialPresence) return;
     const diff = Date.now() - initialPresence.lastSeen;
@@ -485,15 +377,9 @@ export default function FriendsPage({ store, update, go }: Props) {
   }, []);
 
   /* -------------------------------------------------
-      Historique Online (vrai serveur)
+      Historique Online (serveur)
   --------------------------------------------------*/
-
   React.useEffect(() => {
-    if (!isSignedIn) {
-      setMatches([]);
-      return;
-    }
-
     let cancelled = false;
 
     async function load() {
@@ -502,14 +388,8 @@ export default function FriendsPage({ store, update, go }: Props) {
         const list = await onlineApi.listMatches(50);
         if (!cancelled) {
           setMatches(list || []);
-          // ⚠️ Optionnel: mettre un cache local pour StatsOnline
           try {
-            if (typeof window !== "undefined") {
-              window.localStorage.setItem(
-                LS_ONLINE_MATCHES_KEY,
-                JSON.stringify(list || [])
-              );
-            }
+            window.localStorage.setItem(LS_ONLINE_MATCHES_KEY, JSON.stringify(list || []));
           } catch {
             // ignore
           }
@@ -526,39 +406,27 @@ export default function FriendsPage({ store, update, go }: Props) {
     return () => {
       cancelled = true;
     };
-  }, [isSignedIn]);
+  }, []);
 
   function handleClearOnlineHistory() {
-    if (typeof window !== "undefined") {
-      try {
-        window.localStorage.removeItem(LS_ONLINE_MATCHES_KEY);
-      } catch {
-        // ignore
-      }
+    try {
+      window.localStorage.removeItem(LS_ONLINE_MATCHES_KEY);
+    } catch {
+      // ignore
     }
     setMatches([]);
   }
 
   function getMatchTitle(m: OnlineMatch): string {
-    const isTraining =
-      (m as any).isTraining === true ||
-      (m.payload as any)?.kind === "training_x01";
-
-    if (m.mode === "x01") {
-      return isTraining ? "X01 Training" : "X01 (match)";
-    }
+    const isTraining = (m as any).isTraining === true || (m.payload as any)?.kind === "training_x01";
+    if (m.mode === "x01") return isTraining ? "X01 Training" : "X01 (match)";
     return m.mode || "Match";
   }
 
   function formatMatchDate(m: OnlineMatch): string {
     const ts = (m as any).finishedAt || (m as any).startedAt || (m as any).createdAt;
     const d = new Date(ts);
-    return d.toLocaleString(undefined, {
-      day: "2-digit",
-      month: "2-digit",
-      hour: "2-digit",
-      minute: "2-digit",
-    });
+    return d.toLocaleString(undefined, { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
   }
 
   function getMatchPlayersLabel(m: OnlineMatch): string {
@@ -576,112 +444,13 @@ export default function FriendsPage({ store, update, go }: Props) {
     return found?.name || null;
   }
 
-  /* -------------------------------------------------
-      Actions AUTH (signup / login / logout)
-  --------------------------------------------------*/
-
-  async function handleSignup() {
-    const nick = (nickname || activeProfile?.name || "").trim();
-    const mail = email.trim().toLowerCase();
-    const pass = password;
-
-    setError(null);
-    setInfo(null);
-
-    if (!nick) {
-      setError("Pseudo online requis.");
-      return;
-    }
-    if (!mail || !pass) {
-      setError(
-        "Pour créer un compte online, email et mot de passe sont requis."
-      );
-      return;
-    }
-
-    setBusy(true);
-    try {
-      await signupOnline({
-        email: mail,
-        password: pass,
-        nickname: nick,
-      } as any);
-      await refreshOnline();
-
-      setPresence("online");
-      setPassword("");
-      setInfo("Compte online créé et connecté (serveur Supabase).");
-    } catch (e: any) {
-      console.warn(e);
-      setError(
-        e?.message || "Impossible de créer le compte en ligne pour le moment."
-      );
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function handleLogin() {
-    const mail = email.trim().toLowerCase();
-    const pass = password;
-
-    setError(null);
-    setInfo(null);
-
-    if (!mail || !pass) {
-      setError("Pour te connecter, entre email et mot de passe.");
-      return;
-    }
-
-    setBusy(true);
-    try {
-      await loginOnline({
-        email: mail,
-        password: pass,
-      } as any);
-      await refreshOnline();
-
-      setPresence("online");
-      setPassword("");
-      setInfo("Connexion réussie au serveur online.");
-    } catch (e: any) {
-      console.warn(e);
-      setError(
-        e?.message || "Impossible de te connecter en ligne pour le moment."
-      );
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function handleLogout() {
-    setBusy(true);
-    setError(null);
-    setInfo(null);
-    try {
-      await logoutOnline();
-      await refreshOnline();
-    } catch (e) {
-      console.warn("[FriendsPage] logout error", e);
-    }
-    setPresence("offline");
-    setPassword("");
-    setInfo("Déconnecté du mode online (compte conservé côté serveur).");
-    setBusy(false);
-  }
-
-  // ---------- Création d'un salon X01 (Supabase) ----------
+  // ---------- Création d'un salon X01 ----------
   async function handleCreateLobby() {
-    if (!isSignedIn || !user) {
-      setError("Tu dois être connecté en mode online pour créer un salon.");
-      setInfo(null);
-      return;
-    }
     if (creatingLobby) return;
 
     setCreatingLobby(true);
-    setError(null);
-    setInfo(null);
+    setJoinInfo(null);
+    setJoinError(null);
 
     try {
       const lobby = await onlineApi.createLobby({
@@ -696,19 +465,16 @@ export default function FriendsPage({ store, update, go }: Props) {
       setLastCreatedLobby(lobby);
       setJoinedLobby(null);
       setJoinInfo("Salon créé sur le serveur online.");
-      setJoinError(null);
       console.log("[online] lobby créé", lobby);
     } catch (e: any) {
       console.warn(e);
-      setError(
-        e?.message || "Impossible de créer un salon online pour le moment."
-      );
+      setJoinError(e?.message || "Impossible de créer un salon online pour le moment.");
     } finally {
       setCreatingLobby(false);
     }
   }
 
-  // ---------- Join d'un salon X01 par code (Supabase) ----------
+  // ---------- Join d'un salon X01 par code ----------
   async function handleJoinLobby() {
     const code = joinCode.trim().toUpperCase();
 
@@ -720,24 +486,13 @@ export default function FriendsPage({ store, update, go }: Props) {
       setJoinError("Entre un code de salon.");
       return;
     }
-    if (!isSignedIn || !user) {
-      setJoinError(
-        "Tu dois être connecté en mode online pour rejoindre un salon."
-      );
-      return;
-    }
 
     setJoiningLobby(true);
-
     try {
       const lobby = await onlineApi.joinLobby({
         code,
-        userId: (user as any).id,
-        nickname:
-          profile?.displayName ||
-          (user as any).nickname ||
-          activeProfile?.name ||
-          "Joueur",
+        userId: (user as any)?.id || "anon",
+        nickname: profile?.displayName || (user as any)?.nickname || activeProfile?.name || "Joueur",
       } as any);
 
       setJoinedLobby(lobby);
@@ -745,36 +500,18 @@ export default function FriendsPage({ store, update, go }: Props) {
       console.log("[online] join lobby ok", lobby);
     } catch (e: any) {
       console.warn(e);
-      setJoinError(
-        e?.message || "Impossible de rejoindre ce salon pour le moment."
-      );
+      setJoinError(e?.message || "Impossible de rejoindre ce salon pour le moment.");
     } finally {
       setJoiningLobby(false);
     }
   }
 
-  /* -------------------------------------------------
-      RENDER
-  --------------------------------------------------*/
-
   // ✅ TRI global + groupement joli
-  const sortedMatches = React.useMemo(() => {
-    return (matches || [])
-      .slice()
-      .sort((a: any, b: any) => toTs(b) - toTs(a));
-  }, [matches]);
-
+  const sortedMatches = React.useMemo(() => (matches || []).slice().sort((a: any, b: any) => toTs(b) - toTs(a)), [matches]);
   const grouped = React.useMemo(() => groupMatchesPretty(sortedMatches as any), [sortedMatches]);
 
   return (
-    <div
-      className="container"
-      style={{
-        padding: 16,
-        paddingBottom: 96,
-        color: "#f5f5f7",
-      }}
-    >
+    <div className="container" style={{ padding: 16, paddingBottom: 96, color: "#f5f5f7" }}>
       {/* ✅ Bouton de test Supabase */}
       <button
         onClick={testSupabase}
@@ -791,405 +528,143 @@ export default function FriendsPage({ store, update, go }: Props) {
         TEST SUPABASE
       </button>
 
-      <h2
-        style={{
-          fontSize: 20,
-          fontWeight: 800,
-          marginBottom: 4,
-        }}
-      >
-        Mode Online & Amis
-      </h2>
+      <h2 style={{ fontSize: 20, fontWeight: 800, marginBottom: 4 }}>Mode Online</h2>
 
-      <p
-        style={{
-          fontSize: 13,
-          opacity: 0.8,
-          marginBottom: 12,
-        }}
-      >
-        Crée ton compte online pour synchroniser ton profil entre appareils et
-        jouer de vraies parties en ligne (auth Supabase + salons online).
+      <p style={{ fontSize: 13, opacity: 0.8, marginBottom: 12 }}>
+        V8 : compte cloud actif automatiquement (auto-session). Aucun écran login ici.
       </p>
 
-      {/* --------- BLOC INFO --------- */}
+      {/* --------- BLOC ÉTAT ONLINE (V8 minimal) --------- */}
       <div
         style={{
           fontSize: 11.5,
-          marginBottom: 12,
-          padding: 8,
-          borderRadius: 10,
+          marginBottom: 16,
+          padding: 10,
+          borderRadius: 12,
           border: "1px solid rgba(255,255,255,.12)",
-          background:
-            "linear-gradient(180deg, rgba(40,40,48,.88), rgba(18,18,22,.96))",
+          background: "linear-gradient(180deg, rgba(40,40,48,.88), rgba(18,18,22,.96))",
         }}
       >
-        <div style={{ fontWeight: 700, marginBottom: 2 }}>
-          {authLoading ? "Vérification de la session online…" : "Serveur online"}
-        </div>
+        <div style={{ fontWeight: 900, marginBottom: 6, color: "#ffd56a" }}>Compte cloud</div>
 
-        <div style={{ opacity: 0.9 }}>
-          Ton compte online est stocké sur un vrai serveur (Supabase). Tu peux
-          te reconnecter depuis plusieurs appareils avec le même email/mot de
-          passe.
-        </div>
-
-        <div style={{ marginTop: 4, color: "#ffcf57" }}>
-          {isSignedIn
-            ? "Connecté au serveur online."
-            : authLoading
-            ? "Connexion en cours…"
-            : "Non connecté."}
-        </div>
-
-        {lastSeenLabel && (
-          <div
-            style={{
-              marginTop: 2,
-              opacity: 0.8,
-              fontSize: 11,
-            }}
-          >
-            Dernière activité : {lastSeenLabel}
-          </div>
-        )}
-      </div>
-
-      {/* --------- BLOC CONNEXION / CRÉATION --------- */}
-      {!isSignedIn ? (
-        <div
-          style={{
-            borderRadius: 16,
-            padding: 14,
-            marginBottom: 16,
-            background:
-              "radial-gradient(120% 160% at 0% 0%, rgba(255,195,26,.08), transparent 55%), linear-gradient(180deg, rgba(20,20,24,.96), rgba(10,10,12,.98))",
-            border: "1px solid rgba(255,255,255,.12)",
-            boxShadow: "0 14px 30px rgba(0,0,0,.55)",
-          }}
-        >
-          <div
-            style={{
-              fontSize: 13,
-              fontWeight: 700,
-              marginBottom: 8,
-            }}
-          >
-            Connexion / création rapide
-          </div>
-
-          {activeProfile && (
-            <div style={{ fontSize: 11.5, opacity: 0.85, marginBottom: 6 }}>
-              Profil local actif : <b>{activeProfile.name}</b> — utilisé comme
-              pseudo par défaut.
-            </div>
-          )}
-
-          {/* Champ PSEUDO */}
-          <label
-            style={{
-              fontSize: 11.5,
-              opacity: 0.9,
-              display: "block",
-              marginBottom: 4,
-            }}
-          >
-            Pseudo online
-          </label>
-
-          <input
-            type="text"
-            value={nickname}
-            onChange={(e) => setNickname(e.target.value)}
-            disabled={busy || authLoading}
-            placeholder="Ex : CHEVROUTE, NINZALEX…"
-            style={{
-              width: "100%",
-              borderRadius: 10,
-              border: "1px solid rgba(255,255,255,.18)",
-              background: "rgba(8,8,10,.95)",
-              color: "#f5f5f7",
-              padding: "8px 10px",
-              fontSize: 13,
-              marginBottom: 8,
-            }}
-          />
-
-          {/* Email */}
-          <input
-            type="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            disabled={busy || authLoading}
-            placeholder="Email (pour te reconnecter sur tous tes appareils)"
-            style={{
-              width: "100%",
-              borderRadius: 10,
-              border: "1px solid rgba(255,255,255,.18)",
-              background: "rgba(8,8,10,.95)",
-              color: "#f5f5f7",
-              padding: "8px 10px",
-              fontSize: 13,
-              marginBottom: 8,
-            }}
-          />
-
-          {/* Mot de passe */}
-          <input
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            disabled={busy || authLoading}
-            placeholder="Mot de passe"
-            style={{
-              width: "100%",
-              borderRadius: 10,
-              border: "1px solid rgba(255,255,255,.18)",
-              background: "rgba(8,8,10,.95)",
-              color: "#f5f5f7",
-              padding: "8px 10px",
-              fontSize: 13,
-              marginBottom: 10,
-            }}
-          />
-
-          {/* Messages d'erreur / info */}
-          {error && (
-            <div style={{ marginBottom: 8, fontSize: 11.5, color: "#ff8a8a" }}>
-              {error}
-            </div>
-          )}
-
-          {info && !error && (
-            <div style={{ marginBottom: 8, fontSize: 11.5, color: "#8fe6aa" }}>
-              {info}
-            </div>
-          )}
-
-          {/* BOUTONS */}
-          <div style={{ display: "flex", gap: 8, marginBottom: 4 }}>
-            <button
-              type="button"
-              onClick={handleSignup}
-              disabled={busy || authLoading}
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          {/* Avatar local + drapeau */}
+          <div style={{ position: "relative", width: 52, height: 52, flexShrink: 0 }}>
+            <div
               style={{
-                flex: 1,
-                borderRadius: 999,
-                padding: "8px 10px",
-                border: "none",
-                fontWeight: 800,
-                fontSize: 13,
-                cursor: busy || authLoading ? "default" : "pointer",
-                background: "linear-gradient(180deg,#35c86d,#23a958)",
-                color: "#08130c",
-                boxShadow: "0 8px 18px rgba(0,0,0,.55)",
-                opacity: busy || authLoading ? 0.5 : 1,
+                width: "100%",
+                height: "100%",
+                borderRadius: "50%",
+                overflow: "hidden",
+                background: "radial-gradient(circle at 30% 0%, #ffde75, #c2871f)",
               }}
             >
-              Créer un compte
-            </button>
-
-            <button
-              type="button"
-              onClick={handleLogin}
-              disabled={busy || authLoading}
-              style={{
-                flex: 1,
-                borderRadius: 999,
-                padding: "8px 10px",
-                border: "none",
-                fontWeight: 800,
-                fontSize: 13,
-                cursor: busy || authLoading ? "default" : "pointer",
-                background: "linear-gradient(180deg,#ffc63a,#ffaf00)",
-                color: "#1b1508",
-                boxShadow: "0 8px 18px rgba(0,0,0,.55)",
-                opacity: busy || authLoading ? 0.5 : 1,
-              }}
-            >
-              Se connecter
-            </button>
-          </div>
-        </div>
-      ) : (
-        /* --------- BLOC PROFIL CONNECTÉ --------- */
-        <div
-          style={{
-            borderRadius: 16,
-            padding: 14,
-            marginBottom: 16,
-            background:
-              "radial-gradient(120% 160% at 0% 0%, rgba(127,226,169,.10), transparent 55%), linear-gradient(180deg, rgba(20,20,24,.96), rgba(10,10,12,.98))",
-            border: "1px solid rgba(127,226,169,.45)",
-            boxShadow: "0 14px 30px rgba(0,0,0,.55)",
-          }}
-        >
-          <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 8 }}>
-            Profil online connecté
-          </div>
-
-          {/* Avatar + Nom + Statut */}
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 10,
-              marginBottom: 8,
-            }}
-          >
-            {/* Wrapper externe pour pouvoir faire déborder le drapeau */}
-            <div style={{ position: "relative", width: 52, height: 52, flexShrink: 0 }}>
-              {/* Cercle avatar avec overflow hidden */}
-              <div
-                style={{
-                  width: "100%",
-                  height: "100%",
-                  borderRadius: "50%",
-                  overflow: "hidden",
-                  background:
-                    "radial-gradient(circle at 30% 0%, #ffde75, #c2871f)",
-                }}
-              >
-                {activeProfile?.avatarDataUrl ? (
-                  <img
-                    src={activeProfile.avatarDataUrl}
-                    alt=""
-                    style={{ width: "100%", height: "100%", objectFit: "cover" }}
-                  />
-                ) : (
-                  <div
-                    style={{
-                      width: "100%",
-                      height: "100%",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      fontWeight: 900,
-                      color: "#1a1a1a",
-                      fontSize: 20,
-                    }}
-                  >
-                    {(displayName || "??").slice(0, 2).toUpperCase()}
-                  </div>
-                )}
-              </div>
-
-              {/* Petit drapeau pays centré en bas, qui dépasse du cercle */}
-              {countryFlag && (
+              {activeProfile?.avatarDataUrl ? (
+                <img src={activeProfile.avatarDataUrl} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+              ) : (
                 <div
                   style={{
-                    position: "absolute",
-                    bottom: -6,
-                    left: "50%",
-                    transform: "translateX(-50%)",
-                    width: 22,
-                    height: 22,
-                    borderRadius: "50%",
-                    border: "2px solid #000",
-                    overflow: "hidden",
-                    boxShadow: "0 0 8px rgba(0,0,0,.8)",
-                    background: "#111",
-                    display: "grid",
-                    placeItems: "center",
-                    zIndex: 2,
+                    width: "100%",
+                    height: "100%",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    fontWeight: 900,
+                    color: "#1a1a1a",
+                    fontSize: 20,
                   }}
-                  title={countryRaw}
                 >
-                  <span style={{ fontSize: 14, lineHeight: 1 }}>{countryFlag}</span>
+                  {(displayName || "??").slice(0, 2).toUpperCase()}
                 </div>
               )}
             </div>
 
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontSize: 15, fontWeight: 800, color: "#ffcf57" }}>
-                {displayName}
-              </div>
-
-              {countryRaw && (
-                <div style={{ fontSize: 11, opacity: 0.8, marginTop: 1 }}>
-                  {countryRaw}
-                </div>
-              )}
-
+            {countryFlag ? (
               <div
                 style={{
-                  fontSize: 12,
-                  marginTop: 4,
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 6,
+                  position: "absolute",
+                  bottom: -6,
+                  left: "50%",
+                  transform: "translateX(-50%)",
+                  width: 22,
+                  height: 22,
+                  borderRadius: "50%",
+                  border: "2px solid #000",
+                  overflow: "hidden",
+                  boxShadow: "0 0 8px rgba(0,0,0,.8)",
+                  background: "#111",
+                  display: "grid",
+                  placeItems: "center",
+                  zIndex: 2,
                 }}
+                title={countryRaw}
               >
-                <span
-                  style={{
-                    display: "inline-flex",
-                    alignItems: "center",
-                    gap: 4,
-                    padding: "2px 8px",
-                    borderRadius: 999,
-                    background: "rgba(0,0,0,.55)",
-                    border: "1px solid rgba(255,255,255,.12)",
-                  }}
-                >
-                  <span
-                    style={{
-                      width: 8,
-                      height: 8,
-                      borderRadius: "50%",
-                      background: statusColor,
-                      boxShadow: `0 0 6px ${statusColor}`,
-                    }}
-                  />
-                  <span>{statusLabel}</span>
-                </span>
+                <span style={{ fontSize: 14, lineHeight: 1 }}>{countryFlag}</span>
               </div>
-
-              {lastSeenLabel && (
-                <div style={{ fontSize: 11, opacity: 0.8, marginTop: 3 }}>
-                  Dernière activité : {lastSeenLabel}
-                </div>
-              )}
-            </div>
+            ) : null}
           </div>
 
-          <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
-            <button
-              type="button"
-              onClick={() => setPresence(selfStatus === "away" ? "online" : "away")}
-              disabled={busy}
-              style={{
-                flex: 1,
-                borderRadius: 999,
-                padding: "7px 10px",
-                border: "none",
-                fontWeight: 700,
-                fontSize: 12,
-                background: "linear-gradient(180deg,#444,#262626)",
-                color: "#f5f5f7",
-              }}
-            >
-              {selfStatus === "away" ? "Revenir en ligne" : "Absent"}
-            </button>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: 14, fontWeight: 900, color: "#ffd56a", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              {displayName}
+            </div>
 
-            <button
-              type="button"
-              onClick={handleLogout}
-              disabled={busy}
-              style={{
-                borderRadius: 999,
-                padding: "7px 12px",
-                border: "none",
-                fontWeight: 800,
-                fontSize: 12,
-                background: "linear-gradient(180deg,#ff5a5a,#e01f1f)",
-                color: "#fff",
-              }}
-            >
-              Quitter
-            </button>
+            <div style={{ marginTop: 4, display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+              <Pill label={`Status : ${status}`} tone={isSignedIn ? "green" : "gray"} />
+              <Pill label="Compte cloud actif (auto)" tone="blue" />
+              {typeof (user as any)?.id === "string" ? <Pill label={`UID: ${(user as any).id.slice(0, 8)}…`} tone="gray" /> : null}
+            </div>
+
+            {lastSeenLabel ? <div style={{ marginTop: 6, fontSize: 11, opacity: 0.85 }}>Dernière activité : {lastSeenLabel}</div> : null}
           </div>
         </div>
-      )}
+
+        {/* Statut app */}
+        <div style={{ marginTop: 10, display: "flex", gap: 8 }}>
+          <button
+            type="button"
+            onClick={() => setPresence(selfStatus === "away" ? "online" : "away")}
+            style={{
+              flex: 1,
+              borderRadius: 999,
+              padding: "7px 10px",
+              border: "none",
+              fontWeight: 800,
+              fontSize: 12,
+              background: "linear-gradient(180deg,#444,#262626)",
+              color: "#f5f5f7",
+              cursor: "pointer",
+            }}
+          >
+            {selfStatus === "away" ? "Revenir en ligne" : "Absent"}
+          </button>
+
+          <div
+            style={{
+              borderRadius: 999,
+              padding: "7px 10px",
+              border: "1px solid rgba(255,255,255,.12)",
+              background: "rgba(0,0,0,.35)",
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 8,
+              fontSize: 12,
+              fontWeight: 900,
+            }}
+          >
+            <span
+              style={{
+                width: 8,
+                height: 8,
+                borderRadius: "50%",
+                background: statusColor,
+                boxShadow: `0 0 6px ${statusColor}`,
+              }}
+            />
+            <span>{statusLabel}</span>
+          </div>
+        </div>
+      </div>
 
       {/* --------- PLACEHOLDER FUTUR : Amis / présence détaillée --------- */}
       <div
@@ -1199,33 +674,28 @@ export default function FriendsPage({ store, update, go }: Props) {
           padding: 10,
           borderRadius: 12,
           border: "1px solid rgba(255,255,255,.10)",
-          background:
-            "linear-gradient(180deg, rgba(24,24,30,.96), rgba(10,10,12,.98))",
+          background: "linear-gradient(180deg, rgba(24,24,30,.96), rgba(10,10,12,.98))",
         }}
       >
-        <div style={{ fontWeight: 700, marginBottom: 4 }}>À venir</div>
-        <div style={{ opacity: 0.85 }}>
-          Liste d’amis, invitations, présence en ligne détaillée seront ajoutés
-          ici (basés sur les profils online).
-        </div>
+        <div style={{ fontWeight: 900, marginBottom: 4 }}>À venir</div>
+        <div style={{ opacity: 0.85 }}>Liste d’amis, invitations, présence détaillée… (basés sur les profils online).</div>
       </div>
 
-      {/* --------- BLOC : Salons online (réels) — AU-DESSUS de l’historique --------- */}
+      {/* --------- BLOC : Salons online — AU-DESSUS de l’historique --------- */}
       <div
         style={{
           marginTop: 16,
           padding: 14,
           borderRadius: 14,
           border: "1px solid rgba(255,255,255,.12)",
-          background:
-            "linear-gradient(180deg, rgba(32,32,40,.95), rgba(10,10,14,.98))",
+          background: "linear-gradient(180deg, rgba(32,32,40,.95), rgba(10,10,14,.98))",
           boxShadow: "0 10px 24px rgba(0,0,0,.55)",
           fontSize: 12,
         }}
       >
         <div
           style={{
-            fontWeight: 700,
+            fontWeight: 900,
             marginBottom: 6,
             fontSize: 14,
             color: "#ffd56a",
@@ -1236,43 +706,32 @@ export default function FriendsPage({ store, update, go }: Props) {
         </div>
 
         <div style={{ opacity: 0.85, marginBottom: 10 }}>
-          Crée un salon X01 ou rejoins celui d’un ami avec un code (stocké sur le
-          serveur).
+          Crée un salon X01 ou rejoins celui d’un ami avec un code (stocké sur le serveur).
         </div>
 
         <button
           type="button"
           onClick={handleCreateLobby}
-          disabled={creatingLobby || !isSignedIn}
+          disabled={creatingLobby}
           style={{
             width: "100%",
             borderRadius: 12,
             padding: "10px 12px",
             border: "1px solid rgba(255,255,255,.16)",
-            background: !isSignedIn
-              ? "linear-gradient(180deg,#666,#444)"
-              : creatingLobby
-              ? "linear-gradient(180deg,#666,#444)"
-              : "linear-gradient(180deg,#ffd56a,#e9a93d)",
+            background: creatingLobby ? "linear-gradient(180deg,#666,#444)" : "linear-gradient(180deg,#ffd56a,#e9a93d)",
             color: "#1c1304",
-            fontWeight: 800,
+            fontWeight: 900,
             fontSize: 13,
-            cursor: creatingLobby || !isSignedIn ? "default" : "pointer",
+            cursor: creatingLobby ? "default" : "pointer",
             marginBottom: 10,
-            opacity: creatingLobby || !isSignedIn ? 0.6 : 1,
+            opacity: creatingLobby ? 0.6 : 1,
           }}
         >
-          {!isSignedIn
-            ? "Connecte-toi pour créer un salon"
-            : creatingLobby
-            ? "Création…"
-            : "Créer un salon X01"}
+          {creatingLobby ? "Création…" : "Créer un salon X01"}
         </button>
 
         <div style={{ marginTop: 2, marginBottom: 8 }}>
-          <label style={{ fontSize: 11, opacity: 0.9, display: "block", marginBottom: 4 }}>
-            Code de salon
-          </label>
+          <label style={{ fontSize: 11, opacity: 0.9, display: "block", marginBottom: 4 }}>Code de salon</label>
           <input
             type="text"
             value={joinCode}
@@ -1295,37 +754,27 @@ export default function FriendsPage({ store, update, go }: Props) {
           <button
             type="button"
             onClick={handleJoinLobby}
-            disabled={joiningLobby || !isSignedIn}
+            disabled={joiningLobby}
             style={{
               width: "100%",
               borderRadius: 12,
               padding: "9px 12px",
               border: "1px solid rgba(255,255,255,.16)",
-              background: !isSignedIn
-                ? "linear-gradient(180deg,#555,#333)"
-                : joiningLobby
-                ? "linear-gradient(180deg,#555,#333)"
-                : "linear-gradient(180deg,#4fb4ff,#1c78d5)",
+              background: joiningLobby ? "linear-gradient(180deg,#555,#333)" : "linear-gradient(180deg,#4fb4ff,#1c78d5)",
               color: "#04101f",
-              fontWeight: 800,
+              fontWeight: 900,
               fontSize: 13,
-              cursor: joiningLobby || !isSignedIn ? "default" : "pointer",
-              opacity: joiningLobby || !isSignedIn ? 0.65 : 1,
+              cursor: joiningLobby ? "default" : "pointer",
+              opacity: joiningLobby ? 0.65 : 1,
             }}
           >
-            {!isSignedIn
-              ? "Connecte-toi pour rejoindre"
-              : joiningLobby
-              ? "Recherche…"
-              : "Rejoindre avec ce code"}
+            {joiningLobby ? "Recherche…" : "Rejoindre avec ce code"}
           </button>
 
           {(joinError || joinInfo) && (
             <div style={{ marginTop: 6, fontSize: 11.5 }}>
-              {joinError && <div style={{ color: "#ff8a8a" }}>{joinError}</div>}
-              {joinInfo && !joinError && (
-                <div style={{ color: "#8fe6aa" }}>{joinInfo}</div>
-              )}
+              {joinError ? <div style={{ color: "#ff8a8a" }}>{joinError}</div> : null}
+              {joinInfo && !joinError ? <div style={{ color: "#8fe6aa" }}>{joinInfo}</div> : null}
             </div>
           )}
         </div>
@@ -1339,15 +788,14 @@ export default function FriendsPage({ store, update, go }: Props) {
             padding: 14,
             borderRadius: 14,
             border: "1px solid rgba(255,255,255,.15)",
-            background:
-              "linear-gradient(180deg, rgba(34,34,44,.96), rgba(10,10,14,.98))",
+            background: "linear-gradient(180deg, rgba(34,34,44,.96), rgba(10,10,14,.98))",
             boxShadow: "0 12px 26px rgba(0,0,0,.55)",
             fontSize: 12,
           }}
         >
           <div
             style={{
-              fontWeight: 800,
+              fontWeight: 900,
               fontSize: 16,
               marginBottom: 10,
               color: "#ffd56a",
@@ -1367,7 +815,7 @@ export default function FriendsPage({ store, update, go }: Props) {
               fontFamily: "monospace",
               letterSpacing: 2,
               fontSize: 14,
-              fontWeight: 800,
+              fontWeight: 900,
               color: "#ffd56a",
               textAlign: "center",
               boxShadow: "0 0 12px rgba(255,215,80,.25)",
@@ -1381,8 +829,7 @@ export default function FriendsPage({ store, update, go }: Props) {
               marginBottom: 12,
               padding: 12,
               borderRadius: 12,
-              background:
-                "linear-gradient(180deg, rgba(44,44,54,.95), rgba(18,18,24,.98))",
+              background: "linear-gradient(180deg, rgba(44,44,54,.95), rgba(18,18,24,.98))",
               border: "1px solid rgba(255,255,255,.10)",
               display: "flex",
               gap: 12,
@@ -1402,11 +849,7 @@ export default function FriendsPage({ store, update, go }: Props) {
               }}
             >
               {activeProfile?.avatarDataUrl ? (
-                <img
-                  src={activeProfile.avatarDataUrl}
-                  alt=""
-                  style={{ width: "100%", height: "100%", objectFit: "cover" }}
-                />
+                <img src={activeProfile.avatarDataUrl} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
               ) : (
                 <div
                   style={{
@@ -1426,15 +869,11 @@ export default function FriendsPage({ store, update, go }: Props) {
             </div>
 
             <div style={{ flex: 1 }}>
-              <div style={{ fontWeight: 800, fontSize: 14, color: "#ffd56a" }}>
-                {activeProfile?.name || "Hôte"}
-              </div>
-              <div style={{ fontSize: 12, opacity: 0.85 }}>
-                Hôte — Attend les joueurs…
-              </div>
+              <div style={{ fontWeight: 900, fontSize: 14, color: "#ffd56a" }}>{activeProfile?.name || "Hôte"}</div>
+              <div style={{ fontSize: 12, opacity: 0.85 }}>Attend les joueurs…</div>
             </div>
 
-            {countryFlag && (
+            {countryFlag ? (
               <div
                 style={{
                   width: 22,
@@ -1450,82 +889,31 @@ export default function FriendsPage({ store, update, go }: Props) {
               >
                 {countryFlag}
               </div>
-            )}
+            ) : null}
           </div>
 
-          {isSignedIn && user && (
-            <div
-              style={{
-                marginBottom: 12,
-                padding: 12,
-                borderRadius: 12,
-                border: "1px solid rgba(255,255,255,.10)",
-                background:
-                  "linear-gradient(180deg, rgba(30,30,38,.96), rgba(10,10,14,.98))",
-              }}
-            >
-              <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                <div
-                  style={{
-                    width: 50,
-                    height: 50,
-                    borderRadius: "50%",
-                    overflow: "hidden",
-                    background: "radial-gradient(circle,#7fe2a9,#35c86d)",
-                    flexShrink: 0,
-                  }}
-                >
-                  <div
-                    style={{
-                      display: "flex",
-                      width: "100%",
-                      height: "100%",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      fontWeight: 900,
-                      color: "#0a1a12",
-                      fontSize: 18,
-                    }}
-                  >
-                    {(profile?.displayName || (user as any)?.nickname || "J")[0]
-                      ?.toUpperCase() || "J"}
-                  </div>
-                </div>
-
-                <div style={{ flex: 1 }}>
-                  <div style={{ fontWeight: 800, fontSize: 14, color: "#7fe2a9" }}>
-                    {profile?.displayName || (user as any)?.nickname || "Joueur Online"}
-                  </div>
-                  <div style={{ fontSize: 12, opacity: 0.85 }}>A rejoint le salon</div>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {isSignedIn && (
-            <button
-              onClick={() =>
-                go("x01_online_setup", {
-                  lobbyCode: (joinedLobby || lastCreatedLobby)?.code || null,
-                })
-              }
-              style={{
-                width: "100%",
-                borderRadius: 999,
-                padding: "10px 14px",
-                border: "none",
-                fontWeight: 800,
-                fontSize: 14,
-                background: "linear-gradient(180deg,#35c86d,#23a958)",
-                color: "#03140a",
-                boxShadow: "0 10px 22px rgba(0,0,0,.5)",
-                cursor: "pointer",
-                marginTop: 10,
-              }}
-            >
-              🚀 Lancer maintenant
-            </button>
-          )}
+          <button
+            onClick={() =>
+              go("x01_online_setup", {
+                lobbyCode: (joinedLobby || lastCreatedLobby)?.code || null,
+              })
+            }
+            style={{
+              width: "100%",
+              borderRadius: 999,
+              padding: "10px 14px",
+              border: "none",
+              fontWeight: 900,
+              fontSize: 14,
+              background: "linear-gradient(180deg,#35c86d,#23a958)",
+              color: "#03140a",
+              boxShadow: "0 10px 22px rgba(0,0,0,.5)",
+              cursor: "pointer",
+              marginTop: 10,
+            }}
+          >
+            🚀 Lancer maintenant
+          </button>
         </div>
       )}
 
@@ -1534,55 +922,43 @@ export default function FriendsPage({ store, update, go }: Props) {
         title="Historique Online"
         subtitle="Trié du plus récent au plus ancien • regroupé automatiquement"
         right={
-          isSignedIn ? (
-            <button
-              type="button"
-              onClick={handleClearOnlineHistory}
-              style={{
-                borderRadius: 999,
-                padding: "7px 10px",
-                border: "1px solid rgba(255,255,255,.12)",
-                background: "rgba(255,90,90,.12)",
-                color: "#ff8a8a",
-                fontWeight: 900,
-                fontSize: 11.5,
-                cursor: "pointer",
-              }}
-              title="Supprime le cache local (utile si StatsOnline lit encore ce cache)"
-            >
-              Effacer cache local
-            </button>
-          ) : null
+          <button
+            type="button"
+            onClick={handleClearOnlineHistory}
+            style={{
+              borderRadius: 999,
+              padding: "7px 10px",
+              border: "1px solid rgba(255,255,255,.12)",
+              background: "rgba(255,90,90,.12)",
+              color: "#ff8a8a",
+              fontWeight: 900,
+              fontSize: 11.5,
+              cursor: "pointer",
+            }}
+            title="Supprime le cache local (utile si StatsOnline lit encore ce cache)"
+          >
+            Effacer cache local
+          </button>
         }
       />
 
       <NeonCard accent="rgba(79,180,255,.55)" style={{ marginTop: 10 }}>
         {loadingMatches ? (
           <div style={{ opacity: 0.85, paddingLeft: 6 }}>Chargement…</div>
-        ) : !isSignedIn ? (
-          <div style={{ opacity: 0.85, paddingLeft: 6 }}>
-            Connecte-toi pour voir ton historique online.
-          </div>
         ) : sortedMatches.length === 0 ? (
-          <div style={{ opacity: 0.85, paddingLeft: 6 }}>
-            Aucun match online enregistré pour le moment.
-          </div>
+          <div style={{ opacity: 0.85, paddingLeft: 6 }}>Aucun match online enregistré pour le moment.</div>
         ) : (
           <div style={{ display: "grid", gap: 12, paddingLeft: 6 }}>
             {/* Aujourd’hui */}
             {grouped.today?.length ? (
               <div>
-                <div style={{ fontSize: 12, fontWeight: 900, opacity: 0.82, marginBottom: 6 }}>
-                  Aujourd’hui
-                </div>
+                <div style={{ fontSize: 12, fontWeight: 900, opacity: 0.82, marginBottom: 6 }}>Aujourd’hui</div>
                 <div style={{ display: "grid", gap: 8 }}>
                   {grouped.today.map((m: any) => {
                     const title = getMatchTitle(m);
                     const playersLabel = getMatchPlayersLabel(m);
                     const winner = getMatchWinnerLabel(m);
-                    const isTraining =
-                      (m as any).isTraining === true ||
-                      (m.payload as any)?.kind === "training_x01";
+                    const isTraining = (m as any).isTraining === true || (m.payload as any)?.kind === "training_x01";
                     return (
                       <MatchMiniCard
                         key={m.id}
@@ -1602,17 +978,13 @@ export default function FriendsPage({ store, update, go }: Props) {
             {/* 7 derniers jours */}
             {grouped.week?.length ? (
               <div>
-                <div style={{ fontSize: 12, fontWeight: 900, opacity: 0.82, marginBottom: 6 }}>
-                  7 derniers jours
-                </div>
+                <div style={{ fontSize: 12, fontWeight: 900, opacity: 0.82, marginBottom: 6 }}>7 derniers jours</div>
                 <div style={{ display: "grid", gap: 8 }}>
                   {grouped.week.map((m: any) => {
                     const title = getMatchTitle(m);
                     const playersLabel = getMatchPlayersLabel(m);
                     const winner = getMatchWinnerLabel(m);
-                    const isTraining =
-                      (m as any).isTraining === true ||
-                      (m.payload as any)?.kind === "training_x01";
+                    const isTraining = (m as any).isTraining === true || (m.payload as any)?.kind === "training_x01";
                     return (
                       <MatchMiniCard
                         key={m.id}
@@ -1632,17 +1004,13 @@ export default function FriendsPage({ store, update, go }: Props) {
             {/* Avant */}
             {grouped.older?.length ? (
               <div>
-                <div style={{ fontSize: 12, fontWeight: 900, opacity: 0.82, marginBottom: 6 }}>
-                  Avant
-                </div>
+                <div style={{ fontSize: 12, fontWeight: 900, opacity: 0.82, marginBottom: 6 }}>Avant</div>
                 <div style={{ display: "grid", gap: 8 }}>
                   {grouped.older.map((m: any) => {
                     const title = getMatchTitle(m);
                     const playersLabel = getMatchPlayersLabel(m);
                     const winner = getMatchWinnerLabel(m);
-                    const isTraining =
-                      (m as any).isTraining === true ||
-                      (m.payload as any)?.kind === "training_x01";
+                    const isTraining = (m as any).isTraining === true || (m.payload as any)?.kind === "training_x01";
                     return (
                       <MatchMiniCard
                         key={m.id}
