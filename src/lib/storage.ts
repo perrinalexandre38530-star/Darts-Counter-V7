@@ -620,6 +620,84 @@ export async function importAll(dump: any): Promise<void> {
 }
 
 /* ============================================================
+   🧩 DartSets — compat localStorage (SOURCE DE VÉRITÉ UI)
+   Objectif : restaurer les dartSets EXACTEMENT là où l’UI lit
+============================================================ */
+
+const LS_DARTSETS_KEYS = [
+  "dc-dartsets-v1",
+  "dc-dartSets-v1",
+  "dc_lite_dartsets_v1",
+  "dc-lite-dartsets-v1",
+];
+
+const LS_ACTIVE_DARTSET_KEYS = [
+  "dc-active-dartset-id",
+  "dc-active-dartSet-id",
+  "dc_dartset_active",
+];
+
+function isRecord(x: any): x is Record<string, any> {
+  return x && typeof x === "object" && !Array.isArray(x);
+}
+
+function pickFirst<T>(...vals: Array<T | undefined | null>): T | undefined {
+  for (const v of vals) if (v !== undefined && v !== null) return v as T;
+  return undefined;
+}
+
+function writeDartSetsToLocalStorage(dartSets: any) {
+  try {
+    const s = JSON.stringify(dartSets ?? {});
+    for (const k of LS_DARTSETS_KEYS) localStorage.setItem(k, s);
+  } catch (e) {
+    console.warn("[dartsets] write localStorage failed", e);
+  }
+}
+
+function writeActiveDartSetIdToLocalStorage(activeId: any) {
+  if (!activeId) return;
+  try {
+    const v = String(activeId);
+    for (const k of LS_ACTIVE_DARTSET_KEYS) localStorage.setItem(k, v);
+  } catch (e) {
+    console.warn("[dartsets] write active id failed", e);
+  }
+}
+
+/**
+ * Extrait dartSets depuis un snapshot cloud (tolère plusieurs formats)
+ */
+function extractDartSetsFromSnapshot(snap: any) {
+  if (!isRecord(snap)) return { dartSets: null as any, activeId: null as any };
+
+  // formats possibles selon ton historique
+  const store = isRecord(snap.store) ? snap.store : null;
+  const data = isRecord(snap.data) ? snap.data : null;
+
+  const dartSets =
+    pickFirst(
+      store?.dartSets,
+      store?.dartsets,
+      data?.dartSets,
+      data?.dartsets,
+      snap.dartSets,
+      snap.dartsets
+    ) ?? null;
+
+  const activeId =
+    pickFirst(
+      store?.activeDartSetId,
+      store?.active_dartset_id,
+      data?.activeDartSetId,
+      snap.activeDartSetId,
+      snap.active_dartset_id
+    ) ?? null;
+
+  return { dartSets, activeId };
+}
+
+/* ============================================================
    ✅ CLOUD SNAPSHOT (Supabase user_store)
 ============================================================ */
 
@@ -641,6 +719,11 @@ export async function importCloudSnapshot(
   }
 
   await importAll(dump);
+
+  // ✅ CRITIQUE : restaurer les DartSets là où l’UI lit réellement
+  const { dartSets, activeId } = extractDartSetsFromSnapshot(dump);
+  if (dartSets) writeDartSetsToLocalStorage(dartSets);
+  if (activeId) writeActiveDartSetIdToLocalStorage(activeId);
 }
 
 export async function nukeAll(): Promise<void> {
@@ -650,7 +733,6 @@ export async function nukeAll(): Promise<void> {
     console.error("[storage] nukeAll error:", err);
   }
 }
-
 
 /* ============================================================
    ✅ WIPE TOTAL LOCAL (pour SIGNED_OUT / changement de compte)
