@@ -263,6 +263,14 @@ async function ensureAuthedUser() {
       user = again.data?.session?.user;
       session = again.data?.session;
     } catch (e) {
+      // Cas important: compte créé mais email pas encore confirmé.
+      // Dans ce cas, on NE doit PAS fabriquer une session anonyme.
+      const msg = String((e as any)?.message || e || "");
+      if (msg.includes("email_not_confirmed_pending")) {
+        throw new Error(
+          "Email non confirmé. Clique sur le lien reçu par email, puis reconnecte-toi."
+        );
+      }
       // on retombe sur l’erreur standard
     }
   }
@@ -357,6 +365,22 @@ async function ensureAutoSession(): Promise<AuthSession> {
   // 1) si session existe déjà -> ok
   let live = await buildAuthSessionFromSupabase();
   if (live?.token) return live;
+
+  // 1bis) si on a un compte "en attente de vérification" stocké en local,
+  // on NE crée PAS une session anonyme (sinon mélange d'identités).
+  // => l'utilisateur doit confirmer son email puis se reconnecter.
+  try {
+    const pending = loadAuthFromLS();
+    const hasEmail = !!pending?.user?.email;
+    const hasUserId = !!pending?.user?.id && pending?.user?.id !== "pending";
+    const hasToken = !!pending?.token;
+    if (hasUserId && hasEmail && !hasToken) {
+      throw new Error("email_not_confirmed_pending");
+    }
+  } catch (e) {
+    // si on a volontairement throw, on laisse remonter
+    if (String((e as any)?.message || "").includes("email_not_confirmed_pending")) throw e;
+  }
 
   // 2) sinon -> anonymous sign-in
   const { error } = await supabase.auth.signInAnonymously();
@@ -465,6 +489,12 @@ async function restoreSession(): Promise<AuthSession | null> {
     saveAuthToLS(s);
     return s;
   } catch (e) {
+    const msg = String((e as any)?.message || e || "");
+    // ✅ si le compte est en attente de confirmation, on garde le snapshot local (ne pas écraser)
+    if (msg.includes("email_not_confirmed_pending")) {
+      const keep = loadAuthFromLS();
+      return keep;
+    }
     console.warn("[onlineApi] restoreSession error", e);
     saveAuthToLS(null);
     return null;

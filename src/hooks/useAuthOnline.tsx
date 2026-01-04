@@ -46,8 +46,12 @@ export function AuthOnlineProvider({ children }: { children: React.ReactNode }) 
   const [loading, setLoading] = React.useState(false);
   const [session, setSession] = React.useState<AuthSession | null>(null);
 
-  // ✅ "connecté" = on a un user (même si token vide tant que mail pas confirmé)
-  const status: Status = session?.user?.id ? "signed_in" : "signed_out";
+  // ✅ "connecté" = on a une vraie session Supabase (token non vide)
+  // Si email confirmation ON : après signup, la session peut être null/empty tant que l'email n'est pas confirmé.
+  // Dans ce cas on considère l'utilisateur "signed_out" pour éviter:
+  // - upload avatar/storage impossible
+  // - push/pull snapshot cloud qui échoue
+  const status: Status = session?.user?.id && !!session?.token ? "signed_in" : "signed_out";
 
   const user = session?.user ?? null;
   const profile = session?.profile ?? null;
