@@ -1,12 +1,13 @@
 // ============================================================
 // src/lib/onlineApi.ts
-// API Mode Online (V7 STABLE)
+// API Mode Online (V7 STABLE -> V8 AUTO-SESSION)
 // - Auth / Profil → Supabase (table: profiles)
 // - Snapshot cloud du store → Supabase (table: user_store)
 // - Salons X01 (lobbies) → Supabase (table: online_lobbies)
 // ✅ IMPORTANT : AUCUNE référence à profiles_online / matches_online
 // ✅ Matchs online : désactivés (fallback safe)
 // ✅ NEW : resend confirmation + message email_not_confirmed
+// ✅ V8 : AUTO-LOGIN (anon) + store snapshot store-direct
 // ============================================================
 
 import { supabase } from "./supabaseClient";
@@ -249,9 +250,25 @@ function mapLobbyRow(row: SupabaseLobbyRow): OnlineLobby {
 async function ensureAuthedUser() {
   const { data, error } = await supabase.auth.getSession();
   if (error) throw error;
-  const user = data?.session?.user;
-  if (!user) throw new Error("Non authentifié (reconnecte-toi).");
-  return { user, session: data.session! };
+
+  let user = data?.session?.user;
+  let session = data?.session;
+
+  // ✅ V8: si pas de session, on tente de créer une session auto
+  if (!user) {
+    try {
+      await ensureAutoSession();
+      const again = await supabase.auth.getSession();
+      if (again.error) throw again.error;
+      user = again.data?.session?.user;
+      session = again.data?.session;
+    } catch (e) {
+      // on retombe sur l’erreur standard
+    }
+  }
+
+  if (!user || !session) throw new Error("Non authentifié (reconnecte-toi).");
+  return { user, session };
 }
 
 async function getOrCreateProfile(
@@ -333,6 +350,32 @@ async function buildAuthSessionFromSupabase(): Promise<AuthSession | null> {
 }
 
 // ============================================================
+// ✅ V8 AUTO-SESSION
+// (à placer ici : "juste après ensureAuthedUser()" comme demandé)
+// ============================================================
+async function ensureAutoSession(): Promise<AuthSession> {
+  // 1) si session existe déjà -> ok
+  let live = await buildAuthSessionFromSupabase();
+  if (live?.token) return live;
+
+  // 2) sinon -> anonymous sign-in
+  const { error } = await supabase.auth.signInAnonymously();
+  if (error) throw new Error(error.message);
+
+  // 3) rebuild session
+  live = await buildAuthSessionFromSupabase();
+  if (!live?.token) throw new Error("Impossible de créer/restaurer une session anonyme.");
+
+  // 4) garantir profile row
+  try {
+    const fallback = `Player-${live.user.id.slice(0, 5)}`;
+    await getOrCreateProfile(live.user.id, fallback);
+  } catch {}
+
+  return live;
+}
+
+// ============================================================
 // Error mapping (login)
 // ============================================================
 function normalizeAuthErrorMessage(msg: string) {
@@ -364,9 +407,7 @@ async function signup(payload: SignupPayload): Promise<AuthSession> {
   const nickname = payload.nickname?.trim() || email || "Player";
 
   if (!email || !password) {
-    throw new Error(
-      "Pour créer un compte online, email et mot de passe sont requis."
-    );
+    throw new Error("Pour créer un compte online, email et mot de passe sont requis.");
   }
 
   const { data, error } = await supabase.auth.signUp({
@@ -397,8 +438,7 @@ async function signup(payload: SignupPayload): Promise<AuthSession> {
   }
 
   const live = await buildAuthSessionFromSupabase();
-  if (!live)
-    throw new Error("Compte créé mais session introuvable (réessaie).");
+  if (!live) throw new Error("Compte créé mais session introuvable (réessaie).");
   return live;
 }
 
@@ -414,29 +454,21 @@ async function login(payload: LoginPayload): Promise<AuthSession> {
   if (error) throw new Error(normalizeAuthErrorMessage(error.message));
 
   const session = await buildAuthSessionFromSupabase();
-  if (!session)
-    throw new Error("Impossible de récupérer la session après la connexion.");
+  if (!session) throw new Error("Impossible de récupérer la session après la connexion.");
   return session;
 }
 
-/**
- * Restore session:
- * - si Supabase a une session -> ok
- * - sinon, si on a une session LS "pending" (token="") -> on la garde (ne pas wipe)
- * - sinon -> null + clear
- */
+// ✅ V8 : restoreSession = auto session garantie
 async function restoreSession(): Promise<AuthSession | null> {
-  const live = await buildAuthSessionFromSupabase();
-  if (live?.user) return live;
-
-  const cached = loadAuthFromLS();
-  if (cached?.token === "" && cached?.user?.email) {
-    // pending signup (waiting email confirmation)
-    return cached;
+  try {
+    const s = await ensureAutoSession();
+    saveAuthToLS(s);
+    return s;
+  } catch (e) {
+    console.warn("[onlineApi] restoreSession error", e);
+    saveAuthToLS(null);
+    return null;
   }
-
-  saveAuthToLS(null);
-  return null;
 }
 
 async function logout(): Promise<void> {
@@ -475,10 +507,7 @@ async function resendSignupConfirmation(email: string): Promise<void> {
 // ============================================================
 async function requestPasswordReset(email: string): Promise<void> {
   const trimmed = email.trim();
-  if (!trimmed)
-    throw new Error(
-      "Adresse mail requise pour réinitialiser le mot de passe."
-    );
+  if (!trimmed) throw new Error("Adresse mail requise pour réinitialiser le mot de passe.");
 
   const { error } = await supabase.auth.resetPasswordForEmail(trimmed, {
     redirectTo: getResetPasswordRedirect(),
@@ -494,32 +523,18 @@ async function updateEmail(newEmail: string): Promise<void> {
   if (error) throw new Error(error.message);
 }
 
-// ✅ Suppression compte : passe par une Edge Function (service role)
+// ✅ Suppression compte : Edge Function + cleanup local (comme demandé)
 async function deleteAccount(): Promise<void> {
-  const { user } = await ensureAuthedUser();
+  // on garde ensureAuthedUser pour récupérer user (utile au besoin)
+  await ensureAuthedUser();
 
-  // IMPORTANT : cette function DOIT exister côté Supabase :
-  // supabase/functions/delete-account
-  // et supprimer :
-  // - auth user
-  // - profiles row
-  // - user_store row
-  // - storage avatars folder (optionnel)
-  const { data, error } = await supabase.functions.invoke("delete-account", {
-    body: { userId: user.id },
-  });
+  const { data, error } = await supabase.functions.invoke("delete-account");
+  if (error) throw new Error(error.message || "Suppression impossible (Edge Function).");
+  if ((data as any)?.error) throw new Error((data as any).error);
 
-  if (error) {
-    console.error("[onlineApi] deleteAccount invoke error", error);
-    throw new Error(error.message || "Suppression impossible (Edge Function).");
-  }
-
-  // Certains environnements renvoient { error: "..."} dans data
-  if ((data as any)?.error) {
-    throw new Error((data as any).error);
-  }
-
-  await logout();
+  // local cleanup
+  await supabase.auth.signOut();
+  saveAuthToLS(null);
 }
 
 // ============================================================
@@ -585,13 +600,11 @@ async function uploadAvatarImage(opts: {
 
   const path = `${folder}/avatar-${Date.now()}.${ext}`;
 
-  const { error: upErr } = await supabase.storage
-    .from("avatars")
-    .upload(path, blob, {
-      upsert: true,
-      contentType: mime,
-      cacheControl: "3600",
-    });
+  const { error: upErr } = await supabase.storage.from("avatars").upload(path, blob, {
+    upsert: true,
+    contentType: mime,
+    cacheControl: "3600",
+  });
 
   if (upErr) throw new Error(upErr.message);
 
@@ -608,15 +621,8 @@ async function uploadAvatarImage(opts: {
 }
 
 // ============================================================
-// Cloud store snapshot (user_store)
+// Cloud store snapshot (user_store) — store-direct
 // ============================================================
-type UserStoreRow = {
-  user_id: string;
-  version: number | null;
-  updated_at: string | null;
-  data: any;
-};
-
 async function pullStoreSnapshot(): Promise<{
   status: "ok" | "not_found" | "error";
   payload?: any;
@@ -631,23 +637,14 @@ async function pullStoreSnapshot(): Promise<{
       .from("user_store")
       .select("data,updated_at,version")
       .eq("user_id", user.id)
-      .limit(1)
       .maybeSingle();
 
-    if (!data && !error) {
-      return {
-        status: "not_found",
-        payload: null,
-        updatedAt: null,
-        version: null,
-      };
-    }
-
+    if (!data && !error) return { status: "not_found", payload: null, updatedAt: null, version: null };
     if (error) return { status: "error", error };
 
     return {
       status: "ok",
-      payload: (data as any)?.data ?? null,
+      payload: (data as any)?.data ?? null, // {version, store}
       updatedAt: (data as any)?.updated_at ?? null,
       version: (data as any)?.version ?? null,
     };
@@ -656,19 +653,17 @@ async function pullStoreSnapshot(): Promise<{
   }
 }
 
-async function pushStoreSnapshot(payload: any, version = 1): Promise<void> {
+async function pushStoreSnapshot(payload: any, version = 8): Promise<void> {
   const { user } = await ensureAuthedUser();
 
-  const row: UserStoreRow = {
+  const row = {
     user_id: user.id,
     version,
     updated_at: new Date().toISOString(),
-    data: payload,
+    data: payload, // {version, store}
   };
 
-  const { error } = await supabase
-    .from("user_store")
-    .upsert(row, { onConflict: "user_id" });
+  const { error } = await supabase.from("user_store").upsert(row, { onConflict: "user_id" });
   if (error) throw new Error(error.message);
 }
 
@@ -718,9 +713,7 @@ async function createLobby(args: {
     break;
   }
 
-  throw new Error(
-    lastError?.message || "Impossible de créer un salon online pour le moment."
-  );
+  throw new Error(lastError?.message || "Impossible de créer un salon online pour le moment.");
 }
 
 async function joinLobby(args: { code: string }): Promise<OnlineLobby> {
@@ -734,8 +727,7 @@ async function joinLobby(args: { code: string }): Promise<OnlineLobby> {
     .limit(1)
     .maybeSingle();
 
-  if (error)
-    throw new Error(error.message || "Impossible de rejoindre ce salon pour le moment.");
+  if (error) throw new Error(error.message || "Impossible de rejoindre ce salon pour le moment.");
   if (!data) throw new Error("Aucun salon trouvé avec ce code.");
   return mapLobbyRow(data as any);
 }
@@ -774,6 +766,9 @@ export const onlineApi = {
   restoreSession,
   logout,
   getCurrentSession,
+
+  // ✅ V8 : auto-session exposée
+  ensureAutoSession,
 
   // Signup confirm resend
   resendSignupConfirmation,

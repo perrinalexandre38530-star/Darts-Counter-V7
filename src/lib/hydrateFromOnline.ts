@@ -1,12 +1,12 @@
 // ============================================================
 // src/lib/hydrateFromOnline.ts
-// Hydrate local store from Supabase user_store snapshot
+// V8 — hydrate store DIRECT depuis user_store.data = {version, store}
 // ============================================================
 
 import { onlineApi } from "./onlineApi";
-import { importCloudSnapshot, exportCloudSnapshot } from "./storage";
+import { saveStore } from "./storage";
 
-const LS_CLOUD_APPLIED_AT = "dc_cloud_applied_at_v1";
+const LS_CLOUD_APPLIED_AT = "dc_cloud_applied_at_v2";
 
 function getAppliedAt(): number {
   if (typeof window === "undefined") return 0;
@@ -23,42 +23,50 @@ function setAppliedAt(ts: number) {
 export async function hydrateFromOnline(opts?: { reload?: boolean }) {
   const reload = opts?.reload ?? true;
 
-  // 1) pull cloud
   const res = await onlineApi.pullStoreSnapshot();
-  if (res.status !== "ok") {
-    return { status: res.status, applied: false, reason: "no_cloud" as const };
-  }
-  if (!res.payload) {
-    return { status: "ok", applied: false, reason: "empty_cloud" as const };
-  }
+  if (res.status !== "ok") return { status: res.status, applied: false };
 
-  // 2) decide apply
+  const payload = res.payload; // {version, store}
+  const cloudStore = payload?.store ?? null;
+  if (!cloudStore) return { status: "ok", applied: false, reason: "empty_cloud" as const };
+
   const cloudTs = res.updatedAt ? Date.parse(res.updatedAt) : 0;
   const lastApplied = getAppliedAt();
-
-  // Heuristique:
-  // - si cloud plus récent que dernière application -> on applique
-  // - sinon on n’écrase pas
-  const shouldApply = cloudTs > lastApplied;
-
-  if (!shouldApply) {
+  if (cloudTs && cloudTs <= lastApplied) {
     return { status: "ok", applied: false, reason: "cloud_not_newer" as const };
   }
 
-  // 3) apply cloud -> local
-  await importCloudSnapshot(res.payload);
-  setAppliedAt(cloudTs || Date.now());
-
-  // 4) reload pour recharger les stores en mémoire
-  if (reload && typeof window !== "undefined") {
-    window.location.reload();
+  // ✅ apply to app (store React live)
+  const w: any = window as any;
+  if (w?.__appStore?.update) {
+    w.__appStore.update(() => cloudStore);
+  } else if (w?.__appStore) {
+    w.__appStore.store = cloudStore;
   }
 
+  // ✅ persist local (IndexedDB / storage layer)
+  try {
+    await saveStore(cloudStore);
+  } catch {}
+
+  setAppliedAt(cloudTs || Date.now());
+
+  if (reload && typeof window !== "undefined") window.location.reload();
   return { status: "ok", applied: true, updatedAt: res.updatedAt ?? null };
 }
 
 export async function pushLocalSnapshotToOnline() {
-  const payload = await exportCloudSnapshot();
-  await onlineApi.pushStoreSnapshot(payload, 1);
+  if (typeof window === "undefined") return { ok: false, error: "no_window" };
+
+  const w: any = window as any;
+  const store = w?.__appStore?.store ?? null;
+  if (!store) return { ok: false, error: "no_store" };
+
+  const payload = {
+    version: 8,
+    store,
+  };
+
+  await onlineApi.pushStoreSnapshot(payload, 8);
   return { ok: true };
 }

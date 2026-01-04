@@ -1,44 +1,28 @@
 // ============================================================
 // src/hooks/useAuthOnline.tsx
-// Auth Online unifiée (V7 STABLE)
-// - Restore session au boot -> ready=true même si signed_out
-// - Aucun “presence ping” / aucun write DB tant que pas demandé
-// - Sync store: pull au login/restore (si cloud plus récent), push manuel
+// V8 — 1 compte unique, auto-connecté (anonymous), supprimable
 // ============================================================
 
 import React from "react";
-import {
-  onlineApi,
-  type AuthSession,
-  type SignupPayload,
-  type LoginPayload,
-  type UpdateProfilePayload,
-} from "../lib/onlineApi";
+import { onlineApi, type AuthSession, type UpdateProfilePayload } from "../lib/onlineApi";
 import type { OnlineProfile } from "../lib/onlineTypes";
 import { hydrateFromOnline, pushLocalSnapshotToOnline } from "../lib/hydrateFromOnline";
 import { startCloudSync, stopCloudSync } from "../lib/cloudSync";
 
+type Status = "signed_in" | "signed_out";
+
 type AuthOnlineContextValue = {
   ready: boolean;
   loading: boolean;
+  status: Status;
   session: AuthSession | null;
 
-  // auth
-  signup: (p: SignupPayload) => Promise<AuthSession>;
-  login: (p: LoginPayload) => Promise<AuthSession>;
+  refresh: () => Promise<AuthSession | null>;
   logout: () => Promise<void>;
-  restore: () => Promise<AuthSession | null>;
-
-  // account
-  resendSignupConfirmation: (email: string) => Promise<void>;
-  requestPasswordReset: (email: string) => Promise<void>;
-  updateEmail: (newEmail: string) => Promise<void>;
   deleteAccount: () => Promise<void>;
 
-  // profile
   updateProfile: (patch: UpdateProfilePayload) => Promise<OnlineProfile>;
 
-  // cloud sync
   syncPull: (opts?: { reload?: boolean }) => Promise<{ status: string; applied: boolean }>;
   syncPush: () => Promise<void>;
 };
@@ -50,24 +34,27 @@ export function AuthOnlineProvider({ children }: { children: React.ReactNode }) 
   const [loading, setLoading] = React.useState(false);
   const [session, setSession] = React.useState<AuthSession | null>(null);
 
-  const restore = React.useCallback(async () => {
+  // ✅ V8: la "présence" logique côté UI
+  const status: Status = session?.token ? "signed_in" : "signed_out";
+
+  const refresh = React.useCallback(async () => {
     setLoading(true);
     try {
+      // ✅ V8 onlineApi.restoreSession() => garantit une session (anon si besoin)
       const s = await onlineApi.restoreSession();
       setSession(s);
 
-      // ✅ PATCH 2: si session valide -> startCloudSync
       if (s?.token) {
         try {
-          startCloudSync(); // ✅ démarre pull/push cloud
+          startCloudSync();
         } catch {}
 
-        // ✅ si connecté “vraiment” (token non vide), on tente un pull cloud
+        // pull cloud léger (pas de reload)
         try {
           await hydrateFromOnline({ reload: false });
         } catch {}
       } else {
-        // pas de session => stop pour éviter un timer fantôme
+        // en théorie ne devrait quasiment jamais arriver en V8
         try {
           stopCloudSync();
         } catch {}
@@ -81,58 +68,14 @@ export function AuthOnlineProvider({ children }: { children: React.ReactNode }) 
   }, []);
 
   React.useEffect(() => {
-    restore();
-  }, [restore]);
-
-  const signup = React.useCallback(async (p: SignupPayload) => {
-    setLoading(true);
-    try {
-      const s = await onlineApi.signup(p);
-      setSession(s);
-
-      // ✅ PATCH 2: si signup retourne un token, on démarre la sync
-      if (s?.token) {
-        try {
-          startCloudSync();
-        } catch {}
-      }
-
-      return s;
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  const login = React.useCallback(async (p: LoginPayload) => {
-    setLoading(true);
-    try {
-      const s = await onlineApi.login(p);
-      setSession(s);
-
-      // ✅ PATCH 2: session signée -> startCloudSync
-      if (s?.token) {
-        try {
-          startCloudSync(); // ✅ démarre pull/push cloud
-        } catch {}
-      }
-
-      // ✅ pull cloud (si cloud plus récent) + reload pour tout recharger
-      try {
-        await hydrateFromOnline({ reload: true });
-      } catch {
-        // si ça rate, on laisse la session quand même
-      }
-
-      return s;
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+    refresh();
+  }, [refresh]);
 
   const logout = React.useCallback(async () => {
+    // V8: normalement tu ne "logout" jamais définitivement.
+    // On le garde pour debug / QA.
     setLoading(true);
     try {
-      // ✅ PATCH 2: stop timer AVANT/pendant logout
       try {
         stopCloudSync();
       } catch {}
@@ -145,28 +88,26 @@ export function AuthOnlineProvider({ children }: { children: React.ReactNode }) 
     }
   }, []);
 
-  const resendSignupConfirmation = React.useCallback(async (email: string) => {
-    await onlineApi.resendSignupConfirmation(email);
-  }, []);
-
-  const requestPasswordReset = React.useCallback(async (email: string) => {
-    await onlineApi.requestPasswordReset(email);
-  }, []);
-
-  const updateEmail = React.useCallback(async (newEmail: string) => {
-    await onlineApi.updateEmail(newEmail);
-  }, []);
-
   const deleteAccount = React.useCallback(async () => {
     setLoading(true);
     try {
-      // ✅ sécurité: stop sync avant suppression
       try {
         stopCloudSync();
       } catch {}
 
+      // supprime compte courant (Edge Function)
       await onlineApi.deleteAccount();
       setSession(null);
+
+      // ✅ V8: recrée automatiquement une session anon neuve
+      const s = await onlineApi.restoreSession();
+      setSession(s);
+
+      if (s?.token) {
+        try {
+          startCloudSync();
+        } catch {}
+      }
     } finally {
       setLoading(false);
       setReady(true);
@@ -177,16 +118,10 @@ export function AuthOnlineProvider({ children }: { children: React.ReactNode }) 
     setLoading(true);
     try {
       const prof = await onlineApi.updateProfile(patch);
-      // refresh session cache
+
+      // refresh cache session (profile)
       const s = await onlineApi.getCurrentSession();
       setSession(s);
-
-      // (optionnel) si la session a expiré, on coupe la sync
-      if (!s?.token) {
-        try {
-          stopCloudSync();
-        } catch {}
-      }
 
       return prof;
     } finally {
@@ -216,16 +151,11 @@ export function AuthOnlineProvider({ children }: { children: React.ReactNode }) 
   const value: AuthOnlineContextValue = {
     ready,
     loading,
+    status,
     session,
 
-    signup,
-    login,
+    refresh,
     logout,
-    restore,
-
-    resendSignupConfirmation,
-    requestPasswordReset,
-    updateEmail,
     deleteAccount,
 
     updateProfile,
