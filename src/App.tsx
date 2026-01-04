@@ -35,6 +35,9 @@
 // - useEffect BOOT UNIQUE: supabase.auth.onAuthStateChange()
 //   SIGNED_IN  => pullSnapshot() immédiat
 //   SIGNED_OUT => wipeAllLocalData() total
+//
+// ✅ FIX OBLIGATOIRE: MIRROR ONLINE (ID stable + nettoyage doublons)
+// - Appelle ensureOnlineMirrorProfile() après session valide + après pullSnapshot
 // ============================================
 
 import React from "react";
@@ -67,6 +70,9 @@ import { onlineApi } from "./lib/onlineApi";
 
 // ✅ Supabase client
 import { supabase } from "./lib/supabaseClient";
+
+// ✅ FIX: mirror online:<user.id> + dédup profils
+import { ensureOnlineMirrorProfile } from "./lib/accountBridge";
 
 // Types
 import type { Store, Profile, MatchRecord } from "./lib/types";
@@ -1049,6 +1055,7 @@ function App() {
   // ✅ AUTH — RESET TOTAL AU LOGIN (BOOT UNIQUE Supabase)
   // - SIGNED_IN  => pullSnapshot() immédiat
   // - SIGNED_OUT => wipeAllLocalData() total
+  // + ✅ MIRROR ONLINE (ID stable + dédup) après pull
   // ============================================================
 
   const pullSnapshot = React.useCallback(async () => {
@@ -1074,14 +1081,26 @@ function App() {
 
           let mergedFinal: Store | null = null;
 
+          // ✅ on récupère le user (session valide) + onlineProfile
+          const user =
+            String((online as any)?.session?.user?.id || (online as any)?.user?.id || "")
+              ? (online as any)?.session?.user || (online as any)?.user
+              : (await supabase.auth.getUser())?.data?.user || null;
+
+          const onlineProfile = (online as any)?.profile ?? null;
+
           setStore((prev) => {
             const mergedProfiles = mergeProfilesSafe(prev.profiles ?? [], next.profiles ?? []);
-            mergedFinal = {
+            const merged: Store = {
               ...next,
               profiles: mergedProfiles,
               // ✅ garde un active local si cloud partiel
               activeProfileId: next.activeProfileId ?? prev.activeProfileId ?? null,
             } as any;
+
+            // ✅ MIRROR ONLINE + CLEANUP DOUBLONS (point clé)
+            mergedFinal = user?.id ? (ensureOnlineMirrorProfile(merged, user, onlineProfile) as Store) : merged;
+
             return mergedFinal as any;
           });
 
@@ -1115,7 +1134,7 @@ function App() {
     } finally {
       setCloudHydrated(true);
     }
-  }, []);
+  }, [online]);
 
   const wipeAllLocalData = React.useCallback(async () => {
     try {
@@ -1188,17 +1207,20 @@ function App() {
   }, []);
 
   React.useEffect(() => {
-    const { data } = supabase.auth.onAuthStateChange(async (event) => {
+    const { data } = supabase.auth.onAuthStateChange(async (event, session) => {
       try {
         if (event === "SIGNED_IN") {
-          // reset “par user” -> force re-hydrate
-          try {
-            const uid =
-              String((online as any)?.session?.user?.id || (online as any)?.user?.id || "") ||
-              String((await supabase.auth.getUser())?.data?.user?.id || "");
-            if (uid) cloudHydratedUserRef.current = uid;
-          } catch {}
+          const user = session?.user || (await supabase.auth.getUser())?.data?.user || null;
+          if (user?.id) cloudHydratedUserRef.current = String(user.id);
+
+          // ✅ 1) pull snapshot immédiatement (source unique)
           await pullSnapshot();
+
+          // ✅ 2) mirror online:<user.id> + dédup (CRITIQUE)
+          if (user?.id) {
+            const onlineProfile = (online as any)?.profile ?? null;
+            setStore((prev) => ensureOnlineMirrorProfile(prev, user, onlineProfile) as Store);
+          }
         }
 
         if (event === "SIGNED_OUT") {
@@ -1215,13 +1237,14 @@ function App() {
       } catch {}
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pullSnapshot, wipeAllLocalData]);
+  }, [pullSnapshot, wipeAllLocalData, online]);
 
   // ============================================================
   // ✅ CLOUD HYDRATE (source unique)
   // - Quand on se CONNECTE => PULL snapshot cloud
   // - ✅ FIX: on hydrate RAM + IDB avec la VERSION MERGÉE (pas "next" brut)
   // - ✅ FIX: si on reçoit des profils + activeProfileId => on renvoie HOME
+  // - ✅ FIX: mirror online:<user.id> + dédup juste après import
   // ============================================================
   React.useEffect(() => {
     let cancelled = false;
@@ -1290,14 +1313,26 @@ function App() {
             if (!cancelled) {
               let mergedFinal: Store | null = null;
 
+              const user =
+                (online as any)?.session?.user ||
+                (online as any)?.user ||
+                (await supabase.auth.getUser())?.data?.user ||
+                null;
+
+              const onlineProfile = (online as any)?.profile ?? null;
+
               setStore((prev) => {
                 const mergedProfiles = mergeProfilesSafe(prev.profiles ?? [], next.profiles ?? []);
-                mergedFinal = {
+                const merged: Store = {
                   ...next,
                   profiles: mergedProfiles,
                   // ✅ ne pas perdre un active local si le cloud est partiel
                   activeProfileId: next.activeProfileId ?? prev.activeProfileId ?? null,
                 } as any;
+
+                // ✅ MIRROR ONLINE + CLEANUP
+                mergedFinal = user?.id ? (ensureOnlineMirrorProfile(merged, user, onlineProfile) as Store) : merged;
+
                 return mergedFinal as any;
               });
 
@@ -1372,7 +1407,7 @@ function App() {
     cloudPushTimerRef.current = window.setTimeout(async () => {
       try {
         const cloudSeed = sanitizeStoreForCloud(store);
-            await onlineApi.pushStoreSnapshot(cloudSeed);
+        await onlineApi.pushStoreSnapshot(cloudSeed);
       } catch (e) {
         console.warn("[cloud] push snapshot error", e);
       }
@@ -1589,7 +1624,9 @@ function App() {
         break;
 
       case "home":
-        page = <Home store={store} update={update} go={go} onConnect={() => go("profiles", { view: "me", autoCreate: true })} />;
+        page = (
+          <Home store={store} update={update} go={go} onConnect={() => go("profiles", { view: "me", autoCreate: true })} />
+        );
         break;
 
       case "games":
@@ -1648,7 +1685,9 @@ function App() {
         break;
 
       case "cricket_stats":
-        page = <StatsCricket profiles={store.profiles} activeProfileId={routeParams?.profileId ?? store.activeProfileId ?? null} />;
+        page = (
+          <StatsCricket profiles={store.profiles} activeProfileId={routeParams?.profileId ?? store.activeProfileId ?? null} />
+        );
         break;
 
       case "statsDetail":
@@ -2009,7 +2048,9 @@ function App() {
       }
 
       default:
-        page = <Home store={store} update={update} go={go} onConnect={() => go("profiles", { view: "me", autoCreate: true })} />;
+        page = (
+          <Home store={store} update={update} go={go} onConnect={() => go("profiles", { view: "me", autoCreate: true })} />
+        );
     }
   }
 
