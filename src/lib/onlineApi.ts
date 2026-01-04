@@ -263,14 +263,6 @@ async function ensureAuthedUser() {
       user = again.data?.session?.user;
       session = again.data?.session;
     } catch (e) {
-      // Cas important: compte créé mais email pas encore confirmé.
-      // Dans ce cas, on NE doit PAS fabriquer une session anonyme.
-      const msg = String((e as any)?.message || e || "");
-      if (msg.includes("email_not_confirmed_pending")) {
-        throw new Error(
-          "Email non confirmé. Clique sur le lien reçu par email, puis reconnecte-toi."
-        );
-      }
       // on retombe sur l’erreur standard
     }
   }
@@ -287,8 +279,7 @@ async function getOrCreateProfile(
   const { data: profileRow, error: selErr } = await supabase
     .from("profiles")
     .select("*")
-    // Our public.profiles schema uses `user_id` as the PK (uuid)
-    .eq("user_id", userId)
+    .eq("id", userId)
     .limit(1)
     .maybeSingle();
 
@@ -304,14 +295,14 @@ async function getOrCreateProfile(
     .from("profiles")
     .upsert(
       {
-        user_id: userId,
+        id: userId,
         nickname: fallbackNickname,
         display_name: fallbackNickname,
         country: null,
         avatar_url: null,
         updated_at: new Date().toISOString(),
       },
-      { onConflict: "user_id" }
+      { onConflict: "id" }
     )
     .select()
     .single();
@@ -366,22 +357,6 @@ async function ensureAutoSession(): Promise<AuthSession> {
   // 1) si session existe déjà -> ok
   let live = await buildAuthSessionFromSupabase();
   if (live?.token) return live;
-
-  // 1bis) si on a un compte "en attente de vérification" stocké en local,
-  // on NE crée PAS une session anonyme (sinon mélange d'identités).
-  // => l'utilisateur doit confirmer son email puis se reconnecter.
-  try {
-    const pending = loadAuthFromLS();
-    const hasEmail = !!pending?.user?.email;
-    const hasUserId = !!pending?.user?.id && pending?.user?.id !== "pending";
-    const hasToken = !!pending?.token;
-    if (hasUserId && hasEmail && !hasToken) {
-      throw new Error("email_not_confirmed_pending");
-    }
-  } catch (e) {
-    // si on a volontairement throw, on laisse remonter
-    if (String((e as any)?.message || "").includes("email_not_confirmed_pending")) throw e;
-  }
 
   // 2) sinon -> anonymous sign-in
   const { error } = await supabase.auth.signInAnonymously();
@@ -490,12 +465,6 @@ async function restoreSession(): Promise<AuthSession | null> {
     saveAuthToLS(s);
     return s;
   } catch (e) {
-    const msg = String((e as any)?.message || e || "");
-    // ✅ si le compte est en attente de confirmation, on garde le snapshot local (ne pas écraser)
-    if (msg.includes("email_not_confirmed_pending")) {
-      const keep = loadAuthFromLS();
-      return keep;
-    }
     console.warn("[onlineApi] restoreSession error", e);
     saveAuthToLS(null);
     return null;
@@ -593,8 +562,7 @@ async function updateProfile(patch: UpdateProfilePayload): Promise<OnlineProfile
   const { data, error } = await supabase
     .from("profiles")
     .update(dbPatch)
-    // Our public.profiles schema uses `user_id` as the PK (uuid)
-    .eq("user_id", userId)
+    .eq("id", userId)
     .select()
     .single();
 
@@ -653,87 +621,53 @@ async function uploadAvatarImage(opts: {
 }
 
 // ============================================================
-// Cloud store snapshot (user_store) — STORE UNIQUE
-// - Schéma cible: user_store(user_id uuid PK, store jsonb, updated_at timestamptz)
-// - Compat: si une ancienne colonne "data" existe (ancien snapshot), on lit/écrit aussi.
+// Cloud store snapshot (user_store) — store-direct
 // ============================================================
 async function pullStoreSnapshot(): Promise<{
   status: "ok" | "not_found" | "error";
   payload?: any;
   updatedAt?: string | null;
+  version?: number | null;
   error?: any;
 }> {
   try {
     const { user } = await ensureAuthedUser();
 
-    // 1) Schéma sain: colonne "store"
-    const res1 = await supabase
+    const { data, error } = await supabase
       .from("user_store")
-      .select("store,updated_at")
+      .select("data,store,updated_at,version")
       .eq("user_id", user.id)
       .maybeSingle();
 
-    // si la colonne n'existe pas, Supabase renvoie une erreur -> fallback "data"
-    if (res1.error) {
-      const msg = String((res1.error as any)?.message || "");
-      const isMissingStoreCol = msg.toLowerCase().includes("store") && msg.toLowerCase().includes("column");
-      if (!isMissingStoreCol) return { status: "error", error: res1.error };
-
-      const res2 = await supabase
-        .from("user_store")
-        .select("data,updated_at")
-        .eq("user_id", user.id)
-        .maybeSingle();
-
-      if (!res2.data && !res2.error) return { status: "not_found", payload: null, updatedAt: null };
-      if (res2.error) return { status: "error", error: res2.error };
-
-      return {
-        status: "ok",
-        payload: (res2.data as any)?.data ?? null,
-        updatedAt: (res2.data as any)?.updated_at ?? null,
-      };
-    }
-
-    if (!res1.data && !res1.error) return { status: "not_found", payload: null, updatedAt: null };
-    if (res1.error) return { status: "error", error: res1.error };
+    if (!data && !error) return { status: "not_found", payload: null, updatedAt: null, version: null };
+    if (error) return { status: "error", error };
 
     return {
       status: "ok",
-      payload: (res1.data as any)?.store ?? null,
-      updatedAt: (res1.data as any)?.updated_at ?? null,
+      payload: ((data as any)?.data ?? (data as any)?.store ?? null), // {version, store}
+      updatedAt: (data as any)?.updated_at ?? null,
+      version: (data as any)?.version ?? null,
     };
   } catch (e) {
     return { status: "error", error: e };
   }
 }
 
-async function pushStoreSnapshot(storePayload: any, _version?: number): Promise<void> {
+async function pushStoreSnapshot(payload: any, version = 8): Promise<void> {
   const { user } = await ensureAuthedUser();
 
-  // 1) Schéma sain: colonne "store"
-  const row1: any = {
+  const row = {
     user_id: user.id,
+    version,
     updated_at: new Date().toISOString(),
-    store: storePayload,
+    // Compat : certains schémas historiques ont une colonne "store"
+    // On écrit les deux pour garantir lecture/écriture cross-versions.
+    data: payload, // {version, store}
+    store: payload,
   };
 
-  const res1 = await supabase.from("user_store").upsert(row1, { onConflict: "user_id" });
-  if (!res1.error) return;
-
-  // fallback si colonne store absente (ancien schéma -> "data")
-  const msg = String((res1.error as any)?.message || "");
-  const isMissingStoreCol = msg.toLowerCase().includes("store") && msg.toLowerCase().includes("column");
-  if (!isMissingStoreCol) throw new Error((res1.error as any)?.message || "pushStoreSnapshot failed");
-
-  const row2: any = {
-    user_id: user.id,
-    updated_at: new Date().toISOString(),
-    data: storePayload,
-  };
-
-  const res2 = await supabase.from("user_store").upsert(row2, { onConflict: "user_id" });
-  if (res2.error) throw new Error((res2.error as any)?.message || "pushStoreSnapshot failed");
+  const { error } = await supabase.from("user_store").upsert(row, { onConflict: "user_id" });
+  if (error) throw new Error(error.message);
 }
 
 // ============================================================
