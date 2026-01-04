@@ -111,6 +111,11 @@ export function getAllDartSets(): DartSet[] {
   return loadAll();
 }
 
+// ✅ Utilisé par la synchro cloud: remplace la liste entière (migration device → device)
+export function setAllDartSets(list: DartSet[]) {
+  saveAll(Array.isArray(list) ? list : []);
+}
+
 // 👇 Désormais : sets du profil + tous les sets publics
 export function getDartSetsForProfile(profileId: string): DartSet[] {
   return loadAll().filter((s) => s.scope === "public" || s.profileId === profileId);

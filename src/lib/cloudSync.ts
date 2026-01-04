@@ -9,6 +9,7 @@
 import { onCloudChange } from "./cloudEvents";
 import { exportCloudSnapshot, importCloudSnapshot } from "./storage";
 import { onlineApi } from "./onlineApi";
+import { getAllDartSets, setAllDartSets } from "./dartSetsStore";
 
 /** Ajuste si tu veux */
 const DEFAULT_DEBOUNCE_MS = 1200;
@@ -76,7 +77,21 @@ function hashString(s: string) {
 }
 
 async function computeLocalHash(): Promise<{ hash: string; dump: any }> {
-  const dump = await exportCloudSnapshot(); // IDB + localStorage dc_*/dc-*
+  // IMPORTANT:
+  // - exportCloudSnapshot() exporte un dump (IDB + localStorage) mais, dans ton app,
+  //   les DARTSETS vivent dans localStorage via dartSetsStore.
+  // - Or, selon l’environnement / migrations, ils peuvent ne pas apparaître dans le dump
+  //   (ou être trop enfouis dans `idb[STORE_KEY]`).
+  // 👉 On les ajoute donc explicitement au snapshot cloud pour que :
+  //   1) ils soient réellement synchronisés
+  //   2) ils soient visibles facilement dans Supabase (data->'store'->'dartSets')
+  const dumpBase = await exportCloudSnapshot(); // IDB + localStorage dc_*/dc-*
+
+  const dump = {
+    ...dumpBase,
+    // champ "plat" (pratique à vérifier en SQL)
+    dartSets: getAllDartSets(),
+  };
   const str = stableStringifyDeep(dump);
   const hash = hashString(str);
   return { hash, dump };
@@ -128,6 +143,15 @@ export async function cloudPullAndImport(): Promise<{
     // Import “replace” (source cloud) — on supprime la boucle d’events
     await withSuppressedEvents(async () => {
       await importCloudSnapshot(dump, { mode: "replace" });
+
+      // ✅ Restaure les dartsets (ils vivent dans dc_dart_sets_v1, pas dans la snapshot IDB principale)
+      if (Array.isArray(dump?.dartSets)) {
+        try {
+          setAllDartSets(dump.dartSets);
+        } catch {
+          // ignore
+        }
+      }
     });
 
     // après import, on recalcule le hash local pour éviter un push immédiat “inutile”
