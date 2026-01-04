@@ -30,7 +30,11 @@
 // ✅ PATCH D: AUTH UNIQUE
 // - On garde AuthOnlineProvider
 // - On enlève définitivement tout AuthProvider/AuthSessionProvider legacy
+//
+// ✅ PATCH V8: AUTO-SESSION AU BOOT
+// - onlineApi.ensureAutoSession() au tout premier mount (OBLIGATOIRE)
 // ============================================
+
 import React from "react";
 import BottomNav from "./components/BottomNav";
 
@@ -42,7 +46,7 @@ import SplashScreen from "./components/SplashScreen";
 // ✅ NEW: AUDIO SPLASH global (persistant)
 import SplashJingle from "./assets/audio/splash_jingle.mp3";
 
-// ✅ NEW: CRASH CATCHER (à créer dans src/components/CrashCatcher.tsx)
+// ✅ NEW: CRASH CATCHER
 import CrashCatcher from "./components/CrashCatcher";
 import MobileErrorOverlay from "./components/MobileErrorOverlay";
 
@@ -840,7 +844,7 @@ function App() {
 
   React.useEffect(() => {
     if (!online?.ready) return;
-    const uid = String((online as any)?.session?.user?.id || (online as any)?.user?.id || "");
+    const uid = String((online as any)?.session?.user?.id || "");
 
     if (online.status !== "signed_in") {
       cloudHydratedUserRef.current = "";
@@ -877,17 +881,24 @@ function App() {
     return () => window.clearTimeout(hardTimeout);
   }, [showSplash]);
 
-  /* Boot: persistance + nettoyage localStorage + warm-up (SANS SFX) */
+  /* ============================================================
+     ✅ BOOT GLOBAL
+     - persistance + purge + warmup
+     - 🔥 AUTO-SESSION V8 (OBLIGATOIRE)
+     - restore session SDK
+  ============================================================ */
   React.useEffect(() => {
     ensurePersisted().catch(() => {});
     purgeLegacyLocalStorageIfNeeded();
     try {
       warmAggOnce();
     } catch {}
-  }, []);
 
-  /* Restore online session (pour Supabase côté SDK) */
-  React.useEffect(() => {
+    // 🔥 V8 : garantit une session SUPABASE dès le démarrage
+    // (crée un anon user si nécessaire)
+    onlineApi.ensureAutoSession().catch((e) => console.error("[autoSession] failed", e));
+
+    // Restore session côté SDK (storage/cookies)
     onlineApi.restoreSession().catch(() => {});
   }, []);
 
@@ -979,7 +990,7 @@ function App() {
       // ✅ NEW: permet aux listeners externes de muter le store
       (window as any).__appStore.update = update;
     } catch {}
-  }, [store, tab, update]);
+  }, [store, tab]);
 
   /* Load store from IDB at boot + gate */
   React.useEffect(() => {
@@ -1012,7 +1023,8 @@ function App() {
           const hasActive = !!base.activeProfileId;
 
           const h = String(window.location.hash || "");
-          const isAuthFlow = h.startsWith("#/auth/callback") || h.startsWith("#/auth/reset") || h.startsWith("#/auth/forgot");
+          const isAuthFlow =
+            h.startsWith("#/auth/callback") || h.startsWith("#/auth/reset") || h.startsWith("#/auth/forgot");
 
           if (!isAuthFlow) {
             if (!hasProfiles || !hasActive) {
@@ -1095,6 +1107,7 @@ function App() {
                 try {
                   if ((mergedFinal as any).dartSets) replaceAllDartSets((mergedFinal as any).dartSets);
                 } catch {}
+
                 const hasProfiles = (mergedFinal.profiles ?? []).length > 0;
                 const hasActive = !!mergedFinal.activeProfileId;
 
@@ -1424,7 +1437,6 @@ function App() {
         break;
 
       case "online":
-        // ⚠️ Props exactes selon ton LobbyPick : on passe "store/go/update" en any
         page = <LobbyPick store={store as any} update={update as any} go={go as any} />;
         break;
 
@@ -1518,7 +1530,9 @@ function App() {
             defaults={{ start: getX01DefaultStart(store), doubleOut: store.settings.doubleOut }}
             onCancel={() => go("games")}
             onStart={(opts) => {
-              const players = store.settings.randomOrder ? opts.playerIds.slice().sort(() => Math.random() - 0.5) : opts.playerIds;
+              const players = store.settings.randomOrder
+                ? opts.playerIds.slice().sort(() => Math.random() - 0.5)
+                : opts.playerIds;
               setX01Config({ playerIds: players, start: opts.start, doubleOut: opts.doubleOut });
               go("x01", { resumeId: null, fresh: Date.now() });
             }}
@@ -1566,10 +1580,13 @@ function App() {
         let effectiveConfig = x01Config;
 
         if (!effectiveConfig && isOnline && !isResume) {
-          const activeProfile = store.profiles.find((p) => p.id === store.activeProfileId) ?? store.profiles[0] ?? null;
+          const activeProfile =
+            store.profiles.find((p) => p.id === store.activeProfileId) ?? store.profiles[0] ?? null;
           const startDefault = getX01DefaultStart(store);
           const start =
-            startDefault === 301 || startDefault === 501 || startDefault === 701 || startDefault === 901 ? startDefault : 501;
+            startDefault === 301 || startDefault === 501 || startDefault === 701 || startDefault === 901
+              ? startDefault
+              : 501;
 
           effectiveConfig = { start, doubleOut: store.settings.doubleOut, playerIds: activeProfile ? [activeProfile.id] : [] };
           setX01Config(effectiveConfig);
@@ -1850,7 +1867,6 @@ function App() {
 
 /* --------------------------------------------
    🔒 APP GATE — NE BLOQUE QUE LES PAGES ONLINE "post-login"
-   ✅ V7: compte unique -> useAuthOnline()
 -------------------------------------------- */
 function AppGate({
   go,
@@ -1874,7 +1890,6 @@ function AppGate({
     tab === "auth_start" ||
     tab === "account_start";
 
-  // ✅ Tant que restoreSession / init n'a pas fini, on affiche un écran neutre
   if (!ready) {
     return (
       <div className="container" style={{ padding: 40, textAlign: "center" }}>
@@ -1883,14 +1898,12 @@ function AppGate({
     );
   }
 
-  // ✅ Redirect automatique vers AuthStart si une page online est demandée sans session
   React.useEffect(() => {
     if (!isAuthFlow && needsSession && status !== "signed_in") {
       go("auth_start");
     }
   }, [isAuthFlow, needsSession, status, go]);
 
-  // Pendant la redirection, on affiche un petit loader (évite flash UI)
   if (!isAuthFlow && needsSession && status !== "signed_in") {
     return (
       <div className="container" style={{ padding: 40, textAlign: "center" }}>
@@ -1902,165 +1915,6 @@ function AppGate({
   return <>{children}</>;
 }
 
-function AccountEntry({ go }: { go: (t: any, p?: any) => void }) {
-  const [email, setEmail] = React.useState("");
-  const [status, setStatus] = React.useState("");
-
-  async function sendReset() {
-    setStatus("");
-    const e = (email || "").trim();
-    if (!e || !e.includes("@")) {
-      setStatus("Entre une adresse email valide.");
-      return;
-    }
-    try {
-      const { error } = await supabase.auth.resetPasswordForEmail(e, {
-        redirectTo: `${window.location.origin}/#/auth/reset`,
-      });
-      if (error) throw error;
-      setStatus("Email envoyé ✅ (vérifie tes spams si besoin).");
-    } catch (err: any) {
-      console.error("[reset] error:", err);
-      setStatus("Erreur lors de l’envoi du lien. Réessaie.");
-    }
-  }
-
-  return (
-    <div
-      style={{
-        minHeight: "calc(100dvh - 88px)",
-        display: "grid",
-        placeItems: "center",
-        padding: "18px 12px",
-      }}
-    >
-      <div
-        style={{
-          width: "min(380px, 92vw)",
-          borderRadius: 22,
-          padding: 14,
-          background: "linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.03))",
-          border: "1px solid rgba(255,255,255,.10)",
-          boxShadow: "0 22px 70px rgba(0,0,0,.62)",
-          backdropFilter: "blur(10px)",
-          WebkitBackdropFilter: "blur(10px)",
-          position: "relative",
-          overflow: "hidden",
-        }}
-      >
-        <div
-          style={{
-            position: "absolute",
-            top: 0,
-            left: 0,
-            right: 0,
-            height: 3,
-            background: "linear-gradient(90deg,#ffc63a, #ff4fd8)",
-            opacity: 0.9,
-          }}
-        />
-
-        <div style={{ display: "grid", gap: 12 }}>
-          <div style={{ textAlign: "center", display: "grid", gap: 6 }}>
-            <div style={{ fontSize: 24, fontWeight: 950, color: "rgba(255,255,255,.96)" }}>Compte</div>
-            <div style={{ fontSize: 12.8, opacity: 0.82, lineHeight: 1.35 }}>
-              Connecte-toi pour synchroniser ton profil et tes stats sur tous tes appareils.
-            </div>
-          </div>
-
-          <button
-            onClick={() => go("auth_start")}
-            style={{
-              width: "100%",
-              borderRadius: 999,
-              padding: "11px 12px",
-              fontWeight: 950,
-              fontSize: 14,
-              border: "1px solid rgba(0,0,0,.25)",
-              color: "#1b1508",
-              background: "linear-gradient(180deg,#ffd25a,#ffaf00)",
-              cursor: "pointer",
-            }}
-          >
-            Se connecter
-          </button>
-
-          <button
-            onClick={() => go("auth_start")}
-            style={{
-              width: "100%",
-              borderRadius: 999,
-              padding: "10px 12px",
-              fontWeight: 900,
-              fontSize: 13.5,
-              background: "rgba(255,255,255,.05)",
-              color: "rgba(255,255,255,.92)",
-              border: "1px solid rgba(255,255,255,.12)",
-              cursor: "pointer",
-            }}
-          >
-            Créer un compte
-          </button>
-
-          <div style={{ display: "flex", alignItems: "center", gap: 10, opacity: 0.7 }}>
-            <div style={{ height: 1, flex: 1, background: "rgba(255,255,255,.10)" }} />
-            <div style={{ fontSize: 12 }}>Mot de passe</div>
-            <div style={{ height: 1, flex: 1, background: "rgba(255,255,255,.10)" }} />
-          </div>
-
-          <div
-            style={{
-              padding: 12,
-              borderRadius: 18,
-              background: "rgba(0,0,0,.20)",
-              border: "1px solid rgba(255,255,255,.10)",
-              display: "grid",
-              gap: 10,
-            }}
-          >
-            <div style={{ fontWeight: 950, fontSize: 13.5, opacity: 0.95 }}>Mot de passe oublié</div>
-
-            <input
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="Adresse email"
-              style={{
-                width: "100%",
-                padding: "10px 12px",
-                borderRadius: 14,
-                border: "1px solid rgba(255,255,255,.12)",
-                background: "rgba(10,10,14,.45)",
-                color: "#fff",
-                outline: "none",
-                fontSize: 13.5,
-              }}
-            />
-
-            <button
-              onClick={sendReset}
-              style={{
-                width: "100%",
-                borderRadius: 14,
-                padding: "10px 12px",
-                border: "1px solid rgba(0,0,0,.25)",
-                fontWeight: 950,
-                fontSize: 13.2,
-                background: "linear-gradient(180deg,#ffc63a,#ffaf00)",
-                color: "#1b1508",
-                cursor: "pointer",
-              }}
-            >
-              Envoyer le lien de réinitialisation
-            </button>
-
-            {status ? <div style={{ fontSize: 12.8, opacity: 0.9 }}>{status}</div> : null}
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 /* ---------- ROOT PROVIDERS ---------- */
 export default function AppRoot() {
   return (
@@ -2069,7 +1923,7 @@ export default function AppRoot() {
         <StoreProvider>
           <AudioProvider>
             <AuthOnlineProvider>
-              {/* ✅ player audio global persistant (rien à voir avec SFX UI) */}
+              {/* ✅ player audio global persistant */}
               <audio id="dc-splash-audio" src={SplashJingle} preload="auto" style={{ display: "none" }} />
               <App />
             </AuthOnlineProvider>
