@@ -704,7 +704,7 @@ export default function Profiles({
   // ------------------------------------------------------------
 
   const normalizeEmail = (s: string) => (s || "").trim().toLowerCase();
-  const onlineEmail = normalizeEmail((user as any)?.email ?? "");
+  const onlineEmail = normalizeEmail((auth?.user as any)?.email ?? "");
   const onlineKey = onlineEmail || "";
   const onlineId = onlineKey ? `online:${onlineKey}` : "";
 
