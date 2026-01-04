@@ -1062,13 +1062,13 @@ function App() {
     try {
       // force re-hydrate
       setCloudHydrated(false);
-
+  
       const res: any = await onlineApi.pullStoreSnapshot();
-
+  
       if (res?.status === "ok") {
         const payload = (res as any)?.payload ?? null;
         const cloudStore = payload?.store ?? payload?.idb?.store ?? payload ?? null;
-
+  
         if (cloudStore && typeof cloudStore === "object") {
           const next: Store = {
             ...initialStore,
@@ -1078,50 +1078,71 @@ function App() {
             history: (cloudStore as any).history ?? [],
             dartSets: (cloudStore as any).dartSets ?? getAllDartSets(),
           };
-
+  
+          // ✅ on calcule mergedFinal depuis le prev store (safe)
           let mergedFinal: Store | null = null;
-
-          // ✅ on récupère le user (session valide) + onlineProfile
-          const user =
-            String((online as any)?.session?.user?.id || (online as any)?.user?.id || "")
-              ? (online as any)?.session?.user || (online as any)?.user
-              : (await supabase.auth.getUser())?.data?.user || null;
-
-          const onlineProfile = (online as any)?.profile ?? null;
-
+  
           setStore((prev) => {
             const mergedProfiles = mergeProfilesSafe(prev.profiles ?? [], next.profiles ?? []);
+  
             const merged: Store = {
               ...next,
               profiles: mergedProfiles,
               // ✅ garde un active local si cloud partiel
               activeProfileId: next.activeProfileId ?? prev.activeProfileId ?? null,
             } as any;
-
-            // ✅ MIRROR ONLINE + CLEANUP DOUBLONS (point clé)
-            mergedFinal = user?.id ? (ensureOnlineMirrorProfile(merged, user, onlineProfile) as Store) : merged;
-
-            return mergedFinal as any;
+  
+            mergedFinal = merged;
+            return merged;
           });
-
+  
+          // laisse le setState exécuter le callback
           await Promise.resolve();
-
+  
+          // ✅ OBLIGATOIRE : mirror online ID stable + nettoyage doublons
+          // (PLACÉ EXACTEMENT ICI : après mergedFinal calculé, avant saveStore)
+          try {
+            const uid = String(
+              (online as any)?.session?.user?.id || (online as any)?.user?.id || ""
+            );
+            const user = uid
+              ? ({ id: uid, email: (online as any)?.user?.email } as any)
+              : null;
+            const onlineProfile = (online as any)?.profile ?? null;
+  
+            if (user?.id && mergedFinal) {
+              mergedFinal = ensureOnlineMirrorProfile(
+                mergedFinal as any,
+                user,
+                onlineProfile
+              ) as any;
+  
+              // ✅ applique aussi en RAM (sinon on ne voit pas le cleanup tout de suite)
+              setStore(mergedFinal as any);
+            }
+          } catch (e) {
+            console.warn("[mirror] ensureOnlineMirrorProfile failed", e);
+          }
+  
+          // ✅ puis seulement maintenant on persiste
           if (mergedFinal) {
             try {
               await saveStore(mergedFinal);
             } catch {}
-
+  
             try {
               if ((mergedFinal as any).dartSets) replaceAllDartSets((mergedFinal as any).dartSets);
             } catch {}
-
+  
             const hasProfiles = (mergedFinal.profiles ?? []).length > 0;
             const hasActive = !!mergedFinal.activeProfileId;
-
+  
             const h = String(window.location.hash || "");
             const isAuthFlow =
-              h.startsWith("#/auth/callback") || h.startsWith("#/auth/reset") || h.startsWith("#/auth/forgot");
-
+              h.startsWith("#/auth/callback") ||
+              h.startsWith("#/auth/reset") ||
+              h.startsWith("#/auth/forgot");
+  
             if (!isAuthFlow && hasProfiles && hasActive) {
               setRouteParams(null);
               setTab("home");
