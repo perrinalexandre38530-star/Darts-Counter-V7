@@ -4,10 +4,10 @@
 // Les thèmes ne changent que les néons / accents / textes
 // + Drapeaux pour les langues
 // + Catégories + carrousels horizontaux pour les thèmes
-// + Bloc "Compte & sécurité" inline (gestion du compte connecté)
+// + Bloc "Compte & sécurité" inline (V8 always-connected)
 // + Bloc "Notifications & communications"
 // + Bouton "Tout réinitialiser" (hard reset + reload)
-// + Bouton "Supprimer mon compte" (Edge Function + hard reset)
+// + Bouton "Supprimer mon compte" (via useAuthOnline().deleteAccount ONLY)
 // ============================================
 
 import React from "react";
@@ -15,12 +15,9 @@ import { useTheme } from "../contexts/ThemeContext";
 import { useLang, type Lang } from "../contexts/LangContext";
 import { THEMES, type ThemeId, type AppTheme } from "../theme/themePresets";
 import { useAuthOnline } from "../hooks/useAuthOnline";
-import { supabase } from "../lib/supabase";
+import { supabase } from "../lib/supabaseClient";
 
 type Props = { go?: (tab: any, params?: any) => void };
-
-// ✅ Nom EXACT de la Edge Function (Supabase)
-const DELETE_USER_FN_NAME = "delete-account";
 
 // ---------------- Thèmes dispo + descriptions fallback ----------------
 
@@ -108,7 +105,7 @@ const LANG_FLAGS: Record<Lang, string> = {
   pl: "🇵🇱",
   ro: "🇷🇴",
   sr: "🇷🇸",
-  hr: "🇭🇷", // ✅ manquait -> fix TS + affichage
+  hr: "🇭🇷",
   cs: "🇨🇿",
 };
 
@@ -344,7 +341,7 @@ function ToggleRow({
    - Efface localStorage + sessionStorage
    - Wipe toutes les bases IndexedDB
    - Déconnexion Supabase sur cet appareil
-   - Reset du store global (__DARTS_STORE__)
+   - Reset éventuel store global legacy
    - Reload
 ------------------------------------------------------------- */
 async function fullHardReset() {
@@ -385,12 +382,12 @@ async function fullHardReset() {
       }
     } catch {}
 
-    // 3) logout supabase local
+    // 3) logout supabase local (cet appareil)
     try {
       await supabase.auth.signOut({ scope: "local" } as any);
     } catch {}
 
-    // 4) reset store global si dispo
+    // 4) reset store global legacy si dispo
     try {
       const anyWindow = window as any;
       if (anyWindow.__DARTS_STORE__?.setState) {
@@ -406,23 +403,28 @@ async function fullHardReset() {
 
     window.location.reload();
   } catch (err) {
+    // eslint-disable-next-line no-console
     console.error("FULL HARD RESET FAILED", err);
-    alert("Erreur lors du reset complet. Tu peux aussi vider manuellement les données du site dans le navigateur.");
+    alert(
+      "Erreur lors du reset complet. Tu peux aussi vider manuellement les données du site dans le navigateur."
+    );
   }
 }
 
-// ---------------- Bloc Compte & sécurité (gestion du compte) ----------------
+// ---------------- Bloc Compte & sécurité (V8) ----------------
 
 function AccountSecurityBlock() {
   const { theme } = useTheme();
   const { t } = useLang();
-  const auth = useAuthOnline();
+  const { session, status, loading, updateProfile, deleteAccount, logout } = useAuthOnline();
 
-  const [displayName, setDisplayName] = React.useState(auth.profile?.displayName || auth.user?.nickname || "");
-  const [country, setCountry] = React.useState(auth.profile?.country || "");
+  const user = session?.user ?? null;
+  const profile = session?.profile ?? null;
+
+  const [displayName, setDisplayName] = React.useState(profile?.displayName || user?.nickname || "");
+  const [country, setCountry] = React.useState(profile?.country || "");
 
   const [savingProfile, setSavingProfile] = React.useState(false);
-  const [resettingPwd, setResettingPwd] = React.useState(false);
   const [deleting, setDeleting] = React.useState(false);
 
   const [message, setMessage] = React.useState<string | null>(null);
@@ -430,11 +432,11 @@ function AccountSecurityBlock() {
 
   const [prefs, setPrefs] = React.useState<AccountPrefs>(DEFAULT_PREFS);
 
-  // Sync quand le profil change (connexion / refresh)
+  // Sync quand le profil change (refresh / pull)
   React.useEffect(() => {
-    setDisplayName(auth.profile?.displayName || auth.user?.nickname || "");
-    setCountry(auth.profile?.country || "");
-  }, [auth.profile, auth.user]);
+    setDisplayName(profile?.displayName || user?.nickname || "");
+    setCountry(profile?.country || "");
+  }, [profile?.displayName, profile?.country, user?.nickname]);
 
   // Chargement des préférences (localStorage)
   React.useEffect(() => {
@@ -456,18 +458,19 @@ function AccountSecurityBlock() {
   }, [prefs]);
 
   async function handleSaveProfile() {
-    if (auth.status !== "signed_in") return;
+    if (status !== "signed_in") return;
     setSavingProfile(true);
     setMessage(null);
     setError(null);
 
     try {
-      await auth.updateProfile({
+      await updateProfile({
         displayName: displayName.trim() || undefined,
         country: country.trim() || undefined,
       });
       setMessage(t("settings.account.save.ok", "Informations de compte mises à jour."));
     } catch (e: any) {
+      // eslint-disable-next-line no-console
       console.warn("[settings] updateProfile error", e);
       setError(
         e?.message ||
@@ -478,49 +481,11 @@ function AccountSecurityBlock() {
     }
   }
 
-  async function handlePasswordReset() {
-    if (auth.status !== "signed_in" || !auth.user?.email) {
-      setError(
-        t(
-          "settings.account.reset.noEmail",
-          "Impossible d’envoyer un lien de réinitialisation : aucune adresse mail n’est associée."
-        )
-      );
-      return;
-    }
-
-    setResettingPwd(true);
-    setMessage(null);
-    setError(null);
-
-    try {
-      await supabase.auth.resetPasswordForEmail(auth.user.email, {
-        redirectTo: window.location.origin,
-      });
-      setMessage(t("settings.account.reset.sent", "Un email de réinitialisation de mot de passe vient d’être envoyé."));
-    } catch (e: any) {
-      console.warn("[settings] resetPassword error", e);
-      setError(
-        e?.message ||
-          t("settings.account.reset.error", "Impossible d’envoyer l’email de réinitialisation pour le moment.")
-      );
-    } finally {
-      setResettingPwd(false);
-    }
-  }
-
-  async function handleDeleteAccount() {
-    if (auth.status !== "signed_in" || !auth.user) {
-      setError(t("settings.account.delete.noUser", "Aucun compte connecté à supprimer."));
-      return;
-    }
-
+  async function handleDeleteAccountV8() {
     const ok = window.confirm(
-      "⚠️ SUPPRESSION DÉFINITIVE DU COMPTE ⚠️\n\n" +
-        "Cette action va :\n" +
-        "- Supprimer ton compte en ligne (Supabase)\n" +
-        "- Effacer tous les profils locaux, BOTS, stats, historique et réglages sur CET appareil\n\n" +
-        "Action IRRÉVERSIBLE. Continuer ?"
+      "⚠️ Cette action est définitive.\n\n" +
+        "Toutes tes données (profil, stats, dartsets) seront supprimées côté cloud.\n\n" +
+        "Continuer ?"
     );
     if (!ok) return;
 
@@ -529,39 +494,25 @@ function AccountSecurityBlock() {
     setError(null);
 
     try {
-      // ✅ IMPORTANT :
-      // On n’envoie pas d’ANON KEY dans le client, et on ne fait PAS de fetch manuel.
-      // supabase.functions.invoke ajoute l’Authorization automatiquement si session active.
-      const { data, error: fnError } = await supabase.functions.invoke(DELETE_USER_FN_NAME, {
-        body: {}, // l’edge function doit déduire le user depuis le JWT
-      });
+      // ✅ IMPORTANT : jamais supabase.functions.invoke() ici
+      // ✅ On passe TOUJOURS par useAuthOnline().deleteAccount()
+      await deleteAccount();
 
-      if (fnError) {
-        console.error("[settings] delete-account invoke error", fnError);
-        throw new Error(fnError.message || "delete-account failed");
-      }
+      alert("Compte supprimé. Un nouveau compte vierge a été recréé.");
 
-      // (optionnel) si la function renvoie un message
-      if (data?.message) console.log("[delete-account]", data.message);
-
-      // Logout propre côté client
-      try {
-        await auth.logout();
-      } catch {}
-
-      // Reset TOTAL local
-      await fullHardReset();
+      // (Optionnel mais pratique) : si tu veux TOUT nettoyer localement aussi
+      // -> décommente la ligne suivante.
+      // await fullHardReset();
     } catch (e: any) {
-      console.error("[settings] delete account error", e);
-      setError(
-        e?.message || t("settings.account.delete.error", "Impossible de supprimer le compte pour le moment.")
-      );
+      setError("Erreur suppression compte : " + (e?.message ?? e));
     } finally {
       setDeleting(false);
     }
   }
 
-  const emailLabel = auth.user?.email || "—";
+  // Email : en V8 anon, souvent undefined
+  const emailLabel = user?.email || "—";
+  const userIdLabel = user?.id ? `#${user.id.slice(0, 8)}` : "—";
 
   return (
     <section
@@ -577,13 +528,10 @@ function AccountSecurityBlock() {
         {t("settings.account.titleShort", "Compte & sécurité")}
       </h2>
 
-      <p
-        className="subtitle"
-        style={{ fontSize: 12, color: theme.textSoft, marginBottom: 10, lineHeight: 1.4 }}
-      >
+      <p className="subtitle" style={{ fontSize: 12, color: theme.textSoft, marginBottom: 10, lineHeight: 1.4 }}>
         {t(
-          "settings.account.subtitleShort",
-          "Gère ici l’email, le pseudo en ligne, le pays, tes notifications et la sécurité de ton compte Darts Counter."
+          "settings.account.subtitleV8",
+          "V8 : l’app est toujours connectée (compte anonyme automatique). Tu peux personnaliser ton profil et supprimer ton compte à tout moment."
         )}
       </p>
 
@@ -600,47 +548,34 @@ function AccountSecurityBlock() {
       >
         <div style={{ marginBottom: 4, fontWeight: 700 }}>{t("settings.account.status", "Statut du compte")}</div>
 
-        {auth.status === "checking" ? (
-          <div style={{ color: theme.textSoft }}>
-            {t("settings.account.checking", "Vérification de la session en cours…")}
-          </div>
-        ) : auth.status === "signed_in" ? (
+        {status === "signed_in" ? (
           <>
             <div style={{ color: theme.textSoft }}>
-              {t("settings.account.connectedAs", "Connecté en tant que")} <strong>{emailLabel}</strong>
+              {t("settings.account.connectedAsV8", "Session active")}{" "}
+              <span style={{ opacity: 0.9 }}>
+                ({emailLabel} {userIdLabel})
+              </span>
             </div>
             <div className="subtitle" style={{ fontSize: 11, color: theme.textSoft, marginTop: 4 }}>
               {t(
-                "settings.account.connectedHint",
-                "Tu retrouveras ce compte et tes stats online en te reconnectant sur un autre appareil."
+                "settings.account.connectedHintV8",
+                "Cette session est créée automatiquement. La sync cloud fonctionne via user_store."
               )}
             </div>
           </>
         ) : (
           <div style={{ color: theme.textSoft }}>
-            {t(
-              "settings.account.notConnected.expl",
-              "Aucun compte online n’est connecté. Tu peux associer un compte depuis la page Profils."
-            )}
+            {t("settings.account.notConnectedV8", "Session indisponible (rare). Rafraîchis la page.")}
           </div>
         )}
       </div>
 
-      {auth.status !== "signed_in" && (
-        <p className="subtitle" style={{ fontSize: 11, color: theme.textSoft, marginBottom: 0 }}>
-          {t(
-            "settings.account.noInlineAuthHint",
-            "La création / connexion de compte se fait dans la section Profils. Ici tu gères surtout un compte déjà connecté."
-          )}
-        </p>
-      )}
-
-      {auth.status === "signed_in" && (
+      {status === "signed_in" && (
         <>
-          {/* Formulaire de gestion du profil online */}
+          {/* Formulaire profil */}
           <div style={{ display: "grid", gap: 8, marginTop: 6, marginBottom: 10 }}>
             <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 12 }}>
-              <span style={{ color: theme.textSoft }}>{t("settings.account.email", "Email (lecture seule)")}</span>
+              <span style={{ color: theme.textSoft }}>{t("settings.account.email", "Email (optionnel)")}</span>
               <input className="input" value={emailLabel} disabled style={{ opacity: 0.7 }} />
             </label>
 
@@ -657,32 +592,29 @@ function AccountSecurityBlock() {
             </label>
           </div>
 
-          {message && <div className="subtitle" style={{ color: "#5ad57a", fontSize: 11, marginBottom: 4 }}>{message}</div>}
-          {error && <div className="subtitle" style={{ color: "#ff6666", fontSize: 11, marginBottom: 4 }}>{error}</div>}
+          {message && (
+            <div className="subtitle" style={{ color: "#5ad57a", fontSize: 11, marginBottom: 4 }}>
+              {message}
+            </div>
+          )}
+          {error && (
+            <div className="subtitle" style={{ color: "#ff6666", fontSize: 11, marginBottom: 4 }}>
+              {error}
+            </div>
+          )}
 
-          {/* Actions compte */}
+          {/* Actions */}
           <div style={{ display: "flex", justifyContent: "space-between", gap: 8, flexWrap: "wrap", marginBottom: 10 }}>
-            <button type="button" className="btn sm" onClick={() => auth.logout()} disabled={deleting}>
-              {t("settings.account.btn.logout", "Se déconnecter")}
-            </button>
-
-            <button
-              type="button"
-              className="btn sm"
-              onClick={handlePasswordReset}
-              disabled={resettingPwd || deleting}
-              style={{ borderColor: theme.primary }}
-            >
-              {resettingPwd
-                ? t("settings.account.reset.loading", "Envoi du lien…")
-                : t("settings.account.reset.btn", "Réinitialiser / récupérer mon mot de passe")}
+            {/* Debug/QA : logout */}
+            <button type="button" className="btn sm" onClick={() => logout()} disabled={loading || deleting}>
+              {t("settings.account.btn.logout", "Se déconnecter (debug)")}
             </button>
 
             <button
               type="button"
               className="btn primary sm"
               onClick={handleSaveProfile}
-              disabled={savingProfile || deleting}
+              disabled={savingProfile || loading || deleting}
               style={{
                 background: `linear-gradient(180deg, ${theme.primary}, ${theme.primary}AA)`,
                 color: "#000",
@@ -690,32 +622,52 @@ function AccountSecurityBlock() {
                 minWidth: 140,
               }}
             >
-              {savingProfile ? t("settings.account.save.loading", "Enregistrement…") : t("settings.account.save.btn", "Enregistrer les changements")}
-            </button>
-
-            {/* 🔥 SUPPRIMER MON COMPTE */}
-            <button
-              type="button"
-              className="btn danger sm"
-              onClick={handleDeleteAccount}
-              disabled={deleting}
-              style={{
-                minWidth: 160,
-                borderColor: "rgba(255,120,120,0.9)",
-                background: "linear-gradient(135deg, rgba(255,80,80,0.95), rgba(255,170,120,0.95))",
-                color: "#120808",
-                fontWeight: 800,
-                textTransform: "uppercase",
-                letterSpacing: 0.5,
-                opacity: deleting ? 0.7 : 1,
-              }}
-            >
-              {deleting ? t("settings.account.delete.loading", "Suppression…") : t("settings.account.delete.btn", "Supprimer mon compte")}
+              {savingProfile ? t("settings.account.save.loading", "Enregistrement…") : t("settings.account.save.btn", "Enregistrer")}
             </button>
           </div>
 
+          {/* ✅ ZONE DANGEREUSE (V8) — BOUTON PRÊT À COLLER */}
+          <div
+            style={{
+              marginTop: 24,
+              padding: 16,
+              borderRadius: 12,
+              border: "1px solid rgba(255,0,0,0.35)",
+              background: "rgba(255,0,0,0.06)",
+            }}
+          >
+            <div style={{ fontWeight: 700, marginBottom: 8, color: "#ff6b6b" }}>
+              {t("settings.account.danger", "Zone dangereuse")}
+            </div>
+
+            <button
+              disabled={loading || deleting}
+              onClick={handleDeleteAccountV8}
+              style={{
+                width: "100%",
+                padding: "14px 16px",
+                borderRadius: 10,
+                background: "linear-gradient(180deg, #ff5c5c, #c92a2a)",
+                color: "#fff",
+                fontWeight: 700,
+                border: "none",
+                cursor: "pointer",
+                opacity: loading || deleting ? 0.6 : 1,
+              }}
+            >
+              🗑️ {deleting ? "Suppression…" : "Supprimer mon compte définitivement"}
+            </button>
+
+            <div style={{ marginTop: 10, fontSize: 11, color: "rgba(255,255,255,0.72)", lineHeight: 1.35 }}>
+              {t(
+                "settings.account.deleteHintV8",
+                "Cette action supprime le compte cloud (profiles + user_store + auth). L’app recrée automatiquement un nouveau compte anonyme (V8)."
+              )}
+            </div>
+          </div>
+
           {/* Bloc Notifications & communications */}
-          <div style={{ marginTop: 8, paddingTop: 10, borderTop: `1px dashed ${theme.borderSoft}` }}>
+          <div style={{ marginTop: 12, paddingTop: 10, borderTop: `1px dashed ${theme.borderSoft}` }}>
             <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 6, color: theme.primary }}>
               {t("settings.account.notifications.title", "Notifications & communications")}
             </div>
@@ -768,8 +720,6 @@ export default function Settings({ go }: Props) {
         "- Profils locaux & BOTS\n" +
         "- Stats & historique de parties\n" +
         "- Réglages, thèmes, langue…\n\n" +
-        "Ton compte en ligne (si tu en as un) sera simplement déconnecté de cet appareil, " +
-        "mais toutes les données locales seront perdues.\n\n" +
         "Action définitive. Continuer ?"
     );
     if (!ok) return;
@@ -820,25 +770,6 @@ export default function Settings({ go }: Props) {
 
       {/* ---------- COMPTE & SÉCURITÉ + PREFS ---------- */}
       <AccountSecurityBlock />
-
-      {/* ➜ Lien vers page "Compte" avancée */}
-      <div style={{ marginBottom: 16 }}>
-        <button
-          type="button"
-          className="btn primary sm"
-          onClick={() => go?.("profiles", { view: "me" })}
-          style={{
-            marginTop: 4,
-            borderRadius: 999,
-            padding: "6px 14px",
-            background: `linear-gradient(180deg, ${theme.primary}, ${theme.primary}AA)`,
-            color: "#000",
-            fontWeight: 700,
-          }}
-        >
-          {t("settings.account.btn", "Gérer mon compte en ligne")}
-        </button>
-      </div>
 
       {/* ---------- BLOC THEME ---------- */}
       <section
