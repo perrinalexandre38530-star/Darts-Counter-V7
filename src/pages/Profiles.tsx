@@ -362,29 +362,6 @@ export default function Profiles({
     selfStatus = "online",
   } = store;
 
-  // ============================================
-  // ✅ ONLINE MIRROR FILTER (UI)
-  // - le profil "online:<uid>" / isOnlineMirror ne doit JAMAIS apparaître
-  //   dans "Profils locaux"
-  // ============================================
-  const allProfiles = (profiles ?? []) as any[];
-
-  const localProfiles = React.useMemo(() => {
-    return allProfiles.filter((p) => {
-      const id = String(p?.id || "");
-      return !(p?.isOnlineMirror) && !id.startsWith("online:");
-    }) as Profile[];
-  }, [allProfiles]);
-
-  const onlineMirrorProfile = React.useMemo(() => {
-    return (
-      allProfiles.find((p) => {
-        const id = String(p?.id || "");
-        return (p?.isOnlineMirror) || id.startsWith("online:");
-      }) || null
-    );
-  }, [allProfiles]);
-
     // ✅ Anti-wipe global : si un rehydrate remet profiles=[] après ajout,
   // on restaure depuis un cache local.
   React.useEffect(() => {
@@ -455,73 +432,6 @@ export default function Profiles({
   const { theme, themeId, setThemeId } = useTheme() as any;
   const { t, setLang, lang } = useLang();
   const auth = useAuthOnline();
-
-  // ============================================
-  // ✅ PATCH B — re-sync du mirror quand online.profile devient dispo
-  // - évite le name=email (fallback) qui reste bloqué
-  // - met à jour le mirror ET (si c’est lui) le profil actif
-  // ============================================
-  React.useEffect(() => {
-    if (auth.status !== "signed_in") return;
-
-    const uid = auth.user?.id;
-    if (!uid) return;
-
-    // displayName stable (priorité au profil, fallback user)
-    const displayName = String(
-      (auth as any)?.profile?.displayName ||
-        (auth as any)?.profile?.nickname ||
-        (auth as any)?.user?.user_metadata?.displayName ||
-        (auth as any)?.user?.user_metadata?.display_name ||
-        (auth as any)?.user?.email ||
-        ""
-    ).trim();
-
-    const avatarUrl = String(
-      (auth as any)?.profile?.avatarUrl ||
-        (auth as any)?.profile?.avatar_url ||
-        ""
-    ).trim();
-
-    const country = String((auth as any)?.profile?.country || "").trim();
-
-    if (!displayName && !avatarUrl && !country) return;
-
-    // Update mirror (id online:<uid> OR flagged OR privateInfo.onlineUserId)
-    setProfilesSafe((arr) =>
-      arr.map((p) => {
-        const id = String((p as any)?.id || "");
-        const pi = ((p as any)?.privateInfo || {}) as any;
-
-        const isMirror =
-          Boolean((p as any)?.isOnlineMirror) ||
-          id === `online:${uid}` ||
-          id.startsWith("online:") && id.endsWith(uid) ||
-          pi?.onlineUserId === uid;
-
-        if (!isMirror) return p;
-
-        const next: any = { ...(p as any) };
-
-        if (displayName && next.name !== displayName) next.name = displayName;
-
-        // on ne force l'avatar que si on a une URL online (sinon on garde ce qui existe)
-        if (avatarUrl && !String(next.avatarUrl || "").trim()) {
-          next.avatarUrl = avatarUrl;
-        }
-
-        // on hydrate aussi nickname/country dans privateInfo (utile UI)
-        next.privateInfo = {
-          ...(pi || {}),
-          nickname: displayName || pi?.nickname,
-          country: country || pi?.country,
-        };
-
-        return next;
-      })
-    );
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [auth.status, auth.user?.id, auth.profile]);
 
   React.useEffect(() => {
     console.log("[Profiles] RENDER WATCH profiles=", profiles.length, {
@@ -1275,13 +1185,10 @@ React.useEffect(() => {
                 title={`${t(
                   "profiles.locals.title",
                   "Profils locaux"
-                )} (${localProfiles.filter((p) => p.id !== activeProfileId).length})`}
+                )} (${profiles.filter((p) => p.id !== activeProfileId).length})`}
               >
-                {(() => {
-                  const localOnly = localProfiles;
-                  return (
                 <LocalProfilesRefonte
-                  profiles={localOnly}
+                  profiles={profiles}
                   activeProfileId={activeProfileId}
                   onCreate={addProfile}
                   onRename={renameProfile}
@@ -1290,8 +1197,6 @@ React.useEffect(() => {
                   onDelete={delProfile}
                   onOpenAvatarCreator={openAvatarCreator}
                 />
-                  );
-                })()}
               </Card>
             )}
 

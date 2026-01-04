@@ -720,10 +720,109 @@ export async function importCloudSnapshot(
 
   await importAll(dump);
 
+  // ✅ Important: le cloud peut contenir des doublons (ex: plusieurs profils locaux
+  // clonés depuis le profil online). On nettoie systématiquement après import
+  // pour éviter que l'UI "Profils locaux" explose.
+  try {
+    await normalizeLocalProfilesInStore();
+  } catch (err) {
+    console.warn("[storage] normalizeLocalProfilesInStore failed", err);
+  }
+
   // ✅ CRITIQUE : restaurer les DartSets là où l’UI lit réellement
   const { dartSets, activeId } = extractDartSetsFromSnapshot(dump);
   if (dartSets) writeDartSetsToLocalStorage(dartSets);
   if (activeId) writeActiveDartSetIdToLocalStorage(activeId);
+}
+
+// ------------------------------------------------------------
+// Normalisation profils locaux (post-import / pre-push)
+// ------------------------------------------------------------
+
+function scoreProfileCompleteness(p: any): number {
+  let s = 0;
+  const keys = [
+    "name",
+    "country",
+    "avatarUrl",
+    "surname",
+    "firstName",
+    "birthDate",
+    "city",
+    "phone",
+  ];
+  for (const k of keys) if (p?.[k]) s += 1;
+  return s;
+}
+
+function isOnlineShadowProfile(p: any): boolean {
+  const id = String(p?.id ?? "");
+  // Notre convention (si jamais elle traîne dans des snapshots)
+  if (id.startsWith("online:")) return true;
+  // Et on écarte aussi les profils manifestement injectés depuis Supabase
+  // (ils n'ont aucune donnée locale de profil, uniquement email/nickname)
+  if (p?.isOnline === true) return true;
+  return false;
+}
+
+async function normalizeLocalProfilesInStore(): Promise<void> {
+  const raw = await idbGet<ArrayBuffer | Uint8Array | string>(STORE_KEY);
+  if (raw == null) return;
+
+  const txt = await decompressGzip(raw as any);
+  const store = JSON.parse(txt) as any;
+
+  const arr = Array.isArray(store?.profiles) ? [...store.profiles] : [];
+
+  // 1) retire les "online" du tableau local
+  const locals = arr.filter((p) => !isOnlineShadowProfile(p));
+
+  // 2) dédoublonne par id
+  const byId = new Map<string, any>();
+  for (const p of locals) {
+    const id = String(p?.id ?? "");
+    if (!id) continue;
+    const prev = byId.get(id);
+    if (!prev) {
+      byId.set(id, p);
+    } else {
+      // garde la version la plus "complète"
+      const keep = scoreProfileCompleteness(p) >= scoreProfileCompleteness(prev) ? p : prev;
+      byId.set(id, keep);
+    }
+  }
+
+  // 3) dédoublonne "souple" par signature (name+country+avatarUrl)
+  const bySig = new Map<string, any>();
+  for (const p of byId.values()) {
+    const sig = [
+      String(p?.name ?? "").trim().toLowerCase(),
+      String(p?.country ?? "").trim().toLowerCase(),
+      String(p?.avatarUrl ?? "").trim(),
+    ].join("|");
+
+    const prev = bySig.get(sig);
+    if (!prev) {
+      bySig.set(sig, p);
+    } else {
+      const keep = scoreProfileCompleteness(p) >= scoreProfileCompleteness(prev) ? p : prev;
+      bySig.set(sig, keep);
+    }
+  }
+
+  const cleaned = Array.from(bySig.values());
+
+  // 4) sécurise l'activeProfileId
+  const activeId = String(store?.activeProfileId ?? "");
+  if (activeId && !cleaned.some((p) => String(p?.id) === activeId)) {
+    store.activeProfileId = cleaned[0]?.id ?? null;
+  }
+
+  store.profiles = cleaned;
+
+  const outTxt = JSON.stringify(store);
+  const outRaw = await compressGzip(outTxt);
+  await idbSet(STORE_KEY, outRaw);
 }
 
 export async function nukeAll(): Promise<void> {
