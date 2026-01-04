@@ -125,7 +125,10 @@ function _sanitizeStoreForCloudMini(s: any) {
 
 let __cloudPushTimer: number | null = null;
 
+const HISTORY_CLOUD_PUSH_ENABLED = false;
+
 function scheduleCloudSnapshotPush(reason: string) {
+  if (!HISTORY_CLOUD_PUSH_ENABLED) return;
   try {
     if (typeof window === "undefined") return;
 

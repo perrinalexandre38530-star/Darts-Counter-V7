@@ -31,8 +31,10 @@
 // - On garde AuthOnlineProvider
 // - On enlève définitivement tout AuthProvider/AuthSessionProvider legacy
 //
-// ✅ PATCH V8: AUTO-SESSION AU BOOT
-// - onlineApi.ensureAutoSession() au tout premier mount (OBLIGATOIRE)
+// ✅ PATCH (DEMANDÉ): AUTH — RESET TOTAL AU LOGIN
+// - useEffect BOOT UNIQUE: supabase.auth.onAuthStateChange()
+//   SIGNED_IN  => pullSnapshot() immédiat
+//   SIGNED_OUT => wipeAllLocalData() total
 // ============================================
 
 import React from "react";
@@ -46,12 +48,12 @@ import SplashScreen from "./components/SplashScreen";
 // ✅ NEW: AUDIO SPLASH global (persistant)
 import SplashJingle from "./assets/audio/splash_jingle.mp3";
 
-// ✅ NEW: CRASH CATCHER
+// ✅ NEW: CRASH CATCHER (à créer dans src/components/CrashCatcher.tsx)
 import CrashCatcher from "./components/CrashCatcher";
 import MobileErrorOverlay from "./components/MobileErrorOverlay";
 
 // Persistance (IndexedDB via storage.ts)
-import { loadStore, saveStore } from "./lib/storage";
+import { loadStore, saveStore, wipeAllLocalData as wipeAllLocalDataStorage } from "./lib/storage";
 // OPFS / StorageManager — demande la persistance une fois au boot
 import { ensurePersisted } from "./lib/deviceStore";
 // 🔒 Garde-fou localStorage (purge legacy si trop plein)
@@ -844,7 +846,7 @@ function App() {
 
   React.useEffect(() => {
     if (!online?.ready) return;
-    const uid = String((online as any)?.session?.user?.id || "");
+    const uid = String((online as any)?.session?.user?.id || (online as any)?.user?.id || "");
 
     if (online.status !== "signed_in") {
       cloudHydratedUserRef.current = "";
@@ -881,24 +883,17 @@ function App() {
     return () => window.clearTimeout(hardTimeout);
   }, [showSplash]);
 
-  /* ============================================================
-     ✅ BOOT GLOBAL
-     - persistance + purge + warmup
-     - 🔥 AUTO-SESSION V8 (OBLIGATOIRE)
-     - restore session SDK
-  ============================================================ */
+  /* Boot: persistance + nettoyage localStorage + warm-up (SANS SFX) */
   React.useEffect(() => {
     ensurePersisted().catch(() => {});
     purgeLegacyLocalStorageIfNeeded();
     try {
       warmAggOnce();
     } catch {}
+  }, []);
 
-    // 🔥 V8 : garantit une session SUPABASE dès le démarrage
-    // (crée un anon user si nécessaire)
-    onlineApi.ensureAutoSession().catch((e) => console.error("[autoSession] failed", e));
-
-    // Restore session côté SDK (storage/cookies)
+  /* Restore online session (pour Supabase côté SDK) */
+  React.useEffect(() => {
     onlineApi.restoreSession().catch(() => {});
   }, []);
 
@@ -1051,6 +1046,178 @@ function App() {
   }, []);
 
   // ============================================================
+  // ✅ AUTH — RESET TOTAL AU LOGIN (BOOT UNIQUE Supabase)
+  // - SIGNED_IN  => pullSnapshot() immédiat
+  // - SIGNED_OUT => wipeAllLocalData() total
+  // ============================================================
+
+  const pullSnapshot = React.useCallback(async () => {
+    try {
+      // force re-hydrate
+      setCloudHydrated(false);
+
+      const res: any = await onlineApi.pullStoreSnapshot();
+
+      if (res?.status === "ok") {
+        const payload = (res as any)?.payload ?? null;
+        const cloudStore = payload?.store ?? payload?.idb?.store ?? payload ?? null;
+
+        if (cloudStore && typeof cloudStore === "object") {
+          const next: Store = {
+            ...initialStore,
+            ...(cloudStore as any),
+            profiles: (cloudStore as any).profiles ?? [],
+            friends: (cloudStore as any).friends ?? [],
+            history: (cloudStore as any).history ?? [],
+            dartSets: (cloudStore as any).dartSets ?? getAllDartSets(),
+          };
+
+          let mergedFinal: Store | null = null;
+
+          setStore((prev) => {
+            const mergedProfiles = mergeProfilesSafe(prev.profiles ?? [], next.profiles ?? []);
+            mergedFinal = {
+              ...next,
+              profiles: mergedProfiles,
+              // ✅ garde un active local si cloud partiel
+              activeProfileId: next.activeProfileId ?? prev.activeProfileId ?? null,
+            } as any;
+            return mergedFinal as any;
+          });
+
+          await Promise.resolve();
+
+          if (mergedFinal) {
+            try {
+              await saveStore(mergedFinal);
+            } catch {}
+
+            try {
+              if ((mergedFinal as any).dartSets) replaceAllDartSets((mergedFinal as any).dartSets);
+            } catch {}
+
+            const hasProfiles = (mergedFinal.profiles ?? []).length > 0;
+            const hasActive = !!mergedFinal.activeProfileId;
+
+            const h = String(window.location.hash || "");
+            const isAuthFlow =
+              h.startsWith("#/auth/callback") || h.startsWith("#/auth/reset") || h.startsWith("#/auth/forgot");
+
+            if (!isAuthFlow && hasProfiles && hasActive) {
+              setRouteParams(null);
+              setTab("home");
+            }
+          }
+        }
+      }
+    } catch (e) {
+      console.warn("[auth] pullSnapshot error", e);
+    } finally {
+      setCloudHydrated(true);
+    }
+  }, []);
+
+  const wipeAllLocalData = React.useCallback(async () => {
+    try {
+      // stop timers
+      try {
+        if (cloudPushTimerRef.current) {
+          window.clearTimeout(cloudPushTimerRef.current);
+          cloudPushTimerRef.current = null;
+        }
+      } catch {}
+
+      // reset flags hydrate
+      try {
+        cloudHydratedUserRef.current = "";
+        setCloudHydrated(false);
+      } catch {}
+
+      // ✅ wipe IDB + localStorage dc_* / dc-*
+      try {
+        await wipeAllLocalDataStorage();
+      } catch {}
+
+      // ✅ purge history IDB (best-effort)
+      try {
+        await (History as any)?.clear?.();
+      } catch {}
+
+      // purge dartSetsStore mirror (localStorage)
+      try {
+        replaceAllDartSets([]);
+      } catch {}
+
+      // reset RAM + IDB store principal
+      const clean: Store = {
+        ...initialStore,
+        dartSets: [],
+        profiles: [],
+        friends: [],
+        history: [],
+        activeProfileId: null,
+      } as any;
+
+      try {
+        await saveStore(clean);
+      } catch {}
+
+      setStore(clean);
+      setRouteParams(null);
+      setTab("account_start");
+
+      // sécurité hash
+      try {
+        const h = String(window.location.hash || "");
+        if (h.startsWith("#/online") || h.startsWith("#/auth/")) window.location.hash = "#/";
+      } catch {}
+    } catch (e) {
+      console.warn("[auth] wipeAllLocalData error", e);
+      const clean: Store = {
+        ...initialStore,
+        dartSets: [],
+        profiles: [],
+        friends: [],
+        history: [],
+        activeProfileId: null,
+      } as any;
+      setStore(clean);
+      setRouteParams(null);
+      setTab("account_start");
+    }
+  }, []);
+
+  React.useEffect(() => {
+    const { data } = supabase.auth.onAuthStateChange(async (event) => {
+      try {
+        if (event === "SIGNED_IN") {
+          // reset “par user” -> force re-hydrate
+          try {
+            const uid =
+              String((online as any)?.session?.user?.id || (online as any)?.user?.id || "") ||
+              String((await supabase.auth.getUser())?.data?.user?.id || "");
+            if (uid) cloudHydratedUserRef.current = uid;
+          } catch {}
+          await pullSnapshot();
+        }
+
+        if (event === "SIGNED_OUT") {
+          await wipeAllLocalData();
+        }
+      } catch (e) {
+        console.warn("[auth] onAuthStateChange handler error", e);
+      }
+    });
+
+    return () => {
+      try {
+        data?.subscription?.unsubscribe();
+      } catch {}
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pullSnapshot, wipeAllLocalData]);
+
+  // ============================================================
   // ✅ CLOUD HYDRATE (source unique)
   // - Quand on se CONNECTE => PULL snapshot cloud
   // - ✅ FIX: on hydrate RAM + IDB avec la VERSION MERGÉE (pas "next" brut)
@@ -1070,7 +1237,7 @@ function App() {
 
         if (res?.status === "ok") {
           const payload = (res as any)?.payload ?? null;
-          const cloudStore = payload?.store ?? payload?.idb?.store ?? null;
+          const cloudStore = payload?.store ?? payload?.idb?.store ?? payload ?? null;
 
           if (cloudStore && typeof cloudStore === "object") {
             const next: Store = {
@@ -1079,6 +1246,7 @@ function App() {
               profiles: (cloudStore as any).profiles ?? [],
               friends: (cloudStore as any).friends ?? [],
               history: (cloudStore as any).history ?? [],
+              dartSets: (cloudStore as any).dartSets ?? getAllDartSets(),
             };
 
             if (!cancelled) {
@@ -1095,7 +1263,6 @@ function App() {
                 return mergedFinal as any;
               });
 
-              // ✅ attend 1 tick pour être sûr que mergedFinal a été calculé
               await Promise.resolve();
 
               if (mergedFinal) {
@@ -1130,13 +1297,8 @@ function App() {
             (store?.history?.length || 0) > 0;
 
           if (hasLocalData) {
-            const payload = {
-              kind: "dc_store_snapshot_v1",
-              createdAt: new Date().toISOString(),
-              app: "darts-counter-v5",
-              store: sanitizeStoreForCloud(store),
-            };
-            await onlineApi.pushStoreSnapshot(payload);
+            const cloudSeed = sanitizeStoreForCloud(store);
+            await onlineApi.pushStoreSnapshot(cloudSeed);
           } else {
             console.warn("[cloud] no snapshot yet + local empty -> skip seed (avoid wiping cloud by mistake)");
           }
@@ -1171,13 +1333,8 @@ function App() {
 
     cloudPushTimerRef.current = window.setTimeout(async () => {
       try {
-        const payload = {
-          kind: "dc_store_snapshot_v1",
-          createdAt: new Date().toISOString(),
-          app: "darts-counter-v5",
-          store: sanitizeStoreForCloud(store),
-        };
-        await onlineApi.pushStoreSnapshot(payload);
+        const cloudSeed = sanitizeStoreForCloud(store);
+            await onlineApi.pushStoreSnapshot(cloudSeed);
       } catch (e) {
         console.warn("[cloud] push snapshot error", e);
       }
@@ -1193,8 +1350,6 @@ function App() {
 
   // ============================================================
   // ✅ DartSets bridge: localStorage dartSetsStore -> App store
-  // - DartSetsPanel utilise dartSetsStore (localStorage)
-  // - App store garde une copie dans store.dartSets (pour cloud snapshot)
   // ============================================================
   React.useEffect(() => {
     const sync = () => {
@@ -1352,12 +1507,7 @@ function App() {
 
   if (showSplash) {
     return (
-      <SplashScreen
-        durationMs={6500}
-        fadeOutMs={700}
-        allowAudioOverflow={true}
-        onFinish={() => setShowSplash(false)}
-      />
+      <SplashScreen durationMs={6500} fadeOutMs={700} allowAudioOverflow={true} onFinish={() => setShowSplash(false)} />
     );
   }
 
@@ -1401,14 +1551,7 @@ function App() {
         break;
 
       case "home":
-        page = (
-          <Home
-            store={store}
-            update={update}
-            go={go}
-            onConnect={() => go("profiles", { view: "me", autoCreate: true })}
-          />
-        );
+        page = <Home store={store} update={update} go={go} onConnect={() => go("profiles", { view: "me", autoCreate: true })} />;
         break;
 
       case "games":
@@ -1467,12 +1610,7 @@ function App() {
         break;
 
       case "cricket_stats":
-        page = (
-          <StatsCricket
-            profiles={store.profiles}
-            activeProfileId={routeParams?.profileId ?? store.activeProfileId ?? null}
-          />
-        );
+        page = <StatsCricket profiles={store.profiles} activeProfileId={routeParams?.profileId ?? store.activeProfileId ?? null} />;
         break;
 
       case "statsDetail":
@@ -1530,9 +1668,7 @@ function App() {
             defaults={{ start: getX01DefaultStart(store), doubleOut: store.settings.doubleOut }}
             onCancel={() => go("games")}
             onStart={(opts) => {
-              const players = store.settings.randomOrder
-                ? opts.playerIds.slice().sort(() => Math.random() - 0.5)
-                : opts.playerIds;
+              const players = store.settings.randomOrder ? opts.playerIds.slice().sort(() => Math.random() - 0.5) : opts.playerIds;
               setX01Config({ playerIds: players, start: opts.start, doubleOut: opts.doubleOut });
               go("x01", { resumeId: null, fresh: Date.now() });
             }}
@@ -1580,13 +1716,10 @@ function App() {
         let effectiveConfig = x01Config;
 
         if (!effectiveConfig && isOnline && !isResume) {
-          const activeProfile =
-            store.profiles.find((p) => p.id === store.activeProfileId) ?? store.profiles[0] ?? null;
+          const activeProfile = store.profiles.find((p) => p.id === store.activeProfileId) ?? store.profiles[0] ?? null;
           const startDefault = getX01DefaultStart(store);
           const start =
-            startDefault === 301 || startDefault === 501 || startDefault === 701 || startDefault === 901
-              ? startDefault
-              : 501;
+            startDefault === 301 || startDefault === 501 || startDefault === 701 || startDefault === 901 ? startDefault : 501;
 
           effectiveConfig = { start, doubleOut: store.settings.doubleOut, playerIds: activeProfile ? [activeProfile.id] : [] };
           setX01Config(effectiveConfig);
@@ -1836,14 +1969,7 @@ function App() {
       }
 
       default:
-        page = (
-          <Home
-            store={store}
-            update={update}
-            go={go}
-            onConnect={() => go("profiles", { view: "me", autoCreate: true })}
-          />
-        );
+        page = <Home store={store} update={update} go={go} onConnect={() => go("profiles", { view: "me", autoCreate: true })} />;
     }
   }
 
@@ -1867,6 +1993,7 @@ function App() {
 
 /* --------------------------------------------
    🔒 APP GATE — NE BLOQUE QUE LES PAGES ONLINE "post-login"
+   ✅ V7: compte unique -> useAuthOnline()
 -------------------------------------------- */
 function AppGate({
   go,
@@ -1890,6 +2017,7 @@ function AppGate({
     tab === "auth_start" ||
     tab === "account_start";
 
+  // ✅ Tant que restoreSession / init n'a pas fini, on affiche un écran neutre
   if (!ready) {
     return (
       <div className="container" style={{ padding: 40, textAlign: "center" }}>
@@ -1898,12 +2026,14 @@ function AppGate({
     );
   }
 
+  // ✅ Redirect automatique vers AuthStart si une page online est demandée sans session
   React.useEffect(() => {
     if (!isAuthFlow && needsSession && status !== "signed_in") {
       go("auth_start");
     }
   }, [isAuthFlow, needsSession, status, go]);
 
+  // Pendant la redirection, on affiche un petit loader (évite flash UI)
   if (!isAuthFlow && needsSession && status !== "signed_in") {
     return (
       <div className="container" style={{ padding: 40, textAlign: "center" }}>
@@ -1923,7 +2053,7 @@ export default function AppRoot() {
         <StoreProvider>
           <AudioProvider>
             <AuthOnlineProvider>
-              {/* ✅ player audio global persistant */}
+              {/* ✅ player audio global persistant (rien à voir avec SFX UI) */}
               <audio id="dc-splash-audio" src={SplashJingle} preload="auto" style={{ display: "none" }} />
               <App />
             </AuthOnlineProvider>

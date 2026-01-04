@@ -621,50 +621,87 @@ async function uploadAvatarImage(opts: {
 }
 
 // ============================================================
-// Cloud store snapshot (user_store) — store-direct
+// Cloud store snapshot (user_store) — STORE UNIQUE
+// - Schéma cible: user_store(user_id uuid PK, store jsonb, updated_at timestamptz)
+// - Compat: si une ancienne colonne "data" existe (ancien snapshot), on lit/écrit aussi.
 // ============================================================
 async function pullStoreSnapshot(): Promise<{
   status: "ok" | "not_found" | "error";
   payload?: any;
   updatedAt?: string | null;
-  version?: number | null;
   error?: any;
 }> {
   try {
     const { user } = await ensureAuthedUser();
 
-    const { data, error } = await supabase
+    // 1) Schéma sain: colonne "store"
+    const res1 = await supabase
       .from("user_store")
-      .select("data,updated_at,version")
+      .select("store,updated_at")
       .eq("user_id", user.id)
       .maybeSingle();
 
-    if (!data && !error) return { status: "not_found", payload: null, updatedAt: null, version: null };
-    if (error) return { status: "error", error };
+    // si la colonne n'existe pas, Supabase renvoie une erreur -> fallback "data"
+    if (res1.error) {
+      const msg = String((res1.error as any)?.message || "");
+      const isMissingStoreCol = msg.toLowerCase().includes("store") && msg.toLowerCase().includes("column");
+      if (!isMissingStoreCol) return { status: "error", error: res1.error };
+
+      const res2 = await supabase
+        .from("user_store")
+        .select("data,updated_at")
+        .eq("user_id", user.id)
+        .maybeSingle();
+
+      if (!res2.data && !res2.error) return { status: "not_found", payload: null, updatedAt: null };
+      if (res2.error) return { status: "error", error: res2.error };
+
+      return {
+        status: "ok",
+        payload: (res2.data as any)?.data ?? null,
+        updatedAt: (res2.data as any)?.updated_at ?? null,
+      };
+    }
+
+    if (!res1.data && !res1.error) return { status: "not_found", payload: null, updatedAt: null };
+    if (res1.error) return { status: "error", error: res1.error };
 
     return {
       status: "ok",
-      payload: (data as any)?.data ?? null, // {version, store}
-      updatedAt: (data as any)?.updated_at ?? null,
-      version: (data as any)?.version ?? null,
+      payload: (res1.data as any)?.store ?? null,
+      updatedAt: (res1.data as any)?.updated_at ?? null,
     };
   } catch (e) {
     return { status: "error", error: e };
   }
 }
 
-async function pushStoreSnapshot(payload: any, version = 8): Promise<void> {
+async function pushStoreSnapshot(storePayload: any, _version?: number): Promise<void> {
   const { user } = await ensureAuthedUser();
 
-  const row = {
+  // 1) Schéma sain: colonne "store"
+  const row1: any = {
     user_id: user.id,
-    version,
     updated_at: new Date().toISOString(),
-    data: payload, // {version, store}
+    store: storePayload,
   };
 
-  const { error } = await supabase.from("user_store").upsert(row, { onConflict: "user_id" });
-  if (error) throw new Error(error.message);
+  const res1 = await supabase.from("user_store").upsert(row1, { onConflict: "user_id" });
+  if (!res1.error) return;
+
+  // fallback si colonne store absente (ancien schéma -> "data")
+  const msg = String((res1.error as any)?.message || "");
+  const isMissingStoreCol = msg.toLowerCase().includes("store") && msg.toLowerCase().includes("column");
+  if (!isMissingStoreCol) throw new Error((res1.error as any)?.message || "pushStoreSnapshot failed");
+
+  const row2: any = {
+    user_id: user.id,
+    updated_at: new Date().toISOString(),
+    data: storePayload,
+  };
+
+  const res2 = await supabase.from("user_store").upsert(row2, { onConflict: "user_id" });
+  if (res2.error) throw new Error((res2.error as any)?.message || "pushStoreSnapshot failed");
 }
 
 // ============================================================

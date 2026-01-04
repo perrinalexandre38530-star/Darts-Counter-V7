@@ -1,13 +1,18 @@
 // ============================================================
 // src/hooks/useAuthOnline.tsx
-// V8 — 1 compte unique, auto-connecté (anonymous), supprimable
+// V8 — 1 compte Supabase unique + auto-session
+// + Compat UI : fournit login/signup pour Profiles.tsx
 // ============================================================
 
 import React from "react";
-import { onlineApi, type AuthSession, type UpdateProfilePayload } from "../lib/onlineApi";
+import {
+  onlineApi,
+  type AuthSession,
+  type UpdateProfilePayload,
+  type SignupPayload,
+  type LoginPayload,
+} from "../lib/onlineApi";
 import type { OnlineProfile } from "../lib/onlineTypes";
-import { hydrateFromOnline, pushLocalSnapshotToOnline } from "../lib/hydrateFromOnline";
-import { startCloudSync, stopCloudSync } from "../lib/cloudSync";
 
 type Status = "signed_in" | "signed_out";
 
@@ -15,7 +20,14 @@ type AuthOnlineContextValue = {
   ready: boolean;
   loading: boolean;
   status: Status;
+
   session: AuthSession | null;
+  user: AuthSession["user"] | null;
+  profile: OnlineProfile | null;
+
+  // ✅ Compat Profiles.tsx
+  signup: (payload: SignupPayload) => Promise<AuthSession>;
+  login: (payload: LoginPayload) => Promise<AuthSession>;
 
   refresh: () => Promise<AuthSession | null>;
   logout: () => Promise<void>;
@@ -34,29 +46,30 @@ export function AuthOnlineProvider({ children }: { children: React.ReactNode }) 
   const [loading, setLoading] = React.useState(false);
   const [session, setSession] = React.useState<AuthSession | null>(null);
 
-  // ✅ V8: la "présence" logique côté UI
-  const status: Status = session?.token ? "signed_in" : "signed_out";
+  // ✅ "connecté" = on a un user (même si token vide tant que mail pas confirmé)
+  const status: Status = session?.user?.id ? "signed_in" : "signed_out";
+
+  const user = session?.user ?? null;
+  const profile = session?.profile ?? null;
+
+  const afterSignedIn = React.useCallback(async (_s: AuthSession) => {
+    // ✅ Base saine: App.tsx gère pull/push du store (cloud unique)
+    // Ici on garde uniquement l'état auth pour l'UI.
+  }, []);
 
   const refresh = React.useCallback(async () => {
     setLoading(true);
     try {
-      // ✅ V8 onlineApi.restoreSession() => garantit une session (anon si besoin)
       const s = await onlineApi.restoreSession();
       setSession(s);
 
-      if (s?.token) {
+      if (s?.user?.id) {
         try {
-          startCloudSync();
-        } catch {}
-
-        // pull cloud léger (pas de reload)
-        try {
-          await hydrateFromOnline({ reload: false });
+          await afterSignedIn(s);
         } catch {}
       } else {
-        // en théorie ne devrait quasiment jamais arriver en V8
         try {
-          stopCloudSync();
+          // base saine: pas de cloudSync ici
         } catch {}
       }
 
@@ -65,21 +78,52 @@ export function AuthOnlineProvider({ children }: { children: React.ReactNode }) 
       setLoading(false);
       setReady(true);
     }
-  }, []);
+  }, [afterSignedIn]);
 
   React.useEffect(() => {
     refresh();
   }, [refresh]);
 
+  // ✅ Compat: signup (Profiles.tsx)
+  const signup = React.useCallback(
+    async (payload: SignupPayload) => {
+      setLoading(true);
+      try {
+        const s = await onlineApi.signup(payload);
+        setSession(s);
+        if (s?.user?.id) await afterSignedIn(s);
+        return s;
+      } finally {
+        setLoading(false);
+        setReady(true);
+      }
+    },
+    [afterSignedIn]
+  );
+
+  // ✅ Compat: login (Profiles.tsx)
+  const login = React.useCallback(
+    async (payload: LoginPayload) => {
+      setLoading(true);
+      try {
+        const s = await onlineApi.login(payload);
+        setSession(s);
+        if (s?.user?.id) await afterSignedIn(s);
+        return s;
+      } finally {
+        setLoading(false);
+        setReady(true);
+      }
+    },
+    [afterSignedIn]
+  );
+
   const logout = React.useCallback(async () => {
-    // V8: normalement tu ne "logout" jamais définitivement.
-    // On le garde pour debug / QA.
     setLoading(true);
     try {
       try {
-        stopCloudSync();
+        // base saine: pas de cloudSync ici
       } catch {}
-
       await onlineApi.logout();
       setSession(null);
     } finally {
@@ -92,27 +136,26 @@ export function AuthOnlineProvider({ children }: { children: React.ReactNode }) 
     setLoading(true);
     try {
       try {
-        stopCloudSync();
+        // base saine: pas de cloudSync ici
       } catch {}
 
-      // supprime compte courant (Edge Function)
       await onlineApi.deleteAccount();
       setSession(null);
 
-      // ✅ V8: recrée automatiquement une session anon neuve
+      // recrée une session anon neuve (comportement V8)
       const s = await onlineApi.restoreSession();
       setSession(s);
 
-      if (s?.token) {
+      if (s?.user?.id) {
         try {
-          startCloudSync();
+          await afterSignedIn(s);
         } catch {}
       }
     } finally {
       setLoading(false);
       setReady(true);
     }
-  }, []);
+  }, [afterSignedIn]);
 
   const updateProfile = React.useCallback(async (patch: UpdateProfilePayload) => {
     setLoading(true);
@@ -129,37 +172,32 @@ export function AuthOnlineProvider({ children }: { children: React.ReactNode }) 
     }
   }, []);
 
-  const syncPull = React.useCallback(async (opts?: { reload?: boolean }) => {
-    setLoading(true);
-    try {
-      const r = await hydrateFromOnline({ reload: opts?.reload ?? true });
-      return { status: r.status, applied: !!(r as any).applied };
-    } finally {
-      setLoading(false);
-    }
+  const syncPull = React.useCallback(async (_opts?: { reload?: boolean }) => {
+    // ✅ Pull est déclenché automatiquement au SIGNED_IN dans App.tsx
+    return { status: "ok", applied: false };
   }, []);
 
   const syncPush = React.useCallback(async () => {
-    setLoading(true);
-    try {
-      await pushLocalSnapshotToOnline();
-    } finally {
-      setLoading(false);
-    }
+    // ✅ Push est déclenché automatiquement (debounce) dans App.tsx
   }, []);
 
   const value: AuthOnlineContextValue = {
     ready,
     loading,
     status,
+
     session,
+    user,
+    profile,
+
+    signup,
+    login,
 
     refresh,
     logout,
     deleteAccount,
 
     updateProfile,
-
     syncPull,
     syncPush,
   };

@@ -651,6 +651,32 @@ export async function nukeAll(): Promise<void> {
   }
 }
 
+
+/* ============================================================
+   ✅ WIPE TOTAL LOCAL (pour SIGNED_OUT / changement de compte)
+   - Clear IndexedDB (store principal)
+   - Clear toutes les clés localStorage dc_ / dc-
+   - Supprime aussi la clé legacy darts-counter-store-v3
+============================================================ */
+export async function wipeAllLocalData(): Promise<void> {
+  try {
+    await nukeAll();
+  } catch {}
+
+  try {
+    clearLocalStorageDc();
+  } catch {}
+
+  try {
+    localStorage.removeItem(LEGACY_LS_KEY);
+  } catch {}
+
+  // par sécurité, retire aussi l'auth online éventuelle (si présente)
+  try {
+    localStorage.removeItem("dc_online_auth_supabase_v1");
+  } catch {}
+}
+
 /* ---------- Migration utilitaire ---------- */
 export async function migrateFromLocalStorage(keys: string[]) {
   for (const k of keys) {
