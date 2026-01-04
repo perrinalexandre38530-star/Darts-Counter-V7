@@ -1239,6 +1239,44 @@ function App() {
           const payload = (res as any)?.payload ?? null;
           const cloudStore = payload?.store ?? payload?.idb?.store ?? payload ?? null;
 
+          // ✅ SAFETY: si le cloud existe mais est VIDE ({}), on ne doit JAMAIS écraser un local déjà rempli.
+          // Cas typique: première connexion / ligne user_store créée vide.
+          const isCloudEmpty = (() => {
+            if (!cloudStore) return true;
+            if (typeof cloudStore !== "object") return false;
+            try {
+              const keys = Object.keys(cloudStore as any);
+              if (keys.length === 0) return true;
+              const cs: any = cloudStore as any;
+              const hasProfiles = Array.isArray(cs.profiles) && cs.profiles.length > 0;
+              const hasHistory = Array.isArray(cs.history) && cs.history.length > 0;
+              const hasFriends = Array.isArray(cs.friends) && cs.friends.length > 0;
+              const hasDartSets = Array.isArray(cs.dartSets) && cs.dartSets.length > 0;
+              const hasActive = !!cs.activeProfileId;
+              return !(hasProfiles || hasHistory || hasFriends || hasDartSets || hasActive);
+            } catch {
+              return false;
+            }
+          })();
+
+          const hasLocalData =
+            (store?.profiles?.length || 0) > 0 ||
+            !!(store as any)?.activeProfileId ||
+            (store?.friends?.length || 0) > 0 ||
+            (store?.history?.length || 0) > 0 ||
+            ((store as any)?.dartSets?.length || 0) > 0;
+
+          if (isCloudEmpty && hasLocalData) {
+            try {
+              const cloudSeed = sanitizeStoreForCloud(store);
+              await onlineApi.pushStoreSnapshot(cloudSeed);
+              console.log("[cloud] cloud empty -> seeded from local");
+            } catch (e) {
+              console.warn("[cloud] seed from local failed", e);
+            }
+            return; // ⛔ ne pas écraser le store local
+          }
+
           if (cloudStore && typeof cloudStore === "object") {
             const next: Store = {
               ...initialStore,
@@ -1919,7 +1957,9 @@ function App() {
           const now = Date.now();
 
           const bucket = "avatars";
-          const objectPath = `${targetProfile.id}/avatar.png`;
+          // 🔒 Stockage avatar par USER (auth.uid), pas par id de profil local
+          const uid = String((online as any)?.session?.user?.id || (online as any)?.user?.id || "");
+          const objectPath = `${uid || targetProfile.id}/avatar.png`;
 
           try {
             const { publicUrl } = await uploadAvatarToSupabase({ bucket, objectPath, pngDataUrl });
