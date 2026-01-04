@@ -20,37 +20,20 @@ export type OnlineIdentity = {
   profile: OnlineProfile | null;
 };
 
-/* ---------- Helpers internes ---------- */
-
-type PrivateInfoRaw = {
-  email?: string;
-  password?: string;
-  onlineUserId?: string;
-  onlineEmail?: string;
-  [k: string]: any;
-};
-
-function getPrivateInfo(p: Profile): PrivateInfoRaw {
-  return ((p as any).privateInfo || {}) as PrivateInfoRaw;
-}
-
-function withPrivateInfo(p: Profile, pi: PrivateInfoRaw): Profile {
-  return {
-    ...(p as any),
-    privateInfo: pi,
-  } as Profile;
-}
-
 /* ============================================================
    ✅ Online mirror profile (anti-duplication)
    - ID stable: online:<user.id>
    - Nettoyage doublons + migration douce
 ============================================================ */
-export function ensureOnlineMirrorProfile(store: any, user: any, onlineProfile?: any) {
+export function ensureOnlineMirrorProfile(
+  store: any,
+  user: any,
+  onlineProfile?: any
+) {
   if (!store || !user?.id) return store;
 
   const mirrorId = `online:${user.id}`;
-  const email = (user.email || "").toLowerCase();
+  const email = String(user.email || "").toLowerCase();
 
   const profiles: any[] = Array.isArray(store.profiles) ? store.profiles : [];
 
@@ -59,7 +42,11 @@ export function ensureOnlineMirrorProfile(store: any, user: any, onlineProfile?:
     const pid = String(p?.id || "");
     const piUid = String(pi?.onlineUserId || "");
     const piEmail = String(pi?.onlineEmail || "").toLowerCase();
-    return pid === mirrorId || (piUid && piUid === user.id) || (!!email && piEmail === email);
+    return (
+      pid === mirrorId ||
+      (piUid && piUid === user.id) ||
+      (!!email && piEmail === email)
+    );
   };
 
   const matches = profiles.filter(isSameAccount);
@@ -69,6 +56,7 @@ export function ensureOnlineMirrorProfile(store: any, user: any, onlineProfile?:
   if (!primary) {
     const now = Date.now();
     const name = onlineProfile?.nickname || user.email || "Player";
+
     const mirror = {
       id: mirrorId,
       name,
@@ -76,7 +64,10 @@ export function ensureOnlineMirrorProfile(store: any, user: any, onlineProfile?:
       updatedAt: now,
       avatarUrl: onlineProfile?.avatarUrl || "",
       country: onlineProfile?.country || "",
-      privateInfo: { onlineUserId: user.id, onlineEmail: email || user.email || "" },
+      privateInfo: {
+        onlineUserId: user.id,
+        onlineEmail: email || user.email || "",
+      },
       isOnlineMirror: true,
     };
 
@@ -92,7 +83,7 @@ export function ensureOnlineMirrorProfile(store: any, user: any, onlineProfile?:
     primary = { ...primary, id: mirrorId };
   }
 
-  // 3) Update léger du primaire (sans toucher aux autres)
+  // 3) Update léger du primaire
   const updatedPrimary = {
     ...primary,
     name: onlineProfile?.nickname || primary.name,
@@ -130,7 +121,6 @@ export function linkOnlineIdentityToLocalProfile(
   store: Store
 ): { store: Store; createdProfile: Profile | null } {
   // Pas d'utilisateur online => on ne touche pas aux profils ici.
-  // (Le logout complet est géré ailleurs.)
   if (!identity || !identity.user) {
     return { store, createdProfile: null };
   }
@@ -138,13 +128,17 @@ export function linkOnlineIdentityToLocalProfile(
   const user = identity.user as any;
   const onlineProfile = (identity.profile || null) as any;
 
-  const beforeIds = new Set((store.profiles || []).map((p) => String((p as any)?.id || "")));
+  const beforeIds = new Set(
+    (store.profiles || []).map((p) => String((p as any)?.id || ""))
+  );
 
   // ✅ applique mirror + cleanup
   const mirrored = ensureOnlineMirrorProfile(store as any, user, onlineProfile) as Store;
 
-  // On déduit si le profil mirror a été créé (best-effort)
-  const afterIds = new Set((mirrored.profiles || []).map((p) => String((p as any)?.id || "")));
+  // Déduit si le profil mirror a été créé (best-effort)
+  const afterIds = new Set(
+    (mirrored.profiles || []).map((p) => String((p as any)?.id || ""))
+  );
   const mirrorId = `online:${user.id}`;
   const created =
     !beforeIds.has(mirrorId) && afterIds.has(mirrorId)
@@ -156,9 +150,9 @@ export function linkOnlineIdentityToLocalProfile(
     // Si l'utilisateur est connecté et qu'aucun statut n'est défini,
     // on force "online" (mais on ne touche pas à "away" manuellement choisi).
     selfStatus:
-      mirrored.selfStatus === "online" || mirrored.selfStatus === "away"
-        ? mirrored.selfStatus
-        : "online",
+      (mirrored as any).selfStatus === "online" || (mirrored as any).selfStatus === "away"
+        ? (mirrored as any).selfStatus
+        : ("online" as any),
   };
 
   return { store: nextStore, createdProfile: created };
