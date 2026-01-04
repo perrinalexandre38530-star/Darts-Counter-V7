@@ -4,7 +4,7 @@
 // ============================================================
 
 import { onlineApi } from "./onlineApi";
-import { saveStore } from "./storage";
+import { exportCloudSnapshot, importCloudSnapshot, saveStore } from "./storage";
 
 const LS_CLOUD_APPLIED_AT = "dc_cloud_applied_at_v2";
 
@@ -26,7 +26,11 @@ export async function hydrateFromOnline(opts?: { reload?: boolean }) {
   const res = await onlineApi.pullStoreSnapshot();
   if (res.status !== "ok") return { status: res.status, applied: false };
 
-  const payload = res.payload; // {version, store}
+  // ✅ payload est normalement un export complet (exportCloudSnapshot / exportAll)
+  // { v, exportedAt, store, kv, idb }
+  const payload: any = res.payload;
+
+  // Back-compat : certains anciens payloads ne contenaient que {version, store}
   const cloudStore = payload?.store ?? null;
   if (!cloudStore) return { status: "ok", applied: false, reason: "empty_cloud" as const };
 
@@ -36,18 +40,27 @@ export async function hydrateFromOnline(opts?: { reload?: boolean }) {
     return { status: "ok", applied: false, reason: "cloud_not_newer" as const };
   }
 
-  // ✅ apply to app (store React live)
-  const w: any = window as any;
-  if (w?.__appStore?.update) {
-    w.__appStore.update(() => cloudStore);
-  } else if (w?.__appStore) {
-    w.__appStore.store = cloudStore;
+  // ✅ hydrate COMPLET : on réimporte la snapshot cloud (store + localStorage + idb)
+  // Ça évite le problème “après Clear Site Data tout est vide”.
+  try {
+    if (payload?.kv || payload?.idb || payload?.v) {
+      await importCloudSnapshot(payload, { replace: true });
+    } else {
+      // fallback ultra minimal (ancienne forme)
+      const minimal = { v: 1, exportedAt: Date.now(), store: cloudStore, kv: {}, idb: {} };
+      await importCloudSnapshot(minimal, { replace: true });
+    }
+  } catch (e) {
+    // fallback : au moins sauver le store
+    try {
+      await saveStore(cloudStore);
+    } catch {}
   }
 
-  // ✅ persist local (IndexedDB / storage layer)
-  try {
-    await saveStore(cloudStore);
-  } catch {}
+  // ✅ apply to app (store React live)
+  const w: any = window as any;
+  if (w?.__appStore?.update) w.__appStore.update(() => cloudStore);
+  else if (w?.__appStore) w.__appStore.store = cloudStore;
 
   setAppliedAt(cloudTs || Date.now());
 
@@ -62,11 +75,8 @@ export async function pushLocalSnapshotToOnline() {
   const store = w?.__appStore?.store ?? null;
   if (!store) return { ok: false, error: "no_store" };
 
-  const payload = {
-    version: 8,
-    store,
-  };
-
-  await onlineApi.pushStoreSnapshot(payload, 8);
+  // ✅ push COMPLET : exportAll (store + localStorage + idb)
+  const snapshot = await exportCloudSnapshot();
+  await onlineApi.pushStoreSnapshot(snapshot as any, (snapshot as any)?.v ?? 8);
   return { ok: true };
 }
