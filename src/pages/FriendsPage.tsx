@@ -17,9 +17,14 @@
 // - Historique online : cards + tri + regroupement (Aujourd’hui / 7 derniers jours / Avant)
 // - Bouton "Lancer maintenant" -> x01_online_setup avec lobbyCode
 //
-// ✅ Cleanup UI
-// - Header style "STATS" avec titre ONLINE HUB
-// - ✅ Suppression du texte "V8 : ... Aucun écran login ici." dans le header
+// ✅ FIX: "création du salon gelée"
+// - onlineApi.createLobby/joinLobby peut rester pendu si réseau/worker bloque -> on met un TIMEOUT
+// - Ajout "Annuler" si la création reste bloquée
+// - Anti late-resolve : on ignore une réponse si une nouvelle requête a démarré
+//
+// ✅ UI
+// - Header style STATS "ONLINE HUB"
+// - Pas de texte V8 dans le header
 // ============================================
 
 import React from "react";
@@ -39,23 +44,18 @@ const LS_PRESENCE_KEY = "dc_online_presence_v1";
 // Gardé pour compat avec StatsOnline (qui lit encore ce cache local)
 const LS_ONLINE_MATCHES_KEY = "dc_online_matches_v1";
 
+/* -------------------------------------------------
+   Helpers
+--------------------------------------------------*/
 type PresenceStatus = "online" | "away" | "offline";
-
-type StoredPresence = {
-  status: PresenceStatus;
-  lastSeen: number;
-};
-
-/* ------ Helpers localStorage présence ------ */
+type StoredPresence = { status: PresenceStatus; lastSeen: number };
 
 function savePresenceToLS(status: PresenceStatus) {
   if (typeof window === "undefined") return;
   const payload: StoredPresence = { status, lastSeen: Date.now() };
   try {
     window.localStorage.setItem(LS_PRESENCE_KEY, JSON.stringify(payload));
-  } catch {
-    // ignore
-  }
+  } catch {}
 }
 
 function loadPresenceFromLS(): StoredPresence | null {
@@ -89,8 +89,46 @@ function formatLastSeenAgo(lastSeen: number | null): string | null {
   return `Il y a ${diffH} h`;
 }
 
+function toTs(m: any) {
+  const ts = m?.finishedAt || m?.startedAt || m?.createdAt || 0;
+  const n = typeof ts === "number" ? ts : Date.parse(ts);
+  return Number.isFinite(n) ? n : 0;
+}
+
+function groupMatchesPretty(list: any[]) {
+  const now = Date.now();
+  const day = 24 * 60 * 60 * 1000;
+
+  const today: any[] = [];
+  const week: any[] = [];
+  const older: any[] = [];
+
+  for (const m of list) {
+    const t = toTs(m);
+    if (!t) {
+      older.push(m);
+      continue;
+    }
+    if (now - t < day) today.push(m);
+    else if (now - t < 7 * day) week.push(m);
+    else older.push(m);
+  }
+
+  return { today, week, older };
+}
+
+function withTimeout<T>(promise: Promise<T>, ms: number, message: string): Promise<T> {
+  let timer: number | null = null;
+  const timeout = new Promise<T>((_, reject) => {
+    timer = window.setTimeout(() => reject(new Error(message)), ms);
+  });
+  return Promise.race([promise, timeout]).finally(() => {
+    if (timer) window.clearTimeout(timer);
+  }) as Promise<T>;
+}
+
 /* ------------------------------
-   UI helpers (cards / sections)
+   UI helpers
 ------------------------------ */
 
 function SectionTitle({
@@ -103,14 +141,7 @@ function SectionTitle({
   right?: React.ReactNode;
 }) {
   return (
-    <div
-      style={{
-        display: "flex",
-        alignItems: "flex-end",
-        gap: 10,
-        marginTop: 16,
-      }}
-    >
+    <div style={{ display: "flex", alignItems: "flex-end", gap: 10, marginTop: 16 }}>
       <div style={{ flex: 1, minWidth: 0 }}>
         <div
           style={{
@@ -123,11 +154,7 @@ function SectionTitle({
         >
           {title}
         </div>
-        {subtitle ? (
-          <div style={{ fontSize: 12, opacity: 0.78, marginTop: 2 }}>
-            {subtitle}
-          </div>
-        ) : null}
+        {subtitle ? <div style={{ fontSize: 12, opacity: 0.78, marginTop: 2 }}>{subtitle}</div> : null}
       </div>
       {right ? <div style={{ flexShrink: 0 }}>{right}</div> : null}
     </div>
@@ -185,11 +212,7 @@ function Pill({
     blue: ["rgba(79,180,255,.14)", "#4fb4ff", "rgba(79,180,255,.35)"],
     green: ["rgba(127,226,169,.14)", "#7fe2a9", "rgba(127,226,169,.35)"],
     red: ["rgba(255,90,90,.14)", "#ff5a5a", "rgba(255,90,90,.35)"],
-    gray: [
-      "rgba(255,255,255,.08)",
-      "rgba(255,255,255,.9)",
-      "rgba(255,255,255,.12)",
-    ],
+    gray: ["rgba(255,255,255,.08)", "rgba(255,255,255,.9)", "rgba(255,255,255,.12)"],
   };
   const [bg, fg, bd] = map[tone] || map.gray;
 
@@ -215,63 +238,20 @@ function Pill({
   );
 }
 
-function toTs(m: any) {
-  const ts = m?.finishedAt || m?.startedAt || m?.createdAt || 0;
-  const n = typeof ts === "number" ? ts : Date.parse(ts);
-  return Number.isFinite(n) ? n : 0;
-}
-
-function groupMatchesPretty(list: any[]) {
-  const now = Date.now();
-  const day = 24 * 60 * 60 * 1000;
-
-  const today: any[] = [];
-  const week: any[] = [];
-  const older: any[] = [];
-
-  for (const m of list) {
-    const t = toTs(m);
-    if (!t) {
-      older.push(m);
-      continue;
-    }
-    if (now - t < day) today.push(m);
-    else if (now - t < 7 * day) week.push(m);
-    else older.push(m);
-  }
-
-  return { today, week, older };
-}
-
-function MatchMiniCard({
-  m,
-  title,
-  dateLabel,
-  playersLabel,
-  winner,
-  kindTone,
-}: any) {
+function MatchMiniCard({ m, title, dateLabel, playersLabel, winner, kindTone }: any) {
   return (
     <div
       style={{
         borderRadius: 14,
         padding: 10,
-        background:
-          "linear-gradient(180deg, rgba(255,255,255,.06), rgba(0,0,0,.25))",
+        background: "linear-gradient(180deg, rgba(255,255,255,.06), rgba(0,0,0,.25))",
         border: "1px solid rgba(255,255,255,.10)",
         boxShadow: "0 10px 20px rgba(0,0,0,.45)",
         display: "grid",
         gap: 6,
       }}
     >
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          gap: 8,
-        }}
-      >
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
         <div
           style={{
             fontWeight: 900,
@@ -287,44 +267,19 @@ function MatchMiniCard({
         <Pill label={(m as any)?.isTraining ? "Training" : "Match"} tone={kindTone} />
       </div>
 
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          gap: 10,
-        }}
-      >
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
         <div style={{ fontSize: 11, opacity: 0.82 }}>{dateLabel}</div>
-        {winner ? (
-          <div style={{ fontSize: 11, color: "#ffd56a", fontWeight: 900 }}>
-            🏆 {winner}
-          </div>
-        ) : null}
+        {winner ? <div style={{ fontSize: 11, color: "#ffd56a", fontWeight: 900 }}>🏆 {winner}</div> : null}
       </div>
 
-      <div style={{ fontSize: 11, opacity: 0.88, lineHeight: 1.2 }}>
-        {playersLabel}
-      </div>
+      <div style={{ fontSize: 11, opacity: 0.88, lineHeight: 1.2 }}>{playersLabel}</div>
     </div>
   );
 }
 
-function MiniTile({
-  title,
-  desc,
-  tone = "blue",
-}: {
-  title: string;
-  desc: string;
-  tone?: "blue" | "gold" | "green";
-}) {
+function MiniTile({ title, desc, tone = "blue" }: { title: string; desc: string; tone?: "blue" | "gold" | "green" }) {
   const accent =
-    tone === "gold"
-      ? "rgba(255,213,106,.55)"
-      : tone === "green"
-      ? "rgba(127,226,169,.55)"
-      : "rgba(79,180,255,.55)";
+    tone === "gold" ? "rgba(255,213,106,.55)" : tone === "green" ? "rgba(127,226,169,.55)" : "rgba(79,180,255,.55)";
 
   return (
     <div
@@ -332,8 +287,7 @@ function MiniTile({
         borderRadius: 14,
         padding: 12,
         border: "1px solid rgba(255,255,255,.10)",
-        background:
-          "linear-gradient(180deg, rgba(255,255,255,.06), rgba(0,0,0,.28))",
+        background: "linear-gradient(180deg, rgba(255,255,255,.06), rgba(0,0,0,.28))",
         boxShadow: "0 10px 20px rgba(0,0,0,.45)",
         position: "relative",
         overflow: "hidden",
@@ -344,38 +298,17 @@ function MiniTile({
         style={{
           position: "absolute",
           inset: 0,
-          background: `radial-gradient(900px 140px at 0% 0%, ${accent.replace(
-            ",.55",
-            ",.18"
-          )}, transparent 55%)`,
+          background: `radial-gradient(900px 140px at 0% 0%, ${accent.replace(",.55", ",.18")}, transparent 55%)`,
           opacity: 0.9,
           pointerEvents: "none",
         }}
       />
       <div style={{ position: "relative" }}>
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            gap: 8,
-          }}
-        >
-          <div style={{ fontSize: 12.5, fontWeight: 950, color: "#f5f5f7" }}>
-            {title}
-          </div>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+          <div style={{ fontSize: 12.5, fontWeight: 950, color: "#f5f5f7" }}>{title}</div>
           <Pill label="SOON" tone="gray" />
         </div>
-        <div
-          style={{
-            marginTop: 6,
-            fontSize: 11.2,
-            opacity: 0.82,
-            lineHeight: 1.25,
-          }}
-        >
-          {desc}
-        </div>
+        <div style={{ marginTop: 6, fontSize: 11.2, opacity: 0.82, lineHeight: 1.25 }}>{desc}</div>
       </div>
     </div>
   );
@@ -384,7 +317,6 @@ function MiniTile({
 /* -------------------------------------------------
    Composant principal
 --------------------------------------------------*/
-
 type Props = {
   store: Store;
   update: (mut: (s: Store) => Store) => void;
@@ -392,22 +324,16 @@ type Props = {
 };
 
 export default function FriendsPage({ store, update, go }: Props) {
-  // --- Profil local actif (fallback pseudo + avatar)
   const activeProfile =
     (store.profiles || []).find((p: any) => p.id === (store as any).activeProfileId) ||
     (store.profiles || [])[0] ||
     null;
 
-  // -------- AUTH ONLINE (V8: AUTO SESSION) --------
   const { ready, status, user, profile } = useAuthOnline();
 
-  // ✅ V8 : ne JAMAIS bloquer avec un login UI
   if (!ready) {
     return (
-      <div
-        className="container"
-        style={{ padding: 16, paddingBottom: 96, color: "#f5f5f7" }}
-      >
+      <div className="container" style={{ padding: 16, paddingBottom: 96, color: "#f5f5f7" }}>
         Connexion en cours…
       </div>
     );
@@ -415,28 +341,12 @@ export default function FriendsPage({ store, update, go }: Props) {
 
   const isSignedIn = status === "signed_in";
 
-  // --- lastSeen (présence locale)
   const initialPresence = React.useMemo(() => loadPresenceFromLS(), []);
-  const [lastSeen, setLastSeen] = React.useState<number | null>(
-    initialPresence?.lastSeen ?? null
-  );
+  const [lastSeen, setLastSeen] = React.useState<number | null>(initialPresence?.lastSeen ?? null);
 
-  // --- statut global de l'app : store.selfStatus
-  const selfStatus: PresenceStatus =
-    ((store as any).selfStatus as PresenceStatus) || "offline";
-
-  const statusLabel =
-    selfStatus === "away"
-      ? "Absent"
-      : selfStatus === "online"
-      ? "En ligne"
-      : "Hors ligne";
-  const statusColor =
-    selfStatus === "away"
-      ? "#ffb347"
-      : selfStatus === "online"
-      ? "#7fe2a9"
-      : "#cccccc";
+  const selfStatus: PresenceStatus = ((store as any).selfStatus as PresenceStatus) || "offline";
+  const statusLabel = selfStatus === "away" ? "Absent" : selfStatus === "online" ? "En ligne" : "Hors ligne";
+  const statusColor = selfStatus === "away" ? "#ffb347" : selfStatus === "online" ? "#7fe2a9" : "#cccccc";
 
   const displayName =
     activeProfile?.name ||
@@ -448,19 +358,15 @@ export default function FriendsPage({ store, update, go }: Props) {
 
   const lastSeenLabel = formatLastSeenAgo(lastSeen);
 
-  // --- Drapeau pays du profil actif (privateInfo.country)
   const privateInfo = ((activeProfile as any)?.privateInfo || {}) as any;
   const countryRaw = privateInfo.country || "";
   const countryFlag = getCountryFlag(countryRaw);
 
-  // --- Historique online (onlineApi.listMatches)
   const [matches, setMatches] = React.useState<OnlineMatch[]>([]);
   const [loadingMatches, setLoadingMatches] = React.useState(false);
 
-  // -------- LOBBIES ONLINE --------
   const [creatingLobby, setCreatingLobby] = React.useState(false);
-  const [lastCreatedLobby, setLastCreatedLobby] =
-    React.useState<OnlineLobby | null>(null);
+  const [lastCreatedLobby, setLastCreatedLobby] = React.useState<OnlineLobby | null>(null);
 
   const [joinCode, setJoinCode] = React.useState("");
   const [joiningLobby, setJoiningLobby] = React.useState(false);
@@ -468,16 +374,16 @@ export default function FriendsPage({ store, update, go }: Props) {
   const [joinError, setJoinError] = React.useState<string | null>(null);
   const [joinInfo, setJoinInfo] = React.useState<string | null>(null);
 
-  /* -------------------------------------------------
-      Gestion présence locale (set + ping 30s)
-  --------------------------------------------------*/
+  // anti-freeze: ignore late results
+  const createReqIdRef = React.useRef(0);
+  const joinReqIdRef = React.useRef(0);
+
   function setPresence(newStatus: PresenceStatus) {
     update((st) => ({ ...st, selfStatus: newStatus as any }));
     savePresenceToLS(newStatus);
     setLastSeen(Date.now());
   }
 
-  // 🔁 Ping toutes les 30s quand "online"
   React.useEffect(() => {
     if (!isSignedIn || selfStatus !== "online") return;
     if (typeof window === "undefined") return;
@@ -490,7 +396,6 @@ export default function FriendsPage({ store, update, go }: Props) {
     return () => window.clearInterval(id);
   }, [isSignedIn, selfStatus]);
 
-  // Boot présence (si on retrouve une ancienne présence locale très vieille -> away)
   React.useEffect(() => {
     if (!initialPresence) return;
     const diff = Date.now() - initialPresence.lastSeen;
@@ -500,9 +405,6 @@ export default function FriendsPage({ store, update, go }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  /* -------------------------------------------------
-      Historique Online (serveur)
-  --------------------------------------------------*/
   React.useEffect(() => {
     let cancelled = false;
 
@@ -513,13 +415,8 @@ export default function FriendsPage({ store, update, go }: Props) {
         if (!cancelled) {
           setMatches(list || []);
           try {
-            window.localStorage.setItem(
-              LS_ONLINE_MATCHES_KEY,
-              JSON.stringify(list || [])
-            );
-          } catch {
-            // ignore
-          }
+            window.localStorage.setItem(LS_ONLINE_MATCHES_KEY, JSON.stringify(list || []));
+          } catch {}
         }
       } catch (e) {
         console.warn("[online] listMatches failed", e);
@@ -538,15 +435,12 @@ export default function FriendsPage({ store, update, go }: Props) {
   function handleClearOnlineHistory() {
     try {
       window.localStorage.removeItem(LS_ONLINE_MATCHES_KEY);
-    } catch {
-      // ignore
-    }
+    } catch {}
     setMatches([]);
   }
 
   function getMatchTitle(m: OnlineMatch): string {
-    const isTraining =
-      (m as any).isTraining === true || (m as any)?.payload?.kind === "training_x01";
+    const isTraining = (m as any).isTraining === true || (m as any)?.payload?.kind === "training_x01";
     if ((m as any).mode === "x01") return isTraining ? "X01 Training" : "X01 (match)";
     return (m as any).mode || "Match";
   }
@@ -554,12 +448,7 @@ export default function FriendsPage({ store, update, go }: Props) {
   function formatMatchDate(m: OnlineMatch): string {
     const ts = (m as any).finishedAt || (m as any).startedAt || (m as any).createdAt;
     const d = new Date(ts);
-    return d.toLocaleString(undefined, {
-      day: "2-digit",
-      month: "2-digit",
-      hour: "2-digit",
-      minute: "2-digit",
-    });
+    return d.toLocaleString(undefined, { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
   }
 
   function getMatchPlayersLabel(m: OnlineMatch): string {
@@ -577,37 +466,46 @@ export default function FriendsPage({ store, update, go }: Props) {
     return found?.name || null;
   }
 
-  // ---------- Création d'un salon X01 ----------
   async function handleCreateLobby() {
     if (creatingLobby) return;
+
+    const reqId = ++createReqIdRef.current;
 
     setCreatingLobby(true);
     setJoinInfo(null);
     setJoinError(null);
 
     try {
-      const lobby = await onlineApi.createLobby({
-        mode: "x01",
-        maxPlayers: 2,
-        settings: {
-          start: (store as any).settings?.defaultX01,
-          doubleOut: (store as any).settings?.doubleOut,
-        },
-      } as any);
+      // ✅ TIMEOUT anti-freeze
+      const lobby = await withTimeout(
+        onlineApi.createLobby({
+          mode: "x01",
+          maxPlayers: 2,
+          settings: {
+            start: (store as any).settings?.defaultX01,
+            doubleOut: (store as any).settings?.doubleOut,
+          },
+        } as any),
+        12_000,
+        "Création du salon : délai dépassé (réseau/serveur). Réessaie."
+      );
+
+      // ignore late resolve if a new req started
+      if (createReqIdRef.current !== reqId) return;
 
       setLastCreatedLobby(lobby);
       setJoinedLobby(null);
       setJoinInfo("Salon créé sur le serveur online.");
       console.log("[online] lobby créé", lobby);
     } catch (e: any) {
+      if (createReqIdRef.current !== reqId) return;
       console.warn(e);
       setJoinError(e?.message || "Impossible de créer un salon online pour le moment.");
     } finally {
-      setCreatingLobby(false);
+      if (createReqIdRef.current === reqId) setCreatingLobby(false);
     }
   }
 
-  // ---------- Join d'un salon X01 par code ----------
   async function handleJoinLobby() {
     const code = joinCode.trim().toUpperCase();
 
@@ -619,36 +517,49 @@ export default function FriendsPage({ store, update, go }: Props) {
       setJoinError("Entre un code de salon.");
       return;
     }
+    if (joiningLobby) return;
 
+    const reqId = ++joinReqIdRef.current;
     setJoiningLobby(true);
+
     try {
-      const lobby = await onlineApi.joinLobby({
-        code,
-        userId: (user as any)?.id || "anon",
-        nickname:
-          (profile as any)?.displayName ||
-          (profile as any)?.display_name ||
-          (user as any)?.nickname ||
-          activeProfile?.name ||
-          "Joueur",
-      } as any);
+      const lobby = await withTimeout(
+        onlineApi.joinLobby({
+          code,
+          userId: (user as any)?.id || "anon",
+          nickname:
+            (profile as any)?.displayName ||
+            (profile as any)?.display_name ||
+            (user as any)?.nickname ||
+            activeProfile?.name ||
+            "Joueur",
+        } as any),
+        12_000,
+        "Rejoindre : délai dépassé (réseau/serveur). Vérifie le code et réessaie."
+      );
+
+      if (joinReqIdRef.current !== reqId) return;
 
       setJoinedLobby(lobby);
       setJoinInfo("Salon trouvé sur le serveur online.");
       console.log("[online] join lobby ok", lobby);
     } catch (e: any) {
+      if (joinReqIdRef.current !== reqId) return;
       console.warn(e);
       setJoinError(e?.message || "Impossible de rejoindre ce salon pour le moment.");
     } finally {
-      setJoiningLobby(false);
+      if (joinReqIdRef.current === reqId) setJoiningLobby(false);
     }
   }
 
-  // ✅ TRI global + groupement joli
-  const sortedMatches = React.useMemo(
-    () => (matches || []).slice().sort((a: any, b: any) => toTs(b) - toTs(a)),
-    [matches]
-  );
+  function cancelCreate() {
+    // on "annule" côté UI (la requête réseau peut rester pendue, mais on ignore son résultat)
+    createReqIdRef.current++;
+    setCreatingLobby(false);
+    setJoinError("Création annulée.");
+  }
+
+  const sortedMatches = React.useMemo(() => (matches || []).slice().sort((a: any, b: any) => toTs(b) - toTs(a)), [matches]);
   const grouped = React.useMemo(() => groupMatchesPretty(sortedMatches as any), [sortedMatches]);
 
   const lobby = joinedLobby || lastCreatedLobby;
@@ -673,8 +584,7 @@ export default function FriendsPage({ store, update, go }: Props) {
           style={{
             position: "absolute",
             inset: 0,
-            background:
-              "linear-gradient(90deg, transparent, rgba(255,213,106,.10), rgba(79,180,255,.08), transparent)",
+            background: "linear-gradient(90deg, transparent, rgba(255,213,106,.10), rgba(79,180,255,.08), transparent)",
             opacity: 0.95,
             pointerEvents: "none",
           }}
@@ -683,9 +593,7 @@ export default function FriendsPage({ store, update, go }: Props) {
         <div style={{ position: "relative" }}>
           <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12 }}>
             <div style={{ minWidth: 0 }}>
-              <div style={{ fontSize: 11, fontWeight: 950, letterSpacing: 1.2, opacity: 0.82 }}>
-                MODE EN LIGNE
-              </div>
+              <div style={{ fontSize: 11, fontWeight: 950, letterSpacing: 1.2, opacity: 0.82 }}>MODE EN LIGNE</div>
 
               <div
                 style={{
@@ -725,9 +633,7 @@ export default function FriendsPage({ store, update, go }: Props) {
                   height: 8,
                   borderRadius: "50%",
                   background: isSignedIn ? "#7fe2a9" : "#ff5a5a",
-                  boxShadow: isSignedIn
-                    ? "0 0 10px rgba(127,226,169,.35)"
-                    : "0 0 10px rgba(255,90,90,.35)",
+                  boxShadow: isSignedIn ? "0 0 10px rgba(127,226,169,.35)" : "0 0 10px rgba(255,90,90,.35)",
                 }}
               />
               {isSignedIn ? "Serveur : OK" : "Serveur : hors ligne"}
@@ -738,19 +644,16 @@ export default function FriendsPage({ store, update, go }: Props) {
             style={{
               marginTop: 12,
               height: 1,
-              background:
-                "linear-gradient(90deg, transparent, rgba(255,213,106,.55), rgba(79,180,255,.35), transparent)",
+              background: "linear-gradient(90deg, transparent, rgba(255,213,106,.55), rgba(79,180,255,.35), transparent)",
               opacity: 0.85,
             }}
           />
-          {/* ✅ Texte V8 supprimé ici */}
         </div>
       </div>
 
-      {/* ================= COMPTE CLOUD (propre) ================= */}
+      {/* ================= COMPTE CLOUD ================= */}
       <NeonCard accent="rgba(255,213,106,.55)">
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-          {/* Avatar local + drapeau */}
           <div style={{ position: "relative", width: 62, height: 62, flexShrink: 0 }}>
             <div
               style={{
@@ -765,7 +668,18 @@ export default function FriendsPage({ store, update, go }: Props) {
               {(activeProfile as any)?.avatarDataUrl ? (
                 <img src={(activeProfile as any).avatarDataUrl} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
               ) : (
-                <div style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 950, color: "#1a1a1a", fontSize: 20 }}>
+                <div
+                  style={{
+                    width: "100%",
+                    height: "100%",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    fontWeight: 950,
+                    color: "#1a1a1a",
+                    fontSize: 20,
+                  }}
+                >
                   {(displayName || "??").slice(0, 2).toUpperCase()}
                 </div>
               )}
@@ -821,7 +735,6 @@ export default function FriendsPage({ store, update, go }: Props) {
           </div>
         </div>
 
-        {/* Présence app */}
         <div style={{ marginTop: 12, display: "flex", gap: 8 }}>
           <button
             type="button"
@@ -865,7 +778,7 @@ export default function FriendsPage({ store, update, go }: Props) {
         </div>
       </NeonCard>
 
-      {/* ================= FEATURES ONLINE (tuiles style jeu) ================= */}
+      {/* ================= FEATURES ================= */}
       <SectionTitle title="Fonctions en ligne" subtitle="Interface prête • fonctionnalités à brancher ensuite" />
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginTop: 10 }}>
         <MiniTile title="Amis" desc="Présence, invitations, messages" tone="blue" />
@@ -874,8 +787,32 @@ export default function FriendsPage({ store, update, go }: Props) {
         <MiniTile title="Replays" desc="Historique détaillé des matchs" tone="blue" />
       </div>
 
-      {/* ================= SALONS ONLINE (serveur) ================= */}
-      <SectionTitle title="Salons online" subtitle="Créer un salon X01 ou rejoindre avec un code (serveur)" />
+      {/* ================= SALONS ONLINE ================= */}
+      <SectionTitle
+        title="Salons online"
+        subtitle="Créer un salon X01 ou rejoindre avec un code (serveur)"
+        right={
+          creatingLobby ? (
+            <button
+              type="button"
+              onClick={cancelCreate}
+              style={{
+                borderRadius: 999,
+                padding: "7px 10px",
+                border: "1px solid rgba(255,255,255,.12)",
+                background: "rgba(255,90,90,.12)",
+                color: "#ff8a8a",
+                fontWeight: 950,
+                fontSize: 11.5,
+                cursor: "pointer",
+              }}
+              title="Annule l'état bloqué (timeout/serveur)"
+            >
+              Annuler
+            </button>
+          ) : null
+        }
+      />
 
       <NeonCard accent="rgba(79,180,255,.55)" style={{ marginTop: 10 }}>
         <div style={{ display: "grid", gap: 10 }}>
@@ -955,7 +892,7 @@ export default function FriendsPage({ store, update, go }: Props) {
         </div>
       </NeonCard>
 
-      {/* ================= WAITING ROOM ONLINE ================= */}
+      {/* ================= WAITING ROOM ================= */}
       {lobby && (
         <div
           style={{
@@ -1073,7 +1010,7 @@ export default function FriendsPage({ store, update, go }: Props) {
         </div>
       )}
 
-      {/* ================= HISTORIQUE ONLINE ================= */}
+      {/* ================= HISTORIQUE ================= */}
       <SectionTitle
         title="Historique Online"
         subtitle="Trié du plus récent au plus ancien • regroupé automatiquement"
@@ -1107,80 +1044,78 @@ export default function FriendsPage({ store, update, go }: Props) {
           </div>
         ) : (
           <div style={{ display: "grid", gap: 12, paddingLeft: 6 }}>
-            {grouped.today?.length ? (
-              <div>
-                <div style={{ fontSize: 12, fontWeight: 950, opacity: 0.82, marginBottom: 6 }}>Aujourd’hui</div>
-                <div style={{ display: "grid", gap: 8 }}>
-                  {grouped.today.map((m: any) => {
-                    const title = getMatchTitle(m);
-                    const playersLabel = getMatchPlayersLabel(m);
-                    const winner = getMatchWinnerLabel(m);
-                    const isTraining = (m as any).isTraining === true || (m as any)?.payload?.kind === "training_x01";
-                    return (
-                      <MatchMiniCard
-                        key={m.id}
-                        m={m}
-                        title={title}
-                        dateLabel={formatMatchDate(m)}
-                        playersLabel={playersLabel}
-                        winner={winner}
-                        kindTone={isTraining ? "green" : "gold"}
-                      />
-                    );
-                  })}
-                </div>
-              </div>
-            ) : null}
+            {(() => {
+              const g = grouped;
+              return (
+                <>
+                  {g.today?.length ? (
+                    <div>
+                      <div style={{ fontSize: 12, fontWeight: 950, opacity: 0.82, marginBottom: 6 }}>Aujourd’hui</div>
+                      <div style={{ display: "grid", gap: 8 }}>
+                        {g.today.map((m: any) => {
+                          const isTraining = (m as any).isTraining === true || (m as any)?.payload?.kind === "training_x01";
+                          return (
+                            <MatchMiniCard
+                              key={m.id}
+                              m={m}
+                              title={getMatchTitle(m)}
+                              dateLabel={formatMatchDate(m)}
+                              playersLabel={getMatchPlayersLabel(m)}
+                              winner={getMatchWinnerLabel(m)}
+                              kindTone={isTraining ? "green" : "gold"}
+                            />
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ) : null}
 
-            {grouped.week?.length ? (
-              <div>
-                <div style={{ fontSize: 12, fontWeight: 950, opacity: 0.82, marginBottom: 6 }}>7 derniers jours</div>
-                <div style={{ display: "grid", gap: 8 }}>
-                  {grouped.week.map((m: any) => {
-                    const title = getMatchTitle(m);
-                    const playersLabel = getMatchPlayersLabel(m);
-                    const winner = getMatchWinnerLabel(m);
-                    const isTraining = (m as any).isTraining === true || (m as any)?.payload?.kind === "training_x01";
-                    return (
-                      <MatchMiniCard
-                        key={m.id}
-                        m={m}
-                        title={title}
-                        dateLabel={formatMatchDate(m)}
-                        playersLabel={playersLabel}
-                        winner={winner}
-                        kindTone={isTraining ? "green" : "gold"}
-                      />
-                    );
-                  })}
-                </div>
-              </div>
-            ) : null}
+                  {g.week?.length ? (
+                    <div>
+                      <div style={{ fontSize: 12, fontWeight: 950, opacity: 0.82, marginBottom: 6 }}>7 derniers jours</div>
+                      <div style={{ display: "grid", gap: 8 }}>
+                        {g.week.map((m: any) => {
+                          const isTraining = (m as any).isTraining === true || (m as any)?.payload?.kind === "training_x01";
+                          return (
+                            <MatchMiniCard
+                              key={m.id}
+                              m={m}
+                              title={getMatchTitle(m)}
+                              dateLabel={formatMatchDate(m)}
+                              playersLabel={getMatchPlayersLabel(m)}
+                              winner={getMatchWinnerLabel(m)}
+                              kindTone={isTraining ? "green" : "gold"}
+                            />
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ) : null}
 
-            {grouped.older?.length ? (
-              <div>
-                <div style={{ fontSize: 12, fontWeight: 950, opacity: 0.82, marginBottom: 6 }}>Avant</div>
-                <div style={{ display: "grid", gap: 8 }}>
-                  {grouped.older.map((m: any) => {
-                    const title = getMatchTitle(m);
-                    const playersLabel = getMatchPlayersLabel(m);
-                    const winner = getMatchWinnerLabel(m);
-                    const isTraining = (m as any).isTraining === true || (m as any)?.payload?.kind === "training_x01";
-                    return (
-                      <MatchMiniCard
-                        key={m.id}
-                        m={m}
-                        title={title}
-                        dateLabel={formatMatchDate(m)}
-                        playersLabel={playersLabel}
-                        winner={winner}
-                        kindTone={isTraining ? "green" : "gold"}
-                      />
-                    );
-                  })}
-                </div>
-              </div>
-            ) : null}
+                  {g.older?.length ? (
+                    <div>
+                      <div style={{ fontSize: 12, fontWeight: 950, opacity: 0.82, marginBottom: 6 }}>Avant</div>
+                      <div style={{ display: "grid", gap: 8 }}>
+                        {g.older.map((m: any) => {
+                          const isTraining = (m as any).isTraining === true || (m as any)?.payload?.kind === "training_x01";
+                          return (
+                            <MatchMiniCard
+                              key={m.id}
+                              m={m}
+                              title={getMatchTitle(m)}
+                              dateLabel={formatMatchDate(m)}
+                              playersLabel={getMatchPlayersLabel(m)}
+                              winner={getMatchWinnerLabel(m)}
+                              kindTone={isTraining ? "green" : "gold"}
+                            />
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ) : null}
+                </>
+              );
+            })()}
           </div>
         )}
       </NeonCard>
