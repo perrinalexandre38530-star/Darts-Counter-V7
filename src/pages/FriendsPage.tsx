@@ -7,7 +7,6 @@
 // - AUCUN bouton login / signup
 // - On affiche juste l'état via useAuthOnline()
 // - onlineApi.ensureAutoSession() est déclenché AU BOOT (dans App.tsx)
-//   => status sera (quasi) toujours "signed_in" une fois ready=true
 //
 // ✅ Features conservées
 // - Statut global store.selfStatus (online / away / offline)
@@ -133,7 +132,7 @@ function NeonCard({
   return (
     <div
       style={{
-        borderRadius: 16,
+        borderRadius: 18,
         padding: 12,
         border: "1px solid rgba(255,255,255,.10)",
         background:
@@ -267,6 +266,44 @@ function MatchMiniCard({ m, title, dateLabel, playersLabel, winner, kindTone }: 
   );
 }
 
+function MiniTile({ title, desc, tone = "blue" }: { title: string; desc: string; tone?: "blue" | "gold" | "green" }) {
+  const accent =
+    tone === "gold" ? "rgba(255,213,106,.55)" : tone === "green" ? "rgba(127,226,169,.55)" : "rgba(79,180,255,.55)";
+
+  return (
+    <div
+      style={{
+        borderRadius: 14,
+        padding: 12,
+        border: "1px solid rgba(255,255,255,.10)",
+        background:
+          "linear-gradient(180deg, rgba(255,255,255,.06), rgba(0,0,0,.28))",
+        boxShadow: "0 10px 20px rgba(0,0,0,.45)",
+        position: "relative",
+        overflow: "hidden",
+        minHeight: 78,
+      }}
+    >
+      <div
+        style={{
+          position: "absolute",
+          inset: 0,
+          background: `radial-gradient(900px 140px at 0% 0%, ${accent.replace(",.55", ",.18")}, transparent 55%)`,
+          opacity: 0.9,
+          pointerEvents: "none",
+        }}
+      />
+      <div style={{ position: "relative" }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+          <div style={{ fontSize: 12.5, fontWeight: 950, color: "#f5f5f7" }}>{title}</div>
+          <Pill label="SOON" tone="gray" />
+        </div>
+        <div style={{ marginTop: 6, fontSize: 11.2, opacity: 0.82, lineHeight: 1.25 }}>{desc}</div>
+      </div>
+    </div>
+  );
+}
+
 /* -------------------------------------------------
    Composant principal
 --------------------------------------------------*/
@@ -306,7 +343,8 @@ export default function FriendsPage({ store, update, go }: Props) {
   const statusLabel = selfStatus === "away" ? "Absent" : selfStatus === "online" ? "En ligne" : "Hors ligne";
   const statusColor = selfStatus === "away" ? "#ffb347" : selfStatus === "online" ? "#7fe2a9" : "#cccccc";
 
-  const displayName = activeProfile?.name || profile?.displayName || (user as any)?.nickname || "Joueur";
+  const displayName =
+    activeProfile?.name || (profile as any)?.displayName || (profile as any)?.display_name || (user as any)?.nickname || "Joueur";
 
   const lastSeenLabel = formatLastSeenAgo(lastSeen);
 
@@ -353,7 +391,7 @@ export default function FriendsPage({ store, update, go }: Props) {
     setLastSeen(Date.now());
   }
 
-  // 🔁 Ping toutes les 30s quand "online" (V8: auto-session => pas besoin de login)
+  // 🔁 Ping toutes les 30s quand "online"
   React.useEffect(() => {
     if (!isSignedIn || selfStatus !== "online") return;
     if (typeof window === "undefined") return;
@@ -492,7 +530,12 @@ export default function FriendsPage({ store, update, go }: Props) {
       const lobby = await onlineApi.joinLobby({
         code,
         userId: (user as any)?.id || "anon",
-        nickname: profile?.displayName || (user as any)?.nickname || activeProfile?.name || "Joueur",
+        nickname:
+          (profile as any)?.displayName ||
+          (profile as any)?.display_name ||
+          (user as any)?.nickname ||
+          activeProfile?.name ||
+          "Joueur",
       } as any);
 
       setJoinedLobby(lobby);
@@ -510,46 +553,112 @@ export default function FriendsPage({ store, update, go }: Props) {
   const sortedMatches = React.useMemo(() => (matches || []).slice().sort((a: any, b: any) => toTs(b) - toTs(a)), [matches]);
   const grouped = React.useMemo(() => groupMatchesPretty(sortedMatches as any), [sortedMatches]);
 
+  const lobby = joinedLobby || lastCreatedLobby;
+  const uidShort = typeof (user as any)?.id === "string" ? (user as any).id.slice(0, 8) : null;
+
   return (
     <div className="container" style={{ padding: 16, paddingBottom: 96, color: "#f5f5f7" }}>
-      {/* ✅ Bouton de test Supabase */}
-      <button
-        onClick={testSupabase}
-        style={{
-          marginBottom: 12,
-          padding: "6px 12px",
-          borderRadius: 8,
-          border: "1px solid rgba(255,255,255,0.2)",
-          background: "#222",
-          color: "#fff",
-          fontSize: 12,
-        }}
-      >
-        TEST SUPABASE
-      </button>
-
-      <h2 style={{ fontSize: 20, fontWeight: 800, marginBottom: 4 }}>Mode Online</h2>
-
-      <p style={{ fontSize: 13, opacity: 0.8, marginBottom: 12 }}>
-        V8 : compte cloud actif automatiquement (auto-session). Aucun écran login ici.
-      </p>
-
-      {/* --------- BLOC ÉTAT ONLINE (V8 minimal) --------- */}
+      {/* ================= HERO HEADER (jeu online) ================= */}
       <div
         style={{
-          fontSize: 11.5,
-          marginBottom: 16,
-          padding: 10,
-          borderRadius: 12,
-          border: "1px solid rgba(255,255,255,.12)",
-          background: "linear-gradient(180deg, rgba(40,40,48,.88), rgba(18,18,22,.96))",
+          borderRadius: 18,
+          padding: 14,
+          border: "1px solid rgba(255,255,255,.10)",
+          background:
+            "radial-gradient(1200px 240px at 20% 0%, rgba(255,213,106,.18), transparent 55%), radial-gradient(900px 220px at 90% 0%, rgba(79,180,255,.14), transparent 55%), linear-gradient(180deg, rgba(22,22,28,.96), rgba(10,10,14,.98))",
+          boxShadow: "0 12px 28px rgba(0,0,0,.60)",
+          position: "relative",
+          overflow: "hidden",
+          marginBottom: 12,
         }}
       >
-        <div style={{ fontWeight: 900, marginBottom: 6, color: "#ffd56a" }}>Compte cloud</div>
+        <div
+          style={{
+            position: "absolute",
+            inset: 0,
+            background:
+              "linear-gradient(90deg, transparent, rgba(255,213,106,.08), rgba(79,180,255,.06), transparent)",
+            opacity: 0.9,
+            pointerEvents: "none",
+          }}
+        />
+        <div style={{ position: "relative" }}>
+          <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12 }}>
+            <div style={{ minWidth: 0 }}>
+              <div style={{ fontSize: 11, fontWeight: 900, letterSpacing: 1.2, opacity: 0.8 }}>MODE EN LIGNE</div>
+              <div style={{ fontSize: 22, fontWeight: 950, marginTop: 4, textShadow: "0 0 18px rgba(255,215,80,.12)" }}>
+                Online Hub
+              </div>
+              <div style={{ fontSize: 12.5, opacity: 0.78, marginTop: 4 }}>
+                Salons • Matchs • Amis • Historique • Classements
+              </div>
+            </div>
 
-        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <div style={{ display: "grid", gap: 8, justifyItems: "end" }}>
+              <button
+                onClick={testSupabase}
+                style={{
+                  padding: "7px 10px",
+                  borderRadius: 999,
+                  border: "1px solid rgba(255,255,255,0.14)",
+                  background: "rgba(0,0,0,.35)",
+                  color: "#fff",
+                  fontSize: 11.5,
+                  fontWeight: 900,
+                  cursor: "pointer",
+                }}
+                title="TEST SUPABASE"
+              >
+                TEST SUPABASE
+              </button>
+
+              <div
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 8,
+                  padding: "7px 10px",
+                  borderRadius: 999,
+                  border: "1px solid rgba(255,255,255,.12)",
+                  background: isSignedIn ? "rgba(127,226,169,.10)" : "rgba(255,90,90,.10)",
+                  fontSize: 11.5,
+                  fontWeight: 900,
+                }}
+              >
+                <span
+                  style={{
+                    width: 8,
+                    height: 8,
+                    borderRadius: "50%",
+                    background: isSignedIn ? "#7fe2a9" : "#ff5a5a",
+                    boxShadow: isSignedIn ? "0 0 10px rgba(127,226,169,.35)" : "0 0 10px rgba(255,90,90,.35)",
+                  }}
+                />
+                {isSignedIn ? "Serveur : OK" : "Serveur : hors ligne"}
+              </div>
+            </div>
+          </div>
+
+          <div
+            style={{
+              marginTop: 12,
+              height: 1,
+              background:
+                "linear-gradient(90deg, transparent, rgba(255,213,106,.55), rgba(79,180,255,.35), transparent)",
+              opacity: 0.85,
+            }}
+          />
+          <div style={{ marginTop: 8, fontSize: 12, opacity: 0.75 }}>
+            V8 : compte cloud actif automatiquement (auto-session). Aucun écran login ici.
+          </div>
+        </div>
+      </div>
+
+      {/* ================= COMPTE CLOUD (propre) ================= */}
+      <NeonCard accent="rgba(255,213,106,.55)">
+        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
           {/* Avatar local + drapeau */}
-          <div style={{ position: "relative", width: 52, height: 52, flexShrink: 0 }}>
+          <div style={{ position: "relative", width: 62, height: 62, flexShrink: 0 }}>
             <div
               style={{
                 width: "100%",
@@ -557,6 +666,7 @@ export default function FriendsPage({ store, update, go }: Props) {
                 borderRadius: "50%",
                 overflow: "hidden",
                 background: "radial-gradient(circle at 30% 0%, #ffde75, #c2871f)",
+                boxShadow: "0 0 16px rgba(255,215,80,.18)",
               }}
             >
               {activeProfile?.avatarDataUrl ? (
@@ -569,7 +679,7 @@ export default function FriendsPage({ store, update, go }: Props) {
                     display: "flex",
                     alignItems: "center",
                     justifyContent: "center",
-                    fontWeight: 900,
+                    fontWeight: 950,
                     color: "#1a1a1a",
                     fontSize: 20,
                   }}
@@ -586,12 +696,12 @@ export default function FriendsPage({ store, update, go }: Props) {
                   bottom: -6,
                   left: "50%",
                   transform: "translateX(-50%)",
-                  width: 22,
-                  height: 22,
+                  width: 24,
+                  height: 24,
                   borderRadius: "50%",
                   border: "2px solid #000",
                   overflow: "hidden",
-                  boxShadow: "0 0 8px rgba(0,0,0,.8)",
+                  boxShadow: "0 0 10px rgba(0,0,0,.85)",
                   background: "#111",
                   display: "grid",
                   placeItems: "center",
@@ -599,57 +709,72 @@ export default function FriendsPage({ store, update, go }: Props) {
                 }}
                 title={countryRaw}
               >
-                <span style={{ fontSize: 14, lineHeight: 1 }}>{countryFlag}</span>
+                <span style={{ fontSize: 15, lineHeight: 1 }}>{countryFlag}</span>
               </div>
             ) : null}
           </div>
 
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontSize: 14, fontWeight: 900, color: "#ffd56a", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            <div
+              style={{
+                fontSize: 16,
+                fontWeight: 950,
+                color: "#ffd56a",
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
+                textShadow: "0 0 12px rgba(255,215,80,.18)",
+              }}
+            >
               {displayName}
             </div>
 
-            <div style={{ marginTop: 4, display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-              <Pill label={`Status : ${status}`} tone={isSignedIn ? "green" : "gray"} />
-              <Pill label="Compte cloud actif (auto)" tone="blue" />
-              {typeof (user as any)?.id === "string" ? <Pill label={`UID: ${(user as any).id.slice(0, 8)}…`} tone="gray" /> : null}
+            <div style={{ marginTop: 6, display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+              <Pill label={`Status : ${status}`} tone={isSignedIn ? "green" : "red"} />
+              <Pill label="Auto-session" tone="blue" />
+              {uidShort ? <Pill label={`UID: ${uidShort}…`} tone="gray" /> : null}
             </div>
 
-            {lastSeenLabel ? <div style={{ marginTop: 6, fontSize: 11, opacity: 0.85 }}>Dernière activité : {lastSeenLabel}</div> : null}
+            {lastSeenLabel ? <div style={{ marginTop: 7, fontSize: 11.3, opacity: 0.85 }}>Dernière activité : {lastSeenLabel}</div> : null}
           </div>
         </div>
 
-        {/* Statut app */}
-        <div style={{ marginTop: 10, display: "flex", gap: 8 }}>
+        {/* Présence app */}
+        <div style={{ marginTop: 12, display: "flex", gap: 8 }}>
           <button
             type="button"
             onClick={() => setPresence(selfStatus === "away" ? "online" : "away")}
             style={{
               flex: 1,
               borderRadius: 999,
-              padding: "7px 10px",
-              border: "none",
-              fontWeight: 800,
+              padding: "8px 10px",
+              border: "1px solid rgba(255,255,255,.12)",
+              fontWeight: 900,
               fontSize: 12,
-              background: "linear-gradient(180deg,#444,#262626)",
+              background:
+                selfStatus === "away"
+                  ? "linear-gradient(180deg, rgba(127,226,169,.18), rgba(0,0,0,.35))"
+                  : "linear-gradient(180deg, rgba(255,179,71,.18), rgba(0,0,0,.35))",
               color: "#f5f5f7",
               cursor: "pointer",
             }}
           >
-            {selfStatus === "away" ? "Revenir en ligne" : "Absent"}
+            {selfStatus === "away" ? "Revenir en ligne" : "Passer absent"}
           </button>
 
           <div
             style={{
               borderRadius: 999,
-              padding: "7px 10px",
+              padding: "8px 10px",
               border: "1px solid rgba(255,255,255,.12)",
               background: "rgba(0,0,0,.35)",
               display: "inline-flex",
               alignItems: "center",
               gap: 8,
               fontSize: 12,
-              fontWeight: 900,
+              fontWeight: 950,
+              minWidth: 130,
+              justifyContent: "center",
             }}
           >
             <span
@@ -658,178 +783,156 @@ export default function FriendsPage({ store, update, go }: Props) {
                 height: 8,
                 borderRadius: "50%",
                 background: statusColor,
-                boxShadow: `0 0 6px ${statusColor}`,
+                boxShadow: `0 0 8px ${statusColor}`,
               }}
             />
             <span>{statusLabel}</span>
           </div>
         </div>
+      </NeonCard>
+
+      {/* ================= FEATURES ONLINE (tuiles style jeu) ================= */}
+      <SectionTitle title="Fonctions en ligne" subtitle="Interface prête • fonctionnalités à brancher ensuite" />
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginTop: 10 }}>
+        <MiniTile title="Amis" desc="Présence, invitations, messages" tone="blue" />
+        <MiniTile title="Classements" desc="Saisons, top avg3D, winrate" tone="gold" />
+        <MiniTile title="Tournois" desc="Brackets & événements" tone="green" />
+        <MiniTile title="Replays" desc="Historique détaillé des matchs" tone="blue" />
       </div>
 
-      {/* --------- PLACEHOLDER FUTUR : Amis / présence détaillée --------- */}
-      <div
-        style={{
-          marginTop: 4,
-          fontSize: 11.5,
-          padding: 10,
-          borderRadius: 12,
-          border: "1px solid rgba(255,255,255,.10)",
-          background: "linear-gradient(180deg, rgba(24,24,30,.96), rgba(10,10,12,.98))",
-        }}
-      >
-        <div style={{ fontWeight: 900, marginBottom: 4 }}>À venir</div>
-        <div style={{ opacity: 0.85 }}>Liste d’amis, invitations, présence détaillée… (basés sur les profils online).</div>
-      </div>
+      {/* ================= SALONS ONLINE (serveur) ================= */}
+      <SectionTitle title="Salons online" subtitle="Créer un salon X01 ou rejoindre avec un code (serveur)" />
 
-      {/* --------- BLOC : Salons online — AU-DESSUS de l’historique --------- */}
-      <div
-        style={{
-          marginTop: 16,
-          padding: 14,
-          borderRadius: 14,
-          border: "1px solid rgba(255,255,255,.12)",
-          background: "linear-gradient(180deg, rgba(32,32,40,.95), rgba(10,10,14,.98))",
-          boxShadow: "0 10px 24px rgba(0,0,0,.55)",
-          fontSize: 12,
-        }}
-      >
-        <div
-          style={{
-            fontWeight: 900,
-            marginBottom: 6,
-            fontSize: 14,
-            color: "#ffd56a",
-            textShadow: "0 0 10px rgba(255,215,80,.4)",
-          }}
-        >
-          Salons online (serveur)
-        </div>
-
-        <div style={{ opacity: 0.85, marginBottom: 10 }}>
-          Crée un salon X01 ou rejoins celui d’un ami avec un code (stocké sur le serveur).
-        </div>
-
-        <button
-          type="button"
-          onClick={handleCreateLobby}
-          disabled={creatingLobby}
-          style={{
-            width: "100%",
-            borderRadius: 12,
-            padding: "10px 12px",
-            border: "1px solid rgba(255,255,255,.16)",
-            background: creatingLobby ? "linear-gradient(180deg,#666,#444)" : "linear-gradient(180deg,#ffd56a,#e9a93d)",
-            color: "#1c1304",
-            fontWeight: 900,
-            fontSize: 13,
-            cursor: creatingLobby ? "default" : "pointer",
-            marginBottom: 10,
-            opacity: creatingLobby ? 0.6 : 1,
-          }}
-        >
-          {creatingLobby ? "Création…" : "Créer un salon X01"}
-        </button>
-
-        <div style={{ marginTop: 2, marginBottom: 8 }}>
-          <label style={{ fontSize: 11, opacity: 0.9, display: "block", marginBottom: 4 }}>Code de salon</label>
-          <input
-            type="text"
-            value={joinCode}
-            onChange={(e) => setJoinCode(e.target.value.toUpperCase())}
-            maxLength={8}
-            placeholder="Ex : 4F9Q"
-            style={{
-              width: "100%",
-              borderRadius: 10,
-              border: "1px solid rgba(255,255,255,.2)",
-              background: "rgba(5,5,8,.95)",
-              color: "#f5f5f7",
-              padding: "7px 10px",
-              fontSize: 13,
-              letterSpacing: 2,
-              textTransform: "uppercase",
-              marginBottom: 6,
-            }}
-          />
+      <NeonCard accent="rgba(79,180,255,.55)" style={{ marginTop: 10 }}>
+        <div style={{ display: "grid", gap: 10 }}>
           <button
             type="button"
-            onClick={handleJoinLobby}
-            disabled={joiningLobby}
+            onClick={handleCreateLobby}
+            disabled={creatingLobby}
             style={{
               width: "100%",
-              borderRadius: 12,
-              padding: "9px 12px",
+              borderRadius: 14,
+              padding: "12px 12px",
               border: "1px solid rgba(255,255,255,.16)",
-              background: joiningLobby ? "linear-gradient(180deg,#555,#333)" : "linear-gradient(180deg,#4fb4ff,#1c78d5)",
-              color: "#04101f",
-              fontWeight: 900,
-              fontSize: 13,
-              cursor: joiningLobby ? "default" : "pointer",
-              opacity: joiningLobby ? 0.65 : 1,
+              background: creatingLobby ? "linear-gradient(180deg,#666,#444)" : "linear-gradient(180deg,#ffd56a,#e9a93d)",
+              color: "#1c1304",
+              fontWeight: 950,
+              fontSize: 13.5,
+              cursor: creatingLobby ? "default" : "pointer",
+              opacity: creatingLobby ? 0.65 : 1,
+              boxShadow: "0 10px 22px rgba(0,0,0,.45)",
             }}
           >
-            {joiningLobby ? "Recherche…" : "Rejoindre avec ce code"}
+            {creatingLobby ? "Création…" : "Créer un salon X01"}
           </button>
 
+          <div style={{ display: "flex", gap: 10, alignItems: "flex-end" }}>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 11.5, fontWeight: 900, opacity: 0.85, marginBottom: 6 }}>Code salon</div>
+              <input
+                type="text"
+                value={joinCode}
+                onChange={(e) => setJoinCode(e.target.value.toUpperCase())}
+                maxLength={8}
+                placeholder="EX : 4F9Q"
+                style={{
+                  width: "100%",
+                  borderRadius: 12,
+                  border: "1px solid rgba(255,255,255,.18)",
+                  background: "rgba(5,5,8,.95)",
+                  color: "#f5f5f7",
+                  padding: "10px 12px",
+                  fontSize: 13,
+                  letterSpacing: 2,
+                  textTransform: "uppercase",
+                  outline: "none",
+                }}
+              />
+            </div>
+
+            <button
+              type="button"
+              onClick={handleJoinLobby}
+              disabled={joiningLobby}
+              style={{
+                width: 160,
+                borderRadius: 14,
+                padding: "12px 12px",
+                border: "1px solid rgba(255,255,255,.16)",
+                background: joiningLobby ? "linear-gradient(180deg,#555,#333)" : "linear-gradient(180deg,#4fb4ff,#1c78d5)",
+                color: "#04101f",
+                fontWeight: 950,
+                fontSize: 13,
+                cursor: joiningLobby ? "default" : "pointer",
+                opacity: joiningLobby ? 0.65 : 1,
+                boxShadow: "0 10px 22px rgba(0,0,0,.45)",
+              }}
+            >
+              {joiningLobby ? "Recherche…" : "Rejoindre"}
+            </button>
+          </div>
+
           {(joinError || joinInfo) && (
-            <div style={{ marginTop: 6, fontSize: 11.5 }}>
-              {joinError ? <div style={{ color: "#ff8a8a" }}>{joinError}</div> : null}
-              {joinInfo && !joinError ? <div style={{ color: "#8fe6aa" }}>{joinInfo}</div> : null}
+            <div style={{ fontSize: 11.8 }}>
+              {joinError ? <div style={{ color: "#ff8a8a", fontWeight: 900 }}>{joinError}</div> : null}
+              {joinInfo && !joinError ? <div style={{ color: "#8fe6aa", fontWeight: 900 }}>{joinInfo}</div> : null}
             </div>
           )}
         </div>
-      </div>
+      </NeonCard>
 
-      {/* ---------- WAITING ROOM ONLINE ---------- */}
-      {(joinedLobby || lastCreatedLobby) && (
+      {/* ================= WAITING ROOM ONLINE ================= */}
+      {lobby && (
         <div
           style={{
-            marginTop: 18,
+            marginTop: 14,
+            borderRadius: 18,
             padding: 14,
-            borderRadius: 14,
-            border: "1px solid rgba(255,255,255,.15)",
-            background: "linear-gradient(180deg, rgba(34,34,44,.96), rgba(10,10,14,.98))",
-            boxShadow: "0 12px 26px rgba(0,0,0,.55)",
-            fontSize: 12,
+            border: "1px solid rgba(255,255,255,.12)",
+            background:
+              "radial-gradient(1200px 200px at 20% 0%, rgba(127,226,169,.12), transparent 55%), linear-gradient(180deg, rgba(22,22,28,.96), rgba(10,10,14,.98))",
+            boxShadow: "0 14px 30px rgba(0,0,0,.62)",
           }}
         >
           <div
             style={{
-              fontWeight: 900,
-              fontSize: 16,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: 10,
               marginBottom: 10,
-              color: "#ffd56a",
-              textShadow: "0 0 10px rgba(255,215,80,.35)",
             }}
           >
-            Salle d’attente Online
+            <div style={{ fontSize: 16, fontWeight: 950, color: "#ffd56a", textShadow: "0 0 12px rgba(255,215,80,.18)" }}>
+              Salle d’attente
+            </div>
+            <Pill label="LIVE" tone="green" />
           </div>
 
           <div
             style={{
               marginBottom: 12,
-              padding: "8px 10px",
-              borderRadius: 10,
-              background: "#111",
+              padding: "10px 12px",
+              borderRadius: 14,
+              background: "#0f0f14",
               border: "1px solid rgba(255,255,255,.12)",
               fontFamily: "monospace",
               letterSpacing: 2,
-              fontSize: 14,
-              fontWeight: 900,
+              fontSize: 16,
+              fontWeight: 950,
               color: "#ffd56a",
               textAlign: "center",
-              boxShadow: "0 0 12px rgba(255,215,80,.25)",
+              boxShadow: "0 0 14px rgba(255,215,80,.18)",
             }}
           >
-            {(joinedLobby || lastCreatedLobby)?.code}
+            {lobby.code}
           </div>
 
           <div
             style={{
-              marginBottom: 12,
+              borderRadius: 16,
               padding: 12,
-              borderRadius: 12,
-              background: "linear-gradient(180deg, rgba(44,44,54,.95), rgba(18,18,24,.98))",
+              background: "linear-gradient(180deg, rgba(255,255,255,.06), rgba(0,0,0,.25))",
               border: "1px solid rgba(255,255,255,.10)",
               display: "flex",
               gap: 12,
@@ -838,14 +941,13 @@ export default function FriendsPage({ store, update, go }: Props) {
           >
             <div
               style={{
-                position: "relative",
                 width: 56,
                 height: 56,
                 borderRadius: "50%",
                 overflow: "hidden",
                 background: "radial-gradient(circle,#ffd56a,#c8922f)",
                 flexShrink: 0,
-                boxShadow: "0 0 12px rgba(255,215,80,.35)",
+                boxShadow: "0 0 12px rgba(255,215,80,.22)",
               }}
             >
               {activeProfile?.avatarDataUrl ? (
@@ -858,7 +960,7 @@ export default function FriendsPage({ store, update, go }: Props) {
                     display: "flex",
                     alignItems: "center",
                     justifyContent: "center",
-                    fontWeight: 900,
+                    fontWeight: 950,
                     color: "#1a1a1a",
                     fontSize: 20,
                   }}
@@ -868,23 +970,26 @@ export default function FriendsPage({ store, update, go }: Props) {
               )}
             </div>
 
-            <div style={{ flex: 1 }}>
-              <div style={{ fontWeight: 900, fontSize: 14, color: "#ffd56a" }}>{activeProfile?.name || "Hôte"}</div>
-              <div style={{ fontSize: 12, opacity: 0.85 }}>Attend les joueurs…</div>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontWeight: 950, fontSize: 14, color: "#ffd56a", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                {activeProfile?.name || "Hôte"}
+              </div>
+              <div style={{ fontSize: 12, opacity: 0.85 }}>Invite un ami avec le code ci-dessus</div>
             </div>
 
             {countryFlag ? (
               <div
                 style={{
-                  width: 22,
-                  height: 22,
+                  width: 24,
+                  height: 24,
                   borderRadius: "50%",
                   overflow: "hidden",
                   border: "2px solid #000",
                   background: "#111",
                   display: "grid",
                   placeItems: "center",
-                  fontSize: 14,
+                  fontSize: 15,
+                  boxShadow: "0 0 10px rgba(0,0,0,.85)",
                 }}
               >
                 {countryFlag}
@@ -893,23 +998,19 @@ export default function FriendsPage({ store, update, go }: Props) {
           </div>
 
           <button
-            onClick={() =>
-              go("x01_online_setup", {
-                lobbyCode: (joinedLobby || lastCreatedLobby)?.code || null,
-              })
-            }
+            onClick={() => go("x01_online_setup", { lobbyCode: lobby.code || null })}
             style={{
               width: "100%",
               borderRadius: 999,
-              padding: "10px 14px",
+              padding: "12px 14px",
               border: "none",
-              fontWeight: 900,
-              fontSize: 14,
+              fontWeight: 950,
+              fontSize: 14.5,
               background: "linear-gradient(180deg,#35c86d,#23a958)",
               color: "#03140a",
-              boxShadow: "0 10px 22px rgba(0,0,0,.5)",
+              boxShadow: "0 12px 24px rgba(0,0,0,.55)",
               cursor: "pointer",
-              marginTop: 10,
+              marginTop: 12,
             }}
           >
             🚀 Lancer maintenant
@@ -917,7 +1018,7 @@ export default function FriendsPage({ store, update, go }: Props) {
         </div>
       )}
 
-      {/* ================= HISTORIQUE ONLINE — DESIGN (CARDS + TRI + GROUPES) ================= */}
+      {/* ================= HISTORIQUE ONLINE ================= */}
       <SectionTitle
         title="Historique Online"
         subtitle="Trié du plus récent au plus ancien • regroupé automatiquement"
@@ -931,7 +1032,7 @@ export default function FriendsPage({ store, update, go }: Props) {
               border: "1px solid rgba(255,255,255,.12)",
               background: "rgba(255,90,90,.12)",
               color: "#ff8a8a",
-              fontWeight: 900,
+              fontWeight: 950,
               fontSize: 11.5,
               cursor: "pointer",
             }}
@@ -946,13 +1047,15 @@ export default function FriendsPage({ store, update, go }: Props) {
         {loadingMatches ? (
           <div style={{ opacity: 0.85, paddingLeft: 6 }}>Chargement…</div>
         ) : sortedMatches.length === 0 ? (
-          <div style={{ opacity: 0.85, paddingLeft: 6 }}>Aucun match online enregistré pour le moment.</div>
+          <div style={{ opacity: 0.85, paddingLeft: 6 }}>
+            Aucun match online enregistré pour le moment. Crée un salon X01 pour lancer ton premier match.
+          </div>
         ) : (
           <div style={{ display: "grid", gap: 12, paddingLeft: 6 }}>
             {/* Aujourd’hui */}
             {grouped.today?.length ? (
               <div>
-                <div style={{ fontSize: 12, fontWeight: 900, opacity: 0.82, marginBottom: 6 }}>Aujourd’hui</div>
+                <div style={{ fontSize: 12, fontWeight: 950, opacity: 0.82, marginBottom: 6 }}>Aujourd’hui</div>
                 <div style={{ display: "grid", gap: 8 }}>
                   {grouped.today.map((m: any) => {
                     const title = getMatchTitle(m);
@@ -978,7 +1081,7 @@ export default function FriendsPage({ store, update, go }: Props) {
             {/* 7 derniers jours */}
             {grouped.week?.length ? (
               <div>
-                <div style={{ fontSize: 12, fontWeight: 900, opacity: 0.82, marginBottom: 6 }}>7 derniers jours</div>
+                <div style={{ fontSize: 12, fontWeight: 950, opacity: 0.82, marginBottom: 6 }}>7 derniers jours</div>
                 <div style={{ display: "grid", gap: 8 }}>
                   {grouped.week.map((m: any) => {
                     const title = getMatchTitle(m);
@@ -1004,7 +1107,7 @@ export default function FriendsPage({ store, update, go }: Props) {
             {/* Avant */}
             {grouped.older?.length ? (
               <div>
-                <div style={{ fontSize: 12, fontWeight: 900, opacity: 0.82, marginBottom: 6 }}>Avant</div>
+                <div style={{ fontSize: 12, fontWeight: 950, opacity: 0.82, marginBottom: 6 }}>Avant</div>
                 <div style={{ display: "grid", gap: 8 }}>
                   {grouped.older.map((m: any) => {
                     const title = getMatchTitle(m);
