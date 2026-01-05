@@ -254,19 +254,9 @@ async function ensureAuthedUser() {
   let user = data?.session?.user;
   let session = data?.session;
 
-  // ✅ V8: si pas de session, on tente de créer une session auto
-  if (!user) {
-    try {
-      await ensureAutoSession();
-      const again = await supabase.auth.getSession();
-      if (again.error) throw again.error;
-      user = again.data?.session?.user;
-      session = again.data?.session;
-    } catch (e) {
-      // on retombe sur l’erreur standard
-    }
-  }
-
+  // IMPORTANT (V7): on NE crée plus de session anonyme automatiquement.
+  // Sinon, après un "Clear site data", l'app crée un nouveau user anonyme
+  // et on se retrouve à hydrater/pousser le mauvais compte ("ça charge autre chose").
   if (!user || !session) throw new Error("Non authentifié (reconnecte-toi).");
   return { user, session };
 }
@@ -350,30 +340,11 @@ async function buildAuthSessionFromSupabase(): Promise<AuthSession | null> {
 }
 
 // ============================================================
-// ✅ V8 AUTO-SESSION
-// (à placer ici : "juste après ensureAuthedUser()" comme demandé)
+// NOTE (V7): plus d'auto-session anonyme
+// - On garde une fonction interne "buildAuthSessionFromSupabase" pour reconstruire
+//   un AuthSession SI une session existe déjà.
+// - Si aucune session => signed_out (pas de création d'utilisateur cachée).
 // ============================================================
-async function ensureAutoSession(): Promise<AuthSession> {
-  // 1) si session existe déjà -> ok
-  let live = await buildAuthSessionFromSupabase();
-  if (live?.token) return live;
-
-  // 2) sinon -> anonymous sign-in
-  const { error } = await supabase.auth.signInAnonymously();
-  if (error) throw new Error(error.message);
-
-  // 3) rebuild session
-  live = await buildAuthSessionFromSupabase();
-  if (!live?.token) throw new Error("Impossible de créer/restaurer une session anonyme.");
-
-  // 4) garantir profile row
-  try {
-    const fallback = `Player-${live.user.id.slice(0, 5)}`;
-    await getOrCreateProfile(live.user.id, fallback);
-  } catch {}
-
-  return live;
-}
 
 // ============================================================
 // Error mapping (login)
@@ -458,10 +429,10 @@ async function login(payload: LoginPayload): Promise<AuthSession> {
   return session;
 }
 
-// ✅ V8 : restoreSession = auto session garantie
+// ✅ V7 : restoreSession = RESTORE UNIQUEMENT (pas de création d'utilisateur)
 async function restoreSession(): Promise<AuthSession | null> {
   try {
-    const s = await ensureAutoSession();
+    const s = await buildAuthSessionFromSupabase();
     saveAuthToLS(s);
     return s;
   } catch (e) {
@@ -769,9 +740,6 @@ export const onlineApi = {
   restoreSession,
   logout,
   getCurrentSession,
-
-  // ✅ V8 : auto-session exposée
-  ensureAutoSession,
 
   // Signup confirm resend
   resendSignupConfirmation,
