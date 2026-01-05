@@ -603,189 +603,6 @@ function computeBotVisit(
   }
 
   return darts;
-
-
-// ============================================================
-// CHECKOUT helper (UI) — recalcul après CHAQUE fléchette / annuler
-// - propose un finish selon le nombre de fléchettes restantes (1..3)
-// - chart standard jusqu'à 170 (double-out)
-// ============================================================
-
-function computeCheckoutText(remaining: number, dartsLeft: number, doubleOut: boolean): string | null {
-  if (!remaining || remaining < 0) return null;
-  if (dartsLeft <= 0) return null;
-
-  // bust immédiat en double-out
-  if (doubleOut) {
-    if (remaining === 1) return null;
-  }
-
-  // 1 dart outs (double-out)
-  if (dartsLeft >= 1) {
-    if (doubleOut) {
-      if (remaining === 50) return "DBULL";
-      if (remaining >= 2 && remaining <= 40 && remaining % 2 === 0) return `D${remaining / 2}`;
-      // pas de 1-dart out pour les impairs en double-out
-    } else {
-      // simple-out (si un jour tu l'actives) : on affiche brut
-      return String(remaining);
-    }
-  }
-
-  // 2 darts outs (double-out) — standards / simples
-  const OUT2: Record<number, string> = {
-    98: "T20 D19",
-    97: "T19 D20",
-    96: "T20 D18",
-    95: "T19 D19",
-    94: "T18 D20",
-    93: "T19 D18",
-    92: "T20 D16",
-    91: "T17 D20",
-    90: "T20 D15",
-    89: "T19 D16",
-    88: "T20 D14",
-    87: "T17 D18",
-    86: "T18 D16",
-    85: "T15 D20",
-    84: "T20 D12",
-    83: "T17 D16",
-    82: "T14 D20",
-    81: "T19 D12",
-    80: "T20 D10",
-    79: "T19 D11",
-    78: "T18 D12",
-    77: "T19 D10",
-    76: "T20 D8",
-    75: "T17 D12",
-    74: "T14 D16",
-    73: "T19 D8",
-    72: "T20 D6",
-    71: "T13 D16",
-    70: "T18 D8",
-    69: "T19 D6",
-    68: "T20 D4",
-    67: "T17 D8",
-    66: "T10 D18",
-    65: "25 D20",
-    64: "T16 D8",
-    63: "T13 D12",
-    62: "T10 D16",
-    61: "T15 D8",
-    60: "20 D20",
-    59: "19 D20",
-    58: "18 D20",
-    57: "17 D20",
-    56: "16 D20",
-    55: "15 D20",
-    54: "14 D20",
-    53: "13 D20",
-    52: "12 D20",
-    51: "11 D20",
-    50: "10 D20",
-    49: "9 D20",
-    48: "16 D16",
-    47: "15 D16",
-    46: "14 D16",
-    45: "13 D16",
-    44: "12 D16",
-    43: "11 D16",
-    42: "10 D16",
-    41: "9 D16",
-  };
-
-  // 3 darts outs (double-out) — standards 100..170 (+ quelques classiques)
-  const OUT3: Record<number, string> = {
-    170: "T20 T20 DBULL",
-    167: "T20 T19 DBULL",
-    164: "T20 T18 DBULL",
-    161: "T20 T17 DBULL",
-    160: "T20 T20 D20",
-    159: "T20 T19 D21", // rare/alternative, la plupart jouent 159 en 3 darts diff — on laisse vide via fallback
-    158: "T20 T20 D19",
-    157: "T20 T19 D20",
-    156: "T20 T20 D18",
-    155: "T20 T19 D19",
-    154: "T20 T18 D20",
-    153: "T20 T19 D18",
-    152: "T20 T20 D16",
-    151: "T20 T17 D20",
-    150: "T20 T18 D18",
-    149: "T20 T19 D16",
-    148: "T20 T16 D20",
-    147: "T20 T17 D18",
-    146: "T20 T18 D16",
-    145: "T20 T15 D20",
-    144: "T20 T20 D12",
-    143: "T20 T17 D16",
-    142: "T20 T14 D20",
-    141: "T20 T19 D12",
-    140: "T20 T16 D16",
-    139: "T20 T13 D20",
-    138: "T20 T18 D12",
-    137: "T20 T19 D10",
-    136: "T20 T20 D8",
-    135: "T20 T15 D15",
-    134: "T20 T14 D16",
-    133: "T20 T19 D8",
-    132: "T20 T20 D6",
-    131: "T20 T13 D16",
-    130: "T20 T20 D5",
-    129: "T19 T16 D12",
-    128: "T18 T14 D16",
-    127: "T20 T17 D8",
-    126: "T19 T19 D6",
-    125: "25 T20 D20",
-    124: "T20 T16 D8",
-    123: "T19 T16 D9",
-    122: "T18 T20 D4",
-    121: "T20 T11 D14",
-    120: "T20 20 D20",
-    119: "T20 19 D20",
-    118: "T20 18 D20",
-    117: "T20 17 D20",
-    116: "T20 16 D20",
-    115: "T20 15 D20",
-    114: "T20 14 D20",
-    113: "T20 13 D20",
-    112: "T20 12 D20",
-    111: "T20 11 D20",
-    110: "T20 10 D20",
-    109: "T20 9 D20",
-    108: "T20 8 D20",
-    107: "T20 7 D20",
-    106: "T20 6 D20",
-    105: "T20 5 D20",
-    104: "T20 4 D20",
-    103: "T20 3 D20",
-    102: "T20 2 D20",
-    101: "T20 1 D20",
-    100: "T20 D20",
-  };
-
-  // Nettoyage du chart (on retire les lignes "invalides" que j'ai annotées)
-  if (OUT3[remaining]?.includes("D21")) {
-    // pas de D21 en vrai : on retourne null pour forcer fallback 2-darts/1-dart
-    return null;
-  }
-
-  // Choix selon dartsLeft
-  if (dartsLeft === 1) {
-    if (doubleOut) {
-      if (remaining === 50) return "DBULL";
-      if (remaining >= 2 && remaining <= 40 && remaining % 2 === 0) return `D${remaining / 2}`;
-      return null;
-    }
-    return String(remaining);
-  }
-
-  if (dartsLeft === 2) {
-    return OUT2[remaining] ?? null;
-  }
-
-  // dartsLeft >= 3
-  return OUT3[remaining] ?? OUT2[remaining] ?? null;
-}
 }
 
 // =============================================================
@@ -997,35 +814,6 @@ const profileById = React.useMemo(() => {
     (config as any).doubleOut === true ||
     (config as any).finishMode === "double" ||
     (config as any).outMode === "double";
-
-  // =====================================================
-  // Checkout (UI) — recalcul live après chaque fléchette / annuler
-  // =====================================================
-  const checkoutText = React.useMemo(() => {
-    // si pas en jeu, pas de suggestion
-    if (status !== "running") return null;
-
-    const dartsLeft = Math.max(0, 3 - (currentThrow?.length ?? 0));
-    if (dartsLeft <= 0) return null;
-
-    // remaining après les fléchettes déjà saisies
-    const scored = (currentThrow || []).reduce((acc: number, d: any) => acc + (d?.v ? d.v * (d.mult ?? 1) : 0), 0);
-    const remaining = (currentScore ?? config.startScore) - scored;
-
-    // bust preview => pas de CO
-    if (doubleOut) {
-      if (remaining < 0 || remaining === 1) return null;
-      if (remaining === 0) {
-        const last = (currentThrow || [])[currentThrow.length - 1];
-        const lastIsDouble = !!last && (last.mult === 2 || (last.v === 25 && last.mult === 2));
-        if (!lastIsDouble) return null;
-      }
-    } else {
-      if (remaining < 0) return null;
-    }
-
-    return computeCheckoutText(remaining, dartsLeft, doubleOut);
-  }, [status, currentThrow, currentScore, config.startScore, doubleOut]);
 
   // =====================================================
   // Autosave : persistance / reprise (A1 basé sur la liste des darts)
@@ -1317,35 +1105,12 @@ const playScoreSfxAndMaybeDelayVoice = React.useCallback(
   }) => {
     const { playerName, pid, scoreBefore, darts, visitScore, isBustNow, isCheckoutNow } = args;
 
-    // ---- BUST : son dédié, pas de score SFX/voix ----
-    if (isBustNow) {
-      if (arcadeEnabled) {
-        playArcadeMapped("bust", { rateLimitMs: 180, volume: sfxVolume });
-      }
-      return;
-    }
-
     // ---- Null sfx (0..10) hors checkout et hors bust ----
     if (!isBustNow && !isCheckoutNow && visitScore >= 0 && visitScore <= 10) {
       if (arcadeEnabled) {
-        const audio = playPublicSound("score-null.mp3", { volume: sfxVolume });
-        if (audio && typeof (audio as any).addEventListener === "function") {
-          (audio as any).addEventListener(
-            "ended",
-            () => {
-              // ✅ voix IA 1.5s après le SFX "nul"
-              scheduleVoice(() => speakVisit(playerName, visitScore), 1500);
-            },
-            { once: true } as any
-          );
-        } else {
-          // fallback si l'event "ended" n'est pas dispo
-          scheduleVoice(() => speakVisit(playerName, visitScore), 1500);
-        }
-      } else {
-        // si pas de sfx arcade, on annonce quand même (avec un léger délai)
-        scheduleVoice(() => speakVisit(playerName, visitScore), 1500);
+        playPublicSound("score-null.mp3", { volume: sfxVolume });
       }
+      // pas de voix spéciale demandée sur les petits scores
       return;
     }
 
@@ -1636,32 +1401,10 @@ function pushDart(value: number) {
   }
 }
 
-const isBustLocked = !!(activePlayerId && (lastVisitIsBustByPlayer as any)?.[activePlayerId]);
-
-const handleSimple = () => {
-  if (isBustLocked) return;
-  setMultiplier(1);
-};
-const handleDouble = () => {
-  if (isBustLocked) return;
-  setMultiplier(2);
-};
-const handleTriple = () => {
-  if (isBustLocked) return;
-  setMultiplier(3);
-};
-
-const handleNumber = (value: number) => {
-  if (isBustLocked) return;
-  pushDart(value);
-};
-const handleBull = () => {
-  if (isBustLocked) return;
-  pushDart(25);
-};
+const handleNumber = (value: number) => pushDart(value);
+const handleBull = () => pushDart(25);
 
 const handleBackspace = () => {
-  if (isBustLocked) return;
   currentThrowFromEngineRef.current = false;
 
   bustPreviewPlayedRef.current = false;
@@ -2550,38 +2293,12 @@ try {
             </div>
           </div>
         ) : (
-          <div
-            style={{
-              border: isBustLocked ? "1px solid rgba(255,80,80,.65)" : "1px solid transparent",
-              background: isBustLocked ? "rgba(120,0,0,.10)" : "transparent",
-              borderRadius: 14,
-              padding: 6,
-              boxShadow: isBustLocked ? "0 0 0 1px rgba(255,80,80,.25), 0 10px 24px rgba(0,0,0,.45)" : undefined,
-              filter: isBustLocked ? "grayscale(.25) saturate(.9)" : undefined,
-              opacity: isBustLocked ? 0.92 : 1,
-            }}
-          >
-            {isBustLocked ? (
-              <div
-                style={{
-                  marginBottom: 6,
-                  textAlign: "center",
-                  fontWeight: 900,
-                  letterSpacing: 0.6,
-                  color: "#ff6b6b",
-                  textShadow: "0 0 14px rgba(255,90,90,.35)",
-                }}
-              >
-                BUST — {t("x01v3.bust.lock", "Saisie bloquée")}
-              </div>
-            ) : null}
-
           <Keypad
             currentThrow={currentThrow}
             multiplier={multiplier}
-            onSimple={handleSimple}
-            onDouble={handleDouble}
-            onTriple={handleTriple}
+            onSimple={() => setMultiplier(1)}
+            onDouble={() => setMultiplier(2)}
+            onTriple={() => setMultiplier(3)}
             onBackspace={handleBackspace}
             onCancel={handleCancel}
             onNumber={handleNumber}
@@ -2589,7 +2306,6 @@ try {
             onValidate={validateThrow}
             hidePreview
           />
-          </div>
         )}
       </div>
 
@@ -2860,7 +2576,7 @@ function HeaderBlock(props: {
           </div>
 
           {/* Checkout suggestion (moteur V3) */}
-          {checkoutText ? (
+          {currentVisit?.checkoutSuggestion ? (
             <div
               style={{
                 marginTop: 3,
@@ -2894,7 +2610,9 @@ function HeaderBlock(props: {
                     fontSize: 13,
                   }}
                 >
-                  {checkoutText}
+                  {formatCheckoutFromVisit(
+                    currentVisit.checkoutSuggestion
+                  )}
                 </span>
               </div>
             </div>

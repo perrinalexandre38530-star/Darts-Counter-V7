@@ -955,6 +955,42 @@ const isBotTurn = React.useMemo(() => {
   return !!activePlayer && Boolean((activePlayer as any).isBot);
 }, [activePlayer]);
 
+
+
+// =====================================================
+// ÉTAT LOCAL KEYPAD (logique v1 + synchro UNDO moteur)
+// =====================================================
+
+const [multiplier, setMultiplier] = React.useState<1 | 2 | 3>(1);
+const [currentThrow, setCurrentThrow] = React.useState<UIDart[]>([]);
+
+// ✅ ÉTAT: dernière volée par joueur (sert à PlayersListOnly + bust preview)
+const [lastVisitsByPlayer, setLastVisitsByPlayer] = React.useState<
+  Record<string, UIDart[]>
+>({});
+
+const [lastVisitIsBustByPlayer, setLastVisitIsBustByPlayer] = React.useState<
+  Record<string, boolean>
+>({});
+
+// 🔒 garde-fou anti double-validation HUMAIN
+const isValidatingRef = React.useRef(false);
+
+// 🔒 garde-fou BOT : (gardé si tu veux le réutiliser plus tard)
+const botUndoGuardRef = React.useRef(false);
+
+// 🔊 anti double-bust (bust preview déjà joué avant validation)
+const bustPreviewPlayedRef = React.useRef(false);
+
+// 🔊 timer pour déclencher le BUST avec délai
+const bustSoundTimeoutRef = React.useRef<number | null>(null);
+
+// 🔒 indique si currentThrow vient du moteur (rebuild / UNDO)
+//    ou de la saisie locale sur le keypad
+const currentThrowFromEngineRef = React.useRef(false);
+
+
+
   // =====================================================
   // ✅ Source de comptage (manual / external) — AJOUT UNIQUEMENT
   // - manual  : Keypad (comportement actuel)
@@ -1468,38 +1504,6 @@ React.useEffect(() => {
   // intro dès l'entrée dans le match
   playPublicSound("game-intro.mp3", { volume: sfxVolume });
 }, [arcadeEnabled, playPublicSound, sfxVolume]);
-
-// =====================================================
-// ÉTAT LOCAL KEYPAD (logique v1 + synchro UNDO moteur)
-// =====================================================
-
-const [multiplier, setMultiplier] = React.useState<1 | 2 | 3>(1);
-const [currentThrow, setCurrentThrow] = React.useState<UIDart[]>([]);
-
-// ✅ ÉTAT: dernière volée par joueur (sert à PlayersListOnly + bust preview)
-const [lastVisitsByPlayer, setLastVisitsByPlayer] = React.useState<
-  Record<string, UIDart[]>
->({});
-
-const [lastVisitIsBustByPlayer, setLastVisitIsBustByPlayer] = React.useState<
-  Record<string, boolean>
->({});
-
-// 🔒 garde-fou anti double-validation HUMAIN
-const isValidatingRef = React.useRef(false);
-
-// 🔒 garde-fou BOT : (gardé si tu veux le réutiliser plus tard)
-const botUndoGuardRef = React.useRef(false);
-
-// 🔊 anti double-bust (bust preview déjà joué avant validation)
-const bustPreviewPlayedRef = React.useRef(false);
-
-// 🔊 timer pour déclencher le BUST avec délai
-const bustSoundTimeoutRef = React.useRef<number | null>(null);
-
-// 🔒 indique si currentThrow vient du moteur (rebuild / UNDO)
-//    ou de la saisie locale sur le keypad
-const currentThrowFromEngineRef = React.useRef(false);
 
 // 🔄 SYNC AVEC LE MOTEUR UNIQUEMENT POUR LES CAS "ENGINE-DRIVEN"
 //    (UNDO global, rebuild, etc.)
