@@ -18,8 +18,8 @@
 // - Bouton "Lancer maintenant" -> x01_online_setup avec lobbyCode
 //
 // ✅ Cleanup UI
-// - Suppression du bouton "TEST SUPABASE" (debug)
-// - Header visuel style "STATS" avec titre ONLINE HUB
+// - Header style "STATS" avec titre ONLINE HUB
+// - ✅ Suppression du texte "V8 : ... Aucun écran login ici." dans le header
 // ============================================
 
 import React from "react";
@@ -185,7 +185,11 @@ function Pill({
     blue: ["rgba(79,180,255,.14)", "#4fb4ff", "rgba(79,180,255,.35)"],
     green: ["rgba(127,226,169,.14)", "#7fe2a9", "rgba(127,226,169,.35)"],
     red: ["rgba(255,90,90,.14)", "#ff5a5a", "rgba(255,90,90,.35)"],
-    gray: ["rgba(255,255,255,.08)", "rgba(255,255,255,.9)", "rgba(255,255,255,.12)"],
+    gray: [
+      "rgba(255,255,255,.08)",
+      "rgba(255,255,255,.9)",
+      "rgba(255,255,255,.12)",
+    ],
   };
   const [bg, fg, bd] = map[tone] || map.gray;
 
@@ -328,7 +332,8 @@ function MiniTile({
         borderRadius: 14,
         padding: 12,
         border: "1px solid rgba(255,255,255,.10)",
-        background: "linear-gradient(180deg, rgba(255,255,255,.06), rgba(0,0,0,.28))",
+        background:
+          "linear-gradient(180deg, rgba(255,255,255,.06), rgba(0,0,0,.28))",
         boxShadow: "0 10px 20px rgba(0,0,0,.45)",
         position: "relative",
         overflow: "hidden",
@@ -361,7 +366,14 @@ function MiniTile({
           </div>
           <Pill label="SOON" tone="gray" />
         </div>
-        <div style={{ marginTop: 6, fontSize: 11.2, opacity: 0.82, lineHeight: 1.25 }}>
+        <div
+          style={{
+            marginTop: 6,
+            fontSize: 11.2,
+            opacity: 0.82,
+            lineHeight: 1.25,
+          }}
+        >
           {desc}
         </div>
       </div>
@@ -392,7 +404,10 @@ export default function FriendsPage({ store, update, go }: Props) {
   // ✅ V8 : ne JAMAIS bloquer avec un login UI
   if (!ready) {
     return (
-      <div className="container" style={{ padding: 16, paddingBottom: 96, color: "#f5f5f7" }}>
+      <div
+        className="container"
+        style={{ padding: 16, paddingBottom: 96, color: "#f5f5f7" }}
+      >
         Connexion en cours…
       </div>
     );
@@ -407,12 +422,21 @@ export default function FriendsPage({ store, update, go }: Props) {
   );
 
   // --- statut global de l'app : store.selfStatus
-  const selfStatus: PresenceStatus = ((store as any).selfStatus as PresenceStatus) || "offline";
+  const selfStatus: PresenceStatus =
+    ((store as any).selfStatus as PresenceStatus) || "offline";
 
   const statusLabel =
-    selfStatus === "away" ? "Absent" : selfStatus === "online" ? "En ligne" : "Hors ligne";
+    selfStatus === "away"
+      ? "Absent"
+      : selfStatus === "online"
+      ? "En ligne"
+      : "Hors ligne";
   const statusColor =
-    selfStatus === "away" ? "#ffb347" : selfStatus === "online" ? "#7fe2a9" : "#cccccc";
+    selfStatus === "away"
+      ? "#ffb347"
+      : selfStatus === "online"
+      ? "#7fe2a9"
+      : "#cccccc";
 
   const displayName =
     activeProfile?.name ||
@@ -435,7 +459,8 @@ export default function FriendsPage({ store, update, go }: Props) {
 
   // -------- LOBBIES ONLINE --------
   const [creatingLobby, setCreatingLobby] = React.useState(false);
-  const [lastCreatedLobby, setLastCreatedLobby] = React.useState<OnlineLobby | null>(null);
+  const [lastCreatedLobby, setLastCreatedLobby] =
+    React.useState<OnlineLobby | null>(null);
 
   const [joinCode, setJoinCode] = React.useState("");
   const [joiningLobby, setJoiningLobby] = React.useState(false);
@@ -488,7 +513,10 @@ export default function FriendsPage({ store, update, go }: Props) {
         if (!cancelled) {
           setMatches(list || []);
           try {
-            window.localStorage.setItem(LS_ONLINE_MATCHES_KEY, JSON.stringify(list || []));
+            window.localStorage.setItem(
+              LS_ONLINE_MATCHES_KEY,
+              JSON.stringify(list || [])
+            );
           } catch {
             // ignore
           }
@@ -517,7 +545,8 @@ export default function FriendsPage({ store, update, go }: Props) {
   }
 
   function getMatchTitle(m: OnlineMatch): string {
-    const isTraining = (m as any).isTraining === true || (m as any)?.payload?.kind === "training_x01";
+    const isTraining =
+      (m as any).isTraining === true || (m as any)?.payload?.kind === "training_x01";
     if ((m as any).mode === "x01") return isTraining ? "X01 Training" : "X01 (match)";
     return (m as any).mode || "Match";
   }
@@ -620,10 +649,7 @@ export default function FriendsPage({ store, update, go }: Props) {
     () => (matches || []).slice().sort((a: any, b: any) => toTs(b) - toTs(a)),
     [matches]
   );
-  const grouped = React.useMemo(
-    () => groupMatchesPretty(sortedMatches as any),
-    [sortedMatches]
-  );
+  const grouped = React.useMemo(() => groupMatchesPretty(sortedMatches as any), [sortedMatches]);
 
   const lobby = joinedLobby || lastCreatedLobby;
 
@@ -655,14 +681,7 @@ export default function FriendsPage({ store, update, go }: Props) {
         />
 
         <div style={{ position: "relative" }}>
-          <div
-            style={{
-              display: "flex",
-              alignItems: "flex-start",
-              justifyContent: "space-between",
-              gap: 12,
-            }}
-          >
+          <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12 }}>
             <div style={{ minWidth: 0 }}>
               <div style={{ fontSize: 11, fontWeight: 950, letterSpacing: 1.2, opacity: 0.82 }}>
                 MODE EN LIGNE
@@ -724,10 +743,7 @@ export default function FriendsPage({ store, update, go }: Props) {
               opacity: 0.85,
             }}
           />
-
-          <div style={{ marginTop: 8, fontSize: 12, opacity: 0.75 }}>
-            V8 : compte cloud actif automatiquement (auto-session). Aucun écran login ici.
-          </div>
+          {/* ✅ Texte V8 supprimé ici */}
         </div>
       </div>
 
@@ -747,24 +763,9 @@ export default function FriendsPage({ store, update, go }: Props) {
               }}
             >
               {(activeProfile as any)?.avatarDataUrl ? (
-                <img
-                  src={(activeProfile as any).avatarDataUrl}
-                  alt=""
-                  style={{ width: "100%", height: "100%", objectFit: "cover" }}
-                />
+                <img src={(activeProfile as any).avatarDataUrl} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
               ) : (
-                <div
-                  style={{
-                    width: "100%",
-                    height: "100%",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    fontWeight: 950,
-                    color: "#1a1a1a",
-                    fontSize: 20,
-                  }}
-                >
+                <div style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 950, color: "#1a1a1a", fontSize: 20 }}>
                   {(displayName || "??").slice(0, 2).toUpperCase()}
                 </div>
               )}
@@ -813,16 +814,10 @@ export default function FriendsPage({ store, update, go }: Props) {
             <div style={{ marginTop: 6, display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
               <Pill label={`Status : ${status}`} tone={isSignedIn ? "green" : "red"} />
               <Pill label="Auto-session" tone="blue" />
-              {typeof (user as any)?.id === "string" ? (
-                <Pill label={`UID: ${(user as any).id.slice(0, 8)}…`} tone="gray" />
-              ) : null}
+              {typeof (user as any)?.id === "string" ? <Pill label={`UID: ${(user as any).id.slice(0, 8)}…`} tone="gray" /> : null}
             </div>
 
-            {lastSeenLabel ? (
-              <div style={{ marginTop: 7, fontSize: 11.3, opacity: 0.85 }}>
-                Dernière activité : {lastSeenLabel}
-              </div>
-            ) : null}
+            {lastSeenLabel ? <div style={{ marginTop: 7, fontSize: 11.3, opacity: 0.85 }}>Dernière activité : {lastSeenLabel}</div> : null}
           </div>
         </div>
 
@@ -864,15 +859,7 @@ export default function FriendsPage({ store, update, go }: Props) {
               justifyContent: "center",
             }}
           >
-            <span
-              style={{
-                width: 8,
-                height: 8,
-                borderRadius: "50%",
-                background: statusColor,
-                boxShadow: `0 0 8px ${statusColor}`,
-              }}
-            />
+            <span style={{ width: 8, height: 8, borderRadius: "50%", background: statusColor, boxShadow: `0 0 8px ${statusColor}` }} />
             <span>{statusLabel}</span>
           </div>
         </div>
@@ -901,9 +888,7 @@ export default function FriendsPage({ store, update, go }: Props) {
               borderRadius: 14,
               padding: "12px 12px",
               border: "1px solid rgba(255,255,255,.16)",
-              background: creatingLobby
-                ? "linear-gradient(180deg,#666,#444)"
-                : "linear-gradient(180deg,#ffd56a,#e9a93d)",
+              background: creatingLobby ? "linear-gradient(180deg,#666,#444)" : "linear-gradient(180deg,#ffd56a,#e9a93d)",
               color: "#1c1304",
               fontWeight: 950,
               fontSize: 13.5,
@@ -948,9 +933,7 @@ export default function FriendsPage({ store, update, go }: Props) {
                 borderRadius: 14,
                 padding: "12px 12px",
                 border: "1px solid rgba(255,255,255,.16)",
-                background: joiningLobby
-                  ? "linear-gradient(180deg,#555,#333)"
-                  : "linear-gradient(180deg,#4fb4ff,#1c78d5)",
+                background: joiningLobby ? "linear-gradient(180deg,#555,#333)" : "linear-gradient(180deg,#4fb4ff,#1c78d5)",
                 color: "#04101f",
                 fontWeight: 950,
                 fontSize: 13,
@@ -1034,40 +1017,16 @@ export default function FriendsPage({ store, update, go }: Props) {
               }}
             >
               {(activeProfile as any)?.avatarDataUrl ? (
-                <img
-                  src={(activeProfile as any).avatarDataUrl}
-                  alt=""
-                  style={{ width: "100%", height: "100%", objectFit: "cover" }}
-                />
+                <img src={(activeProfile as any).avatarDataUrl} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
               ) : (
-                <div
-                  style={{
-                    width: "100%",
-                    height: "100%",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    fontWeight: 950,
-                    color: "#1a1a1a",
-                    fontSize: 20,
-                  }}
-                >
+                <div style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 950, color: "#1a1a1a", fontSize: 20 }}>
                   {((activeProfile as any)?.name || "??").slice(0, 2).toUpperCase()}
                 </div>
               )}
             </div>
 
             <div style={{ flex: 1, minWidth: 0 }}>
-              <div
-                style={{
-                  fontWeight: 950,
-                  fontSize: 14,
-                  color: "#ffd56a",
-                  overflow: "hidden",
-                  textOverflow: "ellipsis",
-                  whiteSpace: "nowrap",
-                }}
-              >
+              <div style={{ fontWeight: 950, fontSize: 14, color: "#ffd56a", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                 {(activeProfile as any)?.name || "Hôte"}
               </div>
               <div style={{ fontSize: 12, opacity: 0.85 }}>Invite un ami avec le code ci-dessus</div>
@@ -1148,19 +1107,15 @@ export default function FriendsPage({ store, update, go }: Props) {
           </div>
         ) : (
           <div style={{ display: "grid", gap: 12, paddingLeft: 6 }}>
-            {/* Aujourd’hui */}
             {grouped.today?.length ? (
               <div>
-                <div style={{ fontSize: 12, fontWeight: 950, opacity: 0.82, marginBottom: 6 }}>
-                  Aujourd’hui
-                </div>
+                <div style={{ fontSize: 12, fontWeight: 950, opacity: 0.82, marginBottom: 6 }}>Aujourd’hui</div>
                 <div style={{ display: "grid", gap: 8 }}>
                   {grouped.today.map((m: any) => {
                     const title = getMatchTitle(m);
                     const playersLabel = getMatchPlayersLabel(m);
                     const winner = getMatchWinnerLabel(m);
-                    const isTraining =
-                      (m as any).isTraining === true || (m as any)?.payload?.kind === "training_x01";
+                    const isTraining = (m as any).isTraining === true || (m as any)?.payload?.kind === "training_x01";
                     return (
                       <MatchMiniCard
                         key={m.id}
@@ -1177,19 +1132,15 @@ export default function FriendsPage({ store, update, go }: Props) {
               </div>
             ) : null}
 
-            {/* 7 derniers jours */}
             {grouped.week?.length ? (
               <div>
-                <div style={{ fontSize: 12, fontWeight: 950, opacity: 0.82, marginBottom: 6 }}>
-                  7 derniers jours
-                </div>
+                <div style={{ fontSize: 12, fontWeight: 950, opacity: 0.82, marginBottom: 6 }}>7 derniers jours</div>
                 <div style={{ display: "grid", gap: 8 }}>
                   {grouped.week.map((m: any) => {
                     const title = getMatchTitle(m);
                     const playersLabel = getMatchPlayersLabel(m);
                     const winner = getMatchWinnerLabel(m);
-                    const isTraining =
-                      (m as any).isTraining === true || (m as any)?.payload?.kind === "training_x01";
+                    const isTraining = (m as any).isTraining === true || (m as any)?.payload?.kind === "training_x01";
                     return (
                       <MatchMiniCard
                         key={m.id}
@@ -1206,19 +1157,15 @@ export default function FriendsPage({ store, update, go }: Props) {
               </div>
             ) : null}
 
-            {/* Avant */}
             {grouped.older?.length ? (
               <div>
-                <div style={{ fontSize: 12, fontWeight: 950, opacity: 0.82, marginBottom: 6 }}>
-                  Avant
-                </div>
+                <div style={{ fontSize: 12, fontWeight: 950, opacity: 0.82, marginBottom: 6 }}>Avant</div>
                 <div style={{ display: "grid", gap: 8 }}>
                   {grouped.older.map((m: any) => {
                     const title = getMatchTitle(m);
                     const playersLabel = getMatchPlayersLabel(m);
                     const winner = getMatchWinnerLabel(m);
-                    const isTraining =
-                      (m as any).isTraining === true || (m as any)?.payload?.kind === "training_x01";
+                    const isTraining = (m as any).isTraining === true || (m as any)?.payload?.kind === "training_x01";
                     return (
                       <MatchMiniCard
                         key={m.id}
