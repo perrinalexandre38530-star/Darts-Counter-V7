@@ -1051,7 +1051,199 @@ const speakVisit = React.useCallback(
   [voiceEnabled, voiceId, lang]
 );
 
-  // =====================================================
+  
+// =====================================================
+// 🎵 SCORE SFX (80..179 + NULL) + DELAY VOICE (>=2s)
+// - Tous les fichiers sont chargés depuis /public/sounds
+//   ex: /public/sounds/score_80.mp3
+// =====================================================
+
+const voiceTimerRef = React.useRef<number | null>(null);
+const turnAnnouncedRef = React.useRef<string | null>(null);
+
+const playPublicSound = React.useCallback(
+  (fileName: string, opts?: { volume?: number }) => {
+    try {
+      if (typeof Audio === "undefined") return null as any;
+      const a = new Audio(`/sounds/${fileName}`);
+      a.volume = Math.max(0, Math.min(1, opts?.volume ?? sfxVolume ?? 0.75));
+      // évite empilement
+      a.currentTime = 0;
+      a.play().catch(() => {});
+      return a;
+    } catch {
+      return null as any;
+    }
+  },
+  [sfxVolume]
+);
+
+const scheduleVoice = React.useCallback(
+  (fn: () => void, delayMs: number) => {
+    if (!voiceEnabled) return;
+    if (voiceTimerRef.current) {
+      window.clearTimeout(voiceTimerRef.current);
+      voiceTimerRef.current = null;
+    }
+    voiceTimerRef.current = window.setTimeout(() => {
+      voiceTimerRef.current = null;
+      fn();
+    }, Math.max(0, delayMs));
+  },
+  [voiceEnabled]
+);
+
+const playScoreSfxAndMaybeDelayVoice = React.useCallback(
+  (args: {
+    playerName: string;
+    pid: string;
+    scoreBefore: number;
+    darts: UIDart[];
+    visitScore: number;
+    isBustNow: boolean;
+    isCheckoutNow: boolean;
+  }) => {
+    const { playerName, pid, scoreBefore, darts, visitScore, isBustNow, isCheckoutNow } = args;
+
+    // ---- Null sfx (0..10) hors checkout et hors bust ----
+    if (!isBustNow && !isCheckoutNow && visitScore >= 0 && visitScore <= 10) {
+      if (arcadeEnabled) {
+        playPublicSound("score-null.mp3", { volume: sfxVolume });
+      }
+      // pas de voix spéciale demandée sur les petits scores
+      return;
+    }
+
+    // ---- Scores 80..179 : SFX dédié + voix >= 2s après le son ----
+    if (!isBustNow && visitScore >= 80 && visitScore <= 179) {
+      if (arcadeEnabled) {
+        const audio = playPublicSound(`score_${visitScore}.mp3`, { volume: sfxVolume });
+        if (audio && typeof audio.addEventListener === "function") {
+          audio.addEventListener(
+            "ended",
+            () => {
+              scheduleVoice(() => speakVisit(playerName, visitScore), 2000);
+            },
+            { once: true } as any
+          );
+        } else {
+          scheduleVoice(() => speakVisit(playerName, visitScore), 2000);
+        }
+      } else {
+        // pas de SFX => voix immédiate
+        speakVisit(playerName, visitScore);
+      }
+      return;
+    }
+
+    // ---- 180 : déjà géré arcade (comme avant) + voix >= 2s ----
+    if (!isBustNow && visitScore === 180 && darts.length === 3) {
+      if (arcadeEnabled) {
+        playArcadeMapped("score_180", { rateLimitMs: 300 });
+        scheduleVoice(() => speakVisit(playerName, visitScore), 2000);
+      } else {
+        speakVisit(playerName, visitScore);
+      }
+      return;
+    }
+
+    // ---- Autres scores : voix normale (immédiate) ----
+    speakVisit(playerName, visitScore);
+  },
+  [arcadeEnabled, playArcadeMapped, playPublicSound, scheduleVoice, speakVisit, sfxVolume]
+);
+
+// =====================================================
+// 🗣️ VOIX IA — annonce du TOUR du joueur
+// =====================================================
+
+const speakText = React.useCallback(
+  (text: string) => {
+    if (!voiceEnabled) return;
+    try {
+      if (typeof window === "undefined") return;
+      const synth = (window as any).speechSynthesis;
+      if (!synth) return;
+
+      // stop queue pour éviter les empilements
+      try {
+        synth.cancel();
+      } catch {}
+
+      const u = new SpeechSynthesisUtterance(text);
+      // Langue (simple)
+      u.lang = (lang || "fr").startsWith("fr") ? "fr-FR" : lang || "en-US";
+
+      // Profil "robot" (optionnel)
+      if (voiceId === "robot") {
+        u.rate = 0.95;
+        u.pitch = 0.8;
+      } else {
+        u.rate = 1.02;
+        u.pitch = 1.0;
+      }
+
+      // Tente de choisir une voix cohérente (si dispo)
+      const voices: SpeechSynthesisVoice[] = synth.getVoices?.() || [];
+      const wantsFemale = voiceId === "female";
+      const wantsMale = voiceId === "male";
+
+      const pick = (v: SpeechSynthesisVoice) => {
+        const name = (v.name || "").toLowerCase();
+        const local = (v.lang || "").toLowerCase();
+        const okLang =
+          (lang || "fr").startsWith("fr") ? local.includes("fr") : true;
+
+        if (!okLang) return false;
+
+        if (wantsFemale) return name.includes("female") || name.includes("woman") || name.includes("fem");
+        if (wantsMale) return name.includes("male") || name.includes("man") || name.includes("hom");
+        return true;
+      };
+
+      const chosen = voices.find(pick) || voices.find((v) => (v.lang || "").toLowerCase().includes("fr")) || voices[0];
+      if (chosen) u.voice = chosen;
+
+      synth.speak(u);
+    } catch {
+      // ignore
+    }
+  },
+  [voiceEnabled, voiceId, lang]
+);
+
+React.useEffect(() => {
+  // on annonce uniquement pendant une partie en cours
+  if (status !== "running") return;
+  if (!activePlayerId) return;
+
+  // anti-spam
+  if (turnAnnouncedRef.current === activePlayerId) return;
+  turnAnnouncedRef.current = activePlayerId;
+
+  const playerName = profileById?.[activePlayerId as any]?.name || activePlayer?.name || "Joueur";
+  // Ex: "Tour de Alex" / "À toi Alex"
+  const phrase = (lang || "fr").startsWith("fr")
+    ? `À toi ${playerName}`
+    : `Your turn ${playerName}`;
+
+  // petit délai pour laisser l'UI se mettre à jour
+  scheduleVoice(() => speakText(phrase), 350);
+}, [activePlayerId, status, activePlayer, profileById, scheduleVoice, speakText, lang]);
+
+// =====================================================
+// 🎬 INTRO SOUND au début de partie
+// =====================================================
+const introPlayedRef = React.useRef(false);
+React.useEffect(() => {
+  if (introPlayedRef.current) return;
+  introPlayedRef.current = true;
+  if (!arcadeEnabled) return;
+  // intro dès l'entrée dans le match
+  playPublicSound("game-intro.mp3", { volume: sfxVolume });
+}, [arcadeEnabled, playPublicSound, sfxVolume]);
+
+// =====================================================
 // ÉTAT LOCAL KEYPAD (logique v1 + synchro UNDO moteur)
 // =====================================================
 
@@ -1291,13 +1483,22 @@ const validateThrow = () => {
     const isBustNow =
       scoreBefore - visitScore < 0 || (doubleOut && scoreBefore - visitScore === 1);
 
-    // ✅ 180 uniquement si pas bust
-    if (!isBustNow && visitScore === 180 && toSend.length === 3) {
-      playArcadeMapped("score_180", { rateLimitMs: 300 });
-    }
+    const remainingAfter = scoreBefore - visitScore;
+    const last = toSend[toSend.length - 1];
+    const lastIsDouble = !!last && (last.mult === 2 || (last.v === 25 && last.mult === 2));
+    const isCheckoutNow =
+      !isBustNow && remainingAfter === 0 && (!doubleOut || lastIsDouble);
 
-    // ✅ voix IA
-    speakVisit(playerName, visitScore);
+    // ✅ sons scores (80..179 + null + 180) + délai voix (>=2s)
+    playScoreSfxAndMaybeDelayVoice({
+      playerName,
+      pid,
+      scoreBefore,
+      darts: toSend,
+      visitScore,
+      isBustNow,
+      isCheckoutNow,
+    });
 
     // ✅ volée validée : reset le flag rouge
     setLastVisitIsBustByPlayer((m: Record<string, boolean>) => ({
@@ -1414,6 +1615,40 @@ React.useEffect(() => {
       setLastVisitsByPlayer((m) => ({ ...m, [pid]: ui.slice(-3) }));
 
       ensureAudioUnlockedNow();
+
+      // ✅ sons scores + voix (comme au keypad)
+      try {
+        const playerName = activePlayer?.name || profileById?.[pid as any]?.name || "Joueur";
+        const scoreBefore = scores[pid] ?? config.startScore;
+
+        const visitScore = darts.reduce((s: number, d: any) => {
+          if (d.segment === 25 && d.multiplier === 2) return s + 50;
+          return s + (d.segment || 0) * (d.multiplier || 1);
+        }, 0);
+
+        const isBustNow =
+          scoreBefore - visitScore < 0 || (doubleOut && scoreBefore - visitScore === 1);
+
+        const remainingAfter = scoreBefore - visitScore;
+        const lastD = ui[ui.length - 1];
+        const lastIsDouble = !!lastD && (lastD.mult === 2 || (lastD.v === 25 && lastD.mult === 2));
+        const isCheckoutNow =
+          !isBustNow && remainingAfter === 0 && (!doubleOut || lastIsDouble);
+
+        playScoreSfxAndMaybeDelayVoice({
+          playerName,
+          pid,
+          scoreBefore,
+          darts: ui,
+          visitScore,
+          isBustNow,
+          isCheckoutNow,
+        });
+
+        // reset bust flag rouge
+        setLastVisitIsBustByPlayer((m: Record<string, boolean>) => ({ ...m, [pid]: false }));
+      } catch {}
+
       currentThrowFromEngineRef.current = true;
 
       // Petits SFX (1 par dart, sans spam)

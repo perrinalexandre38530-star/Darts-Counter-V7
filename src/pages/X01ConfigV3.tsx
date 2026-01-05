@@ -20,6 +20,8 @@ import {
   getFavoriteDartSetForProfile,
   type DartSet,
 } from "../lib/dartSetsStore";
+import { x01EnsureAudioUnlocked, x01SfxV3Preload } from "../lib/x01SfxV3";
+
 
 // 🔽 IMPORTS DE TOUS LES AVATARS BOTS PRO
 import avatarGreenMachine from "../assets/avatars/bots-pro/green-machine.png";
@@ -521,6 +523,15 @@ export default function X01ConfigV3({ profiles, onBack, onStart, go }: Props) {
         return;
       }
     }
+
+
+// 🔓 Audio: preload + unlock (clic utilisateur) -> permet l'intro & les SFX dès l'entrée en match
+try {
+  x01SfxV3Preload();
+  x01EnsureAudioUnlocked();
+} catch (e) {
+  // ignore
+}
 
     let teams: null | Array<{ id: TeamId; name: string; color: string; playerIds: string[] }> = null;
 
