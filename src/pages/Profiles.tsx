@@ -1185,7 +1185,7 @@ React.useEffect(() => {
                 title={`${t(
                   "profiles.locals.title",
                   "Profils locaux"
-                )} (${profiles.filter((p) => p.id !== activeProfileId).length})`}
+                )} (${profiles.filter((p) => p.id !== activeProfileId && !String(p.id || "").startsWith("online:") && !(p as any)?.isOnlineMirror).length})`}
               >
                 <LocalProfilesRefonte
                   profiles={profiles}
@@ -2977,7 +2977,13 @@ function LocalProfilesRefonte({
 
   // on enlève seulement le profil actif du carrousel
   const locals = React.useMemo(
-    () => profiles.filter((p) => p.id !== activeProfileId),
+    () =>
+      profiles.filter(
+        (p) =>
+          p.id !== activeProfileId &&
+          !String(p.id || "").startsWith("online:") &&
+          !(p as any)?.isOnlineMirror
+      ),
     [profiles, activeProfileId]
   );
 
