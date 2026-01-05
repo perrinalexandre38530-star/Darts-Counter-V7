@@ -1,192 +1,72 @@
-// ============================================
-// src/pages/X01Play.tsx (OPTION A CLEAN)
-// Wrapper (snapshot) + X01Core (moteur + UI)
-// + AUTOSAVE propre
-// + Nouveau LegBannerModal (unique)
-// + Suppression complète de EndBanner / ContinueModal
-// ============================================
+// =============================================================
+// src/pages/X01Play.tsx
+// X01 V3 — moteur neuf + UI du "beau" X01Play
+// + Tour automatique des BOTS (isBot / botLevel)
+// + Sauvegarde Historique à la fin du match
+// + Autosave localStorage (reprise après coupure)
+// =============================================================
 
 import React from "react";
-import { useX01Engine } from "../hooks/useX01Engine";
-import Keypad from "../components/Keypad";
-import EndOfLegOverlay from "../components/EndOfLegOverlay";
-import { playSound } from "../lib/sound";
-import { History, type SavedMatch } from "../lib/history";
-import { DuelHeaderCompact } from "../components/DuelHeaderCompact";
-import trophyCup from "../ui_assets/trophy-cup.png";
 
-// Réseau Stats / Agg
 import type {
-  Visit as VisitType,
-  PlayerLite as PlayerLiteType,
-  Profile,
-  MatchRecord,
-  Dart as UIDart,
-  LegResult,
-  FinishPolicy,
-  X01Snapshot,
-} from "../lib/types";
+  X01ConfigV3,
+  X01PlayerId,
+  X01DartInputV3,
+} from "../types/x01v3";
+import { useX01EngineV3 } from "../hooks/useX01EngineV3";
+import type { Dart as UIDart } from "../lib/types";
+
+import Keypad from "../components/Keypad";
+import { DuelHeaderCompact } from "../components/DuelHeaderCompact";
+import X01LegOverlayV3 from "../lib/x01v3/x01LegOverlayV3";
+
+import { useTheme } from "../contexts/ThemeContext";
+import { useLang } from "../contexts/LangContext";
+import { History } from "../lib/history";
+
+import EndOfLegOverlay from "../components/EndOfLegOverlay";
+import type { LegStats } from "../lib/stats";
+import { buildLegStatsFromV3LiveForOverlay } from "../lib/x01v3/x01V3LegStatsAdapter";
 
 import { StatsBridge } from "../lib/statsBridge";
-import { addMatchSummary, commitLiteFromLeg } from "../lib/statsLiteIDB";
-import { extractAggFromSavedMatch } from "../lib/aggFromHistory";
-import * as StatsOnce from "../lib/statsOnce";
-import { saveMatchStats, aggregateMatch } from "../lib/stats";
-import { commitMatchSummary, buildX01Summary } from "../lib/playerStats";
+import { loadBots } from "./ProfilesBots";
 
-import { onlineApi } from "../lib/onlineApi";
-import { useAuthOnline } from "../hooks/useAuthOnline";
+import {
+  x01SfxV3Preload,
+  x01PlaySfxV3,
+  x01SfxV3Configure,      // ✅ AJOUT
+  x01EnsureAudioUnlocked, // ✅ AJOUT
+  isBull,
+  isDBull,
+  isDouble,
+  isTriple,
+  announceVisit,
+  announceEndGame,
+} from "../lib/x01SfxV3";
 
-/* ===================================================================== 
-   TRAINING-LIKE SAVE FOR NORMAL X01 MATCHES
-   Sauvegarde simple dans LA MÊME STRUCTURE que TrainingX01Play
-   (clé : dc_training_x01_stats_v1)
-===================================================================== */
+// ---------------- Constantes visuelles / autosave ----------------
 
-const TRAINING_X01_STATS_KEY = "dc_training_x01_stats_v1";
+const NAV_HEIGHT = 64;
+const CONTENT_MAX = 520;
+const AUTOSAVE_KEY = "x01v3:autosave";
 
-type TrainingLikeEntry = {
-  // même base que TrainingFinishStats de TrainingX01Play
-  date: number;
-  darts: number;
-  avg3D: number;
-  pctS: number;
-  pctD: number;
-  pctT: number;
-  bestVisit: number;
-  checkout: number;
-
-  hitsS: number;
-  hitsD: number;
-  hitsT: number;
-  miss: number;
-  bull: number;
-  dBull: number;
-  bust: number;
-
-  bySegment: Record<string, number>;
-  bySegmentS: Record<string, number>;
-  bySegmentD: Record<string, number>;
-  bySegmentT: Record<string, number>;
-
-  // champs bonus (ignorés par TrainingX01Play / StatsHub si non utilisés)
-  playerId: string;
-  startScore: number;
-  visits: number;
-};
-
-function loadTrainingStats(): TrainingLikeEntry[] {
-  try {
-    const raw = localStorage.getItem(TRAINING_X01_STATS_KEY);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? (parsed as TrainingLikeEntry[]) : [];
-  } catch {
-    return [];
-  }
-}
-
-function saveTrainingStats(arr: TrainingLikeEntry[]) {
-  try {
-    localStorage.setItem(TRAINING_X01_STATS_KEY, JSON.stringify(arr));
-  } catch {
-    // quota plein => on ignore, pas grave pour le match normal
-  }
-}
-
-/**
- * Ajoute une entrée “type Training” pour un match X01 normal
- */
-function addTrainingLikeEntry(params: {
-  playerId: string;
-  darts: number;
-  scored: number;
-  bestVisit: number;
-  bestCheckout: number;
-  startScore: number;
-}) {
-  const { playerId, darts, scored, bestVisit, bestCheckout, startScore } =
-    params;
-
-  const avg3D = darts > 0 ? (scored / darts) * 3 : 0;
-  const visits = Math.ceil(darts / 3);
-
-  const entry: TrainingLikeEntry = {
-    date: Date.now(),
-    darts,
-    avg3D,
-    pctS: 0,
-    pctD: 0,
-    pctT: 0,
-    bestVisit,
-    checkout: bestCheckout,
-
-    hitsS: 0,
-    hitsD: 0,
-    hitsT: 0,
-    miss: 0,
-    bull: 0,
-    dBull: 0,
-    bust: 0,
-
-    bySegment: {},
-    bySegmentS: {},
-    bySegmentD: {},
-    bySegmentT: {},
-
-    playerId,
-    startScore,
-    visits,
-  };
-
-  const prev = loadTrainingStats();
-  prev.push(entry);
-  saveTrainingStats(prev);
-}
-
-/* ==================== AUTOSAVE ==================== */
-const AUTOSAVE_KEY = "dc-x01-autosave-v1";
-
-function loadAutosave(): X01Snapshot | null {
-  try {
-    const s = localStorage.getItem(AUTOSAVE_KEY);
-    if (s) return JSON.parse(s);
-  } catch {}
-  return null;
-}
-
-let __lastAutosaveTs = 0;
-function saveAutosave(snap: X01Snapshot | null) {
-  if (!snap) return;
-  try {
-    const now = Date.now();
-    if (now - __lastAutosaveTs < 800) return;
-    localStorage.setItem(AUTOSAVE_KEY, JSON.stringify(snap));
-    __lastAutosaveTs = now;
-  } catch {}
-}
-
-function clearAutosave() {
-  try {
-    localStorage.removeItem(AUTOSAVE_KEY);
-  } catch {}
-}
-
-/* ==================== STYLES MINI-CARD ==================== */
 const miniCard: React.CSSProperties = {
-  width: "clamp(150px,22vw,190px)",
+  width: "clamp(150px, 22vw, 190px)",
   height: 86,
   padding: 6,
   borderRadius: 12,
-  background: "linear-gradient(180deg,rgba(22,22,26,.96),rgba(14,14,16,.98))",
+  background:
+    "linear-gradient(180deg,rgba(22,22,26,.96),rgba(14,14,16,.98))",
   border: "1px solid rgba(255,255,255,.10)",
   boxShadow: "0 10px 22px rgba(0,0,0,.35)",
 };
+
 const miniText: React.CSSProperties = {
   fontSize: 12,
   color: "#d9dbe3",
   lineHeight: 1.25,
 };
+
 const miniRankRow: React.CSSProperties = {
   display: "flex",
   justifyContent: "space-between",
@@ -197,398 +77,47 @@ const miniRankRow: React.CSSProperties = {
   fontSize: 11,
   lineHeight: 1.15,
 };
-const miniRankName: React.CSSProperties = { fontWeight: 700, color: "#ffcf57" };
-const miniRankScore: React.CSSProperties = { fontWeight: 800, color: "#ffcf57" };
+
+const miniRankName: React.CSSProperties = {
+  fontWeight: 700,
+  color: "#ffcf57",
+};
+
+const miniRankScore: React.CSSProperties = {
+  fontWeight: 800,
+  color: "#ffcf57",
+};
+
 const miniRankScoreFini: React.CSSProperties = {
   fontWeight: 800,
   color: "#7fe2a9",
 };
 
-/* ==================== CONSTANTES ==================== */
-const NAV_HEIGHT = 64;
-const CONTENT_MAX = 520;
+// ---------------- Types & helpers locaux ----------------
 
-type Mode = "simple" | "double" | "master";
-type EnginePlayer = { id: string; name: string };
-
-/* ========================================================
-   NOUVEAU BANDEAU MODAL FIN DE MANCHE — LegBannerModal
-======================================================== */
-type LegBannerProps = {
-  players: { id: string; name: string }[];
-  profiles: Profile[];
-  pendingFirstWin: { playerId: string } | null;
-  finishedOrder: string[];
-  setsTarget: number;             // nombre de sets à gagner
-  legsTarget: number;             // nombre de manches à gagner pour un set
-  legsWon: Record<string, number>;
-  setsWon: Record<string, number>;
-  currentSet: number;
-  currentLegInSet: number;
-  onContinue: () => void;
-  onShowRanking: () => void;
-  onNextLeg: () => void;
+type Props = {
+  config: X01ConfigV3;
+  onExit?: () => void; // QUITTER -> Home (via App)
+  onShowSummary?: (matchId: string) => void; // RÉSUMÉ -> Historique détaillé
+  onReplayNewConfig?: () => void; // REJOUER -> changer paramètres (App)
 };
 
-function LegBannerModal(props: LegBannerProps) {
-  const {
-    players,
-    profiles,
-    pendingFirstWin,
-    finishedOrder,
-    setsTarget,
-    legsTarget,
-    legsWon,
-    setsWon,
-    currentSet,
-    currentLegInSet,
-    onContinue,
-    onShowRanking,
-    onNextLeg,
-  } = props;
+type MiniRankingRow = {
+  id: X01PlayerId;
+  name: string;
+  score: number;
+  legsWon: number;
+  setsWon: number;
+  avg3: number;
+};
 
-  const isDuel = players.length === 2;
-  const isSetLegMode = setsTarget > 1 || legsTarget > 1;
+type X01V3AutosaveSnapshot = {
+  id: string;
+  createdAt: number;
+  config: X01ConfigV3;
+  darts: X01DartInputV3[];
+};
 
-  const winnerId =
-    pendingFirstWin?.playerId ||
-    (finishedOrder && finishedOrder.length ? finishedOrder[0] : null);
-
-  if (!winnerId) return null;
-
-  const winnerPlayer = players.find((p) => p.id === winnerId) || null;
-  const winnerProfile = profiles.find((p) => p.id === winnerId) || null;
-
-  // ⚠️ Au moment où le bandeau apparaît, le moteur n’a PAS encore
-  // ajouté cette manche à legsWon. On affiche donc le score
-  // « après cette manche » en ajoutant +1 au vainqueur.
-  const winnerLegsBefore = legsWon[winnerId] ?? 0;
-  const winnerLegsAfter = winnerLegsBefore + 1;
-
-  // Est-ce que cette manche fait gagner le SET ?
-  const willWinSet =
-    isDuel && isSetLegMode && legsTarget > 0 && winnerLegsAfter >= legsTarget;
-
-  const winnerSetsBefore = setsWon[winnerId] ?? 0;
-  const winnerSetsAfter = willWinSet ? winnerSetsBefore + 1 : winnerSetsBefore;
-
-  // Est-ce que cette manche fait gagner le MATCH (tous les sets requis gagnés) ?
-  const willWinMatch =
-    willWinSet && setsTarget > 0 && winnerSetsAfter >= setsTarget;
-
-  // Texte score "1-1", "2-1", etc. (score des MANCHES dans le set en cours)
-  let scoreText: string | null = null;
-
-  if (isDuel) {
-    const other = players.find((p) => p.id !== winnerId);
-    if (other) {
-      const otherLegsBefore = legsWon[other.id] ?? 0;
-      const otherLegsAfter = otherLegsBefore; // il ne gagne pas cette manche
-      scoreText = `${winnerLegsAfter} - ${otherLegsAfter}`;
-    }
-  } else if (isSetLegMode) {
-    const wl = winnerLegsAfter;
-    scoreText =
-      wl > 0
-        ? `${wl} manche${wl > 1 ? "s" : ""} gagnée${wl > 1 ? "s" : ""}`
-        : null;
-  }
-
-  // ✅ Nom de l’adversaire pour affichage "Alex 1-1 Neven"
-  const opponentName =
-    isDuel ? players.find((p) => p.id !== winnerId)?.name ?? null : null;
-
-  // ✅ Libellé du bouton principal (bas) :
-  // - pas de set/leg : Terminer
-  // - set gagné mais match fini : Terminer le match
-  // - set gagné mais match continue : Set suivant
-  // - sinon : Manche suivante
-  let primaryLabel: string;
-  if (!isSetLegMode) {
-    primaryLabel = "Terminer";
-  } else if (willWinMatch) {
-    primaryLabel = "Terminer le match";
-  } else if (willWinSet) {
-    primaryLabel = "Set suivant";
-  } else {
-    primaryLabel = "Manche suivante";
-  }
-
-  // ✅ Badge sous le nom : "Manche gagnée" ou "SET gagné"
-  const victoryLabel = willWinSet ? "SET gagné" : "Manche gagnée";
-
-  // ✅ "Continuer (laisser finir)" uniquement si 3 joueurs et +
-  const showContinue = players.length >= 3;
-
-  return (
-    <div
-      style={{
-        position: "fixed",
-        inset: 0,
-        zIndex: 120,
-        background: "rgba(0,0,0,.60)",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        padding: 16,
-      }}
-    >
-      <div
-        style={{
-          width: "min(460px, 92%)",
-          borderRadius: 18,
-          padding: 16,
-          background:
-            "linear-gradient(180deg, rgba(22,22,26,.98), rgba(12,12,14,.98))",
-          border: "1px solid rgba(255,255,255,.18)",
-          boxShadow: "0 20px 40px rgba(0,0,0,.7)",
-          color: "#f5f5f7",
-        }}
-      >
-        {/* Header */}
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            gap: 12,
-            marginBottom: 12,
-          }}
-        >
-          {/* Avatar + Texte gagnant */}
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 12,
-              flex: 1,
-              minWidth: 0,
-            }}
-          >
-            {/* Avatar CLEAN */}
-            <div
-              style={{
-                position: "relative",
-                width: 64,
-                height: 64,
-                borderRadius: "50%",
-                overflow: "hidden",
-                background:
-                  "radial-gradient(circle at 30% 0%, #ffde75, #c2871f)",
-                flexShrink: 0,
-              }}
-            >
-              {winnerProfile?.avatarDataUrl ? (
-                <img
-                  src={winnerProfile.avatarDataUrl}
-                  alt={winnerProfile.name}
-                  style={{
-                    width: "100%",
-                    height: "100%",
-                    objectFit: "cover",
-                  }}
-                />
-              ) : (
-                <div
-                  style={{
-                    width: "100%",
-                    height: "100%",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    fontWeight: 900,
-                    color: "#1a1a1a",
-                    fontSize: 24,
-                  }}
-                >
-                  <img
-                    src={trophyCup}
-                    alt="Trophée"
-                    style={{
-                      width: "80%",
-                      height: "80%",
-                      objectFit: "contain",
-                    }}
-                  />
-                </div>
-              )}
-            </div>
-
-            {/* Texte */}
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div
-                style={{
-                  fontSize: 12,
-                  textTransform: "uppercase",
-                  letterSpacing: 1,
-                  opacity: 0.85,
-                  marginBottom: 2,
-                }}
-              >
-                {isSetLegMode ? (
-                  <>
-                    Manche {currentLegInSet}/{legsTarget} · Set {currentSet}/
-                    {setsTarget}
-                  </>
-                ) : (
-                  <>Manche {currentLegInSet}</>
-                )}
-              </div>
-
-              <div
-                style={{
-                  fontSize: 18,
-                  fontWeight: 900,
-                  color: "#ffcf57",
-                  display: "flex",
-                  flexWrap: "wrap",
-                  alignItems: "baseline",
-                  gap: 4,
-                }}
-              >
-                <span>
-                  {winnerProfile?.name || winnerPlayer?.name || "Vainqueur"}
-                </span>
-
-                {scoreText && (
-                  <>
-                    <span
-                      style={{
-                        fontSize: 15,
-                        color: "#f5f5f7",
-                        opacity: 0.9,
-                      }}
-                    >
-                      · {scoreText}
-                    </span>
-
-                    {opponentName && (
-                      <span
-                        style={{
-                          fontSize: 15,
-                          color: "#f5f5f7",
-                          opacity: 0.9,
-                        }}
-                      >
-                        · {opponentName}
-                      </span>
-                    )}
-                  </>
-                )}
-              </div>
-
-              <div
-                style={{
-                  marginTop: 2,
-                  fontSize: 13,
-                  fontWeight: 800,
-                  color: "#e7e7e7",
-                  opacity: 0.9,
-                }}
-              >
-                {victoryLabel}
-              </div>
-            </div>
-          </div>
-
-          {/* Petit icône TROPHÉE à droite */}
-          <div
-            style={{
-              width: 40,
-              height: 40,
-              borderRadius: 14,
-              background: "rgba(246,194,86,0.16)",
-              boxShadow: "0 0 6px rgba(246,194,86,0.35)",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              flexShrink: 0,
-            }}
-          >
-            <img
-              src={trophyCup}
-              alt="Trophée"
-              style={{
-                width: "80%",
-                height: "80%",
-                objectFit: "contain",
-              }}
-            />
-          </div>
-        </div>
-
-        {/* Boutons */}
-        <div
-          style={{
-            display: "flex",
-            flexDirection: "column",
-            gap: 8,
-            marginTop: 4,
-          }}
-        >
-          {showContinue && (
-            <button
-              type="button"
-              onClick={onContinue}
-              style={{
-                width: "100%",
-                borderRadius: 999,
-                padding: "10px 12px",
-                border: "1px solid rgba(120,200,140,.5)",
-                background: "linear-gradient(180deg,#35c86d,#23a958)",
-                color: "#08130c",
-                fontWeight: 900,
-                cursor: "pointer",
-              }}
-            >
-              Continuer (laisser finir)
-            </button>
-          )}
-
-          <button
-            type="button"
-            onClick={onShowRanking}
-            style={{
-              width: "100%",
-              borderRadius: 999,
-              padding: "9px 12px",
-              border: "1px solid rgba(255,255,255,.18)",
-              background:
-                "linear-gradient(180deg, rgba(40,40,46,.95), rgba(24,24,28,.98))",
-              color: "#f5f5f7",
-              fontWeight: 800,
-              cursor: "pointer",
-            }}
-          >
-            Résumé
-          </button>
-
-          <button
-            type="button"
-            onClick={onNextLeg}
-            style={{
-              width: "100%",
-              borderRadius: 999,
-              padding: "10px 12px",
-              border: "1px solid rgba(255,190,70,.6)",
-              background: "linear-gradient(180deg,#ffc63a,#ffaf00)",
-              color: "#151515",
-              fontWeight: 900,
-              cursor: "pointer",
-              marginTop: 2,
-            }}
-          >
-            {primaryLabel}
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-/* ========================================================
-   HELPERS VISUELS (pastilles + formatage)
-======================================================== */
 function fmt(d?: UIDart) {
   if (!d) return "—";
   if (d.v === 0) return "MISS";
@@ -604,36 +133,42 @@ function chipStyle(d?: UIDart, red = false): React.CSSProperties {
       color: "#bbb",
       border: "1px solid rgba(255,255,255,.08)",
     };
+
   if (red)
     return {
       background: "rgba(200,30,30,.18)",
       color: "#ff8a8a",
       border: "1px solid rgba(255,80,80,.35)",
     };
+
   if (d.v === 25 && d.mult === 2)
     return {
       background: "rgba(13,160,98,.18)",
       color: "#8ee6bf",
       border: "1px solid rgba(13,160,98,.35)",
     };
+
   if (d.v === 25)
     return {
       background: "rgba(13,160,98,.12)",
       color: "#7bd6b0",
       border: "1px solid rgba(13,160,98,.3)",
     };
+
   if (d.mult === 3)
     return {
       background: "rgba(179,68,151,.18)",
       color: "#ffd0ff",
       border: "1px solid rgba(179,68,151,.35)",
     };
+
   if (d.mult === 2)
     return {
       background: "rgba(46,150,193,.18)",
       color: "#cfeaff",
       border: "1px solid rgba(46,150,193,.35)",
     };
+
   return {
     background: "rgba(255,187,51,.12)",
     color: "#ffc63a",
@@ -641,1523 +176,1888 @@ function chipStyle(d?: UIDart, red = false): React.CSSProperties {
   };
 }
 
-/* Dernière volée — pastilles */
-type VisitLite = {
-  p: string;
-  segments: { v: number; mult?: 1 | 2 | 3 }[];
-  bust?: boolean;
-  score?: number;
-  ts?: number;
-  isCheckout?: boolean;
-  remainingAfter?: number;
-};
-
-function renderLastVisitChipsFromLog(visitsLog: VisitLite[], pid: string) {
-  const v = [...(visitsLog || [])].filter((vv) => vv.p === pid).pop();
-  if (!v || !v.segments?.length) return null;
-
-  const chipBase: React.CSSProperties = {
-    display: "inline-flex",
-    alignItems: "center",
-    justifyContent: "center",
-    minWidth: 38,
-    height: 24,
-    padding: "0 10px",
-    borderRadius: 10,
-    fontWeight: 800,
-    fontSize: 12,
-    marginLeft: 6,
-  };
-
-  const chips = v.segments.map((s, i) => {
-    const d = { v: s.v, mult: (s.mult || 1) as 1 | 2 | 3 };
-    const st = chipStyle(d);
-    return (
-      <span
-        key={i}
-        style={{
-          ...chipBase,
-          background: st.background,
-          color: st.color,
-          border: st.border as string,
-        }}
-      >
-        {fmt(d)}
-      </span>
-    );
-  });
-
-  if (v.bust) {
-    const st = chipStyle(undefined, true);
-    chips.push(
-      <span
-        key="bust"
-        style={{
-          ...chipBase,
-          background: st.background,
-          color: st.color,
-          border: st.border as string,
-        }}
-      >
-        Bust
-      </span>
-    );
-  }
-
-  return <span style={{ display: "inline-flex", flexWrap: "wrap" }}>{chips}</span>;
+function dartValue(d: UIDart) {
+  if (d.v === 25 && d.mult === 2) return 50;
+  return d.v * d.mult;
 }
 
-/* ========================================================
-   PARAMÈTRES DE DÉMARRAGE
-======================================================== */
-type StartParams = {
-  playerIds: string[];
-  start: 301 | 501 | 701 | 901 | 1001;
-  outMode?: Mode;
-  inMode?: Mode;
-  setsToWin?: number;
-  legsPerSet?: number;
-  finishPolicy?: FinishPolicy;
-  resume?: X01Snapshot | null;
-};
-
-function readStartParams(
-  propIds: string[] | undefined,
-  propStart: any,
-  propOut: Mode | undefined,
-  propIn: Mode | undefined,
-  propSets?: number,
-  propLegs?: number,
-  params?: any
-): StartParams {
-  const fromProps: Partial<StartParams> = {
-    playerIds: propIds || [],
-    start: propStart ?? 501,
-    outMode: propOut,
-    inMode: propIn,
-    setsToWin: propSets,
-    legsPerSet: propLegs,
-  };
-  const fromParams: Partial<StartParams> = params?.startParams ?? {};
-  const fromGlobal: Partial<StartParams> =
-    (typeof window !== "undefined" && (window as any).__x01StartParams) || {};
-
-  return {
-    playerIds:
-      fromParams.playerIds ?? fromGlobal.playerIds ?? fromProps.playerIds ?? [],
-    start: (fromParams.start ?? fromGlobal.start ?? fromProps.start ?? 501) as any,
-    outMode: (fromParams.outMode ??
-      fromGlobal.outMode ??
-      fromProps.outMode ??
-      "double") as Mode,
-    inMode: (fromParams.inMode ??
-      fromGlobal.inMode ??
-      fromProps.inMode ??
-      "simple") as Mode,
-    setsToWin:
-      fromParams.setsToWin ?? fromGlobal.setsToWin ?? fromProps.setsToWin ?? 1,
-    legsPerSet:
-      fromParams.legsPerSet ?? fromGlobal.legsPerSet ?? fromProps.legsPerSet ?? 1,
-    finishPolicy: (fromParams.finishPolicy ??
-      fromGlobal.finishPolicy ??
-      ("firstToZero" as FinishPolicy)) as FinishPolicy,
-    resume: (fromParams.resume ?? fromGlobal.resume ?? null) as X01Snapshot | null,
-  };
+// Checkout suggestion à partir de la structure V3
+function formatCheckoutFromVisit(suggestion: any): string {
+  if (!suggestion?.darts || !Array.isArray(suggestion.darts)) return "";
+  return suggestion.darts
+    .map((d: any) => {
+      const seg = d.segment === 25 ? "BULL" : String(d.segment);
+      if (d.multiplier === 1) return seg;
+      if (d.multiplier === 2) return `D${seg}`;
+      if (d.multiplier === 3) return `T${seg}`;
+      return seg;
+    })
+    .join(" • ");
 }
 
-/* ========================================================
-   AUDIO SAFE HELPERS
-======================================================== */
-function tryPlay(a: any) {
-  if (!a?.play) return;
-  try {
-    const p = a.play();
-    if (p?.catch) p.catch(() => {});
-  } catch {}
-}
-
-function createAudio(urls: string[]) {
-  try {
-    const a = new Audio();
-    const pick = urls.find((u) => {
-      const ext = u.split(".").pop()!;
-      const mime = ext === "mp3" ? "audio/mpeg" : ext === "ogg" ? "audio/ogg" : "";
-      return mime && a.canPlayType(mime) !== "";
-    });
-
-    if (!pick)
-      return { play() {}, pause() {}, currentTime: 0, volume: 1, loop: false };
-
-    a.src = pick;
-    return a;
-  } catch {
-    return { play() {}, pause() {}, currentTime: 0, volume: 1, loop: false };
-  }
-}
-
-/* ========================================================
-   CHECKOUT HELPER (double-out)
-======================================================== */
-function suggestCheckout(
-  rest: number,
-  doubleOut: boolean,
-  dartsLeft: 1 | 2 | 3
-): string[] {
-  if (rest < 2 || rest > 170) return [];
-  if (!doubleOut) return rest <= 50 ? [rest === 50 ? "BULL" : `S${rest}`] : [];
-
-  const map: Record<number, string> = {
-    170: "T20 T20 D25",
-    167: "T20 T19 D25",
-    164: "T20 T18 D25",
-    161: "T20 T17 D25",
-    160: "T20 T20 D20",
-    158: "T20 T20 D19",
-    157: "T20 T19 D20",
-    156: "T20 T20 D18",
-    155: "T20 T19 D19",
-    154: "T20 T18 D20",
-    153: "T20 T19 D18",
-    152: "T20 T20 D16",
-    151: "T20 T17 D20",
-    150: "T20 T18 D18",
-    140: "T20 T20 D10",
-    139: "T20 T13 D20",
-    138: "T20 T18 D12",
-    137: "T20 T15 D16",
-    136: "T20 T20 D8",
-    135: "T20 T17 D12",
-    130: "T20 T18 D8",
-    129: "T19 T16 D12",
-    128: "T18 T14 D16",
-    127: "T20 T17 D8",
-    126: "T19 T19 D6",
-    125: "25 T20 D20",
-    124: "T20 T16 D8",
-    123: "T19 T16 D9",
-    122: "T18 T18 D7",
-    121: "T20 11 D25",
-    120: "T20 D20",
-    119: "T19 10 D25",
-    118: "T20 18 D20",
-    117: "T20 17 D20",
-    116: "T20 16 D20",
-    115: "T20 15 D20",
-    110: "T20 10 D20",
-    109: "T20 9 D20",
-    108: "T20 16 D16",
-    107: "T19 18 D16",
-    101: "T20 9 D16",
-    100: "T20 D20",
-    99: "T19 10 D16",
-    98: "T20 D19",
-    97: "T19 D20",
-    96: "T20 D18",
-    95: "T19 D19",
-    94: "T18 D20",
-    93: "T19 D18",
-    92: "T20 D16",
-    91: "T17 D20",
-    90: "T18 D18",
-    89: "T19 D16",
-    88: "T16 D20",
-    87: "T17 D18",
-    86: "T18 D16",
-    85: "T15 D20",
-    84: "T16 D18",
-    83: "T17 D16",
-    82: "BULL D16",
-    81: "T15 D18",
-    80: "T20 D10",
-    79: "T19 D11",
-    78: "T18 D12",
-    77: "T19 D10",
-    76: "T20 D8",
-    75: "T17 D12",
-    74: "T14 D16",
-    73: "T19 D8",
-    72: "T16 D12",
-    71: "T13 D16",
-    70: "T20 D5",
-  };
-
-  const best = map[rest];
-  if (best && best.split(" ").length <= dartsLeft) return [best];
-  return [];
-}
-
-/* ========================================================
-   FALLBACK: emitHistoryRecord_X01
-======================================================== */
-async function emitHistoryRecord_X01(args: {
-  playersLite: PlayerLiteType[];
-  winnerId: string | null;
-  resumeId: string | null;
-  legStats: any;
-  visitsLog: any[];
-  onFinish: (m: MatchRecord) => void;
-}) {
-  try {
-    const id = crypto.randomUUID?.() ?? String(Date.now());
-    await History.upsert({
-      id,
-      kind: "x01",
-      status: "finished",
-      players: args.playersLite,
-      winnerId: args.winnerId,
-      createdAt: Date.now(),
-      updatedAt: Date.now(),
-      summary: null,
-      payload: { legs: [args.legStats], visits: args.visitsLog },
-    } as any);
-
-    await History.list();
-  } catch (e) {
-    console.warn("[emitHistoryRecord_X01:fallback]", e);
-  }
-}
-
-/* ========================================================
-   WRAPPER X01Play (début)
-======================================================== */
-export default function X01Play(props: {
-  profiles?: Profile[];
-  playerIds?: string[];
-  start?: 301 | 501 | 701 | 901 | 1001;
-  outMode?: Mode;
-  inMode?: Mode;
-  onFinish: (m: MatchRecord) => void;
-  onExit: () => void;
-  params?: { resumeId?: string; startParams?: StartParams } | any;
-  setsToWin?: number;
-  legsPerSet?: number;
-}) {
-  const {
-    profiles = [],
-    playerIds = [],
-    start = 501,
-    outMode = "double",
-    inMode = "simple",
-    onFinish,
-    onExit,
-    params,
-    setsToWin = 1,
-    legsPerSet = 1,
-  } = props;
-
-  const merged = readStartParams(
-    playerIds,
-    start,
-    outMode,
-    inMode,
-    setsToWin,
-    legsPerSet,
-    params
-  );
-
-  const resumeId: string | undefined = params?.resumeId;
-
-  const [ready, setReady] = React.useState(false);
-  const [resumeSnapshot, setResumeSnapshot] = React.useState<X01Snapshot | null>(
-    merged.resume ?? null
-  );
-
-  const hasResumeIntent = !!resumeId || !!merged.resume;
-  const isResumeMode = !!resumeSnapshot;
-  const isFreshStart = !hasResumeIntent;
-
-  React.useEffect(() => {
-    let alive = true;
-    (async () => {
-      try {
-        if (isFreshStart) {
-          clearAutosave();
-          if (alive) setResumeSnapshot(null);
-          if (alive) setReady(true);
-          return;
-        }
-
-        if (merged.resume) {
-          if (alive) setResumeSnapshot(merged.resume);
-          if (alive) setReady(true);
-          return;
-        }
-
-        if (resumeId) {
-          const rec: SavedMatch | null = await History.get(resumeId);
-          const snap = rec?.kind === "x01" ? (rec.payload as any)?.state : null;
-          if (alive) setResumeSnapshot(snap ?? null);
-        }
-      } catch {
-        if (alive) setResumeSnapshot(null);
-      } finally {
-        if (alive) setReady(true);
-      }
-    })();
-
-    return () => {
-      alive = false;
-    };
-  }, [resumeId, merged.resume, isFreshStart]);
-
-  const restoredOnceRef = React.useRef(false);
-  React.useEffect(() => {
-    if (!ready || restoredOnceRef.current) return;
-    restoredOnceRef.current = true;
-
-    if (!hasResumeIntent) return;
-    if (resumeSnapshot) return;
-
-    const snap = loadAutosave();
-    if (snap) setResumeSnapshot(snap);
-  }, [ready, resumeSnapshot, hasResumeIntent]);
-
-  const freshNonce = React.useRef(
-    !hasResumeIntent ? (crypto.randomUUID?.() ?? String(Date.now())) : ""
-  ).current;
-
-  const engineKey = React.useMemo(() => {
-    if (resumeSnapshot) {
-      const idx = (resumeSnapshot as any)?.currentIndex ?? 0;
-      const scores = Array.isArray((resumeSnapshot as any)?.scores)
-        ? (resumeSnapshot as any).scores.join("-")
-        : "noscores";
-      return `resume:${idx}:${scores}`;
-    }
-    return `fresh:${merged.playerIds.join("-")}:${merged.start}:${freshNonce}`;
-  }, [resumeSnapshot, merged.playerIds, merged.start, freshNonce]);
-
-  if (!ready) {
-    return (
-      <div
-        style={{
-          padding: 16,
-          maxWidth: CONTENT_MAX,
-          margin: "40px auto",
-          textAlign: "center",
-          color: "#ffcf57",
-          fontWeight: 900,
-        }}
-      >
-        Chargement…
-      </div>
-    );
-  }
+// Pastilles pour la dernière volée d’un joueur
+function renderLastVisitChips(
+  pid: string,
+  lastVisits: Record<string, UIDart[]>,
+  isBust?: boolean
+) {
+  const darts = lastVisits[pid] ?? [];
+  if (!darts.length) return null;
 
   return (
-    <X01Core
-      key={engineKey}
-      profiles={profiles}
-      playerIds={merged.playerIds}
-      start={merged.start}
-      outMode={(merged.outMode || "double") as Mode}
-      inMode={(merged.inMode || "simple") as Mode}
-      setsToWin={merged.setsToWin || 1}
-      legsPerSet={merged.legsPerSet || 1}
-      finishPref={merged.finishPolicy as FinishPolicy}
-      resumeSnapshot={resumeSnapshot}
-      resumeId={resumeId}
-      onFinish={onFinish}
-      onExit={onExit}
-    />
+    <span style={{ display: "inline-flex", gap: 6 }}>
+      {darts.map((d, i) => {
+        const st = chipStyle(d, false);
+
+        const bg = isBust ? "rgba(200,30,30,.18)" : (st.background as string);
+        const bd = isBust ? "1px solid rgba(255,80,80,.35)" : (st.border as string);
+        const co = isBust ? "#ff8a8a" : (st.color as string);
+
+        return (
+          <span
+            key={i}
+            style={{
+              minWidth: 36,
+              padding: "2px 8px",
+              borderRadius: 10,
+              fontSize: 11,
+              fontWeight: 700,
+              background: bg,
+              border: bd,
+              color: co,
+            }}
+          >
+            {fmt(d)}
+          </span>
+        );
+      })}
+    </span>
   );
 }
 
-/* ======================================================================
-   X01Core — cœur du jeu
-   Option A : LegBannerModal = seule fin de manche
-====================================================================== */
-function X01Core({
-  profiles,
-  playerIds,
-  start,
-  outMode,
-  inMode,
-  setsToWin,
-  legsPerSet,
-  finishPref,
-  resumeSnapshot,
-  resumeId,
-  onFinish,
-  onExit,
-}: {
-  profiles: Profile[];
-  playerIds: string[];
-  start: 301 | 501 | 701 | 901 | 1001;
-  outMode: Mode;
-  inMode: Mode;
-  setsToWin: number;
-  legsPerSet: number;
-  finishPref: FinishPolicy;
-  resumeSnapshot: X01Snapshot | null;
-  resumeId?: string;
-  onFinish: (m: MatchRecord) => void;
-  onExit: () => void;
-}) {
 
-  // --- Auth online (pour savoir si on peut uploader le match) ---
-  const { status: onlineStatus, user: onlineUser } = useAuthOnline();
-  const canUploadOnline = onlineStatus === "signed_in" && !!onlineUser;
+/* ---------------------------------------------------
+   Petit "cerveau" BOT local (placeholder)
+   - plus tard tu pourras le déplacer dans ../lib/botBrain.ts
+--------------------------------------------------- */
 
-  /* =====================================================
-     RÈGLES (snapshot > props)
-  ===================================================== */
-  const resumeRules = resumeSnapshot?.rules as
-    | {
-        start: number;
-        outMode?: Mode;
-        inMode?: Mode;
-        setsToWin?: number;
-        legsPerSet?: number;
-      }
-    | undefined;
+type BotLevel = "easy" | "medium" | "hard" | "pro" | "legend" | undefined;
 
-  const startFromResume = (resumeRules?.start ?? start) as any;
-  const playerIdsFromResume =
-    resumeSnapshot?.players?.map((p: any) => p.id) ?? playerIds;
+// =============================================================
+// ✅ External scoring (Scolia-ready) — AJOUT UNIQUEMENT
+// - Source de comptage: "manual" (Keypad) | "external" (événements)
+// - IMPORTANT: on ne touche pas au moteur. On injecte juste des X01DartInputV3.
+// - Événement public (bridge):
+//   window.dispatchEvent(new CustomEvent("dc:x01v3:dart", { detail: { segment: 20, multiplier: 3 } }))
+//   window.dispatchEvent(new CustomEvent("dc:x01v3:visit", { detail: { darts: [{segment:20,multiplier:3},{segment:20,multiplier:3},{segment:20,multiplier:3}] } }))
+// =============================================================
+type ScoringSource = "manual" | "external";
 
-  const outMFromResume = resumeRules?.outMode ?? outMode;
-  const inMFromResume = resumeRules?.inMode ?? inMode;
+const EXTERNAL_DART_EVENT = "dc:x01v3:dart";
+const EXTERNAL_VISIT_EVENT = "dc:x01v3:visit";
 
-  // ✅ Sets uniquement en duel : si nbPlayers >= 3 → sets forcés à 1
-  const rawSetsFromResume = resumeRules?.setsToWin ?? setsToWin;
-  const isDuelConfig = playerIdsFromResume.length === 2;
-  const setsFromResume =
-    rawSetsFromResume && rawSetsFromResume > 0
-      ? isDuelConfig
-        ? rawSetsFromResume
-        : 1
-      : 1;
+function normalizeExternalDart(input: any): X01DartInputV3 | null {
+  if (!input || typeof input !== "object") return null;
+  const seg = Number((input as any).segment);
+  const mult = Number((input as any).multiplier);
+  if (!Number.isFinite(seg) || !Number.isFinite(mult)) return null;
 
-  const legsFromResume = resumeRules?.legsPerSet ?? legsPerSet;
+  // segment: 0 (MISS), 25 (bull), ou 1..20
+  const sOK = seg === 0 || seg === 25 || (seg >= 1 && seg <= 20);
+  if (!sOK) return null;
 
-  /* =====================================================
-     OVERLAY DE MANCHE
-  ===================================================== */
-  const [lastLegResult, setLastLegResult] = React.useState<any | null>(null);
-  const [overlayOpen, setOverlayOpen] = React.useState(false);
+  // multiplier: 1..3
+  const mOK = mult === 1 || mult === 2 || mult === 3;
+  if (!mOK) return null;
 
-  const overlayClosedOnceRef = React.useRef(false);
-  const lastLegKeyRef = React.useRef("");
+  return { segment: seg, multiplier: mult as 1 | 2 | 3 };
+}
 
-  React.useEffect(() => {
-    if (!lastLegResult) return;
-    const key = `${lastLegResult.finishedAt}|${lastLegResult.legNo}`;
-    if (key !== lastLegKeyRef.current) {
-      lastLegKeyRef.current = key;
-      setOverlayOpen(true);
-    }
-  }, [lastLegResult]);
-
-  /* =====================================================
-     LOG VOLÉES
-  ===================================================== */
-  const [visitsLog, setVisitsLog] = React.useState<VisitLite[]>([]);
-  const visitNoRef = React.useRef(0);
-  const matchLegsRef = React.useRef<any[]>([]);
-  const matchVisitsRef = React.useRef<VisitLite[]>([]); // 🔥 toutes les visites du match
-
-  function pushVisitLog(visit: any) {
-    const segs =
-      visit?.darts?.map((d: UIDart) => ({
-        v: d.v,
-        mult: (d.mult || 1) as 1 | 2 | 3,
-      })) ?? [];
-
-    const v: VisitLite = {
-      p: visit.playerId,
-      score: visit.score || 0,
-      remainingAfter: visit.remainingAfter || 0,
-      bust: visit.bust,
-      isCheckout: visit.isCheckout,
-      segments: segs,
-      ts: Date.now(),
-    };
-
-    // ✅ log de la manche en cours (pour pastilles / overlay)
-    setVisitsLog((prev) => [...prev, v]);
-
-    // ✅ log global du match (pour stats & History)
-    matchVisitsRef.current.push(v);
+function normalizeExternalVisit(input: any): X01DartInputV3[] {
+  const darts = (input as any)?.darts;
+  if (!Array.isArray(darts)) return [];
+  const out: X01DartInputV3[] = [];
+  for (const d of darts) {
+    const nd = normalizeExternalDart(d);
+    if (nd) out.push(nd);
+    if (out.length >= 3) break;
   }
+  return out;
+}
 
-  /* =====================================================
-     FIN DE MATCH différée
-  ===================================================== */
-  const [pendingFinish, setPendingFinish] =
-    React.useState<MatchRecord | null>(null);
+function randomInt(min: number, max: number) {
+  return Math.floor(Math.random() * (max - min + 1)) + min;
+}
 
-  const defaultFinishPolicy: FinishPolicy =
-    finishPref ??
-    ((localStorage.getItem("opt_continue_policy") ?? "firstToZero") as any);
+type BotStyle = "balanced" | "aggressive" | "safe" | "clutch";
 
-  /* =====================================================
-     STATS LIVE (pour header & players list)
-  ===================================================== */
-  const [lastByPlayer, setLastByPlayer] = React.useState<
-    Record<string, UIDart[]>
-  >({});
-  const [lastBustByPlayer, setLastBustByPlayer] = React.useState<
-    Record<string, boolean>
-  >({});
-  const [dartsCount, setDartsCount] = React.useState<Record<string, number>>(
-    {}
-  );
-  const [pointsSum, setPointsSum] = React.useState<Record<string, number>>({});
-  const [visitsCount, setVisitsCount] = React.useState<Record<string, number>>(
-    {}
-  );
-  const [bestVisitByPlayer, setBestVisitByPlayer] = React.useState<
-    Record<string, number>
-  >({});
-  const [missByPlayer, setMissByPlayer] = React.useState<
-    Record<string, number>
-  >({});
-  const [bustByPlayer, setBustByPlayer] = React.useState<
-    Record<string, number>
-  >({});
-  const [dbullByPlayer, setDBullByPlayer] = React.useState<
-    Record<string, number>
-  >({});
+function computeBotVisit(
+  level: BotLevel,
+  currentScore: number,
+  outMode: "double" | "single" | "master"
+): UIDart[] {
+  const doubleOut = outMode === "double";
+  const masterOut = outMode === "master";
+  const singleOut = outMode === "single";
+  const darts: UIDart[] = [];
+  const lvl = level || "easy";
 
-  const [hitsByPlayer, setHitsByPlayer] = React.useState<
-    Record<string, { h60: number; h100: number; h140: number; h180: number }>
-  >({});
-  const [impactByPlayer, setImpactByPlayer] = React.useState<
-    Record<string, { doubles: number; triples: number; bulls: number }>
-  >({});
+  // -----------------------------
+  // 1) NIVEAUX BOT
+  // -----------------------------
+  type EffLevel = "easy" | "medium" | "hard" | "pro" | "legend";
 
-  /* =====================================================
-     HOOK MOTEUR
-  ===================================================== */
-  const {
-    state,
-    currentPlayer,
-    turnIndex,
-    scoresByPlayer,
-    isOver, // plus utilisé pour terminer le match, mais on le garde pour l’instant
-    winner,
-    submitThrowUI,
-    undoLast,
-    pendingFirstWin,
-    finishedOrder,
-    continueAfterFirst,
-    endNow,
-    isContinuing,
-    // Sets / Legs
-    currentSet,
-    currentLegInSet,
-    setsTarget,
-    legsTarget,
-    setsWon,
-    legsWon,
-    ruleWinnerId, // 👈 nouveau champ utilisé pour la fin de match
-  } = useX01Engine({
-    profiles,
-    playerIds: playerIdsFromResume,
-    start: startFromResume,
-    doubleOut: outMFromResume !== "simple",
-    resume: resumeSnapshot,
-    // ✅ côté moteur : si partie à 3+ joueurs, setsFromResume est déjà forcé à 1
-    setsToWin: setsFromResume,
-    legsPerSet: legsFromResume,
-    outMode: outMFromResume,
-    inMode: inMFromResume,
-    finishPolicy: defaultFinishPolicy,
-    onFinish: (m) => {
-      // on ne navigue plus ici : on stocke juste le MatchRecord
-      setPendingFinish(m);
+  type BotSkillProfile = {
+    // scoring (T20, T19, etc.)
+    scoringExact: number;
+    scoringRing: number;
+    scoringNeighbor: number;
+    scoringBigMiss: number;
+
+    // doubles / checkouts
+    doubleExact: number;
+    doubleRing: number;
+    doubleNeighbor: number;
+    doubleBigMiss: number;
+  };
+
+  const SKILL: Record<EffLevel, BotSkillProfile> = {
+    easy: {
+      scoringExact: 0.35,
+      scoringRing: 0.20,
+      scoringNeighbor: 0.20,
+      scoringBigMiss: 0.25,
+      doubleExact: 0.25,
+      doubleRing: 0.25,
+      doubleNeighbor: 0.20,
+      doubleBigMiss: 0.30,
     },
-    /* ===== FIN DE MANCHE (LEG) ===== */
-    onLegEnd: async (res: LegResult) => {
-      // commit stats minimal
-      StatsOnce.commitX01Leg?.({
-        matchId: matchIdRef.current,
-        profiles,
-        leg: res,
-        winnerId: res.winnerId ?? null,
-        startScore: startFromResume,
-      });
-
-      const playersLite = mapEnginePlayersToLite(
-        state.players as any,
-        profiles
-      );
-
-      // conversion visits
-      const visits: VisitType[] = visitsLog.map((v) => ({
-        p: v.p,
-        segments: v.segments.map((s) => ({ v: s.v, mult: s.mult })),
-        bust: v.bust,
-        score: v.score,
-        ts: v.ts!,
-        isCheckout: v.isCheckout,
-        remainingAfter: v.remainingAfter!,
-      }));
-
-      const { leg, legacy } = StatsBridge.makeLeg(
-        visits as any,
-        playersLite,
-        res.winnerId ?? null
-      );
-
-      // open ranking overlay
-      setLastLegResult({
-        ...legacy,
-        __legStats: leg,
-        winnerId: res.winnerId ?? null,
-        finishedAt: Date.now(),
-      });
-
-      try {
-        commitLiteFromLeg(legacy, playersLite, res.winnerId);
-      } catch {}
-
-      matchLegsRef.current.push(leg);
-
-      // reset volée + stats live de la manche
-      visitNoRef.current = 0;
-      setVisitsLog([]);
-      setMissByPlayer({});
-      setBustByPlayer({});
-      setDBullByPlayer({});
-
-      // 👉 on remet à zéro tout ce qui doit repartir à 0
-      // à chaque nouvelle manche (mais on garde bestVisitByPlayer)
-      setDartsCount({});
-      setPointsSum({});
-      setVisitsCount({});
+    medium: {
+      scoringExact: 0.45,
+      scoringRing: 0.25,
+      scoringNeighbor: 0.18,
+      scoringBigMiss: 0.12,
+      doubleExact: 0.40,
+      doubleRing: 0.25,
+      doubleNeighbor: 0.20,
+      doubleBigMiss: 0.15,
     },
-  });
+    hard: {
+      scoringExact: 0.55,
+      scoringRing: 0.25,
+      scoringNeighbor: 0.15,
+      scoringBigMiss: 0.05,
+      doubleExact: 0.60,
+      doubleRing: 0.20,
+      doubleNeighbor: 0.15,
+      doubleBigMiss: 0.05,
+    },
+    pro: {
+      // 🔥 PRO : très peu de gros MISS, bons sur les doubles
+      scoringExact: 0.70,
+      scoringRing: 0.20,
+      scoringNeighbor: 0.08,
+      scoringBigMiss: 0.02,
+      doubleExact: 0.80, // ~ 4 doubles sur 5
+      doubleRing: 0.12,
+      doubleNeighbor: 0.06,
+      doubleBigMiss: 0.02,
+    },
+    legend: {
+      // 🔥 LÉGENDE : quasi jamais loin de la cible
+      scoringExact: 0.80,
+      scoringRing: 0.15,
+      scoringNeighbor: 0.04,
+      scoringBigMiss: 0.01,
+      doubleExact: 0.90, // ~ 9 doubles sur 10
+      doubleRing: 0.06,
+      doubleNeighbor: 0.03,
+      doubleBigMiss: 0.01,
+    },
+  };
 
-  // ✅ duel / sets pour l'affichage
-  const isDuel = (state.players as any)?.length === 2;
-  const useSetsUi = isDuel && (setsTarget ?? setsFromResume) > 1;
+  let effLevel: EffLevel = "easy";
+  if (lvl === "medium") effLevel = "medium";
+  else if (lvl === "hard") effLevel = "hard";
+  else if (lvl === "pro") effLevel = "pro";
+  else if (lvl === "legend") effLevel = "legend";
 
-  // ✅ mémos frais pour le header compact
-  const legsWonNow = { ...legsWon };
-  const setsWonNow = { ...setsWon };
+  const skill = SKILL[effLevel];
 
-  /* =====================================================
-     PERSISTENCE — id du match
-  ===================================================== */
-  const initialMatchId = React.useRef(
-    resumeSnapshot && resumeId
-      ? resumeId
-      : crypto.randomUUID?.() ?? String(Date.now())
-  ).current;
+  // -----------------------------
+  // 2) NEIGHBORS RÉELS DE LA CIBLE (ordre de la board)
+  // -----------------------------
+  const BOARD_ORDER = [
+    20, 1, 18, 4, 13, 6, 10, 15, 2, 17,
+    3, 19, 7, 16, 8, 11, 14, 9, 12, 5,
+  ];
 
-  const historyIdRef = React.useRef(initialMatchId);
-  const matchIdRef = React.useRef(initialMatchId);
+  const NEIGHBORS: Record<number, [number, number]> = {
+    20: [5, 1],
+    1: [20, 18],
+    18: [1, 4],
+    4: [18, 13],
+    13: [4, 6],
+    6: [13, 10],
+    10: [6, 15],
+    15: [10, 2],
+    2: [15, 17],
+    17: [2, 3],
+    3: [17, 19],
+    19: [3, 7],
+    7: [19, 16],
+    16: [7, 8],
+    8: [16, 11],
+    11: [8, 14],
+    14: [11, 9],
+    9: [14, 12],
+    12: [9, 5],
+    5: [12, 20],
+  };
 
-  /* =====================================================
-     SFX
-  ===================================================== */
-  const dartHit = React.useMemo(
-    () => createAudio(["/sounds/dart-hit.mp3", "/sounds/dart-hit.ogg"]),
-    []
-  );
-  const bustSnd = React.useMemo(
-    () => createAudio(["/sounds/bust.mp3", "/sounds/bust.ogg"]),
-    []
-  );
-  const voiceOn = React.useMemo(
-    () => (localStorage.getItem("opt_voice") ?? "true") === "true",
-    []
-  );
+  const allSingles = BOARD_ORDER.slice();
 
-  const profileById = React.useMemo(() => {
-    const m: Record<string, Profile> = {};
-    for (const p of profiles) m[p.id] = p;
-    return m;
-  }, [profiles]);
-
-  const playersByIdMemo = React.useMemo(() => {
-    return Object.fromEntries(
-      (state.players as any)?.map((p: EnginePlayer) => [
-        p.id,
-        {
-          id: p.id,
-          name: p.name,
-          avatarDataUrl: profileById[p.id]?.avatarDataUrl ?? null,
-        },
-      ])
-    );
-  }, [state.players, profileById]);
-
-  /* =====================================================
-     VOLÉE COURANTE (UI)
-  ===================================================== */
-  const [currentThrow, setCurrentThrow] = React.useState<UIDart[]>([]);
-  const [multiplier, setMultiplier] = React.useState<1 | 2 | 3>(1);
-
-  const currentRemaining =
-    scoresByPlayer[currentPlayer?.id ?? ""] ?? startFromResume;
-
-  function dartValue(d: UIDart) {
+  function dartScore(d: UIDart): number {
     if (d.v === 25 && d.mult === 2) return 50;
     return d.v * d.mult;
   }
 
-  function playDartSfx(d: UIDart, nextThrow: UIDart[]) {
-    const v = nextThrow.reduce((s, x) => s + dartValue(x), 0);
-    if (nextThrow.length === 3 && v === 180) return playSound("180");
-    if (d.v === 25 && d.mult === 2) return playSound("doublebull");
-    if (d.v === 25) return playSound("bull");
-    if (d.mult === 3) return playSound("triple");
-    if (d.mult === 2) return playSound("double");
-    return playSound("dart-hit");
-  }
-
-  function handleNumber(n: number) {
-    if (currentThrow.length >= 3) return;
-    const d: UIDart = { v: n, mult: multiplier };
-    const next = [...currentThrow, d];
-    playDartSfx(d, next);
-    tryPlay(dartHit);
-    navigator.vibrate?.(25);
-    setCurrentThrow(next);
-    setMultiplier(1);
-  }
-
-  function handleBull() {
-    if (currentThrow.length >= 3) return;
-    const d: UIDart = { v: 25, mult: multiplier === 2 ? 2 : 1 };
-    const next = [...currentThrow, d];
-    playDartSfx(d, next);
-    tryPlay(dartHit);
-    navigator.vibrate?.(25);
-    setCurrentThrow(next);
-    setMultiplier(1);
-  }
-
-  /* =====================================================
-     VALIDATION VOLÉE
-  ===================================================== */
-  function validateThrow() {
-    if (!currentThrow.length || !currentPlayer) return;
-
-    const curRemaining = scoresByPlayer[currentPlayer.id];
-    const volleyPts = currentThrow.reduce((s, x) => s + dartValue(x), 0);
-    const after = curRemaining - volleyPts;
-
-    let willBust = after < 0;
-    const doubleOutActive = outMFromResume !== "simple";
-
-    if (!willBust && doubleOutActive && after === 0) {
-      const last = currentThrow[currentThrow.length - 1];
-      const isDouble = last.v === 25 ? last.mult === 2 : last.mult === 2;
-      willBust = !isDouble;
-    }
-
-    const ptsForStats = willBust ? 0 : volleyPts;
-
-    const miss = currentThrow.filter((d) => d.v === 0).length;
-    const db = currentThrow.filter((d) => d.v === 25 && d.mult === 2).length;
-
-    if (miss)
-      setMissByPlayer((m) => ({
-        ...m,
-        [currentPlayer.id]: (m[currentPlayer.id] || 0) + miss,
-      }));
-
-    if (db)
-      setDBullByPlayer((m) => ({
-        ...m,
-        [currentPlayer.id]: (m[currentPlayer.id] || 0) + db,
-      }));
-
-    if (willBust)
-      setBustByPlayer((m) => ({
-        ...m,
-        [currentPlayer.id]: (m[currentPlayer.id] || 0) + 1,
-      }));
-
-    // Log visite
-    pushVisitLog({
-      playerId: currentPlayer.id,
-      score: ptsForStats,
-      remainingAfter: willBust ? curRemaining : Math.max(after, 0),
-      bust: willBust,
-      isCheckout: !willBust && after === 0,
-      darts: currentThrow,
-    });
-
-    // Stats globales
-    setDartsCount((m) => ({
-      ...m,
-      [currentPlayer.id]: (m[currentPlayer.id] || 0) + currentThrow.length,
-    }));
-    setPointsSum((m) => ({
-      ...m,
-      [currentPlayer.id]: (m[currentPlayer.id] || 0) + ptsForStats,
-    }));
-    setVisitsCount((m) => ({
-      ...m,
-      [currentPlayer.id]: (m[currentPlayer.id] || 0) + 1,
-    }));
-    setBestVisitByPlayer((m) => ({
-      ...m,
-      [currentPlayer.id]: Math.max(m[currentPlayer.id] || 0, volleyPts),
-    }));
-
-    // Hits
-    setHitsByPlayer((m) => {
-      const prev =
-        m[currentPlayer.id] || {
-          h60: 0,
-          h100: 0,
-          h140: 0,
-          h180: 0,
-        };
-      const add = { ...prev };
-      if (volleyPts >= 60) add.h60++;
-      if (volleyPts >= 100) add.h100++;
-      if (volleyPts >= 140) add.h140++;
-      if (volleyPts === 180) add.h180++;
-      return { ...m, [currentPlayer.id]: add };
-    });
-
-    // Impact (doubles/triples/bulls)
-    setImpactByPlayer((m) => {
-      const p = m[currentPlayer.id] || {
-        doubles: 0,
-        triples: 0,
-        bulls: 0,
-      };
-      const add = { ...p };
-      for (const d of currentThrow) {
-        if (d.v === 25) add.bulls += d.mult === 2 ? 1 : 0.5;
-        if (d.mult === 2) add.doubles++;
-        if (d.mult === 3) add.triples++;
+  // -----------------------------
+  // 3) CHOIX D’UN "PLAN" / CIBLE LOGIQUE
+  // -----------------------------
+  function chooseIdealTarget(remaining: number, dartsLeft: number): UIDart {
+    // SINGLE-OUT / MASTER-OUT : on peut finir sans forcément un double
+    if (!doubleOut) {
+      // SINGLE-OUT : n'importe quel segment peut finir
+      if (singleOut) {
+        if (remaining === 50) return { v: 25, mult: 2 }; // DBULL
+        if (remaining <= 60 && remaining % 3 === 0 && remaining / 3 <= 20) return { v: remaining / 3, mult: 3 };
+        if (remaining <= 40 && remaining % 2 === 0) return { v: remaining / 2, mult: 2 };
+        if (remaining <= 20) return { v: remaining, mult: 1 };
+        // sinon scoring
+        return { v: 20, mult: 3 };
       }
-      return { ...m, [currentPlayer.id]: add };
-    });
 
-    /* --- PERSISTENCE APRÈS VOLÉE --- */
-    try {
-      const playersArr = state.players as any as EnginePlayer[];
-      const idx = playersArr.findIndex((p) => p.id === currentPlayer.id);
-      const curIdx = idx >= 0 ? idx : 0;
+      // MASTER-OUT : finir sur double OU triple (ou DBULL)
+      if (masterOut) {
+        if (remaining === 50) return { v: 25, mult: 2 }; // DBULL
+        if (remaining <= 60 && remaining % 3 === 0 && remaining / 3 <= 20) return { v: remaining / 3, mult: 3 };
+        if (remaining <= 40 && remaining % 2 === 0) return { v: remaining / 2, mult: 2 };
+        // préparation : viser gros scoring
+        if (remaining > 100) return { v: 20, mult: 3 };
+        if (remaining > 60) return { v: 20, mult: 3 };
+        if (remaining > 40) return { v: 20, mult: 2 };
+        if (remaining > 20) return { v: 20, mult: 1 };
+        return { v: remaining, mult: 1 };
+      }
 
-      const scoresAfter = playersArr.map((p) =>
-        p.id !== currentPlayer.id
-          ? scoresByPlayer[p.id]
-          : willBust
-          ? scoresByPlayer[p.id]
-          : Math.max(after, 0)
-      );
+      // fallback (ne devrait pas arriver)
+      return { v: 20, mult: 3 };
+    }
 
-      const isCheckout = !willBust && after === 0;
-      const nextIndex = isCheckout
-        ? curIdx
-        : (curIdx + 1) % playersArr.length;
+    // DOUBLE-OUT : vraie stratégie
+    // 1) Finish direct si <= 50
+    if (remaining === 50) {
+      // DBULL
+      return { v: 25, mult: 2 };
+    }
+    if (remaining <= 40 && remaining >= 2 && remaining % 2 === 0) {
+      // D20, D16, D8, etc.
+      return { v: remaining / 2, mult: 2 };
+    }
 
-      const engineLike = {
-        rules: {
-          start: startFromResume,
-          doubleOut: outMFromResume !== "simple",
-          setsToWin: setsFromResume,
-          legsPerSet: legsFromResume,
-          outMode: outMFromResume,
-          inMode: inMFromResume,
-        },
-        players: playersArr,
-        scores: scoresAfter,
-        currentIndex: nextIndex,
-        dartsThisTurn: [],
-        winnerId: isCheckout ? currentPlayer.id : null,
+    // 2) Zone 51–110 : on essaie de préparer un finish propre (40, 32, etc.)
+    if (remaining > 50 && remaining <= 110 && dartsLeft >= 2) {
+      const candidateScores = [60, 57, 54, 51, 50, 48, 45, 40, 36, 32];
+      const SCORE_TO_TARGET: Record<number, UIDart> = {
+        60: { v: 20, mult: 3 }, // T20
+        57: { v: 19, mult: 3 }, // T19
+        54: { v: 18, mult: 3 }, // T18
+        51: { v: 17, mult: 3 }, // T17
+        50: { v: 25, mult: 2 }, // DBULL
+        48: { v: 16, mult: 3 }, // T16
+        45: { v: 15, mult: 3 }, // T15
+        40: { v: 20, mult: 2 }, // D20
+        36: { v: 18, mult: 2 }, // D18
+        32: { v: 16, mult: 2 }, // D16
       };
 
-      const rec = makeX01RecordFromEngineCompat({
-        engine: engineLike,
-        existingId: historyIdRef.current,
-      });
+      for (const score of candidateScores) {
+        if (score >= remaining) continue;
+        const newRemaining = remaining - score;
 
-      History.upsert(rec);
-      historyIdRef.current = rec.id;
-
-      if (!isCheckout) {
-        saveAutosave((rec as any).payload.state);
-      } else clearAutosave();
-    } catch {}
-
-    // Reset UI
-    setLastByPlayer((m) => ({ ...m, [currentPlayer.id]: currentThrow }));
-    setLastBustByPlayer((m) => ({ ...m, [currentPlayer.id]: willBust }));
-
-    if (willBust) {
-      tryPlay(bustSnd);
-      navigator.vibrate?.([120, 60, 140]);
-    } else if (voiceOn && "speechSynthesis" in window) {
-      const u = new SpeechSynthesisUtterance(
-        `${currentPlayer.name}, ${volleyPts} points`
-      );
-      window.speechSynthesis.cancel();
-      window.speechSynthesis.speak(u);
+        if (
+          (newRemaining === 50) ||
+          (newRemaining <= 40 &&
+            newRemaining >= 2 &&
+            newRemaining % 2 === 0)
+        ) {
+          return SCORE_TO_TARGET[score];
+        }
+      }
     }
 
-    submitThrowUI(currentThrow);
-    setCurrentThrow([]);
-    setMultiplier(1);
+    // 3) Loin du finish : scoring lourd T20/T19
+    if (remaining > 170) {
+      return { v: 20, mult: 3 };
+    }
+
+    // 4) Zone 111–170 : on continue à bourriner T20
+    return { v: 20, mult: 3 };
   }
 
-  /* =====================================================
-     BACKSPACE / ANNULER
-  ===================================================== */
-  function handleBackspace() {
-    playSound("dart-hit");
-    setCurrentThrow((t) => t.slice(0, -1));
-  }
+  // -----------------------------
+  // 4) "SCATTER" : COMMENT IL RÂTE AUTOUR DE LA CIBLE
+  // -----------------------------
+  function applyScatter(
+    target: UIDart,
+    mode: "scoring" | "double"
+  ): UIDart {
+    const s = skill;
 
-  function handleCancel() {
-    playSound("bust");
-    if (currentThrow.length) setCurrentThrow((t) => t.slice(0, -1));
-    else undoLast?.();
-  }
+    let pExact: number;
+    let pRing: number;
+    let pNeighbor: number;
+    let pBig: number;
 
-  /* =====================================================
-     LIVE RANKING
-  ===================================================== */
-  const liveRanking = React.useMemo(() => {
-    const arr = (state.players as any).map((p: EnginePlayer) => ({
-      id: p.id,
-      name: p.name,
-      score: scoresByPlayer[p.id],
-    }));
-    arr.sort((a, b) => {
-      const az = a.score === 0;
-      const bz = b.score === 0;
-      if (az && !bz) return -1;
-      if (!az && bz) return 1;
-      return a.score - b.score;
-    });
-    return arr;
-  }, [state.players, scoresByPlayer]);
-
-  /* =====================================================
-     HANDLE QUIT
-  ===================================================== */
-  function persistNowBeforeExit() {
-    try {
-      const rec = makeX01RecordFromEngineCompat({
-        engine: buildEngineLike([], winner?.id ?? null),
-        existingId: historyIdRef.current,
-      });
-      History.upsert(rec);
-      historyIdRef.current = rec.id;
-
-      if (!winner?.id) saveAutosave((rec as any).payload.state);
-      else clearAutosave();
-    } catch {}
-  }
-
-  function handleQuit() {
-    if (pendingFinish) {
-      flushPendingFinish();
+    if (mode === "double") {
+      pExact = s.doubleExact;
+      pRing = s.doubleRing;
+      pNeighbor = s.doubleNeighbor;
+      pBig = s.doubleBigMiss;
     } else {
-      persistNowBeforeExit();
-      onExit();
+      pExact = s.scoringExact;
+      pRing = s.scoringRing;
+      pNeighbor = s.scoringNeighbor;
+      pBig = s.scoringBigMiss;
     }
+
+    const r = Math.random();
+
+    // EXACT
+    if (r < pExact) {
+      return target;
+    }
+
+    // MÊME NOMBRE, AUTRE ANNEAU (simple au lieu de double, etc.)
+    if (r < pExact + pRing) {
+      // Bull à part
+      if (target.v === 25) {
+        if (target.mult === 2) {
+          // DBULL -> BULL
+          return { v: 25, mult: 1 };
+        }
+        // BULL raté -> complètement à côté
+        return { v: 0, mult: 1 };
+      }
+
+      let ringOptions: number[];
+      if (target.mult === 3) {
+        ringOptions = [1, 2]; // peut finir en simple ou double
+      } else if (target.mult === 2) {
+        ringOptions = [1]; // D -> S
+      } else {
+        // visait simple
+        ringOptions = mode === "double" ? [2] : [1, 2, 3];
+      }
+
+      const mult =
+        ringOptions[randomInt(0, ringOptions.length - 1)] as 1 | 2 | 3;
+
+      return { v: target.v, mult };
+    }
+
+    // NEIGHBORS (cases à côté, ex: vise 17 mais touche 2 ou 3)
+    if (r < pExact + pRing + pNeighbor) {
+      if (target.v === 25) {
+        // raté bull -> random simple sur la board
+        const v =
+          allSingles[randomInt(0, allSingles.length - 1)];
+        return { v, mult: 1 };
+      }
+
+      const neigh = NEIGHBORS[target.v] ?? [target.v, target.v];
+      const v = neigh[randomInt(0, neigh.length - 1)];
+
+      // Pour les doubles, le miss crédible c'est le simple voisin
+      const mult =
+        mode === "double"
+          ? 1
+          : target.mult === 1
+          ? 1
+          : target.mult;
+
+      return { v, mult };
+    }
+
+    // GROS MISS : complètement à côté
+    if (Math.random() < 0.5) {
+      return { v: 0, mult: 1 };
+    }
+    const v = allSingles[randomInt(0, allSingles.length - 1)];
+    return { v, mult: 1 };
   }
 
-  const latestPersistFnRef = React.useRef(() => {});
-  latestPersistFnRef.current = persistNowBeforeExit;
+  // -----------------------------
+  // 5) BOUCLE SUR LES 3 FLÉCHETTES
+  // -----------------------------
+  let remaining = currentScore;
 
-  React.useEffect(() => {
-    const onVis = () => {
-      if (document.visibilityState === "hidden")
-        latestPersistFnRef.current();
-    };
-    const onBeforeUnload = () => latestPersistFnRef.current();
-    document.addEventListener("visibilitychange", onVis);
-    window.addEventListener("beforeunload", onBeforeUnload);
-    return () => {
-      document.removeEventListener("visibilitychange", onVis);
-      window.removeEventListener("beforeunload", onBeforeUnload);
-    };
+  for (let i = 0; i < 3; i++) {
+    if (remaining <= 0) break;
+
+    const dartsLeft = 3 - i;
+
+    const ideal = chooseIdealTarget(remaining, dartsLeft);
+
+    // Si on vise un double -> on applique la précision "double"
+    const mode: "scoring" | "double" =
+      ideal.mult === 2 ? "double" : "scoring";
+
+    const hit = applyScatter(ideal, mode);
+
+    darts.push(hit);
+
+    const scored = dartScore(hit);
+
+    // On ne simule pas les busts ultra précisément ici,
+    // on s'aligne juste sur un plan cohérent
+    remaining = Math.max(remaining - scored, 0);
+  }
+
+  return darts;
+
+
+
+}
+
+// ============================================================
+// CHECKOUT helper (UI) — recalcul après CHAQUE fléchette / annuler
+// - propose un finish selon le nombre de fléchettes restantes (1..3)
+// - chart standard jusqu'à 170 (double-out)
+// ============================================================
+
+function computeCheckoutText(
+  remaining: number,
+  dartsLeft: number,
+  outMode: "double" | "single" | "master"
+): string | null {
+  if (!Number.isFinite(remaining) || remaining <= 0) return null;
+  if (dartsLeft <= 0) return null;
+
+  // En une visite (max 3 darts) on ne peut pas dépasser 180
+  // => si >180, pas de checkout en 3 fléchettes
+  if (remaining > 180) return null;
+
+  type Dart = { code: string; score: number; kind: "S" | "D" | "T" | "B"; isFinisher: boolean };
+
+  const all: Dart[] = [];
+  const doubles: Dart[] = [];
+  const masters: Dart[] = []; // doubles + triples (+ DBULL)
+
+  // Singles / Doubles / Triples 1..20
+  for (let n = 1; n <= 20; n++) {
+    all.push({ code: `S${n}`, score: n, kind: "S", isFinisher: outMode !== "double" && outMode !== "master" }); // finisher en single-out seulement
+    const d: Dart = { code: `D${n}`, score: 2 * n, kind: "D", isFinisher: true };
+    all.push(d);
+    doubles.push(d);
+    masters.push(d);
+
+    const t: Dart = { code: `T${n}`, score: 3 * n, kind: "T", isFinisher: outMode !== "double" }; // finisher en single/master
+    all.push(t);
+    masters.push(t);
+  }
+
+  // Bulls
+  all.push({ code: "SBULL", score: 25, kind: "B", isFinisher: outMode === "single" });
+  const db: Dart = { code: "DBULL", score: 50, kind: "D", isFinisher: true };
+  all.push(db);
+  doubles.push(db);
+  masters.push(db);
+
+  const lastPool =
+    outMode === "double" ? doubles :
+    outMode === "master" ? masters :
+    all;
+
+  // Préférences "pro" (une seule variation)
+  const preferredTriples = [20, 19, 18, 17, 16, 15, 14, 13, 12, 11, 10];
+  const preferredDoubles = [20, 16, 18, 10, 12, 8, 6, 4, 2, 1, 5, 9, 14, 7, 3, 11, 13, 15, 17, 19, 25]; // 25 => DBULL
+
+  function dartPenalty(d: Dart, isLast: boolean): number {
+    // base : préférer moins de risque / plus standard
+    if (d.code === "SBULL") return 40; // éviter bull (sauf nécessité)
+    if (d.code === "DBULL") {
+      // DBULL OK surtout en dernier dart
+      return isLast ? 4 : 22;
+    }
+
+    const kind = d.code[0] as "S" | "D" | "T";
+    const num = parseInt(d.code.slice(1), 10);
+
+    if (kind === "T") {
+      const idx = preferredTriples.indexOf(num);
+      return idx >= 0 ? idx : 30 + (20 - num) * 0.25; // triples non standards pénalisés
+    }
+
+    if (kind === "D") {
+      const mapped = num === 25 ? 25 : num;
+      const idx = preferredDoubles.indexOf(mapped);
+      return (isLast ? 0 : 6) + (idx >= 0 ? idx * 0.9 : 40);
+    }
+
+    // Singles : plutôt à éviter dans une ligne "pro"
+    return 18 + (20 - num) * 0.15;
+  }
+
+  function scoreLine(line: Dart[]): number {
+    // Priorité : finir en moins de darts (si possible),
+    // puis choisir la ligne la plus "pro" (penalty le plus bas).
+    let p = 0;
+    for (let i = 0; i < line.length; i++) {
+      p += dartPenalty(line[i], i === line.length - 1);
+    }
+    return line.length * 1000 + p;
+  }
+
+  function formatLine(line: Dart[]): string {
+    return line.map((d) => d.code).join(" ");
+  }
+
+  let best: { line: Dart[]; score: number } | null = null;
+
+  const maxDarts = Math.min(3, Math.max(1, dartsLeft));
+
+  // On autorise de finir "avant" la fin de la volée (1 ou 2 darts),
+  // mais on propose UNE seule ligne : la meilleure possible.
+  for (let used = 1; used <= maxDarts; used++) {
+    if (used === 1) {
+      for (const a of lastPool) {
+        if (a.score !== remaining) continue;
+
+        // validation finisher selon outMode
+        if (outMode === "double" && a.kind !== "D") continue;
+        if (outMode === "master" && !(a.kind === "D" || a.kind === "T")) continue;
+
+        const line = [a];
+        const sc = scoreLine(line);
+        if (!best || sc < best.score) best = { line, score: sc };
+      }
+    } else if (used === 2) {
+      for (const a of all) {
+        const rem1 = remaining - a.score;
+        if (rem1 <= 0) continue;
+
+        for (const b of lastPool) {
+          if (a.score + b.score !== remaining) continue;
+
+          if (outMode === "double" && b.kind !== "D") continue;
+          if (outMode === "master" && !(b.kind === "D" || b.kind === "T")) continue;
+
+          const line = [a, b];
+          const sc = scoreLine(line);
+          if (!best || sc < best.score) best = { line, score: sc };
+        }
+      }
+    } else {
+      for (const a of all) {
+        const rem1 = remaining - a.score;
+        if (rem1 <= 0) continue;
+
+        for (const b of all) {
+          const rem2 = rem1 - b.score;
+          if (rem2 <= 0) continue;
+
+          for (const c of lastPool) {
+            if (a.score + b.score + c.score !== remaining) continue;
+
+            if (outMode === "double" && c.kind !== "D") continue;
+            if (outMode === "master" && !(c.kind === "D" || c.kind === "T")) continue;
+
+            const line = [a, b, c];
+            const sc = scoreLine(line);
+            if (!best || sc < best.score) best = { line, score: sc };
+          }
+        }
+      }
+    }
+
+    if (best && best.line.length === 1) break;
+  }
+
+  return best ? formatLine(best.line) : null;
+}
+
+
+// =============================================================
+// Composant principal X01PlayV3
+// =============================================================
+
+export default function X01Play({
+  config,
+  onExit,
+  onShowSummary,
+  onReplayNewConfig,
+}: Props) {
+  const { theme } = useTheme();
+
+  // ✅ IMPORTANT : on récupère aussi la langue courante de l’app
+  const { t, lang } = useLang() as any;
+
+  // =====================================================
+  // 🔓 UNLOCK AUDIO (réutilisable)
+  // -> on le fait au mount, ET tu pourras l’appeler au 1er tir/1er clic
+  // =====================================================
+  const ensureAudioUnlockedNow = React.useCallback(() => {
+    try {
+      x01EnsureAudioUnlocked();
+    } catch {}
   }, []);
 
-  /* =====================================================
-   FIN DE MATCH — NOUVELLE LOGIQUE (VERSION FINALE)
-===================================================== */
+  // ✅ Preload + unlock audio + warm-up voices
+  React.useEffect(() => {
+    // ✅ installe l’unlock + preload sfx + warm-up voices
+    x01SfxV3Preload();
 
-// Sauvegarde l’état final (snapshot) dans History + clear autosave
-function persistOnFinish() {
+    // ✅ tente un unlock immédiat (desktop / certains navigateurs)
+    ensureAudioUnlockedNow();
+
+    // ✅ warm-up voices (Chrome peut être vide au 1er getVoices)
+    try {
+      if (typeof window !== "undefined" && "speechSynthesis" in window) {
+        window.speechSynthesis.getVoices?.();
+        // certains navigateurs remplissent plus tard
+        const handler = () => {
+          try {
+            window.speechSynthesis.getVoices?.();
+          } catch {}
+        };
+        window.speechSynthesis.onvoiceschanged = handler;
+      }
+    } catch {}
+  }, [ensureAudioUnlockedNow]);
+
+  // ✅ Injecte la langue au module TTS pour éviter voix EN par défaut
+  React.useEffect(() => {
+    // lang attendu: "fr" | "it" | "en" | "es" ... (ou "fr-FR", etc.)
+    // fallback sûr: français
+    try {
+      (x01SfxV3Configure as any)?.({ ttsLang: (lang as any) || "fr" });
+    } catch {
+      // ignore
+    }
+
+    // ✅ re-warm voices au changement de langue (utile sur Chrome)
+    try {
+      if (typeof window !== "undefined" && "speechSynthesis" in window) {
+        window.speechSynthesis.getVoices?.();
+      }
+    } catch {}
+  }, [lang]);
+
+  // Pour éviter de sauvegarder le match plusieurs fois (History)
+  const hasSavedMatchRef = React.useRef(false);
+  // ID unique de la partie dans l'historique (même id pour "en cours" et "terminé")
+  const historyIdRef = React.useRef<string | null>(null);
+
+  // Autosave : log de toutes les fléchettes (dans l'ordre global)
+  const replayDartsRef = React.useRef<X01DartInputV3[]>([]);
+  const isReplayingRef = React.useRef(false);
+  const hasReplayedRef = React.useRef(false);
+
+ // =====================================================
+// ✅ Bot avatars fallback (si un BOT n'a pas avatarDataUrl dans config)
+// -> on charge la liste des bots et on résout l'avatar proprement
+// =====================================================
+
+const botsMap = React.useMemo(() => {
   try {
-    const rec = makeX01RecordFromEngineCompat({
-      engine: buildEngineLike([], winner?.id ?? null),
-      existingId: historyIdRef.current,
-    });
+    const bots = (loadBots as any)?.() || [];
+    const m: Record<string, any> = {};
+    for (const b of bots) {
+      if (b?.id) m[String(b.id)] = b;
+    }
+    return m;
+  } catch {
+    return {};
+  }
+}, []);
 
-    History.upsert(rec);
-    historyIdRef.current = rec.id;
-    clearAutosave();
-  } catch {}
-}
+// ✅ AVATAR RESOLVER UNIQUE (humains + bots)
+const resolveAvatar = React.useCallback(
+  (p: any): string | null => {
+    if (!p) return null;
 
-// Sécurité : on ne finalise qu’une seule fois
-const hasFinishedRef = React.useRef(false);
-
-// Déclenchement si le moteur a déterminé un winnerId
-React.useEffect(() => {
-  if (!ruleWinnerId) return;
-  if (hasFinishedRef.current) return;
-
-  // total sets configuré (props ou snapshot)
-  const totalSets =
-    (setsTarget && setsTarget > 0 ? setsTarget : setsFromResume) || 1;
-
-  // mode "best of"
-  const setsNeededToWin = Math.floor(totalSets / 2) + 1;
-
-  const winnerSets = setsWon?.[ruleWinnerId] ?? 0;
-  if (winnerSets < setsNeededToWin) return;
-
-  finalizeMatch();
-}, [ruleWinnerId, setsWon, setsTarget, setsFromResume]);
-
-/* =====================================================
-   FINALIZE MATCH — VERSION FINALE (bridge-only)
-===================================================== */
-async function finalizeMatch() {
-  if (hasFinishedRef.current) return;
-  hasFinishedRef.current = true;
-
-  // snapshot final
-  persistOnFinish();
-
-  // petit helper num()
-  const num = (x: any): number => {
-    const n = Number(x);
-    return Number.isFinite(n) ? n : 0;
-  };
-
-  try {
-    /* -------------------------------------------------
-       0) Setup de base
-    ------------------------------------------------- */
-    const playersArr = mapEnginePlayersToLite(
-      state.players as any,
-      profiles
-    );
-    const matchId = matchIdRef.current;
-
-    // Résumé complet via StatsBridge (la source fiable)
-    const bridgeSummary = StatsBridge.makeMatch(
-      matchLegsRef.current,
-      playersArr,
-      matchId,
-      "x01"
-    );
-
-    const bridgePerPlayer: any[] = Array.isArray(
-      (bridgeSummary as any).perPlayer
-    )
-      ? (bridgeSummary as any).perPlayer
-      : [];
-
-    // gagnant final
-    const winnerIdFinal =
-      ruleWinnerId ??
-      winner?.id ??
-      (bridgeSummary as any).winnerId ??
+    // 1) champs directs sur le player (humain ou bot)
+    const direct =
+      p.avatarDataUrl ??
+      p.avatarUrl ??
+      p.photoUrl ??
+      p.avatar ??
       null;
 
-    /* -------------------------------------------------
-       1) SUMMARY PAR JOUEUR (on fait confiance au bridge)
-    ------------------------------------------------- */
-    const summaryPerPlayer = playersArr.map((p) => {
-      const b =
-        bridgePerPlayer.find(
-          (pp: any) =>
-            pp?.playerId === p.id || pp?.id === p.id
-        ) ?? {};
+    if (direct) return direct;
 
-      const impact = impactByPlayer[p.id] || {
-        doubles: 0,
-        triples: 0,
-        bulls: 0,
-      };
-
-      const darts =
-        num(b.darts) ||
-        num(b.nbDarts) ||
-        num(b.totalDarts);
-
-      const scored =
-        num(b.scored) ||
-        num(b.points) ||
-        num(b.totalPoints) ||
-        num(b.scoreSum) ||
-        num(b.scoredPoints);
-
-      const avg3FromBridge =
-        num(b.avg3) ||
-        num(b.avg_3) ||
-        num(b.avg3Darts) ||
-        num(b.average3) ||
-        num(b.avg3D);
-
-      const avg3 =
-        avg3FromBridge ||
-        (darts > 0 ? (scored / darts) * 3 : 0);
-
-      const bestVisit =
-        num(b.bestVisit) ||
-        num(b.best_visit) ||
-        num(b.best);
-
-      const bestCheckout =
-        num(b.bestCheckout) ||
-        num(b.best_co) ||
-        num(b.bestFinish);
-
-      const h60 = num(b.h60);
-      const h100 = num(b.h100);
-      const h140 = num(b.h140);
-      const h180 = num(b.h180);
-      const miss = num(b.miss);
-      const bust = num(b.bust);
-      const dbull = num(b.dbull);
-
-      return {
-        playerId: p.id,
-        name: p.name,
-        darts,
-        avg3,
-        bestVisit,
-        bestCheckout,
-        h60,
-        h100,
-        h140,
-        h180,
-        miss,
-        bust,
-        dbull,
-        doubles: impact.doubles,
-        triples: impact.triples,
-        bulls: impact.bulls,
-        win: winnerIdFinal === p.id,
-      };
-    });
-
-    /* -------------------------------------------------
-       2) QUICK STATS — addMatchSummary
-    ------------------------------------------------- */
-    const avg3ByPlayer: Record<string, number> = {};
-    const bestVisitByPlayer: Record<string, number> = {};
-    const bestCheckoutByPlayer: Record<string, number> = {};
-
-    for (const s of summaryPerPlayer) {
-      avg3ByPlayer[s.playerId] =
-        Math.round((s.avg3 || 0) * 100) / 100;
-      bestVisitByPlayer[s.playerId] = s.bestVisit || 0;
-      bestCheckoutByPlayer[s.playerId] =
-        s.bestCheckout || 0;
+    // 2) fallback BOT : on tente via botsMap (id du player)
+    if (p.isBot) {
+      const b = botsMap[String(p.id)];
+      return (
+        b?.avatarDataUrl ??
+        b?.avatarUrl ??
+        b?.photoUrl ??
+        b?.avatar ??
+        null
+      );
     }
 
-    try {
-      await addMatchSummary({
-        winnerId: winnerIdFinal,
-        perPlayer: Object.fromEntries(
-          playersArr.map((p) => [
-            p.id,
-            {
-              id: p.id,
-              games: 1,
-              wins: winnerIdFinal === p.id ? 1 : 0,
-              avg3: avg3ByPlayer[p.id],
-            },
-          ])
-        ),
-      });
-    } catch {
-      // quick stats non bloquant
-    }
+    return null;
+  },
+  [botsMap]
+);
 
-    /* -------------------------------------------------
-       3) VISITES + SUMMARY POUR HISTORY
-    ------------------------------------------------- */
-    const visitsForPersist: VisitType[] = (
-      matchVisitsRef.current || []
-    ).map((v) => ({
-      p: v.p,
-      segments: v.segments,
-      bust: v.bust,
-      score: v.score,
-      ts: v.ts!,
-      isCheckout: v.isCheckout,
-      remainingAfter: v.remainingAfter,
-    }));
+// Overlay "Résumé de la manche" (EndOfLegOverlay)
+const [summaryOpen, setSummaryOpen] = React.useState(false);
+const [summaryLegStats, setSummaryLegStats] = React.useState<LegStats | null>(
+  null
+);
 
-    const summaryForHistory = {
-      kind: "x01",
-      legs: matchLegsRef.current.length,
-      darts: summaryPerPlayer.reduce(
-        (s, p) => s + (p.darts || 0),
-        0
-      ),
-      avg3ByPlayer,
-      bestVisitByPlayer,
-      bestCheckoutByPlayer,
-      perPlayer: summaryPerPlayer,
+const summaryPlayersById = React.useMemo(() => {
+  return Object.fromEntries(
+    (config.players || []).map((p) => [
+      p.id,
+      {
+        id: p.id,
+        name: p.name || "Joueur",
+        avatarDataUrl: resolveAvatar(p),
+      },
+    ])
+  );
+}, [config.players, resolveAvatar]);
+
+  const {
+    state,
+    liveStatsByPlayer,
+    activePlayerId,
+    scores,
+    status,
+    throwDart,
+    undoLastDart, // 🔥 nouveau : UNDO illimité du moteur V3
+    startNextLeg,
+  } = useX01EngineV3({ config });
+
+  const players = config.players;
+  const activePlayer = players.find((p) => p.id === activePlayerId) || null;
+
+// =====================================================
+// ✅ BOT TURN — DOIT ÊTRE DÉCLARÉ AVANT TOUT useEffect QUI L’UTILISE
+// =====================================================
+const isBotTurn = React.useMemo(() => {
+  return !!activePlayer && Boolean((activePlayer as any).isBot);
+}, [activePlayer]);
+
+  // =====================================================
+  // ✅ Source de comptage (manual / external) — AJOUT UNIQUEMENT
+  // - manual  : Keypad (comportement actuel)
+  // - external: un système externe (ex: Scolia / bridge PC) envoie des darts via CustomEvent
+  // =====================================================
+  const scoringSource: ScoringSource =
+    ((config as any)?.scoringSource as ScoringSource) ||
+    (((config as any)?.externalScoring ? "external" : "manual") as ScoringSource);
+
+  // Y a-t-il AU MOINS un BOT dans la partie ?
+  const hasBots = React.useMemo(
+    () => players.some((p: any) => !!(p as any).isBot),
+    [players]
+  );
+
+  const setsTarget = config.setsToWin ?? 1;
+  const legsTarget = config.legsPerSet ?? 1;
+  const isDuel = players.length === 2;
+  const useSetsUi = isDuel && setsTarget > 1;
+
+  // ---------------- Avatars (depuis config.players) ----------------
+
+const profileById = React.useMemo(() => {
+  const m: Record<string, { avatarDataUrl: string | null; name: string }> = {};
+  for (const p of players as any[]) {
+    m[p.id] = {
+      avatarDataUrl: resolveAvatar(p),
+      name: p.name,
     };
+  }
+  return m;
+}, [players]);
 
-    // =====================================================
-    // 3bis) History.upsert avec le vrai summary X01
-    //       → utilisé par StatsHub › X01 multi
-    // =====================================================
+  const currentScore =
+    (activePlayer && scores[activePlayer.id]) ?? config.startScore;
+
+  const currentVisit = state.visit;
+
+    // out mode ? (double / single / master) — selon config
+  const outMode: "double" | "single" | "master" = React.useMemo(() => {
+    const raw =
+      (config as any).outMode ??
+      (config as any).finishMode ??
+      ((config as any).doubleOut === true ? "double" : null);
+
+    if (raw === "master") return "master";
+    if (raw === "single") return "single";
+    return "double";
+  }, [config]);
+
+  function isValidFinisher(d: any): boolean {
+    if (!d) return false;
+    const isD = d.mult === 2 || (d.v === 25 && d.mult === 2);
+    const isT = d.mult === 3;
+    if (outMode === "double") return isD;
+    if (outMode === "master") return isD || isT;
+    return true; // single out
+  }
+
+
+  // Compat : certaines parties du code utilisent encore un booléen doubleOut
+  const doubleOut = outMode === "double";
+
+// =====================================================
+  // Autosave : persistance / reprise (A1 basé sur la liste des darts)
+  // =====================================================
+
+  const persistAutosave = React.useCallback(() => {
+    if (typeof window === "undefined") return;
+
     try {
-      History.upsert({
+      const engineMatchId: string | undefined = (state as any)?.matchId;
+      const matchId =
+        historyIdRef.current ||
+        engineMatchId ||
+        `x01v3-${config.startScore}-${Date.now().toString(16)}`;
+
+      historyIdRef.current = matchId;
+
+      const snap: X01V3AutosaveSnapshot = {
+        id: matchId,
+        createdAt: Date.now(),
+        config,
+        darts: replayDartsRef.current,
+      };
+      window.localStorage.setItem(AUTOSAVE_KEY, JSON.stringify(snap));
+
+      const lightPlayers = (config.players || []).map((p: any) => ({
+        id: p.id,
+        name: p.name,
+        avatarDataUrl:
+          p.avatarDataUrl ?? p.avatarUrl ?? p.photoUrl ?? null,
+      }));
+
+      const payload = {
+        mode: "x01_multi",
+        variant: "x01_v3",
+        game: "x01",
+        startScore: config.startScore,
+        matchId,
+        config: { ...config, players: lightPlayers },
+        darts: replayDartsRef.current,
+      };
+
+      const record: any = {
         id: matchId,
         kind: "x01",
-        status: "finished",
-        players: playersArr,
-        winnerId: winnerIdFinal,
-        updatedAt: Date.now(),
-        summary: summaryForHistory,
-        payload: {
-          visits: visitsForPersist,
-          legs: matchLegsRef.current,
-          meta: {
-            currentSet,
-            currentLegInSet,
-            legsTarget: legsFromResume,
-          },
+        status: "in_progress",
+        createdAt: snap.createdAt,
+        updatedAt: snap.createdAt,
+        players: lightPlayers,
+        winnerId: null,
+        summary: {
+          matchId,
+          status: "in_progress",
         },
-      } as any);
-    } catch (err) {
-      console.warn(
-        "[X01Play] History.upsert (summaryForHistory) failed",
-        err
-      );
-    }
+        payload,
+      };
 
-    await safeSaveMatch({
-      id: matchId,
-      players: playersArr,
-      winnerId: winnerIdFinal,
-      summary: summaryForHistory,
-      payload: {
-        visits: visitsForPersist,
-        legs: matchLegsRef.current,
-        meta: {
-          currentSet,
-          currentLegInSet,
-          legsTarget: legsFromResume,
-        },
-      },
-    });
-
-    /* -------------------------------------------------
-       4) ONLINE SYNC — non bloquant
-    ------------------------------------------------- */
-    if (canUploadOnline) {
-      try {
-        await onlineApi.uploadMatch({
-          mode: "x01",
-          isTraining: false,
-          payload: {
-            matchId,
-            rules: {
-              start: startFromResume,
-              outMode: outMFromResume,
-              inMode: inMFromResume,
-              setsToWin: setsFromResume,
-              legsPerSet: legsFromResume,
-              finishPolicy:
-                outMFromResume !== "simple"
-                  ? "doubleOut"
-                  : "singleOut",
-            },
-            players: playersArr,
-            winnerId: winnerIdFinal,
-            legs: matchLegsRef.current,
-            visits: visitsForPersist,
-            meta: {
-              currentSet,
-              currentLegInSet,
-              legsTarget: legsFromResume,
-            },
-          },
-        });
-      } catch (err) {
-        console.warn("[Online] uploadMatch failed:", err);
-      }
-    }
-
-    // force refresh des listeners StatsHub (dc-history-updated)
-    await History.list();
-
-    /* -------------------------------------------------
-       5) Fallback mini-history
-    ------------------------------------------------- */
-    try {
-      const legForLegacy =
-        lastLegResult?.__legStats ??
-        matchLegsRef.current.at(-1);
-
-      await emitHistoryRecord_X01({
-        playersLite: playersArr,
-        winnerId: winnerIdFinal,
-        resumeId: resumeId ?? null,
-        legStats: legForLegacy,
-        visitsLog: [],
-        onFinish,
+      History.upsert(record).catch((err) => {
+        console.warn("[X01PlayV3] History.upsert(in_progress) failed", err);
       });
-    } catch {
-      // non bloquant
+    } catch (e) {
+      console.warn("[X01PlayV3] persistAutosave failed", e);
     }
+  }, [config, state]);
 
-    /* -------------------------------------------------
-       6) Stats profils (médaillons / couronnes)
-    ------------------------------------------------- */
+  // Reprise auto : au premier rendu, on rejoue toutes les fléchettes sauvegardées
+  React.useEffect(() => {
+    if (hasReplayedRef.current) return;
+    hasReplayedRef.current = true;
+
+    if (typeof window === "undefined") return;
     try {
-      commitMatchSummary(
-        buildX01Summary({
-          kind: "x01",
-          winnerId: winnerIdFinal,
-          perPlayer: summaryPerPlayer,
-        })
-      );
-    } catch {
-      // non bloquant
-    }
+      const raw = window.localStorage.getItem(AUTOSAVE_KEY);
+      if (!raw) return;
+      const snap = JSON.parse(raw) as X01V3AutosaveSnapshot;
+      if (!snap || !Array.isArray(snap.darts)) return;
 
-    /* -------------------------------------------------
-       7) StatsHub X01 global (rich stats)
-    ------------------------------------------------- */
-    try {
-      const playersIds = playersArr.map((p) => p.id);
-      const m = aggregateMatch(
-        matchLegsRef.current as any,
-        playersIds
-      );
+      const snapPlayers = (snap.config?.players ?? []) as any[];
 
-      saveMatchStats({
-        id: crypto.randomUUID?.() ?? String(Date.now()),
-        createdAt: Date.now(),
-        rules: {
-          x01Start: startFromResume,
-          finishPolicy:
-            outMFromResume !== "simple"
-              ? "doubleOut"
-              : "singleOut",
-          setsToWin: setsFromResume,
-          legsPerSet: legsFromResume,
-        },
-        players: playersIds,
-        winnerId: winnerIdFinal,
-        computed: m,
-      });
-    } catch {
-      // non bloquant
-    }
-
-    /* -------------------------------------------------
-       8) Voix - annonce classement final
-    ------------------------------------------------- */
-    try {
       if (
-        (localStorage.getItem("opt_voice") ?? "true") ===
-          "true" &&
-        "speechSynthesis" in window
+        snap.config?.startScore !== config.startScore ||
+        !Array.isArray(snapPlayers) ||
+        snapPlayers.length !== config.players.length
       ) {
-        const ordered = [...liveRanking];
-        const ords = [
-          "",
-          "Deuxième",
-          "Troisième",
-          "Quatrième",
-          "Cinquième",
-        ];
-        const parts: string[] = [];
-
-        if (ordered[0]) parts.push(`Victoire ${ordered[0].name}`);
-        for (let i = 1; i < ordered.length; i++) {
-          if (ords[i]) parts.push(`${ords[i]} ${ordered[i].name}`);
-        }
-
-        const text = parts.join(". ") + ".";
-        const u = new SpeechSynthesisUtterance(text);
-        window.speechSynthesis.cancel();
-        window.speechSynthesis.speak(u);
+        return;
       }
-    } catch {
-      // non bloquant
+
+      const sameNames = snapPlayers.every((p, idx) => {
+        const target = config.players[idx] as any;
+        return p.name === target.name;
+      });
+      if (!sameNames) return;
+
+      isReplayingRef.current = true;
+      replayDartsRef.current = snap.darts.slice();
+
+      snap.darts.forEach((d) => {
+        throwDart(d);
+      });
+
+      isReplayingRef.current = false;
+    } catch (e) {
+      console.warn("[X01PlayV3] autosave resume failed", e);
     }
+  }, [config, throwDart]);
 
-    // Fin effective
-    flushPendingFinish();
-  } catch (e) {
-    console.warn("[finalizeMatch]", e);
-  }
-}
+  // Quand le match est terminé : on vide l’autosave
+  React.useEffect(() => {
+    if (status === "match_end") {
+      replayDartsRef.current = [];
+      if (typeof window !== "undefined") {
+        try {
+          window.localStorage.removeItem(AUTOSAVE_KEY);
+        } catch (e) {
+          console.warn("[X01PlayV3] clear autosave failed", e);
+        }
+      }
+    }
+  }, [status]);
 
-  /* =====================================================
-     FLUSH FIN
-  ===================================================== */
-  function flushPendingFinish() {
-    if (pendingFinish) {
-      const m = pendingFinish;
-      setPendingFinish(null);
-      setOverlayOpen(false);
-      onFinish(m);
+  // ✅ NOTE :
+  // Tu peux maintenant appeler ensureAudioUnlockedNow() au 1er clic user (ex: pushDart/validateThrow)
+  // pour garantir que les SFX arcade partent.
+
+
+  // =====================================================
+  // AUDIO FLAGS (depuis config) + helpers SFX/VOICE
+  // =====================================================
+
+  // ⚙️ defaults = ON
+  const audioCfg = (config as any)?.audio ?? {};
+
+  // "Sons Arcade" : DBULL/BULL/180/DOUBLE/TRIPLE/BUST/VICTORY
+  const arcadeEnabled: boolean = audioCfg.arcadeEnabled !== false;
+
+  // "Bruitages" : dart-hit (et éventuellement d'autres "hits" secs)
+  const hitEnabled: boolean = audioCfg.hitEnabled !== false;
+
+  // "Voix IA" : announceVisit / announceEndGame
+  const voiceEnabled: boolean = audioCfg.voiceEnabled !== false;
+
+  // Voice sélectionnée (depuis écran Profil / paramètres joueur)
+  const voiceId: string | undefined = audioCfg.voiceId ?? undefined;
+
+  // Volume SFX global (si tu veux le brancher plus tard sur un slider)
+  const sfxVolume: number =
+    typeof audioCfg.sfxVolume === "number" ? audioCfg.sfxVolume : 0.75;
+
+  const playHitSfx = React.useCallback(
+    (kind: any, opts?: any) => {
+      if (!hitEnabled) return;
+      x01PlaySfxV3(kind, { volume: sfxVolume, ...(opts || {}) });
+    },
+    [hitEnabled, sfxVolume]
+  );
+
+  const playArcadeSfx = React.useCallback(
+    (kind: any, opts?: any) => {
+      if (!arcadeEnabled) return;
+      x01PlaySfxV3(kind, { volume: sfxVolume, ...(opts || {}) });
+    },
+    [arcadeEnabled, sfxVolume]
+  );
+
+  // =====================================================
+// 🧩 ARCADE KEY MAPPER (si les IDs audio ne matchent pas)
+// -> essaye plusieurs keys connues avant d'abandonner
+// =====================================================
+
+const tryPlayAny = React.useCallback(
+  (kinds: string[], opts?: any) => {
+    for (const k of kinds) {
+      try {
+        x01PlaySfxV3(k as any, opts);
+        return; // si ça ne throw pas, on considère OK
+      } catch {}
+    }
+    // debug (visible en console)
+    console.warn("[X01PlayV3] Arcade SFX: aucun key n'a matché", kinds);
+  },
+  [/* rien */]
+);
+
+const playArcadeMapped = React.useCallback(
+  (event: "dbull" | "bull" | "double" | "triple" | "bust" | "score_180" | "victory", opts?: any) => {
+    if (!arcadeEnabled) return;
+
+    // ⚠️ Variantes courantes selon l’implémentation du fichier x01SfxV3.ts
+    const MAP: Record<string, string[]> = {
+      dbull: ["dbull", "dBull", "double_bull", "dbull_hit", "arcade_dbull", "sfx_dbull"],
+      bull: ["bull", "oBull", "outer_bull", "bull_hit", "arcade_bull", "sfx_bull"],
+      double: ["double", "dbl", "hit_double", "arcade_double", "sfx_double"],
+      triple: ["triple", "tpl", "hit_triple", "arcade_triple", "sfx_triple"],
+      bust: ["bust", "busted", "arcade_bust", "sfx_bust"],
+      score_180: ["score_180", "180", "one_eighty", "arcade_180", "sfx_180"],
+      victory: ["victory", "win", "winner", "arcade_victory", "sfx_victory"],
+    };
+
+    tryPlayAny(MAP[event] || [event], { volume: sfxVolume, ...(opts || {}) });
+  },
+  [arcadeEnabled, sfxVolume, tryPlayAny]
+);
+
+  // =====================================================
+// 🗣️ VOIX IA — annonce de volée (langue + voix sélectionnée)
+// =====================================================
+
+const speakVisit = React.useCallback(
+  (playerName: string, visitScore: number) => {
+    if (!voiceEnabled) return;
+
+    // sécurité
+    const name = (playerName || "").trim();
+    if (!name) return;
+
+    try {
+      // ✅ Signature étendue : (name, score, { voiceId, lang })
+      (announceVisit as any)(
+        name,
+        visitScore,
+        {
+          voiceId: voiceId || undefined,
+          lang: lang || "fr", // ← LANGUE APP (fr / it / en / es…)
+        }
+      );
+    } catch {
+      try {
+        // fallback 1 : signature (name, score)
+        announceVisit(name, visitScore);
+      } catch {
+        // ignore total
+      }
+    }
+  },
+  [voiceEnabled, voiceId, lang]
+);
+
+  
+// =====================================================
+// 🎵 SCORE SFX (80..179 + NULL) + DELAY VOICE (>=2s)
+// - Tous les fichiers sont chargés depuis /public/sounds
+//   ex: /public/sounds/score_80.mp3
+// =====================================================
+
+const voiceTimerRef = React.useRef<number | null>(null);
+const turnAnnouncedRef = React.useRef<string | null>(null);
+
+const playPublicSound = React.useCallback(
+  (fileName: string, opts?: { volume?: number }) => {
+    try {
+      if (typeof Audio === "undefined") return null as any;
+      const a = new Audio(`/sounds/${fileName}`);
+      a.volume = Math.max(0, Math.min(1, opts?.volume ?? sfxVolume ?? 0.75));
+      // évite empilement
+      a.currentTime = 0;
+      a.play().catch(() => {});
+      return a;
+    } catch {
+      return null as any;
+    }
+  },
+  [sfxVolume]
+);
+
+const scheduleVoice = React.useCallback(
+  (fn: () => void, delayMs: number) => {
+    if (!voiceEnabled) return;
+    if (voiceTimerRef.current) {
+      window.clearTimeout(voiceTimerRef.current);
+      voiceTimerRef.current = null;
+    }
+    voiceTimerRef.current = window.setTimeout(() => {
+      voiceTimerRef.current = null;
+      fn();
+    }, Math.max(0, delayMs));
+  },
+  [voiceEnabled]
+);
+
+const playScoreSfxAndMaybeDelayVoice = React.useCallback(
+  (args: {
+    playerName: string;
+    pid: string;
+    scoreBefore: number;
+    darts: UIDart[];
+    visitScore: number;
+    isBustNow: boolean;
+    isCheckoutNow: boolean;
+  }) => {
+    const { playerName, pid, scoreBefore, darts, visitScore, isBustNow, isCheckoutNow } = args;
+
+    // ---- BUST : son dédié, pas de score SFX/voix ----
+    if (isBustNow) {
+      if (arcadeEnabled) {
+        playArcadeMapped("bust", { rateLimitMs: 180, volume: sfxVolume });
+      }
       return;
     }
 
-    const rec = makeX01RecordFromEngineCompat({
-      engine: buildEngineLike([], winner?.id ?? null),
-      existingId: historyIdRef.current,
-    });
-    History.upsert(rec);
-    historyIdRef.current = rec.id;
-    onFinish(rec);
+    // ---- Null sfx (0..10) hors checkout et hors bust ----
+    if (!isBustNow && !isCheckoutNow && visitScore >= 0 && visitScore <= 10) {
+      if (arcadeEnabled) {
+        const audio = playPublicSound("score-null.mp3", { volume: sfxVolume });
+        if (audio && typeof (audio as any).addEventListener === "function") {
+          (audio as any).addEventListener(
+            "ended",
+            () => {
+              // ✅ voix IA 1.5s après le SFX "nul"
+              scheduleVoice(() => speakVisit(playerName, visitScore), 1500);
+            },
+            { once: true } as any
+          );
+        } else {
+          // fallback si l'event "ended" n'est pas dispo
+          scheduleVoice(() => speakVisit(playerName, visitScore), 1500);
+        }
+      } else {
+        // si pas de sfx arcade, on annonce quand même (avec un léger délai)
+        scheduleVoice(() => speakVisit(playerName, visitScore), 1500);
+      }
+      return;
+    }
+
+    // ---- Scores 80..179 : SFX dédié + voix >= 2s après le son ----
+    if (!isBustNow && visitScore >= 80 && visitScore <= 179) {
+      if (arcadeEnabled) {
+        const audio = playPublicSound(`score_${visitScore}.mp3`, { volume: sfxVolume });
+        if (audio && typeof audio.addEventListener === "function") {
+          audio.addEventListener(
+            "ended",
+            () => {
+              scheduleVoice(() => speakVisit(playerName, visitScore), 2000);
+            },
+            { once: true } as any
+          );
+        } else {
+          scheduleVoice(() => speakVisit(playerName, visitScore), 2000);
+        }
+      } else {
+        // pas de SFX => voix immédiate
+        speakVisit(playerName, visitScore);
+      }
+      return;
+    }
+
+    // ---- 180 : déjà géré arcade (comme avant) + voix >= 2s ----
+    if (!isBustNow && visitScore === 180 && darts.length === 3) {
+      if (arcadeEnabled) {
+        playArcadeMapped("score_180", { rateLimitMs: 300 });
+        scheduleVoice(() => speakVisit(playerName, visitScore), 2000);
+      } else {
+        speakVisit(playerName, visitScore);
+      }
+      return;
+    }
+
+    // ---- Autres scores : voix normale (immédiate) ----
+    speakVisit(playerName, visitScore);
+  },
+  [arcadeEnabled, playArcadeMapped, playPublicSound, scheduleVoice, speakVisit, sfxVolume]
+);
+
+// =====================================================
+// 🗣️ VOIX IA — annonce du TOUR du joueur
+// =====================================================
+
+const speakText = React.useCallback(
+  (text: string) => {
+    if (!voiceEnabled) return;
+    try {
+      if (typeof window === "undefined") return;
+      const synth = (window as any).speechSynthesis;
+      if (!synth) return;
+
+      // stop queue pour éviter les empilements
+      try {
+        synth.cancel();
+      } catch {}
+
+      const u = new SpeechSynthesisUtterance(text);
+      // Langue (simple)
+      u.lang = (lang || "fr").startsWith("fr") ? "fr-FR" : lang || "en-US";
+
+      // Profil "robot" (optionnel)
+      if (voiceId === "robot") {
+        u.rate = 0.95;
+        u.pitch = 0.8;
+      } else {
+        u.rate = 1.02;
+        u.pitch = 1.0;
+      }
+
+      // Tente de choisir une voix cohérente (si dispo)
+      const voices: SpeechSynthesisVoice[] = synth.getVoices?.() || [];
+      const wantsFemale = voiceId === "female";
+      const wantsMale = voiceId === "male";
+
+      const pick = (v: SpeechSynthesisVoice) => {
+        const name = (v.name || "").toLowerCase();
+        const local = (v.lang || "").toLowerCase();
+        const okLang =
+          (lang || "fr").startsWith("fr") ? local.includes("fr") : true;
+
+        if (!okLang) return false;
+
+        if (wantsFemale) return name.includes("female") || name.includes("woman") || name.includes("fem");
+        if (wantsMale) return name.includes("male") || name.includes("man") || name.includes("hom");
+        return true;
+      };
+
+      const chosen = voices.find(pick) || voices.find((v) => (v.lang || "").toLowerCase().includes("fr")) || voices[0];
+      if (chosen) u.voice = chosen;
+
+      synth.speak(u);
+    } catch {
+      // ignore
+    }
+  },
+  [voiceEnabled, voiceId, lang]
+);
+
+React.useEffect(() => {
+  // on annonce uniquement pendant une partie en cours
+  if (status !== "running") return;
+  if (!activePlayerId) return;
+
+  // anti-spam
+  if (turnAnnouncedRef.current === activePlayerId) return;
+  turnAnnouncedRef.current = activePlayerId;
+
+  const playerName = profileById?.[activePlayerId as any]?.name || activePlayer?.name || "Joueur";
+  // Ex: "Tour de Alex" / "À toi Alex"
+  const phrase = (lang || "fr").startsWith("fr")
+    ? `À toi ${playerName}`
+    : `Your turn ${playerName}`;
+
+  // petit délai pour laisser l'UI se mettre à jour
+  scheduleVoice(() => speakText(phrase), 350);
+}, [activePlayerId, status, activePlayer, profileById, scheduleVoice, speakText, lang]);
+
+// =====================================================
+// 🎬 INTRO SOUND au début de partie
+// =====================================================
+const introPlayedRef = React.useRef(false);
+React.useEffect(() => {
+  if (introPlayedRef.current) return;
+  introPlayedRef.current = true;
+  if (!arcadeEnabled) return;
+  // intro dès l'entrée dans le match
+  playPublicSound("game-intro.mp3", { volume: sfxVolume });
+}, [arcadeEnabled, playPublicSound, sfxVolume]);
+
+// =====================================================
+// ÉTAT LOCAL KEYPAD (logique v1 + synchro UNDO moteur)
+// =====================================================
+
+const [multiplier, setMultiplier] = React.useState<1 | 2 | 3>(1);
+const [currentThrow, setCurrentThrow] = React.useState<UIDart[]>([]);
+
+// ✅ ÉTAT: dernière volée par joueur (sert à PlayersListOnly + bust preview)
+const [lastVisitsByPlayer, setLastVisitsByPlayer] = React.useState<
+  Record<string, UIDart[]>
+>({});
+
+const [lastVisitIsBustByPlayer, setLastVisitIsBustByPlayer] = React.useState<
+  Record<string, boolean>
+>({});
+
+// 🔒 garde-fou anti double-validation HUMAIN
+const isValidatingRef = React.useRef(false);
+
+// 🔒 garde-fou BOT : (gardé si tu veux le réutiliser plus tard)
+const botUndoGuardRef = React.useRef(false);
+
+// 🔊 anti double-bust (bust preview déjà joué avant validation)
+const bustPreviewPlayedRef = React.useRef(false);
+
+// 🔊 timer pour déclencher le BUST avec délai
+const bustSoundTimeoutRef = React.useRef<number | null>(null);
+
+// 🔒 indique si currentThrow vient du moteur (rebuild / UNDO)
+//    ou de la saisie locale sur le keypad
+const currentThrowFromEngineRef = React.useRef(false);
+
+// 🔄 SYNC AVEC LE MOTEUR UNIQUEMENT POUR LES CAS "ENGINE-DRIVEN"
+//    (UNDO global, rebuild, etc.)
+React.useEffect(() => {
+  if (!currentThrowFromEngineRef.current) return;
+
+  const v: any = (state as any).visit;
+
+  if (!v) {
+    setCurrentThrow([]);
+    return;
   }
 
-  /* =====================================================
-     REBUILD ENGINE-LIKE
-  ===================================================== */
-  function buildEngineLike(dartsThisTurn: UIDart[], winnerId: string | null) {
-    const playersArr = state.players as any as EnginePlayer[];
-    const scores = playersArr.map(
-      (p) => scoresByPlayer[p.id] ?? startFromResume
+  const raw: UIDart[] =
+    Array.isArray(v.darts) && v.darts.length
+      ? v.darts.map((d: any) => ({
+          v: d.segment ?? d.v ?? d.value ?? 0,
+          mult: (d.multiplier ?? d.mult ?? 1) as 1 | 2 | 3,
+        }))
+      : Array.isArray(v.dartsThrown) && v.dartsThrown.length
+      ? v.dartsThrown.map((d: any) => ({
+          v: d.segment ?? d.v ?? d.value ?? 0,
+          mult: (d.multiplier ?? d.mult ?? 1) as 1 | 2 | 3,
+        }))
+      : [];
+
+  setCurrentThrow((prev) => {
+    if (
+      prev.length === raw.length &&
+      prev.every((d, i) => d.v === raw[i]?.v && d.mult === raw[i]?.mult)
+    ) {
+      return prev;
+    }
+    return raw;
+  });
+}, [state]);
+
+
+// =====================================================
+  // Checkout (UI) — recalcul live après chaque fléchette / annuler
+  // =====================================================
+  const checkoutText = React.useMemo(() => {
+    if (status !== "running") return null;
+
+    const dartsLeft = Math.max(0, 3 - (currentThrow?.length ?? 0));
+    if (dartsLeft <= 0) return null;
+
+    const scored = (currentThrow || []).reduce(
+      (acc: number, d: any) => acc + (d?.v ? d.v * (d.mult ?? 1) : 0),
+      0
     );
-    const idx = playersArr.findIndex((p) => p.id === currentPlayer?.id);
+    const remaining = (currentScore ?? config.startScore) - scored;
 
-    return {
-      rules: {
-        start: startFromResume,
-        doubleOut: outMFromResume !== "simple",
-        setsToWin: setsFromResume,
-        legsPerSet: legsFromResume,
-        outMode: outMFromResume,
-        inMode: inMFromResume,
-      },
-      players: playersArr,
-      scores,
-      currentIndex: idx >= 0 ? idx : 0,
-      dartsThisTurn,
-      winnerId,
-    };
+    // bust preview => pas de CO
+    if (remaining < 0) return null;
+
+    // si on est déjà à 0 (volée en cours), valider finisher selon outMode
+    if (remaining === 0) {
+      const last = (currentThrow || [])[currentThrow.length - 1];
+      if (!isValidFinisher(last)) return null;
+      return ""; // pas besoin de suggestion, c'est déjà checkout (l'UI peut afficher "FINISH" ailleurs)
+    }
+
+    // En double/master, 1 restant est impossible (pas de segment à 1 qui soit D/T)
+    if ((outMode === "double" || outMode === "master") && remaining === 1) return null;
+
+    return computeCheckoutText(remaining, dartsLeft, outMode);
+  }, [status, currentThrow, currentScore, config.startScore, outMode]);
+
+
+// 🔄 CHANGEMENT DE JOUEUR ACTIF → on vide la volée locale
+//    (sauf en cas d'UNDO/rebuild où c'est le moteur qui pilote)
+React.useEffect(() => {
+  if (currentThrowFromEngineRef.current) return;
+  setCurrentThrow([]);
+  setMultiplier(1);
+}, [activePlayerId]);
+
+function pushDart(value: number) {
+  ensureAudioUnlockedNow();
+  currentThrowFromEngineRef.current = false;
+
+  if (!activePlayerId) return;
+  if (currentThrow.length >= 3) return;
+
+  const dart: UIDart = { v: value, mult: multiplier } as UIDart;
+
+  // 1) hit
+  playHitSfx("dart_hit", { rateLimitMs: 40, volume: 0.55 });
+
+  // 2) arcade bull/dbull + 3) double/triple (avec DBULL exclusif)
+  const isDbull = dart.v === 25 && dart.mult === 2;
+  const isBullNow = dart.v === 25 && dart.mult === 1;
+
+  if (isDbull) playArcadeMapped("dbull");
+  else if (isBullNow) playArcadeMapped("bull");
+
+  if (!isDbull) {
+    if (dart.mult === 3) playArcadeMapped("triple");
+    else if (dart.mult === 2) playArcadeMapped("double");
   }
 
-  /* =====================================================
-     FIN DE MANCHE → Overlay classement
-  ===================================================== */
-  function handleContinueFromRanking(e?: any) {
-    e?.preventDefault?.();
-    e?.stopPropagation?.();
-    overlayClosedOnceRef.current = true;
-    setOverlayOpen(false);
-    setLastLegResult(null);
-    queueMicrotask(() => (overlayClosedOnceRef.current = false));
+  const nextThrow = [...currentThrow, dart];
+  setCurrentThrow(nextThrow);
+  setMultiplier(1);
+
+  // ---- BUST PREVIEW (dès que ça devient bust) + son BUST décalé 1.5s
+  if (bustSoundTimeoutRef.current) {
+    window.clearTimeout(bustSoundTimeoutRef.current);
+    bustSoundTimeoutRef.current = null;
   }
 
-  /* =====================================================
-     MESURE HEADER (scroll zone OK mobile)
-  ===================================================== */
+  try {
+    const scoreBefore = currentScore;
+
+    const visitScore = nextThrow.reduce(
+      (s, d) => s + (d.v === 25 && d.mult === 2 ? 50 : d.v * d.mult),
+      0
+    );
+
+    const remainingAfter = scoreBefore - visitScore;
+    const willBustNow =
+      remainingAfter < 0 || ((outMode === "double" || outMode === "master") && remainingAfter === 1);
+
+    if (willBustNow) {
+      // ✅ afficher la volée bust en rouge (liste joueurs)
+      setLastVisitsByPlayer((m) => ({
+        ...m,
+        [activePlayerId]: nextThrow,
+      }));
+      setLastVisitIsBustByPlayer((m) => ({
+        ...m,
+        [activePlayerId]: true,
+      }));
+
+      if (!bustPreviewPlayedRef.current) {
+        bustPreviewPlayedRef.current = true;
+
+        bustSoundTimeoutRef.current = window.setTimeout(() => {
+          playArcadeMapped("bust", { rateLimitMs: 220 });
+          bustSoundTimeoutRef.current = null;
+        }, 1500);
+      }
+    } else {
+      bustPreviewPlayedRef.current = false;
+      setLastVisitIsBustByPlayer((m) => ({
+        ...m,
+        [activePlayerId]: false,
+      }));
+    }
+  } catch {
+    // ignore
+  }
+}
+
+const isBustLocked = !!(activePlayerId && (lastVisitIsBustByPlayer as any)?.[activePlayerId]);
+
+const handleSimple = () => {
+  if (isBustLocked) return;
+  setMultiplier(1);
+};
+const handleDouble = () => {
+  if (isBustLocked) return;
+  setMultiplier(2);
+};
+const handleTriple = () => {
+  if (isBustLocked) return;
+  setMultiplier(3);
+};
+
+const handleNumber = (value: number) => {
+  if (isBustLocked) return;
+  pushDart(value);
+};
+const handleBull = () => {
+  if (isBustLocked) return;
+  pushDart(25);
+};
+
+const handleBackspace = () => {
+  if (isBustLocked) return;
+  currentThrowFromEngineRef.current = false;
+
+  bustPreviewPlayedRef.current = false;
+  if (bustSoundTimeoutRef.current) {
+    window.clearTimeout(bustSoundTimeoutRef.current);
+    bustSoundTimeoutRef.current = null;
+  }
+
+  setCurrentThrow((prev) => prev.slice(0, -1));
+};
+
+const handleCancel = () => {
+  bustPreviewPlayedRef.current = false;
+  if (bustSoundTimeoutRef.current) {
+    window.clearTimeout(bustSoundTimeoutRef.current);
+    bustSoundTimeoutRef.current = null;
+  }
+
+  if (activePlayerId) {
+    setLastVisitIsBustByPlayer((m: Record<string, boolean>) => ({
+      ...m,
+      [activePlayerId]: false,
+    }));
+  }
+
+  // si on est en saisie locale -> retire juste 1 dart
+  if (currentThrow.length > 0 && !currentThrowFromEngineRef.current) {
+    setCurrentThrow((prev) => prev.slice(0, -1));
+    setMultiplier(1);
+    return;
+  }
+
+  // sinon -> UNDO moteur (si on a de l'historique)
+  if (!replayDartsRef.current.length) return;
+
+  botUndoGuardRef.current = true;
+
+  replayDartsRef.current.pop();
+  currentThrowFromEngineRef.current = true;
+
+  undoLastDart();
+  persistAutosave();
+
+  setTimeout(() => {
+    botUndoGuardRef.current = false;
+  }, 0);
+};
+
+const validateThrow = () => {
+  ensureAudioUnlockedNow();
+  if (!activePlayerId) return;
+  if (!currentThrow.length) return;
+
+  if (isValidatingRef.current) return;
+  isValidatingRef.current = true;
+
+  const toSend = [...currentThrow];
+  const pid = activePlayerId;
+
+  // ✅ on coupe tout timer bust “prévu”
+  bustPreviewPlayedRef.current = false;
+  if (bustSoundTimeoutRef.current) {
+    window.clearTimeout(bustSoundTimeoutRef.current);
+    bustSoundTimeoutRef.current = null;
+  }
+
+  try {
+    const playerName = activePlayer?.name || "Joueur";
+    const scoreBefore = scores[pid] ?? config.startScore;
+
+    const visitScore = toSend.reduce(
+      (s, d) => s + (d.v === 25 && d.mult === 2 ? 50 : d.v * d.mult),
+      0
+    );
+
+    const isBustNow =
+      scoreBefore - visitScore < 0 || ((outMode === "double" || outMode === "master") && scoreBefore - visitScore === 1);
+
+    const remainingAfter = scoreBefore - visitScore;
+    const last = toSend[toSend.length - 1];
+    const lastIsDouble = !!last && (last.mult === 2 || (last.v === 25 && last.mult === 2));
+      const lastIsTriple = !!last && last.mult === 3;
+      const lastIsFinisher = (outMode === "double") ? lastIsDouble : (outMode === "master") ? (lastIsDouble || lastIsTriple) : true;
+    const isCheckoutNow =
+      !isBustNow && remainingAfter === 0 && isValidFinisher(lastD as any);
+
+    // ✅ sons scores (80..179 + null + 180) + délai voix (>=2s)
+    playScoreSfxAndMaybeDelayVoice({
+      playerName,
+      pid,
+      scoreBefore,
+      darts: toSend,
+      visitScore,
+      isBustNow,
+      isCheckoutNow,
+    });
+
+    // ✅ volée validée : reset le flag rouge
+    setLastVisitIsBustByPlayer((m: Record<string, boolean>) => ({
+      ...m,
+      [pid]: false,
+    }));
+  } catch (e) {
+    console.warn("[X01PlayV3] end-of-visit sfx/voice failed", e);
+  }
+
+  setLastVisitsByPlayer((m: Record<string, UIDart[]>) => ({
+    ...m,
+    [pid]: toSend,
+  }));
+
+  const inputs: X01DartInputV3[] = toSend.map((d) => ({
+    segment: d.v === 25 ? 25 : d.v,
+    multiplier: d.mult as 1 | 2 | 3,
+  }));
+
+  setCurrentThrow([]);
+  setMultiplier(1);
+
+  currentThrowFromEngineRef.current = false;
+
+  replayDartsRef.current = replayDartsRef.current.concat(inputs);
+  persistAutosave();
+
+  inputs.forEach((input, index) => {
+    setTimeout(() => {
+      throwDart(input);
+
+      if (index === inputs.length - 1) {
+        isValidatingRef.current = false;
+      }
+    }, index * 10);
+  });
+
+  if (!inputs.length) isValidatingRef.current = false;
+};
+
+// =====================================================
+// 🎥 EXTERNAL SCORER (Scolia-ready) — AJOUT UNIQUEMENT
+// - En mode "external", on écoute des événements window et on pousse des darts dans le moteur.
+// - IMPORTANT: on ne modifie rien au moteur, on appelle throwDart(input).
+// - Events supportés:
+//   - dc:x01v3:dart  -> { segment, multiplier }
+//   - dc:x01v3:visit -> { darts: [{segment,multiplier}, ...] } (max 3)
+// =====================================================
+React.useEffect(() => {
+  if (typeof window === "undefined") return;
+  if (scoringSource !== "external") return;
+
+  // Si c'est un tour BOT, ou qu'on rejoue un autosave, on ignore les events externes
+  if (isBotTurn) return;
+
+  const onDart = (ev: any) => {
+    try {
+      const detail = ev?.detail;
+      const dart = normalizeExternalDart(detail);
+      if (!dart) return;
+
+      // ✅ alimente l’UI "dernière volée" (1→3 fléchettes) pour la PlayersListOnly
+      const pid = activePlayerId as string;
+      const uiDart: UIDart = {
+        v: dart.segment === 25 ? 25 : dart.segment,
+        mult: dart.multiplier as 1 | 2 | 3,
+      } as any;
+
+      setLastVisitsByPlayer((m) => {
+        const prev = m[pid] ?? [];
+        const next = [...prev, uiDart].slice(-3);
+        return { ...m, [pid]: next };
+      });
+
+      // 🔓 audio (si le bridge arrive via click/stream, on tente quand même)
+      ensureAudioUnlockedNow();
+
+      // On force un refresh UI via le moteur (moteur-driven)
+      currentThrowFromEngineRef.current = true;
+
+      // SFX minimal (optionnel)
+      try {
+        playHitSfx("dart_hit", { rateLimitMs: 40, volume: 0.55 });
+      } catch {}
+
+      // Pousse dans le moteur
+      throwDart(dart);
+
+      // Autosave + replay log
+      replayDartsRef.current = replayDartsRef.current.concat([dart]);
+      persistAutosave();
+    } catch (e) {
+      console.warn("[X01PlayV3] external dart failed", e);
+    }
+  };
+
+  const onVisit = (ev: any) => {
+    try {
+      const detail = ev?.detail;
+      const darts = normalizeExternalVisit(detail);
+      if (!darts.length) return;
+
+      // ✅ alimente l’UI "dernière volée" (3 fléchettes) pour la PlayersListOnly
+      const pid = activePlayerId as string;
+      const ui = darts.map(
+        (d) =>
+          ({
+            v: d.segment === 25 ? 25 : d.segment,
+            mult: d.multiplier as 1 | 2 | 3,
+          }) as any
+      ) as UIDart[];
+
+      setLastVisitsByPlayer((m) => ({ ...m, [pid]: ui.slice(-3) }));
+
+      ensureAudioUnlockedNow();
+
+      // ✅ sons scores + voix (comme au keypad)
+      try {
+        const playerName = activePlayer?.name || profileById?.[pid as any]?.name || "Joueur";
+        const scoreBefore = scores[pid] ?? config.startScore;
+
+        const visitScore = darts.reduce((s: number, d: any) => {
+          if (d.segment === 25 && d.multiplier === 2) return s + 50;
+          return s + (d.segment || 0) * (d.multiplier || 1);
+        }, 0);
+
+        const isBustNow =
+          scoreBefore - visitScore < 0 || ((outMode === "double" || outMode === "master") && scoreBefore - visitScore === 1);
+
+        const remainingAfter = scoreBefore - visitScore;
+        const lastD = ui[ui.length - 1];
+        const lastIsDouble = !!lastD && (lastD.mult === 2 || (lastD.v === 25 && lastD.mult === 2));
+        const isCheckoutNow =
+          !isBustNow && remainingAfter === 0 && isValidFinisher(lastD as any);
+
+        playScoreSfxAndMaybeDelayVoice({
+          playerName,
+          pid,
+          scoreBefore,
+          darts: ui,
+          visitScore,
+          isBustNow,
+          isCheckoutNow,
+        });
+
+        // reset bust flag rouge
+        setLastVisitIsBustByPlayer((m: Record<string, boolean>) => ({ ...m, [pid]: false }));
+      } catch {}
+
+      currentThrowFromEngineRef.current = true;
+
+      // Petits SFX (1 par dart, sans spam)
+      for (const d of darts) {
+        try {
+          playHitSfx("dart_hit", { rateLimitMs: 40, volume: 0.55 });
+        } catch {}
+        throwDart(d);
+      }
+
+      replayDartsRef.current = replayDartsRef.current.concat(darts);
+      persistAutosave();
+    } catch (e) {
+      console.warn("[X01PlayV3] external visit failed", e);
+    }
+  };
+
+  window.addEventListener(EXTERNAL_DART_EVENT, onDart as any);
+  window.addEventListener(EXTERNAL_VISIT_EVENT, onVisit as any);
+
+  return () => {
+    window.removeEventListener(EXTERNAL_DART_EVENT, onDart as any);
+    window.removeEventListener(EXTERNAL_VISIT_EVENT, onVisit as any);
+  };
+}, [
+  scoringSource,
+  isBotTurn,
+  activePlayerId, // ✅ important sinon pid stale
+  ensureAudioUnlockedNow,
+  throwDart,
+  persistAutosave,
+  playHitSfx,
+]);
+
+  // =====================================================
+  // STATS LIVE & MINI-RANKING
+  // =====================================================
+
+  const avg3ByPlayer: Record<string, number> = React.useMemo(() => {
+    const map: Record<string, number> = {};
+    for (const p of players as any[]) {
+      const pid = p.id as X01PlayerId;
+      const live = liveStatsByPlayer[pid];
+      const dartsThrown = live?.dartsThrown ?? 0;
+      if (!dartsThrown) {
+        map[pid] = 0;
+        continue;
+      }
+      const scoreNow = scores[pid] ?? config.startScore;
+      const scored = config.startScore - scoreNow;
+      if (scored <= 0) {
+        map[pid] = 0;
+        continue;
+      }
+      map[pid] = (scored / dartsThrown) * 3;
+    }
+    return map;
+  }, [players, liveStatsByPlayer, scores, config.startScore]);
+
+  const miniRanking: MiniRankingRow[] = React.useMemo(() => {
+    return players
+      .map((p: any) => {
+        const pid = p.id as X01PlayerId;
+        const avg3 = avg3ByPlayer[pid] ?? 0;
+        return {
+          id: pid,
+          name: p.name,
+          score: scores[pid] ?? config.startScore,
+          legsWon: (state as any).legsWon?.[pid] ?? 0,
+          setsWon: (state as any).setsWon?.[pid] ?? 0,
+          avg3,
+        };
+      })
+      .sort((a, b) => {
+        if (b.setsWon !== a.setsWon) return b.setsWon - a.setsWon;
+        if (b.legsWon !== a.legsWon) return b.legsWon - a.legsWon;
+        return a.score - b.score;
+      });
+  }, [players, scores, state, config.startScore, avg3ByPlayer]);
+
+  const liveRanking = React.useMemo(
+    () =>
+      miniRanking.map((r) => ({
+        id: r.id,
+        name: r.name,
+        score: r.score,
+      })),
+    [miniRanking]
+  );
+
+  // Stats joueur actif
+  const activeStats = activePlayer
+    ? liveStatsByPlayer[activePlayer.id]
+    : undefined;
+
+  const curDarts = activeStats?.dartsThrown ?? 0;
+  const curM3D = activePlayer
+    ? (avg3ByPlayer[activePlayer.id] ?? 0).toFixed(2)
+    : "0.00";
+  const bestVisit = activeStats?.bestVisit ?? 0;
+
+  // --- nouveaux compteurs live (garde pour Stats globales, pas affichés) ---
+  const missCount =
+    activeStats?.miss ??
+    activeStats?.missCount ??
+    activeStats?.misses ??
+    0;
+
+  const bustCount =
+    activeStats?.bust ??
+    activeStats?.bustCount ??
+    activeStats?.busts ??
+    0;
+
+  const dBullCount =
+    activeStats?.dBull ??
+    activeStats?.doubleBull ??
+    activeStats?.dBullCount ??
+    0;
+
+  const missPct =
+    curDarts > 0 ? ((missCount / curDarts) * 100).toFixed(0) : "0";
+  const bustPct =
+    curDarts > 0 ? ((bustCount / curDarts) * 100).toFixed(0) : "0";
+  const dBullPct =
+    curDarts > 0 ? ((dBullCount / curDarts) * 100).toFixed(0) : "0";
+
+  // =====================================================
+  // Mesure header & keypad (pour scroll zone joueurs)
+  // =====================================================
+
   const headerWrapRef = React.useRef<HTMLDivElement | null>(null);
   const [headerH, setHeaderH] = React.useState(0);
 
@@ -2176,9 +2076,6 @@ async function finalizeMatch() {
     };
   }, []);
 
-  /* =====================================================
-     MESURE KEYPAD (pour espace joueurs)
-  ===================================================== */
   const keypadWrapRef = React.useRef<HTMLDivElement | null>(null);
   const [keypadH, setKeypadH] = React.useState(0);
 
@@ -2197,14 +2094,291 @@ async function finalizeMatch() {
     };
   }, []);
 
-  /* =====================================================
-     RENDU GLOBAL
-  ===================================================== */
-  const currentPlayerId = currentPlayer?.id ?? "";
+   // =====================================================
+  // Quitter / Rejouer / Résumé / Continuer
+  // =====================================================
+
+  function handleQuit() {
+    if (onExit) {
+      onExit();
+      return;
+    }
+    if (typeof window !== "undefined") {
+      window.history.back();
+    }
+  }
+
+  // REJOUER même config : on relance l'écran avec la même config
+  function handleReplaySameConfig() {
+    // 🔁 Pour l’instant: reload complet de la page -> recrée un match X01V3
+    if (typeof window !== "undefined") {
+      window.location.reload();
+      return;
+    }
+  }
+
+  // NOUVELLE PARTIE (retour écran de config)
+  function handleReplayNewConfigInternal() {
+    if (onReplayNewConfig) {
+      onReplayNewConfig();
+      return;
+    }
+    // fallback : on quitte
+    handleQuit();
+  }
+
+  // RÉSUMÉ : on construit un LegStats à partir du moteur V3 + liveStats
+  function handleShowSummary(_matchId: string) {
+    try {
+      const summaryRaw: any = (state as any)?.summary || {};
+      const legStats = buildLegStatsFromV3LiveForOverlay(
+        config,
+        state as any,
+        liveStatsByPlayer as any,
+        scores as any,
+        summaryRaw
+      );
+
+      setSummaryLegStats(legStats);
+      setSummaryOpen(true);
+    } catch (err) {
+      console.warn("[X01PlayV3] failed to build LegStats for summary", err);
+      // fallback : si jamais ça casse, on garde l'ancien comportement
+      if (onShowSummary) {
+        const id = _matchId || (state as any).matchId || "";
+        onShowSummary(id);
+      }
+    }
+  }
+
+  // CONTINUER (3+ joueurs) : on laisse le moteur passer à la suite
+  function handleContinueMulti() {
+    startNextLeg();
+  }
+
+// =====================================================
+// Sauvegarde du match dans l'Historique / Stats
+// + 🔊 FIN DE MATCH : victoire + voix classement (respecte arcadeEnabled/voiceEnabled)
+// =====================================================
+
+React.useEffect(() => {
+  if (status !== "match_end") return;
+  if (hasSavedMatchRef.current) return;
+  hasSavedMatchRef.current = true;
+
+  // =====================================================
+// 🔊 FIN DE MATCH : victoire + voix classement (langue + voiceId)
+// =====================================================
+try {
+  const rankingNames = (miniRanking || [])
+    .map((r) => r?.name)
+    .filter(Boolean) as string[];
+
+  const winnerName = rankingNames[0] || "Joueur";
+
+  // ✅ Son "victory" UNIQUEMENT si "Sons Arcade" activés
+  if (arcadeEnabled) {
+    playArcadeMapped("victory", { rateLimitMs: 800, volume: 0.25 });
+  }
+
+  // ✅ Voix IA UNIQUEMENT si "Voix IA" activée
+  if (voiceEnabled) {
+    const opts = {
+      voiceId: voiceId || undefined,
+      lang: lang || "fr", // ← langue de l'app
+    };
+
+    try {
+      // ✅ Signature étendue (recommandée) :
+      // announceEndGame({ winnerName, rankingNames, extra? }, opts?)
+      (announceEndGame as any)({ winnerName, rankingNames }, opts);
+    } catch {
+      try {
+        // fallback : certaines versions ont (payload, opts?) mais sans voiceId
+        announceEndGame({ winnerName, rankingNames } as any, { lang: opts.lang } as any);
+      } catch {
+        try {
+          // fallback ultime : signature simple sans opts
+          announceEndGame({ winnerName, rankingNames } as any);
+        } catch {
+          // ignore
+        }
+      }
+    }
+  }
+} catch (e) {
+  console.warn("[X01PlayV3] end-game sfx/voice failed", e);
+}
+
+  // =====================================================
+  // Sauvegarde Historique / Stats
+  // =====================================================
+  try {
+    saveX01V3MatchToHistory({
+      config,
+      state,
+      scores,
+      liveStatsByPlayer,
+    });
+  } catch (err) {
+    console.warn("[X01PlayV3] saveX01V3MatchToHistory failed", err);
+  }
+}, [
+  status,
+  config,
+  state,
+  scores,
+  liveStatsByPlayer,
+  miniRanking,
+  arcadeEnabled,
+  voiceEnabled,
+  voiceId,
+  lang, // ✅ AJOUT
+]);
+
+  // =====================================================
+  // BOT : tour auto si joueur courant est un BOT
+  // =====================================================
+
+  React.useEffect(() => {
+    console.log("[X01PlayV3][BOT] effect run", {
+      activePlayerId,
+      activePlayerName: activePlayer?.name,
+      isBotTurn,
+      status,
+      isReplaying: isReplayingRef.current,
+    });
+
+    // 0) Pendant la reprise depuis autosave, on NE JOUE PAS les bots
+    if (isReplayingRef.current) {
+      console.log("[X01PlayV3][BOT] stop: replaying autosave");
+      return;
+    }
+
+    // 🛡️ Pendant un UNDO global déclenché par ANNULER,
+    // on ne lance PAS une nouvelle volée de BOT.
+    if (botUndoGuardRef.current) {
+      console.log("[X01PlayV3][BOT] stop: undo in progress");
+      return;
+    }
+
+    // 1) Si ce n'est pas un tour de BOT → on ne fait rien
+    if (!isBotTurn || !activePlayer) {
+      console.log("[X01PlayV3][BOT] stop: not bot turn", {
+        isBotTurn,
+        hasActivePlayer: !!activePlayer,
+      });
+      return;
+    }
+
+    // 2) Si on est en fin de manche / set / match → on ne joue pas
+    if (
+      status === "leg_end" ||
+      status === "set_end" ||
+      status === "match_end"
+    ) {
+      console.log("[X01PlayV3][BOT] stop: end status", { status });
+      return;
+    }
+
+    const pid = activePlayer.id;
+    const scoreNow = scores[pid] ?? config.startScore;
+    const level = ((activePlayer as any).botLevel as BotLevel) ?? "easy";
+
+    console.log("[X01PlayV3][BOT] scheduling bot visit", {
+      pid,
+      name: activePlayer.name,
+      scoreNow,
+      level,
+    });
+
+    const timeout = window.setTimeout(() => {
+      console.log("[X01PlayV3][BOT] timeout fired", {
+        activePlayerId,
+        status,
+      });
+
+      // on relit le joueur courant AU MOMENT DU TIR
+      const currentActive = players.find(
+        (p: any) => p.id === activePlayerId
+      );
+      const stillBot =
+        !!currentActive && Boolean((currentActive as any).isBot);
+
+      if (!stillBot) {
+        console.log(
+          "[X01PlayV3][BOT] abort: no longer bot active",
+          { currentActiveName: currentActive?.name }
+        );
+        return;
+      }
+
+      if (
+        status === "leg_end" ||
+        status === "set_end" ||
+        status === "match_end"
+      ) {
+        console.log(
+          "[X01PlayV3][BOT] abort: status changed to end",
+          { status }
+        );
+        return;
+      }
+
+      const visit = computeBotVisit(level, scoreNow, outMode);
+      console.log("[X01PlayV3][BOT] visit computed", visit);
+
+      // UI : mémorise la volée du BOT
+      setLastVisitsByPlayer((m) => ({
+        ...m,
+        [pid]: visit,
+      }));
+
+      // Transforme la volée en inputs V3
+      const inputs: X01DartInputV3[] = visit.map((d) => {
+        if (d.v <= 0) {
+          // MISS
+          return { segment: 0, multiplier: 1 };
+        }
+        return {
+          segment: d.v === 25 ? 25 : d.v,
+          multiplier: d.mult as 1 | 2 | 3,
+        };
+      });
+
+      // Joue TOUTE la volée (3 darts)
+      inputs.forEach((input) => {
+        throwDart(input);
+      });
+
+      // Autosave : on enregistre aussi les volées des bots
+      replayDartsRef.current = replayDartsRef.current.concat(inputs);
+      persistAutosave();
+    }, 650);
+
+    return () => {
+      window.clearTimeout(timeout);
+    };
+  }, [
+    isBotTurn,
+    activePlayer,
+    activePlayerId,
+    status,
+    scores,
+    config.startScore,
+    doubleOut,
+    players,
+    throwDart,
+    persistAutosave,
+  ]);
+
+  // =====================================================
+  // Rendu principal : UI du "beau" X01Play
+  // =====================================================
 
   return (
     <div
-      className="x01play-container"
+      className={`x01play-container theme-${theme.id}`}
       style={{ overflow: "hidden", minHeight: "100vh" }}
     >
       {/* HEADER FIXE */}
@@ -2247,66 +2421,69 @@ async function finalizeMatch() {
               whiteSpace: "nowrap",
             }}
           >
-            ← Quitter
+            ← {t("common.quit", "Quitter")}
           </button>
 
           {/* HEADER COMPACT (AVATARS + SCORE) */}
-          <div style={{ flex: 1, display: "flex", justifyContent: "center" }}>
+          <div
+            style={{
+              flex: 1,
+              display: "flex",
+              justifyContent: "center",
+            }}
+          >
             {isDuel && useSetsUi && (
               <DuelHeaderCompact
                 leftAvatarUrl={
-                  profileById[(state.players as any)[0].id]?.avatarDataUrl ??
-                  ""
+                  profileById[players[0].id]?.avatarDataUrl ?? ""
                 }
                 rightAvatarUrl={
-                  profileById[(state.players as any)[1].id]?.avatarDataUrl ??
-                  ""
+                  profileById[players[1].id]?.avatarDataUrl ?? ""
                 }
-                leftSets={setsWonNow[(state.players as any)[0].id] ?? 0}
-                rightSets={setsWonNow[(state.players as any)[1].id] ?? 0}
-                leftLegs={legsWonNow[(state.players as any)[0].id] ?? 0}
-                rightLegs={legsWonNow[(state.players as any)[1].id] ?? 0}
+                leftSets={(state as any).setsWon?.[players[0].id] ?? 0}
+                rightSets={(state as any).setsWon?.[players[1].id] ?? 0}
+                leftLegs={(state as any).legsWon?.[players[0].id] ?? 0}
+                rightLegs={(state as any).legsWon?.[players[1].id] ?? 0}
               />
             )}
           </div>
 
           {/* CAPSULE SET / LEG */}
           <SetLegChip
-            currentSet={currentSet}
-            currentLegInSet={currentLegInSet}
-            setsTarget={setsFromResume}
-            legsTarget={legsFromResume}
+            currentSet={(state as any).currentSet ?? 1}
+            currentLegInSet={(state as any).currentLeg ?? 1}
+            setsTarget={setsTarget}
+            legsTarget={legsTarget}
             useSets={useSetsUi}
           />
         </div>
 
-        {/* HEADER */}
-        <div style={{ maxWidth: CONTENT_MAX, margin: "0 auto" }}>
+        {/* HEADER BLOCK (avatar + score + chips + mini ranking) */}
+        <div
+          style={{
+            maxWidth: CONTENT_MAX,
+            margin: "0 auto",
+          }}
+        >
           <HeaderBlock
-            currentPlayer={currentPlayer as any}
+            currentPlayer={activePlayer}
             currentAvatar={
-              (currentPlayer &&
-                profileById[currentPlayer.id]?.avatarDataUrl) ??
-              null
+              activePlayer
+                ? profileById[activePlayer.id]?.avatarDataUrl ?? null
+                : null
             }
-            currentRemaining={currentRemaining}
+            currentRemaining={currentScore}
             currentThrow={currentThrow}
-            doubleOut={outMFromResume !== "simple"}
+            doubleOut={doubleOut}
             liveRanking={liveRanking}
-            curDarts={dartsCount[currentPlayerId] || 0}
-            curM3D={
-              (dartsCount[currentPlayerId] || 0) > 0
-                ? (
-                    (pointsSum[currentPlayerId] || 0) /
-                    (dartsCount[currentPlayerId] || 1)
-                  ).toFixed(2)
-                : "0.00"
-            }
-            bestVisit={bestVisitByPlayer[currentPlayerId] || 0}
-            dartsLeft={(3 - currentThrow.length) as 1 | 2 | 3}
-            legsWon={legsWon}
-            setsWon={setsWon}
+            curDarts={curDarts}
+            curM3D={curM3D}
+            bestVisit={bestVisit}
+            legsWon={(state as any).legsWon ?? {}}
+            setsWon={(state as any).setsWon ?? {}}
             useSets={useSetsUi}
+            currentVisit={currentVisit}
+            checkoutText={checkoutText}
           />
         </div>
       </div>
@@ -2328,16 +2505,17 @@ async function finalizeMatch() {
         }}
       >
         <PlayersListOnly
-          statePlayers={state.players as any}
+          players={players}
           profileById={profileById}
-          dartsCount={dartsCount}
-          pointsSum={pointsSum}
-          start={startFromResume}
-          scoresByPlayer={scoresByPlayer}
-          visitsLog={visitsLog}
-          legsWon={legsWon}
-          setsWon={setsWon}
+          liveStatsByPlayer={liveStatsByPlayer}
+          start={config.startScore}
+          scoresByPlayer={scores}
+          legsWon={(state as any).legsWon ?? {}}
+          setsWon={(state as any).setsWon ?? {}}
           useSets={useSetsUi}
+          lastVisitsByPlayer={lastVisitsByPlayer}
+          lastVisitIsBustByPlayer={lastVisitIsBustByPlayer}
+          avg3ByPlayer={avg3ByPlayer}
         />
       </div>
 
@@ -2354,98 +2532,147 @@ async function finalizeMatch() {
           width: `min(100%, ${CONTENT_MAX}px)`,
         }}
       >
-        <Keypad
-          currentThrow={currentThrow}
-          multiplier={multiplier}
-          onSimple={() => setMultiplier(1)}
-          onDouble={() => setMultiplier(2)}
-          onTriple={() => setMultiplier(3)}
-          onBackspace={handleBackspace}
-          onCancel={handleCancel}
-          onNumber={handleNumber}
-          onBull={handleBull}
-          onValidate={validateThrow}
-          hidePreview
-        />
+        {isBotTurn ? (
+          <div
+            style={{
+              padding: 14,
+              borderRadius: 14,
+              border: "1px solid rgba(255,255,255,0.08)",
+              background:
+                "linear-gradient(180deg, rgba(10,10,12,.9), rgba(6,6,8,.95))",
+              textAlign: "center",
+              fontSize: 13,
+              color: "#e3e6ff",
+              boxShadow: "0 10px 24px rgba(0,0,0,.5)",
+            }}
+          >
+            🤖 {activePlayer?.name ?? t("x01v3.bot.name", "BOT")}{" "}
+            {t("x01v3.bot.playing", "joue son tour...")}
+          </div>
+        ) : scoringSource === "external" ? (
+          <div
+            style={{
+              padding: 14,
+              borderRadius: 14,
+              border: "1px solid rgba(255,255,255,0.08)",
+              background:
+                "linear-gradient(180deg, rgba(10,10,12,.9), rgba(6,6,8,.95))",
+              textAlign: "center",
+              fontSize: 13,
+              color: "#e3e6ff",
+              boxShadow: "0 10px 24px rgba(0,0,0,.5)",
+            }}
+          >
+            🎥 {t("x01v3.external.title", "Comptage externe en cours…")}
+            <div style={{ fontSize: 11.5, opacity: 0.75, marginTop: 6 }}>
+              {t(
+                "x01v3.external.hint",
+                "Les fléchettes sont injectées automatiquement (Scolia/bridge)."
+              )}
+            </div>
+          </div>
+        ) : (
+          <div
+            style={{
+              border: isBustLocked ? "1px solid rgba(255,80,80,.65)" : "1px solid transparent",
+              background: isBustLocked ? "rgba(120,0,0,.10)" : "transparent",
+              borderRadius: 14,
+              padding: 6,
+              boxShadow: isBustLocked ? "0 0 0 1px rgba(255,80,80,.25), 0 10px 24px rgba(0,0,0,.45)" : undefined,
+              filter: isBustLocked ? "grayscale(.25) saturate(.9)" : undefined,
+              opacity: isBustLocked ? 0.92 : 1,
+            }}
+          >
+            {isBustLocked ? (
+              <div
+                style={{
+                  marginBottom: 6,
+                  textAlign: "center",
+                  fontWeight: 900,
+                  letterSpacing: 0.6,
+                  color: "#ff6b6b",
+                  textShadow: "0 0 14px rgba(255,90,90,.35)",
+                }}
+              >
+                BUST — {t("x01v3.bust.lock", "Saisie bloquée")}
+              </div>
+            ) : null}
+
+          <Keypad
+            currentThrow={currentThrow}
+            multiplier={multiplier}
+            onSimple={handleSimple}
+            onDouble={handleDouble}
+            onTriple={handleTriple}
+            onBackspace={handleBackspace}
+            onCancel={handleCancel}
+            onNumber={handleNumber}
+            onBull={handleBull}
+            onValidate={validateThrow}
+            hidePreview
+          />
+          </div>
+        )}
       </div>
 
-      {/* NOUVEAU BANDEAU — Fin de manche */}
-      {pendingFirstWin && (
-        <LegBannerModal
-          players={state.players as any}
-          profiles={profiles}
-          pendingFirstWin={pendingFirstWin}
-          finishedOrder={finishedOrder ?? []}
-          setsTarget={setsTarget ?? setsFromResume}
-          legsTarget={legsTarget ?? legsFromResume}
-          legsWon={legsWon ?? {}}
-          setsWon={setsWon ?? {}}
-          currentSet={currentSet}
-          currentLegInSet={currentLegInSet}
-          onContinue={continueAfterFirst}
-          onShowRanking={() => setOverlayOpen(true)}
-          onNextLeg={endNow}
-        />
-      )}
+      {/* OVERLAY FIN DE MANCHE / SET / MATCH (V3) */}
+      <X01LegOverlayV3
+        open={
+          status === "leg_end" ||
+          status === "set_end" ||
+          status === "match_end"
+        }
+        status={status}
+        config={config}
+        state={state}
+        liveStatsByPlayer={liveStatsByPlayer}
+        onNextLeg={startNextLeg}
+        onExitMatch={handleQuit}
+        onReplaySameConfig={handleReplaySameConfig}
+        onReplayNewConfig={handleReplayNewConfigInternal}
+        onShowSummary={handleShowSummary}
+        onContinueMulti={players.length >= 3 ? handleContinueMulti : undefined}
+      />
 
-      {/* OVERLAY STATS & CLASSEMENT */}
-      <div
-        style={{
-          position: "fixed",
-          inset: 0,
-          zIndex: 9999,
-          pointerEvents: overlayOpen ? "auto" : "none",
-        }}
-      >
-        <EndOfLegOverlay
-          open={overlayOpen}
-          result={lastLegResult}
-          playersById={playersByIdMemo}
-          onClose={handleContinueFromRanking}
-          onReplay={handleContinueFromRanking}
-          onSave={(res) => {
-            try {
-              const playersNow = mapEnginePlayersToLite(
-                state.players as any,
-                profiles
-              );
-
-              History.upsert({
-                kind: "leg",
-                id: crypto.randomUUID?.() ?? String(Date.now()),
-                status: "finished",
-                players: playersNow,
-                updatedAt: Date.now(),
-                createdAt: Date.now(),
-                payload: {
-                  ...res,
-                  meta: {
-                    currentSet,
-                    currentLegInSet,
-                    setsTarget: setsFromResume,
-                    legsTarget: legsFromResume,
-                  },
-                },
-              } as any);
-              History.list();
-            } catch {}
-            handleContinueFromRanking();
-          }}
-        />
-      </div>
+      {/* OVERLAY RÉSUMÉ — gros tableau + graphs */}
+      <EndOfLegOverlay
+        open={summaryOpen && !!summaryLegStats}
+        result={summaryLegStats}
+        playersById={summaryPlayersById}
+        onClose={() => setSummaryOpen(false)}
+        onReplay={handleReplaySameConfig}
+      />
     </div>
   );
+}
 
-  /* =====================================================
-     Sous-composants : HeaderBlock & PlayersListOnly
-  ===================================================== */
+// =============================================================
+// Sous-composants UI (repris du beau X01Play, adaptés V3)
+// =============================================================
 
-  function HeaderBlock({
+function HeaderBlock(props: {
+
+  currentPlayer: any;
+  currentAvatar: string | null;
+  currentRemaining: number;
+  currentThrow: UIDart[];
+  doubleOut: boolean;
+  liveRanking: { id: string; name: string; score: number }[];
+  curDarts: number;
+  curM3D: string;
+  bestVisit: number;
+  useSets: boolean;
+  legsWon: Record<string, number>;
+  setsWon: Record<string, number>;
+  currentVisit: any;
+  checkoutText: string | null;
+}) {
+  const {
     currentPlayer,
     currentAvatar,
     currentRemaining,
     currentThrow,
-    doubleOut,
+    doubleOut, // pas encore utilisé
     liveRanking,
     curDarts,
     curM3D,
@@ -2453,54 +2680,379 @@ async function finalizeMatch() {
     useSets,
     legsWon,
     setsWon,
-  }: any) {
-    const legsWonThisSet =
-      currentPlayer?.id && legsWon ? legsWon[currentPlayer.id] ?? 0 : 0;
-    const setsWonTotal =
-      currentPlayer?.id && setsWon ? setsWon[currentPlayer.id] ?? 0 : 0;
+    currentVisit,
+  } = props;
 
-    return (
+  const legsWonThisSet =
+    (currentPlayer && legsWon[currentPlayer.id]) ?? 0;
+  const setsWonTotal =
+    (currentPlayer && setsWon[currentPlayer.id]) ?? 0;
+
+  const remainingAfterAll = Math.max(
+    currentRemaining -
+      currentThrow.reduce(
+        (s: number, d: UIDart) => s + dartValue(d),
+        0
+      ),
+    0
+  );
+
+  return (
+    <div
+      style={{
+        background:
+          "radial-gradient(120% 140% at 0% 0%, rgba(255,195,26,.10), transparent 55%), linear-gradient(180deg, rgba(15,15,18,.9), rgba(10,10,12,.8))",
+        border: "1px solid rgba(255,255,255,.08)",
+        borderRadius: 18,
+        padding: 7,
+        boxShadow: "0 8px 26px rgba(0,0,0,.35)",
+      }}
+    >
       <div
         style={{
-          background:
-            "radial-gradient(120% 140% at 0% 0%, rgba(255,195,26,.10), transparent 55%), linear-gradient(180deg, rgba(15,15,18,.9), rgba(10,10,12,.8))",
-          border: "1px solid rgba(255,255,255,.08)",
-          borderRadius: 18,
-          padding: 7,
-          boxShadow: "0 8px 26px rgba(0,0,0,.35)",
+          display: "grid",
+          gridTemplateColumns: "auto 1fr",
+          gap: 8,
+          alignItems: "center",
         }}
       >
+        {/* AVATAR + STATS */}
         <div
           style={{
-            display: "grid",
-            gridTemplateColumns: "auto 1fr",
-            gap: 8,
+            display: "flex",
+            flexDirection: "column",
             alignItems: "center",
+            gap: 5,
           }}
         >
-          {/* AVATAR + STATS */}
+          <div
+            style={{
+              width: 96,
+              height: 96,
+              borderRadius: "50%",
+              overflow: "hidden",
+              background:
+                "linear-gradient(180deg,#1b1b1f,#111114)",
+              boxShadow: "0 6px 22px rgba(0,0,0,.35)",
+            }}
+          >
+            {currentAvatar ? (
+              <img
+                src={currentAvatar}
+                style={{
+                  width: "100%",
+                  height: "100%",
+                  objectFit: "cover",
+                }}
+              />
+            ) : (
+              <div
+                style={{
+                  width: "100%",
+                  height: "100%",
+                  display: "flex",
+                  justifyContent: "center",
+                  alignItems: "center",
+                  color: "#999",
+                  fontWeight: 700,
+                }}
+              >
+                ?
+              </div>
+            )}
+          </div>
+          <div
+            style={{
+              fontWeight: 900,
+              fontSize: 17,
+              color: "#ffcf57",
+            }}
+          >
+            {currentPlayer?.name ?? "—"}
+          </div>
+          <div
+            style={{
+              fontSize: 11.5,
+              color: "#d9dbe3",
+            }}
+          >
+            {useSets ? (
+              <>
+                Manches : <b>{legsWonThisSet}</b> • Sets :{" "}
+                <b>{setsWonTotal}</b>
+              </>
+            ) : (
+              <>
+                Manches : <b>{legsWonThisSet}</b>
+              </>
+            )}
+          </div>
+
+          {/* Mini card stats joueur actif */}
+          <div
+            style={{
+              ...miniCard,
+              width: 176,
+              height: "auto",
+              padding: 7,
+            }}
+          >
+            <div style={miniText}>
+              <div>
+                Meilleure volée : <b>{bestVisit}</b>
+              </div>
+              <div>
+                Moy/3D : <b>{curM3D}</b>
+              </div>
+              <div>
+                Darts jouées : <b>{curDarts}</b>
+              </div>
+              <div>
+                Volée : <b>{currentThrow.length}/3</b>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* SCORE + PASTILLES + RANKING */}
+        <div
+          style={{
+            textAlign: "center",
+            display: "flex",
+            flexDirection: "column",
+            gap: 5,
+          }}
+        >
+          {/* SCORE CENTRAL */}
+          <div
+            style={{
+              fontSize: 64,
+              fontWeight: 900,
+              color: "#ffcf57",
+              textShadow: "0 4px 18px rgba(255,195,26,.25)",
+              lineHeight: 1.02,
+            }}
+          >
+            {remainingAfterAll}
+          </div>
+
+          {/* Pastilles live */}
           <div
             style={{
               display: "flex",
-              flexDirection: "column",
-              alignItems: "center",
               gap: 5,
+              justifyContent: "center",
+            }}
+          >
+            {[0, 1, 2].map((i) => {
+              const d = currentThrow[i];
+
+              const wouldBust =
+                currentRemaining -
+                  currentThrow
+                    .slice(0, i + 1)
+                    .reduce(
+                      (s: number, x: UIDart) => s + dartValue(x),
+                      0
+                    ) <
+                0;
+
+              const st = chipStyle(d, wouldBust);
+
+              return (
+                <span
+                  key={i}
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    minWidth: 40,
+                    height: 28,
+                    padding: "0 10px",
+                    borderRadius: 10,
+                    border: st.border as string,
+                    background: st.background as string,
+                    color: st.color as string,
+                    fontWeight: 800,
+                    fontSize: 13,
+                  }}
+                >
+                  {fmt(d)}
+                </span>
+              );
+            })}
+          </div>
+
+          {/* Checkout suggestion (moteur V3) */}
+          {checkoutText ? (
+            <div
+              style={{
+                marginTop: 3,
+                display: "flex",
+                justifyContent: "center",
+              }}
+            >
+              <div
+                style={{
+                  display: "inline-flex",
+                  padding: 5,
+                  borderRadius: 12,
+                  border: "1px solid rgba(255,255,255,.08)",
+                  background:
+                    "radial-gradient(120% 120% at 50% 0%, rgba(255,195,26,.10), rgba(30,30,34,.95))",
+                  minWidth: 170,
+                  gap: 6,
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}
+              >
+                <span
+                  style={{
+                    padding: "3px 8px",
+                    borderRadius: 8,
+                    border: "1px solid rgba(255,187,51,.4)",
+                    background: "rgba(255,187,51,.12)",
+                    color: "#ffc63a",
+                    fontWeight: 900,
+                    whiteSpace: "nowrap",
+                    fontSize: 13,
+                  }}
+                >
+                  {checkoutText}
+                </span>
+              </div>
+            </div>
+          ) : null}
+
+          {/* Mini ranking */}
+          <div
+            style={{
+              ...miniCard,
+              alignSelf: "center",
+              width: "min(310px,100%)",
+              height: "auto",
+              padding: 6,
             }}
           >
             <div
               style={{
-                width: 96,
-                height: 96,
-                borderRadius: "50%",
-                overflow: "hidden",
-                background: "linear-gradient(180deg,#1b1b1f,#111114)",
-                boxShadow: "0 6px 22px rgba(0,0,0,.35)",
+                maxHeight: 3 * 26,
+                overflow: liveRanking.length > 3 ? "auto" : "visible",
               }}
             >
-              {currentAvatar ? (
+              {liveRanking.map((r, i) => (
+                <div key={r.id} style={miniRankRow}>
+                  <div style={miniRankName}>
+                    {i + 1}. {r.name}
+                  </div>
+                  <div
+                    style={
+                      r.score === 0
+                        ? miniRankScoreFini
+                        : miniRankScore
+                    }
+                  >
+                    {r.score === 0 ? "FINI" : r.score}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function PlayersListOnly(props: {
+  players: any[];
+  profileById: Record<string, { avatarDataUrl: string | null; name: string }>;
+  liveStatsByPlayer: Record<string, any>;
+  start: number;
+  scoresByPlayer: Record<string, number>;
+  legsWon: Record<string, number>;
+  setsWon: Record<string, number>;
+  useSets: boolean;
+  lastVisitsByPlayer: Record<string, UIDart[]>;
+  lastVisitIsBustByPlayer: Record<string, boolean>;
+  avg3ByPlayer: Record<string, number>;
+}) {
+  const {
+    players,
+    profileById,
+    liveStatsByPlayer,
+    start,
+    scoresByPlayer,
+    legsWon,
+    setsWon,
+    useSets,
+    lastVisitsByPlayer,
+    lastVisitIsBustByPlayer,
+    avg3ByPlayer,
+  } = props;
+
+
+  return (
+    <div
+      style={{
+        background:
+          "linear-gradient(180deg, rgba(15,15,18,.9), rgba(10,10,12,.85))",
+        border: "1px solid rgba(255,255,255,.08)",
+        borderRadius: 18,
+        padding: 9,
+        marginBottom: 8,
+        boxShadow: "0 8px 24px rgba(0,0,0,.35)",
+      }}
+    >
+      {players.map((p: any) => {
+        const prof = profileById[p.id];
+        const avatarSrc = prof?.avatarDataUrl ?? null;
+        const live = liveStatsByPlayer[p.id];
+
+        const dCount: number = live?.dartsThrown ?? 0;
+        const a3d =
+          dCount > 0 ? (avg3ByPlayer[p.id] ?? 0).toFixed(2) : "0.00";
+
+        const score = scoresByPlayer[p.id] ?? start;
+        const legsWonThisSet = legsWon?.[p.id] ?? 0;
+        const setsWonTotal = setsWon?.[p.id] ?? 0;
+
+        const isBot = !!(p as any).isBot;
+        const level = (p as any).botLevel as BotLevel;
+
+        return (
+          <div
+            key={p.id}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 9,
+              padding: "7px 9px",
+              borderRadius: 12,
+              background:
+                "linear-gradient(180deg, rgba(28,28,32,.65), rgba(18,18,20,.65))",
+              border: "1px solid rgba(255,255,255,.07)",
+              marginBottom: 5,
+            }}
+          >
+            {/* Avatar */}
+            <div
+              style={{
+                width: 36,
+                height: 36,
+                borderRadius: "50%",
+                overflow: "hidden",
+                background: "rgba(255,255,255,.06)",
+              }}
+            >
+              {avatarSrc ? (
                 <img
-                  src={currentAvatar}
-                  style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                  src={avatarSrc}
+                  style={{
+                    width: "100%",
+                    height: "100%",
+                    objectFit: "cover",
+                  }}
                 />
               ) : (
                 <div
@@ -2508,10 +3060,10 @@ async function finalizeMatch() {
                     width: "100%",
                     height: "100%",
                     display: "flex",
-                    justifyContent: "center",
                     alignItems: "center",
-                    color: "#999",
+                    justifyContent: "center",
                     fontWeight: 700,
+                    color: "#999",
                   }}
                 >
                   ?
@@ -2519,524 +3071,89 @@ async function finalizeMatch() {
               )}
             </div>
 
-            <div
-              style={{
-                fontWeight: 900,
-                fontSize: 17,
-                color: "#ffcf57",
-              }}
-            >
-              {currentPlayer?.name ?? "—"}
-            </div>
-
-            <div
-              style={{
-                fontSize: 11.5,
-                color: "#d9dbe3",
-              }}
-            >
-              {useSets ? (
-                <>
-                  Manches : <b>{legsWonThisSet}</b> • Sets :{" "}
-                  <b>{setsWonTotal}</b>
-                </>
-              ) : (
-                <>
-                  Manches : <b>{legsWonThisSet}</b>
-                </>
-              )}
-            </div>
-
-            <div
-              style={{
-                ...miniCard,
-                width: 176,
-                height: "auto",
-                padding: 7,
-              }}
-            >
-              <div style={miniText}>
-                <div>
-                  Meilleure volée : <b>{bestVisit}</b>
-                </div>
-                <div>
-                  Moy/3D : <b>{curM3D}</b>
-                </div>
-                <div>
-                  Darts jouées : <b>{curDarts}</b>
-                </div>
-                <div>
-                  Volée : <b>{currentThrow.length}/3</b>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* SCORE + VOLÉE + CHECKOUT + RANKING */}
-          <div
-            style={{
-              textAlign: "center",
-              display: "flex",
-              flexDirection: "column",
-              gap: 5,
-            }}
-          >
-            {/* SCORE */}
-            <div
-              style={{
-                fontSize: 64,
-                fontWeight: 900,
-                color: "#ffcf57",
-                textShadow: "0 4px 18px rgba(255,195,26,.25)",
-                lineHeight: 1.02,
-              }}
-            >
-              {Math.max(
-                currentRemaining -
-                  currentThrow.reduce(
-                    (s: number, d: UIDart) => s + dartValue(d),
-                    0
-                  ),
-                0
-              )}
-            </div>
-
-            {/* Pastilles live */}
-            <div style={{ display: "flex", gap: 5, justifyContent: "center" }}>
-              {[0, 1, 2].map((i) => {
-                const d = currentThrow[i];
-                const afterNow =
-                  currentRemaining -
-                  currentThrow
-                    .slice(0, i + 1)
-                    .reduce((s: number, x: UIDart) => s + dartValue(x), 0);
-
-                const wouldBust =
-                  afterNow < 0 ||
-                  (doubleOut &&
-                    afterNow === 0 &&
-                    !(() => {
-                      const last = currentThrow[i];
-                      return (
-                        last?.mult === 2 ||
-                        (last?.v === 25 && last.mult === 2)
-                      );
-                    })());
-
-                const st = chipStyle(d, wouldBust);
-
-                return (
-                  <span
-                    key={i}
-                    style={{
-                      display: "inline-flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      minWidth: 40,
-                      height: 28,
-                      padding: "0 10px",
-                      borderRadius: 10,
-                      border: st.border as string,
-                      background: st.background as string,
-                      color: st.color as string,
-                      fontWeight: 800,
-                      fontSize: 13,
-                    }}
-                  >
-                    {fmt(d)}
-                  </span>
-                );
-              })}
-            </div>
-
-            {/* Checkout suggestion */}
-            {(() => {
-              const only = suggestCheckout(
-                Math.max(
-                  currentRemaining -
-                    currentThrow.reduce(
-                      (s: number, d: UIDart) => s + dartValue(d),
-                      0
-                    ),
-                  0
-                ),
-                doubleOut,
-                (3 - currentThrow.length) as any
-              )[0];
-
-              if (!only || currentThrow.length >= 3) return null;
-
-              return (
+            {/* Bloc central */}
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 8,
+                  flexWrap: "wrap",
+                }}
+              >
                 <div
                   style={{
-                    marginTop: 3,
-                    display: "flex",
-                    justifyContent: "center",
+                    fontWeight: 800,
+                    color: "#ffcf57",
+                    whiteSpace: "nowrap",
                   }}
                 >
-                  <div
-                    style={{
-                      display: "inline-flex",
-                      padding: 5,
-                      borderRadius: 12,
-                      border: "1px solid rgba(255,255,255,.08)",
-                      background:
-                        "radial-gradient(120% 120% at 50% 0%, rgba(255,195,26,.10), rgba(30,30,34,.95))",
-                      minWidth: 170,
-                    }}
-                  >
+                  {p.name}
+                  {isBot && (
                     <span
                       style={{
-                        padding: "3px 8px",
-                        borderRadius: 8,
-                        border: "1px solid rgba(255,187,51,.4)",
-                        background: "rgba(255,187,51,.12)",
-                        color: "#ffc63a",
-                        fontWeight: 900,
-                        whiteSpace: "nowrap",
-                        fontSize: 13,
+                        fontSize: 10,
+                        marginLeft: 4,
+                        color: "#9fa4ff",
+                        fontWeight: 700,
                       }}
                     >
-                      {only}
+                      · BOT {(level || "easy").toUpperCase()}
                     </span>
-                  </div>
+                  )}
                 </div>
-              );
-            })()}
 
-            {/* Mini ranking */}
-            <div
-              style={{
-                ...miniCard,
-                alignSelf: "center",
-                width: "min(310px,100%)",
-                height: "auto",
-                padding: 6,
-              }}
-            >
+                {/* Pastilles dernière volée */}
+                {renderLastVisitChips(p.id, lastVisitsByPlayer, (lastVisitIsBustByPlayer as any)?.[p.id])}
+              </div>
               <div
                 style={{
-                  maxHeight: 3 * 26,
-                  overflow: liveRanking.length > 3 ? "auto" : "visible",
+                  fontSize: 11.5,
+                  color: "#cfd1d7",
+                  marginTop: 2,
                 }}
               >
-                {liveRanking.map((r: any, i: number) => (
-                  <div key={r.id} style={miniRankRow}>
-                    <div style={miniRankName}>
-                      {i + 1}. {r.name}
-                    </div>
-                    <div
-                      style={
-                        r.score === 0 ? miniRankScoreFini : miniRankScore
-                      }
-                    >
-                      {r.score === 0 ? "FINI" : r.score}
-                    </div>
-                  </div>
-                ))}
+                Darts: {dCount} • Moy/3D: {a3d}
               </div>
+              <div
+                style={{
+                  fontSize: 11.5,
+                  color: "#cfd1d7",
+                  marginTop: 1,
+                }}
+              >
+                {useSets
+                  ? `Manches : ${legsWonThisSet} • Sets : ${setsWonTotal}`
+                  : `Manches : ${legsWonThisSet}`}
+              </div>
+            </div>
+
+            {/* Score */}
+            <div
+              style={{
+                fontWeight: 900,
+                color: score === 0 ? "#7fe2a9" : "#ffcf57",
+              }}
+            >
+              {score}
             </div>
           </div>
-        </div>
-      </div>
-    );
-  }
-
-  function PlayersListOnly({
-    statePlayers,
-    profileById,
-    dartsCount,
-    pointsSum,
-    start,
-    scoresByPlayer,
-    visitsLog,
-    legsWon,
-    setsWon,
-    useSets,
-  }: any) {
-    return (
-      <div
-        style={{
-          background:
-            "linear-gradient(180deg, rgba(15,15,18,.9), rgba(10,10,12,.85))",
-          border: "1px solid rgba(255,255,255,.08)",
-          borderRadius: 18,
-          padding: 9,
-          marginBottom: 8,
-          boxShadow: "0 8px 24px rgba(0,0,0,.35)",
-        }}
-      >
-        {statePlayers.map((p: EnginePlayer) => {
-          const prof = profileById[p.id];
-          const avatarSrc = prof?.avatarDataUrl ?? null;
-
-          const dCount = dartsCount[p.id] || 0;
-          const pSum = pointsSum[p.id] || 0;
-          const a3d = dCount > 0 ? ((pSum / dCount) * 3).toFixed(2) : "0.00";
-          const score = scoresByPlayer[p.id] ?? start;
-          const legsWonThisSet = legsWon?.[p.id] ?? 0;
-          const setsWonTotal = setsWon?.[p.id] ?? 0;
-
-          return (
-            <div
-              key={p.id}
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 9,
-                padding: "7px 9px",
-                borderRadius: 12,
-                background:
-                  "linear-gradient(180deg, rgba(28,28,32,.65), rgba(18,18,20,.65))",
-                border: "1px solid rgba(255,255,255,.07)",
-                marginBottom: 5,
-              }}
-            >
-              {/* Avatar */}
-              <div
-                style={{
-                  width: 36,
-                  height: 36,
-                  borderRadius: "50%",
-                  overflow: "hidden",
-                  background: "rgba(255,255,255,.06)",
-                }}
-              >
-                {avatarSrc ? (
-                  <img
-                    src={avatarSrc}
-                    style={{
-                      width: "100%",
-                      height: "100%",
-                      objectFit: "cover",
-                    }}
-                  />
-                ) : (
-                  <div
-                    style={{
-                      width: "100%",
-                      height: "100%",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      fontWeight: 700,
-                      color: "#999",
-                    }}
-                  >
-                    ?
-                  </div>
-                )}
-              </div>
-
-              {/* Bloc central */}
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 8,
-                    flexWrap: "wrap",
-                  }}
-                >
-                  <div
-                    style={{
-                      fontWeight: 800,
-                      color: "#ffcf57",
-                      whiteSpace: "nowrap",
-                    }}
-                  >
-                    {p.name}
-                  </div>
-
-                  <div
-                    style={{
-                      display: "inline-flex",
-                      alignItems: "center",
-                      gap: 6,
-                      flexWrap: "wrap",
-                    }}
-                  >
-                    {renderLastVisitChipsFromLog(visitsLog, p.id)}
-                  </div>
-                </div>
-
-                <div
-                  style={{
-                    fontSize: 11.5,
-                    color: "#cfd1d7",
-                    marginTop: 2,
-                  }}
-                >
-                  Darts: {dCount} • Moy/3D: {a3d}
-                </div>
-
-                <div
-                  style={{
-                    fontSize: 11.5,
-                    color: "#cfd1d7",
-                    marginTop: 1,
-                  }}
-                >
-                  {useSets
-                    ? `Manches : ${legsWonThisSet} • Sets : ${setsWonTotal}`
-                    : `Manches : ${legsWonThisSet}`}
-                </div>
-              </div>
-
-              <div
-                style={{
-                  fontWeight: 900,
-                  color: score === 0 ? "#7fe2a9" : "#ffcf57",
-                }}
-              >
-                {score}
-              </div>
-            </div>
-          );
-        })}
-      </div>
-    );
-  }
+        );
+      })}
+    </div>
+  );
 }
 
-/* =====================================================
-   Helper: mapEnginePlayersToLite
-===================================================== */
-function mapEnginePlayersToLite(
-  players: EnginePlayer[],
-  profiles: Profile[]
-): PlayerLiteType[] {
-  const profMap = new Map<string, Profile>();
-  for (const p of profiles) profMap.set(p.id, p);
-
-  return players.map((p) => {
-    const prof = profMap.get(p.id);
-    return {
-      id: p.id,
-      name: p.name,
-      avatarDataUrl: prof?.avatarDataUrl ?? undefined,
-    } as PlayerLiteType;
-  });
-}
-
-/* ===== Persist helpers ===== */
-function makeX01RecordFromEngineCompat(args: {
-  engine: {
-    rules: {
-      start: number;
-      doubleOut: boolean;
-      setsToWin?: number;
-      legsPerSet?: number;
-      outMode?: Mode;
-      inMode?: Mode;
-    };
-    players: EnginePlayer[];
-    scores: number[];
-    currentIndex: number;
-    dartsThisTurn: UIDart[];
-    winnerId: string | null;
-  };
-  existingId?: string;
-}): MatchRecord {
-  const { engine, existingId } = args;
-  const now = Date.now();
-
-  const payload = {
-    state: {
-      rules: engine.rules,
-      players: engine.players,
-      scores: engine.scores,
-      currentIndex: engine.currentIndex,
-      dartsThisTurn: engine.dartsThisTurn,
-      winnerId: engine.winnerId,
-    },
-    kind: "x01",
-  };
-
-  const rec: MatchRecord = {
-    id: existingId ?? (crypto.randomUUID?.() ?? String(now)),
-    kind: "x01",
-    status: engine.winnerId ? "finished" : "in_progress",
-    players: engine.players.map((p) => ({
-      id: p.id,
-      name: p.name,
-    })) as any,
-    winnerId: engine.winnerId,
-    createdAt: now,
-    updatedAt: now,
-    payload: payload as any,
-  };
-
-  return rec;
-}
-
-async function safeSaveMatch({
-  id,
-  players,
-  winnerId,
-  summary,
-  payload,
-}: {
-  id: string;
-  players: { id: string; name?: string; avatarDataUrl?: string | null }[];
-  winnerId: string | null;
-  summary: {
-    legs?: number;
-    darts?: number;
-    avg3ByPlayer?: Record<string, number>;
-    bestVisitByPlayer?: Record<string, number>;
-    bestCheckoutByPlayer?: Record<string, number>;
-    co?: number;
-  } | null;
-  payload: any;
-}) {
-  try {
-    const now = Date.now();
-
-    await History.upsert({
-      id,
-      kind: "x01",
-      status: "finished",
-      players,
-      winnerId,
-      createdAt: now,
-      updatedAt: now,
-      summary: summary || null,
-      payload,
-    } as any);
-
-    // Agg léger pour profils
-    const { winnerId: w, perPlayer } = extractAggFromSavedMatch({
-      id,
-      players,
-      winnerId,
-      summary,
-      payload,
-    });
-
-    if (perPlayer && Object.keys(perPlayer).length) {
-      await addMatchSummary({ winnerId: w, perPlayer });
-    }
-
-    await History.list();
-  } catch (e) {
-    console.warn("[HIST:FAIL]", e);
-  }
-}
-
-function SetLegChip({
-  currentSet,
-  currentLegInSet,
-  setsTarget,
-  legsTarget,
-  useSets,
-}: {
+function SetLegChip(props: {
   currentSet: number;
   currentLegInSet: number;
   setsTarget: number;
   legsTarget: number;
   useSets: boolean;
 }) {
+  const { currentSet, currentLegInSet, setsTarget, legsTarget, useSets } =
+    props;
+
   const st: React.CSSProperties = {
     display: "inline-flex",
     alignItems: "center",
@@ -3053,7 +3170,6 @@ function SetLegChip({
     borderRadius: 999,
   };
 
-  // ❌ Pas de notion de sets quand useSets=false → on n'affiche que les legs
   if (!useSets) {
     return (
       <span style={st}>
@@ -3076,3 +3192,681 @@ function SetLegChip({
     </span>
   );
 }
+
+// =============================================================
+// Bridge X01 V3 -> Historique / Stats
+// =============================================================
+
+type X01V3HistoryPayload = {
+  config: X01ConfigV3;
+  state: any;
+  scores: Record<string, number>;
+  liveStatsByPlayer: Record<string, any>;
+};
+
+/* -------------------------------------------------------------
+   Helpers : extraction des stats détaillées depuis liveStatsByPlayer
+   Objectif : hitsS / hitsD / hitsT / miss / bull / dBull / bust
+   + bySegmentS / bySegmentD / bySegmentT
+------------------------------------------------------------- */
+
+function numOr0(...values: any[]): number {
+  for (const v of values) {
+    if (v === undefined || v === null) continue;
+    const n = Number(v);
+    if (Number.isFinite(n)) return n;
+  }
+  return 0;
+}
+
+function cloneNumberMap(obj: any | undefined): Record<string, number> {
+  const out: Record<string, number> = {};
+  if (!obj || typeof obj !== "object") return out;
+  for (const [k, v] of Object.entries(obj)) {
+    const n = Number(v);
+    if (Number.isFinite(n) && n !== 0) {
+      out[String(k)] = n;
+    }
+  }
+  return out;
+}
+
+function extractSegmentMapsFromLive(live: any) {
+  // 1) Si on a déjà bySegmentS/D/T, on les clone tels quels
+  let bySegmentS = cloneNumberMap(
+    live?.bySegmentS ?? live?.segmentsS ?? live?.hitsBySegmentS
+  );
+  let bySegmentD = cloneNumberMap(
+    live?.bySegmentD ?? live?.segmentsD ?? live?.hitsBySegmentD
+  );
+  let bySegmentT = cloneNumberMap(
+    live?.bySegmentT ?? live?.segmentsT ?? live?.hitsBySegmentT
+  );
+
+  // 2) Fallback : structure combinée { [seg]: {S,D,T} }
+  const combined =
+    live?.bySegment ??
+    live?.segmentHits ??
+    live?.segmentsAll ??
+    undefined;
+
+  if (combined && typeof combined === "object") {
+    for (const [segStr, entry] of Object.entries(combined)) {
+      const segKey = String(segStr);
+      if (!entry || typeof entry !== "object") continue;
+      const e: any = entry;
+      const s = numOr0(e.S, e.s, e.single, e.singles);
+      const d = numOr0(e.D, e.d, e.double, e.doubles);
+      const t = numOr0(e.T, e.t, e.triple, e.triples);
+      if (s) bySegmentS[segKey] = (bySegmentS[segKey] || 0) + s;
+      if (d) bySegmentD[segKey] = (bySegmentD[segKey] || 0) + d;
+      if (t) bySegmentT[segKey] = (bySegmentT[segKey] || 0) + t;
+    }
+  }
+
+  return { bySegmentS, bySegmentD, bySegmentT };
+}
+
+function extractDetailedStatsFromLive(live: any) {
+  const hitsS = numOr0(
+    live?.hitsS,
+    live?.S,
+    live?.singles,
+    live?.hitsSingle
+  );
+  const hitsD = numOr0(
+    live?.hitsD,
+    live?.D,
+    live?.doubles,
+    live?.hitsDouble
+  );
+  const hitsT = numOr0(
+    live?.hitsT,
+    live?.T,
+    live?.triples,
+    live?.hitsTriple
+  );
+
+  const miss = numOr0(
+    live?.miss,
+    live?.misses,
+    live?.missCount,
+    live?.nbMiss
+  );
+  const bull = numOr0(
+    live?.bull,
+    live?.bulls,
+    live?.bullHits,
+    live?.hitsBull
+  );
+  const dBull = numOr0(
+    live?.dBull,
+    live?.doubleBull,
+    live?.dbulls,
+    live?.bullDoubleHits
+  );
+  const bust = numOr0(
+    live?.bust,
+    live?.busts,
+    live?.bustCount,
+    live?.nbBust
+  );
+
+  let darts = numOr0(
+    live?.dartsThrown,
+    live?.darts,
+    live?.totalDarts
+  );
+  if (!darts) {
+    // fallback minimal si pas de compteur global
+    darts = hitsS + hitsD + hitsT + miss;
+  }
+
+  const { bySegmentS, bySegmentD, bySegmentT } =
+    extractSegmentMapsFromLive(live);
+
+  return {
+    darts,
+    hitsS,
+    hitsD,
+    hitsT,
+    miss,
+    bull,
+    dBull,
+    bust,
+    bySegmentS,
+    bySegmentD,
+    bySegmentT,
+  };
+}
+
+/* -------------------------------------------------------------
+   Sauvegarde X01 V3 dans l'Historique
+   - summary : toutes les stats utiles pour StatsHub / X01Multi
+   - payload : VERSION LÉGÈRE (sans engineState ni liveStatsByPlayer)
+     => évite les erreurs de quota
+------------------------------------------------------------- */
+
+function saveX01V3MatchToHistory({
+  config,
+  state,
+  scores,
+  liveStatsByPlayer,
+}: X01V3HistoryPayload) {
+  const players = config.players || [];
+
+  const matchId =
+    state?.matchId ||
+    `x01v3-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+
+  const createdAt = state?.createdAt || Date.now();
+
+  // -------------------------
+  // Maps compatibles Summary
+  // -------------------------
+  const avg3ByPlayer: Record<string, number> = {};
+  const bestVisitByPlayer: Record<string, number> = {};
+  const bestCheckoutByPlayer: Record<string, number> = {};
+  const perPlayer: any[] = [];
+  const detailedByPlayer: Record<string, any> = {};
+
+  // -------------------------
+  // Maps pour reconstruire un LegacyLegResult (summary.legacy)
+  // -------------------------
+  const legacyRemaining: Record<string, number> = {};
+  const legacyDarts: Record<string, number> = {};
+  const legacyVisits: Record<string, number> = {};
+  const legacyAvg3: Record<string, number> = {};
+  const legacyBestVisit: Record<string, number> = {};
+  const legacyBestCheckout: Record<string, number> = {};
+  const legacyDoubles: Record<string, number> = {};
+  const legacyTriples: Record<string, number> = {};
+  const legacyBulls: Record<string, number> = {};
+  const legacyDbulls: Record<string, number> = {};
+  const legacyMiss: Record<string, number> = {};
+  const legacyBust: Record<string, number> = {};
+  const legacyPoints: Record<string, number> = {};
+  const legacyHitsBySector: Record<string, Record<string, number>> = {};
+
+  let winnerId: string | null = null;
+
+  // -------------------------
+  // Stats détaillées par joueur
+  // -------------------------
+  for (const p of players as any[]) {
+    const pid = p.id as string;
+    const live = (liveStatsByPlayer && liveStatsByPlayer[pid]) || {};
+    const startScore = config.startScore ?? 501;
+    const scoreNow = scores[pid] ?? startScore;
+    const scored = startScore - scoreNow;
+
+    const dartsThrown = live.dartsThrown ?? live.darts ?? 0;
+
+    let avg3 = 0;
+    if (dartsThrown > 0 && scored > 0) {
+      avg3 = (scored / dartsThrown) * 3;
+    }
+
+    const bestVisit = live.bestVisit ?? 0;
+    const bestCheckout = live.bestCheckout ?? 0;
+
+    avg3ByPlayer[pid] = avg3;
+    bestVisitByPlayer[pid] = bestVisit;
+    bestCheckoutByPlayer[pid] = bestCheckout;
+
+    // 🔍 Stats détaillées (hits S/D/T, miss, bull, etc.)
+    const detail = extractDetailedStatsFromLive(live);
+    detailedByPlayer[pid] = detail;
+
+    // Reformatage compatible V2/V1 pour StatsHub et tous les dashboards
+    const segments = {
+      S: detail.bySegmentS,
+      D: detail.bySegmentD,
+      T: detail.bySegmentT,
+    };
+
+    const hits = {
+      S: detail.hitsS,
+      D: detail.hitsD,
+      T: detail.hitsT,
+      M: detail.miss,
+    };
+
+    perPlayer.push({
+      playerId: pid,
+      dartSetId: (p as any).dartSetId ?? null,
+      dartPresetId: (p as any).dartPresetId ?? null,
+    
+      avg3,
+      bestVisit,
+      bestCheckout,
+      darts: detail.darts,
+      hits,
+      bull: detail.bull,
+      dBull: detail.dBull,
+      bust: detail.bust,
+      segments,
+    });
+
+    // -------------------------
+    // Remplissage des maps "legacy" pour l'écran Historique détaillé
+    // -------------------------
+    legacyRemaining[pid] = scoreNow;
+    legacyDarts[pid] = detail.darts;
+    legacyVisits[pid] = detail.darts ? Math.ceil(detail.darts / 3) : 0;
+    legacyAvg3[pid] = avg3;
+    legacyBestVisit[pid] = bestVisit;
+    legacyBestCheckout[pid] = bestCheckout;
+
+    legacyDoubles[pid] = detail.hitsD;
+    legacyTriples[pid] = detail.hitsT;
+    legacyBulls[pid] = (detail.bull ?? 0) + (detail.dBull ?? 0);
+    legacyDbulls[pid] = detail.dBull ?? 0;
+    legacyMiss[pid] = detail.miss ?? 0;
+    legacyBust[pid] = detail.bust ?? 0;
+    legacyPoints[pid] = scored > 0 ? scored : 0;
+
+    // hits par secteur combinés (S + D + T + BULL / DBULL + MISS)
+    const sectorMap: Record<string, number> = {};
+
+    for (const [seg, v] of Object.entries(detail.bySegmentS || {})) {
+      const k = String(seg);
+      sectorMap[k] = (sectorMap[k] || 0) + Number(v || 0);
+    }
+    for (const [seg, v] of Object.entries(detail.bySegmentD || {})) {
+      const k = String(seg);
+      sectorMap[k] = (sectorMap[k] || 0) + Number(v || 0);
+    }
+    for (const [seg, v] of Object.entries(detail.bySegmentT || {})) {
+      const k = String(seg);
+      sectorMap[k] = (sectorMap[k] || 0) + Number(v || 0);
+    }
+
+    if (detail.bull) {
+      sectorMap["OB"] = (sectorMap["OB"] || 0) + detail.bull;
+    }
+    if (detail.dBull) {
+      sectorMap["IB"] = (sectorMap["IB"] || 0) + detail.dBull;
+    }
+    if (detail.miss) {
+      sectorMap["MISS"] = (sectorMap["MISS"] || 0) + detail.miss;
+    }
+
+    legacyHitsBySector[pid] = sectorMap;
+
+    // Gagnant simple : score à 0
+    if (scoreNow === 0 && !winnerId) {
+      winnerId = pid;
+    }
+  }
+
+  // -------------------------
+  // On récupère ce que le moteur a déjà mis dans state.summary :
+  // - rankings (avec legsWon / setsWon)
+  // - game (legsPerSet / setsToWin / startScore...)
+  // - winnerName éventuel
+  // -------------------------
+  const engineSummary: any = (state as any).summary || {};
+  const rankings = Array.isArray(engineSummary.rankings)
+    ? engineSummary.rankings
+    : [];
+
+  const engineGame = engineSummary.game || {};
+
+  const winnerName =
+    engineSummary.winnerName ||
+    (players.find((p: any) => p.id === winnerId)?.name ?? null);
+
+  // -------------------------
+  // EXTRACTION LEGS / SETS / SCORE FINAL
+  // -------------------------
+
+  // maps issus de l'état moteur (souvent "dernier set")
+  const legsMapState = (state as any).legsWon ?? {};
+  const setsMapState = (state as any).setsWon ?? {};
+
+  const legsByPlayer: Record<string, number> = {};
+  const setsByPlayer: Record<string, number> = {};
+  const legsPlayedByPlayer: Record<string, number> = {};
+  const setsPlayedByPlayer: Record<string, number> = {};
+
+  // Base : ce que dit l'état moteur
+  players.forEach((p: any) => {
+    const pid = p.id as string;
+    legsByPlayer[pid] = Number(legsMapState[pid] ?? 0);
+    setsByPlayer[pid] = Number(setsMapState[pid] ?? 0);
+  });
+
+  // Enrichissement avec engineSummary.rankings (totaux legs/sets gagnés + joués)
+  for (const r of rankings as any[]) {
+    const pid =
+      r.playerId ?? r.id ?? r.pid ?? r.player_id ?? undefined;
+    if (!pid) continue;
+
+    // legs gagnés / perdus / joués
+    const legsWon = numOr0(
+      r.legsWon,
+      r.legs_won,
+      r.legs,
+      r.wonLegs,
+      r.legs_for
+    );
+    const legsLost = numOr0(
+      r.legsLost,
+      r.legs_lost,
+      r.legsAgainst,
+      r.lostLegs,
+      r.legs_against
+    );
+    const legsPlayed = numOr0(
+      r.legsPlayed,
+      r.legs_played,
+      legsWon + legsLost
+    );
+
+    // sets gagnés / perdus / joués
+    const setsWon = numOr0(
+      r.setsWon,
+      r.sets_won,
+      r.sets,
+      r.wonSets,
+      r.sets_for
+    );
+    const setsLost = numOr0(
+      r.setsLost,
+      r.sets_lost,
+      r.setsAgainst,
+      r.lostSets,
+      r.sets_against
+    );
+    const setsPlayed = numOr0(
+      r.setsPlayed,
+      r.sets_played,
+      setsWon + setsLost
+    );
+
+    // On prend le max entre ce que dit l'état et ce que dit le ranking
+    if (legsWon > (legsByPlayer[pid] ?? 0)) {
+      legsByPlayer[pid] = legsWon;
+    }
+    if (setsWon > (setsByPlayer[pid] ?? 0)) {
+      setsByPlayer[pid] = setsWon;
+    }
+
+    if (legsPlayed > 0) {
+      legsPlayedByPlayer[pid] = legsPlayed;
+    }
+    if (setsPlayed > 0) {
+      setsPlayedByPlayer[pid] = setsPlayed;
+    }
+
+    // On pousse aussi ces infos dans detailedByPlayer pour usage futur
+    detailedByPlayer[pid] = {
+      ...(detailedByPlayer[pid] || {}),
+      legsWonTotal: legsWon,
+      legsPlayedTotal: legsPlayed,
+      setsWonTotal: setsWon,
+      setsPlayedTotal: setsPlayed,
+    };
+  }
+
+  // Score final DUEL (ex : 2–1)
+  let matchScore: { [pid: string]: number } = {};
+  if (players.length === 2) {
+    matchScore = {
+      [players[0].id]: setsByPlayer[players[0].id] || 0,
+      [players[1].id]: setsByPlayer[players[1].id] || 0,
+    };
+  } else {
+    // multi-joueurs : classement par sets puis legs
+    const sorted = [...players].sort((a, b) => {
+      const sa = setsByPlayer[a.id] ?? 0;
+      const sb = setsByPlayer[b.id] ?? 0;
+      if (sb !== sa) return sb - sa;
+      const la = legsByPlayer[a.id] ?? 0;
+      const lb = legsByPlayer[b.id] ?? 0;
+      return lb - la;
+    });
+
+    matchScore = {};
+    sorted.forEach((p, idx) => {
+      matchScore[p.id] = idx + 1; // 1er / 2e / 3e...
+    });
+  }
+
+  // -------------------------
+  // Objet legacy compatible avec l'ancien écran détaillé X01
+  // -------------------------
+  const legacy: any = {
+    legNo: 1,
+    winnerId,
+    finishedAt: createdAt,
+    remaining: legacyRemaining,
+    darts: legacyDarts,
+    visits: legacyVisits,
+    avg3: legacyAvg3,
+    bestVisit: legacyBestVisit,
+    bestCheckout: legacyBestCheckout,
+    doubles: legacyDoubles,
+    triples: legacyTriples,
+    bulls: legacyBulls,
+    dbulls: legacyDbulls,
+    misses: legacyMiss,
+    busts: legacyBust,
+    points: legacyPoints,
+    hitsBySector: legacyHitsBySector,
+    // Les buckets 60+/100+/140+/180 ne sont pas reconstruits ici,
+    // ils resteront à 0 faute de détail par volée (option future).
+  };
+
+  // -------------------------
+  // Summary.players : shape attendu par X01End / buildPerPlayerMetrics
+  // -------------------------
+  const summaryPlayers: Record<string, any> = {};
+  for (const p of players as any[]) {
+    const pid = p.id as string;
+    const darts = legacyDarts[pid] || 0;
+    const visits = legacyVisits[pid] || (darts ? Math.ceil(darts / 3) : 0);
+    const points = legacyPoints[pid] || 0;
+
+    summaryPlayers[pid] = {
+      id: pid,
+      name: p.name,
+      avg3: avg3ByPlayer[pid] ?? 0,
+      bestVisit: bestVisitByPlayer[pid] ?? 0,
+      bestCheckout: bestCheckoutByPlayer[pid] ?? 0,
+      darts,
+      visits,
+      _sumPoints: points,
+      _sumDarts: darts,
+      _sumVisits: visits || undefined,
+      matches: 1,
+      legs: legsPlayedByPlayer[pid] || 1,
+      buckets: {},
+      updatedAt: createdAt,
+    };
+  }
+
+  const summary = {
+    ...engineSummary,
+
+    kind: "x01" as const,
+    matchId,
+
+    game: {
+      ...engineGame,
+      mode: "x01",
+      startScore: config.startScore,
+      legsPerSet: config.legsPerSet ?? null,
+      setsToWin: config.setsToWin ?? null,
+    },
+
+    rankings,
+    winnerName,
+
+    updatedAt: createdAt,
+
+    // nouvelle map players (utilisée en priorité par X01End)
+    players: summaryPlayers,
+
+    // Alias compat pour les anciens agrégateurs
+    legsWon: legsByPlayer,
+    setsWon: setsByPlayer,
+    legsScore: legsByPlayer,
+    setsScore: setsByPlayer,
+
+    // 🔥 AJOUTS CRITIQUES POUR X01 MULTI
+    legsByPlayer,
+    setsByPlayer,
+    legsPlayedByPlayer,
+    setsPlayedByPlayer,
+    matchScore,
+
+    // Stats détaillées multi-joueurs
+    avg3ByPlayer,
+    bestVisitByPlayer,
+    bestCheckoutByPlayer,
+    perPlayer,
+    detailedByPlayer,
+
+    // Compatibilité rétro : l'ancien shape utilisé par History / LEO
+    legacy,
+  };
+
+  // -------------------------
+  // QUICK STATS PROFILS (dc-quick-stats pour ProfileStarRing)
+  // -------------------------
+  try {
+    // On considère tout le match comme un "leg" global pour les quick-stats
+    StatsBridge
+      .commitLegAndAccumulate({ perPlayer }, legacy)
+      .catch((err) => {
+        console.warn(
+          "[X01PlayV3] commitLegAndAccumulate failed",
+          err
+        );
+      });
+  } catch (err) {
+    console.warn(
+      "[X01PlayV3] quick-stats error (sync wrapper)",
+      err
+    );
+  }
+
+  // -------------------------
+  // Payload "léger" pour l'historique
+  // -------------------------
+
+  const lightPlayers = players.map((p: any) => ({
+    id: p.id,
+    name: p.name,
+    profileId: p.profileId ?? null,
+    isBot: !!p.isBot,
+    botLevel: p.botLevel ?? null,
+    avatarDataUrl: p.avatarDataUrl ?? null,
+  
+    // ✅ IMPORTANT : set de fléchettes associé
+    dartSetId: p.dartSetId ?? null, // ex: "myset-123"
+    dartPresetId: p.dartPresetId ?? null, // optionnel si tu utilises aussi les presets
+  }));
+
+  const lightConfig: X01ConfigV3 = {
+    ...config,
+    players: lightPlayers as any,
+  };
+
+  // Détermine un mode compatible avec les anciens agrégateurs
+  const isSolo = players.length === 1;
+  const hasTeams =
+    Array.isArray((config as any).teams) &&
+    (config as any).teams.length > 0;
+
+  let gameMode: "x01_solo" | "x01_multi" | "x01_teams" = "x01_multi";
+  if (isSolo) gameMode = "x01_solo";
+  else if (hasTeams) gameMode = "x01_teams";
+
+  const payload = {
+    mode: gameMode, // "x01_solo" | "x01_multi" | "x01_teams"
+    variant: "x01_v3",
+    game: "x01",
+    startScore: config.startScore,
+    matchId, // 🧷 idem summary
+    resumeId: matchId,
+    config: lightConfig,
+    finalScores: scores,
+
+    // 🔥 ICI on enregistre les maps "totales" (et plus juste le dernier set)
+    legsWon: legsByPlayer,
+    setsWon: setsByPlayer,
+  };
+
+  // -------------------------
+  // Record History (léger)
+  // -------------------------
+  const record: any = {
+    id: matchId,
+    resumeId: matchId, // pour matchLink() dans HistoryPage
+    kind: "x01",
+    status: "finished",
+    createdAt,
+    updatedAt: createdAt,
+    players: lightPlayers.map((p) => ({
+      id: p.id,
+      name: p.name,
+      avatarDataUrl: p.avatarDataUrl,
+      dartSetId: p.dartSetId ?? null,
+      dartPresetId: p.dartPresetId ?? null,
+    })),
+    winnerId,
+    summary,
+    payload,
+  };
+
+  try {
+    // 1) 🟡 Met à jour le sac "dc-quick-stats" utilisé par Profils / centre de stats
+    //    On construit un petit legacy minimal compatible avec StatsBridge.commitLegAndAccumulate
+    const quickLegacy: any = {
+      order: (players as any[]).map((p) => p.id as string),
+      winnerId,
+
+      remaining: legacyRemaining,
+      darts: legacyDarts,
+      visits: legacyVisits,
+      points: legacyPoints,
+
+      avg3: legacyAvg3,
+      bestVisit: legacyBestVisit,
+      bestCheckout: legacyBestCheckout,
+
+      // ces champs ne sont pas utilisés par commitLegAndAccumulate,
+      // mais on les passe pour rester compatibles avec le type LegacyMaps
+      h60: {},
+      h100: {},
+      h140: {},
+      h180: {},
+
+      miss: legacyMiss,
+      missPct: {},
+      bust: legacyBust,
+      bustPct: {},
+      dbull: legacyDbulls,
+      dbullPct: {},
+
+      doubles: legacyDoubles,
+      triples: legacyTriples,
+      bulls: legacyBulls,
+    };
+
+    // 🔥 met à jour dc-quick-stats (games, darts, avg3, bestVisit, bestCheckout, wins)
+    StatsBridge.commitLegAndAccumulate?.(null, quickLegacy);
+
+    // 2) 🟢 Sauvegarde "lourde" dans l'historique (IndexedDB + fallback LS)
+    History.upsert(record);
+  } catch (err) {
+    console.warn(
+      "[X01PlayV3] History/StatsBridge save failed",
+      err
+    );
+  }
+}
+
