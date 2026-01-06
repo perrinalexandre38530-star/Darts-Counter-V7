@@ -1041,7 +1041,10 @@ function App() {
         }
 
         if (mounted) {
-          setStore(base);
+          setStore((prev) => ({
+            ...base,
+            profiles: mergeProfilesSafe(prev.profiles ?? [], base.profiles ?? []),
+          }));
 
           const hasProfiles = (base.profiles ?? []).length > 0;
           const hasActive = !!base.activeProfileId;
@@ -1088,63 +1091,79 @@ function App() {
 
       const res: any = await onlineApi.pullStoreSnapshot();
 
-      if (res?.status !== "ok") {
-        setCloudHydrated(true);
-        return;
-      }
+      if (res?.status === "ok") {
+        const payload = (res as any)?.payload ?? null;
+        const cloudStore = payload?.store ?? payload?.idb?.store ?? payload ?? null;
 
-      const payload = (res as any)?.payload ?? null;
-      const cloudStore = payload?.store ?? payload?.idb?.store ?? payload ?? null;
+        if (cloudStore && typeof cloudStore === "object") {
+          const next: Store = {
+            ...initialStore,
+            ...(cloudStore as any),
+            profiles: (cloudStore as any).profiles ?? [],
+            friends: (cloudStore as any).friends ?? [],
+            history: (cloudStore as any).history ?? [],
+            dartSets: (cloudStore as any).dartSets ?? getAllDartSets(),
+          };
 
-      if (!cloudStore || typeof cloudStore !== "object") {
-        setCloudHydrated(true);
-        return;
-      }
+          // ✅ on calcule mergedFinal depuis le prev store (safe)
+          let mergedFinal: Store | null = null;
 
-      // ✅ REMPLACEMENT STRICT — PAS DE MERGE
-      let next: Store = {
-        ...initialStore,
-        ...(cloudStore as any),
-        profiles: (cloudStore as any).profiles ?? [],
-        friends: (cloudStore as any).friends ?? [],
-        history: (cloudStore as any).history ?? [],
-        dartSets: (cloudStore as any).dartSets ?? getAllDartSets(),
-        activeProfileId: (cloudStore as any).activeProfileId ?? null,
-      };
+          setStore((prev) => {
+            const mergedProfiles = mergeProfilesSafe(prev.profiles ?? [], next.profiles ?? []);
 
-      // ✅ MIRROR ONLINE (ID stable) — exactement UNE fois après snapshot
-      try {
-        const uid = String((online as any)?.session?.user?.id || (online as any)?.user?.id || "");
-        const user = uid ? ({ id: uid, email: (online as any)?.user?.email } as any) : null;
-        const onlineProfile = (online as any)?.profile ?? null;
+            const merged: Store = {
+              ...next,
+              profiles: mergedProfiles,
+              // ✅ garde un active local si cloud partiel
+              activeProfileId: next.activeProfileId ?? prev.activeProfileId ?? null,
+            } as any;
 
-        if (user?.id) {
-          next = ensureOnlineMirrorProfile(next as any, user, onlineProfile) as any;
+            mergedFinal = merged;
+            return merged;
+          });
+
+          // laisse le setState exécuter le callback
+          await Promise.resolve();
+
+          // ✅ OBLIGATOIRE : mirror online ID stable + nettoyage doublons
+          // (PLACÉ EXACTEMENT ICI : après mergedFinal calculé, avant saveStore)
+          try {
+            const uid = String((online as any)?.session?.user?.id || (online as any)?.user?.id || "");
+            const user = uid ? ({ id: uid, email: (online as any)?.user?.email } as any) : null;
+            const onlineProfile = (online as any)?.profile ?? null;
+
+            if (user?.id && mergedFinal) {
+              mergedFinal = ensureOnlineMirrorProfile(mergedFinal as any, user, onlineProfile) as any;
+
+              // ✅ applique aussi en RAM (sinon on ne voit pas le cleanup tout de suite)
+              setStore(mergedFinal as any);
+            }
+          } catch (e) {
+            console.warn("[mirror] ensureOnlineMirrorProfile failed", e);
+          }
+
+          // ✅ puis seulement maintenant on persiste
+          if (mergedFinal) {
+            try {
+              await saveStore(mergedFinal);
+            } catch {}
+
+            try {
+              if ((mergedFinal as any).dartSets) replaceAllDartSets((mergedFinal as any).dartSets);
+            } catch {}
+
+            const hasProfiles = (mergedFinal.profiles ?? []).length > 0;
+            const hasActive = !!mergedFinal.activeProfileId;
+
+            const h = String(window.location.hash || "");
+            const isAuthFlow = h.startsWith("#/auth/callback") || h.startsWith("#/auth/reset") || h.startsWith("#/auth/forgot");
+
+            if (!isAuthFlow && hasProfiles && hasActive) {
+              setRouteParams(null);
+              setTab("home");
+            }
+          }
         }
-      } catch (e) {
-        console.warn("[mirror] ensureOnlineMirrorProfile failed", e);
-      }
-
-      // ✅ apply RAM + persist
-      setStore(next);
-      try {
-        await saveStore(next);
-      } catch {}
-
-      try {
-        if ((next as any).dartSets) replaceAllDartSets((next as any).dartSets);
-      } catch {}
-
-      const hasProfiles = (next.profiles ?? []).length > 0;
-      const hasActive = !!next.activeProfileId;
-
-      const h = String(window.location.hash || "");
-      const isAuthFlow =
-        h.startsWith("#/auth/callback") || h.startsWith("#/auth/reset") || h.startsWith("#/auth/forgot");
-
-      if (!isAuthFlow && hasProfiles && hasActive) {
-        setRouteParams(null);
-        setTab("home");
       }
     } catch (e) {
       console.warn("[auth] pullSnapshot error", e);
@@ -1257,8 +1276,158 @@ function App() {
   }, [pullSnapshot, wipeAllLocalData, online]);
 
   // ============================================================
-  // ✅ CLOUD HYDRATE SUPPRIMÉ (doublon) — la source unique est pullSnapshot() appelé sur SIGNED_IN
-// ============================================================
+  // ✅ CLOUD HYDRATE (source unique)
+  // - Quand on se CONNECTE => PULL snapshot cloud
+  // - ✅ FIX: on hydrate RAM + IDB avec la VERSION MERGÉE (pas "next" brut)
+  // - ✅ FIX: si on reçoit des profils + activeProfileId => on renvoie HOME
+  // - ✅ FIX: mirror online:<user.id> + dédup juste après import
+  // ============================================================
+  React.useEffect(() => {
+    let cancelled = false;
+
+    const run = async () => {
+      if (loading) return;
+      if (!online?.ready) return;
+      if (online.status !== "signed_in") return;
+      if (cloudHydrated) return;
+
+      try {
+        const res: any = await onlineApi.pullStoreSnapshot();
+
+        if (res?.status === "ok") {
+          const payload = (res as any)?.payload ?? null;
+          const cloudStore = payload?.store ?? payload?.idb?.store ?? payload ?? null;
+
+          // ✅ SAFETY: si le cloud existe mais est VIDE ({}), on ne doit JAMAIS écraser un local déjà rempli.
+          // Cas typique: première connexion / ligne user_store créée vide.
+          const isCloudEmpty = (() => {
+            if (!cloudStore) return true;
+            if (typeof cloudStore !== "object") return false;
+            try {
+              const keys = Object.keys(cloudStore as any);
+              if (keys.length === 0) return true;
+              const cs: any = cloudStore as any;
+              const hasProfiles = Array.isArray(cs.profiles) && cs.profiles.length > 0;
+              const hasHistory = Array.isArray(cs.history) && cs.history.length > 0;
+              const hasFriends = Array.isArray(cs.friends) && cs.friends.length > 0;
+              const hasDartSets = Array.isArray(cs.dartSets) && cs.dartSets.length > 0;
+              const hasActive = !!cs.activeProfileId;
+              return !(hasProfiles || hasHistory || hasFriends || hasDartSets || hasActive);
+            } catch {
+              return false;
+            }
+          })();
+
+          const hasLocalData =
+            (store?.profiles?.length || 0) > 0 ||
+            !!(store as any)?.activeProfileId ||
+            (store?.friends?.length || 0) > 0 ||
+            (store?.history?.length || 0) > 0 ||
+            ((store as any)?.dartSets?.length || 0) > 0;
+
+          if (isCloudEmpty && hasLocalData) {
+            try {
+              const cloudSeed = sanitizeStoreForCloud(store);
+              await onlineApi.pushStoreSnapshot(cloudSeed);
+              console.log("[cloud] cloud empty -> seeded from local");
+            } catch (e) {
+              console.warn("[cloud] seed from local failed", e);
+            }
+            return; // ⛔ ne pas écraser le store local
+          }
+
+          if (cloudStore && typeof cloudStore === "object") {
+            const next: Store = {
+              ...initialStore,
+              ...(cloudStore as any),
+              profiles: (cloudStore as any).profiles ?? [],
+              friends: (cloudStore as any).friends ?? [],
+              history: (cloudStore as any).history ?? [],
+              dartSets: (cloudStore as any).dartSets ?? getAllDartSets(),
+            };
+
+            if (!cancelled) {
+              let mergedFinal: Store | null = null;
+
+              const user =
+                (online as any)?.session?.user ||
+                (online as any)?.user ||
+                (await supabase.auth.getUser())?.data?.user ||
+                null;
+
+              const onlineProfile = (online as any)?.profile ?? null;
+
+              setStore((prev) => {
+                const mergedProfiles = mergeProfilesSafe(prev.profiles ?? [], next.profiles ?? []);
+                const merged: Store = {
+                  ...next,
+                  profiles: mergedProfiles,
+                  // ✅ ne pas perdre un active local si le cloud est partiel
+                  activeProfileId: next.activeProfileId ?? prev.activeProfileId ?? null,
+                } as any;
+
+                // ✅ MIRROR ONLINE + CLEANUP
+                mergedFinal = user?.id ? (ensureOnlineMirrorProfile(merged, user, onlineProfile) as Store) : merged;
+
+                return mergedFinal as any;
+              });
+
+              await Promise.resolve();
+
+              if (mergedFinal) {
+                try {
+                  await saveStore(mergedFinal);
+                } catch {}
+
+                // ✅ cloud wins -> sync dartsets localStorage
+                try {
+                  if ((mergedFinal as any).dartSets) replaceAllDartSets((mergedFinal as any).dartSets);
+                } catch {}
+
+                const hasProfiles = (mergedFinal.profiles ?? []).length > 0;
+                const hasActive = !!mergedFinal.activeProfileId;
+
+                const h = String(window.location.hash || "");
+                const isAuthFlow =
+                  h.startsWith("#/auth/callback") || h.startsWith("#/auth/reset") || h.startsWith("#/auth/forgot");
+
+                if (!isAuthFlow && hasProfiles && hasActive) {
+                  setRouteParams(null);
+                  setTab("home");
+                }
+              }
+            }
+          }
+        } else if (res?.status === "not_found") {
+          const hasLocalData =
+            (store?.profiles?.length || 0) > 0 ||
+            !!(store as any)?.activeProfileId ||
+            (store?.friends?.length || 0) > 0 ||
+            (store?.history?.length || 0) > 0;
+
+          if (hasLocalData) {
+            const cloudSeed = sanitizeStoreForCloud(store);
+            await onlineApi.pushStoreSnapshot(cloudSeed);
+          } else {
+            console.warn("[cloud] no snapshot yet + local empty -> skip seed (avoid wiping cloud by mistake)");
+          }
+        } else {
+          console.warn("[cloud] hydrate error (skip seed)", res?.error || res);
+        }
+      } catch (e) {
+        console.warn("[cloud] hydrate error", e);
+      } finally {
+        if (!cancelled) setCloudHydrated(true);
+      }
+    };
+
+    run();
+    return () => {
+      cancelled = true;
+    };
+  }, [loading, online?.ready, online?.status, cloudHydrated, store]);
+
+  // ============================================================
   // ✅ CLOUD PUSH (debounce)
   // ============================================================
   React.useEffect(() => {
@@ -1278,7 +1447,7 @@ function App() {
       } catch (e) {
         console.warn("[cloud] push snapshot error", e);
       }
-    }, 1200);
+    }, 250);
 
     return () => {
       if (cloudPushTimerRef.current) {
@@ -1287,6 +1456,58 @@ function App() {
       }
     };
   }, [store, loading, cloudHydrated, online?.ready, online?.status]);
+
+
+
+  // ============================================================
+  // ✅ Flush Cloud NOW (used by Profiles save / DartSets save)
+  // - force un debounced push immédiat (utile avant un Clear Site Data)
+  // ============================================================
+  const flushCloudNow = React.useCallback(
+    async (reason: string = "manual") => {
+      try {
+        if (loading) return false;
+        if (!cloudHydrated) return false;
+        if (!online?.ready || online.status !== "signed_in") return false;
+
+        // cancel any pending debounce push
+        if (cloudPushTimerRef.current) {
+          clearTimeout(cloudPushTimerRef.current as any);
+          cloudPushTimerRef.current = null;
+        }
+
+        await onlineApi.pushStoreSnapshot(sanitizeStoreForCloud(store));
+        // debug
+        console.info("[cloud] flush ok", { reason });
+        return true;
+      } catch (e) {
+        console.warn("[cloud] flush failed", reason, e);
+        return false;
+      }
+    },
+    [loading, cloudHydrated, online?.ready, online?.status, store]
+  );
+
+  // expose for pages that want to await a real push
+  React.useEffect(() => {
+    (window as any).__flushCloudNow = flushCloudNow;
+    return () => {
+      try {
+        if ((window as any).__flushCloudNow === flushCloudNow) {
+          delete (window as any).__flushCloudNow;
+        }
+      } catch {}
+    };
+  }, [flushCloudNow]);
+
+  // also allow simple event dispatch (dc-flush-cloud)
+  React.useEffect(() => {
+    const handler = () => {
+      void flushCloudNow("event");
+    };
+    window.addEventListener("dc-flush-cloud", handler as any);
+    return () => window.removeEventListener("dc-flush-cloud", handler as any);
+  }, [flushCloudNow]);
 
   // ============================================================
   // ✅ DartSets bridge: localStorage dartSetsStore -> App store

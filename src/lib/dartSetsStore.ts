@@ -85,6 +85,10 @@ function saveAll(list: DartSet[]) {
   // ✅ notify app + listeners
   try {
     window.dispatchEvent(new Event("dc-dartsets-updated"));
+    try {
+      window.dispatchEvent(new Event("dc-flush-cloud"));
+      (window as any).__flushCloudNow?.();
+    } catch {}
   } catch {}
   try {
     const w: any = window as any;

@@ -513,6 +513,7 @@ export default function Profiles({
 
   function renameProfile(id: string, name: string) {
     setProfilesSafe((arr) => arr.map((p) => (p.id === id ? { ...p, name } : p)));
+    try { (window as any).__flushCloudNow?.(); } catch {}
   }
 
   async function changeAvatar(id: string, file: File) {
@@ -581,6 +582,8 @@ export default function Profiles({
         // on garde le dataUrl local si l’upload échoue
       }
     }
+
+    try { await (window as any).__flushCloudNow?.(); } catch {}
   }
 
   async function delProfile(id: string) {
@@ -1185,7 +1188,7 @@ React.useEffect(() => {
                 title={`${t(
                   "profiles.locals.title",
                   "Profils locaux"
-                )} (${profiles.filter((p) => p.id !== activeProfileId && !String(p.id || "").startsWith("online:") && !(p as any)?.isOnlineMirror).length})`}
+                )} (${profiles.filter((p) => p.id !== activeProfileId).length})`}
               >
                 <LocalProfilesRefonte
                   profiles={profiles}
@@ -2977,13 +2980,7 @@ function LocalProfilesRefonte({
 
   // on enlève seulement le profil actif du carrousel
   const locals = React.useMemo(
-    () =>
-      profiles.filter(
-        (p) =>
-          p.id !== activeProfileId &&
-          !String(p.id || "").startsWith("online:") &&
-          !(p as any)?.isOnlineMirror
-      ),
+    () => profiles.filter((p) => p.id !== activeProfileId),
     [profiles, activeProfileId]
   );
 
