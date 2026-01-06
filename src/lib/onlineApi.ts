@@ -8,6 +8,8 @@
 // ✅ Matchs online : désactivés (fallback safe)
 // ✅ NEW : resend confirmation + message email_not_confirmed
 // ✅ V8 : AUTO-LOGIN (anon) + store snapshot store-direct
+//
+// ✅ NEW (Step 2): ping() serveur (détecte "permission denied" => serveur OK, auth requise)
 // ============================================================
 
 import { supabase } from "./supabaseClient";
@@ -642,6 +644,28 @@ async function pushStoreSnapshot(payload: any, version = 8): Promise<void> {
 }
 
 // ============================================================
+// ONLINE SERVER PING (safe)
+// - Vérifie que Supabase + table online_lobbies répondent
+// - "permission denied" => serveur OK mais RLS/auth requise
+// ============================================================
+export type PingResult = { ok: true; authRequired?: boolean };
+
+async function ping(): Promise<PingResult> {
+  const { error } = await supabase.from("online_lobbies").select("id").limit(1);
+
+  if (error) {
+    const msg = String((error as any).message || error).toLowerCase();
+    // permission denied = serveur OK mais auth requise
+    if (msg.includes("permission")) {
+      return { ok: true, authRequired: true };
+    }
+    throw error;
+  }
+
+  return { ok: true };
+}
+
+// ============================================================
 // Lobbies (online_lobbies)
 // ============================================================
 function generateLobbyCode(): string {
@@ -759,6 +783,9 @@ export const onlineApi = {
   // Snapshot cloud
   pullStoreSnapshot,
   pushStoreSnapshot,
+
+  // ✅ Ping serveur (Step 2)
+  ping,
 
   // Salons
   createLobby,

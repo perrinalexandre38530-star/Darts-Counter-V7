@@ -992,15 +992,33 @@ React.useEffect(() => {
     }
 
     if (auth.status === "signed_in") {
-      try {
-        await onlineApi.updateProfile({
-          displayName: patch.nickname?.trim() || active.name || undefined,
-          country: patch.country?.trim() || undefined,
-        });
-      } catch (err) {
-        console.warn("[profiles] updateProfile online error:", err);
-      }
-    }
+  try {
+    await onlineApi.updateProfile({
+      // ✅ V7: on pousse TOUTES les infos vers la table `profiles` (source de vérité)
+      nickname: patch.nickname?.trim() || undefined,
+      displayName: patch.nickname?.trim() || active.name || undefined,
+      country: patch.country?.trim() || undefined,
+      city: patch.city?.trim() || undefined,
+      firstName: patch.firstName?.trim() || undefined,
+      lastName: patch.lastName?.trim() || undefined,
+      birthDate: patch.birthDate?.trim() || undefined,
+      email: patch.email?.trim() || undefined,
+      phone: patch.phone?.trim() || undefined,
+    });
+
+    // ✅ force refresh du hook (récupère le profil fraîchement écrit)
+    try {
+      await (auth as any)?.refresh?.();
+    } catch {}
+
+    // ✅ flush snapshot cloud (utile avant un Clear Site Data)
+    try {
+      await (window as any)?.__flushCloudNow?.("profile_save");
+    } catch {}
+  } catch (err) {
+    console.warn("[profiles] updateProfile online error:", err);
+  }
+}
   }
 
   const onlineStatusForUi: "online" | "away" | "offline" =

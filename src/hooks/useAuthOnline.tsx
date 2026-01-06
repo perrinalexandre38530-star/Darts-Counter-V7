@@ -1,8 +1,11 @@
 // ============================================================
 // src/hooks/useAuthOnline.ts
-// Auth ONLINE (Supabase) — robust anti-freeze
+// Auth ONLINE (Supabase) — robust anti-freeze (FIX CRITIQUE)
+// ✅ RÈGLE: NE JAMAIS bloquer l’UI si profile n’existe pas
+// ✅ L’auth = supabase.auth (session/user) POINT.
 // - init boot: getSession() + onAuthStateChange()
 // - ready=true GARANTI (finally + watchdog) pour éviter blocage AppGate
+// - profile = BONUS (best-effort), n’impacte JAMAIS status/ready
 // - expose: status, ready, loading, session, user, profile, login/signup/logout/refresh
 // ============================================================
 
@@ -20,7 +23,7 @@ type AuthState = {
   status: AuthStatus;
   session: Session | null;
   user: User | null;
-  profile: OnlineProfile | null;
+  profile: OnlineProfile | null; // ⚠️ BONUS: best-effort uniquement
   error?: string | null;
 };
 
@@ -54,9 +57,13 @@ async function safeGetSession(): Promise<Session | null> {
   }
 }
 
-async function safeLoadProfile(user: User): Promise<OnlineProfile | null> {
+/**
+ * Profile = BONUS.
+ * - Ne doit JAMAIS bloquer ready/status.
+ * - Si l’API profile n’existe pas / RLS / table absente => return null tranquille.
+ */
+async function safeLoadProfileBestEffort(user: User): Promise<OnlineProfile | null> {
   try {
-    // onlineApi.getMyProfile() si tu l'as, sinon fallback sur onlineApi.getProfile(user.id)
     const api: any = onlineApi as any;
 
     if (typeof api.getMyProfile === "function") {
@@ -69,18 +76,53 @@ async function safeLoadProfile(user: User): Promise<OnlineProfile | null> {
       return (res?.profile ?? res ?? null) as OnlineProfile | null;
     }
 
-    // Pas d'API profile => OK, on ne bloque pas.
     return null;
   } catch (e) {
-    console.warn("[useAuthOnline] loadProfile failed:", e);
+    console.warn("[useAuthOnline] loadProfile best-effort failed:", e);
     return null;
+  }
+}
+
+/**
+ * ✅ FIX CRITIQUE:
+ * status/ready DOIVENT dépendre UNIQUEMENT de session.user.
+ * profile ne doit JAMAIS conditionner signed_in / signed_out.
+ */
+function applyAuthFromSession(
+  setState: React.Dispatch<React.SetStateAction<AuthState>>,
+  session: Session | null
+) {
+  const user = session?.user ?? null;
+
+  if (user) {
+    setState((s) => ({
+      ...s,
+      status: "signed_in",
+      session,
+      user,
+      // profile inchangé ici (chargé async en bonus)
+      loading: false,
+      ready: true,
+      error: null,
+    }));
+  } else {
+    setState((s) => ({
+      ...s,
+      status: "signed_out",
+      session: null,
+      user: null,
+      profile: null,
+      loading: false,
+      ready: true,
+      error: null,
+    }));
   }
 }
 
 export function AuthOnlineProvider({ children }: { children: React.ReactNode }) {
   const [state, setState] = React.useState<AuthState>(initial);
 
-  // watchdog anti-freeze (ex: Safari / SW / storage)
+  // Watchdog anti-freeze (Safari / SW / storage / erreurs réseau)
   React.useEffect(() => {
     const t = window.setTimeout(() => {
       setState((s) => {
@@ -95,32 +137,20 @@ export function AuthOnlineProvider({ children }: { children: React.ReactNode }) 
   const refresh = React.useCallback(async () => {
     try {
       const session = await safeGetSession();
+
+      // ✅ Auth = session/user only
+      applyAuthFromSession(setState, session);
+
+      // ✅ BONUS: profile best-effort (n’impacte PAS ready/status)
       const user = session?.user ?? null;
-
-      if (!session || !user) {
-        setState((s) => ({
-          ...s,
-          status: "signed_out",
-          session: null,
-          user: null,
-          profile: null,
-          loading: false,
-          ready: true,
-        }));
-        return;
+      if (user) {
+        const profile = await safeLoadProfileBestEffort(user);
+        setState((s) => {
+          // si on s’est déconnecté entre temps, on ne force pas le profile
+          if (!s.user || s.user.id !== user.id) return s;
+          return { ...s, profile };
+        });
       }
-
-      const profile = await safeLoadProfile(user);
-
-      setState((s) => ({
-        ...s,
-        status: "signed_in",
-        session,
-        user,
-        profile,
-        loading: false,
-        ready: true,
-      }));
     } catch (e: any) {
       console.warn("[useAuthOnline] refresh fatal:", e);
       setState((s) => ({
@@ -137,77 +167,54 @@ export function AuthOnlineProvider({ children }: { children: React.ReactNode }) 
 
     (async () => {
       try {
-        // restoreSession best-effort (ne doit JAMAIS bloquer ready)
+        // restoreSession best-effort (ne doit JAMAIS bloquer l’UI)
         try {
           await Promise.race([
-            onlineApi.restoreSession(),
+            (onlineApi as any)?.restoreSession?.(),
             new Promise((resolve) => setTimeout(resolve, 800)),
           ]);
         } catch {}
 
-        // init session
         const session = await safeGetSession();
         if (!alive) return;
 
+        // ✅ Auth = session/user only
+        applyAuthFromSession(setState, session);
+
+        // ✅ BONUS profile async (best-effort)
         const user = session?.user ?? null;
-        if (!session || !user) {
-          setState((s) => ({
-            ...s,
-            status: "signed_out",
-            session: null,
-            user: null,
-            profile: null,
-            loading: false,
-            ready: true,
-          }));
-        } else {
-          const profile = await safeLoadProfile(user);
-          if (!alive) return;
-          setState((s) => ({
-            ...s,
-            status: "signed_in",
-            session,
-            user,
-            profile,
-            loading: false,
-            ready: true,
-          }));
+        if (user) {
+          safeLoadProfileBestEffort(user).then((profile) => {
+            if (!alive) return;
+            setState((s) => {
+              if (!s.user || s.user.id !== user.id) return s;
+              return { ...s, profile };
+            });
+          });
         }
 
         // subscribe auth changes
-        const { data } = supabase.auth.onAuthStateChange(async (event, nextSession) => {
+        const { data } = supabase.auth.onAuthStateChange((event, nextSession) => {
           try {
             if (!alive) return;
 
+            // ✅ Auth = session/user only (peu importe profile)
             if (event === "SIGNED_OUT" || !nextSession?.user) {
-              setState((s) => ({
-                ...s,
-                status: "signed_out",
-                session: null,
-                user: null,
-                profile: null,
-                loading: false,
-                ready: true,
-              }));
+              applyAuthFromSession(setState, null);
               return;
             }
 
-            if (event === "SIGNED_IN" || event === "TOKEN_REFRESHED" || event === "USER_UPDATED") {
-              const user = nextSession.user;
-              const profile = await safeLoadProfile(user);
+            applyAuthFromSession(setState, nextSession);
 
+            // ✅ BONUS profile (best-effort) après changement auth
+            const nextUser = nextSession.user;
+            safeLoadProfileBestEffort(nextUser).then((profile) => {
               if (!alive) return;
-
-              setState((s) => ({
-                ...s,
-                status: "signed_in",
-                session: nextSession,
-                user,
-                profile,
-                loading: false,
-                ready: true,
-              }));
-            }
+              setState((s) => {
+                if (!s.user || s.user.id !== nextUser.id) return s;
+                return { ...s, profile };
+              });
+            });
           } catch (e) {
             console.warn("[useAuthOnline] onAuthStateChange handler error:", e);
             // IMPORTANT: ne jamais bloquer ready
@@ -235,33 +242,37 @@ export function AuthOnlineProvider({ children }: { children: React.ReactNode }) 
     };
   }, []);
 
-  const signup = React.useCallback(async (payload: { email?: string; nickname: string; password?: string }) => {
-    try {
-      const ok = await (onlineApi as any).signup?.(payload);
-      // si signup() renvoie un objet, on considère ok si pas d'erreur
-      const success = typeof ok === "boolean" ? ok : !ok?.error;
-      // refresh derrière pour éviter état incohérent
-      await refresh();
-      return success;
-    } catch (e) {
-      console.warn("[useAuthOnline] signup error:", e);
-      await refresh();
-      return false;
-    }
-  }, [refresh]);
+  const signup = React.useCallback(
+    async (payload: { email?: string; nickname: string; password?: string }) => {
+      try {
+        const ok = await (onlineApi as any).signup?.(payload);
+        const success = typeof ok === "boolean" ? ok : !ok?.error;
+        await refresh();
+        return success;
+      } catch (e) {
+        console.warn("[useAuthOnline] signup error:", e);
+        await refresh();
+        return false;
+      }
+    },
+    [refresh]
+  );
 
-  const login = React.useCallback(async (payload: { email?: string; nickname?: string; password?: string }) => {
-    try {
-      const ok = await (onlineApi as any).login?.(payload);
-      const success = typeof ok === "boolean" ? ok : !ok?.error;
-      await refresh();
-      return success;
-    } catch (e) {
-      console.warn("[useAuthOnline] login error:", e);
-      await refresh();
-      return false;
-    }
-  }, [refresh]);
+  const login = React.useCallback(
+    async (payload: { email?: string; nickname?: string; password?: string }) => {
+      try {
+        const ok = await (onlineApi as any).login?.(payload);
+        const success = typeof ok === "boolean" ? ok : !ok?.error;
+        await refresh();
+        return success;
+      } catch (e) {
+        console.warn("[useAuthOnline] login error:", e);
+        await refresh();
+        return false;
+      }
+    },
+    [refresh]
+  );
 
   const logout = React.useCallback(async () => {
     try {
@@ -269,7 +280,7 @@ export function AuthOnlineProvider({ children }: { children: React.ReactNode }) 
     } catch (e) {
       console.warn("[useAuthOnline] signOut error:", e);
     } finally {
-      // force state clean
+      // ✅ force state clean (auth only)
       setState((s) => ({
         ...s,
         status: "signed_out",
@@ -278,6 +289,7 @@ export function AuthOnlineProvider({ children }: { children: React.ReactNode }) 
         profile: null,
         loading: false,
         ready: true,
+        error: null,
       }));
     }
   }, []);

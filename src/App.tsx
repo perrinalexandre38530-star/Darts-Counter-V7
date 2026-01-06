@@ -77,6 +77,10 @@ import { supabase } from "./lib/supabaseClient";
 // ✅ FIX: mirror online:<user.id> + dédup profils
 import { ensureOnlineMirrorProfile } from "./lib/accountBridge";
 
+// ✅ V7: profil online (table profiles) = source de vérité
+import { fetchOnlineProfile } from "./hooks/useProfileOnline";
+import { useProfileStore } from "./store/profileStore";
+
 // Types
 import type { Store, Profile, MatchRecord } from "./lib/types";
 import type { X01ConfigV3 as X01ConfigV3Type } from "./types/x01v3";
@@ -875,6 +879,32 @@ function App() {
   const [routeParams, setRouteParams] = React.useState<any>(null);
   const [loading, setLoading] = React.useState(true);
 
+
+  // ============================================================
+  // ✅ V7 (CRITIQUE) — BOOT ONLINE PROFILE -> profileStore
+  // Charge le profil Supabase dès qu\'une session existe (même après Clear Site Data)
+  // ============================================================
+  React.useEffect(() => {
+    let alive = true;
+    (async () => {
+      try {
+        const { data } = await supabase.auth.getUser();
+        const user = data?.user || null;
+        if (!alive || !user?.id) return;
+
+        const p = await fetchOnlineProfile(String(user.id));
+        if (!alive) return;
+
+        useProfileStore.getState().setProfile(p);
+      } catch (e) {
+        console.warn("[bootProfile] fetchOnlineProfile failed", e);
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+  }, []);
+
   // ============================================================
   // ✅ PATCH B — Re-run mirror quand online.profile arrive
   // Effet : au début name=email (fallback), puis dès que le profile Supabase est chargé
@@ -1203,6 +1233,11 @@ function App() {
         replaceAllDartSets([]);
       } catch {}
 
+      // ✅ V7: clear online profile cache
+      try {
+        useProfileStore.getState().clear();
+      } catch {}
+
       // reset RAM + IDB store principal
       const clean: Store = {
         ...initialStore,
@@ -1251,6 +1286,16 @@ function App() {
 
           // ✅ 1) pull snapshot immédiatement (source unique)
           await pullSnapshot();
+
+          // ✅ 1bis) V7: recharge le profil Supabase (table profiles) -> profileStore
+          try {
+            if (user?.id) {
+              const p = await fetchOnlineProfile(String(user.id));
+              useProfileStore.getState().setProfile(p);
+            }
+          } catch (e) {
+            console.warn("[profile] fetchOnlineProfile after SIGNED_IN failed", e);
+          }
 
           // ✅ 2) mirror online:<user.id> + dédup (CRITIQUE)
           if (user?.id) {
@@ -2035,105 +2080,143 @@ function App() {
         page = <TrainingClock profiles={store.profiles ?? []} activeProfileId={store.activeProfileId ?? null} go={go} />;
         break;
 
-      case "avatar": {
-        const botId: string | undefined = routeParams?.botId;
-        const profileIdFromParams: string | undefined = routeParams?.profileId;
-        const backTo: Tab = (routeParams?.from as Tab) || "profiles";
-        const isBotMode = !!routeParams?.isBot;
-
-        if (botId) {
-          const bots = loadBotsLS();
-          const targetBot = bots.find((b) => b.id === botId) ?? null;
-
-          function handleSaveAvatarBot({ pngDataUrl, name }: { pngDataUrl: string; name: string }) {
-            if (!targetBot) return go(backTo);
-
-            const next = bots.slice();
-            const idx = next.findIndex((b) => b.id === targetBot.id);
-
-            const updated: BotLS = {
-              ...targetBot,
-              name: name?.trim() || targetBot.name,
-              avatarDataUrl: pngDataUrl,
-            };
-
-            if (idx >= 0) next[idx] = updated;
-            else next.push(updated);
-
-            saveBotsLS(next);
-            go(backTo);
+        case "avatar": {
+          const botId: string | undefined = routeParams?.botId;
+          const profileIdFromParams: string | undefined = routeParams?.profileId;
+          const backTo: Tab = (routeParams?.from as Tab) || "profiles";
+          const isBotMode = !!routeParams?.isBot;
+  
+          // =========================
+          // BOT AVATAR (LOCAL ONLY)
+          // =========================
+          if (botId) {
+            const bots = loadBotsLS();
+            const targetBot = bots.find((b) => b.id === botId) ?? null;
+  
+            async function handleSaveAvatarBot({ pngDataUrl, name }: { pngDataUrl: string; name: string }) {
+              if (!targetBot) return go(backTo);
+  
+              const next = bots.slice();
+              const idx = next.findIndex((b) => b.id === targetBot.id);
+  
+              const updated: BotLS = {
+                ...targetBot,
+                name: name?.trim() || targetBot.name,
+                avatarDataUrl: pngDataUrl,
+              };
+  
+              if (idx >= 0) next[idx] = updated;
+              else next.push(updated);
+  
+              saveBotsLS(next);
+  
+              // ⚠️ Bot = local uniquement, pas de updateProfile Supabase ici
+              go(backTo);
+            }
+  
+            page = (
+              <div style={{ padding: 16 }}>
+                <button onClick={() => go(backTo)} style={{ marginBottom: 12 }}>
+                  ← Retour
+                </button>
+                <AvatarCreator
+                  size={512}
+                  defaultName={targetBot?.name || ""}
+                  onSave={handleSaveAvatarBot}
+                  isBotMode={true}
+                />
+              </div>
+            );
+            break;
           }
-
+  
+          // =========================
+          // PROFILE AVATAR (SUPABASE)
+          // =========================
+          const targetProfile =
+            store.profiles.find((p) => p.id === (profileIdFromParams || store.activeProfileId)) ?? null;
+  
+          async function handleSaveAvatarProfile({ pngDataUrl, name }: { pngDataUrl: string; name: string }) {
+            if (!targetProfile) return;
+  
+            const trimmedName = (name || "").trim();
+            const now = Date.now();
+  
+            const bucket = "avatars";
+            // 🔒 Stockage avatar par USER (auth.uid), pas par id de profil local
+            const uid = String((online as any)?.session?.user?.id || (online as any)?.user?.id || "");
+            const objectPath = `${uid || targetProfile.id}/avatar.png`;
+  
+            try {
+              // ✅ upload image -> publicUrl
+              const { publicUrl } = await uploadAvatarToSupabase({ bucket, objectPath, pngDataUrl });
+  
+              // ✅ maj profil local (RAM + store)
+              setProfiles((list) =>
+                list.map((p) =>
+                  p.id === targetProfile.id
+                    ? {
+                        ...p,
+                        name: trimmedName || p.name,
+                        avatarUrl: publicUrl,
+                        avatarUpdatedAt: now,
+                        avatarDataUrl: null,
+                      }
+                    : p
+                )
+              );
+  
+              // ✅ maj profil online (table profiles) si connecté
+              try {
+                if ((online as any)?.status === "signed_in") {
+                  await onlineApi.updateProfile({
+                    avatarUrl: publicUrl,
+                    displayName: trimmedName || targetProfile.name || undefined,
+                  });
+                  try {
+                    await (online as any)?.refresh?.();
+                  } catch {}
+                }
+              } catch (e) {
+                console.warn("[AvatarUpload] online updateProfile failed", e);
+              }
+  
+              go(backTo);
+            } catch (e) {
+              console.error("[AvatarUpload] upload failed -> fallback local avatarDataUrl", e);
+  
+              // fallback local (pas de publicUrl ici)
+              setProfiles((list) =>
+                list.map((p) =>
+                  p.id === targetProfile.id
+                    ? {
+                        ...p,
+                        name: trimmedName || p.name,
+                        avatarDataUrl: pngDataUrl,
+                      }
+                    : p
+                )
+              );
+  
+              go(backTo);
+            }
+          }
+  
           page = (
             <div style={{ padding: 16 }}>
               <button onClick={() => go(backTo)} style={{ marginBottom: 12 }}>
                 ← Retour
               </button>
-              <AvatarCreator size={512} defaultName={targetBot?.name || ""} onSave={handleSaveAvatarBot} isBotMode={true} />
+              <AvatarCreator
+                size={512}
+                defaultName={targetProfile?.name || ""}
+                onSave={handleSaveAvatarProfile}
+                isBotMode={isBotMode}
+              />
             </div>
           );
           break;
         }
-
-        const targetProfile = store.profiles.find((p) => p.id === (profileIdFromParams || store.activeProfileId)) ?? null;
-
-        async function handleSaveAvatarProfile({ pngDataUrl, name }: { pngDataUrl: string; name: string }) {
-          if (!targetProfile) return;
-
-          const trimmedName = (name || "").trim();
-          const now = Date.now();
-
-          const bucket = "avatars";
-          // 🔒 Stockage avatar par USER (auth.uid), pas par id de profil local
-          const uid = String((online as any)?.session?.user?.id || (online as any)?.user?.id || "");
-          const objectPath = `${uid || targetProfile.id}/avatar.png`;
-
-          try {
-            const { publicUrl } = await uploadAvatarToSupabase({ bucket, objectPath, pngDataUrl });
-
-            setProfiles((list) =>
-              list.map((p) =>
-                p.id === targetProfile.id
-                  ? { ...p, name: trimmedName || p.name, avatarUrl: publicUrl, avatarUpdatedAt: now, avatarDataUrl: null }
-                  : p
-              )
-            );
-
-            go(backTo);
-          } catch (e) {
-            console.error("[AvatarUpload] upload failed -> fallback local avatarDataUrl", e);
-
-            setProfiles((list) =>
-              list.map((p) =>
-                p.id === targetProfile.id
-                  ? {
-                      ...p,
-                      name: trimmedName || p.name,
-                      avatarDataUrl: pngDataUrl,
-                    }
-                  : p
-              )
-            );
-
-            go(backTo);
-          }
-        }
-
-        page = (
-          <div style={{ padding: 16 }}>
-            <button onClick={() => go(backTo)} style={{ marginBottom: 12 }}>
-              ← Retour
-            </button>
-            <AvatarCreator
-              size={512}
-              defaultName={targetProfile?.name || ""}
-              onSave={handleSaveAvatarProfile}
-              isBotMode={isBotMode}
-            />
-          </div>
-        );
-        break;
-      }
 
       default:
         page = (

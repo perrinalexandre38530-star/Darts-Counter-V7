@@ -6,7 +6,7 @@
 // - Header 1 = "ONLINE" (sans "MODE EN LIGNE")
 // - "Serveur : OK" déplacé SOUS le titre (à la place de HUB)
 // - InfoDot tout à droite (composant commun)
-// - Header 2 = Profil (1 seul avatar + 1 seul nom, avatar à droite)
+// - Header 2 = Profil (1 seul avatar + 1 seul nom)
 // - Statut présence coloré: En ligne (vert) / Absent (orange)
 //
 // ✅ LOGIQUE (fixes):
@@ -15,6 +15,12 @@
 // - Boutons Créer/Rejoindre actifs si session connectée
 // - Connexion / Déconnexion / Reconnexion fonctionnelles
 // - Ne bloque jamais l’UI si table `profiles` manque
+//
+// ✅ NEW (étapes 3 & 4):
+// - Header EXACT: ONLINE + Serveur OK dessous + InfoDot à droite
+// - Profil: 1 seul avatar / 1 seul nom
+// - Boutons "Créer/Rejoindre" => canPlayOnline = isSignedIn
+// - Hint clair si disabled
 // ============================================
 
 import React from "react";
@@ -477,7 +483,7 @@ export default function FriendsPage({ store, update, go }: Props) {
     (store.profiles || [])[0] ||
     null;
 
-  // Hook online (on le garde, mais on ne lui fait plus confiance pour dire "signed_in")
+  // Hook online (ne pas bloquer sur profile !)
   const auth = useAuthOnline() as any;
   const ready = !!auth.ready;
 
@@ -594,6 +600,11 @@ export default function FriendsPage({ store, update, go }: Props) {
   const isSignedIn = sessionState === "signed_in" && !!sessionUserId;
 
   /* -----------------------------
+     Étape 4 — règle finale
+  ------------------------------ */
+  const canPlayOnline = isSignedIn;
+
+  /* -----------------------------
      Connexion / Déconnexion / Reconnexion
   ------------------------------ */
   const [reconnecting, setReconnecting] = React.useState(false);
@@ -603,22 +614,16 @@ export default function FriendsPage({ store, update, go }: Props) {
     setReconnecting(true);
     setAuthHint(null);
     try {
-      // 1) tente une auto-session (si ta lib la gère)
       const ensure = (onlineApi as any)?.ensureAutoSession as undefined | (() => Promise<any>);
       if (ensure) {
         await withTimeout(ensure(), 8000, "Auto-session : délai dépassé.");
       }
 
-      // 2) on essaie aussi le refresh du hook (peut échouer si profiles manque -> on catch)
       const refresh = auth?.refresh as undefined | (() => Promise<any>);
       if (refresh) {
-        await refresh().catch((e: any) => {
-          // On affiche un hint mais on ne casse pas la page
-          setAuthHint(normalizeErrMessage(e));
-        });
+        await refresh().catch((e: any) => setAuthHint(normalizeErrMessage(e)));
       }
 
-      // 3) ping serveur + refresh session
       await pingServer();
       await refreshSession();
       setAuthHint((prev) => prev || "Reconnexion effectuée.");
@@ -633,7 +638,6 @@ export default function FriendsPage({ store, update, go }: Props) {
   const doLogout = React.useCallback(async () => {
     setAuthHint(null);
     try {
-      // si le hook expose logout, on l’appelle, sinon direct supabase
       const logout = auth?.logout as undefined | (() => Promise<any>);
       if (logout) await logout();
       else await supabase.auth.signOut();
@@ -644,7 +648,7 @@ export default function FriendsPage({ store, update, go }: Props) {
     }
   }, [auth, refreshSession]);
 
-  // auto-try au montage + au focus (sans "Revenir en ligne" bizarre)
+  // auto-try au montage + au focus
   React.useEffect(() => {
     doReconnect().catch(() => {});
     const onVis = () => {
@@ -732,8 +736,8 @@ export default function FriendsPage({ store, update, go }: Props) {
   const joinReqIdRef = React.useRef(0);
 
   function requireSignedInOrExplain(): boolean {
-    if (isSignedIn) return true;
-    setJoinError("Connexion requise. Clique sur “Reconnexion” puis réessaie.");
+    if (canPlayOnline) return true;
+    setJoinError("Connexion requise. Va dans “Mon profil” pour te connecter.");
     return false;
   }
 
@@ -919,16 +923,12 @@ export default function FriendsPage({ store, update, go }: Props) {
   const serverChipTone = serverState === "ok" ? "green" : serverState === "down" ? "red" : "gray";
   const serverChipLabel = serverState === "ok" ? "Serveur : OK" : serverState === "down" ? "Serveur : hors ligne" : "Serveur : …";
 
-  const sessionChipTone = sessionState === "signed_in" ? "green" : sessionState === "signed_out" ? "red" : "gray";
-  const sessionChipLabel =
-    sessionState === "signed_in" ? "Session : connectée" : sessionState === "signed_out" ? "Session : déconnectée" : "Session : …";
-
   const presenceTone = selfStatus === "online" ? "green" : selfStatus === "away" ? "orange" : "gray";
   const presenceLabel = selfStatus === "online" ? "En ligne" : selfStatus === "away" ? "Absent" : "Hors ligne";
 
   return (
     <div className="container" style={{ padding: 16, paddingBottom: 96, color: "#f5f5f7" }}>
-      {/* ================= HEADER 1 : TITRE ================= */}
+      {/* ================= HEADER (CAPTURE 1 EXACTE) ================= */}
       <NeonCard
         style={{
           background:
@@ -936,38 +936,23 @@ export default function FriendsPage({ store, update, go }: Props) {
           marginBottom: 12,
         }}
       >
-        <div style={{ position: "absolute", inset: 0, background: "linear-gradient(90deg, transparent, rgba(255,213,106,.10), rgba(79,180,255,.08), transparent)", opacity: 0.95, pointerEvents: "none" }} />
-
-        <div style={{ position: "relative", display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12 }}>
-          <div style={{ minWidth: 0 }}>
-            <div
-              style={{
-                fontSize: 30,
-                fontWeight: 1000,
-                color: "#ffd56a",
-                textShadow: "0 0 18px rgba(255,215,80,.22)",
-                lineHeight: 1.0,
-              }}
-            >
+        {/* ===== HEADER TITRE ===== */}
+        <div className="online-header" style={{ position: "relative", display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12 }}>
+          <div className="online-title" style={{ minWidth: 0 }}>
+            <h1 style={{ margin: 0, fontSize: 30, fontWeight: 1000, color: "#ffd56a", textShadow: "0 0 18px rgba(255,215,80,.22)", lineHeight: 1.0 }}>
               ONLINE
-            </div>
-
-            {/* "HUB" remplacé par le status serveur dessous */}
-            <div style={{ marginTop: 8, display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-              <Pill label={serverChipLabel} tone={serverChipTone} />
-            </div>
+            </h1>
+            <span className="pill pill-green" style={{ display: "inline-flex", marginTop: 8 }}>
+              <Pill label="Serveur : OK" tone={serverChipTone} />
+            </span>
           </div>
 
-          {/* InfoDot tout à droite */}
-          <div style={{ flexShrink: 0, paddingTop: 2 }}>
-            <InfoDot onClick={() => setShowInfo((v) => !v)} size={30} color="#ffffff" glow="rgba(255,213,106,0.28)" />
-          </div>
+          <InfoDot onClick={() => setShowInfo((v) => !v)} active={showInfo} />
         </div>
 
         {showInfo ? (
           <div
             style={{
-              position: "relative",
               marginTop: 12,
               borderRadius: 14,
               border: "1px solid rgba(255,255,255,.12)",
@@ -981,129 +966,77 @@ export default function FriendsPage({ store, update, go }: Props) {
               Crée un salon, rejoins un ami, retrouve ton historique online, et bientôt :
               spectateur • chat amis • classements • tournois.
             </div>
+            {serverState === "down" && serverHint ? (
+              <div style={{ marginTop: 8, fontSize: 12, color: "#ff8a8a", fontWeight: 950 }}>{serverHint}</div>
+            ) : null}
           </div>
         ) : null}
-      </NeonCard>
 
-      {/* ================= HEADER 2 : PROFIL (pas de doublons) ================= */}
-      <NeonCard style={{ marginBottom: 12 }}>
-        <div style={{ display: "flex", alignItems: "stretch", justifyContent: "space-between", gap: 12 }}>
-          {/* LEFT : état session + actions */}
-          <div style={{ flex: 1, minWidth: 0, display: "grid", gap: 10 }}>
-            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-              <Pill label={sessionChipLabel} tone={sessionChipTone} />
-              <Pill label={`Statut : ${presenceLabel}`} tone={presenceTone} />
-              {lastSeenLabel ? <Pill label={`Activité : ${lastSeenLabel}`} tone="gray" /> : null}
-              {countryFlag ? <Pill label={countryFlag} tone="gray" title={countryRaw} /> : null}
+        {/* ===== HEADER PROFIL ===== */}
+        <div className="online-profile" style={{ marginTop: 12, display: "flex", alignItems: "stretch", justifyContent: "space-between", gap: 12 }}>
+          <div className="avatar-block" style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0 }}>
+            <div
+              style={{
+                width: 58,
+                height: 58,
+                borderRadius: "50%",
+                overflow: "hidden",
+                background: "radial-gradient(circle at 30% 0%, #ffde75, #c2871f)",
+                boxShadow: "0 0 18px rgba(255,215,80,.22)",
+                border: "1px solid rgba(255,255,255,.18)",
+                flexShrink: 0,
+              }}
+            >
+              {avatarUrl ? (
+                <img src={avatarUrl} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+              ) : (
+                <div
+                  style={{
+                    width: "100%",
+                    height: "100%",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    fontWeight: 1000,
+                    color: "#1a1a1a",
+                    fontSize: 16,
+                  }}
+                >
+                  {(displayName || "??").slice(0, 2).toUpperCase()}
+                </div>
+              )}
             </div>
 
-            {(authHint || serverHint) ? (
-              <div style={{ fontSize: 11.8, opacity: 0.92 }}>
-                {authHint ? <div style={{ color: "#ffd56a", fontWeight: 950 }}>{authHint}</div> : null}
-                {serverHint ? <div style={{ color: "#ff8a8a", fontWeight: 950 }}>{serverHint}</div> : null}
+            <div style={{ minWidth: 0 }}>
+              <div className="player-name" style={{ fontWeight: 1000, color: "#ffd56a", textShadow: "0 0 12px rgba(255,215,80,.18)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                {displayName}
               </div>
-            ) : null}
-
-            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-              <GhostButton
-                label={reconnecting ? "Reconnexion…" : "Reconnexion"}
-                onClick={doReconnect}
-                disabled={reconnecting}
-              />
-              <GhostButton
-                label="Déconnexion"
-                onClick={doLogout}
-                disabled={!isSignedIn}
-                tone="danger"
-              />
+              <div className={`status ${selfStatus}`} style={{ marginTop: 6 }}>
+                <Pill label={selfStatus === "online" ? "En ligne" : "Absent"} tone={selfStatus === "online" ? "green" : "orange"} />
+                {countryFlag ? <span style={{ marginLeft: 8 }} title={countryRaw}>{countryFlag}</span> : null}
+                {lastSeenLabel ? <span style={{ marginLeft: 8, opacity: 0.78, fontSize: 12 }}>({lastSeenLabel})</span> : null}
+              </div>
             </div>
           </div>
 
-          {/* RIGHT : seul avatar + seul nom + statut coloré */}
-          <div style={{ width: 120, display: "grid", justifyItems: "end", alignContent: "start", gap: 8 }}>
-            <div style={{ position: "relative", width: 76, height: 76 }}>
-              <div
-                style={{
-                  width: "100%",
-                  height: "100%",
-                  borderRadius: "50%",
-                  overflow: "hidden",
-                  background: "radial-gradient(circle at 30% 0%, #ffde75, #c2871f)",
-                  boxShadow: "0 0 18px rgba(255,215,80,.22)",
-                  border: "1px solid rgba(255,255,255,.18)",
-                }}
-              >
-                {avatarUrl ? (
-                  <img src={avatarUrl} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
-                ) : (
-                  <div
-                    style={{
-                      width: "100%",
-                      height: "100%",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      fontWeight: 1000,
-                      color: "#1a1a1a",
-                      fontSize: 20,
-                    }}
-                  >
-                    {(displayName || "??").slice(0, 2).toUpperCase()}
-                  </div>
-                )}
-              </div>
+          <div className="profile-actions" style={{ display: "grid", gap: 8, alignContent: "start", width: 190 }}>
+            {/* boutons alignés (même taille) */}
+            <button onClick={() => setPresence("online")} className="btn green" style={{ width: "100%" }}>
+              En ligne
+            </button>
+            <button onClick={() => setPresence("away")} className="btn orange" style={{ width: "100%" }}>
+              Absent
+            </button>
 
-              {countryFlag ? (
-                <div
-                  style={{
-                    position: "absolute",
-                    bottom: -6,
-                    left: "50%",
-                    transform: "translateX(-50%)",
-                    width: 24,
-                    height: 24,
-                    borderRadius: "50%",
-                    border: "2px solid #000",
-                    overflow: "hidden",
-                    boxShadow: "0 0 10px rgba(0,0,0,.85)",
-                    background: "#111",
-                    display: "grid",
-                    placeItems: "center",
-                    zIndex: 2,
-                  }}
-                  title={countryRaw}
-                >
-                  <span style={{ fontSize: 14, lineHeight: 1 }}>{countryFlag}</span>
-                </div>
-              ) : null}
-            </div>
-
-            <div style={{ textAlign: "right" }}>
-              <div style={{ fontWeight: 1000, color: "#ffd56a", textShadow: "0 0 12px rgba(255,215,80,.18)" }}>
-                {displayName}
-              </div>
-              <div
-                style={{
-                  display: "inline-flex",
-                  marginTop: 6,
-                }}
-              >
-                <Pill label={presenceLabel} tone={presenceTone} />
-              </div>
-            </div>
-
-            <div style={{ display: "grid", gap: 8, width: "100%" }}>
-              <GhostButton
-                label="En ligne"
-                onClick={() => setPresence("online")}
-                disabled={false}
-              />
-              <GhostButton
-                label="Absent"
-                onClick={() => setPresence("away")}
-                disabled={false}
-              />
-            </div>
+            {isSignedIn ? (
+              <button onClick={doLogout} className="btn red" style={{ width: "100%" }}>
+                Déconnexion
+              </button>
+            ) : (
+              <button onClick={() => go("profiles")} className="btn blue" style={{ width: "100%" }}>
+                Connexion
+              </button>
+            )}
           </div>
         </div>
       </NeonCard>
@@ -1170,7 +1103,11 @@ export default function FriendsPage({ store, update, go }: Props) {
           creatingLobby ? (
             <button
               type="button"
-              onClick={cancelCreate}
+              onClick={() => {
+                createReqIdRef.current++;
+                setCreatingLobby(false);
+                setJoinError("Création annulée.");
+              }}
               style={{
                 borderRadius: 999,
                 padding: "7px 10px",
@@ -1192,43 +1129,47 @@ export default function FriendsPage({ store, update, go }: Props) {
       <NeonCard style={{ marginTop: 10 }}>
         <div style={{ display: "grid", gap: 10 }}>
           <PrimaryButton
-            label={creatingLobby ? "Création…" : !isSignedIn ? "Connexion requise" : "Créer un salon X01"}
+            label={creatingLobby ? "Création…" : "Créer un salon X01"}
             subLabel="Match privé • invite un ami avec un code"
-            tone={!isSignedIn ? "gray" : "gold"}
-            disabled={creatingLobby || !isSignedIn}
+            disabled={creatingLobby || !canPlayOnline}
             onClick={handleCreateLobby}
+            tone={!canPlayOnline ? "gray" : "gold"}
           />
 
-          <div style={{ display: "flex", gap: 10, alignItems: "flex-end" }}>
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontSize: 11.5, fontWeight: 1000, opacity: 0.85, marginBottom: 6 }}>Code salon</div>
-              <input
-                type="text"
-                value={joinCode}
-                onChange={(e) => setJoinCode(e.target.value.toUpperCase())}
-                maxLength={8}
-                placeholder="EX : 4F9Q"
-                style={{
-                  width: "100%",
-                  borderRadius: 12,
-                  border: "1px solid rgba(255,255,255,.18)",
-                  background: "rgba(5,5,8,.95)",
-                  color: "#f5f5f7",
-                  padding: "10px 12px",
-                  fontSize: 13,
-                  letterSpacing: 2,
-                  textTransform: "uppercase",
-                  outline: "none",
-                }}
-              />
-            </div>
+          <PrimaryButton
+            label={joiningLobby ? "Recherche…" : "Rejoindre"}
+            subLabel="Accède à la salle d’attente"
+            disabled={joiningLobby || !canPlayOnline}
+            onClick={handleJoinLobby}
+            tone={!canPlayOnline ? "gray" : "blue"}
+          />
 
-            <PrimaryButton
-              label={joiningLobby ? "Recherche…" : !isSignedIn ? "Connexion requise" : "Rejoindre"}
-              subLabel="Accède à la salle d’attente"
-              tone={!isSignedIn ? "gray" : "blue"}
-              disabled={joiningLobby || !isSignedIn}
-              onClick={handleJoinLobby}
+          {!canPlayOnline && (
+            <div className="hint" style={{ fontSize: 12, opacity: 0.88, color: "#ffd56a", fontWeight: 950 }}>
+              Connexion requise pour jouer en ligne
+            </div>
+          )}
+
+          <div style={{ display: "grid", gap: 8 }}>
+            <div style={{ fontSize: 11.5, fontWeight: 1000, opacity: 0.85 }}>Code salon</div>
+            <input
+              type="text"
+              value={joinCode}
+              onChange={(e) => setJoinCode(e.target.value.toUpperCase())}
+              maxLength={8}
+              placeholder="EX : 4F9Q"
+              style={{
+                width: "100%",
+                borderRadius: 12,
+                border: "1px solid rgba(255,255,255,.18)",
+                background: "rgba(5,5,8,.95)",
+                color: "#f5f5f7",
+                padding: "10px 12px",
+                fontSize: 13,
+                letterSpacing: 2,
+                textTransform: "uppercase",
+                outline: "none",
+              }}
             />
           </div>
 
