@@ -294,14 +294,10 @@ type BotStyle = "balanced" | "aggressive" | "safe" | "clutch";
 function computeBotVisit(
   level: BotLevel,
   currentScore: number,
-  doubleOut: boolean
+  outMode: "double" | "single" | "master"
 ): UIDart[] {
-  const darts: UIDart[] = [];
-  const lvl = level || "easy";
+  const doubleOut = outMode === "double";
 
-  // -----------------------------
-  // 1) NIVEAUX BOT
-  // -----------------------------
   type EffLevel = "easy" | "medium" | "hard" | "pro" | "legend";
 
   type BotSkillProfile = {
@@ -423,13 +419,33 @@ function computeBotVisit(
   // 3) CHOIX D’UN "PLAN" / CIBLE LOGIQUE
   // -----------------------------
   function chooseIdealTarget(remaining: number, dartsLeft: number): UIDart {
-    // Cas sans double-out : on score surtout T20, mais on reste cohérent
+    // SINGLE-OUT / MASTER-OUT : on peut finir sans forcément un double
     if (!doubleOut) {
-      if (remaining > 100) return { v: 20, mult: 3 };
-      if (remaining > 60) return { v: 20, mult: 3 };
-      if (remaining > 40) return { v: 20, mult: 2 };
-      if (remaining > 20) return { v: 20, mult: 1 };
-      return { v: remaining, mult: 1 };
+      // SINGLE-OUT : n'importe quel segment peut finir
+      if (singleOut) {
+        if (remaining === 50) return { v: 25, mult: 2 }; // DBULL
+        if (remaining <= 60 && remaining % 3 === 0 && remaining / 3 <= 20) return { v: remaining / 3, mult: 3 };
+        if (remaining <= 40 && remaining % 2 === 0) return { v: remaining / 2, mult: 2 };
+        if (remaining <= 20) return { v: remaining, mult: 1 };
+        // sinon scoring
+        return { v: 20, mult: 3 };
+      }
+
+      // MASTER-OUT : finir sur double OU triple (ou DBULL)
+      if (masterOut) {
+        if (remaining === 50) return { v: 25, mult: 2 }; // DBULL
+        if (remaining <= 60 && remaining % 3 === 0 && remaining / 3 <= 20) return { v: remaining / 3, mult: 3 };
+        if (remaining <= 40 && remaining % 2 === 0) return { v: remaining / 2, mult: 2 };
+        // préparation : viser gros scoring
+        if (remaining > 100) return { v: 20, mult: 3 };
+        if (remaining > 60) return { v: 20, mult: 3 };
+        if (remaining > 40) return { v: 20, mult: 2 };
+        if (remaining > 20) return { v: 20, mult: 1 };
+        return { v: remaining, mult: 1 };
+      }
+
+      // fallback (ne devrait pas arriver)
+      return { v: 20, mult: 3 };
     }
 
     // DOUBLE-OUT : vraie stratégie
@@ -604,6 +620,164 @@ function computeBotVisit(
 
   return darts;
 }
+
+// ============================================================
+// CHECKOUT helper (UI) — recalcul après CHAQUE fléchette / annuler
+// - propose un finish selon le nombre de fléchettes restantes (1..3)
+// - chart standard jusqu'à 170 (double-out)
+// ============================================================
+
+function computeCheckoutText(
+  remaining: number,
+  dartsLeft: number,
+  outMode: "double" | "single" | "master"
+): string | null {
+  if (!Number.isFinite(remaining) || remaining <= 0) return null;
+  if (dartsLeft <= 0) return null;
+
+  // En une visite (max 3 darts) on ne peut pas dépasser 180
+  // => si >180, pas de checkout en 3 fléchettes
+  if (remaining > 180) return null;
+
+  type Dart = { code: string; score: number; kind: "S" | "D" | "T" | "B"; isFinisher: boolean };
+
+  const all: Dart[] = [];
+  const doubles: Dart[] = [];
+  const masters: Dart[] = []; // doubles + triples (+ DBULL)
+
+  // Singles / Doubles / Triples 1..20
+  for (let n = 1; n <= 20; n++) {
+    all.push({ code: `S${n}`, score: n, kind: "S", isFinisher: outMode !== "double" && outMode !== "master" }); // finisher en single-out seulement
+    const d: Dart = { code: `D${n}`, score: 2 * n, kind: "D", isFinisher: true };
+    all.push(d);
+    doubles.push(d);
+    masters.push(d);
+
+    const t: Dart = { code: `T${n}`, score: 3 * n, kind: "T", isFinisher: outMode !== "double" }; // finisher en single/master
+    all.push(t);
+    masters.push(t);
+  }
+
+  // Bulls
+  all.push({ code: "SBULL", score: 25, kind: "B", isFinisher: outMode === "single" });
+  const db: Dart = { code: "DBULL", score: 50, kind: "D", isFinisher: true };
+  all.push(db);
+  doubles.push(db);
+  masters.push(db);
+
+  const lastPool =
+    outMode === "double" ? doubles :
+    outMode === "master" ? masters :
+    all;
+
+  // Préférences "pro" (une seule variation)
+  const preferredTriples = [20, 19, 18, 17, 16, 15, 14, 13, 12, 11, 10];
+  const preferredDoubles = [20, 16, 18, 10, 12, 8, 6, 4, 2, 1, 5, 9, 14, 7, 3, 11, 13, 15, 17, 19, 25]; // 25 => DBULL
+
+  function dartPenalty(d: Dart, isLast: boolean): number {
+    // base : préférer moins de risque / plus standard
+    if (d.code === "SBULL") return 40; // éviter bull (sauf nécessité)
+    if (d.code === "DBULL") {
+      // DBULL OK surtout en dernier dart
+      return isLast ? 4 : 22;
+    }
+
+    const kind = d.code[0] as "S" | "D" | "T";
+    const num = parseInt(d.code.slice(1), 10);
+
+    if (kind === "T") {
+      const idx = preferredTriples.indexOf(num);
+      return idx >= 0 ? idx : 30 + (20 - num) * 0.25; // triples non standards pénalisés
+    }
+
+    if (kind === "D") {
+      const mapped = num === 25 ? 25 : num;
+      const idx = preferredDoubles.indexOf(mapped);
+      return (isLast ? 0 : 6) + (idx >= 0 ? idx * 0.9 : 40);
+    }
+
+    // Singles : plutôt à éviter dans une ligne "pro"
+    return 18 + (20 - num) * 0.15;
+  }
+
+  function scoreLine(line: Dart[]): number {
+    // Priorité : finir en moins de darts (si possible),
+    // puis choisir la ligne la plus "pro" (penalty le plus bas).
+    let p = 0;
+    for (let i = 0; i < line.length; i++) {
+      p += dartPenalty(line[i], i === line.length - 1);
+    }
+    return line.length * 1000 + p;
+  }
+
+  function formatLine(line: Dart[]): string {
+    return line.map((d) => d.code).join(" ");
+  }
+
+  let best: { line: Dart[]; score: number } | null = null;
+
+  const maxDarts = Math.min(3, Math.max(1, dartsLeft));
+
+  // On autorise de finir "avant" la fin de la volée (1 ou 2 darts),
+  // mais on propose UNE seule ligne : la meilleure possible.
+  for (let used = 1; used <= maxDarts; used++) {
+    if (used === 1) {
+      for (const a of lastPool) {
+        if (a.score !== remaining) continue;
+
+        // validation finisher selon outMode
+        if (outMode === "double" && a.kind !== "D") continue;
+        if (outMode === "master" && !(a.kind === "D" || a.kind === "T")) continue;
+
+        const line = [a];
+        const sc = scoreLine(line);
+        if (!best || sc < best.score) best = { line, score: sc };
+      }
+    } else if (used === 2) {
+      for (const a of all) {
+        const rem1 = remaining - a.score;
+        if (rem1 <= 0) continue;
+
+        for (const b of lastPool) {
+          if (a.score + b.score !== remaining) continue;
+
+          if (outMode === "double" && b.kind !== "D") continue;
+          if (outMode === "master" && !(b.kind === "D" || b.kind === "T")) continue;
+
+          const line = [a, b];
+          const sc = scoreLine(line);
+          if (!best || sc < best.score) best = { line, score: sc };
+        }
+      }
+    } else {
+      for (const a of all) {
+        const rem1 = remaining - a.score;
+        if (rem1 <= 0) continue;
+
+        for (const b of all) {
+          const rem2 = rem1 - b.score;
+          if (rem2 <= 0) continue;
+
+          for (const c of lastPool) {
+            if (a.score + b.score + c.score !== remaining) continue;
+
+            if (outMode === "double" && c.kind !== "D") continue;
+            if (outMode === "master" && !(c.kind === "D" || c.kind === "T")) continue;
+
+            const line = [a, b, c];
+            const sc = scoreLine(line);
+            if (!best || sc < best.score) best = { line, score: sc };
+          }
+        }
+      }
+    }
+
+    if (best && best.line.length === 1) break;
+  }
+
+  return best ? formatLine(best.line) : null;
+}
+
 
 // =============================================================
 // Composant principal X01PlayV3
@@ -809,13 +983,54 @@ const profileById = React.useMemo(() => {
 
   const currentVisit = state.visit;
 
-  // double-out ? on essaie de lire config
-  const doubleOut =
-    (config as any).doubleOut === true ||
-    (config as any).finishMode === "double" ||
-    (config as any).outMode === "double";
+    // out mode ? (double / single / master) — selon config
+  const outMode: "double" | "single" | "master" = React.useMemo(() => {
+    const raw =
+      (config as any).outMode ??
+      (config as any).finishMode ??
+      ((config as any).doubleOut === true ? "double" : null);
+
+    if (raw === "master") return "master";
+    if (raw === "single") return "single";
+    return "double";
+  }, [config]);
+
+  function isValidFinisher(d: any): boolean {
+    if (!d) return false;
+    const isD = d.mult === 2 || (d.v === 25 && d.mult === 2);
+    const isT = d.mult === 3;
+    if (outMode === "double") return isD;
+    if (outMode === "master") return isD || isT;
+    return true; // single out
+  }
+
+
+  // Compat : certaines parties du code utilisent encore un booléen doubleOut
+  const doubleOut = outMode === "double";
 
   // =====================================================
+  // Checkout (UI) — recalcul live après chaque fléchette / annuler
+  // =====================================================
+  const checkoutText = React.useMemo(() => {
+    // on ne propose des checkouts que pendant une partie
+    if (status !== "running") return null;
+
+    // remaining après la saisie en cours (preview)
+    const remaining = currentScore - sumThrow(currentThrow);
+    const dartsLeft = Math.max(0, 3 - (currentThrow?.length || 0));
+    if (remaining <= 0) return null;
+    if (dartsLeft <= 0) return null;
+
+    // finishMode / outMode (SIMPLE / DOUBLE / MASTER)
+    const outMode: "simple" | "double" | "master" =
+      ((config as any).finishMode as any) ||
+      ((config as any).outMode as any) ||
+      (((config as any).doubleOut === true ? "double" : "simple") as any);
+
+    return computeCheckoutText(remaining, dartsLeft, outMode);
+  }, [status, currentThrow, currentScore, config]);
+
+// =====================================================
   // Autosave : persistance / reprise (A1 basé sur la liste des darts)
   // =====================================================
 
@@ -1105,12 +1320,35 @@ const playScoreSfxAndMaybeDelayVoice = React.useCallback(
   }) => {
     const { playerName, pid, scoreBefore, darts, visitScore, isBustNow, isCheckoutNow } = args;
 
+    // ---- BUST : son dédié, pas de score SFX/voix ----
+    if (isBustNow) {
+      if (arcadeEnabled) {
+        playArcadeMapped("bust", { rateLimitMs: 180, volume: sfxVolume });
+      }
+      return;
+    }
+
     // ---- Null sfx (0..10) hors checkout et hors bust ----
     if (!isBustNow && !isCheckoutNow && visitScore >= 0 && visitScore <= 10) {
       if (arcadeEnabled) {
-        playPublicSound("score-null.mp3", { volume: sfxVolume });
+        const audio = playPublicSound("score-null.mp3", { volume: sfxVolume });
+        if (audio && typeof (audio as any).addEventListener === "function") {
+          (audio as any).addEventListener(
+            "ended",
+            () => {
+              // ✅ voix IA 1.5s après le SFX "nul"
+              scheduleVoice(() => speakVisit(playerName, visitScore), 1200);
+            },
+            { once: true } as any
+          );
+        } else {
+          // fallback si l'event "ended" n'est pas dispo
+          scheduleVoice(() => speakVisit(playerName, visitScore), 1200);
+        }
+      } else {
+        // si pas de sfx arcade, on annonce quand même (avec un léger délai)
+        scheduleVoice(() => speakVisit(playerName, visitScore), 1200);
       }
-      // pas de voix spéciale demandée sur les petits scores
       return;
     }
 
@@ -1368,7 +1606,7 @@ function pushDart(value: number) {
 
     const remainingAfter = scoreBefore - visitScore;
     const willBustNow =
-      remainingAfter < 0 || (doubleOut && remainingAfter === 1);
+      remainingAfter < 0 || ((outMode === "double" || outMode === "master") && remainingAfter === 1);
 
     if (willBustNow) {
       // ✅ afficher la volée bust en rouge (liste joueurs)
@@ -1401,10 +1639,32 @@ function pushDart(value: number) {
   }
 }
 
-const handleNumber = (value: number) => pushDart(value);
-const handleBull = () => pushDart(25);
+const isBustLocked = !!(activePlayerId && (lastVisitIsBustByPlayer as any)?.[activePlayerId]);
+
+const handleSimple = () => {
+  if (isBustLocked) return;
+  setMultiplier(1);
+};
+const handleDouble = () => {
+  if (isBustLocked) return;
+  setMultiplier(2);
+};
+const handleTriple = () => {
+  if (isBustLocked) return;
+  setMultiplier(3);
+};
+
+const handleNumber = (value: number) => {
+  if (isBustLocked) return;
+  pushDart(value);
+};
+const handleBull = () => {
+  if (isBustLocked) return;
+  pushDart(25);
+};
 
 const handleBackspace = () => {
+  if (isBustLocked) return;
   currentThrowFromEngineRef.current = false;
 
   bustPreviewPlayedRef.current = false;
@@ -1481,13 +1741,15 @@ const validateThrow = () => {
     );
 
     const isBustNow =
-      scoreBefore - visitScore < 0 || (doubleOut && scoreBefore - visitScore === 1);
+      scoreBefore - visitScore < 0 || ((outMode === "double" || outMode === "master") && scoreBefore - visitScore === 1);
 
     const remainingAfter = scoreBefore - visitScore;
     const last = toSend[toSend.length - 1];
     const lastIsDouble = !!last && (last.mult === 2 || (last.v === 25 && last.mult === 2));
+      const lastIsTriple = !!last && last.mult === 3;
+      const lastIsFinisher = (outMode === "double") ? lastIsDouble : (outMode === "master") ? (lastIsDouble || lastIsTriple) : true;
     const isCheckoutNow =
-      !isBustNow && remainingAfter === 0 && (!doubleOut || lastIsDouble);
+      !isBustNow && remainingAfter === 0 && isValidFinisher(last);
 
     // ✅ sons scores (80..179 + null + 180) + délai voix (>=2s)
     playScoreSfxAndMaybeDelayVoice({
@@ -1627,13 +1889,13 @@ React.useEffect(() => {
         }, 0);
 
         const isBustNow =
-          scoreBefore - visitScore < 0 || (doubleOut && scoreBefore - visitScore === 1);
+          scoreBefore - visitScore < 0 || ((outMode === "double" || outMode === "master") && scoreBefore - visitScore === 1);
 
         const remainingAfter = scoreBefore - visitScore;
         const lastD = ui[ui.length - 1];
         const lastIsDouble = !!lastD && (lastD.mult === 2 || (lastD.v === 25 && lastD.mult === 2));
         const isCheckoutNow =
-          !isBustNow && remainingAfter === 0 && (!doubleOut || lastIsDouble);
+          !isBustNow && remainingAfter === 0 && isValidFinisher(last);
 
         playScoreSfxAndMaybeDelayVoice({
           playerName,
@@ -2047,7 +2309,7 @@ try {
         return;
       }
 
-      const visit = computeBotVisit(level, scoreNow, doubleOut);
+      const visit = computeBotVisit(level, scoreNow, outMode);
       console.log("[X01PlayV3][BOT] visit computed", visit);
 
       // UI : mémorise la volée du BOT
@@ -2204,7 +2466,7 @@ try {
             legsWon={(state as any).legsWon ?? {}}
             setsWon={(state as any).setsWon ?? {}}
             useSets={useSetsUi}
-            currentVisit={currentVisit}
+            checkoutText={checkoutText}
           />
         </div>
       </div>
@@ -2293,19 +2555,47 @@ try {
             </div>
           </div>
         ) : (
+          <div
+            style={{
+              border: isBustLocked ? "1px solid rgba(255,80,80,.65)" : "1px solid transparent",
+              background: isBustLocked ? "rgba(120,0,0,.10)" : "transparent",
+              borderRadius: 14,
+              padding: 6,
+              boxShadow: isBustLocked ? "0 0 0 1px rgba(255,80,80,.25), 0 10px 24px rgba(0,0,0,.45)" : undefined,
+              filter: isBustLocked ? "grayscale(.25) saturate(.9)" : undefined,
+              opacity: isBustLocked ? 0.92 : 1,
+            }}
+          >
+            {isBustLocked ? (
+              <div
+                style={{
+                  marginBottom: 6,
+                  textAlign: "center",
+                  fontWeight: 900,
+                  letterSpacing: 0.6,
+                  color: "#ff6b6b",
+                  textShadow: "0 0 14px rgba(255,90,90,.35)",
+                }}
+              >
+                BUST — {t("x01v3.bust.lock", "Saisie bloquée")}
+              </div>
+            ) : null}
+
           <Keypad
             currentThrow={currentThrow}
             multiplier={multiplier}
-            onSimple={() => setMultiplier(1)}
-            onDouble={() => setMultiplier(2)}
-            onTriple={() => setMultiplier(3)}
+            onSimple={handleSimple}
+            onDouble={handleDouble}
+            onTriple={handleTriple}
             onBackspace={handleBackspace}
             onCancel={handleCancel}
             onNumber={handleNumber}
             onBull={handleBull}
             onValidate={validateThrow}
             hidePreview
+            bustLock={bustLockActive}
           />
+          </div>
         )}
       </div>
 
@@ -2357,7 +2647,7 @@ function HeaderBlock(props: {
   useSets: boolean;
   legsWon: Record<string, number>;
   setsWon: Record<string, number>;
-  currentVisit: any;
+  checkoutText: string | null;
 }) {
   const {
     currentPlayer,
@@ -2372,7 +2662,7 @@ function HeaderBlock(props: {
     useSets,
     legsWon,
     setsWon,
-    currentVisit,
+    checkoutText,
   } = props;
 
   const legsWonThisSet =
@@ -2576,7 +2866,7 @@ function HeaderBlock(props: {
           </div>
 
           {/* Checkout suggestion (moteur V3) */}
-          {currentVisit?.checkoutSuggestion ? (
+          {checkoutText ? (
             <div
               style={{
                 marginTop: 3,
@@ -2610,9 +2900,7 @@ function HeaderBlock(props: {
                     fontSize: 13,
                   }}
                 >
-                  {formatCheckoutFromVisit(
-                    currentVisit.checkoutSuggestion
-                  )}
+                  {checkoutText}
                 </span>
               </div>
             </div>
