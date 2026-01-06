@@ -21,6 +21,14 @@
 // - Profil: 1 seul avatar / 1 seul nom
 // - Boutons "Créer/Rejoindre" => canPlayOnline = isSignedIn
 // - Hint clair si disabled
+//
+// ✅ NEW (Realtime Presence + Chat MVP):
+// - Quand signed_in : joinPresence realtime + présenceMap live
+// - En ligne / Absent : setState() côté Realtime
+// - Chat MVP : si lobby existe -> zone messages (fetch + subscribe + post)
+//
+// ✅ NEW (Spectateur activé):
+// - GhostButton “👀 Spectateur” -> go("spectator")
 // ============================================
 
 import React from "react";
@@ -34,6 +42,10 @@ import InfoDot from "../components/InfoDot";
 
 // ⚠️ adapte si ton projet exporte supabase ailleurs
 import { supabase } from "../lib/supabase";
+
+// ✅ Realtime presence + chat MVP
+import { joinPresence } from "../lib/onlinePresence";
+import { fetchMessages, postMessage, subscribeMessages } from "../lib/chatApi";
 
 /* -------------------------------------------------
    Constantes localStorage
@@ -502,22 +514,6 @@ export default function FriendsPage({ store, update, go }: Props) {
   const selfStatus: PresenceStatus = ((store as any).selfStatus as PresenceStatus) || "offline";
   const lastSeenLabel = formatLastSeenAgo(lastSeen);
 
-  function setPresence(newStatus: PresenceStatus) {
-    update((st) => ({ ...st, selfStatus: newStatus as any }));
-    savePresenceToLS(newStatus);
-    setLastSeen(Date.now());
-  }
-
-  // Ping présence toutes les 30s quand "online"
-  React.useEffect(() => {
-    if (selfStatus !== "online") return;
-    const id = window.setInterval(() => {
-      savePresenceToLS("online");
-      setLastSeen(Date.now());
-    }, 30_000);
-    return () => window.clearInterval(id);
-  }, [selfStatus]);
-
   // Identité affichée (jamais d’email visible)
   const displayName =
     activeProfile?.name ||
@@ -603,6 +599,61 @@ export default function FriendsPage({ store, update, go }: Props) {
      Étape 4 — règle finale
   ------------------------------ */
   const canPlayOnline = isSignedIn;
+
+  /* -----------------------------
+     Realtime Presence (join + map + setState)
+  ------------------------------ */
+  const [presenceMap, setPresenceMap] = React.useState<Record<string, any>>({});
+  const presenceRef = React.useRef<{
+    leave: () => Promise<void>;
+    setState: (s: any) => Promise<void>;
+  } | null>(null);
+
+  function setPresence(newStatus: PresenceStatus) {
+    update((st) => ({ ...st, selfStatus: newStatus as any }));
+    savePresenceToLS(newStatus);
+    setLastSeen(Date.now());
+
+    // ✅ sync realtime presence
+    presenceRef.current?.setState(newStatus === "away" ? "away" : "online").catch(() => {});
+  }
+
+  // Ping présence toutes les 30s quand "online"
+  React.useEffect(() => {
+    if (selfStatus !== "online") return;
+    const id = window.setInterval(() => {
+      savePresenceToLS("online");
+      setLastSeen(Date.now());
+    }, 30_000);
+    return () => window.clearInterval(id);
+  }, [selfStatus]);
+
+  // ✅ join realtime presence quand signed_in
+  React.useEffect(() => {
+    let stop = false;
+
+    async function run() {
+      if (!isSignedIn || !sessionUserId) return;
+
+      const p = await joinPresence({
+        userId: sessionUserId,
+        name: displayName,
+        state: selfStatus === "away" ? "away" : "online",
+        onChange: (map: any) => {
+          if (!stop) setPresenceMap(map || {});
+        },
+      });
+
+      presenceRef.current = p;
+    }
+
+    run().catch(() => {});
+    return () => {
+      stop = true;
+      presenceRef.current?.leave?.().catch(() => {});
+      presenceRef.current = null;
+    };
+  }, [isSignedIn, sessionUserId, displayName, selfStatus]);
 
   /* -----------------------------
      Connexion / Déconnexion / Reconnexion
@@ -790,7 +841,7 @@ export default function FriendsPage({ store, update, go }: Props) {
     setJoinedLobby(null);
 
     try {
-      const lobby = await withTimeout(
+      const lobbyRes = await withTimeout(
         onlineApi.joinLobby({
           code,
           userId: sessionUserId || "anon",
@@ -802,7 +853,7 @@ export default function FriendsPage({ store, update, go }: Props) {
 
       if (joinReqIdRef.current !== reqId) return;
 
-      setJoinedLobby(lobby);
+      setJoinedLobby(lobbyRes);
       setJoinInfo("Salon trouvé.");
     } catch (e: any) {
       if (joinReqIdRef.current !== reqId) return;
@@ -819,6 +870,79 @@ export default function FriendsPage({ store, update, go }: Props) {
   }
 
   const lobby = joinedLobby || lastCreatedLobby;
+
+  /* -----------------------------
+     Chat MVP (si lobby existe)
+  ------------------------------ */
+  const lobbyKey = React.useMemo(() => {
+    const code = (lobby as any)?.code;
+    if (!code) return null;
+    return String(code).toUpperCase();
+  }, [lobby]);
+
+  const [chatLoading, setChatLoading] = React.useState(false);
+  const [chatError, setChatError] = React.useState<string | null>(null);
+  const [chatMessages, setChatMessages] = React.useState<any[]>([]);
+  const [chatText, setChatText] = React.useState("");
+
+  React.useEffect(() => {
+    let unsub: null | (() => void) = null;
+    let cancelled = false;
+
+    async function run() {
+      setChatError(null);
+      setChatMessages([]);
+
+      if (!isSignedIn || !sessionUserId || !lobbyKey) return;
+
+      setChatLoading(true);
+      try {
+        const initial = await fetchMessages(lobbyKey);
+        if (!cancelled) setChatMessages(Array.isArray(initial) ? initial : []);
+      } catch (e: any) {
+        if (!cancelled) setChatError(normalizeErrMessage(e));
+      } finally {
+        if (!cancelled) setChatLoading(false);
+      }
+
+      try {
+        unsub = subscribeMessages(lobbyKey, (msg: any) => {
+          setChatMessages((prev) => {
+            const next = Array.isArray(prev) ? prev.slice() : [];
+            next.push(msg);
+            return next.slice(-200);
+          });
+        });
+      } catch {}
+    }
+
+    run().catch(() => {});
+    return () => {
+      cancelled = true;
+      try {
+        unsub?.();
+      } catch {}
+    };
+  }, [isSignedIn, sessionUserId, lobbyKey]);
+
+  async function sendChat() {
+    const text = chatText.trim();
+    if (!text) return;
+    if (!isSignedIn || !sessionUserId || !lobbyKey) return;
+
+    setChatText("");
+    setChatError(null);
+
+    try {
+      await postMessage(lobbyKey, {
+        userId: sessionUserId,
+        name: displayName,
+        text,
+      });
+    } catch (e: any) {
+      setChatError(normalizeErrMessage(e));
+    }
+  }
 
   /* -----------------------------
      Home stats
@@ -913,16 +1037,17 @@ export default function FriendsPage({ store, update, go }: Props) {
     if (avg3DWeek > 0) items.push({ text: `Avg 3D (semaine) : ${fmt1(avg3DWeek)}`, tone: "gold" });
     if (checkoutPctWeek > 0) items.push({ text: `Checkout% (semaine) : ${fmt1(checkoutPctWeek)}%`, tone: "blue" });
 
-    items.push({ text: "SOON : Spectateur • Chat amis • Classements • Tournois", tone: "gray" });
+    const count = Object.keys(presenceMap || {}).length;
+    if (count > 0) items.push({ text: `Présence : ${count} joueur(s)`, tone: "green" });
+
+    items.push({ text: "SOON : Chat amis • Classements • Tournois", tone: "gray" });
 
     return items;
-  }, [serverState, sessionState, lobby, lastMatch, weekMatchesCount, avg3DWeek, checkoutPctWeek]);
+  }, [serverState, sessionState, lobby, lastMatch, weekMatchesCount, avg3DWeek, checkoutPctWeek, presenceMap]);
 
   const [showInfo, setShowInfo] = React.useState(false);
 
   const serverChipTone = serverState === "ok" ? "green" : serverState === "down" ? "red" : "gray";
-  const serverChipLabel = serverState === "ok" ? "Serveur : OK" : serverState === "down" ? "Serveur : hors ligne" : "Serveur : …";
-
   const presenceTone = selfStatus === "online" ? "green" : selfStatus === "away" ? "orange" : "gray";
   const presenceLabel = selfStatus === "online" ? "En ligne" : selfStatus === "away" ? "Absent" : "Hors ligne";
 
@@ -937,13 +1062,35 @@ export default function FriendsPage({ store, update, go }: Props) {
         }}
       >
         {/* ===== HEADER TITRE ===== */}
-        <div className="online-header" style={{ position: "relative", display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12 }}>
+        <div
+          className="online-header"
+          style={{
+            position: "relative",
+            display: "flex",
+            alignItems: "flex-start",
+            justifyContent: "space-between",
+            gap: 12,
+          }}
+        >
           <div className="online-title" style={{ minWidth: 0 }}>
-            <h1 style={{ margin: 0, fontSize: 30, fontWeight: 1000, color: "#ffd56a", textShadow: "0 0 18px rgba(255,215,80,.22)", lineHeight: 1.0 }}>
+            <h1
+              style={{
+                margin: 0,
+                fontSize: 30,
+                fontWeight: 1000,
+                color: "#ffd56a",
+                textShadow: "0 0 18px rgba(255,215,80,.22)",
+                lineHeight: 1.0,
+              }}
+            >
               ONLINE
             </h1>
+
             <span className="pill pill-green" style={{ display: "inline-flex", marginTop: 8 }}>
-              <Pill label="Serveur : OK" tone={serverChipTone} />
+              <Pill
+                label={serverState === "ok" ? "Serveur : OK" : serverState === "down" ? "Serveur : hors ligne" : "Serveur : …"}
+                tone={serverChipTone}
+              />
             </span>
           </div>
 
@@ -969,11 +1116,23 @@ export default function FriendsPage({ store, update, go }: Props) {
             {serverState === "down" && serverHint ? (
               <div style={{ marginTop: 8, fontSize: 12, color: "#ff8a8a", fontWeight: 950 }}>{serverHint}</div>
             ) : null}
+            {authHint ? (
+              <div style={{ marginTop: 8, fontSize: 12, color: "#ffd56a", fontWeight: 950 }}>{authHint}</div>
+            ) : null}
           </div>
         ) : null}
 
         {/* ===== HEADER PROFIL ===== */}
-        <div className="online-profile" style={{ marginTop: 12, display: "flex", alignItems: "stretch", justifyContent: "space-between", gap: 12 }}>
+        <div
+          className="online-profile"
+          style={{
+            marginTop: 12,
+            display: "flex",
+            alignItems: "stretch",
+            justifyContent: "space-between",
+            gap: 12,
+          }}
+        >
           <div className="avatar-block" style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0 }}>
             <div
               style={{
@@ -1008,14 +1167,32 @@ export default function FriendsPage({ store, update, go }: Props) {
             </div>
 
             <div style={{ minWidth: 0 }}>
-              <div className="player-name" style={{ fontWeight: 1000, color: "#ffd56a", textShadow: "0 0 12px rgba(255,215,80,.18)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              <div
+                className="player-name"
+                style={{
+                  fontWeight: 1000,
+                  color: "#ffd56a",
+                  textShadow: "0 0 12px rgba(255,215,80,.18)",
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  whiteSpace: "nowrap",
+                }}
+              >
                 {displayName}
               </div>
-              <div className={`status ${selfStatus}`} style={{ marginTop: 6 }}>
-                <Pill label={selfStatus === "online" ? "En ligne" : "Absent"} tone={selfStatus === "online" ? "green" : "orange"} />
-                {countryFlag ? <span style={{ marginLeft: 8 }} title={countryRaw}>{countryFlag}</span> : null}
-                {lastSeenLabel ? <span style={{ marginLeft: 8, opacity: 0.78, fontSize: 12 }}>({lastSeenLabel})</span> : null}
+
+              <div className={`status ${selfStatus}`} style={{ marginTop: 6, display: "flex", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
+                <Pill label={presenceLabel} tone={presenceTone} />
+                {countryFlag ? <span style={{ fontSize: 16, lineHeight: 1 }} title={countryRaw}>{countryFlag}</span> : null}
+                {lastSeenLabel ? <span style={{ opacity: 0.78, fontSize: 12 }}>({lastSeenLabel})</span> : null}
               </div>
+
+              {/* (optionnel) mini aperçu présenceMap */}
+              {Object.keys(presenceMap || {}).length > 0 ? (
+                <div style={{ marginTop: 8, fontSize: 11.5, opacity: 0.85 }}>
+                  {Object.keys(presenceMap).length} joueur(s) en présence
+                </div>
+              ) : null}
             </div>
           </div>
 
@@ -1136,20 +1313,6 @@ export default function FriendsPage({ store, update, go }: Props) {
             tone={!canPlayOnline ? "gray" : "gold"}
           />
 
-          <PrimaryButton
-            label={joiningLobby ? "Recherche…" : "Rejoindre"}
-            subLabel="Accède à la salle d’attente"
-            disabled={joiningLobby || !canPlayOnline}
-            onClick={handleJoinLobby}
-            tone={!canPlayOnline ? "gray" : "blue"}
-          />
-
-          {!canPlayOnline && (
-            <div className="hint" style={{ fontSize: 12, opacity: 0.88, color: "#ffd56a", fontWeight: 950 }}>
-              Connexion requise pour jouer en ligne
-            </div>
-          )}
-
           <div style={{ display: "grid", gap: 8 }}>
             <div style={{ fontSize: 11.5, fontWeight: 1000, opacity: 0.85 }}>Code salon</div>
             <input
@@ -1172,6 +1335,20 @@ export default function FriendsPage({ store, update, go }: Props) {
               }}
             />
           </div>
+
+          <PrimaryButton
+            label={joiningLobby ? "Recherche…" : "Rejoindre"}
+            subLabel="Accède à la salle d’attente"
+            disabled={joiningLobby || !canPlayOnline}
+            onClick={handleJoinLobby}
+            tone={!canPlayOnline ? "gray" : "blue"}
+          />
+
+          {!canPlayOnline && (
+            <div className="hint" style={{ fontSize: 12, opacity: 0.88, color: "#ffd56a", fontWeight: 950 }}>
+              Connexion requise pour jouer en ligne
+            </div>
+          )}
 
           {(joinError || joinInfo) && (
             <div style={{ fontSize: 11.8 }}>
@@ -1222,17 +1399,115 @@ export default function FriendsPage({ store, update, go }: Props) {
           </div>
 
           <div style={{ display: "grid", gap: 10 }}>
-            <GhostButton label="🚀 Reprendre / lancer le match" onClick={() => go("x01_online_setup", { lobbyCode: (lobby as any).code || null })} />
+            <GhostButton
+              label="🚀 Reprendre / lancer le match"
+              onClick={() => go("x01_online_setup", { lobbyCode: (lobby as any).code || null })}
+            />
             <GhostButton label="📋 Copier le code (SOON)" onClick={() => {}} disabled />
           </div>
         </div>
       )}
 
+      {/* ================= CHAT MVP (si lobby) ================= */}
+      {lobbyKey ? (
+        <>
+          <SectionTitle title="Chat (MVP)" subtitle={`Lobby ${lobbyKey}`} />
+          <NeonCard style={{ marginTop: 10 }}>
+            {chatError ? (
+              <div style={{ color: "#ff8a8a", fontWeight: 950, fontSize: 12 }}>{chatError}</div>
+            ) : null}
+
+            <div
+              style={{
+                marginTop: chatError ? 10 : 0,
+                maxHeight: 220,
+                overflow: "auto",
+                display: "grid",
+                gap: 8,
+                paddingRight: 4,
+              }}
+            >
+              {chatLoading ? (
+                <div style={{ opacity: 0.85 }}>Chargement…</div>
+              ) : chatMessages.length === 0 ? (
+                <div style={{ opacity: 0.85 }}>Aucun message. Lance la discussion 🙂</div>
+              ) : (
+                chatMessages.slice(-80).map((m: any, idx: number) => {
+                  const name = String(m?.name || m?.user_name || "Joueur");
+                  const text = String(m?.text || m?.message || "");
+                  const mine = !!sessionUserId && (m?.userId === sessionUserId || m?.user_id === sessionUserId);
+                  return (
+                    <div
+                      key={`${m?.id || idx}`}
+                      style={{
+                        borderRadius: 12,
+                        padding: "8px 10px",
+                        border: "1px solid rgba(255,255,255,.10)",
+                        background: mine ? "rgba(127,226,169,.10)" : "rgba(255,255,255,.06)",
+                      }}
+                    >
+                      <div style={{ fontSize: 11.5, fontWeight: 1000, opacity: 0.9 }}>
+                        {name} {mine ? "• toi" : ""}
+                      </div>
+                      <div style={{ marginTop: 2, fontSize: 12.5, lineHeight: 1.2 }}>{text}</div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+
+            <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
+              <input
+                value={chatText}
+                onChange={(e) => setChatText(e.target.value)}
+                placeholder={canPlayOnline ? "Écris un message…" : "Connexion requise"}
+                disabled={!canPlayOnline}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") sendChat().catch(() => {});
+                }}
+                style={{
+                  flex: 1,
+                  borderRadius: 12,
+                  border: "1px solid rgba(255,255,255,.18)",
+                  background: "rgba(5,5,8,.95)",
+                  color: "#f5f5f7",
+                  padding: "10px 12px",
+                  fontSize: 13,
+                  outline: "none",
+                  opacity: canPlayOnline ? 1 : 0.65,
+                }}
+              />
+              <button
+                type="button"
+                onClick={() => sendChat().catch(() => {})}
+                disabled={!canPlayOnline || !chatText.trim()}
+                style={{
+                  borderRadius: 12,
+                  padding: "10px 12px",
+                  border: "1px solid rgba(255,255,255,.16)",
+                  background: "linear-gradient(180deg, #4fb4ff, #1c78d5)",
+                  color: "#04101f",
+                  fontWeight: 1000,
+                  cursor: !canPlayOnline ? "default" : "pointer",
+                  opacity: !canPlayOnline || !chatText.trim() ? 0.55 : 1,
+                  minWidth: 84,
+                }}
+              >
+                Envoyer
+              </button>
+            </div>
+          </NeonCard>
+        </>
+      ) : null}
+
       {/* ================= EXPLORER ================= */}
       <SectionTitle title="Explorer" subtitle="Fonctions online (certaines en SOON pour l’instant)" />
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginTop: 10 }}>
         <GhostButton label="🧾 Historique online" onClick={() => go("stats_online" as any)} />
-        <GhostButton label="👀 Spectateur (SOON)" onClick={() => {}} disabled />
+
+        {/* ✅ Étape 5: Spectateur activé */}
+        <GhostButton label="👀 Spectateur" onClick={() => go("spectator" as any)} />
+
         <GhostButton label="💬 Chat amis (SOON)" onClick={() => {}} disabled />
         <GhostButton label="🏆 Classements (SOON)" onClick={() => {}} disabled />
       </div>

@@ -41,6 +41,11 @@
 //
 // ✅ PATCH B: Re-run mirror quand online.profile arrive
 // - Dès que le profile Supabase arrive (nickname/avatar/country), on réécrit le mirror
+//
+// ✅ NEW: ROUTE SPECTATOR
+// - Ajout Tab "spectator"
+// - Ajout import SpectatorPage
+// - Ajout case "spectator" => <SpectatorPage .../>
 // ============================================
 
 import React from "react";
@@ -114,6 +119,9 @@ import TrainingClock from "./pages/TrainingClock";
 
 import ShanghaiConfigPage from "./pages/ShanghaiConfig";
 import ShanghaiEnd from "./pages/ShanghaiEnd";
+
+// ✅ NEW: Spectator
+import SpectatorPage from "./pages/SpectatorPage";
 
 // Historique
 import { History } from "./lib/history";
@@ -366,6 +374,7 @@ type Tab =
   | "profiles_bots"
   | "friends"
   | "online"
+  | "spectator"
   | "settings"
   | "stats"
   | "statsHub"
@@ -879,10 +888,9 @@ function App() {
   const [routeParams, setRouteParams] = React.useState<any>(null);
   const [loading, setLoading] = React.useState(true);
 
-
   // ============================================================
   // ✅ V7 (CRITIQUE) — BOOT ONLINE PROFILE -> profileStore
-  // Charge le profil Supabase dès qu\'une session existe (même après Clear Site Data)
+  // Charge le profil Supabase dès qu'une session existe (même après Clear Site Data)
   // ============================================================
   React.useEffect(() => {
     let alive = true;
@@ -945,7 +953,7 @@ function App() {
     return () => window.clearTimeout(hardTimeout);
   }, [showSplash]);
 
-  /* Boot: persistance + nettoyage localStorage + warm-up (SANS SFX) */
+  /* Boot: persistance + nettoyage localStorage + warm-up (SANS SFX UI) */
   React.useEffect(() => {
     ensurePersisted().catch(() => {});
     purgeLegacyLocalStorageIfNeeded();
@@ -987,6 +995,12 @@ function App() {
         setTab("online");
         return;
       }
+      // ✅ (optionnel) si tu veux du hash direct:
+      if (h.startsWith("#/spectator")) {
+        setRouteParams(null);
+        setTab("spectator");
+        return;
+      }
     };
 
     applyHashRoute();
@@ -994,7 +1008,7 @@ function App() {
     return () => window.removeEventListener("hashchange", applyHashRoute);
   }, []);
 
-  /* expose store globally for debug */
+  /* expose supabase globally for debug */
   React.useEffect(() => {
     (window as any).__supabase = supabase;
   }, []);
@@ -1019,9 +1033,10 @@ function App() {
       else if (next === "auth_reset") window.location.hash = "#/auth/reset";
       else if (next === "auth_forgot") window.location.hash = "#/auth/forgot";
       else if (next === "online") window.location.hash = "#/online";
+      else if (next === "spectator") window.location.hash = "#/spectator";
       else {
         const h = String(window.location.hash || "");
-        if (h.startsWith("#/auth/") || h.startsWith("#/online")) window.location.hash = "#/";
+        if (h.startsWith("#/auth/") || h.startsWith("#/online") || h.startsWith("#/spectator")) window.location.hash = "#/";
       }
     } catch {}
   }
@@ -1186,7 +1201,8 @@ function App() {
             const hasActive = !!mergedFinal.activeProfileId;
 
             const h = String(window.location.hash || "");
-            const isAuthFlow = h.startsWith("#/auth/callback") || h.startsWith("#/auth/reset") || h.startsWith("#/auth/forgot");
+            const isAuthFlow =
+              h.startsWith("#/auth/callback") || h.startsWith("#/auth/reset") || h.startsWith("#/auth/forgot");
 
             if (!isAuthFlow && hasProfiles && hasActive) {
               setRouteParams(null);
@@ -1259,7 +1275,7 @@ function App() {
       // sécurité hash
       try {
         const h = String(window.location.hash || "");
-        if (h.startsWith("#/online") || h.startsWith("#/auth/")) window.location.hash = "#/";
+        if (h.startsWith("#/online") || h.startsWith("#/auth/") || h.startsWith("#/spectator")) window.location.hash = "#/";
       } catch {}
     } catch (e) {
       console.warn("[auth] wipeAllLocalData error", e);
@@ -1501,8 +1517,6 @@ function App() {
       }
     };
   }, [store, loading, cloudHydrated, online?.ready, online?.status]);
-
-
 
   // ============================================================
   // ✅ Flush Cloud NOW (used by Profiles save / DartSets save)
@@ -1757,9 +1771,7 @@ function App() {
         break;
 
       case "home":
-        page = (
-          <Home store={store} update={update} go={go} onConnect={() => go("profiles", { view: "me", autoCreate: true })} />
-        );
+        page = <Home store={store} update={update} go={go} onConnect={() => go("profiles", { view: "me", autoCreate: true })} />;
         break;
 
       case "games":
@@ -1791,6 +1803,10 @@ function App() {
         page = <LobbyPick store={store as any} update={update as any} go={go as any} />;
         break;
 
+      case "spectator":
+        page = <SpectatorPage store={store} update={update} go={go} />;
+        break;
+
       case "settings":
         page = <Settings go={go} />;
         break;
@@ -1818,9 +1834,7 @@ function App() {
         break;
 
       case "cricket_stats":
-        page = (
-          <StatsCricket profiles={store.profiles} activeProfileId={routeParams?.profileId ?? store.activeProfileId ?? null} />
-        );
+        page = <StatsCricket profiles={store.profiles} activeProfileId={routeParams?.profileId ?? store.activeProfileId ?? null} />;
         break;
 
       case "statsDetail":
@@ -2080,148 +2094,133 @@ function App() {
         page = <TrainingClock profiles={store.profiles ?? []} activeProfileId={store.activeProfileId ?? null} go={go} />;
         break;
 
-        case "avatar": {
-          const botId: string | undefined = routeParams?.botId;
-          const profileIdFromParams: string | undefined = routeParams?.profileId;
-          const backTo: Tab = (routeParams?.from as Tab) || "profiles";
-          const isBotMode = !!routeParams?.isBot;
-  
-          // =========================
-          // BOT AVATAR (LOCAL ONLY)
-          // =========================
-          if (botId) {
-            const bots = loadBotsLS();
-            const targetBot = bots.find((b) => b.id === botId) ?? null;
-  
-            async function handleSaveAvatarBot({ pngDataUrl, name }: { pngDataUrl: string; name: string }) {
-              if (!targetBot) return go(backTo);
-  
-              const next = bots.slice();
-              const idx = next.findIndex((b) => b.id === targetBot.id);
-  
-              const updated: BotLS = {
-                ...targetBot,
-                name: name?.trim() || targetBot.name,
-                avatarDataUrl: pngDataUrl,
-              };
-  
-              if (idx >= 0) next[idx] = updated;
-              else next.push(updated);
-  
-              saveBotsLS(next);
-  
-              // ⚠️ Bot = local uniquement, pas de updateProfile Supabase ici
-              go(backTo);
-            }
-  
-            page = (
-              <div style={{ padding: 16 }}>
-                <button onClick={() => go(backTo)} style={{ marginBottom: 12 }}>
-                  ← Retour
-                </button>
-                <AvatarCreator
-                  size={512}
-                  defaultName={targetBot?.name || ""}
-                  onSave={handleSaveAvatarBot}
-                  isBotMode={true}
-                />
-              </div>
-            );
-            break;
+      case "avatar": {
+        const botId: string | undefined = routeParams?.botId;
+        const profileIdFromParams: string | undefined = routeParams?.profileId;
+        const backTo: Tab = (routeParams?.from as Tab) || "profiles";
+        const isBotMode = !!routeParams?.isBot;
+
+        // =========================
+        // BOT AVATAR (LOCAL ONLY)
+        // =========================
+        if (botId) {
+          const bots = loadBotsLS();
+          const targetBot = bots.find((b) => b.id === botId) ?? null;
+
+          async function handleSaveAvatarBot({ pngDataUrl, name }: { pngDataUrl: string; name: string }) {
+            if (!targetBot) return go(backTo);
+
+            const next = bots.slice();
+            const idx = next.findIndex((b) => b.id === targetBot.id);
+
+            const updated: BotLS = {
+              ...targetBot,
+              name: name?.trim() || targetBot.name,
+              avatarDataUrl: pngDataUrl,
+            };
+
+            if (idx >= 0) next[idx] = updated;
+            else next.push(updated);
+
+            saveBotsLS(next);
+
+            // ⚠️ Bot = local uniquement, pas de updateProfile Supabase ici
+            go(backTo);
           }
-  
-          // =========================
-          // PROFILE AVATAR (SUPABASE)
-          // =========================
-          const targetProfile =
-            store.profiles.find((p) => p.id === (profileIdFromParams || store.activeProfileId)) ?? null;
-  
-          async function handleSaveAvatarProfile({ pngDataUrl, name }: { pngDataUrl: string; name: string }) {
-            if (!targetProfile) return;
-  
-            const trimmedName = (name || "").trim();
-            const now = Date.now();
-  
-            const bucket = "avatars";
-            // 🔒 Stockage avatar par USER (auth.uid), pas par id de profil local
-            const uid = String((online as any)?.session?.user?.id || (online as any)?.user?.id || "");
-            const objectPath = `${uid || targetProfile.id}/avatar.png`;
-  
-            try {
-              // ✅ upload image -> publicUrl
-              const { publicUrl } = await uploadAvatarToSupabase({ bucket, objectPath, pngDataUrl });
-  
-              // ✅ maj profil local (RAM + store)
-              setProfiles((list) =>
-                list.map((p) =>
-                  p.id === targetProfile.id
-                    ? {
-                        ...p,
-                        name: trimmedName || p.name,
-                        avatarUrl: publicUrl,
-                        avatarUpdatedAt: now,
-                        avatarDataUrl: null,
-                      }
-                    : p
-                )
-              );
-  
-              // ✅ maj profil online (table profiles) si connecté
-              try {
-                if ((online as any)?.status === "signed_in") {
-                  await onlineApi.updateProfile({
-                    avatarUrl: publicUrl,
-                    displayName: trimmedName || targetProfile.name || undefined,
-                  });
-                  try {
-                    await (online as any)?.refresh?.();
-                  } catch {}
-                }
-              } catch (e) {
-                console.warn("[AvatarUpload] online updateProfile failed", e);
-              }
-  
-              go(backTo);
-            } catch (e) {
-              console.error("[AvatarUpload] upload failed -> fallback local avatarDataUrl", e);
-  
-              // fallback local (pas de publicUrl ici)
-              setProfiles((list) =>
-                list.map((p) =>
-                  p.id === targetProfile.id
-                    ? {
-                        ...p,
-                        name: trimmedName || p.name,
-                        avatarDataUrl: pngDataUrl,
-                      }
-                    : p
-                )
-              );
-  
-              go(backTo);
-            }
-          }
-  
+
           page = (
             <div style={{ padding: 16 }}>
               <button onClick={() => go(backTo)} style={{ marginBottom: 12 }}>
                 ← Retour
               </button>
-              <AvatarCreator
-                size={512}
-                defaultName={targetProfile?.name || ""}
-                onSave={handleSaveAvatarProfile}
-                isBotMode={isBotMode}
-              />
+              <AvatarCreator size={512} defaultName={targetBot?.name || ""} onSave={handleSaveAvatarBot} isBotMode={true} />
             </div>
           );
           break;
         }
 
-      default:
+        // =========================
+        // PROFILE AVATAR (SUPABASE)
+        // =========================
+        const targetProfile =
+          store.profiles.find((p) => p.id === (profileIdFromParams || store.activeProfileId)) ?? null;
+
+        async function handleSaveAvatarProfile({ pngDataUrl, name }: { pngDataUrl: string; name: string }) {
+          if (!targetProfile) return;
+
+          const trimmedName = (name || "").trim();
+          const now = Date.now();
+
+          const bucket = "avatars";
+          // 🔒 Stockage avatar par USER (auth.uid), pas par id de profil local
+          const uid = String((online as any)?.session?.user?.id || (online as any)?.user?.id || "");
+          const objectPath = `${uid || targetProfile.id}/avatar.png`;
+
+          try {
+            // ✅ upload image -> publicUrl
+            const { publicUrl } = await uploadAvatarToSupabase({ bucket, objectPath, pngDataUrl });
+
+            // ✅ maj profil local (RAM + store)
+            setProfiles((list) =>
+              list.map((p) =>
+                p.id === targetProfile.id
+                  ? {
+                      ...p,
+                      name: trimmedName || p.name,
+                      avatarUrl: publicUrl,
+                      avatarUpdatedAt: now,
+                      avatarDataUrl: null,
+                    }
+                  : p
+              )
+            );
+
+            // ✅ maj profil online (table profiles) si connecté
+            try {
+              if ((online as any)?.status === "signed_in") {
+                await onlineApi.updateProfile({
+                  avatarUrl: publicUrl,
+                  displayName: trimmedName || targetProfile.name || undefined,
+                });
+                try {
+                  await (online as any)?.refresh?.();
+                } catch {}
+              }
+            } catch (e) {
+              console.warn("[AvatarUpload] online updateProfile failed", e);
+            }
+
+            go(backTo);
+          } catch (e) {
+            console.error("[AvatarUpload] upload failed -> fallback local avatarDataUrl", e);
+
+            // fallback local (pas de publicUrl ici)
+            setProfiles((list) =>
+              list.map((p) => (p.id === targetProfile.id ? { ...p, name: trimmedName || p.name, avatarDataUrl: pngDataUrl } : p))
+            );
+
+            go(backTo);
+          }
+        }
+
         page = (
-          <Home store={store} update={update} go={go} onConnect={() => go("profiles", { view: "me", autoCreate: true })} />
+          <div style={{ padding: 16 }}>
+            <button onClick={() => go(backTo)} style={{ marginBottom: 12 }}>
+              ← Retour
+            </button>
+            <AvatarCreator
+              size={512}
+              defaultName={targetProfile?.name || ""}
+              onSave={handleSaveAvatarProfile}
+              isBotMode={isBotMode}
+            />
+          </div>
         );
+        break;
+      }
+
+      default:
+        page = <Home store={store} update={update} go={go} onConnect={() => go("profiles", { view: "me", autoCreate: true })} />;
     }
   }
 
@@ -2263,11 +2262,7 @@ function AppGate({
 
   // pendant les flows auth, on ne gate pas
   const isAuthFlow =
-    tab === "auth_reset" ||
-    tab === "auth_callback" ||
-    tab === "auth_forgot" ||
-    tab === "auth_start" ||
-    tab === "account_start";
+    tab === "auth_reset" || tab === "auth_callback" || tab === "auth_forgot" || tab === "auth_start" || tab === "account_start";
 
   // ✅ Tant que restoreSession / init n'a pas fini, on affiche un écran neutre
   if (!ready) {

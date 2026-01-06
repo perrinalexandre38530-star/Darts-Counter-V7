@@ -1,15 +1,15 @@
 // ============================================================
 // src/lib/onlineApi.ts
-// API Mode Online (V7 STABLE -> V8 AUTO-SESSION)
+// API Mode Online (V7 STABLE -> A+B SPECTATOR READY)
 // - Auth / Profil → Supabase (table: profiles)
 // - Snapshot cloud du store → Supabase (table: user_store)
 // - Salons X01 (lobbies) → Supabase (table: online_lobbies)
-// ✅ IMPORTANT : AUCUNE référence à profiles_online / matches_online
-// ✅ Matchs online : désactivés (fallback safe)
-// ✅ NEW : resend confirmation + message email_not_confirmed
-// ✅ V8 : AUTO-LOGIN (anon) + store snapshot store-direct
+// - Matchs online live (state_json) → Supabase (table: online_matches)
 //
-// ✅ NEW (Step 2): ping() serveur (détecte "permission denied" => serveur OK, auth requise)
+// ✅ IMPORTANT : PAS de création auto d'utilisateur anonyme.
+// ✅ Compat UI: expose ensureAutoSession() (restore only).
+// ✅ A: listActiveLobbies()
+// ✅ B: startMatch / updateMatchState / endMatch + fetchMatchByCode
 // ============================================================
 
 import { supabase } from "./supabaseClient";
@@ -83,13 +83,24 @@ export type OnlineLobby = {
 };
 
 // --------------------------------------------
+// Match live (B)
+// --------------------------------------------
+export type OnlineMatchStatus = "started" | "ended";
+export type OnlineMatchRow = {
+  id: string;
+  lobby_code: string | null;
+  status: OnlineMatchStatus | string;
+  state_json: any;
+  updated_at?: string;
+  created_at?: string;
+  finished_at?: string | null;
+  owner_user?: string | null;
+};
+
+// --------------------------------------------
 // Config
 // --------------------------------------------
 const USE_MOCK = false;
-
-// Matchs online désactivés tant que tu n’as pas de table dédiée
-const ONLINE_MATCHES_ENABLED = false;
-
 const LS_AUTH_KEY = "dc_online_auth_supabase_v1";
 
 function now() {
@@ -115,6 +126,10 @@ function saveAuthToLS(session: AuthSession | null) {
   if (typeof window === "undefined") return;
   if (!session) window.localStorage.removeItem(LS_AUTH_KEY);
   else window.localStorage.setItem(LS_AUTH_KEY, JSON.stringify(session));
+}
+
+function safeUpper(code: string) {
+  return String(code || "").trim().toUpperCase();
 }
 
 // ✅ Redirects stables (Cloudflare Pages + HashRouter)
@@ -253,20 +268,15 @@ async function ensureAuthedUser() {
   const { data, error } = await supabase.auth.getSession();
   if (error) throw error;
 
-  let user = data?.session?.user;
-  let session = data?.session;
+  const user = data?.session?.user;
+  const session = data?.session;
 
-  // IMPORTANT (V7): on NE crée plus de session anonyme automatiquement.
-  // Sinon, après un "Clear site data", l'app crée un nouveau user anonyme
-  // et on se retrouve à hydrater/pousser le mauvais compte ("ça charge autre chose").
+  // IMPORTANT: pas de session => on throw (pas d'auto-anon).
   if (!user || !session) throw new Error("Non authentifié (reconnecte-toi).");
   return { user, session };
 }
 
-async function getOrCreateProfile(
-  userId: string,
-  fallbackNickname: string
-): Promise<OnlineProfile | null> {
+async function getOrCreateProfile(userId: string, fallbackNickname: string): Promise<OnlineProfile | null> {
   // SELECT
   const { data: profileRow, error: selErr } = await supabase
     .from("profiles")
@@ -277,6 +287,7 @@ async function getOrCreateProfile(
 
   if (selErr) {
     console.warn("[onlineApi] profiles select error", selErr);
+    // Ne casse pas l'UI si table manquante/RLS: on renvoie null
     return null;
   }
 
@@ -308,8 +319,7 @@ async function getOrCreateProfile(
 }
 
 async function buildAuthSessionFromSupabase(): Promise<AuthSession | null> {
-  const { data: sessionData, error: sessionError } =
-    await supabase.auth.getSession();
+  const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
   if (sessionError) {
     console.warn("[onlineApi] getSession error", sessionError);
     return null;
@@ -341,12 +351,11 @@ async function buildAuthSessionFromSupabase(): Promise<AuthSession | null> {
   return authSession;
 }
 
-// ============================================================
-// NOTE (V7): plus d'auto-session anonyme
-// - On garde une fonction interne "buildAuthSessionFromSupabase" pour reconstruire
-//   un AuthSession SI une session existe déjà.
-// - Si aucune session => signed_out (pas de création d'utilisateur cachée).
-// ============================================================
+// ✅ Compat UI: alias "ensureAutoSession" (RESTORE ONLY)
+// (Certaines pages/hook l'appellent encore. On ne crée PAS d'anon.)
+async function ensureAutoSession(): Promise<AuthSession | null> {
+  return await restoreSession();
+}
 
 // ============================================================
 // Error mapping (login)
@@ -354,16 +363,12 @@ async function buildAuthSessionFromSupabase(): Promise<AuthSession | null> {
 function normalizeAuthErrorMessage(msg: string) {
   const m = String(msg || "").toLowerCase();
 
-  // supabase renvoie souvent "Email not confirmed"
   if (m.includes("email not confirmed") || m.includes("email_not_confirmed")) {
     return "Email non confirmé. Clique sur le lien reçu par email, puis réessaie (ou renvoie l’email de confirmation).";
   }
-
   if (m.includes("invalid login credentials")) {
     return "Identifiants invalides (email ou mot de passe).";
   }
-
-  // parfois: "User not found"
   if (m.includes("user not found")) {
     return "Compte introuvable (vérifie l’email).";
   }
@@ -454,18 +459,16 @@ async function getCurrentSession(): Promise<AuthSession | null> {
   return await restoreSession();
 }
 
-// Petit helper pratique pour les écrans “profil”
 async function getProfile(): Promise<OnlineProfile | null> {
   const s = await restoreSession();
   return s?.profile ?? null;
 }
 
-// ✅ Renvoi email confirmation (pour les comptes “Waiting for verification”)
+// ✅ Renvoi email confirmation
 async function resendSignupConfirmation(email: string): Promise<void> {
   const e = email.trim();
   if (!e) throw new Error("Email requis.");
 
-  // supabase-js v2
   const { error } = await supabase.auth.resend({
     type: "signup",
     email: e,
@@ -496,16 +499,13 @@ async function updateEmail(newEmail: string): Promise<void> {
   if (error) throw new Error(error.message);
 }
 
-// ✅ Suppression compte : Edge Function + cleanup local (comme demandé)
 async function deleteAccount(): Promise<void> {
-  // on garde ensureAuthedUser pour récupérer user (utile au besoin)
   await ensureAuthedUser();
 
   const { data, error } = await supabase.functions.invoke("delete-account");
   if (error) throw new Error(error.message || "Suppression impossible (Edge Function).");
   if ((data as any)?.error) throw new Error((data as any).error);
 
-  // local cleanup
   await supabase.auth.signOut();
   saveAuthToLS(null);
 }
@@ -532,13 +532,7 @@ async function updateProfile(patch: UpdateProfilePayload): Promise<OnlineProfile
   if (patch.email !== undefined) dbPatch.email = patch.email;
   if (patch.phone !== undefined) dbPatch.phone = patch.phone;
 
-  const { data, error } = await supabase
-    .from("profiles")
-    .update(dbPatch)
-    .eq("id", userId)
-    .select()
-    .single();
-
+  const { data, error } = await supabase.from("profiles").update(dbPatch).eq("id", userId).select().single();
   if (error) throw new Error(error.message);
 
   const profile = mapProfile(data as any);
@@ -553,18 +547,11 @@ async function updateProfile(patch: UpdateProfilePayload): Promise<OnlineProfile
 
 // ============================================================
 // Avatar Storage (bucket: avatars public)
-// ✅ path: {auth.uid()}/avatar-{timestamp}.ext
-// ✅ folder DOIT être auth.uid() (user.id)
 // ============================================================
-async function uploadAvatarImage(opts: {
-  dataUrl: string;
-  folder?: string; // ✅ optionnel (on force user.id)
-}): Promise<{ publicUrl: string; path: string }> {
+async function uploadAvatarImage(opts: { dataUrl: string; folder?: string }): Promise<{ publicUrl: string; path: string }> {
   const { dataUrl } = opts;
-
   const { user } = await ensureAuthedUser();
 
-  // 🔒 sécurité : on force folder = user.id (ignore opts.folder)
   const folder = user.id;
 
   const blob = dataUrlToBlob(dataUrl);
@@ -583,11 +570,8 @@ async function uploadAvatarImage(opts: {
 
   const { data } = supabase.storage.from("avatars").getPublicUrl(path);
   const publicUrl = data?.publicUrl;
-  if (!publicUrl) {
-    throw new Error("Impossible de récupérer l’URL publique de l’avatar.");
-  }
+  if (!publicUrl) throw new Error("Impossible de récupérer l’URL publique de l’avatar.");
 
-  // ✅ synchro profil Supabase (avatar_url)
   await updateProfile({ avatarUrl: publicUrl });
 
   return { publicUrl, path };
@@ -617,7 +601,7 @@ async function pullStoreSnapshot(): Promise<{
 
     return {
       status: "ok",
-      payload: ((data as any)?.data ?? (data as any)?.store ?? null), // {version, store}
+      payload: ((data as any)?.data ?? (data as any)?.store ?? null),
       updatedAt: (data as any)?.updated_at ?? null,
       version: (data as any)?.version ?? null,
     };
@@ -633,9 +617,7 @@ async function pushStoreSnapshot(payload: any, version = 8): Promise<void> {
     user_id: user.id,
     version,
     updated_at: new Date().toISOString(),
-    // Compat : certains schémas historiques ont une colonne "store"
-    // On écrit les deux pour garantir lecture/écriture cross-versions.
-    data: payload, // {version, store}
+    data: payload,
     store: payload,
   };
 
@@ -646,7 +628,7 @@ async function pushStoreSnapshot(payload: any, version = 8): Promise<void> {
 // ============================================================
 // ONLINE SERVER PING (safe)
 // - Vérifie que Supabase + table online_lobbies répondent
-// - "permission denied" => serveur OK mais RLS/auth requise
+// - "permission denied" => serveur OK mais auth requise
 // ============================================================
 export type PingResult = { ok: true; authRequired?: boolean };
 
@@ -655,10 +637,7 @@ async function ping(): Promise<PingResult> {
 
   if (error) {
     const msg = String((error as any).message || error).toLowerCase();
-    // permission denied = serveur OK mais auth requise
-    if (msg.includes("permission")) {
-      return { ok: true, authRequired: true };
-    }
+    if (msg.includes("permission")) return { ok: true, authRequired: true };
     throw error;
   }
 
@@ -675,11 +654,7 @@ function generateLobbyCode(): string {
   return out;
 }
 
-async function createLobby(args: {
-  mode: string;
-  maxPlayers: number;
-  settings: OnlineLobbySettings;
-}): Promise<OnlineLobby> {
+async function createLobby(args: { mode: string; maxPlayers: number; settings: OnlineLobbySettings }): Promise<OnlineLobby> {
   const { user } = await ensureAuthedUser();
 
   const meta = (user.user_metadata || {}) as any;
@@ -707,15 +682,15 @@ async function createLobby(args: {
     if (!error && data) return mapLobbyRow(data as any);
 
     lastError = error;
-    if (error && (error as any).code === "23505") continue; // code déjà pris
+    if (error && (error as any).code === "23505") continue;
     break;
   }
 
   throw new Error(lastError?.message || "Impossible de créer un salon online pour le moment.");
 }
 
-async function joinLobby(args: { code: string }): Promise<OnlineLobby> {
-  const codeUpper = args.code.trim().toUpperCase();
+async function joinLobby(args: { code: string; [k: string]: any }): Promise<OnlineLobby> {
+  const codeUpper = safeUpper(args.code);
 
   const { data, error } = await supabase
     .from("online_lobbies")
@@ -730,28 +705,159 @@ async function joinLobby(args: { code: string }): Promise<OnlineLobby> {
   return mapLobbyRow(data as any);
 }
 
-// ============================================================
-// Matchs online — désactivés (fallback safe)
-// ============================================================
-async function uploadMatch(_payload: UploadMatchPayload): Promise<OnlineMatch> {
-  if (!ONLINE_MATCHES_ENABLED) {
-    console.warn("[onlineApi] uploadMatch ignored: ONLINE_MATCHES_ENABLED=false");
-    return {
-      id: `disabled_${now()}`,
-      userId: "disabled",
-      mode: _payload.mode,
-      payload: _payload.payload,
-      isTraining: !!_payload.isTraining,
-      startedAt: _payload.startedAt ?? now(),
-      finishedAt: _payload.finishedAt ?? now(),
-    } as any;
-  }
-  throw new Error("Online matches disabled");
+// ✅ A) Lobbies actifs pour page “ONLINE / Spectateur”
+async function listActiveLobbies(limit = 50): Promise<OnlineLobby[]> {
+  const { data, error } = await supabase
+    .from("online_lobbies")
+    .select("*")
+    .in("status", ["waiting", "started"])
+    .order("created_at", { ascending: false })
+    .limit(limit);
+
+  if (error) throw new Error(error.message);
+  return (data || []).map((r: any) => mapLobbyRow(r));
 }
 
-async function listMatches(_limit = 50): Promise<OnlineMatch[]> {
-  if (!ONLINE_MATCHES_ENABLED) return [];
-  throw new Error("Online matches disabled");
+// ============================================================
+// B) Match live state (online_matches)
+// ============================================================
+
+// Start/upsert a match row for a lobby
+async function startMatch(args: { lobbyCode: string; initialState?: any }): Promise<OnlineMatchRow> {
+  const { user } = await ensureAuthedUser();
+  const code = safeUpper(args.lobbyCode);
+
+  const row = {
+    lobby_code: code,
+    status: "started",
+    state_json: args.initialState ?? {},
+    owner_user: user.id,
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+  };
+
+  // onConflict sur lobby_code si tu as un unique index. Si pas unique: ça fera insert multiple.
+  // => On gère en upsert "best effort" : si erreur, on tente update.
+  const { data, error } = await supabase
+    .from("online_matches")
+    .upsert(row as any, { onConflict: "lobby_code" })
+    .select("*")
+    .single();
+
+  if (!error && data) return data as any;
+
+  // fallback: update existing
+  const { data: upd, error: updErr } = await supabase
+    .from("online_matches")
+    .update({ status: "started", state_json: row.state_json })
+    .eq("lobby_code", code)
+    .select("*")
+    .order("updated_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (updErr) throw new Error(updErr.message || error?.message || "Impossible de démarrer le match.");
+  if (!upd) throw new Error("Impossible de démarrer le match (row introuvable).");
+  return upd as any;
+}
+
+// Update live state_json (debounce côté caller si besoin)
+async function updateMatchState(args: { lobbyCode: string; state: any; status?: OnlineMatchStatus }): Promise<void> {
+  const code = safeUpper(args.lobbyCode);
+  const patch: any = {
+    state_json: args.state ?? {},
+    updated_at: new Date().toISOString(),
+  };
+  if (args.status) patch.status = args.status;
+
+  const { error } = await supabase.from("online_matches").update(patch).eq("lobby_code", code);
+  if (error) throw new Error(error.message || "Impossible de mettre à jour le match.");
+}
+
+// End match
+async function endMatch(args: { lobbyCode: string; finalState?: any }): Promise<void> {
+  const code = safeUpper(args.lobbyCode);
+  const patch: any = {
+    status: "ended",
+    finished_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+  };
+  if (args.finalState !== undefined) patch.state_json = args.finalState;
+
+  const { error } = await supabase.from("online_matches").update(patch).eq("lobby_code", code);
+  if (error) throw new Error(error.message || "Impossible de terminer le match.");
+}
+
+// Fetch match row (for spectator)
+async function fetchMatchByCode(lobbyCode: string): Promise<OnlineMatchRow | null> {
+  const code = safeUpper(lobbyCode);
+  if (!code) return null;
+
+  const { data, error } = await supabase
+    .from("online_matches")
+    .select("*")
+    .eq("lobby_code", code)
+    .order("updated_at", { ascending: false })
+    .limit(1);
+
+  if (error) throw new Error(error.message);
+  return ((data || [])[0] as any) || null;
+}
+
+// ============================================================
+// Matchs “historique” (compat OnlineMatch de ton app)
+// -> on mappe depuis online_matches si tu veux les afficher dans FriendsPage
+// ============================================================
+function mapOnlineMatchFromRow(row: OnlineMatchRow): OnlineMatch {
+  return {
+    id: String(row.id),
+    userId: String(row.owner_user || "unknown"),
+    mode: "x01",
+    payload: {
+      // tu peux enrichir ici plus tard
+      lobbyCode: row.lobby_code,
+      state: row.state_json,
+    },
+    isTraining: false,
+    startedAt: row.created_at ? Date.parse(row.created_at) : now(),
+    finishedAt: row.finished_at ? Date.parse(row.finished_at) : (row.status === "ended" ? now() : now()),
+  } as any;
+}
+
+async function uploadMatch(payload: UploadMatchPayload): Promise<OnlineMatch> {
+  // Ici on conserve le “match final” dans online_matches.state_json
+  // et on marque ended.
+  // NOTE: si tu as un flux matchId dédié plus tard, on améliorera.
+  const lobbyCode = safeUpper((payload as any)?.payload?.lobbyCode || (payload as any)?.payload?.code || "");
+  if (!lobbyCode) {
+    // fallback: ne pas casser si appel sans code
+    return {
+      id: `no_code_${now()}`,
+      userId: "unknown",
+      mode: payload.mode,
+      payload: payload.payload,
+      isTraining: !!payload.isTraining,
+      startedAt: payload.startedAt ?? now(),
+      finishedAt: payload.finishedAt ?? now(),
+    } as any;
+  }
+
+  // final state = payload.payload
+  await endMatch({ lobbyCode, finalState: payload.payload });
+  const row = await fetchMatchByCode(lobbyCode);
+  if (!row) throw new Error("Match introuvable après upload.");
+  return mapOnlineMatchFromRow(row);
+}
+
+async function listMatches(limit = 50): Promise<OnlineMatch[]> {
+  const { data, error } = await supabase
+    .from("online_matches")
+    .select("*")
+    .order("updated_at", { ascending: false })
+    .limit(limit);
+
+  if (error) throw new Error(error.message);
+  return (data || []).map((r: any) => mapOnlineMatchFromRow(r as any));
 }
 
 // ============================================================
@@ -762,6 +868,7 @@ export const onlineApi = {
   signup,
   login,
   restoreSession,
+  ensureAutoSession, // ✅ compat UI
   logout,
   getCurrentSession,
 
@@ -784,14 +891,21 @@ export const onlineApi = {
   pullStoreSnapshot,
   pushStoreSnapshot,
 
-  // ✅ Ping serveur (Step 2)
+  // Ping serveur
   ping,
 
   // Salons
   createLobby,
   joinLobby,
+  listActiveLobbies, // ✅ A
 
-  // Matchs (safe)
+  // Match live
+  startMatch,        // ✅ B
+  updateMatchState,  // ✅ B
+  endMatch,          // ✅ B
+  fetchMatchByCode,  // ✅ B
+
+  // Matchs (list/history)
   uploadMatch,
   listMatches,
 
