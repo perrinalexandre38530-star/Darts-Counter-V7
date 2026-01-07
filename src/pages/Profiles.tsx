@@ -339,6 +339,10 @@ function buildAvatarSrc(opts: {
 // - filtre objets marqués online
 // - filtre profils qui portent un uid supabase/user_id/etc.
 // ============================================
+return baseSrc;
+}
+
+
 function isMirrorProfile(p: any): boolean {
   if (!p) return true;
   const id = String(p.id ?? "");
@@ -371,10 +375,6 @@ function isOnlineMirrorProfile(p: any): boolean {
   if (p?.isOnlineMirror === true) return true;
   if (p?.source === "online") return true;
   return false;
-}
-
-
-return baseSrc;
 }
 
 /* ================================
