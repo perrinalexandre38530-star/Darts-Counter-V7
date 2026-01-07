@@ -303,7 +303,26 @@ function mergeProfilesSafe(
     return prev;
   }
 
-  return merged;
+  // 4) ✅ Anti-doublons (hémorragie) :
+  // Certains flows (rehydrate/ensure mirror) peuvent pousser plusieurs fois
+  // le même profil dans le store. On déduplique par id (et online:*).
+  const seen = new Map<string, number>();
+  const out: Profile[] = [];
+  for (const p of merged) {
+    const key = p?.id?.startsWith("online:") ? `online:${p.id.slice(7)}` : p.id;
+    if (!key) continue;
+    const idx = seen.get(key);
+    if (idx === undefined) {
+      seen.set(key, out.length);
+      out.push(p);
+    } else {
+      // last-wins (on garde les infos les plus fraîches)
+      out[idx] = p;
+    }
+
+  }
+
+  return out;
 }
 
 // ============================================
@@ -446,6 +465,35 @@ export default function Profiles({
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [profiles.length]);
+
+  // ✅ STOP HÉMORRAGIE : dé-duplique réellement le store si le même profil
+  // est injecté plusieurs fois (souvent après refresh / rehydrate / mirror).
+  React.useEffect(() => {
+    if (!profiles || profiles.length < 2) return;
+
+    // mergeProfilesSafe fait maintenant un anti-doublons en sortie
+    const deduped = mergeProfilesSafe([], profiles, { allowRemoval: true });
+
+    // compare rapide (longueur + ids)
+    if (deduped.length === profiles.length) {
+      let same = true;
+      for (let i = 0; i < deduped.length; i++) {
+        if (deduped[i]?.id !== profiles[i]?.id) {
+          same = false;
+          break;
+        }
+      }
+      if (same) return;
+    }
+
+    console.warn("[Profiles] 🧹 DEDUPE profiles (stop doublons)", {
+      before: profiles.length,
+      after: deduped.length,
+    });
+
+    setProfiles(() => deduped);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [profiles]);
 
   // ============================================
   // ✅ WRAPPERS SAFE (ANTI-WIPE)
