@@ -4545,6 +4545,7 @@ function getCountryFlag(countryRaw?: string): string | null {
   return isoCodeToFlag(iso);
 }
 
+
 function isoCodeToFlag(code: string): string | null {
   if (!/^[A-Z]{2}$/.test(code)) return null;
   const first = code.codePointAt(0)! - 65 + 0x1f1e6;
