@@ -17,7 +17,6 @@ import { useTheme } from "../contexts/ThemeContext";
 import { useLang, type Lang } from "../contexts/LangContext";
 import { useAuthOnline } from "../hooks/useAuthOnline";
 import { onlineApi } from "../lib/onlineApi";
-import { isOnlineMirrorProfile } from "../lib/accountBridge";
 import type { ThemeId } from "../theme/themePresets";
 
 import { sha256 } from "../lib/crypto";
@@ -1312,7 +1311,7 @@ React.useEffect(() => {
                 title={`${t(
                   "profiles.locals.title",
                   "Profils locaux"
-                )} (${profiles.filter((p: any) => p.id !== activeProfileId && !isMirrorProfile(p) && !isOnlineMirrorProfile(p)).length})`}
+                )} (${profiles.filter((p: any) => p.id !== activeProfileId && !isMirrorProfile(p)).length})`}
               >
                 <LocalProfilesRefonte
                   profiles={profiles}
@@ -3109,7 +3108,7 @@ function LocalProfilesRefonte({
     () =>
       profiles.filter(
         (p: any) =>
-          p.id !== activeProfileId && !isMirrorProfile(p) && !isOnlineMirrorProfile(p)
+          p.id !== activeProfileId && !isMirrorProfile(p)
       ),
     [profiles, activeProfileId]
   );
