@@ -345,7 +345,9 @@ return baseSrc;
 
 function isMirrorProfile(p: any): boolean {
   if (!p) return true;
+
   const id = String(p.id ?? "");
+
   // mirrors classiques
   if (id.startsWith("online:")) return true;
 
@@ -354,10 +356,26 @@ function isMirrorProfile(p: any): boolean {
   if (p.isOnlineMirror === true) return true;
 
   // si tu stockes un uid supabase dans le profil local
-  if (p.onlineUid || p.supabaseUid || p.user_id || p.userId) return true;
+  if (p.onlineUid || p.supabaseUid || p.online_user_id || p.user_id || p.userId) return true;
 
   // certains stores mettent une clé d’origine
   if (String(p.origin ?? "") === "online") return true;
+
+  // 🔥 heuristiques "legacy mirrors" (anciens déploiements)
+  // - un profil local ne devrait PAS contenir d'email ni de champs de profil Supabase
+  const email = String(p.email ?? p.mail ?? "");
+  if (email.includes("@")) return true;
+
+  const avatar = String(p.avatarUrl ?? p.avatar_url ?? "");
+  const looksSupabaseAvatar =
+    /supabase\.(co|io)\/storage\/v1\/object\/public\/avatars\//.test(avatar) ||
+    /supabase\.(co|io)\/storage\/v1\/object\//.test(avatar);
+
+  const hasOnlineFields =
+    !!p.first_name || !!p.last_name || !!p.city || !!p.country || !!p.birth_date || !!p.phone || !!p.preferences;
+
+  // si ça ressemble à un profil online (avatar Supabase + champs online) => on le cache des "Profils locaux"
+  if (looksSupabaseAvatar && hasOnlineFields) return true;
 
   return false;
 }
@@ -395,7 +413,7 @@ export default function Profiles({
   go?: (tab: any, params?: any) => void;
   params?: any;
 }) {
-  console.log("[PROFILES PATCH CHECK] v2026-01-07");
+  console.log("[PROFILES PATCH CHECK v4] v2026-01-07");
   // 🔥 injection du CSS shimmer une seule fois
   useInjectStatsNameCss();
 
@@ -4544,7 +4562,6 @@ function getCountryFlag(countryRaw?: string): string | null {
 
   return isoCodeToFlag(iso);
 }
-
 
 function isoCodeToFlag(code: string): string | null {
   if (!/^[A-Z]{2}$/.test(code)) return null;
