@@ -358,6 +358,22 @@ function isMirrorProfile(p: any): boolean {
   return false;
 }
 
+
+// ============================================
+// ✅ isOnlineMirrorProfile (SAFE LOCAL)
+// - évite les crash "ReferenceError: isOnlineMirrorProfile is not defined"
+// - règle les doublons : ne considère PAS un profil local comme online
+//   sauf s'il est explicitement marqué, ou si son id commence par "online:"
+// ============================================
+function isOnlineMirrorProfile(p: any): boolean {
+  const id = String(p?.id || "");
+  if (id.startsWith("online:")) return true;
+  if (p?.isOnlineMirror === true) return true;
+  if (p?.source === "online") return true;
+  return false;
+}
+
+
 return baseSrc;
 }
 
