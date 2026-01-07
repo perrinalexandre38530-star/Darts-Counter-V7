@@ -11,6 +11,20 @@
 import type { Store, Profile } from "./types";
 import type { UserAuth, OnlineProfile } from "./onlineTypes";
 
+// ============================================================
+// ✅ Public helper
+// Un "mirror" online (profil lié au compte Supabase) ne doit JAMAIS
+// apparaître dans la liste "Profils locaux".
+// ============================================================
+export function isOnlineMirrorProfile(p: any): boolean {
+  const id = String(p?.id || "");
+  if (id.startsWith("online:")) return true;
+  if ((p as any)?.isOnlineMirror) return true;
+  const pi = (p as any)?.privateInfo || {};
+  if (String(pi?.onlineUserId || "")) return true;
+  return false;
+}
+
 /**
  * Identité online minimale dont on a besoin pour faire le pont.
  * (On ne s'occupe pas du token ici, seulement de qui est connecté.)
@@ -102,15 +116,39 @@ export function ensureOnlineMirrorProfile(store: any, user: any, onlineProfile?:
       ...(primary.privateInfo || {}),
       onlineUserId: user.id,
       onlineEmail: email || user.email || "",
+
+      // ✅ Mirror = reflète aussi les champs "Mon profil" (sinon après ClearSiteData ils disparaissent)
+      // On ne force que si la valeur Supabase est définie.
+      ...(onlineProfile?.surname ? { surname: onlineProfile.surname } : {}),
+      ...(onlineProfile?.firstName ? { firstName: onlineProfile.firstName } : {}),
+      ...(onlineProfile?.lastName ? { lastName: onlineProfile.lastName } : {}),
+      ...(onlineProfile?.birthDate ? { birthDate: onlineProfile.birthDate } : {}),
+      ...(onlineProfile?.city ? { city: onlineProfile.city } : {}),
+      ...(onlineProfile?.phone ? { phone: onlineProfile.phone } : {}),
+      ...(onlineProfile?.country ? { country: onlineProfile.country } : {}),
     },
     isOnlineMirror: true,
     updatedAt: Date.now(),
   };
 
-  // 4) Nettoyage doublons : on garde 1 seul profil lié au compte
+  // 4) Nettoyage doublons (CRITIQUE) :
+  // - on garde 1 seul profil lié à ce compte (uid/email)
+  // - on supprime TOUS les "online:*" qui ne correspondent pas à ce uid
+  // - on supprime aussi tout profil marqué comme lié à ce uid mais avec un autre id
   const cleaned = profiles
-    .filter((p) => !isSameAccount(p) || String(p.id) === mirrorId)
-    .map((p) => (String(p.id) === mirrorId ? updatedPrimary : p));
+    .filter((p) => {
+      const id = String((p as any)?.id || "");
+      if (!id) return false;
+
+      // ➜ Tout ce qui ressemble à un mirror mais pas le bon uid -> on jette
+      if (id.startsWith("online:") && id !== mirrorId) return false;
+
+      // ➜ Tout profil déjà lié à ce compte (uid/email) mais pas l'id stable -> on jette
+      if (isSameAccount(p) && id !== mirrorId) return false;
+
+      return true;
+    })
+    .map((p) => (String((p as any)?.id) === mirrorId ? updatedPrimary : p));
 
   return {
     ...store,

@@ -17,6 +17,7 @@ import { useTheme } from "../contexts/ThemeContext";
 import { useLang, type Lang } from "../contexts/LangContext";
 import { useAuthOnline } from "../hooks/useAuthOnline";
 import { onlineApi } from "../lib/onlineApi";
+import { isOnlineMirrorProfile } from "../lib/accountBridge";
 import type { ThemeId } from "../theme/themePresets";
 
 import { sha256 } from "../lib/crypto";
@@ -987,38 +988,42 @@ React.useEffect(() => {
   async function handlePrivateInfoSave(patch: PrivateInfo) {
     if (!active) return;
 
+    // ✅ IMPORTANT: on persiste AUSSI en local (snapshot cloud / restore après ClearSiteData)
+    // Sans ça, tu vois les données "écrites" dans la UI… mais elles ne sont jamais dans le store.
+    patchActivePrivateInfo({ ...(patch as any) });
+
     if (patch.nickname && patch.nickname.trim() && patch.nickname !== active.name) {
       renameProfile(active.id, patch.nickname.trim());
     }
 
     if (auth.status === "signed_in") {
-  try {
-    await onlineApi.updateProfile({
-      // ✅ V7: on pousse TOUTES les infos vers la table `profiles` (source de vérité)
-      nickname: patch.nickname?.trim() || undefined,
-      displayName: patch.nickname?.trim() || active.name || undefined,
-      country: patch.country?.trim() || undefined,
-      city: patch.city?.trim() || undefined,
-      firstName: patch.firstName?.trim() || undefined,
-      lastName: patch.lastName?.trim() || undefined,
-      birthDate: patch.birthDate?.trim() || undefined,
-      email: patch.email?.trim() || undefined,
-      phone: patch.phone?.trim() || undefined,
-    });
+      try {
+        await onlineApi.updateProfile({
+          // ✅ V7: on pousse TOUTES les infos vers la table `profiles` (source de vérité)
+          nickname: patch.nickname?.trim() || undefined,
+          displayName: patch.nickname?.trim() || active.name || undefined,
+          country: patch.country?.trim() || undefined,
+          city: patch.city?.trim() || undefined,
+          firstName: patch.firstName?.trim() || undefined,
+          lastName: patch.lastName?.trim() || undefined,
+          birthDate: patch.birthDate?.trim() || undefined,
+          email: patch.email?.trim() || undefined,
+          phone: patch.phone?.trim() || undefined,
+        });
 
-    // ✅ force refresh du hook (récupère le profil fraîchement écrit)
-    try {
-      await (auth as any)?.refresh?.();
-    } catch {}
+        // ✅ force refresh du hook (récupère le profil fraîchement écrit)
+        try {
+          await (auth as any)?.refresh?.();
+        } catch {}
 
-    // ✅ flush snapshot cloud (utile avant un Clear Site Data)
-    try {
-      await (window as any)?.__flushCloudNow?.("profile_save");
-    } catch {}
-  } catch (err) {
-    console.warn("[profiles] updateProfile online error:", err);
-  }
-}
+        // ✅ flush snapshot cloud (utile avant un Clear Site Data)
+        try {
+          await (window as any)?.__flushCloudNow?.("profile_save");
+        } catch {}
+      } catch (err) {
+        console.warn("[profiles] updateProfile online error:", err);
+      }
+    }
   }
 
   const onlineStatusForUi: "online" | "away" | "offline" =
@@ -2996,9 +3001,11 @@ function LocalProfilesRefonte({
   const { t } = useLang();
   const primary = theme.primary;
 
-  // on enlève seulement le profil actif du carrousel
+  // ✅ Profils locaux :
+  // - on enlève le profil actif
+  // - on exclut TOUS les mirrors "online:*" (sinon tu te retrouves avec 10 duplicates)
   const locals = React.useMemo(
-    () => profiles.filter((p) => p.id !== activeProfileId),
+    () => profiles.filter((p) => p.id !== activeProfileId && !isOnlineMirrorProfile(p)),
     [profiles, activeProfileId]
   );
 
