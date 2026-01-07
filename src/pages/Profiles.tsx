@@ -320,6 +320,7 @@ function mergeProfilesSafe(
 // - accepte aussi un "path" Supabase Storage (ex: "avatars/xxx.png")
 // --------------------------------------------
 function resolveAvatarUrlFromProfile(p: any): string {
+  // 1) champs possibles (url complète, dataUrl, blob)
   const raw =
     p?.avatar_url ??
     p?.avatarUrl ??
@@ -328,15 +329,27 @@ function resolveAvatarUrlFromProfile(p: any): string {
     p?.photoUrl ??
     "";
 
-  if (!raw) return "";
-  if (typeof raw !== "string") return "";
+  // 2) path storage (si snapshot ne garde que le path)
+  const rawPath =
+    p?.avatar_path ??
+    p?.avatarPath ??
+    p?.path ??
+    "";
+
+  const pick = (v: any) => (typeof v === "string" ? v.trim() : "");
+
+  const rawStr = pick(raw);
+  const pathStr = pick(rawPath);
+
+  const candidate = rawStr || pathStr;
+  if (!candidate) return "";
 
   // Déjà une URL complète / data / blob
-  if (/^(https?:\/\/|data:|blob:)/.test(raw)) return raw;
+  if (/^(https?:\/\/|data:|blob:)/.test(candidate)) return candidate;
 
   // Heuristique : path Supabase Storage => publicUrl
   try {
-    const clean = raw.replace(/^\/+/, "").replace(/^public\//, "");
+    const clean = candidate.replace(/^\/+/, "").replace(/^public\//, "");
     const { data } = supabase.storage.from("avatars").getPublicUrl(clean);
     return data?.publicUrl ?? "";
   } catch {
@@ -352,13 +365,20 @@ function getCleanLocalProfiles(
   activeProfileId: string | null | undefined
 ): any[] {
   const arr = Array.isArray(profiles) ? profiles : [];
-  const filtered = arr.filter(
-    (p) => p && p.id !== activeProfileId && !isOnlineMirrorProfile(p)
-  );
 
-  // dédup par "clé stable" : onlineUid > email > id
-  const map = new Map<string, any>();
-  for (const p of filtered) {
+  const isMirrorHeuristic = (p: any) => {
+    if (!p) return true;
+    const id = String(p.id ?? "");
+
+    // Cas standard
+    if (id.startsWith("online:")) return true;
+
+    // Beaucoup de builds stockent un lien online dans privateInfo
+    const pi = (p.privateInfo || {}) as any;
+    const onlineKey = String(pi.onlineKey ?? p.onlineKey ?? "").trim();
+    if (onlineKey) return true;
+
+    // Si le profil porte une trace d'UID online, c'est un mirror (même si id = UUID)
     const onlineUid =
       p?.online_uid ??
       p?.onlineUid ??
@@ -369,17 +389,28 @@ function getCleanLocalProfiles(
       p?.supabase_uid ??
       p?.supabaseUid ??
       "";
-    const email = (p?.email ?? p?.mail ?? "").toString().trim().toLowerCase();
 
-    const key =
-      (onlineUid ? `online:${onlineUid}` : "") ||
-      (email ? `email:${email}` : "") ||
-      `id:${String(p?.id ?? "")}`;
+    if (onlineUid) return true;
 
-    // garde la dernière occurrence
-    map.set(key, p);
+    // Certains flags / sources
+    if (p?.source === "online" || p?.isOnlineMirror === true) return true;
+
+    return false;
+  };
+
+  // ✅ Profils locaux "vrais" uniquement
+  const filtered = arr.filter(
+    (p) => p && p.id !== activeProfileId && !isMirrorHeuristic(p)
+  );
+
+  // ✅ dédup par id (au cas où le store a été pollué)
+  const byId = new Map<string, any>();
+  for (const p of filtered) {
+    const key = String(p?.id ?? "");
+    if (!key) continue;
+    byId.set(key, p);
   }
-  return Array.from(map.values());
+  return Array.from(byId.values());
 }
 
 function buildAvatarSrc(opts: {
