@@ -29,7 +29,6 @@ import PlayerPrefsBlock from "../components/profile/PlayerPrefsBlock";
 import OnlineProfileForm from "../components/OnlineProfileForm";
 
 import { getAvatarCache as getAvatarCacheLib } from "../lib/avatarCache";
-import { supabase } from "../lib/supabaseClient";
 
 // Effet "shimmer" du nom joueur (copié de StatsHub)
 const statsNameCss = `
@@ -313,106 +312,6 @@ function mergeProfilesSafe(
 // priorité : preview > avatarUrl > avatarDataUrl
 // + cache-bust si URL http(s) et avatarUpdatedAt connu
 // ============================================
-
-// --------------------------------------------
-// Avatar URL resolver
-// - accepte avatar_url / avatarUrl / avatar / photo_url
-// - accepte aussi un "path" Supabase Storage (ex: "avatars/xxx.png")
-// --------------------------------------------
-function resolveAvatarUrlFromProfile(p: any): string {
-  // 1) champs possibles (url complète, dataUrl, blob)
-  const raw =
-    p?.avatar_url ??
-    p?.avatarUrl ??
-    p?.avatar ??
-    p?.photo_url ??
-    p?.photoUrl ??
-    "";
-
-  // 2) path storage (si snapshot ne garde que le path)
-  const rawPath =
-    p?.avatar_path ??
-    p?.avatarPath ??
-    p?.path ??
-    "";
-
-  const pick = (v: any) => (typeof v === "string" ? v.trim() : "");
-
-  const rawStr = pick(raw);
-  const pathStr = pick(rawPath);
-
-  const candidate = rawStr || pathStr;
-  if (!candidate) return "";
-
-  // Déjà une URL complète / data / blob
-  if (/^(https?:\/\/|data:|blob:)/.test(candidate)) return candidate;
-
-  // Heuristique : path Supabase Storage => publicUrl
-  try {
-    const clean = candidate.replace(/^\/+/, "").replace(/^public\//, "");
-    const { data } = supabase.storage.from("avatars").getPublicUrl(clean);
-    return data?.publicUrl ?? "";
-  } catch {
-    return "";
-  }
-}
-
-// --------------------------------------------
-// Profils locaux : filtre mirror + dédup (store pollué = OK)
-// --------------------------------------------
-function getCleanLocalProfiles(
-  profiles: any[],
-  activeProfileId: string | null | undefined
-): any[] {
-  const arr = Array.isArray(profiles) ? profiles : [];
-
-  const isMirrorHeuristic = (p: any) => {
-    if (!p) return true;
-    const id = String(p.id ?? "");
-
-    // Cas standard
-    if (id.startsWith("online:")) return true;
-
-    // Beaucoup de builds stockent un lien online dans privateInfo
-    const pi = (p.privateInfo || {}) as any;
-    const onlineKey = String(pi.onlineKey ?? p.onlineKey ?? "").trim();
-    if (onlineKey) return true;
-
-    // Si le profil porte une trace d'UID online, c'est un mirror (même si id = UUID)
-    const onlineUid =
-      p?.online_uid ??
-      p?.onlineUid ??
-      p?.user_id ??
-      p?.userId ??
-      p?.auth_user_id ??
-      p?.authUserId ??
-      p?.supabase_uid ??
-      p?.supabaseUid ??
-      "";
-
-    if (onlineUid) return true;
-
-    // Certains flags / sources
-    if (p?.source === "online" || p?.isOnlineMirror === true) return true;
-
-    return false;
-  };
-
-  // ✅ Profils locaux "vrais" uniquement
-  const filtered = arr.filter(
-    (p) => p && p.id !== activeProfileId && !isMirrorHeuristic(p)
-  );
-
-  // ✅ dédup par id (au cas où le store a été pollué)
-  const byId = new Map<string, any>();
-  for (const p of filtered) {
-    const key = String(p?.id ?? "");
-    if (!key) continue;
-    byId.set(key, p);
-  }
-  return Array.from(byId.values());
-}
-
 function buildAvatarSrc(opts: {
   preview?: string | null;
   avatarUrl?: string | null;
@@ -422,19 +321,11 @@ function buildAvatarSrc(opts: {
   const cacheBust =
     typeof opts.avatarUpdatedAt === "number" ? opts.avatarUpdatedAt : 0;
 
-  const rawBase =
+  const baseSrc =
     (opts.preview && opts.preview.trim()) ||
     (opts.avatarUrl && String(opts.avatarUrl).trim()) ||
     (opts.avatarDataUrl && String(opts.avatarDataUrl).trim()) ||
     "";
-
-  // ✅ supporte "path" Supabase storage + champs snake_case/camelCase
-  const baseSrc =
-    rawBase && typeof rawBase === "string"
-      ? /^(https?:\/\/|data:|blob:)/.test(rawBase)
-        ? rawBase
-        : resolveAvatarUrlFromProfile({ avatarUrl: rawBase }) || rawBase
-      : "";
 
   if (!baseSrc) return "";
 
@@ -808,61 +699,140 @@ export default function Profiles({
   
   const active = profiles.find((p) => p.id === activeProfileId) || null;
 
-// ✅ AUTO-UPLOAD AVATAR : si connecté online et qu'on a encore un avatar en base64 (dataUrl)
-// => on pousse vers Supabase Storage pour obtenir avatarUrl (synchro cross-device)
+  // ------------------------------------------------------------
+  // Online "Me" helpers (ne touche pas activeProfileId)
+  // - Permet d'afficher DartSets/Avatar ONLINE dans "Mon profil"
+  // - Sans dépendre des profils locaux ni des mirrors instables
+  // ------------------------------------------------------------
+  const meProfileForDarts = React.useMemo(() => {
+    if (auth.status !== "signed_in") return null;
+    const uid = auth.user?.id;
+    if (!uid) return null;
+
+    const op: any = (auth as any).profile || (auth as any).onlineProfile || null;
+    const onlineName =
+      op?.display_name ||
+      op?.displayName ||
+      op?.nickname ||
+      op?.username ||
+      op?.email ||
+      "Moi";
+
+    const onlineAvatarUrl =
+      op?.avatar_url || op?.avatarUrl || op?.avatar || op?.photo_url || "";
+
+    // ⚠️ id déterministe : c'est la clé utilisée par l'ONLINE (dartsets/stats)
+    const id = `online:${uid}`;
+
+    return {
+      ...(active || ({} as any)),
+      id,
+      name: active?.name || onlineName,
+      avatarUrl: onlineAvatarUrl || (active as any)?.avatarUrl,
+      // marqueurs utiles pour filtrage UI si besoin
+      source: "online",
+      isOnlineMirror: true,
+    } as any;
+  }, [auth.status, auth.user?.id, (auth as any)?.profile, (auth as any)?.onlineProfile, active?.id, active?.name]);
+
+  // Dans "Mon profil", on veut afficher l'avatar ONLINE même si le profil actif local n'en a pas.
+  const activeForMeUi = React.useMemo(() => {
+    if (!active) return null;
+    if (auth.status !== "signed_in") return active;
+    const op: any = (auth as any).profile || (auth as any).onlineProfile || null;
+    const onlineAvatarUrl =
+      op?.avatar_url || op?.avatarUrl || op?.avatar || op?.photo_url || "";
+    return {
+      ...active,
+      avatarUrl: onlineAvatarUrl || (active as any)?.avatarUrl,
+    } as any;
+  }, [active, auth.status, (auth as any)?.profile, (auth as any)?.onlineProfile]);
+
+  // Anti-reupload (session) pour les avatars locaux envoyés online
+  const avatarUploadDoneRef = React.useRef<Set<string>>(new Set());
+
+// ✅ AUTO-UPLOAD AVATAR (SAFE) : si connecté online,
+// on pousse aussi les AVATARS DES PROFILS LOCAUX vers Supabase Storage.
+// Objectif : après clear-site-data + pull snapshot, on garde des URL (pas du base64).
 React.useEffect(() => {
   let cancelled = false;
 
   (async () => {
-    if (!active?.id) return;
     if (auth.status !== "signed_in") return;
+    const uid = auth.user?.id;
+    if (!uid) return;
 
-    const hasUrl = !!String((active as any)?.avatarUrl || "").trim();
-    const dataUrl = String((active as any)?.avatarDataUrl || "").trim();
+    // Local only (jamais online:*)
+    const locals = (profiles || []).filter((p: any) => {
+      const id = String(p?.id || "");
+      if (id.startsWith("online:")) return false;
+      if (p?.source === "online") return false;
+      if (p?.isOnlineMirror === true) return false;
+      return true;
+    });
 
-    if (hasUrl) return;
-    if (!dataUrl.startsWith("data:image/")) return;
-
-    try {
-      const uid = auth.user?.id; // ✅ auth.uid()
-      if (!uid) return;
-
-      const { publicUrl } = await onlineApi.uploadAvatarImage({ dataUrl, folder: uid });
+    for (const p of locals as any[]) {
       if (cancelled) return;
-      if (!publicUrl) return;
+      const pid = String(p?.id || "");
+      if (!pid) continue;
 
-      const avatarPath = (() => {
-        const marker = "/storage/v1/object/public/avatars/";
-        const i = publicUrl.indexOf(marker);
-        return i === -1 ? undefined : publicUrl.slice(i + marker.length);
-      })();
+      // déjà traité cette session
+      if (avatarUploadDoneRef.current.has(pid)) continue;
 
-      const now = Date.now();
+      const hasUrl = !!String(p?.avatarUrl || p?.avatar_url || "").trim();
+      const dataUrl = String(p?.avatarDataUrl || p?.avatar_data_url || "").trim();
 
-      // ✅ update profile local (ça sera ensuite push dans le snapshot cloud)
-      setProfilesSafe((arr) =>
-        arr.map((p) =>
-          p.id === active.id
-            ? {
-                ...p,
-                avatarUrl: publicUrl,
-                avatarPath,
-                avatarUpdatedAt: now,
-              }
-            : p
-        )
-      );
+      if (hasUrl || !dataUrl.startsWith("data:image/")) {
+        // rien à faire (ou rien à upload) => on marque OK
+        avatarUploadDoneRef.current.add(pid);
+        continue;
+      }
 
-      // ✅ met aussi ton cache anti-wipe si tu veux
       try {
-        writeAvatarCache(active.id, {
-          avatarUrl: publicUrl,
-          avatarPath,
-          avatarUpdatedAt: now,
+        // folder par user (et sous-dossier locals) => évite collisions
+        const { publicUrl } = await onlineApi.uploadAvatarImage({
+          dataUrl,
+          folder: `${uid}/locals`,
         });
-      } catch {}
-    } catch (e) {
-      console.warn("[Profiles] auto-upload avatar failed", e);
+
+        if (!publicUrl) {
+          avatarUploadDoneRef.current.add(pid);
+          continue;
+        }
+
+        // on extrait un path stable (utile si un jour tu veux le re-résoudre)
+        const avatarPath = (() => {
+          if (!publicUrl || typeof publicUrl !== "string") return undefined;
+          const marker = "/storage/v1/object/public/avatars/";
+          const i = publicUrl.indexOf(marker);
+          if (i === -1) return undefined;
+          return publicUrl.slice(i + marker.length);
+        })();
+
+        // update local store (URL only) => snapshot-friendly
+        setProfilesSafe((arr) =>
+          arr.map((pp) =>
+            pp.id === pid
+              ? ({
+                  ...(pp as any),
+                  avatarUrl: publicUrl,
+                  avatarPath,
+                  avatarUpdatedAt: Date.now(),
+                } as any)
+              : pp
+          )
+        );
+
+        avatarUploadDoneRef.current.add(pid);
+
+        try {
+          // flush snapshot cloud si dispo
+          await (window as any).__flushCloudNow?.();
+        } catch {}
+      } catch (e) {
+        console.warn("[Profiles] auto-upload local avatar failed", pid, e);
+        // on retentera plus tard
+      }
     }
   })();
 
@@ -870,13 +840,8 @@ React.useEffect(() => {
     cancelled = true;
   };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-}, [
-  active?.id,
-  auth.status,
-  (active as any)?.avatarUrl,
-  (active as any)?.avatarDataUrl,
-  (active as any)?.avatarUpdatedAt,
-]);
+}, [auth.status, auth.user?.id, profiles]);
+
   
   // ✅ Réhydratation anti-écrasement : si active revient sans avatar -> on remet depuis cache
   React.useEffect(() => {
@@ -1239,7 +1204,7 @@ React.useEffect(() => {
   {active && !forceAuth ? (
     <ActiveProfileBlock
       selfStatus={onlineStatusForUi}
-      active={active}
+      active={(activeForMeUi as any) || active}
       activeAvg3D={activeAvg3D}
       onToggleAway={() => {
         if (auth.status !== "signed_in") return;
@@ -1289,7 +1254,7 @@ React.useEffect(() => {
                 {/* 🔥 Panneau sets de fléchettes du profil actif */}
                 {active && (
                   <div style={{ marginTop: 8, marginBottom: 8 }}>
-                    <DartSetsPanel profile={active} />
+                    <DartSetsPanel profile={(meProfileForDarts as any) || active} />
                   </div>
                 )}
 
@@ -1320,7 +1285,7 @@ React.useEffect(() => {
                 title={`${t(
                   "profiles.locals.title",
                   "Profils locaux"
-                )} (${getCleanLocalProfiles(profiles as any, activeProfileId).length})`}
+                )} (${profiles.filter((p) => p.id !== activeProfileId).length})`}
               >
                 <LocalProfilesRefonte
                   profiles={profiles}
@@ -3114,7 +3079,7 @@ function LocalProfilesRefonte({
   // - on enlève le profil actif
   // - on exclut TOUS les mirrors "online:*" (sinon tu te retrouves avec 10 duplicates)
   const locals = React.useMemo(
-    () => getCleanLocalProfiles(profiles as any, activeProfileId),
+    () => profiles.filter((p) => p.id !== activeProfileId && !isOnlineMirrorProfile(p)),
     [profiles, activeProfileId]
   );
 
