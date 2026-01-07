@@ -333,7 +333,33 @@ function buildAvatarSrc(opts: {
   if (/^https?:\/\//.test(baseSrc) && cacheBust) {
     return baseSrc + (baseSrc.includes("?") ? "&" : "?") + "v=" + cacheBust;
   }
-  return baseSrc;
+  
+// ============================================
+// ✅ MIRROR DETECTOR (anti profils "online" dans Profils locaux)
+// - filtre online:*
+// - filtre objets marqués online
+// - filtre profils qui portent un uid supabase/user_id/etc.
+// ============================================
+function isMirrorProfile(p: any): boolean {
+  if (!p) return true;
+  const id = String(p.id ?? "");
+  // mirrors classiques
+  if (id.startsWith("online:")) return true;
+
+  // mirrors “UUID” mais marqués online
+  if (p.source === "online") return true;
+  if (p.isOnlineMirror === true) return true;
+
+  // si tu stockes un uid supabase dans le profil local
+  if (p.onlineUid || p.supabaseUid || p.user_id || p.userId) return true;
+
+  // certains stores mettent une clé d’origine
+  if (String(p.origin ?? "") === "online") return true;
+
+  return false;
+}
+
+return baseSrc;
 }
 
 /* ================================
@@ -354,6 +380,7 @@ export default function Profiles({
   go?: (tab: any, params?: any) => void;
   params?: any;
 }) {
+  console.log("[PROFILES PATCH CHECK] v2026-01-07");
   // 🔥 injection du CSS shimmer une seule fois
   useInjectStatsNameCss();
 
@@ -1285,7 +1312,7 @@ React.useEffect(() => {
                 title={`${t(
                   "profiles.locals.title",
                   "Profils locaux"
-                )} (${profiles.filter((p) => p.id !== activeProfileId).length})`}
+                )} (${profiles.filter((p: any) => p.id !== activeProfileId && !isMirrorProfile(p) && !isOnlineMirrorProfile(p)).length})`}
               >
                 <LocalProfilesRefonte
                   profiles={profiles}
@@ -3079,7 +3106,11 @@ function LocalProfilesRefonte({
   // - on enlève le profil actif
   // - on exclut TOUS les mirrors "online:*" (sinon tu te retrouves avec 10 duplicates)
   const locals = React.useMemo(
-    () => profiles.filter((p) => p.id !== activeProfileId && !isOnlineMirrorProfile(p)),
+    () =>
+      profiles.filter(
+        (p: any) =>
+          p.id !== activeProfileId && !isMirrorProfile(p) && !isOnlineMirrorProfile(p)
+      ),
     [profiles, activeProfileId]
   );
 
