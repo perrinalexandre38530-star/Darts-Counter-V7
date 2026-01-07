@@ -29,6 +29,7 @@ import PlayerPrefsBlock from "../components/profile/PlayerPrefsBlock";
 import OnlineProfileForm from "../components/OnlineProfileForm";
 
 import { getAvatarCache as getAvatarCacheLib } from "../lib/avatarCache";
+import { supabase } from "../lib/supabaseClient";
 
 // Effet "shimmer" du nom joueur (copié de StatsHub)
 const statsNameCss = `
@@ -312,6 +313,75 @@ function mergeProfilesSafe(
 // priorité : preview > avatarUrl > avatarDataUrl
 // + cache-bust si URL http(s) et avatarUpdatedAt connu
 // ============================================
+
+// --------------------------------------------
+// Avatar URL resolver
+// - accepte avatar_url / avatarUrl / avatar / photo_url
+// - accepte aussi un "path" Supabase Storage (ex: "avatars/xxx.png")
+// --------------------------------------------
+function resolveAvatarUrlFromProfile(p: any): string {
+  const raw =
+    p?.avatar_url ??
+    p?.avatarUrl ??
+    p?.avatar ??
+    p?.photo_url ??
+    p?.photoUrl ??
+    "";
+
+  if (!raw) return "";
+  if (typeof raw !== "string") return "";
+
+  // Déjà une URL complète / data / blob
+  if (/^(https?:\/\/|data:|blob:)/.test(raw)) return raw;
+
+  // Heuristique : path Supabase Storage => publicUrl
+  try {
+    const clean = raw.replace(/^\/+/, "").replace(/^public\//, "");
+    const { data } = supabase.storage.from("avatars").getPublicUrl(clean);
+    return data?.publicUrl ?? "";
+  } catch {
+    return "";
+  }
+}
+
+// --------------------------------------------
+// Profils locaux : filtre mirror + dédup (store pollué = OK)
+// --------------------------------------------
+function getCleanLocalProfiles(
+  profiles: any[],
+  activeProfileId: string | null | undefined
+): any[] {
+  const arr = Array.isArray(profiles) ? profiles : [];
+  const filtered = arr.filter(
+    (p) => p && p.id !== activeProfileId && !isOnlineMirrorProfile(p)
+  );
+
+  // dédup par "clé stable" : onlineUid > email > id
+  const map = new Map<string, any>();
+  for (const p of filtered) {
+    const onlineUid =
+      p?.online_uid ??
+      p?.onlineUid ??
+      p?.user_id ??
+      p?.userId ??
+      p?.auth_user_id ??
+      p?.authUserId ??
+      p?.supabase_uid ??
+      p?.supabaseUid ??
+      "";
+    const email = (p?.email ?? p?.mail ?? "").toString().trim().toLowerCase();
+
+    const key =
+      (onlineUid ? `online:${onlineUid}` : "") ||
+      (email ? `email:${email}` : "") ||
+      `id:${String(p?.id ?? "")}`;
+
+    // garde la dernière occurrence
+    map.set(key, p);
+  }
+  return Array.from(map.values());
+}
+
 function buildAvatarSrc(opts: {
   preview?: string | null;
   avatarUrl?: string | null;
@@ -321,11 +391,19 @@ function buildAvatarSrc(opts: {
   const cacheBust =
     typeof opts.avatarUpdatedAt === "number" ? opts.avatarUpdatedAt : 0;
 
-  const baseSrc =
+  const rawBase =
     (opts.preview && opts.preview.trim()) ||
     (opts.avatarUrl && String(opts.avatarUrl).trim()) ||
     (opts.avatarDataUrl && String(opts.avatarDataUrl).trim()) ||
     "";
+
+  // ✅ supporte "path" Supabase storage + champs snake_case/camelCase
+  const baseSrc =
+    rawBase && typeof rawBase === "string"
+      ? /^(https?:\/\/|data:|blob:)/.test(rawBase)
+        ? rawBase
+        : resolveAvatarUrlFromProfile({ avatarUrl: rawBase }) || rawBase
+      : "";
 
   if (!baseSrc) return "";
 
@@ -1211,7 +1289,7 @@ React.useEffect(() => {
                 title={`${t(
                   "profiles.locals.title",
                   "Profils locaux"
-                )} (${profiles.filter((p) => p.id !== activeProfileId).length})`}
+                )} (${getCleanLocalProfiles(profiles as any, activeProfileId).length})`}
               >
                 <LocalProfilesRefonte
                   profiles={profiles}
@@ -3005,7 +3083,7 @@ function LocalProfilesRefonte({
   // - on enlève le profil actif
   // - on exclut TOUS les mirrors "online:*" (sinon tu te retrouves avec 10 duplicates)
   const locals = React.useMemo(
-    () => profiles.filter((p) => p.id !== activeProfileId && !isOnlineMirrorProfile(p)),
+    () => getCleanLocalProfiles(profiles as any, activeProfileId),
     [profiles, activeProfileId]
   );
 
