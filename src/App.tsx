@@ -1526,7 +1526,10 @@ function App() {
     async (reason: string = "manual") => {
       try {
         if (loading) return false;
-        if (!cloudHydrated) return false;
+        // Allow manual flush even if we didn't pull yet (ex: after Clear Site Data)
+    // This prevents Supabase from re-injecting old profiles/avatars at next login.
+    // Cloud snapshot becomes the source of truth after user actions.
+
         if (!online?.ready || online.status !== "signed_in") return false;
 
         // cancel any pending debounce push
