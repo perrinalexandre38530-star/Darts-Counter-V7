@@ -1523,10 +1523,13 @@ function App() {
   // - force un debounced push immédiat (utile avant un Clear Site Data)
   // ============================================================
   const flushCloudNow = React.useCallback(
-    async (reason: string = "manual") => {
+    async (reason: string = "manual", seedOverride?: any) => {
       try {
         if (loading) return false;
-        if (!cloudHydrated) return false;
+        // Allow manual flush even if we didn't pull yet (ex: after Clear Site Data)
+    // This prevents Supabase from re-injecting old profiles/avatars at next login.
+    // Cloud snapshot becomes the source of truth after user actions.
+
         if (!online?.ready || online.status !== "signed_in") return false;
 
         // cancel any pending debounce push
@@ -1535,7 +1538,8 @@ function App() {
           cloudPushTimerRef.current = null;
         }
 
-        await onlineApi.pushStoreSnapshot(sanitizeStoreForCloud(store));
+        const seed = seedOverride ?? store;
+        await onlineApi.pushStoreSnapshot(sanitizeStoreForCloud(seed));
         // debug
         console.info("[cloud] flush ok", { reason });
         return true;

@@ -17,6 +17,7 @@ import { useTheme } from "../contexts/ThemeContext";
 import { useLang, type Lang } from "../contexts/LangContext";
 import { useAuthOnline } from "../hooks/useAuthOnline";
 import { onlineApi } from "../lib/onlineApi";
+import { supabase } from "../lib/supabaseClient";
 import type { ThemeId } from "../theme/themePresets";
 
 import { sha256 } from "../lib/crypto";
@@ -417,6 +418,64 @@ function isOnlineMirrorProfile(p: any): boolean {
 /* ================================
    Page — Profils (router interne)
 ================================ */
+
+// --------------------------------------------
+// Cloud helpers (Profiles page)
+// - Persist local profile avatars to Supabase Storage when signed-in
+// - Push store snapshot so deletions/avatars survive "Clear site data"
+// --------------------------------------------
+
+async function dataUrlToBlob(dataUrl: string): Promise<Blob> {
+  const res = await fetch(dataUrl);
+  return await res.blob();
+}
+
+async function uploadLocalProfileAvatarToSupabase(
+  userId: string,
+  profileId: string,
+  dataUrl: string
+): Promise<string | null> {
+  try {
+    const blob = await dataUrlToBlob(dataUrl);
+    const ext =
+      blob.type === "image/png"
+        ? "png"
+        : blob.type === "image/webp"
+        ? "webp"
+        : blob.type === "image/jpeg"
+        ? "jpg"
+        : "png";
+
+    const path = `local/${userId}/${profileId}.${ext}`;
+
+    const { error: upErr } = await supabase.storage
+      .from("avatars")
+      .upload(path, blob, { upsert: true, contentType: blob.type || "image/png" });
+
+    if (upErr) {
+      console.warn("[avatars] upload failed", upErr);
+      return null;
+    }
+
+    const { data } = supabase.storage.from("avatars").getPublicUrl(path);
+    return data?.publicUrl || null;
+  } catch (e) {
+    console.warn("[avatars] upload exception", e);
+    return null;
+  }
+}
+
+async function flushCloud(reason: string, seedOverride?: any) {
+  const fn = (window as any).__flushCloudNow;
+  if (typeof fn === "function") {
+    try {
+      await fn(reason, seedOverride);
+    } catch (e) {
+      console.warn("[cloud] flush failed", reason, e);
+    }
+  }
+}
+
 export default function Profiles({
   store,
   update,
@@ -692,7 +751,50 @@ export default function Profiles({
       }
     }
 
-    try { await (window as any).__flushCloudNow?.(); } catch {}
+    // 2) Si connecté -> upload dans Supabase Storage et on garde une URL publique (persistante cloud)
+    try {
+      const user = (await supabase.auth.getUser()).data.user;
+      if (user) {
+        const publicUrl = await uploadLocalProfileAvatarToSupabase(user.id, id, dataUrl);
+        if (publicUrl) {
+          // Remplace le base64 par une URL (sinon sanitizeStoreForCloud le supprime)
+          setProfilesSafe((arr) =>
+            arr.map((p) =>
+              p.id === id
+                ? { ...p, avatarUrl: publicUrl, avatarDataUrl: undefined, avatarUpdatedAt: now }
+                : p
+            )
+          );
+          writeAvatarCache(id, {
+            avatarUrl: publicUrl,
+            avatarDataUrl: undefined,
+            avatarUpdatedAt: now,
+          });
+        }
+      }
+    } catch (e) {
+      console.warn("[avatars] upload local profile failed", e);
+    }
+
+    // IMPORTANT: force un seed cohérent pour éviter de flusher un store "ancien"
+    // (setProfilesSafe est batched, et __flushCloudNow lit le store de App.tsx)
+    try {
+      const cached = getAvatarCacheLib(id);
+      const nextProfilesSeed = (profiles || []).map((p: any) =>
+        p?.id === id
+          ? {
+              ...(p || {}),
+              avatarUrl: cached?.avatarUrl ?? (p as any).avatarUrl,
+              avatarDataUrl: cached?.avatarDataUrl ?? (p as any).avatarDataUrl,
+              avatarPath: cached?.avatarPath ?? (p as any).avatarPath,
+              avatarUpdatedAt: cached?.avatarUpdatedAt ?? (p as any).avatarUpdatedAt,
+            }
+          : p
+      );
+      await flushCloud("profiles_avatar", { ...(store as any), profiles: nextProfilesSeed });
+    } catch {
+      await flushCloud("profiles_avatar");
+    }
   }
 
   async function delProfile(id: string) {
@@ -749,6 +851,7 @@ export default function Profiles({
     }
   
     console.log("[Profiles] ✅ Profil supprimé (store + ui + persist)", id);
+    await flushCloud("profiles_delete", nextStoreSnapshot || undefined);
   }
   
 
@@ -1170,8 +1273,25 @@ React.useEffect(() => {
   async function handlePrivateInfoSave(patch: PrivateInfo) {
     if (!active) return;
 
-    // ✅ IMPORTANT: on persiste AUSSI en local (snapshot cloud / restore après ClearSiteData)
-    // Sans ça, tu vois les données "écrites" dans la UI… mais elles ne sont jamais dans le store.
+    // ✅ IMPORTANT: on persiste AUSSI en local
+    // + on prépare un seed complet pour le snapshot cloud (évite de flusher un store "ancien")
+    const nextProfiles = (profiles || []).map((p: any) =>
+      p?.id === active.id
+        ? {
+            ...(p || {}),
+            privateInfo: {
+              ...((p as any)?.privateInfo || {}),
+              ...(patch as any),
+            },
+            // si nickname changé, on aligne aussi name (UI)
+            name:
+              patch.nickname && String(patch.nickname).trim()
+                ? String(patch.nickname).trim()
+                : (p as any).name,
+          }
+        : p
+    );
+
     patchActivePrivateInfo({ ...(patch as any) });
 
     if (patch.nickname && patch.nickname.trim() && patch.nickname !== active.name) {
@@ -1199,9 +1319,9 @@ React.useEffect(() => {
         } catch {}
 
         // ✅ flush snapshot cloud (utile avant un Clear Site Data)
-        try {
-          await (window as any)?.__flushCloudNow?.("profile_save");
-        } catch {}
+        // IMPORTANT: on force un seed avec les nextProfiles pour ne pas écraser le cloud
+        // avec un store "en retard" (batched state update).
+        await flushCloud("profile_save", { ...(store as any), profiles: nextProfiles });
       } catch (err) {
         console.warn("[profiles] updateProfile online error:", err);
       }
