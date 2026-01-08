@@ -47,6 +47,11 @@
 // - Games sport-aware (Pétanque -> PetanqueHub)
 // - Boot : GameSelect TOUJOURS (même si sport déjà choisi)
 // - Ajout Tab "petanque_play" + route
+//
+// ✅ NEW (OBLIGATOIRE): TABS PÉTANQUE (menu/config/play)
+// - Ajout Tab "petanque_menu" / "petanque_config" / "petanque_play"
+// - Ajout imports PetanqueMenuGames / PetanqueConfig / PetanquePlay
+// - Ajout cases dans switch(tab)
 // ============================================
 
 import React from "react";
@@ -368,7 +373,11 @@ type Tab =
   | "home"
   | "gameSelect"
   | "games"
+  // ✅ NEW (OBLIGATOIRE): Tabs Pétanque (snake_case)
+  | "petanque_menu"
+  | "petanque_config"
   | "petanque_play"
+  // (legacy / existing)
   | "petanque.menu"
   | "petanque.config"
   | "petanque.play"
@@ -1495,35 +1504,34 @@ function App() {
         break;
 
       // ✅ GAMES = sport-aware (Pétanque -> PetanqueMenuGames)
-case "games":
-  page = sport === "petanque" ? <PetanqueMenuGames go={go} /> : <Games setTab={(t: any) => go(t)} />;
-  break;
-
-      case "petanque_play":
-        page = <PetanquePlay go={go} />;
+      case "games":
+        page = sport === "petanque" ? <PetanqueMenuGames go={go} /> : <Games setTab={(t: any) => go(t)} />;
         break;
 
-      // ✅ NEW: Pétanque flow (menu/config/play) — AJOUT SANS TOUCHER AU RESTE
+      // ✅ NEW (OBLIGATOIRE): Pétanque menu/config/play (snake_case)
+      case "petanque_menu":
+        page = <PetanqueMenuGames go={go} />;
+        break;
+
+      case "petanque_config":
+        page = <PetanqueConfig go={go} params={routeParams} />;
+        break;
+
+      case "petanque_play":
+        page = <PetanquePlay go={go} params={routeParams} />;
+        break;
+
+      // (legacy / existing) — on laisse en place pour compat
       case "petanque.menu":
         page = <PetanqueMenuGames go={go} />;
         break;
 
       case "petanque.config":
-        page = (
-          <PetanqueConfig
-            go={go}
-            params={routeParams}
-          />
-        );
+        page = <PetanqueConfig go={go} params={routeParams} store={store} />;
         break;
 
       case "petanque.play":
-        page = (
-          <PetanquePlay
-            go={go}
-            params={routeParams}
-          />
-        );
+        page = <PetanquePlay go={go} params={routeParams} />;
         break;
 
       case "profiles":

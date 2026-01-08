@@ -102,6 +102,13 @@ export function setTeamNames(state: PetanqueState, teamA: string, teamB: string)
   return next;
 }
 
+export function setTargetScore(state: PetanqueState, target: number): PetanqueState {
+  const t = Math.max(1, Math.floor(Number(target) || 13));
+  const next: PetanqueState = { ...state, target: t };
+  savePetanqueState(next);
+  return next;
+}
+
 export function resetPetanque(state?: PetanqueState): PetanqueState {
   const next = createNewPetanqueGame(
     state
