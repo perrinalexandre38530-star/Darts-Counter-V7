@@ -42,9 +42,11 @@
 // - App démarre sur gameSelect (si profil OK)  ✅ IMPORTANT: TOUJOURS GameSelect après intro
 //
 // ✅ NEW: SPORT-AWARE + PÉTANQUE
-// - SportRouter centralise Home/Games/Stats/Tournois et Play Pétanque
+// - Ajout SportProvider/useSport
+// - Home global (non sport-aware)
+// - Games sport-aware (Pétanque -> PetanqueHub)
 // - Boot : GameSelect TOUJOURS (même si sport déjà choisi)
-// - Ajout Tab "petanque_play" + route via SportRouter
+// - Ajout Tab "petanque_play" + route
 // ============================================
 
 import React from "react";
@@ -84,6 +86,9 @@ import type { X01ConfigV3 as X01ConfigV3Type } from "./types/x01v3";
 
 // Pages
 import GameSelect from "./pages/GameSelect";
+import Home from "./pages/Home";
+import Games from "./pages/Games";
+import TournamentsHome from "./pages/TournamentsHome";
 import Profiles from "./pages/Profiles";
 import FriendsPage from "./pages/FriendsPage";
 import Settings from "./pages/Settings";
@@ -123,6 +128,7 @@ import { getAllDartSets, replaceAllDartSets } from "./lib/dartSetsStore";
 import { rebuildStatsForProfile } from "./lib/stats/rebuildStats";
 
 // Stats pages
+import StatsShell from "./pages/StatsShell";
 import StatsHub from "./pages/StatsHub";
 import StatsOnline from "./pages/StatsOnline";
 import StatsCricket from "./pages/StatsCricket";
@@ -141,9 +147,6 @@ import X01PlayV3 from "./pages/X01PlayV3";
 // 🌟 Nouveau : SYNC / Partage stats locales
 import SyncCenter from "./pages/SyncCenter";
 
-// ✅ NEW: SPORT ROUTER (Home/Games/Stats/Tournois/Play Pétanque)
-import { SportHome, SportGames, SportStats, SportTournaments, SportPetanquePlay } from "./pages/SportRouter";
-
 // Contexts
 import { ThemeProvider } from "./contexts/ThemeContext";
 import { LangProvider } from "./contexts/LangContext";
@@ -151,8 +154,15 @@ import { StoreProvider } from "./contexts/StoreContext";
 import { AudioProvider } from "./contexts/AudioContext";
 import { AuthOnlineProvider, useAuthOnline } from "./hooks/useAuthOnline";
 
-// ✅ Sport context (toujours utile via SportRouter)
-import { SportProvider } from "./contexts/SportContext";
+// ✅ NEW: Sport context + Pétanque pages
+import { SportProvider, useSport } from "./contexts/SportContext";
+import PetanqueHub from "./pages/petanque/PetanqueHub";
+import PetanquePlay from "./pages/petanque/PetanquePlay";
+import PetanqueHome from "./pages/petanque/PetanqueHome";
+
+// ✅ NEW: Pétanque flow (menu/config/play)
+import PetanqueMenuGames from "./pages/petanque/PetanqueMenuGames";
+import PetanqueConfig from "./pages/petanque/PetanqueConfig";
 
 // Dev helper
 import { installHistoryProbe } from "./dev/devHistoryProbe";
@@ -360,6 +370,9 @@ type Tab =
   | "gameSelect"
   | "games"
   | "petanque_play"
+  | "petanque.menu"
+  | "petanque.config"
+  | "petanque.play"
   | "tournaments"
   | "tournament_create"
   | "tournament_view"
@@ -874,6 +887,9 @@ function App() {
   const [routeParams, setRouteParams] = React.useState<any>(null);
   const [loading, setLoading] = React.useState(true);
 
+  // ✅ SPORT-AWARE : utilisé pour Games (Pétanque -> PetanqueHub)
+  const { sport } = useSport();
+
   // ✅ SPLASH gate (ne s'affiche pas pendant les flows auth)
   const [showSplash, setShowSplash] = React.useState(() => {
     const h = String(window.location.hash || "");
@@ -1030,7 +1046,8 @@ function App() {
           const hasActive = !!base.activeProfileId;
 
           const h = String(window.location.hash || "");
-          const isAuthFlow = h.startsWith("#/auth/callback") || h.startsWith("#/auth/reset") || h.startsWith("#/auth/forgot");
+          const isAuthFlow =
+            h.startsWith("#/auth/callback") || h.startsWith("#/auth/reset") || h.startsWith("#/auth/forgot");
 
           if (!isAuthFlow) {
             if (!hasProfiles || !hasActive) {
@@ -1463,26 +1480,51 @@ function App() {
         page = <GameSelect go={go} />;
         break;
 
-      // ✅ HOME (SPORT-AWARE via SportRouter)
+      // ✅ HOME = GLOBAL (non sport-aware)
       case "home":
+        page =
+          sport === "petanque" ? (
+            <PetanqueHome store={store} update={update} go={go} />
+          ) : (
+            <Home
+              store={store}
+              update={update}
+              go={go}
+              onConnect={() => go("profiles", { view: "me", autoCreate: true })}
+            />
+          );
+        break;
+
+      // ✅ GAMES = sport-aware (Pétanque -> PetanqueHub)
+      case "games":
+        page = sport === "petanque" ? <PetanqueHub go={go} /> : <Games setTab={(t: any) => go(t)} />;
+        break;
+
+      case "petanque_play":
+        page = <PetanquePlay go={go} />;
+        break;
+
+      // ✅ NEW: Pétanque flow (menu/config/play) — AJOUT SANS TOUCHER AU RESTE
+      case "petanque.menu":
+        page = <PetanqueMenuGames go={go} />;
+        break;
+
+      case "petanque.config":
         page = (
-          <SportHome
-            store={store}
-            update={update}
+          <PetanqueConfig
             go={go}
-            onConnect={() => go("profiles", { view: "me", autoCreate: true })}
+            params={routeParams}
           />
         );
         break;
 
-      // ✅ GAMES (SPORT-AWARE via SportRouter)
-      case "games":
-        page = <SportGames store={store} update={update} go={go} setTab={(t: any) => go(t)} />;
-        break;
-
-      // ✅ PÉTANQUE PLAY (via SportRouter)
-      case "petanque_play":
-        page = <SportPetanquePlay go={go} />;
+      case "petanque.play":
+        page = (
+          <PetanquePlay
+            go={go}
+            params={routeParams}
+          />
+        );
         break;
 
       case "profiles":
@@ -1518,9 +1560,8 @@ function App() {
         page = <Settings go={go} />;
         break;
 
-      // ✅ STATS SHELL (SPORT-AWARE via SportRouter)
       case "stats":
-        page = <SportStats store={store} go={go} />;
+        page = <StatsShell store={store} go={go} />;
         break;
 
       case "statsHub":
@@ -1559,9 +1600,8 @@ function App() {
         page = <SyncCenter store={store} go={go} profileId={routeParams?.profileId ?? null} />;
         break;
 
-      // ✅ TOURNAMENTS (SPORT-AWARE via SportRouter)
       case "tournaments":
-        page = <SportTournaments store={store} update={update} go={go} source="local" />;
+        page = <TournamentsHome store={store} go={go} update={update} source="local" />;
         break;
 
       case "tournament_create":

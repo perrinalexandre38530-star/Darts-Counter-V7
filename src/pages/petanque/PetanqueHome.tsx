@@ -22,17 +22,542 @@ type Props = {
 const PAGE_MAX_WIDTH = 520;
 const DETAIL_INTERVAL_MS = 7000;
 
-// ✅ on réutilise le même CDN que Home.tsx (zéro asset nouveau)
+// ✅ on garde le CDN (comme Home.tsx) MAIS pour Pétanque on met des visuels PETANQUE en data-uri (zéro asset à ajouter)
 const IMG_BASE =
   "https://cdn.jsdelivr.net/gh/perrinalexandre38530-star/Darts-Counter-V5.3@main/public/img/";
 
+// -------------------------------------------------------------
+// ✅ VISUELS PETANQUE (SVG -> data:image) pour remplacer les tickers darts
+// -------------------------------------------------------------
+const svgToDataUri = (svg: string) =>
+  `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`;
+
+// 2 variantes “boules + cochonnet”
+const P_IMG_BOULES_1 = svgToDataUri(`
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="700" viewBox="0 0 1200 700">
+  <defs>
+    <radialGradient id="bg" cx="50%" cy="35%" r="75%">
+      <stop offset="0%" stop-color="#1b2233"/>
+      <stop offset="55%" stop-color="#0b0f18"/>
+      <stop offset="100%" stop-color="#060812"/>
+    </radialGradient>
+    <radialGradient id="metalGold" cx="35%" cy="30%" r="80%">
+      <stop offset="0%" stop-color="#ffe2a0"/>
+      <stop offset="30%" stop-color="#d6a84a"/>
+      <stop offset="65%" stop-color="#8a6a2a"/>
+      <stop offset="100%" stop-color="#221a0e"/>
+    </radialGradient>
+    <radialGradient id="metalSteel" cx="45%" cy="30%" r="80%">
+      <stop offset="0%" stop-color="#e7f2ff"/>
+      <stop offset="35%" stop-color="#9dbfe6"/>
+      <stop offset="70%" stop-color="#355a7c"/>
+      <stop offset="100%" stop-color="#0b1420"/>
+    </radialGradient>
+    <linearGradient id="rim" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#ffe7ad"/>
+      <stop offset="0.4" stop-color="#c99a39"/>
+      <stop offset="1" stop-color="#3b2a12"/>
+    </linearGradient>
+    <filter id="glow" x="-40%" y="-40%" width="180%" height="180%">
+      <feGaussianBlur stdDeviation="10" result="b"/>
+      <feColorMatrix in="b" type="matrix"
+        values="1 0 0 0 0
+                0 0.85 0 0 0
+                0 0 0.35 0 0
+                0 0 0 0.9 0" result="g"/>
+      <feMerge>
+        <feMergeNode in="g"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+
+  <rect width="1200" height="700" fill="url(#bg)"/>
+
+  <!-- halos -->
+  <circle cx="820" cy="250" r="220" fill="#ffcc66" opacity="0.10" filter="url(#glow)"/>
+  <circle cx="400" cy="340" r="260" fill="#ffcc66" opacity="0.08" filter="url(#glow)"/>
+
+  <!-- boule gold -->
+  <g transform="translate(610 165)">
+    <circle cx="220" cy="220" r="170" fill="url(#metalGold)" stroke="url(#rim)" stroke-width="10"/>
+    <g opacity="0.32">
+      <path d="M115,110 C210,65 330,95 365,165" fill="none" stroke="#fff" stroke-width="6"/>
+      <path d="M90,205 C220,125 350,165 382,265" fill="none" stroke="#fff" stroke-width="6"/>
+      <path d="M100,305 C235,245 335,288 362,365" fill="none" stroke="#fff" stroke-width="6"/>
+    </g>
+    <circle cx="160" cy="150" r="45" fill="#fff" opacity="0.10"/>
+  </g>
+
+  <!-- boule steel -->
+  <g transform="translate(250 215)">
+    <circle cx="220" cy="220" r="190" fill="url(#metalSteel)" stroke="url(#rim)" stroke-width="10"/>
+    <g opacity="0.25">
+      <path d="M90,145 C215,70 370,120 405,230" fill="none" stroke="#fff" stroke-width="6"/>
+      <path d="M80,255 C225,150 375,215 410,338" fill="none" stroke="#fff" stroke-width="6"/>
+      <path d="M110,365 C265,295 365,335 395,425" fill="none" stroke="#fff" stroke-width="6"/>
+    </g>
+    <circle cx="150" cy="160" r="55" fill="#fff" opacity="0.08"/>
+  </g>
+
+  <!-- cochonnet -->
+  <g transform="translate(430 360)">
+    <circle cx="120" cy="120" r="55" fill="#ffcc66" opacity="0.16" filter="url(#glow)"/>
+    <circle cx="120" cy="120" r="34" fill="#f5a623"/>
+    <circle cx="108" cy="106" r="10" fill="#fff" opacity="0.24"/>
+  </g>
+
+  <!-- grains -->
+  <g opacity="0.10">
+    <circle cx="70" cy="640" r="2" fill="#fff"/><circle cx="140" cy="650" r="1.5" fill="#fff"/>
+    <circle cx="220" cy="630" r="2" fill="#fff"/><circle cx="320" cy="660" r="1.8" fill="#fff"/>
+    <circle cx="420" cy="640" r="1.6" fill="#fff"/><circle cx="520" cy="655" r="2" fill="#fff"/>
+    <circle cx="650" cy="645" r="1.7" fill="#fff"/><circle cx="760" cy="650" r="2" fill="#fff"/>
+    <circle cx="880" cy="660" r="1.6" fill="#fff"/><circle cx="1020" cy="635" r="2" fill="#fff"/>
+  </g>
+</svg>
+`);
+
+const P_IMG_BOULES_2 = svgToDataUri(`
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="700" viewBox="0 0 1200 700">
+  <defs>
+    <radialGradient id="bg" cx="55%" cy="30%" r="80%">
+      <stop offset="0%" stop-color="#182137"/>
+      <stop offset="55%" stop-color="#0a0e17"/>
+      <stop offset="100%" stop-color="#050710"/>
+    </radialGradient>
+    <radialGradient id="metal" cx="40%" cy="30%" r="80%">
+      <stop offset="0%" stop-color="#f5f8ff"/>
+      <stop offset="30%" stop-color="#b8cff0"/>
+      <stop offset="70%" stop-color="#3f678a"/>
+      <stop offset="100%" stop-color="#0b1420"/>
+    </radialGradient>
+    <radialGradient id="metal2" cx="35%" cy="30%" r="80%">
+      <stop offset="0%" stop-color="#ffe8b0"/>
+      <stop offset="30%" stop-color="#e1b35a"/>
+      <stop offset="70%" stop-color="#7a5b24"/>
+      <stop offset="100%" stop-color="#1f160b"/>
+    </radialGradient>
+    <linearGradient id="rim" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#ffe7ad"/>
+      <stop offset="0.4" stop-color="#c99a39"/>
+      <stop offset="1" stop-color="#3b2a12"/>
+    </linearGradient>
+    <filter id="glow" x="-40%" y="-40%" width="180%" height="180%">
+      <feGaussianBlur stdDeviation="9" result="b"/>
+      <feColorMatrix in="b" type="matrix"
+        values="1 0 0 0 0
+                0 0.85 0 0 0
+                0 0 0.35 0 0
+                0 0 0 0.9 0" result="g"/>
+      <feMerge>
+        <feMergeNode in="g"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+
+  <rect width="1200" height="700" fill="url(#bg)"/>
+
+  <circle cx="760" cy="250" r="240" fill="#ffcc66" opacity="0.09" filter="url(#glow)"/>
+  <circle cx="420" cy="350" r="260" fill="#ffcc66" opacity="0.06" filter="url(#glow)"/>
+
+  <!-- boule steel front -->
+  <g transform="translate(560 190)">
+    <circle cx="240" cy="240" r="180" fill="url(#metal)" stroke="url(#rim)" stroke-width="10"/>
+    <g opacity="0.25">
+      <path d="M120,140 C230,70 380,120 410,230" fill="none" stroke="#fff" stroke-width="6"/>
+      <path d="M105,260 C240,150 380,220 410,350" fill="none" stroke="#fff" stroke-width="6"/>
+      <path d="M130,380 C270,300 375,340 395,430" fill="none" stroke="#fff" stroke-width="6"/>
+    </g>
+    <circle cx="170" cy="175" r="60" fill="#fff" opacity="0.08"/>
+  </g>
+
+  <!-- boule gold back -->
+  <g transform="translate(220 250)">
+    <circle cx="220" cy="220" r="165" fill="url(#metal2)" stroke="url(#rim)" stroke-width="10" opacity="0.95"/>
+    <g opacity="0.28">
+      <path d="M110,120 C210,70 335,105 365,185" fill="none" stroke="#fff" stroke-width="6"/>
+      <path d="M95,210 C220,135 340,175 370,265" fill="none" stroke="#fff" stroke-width="6"/>
+      <path d="M110,300 C240,245 330,285 355,350" fill="none" stroke="#fff" stroke-width="6"/>
+    </g>
+  </g>
+
+  <!-- cochonnet -->
+  <g transform="translate(450 410)">
+    <circle cx="110" cy="110" r="50" fill="#ffcc66" opacity="0.14" filter="url(#glow)"/>
+    <circle cx="110" cy="110" r="30" fill="#f5a623"/>
+    <circle cx="100" cy="98" r="9" fill="#fff" opacity="0.24"/>
+  </g>
+</svg>
+`);
+
+// 2 variantes “mesure / mètre ruban / cible”
+const P_IMG_MESURE_1 = svgToDataUri(`
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="700" viewBox="0 0 1200 700">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#0a0f18"/>
+      <stop offset="55%" stop-color="#070a11"/>
+      <stop offset="100%" stop-color="#04060c"/>
+    </linearGradient>
+    <linearGradient id="sand" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#2a2218"/>
+      <stop offset="100%" stop-color="#141016"/>
+    </linearGradient>
+    <linearGradient id="tape" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#ffe7ad"/>
+      <stop offset="45%" stop-color="#d6a84a"/>
+      <stop offset="100%" stop-color="#6a4b1c"/>
+    </linearGradient>
+    <filter id="soft" x="-40%" y="-40%" width="180%" height="180%">
+      <feGaussianBlur stdDeviation="10"/>
+    </filter>
+  </defs>
+
+  <rect width="1200" height="700" fill="url(#bg)"/>
+  <rect x="0" y="320" width="1200" height="380" fill="url(#sand)" opacity="0.95"/>
+
+  <g opacity="0.35">
+    <path d="M80 360 H1120" stroke="#ffcc66" stroke-width="4" opacity="0.35"/>
+    <path d="M120 420 H1080" stroke="#ffcc66" stroke-width="3" opacity="0.25"/>
+    <path d="M160 480 H1040" stroke="#ffcc66" stroke-width="3" opacity="0.20"/>
+  </g>
+
+  <circle cx="870" cy="240" r="200" fill="#00e5a8" opacity="0.08" filter="url(#soft)"/>
+  <circle cx="340" cy="250" r="240" fill="#ffcc66" opacity="0.06" filter="url(#soft)"/>
+
+  <!-- mètre -->
+  <g transform="translate(250 185) rotate(-8)">
+    <rect x="0" y="0" rx="22" ry="22" width="660" height="90" fill="url(#tape)" opacity="0.95"/>
+    <rect x="16" y="16" rx="16" ry="16" width="628" height="58" fill="#0b0f18" opacity="0.22"/>
+    <g stroke="#0b0f18" opacity="0.75">
+      ${Array.from({ length: 34 })
+        .map((_, i) => {
+          const x = 20 + i * 19;
+          const h = i % 5 === 0 ? 42 : 26;
+          return `<path d="M${x} 70 V${70 - h}" stroke-width="3"/>`;
+        })
+        .join("")}
+    </g>
+  </g>
+
+  <!-- cible -->
+  <g transform="translate(820 360)">
+    <circle cx="120" cy="120" r="85" fill="#0b0f18" opacity="0.55"/>
+    <circle cx="120" cy="120" r="70" fill="#00e5a8" opacity="0.10"/>
+    <circle cx="120" cy="120" r="58" fill="#ffcc66" opacity="0.18"/>
+    <circle cx="120" cy="120" r="44" fill="#0b0f18" opacity="0.35"/>
+    <circle cx="120" cy="120" r="12" fill="#00e5a8" opacity="0.55"/>
+  </g>
+</svg>
+`);
+
+const P_IMG_MESURE_2 = svgToDataUri(`
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="700" viewBox="0 0 1200 700">
+  <defs>
+    <radialGradient id="bg" cx="45%" cy="25%" r="90%">
+      <stop offset="0%" stop-color="#0b1322"/>
+      <stop offset="55%" stop-color="#070a11"/>
+      <stop offset="100%" stop-color="#04060c"/>
+    </radialGradient>
+    <linearGradient id="sand" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#241d14"/>
+      <stop offset="100%" stop-color="#120f14"/>
+    </linearGradient>
+    <linearGradient id="tape" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#c8ffef"/>
+      <stop offset="45%" stop-color="#00e5a8"/>
+      <stop offset="100%" stop-color="#0a4f3d"/>
+    </linearGradient>
+    <filter id="soft" x="-40%" y="-40%" width="180%" height="180%">
+      <feGaussianBlur stdDeviation="10"/>
+    </filter>
+  </defs>
+
+  <rect width="1200" height="700" fill="url(#bg)"/>
+  <rect x="0" y="315" width="1200" height="385" fill="url(#sand)" opacity="0.95"/>
+
+  <g opacity="0.30">
+    <path d="M90 360 H1110" stroke="#00e5a8" stroke-width="4" opacity="0.25"/>
+    <path d="M130 425 H1070" stroke="#ffcc66" stroke-width="3" opacity="0.18"/>
+    <path d="M170 490 H1030" stroke="#00e5a8" stroke-width="3" opacity="0.15"/>
+  </g>
+
+  <circle cx="820" cy="235" r="210" fill="#ffcc66" opacity="0.06" filter="url(#soft)"/>
+  <circle cx="360" cy="255" r="250" fill="#00e5a8" opacity="0.07" filter="url(#soft)"/>
+
+  <!-- mètre -->
+  <g transform="translate(280 195) rotate(-6)">
+    <rect x="0" y="0" rx="22" ry="22" width="620" height="86" fill="url(#tape)" opacity="0.95"/>
+    <rect x="14" y="14" rx="16" ry="16" width="592" height="58" fill="#0b0f18" opacity="0.22"/>
+    <g stroke="#0b0f18" opacity="0.75">
+      ${Array.from({ length: 32 })
+        .map((_, i) => {
+          const x = 20 + i * 18.5;
+          const h = i % 5 === 0 ? 40 : 24;
+          return `<path d="M${x} 66 V${66 - h}" stroke-width="3"/>`;
+        })
+        .join("")}
+    </g>
+  </g>
+
+  <!-- boule/cible -->
+  <g transform="translate(850 370)">
+    <circle cx="110" cy="110" r="78" fill="#0b0f18" opacity="0.55"/>
+    <circle cx="110" cy="110" r="62" fill="#00e5a8" opacity="0.10"/>
+    <circle cx="110" cy="110" r="50" fill="#ffcc66" opacity="0.16"/>
+    <circle cx="110" cy="110" r="38" fill="#0b0f18" opacity="0.32"/>
+    <circle cx="110" cy="110" r="10" fill="#ffcc66" opacity="0.55"/>
+  </g>
+</svg>
+`);
+
+// 2 variantes “tournoi / bracket”
+const P_IMG_TOURNOI_1 = svgToDataUri(`
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="700" viewBox="0 0 1200 700">
+  <defs>
+    <radialGradient id="bg" cx="50%" cy="30%" r="80%">
+      <stop offset="0%" stop-color="#151c2c"/>
+      <stop offset="55%" stop-color="#090c13"/>
+      <stop offset="100%" stop-color="#050710"/>
+    </radialGradient>
+    <filter id="soft" x="-40%" y="-40%" width="180%" height="180%">
+      <feGaussianBlur stdDeviation="10"/>
+    </filter>
+  </defs>
+
+  <rect width="1200" height="700" fill="url(#bg)"/>
+  <circle cx="860" cy="250" r="220" fill="#ff7a18" opacity="0.10" filter="url(#soft)"/>
+  <circle cx="360" cy="280" r="260" fill="#ffcc66" opacity="0.06" filter="url(#soft)"/>
+
+  <!-- bracket lines -->
+  <g stroke="#ffcc66" stroke-width="6" opacity="0.38" fill="none" stroke-linecap="round">
+    <path d="M260 210 H420 V300 H560"/>
+    <path d="M260 410 H420 V320 H560"/>
+    <path d="M640 260 H780 V350 H940"/>
+    <path d="M640 360 H780 V270 H940"/>
+  </g>
+
+  <!-- nodes -->
+  <g fill="#0b0f18" opacity="0.85" stroke="#ff7a18" stroke-width="6">
+    <rect x="190" y="180" width="120" height="70" rx="18"/>
+    <rect x="190" y="380" width="120" height="70" rx="18"/>
+    <rect x="560" y="275" width="120" height="70" rx="18"/>
+    <rect x="940" y="240" width="120" height="70" rx="18"/>
+    <rect x="940" y="340" width="120" height="70" rx="18"/>
+  </g>
+
+  <!-- boule + cochonnet icon -->
+  <g transform="translate(740 420)">
+    <circle cx="120" cy="120" r="70" fill="#0b0f18" opacity="0.55"/>
+    <circle cx="120" cy="120" r="56" fill="#ff7a18" opacity="0.14"/>
+    <circle cx="120" cy="120" r="16" fill="#ffcc66" opacity="0.55"/>
+    <circle cx="48" cy="160" r="18" fill="#f5a623" opacity="0.90"/>
+  </g>
+</svg>
+`);
+
+const P_IMG_TOURNOI_2 = svgToDataUri(`
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="700" viewBox="0 0 1200 700">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#0b101c"/>
+      <stop offset="55%" stop-color="#070a11"/>
+      <stop offset="100%" stop-color="#050710"/>
+    </linearGradient>
+    <filter id="soft" x="-40%" y="-40%" width="180%" height="180%">
+      <feGaussianBlur stdDeviation="10"/>
+    </filter>
+  </defs>
+
+  <rect width="1200" height="700" fill="url(#bg)"/>
+  <circle cx="820" cy="240" r="230" fill="#ffcc66" opacity="0.06" filter="url(#soft)"/>
+  <circle cx="380" cy="300" r="260" fill="#ff7a18" opacity="0.08" filter="url(#soft)"/>
+
+  <g stroke="#ff7a18" stroke-width="6" opacity="0.36" fill="none" stroke-linecap="round">
+    <path d="M280 220 H440 V300 H600"/>
+    <path d="M280 410 H440 V330 H600"/>
+    <path d="M680 265 H820 V350 H980"/>
+    <path d="M680 365 H820 V275 H980"/>
+  </g>
+
+  <g fill="#0b0f18" opacity="0.85" stroke="#ffcc66" stroke-width="6">
+    <rect x="210" y="188" width="120" height="70" rx="18"/>
+    <rect x="210" y="380" width="120" height="70" rx="18"/>
+    <rect x="600" y="285" width="120" height="70" rx="18"/>
+    <rect x="980" y="240" width="120" height="70" rx="18"/>
+    <rect x="980" y="340" width="120" height="70" rx="18"/>
+  </g>
+
+  <g transform="translate(720 430)">
+    <circle cx="120" cy="120" r="68" fill="#0b0f18" opacity="0.55"/>
+    <circle cx="120" cy="120" r="54" fill="#ffcc66" opacity="0.14"/>
+    <circle cx="120" cy="120" r="15" fill="#ff7a18" opacity="0.55"/>
+    <circle cx="52" cy="162" r="17" fill="#f5a623" opacity="0.90"/>
+  </g>
+</svg>
+`);
+
+// 2 variantes “astuce / fair-play”
+const P_IMG_TIP_1 = svgToDataUri(`
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="700" viewBox="0 0 1200 700">
+  <defs>
+    <radialGradient id="bg" cx="50%" cy="30%" r="85%">
+      <stop offset="0%" stop-color="#121a2b"/>
+      <stop offset="55%" stop-color="#090c13"/>
+      <stop offset="100%" stop-color="#050710"/>
+    </radialGradient>
+    <filter id="soft" x="-40%" y="-40%" width="180%" height="180%">
+      <feGaussianBlur stdDeviation="10"/>
+    </filter>
+  </defs>
+
+  <rect width="1200" height="700" fill="url(#bg)"/>
+  <circle cx="850" cy="250" r="230" fill="#ffffff" opacity="0.06" filter="url(#soft)"/>
+  <circle cx="360" cy="310" r="270" fill="#ffcc66" opacity="0.06" filter="url(#soft)"/>
+
+  <!-- speech bubble -->
+  <g transform="translate(220 210)">
+    <rect x="0" y="0" width="640" height="300" rx="38" fill="#0b0f18" opacity="0.70" stroke="#ffcc66" stroke-width="6"/>
+    <path d="M170 300 L230 300 L200 360 Z" fill="#0b0f18" opacity="0.70" stroke="#ffcc66" stroke-width="6" stroke-linejoin="round"/>
+    <g opacity="0.85" fill="#ffffff">
+      <rect x="70" y="70" width="500" height="26" rx="13" opacity="0.60"/>
+      <rect x="70" y="120" width="420" height="24" rx="12" opacity="0.50"/>
+      <rect x="70" y="168" width="470" height="24" rx="12" opacity="0.45"/>
+      <rect x="70" y="216" width="380" height="24" rx="12" opacity="0.40"/>
+    </g>
+  </g>
+
+  <!-- boule & cochonnet -->
+  <g transform="translate(860 410)">
+    <circle cx="120" cy="120" r="74" fill="#0b0f18" opacity="0.60" stroke="#ffffff" stroke-width="6" opacity="0.85"/>
+    <circle cx="120" cy="120" r="14" fill="#ffcc66" opacity="0.55"/>
+    <circle cx="54" cy="162" r="16" fill="#f5a623" opacity="0.95"/>
+  </g>
+</svg>
+`);
+
+const P_IMG_TIP_2 = svgToDataUri(`
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="700" viewBox="0 0 1200 700">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#0b101c"/>
+      <stop offset="55%" stop-color="#080b12"/>
+      <stop offset="100%" stop-color="#050710"/>
+    </linearGradient>
+    <filter id="soft" x="-40%" y="-40%" width="180%" height="180%">
+      <feGaussianBlur stdDeviation="10"/>
+    </filter>
+  </defs>
+
+  <rect width="1200" height="700" fill="url(#bg)"/>
+  <circle cx="820" cy="250" r="230" fill="#ffcc66" opacity="0.05" filter="url(#soft)"/>
+  <circle cx="380" cy="300" r="270" fill="#ffffff" opacity="0.06" filter="url(#soft)"/>
+
+  <!-- “check” icon -->
+  <g transform="translate(240 200)">
+    <rect x="0" y="0" width="640" height="320" rx="42" fill="#0b0f18" opacity="0.70" stroke="#ffffff" stroke-width="6"/>
+    <path d="M160 175 L280 260 L500 90" fill="none" stroke="#ffcc66" stroke-width="20" stroke-linecap="round" stroke-linejoin="round" opacity="0.85"/>
+    <g opacity="0.75" fill="#ffffff">
+      <rect x="70" y="70" width="440" height="22" rx="11" opacity="0.35"/>
+      <rect x="70" y="110" width="380" height="20" rx="10" opacity="0.28"/>
+    </g>
+  </g>
+
+  <g transform="translate(860 420)">
+    <circle cx="110" cy="110" r="70" fill="#0b0f18" opacity="0.60" stroke="#ffcc66" stroke-width="6" opacity="0.85"/>
+    <circle cx="110" cy="110" r="13" fill="#ffffff" opacity="0.50"/>
+    <circle cx="52" cy="154" r="15" fill="#f5a623" opacity="0.95"/>
+  </g>
+</svg>
+`);
+
+// 2 variantes “news” (utilisé côté carte droite)
+const P_IMG_NEWS_1 = svgToDataUri(`
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="700" viewBox="0 0 1200 700">
+  <defs>
+    <radialGradient id="bg" cx="55%" cy="25%" r="90%">
+      <stop offset="0%" stop-color="#131c2e"/>
+      <stop offset="55%" stop-color="#090c13"/>
+      <stop offset="100%" stop-color="#050710"/>
+    </radialGradient>
+    <filter id="soft" x="-40%" y="-40%" width="180%" height="180%">
+      <feGaussianBlur stdDeviation="10"/>
+    </filter>
+  </defs>
+  <rect width="1200" height="700" fill="url(#bg)"/>
+  <circle cx="850" cy="240" r="230" fill="#ffcc66" opacity="0.06" filter="url(#soft)"/>
+  <circle cx="360" cy="320" r="270" fill="#00e5a8" opacity="0.06" filter="url(#soft)"/>
+
+  <g transform="translate(220 190)">
+    <rect x="0" y="0" width="700" height="360" rx="40" fill="#0b0f18" opacity="0.72" stroke="#ffcc66" stroke-width="6"/>
+    <rect x="60" y="70" width="580" height="28" rx="14" fill="#ffffff" opacity="0.55"/>
+    <rect x="60" y="120" width="510" height="24" rx="12" fill="#ffffff" opacity="0.42"/>
+    <rect x="60" y="168" width="560" height="24" rx="12" fill="#ffffff" opacity="0.38"/>
+    <rect x="60" y="216" width="470" height="24" rx="12" fill="#ffffff" opacity="0.34"/>
+    <rect x="60" y="264" width="520" height="24" rx="12" fill="#ffffff" opacity="0.30"/>
+  </g>
+
+  <g transform="translate(900 420)">
+    <circle cx="110" cy="110" r="72" fill="#0b0f18" opacity="0.60" stroke="#00e5a8" stroke-width="6" opacity="0.85"/>
+    <circle cx="110" cy="110" r="14" fill="#ffcc66" opacity="0.55"/>
+    <circle cx="52" cy="154" r="15" fill="#f5a623" opacity="0.95"/>
+  </g>
+</svg>
+`);
+
+const P_IMG_NEWS_2 = svgToDataUri(`
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="700" viewBox="0 0 1200 700">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#0b101c"/>
+      <stop offset="55%" stop-color="#080b12"/>
+      <stop offset="100%" stop-color="#050710"/>
+    </linearGradient>
+    <filter id="soft" x="-40%" y="-40%" width="180%" height="180%">
+      <feGaussianBlur stdDeviation="10"/>
+    </filter>
+  </defs>
+  <rect width="1200" height="700" fill="url(#bg)"/>
+  <circle cx="820" cy="240" r="230" fill="#00e5a8" opacity="0.06" filter="url(#soft)"/>
+  <circle cx="380" cy="320" r="270" fill="#ffcc66" opacity="0.05" filter="url(#soft)"/>
+
+  <g transform="translate(230 200)">
+    <rect x="0" y="0" width="680" height="340" rx="40" fill="#0b0f18" opacity="0.72" stroke="#00e5a8" stroke-width="6"/>
+    <rect x="56" y="64" width="560" height="26" rx="13" fill="#ffffff" opacity="0.52"/>
+    <rect x="56" y="112" width="500" height="22" rx="11" fill="#ffffff" opacity="0.40"/>
+    <rect x="56" y="156" width="540" height="22" rx="11" fill="#ffffff" opacity="0.36"/>
+    <rect x="56" y="200" width="450" height="22" rx="11" fill="#ffffff" opacity="0.32"/>
+    <rect x="56" y="244" width="520" height="22" rx="11" fill="#ffffff" opacity="0.28"/>
+  </g>
+
+  <g transform="translate(900 420)">
+    <circle cx="110" cy="110" r="72" fill="#0b0f18" opacity="0.60" stroke="#ffcc66" stroke-width="6" opacity="0.85"/>
+    <circle cx="110" cy="110" r="14" fill="#00e5a8" opacity="0.55"/>
+    <circle cx="52" cy="154" r="15" fill="#f5a623" opacity="0.95"/>
+  </g>
+</svg>
+`);
+
+// -------------------------------------------------------------
+// ✅ On garde les mêmes clés que Home.tsx, mais avec des images Pétanque.
+// (les clés utilisées plus bas : local, training, leaderboard, tip, tipNews)
+// -------------------------------------------------------------
 const TICKER_IMAGES = {
-  local: ["ticker-x01.jpg", "ticker-x01-2.jpg"],
-  leaderboard: ["ticker-leaderboard.jpg", "ticker-leaderboard-2.jpg"],
-  training: ["ticker-training.jpg", "ticker-training-2.jpg"],
-  global: ["ticker-global.jpg", "ticker-global-2.jpg"],
-  tip: ["ticker-tip.jpg", "ticker-tip-2.jpg"],
-  tipNews: ["ticker-tip-news.jpg", "ticker-tip-news-2.jpg"],
+  // “Partie”
+  local: [P_IMG_BOULES_1, P_IMG_BOULES_2],
+  // “Mesurage”
+  training: [P_IMG_MESURE_1, P_IMG_MESURE_2],
+  // “Tournois”
+  leaderboard: [P_IMG_TOURNOI_1, P_IMG_TOURNOI_2],
+  // “Astuce”
+  tip: [P_IMG_TIP_1, P_IMG_TIP_2],
+  // Carte de droite (accès rapide) : visuel “news/patch” mais version pétanque
+  tipNews: [P_IMG_NEWS_1, P_IMG_NEWS_2],
+
+  // clés non utilisées ici, mais on les laisse pour compat (au cas où)
+  global: [P_IMG_BOULES_1, P_IMG_BOULES_2],
 } as const;
 
 function hashStringToInt(str: string): number {
@@ -43,11 +568,17 @@ function hashStringToInt(str: string): number {
   }
   return h >>> 0;
 }
+
 function pickTickerImage<K extends keyof typeof TICKER_IMAGES>(key: K, seed: string): string {
   const arr = TICKER_IMAGES[key];
   if (!arr || arr.length === 0) return "";
   const idx = hashStringToInt(`${key}::${seed}`) % arr.length;
-  return IMG_BASE + arr[idx];
+  const picked = arr[idx] ?? "";
+  // si c'est un data-uri (SVG), on le renvoie tel quel
+  if (picked.startsWith("data:image/")) return picked;
+  // fallback (si un jour tu remets des jpg)
+  if (picked.startsWith("http")) return picked;
+  return IMG_BASE + picked;
 }
 
 function safeActiveProfile(store: Store): Profile | null {
@@ -65,7 +596,13 @@ export default function PetanqueHome({ store, go }: Props) {
 
   // On “fake” des stats minimales pour ActiveProfileCard :
   // -> l’objectif est VISUEL (même carte), on n’essaie pas d’inventer des stats darts.
-  const [kpis, setKpis] = useState<{ ends: number; scoreA: number; scoreB: number; target: number; finished: boolean }>({
+  const [kpis, setKpis] = useState<{
+    ends: number;
+    scoreA: number;
+    scoreB: number;
+    target: number;
+    finished: boolean;
+  }>({
     ends: 0,
     scoreA: 0,
     scoreB: 0,
@@ -98,8 +635,8 @@ export default function PetanqueHome({ store, go }: Props) {
     const resume = finished
       ? t("petanque.home.ticker.resume.finished", "Partie terminée — relance une nouvelle partie.")
       : ends > 0
-        ? t("petanque.home.ticker.resume.dynamic", `Reprends ta partie : ${a} — ${b} (objectif ${target}).`)
-        : t("petanque.home.ticker.resume.empty", "Aucune mène enregistrée — lance une partie pour commencer.");
+      ? t("petanque.home.ticker.resume.dynamic", `Reprends ta partie : ${a} — ${b} (objectif ${target}).`)
+      : t("petanque.home.ticker.resume.empty", "Aucune mène enregistrée — lance une partie pour commencer.");
 
     return [
       {
@@ -142,7 +679,9 @@ export default function PetanqueHome({ store, go }: Props) {
   useEffect(() => {
     if (!tickerItems.length) return;
     const id = window.setInterval(() => {
-      setTickerIndex((prev) => (tickerItems.length ? (prev + 1) % tickerItems.length : 0));
+      setTickerIndex((prev) =>
+        tickerItems.length ? (prev + 1) % tickerItems.length : 0
+      );
     }, DETAIL_INTERVAL_MS);
     return () => window.clearInterval(id);
   }, [tickerItems.length]);
@@ -151,7 +690,9 @@ export default function PetanqueHome({ store, go }: Props) {
     setTickerIndex(0);
   }, [activeProfile?.id]);
 
-  const currentTicker = tickerItems.length ? tickerItems[Math.min(tickerIndex, tickerItems.length - 1)] : null;
+  const currentTicker = tickerItems.length
+    ? tickerItems[Math.min(tickerIndex, tickerItems.length - 1)]
+    : null;
 
   // --- “Carte détails” : mêmes 2 colonnes que Home.tsx ---
   const detailAccent = currentTicker?.accentColor ?? theme.primary ?? "#F6C256";
@@ -162,7 +703,10 @@ export default function PetanqueHome({ store, go }: Props) {
   const statsBackgroundImage = currentTicker?.backgroundImage ?? "";
 
   const rightTitle = t("petanque.home.detail.right.title", "Accès rapide");
-  const rightText = t("petanque.home.detail.right.text", "Lance une partie, ouvre le menu Pétanque, ou va sur Tournois/Stats.");
+  const rightText = t(
+    "petanque.home.detail.right.text",
+    "Lance une partie, ouvre le menu Pétanque, ou va sur Tournois/Stats."
+  );
 
   const primary = theme.primary ?? "#F6C256";
 
@@ -185,30 +729,32 @@ export default function PetanqueHome({ store, go }: Props) {
         @keyframes dcTitleShimmer { 0% { background-position: 0% 0%; } 100% { background-position: 200% 0%; } }
       `}</style>
 
-      {/* ===== HEADER (copie logique de Home.tsx) ===== */}
+      {/* ===== HEADER (même affichage que Home Darts : Bienvenue centré + titre 1 ligne responsive) ===== */}
       <div style={{ width: "100%", maxWidth: PAGE_MAX_WIDTH, paddingInline: 18, marginBottom: 10 }}>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
-          <div style={{ textAlign: "left" }}>
-            <span
-              style={{
-                fontSize: 12,
-                fontWeight: 700,
-                letterSpacing: 1.1,
-                textTransform: "uppercase",
-                color: primary,
-              }}
-            >
-              {t("home.welcome", "Bienvenue")}
-            </span>
+        <div style={{ textAlign: "center" }}>
+          <div
+            style={{
+              fontSize: 12,
+              fontWeight: 700,
+              letterSpacing: 1.1,
+              textTransform: "uppercase",
+              color: primary,
+              marginBottom: 6,
+            }}
+          >
+            {t("home.welcome", "Bienvenue")}
           </div>
 
           <div
             style={{
-              fontSize: 32,
               fontWeight: 900,
               letterSpacing: 3,
-              textAlign: "center",
               textTransform: "uppercase",
+              fontSize: "clamp(22px, 6.2vw, 32px)",
+              lineHeight: 1.05,
+              whiteSpace: "nowrap",
+              overflow: "hidden",
+              textOverflow: "ellipsis",
               backgroundImage: `linear-gradient(120deg, ${primary}, #ffffff, ${primary})`,
               backgroundSize: "200% 100%",
               WebkitBackgroundClip: "text",
@@ -216,10 +762,8 @@ export default function PetanqueHome({ store, go }: Props) {
               animation: "dcTitlePulse 3.6s ease-in-out infinite, dcTitleShimmer 7s linear infinite",
             }}
           >
-            BARSPORTS COUNTER
+            PETANQUE COUNTER
           </div>
-
-          <div style={{ width: 1 }} />
         </div>
       </div>
 
@@ -227,35 +771,38 @@ export default function PetanqueHome({ store, go }: Props) {
       {activeProfile && (
         <ActiveProfileCard
           profile={activeProfile as any}
-          stats={{
-            // stats minimalistes “neutres” (on remaisonne la carte sans casser le type côté runtime)
-            games: 0,
-            wins: 0,
-            winRate01: 0,
-            avg3D: 0,
-            bestVisit: 0,
-            bestCheckout: 0,
-          } as any}
+          stats={
+            {
+              games: 0,
+              wins: 0,
+              winRate01: 0,
+              avg3D: 0,
+              bestVisit: 0,
+              bestCheckout: 0,
+            } as any
+          }
           status={"offline" as any}
         />
       )}
 
-      {/* Ticker arcade (même composant) */}
-      <ArcadeTicker
-        items={tickerItems}
-        activeIndex={tickerIndex}
-        intervalMs={DETAIL_INTERVAL_MS}
-        onIndexChange={(index: number) => {
-          if (!tickerItems.length) return;
-          const safe = Math.min(Math.max(index, 0), tickerItems.length - 1);
-          setTickerIndex(safe);
-        }}
-        onActiveIndexChange={(index: number) => {
-          if (!tickerItems.length) return;
-          const safe = Math.min(Math.max(index, 0), tickerItems.length - 1);
-          setTickerIndex(safe);
-        }}
-      />
+      {/* ✅ Ticker arcade — largeur alignée avec les autres blocs */}
+      <div style={{ width: "100%", maxWidth: PAGE_MAX_WIDTH, paddingInline: 18 }}>
+        <ArcadeTicker
+          items={tickerItems}
+          activeIndex={tickerIndex}
+          intervalMs={DETAIL_INTERVAL_MS}
+          onIndexChange={(index: number) => {
+            if (!tickerItems.length) return;
+            const safe = Math.min(Math.max(index, 0), tickerItems.length - 1);
+            setTickerIndex(safe);
+          }}
+          onActiveIndexChange={(index: number) => {
+            if (!tickerItems.length) return;
+            const safe = Math.min(Math.max(index, 0), tickerItems.length - 1);
+            setTickerIndex(safe);
+          }}
+        />
+      </div>
 
       {/* Bloc détail du ticker : 2 mini-cards côte à côte (même look que Home.tsx) */}
       {currentTicker && (
@@ -296,7 +843,15 @@ export default function PetanqueHome({ store, go }: Props) {
                   pointerEvents: "none",
                 }}
               />
-              <div style={{ position: "relative", padding: "10px 10px 10px", display: "flex", flexDirection: "column", gap: 8 }}>
+              <div
+                style={{
+                  position: "relative",
+                  padding: "10px 10px 10px",
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: 8,
+                }}
+              >
                 <div
                   style={{
                     fontSize: 10,
@@ -315,8 +870,18 @@ export default function PetanqueHome({ store, go }: Props) {
 
                 {/* mini-kpis (style Home) */}
                 <div style={{ marginTop: 2, display: "grid", gridTemplateColumns: "repeat(2, minmax(0,1fr))", gap: 6 }}>
-                  <MiniKpi label={t("petanque.home.kpi.ends", "Mènes")} value={String(kpis.ends)} primary={detailAccent} theme={theme} />
-                  <MiniKpi label={t("petanque.home.kpi.score", "Score")} value={`${kpis.scoreA}—${kpis.scoreB}`} primary={detailAccent} theme={theme} />
+                  <MiniKpi
+                    label={t("petanque.home.kpi.ends", "Mènes")}
+                    value={String(kpis.ends)}
+                    primary={detailAccent}
+                    theme={theme}
+                  />
+                  <MiniKpi
+                    label={t("petanque.home.kpi.score", "Score")}
+                    value={`${kpis.scoreA}—${kpis.scoreB}`}
+                    primary={detailAccent}
+                    theme={theme}
+                  />
                 </div>
               </div>
             </div>
@@ -344,18 +909,49 @@ export default function PetanqueHome({ store, go }: Props) {
                   pointerEvents: "none",
                 }}
               />
-              <div style={{ position: "relative", padding: "10px 10px 10px", display: "flex", flexDirection: "column", gap: 8 }}>
+              <div
+                style={{
+                  position: "relative",
+                  padding: "10px 10px 10px",
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: 8,
+                }}
+              >
                 <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: 0.8, textTransform: "uppercase", color: "#FFFFFF" }}>
                   {rightTitle}
                 </div>
+
                 <div style={{ fontSize: 11, lineHeight: 1.35, color: theme.textSoft ?? "rgba(255,255,255,0.9)" }}>
                   {rightText}
                 </div>
 
-                <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 4 }}>
-                  <QuickBtn theme={theme} tint={theme.primary} label={t("petanque.home.quick.play", "Lancer / Reprendre")} onClick={() => go("petanque_play")} />
-                  <QuickBtn theme={theme} tint={"#00E5A8"} label={t("petanque.home.quick.measure", "Mesurer")} onClick={() => go("petanque_play", { openMeasure: true })} />
-                  <QuickBtn theme={theme} tint={"#FFFFFF"} label={t("petanque.home.quick.games", "Menu Jeux")} onClick={() => go("games")} />
+                {/* ✅ ACCES RAPIDE : boutons pleine largeur, centrés, texte coloré */}
+                <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 6 }}>
+                  <QuickBtn
+                    theme={theme}
+                    tint={theme.primary}
+                    label={t("petanque.home.quick.play", "Lancer / Reprendre")}
+                    onClick={() => go("petanque_play")}
+                  />
+                  <QuickBtn
+                    theme={theme}
+                    tint={"#00E5A8"}
+                    label={t("petanque.home.quick.measure", "Mesurer")}
+                    onClick={() => go("petanque_play", { openMeasure: true })}
+                  />
+                  <QuickBtn
+                    theme={theme}
+                    tint={"#FF7A18"}
+                    label={t("petanque.home.quick.tournaments", "Tournois")}
+                    onClick={() => go("tournaments" as any)}
+                  />
+                  <QuickBtn
+                    theme={theme}
+                    tint={"#FFFFFF"}
+                    label={t("petanque.home.quick.games", "Menu Jeux")}
+                    onClick={() => go("games")}
+                  />
                 </div>
               </div>
             </div>
@@ -379,7 +975,9 @@ export default function PetanqueHome({ store, go }: Props) {
           </div>
           <div style={{ marginTop: 8, display: "flex", alignItems: "center", justifyContent: "center", gap: 10 }}>
             <Pill theme={theme} label={t("petanque.home.teamA", "Équipe A")} />
-            <div style={{ fontWeight: 1000, fontSize: 24, letterSpacing: 1 }}>{kpis.scoreA} — {kpis.scoreB}</div>
+            <div style={{ fontWeight: 1000, fontSize: 24, letterSpacing: 1 }}>
+              {kpis.scoreA} — {kpis.scoreB}
+            </div>
             <Pill theme={theme} label={t("petanque.home.teamB", "Équipe B")} />
           </div>
         </div>
@@ -412,18 +1010,24 @@ function MiniKpi({ label, value, primary, theme }: any) {
 }
 
 function QuickBtn({ theme, tint, label, onClick }: any) {
+  const c = String(tint || "#FFFFFF");
   return (
     <button
       onClick={onClick}
       style={{
-        borderRadius: 999,
-        border: `1px solid ${String(tint)}66`,
-        background: `linear-gradient(180deg, ${String(tint)}22, rgba(0,0,0,0.45))`,
-        color: "#fff",
+        width: "100%", // ✅ pleine largeur (alignée visuellement avec le ticker)
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center", // ✅ intitulé centré
+        textAlign: "center",
+        borderRadius: 14,
+        border: `1px solid ${c}55`,
+        background: `linear-gradient(180deg, ${c}22, rgba(0,0,0,0.55))`,
+        color: c, // ✅ texte coloré
         fontWeight: 950,
         fontSize: 12,
-        letterSpacing: 0.4,
-        padding: "8px 10px",
+        letterSpacing: 0.6,
+        padding: "10px 12px",
         cursor: "pointer",
         boxShadow: `0 0 0 1px rgba(0,0,0,0.35), 0 10px 18px rgba(0,0,0,0.55)`,
       }}

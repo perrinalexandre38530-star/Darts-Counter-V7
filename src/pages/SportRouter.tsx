@@ -12,31 +12,26 @@ import StatsShell from "./StatsShell";
 import TournamentsHome from "./TournamentsHome";
 
 import PetanqueHome from "./petanque/PetanqueHome";
-import PetanqueMenu from "./petanque/PetanqueMenu"; // (tu l'as déjà)
-import PetanquePlay from "./petanque/PetanquePlay"; // (tu l'as déjà)
+import PetanqueHub from "./petanque/PetanqueHub";
+import PetanquePlay from "./petanque/PetanquePlay";
 
 export function SportHome(props: any) {
   const { sport } = useSport();
-  if (sport === "petanque") return <PetanqueHome {...props} />;
-  return <Home {...props} />;
+  return sport === "petanque" ? <PetanqueHome {...props} /> : <Home {...props} />;
 }
 
 export function SportGames(props: any) {
   const { sport } = useSport();
-  if (sport === "petanque") return <PetanqueMenu {...props} />;
-  return <Games {...props} />;
+  return sport === "petanque" ? <PetanqueHub {...props} /> : <Games {...props} />;
 }
 
 export function SportStats(props: any) {
-  const { sport } = useSport();
-  // Pétanque: pour l’instant on réutilise le même shell (visuel identique),
-  // ensuite on branchera des dashboards pétanque dedans.
+  // Visuel identique (StatsShell). Plus tard: dashboards pétanque.
   return <StatsShell {...props} />;
 }
 
 export function SportTournaments(props: any) {
-  const { sport } = useSport();
-  // Tournois: mode commun multi-sport => on garde la même page (look identique)
+  // Tournois commun multi-sport (visuel identique)
   return <TournamentsHome {...props} />;
 }
 
