@@ -23,6 +23,12 @@ import { THEMES, type ThemeId, type AppTheme } from "../theme/themePresets";
 import { useAuthOnline } from "../hooks/useAuthOnline";
 import { supabase } from "../lib/supabaseClient";
 
+// IMPORTANT: ajuste les chemins si tes assets sont ailleurs
+import logoDarts from "../assets/games/logo-darts.png";
+import logoPetanque from "../assets/games/logo-petanque.png";
+import logoPingPong from "../assets/games/logo-pingpong.png";
+import logoBabyFoot from "../assets/games/logo-babyfoot.png";
+
 type Props = { go?: (tab: any, params?: any) => void };
 
 // ---------------- Thèmes dispo + descriptions fallback ----------------
@@ -1044,14 +1050,35 @@ export default function Settings({ go }: Props) {
   }
 
   function SportSection() {
-    const current = (() => {
+    const { theme } = useTheme();
+    const { t } = useLang();
+  
+    type GameId = "darts" | "petanque" | "pingpong" | "babyfoot";
+  
+    const GAMES: { id: GameId; label: string; logo: string }[] = [
+      { id: "darts", label: "Fléchettes", logo: logoDarts },
+      { id: "petanque", label: "Pétanque", logo: logoPetanque },
+      { id: "pingpong", label: "Ping-Pong", logo: logoPingPong },
+      { id: "babyfoot", label: "Babyfoot", logo: logoBabyFoot },
+    ];
+  
+    const onPick = (id: GameId) => {
       try {
-        return localStorage.getItem(START_GAME_KEY) || "—";
-      } catch {
-        return "—";
-      }
-    })();
-
+        localStorage.setItem(START_GAME_KEY, id);
+      } catch {}
+  
+      // ✅ Comportement “GameSelect” : après choix, on revient au flow normal (avec BottomNav)
+      // Ajuste ici si tu as une route dédiée par sport plus tard.
+      go?.("home");
+    };
+  
+    const onReset = () => {
+      try {
+        localStorage.removeItem(START_GAME_KEY);
+      } catch {}
+      alert("Choix réinitialisé. Au prochain lancement, le hub de sélection réapparaîtra.");
+    };
+  
     return (
       <section
         style={{
@@ -1065,52 +1092,103 @@ export default function Settings({ go }: Props) {
         <h2 style={{ margin: 0, marginBottom: 6, fontSize: 18, color: theme.primary }}>
           {t("settings.sport.title", "Choix de sport")}
         </h2>
-
+  
         <p className="subtitle" style={{ fontSize: 12, color: theme.textSoft, marginBottom: 12, lineHeight: 1.4 }}>
-          {t(
-            "settings.sport.subtitle",
-            "Contrôle le sport/jeu au démarrage. Le hub s’affiche uniquement si aucun choix n’est défini ou après réinitialisation."
-          )}
+          {t("settings.sport.subtitle.short", "Sélectionne le jeu à utiliser au démarrage.")}
         </p>
-
+  
+        {/* ✅ EXACTEMENT la fonction de GameSelect : 4 logos en grille */}
         <div
           style={{
-            padding: 10,
-            borderRadius: 12,
-            border: `1px solid ${theme.borderSoft}`,
-            background: "rgba(0,0,0,0.3)",
-            marginBottom: 12,
-            fontSize: 13,
+            display: "grid",
+            gridTemplateColumns: "1fr 1fr",
+            gap: 12,
           }}
         >
-          <div style={{ fontWeight: 800, marginBottom: 4 }}>{t("settings.sport.current", "Choix actuel")}</div>
-          <div style={{ color: theme.textSoft }}>
-            {t("settings.sport.currentValue", "START_GAME_KEY")} :{" "}
-            <span style={{ color: theme.primary, fontWeight: 900 }}>{String(current)}</span>
-          </div>
+          {GAMES.map((g) => {
+  // ✅ Seuls les jeux prêts sont cliquables
+  const enabled = g.id === "darts"; // <- plus tard: ["darts","petanque"] etc.
+  const onClick = () => {
+    if (!enabled) return;
+    onPick(g.id);
+  };
+
+  return (
+    <button
+      key={g.id}
+      type="button"
+      onClick={onClick}
+      disabled={!enabled}
+      style={{
+        borderRadius: 16,
+        border: `1px solid ${theme.borderSoft}`,
+        background: "rgba(255,255,255,0.03)",
+        padding: 12,
+        cursor: enabled ? "pointer" : "not-allowed",
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        gap: 10,
+        boxShadow: enabled ? `0 0 18px ${theme.primary}12` : "none",
+        opacity: enabled ? 1 : 0.35,
+        filter: enabled ? "none" : "grayscale(1)",
+        position: "relative",
+      }}
+    >
+      {/* Badge SOON */}
+      {!enabled && (
+        <div
+          style={{
+            position: "absolute",
+            top: 10,
+            right: 10,
+            padding: "4px 8px",
+            borderRadius: 999,
+            border: "1px solid rgba(255,255,255,0.18)",
+            background: "rgba(0,0,0,0.55)",
+            color: "rgba(255,255,255,0.85)",
+            fontSize: 10,
+            fontWeight: 900,
+            letterSpacing: 0.6,
+          }}
+        >
+          SOON
         </div>
+      )}
 
-        <div style={{ marginTop: 16 }}>
-          <div style={{ fontWeight: 900, marginBottom: 8, opacity: 0.9, color: "rgba(255,255,255,0.9)" }}>
-            {t("settings.sport.startTitle", "Jeu au démarrage")}
-          </div>
+      <img
+        src={g.logo}
+        alt={g.label}
+        style={{
+          width: "100%",
+          maxWidth: 140,
+          height: 90,
+          objectFit: "contain",
+          filter: enabled
+            ? "drop-shadow(0 0 10px rgba(0,0,0,0.45))"
+            : "drop-shadow(0 0 0 rgba(0,0,0,0))",
+        }}
+      />
 
-          <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-            <button
-              onClick={onChangeGame}
-              style={{ ...btnPrimary, borderColor: theme.primary, boxShadow: `0 0 14px ${theme.primary}33` }}
-            >
-              {t("settings.sport.change", "Changer de jeu")}
-            </button>
+      <div style={{ fontSize: 12, color: theme.textSoft, fontWeight: 800, letterSpacing: 0.4 }}>
+        {g.label}
+      </div>
 
-            <button onClick={onResetStartGame} style={btnGhost}>
-              {t("settings.sport.resetChoice", "Réinitialiser le choix")}
-            </button>
-          </div>
-
-          <div className="subtitle" style={{ fontSize: 11, color: theme.textSoft, marginTop: 10, lineHeight: 1.35 }}>
-            {t("settings.sport.hint", "Astuce : “Réinitialiser le choix” force le hub à réapparaître au prochain lancement/refresh.")}
-          </div>
+      {!enabled && (
+        <div className="subtitle" style={{ fontSize: 10, color: theme.textSoft, opacity: 0.9 }}>
+          {t("settings.sport.comingSoon", "Bientôt disponible")}
+        </div>
+      )}
+    </button>
+  );
+})}
+        </div>
+  
+        {/* OPTIONNEL : si tu ne veux VRAIMENT QUE la grille, supprime ce bloc */}
+        <div style={{ marginTop: 12, display: "flex", justifyContent: "flex-end" }}>
+          <button onClick={onReset} style={{ padding: "8px 10px", borderRadius: 12, border: `1px solid ${theme.borderSoft}`, background: "transparent", color: theme.textSoft, fontWeight: 800, cursor: "pointer" }}>
+            {t("settings.sport.resetChoice", "Réinitialiser le choix")}
+          </button>
         </div>
       </section>
     );
