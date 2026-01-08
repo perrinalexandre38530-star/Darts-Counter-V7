@@ -330,3 +330,25 @@ body {
     scrollbar-width: thin !important;
   }  
 
+/* ==========================
+   ✅ LIVE RADAR — Animation
+   (à inclure UNE seule fois)
+========================== */
+@keyframes dcRadarSpin {
+  from { transform: translate(-50%,-50%) rotate(0deg); }
+  to   { transform: translate(-50%,-50%) rotate(360deg); }
+}
+
+/* Optionnel: améliore la fluidité sur mobile (GPU hint) */
+.radar-sweep,
+.dc-radar-sweep {
+  will-change: transform;
+}
+
+/* Optionnel: si l’utilisateur a “Réduire les animations” */
+@media (prefers-reduced-motion: reduce) {
+  .radar-sweep,
+  .dc-radar-sweep {
+    animation: none !important;
+  }
+}

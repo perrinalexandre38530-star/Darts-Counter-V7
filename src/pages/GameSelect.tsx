@@ -3,10 +3,12 @@
 // Hub de sélection de jeu (sans BottomNav)
 // - Affiche uniquement 4 logos (2x2)
 // - Clic sur un logo => route principale (avec BottomNav)
+// ✅ FIX: setSport() pour MAJ immédiate (même onglet)
 // ============================================
 
 import React from "react";
 import { useTheme } from "../contexts/ThemeContext";
+import { useSport } from "../contexts/SportContext";
 
 // IMPORTANT: ajuste les chemins si tu places ailleurs
 import logoDarts from "../assets/games/logo-darts.png";
@@ -22,14 +24,10 @@ type GameId = "darts" | "petanque" | "pingpong" | "babyfoot";
 
 export default function GameSelect({ go }: Props) {
   const { theme } = useTheme();
+  const { setSport } = useSport();
 
-  // ✅ mémorisation du choix au démarrage
-  const START_GAME_KEY = "dc-start-game";
-
-  // ✅ ROUTE CIBLE QUAND ON ENTRE DANS "FLÉCHETTES"
-  // Mets ici la route exacte de ta page d’accueil DARTS (celle qui affiche le BottomNav).
-  // Dans beaucoup de builds c’est "home" ou "menu".
-  const DARTS_HOME_ROUTE = "home";
+  // ✅ route d'entrée de l'app (BottomNav)
+  const HOME_ROUTE = "home";
 
   const items: Array<{
     id: GameId;
@@ -42,8 +40,8 @@ export default function GameSelect({ go }: Props) {
       logo: logoDarts,
       enabled: true,
       onClick: () => {
-        localStorage.setItem(START_GAME_KEY, "darts");
-        go(DARTS_HOME_ROUTE);
+        setSport("darts"); // ✅ MAJ state + persistance LS dc-start-game
+        go(HOME_ROUTE);
       },
     },
     {
@@ -51,8 +49,8 @@ export default function GameSelect({ go }: Props) {
       logo: logoPetanque,
       enabled: true,
       onClick: () => {
-        localStorage.setItem(START_GAME_KEY, "petanque");
-        go(DARTS_HOME_ROUTE); // home (même route, contenu sport-aware)
+        setSport("petanque"); // ✅ MAJ state + persistance LS dc-start-game
+        go(HOME_ROUTE);
       },
     },
     { id: "pingpong", logo: logoPingPong, enabled: false, onClick: () => {} },
@@ -70,12 +68,7 @@ export default function GameSelect({ go }: Props) {
             aria-disabled={!it.enabled}
             title={it.enabled ? "Ouvrir" : "Bientôt"}
           >
-            <img
-              src={it.logo}
-              alt={it.id}
-              style={img(theme, it.enabled)}
-              draggable={false}
-            />
+            <img src={it.logo} alt={it.id} style={img(theme, it.enabled)} draggable={false} />
             {!it.enabled && <div style={soonPill(theme)}>SOON</div>}
           </button>
         ))}
@@ -93,7 +86,7 @@ function wrap(theme: any): React.CSSProperties {
     alignItems: "center",
     justifyContent: "center",
     padding: "18px 14px",
-    backgroundColor: "#000", // 🔥 fond noir pur
+    backgroundColor: "#000",
   };
 }
 
@@ -106,11 +99,7 @@ const grid: React.CSSProperties = {
 };
 
 function tile(theme: any, enabled: boolean): React.CSSProperties {
-  const isDark =
-    theme?.id?.includes("dark") ||
-    theme?.id === "darkTitanium" ||
-    theme?.id === "dark";
-
+  const isDark = theme?.id?.includes("dark") || theme?.id === "darkTitanium" || theme?.id === "dark";
   const border = isDark ? "rgba(255,255,255,0.14)" : "rgba(0,0,0,0.10)";
   const bg = isDark ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.035)";
   const glow = enabled
