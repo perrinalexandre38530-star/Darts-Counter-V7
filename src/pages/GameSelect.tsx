@@ -46,7 +46,15 @@ export default function GameSelect({ go }: Props) {
         go(DARTS_HOME_ROUTE);
       },
     },
-    { id: "petanque", logo: logoPetanque, enabled: false, onClick: () => {} },
+    {
+      id: "petanque",
+      logo: logoPetanque,
+      enabled: true,
+      onClick: () => {
+        localStorage.setItem(START_GAME_KEY, "petanque");
+        go(DARTS_HOME_ROUTE); // home (même route, contenu sport-aware)
+      },
+    },
     { id: "pingpong", logo: logoPingPong, enabled: false, onClick: () => {} },
     { id: "babyfoot", logo: logoBabyFoot, enabled: false, onClick: () => {} },
   ];

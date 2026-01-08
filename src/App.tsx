@@ -36,12 +36,6 @@
 //   SIGNED_IN  => pullSnapshot() immédiat
 //   SIGNED_OUT => wipeAllLocalData() total
 //
-// ✅ FIX OBLIGATOIRE: MIRROR ONLINE (ID stable + nettoyage doublons)
-// - Appelle ensureOnlineMirrorProfile() après session valide + après pullSnapshot
-//
-// ✅ PATCH B: Re-run mirror quand online.profile arrive
-// - Dès que le profile Supabase arrive (nickname/avatar/country), on réécrit le mirror
-//
 // ✅ NEW: ROUTE SPECTATOR
 // - Ajout Tab "spectator"
 // - Ajout import SpectatorPage
@@ -50,7 +44,13 @@
 // ✅ NEW: ROUTE GAME SELECT (multisports)
 // - Ajout Tab "gameSelect"
 // - Ajout import GameSelect
-// - App démarre sur gameSelect (si profil OK)
+// - App démarre sur gameSelect (si profil OK)  ✅ IMPORTANT: TOUJOURS GameSelect après intro
+//
+// ✅ NEW: SPORT-AWARE + PÉTANQUE
+// - Ajout SportProvider/useSport
+// - Home/Games adaptatifs selon sport
+// - Boot : GameSelect TOUJOURS (même si sport déjà choisi)
+// - Ajout Tab "petanque_play" + route
 // ============================================
 
 import React from "react";
@@ -58,8 +58,6 @@ import BottomNav from "./components/BottomNav";
 
 import AuthStart from "./pages/AuthStart";
 import AccountStart from "./pages/AccountStart";
-
-// PROFILES V7 — Auth simple (email + mot de passe)
 
 import SplashScreen from "./components/SplashScreen";
 
@@ -71,7 +69,7 @@ import CrashCatcher from "./components/CrashCatcher";
 import MobileErrorOverlay from "./components/MobileErrorOverlay";
 
 // Persistance (IndexedDB via storage.ts)
-import { loadStore, saveStore, wipeAllLocalData as wipeAllLocalDataStorage } from "./lib/storage";
+import { loadStore, saveStore } from "./lib/storage";
 // OPFS / StorageManager — demande la persistance une fois au boot
 import { ensurePersisted } from "./lib/deviceStore";
 // 🔒 Garde-fou localStorage (purge legacy si trop plein)
@@ -85,11 +83,6 @@ import { onlineApi } from "./lib/onlineApi";
 
 // ✅ Supabase client
 import { supabase } from "./lib/supabaseClient";
-
-// ✅ FIX: mirror online:<user.id> + dédup profils
-// (PROFILES V7) :
-// - plus de "mirror profile" automatique
-// - plus de wipe total des données locales au logout
 
 // Types
 import type { Store, Profile, MatchRecord } from "./lib/types";
@@ -165,11 +158,17 @@ import { StoreProvider } from "./contexts/StoreContext";
 import { AudioProvider } from "./contexts/AudioContext";
 import { AuthOnlineProvider, useAuthOnline } from "./hooks/useAuthOnline";
 
+// ✅ NEW: Sport context + Pétanque pages
+import { SportProvider, useSport } from "./contexts/SportContext";
+import PetanqueHome from "./pages/petanque/PetanqueHome";
+import PetanqueMenu from "./pages/petanque/PetanqueMenu";
+import PetanquePlay from "./pages/petanque/PetanquePlay";
+
 // Dev helper
 import { installHistoryProbe } from "./dev/devHistoryProbe";
 if (import.meta.env.DEV) installHistoryProbe();
 
-// ✅ NEW: Start game selection persistence key
+// ✅ NEW: Start game selection persistence key (utilisé par GameSelect/SportContext)
 const START_GAME_KEY = "dc-start-game";
 
 // =============================================================
@@ -277,9 +276,7 @@ function buildChangelogSlides(t: (k: string, d?: string) => string, entries: any
         : t("home.changelog.empty", "Améliorations et correctifs divers.");
 
     const dateStr = String(e.date ?? "").trim();
-    const title = dateStr
-      ? `${t("home.changelog.title", "Patch notes")} — ${dateStr}`
-      : t("home.changelog.title", "Patch notes");
+    const title = dateStr ? `${t("home.changelog.title", "Patch notes")} — ${dateStr}` : t("home.changelog.title", "Patch notes");
 
     return {
       id: `changelog-${e.id ?? idx}`,
@@ -375,6 +372,7 @@ type Tab =
   | "home"
   | "gameSelect"
   | "games"
+  | "petanque_play"
   | "tournaments"
   | "tournament_create"
   | "tournament_view"
@@ -883,14 +881,14 @@ function App() {
   const [store, setStore] = React.useState<Store>(initialStore);
 
   // ✅ DEFAULT TAB = gameSelect (si boot OK). Les flows auth/hash peuvent override.
-  // ✅ NEW: si un jeu est choisi, on démarre sur l'accueil "classique" (avec BottomNav)
+  // ✅ IMPORTANT: GameSelect doit toujours s'afficher (après intro)
   const [tab, setTab] = React.useState<Tab>("gameSelect");
 
   const [routeParams, setRouteParams] = React.useState<any>(null);
   const [loading, setLoading] = React.useState(true);
 
-  // PROFILES V7: plus de chargement implicite de "profile" au boot.
-  // PROFILES V7: suppression du mécanisme de "mirror" (profil online:<uid> dans les profils locaux).
+  // ✅ SPORT-AWARE : on lit le sport courant ici pour adapter Home/Games
+  const { sport } = useSport();
 
   // ✅ SPLASH gate (ne s'affiche pas pendant les flows auth)
   const [showSplash, setShowSplash] = React.useState(() => {
@@ -951,7 +949,6 @@ function App() {
         setTab("online");
         return;
       }
-      // ✅ (optionnel) si tu veux du hash direct:
       if (h.startsWith("#/spectator")) {
         setRouteParams(null);
         setTab("spectator");
@@ -1014,8 +1011,6 @@ function App() {
       (window as any).__appStore.go = go;
       (window as any).__appStore.store = store;
       (window as any).__appStore.tab = tab;
-
-      // ✅ NEW: permet aux listeners externes de muter le store
       (window as any).__appStore.update = update;
     } catch {}
   }, [store, tab]);
@@ -1059,7 +1054,9 @@ function App() {
               setRouteParams(null);
               setTab("account_start");
             } else {
-              // ✅ DEFAULT START : hub si aucun choix, sinon home
+              // ✅ DEFAULT START : GameSelect DOIT TOUJOURS s'afficher après l'intro
+              // Le sport choisi sert UNIQUEMENT à adapter Home / Games ensuite.
+              setRouteParams(null);
               setTab("gameSelect");
             }
           }
@@ -1080,21 +1077,8 @@ function App() {
   }, []);
 
   // ============================================================
-  // ✅ AUTH — RESET TOTAL AU LOGIN (BOOT UNIQUE Supabase)
-  // - SIGNED_IN  => pullSnapshot() immédiat
-  // - SIGNED_OUT => wipeAllLocalData() total
-  // + ✅ MIRROR ONLINE (ID stable + dédup) après pull
+  // ✅ AUTH — handler Supabase (conservé)
   // ============================================================
-
-  // PROFILES V7: on désactive le pull snapshot automatique (source de bugs et d'écrasements).
-  // La sync cloud sera refaite proprement via tables V7 (events/snapshots) et un écran dédié.
-  const pullSnapshot = React.useCallback(async () => {
-    setCloudHydrated(true);
-    return;
-  }, []);
-
-  // PROFILES V7: ne jamais effacer les données locales lors d'un logout.
-  // On se contente de ramener l'utilisateur sur l'entrée "Compte".
   const wipeAllLocalData = React.useCallback(async () => {
     setRouteParams(null);
     setTab("account_start");
@@ -1106,12 +1090,9 @@ function App() {
         if (event === "SIGNED_IN") {
           const user = session?.user || (await supabase.auth.getUser())?.data?.user || null;
           if (user?.id) cloudHydratedUserRef.current = String(user.id);
-          // PROFILES V7: plus de pull snapshot automatique, plus de mirror.
         }
-
         if (event === "SIGNED_OUT") {
           // PROFILES V7: on ne wipe PAS les données locales au logout.
-          // On laisse l'utilisateur continuer en local (profils offline).
         }
       } catch (e) {
         console.warn("[auth] onAuthStateChange handler error", e);
@@ -1128,10 +1109,6 @@ function App() {
 
   // ============================================================
   // ✅ CLOUD HYDRATE (source unique)
-  // - Quand on se CONNECTE => PULL snapshot cloud
-  // - ✅ FIX: on hydrate RAM + IDB avec la VERSION MERGÉE (pas "next" brut)
-  // - ✅ FIX: si on reçoit des profils + activeProfileId => on renvoie HOME
-  // - ✅ FIX: mirror online:<user.id> + dédup juste après import
   // ============================================================
   React.useEffect(() => {
     let cancelled = false;
@@ -1149,8 +1126,6 @@ function App() {
           const payload = (res as any)?.payload ?? null;
           const cloudStore = payload?.store ?? payload?.idb?.store ?? payload ?? null;
 
-          // ✅ SAFETY: si le cloud existe mais est VIDE ({}), on ne doit JAMAIS écraser un local déjà rempli.
-          // Cas typique: première connexion / ligne user_store créée vide.
           const isCloudEmpty = (() => {
             if (!cloudStore) return true;
             if (typeof cloudStore !== "object") return false;
@@ -1200,26 +1175,15 @@ function App() {
             if (!cancelled) {
               let mergedFinal: Store | null = null;
 
-              const user =
-                (online as any)?.session?.user ||
-                (online as any)?.user ||
-                (await supabase.auth.getUser())?.data?.user ||
-                null;
-
-              const onlineProfile = (online as any)?.profile ?? null;
-
               setStore((prev) => {
                 const mergedProfiles = mergeProfilesSafe(prev.profiles ?? [], next.profiles ?? []);
                 const merged: Store = {
                   ...next,
                   profiles: mergedProfiles,
-                  // ✅ ne pas perdre un active local si le cloud est partiel
                   activeProfileId: next.activeProfileId ?? prev.activeProfileId ?? null,
                 } as any;
 
-                // PROFILES V7: plus de "mirror" automatique
                 mergedFinal = merged;
-
                 return mergedFinal as any;
               });
 
@@ -1230,7 +1194,6 @@ function App() {
                   await saveStore(mergedFinal);
                 } catch {}
 
-                // ✅ cloud wins -> sync dartsets localStorage
                 try {
                   if ((mergedFinal as any).dartSets) replaceAllDartSets((mergedFinal as any).dartSets);
                 } catch {}
@@ -1238,13 +1201,12 @@ function App() {
                 const hasProfiles = (mergedFinal.profiles ?? []).length > 0;
                 const hasActive = !!mergedFinal.activeProfileId;
 
-                const h = String(window.location.hash || "");
+                const hh = String(window.location.hash || "");
                 const isAuthFlow =
-                  h.startsWith("#/auth/callback") || h.startsWith("#/auth/reset") || h.startsWith("#/auth/forgot");
+                  hh.startsWith("#/auth/callback") || hh.startsWith("#/auth/reset") || hh.startsWith("#/auth/forgot");
 
                 if (!isAuthFlow && hasProfiles && hasActive) {
                   setRouteParams(null);
-                  // ✅ après hydrate, on revient sur la sélection de jeu (pas Home)
                   setTab("gameSelect");
                 }
               }
@@ -1310,60 +1272,6 @@ function App() {
   }, [store, loading, cloudHydrated, online?.ready, online?.status]);
 
   // ============================================================
-  // ✅ Flush Cloud NOW (used by Profiles save / DartSets save)
-  // - force un debounced push immédiat (utile avant un Clear Site Data)
-  // ============================================================
-  const flushCloudNow = React.useCallback(
-    async (reason: string = "manual", seedOverride?: any) => {
-      try {
-        if (loading) return false;
-        // Allow manual flush even if we didn't pull yet (ex: after Clear Site Data)
-        // This prevents Supabase from re-injecting old profiles/avatars at next login.
-        // Cloud snapshot becomes the source of truth after user actions.
-
-        if (!online?.ready || online.status !== "signed_in") return false;
-
-        // cancel any pending debounce push
-        if (cloudPushTimerRef.current) {
-          clearTimeout(cloudPushTimerRef.current as any);
-          cloudPushTimerRef.current = null;
-        }
-
-        const seed = seedOverride ?? store;
-        await onlineApi.pushStoreSnapshot(sanitizeStoreForCloud(seed));
-        // debug
-        console.info("[cloud] flush ok", { reason });
-        return true;
-      } catch (e) {
-        console.warn("[cloud] flush failed", reason, e);
-        return false;
-      }
-    },
-    [loading, cloudHydrated, online?.ready, online?.status, store]
-  );
-
-  // expose for pages that want to await a real push
-  React.useEffect(() => {
-    (window as any).__flushCloudNow = flushCloudNow;
-    return () => {
-      try {
-        if ((window as any).__flushCloudNow === flushCloudNow) {
-          delete (window as any).__flushCloudNow;
-        }
-      } catch {}
-    };
-  }, [flushCloudNow]);
-
-  // also allow simple event dispatch (dc-flush-cloud)
-  React.useEffect(() => {
-    const handler = () => {
-      void flushCloudNow("event");
-    };
-    window.addEventListener("dc-flush-cloud", handler as any);
-    return () => window.removeEventListener("dc-flush-cloud", handler as any);
-  }, [flushCloudNow]);
-
-  // ============================================================
   // ✅ DartSets bridge: localStorage dartSetsStore -> App store
   // ============================================================
   React.useEffect(() => {
@@ -1382,8 +1290,6 @@ function App() {
   React.useEffect(() => {
     if (!loading) {
       saveStore(store);
-
-      // ✅ NEW: event global quand le store change
       try {
         window.dispatchEvent(new Event("dc-store-updated"));
       } catch {}
@@ -1392,10 +1298,14 @@ function App() {
 
   /* Profiles mutator (✅ FIX: merge défensif) */
   function setProfiles(fn: (p: Profile[]) => Profile[]) {
-    update((s) => ({
-      ...s,
-      profiles: mergeProfilesSafe(s.profiles ?? [], fn(s.profiles ?? [])),
-    }));
+    setStore((s) => {
+      const next = {
+        ...(s as any),
+        profiles: mergeProfilesSafe((s as any)?.profiles ?? [], fn((s as any)?.profiles ?? [])),
+      } as any;
+      queueMicrotask(() => saveStore(next));
+      return next;
+    });
   }
 
   // ============================================================
@@ -1469,12 +1379,14 @@ function App() {
       payload: { ...(m as any), players },
     };
 
-    update((s) => {
-      const list = [...(s.history ?? [])];
+    setStore((s) => {
+      const list = [...((s as any).history ?? [])];
       const i = list.findIndex((r: any) => r.id === saved.id);
       if (i >= 0) list[i] = saved;
       else list.unshift(saved);
-      return { ...s, history: list };
+      const next = { ...(s as any), history: list } as any;
+      queueMicrotask(() => saveStore(next));
+      return next;
     });
 
     try {
@@ -1566,18 +1478,24 @@ function App() {
         break;
 
       case "gameSelect":
-        // ✅ FIX: GameSelect = hub sans BottomNav, props = { go }
         page = <GameSelect go={go} />;
         break;
 
       case "home":
-        page = (
-          <Home store={store} update={update} go={go} onConnect={() => go("profiles", { view: "me", autoCreate: true })} />
-        );
+        page =
+          sport === "petanque" ? (
+            <PetanqueHome go={go} />
+          ) : (
+            <Home store={store} update={update} go={go} onConnect={() => go("profiles", { view: "me", autoCreate: true })} />
+          );
         break;
 
       case "games":
-        page = <Games setTab={(t: any) => go(t)} />;
+        page = sport === "petanque" ? <PetanqueMenu go={go} /> : <Games setTab={(t: any) => go(t)} />;
+        break;
+
+      case "petanque_play":
+        page = <PetanquePlay go={go} />;
         break;
 
       case "profiles":
@@ -1927,8 +1845,6 @@ function App() {
             else next.push(updated);
 
             saveBotsLS(next);
-
-            // ⚠️ Bot = local uniquement, pas de updateProfile Supabase ici
             go(backTo);
           }
 
@@ -1955,15 +1871,12 @@ function App() {
           const now = Date.now();
 
           const bucket = "avatars";
-          // 🔒 Stockage avatar par USER (auth.uid), pas par id de profil local
           const uid = String((online as any)?.session?.user?.id || (online as any)?.user?.id || "");
           const objectPath = `${uid || targetProfile.id}/avatar.png`;
 
           try {
-            // ✅ upload image -> publicUrl
             const { publicUrl } = await uploadAvatarToSupabase({ bucket, objectPath, pngDataUrl });
 
-            // ✅ maj profil local (RAM + store)
             setProfiles((list) =>
               list.map((p) =>
                 p.id === targetProfile.id
@@ -1978,7 +1891,6 @@ function App() {
               )
             );
 
-            // ✅ maj profil online (table profiles) si connecté
             try {
               if ((online as any)?.status === "signed_in") {
                 await onlineApi.updateProfile({
@@ -1997,7 +1909,6 @@ function App() {
           } catch (e) {
             console.error("[AvatarUpload] upload failed -> fallback local avatarDataUrl", e);
 
-            // fallback local (pas de publicUrl ici)
             setProfiles((list) =>
               list.map((p) => (p.id === targetProfile.id ? { ...p, name: trimmedName || p.name, avatarDataUrl: pngDataUrl } : p))
             );
@@ -2023,7 +1934,6 @@ function App() {
       }
 
       default:
-        // ✅ fallback safe : GameSelect
         page = <GameSelect go={go} />;
     }
   }
@@ -2070,7 +1980,6 @@ function AppGate({
   const isAuthFlow =
     tab === "auth_reset" || tab === "auth_callback" || tab === "auth_forgot" || tab === "auth_start" || tab === "account_start";
 
-  // ✅ Tant que restoreSession / init n'a pas fini, on affiche un écran neutre
   if (!ready) {
     return (
       <div className="container" style={{ padding: 40, textAlign: "center" }}>
@@ -2079,14 +1988,12 @@ function AppGate({
     );
   }
 
-  // ✅ Redirect automatique vers AuthStart si une page online est demandée sans session
   React.useEffect(() => {
     if (!isAuthFlow && needsSession && status !== "signed_in") {
       go("auth_start");
     }
   }, [isAuthFlow, needsSession, status, go]);
 
-  // Pendant la redirection, on affiche un petit loader (évite flash UI)
   if (!isAuthFlow && needsSession && status !== "signed_in") {
     return (
       <div className="container" style={{ padding: 40, textAlign: "center" }}>
@@ -2106,9 +2013,11 @@ export default function AppRoot() {
         <StoreProvider>
           <AudioProvider>
             <AuthOnlineProvider>
-              {/* ✅ player audio global persistant (rien à voir avec SFX UI) */}
-              <audio id="dc-splash-audio" src={SplashJingle} preload="auto" style={{ display: "none" }} />
-              <App />
+              <SportProvider>
+                {/* ✅ player audio global persistant (rien à voir avec SFX UI) */}
+                <audio id="dc-splash-audio" src={SplashJingle} preload="auto" style={{ display: "none" }} />
+                <App />
+              </SportProvider>
             </AuthOnlineProvider>
           </AudioProvider>
         </StoreProvider>
