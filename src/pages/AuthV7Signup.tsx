@@ -1,0 +1,168 @@
+// ============================================
+// src/pages/AuthV7Signup.tsx
+// PROFILES V7 — Création compte email + mot de passe
+// ============================================
+import React from "react";
+import { supabase } from "../lib/supabaseClient";
+
+type Props = {
+  go: (t: any, p?: any) => void;
+};
+
+export default function AuthV7Signup({ go }: Props) {
+  const [email, setEmail] = React.useState("");
+  const [password, setPassword] = React.useState("");
+  const [confirm, setConfirm] = React.useState("");
+  const [loading, setLoading] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
+  const [info, setInfo] = React.useState<string | null>(null);
+
+  const onSubmit = async () => {
+    setError(null);
+    setInfo(null);
+    const e = email.trim();
+    if (!e || !e.includes("@")) return setError("Entre une adresse email valide.");
+    if (!password || password.length < 6) return setError("Mot de passe : 6 caractères minimum.");
+    if (password !== confirm) return setError("Les mots de passe ne correspondent pas.");
+
+    setLoading(true);
+    try {
+      const { error: err } = await supabase.auth.signUp({
+        email: e,
+        password,
+      });
+      if (err) {
+        setError(err.message);
+        return;
+      }
+      // Selon la config Supabase, il peut y avoir une confirmation email.
+      setInfo("Compte créé. Si une confirmation email est requise, ouvre le dernier email reçu.");
+      go("home");
+    } catch (e: any) {
+      setError(e?.message || "Création de compte impossible.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div
+      style={{
+        minHeight: "calc(100dvh - 88px)",
+        display: "grid",
+        placeItems: "center",
+        padding: "18px 12px",
+      }}
+    >
+      <div
+        style={{
+          width: "min(420px, 92vw)",
+          borderRadius: 22,
+          padding: 16,
+          background: "linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.03))",
+          border: "1px solid rgba(255,255,255,.10)",
+          boxShadow: "0 22px 70px rgba(0,0,0,.62), 0 0 0 1px rgba(0,0,0,.25) inset",
+        }}
+      >
+        <div style={{ fontSize: 22, fontWeight: 950, marginBottom: 10 }}>Créer un compte</div>
+
+        <div style={{ display: "grid", gap: 10 }}>
+          <input
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            placeholder="Adresse email"
+            autoComplete="email"
+            style={inputStyle}
+          />
+          <input
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            placeholder="Mot de passe (6+ caractères)"
+            type="password"
+            autoComplete="new-password"
+            style={inputStyle}
+          />
+          <input
+            value={confirm}
+            onChange={(e) => setConfirm(e.target.value)}
+            placeholder="Confirmer le mot de passe"
+            type="password"
+            autoComplete="new-password"
+            style={inputStyle}
+          />
+
+          <button onClick={onSubmit} disabled={loading} style={primaryBtnStyle}>
+            {loading ? "Création..." : "Créer le compte"}
+          </button>
+
+          <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
+            <button onClick={() => go("auth_v7_login")} style={linkBtnStyle}>
+              J’ai déjà un compte
+            </button>
+            <button onClick={() => go("auth_forgot")} style={linkBtnStyle}>
+              Mot de passe oublié ?
+            </button>
+          </div>
+
+          {error ? (
+            <div style={{ fontSize: 13, opacity: 0.95, lineHeight: 1.35 }}>{error}</div>
+          ) : null}
+          {info ? (
+            <div style={{ fontSize: 13, opacity: 0.95, lineHeight: 1.35 }}>{info}</div>
+          ) : null}
+
+          <button onClick={() => go("account_start")} style={secondaryBtnStyle}>
+            Retour
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+const inputStyle: React.CSSProperties = {
+  width: "100%",
+  padding: "10px 12px",
+  borderRadius: 14,
+  border: "1px solid rgba(255,255,255,.12)",
+  background: "rgba(10,10,14,.45)",
+  color: "#fff",
+  outline: "none",
+  fontSize: 13.5,
+  boxShadow: "0 0 0 1px rgba(0,0,0,.25) inset",
+};
+
+const primaryBtnStyle: React.CSSProperties = {
+  width: "100%",
+  borderRadius: 999,
+  padding: "11px 12px",
+  fontWeight: 950,
+  fontSize: 14,
+  border: "1px solid rgba(0,0,0,.25)",
+  color: "#1b1508",
+  background: "linear-gradient(180deg,#ffd25a,#ffaf00)",
+  boxShadow: "0 10px 24px rgba(0,0,0,.35), 0 0 22px rgba(255,198,58,.15)",
+  cursor: "pointer",
+};
+
+const secondaryBtnStyle: React.CSSProperties = {
+  width: "100%",
+  borderRadius: 14,
+  padding: "10px 12px",
+  border: "1px solid rgba(255,255,255,.12)",
+  background: "rgba(255,255,255,.05)",
+  color: "rgba(255,255,255,.92)",
+  cursor: "pointer",
+  fontWeight: 900,
+};
+
+const linkBtnStyle: React.CSSProperties = {
+  background: "transparent",
+  border: "none",
+  color: "rgba(255,255,255,.85)",
+  cursor: "pointer",
+  textDecoration: "underline",
+  padding: 0,
+  fontWeight: 800,
+  fontSize: 12.8,
+};

@@ -46,6 +46,11 @@
 // - Ajout Tab "spectator"
 // - Ajout import SpectatorPage
 // - Ajout case "spectator" => <SpectatorPage .../>
+//
+// ✅ NEW: ROUTE GAME SELECT (multisports)
+// - Ajout Tab "gameSelect"
+// - Ajout import GameSelect
+// - App démarre sur gameSelect (si profil OK)
 // ============================================
 
 import React from "react";
@@ -53,6 +58,8 @@ import BottomNav from "./components/BottomNav";
 
 import AuthStart from "./pages/AuthStart";
 import AccountStart from "./pages/AccountStart";
+
+// PROFILES V7 — Auth simple (email + mot de passe)
 
 import SplashScreen from "./components/SplashScreen";
 
@@ -80,17 +87,16 @@ import { onlineApi } from "./lib/onlineApi";
 import { supabase } from "./lib/supabaseClient";
 
 // ✅ FIX: mirror online:<user.id> + dédup profils
-import { ensureOnlineMirrorProfile } from "./lib/accountBridge";
-
-// ✅ V7: profil online (table profiles) = source de vérité
-import { fetchOnlineProfile } from "./hooks/useProfileOnline";
-import { useProfileStore } from "./store/profileStore";
+// (PROFILES V7) :
+// - plus de "mirror profile" automatique
+// - plus de wipe total des données locales au logout
 
 // Types
 import type { Store, Profile, MatchRecord } from "./lib/types";
 import type { X01ConfigV3 as X01ConfigV3Type } from "./types/x01v3";
 
 // Pages
+import GameSelect from "./pages/GameSelect";
 import Home from "./pages/Home";
 import Games from "./pages/Games";
 import TournamentsHome from "./pages/TournamentsHome";
@@ -162,6 +168,9 @@ import { AuthOnlineProvider, useAuthOnline } from "./hooks/useAuthOnline";
 // Dev helper
 import { installHistoryProbe } from "./dev/devHistoryProbe";
 if (import.meta.env.DEV) installHistoryProbe();
+
+// ✅ NEW: Start game selection persistence key
+const START_GAME_KEY = "dc-start-game";
 
 // =============================================================
 // ✅ SAFE MERGE — profils (évite crash au boot)
@@ -364,6 +373,7 @@ type Tab =
   | "auth_start"
   | "auth_forgot"
   | "home"
+  | "gameSelect"
   | "games"
   | "tournaments"
   | "tournament_create"
@@ -861,80 +871,26 @@ function App() {
   // ✅ CLOUD SNAPSHOT SYNC (source unique Supabase)
   // ============================================================
   const online = useAuthOnline();
-  const [cloudHydrated, setCloudHydrated] = React.useState(false);
+  // PROFILES V7: on désactive l'hydratation automatique du store depuis le cloud
+  // (elle écrasait des données locales et créait des états impossibles à déboguer).
+  const [cloudHydrated, setCloudHydrated] = React.useState(true);
 
-  // ✅ Cloud hydrate "par user"
+  // (legacy) Référence conservée pour logs/diagnostic éventuels.
   const cloudHydratedUserRef = React.useRef<string>("");
-
-  React.useEffect(() => {
-    if (!online?.ready) return;
-    const uid = String((online as any)?.session?.user?.id || (online as any)?.user?.id || "");
-
-    if (online.status !== "signed_in") {
-      cloudHydratedUserRef.current = "";
-      return;
-    }
-
-    if (uid && cloudHydratedUserRef.current !== uid) {
-      cloudHydratedUserRef.current = uid;
-      setCloudHydrated(false);
-    }
-  }, [online?.ready, online?.status, (online as any)?.session?.user?.id]);
 
   const cloudPushTimerRef = React.useRef<number | null>(null);
 
   const [store, setStore] = React.useState<Store>(initialStore);
-  const [tab, setTab] = React.useState<Tab>("home");
+
+  // ✅ DEFAULT TAB = gameSelect (si boot OK). Les flows auth/hash peuvent override.
+  // ✅ NEW: si un jeu est choisi, on démarre sur l'accueil "classique" (avec BottomNav)
+  const [tab, setTab] = React.useState<Tab>("gameSelect");
+
   const [routeParams, setRouteParams] = React.useState<any>(null);
   const [loading, setLoading] = React.useState(true);
 
-  // ============================================================
-  // ✅ V7 (CRITIQUE) — BOOT ONLINE PROFILE -> profileStore
-  // Charge le profil Supabase dès qu'une session existe (même après Clear Site Data)
-  // ============================================================
-  React.useEffect(() => {
-    let alive = true;
-    (async () => {
-      try {
-        const { data } = await supabase.auth.getUser();
-        const user = data?.user || null;
-        if (!alive || !user?.id) return;
-
-        const p = await fetchOnlineProfile(String(user.id));
-        if (!alive) return;
-
-        useProfileStore.getState().setProfile(p);
-      } catch (e) {
-        console.warn("[bootProfile] fetchOnlineProfile failed", e);
-      }
-    })();
-    return () => {
-      alive = false;
-    };
-  }, []);
-
-  // ============================================================
-  // ✅ PATCH B — Re-run mirror quand online.profile arrive
-  // Effet : au début name=email (fallback), puis dès que le profile Supabase est chargé
-  // => on réécrit le mirror online:<uid> (name/avatar/country/etc.)
-  // ============================================================
-  React.useEffect(() => {
-    try {
-      if (!online?.ready) return;
-      if (online.status !== "signed_in") return;
-
-      const uid = String((online as any)?.session?.user?.id || (online as any)?.user?.id || "");
-      if (!uid) return;
-
-      const user = { id: uid, email: (online as any)?.user?.email } as any;
-      const onlineProfile = (online as any)?.profile ?? null;
-
-      // ✅ Dès que onlineProfile devient dispo, on réécrit le mirror (name/avatar/country)
-      setStore((prev) => ensureOnlineMirrorProfile(prev as any, user, onlineProfile) as any);
-    } catch (e) {
-      console.warn("[mirror] refresh on profile change failed", e);
-    }
-  }, [online?.ready, online?.status, (online as any)?.profile]);
+  // PROFILES V7: plus de chargement implicite de "profile" au boot.
+  // PROFILES V7: suppression du mécanisme de "mirror" (profil online:<uid> dans les profils locaux).
 
   // ✅ SPLASH gate (ne s'affiche pas pendant les flows auth)
   const [showSplash, setShowSplash] = React.useState(() => {
@@ -1103,7 +1059,8 @@ function App() {
               setRouteParams(null);
               setTab("account_start");
             } else {
-              setTab("home");
+              // ✅ DEFAULT START : hub si aucun choix, sinon home
+              setTab("gameSelect");
             }
           }
         }
@@ -1129,168 +1086,18 @@ function App() {
   // + ✅ MIRROR ONLINE (ID stable + dédup) après pull
   // ============================================================
 
+  // PROFILES V7: on désactive le pull snapshot automatique (source de bugs et d'écrasements).
+  // La sync cloud sera refaite proprement via tables V7 (events/snapshots) et un écran dédié.
   const pullSnapshot = React.useCallback(async () => {
-    try {
-      // force re-hydrate
-      setCloudHydrated(false);
+    setCloudHydrated(true);
+    return;
+  }, []);
 
-      const res: any = await onlineApi.pullStoreSnapshot();
-
-      if (res?.status === "ok") {
-        const payload = (res as any)?.payload ?? null;
-        const cloudStore = payload?.store ?? payload?.idb?.store ?? payload ?? null;
-
-        if (cloudStore && typeof cloudStore === "object") {
-          const next: Store = {
-            ...initialStore,
-            ...(cloudStore as any),
-            profiles: (cloudStore as any).profiles ?? [],
-            friends: (cloudStore as any).friends ?? [],
-            history: (cloudStore as any).history ?? [],
-            dartSets: (cloudStore as any).dartSets ?? getAllDartSets(),
-          };
-
-          // ✅ on calcule mergedFinal depuis le prev store (safe)
-          let mergedFinal: Store | null = null;
-
-          setStore((prev) => {
-            const mergedProfiles = mergeProfilesSafe(prev.profiles ?? [], next.profiles ?? []);
-
-            const merged: Store = {
-              ...next,
-              profiles: mergedProfiles,
-              // ✅ garde un active local si cloud partiel
-              activeProfileId: next.activeProfileId ?? prev.activeProfileId ?? null,
-            } as any;
-
-            mergedFinal = merged;
-            return merged;
-          });
-
-          // laisse le setState exécuter le callback
-          await Promise.resolve();
-
-          // ✅ OBLIGATOIRE : mirror online ID stable + nettoyage doublons
-          // (PLACÉ EXACTEMENT ICI : après mergedFinal calculé, avant saveStore)
-          try {
-            const uid = String((online as any)?.session?.user?.id || (online as any)?.user?.id || "");
-            const user = uid ? ({ id: uid, email: (online as any)?.user?.email } as any) : null;
-            const onlineProfile = (online as any)?.profile ?? null;
-
-            if (user?.id && mergedFinal) {
-              mergedFinal = ensureOnlineMirrorProfile(mergedFinal as any, user, onlineProfile) as any;
-
-              // ✅ applique aussi en RAM (sinon on ne voit pas le cleanup tout de suite)
-              setStore(mergedFinal as any);
-            }
-          } catch (e) {
-            console.warn("[mirror] ensureOnlineMirrorProfile failed", e);
-          }
-
-          // ✅ puis seulement maintenant on persiste
-          if (mergedFinal) {
-            try {
-              await saveStore(mergedFinal);
-            } catch {}
-
-            try {
-              if ((mergedFinal as any).dartSets) replaceAllDartSets((mergedFinal as any).dartSets);
-            } catch {}
-
-            const hasProfiles = (mergedFinal.profiles ?? []).length > 0;
-            const hasActive = !!mergedFinal.activeProfileId;
-
-            const h = String(window.location.hash || "");
-            const isAuthFlow =
-              h.startsWith("#/auth/callback") || h.startsWith("#/auth/reset") || h.startsWith("#/auth/forgot");
-
-            if (!isAuthFlow && hasProfiles && hasActive) {
-              setRouteParams(null);
-              setTab("home");
-            }
-          }
-        }
-      }
-    } catch (e) {
-      console.warn("[auth] pullSnapshot error", e);
-    } finally {
-      setCloudHydrated(true);
-    }
-  }, [online]);
-
+  // PROFILES V7: ne jamais effacer les données locales lors d'un logout.
+  // On se contente de ramener l'utilisateur sur l'entrée "Compte".
   const wipeAllLocalData = React.useCallback(async () => {
-    try {
-      // stop timers
-      try {
-        if (cloudPushTimerRef.current) {
-          window.clearTimeout(cloudPushTimerRef.current);
-          cloudPushTimerRef.current = null;
-        }
-      } catch {}
-
-      // reset flags hydrate
-      try {
-        cloudHydratedUserRef.current = "";
-        setCloudHydrated(false);
-      } catch {}
-
-      // ✅ wipe IDB + localStorage dc_* / dc-*
-      try {
-        await wipeAllLocalDataStorage();
-      } catch {}
-
-      // ✅ purge history IDB (best-effort)
-      try {
-        await (History as any)?.clear?.();
-      } catch {}
-
-      // purge dartSetsStore mirror (localStorage)
-      try {
-        replaceAllDartSets([]);
-      } catch {}
-
-      // ✅ V7: clear online profile cache
-      try {
-        useProfileStore.getState().clear();
-      } catch {}
-
-      // reset RAM + IDB store principal
-      const clean: Store = {
-        ...initialStore,
-        dartSets: [],
-        profiles: [],
-        friends: [],
-        history: [],
-        activeProfileId: null,
-      } as any;
-
-      try {
-        await saveStore(clean);
-      } catch {}
-
-      setStore(clean);
-      setRouteParams(null);
-      setTab("account_start");
-
-      // sécurité hash
-      try {
-        const h = String(window.location.hash || "");
-        if (h.startsWith("#/online") || h.startsWith("#/auth/") || h.startsWith("#/spectator")) window.location.hash = "#/";
-      } catch {}
-    } catch (e) {
-      console.warn("[auth] wipeAllLocalData error", e);
-      const clean: Store = {
-        ...initialStore,
-        dartSets: [],
-        profiles: [],
-        friends: [],
-        history: [],
-        activeProfileId: null,
-      } as any;
-      setStore(clean);
-      setRouteParams(null);
-      setTab("account_start");
-    }
+    setRouteParams(null);
+    setTab("account_start");
   }, []);
 
   React.useEffect(() => {
@@ -1299,29 +1106,12 @@ function App() {
         if (event === "SIGNED_IN") {
           const user = session?.user || (await supabase.auth.getUser())?.data?.user || null;
           if (user?.id) cloudHydratedUserRef.current = String(user.id);
-
-          // ✅ 1) pull snapshot immédiatement (source unique)
-          await pullSnapshot();
-
-          // ✅ 1bis) V7: recharge le profil Supabase (table profiles) -> profileStore
-          try {
-            if (user?.id) {
-              const p = await fetchOnlineProfile(String(user.id));
-              useProfileStore.getState().setProfile(p);
-            }
-          } catch (e) {
-            console.warn("[profile] fetchOnlineProfile after SIGNED_IN failed", e);
-          }
-
-          // ✅ 2) mirror online:<user.id> + dédup (CRITIQUE)
-          if (user?.id) {
-            const onlineProfile = (online as any)?.profile ?? null;
-            setStore((prev) => ensureOnlineMirrorProfile(prev, user, onlineProfile) as Store);
-          }
+          // PROFILES V7: plus de pull snapshot automatique, plus de mirror.
         }
 
         if (event === "SIGNED_OUT") {
-          await wipeAllLocalData();
+          // PROFILES V7: on ne wipe PAS les données locales au logout.
+          // On laisse l'utilisateur continuer en local (profils offline).
         }
       } catch (e) {
         console.warn("[auth] onAuthStateChange handler error", e);
@@ -1334,7 +1124,7 @@ function App() {
       } catch {}
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pullSnapshot, wipeAllLocalData, online]);
+  }, [wipeAllLocalData]);
 
   // ============================================================
   // ✅ CLOUD HYDRATE (source unique)
@@ -1427,8 +1217,8 @@ function App() {
                   activeProfileId: next.activeProfileId ?? prev.activeProfileId ?? null,
                 } as any;
 
-                // ✅ MIRROR ONLINE + CLEANUP
-                mergedFinal = user?.id ? (ensureOnlineMirrorProfile(merged, user, onlineProfile) as Store) : merged;
+                // PROFILES V7: plus de "mirror" automatique
+                mergedFinal = merged;
 
                 return mergedFinal as any;
               });
@@ -1454,7 +1244,8 @@ function App() {
 
                 if (!isAuthFlow && hasProfiles && hasActive) {
                   setRouteParams(null);
-                  setTab("home");
+                  // ✅ après hydrate, on revient sur la sélection de jeu (pas Home)
+                  setTab("gameSelect");
                 }
               }
             }
@@ -1527,8 +1318,8 @@ function App() {
       try {
         if (loading) return false;
         // Allow manual flush even if we didn't pull yet (ex: after Clear Site Data)
-    // This prevents Supabase from re-injecting old profiles/avatars at next login.
-    // Cloud snapshot becomes the source of truth after user actions.
+        // This prevents Supabase from re-injecting old profiles/avatars at next login.
+        // Cloud snapshot becomes the source of truth after user actions.
 
         if (!online?.ready || online.status !== "signed_in") return false;
 
@@ -1763,8 +1554,8 @@ function App() {
       case "account_start":
         page = (
           <AccountStart
-            onLogin={() => go("profiles", { view: "me", autoCreate: true, mode: "signin" })}
-            onCreate={() => go("profiles", { view: "me", autoCreate: true, mode: "signup" })}
+            onLogin={() => go("profiles", { view: "me" })}
+            onCreate={() => go("profiles", { view: "me" })}
             onForgot={() => go("auth_forgot")}
           />
         );
@@ -1774,8 +1565,15 @@ function App() {
         page = <AuthForgotRoute go={go} />;
         break;
 
+      case "gameSelect":
+        // ✅ FIX: GameSelect = hub sans BottomNav, props = { go }
+        page = <GameSelect go={go} />;
+        break;
+
       case "home":
-        page = <Home store={store} update={update} go={go} onConnect={() => go("profiles", { view: "me", autoCreate: true })} />;
+        page = (
+          <Home store={store} update={update} go={go} onConnect={() => go("profiles", { view: "me", autoCreate: true })} />
+        );
         break;
 
       case "games":
@@ -1838,7 +1636,9 @@ function App() {
         break;
 
       case "cricket_stats":
-        page = <StatsCricket profiles={store.profiles} activeProfileId={routeParams?.profileId ?? store.activeProfileId ?? null} />;
+        page = (
+          <StatsCricket profiles={store.profiles} activeProfileId={routeParams?.profileId ?? store.activeProfileId ?? null} />
+        );
         break;
 
       case "statsDetail":
@@ -2146,8 +1946,7 @@ function App() {
         // =========================
         // PROFILE AVATAR (SUPABASE)
         // =========================
-        const targetProfile =
-          store.profiles.find((p) => p.id === (profileIdFromParams || store.activeProfileId)) ?? null;
+        const targetProfile = store.profiles.find((p) => p.id === (profileIdFromParams || store.activeProfileId)) ?? null;
 
         async function handleSaveAvatarProfile({ pngDataUrl, name }: { pngDataUrl: string; name: string }) {
           if (!targetProfile) return;
@@ -2224,7 +2023,8 @@ function App() {
       }
 
       default:
-        page = <Home store={store} update={update} go={go} onConnect={() => go("profiles", { view: "me", autoCreate: true })} />;
+        // ✅ fallback safe : GameSelect
+        page = <GameSelect go={go} />;
     }
   }
 
@@ -2239,7 +2039,9 @@ function App() {
           </AppGate>
         </div>
 
-        <BottomNav value={tab as any} onChange={(k: any) => go(k)} />
+        {/* ✅ FIX: BottomNav masquée sur gameSelect */}
+        {tab !== "gameSelect" && <BottomNav value={tab as any} onChange={(k: any) => go(k)} />}
+
         <SWUpdateBanner />
       </>
     </CrashCatcher>

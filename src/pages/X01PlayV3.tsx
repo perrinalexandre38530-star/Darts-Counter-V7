@@ -181,6 +181,13 @@ function dartValue(d: UIDart) {
   return d.v * d.mult;
 }
 
+// Somme des points d'une volée (pour preview checkout)
+function sumThrow(throwDarts: UIDart[] | undefined | null): number {
+  if (!throwDarts || !Array.isArray(throwDarts)) return 0;
+  return throwDarts.reduce((s, d) => s + dartValue(d), 0);
+}
+
+
 // Checkout suggestion à partir de la structure V3
 function formatCheckoutFromVisit(suggestion: any): string {
   if (!suggestion?.darts || !Array.isArray(suggestion.darts)) return "";
@@ -297,6 +304,10 @@ function computeBotVisit(
   outMode: "double" | "single" | "master"
 ): UIDart[] {
   const doubleOut = outMode === "double";
+  const singleOut = outMode === "single";
+  const masterOut = outMode === "master";
+
+  const darts: UIDart[] = [];
 
   type EffLevel = "easy" | "medium" | "hard" | "pro" | "legend";
 
@@ -370,10 +381,10 @@ function computeBotVisit(
   };
 
   let effLevel: EffLevel = "easy";
-  if (lvl === "medium") effLevel = "medium";
-  else if (lvl === "hard") effLevel = "hard";
-  else if (lvl === "pro") effLevel = "pro";
-  else if (lvl === "legend") effLevel = "legend";
+  if (level === "medium") effLevel = "medium";
+  else if (level === "hard") effLevel = "hard";
+  else if (level === "pro") effLevel = "pro";
+  else if (level === "legend") effLevel = "legend";
 
   const skill = SKILL[effLevel];
 
@@ -1011,25 +1022,6 @@ const profileById = React.useMemo(() => {
   // =====================================================
   // Checkout (UI) — recalcul live après chaque fléchette / annuler
   // =====================================================
-  const checkoutText = React.useMemo(() => {
-    // on ne propose des checkouts que pendant une partie
-    if (status !== "running") return null;
-
-    // remaining après la saisie en cours (preview)
-    const remaining = currentScore - sumThrow(currentThrow);
-    const dartsLeft = Math.max(0, 3 - (currentThrow?.length || 0));
-    if (remaining <= 0) return null;
-    if (dartsLeft <= 0) return null;
-
-    // finishMode / outMode (SIMPLE / DOUBLE / MASTER)
-    const outMode: "simple" | "double" | "master" =
-      ((config as any).finishMode as any) ||
-      ((config as any).outMode as any) ||
-      (((config as any).doubleOut === true ? "double" : "simple") as any);
-
-    return computeCheckoutText(remaining, dartsLeft, outMode);
-  }, [status, currentThrow, currentScore, config]);
-
 // =====================================================
   // Autosave : persistance / reprise (A1 basé sur la liste des darts)
   // =====================================================
@@ -1336,23 +1328,23 @@ const playScoreSfxAndMaybeDelayVoice = React.useCallback(
           (audio as any).addEventListener(
             "ended",
             () => {
-              // ✅ voix IA 1.5s après le SFX "nul"
-              scheduleVoice(() => speakVisit(playerName, visitScore), 1200);
+              // ✅ Réduire la latence SFX -> voix (cible ~1s)
+              scheduleVoice(() => speakVisit(playerName, visitScore), 1000);
             },
             { once: true } as any
           );
         } else {
           // fallback si l'event "ended" n'est pas dispo
-          scheduleVoice(() => speakVisit(playerName, visitScore), 1200);
+          scheduleVoice(() => speakVisit(playerName, visitScore), 1000);
         }
       } else {
         // si pas de sfx arcade, on annonce quand même (avec un léger délai)
-        scheduleVoice(() => speakVisit(playerName, visitScore), 1200);
+        scheduleVoice(() => speakVisit(playerName, visitScore), 1000);
       }
       return;
     }
 
-    // ---- Scores 80..179 : SFX dédié + voix >= 2s après le son ----
+    // ---- Scores 80..179 : SFX dédié + voix ~1s après le son ----
     if (!isBustNow && visitScore >= 80 && visitScore <= 179) {
       if (arcadeEnabled) {
         const audio = playPublicSound(`score_${visitScore}.mp3`, { volume: sfxVolume });
@@ -1360,12 +1352,12 @@ const playScoreSfxAndMaybeDelayVoice = React.useCallback(
           audio.addEventListener(
             "ended",
             () => {
-              scheduleVoice(() => speakVisit(playerName, visitScore), 2000);
+              scheduleVoice(() => speakVisit(playerName, visitScore), 1000);
             },
             { once: true } as any
           );
         } else {
-          scheduleVoice(() => speakVisit(playerName, visitScore), 2000);
+          scheduleVoice(() => speakVisit(playerName, visitScore), 1000);
         }
       } else {
         // pas de SFX => voix immédiate
@@ -1374,11 +1366,11 @@ const playScoreSfxAndMaybeDelayVoice = React.useCallback(
       return;
     }
 
-    // ---- 180 : déjà géré arcade (comme avant) + voix >= 2s ----
+    // ---- 180 : déjà géré arcade (comme avant) + voix ~1s ----
     if (!isBustNow && visitScore === 180 && darts.length === 3) {
       if (arcadeEnabled) {
         playArcadeMapped("score_180", { rateLimitMs: 300 });
-        scheduleVoice(() => speakVisit(playerName, visitScore), 2000);
+        scheduleVoice(() => speakVisit(playerName, visitScore), 1000);
       } else {
         speakVisit(playerName, visitScore);
       }
@@ -1486,6 +1478,7 @@ React.useEffect(() => {
 // =====================================================
 
 const [multiplier, setMultiplier] = React.useState<1 | 2 | 3>(1);
+const [bustError, setBustError] = React.useState<string | null>(null);
 const [currentThrow, setCurrentThrow] = React.useState<UIDart[]>([]);
 
 // ✅ ÉTAT: dernière volée par joueur (sert à PlayersListOnly + bust preview)
@@ -1510,8 +1503,29 @@ const bustPreviewPlayedRef = React.useRef(false);
 const bustSoundTimeoutRef = React.useRef<number | null>(null);
 
 // 🔒 indique si currentThrow vient du moteur (rebuild / UNDO)
-//    ou de la saisie locale sur le keypad
-const currentThrowFromEngineRef = React.useRef(false);
+//    ou
+
+  const checkoutText = React.useMemo(() => {
+    // on ne propose des checkouts que pendant une partie
+    if (status !== "running") return null;
+
+    // remaining après la saisie en cours (preview)
+    const remaining = currentScore - sumThrow(currentThrow);
+    const dartsLeft = Math.max(0, 3 - (currentThrow?.length || 0));
+    if (remaining <= 0) return null;
+    if (dartsLeft <= 0) return null;
+
+    // finishMode / outMode (SIMPLE / DOUBLE / MASTER)
+    const outMode: "single" | "double" | "master" =
+      ((config as any).finishMode as any) ||
+      ((config as any).outMode as any) ||
+      (((config as any).doubleOut === true ? "double" : "single") as any);
+
+    return computeCheckoutText(remaining, dartsLeft, outMode);
+  }, [status, currentThrow, currentScore, config]);
+  // de la saisie locale sur le keypad
+
+  const currentThrowFromEngineRef = React.useRef(false);
 
 // 🔄 SYNC AVEC LE MOTEUR UNIQUEMENT POUR LES CAS "ENGINE-DRIVEN"
 //    (UNDO global, rebuild, etc.)
@@ -1677,47 +1691,48 @@ const handleBackspace = () => {
 };
 
 const handleCancel = () => {
+  // Cancel = undo last input safely.
+  // - If there is a local currentThrow: remove the last dart
+  // - Otherwise: ask the engine to undo the last committed dart (any player/turn)
+
   bustPreviewPlayedRef.current = false;
   if (bustSoundTimeoutRef.current) {
     window.clearTimeout(bustSoundTimeoutRef.current);
     bustSoundTimeoutRef.current = null;
   }
 
-  if (activePlayerId) {
-    setLastVisitIsBustByPlayer((m: Record<string, boolean>) => ({
-      ...m,
-      [activePlayerId]: false,
-    }));
-  }
+  // Always clear bust state when cancelling
+  setBustError("");
+  // ⚠️ Le lock bust est dérivé de lastVisitIsBustByPlayer.
+  // En Cancel/UNDO, on déverrouille pour le joueur courant.
+  setLastVisitIsBustByPlayer((prev) => ({
+    ...prev,
+    [activePlayerId]: false,
+  }));
+  setBustBanner(false);
+  setIsBust(false);
 
-  // si on est en saisie locale -> retire juste 1 dart
-  if (currentThrow.length > 0 && !currentThrowFromEngineRef.current) {
+  // 1) Local edit: pop one dart from the current visit
+  if (currentThrow.length > 0) {
     setCurrentThrow((prev) => prev.slice(0, -1));
+    currentThrowFromEngineRef.current = false;
     setMultiplier(1);
     return;
   }
 
-  // sinon -> UNDO moteur (si on a de l'historique)
-  if (!replayDartsRef.current.length) return;
-
+  // 2) Engine undo: revert the last committed dart from history
   botUndoGuardRef.current = true;
-
-  replayDartsRef.current.pop();
-  currentThrowFromEngineRef.current = true;
-
-  undoLastDart();
-  persistAutosave();
-
-  setTimeout(() => {
-    botUndoGuardRef.current = false;
-  }, 0);
+  try {
+    undoLastDart();
+    persistAutosave();
+  } finally {
+    window.setTimeout(() => {
+      botUndoGuardRef.current = false;
+    }, 0);
+  }
 };
 
-const validateThrow = () => {
-  ensureAudioUnlockedNow();
-  if (!activePlayerId) return;
-  if (!currentThrow.length) return;
-
+const validateThrow = async () => {
   if (isValidatingRef.current) return;
   isValidatingRef.current = true;
 
@@ -1749,7 +1764,7 @@ const validateThrow = () => {
       const lastIsTriple = !!last && last.mult === 3;
       const lastIsFinisher = (outMode === "double") ? lastIsDouble : (outMode === "master") ? (lastIsDouble || lastIsTriple) : true;
     const isCheckoutNow =
-      !isBustNow && remainingAfter === 0 && isValidFinisher(last);
+      !isBustNow && remainingAfter === 0 && isValidFinisher(lastD as any);
 
     // ✅ sons scores (80..179 + null + 180) + délai voix (>=2s)
     playScoreSfxAndMaybeDelayVoice({
@@ -1895,7 +1910,7 @@ React.useEffect(() => {
         const lastD = ui[ui.length - 1];
         const lastIsDouble = !!lastD && (lastD.mult === 2 || (lastD.v === 25 && lastD.mult === 2));
         const isCheckoutNow =
-          !isBustNow && remainingAfter === 0 && isValidFinisher(last);
+          !isBustNow && remainingAfter === 0 && isValidFinisher(lastD as any);
 
         playScoreSfxAndMaybeDelayVoice({
           playerName,
@@ -2593,7 +2608,7 @@ try {
             onBull={handleBull}
             onValidate={validateThrow}
             hidePreview
-            bustLock={bustLockActive}
+            bustLock={isBustLocked}
           />
           </div>
         )}

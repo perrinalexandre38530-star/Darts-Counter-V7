@@ -1,5 +1,5 @@
 // ============================================
-// src/pages/Settings.tsx — Thème + Langue + Compte + Reset App
+// src/pages/Settings.tsx — Thème + Langue + Compte + Reset App + Choix de sport
 // Fond toujours sombre (ne varie pas avec le thème)
 // Les thèmes ne changent que les néons / accents / textes
 // + Drapeaux pour les langues
@@ -8,6 +8,12 @@
 // + Bloc "Notifications & communications"
 // + Bouton "Tout réinitialiser" (hard reset + reload)
 // + Bouton "Supprimer mon compte" (via useAuthOnline().deleteAccount ONLY)
+// ✅ NEW : UI "shell" style StatsShell (CAPTURE 1) : header + liste de cartes menu
+// - Le menu remplace le row d’onglets : tu cliques une carte => ouvre la section
+// - Bouton "Retour" en haut :
+//   • si on est dans une section => retour au menu settings
+//   • sinon => retour Home
+// ✅ NEW : Boutons “Changer de jeu” + “Réinitialiser le choix” (START_GAME_KEY)
 // ============================================
 
 import React from "react";
@@ -35,13 +41,11 @@ const THEME_META: Record<ThemeId, { defaultLabel: string; defaultDesc: string }>
   orange: { defaultLabel: "Orange", defaultDesc: "Orange chaud énergique" },
   white: { defaultLabel: "Blanc", defaultDesc: "Fond clair moderne" },
 
-  // Soft accents
   blueOcean: { defaultLabel: "Bleu océan", defaultDesc: "Bleu naturel océan / ciel" },
   limeYellow: { defaultLabel: "Vert jaune", defaultDesc: "Couleur lime hyper flashy" },
   sage: { defaultLabel: "Vert sauge", defaultDesc: "Tons verts naturels et doux" },
   skyBlue: { defaultLabel: "Bleu pastel", defaultDesc: "Bleu très doux et lumineux" },
 
-  // Dark premiums
   darkTitanium: { defaultLabel: "Titane sombre", defaultDesc: "Look métal premium mat" },
   darkCarbon: { defaultLabel: "Carbone", defaultDesc: "Ambiance fibre carbone moderne" },
   darkFrost: { defaultLabel: "Givre sombre", defaultDesc: "Noir givré futuriste" },
@@ -123,6 +127,11 @@ function injectSettingsAnimationsOnce() {
       0%   { box-shadow: 0 0 0px rgba(255,255,255,0.0); }
       40%  { box-shadow: 0 0 12px currentColor, 0 0 26px currentColor; }
       100% { box-shadow: 0 0 0px rgba(255,255,255,0.0); }
+    }
+
+    @keyframes dcSettingsCardGlow {
+      0%, 100% { opacity: 0.02; }
+      50% { opacity: 0.12; }
     }
   `;
   document.head.appendChild(style);
@@ -252,6 +261,9 @@ const PAGE_BG = "#050712";
 const CARD_BG = "rgba(8, 10, 20, 0.98)";
 const LS_ACCOUNT_PREFS = "dc_account_prefs_v1";
 
+// ✅ Choix jeu/sport au démarrage
+const START_GAME_KEY = "dc-start-game";
+
 type AccountPrefs = {
   emailsNews: boolean;
   emailsStats: boolean;
@@ -338,23 +350,16 @@ function ToggleRow({
 
 /* -------------------------------------------------------------
    RESET TOTAL HARDCORE
-   - Efface localStorage + sessionStorage
-   - Wipe toutes les bases IndexedDB
-   - Déconnexion Supabase sur cet appareil
-   - Reset éventuel store global legacy
-   - Reload
 ------------------------------------------------------------- */
 async function fullHardReset() {
   try {
     if (typeof window === "undefined") return;
 
-    // 1) storage
     try {
       window.localStorage.clear();
       window.sessionStorage.clear();
     } catch {}
 
-    // 2) wipe IndexedDB
     try {
       const anyIndexedDB: any = (window as any).indexedDB;
       if (anyIndexedDB && typeof anyIndexedDB.databases === "function") {
@@ -382,12 +387,10 @@ async function fullHardReset() {
       }
     } catch {}
 
-    // 3) logout supabase local (cet appareil)
     try {
       await supabase.auth.signOut({ scope: "local" } as any);
     } catch {}
 
-    // 4) reset store global legacy si dispo
     try {
       const anyWindow = window as any;
       if (anyWindow.__DARTS_STORE__?.setState) {
@@ -405,9 +408,7 @@ async function fullHardReset() {
   } catch (err) {
     // eslint-disable-next-line no-console
     console.error("FULL HARD RESET FAILED", err);
-    alert(
-      "Erreur lors du reset complet. Tu peux aussi vider manuellement les données du site dans le navigateur."
-    );
+    alert("Erreur lors du reset complet. Tu peux aussi vider manuellement les données du site dans le navigateur.");
   }
 }
 
@@ -421,7 +422,7 @@ function AccountSecurityBlock() {
   const user = session?.user ?? null;
   const profile = session?.profile ?? null;
 
-  const [displayName, setDisplayName] = React.useState(profile?.displayName || user?.nickname || "");
+  const [displayName, setDisplayName] = React.useState(profile?.displayName || (user as any)?.nickname || "");
   const [country, setCountry] = React.useState(profile?.country || "");
 
   const [savingProfile, setSavingProfile] = React.useState(false);
@@ -432,13 +433,11 @@ function AccountSecurityBlock() {
 
   const [prefs, setPrefs] = React.useState<AccountPrefs>(DEFAULT_PREFS);
 
-  // Sync quand le profil change (refresh / pull)
   React.useEffect(() => {
-    setDisplayName(profile?.displayName || user?.nickname || "");
+    setDisplayName(profile?.displayName || (user as any)?.nickname || "");
     setCountry(profile?.country || "");
-  }, [profile?.displayName, profile?.country, user?.nickname]);
+  }, [profile?.displayName, profile?.country, (user as any)?.nickname]);
 
-  // Chargement des préférences (localStorage)
   React.useEffect(() => {
     if (typeof window === "undefined") return;
     try {
@@ -449,7 +448,6 @@ function AccountSecurityBlock() {
     } catch {}
   }, []);
 
-  // Sauvegarde auto des prefs
   React.useEffect(() => {
     if (typeof window === "undefined") return;
     try {
@@ -472,10 +470,7 @@ function AccountSecurityBlock() {
     } catch (e: any) {
       // eslint-disable-next-line no-console
       console.warn("[settings] updateProfile error", e);
-      setError(
-        e?.message ||
-          t("settings.account.save.error", "Impossible de mettre à jour le compte pour le moment.")
-      );
+      setError(e?.message || t("settings.account.save.error", "Impossible de mettre à jour le compte pour le moment."));
     } finally {
       setSavingProfile(false);
     }
@@ -494,15 +489,8 @@ function AccountSecurityBlock() {
     setError(null);
 
     try {
-      // ✅ IMPORTANT : jamais supabase.functions.invoke() ici
-      // ✅ On passe TOUJOURS par useAuthOnline().deleteAccount()
       await deleteAccount();
-
       alert("Compte supprimé. Un nouveau compte vierge a été recréé.");
-
-      // (Optionnel mais pratique) : si tu veux TOUT nettoyer localement aussi
-      // -> décommente la ligne suivante.
-      // await fullHardReset();
     } catch (e: any) {
       setError("Erreur suppression compte : " + (e?.message ?? e));
     } finally {
@@ -510,9 +498,8 @@ function AccountSecurityBlock() {
     }
   }
 
-  // Email : en V8 anon, souvent undefined
-  const emailLabel = user?.email || "—";
-  const userIdLabel = user?.id ? `#${user.id.slice(0, 8)}` : "—";
+  const emailLabel = (user as any)?.email || "—";
+  const userIdLabel = (user as any)?.id ? `#${(user as any).id.slice(0, 8)}` : "—";
 
   return (
     <section
@@ -535,7 +522,6 @@ function AccountSecurityBlock() {
         )}
       </p>
 
-      {/* Statut du compte */}
       <div
         style={{
           padding: 10,
@@ -572,7 +558,6 @@ function AccountSecurityBlock() {
 
       {status === "signed_in" && (
         <>
-          {/* Formulaire profil */}
           <div style={{ display: "grid", gap: 8, marginTop: 6, marginBottom: 10 }}>
             <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 12 }}>
               <span style={{ color: theme.textSoft }}>{t("settings.account.email", "Email (optionnel)")}</span>
@@ -592,20 +577,10 @@ function AccountSecurityBlock() {
             </label>
           </div>
 
-          {message && (
-            <div className="subtitle" style={{ color: "#5ad57a", fontSize: 11, marginBottom: 4 }}>
-              {message}
-            </div>
-          )}
-          {error && (
-            <div className="subtitle" style={{ color: "#ff6666", fontSize: 11, marginBottom: 4 }}>
-              {error}
-            </div>
-          )}
+          {message && <div className="subtitle" style={{ color: "#5ad57a", fontSize: 11, marginBottom: 4 }}>{message}</div>}
+          {error && <div className="subtitle" style={{ color: "#ff6666", fontSize: 11, marginBottom: 4 }}>{error}</div>}
 
-          {/* Actions */}
           <div style={{ display: "flex", justifyContent: "space-between", gap: 8, flexWrap: "wrap", marginBottom: 10 }}>
-            {/* Debug/QA : logout */}
             <button type="button" className="btn sm" onClick={() => logout()} disabled={loading || deleting}>
               {t("settings.account.btn.logout", "Se déconnecter (debug)")}
             </button>
@@ -626,7 +601,6 @@ function AccountSecurityBlock() {
             </button>
           </div>
 
-          {/* ✅ ZONE DANGEREUSE (V8) — BOUTON PRÊT À COLLER */}
           <div
             style={{
               marginTop: 24,
@@ -666,7 +640,6 @@ function AccountSecurityBlock() {
             </div>
           </div>
 
-          {/* Bloc Notifications & communications */}
           <div style={{ marginTop: 12, paddingTop: 10, borderTop: `1px dashed ${theme.borderSoft}` }}>
             <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 6, color: theme.primary }}>
               {t("settings.account.notifications.title", "Notifications & communications")}
@@ -679,19 +652,28 @@ function AccountSecurityBlock() {
             <div style={{ display: "flex", flexDirection: "column", gap: 6, fontSize: 12 }}>
               <ToggleRow
                 label={t("settings.account.notifications.emailsNews", "Emails de nouveautés / promotions")}
-                help={t("settings.account.notifications.emailsNewsHelp", "Actualités majeures, nouvelles fonctionnalités, offres spéciales.")}
+                help={t(
+                  "settings.account.notifications.emailsNewsHelp",
+                  "Actualités majeures, nouvelles fonctionnalités, offres spéciales."
+                )}
                 checked={prefs.emailsNews}
                 onChange={(v) => setPrefs((p) => ({ ...p, emailsNews: v }))}
               />
               <ToggleRow
                 label={t("settings.account.notifications.emailsStats", "Emails de résumé de stats & conseils")}
-                help={t("settings.account.notifications.emailsStatsHelp", "Récapitulatif occasionnel de tes stats avec quelques tips.")}
+                help={t(
+                  "settings.account.notifications.emailsStatsHelp",
+                  "Récapitulatif occasionnel de tes stats avec quelques tips."
+                )}
                 checked={prefs.emailsStats}
                 onChange={(v) => setPrefs((p) => ({ ...p, emailsStats: v }))}
               />
               <ToggleRow
                 label={t("settings.account.notifications.inAppNotifs", "Notifications dans l’app (sons / messages info)")}
-                help={t("settings.account.notifications.inAppNotifsHelp", "Contrôle les sons d’alerte et les petits messages d’infos dans l’application.")}
+                help={t(
+                  "settings.account.notifications.inAppNotifsHelp",
+                  "Contrôle les sons d’alerte et les petits messages d’infos dans l’application."
+                )}
                 checked={prefs.inAppNotifs}
                 onChange={(v) => setPrefs((p) => ({ ...p, inAppNotifs: v }))}
               />
@@ -705,13 +687,152 @@ function AccountSecurityBlock() {
 
 // ---------------- Composant principal ----------------
 
+type SettingsTab = "menu" | "account" | "theme" | "lang" | "general" | "sport";
+
+function SettingsMenuCard({
+  title,
+  subtitle,
+  theme,
+  onClick,
+}: {
+  title: string;
+  subtitle: string;
+  theme: any;
+  onClick?: () => void;
+}) {
+  return (
+    <div
+      className="dc-settings-shell-card"
+      style={{
+        position: "relative",
+        borderRadius: 16,
+        background: theme.card,
+        border: `1px solid ${theme.borderSoft}`,
+        boxShadow: `0 16px 32px rgba(0,0,0,55), 0 0 18px ${theme.primary}22`,
+        overflow: "hidden",
+      }}
+    >
+      <div
+        aria-hidden
+        style={{
+          content: '""',
+          position: "absolute",
+          inset: -2,
+          borderRadius: 18,
+          background: "radial-gradient(circle at 15% 0%, rgba(255,255,255,.10), transparent 60%)",
+          opacity: 0.0,
+          pointerEvents: "none",
+          animation: "dcSettingsCardGlow 3.6s ease-in-out infinite",
+          mixBlendMode: "screen",
+        }}
+      />
+      <button
+        onClick={onClick}
+        style={{
+          width: "100%",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          padding: 14,
+          background: "transparent",
+          border: "none",
+          cursor: "pointer",
+          textAlign: "left",
+        }}
+      >
+        <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+          <div
+            style={{
+              fontSize: 14,
+              fontWeight: 900,
+              letterSpacing: 0.6,
+              textTransform: "uppercase",
+              color: theme.primary,
+              textShadow: `0 0 10px ${theme.primary}55`,
+              whiteSpace: "normal",
+              overflow: "hidden",
+            }}
+          >
+            {title}
+          </div>
+          <div
+            style={{
+              fontSize: 12,
+              color: theme.textSoft,
+              lineHeight: 1.3,
+              maxWidth: 360,
+              whiteSpace: "normal",
+              overflow: "hidden",
+            }}
+          >
+            {subtitle}
+          </div>
+        </div>
+
+        <div
+          style={{
+            flexShrink: 0,
+            width: 34,
+            height: 34,
+            borderRadius: 999,
+            border: `1px solid ${theme.primary}66`,
+            background: "rgba(0,0,0,0.45)",
+            boxShadow: `0 0 10px ${theme.primary}33`,
+            display: "grid",
+            placeItems: "center",
+            color: theme.primary,
+            fontWeight: 900,
+          }}
+        >
+          ›
+        </div>
+      </button>
+    </div>
+  );
+}
+
 export default function Settings({ go }: Props) {
   const { theme, themeId, setThemeId } = useTheme();
   const { lang, setLang, t } = useLang();
 
+  const [tab, setTab] = React.useState<SettingsTab>("menu");
+
   React.useEffect(() => {
     injectSettingsAnimationsOnce();
   }, []);
+
+  const onChangeGame = () => {
+    if (!go) return;
+    go("gameSelect");
+  };
+
+  const onResetStartGame = () => {
+    try {
+      localStorage.removeItem(START_GAME_KEY);
+    } catch {}
+    alert("Choix du jeu réinitialisé. Au prochain lancement, le menu de sélection s’affichera.");
+  };
+
+  const btnPrimary: React.CSSProperties = {
+    padding: "10px 12px",
+    borderRadius: 12,
+    border: "1px solid rgba(255,255,255,0.18)",
+    background: "rgba(255,255,255,0.08)",
+    color: "#fff",
+    fontWeight: 900,
+    cursor: "pointer",
+  };
+
+  const btnGhost: React.CSSProperties = {
+    padding: "10px 12px",
+    borderRadius: 12,
+    border: "1px solid rgba(255,255,255,0.14)",
+    background: "transparent",
+    color: "#fff",
+    fontWeight: 800,
+    opacity: 0.9,
+    cursor: "pointer",
+  };
 
   async function handleFullReset() {
     const ok = window.confirm(
@@ -726,52 +847,10 @@ export default function Settings({ go }: Props) {
     await fullHardReset();
   }
 
-  return (
-    <div
-      className="container"
-      style={{
-        minHeight: "100vh",
-        padding: 16,
-        paddingBottom: 90,
-        background: PAGE_BG,
-        color: theme.text,
-      }}
-    >
-      {/* Retour */}
-      <button
-        type="button"
-        onClick={() => go && go("home")}
-        style={{
-          border: "none",
-          background: "transparent",
-          color: theme.textSoft,
-          marginBottom: 8,
-          fontSize: 15,
-        }}
-      >
-        ← {t("settings.back", "Retour")}
-      </button>
+  // ---------------- Sections ----------------
 
-      {/* Titre */}
-      <h1
-        style={{
-          margin: 0,
-          fontSize: 26,
-          color: theme.primary,
-          textShadow: `0 0 12px ${theme.primary}66`,
-        }}
-      >
-        {t("settings.title", "Réglages")}
-      </h1>
-
-      <div style={{ fontSize: 14, color: theme.textSoft, marginBottom: 16 }}>
-        {t("settings.subtitle", "Personnalise le thème, la langue et ton compte Darts Counter.")}
-      </div>
-
-      {/* ---------- COMPTE & SÉCURITÉ + PREFS ---------- */}
-      <AccountSecurityBlock />
-
-      {/* ---------- BLOC THEME ---------- */}
+  function ThemeSection() {
+    return (
       <section
         style={{
           background: CARD_BG,
@@ -785,7 +864,16 @@ export default function Settings({ go }: Props) {
           {t("settings.theme", "Thème")}
         </h2>
 
-        <div style={{ marginTop: 12, marginBottom: 6, color: theme.textSoft, fontSize: 13, fontWeight: 600, textTransform: "uppercase" }}>
+        <div
+          style={{
+            marginTop: 12,
+            marginBottom: 6,
+            color: theme.textSoft,
+            fontSize: 13,
+            fontWeight: 600,
+            textTransform: "uppercase",
+          }}
+        >
           ⚡ {t("settings.theme.group.neons", "Néons classiques")}
         </div>
         <div className="dc-scroll-thin" style={{ overflowX: "auto", padding: "6px 0 10px 0", marginTop: 4, marginBottom: 4 }}>
@@ -806,7 +894,16 @@ export default function Settings({ go }: Props) {
           </div>
         </div>
 
-        <div style={{ marginTop: 16, marginBottom: 6, color: theme.textSoft, fontSize: 13, fontWeight: 600, textTransform: "uppercase" }}>
+        <div
+          style={{
+            marginTop: 16,
+            marginBottom: 6,
+            color: theme.textSoft,
+            fontSize: 13,
+            fontWeight: 600,
+            textTransform: "uppercase",
+          }}
+        >
           🎨 {t("settings.theme.group.soft", "Couleurs douces")}
         </div>
         <div className="dc-scroll-thin" style={{ overflowX: "auto", padding: "6px 0 10px 0", marginTop: 4, marginBottom: 4 }}>
@@ -827,7 +924,16 @@ export default function Settings({ go }: Props) {
           </div>
         </div>
 
-        <div style={{ marginTop: 16, marginBottom: 6, color: theme.textSoft, fontSize: 13, fontWeight: 600, textTransform: "uppercase" }}>
+        <div
+          style={{
+            marginTop: 16,
+            marginBottom: 6,
+            color: theme.textSoft,
+            fontSize: 13,
+            fontWeight: 600,
+            textTransform: "uppercase",
+          }}
+        >
           🌑 {t("settings.theme.group.dark", "Thèmes Dark Premium")}
         </div>
         <div className="dc-scroll-thin" style={{ overflowX: "auto", padding: "6px 0 10px 0", marginTop: 4, marginBottom: 4 }}>
@@ -848,8 +954,11 @@ export default function Settings({ go }: Props) {
           </div>
         </div>
       </section>
+    );
+  }
 
-      {/* ---------- BLOC LANGUE ---------- */}
+  function LangSection() {
+    return (
       <section
         style={{
           background: CARD_BG,
@@ -876,8 +985,11 @@ export default function Settings({ go }: Props) {
           ))}
         </div>
       </section>
+    );
+  }
 
-      {/* ---------- BLOC RÉINITIALISATION ---------- */}
+  function GeneralSection() {
+    return (
       <section
         style={{
           background: CARD_BG,
@@ -922,11 +1034,237 @@ export default function Settings({ go }: Props) {
             letterSpacing: 0.5,
             textTransform: "uppercase",
             boxShadow: "0 0 18px rgba(255,80,80,0.65)",
+            cursor: "pointer",
           }}
         >
           {t("settings.reset.button", "Tout réinitialiser")}
         </button>
       </section>
+    );
+  }
+
+  function SportSection() {
+    const current = (() => {
+      try {
+        return localStorage.getItem(START_GAME_KEY) || "—";
+      } catch {
+        return "—";
+      }
+    })();
+
+    return (
+      <section
+        style={{
+          background: CARD_BG,
+          borderRadius: 18,
+          border: `1px solid ${theme.borderSoft}`,
+          padding: 16,
+          marginBottom: 16,
+        }}
+      >
+        <h2 style={{ margin: 0, marginBottom: 6, fontSize: 18, color: theme.primary }}>
+          {t("settings.sport.title", "Choix de sport")}
+        </h2>
+
+        <p className="subtitle" style={{ fontSize: 12, color: theme.textSoft, marginBottom: 12, lineHeight: 1.4 }}>
+          {t(
+            "settings.sport.subtitle",
+            "Contrôle le sport/jeu au démarrage. Le hub s’affiche uniquement si aucun choix n’est défini ou après réinitialisation."
+          )}
+        </p>
+
+        <div
+          style={{
+            padding: 10,
+            borderRadius: 12,
+            border: `1px solid ${theme.borderSoft}`,
+            background: "rgba(0,0,0,0.3)",
+            marginBottom: 12,
+            fontSize: 13,
+          }}
+        >
+          <div style={{ fontWeight: 800, marginBottom: 4 }}>{t("settings.sport.current", "Choix actuel")}</div>
+          <div style={{ color: theme.textSoft }}>
+            {t("settings.sport.currentValue", "START_GAME_KEY")} :{" "}
+            <span style={{ color: theme.primary, fontWeight: 900 }}>{String(current)}</span>
+          </div>
+        </div>
+
+        <div style={{ marginTop: 16 }}>
+          <div style={{ fontWeight: 900, marginBottom: 8, opacity: 0.9, color: "rgba(255,255,255,0.9)" }}>
+            {t("settings.sport.startTitle", "Jeu au démarrage")}
+          </div>
+
+          <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+            <button
+              onClick={onChangeGame}
+              style={{ ...btnPrimary, borderColor: theme.primary, boxShadow: `0 0 14px ${theme.primary}33` }}
+            >
+              {t("settings.sport.change", "Changer de jeu")}
+            </button>
+
+            <button onClick={onResetStartGame} style={btnGhost}>
+              {t("settings.sport.resetChoice", "Réinitialiser le choix")}
+            </button>
+          </div>
+
+          <div className="subtitle" style={{ fontSize: 11, color: theme.textSoft, marginTop: 10, lineHeight: 1.35 }}>
+            {t("settings.sport.hint", "Astuce : “Réinitialiser le choix” force le hub à réapparaître au prochain lancement/refresh.")}
+          </div>
+        </div>
+      </section>
+    );
+  }
+
+  // ---------------- Header style StatsShell ----------------
+
+  const headerTitle =
+    tab === "menu"
+      ? t("settings.title", "Réglages")
+      : tab === "account"
+      ? t("settings.menu.account", "Compte")
+      : tab === "theme"
+      ? t("settings.menu.theme", "Thème")
+      : tab === "lang"
+      ? t("settings.menu.lang", "Langues")
+      : tab === "general"
+      ? t("settings.menu.general", "Réglages")
+      : t("settings.menu.sport", "Choix de sport");
+
+  const headerSubtitle =
+    tab === "menu"
+      ? t("settings.subtitle", "Personnalise le thème et la langue de l’application.")
+      : tab === "account"
+      ? t("settings.account.subtitleV8", "V8 : l’app est toujours connectée (compte anonyme automatique).")
+      : tab === "theme"
+      ? t("settings.theme.subtitle", "Choisis un thème néon (accents) pour l’interface.")
+      : tab === "lang"
+      ? t("settings.lang.subtitle", "Choisis la langue de l’interface.")
+      : tab === "sport"
+      ? t("settings.sport.subtitle", "Contrôle le sport/jeu au démarrage.")
+      : t("settings.reset.subtitle", "Efface les données locales de l’application sur cet appareil.");
+
+  return (
+    <div
+      className="container"
+      style={{
+        minHeight: "100vh",
+        paddingTop: 16,
+        paddingBottom: 90,
+        background: PAGE_BG,
+        color: theme.text,
+      }}
+    >
+      {/* Retour (comportement shell) */}
+      <div style={{ paddingInline: 16, marginBottom: 10 }}>
+        <button
+          type="button"
+          onClick={() => {
+            if (tab !== "menu") setTab("menu");
+            else go && go("home");
+          }}
+          style={{
+            border: "none",
+            background: "transparent",
+            color: theme.textSoft,
+            fontSize: 15,
+            cursor: "pointer",
+          }}
+        >
+          ← {t("settings.back", "Retour")}
+        </button>
+      </div>
+
+      {/* ===== HEADER (style StatsShell CAPTURE 1) ===== */}
+      <div style={{ width: "100%", maxWidth: 520, paddingInline: 18, marginInline: "auto", marginBottom: 16 }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+          <div style={{ textAlign: "left" }}>
+            <div
+              style={{
+                fontWeight: 900,
+                letterSpacing: 0.9,
+                textTransform: "uppercase",
+                color: theme.primary,
+                fontSize: "clamp(26px, 8vw, 40px)",
+                textShadow: `0 0 14px ${theme.primary}66`,
+                marginBottom: 4,
+              }}
+            >
+              {headerTitle}
+            </div>
+            <div style={{ fontSize: 13, lineHeight: 1.35, color: theme.textSoft, maxWidth: 320 }}>{headerSubtitle}</div>
+          </div>
+
+          {tab === "menu" && (
+            <button
+              onClick={() => setTab("general")}
+              style={{
+                borderRadius: 999,
+                border: `1px solid ${theme.primary}`,
+                padding: "6px 12px",
+                fontSize: 11,
+                fontWeight: 700,
+                letterSpacing: 0.5,
+                textTransform: "uppercase",
+                background: theme.card,
+                color: theme.primary,
+                boxShadow: `0 0 12px ${theme.primary}55`,
+                cursor: "pointer",
+                whiteSpace: "nowrap",
+                flexShrink: 0,
+              }}
+            >
+              {t("settings.quickReset", "Reset")}
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* ===== BODY (menu cards comme StatsShell) ===== */}
+      <div style={{ width: "100%", maxWidth: 520, marginInline: "auto", paddingInline: 12 }}>
+        {tab === "menu" && (
+          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            <SettingsMenuCard
+              title={t("settings.menu.account", "Compte & sécurité")}
+              subtitle={t("settings.menu.account.sub", "Session, profil, suppression de compte, préférences de notifications.")}
+              theme={theme}
+              onClick={() => setTab("account")}
+            />
+            <SettingsMenuCard
+              title={t("settings.menu.theme", "Thème")}
+              subtitle={t("settings.menu.theme.sub", "Néons classiques, couleurs douces et dark premium.")}
+              theme={theme}
+              onClick={() => setTab("theme")}
+            />
+            <SettingsMenuCard
+              title={t("settings.menu.lang", "Langues")}
+              subtitle={t("settings.menu.lang.sub", "Choisis la langue de l’interface (drapeaux inclus).")}
+              theme={theme}
+              onClick={() => setTab("lang")}
+            />
+            <SettingsMenuCard
+              title={t("settings.menu.sport", "Choix de sport")}
+              subtitle={t("settings.menu.sport.sub", "Changer de jeu, réinitialiser le choix (hub au démarrage).")}
+              theme={theme}
+              onClick={() => setTab("sport")}
+            />
+            <SettingsMenuCard
+              title={t("settings.menu.general", "Réinitialiser")}
+              subtitle={t("settings.menu.general.sub", "Effacer les données locales (hard reset + reload).")}
+              theme={theme}
+              onClick={() => setTab("general")}
+            />
+
+            <div style={{ height: 10 }} />
+          </div>
+        )}
+
+        {tab === "account" && <AccountSecurityBlock />}
+        {tab === "theme" && <ThemeSection />}
+        {tab === "lang" && <LangSection />}
+        {tab === "sport" && <SportSection />}
+        {tab === "general" && <GeneralSection />}
+      </div>
     </div>
   );
 }

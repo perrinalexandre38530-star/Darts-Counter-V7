@@ -167,13 +167,8 @@ export function AuthOnlineProvider({ children }: { children: React.ReactNode }) 
 
     (async () => {
       try {
-        // restoreSession best-effort (ne doit JAMAIS bloquer l’UI)
-        try {
-          await Promise.race([
-            (onlineApi as any)?.restoreSession?.(),
-            new Promise((resolve) => setTimeout(resolve, 800)),
-          ]);
-        } catch {}
+        // PROFILES V7: aucune logique "restore" custom.
+        // Supabase décide de la session (getSession/onAuthStateChange).
 
         const session = await safeGetSession();
         if (!alive) return;
