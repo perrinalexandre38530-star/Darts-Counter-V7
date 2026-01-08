@@ -156,7 +156,6 @@ import { AuthOnlineProvider, useAuthOnline } from "./hooks/useAuthOnline";
 
 // ✅ NEW: Sport context + Pétanque pages
 import { SportProvider, useSport } from "./contexts/SportContext";
-import PetanqueHub from "./pages/petanque/PetanqueHub";
 import PetanquePlay from "./pages/petanque/PetanquePlay";
 import PetanqueHome from "./pages/petanque/PetanqueHome";
 
@@ -1495,10 +1494,10 @@ function App() {
           );
         break;
 
-      // ✅ GAMES = sport-aware (Pétanque -> PetanqueHub)
-      case "games":
-        page = sport === "petanque" ? <PetanqueHub go={go} /> : <Games setTab={(t: any) => go(t)} />;
-        break;
+      // ✅ GAMES = sport-aware (Pétanque -> PetanqueMenuGames)
+case "games":
+  page = sport === "petanque" ? <PetanqueMenuGames go={go} /> : <Games setTab={(t: any) => go(t)} />;
+  break;
 
       case "petanque_play":
         page = <PetanquePlay go={go} />;

@@ -4,7 +4,7 @@
 // (ActiveProfileCard + ArcadeTicker + bloc détails)
 // =============================================================
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useTheme } from "../../contexts/ThemeContext";
 import { useLang } from "../../contexts/LangContext";
 
@@ -21,6 +21,14 @@ type Props = {
 
 const PAGE_MAX_WIDTH = 520;
 const DETAIL_INTERVAL_MS = 7000;
+
+// ✅ Alignement unique (mêmes extérieurs partout)
+const SECTION_PAD_X = 18;
+const sectionWrap: React.CSSProperties = {
+  width: "100%",
+  maxWidth: PAGE_MAX_WIDTH,
+  paddingInline: SECTION_PAD_X,
+};
 
 // ✅ on garde le CDN (comme Home.tsx) MAIS pour Pétanque on met des visuels PETANQUE en data-uri (zéro asset à ajouter)
 const IMG_BASE =
@@ -74,11 +82,9 @@ const P_IMG_BOULES_1 = svgToDataUri(`
 
   <rect width="1200" height="700" fill="url(#bg)"/>
 
-  <!-- halos -->
   <circle cx="820" cy="250" r="220" fill="#ffcc66" opacity="0.10" filter="url(#glow)"/>
   <circle cx="400" cy="340" r="260" fill="#ffcc66" opacity="0.08" filter="url(#glow)"/>
 
-  <!-- boule gold -->
   <g transform="translate(610 165)">
     <circle cx="220" cy="220" r="170" fill="url(#metalGold)" stroke="url(#rim)" stroke-width="10"/>
     <g opacity="0.32">
@@ -89,7 +95,6 @@ const P_IMG_BOULES_1 = svgToDataUri(`
     <circle cx="160" cy="150" r="45" fill="#fff" opacity="0.10"/>
   </g>
 
-  <!-- boule steel -->
   <g transform="translate(250 215)">
     <circle cx="220" cy="220" r="190" fill="url(#metalSteel)" stroke="url(#rim)" stroke-width="10"/>
     <g opacity="0.25">
@@ -100,20 +105,10 @@ const P_IMG_BOULES_1 = svgToDataUri(`
     <circle cx="150" cy="160" r="55" fill="#fff" opacity="0.08"/>
   </g>
 
-  <!-- cochonnet -->
   <g transform="translate(430 360)">
     <circle cx="120" cy="120" r="55" fill="#ffcc66" opacity="0.16" filter="url(#glow)"/>
     <circle cx="120" cy="120" r="34" fill="#f5a623"/>
     <circle cx="108" cy="106" r="10" fill="#fff" opacity="0.24"/>
-  </g>
-
-  <!-- grains -->
-  <g opacity="0.10">
-    <circle cx="70" cy="640" r="2" fill="#fff"/><circle cx="140" cy="650" r="1.5" fill="#fff"/>
-    <circle cx="220" cy="630" r="2" fill="#fff"/><circle cx="320" cy="660" r="1.8" fill="#fff"/>
-    <circle cx="420" cy="640" r="1.6" fill="#fff"/><circle cx="520" cy="655" r="2" fill="#fff"/>
-    <circle cx="650" cy="645" r="1.7" fill="#fff"/><circle cx="760" cy="650" r="2" fill="#fff"/>
-    <circle cx="880" cy="660" r="1.6" fill="#fff"/><circle cx="1020" cy="635" r="2" fill="#fff"/>
   </g>
 </svg>
 `);
@@ -158,11 +153,9 @@ const P_IMG_BOULES_2 = svgToDataUri(`
   </defs>
 
   <rect width="1200" height="700" fill="url(#bg)"/>
-
   <circle cx="760" cy="250" r="240" fill="#ffcc66" opacity="0.09" filter="url(#glow)"/>
   <circle cx="420" cy="350" r="260" fill="#ffcc66" opacity="0.06" filter="url(#glow)"/>
 
-  <!-- boule steel front -->
   <g transform="translate(560 190)">
     <circle cx="240" cy="240" r="180" fill="url(#metal)" stroke="url(#rim)" stroke-width="10"/>
     <g opacity="0.25">
@@ -170,10 +163,8 @@ const P_IMG_BOULES_2 = svgToDataUri(`
       <path d="M105,260 C240,150 380,220 410,350" fill="none" stroke="#fff" stroke-width="6"/>
       <path d="M130,380 C270,300 375,340 395,430" fill="none" stroke="#fff" stroke-width="6"/>
     </g>
-    <circle cx="170" cy="175" r="60" fill="#fff" opacity="0.08"/>
   </g>
 
-  <!-- boule gold back -->
   <g transform="translate(220 250)">
     <circle cx="220" cy="220" r="165" fill="url(#metal2)" stroke="url(#rim)" stroke-width="10" opacity="0.95"/>
     <g opacity="0.28">
@@ -183,7 +174,6 @@ const P_IMG_BOULES_2 = svgToDataUri(`
     </g>
   </g>
 
-  <!-- cochonnet -->
   <g transform="translate(450 410)">
     <circle cx="110" cy="110" r="50" fill="#ffcc66" opacity="0.14" filter="url(#glow)"/>
     <circle cx="110" cy="110" r="30" fill="#f5a623"/>
@@ -217,17 +207,9 @@ const P_IMG_MESURE_1 = svgToDataUri(`
 
   <rect width="1200" height="700" fill="url(#bg)"/>
   <rect x="0" y="320" width="1200" height="380" fill="url(#sand)" opacity="0.95"/>
-
-  <g opacity="0.35">
-    <path d="M80 360 H1120" stroke="#ffcc66" stroke-width="4" opacity="0.35"/>
-    <path d="M120 420 H1080" stroke="#ffcc66" stroke-width="3" opacity="0.25"/>
-    <path d="M160 480 H1040" stroke="#ffcc66" stroke-width="3" opacity="0.20"/>
-  </g>
-
   <circle cx="870" cy="240" r="200" fill="#00e5a8" opacity="0.08" filter="url(#soft)"/>
   <circle cx="340" cy="250" r="240" fill="#ffcc66" opacity="0.06" filter="url(#soft)"/>
 
-  <!-- mètre -->
   <g transform="translate(250 185) rotate(-8)">
     <rect x="0" y="0" rx="22" ry="22" width="660" height="90" fill="url(#tape)" opacity="0.95"/>
     <rect x="16" y="16" rx="16" ry="16" width="628" height="58" fill="#0b0f18" opacity="0.22"/>
@@ -242,7 +224,6 @@ const P_IMG_MESURE_1 = svgToDataUri(`
     </g>
   </g>
 
-  <!-- cible -->
   <g transform="translate(820 360)">
     <circle cx="120" cy="120" r="85" fill="#0b0f18" opacity="0.55"/>
     <circle cx="120" cy="120" r="70" fill="#00e5a8" opacity="0.10"/>
@@ -277,17 +258,9 @@ const P_IMG_MESURE_2 = svgToDataUri(`
 
   <rect width="1200" height="700" fill="url(#bg)"/>
   <rect x="0" y="315" width="1200" height="385" fill="url(#sand)" opacity="0.95"/>
-
-  <g opacity="0.30">
-    <path d="M90 360 H1110" stroke="#00e5a8" stroke-width="4" opacity="0.25"/>
-    <path d="M130 425 H1070" stroke="#ffcc66" stroke-width="3" opacity="0.18"/>
-    <path d="M170 490 H1030" stroke="#00e5a8" stroke-width="3" opacity="0.15"/>
-  </g>
-
   <circle cx="820" cy="235" r="210" fill="#ffcc66" opacity="0.06" filter="url(#soft)"/>
   <circle cx="360" cy="255" r="250" fill="#00e5a8" opacity="0.07" filter="url(#soft)"/>
 
-  <!-- mètre -->
   <g transform="translate(280 195) rotate(-6)">
     <rect x="0" y="0" rx="22" ry="22" width="620" height="86" fill="url(#tape)" opacity="0.95"/>
     <rect x="14" y="14" rx="16" ry="16" width="592" height="58" fill="#0b0f18" opacity="0.22"/>
@@ -302,7 +275,6 @@ const P_IMG_MESURE_2 = svgToDataUri(`
     </g>
   </g>
 
-  <!-- boule/cible -->
   <g transform="translate(850 370)">
     <circle cx="110" cy="110" r="78" fill="#0b0f18" opacity="0.55"/>
     <circle cx="110" cy="110" r="62" fill="#00e5a8" opacity="0.10"/>
@@ -331,7 +303,6 @@ const P_IMG_TOURNOI_1 = svgToDataUri(`
   <circle cx="860" cy="250" r="220" fill="#ff7a18" opacity="0.10" filter="url(#soft)"/>
   <circle cx="360" cy="280" r="260" fill="#ffcc66" opacity="0.06" filter="url(#soft)"/>
 
-  <!-- bracket lines -->
   <g stroke="#ffcc66" stroke-width="6" opacity="0.38" fill="none" stroke-linecap="round">
     <path d="M260 210 H420 V300 H560"/>
     <path d="M260 410 H420 V320 H560"/>
@@ -339,21 +310,12 @@ const P_IMG_TOURNOI_1 = svgToDataUri(`
     <path d="M640 360 H780 V270 H940"/>
   </g>
 
-  <!-- nodes -->
   <g fill="#0b0f18" opacity="0.85" stroke="#ff7a18" stroke-width="6">
     <rect x="190" y="180" width="120" height="70" rx="18"/>
     <rect x="190" y="380" width="120" height="70" rx="18"/>
     <rect x="560" y="275" width="120" height="70" rx="18"/>
     <rect x="940" y="240" width="120" height="70" rx="18"/>
     <rect x="940" y="340" width="120" height="70" rx="18"/>
-  </g>
-
-  <!-- boule + cochonnet icon -->
-  <g transform="translate(740 420)">
-    <circle cx="120" cy="120" r="70" fill="#0b0f18" opacity="0.55"/>
-    <circle cx="120" cy="120" r="56" fill="#ff7a18" opacity="0.14"/>
-    <circle cx="120" cy="120" r="16" fill="#ffcc66" opacity="0.55"/>
-    <circle cx="48" cy="160" r="18" fill="#f5a623" opacity="0.90"/>
   </g>
 </svg>
 `);
@@ -389,13 +351,6 @@ const P_IMG_TOURNOI_2 = svgToDataUri(`
     <rect x="980" y="240" width="120" height="70" rx="18"/>
     <rect x="980" y="340" width="120" height="70" rx="18"/>
   </g>
-
-  <g transform="translate(720 430)">
-    <circle cx="120" cy="120" r="68" fill="#0b0f18" opacity="0.55"/>
-    <circle cx="120" cy="120" r="54" fill="#ffcc66" opacity="0.14"/>
-    <circle cx="120" cy="120" r="15" fill="#ff7a18" opacity="0.55"/>
-    <circle cx="52" cy="162" r="17" fill="#f5a623" opacity="0.90"/>
-  </g>
 </svg>
 `);
 
@@ -416,25 +371,6 @@ const P_IMG_TIP_1 = svgToDataUri(`
   <rect width="1200" height="700" fill="url(#bg)"/>
   <circle cx="850" cy="250" r="230" fill="#ffffff" opacity="0.06" filter="url(#soft)"/>
   <circle cx="360" cy="310" r="270" fill="#ffcc66" opacity="0.06" filter="url(#soft)"/>
-
-  <!-- speech bubble -->
-  <g transform="translate(220 210)">
-    <rect x="0" y="0" width="640" height="300" rx="38" fill="#0b0f18" opacity="0.70" stroke="#ffcc66" stroke-width="6"/>
-    <path d="M170 300 L230 300 L200 360 Z" fill="#0b0f18" opacity="0.70" stroke="#ffcc66" stroke-width="6" stroke-linejoin="round"/>
-    <g opacity="0.85" fill="#ffffff">
-      <rect x="70" y="70" width="500" height="26" rx="13" opacity="0.60"/>
-      <rect x="70" y="120" width="420" height="24" rx="12" opacity="0.50"/>
-      <rect x="70" y="168" width="470" height="24" rx="12" opacity="0.45"/>
-      <rect x="70" y="216" width="380" height="24" rx="12" opacity="0.40"/>
-    </g>
-  </g>
-
-  <!-- boule & cochonnet -->
-  <g transform="translate(860 410)">
-    <circle cx="120" cy="120" r="74" fill="#0b0f18" opacity="0.60" stroke="#ffffff" stroke-width="6" opacity="0.85"/>
-    <circle cx="120" cy="120" r="14" fill="#ffcc66" opacity="0.55"/>
-    <circle cx="54" cy="162" r="16" fill="#f5a623" opacity="0.95"/>
-  </g>
 </svg>
 `);
 
@@ -454,22 +390,6 @@ const P_IMG_TIP_2 = svgToDataUri(`
   <rect width="1200" height="700" fill="url(#bg)"/>
   <circle cx="820" cy="250" r="230" fill="#ffcc66" opacity="0.05" filter="url(#soft)"/>
   <circle cx="380" cy="300" r="270" fill="#ffffff" opacity="0.06" filter="url(#soft)"/>
-
-  <!-- “check” icon -->
-  <g transform="translate(240 200)">
-    <rect x="0" y="0" width="640" height="320" rx="42" fill="#0b0f18" opacity="0.70" stroke="#ffffff" stroke-width="6"/>
-    <path d="M160 175 L280 260 L500 90" fill="none" stroke="#ffcc66" stroke-width="20" stroke-linecap="round" stroke-linejoin="round" opacity="0.85"/>
-    <g opacity="0.75" fill="#ffffff">
-      <rect x="70" y="70" width="440" height="22" rx="11" opacity="0.35"/>
-      <rect x="70" y="110" width="380" height="20" rx="10" opacity="0.28"/>
-    </g>
-  </g>
-
-  <g transform="translate(860 420)">
-    <circle cx="110" cy="110" r="70" fill="#0b0f18" opacity="0.60" stroke="#ffcc66" stroke-width="6" opacity="0.85"/>
-    <circle cx="110" cy="110" r="13" fill="#ffffff" opacity="0.50"/>
-    <circle cx="52" cy="154" r="15" fill="#f5a623" opacity="0.95"/>
-  </g>
 </svg>
 `);
 
@@ -489,21 +409,6 @@ const P_IMG_NEWS_1 = svgToDataUri(`
   <rect width="1200" height="700" fill="url(#bg)"/>
   <circle cx="850" cy="240" r="230" fill="#ffcc66" opacity="0.06" filter="url(#soft)"/>
   <circle cx="360" cy="320" r="270" fill="#00e5a8" opacity="0.06" filter="url(#soft)"/>
-
-  <g transform="translate(220 190)">
-    <rect x="0" y="0" width="700" height="360" rx="40" fill="#0b0f18" opacity="0.72" stroke="#ffcc66" stroke-width="6"/>
-    <rect x="60" y="70" width="580" height="28" rx="14" fill="#ffffff" opacity="0.55"/>
-    <rect x="60" y="120" width="510" height="24" rx="12" fill="#ffffff" opacity="0.42"/>
-    <rect x="60" y="168" width="560" height="24" rx="12" fill="#ffffff" opacity="0.38"/>
-    <rect x="60" y="216" width="470" height="24" rx="12" fill="#ffffff" opacity="0.34"/>
-    <rect x="60" y="264" width="520" height="24" rx="12" fill="#ffffff" opacity="0.30"/>
-  </g>
-
-  <g transform="translate(900 420)">
-    <circle cx="110" cy="110" r="72" fill="#0b0f18" opacity="0.60" stroke="#00e5a8" stroke-width="6" opacity="0.85"/>
-    <circle cx="110" cy="110" r="14" fill="#ffcc66" opacity="0.55"/>
-    <circle cx="52" cy="154" r="15" fill="#f5a623" opacity="0.95"/>
-  </g>
 </svg>
 `);
 
@@ -522,41 +427,15 @@ const P_IMG_NEWS_2 = svgToDataUri(`
   <rect width="1200" height="700" fill="url(#bg)"/>
   <circle cx="820" cy="240" r="230" fill="#00e5a8" opacity="0.06" filter="url(#soft)"/>
   <circle cx="380" cy="320" r="270" fill="#ffcc66" opacity="0.05" filter="url(#soft)"/>
-
-  <g transform="translate(230 200)">
-    <rect x="0" y="0" width="680" height="340" rx="40" fill="#0b0f18" opacity="0.72" stroke="#00e5a8" stroke-width="6"/>
-    <rect x="56" y="64" width="560" height="26" rx="13" fill="#ffffff" opacity="0.52"/>
-    <rect x="56" y="112" width="500" height="22" rx="11" fill="#ffffff" opacity="0.40"/>
-    <rect x="56" y="156" width="540" height="22" rx="11" fill="#ffffff" opacity="0.36"/>
-    <rect x="56" y="200" width="450" height="22" rx="11" fill="#ffffff" opacity="0.32"/>
-    <rect x="56" y="244" width="520" height="22" rx="11" fill="#ffffff" opacity="0.28"/>
-  </g>
-
-  <g transform="translate(900 420)">
-    <circle cx="110" cy="110" r="72" fill="#0b0f18" opacity="0.60" stroke="#ffcc66" stroke-width="6" opacity="0.85"/>
-    <circle cx="110" cy="110" r="14" fill="#00e5a8" opacity="0.55"/>
-    <circle cx="52" cy="154" r="15" fill="#f5a623" opacity="0.95"/>
-  </g>
 </svg>
 `);
 
-// -------------------------------------------------------------
-// ✅ On garde les mêmes clés que Home.tsx, mais avec des images Pétanque.
-// (les clés utilisées plus bas : local, training, leaderboard, tip, tipNews)
-// -------------------------------------------------------------
 const TICKER_IMAGES = {
-  // “Partie”
   local: [P_IMG_BOULES_1, P_IMG_BOULES_2],
-  // “Mesurage”
   training: [P_IMG_MESURE_1, P_IMG_MESURE_2],
-  // “Tournois”
   leaderboard: [P_IMG_TOURNOI_1, P_IMG_TOURNOI_2],
-  // “Astuce”
   tip: [P_IMG_TIP_1, P_IMG_TIP_2],
-  // Carte de droite (accès rapide) : visuel “news/patch” mais version pétanque
   tipNews: [P_IMG_NEWS_1, P_IMG_NEWS_2],
-
-  // clés non utilisées ici, mais on les laisse pour compat (au cas où)
   global: [P_IMG_BOULES_1, P_IMG_BOULES_2],
 } as const;
 
@@ -574,9 +453,7 @@ function pickTickerImage<K extends keyof typeof TICKER_IMAGES>(key: K, seed: str
   if (!arr || arr.length === 0) return "";
   const idx = hashStringToInt(`${key}::${seed}`) % arr.length;
   const picked = arr[idx] ?? "";
-  // si c'est un data-uri (SVG), on le renvoie tel quel
   if (picked.startsWith("data:image/")) return picked;
-  // fallback (si un jour tu remets des jpg)
   if (picked.startsWith("http")) return picked;
   return IMG_BASE + picked;
 }
@@ -588,14 +465,60 @@ function safeActiveProfile(store: Store): Profile | null {
   return active ?? null;
 }
 
+/**
+ * ✅ Important: "PETANQUE COUNTER" ne doit JAMAIS être coupé.
+ * On garde 1 ligne (nowrap) et on scale automatiquement si ça dépasse.
+ */
+function useAutoFitTitle(deps: any[] = []) {
+  const wrapRef = useRef<HTMLDivElement | null>(null);
+  const textRef = useRef<HTMLDivElement | null>(null);
+  const [scale, setScale] = useState(1);
+
+  useLayoutEffect(() => {
+    const measure = () => {
+      const wrap = wrapRef.current;
+      const text = textRef.current;
+      if (!wrap || !text) return;
+
+      // reset scale for accurate measurement
+      text.style.transform = "scale(1)";
+      // force reflow
+      // eslint-disable-next-line @typescript-eslint/no-unused-expressions
+      text.offsetHeight;
+
+      const available = wrap.clientWidth;
+      const needed = text.scrollWidth;
+
+      if (!available || !needed) {
+        setScale(1);
+        return;
+      }
+
+      if (needed <= available) {
+        setScale(1);
+        return;
+      }
+
+      const s = Math.max(0.72, Math.min(1, available / needed));
+      setScale(s);
+    };
+
+    measure();
+    const onResize = () => measure();
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, deps);
+
+  return { wrapRef, textRef, scale };
+}
+
 export default function PetanqueHome({ store, go }: Props) {
   const { theme } = useTheme();
   const { t } = useLang();
 
   const activeProfile = useMemo(() => safeActiveProfile(store), [store]);
 
-  // On “fake” des stats minimales pour ActiveProfileCard :
-  // -> l’objectif est VISUEL (même carte), on n’essaie pas d’inventer des stats darts.
   const [kpis, setKpis] = useState<{
     ends: number;
     scoreA: number;
@@ -621,7 +544,6 @@ export default function PetanqueHome({ store, go }: Props) {
     });
   }, []);
 
-  // ✅ mêmes patterns que Home.tsx (ticker + detail cards)
   const seed = String(activeProfile?.id ?? "anon");
 
   const tickerItems: ArcadeTickerItem[] = useMemo(() => {
@@ -679,9 +601,7 @@ export default function PetanqueHome({ store, go }: Props) {
   useEffect(() => {
     if (!tickerItems.length) return;
     const id = window.setInterval(() => {
-      setTickerIndex((prev) =>
-        tickerItems.length ? (prev + 1) % tickerItems.length : 0
-      );
+      setTickerIndex((prev) => (tickerItems.length ? (prev + 1) % tickerItems.length : 0));
     }, DETAIL_INTERVAL_MS);
     return () => window.clearInterval(id);
   }, [tickerItems.length]);
@@ -690,16 +610,11 @@ export default function PetanqueHome({ store, go }: Props) {
     setTickerIndex(0);
   }, [activeProfile?.id]);
 
-  const currentTicker = tickerItems.length
-    ? tickerItems[Math.min(tickerIndex, tickerItems.length - 1)]
-    : null;
+  const currentTicker = tickerItems.length ? tickerItems[Math.min(tickerIndex, tickerItems.length - 1)] : null;
 
-  // --- “Carte détails” : mêmes 2 colonnes que Home.tsx ---
   const detailAccent = currentTicker?.accentColor ?? theme.primary ?? "#F6C256";
-
   const leftTitle = currentTicker?.title ?? t("petanque.home.detail.left.title", "Pétanque");
   const leftText = currentTicker?.text ?? "";
-
   const statsBackgroundImage = currentTicker?.backgroundImage ?? "";
 
   const rightTitle = t("petanque.home.detail.right.title", "Accès rapide");
@@ -709,6 +624,12 @@ export default function PetanqueHome({ store, go }: Props) {
   );
 
   const primary = theme.primary ?? "#F6C256";
+
+  // ✅ Auto-fit sur les petits écrans (ne coupe jamais le titre)
+  const { wrapRef: titleWrapRef, textRef: titleTextRef, scale: titleScale } = useAutoFitTitle([
+    theme.primary,
+    t("home.welcome", "Bienvenue"),
+  ]);
 
   return (
     <div
@@ -729,64 +650,81 @@ export default function PetanqueHome({ store, go }: Props) {
         @keyframes dcTitleShimmer { 0% { background-position: 0% 0%; } 100% { background-position: 200% 0%; } }
       `}</style>
 
-      {/* ===== HEADER (même affichage que Home Darts : Bienvenue centré + titre 1 ligne responsive) ===== */}
-      <div style={{ width: "100%", maxWidth: PAGE_MAX_WIDTH, paddingInline: 18, marginBottom: 10 }}>
-        <div style={{ textAlign: "center" }}>
+      {/* ===== HEADER (même "Bienvenue" que Darts + titre jamais coupé) ===== */}
+      <div style={{ ...sectionWrap, marginBottom: 10 }}>
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 8 }}>
+          {/* ✅ Bienvenue = pill/badge (comme Darts) */}
           <div
             style={{
-              fontSize: 12,
-              fontWeight: 700,
-              letterSpacing: 1.1,
-              textTransform: "uppercase",
+              display: "inline-flex",
+              alignItems: "center",
+              justifyContent: "center",
+              padding: "5px 12px",
+              borderRadius: 999,
+              border: `1px solid ${theme.borderSoft ?? "rgba(255,255,255,0.14)"}`,
+              background: "linear-gradient(180deg, rgba(255,255,255,0.08), rgba(0,0,0,0.28))",
+              boxShadow: "0 10px 22px rgba(0,0,0,0.45)",
               color: primary,
-              marginBottom: 6,
+              fontSize: 11,
+              fontWeight: 900,
+              letterSpacing: 1.2,
+              textTransform: "uppercase",
             }}
           >
             {t("home.welcome", "Bienvenue")}
           </div>
 
-          <div
-            style={{
-              fontWeight: 900,
-              letterSpacing: 3,
-              textTransform: "uppercase",
-              fontSize: "clamp(22px, 6.2vw, 32px)",
-              lineHeight: 1.05,
-              whiteSpace: "nowrap",
-              overflow: "hidden",
-              textOverflow: "ellipsis",
-              backgroundImage: `linear-gradient(120deg, ${primary}, #ffffff, ${primary})`,
-              backgroundSize: "200% 100%",
-              WebkitBackgroundClip: "text",
-              color: "transparent",
-              animation: "dcTitlePulse 3.6s ease-in-out infinite, dcTitleShimmer 7s linear infinite",
-            }}
-          >
-            PETANQUE COUNTER
+          {/* ✅ Container + auto-fit scale */}
+          <div ref={titleWrapRef} style={{ width: "100%", overflow: "hidden" }}>
+            <div
+              ref={titleTextRef}
+              style={{
+                width: "fit-content",
+                marginInline: "auto",
+                textAlign: "center",
+                textTransform: "uppercase",
+                fontWeight: 1000,
+                fontSize: "clamp(18px, 6.2vw, 30px)",
+                letterSpacing: "clamp(0.6px, 0.75vw, 3px)",
+                lineHeight: 1.05,
+                whiteSpace: "nowrap",
+                backgroundImage: `linear-gradient(120deg, ${primary}, #ffffff, ${primary})`,
+                backgroundSize: "200% 100%",
+                WebkitBackgroundClip: "text",
+                color: "transparent",
+                animation: "dcTitlePulse 3.6s ease-in-out infinite, dcTitleShimmer 7s linear infinite",
+                transform: `scale(${titleScale})`,
+                transformOrigin: "center",
+              }}
+            >
+              PETANQUE COUNTER
+            </div>
           </div>
         </div>
       </div>
 
-      {/* Carte joueur actif (même composant) */}
+      {/* ✅ Carte joueur actif (mêmes extérieurs) */}
       {activeProfile && (
-        <ActiveProfileCard
-          profile={activeProfile as any}
-          stats={
-            {
-              games: 0,
-              wins: 0,
-              winRate01: 0,
-              avg3D: 0,
-              bestVisit: 0,
-              bestCheckout: 0,
-            } as any
-          }
-          status={"offline" as any}
-        />
+        <div style={sectionWrap}>
+          <ActiveProfileCard
+            profile={activeProfile as any}
+            stats={
+              {
+                games: 0,
+                wins: 0,
+                winRate01: 0,
+                avg3D: 0,
+                bestVisit: 0,
+                bestCheckout: 0,
+              } as any
+            }
+            status={"offline" as any}
+          />
+        </div>
       )}
 
-      {/* ✅ Ticker arcade — largeur alignée avec les autres blocs */}
-      <div style={{ width: "100%", maxWidth: PAGE_MAX_WIDTH, paddingInline: 18 }}>
+      {/* ✅ Ticker arcade — mêmes extérieurs */}
+      <div style={sectionWrap}>
         <ArcadeTicker
           items={tickerItems}
           activeIndex={tickerIndex}
@@ -804,154 +742,159 @@ export default function PetanqueHome({ store, go }: Props) {
         />
       </div>
 
-      {/* Bloc détail du ticker : 2 mini-cards côte à côte (même look que Home.tsx) */}
+      {/* ✅ Détails ticker — WRAP dans sectionWrap pour aligner les extérieurs */}
       {currentTicker && (
-        <div
-          style={{
-            width: "100%",
-            maxWidth: PAGE_MAX_WIDTH,
-            marginTop: 10,
-            marginBottom: 10,
-            borderRadius: 22,
-            border: `1px solid ${theme.borderSoft ?? "rgba(255,255,255,0.12)"}`,
-            boxShadow: "0 18px 40px rgba(0,0,0,0.85)",
-            padding: 8,
-            background: "radial-gradient(circle at top, rgba(255,255,255,0.06), rgba(3,4,10,1))",
-          }}
-        >
-          <div style={{ display: "flex", gap: 8 }}>
-            {/* gauche */}
-            <div
-              style={{
-                flex: 1,
-                borderRadius: 18,
-                overflow: "hidden",
-                position: "relative",
-                minHeight: 108,
-                backgroundColor: "#05060C",
-                backgroundImage: statsBackgroundImage ? `url("${statsBackgroundImage}")` : undefined,
-                backgroundSize: "cover",
-                backgroundPosition: "center",
-              }}
-            >
-              <div
-                aria-hidden
-                style={{
-                  position: "absolute",
-                  inset: 0,
-                  background: "linear-gradient(130deg, rgba(0,0,0,0.85), rgba(0,0,0,0.45))",
-                  pointerEvents: "none",
-                }}
-              />
+        <div style={{ ...sectionWrap, marginTop: 10, marginBottom: 10 }}>
+          <div
+            style={{
+              width: "100%",
+              borderRadius: 22,
+              border: `1px solid ${theme.borderSoft ?? "rgba(255,255,255,0.12)"}`,
+              boxShadow: "0 18px 40px rgba(0,0,0,0.85)",
+              padding: 8,
+              background: "radial-gradient(circle at top, rgba(255,255,255,0.06), rgba(3,4,10,1))",
+            }}
+          >
+            <div style={{ display: "flex", gap: 8 }}>
+              {/* gauche */}
               <div
                 style={{
+                  flex: 1,
+                  borderRadius: 18,
+                  overflow: "hidden",
                   position: "relative",
-                  padding: "10px 10px 10px",
-                  display: "flex",
-                  flexDirection: "column",
-                  gap: 8,
+                  minHeight: 108,
+                  backgroundColor: "#05060C",
+                  backgroundImage: statsBackgroundImage ? `url("${statsBackgroundImage}")` : undefined,
+                  backgroundSize: "cover",
+                  backgroundPosition: "center",
                 }}
               >
                 <div
+                  aria-hidden
                   style={{
-                    fontSize: 10,
-                    fontWeight: 800,
-                    letterSpacing: 0.8,
-                    textTransform: "uppercase",
-                    color: detailAccent,
+                    position: "absolute",
+                    inset: 0,
+                    background: "linear-gradient(130deg, rgba(0,0,0,0.85), rgba(0,0,0,0.45))",
+                    pointerEvents: "none",
+                  }}
+                />
+                <div
+                  style={{
+                    position: "relative",
+                    padding: "10px 10px 10px",
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: 8,
                   }}
                 >
-                  {leftTitle}
-                </div>
+                  <div
+                    style={{
+                      fontSize: 10,
+                      fontWeight: 800,
+                      letterSpacing: 0.8,
+                      textTransform: "uppercase",
+                      color: detailAccent,
+                    }}
+                  >
+                    {leftTitle}
+                  </div>
 
-                <div style={{ fontSize: 11, lineHeight: 1.35, color: theme.textSoft ?? "rgba(255,255,255,0.9)" }}>
-                  {leftText}
-                </div>
+                  <div style={{ fontSize: 11, lineHeight: 1.35, color: theme.textSoft ?? "rgba(255,255,255,0.9)" }}>
+                    {leftText}
+                  </div>
 
-                {/* mini-kpis (style Home) */}
-                <div style={{ marginTop: 2, display: "grid", gridTemplateColumns: "repeat(2, minmax(0,1fr))", gap: 6 }}>
-                  <MiniKpi
-                    label={t("petanque.home.kpi.ends", "Mènes")}
-                    value={String(kpis.ends)}
-                    primary={detailAccent}
-                    theme={theme}
-                  />
-                  <MiniKpi
-                    label={t("petanque.home.kpi.score", "Score")}
-                    value={`${kpis.scoreA}—${kpis.scoreB}`}
-                    primary={detailAccent}
-                    theme={theme}
-                  />
+                  <div style={{ marginTop: 2, display: "grid", gridTemplateColumns: "repeat(2, minmax(0,1fr))", gap: 6 }}>
+                    <MiniKpi
+                      label={t("petanque.home.kpi.ends", "Mènes")}
+                      value={String(kpis.ends)}
+                      primary={detailAccent}
+                      theme={theme}
+                    />
+                    <MiniKpi
+                      label={t("petanque.home.kpi.score", "Score")}
+                      value={`${kpis.scoreA}—${kpis.scoreB}`}
+                      primary={detailAccent}
+                      theme={theme}
+                    />
+                  </div>
                 </div>
               </div>
-            </div>
 
-            {/* droite */}
-            <div
-              style={{
-                flex: 1,
-                borderRadius: 18,
-                overflow: "hidden",
-                position: "relative",
-                minHeight: 108,
-                backgroundColor: "#05060C",
-                backgroundImage: `url("${pickTickerImage("tipNews", `${seed}::petanque-right`)}")`,
-                backgroundSize: "cover",
-                backgroundPosition: "center",
-              }}
-            >
-              <div
-                aria-hidden
-                style={{
-                  position: "absolute",
-                  inset: 0,
-                  background: "linear-gradient(130deg, rgba(0,0,0,0.85), rgba(0,0,0,0.55))",
-                  pointerEvents: "none",
-                }}
-              />
+              {/* droite */}
               <div
                 style={{
+                  flex: 1,
+                  borderRadius: 18,
+                  overflow: "hidden",
                   position: "relative",
-                  padding: "10px 10px 10px",
-                  display: "flex",
-                  flexDirection: "column",
-                  gap: 8,
+                  minHeight: 108,
+                  backgroundColor: "#05060C",
+                  backgroundImage: `url("${pickTickerImage("tipNews", `${seed}::petanque-right`)}")`,
+                  backgroundSize: "cover",
+                  backgroundPosition: "center",
                 }}
               >
-                <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: 0.8, textTransform: "uppercase", color: "#FFFFFF" }}>
-                  {rightTitle}
-                </div>
+                <div
+                  aria-hidden
+                  style={{
+                    position: "absolute",
+                    inset: 0,
+                    background: "linear-gradient(130deg, rgba(0,0,0,0.85), rgba(0,0,0,0.55))",
+                    pointerEvents: "none",
+                  }}
+                />
+                <div
+                  style={{
+                    position: "relative",
+                    padding: "10px 10px 10px",
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: 8,
+                  }}
+                >
+                  <div
+                    style={{
+                      fontSize: 10,
+                      fontWeight: 800,
+                      letterSpacing: 0.8,
+                      textTransform: "uppercase",
+                      color: "#FFFFFF",
+                    }}
+                  >
+                    {rightTitle}
+                  </div>
 
-                <div style={{ fontSize: 11, lineHeight: 1.35, color: theme.textSoft ?? "rgba(255,255,255,0.9)" }}>
-                  {rightText}
-                </div>
+                  <div style={{ fontSize: 11, lineHeight: 1.35, color: theme.textSoft ?? "rgba(255,255,255,0.9)" }}>
+                    {rightText}
+                  </div>
 
-                {/* ✅ ACCES RAPIDE : boutons pleine largeur, centrés, texte coloré */}
-                <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 6 }}>
-                  <QuickBtn
-                    theme={theme}
-                    tint={theme.primary}
-                    label={t("petanque.home.quick.play", "Lancer / Reprendre")}
-                    onClick={() => go("petanque_play")}
-                  />
-                  <QuickBtn
-                    theme={theme}
-                    tint={"#00E5A8"}
-                    label={t("petanque.home.quick.measure", "Mesurer")}
-                    onClick={() => go("petanque_play", { openMeasure: true })}
-                  />
-                  <QuickBtn
-                    theme={theme}
-                    tint={"#FF7A18"}
-                    label={t("petanque.home.quick.tournaments", "Tournois")}
-                    onClick={() => go("tournaments" as any)}
-                  />
-                  <QuickBtn
-                    theme={theme}
-                    tint={"#FFFFFF"}
-                    label={t("petanque.home.quick.games", "Menu Jeux")}
-                    onClick={() => go("games")}
-                  />
+                  <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 6 }}>
+                    <QuickBtn
+                      theme={theme}
+                      tint={theme.primary}
+                      label={t("petanque.home.quick.play", "Lancer / Reprendre")}
+                      onClick={() => go("petanque_play")}
+                    />
+                    <QuickBtn
+                      theme={theme}
+                      tint={"#00E5A8"}
+                      label={t("petanque.home.quick.measure", "Mesurer")}
+                      onClick={() => go("petanque_play", { openMeasure: true })}
+                    />
+                    <QuickBtn
+                      theme={theme}
+                      tint={"#FF7A18"}
+                      label={t("petanque.home.quick.tournaments", "Tournois")}
+                      onClick={() => go("tournaments" as any)}
+                    />
+                    <QuickBtn
+                      theme={theme}
+                      tint={"#FFFFFF"}
+                      label={t("petanque.home.quick.games", "Menu Jeux")}
+                      onClick={() => go("games")}
+                    />
+                  </div>
                 </div>
               </div>
             </div>
@@ -959,8 +902,8 @@ export default function PetanqueHome({ store, go }: Props) {
         </div>
       )}
 
-      {/* Résumé (petit bloc bas, sobre) */}
-      <div style={{ width: "100%", maxWidth: PAGE_MAX_WIDTH, paddingInline: 18, marginTop: 8 }}>
+      {/* ✅ Résumé — mêmes extérieurs */}
+      <div style={{ ...sectionWrap, marginTop: 8 }}>
         <div
           style={{
             borderRadius: 18,
@@ -1015,15 +958,15 @@ function QuickBtn({ theme, tint, label, onClick }: any) {
     <button
       onClick={onClick}
       style={{
-        width: "100%", // ✅ pleine largeur (alignée visuellement avec le ticker)
+        width: "100%",
         display: "flex",
         alignItems: "center",
-        justifyContent: "center", // ✅ intitulé centré
+        justifyContent: "center",
         textAlign: "center",
         borderRadius: 14,
         border: `1px solid ${c}55`,
         background: `linear-gradient(180deg, ${c}22, rgba(0,0,0,0.55))`,
-        color: c, // ✅ texte coloré
+        color: c,
         fontWeight: 950,
         fontSize: 12,
         letterSpacing: 0.6,

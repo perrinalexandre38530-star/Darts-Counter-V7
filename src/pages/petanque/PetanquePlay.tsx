@@ -6,6 +6,12 @@
 // - Styling recâblé pour coller au design global (vars CSS: --glass, --stroke, --text, --gold...)
 // - Ajout de className (container/card/btn/ghost/primary/danger/badge/subtitle) EN PLUS des styles inline
 //   => si tes classes existent, ça match direct; sinon les inline assurent le rendu.
+//
+// ✅ FIX CRASH / FREEZE LIVE:
+// - Anti-overlap (pas d'empilement async)
+// - requestAnimationFrame + throttle (stable)
+// - ROI canvas réutilisé (pas de createElement() à chaque frame)
+// - Cleanup Mat garanti
 // ============================================
 
 import React from "react";
@@ -348,8 +354,6 @@ export default function PetanquePlay({ go }: Props) {
     setNearestIdx(null);
     lastNearestRef.current = null;
     stableNearestRef.current = null;
-
-    // ✅ NEW
     setCircleTeam({});
   };
 
@@ -412,11 +416,22 @@ export default function PetanquePlay({ go }: Props) {
 
   // ==========================
   // ✅ AUTO-DETECT LOOP (OpenCV) — PRO (ROI + anti-sauts + sliders + pause)
+  // ✅ FIX FREEZE: anti-overlap + raf+throttle + ROI canvas reuse + cleanup
   // ==========================
   React.useEffect(() => {
     let alive = true;
     let cv: any = null;
-    let timer: any = null;
+
+    // ✅ anti-overlap
+    let busy = false;
+
+    // ✅ throttle
+    const TICK_MS = 220; // ~4-5fps, stable (évite le gel)
+    let lastTick = 0;
+
+    // ✅ ROI canvas réutilisé
+    const roiCanvas = document.createElement("canvas");
+    const roiCtx = roiCanvas.getContext("2d", { willReadFrequently: true });
 
     const ema = (prev: number, next: number, a: number) => prev * (1 - a) + next * a;
 
@@ -426,176 +441,195 @@ export default function PetanquePlay({ go }: Props) {
       return Math.sqrt(dx * dx + dy * dy);
     };
 
-    const loop = async () => {
+    const step = async () => {
       if (!alive) return;
       if (!autoOn) return;
       if (!liveOn) return;
       if (livePaused) return;
+      if (busy) return;
+
+      const now = performance.now();
+      if (now - lastTick < TICK_MS) return;
+      lastTick = now;
 
       const video = videoRef.current;
       const canvas = canvasRef.current;
-      if (!video || !canvas) return;
+      if (!video || !canvas || !roiCtx) return;
 
       const w = video.videoWidth;
       const h = video.videoHeight;
       if (!w || !h) return;
 
-      // downscale for perf
-      const targetW = 520;
-      const scale = targetW / w;
-      const cw = Math.max(240, Math.floor(w * scale));
-      const ch = Math.max(160, Math.floor(h * scale));
+      busy = true;
+      try {
+        // downscale for perf
+        const targetW = 520;
+        const scale = targetW / w;
+        const cw = Math.max(240, Math.floor(w * scale));
+        const ch = Math.max(160, Math.floor(h * scale));
 
-      // ROI centered
-      const roi = Math.max(0.4, Math.min(1, roiPct));
-      const rw = Math.floor(cw * roi);
-      const rh = Math.floor(ch * roi);
-      const rx = Math.floor((cw - rw) / 2);
-      const ry = Math.floor((ch - rh) / 2);
+        // ROI centered
+        const roi = Math.max(0.4, Math.min(1, roiPct));
+        const rw = Math.floor(cw * roi);
+        const rh = Math.floor(ch * roi);
+        const rx = Math.floor((cw - rw) / 2);
+        const ry = Math.floor((ch - rh) / 2);
 
-      canvas.width = cw;
-      canvas.height = ch;
+        canvas.width = cw;
+        canvas.height = ch;
 
-      const ctx = canvas.getContext("2d", { willReadFrequently: true });
-      if (!ctx) return;
+        const ctx = canvas.getContext("2d", { willReadFrequently: true });
+        if (!ctx) return;
 
-      ctx.drawImage(video, 0, 0, cw, ch);
+        ctx.drawImage(video, 0, 0, cw, ch);
 
-      // ROI canvas
-      const roiCanvas = document.createElement("canvas");
-      roiCanvas.width = rw;
-      roiCanvas.height = rh;
-      const roiCtx = roiCanvas.getContext("2d", { willReadFrequently: true });
-      if (!roiCtx) return;
-      roiCtx.drawImage(canvas, rx, ry, rw, rh, 0, 0, rw, rh);
+        // ROI canvas (reuse)
+        roiCanvas.width = rw;
+        roiCanvas.height = rh;
+        roiCtx.clearRect(0, 0, rw, rh);
+        roiCtx.drawImage(canvas, rx, ry, rw, rh, 0, 0, rw, rh);
 
-      // OpenCV: gray + blur + HoughCircles on ROI
-      const src = cv.imread(roiCanvas);
-      const gray = new cv.Mat();
-      cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY, 0);
-      cv.GaussianBlur(gray, gray, new cv.Size(7, 7), 1.5, 1.5, cv.BORDER_DEFAULT);
+        // OpenCV: gray + blur + HoughCircles on ROI
+        const src = cv.imread(roiCanvas);
+        const gray = new cv.Mat();
+        const out = new cv.Mat();
 
-      const out = new cv.Mat();
-      cv.HoughCircles(
-        gray,
-        out,
-        cv.HOUGH_GRADIENT,
-        1.2,
-        22,
-        120,
-        Math.max(5, Math.floor(param2)),
-        Math.max(1, Math.floor(minRadius)),
-        Math.max(1, Math.floor(maxRadius))
-      );
+        try {
+          cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY, 0);
+          cv.GaussianBlur(gray, gray, new cv.Size(7, 7), 1.5, 1.5, cv.BORDER_DEFAULT);
 
-      const found: Array<{ x: number; y: number; r: number }> = [];
-      for (let i = 0; i < out.cols; i++) {
-        const xRoi = out.data32F[i * 3 + 0];
-        const yRoi = out.data32F[i * 3 + 1];
-        const rRoi = out.data32F[i * 3 + 2];
+          cv.HoughCircles(
+            gray,
+            out,
+            cv.HOUGH_GRADIENT,
+            1.2,
+            22,
+            120,
+            Math.max(5, Math.floor(param2)),
+            Math.max(1, Math.floor(minRadius)),
+            Math.max(1, Math.floor(maxRadius))
+          );
 
-        const xFull = rx + xRoi;
-        const yFull = ry + yRoi;
+          const found: Array<{ x: number; y: number; r: number }> = [];
+          for (let i = 0; i < out.cols; i++) {
+            const xRoi = out.data32F[i * 3 + 0];
+            const yRoi = out.data32F[i * 3 + 1];
+            const rRoi = out.data32F[i * 3 + 2];
 
-        const nx = xFull / cw;
-        const ny = yFull / ch;
+            const xFull = rx + xRoi;
+            const yFull = ry + yRoi;
 
-        // Reject borders
-        const border = 0.06;
-        if (nx < border || nx > 1 - border || ny < border || ny > 1 - border) continue;
+            const nx = xFull / cw;
+            const ny = yFull / ch;
 
-        found.push({
-          x: clamp01(nx),
-          y: clamp01(ny),
-          r: rRoi / Math.max(cw, ch),
-        });
-      }
+            const border = 0.06;
+            if (nx < border || nx > 1 - border || ny < border || ny > 1 - border) continue;
 
-      src.delete();
-      gray.delete();
-      out.delete();
-
-      // Tracking anti-sauts:
-      // 1) Try match with lastNearest (distance threshold)
-      // 2) Else choose nearest-to-center
-      const last = lastNearestRef.current;
-      const matchThreshold = 0.08;
-
-      let chosenIdx: number | null = null;
-
-      if (last && found.length) {
-        let bestIdx = -1;
-        let bestD = Infinity;
-        for (let i = 0; i < found.length; i++) {
-          const d = dist(found[i], last);
-          if (d < bestD) {
-            bestD = d;
-            bestIdx = i;
+            found.push({
+              x: clamp01(nx),
+              y: clamp01(ny),
+              r: rRoi / Math.max(cw, ch),
+            });
           }
-        }
-        if (bestIdx >= 0 && bestD <= matchThreshold) chosenIdx = bestIdx;
-      }
 
-      if (chosenIdx == null && found.length) {
-        let bestIdx = -1;
-        let bestD = Infinity;
-        for (let i = 0; i < found.length; i++) {
-          const d = dist(found[i], { x: 0.5, y: 0.5 });
-          if (d < bestD) {
-            bestD = d;
-            bestIdx = i;
+          // Tracking anti-sauts:
+          const last = lastNearestRef.current;
+          const matchThreshold = 0.08;
+          let chosenIdx: number | null = null;
+
+          if (last && found.length) {
+            let bestIdx = -1;
+            let bestD = Infinity;
+            for (let i = 0; i < found.length; i++) {
+              const d = dist(found[i], last);
+              if (d < bestD) {
+                bestD = d;
+                bestIdx = i;
+              }
+            }
+            if (bestIdx >= 0 && bestD <= matchThreshold) chosenIdx = bestIdx;
           }
-        }
-        if (bestIdx >= 0) chosenIdx = bestIdx;
-      }
 
-      // EMA smoothing for stable highlight
-      const alpha = 0.35;
-      if (chosenIdx != null) {
-        const picked = found[chosenIdx];
-        lastNearestRef.current = picked;
-
-        const stable = stableNearestRef.current;
-        if (!stable) stableNearestRef.current = { ...picked };
-        else {
-          stableNearestRef.current = {
-            x: ema(stable.x, picked.x, alpha),
-            y: ema(stable.y, picked.y, alpha),
-            r: ema(stable.r, picked.r, alpha),
-          };
-        }
-      } else {
-        lastNearestRef.current = null;
-        stableNearestRef.current = null;
-      }
-
-      // Find stableIdx (closest to smoothed stable)
-      let stableIdx: number | null = null;
-      const stable = stableNearestRef.current;
-      if (stable && found.length) {
-        let bestIdx = -1;
-        let bestD = Infinity;
-        for (let i = 0; i < found.length; i++) {
-          const d = dist(found[i], stable);
-          if (d < bestD) {
-            bestD = d;
-            bestIdx = i;
+          if (chosenIdx == null && found.length) {
+            let bestIdx = -1;
+            let bestD = Infinity;
+            for (let i = 0; i < found.length; i++) {
+              const d = dist(found[i], { x: 0.5, y: 0.5 });
+              if (d < bestD) {
+                bestD = d;
+                bestIdx = i;
+              }
+            }
+            if (bestIdx >= 0) chosenIdx = bestIdx;
           }
-        }
-        if (bestIdx >= 0) stableIdx = bestIdx;
-      }
 
-      if (alive) {
-        setCircles(found);
-        setNearestIdx(stableIdx);
+          // EMA smoothing
+          const alpha = 0.35;
+          if (chosenIdx != null) {
+            const picked = found[chosenIdx];
+            lastNearestRef.current = picked;
+
+            const stable = stableNearestRef.current;
+            if (!stable) stableNearestRef.current = { ...picked };
+            else {
+              stableNearestRef.current = {
+                x: ema(stable.x, picked.x, alpha),
+                y: ema(stable.y, picked.y, alpha),
+                r: ema(stable.r, picked.r, alpha),
+              };
+            }
+          } else {
+            lastNearestRef.current = null;
+            stableNearestRef.current = null;
+          }
+
+          // Find stableIdx (closest to smoothed stable)
+          let stableIdx: number | null = null;
+          const stable = stableNearestRef.current;
+          if (stable && found.length) {
+            let bestIdx = -1;
+            let bestD = Infinity;
+            for (let i = 0; i < found.length; i++) {
+              const d = dist(found[i], stable);
+              if (d < bestD) {
+                bestD = d;
+                bestIdx = i;
+              }
+            }
+            if (bestIdx >= 0) stableIdx = bestIdx;
+          }
+
+          if (alive) {
+            setCircles(found);
+            setNearestIdx(stableIdx);
+          }
+        } finally {
+          // ✅ cleanup garanti
+          src.delete();
+          gray.delete();
+          out.delete();
+        }
+      } catch (e: any) {
+        if (!alive) return;
+        setLiveErr(e?.message || "OpenCV indisponible");
+        setAutoOn(false);
+      } finally {
+        busy = false;
       }
+    };
+
+    let raf = 0;
+    const frame = () => {
+      if (!alive) return;
+      step();
+      raf = requestAnimationFrame(frame);
     };
 
     (async () => {
       try {
         cv = await loadOpenCv();
         if (!alive) return;
-        timer = setInterval(loop, 160); // ~6fps
+        raf = requestAnimationFrame(frame);
       } catch (e: any) {
         if (!alive) return;
         setLiveErr(e?.message || "OpenCV indisponible");
@@ -605,7 +639,9 @@ export default function PetanquePlay({ go }: Props) {
 
     return () => {
       alive = false;
-      if (timer) clearInterval(timer);
+      try {
+        if (raf) cancelAnimationFrame(raf);
+      } catch {}
     };
   }, [autoOn, liveOn, livePaused, roiPct, minRadius, maxRadius, param2]);
 
@@ -1318,11 +1354,7 @@ export default function PetanquePlay({ go }: Props) {
 
                 {liveErr && <div style={resultBox(theme, "TIE")}>{liveErr}</div>}
 
-                <div
-                  ref={liveWrapRef}
-                  style={liveWrap(theme)}
-                  onClick={!autoOn ? onLiveClick : undefined}
-                >
+                <div ref={liveWrapRef} style={liveWrap(theme)} onClick={!autoOn ? onLiveClick : undefined}>
                   <video ref={videoRef} style={liveVideo} playsInline muted />
 
                   {/* canvas invisible pour OpenCV */}
@@ -1441,7 +1473,6 @@ function wrap(theme: any): React.CSSProperties {
     minHeight: "100vh",
     padding: 14,
     color: cssVarOr(theme?.colors?.text ?? "#fff", "--text"),
-    // Laisse ton body gérer le vrai background si déjà en place, sinon fallback subtil
     background: dark
       ? cssVarOr("radial-gradient(1200px 600px at 50% 10%, rgba(255,255,255,0.06), rgba(0,0,0,0.92))", "--bg")
       : cssVarOr("radial-gradient(1200px 600px at 50% 10%, rgba(0,0,0,0.05), rgba(255,255,255,0.94))", "--bg"),
@@ -1851,7 +1882,6 @@ const radarOverlay: React.CSSProperties = {
 };
 
 function radarSweep(theme: any): React.CSSProperties {
-  // Gold par défaut si tes vars existent
   return {
     position: "absolute",
     left: "50%",
