@@ -4,6 +4,7 @@
 // ✅ Fix: handlers robustes (ne crash pas si InfoDot ne passe pas l'event)
 // ✅ Compat: accepte go(tab, params) OU setTab(tab) selon ton câblage
 // ✅ NEW: Quadrette (4v4) + Variantes (équipes impaires)
+// ✅ NEW: FFA 3 JOUEURS (chacun pour soi) — 3 boules/joueur => max 3 points/mène
 // ✅ Compat routes: supporte "petanque.config" ET "petanque_config"
 // ============================================
 
@@ -13,14 +14,13 @@ import { useLang } from "../../contexts/LangContext";
 import InfoDot from "../../components/InfoDot";
 
 type Props = {
-  // selon les pages de ton app, tu as parfois go(tab, params)…
   go?: (tab: any, params?: any) => void;
-  // …et parfois setTab(tab) comme Games.tsx
   setTab?: (tab: any) => void;
 };
 
 type PetanqueModeId =
   | "singles"
+  | "ffa3"
   | "doublette"
   | "triplette"
   | "quadrette"
@@ -51,7 +51,20 @@ const MODES: ModeDef[] = [
     infoTitleDefault: "Match simple (1v1)",
     infoBodyKey: "petanque.modes.singles.infoBody",
     infoBodyDefault:
-      "Partie classique en tête-à-tête. Configuration rapide puis lancement.",
+      "Partie classique en tête-à-tête. 3 boules/joueur → maximum 3 points par mène.",
+    enabled: true,
+  },
+  {
+    id: "ffa3",
+    titleKey: "petanque.modes.ffa3.title",
+    titleDefault: "MATCH À 3 (CHACUN POUR SOI)",
+    subtitleKey: "petanque.modes.ffa3.subtitle",
+    subtitleDefault: "Trois joueurs — le premier à 13 gagne.",
+    infoTitleKey: "petanque.modes.ffa3.infoTitle",
+    infoTitleDefault: "Match à 3 (FFA)",
+    infoBodyKey: "petanque.modes.ffa3.infoBody",
+    infoBodyDefault:
+      "3 joueurs, chacun joue pour soi. 3 boules/joueur. Un seul joueur gagne la mène et marque des points. Maximum 3 points par mène.",
     enabled: true,
   },
   {
@@ -64,7 +77,7 @@ const MODES: ModeDef[] = [
     infoTitleDefault: "Doublette (2v2)",
     infoBodyKey: "petanque.modes.doublette.infoBody",
     infoBodyDefault:
-      "Mode équipe 2 contre 2. Sélection joueurs, score cible, options.",
+      "Mode équipe 2 contre 2. Standard : 3 boules/joueur → 6 boules/équipe → max 6 points par mène.",
     enabled: true,
   },
   {
@@ -77,7 +90,7 @@ const MODES: ModeDef[] = [
     infoTitleDefault: "Triplette (3v3)",
     infoBodyKey: "petanque.modes.triplette.infoBody",
     infoBodyDefault:
-      "Mode équipe 3 contre 3. Sélection joueurs, règles, options, puis lancement.",
+      "Mode équipe 3 contre 3. Standard : 2 boules/joueur → 6 boules/équipe → max 6 points par mène.",
     enabled: true,
   },
   {
@@ -90,7 +103,7 @@ const MODES: ModeDef[] = [
     infoTitleDefault: "Quadrette (4v4)",
     infoBodyKey: "petanque.modes.quadrette.infoBody",
     infoBodyDefault:
-      "Mode équipe 4 contre 4. Standard : 2 boules par joueur (8 boules par équipe).",
+      "Mode équipe 4 contre 4. Standard : 2 boules/joueur → 8 boules/équipe → max 8 points par mène.",
     enabled: true,
   },
   {
@@ -132,33 +145,51 @@ export default function PetanqueMenuGames({ go, setTab }: Props) {
   const PAGE_BG = theme.bg;
   const CARD_BG = theme.card;
 
-  // ✅ routes compatibles avec tes 2 variantes ("petanque.config" / "petanque_config")
-  // - si ton App.tsx n’accepte que l’un des deux, garde celui qui compile chez toi.
   const ROUTE_CONFIG_PRIMARY = "petanque.config";
   const ROUTE_CONFIG_FALLBACK = "petanque_config";
 
-  function navigate(mode: PetanqueModeId) {
-    // Mapping id (UI) -> mode (store/config)
-    // - singles -> simple (store)
-    // - variants -> variants (store)
-    // - autres : identiques
-    const mappedMode =
-      mode === "singles" ? "simple" : mode === "variants" ? "variants" : mode;
+  function getMaxEndPoints(mode: PetanqueModeId): number {
+    // Règle: on ne peut pas marquer plus de points que le nombre de boules gagnantes possibles
+    // (donc boules du camp gagnant mieux placées que la meilleure boule adverse).
+    if (mode === "singles") return 3;   // 3 boules/joueur
+    if (mode === "ffa3") return 3;      // 3 boules/joueur, un seul gagnant
+    if (mode === "doublette") return 6; // 2 joueurs x 3 boules
+    if (mode === "triplette") return 6; // 3 joueurs x 2 boules
+    if (mode === "quadrette") return 8; // 4 joueurs x 2 boules (tel que défini dans l'UI)
+    // variants/training: par défaut 6 (sera affiné dans la config)
+    return 6;
+  }
 
-    // Priorité à go() car permet les params
+  function navigate(mode: PetanqueModeId) {
+    const mappedMode =
+      mode === "singles"
+        ? "simple"
+        : mode === "ffa3"
+        ? "ffa3"
+        : mode === "variants"
+        ? "variants"
+        : mode;
+
+    const maxEndPoints = getMaxEndPoints(mode);
+
+    // On envoie aussi une info pratique pour la config/play (non obligatoire)
+    const meta =
+      mode === "ffa3"
+        ? { kind: "ffa", players: 3 }
+        : mode === "singles"
+        ? { kind: "teams", teams: 2, teamSize: 1 }
+        : { kind: "teams" };
+
     if (typeof go === "function") {
-      // tente d’abord la route "dot" (celle de ton snippet simple)
       try {
-        go(ROUTE_CONFIG_PRIMARY as any, { mode: mappedMode });
+        go(ROUTE_CONFIG_PRIMARY as any, { mode: mappedMode, maxEndPoints, meta });
         return;
       } catch {
-        // fallback vers route underscore
-        go(ROUTE_CONFIG_FALLBACK as any, { mode: mappedMode });
+        go(ROUTE_CONFIG_FALLBACK as any, { mode: mappedMode, maxEndPoints, meta });
         return;
       }
     }
 
-    // Fallback setTab() (sans params, donc moins bien)
     if (typeof setTab === "function") {
       setTab(ROUTE_CONFIG_FALLBACK as any);
       return;
@@ -269,7 +300,6 @@ export default function PetanqueMenuGames({ go, setTab }: Props) {
                 )}
               </div>
 
-              {/* Pastille "i" */}
               <div
                 style={{
                   position: "absolute",
@@ -291,7 +321,6 @@ export default function PetanqueMenuGames({ go, setTab }: Props) {
         })}
       </div>
 
-      {/* Overlay d'info */}
       {infoMode && (
         <div
           onClick={() => setInfoMode(null)}

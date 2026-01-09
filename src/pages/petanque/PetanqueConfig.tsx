@@ -13,6 +13,7 @@
 // ✅ CTA sticky "Démarrer la partie"
 // IMPORTANT: le bouton Démarrer fait : go("petanque.play", { cfg: config, mode: config.mode })
 // ✅ NEW (Teams): sélection/creation d'équipes + logo (partagé avec Profiles > Teams via teamsStore)
+// ✅ NEW (FFA3): mode solo 3 joueurs EXACTS, pas d’équipes (UI & payload)
 // =============================================================
 
 import React from "react";
@@ -35,6 +36,7 @@ type PetanqueModeId =
   | "doublette"
   | "triplette"
   | "quadrette"
+  | "ffa3" // ✅ NEW
   | "variants"
   | "handicap"
   | "training";
@@ -66,7 +68,8 @@ type PetanqueConfigPayload = {
   throwOrderRule: ThrowOrderRule;
   roles: Record<string, PlayerRole>;
 
-  teams: Array<{
+  // ✅ FFA3 / training : pas d’équipes
+  teams?: Array<{
     id: TeamId;
     name: string;
     color: string;
@@ -102,6 +105,27 @@ const TEAM_LABELS: Record<TeamId, string> = { A: "Équipe A", B: "Équipe B" };
 const TEAM_COLORS: Record<TeamId, string> = { A: "#f7c85c", B: "#ff4fa2" };
 
 // ------------------------------------------------------------
+// Profiles helpers (supporte store.profiles array OU {ids,byId})
+// ------------------------------------------------------------
+function safeStr(v: any, fallback: string) {
+  return typeof v === "string" && v.trim().length ? v.trim() : fallback;
+}
+
+function extractProfiles(store: any): Profile[] {
+  const p = store?.profiles;
+
+  // Array direct
+  if (Array.isArray(p)) return p as Profile[];
+
+  // { ids, byId }
+  if (p?.ids && Array.isArray(p.ids) && p?.byId) {
+    return p.ids.map((id: string) => p.byId?.[id]).filter(Boolean);
+  }
+
+  return [];
+}
+
+// ------------------------------------------------------------
 // Helpers règles joueurs / boules / score
 // ------------------------------------------------------------
 function requiredPlayersFixed(mode: PetanqueModeId) {
@@ -109,6 +133,7 @@ function requiredPlayersFixed(mode: PetanqueModeId) {
   if (mode === "doublette") return 4;
   if (mode === "triplette") return 6;
   if (mode === "quadrette") return 8;
+  if (mode === "ffa3") return 3; // ✅ NEW
   return 1;
 }
 
@@ -175,29 +200,38 @@ function defaultBallsForMode(mode: PetanqueModeId, teamSize: number): number[] {
 // ------------------------------------------------------------
 
 export default function PetanqueConfig({ store, go, params }: Props) {
-  const { theme } = useTheme() as any;
+  const themeCtx = useTheme() as any;
+  const theme = themeCtx?.theme ?? themeCtx; // support ancien/new
   const { t } = useLang() as any;
 
   const rawMode = (params?.mode as string) || "singles";
   const mode: PetanqueModeId =
     rawMode === "simple"
       ? "singles"
+      : rawMode === "ffa3"
+      ? "ffa3" // ✅ NEW
       : rawMode === "variants"
       ? "variants"
       : rawMode === "handicap"
       ? "handicap"
       : (rawMode as PetanqueModeId);
 
+  const isFfa3 = mode === "ffa3"; // ✅ NEW
   const isVariants = mode === "variants" || mode === "handicap";
 
-  const profiles: Profile[] = (store?.profiles || []).filter((p: any) => !(p as any).isBot);
+  // ✅ Sans bots IA
+  const profiles: Profile[] = React.useMemo(
+    () => extractProfiles(store).filter((p: any) => !(p as any).isBot),
+    [store]
+  );
 
   // -------------------------
   // ✅ TEAMS (shared store)
   // -------------------------
-  const [teamsCatalog, setTeamsCatalog] = React.useState<TeamEntity[]>(() => loadTeamsBySport("petanque"));
+  const [teamsCatalog, setTeamsCatalog] = React.useState<TeamEntity[]>(() =>
+    loadTeamsBySport("petanque")
+  );
 
-  // refresh on mount + when coming back to page (simple)
   React.useEffect(() => {
     setTeamsCatalog(loadTeamsBySport("petanque"));
   }, []);
@@ -237,11 +271,14 @@ export default function PetanqueConfig({ store, go, params }: Props) {
       setTeamCreateErr("Nom d’équipe requis.");
       return;
     }
-    const created = createTeam({ sport: "petanque", name, logoDataUrl: newTeamLogo ?? null });
+    const created = createTeam({
+      sport: "petanque",
+      name,
+      logoDataUrl: newTeamLogo ?? null,
+    });
     const nextList = loadTeamsBySport("petanque");
     setTeamsCatalog(nextList);
 
-    // auto-select on the chosen side
     if (teamModalSide === "A") setTeamARefId(created.id);
     else setTeamBRefId(created.id);
 
@@ -267,9 +304,10 @@ export default function PetanqueConfig({ store, go, params }: Props) {
   const [ballsPerTeam, setBallsPerTeam] = React.useState<number>(6);
 
   const need = React.useMemo(() => {
+    if (isFfa3) return 3; // ✅ NEW: FFA3 = 3 joueurs EXACTS
     if (isVariants) return Math.max(1, teamASizeState) + Math.max(1, teamBSizeState);
     return requiredPlayersFixed(mode);
-  }, [isVariants, mode, teamASizeState, teamBSizeState]);
+  }, [isFfa3, isVariants, mode, teamASizeState, teamBSizeState]);
 
   // -------------------------
   // Paramètres
@@ -282,11 +320,17 @@ export default function PetanqueConfig({ store, go, params }: Props) {
   const [roles, setRoles] = React.useState<Record<string, PlayerRole>>({});
 
   const [selectedIds, setSelectedIds] = React.useState<string[]>(() =>
-    profiles.slice(0, need).map((p) => p.id)
+    profiles.slice(0, need).map((p: any) => p.id)
   );
 
   // Init/reset quand le mode change
   React.useEffect(() => {
+    // FFA3: on désactive tout le setup équipes/variants (UI masquée de toute façon)
+    if (mode === "ffa3") {
+      setPresetKey(null);
+      return;
+    }
+
     if (mode === "quadrette") {
       setTeamASizeState(4);
       setTeamBSizeState(4);
@@ -324,11 +368,11 @@ export default function PetanqueConfig({ store, go, params }: Props) {
       const take = uniq.slice(0, need);
       if (take.length === need) return take;
       const missing = need - take.length;
-      const pool = profiles.map((p) => p.id).filter((id) => !take.includes(id));
+      const pool = profiles.map((p: any) => p.id).filter((id: string) => !take.includes(id));
       return [...take, ...pool.slice(0, Math.max(0, missing))];
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [need, mode]);
+  }, [need, mode, profiles]);
 
   // Nettoyage roles
   React.useEffect(() => {
@@ -353,6 +397,15 @@ export default function PetanqueConfig({ store, go, params }: Props) {
 
       if (exists) return prev.filter((x) => x !== id);
 
+      // ✅ FFA3: max 3 (si déjà 3, on remplace le dernier)
+      if (isFfa3) {
+        if (prev.length >= 3) {
+          const next = prev.slice(0, 2);
+          return [...next, id];
+        }
+        return [...prev, id];
+      }
+
       if (prev.length >= need) {
         const next = prev.slice(0, need - 1);
         return [...next, id];
@@ -363,13 +416,30 @@ export default function PetanqueConfig({ store, go, params }: Props) {
 
   const canStart = React.useMemo(() => {
     if (mode === "training") return selectedIds.length === 1;
+    if (isFfa3) return selectedIds.length === 3; // ✅ EXACT 3
     return selectedIds.length === need;
-  }, [mode, selectedIds.length, need]);
+  }, [mode, isFfa3, selectedIds.length, need]);
 
-  const teamASize = isVariants ? clampInt(teamASizeState, 1, 4) : mode === "training" ? 1 : Math.floor(need / 2);
-  const teamBSize = mode === "training" ? 0 : isVariants ? clampInt(teamBSizeState, 1, 4) : need - Math.floor(need / 2);
+  // En FFA3, on ne veut pas de logique équipe A/B (mais on garde les tailles pour les autres modes)
+  const teamASize = isVariants
+    ? clampInt(teamASizeState, 1, 4)
+    : mode === "training"
+    ? 1
+    : Math.floor(need / 2);
 
-  function recalcVariants(a: number, b: number, nextAutoComp = autoCompensation, nextAutoScore = autoTargetScore) {
+  const teamBSize =
+    mode === "training"
+      ? 0
+      : isVariants
+      ? clampInt(teamBSizeState, 1, 4)
+      : need - Math.floor(need / 2);
+
+  function recalcVariants(
+    a: number,
+    b: number,
+    nextAutoComp = autoCompensation,
+    nextAutoScore = autoTargetScore
+  ) {
     if (!nextAutoComp) return;
     const bal = computeBalancedBalls(a, b);
     setBallsPerTeam(bal.ballsPerTeam);
@@ -445,6 +515,8 @@ export default function PetanqueConfig({ store, go, params }: Props) {
       alert(
         mode === "training"
           ? t("petanque.config.needOne", "Sélectionne 1 joueur pour l'entraînement.")
+          : isFfa3
+          ? t("petanque.config.needThree", "Sélectionne exactement 3 joueurs.")
           : t("petanque.config.needPlayers", `Sélectionne ${need} joueurs.`)
       );
       return;
@@ -452,12 +524,12 @@ export default function PetanqueConfig({ store, go, params }: Props) {
 
     const players = selectedIds
       .slice(0, need)
-      .map((id) => profiles.find((p) => p.id === id))
+      .map((id) => profiles.find((p: any) => (p as any).id === id))
       .filter(Boolean)
       .map((p: any) => ({
         id: p.id,
-        name: p.name,
-        avatarDataUrl: p.avatarDataUrl ?? null,
+        name: safeStr(p.displayName, "") || safeStr(p.name, "Joueur"),
+        avatarDataUrl: p.avatarDataUrl ?? p.avatarUrl ?? null,
       }));
 
     const config: PetanqueConfigPayload = {
@@ -469,20 +541,22 @@ export default function PetanqueConfig({ store, go, params }: Props) {
       startRule,
       throwOrderRule,
       roles,
-      teams,
+      // ✅ FFA3/training: pas d'équipes dans le payload
+      teams: isFfa3 || mode === "training" ? undefined : teams,
       players,
-      variants: isVariants
-        ? {
-            teamASize,
-            teamBSize,
-            ballsPerPlayerA: ballsPerPlayerA.slice(0, teamASize),
-            ballsPerPlayerB: ballsPerPlayerB.slice(0, teamBSize),
-            autoCompensation,
-            autoTargetScore,
-            ballsPerTeam,
-            preset: presetKey ?? undefined,
-          }
-        : undefined,
+      variants:
+        isVariants && !isFfa3
+          ? {
+              teamASize,
+              teamBSize,
+              ballsPerPlayerA: ballsPerPlayerA.slice(0, teamASize),
+              ballsPerPlayerB: ballsPerPlayerB.slice(0, teamBSize),
+              autoCompensation,
+              autoTargetScore,
+              ballsPerTeam,
+              preset: presetKey ?? undefined,
+            }
+          : undefined,
     };
 
     go("petanque.play" as any, { cfg: config, mode: config.mode });
@@ -533,7 +607,16 @@ export default function PetanqueConfig({ store, go, params }: Props) {
 
     return (
       <div style={{ flex: 1, minWidth: 160 }}>
-        <div style={{ fontSize: 12, color: "#c8cbe4", marginBottom: 6, display: "flex", alignItems: "center", gap: 8 }}>
+        <div
+          style={{
+            fontSize: 12,
+            color: "#c8cbe4",
+            marginBottom: 6,
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
+          }}
+        >
           <span style={{ fontWeight: 900, color: side === "A" ? TEAM_COLORS.A : TEAM_COLORS.B }}>
             {side === "A" ? "Équipe A" : "Équipe B"}
           </span>
@@ -541,7 +624,13 @@ export default function PetanqueConfig({ store, go, params }: Props) {
             <img
               src={tm.logoDataUrl}
               alt="logo"
-              style={{ width: 18, height: 18, borderRadius: 6, objectFit: "cover", border: "1px solid rgba(255,255,255,0.18)" }}
+              style={{
+                width: 18,
+                height: 18,
+                borderRadius: 6,
+                objectFit: "cover",
+                border: "1px solid rgba(255,255,255,0.18)",
+              }}
             />
           ) : null}
         </div>
@@ -590,7 +679,6 @@ export default function PetanqueConfig({ store, go, params }: Props) {
           <button
             type="button"
             onClick={() => {
-              // refresh list (si Teams page a ajouté/modifié)
               setTeamsCatalog(loadTeamsBySport("petanque"));
             }}
             style={{
@@ -660,6 +748,12 @@ export default function PetanqueConfig({ store, go, params }: Props) {
           <div style={{ marginTop: 6, fontSize: 12, color: "#b8bdd8" }}>
             {t("petanque.config.mode", "Mode")} : <b style={{ color: "#fff" }}>{mode}</b>
           </div>
+
+          {isFfa3 && (
+            <div style={{ marginTop: 6, fontSize: 11, color: "#9ea3bf" }}>
+              {t("petanque.config.ffa3Hint", "FFA3 : mode solo — sélectionne exactement 3 joueurs (J1/J2/J3).")}
+            </div>
+          )}
         </div>
       </header>
 
@@ -688,8 +782,8 @@ export default function PetanqueConfig({ store, go, params }: Props) {
             {t("petanque.config.players", "Joueurs")}
           </div>
 
-          {/* ✅ NEW: Équipes (noms & logos) */}
-          {mode !== "training" && (
+          {/* ✅ NEW: Équipes (noms & logos) — MASQUÉ en FFA3 */}
+          {mode !== "training" && !isFfa3 && (
             <div
               style={{
                 marginBottom: 14,
@@ -722,8 +816,8 @@ export default function PetanqueConfig({ store, go, params }: Props) {
             </div>
           )}
 
-          {/* VARIANTES / HANDICAP */}
-          {isVariants && (
+          {/* VARIANTES / HANDICAP — MASQUÉ en FFA3 */}
+          {isVariants && !isFfa3 && (
             <div
               style={{
                 marginBottom: 14,
@@ -851,9 +945,8 @@ export default function PetanqueConfig({ store, go, params }: Props) {
               </div>
 
               <div style={{ marginTop: 10, fontSize: 11, color: "#9ea3bf" }}>
-                {t("petanque.variants.ballsTeam", "Boules / équipe")} :{" "}
-                <b style={{ color: "#e9ecff" }}>{ballsPerTeam}</b> <span style={{ opacity: 0.9 }}>•</span>{" "}
-                {t("petanque.variants.ballsPlayer", "Boules / joueur")} — A:{" "}
+                {t("petanque.variants.ballsTeam", "Boules / équipe")} : <b style={{ color: "#e9ecff" }}>{ballsPerTeam}</b>{" "}
+                <span style={{ opacity: 0.9 }}>•</span> {t("petanque.variants.ballsPlayer", "Boules / joueur")} — A:{" "}
                 <b style={{ color: "#e9ecff" }}>{ballsPerPlayerA.slice(0, teamASizeState).join("-") || "-"}</b> | B:{" "}
                 <b style={{ color: "#e9ecff" }}>{ballsPerPlayerB.slice(0, teamBSizeState).join("-") || "-"}</b>
               </div>
@@ -879,16 +972,22 @@ export default function PetanqueConfig({ store, go, params }: Props) {
                 }}
                 className="dc-scroll-thin"
               >
-                {profiles.map((p) => {
+                {profiles.map((p: any) => {
                   const active = selectedIds.includes(p.id);
 
+                  // ✅ FFA3: halo unique + badge J1/J2/J3 (pas A/B)
                   let halo = primary;
-                  if (mode !== "training") {
+                  if (!isFfa3 && mode !== "training") {
                     const idx = selectedIds.indexOf(p.id);
                     if (idx >= 0) {
                       halo = idx < teamASize ? TEAM_COLORS.A : TEAM_COLORS.B;
                     }
                   }
+
+                  const displayName =
+                    safeStr(p.displayName, "") || safeStr(p.name, "") || safeStr(p.nickname, "") || "Profil";
+
+                  const ffaRank = isFfa3 ? selectedIds.indexOf(p.id) : -1;
 
                   return (
                     <div
@@ -949,31 +1048,52 @@ export default function PetanqueConfig({ store, go, params }: Props) {
                           whiteSpace: "nowrap",
                         }}
                       >
-                        {p.name}
+                        {displayName}
                       </div>
 
+                      {/* Badge position */}
                       {mode !== "training" && active && (
                         <div style={{ marginTop: 2, display: "flex", justifyContent: "center" }}>
-                          <span
-                            style={{
-                              padding: "2px 8px",
-                              borderRadius: 999,
-                              fontSize: 9,
-                              fontWeight: 900,
-                              letterSpacing: 0.7,
-                              textTransform: "uppercase",
-                              background:
-                                selectedIds.indexOf(p.id) < teamASize
-                                  ? `radial-gradient(circle at 30% 0, ${TEAM_COLORS.A}, #ffe9a3)`
-                                  : `radial-gradient(circle at 30% 0, ${TEAM_COLORS.B}, #ffd1e6)`,
-                              color: "#020611",
-                              boxShadow: "0 0 10px rgba(0,0,0,0.55)",
-                              border: "1px solid rgba(255,255,255,0.35)",
-                              whiteSpace: "nowrap",
-                            }}
-                          >
-                            {selectedIds.indexOf(p.id) < teamASize ? "A" : "B"}
-                          </span>
+                          {isFfa3 ? (
+                            <span
+                              style={{
+                                padding: "2px 8px",
+                                borderRadius: 999,
+                                fontSize: 9,
+                                fontWeight: 900,
+                                letterSpacing: 0.7,
+                                textTransform: "uppercase",
+                                background: `radial-gradient(circle at 30% 0, ${primary}, #ffe9a3)`,
+                                color: "#020611",
+                                boxShadow: "0 0 10px rgba(0,0,0,0.55)",
+                                border: "1px solid rgba(255,255,255,0.35)",
+                                whiteSpace: "nowrap",
+                              }}
+                            >
+                              {ffaRank >= 0 ? `J${ffaRank + 1}` : "J"}
+                            </span>
+                          ) : (
+                            <span
+                              style={{
+                                padding: "2px 8px",
+                                borderRadius: 999,
+                                fontSize: 9,
+                                fontWeight: 900,
+                                letterSpacing: 0.7,
+                                textTransform: "uppercase",
+                                background:
+                                  selectedIds.indexOf(p.id) < teamASize
+                                    ? `radial-gradient(circle at 30% 0, ${TEAM_COLORS.A}, #ffe9a3)`
+                                    : `radial-gradient(circle at 30% 0, ${TEAM_COLORS.B}, #ffd1e6)`,
+                                color: "#020611",
+                                boxShadow: "0 0 10px rgba(0,0,0,0.55)",
+                                border: "1px solid rgba(255,255,255,0.35)",
+                                whiteSpace: "nowrap",
+                              }}
+                            >
+                              {selectedIds.indexOf(p.id) < teamASize ? "A" : "B"}
+                            </span>
+                          )}
                         </div>
                       )}
                     </div>
@@ -984,6 +1104,8 @@ export default function PetanqueConfig({ store, go, params }: Props) {
               <p style={{ fontSize: 11, color: "#7c80a0", marginBottom: 0 }}>
                 {mode === "training"
                   ? t("petanque.config.hintTraining", "Sélectionne 1 joueur.")
+                  : isFfa3
+                  ? t("petanque.config.hintFfa3", "Sélectionne exactement 3 joueurs (J1/J2/J3).")
                   : t("petanque.config.hint", `Sélectionne exactement ${need} joueurs.`)}
               </p>
             </>
@@ -1039,22 +1161,27 @@ export default function PetanqueConfig({ store, go, params }: Props) {
                 primary={primary}
                 primarySoft={primarySoft}
               />
-              <PillButton
-                label={t("petanque.config.start.fixedA", "Départ Équipe A")}
-                active={startRule === "fixedA"}
-                onClick={() => setStartRule("fixedA")}
-                primary={primary}
-                primarySoft={primarySoft}
-                compact
-              />
-              <PillButton
-                label={t("petanque.config.start.fixedB", "Départ Équipe B")}
-                active={startRule === "fixedB"}
-                onClick={() => setStartRule("fixedB")}
-                primary={primary}
-                primarySoft={primarySoft}
-                compact
-              />
+              {/* En FFA3, ces options “Équipe A/B” restent possibles si tu veux, sinon masque-les. */}
+              {!isFfa3 && (
+                <>
+                  <PillButton
+                    label={t("petanque.config.start.fixedA", "Départ Équipe A")}
+                    active={startRule === "fixedA"}
+                    onClick={() => setStartRule("fixedA")}
+                    primary={primary}
+                    primarySoft={primarySoft}
+                    compact
+                  />
+                  <PillButton
+                    label={t("petanque.config.start.fixedB", "Départ Équipe B")}
+                    active={startRule === "fixedB"}
+                    onClick={() => setStartRule("fixedB")}
+                    primary={primary}
+                    primarySoft={primarySoft}
+                    compact
+                  />
+                </>
+              )}
               <PillButton
                 label={t("petanque.config.start.closest", "Boule la + proche (amical)")}
                 active={startRule === "closest_boule"}
@@ -1137,15 +1264,16 @@ export default function PetanqueConfig({ store, go, params }: Props) {
 
             <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
               {selectedIds.slice(0, need).map((pid) => {
-                const p = profiles.find((x) => x.id === pid);
+                const p: any = profiles.find((x: any) => x.id === pid);
                 if (!p) return null;
                 const v: PlayerRole = roles[pid] ?? "polyvalent";
+                const name = safeStr(p.displayName, "") || safeStr(p.name, "") || safeStr(p.nickname, "") || "Profil";
 
                 return (
                   <div key={pid} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                       <ProfileAvatar profile={p} size={26} />
-                      <span style={{ fontSize: 12, fontWeight: 800 }}>{p.name}</span>
+                      <span style={{ fontSize: 12, fontWeight: 800 }}>{name}</span>
                     </div>
 
                     <div style={{ display: "flex", gap: 6, flexWrap: "wrap", justifyContent: "flex-end" }}>
@@ -1180,8 +1308,8 @@ export default function PetanqueConfig({ store, go, params }: Props) {
           </section>
         )}
 
-        {/* RÉCAP ÉQUIPES */}
-        {mode !== "training" && (
+        {/* RÉCAP ÉQUIPES — MASQUÉ en FFA3 */}
+        {mode !== "training" && !isFfa3 && (
           <section
             style={{
               background: cardBg,
@@ -1248,17 +1376,18 @@ export default function PetanqueConfig({ store, go, params }: Props) {
 
                     <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                       {tm.playerIds.map((pid, idx) => {
-                        const p = profiles.find((x) => x.id === pid);
+                        const p: any = profiles.find((x: any) => x.id === pid);
                         if (!p) return null;
 
                         const role = roles[pid] ?? "polyvalent";
                         const roleLabel = role === "tireur" ? "T" : role === "pointeur1" ? "P1" : role === "pointeur2" ? "P2" : "↔";
                         const balls = tm.ballsPerPlayer?.[idx];
+                        const name = safeStr(p.displayName, "") || safeStr(p.name, "") || safeStr(p.nickname, "") || "Profil";
 
                         return (
                           <div key={pid} style={{ display: "flex", alignItems: "center", gap: 6 }}>
                             <ProfileAvatar profile={p} size={26} />
-                            <span style={{ fontSize: 12, fontWeight: 700, color: "#e9ecff" }}>{p.name}</span>
+                            <span style={{ fontSize: 12, fontWeight: 700, color: "#e9ecff" }}>{name}</span>
 
                             <span
                               style={{
@@ -1366,8 +1495,8 @@ export default function PetanqueConfig({ store, go, params }: Props) {
                   Score officiel
                 </div>
                 <div style={{ fontSize: 13, color: theme?.textSoft ?? "#cfd2e8", lineHeight: 1.35 }}>
-                  En compétition, une partie se joue en général en <b>13 points</b>. Certains formats peuvent être joués en{" "}
-                  <b>11</b>. Les autres valeurs sont surtout pour l’amical.
+                  En compétition, une partie se joue en général en <b>13 points</b>. Certains formats peuvent être joués en <b>11</b>. Les autres
+                  valeurs sont surtout pour l’amical.
                   <br />
                   <br />
                   En <b>Variantes</b>, tu peux activer “Score auto” (basé sur le total de boules/équipe) puis ajuster si besoin.
@@ -1381,8 +1510,7 @@ export default function PetanqueConfig({ store, go, params }: Props) {
                   Début de partie
                 </div>
                 <div style={{ fontSize: 13, color: theme?.textSoft ?? "#cfd2e8", lineHeight: 1.35 }}>
-                  En compétition, le début se fait par <b>tirage au sort (pile ou face)</b> pour déterminer l’équipe qui commence
-                  (et lance le but en premier).
+                  En compétition, le début se fait par <b>tirage au sort (pile ou face)</b> pour déterminer qui commence (et lance le but en premier).
                 </div>
               </>
             )}
@@ -1406,8 +1534,8 @@ export default function PetanqueConfig({ store, go, params }: Props) {
         </div>
       )}
 
-      {/* ✅ Modal create team */}
-      {teamModalOpen && (
+      {/* ✅ Modal create team — MASQUÉ en FFA3 (on ne peut pas l’ouvrir, mais on garde le rendu safe) */}
+      {teamModalOpen && !isFfa3 && (
         <div
           onClick={() => setTeamModalOpen(false)}
           style={{

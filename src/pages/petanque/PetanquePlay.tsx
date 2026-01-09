@@ -1,12 +1,14 @@
 // ============================================
 // src/pages/petanque/PetanquePlay.tsx
-// ✅ Version MOBILE-SAFE (sheet scroll + LIVE stable)
+// ✅ Version MOBILE-SAFE (sheet scroll + LIVE stable) + ✅ FFA3 LOCAL (0..3 points)
 // - Sheet scroll iOS/Android fiable (WebkitOverflowScrolling + 100dvh + overscrollBehavior)
 // - Header sticky (Fermer toujours accessible) + tap dehors pour fermer
 // - Caméra JAMAIS auto-start (mobile permission safe)
 // - LIVE fluide en "TAP" par défaut sur mobile
 // - AUTO possible, mais OpenCV ne tourne QUE si "Détection ON" (detectOn)
 // - Bouton Pause / Reprendre (coupe l'analyse sans stopper la caméra)
+// ✅ NEW (UI): Score + logos équipes + composition + rôles + stats joueurs (+/−) persistées localStorage
+// ✅ NEW (FFA3 local): 3 joueurs, premier à 13, max 3 points par mène (0..3)
 // ============================================
 
 import React from "react";
@@ -26,6 +28,9 @@ import {
 import { loadPetanqueConfig } from "../../lib/petanqueConfigStore";
 import { loadOpenCv } from "../../lib/vision/opencv";
 
+import ProfileAvatar from "../../components/ProfileAvatar";
+import type { Profile } from "../../lib/types";
+
 type Props = {
   go: (tab: any, params?: any) => void;
   params?: any;
@@ -36,13 +41,366 @@ const PTS = [0, 1, 2, 3, 4, 5, 6];
 type PhotoPoint = { x: number; y: number }; // normalized 0..1
 type MeasureMode = "manual" | "photo" | "live";
 
+// ===== Helpers UI (avatars + couleurs) =====
+function pickTeamColor(theme: any, side: "A" | "B") {
+  // On évite de casser si certains thèmes n'ont pas "secondary/pink/gold".
+  const primary = theme?.primary || "#FFD24A";
+  const alt =
+    theme?.secondary ||
+    theme?.pink ||
+    theme?.magenta ||
+    theme?.green ||
+    theme?.gold ||
+    primary;
+  return side === "A" ? primary : alt;
+}
+
+function getAvatarSrc(p: any): string | null {
+  // Couvre la plupart de tes structures (darts + petanque + local/online)
+  return (
+    p?.avatarDataUrl ||
+    p?.avatarUrl ||
+    p?.avatar ||
+    p?.photoDataUrl ||
+    p?.photoUrl ||
+    null
+  );
+}
+
+function MedallionAvatar({
+  src,
+  size = 66,
+  border,
+  glow,
+}: {
+  src: string | null;
+  size?: number;
+  border: string;
+  glow: string;
+}) {
+  return (
+    <div
+      style={{
+        width: size,
+        height: size,
+        borderRadius: 999,
+        overflow: "hidden",
+        background: "rgba(0,0,0,0.22)",
+        border: `1px solid ${border}`,
+        boxShadow: `0 0 16px ${glow}`,
+        display: "grid",
+        placeItems: "center",
+        flex: "0 0 auto",
+      }}
+    >
+      {src ? (
+        <img
+          src={src}
+          alt=""
+          draggable={false}
+          style={{
+            width: "100%",
+            height: "100%",
+            objectFit: "cover",
+            display: "block",
+          }}
+        />
+      ) : (
+        <span style={{ opacity: 0.75, fontWeight: 950, fontSize: 22 }}>?</span>
+      )}
+    </div>
+  );
+}
+
+// ==========================
+// ✅ TEAMS + Roles + Stats
+// ==========================
+type PlayerRole = "Tireur" | "Pointeur 1" | "Pointeur 2" | "Polyvalent";
+
+type PlayerLine = {
+  id: string; // profileId (ou fallback)
+  name: string;
+  role?: PlayerRole;
+  profile?: Profile;
+};
+
+type TeamLine = {
+  id?: string;
+  name: string;
+  logoDataUrl?: string | null;
+  players: PlayerLine[];
+};
+
+type PlayerStats = {
+  points: number;
+  carreau: number;
+  tirReussi: number;
+  trou: number;
+  bec: number;
+  butAnnulation: number;
+  butPoint: number;
+};
+
+const EMPTY_STATS: PlayerStats = {
+  points: 0,
+  carreau: 0,
+  tirReussi: 0,
+  trou: 0,
+  bec: 0,
+  butAnnulation: 0,
+  butPoint: 0,
+};
+
+function clamp0(n: number) {
+  return Math.max(0, n | 0);
+}
+
+function safeJsonParse<T>(raw: string | null, fallback: T): T {
+  if (!raw) return fallback;
+  try {
+    return JSON.parse(raw) as T;
+  } catch {
+    return fallback;
+  }
+}
+
+/**
+ * Extraction tolérante Teams + roster depuis matchCfg (priorité) puis st.
+ * Fallback sur st.teamA/st.teamB.
+ */
+function extractTeams(st: any, matchCfg: any): { A: TeamLine; B: TeamLine } {
+  // Helpers
+  const asStr = (v: any) => (v == null ? "" : String(v)).trim();
+
+  const normalizeLogo = (raw: any): string | null => {
+    if (!raw) return null;
+    // accepte logoDataUrl, logo, logoUrl, image, etc.
+    const v = raw?.logoDataUrl ?? raw?.logoUrl ?? raw?.logo ?? raw?.image ?? raw?.img ?? raw;
+    const s = asStr(v);
+    return s ? s : null;
+  };
+
+  const normalizePlayers = (rawPlayers: any, profilesIndex?: Record<string, any>): PlayerLine[] => {
+    const arr = Array.isArray(rawPlayers) ? rawPlayers : [];
+    return arr.map((p: any, idx: number) => {
+      // Cas 1: string "Perrin" ou "id_profile"
+      if (typeof p === "string") {
+        const maybeProfile = profilesIndex?.[p];
+        const name = asStr(maybeProfile?.displayName ?? maybeProfile?.name) || asStr(p) || `Joueur ${idx + 1}`;
+        return {
+          id: asStr(maybeProfile?.id) || asStr(p) || `p-${idx}`,
+          name,
+          role: (maybeProfile?.role as PlayerRole) ?? undefined,
+          profile: maybeProfile as Profile,
+        };
+      }
+
+      // Cas 2: objet joueur
+      const id = asStr(p?.id ?? p?.profileId ?? p?.pid ?? `p-${idx}`);
+      const prof = (p?.profile ?? profilesIndex?.[id]) as any;
+
+      const name =
+        asStr(p?.name ?? p?.displayName ?? p?.label) ||
+        asStr(prof?.displayName ?? prof?.name) ||
+        `Joueur ${idx + 1}`;
+
+      const role = (p?.role as PlayerRole) ?? (prof?.role as PlayerRole) ?? undefined;
+
+      const profile: Profile | undefined =
+        (prof as Profile) ??
+        ((p?.avatarUrl || p?.displayName || p?.name) ? (p as Profile) : undefined);
+
+      return { id, name, role, profile };
+    });
+  };
+
+  // Index profils si fourni dans cfg
+  const profilesArr = (matchCfg?.profiles ?? matchCfg?.cfg?.profiles ?? []) as any[];
+  const profilesIndex: Record<string, any> = {};
+  if (Array.isArray(profilesArr)) {
+    profilesArr.forEach((p) => {
+      const id = asStr(p?.id);
+      if (id) profilesIndex[id] = p;
+    });
+  }
+
+  // ------------- Détection des shapes les plus fréquents -------------
+  // Shape 1: cfg.teams = { A:{...}, B:{...} }
+  const teamA_1 = matchCfg?.teams?.A;
+  const teamB_1 = matchCfg?.teams?.B;
+
+  // Shape 2: cfg.teamA / cfg.teamB
+  const teamA_2 = matchCfg?.teamA;
+  const teamB_2 = matchCfg?.teamB;
+
+  // Shape 3: cfg.teams = [{id:'A'|'B', ...}, ...]
+  const teamsArr = matchCfg?.teams;
+  const teamA_3 =
+    Array.isArray(teamsArr) ? teamsArr.find((t) => asStr(t?.id ?? t?.key).toUpperCase() === "A") : null;
+  const teamB_3 =
+    Array.isArray(teamsArr) ? teamsArr.find((t) => asStr(t?.id ?? t?.key).toUpperCase() === "B") : null;
+
+  // Shape 4: champs plats
+  const flatAName = matchCfg?.teamAName ?? matchCfg?.nameA ?? matchCfg?.A;
+  const flatBName = matchCfg?.teamBName ?? matchCfg?.nameB ?? matchCfg?.B;
+  const flatALogo = matchCfg?.teamALogo ?? matchCfg?.logoA;
+  const flatBLogo = matchCfg?.teamBLogo ?? matchCfg?.logoB;
+  const flatAPlayers = matchCfg?.teamAPlayers ?? matchCfg?.playersA;
+  const flatBPlayers = matchCfg?.teamBPlayers ?? matchCfg?.playersB;
+
+  const rawA =
+    teamA_1 ??
+    teamA_2 ??
+    teamA_3 ??
+    (flatAName || flatALogo || flatAPlayers
+      ? { name: flatAName, logo: flatALogo, players: flatAPlayers }
+      : null) ??
+    st?.teams?.A ??
+    (st?.teamA ? { name: st.teamA } : null) ??
+    null;
+
+  const rawB =
+    teamB_1 ??
+    teamB_2 ??
+    teamB_3 ??
+    (flatBName || flatBLogo || flatBPlayers
+      ? { name: flatBName, logo: flatBLogo, players: flatBPlayers }
+      : null) ??
+    st?.teams?.B ??
+    (st?.teamB ? { name: st.teamB } : null) ??
+    null;
+
+  const A: TeamLine = {
+    id: asStr(rawA?.id) || undefined,
+    name: asStr(rawA?.name ?? rawA?.label ?? st?.teamA) || "Équipe A",
+    logoDataUrl: normalizeLogo(rawA),
+    players: normalizePlayers(rawA?.players ?? rawA?.members ?? rawA?.roster ?? rawA?.profiles, profilesIndex),
+  };
+
+  const B: TeamLine = {
+    id: asStr(rawB?.id) || undefined,
+    name: asStr(rawB?.name ?? rawB?.label ?? st?.teamB) || "Équipe B",
+    logoDataUrl: normalizeLogo(rawB),
+    players: normalizePlayers(rawB?.players ?? rawB?.members ?? rawB?.roster ?? rawB?.profiles, profilesIndex),
+  };
+
+  // Fallback ultime : si roster absent mais cfg donne "players" global + teams mapping
+  if ((!A.players?.length || !B.players?.length) && Array.isArray(matchCfg?.players) && matchCfg?.players?.length) {
+    // si cfg.players = [{team:'A'|'B', name,...}] ou [{teamId:'A', ...}]
+    const global = matchCfg.players;
+    const a2 = global.filter((p: any) => asStr(p?.team ?? p?.teamId ?? p?.side).toUpperCase() === "A");
+    const b2 = global.filter((p: any) => asStr(p?.team ?? p?.teamId ?? p?.side).toUpperCase() === "B");
+    if (!A.players.length && a2.length) A.players = normalizePlayers(a2, profilesIndex);
+    if (!B.players.length && b2.length) B.players = normalizePlayers(b2, profilesIndex);
+  }
+
+  return { A, B };
+}
+
+function statLabel(k: keyof PlayerStats) {
+  switch (k) {
+    case "points":
+      return "Points";
+    case "carreau":
+      return "Carreau";
+    case "tirReussi":
+      return "Tir OK";
+    case "trou":
+      return "Trou";
+    case "bec":
+      return "Bec";
+    case "butAnnulation":
+      return "But KO";
+    case "butPoint":
+      return "But +";
+    default:
+      return k;
+  }
+}
+
 export default function PetanquePlay({ go, params }: Props) {
   // ✅ Route params
   const matchMode = (params?.mode ?? params?.cfg?.mode ?? "singles") as any;
+  const isFfa3 = matchMode === "ffa3";
   const matchCfg = params?.cfg ?? null;
 
   const { theme } = useTheme();
   const [st, setSt] = React.useState<PetanqueState>(() => loadPetanqueState());
+
+  // =====================================================
+  // ✅ FFA3 LOCAL (ne dépend pas du store Petanque)
+  // =====================================================
+  const ffaPlayers = (params?.cfg?.players?.length === 3
+    ? params.cfg.players
+    : ["Joueur 1", "Joueur 2", "Joueur 3"]) as string[];
+
+  type FfaEnd = { id: string; at: number; p: number; points: number };
+
+  const [ffaScores, setFfaScores] = React.useState<number[]>([0, 0, 0]);
+  const [ffaEnds, setFfaEnds] = React.useState<FfaEnd[]>([]);
+
+  const ffaWinnerIdx = React.useMemo(() => {
+    const idx = ffaScores.findIndex((s) => s >= 13);
+    return idx >= 0 ? idx : null;
+  }, [ffaScores]);
+
+  const addFfaEnd = (playerIdx: number, points: number) => {
+    if (ffaWinnerIdx != null) return;
+    const id = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+    setFfaScores((cur) => cur.map((s, i) => (i === playerIdx ? s + points : s)));
+    setFfaEnds((cur) => [{ id, at: Date.now(), p: playerIdx, points }, ...cur]);
+  };
+
+  const undoFfaEnd = () => {
+    setFfaEnds((cur) => {
+      const [last, ...rest] = cur;
+      if (!last) return cur;
+      setFfaScores((scores) => scores.map((s, i) => (i === last.p ? Math.max(0, s - last.points) : s)));
+      return rest;
+    });
+  };
+
+  const resetFfa = () => {
+    setFfaScores([0, 0, 0]);
+    setFfaEnds([]);
+  };
+
+  const PTS_FFA3 = [0, 1, 2, 3];
+
+  // ==========================================
+  // ✅ TEAMS + player stats (localStorage)
+  // ==========================================
+  const teams = React.useMemo(() => extractTeams(st as any, matchCfg), [st, matchCfg]);
+
+  const matchKey = React.useMemo(() => {
+    const id =
+      (st as any)?.matchId ??
+      (st as any)?.startedAt ??
+      (st as any)?.createdAt ??
+      (matchCfg as any)?.id ??
+      "current";
+    return `bsc-petanque-playerstats-v1:${String(id)}`;
+  }, [st, matchCfg]);
+
+  const [playerStats, setPlayerStats] = React.useState<Record<string, PlayerStats>>(() =>
+    safeJsonParse<Record<string, PlayerStats>>(localStorage.getItem(matchKey), {})
+  );
+
+  React.useEffect(() => {
+    try {
+      localStorage.setItem(matchKey, JSON.stringify(playerStats));
+    } catch {
+      // ignore
+    }
+  }, [matchKey, playerStats]);
+
+  const bumpStat = React.useCallback((playerId: string, key: keyof PlayerStats, delta: number) => {
+    setPlayerStats((prev) => {
+      const cur = prev[playerId] ?? EMPTY_STATS;
+      const nextVal = clamp0((cur[key] ?? 0) + delta);
+      return { ...prev, [playerId]: { ...cur, [key]: nextVal } };
+    });
+  }, []);
 
   // ==========================
   // ✅ MESURAGE (sheet)
@@ -97,10 +455,10 @@ export default function PetanquePlay({ go, params }: Props) {
   const manualText = React.useMemo(() => {
     if (!canComputeManual) return "Renseigne les 2 distances (cm).";
     if (manualWinner === "TIE") return `Égalité (≤ ${tolN} cm) — à re-mesurer`;
-    if (manualWinner === "A") return `${st.teamA} est devant (+${deltaManual.toFixed(1)} cm)`;
-    if (manualWinner === "B") return `${st.teamB} est devant (+${deltaManual.toFixed(1)} cm)`;
+    if (manualWinner === "A") return `${teams.A.name} est devant (+${deltaManual.toFixed(1)} cm)`;
+    if (manualWinner === "B") return `${teams.B.name} est devant (+${deltaManual.toFixed(1)} cm)`;
     return "";
-  }, [canComputeManual, manualWinner, tolN, st.teamA, st.teamB, deltaManual]);
+  }, [canComputeManual, manualWinner, tolN, deltaManual, teams.A.name, teams.B.name]);
 
   const onSaveManual = () => {
     if (!canComputeManual) return;
@@ -289,6 +647,10 @@ export default function PetanquePlay({ go, params }: Props) {
   const liveWrapRef = React.useRef<HTMLDivElement | null>(null);
   const canvasRef = React.useRef<HTMLCanvasElement | null>(null);
 
+  // ✅ refs anti-sauts (utilisés dans loop OpenCV)
+  const lastNearestRef = React.useRef<{ x: number; y: number; r: number } | null>(null);
+  const stableNearestRef = React.useRef<{ x: number; y: number; r: number } | null>(null);
+
   // cochonnet = centre de la mire
   const liveC: PhotoPoint = { x: 0.5, y: 0.5 };
 
@@ -399,6 +761,8 @@ export default function PetanquePlay({ go, params }: Props) {
     setCircles([]);
     setNearestIdx(null);
     setCircleTeam({});
+    lastNearestRef.current = null;
+    stableNearestRef.current = null;
   };
 
   const onLiveClick: React.MouseEventHandler<HTMLDivElement> = (e) => {
@@ -753,6 +1117,8 @@ export default function PetanquePlay({ go, params }: Props) {
       }>
     | undefined;
 
+  const allPlayers = React.useMemo(() => [...teams.A.players, ...teams.B.players], [teams]);
+
   return (
     <div className="container" style={wrap(theme)}>
       <div style={topBar}>
@@ -775,64 +1141,336 @@ export default function PetanquePlay({ go, params }: Props) {
         </button>
       </div>
 
-      <div className="card" style={card(theme)}>
-        <div style={heroGlow} aria-hidden />
-        <div style={scoreLine(theme)}>
-          <span className="badge" style={chip(theme)} title={st.teamA}>
-            {st.teamA}
-          </span>
-          <span style={score(theme)}>{st.scoreA}</span>
-          <span style={sep(theme)}>—</span>
-          <span style={score(theme)}>{st.scoreB}</span>
-          <span className="badge" style={chip(theme)} title={st.teamB}>
-            {st.teamB}
-          </span>
-        </div>
-
-        {st.finished && (
-          <div className="badge" style={win(theme)}>
-            Victoire : {st.winner === "A" ? st.teamA : st.teamB}
+      {/* ✅ SCORE (FFA3 vs Teams) */}
+      {isFfa3 ? (
+        <div className="card" style={card(theme)}>
+          <div style={heroGlow} aria-hidden />
+          <div style={{ display: "flex", justifyContent: "space-between", gap: 10, zIndex: 1 }}>
+            {ffaPlayers.map((name, i) => (
+              <div key={i} style={{ flex: 1, textAlign: "center", minWidth: 0 }}>
+                <div className="badge" style={pill(theme)} title={name}>
+                  {name}
+                </div>
+                <div style={{ fontWeight: 1100 as any, fontSize: 28, marginTop: 6 }}>{ffaScores[i]}</div>
+                {ffaWinnerIdx === i && (
+                  <div className="badge" style={win(theme)}>
+                    Vainqueur
+                  </div>
+                )}
+              </div>
+            ))}
           </div>
-        )}
-      </div>
+          <div className="subtitle" style={muted(theme)}>
+            Mode 3 joueurs — premier à 13 — max 3 points par mène.
+          </div>
+        </div>
+      ) : (
+        <div className="card" style={card(theme)}>
+          <div style={heroGlow} aria-hidden />
 
-      <div style={grid2}>
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "1fr auto 1fr",
+              alignItems: "center",
+              gap: 12,
+              padding: 12,
+              borderRadius: 18,
+              border: `1px solid ${cssVarOr("rgba(255,255,255,0.14)", "--stroke")}`,
+              background: cssVarOr("rgba(0,0,0,0.14)", "--glass2"),
+              boxShadow: "0 12px 30px rgba(0,0,0,0.22)",
+              zIndex: 1,
+            }}
+          >
+            {/* Team A */}
+            <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
+              <div style={teamLogoBox(theme)}>
+                {teams.A.logoDataUrl ? (
+                  <img src={teams.A.logoDataUrl} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                ) : (
+                  <div style={teamLogoFallback}>A</div>
+                )}
+              </div>
+              <div style={{ minWidth: 0 }}>
+                <div style={teamNameStyle} title={teams.A.name}>
+                  {teams.A.name}
+                </div>
+                <div style={{ fontSize: 11, opacity: 0.75 }}>{teams.A.players.length ? `${teams.A.players.length} joueur(s)` : "—"}</div>
+              </div>
+            </div>
+
+            {/* Score */}
+            <div style={{ textAlign: "center" }}>
+              <div style={{ fontSize: 11, opacity: 0.7, marginBottom: 4 }}>Score</div>
+              <div style={{ fontSize: 30, fontWeight: 1100 as any, letterSpacing: 1 }}>
+                {st.scoreA} <span style={{ opacity: 0.5 }}>—</span> {st.scoreB}
+              </div>
+            </div>
+
+            {/* Team B */}
+            <div style={{ display: "flex", alignItems: "center", gap: 10, justifyContent: "flex-end", minWidth: 0 }}>
+              <div style={{ minWidth: 0, textAlign: "right" }}>
+                <div style={teamNameStyle} title={teams.B.name}>
+                  {teams.B.name}
+                </div>
+                <div style={{ fontSize: 11, opacity: 0.75 }}>{teams.B.players.length ? `${teams.B.players.length} joueur(s)` : "—"}</div>
+              </div>
+              <div style={teamLogoBox(theme)}>
+                {teams.B.logoDataUrl ? (
+                  <img src={teams.B.logoDataUrl} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                ) : (
+                  <div style={teamLogoFallback}>B</div>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {st.finished && (
+            <div className="badge" style={win(theme)}>
+              Victoire : {st.winner === "A" ? teams.A.name : teams.B.name}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ✅ COMPOSITION + ROLES (désactivé en FFA3 pour éviter incohérence) */}
+      {!isFfa3 && (
         <div className="card" style={card(theme)}>
           <div className="subtitle" style={sub(theme)}>
-            Mène — {st.teamA}
+            ÉQUIPES
           </div>
-          <div style={ptsGrid}>
-            {PTS.map((p) => (
-              <button key={`A-${p}`} className="btn" style={ptBtn(theme)} onClick={() => onAdd("A", p)} disabled={st.finished}>
-                +{p}
-              </button>
+
+          <div style={{ display: "grid", gap: 12 }}>
+            {[{ key: "A", t: teams.A }, { key: "B", t: teams.B }].map(({ key, t }) => (
+              <div key={key} className="card" style={cardSoft(theme)}>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+                  <div className="subtitle" style={sub(theme)}>
+                    Composition — {t.name}
+                  </div>
+                  <div className="subtitle" style={muted(theme)}>
+                    Rôles indicatifs
+                  </div>
+                </div>
+
+                {!t.players.length ? (
+                  <div className="subtitle" style={muted(theme)}>
+                    Aucun joueur détecté (active la composition via la config si tu veux avatars + rôles).
+                  </div>
+                ) : (
+                  <div style={{ display: "grid", gap: 8 }}>
+                    {t.players.map((p) => (
+                      <div
+                        key={p.id}
+                        style={{
+                          display: "grid",
+                          gridTemplateColumns: "46px 1fr auto",
+                          alignItems: "center",
+                          gap: 10,
+                          padding: 10,
+                          borderRadius: 14,
+                          border: `1px solid ${cssVarOr("rgba(255,255,255,0.12)", "--stroke")}`,
+                          background: cssVarOr("rgba(0,0,0,0.12)", "--glass2"),
+                        }}
+                      >
+                        <div style={{ width: 46, height: 46, display: "grid", placeItems: "center" }}>
+                          {p.profile ? (
+                            <ProfileAvatar profile={p.profile} size={42} />
+                          ) : (
+                            <div style={avatarFallback}>{(p.name || "?").slice(0, 1).toUpperCase()}</div>
+                          )}
+                        </div>
+
+                        <div style={{ minWidth: 0 }}>
+                          <div style={{ fontWeight: 1100 as any, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                            {p.name}
+                          </div>
+                          <div style={{ marginTop: 6, display: "flex", gap: 8, flexWrap: "wrap" }}>
+                            <span style={rolePill(theme)}>{p.role ?? "Non défini"}</span>
+                          </div>
+                        </div>
+
+                        <button
+                          className="btn ghost"
+                          style={ghost(theme)}
+                          onClick={() => {
+                            const el = document.getElementById(`pstats-${p.id}`);
+                            el?.scrollIntoView({ behavior: "smooth", block: "center" });
+                          }}
+                        >
+                          Stats
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
             ))}
           </div>
         </div>
+      )}
 
+      {/* ✅ STATS JOUEURS (désactivé en FFA3) */}
+      {!isFfa3 && (
         <div className="card" style={card(theme)}>
           <div className="subtitle" style={sub(theme)}>
-            Mène — {st.teamB}
+            STATS JOUEURS
           </div>
-          <div style={ptsGrid}>
-            {PTS.map((p) => (
-              <button key={`B-${p}`} className="btn" style={ptBtn(theme)} onClick={() => onAdd("B", p)} disabled={st.finished}>
-                +{p}
-              </button>
-            ))}
+          <div className="subtitle" style={muted(theme)}>
+            Points / Carreau / Tir OK / Trou / Bec / But KO / But + (par partie)
+          </div>
+
+          {!allPlayers.length ? (
+            <div className="subtitle" style={muted(theme)}>
+              Ajoute des joueurs dans la config pour activer les compteurs individuels.
+            </div>
+          ) : (
+            <div style={{ display: "grid", gap: 10 }}>
+              {allPlayers.map((p) => {
+                const s = playerStats[p.id] ?? EMPTY_STATS;
+                const keys: (keyof PlayerStats)[] = ["points", "carreau", "tirReussi", "trou", "bec", "butAnnulation", "butPoint"];
+
+                return (
+                  <div key={p.id} id={`pstats-${p.id}`} className="card" style={cardSoft(theme)}>
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
+                        {p.profile ? (
+                          <ProfileAvatar profile={p.profile} size={38} />
+                        ) : (
+                          <div style={avatarFallbackSmall}>{(p.name || "?").slice(0, 1).toUpperCase()}</div>
+                        )}
+                        <div style={{ minWidth: 0 }}>
+                          <div style={{ fontWeight: 1100 as any, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                            {p.name}
+                          </div>
+                          <div style={{ marginTop: 4 }}>
+                            <span style={rolePill(theme)}>{p.role ?? "Non défini"}</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      <button
+                        className="btn ghost"
+                        style={ghost(theme)}
+                        onClick={() =>
+                          setPlayerStats((prev) => {
+                            const copy = { ...prev };
+                            delete copy[p.id];
+                            return copy;
+                          })
+                        }
+                      >
+                        Reset
+                      </button>
+                    </div>
+
+                    <div style={{ display: "grid", gap: 8, marginTop: 6 }}>
+                      {keys.map((k) => (
+                        <div
+                          key={k}
+                          style={{
+                            display: "grid",
+                            gridTemplateColumns: "1fr auto auto",
+                            alignItems: "center",
+                            gap: 10,
+                            padding: "10px 10px",
+                            borderRadius: 14,
+                            border: `1px solid ${cssVarOr("rgba(255,255,255,0.12)", "--stroke")}`,
+                            background: cssVarOr("rgba(255,255,255,0.06)", "--glass"),
+                          }}
+                        >
+                          <div style={{ fontWeight: 1000 as any, fontSize: 12, letterSpacing: 0.4 }}>{statLabel(k)}</div>
+
+                          <div style={{ fontWeight: 1100 as any, minWidth: 28, textAlign: "center" }}>{s[k] ?? 0}</div>
+
+                          <div style={{ display: "flex", gap: 8 }}>
+                            <button className="btn" style={miniBtn(theme)} onClick={() => bumpStat(p.id, k, -1)}>
+                              −
+                            </button>
+                            <button className="btn" style={miniBtnOn(theme)} onClick={() => bumpStat(p.id, k, +1)}>
+                              +
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ✅ GRILLE POINTS (FFA3 3 colonnes vs Teams 2 colonnes) */}
+      {isFfa3 ? (
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 12 }}>
+          {ffaPlayers.map((name, idx) => (
+            <div key={idx} className="card" style={card(theme)}>
+              <div className="subtitle" style={sub(theme)}>
+                Mène — {name}
+              </div>
+              <div style={ptsGrid}>
+                {PTS_FFA3.map((p) => (
+                  <button
+                    key={`P${idx}-${p}`}
+                    className="btn"
+                    style={ptBtn(theme)}
+                    onClick={() => addFfaEnd(idx, p)}
+                    disabled={ffaWinnerIdx != null}
+                  >
+                    +{p}
+                  </button>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div style={grid2}>
+          <div className="card" style={card(theme)}>
+            <div className="subtitle" style={sub(theme)}>
+              Mène — {teams.A.name}
+            </div>
+            <div style={ptsGrid}>
+              {PTS.map((p) => (
+                <button key={`A-${p}`} className="btn" style={ptBtn(theme)} onClick={() => onAdd("A", p)} disabled={st.finished}>
+                  +{p}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="card" style={card(theme)}>
+            <div className="subtitle" style={sub(theme)}>
+              Mène — {teams.B.name}
+            </div>
+            <div style={ptsGrid}>
+              {PTS.map((p) => (
+                <button key={`B-${p}`} className="btn" style={ptBtn(theme)} onClick={() => onAdd("B", p)} disabled={st.finished}>
+                  +{p}
+                </button>
+              ))}
+            </div>
           </div>
         </div>
-      </div>
+      )}
 
+      {/* ✅ ACTIONS (branché FFA3) */}
       <div className="card" style={card(theme)}>
         <div className="subtitle" style={sub(theme)}>
           Actions
         </div>
         <div style={row}>
-          <button className="btn" style={primary(theme)} onClick={onUndo} disabled={!st.ends.length}>
+          <button
+            className="btn"
+            style={primary(theme)}
+            onClick={isFfa3 ? undoFfaEnd : onUndo}
+            disabled={isFfa3 ? !ffaEnds.length : !st.ends.length}
+          >
             Annuler dernière mène
           </button>
-          <button className="btn danger" style={danger(theme)} onClick={onNew}>
+
+          <button className="btn danger" style={danger(theme)} onClick={isFfa3 ? resetFfa : onNew}>
             Nouvelle partie
           </button>
         </div>
@@ -862,7 +1500,7 @@ export default function PetanquePlay({ go, params }: Props) {
         ) : (
           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
             {measurements.slice(0, 8).map((m) => {
-              const who = m.winner === "TIE" ? "Égalité" : m.winner === "A" ? st.teamA : st.teamB;
+              const who = m.winner === "TIE" ? "Égalité" : m.winner === "A" ? teams.A.name : teams.B.name;
               return (
                 <div key={m.id} style={endRow(theme)}>
                   <div className="badge" style={pill(theme)}>
@@ -884,11 +1522,32 @@ export default function PetanquePlay({ go, params }: Props) {
         )}
       </div>
 
+      {/* ✅ HISTORIQUE DES MÈNES (FFA3 vs Teams) */}
       <div className="card" style={card(theme)}>
         <div className="subtitle" style={sub(theme)}>
           Historique des mènes
         </div>
-        {!st.ends.length ? (
+
+        {isFfa3 ? (
+          !ffaEnds.length ? (
+            <div className="subtitle" style={muted(theme)}>
+              Aucune mène enregistrée.
+            </div>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              {ffaEnds.map((e, idx) => (
+                <div key={e.id} style={endRow(theme)}>
+                  <div className="badge" style={pill(theme)}>
+                    {ffaPlayers[e.p]}
+                  </div>
+                  <div style={endTxt(theme)}>
+                    +{e.points} — mène #{ffaEnds.length - idx}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )
+        ) : !st.ends.length ? (
           <div className="subtitle" style={muted(theme)}>
             Aucune mène enregistrée.
           </div>
@@ -897,7 +1556,7 @@ export default function PetanquePlay({ go, params }: Props) {
             {st.ends.map((e, idx) => (
               <div key={e.id} style={endRow(theme)}>
                 <div className="badge" style={pill(theme)}>
-                  {e.winner === "A" ? st.teamA : st.teamB}
+                  {e.winner === "A" ? teams.A.name : teams.B.name}
                 </div>
                 <div style={endTxt(theme)}>
                   +{e.points} — mène #{st.ends.length - idx}
@@ -911,12 +1570,7 @@ export default function PetanquePlay({ go, params }: Props) {
       {/* ✅ SHEET MOBILE SAFE */}
       {allowMeasurements && measureOpen && (
         <div style={overlay} onClick={() => setMeasureOpen(false)} role="dialog" aria-modal="true">
-          <div
-            ref={sheetRef}
-            className="card"
-            style={sheet(theme)}
-            onClick={(e) => e.stopPropagation()}
-          >
+          <div ref={sheetRef} className="card" style={sheet(theme)} onClick={(e) => e.stopPropagation()}>
             {/* ✅ Sticky Header */}
             <div
               style={{
@@ -970,14 +1624,7 @@ export default function PetanquePlay({ go, params }: Props) {
                 <div className="subtitle" style={label(theme)}>
                   Tolérance
                 </div>
-                <input
-                  className="input"
-                  style={input(theme)}
-                  value={tol}
-                  onChange={(e) => setTol(e.target.value)}
-                  placeholder="1"
-                  inputMode="decimal"
-                />
+                <input className="input" style={input(theme)} value={tol} onChange={(e) => setTol(e.target.value)} placeholder="1" inputMode="decimal" />
               </div>
 
               <div style={{ flex: 2 }}>
@@ -1003,29 +1650,15 @@ export default function PetanquePlay({ go, params }: Props) {
                 <div style={grid2}>
                   <div className="card" style={cardSoft(theme)}>
                     <div className="subtitle" style={sub(theme)}>
-                      {st.teamA}
+                      {teams.A.name}
                     </div>
-                    <input
-                      className="input"
-                      style={input(theme)}
-                      value={dA}
-                      onChange={(e) => setDA(e.target.value)}
-                      placeholder="Distance (cm)"
-                      inputMode="decimal"
-                    />
+                    <input className="input" style={input(theme)} value={dA} onChange={(e) => setDA(e.target.value)} placeholder="Distance (cm)" inputMode="decimal" />
                   </div>
                   <div className="card" style={cardSoft(theme)}>
                     <div className="subtitle" style={sub(theme)}>
-                      {st.teamB}
+                      {teams.B.name}
                     </div>
-                    <input
-                      className="input"
-                      style={input(theme)}
-                      value={dB}
-                      onChange={(e) => setDB(e.target.value)}
-                      placeholder="Distance (cm)"
-                      inputMode="decimal"
-                    />
+                    <input className="input" style={input(theme)} value={dB} onChange={(e) => setDB(e.target.value)} placeholder="Distance (cm)" inputMode="decimal" />
                   </div>
                 </div>
 
@@ -1080,24 +1713,18 @@ export default function PetanquePlay({ go, params }: Props) {
 
                   <div style={row}>
                     <button className="btn" style={modeBtn(theme, addSide === "A")} onClick={() => setAddSide("A")}>
-                      Ajouter {st.teamA}
+                      Ajouter {teams.A.name}
                     </button>
                     <button className="btn" style={modeBtn(theme, addSide === "B")} onClick={() => setAddSide("B")}>
-                      Ajouter {st.teamB}
+                      Ajouter {teams.B.name}
                     </button>
-                    <button
-                      className="btn ghost"
-                      style={ghost(theme)}
-                      onClick={onClearPhotoPoints}
-                      disabled={!pCochonnet && !ballsA.length && !ballsB.length}
-                    >
+                    <button className="btn ghost" style={ghost(theme)} onClick={onClearPhotoPoints} disabled={!pCochonnet && !ballsA.length && !ballsB.length}>
                       Effacer points
                     </button>
                   </div>
 
                   <div className="subtitle" style={muted(theme)}>
-                    Clic image ={" "}
-                    {calArm ? `Calibration ${calArm}` : !pCochonnet ? "Définir cochonnet (C)" : `Ajouter boule (${addSide})`}
+                    Clic image = {calArm ? `Calibration ${calArm}` : !pCochonnet ? "Définir cochonnet (C)" : `Ajouter boule (${addSide})`}
                   </div>
                 </div>
 
@@ -1123,14 +1750,7 @@ export default function PetanquePlay({ go, params }: Props) {
                       <div className="subtitle" style={label(theme)}>
                         Longueur réelle (cm)
                       </div>
-                      <input
-                        className="input"
-                        style={input(theme)}
-                        value={calLenCm}
-                        onChange={(e) => setCalLenCm(e.target.value)}
-                        placeholder="ex: 10"
-                        inputMode="decimal"
-                      />
+                      <input className="input" style={input(theme)} value={calLenCm} onChange={(e) => setCalLenCm(e.target.value)} placeholder="ex: 10" inputMode="decimal" />
                     </div>
 
                     <button
@@ -1152,11 +1772,7 @@ export default function PetanquePlay({ go, params }: Props) {
                 {imgUrl ? (
                   <div style={imgWrap(theme)}>
                     <div className="subtitle" style={imgHint(theme)}>
-                      {calArm
-                        ? `Calibration: clique le point ${calArm}`
-                        : !pCochonnet
-                        ? "Clique le cochonnet (C)."
-                        : `Clique pour ajouter une boule (${addSide}).`}
+                      {calArm ? `Calibration: clique le point ${calArm}` : !pCochonnet ? "Clique le cochonnet (C)." : `Clique pour ajouter une boule (${addSide}).`}
                     </div>
 
                     <div style={imgClickArea} onClick={onPhotoClick} onMouseMove={onPhotoMove}>
@@ -1192,9 +1808,7 @@ export default function PetanquePlay({ go, params }: Props) {
                     <div style={resultBox(theme, winnerPhoto)}>
                       {minA_photo == null || minB_photo == null
                         ? "Ajoute au moins 1 boule A et 1 boule B pour comparer."
-                        : `Plus proche A: ${minA_photo.toFixed(pxPerCm ? 1 : 0)} ${
-                            pxPerCm ? "cm" : "px"
-                          } — B: ${minB_photo.toFixed(pxPerCm ? 1 : 0)} ${pxPerCm ? "cm" : "px"}`}
+                        : `Plus proche A: ${minA_photo.toFixed(pxPerCm ? 1 : 0)} ${pxPerCm ? "cm" : "px"} — B: ${minB_photo.toFixed(pxPerCm ? 1 : 0)} ${pxPerCm ? "cm" : "px"}`}
                     </div>
 
                     <div style={row}>
@@ -1261,10 +1875,10 @@ export default function PetanquePlay({ go, params }: Props) {
                       </button>
 
                       <button className="btn" style={modeBtn(theme, assignSide === "A")} onClick={() => setAssignSide("A")} disabled={!liveOn}>
-                        Assigner {st.teamA}
+                        Assigner {teams.A.name}
                       </button>
                       <button className="btn" style={modeBtn(theme, assignSide === "B")} onClick={() => setAssignSide("B")} disabled={!liveOn}>
-                        Assigner {st.teamB}
+                        Assigner {teams.B.name}
                       </button>
 
                       <button className="btn ghost" style={ghost(theme)} onClick={() => setCircleTeam({})} disabled={!Object.keys(circleTeam).length}>
@@ -1276,10 +1890,10 @@ export default function PetanquePlay({ go, params }: Props) {
                   {!autoOn && (
                     <>
                       <button className="btn" style={modeBtn(theme, liveAddSide === "A")} onClick={() => setLiveAddSide("A")} disabled={!liveOn}>
-                        Ajouter {st.teamA}
+                        Ajouter {teams.A.name}
                       </button>
                       <button className="btn" style={modeBtn(theme, liveAddSide === "B")} onClick={() => setLiveAddSide("B")} disabled={!liveOn}>
-                        Ajouter {st.teamB}
+                        Ajouter {teams.B.name}
                       </button>
                     </>
                   )}
@@ -1332,48 +1946,21 @@ export default function PetanquePlay({ go, params }: Props) {
                           <div className="subtitle" style={label(theme)}>
                             Min radius
                           </div>
-                          <input
-                            type="range"
-                            min={4}
-                            max={40}
-                            step={1}
-                            value={minRadius}
-                            onChange={(e) => setMinRadius(Number(e.target.value))}
-                            style={liveSlider(theme)}
-                            disabled={!autoOn}
-                          />
+                          <input type="range" min={4} max={40} step={1} value={minRadius} onChange={(e) => setMinRadius(Number(e.target.value))} style={liveSlider(theme)} disabled={!autoOn} />
                         </div>
 
                         <div style={{ flex: 1, minWidth: 190 }}>
                           <div className="subtitle" style={label(theme)}>
                             Max radius
                           </div>
-                          <input
-                            type="range"
-                            min={20}
-                            max={120}
-                            step={1}
-                            value={maxRadius}
-                            onChange={(e) => setMaxRadius(Number(e.target.value))}
-                            style={liveSlider(theme)}
-                            disabled={!autoOn}
-                          />
+                          <input type="range" min={20} max={120} step={1} value={maxRadius} onChange={(e) => setMaxRadius(Number(e.target.value))} style={liveSlider(theme)} disabled={!autoOn} />
                         </div>
 
                         <div style={{ flex: 1, minWidth: 190 }}>
                           <div className="subtitle" style={label(theme)}>
                             Param2 (Hough)
                           </div>
-                          <input
-                            type="range"
-                            min={10}
-                            max={60}
-                            step={1}
-                            value={param2}
-                            onChange={(e) => setParam2(Number(e.target.value))}
-                            style={liveSlider(theme)}
-                            disabled={!autoOn}
-                          />
+                          <input type="range" min={10} max={60} step={1} value={param2} onChange={(e) => setParam2(Number(e.target.value))} style={liveSlider(theme)} disabled={!autoOn} />
                         </div>
                       </div>
 
@@ -1455,7 +2042,7 @@ export default function PetanquePlay({ go, params }: Props) {
                       <>
                         Auto: A={autoMinA == null ? "—" : autoMinA.toFixed(4)} / B={autoMinB == null ? "—" : autoMinB.toFixed(4)}
                         {" — "}
-                        {autoWinner == null ? "Assigne au moins 1 boule A et 1 boule B" : autoWinner === "TIE" ? "Égalité" : autoWinner === "A" ? st.teamA : st.teamB}
+                        {autoWinner == null ? "Assigne au moins 1 boule A et 1 boule B" : autoWinner === "TIE" ? "Égalité" : autoWinner === "A" ? teams.A.name : teams.B.name}
                         {" — "}
                         Détection: {detectOn ? "ON" : "OFF"}
                       </>
@@ -1521,7 +2108,7 @@ const topBar: React.CSSProperties = {
 
 function title(theme: any): React.CSSProperties {
   return {
-    fontWeight: 1000 as any,
+    fontWeight: 1100 as any,
     letterSpacing: 2,
     opacity: 0.95,
     textShadow: "0 12px 30px rgba(0,0,0,0.35)",
@@ -1571,7 +2158,7 @@ function primary(theme: any): React.CSSProperties {
     border: `1px solid ${cssVarOr("rgba(255,255,255,0.18)", "--stroke")}`,
     background: "linear-gradient(180deg, rgba(255,255,255,0.12), rgba(255,255,255,0.06))",
     color: cssVarOr(theme?.colors?.text ?? "#fff", "--text"),
-    fontWeight: 1000 as any,
+    fontWeight: 1100 as any,
     cursor: "pointer",
   };
 }
@@ -1583,7 +2170,7 @@ function danger(theme: any): React.CSSProperties {
     border: `1px solid ${cssVarOr("rgba(255,255,255,0.14)", "--stroke")}`,
     background: "linear-gradient(180deg, rgba(255,60,60,0.22), rgba(255,60,60,0.12))",
     color: cssVarOr(theme?.colors?.text ?? "#fff", "--text"),
-    fontWeight: 1000 as any,
+    fontWeight: 1100 as any,
     cursor: "pointer",
   };
 }
@@ -1609,7 +2196,7 @@ function chipBtn(theme: any): React.CSSProperties {
     border: `1px solid ${cssVarOr("rgba(255,255,255,0.16)", "--stroke")}`,
     background: "linear-gradient(180deg, rgba(240,177,42,0.18), rgba(0,0,0,0.12))",
     color: cssVarOr(theme?.colors?.text ?? "#fff", "--text"),
-    fontWeight: 1000 as any,
+    fontWeight: 1100 as any,
     cursor: "pointer",
     letterSpacing: 0.5,
   };
@@ -1622,12 +2209,17 @@ function modeBtn(theme: any, active: boolean): React.CSSProperties {
     border: `1px solid ${cssVarOr("rgba(255,255,255,0.16)", "--stroke")}`,
     background: active ? "rgba(240,177,42,0.16)" : cssVarOr("rgba(255,255,255,0.06)", "--glass"),
     color: cssVarOr(theme?.colors?.text ?? "#fff", "--text"),
-    fontWeight: 1000 as any,
+    fontWeight: 1100 as any,
     cursor: "pointer",
   };
 }
 
-const grid2: React.CSSProperties = { display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 12 };
+const grid2: React.CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+  gap: 12,
+};
+
 const ptsGrid: React.CSSProperties = { display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 10 };
 
 function ptBtn(theme: any): React.CSSProperties {
@@ -1637,42 +2229,15 @@ function ptBtn(theme: any): React.CSSProperties {
     border: `1px solid ${cssVarOr("rgba(255,255,255,0.16)", "--stroke")}`,
     background: "linear-gradient(180deg, rgba(0,0,0,0.18), rgba(0,0,0,0.10))",
     color: cssVarOr(theme?.colors?.text ?? "#fff", "--text"),
-    fontWeight: 1000 as any,
+    fontWeight: 1100 as any,
     cursor: "pointer",
   };
-}
-
-function scoreLine(theme: any): React.CSSProperties {
-  return { display: "flex", alignItems: "center", justifyContent: "center", gap: 10, padding: "10px 0", zIndex: 1 };
-}
-
-function chip(theme: any): React.CSSProperties {
-  return {
-    maxWidth: 160,
-    overflow: "hidden",
-    textOverflow: "ellipsis",
-    whiteSpace: "nowrap",
-    borderRadius: 999,
-    padding: "6px 10px",
-    border: `1px solid ${cssVarOr("rgba(255,255,255,0.14)", "--stroke")}`,
-    background: cssVarOr("rgba(0,0,0,0.16)", "--glass2"),
-    fontWeight: 1000 as any,
-    opacity: 0.95,
-  };
-}
-
-function score(theme: any): React.CSSProperties {
-  return { fontWeight: 1100 as any, fontSize: 28, letterSpacing: 1, textShadow: "0 14px 34px rgba(0,0,0,0.40)" };
-}
-
-function sep(theme: any): React.CSSProperties {
-  return { opacity: 0.5, fontWeight: 900 };
 }
 
 function win(theme: any): React.CSSProperties {
   return {
     textAlign: "center",
-    fontWeight: 1000 as any,
+    fontWeight: 1100 as any,
     padding: "10px 12px",
     borderRadius: 14,
     border: `1px solid ${cssVarOr("rgba(255,255,255,0.14)", "--stroke")}`,
@@ -1697,17 +2262,20 @@ function endRow(theme: any): React.CSSProperties {
   };
 }
 
-function pill(theme: any): React.CSSProperties {
+function rolePill(theme: any): React.CSSProperties {
   return {
+    display: "inline-flex",
+    alignItems: "center",
+    padding: "4px 10px",
     borderRadius: 999,
-    padding: "6px 10px",
-    border: `1px solid ${cssVarOr("rgba(255,255,255,0.14)", "--stroke")}`,
-    background: cssVarOr("rgba(255,255,255,0.06)", "--glass"),
-    fontWeight: 1000 as any,
-    maxWidth: 190,
-    overflow: "hidden",
-    textOverflow: "ellipsis",
-    whiteSpace: "nowrap",
+    fontSize: 11,
+    fontWeight: 1200 as any,
+    letterSpacing: 0.6,
+    border: `1px solid ${cssVarOr("rgba(240,177,42,0.35)", "--stroke")}`,
+    background: "linear-gradient(180deg, rgba(240,177,42,0.18), rgba(0,0,0,0.10))",
+    color: "rgba(255,255,255,0.92)",
+    textShadow: "0 10px 22px rgba(0,0,0,0.55)",
+    boxShadow: "0 10px 24px rgba(0,0,0,0.35)",
   };
 }
 
@@ -1781,7 +2349,7 @@ function resultBox(theme: any, w: "A" | "B" | "TIE" | null): React.CSSProperties
     padding: "10px 12px",
     border: `1px solid ${cssVarOr("rgba(255,255,255,0.14)", "--stroke")}`,
     background: cssVarOr("rgba(255,255,255,0.06)", "--glass"),
-    fontWeight: 1000 as any,
+    fontWeight: 1100 as any,
     backdropFilter: "blur(10px)",
   };
   if (!w) return base;
@@ -1797,7 +2365,7 @@ function fileBtn(theme: any): React.CSSProperties {
     border: `1px solid ${cssVarOr("rgba(255,255,255,0.14)", "--stroke")}`,
     background: cssVarOr("rgba(255,255,255,0.06)", "--glass"),
     color: cssVarOr(theme?.colors?.text ?? "#fff", "--text"),
-    fontWeight: 1000 as any,
+    fontWeight: 1100 as any,
     cursor: "pointer",
     display: "inline-flex",
     alignItems: "center",
@@ -1853,7 +2421,7 @@ function marker(theme: any, p: PhotoPoint, labelTxt: string): React.CSSPropertie
     display: "grid",
     placeItems: "center",
     fontSize: 10,
-    fontWeight: 1000 as any,
+    fontWeight: 1100 as any,
     color: cssVarOr(theme?.colors?.text ?? "#fff", "--text"),
     pointerEvents: "none",
   } as React.CSSProperties;
@@ -1966,7 +2534,7 @@ function liveMarker(theme: any, p: PhotoPoint, labelTxt: string, highlight: bool
     display: "grid",
     placeItems: "center",
     fontSize: 10,
-    fontWeight: 1000 as any,
+    fontWeight: 1100 as any,
     color: cssVarOr(theme?.colors?.text ?? "#fff", "--text"),
     pointerEvents: "none",
   };
@@ -1980,8 +2548,7 @@ function liveMarker(theme: any, p: PhotoPoint, labelTxt: string, highlight: bool
 
 function liveCircle(theme: any, p: PhotoPoint, rNorm: number, highlight: boolean, team: PetanqueTeamId | null): React.CSSProperties {
   const size = Math.max(22, Math.min(180, rNorm * 2 * 900));
-  const teamStroke =
-    team === "A" ? "rgba(0,255,180,0.90)" : team === "B" ? "rgba(255,120,120,0.90)" : "rgba(255,255,255,0.55)";
+  const teamStroke = team === "A" ? "rgba(0,255,180,0.90)" : team === "B" ? "rgba(255,120,120,0.90)" : "rgba(255,255,255,0.55)";
   const base: React.CSSProperties = {
     position: "absolute",
     left: `${p.x * 100}%`,
@@ -2023,6 +2590,83 @@ const heroGlow: React.CSSProperties = {
   pointerEvents: "none",
   zIndex: 0,
 };
+
+/* ✅ Team / Roster styles */
+const teamNameStyle: React.CSSProperties = {
+  fontWeight: 1200 as any,
+  fontSize: 13,
+  letterSpacing: 0.9,
+  textTransform: "uppercase",
+  whiteSpace: "nowrap",
+  overflow: "hidden",
+  textOverflow: "ellipsis",
+  color: "rgba(255,255,255,0.92)",
+  textShadow: "0 10px 22px rgba(0,0,0,0.55)",
+};
+
+function teamLogoBox(theme: any): React.CSSProperties {
+  return {
+    width: 40,
+    height: 40,
+    borderRadius: 999,
+    overflow: "hidden",
+    border: `1px solid ${cssVarOr("rgba(255,255,255,0.18)", "--stroke")}`,
+    background: cssVarOr("rgba(255,255,255,0.06)", "--glass"),
+    flex: "0 0 auto",
+    boxShadow: "0 10px 22px rgba(0,0,0,0.30)",
+  };
+}
+
+const teamLogoFallback: React.CSSProperties = {
+  width: "100%",
+  height: "100%",
+  display: "grid",
+  placeItems: "center",
+  fontWeight: 1100 as any,
+  opacity: 0.85,
+};
+
+const avatarFallback: React.CSSProperties = {
+  width: 42,
+  height: 42,
+  borderRadius: 999,
+  display: "grid",
+  placeItems: "center",
+  fontWeight: 1100 as any,
+  border: "1px solid rgba(255,255,255,0.14)",
+  background: "rgba(255,255,255,0.06)",
+};
+
+const avatarFallbackSmall: React.CSSProperties = {
+  width: 38,
+  height: 38,
+  borderRadius: 999,
+  display: "grid",
+  placeItems: "center",
+  fontWeight: 1100 as any,
+  border: "1px solid rgba(255,255,255,0.14)",
+  background: "rgba(255,255,255,0.06)",
+};
+
+function miniBtn(theme: any): React.CSSProperties {
+  return {
+    width: 36,
+    height: 32,
+    borderRadius: 12,
+    border: `1px solid ${cssVarOr("rgba(255,255,255,0.14)", "--stroke")}`,
+    background: cssVarOr("rgba(255,255,255,0.06)", "--glass"),
+    color: cssVarOr(theme?.colors?.text ?? "#fff", "--text"),
+    fontWeight: 1100 as any,
+    cursor: "pointer",
+  };
+}
+
+function miniBtnOn(theme: any): React.CSSProperties {
+  return {
+    ...miniBtn(theme),
+    background: "rgba(240,177,42,0.16)",
+  };
+}
 
 /*
 IMPORTANT:
