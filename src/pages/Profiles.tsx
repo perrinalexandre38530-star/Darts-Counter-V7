@@ -30,6 +30,8 @@ import OnlineProfileForm from "../components/OnlineProfileForm";
 
 import { getAvatarCache as getAvatarCacheLib } from "../lib/avatarCache";
 
+import { useSport } from "../contexts/SportContext";
+
 // Effet "shimmer" du nom joueur (copié de StatsHub)
 const statsNameCss = `
 .dc-stats-name-wrapper {
@@ -597,6 +599,26 @@ export default function Profiles({
 
   const friends: FriendLike[] = (store as any).friends ?? [];
 
+  // ✅ Source de vérité: SportContext
+ const { sport } = useSport();
+
+  // ✅ Sport courant (priorité SportContext)
+  const sportResolved: "darts" | "petanque" | string =
+    (sport as any) ||
+    (store as any)?.sport ||
+    (store as any)?.activeSport ||
+    (store as any)?.sportId ||
+    (store as any)?.currentSport ||
+    (store as any)?.settings?.sport ||
+    (store as any)?.prefs?.sport ||
+    (params as any)?.sport ||
+    (typeof localStorage !== "undefined"
+      ? localStorage.getItem("dc-sport") ||
+        localStorage.getItem("barSports-sport") ||
+        localStorage.getItem("bar-sports-sport")
+      : null) ||
+    "darts";
+
   const { theme, themeId, setThemeId } = useTheme() as any;
   const { t, setLang, lang } = useLang();
   const auth = useAuthOnline();
@@ -621,6 +643,12 @@ export default function Profiles({
       100% { background-position: 200% 50%; }
     }
   `;
+
+  const sportKey = String(sportResolved ?? "").toLowerCase();
+  const isPetanque = sportKey.includes("petanque");
+  const isDarts = sportKey.includes("darts") || !sportKey;
+
+  console.log("[Profiles] sportResolved =", sportResolved);
 
   const [view, setView] = React.useState<View>(
     params?.view === "me"
@@ -1403,11 +1431,12 @@ React.useEffect(() => {
         style={{ maxWidth: 760, background: theme.bg, color: theme.text }}
       >
         {view === "menu" ? (
-          <ProfilesMenuView
-            go={go}
-            onSelectMe={() => setView("me")}
-            onSelectLocals={() => setView("locals")}
-            onSelectFriends={() => setView("friends")}
+  <ProfilesMenuView
+    go={go}
+    sport={sportResolved}
+    onSelectMe={() => setView("me")}
+    onSelectLocals={() => setView("locals")}
+    onSelectFriends={() => setView("friends")}
           />
         ) : (
           <>
@@ -1551,11 +1580,13 @@ React.useEffect(() => {
 
 function ProfilesMenuView({
   go,
+  sport,
   onSelectMe,
   onSelectLocals,
   onSelectFriends,
 }: {
   go?: (tab: any, params?: any) => void;
+  sport?: "darts" | "petanque" | string;
   onSelectMe: () => void;
   onSelectLocals: () => void;
   onSelectFriends: () => void;
@@ -1676,7 +1707,7 @@ function ProfilesMenuView({
           )}
         </div>
       </div>
-
+  
       <CardBtn
         title={t("profiles.menu.avatar.title", "CREER AVATAR")}
         subtitle={t(
@@ -1685,7 +1716,7 @@ function ProfilesMenuView({
         )}
         onClick={() => go?.("avatar")}
       />
-
+  
       <CardBtn
         title={t("profiles.menu.me.title", "MON PROFIL")}
         subtitle={t(
@@ -1694,16 +1725,13 @@ function ProfilesMenuView({
         )}
         onClick={onSelectMe}
       />
-
+  
       <CardBtn
         title={t("profiles.menu.friends.title", "AMIS")}
-        subtitle={t(
-          "profiles.menu.friends.subtitle",
-          "Amis en ligne et absents."
-        )}
+        subtitle={t("profiles.menu.friends.subtitle", "Amis en ligne et absents.")}
         onClick={onSelectFriends}
       />
-
+  
       <CardBtn
         title={t("profiles.menu.locals.title", "PROFILS LOCAUX")}
         subtitle={t(
@@ -1712,16 +1740,43 @@ function ProfilesMenuView({
         )}
         onClick={onSelectLocals}
       />
-
-      <CardBtn
-        title={t("profiles.menu.boat.title", "BOTS (CPU)")}
-        subtitle={t(
-          "profiles.menu.boat.subtitle",
-          "Crée et gère tes joueurs virtuels contrôlés par l’IA."
-        )}
-        badge={t("profiles.menu.boat.badge", "NEW")}
-        onClick={() => go?.("profiles_bots")}
-      />
+  
+      {/* ✅ Remplacement BOTS -> condition sport (robuste) */}
+      {(() => {
+        const key = String(sport || "").toLowerCase();
+        const isPetanque = key.includes("petanque");
+        const isDarts = key.includes("darts") || !key;
+  
+        if (isDarts) {
+          return (
+            <CardBtn
+              title={t("profiles.menu.boat.title", "BOTS (CPU)")}
+              subtitle={t(
+                "profiles.menu.boat.subtitle",
+                "Crée et gère tes joueurs virtuels contrôlés par l’IA."
+              )}
+              badge={t("profiles.menu.boat.badge", "NEW")}
+              onClick={() => go?.("profiles_bots")}
+            />
+          );
+        }
+  
+        if (isPetanque) {
+          return (
+            <CardBtn
+              title={t("petanque.teams.title", "TEAMS (PÉTANQUE)")}
+              subtitle={t(
+                "petanque.teams.subtitle",
+                "Crée et gère tes équipes (doublette, triplette, etc.)."
+              )}
+              badge={t("common.soon", "SOON")}
+              onClick={() => go?.("petanque_teams")}
+            />
+          );
+        }
+  
+        return null;
+      })()}
     </div>
   );
 }

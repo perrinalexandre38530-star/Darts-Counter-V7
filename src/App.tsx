@@ -163,6 +163,8 @@ import { AuthOnlineProvider, useAuthOnline } from "./hooks/useAuthOnline";
 import { SportProvider, useSport } from "./contexts/SportContext";
 import PetanquePlay from "./pages/petanque/PetanquePlay";
 import PetanqueHome from "./pages/petanque/PetanqueHome";
+import PetanqueTeams from "./pages/petanque/PetanqueTeams";
+import PetanqueTeamEdit from "./pages/petanque/PetanqueTeamEdit";
 
 // ✅ NEW: Pétanque flow (menu/config/play)
 import PetanqueMenuGames from "./pages/petanque/PetanqueMenuGames";
@@ -377,6 +379,9 @@ type Tab =
   | "petanque_menu"
   | "petanque_config"
   | "petanque_play"
+  // ✅ NEW: Teams Pétanque (CRUD local)
+  | "petanque_teams"
+  | "petanque_team_edit"
   // (legacy / existing)
   | "petanque.menu"
   | "petanque.config"
@@ -1513,12 +1518,21 @@ function App() {
         page = <PetanqueMenuGames go={go} />;
         break;
 
-      case "petanque_config":
-        page = <PetanqueConfig go={go} params={routeParams} />;
+     case "petanque_config":
+        page = <PetanqueConfig go={go} params={routeParams} store={store} />;
         break;
 
       case "petanque_play":
         page = <PetanquePlay go={go} params={routeParams} />;
+        break;
+
+      // ✅ NEW: Teams Pétanque (CRUD local)
+      case "petanque_teams":
+        page = <PetanqueTeams go={go} params={routeParams} />;
+        break;
+
+      case "petanque_team_edit":
+        page = <PetanqueTeamEdit go={go} params={routeParams} />;
         break;
 
       // (legacy / existing) — on laisse en place pour compat
@@ -1530,22 +1544,23 @@ function App() {
         page = <PetanqueConfig go={go} params={routeParams} store={store} />;
         break;
 
-      case "petanque.play":
-        page = <PetanquePlay go={go} params={routeParams} />;
-        break;
+        case "petanque.play":
+          page = <PetanquePlay go={go} params={routeParams} />;
+          break;
 
-      case "profiles":
-        page = (
-          <Profiles
-            store={store}
-            update={update}
-            setProfiles={setProfiles}
-            go={go}
-            params={routeParams}
-            autoCreate={!!routeParams?.autoCreate}
-          />
-        );
-        break;
+        case "profiles":
+          page = (
+            <Profiles
+              store={store}
+              update={update}
+              setProfiles={setProfiles}
+              go={go}
+              params={routeParams}
+              autoCreate={!!routeParams?.autoCreate}
+              sport={sport}              // ✅ AJOUT
+            />
+          );
+          break;
 
       case "profiles_bots":
         page = <ProfilesBots store={store} go={go} />;

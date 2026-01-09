@@ -30,26 +30,53 @@ import {
 // ✅ NEW: OpenCV loader (LIVE auto-detect)
 import { loadOpenCv } from "../../lib/vision/opencv";
 
-type Props = { go: (route: any, params?: any) => void };
+// ✅ NEW: Config store (Mesurage autorisé)
+import { loadPetanqueConfig } from "../../lib/petanqueConfigStore";
+
+type Props = {
+  go: (tab: any, params?: any) => void;
+  params?: any;
+};
 
 const PTS = [0, 1, 2, 3, 4, 5, 6];
 
 type PhotoPoint = { x: number; y: number }; // normalized 0..1
 type MeasureMode = "manual" | "photo" | "live";
 
-export default function PetanquePlay({ go }: Props) {
+export default function PetanquePlay({ go, params }: Props) {
+  // ✅ Route params (évite collisions avec "mode" du mesurage)
+  const matchMode = (params?.mode ?? params?.cfg?.mode ?? "singles") as any;
+  const matchCfg = params?.cfg ?? null;
+
   const { theme } = useTheme();
   const [st, setSt] = React.useState<PetanqueState>(() => loadPetanqueState());
-
-  const onAdd = (team: PetanqueTeamId, pts: number) => setSt(addEnd(st, team, pts));
-  const onUndo = () => setSt(undoLastEnd(st));
-  const onNew = () => setSt(resetPetanque(st));
 
   // ==========================
   // ✅ MESURAGE (sheet)
   // ==========================
   const [measureOpen, setMeasureOpen] = React.useState(false);
-  const [mode, setMode] = React.useState<MeasureMode>("manual");
+  const [measureMode, setMeasureMode] = React.useState<MeasureMode>("manual");
+
+  // ✅ NEW: respect “Mesurage autorisé”
+  // - priorité au cfg passé depuis PetanqueConfig (params.cfg)
+  // - fallback sur loadPetanqueConfig() si tu l’utilises encore ailleurs
+  const cfgFromStorage = loadPetanqueConfig?.() as any;
+  const effectiveCfg = (matchCfg ?? cfgFromStorage) as any;
+
+  const allowMeasurements: boolean =
+    (effectiveCfg?.measurementAllowed ??
+      effectiveCfg?.options?.allowMeasurements ??
+      true) === true;
+
+  // ✅ safety: si mesurage interdit, on ferme le sheet si ouvert
+  React.useEffect(() => {
+    if (!allowMeasurements && measureOpen) setMeasureOpen(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [allowMeasurements]);
+
+  const onAdd = (team: PetanqueTeamId, pts: number) => setSt(addEnd(st, team, pts));
+  const onUndo = () => setSt(undoLastEnd(st));
+  const onNew = () => setSt(resetPetanque(st));
 
   // --- Manuel
   const [dA, setDA] = React.useState<string>("");
@@ -731,9 +758,13 @@ export default function PetanquePlay({ go }: Props) {
 
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
           <div style={title(theme)}>PÉTANQUE</div>
-          <button className="btn primary" style={chipBtn(theme)} onClick={() => setMeasureOpen(true)}>
-            Mesurer
-          </button>
+
+          {/* ✅ NEW: bouton Mesurer seulement si autorisé */}
+          {allowMeasurements && (
+            <button className="btn primary" style={chipBtn(theme)} onClick={() => setMeasureOpen(true)}>
+              Mesurer
+            </button>
+          )}
         </div>
 
         <button className="btn ghost" style={ghost(theme)} onClick={() => go("home")}>
@@ -887,7 +918,7 @@ export default function PetanquePlay({ go }: Props) {
       </div>
 
       {/* ✅ SHEET MESURAGE */}
-      {measureOpen && (
+      {allowMeasurements && measureOpen && (
         <div style={overlay}>
           <div className="card" style={sheet(theme)}>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>

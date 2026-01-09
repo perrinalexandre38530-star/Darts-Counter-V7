@@ -1,14 +1,8 @@
 // ============================================
 // src/pages/petanque/PetanqueMenuGames.tsx
-// Menu Pétanque — VISUEL identique à src/pages/Games.tsx
-// - Cartes néon, titre, sous-titre
-// - Pastille "i" (InfoDot) + overlay d'aide
-// - Navigation via go(...)
-//
-// NOTE:
-// - Par défaut, on navigue vers go("petanque_play", { mode })
-//   -> si chez toi c’est une autre route (petanque_config / petanque_home),
-//      remplace simplement la string dans navigate().
+// Menu Pétanque — même UX que src/pages/Games.tsx
+// ✅ Fix: handlers robustes (ne crash pas si InfoDot ne passe pas l'event)
+// ✅ Compat: accepte go(tab, params) OU setTab(tab) selon ton câblage
 // ============================================
 
 import React from "react";
@@ -17,7 +11,10 @@ import { useLang } from "../../contexts/LangContext";
 import InfoDot from "../../components/InfoDot";
 
 type Props = {
-  go: (tab: any, params?: any) => void;
+  // selon les pages de ton app, tu as parfois go(tab, params)…
+  go?: (tab: any, params?: any) => void;
+  // …et parfois setTab(tab) comme Games.tsx
+  setTab?: (tab: any) => void;
 };
 
 type PetanqueModeId = "singles" | "doublette" | "triplette" | "training";
@@ -46,7 +43,7 @@ const MODES: ModeDef[] = [
     infoTitleDefault: "Match simple (1v1)",
     infoBodyKey: "petanque.modes.singles.infoBody",
     infoBodyDefault:
-      "Partie classique en tête-à-tête. Configuration rapide des joueurs, score cible, options, puis lancement de la partie.",
+      "Partie classique en tête-à-tête. Configuration rapide puis lancement.",
     enabled: true,
   },
   {
@@ -59,7 +56,7 @@ const MODES: ModeDef[] = [
     infoTitleDefault: "Doublette (2v2)",
     infoBodyKey: "petanque.modes.doublette.infoBody",
     infoBodyDefault:
-      "Mode équipe 2 contre 2. Sélection des joueurs par équipe, score cible et options avant lancement.",
+      "Mode équipe 2 contre 2. Sélection joueurs, score cible, options.",
     enabled: true,
   },
   {
@@ -72,7 +69,7 @@ const MODES: ModeDef[] = [
     infoTitleDefault: "Triplette (3v3)",
     infoBodyKey: "petanque.modes.triplette.infoBody",
     infoBodyDefault:
-      "Mode équipe 3 contre 3. Sélection des joueurs, configuration des règles et démarrage de la partie.",
+      "Mode équipe 3 contre 3. Sélection joueurs, règles, options, puis lancement.",
     enabled: true,
   },
   {
@@ -85,25 +82,41 @@ const MODES: ModeDef[] = [
     infoTitleDefault: "Entraînement",
     infoBodyKey: "petanque.modes.training.infoBody",
     infoBodyDefault:
-      "Mode entraînement : mesure des distances, exercices, et capture (manuel/photo/live) selon ton implémentation.",
+      "Mode entraînement : mesure des distances, exercices, capture manuel/photo/live.",
     enabled: true,
   },
 ];
 
-export default function PetanqueMenuGames({ go }: Props) {
+export default function PetanqueMenuGames({ go, setTab }: Props) {
   const { theme } = useTheme();
-  const { t } = useLang();
+  const lang = useLang();
+  const t = (lang as any)?.t ?? ((_: string, fallback: string) => fallback);
+
   const [infoMode, setInfoMode] = React.useState<ModeDef | null>(null);
 
   const PAGE_BG = theme.bg;
   const CARD_BG = theme.card;
 
-  function navigate(mode: "singles" | "doublette" | "triplette" | "training") {
-    // Option 1 (recommandé) : passer par config
-    go("petanque_config" as any, { mode });
-  
-    // Option 2 : si tu veux aller direct au play :
-    // go("petanque_play" as any, { mode });
+  function navigate(mode: PetanqueModeId) {
+    // ✅ route cible : adapte ici si besoin
+    const tab = "petanque_config";
+
+    // Priorité à go() car permet les params
+    if (typeof go === "function") {
+      go(tab as any, { mode });
+      return;
+    }
+
+    // Fallback setTab() (sans params, donc moins bien)
+    if (typeof setTab === "function") {
+      setTab(tab as any);
+      return;
+    }
+
+    // Dernier recours : log clair (évite “rien ne se passe” silencieux)
+    console.error(
+      "[PetanqueMenuGames] Aucun handler de navigation: props.go et props.setTab sont absents."
+    );
   }
 
   return (
@@ -116,7 +129,6 @@ export default function PetanqueMenuGames({ go }: Props) {
         color: theme.text,
       }}
     >
-      {/* Titre */}
       <h1
         style={{
           margin: 0,
@@ -141,7 +153,6 @@ export default function PetanqueMenuGames({ go }: Props) {
         {t("petanque.menu.subtitle", "Choisis un mode")}
       </div>
 
-      {/* Cartes de modes */}
       <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
         {MODES.map((m) => {
           const title = t(m.titleKey, m.titleDefault);
@@ -208,7 +219,7 @@ export default function PetanqueMenuGames({ go }: Props) {
                 )}
               </div>
 
-              {/* Pastille "i" harmonisée (InfoDot) */}
+              {/* Pastille "i" */}
               <div
                 style={{
                   position: "absolute",
@@ -218,8 +229,9 @@ export default function PetanqueMenuGames({ go }: Props) {
                 }}
               >
                 <InfoDot
-                  onClick={(ev) => {
-                    ev.stopPropagation();
+                  onClick={(ev: any) => {
+                    // ✅ NE JAMAIS CRASH si ev est undefined
+                    ev?.stopPropagation?.();
                     setInfoMode(m);
                   }}
                   glow={theme.primary + "88"}
@@ -230,7 +242,7 @@ export default function PetanqueMenuGames({ go }: Props) {
         })}
       </div>
 
-      {/* Overlay d'information */}
+      {/* Overlay d'info */}
       {infoMode && (
         <div
           onClick={() => setInfoMode(null)}
@@ -253,7 +265,7 @@ export default function PetanqueMenuGames({ go }: Props) {
               borderRadius: 18,
               background: theme.card,
               border: `1px solid ${theme.primary}55`,
-              boxShadow: `0 18px 40px rgba(0,0,0,.7)`,
+              boxShadow: `0 18px 40px rgba(0,0,0,0.7)`,
               color: theme.text,
             }}
           >
@@ -280,19 +292,6 @@ export default function PetanqueMenuGames({ go }: Props) {
             >
               {t(infoMode.infoBodyKey, infoMode.infoBodyDefault)}
             </div>
-
-            {!infoMode.enabled && (
-              <div
-                style={{
-                  fontSize: 12,
-                  fontWeight: 600,
-                  color: theme.primary,
-                  marginBottom: 10,
-                }}
-              >
-                {t("games.status.comingSoon", "Bientôt disponible")}
-              </div>
-            )}
 
             <button
               type="button"
