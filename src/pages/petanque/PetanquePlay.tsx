@@ -1,12 +1,12 @@
 // ============================================
 // src/pages/petanque/PetanquePlay.tsx
-// ✅ Version COMPLETE — MOBILE-FIRST (sheet scroll iOS/Android + LIVE inclus)
-// - Sheet scrollable fiable: maxHeight 100dvh + WebkitOverflowScrolling + overscrollBehavior
-// - Header sticky (Fermer toujours accessible) + actions: Radar ↓ / ↑ Haut
-// - Tap dehors => ferme (tap dedans => ne ferme pas)
-// - LIVE: Caméra/Radar en accordéon (évite d’écraser l’écran sur mobile)
-// - LIVE: Réglages (sliders) repliables (fermés par défaut sur mobile)
-// - NE JAMAIS auto-start la caméra (useEffect stop-only)
+// ✅ Version MOBILE-SAFE (sheet scroll + LIVE stable)
+// - Sheet scroll iOS/Android fiable (WebkitOverflowScrolling + 100dvh + overscrollBehavior)
+// - Header sticky (Fermer toujours accessible) + tap dehors pour fermer
+// - Caméra JAMAIS auto-start (mobile permission safe)
+// - LIVE fluide en "TAP" par défaut sur mobile
+// - AUTO possible, mais OpenCV ne tourne QUE si "Détection ON" (detectOn)
+// - Bouton Pause / Reprendre (coupe l'analyse sans stopper la caméra)
 // ============================================
 
 import React from "react";
@@ -23,10 +23,7 @@ import {
   undoLastMeasurement,
 } from "../../lib/petanqueStore";
 
-// ✅ Config store (Mesurage autorisé + fallback)
 import { loadPetanqueConfig } from "../../lib/petanqueConfigStore";
-
-// ✅ OpenCV loader (LIVE auto-detect)
 import { loadOpenCv } from "../../lib/vision/opencv";
 
 type Props = {
@@ -40,6 +37,10 @@ type PhotoPoint = { x: number; y: number }; // normalized 0..1
 type MeasureMode = "manual" | "photo" | "live";
 
 export default function PetanquePlay({ go, params }: Props) {
+  // ✅ Route params
+  const matchMode = (params?.mode ?? params?.cfg?.mode ?? "singles") as any;
+  const matchCfg = params?.cfg ?? null;
+
   const { theme } = useTheme();
   const [st, setSt] = React.useState<PetanqueState>(() => loadPetanqueState());
 
@@ -47,53 +48,30 @@ export default function PetanquePlay({ go, params }: Props) {
   // ✅ MESURAGE (sheet)
   // ==========================
   const [measureOpen, setMeasureOpen] = React.useState(false);
+
+  // IMPORTANT: le reste du fichier utilise `mode` / `setMode`.
   const [mode, setMode] = React.useState<MeasureMode>("manual");
 
   // ✅ Mesurage autorisé : priorité params.cfg, sinon localStorage
   const cfgFromParams = params?.cfg ?? null;
   const cfgFromStorage = (typeof loadPetanqueConfig === "function" ? loadPetanqueConfig() : null) as any;
   const effectiveCfg = (cfgFromParams ?? cfgFromStorage) as any;
-
   const allowMeasurements: boolean = (effectiveCfg?.options?.allowMeasurements ?? true) === true;
 
+  // si interdit : ferme le sheet
   React.useEffect(() => {
     if (!allowMeasurements && measureOpen) setMeasureOpen(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [allowMeasurements]);
 
-  // ==========================
-  // ✅ MOBILE helpers (sheet nav + accordéons)
-  // ==========================
-  const sheetRef = React.useRef<HTMLDivElement | null>(null);
-  const radarRef = React.useRef<HTMLDivElement | null>(null);
-
-  const isNarrow = React.useMemo(() => {
-    if (typeof window === "undefined") return false;
-    try {
-      return window.matchMedia?.("(max-width: 520px)")?.matches ?? window.innerWidth <= 520;
-    } catch {
-      return false;
-    }
-  }, []);
-
-  const scrollToEl = (el: HTMLElement | null) => {
-    if (!el) return;
-    el.scrollIntoView({ behavior: "smooth", block: "start" });
-  };
-
-  // ==========================
-  // ✅ Match actions
-  // ==========================
   const onAdd = (team: PetanqueTeamId, pts: number) => setSt(addEnd(st, team, pts));
   const onUndo = () => setSt(undoLastEnd(st));
   const onNew = () => setSt(resetPetanque(st));
 
-  // ==========================
-  // ✅ Manuel
-  // ==========================
+  // --- Manuel
   const [dA, setDA] = React.useState<string>("");
   const [dB, setDB] = React.useState<string>("");
-  const [tol, setTol] = React.useState<string>("1");
+  const [tol, setTol] = React.useState<string>("1"); // cm si manuel ; px si photo non calibrée ; screen si live
   const [note, setNote] = React.useState<string>("");
 
   const numOrNaN = (v: string) => {
@@ -292,21 +270,48 @@ export default function PetanquePlay({ go, params }: Props) {
   // ==========================
   // ✅ LIVE (caméra + radar + AUTO-DETECT OpenCV)
   // ==========================
+  const sheetRef = React.useRef<HTMLDivElement | null>(null);
+  const radarRef = React.useRef<HTMLDivElement | null>(null);
+
+  const scrollToEl = (el: HTMLElement | null) => {
+    if (!el) return;
+    el.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
+
+  // Mobile heuristic
+  const isNarrow = React.useMemo(() => {
+    if (typeof window === "undefined") return false;
+    return window.matchMedia?.("(max-width: 520px)")?.matches ?? window.innerWidth <= 520;
+  }, []);
+
   const videoRef = React.useRef<HTMLVideoElement | null>(null);
   const streamRef = React.useRef<MediaStream | null>(null);
   const liveWrapRef = React.useRef<HTMLDivElement | null>(null);
   const canvasRef = React.useRef<HTMLCanvasElement | null>(null);
 
+  // cochonnet = centre de la mire
   const liveC: PhotoPoint = { x: 0.5, y: 0.5 };
 
   const [liveOn, setLiveOn] = React.useState(false);
   const [liveErr, setLiveErr] = React.useState<string | null>(null);
 
-  const [autoOn, setAutoOn] = React.useState(true);
+  // Sur mobile: TAP par défaut, desktop: AUTO par défaut
+  const [autoOn, setAutoOn] = React.useState<boolean>(() => {
+    try {
+      const mobile = window.matchMedia?.("(max-width: 520px)")?.matches ?? window.innerWidth <= 520;
+      return !mobile;
+    } catch {
+      return true;
+    }
+  });
+
+  // OpenCV ne tourne QUE si detectOn
+  const [detectOn, setDetectOn] = React.useState<boolean>(false);
+
   const [circles, setCircles] = React.useState<Array<{ x: number; y: number; r: number }>>([]);
   const [nearestIdx, setNearestIdx] = React.useState<number | null>(null);
 
-  // ✅ assignations équipes sur cercles détectés (AUTO mode)
+  // assignation équipes sur cercles détectés (AUTO mode)
   const [assignSide, setAssignSide] = React.useState<PetanqueTeamId>("A");
   const [circleTeam, setCircleTeam] = React.useState<Record<number, PetanqueTeamId>>({});
 
@@ -315,7 +320,7 @@ export default function PetanquePlay({ go, params }: Props) {
   const [liveB, setLiveB] = React.useState<PhotoPoint[]>([]);
   const [liveAddSide, setLiveAddSide] = React.useState<PetanqueTeamId>("A");
 
-  // ✅ LIVE settings (PRO)
+  // Réglages LIVE
   const [roiPct, setRoiPct] = React.useState<number>(0.7);
   const [minRadius, setMinRadius] = React.useState<number>(10);
   const [maxRadius, setMaxRadius] = React.useState<number>(60);
@@ -323,22 +328,20 @@ export default function PetanquePlay({ go, params }: Props) {
 
   const [livePaused, setLivePaused] = React.useState(false);
 
-  // ✅ MOBILE accordéons
+  // accordéons (mobile)
   const [liveSectionOpen, setLiveSectionOpen] = React.useState(true);
   const [liveSettingsOpen, setLiveSettingsOpen] = React.useState(false);
 
-  // init accordéon sliders selon largeur
   React.useEffect(() => {
+    // mobile: sliders fermés
     if (isNarrow) setLiveSettingsOpen(false);
     else setLiveSettingsOpen(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const lastNearestRef = React.useRef<{ x: number; y: number; r: number } | null>(null);
-  const stableNearestRef = React.useRef<{ x: number; y: number; r: number } | null>(null);
-
   const clamp01 = (v: number) => Math.max(0, Math.min(1, v));
 
+  // Pause si onglet inactif
   React.useEffect(() => {
     const onVis = () => setLivePaused(document.visibilityState !== "visible");
     onVis();
@@ -346,10 +349,28 @@ export default function PetanquePlay({ go, params }: Props) {
     return () => document.removeEventListener("visibilitychange", onVis);
   }, []);
 
+  const stopLive = () => {
+    setLiveOn(false);
+    setDetectOn(false);
+
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach((t) => t.stop());
+      streamRef.current = null;
+    }
+    if (videoRef.current) {
+      try {
+        videoRef.current.pause();
+        (videoRef.current as any).srcObject = null;
+      } catch {}
+    }
+  };
+
   const startLive = async () => {
     try {
       setLiveErr(null);
-      stopLive(); // iOS reset
+
+      // iOS: reset d’abord
+      stopLive();
 
       const stream = await navigator.mediaDevices.getUserMedia({
         video: { facingMode: "environment" as any, width: { ideal: 1280 }, height: { ideal: 720 } },
@@ -367,21 +388,8 @@ export default function PetanquePlay({ go, params }: Props) {
       setLiveOn(true);
     } catch (e: any) {
       setLiveOn(false);
+      setDetectOn(false);
       setLiveErr(e?.message || "Caméra indisponible");
-    }
-  };
-
-  const stopLive = () => {
-    setLiveOn(false);
-    if (streamRef.current) {
-      streamRef.current.getTracks().forEach((t) => t.stop());
-      streamRef.current = null;
-    }
-    if (videoRef.current) {
-      try {
-        videoRef.current.pause();
-        (videoRef.current as any).srcObject = null;
-      } catch {}
     }
   };
 
@@ -390,8 +398,6 @@ export default function PetanquePlay({ go, params }: Props) {
     setLiveB([]);
     setCircles([]);
     setNearestIdx(null);
-    lastNearestRef.current = null;
-    stableNearestRef.current = null;
     setCircleTeam({});
   };
 
@@ -408,8 +414,15 @@ export default function PetanquePlay({ go, params }: Props) {
     return Math.sqrt(dx * dx + dy * dy);
   };
 
-  const minA_live = React.useMemo(() => (liveA.length ? Math.min(...liveA.map(liveDist)) : null), [liveA]);
-  const minB_live = React.useMemo(() => (liveB.length ? Math.min(...liveB.map(liveDist)) : null), [liveB]);
+  const minA_live = React.useMemo(() => {
+    if (!liveA.length) return null;
+    return Math.min(...liveA.map(liveDist));
+  }, [liveA]);
+
+  const minB_live = React.useMemo(() => {
+    if (!liveB.length) return null;
+    return Math.min(...liveB.map(liveDist));
+  }, [liveB]);
 
   const distToCenter = (p: { x: number; y: number }) => {
     const dx = p.x - 0.5;
@@ -422,7 +435,8 @@ export default function PetanquePlay({ go, params }: Props) {
     circles.forEach((c, idx) => {
       if (circleTeam[idx] === "A") vals.push(distToCenter(c));
     });
-    return vals.length ? Math.min(...vals) : null;
+    if (!vals.length) return null;
+    return Math.min(...vals);
   }, [circles, circleTeam]);
 
   const autoMinB = React.useMemo(() => {
@@ -430,7 +444,8 @@ export default function PetanquePlay({ go, params }: Props) {
     circles.forEach((c, idx) => {
       if (circleTeam[idx] === "B") vals.push(distToCenter(c));
     });
-    return vals.length ? Math.min(...vals) : null;
+    if (!vals.length) return null;
+    return Math.min(...vals);
   }, [circles, circleTeam]);
 
   const autoWinner: "A" | "B" | "TIE" | null = React.useMemo(() => {
@@ -440,20 +455,26 @@ export default function PetanquePlay({ go, params }: Props) {
     return autoMinA < autoMinB ? "A" : "B";
   }, [autoMinA, autoMinB, tolN]);
 
-  // ✅ AUTO-DETECT loop OpenCV (inchangé logique) — seulement si LIVE ON + autoOn + sheet open + mode live
+  // ==========================
+  // ✅ AUTO-DETECT LOOP (OpenCV) — MOBILE SAFE
+  // - Ne tourne QUE si detectOn = true
+  // - Throttle agressif sur mobile
+  // - Downscale plus fort sur mobile
+  // ==========================
   React.useEffect(() => {
     if (!measureOpen) return;
     if (mode !== "live") return;
     if (!autoOn) return;
+    if (!detectOn) return;
     if (!liveOn) return;
+    if (livePaused) return;
 
     let alive = true;
     let cv: any = null;
-
     let raf = 0;
     let busy = false;
 
-    const TICK_MS = 220;
+    const TICK_MS = isNarrow ? 420 : 220;
     let lastTick = 0;
 
     const roiCanvas = document.createElement("canvas");
@@ -467,43 +488,8 @@ export default function PetanquePlay({ go, params }: Props) {
       return Math.sqrt(dx * dx + dy * dy);
     };
 
-    const waitVideoReady = async () => {
-      const video = videoRef.current;
-      if (!video) return false;
-      if (video.videoWidth > 0 && video.videoHeight > 0) return true;
-
-      await new Promise<void>((resolve) => {
-        let done = false;
-        const finish = () => {
-          if (done) return;
-          done = true;
-          cleanup();
-          resolve();
-        };
-
-        const cleanup = () => {
-          try {
-            video.removeEventListener("loadedmetadata", finish);
-            video.removeEventListener("playing", finish);
-          } catch {}
-          try {
-            window.clearTimeout(tid);
-          } catch {}
-        };
-
-        const tid = window.setTimeout(finish, 1200);
-        video.addEventListener("loadedmetadata", finish, { once: true });
-        video.addEventListener("playing", finish, { once: true });
-      });
-
-      return !!(videoRef.current?.videoWidth && videoRef.current?.videoHeight);
-    };
-
     const step = () => {
       if (!alive) return;
-      if (!autoOn) return;
-      if (!liveOn) return;
-      if (livePaused) return;
       if (busy) return;
 
       const now = performance.now();
@@ -520,10 +506,10 @@ export default function PetanquePlay({ go, params }: Props) {
 
       busy = true;
       try {
-        const targetW = 520;
+        const targetW = isNarrow ? 360 : 520;
         const scale = targetW / w;
-        const cw = Math.max(240, Math.floor(w * scale));
-        const ch = Math.max(160, Math.floor(h * scale));
+        const cw = Math.max(220, Math.floor(w * scale));
+        const ch = Math.max(140, Math.floor(h * scale));
 
         const roi = Math.max(0.4, Math.min(1, roiPct));
         const rw = Math.floor(cw * roi);
@@ -579,14 +565,11 @@ export default function PetanquePlay({ go, params }: Props) {
             const border = 0.06;
             if (nx < border || nx > 1 - border || ny < border || ny > 1 - border) continue;
 
-            found.push({
-              x: clamp01(nx),
-              y: clamp01(ny),
-              r: rRoi / Math.max(cw, ch),
-            });
+            found.push({ x: clamp01(nx), y: clamp01(ny), r: rRoi / Math.max(cw, ch) });
           }
 
-          const last = lastNearestRef.current;
+          // Anti-sauts + EMA
+          const last = lastNearestRef.current as any;
           const matchThreshold = 0.08;
           let chosenIdx: number | null = null;
 
@@ -621,7 +604,7 @@ export default function PetanquePlay({ go, params }: Props) {
             const picked = found[chosenIdx];
             lastNearestRef.current = picked;
 
-            const stable = stableNearestRef.current;
+            const stable = stableNearestRef.current as any;
             if (!stable) stableNearestRef.current = { ...picked };
             else {
               stableNearestRef.current = {
@@ -635,13 +618,14 @@ export default function PetanquePlay({ go, params }: Props) {
             stableNearestRef.current = null;
           }
 
+          // stableIdx = closest to smoothed
           let stableIdx: number | null = null;
-          const stable = stableNearestRef.current;
+          const stable = stableNearestRef.current as any;
           if (stable && found.length) {
             let bestIdx = -1;
             let bestD = Infinity;
             for (let i = 0; i < found.length; i++) {
-              const d = dist(found[i], stable as any);
+              const d = dist(found[i], stable);
               if (d < bestD) {
                 bestD = d;
                 bestIdx = i;
@@ -662,7 +646,7 @@ export default function PetanquePlay({ go, params }: Props) {
       } catch (e: any) {
         if (!alive) return;
         setLiveErr(e?.message || "OpenCV indisponible");
-        setAutoOn(false);
+        setDetectOn(false); // stop analyse plutôt que geler
       } finally {
         busy = false;
       }
@@ -674,30 +658,17 @@ export default function PetanquePlay({ go, params }: Props) {
       raf = requestAnimationFrame(frame);
     };
 
-    const scheduleLoad = (fn: () => void) => {
-      const w = window as any;
-      if (typeof w.requestIdleCallback === "function") w.requestIdleCallback(fn, { timeout: 1500 });
-      else window.setTimeout(fn, 50);
-    };
-
-    scheduleLoad(() => {
-      (async () => {
-        try {
-          const ok = await waitVideoReady();
-          if (!alive) return;
-          if (!ok) return;
-
-          cv = await loadOpenCv();
-          if (!alive) return;
-
-          raf = requestAnimationFrame(frame);
-        } catch (e: any) {
-          if (!alive) return;
-          setLiveErr(e?.message || "OpenCV indisponible");
-          setAutoOn(false);
-        }
-      })();
-    });
+    (async () => {
+      try {
+        cv = await loadOpenCv();
+        if (!alive) return;
+        raf = requestAnimationFrame(frame);
+      } catch (e: any) {
+        if (!alive) return;
+        setLiveErr(e?.message || "OpenCV indisponible");
+        setDetectOn(false);
+      }
+    })();
 
     return () => {
       alive = false;
@@ -705,9 +676,10 @@ export default function PetanquePlay({ go, params }: Props) {
         if (raf) cancelAnimationFrame(raf);
       } catch {}
     };
-  }, [measureOpen, mode, autoOn, liveOn, livePaused, roiPct, minRadius, maxRadius, param2]);
+  }, [measureOpen, mode, autoOn, detectOn, liveOn, livePaused, roiPct, minRadius, maxRadius, param2, isNarrow]);
 
-  // ✅ STOP-ONLY : ne jamais auto-start caméra
+  // ✅ MOBILE SAFE: on ne start JAMAIS la caméra automatiquement
+  // Auto stop live when closing sheet / leaving live tab
   React.useEffect(() => {
     if (!measureOpen) {
       stopLive();
@@ -718,6 +690,7 @@ export default function PetanquePlay({ go, params }: Props) {
     if (measureOpen && mode !== "live") {
       stopLive();
     }
+    // IMPORTANT: on NE start PAS la caméra ici (gesture user required).
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [measureOpen, mode]);
 
@@ -727,7 +700,7 @@ export default function PetanquePlay({ go, params }: Props) {
 
       const extra =
         (note?.trim() ? note.trim() + " — " : "") +
-        `live auto-detect — assignations A/B — ROI:${Math.round(roiPct * 100)}% — r[${minRadius},${maxRadius}] — p2:${param2} — cercles:${circles.length} — unité:screen`;
+        `live auto mode — detect:${detectOn ? "ON" : "OFF"} — ROI:${Math.round(roiPct * 100)}% — r[${minRadius},${maxRadius}] — p2:${param2} — cercles:${circles.length} — unité:screen`;
 
       setSt(
         addMeasurement(st, {
@@ -747,7 +720,7 @@ export default function PetanquePlay({ go, params }: Props) {
 
     const extra =
       (note?.trim() ? note.trim() + " — " : "") +
-      `live manual — centre=cible — A:${liveA.length} / B:${liveB.length} — unité:screen`;
+      `live tap — centre=cible — A:${liveA.length} / B:${liveB.length} — unité:screen`;
 
     setSt(
       addMeasurement(st, {
@@ -762,6 +735,9 @@ export default function PetanquePlay({ go, params }: Props) {
     setMeasureOpen(false);
   };
 
+  // ==========================
+  // ✅ Store actions
+  // ==========================
   const onUndoMeasurement = () => setSt(undoLastMeasurement(st));
 
   const measurements = (st as any).measurements as
@@ -827,13 +803,7 @@ export default function PetanquePlay({ go, params }: Props) {
           </div>
           <div style={ptsGrid}>
             {PTS.map((p) => (
-              <button
-                key={`A-${p}`}
-                className="btn"
-                style={ptBtn(theme)}
-                onClick={() => onAdd("A", p)}
-                disabled={st.finished}
-              >
+              <button key={`A-${p}`} className="btn" style={ptBtn(theme)} onClick={() => onAdd("A", p)} disabled={st.finished}>
                 +{p}
               </button>
             ))}
@@ -846,13 +816,7 @@ export default function PetanquePlay({ go, params }: Props) {
           </div>
           <div style={ptsGrid}>
             {PTS.map((p) => (
-              <button
-                key={`B-${p}`}
-                className="btn"
-                style={ptBtn(theme)}
-                onClick={() => onAdd("B", p)}
-                disabled={st.finished}
-              >
+              <button key={`B-${p}`} className="btn" style={ptBtn(theme)} onClick={() => onAdd("B", p)} disabled={st.finished}>
                 +{p}
               </button>
             ))}
@@ -874,6 +838,7 @@ export default function PetanquePlay({ go, params }: Props) {
         </div>
       </div>
 
+      {/* ✅ MESURES (historique) */}
       <div className="card" style={card(theme)}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
           <div className="subtitle" style={sub(theme)}>
@@ -943,7 +908,7 @@ export default function PetanquePlay({ go, params }: Props) {
         )}
       </div>
 
-      {/* ✅ SHEET MOBILE-FIRST (tap dehors => ferme, header sticky, scroll OK) */}
+      {/* ✅ SHEET MOBILE SAFE */}
       {allowMeasurements && measureOpen && (
         <div style={overlay} onClick={() => setMeasureOpen(false)} role="dialog" aria-modal="true">
           <div
@@ -952,7 +917,7 @@ export default function PetanquePlay({ go, params }: Props) {
             style={sheet(theme)}
             onClick={(e) => e.stopPropagation()}
           >
-            {/* ✅ HEADER STICKY + actions mobile */}
+            {/* ✅ Sticky Header */}
             <div
               style={{
                 position: "sticky",
@@ -974,20 +939,10 @@ export default function PetanquePlay({ go, params }: Props) {
               </div>
 
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
-                <button
-                  className="btn ghost"
-                  style={ghost(theme)}
-                  onClick={() => scrollToEl(radarRef.current)}
-                  title="Aller au radar"
-                >
+                <button className="btn ghost" style={ghost(theme)} onClick={() => scrollToEl(radarRef.current as any)} title="Aller au radar">
                   Radar ↓
                 </button>
-                <button
-                  className="btn ghost"
-                  style={ghost(theme)}
-                  onClick={() => scrollToEl(sheetRef.current)}
-                  title="Remonter"
-                >
+                <button className="btn ghost" style={ghost(theme)} onClick={() => scrollToEl(sheetRef.current as any)} title="Remonter">
                   ↑ Haut
                 </button>
                 <button className="btn ghost" style={ghost(theme)} onClick={() => setMeasureOpen(false)}>
@@ -1011,7 +966,7 @@ export default function PetanquePlay({ go, params }: Props) {
 
             {/* Shared */}
             <div style={row}>
-              <div style={{ flex: 1, minWidth: 160 }}>
+              <div style={{ flex: 1 }}>
                 <div className="subtitle" style={label(theme)}>
                   Tolérance
                 </div>
@@ -1025,7 +980,7 @@ export default function PetanquePlay({ go, params }: Props) {
                 />
               </div>
 
-              <div style={{ flex: 2, minWidth: 220 }}>
+              <div style={{ flex: 2 }}>
                 <div className="subtitle" style={label(theme)}>
                   Note (optionnel)
                 </div>
@@ -1164,7 +1119,7 @@ export default function PetanquePlay({ go, params }: Props) {
                       Point Cal B {calArm === "B" ? "(clic…)" : ""}
                     </button>
 
-                    <div style={{ flex: 1, minWidth: 170 }}>
+                    <div style={{ flex: 1 }}>
                       <div className="subtitle" style={label(theme)}>
                         Longueur réelle (cm)
                       </div>
@@ -1217,33 +1172,6 @@ export default function PetanquePlay({ go, params }: Props) {
                         draggable={false}
                       />
 
-                      {imgNatural && pCochonnet && (
-                        <svg style={svgOverlay} viewBox="0 0 100 100" preserveAspectRatio="none">
-                          {ballsA.map((b, i) => (
-                            <line
-                              key={`la-${i}`}
-                              x1={pCochonnet.x * 100}
-                              y1={pCochonnet.y * 100}
-                              x2={b.x * 100}
-                              y2={b.y * 100}
-                              stroke="rgba(0,255,180,0.90)"
-                              strokeWidth="0.6"
-                            />
-                          ))}
-                          {ballsB.map((b, i) => (
-                            <line
-                              key={`lb-${i}`}
-                              x1={pCochonnet.x * 100}
-                              y1={pCochonnet.y * 100}
-                              x2={b.x * 100}
-                              y2={b.y * 100}
-                              stroke="rgba(255,120,120,0.90)"
-                              strokeWidth="0.6"
-                            />
-                          ))}
-                        </svg>
-                      )}
-
                       {imgNatural && (
                         <>
                           {pCochonnet && <div style={marker(theme, pCochonnet, "C")} />}
@@ -1264,18 +1192,13 @@ export default function PetanquePlay({ go, params }: Props) {
                     <div style={resultBox(theme, winnerPhoto)}>
                       {minA_photo == null || minB_photo == null
                         ? "Ajoute au moins 1 boule A et 1 boule B pour comparer."
-                        : `Plus proche A: ${minA_photo.toFixed(pxPerCm ? 1 : 0)} ${pxPerCm ? "cm" : "px"} — B: ${minB_photo.toFixed(
-                            pxPerCm ? 1 : 0
-                          )} ${pxPerCm ? "cm" : "px"}`}
+                        : `Plus proche A: ${minA_photo.toFixed(pxPerCm ? 1 : 0)} ${
+                            pxPerCm ? "cm" : "px"
+                          } — B: ${minB_photo.toFixed(pxPerCm ? 1 : 0)} ${pxPerCm ? "cm" : "px"}`}
                     </div>
 
                     <div style={row}>
-                      <button
-                        className="btn primary"
-                        style={primary(theme)}
-                        onClick={onSavePhoto}
-                        disabled={minA_photo == null || minB_photo == null}
-                      >
+                      <button className="btn primary" style={primary(theme)} onClick={onSavePhoto} disabled={minA_photo == null || minB_photo == null}>
                         Enregistrer (photo)
                       </button>
                       <button className="btn ghost" style={ghost(theme)} onClick={() => setPCochonnet(null)} disabled={!pCochonnet}>
@@ -1292,77 +1215,17 @@ export default function PetanquePlay({ go, params }: Props) {
             ) : (
               <>
                 <div className="subtitle" style={hint(theme)}>
-                  LIVE Auto Radar : cadre le cochonnet au centre (mire). Assigne les cercles détectés à A/B. Sur mobile, garde la
-                  section caméra repliable pour éviter un écran trop long.
+                  LIVE mobile-safe : sur téléphone utilise “Mode TAP” (fluide). “Mode AUTO” + “Détection ON” lance OpenCV (optionnel). Pause coupe l’analyse immédiatement.
                 </div>
 
-                <div style={row}>
-                  <button className="btn" style={modeBtn(theme, autoOn)} onClick={() => setAutoOn(true)} disabled={!liveOn}>
-                    Auto ON
-                  </button>
-                  <button className="btn" style={modeBtn(theme, !autoOn)} onClick={() => setAutoOn(false)} disabled={!liveOn}>
-                    Auto OFF (tap)
-                  </button>
-
-                  {autoOn ? (
-                    <>
-                      <button
-                        className="btn"
-                        style={modeBtn(theme, assignSide === "A")}
-                        onClick={() => setAssignSide("A")}
-                        disabled={!liveOn}
-                        title="Clique ensuite sur un cercle pour l'assigner à A"
-                      >
-                        Assigner {st.teamA}
-                      </button>
-                      <button
-                        className="btn"
-                        style={modeBtn(theme, assignSide === "B")}
-                        onClick={() => setAssignSide("B")}
-                        disabled={!liveOn}
-                        title="Clique ensuite sur un cercle pour l'assigner à B"
-                      >
-                        Assigner {st.teamB}
-                      </button>
-                      <button
-                        className="btn ghost"
-                        style={ghost(theme)}
-                        onClick={() => setCircleTeam({})}
-                        disabled={!Object.keys(circleTeam).length}
-                        title="Effacer toutes les assignations A/B"
-                      >
-                        Reset équipes
-                      </button>
-                    </>
-                  ) : (
-                    <>
-                      <button className="btn" style={modeBtn(theme, liveAddSide === "A")} onClick={() => setLiveAddSide("A")}>
-                        Ajouter {st.teamA}
-                      </button>
-                      <button className="btn" style={modeBtn(theme, liveAddSide === "B")} onClick={() => setLiveAddSide("B")}>
-                        Ajouter {st.teamB}
-                      </button>
-                    </>
-                  )}
-
-                  <button
-                    className="btn ghost"
-                    style={ghost(theme)}
-                    onClick={clearLive}
-                    disabled={!circles.length && !liveA.length && !liveB.length && !Object.keys(circleTeam).length}
-                  >
-                    Effacer
-                  </button>
-                </div>
-
-                {/* ✅ Caméra / Radar — accordéon mobile */}
+                {/* ✅ Bandeau Caméra/Radar + accordéon */}
                 <div className="card" style={cardSoft(theme)}>
                   <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
                     <div className="subtitle" style={sub(theme)}>
                       Caméra / Radar
                     </div>
 
-                    <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                    <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
                       <button className="btn ghost" style={ghost(theme)} onClick={() => setLiveSectionOpen((v) => !v)}>
                         {liveSectionOpen ? "Réduire" : "Ouvrir"}
                       </button>
@@ -1374,61 +1237,61 @@ export default function PetanquePlay({ go, params }: Props) {
                   </div>
 
                   <div className="subtitle" style={muted(theme)}>
-                    Mobile: autorise la caméra quand le navigateur le demande. Pas d’autostart.
+                    Astuce mobile: autorise la caméra quand le navigateur le demande. Si ça lag, garde “Mode TAP” et laisse “Détection OFF”.
                   </div>
-
-                  {liveErr && <div style={resultBox(theme, "TIE")}>{liveErr}</div>}
                 </div>
 
-                {/* ✅ Radar (scroll target) */}
-                {liveSectionOpen && (
-                  <div ref={radarRef}>
-                    <div ref={liveWrapRef} style={liveWrap(theme)} onClick={!autoOn ? onLiveClick : undefined}>
-                      <video ref={videoRef} style={liveVideo} playsInline muted />
-                      <canvas ref={canvasRef} style={{ display: "none" }} />
+                {/* ✅ Controls */}
+                <div style={row}>
+                  <button className="btn" style={modeBtn(theme, !autoOn)} onClick={() => { setAutoOn(false); setDetectOn(false); }} disabled={!liveOn}>
+                    Mode TAP
+                  </button>
+                  <button className="btn" style={modeBtn(theme, autoOn)} onClick={() => setAutoOn(true)} disabled={!liveOn}>
+                    Mode AUTO
+                  </button>
 
-                      <div style={radarOverlay}>
-                        <div style={radarSweep(theme)} />
-                        <div style={crosshairOuter(theme)} />
-                        <div style={crosshairInner} />
-                      </div>
+                  {autoOn && (
+                    <>
+                      <button className="btn" style={modeBtn(theme, detectOn)} onClick={() => setDetectOn((v) => !v)} disabled={!liveOn}>
+                        Détection: {detectOn ? "ON" : "OFF"}
+                      </button>
 
-                      {/* Auto circles (cliquables => assignation A/B) */}
-                      {autoOn &&
-                        circles.map((c, idx) => {
-                          const isBest = nearestIdx === idx;
-                          const team = circleTeam[idx] || null;
+                      <button className="btn ghost" style={ghost(theme)} onClick={() => setLivePaused((v) => !v)} disabled={!liveOn}>
+                        {livePaused ? "Reprendre" : "Pause"}
+                      </button>
 
-                          return (
-                            <div
-                              key={`c-${idx}`}
-                              style={liveCircle(theme, { x: c.x, y: c.y }, c.r, isBest, team)}
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setCircleTeam((cur) => ({ ...cur, [idx]: assignSide }));
-                              }}
-                              title={team ? `Équipe ${team}` : `Assigner à ${assignSide}`}
-                            />
-                          );
-                        })}
+                      <button className="btn" style={modeBtn(theme, assignSide === "A")} onClick={() => setAssignSide("A")} disabled={!liveOn}>
+                        Assigner {st.teamA}
+                      </button>
+                      <button className="btn" style={modeBtn(theme, assignSide === "B")} onClick={() => setAssignSide("B")} disabled={!liveOn}>
+                        Assigner {st.teamB}
+                      </button>
 
-                      {/* Manual fallback markers */}
-                      {!autoOn && (
-                        <>
-                          <div style={liveMarker(theme, { x: 0.5, y: 0.5 }, "C", false)} />
-                          {liveA.map((p, i) => (
-                            <div key={`la-${i}`} style={liveMarker(theme, p, `A${i + 1}`, false)} />
-                          ))}
-                          {liveB.map((p, i) => (
-                            <div key={`lb-${i}`} style={liveMarker(theme, p, `B${i + 1}`, false)} />
-                          ))}
-                        </>
-                      )}
-                    </div>
-                  </div>
-                )}
+                      <button className="btn ghost" style={ghost(theme)} onClick={() => setCircleTeam({})} disabled={!Object.keys(circleTeam).length}>
+                        Reset équipes
+                      </button>
+                    </>
+                  )}
 
-                {/* ✅ Réglages LIVE (PRO) — repliables, fermés sur mobile */}
+                  {!autoOn && (
+                    <>
+                      <button className="btn" style={modeBtn(theme, liveAddSide === "A")} onClick={() => setLiveAddSide("A")} disabled={!liveOn}>
+                        Ajouter {st.teamA}
+                      </button>
+                      <button className="btn" style={modeBtn(theme, liveAddSide === "B")} onClick={() => setLiveAddSide("B")} disabled={!liveOn}>
+                        Ajouter {st.teamB}
+                      </button>
+                    </>
+                  )}
+
+                  <button className="btn ghost" style={ghost(theme)} onClick={clearLive} disabled={!circles.length && !liveA.length && !liveB.length && !Object.keys(circleTeam).length}>
+                    Effacer
+                  </button>
+                </div>
+
+                {liveErr && <div style={resultBox(theme, "TIE")}>{liveErr}</div>}
+
+                {/* ✅ Réglages LIVE (accordéon) */}
                 <div className="card" style={cardSoft(theme)}>
                   <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
                     <div className="subtitle" style={sub(theme)}>
@@ -1440,14 +1303,7 @@ export default function PetanquePlay({ go, params }: Props) {
                         ROI {Math.round(roiPct * 100)}% — r[{minRadius},{maxRadius}] — p2 {param2}
                         {livePaused ? " — PAUSE" : ""}
                       </div>
-
-                      <button
-                        className="btn ghost"
-                        style={ghost(theme)}
-                        onClick={() => setLiveSettingsOpen((v) => !v)}
-                        disabled={!autoOn}
-                        title="Ouvrir/fermer les réglages"
-                      >
+                      <button className="btn ghost" style={ghost(theme)} onClick={() => setLiveSettingsOpen((v) => !v)} disabled={!autoOn}>
                         {liveSettingsOpen ? "Masquer" : "Afficher"}
                       </button>
                     </div>
@@ -1522,8 +1378,7 @@ export default function PetanquePlay({ go, params }: Props) {
                       </div>
 
                       <div className="subtitle" style={muted(theme)}>
-                        Astuce: faux cercles → augmente Param2. Rien détecté → baisse Param2 ou ajuste les rayons. ROI réduit =
-                        plus stable/rapide.
+                        Astuce: faux cercles → augmente Param2. Rien détecté → baisse Param2 ou ajuste les rayons. ROI réduit = plus stable/rapide.
                       </div>
                     </>
                   ) : (
@@ -1533,7 +1388,56 @@ export default function PetanquePlay({ go, params }: Props) {
                   )}
                 </div>
 
-                {/* ✅ Lecture + save */}
+                {/* ✅ Radar / Caméra (collapsible) */}
+                {liveSectionOpen && (
+                  <div ref={radarRef as any}>
+                    <div ref={liveWrapRef} style={liveWrap(theme)} onClick={!autoOn ? onLiveClick : undefined}>
+                      <video ref={videoRef} style={liveVideo} playsInline muted />
+                      <canvas ref={canvasRef} style={{ display: "none" }} />
+
+                      {/* Overlay radar */}
+                      <div style={radarOverlay}>
+                        <div style={radarSweep(theme)} />
+                        <div style={crosshairOuter(theme)} />
+                        <div style={crosshairInner} />
+                      </div>
+
+                      {/* Auto circles (assignation) */}
+                      {autoOn &&
+                        circles.map((c, idx) => {
+                          const isBest = nearestIdx === idx;
+                          const team = circleTeam[idx] || null;
+
+                          return (
+                            <div
+                              key={`c-${idx}`}
+                              style={liveCircle(theme, { x: c.x, y: c.y }, c.r, isBest, team)}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setCircleTeam((cur) => ({ ...cur, [idx]: assignSide }));
+                              }}
+                              title={team ? `Équipe ${team}` : `Assigner à ${assignSide}`}
+                            />
+                          );
+                        })}
+
+                      {/* Manual markers */}
+                      {!autoOn && (
+                        <>
+                          <div style={liveMarker(theme, { x: 0.5, y: 0.5 }, "C", false)} />
+                          {liveA.map((p, i) => (
+                            <div key={`la-${i}`} style={liveMarker(theme, p, `A${i + 1}`, false)} />
+                          ))}
+                          {liveB.map((p, i) => (
+                            <div key={`lb-${i}`} style={liveMarker(theme, p, `B${i + 1}`, false)} />
+                          ))}
+                        </>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* Lecture + Save */}
                 <div className="card" style={cardSoft(theme)}>
                   <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
                     <div className="subtitle" style={sub(theme)}>
@@ -1541,9 +1445,7 @@ export default function PetanquePlay({ go, params }: Props) {
                     </div>
                     <div className="subtitle" style={muted(theme)}>
                       {autoOn
-                        ? `cercles: ${circles.length} — assignés A:${Object.values(circleTeam).filter((v) => v === "A").length} / B:${
-                            Object.values(circleTeam).filter((v) => v === "B").length
-                          }`
+                        ? `cercles:${circles.length} — assignés A:${Object.values(circleTeam).filter((v) => v === "A").length} / B:${Object.values(circleTeam).filter((v) => v === "B").length}`
                         : `A:${liveA.length} / B:${liveB.length}`}
                     </div>
                   </div>
@@ -1553,20 +1455,12 @@ export default function PetanquePlay({ go, params }: Props) {
                       <>
                         Auto: A={autoMinA == null ? "—" : autoMinA.toFixed(4)} / B={autoMinB == null ? "—" : autoMinB.toFixed(4)}
                         {" — "}
-                        {autoWinner == null
-                          ? "Assigne au moins 1 boule A et 1 boule B"
-                          : autoWinner === "TIE"
-                          ? "Égalité"
-                          : autoWinner === "A"
-                          ? st.teamA
-                          : st.teamB}
+                        {autoWinner == null ? "Assigne au moins 1 boule A et 1 boule B" : autoWinner === "TIE" ? "Égalité" : autoWinner === "A" ? st.teamA : st.teamB}
                         {" — "}
-                        Plus proche détectée: {nearestIdx == null ? "—" : `#${nearestIdx + 1}`}
+                        Détection: {detectOn ? "ON" : "OFF"}
                       </>
                     ) : (
-                      <>
-                        Manual: A={minA_live == null ? "—" : minA_live.toFixed(4)} / B={minB_live == null ? "—" : minB_live.toFixed(4)}
-                      </>
+                      <>TAP: ajoute A puis B puis Enregistrer</>
                     )}
                   </div>
 
@@ -1579,6 +1473,10 @@ export default function PetanquePlay({ go, params }: Props) {
                     >
                       Enregistrer ({autoOn ? "auto" : "tap"})
                     </button>
+                  </div>
+
+                  <div className="subtitle" style={muted(theme)}>
+                    Note: sur mobile, “Mode TAP” est recommandé. “Mode AUTO” + “Détection ON” lance OpenCV (peut lag selon téléphone).
                   </div>
                 </div>
               </>
@@ -1817,7 +1715,7 @@ function endTxt(theme: any): React.CSSProperties {
   return { fontWeight: 900, opacity: 0.9, fontSize: 13 };
 }
 
-/* ✅ OVERLAY + SHEET MOBILE-SAFE */
+/* ✅ MOBILE SAFE OVERLAY + SHEET */
 const overlay: React.CSSProperties = {
   position: "fixed",
   inset: 0,
@@ -1844,6 +1742,7 @@ function sheet(theme: any): React.CSSProperties {
     gap: 10,
 
     maxHeight: "calc(100dvh - 16px)",
+    height: "auto",
     overflowY: "auto",
     overflowX: "hidden",
     WebkitOverflowScrolling: "touch",
@@ -1890,7 +1789,7 @@ function resultBox(theme: any, w: "A" | "B" | "TIE" | null): React.CSSProperties
   return { ...base, background: "rgba(240,177,42,0.12)" };
 }
 
-// Photo styles
+// Photo
 function fileBtn(theme: any): React.CSSProperties {
   return {
     borderRadius: 14,
@@ -1939,14 +1838,6 @@ const imgStyle: React.CSSProperties = {
   userSelect: "none",
 };
 
-const svgOverlay: React.CSSProperties = {
-  position: "absolute",
-  inset: 0,
-  width: "100%",
-  height: "100%",
-  pointerEvents: "none",
-};
-
 function marker(theme: any, p: PhotoPoint, labelTxt: string): React.CSSProperties {
   return {
     position: "absolute",
@@ -1990,7 +1881,7 @@ function loupeStyle(imgUrl: string, p: PhotoPoint): React.CSSProperties {
   };
 }
 
-/* LIVE styles */
+/* LIVE Radar styles */
 function liveWrap(theme: any): React.CSSProperties {
   return {
     position: "relative",
@@ -2001,6 +1892,7 @@ function liveWrap(theme: any): React.CSSProperties {
     border: `1px solid ${cssVarOr("rgba(255,255,255,0.14)", "--stroke")}`,
     background: cssVarOr("rgba(0,0,0,0.25)", "--glass2"),
     boxShadow: "0 18px 45px rgba(0,0,0,0.35)",
+    touchAction: "manipulation",
   };
 }
 
@@ -2011,13 +1903,11 @@ const liveVideo: React.CSSProperties = {
   height: "100%",
   objectFit: "cover",
   filter: "contrast(1.05) saturate(1.05)",
+  pointerEvents: "none", // ✅ crucial (évite la vidéo qui “avale” les taps)
+  userSelect: "none",
 };
 
-const radarOverlay: React.CSSProperties = {
-  position: "absolute",
-  inset: 0,
-  pointerEvents: "none",
-};
+const radarOverlay: React.CSSProperties = { position: "absolute", inset: 0, pointerEvents: "none" };
 
 function radarSweep(theme: any): React.CSSProperties {
   return {
@@ -2080,9 +1970,7 @@ function liveMarker(theme: any, p: PhotoPoint, labelTxt: string, highlight: bool
     color: cssVarOr(theme?.colors?.text ?? "#fff", "--text"),
     pointerEvents: "none",
   };
-
   if (!highlight) return base;
-
   return {
     ...base,
     border: "3px solid rgba(240,177,42,0.95)",
@@ -2090,18 +1978,10 @@ function liveMarker(theme: any, p: PhotoPoint, labelTxt: string, highlight: bool
   };
 }
 
-function liveCircle(
-  theme: any,
-  p: PhotoPoint,
-  rNorm: number,
-  highlight: boolean,
-  team: PetanqueTeamId | null
-): React.CSSProperties {
+function liveCircle(theme: any, p: PhotoPoint, rNorm: number, highlight: boolean, team: PetanqueTeamId | null): React.CSSProperties {
   const size = Math.max(22, Math.min(180, rNorm * 2 * 900));
-
   const teamStroke =
     team === "A" ? "rgba(0,255,180,0.90)" : team === "B" ? "rgba(255,120,120,0.90)" : "rgba(255,255,255,0.55)";
-
   const base: React.CSSProperties = {
     position: "absolute",
     left: `${p.x * 100}%`,
@@ -2116,9 +1996,7 @@ function liveCircle(
     cursor: "pointer",
     backdropFilter: "blur(2px)",
   };
-
   if (!highlight) return base;
-
   return {
     ...base,
     border: `3px solid rgba(240,177,42,0.95)`,
@@ -2134,10 +2012,7 @@ const liveSliderRow: React.CSSProperties = {
 };
 
 function liveSlider(theme: any): React.CSSProperties {
-  return {
-    width: "100%",
-    accentColor: "var(--gold, rgba(240,177,42,0.95))" as any,
-  };
+  return { width: "100%", accentColor: "var(--gold, rgba(240,177,42,0.95))" as any };
 }
 
 const heroGlow: React.CSSProperties = {
@@ -2150,7 +2025,8 @@ const heroGlow: React.CSSProperties = {
 };
 
 /*
-Ajoute UNE SEULE FOIS dans src/index.css :
+IMPORTANT:
+Ajoute l’animation radar une seule fois dans src/index.css :
 
 @keyframes dcRadarSpin {
   from { transform: translate(-50%,-50%) rotate(0deg); }
