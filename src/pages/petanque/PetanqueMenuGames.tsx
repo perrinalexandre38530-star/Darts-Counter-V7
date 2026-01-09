@@ -3,6 +3,8 @@
 // Menu Pétanque — même UX que src/pages/Games.tsx
 // ✅ Fix: handlers robustes (ne crash pas si InfoDot ne passe pas l'event)
 // ✅ Compat: accepte go(tab, params) OU setTab(tab) selon ton câblage
+// ✅ NEW: Quadrette (4v4) + Variantes (équipes impaires)
+// ✅ Compat routes: supporte "petanque.config" ET "petanque_config"
 // ============================================
 
 import React from "react";
@@ -17,7 +19,13 @@ type Props = {
   setTab?: (tab: any) => void;
 };
 
-type PetanqueModeId = "singles" | "doublette" | "triplette" | "training";
+type PetanqueModeId =
+  | "singles"
+  | "doublette"
+  | "triplette"
+  | "quadrette"
+  | "variants"
+  | "training";
 
 type ModeDef = {
   id: PetanqueModeId;
@@ -73,6 +81,33 @@ const MODES: ModeDef[] = [
     enabled: true,
   },
   {
+    id: "quadrette",
+    titleKey: "petanque.modes.quadrette.title",
+    titleDefault: "QUADRETTE (4v4)",
+    subtitleKey: "petanque.modes.quadrette.subtitle",
+    subtitleDefault: "Deux équipes de quatre joueurs (2 boules/joueur).",
+    infoTitleKey: "petanque.modes.quadrette.infoTitle",
+    infoTitleDefault: "Quadrette (4v4)",
+    infoBodyKey: "petanque.modes.quadrette.infoBody",
+    infoBodyDefault:
+      "Mode équipe 4 contre 4. Standard : 2 boules par joueur (8 boules par équipe).",
+    enabled: true,
+  },
+  {
+    id: "variants",
+    titleKey: "petanque.modes.variants.title",
+    titleDefault: "VARIANTES",
+    subtitleKey: "petanque.modes.variants.subtitle",
+    subtitleDefault:
+      "Équipes impaires (1v2, 2v3, 3v4…) avec compensation de boules.",
+    infoTitleKey: "petanque.modes.variants.infoTitle",
+    infoTitleDefault: "Variantes (équipes impaires)",
+    infoBodyKey: "petanque.modes.variants.infoBody",
+    infoBodyDefault:
+      "Presets 1v2 / 2v3 / 3v4 / 4v3… avec répartition automatique des boules par joueur et score cible ajustable.",
+    enabled: true,
+  },
+  {
     id: "training",
     titleKey: "petanque.modes.training.title",
     titleDefault: "ENTRAÎNEMENT",
@@ -97,23 +132,38 @@ export default function PetanqueMenuGames({ go, setTab }: Props) {
   const PAGE_BG = theme.bg;
   const CARD_BG = theme.card;
 
+  // ✅ routes compatibles avec tes 2 variantes ("petanque.config" / "petanque_config")
+  // - si ton App.tsx n’accepte que l’un des deux, garde celui qui compile chez toi.
+  const ROUTE_CONFIG_PRIMARY = "petanque.config";
+  const ROUTE_CONFIG_FALLBACK = "petanque_config";
+
   function navigate(mode: PetanqueModeId) {
-    // ✅ route cible : adapte ici si besoin
-    const tab = "petanque_config";
+    // Mapping id (UI) -> mode (store/config)
+    // - singles -> simple (store)
+    // - variants -> variants (store)
+    // - autres : identiques
+    const mappedMode =
+      mode === "singles" ? "simple" : mode === "variants" ? "variants" : mode;
 
     // Priorité à go() car permet les params
     if (typeof go === "function") {
-      go(tab as any, { mode });
-      return;
+      // tente d’abord la route "dot" (celle de ton snippet simple)
+      try {
+        go(ROUTE_CONFIG_PRIMARY as any, { mode: mappedMode });
+        return;
+      } catch {
+        // fallback vers route underscore
+        go(ROUTE_CONFIG_FALLBACK as any, { mode: mappedMode });
+        return;
+      }
     }
 
     // Fallback setTab() (sans params, donc moins bien)
     if (typeof setTab === "function") {
-      setTab(tab as any);
+      setTab(ROUTE_CONFIG_FALLBACK as any);
       return;
     }
 
-    // Dernier recours : log clair (évite “rien ne se passe” silencieux)
     console.error(
       "[PetanqueMenuGames] Aucun handler de navigation: props.go et props.setTab sont absents."
     );
@@ -230,7 +280,6 @@ export default function PetanqueMenuGames({ go, setTab }: Props) {
               >
                 <InfoDot
                   onClick={(ev: any) => {
-                    // ✅ NE JAMAIS CRASH si ev est undefined
                     ev?.stopPropagation?.();
                     setInfoMode(m);
                   }}

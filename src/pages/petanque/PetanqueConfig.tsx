@@ -2,13 +2,16 @@
 // src/pages/petanque/PetanqueConfig.tsx
 // Config Pétanque — UI calquée sur X01ConfigV3 (cards + carrousel + pills)
 // ✅ Sans BOTS IA
-// ✅ Équipes auto A/B selon le mode (1v1, 2v2, 3v3)
+// ✅ Équipes auto A/B selon le mode (1v1, 2v2, 3v3, 4v4)
+// ✅ NEW: HANDICAP/VARIANTES (équipes impaires) + presets
+// ✅ NEW: Boules/joueur auto (compensation) + score auto (selon total boules/équipe)
 // ✅ Params : score cible + mesurage autorisé
 // ✅ NEW : InfoDot "i" alignés à droite (score officiel / début officiel)
 // ✅ NEW : options départ (pile ou face / départ défini / boule la + proche amical)
 // ✅ NEW : ordre des joueurs (libre / défini)
 // ✅ NEW : rôles (Tireur / Pointeur 1 / Pointeur 2 / Polyvalent) indicatifs
 // ✅ CTA sticky "Démarrer la partie"
+// IMPORTANT: le bouton Démarrer fait : go("petanque.play", { cfg: config, mode: config.mode })
 // =============================================================
 
 import React from "react";
@@ -18,7 +21,14 @@ import { useLang } from "../../contexts/LangContext";
 import ProfileAvatar from "../../components/ProfileAvatar";
 import InfoDot from "../../components/InfoDot";
 
-type PetanqueModeId = "singles" | "doublette" | "triplette" | "training";
+type PetanqueModeId =
+  | "singles"
+  | "doublette"
+  | "triplette"
+  | "quadrette"
+  | "variants" // ton bouton "VARIANTES"
+  | "handicap" // support si jamais tu routes encore "handicap"
+  | "training";
 
 type Props = {
   store: Store;
@@ -28,22 +38,24 @@ type Props = {
 
 type TeamId = "A" | "B";
 
-// ✅ NEW: règles de départ / ordre
+// règles de départ / ordre
 type StartRule = "toss" | "fixedA" | "fixedB" | "closest_boule";
 type ThrowOrderRule = "free" | "fixed";
 
-// ✅ NEW: rôles indicatifs (ne force pas la logique de lancer)
+// rôles indicatifs
 type PlayerRole = "tireur" | "pointeur1" | "pointeur2" | "polyvalent";
+
+// presets variantes
+type VariantPresetKey = "1v2" | "2v3" | "3v4" | "4v3" | "3v2" | "2v1";
 
 type PetanqueConfigPayload = {
   id: string;
   mode: PetanqueModeId;
   createdAt: number;
 
-  targetScore: number; // ex: 13
+  targetScore: number;
   measurementAllowed: boolean;
 
-  // ✅ NEW
   startRule: StartRule;
   throwOrderRule: ThrowOrderRule;
   roles: Record<string, PlayerRole>;
@@ -53,6 +65,7 @@ type PetanqueConfigPayload = {
     name: string;
     color: string;
     playerIds: string[];
+    ballsPerPlayer?: number[]; // info (utile quadrette/variantes)
   }>;
 
   players: Array<{
@@ -60,50 +73,212 @@ type PetanqueConfigPayload = {
     name: string;
     avatarDataUrl?: string | null;
   }>;
+
+  variants?: {
+    teamASize: number;
+    teamBSize: number;
+    ballsPerPlayerA: number[];
+    ballsPerPlayerB: number[];
+    autoCompensation: boolean;
+    autoTargetScore: boolean;
+    ballsPerTeam: number;
+    preset?: VariantPresetKey;
+  };
 };
 
-// Tu laisses comme c'est (mais on explique via InfoDot)
-const TARGET_SCORES = [11, 13, 15, 21];
+// UI
+const TARGET_SCORES = [11, 13, 15, 21] as const;
 
 const TEAM_LABELS: Record<TeamId, string> = { A: "Équipe A", B: "Équipe B" };
-const TEAM_COLORS: Record<TeamId, string> = {
-  A: "#f7c85c",
-  B: "#ff4fa2",
-};
+const TEAM_COLORS: Record<TeamId, string> = { A: "#f7c85c", B: "#ff4fa2" };
 
-function requiredPlayers(mode: PetanqueModeId) {
+// ------------------------------------------------------------
+// Helpers règles joueurs / boules / score
+// ------------------------------------------------------------
+
+function requiredPlayersFixed(mode: PetanqueModeId) {
   if (mode === "singles") return 2;
   if (mode === "doublette") return 4;
   if (mode === "triplette") return 6;
-  return 1;
+  if (mode === "quadrette") return 8; // 4v4
+  return 1; // training / variants/handicap = variable
 }
+
+function clampInt(n: any, min: number, max: number) {
+  const v = Math.floor(Number(n) || 0);
+  return Math.max(min, Math.min(max, v));
+}
+
+function presetToSizes(k: VariantPresetKey): { a: number; b: number } {
+  switch (k) {
+    case "1v2":
+      return { a: 1, b: 2 };
+    case "2v3":
+      return { a: 2, b: 3 };
+    case "3v4":
+      return { a: 3, b: 4 };
+    case "4v3":
+      return { a: 4, b: 3 };
+    case "3v2":
+      return { a: 3, b: 2 };
+    case "2v1":
+      return { a: 2, b: 1 };
+    default:
+      return { a: 3, b: 2 };
+  }
+}
+
+/**
+ * Choix "propre" pour boules totales par équipe selon tailles.
+ * - si une équipe est à 4 -> on se cale sur 8 boules/équipe (quadrette / compat)
+ * - sinon on se cale sur 6 boules/équipe (simple/doublette/triplette)
+ */
+function ballsPerTeamForSizes(a: number, b: number) {
+  const mx = Math.max(a, b);
+  return mx >= 4 ? 8 : 6;
+}
+
+/**
+ * Répartit N boules sur teamSize joueurs (ex: 6 sur 2 => 3,3 ; 6 sur 3 => 2,2,2 ; 8 sur 3 => 3,3,2).
+ * Distribution déterministe (les premiers prennent le reste).
+ */
+function distributeBalls(total: number, teamSize: number): number[] {
+  const n = Math.max(1, teamSize);
+  const base = Math.floor(total / n);
+  let rem = total % n;
+  const out: number[] = [];
+  for (let i = 0; i < n; i++) {
+    out.push(base + (rem > 0 ? 1 : 0));
+    if (rem > 0) rem--;
+  }
+  return out;
+}
+
+/**
+ * Compensation: on force le même total de boules sur A et B
+ */
+function computeBalancedBalls(a: number, b: number) {
+  const ballsPerTeam = ballsPerTeamForSizes(a, b);
+  const ballsA = distributeBalls(ballsPerTeam, a);
+  const ballsB = distributeBalls(ballsPerTeam, b);
+  return { ballsPerTeam, ballsA, ballsB };
+}
+
+/**
+ * Score auto (heuristique simple et stable):
+ * - 6 boules/équipe => 13
+ * - 8 boules/équipe => 15 (un peu plus long, mais pas 21)
+ * - fallback => 13
+ */
+function targetScoreForBallsPerTeam(ballsPerTeam: number): number {
+  if (ballsPerTeam >= 8) return 15;
+  return 13;
+}
+
+function defaultBallsForMode(mode: PetanqueModeId, teamSize: number): number[] {
+  // Standard pétanque:
+  // - 1v1 / 2v2 : 3 boules/joueur (donc 6 boules/équipe)
+  // - 3v3 : 2 boules/joueur (donc 6 boules/équipe)
+  // - 4v4 : 2 boules/joueur (donc 8 boules/équipe)
+  if (mode === "triplette") return Array.from({ length: teamSize }, () => 2);
+  if (mode === "quadrette") return Array.from({ length: teamSize }, () => 2);
+  if (mode === "training") return Array.from({ length: Math.max(1, teamSize) }, () => 3);
+  return Array.from({ length: teamSize }, () => 3);
+}
+
+// ------------------------------------------------------------
 
 export default function PetanqueConfig({ store, go, params }: Props) {
   const { theme } = useTheme() as any;
   const { t } = useLang() as any;
 
-  const mode: PetanqueModeId = (params?.mode as PetanqueModeId) || "singles";
-  const need = requiredPlayers(mode);
+  // accepte "simple/doublette/..." venant du store ou "singles" etc.
+  const rawMode = (params?.mode as string) || "singles";
 
-  // ✅ Profils humains uniquement
+  // normalisation (robuste)
+  const mode: PetanqueModeId =
+    rawMode === "simple"
+      ? "singles"
+      : rawMode === "variants"
+      ? "variants"
+      : rawMode === "handicap"
+      ? "handicap"
+      : (rawMode as PetanqueModeId);
+
+  const isVariants = mode === "variants" || mode === "handicap";
+
+  // Profils humains uniquement
   const profiles: Profile[] = (store?.profiles || []).filter((p: any) => !(p as any).isBot);
 
-  // état
+  // -------------------------
+  // State variantes/handicap
+  // -------------------------
+  const [teamASizeState, setTeamASizeState] = React.useState<number>(3);
+  const [teamBSizeState, setTeamBSizeState] = React.useState<number>(2);
+  const [autoCompensation, setAutoCompensation] = React.useState<boolean>(true);
+  const [autoTargetScore, setAutoTargetScore] = React.useState<boolean>(true);
+  const [presetKey, setPresetKey] = React.useState<VariantPresetKey | null>("3v2");
+
+  const [ballsPerPlayerA, setBallsPerPlayerA] = React.useState<number[]>([2, 2, 2]);
+  const [ballsPerPlayerB, setBallsPerPlayerB] = React.useState<number[]>([3, 3]);
+  const [ballsPerTeam, setBallsPerTeam] = React.useState<number>(6);
+
+  // Besoin joueurs total
+  const need = React.useMemo(() => {
+    if (isVariants) return Math.max(1, teamASizeState) + Math.max(1, teamBSizeState);
+    return requiredPlayersFixed(mode);
+  }, [isVariants, mode, teamASizeState, teamBSizeState]);
+
+  // -------------------------
+  // Paramètres
+  // -------------------------
   const [targetScore, setTargetScore] = React.useState<number>(13);
   const [measurementAllowed, setMeasurementAllowed] = React.useState<boolean>(true);
-
-  // ✅ NEW: infos overlay (score / start) via InfoDot
   const [infoKey, setInfoKey] = React.useState<null | "score" | "start">(null);
-
-  // ✅ NEW: règles de départ / ordre
   const [startRule, setStartRule] = React.useState<StartRule>("toss");
   const [throwOrderRule, setThrowOrderRule] = React.useState<ThrowOrderRule>("free");
-
-  // ✅ NEW: rôles indicatifs
   const [roles, setRoles] = React.useState<Record<string, PlayerRole>>({});
 
-  const [selectedIds, setSelectedIds] = React.useState<string[]>(() => profiles.slice(0, need).map((p) => p.id));
+  // joueurs sélectionnés
+  const [selectedIds, setSelectedIds] = React.useState<string[]>(() =>
+    profiles.slice(0, need).map((p) => p.id)
+  );
 
+  // Init/reset quand le mode change
+  React.useEffect(() => {
+    if (mode === "quadrette") {
+      setTeamASizeState(4);
+      setTeamBSizeState(4);
+      setAutoCompensation(false);
+      setAutoTargetScore(false);
+      setPresetKey(null);
+      setBallsPerTeam(8);
+      setBallsPerPlayerA([2, 2, 2, 2]);
+      setBallsPerPlayerB([2, 2, 2, 2]);
+      // score: laisse l’utilisateur (13 par défaut)
+      return;
+    }
+
+    if (isVariants) {
+      // défaut = 3v2
+      const a = 3;
+      const b = 2;
+      setTeamASizeState(a);
+      setTeamBSizeState(b);
+      setAutoCompensation(true);
+      setAutoTargetScore(true);
+      setPresetKey("3v2");
+
+      const bal = computeBalancedBalls(a, b);
+      setBallsPerTeam(bal.ballsPerTeam);
+      setBallsPerPlayerA(bal.ballsA);
+      setBallsPerPlayerB(bal.ballsB);
+      setTargetScore(targetScoreForBallsPerTeam(bal.ballsPerTeam));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mode]);
+
+  // Sélection auto selon need
   React.useEffect(() => {
     setSelectedIds((prev) => {
       const uniq = Array.from(new Set(prev));
@@ -114,8 +289,9 @@ export default function PetanqueConfig({ store, go, params }: Props) {
       return [...take, ...pool.slice(0, Math.max(0, missing))];
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mode, need]);
+  }, [need, mode]);
 
+  // Nettoyage roles
   React.useEffect(() => {
     setRoles((prev) => {
       const keep = new Set(selectedIds.slice(0, need));
@@ -149,18 +325,54 @@ export default function PetanqueConfig({ store, go, params }: Props) {
   const canStart = React.useMemo(() => {
     if (mode === "training") return selectedIds.length === 1;
     return selectedIds.length === need;
-  }, [selectedIds.length, need, mode]);
+  }, [mode, selectedIds.length, need]);
+
+  // Tailles réelles équipes
+  const teamASize = isVariants ? clampInt(teamASizeState, 1, 4) : mode === "training" ? 1 : Math.floor(need / 2);
+  const teamBSize = mode === "training" ? 0 : isVariants ? clampInt(teamBSizeState, 1, 4) : need - Math.floor(need / 2);
+
+  function recalcVariants(a: number, b: number, nextAutoComp = autoCompensation, nextAutoScore = autoTargetScore) {
+    if (!nextAutoComp) return;
+    const bal = computeBalancedBalls(a, b);
+    setBallsPerTeam(bal.ballsPerTeam);
+    setBallsPerPlayerA(bal.ballsA);
+    setBallsPerPlayerB(bal.ballsB);
+    if (nextAutoScore) setTargetScore(targetScoreForBallsPerTeam(bal.ballsPerTeam));
+  }
+
+  function applyPreset(k: VariantPresetKey) {
+    const { a, b } = presetToSizes(k);
+    setPresetKey(k);
+    setTeamASizeState(a);
+    setTeamBSizeState(b);
+    // presets = on force l’auto-comp
+    setAutoCompensation(true);
+    recalcVariants(a, b, true, autoTargetScore);
+  }
 
   const teams = React.useMemo(() => {
-    const aCount = Math.floor(need / 2);
+    const aCount = teamASize;
+    const bCount = teamBSize;
+
     const a = selectedIds.slice(0, aCount);
-    const b = selectedIds.slice(aCount, need);
+    const b = selectedIds.slice(aCount, aCount + bCount);
+
+    let ballsA: number[] | undefined;
+    let ballsB: number[] | undefined;
+
+    if (isVariants) {
+      ballsA = ballsPerPlayerA.slice(0, aCount);
+      ballsB = ballsPerPlayerB.slice(0, bCount);
+    } else if (mode !== "training") {
+      ballsA = defaultBallsForMode(mode, aCount);
+      ballsB = defaultBallsForMode(mode, bCount);
+    }
 
     return [
-      { id: "A" as TeamId, name: TEAM_LABELS.A, color: TEAM_COLORS.A, playerIds: a },
-      { id: "B" as TeamId, name: TEAM_LABELS.B, color: TEAM_COLORS.B, playerIds: b },
+      { id: "A" as TeamId, name: TEAM_LABELS.A, color: TEAM_COLORS.A, playerIds: a, ballsPerPlayer: ballsA },
+      { id: "B" as TeamId, name: TEAM_LABELS.B, color: TEAM_COLORS.B, playerIds: b, ballsPerPlayer: ballsB },
     ];
-  }, [selectedIds, need]);
+  }, [selectedIds, teamASize, teamBSize, mode, isVariants, ballsPerPlayerA, ballsPerPlayerB]);
 
   function handleStart() {
     if (!canStart) {
@@ -171,7 +383,7 @@ export default function PetanqueConfig({ store, go, params }: Props) {
       );
       return;
     }
-  
+
     const players = selectedIds
       .slice(0, need)
       .map((id) => profiles.find((p) => p.id === id))
@@ -181,8 +393,8 @@ export default function PetanqueConfig({ store, go, params }: Props) {
         name: p.name,
         avatarDataUrl: p.avatarDataUrl ?? null,
       }));
-  
-    const cfg: PetanqueConfigPayload = {
+
+    const config: PetanqueConfigPayload = {
       id: `petanque-${Date.now()}`,
       mode,
       createdAt: Date.now(),
@@ -193,12 +405,22 @@ export default function PetanqueConfig({ store, go, params }: Props) {
       roles,
       teams,
       players,
+      variants: isVariants
+        ? {
+            teamASize,
+            teamBSize,
+            ballsPerPlayerA: ballsPerPlayerA.slice(0, teamASize),
+            ballsPerPlayerB: ballsPerPlayerB.slice(0, teamBSize),
+            autoCompensation,
+            autoTargetScore,
+            ballsPerTeam,
+            preset: presetKey ?? undefined,
+          }
+        : undefined,
     };
-  
-    // ✅ SAFE: on force une route legacy (stable) + un token fresh
-    // - "petanque.play" est déjà dans ton switch App.tsx
-    // - fresh permet de forcer un re-mount côté Play si nécessaire
-    go("petanque.play" as any, { mode, cfg, fresh: Date.now() });
+
+    // ✅ IMPORTANT: route demandée
+    go("petanque.play" as any, { cfg: config, mode: config.mode });
   }
 
   const primary = theme?.primary ?? "#f7c85c";
@@ -206,7 +428,6 @@ export default function PetanqueConfig({ store, go, params }: Props) {
   const textMain = theme?.text ?? "#f5f5ff";
   const cardBg = "rgba(10, 12, 24, 0.96)";
 
-  // ✅ helper: ligne de label avec InfoDot aligné à droite
   function LabelRow({
     label,
     info,
@@ -295,9 +516,160 @@ export default function PetanqueConfig({ store, go, params }: Props) {
             border: "1px solid rgba(255,255,255,0.05)",
           }}
         >
-          <div style={{ fontSize: 12, textTransform: "uppercase", letterSpacing: 1, fontWeight: 700, color: primary, marginBottom: 10 }}>
+          <div
+            style={{
+              fontSize: 12,
+              textTransform: "uppercase",
+              letterSpacing: 1,
+              fontWeight: 700,
+              color: primary,
+              marginBottom: 10,
+            }}
+          >
             {t("petanque.config.players", "Joueurs")}
           </div>
+
+          {/* VARIANTES / HANDICAP */}
+          {isVariants && (
+            <div
+              style={{
+                marginBottom: 14,
+                padding: 12,
+                borderRadius: 14,
+                border: "1px solid rgba(255,255,255,0.08)",
+                background: "rgba(255,255,255,0.035)",
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 8 }}>
+                <div style={{ fontSize: 12, fontWeight: 900, letterSpacing: 0.9, textTransform: "uppercase", color: primary }}>
+                  {t("petanque.variants.title", "Variantes (équipes impaires)")}
+                </div>
+                <div style={{ fontSize: 11, color: "#9ea3bf" }}>
+                  {t("petanque.variants.hint", "Presets + compensation boules")}
+                </div>
+              </div>
+
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 10 }}>
+                {(["1v2", "2v3", "3v4", "4v3", "3v2", "2v1"] as VariantPresetKey[]).map((k) => (
+                  <button
+                    key={k}
+                    type="button"
+                    onClick={() => applyPreset(k)}
+                    style={{
+                      padding: "8px 10px",
+                      borderRadius: 12,
+                      border: presetKey === k ? `1px solid ${primary}` : "1px solid rgba(255,255,255,0.12)",
+                      background: presetKey === k ? primarySoft : "rgba(9,11,20,0.85)",
+                      color: "#e9ecff",
+                      fontWeight: 900,
+                      fontSize: 11,
+                      letterSpacing: 0.9,
+                      cursor: "pointer",
+                      textTransform: "uppercase",
+                    }}
+                  >
+                    {k}
+                  </button>
+                ))}
+              </div>
+
+              <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", marginBottom: 10 }}>
+                <label style={{ display: "flex", gap: 8, alignItems: "center", fontSize: 12, color: "#d0d3ea" }}>
+                  <input
+                    type="checkbox"
+                    checked={autoCompensation}
+                    onChange={(e) => {
+                      const next = e.target.checked;
+                      setAutoCompensation(next);
+                      if (next) recalcVariants(teamASizeState, teamBSizeState, true, autoTargetScore);
+                    }}
+                  />
+                  {t("petanque.variants.autoComp", "Auto compensation (boules)")}
+                </label>
+
+                <label style={{ display: "flex", gap: 8, alignItems: "center", fontSize: 12, color: "#d0d3ea" }}>
+                  <input
+                    type="checkbox"
+                    checked={autoTargetScore}
+                    onChange={(e) => {
+                      const next = e.target.checked;
+                      setAutoTargetScore(next);
+                      if (next && autoCompensation) recalcVariants(teamASizeState, teamBSizeState, true, true);
+                    }}
+                  />
+                  {t("petanque.variants.autoScore", "Score auto (selon boules/équipe)")}
+                </label>
+              </div>
+
+              <div style={{ display: "flex", gap: 10 }}>
+                <label style={{ flex: 1, fontSize: 12, color: "#c8cbe4" }}>
+                  {t("petanque.variants.sizeA", "Taille Équipe A")}
+                  <select
+                    value={teamASizeState}
+                    onChange={(e) => {
+                      const a = clampInt(e.target.value, 1, 4);
+                      setTeamASizeState(a);
+                      setPresetKey(null);
+                      recalcVariants(a, teamBSizeState);
+                    }}
+                    style={{
+                      width: "100%",
+                      marginTop: 6,
+                      padding: "8px 10px",
+                      borderRadius: 12,
+                      border: "1px solid rgba(255,255,255,0.10)",
+                      background: "rgba(9,11,20,0.85)",
+                      color: "#e9ecff",
+                      outline: "none",
+                    }}
+                  >
+                    <option value={1}>1</option>
+                    <option value={2}>2</option>
+                    <option value={3}>3</option>
+                    <option value={4}>4</option>
+                  </select>
+                </label>
+
+                <label style={{ flex: 1, fontSize: 12, color: "#c8cbe4" }}>
+                  {t("petanque.variants.sizeB", "Taille Équipe B")}
+                  <select
+                    value={teamBSizeState}
+                    onChange={(e) => {
+                      const b = clampInt(e.target.value, 1, 4);
+                      setTeamBSizeState(b);
+                      setPresetKey(null);
+                      recalcVariants(teamASizeState, b);
+                    }}
+                    style={{
+                      width: "100%",
+                      marginTop: 6,
+                      padding: "8px 10px",
+                      borderRadius: 12,
+                      border: "1px solid rgba(255,255,255,0.10)",
+                      background: "rgba(9,11,20,0.85)",
+                      color: "#e9ecff",
+                      outline: "none",
+                    }}
+                  >
+                    <option value={1}>1</option>
+                    <option value={2}>2</option>
+                    <option value={3}>3</option>
+                    <option value={4}>4</option>
+                  </select>
+                </label>
+              </div>
+
+              <div style={{ marginTop: 10, fontSize: 11, color: "#9ea3bf" }}>
+                {t("petanque.variants.ballsTeam", "Boules / équipe")} :{" "}
+                <b style={{ color: "#e9ecff" }}>{ballsPerTeam}</b>{" "}
+                <span style={{ opacity: 0.9 }}>•</span>{" "}
+                {t("petanque.variants.ballsPlayer", "Boules / joueur")} — A:{" "}
+                <b style={{ color: "#e9ecff" }}>{ballsPerPlayerA.slice(0, teamASizeState).join("-") || "-"}</b>{" "}
+                | B:{" "}
+                <b style={{ color: "#e9ecff" }}>{ballsPerPlayerB.slice(0, teamBSizeState).join("-") || "-"}</b>
+              </div>
+            </div>
+          )}
 
           {profiles.length === 0 ? (
             <p style={{ fontSize: 13, color: "#b3b8d0", marginBottom: 8 }}>
@@ -325,8 +697,7 @@ export default function PetanqueConfig({ store, go, params }: Props) {
                   if (mode !== "training") {
                     const idx = selectedIds.indexOf(p.id);
                     if (idx >= 0) {
-                      const aCount = Math.floor(need / 2);
-                      halo = idx < aCount ? TEAM_COLORS.A : TEAM_COLORS.B;
+                      halo = idx < teamASize ? TEAM_COLORS.A : TEAM_COLORS.B;
                     }
                   }
 
@@ -403,7 +774,7 @@ export default function PetanqueConfig({ store, go, params }: Props) {
                               letterSpacing: 0.7,
                               textTransform: "uppercase",
                               background:
-                                selectedIds.indexOf(p.id) < Math.floor(need / 2)
+                                selectedIds.indexOf(p.id) < teamASize
                                   ? `radial-gradient(circle at 30% 0, ${TEAM_COLORS.A}, #ffe9a3)`
                                   : `radial-gradient(circle at 30% 0, ${TEAM_COLORS.B}, #ffd1e6)`,
                               color: "#020611",
@@ -412,7 +783,7 @@ export default function PetanqueConfig({ store, go, params }: Props) {
                               whiteSpace: "nowrap",
                             }}
                           >
-                            {selectedIds.indexOf(p.id) < Math.floor(need / 2) ? "A" : "B"}
+                            {selectedIds.indexOf(p.id) < teamASize ? "A" : "B"}
                           </span>
                         </div>
                       )}
@@ -445,7 +816,7 @@ export default function PetanqueConfig({ store, go, params }: Props) {
             {t("petanque.config.params", "Paramètres")}
           </h3>
 
-          {/* Score cible + InfoDot à droite */}
+          {/* Score cible */}
           <div style={{ marginBottom: 12 }}>
             <LabelRow label={t("petanque.config.targetScore", "Score cible")} info onInfo={() => setInfoKey("score")} />
             <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
@@ -470,10 +841,9 @@ export default function PetanqueConfig({ store, go, params }: Props) {
             </div>
           </div>
 
-          {/* Début de partie + InfoDot à droite */}
+          {/* Début de partie */}
           <div style={{ marginTop: 10, paddingTop: 10, borderTop: "1px solid rgba(255,255,255,0.06)" }}>
             <LabelRow label={t("petanque.config.startRule", "Début de partie")} info onInfo={() => setInfoKey("start")} />
-
             <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
               <PillButton
                 label={t("petanque.config.start.toss", "Pile ou face (officiel)")}
@@ -509,7 +879,7 @@ export default function PetanqueConfig({ store, go, params }: Props) {
             </div>
           </div>
 
-          {/* Ordre des joueurs */}
+          {/* Ordre */}
           <div style={{ marginTop: 12, paddingTop: 10, borderTop: "1px solid rgba(255,255,255,0.06)" }}>
             <LabelRow label={t("petanque.config.throwOrder", "Ordre des joueurs")} />
             <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
@@ -564,7 +934,7 @@ export default function PetanqueConfig({ store, go, params }: Props) {
           </div>
         </section>
 
-        {/* RÔLES (indicatif) */}
+        {/* RÔLES */}
         {canStart && (
           <section
             style={{
@@ -642,68 +1012,93 @@ export default function PetanqueConfig({ store, go, params }: Props) {
             </h3>
 
             <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-              {teams.map((tm) => (
-                <div
-                  key={tm.id}
-                  style={{
-                    flex: "1 1 160px",
-                    borderRadius: 14,
-                    border: "1px solid rgba(255,255,255,0.08)",
-                    background: "rgba(255,255,255,0.04)",
-                    padding: 10,
-                  }}
-                >
-                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
-                    <div style={{ fontWeight: 900, color: tm.color, letterSpacing: 0.8, textTransform: "uppercase", fontSize: 12 }}>
-                      {tm.name}
+              {teams.map((tm) => {
+                const expected = tm.id === "A" ? teamASize : teamBSize;
+
+                return (
+                  <div
+                    key={tm.id}
+                    style={{
+                      flex: "1 1 160px",
+                      borderRadius: 14,
+                      border: "1px solid rgba(255,255,255,0.08)",
+                      background: "rgba(255,255,255,0.04)",
+                      padding: 10,
+                    }}
+                  >
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
+                      <div style={{ fontWeight: 900, color: tm.color, letterSpacing: 0.8, textTransform: "uppercase", fontSize: 12 }}>
+                        {tm.name}
+                      </div>
+                      <span
+                        style={{
+                          padding: "2px 8px",
+                          borderRadius: 999,
+                          border: `1px solid ${tm.color}88`,
+                          background: "rgba(0,0,0,0.25)",
+                          color: "#fff",
+                          fontWeight: 800,
+                          fontSize: 11,
+                        }}
+                      >
+                        {tm.playerIds.length} / {expected}
+                      </span>
                     </div>
-                    <span
-                      style={{
-                        padding: "2px 8px",
-                        borderRadius: 999,
-                        border: `1px solid ${tm.color}88`,
-                        background: "rgba(0,0,0,0.25)",
-                        color: "#fff",
-                        fontWeight: 800,
-                        fontSize: 11,
-                      }}
-                    >
-                      {tm.playerIds.length} / {Math.floor(need / 2)}
-                    </span>
-                  </div>
 
-                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                    {tm.playerIds.map((pid) => {
-                      const p = profiles.find((x) => x.id === pid);
-                      if (!p) return null;
-                      const role = roles[pid] ?? "polyvalent";
-                      const roleLabel = role === "tireur" ? "T" : role === "pointeur1" ? "P1" : role === "pointeur2" ? "P2" : "↔";
+                    <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                      {tm.playerIds.map((pid, idx) => {
+                        const p = profiles.find((x) => x.id === pid);
+                        if (!p) return null;
 
-                      return (
-                        <div key={pid} style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                          <ProfileAvatar profile={p} size={26} />
-                          <span style={{ fontSize: 12, fontWeight: 700, color: "#e9ecff" }}>{p.name}</span>
-                          <span
-                            style={{
-                              marginLeft: 2,
-                              padding: "2px 6px",
-                              borderRadius: 999,
-                              fontSize: 10,
-                              fontWeight: 900,
-                              border: "1px solid rgba(255,255,255,0.16)",
-                              background: "rgba(0,0,0,0.25)",
-                              color: "#fff",
-                            }}
-                            title="Rôle indicatif"
-                          >
-                            {roleLabel}
-                          </span>
-                        </div>
-                      );
-                    })}
+                        const role = roles[pid] ?? "polyvalent";
+                        const roleLabel = role === "tireur" ? "T" : role === "pointeur1" ? "P1" : role === "pointeur2" ? "P2" : "↔";
+                        const balls = tm.ballsPerPlayer?.[idx];
+
+                        return (
+                          <div key={pid} style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                            <ProfileAvatar profile={p} size={26} />
+                            <span style={{ fontSize: 12, fontWeight: 700, color: "#e9ecff" }}>{p.name}</span>
+
+                            <span
+                              style={{
+                                marginLeft: 2,
+                                padding: "2px 6px",
+                                borderRadius: 999,
+                                fontSize: 10,
+                                fontWeight: 900,
+                                border: "1px solid rgba(255,255,255,0.16)",
+                                background: "rgba(0,0,0,0.25)",
+                                color: "#fff",
+                              }}
+                              title="Rôle indicatif"
+                            >
+                              {roleLabel}
+                            </span>
+
+                            {typeof balls === "number" && (
+                              <span
+                                style={{
+                                  marginLeft: 2,
+                                  padding: "2px 6px",
+                                  borderRadius: 999,
+                                  fontSize: 10,
+                                  fontWeight: 900,
+                                  border: "1px solid rgba(255,255,255,0.14)",
+                                  background: "rgba(255,255,255,0.06)",
+                                  color: "#e9ecff",
+                                }}
+                                title="Boules / joueur"
+                              >
+                                {balls}B
+                              </span>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </section>
         )}
@@ -737,7 +1132,7 @@ export default function PetanqueConfig({ store, go, params }: Props) {
         </div>
       </div>
 
-      {/* Overlay infos (InfoDot) */}
+      {/* Overlay infos */}
       {infoKey && (
         <div
           onClick={() => setInfoKey(null)}
@@ -770,9 +1165,11 @@ export default function PetanqueConfig({ store, go, params }: Props) {
                   Score officiel
                 </div>
                 <div style={{ fontSize: 13, color: theme?.textSoft ?? "#cfd2e8", lineHeight: 1.35 }}>
-                  En compétition, une partie se joue en général en <b>13 points</b>. Certains formats (poules / cadrages)
-                  peuvent être joués en <b>11 points</b> selon l’organisation. Les autres valeurs relèvent surtout d’usages
-                  amicaux / locaux.
+                  En compétition, une partie se joue en général en <b>13 points</b>. Certains formats peuvent être joués en{" "}
+                  <b>11</b>. Les autres valeurs sont surtout pour l’amical.
+                  <br />
+                  <br />
+                  En <b>Variantes</b>, tu peux activer “Score auto” (basé sur le total de boules/équipe) puis ajuster si besoin.
                 </div>
               </>
             )}

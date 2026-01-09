@@ -16,6 +16,7 @@
 
 import React from "react";
 import { useTheme } from "../../contexts/ThemeContext";
+
 import {
   addEnd,
   loadPetanqueState,
@@ -27,11 +28,11 @@ import {
   undoLastMeasurement,
 } from "../../lib/petanqueStore";
 
+// ✅ NEW: Config store (Mesurage autorisé + fallback)
+import { loadPetanqueConfig } from "../../lib/petanqueConfigStore";
+
 // ✅ NEW: OpenCV loader (LIVE auto-detect)
 import { loadOpenCv } from "../../lib/vision/opencv";
-
-// ✅ NEW: Config store (Mesurage autorisé)
-import { loadPetanqueConfig } from "../../lib/petanqueConfigStore";
 
 type Props = {
   go: (tab: any, params?: any) => void;
@@ -55,20 +56,16 @@ export default function PetanquePlay({ go, params }: Props) {
   // ✅ MESURAGE (sheet)
   // ==========================
   const [measureOpen, setMeasureOpen] = React.useState(false);
-  const [measureMode, setMeasureMode] = React.useState<MeasureMode>("manual");
+  const [mode, setMode] = React.useState<MeasureMode>("manual");
 
-  // ✅ NEW: respect “Mesurage autorisé”
-  // - priorité au cfg passé depuis PetanqueConfig (params.cfg)
-  // - fallback sur loadPetanqueConfig() si tu l’utilises encore ailleurs
-  const cfgFromStorage = loadPetanqueConfig?.() as any;
-  const effectiveCfg = (matchCfg ?? cfgFromStorage) as any;
+  // ✅ Mesurage autorisé : priorité params.cfg, sinon localStorage
+  const cfgFromParams = params?.cfg ?? null;
+  const cfgFromStorage = (typeof loadPetanqueConfig === "function" ? loadPetanqueConfig() : null) as any;
+  const effectiveCfg = (cfgFromParams ?? cfgFromStorage) as any;
 
-  const allowMeasurements: boolean =
-    (effectiveCfg?.measurementAllowed ??
-      effectiveCfg?.options?.allowMeasurements ??
-      true) === true;
+  const allowMeasurements: boolean = (effectiveCfg?.options?.allowMeasurements ?? true) === true;
 
-  // ✅ safety: si mesurage interdit, on ferme le sheet si ouvert
+  // si interdit : ferme le sheet
   React.useEffect(() => {
     if (!allowMeasurements && measureOpen) setMeasureOpen(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -759,7 +756,7 @@ export default function PetanquePlay({ go, params }: Props) {
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
           <div style={title(theme)}>PÉTANQUE</div>
 
-          {/* ✅ NEW: bouton Mesurer seulement si autorisé */}
+          {/* ✅ Cache le bouton “Mesurer” si interdit */}
           {allowMeasurements && (
             <button className="btn primary" style={chipBtn(theme)} onClick={() => setMeasureOpen(true)}>
               Mesurer
@@ -917,7 +914,7 @@ export default function PetanquePlay({ go, params }: Props) {
         )}
       </div>
 
-      {/* ✅ SHEET MESURAGE */}
+      {/* ✅ Empêche le rendu du sheet si interdit */}
       {allowMeasurements && measureOpen && (
         <div style={overlay}>
           <div className="card" style={sheet(theme)}>
@@ -1076,11 +1073,7 @@ export default function PetanquePlay({ go, params }: Props) {
 
                   <div className="subtitle" style={muted(theme)}>
                     Clic image ={" "}
-                    {calArm
-                      ? `Calibration ${calArm}`
-                      : !pCochonnet
-                      ? "Définir cochonnet (C)"
-                      : `Ajouter boule (${addSide})`}
+                    {calArm ? `Calibration ${calArm}` : !pCochonnet ? "Définir cochonnet (C)" : `Ajouter boule (${addSide})`}
                   </div>
                 </div>
 
@@ -1135,11 +1128,7 @@ export default function PetanquePlay({ go, params }: Props) {
                 {imgUrl ? (
                   <div style={imgWrap(theme)}>
                     <div className="subtitle" style={imgHint(theme)}>
-                      {calArm
-                        ? `Calibration: clique le point ${calArm}`
-                        : !pCochonnet
-                        ? "Clique le cochonnet (C)."
-                        : `Clique pour ajouter une boule (${addSide}).`}
+                      {calArm ? `Calibration: clique le point ${calArm}` : !pCochonnet ? "Clique le cochonnet (C)." : `Clique pour ajouter une boule (${addSide}).`}
                     </div>
 
                     <div style={imgClickArea} onClick={onPhotoClick} onMouseMove={onPhotoMove}>
@@ -1202,18 +1191,11 @@ export default function PetanquePlay({ go, params }: Props) {
                     <div style={resultBox(theme, winnerPhoto)}>
                       {minA_photo == null || minB_photo == null
                         ? "Ajoute au moins 1 boule A et 1 boule B pour comparer."
-                        : `Plus proche A: ${minA_photo.toFixed(pxPerCm ? 1 : 0)} ${
-                            pxPerCm ? "cm" : "px"
-                          } — B: ${minB_photo.toFixed(pxPerCm ? 1 : 0)} ${pxPerCm ? "cm" : "px"}`}
+                        : `Plus proche A: ${minA_photo.toFixed(pxPerCm ? 1 : 0)} ${pxPerCm ? "cm" : "px"} — B: ${minB_photo.toFixed(pxPerCm ? 1 : 0)} ${pxPerCm ? "cm" : "px"}`}
                     </div>
 
                     <div style={row}>
-                      <button
-                        className="btn primary"
-                        style={primary(theme)}
-                        onClick={onSavePhoto}
-                        disabled={minA_photo == null || minB_photo == null}
-                      >
+                      <button className="btn primary" style={primary(theme)} onClick={onSavePhoto} disabled={minA_photo == null || minB_photo == null}>
                         Enregistrer (photo)
                       </button>
                       <button className="btn ghost" style={ghost(theme)} onClick={() => setPCochonnet(null)} disabled={!pCochonnet}>
@@ -1230,8 +1212,7 @@ export default function PetanquePlay({ go, params }: Props) {
             ) : (
               <>
                 <div className="subtitle" style={hint(theme)}>
-                  LIVE Auto Radar : cadre le cochonnet au centre (mire). L’app détecte des cercles (boules) et entoure
-                  la plus proche en direct. En mode auto, clique sur les cercles pour les assigner à A/B.
+                  LIVE Auto Radar : cadre le cochonnet au centre (mire). L’app détecte des cercles (boules) et entoure la plus proche en direct. En mode auto, clique sur les cercles pour les assigner à A/B.
                 </div>
 
                 <div style={row}>
@@ -1378,8 +1359,7 @@ export default function PetanquePlay({ go, params }: Props) {
                   </div>
 
                   <div className="subtitle" style={muted(theme)}>
-                    Astuce: trop de faux cercles → augmente Param2. Aucune boule détectée → baisse Param2 ou ajuste les
-                    rayons. ROI réduit = plus stable/rapide.
+                    Astuce: trop de faux cercles → augmente Param2. Aucune boule détectée → baisse Param2 ou ajuste les rayons. ROI réduit = plus stable/rapide.
                   </div>
                 </div>
 
@@ -1438,9 +1418,7 @@ export default function PetanquePlay({ go, params }: Props) {
                     </div>
                     <div className="subtitle" style={muted(theme)}>
                       {autoOn
-                        ? `cercles: ${circles.length} — assignés A:${Object.values(circleTeam).filter((v) => v === "A").length} / B:${
-                            Object.values(circleTeam).filter((v) => v === "B").length
-                          }`
+                        ? `cercles: ${circles.length} — assignés A:${Object.values(circleTeam).filter((v) => v === "A").length} / B:${Object.values(circleTeam).filter((v) => v === "B").length}`
                         : `A:${liveA.length} / B:${liveB.length}`}
                     </div>
                   </div>
@@ -1450,13 +1428,7 @@ export default function PetanquePlay({ go, params }: Props) {
                       <>
                         Auto: A={autoMinA == null ? "—" : autoMinA.toFixed(4)} / B={autoMinB == null ? "—" : autoMinB.toFixed(4)}
                         {" — "}
-                        {autoWinner == null
-                          ? "Assigne au moins 1 boule A et 1 boule B"
-                          : autoWinner === "TIE"
-                          ? "Égalité"
-                          : autoWinner === "A"
-                          ? st.teamA
-                          : st.teamB}
+                        {autoWinner == null ? "Assigne au moins 1 boule A et 1 boule B" : autoWinner === "TIE" ? "Égalité" : autoWinner === "A" ? st.teamA : st.teamB}
                         {" — "}
                         Plus proche détectée: {nearestIdx == null ? "—" : `#${nearestIdx + 1}`}
                       </>
