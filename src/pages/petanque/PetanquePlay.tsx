@@ -441,249 +441,291 @@ export default function PetanquePlay({ go, params }: Props) {
     return autoMinA < autoMinB ? "A" : "B";
   }, [autoMinA, autoMinB, tolN]);
 
-  // ==========================
-  // ✅ AUTO-DETECT LOOP (OpenCV) — PRO (ROI + anti-sauts + sliders + pause)
-  // ✅ FIX FREEZE: anti-overlap + raf+throttle + ROI canvas reuse + cleanup
-  // ==========================
+// ==========================
+// ✅ AUTO-DETECT LOOP (OpenCV) — PRO (ROI + anti-sauts + sliders + pause)
+// ✅ FIX FREEZE:
+// - Ne charge OpenCV QUE si caméra ON + onglet LIVE + sheet ouvert + autoOn
+// - Attend video ready (videoWidth/videoHeight)
+// - Charge WASM en idle (évite le pic qui freeze)
+// - RAF non-async + throttle + anti-overlap + cleanup
+// ==========================
 
-  React.useEffect(() => {
-    // IMPORTANT PERF/UX:
-    // - On ne charge OpenCV et on ne lance la boucle RAF QUE quand le sheet est ouvert
-    //   ET que l'utilisateur est sur l'onglet LIVE.
-    if (!measureOpen) return;
-    if (mode !== "live") return;
+React.useEffect(() => {
+  // On ne fait RIEN tant que:
+  // - sheet pas ouvert
+  // - pas sur l'onglet live
+  // - autoOff
+  // - caméra pas démarrée
+  if (!measureOpen) return;
+  if (mode !== "live") return;
+  if (!autoOn) return;
+  if (!liveOn) return; // ✅ IMPORTANT: évite de charger OpenCV dès l'ouverture du tab
+
+  let alive = true;
+  let cv: any = null;
+
+  let raf = 0;
+  let busy = false;
+
+  const TICK_MS = 220;
+  let lastTick = 0;
+
+  // ROI canvas réutilisé
+  const roiCanvas = document.createElement("canvas");
+  const roiCtx = roiCanvas.getContext("2d", { willReadFrequently: true });
+
+  const ema = (prev: number, next: number, a: number) => prev * (1 - a) + next * a;
+  const clamp01 = (v: number) => Math.max(0, Math.min(1, v));
+
+  const dist = (a: { x: number; y: number }, b: { x: number; y: number }) => {
+    const dx = a.x - b.x;
+    const dy = a.y - b.y;
+    return Math.sqrt(dx * dx + dy * dy);
+  };
+
+  // ✅ Attendre que la vidéo soit réellement prête
+  const waitVideoReady = async () => {
+    const video = videoRef.current;
+    if (!video) return false;
+
+    // si déjà prêt
+    if (video.videoWidth > 0 && video.videoHeight > 0) return true;
+
+    // sinon attendre un évènement "loadedmetadata" / "playing"
+    await new Promise<void>((resolve) => {
+      let done = false;
+      const finish = () => {
+        if (done) return;
+        done = true;
+        resolve();
+      };
+      const t = window.setTimeout(finish, 1200); // safety
+      video.addEventListener("loadedmetadata", finish, { once: true });
+      video.addEventListener("playing", finish, { once: true });
+      // cleanup timeout in finish
+      const origFinish = finish;
+      (finish as any) = () => {
+        window.clearTimeout(t);
+        origFinish();
+      };
+    });
+
+    return !!(video.videoWidth > 0 && video.videoHeight > 0);
+  };
+
+  const step = () => {
+    if (!alive) return;
     if (!autoOn) return;
+    if (!liveOn) return;
+    if (livePaused) return;
+    if (busy) return;
 
-    let alive = true;
-    let cv: any = null;
+    const now = performance.now();
+    if (now - lastTick < TICK_MS) return;
+    lastTick = now;
 
-    // ✅ anti-overlap
-    let busy = false;
+    const video = videoRef.current;
+    const canvas = canvasRef.current;
+    if (!video || !canvas || !roiCtx || !cv) return;
 
-    // ✅ throttle
-    const TICK_MS = 220; // ~4-5fps, stable (évite le gel)
-    let lastTick = 0;
+    const w = video.videoWidth;
+    const h = video.videoHeight;
+    if (!w || !h) return;
 
-    // ✅ ROI canvas réutilisé
-    const roiCanvas = document.createElement("canvas");
-    const roiCtx = roiCanvas.getContext("2d", { willReadFrequently: true });
+    busy = true;
+    try {
+      // downscale for perf
+      const targetW = 520;
+      const scale = targetW / w;
+      const cw = Math.max(240, Math.floor(w * scale));
+      const ch = Math.max(160, Math.floor(h * scale));
 
-    const ema = (prev: number, next: number, a: number) => prev * (1 - a) + next * a;
+      // ROI centered
+      const roi = Math.max(0.4, Math.min(1, roiPct));
+      const rw = Math.floor(cw * roi);
+      const rh = Math.floor(ch * roi);
+      const rx = Math.floor((cw - rw) / 2);
+      const ry = Math.floor((ch - rh) / 2);
 
-    const dist = (a: { x: number; y: number }, b: { x: number; y: number }) => {
-      const dx = a.x - b.x;
-      const dy = a.y - b.y;
-      return Math.sqrt(dx * dx + dy * dy);
-    };
+      canvas.width = cw;
+      canvas.height = ch;
 
-    const step = async () => {
-      if (!alive) return;
-      if (!autoOn) return;
-      if (!liveOn) return;
-      if (livePaused) return;
-      if (busy) return;
+      const ctx = canvas.getContext("2d", { willReadFrequently: true });
+      if (!ctx) return;
 
-      // ✅ si plus de stream (caméra stoppée entre-temps) => on sort
-      if (!streamRef.current) return;
+      ctx.drawImage(video, 0, 0, cw, ch);
 
-      const now = performance.now();
-      if (now - lastTick < TICK_MS) return;
-      lastTick = now;
+      // ROI canvas (reuse)
+      roiCanvas.width = rw;
+      roiCanvas.height = rh;
+      roiCtx.clearRect(0, 0, rw, rh);
+      roiCtx.drawImage(canvas, rx, ry, rw, rh, 0, 0, rw, rh);
 
-      const video = videoRef.current;
-      const canvas = canvasRef.current;
-      if (!video || !canvas || !roiCtx) return;
+      // OpenCV: gray + blur + HoughCircles on ROI
+      const src = cv.imread(roiCanvas);
+      const gray = new cv.Mat();
+      const out = new cv.Mat();
 
-      const w = video.videoWidth;
-      const h = video.videoHeight;
-      if (!w || !h) return;
-
-      busy = true;
       try {
-        // downscale for perf
-        const targetW = 520;
-        const scale = targetW / w;
-        const cw = Math.max(240, Math.floor(w * scale));
-        const ch = Math.max(160, Math.floor(h * scale));
+        cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY, 0);
+        cv.GaussianBlur(gray, gray, new cv.Size(7, 7), 1.5, 1.5, cv.BORDER_DEFAULT);
 
-        // ROI centered
-        const roi = Math.max(0.4, Math.min(1, roiPct));
-        const rw = Math.floor(cw * roi);
-        const rh = Math.floor(ch * roi);
-        const rx = Math.floor((cw - rw) / 2);
-        const ry = Math.floor((ch - rh) / 2);
+        cv.HoughCircles(
+          gray,
+          out,
+          cv.HOUGH_GRADIENT,
+          1.2,
+          22,
+          120,
+          Math.max(5, Math.floor(param2)),
+          Math.max(1, Math.floor(minRadius)),
+          Math.max(1, Math.floor(maxRadius))
+        );
 
-        canvas.width = cw;
-        canvas.height = ch;
+        const found: Array<{ x: number; y: number; r: number }> = [];
+        for (let i = 0; i < out.cols; i++) {
+          const xRoi = out.data32F[i * 3 + 0];
+          const yRoi = out.data32F[i * 3 + 1];
+          const rRoi = out.data32F[i * 3 + 2];
 
-        const ctx = canvas.getContext("2d", { willReadFrequently: true });
-        if (!ctx) return;
+          const xFull = rx + xRoi;
+          const yFull = ry + yRoi;
 
-        ctx.drawImage(video, 0, 0, cw, ch);
+          const nx = xFull / cw;
+          const ny = yFull / ch;
 
-        // ROI canvas (reuse)
-        roiCanvas.width = rw;
-        roiCanvas.height = rh;
-        roiCtx.clearRect(0, 0, rw, rh);
-        roiCtx.drawImage(canvas, rx, ry, rw, rh, 0, 0, rw, rh);
+          const border = 0.06;
+          if (nx < border || nx > 1 - border || ny < border || ny > 1 - border) continue;
 
-        const src = cv.imread(roiCanvas);
-        const gray = new cv.Mat();
-        const out = new cv.Mat();
-
-        try {
-          cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY, 0);
-          cv.GaussianBlur(gray, gray, new cv.Size(7, 7), 1.5, 1.5, cv.BORDER_DEFAULT);
-
-          cv.HoughCircles(
-            gray,
-            out,
-            cv.HOUGH_GRADIENT,
-            1.2,
-            22,
-            120,
-            Math.max(5, Math.floor(param2)),
-            Math.max(1, Math.floor(minRadius)),
-            Math.max(1, Math.floor(maxRadius))
-          );
-
-          const found: Array<{ x: number; y: number; r: number }> = [];
-          for (let i = 0; i < out.cols; i++) {
-            const xRoi = out.data32F[i * 3 + 0];
-            const yRoi = out.data32F[i * 3 + 1];
-            const rRoi = out.data32F[i * 3 + 2];
-
-            const xFull = rx + xRoi;
-            const yFull = ry + yRoi;
-
-            const nx = xFull / cw;
-            const ny = yFull / ch;
-
-            const border = 0.06;
-            if (nx < border || nx > 1 - border || ny < border || ny > 1 - border) continue;
-
-            found.push({
-              x: clamp01(nx),
-              y: clamp01(ny),
-              r: rRoi / Math.max(cw, ch),
-            });
-          }
-
-          // Tracking anti-sauts:
-          const last = lastNearestRef.current;
-          const matchThreshold = 0.08;
-          let chosenIdx: number | null = null;
-
-          if (last && found.length) {
-            let bestIdx = -1;
-            let bestD = Infinity;
-            for (let i = 0; i < found.length; i++) {
-              const d = dist(found[i], last);
-              if (d < bestD) {
-                bestD = d;
-                bestIdx = i;
-              }
-            }
-            if (bestIdx >= 0 && bestD <= matchThreshold) chosenIdx = bestIdx;
-          }
-
-          if (chosenIdx == null && found.length) {
-            let bestIdx = -1;
-            let bestD = Infinity;
-            for (let i = 0; i < found.length; i++) {
-              const d = dist(found[i], { x: 0.5, y: 0.5 });
-              if (d < bestD) {
-                bestD = d;
-                bestIdx = i;
-              }
-            }
-            if (bestIdx >= 0) chosenIdx = bestIdx;
-          }
-
-          // EMA smoothing
-          const alpha = 0.35;
-          if (chosenIdx != null) {
-            const picked = found[chosenIdx];
-            lastNearestRef.current = picked;
-
-            const stable = stableNearestRef.current;
-            if (!stable) stableNearestRef.current = { ...picked };
-            else {
-              stableNearestRef.current = {
-                x: ema(stable.x, picked.x, alpha),
-                y: ema(stable.y, picked.y, alpha),
-                r: ema(stable.r, picked.r, alpha),
-              };
-            }
-          } else {
-            lastNearestRef.current = null;
-            stableNearestRef.current = null;
-          }
-
-          // Find stableIdx (closest to smoothed stable)
-          let stableIdx: number | null = null;
-          const stable = stableNearestRef.current;
-          if (stable && found.length) {
-            let bestIdx = -1;
-            let bestD = Infinity;
-            for (let i = 0; i < found.length; i++) {
-              const d = dist(found[i], stable);
-              if (d < bestD) {
-                bestD = d;
-                bestIdx = i;
-              }
-            }
-            if (bestIdx >= 0) stableIdx = bestIdx;
-          }
-
-          if (alive) {
-            setCircles(found);
-            setNearestIdx(stableIdx);
-          }
-        } finally {
-          src.delete();
-          gray.delete();
-          out.delete();
+          found.push({
+            x: clamp01(nx),
+            y: clamp01(ny),
+            r: rRoi / Math.max(cw, ch),
+          });
         }
-      } catch (e: any) {
-        if (!alive) return;
-        setLiveErr(e?.message || "OpenCV indisponible");
-        setAutoOn(false);
+
+        // Tracking anti-sauts
+        const last = lastNearestRef.current;
+        const matchThreshold = 0.08;
+        let chosenIdx: number | null = null;
+
+        if (last && found.length) {
+          let bestIdx = -1;
+          let bestD = Infinity;
+          for (let i = 0; i < found.length; i++) {
+            const d = dist(found[i], last);
+            if (d < bestD) {
+              bestD = d;
+              bestIdx = i;
+            }
+          }
+          if (bestIdx >= 0 && bestD <= matchThreshold) chosenIdx = bestIdx;
+        }
+
+        if (chosenIdx == null && found.length) {
+          let bestIdx = -1;
+          let bestD = Infinity;
+          for (let i = 0; i < found.length; i++) {
+            const d = dist(found[i], { x: 0.5, y: 0.5, r: 0 });
+            if (d < bestD) {
+              bestD = d;
+              bestIdx = i;
+            }
+          }
+          if (bestIdx >= 0) chosenIdx = bestIdx;
+        }
+
+        // EMA smoothing
+        const alpha = 0.35;
+        if (chosenIdx != null) {
+          const picked = found[chosenIdx];
+          lastNearestRef.current = picked;
+
+          const stable = stableNearestRef.current;
+          if (!stable) stableNearestRef.current = { ...picked };
+          else {
+            stableNearestRef.current = {
+              x: ema(stable.x, picked.x, alpha),
+              y: ema(stable.y, picked.y, alpha),
+              r: ema(stable.r, picked.r, alpha),
+            };
+          }
+        } else {
+          lastNearestRef.current = null;
+          stableNearestRef.current = null;
+        }
+
+        // stableIdx = closest to smoothed
+        let stableIdx: number | null = null;
+        const stable = stableNearestRef.current;
+        if (stable && found.length) {
+          let bestIdx = -1;
+          let bestD = Infinity;
+          for (let i = 0; i < found.length; i++) {
+            const d = dist(found[i], stable);
+            if (d < bestD) {
+              bestD = d;
+              bestIdx = i;
+            }
+          }
+          if (bestIdx >= 0) stableIdx = bestIdx;
+        }
+
+        if (alive) {
+          setCircles(found);
+          setNearestIdx(stableIdx);
+        }
       } finally {
-        busy = false;
+        // ✅ cleanup garanti
+        src.delete();
+        gray.delete();
+        out.delete();
       }
-    };
-
-    let raf = 0;
-    const frame = () => {
+    } catch (e: any) {
       if (!alive) return;
-      step();
+      setLiveErr(e?.message || "OpenCV indisponible");
+      setAutoOn(false);
+    } finally {
+      busy = false;
+    }
+  };
+
+  const frame = () => {
+    if (!alive) return;
+    step();
+    raf = requestAnimationFrame(frame);
+  };
+
+  const scheduleLoad = (fn: () => void) => {
+    const w = window as any;
+    if (typeof w.requestIdleCallback === "function") w.requestIdleCallback(fn, { timeout: 1500 });
+    else window.setTimeout(fn, 50);
+  };
+
+  scheduleLoad(async () => {
+    try {
+      // ✅ attendre vidéo prête AVANT de charger (évite certains "white screen" + CPU spike)
+      const ok = await waitVideoReady();
+      if (!alive) return;
+      if (!ok) return;
+
+      cv = await loadOpenCv();
+      if (!alive) return;
       raf = requestAnimationFrame(frame);
-    };
+    } catch (e: any) {
+      if (!alive) return;
+      setLiveErr(e?.message || "OpenCV indisponible");
+      setAutoOn(false);
+    }
+  });
 
-    (async () => {
-      try {
-        cv = await loadOpenCv();
-        if (!alive) return;
-        raf = requestAnimationFrame(frame);
-      } catch (e: any) {
-        if (!alive) return;
-        setLiveErr(e?.message || "OpenCV indisponible");
-        setAutoOn(false);
-      }
-    })();
-
-    return () => {
-      alive = false;
-      try {
-        if (raf) cancelAnimationFrame(raf);
-      } catch {}
-      // ✅ optionnel mais très safe: si tu quittes LIVE en plein auto, on évite un stream "zombie"
-      // (si tu préfères ne pas le faire ici, tu peux supprimer ces 2 lignes)
-      // stopLive();
-      // clearLive();
-    };
-  }, [measureOpen, mode, autoOn, liveOn, livePaused, roiPct, minRadius, maxRadius, param2]);
+  return () => {
+    alive = false;
+    try {
+      if (raf) cancelAnimationFrame(raf);
+    } catch {}
+  };
+}, [measureOpen, mode, autoOn, liveOn, livePaused, roiPct, minRadius, maxRadius, param2]);
 
   // Auto start/stop live when switching mode + sheet open/close
   React.useEffect(() => {
