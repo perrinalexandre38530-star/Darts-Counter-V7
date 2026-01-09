@@ -56,6 +56,9 @@ export default function PetanquePlay({ go, params }: Props) {
   // ✅ MESURAGE (sheet)
   // ==========================
   const [measureOpen, setMeasureOpen] = React.useState(false);
+
+  // IMPORTANT: le reste du fichier utilise `mode` / `setMode`.
+  // Le mismatch "measureMode"/"setMeasureMode" gelait l'écran au lancement (ReferenceError).
   const [mode, setMode] = React.useState<MeasureMode>("manual");
 
   // ✅ Mesurage autorisé : priorité params.cfg, sinon localStorage
@@ -442,7 +445,15 @@ export default function PetanquePlay({ go, params }: Props) {
   // ✅ AUTO-DETECT LOOP (OpenCV) — PRO (ROI + anti-sauts + sliders + pause)
   // ✅ FIX FREEZE: anti-overlap + raf+throttle + ROI canvas reuse + cleanup
   // ==========================
+
   React.useEffect(() => {
+    // IMPORTANT PERF/UX:
+    // - On ne charge OpenCV et on ne lance la boucle RAF QUE quand le sheet est ouvert
+    //   ET que l'utilisateur est sur l'onglet LIVE.
+    if (!measureOpen) return;
+    if (mode !== "live") return;
+    if (!autoOn) return;
+
     let alive = true;
     let cv: any = null;
 
@@ -471,6 +482,9 @@ export default function PetanquePlay({ go, params }: Props) {
       if (!liveOn) return;
       if (livePaused) return;
       if (busy) return;
+
+      // ✅ si plus de stream (caméra stoppée entre-temps) => on sort
+      if (!streamRef.current) return;
 
       const now = performance.now();
       if (now - lastTick < TICK_MS) return;
@@ -513,7 +527,6 @@ export default function PetanquePlay({ go, params }: Props) {
         roiCtx.clearRect(0, 0, rw, rh);
         roiCtx.drawImage(canvas, rx, ry, rw, rh, 0, 0, rw, rh);
 
-        // OpenCV: gray + blur + HoughCircles on ROI
         const src = cv.imread(roiCanvas);
         const gray = new cv.Mat();
         const out = new cv.Mat();
@@ -628,7 +641,6 @@ export default function PetanquePlay({ go, params }: Props) {
             setNearestIdx(stableIdx);
           }
         } finally {
-          // ✅ cleanup garanti
           src.delete();
           gray.delete();
           out.delete();
@@ -666,8 +678,12 @@ export default function PetanquePlay({ go, params }: Props) {
       try {
         if (raf) cancelAnimationFrame(raf);
       } catch {}
+      // ✅ optionnel mais très safe: si tu quittes LIVE en plein auto, on évite un stream "zombie"
+      // (si tu préfères ne pas le faire ici, tu peux supprimer ces 2 lignes)
+      // stopLive();
+      // clearLive();
     };
-  }, [autoOn, liveOn, livePaused, roiPct, minRadius, maxRadius, param2]);
+  }, [measureOpen, mode, autoOn, liveOn, livePaused, roiPct, minRadius, maxRadius, param2]);
 
   // Auto start/stop live when switching mode + sheet open/close
   React.useEffect(() => {
