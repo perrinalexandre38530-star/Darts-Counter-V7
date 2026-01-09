@@ -13,10 +13,12 @@
 // - ROI canvas réutilisé (pas de createElement() à chaque frame)
 // - Cleanup Mat garanti
 //
-// ✅ FIX MOBILE CAMERA PERMISSIONS (IMPORTANT):
-// - Ne JAMAIS auto-démarrer getUserMedia() via useEffect
-// - Caméra démarre uniquement via TAP (bouton)
-// - startLive() fait un stopLive() avant pour iOS
+// ✅ FIX MOBILE SHEET SCROLL:
+// - overlay: overscrollBehavior + touchAction
+// - sheet: maxHeight 100dvh + overflowY + WebkitOverflowScrolling
+// - header sticky (bouton Fermer toujours visible)
+// - tap dehors => ferme
+// - NE JAMAIS auto-start la caméra (useEffect stop-only)
 // ============================================
 
 import React from "react";
@@ -334,6 +336,35 @@ export default function PetanquePlay({ go, params }: Props) {
     return () => document.removeEventListener("visibilitychange", onVis);
   }, []);
 
+  // ✅ BONUS MOBILE: startLive "user gesture safe" + reset iOS + v.play()
+  const startLive = async () => {
+    try {
+      setLiveErr(null);
+
+      // iOS: reset d’abord
+      stopLive();
+
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: "environment" as any, width: { ideal: 1280 }, height: { ideal: 720 } },
+        audio: false,
+      });
+
+      streamRef.current = stream;
+
+      const v = videoRef.current;
+      if (v) {
+        v.srcObject = stream;
+        // Sur iOS, play() peut échouer si pas appelé depuis un tap : ici on est dans onClick => OK
+        await v.play().catch(() => {});
+      }
+
+      setLiveOn(true);
+    } catch (e: any) {
+      setLiveOn(false);
+      setLiveErr(e?.message || "Caméra indisponible");
+    }
+  };
+
   const stopLive = () => {
     setLiveOn(false);
     if (streamRef.current) {
@@ -345,40 +376,6 @@ export default function PetanquePlay({ go, params }: Props) {
         videoRef.current.pause();
         (videoRef.current as any).srcObject = null;
       } catch {}
-    }
-  };
-
-  // ✅ MOBILE SAFE: start uniquement via TAP + stopLive() avant (iOS)
-  const startLive = async () => {
-    try {
-      setLiveErr(null);
-
-      // iOS / mobile: reset d’abord (évite un état caméra "bloqué")
-      stopLive();
-
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: {
-          facingMode: "environment" as any,
-          width: { ideal: 1280 },
-          height: { ideal: 720 },
-        },
-        audio: false,
-      });
-
-      streamRef.current = stream;
-
-      const v = videoRef.current;
-      if (v) {
-        v.srcObject = stream;
-        // Sur iOS, play() peut échouer si pas appelé depuis un tap :
-        // ici on est dans onClick => OK
-        await v.play().catch(() => {});
-      }
-
-      setLiveOn(true);
-    } catch (e: any) {
-      setLiveOn(false);
-      setLiveErr(e?.message || "Caméra indisponible");
     }
   };
 
@@ -457,6 +454,7 @@ export default function PetanquePlay({ go, params }: Props) {
   // - Charge WASM en idle (évite le pic qui freeze)
   // - RAF non-async + throttle + anti-overlap + cleanup
   // ==========================
+
   React.useEffect(() => {
     // On ne fait RIEN tant que:
     // - sheet pas ouvert
@@ -482,7 +480,6 @@ export default function PetanquePlay({ go, params }: Props) {
     const roiCtx = roiCanvas.getContext("2d", { willReadFrequently: true });
 
     const ema = (prev: number, next: number, a: number) => prev * (1 - a) + next * a;
-    const clamp01 = (v: number) => Math.max(0, Math.min(1, v));
 
     const dist = (a: { x: number; y: number }, b: { x: number; y: number }) => {
       const dx = a.x - b.x;
@@ -502,15 +499,23 @@ export default function PetanquePlay({ go, params }: Props) {
         const finish = () => {
           if (done) return;
           done = true;
+          cleanup();
           resolve();
         };
-        const t = window.setTimeout(finish, 1200); // safety
-        const wrapped = () => {
-          window.clearTimeout(t);
-          finish();
+
+        const cleanup = () => {
+          try {
+            video.removeEventListener("loadedmetadata", finish);
+            video.removeEventListener("playing", finish);
+          } catch {}
+          try {
+            window.clearTimeout(tid);
+          } catch {}
         };
-        video.addEventListener("loadedmetadata", wrapped, { once: true });
-        video.addEventListener("playing", wrapped, { once: true });
+
+        const tid = window.setTimeout(finish, 1200);
+        video.addEventListener("loadedmetadata", finish, { once: true });
+        video.addEventListener("playing", finish, { once: true });
       });
 
       return !!(video.videoWidth > 0 && video.videoHeight > 0);
@@ -629,7 +634,7 @@ export default function PetanquePlay({ go, params }: Props) {
             let bestIdx = -1;
             let bestD = Infinity;
             for (let i = 0; i < found.length; i++) {
-              const d = dist(found[i], { x: 0.5, y: 0.5 });
+              const d = dist(found[i], { x: 0.5, y: 0.5, r: 0 });
               if (d < bestD) {
                 bestD = d;
                 bestIdx = i;
@@ -665,7 +670,7 @@ export default function PetanquePlay({ go, params }: Props) {
             let bestIdx = -1;
             let bestD = Infinity;
             for (let i = 0; i < found.length; i++) {
-              const d = dist(found[i], stable);
+              const d = dist(found[i], stable as any);
               if (d < bestD) {
                 bestD = d;
                 bestIdx = i;
@@ -705,20 +710,23 @@ export default function PetanquePlay({ go, params }: Props) {
       else window.setTimeout(fn, 50);
     };
 
-    scheduleLoad(async () => {
-      try {
-        const ok = await waitVideoReady();
-        if (!alive) return;
-        if (!ok) return;
+    scheduleLoad(() => {
+      (async () => {
+        try {
+          const ok = await waitVideoReady();
+          if (!alive) return;
+          if (!ok) return;
 
-        cv = await loadOpenCv();
-        if (!alive) return;
-        raf = requestAnimationFrame(frame);
-      } catch (e: any) {
-        if (!alive) return;
-        setLiveErr(e?.message || "OpenCV indisponible");
-        setAutoOn(false);
-      }
+          cv = await loadOpenCv();
+          if (!alive) return;
+
+          raf = requestAnimationFrame(frame);
+        } catch (e: any) {
+          if (!alive) return;
+          setLiveErr(e?.message || "OpenCV indisponible");
+          setAutoOn(false);
+        }
+      })();
     });
 
     return () => {
@@ -729,8 +737,7 @@ export default function PetanquePlay({ go, params }: Props) {
     };
   }, [measureOpen, mode, autoOn, liveOn, livePaused, roiPct, minRadius, maxRadius, param2]);
 
-  // ✅ FIX MOBILE: ne plus auto-démarrer la caméra en useEffect
-  // Auto stop live when closing sheet / leaving live tab
+  // ✅ IMPORTANT MOBILE: stop-only (NE JAMAIS auto-start la caméra)
   React.useEffect(() => {
     // Quand on ferme le sheet : on coupe la caméra et on reset
     if (!measureOpen) {
@@ -981,9 +988,33 @@ export default function PetanquePlay({ go, params }: Props) {
 
       {/* ✅ Empêche le rendu du sheet si interdit */}
       {allowMeasurements && measureOpen && (
-        <div style={overlay}>
-          <div className="card" style={sheet(theme)}>
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+        <div
+          style={overlay}
+          onClick={() => setMeasureOpen(false)}
+          role="dialog"
+          aria-modal="true"
+        >
+          <div
+            className="card"
+            style={sheet(theme)}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* ✅ HEADER STICKY (Fermer toujours visible) */}
+            <div
+              style={{
+                position: "sticky",
+                top: 0,
+                zIndex: 5,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                gap: 10,
+                paddingBottom: 10,
+                marginBottom: 2,
+                background: cssVarOr("rgba(15,15,18,0.94)", "--panel"),
+                backdropFilter: "blur(14px)",
+              }}
+            >
               <div className="subtitle" style={sub(theme)}>
                 Mesurage
               </div>
@@ -1352,7 +1383,6 @@ export default function PetanquePlay({ go, params }: Props) {
                     Effacer
                   </button>
 
-                  {/* ✅ Caméra uniquement via TAP */}
                   <button className="btn ghost" style={ghost(theme)} onClick={liveOn ? stopLive : startLive}>
                     {liveOn ? "Stop caméra" : "Démarrer caméra"}
                   </button>
@@ -1497,9 +1527,9 @@ export default function PetanquePlay({ go, params }: Props) {
                     </div>
                     <div className="subtitle" style={muted(theme)}>
                       {autoOn
-                        ? `cercles: ${circles.length} — assignés A:${
-                            Object.values(circleTeam).filter((v) => v === "A").length
-                          } / B:${Object.values(circleTeam).filter((v) => v === "B").length}`
+                        ? `cercles: ${circles.length} — assignés A:${Object.values(circleTeam).filter((v) => v === "A").length} / B:${
+                            Object.values(circleTeam).filter((v) => v === "B").length
+                          }`
                         : `A:${liveA.length} / B:${liveB.length}`}
                     </div>
                   </div>
@@ -1780,27 +1810,46 @@ function endTxt(theme: any): React.CSSProperties {
 const overlay: React.CSSProperties = {
   position: "fixed",
   inset: 0,
-  background: "rgba(0,0,0,0.55)",
+  background: "rgba(0,0,0,0.62)",
   display: "flex",
   alignItems: "flex-end",
   justifyContent: "center",
-  padding: 12,
+  padding: 10,
   zIndex: 9999,
+
+  // ✅ mobile: évite le bounce/scroll-chaos
+  overscrollBehavior: "contain",
+
+  // ✅ important: permettre au conteneur de capter les gestes
+  touchAction: "manipulation",
 };
 
 function sheet(theme: any): React.CSSProperties {
   return {
     width: "min(980px, 100%)",
     borderRadius: 18,
-    padding: 14,
+    padding: 12,
     border: `1px solid ${cssVarOr("rgba(255,255,255,0.16)", "--stroke")}`,
     background: cssVarOr("rgba(15,15,18,0.94)", "--panel"),
     boxShadow: "0 18px 50px rgba(0,0,0,0.45)",
+
     display: "flex",
     flexDirection: "column",
     gap: 10,
-    maxHeight: "92vh",
-    overflow: "auto",
+
+    // ✅ mobile: hauteur réelle + scroll interne fiable
+    maxHeight: "calc(100dvh - 16px)",
+    height: "auto",
+    overflowY: "auto",
+    overflowX: "hidden",
+    WebkitOverflowScrolling: "touch",
+
+    // ✅ évite de “bloquer” sur iOS quand on scroll dans un overlay
+    overscrollBehavior: "contain",
+
+    // ✅ safe
+    position: "relative",
+    touchAction: "pan-y",
     backdropFilter: "blur(14px)",
   };
 }
