@@ -1,23 +1,11 @@
 // ============================================
 // src/pages/petanque/PetanquePlay.tsx
-// ✅ Version "UI améliorée" SANS casser ton bloc actuel
-// - AUCUNE feature supprimée (manuel/photo/live + assignations)
-// - Même logique & même structure
-// - Styling recâblé pour coller au design global (vars CSS: --glass, --stroke, --text, --gold...)
-// - Ajout de className (container/card/btn/ghost/primary/danger/badge/subtitle) EN PLUS des styles inline
-//   => si tes classes existent, ça match direct; sinon les inline assurent le rendu.
-//
-// ✅ FIX CRASH / FREEZE LIVE:
-// - Anti-overlap (pas d'empilement async)
-// - requestAnimationFrame + throttle (stable)
-// - ROI canvas réutilisé (pas de createElement() à chaque frame)
-// - Cleanup Mat garanti
-//
-// ✅ FIX MOBILE SHEET SCROLL:
-// - overlay: overscrollBehavior + touchAction
-// - sheet: maxHeight 100dvh + overflowY + WebkitOverflowScrolling
-// - header sticky (bouton Fermer toujours visible)
-// - tap dehors => ferme
+// ✅ Version COMPLETE — MOBILE-FIRST (sheet scroll iOS/Android + LIVE inclus)
+// - Sheet scrollable fiable: maxHeight 100dvh + WebkitOverflowScrolling + overscrollBehavior
+// - Header sticky (Fermer toujours accessible) + actions: Radar ↓ / ↑ Haut
+// - Tap dehors => ferme (tap dedans => ne ferme pas)
+// - LIVE: Caméra/Radar en accordéon (évite d’écraser l’écran sur mobile)
+// - LIVE: Réglages (sliders) repliables (fermés par défaut sur mobile)
 // - NE JAMAIS auto-start la caméra (useEffect stop-only)
 // ============================================
 
@@ -35,10 +23,10 @@ import {
   undoLastMeasurement,
 } from "../../lib/petanqueStore";
 
-// ✅ NEW: Config store (Mesurage autorisé + fallback)
+// ✅ Config store (Mesurage autorisé + fallback)
 import { loadPetanqueConfig } from "../../lib/petanqueConfigStore";
 
-// ✅ NEW: OpenCV loader (LIVE auto-detect)
+// ✅ OpenCV loader (LIVE auto-detect)
 import { loadOpenCv } from "../../lib/vision/opencv";
 
 type Props = {
@@ -52,10 +40,6 @@ type PhotoPoint = { x: number; y: number }; // normalized 0..1
 type MeasureMode = "manual" | "photo" | "live";
 
 export default function PetanquePlay({ go, params }: Props) {
-  // ✅ Route params (évite collisions avec "mode" du mesurage)
-  const matchMode = (params?.mode ?? params?.cfg?.mode ?? "singles") as any;
-  const matchCfg = params?.cfg ?? null;
-
   const { theme } = useTheme();
   const [st, setSt] = React.useState<PetanqueState>(() => loadPetanqueState());
 
@@ -63,9 +47,6 @@ export default function PetanquePlay({ go, params }: Props) {
   // ✅ MESURAGE (sheet)
   // ==========================
   const [measureOpen, setMeasureOpen] = React.useState(false);
-
-  // IMPORTANT: le reste du fichier utilise `mode` / `setMode`.
-  // Le mismatch "measureMode"/"setMeasureMode" gelait l'écran au lancement (ReferenceError).
   const [mode, setMode] = React.useState<MeasureMode>("manual");
 
   // ✅ Mesurage autorisé : priorité params.cfg, sinon localStorage
@@ -75,20 +56,44 @@ export default function PetanquePlay({ go, params }: Props) {
 
   const allowMeasurements: boolean = (effectiveCfg?.options?.allowMeasurements ?? true) === true;
 
-  // si interdit : ferme le sheet
   React.useEffect(() => {
     if (!allowMeasurements && measureOpen) setMeasureOpen(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [allowMeasurements]);
 
+  // ==========================
+  // ✅ MOBILE helpers (sheet nav + accordéons)
+  // ==========================
+  const sheetRef = React.useRef<HTMLDivElement | null>(null);
+  const radarRef = React.useRef<HTMLDivElement | null>(null);
+
+  const isNarrow = React.useMemo(() => {
+    if (typeof window === "undefined") return false;
+    try {
+      return window.matchMedia?.("(max-width: 520px)")?.matches ?? window.innerWidth <= 520;
+    } catch {
+      return false;
+    }
+  }, []);
+
+  const scrollToEl = (el: HTMLElement | null) => {
+    if (!el) return;
+    el.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
+
+  // ==========================
+  // ✅ Match actions
+  // ==========================
   const onAdd = (team: PetanqueTeamId, pts: number) => setSt(addEnd(st, team, pts));
   const onUndo = () => setSt(undoLastEnd(st));
   const onNew = () => setSt(resetPetanque(st));
 
-  // --- Manuel
+  // ==========================
+  // ✅ Manuel
+  // ==========================
   const [dA, setDA] = React.useState<string>("");
   const [dB, setDB] = React.useState<string>("");
-  const [tol, setTol] = React.useState<string>("1"); // cm si manuel ; px si photo non calibrée ; screen si live
+  const [tol, setTol] = React.useState<string>("1");
   const [note, setNote] = React.useState<string>("");
 
   const numOrNaN = (v: string) => {
@@ -290,20 +295,18 @@ export default function PetanquePlay({ go, params }: Props) {
   const videoRef = React.useRef<HTMLVideoElement | null>(null);
   const streamRef = React.useRef<MediaStream | null>(null);
   const liveWrapRef = React.useRef<HTMLDivElement | null>(null);
-  const canvasRef = React.useRef<HTMLCanvasElement | null>(null); // OpenCV processing
+  const canvasRef = React.useRef<HTMLCanvasElement | null>(null);
 
-  // cochonnet = centre de la mire
   const liveC: PhotoPoint = { x: 0.5, y: 0.5 };
 
   const [liveOn, setLiveOn] = React.useState(false);
   const [liveErr, setLiveErr] = React.useState<string | null>(null);
 
-  // Auto-detect state
   const [autoOn, setAutoOn] = React.useState(true);
   const [circles, setCircles] = React.useState<Array<{ x: number; y: number; r: number }>>([]);
   const [nearestIdx, setNearestIdx] = React.useState<number | null>(null);
 
-  // ✅ NEW: assignation équipes sur cercles détectés (AUTO mode)
+  // ✅ assignations équipes sur cercles détectés (AUTO mode)
   const [assignSide, setAssignSide] = React.useState<PetanqueTeamId>("A");
   const [circleTeam, setCircleTeam] = React.useState<Record<number, PetanqueTeamId>>({});
 
@@ -312,23 +315,30 @@ export default function PetanquePlay({ go, params }: Props) {
   const [liveB, setLiveB] = React.useState<PhotoPoint[]>([]);
   const [liveAddSide, setLiveAddSide] = React.useState<PetanqueTeamId>("A");
 
-  // ==========================
   // ✅ LIVE settings (PRO)
-  // ==========================
-  const [roiPct, setRoiPct] = React.useState<number>(0.7); // 0.4..1 (zone utile centrée)
+  const [roiPct, setRoiPct] = React.useState<number>(0.7);
   const [minRadius, setMinRadius] = React.useState<number>(10);
   const [maxRadius, setMaxRadius] = React.useState<number>(60);
-  const [param2, setParam2] = React.useState<number>(26); // seuil Hough (plus haut = moins de faux positifs)
+  const [param2, setParam2] = React.useState<number>(26);
 
   const [livePaused, setLivePaused] = React.useState(false);
 
-  // tracking anti-sauts
+  // ✅ MOBILE accordéons
+  const [liveSectionOpen, setLiveSectionOpen] = React.useState(true);
+  const [liveSettingsOpen, setLiveSettingsOpen] = React.useState(false);
+
+  // init accordéon sliders selon largeur
+  React.useEffect(() => {
+    if (isNarrow) setLiveSettingsOpen(false);
+    else setLiveSettingsOpen(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const lastNearestRef = React.useRef<{ x: number; y: number; r: number } | null>(null);
   const stableNearestRef = React.useRef<{ x: number; y: number; r: number } | null>(null);
 
   const clamp01 = (v: number) => Math.max(0, Math.min(1, v));
 
-  // Pause si onglet inactif
   React.useEffect(() => {
     const onVis = () => setLivePaused(document.visibilityState !== "visible");
     onVis();
@@ -336,13 +346,10 @@ export default function PetanquePlay({ go, params }: Props) {
     return () => document.removeEventListener("visibilitychange", onVis);
   }, []);
 
-  // ✅ BONUS MOBILE: startLive "user gesture safe" + reset iOS + v.play()
   const startLive = async () => {
     try {
       setLiveErr(null);
-
-      // iOS: reset d’abord
-      stopLive();
+      stopLive(); // iOS reset
 
       const stream = await navigator.mediaDevices.getUserMedia({
         video: { facingMode: "environment" as any, width: { ideal: 1280 }, height: { ideal: 720 } },
@@ -354,7 +361,6 @@ export default function PetanquePlay({ go, params }: Props) {
       const v = videoRef.current;
       if (v) {
         v.srcObject = stream;
-        // Sur iOS, play() peut échouer si pas appelé depuis un tap : ici on est dans onClick => OK
         await v.play().catch(() => {});
       }
 
@@ -399,22 +405,12 @@ export default function PetanquePlay({ go, params }: Props) {
   const liveDist = (p: PhotoPoint) => {
     const dx = p.x - liveC.x;
     const dy = p.y - liveC.y;
-    return Math.sqrt(dx * dx + dy * dy); // unités écran (normalized)
+    return Math.sqrt(dx * dx + dy * dy);
   };
 
-  const minA_live = React.useMemo(() => {
-    if (!liveA.length) return null;
-    return Math.min(...liveA.map(liveDist));
-  }, [liveA]);
+  const minA_live = React.useMemo(() => (liveA.length ? Math.min(...liveA.map(liveDist)) : null), [liveA]);
+  const minB_live = React.useMemo(() => (liveB.length ? Math.min(...liveB.map(liveDist)) : null), [liveB]);
 
-  const minB_live = React.useMemo(() => {
-    if (!liveB.length) return null;
-    return Math.min(...liveB.map(liveDist));
-  }, [liveB]);
-
-  // ==========================
-  // ✅ AUTO compare A vs B (sur cercles détectés + assignations)
-  // ==========================
   const distToCenter = (p: { x: number; y: number }) => {
     const dx = p.x - 0.5;
     const dy = p.y - 0.5;
@@ -426,8 +422,7 @@ export default function PetanquePlay({ go, params }: Props) {
     circles.forEach((c, idx) => {
       if (circleTeam[idx] === "A") vals.push(distToCenter(c));
     });
-    if (!vals.length) return null;
-    return Math.min(...vals);
+    return vals.length ? Math.min(...vals) : null;
   }, [circles, circleTeam]);
 
   const autoMinB = React.useMemo(() => {
@@ -435,8 +430,7 @@ export default function PetanquePlay({ go, params }: Props) {
     circles.forEach((c, idx) => {
       if (circleTeam[idx] === "B") vals.push(distToCenter(c));
     });
-    if (!vals.length) return null;
-    return Math.min(...vals);
+    return vals.length ? Math.min(...vals) : null;
   }, [circles, circleTeam]);
 
   const autoWinner: "A" | "B" | "TIE" | null = React.useMemo(() => {
@@ -446,25 +440,12 @@ export default function PetanquePlay({ go, params }: Props) {
     return autoMinA < autoMinB ? "A" : "B";
   }, [autoMinA, autoMinB, tolN]);
 
-  // ==========================
-  // ✅ AUTO-DETECT LOOP (OpenCV) — PRO (ROI + anti-sauts + sliders + pause)
-  // ✅ FIX FREEZE:
-  // - Ne charge OpenCV QUE si caméra ON + onglet LIVE + sheet ouvert + autoOn
-  // - Attend video ready (videoWidth/videoHeight)
-  // - Charge WASM en idle (évite le pic qui freeze)
-  // - RAF non-async + throttle + anti-overlap + cleanup
-  // ==========================
-
+  // ✅ AUTO-DETECT loop OpenCV (inchangé logique) — seulement si LIVE ON + autoOn + sheet open + mode live
   React.useEffect(() => {
-    // On ne fait RIEN tant que:
-    // - sheet pas ouvert
-    // - pas sur l'onglet live
-    // - autoOff
-    // - caméra pas démarrée
     if (!measureOpen) return;
     if (mode !== "live") return;
     if (!autoOn) return;
-    if (!liveOn) return; // ✅ IMPORTANT: évite de charger OpenCV dès l'ouverture du tab
+    if (!liveOn) return;
 
     let alive = true;
     let cv: any = null;
@@ -475,7 +456,6 @@ export default function PetanquePlay({ go, params }: Props) {
     const TICK_MS = 220;
     let lastTick = 0;
 
-    // ROI canvas réutilisé
     const roiCanvas = document.createElement("canvas");
     const roiCtx = roiCanvas.getContext("2d", { willReadFrequently: true });
 
@@ -487,11 +467,9 @@ export default function PetanquePlay({ go, params }: Props) {
       return Math.sqrt(dx * dx + dy * dy);
     };
 
-    // ✅ Attendre que la vidéo soit réellement prête
     const waitVideoReady = async () => {
       const video = videoRef.current;
       if (!video) return false;
-
       if (video.videoWidth > 0 && video.videoHeight > 0) return true;
 
       await new Promise<void>((resolve) => {
@@ -518,7 +496,7 @@ export default function PetanquePlay({ go, params }: Props) {
         video.addEventListener("playing", finish, { once: true });
       });
 
-      return !!(video.videoWidth > 0 && video.videoHeight > 0);
+      return !!(videoRef.current?.videoWidth && videoRef.current?.videoHeight);
     };
 
     const step = () => {
@@ -542,13 +520,11 @@ export default function PetanquePlay({ go, params }: Props) {
 
       busy = true;
       try {
-        // downscale for perf
         const targetW = 520;
         const scale = targetW / w;
         const cw = Math.max(240, Math.floor(w * scale));
         const ch = Math.max(160, Math.floor(h * scale));
 
-        // ROI centered
         const roi = Math.max(0.4, Math.min(1, roiPct));
         const rw = Math.floor(cw * roi);
         const rh = Math.floor(ch * roi);
@@ -563,13 +539,11 @@ export default function PetanquePlay({ go, params }: Props) {
 
         ctx.drawImage(video, 0, 0, cw, ch);
 
-        // ROI canvas (reuse)
         roiCanvas.width = rw;
         roiCanvas.height = rh;
         roiCtx.clearRect(0, 0, rw, rh);
         roiCtx.drawImage(canvas, rx, ry, rw, rh, 0, 0, rw, rh);
 
-        // OpenCV: gray + blur + HoughCircles on ROI
         const src = cv.imread(roiCanvas);
         const gray = new cv.Mat();
         const out = new cv.Mat();
@@ -612,7 +586,6 @@ export default function PetanquePlay({ go, params }: Props) {
             });
           }
 
-          // Tracking anti-sauts
           const last = lastNearestRef.current;
           const matchThreshold = 0.08;
           let chosenIdx: number | null = null;
@@ -634,7 +607,7 @@ export default function PetanquePlay({ go, params }: Props) {
             let bestIdx = -1;
             let bestD = Infinity;
             for (let i = 0; i < found.length; i++) {
-              const d = dist(found[i], { x: 0.5, y: 0.5, r: 0 });
+              const d = dist(found[i], { x: 0.5, y: 0.5 });
               if (d < bestD) {
                 bestD = d;
                 bestIdx = i;
@@ -643,7 +616,6 @@ export default function PetanquePlay({ go, params }: Props) {
             if (bestIdx >= 0) chosenIdx = bestIdx;
           }
 
-          // EMA smoothing
           const alpha = 0.35;
           if (chosenIdx != null) {
             const picked = found[chosenIdx];
@@ -663,7 +635,6 @@ export default function PetanquePlay({ go, params }: Props) {
             stableNearestRef.current = null;
           }
 
-          // stableIdx = closest to smoothed
           let stableIdx: number | null = null;
           const stable = stableNearestRef.current;
           if (stable && found.length) {
@@ -684,7 +655,6 @@ export default function PetanquePlay({ go, params }: Props) {
             setNearestIdx(stableIdx);
           }
         } finally {
-          // ✅ cleanup garanti
           src.delete();
           gray.delete();
           out.delete();
@@ -737,34 +707,27 @@ export default function PetanquePlay({ go, params }: Props) {
     };
   }, [measureOpen, mode, autoOn, liveOn, livePaused, roiPct, minRadius, maxRadius, param2]);
 
-  // ✅ IMPORTANT MOBILE: stop-only (NE JAMAIS auto-start la caméra)
+  // ✅ STOP-ONLY : ne jamais auto-start caméra
   React.useEffect(() => {
-    // Quand on ferme le sheet : on coupe la caméra et on reset
     if (!measureOpen) {
       stopLive();
       setMode("manual");
       setCalArm(null);
       return;
     }
-
-    // Quand on quitte l'onglet LIVE : on coupe la caméra (mais on ne la démarre jamais tout seul)
     if (measureOpen && mode !== "live") {
       stopLive();
     }
-
-    // IMPORTANT: on NE start PAS la caméra automatiquement ici.
-    // Sur mobile, getUserMedia doit être déclenché par un geste utilisateur (tap sur un bouton).
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [measureOpen, mode]);
 
   const onSaveLive = () => {
-    // ✅ AUTO mode: compare A vs B from assigned circles
     if (autoOn) {
       if (autoMinA == null || autoMinB == null) return;
 
       const extra =
         (note?.trim() ? note.trim() + " — " : "") +
-        `live auto-detect PRO — assignations A/B — ROI:${Math.round(roiPct * 100)}% — r[${minRadius},${maxRadius}] — p2:${param2} — cercles:${circles.length} — unité:screen`;
+        `live auto-detect — assignations A/B — ROI:${Math.round(roiPct * 100)}% — r[${minRadius},${maxRadius}] — p2:${param2} — cercles:${circles.length} — unité:screen`;
 
       setSt(
         addMeasurement(st, {
@@ -780,7 +743,6 @@ export default function PetanquePlay({ go, params }: Props) {
       return;
     }
 
-    // Manual (tap) live: requires at least one ball A and B
     if (minA_live == null || minB_live == null) return;
 
     const extra =
@@ -800,9 +762,6 @@ export default function PetanquePlay({ go, params }: Props) {
     setMeasureOpen(false);
   };
 
-  // ==========================
-  // ✅ Store actions
-  // ==========================
   const onUndoMeasurement = () => setSt(undoLastMeasurement(st));
 
   const measurements = (st as any).measurements as
@@ -828,7 +787,6 @@ export default function PetanquePlay({ go, params }: Props) {
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
           <div style={title(theme)}>PÉTANQUE</div>
 
-          {/* ✅ Cache le bouton “Mesurer” si interdit */}
           {allowMeasurements && (
             <button className="btn primary" style={chipBtn(theme)} onClick={() => setMeasureOpen(true)}>
               Mesurer
@@ -916,7 +874,6 @@ export default function PetanquePlay({ go, params }: Props) {
         </div>
       </div>
 
-      {/* ✅ MESURES (historique) */}
       <div className="card" style={card(theme)}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
           <div className="subtitle" style={sub(theme)}>
@@ -986,41 +943,57 @@ export default function PetanquePlay({ go, params }: Props) {
         )}
       </div>
 
-      {/* ✅ Empêche le rendu du sheet si interdit */}
+      {/* ✅ SHEET MOBILE-FIRST (tap dehors => ferme, header sticky, scroll OK) */}
       {allowMeasurements && measureOpen && (
-        <div
-          style={overlay}
-          onClick={() => setMeasureOpen(false)}
-          role="dialog"
-          aria-modal="true"
-        >
+        <div style={overlay} onClick={() => setMeasureOpen(false)} role="dialog" aria-modal="true">
           <div
+            ref={sheetRef}
             className="card"
             style={sheet(theme)}
             onClick={(e) => e.stopPropagation()}
           >
-            {/* ✅ HEADER STICKY (Fermer toujours visible) */}
+            {/* ✅ HEADER STICKY + actions mobile */}
             <div
               style={{
                 position: "sticky",
                 top: 0,
-                zIndex: 5,
+                zIndex: 10,
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "space-between",
                 gap: 10,
                 paddingBottom: 10,
-                marginBottom: 2,
+                marginBottom: 4,
                 background: cssVarOr("rgba(15,15,18,0.94)", "--panel"),
                 backdropFilter: "blur(14px)",
+                borderBottom: `1px solid ${cssVarOr("rgba(255,255,255,0.10)", "--stroke")}`,
               }}
             >
               <div className="subtitle" style={sub(theme)}>
                 Mesurage
               </div>
-              <button className="btn ghost" style={ghost(theme)} onClick={() => setMeasureOpen(false)}>
-                Fermer
-              </button>
+
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
+                <button
+                  className="btn ghost"
+                  style={ghost(theme)}
+                  onClick={() => scrollToEl(radarRef.current)}
+                  title="Aller au radar"
+                >
+                  Radar ↓
+                </button>
+                <button
+                  className="btn ghost"
+                  style={ghost(theme)}
+                  onClick={() => scrollToEl(sheetRef.current)}
+                  title="Remonter"
+                >
+                  ↑ Haut
+                </button>
+                <button className="btn ghost" style={ghost(theme)} onClick={() => setMeasureOpen(false)}>
+                  Fermer
+                </button>
+              </div>
             </div>
 
             {/* Tabs */}
@@ -1038,7 +1011,7 @@ export default function PetanquePlay({ go, params }: Props) {
 
             {/* Shared */}
             <div style={row}>
-              <div style={{ flex: 1 }}>
+              <div style={{ flex: 1, minWidth: 160 }}>
                 <div className="subtitle" style={label(theme)}>
                   Tolérance
                 </div>
@@ -1052,7 +1025,7 @@ export default function PetanquePlay({ go, params }: Props) {
                 />
               </div>
 
-              <div style={{ flex: 2 }}>
+              <div style={{ flex: 2, minWidth: 220 }}>
                 <div className="subtitle" style={label(theme)}>
                   Note (optionnel)
                 </div>
@@ -1191,7 +1164,7 @@ export default function PetanquePlay({ go, params }: Props) {
                       Point Cal B {calArm === "B" ? "(clic…)" : ""}
                     </button>
 
-                    <div style={{ flex: 1 }}>
+                    <div style={{ flex: 1, minWidth: 170 }}>
                       <div className="subtitle" style={label(theme)}>
                         Longueur réelle (cm)
                       </div>
@@ -1319,8 +1292,8 @@ export default function PetanquePlay({ go, params }: Props) {
             ) : (
               <>
                 <div className="subtitle" style={hint(theme)}>
-                  LIVE Auto Radar : cadre le cochonnet au centre (mire). L’app détecte des cercles (boules) et entoure la plus
-                  proche en direct. En mode auto, clique sur les cercles pour les assigner à A/B.
+                  LIVE Auto Radar : cadre le cochonnet au centre (mire). Assigne les cercles détectés à A/B. Sur mobile, garde la
+                  section caméra repliable pour éviter un écran trop long.
                 </div>
 
                 <div style={row}>
@@ -1331,7 +1304,7 @@ export default function PetanquePlay({ go, params }: Props) {
                     Auto OFF (tap)
                   </button>
 
-                  {autoOn && (
+                  {autoOn ? (
                     <>
                       <button
                         className="btn"
@@ -1361,9 +1334,7 @@ export default function PetanquePlay({ go, params }: Props) {
                         Reset équipes
                       </button>
                     </>
-                  )}
-
-                  {!autoOn && (
+                  ) : (
                     <>
                       <button className="btn" style={modeBtn(theme, liveAddSide === "A")} onClick={() => setLiveAddSide("A")}>
                         Ajouter {st.teamA}
@@ -1382,144 +1353,187 @@ export default function PetanquePlay({ go, params }: Props) {
                   >
                     Effacer
                   </button>
-
-                  <button className="btn ghost" style={ghost(theme)} onClick={liveOn ? stopLive : startLive}>
-                    {liveOn ? "Stop caméra" : "Démarrer caméra"}
-                  </button>
                 </div>
 
-                {/* ✅ Panneau Réglages LIVE (PRO) */}
+                {/* ✅ Caméra / Radar — accordéon mobile */}
+                <div className="card" style={cardSoft(theme)}>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+                    <div className="subtitle" style={sub(theme)}>
+                      Caméra / Radar
+                    </div>
+
+                    <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                      <button className="btn ghost" style={ghost(theme)} onClick={() => setLiveSectionOpen((v) => !v)}>
+                        {liveSectionOpen ? "Réduire" : "Ouvrir"}
+                      </button>
+
+                      <button className="btn ghost" style={ghost(theme)} onClick={liveOn ? stopLive : startLive}>
+                        {liveOn ? "Stop caméra" : "Démarrer caméra"}
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="subtitle" style={muted(theme)}>
+                    Mobile: autorise la caméra quand le navigateur le demande. Pas d’autostart.
+                  </div>
+
+                  {liveErr && <div style={resultBox(theme, "TIE")}>{liveErr}</div>}
+                </div>
+
+                {/* ✅ Radar (scroll target) */}
+                {liveSectionOpen && (
+                  <div ref={radarRef}>
+                    <div ref={liveWrapRef} style={liveWrap(theme)} onClick={!autoOn ? onLiveClick : undefined}>
+                      <video ref={videoRef} style={liveVideo} playsInline muted />
+                      <canvas ref={canvasRef} style={{ display: "none" }} />
+
+                      <div style={radarOverlay}>
+                        <div style={radarSweep(theme)} />
+                        <div style={crosshairOuter(theme)} />
+                        <div style={crosshairInner} />
+                      </div>
+
+                      {/* Auto circles (cliquables => assignation A/B) */}
+                      {autoOn &&
+                        circles.map((c, idx) => {
+                          const isBest = nearestIdx === idx;
+                          const team = circleTeam[idx] || null;
+
+                          return (
+                            <div
+                              key={`c-${idx}`}
+                              style={liveCircle(theme, { x: c.x, y: c.y }, c.r, isBest, team)}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setCircleTeam((cur) => ({ ...cur, [idx]: assignSide }));
+                              }}
+                              title={team ? `Équipe ${team}` : `Assigner à ${assignSide}`}
+                            />
+                          );
+                        })}
+
+                      {/* Manual fallback markers */}
+                      {!autoOn && (
+                        <>
+                          <div style={liveMarker(theme, { x: 0.5, y: 0.5 }, "C", false)} />
+                          {liveA.map((p, i) => (
+                            <div key={`la-${i}`} style={liveMarker(theme, p, `A${i + 1}`, false)} />
+                          ))}
+                          {liveB.map((p, i) => (
+                            <div key={`lb-${i}`} style={liveMarker(theme, p, `B${i + 1}`, false)} />
+                          ))}
+                        </>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* ✅ Réglages LIVE (PRO) — repliables, fermés sur mobile */}
                 <div className="card" style={cardSoft(theme)}>
                   <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
                     <div className="subtitle" style={sub(theme)}>
                       Réglages LIVE (PRO)
                     </div>
-                    <div className="subtitle" style={muted(theme)}>
-                      ROI {Math.round(roiPct * 100)}% — r[{minRadius},{maxRadius}] — p2 {param2}
-                      {livePaused ? " — PAUSE" : ""}
+
+                    <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
+                      <div className="subtitle" style={muted(theme)}>
+                        ROI {Math.round(roiPct * 100)}% — r[{minRadius},{maxRadius}] — p2 {param2}
+                        {livePaused ? " — PAUSE" : ""}
+                      </div>
+
+                      <button
+                        className="btn ghost"
+                        style={ghost(theme)}
+                        onClick={() => setLiveSettingsOpen((v) => !v)}
+                        disabled={!autoOn}
+                        title="Ouvrir/fermer les réglages"
+                      >
+                        {liveSettingsOpen ? "Masquer" : "Afficher"}
+                      </button>
                     </div>
                   </div>
 
-                  <div style={liveSliderRow}>
-                    <div style={{ flex: 1, minWidth: 190 }}>
-                      <div className="subtitle" style={label(theme)}>
-                        ROI (zone utile)
-                      </div>
-                      <input
-                        type="range"
-                        min={40}
-                        max={100}
-                        step={5}
-                        value={Math.round(roiPct * 100)}
-                        onChange={(e) => setRoiPct(Math.max(0.4, Math.min(1, Number(e.target.value) / 100)))}
-                        style={liveSlider(theme)}
-                        disabled={!autoOn}
-                      />
-                    </div>
-
-                    <div style={{ flex: 1, minWidth: 190 }}>
-                      <div className="subtitle" style={label(theme)}>
-                        Min radius
-                      </div>
-                      <input
-                        type="range"
-                        min={4}
-                        max={40}
-                        step={1}
-                        value={minRadius}
-                        onChange={(e) => setMinRadius(Number(e.target.value))}
-                        style={liveSlider(theme)}
-                        disabled={!autoOn}
-                      />
-                    </div>
-
-                    <div style={{ flex: 1, minWidth: 190 }}>
-                      <div className="subtitle" style={label(theme)}>
-                        Max radius
-                      </div>
-                      <input
-                        type="range"
-                        min={20}
-                        max={120}
-                        step={1}
-                        value={maxRadius}
-                        onChange={(e) => setMaxRadius(Number(e.target.value))}
-                        style={liveSlider(theme)}
-                        disabled={!autoOn}
-                      />
-                    </div>
-
-                    <div style={{ flex: 1, minWidth: 190 }}>
-                      <div className="subtitle" style={label(theme)}>
-                        Param2 (Hough)
-                      </div>
-                      <input
-                        type="range"
-                        min={10}
-                        max={60}
-                        step={1}
-                        value={param2}
-                        onChange={(e) => setParam2(Number(e.target.value))}
-                        style={liveSlider(theme)}
-                        disabled={!autoOn}
-                      />
-                    </div>
-                  </div>
-
-                  <div className="subtitle" style={muted(theme)}>
-                    Astuce: trop de faux cercles → augmente Param2. Aucune boule détectée → baisse Param2 ou ajuste les rayons.
-                    ROI réduit = plus stable/rapide.
-                  </div>
-                </div>
-
-                {liveErr && <div style={resultBox(theme, "TIE")}>{liveErr}</div>}
-
-                <div ref={liveWrapRef} style={liveWrap(theme)} onClick={!autoOn ? onLiveClick : undefined}>
-                  <video ref={videoRef} style={liveVideo} playsInline muted />
-
-                  {/* canvas invisible pour OpenCV */}
-                  <canvas ref={canvasRef} style={{ display: "none" }} />
-
-                  {/* Overlay radar + mire */}
-                  <div style={radarOverlay}>
-                    <div style={radarSweep(theme)} />
-                    <div style={crosshairOuter(theme)} />
-                    <div style={crosshairInner} />
-                  </div>
-
-                  {/* Auto circles (cliquables => assignation A/B) */}
-                  {autoOn &&
-                    circles.map((c, idx) => {
-                      const isBest = nearestIdx === idx;
-                      const team = circleTeam[idx] || null;
-
-                      return (
-                        <div
-                          key={`c-${idx}`}
-                          style={liveCircle(theme, { x: c.x, y: c.y }, c.r, isBest, team)}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setCircleTeam((cur) => ({ ...cur, [idx]: assignSide }));
-                          }}
-                          title={team ? `Équipe ${team}` : `Assigner à ${assignSide}`}
-                        />
-                      );
-                    })}
-
-                  {/* Manual fallback markers */}
-                  {!autoOn && (
+                  {liveSettingsOpen ? (
                     <>
-                      <div style={liveMarker(theme, { x: 0.5, y: 0.5 }, "C", false)} />
-                      {liveA.map((p, i) => (
-                        <div key={`la-${i}`} style={liveMarker(theme, p, `A${i + 1}`, false)} />
-                      ))}
-                      {liveB.map((p, i) => (
-                        <div key={`lb-${i}`} style={liveMarker(theme, p, `B${i + 1}`, false)} />
-                      ))}
+                      <div style={liveSliderRow}>
+                        <div style={{ flex: 1, minWidth: 190 }}>
+                          <div className="subtitle" style={label(theme)}>
+                            ROI (zone utile)
+                          </div>
+                          <input
+                            type="range"
+                            min={40}
+                            max={100}
+                            step={5}
+                            value={Math.round(roiPct * 100)}
+                            onChange={(e) => setRoiPct(Math.max(0.4, Math.min(1, Number(e.target.value) / 100)))}
+                            style={liveSlider(theme)}
+                            disabled={!autoOn}
+                          />
+                        </div>
+
+                        <div style={{ flex: 1, minWidth: 190 }}>
+                          <div className="subtitle" style={label(theme)}>
+                            Min radius
+                          </div>
+                          <input
+                            type="range"
+                            min={4}
+                            max={40}
+                            step={1}
+                            value={minRadius}
+                            onChange={(e) => setMinRadius(Number(e.target.value))}
+                            style={liveSlider(theme)}
+                            disabled={!autoOn}
+                          />
+                        </div>
+
+                        <div style={{ flex: 1, minWidth: 190 }}>
+                          <div className="subtitle" style={label(theme)}>
+                            Max radius
+                          </div>
+                          <input
+                            type="range"
+                            min={20}
+                            max={120}
+                            step={1}
+                            value={maxRadius}
+                            onChange={(e) => setMaxRadius(Number(e.target.value))}
+                            style={liveSlider(theme)}
+                            disabled={!autoOn}
+                          />
+                        </div>
+
+                        <div style={{ flex: 1, minWidth: 190 }}>
+                          <div className="subtitle" style={label(theme)}>
+                            Param2 (Hough)
+                          </div>
+                          <input
+                            type="range"
+                            min={10}
+                            max={60}
+                            step={1}
+                            value={param2}
+                            onChange={(e) => setParam2(Number(e.target.value))}
+                            style={liveSlider(theme)}
+                            disabled={!autoOn}
+                          />
+                        </div>
+                      </div>
+
+                      <div className="subtitle" style={muted(theme)}>
+                        Astuce: faux cercles → augmente Param2. Rien détecté → baisse Param2 ou ajuste les rayons. ROI réduit =
+                        plus stable/rapide.
+                      </div>
                     </>
+                  ) : (
+                    <div className="subtitle" style={muted(theme)}>
+                      Réglages masqués (mobile). Ouvre “Afficher” si besoin.
+                    </div>
                   )}
                 </div>
 
+                {/* ✅ Lecture + save */}
                 <div className="card" style={cardSoft(theme)}>
                   <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
                     <div className="subtitle" style={sub(theme)}>
@@ -1550,7 +1564,9 @@ export default function PetanquePlay({ go, params }: Props) {
                         Plus proche détectée: {nearestIdx == null ? "—" : `#${nearestIdx + 1}`}
                       </>
                     ) : (
-                      <>Plus proche (manual): —</>
+                      <>
+                        Manual: A={minA_live == null ? "—" : minA_live.toFixed(4)} / B={minB_live == null ? "—" : minB_live.toFixed(4)}
+                      </>
                     )}
                   </div>
 
@@ -1564,10 +1580,6 @@ export default function PetanquePlay({ go, params }: Props) {
                       Enregistrer ({autoOn ? "auto" : "tap"})
                     </button>
                   </div>
-
-                  <div className="subtitle" style={muted(theme)}>
-                    Note: auto-detect = détection de cercles (OpenCV) + anti-sauts (tracking + EMA) + ROI.
-                  </div>
                 </div>
               </>
             )}
@@ -1579,8 +1591,7 @@ export default function PetanquePlay({ go, params }: Props) {
 }
 
 /* ==========================
-   Styles (inchangés structurellement)
-   ✅ Juste recâblés sur CSS vars quand présentes pour matcher le style global
+   Styles
 ========================== */
 
 function cssVarOr(fallback: string, varName: string) {
@@ -1806,7 +1817,7 @@ function endTxt(theme: any): React.CSSProperties {
   return { fontWeight: 900, opacity: 0.9, fontSize: 13 };
 }
 
-// Sheet
+/* ✅ OVERLAY + SHEET MOBILE-SAFE */
 const overlay: React.CSSProperties = {
   position: "fixed",
   inset: 0,
@@ -1816,11 +1827,7 @@ const overlay: React.CSSProperties = {
   justifyContent: "center",
   padding: 10,
   zIndex: 9999,
-
-  // ✅ mobile: évite le bounce/scroll-chaos
   overscrollBehavior: "contain",
-
-  // ✅ important: permettre au conteneur de capter les gestes
   touchAction: "manipulation",
 };
 
@@ -1832,22 +1839,16 @@ function sheet(theme: any): React.CSSProperties {
     border: `1px solid ${cssVarOr("rgba(255,255,255,0.16)", "--stroke")}`,
     background: cssVarOr("rgba(15,15,18,0.94)", "--panel"),
     boxShadow: "0 18px 50px rgba(0,0,0,0.45)",
-
     display: "flex",
     flexDirection: "column",
     gap: 10,
 
-    // ✅ mobile: hauteur réelle + scroll interne fiable
     maxHeight: "calc(100dvh - 16px)",
-    height: "auto",
     overflowY: "auto",
     overflowX: "hidden",
     WebkitOverflowScrolling: "touch",
-
-    // ✅ évite de “bloquer” sur iOS quand on scroll dans un overlay
     overscrollBehavior: "contain",
 
-    // ✅ safe
     position: "relative",
     touchAction: "pan-y",
     backdropFilter: "blur(14px)",
@@ -1889,7 +1890,7 @@ function resultBox(theme: any, w: "A" | "B" | "TIE" | null): React.CSSProperties
   return { ...base, background: "rgba(240,177,42,0.12)" };
 }
 
-// Photo
+// Photo styles
 function fileBtn(theme: any): React.CSSProperties {
   return {
     borderRadius: 14,
@@ -1989,9 +1990,7 @@ function loupeStyle(imgUrl: string, p: PhotoPoint): React.CSSProperties {
   };
 }
 
-/* ==========================
-   LIVE Radar styles
-========================== */
+/* LIVE styles */
 function liveWrap(theme: any): React.CSSProperties {
   return {
     position: "relative",
@@ -2091,7 +2090,6 @@ function liveMarker(theme: any, p: PhotoPoint, labelTxt: string, highlight: bool
   };
 }
 
-// ✅ Auto-detect circle overlay (cliquable + couleur équipe)
 function liveCircle(
   theme: any,
   p: PhotoPoint,
@@ -2128,7 +2126,6 @@ function liveCircle(
   };
 }
 
-// ✅ Sliders LIVE
 const liveSliderRow: React.CSSProperties = {
   display: "flex",
   gap: 10,
@@ -2143,7 +2140,6 @@ function liveSlider(theme: any): React.CSSProperties {
   };
 }
 
-// Petit glow derrière le score (cosmétique uniquement)
 const heroGlow: React.CSSProperties = {
   position: "absolute",
   inset: -140,
@@ -2154,8 +2150,7 @@ const heroGlow: React.CSSProperties = {
 };
 
 /*
-IMPORTANT:
-Ajoute l’animation radar une seule fois dans src/index.css :
+Ajoute UNE SEULE FOIS dans src/index.css :
 
 @keyframes dcRadarSpin {
   from { transform: translate(-50%,-50%) rotate(0deg); }
