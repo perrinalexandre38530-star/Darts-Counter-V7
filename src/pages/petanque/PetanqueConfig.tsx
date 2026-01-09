@@ -14,6 +14,7 @@
 // IMPORTANT: le bouton Démarrer fait : go("petanque.play", { cfg: config, mode: config.mode })
 // ✅ NEW (Teams): sélection/creation d'équipes + logo (partagé avec Profiles > Teams via teamsStore)
 // ✅ NEW (FFA3): mode solo 3 joueurs EXACTS, pas d’équipes (UI & payload)
+// ✅ NEW (Singles SOLO): mode solo 2 joueurs EXACTS, pas d’équipes (UI & payload)
 // =============================================================
 
 import React from "react";
@@ -68,7 +69,7 @@ type PetanqueConfigPayload = {
   throwOrderRule: ThrowOrderRule;
   roles: Record<string, PlayerRole>;
 
-  // ✅ FFA3 / training : pas d’équipes
+  // ✅ FFA3 / singles / training : pas d’équipes
   teams?: Array<{
     id: TeamId;
     name: string;
@@ -209,15 +210,18 @@ export default function PetanqueConfig({ store, go, params }: Props) {
     rawMode === "simple"
       ? "singles"
       : rawMode === "ffa3"
-      ? "ffa3" // ✅ NEW
+      ? "ffa3"
       : rawMode === "variants"
       ? "variants"
       : rawMode === "handicap"
       ? "handicap"
       : (rawMode as PetanqueModeId);
 
-  const isFfa3 = mode === "ffa3"; // ✅ NEW
+  const isFfa3 = mode === "ffa3";
   const isVariants = mode === "variants" || mode === "handicap";
+
+  // ✅ NEW: modes SOLO = pas d'équipes (UI & payload)
+  const isSoloNoTeams = isFfa3 || mode === "singles";
 
   // ✅ Sans bots IA
   const profiles: Profile[] = React.useMemo(
@@ -304,7 +308,7 @@ export default function PetanqueConfig({ store, go, params }: Props) {
   const [ballsPerTeam, setBallsPerTeam] = React.useState<number>(6);
 
   const need = React.useMemo(() => {
-    if (isFfa3) return 3; // ✅ NEW: FFA3 = 3 joueurs EXACTS
+    if (isFfa3) return 3; // ✅ FFA3 = 3 joueurs EXACTS
     if (isVariants) return Math.max(1, teamASizeState) + Math.max(1, teamBSizeState);
     return requiredPlayersFixed(mode);
   }, [isFfa3, isVariants, mode, teamASizeState, teamBSizeState]);
@@ -325,8 +329,8 @@ export default function PetanqueConfig({ store, go, params }: Props) {
 
   // Init/reset quand le mode change
   React.useEffect(() => {
-    // FFA3: on désactive tout le setup équipes/variants (UI masquée de toute façon)
-    if (mode === "ffa3") {
+    // SOLO: on désactive tout le setup équipes/variants (UI masquée de toute façon)
+    if (isSoloNoTeams) {
       setPresetKey(null);
       return;
     }
@@ -397,15 +401,16 @@ export default function PetanqueConfig({ store, go, params }: Props) {
 
       if (exists) return prev.filter((x) => x !== id);
 
-      // ✅ FFA3: max 3 (si déjà 3, on remplace le dernier)
-      if (isFfa3) {
-        if (prev.length >= 3) {
-          const next = prev.slice(0, 2);
+      // ✅ SOLO (singles & ffa3): max = need, si déjà plein => remplace le dernier
+      if (isSoloNoTeams) {
+        if (prev.length >= need) {
+          const next = prev.slice(0, Math.max(0, need - 1));
           return [...next, id];
         }
         return [...prev, id];
       }
 
+      // (team modes classiques)
       if (prev.length >= need) {
         const next = prev.slice(0, need - 1);
         return [...next, id];
@@ -417,10 +422,11 @@ export default function PetanqueConfig({ store, go, params }: Props) {
   const canStart = React.useMemo(() => {
     if (mode === "training") return selectedIds.length === 1;
     if (isFfa3) return selectedIds.length === 3; // ✅ EXACT 3
+    // singles: need=2 => exact 2 via règle générale
     return selectedIds.length === need;
   }, [mode, isFfa3, selectedIds.length, need]);
 
-  // En FFA3, on ne veut pas de logique équipe A/B (mais on garde les tailles pour les autres modes)
+  // En SOLO, on ne veut pas de logique équipe A/B (mais on garde les tailles pour les autres modes)
   const teamASize = isVariants
     ? clampInt(teamASizeState, 1, 4)
     : mode === "training"
@@ -515,8 +521,10 @@ export default function PetanqueConfig({ store, go, params }: Props) {
       alert(
         mode === "training"
           ? t("petanque.config.needOne", "Sélectionne 1 joueur pour l'entraînement.")
-          : isFfa3
-          ? t("petanque.config.needThree", "Sélectionne exactement 3 joueurs.")
+          : isSoloNoTeams
+          ? mode === "singles"
+            ? t("petanque.config.needTwo", "Sélectionne exactement 2 joueurs (J1/J2).")
+            : t("petanque.config.needThree", "Sélectionne exactement 3 joueurs (J1/J2/J3).")
           : t("petanque.config.needPlayers", `Sélectionne ${need} joueurs.`)
       );
       return;
@@ -541,11 +549,11 @@ export default function PetanqueConfig({ store, go, params }: Props) {
       startRule,
       throwOrderRule,
       roles,
-      // ✅ FFA3/training: pas d'équipes dans le payload
-      teams: isFfa3 || mode === "training" ? undefined : teams,
+      // ✅ SOLO/training: pas d'équipes dans le payload
+      teams: isSoloNoTeams || mode === "training" ? undefined : teams,
       players,
       variants:
-        isVariants && !isFfa3
+        isVariants && !isSoloNoTeams
           ? {
               teamASize,
               teamBSize,
@@ -749,9 +757,11 @@ export default function PetanqueConfig({ store, go, params }: Props) {
             {t("petanque.config.mode", "Mode")} : <b style={{ color: "#fff" }}>{mode}</b>
           </div>
 
-          {isFfa3 && (
+          {isSoloNoTeams && (
             <div style={{ marginTop: 6, fontSize: 11, color: "#9ea3bf" }}>
-              {t("petanque.config.ffa3Hint", "FFA3 : mode solo — sélectionne exactement 3 joueurs (J1/J2/J3).")}
+              {mode === "singles"
+                ? t("petanque.config.singlesSoloHint", "Singles : mode solo — sélectionne exactement 2 joueurs (J1/J2).")
+                : t("petanque.config.ffa3Hint", "FFA3 : mode solo — sélectionne exactement 3 joueurs (J1/J2/J3).")}
             </div>
           )}
         </div>
@@ -782,8 +792,8 @@ export default function PetanqueConfig({ store, go, params }: Props) {
             {t("petanque.config.players", "Joueurs")}
           </div>
 
-          {/* ✅ NEW: Équipes (noms & logos) — MASQUÉ en FFA3 */}
-          {mode !== "training" && !isFfa3 && (
+          {/* ✅ Équipes (noms & logos) — MASQUÉ en SOLO */}
+          {mode !== "training" && !isSoloNoTeams && (
             <div
               style={{
                 marginBottom: 14,
@@ -793,7 +803,15 @@ export default function PetanqueConfig({ store, go, params }: Props) {
                 background: "rgba(255,255,255,0.035)",
               }}
             >
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 10 }}>
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  gap: 10,
+                  marginBottom: 10,
+                }}
+              >
                 <div style={{ fontSize: 12, fontWeight: 900, letterSpacing: 0.9, textTransform: "uppercase", color: primary }}>
                   {t("petanque.config.teamsNames", "Équipes (noms & logos)")}
                 </div>
@@ -816,8 +834,8 @@ export default function PetanqueConfig({ store, go, params }: Props) {
             </div>
           )}
 
-          {/* VARIANTES / HANDICAP — MASQUÉ en FFA3 */}
-          {isVariants && !isFfa3 && (
+          {/* VARIANTES / HANDICAP — MASQUÉ en SOLO */}
+          {isVariants && !isSoloNoTeams && (
             <div
               style={{
                 marginBottom: 14,
@@ -945,8 +963,9 @@ export default function PetanqueConfig({ store, go, params }: Props) {
               </div>
 
               <div style={{ marginTop: 10, fontSize: 11, color: "#9ea3bf" }}>
-                {t("petanque.variants.ballsTeam", "Boules / équipe")} : <b style={{ color: "#e9ecff" }}>{ballsPerTeam}</b>{" "}
-                <span style={{ opacity: 0.9 }}>•</span> {t("petanque.variants.ballsPlayer", "Boules / joueur")} — A:{" "}
+                {t("petanque.variants.ballsTeam", "Boules / équipe")} :{" "}
+                <b style={{ color: "#e9ecff" }}>{ballsPerTeam}</b> <span style={{ opacity: 0.9 }}>•</span>{" "}
+                {t("petanque.variants.ballsPlayer", "Boules / joueur")} — A:{" "}
                 <b style={{ color: "#e9ecff" }}>{ballsPerPlayerA.slice(0, teamASizeState).join("-") || "-"}</b> | B:{" "}
                 <b style={{ color: "#e9ecff" }}>{ballsPerPlayerB.slice(0, teamBSizeState).join("-") || "-"}</b>
               </div>
@@ -975,19 +994,17 @@ export default function PetanqueConfig({ store, go, params }: Props) {
                 {profiles.map((p: any) => {
                   const active = selectedIds.includes(p.id);
 
-                  // ✅ FFA3: halo unique + badge J1/J2/J3 (pas A/B)
+                  // ✅ SOLO: halo unique + badge J1/J2(/J3) (pas A/B)
                   let halo = primary;
-                  if (!isFfa3 && mode !== "training") {
+                  if (!isSoloNoTeams && mode !== "training") {
                     const idx = selectedIds.indexOf(p.id);
-                    if (idx >= 0) {
-                      halo = idx < teamASize ? TEAM_COLORS.A : TEAM_COLORS.B;
-                    }
+                    if (idx >= 0) halo = idx < teamASize ? TEAM_COLORS.A : TEAM_COLORS.B;
                   }
 
                   const displayName =
                     safeStr(p.displayName, "") || safeStr(p.name, "") || safeStr(p.nickname, "") || "Profil";
 
-                  const ffaRank = isFfa3 ? selectedIds.indexOf(p.id) : -1;
+                  const soloRank = isSoloNoTeams ? selectedIds.indexOf(p.id) : -1;
 
                   return (
                     <div
@@ -1054,7 +1071,7 @@ export default function PetanqueConfig({ store, go, params }: Props) {
                       {/* Badge position */}
                       {mode !== "training" && active && (
                         <div style={{ marginTop: 2, display: "flex", justifyContent: "center" }}>
-                          {isFfa3 ? (
+                          {isSoloNoTeams ? (
                             <span
                               style={{
                                 padding: "2px 8px",
@@ -1070,7 +1087,7 @@ export default function PetanqueConfig({ store, go, params }: Props) {
                                 whiteSpace: "nowrap",
                               }}
                             >
-                              {ffaRank >= 0 ? `J${ffaRank + 1}` : "J"}
+                              {soloRank >= 0 ? `J${soloRank + 1}` : "J"}
                             </span>
                           ) : (
                             <span
@@ -1104,8 +1121,10 @@ export default function PetanqueConfig({ store, go, params }: Props) {
               <p style={{ fontSize: 11, color: "#7c80a0", marginBottom: 0 }}>
                 {mode === "training"
                   ? t("petanque.config.hintTraining", "Sélectionne 1 joueur.")
-                  : isFfa3
-                  ? t("petanque.config.hintFfa3", "Sélectionne exactement 3 joueurs (J1/J2/J3).")
+                  : isSoloNoTeams
+                  ? mode === "singles"
+                    ? t("petanque.config.hintSingles", "Sélectionne exactement 2 joueurs (J1/J2).")
+                    : t("petanque.config.hintFfa3", "Sélectionne exactement 3 joueurs (J1/J2/J3).")
                   : t("petanque.config.hint", `Sélectionne exactement ${need} joueurs.`)}
               </p>
             </>
@@ -1161,8 +1180,9 @@ export default function PetanqueConfig({ store, go, params }: Props) {
                 primary={primary}
                 primarySoft={primarySoft}
               />
-              {/* En FFA3, ces options “Équipe A/B” restent possibles si tu veux, sinon masque-les. */}
-              {!isFfa3 && (
+
+              {/* ✅ SOLO: on masque “Départ équipe A/B” */}
+              {!isSoloNoTeams && (
                 <>
                   <PillButton
                     label={t("petanque.config.start.fixedA", "Départ Équipe A")}
@@ -1182,6 +1202,7 @@ export default function PetanqueConfig({ store, go, params }: Props) {
                   />
                 </>
               )}
+
               <PillButton
                 label={t("petanque.config.start.closest", "Boule la + proche (amical)")}
                 active={startRule === "closest_boule"}
@@ -1308,8 +1329,8 @@ export default function PetanqueConfig({ store, go, params }: Props) {
           </section>
         )}
 
-        {/* RÉCAP ÉQUIPES — MASQUÉ en FFA3 */}
-        {mode !== "training" && !isFfa3 && (
+        {/* RÉCAP ÉQUIPES — MASQUÉ en SOLO */}
+        {mode !== "training" && !isSoloNoTeams && (
           <section
             style={{
               background: cardBg,
@@ -1534,8 +1555,8 @@ export default function PetanqueConfig({ store, go, params }: Props) {
         </div>
       )}
 
-      {/* ✅ Modal create team — MASQUÉ en FFA3 (on ne peut pas l’ouvrir, mais on garde le rendu safe) */}
-      {teamModalOpen && !isFfa3 && (
+      {/* ✅ Modal create team — MASQUÉ en SOLO */}
+      {teamModalOpen && !isSoloNoTeams && (
         <div
           onClick={() => setTeamModalOpen(false)}
           style={{
@@ -1629,7 +1650,13 @@ export default function PetanqueConfig({ store, go, params }: Props) {
                     <img
                       src={newTeamLogo}
                       alt="logo"
-                      style={{ width: 44, height: 44, borderRadius: 12, objectFit: "cover", border: "1px solid rgba(255,255,255,0.18)" }}
+                      style={{
+                        width: 44,
+                        height: 44,
+                        borderRadius: 12,
+                        objectFit: "cover",
+                        border: "1px solid rgba(255,255,255,0.18)",
+                      }}
                     />
                     <button
                       type="button"

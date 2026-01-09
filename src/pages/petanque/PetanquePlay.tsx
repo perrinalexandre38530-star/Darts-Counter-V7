@@ -9,6 +9,7 @@
 // - Bouton Pause / Reprendre (coupe l'analyse sans stopper la caméra)
 // ✅ NEW (UI): Score + logos équipes + composition + rôles + stats joueurs (+/−) persistées localStorage
 // ✅ NEW (FFA3 local): 3 joueurs, premier à 13, max 3 points par mène (0..3)
+// ✅ NEW (UI PATCH): Header "ARCADE" fixe + gros médaillons TEAMS + KPI Score Neon + noms sous avatars
 // ============================================
 
 import React from "react";
@@ -43,7 +44,6 @@ type MeasureMode = "manual" | "photo" | "live";
 
 // ===== Helpers UI (avatars + couleurs) =====
 function pickTeamColor(theme: any, side: "A" | "B") {
-  // On évite de casser si certains thèmes n'ont pas "secondary/pink/gold".
   const primary = theme?.primary || "#FFD24A";
   const alt =
     theme?.secondary ||
@@ -56,7 +56,6 @@ function pickTeamColor(theme: any, side: "A" | "B") {
 }
 
 function getAvatarSrc(p: any): string | null {
-  // Couvre la plupart de tes structures (darts + petanque + local/online)
   return (
     p?.avatarDataUrl ||
     p?.avatarUrl ||
@@ -72,11 +71,13 @@ function MedallionAvatar({
   size = 66,
   border,
   glow,
+  fallback,
 }: {
   src: string | null;
   size?: number;
   border: string;
   glow: string;
+  fallback?: string;
 }) {
   return (
     <div
@@ -106,7 +107,9 @@ function MedallionAvatar({
           }}
         />
       ) : (
-        <span style={{ opacity: 0.75, fontWeight: 950, fontSize: 22 }}>?</span>
+        <span style={{ opacity: 0.75, fontWeight: 950, fontSize: 22 }}>
+          {fallback || "?"}
+        </span>
       )}
     </div>
   );
@@ -169,52 +172,26 @@ function safeJsonParse<T>(raw: string | null, fallback: T): T {
  * Fallback sur st.teamA/st.teamB.
  */
 function extractTeams(st: any, matchCfg: any): { A: TeamLine; B: TeamLine } {
-  // Helpers
   const asStr = (v: any) => (v == null ? "" : String(v)).trim();
 
   const normalizeLogo = (raw: any): string | null => {
     if (!raw) return null;
-    // accepte logoDataUrl, logo, logoUrl, image, etc.
-    const v = raw?.logoDataUrl ?? raw?.logoUrl ?? raw?.logo ?? raw?.image ?? raw?.img ?? raw;
+    const v =
+      raw?.logoDataUrl ??
+      raw?.teamLogoDataUrl ??
+      raw?.logoUrl ??
+      raw?.teamLogoUrl ??
+      raw?.logo ??
+      raw?.teamLogo ??
+      raw?.image ??
+      raw?.img ??
+      raw?.medal ??
+      raw?.badge ??
+      raw;
     const s = asStr(v);
     return s ? s : null;
   };
 
-  const normalizePlayers = (rawPlayers: any, profilesIndex?: Record<string, any>): PlayerLine[] => {
-    const arr = Array.isArray(rawPlayers) ? rawPlayers : [];
-    return arr.map((p: any, idx: number) => {
-      // Cas 1: string "Perrin" ou "id_profile"
-      if (typeof p === "string") {
-        const maybeProfile = profilesIndex?.[p];
-        const name = asStr(maybeProfile?.displayName ?? maybeProfile?.name) || asStr(p) || `Joueur ${idx + 1}`;
-        return {
-          id: asStr(maybeProfile?.id) || asStr(p) || `p-${idx}`,
-          name,
-          role: (maybeProfile?.role as PlayerRole) ?? undefined,
-          profile: maybeProfile as Profile,
-        };
-      }
-
-      // Cas 2: objet joueur
-      const id = asStr(p?.id ?? p?.profileId ?? p?.pid ?? `p-${idx}`);
-      const prof = (p?.profile ?? profilesIndex?.[id]) as any;
-
-      const name =
-        asStr(p?.name ?? p?.displayName ?? p?.label) ||
-        asStr(prof?.displayName ?? prof?.name) ||
-        `Joueur ${idx + 1}`;
-
-      const role = (p?.role as PlayerRole) ?? (prof?.role as PlayerRole) ?? undefined;
-
-      const profile: Profile | undefined =
-        (prof as Profile) ??
-        ((p?.avatarUrl || p?.displayName || p?.name) ? (p as Profile) : undefined);
-
-      return { id, name, role, profile };
-    });
-  };
-
-  // Index profils si fourni dans cfg
   const profilesArr = (matchCfg?.profiles ?? matchCfg?.cfg?.profiles ?? []) as any[];
   const profilesIndex: Record<string, any> = {};
   if (Array.isArray(profilesArr)) {
@@ -224,29 +201,87 @@ function extractTeams(st: any, matchCfg: any): { A: TeamLine; B: TeamLine } {
     });
   }
 
-  // ------------- Détection des shapes les plus fréquents -------------
-  // Shape 1: cfg.teams = { A:{...}, B:{...} }
-  const teamA_1 = matchCfg?.teams?.A;
-  const teamB_1 = matchCfg?.teams?.B;
+  const normalizePlayers = (
+    rawPlayers: any,
+    profilesIndex?: Record<string, any>
+  ): PlayerLine[] => {
+    const arr = Array.isArray(rawPlayers) ? rawPlayers : [];
+    return arr
+      .map((p: any, idx: number) => {
+        if (typeof p === "string") {
+          const maybeProfile = profilesIndex?.[p];
+          const name =
+            asStr(maybeProfile?.displayName ?? maybeProfile?.name) ||
+            asStr(p) ||
+            `Joueur ${idx + 1}`;
+          return {
+            id: asStr(maybeProfile?.id) || asStr(p) || `p-${idx}`,
+            name,
+            role: (maybeProfile?.role as PlayerRole) ?? undefined,
+            profile: maybeProfile as Profile,
+          };
+        }
 
-  // Shape 2: cfg.teamA / cfg.teamB
-  const teamA_2 = matchCfg?.teamA;
-  const teamB_2 = matchCfg?.teamB;
+        const id = asStr(p?.id ?? p?.profileId ?? p?.pid ?? p?.profile?.id ?? `p-${idx}`);
+        const prof = (p?.profile ?? profilesIndex?.[id]) as any;
 
-  // Shape 3: cfg.teams = [{id:'A'|'B', ...}, ...]
-  const teamsArr = matchCfg?.teams;
-  const teamA_3 =
-    Array.isArray(teamsArr) ? teamsArr.find((t) => asStr(t?.id ?? t?.key).toUpperCase() === "A") : null;
-  const teamB_3 =
-    Array.isArray(teamsArr) ? teamsArr.find((t) => asStr(t?.id ?? t?.key).toUpperCase() === "B") : null;
+        const name =
+          asStr(p?.name ?? p?.displayName ?? p?.label) ||
+          asStr(prof?.displayName ?? prof?.name) ||
+          `Joueur ${idx + 1}`;
 
-  // Shape 4: champs plats
-  const flatAName = matchCfg?.teamAName ?? matchCfg?.nameA ?? matchCfg?.A;
-  const flatBName = matchCfg?.teamBName ?? matchCfg?.nameB ?? matchCfg?.B;
-  const flatALogo = matchCfg?.teamALogo ?? matchCfg?.logoA;
-  const flatBLogo = matchCfg?.teamBLogo ?? matchCfg?.logoB;
-  const flatAPlayers = matchCfg?.teamAPlayers ?? matchCfg?.playersA;
-  const flatBPlayers = matchCfg?.teamBPlayers ?? matchCfg?.playersB;
+        const role =
+          (p?.role as PlayerRole) ?? (prof?.role as PlayerRole) ?? undefined;
+
+        const profile: Profile | undefined =
+          (prof as Profile) ??
+          ((p?.avatarUrl || p?.displayName || p?.name) ? (p as Profile) : undefined);
+
+        return { id, name, role, profile };
+      })
+      .filter(Boolean);
+  };
+
+  // ✅ Récup multi-formats (objet A/B, tableau, cfg nested, champs à plat)
+  const teamA_1 = matchCfg?.teams?.A ?? matchCfg?.cfg?.teams?.A;
+  const teamB_1 = matchCfg?.teams?.B ?? matchCfg?.cfg?.teams?.B;
+
+  const teamA_2 = matchCfg?.teamA ?? matchCfg?.cfg?.teamA;
+  const teamB_2 = matchCfg?.teamB ?? matchCfg?.cfg?.teamB;
+
+  const teamsArr = matchCfg?.teams ?? matchCfg?.cfg?.teams;
+  const teamA_3 = Array.isArray(teamsArr)
+    ? teamsArr.find((t) => asStr(t?.id ?? t?.key).toUpperCase() === "A")
+    : null;
+  const teamB_3 = Array.isArray(teamsArr)
+    ? teamsArr.find((t) => asStr(t?.id ?? t?.key).toUpperCase() === "B")
+    : null;
+
+  const flatAName = matchCfg?.teamAName ?? matchCfg?.cfg?.teamAName ?? matchCfg?.nameA ?? matchCfg?.A;
+  const flatBName = matchCfg?.teamBName ?? matchCfg?.cfg?.teamBName ?? matchCfg?.nameB ?? matchCfg?.B;
+
+  const flatALogo = matchCfg?.teamALogo ?? matchCfg?.cfg?.teamALogo ?? matchCfg?.logoA;
+  const flatBLogo = matchCfg?.teamBLogo ?? matchCfg?.cfg?.teamBLogo ?? matchCfg?.logoB;
+
+  const flatAPlayers =
+    matchCfg?.teamAPlayers ??
+    matchCfg?.playersA ??
+    matchCfg?.teamAPlayerIds ??
+    matchCfg?.teamAProfiles ??
+    matchCfg?.cfg?.teamAPlayers ??
+    matchCfg?.cfg?.playersA ??
+    matchCfg?.cfg?.teamAPlayerIds ??
+    matchCfg?.cfg?.teamAProfiles;
+
+  const flatBPlayers =
+    matchCfg?.teamBPlayers ??
+    matchCfg?.playersB ??
+    matchCfg?.teamBPlayerIds ??
+    matchCfg?.teamBProfiles ??
+    matchCfg?.cfg?.teamBPlayers ??
+    matchCfg?.cfg?.playersB ??
+    matchCfg?.cfg?.teamBPlayerIds ??
+    matchCfg?.cfg?.teamBProfiles;
 
   const rawA =
     teamA_1 ??
@@ -270,23 +305,41 @@ function extractTeams(st: any, matchCfg: any): { A: TeamLine; B: TeamLine } {
     (st?.teamB ? { name: st.teamB } : null) ??
     null;
 
+  const pickPlayers = (rawTeam: any) => {
+    // ✅ essaie toutes les clés usuelles qu’on rencontre en config
+    return (
+      rawTeam?.players ??
+      rawTeam?.members ??
+      rawTeam?.roster ??
+      rawTeam?.profiles ??
+      rawTeam?.playerIds ??
+      rawTeam?.profileIds ??
+      rawTeam?.composition ??
+      rawTeam?.lineup ??
+      rawTeam?.slots ??
+      rawTeam?.selected ??
+      rawTeam?.picks ??
+      rawTeam?.p ??
+      []
+    );
+  };
+
   const A: TeamLine = {
     id: asStr(rawA?.id) || undefined,
     name: asStr(rawA?.name ?? rawA?.label ?? st?.teamA) || "Équipe A",
     logoDataUrl: normalizeLogo(rawA),
-    players: normalizePlayers(rawA?.players ?? rawA?.members ?? rawA?.roster ?? rawA?.profiles, profilesIndex),
+    players: normalizePlayers(pickPlayers(rawA), profilesIndex),
   };
 
   const B: TeamLine = {
     id: asStr(rawB?.id) || undefined,
     name: asStr(rawB?.name ?? rawB?.label ?? st?.teamB) || "Équipe B",
     logoDataUrl: normalizeLogo(rawB),
-    players: normalizePlayers(rawB?.players ?? rawB?.members ?? rawB?.roster ?? rawB?.profiles, profilesIndex),
+    players: normalizePlayers(pickPlayers(rawB), profilesIndex),
   };
 
-  // Fallback ultime : si roster absent mais cfg donne "players" global + teams mapping
-  if ((!A.players?.length || !B.players?.length) && Array.isArray(matchCfg?.players) && matchCfg?.players?.length) {
-    // si cfg.players = [{team:'A'|'B', name,...}] ou [{teamId:'A', ...}]
+  // ✅ Dernier filet de sécurité : matchCfg.players[] avec team=A/B
+  if ((!A.players.length || !B.players.length) && Array.isArray(matchCfg?.players)) {
     const global = matchCfg.players;
     const a2 = global.filter((p: any) => asStr(p?.team ?? p?.teamId ?? p?.side).toUpperCase() === "A");
     const b2 = global.filter((p: any) => asStr(p?.team ?? p?.teamId ?? p?.side).toUpperCase() === "B");
@@ -316,6 +369,348 @@ function statLabel(k: keyof PlayerStats) {
     default:
       return k;
   }
+}
+
+// =====================
+// ✅ HEADER "ARCADE" FIXED
+// - Gros médaillons TEAMS + noms dessous
+// - KPI score néon
+// - Nav back/home + bouton Mesurer
+// =====================
+function PetanqueHeaderArcade(props: {
+  theme: any;
+  go: (tab: any, params?: any) => void;
+  allowMeasurements: boolean;
+  onMeasure: () => void;
+  isFfa3: boolean;
+
+  teams?: { A: TeamLine; B: TeamLine };
+  scoreA?: number;
+  scoreB?: number;
+
+  ffaPlayers?: string[];
+  ffaScores?: number[];
+  ffaWinnerIdx?: number | null;
+}) {
+  const {
+    theme,
+    go,
+    allowMeasurements,
+    onMeasure,
+    isFfa3,
+    teams,
+    scoreA,
+    scoreB,
+    ffaPlayers,
+    ffaScores,
+    ffaWinnerIdx,
+  } = props;
+
+  const colorA = pickTeamColor(theme, "A");
+  const colorB = pickTeamColor(theme, "B");
+
+  // ✅ LOGO D'ÉQUIPE > AVATAR JOUEUR > FALLBACK
+  const teamAImg =
+    teams?.A?.logoDataUrl ||
+    (teams?.A?.players?.[0]?.profile
+      ? getAvatarSrc(teams.A.players[0].profile)
+      : null) ||
+    null;
+
+  const teamBImg =
+    teams?.B?.logoDataUrl ||
+    (teams?.B?.players?.[0]?.profile
+      ? getAvatarSrc(teams.B.players[0].profile)
+      : null) ||
+    null;
+
+  return (
+    <div
+      style={{
+        position: "fixed",
+        left: 0,
+        right: 0,
+        top: 0,
+        zIndex: 50,
+        padding: 10,
+        paddingBottom: 10,
+        background:
+          "linear-gradient(180deg, rgba(0,0,0,.70), rgba(0,0,0,.12))",
+        backdropFilter: "blur(8px)",
+      }}
+    >
+      <div style={{ width: "100%", maxWidth: 520, margin: "0 auto" }}>
+        {/* Nav row */}
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: 10,
+            marginBottom: 8,
+          }}
+        >
+          <button
+            className="btn ghost"
+            style={ghost(theme)}
+            onClick={() => go("games")}
+          >
+            ← Jeux
+          </button>
+
+          <div style={{ display: "flex", justifyContent: "center", flex: 1 }}>
+            <div
+              style={{
+                fontSize: 18,
+                fontWeight: 1000,
+                letterSpacing: 2.2,
+                textTransform: "uppercase",
+                color: theme.primary,
+                textShadow: `0 0 14px ${theme.primary}55`,
+                padding: "6px 12px",
+                borderRadius: 999,
+                border: `1px solid ${theme.primary}33`,
+                background:
+                  "linear-gradient(180deg, rgba(0,0,0,.22), rgba(0,0,0,.36))",
+                boxShadow: `0 0 18px ${theme.primary}22`,
+              }}
+            >
+              PÉTANQUE
+            </div>
+          </div>
+
+          <button
+            className="btn ghost"
+            style={ghost(theme)}
+            onClick={() => go("home")}
+          >
+            Home
+          </button>
+        </div>
+
+        {/* KPI card */}
+        <div
+          style={{
+            borderRadius: 18,
+            border: `1px solid ${cssVarOr(
+              "rgba(255,255,255,0.14)",
+              "--stroke"
+            )}`,
+            background: cssVarOr("rgba(255,255,255,0.06)", "--glass"),
+            boxShadow: "0 10px 24px rgba(0,0,0,0.55)",
+            overflow: "hidden",
+            padding: 10,
+          }}
+        >
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              gap: 10,
+              marginBottom: 10,
+            }}
+          >
+            {allowMeasurements ? (
+              <button
+                className="btn primary"
+                style={chipBtn(theme)}
+                onClick={onMeasure}
+              >
+                Mesurer
+              </button>
+            ) : (
+              <div />
+            )}
+          </div>
+
+          {isFfa3 ? (
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
+                gap: 10,
+                alignItems: "center",
+              }}
+            >
+              {(ffaPlayers || []).slice(0, 3).map((name, i) => (
+                <div key={i} style={{ textAlign: "center", minWidth: 0 }}>
+                  <div className="badge" style={pill(theme)} title={name}>
+                    {name}
+                  </div>
+                  <div
+                    style={{
+                      fontWeight: 1100 as any,
+                      fontSize: 28,
+                      marginTop: 6,
+                    }}
+                  >
+                    {(ffaScores || [0, 0, 0])[i] ?? 0}
+                  </div>
+                  {ffaWinnerIdx === i && (
+                    <div className="badge" style={win(theme)}>
+                      Vainqueur
+                    </div>
+                  )}
+                </div>
+              ))}
+              <div
+                className="subtitle"
+                style={{
+                  ...muted(theme),
+                  gridColumn: "1 / -1",
+                  textAlign: "center",
+                }}
+              >
+                3 joueurs — premier à 13 — max 3 points par mène
+              </div>
+            </div>
+          ) : (
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "1fr auto 1fr",
+                gap: 10,
+                alignItems: "center",
+              }}
+            >
+              {/* TEAM A */}
+              <div
+                style={{
+                  display: "grid",
+                  justifyItems: "start",
+                  gap: 6,
+                  minWidth: 0,
+                }}
+              >
+                <MedallionAvatar
+                  src={teamAImg}
+                  size={72}
+                  border={colorA + "88"}
+                  glow={colorA + "35"}
+                  fallback="A"
+                />
+                <div
+                  style={{
+                    fontSize: 11,
+                    fontWeight: 950,
+                    letterSpacing: 0.8,
+                    textTransform: "uppercase",
+                    color: colorA,
+                    textShadow: `0 0 12px ${colorA}55`,
+                    maxWidth: 160,
+                    whiteSpace: "nowrap",
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                  }}
+                  title={teams?.A?.name || "TEAM A"}
+                >
+                  {teams?.A?.name || "TEAM A"}
+                </div>
+              </div>
+
+              {/* SCORE KPI */}
+              <div
+                style={{
+                  borderRadius: 16,
+                  padding: "10px 14px",
+                  border: `1px solid ${theme.primary}55`,
+                  background:
+                    "linear-gradient(180deg, rgba(0,0,0,.18), rgba(0,0,0,.38))",
+                  boxShadow: `0 0 22px ${theme.primary}22`,
+                  display: "grid",
+                  placeItems: "center",
+                  minWidth: 150,
+                }}
+              >
+                <div
+                  style={{
+                    fontSize: 10.5,
+                    letterSpacing: 1.2,
+                    textTransform: "uppercase",
+                    opacity: 0.85,
+                    marginBottom: 2,
+                  }}
+                >
+                  Score
+                </div>
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "baseline",
+                    gap: 10,
+                  }}
+                >
+                  <div
+                    style={{
+                      fontSize: 30,
+                      fontWeight: 1000,
+                      color: colorA,
+                      textShadow: `0 0 14px ${colorA}66`,
+                      lineHeight: 1,
+                      minWidth: 36,
+                      textAlign: "right",
+                    }}
+                  >
+                    {scoreA ?? 0}
+                  </div>
+                  <div style={{ opacity: 0.65, fontWeight: 900 }}>—</div>
+                  <div
+                    style={{
+                      fontSize: 30,
+                      fontWeight: 1000,
+                      color: colorB,
+                      textShadow: `0 0 14px ${colorB}66`,
+                      lineHeight: 1,
+                      minWidth: 36,
+                      textAlign: "left",
+                    }}
+                  >
+                    {scoreB ?? 0}
+                  </div>
+                </div>
+              </div>
+
+              {/* TEAM B */}
+              <div
+                style={{
+                  display: "grid",
+                  justifyItems: "end",
+                  gap: 6,
+                  minWidth: 0,
+                }}
+              >
+                <MedallionAvatar
+                  src={teamBImg}
+                  size={72}
+                  border={colorB + "88"}
+                  glow={colorB + "35"}
+                  fallback="B"
+                />
+                <div
+                  style={{
+                    fontSize: 11,
+                    fontWeight: 950,
+                    letterSpacing: 0.8,
+                    textTransform: "uppercase",
+                    color: colorB,
+                    textShadow: `0 0 12px ${colorB}55`,
+                    maxWidth: 160,
+                    whiteSpace: "nowrap",
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    textAlign: "right",
+                  }}
+                  title={teams?.B?.name || "TEAM B"}
+                >
+                  {teams?.B?.name || "TEAM B"}
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
 }
 
 export default function PetanquePlay({ go, params }: Props) {
@@ -406,8 +801,6 @@ export default function PetanquePlay({ go, params }: Props) {
   // ✅ MESURAGE (sheet)
   // ==========================
   const [measureOpen, setMeasureOpen] = React.useState(false);
-
-  // IMPORTANT: le reste du fichier utilise `mode` / `setMode`.
   const [mode, setMode] = React.useState<MeasureMode>("manual");
 
   // ✅ Mesurage autorisé : priorité params.cfg, sinon localStorage
@@ -416,7 +809,6 @@ export default function PetanquePlay({ go, params }: Props) {
   const effectiveCfg = (cfgFromParams ?? cfgFromStorage) as any;
   const allowMeasurements: boolean = (effectiveCfg?.options?.allowMeasurements ?? true) === true;
 
-  // si interdit : ferme le sheet
   React.useEffect(() => {
     if (!allowMeasurements && measureOpen) setMeasureOpen(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -429,7 +821,7 @@ export default function PetanquePlay({ go, params }: Props) {
   // --- Manuel
   const [dA, setDA] = React.useState<string>("");
   const [dB, setDB] = React.useState<string>("");
-  const [tol, setTol] = React.useState<string>("1"); // cm si manuel ; px si photo non calibrée ; screen si live
+  const [tol, setTol] = React.useState<string>("1");
   const [note, setNote] = React.useState<string>("");
 
   const numOrNaN = (v: string) => {
@@ -486,7 +878,6 @@ export default function PetanquePlay({ go, params }: Props) {
   const [ballsA, setBallsA] = React.useState<PhotoPoint[]>([]);
   const [ballsB, setBallsB] = React.useState<PhotoPoint[]>([]);
 
-  // Calibration optionnelle
   const [calA, setCalA] = React.useState<PhotoPoint | null>(null);
   const [calB, setCalB] = React.useState<PhotoPoint | null>(null);
   const [calLenCm, setCalLenCm] = React.useState<string>("");
@@ -528,12 +919,9 @@ export default function PetanquePlay({ go, params }: Props) {
   };
 
   const distPx = (a: PhotoPoint, b: PhotoPoint, nat: { w: number; h: number }) => {
-    const ax = a.x * nat.w,
-      ay = a.y * nat.h;
-    const bx = b.x * nat.w,
-      by = b.y * nat.h;
-    const dx = ax - bx,
-      dy = ay - by;
+    const ax = a.x * nat.w, ay = a.y * nat.h;
+    const bx = b.x * nat.w, by = b.y * nat.h;
+    const dx = ax - bx, dy = ay - by;
     return Math.sqrt(dx * dx + dy * dy);
   };
 
@@ -651,7 +1039,6 @@ export default function PetanquePlay({ go, params }: Props) {
   const lastNearestRef = React.useRef<{ x: number; y: number; r: number } | null>(null);
   const stableNearestRef = React.useRef<{ x: number; y: number; r: number } | null>(null);
 
-  // cochonnet = centre de la mire
   const liveC: PhotoPoint = { x: 0.5, y: 0.5 };
 
   const [liveOn, setLiveOn] = React.useState(false);
@@ -695,7 +1082,6 @@ export default function PetanquePlay({ go, params }: Props) {
   const [liveSettingsOpen, setLiveSettingsOpen] = React.useState(false);
 
   React.useEffect(() => {
-    // mobile: sliders fermés
     if (isNarrow) setLiveSettingsOpen(false);
     else setLiveSettingsOpen(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -730,8 +1116,6 @@ export default function PetanquePlay({ go, params }: Props) {
   const startLive = async () => {
     try {
       setLiveErr(null);
-
-      // iOS: reset d’abord
       stopLive();
 
       const stream = await navigator.mediaDevices.getUserMedia({
@@ -821,9 +1205,6 @@ export default function PetanquePlay({ go, params }: Props) {
 
   // ==========================
   // ✅ AUTO-DETECT LOOP (OpenCV) — MOBILE SAFE
-  // - Ne tourne QUE si detectOn = true
-  // - Throttle agressif sur mobile
-  // - Downscale plus fort sur mobile
   // ==========================
   React.useEffect(() => {
     if (!measureOpen) return;
@@ -932,7 +1313,6 @@ export default function PetanquePlay({ go, params }: Props) {
             found.push({ x: clamp01(nx), y: clamp01(ny), r: rRoi / Math.max(cw, ch) });
           }
 
-          // Anti-sauts + EMA
           const last = lastNearestRef.current as any;
           const matchThreshold = 0.08;
           let chosenIdx: number | null = null;
@@ -982,7 +1362,6 @@ export default function PetanquePlay({ go, params }: Props) {
             stableNearestRef.current = null;
           }
 
-          // stableIdx = closest to smoothed
           let stableIdx: number | null = null;
           const stable = stableNearestRef.current as any;
           if (stable && found.length) {
@@ -1010,7 +1389,7 @@ export default function PetanquePlay({ go, params }: Props) {
       } catch (e: any) {
         if (!alive) return;
         setLiveErr(e?.message || "OpenCV indisponible");
-        setDetectOn(false); // stop analyse plutôt que geler
+        setDetectOn(false);
       } finally {
         busy = false;
       }
@@ -1043,7 +1422,6 @@ export default function PetanquePlay({ go, params }: Props) {
   }, [measureOpen, mode, autoOn, detectOn, liveOn, livePaused, roiPct, minRadius, maxRadius, param2, isNarrow]);
 
   // ✅ MOBILE SAFE: on ne start JAMAIS la caméra automatiquement
-  // Auto stop live when closing sheet / leaving live tab
   React.useEffect(() => {
     if (!measureOpen) {
       stopLive();
@@ -1054,7 +1432,6 @@ export default function PetanquePlay({ go, params }: Props) {
     if (measureOpen && mode !== "live") {
       stopLive();
     }
-    // IMPORTANT: on NE start PAS la caméra ici (gesture user required).
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [measureOpen, mode]);
 
@@ -1119,958 +1496,884 @@ export default function PetanquePlay({ go, params }: Props) {
 
   const allPlayers = React.useMemo(() => [...teams.A.players, ...teams.B.players], [teams]);
 
+  // ✅ padding-top sous header fixed (ajuste si tu changes le header)
+  const headerPad = 172;
+
   return (
     <div className="container" style={wrap(theme)}>
-      <div style={topBar}>
-        <button className="btn ghost" style={ghost(theme)} onClick={() => go("games")}>
-          ← Jeux
-        </button>
+      <PetanqueHeaderArcade
+        theme={theme}
+        go={go}
+        allowMeasurements={allowMeasurements}
+        onMeasure={() => setMeasureOpen(true)}
+        isFfa3={isFfa3}
+        teams={teams}
+        scoreA={(st as any).scoreA ?? 0}
+        scoreB={(st as any).scoreB ?? 0}
+        ffaPlayers={ffaPlayers}
+        ffaScores={ffaScores}
+        ffaWinnerIdx={ffaWinnerIdx}
+      />
 
-        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <div style={title(theme)}>PÉTANQUE</div>
-
-          {allowMeasurements && (
-            <button className="btn primary" style={chipBtn(theme)} onClick={() => setMeasureOpen(true)}>
-              Mesurer
-            </button>
-          )}
-        </div>
-
-        <button className="btn ghost" style={ghost(theme)} onClick={() => go("home")}>
-          Home
-        </button>
-      </div>
-
-      {/* ✅ SCORE (FFA3 vs Teams) */}
-      {isFfa3 ? (
-        <div className="card" style={card(theme)}>
-          <div style={heroGlow} aria-hidden />
-          <div style={{ display: "flex", justifyContent: "space-between", gap: 10, zIndex: 1 }}>
-            {ffaPlayers.map((name, i) => (
-              <div key={i} style={{ flex: 1, textAlign: "center", minWidth: 0 }}>
-                <div className="badge" style={pill(theme)} title={name}>
-                  {name}
-                </div>
-                <div style={{ fontWeight: 1100 as any, fontSize: 28, marginTop: 6 }}>{ffaScores[i]}</div>
-                {ffaWinnerIdx === i && (
-                  <div className="badge" style={win(theme)}>
-                    Vainqueur
-                  </div>
-                )}
-              </div>
-            ))}
-          </div>
-          <div className="subtitle" style={muted(theme)}>
-            Mode 3 joueurs — premier à 13 — max 3 points par mène.
-          </div>
-        </div>
-      ) : (
-        <div className="card" style={card(theme)}>
-          <div style={heroGlow} aria-hidden />
-
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "1fr auto 1fr",
-              alignItems: "center",
-              gap: 12,
-              padding: 12,
-              borderRadius: 18,
-              border: `1px solid ${cssVarOr("rgba(255,255,255,0.14)", "--stroke")}`,
-              background: cssVarOr("rgba(0,0,0,0.14)", "--glass2"),
-              boxShadow: "0 12px 30px rgba(0,0,0,0.22)",
-              zIndex: 1,
-            }}
-          >
-            {/* Team A */}
-            <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
-              <div style={teamLogoBox(theme)}>
-                {teams.A.logoDataUrl ? (
-                  <img src={teams.A.logoDataUrl} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
-                ) : (
-                  <div style={teamLogoFallback}>A</div>
-                )}
-              </div>
-              <div style={{ minWidth: 0 }}>
-                <div style={teamNameStyle} title={teams.A.name}>
-                  {teams.A.name}
-                </div>
-                <div style={{ fontSize: 11, opacity: 0.75 }}>{teams.A.players.length ? `${teams.A.players.length} joueur(s)` : "—"}</div>
-              </div>
+      <div style={{ paddingTop: headerPad, display: "flex", flexDirection: "column", gap: 12 }}>
+        {/* ✅ COMPOSITION + ROLES (désactivé en FFA3 pour éviter incohérence) */}
+        {!isFfa3 && (
+          <div className="card" style={card(theme)}>
+            <div className="subtitle" style={sub(theme)}>
+              ÉQUIPES
             </div>
 
-            {/* Score */}
-            <div style={{ textAlign: "center" }}>
-              <div style={{ fontSize: 11, opacity: 0.7, marginBottom: 4 }}>Score</div>
-              <div style={{ fontSize: 30, fontWeight: 1100 as any, letterSpacing: 1 }}>
-                {st.scoreA} <span style={{ opacity: 0.5 }}>—</span> {st.scoreB}
-              </div>
-            </div>
-
-            {/* Team B */}
-            <div style={{ display: "flex", alignItems: "center", gap: 10, justifyContent: "flex-end", minWidth: 0 }}>
-              <div style={{ minWidth: 0, textAlign: "right" }}>
-                <div style={teamNameStyle} title={teams.B.name}>
-                  {teams.B.name}
-                </div>
-                <div style={{ fontSize: 11, opacity: 0.75 }}>{teams.B.players.length ? `${teams.B.players.length} joueur(s)` : "—"}</div>
-              </div>
-              <div style={teamLogoBox(theme)}>
-                {teams.B.logoDataUrl ? (
-                  <img src={teams.B.logoDataUrl} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
-                ) : (
-                  <div style={teamLogoFallback}>B</div>
-                )}
-              </div>
-            </div>
-          </div>
-
-          {st.finished && (
-            <div className="badge" style={win(theme)}>
-              Victoire : {st.winner === "A" ? teams.A.name : teams.B.name}
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* ✅ COMPOSITION + ROLES (désactivé en FFA3 pour éviter incohérence) */}
-      {!isFfa3 && (
-        <div className="card" style={card(theme)}>
-          <div className="subtitle" style={sub(theme)}>
-            ÉQUIPES
-          </div>
-
-          <div style={{ display: "grid", gap: 12 }}>
-            {[{ key: "A", t: teams.A }, { key: "B", t: teams.B }].map(({ key, t }) => (
-              <div key={key} className="card" style={cardSoft(theme)}>
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
-                  <div className="subtitle" style={sub(theme)}>
-                    Composition — {t.name}
+            <div style={{ display: "grid", gap: 12 }}>
+              {[{ key: "A", t: teams.A }, { key: "B", t: teams.B }].map(({ key, t }) => (
+                <div key={key} className="card" style={cardSoft(theme)}>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+                    <div className="subtitle" style={sub(theme)}>
+                      Composition — {t.name}
+                    </div>
+                    <div className="subtitle" style={muted(theme)}>
+                      Rôles indicatifs
+                    </div>
                   </div>
-                  <div className="subtitle" style={muted(theme)}>
-                    Rôles indicatifs
-                  </div>
-                </div>
 
-                {!t.players.length ? (
-                  <div className="subtitle" style={muted(theme)}>
-                    Aucun joueur détecté (active la composition via la config si tu veux avatars + rôles).
-                  </div>
-                ) : (
-                  <div style={{ display: "grid", gap: 8 }}>
-                    {t.players.map((p) => (
-                      <div
-                        key={p.id}
-                        style={{
-                          display: "grid",
-                          gridTemplateColumns: "46px 1fr auto",
-                          alignItems: "center",
-                          gap: 10,
-                          padding: 10,
-                          borderRadius: 14,
-                          border: `1px solid ${cssVarOr("rgba(255,255,255,0.12)", "--stroke")}`,
-                          background: cssVarOr("rgba(0,0,0,0.12)", "--glass2"),
-                        }}
-                      >
-                        <div style={{ width: 46, height: 46, display: "grid", placeItems: "center" }}>
-                          {p.profile ? (
-                            <ProfileAvatar profile={p.profile} size={42} />
-                          ) : (
-                            <div style={avatarFallback}>{(p.name || "?").slice(0, 1).toUpperCase()}</div>
-                          )}
-                        </div>
-
-                        <div style={{ minWidth: 0 }}>
-                          <div style={{ fontWeight: 1100 as any, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                            {p.name}
+                  {!t.players.length ? (
+                    <div className="subtitle" style={muted(theme)}>
+                      Aucun joueur détecté (active la composition via la config si tu veux avatars + rôles).
+                    </div>
+                  ) : (
+                    <div style={{ display: "grid", gap: 8 }}>
+                      {t.players.map((p) => (
+                        <div
+                          key={p.id}
+                          style={{
+                            display: "grid",
+                            gridTemplateColumns: "46px 1fr auto",
+                            alignItems: "center",
+                            gap: 10,
+                            padding: 10,
+                            borderRadius: 14,
+                            border: `1px solid ${cssVarOr("rgba(255,255,255,0.12)", "--stroke")}`,
+                            background: cssVarOr("rgba(0,0,0,0.12)", "--glass2"),
+                          }}
+                        >
+                          <div style={{ width: 46, height: 46, display: "grid", placeItems: "center" }}>
+                            {/* ✅ Fix: médaillon avatar fiable */}
+                            {p.profile ? (
+                              <MedallionAvatar
+                                src={getAvatarSrc(p.profile)}
+                                size={46}
+                                border={cssVarOr("rgba(255,255,255,0.18)", "--stroke")}
+                                glow={"rgba(0,0,0,0)"}
+                                fallback={(p.name || "?").slice(0, 1).toUpperCase()}
+                              />
+                            ) : (
+                              <div style={avatarFallback}>{(p.name || "?").slice(0, 1).toUpperCase()}</div>
+                            )}
                           </div>
-                          <div style={{ marginTop: 6, display: "flex", gap: 8, flexWrap: "wrap" }}>
-                            <span style={rolePill(theme)}>{p.role ?? "Non défini"}</span>
+
+                          <div style={{ minWidth: 0 }}>
+                            <div style={{ fontWeight: 1100 as any, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                              {p.name}
+                            </div>
+                            <div style={{ marginTop: 6, display: "flex", gap: 8, flexWrap: "wrap" }}>
+                              <span style={rolePill(theme)}>{p.role ?? "Non défini"}</span>
+                            </div>
+                          </div>
+
+                          <button
+                            className="btn ghost"
+                            style={ghost(theme)}
+                            onClick={() => {
+                              const el = document.getElementById(`pstats-${p.id}`);
+                              el?.scrollIntoView({ behavior: "smooth", block: "center" });
+                            }}
+                          >
+                            Stats
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* ✅ STATS JOUEURS (désactivé en FFA3) */}
+        {!isFfa3 && (
+          <div className="card" style={card(theme)}>
+            <div className="subtitle" style={sub(theme)}>
+              STATS JOUEURS
+            </div>
+            <div className="subtitle" style={muted(theme)}>
+              Points / Carreau / Tir OK / Trou / Bec / But KO / But + (par partie)
+            </div>
+
+            {!allPlayers.length ? (
+              <div className="subtitle" style={muted(theme)}>
+                Ajoute des joueurs dans la config pour activer les compteurs individuels.
+              </div>
+            ) : (
+              <div style={{ display: "grid", gap: 10 }}>
+                {allPlayers.map((p) => {
+                  const s = playerStats[p.id] ?? EMPTY_STATS;
+                  const keys: (keyof PlayerStats)[] = [
+                    "points",
+                    "carreau",
+                    "tirReussi",
+                    "trou",
+                    "bec",
+                    "butAnnulation",
+                    "butPoint",
+                  ];
+
+                  return (
+                    <div key={p.id} id={`pstats-${p.id}`} className="card" style={cardSoft(theme)}>
+                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
+                          {/* ✅ Fix: médaillon avatar fiable */}
+                          <MedallionAvatar
+                            src={p.profile ? getAvatarSrc(p.profile) : null}
+                            size={38}
+                            border={cssVarOr("rgba(255,255,255,0.18)", "--stroke")}
+                            glow={"rgba(0,0,0,0)"}
+                            fallback={(p.name || "?").slice(0, 1).toUpperCase()}
+                          />
+                          <div style={{ minWidth: 0 }}>
+                            <div style={{ fontWeight: 1100 as any, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                              {p.name}
+                            </div>
+                            <div style={{ marginTop: 4 }}>
+                              <span style={rolePill(theme)}>{p.role ?? "Non défini"}</span>
+                            </div>
                           </div>
                         </div>
 
                         <button
                           className="btn ghost"
                           style={ghost(theme)}
-                          onClick={() => {
-                            const el = document.getElementById(`pstats-${p.id}`);
-                            el?.scrollIntoView({ behavior: "smooth", block: "center" });
-                          }}
+                          onClick={() =>
+                            setPlayerStats((prev) => {
+                              const copy = { ...prev };
+                              delete copy[p.id];
+                              return copy;
+                            })
+                          }
                         >
-                          Stats
+                          Reset
                         </button>
                       </div>
-                    ))}
-                  </div>
-                )}
+
+                      <div style={{ display: "grid", gap: 8, marginTop: 6 }}>
+                        {keys.map((k) => (
+                          <div
+                            key={k}
+                            style={{
+                              display: "grid",
+                              gridTemplateColumns: "1fr auto auto",
+                              alignItems: "center",
+                              gap: 10,
+                              padding: "10px 10px",
+                              borderRadius: 14,
+                              border: `1px solid ${cssVarOr("rgba(255,255,255,0.12)", "--stroke")}`,
+                              background: cssVarOr("rgba(255,255,255,0.06)", "--glass"),
+                            }}
+                          >
+                            <div style={{ fontWeight: 1000 as any, fontSize: 12, letterSpacing: 0.4 }}>
+                              {statLabel(k)}
+                            </div>
+
+                            <div style={{ fontWeight: 1100 as any, minWidth: 28, textAlign: "center" }}>
+                              {s[k] ?? 0}
+                            </div>
+
+                            <div style={{ display: "flex", gap: 8 }}>
+                              <button className="btn" style={miniBtn(theme)} onClick={() => bumpStat(p.id, k, -1)}>
+                                −
+                              </button>
+                              <button className="btn" style={miniBtnOn(theme)} onClick={() => bumpStat(p.id, k, +1)}>
+                                +
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ✅ GRILLE POINTS (FFA3 3 colonnes vs Teams 2 colonnes) */}
+        {isFfa3 ? (
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 12 }}>
+            {ffaPlayers.map((name, idx) => (
+              <div key={idx} className="card" style={card(theme)}>
+                <div className="subtitle" style={sub(theme)}>
+                  Mène — {name}
+                </div>
+                <div style={ptsGrid}>
+                  {PTS_FFA3.map((p) => (
+                    <button
+                      key={`P${idx}-${p}`}
+                      className="btn"
+                      style={ptBtn(theme)}
+                      onClick={() => addFfaEnd(idx, p)}
+                      disabled={ffaWinnerIdx != null}
+                    >
+                      +{p}
+                    </button>
+                  ))}
+                </div>
               </div>
             ))}
           </div>
-        </div>
-      )}
-
-      {/* ✅ STATS JOUEURS (désactivé en FFA3) */}
-      {!isFfa3 && (
-        <div className="card" style={card(theme)}>
-          <div className="subtitle" style={sub(theme)}>
-            STATS JOUEURS
-          </div>
-          <div className="subtitle" style={muted(theme)}>
-            Points / Carreau / Tir OK / Trou / Bec / But KO / But + (par partie)
-          </div>
-
-          {!allPlayers.length ? (
-            <div className="subtitle" style={muted(theme)}>
-              Ajoute des joueurs dans la config pour activer les compteurs individuels.
-            </div>
-          ) : (
-            <div style={{ display: "grid", gap: 10 }}>
-              {allPlayers.map((p) => {
-                const s = playerStats[p.id] ?? EMPTY_STATS;
-                const keys: (keyof PlayerStats)[] = ["points", "carreau", "tirReussi", "trou", "bec", "butAnnulation", "butPoint"];
-
-                return (
-                  <div key={p.id} id={`pstats-${p.id}`} className="card" style={cardSoft(theme)}>
-                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
-                      <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
-                        {p.profile ? (
-                          <ProfileAvatar profile={p.profile} size={38} />
-                        ) : (
-                          <div style={avatarFallbackSmall}>{(p.name || "?").slice(0, 1).toUpperCase()}</div>
-                        )}
-                        <div style={{ minWidth: 0 }}>
-                          <div style={{ fontWeight: 1100 as any, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                            {p.name}
-                          </div>
-                          <div style={{ marginTop: 4 }}>
-                            <span style={rolePill(theme)}>{p.role ?? "Non défini"}</span>
-                          </div>
-                        </div>
-                      </div>
-
-                      <button
-                        className="btn ghost"
-                        style={ghost(theme)}
-                        onClick={() =>
-                          setPlayerStats((prev) => {
-                            const copy = { ...prev };
-                            delete copy[p.id];
-                            return copy;
-                          })
-                        }
-                      >
-                        Reset
-                      </button>
-                    </div>
-
-                    <div style={{ display: "grid", gap: 8, marginTop: 6 }}>
-                      {keys.map((k) => (
-                        <div
-                          key={k}
-                          style={{
-                            display: "grid",
-                            gridTemplateColumns: "1fr auto auto",
-                            alignItems: "center",
-                            gap: 10,
-                            padding: "10px 10px",
-                            borderRadius: 14,
-                            border: `1px solid ${cssVarOr("rgba(255,255,255,0.12)", "--stroke")}`,
-                            background: cssVarOr("rgba(255,255,255,0.06)", "--glass"),
-                          }}
-                        >
-                          <div style={{ fontWeight: 1000 as any, fontSize: 12, letterSpacing: 0.4 }}>{statLabel(k)}</div>
-
-                          <div style={{ fontWeight: 1100 as any, minWidth: 28, textAlign: "center" }}>{s[k] ?? 0}</div>
-
-                          <div style={{ display: "flex", gap: 8 }}>
-                            <button className="btn" style={miniBtn(theme)} onClick={() => bumpStat(p.id, k, -1)}>
-                              −
-                            </button>
-                            <button className="btn" style={miniBtnOn(theme)} onClick={() => bumpStat(p.id, k, +1)}>
-                              +
-                            </button>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* ✅ GRILLE POINTS (FFA3 3 colonnes vs Teams 2 colonnes) */}
-      {isFfa3 ? (
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 12 }}>
-          {ffaPlayers.map((name, idx) => (
-            <div key={idx} className="card" style={card(theme)}>
+        ) : (
+          <div style={grid2}>
+            <div className="card" style={card(theme)}>
               <div className="subtitle" style={sub(theme)}>
-                Mène — {name}
+                Mène — {teams.A.name}
               </div>
               <div style={ptsGrid}>
-                {PTS_FFA3.map((p) => (
-                  <button
-                    key={`P${idx}-${p}`}
-                    className="btn"
-                    style={ptBtn(theme)}
-                    onClick={() => addFfaEnd(idx, p)}
-                    disabled={ffaWinnerIdx != null}
-                  >
+                {PTS.map((p) => (
+                  <button key={`A-${p}`} className="btn" style={ptBtn(theme)} onClick={() => onAdd("A", p)} disabled={(st as any).finished}>
                     +{p}
                   </button>
                 ))}
               </div>
             </div>
-          ))}
-        </div>
-      ) : (
-        <div style={grid2}>
-          <div className="card" style={card(theme)}>
-            <div className="subtitle" style={sub(theme)}>
-              Mène — {teams.A.name}
-            </div>
-            <div style={ptsGrid}>
-              {PTS.map((p) => (
-                <button key={`A-${p}`} className="btn" style={ptBtn(theme)} onClick={() => onAdd("A", p)} disabled={st.finished}>
-                  +{p}
-                </button>
-              ))}
-            </div>
-          </div>
 
-          <div className="card" style={card(theme)}>
-            <div className="subtitle" style={sub(theme)}>
-              Mène — {teams.B.name}
-            </div>
-            <div style={ptsGrid}>
-              {PTS.map((p) => (
-                <button key={`B-${p}`} className="btn" style={ptBtn(theme)} onClick={() => onAdd("B", p)} disabled={st.finished}>
-                  +{p}
-                </button>
-              ))}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ✅ ACTIONS (branché FFA3) */}
-      <div className="card" style={card(theme)}>
-        <div className="subtitle" style={sub(theme)}>
-          Actions
-        </div>
-        <div style={row}>
-          <button
-            className="btn"
-            style={primary(theme)}
-            onClick={isFfa3 ? undoFfaEnd : onUndo}
-            disabled={isFfa3 ? !ffaEnds.length : !st.ends.length}
-          >
-            Annuler dernière mène
-          </button>
-
-          <button className="btn danger" style={danger(theme)} onClick={isFfa3 ? resetFfa : onNew}>
-            Nouvelle partie
-          </button>
-        </div>
-      </div>
-
-      {/* ✅ MESURES (historique) */}
-      <div className="card" style={card(theme)}>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
-          <div className="subtitle" style={sub(theme)}>
-            Mesurages
-          </div>
-          <button
-            className="btn ghost"
-            style={ghost(theme)}
-            onClick={onUndoMeasurement}
-            disabled={!measurements?.length}
-            title="Annuler la dernière mesure enregistrée"
-          >
-            Annuler mesure
-          </button>
-        </div>
-
-        {!measurements?.length ? (
-          <div className="subtitle" style={muted(theme)}>
-            Aucun mesurage enregistré.
-          </div>
-        ) : (
-          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-            {measurements.slice(0, 8).map((m) => {
-              const who = m.winner === "TIE" ? "Égalité" : m.winner === "A" ? teams.A.name : teams.B.name;
-              return (
-                <div key={m.id} style={endRow(theme)}>
-                  <div className="badge" style={pill(theme)}>
-                    {who}
-                  </div>
-                  <div style={endTxt(theme)}>
-                    A {m.dA} — B {m.dB} — Δ {m.delta.toFixed(3)} (tol {m.tol})
-                    {m.note ? ` — ${m.note}` : ""}
-                  </div>
-                </div>
-              );
-            })}
-            {measurements.length > 8 && (
-              <div className="subtitle" style={muted(theme)}>
-                … {measurements.length - 8} autres mesures.
+            <div className="card" style={card(theme)}>
+              <div className="subtitle" style={sub(theme)}>
+                Mène — {teams.B.name}
               </div>
-            )}
+              <div style={ptsGrid}>
+                {PTS.map((p) => (
+                  <button key={`B-${p}`} className="btn" style={ptBtn(theme)} onClick={() => onAdd("B", p)} disabled={(st as any).finished}>
+                    +{p}
+                  </button>
+                ))}
+              </div>
+            </div>
           </div>
         )}
-      </div>
 
-      {/* ✅ HISTORIQUE DES MÈNES (FFA3 vs Teams) */}
-      <div className="card" style={card(theme)}>
-        <div className="subtitle" style={sub(theme)}>
-          Historique des mènes
+        {/* ✅ ACTIONS (branché FFA3) */}
+        <div className="card" style={card(theme)}>
+          <div className="subtitle" style={sub(theme)}>
+            Actions
+          </div>
+          <div style={row}>
+            <button
+              className="btn"
+              style={primary(theme)}
+              onClick={isFfa3 ? undoFfaEnd : onUndo}
+              disabled={isFfa3 ? !ffaEnds.length : !(st as any).ends?.length}
+            >
+              Annuler dernière mène
+            </button>
+
+            <button className="btn danger" style={danger(theme)} onClick={isFfa3 ? resetFfa : onNew}>
+              Nouvelle partie
+            </button>
+          </div>
         </div>
 
-        {isFfa3 ? (
-          !ffaEnds.length ? (
+        {/* ✅ MESURES (historique) */}
+        <div className="card" style={card(theme)}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+            <div className="subtitle" style={sub(theme)}>
+              Mesurages
+            </div>
+            <button
+              className="btn ghost"
+              style={ghost(theme)}
+              onClick={onUndoMeasurement}
+              disabled={!measurements?.length}
+              title="Annuler la dernière mesure enregistrée"
+            >
+              Annuler mesure
+            </button>
+          </div>
+
+          {!measurements?.length ? (
+            <div className="subtitle" style={muted(theme)}>
+              Aucun mesurage enregistré.
+            </div>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              {measurements.slice(0, 8).map((m) => {
+                const who = m.winner === "TIE" ? "Égalité" : m.winner === "A" ? teams.A.name : teams.B.name;
+                return (
+                  <div key={m.id} style={endRow(theme)}>
+                    <div className="badge" style={pill(theme)}>
+                      {who}
+                    </div>
+                    <div style={endTxt(theme)}>
+                      A {m.dA} — B {m.dB} — Δ {m.delta.toFixed(3)} (tol {m.tol})
+                      {m.note ? ` — ${m.note}` : ""}
+                    </div>
+                  </div>
+                );
+              })}
+              {measurements.length > 8 && (
+                <div className="subtitle" style={muted(theme)}>
+                  … {measurements.length - 8} autres mesures.
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* ✅ HISTORIQUE DES MÈNES (FFA3 vs Teams) */}
+        <div className="card" style={card(theme)}>
+          <div className="subtitle" style={sub(theme)}>
+            Historique des mènes
+          </div>
+
+          {isFfa3 ? (
+            !ffaEnds.length ? (
+              <div className="subtitle" style={muted(theme)}>
+                Aucune mène enregistrée.
+              </div>
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                {ffaEnds.map((e, idx) => (
+                  <div key={e.id} style={endRow(theme)}>
+                    <div className="badge" style={pill(theme)}>
+                      {ffaPlayers[e.p]}
+                    </div>
+                    <div style={endTxt(theme)}>
+                      +{e.points} — mène #{ffaEnds.length - idx}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )
+          ) : !(st as any).ends?.length ? (
             <div className="subtitle" style={muted(theme)}>
               Aucune mène enregistrée.
             </div>
           ) : (
             <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-              {ffaEnds.map((e, idx) => (
+              {(st as any).ends.map((e: any, idx: number) => (
                 <div key={e.id} style={endRow(theme)}>
                   <div className="badge" style={pill(theme)}>
-                    {ffaPlayers[e.p]}
+                    {e.winner === "A" ? teams.A.name : teams.B.name}
                   </div>
                   <div style={endTxt(theme)}>
-                    +{e.points} — mène #{ffaEnds.length - idx}
+                    +{e.points} — mène #{(st as any).ends.length - idx}
                   </div>
                 </div>
               ))}
             </div>
-          )
-        ) : !st.ends.length ? (
-          <div className="subtitle" style={muted(theme)}>
-            Aucune mène enregistrée.
-          </div>
-        ) : (
-          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-            {st.ends.map((e, idx) => (
-              <div key={e.id} style={endRow(theme)}>
-                <div className="badge" style={pill(theme)}>
-                  {e.winner === "A" ? teams.A.name : teams.B.name}
+          )}
+        </div>
+
+        {/* ✅ SHEET MOBILE SAFE */}
+        {allowMeasurements && measureOpen && (
+          <div style={overlay} onClick={() => setMeasureOpen(false)} role="dialog" aria-modal="true">
+            <div ref={sheetRef} className="card" style={sheet(theme)} onClick={(e) => e.stopPropagation()}>
+              {/* ✅ Sticky Header */}
+              <div
+                style={{
+                  position: "sticky",
+                  top: 0,
+                  zIndex: 10,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  gap: 10,
+                  paddingBottom: 10,
+                  marginBottom: 4,
+                  background: cssVarOr("rgba(15,15,18,0.94)", "--panel"),
+                  backdropFilter: "blur(14px)",
+                  borderBottom: `1px solid ${cssVarOr("rgba(255,255,255,0.10)", "--stroke")}`,
+                }}
+              >
+                <div className="subtitle" style={sub(theme)}>
+                  Mesurage
                 </div>
-                <div style={endTxt(theme)}>
-                  +{e.points} — mène #{st.ends.length - idx}
+
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
+                  <button className="btn ghost" style={ghost(theme)} onClick={() => scrollToEl(radarRef.current as any)} title="Aller au radar">
+                    Radar ↓
+                  </button>
+                  <button className="btn ghost" style={ghost(theme)} onClick={() => scrollToEl(sheetRef.current as any)} title="Remonter">
+                    ↑ Haut
+                  </button>
+                  <button className="btn ghost" style={ghost(theme)} onClick={() => setMeasureOpen(false)}>
+                    Fermer
+                  </button>
                 </div>
               </div>
-            ))}
-          </div>
-        )}
-      </div>
 
-      {/* ✅ SHEET MOBILE SAFE */}
-      {allowMeasurements && measureOpen && (
-        <div style={overlay} onClick={() => setMeasureOpen(false)} role="dialog" aria-modal="true">
-          <div ref={sheetRef} className="card" style={sheet(theme)} onClick={(e) => e.stopPropagation()}>
-            {/* ✅ Sticky Header */}
-            <div
-              style={{
-                position: "sticky",
-                top: 0,
-                zIndex: 10,
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "space-between",
-                gap: 10,
-                paddingBottom: 10,
-                marginBottom: 4,
-                background: cssVarOr("rgba(15,15,18,0.94)", "--panel"),
-                backdropFilter: "blur(14px)",
-                borderBottom: `1px solid ${cssVarOr("rgba(255,255,255,0.10)", "--stroke")}`,
-              }}
-            >
-              <div className="subtitle" style={sub(theme)}>
-                Mesurage
-              </div>
-
-              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
-                <button className="btn ghost" style={ghost(theme)} onClick={() => scrollToEl(radarRef.current as any)} title="Aller au radar">
-                  Radar ↓
+              {/* Tabs */}
+              <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                <button className="btn" style={modeBtn(theme, mode === "manual")} onClick={() => setMode("manual")}>
+                  Manuel
                 </button>
-                <button className="btn ghost" style={ghost(theme)} onClick={() => scrollToEl(sheetRef.current as any)} title="Remonter">
-                  ↑ Haut
+                <button className="btn" style={modeBtn(theme, mode === "photo")} onClick={() => setMode("photo")}>
+                  Photo
                 </button>
-                <button className="btn ghost" style={ghost(theme)} onClick={() => setMeasureOpen(false)}>
-                  Fermer
+                <button className="btn" style={modeBtn(theme, mode === "live")} onClick={() => setMode("live")}>
+                  LIVE Radar
                 </button>
               </div>
-            </div>
 
-            {/* Tabs */}
-            <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-              <button className="btn" style={modeBtn(theme, mode === "manual")} onClick={() => setMode("manual")}>
-                Manuel
-              </button>
-              <button className="btn" style={modeBtn(theme, mode === "photo")} onClick={() => setMode("photo")}>
-                Photo
-              </button>
-              <button className="btn" style={modeBtn(theme, mode === "live")} onClick={() => setMode("live")}>
-                LIVE Radar
-              </button>
-            </div>
-
-            {/* Shared */}
-            <div style={row}>
-              <div style={{ flex: 1 }}>
-                <div className="subtitle" style={label(theme)}>
-                  Tolérance
+              {/* Shared */}
+              <div style={row}>
+                <div style={{ flex: 1 }}>
+                  <div className="subtitle" style={label(theme)}>
+                    Tolérance
+                  </div>
+                  <input className="input" style={input(theme)} value={tol} onChange={(e) => setTol(e.target.value)} placeholder="1" inputMode="decimal" />
                 </div>
-                <input className="input" style={input(theme)} value={tol} onChange={(e) => setTol(e.target.value)} placeholder="1" inputMode="decimal" />
+
+                <div style={{ flex: 2 }}>
+                  <div className="subtitle" style={label(theme)}>
+                    Note (optionnel)
+                  </div>
+                  <input
+                    className="input"
+                    style={input(theme)}
+                    value={note}
+                    onChange={(e) => setNote(e.target.value)}
+                    placeholder="Ex: mesure serrée / terrain incliné…"
+                  />
+                </div>
               </div>
 
-              <div style={{ flex: 2 }}>
-                <div className="subtitle" style={label(theme)}>
-                  Note (optionnel)
-                </div>
-                <input
-                  className="input"
-                  style={input(theme)}
-                  value={note}
-                  onChange={(e) => setNote(e.target.value)}
-                  placeholder="Ex: mesure serrée / terrain incliné…"
-                />
-              </div>
-            </div>
-
-            {mode === "manual" ? (
-              <>
-                <div className="subtitle" style={hint(theme)}>
-                  Saisis les distances en centimètres (cochonnet → boule A / boule B).
-                </div>
-
-                <div style={grid2}>
-                  <div className="card" style={cardSoft(theme)}>
-                    <div className="subtitle" style={sub(theme)}>
-                      {teams.A.name}
-                    </div>
-                    <input className="input" style={input(theme)} value={dA} onChange={(e) => setDA(e.target.value)} placeholder="Distance (cm)" inputMode="decimal" />
-                  </div>
-                  <div className="card" style={cardSoft(theme)}>
-                    <div className="subtitle" style={sub(theme)}>
-                      {teams.B.name}
-                    </div>
-                    <input className="input" style={input(theme)} value={dB} onChange={(e) => setDB(e.target.value)} placeholder="Distance (cm)" inputMode="decimal" />
-                  </div>
-                </div>
-
-                <div style={resultBox(theme, manualWinner)}>{manualText}</div>
-
-                <div style={row}>
-                  <button className="btn primary" style={primary(theme)} onClick={onSaveManual} disabled={!canComputeManual}>
-                    Enregistrer la mesure
-                  </button>
-                  <button
-                    className="btn ghost"
-                    style={ghost(theme)}
-                    onClick={() => {
-                      setDA("");
-                      setDB("");
-                      setNote("");
-                    }}
-                  >
-                    Effacer
-                  </button>
-                </div>
-              </>
-            ) : mode === "photo" ? (
-              <>
-                <div className="subtitle" style={hint(theme)}>
-                  Photo : clique d’abord le cochonnet (C), puis ajoute des boules (A/B). Calibration optionnelle.
-                </div>
-
-                <div style={row}>
-                  <label className="btn" style={fileBtn(theme)}>
-                    Ajouter une photo
-                    <input type="file" accept="image/*" onChange={onPickImage} style={{ display: "none" }} />
-                  </label>
-
-                  <button className="btn ghost" style={ghost(theme)} onClick={clearPhoto} disabled={!imgUrl}>
-                    Réinitialiser
-                  </button>
-                  <button className="btn ghost" style={ghost(theme)} onClick={() => setLoupeOn((v) => !v)} disabled={!imgUrl}>
-                    Loupe: {loupeOn ? "ON" : "OFF"}
-                  </button>
-                </div>
-
-                <div className="card" style={cardSoft(theme)}>
-                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
-                    <div className="subtitle" style={sub(theme)}>
-                      Ajout de boules
-                    </div>
-                    <div className="subtitle" style={muted(theme)}>
-                      A:{ballsA.length} / B:{ballsB.length}
-                    </div>
+              {mode === "manual" ? (
+                <>
+                  <div className="subtitle" style={hint(theme)}>
+                    Saisis les distances en centimètres (cochonnet → boule A / boule B).
                   </div>
 
-                  <div style={row}>
-                    <button className="btn" style={modeBtn(theme, addSide === "A")} onClick={() => setAddSide("A")}>
-                      Ajouter {teams.A.name}
-                    </button>
-                    <button className="btn" style={modeBtn(theme, addSide === "B")} onClick={() => setAddSide("B")}>
-                      Ajouter {teams.B.name}
-                    </button>
-                    <button className="btn ghost" style={ghost(theme)} onClick={onClearPhotoPoints} disabled={!pCochonnet && !ballsA.length && !ballsB.length}>
-                      Effacer points
-                    </button>
-                  </div>
-
-                  <div className="subtitle" style={muted(theme)}>
-                    Clic image = {calArm ? `Calibration ${calArm}` : !pCochonnet ? "Définir cochonnet (C)" : `Ajouter boule (${addSide})`}
-                  </div>
-                </div>
-
-                <div className="card" style={cardSoft(theme)}>
-                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
-                    <div className="subtitle" style={sub(theme)}>
-                      Calibration (optionnel)
-                    </div>
-                    <div className="subtitle" style={muted(theme)}>
-                      {pxPerCm ? `OK: ~${pxPerCm.toFixed(1)} px/cm` : "Non calibrée"}
-                    </div>
-                  </div>
-
-                  <div style={row}>
-                    <button className="btn ghost" style={ghost(theme)} onClick={() => setCalArm("A")} disabled={!imgUrl}>
-                      Point Cal A {calArm === "A" ? "(clic…)" : ""}
-                    </button>
-                    <button className="btn ghost" style={ghost(theme)} onClick={() => setCalArm("B")} disabled={!imgUrl}>
-                      Point Cal B {calArm === "B" ? "(clic…)" : ""}
-                    </button>
-
-                    <div style={{ flex: 1 }}>
-                      <div className="subtitle" style={label(theme)}>
-                        Longueur réelle (cm)
+                  <div style={grid2}>
+                    <div className="card" style={cardSoft(theme)}>
+                      <div className="subtitle" style={sub(theme)}>
+                        {teams.A.name}
                       </div>
-                      <input className="input" style={input(theme)} value={calLenCm} onChange={(e) => setCalLenCm(e.target.value)} placeholder="ex: 10" inputMode="decimal" />
+                      <input className="input" style={input(theme)} value={dA} onChange={(e) => setDA(e.target.value)} placeholder="Distance (cm)" inputMode="decimal" />
                     </div>
+                    <div className="card" style={cardSoft(theme)}>
+                      <div className="subtitle" style={sub(theme)}>
+                        {teams.B.name}
+                      </div>
+                      <input className="input" style={input(theme)} value={dB} onChange={(e) => setDB(e.target.value)} placeholder="Distance (cm)" inputMode="decimal" />
+                    </div>
+                  </div>
 
+                  <div style={resultBox(theme, manualWinner)}>{manualText}</div>
+
+                  <div style={row}>
+                    <button className="btn primary" style={primary(theme)} onClick={onSaveManual} disabled={!canComputeManual}>
+                      Enregistrer la mesure
+                    </button>
                     <button
                       className="btn ghost"
                       style={ghost(theme)}
                       onClick={() => {
-                        setCalA(null);
-                        setCalB(null);
-                        setCalLenCm("");
-                        setCalArm(null);
+                        setDA("");
+                        setDB("");
+                        setNote("");
                       }}
-                      disabled={!calA && !calB && !calLenCm}
                     >
-                      Effacer calib
+                      Effacer
                     </button>
                   </div>
-                </div>
-
-                {imgUrl ? (
-                  <div style={imgWrap(theme)}>
-                    <div className="subtitle" style={imgHint(theme)}>
-                      {calArm ? `Calibration: clique le point ${calArm}` : !pCochonnet ? "Clique le cochonnet (C)." : `Clique pour ajouter une boule (${addSide}).`}
-                    </div>
-
-                    <div style={imgClickArea} onClick={onPhotoClick} onMouseMove={onPhotoMove}>
-                      <img
-                        ref={imgRef}
-                        src={imgUrl}
-                        alt="Mesurage"
-                        style={imgStyle}
-                        onLoad={(e) => {
-                          const el = e.currentTarget;
-                          setImgNatural({ w: el.naturalWidth, h: el.naturalHeight });
-                        }}
-                        draggable={false}
-                      />
-
-                      {imgNatural && (
-                        <>
-                          {pCochonnet && <div style={marker(theme, pCochonnet, "C")} />}
-                          {ballsA.map((b, i) => (
-                            <div key={`ma-${i}`} style={marker(theme, b, `A${i + 1}`)} />
-                          ))}
-                          {ballsB.map((b, i) => (
-                            <div key={`mb-${i}`} style={marker(theme, b, `B${i + 1}`)} />
-                          ))}
-                          {calA && <div style={marker(theme, calA, "cA")} />}
-                          {calB && <div style={marker(theme, calB, "cB")} />}
-                        </>
-                      )}
-
-                      {loupeOn && imgUrl && hoverPt && <div style={loupeStyle(imgUrl, hoverPt)} aria-hidden />}
-                    </div>
-
-                    <div style={resultBox(theme, winnerPhoto)}>
-                      {minA_photo == null || minB_photo == null
-                        ? "Ajoute au moins 1 boule A et 1 boule B pour comparer."
-                        : `Plus proche A: ${minA_photo.toFixed(pxPerCm ? 1 : 0)} ${pxPerCm ? "cm" : "px"} — B: ${minB_photo.toFixed(pxPerCm ? 1 : 0)} ${pxPerCm ? "cm" : "px"}`}
-                    </div>
-
-                    <div style={row}>
-                      <button className="btn primary" style={primary(theme)} onClick={onSavePhoto} disabled={minA_photo == null || minB_photo == null}>
-                        Enregistrer (photo)
-                      </button>
-                      <button className="btn ghost" style={ghost(theme)} onClick={() => setPCochonnet(null)} disabled={!pCochonnet}>
-                        Replacer C
-                      </button>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="subtitle" style={muted(theme)}>
-                    Aucune image chargée.
-                  </div>
-                )}
-              </>
-            ) : (
-              <>
-                <div className="subtitle" style={hint(theme)}>
-                  LIVE mobile-safe : sur téléphone utilise “Mode TAP” (fluide). “Mode AUTO” + “Détection ON” lance OpenCV (optionnel). Pause coupe l’analyse immédiatement.
-                </div>
-
-                {/* ✅ Bandeau Caméra/Radar + accordéon */}
-                <div className="card" style={cardSoft(theme)}>
-                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
-                    <div className="subtitle" style={sub(theme)}>
-                      Caméra / Radar
-                    </div>
-
-                    <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
-                      <button className="btn ghost" style={ghost(theme)} onClick={() => setLiveSectionOpen((v) => !v)}>
-                        {liveSectionOpen ? "Réduire" : "Ouvrir"}
-                      </button>
-
-                      <button className="btn ghost" style={ghost(theme)} onClick={liveOn ? stopLive : startLive}>
-                        {liveOn ? "Stop caméra" : "Démarrer caméra"}
-                      </button>
-                    </div>
-                  </div>
-
-                  <div className="subtitle" style={muted(theme)}>
-                    Astuce mobile: autorise la caméra quand le navigateur le demande. Si ça lag, garde “Mode TAP” et laisse “Détection OFF”.
-                  </div>
-                </div>
-
-                {/* ✅ Controls */}
-                <div style={row}>
-                  <button className="btn" style={modeBtn(theme, !autoOn)} onClick={() => { setAutoOn(false); setDetectOn(false); }} disabled={!liveOn}>
-                    Mode TAP
-                  </button>
-                  <button className="btn" style={modeBtn(theme, autoOn)} onClick={() => setAutoOn(true)} disabled={!liveOn}>
-                    Mode AUTO
-                  </button>
-
-                  {autoOn && (
-                    <>
-                      <button className="btn" style={modeBtn(theme, detectOn)} onClick={() => setDetectOn((v) => !v)} disabled={!liveOn}>
-                        Détection: {detectOn ? "ON" : "OFF"}
-                      </button>
-
-                      <button className="btn ghost" style={ghost(theme)} onClick={() => setLivePaused((v) => !v)} disabled={!liveOn}>
-                        {livePaused ? "Reprendre" : "Pause"}
-                      </button>
-
-                      <button className="btn" style={modeBtn(theme, assignSide === "A")} onClick={() => setAssignSide("A")} disabled={!liveOn}>
-                        Assigner {teams.A.name}
-                      </button>
-                      <button className="btn" style={modeBtn(theme, assignSide === "B")} onClick={() => setAssignSide("B")} disabled={!liveOn}>
-                        Assigner {teams.B.name}
-                      </button>
-
-                      <button className="btn ghost" style={ghost(theme)} onClick={() => setCircleTeam({})} disabled={!Object.keys(circleTeam).length}>
-                        Reset équipes
-                      </button>
-                    </>
-                  )}
-
-                  {!autoOn && (
-                    <>
-                      <button className="btn" style={modeBtn(theme, liveAddSide === "A")} onClick={() => setLiveAddSide("A")} disabled={!liveOn}>
-                        Ajouter {teams.A.name}
-                      </button>
-                      <button className="btn" style={modeBtn(theme, liveAddSide === "B")} onClick={() => setLiveAddSide("B")} disabled={!liveOn}>
-                        Ajouter {teams.B.name}
-                      </button>
-                    </>
-                  )}
-
-                  <button className="btn ghost" style={ghost(theme)} onClick={clearLive} disabled={!circles.length && !liveA.length && !liveB.length && !Object.keys(circleTeam).length}>
-                    Effacer
-                  </button>
-                </div>
-
-                {liveErr && <div style={resultBox(theme, "TIE")}>{liveErr}</div>}
-
-                {/* ✅ Réglages LIVE (accordéon) */}
-                <div className="card" style={cardSoft(theme)}>
-                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
-                    <div className="subtitle" style={sub(theme)}>
-                      Réglages LIVE (PRO)
-                    </div>
-
-                    <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
-                      <div className="subtitle" style={muted(theme)}>
-                        ROI {Math.round(roiPct * 100)}% — r[{minRadius},{maxRadius}] — p2 {param2}
-                        {livePaused ? " — PAUSE" : ""}
-                      </div>
-                      <button className="btn ghost" style={ghost(theme)} onClick={() => setLiveSettingsOpen((v) => !v)} disabled={!autoOn}>
-                        {liveSettingsOpen ? "Masquer" : "Afficher"}
-                      </button>
-                    </div>
-                  </div>
-
-                  {liveSettingsOpen ? (
-                    <>
-                      <div style={liveSliderRow}>
-                        <div style={{ flex: 1, minWidth: 190 }}>
-                          <div className="subtitle" style={label(theme)}>
-                            ROI (zone utile)
-                          </div>
-                          <input
-                            type="range"
-                            min={40}
-                            max={100}
-                            step={5}
-                            value={Math.round(roiPct * 100)}
-                            onChange={(e) => setRoiPct(Math.max(0.4, Math.min(1, Number(e.target.value) / 100)))}
-                            style={liveSlider(theme)}
-                            disabled={!autoOn}
-                          />
-                        </div>
-
-                        <div style={{ flex: 1, minWidth: 190 }}>
-                          <div className="subtitle" style={label(theme)}>
-                            Min radius
-                          </div>
-                          <input type="range" min={4} max={40} step={1} value={minRadius} onChange={(e) => setMinRadius(Number(e.target.value))} style={liveSlider(theme)} disabled={!autoOn} />
-                        </div>
-
-                        <div style={{ flex: 1, minWidth: 190 }}>
-                          <div className="subtitle" style={label(theme)}>
-                            Max radius
-                          </div>
-                          <input type="range" min={20} max={120} step={1} value={maxRadius} onChange={(e) => setMaxRadius(Number(e.target.value))} style={liveSlider(theme)} disabled={!autoOn} />
-                        </div>
-
-                        <div style={{ flex: 1, minWidth: 190 }}>
-                          <div className="subtitle" style={label(theme)}>
-                            Param2 (Hough)
-                          </div>
-                          <input type="range" min={10} max={60} step={1} value={param2} onChange={(e) => setParam2(Number(e.target.value))} style={liveSlider(theme)} disabled={!autoOn} />
-                        </div>
-                      </div>
-
-                      <div className="subtitle" style={muted(theme)}>
-                        Astuce: faux cercles → augmente Param2. Rien détecté → baisse Param2 ou ajuste les rayons. ROI réduit = plus stable/rapide.
-                      </div>
-                    </>
-                  ) : (
-                    <div className="subtitle" style={muted(theme)}>
-                      Réglages masqués (mobile). Ouvre “Afficher” si besoin.
-                    </div>
-                  )}
-                </div>
-
-                {/* ✅ Radar / Caméra (collapsible) */}
-                {liveSectionOpen && (
-                  <div ref={radarRef as any}>
-                    <div ref={liveWrapRef} style={liveWrap(theme)} onClick={!autoOn ? onLiveClick : undefined}>
-                      <video ref={videoRef} style={liveVideo} playsInline muted />
-                      <canvas ref={canvasRef} style={{ display: "none" }} />
-
-                      {/* Overlay radar */}
-                      <div style={radarOverlay}>
-                        <div style={radarSweep(theme)} />
-                        <div style={crosshairOuter(theme)} />
-                        <div style={crosshairInner} />
-                      </div>
-
-                      {/* Auto circles (assignation) */}
-                      {autoOn &&
-                        circles.map((c, idx) => {
-                          const isBest = nearestIdx === idx;
-                          const team = circleTeam[idx] || null;
-
-                          return (
-                            <div
-                              key={`c-${idx}`}
-                              style={liveCircle(theme, { x: c.x, y: c.y }, c.r, isBest, team)}
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setCircleTeam((cur) => ({ ...cur, [idx]: assignSide }));
-                              }}
-                              title={team ? `Équipe ${team}` : `Assigner à ${assignSide}`}
-                            />
-                          );
-                        })}
-
-                      {/* Manual markers */}
-                      {!autoOn && (
-                        <>
-                          <div style={liveMarker(theme, { x: 0.5, y: 0.5 }, "C", false)} />
-                          {liveA.map((p, i) => (
-                            <div key={`la-${i}`} style={liveMarker(theme, p, `A${i + 1}`, false)} />
-                          ))}
-                          {liveB.map((p, i) => (
-                            <div key={`lb-${i}`} style={liveMarker(theme, p, `B${i + 1}`, false)} />
-                          ))}
-                        </>
-                      )}
-                    </div>
-                  </div>
-                )}
-
-                {/* Lecture + Save */}
-                <div className="card" style={cardSoft(theme)}>
-                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
-                    <div className="subtitle" style={sub(theme)}>
-                      Lecture
-                    </div>
-                    <div className="subtitle" style={muted(theme)}>
-                      {autoOn
-                        ? `cercles:${circles.length} — assignés A:${Object.values(circleTeam).filter((v) => v === "A").length} / B:${Object.values(circleTeam).filter((v) => v === "B").length}`
-                        : `A:${liveA.length} / B:${liveB.length}`}
-                    </div>
-                  </div>
-
-                  <div className="subtitle" style={muted(theme)}>
-                    {autoOn ? (
-                      <>
-                        Auto: A={autoMinA == null ? "—" : autoMinA.toFixed(4)} / B={autoMinB == null ? "—" : autoMinB.toFixed(4)}
-                        {" — "}
-                        {autoWinner == null ? "Assigne au moins 1 boule A et 1 boule B" : autoWinner === "TIE" ? "Égalité" : autoWinner === "A" ? teams.A.name : teams.B.name}
-                        {" — "}
-                        Détection: {detectOn ? "ON" : "OFF"}
-                      </>
-                    ) : (
-                      <>TAP: ajoute A puis B puis Enregistrer</>
-                    )}
+                </>
+              ) : mode === "photo" ? (
+                <>
+                  <div className="subtitle" style={hint(theme)}>
+                    Photo : clique d’abord le cochonnet (C), puis ajoute des boules (A/B). Calibration optionnelle.
                   </div>
 
                   <div style={row}>
-                    <button
-                      className="btn primary"
-                      style={primary(theme)}
-                      onClick={onSaveLive}
-                      disabled={autoOn ? autoMinA == null || autoMinB == null : minA_live == null || minB_live == null}
-                    >
-                      Enregistrer ({autoOn ? "auto" : "tap"})
+                    <label className="btn" style={fileBtn(theme)}>
+                      Ajouter une photo
+                      <input type="file" accept="image/*" onChange={onPickImage} style={{ display: "none" }} />
+                    </label>
+
+                    <button className="btn ghost" style={ghost(theme)} onClick={clearPhoto} disabled={!imgUrl}>
+                      Réinitialiser
+                    </button>
+                    <button className="btn ghost" style={ghost(theme)} onClick={() => setLoupeOn((v) => !v)} disabled={!imgUrl}>
+                      Loupe: {loupeOn ? "ON" : "OFF"}
                     </button>
                   </div>
 
-                  <div className="subtitle" style={muted(theme)}>
-                    Note: sur mobile, “Mode TAP” est recommandé. “Mode AUTO” + “Détection ON” lance OpenCV (peut lag selon téléphone).
+                  <div className="card" style={cardSoft(theme)}>
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+                      <div className="subtitle" style={sub(theme)}>
+                        Ajout de boules
+                      </div>
+                      <div className="subtitle" style={muted(theme)}>
+                        A:{ballsA.length} / B:{ballsB.length}
+                      </div>
+                    </div>
+
+                    <div style={row}>
+                      <button className="btn" style={modeBtn(theme, addSide === "A")} onClick={() => setAddSide("A")}>
+                        Ajouter {teams.A.name}
+                      </button>
+                      <button className="btn" style={modeBtn(theme, addSide === "B")} onClick={() => setAddSide("B")}>
+                        Ajouter {teams.B.name}
+                      </button>
+                      <button className="btn ghost" style={ghost(theme)} onClick={onClearPhotoPoints} disabled={!pCochonnet && !ballsA.length && !ballsB.length}>
+                        Effacer points
+                      </button>
+                    </div>
+
+                    <div className="subtitle" style={muted(theme)}>
+                      Clic image = {calArm ? `Calibration ${calArm}` : !pCochonnet ? "Définir cochonnet (C)" : `Ajouter boule (${addSide})`}
+                    </div>
                   </div>
-                </div>
-              </>
-            )}
+
+                  <div className="card" style={cardSoft(theme)}>
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+                      <div className="subtitle" style={sub(theme)}>
+                        Calibration (optionnel)
+                      </div>
+                      <div className="subtitle" style={muted(theme)}>
+                        {pxPerCm ? `OK: ~${pxPerCm.toFixed(1)} px/cm` : "Non calibrée"}
+                      </div>
+                    </div>
+
+                    <div style={row}>
+                      <button className="btn ghost" style={ghost(theme)} onClick={() => setCalArm("A")} disabled={!imgUrl}>
+                        Point Cal A {calArm === "A" ? "(clic…)" : ""}
+                      </button>
+                      <button className="btn ghost" style={ghost(theme)} onClick={() => setCalArm("B")} disabled={!imgUrl}>
+                        Point Cal B {calArm === "B" ? "(clic…)" : ""}
+                      </button>
+
+                      <div style={{ flex: 1 }}>
+                        <div className="subtitle" style={label(theme)}>
+                          Longueur réelle (cm)
+                        </div>
+                        <input className="input" style={input(theme)} value={calLenCm} onChange={(e) => setCalLenCm(e.target.value)} placeholder="ex: 10" inputMode="decimal" />
+                      </div>
+
+                      <button
+                        className="btn ghost"
+                        style={ghost(theme)}
+                        onClick={() => {
+                          setCalA(null);
+                          setCalB(null);
+                          setCalLenCm("");
+                          setCalArm(null);
+                        }}
+                        disabled={!calA && !calB && !calLenCm}
+                      >
+                        Effacer calib
+                      </button>
+                    </div>
+                  </div>
+
+                  {imgUrl ? (
+                    <div style={imgWrap(theme)}>
+                      <div className="subtitle" style={imgHint(theme)}>
+                        {calArm ? `Calibration: clique le point ${calArm}` : !pCochonnet ? "Clique le cochonnet (C)." : `Clique pour ajouter une boule (${addSide}).`}
+                      </div>
+
+                      <div style={imgClickArea} onClick={onPhotoClick} onMouseMove={onPhotoMove}>
+                        <img
+                          ref={imgRef}
+                          src={imgUrl}
+                          alt="Mesurage"
+                          style={imgStyle}
+                          onLoad={(e) => {
+                            const el = e.currentTarget;
+                            setImgNatural({ w: el.naturalWidth, h: el.naturalHeight });
+                          }}
+                          draggable={false}
+                        />
+
+                        {imgNatural && (
+                          <>
+                            {pCochonnet && <div style={marker(theme, pCochonnet)} />}
+                            {ballsA.map((b, i) => (
+                              <div key={`ma-${i}`} style={marker(theme, b)} />
+                            ))}
+                            {ballsB.map((b, i) => (
+                              <div key={`mb-${i}`} style={marker(theme, b)} />
+                            ))}
+                            {calA && <div style={marker(theme, calA)} />}
+                            {calB && <div style={marker(theme, calB)} />}
+                          </>
+                        )}
+
+                        {loupeOn && imgUrl && hoverPt && <div style={loupeStyle(imgUrl, hoverPt)} aria-hidden />}
+                      </div>
+
+                      <div style={resultBox(theme, winnerPhoto)}>
+                        {minA_photo == null || minB_photo == null
+                          ? "Ajoute au moins 1 boule A et 1 boule B pour comparer."
+                          : `Plus proche A: ${minA_photo.toFixed(pxPerCm ? 1 : 0)} ${pxPerCm ? "cm" : "px"} — B: ${minB_photo.toFixed(pxPerCm ? 1 : 0)} ${pxPerCm ? "cm" : "px"}`}
+                      </div>
+
+                      <div style={row}>
+                        <button className="btn primary" style={primary(theme)} onClick={onSavePhoto} disabled={minA_photo == null || minB_photo == null}>
+                          Enregistrer (photo)
+                        </button>
+                        <button className="btn ghost" style={ghost(theme)} onClick={() => setPCochonnet(null)} disabled={!pCochonnet}>
+                          Replacer C
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="subtitle" style={muted(theme)}>
+                      Aucune image chargée.
+                    </div>
+                  )}
+                </>
+              ) : (
+                <>
+                  <div className="subtitle" style={hint(theme)}>
+                    LIVE mobile-safe : sur téléphone utilise “Mode TAP” (fluide). “Mode AUTO” + “Détection ON” lance OpenCV (optionnel). Pause coupe l’analyse immédiatement.
+                  </div>
+
+                  <div className="card" style={cardSoft(theme)}>
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+                      <div className="subtitle" style={sub(theme)}>
+                        Caméra / Radar
+                      </div>
+
+                      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
+                        <button className="btn ghost" style={ghost(theme)} onClick={() => setLiveSectionOpen((v) => !v)}>
+                          {liveSectionOpen ? "Réduire" : "Ouvrir"}
+                        </button>
+
+                        <button className="btn ghost" style={ghost(theme)} onClick={liveOn ? stopLive : startLive}>
+                          {liveOn ? "Stop caméra" : "Démarrer caméra"}
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="subtitle" style={muted(theme)}>
+                      Astuce mobile: autorise la caméra quand le navigateur le demande. Si ça lag, garde “Mode TAP” et laisse “Détection OFF”.
+                    </div>
+                  </div>
+
+                  <div style={row}>
+                    <button className="btn" style={modeBtn(theme, !autoOn)} onClick={() => { setAutoOn(false); setDetectOn(false); }} disabled={!liveOn}>
+                      Mode TAP
+                    </button>
+                    <button className="btn" style={modeBtn(theme, autoOn)} onClick={() => setAutoOn(true)} disabled={!liveOn}>
+                      Mode AUTO
+                    </button>
+
+                    {autoOn && (
+                      <>
+                        <button className="btn" style={modeBtn(theme, detectOn)} onClick={() => setDetectOn((v) => !v)} disabled={!liveOn}>
+                          Détection: {detectOn ? "ON" : "OFF"}
+                        </button>
+
+                        <button className="btn ghost" style={ghost(theme)} onClick={() => setLivePaused((v) => !v)} disabled={!liveOn}>
+                          {livePaused ? "Reprendre" : "Pause"}
+                        </button>
+
+                        <button className="btn" style={modeBtn(theme, assignSide === "A")} onClick={() => setAssignSide("A")} disabled={!liveOn}>
+                          Assigner {teams.A.name}
+                        </button>
+                        <button className="btn" style={modeBtn(theme, assignSide === "B")} onClick={() => setAssignSide("B")} disabled={!liveOn}>
+                          Assigner {teams.B.name}
+                        </button>
+
+                        <button className="btn ghost" style={ghost(theme)} onClick={() => setCircleTeam({})} disabled={!Object.keys(circleTeam).length}>
+                          Reset équipes
+                        </button>
+                      </>
+                    )}
+
+                    {!autoOn && (
+                      <>
+                        <button className="btn" style={modeBtn(theme, liveAddSide === "A")} onClick={() => setLiveAddSide("A")} disabled={!liveOn}>
+                          Ajouter {teams.A.name}
+                        </button>
+                        <button className="btn" style={modeBtn(theme, liveAddSide === "B")} onClick={() => setLiveAddSide("B")} disabled={!liveOn}>
+                          Ajouter {teams.B.name}
+                        </button>
+                      </>
+                    )}
+
+                    <button
+                      className="btn ghost"
+                      style={ghost(theme)}
+                      onClick={clearLive}
+                      disabled={!circles.length && !liveA.length && !liveB.length && !Object.keys(circleTeam).length}
+                    >
+                      Effacer
+                    </button>
+                  </div>
+
+                  {liveErr && <div style={resultBox(theme, "TIE")}>{liveErr}</div>}
+
+                  <div className="card" style={cardSoft(theme)}>
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+                      <div className="subtitle" style={sub(theme)}>
+                        Réglages LIVE (PRO)
+                      </div>
+
+                      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
+                        <div className="subtitle" style={muted(theme)}>
+                          ROI {Math.round(roiPct * 100)}% — r[{minRadius},{maxRadius}] — p2 {param2}
+                          {livePaused ? " — PAUSE" : ""}
+                        </div>
+                        <button className="btn ghost" style={ghost(theme)} onClick={() => setLiveSettingsOpen((v) => !v)} disabled={!autoOn}>
+                          {liveSettingsOpen ? "Masquer" : "Afficher"}
+                        </button>
+                      </div>
+                    </div>
+
+                    {liveSettingsOpen ? (
+                      <>
+                        <div style={liveSliderRow}>
+                          <div style={{ flex: 1, minWidth: 190 }}>
+                            <div className="subtitle" style={label(theme)}>
+                              ROI (zone utile)
+                            </div>
+                            <input
+                              type="range"
+                              min={40}
+                              max={100}
+                              step={5}
+                              value={Math.round(roiPct * 100)}
+                              onChange={(e) => setRoiPct(Math.max(0.4, Math.min(1, Number(e.target.value) / 100)))}
+                              style={liveSlider(theme)}
+                              disabled={!autoOn}
+                            />
+                          </div>
+
+                          <div style={{ flex: 1, minWidth: 190 }}>
+                            <div className="subtitle" style={label(theme)}>
+                              Min radius
+                            </div>
+                            <input type="range" min={4} max={40} step={1} value={minRadius} onChange={(e) => setMinRadius(Number(e.target.value))} style={liveSlider(theme)} disabled={!autoOn} />
+                          </div>
+
+                          <div style={{ flex: 1, minWidth: 190 }}>
+                            <div className="subtitle" style={label(theme)}>
+                              Max radius
+                            </div>
+                            <input type="range" min={20} max={120} step={1} value={maxRadius} onChange={(e) => setMaxRadius(Number(e.target.value))} style={liveSlider(theme)} disabled={!autoOn} />
+                          </div>
+
+                          <div style={{ flex: 1, minWidth: 190 }}>
+                            <div className="subtitle" style={label(theme)}>
+                              Param2 (Hough)
+                            </div>
+                            <input type="range" min={10} max={60} step={1} value={param2} onChange={(e) => setParam2(Number(e.target.value))} style={liveSlider(theme)} disabled={!autoOn} />
+                          </div>
+                        </div>
+
+                        <div className="subtitle" style={muted(theme)}>
+                          Astuce: faux cercles → augmente Param2. Rien détecté → baisse Param2 ou ajuste les rayons. ROI réduit = plus stable/rapide.
+                        </div>
+                      </>
+                    ) : (
+                      <div className="subtitle" style={muted(theme)}>
+                        Réglages masqués (mobile). Ouvre “Afficher” si besoin.
+                      </div>
+                    )}
+                  </div>
+
+                  {liveSectionOpen && (
+                    <div ref={radarRef as any}>
+                      <div ref={liveWrapRef} style={liveWrap(theme)} onClick={!autoOn ? onLiveClick : undefined}>
+                        <video ref={videoRef} style={liveVideo} playsInline muted />
+                        <canvas ref={canvasRef} style={{ display: "none" }} />
+
+                        <div style={radarOverlay}>
+                          <div style={radarSweep(theme)} />
+                          <div style={crosshairOuter(theme)} />
+                          <div style={crosshairInner} />
+                        </div>
+
+                        {autoOn &&
+                          circles.map((c, idx) => {
+                            const isBest = nearestIdx === idx;
+                            const team = circleTeam[idx] || null;
+
+                            return (
+                              <div
+                                key={`c-${idx}`}
+                                style={liveCircle(theme, { x: c.x, y: c.y }, c.r, isBest, team)}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setCircleTeam((cur) => ({ ...cur, [idx]: assignSide }));
+                                }}
+                                title={team ? `Équipe ${team}` : `Assigner à ${assignSide}`}
+                              />
+                            );
+                          })}
+
+                        {!autoOn && (
+                          <>
+                            <div style={liveMarker(theme, { x: 0.5, y: 0.5 }, false)} />
+                            {liveA.map((p, i) => (
+                              <div key={`la-${i}`} style={liveMarker(theme, p, false)} />
+                            ))}
+                            {liveB.map((p, i) => (
+                              <div key={`lb-${i}`} style={liveMarker(theme, p, false)} />
+                            ))}
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="card" style={cardSoft(theme)}>
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+                      <div className="subtitle" style={sub(theme)}>
+                        Lecture
+                      </div>
+                      <div className="subtitle" style={muted(theme)}>
+                        {autoOn
+                          ? `cercles:${circles.length} — assignés A:${Object.values(circleTeam).filter((v) => v === "A").length} / B:${Object.values(circleTeam).filter((v) => v === "B").length}`
+                          : `A:${liveA.length} / B:${liveB.length}`}
+                      </div>
+                    </div>
+
+                    <div className="subtitle" style={muted(theme)}>
+                      {autoOn ? (
+                        <>
+                          Auto: A={autoMinA == null ? "—" : autoMinA.toFixed(4)} / B={autoMinB == null ? "—" : autoMinB.toFixed(4)}
+                          {" — "}
+                          {autoWinner == null ? "Assigne au moins 1 boule A et 1 boule B" : autoWinner === "TIE" ? "Égalité" : autoWinner === "A" ? teams.A.name : teams.B.name}
+                          {" — "}
+                          Détection: {detectOn ? "ON" : "OFF"}
+                        </>
+                      ) : (
+                        <>TAP: ajoute A puis B puis Enregistrer</>
+                      )}
+                    </div>
+
+                    <div style={row}>
+                      <button
+                        className="btn primary"
+                        style={primary(theme)}
+                        onClick={onSaveLive}
+                        disabled={autoOn ? autoMinA == null || autoMinB == null : minA_live == null || minB_live == null}
+                      >
+                        Enregistrer ({autoOn ? "auto" : "tap"})
+                      </button>
+                    </div>
+
+                    <div className="subtitle" style={muted(theme)}>
+                      Note: sur mobile, “Mode TAP” est recommandé. “Mode AUTO” + “Détection ON” lance OpenCV (peut lag selon téléphone).
+                    </div>
+                  </div>
+                </>
+              )}
+            </div>
           </div>
-        </div>
-      )}
+        )}
+      </div>
     </div>
   );
 }
@@ -2095,23 +2398,6 @@ function wrap(theme: any): React.CSSProperties {
     display: "flex",
     flexDirection: "column",
     gap: 12,
-  };
-}
-
-const topBar: React.CSSProperties = {
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "space-between",
-  gap: 10,
-  paddingTop: 6,
-};
-
-function title(theme: any): React.CSSProperties {
-  return {
-    fontWeight: 1100 as any,
-    letterSpacing: 2,
-    opacity: 0.95,
-    textShadow: "0 12px 30px rgba(0,0,0,0.35)",
   };
 }
 
@@ -2220,7 +2506,11 @@ const grid2: React.CSSProperties = {
   gap: 12,
 };
 
-const ptsGrid: React.CSSProperties = { display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 10 };
+const ptsGrid: React.CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "repeat(4, minmax(0, 1fr))",
+  gap: 10,
+};
 
 function ptBtn(theme: any): React.CSSProperties {
   return {
@@ -2247,6 +2537,23 @@ function win(theme: any): React.CSSProperties {
 
 function muted(theme: any): React.CSSProperties {
   return { opacity: 0.75, fontSize: 13, lineHeight: 1.35 };
+}
+
+function pill(theme: any): React.CSSProperties {
+  return {
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    padding: "6px 10px",
+    borderRadius: 999,
+    border: `1px solid ${cssVarOr("rgba(255,255,255,0.14)", "--stroke")}`,
+    background: cssVarOr("rgba(255,255,255,0.06)", "--glass"),
+    fontWeight: 1000 as any,
+    whiteSpace: "nowrap",
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    maxWidth: "100%",
+  };
 }
 
 function endRow(theme: any): React.CSSProperties {
@@ -2406,23 +2713,18 @@ const imgStyle: React.CSSProperties = {
   userSelect: "none",
 };
 
-function marker(theme: any, p: PhotoPoint, labelTxt: string): React.CSSProperties {
+function marker(theme: any, p: PhotoPoint): React.CSSProperties {
   return {
     position: "absolute",
     left: `${p.x * 100}%`,
     top: `${p.y * 100}%`,
     transform: "translate(-50%, -50%)",
-    width: 28,
-    height: 28,
+    width: 18,
+    height: 18,
     borderRadius: 999,
     border: `2px solid ${cssVarOr("rgba(255,255,255,0.95)", "--text")}`,
     background: "rgba(0,0,0,0.35)",
     boxShadow: "0 8px 18px rgba(0,0,0,0.35)",
-    display: "grid",
-    placeItems: "center",
-    fontSize: 10,
-    fontWeight: 1100 as any,
-    color: cssVarOr(theme?.colors?.text ?? "#fff", "--text"),
     pointerEvents: "none",
   } as React.CSSProperties;
 }
@@ -2471,7 +2773,7 @@ const liveVideo: React.CSSProperties = {
   height: "100%",
   objectFit: "cover",
   filter: "contrast(1.05) saturate(1.05)",
-  pointerEvents: "none", // ✅ crucial (évite la vidéo qui “avale” les taps)
+  pointerEvents: "none",
   userSelect: "none",
 };
 
@@ -2519,23 +2821,18 @@ const crosshairInner: React.CSSProperties = {
   background: "rgba(255,255,255,0.95)",
 };
 
-function liveMarker(theme: any, p: PhotoPoint, labelTxt: string, highlight: boolean): React.CSSProperties {
+function liveMarker(theme: any, p: PhotoPoint, highlight: boolean): React.CSSProperties {
   const base: React.CSSProperties = {
     position: "absolute",
     left: `${p.x * 100}%`,
     top: `${p.y * 100}%`,
     transform: "translate(-50%, -50%)",
-    width: 30,
-    height: 30,
+    width: 18,
+    height: 18,
     borderRadius: 999,
     border: `2px solid ${cssVarOr("rgba(255,255,255,0.92)", "--text")}`,
     background: "rgba(0,0,0,0.35)",
     boxShadow: "0 10px 22px rgba(0,0,0,0.40)",
-    display: "grid",
-    placeItems: "center",
-    fontSize: 10,
-    fontWeight: 1100 as any,
-    color: cssVarOr(theme?.colors?.text ?? "#fff", "--text"),
     pointerEvents: "none",
   };
   if (!highlight) return base;
@@ -2548,7 +2845,10 @@ function liveMarker(theme: any, p: PhotoPoint, labelTxt: string, highlight: bool
 
 function liveCircle(theme: any, p: PhotoPoint, rNorm: number, highlight: boolean, team: PetanqueTeamId | null): React.CSSProperties {
   const size = Math.max(22, Math.min(180, rNorm * 2 * 900));
-  const teamStroke = team === "A" ? "rgba(0,255,180,0.90)" : team === "B" ? "rgba(255,120,120,0.90)" : "rgba(255,255,255,0.55)";
+  const teamStroke =
+    team === "A" ? "rgba(0,255,180,0.90)" :
+    team === "B" ? "rgba(255,120,120,0.90)" :
+    "rgba(255,255,255,0.55)";
   const base: React.CSSProperties = {
     position: "absolute",
     left: `${p.x * 100}%`,
@@ -2582,64 +2882,10 @@ function liveSlider(theme: any): React.CSSProperties {
   return { width: "100%", accentColor: "var(--gold, rgba(240,177,42,0.95))" as any };
 }
 
-const heroGlow: React.CSSProperties = {
-  position: "absolute",
-  inset: -140,
-  background:
-    "radial-gradient(520px 260px at 18% 0%, rgba(240,177,42,0.18), transparent 60%), radial-gradient(520px 260px at 82% 20%, rgba(70,110,255,0.14), transparent 60%)",
-  pointerEvents: "none",
-  zIndex: 0,
-};
-
 /* ✅ Team / Roster styles */
-const teamNameStyle: React.CSSProperties = {
-  fontWeight: 1200 as any,
-  fontSize: 13,
-  letterSpacing: 0.9,
-  textTransform: "uppercase",
-  whiteSpace: "nowrap",
-  overflow: "hidden",
-  textOverflow: "ellipsis",
-  color: "rgba(255,255,255,0.92)",
-  textShadow: "0 10px 22px rgba(0,0,0,0.55)",
-};
-
-function teamLogoBox(theme: any): React.CSSProperties {
-  return {
-    width: 40,
-    height: 40,
-    borderRadius: 999,
-    overflow: "hidden",
-    border: `1px solid ${cssVarOr("rgba(255,255,255,0.18)", "--stroke")}`,
-    background: cssVarOr("rgba(255,255,255,0.06)", "--glass"),
-    flex: "0 0 auto",
-    boxShadow: "0 10px 22px rgba(0,0,0,0.30)",
-  };
-}
-
-const teamLogoFallback: React.CSSProperties = {
-  width: "100%",
-  height: "100%",
-  display: "grid",
-  placeItems: "center",
-  fontWeight: 1100 as any,
-  opacity: 0.85,
-};
-
 const avatarFallback: React.CSSProperties = {
   width: 42,
   height: 42,
-  borderRadius: 999,
-  display: "grid",
-  placeItems: "center",
-  fontWeight: 1100 as any,
-  border: "1px solid rgba(255,255,255,0.14)",
-  background: "rgba(255,255,255,0.06)",
-};
-
-const avatarFallbackSmall: React.CSSProperties = {
-  width: 38,
-  height: 38,
   borderRadius: 999,
   display: "grid",
   placeItems: "center",
