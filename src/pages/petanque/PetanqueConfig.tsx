@@ -12,12 +12,7 @@
 // ✅ NEW : rôles (Tireur / Pointeur 1 / Pointeur 2 / Polyvalent) indicatifs
 // ✅ CTA sticky "Démarrer la partie"
 // IMPORTANT: le bouton Démarrer fait : go("petanque.play", { cfg: config, mode: config.mode })
-//
-// ✅ NEW: Sélection + création d'équipes nommées (Team A/B) via petanqueConfigStore
-// - 2 selects (Équipe A / Équipe B)
-// - bouton + Créer une équipe (inline form)
-// - persist (selectedTeamAId/BId) en localStorage
-// - au Start: inject teamAId/teamBId + teamAName/teamBName dans cfg
+// ✅ NEW (Teams): sélection/creation d'équipes + logo (partagé avec Profiles > Teams via teamsStore)
 // =============================================================
 
 import React from "react";
@@ -27,41 +22,36 @@ import { useLang } from "../../contexts/LangContext";
 import ProfileAvatar from "../../components/ProfileAvatar";
 import InfoDot from "../../components/InfoDot";
 
-// ✅ NEW: Teams repository (local)
+// ✅ NEW: Store unique Teams
 import {
-  loadPetanqueConfig,
-  ensureTeams,
-  upsertPetanqueTeam,
-  setSelectedTeams,
-  resolveTeamName,
-  type PetanqueTeam,
-} from "../../lib/petanqueConfigStore";
+  loadTeamsBySport,
+  createTeam,
+  fileToDataUrl,
+  type TeamEntity,
+} from "../../lib/teamsStore";
 
 type PetanqueModeId =
   | "singles"
   | "doublette"
   | "triplette"
   | "quadrette"
-  | "variants" // ton bouton "VARIANTES"
-  | "handicap" // support si jamais tu routes encore "handicap"
+  | "variants"
+  | "handicap"
   | "training";
 
 type Props = {
   store: Store;
   go: (tab: any, params?: any) => void;
-  params?: any; // { mode }
+  params?: any;
 };
 
 type TeamId = "A" | "B";
 
-// règles de départ / ordre
 type StartRule = "toss" | "fixedA" | "fixedB" | "closest_boule";
 type ThrowOrderRule = "free" | "fixed";
 
-// rôles indicatifs
 type PlayerRole = "tireur" | "pointeur1" | "pointeur2" | "polyvalent";
 
-// presets variantes
 type VariantPresetKey = "1v2" | "2v3" | "3v4" | "4v3" | "3v2" | "2v1";
 
 type PetanqueConfigPayload = {
@@ -81,7 +71,11 @@ type PetanqueConfigPayload = {
     name: string;
     color: string;
     playerIds: string[];
-    ballsPerPlayer?: number[]; // info (utile quadrette/variantes)
+    ballsPerPlayer?: number[];
+    // ✅ NEW: logo (optionnel)
+    logoDataUrl?: string | null;
+    // ✅ NEW: lien vers team store
+    teamRefId?: string | null;
   }>;
 
   players: Array<{
@@ -100,15 +94,8 @@ type PetanqueConfigPayload = {
     ballsPerTeam: number;
     preset?: VariantPresetKey;
   };
-
-  // ✅ NEW: équipes nommées (snapshot partie)
-  teamAId?: string | null;
-  teamBId?: string | null;
-  teamAName?: string;
-  teamBName?: string;
 };
 
-// UI
 const TARGET_SCORES = [11, 13, 15, 21] as const;
 
 const TEAM_LABELS: Record<TeamId, string> = { A: "Équipe A", B: "Équipe B" };
@@ -117,13 +104,12 @@ const TEAM_COLORS: Record<TeamId, string> = { A: "#f7c85c", B: "#ff4fa2" };
 // ------------------------------------------------------------
 // Helpers règles joueurs / boules / score
 // ------------------------------------------------------------
-
 function requiredPlayersFixed(mode: PetanqueModeId) {
   if (mode === "singles") return 2;
   if (mode === "doublette") return 4;
   if (mode === "triplette") return 6;
-  if (mode === "quadrette") return 8; // 4v4
-  return 1; // training / variants/handicap = variable
+  if (mode === "quadrette") return 8;
+  return 1;
 }
 
 function clampInt(n: any, min: number, max: number) {
@@ -150,20 +136,11 @@ function presetToSizes(k: VariantPresetKey): { a: number; b: number } {
   }
 }
 
-/**
- * Choix "propre" pour boules totales par équipe selon tailles.
- * - si une équipe est à 4 -> on se cale sur 8 boules/équipe (quadrette / compat)
- * - sinon on se cale sur 6 boules/équipe (simple/doublette/triplette)
- */
 function ballsPerTeamForSizes(a: number, b: number) {
   const mx = Math.max(a, b);
   return mx >= 4 ? 8 : 6;
 }
 
-/**
- * Répartit N boules sur teamSize joueurs (ex: 6 sur 2 => 3,3 ; 6 sur 3 => 2,2,2 ; 8 sur 3 => 3,3,2).
- * Distribution déterministe (les premiers prennent le reste).
- */
 function distributeBalls(total: number, teamSize: number): number[] {
   const n = Math.max(1, teamSize);
   const base = Math.floor(total / n);
@@ -176,9 +153,6 @@ function distributeBalls(total: number, teamSize: number): number[] {
   return out;
 }
 
-/**
- * Compensation: on force le même total de boules sur A et B
- */
 function computeBalancedBalls(a: number, b: number) {
   const ballsPerTeam = ballsPerTeamForSizes(a, b);
   const ballsA = distributeBalls(ballsPerTeam, a);
@@ -186,22 +160,12 @@ function computeBalancedBalls(a: number, b: number) {
   return { ballsPerTeam, ballsA, ballsB };
 }
 
-/**
- * Score auto (heuristique simple et stable):
- * - 6 boules/équipe => 13
- * - 8 boules/équipe => 15 (un peu plus long, mais pas 21)
- * - fallback => 13
- */
 function targetScoreForBallsPerTeam(ballsPerTeam: number): number {
   if (ballsPerTeam >= 8) return 15;
   return 13;
 }
 
 function defaultBallsForMode(mode: PetanqueModeId, teamSize: number): number[] {
-  // Standard pétanque:
-  // - 1v1 / 2v2 : 3 boules/joueur (donc 6 boules/équipe)
-  // - 3v3 : 2 boules/joueur (donc 6 boules/équipe)
-  // - 4v4 : 2 boules/joueur (donc 8 boules/équipe)
   if (mode === "triplette") return Array.from({ length: teamSize }, () => 2);
   if (mode === "quadrette") return Array.from({ length: teamSize }, () => 2);
   if (mode === "training") return Array.from({ length: Math.max(1, teamSize) }, () => 3);
@@ -214,10 +178,7 @@ export default function PetanqueConfig({ store, go, params }: Props) {
   const { theme } = useTheme() as any;
   const { t } = useLang() as any;
 
-  // accepte "simple/doublette/..." venant du store ou "singles" etc.
   const rawMode = (params?.mode as string) || "singles";
-
-  // normalisation (robuste)
   const mode: PetanqueModeId =
     rawMode === "simple"
       ? "singles"
@@ -229,46 +190,68 @@ export default function PetanqueConfig({ store, go, params }: Props) {
 
   const isVariants = mode === "variants" || mode === "handicap";
 
-  // Profils humains uniquement
   const profiles: Profile[] = (store?.profiles || []).filter((p: any) => !(p as any).isBot);
 
-  // =========================
-  // ✅ NEW: TEAMS (nommées)
-  // =========================
-  const [cfg, setCfg] = React.useState(() => ensureTeams(loadPetanqueConfig()));
-  const teamList: PetanqueTeam[] = (cfg as any).teams || [];
+  // -------------------------
+  // ✅ TEAMS (shared store)
+  // -------------------------
+  const [teamsCatalog, setTeamsCatalog] = React.useState<TeamEntity[]>(() => loadTeamsBySport("petanque"));
 
-  const [teamAId, setTeamAId] = React.useState<string | null>((cfg as any).selectedTeamAId ?? null);
-  const [teamBId, setTeamBId] = React.useState<string | null>((cfg as any).selectedTeamBId ?? null);
-
-  // UI create team
-  const [createOpen, setCreateOpen] = React.useState(false);
-  const [newTeamName, setNewTeamName] = React.useState("");
-
+  // refresh on mount + when coming back to page (simple)
   React.useEffect(() => {
-    setSelectedTeams(teamAId, teamBId);
-    // refresh cfg from storage to stay in sync
-    setCfg(ensureTeams(loadPetanqueConfig()));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [teamAId, teamBId]);
+    setTeamsCatalog(loadTeamsBySport("petanque"));
+  }, []);
 
-  const teamAName = resolveTeamName(cfg as any, teamAId, "Équipe A");
-  const teamBName = resolveTeamName(cfg as any, teamBId, "Équipe B");
+  const [teamARefId, setTeamARefId] = React.useState<string>("");
+  const [teamBRefId, setTeamBRefId] = React.useState<string>("");
 
-  const onCreateTeam = () => {
-    const name = newTeamName.trim();
-    if (!name) return;
-    const created = upsertPetanqueTeam(name);
+  // Modal create team
+  const [teamModalOpen, setTeamModalOpen] = React.useState(false);
+  const [teamModalSide, setTeamModalSide] = React.useState<TeamId>("A");
+  const [newTeamName, setNewTeamName] = React.useState("");
+  const [newTeamLogo, setNewTeamLogo] = React.useState<string | null>(null);
+  const [teamCreateErr, setTeamCreateErr] = React.useState<string | null>(null);
+
+  const openCreateTeam = (side: TeamId) => {
+    setTeamModalSide(side);
     setNewTeamName("");
-    setCreateOpen(false);
-
-    // auto-assign: remplis A puis B
-    if (!teamAId) setTeamAId(created.id);
-    else if (!teamBId) setTeamBId(created.id);
-
-    // refresh
-    setCfg(ensureTeams(loadPetanqueConfig()));
+    setNewTeamLogo(null);
+    setTeamCreateErr(null);
+    setTeamModalOpen(true);
   };
+
+  const onPickTeamLogo: React.ChangeEventHandler<HTMLInputElement> = async (e) => {
+    const f = e.target.files?.[0];
+    if (!f) return;
+    try {
+      const data = await fileToDataUrl(f);
+      setNewTeamLogo(data);
+    } catch {
+      setTeamCreateErr("Impossible de lire l’image.");
+    }
+  };
+
+  const confirmCreateTeam = () => {
+    const name = newTeamName.trim();
+    if (!name) {
+      setTeamCreateErr("Nom d’équipe requis.");
+      return;
+    }
+    const created = createTeam({ sport: "petanque", name, logoDataUrl: newTeamLogo ?? null });
+    const nextList = loadTeamsBySport("petanque");
+    setTeamsCatalog(nextList);
+
+    // auto-select on the chosen side
+    if (teamModalSide === "A") setTeamARefId(created.id);
+    else setTeamBRefId(created.id);
+
+    setTeamModalOpen(false);
+  };
+
+  const findTeam = (id: string) => teamsCatalog.find((t) => t.id === id) || null;
+
+  const teamAObj = teamARefId ? findTeam(teamARefId) : null;
+  const teamBObj = teamBRefId ? findTeam(teamBRefId) : null;
 
   // -------------------------
   // State variantes/handicap
@@ -283,7 +266,6 @@ export default function PetanqueConfig({ store, go, params }: Props) {
   const [ballsPerPlayerB, setBallsPerPlayerB] = React.useState<number[]>([3, 3]);
   const [ballsPerTeam, setBallsPerTeam] = React.useState<number>(6);
 
-  // Besoin joueurs total
   const need = React.useMemo(() => {
     if (isVariants) return Math.max(1, teamASizeState) + Math.max(1, teamBSizeState);
     return requiredPlayersFixed(mode);
@@ -299,8 +281,9 @@ export default function PetanqueConfig({ store, go, params }: Props) {
   const [throwOrderRule, setThrowOrderRule] = React.useState<ThrowOrderRule>("free");
   const [roles, setRoles] = React.useState<Record<string, PlayerRole>>({});
 
-  // joueurs sélectionnés
-  const [selectedIds, setSelectedIds] = React.useState<string[]>(() => profiles.slice(0, need).map((p) => p.id));
+  const [selectedIds, setSelectedIds] = React.useState<string[]>(() =>
+    profiles.slice(0, need).map((p) => p.id)
+  );
 
   // Init/reset quand le mode change
   React.useEffect(() => {
@@ -313,12 +296,10 @@ export default function PetanqueConfig({ store, go, params }: Props) {
       setBallsPerTeam(8);
       setBallsPerPlayerA([2, 2, 2, 2]);
       setBallsPerPlayerB([2, 2, 2, 2]);
-      // score: laisse l’utilisateur (13 par défaut)
       return;
     }
 
     if (isVariants) {
-      // défaut = 3v2
       const a = 3;
       const b = 2;
       setTeamASizeState(a);
@@ -385,7 +366,6 @@ export default function PetanqueConfig({ store, go, params }: Props) {
     return selectedIds.length === need;
   }, [mode, selectedIds.length, need]);
 
-  // Tailles réelles équipes
   const teamASize = isVariants ? clampInt(teamASizeState, 1, 4) : mode === "training" ? 1 : Math.floor(need / 2);
   const teamBSize = mode === "training" ? 0 : isVariants ? clampInt(teamBSizeState, 1, 4) : need - Math.floor(need / 2);
 
@@ -403,7 +383,6 @@ export default function PetanqueConfig({ store, go, params }: Props) {
     setPresetKey(k);
     setTeamASizeState(a);
     setTeamBSizeState(b);
-    // presets = on force l’auto-comp
     setAutoCompensation(true);
     recalcVariants(a, b, true, autoTargetScore);
   }
@@ -426,23 +405,40 @@ export default function PetanqueConfig({ store, go, params }: Props) {
       ballsB = defaultBallsForMode(mode, bCount);
     }
 
+    const aName = teamAObj?.name?.trim() ? teamAObj.name.trim() : TEAM_LABELS.A;
+    const bName = teamBObj?.name?.trim() ? teamBObj.name.trim() : TEAM_LABELS.B;
+
     return [
       {
         id: "A" as TeamId,
-        name: teamAName || TEAM_LABELS.A, // ✅ NEW: nom équipe A
+        name: aName,
         color: TEAM_COLORS.A,
         playerIds: a,
         ballsPerPlayer: ballsA,
+        logoDataUrl: teamAObj?.logoDataUrl ?? null,
+        teamRefId: teamAObj?.id ?? null,
       },
       {
         id: "B" as TeamId,
-        name: teamBName || TEAM_LABELS.B, // ✅ NEW: nom équipe B
+        name: bName,
         color: TEAM_COLORS.B,
         playerIds: b,
         ballsPerPlayer: ballsB,
+        logoDataUrl: teamBObj?.logoDataUrl ?? null,
+        teamRefId: teamBObj?.id ?? null,
       },
     ];
-  }, [selectedIds, teamASize, teamBSize, mode, isVariants, ballsPerPlayerA, ballsPerPlayerB, teamAName, teamBName]);
+  }, [
+    selectedIds,
+    teamASize,
+    teamBSize,
+    mode,
+    isVariants,
+    ballsPerPlayerA,
+    ballsPerPlayerB,
+    teamAObj,
+    teamBObj,
+  ]);
 
   function handleStart() {
     if (!canStart) {
@@ -487,15 +483,8 @@ export default function PetanqueConfig({ store, go, params }: Props) {
             preset: presetKey ?? undefined,
           }
         : undefined,
-
-      // ✅ NEW: snapshot équipe nommée dans la partie
-      teamAId,
-      teamBId,
-      teamAName: teamAName || "Équipe A",
-      teamBName: teamBName || "Équipe B",
     };
 
-    // ✅ IMPORTANT: route demandée
     go("petanque.play" as any, { cfg: config, mode: config.mode });
   }
 
@@ -530,6 +519,100 @@ export default function PetanqueConfig({ store, go, params }: Props) {
       </div>
     );
   }
+
+  const TeamSelectRow = ({
+    side,
+    value,
+    onChange,
+  }: {
+    side: TeamId;
+    value: string;
+    onChange: (id: string) => void;
+  }) => {
+    const tm = value ? findTeam(value) : null;
+
+    return (
+      <div style={{ flex: 1, minWidth: 160 }}>
+        <div style={{ fontSize: 12, color: "#c8cbe4", marginBottom: 6, display: "flex", alignItems: "center", gap: 8 }}>
+          <span style={{ fontWeight: 900, color: side === "A" ? TEAM_COLORS.A : TEAM_COLORS.B }}>
+            {side === "A" ? "Équipe A" : "Équipe B"}
+          </span>
+          {tm?.logoDataUrl ? (
+            <img
+              src={tm.logoDataUrl}
+              alt="logo"
+              style={{ width: 18, height: 18, borderRadius: 6, objectFit: "cover", border: "1px solid rgba(255,255,255,0.18)" }}
+            />
+          ) : null}
+        </div>
+
+        <select
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          style={{
+            width: "100%",
+            padding: "8px 10px",
+            borderRadius: 12,
+            border: "1px solid rgba(255,255,255,0.10)",
+            background: "rgba(9,11,20,0.85)",
+            color: "#e9ecff",
+            outline: "none",
+          }}
+        >
+          <option value="">{t("petanque.team.none", "— Nommer plus tard —")}</option>
+          {teamsCatalog.map((tme) => (
+            <option key={tme.id} value={tme.id}>
+              {tme.name}
+            </option>
+          ))}
+        </select>
+
+        <div style={{ display: "flex", gap: 8, marginTop: 8, flexWrap: "wrap" }}>
+          <button
+            type="button"
+            onClick={() => openCreateTeam(side)}
+            style={{
+              padding: "7px 10px",
+              borderRadius: 12,
+              border: `1px solid ${primary}55`,
+              background: "rgba(255,255,255,0.04)",
+              color: "#e9ecff",
+              fontWeight: 900,
+              fontSize: 11,
+              letterSpacing: 0.7,
+              cursor: "pointer",
+              textTransform: "uppercase",
+            }}
+          >
+            {t("petanque.team.create", "Créer")}
+          </button>
+
+          <button
+            type="button"
+            onClick={() => {
+              // refresh list (si Teams page a ajouté/modifié)
+              setTeamsCatalog(loadTeamsBySport("petanque"));
+            }}
+            style={{
+              padding: "7px 10px",
+              borderRadius: 12,
+              border: "1px solid rgba(255,255,255,0.10)",
+              background: "rgba(9,11,20,0.75)",
+              color: "#cfd2e8",
+              fontWeight: 900,
+              fontSize: 11,
+              letterSpacing: 0.7,
+              cursor: "pointer",
+              textTransform: "uppercase",
+            }}
+            title="Rafraîchir la liste d'équipes"
+          >
+            ↻ {t("common.refresh", "Maj")}
+          </button>
+        </div>
+      </div>
+    );
+  };
 
   return (
     <div
@@ -605,6 +688,40 @@ export default function PetanqueConfig({ store, go, params }: Props) {
             {t("petanque.config.players", "Joueurs")}
           </div>
 
+          {/* ✅ NEW: Équipes (noms & logos) */}
+          {mode !== "training" && (
+            <div
+              style={{
+                marginBottom: 14,
+                padding: 12,
+                borderRadius: 14,
+                border: "1px solid rgba(255,255,255,0.08)",
+                background: "rgba(255,255,255,0.035)",
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 10 }}>
+                <div style={{ fontSize: 12, fontWeight: 900, letterSpacing: 0.9, textTransform: "uppercase", color: primary }}>
+                  {t("petanque.config.teamsNames", "Équipes (noms & logos)")}
+                </div>
+                <div style={{ fontSize: 11, color: "#9ea3bf" }}>
+                  {t("petanque.config.teamsNamesHint", "Partagé avec Profils > Teams")}
+                </div>
+              </div>
+
+              <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                <TeamSelectRow side="A" value={teamARefId} onChange={setTeamARefId} />
+                <TeamSelectRow side="B" value={teamBRefId} onChange={setTeamBRefId} />
+              </div>
+
+              <div style={{ marginTop: 10, fontSize: 11, color: "#9ea3bf" }}>
+                {t(
+                  "petanque.config.teamsNamesNote",
+                  "Astuce: si tu crées une équipe ici, elle apparaîtra automatiquement dans Profils > Teams (même store)."
+                )}
+              </div>
+            </div>
+          )}
+
           {/* VARIANTES / HANDICAP */}
           {isVariants && (
             <div
@@ -616,15 +733,7 @@ export default function PetanqueConfig({ store, go, params }: Props) {
                 background: "rgba(255,255,255,0.035)",
               }}
             >
-              <div
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "space-between",
-                  gap: 10,
-                  marginBottom: 8,
-                }}
-              >
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 8 }}>
                 <div style={{ fontSize: 12, fontWeight: 900, letterSpacing: 0.9, textTransform: "uppercase", color: primary }}>
                   {t("petanque.variants.title", "Variantes (équipes impaires)")}
                 </div>
@@ -881,177 +990,6 @@ export default function PetanqueConfig({ store, go, params }: Props) {
           )}
         </section>
 
-        {/* ✅ NEW: ÉQUIPES NOMMÉES (select + create) */}
-        <section
-          style={{
-            background: cardBg,
-            borderRadius: 18,
-            padding: 12,
-            marginBottom: 12,
-            boxShadow: "0 16px 40px rgba(0,0,0,0.55)",
-            border: `1px solid rgba(255,255,255,0.04)`,
-          }}
-        >
-          <h3 style={{ fontSize: 13, textTransform: "uppercase", letterSpacing: 1, fontWeight: 700, color: primary, marginBottom: 10 }}>
-            {t("petanque.config.namedTeams", "Équipes (noms)")}
-          </h3>
-
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-              <div style={{ fontSize: 12, color: "#c8cbe4" }}>{t("petanque.config.teamA", "Équipe A")}</div>
-              <select
-                value={teamAId ?? ""}
-                onChange={(e) => setTeamAId(e.target.value ? e.target.value : null)}
-                style={{
-                  width: "100%",
-                  borderRadius: 12,
-                  padding: "10px 10px",
-                  border: "1px solid rgba(255,255,255,0.10)",
-                  background: "rgba(9,11,20,0.85)",
-                  color: "#e9ecff",
-                  outline: "none",
-                }}
-              >
-                <option value="">{t("petanque.config.choose", "— Choisir —")}</option>
-                {teamList.map((tm) => (
-                  <option key={tm.id} value={tm.id}>
-                    {tm.name}
-                  </option>
-                ))}
-              </select>
-              <div style={{ fontSize: 11, color: "#7c80a0" }}>
-                {t("petanque.config.current", "Actuel")} : <b style={{ color: "#e9ecff" }}>{teamAName}</b>
-              </div>
-            </div>
-
-            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-              <div style={{ fontSize: 12, color: "#c8cbe4" }}>{t("petanque.config.teamB", "Équipe B")}</div>
-              <select
-                value={teamBId ?? ""}
-                onChange={(e) => setTeamBId(e.target.value ? e.target.value : null)}
-                style={{
-                  width: "100%",
-                  borderRadius: 12,
-                  padding: "10px 10px",
-                  border: "1px solid rgba(255,255,255,0.10)",
-                  background: "rgba(9,11,20,0.85)",
-                  color: "#e9ecff",
-                  outline: "none",
-                }}
-              >
-                <option value="">{t("petanque.config.choose", "— Choisir —")}</option>
-                {teamList.map((tm) => (
-                  <option key={tm.id} value={tm.id}>
-                    {tm.name}
-                  </option>
-                ))}
-              </select>
-              <div style={{ fontSize: 11, color: "#7c80a0" }}>
-                {t("petanque.config.current", "Actuel")} : <b style={{ color: "#e9ecff" }}>{teamBName}</b>
-              </div>
-            </div>
-          </div>
-
-          <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 10 }}>
-            <button
-              type="button"
-              onClick={() => setCreateOpen((v) => !v)}
-              style={{
-                borderRadius: 999,
-                padding: "8px 12px",
-                border: createOpen ? `1px solid ${primary}` : "1px solid rgba(255,255,255,0.12)",
-                background: createOpen ? primarySoft : "rgba(9,11,20,0.9)",
-                color: "#e9ecff",
-                fontWeight: 900,
-                cursor: "pointer",
-                whiteSpace: "nowrap",
-              }}
-            >
-              + {t("petanque.config.createTeam", "Créer une équipe")}
-            </button>
-
-            <button
-              type="button"
-              onClick={() => {
-                setTeamAId(null);
-                setTeamBId(null);
-              }}
-              disabled={!teamAId && !teamBId}
-              style={{
-                borderRadius: 999,
-                padding: "8px 12px",
-                border: "1px solid rgba(255,255,255,0.12)",
-                background: "rgba(9,11,20,0.65)",
-                color: "#e9ecff",
-                fontWeight: 900,
-                cursor: !teamAId && !teamBId ? "default" : "pointer",
-                opacity: !teamAId && !teamBId ? 0.55 : 1,
-                whiteSpace: "nowrap",
-              }}
-              title="Revenir à Équipe A / Équipe B"
-            >
-              {t("petanque.config.resetTeamChoice", "Réinitialiser sélection")}
-            </button>
-          </div>
-
-          {createOpen && (
-            <div
-              style={{
-                marginTop: 10,
-                borderRadius: 14,
-                border: "1px solid rgba(255,255,255,0.08)",
-                background: "rgba(255,255,255,0.035)",
-                padding: 12,
-              }}
-            >
-              <div style={{ fontSize: 12, color: "#c8cbe4", marginBottom: 6 }}>{t("petanque.config.teamName", "Nom d’équipe")}</div>
-
-              <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-                <input
-                  value={newTeamName}
-                  onChange={(e) => setNewTeamName(e.target.value)}
-                  placeholder={t("petanque.config.teamNamePh", "Ex: Les Champions, Team Pastis…")}
-                  style={{
-                    flex: 1,
-                    minWidth: 220,
-                    borderRadius: 12,
-                    padding: "10px 10px",
-                    border: "1px solid rgba(255,255,255,0.10)",
-                    background: "rgba(9,11,20,0.85)",
-                    color: "#e9ecff",
-                    outline: "none",
-                  }}
-                />
-
-                <button
-                  type="button"
-                  onClick={onCreateTeam}
-                  disabled={!newTeamName.trim()}
-                  style={{
-                    borderRadius: 999,
-                    padding: "10px 14px",
-                    border: "none",
-                    background: newTeamName.trim() ? `linear-gradient(90deg, ${primary}, #ffe9a3)` : "rgba(120,120,120,0.5)",
-                    color: newTeamName.trim() ? "#151515" : "#2b2b52",
-                    fontWeight: 900,
-                    cursor: newTeamName.trim() ? "pointer" : "default",
-                    opacity: newTeamName.trim() ? 1 : 0.6,
-                  }}
-                >
-                  {t("common.create", "Créer")}
-                </button>
-              </div>
-
-              <div style={{ fontSize: 11, color: "#7c80a0", marginTop: 8 }}>
-                {t(
-                  "petanque.config.teamHint",
-                  "Astuce: si le nom existe déjà, l’app réutilise l’équipe existante (pas de doublon)."
-                )}
-              </div>
-            </div>
-          )}
-        </section>
-
         {/* PARAMÈTRES */}
         <section
           style={{
@@ -1067,7 +1005,6 @@ export default function PetanqueConfig({ store, go, params }: Props) {
             {t("petanque.config.params", "Paramètres")}
           </h3>
 
-          {/* Score cible */}
           <div style={{ marginBottom: 12 }}>
             <LabelRow label={t("petanque.config.targetScore", "Score cible")} info onInfo={() => setInfoKey("score")} />
             <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
@@ -1092,7 +1029,6 @@ export default function PetanqueConfig({ store, go, params }: Props) {
             </div>
           </div>
 
-          {/* Début de partie */}
           <div style={{ marginTop: 10, paddingTop: 10, borderTop: "1px solid rgba(255,255,255,0.06)" }}>
             <LabelRow label={t("petanque.config.startRule", "Début de partie")} info onInfo={() => setInfoKey("start")} />
             <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
@@ -1130,7 +1066,6 @@ export default function PetanqueConfig({ store, go, params }: Props) {
             </div>
           </div>
 
-          {/* Ordre */}
           <div style={{ marginTop: 12, paddingTop: 10, borderTop: "1px solid rgba(255,255,255,0.06)" }}>
             <LabelRow label={t("petanque.config.throwOrder", "Ordre des joueurs")} />
             <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
@@ -1158,7 +1093,6 @@ export default function PetanqueConfig({ store, go, params }: Props) {
             </div>
           </div>
 
-          {/* Mesurage */}
           <div style={{ marginTop: 12, paddingTop: 10, borderTop: "1px solid rgba(255,255,255,0.06)" }}>
             <LabelRow label={t("petanque.config.measure", "Mesurage")} />
             <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
@@ -1278,9 +1212,25 @@ export default function PetanqueConfig({ store, go, params }: Props) {
                     }}
                   >
                     <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
-                      <div style={{ fontWeight: 900, color: tm.color, letterSpacing: 0.8, textTransform: "uppercase", fontSize: 12 }}>
-                        {tm.name}
+                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                        {tm.logoDataUrl ? (
+                          <img
+                            src={tm.logoDataUrl}
+                            alt="logo"
+                            style={{
+                              width: 22,
+                              height: 22,
+                              borderRadius: 7,
+                              objectFit: "cover",
+                              border: "1px solid rgba(255,255,255,0.18)",
+                            }}
+                          />
+                        ) : null}
+                        <div style={{ fontWeight: 900, color: tm.color, letterSpacing: 0.8, textTransform: "uppercase", fontSize: 12 }}>
+                          {tm.name}
+                        </div>
                       </div>
+
                       <span
                         style={{
                           padding: "2px 8px",
@@ -1455,6 +1405,164 @@ export default function PetanqueConfig({ store, go, params }: Props) {
           </div>
         </div>
       )}
+
+      {/* ✅ Modal create team */}
+      {teamModalOpen && (
+        <div
+          onClick={() => setTeamModalOpen(false)}
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(0,0,0,0.72)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 120,
+          }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              width: "min(520px, calc(100vw - 24px))",
+              borderRadius: 18,
+              background: cardBg,
+              border: `1px solid rgba(255,255,255,0.10)`,
+              boxShadow: "0 18px 40px rgba(0,0,0,0.7)",
+              padding: 14,
+              color: "#fff",
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 10 }}>
+              <div style={{ fontWeight: 1000, letterSpacing: 1, textTransform: "uppercase", color: primary }}>
+                Créer une équipe ({teamModalSide})
+              </div>
+              <button
+                onClick={() => setTeamModalOpen(false)}
+                style={{
+                  borderRadius: 999,
+                  border: "1px solid rgba(255,255,255,0.12)",
+                  background: "rgba(255,255,255,0.04)",
+                  color: "#fff",
+                  padding: "6px 10px",
+                  cursor: "pointer",
+                  fontWeight: 900,
+                }}
+              >
+                Fermer
+              </button>
+            </div>
+
+            <div style={{ fontSize: 12, color: "#b8bdd8", marginBottom: 8 }}>
+              L’équipe sera ajoutée au store Teams, donc visible aussi dans Profils &gt; Teams.
+            </div>
+
+            <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "flex-start" }}>
+              <div style={{ flex: "1 1 240px" }}>
+                <div style={{ fontSize: 12, color: "#c8cbe4", marginBottom: 6 }}>Nom d’équipe</div>
+                <input
+                  value={newTeamName}
+                  onChange={(e) => setNewTeamName(e.target.value)}
+                  placeholder="Ex: Les Dieux de la Pétanque"
+                  style={{
+                    width: "100%",
+                    padding: "10px 12px",
+                    borderRadius: 12,
+                    border: "1px solid rgba(255,255,255,0.12)",
+                    background: "rgba(9,11,20,0.85)",
+                    color: "#fff",
+                    outline: "none",
+                    fontWeight: 800,
+                  }}
+                />
+              </div>
+
+              <div style={{ flex: "1 1 200px" }}>
+                <div style={{ fontSize: 12, color: "#c8cbe4", marginBottom: 6 }}>Logo (optionnel)</div>
+                <label
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 8,
+                    padding: "10px 12px",
+                    borderRadius: 12,
+                    border: "1px solid rgba(255,255,255,0.12)",
+                    background: "rgba(255,255,255,0.04)",
+                    cursor: "pointer",
+                    fontWeight: 900,
+                    color: "#e9ecff",
+                  }}
+                >
+                  Choisir un fichier
+                  <input type="file" accept="image/*" style={{ display: "none" }} onChange={onPickTeamLogo} />
+                </label>
+
+                {newTeamLogo ? (
+                  <div style={{ marginTop: 10, display: "flex", alignItems: "center", gap: 10 }}>
+                    <img
+                      src={newTeamLogo}
+                      alt="logo"
+                      style={{ width: 44, height: 44, borderRadius: 12, objectFit: "cover", border: "1px solid rgba(255,255,255,0.18)" }}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setNewTeamLogo(null)}
+                      style={{
+                        padding: "7px 10px",
+                        borderRadius: 12,
+                        border: "1px solid rgba(255,255,255,0.10)",
+                        background: "rgba(9,11,20,0.75)",
+                        color: "#cfd2e8",
+                        fontWeight: 900,
+                        cursor: "pointer",
+                        textTransform: "uppercase",
+                        fontSize: 11,
+                      }}
+                    >
+                      Retirer
+                    </button>
+                  </div>
+                ) : null}
+              </div>
+            </div>
+
+            {teamCreateErr && <div style={{ marginTop: 10, color: "#ff8a8a", fontSize: 12, fontWeight: 800 }}>{teamCreateErr}</div>}
+
+            <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", marginTop: 14 }}>
+              <button
+                onClick={() => setTeamModalOpen(false)}
+                style={{
+                  borderRadius: 12,
+                  border: "1px solid rgba(255,255,255,0.12)",
+                  background: "rgba(255,255,255,0.04)",
+                  color: "#fff",
+                  padding: "10px 12px",
+                  cursor: "pointer",
+                  fontWeight: 900,
+                }}
+              >
+                Annuler
+              </button>
+
+              <button
+                onClick={confirmCreateTeam}
+                style={{
+                  borderRadius: 12,
+                  border: "none",
+                  background: `linear-gradient(90deg, ${primary}, #ffe9a3)`,
+                  color: "#151515",
+                  padding: "10px 12px",
+                  cursor: "pointer",
+                  fontWeight: 1000,
+                  textTransform: "uppercase",
+                  letterSpacing: 0.8,
+                }}
+              >
+                Créer
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -1475,11 +1583,7 @@ function PillButton({ label, active, onClick, primary, primarySoft, compact, dis
   const isDisabled = !!disabled;
 
   const bg = isDisabled ? "rgba(40,42,60,0.7)" : active ? primarySoft : "rgba(9,11,20,0.9)";
-  const border = isDisabled
-    ? "1px solid rgba(255,255,255,0.04)"
-    : active
-    ? `1px solid ${primary}`
-    : "1px solid rgba(255,255,255,0.07)";
+  const border = isDisabled ? "1px solid rgba(255,255,255,0.04)" : active ? `1px solid ${primary}` : "1px solid rgba(255,255,255,0.07)";
   const color = isDisabled ? "#777b92" : active ? "#fdf9ee" : "#d0d3ea";
 
   return (
