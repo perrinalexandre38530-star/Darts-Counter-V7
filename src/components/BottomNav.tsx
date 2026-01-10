@@ -1,12 +1,18 @@
 import React from "react";
 import { useTheme } from "../contexts/ThemeContext";
+import { useSport } from "../contexts/SportContext";
 
 /**
  * BottomNav
  * - Le bouton "Stats" ouvre le menu StatsShell (puis accès au Hub).
  * - Visuellement, l’onglet "Stats" reste actif quand on est dans statsHub.
- * - ✅ NEW: onglet "Tournois" (local) + actif aussi dans tournament_* routes
+ * - ✅ Onglet "Tournois" (local) + actif aussi dans tournament_* routes
+ * - ✅ IMPORTANT: masquer l’onglet "Online" quand le sport actif = PÉTANQUE
+ *
+ * Source de vérité = SportContext (choisi par GameSelect via setSport()).
+ * => On n’utilise PAS de heuristiques DOM.
  */
+
 type TabKey =
   | "home"
   | "games"
@@ -18,7 +24,12 @@ type TabKey =
   | "friends"
   | "stats"
   | "statsHub"
-  | "settings";
+  | "settings"
+  // au cas où ton routing le contient
+  | "petanque_home"
+  | "petanque_menu"
+  | "petanque_config"
+  | "petanque_play";
 
 type NavItem = {
   k: Exclude<
@@ -27,6 +38,10 @@ type NavItem = {
     | "tournament_create"
     | "tournament_view"
     | "tournament_match_play"
+    | "petanque_home"
+    | "petanque_menu"
+    | "petanque_config"
+    | "petanque_play"
   >;
   label: string;
   icon: React.ReactNode;
@@ -50,7 +65,6 @@ function Icon({ name, size = 22 }: { name: TabKey; size?: number }) {
         </svg>
       );
 
-    // GAMES (Local) — cible 🎯
     case "games":
       return (
         <svg width={size} height={size} viewBox="0 0 24 24">
@@ -63,7 +77,6 @@ function Icon({ name, size = 22 }: { name: TabKey; size?: number }) {
         </svg>
       );
 
-    // TOURNOIS — trophée 🏆
     case "tournaments":
     case "tournament_create":
     case "tournament_view":
@@ -87,7 +100,6 @@ function Icon({ name, size = 22 }: { name: TabKey; size?: number }) {
         </svg>
       );
 
-    // FRIENDS (Online) — globe + ping 🌐
     case "friends":
       return (
         <svg width={size} height={size} viewBox="0 0 24 24">
@@ -107,7 +119,7 @@ function Icon({ name, size = 22 }: { name: TabKey; size?: number }) {
       );
 
     case "stats":
-    case "statsHub": // ✅ même icône
+    case "statsHub":
       return (
         <svg width={size} height={size} viewBox="0 0 24 24">
           <path {...p} d="M4 20V7" />
@@ -127,6 +139,32 @@ function Icon({ name, size = 22 }: { name: TabKey; size?: number }) {
           <circle {...p} cx="12" cy="12" r="2.8" />
         </svg>
       );
+
+    default:
+      return null;
+  }
+}
+
+// ------------------------------------------------------------------
+// Sport gating (source de vérité = SportContext)
+// + fallback LS pour couvrir un render où sport n’est pas encore prêt.
+// ------------------------------------------------------------------
+
+type SportId = "darts" | "petanque" | "pingpong" | "babyfoot" | string;
+
+// ⚠️ Mets ici EXACTEMENT la clé que ton SportContext persiste.
+// Dans ton commentaire GameSelect : "persistance LS dc-start-game".
+// Donc on tente d’abord "dc-start-game".
+// Si tu utilises une autre clé dans SportContext, remplace-la ici.
+const SPORT_LS_KEY = "dc-start-game";
+
+function readSportFromLS(): SportId | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const v = String(window.localStorage.getItem(SPORT_LS_KEY) ?? "").trim();
+    return v ? v : null;
+  } catch {
+    return null;
   }
 }
 
@@ -138,6 +176,15 @@ export default function BottomNav({
   onChange: (k: TabKey) => void;
 }) {
   const { theme } = useTheme();
+  const sportCtx = useSport() as any;
+
+  // SportContext attendu : { sport, setSport }
+  const sportFromCtx: SportId | null = (sportCtx?.sport as SportId) ?? null;
+  const sportFromLS: SportId | null = React.useMemo(() => readSportFromLS(), []);
+  const sport: SportId = sportFromCtx ?? sportFromLS ?? "darts";
+
+  // ✅ Règle demandée : pas de Online en Pétanque
+  const hideOnline = String(sport).toLowerCase() === "petanque";
 
   // Couleurs pilotées par le thème
   const bg = (theme as any)?.navBg ?? theme.card ?? "#050608";
@@ -148,18 +195,11 @@ export default function BottomNav({
 
   const tabs: NavItem[] = [
     { k: "home", label: "Accueil", icon: <Icon name="home" /> },
-
-    // Profils avant Local
     { k: "profiles", label: "Profils", icon: <Icon name="profiles" /> },
-
-    // Local (jeux)
     { k: "games", label: "Local", icon: <Icon name="games" /> },
-
-    // ✅ NEW: Tournois (local)
     { k: "tournaments", label: "Tournois", icon: <Icon name="tournaments" /> },
 
-    // Online
-    { k: "friends", label: "Online", icon: <Icon name="friends" /> },
+    ...(hideOnline ? [] : [{ k: "friends", label: "Online", icon: <Icon name="friends" /> }]),
 
     { k: "stats", label: "Stats", icon: <Icon name="stats" /> },
     { k: "settings", label: "Réglages", icon: <Icon name="settings" /> },
@@ -168,12 +208,10 @@ export default function BottomNav({
   const tap = (k: NavItem["k"]) => {
     (navigator as any)?.vibrate?.(8);
 
-    // Stats -> ouvre le menu (StatsShell)
     if (k === "stats") {
       onChange("stats");
       return;
     }
-
     onChange(k);
   };
 
@@ -194,12 +232,8 @@ export default function BottomNav({
       }}
     >
       {tabs.map((t) => {
-        // ✅ onglet Stats actif aussi quand on est dans statsHub
         const activeStats = t.k === "stats" && value === "statsHub";
-
-        // ✅ onglet Tournois actif aussi quand on est dans tournament_*
         const activeTournaments = t.k === "tournaments" && isTournamentRoute;
-
         const active = value === t.k || activeStats || activeTournaments;
 
         const halo = active ? accent : "transparent";

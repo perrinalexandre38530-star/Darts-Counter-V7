@@ -8,12 +8,15 @@
 // + Bloc "Notifications & communications"
 // + Bouton "Tout réinitialiser" (hard reset + reload)
 // + Bouton "Supprimer mon compte" (via useAuthOnline().deleteAccount ONLY)
-// ✅ NEW : UI "shell" style StatsShell (CAPTURE 1) : header + liste de cartes menu
+// ✅ NEW : UI "shell" style StatsShell : header + liste de cartes menu
 // - Le menu remplace le row d’onglets : tu cliques une carte => ouvre la section
 // - Bouton "Retour" en haut :
 //   • si on est dans une section => retour au menu settings
 //   • sinon => retour Home
 // ✅ NEW : Boutons “Changer de jeu” + “Réinitialiser le choix” (START_GAME_KEY)
+// ✅ NEW (REQUEST): Vraie page "Compte" simple et efficace :
+//   - Menu Compte (cartes): Profil / Notifications / Sécurité / Danger
+//   - Sous-pages claires (retour interne au menu compte)
 // ============================================
 
 import React from "react";
@@ -418,15 +421,159 @@ async function fullHardReset() {
   }
 }
 
-// ---------------- Bloc Compte & sécurité (V8) ----------------
+// ---------------- UI card menu (settings shell) ----------------
 
-function AccountSecurityBlock() {
+function SettingsMenuCard({
+  title,
+  subtitle,
+  theme,
+  onClick,
+  rightHint,
+}: {
+  title: string;
+  subtitle: string;
+  theme: any;
+  onClick?: () => void;
+  rightHint?: string;
+}) {
+  return (
+    <div
+      className="dc-settings-shell-card"
+      style={{
+        position: "relative",
+        borderRadius: 16,
+        background: theme.card,
+        border: `1px solid ${theme.borderSoft}`,
+        boxShadow: `0 16px 32px rgba(0,0,0,55), 0 0 18px ${theme.primary}22`,
+        overflow: "hidden",
+      }}
+    >
+      <div
+        aria-hidden
+        style={{
+          content: '""',
+          position: "absolute",
+          inset: -2,
+          borderRadius: 18,
+          background: "radial-gradient(circle at 15% 0%, rgba(255,255,255,.10), transparent 60%)",
+          opacity: 0.0,
+          pointerEvents: "none",
+          animation: "dcSettingsCardGlow 3.6s ease-in-out infinite",
+          mixBlendMode: "screen",
+        }}
+      />
+      <button
+        onClick={onClick}
+        style={{
+          width: "100%",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          padding: 14,
+          background: "transparent",
+          border: "none",
+          cursor: "pointer",
+          textAlign: "left",
+        }}
+      >
+        <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+          <div
+            style={{
+              fontSize: 14,
+              fontWeight: 900,
+              letterSpacing: 0.6,
+              textTransform: "uppercase",
+              color: theme.primary,
+              textShadow: `0 0 10px ${theme.primary}55`,
+              whiteSpace: "normal",
+              overflow: "hidden",
+            }}
+          >
+            {title}
+          </div>
+          <div
+            style={{
+              fontSize: 12,
+              color: theme.textSoft,
+              lineHeight: 1.3,
+              maxWidth: 360,
+              whiteSpace: "normal",
+              overflow: "hidden",
+            }}
+          >
+            {subtitle}
+          </div>
+        </div>
+
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          {rightHint && (
+            <div
+              style={{
+                padding: "6px 10px",
+                borderRadius: 999,
+                border: `1px solid ${theme.primary}44`,
+                color: theme.primary,
+                background: "rgba(0,0,0,0.35)",
+                fontWeight: 900,
+                fontSize: 11,
+                letterSpacing: 0.4,
+                boxShadow: `0 0 10px ${theme.primary}22`,
+                whiteSpace: "nowrap",
+              }}
+            >
+              {rightHint}
+            </div>
+          )}
+
+          <div
+            style={{
+              flexShrink: 0,
+              width: 34,
+              height: 34,
+              borderRadius: 999,
+              border: `1px solid ${theme.primary}66`,
+              background: "rgba(0,0,0,0.45)",
+              boxShadow: `0 0 10px ${theme.primary}33`,
+              display: "grid",
+              placeItems: "center",
+              color: theme.primary,
+              fontWeight: 900,
+            }}
+          >
+            ›
+          </div>
+        </div>
+      </button>
+    </div>
+  );
+}
+
+// ---------------- Composant principal ----------------
+
+type SettingsTab = "menu" | "account" | "theme" | "lang" | "general" | "sport";
+
+// ---------------- Account pages (NEW simple & clean) ----------------
+
+type AccountPage = "account_menu" | "account_profile" | "account_notifications" | "account_security" | "account_danger";
+
+function AccountPages({
+  go,
+  onBackToSettingsMenu,
+}: {
+  go?: (tab: any, params?: any) => void;
+  onBackToSettingsMenu: () => void;
+}) {
   const { theme } = useTheme();
   const { t } = useLang();
   const { session, status, loading, updateProfile, deleteAccount, logout } = useAuthOnline();
 
   const user = session?.user ?? null;
   const profile = session?.profile ?? null;
+
+  const emailLabel = (user as any)?.email || "—";
+  const userIdLabel = (user as any)?.id ? `#${(user as any).id.slice(0, 8)}` : "—";
+
+  const [page, setPage] = React.useState<AccountPage>("account_menu");
 
   const [displayName, setDisplayName] = React.useState(profile?.displayName || (user as any)?.nickname || "");
   const [country, setCountry] = React.useState(profile?.country || "");
@@ -504,121 +651,346 @@ function AccountSecurityBlock() {
     }
   }
 
-  const emailLabel = (user as any)?.email || "—";
-  const userIdLabel = (user as any)?.id ? `#${(user as any).id.slice(0, 8)}` : "—";
+  const sectionBox: React.CSSProperties = {
+    background: CARD_BG,
+    borderRadius: 18,
+    border: `1px solid ${theme.borderSoft}`,
+    padding: 16,
+    marginBottom: 16,
+  };
 
-  return (
-    <section
+  const miniBack = (
+    <button
+      type="button"
+      onClick={() => setPage("account_menu")}
       style={{
-        background: CARD_BG,
-        borderRadius: 18,
-        border: `1px solid ${theme.borderSoft}`,
-        padding: 16,
-        marginBottom: 16,
+        border: "none",
+        background: "transparent",
+        color: theme.textSoft,
+        fontSize: 14,
+        cursor: "pointer",
+        padding: 0,
+        marginBottom: 10,
       }}
     >
-      <h2 style={{ margin: 0, marginBottom: 6, fontSize: 18, color: theme.primary }}>
-        {t("settings.account.titleShort", "Compte & sécurité")}
-      </h2>
+      ← {t("settings.account.back", "Retour compte")}
+    </button>
+  );
 
-      <p className="subtitle" style={{ fontSize: 12, color: theme.textSoft, marginBottom: 10, lineHeight: 1.4 }}>
-        {t(
-          "settings.account.subtitleV8",
-          "V8 : l’app est toujours connectée (compte anonyme automatique). Tu peux personnaliser ton profil et supprimer ton compte à tout moment."
-        )}
-      </p>
+  const accountStatusHint =
+    status === "signed_in"
+      ? t("settings.account.connectedShort", "Connecté")
+      : t("settings.account.offlineShort", "Hors ligne");
 
-      <div
-        style={{
-          padding: 10,
-          borderRadius: 12,
-          border: `1px solid ${theme.borderSoft}`,
-          background: "rgba(0,0,0,0.3)",
-          marginBottom: 12,
-          fontSize: 13,
-        }}
-      >
-        <div style={{ marginBottom: 4, fontWeight: 700 }}>{t("settings.account.status", "Statut du compte")}</div>
+  return (
+    <div>
+      {/* Bandeau "résumé" toujours visible */}
+      <section style={sectionBox}>
+        <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 10 }}>
+          <div style={{ minWidth: 0 }}>
+            <div style={{ fontSize: 16, fontWeight: 900, color: theme.primary, letterSpacing: 0.6, textTransform: "uppercase" }}>
+              {t("settings.account.titleShort", "Compte")}
+            </div>
+            <div className="subtitle" style={{ fontSize: 12, color: theme.textSoft, marginTop: 4, lineHeight: 1.35 }}>
+              {t(
+                "settings.account.subtitleV8",
+                "V8 : l’app est toujours connectée (compte anonyme automatique)."
+              )}
+            </div>
 
-        {status === "signed_in" ? (
-          <>
-            <div style={{ color: theme.textSoft }}>
-              {t("settings.account.connectedAsV8", "Session active")}{" "}
+            <div style={{ marginTop: 10, fontSize: 12, color: theme.textSoft }}>
+              <span style={{ fontWeight: 800, color: "#fff" }}>{accountStatusHint}</span>{" "}
               <span style={{ opacity: 0.9 }}>
                 ({emailLabel} {userIdLabel})
               </span>
             </div>
-            <div className="subtitle" style={{ fontSize: 11, color: theme.textSoft, marginTop: 4 }}>
-              {t(
-                "settings.account.connectedHintV8",
-                "Cette session est créée automatiquement. La sync cloud fonctionne via user_store."
-              )}
+          </div>
+
+          <button
+            type="button"
+            onClick={onBackToSettingsMenu}
+            style={{
+              borderRadius: 999,
+              border: `1px solid ${theme.borderSoft}`,
+              padding: "8px 10px",
+              background: "rgba(255,255,255,0.04)",
+              color: "#fff",
+              fontWeight: 900,
+              cursor: "pointer",
+              flexShrink: 0,
+            }}
+            title="Retour au menu Réglages"
+          >
+            ✕
+          </button>
+        </div>
+      </section>
+
+      {/* MENU COMPTE */}
+      {page === "account_menu" && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          <SettingsMenuCard
+            title={t("settings.account.menu.profile", "Profil")}
+            subtitle={t("settings.account.menu.profile.sub", "Pseudo, pays, informations visibles en ligne.")}
+            theme={theme}
+            onClick={() => setPage("account_profile")}
+          />
+          <SettingsMenuCard
+            title={t("settings.account.menu.notifications", "Notifications")}
+            subtitle={t("settings.account.menu.notifications.sub", "Emails & notifications dans l’app.")}
+            theme={theme}
+            onClick={() => setPage("account_notifications")}
+          />
+          <SettingsMenuCard
+            title={t("settings.account.menu.security", "Sécurité")}
+            subtitle={t("settings.account.menu.security.sub", "Etat de session, actions debug, etc.")}
+            theme={theme}
+            onClick={() => setPage("account_security")}
+          />
+          <SettingsMenuCard
+            title={t("settings.account.menu.danger", "Zone dangereuse")}
+            subtitle={t("settings.account.menu.danger.sub", "Suppression définitive du compte cloud.")}
+            theme={theme}
+            onClick={() => setPage("account_danger")}
+            rightHint="!"
+          />
+        </div>
+      )}
+
+      {/* PROFIL */}
+      {page === "account_profile" && (
+        <section style={sectionBox}>
+          {miniBack}
+
+          <h2 style={{ margin: 0, marginBottom: 10, fontSize: 18, color: theme.primary }}>
+            {t("settings.account.profile.title", "Profil")}
+          </h2>
+
+          {status !== "signed_in" ? (
+            <div style={{ color: theme.textSoft, fontSize: 12 }}>
+              {t("settings.account.profile.unavailable", "Session indisponible. Rafraîchis la page.")}
             </div>
-          </>
-        ) : (
-          <div style={{ color: theme.textSoft }}>
-            {t("settings.account.notConnectedV8", "Session indisponible (rare). Rafraîchis la page.")}
+          ) : (
+            <>
+              <div style={{ display: "grid", gap: 8, marginTop: 6, marginBottom: 10 }}>
+                <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 12 }}>
+                  <span style={{ color: theme.textSoft }}>{t("settings.account.email", "Email (optionnel)")}</span>
+                  <input className="input" value={emailLabel} disabled style={{ opacity: 0.7 }} />
+                </label>
+
+                <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 12 }}>
+                  <span style={{ color: theme.textSoft }}>
+                    {t("settings.account.displayName", "Pseudo en ligne (display name)")}
+                  </span>
+                  <input className="input" value={displayName} onChange={(e) => setDisplayName(e.target.value)} />
+                </label>
+
+                <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 12 }}>
+                  <span style={{ color: theme.textSoft }}>{t("settings.account.country", "Pays (optionnel)")}</span>
+                  <input className="input" value={country} onChange={(e) => setCountry(e.target.value)} />
+                </label>
+              </div>
+
+              {message && (
+                <div className="subtitle" style={{ color: "#5ad57a", fontSize: 11, marginBottom: 6 }}>
+                  {message}
+                </div>
+              )}
+              {error && (
+                <div className="subtitle" style={{ color: "#ff6666", fontSize: 11, marginBottom: 6 }}>
+                  {error}
+                </div>
+              )}
+
+              <button
+                type="button"
+                onClick={handleSaveProfile}
+                disabled={savingProfile || loading || deleting}
+                style={{
+                  width: "100%",
+                  borderRadius: 999,
+                  padding: "10px 12px",
+                  border: "none",
+                  background: `linear-gradient(180deg, ${theme.primary}, ${theme.primary}AA)`,
+                  color: "#000",
+                  fontWeight: 900,
+                  cursor: "pointer",
+                  opacity: savingProfile || loading || deleting ? 0.65 : 1,
+                  boxShadow: `0 0 18px ${theme.primary}44`,
+                }}
+              >
+                {savingProfile ? t("settings.account.save.loading", "Enregistrement…") : t("settings.account.save.btn", "Enregistrer")}
+              </button>
+            </>
+          )}
+        </section>
+      )}
+
+      {/* NOTIFICATIONS */}
+      {page === "account_notifications" && (
+        <section style={sectionBox}>
+          {miniBack}
+
+          <h2 style={{ margin: 0, marginBottom: 10, fontSize: 18, color: theme.primary }}>
+            {t("settings.account.notifications.title", "Notifications & communications")}
+          </h2>
+
+          <p className="subtitle" style={{ fontSize: 11, color: theme.textSoft, marginBottom: 10, lineHeight: 1.4 }}>
+            {t("settings.account.notifications.subtitle", "Choisis les mails et notifications que tu souhaites recevoir.")}
+          </p>
+
+          <div style={{ display: "flex", flexDirection: "column", gap: 6, fontSize: 12 }}>
+            <ToggleRow
+              label={t("settings.account.notifications.emailsNews", "Emails de nouveautés / promotions")}
+              help={t(
+                "settings.account.notifications.emailsNewsHelp",
+                "Actualités majeures, nouvelles fonctionnalités, offres spéciales."
+              )}
+              checked={prefs.emailsNews}
+              onChange={(v) => setPrefs((p) => ({ ...p, emailsNews: v }))}
+            />
+            <ToggleRow
+              label={t("settings.account.notifications.emailsStats", "Emails de résumé de stats & conseils")}
+              help={t(
+                "settings.account.notifications.emailsStatsHelp",
+                "Récapitulatif occasionnel de tes stats avec quelques tips."
+              )}
+              checked={prefs.emailsStats}
+              onChange={(v) => setPrefs((p) => ({ ...p, emailsStats: v }))}
+            />
+            <ToggleRow
+              label={t("settings.account.notifications.inAppNotifs", "Notifications dans l’app (sons / messages info)")}
+              help={t(
+                "settings.account.notifications.inAppNotifsHelp",
+                "Contrôle les sons d’alerte et les petits messages d’infos dans l’application."
+              )}
+              checked={prefs.inAppNotifs}
+              onChange={(v) => setPrefs((p) => ({ ...p, inAppNotifs: v }))}
+            />
           </div>
-        )}
-      </div>
+        </section>
+      )}
 
-      {status === "signed_in" && (
-        <>
-          <div style={{ display: "grid", gap: 8, marginTop: 6, marginBottom: 10 }}>
-            <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 12 }}>
-              <span style={{ color: theme.textSoft }}>{t("settings.account.email", "Email (optionnel)")}</span>
-              <input className="input" value={emailLabel} disabled style={{ opacity: 0.7 }} />
-            </label>
+      {/* SÉCURITÉ / ACTIONS */}
+      {page === "account_security" && (
+        <section style={sectionBox}>
+          {miniBack}
 
-            <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 12 }}>
-              <span style={{ color: theme.textSoft }}>
-                {t("settings.account.displayName", "Pseudo en ligne (display name)")}
-              </span>
-              <input className="input" value={displayName} onChange={(e) => setDisplayName(e.target.value)} />
-            </label>
+          <h2 style={{ margin: 0, marginBottom: 10, fontSize: 18, color: theme.primary }}>
+            {t("settings.account.security.title", "Sécurité")}
+          </h2>
 
-            <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 12 }}>
-              <span style={{ color: theme.textSoft }}>{t("settings.account.country", "Pays (optionnel)")}</span>
-              <input className="input" value={country} onChange={(e) => setCountry(e.target.value)} />
-            </label>
+          <div
+            style={{
+              padding: 12,
+              borderRadius: 12,
+              border: `1px solid ${theme.borderSoft}`,
+              background: "rgba(0,0,0,0.3)",
+              marginBottom: 12,
+              fontSize: 13,
+            }}
+          >
+            <div style={{ marginBottom: 6, fontWeight: 900 }}>{t("settings.account.status", "Statut du compte")}</div>
+
+            {status === "signed_in" ? (
+              <>
+                <div style={{ color: theme.textSoft }}>
+                  {t("settings.account.connectedAsV8", "Session active")}{" "}
+                  <span style={{ opacity: 0.9 }}>
+                    ({emailLabel} {userIdLabel})
+                  </span>
+                </div>
+                <div className="subtitle" style={{ fontSize: 11, color: theme.textSoft, marginTop: 6 }}>
+                  {t(
+                    "settings.account.connectedHintV8",
+                    "Cette session est créée automatiquement. La sync cloud fonctionne via user_store."
+                  )}
+                </div>
+              </>
+            ) : (
+              <div style={{ color: theme.textSoft }}>
+                {t("settings.account.notConnectedV8", "Session indisponible (rare). Rafraîchis la page.")}
+              </div>
+            )}
           </div>
 
-          {message && <div className="subtitle" style={{ color: "#5ad57a", fontSize: 11, marginBottom: 4 }}>{message}</div>}
-          {error && <div className="subtitle" style={{ color: "#ff6666", fontSize: 11, marginBottom: 4 }}>{error}</div>}
-
-          <div style={{ display: "flex", justifyContent: "space-between", gap: 8, flexWrap: "wrap", marginBottom: 10 }}>
-            <button type="button" className="btn sm" onClick={() => logout()} disabled={loading || deleting}>
+          <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
+            <button
+              type="button"
+              className="btn sm"
+              onClick={() => logout()}
+              disabled={loading || deleting}
+              style={{
+                borderRadius: 999,
+                border: `1px solid ${theme.borderSoft}`,
+                padding: "10px 12px",
+                background: "rgba(255,255,255,0.05)",
+                color: "#fff",
+                fontWeight: 900,
+                cursor: "pointer",
+                opacity: loading || deleting ? 0.6 : 1,
+                flex: "1 1 180px",
+              }}
+            >
               {t("settings.account.btn.logout", "Se déconnecter (debug)")}
             </button>
 
             <button
               type="button"
-              className="btn primary sm"
-              onClick={handleSaveProfile}
-              disabled={savingProfile || loading || deleting}
+              onClick={() => go?.("gameSelect")}
+              disabled={!go}
               style={{
-                background: `linear-gradient(180deg, ${theme.primary}, ${theme.primary}AA)`,
-                color: "#000",
-                fontWeight: 700,
-                minWidth: 140,
+                borderRadius: 999,
+                border: `1px solid ${theme.primary}66`,
+                padding: "10px 12px",
+                background: "rgba(0,0,0,0.45)",
+                color: theme.primary,
+                fontWeight: 900,
+                cursor: go ? "pointer" : "not-allowed",
+                boxShadow: `0 0 14px ${theme.primary}22`,
+                flex: "1 1 180px",
               }}
+              title="Aller au hub de sélection"
             >
-              {savingProfile ? t("settings.account.save.loading", "Enregistrement…") : t("settings.account.save.btn", "Enregistrer")}
+              {t("settings.account.btn.changeGame", "Changer de jeu")}
             </button>
           </div>
+        </section>
+      )}
+
+      {/* DANGER */}
+      {page === "account_danger" && (
+        <section style={sectionBox}>
+          {miniBack}
+
+          <h2 style={{ margin: 0, marginBottom: 10, fontSize: 18, color: "#ff6b6b" }}>
+            {t("settings.account.danger", "Zone dangereuse")}
+          </h2>
 
           <div
             style={{
-              marginTop: 24,
-              padding: 16,
+              padding: 14,
               borderRadius: 12,
               border: "1px solid rgba(255,0,0,0.35)",
               background: "rgba(255,0,0,0.06)",
             }}
           >
-            <div style={{ fontWeight: 700, marginBottom: 8, color: "#ff6b6b" }}>
-              {t("settings.account.danger", "Zone dangereuse")}
+            <div style={{ fontWeight: 900, marginBottom: 8, color: "#ff8a8a" }}>
+              {t("settings.account.delete.title", "Supprimer mon compte définitivement")}
             </div>
+
+            <p style={{ margin: 0, marginBottom: 10, fontSize: 11, color: "rgba(255,255,255,0.78)", lineHeight: 1.35 }}>
+              {t(
+                "settings.account.deleteHintV8",
+                "Cette action supprime le compte cloud (profiles + user_store + auth). L’app recrée automatiquement un nouveau compte anonyme (V8)."
+              )}
+            </p>
+
+            {error && (
+              <div className="subtitle" style={{ color: "#ff6666", fontSize: 11, marginBottom: 8 }}>
+                {error}
+              </div>
+            )}
 
             <button
               disabled={loading || deleting}
@@ -626,173 +998,21 @@ function AccountSecurityBlock() {
               style={{
                 width: "100%",
                 padding: "14px 16px",
-                borderRadius: 10,
+                borderRadius: 12,
                 background: "linear-gradient(180deg, #ff5c5c, #c92a2a)",
                 color: "#fff",
-                fontWeight: 700,
+                fontWeight: 900,
                 border: "none",
                 cursor: "pointer",
                 opacity: loading || deleting ? 0.6 : 1,
+                boxShadow: "0 0 18px rgba(255,80,80,0.45)",
               }}
             >
-              🗑️ {deleting ? "Suppression…" : "Supprimer mon compte définitivement"}
+              🗑️ {deleting ? "Suppression…" : "Supprimer mon compte"}
             </button>
-
-            <div style={{ marginTop: 10, fontSize: 11, color: "rgba(255,255,255,0.72)", lineHeight: 1.35 }}>
-              {t(
-                "settings.account.deleteHintV8",
-                "Cette action supprime le compte cloud (profiles + user_store + auth). L’app recrée automatiquement un nouveau compte anonyme (V8)."
-              )}
-            </div>
           </div>
-
-          <div style={{ marginTop: 12, paddingTop: 10, borderTop: `1px dashed ${theme.borderSoft}` }}>
-            <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 6, color: theme.primary }}>
-              {t("settings.account.notifications.title", "Notifications & communications")}
-            </div>
-
-            <p className="subtitle" style={{ fontSize: 11, color: theme.textSoft, marginBottom: 8 }}>
-              {t("settings.account.notifications.subtitle", "Choisis les mails et notifications que tu souhaites recevoir.")}
-            </p>
-
-            <div style={{ display: "flex", flexDirection: "column", gap: 6, fontSize: 12 }}>
-              <ToggleRow
-                label={t("settings.account.notifications.emailsNews", "Emails de nouveautés / promotions")}
-                help={t(
-                  "settings.account.notifications.emailsNewsHelp",
-                  "Actualités majeures, nouvelles fonctionnalités, offres spéciales."
-                )}
-                checked={prefs.emailsNews}
-                onChange={(v) => setPrefs((p) => ({ ...p, emailsNews: v }))}
-              />
-              <ToggleRow
-                label={t("settings.account.notifications.emailsStats", "Emails de résumé de stats & conseils")}
-                help={t(
-                  "settings.account.notifications.emailsStatsHelp",
-                  "Récapitulatif occasionnel de tes stats avec quelques tips."
-                )}
-                checked={prefs.emailsStats}
-                onChange={(v) => setPrefs((p) => ({ ...p, emailsStats: v }))}
-              />
-              <ToggleRow
-                label={t("settings.account.notifications.inAppNotifs", "Notifications dans l’app (sons / messages info)")}
-                help={t(
-                  "settings.account.notifications.inAppNotifsHelp",
-                  "Contrôle les sons d’alerte et les petits messages d’infos dans l’application."
-                )}
-                checked={prefs.inAppNotifs}
-                onChange={(v) => setPrefs((p) => ({ ...p, inAppNotifs: v }))}
-              />
-            </div>
-          </div>
-        </>
+        </section>
       )}
-    </section>
-  );
-}
-
-// ---------------- Composant principal ----------------
-
-type SettingsTab = "menu" | "account" | "theme" | "lang" | "general" | "sport";
-
-function SettingsMenuCard({
-  title,
-  subtitle,
-  theme,
-  onClick,
-}: {
-  title: string;
-  subtitle: string;
-  theme: any;
-  onClick?: () => void;
-}) {
-  return (
-    <div
-      className="dc-settings-shell-card"
-      style={{
-        position: "relative",
-        borderRadius: 16,
-        background: theme.card,
-        border: `1px solid ${theme.borderSoft}`,
-        boxShadow: `0 16px 32px rgba(0,0,0,55), 0 0 18px ${theme.primary}22`,
-        overflow: "hidden",
-      }}
-    >
-      <div
-        aria-hidden
-        style={{
-          content: '""',
-          position: "absolute",
-          inset: -2,
-          borderRadius: 18,
-          background: "radial-gradient(circle at 15% 0%, rgba(255,255,255,.10), transparent 60%)",
-          opacity: 0.0,
-          pointerEvents: "none",
-          animation: "dcSettingsCardGlow 3.6s ease-in-out infinite",
-          mixBlendMode: "screen",
-        }}
-      />
-      <button
-        onClick={onClick}
-        style={{
-          width: "100%",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          padding: 14,
-          background: "transparent",
-          border: "none",
-          cursor: "pointer",
-          textAlign: "left",
-        }}
-      >
-        <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
-          <div
-            style={{
-              fontSize: 14,
-              fontWeight: 900,
-              letterSpacing: 0.6,
-              textTransform: "uppercase",
-              color: theme.primary,
-              textShadow: `0 0 10px ${theme.primary}55`,
-              whiteSpace: "normal",
-              overflow: "hidden",
-            }}
-          >
-            {title}
-          </div>
-          <div
-            style={{
-              fontSize: 12,
-              color: theme.textSoft,
-              lineHeight: 1.3,
-              maxWidth: 360,
-              whiteSpace: "normal",
-              overflow: "hidden",
-            }}
-          >
-            {subtitle}
-          </div>
-        </div>
-
-        <div
-          style={{
-            flexShrink: 0,
-            width: 34,
-            height: 34,
-            borderRadius: 999,
-            border: `1px solid ${theme.primary}66`,
-            background: "rgba(0,0,0,0.45)",
-            boxShadow: `0 0 10px ${theme.primary}33`,
-            display: "grid",
-            placeItems: "center",
-            color: theme.primary,
-            fontWeight: 900,
-          }}
-        >
-          ›
-        </div>
-      </button>
     </div>
   );
 }
@@ -806,39 +1026,6 @@ export default function Settings({ go }: Props) {
   React.useEffect(() => {
     injectSettingsAnimationsOnce();
   }, []);
-
-  const onChangeGame = () => {
-    if (!go) return;
-    go("gameSelect");
-  };
-
-  const onResetStartGame = () => {
-    try {
-      localStorage.removeItem(START_GAME_KEY);
-    } catch {}
-    alert("Choix du jeu réinitialisé. Au prochain lancement, le menu de sélection s’affichera.");
-  };
-
-  const btnPrimary: React.CSSProperties = {
-    padding: "10px 12px",
-    borderRadius: 12,
-    border: "1px solid rgba(255,255,255,0.18)",
-    background: "rgba(255,255,255,0.08)",
-    color: "#fff",
-    fontWeight: 900,
-    cursor: "pointer",
-  };
-
-  const btnGhost: React.CSSProperties = {
-    padding: "10px 12px",
-    borderRadius: 12,
-    border: "1px solid rgba(255,255,255,0.14)",
-    background: "transparent",
-    color: "#fff",
-    fontWeight: 800,
-    opacity: 0.9,
-    cursor: "pointer",
-  };
 
   async function handleFullReset() {
     const ok = window.confirm(
@@ -1050,35 +1237,53 @@ export default function Settings({ go }: Props) {
   }
 
   function SportSection() {
-    const { theme } = useTheme();
-    const { t } = useLang();
-  
     type GameId = "darts" | "petanque" | "pingpong" | "babyfoot";
-  
+
     const GAMES: { id: GameId; label: string; logo: string }[] = [
       { id: "darts", label: "Fléchettes", logo: logoDarts },
       { id: "petanque", label: "Pétanque", logo: logoPetanque },
       { id: "pingpong", label: "Ping-Pong", logo: logoPingPong },
       { id: "babyfoot", label: "Babyfoot", logo: logoBabyFoot },
     ];
-  
+
+    // ✅ Jeux réellement disponibles
+    const ENABLED: Record<GameId, boolean> = {
+      darts: true,
+      petanque: true, // ✅ activé
+      pingpong: false,
+      babyfoot: false,
+    };
+
     const onPick = (id: GameId) => {
+      // Persist “jeu au démarrage”
       try {
         localStorage.setItem(START_GAME_KEY, id);
       } catch {}
-  
-      // ✅ Comportement “GameSelect” : après choix, on revient au flow normal (avec BottomNav)
-      // Ajuste ici si tu as une route dédiée par sport plus tard.
-      go?.("home");
+    
+      // ✅ Runtime switch: notifie App sans reload
+      try {
+        window.dispatchEvent(new CustomEvent("dc:sport-change", { detail: { sport: id } }));
+      } catch {}
+    
+      // Navigation immédiate
+      if (!go) return;
+    
+      if (id === "petanque") {
+        go("petanque_menu");
+      } else {
+        // IMPORTANT: on ne va pas sur un home "contextuel petanque"
+        // App va basculer le sport runtime, donc home redeviendra Darts.
+        go("home");
+      }
     };
-  
+
     const onReset = () => {
       try {
         localStorage.removeItem(START_GAME_KEY);
       } catch {}
       alert("Choix réinitialisé. Au prochain lancement, le hub de sélection réapparaîtra.");
     };
-  
+
     return (
       <section
         style={{
@@ -1092,101 +1297,99 @@ export default function Settings({ go }: Props) {
         <h2 style={{ margin: 0, marginBottom: 6, fontSize: 18, color: theme.primary }}>
           {t("settings.sport.title", "Choix de sport")}
         </h2>
-  
+
         <p className="subtitle" style={{ fontSize: 12, color: theme.textSoft, marginBottom: 12, lineHeight: 1.4 }}>
           {t("settings.sport.subtitle.short", "Sélectionne le jeu à utiliser au démarrage.")}
         </p>
-  
-        {/* ✅ EXACTEMENT la fonction de GameSelect : 4 logos en grille */}
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "1fr 1fr",
-            gap: 12,
-          }}
-        >
+
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
           {GAMES.map((g) => {
-  // ✅ Seuls les jeux prêts sont cliquables
-  const enabled = g.id === "darts"; // <- plus tard: ["darts","petanque"] etc.
-  const onClick = () => {
-    if (!enabled) return;
-    onPick(g.id);
-  };
+            const enabled = !!ENABLED[g.id];
 
-  return (
-    <button
-      key={g.id}
-      type="button"
-      onClick={onClick}
-      disabled={!enabled}
-      style={{
-        borderRadius: 16,
-        border: `1px solid ${theme.borderSoft}`,
-        background: "rgba(255,255,255,0.03)",
-        padding: 12,
-        cursor: enabled ? "pointer" : "not-allowed",
-        display: "flex",
-        flexDirection: "column",
-        alignItems: "center",
-        gap: 10,
-        boxShadow: enabled ? `0 0 18px ${theme.primary}12` : "none",
-        opacity: enabled ? 1 : 0.35,
-        filter: enabled ? "none" : "grayscale(1)",
-        position: "relative",
-      }}
-    >
-      {/* Badge SOON */}
-      {!enabled && (
-        <div
-          style={{
-            position: "absolute",
-            top: 10,
-            right: 10,
-            padding: "4px 8px",
-            borderRadius: 999,
-            border: "1px solid rgba(255,255,255,0.18)",
-            background: "rgba(0,0,0,0.55)",
-            color: "rgba(255,255,255,0.85)",
-            fontSize: 10,
-            fontWeight: 900,
-            letterSpacing: 0.6,
-          }}
-        >
-          SOON
+            return (
+              <button
+                key={g.id}
+                type="button"
+                onClick={() => {
+                  if (!enabled) return;
+                  onPick(g.id);
+                }}
+                disabled={!enabled}
+                style={{
+                  borderRadius: 16,
+                  border: `1px solid ${theme.borderSoft}`,
+                  background: "rgba(255,255,255,0.03)",
+                  padding: 12,
+                  cursor: enabled ? "pointer" : "not-allowed",
+                  display: "flex",
+                  flexDirection: "column",
+                  alignItems: "center",
+                  gap: 10,
+                  boxShadow: enabled ? `0 0 18px ${theme.primary}12` : "none",
+                  opacity: enabled ? 1 : 0.35,
+                  filter: enabled ? "none" : "grayscale(1)",
+                  position: "relative",
+                }}
+              >
+                {!enabled && (
+                  <div
+                    style={{
+                      position: "absolute",
+                      top: 10,
+                      right: 10,
+                      padding: "4px 8px",
+                      borderRadius: 999,
+                      border: "1px solid rgba(255,255,255,0.18)",
+                      background: "rgba(0,0,0,0.55)",
+                      color: "rgba(255,255,255,0.85)",
+                      fontSize: 10,
+                      fontWeight: 900,
+                      letterSpacing: 0.6,
+                    }}
+                  >
+                    SOON
+                  </div>
+                )}
+
+                <img
+                  src={g.logo}
+                  alt={g.label}
+                  style={{
+                    width: "100%",
+                    maxWidth: 140,
+                    height: 90,
+                    objectFit: "contain",
+                    filter: enabled ? "drop-shadow(0 0 10px rgba(0,0,0,0.45))" : "none",
+                  }}
+                />
+
+                <div style={{ fontSize: 12, color: theme.textSoft, fontWeight: 800, letterSpacing: 0.4 }}>
+                  {g.label}
+                </div>
+
+                {!enabled && (
+                  <div className="subtitle" style={{ fontSize: 10, color: theme.textSoft, opacity: 0.9 }}>
+                    {t("settings.sport.comingSoon", "Bientôt disponible")}
+                  </div>
+                )}
+              </button>
+            );
+          })}
         </div>
-      )}
 
-      <img
-        src={g.logo}
-        alt={g.label}
-        style={{
-          width: "100%",
-          maxWidth: 140,
-          height: 90,
-          objectFit: "contain",
-          filter: enabled
-            ? "drop-shadow(0 0 10px rgba(0,0,0,0.45))"
-            : "drop-shadow(0 0 0 rgba(0,0,0,0))",
-        }}
-      />
-
-      <div style={{ fontSize: 12, color: theme.textSoft, fontWeight: 800, letterSpacing: 0.4 }}>
-        {g.label}
-      </div>
-
-      {!enabled && (
-        <div className="subtitle" style={{ fontSize: 10, color: theme.textSoft, opacity: 0.9 }}>
-          {t("settings.sport.comingSoon", "Bientôt disponible")}
-        </div>
-      )}
-    </button>
-  );
-})}
-        </div>
-  
-        {/* OPTIONNEL : si tu ne veux VRAIMENT QUE la grille, supprime ce bloc */}
         <div style={{ marginTop: 12, display: "flex", justifyContent: "flex-end" }}>
-          <button onClick={onReset} style={{ padding: "8px 10px", borderRadius: 12, border: `1px solid ${theme.borderSoft}`, background: "transparent", color: theme.textSoft, fontWeight: 800, cursor: "pointer" }}>
+          <button
+            onClick={onReset}
+            style={{
+              padding: "8px 10px",
+              borderRadius: 12,
+              border: `1px solid ${theme.borderSoft}`,
+              background: "transparent",
+              color: theme.textSoft,
+              fontWeight: 800,
+              cursor: "pointer",
+            }}
+          >
             {t("settings.sport.resetChoice", "Réinitialiser le choix")}
           </button>
         </div>
@@ -1253,7 +1456,7 @@ export default function Settings({ go }: Props) {
         </button>
       </div>
 
-      {/* ===== HEADER (style StatsShell CAPTURE 1) ===== */}
+      {/* ===== HEADER (style StatsShell) ===== */}
       <div style={{ width: "100%", maxWidth: 520, paddingInline: 18, marginInline: "auto", marginBottom: 16 }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
           <div style={{ textAlign: "left" }}>
@@ -1303,8 +1506,8 @@ export default function Settings({ go }: Props) {
         {tab === "menu" && (
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
             <SettingsMenuCard
-              title={t("settings.menu.account", "Compte & sécurité")}
-              subtitle={t("settings.menu.account.sub", "Session, profil, suppression de compte, préférences de notifications.")}
+              title={t("settings.menu.account", "Compte")}
+              subtitle={t("settings.menu.account.sub", "Profil, notifications, sécurité et suppression du compte.")}
               theme={theme}
               onClick={() => setTab("account")}
             />
@@ -1337,7 +1540,13 @@ export default function Settings({ go }: Props) {
           </div>
         )}
 
-        {tab === "account" && <AccountSecurityBlock />}
+        {tab === "account" && (
+          <AccountPages
+            go={go}
+            onBackToSettingsMenu={() => setTab("menu")}
+          />
+        )}
+
         {tab === "theme" && <ThemeSection />}
         {tab === "lang" && <LangSection />}
         {tab === "sport" && <SportSection />}

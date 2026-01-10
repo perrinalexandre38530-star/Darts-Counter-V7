@@ -15,6 +15,8 @@
 // ✅ NEW (Teams): sélection/creation d'équipes + logo (partagé avec Profiles > Teams via teamsStore)
 // ✅ NEW (FFA3): mode solo 3 joueurs EXACTS, pas d’équipes (UI & payload)
 // ✅ NEW (Singles SOLO): mode solo 2 joueurs EXACTS, pas d’équipes (UI & payload)
+// ✅ FIX: en SOLO (1v1 & 1v1v1) on BLOQUE la sélection au quota (pas de remplacement)
+// ✅ FIX: pas de section RÔLES en SOLO (un joueur a forcément tous les rôles)
 // =============================================================
 
 import React from "react";
@@ -390,6 +392,7 @@ export default function PetanqueConfig({ store, go, params }: Props) {
     });
   }, [selectedIds, need]);
 
+  // ✅ FIX: en SOLO, on bloque les clics quand quota atteint (pas de remplacement)
   function togglePlayer(id: string) {
     setSelectedIds((prev) => {
       const exists = prev.includes(id);
@@ -399,14 +402,12 @@ export default function PetanqueConfig({ store, go, params }: Props) {
         return [id];
       }
 
+      // click sur un joueur déjà sélectionné => on retire
       if (exists) return prev.filter((x) => x !== id);
 
-      // ✅ SOLO (singles & ffa3): max = need, si déjà plein => remplace le dernier
+      // ✅ SOLO: si déjà plein => ignore
       if (isSoloNoTeams) {
-        if (prev.length >= need) {
-          const next = prev.slice(0, Math.max(0, need - 1));
-          return [...next, id];
-        }
+        if (prev.length >= need) return prev;
         return [...prev, id];
       }
 
@@ -548,7 +549,8 @@ export default function PetanqueConfig({ store, go, params }: Props) {
       measurementAllowed: !!measurementAllowed,
       startRule,
       throwOrderRule,
-      roles,
+      // ✅ SOLO/training: rôles inutiles => {}
+      roles: isSoloNoTeams || mode === "training" ? {} : roles,
       // ✅ SOLO/training: pas d'équipes dans le payload
       teams: isSoloNoTeams || mode === "training" ? undefined : teams,
       players,
@@ -803,15 +805,7 @@ export default function PetanqueConfig({ store, go, params }: Props) {
                 background: "rgba(255,255,255,0.035)",
               }}
             >
-              <div
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "space-between",
-                  gap: 10,
-                  marginBottom: 10,
-                }}
-              >
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 10 }}>
                 <div style={{ fontSize: 12, fontWeight: 900, letterSpacing: 0.9, textTransform: "uppercase", color: primary }}>
                   {t("petanque.config.teamsNames", "Équipes (noms & logos)")}
                 </div>
@@ -994,7 +988,10 @@ export default function PetanqueConfig({ store, go, params }: Props) {
                 {profiles.map((p: any) => {
                   const active = selectedIds.includes(p.id);
 
-                  // ✅ SOLO: halo unique + badge J1/J2(/J3) (pas A/B)
+                  // ✅ SOLO: une fois quota atteint, les non-sélectionnés deviennent non cliquables
+                  const soloLocked = isSoloNoTeams && !active && selectedIds.length >= need;
+
+                  // Halo
                   let halo = primary;
                   if (!isSoloNoTeams && mode !== "training") {
                     const idx = selectedIds.indexOf(p.id);
@@ -1022,8 +1019,11 @@ export default function PetanqueConfig({ store, go, params }: Props) {
                         alignItems: "center",
                         gap: 6,
                         flexShrink: 0,
-                        cursor: "pointer",
+                        cursor: soloLocked ? "not-allowed" : "pointer",
+                        opacity: soloLocked ? 0.45 : 1,
+                        pointerEvents: soloLocked ? "none" : "auto",
                       }}
+                      title={soloLocked ? "Quota atteint" : undefined}
                     >
                       <div
                         style={{
@@ -1267,8 +1267,8 @@ export default function PetanqueConfig({ store, go, params }: Props) {
           </div>
         </section>
 
-        {/* RÔLES */}
-        {canStart && (
+        {/* ✅ RÔLES (indicatif) — MASQUÉ en SOLO + training */}
+        {canStart && !isSoloNoTeams && mode !== "training" && (
           <section
             style={{
               background: cardBg,
@@ -1650,13 +1650,7 @@ export default function PetanqueConfig({ store, go, params }: Props) {
                     <img
                       src={newTeamLogo}
                       alt="logo"
-                      style={{
-                        width: 44,
-                        height: 44,
-                        borderRadius: 12,
-                        objectFit: "cover",
-                        border: "1px solid rgba(255,255,255,0.18)",
-                      }}
+                      style={{ width: 44, height: 44, borderRadius: 12, objectFit: "cover", border: "1px solid rgba(255,255,255,0.18)" }}
                     />
                     <button
                       type="button"

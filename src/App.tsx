@@ -52,6 +52,11 @@
 // - Ajout Tab "petanque_menu" / "petanque_config" / "petanque_play"
 // - Ajout imports PetanqueMenuGames / PetanqueConfig / PetanquePlay
 // - Ajout cases dans switch(tab)
+//
+// ✅ PATCH (IMPORTANT): SPORT SWITCH RUNTIME (sans reload / sans relancer intro)
+// - Settings dispatch "dc:sport-change"
+// - App écoute et met à jour le sport actif runtime + SportContext (si dispo)
+// - Résout: "cliquer Fléchettes dans Settings -> home Pétanque".
 // ============================================
 
 import React from "react";
@@ -175,6 +180,12 @@ import { installHistoryProbe } from "./dev/devHistoryProbe";
 if (import.meta.env.DEV) installHistoryProbe();
 
 // =============================================================
+// ✅ START GAME / SPORT (persisted) + runtime switch
+// =============================================================
+const START_GAME_KEY = "dc-start-game";
+type StartGameId = "darts" | "petanque" | "pingpong" | "babyfoot";
+
+// =============================================================
 // ✅ SAFE MERGE — profils (évite crash au boot)
 // - merge liste existante + liste réhydratée
 // - dédoublonnage par id
@@ -209,11 +220,7 @@ async function dataUrlToBlob(dataUrl: string): Promise<Blob> {
   return await res.blob();
 }
 
-async function uploadAvatarToSupabase(opts: {
-  bucket: string;
-  objectPath: string;
-  pngDataUrl: string;
-}): Promise<{ publicUrl: string }> {
+async function uploadAvatarToSupabase(opts: { bucket: string; objectPath: string; pngDataUrl: string }): Promise<{ publicUrl: string }> {
   const blob = await dataUrlToBlob(opts.pngDataUrl);
 
   const { error: upErr } = await supabase.storage.from(opts.bucket).upload(opts.objectPath, blob, {
@@ -900,8 +907,48 @@ function App() {
   const [routeParams, setRouteParams] = React.useState<any>(null);
   const [loading, setLoading] = React.useState(true);
 
-  // ✅ SPORT-AWARE : utilisé pour Games (Pétanque -> PetanqueHub)
-  const { sport } = useSport();
+  // ✅ SPORT-AWARE : utilisé pour Home/Games (runtime-safe)
+  const sportApi: any = useSport() as any;
+  const sportFromCtx: StartGameId = (sportApi?.sport ?? "darts") as any;
+  const setSportCtx: undefined | ((s: StartGameId) => void) = sportApi?.setSport;
+
+  // ✅ Runtime sport (sans reload / sans relancer intro)
+  const [activeSport, setActiveSport] = React.useState<StartGameId>(() => {
+    try {
+      const v = localStorage.getItem(START_GAME_KEY) as StartGameId | null;
+      return v ?? (sportFromCtx || "darts");
+    } catch {
+      return sportFromCtx || "darts";
+    }
+  });
+
+  // Sync: si SportContext change (GameSelect / autre), on reflète
+  React.useEffect(() => {
+    if (!sportFromCtx) return;
+    setActiveSport(sportFromCtx);
+  }, [sportFromCtx]);
+
+  // ✅ Listen Settings → runtime switch (dc:sport-change)
+  React.useEffect(() => {
+    const handler = (e: any) => {
+      const next = (e?.detail?.sport ?? e?.detail?.game ?? "darts") as StartGameId;
+
+      setActiveSport(next);
+
+      try {
+        localStorage.setItem(START_GAME_KEY, next);
+      } catch {}
+
+      // Si SportContext expose setSport, on l’actualise aussi (sinon, on reste runtime-only)
+      try {
+        if (typeof setSportCtx === "function") setSportCtx(next);
+      } catch {}
+    };
+
+    window.addEventListener("dc:sport-change", handler as any);
+    return () => window.removeEventListener("dc:sport-change", handler as any);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [setSportCtx]);
 
   // ✅ SPLASH gate (ne s'affiche pas pendant les flows auth)
   const [showSplash, setShowSplash] = React.useState(() => {
@@ -1059,8 +1106,7 @@ function App() {
           const hasActive = !!base.activeProfileId;
 
           const h = String(window.location.hash || "");
-          const isAuthFlow =
-            h.startsWith("#/auth/callback") || h.startsWith("#/auth/reset") || h.startsWith("#/auth/forgot");
+          const isAuthFlow = h.startsWith("#/auth/callback") || h.startsWith("#/auth/reset") || h.startsWith("#/auth/forgot");
 
           if (!isAuthFlow) {
             if (!hasProfiles || !hasActive) {
@@ -1445,9 +1491,7 @@ function App() {
   );
 
   if (showSplash) {
-    return (
-      <SplashScreen durationMs={6500} fadeOutMs={700} allowAudioOverflow={true} onFinish={() => setShowSplash(false)} />
-    );
+    return <SplashScreen durationMs={6500} fadeOutMs={700} allowAudioOverflow={true} onFinish={() => setShowSplash(false)} />;
   }
 
   /* --------------------------------------------
@@ -1477,11 +1521,7 @@ function App() {
 
       case "account_start":
         page = (
-          <AccountStart
-            onLogin={() => go("profiles", { view: "me" })}
-            onCreate={() => go("profiles", { view: "me" })}
-            onForgot={() => go("auth_forgot")}
-          />
+          <AccountStart onLogin={() => go("profiles", { view: "me" })} onCreate={() => go("profiles", { view: "me" })} onForgot={() => go("auth_forgot")} />
         );
         break;
 
@@ -1493,24 +1533,20 @@ function App() {
         page = <GameSelect go={go} />;
         break;
 
-      // ✅ HOME = GLOBAL (non sport-aware)
+      // ✅ HOME = SPORT-AWARE (runtime-safe)
+      // IMPORTANT: on utilise activeSport (et non uniquement sportContext) pour éviter le bug "Settings -> Fléchettes -> Home Pétanque".
       case "home":
         page =
-          sport === "petanque" ? (
+          activeSport === "petanque" ? (
             <PetanqueHome store={store} update={update} go={go} />
           ) : (
-            <Home
-              store={store}
-              update={update}
-              go={go}
-              onConnect={() => go("profiles", { view: "me", autoCreate: true })}
-            />
+            <Home store={store} update={update} go={go} onConnect={() => go("profiles", { view: "me", autoCreate: true })} />
           );
         break;
 
-      // ✅ GAMES = sport-aware (Pétanque -> PetanqueMenuGames)
+      // ✅ GAMES = sport-aware (runtime-safe)
       case "games":
-        page = sport === "petanque" ? <PetanqueMenuGames go={go} /> : <Games setTab={(t: any) => go(t)} />;
+        page = activeSport === "petanque" ? <PetanqueMenuGames go={go} /> : <Games setTab={(t: any) => go(t)} />;
         break;
 
       // ✅ NEW (OBLIGATOIRE): Pétanque menu/config/play (snake_case)
@@ -1518,7 +1554,7 @@ function App() {
         page = <PetanqueMenuGames go={go} />;
         break;
 
-     case "petanque_config":
+      case "petanque_config":
         page = <PetanqueConfig go={go} params={routeParams} store={store} />;
         break;
 
@@ -1544,23 +1580,23 @@ function App() {
         page = <PetanqueConfig go={go} params={routeParams} store={store} />;
         break;
 
-        case "petanque.play":
-          page = <PetanquePlay go={go} params={routeParams} />;
-          break;
+      case "petanque.play":
+        page = <PetanquePlay go={go} params={routeParams} />;
+        break;
 
-        case "profiles":
-          page = (
-            <Profiles
-              store={store}
-              update={update}
-              setProfiles={setProfiles}
-              go={go}
-              params={routeParams}
-              autoCreate={!!routeParams?.autoCreate}
-              sport={sport}              // ✅ AJOUT
-            />
-          );
-          break;
+      case "profiles":
+        page = (
+          <Profiles
+            store={store}
+            update={update}
+            setProfiles={setProfiles}
+            go={go}
+            params={routeParams}
+            autoCreate={!!routeParams?.autoCreate}
+            sport={activeSport as any} // ✅ runtime-safe
+          />
+        );
+        break;
 
       case "profiles_bots":
         page = <ProfilesBots store={store} go={go} />;
@@ -1605,9 +1641,7 @@ function App() {
         break;
 
       case "cricket_stats":
-        page = (
-          <StatsCricket profiles={store.profiles} activeProfileId={routeParams?.profileId ?? store.activeProfileId ?? null} />
-        );
+        page = <StatsCricket profiles={store.profiles} activeProfileId={routeParams?.profileId ?? store.activeProfileId ?? null} />;
         break;
 
       case "statsDetail":
@@ -1973,12 +2007,7 @@ function App() {
             <button onClick={() => go(backTo)} style={{ marginBottom: 12 }}>
               ← Retour
             </button>
-            <AvatarCreator
-              size={512}
-              defaultName={targetProfile?.name || ""}
-              onSave={handleSaveAvatarProfile}
-              isBotMode={isBotMode}
-            />
+            <AvatarCreator size={512} defaultName={targetProfile?.name || ""} onSave={handleSaveAvatarProfile} isBotMode={isBotMode} />
           </div>
         );
         break;
@@ -2013,15 +2042,7 @@ function App() {
    🔒 APP GATE — NE BLOQUE QUE LES PAGES ONLINE "post-login"
    ✅ V7: compte unique -> useAuthOnline()
 -------------------------------------------- */
-function AppGate({
-  go,
-  tab,
-  children,
-}: {
-  go: (t: any, p?: any) => void;
-  tab: any;
-  children: React.ReactNode;
-}) {
+function AppGate({ go, tab, children }: { go: (t: any, p?: any) => void; tab: any; children: React.ReactNode }) {
   const { status, ready } = useAuthOnline();
 
   // pages qui nécessitent une session Supabase active
