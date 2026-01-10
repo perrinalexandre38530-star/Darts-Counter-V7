@@ -1531,6 +1531,29 @@ const bustSoundTimeoutRef = React.useRef<number | null>(null);
 
   const currentThrowFromEngineRef = React.useRef(false);
 
+  // ============================================================
+// 🔁 Force resync UI depuis le moteur (UNDO cross-joueur)
+// ============================================================
+const forceSyncFromEngine = React.useCallback(() => {
+  currentThrowFromEngineRef.current = true;
+
+  const v: any = state.visit;
+  if (!v) {
+    setCurrentThrow([]);
+    return;
+  }
+
+  const raw: UIDart[] =
+    v.darts && Array.isArray(v.darts)
+      ? v.darts.map((d: any) => ({
+          v: d.segment,
+          mult: d.multiplier as 1 | 2 | 3,
+        }))
+      : [];
+
+  setCurrentThrow(raw);
+}, [state.visit]);
+
 // 🔄 SYNC AVEC LE MOTEUR UNIQUEMENT POUR LES CAS "ENGINE-DRIVEN"
 //    (UNDO global, rebuild, etc.)
 React.useEffect(() => {
@@ -1724,16 +1747,21 @@ const handleCancel = () => {
     return;
   }
 
-  // 2) Engine undo: revert the last committed dart from history
-  botUndoGuardRef.current = true;
-  try {
-    undoLastDart();
-    persistAutosave();
-  } finally {
-    window.setTimeout(() => {
-      botUndoGuardRef.current = false;
-    }, 0);
-  }
+// 2) Engine undo: revert the last committed dart from history
+botUndoGuardRef.current = true;
+try {
+  undoLastDart();
+  persistAutosave();
+
+  // ✅ RESYNC UI après UNDO (y compris si on revient au joueur précédent)
+  window.setTimeout(() => {
+    forceSyncFromEngine();
+  }, 0);
+} finally {
+  window.setTimeout(() => {
+    botUndoGuardRef.current = false;
+  }, 0);
+}
 };
 
 const validateThrow = async () => {

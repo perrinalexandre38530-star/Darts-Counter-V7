@@ -1,16 +1,26 @@
+// @ts-nocheck
 // =============================================================
 // src/pages/petanque/PetanqueStatsLeaderboardsPage.tsx
-// ✅ CLASSEMENTS (Pétanque) — UI très proche StatsLeaderboardsPage (Darts)
-// - Filtre uniquement les entrées Pétanque
-// - Metrics simples et robustes : wins / matches / winRate
+// Classements Pétanque (simple)
+// - Metrics: wins | winRate | diff | matches
+// - UI "leaderboards" style Darts (pills + rows)
 // =============================================================
 
-// @ts-nocheck
-import * as React from "react";
+import React from "react";
 import type { Store } from "../../lib/types";
 import { useTheme } from "../../contexts/ThemeContext";
+import { useLang } from "../../contexts/LangContext";
 import ProfileAvatar from "../../components/ProfileAvatar";
-import { History } from "../../lib/history";
+import {
+  PeriodKey,
+  cleanName,
+  getScoreAB,
+  getTeams,
+  inPeriod,
+  isPetanqueRec,
+  numOr0,
+  pickAvatar,
+} from "./petanqueStatsUtils";
 
 type Props = {
   store: Store;
@@ -18,346 +28,230 @@ type Props = {
   params?: any;
 };
 
-type PeriodKey = "D" | "W" | "M" | "Y" | "ALL";
-type MetricKey = "wins" | "winRate" | "matches";
+type Metric = "wins" | "winRate" | "diff" | "matches";
+
+function Pill({ active, onClick, children }: { active?: boolean; onClick: () => void; children: React.ReactNode }) {
+  return (
+    <button
+      onClick={onClick}
+      style={{
+        borderRadius: 999,
+        padding: "6px 10px",
+        border: `1px solid ${active ? "rgba(255,215,60,.42)" : "rgba(255,255,255,.10)"}`,
+        background: active ? "rgba(255,215,60,.14)" : "rgba(255,255,255,.06)",
+        color: active ? "#ffd73c" : "rgba(255,255,255,.85)",
+        fontWeight: 950,
+        fontSize: 12,
+        letterSpacing: 0.8,
+        cursor: "pointer",
+      }}
+    >
+      {children}
+    </button>
+  );
+}
 
 type Row = {
   id: string;
   name: string;
   avatarDataUrl?: string | null;
   wins: number;
+  losses: number;
   matches: number;
   winRate: number;
+  diff: number;
 };
-
-function v(x: any) {
-  return String(x ?? "").toLowerCase();
-}
-
-function isPetanqueEntry(e: any) {
-  const cand = [
-    v(e?.sport),
-    v(e?.game),
-    v(e?.kind),
-    v(e?.mode),
-    v(e?.variant),
-    v(e?.payload?.sport),
-    v(e?.payload?.game),
-    v(e?.payload?.mode),
-    v(e?.cfg?.sport),
-    v(e?.cfg?.game),
-    v(e?.summary?.sport),
-    v(e?.summary?.game),
-    v(e?.summary?.mode),
-  ].join("|");
-  return cand.includes("petanque") || cand.includes("pétanque");
-}
-
-function tsOf(rec: any) {
-  const t = Number(rec?.updatedAt ?? rec?.createdAt ?? 0);
-  return Number.isFinite(t) ? t : 0;
-}
-
-function inPeriod(t: number, p: PeriodKey) {
-  if (p === "ALL") return true;
-  const now = Date.now();
-  const day = 86400000;
-  if (p === "D") return now - t <= 1 * day;
-  if (p === "W") return now - t <= 7 * day;
-  if (p === "M") return now - t <= 31 * day;
-  if (p === "Y") return now - t <= 366 * day;
-  return true;
-}
-
-function winnerIdOf(rec: any) {
-  return (
-    rec?.winnerId ||
-    rec?.summary?.winnerId ||
-    rec?.summary?.result?.winnerId ||
-    rec?.payload?.winnerId ||
-    null
-  );
-}
-
-function playersOf(rec: any): any[] {
-  const p =
-    rec?.players ||
-    rec?.payload?.players ||
-    rec?.summary?.players ||
-    rec?.summary?.result?.players ||
-    [];
-  return Array.isArray(p) ? p : [];
-}
-
-function nameOf(p: any) {
-  return String(p?.name ?? p?.displayName ?? p?.label ?? "—");
-}
-
-function avatarOf(p: any) {
-  return p?.avatarDataUrl ?? p?.avatarUrl ?? p?.avatar ?? null;
-}
-
-function metricLabel(m: MetricKey) {
-  switch (m) {
-    case "wins":
-      return "Victoires";
-    case "matches":
-      return "Matchs";
-    case "winRate":
-      return "% Win";
-    default:
-      return "Stat";
-  }
-}
 
 export default function PetanqueStatsLeaderboardsPage({ store, go }: Props) {
   const { theme } = useTheme();
+  const { t } = useLang();
 
-  const [period, setPeriod] = React.useState<PeriodKey>("M");
-  const [metric, setMetric] = React.useState<MetricKey>("wins");
-  const [rows, setRows] = React.useState<Row[]>([]);
-  const [loading, setLoading] = React.useState(false);
+  const [period, setPeriod] = React.useState<PeriodKey>("ALL");
+  const [metric, setMetric] = React.useState<Metric>("wins");
 
-  const profiles = store?.profiles ?? [];
-  const profileById = React.useMemo(() => {
-    const m = new Map<string, any>();
-    for (const p of profiles) m.set(String(p.id), p);
-    return m;
-  }, [profiles]);
+  const profiles = (store?.profiles || []) as any[];
 
-  React.useEffect(() => {
-    let mounted = true;
+  const all = React.useMemo(() => {
+    const list = (store?.history || []) as any[];
+    return list.filter((r) => isPetanqueRec(r)).filter((r) => inPeriod(r, period));
+  }, [store?.history, period]);
 
-    const load = async () => {
-      setLoading(true);
-      try {
-        // History.list(store) (IDB / mem) via lib/history
-        const all = await History.list(store);
-        const arr = Array.isArray(all) ? all : [];
-        const filtered = arr.filter((r) => isPetanqueEntry(r) && inPeriod(tsOf(r), period));
+  const rows = React.useMemo(() => {
+    const map = new Map<string, Row>();
 
-        // agg
-        const agg: Record<string, { wins: number; matches: number; name?: string; avatar?: string | null }> = {};
-
-        for (const rec of filtered) {
-          const winnerId = String(winnerIdOf(rec) ?? "");
-          const pls = playersOf(rec);
-
-          for (const p of pls) {
-            const pid = String(p?.id ?? "");
-            if (!pid) continue;
-
-            if (!agg[pid]) agg[pid] = { wins: 0, matches: 0, name: nameOf(p), avatar: avatarOf(p) };
-            agg[pid].matches += 1;
-            if (winnerId && pid === winnerId) agg[pid].wins += 1;
-
-            // enrich from store profile if exists
-            const sp = profileById.get(pid);
-            if (sp) {
-              agg[pid].name = agg[pid].name || sp?.name;
-              agg[pid].avatar = agg[pid].avatar ?? sp?.avatarDataUrl ?? null;
-            }
-          }
-        }
-
-        const out: Row[] = Object.keys(agg).map((pid) => {
-          const a = agg[pid];
-          const matches = a.matches || 0;
-          const wins = a.wins || 0;
-          const winRate = matches > 0 ? (wins / matches) * 100 : 0;
-
-          const sp = profileById.get(pid);
-
-          return {
-            id: pid,
-            name: sp?.name || a.name || "—",
-            avatarDataUrl: sp?.avatarDataUrl ?? a.avatar ?? null,
-            wins,
-            matches,
-            winRate,
-          };
+    const ensure = (id: string, seed?: any) => {
+      const pid = String(id || "");
+      if (!pid) return null;
+      if (!map.has(pid)) {
+        const prof = profiles.find((p) => String(p?.id) === pid) || null;
+        map.set(pid, {
+          id: pid,
+          name: cleanName(seed?.name) || cleanName(prof?.name) || "Joueur",
+          avatarDataUrl: pickAvatar(seed) || pickAvatar(prof) || null,
+          wins: 0,
+          losses: 0,
+          matches: 0,
+          winRate: 0,
+          diff: 0,
         });
-
-        // filter strict rows
-        const clean = out.filter((r) => r.name && r.name !== "—" && (r.matches > 0 || r.wins > 0));
-
-        // sort by metric
-        clean.sort((a, b) => {
-          const va = metric === "winRate" ? a.winRate : metric === "matches" ? a.matches : a.wins;
-          const vb = metric === "winRate" ? b.winRate : metric === "matches" ? b.matches : b.wins;
-          return vb - va;
-        });
-
-        if (!mounted) return;
-        setRows(clean);
-      } finally {
-        if (mounted) setLoading(false);
       }
+      return map.get(pid)!;
     };
 
-    load();
-    return () => {
-      mounted = false;
+    for (const rec of all) {
+      const { mode, teamA, teamB, ffa } = getTeams(rec);
+      const { scoreA, scoreB } = getScoreAB(rec);
+
+      if (mode !== "teams") {
+        // FFA : matches only
+        for (const p of (ffa || [])) {
+          const id = String(p?.id ?? p?.profileId ?? "");
+          const row = ensure(id, p);
+          if (!row) continue;
+          row.matches += 1;
+        }
+        continue;
+      }
+
+      const winner = scoreA === scoreB ? null : scoreA > scoreB ? "A" : "B";
+
+      for (const p of teamA || []) {
+        const id = String(p?.id ?? p?.profileId ?? "");
+        const row = ensure(id, p);
+        if (!row) continue;
+        row.matches += 1;
+        row.diff += numOr0(scoreA) - numOr0(scoreB);
+        if (winner === "A") row.wins += 1;
+        if (winner === "B") row.losses += 1;
+      }
+
+      for (const p of teamB || []) {
+        const id = String(p?.id ?? p?.profileId ?? "");
+        const row = ensure(id, p);
+        if (!row) continue;
+        row.matches += 1;
+        row.diff += numOr0(scoreB) - numOr0(scoreA);
+        if (winner === "B") row.wins += 1;
+        if (winner === "A") row.losses += 1;
+      }
+    }
+
+    const out = Array.from(map.values()).map((r) => {
+      r.winRate = r.matches ? Math.round((r.wins / r.matches) * 100) : 0;
+      return r;
+    });
+
+    const cmp = (a: Row, b: Row) => {
+      if (metric === "wins") return (b.wins - a.wins) || (b.diff - a.diff) || (b.matches - a.matches);
+      if (metric === "winRate") return (b.winRate - a.winRate) || (b.wins - a.wins) || (b.matches - a.matches);
+      if (metric === "diff") return (b.diff - a.diff) || (b.wins - a.wins) || (b.matches - a.matches);
+      if (metric === "matches") return (b.matches - a.matches) || (b.wins - a.wins) || (b.diff - a.diff);
+      return 0;
     };
-  }, [store, period, metric, profileById]);
+
+    out.sort((a, b) => cmp(a, b) || a.name.localeCompare(b.name));
+    return out;
+  }, [all, profiles, metric]);
 
   return (
-    <div style={S.page(theme)}>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-        <button style={S.backBtn(theme)} onClick={() => go("petanque_stats", {})}>
-          ← Retour
-        </button>
+    <div style={{ padding: 16 }}>
+      <button onClick={() => go("stats")} style={{ marginBottom: 10 }}>
+        ← Retour
+      </button>
+
+      <div
+        style={{
+          fontSize: 26,
+          fontWeight: 950,
+          letterSpacing: 1.6,
+          textTransform: "uppercase",
+          color: "#ffd73c",
+          textShadow: "0 0 18px rgba(255,215,60,.22)",
+          lineHeight: 1.05,
+        }}
+      >
+        CLASSEMENTS (PÉTANQUE)
+      </div>
+      <div style={{ marginTop: 6, opacity: 0.85, color: theme.textSoft, fontSize: 12 }}>
+        {t("petanque.stats.rank.hint", "Classements simples Pétanque (moins de métriques que Fléchettes).")}
       </div>
 
-      <div style={S.title(theme)}>CLASSEMENTS (PÉTANQUE)</div>
-      <div style={S.sub(theme)}>Leaderboards joueurs selon la période et l’indicateur.</div>
-
-      {/* Period pills */}
-      <div style={S.pillsRow}>
-        {(["D", "W", "M", "Y", "ALL"] as PeriodKey[]).map((p) => (
-          <div key={p} style={S.pill(period === p)} onClick={() => setPeriod(p)}>
-            {p}
-          </div>
+      <div style={{ display: "flex", gap: 8, marginTop: 12, flexWrap: "wrap" }}>
+        {(["D", "W", "M", "Y", "ALL"] as any[]).map((k) => (
+          <Pill key={k} active={period === k} onClick={() => setPeriod(k)}>
+            {k === "ALL" ? "TOUT" : k}
+          </Pill>
         ))}
       </div>
 
-      {/* Metric pills */}
-      <div style={S.pillsRow}>
-        {(["wins", "winRate", "matches"] as MetricKey[]).map((m) => (
-          <div key={m} style={S.pill(metric === m)} onClick={() => setMetric(m)}>
-            {metricLabel(m)}
-          </div>
-        ))}
+      <div style={{ display: "flex", gap: 8, marginTop: 10, flexWrap: "wrap" }}>
+        <Pill active={metric === "wins"} onClick={() => setMetric("wins")}>
+          WINS
+        </Pill>
+        <Pill active={metric === "winRate"} onClick={() => setMetric("winRate")}>
+          WINRATE
+        </Pill>
+        <Pill active={metric === "diff"} onClick={() => setMetric("diff")}>
+          DIFF
+        </Pill>
+        <Pill active={metric === "matches"} onClick={() => setMetric("matches")}>
+          MATCHS
+        </Pill>
       </div>
 
-      <div style={{ marginTop: 10 }}>
-        {loading ? (
-          <div style={S.empty(theme)}>Chargement...</div>
-        ) : rows.length === 0 ? (
-          <div style={S.empty(theme)}>Aucune donnée Pétanque pour cette période.</div>
-        ) : (
-          rows.slice(0, 50).map((r, idx) => (
-            <div key={r.id} style={S.row(theme)}>
-              <div style={S.rank(theme)}>{idx + 1}</div>
-
-              <div style={{ width: 44, height: 44, flex: "0 0 auto" }}>
-                <ProfileAvatar
-                  size={44}
-                  name={r.name}
-                  avatarDataUrl={r.avatarDataUrl || null}
-                />
-              </div>
-
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={S.name(theme)}>{r.name}</div>
-                <div style={S.meta(theme)}>
-                  {r.wins} V • {r.matches} M • {r.winRate.toFixed(0)}%
+      <div style={{ display: "grid", gap: 10, marginTop: 14 }}>
+        {rows.length ? (
+          rows.map((r, idx) => (
+            <button
+              key={r.id}
+              onClick={() => go("petanque_stats_matches", { playerId: r.id })}
+              style={{
+                width: "100%",
+                textAlign: "left",
+                borderRadius: 14,
+                padding: 12,
+                border: "1px solid rgba(255,255,255,.10)",
+                background: "rgba(255,255,255,.06)",
+                cursor: "pointer",
+                display: "grid",
+                gridTemplateColumns: "32px 44px 1fr auto",
+                gap: 12,
+                alignItems: "center",
+              }}
+            >
+              <div style={{ fontWeight: 950, color: "#ffd73c" }}>{idx + 1}</div>
+              <ProfileAvatar size={44} url={r.avatarDataUrl} name={r.name} />
+              <div>
+                <div style={{ fontWeight: 950 }}>{r.name}</div>
+                <div style={{ opacity: 0.78, fontSize: 12 }}>
+                  {r.matches} matchs · {r.wins}W/{r.losses}L · {r.winRate}%
                 </div>
               </div>
-
-              <div style={S.value(theme)}>
-                {metric === "winRate"
-                  ? `${r.winRate.toFixed(0)}%`
-                  : metric === "matches"
-                  ? r.matches
-                  : r.wins}
+              <div style={{ textAlign: "right" }}>
+                <div style={{ fontWeight: 950, color: "#fff" }}>
+                  {metric === "wins" ? r.wins : metric === "winRate" ? `${r.winRate}%` : metric === "diff" ? (r.diff >= 0 ? `+${r.diff}` : `${r.diff}`) : r.matches}
+                </div>
+                <div style={{ opacity: 0.75, fontSize: 12 }}>
+                  diff: {r.diff >= 0 ? `+${r.diff}` : `${r.diff}`}
+                </div>
               </div>
-            </div>
+            </button>
           ))
+        ) : (
+          <div
+            style={{
+              background: "rgba(15,15,18,.55)",
+              border: "1px solid rgba(255, 215, 60, .18)",
+              borderRadius: 14,
+              padding: 12,
+              boxShadow: "0 0 18px rgba(255, 215, 60, .10)",
+            }}
+          >
+            <div style={{ fontWeight: 900 }}>Aucune donnée Pétanque sur cette période.</div>
+            <div style={{ opacity: 0.75, fontSize: 12, marginTop: 4 }}>Joue quelques matchs puis reviens ici.</div>
+          </div>
         )}
       </div>
     </div>
   );
 }
-
-const S: any = {
-  page: (theme: any) => ({
-    minHeight: "100vh",
-    padding: 16,
-    background: theme.bg,
-    color: theme.text,
-  }),
-  backBtn: (theme: any) => ({
-    border: "1px solid rgba(202,255,0,.25)",
-    background: "rgba(0,0,0,.18)",
-    color: "rgba(255,255,255,.9)",
-    borderRadius: 12,
-    padding: "10px 12px",
-    fontWeight: 900,
-    cursor: "pointer",
-  }),
-  title: (theme: any) => ({
-    fontSize: 34,
-    fontWeight: 1000,
-    letterSpacing: 1.6,
-    textTransform: "uppercase",
-    color: theme.primary,
-    textShadow: "0 0 14px rgba(205, 255, 0, 0.22)",
-    marginTop: 8,
-  }),
-  sub: (theme: any) => ({
-    marginTop: 6,
-    color: theme.textSoft,
-    fontSize: 13,
-    lineHeight: 1.35,
-    maxWidth: 680,
-  }),
-  pillsRow: { display: "flex", gap: 8, marginTop: 10, flexWrap: "wrap" },
-  pill: (on: boolean) => ({
-    borderRadius: 999,
-    padding: "8px 12px",
-    border: `1px solid ${on ? "rgba(202,255,0,.55)" : "rgba(202,255,0,.22)"}`,
-    background: on ? "rgba(202,255,0,.10)" : "rgba(0,0,0,.18)",
-    color: on ? "rgba(210,255,40,.95)" : "rgba(255,255,255,.75)",
-    fontWeight: 1000,
-    letterSpacing: 0.6,
-    cursor: "pointer",
-    userSelect: "none",
-  }),
-  empty: (theme: any) => ({
-    marginTop: 16,
-    padding: 14,
-    borderRadius: 16,
-    border: "1px solid rgba(202,255,0,.18)",
-    background: "rgba(0,0,0,.18)",
-    color: theme.textSoft,
-  }),
-  row: (_theme: any) => ({
-    display: "flex",
-    alignItems: "center",
-    gap: 10,
-    padding: 12,
-    borderRadius: 16,
-    border: "1px solid rgba(202,255,0,.18)",
-    background: "linear-gradient(180deg, rgba(30,35,55,78), rgba(10,10,18,86))",
-    boxShadow: "0 10px 34px rgba(0,0,0,55), 0 0 18px rgba(202,255,0,06)",
-    marginBottom: 10,
-  }),
-  rank: (_theme: any) => ({
-    width: 28,
-    textAlign: "center" as const,
-    fontWeight: 1000,
-    color: "rgba(210,255,40,.90)",
-  }),
-  name: (_theme: any) => ({
-    fontWeight: 1000,
-    letterSpacing: 0.6,
-    textTransform: "uppercase" as const,
-    color: "#fff",
-    fontSize: 14,
-    whiteSpace: "nowrap" as const,
-    overflow: "hidden",
-    textOverflow: "ellipsis",
-  }),
-  meta: (_theme: any) => ({
-    marginTop: 4,
-    fontSize: 12,
-    color: "rgba(210,255,40,.80)",
-  }),
-  value: (theme: any) => ({
-    fontWeight: 1000,
-    color: theme.primary,
-    minWidth: 64,
-    textAlign: "right" as const,
-  }),
-};

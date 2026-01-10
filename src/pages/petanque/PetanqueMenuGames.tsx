@@ -5,7 +5,7 @@
 // ✅ Compat: accepte go(tab, params) OU setTab(tab) selon ton câblage
 // ✅ NEW: Quadrette (4v4) + Variantes (équipes impaires)
 // ✅ NEW: FFA 3 JOUEURS (chacun pour soi) — 3 boules/joueur => max 3 points/mène
-// ✅ NEW: TOURNOI (scope PÉTANQUE uniquement) — ouvre le menu tournois avec sport="petanque"
+// ✅ NEW: TOURNOI (scope PÉTANQUE uniquement) — ouvre le menu tournois avec forceMode="petanque"
 // ✅ Compat routes: supporte "petanque.config" ET "petanque_config"
 // ============================================
 
@@ -165,7 +165,8 @@ export default function PetanqueMenuGames({ go, setTab }: Props) {
   const ROUTE_CONFIG_PRIMARY = "petanque.config";
   const ROUTE_CONFIG_FALLBACK = "petanque_config";
 
-  // ✅ Route Tournois (adapter si ton App.tsx utilise un autre tab)
+  // ✅ Route Tournois (ton App.tsx utilise "tournaments")
+  // (on garde "tournaments_home" en compat si tu l'avais ailleurs)
   const ROUTE_TOURNAMENTS_HOME_PRIMARY = "tournaments_home";
   const ROUTE_TOURNAMENTS_HOME_FALLBACK = "tournaments";
 
@@ -175,19 +176,17 @@ export default function PetanqueMenuGames({ go, setTab }: Props) {
     if (mode === "doublette") return 6;
     if (mode === "triplette") return 6;
     if (mode === "quadrette") return 8;
-
-    // ✅ tournament: par défaut 6 (sera affiné dans la config)
-    if (mode === "tournament") return 6;
-
-    // variants/training: par défaut 6 (sera affiné dans la config)
-    return 6;
+    if (mode === "tournament") return 6; // par défaut (affiné plus tard)
+    return 6; // variants/training default
   }
 
+  // ✅ OPEN TOURNOIS PÉTANQUE (scope)
   function openPetanqueTournamentsHome() {
-    // ✅ IMPORTANT: on envoie sport="petanque" pour isoler le scope côté tournois
-    const params = { sport: "petanque" };
+    // IMPORTANT: ton patch Tournois filtre via params.forceMode === "petanque"
+    const params = { forceMode: "petanque" };
 
     if (typeof go === "function") {
+      // On vise "tournaments" (ton App.tsx). Si tu as un alias tournaments_home, on essaye d'abord.
       try {
         go(ROUTE_TOURNAMENTS_HOME_PRIMARY as any, params);
         return;
@@ -198,8 +197,9 @@ export default function PetanqueMenuGames({ go, setTab }: Props) {
     }
 
     if (typeof setTab === "function") {
-      // setTab seul ne supporte pas params : fallback navigation simple
-      setTab(ROUTE_TOURNAMENTS_HOME_PRIMARY as any);
+      // setTab seul ne supporte pas les params -> on bascule au tab,
+      // et le filtre PÉTANQUE ne pourra pas être appliqué via params.
+      setTab(ROUTE_TOURNAMENTS_HOME_FALLBACK as any);
       return;
     }
 
@@ -209,8 +209,7 @@ export default function PetanqueMenuGames({ go, setTab }: Props) {
   }
 
   function navigate(mode: PetanqueModeId) {
-    // ✅ TOURNOI: on ouvre directement le menu Tournois (scope petanque),
-    // au lieu de passer par PetanqueConfig.
+    // ✅ TOURNOI: on ouvre directement le menu Tournois (filtré PÉTANQUE)
     if (mode === "tournament") {
       openPetanqueTournamentsHome();
       return;
@@ -323,9 +322,7 @@ export default function PetanqueMenuGames({ go, setTab }: Props) {
                   letterSpacing: 0.8,
                   color: disabled ? theme.textSoft : theme.primary,
                   textTransform: "uppercase",
-                  textShadow: disabled
-                    ? "none"
-                    : `0 0 12px ${theme.primary}55`,
+                  textShadow: disabled ? "none" : `0 0 12px ${theme.primary}55`,
                 }}
               >
                 {title}
@@ -364,7 +361,10 @@ export default function PetanqueMenuGames({ go, setTab }: Props) {
               >
                 <InfoDot
                   onClick={(ev: any) => {
-                    ev?.stopPropagation?.();
+                    // ✅ robust: InfoDot peut ne pas passer ev
+                    try {
+                      ev?.stopPropagation?.();
+                    } catch {}
                     setInfoMode(m);
                   }}
                   glow={theme.primary + "88"}

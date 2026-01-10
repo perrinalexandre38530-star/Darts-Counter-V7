@@ -3,7 +3,7 @@
 // ✅ COPIE 1:1 de src/pages/StatsShell.tsx (VISUEL IDENTIQUE)
 // ✅ Adaptation UNIQUEMENT des cartes (Pétanque)
 // ✅ ONLINE + TRAINING masqués
-// ✅ Option B : routes dédiées (à créer ensuite)
+// ✅ Ajout "PROFILS LOCAUX" (menu stats)
 // =============================================================
 
 import React from "react";
@@ -20,6 +20,7 @@ type Props = {
 
 type InfoMode =
   | "players"
+  | "locals"
   | "teams"
   | "leaderboards"
   | "matches"
@@ -257,12 +258,30 @@ export default function PetanqueStatsShell({ store, go }: Props) {
           onClick={() => {
             go("petanque_stats_players", {
               profileId: active?.id ?? null,
+              mode: "active",
             });
           }}
           onInfo={() => setInfoMode("players")}
         />
 
-        {/* 2) Stats équipes */}
+        {/* 2) Profils locaux (mêmes vues pour tous les profils) */}
+        <StatsShellCard
+          title={t("statsShell.locals.title", "PROFILS LOCAUX")}
+          subtitle={t(
+            "statsShell.locals.subtitle",
+            "Accède aux mêmes vues de stats pour tous les profils locaux."
+          )}
+          theme={theme}
+          onClick={() => {
+            go("petanque_stats_players", {
+              profileId: null,
+              mode: "locals",
+            });
+          }}
+          onInfo={() => setInfoMode("locals")}
+        />
+
+        {/* 3) Stats équipes */}
         <StatsShellCard
           title={t("petanqueStatsShell.teams.title", "STATS ÉQUIPES")}
           subtitle={t(
@@ -276,7 +295,7 @@ export default function PetanqueStatsShell({ store, go }: Props) {
           onInfo={() => setInfoMode("teams")}
         />
 
-        {/* 3) Classements */}
+        {/* 4) Classements */}
         <StatsShellCard
           title={t("petanqueStatsShell.leaderboards.title", "CLASSEMENTS")}
           subtitle={t(
@@ -284,11 +303,13 @@ export default function PetanqueStatsShell({ store, go }: Props) {
             "Leaderboards joueurs/équipes selon la période."
           )}
           theme={theme}
-          onClick={() => go("petanque_stats_leaderboards", { profileId: active?.id ?? null })}
+          onClick={() =>
+            go("petanque_stats_leaderboards", { profileId: active?.id ?? null })
+          }
           onInfo={() => setInfoMode("leaderboards")}
         />
 
-        {/* 4) Matchs */}
+        {/* 5) Matchs */}
         <StatsShellCard
           title={t("petanqueStatsShell.matches.title", "MATCHS")}
           subtitle={t(
@@ -296,11 +317,13 @@ export default function PetanqueStatsShell({ store, go }: Props) {
             "Liste des parties + détail d’un match."
           )}
           theme={theme}
-          onClick={() => go("petanque_stats_matches", { profileId: active?.id ?? null })}
+          onClick={() =>
+            go("petanque_stats_matches", { profileId: active?.id ?? null })
+          }
           onInfo={() => setInfoMode("matches")}
         />
 
-        {/* 5) Historique */}
+        {/* 6) Historique */}
         <StatsShellCard
           title={t("petanqueStatsShell.history.title", "HISTORIQUE")}
           subtitle={t(
@@ -308,11 +331,13 @@ export default function PetanqueStatsShell({ store, go }: Props) {
             "Historique complet : filtres, recherche, reprise."
           )}
           theme={theme}
-          onClick={() => go("petanque_stats_history", { profileId: active?.id ?? null })}
+          onClick={() =>
+            go("petanque_stats_history", { profileId: active?.id ?? null })
+          }
           onInfo={() => setInfoMode("history")}
         />
 
-        {/* 6) Sync & Partage */}
+        {/* 7) Sync & Partage */}
         <StatsShellCard
           title={t("statsShell.sync.title", "SYNC & PARTAGE")}
           subtitle={t(
@@ -615,6 +640,15 @@ function InfoOverlay({
         "Bilan par joueur : points marqués/encaissés, +/- et séries. (Écran à créer ensuite.)"
       );
       break;
+
+    case "locals":
+      title = t("statsShell.info.locals.title", "PROFILS LOCAUX");
+      body = t(
+        "statsShell.info.locals.body",
+        "Accède aux mêmes vues de stats pour tous les profils locaux. (Écran à créer ensuite.)"
+      );
+      break;
+
     case "teams":
       title = t("petanqueStatsShell.info.teams.title", "STATS — Équipes");
       body = t(
@@ -622,6 +656,7 @@ function InfoOverlay({
         "Bilan par équipe : victoires/défaites, points, régularité. (Écran à créer ensuite.)"
       );
       break;
+
     case "leaderboards":
       title = t("petanqueStatsShell.info.leaderboards.title", "CLASSEMENTS");
       body = t(
@@ -629,6 +664,7 @@ function InfoOverlay({
         "Classements joueurs/équipes selon la période. (Écran à créer ensuite.)"
       );
       break;
+
     case "matches":
       title = t("petanqueStatsShell.info.matches.title", "MATCHS");
       body = t(
@@ -636,6 +672,7 @@ function InfoOverlay({
         "Liste des parties + ouverture du détail d’un match. (Écran à créer ensuite.)"
       );
       break;
+
     case "history":
       title = t("petanqueStatsShell.info.history.title", "HISTORIQUE");
       body = t(
@@ -643,6 +680,7 @@ function InfoOverlay({
         "Historique complet : filtres, recherche, reprise. (Écran à créer ensuite.)"
       );
       break;
+
     case "sync":
       title = t("statsShell.info.sync.title", "SYNC & PARTAGE");
       body = t(

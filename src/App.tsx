@@ -1705,16 +1705,16 @@ function App() {
         break;
 
       case "tournaments":
-        page = (
-          TournamentsHome
-            store={store}
+         page = (
+           <TournamentsHome
+             store={store}
             go={go}
             update={update}
-            source="local"
-            params={routeParams} // ✅ IMPORTANT : reçoit { sport: "petanque" }
-          />
-        );
-        break;
+             source="local"
+             params={activeSport === "petanque" ? { forceMode: "petanque" } : undefined}
+           />
+         );
+         break;
 
       case "tournament_create":
         page = <TournamentCreate store={store} go={go} params={routeParams} />; // ✅ passe sport
