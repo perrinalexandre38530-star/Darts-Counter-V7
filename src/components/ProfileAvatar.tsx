@@ -318,6 +318,7 @@ export default function ProfileAvatar(props: Props) {
       style={{
         width: size,
         height: size,
+        aspectRatio: "1 / 1",
         position: "relative",
         overflow: "visible", // on garde l’extérieur visible (stars + overlay)
 
@@ -335,6 +336,7 @@ export default function ProfileAvatar(props: Props) {
         style={{
           width: "100%",
           height: "100%",
+          aspectRatio: "1 / 1",
           borderRadius: "50%",
           overflow: "hidden",
           flex: "0 0 auto",

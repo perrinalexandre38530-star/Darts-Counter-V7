@@ -66,19 +66,22 @@ async function safeLoadProfileBestEffort(user: User): Promise<OnlineProfile | nu
   try {
     const api: any = onlineApi as any;
 
+    // ✅ onlineApi.getProfile() (V7) : retourne le profil en cache session (LS) ou null
+    if (typeof api.getProfile === "function") {
+      const res = await api.getProfile();
+      return (res?.profile ?? res ?? null) as OnlineProfile | null;
+    }
+
+    // Compat très ancien
     if (typeof api.getMyProfile === "function") {
       const res = await api.getMyProfile();
       return (res?.profile ?? res ?? null) as OnlineProfile | null;
     }
 
-    if (typeof api.getProfile === "function") {
-      const res = await api.getProfile(user.id);
-      return (res?.profile ?? res ?? null) as OnlineProfile | null;
-    }
-
     return null;
   } catch (e) {
-    console.warn("[useAuthOnline] loadProfile best-effort failed:", e);
+    // best-effort : on ne casse jamais l'app si table / RLS / schéma KO
+    console.warn("[useAuthOnline] safeLoadProfileBestEffort failed:", e);
     return null;
   }
 }
