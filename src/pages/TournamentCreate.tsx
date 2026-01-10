@@ -63,6 +63,7 @@ import avatarWonderKid from "../assets/avatars/bots-pro/wonder-kid.png";
 type Props = {
   store: Store;
   go: (tab: any, params?: any) => void;
+  params?: any; // ✅ IMPORTANT: route params (ex: { forceMode: "petanque" })
 };
 
 type Mode = "x01" | "cricket" | "killer" | "shanghai";
@@ -789,8 +790,13 @@ function TextInput({ value, onChange, placeholder, width = "100%" }: any) {
    Page
 ------------------------------ */
 
-export default function TournamentCreate({ store, go }: Props) {
+export default function TournamentCreate({ store, go, params }: Props) {
   const primary = THEME;
+
+  // ✅ FIX CRASH: params existe ici, pas au niveau module
+  const forceMode = String(params?.forceMode ?? "").toLowerCase();
+  const isPetanque = forceMode === "petanque";
+  // (isPetanque est dispo si tu veux conditionner plus tard)
 
   const [name, setName] = React.useState("Mon tournoi");
   const [mode, setMode] = React.useState<Mode | null>(null);
@@ -951,7 +957,7 @@ export default function TournamentCreate({ store, go }: Props) {
   const [playersPerGroup, setPlayersPerGroup] = React.useState<string>("4"); // libre
   const [qualifiersPerGroup, setQualifiersPerGroup] = React.useState(2);
 
-  // ✅ NEW : Bracket Auto / Manuel (remplace "taille cible 4/8/16")
+  // ✅ NEW : Bracket Auto / Manuel
   const [bracketAuto, setBracketAuto] = React.useState(true);
   const [bracketTarget, setBracketTarget] = React.useState<string>("");
 
@@ -1005,14 +1011,10 @@ export default function TournamentCreate({ store, go }: Props) {
     return "groups_ko";
   }
 
-  // ✅ FIX DOUBLON BRACKET : stages CONFORMES ids/roles attendus (ko/rr/w/l/gf/rep)
-  // -> évite les doublons d'affichage (KO en double) dans TournamentView
   function buildStagesForEngine(fmt: TourFormat, nPlayers: number) {
-    // seeding: ton engine accepte généralement "random" ; "ordered" seulement si supporté côté engine/view
     const seeding = seedMode === "byLevel" ? "ordered" : "random";
     const rounds = Math.max(1, Number(rrRounds) || 1);
 
-    // Championnat (RR)
     if (fmt === "round_robin") {
       return [
         {
@@ -1028,7 +1030,6 @@ export default function TournamentCreate({ store, go }: Props) {
       ];
     }
 
-    // Poules + KO
     if (fmt === "groups_ko") {
       const ppg = clamp(Number(playersPerGroup) || 4, 2, 9999);
       const groups = Math.max(1, Math.ceil(Math.max(2, nPlayers) / ppg));
@@ -1045,18 +1046,15 @@ export default function TournamentCreate({ store, go }: Props) {
           qualifiersPerGroup: q,
           seeding,
         },
-        // ✅ IMPORTANT: id "ko" (pas "se") + role "ko"
         { id: "ko", type: "single_elim", role: "ko", name: "Phase finale", seeding },
       ];
 
-      // ✅ repêchage = stage séparé "rep" (role repechage)
       if (repechageEnabled) {
         stages.push({ id: "rep", type: "single_elim", role: "repechage", name: "Repêchage", seeding });
       }
       return stages;
     }
 
-    // Double KO
     if (fmt === "double_ko") {
       return [
         { id: "w", type: "single_elim", role: "ko", name: "Winners Bracket", seeding },
@@ -1065,7 +1063,6 @@ export default function TournamentCreate({ store, go }: Props) {
       ];
     }
 
-    // Single KO
     const stages: any[] = [{ id: "ko", type: "single_elim", role: "ko", name: "Phase finale", seeding }];
     if (repechageEnabled) {
       stages.push({ id: "rep", type: "single_elim", role: "repechage", name: "Repêchage", seeding });
@@ -1080,7 +1077,6 @@ export default function TournamentCreate({ store, go }: Props) {
   }
 
   function computeDesiredSize(currentCount: number) {
-    // Championnat : pas de “taille cible”
     if (format === "round_robin") return null;
 
     if (bracketAuto) return nextPow2(currentCount);
@@ -1088,14 +1084,12 @@ export default function TournamentCreate({ store, go }: Props) {
     const manual = Math.floor(numFromText(bracketTarget));
     if (Number.isFinite(manual) && manual >= 2) return manual;
 
-    // fallback si champ vide
     return nextPow2(currentCount);
   }
 
   async function createTournament() {
     if (!canCreate) return;
 
-    // ✅ cap max joueurs (optionnel) : si on dépasse, on “sample” aléatoire
     const cap = Math.floor(numFromText(maxPlayers));
     const capEnabled = Number.isFinite(cap) && cap > 1;
 
@@ -1120,7 +1114,6 @@ export default function TournamentCreate({ store, go }: Props) {
 
     let merged = basePlayers.concat(selectedBots);
 
-    // ✅ max joueurs (optionnel) sur la sélection finale “humaine+bot”
     if (capEnabled && merged.length > cap) {
       merged = shuffle(merged).slice(0, cap);
     }
@@ -1132,7 +1125,6 @@ export default function TournamentCreate({ store, go }: Props) {
 
     let finalPlayers = seededPlayers.slice();
 
-    // ✅ auto-fill (si activé et format compatible)
     const shouldFill = autoFillBots && format !== "round_robin";
     const desiredSize = computeDesiredSize(finalPlayers.length);
 
@@ -1184,11 +1176,9 @@ export default function TournamentCreate({ store, go }: Props) {
             maxPlayers: capEnabled ? cap : 0,
           };
 
-    // ✅ IMPORTANT: stages V2 (ids/roles) -> évite le KO en double
     const stages = buildStagesForEngine(format, finalPlayers.length);
     const viewKind = viewKindFromFormat(format);
 
-    // ✅ CRITIQUE (ENGINE V2): passer viewKind + repechage DANS le draft
     const tour: Tournament = createTournamentDraft({
       name: name.trim(),
       source: "local",
@@ -1203,11 +1193,11 @@ export default function TournamentCreate({ store, go }: Props) {
       })),
 
       game: { mode, rules },
-
       stages,
 
-      viewKind, // ✅ engine V2
-      repechage: { enabled: !!repechageEnabled }, // ✅ engine V2
+      viewKind,
+      repechage: { enabled: !!repechageEnabled },
+
       meta: {
         format,
         seedMode,
@@ -1220,6 +1210,8 @@ export default function TournamentCreate({ store, go }: Props) {
         desiredSize: desiredSize || 0,
         autoFillBots: !!autoFillBots,
         maxPlayers: capEnabled ? cap : 0,
+        forceMode,
+        isPetanque,
       },
     } as any);
 
@@ -1503,7 +1495,6 @@ export default function TournamentCreate({ store, go }: Props) {
 
         <div style={{ height: 14 }} />
 
-        {/* ✅ RR rounds (RR + groups_ko) */}
         {(format === "round_robin" || format === "groups_ko") ? (
           <>
             <RowTitle label="Tours (Round Robin)" />
@@ -1519,7 +1510,6 @@ export default function TournamentCreate({ store, go }: Props) {
           </>
         ) : null}
 
-        {/* ✅ groups config (groups_ko) */}
         {format === "groups_ko" ? (
           <>
             <RowTitle label="Poules" />
@@ -1541,7 +1531,6 @@ export default function TournamentCreate({ store, go }: Props) {
           </>
         ) : null}
 
-        {/* ✅ Bracket KO (pas en championnat pur) */}
         {format !== "round_robin" ? (
           <>
             <RowTitle label="Bracket KO" />

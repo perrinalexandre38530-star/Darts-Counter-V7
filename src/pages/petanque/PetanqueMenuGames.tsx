@@ -52,8 +52,7 @@ const MODES: ModeDef[] = [
     infoTitleKey: "petanque.modes.singles.infoTitle",
     infoTitleDefault: "Match simple (1v1)",
     infoBodyKey: "petanque.modes.singles.infoBody",
-    infoBodyDefault:
-      "Partie classique en tête-à-tête. 3 boules/joueur → maximum 3 points par mène.",
+    infoBodyDefault: "Partie classique en tête-à-tête. 3 boules/joueur → maximum 3 points par mène.",
     enabled: true,
   },
   {
@@ -78,8 +77,7 @@ const MODES: ModeDef[] = [
     infoTitleKey: "petanque.modes.doublette.infoTitle",
     infoTitleDefault: "Doublette (2v2)",
     infoBodyKey: "petanque.modes.doublette.infoBody",
-    infoBodyDefault:
-      "Mode équipe 2 contre 2. Standard : 3 boules/joueur → 6 boules/équipe → max 6 points par mène.",
+    infoBodyDefault: "Mode équipe 2 contre 2. Standard : 3 boules/joueur → 6 boules/équipe → max 6 points par mène.",
     enabled: true,
   },
   {
@@ -91,8 +89,7 @@ const MODES: ModeDef[] = [
     infoTitleKey: "petanque.modes.triplette.infoTitle",
     infoTitleDefault: "Triplette (3v3)",
     infoBodyKey: "petanque.modes.triplette.infoBody",
-    infoBodyDefault:
-      "Mode équipe 3 contre 3. Standard : 2 boules/joueur → 6 boules/équipe → max 6 points par mène.",
+    infoBodyDefault: "Mode équipe 3 contre 3. Standard : 2 boules/joueur → 6 boules/équipe → max 6 points par mène.",
     enabled: true,
   },
   {
@@ -104,8 +101,7 @@ const MODES: ModeDef[] = [
     infoTitleKey: "petanque.modes.quadrette.infoTitle",
     infoTitleDefault: "Quadrette (4v4)",
     infoBodyKey: "petanque.modes.quadrette.infoBody",
-    infoBodyDefault:
-      "Mode équipe 4 contre 4. Standard : 2 boules/joueur → 8 boules/équipe → max 8 points par mène.",
+    infoBodyDefault: "Mode équipe 4 contre 4. Standard : 2 boules/joueur → 8 boules/équipe → max 8 points par mène.",
     enabled: true,
   },
   {
@@ -113,8 +109,7 @@ const MODES: ModeDef[] = [
     titleKey: "petanque.modes.variants.title",
     titleDefault: "VARIANTES",
     subtitleKey: "petanque.modes.variants.subtitle",
-    subtitleDefault:
-      "Équipes impaires (1v2, 2v3, 3v4…) avec compensation de boules.",
+    subtitleDefault: "Équipes impaires (1v2, 2v3, 3v4…) avec compensation de boules.",
     infoTitleKey: "petanque.modes.variants.infoTitle",
     infoTitleDefault: "Variantes (équipes impaires)",
     infoBodyKey: "petanque.modes.variants.infoBody",
@@ -131,12 +126,9 @@ const MODES: ModeDef[] = [
     infoTitleKey: "petanque.modes.training.infoTitle",
     infoTitleDefault: "Entraînement",
     infoBodyKey: "petanque.modes.training.infoBody",
-    infoBodyDefault:
-      "Mode entraînement : mesure des distances, exercices, capture manuel/photo/live.",
+    infoBodyDefault: "Mode entraînement : mesure des distances, exercices, capture manuel/photo/live.",
     enabled: true,
   },
-
-  // ✅ NEW: TOURNOI (PÉTANQUE uniquement)
   {
     id: "tournament",
     titleKey: "petanque.modes.tournament.title",
@@ -146,8 +138,7 @@ const MODES: ModeDef[] = [
     infoTitleKey: "petanque.modes.tournament.infoTitle",
     infoTitleDefault: "Tournoi Pétanque",
     infoBodyKey: "petanque.modes.tournament.infoBody",
-    infoBodyDefault:
-      "Mode tournoi Pétanque. La structure (élimination directe, poules, nombre d’équipes) se règle dans la page de configuration.",
+    infoBodyDefault: "Mode tournoi Pétanque. La structure (élimination directe, poules, nombre d’équipes) se règle dans la page de configuration.",
     enabled: true,
   },
 ];
@@ -159,16 +150,11 @@ export default function PetanqueMenuGames({ go, setTab }: Props) {
 
   const [infoMode, setInfoMode] = React.useState<ModeDef | null>(null);
 
-  const PAGE_BG = theme.bg;
-  const CARD_BG = theme.card;
-
   const ROUTE_CONFIG_PRIMARY = "petanque.config";
   const ROUTE_CONFIG_FALLBACK = "petanque_config";
 
-  // ✅ Route Tournois (ton App.tsx utilise "tournaments")
-  // (on garde "tournaments_home" en compat si tu l'avais ailleurs)
-  const ROUTE_TOURNAMENTS_HOME_PRIMARY = "tournaments_home";
-  const ROUTE_TOURNAMENTS_HOME_FALLBACK = "tournaments";
+  // ✅ Tournois existants (Darts) — on les réutilise mais filtrés via params.forceMode="petanque"
+  const ROUTE_TOURNAMENTS = "tournaments";
 
   function getMaxEndPoints(mode: PetanqueModeId): number {
     if (mode === "singles") return 3;
@@ -176,53 +162,33 @@ export default function PetanqueMenuGames({ go, setTab }: Props) {
     if (mode === "doublette") return 6;
     if (mode === "triplette") return 6;
     if (mode === "quadrette") return 8;
-    if (mode === "tournament") return 6; // par défaut (affiné plus tard)
-    return 6; // variants/training default
+    if (mode === "tournament") return 6;
+    return 6;
   }
 
-  // ✅ OPEN TOURNOIS PÉTANQUE (scope)
   function openPetanqueTournamentsHome() {
-    // IMPORTANT: ton patch Tournois filtre via params.forceMode === "petanque"
     const params = { forceMode: "petanque" };
 
     if (typeof go === "function") {
-      // On vise "tournaments" (ton App.tsx). Si tu as un alias tournaments_home, on essaye d'abord.
-      try {
-        go(ROUTE_TOURNAMENTS_HOME_PRIMARY as any, params);
-        return;
-      } catch {
-        go(ROUTE_TOURNAMENTS_HOME_FALLBACK as any, params);
-        return;
-      }
+      go(ROUTE_TOURNAMENTS as any, params);
+      return;
     }
-
     if (typeof setTab === "function") {
-      // setTab seul ne supporte pas les params -> on bascule au tab,
-      // et le filtre PÉTANQUE ne pourra pas être appliqué via params.
-      setTab(ROUTE_TOURNAMENTS_HOME_FALLBACK as any);
+      setTab(ROUTE_TOURNAMENTS as any);
       return;
     }
 
-    console.error(
-      "[PetanqueMenuGames] Aucun handler de navigation: props.go et props.setTab sont absents."
-    );
+    console.error("[PetanqueMenuGames] Aucun handler de navigation: props.go et props.setTab sont absents.");
   }
 
   function navigate(mode: PetanqueModeId) {
-    // ✅ TOURNOI: on ouvre directement le menu Tournois (filtré PÉTANQUE)
     if (mode === "tournament") {
       openPetanqueTournamentsHome();
       return;
     }
 
     const mappedMode =
-      mode === "singles"
-        ? "simple"
-        : mode === "ffa3"
-        ? "ffa3"
-        : mode === "variants"
-        ? "variants"
-        : mode;
+      mode === "singles" ? "simple" : mode === "ffa3" ? "ffa3" : mode === "variants" ? "variants" : mode;
 
     const maxEndPoints = getMaxEndPoints(mode);
 
@@ -236,11 +202,10 @@ export default function PetanqueMenuGames({ go, setTab }: Props) {
     if (typeof go === "function") {
       try {
         go(ROUTE_CONFIG_PRIMARY as any, { mode: mappedMode, maxEndPoints, meta });
-        return;
       } catch {
         go(ROUTE_CONFIG_FALLBACK as any, { mode: mappedMode, maxEndPoints, meta });
-        return;
       }
+      return;
     }
 
     if (typeof setTab === "function") {
@@ -248,21 +213,11 @@ export default function PetanqueMenuGames({ go, setTab }: Props) {
       return;
     }
 
-    console.error(
-      "[PetanqueMenuGames] Aucun handler de navigation: props.go et props.setTab sont absents."
-    );
+    console.error("[PetanqueMenuGames] Aucun handler de navigation: props.go et props.setTab sont absents.");
   }
 
   return (
-    <div
-      style={{
-        minHeight: "100vh",
-        padding: 16,
-        paddingBottom: 90,
-        background: PAGE_BG,
-        color: theme.text,
-      }}
-    >
+    <div style={{ minHeight: "100vh", padding: 16, paddingBottom: 90, background: theme.bg, color: theme.text }}>
       <h1
         style={{
           margin: 0,
@@ -276,14 +231,7 @@ export default function PetanqueMenuGames({ go, setTab }: Props) {
         {t("petanque.menu.title", "PÉTANQUE")}
       </h1>
 
-      <div
-        style={{
-          fontSize: 13,
-          color: theme.textSoft,
-          marginBottom: 18,
-          textAlign: "center",
-        }}
-      >
+      <div style={{ fontSize: 13, color: theme.textSoft, marginBottom: 18, textAlign: "center" }}>
         {t("petanque.menu.subtitle", "Choisis un mode")}
       </div>
 
@@ -292,9 +240,6 @@ export default function PetanqueMenuGames({ go, setTab }: Props) {
           const title = t(m.titleKey, m.titleDefault);
           const subtitle = t(m.subtitleKey, m.subtitleDefault);
           const disabled = !m.enabled;
-          const comingSoon = !m.enabled
-            ? t("games.status.comingSoon", "Bientôt disponible")
-            : null;
 
           return (
             <button
@@ -308,7 +253,7 @@ export default function PetanqueMenuGames({ go, setTab }: Props) {
                 textAlign: "left",
                 borderRadius: 16,
                 border: `1px solid ${theme.borderSoft}`,
-                background: CARD_BG,
+                background: theme.card,
                 cursor: disabled ? "default" : "pointer",
                 opacity: disabled ? 0.55 : 1,
                 boxShadow: disabled ? "none" : `0 10px 24px rgba(0,0,0,0.55)`,
@@ -328,40 +273,11 @@ export default function PetanqueMenuGames({ go, setTab }: Props) {
                 {title}
               </div>
 
-              <div
-                style={{
-                  marginTop: 4,
-                  fontSize: 12,
-                  color: theme.textSoft,
-                  opacity: 0.9,
-                }}
-              >
-                {subtitle}
-                {comingSoon && (
-                  <span
-                    style={{
-                      marginLeft: 6,
-                      fontSize: 11,
-                      fontStyle: "italic",
-                      opacity: 0.9,
-                    }}
-                  >
-                    • {comingSoon}
-                  </span>
-                )}
-              </div>
+              <div style={{ marginTop: 4, fontSize: 12, color: theme.textSoft, opacity: 0.9 }}>{subtitle}</div>
 
-              <div
-                style={{
-                  position: "absolute",
-                  right: 10,
-                  top: "50%",
-                  transform: "translateY(-50%)",
-                }}
-              >
+              <div style={{ position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)" }}>
                 <InfoDot
                   onClick={(ev: any) => {
-                    // ✅ robust: InfoDot peut ne pas passer ev
                     try {
                       ev?.stopPropagation?.();
                     } catch {}
@@ -414,14 +330,7 @@ export default function PetanqueMenuGames({ go, setTab }: Props) {
               {t(infoMode.infoTitleKey, infoMode.infoTitleDefault)}
             </div>
 
-            <div
-              style={{
-                fontSize: 13,
-                lineHeight: 1.4,
-                color: theme.textSoft,
-                marginBottom: 12,
-              }}
-            >
+            <div style={{ fontSize: 13, lineHeight: 1.4, color: theme.textSoft, marginBottom: 12 }}>
               {t(infoMode.infoBodyKey, infoMode.infoBodyDefault)}
             </div>
 

@@ -1,15 +1,8 @@
 // ============================================
 // src/pages/TournamentsHome.tsx
-// TOURNOIS — HOME (LOCAL) UI clean (v1)
-// - Visuel similaire à tes pages config (cards)
-// - Titre "TOURNOIS" + description
-// - Supprime infos inutiles
-// - Bouton "CREER TOURNOI" en 1 seule ligne, centré
-// - Barre filtre style pills (Tous / Brouillons / En cours / Terminés) ✅ LOOK CAPTURE 2
-// - Ticker défilant (cartes) style Home (fond image/gradient)
-// ✅ FIX NAV: clic carte => go("tournament_view", { id: t.id }) (id fiable)
-// ✅ FIX REFRESH: reload au mount + focus/visibility + event dc_tournaments_updated
-// ✅ NEW TICKER: cartes UTILES + cliquables (Reprendre / AUTO / Brouillons / BRACKET / AUTO create / Roadmap)
+// TOURNOIS — HOME (LOCAL) UI clean (v1) + ✅ SCOPE via params.forceMode
+// ✅ Darts par défaut (inchangé)
+// ✅ Pétanque : si params.forceMode === "petanque" => filtre + libellés + create pré-rempli
 // ============================================
 
 import React from "react";
@@ -27,11 +20,12 @@ type Props = {
   update: (mut: (s: Store) => Store) => void;
   go: (tab: any, params?: any) => void;
   source?: "local" | "online";
+  params?: any; // ✅ NEW : reçoit routeParams (dont forceMode)
 };
 
 type FilterKey = "all" | "draft" | "running" | "done";
 
-/** ✅ Pills style “capture 2” */
+/** ✅ Pills style */
 function pillStyle(active: boolean, tint: string, disabled = false) {
   const fgOn = "#121014";
   const fgOff = "rgba(255,255,255,.90)";
@@ -267,11 +261,18 @@ function TickerCard({
 function TickerRow({
   go,
   setFilter,
+  isPetanque,
 }: {
   go: (tab: any, params?: any) => void;
   setFilter: (k: FilterKey) => void;
+  isPetanque: boolean;
 }) {
-  const tours = listTournamentsLocal() || [];
+  const rawTours = listTournamentsLocal() || [];
+  const tours = (Array.isArray(rawTours) ? rawTours : []).filter((t: any) => {
+    const m = String(t?.game?.mode || t?.mode || t?.gameMode || "").toLowerCase();
+    return isPetanque ? m === "petanque" : m !== "petanque";
+  });
+
   const draft = tours.filter((t: any) => String(t?.status || "").toLowerCase().includes("draft"));
 
   const running = tours.filter((t: any) => {
@@ -291,6 +292,8 @@ function TickerRow({
 
   const canAuto = !!resumeCounts && (resumeCounts.playable ?? 0) > 0;
 
+  const baseCreateParams = isPetanque ? { forceMode: "petanque" } : {};
+
   const items = [
     {
       tag: "REPRENDRE",
@@ -301,7 +304,7 @@ function TickerRow({
       tone: "blue" as const,
       cta: "Ouvrir",
       kpi: resumeTour ? `${resumeCounts?.playable ?? 0} à jouer` : "—",
-      onClick: resumeTour?.id ? () => go("tournament_view", { id: String(resumeTour.id) }) : undefined,
+      onClick: resumeTour?.id ? () => go("tournament_view", { id: String(resumeTour.id), ...baseCreateParams }) : undefined,
       disabled: !resumeTour?.id,
     },
     {
@@ -315,7 +318,7 @@ function TickerRow({
       tone: "green" as const,
       cta: "Ouvrir",
       kpi: canAuto ? "Prêt" : "—",
-      onClick: resumeTour?.id ? () => go("tournament_view", { id: String(resumeTour.id) }) : undefined,
+      onClick: resumeTour?.id ? () => go("tournament_view", { id: String(resumeTour.id), ...baseCreateParams }) : undefined,
       disabled: !resumeTour?.id,
     },
     {
@@ -335,7 +338,7 @@ function TickerRow({
       tone: "pink" as const,
       cta: "Créer BRACKET",
       kpi: "KO+Poules",
-      onClick: () => go("tournament_create", { preset: "bracket", mode: "bracket_ko_pools" }),
+      onClick: () => go("tournament_create", { preset: "bracket", mode: "bracket_ko_pools", ...baseCreateParams }),
       disabled: false,
     },
     {
@@ -345,7 +348,7 @@ function TickerRow({
       tone: "violet" as const,
       cta: "Configurer",
       kpi: "NEW",
-      onClick: () => go("tournament_create", { preset: "advanced", mode: "advanced" }),
+      onClick: () => go("tournament_create", { preset: "advanced", mode: "advanced", ...baseCreateParams }),
       disabled: false,
     },
     {
@@ -355,7 +358,7 @@ function TickerRow({
       tone: "white" as const,
       cta: "Voir",
       kpi: "À venir",
-      onClick: () => go("tournament_roadmap"),
+      onClick: () => go("tournament_roadmap", baseCreateParams),
       disabled: false,
     },
   ];
@@ -409,23 +412,30 @@ function TickerRow({
   );
 }
 
-export default function TournamentsHome({ store, go, source = "local" }: Props) {
+export default function TournamentsHome({ store, go, source = "local", params }: Props) {
   const [filter, setFilter] = React.useState<FilterKey>("all");
 
   const [items, setItems] = React.useState<any[]>([]);
   const [loading, setLoading] = React.useState(false);
 
+  const forceMode = String((params as any)?.forceMode || (params as any)?.sport || "").toLowerCase();
+  const isPetanque = forceMode === "petanque";
+
   const reload = React.useCallback(() => {
     setLoading(true);
     try {
       const list = listTournamentsLocal() || [];
-      setItems(Array.isArray(list) ? list : []);
+      const arr = Array.isArray(list) ? list : [];
+      const filteredByMode = isPetanque
+        ? arr.filter((t: any) => String(t?.game?.mode || t?.mode || t?.gameMode || "").toLowerCase() === "petanque")
+        : arr.filter((t: any) => String(t?.game?.mode || t?.mode || t?.gameMode || "").toLowerCase() !== "petanque");
+      setItems(filteredByMode);
     } catch {
       setItems([]);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [isPetanque]);
 
   React.useEffect(() => {
     reload();
@@ -456,10 +466,14 @@ export default function TournamentsHome({ store, go, source = "local" }: Props) 
       null;
 
     if (Array.isArray(legacy) && legacy.length && (!items || items.length === 0)) {
-      setItems(legacy);
+      // legacy non filtré : on applique le filtre par mode
+      const filteredByMode = isPetanque
+        ? legacy.filter((t: any) => String(t?.game?.mode || t?.mode || t?.gameMode || "").toLowerCase() === "petanque")
+        : legacy.filter((t: any) => String(t?.game?.mode || t?.mode || t?.gameMode || "").toLowerCase() !== "petanque");
+      setItems(filteredByMode);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [store]);
+  }, [store, isPetanque]);
 
   const tournaments = React.useMemo(() => items || [], [items]);
 
@@ -493,9 +507,13 @@ export default function TournamentsHome({ store, go, source = "local" }: Props) 
   return (
     <div className="container" style={{ padding: 16, paddingBottom: 96, color: "#f5f5f7" }}>
       <Card tone="gold">
-        <div style={{ fontWeight: 950, fontSize: 20, letterSpacing: 0.5 }}>TOURNOIS</div>
+        <div style={{ fontWeight: 950, fontSize: 20, letterSpacing: 0.5 }}>
+          {isPetanque ? "TOURNOIS PÉTANQUE" : "TOURNOIS"}
+        </div>
         <div style={{ opacity: 0.82, fontSize: 12.5, marginTop: 4, lineHeight: 1.35 }}>
-          Crée des tournois en local (poules, élimination…), et reprends-les facilement avec une vue claire.
+          {isPetanque
+            ? "Crée des tournois Pétanque (poules, élimination…), partage le code et saisis les scores match par match."
+            : "Crée des tournois en local (poules, élimination…), et reprends-les facilement avec une vue claire."}
         </div>
 
         <div
@@ -527,7 +545,7 @@ export default function TournamentsHome({ store, go, source = "local" }: Props) 
 
           <button
             type="button"
-            onClick={() => go("tournament_create")}
+            onClick={() => go("tournament_create", isPetanque ? { forceMode: "petanque" } : undefined)}
             style={{
               width: "100%",
               borderRadius: 999,
@@ -548,7 +566,7 @@ export default function TournamentsHome({ store, go, source = "local" }: Props) 
           </button>
         </div>
 
-        <TickerRow go={go} setFilter={setFilter} />
+        <TickerRow go={go} setFilter={setFilter} isPetanque={isPetanque} />
       </Card>
 
       {/* FILTER BAR */}
@@ -621,7 +639,7 @@ export default function TournamentsHome({ store, go, source = "local" }: Props) 
                   <div
                     key={id || name + String(updatedAt)}
                     onClick={() => {
-                      if (id) go("tournament_view", { id });
+                      if (id) go("tournament_view", { id, ...(isPetanque ? { forceMode: "petanque" } : {}) });
                     }}
                     style={{
                       borderRadius: 18,

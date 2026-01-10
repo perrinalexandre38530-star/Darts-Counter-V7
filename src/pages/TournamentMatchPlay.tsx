@@ -5,6 +5,7 @@
 // ✅ Recharge tournoi + matchs depuis storeLocal (cache async)
 // ✅ Évite écran noir (loading/fallbacks + refresh event)
 // ✅ Lance une vraie partie pour un match de tournoi (X01 V3 / CRICKET / KILLER)
+// ✅ NEW: PÉTANQUE (score manuel) — saisie score 0..13 + validation (13 obligatoire)
 // ✅ Auto-submit résultat => tournament engine + persistence locale
 // ✅ Bloque BYE/TBD (ne lance pas un "match fantôme")
 // - Horloge / autres modes : fallback propre (pas d'écran noir)
@@ -142,6 +143,12 @@ function detectMode(tour: any) {
     tour?.config?.mode ||
     "";
   return String(raw || "").toLowerCase();
+}
+
+function clampInt(n: any, min: number, max: number) {
+  const v = Math.floor(Number(n));
+  if (!Number.isFinite(v)) return min;
+  return Math.max(min, Math.min(max, v));
 }
 
 export default function TournamentMatchPlay({ store, go, params }: any) {
@@ -289,6 +296,60 @@ export default function TournamentMatchPlay({ store, go, params }: any) {
   const hasBye = isByeId(aId) || isByeId(bId);
   const hasTbd = isTbdId(aId) || isTbdId(bId);
 
+  // ------------------------------------------------------------
+  // ✅ PÉTANQUE — states TOP-LEVEL (pas de hooks dans un if)
+  // ------------------------------------------------------------
+  const isPetanque = mode === "petanque" || String(mode).includes("petanque");
+
+  const [petSa, setPetSa] = React.useState<number>(0);
+  const [petSb, setPetSb] = React.useState<number>(0);
+  const [petErr, setPetErr] = React.useState<string>("");
+
+  React.useEffect(() => {
+    // reset quand on change de match / tournoi / mode
+    setPetSa(0);
+    setPetSb(0);
+    setPetErr("");
+  }, [tournamentId, matchId, mode]);
+
+  const petClamp = React.useCallback((v: any) => clampInt(v, 0, 13), []);
+  const petA = petClamp(petSa);
+  const petB = petClamp(petSb);
+  const petCanSubmit = petA !== petB && (petA === 13 || petB === 13);
+
+  async function submitPetanque() {
+    setPetErr("");
+
+    const a = petClamp(petSa);
+    const b = petClamp(petSb);
+
+    if (a === b) return setPetErr("Égalité impossible : il faut un vainqueur.");
+    if (a !== 13 && b !== 13) return setPetErr("Score invalide : la victoire se fait à 13.");
+    if (a > 13 || b > 13) return setPetErr("Score invalide.");
+
+    const winnerId = a > b ? aId : bId;
+
+    try {
+      const now = Date.now();
+      const payload = {
+        kind: "petanque",
+        createdAt: now,
+        players: [
+          { id: aId, name: nameOf(tour, aId), avatarDataUrl: avatarOf(tour, aId) },
+          { id: bId, name: nameOf(tour, bId), avatarDataUrl: avatarOf(tour, bId) },
+        ],
+        winnerId,
+        summary: { kind: "petanque", scoreA: a, scoreB: b, winnerId },
+        payload: { kind: "petanque", scoreA: a, scoreB: b, winnerId },
+      };
+
+      await finishAndSubmit(payload, null);
+    } catch (e: any) {
+      console.error("[petanque_tournament] submit error", e);
+      setPetErr(e?.message || "Erreur lors de la validation.");
+    }
+  }
+
   if (hasBye || hasTbd || !aId || !bId) {
     return (
       <div style={{ minHeight: "100vh", padding: 16, background: theme.bg, color: theme.text }}>
@@ -332,6 +393,106 @@ export default function TournamentMatchPlay({ store, go, params }: any) {
             }}
           >
             Retour au tournoi
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // ------------------------------------------------------------
+  // ✅ PÉTANQUE — saisie score simple (tournoi)
+  // ------------------------------------------------------------
+  if (isPetanque) {
+    const winnerId = petA > petB ? aId : bId;
+
+    return (
+      <div style={{ minHeight: "100vh", padding: 16, paddingBottom: 90, background: theme.bg, color: theme.text }}>
+        <button onClick={() => go("tournament_view", { id: tournamentId })}>← Retour tournoi</button>
+
+        <div
+          style={{
+            marginTop: 12,
+            borderRadius: 18,
+            border: `1px solid ${theme.borderSoft}`,
+            background: theme.card,
+            padding: 14,
+          }}
+        >
+          <div style={{ fontWeight: 950, color: theme.primary, textShadow: `0 0 10px ${theme.primary}55` }}>
+            {tour?.name || "Tournoi"} — Pétanque
+          </div>
+          <div style={{ marginTop: 6, opacity: 0.85 }}>
+            <b>{nameOf(tour, aId)}</b> vs <b>{nameOf(tour, bId)}</b>
+          </div>
+
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginTop: 12 }}>
+            <div style={{ border: `1px solid ${theme.borderSoft}`, borderRadius: 14, padding: 12 }}>
+              <div style={{ fontWeight: 900, marginBottom: 8 }}>{nameOf(tour, aId)}</div>
+              <input
+                type="number"
+                min={0}
+                max={13}
+                value={petSa}
+                onChange={(e) => setPetSa(petClamp(e.target.value))}
+                style={{
+                  width: "100%",
+                  padding: 10,
+                  borderRadius: 12,
+                  border: `1px solid ${theme.borderSoft}`,
+                  background: "rgba(0,0,0,.25)",
+                  color: theme.text,
+                  fontSize: 16,
+                  fontWeight: 900,
+                }}
+              />
+              <div style={{ marginTop: 6, fontSize: 12, opacity: 0.75 }}>0 → 13</div>
+            </div>
+
+            <div style={{ border: `1px solid ${theme.borderSoft}`, borderRadius: 14, padding: 12 }}>
+              <div style={{ fontWeight: 900, marginBottom: 8 }}>{nameOf(tour, bId)}</div>
+              <input
+                type="number"
+                min={0}
+                max={13}
+                value={petSb}
+                onChange={(e) => setPetSb(petClamp(e.target.value))}
+                style={{
+                  width: "100%",
+                  padding: 10,
+                  borderRadius: 12,
+                  border: `1px solid ${theme.borderSoft}`,
+                  background: "rgba(0,0,0,.25)",
+                  color: theme.text,
+                  fontSize: 16,
+                  fontWeight: 900,
+                }}
+              />
+              <div style={{ marginTop: 6, fontSize: 12, opacity: 0.75 }}>0 → 13</div>
+            </div>
+          </div>
+
+          <div style={{ marginTop: 10, fontSize: 12.5, opacity: 0.75, lineHeight: 1.35 }}>
+            Règle appliquée ici : victoire à 13 (un seul vainqueur).
+          </div>
+
+          {petErr ? <div style={{ marginTop: 10, color: "#ff6b6b", fontWeight: 800 }}>{petErr}</div> : null}
+
+          <button
+            onClick={submitPetanque}
+            disabled={!petCanSubmit}
+            style={{
+              marginTop: 12,
+              width: "100%",
+              borderRadius: 999,
+              padding: "12px 12px",
+              border: "none",
+              fontWeight: 950,
+              background: petCanSubmit ? "linear-gradient(180deg,#ffc63a,#ffaf00)" : "rgba(255,255,255,.12)",
+              color: petCanSubmit ? "#1b1508" : "rgba(255,255,255,.55)",
+              cursor: petCanSubmit ? "pointer" : "not-allowed",
+            }}
+          >
+            Valider le score (vainqueur : {winnerId === aId ? nameOf(tour, aId) : nameOf(tour, bId)})
           </button>
         </div>
       </div>

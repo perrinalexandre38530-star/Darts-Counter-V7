@@ -1,9 +1,20 @@
 // ============================================
 // src/lib/petanqueStore.ts
-// Pétanque — MVP store autonome (localStorage)
-// + ✅ Mesurage (distance cochonnet -> boules) persisté
-// + ✅ FIX: ne jamais "reprendre" une partie terminée
-// + ✅ NEW: statut explicite (active/finished) + finishAt
+// Store local Pétanque (ACTIVE + HISTORY)
+// ✅ Exports stables : loadPetanqueState / savePetanqueState / resetPetanque
+// ✅ addEnd / undoLastEnd
+// ✅ addMeasurement / undoLastMeasurement
+// ✅ finishMatch helper
+//
+// ✅ BACK-COMPAT (pour éviter les CRASH imports existants)
+// - startNewPetanqueGame
+// - finishPetanqueMatch
+// - loadPetanqueGameFromHistory
+// - archivePetanqueGame
+//
+// ✅ PATCH ROBUSTE (CRASH FIX)
+// - loadPetanqueState() ne renvoie JAMAIS null
+// - garantit st.ends / st.measurements = tableaux
 // ============================================
 
 export type PetanqueTeamId = "A" | "B";
@@ -11,343 +22,460 @@ export type PetanqueTeamId = "A" | "B";
 export type PetanqueEnd = {
   id: string;
   at: number;
-  winner: PetanqueTeamId;
-  points: number; // 0..6
+  pointsA: number;
+  pointsB: number;
 };
 
-// ✅ NEW: Mesurage
-export type PetanqueMeasurementWinner = PetanqueTeamId | "TIE";
-
+// Mesures (version actuelle)
 export type PetanqueMeasurement = {
   id: string;
-  at: number; // timestamp
-  dA: number; // distance cochonnet -> boule A (cm)
-  dB: number; // distance cochonnet -> boule B (cm)
-  winner: PetanqueMeasurementWinner;
-  delta: number; // |dA - dB|
-  tol: number; // tolérance utilisée (cm)
+  at: number;
+  from: "live" | "photo" | "manual";
+  valueMm: number;
   note?: string;
 };
 
-export type PetanqueGameStatus = "active" | "finished";
-
 export type PetanqueState = {
-  gameId: string;
+  matchId: string;
   createdAt: number;
-
-  // ✅ NEW: gestion "partie active vs terminée"
-  status: PetanqueGameStatus;
+  updatedAt: number;
   finishedAt?: number;
 
-  teamA: string;
-  teamB: string;
+  status: "active" | "finished";
+
+  mode: string; // "simple" | "doublette" | "ffa3" | etc.
+  targetScore: number;
 
   scoreA: number;
   scoreB: number;
 
   ends: PetanqueEnd[];
-
-  // ✅ NEW: historique des mesurages (dernier en premier)
   measurements: PetanqueMeasurement[];
 
-  target: number; // ex: 13
-  // Back-compat
-  finished: boolean;
-  winner: PetanqueTeamId | null;
+  // payload UI (facultatif)
+  meta?: any;
+  teams?: any;
+  players?: any[];
 };
 
-const LS_KEY = "dc-petanque-game-v1";
+// --------------------------------------------
+// Keys (ACTIVE + HISTORY)
+// --------------------------------------------
+const KEY_ACTIVE = "dc-petanque-active-v1";
+const KEY_HISTORY = "dc-petanque-history-v1";
 
-function uid() {
-  return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+// (optionnel) compat ancienne clé si tu l’avais
+const KEY_LEGACY_ACTIVE = "dc-petanque-game-v1";
+
+function safeParse<T>(raw: string | null): T | null {
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw) as T;
+  } catch {
+    return null;
+  }
 }
 
-function normalizeState(s: any): PetanqueState {
-  const base = createNewPetanqueGame();
+function uid(prefix: string) {
+  return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+}
 
-  const gameId = typeof s?.gameId === "string" && s.gameId ? s.gameId : base.gameId;
-  const createdAt = Number.isFinite(Number(s?.createdAt)) ? Number(s.createdAt) : base.createdAt;
+function clampInt(n: any, min: number, max: number) {
+  const v = Math.floor(Number(n));
+  if (!Number.isFinite(v)) return min;
+  return Math.max(min, Math.min(max, v));
+}
 
-  const teamA = (typeof s?.teamA === "string" ? s.teamA : base.teamA) || "Équipe A";
-  const teamB = (typeof s?.teamB === "string" ? s.teamB : base.teamB) || "Équipe B";
+// ✅ état neuf garanti (utilisé par load/reset/save)
+function createPetanqueInitialState(overrides: Partial<PetanqueState> = {}): PetanqueState {
+  const now = Date.now();
+  return {
+    matchId: uid("petanque"),
+    createdAt: now,
+    updatedAt: now,
+    status: "active",
+    mode: "simple",
+    targetScore: 13,
+    scoreA: 0,
+    scoreB: 0,
+    ends: [],
+    measurements: [],
+    ...overrides,
+  };
+}
 
-  const scoreA = Math.max(0, Math.floor(Number(s?.scoreA) || 0));
-  const scoreB = Math.max(0, Math.floor(Number(s?.scoreB) || 0));
+function normalizeState(anySt: any): PetanqueState | null {
+  if (!anySt || typeof anySt !== "object") return null;
 
-  const ends = Array.isArray(s?.ends) ? (s.ends as PetanqueEnd[]) : [];
-  const measurements = Array.isArray(s?.measurements) ? (s.measurements as PetanqueMeasurement[]) : [];
+  const now = Date.now();
 
-  const target = Math.max(1, Math.floor(Number(s?.target) || 13));
+  const matchId =
+    typeof anySt.matchId === "string" && anySt.matchId
+      ? anySt.matchId
+      : typeof anySt.gameId === "string" && anySt.gameId
+      ? anySt.gameId
+      : uid("petanque");
 
-  // Back-compat: "finished" existait déjà
-  const finishedLegacy = Boolean(s?.finished);
-  const winner = (s?.winner === "A" || s?.winner === "B") ? (s.winner as PetanqueTeamId) : null;
+  const createdAt = Number.isFinite(Number(anySt.createdAt)) ? Number(anySt.createdAt) : now;
+  const updatedAt = Number.isFinite(Number(anySt.updatedAt)) ? Number(anySt.updatedAt) : createdAt;
 
-  // ✅ NEW: status est la source de vérité
-  const status: PetanqueGameStatus =
-    s?.status === "active" || s?.status === "finished"
-      ? (s.status as PetanqueGameStatus)
-      : finishedLegacy
-      ? "finished"
-      : "active";
+  const status: "active" | "finished" =
+    anySt.status === "finished" || anySt.finished === true ? "finished" : "active";
 
   const finishedAt =
-    Number.isFinite(Number(s?.finishedAt)) ? Number(s.finishedAt) : status === "finished" ? Date.now() : undefined;
+    Number.isFinite(Number(anySt.finishedAt))
+      ? Number(anySt.finishedAt)
+      : status === "finished"
+      ? updatedAt
+      : undefined;
 
-  const finished = status === "finished";
+  const mode = typeof anySt.mode === "string" && anySt.mode ? anySt.mode : "simple";
+  const targetScore = clampInt(anySt.targetScore ?? anySt.target ?? 13, 1, 999);
 
-  return {
-    gameId,
+  const scoreA = clampInt(anySt.scoreA ?? 0, 0, 999);
+  const scoreB = clampInt(anySt.scoreB ?? 0, 0, 999);
+
+  const endsRaw = Array.isArray(anySt.ends) ? anySt.ends : [];
+  const ends: PetanqueEnd[] = endsRaw
+    .map((e: any) => {
+      // compat: ancien store pouvait stocker winner/points
+      if (e && typeof e === "object" && ("pointsA" in e || "pointsB" in e)) {
+        return {
+          id: String(e.id || uid("end")),
+          at: Number(e.at || now),
+          pointsA: clampInt(e.pointsA || 0, 0, 999),
+          pointsB: clampInt(e.pointsB || 0, 0, 999),
+        };
+      }
+      if (e && typeof e === "object" && ("winner" in e || "points" in e)) {
+        const w: PetanqueTeamId = e.winner === "B" ? "B" : "A";
+        const p = clampInt(e.points || 0, 0, 999);
+        return {
+          id: String(e.id || uid("end")),
+          at: Number(e.at || now),
+          pointsA: w === "A" ? p : 0,
+          pointsB: w === "B" ? p : 0,
+        };
+      }
+      return null;
+    })
+    .filter(Boolean) as PetanqueEnd[];
+
+  const measRaw = Array.isArray(anySt.measurements) ? anySt.measurements : [];
+  const measurements: PetanqueMeasurement[] = measRaw
+    .map((m: any) => {
+      if (!m || typeof m !== "object") return null;
+      // compat: anciennes mesures dA/dB etc => non convertible en valueMm => on ignore
+      if ("valueMm" in m) {
+        const v = Number(m.valueMm);
+        if (!Number.isFinite(v)) return null;
+        return {
+          id: String(m.id || uid("m")),
+          at: Number(m.at || now),
+          from: m.from === "live" || m.from === "photo" || m.from === "manual" ? m.from : "manual",
+          valueMm: v,
+          note: typeof m.note === "string" && m.note.trim() ? m.note.trim() : undefined,
+        };
+      }
+      return null;
+    })
+    .filter(Boolean) as PetanqueMeasurement[];
+
+  const next: PetanqueState = {
+    matchId,
     createdAt,
-    status,
+    updatedAt,
     finishedAt,
-    teamA: teamA.trim() || "Équipe A",
-    teamB: teamB.trim() || "Équipe B",
+    status,
+    mode,
+    targetScore,
     scoreA,
     scoreB,
     ends,
     measurements,
-    target,
-    finished,
-    winner: finished ? winner : null,
+    meta: anySt.meta,
+    teams: anySt.teams,
+    players: anySt.players,
   };
+
+  return next;
 }
 
-export function createNewPetanqueGame(prev?: Partial<PetanqueState>): PetanqueState {
-  const target = Math.max(1, Math.floor(Number(prev?.target ?? 13) || 13));
-
+// ✅ Garantit un state valide même si storage vide/corrompu
+function ensureState(st: PetanqueState | null | undefined): PetanqueState {
+  if (!st) return createPetanqueInitialState();
   return {
-    gameId: uid(),
-    createdAt: Date.now(),
-
-    status: "active",
-    finishedAt: undefined,
-
-    teamA: prev?.teamA ?? "Équipe A",
-    teamB: prev?.teamB ?? "Équipe B",
-
-    scoreA: 0,
-    scoreB: 0,
-
-    ends: [],
-    measurements: Array.isArray(prev?.measurements) ? prev!.measurements! : [],
-
-    target,
-    finished: false,
-    winner: null,
+    ...createPetanqueInitialState(),
+    ...st,
+    ends: Array.isArray((st as any).ends) ? (st as any).ends : [],
+    measurements: Array.isArray((st as any).measurements) ? (st as any).measurements : [],
   };
 }
 
-/**
- * ✅ FIX: si la dernière partie est terminée => on ne la recharge pas, on crée une nouvelle partie.
- * Cela évite le bug "je relance une partie et je retombe sur 12-14".
- */
+// --------------------------------------------
+// Core API (actuel)
+// --------------------------------------------
+
+// ✅ IMPORTANT: ne retourne JAMAIS null (crash fix)
 export function loadPetanqueState(): PetanqueState {
   try {
-    const raw = localStorage.getItem(LS_KEY);
-    if (!raw) return createNewPetanqueGame();
+    // priorité: ACTIVE
+    const active = normalizeState(safeParse<any>(localStorage.getItem(KEY_ACTIVE)));
+    if (active) return ensureState(active);
 
-    const parsed = JSON.parse(raw);
-    const s = normalizeState(parsed);
+    // fallback legacy si existe encore
+    const legacy = normalizeState(safeParse<any>(localStorage.getItem(KEY_LEGACY_ACTIVE)));
+    if (legacy) return ensureState(legacy);
 
-    // ✅ règle: ne jamais reprendre une partie terminée
-    if (s.status === "finished" || s.finished) {
-      // On repart propre, en conservant uniquement les préférences (noms/target)
-      const fresh = createNewPetanqueGame({
-        teamA: s.teamA,
-        teamB: s.teamB,
-        target: s.target,
-        measurements: [], // nouvelle partie => pas d’historique mesurage
-      });
-      savePetanqueState(fresh);
-      return fresh;
-    }
-
-    return s;
+    // aucun match => état initial
+    return createPetanqueInitialState();
   } catch {
-    return createNewPetanqueGame();
+    return createPetanqueInitialState();
   }
 }
 
-export function savePetanqueState(state: PetanqueState) {
+export function savePetanqueState(st: PetanqueState) {
   try {
-    localStorage.setItem(LS_KEY, JSON.stringify(state));
+    const safe = ensureState(st);
+    localStorage.setItem(KEY_ACTIVE, JSON.stringify(safe));
   } catch {}
 }
 
-export function setTeamNames(state: PetanqueState, teamA: string, teamB: string): PetanqueState {
-  const next: PetanqueState = {
-    ...state,
-    teamA: teamA?.trim() || "Équipe A",
-    teamB: teamB?.trim() || "Équipe B",
-  };
-  savePetanqueState(next);
-  return next;
+export function clearPetanqueActive() {
+  try {
+    localStorage.removeItem(KEY_ACTIVE);
+  } catch {}
 }
 
-export function setTargetScore(state: PetanqueState, target: number): PetanqueState {
-  const t = Math.max(1, Math.floor(Number(target) || 13));
-  const next: PetanqueState = { ...state, target: t };
-  savePetanqueState(next);
-  return next;
+export function resetPetanque(): PetanqueState {
+  const st = createPetanqueInitialState();
+  savePetanqueState(st);
+  return st;
 }
 
-export function resetPetanque(state?: PetanqueState): PetanqueState {
-  const next = createNewPetanqueGame(
-    state
-      ? {
-          teamA: state.teamA,
-          teamB: state.teamB,
-          target: state.target,
-          // on repart sur une nouvelle partie -> on vide les mènes et les mesurages
-          measurements: [],
-        }
-      : undefined
-  );
-  savePetanqueState(next);
-  return next;
-}
-
-/**
- * ✅ NEW: force la fin de match (utile si tu as un bouton "Terminer")
- * - Ne permet plus d'ajouter des mènes ensuite
- */
-export function finishPetanque(state: PetanqueState, winner: PetanqueTeamId | null): PetanqueState {
-  const next: PetanqueState = {
-    ...state,
+// ✅ helper demandé dans tes messages précédents
+export function finishMatch(st: PetanqueState) {
+  const done: PetanqueState = {
+    ...ensureState(st),
     status: "finished",
     finishedAt: Date.now(),
-    finished: true,
-    winner,
+    updatedAt: Date.now(),
   };
-  savePetanqueState(next);
-  return next;
+  savePetanqueState(done);
+
+  // Optionnel UX : certains écrans veulent clear l’active après finish.
+  // Ici on NE clear PAS par défaut pour ne pas casser les écrans existants.
+  // clearPetanqueActive();
 }
 
-/**
- * ✅ FIN DE MATCH (centrale)
- * Déduit automatiquement le vainqueur à partir des scores et de la cible.
- * 
- * Règles:
- * - Si déjà finished => no-op
- * - Si aucun score n'atteint la target => no-op
- * - Si les deux dépassent (rare) => prend le score le plus élevé
- */
-export function finishPetanqueMatch(state: PetanqueState): PetanqueState {
-  if (state.status === "finished" || state.finished) return state;
+// --------------------------------------------
+// Ends
+// --------------------------------------------
+export function addEnd(st: PetanqueState, team: PetanqueTeamId, points: number): PetanqueState {
+  st = ensureState(st);
 
-  const target = Math.max(1, Number(state.target) || 13);
-  const a = Number(state.scoreA) || 0;
-  const b = Number(state.scoreB) || 0;
+  // blocage si déjà fini
+  if (st.status === "finished") return st;
 
-  if (a < target && b < target) return state;
+  const p = clampInt(points, 0, 999);
+  const id = uid("end");
+  const at = Date.now();
 
-  const winner: PetanqueTeamId | null = a === b ? null : a > b ? "A" : "B";
-  return finishPetanque({ ...state, target }, winner);
-}
+  const pointsA = team === "A" ? p : 0;
+  const pointsB = team === "B" ? p : 0;
 
-export function addEnd(state: PetanqueState, winner: PetanqueTeamId, points: number): PetanqueState {
-  // ✅ blocage si match terminé (status est prioritaire)
-  if (state.status === "finished" || state.finished) return state;
-
-  const pts = Math.max(0, Math.min(6, Math.floor(Number(points) || 0)));
-  const end: PetanqueEnd = { id: uid(), at: Date.now(), winner, points: pts };
-
-  let scoreA = state.scoreA;
-  let scoreB = state.scoreB;
-  if (winner === "A") scoreA += pts;
-  else scoreB += pts;
-
-  const target = Math.max(1, Math.floor(Number(state.target) || 13));
+  const scoreA = clampInt(st.scoreA + pointsA, 0, 999);
+  const scoreB = clampInt(st.scoreB + pointsB, 0, 999);
 
   const next: PetanqueState = {
-    ...state,
+    ...st,
+    updatedAt: at,
     scoreA,
     scoreB,
-    target,
-    ends: [end, ...state.ends],
-
-    // ✅ IMPORTANT: la FIN DE MATCH est gérée ailleurs (finishPetanqueMatch)
-    // Ici on se contente d'ajouter la mène + persister l'état.
+    ends: [{ id, at, pointsA, pointsB }, ...(st.ends || [])],
   };
+
+  // auto-finish si cible atteinte
+  if (scoreA >= (st.targetScore || 13) || scoreB >= (st.targetScore || 13)) {
+    const done: PetanqueState = {
+      ...next,
+      status: "finished",
+      finishedAt: Date.now(),
+      updatedAt: Date.now(),
+    };
+    savePetanqueState(done);
+    return done;
+  }
 
   savePetanqueState(next);
   return next;
 }
 
-export function undoLastEnd(state: PetanqueState): PetanqueState {
-  if (!state.ends.length) return state;
-  const [last, ...rest] = state.ends;
+export function undoLastEnd(st: PetanqueState): PetanqueState {
+  st = ensureState(st);
 
-  let scoreA = state.scoreA;
-  let scoreB = state.scoreB;
-  if (last.winner === "A") scoreA = Math.max(0, scoreA - last.points);
-  else scoreB = Math.max(0, scoreB - last.points);
+  const list = Array.isArray(st.ends) ? st.ends.slice() : [];
+  if (!list.length) return st;
+
+  const last = list.shift()!;
+  const scoreA = clampInt(st.scoreA - (last.pointsA || 0), 0, 999);
+  const scoreB = clampInt(st.scoreB - (last.pointsB || 0), 0, 999);
 
   const next: PetanqueState = {
-    ...state,
-    scoreA,
-    scoreB,
-    ends: rest,
-
-    // ✅ si on annule, on repasse en actif
+    ...st,
+    updatedAt: Date.now(),
     status: "active",
     finishedAt: undefined,
-    finished: false,
-    winner: null,
+    scoreA,
+    scoreB,
+    ends: list,
   };
 
   savePetanqueState(next);
   return next;
 }
 
-// ============================================
-// ✅ MESURAGE — Actions
-// ============================================
+// --------------------------------------------
+// Measurements
+// --------------------------------------------
+export function addMeasurement(st: PetanqueState, m: Omit<PetanqueMeasurement, "id" | "at">): PetanqueState {
+  st = ensureState(st);
 
-export function addMeasurement(
-  state: PetanqueState,
-  input: { dA: number; dB: number; tol: number; note?: string }
-): PetanqueState {
-  const dA = Number(input.dA);
-  const dB = Number(input.dB);
-  const tol = Math.max(0, Number(input.tol) || 0);
+  const id = uid("m");
+  const at = Date.now();
 
-  // garde-fou
-  if (!Number.isFinite(dA) || !Number.isFinite(dB) || dA < 0 || dB < 0) return state;
+  const valueMm = Number((m as any)?.valueMm);
+  if (!Number.isFinite(valueMm) || valueMm < 0) return st;
 
-  const delta = Math.abs(dA - dB);
-  const winner: PetanqueMeasurementWinner = delta <= tol ? "TIE" : dA < dB ? "A" : "B";
+  const from: "live" | "photo" | "manual" =
+    (m as any)?.from === "live" || (m as any)?.from === "photo" || (m as any)?.from === "manual"
+      ? (m as any).from
+      : "manual";
 
-  const m: PetanqueMeasurement = {
-    id: uid(),
-    at: Date.now(),
-    dA,
-    dB,
-    tol,
-    delta,
-    winner,
-    note: input.note?.trim() ? input.note.trim() : undefined,
-  };
+  const note = typeof (m as any)?.note === "string" && (m as any).note.trim() ? (m as any).note.trim() : undefined;
 
   const next: PetanqueState = {
-    ...state,
-    measurements: [m, ...(state.measurements ?? [])],
+    ...st,
+    updatedAt: at,
+    measurements: [{ id, at, from, valueMm, note }, ...(st.measurements || [])],
   };
 
   savePetanqueState(next);
   return next;
 }
 
-export function undoLastMeasurement(state: PetanqueState): PetanqueState {
-  const cur = state.measurements ?? [];
-  if (!cur.length) return state;
+export function undoLastMeasurement(st: PetanqueState): PetanqueState {
+  st = ensureState(st);
 
-  const next: PetanqueState = {
-    ...state,
-    measurements: cur.slice(1),
-  };
+  const list = Array.isArray(st.measurements) ? st.measurements.slice() : [];
+  if (!list.length) return st;
 
+  list.shift();
+
+  const next: PetanqueState = { ...st, updatedAt: Date.now(), measurements: list };
   savePetanqueState(next);
   return next;
+}
+
+// --------------------------------------------
+// HISTORY (local)
+// --------------------------------------------
+export function appendPetanqueHistory(st: PetanqueState) {
+  try {
+    const safe = ensureState(st);
+    const raw = localStorage.getItem(KEY_HISTORY);
+    const list = raw ? (JSON.parse(raw) as PetanqueState[]) : [];
+    list.unshift(safe);
+    localStorage.setItem(KEY_HISTORY, JSON.stringify(list.slice(0, 200)));
+  } catch {}
+}
+
+// ✅ alias plus explicite (certains fichiers importent ce nom)
+export function archivePetanqueGame(st: PetanqueState) {
+  appendPetanqueHistory(st);
+}
+
+// ✅ requis par tes écrans: lecture d’un match depuis l’historique
+export function loadPetanqueGameFromHistory(matchId: string): PetanqueState | null {
+  try {
+    const raw = localStorage.getItem(KEY_HISTORY);
+    if (!raw) return null;
+    const list = safeParse<any[]>(raw) || [];
+    const found = list.find((g: any) => String(g?.matchId || g?.gameId || "") === String(matchId));
+    const norm = normalizeState(found);
+    return norm ? ensureState(norm) : null;
+  } catch {
+    return null;
+  }
+}
+
+// --------------------------------------------
+// BACK-COMPAT exports (évite CRASH boot)
+// --------------------------------------------
+
+// ✅ attendu par certains écrans/configs : démarre un match neuf, force score à 0
+export function startNewPetanqueGame(params?: Partial<PetanqueState>): PetanqueState {
+  const now = Date.now();
+  const mode = typeof params?.mode === "string" && params.mode ? params.mode : "simple";
+  const targetScore = clampInt((params as any)?.targetScore ?? 13, 1, 999);
+
+  const st: PetanqueState = ensureState({
+    matchId: uid("petanque"),
+    createdAt: now,
+    updatedAt: now,
+    status: "active",
+    finishedAt: undefined,
+    mode,
+    targetScore,
+    scoreA: 0,
+    scoreB: 0,
+    ends: [],
+    measurements: [],
+    meta: params?.meta,
+    teams: params?.teams,
+    players: params?.players,
+  } as any);
+
+  savePetanqueState(st);
+  return st;
+}
+
+// ✅ attendu : termine le match quand cible atteinte + archive + clear active (optionnel)
+export function finishPetanqueMatch(st: PetanqueState): PetanqueState {
+  st = ensureState(st);
+
+  // si déjà fini -> no-op
+  if (st.status === "finished") return st;
+
+  const target = clampInt(st.targetScore || 13, 1, 999);
+  const a = clampInt(st.scoreA || 0, 0, 999);
+  const b = clampInt(st.scoreB || 0, 0, 999);
+
+  // si personne n’a atteint -> no-op
+  if (a < target && b < target) return st;
+
+  const done: PetanqueState = {
+    ...st,
+    status: "finished",
+    finishedAt: Date.now(),
+    updatedAt: Date.now(),
+  };
+
+  savePetanqueState(done);
+
+  // ✅ on archive (utile pour historiques / stats)
+  archivePetanqueGame(done);
+
+  // ✅ IMPORTANT: beaucoup d’écrans veulent éviter “reprendre une partie finie”
+  // Donc on clear l’active après archivage.
+  clearPetanqueActive();
+
+  return done;
+}
+
+// --------------------------------------------
+// BACK-COMPAT UI (PetanquePlay)
+// --------------------------------------------
+export function getActivePetanqueGame(): PetanqueState {
+  return loadPetanqueState();
 }

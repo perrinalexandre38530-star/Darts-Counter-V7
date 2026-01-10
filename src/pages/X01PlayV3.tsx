@@ -935,19 +935,45 @@ const summaryPlayersById = React.useMemo(() => {
   );
 }, [config.players, resolveAvatar]);
 
-  const {
-    state,
-    liveStatsByPlayer,
-    activePlayerId,
-    scores,
-    status,
-    throwDart,
-    undoLastDart, // 🔥 nouveau : UNDO illimité du moteur V3
-    startNextLeg,
-  } = useX01EngineV3({ config });
+const {
+  state,
+  liveStatsByPlayer,
+  activePlayerId,
+  scores,
+  status,
+  throwDart,
+  undoLastDart, // 🔥 UNDO illimité du moteur V3
+  startNextLeg,
+} = useX01EngineV3({ config });
 
-  const players = config.players;
-  const activePlayer = players.find((p) => p.id === activePlayerId) || null;
+const players = config.players;
+const activePlayer = players.find((p) => p.id === activePlayerId) || null;
+
+// ============================================================
+// 🔁 Force resync UI depuis le moteur (UNDO cross-joueur)
+// - Sync currentThrow + lastVisitsByPlayer (utilisé par PlayersListOnly)
+// ============================================================
+const forceSyncFromEngine = React.useCallback(() => {
+  currentThrowFromEngineRef.current = true;
+
+  const v: any = (state as any)?.visit;
+
+  const raw: UIDart[] =
+    v?.darts && Array.isArray(v.darts) && v.darts.length
+      ? v.darts.map((d: any) => ({
+          v: d.segment,
+          mult: d.multiplier as 1 | 2 | 3,
+        }))
+      : [];
+
+  setCurrentThrow(raw);
+
+  // ✅ CRITIQUE: la liste joueurs lit lastVisitsByPlayer, pas currentThrow
+  if (activePlayerId) {
+    setLastVisitsByPlayer((m) => ({ ...m, [activePlayerId]: raw }));
+    setLastVisitIsBustByPlayer((m) => ({ ...m, [activePlayerId]: false }));
+  }
+}, [state, activePlayerId]);
 
 // =====================================================
 // ✅ BOT TURN — DOIT ÊTRE DÉCLARÉ AVANT TOUT useEffect QUI L’UTILISE
@@ -1531,28 +1557,6 @@ const bustSoundTimeoutRef = React.useRef<number | null>(null);
 
   const currentThrowFromEngineRef = React.useRef(false);
 
-  // ============================================================
-// 🔁 Force resync UI depuis le moteur (UNDO cross-joueur)
-// ============================================================
-const forceSyncFromEngine = React.useCallback(() => {
-  currentThrowFromEngineRef.current = true;
-
-  const v: any = state.visit;
-  if (!v) {
-    setCurrentThrow([]);
-    return;
-  }
-
-  const raw: UIDart[] =
-    v.darts && Array.isArray(v.darts)
-      ? v.darts.map((d: any) => ({
-          v: d.segment,
-          mult: d.multiplier as 1 | 2 | 3,
-        }))
-      : [];
-
-  setCurrentThrow(raw);
-}, [state.visit]);
 
 // 🔄 SYNC AVEC LE MOTEUR UNIQUEMENT POUR LES CAS "ENGINE-DRIVEN"
 //    (UNDO global, rebuild, etc.)

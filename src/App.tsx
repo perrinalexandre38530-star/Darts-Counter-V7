@@ -185,6 +185,11 @@ import PetanqueStatsLeaderboardsPage from "./pages/petanque/PetanqueStatsLeaderb
 import PetanqueStatsMatchesPage from "./pages/petanque/PetanqueStatsMatchesPage";
 import PetanqueStatsHistoryPage from "./pages/petanque/PetanqueStatsHistoryPage";
 
+import PetanqueTournamentsHome from "./pages/petanque/PetanqueTournamentsHome";
+import PetanqueTournamentCreate from "./pages/petanque/PetanqueTournamentCreate";
+import PetanqueTournamentView from "./pages/petanque/PetanqueTournamentView";
+import PetanqueTournamentMatchScore from "./pages/petanque/PetanqueTournamentMatchScore";
+
 // ✅ NEW: Pétanque flow (menu/config/play)
 import PetanqueMenuGames from "./pages/petanque/PetanqueMenuGames";
 import PetanqueConfig from "./pages/petanque/PetanqueConfig";
@@ -409,6 +414,10 @@ type Tab =
   | "petanque_stats_leaderboards"
   | "petanque_stats_matches"
   | "petanque_stats_history"
+  | "petanque_tournaments"
+  | "petanque_tournament_create"
+  | "petanque_tournament_view"
+  | "petanque_tournament_match_score"
   // (legacy / existing)
   | "petanque.menu"
   | "petanque.config"
@@ -1604,6 +1613,22 @@ function App() {
         page = <PetanquePlay go={go} params={routeParams} />;
         break;
 
+      case "petanque_tournaments":
+         page = <PetanqueTournamentsHome go={go} />;
+         break;
+        
+      case "petanque_tournament_create":
+         page = <PetanqueTournamentCreate go={go} />;
+         break;
+        
+      case "petanque_tournament_view":
+         page = <PetanqueTournamentView go={go} params={routeParams} />;
+        break;
+        
+      case "petanque_tournament_match_score":
+         page = <PetanqueTournamentMatchScore go={go} params={routeParams} />;
+        break;  
+
       case "profiles":
         page = (
           <Profiles
@@ -1704,20 +1729,23 @@ function App() {
         page = <SyncCenter store={store} go={go} profileId={routeParams?.profileId ?? null} />;
         break;
 
-      case "tournaments":
-         page = (
-           <TournamentsHome
-             store={store}
-            go={go}
-            update={update}
-             source="local"
-             params={activeSport === "petanque" ? { forceMode: "petanque" } : undefined}
-           />
-         );
-         break;
+        case "tournaments": {
+          const isPetanque = String(activeSport || "").toLowerCase() === "petanque";
+        
+          page = (
+            <TournamentsHome
+              store={store}
+              go={go}
+              update={update}
+              source="local"
+              params={isPetanque ? { forceMode: "petanque" } : undefined}
+            />
+          );
+          break;
+        }
 
       case "tournament_create":
-        page = <TournamentCreate store={store} go={go} params={routeParams} />; // ✅ passe sport
+        page = <TournamentCreate store={store} go={go} params={routeParams} />;
         break;
 
       case "tournament_view": {

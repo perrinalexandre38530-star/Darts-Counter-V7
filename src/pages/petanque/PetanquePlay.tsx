@@ -17,14 +17,17 @@ import React from "react";
 import { useTheme } from "../../contexts/ThemeContext";
 
 import {
+  startNewPetanqueGame,
+  getActivePetanqueGame,
+  loadPetanqueGameFromHistory,
+  finishPetanqueMatch,
   addEnd,
-  loadPetanqueState,
-  resetPetanque,
   undoLastEnd,
-  type PetanqueState,
-  type PetanqueTeamId,
   addMeasurement,
   undoLastMeasurement,
+  resetPetanque,
+  type PetanqueState,
+  type PetanqueTeamId,
 } from "../../lib/petanqueStore";
 
 import { loadPetanqueConfig } from "../../lib/petanqueConfigStore";
@@ -839,22 +842,65 @@ export default function PetanquePlay({ go, params }: Props) {
   const matchCfg = params?.cfg ?? null;
 
   const { theme } = useTheme();
-  const [st, setSt] = React.useState<PetanqueState>(() => loadPetanqueState());
+  const [st, setSt] = React.useState<PetanqueState>(() => {
+    // 1) Partie active locale
+    try {
+      const active = getActivePetanqueGame();
+      if (active) return active;
+    } catch {}
+  
+    // 2) Sinon partie neuve
+    return startNewPetanqueGame({
+      mode: params?.cfg?.mode ?? "simple",
+      targetScore: params?.cfg?.targetScore ?? 13,
+      teams: params?.cfg?.teams,
+      players: params?.cfg?.players,
+    });
+  });
 
-  // ✅ Anti "reprise fantôme" : si l'état local correspond déjà à une partie terminée
-  // (ou effectivement au-delà du score cible), on repart automatiquement sur une nouvelle partie.
-  // Ça évite de relancer une partie et de retomber sur un 12–14 précédent.
-  React.useEffect(() => {
-    const target = Number((st as any)?.targetScore ?? (st as any)?.target ?? 13);
-    const a = Number((st as any)?.scoreA ?? 0);
-    const b = Number((st as any)?.scoreB ?? 0);
-    const finished = Boolean((st as any)?.finished || (st as any)?.winner);
-    const reached = Number.isFinite(target) && target > 0 && (a >= target || b >= target);
-    if (finished || reached) {
-      setSt((prev) => resetPetanque(prev));
+  const stSafe = React.useMemo<PetanqueState>(() => {
+    return st ?? resetPetanque();
+  }, [st]);
+  
+  const ends = stSafe.ends;
+  const measurements = stSafe.measurements;
+
+  const allPlayers = React.useMemo(() => {
+    // priorité aux joueurs du state (match en cours / historique)
+    if (Array.isArray(stSafe.players) && stSafe.players.length) {
+      return stSafe.players;
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  
+    // fallback config (lancement depuis Config / Tournament)
+    if (Array.isArray(params?.cfg?.players)) {
+      return params.cfg.players;
+    }
+  
+    return [];
+  }, [stSafe.players, params]);
+
+// ==========================================
+// ✅ DÉMARRAGE DE PARTIE — SOURCE UNIQUE DE VÉRITÉ
+// ==========================================
+React.useEffect(() => {
+  // 🔁 Reprise UNIQUEMENT si demandée explicitement (historique)
+  if (params?.resumeGameId) {
+    const hist = loadPetanqueGameFromHistory(params.resumeGameId);
+    if (hist) {
+      setSt(hist);
+      return;
+    }
+  }
+
+  // 🆕 Nouvelle partie = TOUJOURS un état vierge
+  const fresh = startNewPetanqueGame({
+    teamA: params?.cfg?.teamA,
+    teamB: params?.cfg?.teamB,
+    target: params?.cfg?.target ?? 13,
+  });
+
+  setSt(fresh);
+}, []); // ⚠️ volontairement vide
 
   // =====================================================
   // ✅ FFA3 LOCAL (ne dépend pas du store Petanque)
@@ -901,7 +947,7 @@ export default function PetanquePlay({ go, params }: Props) {
   // ==========================================
   // ✅ TEAMS + player stats (localStorage)
   // ==========================================
-  const teams = React.useMemo(() => extractTeams(st as any, matchCfg), [st, matchCfg]);
+  const teams = React.useMemo(() => extractTeams(stSafe as any, matchCfg), [stSafe, matchCfg]);
 
   const matchKey = React.useMemo(() => {
     const id =
@@ -995,7 +1041,14 @@ export default function PetanquePlay({ go, params }: Props) {
   // ✅ Ajout d'une mène (store + attribution éventuelle)
   const onAdd = React.useCallback(
     (team: PetanqueTeamId, pts: number) => {
-      setSt((prev) => addEnd(prev, team, pts));
+      setSt((prev) => {
+        if (!prev) return prev as any;
+        const next = addEnd(prev as any, team, pts);
+        // ✅ IMPORTANT: termine/archive/nettoie si score atteint
+        return finishPetanqueMatch(next as any) as any;
+      });
+  
+      // ✅ L’attribution points ne concerne que le mode équipes
       if (!isFfa3) maybeOpenAssignPoints(team, pts);
     },
     [isFfa3, maybeOpenAssignPoints]
@@ -1006,8 +1059,14 @@ export default function PetanquePlay({ go, params }: Props) {
   }, []);
 
   const onNew = React.useCallback(() => {
-    setSt((prev) => resetPetanque(prev));
-  }, []);
+    setSt(
+      startNewPetanqueGame({
+        teamA: params?.cfg?.teamA,
+        teamB: params?.cfg?.teamB,
+        target: params?.cfg?.target ?? 13,
+      })
+    );
+  }, [params]);
 
   const commitEndFromSheet = React.useCallback(() => {
     // ✅ On réutilise TON flux existant (store + maybeOpenAssignPoints)
@@ -1020,7 +1079,6 @@ export default function PetanquePlay({ go, params }: Props) {
 
   // ==========================
   // ✅ MESURAGE (sheet)
- (sheet)
   // ==========================
   const [measureOpen, setMeasureOpen] = React.useState(false);
   const [mode, setMode] = React.useState<MeasureMode>("manual");
@@ -1704,21 +1762,6 @@ export default function PetanquePlay({ go, params }: Props) {
   // ✅ Store actions
   // ==========================
   const onUndoMeasurement = () => setSt(undoLastMeasurement(st));
-
-  const measurements = (st as any).measurements as
-    | Array<{
-        id: string;
-        at: number;
-        dA: number;
-        dB: number;
-        winner: "A" | "B" | "TIE";
-        delta: number;
-        tol: number;
-        note?: string;
-      }>
-    | undefined;
-
-  const allPlayers = React.useMemo(() => [...teams.A.players, ...teams.B.players], [teams]);
 
   // ✅ padding-top sous header fixed (ajuste si tu changes le header)
   const headerPad = 172;
