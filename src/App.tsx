@@ -170,6 +170,7 @@ import PetanquePlay from "./pages/petanque/PetanquePlay";
 import PetanqueHome from "./pages/petanque/PetanqueHome";
 import PetanqueTeams from "./pages/petanque/PetanqueTeams";
 import PetanqueTeamEdit from "./pages/petanque/PetanqueTeamEdit";
+import PetanqueStatsMenu from "./pages/petanque/PetanqueStatsMenu";
 
 // ✅ NEW: Pétanque flow (menu/config/play)
 import PetanqueMenuGames from "./pages/petanque/PetanqueMenuGames";
@@ -1618,9 +1619,11 @@ function App() {
         page = <Settings go={go} />;
         break;
 
-      case "stats":
-        page = <StatsShell store={store} go={go} />;
-        break;
+        case "stats":
+          page = activeSport === "petanque"
+            ? <PetanqueStatsMenu go={go} />
+            : <StatsShell store={store} go={go} />;
+          break;
 
       case "statsHub":
         page = (

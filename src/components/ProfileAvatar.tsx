@@ -10,6 +10,10 @@
 // ✅ NEW GLOBAL FIX : si profile "lite" (id/name) => auto-resolve via loadStore() (sans modifier tous les setups)
 // ✅ FIX ASSETS : accepte /assets/... + chemins relatifs + import png {default: "..."} (bots PRO)
 // ✅ NEW UI: prop `noFrame` => supprime TOUT cadre/bordure/fond (aucun disque)
+// ✅ NEW UI FIX (NON NEGOCIABLE): médaillon toujours parfaitement rond
+//    - wrapper fixe la taille
+//    - wrapper circle + overflow hidden
+//    - img en cover (objectFit) sans piloter la forme
 // ============================================
 
 import React from "react";
@@ -314,9 +318,8 @@ export default function ProfileAvatar(props: Props) {
       style={{
         width: size,
         height: size,
-        borderRadius: "50%",
         position: "relative",
-        overflow: "visible",
+        overflow: "visible", // on garde l’extérieur visible (stars + overlay)
 
         // ✅ écrase TOUT fond/ombre/border éventuels injectés globalement
         background: "transparent",
@@ -324,57 +327,72 @@ export default function ProfileAvatar(props: Props) {
         border: "none",
         outline: "none",
         filter: "none",
+        borderRadius: 0, // outer wrapper n’est PAS le clipper
       }}
     >
-      {shouldShowImg ? (
-        <img
-          key={img as string}
-          src={img as string}
-          alt={name ?? "avatar"}
-          onError={() => setImgBroken(true)}
-          style={{
-            width: "100%",
-            height: "100%",
-            objectFit: "cover",
-            borderRadius: "50%",
-            display: "block",
-            border: frameBorder, // ✅ noFrame => none
-            background: "transparent",
-            boxShadow: "none",
-            outline: "none",
-          }}
-        />
-      ) : (
-        <div
-          style={{
-            width: "100%",
-            height: "100%",
-            borderRadius: "50%",
-            border: frameBorder, // ✅ noFrame => none
-            color: textColor,
-            display: "grid",
-            placeItems: "center",
-            textAlign: "center",
-            lineHeight: 1,
-            userSelect: "none",
-            background: fallbackBg, // ✅ noFrame => transparent
-            boxShadow: "none",
-            outline: "none",
-          }}
-        >
+      {/* ✅ INNER CLIPPER (NON NEGOCIABLE): rond + overflow hidden */}
+      <div
+        style={{
+          width: "100%",
+          height: "100%",
+          borderRadius: "50%",
+          overflow: "hidden",
+          flex: "0 0 auto",
+          position: "relative",
+
+          // Cadre sur le wrapper (pas sur l'img)
+          border: frameBorder,
+          background: fallbackBg,
+          boxShadow: "none",
+          outline: "none",
+        }}
+      >
+        {shouldShowImg ? (
+          <img
+            key={img as string}
+            src={img as string}
+            alt={name ?? "avatar"}
+            onError={() => setImgBroken(true)}
+            style={{
+              width: "100%",
+              height: "100%",
+              objectFit: "cover",
+              display: "block",
+              // IMPORTANT: pas de borderRadius ici, c’est le wrapper qui clip
+              borderRadius: 0,
+              background: "transparent",
+              boxShadow: "none",
+              outline: "none",
+            }}
+          />
+        ) : (
           <div
             style={{
-              fontSize: Math.max(10, size * 0.4),
-              fontWeight: 900,
-              letterSpacing: 0.5,
-              transform: "translateY(1px)",
-              textShadow: noFrame ? "0 0 10px rgba(0,0,0,0.65)" : "none",
+              width: "100%",
+              height: "100%",
+              color: textColor,
+              display: "grid",
+              placeItems: "center",
+              textAlign: "center",
+              lineHeight: 1,
+              userSelect: "none",
+              background: "transparent", // déjà géré par wrapper fallbackBg
             }}
           >
-            {(name ?? "P").trim().slice(0, 1).toUpperCase()}
+            <div
+              style={{
+                fontSize: Math.max(10, size * 0.4),
+                fontWeight: 900,
+                letterSpacing: 0.5,
+                transform: "translateY(1px)",
+                textShadow: noFrame ? "0 0 10px rgba(0,0,0,0.65)" : "none",
+              }}
+            >
+              {(name ?? "P").trim().slice(0, 1).toUpperCase()}
+            </div>
           </div>
-        </div>
-      )}
+        )}
+      </div>
 
       {showStars && <ProfileStarRing avg3d={avg3D ?? 0} anchorSize={size} />}
 

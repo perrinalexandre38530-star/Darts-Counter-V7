@@ -444,14 +444,14 @@ function SettingsMenuCard({
         borderRadius: 16,
         background: theme.card,
         border: `1px solid ${theme.borderSoft}`,
-        boxShadow: `0 16px 32px rgba(0,0,0,55), 0 0 18px ${theme.primary}22`,
+        // ✅ FIX: rgba alpha invalide -> 0.55
+        boxShadow: `0 16px 32px rgba(0,0,0,0.55), 0 0 18px ${theme.primary}22`,
         overflow: "hidden",
       }}
     >
       <div
         aria-hidden
         style={{
-          content: '""',
           position: "absolute",
           inset: -2,
           borderRadius: 18,
@@ -565,13 +565,13 @@ function AccountPages({
 }) {
   const { theme } = useTheme();
   const { t } = useLang();
-  const { session, status, loading, updateProfile, deleteAccount, logout } = useAuthOnline();
+  const { session, status, loading, updateProfile, deleteAccount, logout } = useAuthOnline() as any;
 
   const user = session?.user ?? null;
   const profile = session?.profile ?? null;
 
   const emailLabel = (user as any)?.email || "—";
-  const userIdLabel = (user as any)?.id ? `#${(user as any).id.slice(0, 8)}` : "—";
+  const userIdLabel = (user as any)?.id ? `#${String((user as any).id).slice(0, 8)}` : "—";
 
   const [page, setPage] = React.useState<AccountPage>("account_menu");
 
@@ -692,10 +692,7 @@ function AccountPages({
               {t("settings.account.titleShort", "Compte")}
             </div>
             <div className="subtitle" style={{ fontSize: 12, color: theme.textSoft, marginTop: 4, lineHeight: 1.35 }}>
-              {t(
-                "settings.account.subtitleV8",
-                "V8 : l’app est toujours connectée (compte anonyme automatique)."
-              )}
+              {t("settings.account.subtitleV8", "V8 : l’app est toujours connectée (compte anonyme automatique).")}
             </div>
 
             <div style={{ marginTop: 10, fontSize: 12, color: theme.textSoft }}>
@@ -918,8 +915,8 @@ function AccountPages({
             <button
               type="button"
               className="btn sm"
-              onClick={() => logout()}
-              disabled={loading || deleting}
+              onClick={() => logout?.()}
+              disabled={loading}
               style={{
                 borderRadius: 999,
                 border: `1px solid ${theme.borderSoft}`,
@@ -928,7 +925,7 @@ function AccountPages({
                 color: "#fff",
                 fontWeight: 900,
                 cursor: "pointer",
-                opacity: loading || deleting ? 0.6 : 1,
+                opacity: loading ? 0.6 : 1,
                 flex: "1 1 180px",
               }}
             >
@@ -993,7 +990,7 @@ function AccountPages({
             )}
 
             <button
-              disabled={loading || deleting}
+              disabled={loading}
               onClick={handleDeleteAccountV8}
               style={{
                 width: "100%",
@@ -1004,7 +1001,7 @@ function AccountPages({
                 fontWeight: 900,
                 border: "none",
                 cursor: "pointer",
-                opacity: loading || deleting ? 0.6 : 1,
+                opacity: loading ? 0.6 : 1,
                 boxShadow: "0 0 18px rgba(255,80,80,0.45)",
               }}
             >
@@ -1018,7 +1015,7 @@ function AccountPages({
 }
 
 export default function Settings({ go }: Props) {
-  const { theme, themeId, setThemeId } = useTheme();
+  const { theme, themeId, setThemeId } = useTheme() as any;
   const { lang, setLang, t } = useLang();
 
   const [tab, setTab] = React.useState<SettingsTab>("menu");
@@ -1040,8 +1037,6 @@ export default function Settings({ go }: Props) {
     await fullHardReset();
   }
 
-  // ---------------- Sections ----------------
-
   function ThemeSection() {
     return (
       <section
@@ -1053,20 +1048,9 @@ export default function Settings({ go }: Props) {
           marginBottom: 16,
         }}
       >
-        <h2 style={{ margin: 0, marginBottom: 10, fontSize: 18, color: theme.primary }}>
-          {t("settings.theme", "Thème")}
-        </h2>
+        <h2 style={{ margin: 0, marginBottom: 10, fontSize: 18, color: theme.primary }}>{t("settings.theme", "Thème")}</h2>
 
-        <div
-          style={{
-            marginTop: 12,
-            marginBottom: 6,
-            color: theme.textSoft,
-            fontSize: 13,
-            fontWeight: 600,
-            textTransform: "uppercase",
-          }}
-        >
+        <div style={{ marginTop: 12, marginBottom: 6, color: theme.textSoft, fontSize: 13, fontWeight: 600, textTransform: "uppercase" }}>
           ⚡ {t("settings.theme.group.neons", "Néons classiques")}
         </div>
         <div className="dc-scroll-thin" style={{ overflowX: "auto", padding: "6px 0 10px 0", marginTop: 4, marginBottom: 4 }}>
@@ -1087,16 +1071,7 @@ export default function Settings({ go }: Props) {
           </div>
         </div>
 
-        <div
-          style={{
-            marginTop: 16,
-            marginBottom: 6,
-            color: theme.textSoft,
-            fontSize: 13,
-            fontWeight: 600,
-            textTransform: "uppercase",
-          }}
-        >
+        <div style={{ marginTop: 16, marginBottom: 6, color: theme.textSoft, fontSize: 13, fontWeight: 600, textTransform: "uppercase" }}>
           🎨 {t("settings.theme.group.soft", "Couleurs douces")}
         </div>
         <div className="dc-scroll-thin" style={{ overflowX: "auto", padding: "6px 0 10px 0", marginTop: 4, marginBottom: 4 }}>
@@ -1117,16 +1092,7 @@ export default function Settings({ go }: Props) {
           </div>
         </div>
 
-        <div
-          style={{
-            marginTop: 16,
-            marginBottom: 6,
-            color: theme.textSoft,
-            fontSize: 13,
-            fontWeight: 600,
-            textTransform: "uppercase",
-          }}
-        >
+        <div style={{ marginTop: 16, marginBottom: 6, color: theme.textSoft, fontSize: 13, fontWeight: 600, textTransform: "uppercase" }}>
           🌑 {t("settings.theme.group.dark", "Thèmes Dark Premium")}
         </div>
         <div className="dc-scroll-thin" style={{ overflowX: "auto", padding: "6px 0 10px 0", marginTop: 4, marginBottom: 4 }}>
@@ -1161,9 +1127,7 @@ export default function Settings({ go }: Props) {
           marginBottom: 16,
         }}
       >
-        <h2 style={{ margin: 0, marginBottom: 6, fontSize: 18, color: theme.primary }}>
-          {t("settings.lang", "Langue")}
-        </h2>
+        <h2 style={{ margin: 0, marginBottom: 6, fontSize: 18, color: theme.primary }}>{t("settings.lang", "Langue")}</h2>
 
         <div style={{ display: "flex", flexWrap: "wrap", gap: 10, marginTop: 12 }}>
           {LANG_CHOICES.map((opt) => (
@@ -1192,24 +1156,12 @@ export default function Settings({ go }: Props) {
           marginBottom: 24,
         }}
       >
-        <h2
-          style={{
-            margin: 0,
-            marginBottom: 6,
-            fontSize: 16,
-            color: theme.primary,
-            textTransform: "uppercase",
-            letterSpacing: 1,
-          }}
-        >
+        <h2 style={{ margin: 0, marginBottom: 6, fontSize: 16, color: theme.primary, textTransform: "uppercase", letterSpacing: 1 }}>
           {t("settings.reset.title", "Réinitialiser l’application")}
         </h2>
 
         <p style={{ fontSize: 11, color: theme.textSoft, marginBottom: 10, lineHeight: 1.4 }}>
-          {t(
-            "settings.reset.subtitle",
-            "Efface tous les profils locaux, BOTS, stats, historique de parties et réglages. Action définitive."
-          )}
+          {t("settings.reset.subtitle", "Efface tous les profils locaux, BOTS, stats, historique de parties et réglages. Action définitive.")}
         </p>
 
         <button
@@ -1249,32 +1201,24 @@ export default function Settings({ go }: Props) {
     // ✅ Jeux réellement disponibles
     const ENABLED: Record<GameId, boolean> = {
       darts: true,
-      petanque: true, // ✅ activé
+      petanque: true,
       pingpong: false,
       babyfoot: false,
     };
 
     const onPick = (id: GameId) => {
-      // Persist “jeu au démarrage”
       try {
         localStorage.setItem(START_GAME_KEY, id);
       } catch {}
-    
-      // ✅ Runtime switch: notifie App sans reload
+
       try {
         window.dispatchEvent(new CustomEvent("dc:sport-change", { detail: { sport: id } }));
       } catch {}
-    
-      // Navigation immédiate
+
       if (!go) return;
-    
-      if (id === "petanque") {
-        go("petanque_menu");
-      } else {
-        // IMPORTANT: on ne va pas sur un home "contextuel petanque"
-        // App va basculer le sport runtime, donc home redeviendra Darts.
-        go("home");
-      }
+
+      if (id === "petanque") go("petanque_menu");
+      else go("home");
     };
 
     const onReset = () => {
@@ -1294,9 +1238,7 @@ export default function Settings({ go }: Props) {
           marginBottom: 16,
         }}
       >
-        <h2 style={{ margin: 0, marginBottom: 6, fontSize: 18, color: theme.primary }}>
-          {t("settings.sport.title", "Choix de sport")}
-        </h2>
+        <h2 style={{ margin: 0, marginBottom: 6, fontSize: 18, color: theme.primary }}>{t("settings.sport.title", "Choix de sport")}</h2>
 
         <p className="subtitle" style={{ fontSize: 12, color: theme.textSoft, marginBottom: 12, lineHeight: 1.4 }}>
           {t("settings.sport.subtitle.short", "Sélectionne le jeu à utiliser au démarrage.")}
@@ -1363,9 +1305,7 @@ export default function Settings({ go }: Props) {
                   }}
                 />
 
-                <div style={{ fontSize: 12, color: theme.textSoft, fontWeight: 800, letterSpacing: 0.4 }}>
-                  {g.label}
-                </div>
+                <div style={{ fontSize: 12, color: theme.textSoft, fontWeight: 800, letterSpacing: 0.4 }}>{g.label}</div>
 
                 {!enabled && (
                   <div className="subtitle" style={{ fontSize: 10, color: theme.textSoft, opacity: 0.9 }}>
@@ -1396,8 +1336,6 @@ export default function Settings({ go }: Props) {
       </section>
     );
   }
-
-  // ---------------- Header style StatsShell ----------------
 
   const headerTitle =
     tab === "menu"
@@ -1436,7 +1374,6 @@ export default function Settings({ go }: Props) {
         color: theme.text,
       }}
     >
-      {/* Retour (comportement shell) */}
       <div style={{ paddingInline: 16, marginBottom: 10 }}>
         <button
           type="button"
@@ -1456,7 +1393,6 @@ export default function Settings({ go }: Props) {
         </button>
       </div>
 
-      {/* ===== HEADER (style StatsShell) ===== */}
       <div style={{ width: "100%", maxWidth: 520, paddingInline: 18, marginInline: "auto", marginBottom: 16 }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
           <div style={{ textAlign: "left" }}>
@@ -1501,7 +1437,6 @@ export default function Settings({ go }: Props) {
         </div>
       </div>
 
-      {/* ===== BODY (menu cards comme StatsShell) ===== */}
       <div style={{ width: "100%", maxWidth: 520, marginInline: "auto", paddingInline: 12 }}>
         {tab === "menu" && (
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
@@ -1540,12 +1475,7 @@ export default function Settings({ go }: Props) {
           </div>
         )}
 
-        {tab === "account" && (
-          <AccountPages
-            go={go}
-            onBackToSettingsMenu={() => setTab("menu")}
-          />
-        )}
+        {tab === "account" && <AccountPages go={go} onBackToSettingsMenu={() => setTab("menu")} />}
 
         {tab === "theme" && <ThemeSection />}
         {tab === "lang" && <LangSection />}

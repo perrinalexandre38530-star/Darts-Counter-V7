@@ -128,6 +128,15 @@ function prettyPlayerName(raw: string, fallback: string) {
   return s;
 }
 
+
+function getPlayerDisplay(p: any, fallback: string) {
+  // p peut être: { name, label, id, uuid, profileId... } ou une string
+  const raw =
+    (typeof p === "string" ? p : (p?.name ?? p?.label ?? p?.displayName ?? p?.id ?? p?.uuid ?? "")) as string;
+  return prettyPlayerName(raw, fallback);
+}
+
+
 function MedallionAvatar({
   src,
   size = 66,
@@ -231,7 +240,7 @@ function safeJsonParse<T>(raw: string | null, fallback: T): T {
 
 /**
  * Extraction tolérante Teams + roster depuis matchCfg (priorité) puis st.
- * Fallback sur st.teamA/st.teamB.
+ * Fallback sur st.teams.A/st.teams.B.
  */
 function extractTeams(st: any, matchCfg: any): { A: TeamLine; B: TeamLine } {
   const asStr = (v: any) => (v == null ? "" : String(v)).trim();
@@ -328,8 +337,8 @@ function extractTeams(st: any, matchCfg: any): { A: TeamLine; B: TeamLine } {
   const teamA_1 = matchCfg?.teams?.A ?? matchCfg?.cfg?.teams?.A;
   const teamB_1 = matchCfg?.teams?.B ?? matchCfg?.cfg?.teams?.B;
 
-  const teamA_2 = matchCfg?.teamA ?? matchCfg?.cfg?.teamA;
-  const teamB_2 = matchCfg?.teamB ?? matchCfg?.cfg?.teamB;
+  const teamA_2 = matchCfg?.teams.A ?? matchCfg?.cfg?.teams.A;
+  const teamB_2 = matchCfg?.teams.B ?? matchCfg?.cfg?.teams.B;
 
   const teamsArr = matchCfg?.teams ?? matchCfg?.cfg?.teams;
   const teamA_3 = Array.isArray(teamsArr)
@@ -383,7 +392,7 @@ function extractTeams(st: any, matchCfg: any): { A: TeamLine; B: TeamLine } {
       ? { name: flatAName, logo: flatALogo, players: flatAPlayers }
       : null) ??
     st?.teams?.A ??
-    (st?.teamA ? { name: st.teamA } : null) ??
+    (st?.teams.A ? { name: st.teams.A } : null) ??
     null;
 
   const rawB =
@@ -394,7 +403,7 @@ function extractTeams(st: any, matchCfg: any): { A: TeamLine; B: TeamLine } {
       ? { name: flatBName, logo: flatBLogo, players: flatBPlayers }
       : null) ??
     st?.teams?.B ??
-    (st?.teamB ? { name: st.teamB } : null) ??
+    (st?.teams.B ? { name: st.teams.B } : null) ??
     null;
 
   const pickPlayers = (rawTeam: any) => {
@@ -418,14 +427,14 @@ function extractTeams(st: any, matchCfg: any): { A: TeamLine; B: TeamLine } {
 
   const A: TeamLine = {
     id: asStr(rawA?.id) || undefined,
-    name: asStr(rawA?.name ?? rawA?.label ?? st?.teamA) || "Équipe A",
+    name: asStr(rawA?.name ?? rawA?.label ?? st?.teams.A) || "Équipe A",
     logoDataUrl: normalizeLogo(rawA),
     players: normalizePlayers(pickPlayers(rawA), profilesIndex),
   };
 
   const B: TeamLine = {
     id: asStr(rawB?.id) || undefined,
-    name: asStr(rawB?.name ?? rawB?.label ?? st?.teamB) || "Équipe B",
+    name: asStr(rawB?.name ?? rawB?.label ?? st?.teams.B) || "Équipe B",
     logoDataUrl: normalizeLogo(rawB),
     players: normalizePlayers(pickPlayers(rawB), profilesIndex),
   };
@@ -652,7 +661,7 @@ function PetanqueHeaderArcade(props: {
                 }}
               >
                 {/* TEAM A */}
-                <div style={{ display: "grid", justifyItems: "start", gap: 6, minWidth: 0 }}>
+                <div style={{ display: "grid", justifyItems: "center", gap: 6, minWidth: 0 }}>
                   <MedallionAvatar
                     src={teamAImg}
                     size={72}
@@ -670,6 +679,7 @@ function PetanqueHeaderArcade(props: {
                       textShadow: `0 0 12px ${colorA}55`,
                       maxWidth: 160,
                       whiteSpace: "nowrap",
+                      textAlign: "center",
                       overflow: "hidden",
                       textOverflow: "ellipsis",
                     }}
@@ -715,7 +725,7 @@ function PetanqueHeaderArcade(props: {
                           textShadow: `0 0 14px ${colorA}66`,
                           lineHeight: 1,
                           minWidth: 36,
-                          textAlign: "right",
+                          textAlign: "center",
                         }}
                       >
                         {scoreA ?? 0}
@@ -785,7 +795,7 @@ function PetanqueHeaderArcade(props: {
                 </div>
     
                 {/* TEAM B */}
-                <div style={{ display: "grid", justifyItems: "end", gap: 6, minWidth: 0 }}>
+                <div style={{ display: "grid", justifyItems: "center", gap: 6, minWidth: 0 }}>
                   <MedallionAvatar
                     src={teamBImg}
                     size={72}
@@ -805,7 +815,7 @@ function PetanqueHeaderArcade(props: {
                       whiteSpace: "nowrap",
                       overflow: "hidden",
                       textOverflow: "ellipsis",
-                      textAlign: "right",
+                      textAlign: "center",
                     }}
                     title={teams?.B?.name || "TEAM B"}
                   >
@@ -912,7 +922,43 @@ export default function PetanquePlay({ go, params }: Props) {
     []
   );
 
+  
   // ==========================================
+  // ✅ STATS — Résumé (ticker auto 3s)
+  // ==========================================
+  const statsTickerDefs = React.useMemo(
+    () =>
+      [
+        { k: "points" as const, label: "Points" },
+        { k: "carreau" as const, label: "Carreau" },
+        { k: "tirReussi" as const, label: "Tir OK" },
+        { k: "trou" as const, label: "Trou" },
+        { k: "bec" as const, label: "Bec" },
+        { k: "butAnnulation" as const, label: "But KO" },
+        { k: "butPoint" as const, label: "But +" },
+      ] as const,
+    []
+  );
+
+  const [statsTickerIndex, setStatsTickerIndex] = React.useState(0);
+
+  React.useEffect(() => {
+    const t = window.setInterval(() => setStatsTickerIndex((i) => i + 1), 3000);
+    return () => window.clearInterval(t);
+  }, []);
+
+  const statsTickerCurrent = statsTickerDefs[statsTickerIndex % statsTickerDefs.length];
+
+  const statsTickerRows = React.useMemo(() => {
+    const all = [...teams.A.players, ...teams.B.players];
+    const k = statsTickerCurrent?.k ?? "points";
+    return all
+      .map((p) => ({ p, v: (playerStats[p.id] ?? EMPTY_STATS)[k] ?? 0 }))
+      .filter((x) => x.v > 0)
+      .sort((a, b) => b.v - a.v)
+      .slice(0, 3);
+  }, [teams, playerStats, statsTickerCurrent, statsTickerIndex]);
+// ==========================================
   // ✅ UI COMPACTE : sheet joueur + attribution points après mène
   // ==========================================
   type PendingAssign = { team: PetanqueTeamId; pts: number } | null;
@@ -1702,86 +1748,71 @@ const commitEndFromSheet = React.useCallback(() => {
       />
 
       <div style={{ paddingTop: headerPad, display: "flex", flexDirection: "column", gap: 12 }}>
-        {/* ✅ COMPOSITION (2 colonnes côte à côte) */}
+        
+{/* ✅ COMPOSITION (Teams) */}
 {!isFfa3 && (
-  <div className="card" style={cardStyle(theme)}>
-    <div className="subtitle" style={sub(theme)}>ÉQUIPES</div>
-
-    <div
-      style={{
-        display: "grid",
-        gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
-        gap: 12,
-      }}
-    >
+  <div className="card" style={cardStyle}>
+    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
       {(["A", "B"] as const).map((side) => {
         const t = side === "A" ? teams.A : teams.B;
-        const teamColor = pickTeamColor(theme, side);
-
+        const color = pickTeamColor(theme, side);
+        const players = t?.players ?? [];
         return (
-          <div key={side} className="card" style={cardSoftStyle(theme)}>
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
-              <div className="subtitle" style={{ ...sub(theme), color: teamColor }}>
-                {t.name}
+          <div
+            key={side}
+            style={{
+              border: `1px solid ${color}33`,
+              borderRadius: 16,
+              padding: 12,
+              background: "rgba(0,0,0,0.25)",
+              boxShadow: `0 0 0 1px ${color}14 inset, 0 10px 26px rgba(0,0,0,0.35)`,
+            }}
+          >
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                gap: 10,
+                marginBottom: 10,
+              }}
+            >
+              <div style={{ fontSize: 12, fontWeight: 900, letterSpacing: 1, color }}>
+                {(t?.name || (side === "A" ? "TEAM A" : "TEAM B")).toUpperCase()}
               </div>
-              <div className="subtitle" style={muted(theme)}>Rôles</div>
+              <div style={{ fontSize: 11, color: "rgba(255,255,255,0.65)" }}>Rôles</div>
             </div>
 
-            {!t.players.length ? (
-              <div className="subtitle" style={muted(theme)}>
-                Aucun joueur détecté (configure la composition pour avatars + rôles).
-              </div>
-            ) : (
-              <>
-                {/* Avatars 1 seule ligne */}
-                <div style={{ display: "flex", gap: 10, overflowX: "auto", paddingBottom: 4 }}>
-                  {t.players.map((p, idx) => {
-                    const safeName = prettyPlayerName(p.name, `Joueur ${idx + 1}`);
-                    const code = roleCodeFromLabel(p.role);
-                    return (
-                      <div key={p.id} style={{ width: 96, flex: "0 0 auto", textAlign: "center" }}>
-                        <MedallionAvatar
-                          src={p.profile ? getAvatarSrc(p.profile) : null}
-                          size={58}
-                          border={`${teamColor}66`}
-                          glow={`${teamColor}22`}
-                          fallback={(safeName || "?").slice(0, 1).toUpperCase()}
-                        />
-                        <div
-                          style={{
-                            marginTop: 6,
-                            fontWeight: 1100 as any,
-                            fontSize: 12,
-                            whiteSpace: "nowrap",
-                            overflow: "hidden",
-                            textOverflow: "ellipsis",
-                          }}
-                          title={safeName}
-                        >
-                          {safeName}
-                        </div>
-
-                        <div style={{ marginTop: 6, display: "flex", justifyContent: "center" }}>
-                          <span style={rolePillStyle(theme, code)}>{code}</span>
-                        </div>
-
-                        {/* ✅ petit + pour stats joueur */}
-                        <div style={{ marginTop: 8 }}>
-                          <button
-                            className="btn"
-                            style={{ ...miniBtnOn(theme), width: "100%", height: 34 }}
-                            onClick={() => openPlayerSheet(p)}
-                            title="Ajouter / modifier stats joueur"
-                          >
-                            +
-                          </button>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </>
-            )}
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+              {players.map((p: any, idx: number) => {
+                const nm = getPlayerDisplay(p) || `Joueur ${idx + 1}`;
+                const code = roleCodeFromLabel(p?.role);
+                return (
+                  <div
+                    key={p?.id ?? idx}
+                    style={{
+                      display: "flex",
+                      flexDirection: "column",
+                      alignItems: "center",
+                      textAlign: "center",
+                      gap: 6,
+                      padding: "8px 6px",
+                      borderRadius: 14,
+                      background: "rgba(0,0,0,0.22)",
+                      border: "1px solid rgba(255,255,255,0.06)",
+                    }}
+                  >
+                    <MedallionAvatar src={p?.avatarUrl || p?.avatar || ""} border={color} glow={0.55} size={54} />
+                    <div style={{ fontSize: 12, fontWeight: 800, lineHeight: 1.05, color: "#fff" }}>
+                      {nm}
+                    </div>
+                    <div style={{ lineHeight: 1 }}>
+                      <span style={rolePillStyle(theme, code)}>{code}</span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
           </div>
         );
       })}
@@ -1789,195 +1820,59 @@ const commitEndFromSheet = React.useCallback(() => {
   </div>
 )}
 
-{/* ✅ STATS — RÉSUMÉ (tops par stat) */}
+{/* ✅ STATS — RÉSUMÉ (ticker) */}
 {!isFfa3 && (
-  <div className="card" style={cardStyle(theme)}>
-    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
-      <div className="subtitle" style={sub(theme)}>STATS — Résumé</div>
-      <div className="subtitle" style={muted(theme)}>Top 3 par stat</div>
+  <div className="card" style={cardStyle}>
+    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+      <div style={{ fontSize: 12, fontWeight: 900, letterSpacing: 1, opacity: 0.92 }}>
+        STATS — RÉSUMÉ
+      </div>
+      <div style={{ fontSize: 11, opacity: 0.65 }}>Top 3 par stat</div>
     </div>
 
-    {(() => {
-      const all = [...teams.A.players, ...teams.B.players];
+    <div style={{ height: 10 }} />
 
-      const defs: Array<{ k: keyof PlayerStats; label: string }> = [
-        { k: "points", label: "Points" },
-        { k: "carreau", label: "Carreau" },
-        { k: "tirReussi", label: "Tir OK" },
-        { k: "trou", label: "Trou" },
-        { k: "bec", label: "Bec" },
-        { k: "butAnnulation", label: "But KO" },
-        { k: "butPoint", label: "But +" },
-      ];
-
-      const top3 = (k: keyof PlayerStats) =>
-        all
-          .map((p) => ({ p, v: (playerStats[p.id] ?? EMPTY_STATS)[k] ?? 0 }))
-          .filter((x) => x.v > 0)
-          .sort((a, b) => b.v - a.v)
-          .slice(0, 3);
-
-      return (
+    <div style={{ display: "grid", gap: 10 }}>
+      {statsTickerRows.map((r: any) => (
         <div
+          key={r.key}
           style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
-            gap: 12,
+            borderRadius: 14,
+            padding: 10,
+            border: "1px solid rgba(255,255,255,0.08)",
+            background: "rgba(0,0,0,0.22)",
           }}
         >
-          {defs.map((d) => {
-            const rows = top3(d.k);
-
-            return (
-              <div key={String(d.k)} className="card" style={cardSoftStyle(theme)}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 10 }}>
-                  <div className="subtitle" style={sub(theme)}>{d.label}</div>
-                  <div className="subtitle" style={muted(theme)}>Top</div>
-                </div>
-
-                {!rows.length ? (
-                  <div className="subtitle" style={muted(theme)}>Aucun score.</div>
-                ) : (
-                  <div style={{ display: "grid", gap: 8 }}>
-                    {rows.map(({ p, v }, i) => (
-                      <div
-                        key={p.id}
-                        style={{
-                          display: "flex",
-                          justifyContent: "space-between",
-                          alignItems: "center",
-                          gap: 10,
-                          padding: "10px 10px",
-                          borderRadius: 14,
-                          border: `1px solid ${cssVarOr("rgba(255,255,255,0.12)", "--stroke")}`,
-                          background: cssVarOr("rgba(0,0,0,0.12)", "--glass2"),
-                        }}
-                      >
-                        <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
-                          <span className="badge" style={pill(theme)}>#{i + 1}</span>
-                          <div style={{ fontWeight: 1100 as any, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                            {p.name}
-                          </div>
-                        </div>
-                        <div style={{ fontWeight: 1200 as any }}>{v}</div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            );
-          })}
-        </div>
-      );
-    })()}
-  </div>
-)}
-
-                {/* ✅ STATS JOUEURS (COMPACT) */}
-                {!isFfa3 && (
-          <div className="card" style={cardStyle(theme)}>
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "space-between",
-                gap: 10,
-              }}
-            >
-              <div>
-                <div className="subtitle" style={sub(theme)}>
-                  STATS JOUEURS
-                </div>
-                <div className="subtitle" style={muted(theme)}>
-                  Tap un joueur → panneau flottant (+/−)
-                </div>
-              </div>
-
-              <button
-                className="btn"
-                style={modeBtn(theme, quickAssignPoints)}
-                onClick={() => setQuickAssignPoints((v) => !v)}
-                title="Après +1/+2/+3… demande qui a marqué et crédite ses points"
-              >
-                Points: {quickAssignPoints ? "AUTO" : "OFF"}
-              </button>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+            <div style={{ fontSize: 12, fontWeight: 800, opacity: statsTickerCurrent?.key === r.key ? 1 : 0.55 }}>
+              {r.title}
             </div>
+            <div style={{ fontSize: 11, opacity: 0.55 }}>Top</div>
+          </div>
 
-            {!allPlayers.length ? (
-              <div className="subtitle" style={muted(theme)}>
-                Ajoute des joueurs dans la config pour activer les stats individuelles.
-              </div>
-            ) : (
-              <div style={{ display: "grid", gap: 10 }}>
-                {[
-                  { label: teams.A.name, color: pickTeamColor(theme, "A"), list: teams.A.players },
-                  { label: teams.B.name, color: pickTeamColor(theme, "B"), list: teams.B.players },
-                ].map((g, gi) => (
-                  <div key={gi} className="card" style={cardSoftStyle(theme)}>
-                    <div className="subtitle" style={{ ...sub(theme), color: g.color }}>
-                      {g.label}
-                    </div>
+          <div style={{ height: 8 }} />
 
-                    <div style={{ display: "grid", gap: 8 }}>
-                      {g.list.map((p) => {
-                        const s = playerStats[p.id] ?? EMPTY_STATS;
-                        const pts = s.points ?? 0;
-
-                        return (
-                          <button
-                            key={p.id}
-                            className="btn"
-                            style={{
-                              ...ghost(theme),
-                              display: "flex",
-                              alignItems: "center",
-                              justifyContent: "space-between",
-                              gap: 10,
-                              padding: "10px 12px",
-                            }}
-                            onClick={() => openPlayerSheet(p)}
-                          >
-                            <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
-                              <MedallionAvatar
-                                src={p.profile ? getAvatarSrc(p.profile) : null}
-                                size={34}
-                                border={cssVarOr("rgba(255,255,255,0.18)", "--stroke")}
-                                glow={"rgba(0,0,0,0)"}
-                                fallback={(p.name || "?").slice(0, 1).toUpperCase()}
-                              />
-
-                              <div style={{ minWidth: 0, textAlign: "left" }}>
-                                <div
-                                  style={{
-                                    fontWeight: 1100 as any,
-                                    whiteSpace: "nowrap",
-                                    overflow: "hidden",
-                                    textOverflow: "ellipsis",
-                                  }}
-                                >
-                                  {p.name}
-                                </div>
-
-                                <div style={{ marginTop: 4, display: "flex", gap: 8, flexWrap: "wrap" }}>
-                                  <span style={rolePill(theme)}>{p.role ?? "Non défini"}</span>
-                                  <span style={pill(theme)}>Pts: {pts}</span>
-                                </div>
-                              </div>
-                            </div>
-
-                            <span className="badge" style={pill(theme)}>
-                              Ouvrir
-                            </span>
-                          </button>
-                        );
-                      })}
-                    </div>
+          <div style={{ display: "grid", gap: 6 }}>
+            {(r.items || []).slice(0, 3).map((it: any, i: number) => (
+              <div key={i} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
+                  <div style={{ fontSize: 11, opacity: 0.65, width: 26 }}>#{i + 1}</div>
+                  <div style={{ fontSize: 12, fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    {it.name}
                   </div>
-                ))}
+                </div>
+                <div style={{ fontSize: 12, fontWeight: 900, opacity: 0.92 }}>{it.value}</div>
               </div>
+            ))}
+            {(r.items || []).length === 0 && (
+              <div style={{ fontSize: 12, opacity: 0.6 }}>Aucun score.</div>
             )}
           </div>
-        )}
+        </div>
+      ))}
+    </div>
+  </div>
+)}
 
         {/* ✅ GRILLE POINTS (FFA3 3 colonnes vs Teams 2 colonnes) */}
 {isFfa3 ? (
