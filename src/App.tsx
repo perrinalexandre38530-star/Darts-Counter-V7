@@ -1649,7 +1649,7 @@ function App() {
           );
         break;
 
-      // ✅ PÉTANQUE — STATS ROUTES (Option B) — pages réelles
+      // ✅ PÉTANQUE — STATS ROUTES (pages dédiées)
       case "petanque_stats_players":
         page = <PetanqueStatsPlayersPage store={store} go={go} params={routeParams} />;
         break;
@@ -1705,11 +1705,19 @@ function App() {
         break;
 
       case "tournaments":
-        page = <TournamentsHome store={store} go={go} update={update} source="local" />;
+        page = (
+          TournamentsHome
+            store={store}
+            go={go}
+            update={update}
+            source="local"
+            params={routeParams} // ✅ IMPORTANT : reçoit { sport: "petanque" }
+          />
+        );
         break;
 
       case "tournament_create":
-        page = <TournamentCreate store={store} go={go} />;
+        page = <TournamentCreate store={store} go={go} params={routeParams} />; // ✅ passe sport
         break;
 
       case "tournament_view": {
