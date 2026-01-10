@@ -57,6 +57,12 @@
 // - Settings dispatch "dc:sport-change"
 // - App écoute et met à jour le sport actif runtime + SportContext (si dispo)
 // - Résout: "cliquer Fléchettes dans Settings -> home Pétanque".
+//
+// ✅ NEW (STATS PÉTANQUE) — EXACT STATSHELL UI
+// - On NE crée PAS de CardBtn
+// - On copie StatsShell -> PetanqueStatsShell (visuel identique)
+// - On masque ONLINE et TRAINING côté Pétanque
+// - Option B (propre) : go("petanque_stats_players"), etc. (routes créées ici, pages à créer ensuite)
 // ============================================
 
 import React from "react";
@@ -170,7 +176,14 @@ import PetanquePlay from "./pages/petanque/PetanquePlay";
 import PetanqueHome from "./pages/petanque/PetanqueHome";
 import PetanqueTeams from "./pages/petanque/PetanqueTeams";
 import PetanqueTeamEdit from "./pages/petanque/PetanqueTeamEdit";
-import PetanqueStatsMenu from "./pages/petanque/PetanqueStatsMenu";
+
+// ✅ NEW: Pétanque STATS — copie visuelle StatsShell (identique UI)
+import PetanqueStatsShell from "./pages/petanque/PetanqueStatsShell";
+import PetanqueStatsPlayersPage from "./pages/petanque/PetanqueStatsPlayersPage";
+import PetanqueStatsTeamsPage from "./pages/petanque/PetanqueStatsTeamsPage";
+import PetanqueStatsLeaderboardsPage from "./pages/petanque/PetanqueStatsLeaderboardsPage";
+import PetanqueStatsMatchesPage from "./pages/petanque/PetanqueStatsMatchesPage";
+import PetanqueStatsHistoryPage from "./pages/petanque/PetanqueStatsHistoryPage";
 
 // ✅ NEW: Pétanque flow (menu/config/play)
 import PetanqueMenuGames from "./pages/petanque/PetanqueMenuGames";
@@ -390,6 +403,12 @@ type Tab =
   // ✅ NEW: Teams Pétanque (CRUD local)
   | "petanque_teams"
   | "petanque_team_edit"
+  // ✅ NEW (Option B): Stats Pétanque (routes propres)
+  | "petanque_stats_players"
+  | "petanque_stats_teams"
+  | "petanque_stats_leaderboards"
+  | "petanque_stats_matches"
+  | "petanque_stats_history"
   // (legacy / existing)
   | "petanque.menu"
   | "petanque.config"
@@ -1619,11 +1638,37 @@ function App() {
         page = <Settings go={go} />;
         break;
 
-        case "stats":
-          page = activeSport === "petanque"
-            ? <PetanqueStatsMenu go={go} />
-            : <StatsShell store={store} go={go} />;
-          break;
+      // ✅ STATS (sport-aware) — même onglet BottomNav "stats"
+      // Pétanque => PetanqueStatsShell (UI identique StatsShell + ONLINE/TRAINING masqués)
+      case "stats":
+        page =
+          activeSport === "petanque" ? (
+            <PetanqueStatsShell store={store} go={go} />
+          ) : (
+            <StatsShell store={store} go={go} />
+          );
+        break;
+
+      // ✅ PÉTANQUE — STATS ROUTES (Option B) — pages réelles
+      case "petanque_stats_players":
+        page = <PetanqueStatsPlayersPage store={store} go={go} params={routeParams} />;
+        break;
+
+      case "petanque_stats_teams":
+        page = <PetanqueStatsTeamsPage store={store} go={go} params={routeParams} />;
+        break;
+
+      case "petanque_stats_leaderboards":
+        page = <PetanqueStatsLeaderboardsPage store={store} go={go} params={routeParams} />;
+        break;
+
+      case "petanque_stats_matches":
+        page = <PetanqueStatsMatchesPage store={store} go={go} params={routeParams} />;
+        break;
+
+      case "petanque_stats_history":
+        page = <PetanqueStatsHistoryPage store={store} go={go} params={routeParams} />;
+        break;
 
       case "statsHub":
         page = (

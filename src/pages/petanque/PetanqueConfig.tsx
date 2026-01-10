@@ -17,6 +17,7 @@
 // ✅ NEW (Singles SOLO): mode solo 2 joueurs EXACTS, pas d’équipes (UI & payload)
 // ✅ FIX: en SOLO (1v1 & 1v1v1) on BLOQUE la sélection au quota (pas de remplacement)
 // ✅ FIX: pas de section RÔLES en SOLO (un joueur a forcément tous les rôles)
+// ✅ NEW (TOURNOI): mode tournoi PÉTANQUE uniquement (format + nb équipes + baseMode)
 // =============================================================
 
 import React from "react";
@@ -42,7 +43,8 @@ type PetanqueModeId =
   | "ffa3" // ✅ NEW
   | "variants"
   | "handicap"
-  | "training";
+  | "training"
+  | "tournament"; // ✅ NEW
 
 type Props = {
   store: Store;
@@ -58,6 +60,10 @@ type ThrowOrderRule = "free" | "fixed";
 type PlayerRole = "tireur" | "pointeur1" | "pointeur2" | "polyvalent";
 
 type VariantPresetKey = "1v2" | "2v3" | "3v4" | "4v3" | "3v2" | "2v1";
+
+// ✅ NEW: tournoi
+type TournamentFormat = "single_elim" | "round_robin";
+type TournamentMaxTeams = 4 | 8 | 16;
 
 type PetanqueConfigPayload = {
   id: string;
@@ -100,6 +106,13 @@ type PetanqueConfigPayload = {
     ballsPerTeam: number;
     preset?: VariantPresetKey;
   };
+
+  // ✅ NEW: tournoi
+  tournament?: {
+    format: TournamentFormat;
+    maxTeams: TournamentMaxTeams;
+    baseMode: Exclude<PetanqueModeId, "tournament">; // le match joué dans le tournoi
+  } | null;
 };
 
 const TARGET_SCORES = [11, 13, 15, 21] as const;
@@ -137,6 +150,7 @@ function requiredPlayersFixed(mode: PetanqueModeId) {
   if (mode === "triplette") return 6;
   if (mode === "quadrette") return 8;
   if (mode === "ffa3") return 3; // ✅ NEW
+  if (mode === "tournament") return 4; // ✅ fallback (sera basé sur baseMode)
   return 1;
 }
 
@@ -217,13 +231,30 @@ export default function PetanqueConfig({ store, go, params }: Props) {
       ? "variants"
       : rawMode === "handicap"
       ? "handicap"
+      : rawMode === "tournament"
+      ? "tournament"
       : (rawMode as PetanqueModeId);
 
-  const isFfa3 = mode === "ffa3";
-  const isVariants = mode === "variants" || mode === "handicap";
+  // ✅ NEW: mode tournoi + base mode (match joué pendant le tournoi)
+  const isTournament = mode === "tournament";
+  const [tournamentFormat, setTournamentFormat] =
+    React.useState<TournamentFormat>("single_elim");
+  const [tournamentMaxTeams, setTournamentMaxTeams] =
+    React.useState<TournamentMaxTeams>(8);
+  const [tournamentBaseMode, setTournamentBaseMode] = React.useState<
+    Exclude<PetanqueModeId, "tournament">
+  >("doublette");
+
+  // ⚠️ Le "mode effectif" sert à calculer quotas / équipes / variantes
+  const effectiveMode: Exclude<PetanqueModeId, "tournament"> = isTournament
+    ? tournamentBaseMode
+    : (mode as Exclude<PetanqueModeId, "tournament">);
+
+  const isFfa3 = effectiveMode === "ffa3";
+  const isVariants = effectiveMode === "variants" || effectiveMode === "handicap";
 
   // ✅ NEW: modes SOLO = pas d'équipes (UI & payload)
-  const isSoloNoTeams = isFfa3 || mode === "singles";
+  const isSoloNoTeams = isFfa3 || effectiveMode === "singles";
 
   // ✅ Sans bots IA
   const profiles: Profile[] = React.useMemo(
@@ -312,8 +343,8 @@ export default function PetanqueConfig({ store, go, params }: Props) {
   const need = React.useMemo(() => {
     if (isFfa3) return 3; // ✅ FFA3 = 3 joueurs EXACTS
     if (isVariants) return Math.max(1, teamASizeState) + Math.max(1, teamBSizeState);
-    return requiredPlayersFixed(mode);
-  }, [isFfa3, isVariants, mode, teamASizeState, teamBSizeState]);
+    return requiredPlayersFixed(effectiveMode);
+  }, [isFfa3, isVariants, effectiveMode, teamASizeState, teamBSizeState]);
 
   // -------------------------
   // Paramètres
@@ -337,7 +368,7 @@ export default function PetanqueConfig({ store, go, params }: Props) {
       return;
     }
 
-    if (mode === "quadrette") {
+    if (effectiveMode === "quadrette") {
       setTeamASizeState(4);
       setTeamBSizeState(4);
       setAutoCompensation(false);
@@ -365,7 +396,7 @@ export default function PetanqueConfig({ store, go, params }: Props) {
       setTargetScore(targetScoreForBallsPerTeam(bal.ballsPerTeam));
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mode]);
+  }, [effectiveMode, isVariants, isSoloNoTeams]);
 
   // Sélection auto selon need
   React.useEffect(() => {
@@ -378,7 +409,7 @@ export default function PetanqueConfig({ store, go, params }: Props) {
       return [...take, ...pool.slice(0, Math.max(0, missing))];
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [need, mode, profiles]);
+  }, [need, effectiveMode, profiles]);
 
   // Nettoyage roles
   React.useEffect(() => {
@@ -397,7 +428,7 @@ export default function PetanqueConfig({ store, go, params }: Props) {
     setSelectedIds((prev) => {
       const exists = prev.includes(id);
 
-      if (mode === "training") {
+      if (effectiveMode === "training") {
         if (exists) return [];
         return [id];
       }
@@ -421,21 +452,21 @@ export default function PetanqueConfig({ store, go, params }: Props) {
   }
 
   const canStart = React.useMemo(() => {
-    if (mode === "training") return selectedIds.length === 1;
+    if (effectiveMode === "training") return selectedIds.length === 1;
     if (isFfa3) return selectedIds.length === 3; // ✅ EXACT 3
     // singles: need=2 => exact 2 via règle générale
     return selectedIds.length === need;
-  }, [mode, isFfa3, selectedIds.length, need]);
+  }, [effectiveMode, isFfa3, selectedIds.length, need]);
 
   // En SOLO, on ne veut pas de logique équipe A/B (mais on garde les tailles pour les autres modes)
   const teamASize = isVariants
     ? clampInt(teamASizeState, 1, 4)
-    : mode === "training"
+    : effectiveMode === "training"
     ? 1
     : Math.floor(need / 2);
 
   const teamBSize =
-    mode === "training"
+    effectiveMode === "training"
       ? 0
       : isVariants
       ? clampInt(teamBSizeState, 1, 4)
@@ -477,9 +508,9 @@ export default function PetanqueConfig({ store, go, params }: Props) {
     if (isVariants) {
       ballsA = ballsPerPlayerA.slice(0, aCount);
       ballsB = ballsPerPlayerB.slice(0, bCount);
-    } else if (mode !== "training") {
-      ballsA = defaultBallsForMode(mode, aCount);
-      ballsB = defaultBallsForMode(mode, bCount);
+    } else if (effectiveMode !== "training") {
+      ballsA = defaultBallsForMode(effectiveMode, aCount);
+      ballsB = defaultBallsForMode(effectiveMode, bCount);
     }
 
     const aName = teamAObj?.name?.trim() ? teamAObj.name.trim() : TEAM_LABELS.A;
@@ -509,7 +540,7 @@ export default function PetanqueConfig({ store, go, params }: Props) {
     selectedIds,
     teamASize,
     teamBSize,
-    mode,
+    effectiveMode,
     isVariants,
     ballsPerPlayerA,
     ballsPerPlayerB,
@@ -517,60 +548,74 @@ export default function PetanqueConfig({ store, go, params }: Props) {
     teamBObj,
   ]);
 
-  function handleStart() {
-    if (!canStart) {
-      alert(
-        mode === "training"
-          ? t("petanque.config.needOne", "Sélectionne 1 joueur pour l'entraînement.")
-          : isSoloNoTeams
-          ? mode === "singles"
-            ? t("petanque.config.needTwo", "Sélectionne exactement 2 joueurs (J1/J2).")
-            : t("petanque.config.needThree", "Sélectionne exactement 3 joueurs (J1/J2/J3).")
-          : t("petanque.config.needPlayers", `Sélectionne ${need} joueurs.`)
-      );
-      return;
-    }
-
-    const players = selectedIds
-      .slice(0, need)
-      .map((id) => profiles.find((p: any) => (p as any).id === id))
-      .filter(Boolean)
-      .map((p: any) => ({
-        id: p.id,
-        name: safeStr(p.displayName, "") || safeStr(p.name, "Joueur"),
-        avatarDataUrl: p.avatarDataUrl ?? p.avatarUrl ?? null,
-      }));
-
-    const config: PetanqueConfigPayload = {
-      id: `petanque-${Date.now()}`,
-      mode,
-      createdAt: Date.now(),
-      targetScore: Math.max(1, Math.min(99, Math.floor(Number(targetScore) || 13))),
-      measurementAllowed: !!measurementAllowed,
-      startRule,
-      throwOrderRule,
-      // ✅ SOLO/training: rôles inutiles => {}
-      roles: isSoloNoTeams || mode === "training" ? {} : roles,
-      // ✅ SOLO/training: pas d'équipes dans le payload
-      teams: isSoloNoTeams || mode === "training" ? undefined : teams,
-      players,
-      variants:
-        isVariants && !isSoloNoTeams
-          ? {
-              teamASize,
-              teamBSize,
-              ballsPerPlayerA: ballsPerPlayerA.slice(0, teamASize),
-              ballsPerPlayerB: ballsPerPlayerB.slice(0, teamBSize),
-              autoCompensation,
-              autoTargetScore,
-              ballsPerTeam,
-              preset: presetKey ?? undefined,
-            }
-          : undefined,
-    };
-
-    go("petanque.play" as any, { cfg: config, mode: config.mode });
+  // ✅ PATCH OBLIGATOIRE — remplace TON handleStart() par CE BLOC EXACT (prêt à coller)
+function handleStart() {
+  if (!canStart) {
+    alert(
+      effectiveMode === "training"
+        ? t("petanque.config.needOne", "Sélectionne 1 joueur pour l'entraînement.")
+        : isSoloNoTeams
+        ? effectiveMode === "singles"
+          ? t("petanque.config.needTwo", "Sélectionne exactement 2 joueurs (J1/J2).")
+          : t("petanque.config.needThree", "Sélectionne exactement 3 joueurs (J1/J2/J3).")
+        : t("petanque.config.needPlayers", `Sélectionne ${need} joueurs.`)
+    );
+    return;
   }
+
+  const players = selectedIds
+    .slice(0, need)
+    .map((id) => profiles.find((p: any) => (p as any).id === id))
+    .filter(Boolean)
+    .map((p: any) => ({
+      id: p.id,
+      name: safeStr(p.displayName, "") || safeStr(p.name, "Joueur"),
+      avatarDataUrl: p.avatarDataUrl ?? p.avatarUrl ?? null,
+    }));
+
+  const cfg: PetanqueConfigPayload = {
+    id: `petanque-${Date.now()}`,
+    mode, // ✅ IMPORTANT: on conserve "tournament" si c'est le mode choisi
+    createdAt: Date.now(),
+    targetScore: Math.max(1, Math.min(99, Math.floor(Number(targetScore) || 13))),
+    measurementAllowed: !!measurementAllowed,
+    startRule,
+    throwOrderRule,
+    // ✅ SOLO/training: rôles inutiles => {}
+    roles: isSoloNoTeams || effectiveMode === "training" ? {} : roles,
+    // ✅ SOLO/training: pas d'équipes dans le payload
+    teams: isSoloNoTeams || effectiveMode === "training" ? undefined : teams,
+    players,
+    variants:
+      isVariants && !isSoloNoTeams
+        ? {
+            teamASize,
+            teamBSize,
+            ballsPerPlayerA: ballsPerPlayerA.slice(0, teamASize),
+            ballsPerPlayerB: ballsPerPlayerB.slice(0, teamBSize),
+            autoCompensation,
+            autoTargetScore,
+            ballsPerTeam,
+            preset: presetKey ?? undefined,
+          }
+        : undefined,
+
+    // ✅ NEW: tournoi (scopé Pétanque)
+    tournament: isTournament
+      ? {
+          format: tournamentFormat,
+          maxTeams: tournamentMaxTeams,
+          baseMode: tournamentBaseMode,
+        }
+      : null,
+  };
+
+  // ✅ PATCH OBLIGATOIRE : matchId neuf, SANS condition
+  go("petanque_play", {
+    cfg,
+    matchId: globalThis.crypto?.randomUUID?.() ?? String(Date.now()),
+  });
+}
 
   const primary = theme?.primary ?? "#f7c85c";
   const primarySoft = theme?.primarySoft ?? "rgba(247,200,92,0.16)";
@@ -755,13 +800,17 @@ export default function PetanqueConfig({ store, go, params }: Props) {
           <div style={{ fontSize: 12, opacity: 0.7, color: "#d9d9e4", marginTop: 2 }}>
             {t("petanque.config.subtitle", "Prépare ta partie avant de commencer.")}
           </div>
+
           <div style={{ marginTop: 6, fontSize: 12, color: "#b8bdd8" }}>
-            {t("petanque.config.mode", "Mode")} : <b style={{ color: "#fff" }}>{mode}</b>
+            {t("petanque.config.mode", "Mode")} :{" "}
+            <b style={{ color: "#fff" }}>
+              {isTournament ? `tournament (${tournamentBaseMode})` : effectiveMode}
+            </b>
           </div>
 
           {isSoloNoTeams && (
             <div style={{ marginTop: 6, fontSize: 11, color: "#9ea3bf" }}>
-              {mode === "singles"
+              {effectiveMode === "singles"
                 ? t("petanque.config.singlesSoloHint", "Singles : mode solo — sélectionne exactement 2 joueurs (J1/J2).")
                 : t("petanque.config.ffa3Hint", "FFA3 : mode solo — sélectionne exactement 3 joueurs (J1/J2/J3).")}
             </div>
@@ -770,6 +819,94 @@ export default function PetanqueConfig({ store, go, params }: Props) {
       </header>
 
       <div style={{ flex: 1, overflowY: "auto", paddingTop: 4, paddingBottom: 12 }}>
+        {/* ✅ NEW: TOURNOI (bloc dédié) */}
+        {isTournament && (
+          <section
+            style={{
+              background: cardBg,
+              borderRadius: 18,
+              padding: 12,
+              marginBottom: 12,
+              boxShadow: "0 16px 40px rgba(0,0,0,0.55)",
+              border: `1px solid rgba(255,255,255,0.04)`,
+            }}
+          >
+            <h3 style={{ fontSize: 13, textTransform: "uppercase", letterSpacing: 1, fontWeight: 700, color: primary, marginBottom: 10 }}>
+              {t("petanque.tournament.title", "Tournoi")}
+            </h3>
+
+            <div style={{ marginBottom: 10, fontSize: 11, color: "#9ea3bf" }}>
+              {t(
+                "petanque.tournament.note",
+                "Le tournoi configure le format global (élimination/poules + nombre d’équipes). Le match joué dans le tournoi se règle ci-dessous."
+              )}
+            </div>
+
+            <div style={{ marginBottom: 12 }}>
+              <LabelRow label={t("petanque.tournament.baseMode", "Match du tournoi")} />
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                {(["singles", "doublette", "triplette", "quadrette", "variants", "handicap", "ffa3"] as Array<
+                  Exclude<PetanqueModeId, "tournament">
+                >).map((m) => (
+                  <PillButton
+                    key={m}
+                    label={m.toUpperCase()}
+                    active={tournamentBaseMode === m}
+                    onClick={() => setTournamentBaseMode(m)}
+                    primary={primary}
+                    primarySoft={primarySoft}
+                    compact
+                    // training n'est pas proposé ici
+                  />
+                ))}
+              </div>
+            </div>
+
+            <div style={{ marginBottom: 12 }}>
+              <LabelRow label={t("petanque.tournament.format", "Format du tournoi")} />
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                <PillButton
+                  label={t("petanque.tournament.format.singleElim", "Élimination directe")}
+                  active={tournamentFormat === "single_elim"}
+                  onClick={() => setTournamentFormat("single_elim")}
+                  primary={primary}
+                  primarySoft={primarySoft}
+                />
+                <PillButton
+                  label={t("petanque.tournament.format.roundRobin", "Poules")}
+                  active={tournamentFormat === "round_robin"}
+                  onClick={() => setTournamentFormat("round_robin")}
+                  primary={primary}
+                  primarySoft={primarySoft}
+                />
+              </div>
+            </div>
+
+            <div>
+              <LabelRow label={t("petanque.tournament.maxTeams", "Nombre d’équipes")} />
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                {([4, 8, 16] as TournamentMaxTeams[]).map((n) => (
+                  <PillButton
+                    key={n}
+                    label={`${n}`}
+                    active={tournamentMaxTeams === n}
+                    onClick={() => setTournamentMaxTeams(n)}
+                    primary={primary}
+                    primarySoft={primarySoft}
+                    compact
+                  />
+                ))}
+              </div>
+              <div style={{ fontSize: 11, color: "#7c80a0", marginTop: 6 }}>
+                {t(
+                  "petanque.tournament.maxTeamsHint",
+                  "Le nombre d’équipes correspond aux participants du tournoi (pas aux joueurs du match en cours)."
+                )}
+              </div>
+            </div>
+          </section>
+        )}
+
         {/* JOUEURS */}
         <section
           style={{
@@ -795,7 +932,7 @@ export default function PetanqueConfig({ store, go, params }: Props) {
           </div>
 
           {/* ✅ Équipes (noms & logos) — MASQUÉ en SOLO */}
-          {mode !== "training" && !isSoloNoTeams && (
+          {effectiveMode !== "training" && !isSoloNoTeams && (
             <div
               style={{
                 marginBottom: 14,
@@ -993,7 +1130,7 @@ export default function PetanqueConfig({ store, go, params }: Props) {
 
                   // Halo
                   let halo = primary;
-                  if (!isSoloNoTeams && mode !== "training") {
+                  if (!isSoloNoTeams && effectiveMode !== "training") {
                     const idx = selectedIds.indexOf(p.id);
                     if (idx >= 0) halo = idx < teamASize ? TEAM_COLORS.A : TEAM_COLORS.B;
                   }
@@ -1069,7 +1206,7 @@ export default function PetanqueConfig({ store, go, params }: Props) {
                       </div>
 
                       {/* Badge position */}
-                      {mode !== "training" && active && (
+                      {effectiveMode !== "training" && active && (
                         <div style={{ marginTop: 2, display: "flex", justifyContent: "center" }}>
                           {isSoloNoTeams ? (
                             <span
@@ -1119,10 +1256,10 @@ export default function PetanqueConfig({ store, go, params }: Props) {
               </div>
 
               <p style={{ fontSize: 11, color: "#7c80a0", marginBottom: 0 }}>
-                {mode === "training"
+                {effectiveMode === "training"
                   ? t("petanque.config.hintTraining", "Sélectionne 1 joueur.")
                   : isSoloNoTeams
-                  ? mode === "singles"
+                  ? effectiveMode === "singles"
                     ? t("petanque.config.hintSingles", "Sélectionne exactement 2 joueurs (J1/J2).")
                     : t("petanque.config.hintFfa3", "Sélectionne exactement 3 joueurs (J1/J2/J3).")
                   : t("petanque.config.hint", `Sélectionne exactement ${need} joueurs.`)}
@@ -1268,7 +1405,7 @@ export default function PetanqueConfig({ store, go, params }: Props) {
         </section>
 
         {/* ✅ RÔLES (indicatif) — MASQUÉ en SOLO + training */}
-        {canStart && !isSoloNoTeams && mode !== "training" && (
+        {canStart && !isSoloNoTeams && effectiveMode !== "training" && (
           <section
             style={{
               background: cardBg,
@@ -1330,7 +1467,7 @@ export default function PetanqueConfig({ store, go, params }: Props) {
         )}
 
         {/* RÉCAP ÉQUIPES — MASQUÉ en SOLO */}
-        {mode !== "training" && !isSoloNoTeams && (
+        {effectiveMode !== "training" && !isSoloNoTeams && (
           <section
             style={{
               background: cardBg,

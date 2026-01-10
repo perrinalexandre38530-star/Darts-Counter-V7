@@ -5,6 +5,7 @@
 // ✅ Compat: accepte go(tab, params) OU setTab(tab) selon ton câblage
 // ✅ NEW: Quadrette (4v4) + Variantes (équipes impaires)
 // ✅ NEW: FFA 3 JOUEURS (chacun pour soi) — 3 boules/joueur => max 3 points/mène
+// ✅ NEW: TOURNOI (scope PÉTANQUE uniquement) — ouvre le menu tournois avec sport="petanque"
 // ✅ Compat routes: supporte "petanque.config" ET "petanque_config"
 // ============================================
 
@@ -25,7 +26,8 @@ type PetanqueModeId =
   | "triplette"
   | "quadrette"
   | "variants"
-  | "training";
+  | "training"
+  | "tournament";
 
 type ModeDef = {
   id: PetanqueModeId;
@@ -133,6 +135,21 @@ const MODES: ModeDef[] = [
       "Mode entraînement : mesure des distances, exercices, capture manuel/photo/live.",
     enabled: true,
   },
+
+  // ✅ NEW: TOURNOI (PÉTANQUE uniquement)
+  {
+    id: "tournament",
+    titleKey: "petanque.modes.tournament.title",
+    titleDefault: "TOURNOI",
+    subtitleKey: "petanque.modes.tournament.subtitle",
+    subtitleDefault: "Multi-parties — élimination / poules (selon config).",
+    infoTitleKey: "petanque.modes.tournament.infoTitle",
+    infoTitleDefault: "Tournoi Pétanque",
+    infoBodyKey: "petanque.modes.tournament.infoBody",
+    infoBodyDefault:
+      "Mode tournoi Pétanque. La structure (élimination directe, poules, nombre d’équipes) se règle dans la page de configuration.",
+    enabled: true,
+  },
 ];
 
 export default function PetanqueMenuGames({ go, setTab }: Props) {
@@ -148,19 +165,57 @@ export default function PetanqueMenuGames({ go, setTab }: Props) {
   const ROUTE_CONFIG_PRIMARY = "petanque.config";
   const ROUTE_CONFIG_FALLBACK = "petanque_config";
 
+  // ✅ Route Tournois (adapter si ton App.tsx utilise un autre tab)
+  const ROUTE_TOURNAMENTS_HOME_PRIMARY = "tournaments_home";
+  const ROUTE_TOURNAMENTS_HOME_FALLBACK = "tournaments";
+
   function getMaxEndPoints(mode: PetanqueModeId): number {
-    // Règle: on ne peut pas marquer plus de points que le nombre de boules gagnantes possibles
-    // (donc boules du camp gagnant mieux placées que la meilleure boule adverse).
-    if (mode === "singles") return 3;   // 3 boules/joueur
-    if (mode === "ffa3") return 3;      // 3 boules/joueur, un seul gagnant
-    if (mode === "doublette") return 6; // 2 joueurs x 3 boules
-    if (mode === "triplette") return 6; // 3 joueurs x 2 boules
-    if (mode === "quadrette") return 8; // 4 joueurs x 2 boules (tel que défini dans l'UI)
+    if (mode === "singles") return 3;
+    if (mode === "ffa3") return 3;
+    if (mode === "doublette") return 6;
+    if (mode === "triplette") return 6;
+    if (mode === "quadrette") return 8;
+
+    // ✅ tournament: par défaut 6 (sera affiné dans la config)
+    if (mode === "tournament") return 6;
+
     // variants/training: par défaut 6 (sera affiné dans la config)
     return 6;
   }
 
+  function openPetanqueTournamentsHome() {
+    // ✅ IMPORTANT: on envoie sport="petanque" pour isoler le scope côté tournois
+    const params = { sport: "petanque" };
+
+    if (typeof go === "function") {
+      try {
+        go(ROUTE_TOURNAMENTS_HOME_PRIMARY as any, params);
+        return;
+      } catch {
+        go(ROUTE_TOURNAMENTS_HOME_FALLBACK as any, params);
+        return;
+      }
+    }
+
+    if (typeof setTab === "function") {
+      // setTab seul ne supporte pas params : fallback navigation simple
+      setTab(ROUTE_TOURNAMENTS_HOME_PRIMARY as any);
+      return;
+    }
+
+    console.error(
+      "[PetanqueMenuGames] Aucun handler de navigation: props.go et props.setTab sont absents."
+    );
+  }
+
   function navigate(mode: PetanqueModeId) {
+    // ✅ TOURNOI: on ouvre directement le menu Tournois (scope petanque),
+    // au lieu de passer par PetanqueConfig.
+    if (mode === "tournament") {
+      openPetanqueTournamentsHome();
+      return;
+    }
+
     const mappedMode =
       mode === "singles"
         ? "simple"
@@ -172,7 +227,6 @@ export default function PetanqueMenuGames({ go, setTab }: Props) {
 
     const maxEndPoints = getMaxEndPoints(mode);
 
-    // On envoie aussi une info pratique pour la config/play (non obligatoire)
     const meta =
       mode === "ffa3"
         ? { kind: "ffa", players: 3 }

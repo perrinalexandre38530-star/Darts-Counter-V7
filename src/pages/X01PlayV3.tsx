@@ -1479,6 +1479,10 @@ React.useEffect(() => {
 
 const [multiplier, setMultiplier] = React.useState<1 | 2 | 3>(1);
 const [bustError, setBustError] = React.useState<string | null>(null);
+  // ✅ UI helpers for BUST (used by keypad cancel / validate flows)
+  const [bustBanner, setBustBanner] = React.useState<boolean>(false);
+  const [isBust, setIsBust] = React.useState<boolean>(false);
+
 const [currentThrow, setCurrentThrow] = React.useState<UIDart[]>([]);
 
 // ✅ ÉTAT: dernière volée par joueur (sert à PlayersListOnly + bust preview)
@@ -1763,10 +1767,8 @@ const validateThrow = async () => {
     const lastIsDouble = !!last && (last.mult === 2 || (last.v === 25 && last.mult === 2));
       const lastIsTriple = !!last && last.mult === 3;
       const lastIsFinisher = (outMode === "double") ? lastIsDouble : (outMode === "master") ? (lastIsDouble || lastIsTriple) : true;
-    const isCheckoutNow =
-      !isBustNow && remainingAfter === 0 && isValidFinisher(lastD as any);
-
-    // ✅ sons scores (80..179 + null + 180) + délai voix (>=2s)
+    const isCheckoutNow = !isBustNow && remainingAfter === 0 && lastIsFinisher;
+// ✅ sons scores (80..179 + null + 180) + délai voix (>=2s)
     playScoreSfxAndMaybeDelayVoice({
       playerName,
       pid,
@@ -1909,8 +1911,7 @@ React.useEffect(() => {
         const remainingAfter = scoreBefore - visitScore;
         const lastD = ui[ui.length - 1];
         const lastIsDouble = !!lastD && (lastD.mult === 2 || (lastD.v === 25 && lastD.mult === 2));
-        const isCheckoutNow =
-          !isBustNow && remainingAfter === 0 && isValidFinisher(lastD as any);
+        const isCheckoutNow = !isBustNow && remainingAfter === 0 && lastIsFinisher;
 
         playScoreSfxAndMaybeDelayVoice({
           playerName,

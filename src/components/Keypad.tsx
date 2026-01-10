@@ -32,9 +32,6 @@ type Props = {
 
   /** ✅ NEW: remplace le centre (ex: logo Killer). Prioritaire sur hideTotal */
   centerSlot?: React.ReactNode;
-
-  /** ✅ NEW — quand true: seule "Valider" + "Annuler" restent actives */
-  bustLock?: boolean;
 };
 
 /* ---------- Helpers ---------- */
@@ -154,20 +151,7 @@ export default function Keypad({
   hidePreview = false,
   hideTotal = false,
   centerSlot = null,
-  bustLock = false,
 }: Props) {
-  const canInput = !bustLock;
-  const disabledFx: React.CSSProperties = {
-    opacity: 0.35,
-    cursor: "not-allowed",
-    filter: "grayscale(0.8)",
-  };
-
-  const guard = (fn: () => void) => () => {
-    if (!canInput) return;
-    fn();
-  };
-
   const rows = [
     [0, 1, 2, 3, 4, 5, 6],
     [7, 8, 9, 10, 11, 12, 13],
@@ -194,12 +178,10 @@ export default function Keypad({
           style={{
             ...btnDouble,
             borderColor: multiplier === 2 ? "#9bd7ff" : "rgba(255,255,255,.08)",
-            ...(!canInput ? disabledFx : null),
           }}
           aria-pressed={multiplier === 2}
-          disabled={!canInput}
-          onClick={guard(onDouble)}
-          onMouseUp={guard(onSimple)}
+          onClick={onDouble}
+          onMouseUp={onSimple}
           title="Double"
         >
           DOUBLE
@@ -210,12 +192,10 @@ export default function Keypad({
           style={{
             ...btnTriple,
             borderColor: multiplier === 3 ? "#ffd0ff" : "rgba(255,255,255,.08)",
-            ...(!canInput ? disabledFx : null),
           }}
           aria-pressed={multiplier === 3}
-          disabled={!canInput}
-          onClick={guard(onTriple)}
-          onMouseUp={guard(onSimple)}
+          onClick={onTriple}
+          onMouseUp={onSimple}
           title="Triple"
         >
           TRIPLE
@@ -227,7 +207,6 @@ export default function Keypad({
           onClick={onCancel}
           onContextMenu={(e) => {
             e.preventDefault();
-            if (!canInput) return;
             onBackspace?.();
           }} // clic droit = supprimer la dernière entrée locale
           title="Annuler (logique gérée par l'écran X01) — clic droit : annuler la dernière entrée"
@@ -252,9 +231,8 @@ export default function Keypad({
               <button
                 key={n}
                 type="button"
-                style={{ ...cell, ...(!canInput ? disabledFx : null) }}
-                disabled={!canInput}
-                onClick={guard(() => onNumber(n))}
+                style={cell}
+                onClick={() => onNumber(n)}
                 title={n === 0 ? "MISS" : String(n)}
               >
                 {n}
@@ -278,9 +256,8 @@ export default function Keypad({
         <div style={{ display: "flex" }}>
           <button
             type="button"
-            style={{ ...btnBull, minWidth: 96, ...(!canInput ? disabledFx : null) }}
-            onClick={guard(onBull)}
-            disabled={!canInput}
+            style={{ ...btnBull, minWidth: 96 }}
+            onClick={onBull}
           >
             BULL
           </button>

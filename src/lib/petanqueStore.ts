@@ -224,6 +224,28 @@ export function finishPetanque(state: PetanqueState, winner: PetanqueTeamId | nu
   return next;
 }
 
+/**
+ * ✅ FIN DE MATCH (centrale)
+ * Déduit automatiquement le vainqueur à partir des scores et de la cible.
+ * 
+ * Règles:
+ * - Si déjà finished => no-op
+ * - Si aucun score n'atteint la target => no-op
+ * - Si les deux dépassent (rare) => prend le score le plus élevé
+ */
+export function finishPetanqueMatch(state: PetanqueState): PetanqueState {
+  if (state.status === "finished" || state.finished) return state;
+
+  const target = Math.max(1, Number(state.target) || 13);
+  const a = Number(state.scoreA) || 0;
+  const b = Number(state.scoreB) || 0;
+
+  if (a < target && b < target) return state;
+
+  const winner: PetanqueTeamId | null = a === b ? null : a > b ? "A" : "B";
+  return finishPetanque({ ...state, target }, winner);
+}
+
 export function addEnd(state: PetanqueState, winner: PetanqueTeamId, points: number): PetanqueState {
   // ✅ blocage si match terminé (status est prioritaire)
   if (state.status === "finished" || state.finished) return state;
@@ -237,13 +259,6 @@ export function addEnd(state: PetanqueState, winner: PetanqueTeamId, points: num
   else scoreB += pts;
 
   const target = Math.max(1, Math.floor(Number(state.target) || 13));
-  let finished = false;
-  let win: PetanqueTeamId | null = null;
-
-  if (scoreA >= target || scoreB >= target) {
-    finished = true;
-    win = scoreA >= target ? "A" : "B";
-  }
 
   const next: PetanqueState = {
     ...state,
@@ -252,12 +267,8 @@ export function addEnd(state: PetanqueState, winner: PetanqueTeamId, points: num
     target,
     ends: [end, ...state.ends],
 
-    // ✅ NEW: sync status/finished
-    status: finished ? "finished" : "active",
-    finishedAt: finished ? Date.now() : undefined,
-
-    finished,
-    winner: finished ? win : null,
+    // ✅ IMPORTANT: la FIN DE MATCH est gérée ailleurs (finishPetanqueMatch)
+    // Ici on se contente d'ajouter la mène + persister l'état.
   };
 
   savePetanqueState(next);
