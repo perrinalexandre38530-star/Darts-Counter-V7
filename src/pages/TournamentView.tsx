@@ -50,6 +50,8 @@ import {
   deleteMatchesForTournamentLocal,
 } from "../lib/tournaments/storeLocal";
 
+import { History } from "../lib/history";
+
 type Props = {
   store: Store;
   go: (tab: any, params?: any) => void;
@@ -118,6 +120,60 @@ function getInitials(name?: string) {
   const a = (parts[0]?.[0] || "").toUpperCase();
   const b = (parts[1]?.[0] || parts[0]?.[1] || "").toUpperCase();
   return (a + b) || "?";
+}
+
+// ------------------------------------------------------------
+// ✅ PÉTANQUE SCORE HELPERS (tournoi)
+// - Score peut venir de match.payload / match.summary
+// - OU du storage History via match.historyMatchId
+// ------------------------------------------------------------
+type PetScore = { a: number; b: number };
+type ScoreMap = Record<string, PetScore>;
+
+function isPetanqueTournament(tour: any): boolean {
+  const raw =
+    tour?.game?.mode ||
+    tour?.mode ||
+    tour?.gameKey ||
+    tour?.type ||
+    tour?.format?.game ||
+    tour?.config?.mode ||
+    "";
+  const mode = String(raw || "").toLowerCase().trim();
+  return mode === "petanque" || mode.includes("petanque");
+}
+
+function extractPetanqueScoreFromMatch(m: any): PetScore | null {
+  if (!m) return null;
+
+  // 1) payload direct
+  const p = m?.payload;
+  const k1 = String(p?.kind || "").toLowerCase();
+  if (k1 === "petanque") {
+    const a = Number(p?.scoreA);
+    const b = Number(p?.scoreB);
+    if (Number.isFinite(a) && Number.isFinite(b)) return { a: Math.floor(a), b: Math.floor(b) };
+  }
+
+  // 2) summary direct
+  const s = m?.summary;
+  const k2 = String(s?.kind || "").toLowerCase();
+  if (k2 === "petanque") {
+    const a = Number(s?.scoreA);
+    const b = Number(s?.scoreB);
+    if (Number.isFinite(a) && Number.isFinite(b)) return { a: Math.floor(a), b: Math.floor(b) };
+  }
+
+  // 3) payload.summary
+  const ps = p?.summary;
+  const k3 = String(ps?.kind || "").toLowerCase();
+  if (k3 === "petanque") {
+    const a = Number(ps?.scoreA);
+    const b = Number(ps?.scoreB);
+    if (Number.isFinite(a) && Number.isFinite(b)) return { a: Math.floor(a), b: Math.floor(b) };
+  }
+
+  return null;
 }
 
 /* -------------------------
@@ -434,11 +490,27 @@ function PlayerPill({ name, avatarUrl, dim, extra }: any) {
     <div style={{ display: "flex", gap: 10, alignItems: "center", minWidth: 0, opacity: dim ? 0.6 : 1 }}>
       <AvatarCircle name={name} avatarUrl={avatarUrl} size={30} dim={dim} />
       <div style={{ minWidth: 0, display: "grid", gap: 2 }}>
-        <div style={{ fontWeight: 900, fontSize: 12.5, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+        <div
+          style={{
+            fontWeight: 900,
+            fontSize: 12.5,
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            whiteSpace: "nowrap",
+          }}
+        >
           {name || "Joueur"}
         </div>
         {extra ? (
-          <div style={{ fontSize: 11, opacity: 0.75, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+          <div
+            style={{
+              fontSize: 11,
+              opacity: 0.75,
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap",
+            }}
+          >
             {extra}
           </div>
         ) : null}
@@ -525,8 +597,7 @@ function koTourLabel(roundIndex: number, totalRounds: number) {
 
 function matchPhaseLabel(m: any, viewKind: string, koRoundsCount: number) {
   const isGroupLike =
-    String(m?.phase || "") === "groups" ||
-    (typeof m?.groupIndex === "number" && m.groupIndex >= 0);
+    String(m?.phase || "") === "groups" || (typeof m?.groupIndex === "number" && m.groupIndex >= 0);
 
   if (isGroupLike) {
     const g = typeof m?.groupIndex === "number" ? m.groupIndex : null;
@@ -828,9 +899,11 @@ function ScoreBadge({ score }: { score: { a: number; b: number } | null }) {
 function WorldCupKoDetailsColumns({
   koMatches,
   renderMatchCard,
+  getScore,
 }: {
   koMatches: any[];
   renderMatchCard: (m: any) => React.ReactNode;
+  getScore: (m: any) => { a: number; b: number } | null;
 }) {
   if (!koMatches?.length) return <div style={{ fontSize: 12, opacity: 0.78 }}>Aucun match KO à afficher.</div>;
 
@@ -868,7 +941,7 @@ function WorldCupKoDetailsColumns({
               }}
             >
               {items.map((m) => {
-                const sc = getMatchScore(m);
+                const sc = getScore(m);
                 return (
                   <div key={m.id} style={{ position: "relative", minHeight: CARD_H }}>
                     <div style={{ height: "100%" }}>{renderMatchCard(m)}</div>
@@ -1153,6 +1226,9 @@ export default function TournamentView({ store, go, id }: Props) {
   const [loading, setLoading] = React.useState(true);
   const [resultMatch, setResultMatch] = React.useState<TournamentMatch | null>(null);
 
+  // ✅ PÉTANQUE : cache score par historyMatchId
+  const [petScoresByHistoryId, setPetScoresByHistoryId] = React.useState<ScoreMap>({});
+
   const safeMatches: TournamentMatch[] = React.useMemo(() => (Array.isArray(matches) ? matches : []), [matches]);
 
   // ✅ ref pour merge meta (fix bug poules après simulation)
@@ -1293,6 +1369,50 @@ export default function TournamentView({ store, go, id }: Props) {
   }, [id]);
 
   // ------------------------------------------------------------
+  // ✅ PÉTANQUE : charge les scores depuis History via historyMatchId
+  // ------------------------------------------------------------
+  React.useEffect(() => {
+    let alive = true;
+
+    async function loadPetanqueScoresFromHistory() {
+      try {
+        if (!tour) return;
+        if (!isPetanqueTournament(tour)) return;
+
+        const ids = (matches || []).map((m: any) => String(m?.historyMatchId || "")).filter(Boolean);
+        const unique = Array.from(new Set(ids)).filter((hid) => hid && !petScoresByHistoryId[hid]);
+        if (!unique.length) return;
+
+        const next: ScoreMap = {};
+        for (const hid of unique) {
+          try {
+            const rec: any = await (History as any)?.get?.(hid);
+            const s = rec?.summary || rec?.payload?.summary || rec?.payload || null;
+            const k = String(s?.kind || "").toLowerCase();
+            if (k !== "petanque") continue;
+
+            const a = Number(s?.scoreA);
+            const b = Number(s?.scoreB);
+            if (Number.isFinite(a) && Number.isFinite(b)) {
+              next[hid] = { a: Math.floor(a), b: Math.floor(b) };
+            }
+          } catch {}
+        }
+
+        if (alive && Object.keys(next).length) {
+          setPetScoresByHistoryId((prev) => ({ ...prev, ...next }));
+        }
+      } catch {}
+    }
+
+    loadPetanqueScoresFromHistory();
+    return () => {
+      alive = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tour, matches]);
+
+  // ------------------------------------------------------------
   // PERSIST (MERGE + FREEZE META)
   // ------------------------------------------------------------
   const persist = React.useCallback(async (nextTour: Tournament, nextMatches: TournamentMatch[]) => {
@@ -1356,15 +1476,15 @@ export default function TournamentView({ store, go, id }: Props) {
     // So we MUST prefer phase/stageIndex over groupIndex to avoid "everything in Poule A".
     const phaseOf = (m: any) => String(m?.phase || "");
     const stageOf = (m: any) => (typeof m?.stageIndex === "number" ? m.stageIndex : -1);
-  
+
     const isKo = (m: any) => phaseOf(m) === "ko" || stageOf(m) === 1;
-  
+
     const isRep = (m: any) =>
       phaseOf(m) === "repechage" ||
       stageOf(m) === 2 ||
       // compat: certains double_ko ont stageIndex=1 pour losers
       (stageOf(m) === 1 && (tour as any)?.viewKind === "double_ko" && phaseOf(m) === "repechage");
-  
+
     const isGroup = (m: any) => {
       if (isKo(m) || isRep(m)) return false;
       const ph = phaseOf(m);
@@ -1374,11 +1494,11 @@ export default function TournamentView({ store, go, id }: Props) {
       // fallback legacy si groupIndex>=0 mais pas KO/Rep
       return typeof m?.groupIndex === "number" && m.groupIndex >= 0;
     };
-  
+
     const groups = displayMatches.filter(isGroup);
     const ko = displayMatches.filter((m: any) => !isGroup(m) && isKo(m));
     const rep = displayMatches.filter((m: any) => !isGroup(m) && isRep(m));
-  
+
     return { groups, ko, rep };
   }, [displayMatches, tour]);
 
@@ -1509,6 +1629,41 @@ export default function TournamentView({ store, go, id }: Props) {
     }
   }, [tour, safeMatches, persist]);
 
+  // ------------------------------------------------------------
+  // ✅ SCORE UNIFIÉ (Pétanque via payload/History, sinon engine score normal)
+  // ------------------------------------------------------------
+  const isPet = React.useMemo(() => isPetanqueTournament(tour), [tour]);
+
+  function getPetanqueScoreForMatch(m: any): PetScore | null {
+    if (!isPet) return null;
+
+    const direct = extractPetanqueScoreFromMatch(m);
+    if (direct) return direct;
+
+    const hid = String(m?.historyMatchId || "");
+    if (hid && petScoresByHistoryId[hid]) return petScoresByHistoryId[hid];
+
+    if (typeof m?.scoreA === "number" && typeof m?.scoreB === "number") {
+      return { a: Math.floor(m.scoreA), b: Math.floor(m.scoreB) };
+    }
+
+    return null;
+  }
+
+  function getScoreForAnyMatch(m: any) {
+    if (isPet) {
+      const ps = getPetanqueScoreForMatch(m);
+      if (ps) return ps;
+    }
+    return getMatchScore(m);
+  }
+
+  function scoreTextAny(m: any) {
+    const sc = getScoreForAnyMatch(m);
+    if (!sc) return "";
+    return `${sc.a} - ${sc.b}`;
+  }
+
   function renderMatchCard(m: any, accent: string) {
     const status = String(m?.status || "pending");
     const playable = isRealPlayable(m);
@@ -1604,7 +1759,11 @@ export default function TournamentView({ store, go, id }: Props) {
             <div style={{ minWidth: 0, flex: "1 1 0", overflow: "hidden" }}>
               {renderPlayerOrTbd(safeMatches as any, m, "a", playersById)}
             </div>
-            <div style={{ fontWeight: 950, fontSize: 13, opacity: 0.9, flex: "0 0 auto" }}>{done ? scoreText(m) : "VS"}</div>
+
+            <div style={{ fontWeight: 950, fontSize: 13, opacity: 0.9, flex: "0 0 auto" }}>
+              {done ? scoreTextAny(m) : "VS"}
+            </div>
+
             <div style={{ minWidth: 0, flex: "1 1 0", display: "flex", justifyContent: "flex-end", overflow: "hidden" }}>
               {renderPlayerOrTbd(safeMatches as any, m, "b", playersById)}
             </div>
@@ -1898,7 +2057,13 @@ export default function TournamentView({ store, go, id }: Props) {
                     <div style={{ marginTop: 12 }}>
                       {(() => {
                         const detailsKo = koMatches.filter((m: any) => !isByeMatch(m));
-                        return <WorldCupKoDetailsColumns koMatches={detailsKo} renderMatchCard={(m: any) => renderMatchCard(m, TAB_COLORS.bracket)} />;
+                        return (
+                          <WorldCupKoDetailsColumns
+                            koMatches={detailsKo}
+                            renderMatchCard={(m: any) => renderMatchCard(m, TAB_COLORS.bracket)}
+                            getScore={getScoreForAnyMatch}
+                          />
+                        );
                       })()}
                     </div>
                   ) : null}
@@ -2066,7 +2231,13 @@ export default function TournamentView({ store, go, id }: Props) {
           >
             <div style={{ padding: "12px 14px", display: "flex", alignItems: "center", justifyContent: "space-between", borderBottom: "1px solid rgba(255,255,255,0.08)" }}>
               <div style={{ fontWeight: 950, fontSize: 14, color: "#ffcf57" }}>Résultat</div>
-              <button type="button" onClick={() => setResultMatch(null)} style={{ border: "none", background: "transparent", color: "rgba(255,255,255,0.75)", fontSize: 20, cursor: "pointer", lineHeight: 1 }} aria-label="Fermer" title="Fermer">
+              <button
+                type="button"
+                onClick={() => setResultMatch(null)}
+                style={{ border: "none", background: "transparent", color: "rgba(255,255,255,0.75)", fontSize: 20, cursor: "pointer", lineHeight: 1 }}
+                aria-label="Fermer"
+                title="Fermer"
+              >
                 ✕
               </button>
             </div>
