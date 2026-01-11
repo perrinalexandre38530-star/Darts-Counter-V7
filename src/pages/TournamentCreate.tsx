@@ -7,8 +7,17 @@
 // - forceMode=petanque => mode verrouillé "petanque"
 // - Ajout section "Pétanque — Composition" (taille d’équipe)
 // - Règle de sélection : nb joueurs doit être multiple de teamSize et >= teamSize*2
-// - Auto-fill bots : complète pour atteindre un multiple valide (+ bracket pow2 en KO)
-/// ============================================
+// - ❌ PÉTANQUE = AUCUN BOT (UI + logique) + ❌ Auto-fill bots
+// - Format tournoi PÉTANQUE : KO / Championnat / Poules+KO (pas de double élimination, pas de best-of)
+// - Bracket KO en PÉTANQUE raisonné en "équipes" (Auto pow2 équipes ou Manuel nb équipes)
+//
+// ✅ FIX (ENGINE V2):
+// - engine V2 attend `viewKind` (et repechage optionnel) -> PASSÉS à createTournamentDraft
+//
+// ✅ FIX IMPORTANT (DOUBLON BRACKET):
+// - stages conformes à Tournaments.tsx V2 (ids: ko/rr/w/l/gf/rep + role)
+// - évite KO “se” qui provoque souvent un affichage double dans TournamentView
+// ============================================
 
 import React from "react";
 import type { Store } from "../lib/types";
@@ -22,7 +31,7 @@ import { upsertTournamentLocal, upsertMatchesForTournamentLocal } from "../lib/t
 import ProfileAvatar from "../components/ProfileAvatar";
 import ProfileStarRing from "../components/ProfileStarRing";
 
-// ✅ AVATARS BOTS PRO (assets existants)
+// ✅ AVATARS BOTS PRO (assets existants) — (utilisés hors Pétanque)
 import avatarBullyBoy from "../assets/avatars/bots-pro/bully-boy.png";
 import avatarCoolHand from "../assets/avatars/bots-pro/cool-hand.png";
 import avatarFlyingScotsman from "../assets/avatars/bots-pro/flying-scotsman.png";
@@ -176,6 +185,7 @@ async function safeAvg3DForProfile(profileRaw: any, store?: any): Promise<number
 
 /* -----------------------------
    ✅ BOTS CATALOG (assets + user-created)
+   (Utilisé hors Pétanque)
 ------------------------------ */
 
 // ✅ 1) Bots PRO (assets réels)
@@ -800,7 +810,7 @@ export default function TournamentCreate({ store, go, params }: Props) {
     setInfoOpen(true);
   };
 
-  // ✅ IMPORTANT: refresh bots même si store ne change pas
+  // ✅ IMPORTANT: refresh bots même si store ne change pas (utile hors pétanque)
   const [botsRefresh, setBotsRefresh] = React.useState(0);
 
   React.useEffect(() => {
@@ -847,7 +857,7 @@ export default function TournamentCreate({ store, go, params }: Props) {
       .filter((p: any) => !!p.id);
   }, [store, botsRefresh]);
 
-  // ✅ BOTS CATALOG = assets PRO + bots user (store + localStorage) + dédupe
+  // ✅ BOTS CATALOG (hors pétanque)
   const botsCatalog = React.useMemo(() => {
     const pro = BOTS_PRO_ASSETS.map((b) => ({
       id: String(b.id),
@@ -928,11 +938,20 @@ export default function TournamentCreate({ store, go, params }: Props) {
     setPlayerIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
   };
 
-  // ---- bots sélectionnés (séparés)
+  // ---- bots sélectionnés (hors pétanque)
   const [botIds, setBotIds] = React.useState<string[]>([]);
   const toggleBot = (id: string) => setBotIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
 
-  const totalSelectedIds = React.useMemo(() => Array.from(new Set([...playerIds, ...botIds])).filter(Boolean), [playerIds, botIds]);
+  // ❌ PÉTANQUE = AUCUN BOT (sécurité absolue)
+  React.useEffect(() => {
+    if (!isPetanque) return;
+    setBotIds([]);
+  }, [isPetanque]);
+
+  const totalSelectedIds = React.useMemo(() => {
+    if (isPetanque) return Array.from(new Set([...playerIds])).filter(Boolean);
+    return Array.from(new Set([...playerIds, ...botIds])).filter(Boolean);
+  }, [playerIds, botIds, isPetanque]);
 
   // ✅ PÉTANQUE contraintes de roster
   const petanqueMinPlayers = petanqueTeamSize * 2;
@@ -954,8 +973,12 @@ export default function TournamentCreate({ store, go, params }: Props) {
   const [bracketAuto, setBracketAuto] = React.useState(true);
   const [bracketTarget, setBracketTarget] = React.useState<string>("");
 
-  // ✅ auto-fill bots
+  // ✅ auto-fill bots (désactivé en Pétanque)
   const [autoFillBots, setAutoFillBots] = React.useState(true);
+  React.useEffect(() => {
+    if (!isPetanque) return;
+    setAutoFillBots(false);
+  }, [isPetanque]);
 
   // ✅ seedMode + repechage
   const [seedMode, setSeedMode] = React.useState<"random" | "byLevel">("random");
@@ -985,7 +1008,9 @@ export default function TournamentCreate({ store, go, params }: Props) {
   };
 
   const OTHER_INFO = {
-    players: "Sélectionne des profils humains et/ou des BOTS IA. Minimum 2 joueurs (ou 2 équipes en Pétanque).",
+    players: isPetanque
+      ? "Sélectionne des profils humains. Minimum = 2 équipes. Total joueurs = multiple de la taille d’équipe."
+      : "Sélectionne des profils humains et/ou des BOTS IA. Minimum 2 joueurs pour créer.",
     botsSelect: "Sélection BOTS : bots PRO (assets) + bots créés via Profiles → bots.",
     bestOf: "Best-of = nombre de manches à gagner. BO3 = 2 manches gagnantes, BO5 = 3, etc.",
     seedMode: "Têtes de série : Aléatoire mélange au départ. Par niveau trie par avg3D (du meilleur au moins bon).",
@@ -993,9 +1018,11 @@ export default function TournamentCreate({ store, go, params }: Props) {
     maxPlayers: "Optionnel : si tu as énormément de profils, tu peux fixer un max. Vide = illimité.",
     rrRounds: "Nombre de tours en Championnat / Poules : 1 = chacun rencontre chacun une fois (dans sa poule).",
     groups: "Joueurs par poule : l’app calcule automatiquement le nombre de poules (ceil(N / joueursParPoule)).",
-    bracket: "Bracket KO : Auto = prochaine puissance de 2 (byes). Manuel = taille libre (ex: 24, 32, 48…).",
+    bracket: isPetanque
+      ? "Bracket KO : Auto = prochaine puissance de 2 en nombre d’équipes (byes). Manuel = nombre d’équipes (8, 16, 24…)."
+      : "Bracket KO : Auto = prochaine puissance de 2 (byes). Manuel = taille libre (ex: 24, 32, 48…).",
     autofill: "Auto-fill BOTS : complète automatiquement si tu n’as pas assez de joueurs (désactivé en Championnat).",
-    petanqueTeam: "Composition Pétanque : Simple (1), Doublette (2), Triplette (3), Quadrette (4). Le nombre total de joueurs doit être un multiple.",
+    petanqueTeam: "Composition Pétanque : Simple (1), Doublette (2), Triplette (3), Quadrette (4). Le total joueurs doit être un multiple.",
   };
 
   // ✅ engine V2: viewKind attendu
@@ -1071,7 +1098,9 @@ export default function TournamentCreate({ store, go, params }: Props) {
     return s / selected.length;
   }
 
-  // ✅ KO sizing: pour Pétanque on raisonne en "équipes" (teamCount), puis on re-multiplie par teamSize
+  // ✅ KO sizing:
+  // - hors pétanque: joueurs
+  // - pétanque: équipes => pow2 équipes * teamSize, ou manuel nb équipes * teamSize
   function computeDesiredSize(currentPlayersCount: number) {
     if (format === "round_robin") return null;
 
@@ -1093,58 +1122,35 @@ export default function TournamentCreate({ store, go, params }: Props) {
     return nextPow2(teams) * teamSize;
   }
 
-  function normalizeToMultiple(nPlayers: number, teamSize: number) {
-    if (teamSize <= 1) return nPlayers;
-    const r = nPlayers % teamSize;
-    return r === 0 ? nPlayers : (nPlayers + (teamSize - r));
-  }
-
   async function createTournament() {
     if (!canCreate) return;
+
+    // ✅ PÉTANQUE : sécurité (aucun bot, seed random)
+    const effectiveSeedMode = isPetanque ? "random" : seedMode;
 
     const cap = Math.floor(numFromText(maxPlayers));
     const capEnabled = Number.isFinite(cap) && cap > 1;
 
     const selectedProfiles = profiles.filter((p: any) => playerIds.includes(String(p.id)));
 
-    const basePlayers = selectedProfiles.map((p: any) => {
+    let merged = selectedProfiles.map((p: any) => {
       const avg = Number(avgMap?.[p.id] ?? 0) || 0;
-      return { id: String(p.id), name: p.name || "Joueur", avatarDataUrl: p.avatar || null, source: "local", avg3D: avg, stars: starsFromAvg3D(avg) };
+      return {
+        id: String(p.id),
+        name: p.name || "Joueur",
+        avatarDataUrl: p.avatar || null,
+        source: "local",
+        avg3D: avg,
+        stars: starsFromAvg3D(avg),
+      };
     });
 
-    const selectedBots = botsCatalog
-      .filter((b: any) => botIds.includes(String(b.id)))
-      .map((b: any, idx: number) => ({
-        id: `bot_${String(b.id)}_${idx}_${Date.now()}`,
-        name: b.name,
-        avatarDataUrl: b.avatar ?? null,
-        source: "bot",
-        isBot: true,
-        avg3D: Number(b.avg3D) || 0,
-        stars: starsFromAvg3D(Number(b.avg3D) || 0),
-      }));
-
-    let merged = basePlayers.concat(selectedBots);
-
-    if (capEnabled && merged.length > cap) {
-      merged = shuffle(merged).slice(0, cap);
-    }
-
-    const seededPlayers =
-      seedMode === "byLevel"
-        ? merged.slice().sort((a: any, b: any) => Number(b.avg3D || 0) - Number(a.avg3D || 0))
-        : merged;
-
-    let finalPlayers = seededPlayers.slice();
-
-    // ✅ Pétanque : impose multiple d’équipe (sinon on complète si autoFillBots)
-    if (isPetanque) {
-      const needMultiple = normalizeToMultiple(finalPlayers.length, petanqueTeamSize);
-      if (needMultiple > finalPlayers.length && autoFillBots && format !== "round_robin") {
-        const avgTarget = computeAvgTarget(finalPlayers);
-        const need = needMultiple - finalPlayers.length;
-        const bots = pickBotsToFill(botsCatalog, need, avgTarget).map((b: any, idx: number) => ({
-          id: `autobot_teamfix_${String(b.id)}_${idx}_${Date.now()}`,
+    // ✅ hors pétanque: possibilité d’ajouter des bots sélectionnés
+    if (!isPetanque) {
+      const selectedBots = botsCatalog
+        .filter((b: any) => botIds.includes(String(b.id)))
+        .map((b: any, idx: number) => ({
+          id: `bot_${String(b.id)}_${idx}_${Date.now()}`,
           name: b.name,
           avatarDataUrl: b.avatar ?? null,
           source: "bot",
@@ -1152,11 +1158,22 @@ export default function TournamentCreate({ store, go, params }: Props) {
           avg3D: Number(b.avg3D) || 0,
           stars: starsFromAvg3D(Number(b.avg3D) || 0),
         }));
-        finalPlayers = finalPlayers.concat(bots);
-      }
+      merged = merged.concat(selectedBots);
     }
 
-    const shouldFill = autoFillBots && format !== "round_robin";
+    if (capEnabled && merged.length > cap) {
+      merged = shuffle(merged).slice(0, cap);
+    }
+
+    const seededPlayers =
+      effectiveSeedMode === "byLevel"
+        ? merged.slice().sort((a: any, b: any) => Number(b.avg3D || 0) - Number(a.avg3D || 0))
+        : merged;
+
+    let finalPlayers = seededPlayers.slice();
+
+    // ✅ hors pétanque: auto-fill bots possible
+    const shouldFill = !isPetanque && autoFillBots && format !== "round_robin";
     const desiredSize = computeDesiredSize(finalPlayers.length);
 
     if (shouldFill && desiredSize && finalPlayers.length < desiredSize) {
@@ -1184,7 +1201,7 @@ export default function TournamentCreate({ store, go, params }: Props) {
             outMode: x01Out,
             bestOf,
             repechageEnabled: !!repechageEnabled,
-            seedMode,
+            seedMode: effectiveSeedMode,
             rrRounds: Math.max(1, Number(rrRounds) || 1),
             playersPerGroup: Math.floor(numFromText(playersPerGroup)) || 0,
             qualifiersPerGroup: Math.floor(Number(qualifiersPerGroup) || 0),
@@ -1196,27 +1213,24 @@ export default function TournamentCreate({ store, go, params }: Props) {
           }
         : mode === "petanque"
           ? {
-              // ✅ options Pétanque
               targetScore: 13,
               teamSize: petanqueTeamSize, // 1/2/3/4
               teamLabel:
                 petanqueTeamSize === 1 ? "simple" : petanqueTeamSize === 2 ? "doublette" : petanqueTeamSize === 3 ? "triplette" : "quadrette",
-              // tourney meta
               repechageEnabled: !!repechageEnabled,
-              seedMode,
+              seedMode: "random",
               rrRounds: Math.max(1, Number(rrRounds) || 1),
               playersPerGroup: Math.floor(numFromText(playersPerGroup)) || 0,
               qualifiersPerGroup: Math.floor(Number(qualifiersPerGroup) || 0),
               bracketAuto: !!bracketAuto,
-              bracketTarget: Math.floor(numFromText(bracketTarget)) || 0,
-              desiredSize: desiredSize || 0,
-              autoFillBots: !!autoFillBots,
+              bracketTarget: Math.floor(numFromText(bracketTarget)) || 0, // nb équipes si manuel
+              desiredSize: desiredSize || 0, // nb joueurs visé (équipes * teamSize)
               maxPlayers: capEnabled ? cap : 0,
             }
           : {
               bestOf,
               repechageEnabled: !!repechageEnabled,
-              seedMode,
+              seedMode: effectiveSeedMode,
               rrRounds: Math.max(1, Number(rrRounds) || 1),
               playersPerGroup: Math.floor(numFromText(playersPerGroup)) || 0,
               qualifiersPerGroup: Math.floor(Number(qualifiersPerGroup) || 0),
@@ -1227,8 +1241,12 @@ export default function TournamentCreate({ store, go, params }: Props) {
               maxPlayers: capEnabled ? cap : 0,
             };
 
-    const stages = buildStagesForEngine(format, finalPlayers.length);
-    const viewKind = viewKindFromFormat(format);
+    // ✅ PÉTANQUE: formats autorisés uniquement
+    let effectiveFormat: TourFormat = format;
+    if (isPetanque && format === "double_ko") effectiveFormat = "single_ko";
+
+    const stages = buildStagesForEngine(effectiveFormat, finalPlayers.length);
+    const viewKind = viewKindFromFormat(effectiveFormat);
 
     const tour: Tournament = createTournamentDraft({
       name: name.trim(),
@@ -1250,8 +1268,8 @@ export default function TournamentCreate({ store, go, params }: Props) {
       repechage: { enabled: !!repechageEnabled },
 
       meta: {
-        format,
-        seedMode,
+        format: effectiveFormat,
+        seedMode: effectiveSeedMode,
         repechageEnabled: !!repechageEnabled,
         rrRounds: Math.max(1, Number(rrRounds) || 1),
         playersPerGroup: Math.floor(numFromText(playersPerGroup)) || 0,
@@ -1259,7 +1277,7 @@ export default function TournamentCreate({ store, go, params }: Props) {
         bracketAuto: !!bracketAuto,
         bracketTarget: Math.floor(numFromText(bracketTarget)) || 0,
         desiredSize: desiredSize || 0,
-        autoFillBots: !!autoFillBots,
+        autoFillBots: !isPetanque ? !!autoFillBots : false,
         maxPlayers: capEnabled ? cap : 0,
         forceMode,
         isPetanque,
@@ -1297,9 +1315,9 @@ export default function TournamentCreate({ store, go, params }: Props) {
     if (k === "players") return { title: "Joueurs", body: <>{OTHER_INFO.players}</> };
     if (k === "botsSelect") return { title: "Bots IA", body: <>{OTHER_INFO.botsSelect}</> };
 
-    if (k === "type_single") return { title: "Élimination simple", body: <>{TYPE_INFO.single_ko}</> };
+    if (k === "type_single") return { title: "Élimination (KO)", body: <>{TYPE_INFO.single_ko}</> };
     if (k === "type_double") return { title: "Élimination double", body: <>{TYPE_INFO.double_ko}</> };
-    if (k === "type_rr") return { title: "Championnat (RR)", body: <>{TYPE_INFO.round_robin}</> };
+    if (k === "type_rr") return { title: "Championnat", body: <>{TYPE_INFO.round_robin}</> };
     if (k === "type_groups") return { title: "Poules + KO", body: <>{TYPE_INFO.groups_ko}</> };
 
     if (k === "bestof") return { title: "Best-of", body: <>{OTHER_INFO.bestOf}</> };
@@ -1314,6 +1332,8 @@ export default function TournamentCreate({ store, go, params }: Props) {
 
     return { title: "Info", body: <>—</> };
   })();
+
+  const petanqueTeamsCount = Math.floor(totalSelectedIds.length / petanqueTeamSize);
 
   return (
     <div
@@ -1349,7 +1369,7 @@ export default function TournamentCreate({ store, go, params }: Props) {
             {isPetanque ? "Créer un tournoi Pétanque" : "Créer un tournoi"}
           </div>
           <div style={{ fontSize: 11.5, opacity: 0.75 }}>
-            {loadingAvg ? "Calcul niveaux…" : "Choisis un mode puis configure le format."}
+            {loadingAvg ? "Calcul niveaux…" : "Configure le tournoi puis crée."}
           </div>
         </div>
       </div>
@@ -1372,7 +1392,7 @@ export default function TournamentCreate({ store, go, params }: Props) {
             <InfoIconButton onClick={() => openInfo("maxPlayers")} />
           </div>
 
-          {/* ✅ MODE : si Pétanque => verrouillé + UI darts masquée */}
+          {/* ✅ MODE */}
           {isPetanque ? (
             <div
               style={{
@@ -1383,12 +1403,8 @@ export default function TournamentCreate({ store, go, params }: Props) {
               }}
             >
               <div style={{ fontSize: 11.5, opacity: 0.82 }}>Mode</div>
-              <div style={{ fontSize: 13, fontWeight: 950, color: primary, marginTop: 4 }}>
-                PÉTANQUE (verrouillé)
-              </div>
-              <div style={{ fontSize: 11, opacity: 0.7, marginTop: 6 }}>
-                Ce tournoi a été ouvert depuis l’entrée Pétanque (forceMode=petanque).
-              </div>
+              <div style={{ fontSize: 13, fontWeight: 950, color: primary, marginTop: 4 }}>PÉTANQUE (verrouillé)</div>
+              <div style={{ fontSize: 11, opacity: 0.7, marginTop: 6 }}>Ce tournoi a été ouvert depuis l’entrée Pétanque (forceMode=petanque).</div>
             </div>
           ) : (
             <>
@@ -1444,35 +1460,35 @@ export default function TournamentCreate({ store, go, params }: Props) {
           </div>
 
           <div style={{ marginTop: 10, fontSize: 11.5, opacity: 0.8, lineHeight: 1.35 }}>
-            Minimum : <b style={{ color: primary }}>{petanqueMinPlayers}</b> joueurs (2 équipes).
-            <br />
-            Le total sélectionné doit être un multiple de <b style={{ color: primary }}>{petanqueTeamSize}</b>.
+            Minimum : <b style={{ color: primary }}>{petanqueMinPlayers}</b> joueurs (2 équipes).<br />
+            Total sélectionné doit être un multiple de <b style={{ color: primary }}>{petanqueTeamSize}</b>.
           </div>
 
           {!petanqueMinOk ? (
             <div style={{ marginTop: 8, fontSize: 11.5, opacity: 0.75 }}>
-              ⚠️ Pas assez de joueurs pour {petanqueTeamSize === 1 ? "Simple" : petanqueTeamSize === 2 ? "Doublette" : petanqueTeamSize === 3 ? "Triplette" : "Quadrette"}.
+              ⚠️ Pas assez de joueurs pour{" "}
+              {petanqueTeamSize === 1 ? "Simple" : petanqueTeamSize === 2 ? "Doublette" : petanqueTeamSize === 3 ? "Triplette" : "Quadrette"}.
             </div>
           ) : null}
 
           {petanqueMinOk && !petanqueMultipleOk ? (
             <div style={{ marginTop: 8, fontSize: 11.5, opacity: 0.75 }}>
-              ⚠️ Total non multiple de {petanqueTeamSize}. Ajoute/enlève des joueurs (ou active l’auto-fill en KO).
+              ⚠️ Total non multiple de {petanqueTeamSize}. Ajoute/enlève des joueurs.
             </div>
           ) : null}
         </Section>
       ) : null}
 
       {/* ✅ JOUEURS */}
-      <Section title="Joueurs" subtitle="Sélectionne tes profils." accent={primary}>
+      <Section title="Joueurs" subtitle={isPetanque ? "Sélectionne tes profils (humains uniquement)." : "Sélectionne tes profils."} accent={primary}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
           <div style={{ fontSize: 12, opacity: 0.82 }}>
             <b style={{ color: primary }}>{totalSelectedIds.length}</b> sélectionné(s)
             {isPetanque ? (
               <>
                 {" "}
-                • <span style={{ opacity: 0.85 }}>équipes ≈ </span>
-                <b style={{ color: primary }}>{Math.floor(totalSelectedIds.length / petanqueTeamSize)}</b>
+                • <span style={{ opacity: 0.85 }}>équipes : </span>
+                <b style={{ color: primary }}>{petanqueTeamsCount}</b>
               </>
             ) : null}
           </div>
@@ -1506,46 +1522,50 @@ export default function TournamentCreate({ store, go, params }: Props) {
           })}
         </div>
 
-        {/* BOTS */}
-        <div style={{ marginTop: 8, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
-          <div style={{ fontSize: 12, opacity: 0.82 }}>
-            <b style={{ color: primary }}>{botIds.length}</b> bot(s)
-          </div>
+        {/* BOTS (hors pétanque uniquement) */}
+        {!isPetanque ? (
+          <>
+            <div style={{ marginTop: 8, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+              <div style={{ fontSize: 12, opacity: 0.82 }}>
+                <b style={{ color: primary }}>{botIds.length}</b> bot(s)
+              </div>
 
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end", alignItems: "center" }}>
-            <NeonGhost label="Tous les bots" onClick={() => setBotIds(botsCatalog.map((b: any) => String(b.id)))} />
-            <NeonGhost label="Aucun bot" onClick={() => setBotIds([])} />
-            <InfoIconButton onClick={() => openInfo("botsSelect")} />
-          </div>
-        </div>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end", alignItems: "center" }}>
+                <NeonGhost label="Tous les bots" onClick={() => setBotIds(botsCatalog.map((b: any) => String(b.id)))} />
+                <NeonGhost label="Aucun bot" onClick={() => setBotIds([])} />
+                <InfoIconButton onClick={() => openInfo("botsSelect")} />
+              </div>
+            </div>
 
-        <div
-          style={{
-            marginTop: 10,
-            display: "flex",
-            gap: 14,
-            overflowX: "auto",
-            overflowY: "visible",
-            paddingBottom: 10,
-            paddingTop: 10,
-            WebkitOverflowScrolling: "touch",
-            scrollSnapType: "x mandatory",
-          }}
-          className="dc-scroll-thin"
-        >
-          {botsCatalog.map((b: any) => (
-            <PlayerCarouselTile
-              key={String(b.id)}
-              active={botIds.includes(String(b.id))}
-              name={b.name}
-              avatarUrl={b.avatar}
-              avg3D={Number(b.avg3D) || 0}
-              isBot
-              onClick={() => toggleBot(String(b.id))}
-              primary={primary}
-            />
-          ))}
-        </div>
+            <div
+              style={{
+                marginTop: 10,
+                display: "flex",
+                gap: 14,
+                overflowX: "auto",
+                overflowY: "visible",
+                paddingBottom: 10,
+                paddingTop: 10,
+                WebkitOverflowScrolling: "touch",
+                scrollSnapType: "x mandatory",
+              }}
+              className="dc-scroll-thin"
+            >
+              {botsCatalog.map((b: any) => (
+                <PlayerCarouselTile
+                  key={String(b.id)}
+                  active={botIds.includes(String(b.id))}
+                  name={b.name}
+                  avatarUrl={b.avatar}
+                  avg3D={Number(b.avg3D) || 0}
+                  isBot
+                  onClick={() => toggleBot(String(b.id))}
+                  primary={primary}
+                />
+              ))}
+            </div>
+          </>
+        ) : null}
 
         {!minPlayersOk ? (
           <div style={{ marginTop: 8, fontSize: 11.5, opacity: 0.75 }}>
@@ -1554,8 +1574,8 @@ export default function TournamentCreate({ store, go, params }: Props) {
         ) : null}
       </Section>
 
-      {/* Params match */}
-      {mode === "x01" ? (
+      {/* Params match X01 (hors pétanque) */}
+      {!isPetanque && mode === "x01" ? (
         <Section title="Match — Paramètres X01" subtitle="Score de départ + IN/OUT." accent={primary}>
           <RowTitle label="Score de départ" />
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
@@ -1585,39 +1605,61 @@ export default function TournamentCreate({ store, go, params }: Props) {
       ) : null}
 
       {/* ✅ Format tournoi */}
-      <Section title="Format du tournoi" subtitle="Chaque option a son (i) comme TYPE." accent={primary}>
+      <Section title="Format du tournoi" subtitle={isPetanque ? "Formats Pétanque (réalistes)." : "Chaque option a son (i) comme TYPE."} accent={primary}>
         <RowTitle label="Type" />
-        <div style={{ display: "grid", gap: 10 }}>
-          <LineOption label="Élimination simple" active={format === "single_ko"} onClick={() => setFormat("single_ko")} onInfo={() => openInfo("type_single")} primary={primary} />
-          <LineOption label="Élimination double" active={format === "double_ko"} onClick={() => setFormat("double_ko")} onInfo={() => openInfo("type_double")} primary={primary} />
-          <LineOption label="Championnat (RR)" active={format === "round_robin"} onClick={() => setFormat("round_robin")} onInfo={() => openInfo("type_rr")} primary={primary} />
-          <LineOption label="Poules + KO" active={format === "groups_ko"} onClick={() => setFormat("groups_ko")} onInfo={() => openInfo("type_groups")} primary={primary} />
-        </div>
 
-        <div style={{ height: 14 }} />
-
-        <RowTitle label="Match — Best-of" />
-        <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 10, alignItems: "center" }}>
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-            {([1, 3, 5, 7] as BestOf[]).map((v) => (
-              <NeonPill key={v} active={bestOf === v} label={`BO${v}`} onClick={() => setBestOf(v)} primary={primary} />
-            ))}
+        {isPetanque ? (
+          <div style={{ display: "grid", gap: 10 }}>
+            <LineOption label="Élimination directe (KO)" active={format === "single_ko"} onClick={() => setFormat("single_ko")} onInfo={() => openInfo("type_single")} primary={primary} />
+            <LineOption label="Championnat" active={format === "round_robin"} onClick={() => setFormat("round_robin")} onInfo={() => openInfo("type_rr")} primary={primary} />
+            <LineOption label="Poules + Phase finale (KO)" active={format === "groups_ko"} onClick={() => setFormat("groups_ko")} onInfo={() => openInfo("type_groups")} primary={primary} />
           </div>
-          <InfoIconButton onClick={() => openInfo("bestof")} />
-        </div>
-
-        <div style={{ height: 14 }} />
-
-        <RowTitle label="Têtes de série" />
-        <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 10, alignItems: "center" }}>
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-            <NeonPill active={seedMode === "random"} label="Aléatoire" onClick={() => setSeedMode("random")} primary={primary} />
-            <NeonPill active={seedMode === "byLevel"} label="Par niveau (avg3D)" onClick={() => setSeedMode("byLevel")} primary={primary} />
+        ) : (
+          <div style={{ display: "grid", gap: 10 }}>
+            <LineOption label="Élimination simple" active={format === "single_ko"} onClick={() => setFormat("single_ko")} onInfo={() => openInfo("type_single")} primary={primary} />
+            <LineOption label="Élimination double" active={format === "double_ko"} onClick={() => setFormat("double_ko")} onInfo={() => openInfo("type_double")} primary={primary} />
+            <LineOption label="Championnat (RR)" active={format === "round_robin"} onClick={() => setFormat("round_robin")} onInfo={() => openInfo("type_rr")} primary={primary} />
+            <LineOption label="Poules + KO" active={format === "groups_ko"} onClick={() => setFormat("groups_ko")} onInfo={() => openInfo("type_groups")} primary={primary} />
           </div>
-          <InfoIconButton onClick={() => openInfo("seed")} />
-        </div>
+        )}
 
         <div style={{ height: 14 }} />
+
+        {/* Best-of (hors pétanque uniquement) */}
+        {!isPetanque ? (
+          <>
+            <RowTitle label="Match — Best-of" />
+            <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 10, alignItems: "center" }}>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                {([1, 3, 5, 7] as BestOf[]).map((v) => (
+                  <NeonPill key={v} active={bestOf === v} label={`BO${v}`} onClick={() => setBestOf(v)} primary={primary} />
+                ))}
+              </div>
+              <InfoIconButton onClick={() => openInfo("bestof")} />
+            </div>
+
+            <div style={{ height: 14 }} />
+          </>
+        ) : null}
+
+        {/* Têtes de série */}
+        {!isPetanque ? (
+          <>
+            <RowTitle label="Têtes de série" />
+            <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 10, alignItems: "center" }}>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                <NeonPill active={seedMode === "random"} label="Aléatoire" onClick={() => setSeedMode("random")} primary={primary} />
+                <NeonPill active={seedMode === "byLevel"} label="Par niveau (avg3D)" onClick={() => setSeedMode("byLevel")} primary={primary} />
+              </div>
+              <InfoIconButton onClick={() => openInfo("seed")} />
+            </div>
+            <div style={{ height: 14 }} />
+          </>
+        ) : (
+          <div style={{ fontSize: 11.5, opacity: 0.78, marginBottom: 14 }}>
+            Têtes de série : <b style={{ color: primary }}>Aléatoire</b> (Pétanque)
+          </div>
+        )}
 
         {(format === "round_robin" || format === "groups_ko") ? (
           <>
@@ -1639,7 +1681,7 @@ export default function TournamentCreate({ store, go, params }: Props) {
             <RowTitle label="Poules" />
             <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 10, alignItems: "center" }}>
               <div style={{ display: "grid", gap: 8 }}>
-                <TextInput value={playersPerGroup} onChange={(e: any) => setPlayersPerGroup(e.target.value)} placeholder="Joueurs par poule (ex: 5)" />
+                <TextInput value={playersPerGroup} onChange={(e: any) => setPlayersPerGroup(e.target.value)} placeholder={isPetanque ? "Joueurs par poule (ex: 6)" : "Joueurs par poule (ex: 5)"} />
                 <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                   {[1, 2, 3, 4, 5, 6, 8].map((n) => (
                     <NeonPill key={n} active={qualifiersPerGroup === n} label={`${n} qualif/poule`} onClick={() => setQualifiersPerGroup(n)} primary={primary} />
@@ -1666,7 +1708,11 @@ export default function TournamentCreate({ store, go, params }: Props) {
                 </div>
 
                 {!bracketAuto ? (
-                  <TextInput value={bracketTarget} onChange={(e: any) => setBracketTarget(e.target.value)} placeholder={isPetanque ? "Nb équipes (ex: 8, 16, 24…)" : "Taille bracket (ex: 24, 32, 48...)"} />
+                  <TextInput
+                    value={bracketTarget}
+                    onChange={(e: any) => setBracketTarget(e.target.value)}
+                    placeholder={isPetanque ? "Nb équipes (ex: 8, 16, 24…)" : "Taille bracket (ex: 24, 32, 48...)"}
+                  />
                 ) : null}
 
                 <div style={{ fontSize: 11, opacity: 0.7, lineHeight: 1.35 }}>
@@ -1689,18 +1735,22 @@ export default function TournamentCreate({ store, go, params }: Props) {
           <InfoIconButton onClick={() => openInfo("repechage")} />
         </div>
 
-        <div style={{ height: 14 }} />
+        {/* Auto-fill (hors pétanque uniquement) */}
+        {!isPetanque ? (
+          <>
+            <div style={{ height: 14 }} />
+            <RowTitle label="Auto-fill BOTS IA" />
+            <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 10, alignItems: "center" }}>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                <NeonPill active={autoFillBots} label="ON" onClick={() => setAutoFillBots(true)} disabled={format === "round_robin"} primary={primary} />
+                <NeonPill active={!autoFillBots} label="OFF" onClick={() => setAutoFillBots(false)} disabled={format === "round_robin"} primary={primary} />
+              </div>
+              <InfoIconButton onClick={() => openInfo("autofill")} />
+            </div>
 
-        <RowTitle label="Auto-fill BOTS IA" />
-        <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 10, alignItems: "center" }}>
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-            <NeonPill active={autoFillBots} label="ON" onClick={() => setAutoFillBots(true)} disabled={format === "round_robin"} primary={primary} />
-            <NeonPill active={!autoFillBots} label="OFF" onClick={() => setAutoFillBots(false)} disabled={format === "round_robin"} primary={primary} />
-          </div>
-          <InfoIconButton onClick={() => openInfo("autofill")} />
-        </div>
-
-        {format === "round_robin" ? <div style={{ marginTop: 8, fontSize: 11.5, opacity: 0.75 }}>ℹ️ Auto-fill désactivé en Championnat.</div> : null}
+            {format === "round_robin" ? <div style={{ marginTop: 8, fontSize: 11.5, opacity: 0.75 }}>ℹ️ Auto-fill désactivé en Championnat.</div> : null}
+          </>
+        ) : null}
       </Section>
 
       {/* CTA */}
@@ -1708,7 +1758,8 @@ export default function TournamentCreate({ store, go, params }: Props) {
         <NeonPrimary label="Créer le tournoi" onClick={createTournament} disabled={!canCreate} primary={primary} />
         {!canCreate ? (
           <div style={{ marginTop: 8, fontSize: 11.5, opacity: 0.72 }}>
-            ⚠️ {isPetanque
+            ⚠️{" "}
+            {isPetanque
               ? `Nom + au moins ${petanqueMinPlayers} joueurs + total multiple de ${petanqueTeamSize}.`
               : "Renseigne un nom, choisis un mode et sélectionne au moins 2 joueurs."}
           </div>

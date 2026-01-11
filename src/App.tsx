@@ -1,24 +1,75 @@
 // ============================================
-// src/App.tsx — Navigation + wiring propre (v5 sécurisé) — AUTH UNIQUE (FINAL)
-// ✅ RÈGLE UNIQUE (POINT FINAL) :
-// const { status, session } = useAuthOnline()
-// if (status === "loading") return <Splash />
-// if (!session) return <AuthStack />
-// return <MainApp />
+// src/App.tsx — Navigation + wiring propre (v5 sécurisé)
+// Fix: "Lancer partie" n'affiche plus la dernière reprise
+// + Intégration pages Training (menu / play / stats)
+// + X01Play V3 en parallèle du X01 actuel
+// + Stats : bouton menu => StatsShell (menu), puis StatsHub (détails)
+// + Stats Online : StatsOnline (détails ONLINE)
+// + Stats Cricket : StatsCricket (vue dédiée Cricket)
+// + SyncCenter : export/import des stats locales
+// + Account bridge : au premier lancement sans profil actif,
+//   on redirige vers Profils > Mon profil (connexion / création compte).
 //
-// ⛔️ SUPPRIMÉ DÉFINITIVEMENT :
-// - isAuthFlow / needsSession / status !== "signed_in"
-// - redirections conditionnelles par page
-// - logique auth dans le router
-// - AppGate
+// ✅ NEW (PROD Auth): callback email Supabase + reset password
+// - Supporte liens : /#/auth/callback  et  /#/auth/reset
+// - Détecte le hash au boot + hashchange
+// - Évite le chaos "otp_expired/access_denied" côté app
+//
+// ✅ NEW: SPLASH SCREEN (logo + jingle) au boot (WEB/PWA)
+// - Pop + bounce + glow + sparkle
+// - Audio best-effort (autoplay peut être bloqué par navigateur)
+// - Durée ~ 1350ms, puis app normale
+//
+// ✅ NEW: AUDIO PERSISTANT (overflow) -> la musique ne s'arrête pas au changement de page
+// - On monte un <audio id="dc-splash-audio"> AU NIVEAU AppRoot (ne se démonte pas)
+// - SplashScreen pilote ce player global (au lieu d'avoir son <audio> interne)
+//
+// ✅ NEW: CRASH CATCHER (affiche l'erreur au lieu de "Aïe aïe aïe")
+// - Wrap l'app avec <CrashCatcher> pour capturer erreurs React + window.error + unhandledrejection
+//
+// ✅ PATCH D: AUTH UNIQUE
+// - On garde AuthOnlineProvider
+// - On enlève définitivement tout AuthProvider/AuthSessionProvider legacy
+//
+// ✅ NEW: ROUTE SPECTATOR
+// - Ajout Tab "spectator"
+// - Ajout import SpectatorPage
+// - Ajout case "spectator" => <SpectatorPage .../>
+//
+// ✅ NEW: ROUTE GAME SELECT (multisports)
+// - Ajout Tab "gameSelect"
+// - Ajout import GameSelect
+// - App démarre sur gameSelect (si profil OK)  ✅ IMPORTANT: TOUJOURS GameSelect après intro
+//
+// ✅ NEW: SPORT-AWARE + PÉTANQUE
+// - Ajout SportProvider/useSport
+// - Home global (non sport-aware)
+// - Games sport-aware (Pétanque -> PetanqueHub)
+// - Boot : GameSelect TOUJOURS (même si sport déjà choisi)
+// - Ajout Tab "petanque_play" + route
+//
+// ✅ NEW (OBLIGATOIRE): TABS PÉTANQUE (menu/config/play)
+// - Ajout Tab "petanque_menu" / "petanque_config" / "petanque_play"
+// - Ajout imports PetanqueMenuGames / PetanqueConfig / PetanquePlay
+// - Ajout cases dans switch(tab)
+//
+// ✅ PATCH (IMPORTANT): SPORT SWITCH RUNTIME (sans reload / sans relancer intro)
+// - Settings dispatch "dc:sport-change"
+// - App écoute et met à jour le sport actif runtime + SportContext (si dispo)
+// - Résout: "cliquer Fléchettes dans Settings -> home Pétanque".
+//
+// ✅ NEW (STATS PÉTANQUE) — EXACT STATSHELL UI
+// - On NE crée PAS de CardBtn
+// - On copie StatsShell -> PetanqueStatsShell (visuel identique)
+// - On masque ONLINE et TRAINING côté Pétanque
+// - Option B (propre) : go("petanque_stats_players"), etc. (routes créées ici, pages à créer ensuite)
 // ============================================
 
 import React from "react";
 import BottomNav from "./components/BottomNav";
 
+import AuthStart from "./pages/AuthStart";
 import AccountStart from "./pages/AccountStart";
-import AuthV7Login from "./pages/AuthV7Login";
-import AuthV7Signup from "./pages/AuthV7Signup";
 
 import SplashScreen from "./components/SplashScreen";
 
@@ -155,6 +206,9 @@ type StartGameId = "darts" | "petanque" | "pingpong" | "babyfoot";
 
 // =============================================================
 // ✅ SAFE MERGE — profils (évite crash au boot)
+// - merge liste existante + liste réhydratée
+// - dédoublonnage par id
+// - préfère les champs "nouveaux" s’ils sont définis
 // =============================================================
 function mergeProfilesSafe<T extends { id: string }>(base: T[], incoming: T[]) {
   const a = Array.isArray(base) ? base : [];
@@ -174,7 +228,10 @@ function mergeProfilesSafe<T extends { id: string }>(base: T[], incoming: T[]) {
 }
 
 // =============================================================
-// ✅ Helpers upload avatar Supabase (PROFILES)
+// ✅ NEW: Helpers upload avatar Supabase (PROFILES)
+// - dataUrl (png base64) -> Blob
+// - upload (upsert) dans bucket public "avatars"
+// - renvoie publicUrl
 // =============================================================
 async function dataUrlToBlob(dataUrl: string): Promise<Blob> {
   const res = await fetch(dataUrl);
@@ -182,11 +239,7 @@ async function dataUrlToBlob(dataUrl: string): Promise<Blob> {
   return await res.blob();
 }
 
-async function uploadAvatarToSupabase(opts: {
-  bucket: string;
-  objectPath: string;
-  pngDataUrl: string;
-}): Promise<{ publicUrl: string }> {
+async function uploadAvatarToSupabase(opts: { bucket: string; objectPath: string; pngDataUrl: string }): Promise<{ publicUrl: string }> {
   const blob = await dataUrlToBlob(opts.pngDataUrl);
 
   const { error: upErr } = await supabase.storage.from(opts.bucket).upload(opts.objectPath, blob, {
@@ -252,9 +305,7 @@ function buildChangelogSlides(t: (k: string, d?: string) => string, entries: any
         : t("home.changelog.empty", "Améliorations et correctifs divers.");
 
     const dateStr = String(e.date ?? "").trim();
-    const title = dateStr
-      ? `${t("home.changelog.title", "Patch notes")} — ${dateStr}`
-      : t("home.changelog.title", "Patch notes");
+    const title = dateStr ? `${t("home.changelog.title", "Patch notes")} — ${dateStr}` : t("home.changelog.title", "Patch notes");
 
     return {
       id: `changelog-${e.id ?? idx}`,
@@ -271,7 +322,7 @@ function buildChangelogSlides(t: (k: string, d?: string) => string, entries: any
 }
 
 /* ============================================================
-   ✅ sanitizeStoreForCloud (anti base64 dans snapshot cloud)
+   ✅ NEW: sanitizeStoreForCloud (anti base64 dans snapshot cloud)
 ============================================================ */
 function sanitizeStoreForCloud(s: any) {
   let clone: any;
@@ -341,18 +392,23 @@ function sanitizeStoreForCloud(s: any) {
 }
 
 /* --------------------------------------------
-   ROUTES (MAIN APP uniquement — PAS D’AUTH ICI)
+   ROUTES
 -------------------------------------------- */
 type Tab =
+  | "account_start"
+  | "auth_start"
+  | "auth_forgot"
   | "home"
   | "gameSelect"
   | "games"
-  // ✅ Pétanque (snake_case)
+  // ✅ NEW (OBLIGATOIRE): Tabs Pétanque (snake_case)
   | "petanque_menu"
   | "petanque_config"
   | "petanque_play"
+  // ✅ NEW: Teams Pétanque (CRUD local)
   | "petanque_teams"
   | "petanque_team_edit"
+  // ✅ NEW (Option B): Stats Pétanque (routes propres)
   | "petanque_stats_players"
   | "petanque_stats_teams"
   | "petanque_stats_leaderboards"
@@ -362,17 +418,15 @@ type Tab =
   | "petanque_tournament_create"
   | "petanque_tournament_view"
   | "petanque_tournament_match_score"
-  // compat legacy
+  // (legacy / existing)
   | "petanque.menu"
   | "petanque.config"
   | "petanque.play"
-  // tournaments
   | "tournaments"
   | "tournament_create"
   | "tournament_view"
   | "tournament_match_play"
   | "tournament_roadmap"
-  // others
   | "profiles"
   | "profiles_bots"
   | "friends"
@@ -404,7 +458,9 @@ type Tab =
   | "avatar"
   | "x01_config_v3"
   | "x01_play_v3"
-  | "sync_center";
+  | "sync_center"
+  | "auth_callback"
+  | "auth_reset";
 
 /* redirect TrainingStats → StatsHub */
 function RedirectToStatsTraining({ go }: { go: (tab: Tab, params?: any) => void }) {
@@ -415,9 +471,9 @@ function RedirectToStatsTraining({ go }: { go: (tab: Tab, params?: any) => void 
 }
 
 /* --------------------------------------------
-   AUTH ROUTES (utilisées UNIQUEMENT dans AuthStack)
+   ✅ NEW: AUTH CALLBACK (PROD)
 -------------------------------------------- */
-function AuthCallbackRoute({ go }: { go: (t: any, p?: any) => void }) {
+function AuthCallbackRoute({ go }: { go: (t: Tab, p?: any) => void }) {
   const [msg, setMsg] = React.useState("Connexion en cours…");
 
   React.useEffect(() => {
@@ -440,18 +496,18 @@ function AuthCallbackRoute({ go }: { go: (t: any, p?: any) => void }) {
 
         if (data?.session) {
           try {
-            window.location.hash = "#/";
+            window.location.hash = "#/online";
           } catch {}
-          go("account_start");
+          go("online");
           return;
         }
 
         const { data: sub } = supabase.auth.onAuthStateChange((_evt, session) => {
           if (session) {
             try {
-              window.location.hash = "#/";
+              window.location.hash = "#/online";
             } catch {}
-            go("account_start");
+            go("online");
           }
         });
 
@@ -475,14 +531,17 @@ function AuthCallbackRoute({ go }: { go: (t: any, p?: any) => void }) {
 
   return (
     <div style={{ padding: 16 }}>
-      <button onClick={() => go("account_start")}>← Retour</button>
+      <button onClick={() => go("profiles", { view: "me", autoCreate: true })}>← Retour</button>
       <h2 style={{ marginTop: 10 }}>Authentification</h2>
       <p style={{ opacity: 0.9 }}>{msg}</p>
     </div>
   );
 }
 
-function AuthForgotRoute({ go }: { go: (t: any, p?: any) => void }) {
+/* --------------------------------------------
+   ✅ NEW: FORGOT PASSWORD (REQUEST EMAIL)
+-------------------------------------------- */
+function AuthForgotRoute({ go }: { go: (t: Tab, p?: any) => void }) {
   const [email, setEmail] = React.useState("");
   const [status, setStatus] = React.useState<string>("");
 
@@ -548,7 +607,10 @@ function AuthForgotRoute({ go }: { go: (t: any, p?: any) => void }) {
   );
 }
 
-function AuthResetRoute({ go }: { go: (t: any, p?: any) => void }) {
+/* --------------------------------------------
+   ✅ NEW: RESET PASSWORD (PROD)
+-------------------------------------------- */
+function AuthResetRoute({ go }: { go: (t: Tab, p?: any) => void }) {
   const [pw, setPw] = React.useState("");
   const [pw2, setPw2] = React.useState("");
   const [status, setStatus] = React.useState<string>("");
@@ -567,14 +629,14 @@ function AuthResetRoute({ go }: { go: (t: any, p?: any) => void }) {
 
     setStatus("Mot de passe mis à jour ✅");
     try {
-      window.location.hash = "#/";
+      window.location.hash = "#/online";
     } catch {}
-    go("account_start");
+    go("online");
   }
 
   return (
     <div style={{ padding: 16 }}>
-      <button onClick={() => go("account_start")}>← Retour</button>
+      <button onClick={() => go("profiles", { view: "me", autoCreate: true })}>← Retour</button>
 
       <h2 style={{ marginTop: 10 }}>Réinitialiser le mot de passe</h2>
 
@@ -627,9 +689,6 @@ function AuthResetRoute({ go }: { go: (t: any, p?: any) => void }) {
   );
 }
 
-/* --------------------------------------------
-   STATS DETAIL
--------------------------------------------- */
 function StatsDetailRoute({ store, go, params }: any) {
   const [rec, setRec] = React.useState<any>(() => {
     if (params?.rec) {
@@ -851,104 +910,29 @@ function SWUpdateBanner() {
   );
 }
 
-// --------------------------------------------
-// AUTH STACK (quand !session) — SEUL endroit où l’auth “route”
-// ✅ Supporte:
-// - #/auth/login, #/auth/signup, #/auth/forgot
-// - #/auth/callback (email link), #/auth/reset (reset password)
-// - #/auth (fallback -> login), #/account (welcome)
-// --------------------------------------------
-
-type AuthTab =
-  | "account_start"
-  | "auth_login"
-  | "auth_signup"
-  | "auth_forgot"
-  | "auth_callback"
-  | "auth_reset";
-
-function AuthStack() {
-  const pickTabFromHash = React.useCallback((): AuthTab => {
-    const h = String(window.location.hash || "");
-
-    if (h.startsWith("#/auth/callback")) return "auth_callback";
-    if (h.startsWith("#/auth/reset")) return "auth_reset";
-    if (h.startsWith("#/auth/forgot")) return "auth_forgot";
-
-    if (h.startsWith("#/auth/signup")) return "auth_signup";
-    if (h.startsWith("#/auth/login")) return "auth_login";
-
-    // ✅ compat: certains écrans/anciens codes utilisent #/auth
-    if (h.startsWith("#/auth")) return "auth_login";
-    if (h.startsWith("#/account")) return "account_start";
-
-    return "account_start";
-  }, []);
-
-  const [tab, setTab] = React.useState<AuthTab>(() => pickTabFromHash());
-
-  React.useEffect(() => {
-    const onHash = () => setTab(pickTabFromHash());
-    window.addEventListener("hashchange", onHash);
-    return () => window.removeEventListener("hashchange", onHash);
-  }, [pickTabFromHash]);
-
-  function go(next: AuthTab) {
-    setTab(next);
-    try {
-      if (next === "auth_callback") window.location.hash = "#/auth/callback";
-      else if (next === "auth_reset") window.location.hash = "#/auth/reset";
-      else if (next === "auth_forgot") window.location.hash = "#/auth/forgot";
-      else if (next === "auth_signup") window.location.hash = "#/auth/signup";
-      else if (next === "auth_login") window.location.hash = "#/auth/login";
-      else window.location.hash = "#/"; // account_start
-    } catch {}
-  }
-
-  switch (tab) {
-    case "auth_callback":
-      return <AuthCallbackRoute go={go as any} />;
-
-    case "auth_reset":
-      return <AuthResetRoute go={go as any} />;
-
-    case "auth_forgot":
-      return <AuthForgotRoute go={go as any} />;
-
-    case "auth_signup":
-      return <AuthV7Signup go={go as any} />;
-
-    case "auth_login":
-      return <AuthV7Login go={go as any} />;
-
-    case "account_start":
-    default:
-      return (
-        <AccountStart
-          onLogin={() => go("auth_login")}
-          onCreate={() => go("auth_signup")}
-          onForgot={() => go("auth_forgot")}
-        />
-      );
-  }
-}
-
 /* --------------------------------------------
-   MAIN APP (quand session OK) — routing PUR, zéro auth logic
+                APP
 -------------------------------------------- */
-function MainApp() {
+function App() {
   // ============================================================
   // ✅ CLOUD SNAPSHOT SYNC (source unique Supabase)
   // ============================================================
   const online = useAuthOnline();
+  // PROFILES V7: on désactive l'hydratation automatique du store depuis le cloud
+  // (elle écrasait des données locales et créait des états impossibles à déboguer).
   const [cloudHydrated, setCloudHydrated] = React.useState(true);
+
+  // (legacy) Référence conservée pour logs/diagnostic éventuels.
   const cloudHydratedUserRef = React.useRef<string>("");
+
   const cloudPushTimerRef = React.useRef<number | null>(null);
 
   const [store, setStore] = React.useState<Store>(initialStore);
 
-  // ✅ DEFAULT TAB = gameSelect
+  // ✅ DEFAULT TAB = gameSelect (si boot OK). Les flows auth/hash peuvent override.
+  // ✅ IMPORTANT: GameSelect doit toujours s'afficher (après intro)
   const [tab, setTab] = React.useState<Tab>("gameSelect");
+
   const [routeParams, setRouteParams] = React.useState<any>(null);
   const [loading, setLoading] = React.useState(true);
 
@@ -967,6 +951,7 @@ function MainApp() {
     }
   });
 
+  // Sync: si SportContext change (GameSelect / autre), on reflète
   React.useEffect(() => {
     if (!sportFromCtx) return;
     setActiveSport(sportFromCtx);
@@ -978,10 +963,12 @@ function MainApp() {
       const next = (e?.detail?.sport ?? e?.detail?.game ?? "darts") as StartGameId;
 
       setActiveSport(next);
+
       try {
         localStorage.setItem(START_GAME_KEY, next);
       } catch {}
 
+      // Si SportContext expose setSport, on l’actualise aussi (sinon, on reste runtime-only)
       try {
         if (typeof setSportCtx === "function") setSportCtx(next);
       } catch {}
@@ -992,9 +979,14 @@ function MainApp() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [setSportCtx]);
 
-  // ✅ SPLASH intro (MainApp only)
-  const [showSplash, setShowSplash] = React.useState(true);
+  // ✅ SPLASH gate (ne s'affiche pas pendant les flows auth)
+  const [showSplash, setShowSplash] = React.useState(() => {
+    const h = String(window.location.hash || "");
+    const isAuthFlow = h.startsWith("#/auth/callback") || h.startsWith("#/auth/reset") || h.startsWith("#/auth/forgot");
+    return !isAuthFlow;
+  });
 
+  // 🛟 SAFETY NET : ne JAMAIS bloquer l'app sur le splash
   React.useEffect(() => {
     if (!showSplash) return;
     const hardTimeout = window.setTimeout(() => {
@@ -1004,7 +996,7 @@ function MainApp() {
     return () => window.clearTimeout(hardTimeout);
   }, [showSplash]);
 
-  /* Boot: persistance + nettoyage localStorage + warm-up */
+  /* Boot: persistance + nettoyage localStorage + warm-up (SANS SFX UI) */
   React.useEffect(() => {
     ensurePersisted().catch(() => {});
     purgeLegacyLocalStorageIfNeeded();
@@ -1013,9 +1005,49 @@ function MainApp() {
     } catch {}
   }, []);
 
-  /* Restore online session (SDK) */
+  /* Restore online session (pour Supabase côté SDK) */
   React.useEffect(() => {
     onlineApi.restoreSession().catch(() => {});
+  }, []);
+
+  // ✅ NEW: détecte les liens email Supabase via hash (+ /online)
+  React.useEffect(() => {
+    const applyHashRoute = () => {
+      const h = String(window.location.hash || "");
+
+      if (h.startsWith("#/auth/callback")) {
+        setShowSplash(false);
+        setRouteParams(null);
+        setTab("auth_callback");
+        return;
+      }
+      if (h.startsWith("#/auth/reset")) {
+        setShowSplash(false);
+        setRouteParams(null);
+        setTab("auth_reset");
+        return;
+      }
+      if (h.startsWith("#/auth/forgot")) {
+        setShowSplash(false);
+        setRouteParams(null);
+        setTab("auth_forgot");
+        return;
+      }
+      if (h.startsWith("#/online")) {
+        setRouteParams(null);
+        setTab("online");
+        return;
+      }
+      if (h.startsWith("#/spectator")) {
+        setRouteParams(null);
+        setTab("spectator");
+        return;
+      }
+    };
+
+    applyHashRoute();
+    window.addEventListener("hashchange", applyHashRoute);
+    return () => window.removeEventListener("hashchange", applyHashRoute);
   }, []);
 
   /* expose supabase globally for debug */
@@ -1034,35 +1066,22 @@ function MainApp() {
     setRouteParams(params ?? null);
     setTab(next);
 
+    if (next === "auth_callback" || next === "auth_reset" || next === "auth_forgot") {
+      setShowSplash(false);
+    }
+
     try {
-      if (next === "online") window.location.hash = "#/online";
+      if (next === "auth_callback") window.location.hash = "#/auth/callback";
+      else if (next === "auth_reset") window.location.hash = "#/auth/reset";
+      else if (next === "auth_forgot") window.location.hash = "#/auth/forgot";
+      else if (next === "online") window.location.hash = "#/online";
       else if (next === "spectator") window.location.hash = "#/spectator";
       else {
         const h = String(window.location.hash || "");
-        if (h.startsWith("#/online") || h.startsWith("#/spectator")) window.location.hash = "#/";
+        if (h.startsWith("#/auth/") || h.startsWith("#/online") || h.startsWith("#/spectator")) window.location.hash = "#/";
       }
     } catch {}
   }
-
-  /* Hash deeplink (NON-AUTH) */
-  React.useEffect(() => {
-    const applyHash = () => {
-      const h = String(window.location.hash || "");
-      if (h.startsWith("#/online")) {
-        setRouteParams(null);
-        setTab("online");
-        return;
-      }
-      if (h.startsWith("#/spectator")) {
-        setRouteParams(null);
-        setTab("spectator");
-        return;
-      }
-    };
-    applyHash();
-    window.addEventListener("hashchange", applyHash);
-    return () => window.removeEventListener("hashchange", applyHash);
-  }, []);
 
   /* centralized update */
   function update(mut: (s: Store) => Store) {
@@ -1073,7 +1092,7 @@ function MainApp() {
     });
   }
 
-  // ✅ expose go/store live
+  // ✅ IMPORTANT: expose go globalement + store “vivant”
   React.useEffect(() => {
     try {
       (window as any).__appGo = go;
@@ -1085,7 +1104,7 @@ function MainApp() {
     } catch {}
   }, [store, tab]);
 
-  /* Load store from IDB at boot */
+  /* Load store from IDB at boot + gate */
   React.useEffect(() => {
     let mounted = true;
     (async () => {
@@ -1115,20 +1134,25 @@ function MainApp() {
           const hasProfiles = (base.profiles ?? []).length > 0;
           const hasActive = !!base.activeProfileId;
 
-          // ✅ Onboarding LOCAL (pas auth)
-          if (!hasProfiles || !hasActive) {
-            setRouteParams({ view: "me", autoCreate: true });
-            setTab("profiles");
-          } else {
-            setRouteParams(null);
-            setTab("gameSelect"); // ✅ toujours GameSelect
+          const h = String(window.location.hash || "");
+          const isAuthFlow = h.startsWith("#/auth/callback") || h.startsWith("#/auth/reset") || h.startsWith("#/auth/forgot");
+
+          if (!isAuthFlow) {
+            if (!hasProfiles || !hasActive) {
+              setRouteParams(null);
+              setTab("account_start");
+            } else {
+              // ✅ DEFAULT START : GameSelect DOIT TOUJOURS s'afficher après l'intro
+              setRouteParams(null);
+              setTab("gameSelect");
+            }
           }
         }
       } catch {
         if (mounted) {
           setStore(initialStore);
-          setRouteParams({ view: "me", autoCreate: true });
-          setTab("profiles");
+          setRouteParams(null);
+          setTab("account_start");
         }
       } finally {
         if (mounted) setLoading(false);
@@ -1140,14 +1164,22 @@ function MainApp() {
   }, []);
 
   // ============================================================
-  // ✅ AUTH — handler Supabase (conservé pour logs)
+  // ✅ AUTH — handler Supabase (conservé)
   // ============================================================
+  const wipeAllLocalData = React.useCallback(async () => {
+    setRouteParams(null);
+    setTab("account_start");
+  }, []);
+
   React.useEffect(() => {
     const { data } = supabase.auth.onAuthStateChange(async (event, session) => {
       try {
         if (event === "SIGNED_IN") {
           const user = session?.user || (await supabase.auth.getUser())?.data?.user || null;
           if (user?.id) cloudHydratedUserRef.current = String(user.id);
+        }
+        if (event === "SIGNED_OUT") {
+          // PROFILES V7: on ne wipe PAS les données locales au logout.
         }
       } catch (e) {
         console.warn("[auth] onAuthStateChange handler error", e);
@@ -1159,7 +1191,8 @@ function MainApp() {
         data?.subscription?.unsubscribe();
       } catch {}
     };
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [wipeAllLocalData]);
 
   // ============================================================
   // ✅ CLOUD HYDRATE (source unique)
@@ -1213,7 +1246,7 @@ function MainApp() {
             } catch (e) {
               console.warn("[cloud] seed from local failed", e);
             }
-            return;
+            return; // ⛔ ne pas écraser le store local
           }
 
           if (cloudStore && typeof cloudStore === "object") {
@@ -1252,8 +1285,17 @@ function MainApp() {
                   if ((mergedFinal as any).dartSets) replaceAllDartSets((mergedFinal as any).dartSets);
                 } catch {}
 
-                setRouteParams(null);
-                setTab("gameSelect");
+                const hasProfiles = (mergedFinal.profiles ?? []).length > 0;
+                const hasActive = !!mergedFinal.activeProfileId;
+
+                const hh = String(window.location.hash || "");
+                const isAuthFlow =
+                  hh.startsWith("#/auth/callback") || hh.startsWith("#/auth/reset") || hh.startsWith("#/auth/forgot");
+
+                if (!isAuthFlow && hasProfiles && hasActive) {
+                  setRouteParams(null);
+                  setTab("gameSelect");
+                }
               }
             }
           }
@@ -1341,7 +1383,7 @@ function MainApp() {
     }
   }, [store, loading]);
 
-  /* Profiles mutator */
+  /* Profiles mutator (✅ FIX: merge défensif) */
   function setProfiles(fn: (p: Profile[]) => Profile[]) {
     setStore((s) => {
       const next = {
@@ -1393,6 +1435,9 @@ function MainApp() {
     return () => window.removeEventListener("dc-history-updated", schedule);
   }, [loading]);
 
+  /* --------------------------------------------
+      pushHistory (FIN DE PARTIE)
+  -------------------------------------------- */
   function pushHistory(m: MatchRecord) {
     const now = Date.now();
     const id = (m as any)?.id || (m as any)?.matchId || `x01-${now}-${Math.random().toString(36).slice(2, 8)}`;
@@ -1469,22 +1514,71 @@ function MainApp() {
     go("statsHub", { tab: "history" });
   }
 
+
+  /* --------------------------------------------
+      pushPetanqueHistory (FIN DE PARTIE PÉTANQUE)
+      - écrit dans store.history + History (IDB)
+      - redirige vers stats Pétanque
+  -------------------------------------------- */
+  function pushPetanqueHistory(m: any) {
+    const now = Date.now();
+    const id = (m as any)?.id || (m as any)?.matchId || `petanque-${now}-${Math.random().toString(36).slice(2, 8)}`;
+
+    const rawPlayers = (m as any)?.players ?? (m as any)?.payload?.players ?? [];
+    const players = rawPlayers.map((p: any) => {
+      const prof = (store.profiles || []).find((pr) => pr.id === p?.id);
+      return {
+        id: p?.id,
+        name: p?.name ?? prof?.name ?? "",
+        avatarDataUrl: p?.avatarDataUrl ?? prof?.avatarDataUrl ?? null,
+      };
+    });
+
+    const summary = (m as any)?.summary ?? (m as any)?.payload?.summary ?? null;
+
+    const saved: any = {
+      id,
+      kind: (m as any)?.kind || "petanque",
+      sport: "petanque",
+      status: "finished",
+      players,
+      winnerId: (m as any)?.winnerId || (m as any)?.payload?.winnerId || null,
+      createdAt: (m as any)?.createdAt || now,
+      updatedAt: now,
+      summary,
+      payload: { ...(m as any), players, summary, kind: (m as any)?.kind || "petanque", sport: "petanque" },
+    };
+
+    setStore((s) => {
+      const list = [...((s as any).history ?? [])];
+      const i = list.findIndex((r: any) => r.id === saved.id);
+      if (i >= 0) list[i] = saved;
+      else list.unshift(saved);
+      const next = { ...(s as any), history: list } as any;
+      queueMicrotask(() => saveStore(next));
+      return next;
+    });
+
+    try {
+      (History as any)?.upsert?.(saved);
+    } catch {}
+
+    // ✅ Pétanque: pas d'upload match (pour l'instant) — uniquement stats locales
+    go("petanque_stats_history", { focusMatchId: id });
+  }
+
   const historyForUI = React.useMemo(
     () => (store.history || []).map((r: any) => withAvatars(r, store.profiles || [])),
     [store.history, store.profiles]
   );
 
   if (showSplash) {
-    return (
-      <SplashScreen
-        durationMs={6500}
-        fadeOutMs={700}
-        allowAudioOverflow={true}
-        onFinish={() => setShowSplash(false)}
-      />
-    );
+    return <SplashScreen durationMs={6500} fadeOutMs={700} allowAudioOverflow={true} onFinish={() => setShowSplash(false)} />;
   }
 
+  /* --------------------------------------------
+        ROUTING SWITCH
+  -------------------------------------------- */
   let page: React.ReactNode = null;
 
   if (loading) {
@@ -1495,10 +1589,34 @@ function MainApp() {
     );
   } else {
     switch (tab) {
+      case "auth_callback":
+        page = <AuthCallbackRoute go={go} />;
+        break;
+
+      case "auth_start":
+        page = <AuthStart go={go} />;
+        break;
+
+      case "auth_reset":
+        page = <AuthResetRoute go={go} />;
+        break;
+
+      case "account_start":
+        page = (
+          <AccountStart onLogin={() => go("profiles", { view: "me" })} onCreate={() => go("profiles", { view: "me" })} onForgot={() => go("auth_forgot")} />
+        );
+        break;
+
+      case "auth_forgot":
+        page = <AuthForgotRoute go={go} />;
+        break;
+
       case "gameSelect":
         page = <GameSelect go={go} />;
         break;
 
+      // ✅ HOME = SPORT-AWARE (runtime-safe)
+      // IMPORTANT: on utilise activeSport (et non uniquement sportContext) pour éviter le bug "Settings -> Fléchettes -> Home Pétanque".
       case "home":
         page =
           activeSport === "petanque" ? (
@@ -1508,10 +1626,12 @@ function MainApp() {
           );
         break;
 
+      // ✅ GAMES = sport-aware (runtime-safe)
       case "games":
         page = activeSport === "petanque" ? <PetanqueMenuGames go={go} /> : <Games setTab={(t: any) => go(t)} />;
         break;
 
+      // ✅ NEW (OBLIGATOIRE): Pétanque menu/config/play (snake_case)
       case "petanque_menu":
         page = <PetanqueMenuGames go={go} />;
         break;
@@ -1521,9 +1641,10 @@ function MainApp() {
         break;
 
       case "petanque_play":
-        page = <PetanquePlay go={go} params={routeParams} />;
+        page = <PetanquePlay go={go} params={routeParams} onFinish={(m: any) => pushPetanqueHistory(m)} />;
         break;
 
+      // ✅ NEW: Teams Pétanque (CRUD local)
       case "petanque_teams":
         page = <PetanqueTeams go={go} params={routeParams} />;
         break;
@@ -1532,6 +1653,7 @@ function MainApp() {
         page = <PetanqueTeamEdit go={go} params={routeParams} />;
         break;
 
+      // (legacy / existing) — on laisse en place pour compat
       case "petanque.menu":
         page = <PetanqueMenuGames go={go} />;
         break;
@@ -1541,24 +1663,24 @@ function MainApp() {
         break;
 
       case "petanque.play":
-        page = <PetanquePlay go={go} params={routeParams} />;
+        page = <PetanquePlay go={go} params={routeParams} onFinish={(m: any) => pushPetanqueHistory(m)} />;
         break;
 
       case "petanque_tournaments":
-        page = <PetanqueTournamentsHome go={go} />;
-        break;
-
+         page = <PetanqueTournamentsHome go={go} />;
+         break;
+        
       case "petanque_tournament_create":
-        page = <PetanqueTournamentCreate go={go} />;
-        break;
-
+         page = <PetanqueTournamentCreate go={go} />;
+         break;
+        
       case "petanque_tournament_view":
-        page = <PetanqueTournamentView go={go} params={routeParams} />;
+         page = <PetanqueTournamentView go={go} params={routeParams} />;
         break;
-
+        
       case "petanque_tournament_match_score":
-        page = <PetanqueTournamentMatchScore go={go} params={routeParams} />;
-        break;
+         page = <PetanqueTournamentMatchScore go={go} params={routeParams} />;
+        break;  
 
       case "profiles":
         page = (
@@ -1569,7 +1691,7 @@ function MainApp() {
             go={go}
             params={routeParams}
             autoCreate={!!routeParams?.autoCreate}
-            sport={activeSport as any}
+            sport={activeSport as any} // ✅ runtime-safe
           />
         );
         break;
@@ -1594,6 +1716,8 @@ function MainApp() {
         page = <Settings go={go} />;
         break;
 
+      // ✅ STATS (sport-aware) — même onglet BottomNav "stats"
+      // Pétanque => PetanqueStatsShell (UI identique StatsShell + ONLINE/TRAINING masqués)
       case "stats":
         page =
           activeSport === "petanque" ? (
@@ -1603,6 +1727,7 @@ function MainApp() {
           );
         break;
 
+      // ✅ PÉTANQUE — STATS ROUTES (pages dédiées)
       case "petanque_stats_players":
         page = <PetanqueStatsPlayersPage store={store} go={go} params={routeParams} />;
         break;
@@ -1642,12 +1767,7 @@ function MainApp() {
         break;
 
       case "cricket_stats":
-        page = (
-          <StatsCricket
-            profiles={store.profiles}
-            activeProfileId={routeParams?.profileId ?? store.activeProfileId ?? null}
-          />
-        );
+        page = <StatsCricket profiles={store.profiles} activeProfileId={routeParams?.profileId ?? store.activeProfileId ?? null} />;
         break;
 
       case "statsDetail":
@@ -1662,19 +1782,20 @@ function MainApp() {
         page = <SyncCenter store={store} go={go} profileId={routeParams?.profileId ?? null} />;
         break;
 
-      case "tournaments": {
-        const isPetanque = String(activeSport || "").toLowerCase() === "petanque";
-        page = (
-          <TournamentsHome
-            store={store}
-            go={go}
-            update={update}
-            source="local"
-            params={isPetanque ? { forceMode: "petanque" } : undefined}
-          />
-        );
-        break;
-      }
+        case "tournaments": {
+          const isPetanque = String(activeSport || "").toLowerCase() === "petanque";
+        
+          page = (
+            <TournamentsHome
+              store={store}
+              go={go}
+              update={update}
+              source="local"
+              params={isPetanque ? { forceMode: "petanque" } : undefined}
+            />
+          );
+          break;
+        }
 
       case "tournament_create":
         page = <TournamentCreate store={store} go={go} params={routeParams} />;
@@ -1923,7 +2044,9 @@ function MainApp() {
         const backTo: Tab = (routeParams?.from as Tab) || "profiles";
         const isBotMode = !!routeParams?.isBot;
 
+        // =========================
         // BOT AVATAR (LOCAL ONLY)
+        // =========================
         if (botId) {
           const bots = loadBotsLS();
           const targetBot = bots.find((b) => b.id === botId) ?? null;
@@ -1958,7 +2081,9 @@ function MainApp() {
           break;
         }
 
+        // =========================
         // PROFILE AVATAR (SUPABASE)
+        // =========================
         const targetProfile = store.profiles.find((p) => p.id === (profileIdFromParams || store.activeProfileId)) ?? null;
 
         async function handleSaveAvatarProfile({ pngDataUrl, name }: { pngDataUrl: string; name: string }) {
@@ -2005,9 +2130,11 @@ function MainApp() {
             go(backTo);
           } catch (e) {
             console.error("[AvatarUpload] upload failed -> fallback local avatarDataUrl", e);
+
             setProfiles((list) =>
               list.map((p) => (p.id === targetProfile.id ? { ...p, name: trimmedName || p.name, avatarDataUrl: pngDataUrl } : p))
             );
+
             go(backTo);
           }
         }
@@ -2034,7 +2161,9 @@ function MainApp() {
         <MobileErrorOverlay />
 
         <div className="container" style={{ paddingBottom: 88 }}>
-          {page}
+          <AppGate go={go} tab={tab}>
+            {page}
+          </AppGate>
         </div>
 
         {/* ✅ FIX: BottomNav masquée sur gameSelect */}
@@ -2047,24 +2176,42 @@ function MainApp() {
 }
 
 /* --------------------------------------------
-   ✅ AUTH UNIQUE SWITCH — POINT FINAL
+   🔒 APP GATE — NE BLOQUE QUE LES PAGES ONLINE "post-login"
+   ✅ V7: compte unique -> useAuthOnline()
 -------------------------------------------- */
-function App() {
-  const { status, session, ready } = useAuthOnline() as any;
+function AppGate({ go, tab, children }: { go: (t: any, p?: any) => void; tab: any; children: React.ReactNode }) {
+  const { status, ready } = useAuthOnline();
 
-  if (status === "loading" || ready === false) {
+  // pages qui nécessitent une session Supabase active
+  const needsSession = tab === "stats_online" || tab === "x01_online_setup" || tab === "online";
+
+  // pendant les flows auth, on ne gate pas
+  const isAuthFlow =
+    tab === "auth_reset" || tab === "auth_callback" || tab === "auth_forgot" || tab === "auth_start" || tab === "account_start";
+
+  if (!ready) {
     return (
       <div className="container" style={{ padding: 40, textAlign: "center" }}>
-        Chargement…
+        Vérification de la session…
       </div>
     );
   }
 
-  if (!session) {
-    return <AuthStack />;
+  React.useEffect(() => {
+    if (!isAuthFlow && needsSession && status !== "signed_in") {
+      go("auth_start");
+    }
+  }, [isAuthFlow, needsSession, status, go]);
+
+  if (!isAuthFlow && needsSession && status !== "signed_in") {
+    return (
+      <div className="container" style={{ padding: 40, textAlign: "center" }}>
+        Redirection vers la connexion…
+      </div>
+    );
   }
 
-  return <MainApp />;
+  return <>{children}</>;
 }
 
 /* ---------- ROOT PROVIDERS ---------- */

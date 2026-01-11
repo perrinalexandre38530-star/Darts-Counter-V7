@@ -38,6 +38,8 @@ import type { Profile } from "../../lib/types";
 type Props = {
   go: (tab: any, params?: any) => void;
   params?: any;
+  // ✅ NEW: bridge fin de partie -> App (store.history)
+  onFinish?: (rec: any) => void;
 };
 
 // ✅ Affichage safe des joueurs (jamais UUID brut)
@@ -835,7 +837,8 @@ function PetanqueHeaderArcade(props: {
     );
 }
 
-export default function PetanquePlay({ go, params }: Props) {
+export default function PetanquePlay(props: Props) {
+  const { go, params, onFinish } = props;
   // ✅ Route params
   const matchMode = (params?.mode ?? params?.cfg?.mode ?? "singles") as any;
   const isFfa3 = matchMode === "ffa3";
@@ -1045,6 +1048,48 @@ React.useEffect(() => {
         if (!prev) return prev as any;
         const next = addEnd(prev as any, team, pts);
         // ✅ IMPORTANT: termine/archive/nettoie si score atteint
+        // ✅ NEW: bridge fin de partie -> App (store.history)
+        try {
+          const target = Number((next as any).targetScore ?? 13);
+          const a = Number((next as any).scoreA ?? 0);
+          const b = Number((next as any).scoreB ?? 0);
+          const wasFinished = String((prev as any)?.status || "").toLowerCase() === "finished";
+          const isNowFinished = a >= target || b >= target;
+
+          if (!wasFinished && isNowFinished && typeof onFinish === "function") {
+            const winnerTeam = a === b ? null : a > b ? "A" : "B";
+            const players = Array.isArray((next as any).players) ? (next as any).players : [];
+
+            const rec = {
+              id: `petanque-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+              kind: "petanque",
+              status: "finished",
+              createdAt: Number((next as any).startedAt ?? Date.now()),
+              updatedAt: Date.now(),
+              players,
+              winnerId: winnerTeam,
+              summary: {
+                scoreA: a,
+                scoreB: b,
+                targetScore: target,
+                winnerTeam,
+                endsCount: Array.isArray((next as any).ends) ? (next as any).ends.length : 0,
+                mode: String((next as any).mode ?? "").toLowerCase(),
+              },
+              payload: {
+                ...(next as any),
+                sport: "petanque",
+                scoreA: a,
+                scoreB: b,
+                targetScore: target,
+                winnerTeam,
+              },
+            };
+
+            onFinish(rec);
+          }
+        } catch {}
+
         return finishPetanqueMatch(next as any) as any;
       });
   
