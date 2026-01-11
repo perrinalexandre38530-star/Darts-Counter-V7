@@ -15,7 +15,7 @@ import { supabase } from "../lib/supabaseClient";
 import { onlineApi } from "../lib/onlineApi";
 import type { OnlineProfile } from "../lib/onlineTypes";
 
-type AuthStatus = "signed_out" | "signed_in";
+type AuthStatus = "checking" | "signed_out" | "signed_in";
 
 type AuthState = {
   ready: boolean;
@@ -30,7 +30,7 @@ type AuthState = {
 const initial: AuthState = {
   ready: false,
   loading: true,
-  status: "signed_out",
+  status: "checking",
   session: null,
   user: null,
   profile: null,
@@ -139,6 +139,7 @@ export function AuthOnlineProvider({ children }: { children: React.ReactNode }) 
 
   const refresh = React.useCallback(async () => {
     try {
+      setState((s) => ({ ...s, loading: true, status: "checking" }));
       const session = await safeGetSession();
 
       // ✅ Auth = session/user only

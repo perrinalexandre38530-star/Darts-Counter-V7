@@ -565,10 +565,10 @@ function AccountPages({
 }) {
   const { theme } = useTheme();
   const { t } = useLang();
-  const { session, status, loading, updateProfile, deleteAccount, logout } = useAuthOnline() as any;
+  const { session, status, loading, profile, updateProfile, deleteAccount, logout } = useAuthOnline() as any;
 
   const user = session?.user ?? null;
-  const profile = session?.profile ?? null;
+  const isSignedIn = !!user;
 
   const emailLabel = (user as any)?.email || "—";
   const userIdLabel = (user as any)?.id ? `#${String((user as any).id).slice(0, 8)}` : "—";
@@ -763,9 +763,21 @@ function AccountPages({
             {t("settings.account.profile.title", "Profil")}
           </h2>
 
-          {status !== "signed_in" ? (
-            <div style={{ color: theme.textSoft, fontSize: 12 }}>
-              {t("settings.account.profile.unavailable", "Session indisponible. Rafraîchis la page.")}
+          {!isSignedIn ? (
+            <div style={{ display: "grid", gap: 10 }}>
+              <div style={{ color: theme.textSoft, fontSize: 12 }}>
+                {t(
+                  "settings.account.profile.signedOut",
+                  "Tu n'es pas connecté. Connecte-toi pour synchroniser ton profil (compte unique)."
+                )}
+              </div>
+              <button
+                className="btn"
+                style={{ width: "100%" }}
+                onClick={() => go("auth_start" as any)}
+              >
+                {t("settings.account.profile.cta", "Connexion")}
+              </button>
             </div>
           ) : (
             <>

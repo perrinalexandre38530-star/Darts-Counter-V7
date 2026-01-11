@@ -11,7 +11,7 @@
 //
 // ✅ LOGIQUE (fixes):
 // - Serveur OK indépendant de l'auth
-// - Session Supabase FIABLE via supabase.auth.getSession() (même si table profiles manque)
+// - Session Supabase FIABLE via useAuthOnline() (source unique)
 // - Boutons Créer/Rejoindre actifs si session connectée
 // - Connexion / Déconnexion / Reconnexion fonctionnelles
 // - Ne bloque jamais l’UI si table `profiles` manque
@@ -40,8 +40,6 @@ import type { OnlineMatch } from "../lib/onlineTypes";
 import { getCountryFlag } from "../lib/countryNames";
 import InfoDot from "../components/InfoDot";
 
-// ⚠️ adapte si ton projet exporte supabase ailleurs
-import { supabase } from "../lib/supabase";
 
 // ✅ Realtime presence + chat MVP
 import { joinPresence } from "../lib/onlinePresence";
@@ -561,41 +559,15 @@ export default function FriendsPage({ store, update, go }: Props) {
     return () => window.clearInterval(id);
   }, [pingServer]);
 
-  /* -----------------------------
-     Session Supabase (FIABLE)
-  ------------------------------ */
-  const [sessionState, setSessionState] = React.useState<"checking" | "signed_in" | "signed_out">("checking");
-  const [sessionUserId, setSessionUserId] = React.useState<string | null>(null);
-  const [authHint, setAuthHint] = React.useState<string | null>(null);
+  
+  
+/* -----------------------------
+   Session Supabase (SOURCE UNIQUE)
+------------------------------ */
+const sessionUserId = auth?.user?.id ?? null;
+const isSignedIn = auth?.status === "signed_in" && !!sessionUserId;
 
-  const refreshSession = React.useCallback(async () => {
-    try {
-      setSessionState("checking");
-      const { data, error } = await supabase.auth.getSession();
-      if (error) throw error;
-      const uid = data?.session?.user?.id || null;
-      setSessionUserId(uid);
-      setSessionState(uid ? "signed_in" : "signed_out");
-    } catch (e: any) {
-      setAuthHint(normalizeErrMessage(e));
-      setSessionUserId(null);
-      setSessionState("signed_out");
-    }
-  }, []);
-
-  React.useEffect(() => {
-    refreshSession().catch(() => {});
-    const { data } = supabase.auth.onAuthStateChange(() => {
-      refreshSession().catch(() => {});
-    });
-    return () => {
-      data?.subscription?.unsubscribe?.();
-    };
-  }, [refreshSession]);
-
-  const isSignedIn = sessionState === "signed_in" && !!sessionUserId;
-
-  /* -----------------------------
+/* -----------------------------
      Étape 4 — règle finale
   ------------------------------ */
   const canPlayOnline = isSignedIn;
@@ -661,43 +633,34 @@ export default function FriendsPage({ store, update, go }: Props) {
   const [reconnecting, setReconnecting] = React.useState(false);
 
   const doReconnect = React.useCallback(async () => {
-    if (reconnecting) return;
-    setReconnecting(true);
-    setAuthHint(null);
-    try {
-      const ensure = (onlineApi as any)?.ensureAutoSession as undefined | (() => Promise<any>);
-      if (ensure) {
-        await withTimeout(ensure(), 8000, "Auto-session : délai dépassé.");
-      }
+  if (reconnecting) return;
+  setReconnecting(true);
+  setAuthHint(null);
+  try {
+    // ✅ Pas d'auto-session ici. Supabase est la source de vérité.
+    const refresh = auth?.refresh as undefined | (() => Promise<any>);
+    if (refresh) await refresh().catch((e: any) => setAuthHint(normalizeErrMessage(e)));
 
-      const refresh = auth?.refresh as undefined | (() => Promise<any>);
-      if (refresh) {
-        await refresh().catch((e: any) => setAuthHint(normalizeErrMessage(e)));
-      }
+    await pingServer();
+    setAuthHint((prev) => prev || "Session vérifiée.");
+  } catch (e: any) {
+    setAuthHint(normalizeErrMessage(e));
+  } finally {
+    setReconnecting(false);
+  }
+}, [reconnecting, auth, pingServer]);
 
-      await pingServer();
-      await refreshSession();
-      setAuthHint((prev) => prev || "Reconnexion effectuée.");
-    } catch (e: any) {
-      setAuthHint(normalizeErrMessage(e));
-      await refreshSession();
-    } finally {
-      setReconnecting(false);
-    }
-  }, [reconnecting, auth, pingServer, refreshSession]);
+const doLogout = React.useCallback(async () => {
+  setAuthHint(null);
+  try {
+    const logout = auth?.logout as undefined | (() => Promise<any>);
+    if (logout) await logout();
+    setAuthHint("Déconnecté.");
+  } catch (e: any) {
+    setAuthHint(normalizeErrMessage(e));
+  }
+}, [auth]);
 
-  const doLogout = React.useCallback(async () => {
-    setAuthHint(null);
-    try {
-      const logout = auth?.logout as undefined | (() => Promise<any>);
-      if (logout) await logout();
-      else await supabase.auth.signOut();
-    } catch (e: any) {
-      setAuthHint(normalizeErrMessage(e));
-    } finally {
-      await refreshSession();
-    }
-  }, [auth, refreshSession]);
 
   // auto-try au montage + au focus
   React.useEffect(() => {

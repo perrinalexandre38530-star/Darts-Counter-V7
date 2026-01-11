@@ -2119,7 +2119,9 @@ export default function Home({ store, go }: Props) {
     anyStore.selfStatus ?? "online";
 
   const onlineStatusForUi: "online" | "away" | "offline" =
-    auth.status === "signed_in" ? selfStatus : "offline";
+    auth.status === "signed_in"
+      ? (selfStatus === "offline" ? "online" : selfStatus)
+      : "offline";
 
   const activeProfile = useMemo(() => getActiveProfile(store), [store]);
 

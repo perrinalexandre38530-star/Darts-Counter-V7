@@ -623,6 +623,14 @@ export default function Profiles({
   const { t, setLang, lang } = useLang();
   const auth = useAuthOnline();
 
+  // ✅ Cohérence globale : si l'utilisateur est authentifié Supabase,
+  // on ne laisse pas l'UI afficher "Hors ligne" par défaut.
+  React.useEffect(() => {
+    if (auth?.status === "signed_in" && selfStatus === "offline") {
+      update({ selfStatus: "online" } as any);
+    }
+  }, [auth?.status, selfStatus, update]);
+
   React.useEffect(() => {
     console.log("[Profiles] RENDER WATCH profiles=", profiles.length, {
       activeProfileId,

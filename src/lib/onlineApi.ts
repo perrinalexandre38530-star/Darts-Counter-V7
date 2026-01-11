@@ -103,6 +103,54 @@ export type OnlineMatchRow = {
 const USE_MOCK = false;
 const LS_AUTH_KEY = "dc_online_auth_supabase_v1";
 
+// ============================================================
+// ✅ PROFILES TABLE RESOLUTION (compat)
+// - Certains projets Supabase historiques utilisent "profiles_online".
+// - Ce client privilégie "profiles" mais bascule automatiquement si absent.
+// ============================================================
+const PROFILE_TABLE_PRIMARY = "profiles";
+const PROFILE_TABLE_FALLBACK = "profiles_online";
+
+let __profilesTableCached: string | null = null;
+let __profilesTablePromise: Promise<string> | null = null;
+
+async function resolveProfilesTable(): Promise<string> {
+  if (__profilesTableCached) return __profilesTableCached;
+  if (__profilesTablePromise) return __profilesTablePromise;
+
+  __profilesTablePromise = (async () => {
+    try {
+      // Probe PRIMARY
+      const { error } = await supabase.from(PROFILE_TABLE_PRIMARY).select("id").limit(1);
+      if (!error) {
+        __profilesTableCached = PROFILE_TABLE_PRIMARY;
+        return __profilesTableCached;
+      }
+
+      // PGRST205 = table/view missing in schema cache
+      const code = (error as any)?.code;
+      if (code === "PGRST205") {
+        const { error: err2 } = await supabase.from(PROFILE_TABLE_FALLBACK).select("id").limit(1);
+        if (!err2) {
+          __profilesTableCached = PROFILE_TABLE_FALLBACK;
+          return __profilesTableCached;
+        }
+      }
+
+      // Fallback pessimiste
+      __profilesTableCached = PROFILE_TABLE_PRIMARY;
+      return __profilesTableCached;
+    } catch {
+      __profilesTableCached = PROFILE_TABLE_PRIMARY;
+      return __profilesTableCached;
+    } finally {
+      __profilesTablePromise = null;
+    }
+  })();
+
+  return __profilesTablePromise;
+}
+
 function now() {
   return Date.now();
 }
@@ -277,9 +325,10 @@ async function ensureAuthedUser() {
 }
 
 async function getOrCreateProfile(userId: string, fallbackNickname: string): Promise<OnlineProfile | null> {
+  const PROFILES_TABLE = await resolveProfilesTable();
   // SELECT
   const { data: profileRow, error: selErr } = await supabase
-    .from("profiles")
+    .from(PROFILES_TABLE)
     .select("*")
     .eq("id", userId)
     .limit(1)
@@ -295,7 +344,7 @@ async function getOrCreateProfile(userId: string, fallbackNickname: string): Pro
 
   // CREATE (upsert safe)
   const { data: created, error: upErr } = await supabase
-    .from("profiles")
+    .from(PROFILES_TABLE)
     .upsert(
       {
         id: userId,
@@ -517,6 +566,8 @@ async function updateProfile(patch: UpdateProfilePayload): Promise<OnlineProfile
   const { user } = await ensureAuthedUser();
   const userId = user.id;
 
+  const PROFILES_TABLE = await resolveProfilesTable();
+
   const dbPatch: any = { updated_at: new Date().toISOString() };
 
   if (patch.nickname !== undefined) dbPatch.nickname = patch.nickname;
@@ -532,7 +583,7 @@ async function updateProfile(patch: UpdateProfilePayload): Promise<OnlineProfile
   if (patch.email !== undefined) dbPatch.email = patch.email;
   if (patch.phone !== undefined) dbPatch.phone = patch.phone;
 
-  const { data, error } = await supabase.from("profiles").update(dbPatch).eq("id", userId).select().single();
+  const { data, error } = await supabase.from(PROFILES_TABLE).update(dbPatch).eq("id", userId).select().single();
   if (error) throw new Error(error.message);
 
   const profile = mapProfile(data as any);

@@ -79,7 +79,7 @@ export default function AuthV7Login({ go }: Props) {
           </button>
 
           <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
-            <button onClick={() => go("auth_v7_signup")} style={linkBtnStyle}>
+            <button onClick={() => go("auth_signup")} style={linkBtnStyle}>
               Créer un compte
             </button>
             <button onClick={() => go("auth_forgot")} style={linkBtnStyle}>

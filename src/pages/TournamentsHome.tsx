@@ -304,7 +304,9 @@ function TickerRow({
       tone: "blue" as const,
       cta: "Ouvrir",
       kpi: resumeTour ? `${resumeCounts?.playable ?? 0} à jouer` : "—",
-      onClick: resumeTour?.id ? () => go("tournament_view", { id: String(resumeTour.id), ...baseCreateParams }) : undefined,
+      onClick: resumeTour?.id
+        ? () => go("tournament_view", { id: String(resumeTour.id), ...baseCreateParams })
+        : undefined,
       disabled: !resumeTour?.id,
     },
     {
@@ -318,7 +320,9 @@ function TickerRow({
       tone: "green" as const,
       cta: "Ouvrir",
       kpi: canAuto ? "Prêt" : "—",
-      onClick: resumeTour?.id ? () => go("tournament_view", { id: String(resumeTour.id), ...baseCreateParams }) : undefined,
+      onClick: resumeTour?.id
+        ? () => go("tournament_view", { id: String(resumeTour.id), ...baseCreateParams })
+        : undefined,
       disabled: !resumeTour?.id,
     },
     {
@@ -418,6 +422,7 @@ export default function TournamentsHome({ store, go, source = "local", params }:
   const [items, setItems] = React.useState<any[]>([]);
   const [loading, setLoading] = React.useState(false);
 
+  // ✅ SCOPE via route params
   const forceMode = String((params as any)?.forceMode || (params as any)?.sport || "").toLowerCase();
   const isPetanque = forceMode === "petanque";
 
@@ -543,9 +548,10 @@ export default function TournamentsHome({ store, go, source = "local", params }:
             )}
           </div>
 
+          {/* ✅ IMPORTANT: propagation forceMode vers TournamentCreate */}
           <button
             type="button"
-            onClick={() => go("tournament_create", isPetanque ? { forceMode: "petanque" } : undefined)}
+            onClick={() => go("tournament_create", { forceMode: forceMode || undefined })}
             style={{
               width: "100%",
               borderRadius: 999,
@@ -639,7 +645,7 @@ export default function TournamentsHome({ store, go, source = "local", params }:
                   <div
                     key={id || name + String(updatedAt)}
                     onClick={() => {
-                      if (id) go("tournament_view", { id, ...(isPetanque ? { forceMode: "petanque" } : {}) });
+                      if (id) go("tournament_view", { id, forceMode: forceMode || undefined });
                     }}
                     style={{
                       borderRadius: 18,
