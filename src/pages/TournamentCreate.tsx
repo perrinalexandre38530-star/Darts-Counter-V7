@@ -799,6 +799,18 @@ export default function TournamentCreate({ store, go, params }: Props) {
   // ✅ PÉTANQUE : composition (Simple/Doublette/Triplette/Quadrette)
   const [petanqueTeamSize, setPetanqueTeamSize] = React.useState<PetanqueTeamSize>(2);
 
+  // ✅ PÉTANQUE — entrée participants
+  // - "profiles": sélection de profils humains puis regroupement en équipes
+  // - "teams": création directe d'équipes (sans profils) pour gros tournois
+  const [petanqueEntry, setPetanqueEntry] = React.useState<"profiles" | "teams">("profiles");
+
+  // ✅ PÉTANQUE — mode "teams" (sans profils)
+  const [teamsSearch, setTeamsSearch] = React.useState<string>("");
+  const [teamsExpandedIdx, setTeamsExpandedIdx] = React.useState<number | null>(null);
+  const [teamsImportOpen, setTeamsImportOpen] = React.useState(false);
+  const [teamsImportText, setTeamsImportText] = React.useState<string>("");
+  const [teamsInput, setTeamsInput] = React.useState<{ id: string; name: string; players: string[] }[]>([]);
+
 
 // ✅ PÉTANQUE — équipes (assignation manuelle)
 const [assignMode, setAssignMode] = React.useState<boolean>(true); // true = clic sur joueur => assignation vers l’équipe active
@@ -995,6 +1007,92 @@ const togglePlayer = (id: string) => {
   setPlayerIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
 };
 
+  // ------------------------------------------------------------
+  // ✅ PÉTANQUE — mode "Par équipes" (sans profils)
+  // ------------------------------------------------------------
+
+  const normalizeTeamPlayers = React.useCallback(
+    (players: any[]) => {
+      const list = (Array.isArray(players) ? players : []).map((x) => String(x ?? "").trim()).filter(Boolean);
+      // pad à teamSize
+      const out = list.slice(0, Number(petanqueTeamSize) || 1);
+      while (out.length < (Number(petanqueTeamSize) || 1)) out.push("");
+      return out;
+    },
+    [petanqueTeamSize]
+  );
+
+  const makeTeamId = React.useCallback((i: number) => {
+    const n = Math.max(1, Number(i) + 1);
+    return `team_${n}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}`;
+  }, []);
+
+  const generateTeams = React.useCallback(
+    (count: number) => {
+      const n = Math.max(0, Math.min(256, Math.floor(Number(count) || 0)));
+      if (!n) {
+        setTeamsInput([]);
+        setTeamsExpandedIdx(null);
+        return;
+      }
+      const next = Array.from({ length: n }).map((_, idx) => ({
+        id: makeTeamId(idx),
+        name: `Équipe ${idx + 1}`,
+        players: normalizeTeamPlayers([]),
+      }));
+      setTeamsInput(next);
+      setTeamsExpandedIdx(0);
+    },
+    [makeTeamId, normalizeTeamPlayers]
+  );
+
+  const parseTeamsImportText = React.useCallback(
+    (text: string) => {
+      const ts = Number(petanqueTeamSize) || 1;
+      const lines = String(text || "")
+        .split(/\r?\n/)
+        .map((l) => l.trim())
+        .filter(Boolean);
+
+      const teams = lines.map((line, idx) => {
+        let name = "";
+        let players: string[] = [];
+
+        if (line.includes(";")) {
+          const [a, b] = line.split(";");
+          name = String(a || "").trim();
+          players = String(b || "")
+            .split(",")
+            .map((x) => x.trim())
+            .filter(Boolean);
+        } else if (line.includes("|")) {
+          const parts = line
+            .split("|")
+            .map((x) => x.trim())
+            .filter(Boolean);
+          name = parts[0] || "";
+          players = parts.slice(1);
+        } else {
+          name = line;
+          players = [];
+        }
+
+        const p = (players || []).slice(0, ts);
+        while (p.length < ts) p.push("");
+
+        return {
+          id: makeTeamId(idx),
+          name: name || `Équipe ${idx + 1}`,
+          players: p,
+        };
+      });
+
+      setTeamsInput(teams);
+      setTeamsExpandedIdx(teams.length ? 0 : null);
+    },
+    [makeTeamId, petanqueTeamSize]
+  );
+
   // ---- bots sélectionnés (hors pétanque)
   const [botIds, setBotIds] = React.useState<string[]>([]);
   const toggleBot = (id: string) => setBotIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
@@ -1011,9 +1109,12 @@ const togglePlayer = (id: string) => {
   }, [playerIds, botIds, isPetanque]);
 
   // ✅ PÉTANQUE contraintes de roster
+  const isPetanqueProfiles = isPetanque && petanqueEntry === "profiles";
+  const isPetanqueTeams = isPetanque && petanqueEntry === "teams";
+
   const petanqueMinPlayers = petanqueTeamSize * 2;
-  const petanqueMultipleOk = totalSelectedIds.length % petanqueTeamSize === 0;
-  const petanqueMinOk = totalSelectedIds.length >= petanqueMinPlayers;
+  const petanqueMultipleOk = isPetanqueProfiles ? totalSelectedIds.length % petanqueTeamSize === 0 : true;
+  const petanqueMinOk = isPetanqueProfiles ? totalSelectedIds.length >= petanqueMinPlayers : isPetanqueTeams ? teamsInput.length >= 2 : true;
 
   const minPlayersOk = isPetanque ? petanqueMinOk : totalSelectedIds.length >= 2;
 
@@ -1023,8 +1124,13 @@ const petanqueTeamsCount = React.useMemo(() => {
   return isPetanque ? petanqueTeamCountFromSelected(totalSelectedIds.length) : 0;
 }, [isPetanque, totalSelectedIds.length, petanqueTeamSize]);
 
+const petanqueTeamsCountEffective = React.useMemo(() => {
+  if (!isPetanque) return 0;
+  return isPetanqueTeams ? (teamsInput?.length || 0) : petanqueTeamsCount;
+}, [isPetanque, isPetanqueTeams, teamsInput, petanqueTeamsCount]);
+
 React.useEffect(() => {
-  if (!isPetanque) return;
+  if (!isPetanqueProfiles) return;
 
   // clamp équipe active
   setActiveTeamIdx((prev) => {
@@ -1050,10 +1156,27 @@ React.useEffect(() => {
   // assignations
   setTeamOfPlayer((prev) => normalizePetanqueAssignments(totalSelectedIds, prev || {}));
   // eslint-disable-next-line react-hooks/exhaustive-deps
-}, [isPetanque, petanqueTeamsCount, petanqueTeamSize, totalSelectedIds.join("|")]);
+}, [isPetanqueProfiles, petanqueTeamsCount, petanqueTeamSize, totalSelectedIds.join("|")]);
 
 const petanqueTeamsReady = React.useMemo(() => {
   if (!isPetanque) return true;
+
+  // ✅ MODE "Par équipes" : on valide les équipes saisies
+  if (isPetanqueTeams) {
+    const ts = Number(petanqueTeamSize) || 1;
+    if ((teamsInput?.length || 0) < 2) return false;
+    for (const t of teamsInput || []) {
+      const nm = String(t?.name || "").trim();
+      if (!nm) return false;
+      const players = Array.isArray(t?.players) ? t.players : [];
+      const filled = players.map((x) => String(x ?? "").trim()).filter(Boolean);
+      if (filled.length !== ts) return false;
+    }
+    return true;
+  }
+
+  // ✅ MODE "Par profils" : on valide la composition issue des assignations
+  if (!isPetanqueProfiles) return false;
   const { teams, ts, teamCount } = buildPetanqueTeamsFromAssignments(totalSelectedIds);
 
   if (teamCount < 2) return false;
@@ -1066,7 +1189,7 @@ const petanqueTeamsReady = React.useMemo(() => {
   if (uniq.size !== totalSelectedIds.length) return false;
 
   return true;
-}, [isPetanque, totalSelectedIds.join("|"), teamOfPlayer, petanqueTeamSize, teamNames]);
+}, [isPetanque, isPetanqueTeams, isPetanqueProfiles, teamsInput, totalSelectedIds.join("|"), teamOfPlayer, petanqueTeamSize, teamNames]);
 
   // ---- Format tournoi
   const [format, setFormat] = React.useState<TourFormat>("single_ko");
@@ -1363,51 +1486,82 @@ async function createTournament() {
   // ✅ MODE PÉTANQUE : on transforme les joueurs en ÉQUIPES (entrants = équipes)
   // --------------------------------------------
   if (isPetanque) {
-    const selectedIds = Array.from(new Set([...playerIds])).filter(Boolean);
+    const ts = Number(petanqueTeamSize) || 1;
 
-    const { teams, ts, teamCount } = buildPetanqueTeamsFromAssignments(selectedIds);
+    // ✅ MODE "Par équipes" : on crée les entrants à partir de teamsInput (sans profils)
+    const teamEntrants = isPetanqueTeams
+      ? (teamsInput || []).map((t: any, idx: number) => {
+          const teamId = String(t?.id || `team_${idx + 1}`);
+          const teamName = (String(t?.name || "").trim() || `Équipe ${idx + 1}`).trim();
+          const players = normalizeTeamPlayers(t?.players || []);
+          const members = players.slice(0, ts).map((nm: string, k: number) => {
+            const safeName = String(nm || "").trim() || `Joueur ${k + 1}`;
+            return {
+              id: `${teamId}_p${k + 1}`,
+              name: safeName,
+              avatarDataUrl: null,
+              avg3D: 0,
+              stars: 0,
+            };
+          });
 
-    // cap (optionnel) côté pétanque : cap sur JOUEURS -> on tronque puis on normalise
-    let effectiveSelectedIds = selectedIds;
-    if (capEnabled && effectiveSelectedIds.length > cap) {
-      effectiveSelectedIds = shuffle(effectiveSelectedIds).slice(0, cap);
-    }
+          return {
+            id: teamId,
+            name: teamName,
+            avatarDataUrl: null,
+            source: "team",
+            isBot: false,
+            avg3D: 0,
+            stars: 0,
+            members,
+          };
+        })
+      : (() => {
+          // ✅ MODE "Par profils" : regroupement par assignation
+          const selectedIds = Array.from(new Set([...playerIds])).filter(Boolean);
 
-    const normalizedAssignments = normalizePetanqueAssignments(effectiveSelectedIds, teamOfPlayer || {});
-    const membersByTeam: string[][] = Array.from({ length: teamCount }, () => []);
-    for (const pid of effectiveSelectedIds) {
-      const t = normalizedAssignments[pid];
-      if (Number.isFinite(t) && t >= 0 && t < teamCount) membersByTeam[t].push(pid);
-    }
+          // cap (optionnel) côté pétanque : cap sur JOUEURS -> on tronque puis on normalise
+          let effectiveSelectedIds = selectedIds;
+          if (capEnabled && effectiveSelectedIds.length > cap) {
+            effectiveSelectedIds = shuffle(effectiveSelectedIds).slice(0, cap);
+          }
 
-    // ✅ construire les entrants (équipes)
-    const teamEntrants = membersByTeam.map((memberIds, idx) => {
-      const members = memberIds.slice(0, ts).map((pid) => {
-        const pr = profileById[String(pid)];
-        const avg = Number(avgMap?.[String(pid)] ?? 0) || 0;
-        return {
-          id: String(pid),
-          name: pr?.name || "Joueur",
-          avatarDataUrl: pr?.avatar || null,
-          avg3D: avg,
-          stars: starsFromAvg3D(avg),
-        };
-      });
+          const teamCount = petanqueTeamCountFromSelected(effectiveSelectedIds.length);
+          const normalizedAssignments = normalizePetanqueAssignments(effectiveSelectedIds, teamOfPlayer || {});
+          const membersByTeam: string[][] = Array.from({ length: teamCount }, () => []);
+          for (const pid of effectiveSelectedIds) {
+            const t = normalizedAssignments[pid];
+            if (Number.isFinite(t) && t >= 0 && t < teamCount) membersByTeam[t].push(pid);
+          }
 
-      const avgTeam =
-        members.length ? members.reduce((acc: number, m: any) => acc + (Number(m.avg3D) || 0), 0) / members.length : 0;
+          return membersByTeam.map((memberIds, idx) => {
+            const members = memberIds.slice(0, ts).map((pid) => {
+              const pr = profileById[String(pid)];
+              const avg = Number(avgMap?.[String(pid)] ?? 0) || 0;
+              return {
+                id: String(pid),
+                name: pr?.name || "Joueur",
+                avatarDataUrl: pr?.avatar || null,
+                avg3D: avg,
+                stars: starsFromAvg3D(avg),
+              };
+            });
 
-      return {
-        id: `team_${idx + 1}`,
-        name: (teamNames?.[idx] || `Équipe ${idx + 1}`).trim() || `Équipe ${idx + 1}`,
-        avatarDataUrl: members?.[0]?.avatarDataUrl || null,
-        source: "team",
-        isBot: false,
-        avg3D: avgTeam,
-        stars: starsFromAvg3D(avgTeam),
-        members,
-      };
-    });
+            const avgTeam =
+              members.length ? members.reduce((acc: number, m: any) => acc + (Number(m.avg3D) || 0), 0) / members.length : 0;
+
+            return {
+              id: `team_${idx + 1}`,
+              name: (teamNames?.[idx] || `Équipe ${idx + 1}`).trim() || `Équipe ${idx + 1}`,
+              avatarDataUrl: members?.[0]?.avatarDataUrl || null,
+              source: "team",
+              isBot: false,
+              avg3D: avgTeam,
+              stars: starsFromAvg3D(avgTeam),
+              members,
+            };
+          });
+        })();
 
     // ✅ seed : aléatoire (toujours en pétanque)
     const seededTeams =
@@ -1653,15 +1807,15 @@ async function createTournament() {
   const computedGroups = React.useMemo(() => {
   if (format !== "groups_ko") return 1;
   const ppg = clamp(Math.floor(numFromText(playersPerGroup)) || 4, 2, 9999);
-  const entrants = isPetanque ? Math.max(2, petanqueTeamsCount) : Math.max(2, totalSelectedIds.length);
+  const entrants = isPetanque ? Math.max(2, petanqueTeamsCountEffective) : Math.max(2, totalSelectedIds.length);
   return Math.max(1, Math.ceil(entrants / ppg));
-}, [format, playersPerGroup, totalSelectedIds.length, isPetanque, petanqueTeamsCount]);
+}, [format, playersPerGroup, totalSelectedIds.length, isPetanque, petanqueTeamsCountEffective]);
 
   const desiredSizePreview = React.useMemo(() => {
-  const entrants = isPetanque ? Math.max(2, petanqueTeamsCount) : Math.max(2, totalSelectedIds.length);
+  const entrants = isPetanque ? Math.max(2, petanqueTeamsCountEffective) : Math.max(2, totalSelectedIds.length);
   const d = computeDesiredSize(entrants);
   return d || 0;
-}, [totalSelectedIds.length, bracketAuto, bracketTarget, format, isPetanque, petanqueTeamsCount]);
+}, [totalSelectedIds.length, bracketAuto, bracketTarget, format, isPetanque, petanqueTeamsCountEffective]);
 
 const petanqueTeamsUI = React.useMemo(() => {
   if (!isPetanque) return [];
@@ -1817,18 +1971,27 @@ const petanqueTeamsUI = React.useMemo(() => {
           </div>
 
           <div style={{ marginTop: 10, fontSize: 11.5, opacity: 0.8, lineHeight: 1.35 }}>
-            Minimum : <b style={{ color: primary }}>{petanqueMinPlayers}</b> joueurs (2 équipes).<br />
-            Total sélectionné doit être un multiple de <b style={{ color: primary }}>{petanqueTeamSize}</b>.
+            {petanqueEntry === "teams" ? (
+              <>
+                Minimum : <b style={{ color: primary }}>2</b> équipes.<br />
+                Chaque équipe doit contenir exactement <b style={{ color: primary }}>{petanqueTeamSize}</b> joueur(s) (noms non vides).
+              </>
+            ) : (
+              <>
+                Minimum : <b style={{ color: primary }}>{petanqueMinPlayers}</b> joueurs (2 équipes).<br />
+                Total sélectionné doit être un multiple de <b style={{ color: primary }}>{petanqueTeamSize}</b>.
+              </>
+            )}
           </div>
 
-          {!petanqueMinOk ? (
+          {petanqueEntry !== "teams" && !petanqueMinOk ? (
             <div style={{ marginTop: 8, fontSize: 11.5, opacity: 0.75 }}>
               ⚠️ Pas assez de joueurs pour{" "}
               {petanqueTeamSize === 1 ? "Simple" : petanqueTeamSize === 2 ? "Doublette" : petanqueTeamSize === 3 ? "Triplette" : "Quadrette"}.
             </div>
           ) : null}
 
-          {petanqueMinOk && !petanqueMultipleOk ? (
+          {petanqueEntry !== "teams" && petanqueMinOk && !petanqueMultipleOk ? (
             <div style={{ marginTop: 8, fontSize: 11.5, opacity: 0.75 }}>
               ⚠️ Total non multiple de {petanqueTeamSize}. Ajoute/enlève des joueurs.
             </div>
@@ -1837,27 +2000,58 @@ const petanqueTeamsUI = React.useMemo(() => {
       ) : null}
 
       {/* ✅ JOUEURS */}
-      <Section title="Joueurs" subtitle={isPetanque ? "Sélectionne tes profils (humains uniquement)." : "Sélectionne tes profils."} accent={primary}>
+      <Section
+        title={isPetanque && petanqueEntry === "teams" ? "Équipes" : "Joueurs"}
+        subtitle={
+          isPetanque
+            ? petanqueEntry === "teams"
+              ? "Gros tournoi : saisis directement les équipes (sans profils)."
+              : "Sélectionne tes profils (humains uniquement)."
+            : "Sélectionne tes profils."
+        }
+        accent={primary}
+      >
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
           <div style={{ fontSize: 12, opacity: 0.82 }}>
-            <b style={{ color: primary }}>{totalSelectedIds.length}</b> sélectionné(s)
-            {isPetanque ? (
+            {isPetanque && petanqueEntry === "teams" ? (
               <>
-                {" "}
-                • <span style={{ opacity: 0.85 }}>équipes : </span>
-                <b style={{ color: primary }}>{petanqueTeamsCount}</b>
+                <b style={{ color: primary }}>{petanqueTeamsCountEffective}</b> équipe(s)
               </>
-            ) : null}
+            ) : (
+              <>
+                <b style={{ color: primary }}>{totalSelectedIds.length}</b> sélectionné(s)
+                {isPetanque ? (
+                  <>
+                    {" "}
+                    • <span style={{ opacity: 0.85 }}>équipes : </span>
+                    <b style={{ color: primary }}>{petanqueTeamsCountEffective}</b>
+                  </>
+                ) : null}
+              </>
+            )}
           </div>
 
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end", alignItems: "center" }}>
-            <NeonGhost label="Tout sélectionner" onClick={() => setPlayerIds(profiles.map((p: any) => String(p.id)))} />
-            <NeonGhost label="Vider" onClick={() => setPlayerIds([])} />
+            {isPetanque ? (
+              <>
+                <NeonPill active={petanqueEntry === "profiles"} label="Par profils" onClick={() => setPetanqueEntry("profiles")} small primary={primary} />
+                <NeonPill active={petanqueEntry === "teams"} label="Par équipes" onClick={() => setPetanqueEntry("teams")} small primary={primary} />
+              </>
+            ) : null}
+
+            {(!isPetanque || petanqueEntry === "profiles") ? (
+              <>
+                <NeonGhost label="Tout sélectionner" onClick={() => setPlayerIds(profiles.map((p: any) => String(p.id)))} />
+                <NeonGhost label="Vider" onClick={() => setPlayerIds([])} />
+              </>
+            ) : null}
+
             <InfoIconButton onClick={() => openInfo("players")} />
           </div>
         </div>
 
-        {/* HUMAINS */}
+        {/* HUMAINS (profils) */}
+        {(!isPetanque || petanqueEntry === "profiles") ? (
         <div
           style={{
             marginTop: 10,
@@ -1878,15 +2072,16 @@ const petanqueTeamsUI = React.useMemo(() => {
             return <PlayerCarouselTile key={p.id} active={active} name={p.name} avatarUrl={p.avatar} avg3D={avg} onClick={() => togglePlayer(p.id)} primary={primary} />;
           })}
         </div>
+        ) : null}
 
 
 
 {/* ✅ PÉTANQUE — ÉQUIPES (composition) */}
-{isPetanque ? (
+{isPetanque && petanqueEntry === "profiles" ? (
   <div style={{ marginTop: 12 }}>
     <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 8 }}>
       <div style={{ fontSize: 12, opacity: 0.82 }}>
-        <b style={{ color: primary }}>{petanqueTeamsCount}</b> équipe(s) •{" "}
+        <b style={{ color: primary }}>{petanqueTeamsCountEffective}</b> équipe(s) •{" "}
         <span style={{ opacity: 0.75 }}>taille</span> <b style={{ color: primary }}>{petanqueTeamSize}</b>
       </div>
 
@@ -1988,6 +2183,221 @@ const petanqueTeamsUI = React.useMemo(() => {
     ) : null}
   </div>
 ) : null}
+
+{/* ✅ PÉTANQUE — ENTRÉE "Par équipes" (sans profils) */}
+{isPetanque && petanqueEntry === "teams" ? (
+  <div style={{ marginTop: 12 }}>
+    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 10, flexWrap: "wrap" }}>
+      <div style={{ display: "grid", gap: 8, minWidth: 240, flex: "1 1 260px" }}>
+        <RowTitle label="Recherche équipe" />
+        <TextInput value={teamsSearch} onChange={(e: any) => setTeamsSearch(e.target.value)} placeholder="Tape un nom d'équipe…" />
+      </div>
+
+      <div style={{ display: "flex", gap: 8, alignItems: "flex-end", flexWrap: "wrap", justifyContent: "flex-end" }}>
+        <NeonGhost label="Générer 16" onClick={() => generateTeams(16)} />
+        <NeonGhost label="Générer 32" onClick={() => generateTeams(32)} />
+        <NeonGhost label="Générer 64" onClick={() => generateTeams(64)} />
+        <NeonGhost
+          label={teamsImportOpen ? "Fermer import" : "Importer texte"}
+          onClick={() => setTeamsImportOpen((v) => !v)}
+        />
+        <NeonGhost
+          label="Ajouter équipe"
+          onClick={() => {
+            const idx = (teamsInput?.length || 0);
+            const next = [...(teamsInput || []), { id: makeTeamId(idx), name: `Équipe ${idx + 1}`, players: normalizeTeamPlayers([]) }];
+            setTeamsInput(next);
+            setTeamsExpandedIdx(idx);
+          }}
+        />
+      </div>
+    </div>
+
+    {teamsImportOpen ? (
+      <div
+        style={{
+          borderRadius: 16,
+          border: "1px solid rgba(255,255,255,0.12)",
+          background: "rgba(9,11,20,0.72)",
+          padding: 12,
+          marginBottom: 12,
+        }}
+      >
+        <div style={{ fontSize: 11.5, opacity: 0.78, lineHeight: 1.35, marginBottom: 10 }}>
+          1 équipe par ligne. Formats acceptés :<br />
+          • <b style={{ color: primary }}>Équipe A</b><br />
+          • <b style={{ color: primary }}>Équipe A; joueur1, joueur2</b><br />
+          • <b style={{ color: primary }}>Équipe A | joueur1 | joueur2</b>
+        </div>
+
+        <textarea
+          value={teamsImportText}
+          onChange={(e) => setTeamsImportText(e.target.value)}
+          placeholder={`Ex:\nÉquipe A; Alice, Bob\nÉquipe B | Charly | David`}
+          style={{
+            width: "100%",
+            minHeight: 120,
+            borderRadius: 14,
+            border: "1px solid rgba(255,255,255,0.14)",
+            background: "rgba(8,8,12,0.75)",
+            color: "#fff",
+            padding: "10px 12px",
+            fontSize: 13,
+            outline: "none",
+            resize: "vertical",
+          }}
+        />
+
+        <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 10, flexWrap: "wrap" }}>
+          <NeonGhost
+            label="Appliquer"
+            onClick={() => {
+              parseTeamsImportText(teamsImportText);
+            }}
+          />
+          <NeonGhost label="Vider" onClick={() => setTeamsImportText("")} />
+        </div>
+      </div>
+    ) : null}
+
+    <div style={{ fontSize: 11.5, opacity: 0.75, lineHeight: 1.35, marginBottom: 10 }}>
+      Rappel : en mode <b style={{ color: primary }}>Par équipes</b>, chaque équipe doit avoir exactement <b style={{ color: primary }}>{petanqueTeamSize}</b> joueur(s)
+      (noms non vides) et il faut au minimum <b style={{ color: primary }}>2</b> équipes.
+    </div>
+
+    <div style={{ display: "grid", gap: 10 }}>
+      {(teamsInput || [])
+        .map((t: any, idx: number) => ({ ...t, _idx: idx }))
+        .filter((t: any) => {
+          const q = String(teamsSearch || "").trim().toLowerCase();
+          if (!q) return true;
+          const n = String(t?.name || "").toLowerCase();
+          return n.includes(q);
+        })
+        .map((t: any) => {
+          const idx = Number(t._idx) || 0;
+          const expanded = teamsExpandedIdx === idx;
+          const ts = Number(petanqueTeamSize) || 1;
+          const players = Array.isArray(t?.players) ? t.players : [];
+          const filled = players.map((x: any) => String(x ?? "").trim()).filter(Boolean).length;
+
+          return (
+            <div
+              key={String(t.id || idx)}
+              style={{
+                borderRadius: 16,
+                border: expanded ? `1px solid ${primary}CC` : "1px solid rgba(255,255,255,0.10)",
+                background: expanded ? `linear-gradient(180deg, ${primary}14, rgba(0,0,0,0.22))` : "rgba(9,11,20,0.72)",
+                padding: 12,
+                boxShadow: expanded ? `0 0 22px ${primary}22` : "none",
+              }}
+            >
+              <div
+                style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, cursor: "pointer" }}
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  setTeamsExpandedIdx((prev) => (prev === idx ? null : idx));
+                }}
+              >
+                <div style={{ fontWeight: 950, color: primary, fontSize: 12.5 }}>
+                  {expanded ? "▾ " : "▸ "}Équipe {idx + 1}
+                </div>
+                <div style={{ fontSize: 11.5, opacity: 0.78 }}>
+                  {filled}/{ts}
+                </div>
+              </div>
+
+              {expanded ? (
+                <div style={{ marginTop: 10, display: "grid", gap: 10 }}>
+                  <div style={{ display: "grid", gap: 6 }}>
+                    <RowTitle label="Nom de l'équipe" />
+                    <TextInput
+                      value={String(t?.name || "")}
+                      onChange={(e: any) => {
+                        const v = e.target.value;
+                        setTeamsInput((prev) => {
+                          const next = [...(prev || [])];
+                          const cur = next[idx] || { id: makeTeamId(idx), name: "", players: normalizeTeamPlayers([]) };
+                          next[idx] = { ...cur, name: v };
+                          return next;
+                        });
+                      }}
+                      placeholder={`Équipe ${idx + 1}`}
+                    />
+                  </div>
+
+                  <div style={{ display: "grid", gap: 8 }}>
+                    <RowTitle label={`Joueurs (exactement ${ts})`} />
+                    <div style={{ display: "grid", gap: 8 }}>
+                      {Array.from({ length: ts }).map((_, k) => (
+                        <TextInput
+                          key={`${String(t.id || idx)}_p_${k}`}
+                          value={String(players[k] ?? "")}
+                          onChange={(e: any) => {
+                            const v = e.target.value;
+                            setTeamsInput((prev) => {
+                              const next = [...(prev || [])];
+                              const cur = next[idx] || { id: makeTeamId(idx), name: `Équipe ${idx + 1}`, players: normalizeTeamPlayers([]) };
+                              const p = Array.isArray(cur.players) ? [...cur.players] : [];
+                              while (p.length < ts) p.push("");
+                              p[k] = v;
+                              next[idx] = { ...cur, players: p };
+                              return next;
+                            });
+                          }}
+                          placeholder={`Joueur ${k + 1}`}
+                        />
+                      ))}
+                    </div>
+                  </div>
+
+                  <div style={{ display: "flex", gap: 8, justifyContent: "space-between", flexWrap: "wrap" }}>
+                    <NeonGhost
+                      label="Supprimer"
+                      onClick={() => {
+                        setTeamsInput((prev) => {
+                          const arr = [...(prev || [])];
+                          arr.splice(idx, 1);
+                          return arr.map((x: any, i: number) => ({ ...x, name: String(x?.name || `Équipe ${i + 1}`) }));
+                        });
+                        setTeamsExpandedIdx((prev) => {
+                          if (prev == null) return null;
+                          if (prev === idx) return null;
+                          return prev > idx ? prev - 1 : prev;
+                        });
+                      }}
+                    />
+
+                    <NeonGhost
+                      label="Dupliquer"
+                      onClick={() => {
+                        setTeamsInput((prev) => {
+                          const arr = [...(prev || [])];
+                          const cur = arr[idx];
+                          if (!cur) return arr;
+                          const copy = { ...cur, id: makeTeamId(arr.length), name: `${String(cur.name || `Équipe ${idx + 1}`)} (copy)` };
+                          arr.splice(idx + 1, 0, copy);
+                          return arr;
+                        });
+                        setTeamsExpandedIdx(idx + 1);
+                      }}
+                    />
+                  </div>
+                </div>
+              ) : null}
+            </div>
+          );
+        })}
+    </div>
+
+    {!petanqueTeamsReady ? (
+      <div style={{ marginTop: 10, fontSize: 11.5, opacity: 0.75 }}>
+        ⚠️ Équipes invalides : minimum 2 équipes et chaque équipe doit contenir exactement {petanqueTeamSize} joueur(s) (noms non vides).
+      </div>
+    ) : null}
+  </div>
+) : null}
         {/* BOTS (hors pétanque uniquement) */}
         {!isPetanque ? (
           <>
@@ -2035,7 +2445,12 @@ const petanqueTeamsUI = React.useMemo(() => {
 
         {!minPlayersOk ? (
           <div style={{ marginTop: 8, fontSize: 11.5, opacity: 0.75 }}>
-            ⚠️ {isPetanque ? `Minimum ${petanqueMinPlayers} joueurs (2 équipes).` : "Minimum 2 joueurs."}
+            ⚠️
+            {isPetanque
+              ? petanqueEntry === "teams"
+                ? " Minimum 2 équipes."
+                : ` Minimum ${petanqueMinPlayers} joueurs (2 équipes).`
+              : " Minimum 2 joueurs."}
           </div>
         ) : null}
       </Section>
@@ -2154,7 +2569,7 @@ const petanqueTeamsUI = React.useMemo(() => {
                   ))}
                 </div>
                 <div style={{ fontSize: 11, opacity: 0.7, lineHeight: 1.35 }}>
-                  Poules auto ≈ <b style={{ color: primary }}>{computedGroups}</b> (sur {isPetanque ? Math.max(2, petanqueTeamsCount) : Math.max(2, totalSelectedIds.length)} {isPetanque ? "équipes" : "joueurs"})
+                  Poules auto ≈ <b style={{ color: primary }}>{computedGroups}</b> (sur {isPetanque ? Math.max(2, petanqueTeamsCountEffective) : Math.max(2, totalSelectedIds.length)} {isPetanque ? "équipes" : "joueurs"})
                 </div>
               </div>
               <InfoIconButton onClick={() => openInfo("groups")} />
