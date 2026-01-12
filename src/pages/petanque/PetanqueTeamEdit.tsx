@@ -176,6 +176,12 @@ export default function PetanqueTeamEdit({ go, params }: Props) {
     );
   }, [allProfiles, playerSearch]);
 
+  // ✅ NEW: masquer les profils déjà sélectionnés (au lieu de les cocher)
+const availableProfiles = React.useMemo(() => {
+  const picked = new Set((team.playerIds || []).map((x: any) => String(x)));
+  return filteredProfiles.filter((p) => !picked.has(String(p.id)));
+}, [filteredProfiles, team.playerIds]);
+
   function save(next: PetanqueTeam) {
     const fixed: PetanqueTeam = {
       ...next,
@@ -761,58 +767,39 @@ export default function PetanqueTeamEdit({ go, params }: Props) {
               </div>
             )}
 
-            {/* Profiles list */}
-            <div style={listBox(theme)}>
-              {filteredProfiles.length === 0 ? (
-                <div style={{ opacity: 0.7, padding: 10, fontSize: 13 }}>
-                  {t("profiles.empty", "Aucun profil local trouvé.")}
-                </div>
-              ) : (
-                filteredProfiles.map((p) => {
-                  const selected = (team.playerIds || []).includes(p.id);
-                  return (
-                    <button
-                      key={p.id}
-                      onClick={() => togglePlayer(p.id)}
-                      style={{
-                        ...listItem(theme),
-                        ...(selected ? listItemSelected(theme) : {}),
-                      }}
-                    >
-                      <span style={avatar32Wrap(theme)}>
-                        {p.avatarDataUrl ? (
-                          <img src={p.avatarDataUrl} alt="" style={avatar32Img} />
-                        ) : (
-                          <span style={{ fontWeight: 900 }}>
-                            {(p.name || "?").slice(0, 1).toUpperCase()}
-                          </span>
-                        )}
-                      </span>
+            {/* Profiles list (✅ masque les déjà sélectionnés) */}
+<div style={listBox(theme)}>
+  {allProfiles.length === 0 ? (
+    <div style={{ opacity: 0.7, padding: 10, fontSize: 13 }}>{t("profiles.empty", "Aucun profil local trouvé.")}</div>
+  ) : availableProfiles.length === 0 ? (
+    <div style={{ opacity: 0.7, padding: 10, fontSize: 13 }}>
+      {playerSearch.trim()
+        ? t("profiles.none_available_search", "Aucun profil disponible (ils sont déjà ajoutés ou ne matchent pas la recherche).")
+        : t("profiles.none_available", "Tous les profils sont déjà ajoutés à l’équipe.")}
+    </div>
+  ) : (
+    availableProfiles.map((p) => {
+      return (
+        <button key={p.id} onClick={() => togglePlayer(p.id)} style={listItem(theme)}>
+          <span style={avatar32Wrap(theme)}>
+            {p.avatarDataUrl ? (
+              <img src={p.avatarDataUrl} alt="" style={avatar32Img} />
+            ) : (
+              <span style={{ fontWeight: 900 }}>{(p.name || "?").slice(0, 1).toUpperCase()}</span>
+            )}
+          </span>
 
-                      <span style={{ flex: 1, minWidth: 0, textAlign: "left" }}>
-                        <div
-                          style={{
-                            fontWeight: 800,
-                            overflow: "hidden",
-                            textOverflow: "ellipsis",
-                            whiteSpace: "nowrap",
-                          }}
-                        >
-                          {p.name}
-                        </div>
-                        <div style={{ opacity: 0.65, fontSize: 12 }}>
-                          {selected
-                            ? t("common.selected", "Sélectionné")
-                            : t("common.tap_to_add", "Appuyer pour ajouter")}
-                        </div>
-                      </span>
+          <span style={{ flex: 1, minWidth: 0, textAlign: "left" }}>
+            <div style={{ fontWeight: 800, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.name}</div>
+            <div style={{ opacity: 0.65, fontSize: 12 }}>{t("common.tap_to_add", "Appuyer pour ajouter")}</div>
+          </span>
 
-                      <span style={pill(theme)}>{selected ? "✓" : "+"}</span>
-                    </button>
-                  );
-                })
-              )}
-            </div>
+          <span style={pill(theme)}>+</span>
+        </button>
+      );
+    })
+  )}
+</div>
 
             <div style={{ marginTop: 14, fontSize: 11, opacity: 0.7 }}>
               {t("teams.edit.hint", "Ces équipes sont utilisées uniquement en Pétanque.")}
