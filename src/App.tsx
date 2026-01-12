@@ -68,6 +68,8 @@
 import React from "react";
 import BottomNav from "./components/BottomNav";
 
+import AuthDebugBanner from "./components/AuthDebugBanner";
+
 import AuthStart from "./pages/AuthStart";
 import AccountStart from "./pages/AccountStart";
 
@@ -2161,6 +2163,7 @@ function App() {
         <MobileErrorOverlay />
 
         <div className="container" style={{ paddingBottom: 88 }}>
+        {import.meta.env.DEV ? <AuthDebugBanner /> : null}
           <AppGate go={go} tab={tab}>
             {page}
           </AppGate>

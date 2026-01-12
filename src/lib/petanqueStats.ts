@@ -23,14 +23,57 @@ export type PTeam = {
   players?: PPlayer[];
 };
 
-export type PetanqueRec = {
-  id: string;
-  kind?: string;
-  createdAt?: number;
-  updatedAt?: number;
-  status?: string;
-  payload?: any;
-};
+export type PetanqueRec = any;
+
+// =============================================================
+// Helpers SAFE
+// =============================================================
+
+export function safeName(v: any, fallback = "Joueur") {
+  const s = String(v ?? "").trim();
+  return s || fallback;
+}
+
+export function formatPct(x: number) {
+  const v = Number.isFinite(x) ? x : 0;
+  return `${Math.round(v * 100)}%`;
+}
+
+function clampNum(n: any, def = 0) {
+  const v = Number(n);
+  return Number.isFinite(v) ? v : def;
+}
+
+function safePlayerId(p: any, fallback: string) {
+  const id = String(p?.id || p?.playerId || "").trim();
+  return id || fallback;
+}
+
+function safePlayerName(p: any, fallback: string) {
+  return safeName(p?.name, fallback);
+}
+
+function pickTeamFromPayload(payload: any, side: TeamId): PTeam {
+  const teamsArr = Array.isArray(payload?.teams) ? payload.teams : [];
+
+  const fromArr =
+    (teamsArr.find((t: any) => String(t?.id || t?.teamId || "").toUpperCase() === side) as any) || null;
+
+  const fallback: PTeam = { id: side, name: side === "A" ? "Équipe A" : "Équipe B", players: [] };
+
+  const team: PTeam = (fromArr || payload?.teams?.[side] || payload?.team?.[side] || fallback) as any;
+
+  return {
+    id: side,
+    name: safeName(team?.name, fallback.name),
+    logoDataUrl: typeof team?.logoDataUrl === "string" ? team.logoDataUrl : null,
+    players: Array.isArray(team?.players) ? team.players : [],
+  };
+}
+
+// =============================================================
+// NormalizedMatch (format stable pour UI)
+// =============================================================
 
 export type NormalizedMatch = {
   id: string;
@@ -48,31 +91,40 @@ export function getPetanqueMatches(): NormalizedMatch[] {
   const list = Array.isArray(raw) ? raw : [];
 
   const norm: NormalizedMatch[] = [];
+
   for (const r of list) {
     if (!r) continue;
-    const payload = (r as any).payload || {};
-    const mode = String(payload.mode || (r as any).mode || "petanque");
 
-    const teamsArr = Array.isArray(payload.teams) ? payload.teams : [];
-    const teamA: PTeam =
-      (teamsArr.find((t: any) => String(t?.id || t?.teamId || "").toUpperCase() === "A") as any) ||
-      ({ id: "A", name: "Équipe A", players: [] } as any);
-    const teamB: PTeam =
-      (teamsArr.find((t: any) => String(t?.id || t?.teamId || "").toUpperCase() === "B") as any) ||
-      ({ id: "B", name: "Équipe B", players: [] } as any);
+    const payload = (r as any).payload || r || {};
+    const mode = String(payload?.mode || (r as any).mode || "petanque");
 
-    const scoresObj = payload.scores || payload.score || {};
-    const sA = Number((scoresObj as any).A ?? (scoresObj as any).a ?? 0) || 0;
-    const sB = Number((scoresObj as any).B ?? (scoresObj as any).b ?? 0) || 0;
+    const teamA = pickTeamFromPayload(payload, "A");
+    const teamB = pickTeamFromPayload(payload, "B");
 
-    const winnerRaw = payload.winnerTeamId ?? payload.winner ?? null;
+    // scores (compat)
+    const scoresObj = payload?.scores || payload?.score || payload || {};
+    const sA = clampNum((scoresObj as any).A ?? (scoresObj as any).a ?? payload?.scoreA ?? payload?.pointsA ?? 0, 0);
+    const sB = clampNum((scoresObj as any).B ?? (scoresObj as any).b ?? payload?.scoreB ?? payload?.pointsB ?? 0, 0);
+
+    const winnerRaw = payload?.winnerTeamId ?? payload?.winner ?? null;
     const w = String(winnerRaw || "").toUpperCase();
-    const winner: TeamId | null = w === "A" || w === "B" ? (w as TeamId) : sA === sB ? null : sA > sB ? "A" : "B";
+    const winner: TeamId | null =
+      w === "A" || w === "B" ? (w as TeamId) : sA === sB ? null : sA > sB ? "A" : "B";
 
-    const ends = Array.isArray(payload.ends) ? payload.ends : [];
-    const target = Number(payload.target ?? 13) || 13;
-    const when = Number((r as any).updatedAt ?? (r as any).createdAt ?? Date.now());
-    const id = String((r as any).id || `petanque-${when}-${Math.random().toString(36).slice(2, 8)}`);
+    const ends = Array.isArray(payload?.ends) ? payload.ends : Array.isArray((r as any).ends) ? (r as any).ends : [];
+    const target = clampNum(payload?.target ?? payload?.targetScore ?? (r as any).targetScore ?? 13, 13);
+
+    const when = clampNum((r as any).updatedAt ?? payload?.updatedAt ?? (r as any).createdAt ?? payload?.createdAt ?? Date.now(), Date.now());
+
+    const id = String(
+      (r as any).matchId ||
+        (r as any).gameId ||
+        (r as any).id ||
+        payload?.matchId ||
+        payload?.gameId ||
+        payload?.id ||
+        `petanque-${when}-${Math.random().toString(36).slice(2, 8)}`
+    );
 
     norm.push({
       id,
@@ -82,14 +134,17 @@ export function getPetanqueMatches(): NormalizedMatch[] {
       scores: { A: sA, B: sB },
       target,
       winner,
-      endsCount: ends.length,
+      endsCount: Array.isArray(ends) ? ends.length : 0,
     });
   }
 
-  // plus récent en premier
   norm.sort((a, b) => b.when - a.when);
   return norm;
 }
+
+// =============================================================
+// Aggregate Players
+// =============================================================
 
 export type PlayerAgg = {
   id: string;
@@ -105,16 +160,6 @@ export type PlayerAgg = {
   ends: number;
   lastPlayedAt: number;
 };
-
-function safePlayerId(p: any, fallback: string) {
-  const id = String(p?.id || "").trim();
-  return id || fallback;
-}
-
-function safePlayerName(p: any, fallback: string) {
-  const n = String(p?.name || "").trim();
-  return n || fallback;
-}
 
 export function aggregatePlayers(matches?: NormalizedMatch[]): PlayerAgg[] {
   const list = matches ?? getPetanqueMatches();
@@ -144,11 +189,11 @@ export function aggregatePlayers(matches?: NormalizedMatch[]): PlayerAgg[] {
   };
 
   for (const m of list) {
-    ("A,B".split(",") as TeamId[]).forEach((tid) => {
-      const team = m.teams[tid] || ({ id: tid, players: [] } as any);
+    (["A", "B"] as TeamId[]).forEach((tid) => {
+      const team = m.teams?.[tid] || ({ id: tid, players: [] } as any);
       const opp: TeamId = tid === "A" ? "B" : "A";
-      const pf = Number(m.scores[tid] ?? 0) || 0;
-      const pa = Number(m.scores[opp] ?? 0) || 0;
+      const pf = clampNum(m.scores?.[tid] ?? 0, 0);
+      const pa = clampNum(m.scores?.[opp] ?? 0, 0);
 
       const teamPlayers = Array.isArray(team.players) ? team.players : [];
       teamPlayers.forEach((p: any, idx: number) => {
@@ -161,10 +206,11 @@ export function aggregatePlayers(matches?: NormalizedMatch[]): PlayerAgg[] {
         if (m.winner === null) agg.ties += 1;
         else if (m.winner === tid) agg.wins += 1;
         else agg.losses += 1;
+
         agg.pointsFor += pf;
         agg.pointsAgainst += pa;
-        agg.ends += Number(m.endsCount ?? 0) || 0;
-        agg.lastPlayedAt = Math.max(agg.lastPlayedAt, m.when);
+        agg.ends += clampNum(m.endsCount ?? 0, 0);
+        agg.lastPlayedAt = Math.max(agg.lastPlayedAt, clampNum(m.when, 0));
         agg.diff = agg.pointsFor - agg.pointsAgainst;
         map.set(pid, agg);
       });
@@ -172,7 +218,6 @@ export function aggregatePlayers(matches?: NormalizedMatch[]): PlayerAgg[] {
   }
 
   return Array.from(map.values()).sort((a, b) => {
-    // tri: winrate desc, puis diff desc, puis matches desc
     const awr = a.matches ? a.wins / a.matches : 0;
     const bwr = b.matches ? b.wins / b.matches : 0;
     if (bwr !== awr) return bwr - awr;
@@ -180,6 +225,10 @@ export function aggregatePlayers(matches?: NormalizedMatch[]): PlayerAgg[] {
     return b.matches - a.matches;
   });
 }
+
+// =============================================================
+// Aggregate Duos (coéquipiers)
+// =============================================================
 
 export type DuoAgg = {
   key: string; // pid1|pid2
@@ -204,17 +253,17 @@ export function aggregateDuos(matches?: NormalizedMatch[]): DuoAgg[] {
   const map = new Map<string, DuoAgg>();
 
   for (const m of list) {
-    ("A,B".split(",") as TeamId[]).forEach((tid) => {
-      const team = m.teams[tid] || ({ id: tid, players: [] } as any);
+    (["A", "B"] as TeamId[]).forEach((tid) => {
+      const team = m.teams?.[tid] || ({ id: tid, players: [] } as any);
       const players = Array.isArray(team.players) ? team.players : [];
       const ids = players.map((p: any, idx: number) => safePlayerId(p, `${tid}-${m.id}-${idx}`));
 
-      // duos uniquement (au moins 2 joueurs)
       for (let i = 0; i < ids.length; i++) {
         for (let j = i + 1; j < ids.length; j++) {
           const a = ids[i];
           const b = ids[j];
           const key = duoKey(a, b);
+
           const prev = map.get(key);
           const base: DuoAgg =
             prev ||
@@ -233,6 +282,7 @@ export function aggregateDuos(matches?: NormalizedMatch[]): DuoAgg[] {
           if (m.winner === null) base.ties += 1;
           else if (m.winner === tid) base.wins += 1;
           else base.losses += 1;
+
           base.winRate = base.matches ? base.wins / base.matches : 0;
           map.set(key, base);
         }
@@ -247,8 +297,12 @@ export function aggregateDuos(matches?: NormalizedMatch[]): DuoAgg[] {
   });
 }
 
+// =============================================================
+// Rivalries (adversaires)
+// =============================================================
+
 export type RivalryAgg = {
-  key: string; // pidA|pidB (opposition)
+  key: string; // pidA|pidB (non orienté)
   a: { id: string; name: string };
   b: { id: string; name: string };
   matches: number;
@@ -265,14 +319,16 @@ export function aggregateRivalries(matches?: NormalizedMatch[]): RivalryAgg[] {
   const map = new Map<string, RivalryAgg>();
 
   for (const m of list) {
-    const A = Array.isArray(m.teams.A?.players) ? m.teams.A.players! : [];
-    const B = Array.isArray(m.teams.B?.players) ? m.teams.B.players! : [];
+    const A = Array.isArray(m.teams?.A?.players) ? (m.teams.A.players as any[]) : [];
+    const B = Array.isArray(m.teams?.B?.players) ? (m.teams.B.players as any[]) : [];
+
     const idsA = A.map((p: any, idx: number) => safePlayerId(p, `A-${m.id}-${idx}`));
     const idsB = B.map((p: any, idx: number) => safePlayerId(p, `B-${m.id}-${idx}`));
 
     for (const a of idsA) {
       for (const b of idsB) {
-        const key = duoKey(a, b); // opposition non orientée
+        const key = duoKey(a, b);
+
         const prev = map.get(key);
         const base: RivalryAgg =
           prev ||
@@ -290,6 +346,7 @@ export function aggregateRivalries(matches?: NormalizedMatch[]): RivalryAgg[] {
         if (m.winner === null) base.ties += 1;
         else if (m.winner === "A") base.aWins += 1;
         else base.bWins += 1;
+
         map.set(key, base);
       }
     }
@@ -297,6 +354,10 @@ export function aggregateRivalries(matches?: NormalizedMatch[]): RivalryAgg[] {
 
   return Array.from(map.values()).sort((x, y) => y.matches - x.matches);
 }
+
+// =============================================================
+// Face à Face (VsAgg) – utilisé par certaines pages UI
+// =============================================================
 
 export type VsAgg = {
   aId: string;
@@ -306,18 +367,11 @@ export type VsAgg = {
   matches: number;
   aWins: number;
   bWins: number;
-  aWinRate: number; // 0..1
+  aWinRate: number;
 };
 
-// ✅ "Face à face" global (tous joueurs), utilisé par PetanqueStatsPlayersPage
 export function aggregateVs(matches?: NormalizedMatch[]): VsAgg[] {
-  const list = Array.isArray(matches) ? matches : [];
-
-  // util: nom joueur depuis m.players
-  const nameFrom = (m: NormalizedMatch, pid: string) => {
-    const p = (m.players || []).find((x: any) => String(x?.id) === String(pid));
-    return (p?.name || p?.displayName || p?.label || "Joueur") as string;
-  };
+  const list = Array.isArray(matches) ? matches : getPetanqueMatches();
 
   type Item = {
     aId: string;
@@ -332,29 +386,40 @@ export function aggregateVs(matches?: NormalizedMatch[]): VsAgg[] {
   const map = new Map<string, Item>();
 
   for (const m of list) {
-    const idsA = (m.teamA || []).map((x: any) => String(x?.id || "")).filter(Boolean);
-    const idsB = (m.teamB || []).map((x: any) => String(x?.id || "")).filter(Boolean);
+    const A = Array.isArray(m.teams?.A?.players) ? (m.teams.A.players as any[]) : [];
+    const B = Array.isArray(m.teams?.B?.players) ? (m.teams.B.players as any[]) : [];
+
+    const idsA = A.map((p: any, idx: number) => ({
+      id: safePlayerId(p, `A-${m.id}-${idx}`),
+      name: safePlayerName(p, "Joueur"),
+    }));
+    const idsB = B.map((p: any, idx: number) => ({
+      id: safePlayerId(p, `B-${m.id}-${idx}`),
+      name: safePlayerName(p, "Joueur"),
+    }));
+
     if (!idsA.length || !idsB.length) continue;
 
-    const winnerSide = m.winner === "B" ? "B" : m.winner === "A" ? "A" : null;
+    const winnerSide = m.winner === "A" || m.winner === "B" ? m.winner : null;
     if (!winnerSide) continue;
 
-    // chaque pair A vs B est un "duel" dans ce match
+    const winners = winnerSide === "A" ? idsA.map((x) => x.id) : idsB.map((x) => x.id);
+
     for (const a of idsA) {
       for (const b of idsB) {
-        if (!a || !b || a === b) continue;
+        if (!a.id || !b.id || a.id === b.id) continue;
 
-        const min = a < b ? a : b;
-        const max = a < b ? b : a;
-        const key = `${min}|${max}`;
+        const min = a.id < b.id ? a : b;
+        const max = a.id < b.id ? b : a;
+        const key = `${min.id}|${max.id}`;
 
         let it = map.get(key);
         if (!it) {
           it = {
-            aId: min,
-            aName: nameFrom(m, min),
-            bId: max,
-            bName: nameFrom(m, max),
+            aId: min.id,
+            aName: min.name,
+            bId: max.id,
+            bName: max.name,
             matches: 0,
             aWins: 0,
             bWins: 0,
@@ -363,9 +428,6 @@ export function aggregateVs(matches?: NormalizedMatch[]): VsAgg[] {
         }
 
         it.matches += 1;
-
-        // gagnants = joueurs du côté winnerSide
-        const winners = winnerSide === "A" ? idsA : idsB;
         if (winners.includes(it.aId)) it.aWins += 1;
         else it.bWins += 1;
       }
@@ -374,100 +436,79 @@ export function aggregateVs(matches?: NormalizedMatch[]): VsAgg[] {
 
   return Array.from(map.values())
     .map((x) => ({
-      ...x,
+      aId: x.aId,
+      aName: x.aName,
+      bId: x.bId,
+      bName: x.bName,
+      matches: x.matches,
+      aWins: x.aWins,
+      bWins: x.bWins,
       aWinRate: x.matches ? x.aWins / x.matches : 0,
     }))
     .sort((x, y) => y.matches - x.matches);
 }
 
-export function formatPct(x: number) {
-  const v = Number.isFinite(x) ? x : 0;
-  return `${Math.round(v * 100)}%`;
-}
+// =============================================================
+// Teams ranking (par nom d'équipe)
+// =============================================================
 
+export function aggregatePetanqueByTeam(matches?: NormalizedMatch[]) {
+  const list = Array.isArray(matches) ? matches : getPetanqueMatches();
 
-// --------------------------------------------
-// Back-compat exports (UI pages)
-// --------------------------------------------
-export const safeName = safePlayerName;
-export function aggregatePetanquePlayers(matches: NormalizedMatch[]) {
-  return aggregatePlayers(matches);
-}
-export function aggregatePetanqueTeams(matches: NormalizedMatch[]) {
-  return aggregatePetanqueByTeam(matches);
-}
-export function computePetanqueDuos(matches: NormalizedMatch[]) {
-  return aggregateDuos(matches);
-}
-
-export function listPetanquePlayersFromMatches(matches: NormalizedMatch[]) {
-  const map = new Map<string, { id: string; name: string; avatarDataUrl?: string }>();
-  for (const m of matches || []) {
-    for (const t of (m.teams || [])) {
-      for (const p of (t.players || [])) {
-        const id = String((p as any)?.id || "");
-        if (!id) continue;
-        if (!map.has(id)) {
-          map.set(id, {
-            id,
-            name: safePlayerName((p as any)?.name, id),
-            avatarDataUrl: (p as any)?.avatarDataUrl,
-          });
-        }
-      }
-    }
-  }
-  return Array.from(map.values()).sort((a, b) => a.name.localeCompare(b.name));
-}
-
-export function aggregatePetanqueByTeam(matches: NormalizedMatch[]) {
   const by = new Map<
     string,
-    { name: string; games: number; wins: number; pointsFor: number; pointsAgainst: number; diff: number }
+    { name: string; games: number; wins: number; ties: number; losses: number; pointsFor: number; pointsAgainst: number; diff: number }
   >();
 
-  for (const m of matches || []) {
-    const teams = Array.isArray(m.teams) ? m.teams : [];
-    if (teams.length < 2) continue;
+  const upsert = (name: string) => {
+    if (!by.has(name)) {
+      by.set(name, { name, games: 0, wins: 0, ties: 0, losses: 0, pointsFor: 0, pointsAgainst: 0, diff: 0 });
+    }
+    return by.get(name)!;
+  };
 
-    const a = teams[0];
-    const b = teams[1];
+  for (const m of list) {
+    const nameA = safeName(m.teams?.A?.name, "Équipe A");
+    const nameB = safeName(m.teams?.B?.name, "Équipe B");
 
-    const nameA = (a?.name && String(a.name).trim()) || "Équipe A";
-    const nameB = (b?.name && String(b.name).trim()) || "Équipe B";
-
-    const scoreA = Number.isFinite(Number(m.scoreA)) ? Number(m.scoreA) : 0;
-    const scoreB = Number.isFinite(Number(m.scoreB)) ? Number(m.scoreB) : 0;
-
-    const winA = scoreA > scoreB;
-    const winB = scoreB > scoreA;
-
-    const upsert = (name: string) => {
-      if (!by.has(name)) by.set(name, { name, games: 0, wins: 0, pointsFor: 0, pointsAgainst: 0, diff: 0 });
-      return by.get(name)!;
-    };
+    const scoreA = clampNum(m.scores?.A ?? 0, 0);
+    const scoreB = clampNum(m.scores?.B ?? 0, 0);
 
     const rowA = upsert(nameA);
+    const rowB = upsert(nameB);
+
     rowA.games += 1;
-    rowA.wins += winA ? 1 : 0;
+    rowB.games += 1;
+
     rowA.pointsFor += scoreA;
     rowA.pointsAgainst += scoreB;
 
-    const rowB = upsert(nameB);
-    rowB.games += 1;
-    rowB.wins += winB ? 1 : 0;
     rowB.pointsFor += scoreB;
     rowB.pointsAgainst += scoreA;
+
+    if (m.winner === null) {
+      rowA.ties += 1;
+      rowB.ties += 1;
+    } else if (m.winner === "A") {
+      rowA.wins += 1;
+      rowB.losses += 1;
+    } else {
+      rowB.wins += 1;
+      rowA.losses += 1;
+    }
+
+    rowA.diff = rowA.pointsFor - rowA.pointsAgainst;
+    rowB.diff = rowB.pointsFor - rowB.pointsAgainst;
   }
 
-  const out = Array.from(by.values()).map((r) => ({ ...r, diff: r.pointsFor - r.pointsAgainst }));
+  const out = Array.from(by.values());
   out.sort((x, y) => y.wins - x.wins || y.diff - x.diff || y.pointsFor - x.pointsFor || x.name.localeCompare(y.name));
   return out;
 }
 
-// --------------------------------------------
-// Normalisation record (History -> UI)
-// --------------------------------------------
+// =============================================================
+// Record Normalizer (History -> UI)
+// =============================================================
 
 export type NormalizedPetanqueRecord = {
   id: string;
@@ -490,22 +531,18 @@ export type NormalizedPetanqueRecord = {
 };
 
 function _pickTeamBlob(raw: any, side: "A" | "B") {
-  let t =
-  raw?.teams?.[side] ??
-  raw?.teams?.[side === "A" ? 0 : 1] ??
-  raw?.team?.[side] ??
-  raw?.team?.[side === "A" ? 0 : 1] ??
-  raw?.meta?.teams?.[side] ??
-  raw?.meta?.teams?.[side === "A" ? 0 : 1] ??
-  raw?.cfg?.teams?.[side] ??
-  raw?.cfg?.teams?.[side === "A" ? 0 : 1] ??
-  null;
-
-if (!t) {
-  if (side === "A" && raw?.teamA) t = raw.teamA;
-  if (side === "B" && raw?.teamB) t = raw.teamB;
-}
-  return t;
+  return (
+    raw?.teams?.[side] ??
+    raw?.teams?.[side === "A" ? 0 : 1] ??
+    raw?.team?.[side] ??
+    raw?.team?.[side === "A" ? 0 : 1] ??
+    raw?.meta?.teams?.[side] ??
+    raw?.meta?.teams?.[side === "A" ? 0 : 1] ??
+    raw?.cfg?.teams?.[side] ??
+    raw?.cfg?.teams?.[side === "A" ? 0 : 1] ??
+    (side === "A" ? raw?.teamA : raw?.teamB) ??
+    null
+  );
 }
 
 function _normalizePlayers(list: any): Array<{ id: string; name: string; avatarDataUrl?: string }> {
@@ -513,8 +550,8 @@ function _normalizePlayers(list: any): Array<{ id: string; name: string; avatarD
   return list
     .map((p) => {
       if (!p) return null;
-      const id = String((p as any).id || (p as any).playerId || "");
-      const name = safeName((p as any).name || (p as any).displayName || (p as any).label || "");
+      const id = String((p as any).id || (p as any).playerId || "").trim();
+      const name = safeName((p as any).name || (p as any).displayName || (p as any).label || "", "Joueur");
       const avatarDataUrl = typeof (p as any).avatarDataUrl === "string" ? (p as any).avatarDataUrl : undefined;
       return { id: id || `p-${Math.random().toString(36).slice(2, 8)}`, name, avatarDataUrl };
     })
@@ -525,28 +562,34 @@ export function normalizePetanqueRecord(raw: any): NormalizedPetanqueRecord | nu
   try {
     if (!raw || typeof raw !== "object") return null;
 
-    const id = String(raw.matchId || raw.gameId || raw.id || "");
-    const createdAt = Number.isFinite(Number(raw.createdAt)) ? Number(raw.createdAt) : Date.now();
-    const updatedAt = Number.isFinite(Number(raw.updatedAt)) ? Number(raw.updatedAt) : createdAt;
+    const id = String(raw.matchId || raw.gameId || raw.id || "").trim();
+    const createdAt = clampNum(raw.createdAt, Date.now());
+    const updatedAt = clampNum(raw.updatedAt, createdAt);
     const finishedAt = Number.isFinite(Number(raw.finishedAt)) ? Number(raw.finishedAt) : undefined;
-    const status: "active" | "finished" = raw.status === "finished" || raw.finished === true ? "finished" : "active";
 
-    const mode = typeof raw.mode === "string" && raw.mode ? raw.mode : "simple";
-    const targetScore = Number.isFinite(Number(raw.targetScore ?? raw.target)) ? Number(raw.targetScore ?? raw.target) : 13;
+    const status: "active" | "finished" =
+      raw.status === "finished" || raw.finished === true ? "finished" : "active";
 
-    const scoreA = Number.isFinite(Number(raw.scoreA ?? raw.aScore ?? raw.pointsA)) ? Number(raw.scoreA ?? raw.aScore ?? raw.pointsA) : 0;
-    const scoreB = Number.isFinite(Number(raw.scoreB ?? raw.bScore ?? raw.pointsB)) ? Number(raw.scoreB ?? raw.bScore ?? raw.pointsB) : 0;
+    const mode = safeName(raw.mode, "simple");
+    const targetScore = clampNum(raw.targetScore ?? raw.target ?? 13, 13);
 
-    const endsCount = Array.isArray(raw.ends) ? raw.ends.length : Number.isFinite(Number(raw.endsCount)) ? Number(raw.endsCount) : 0;
+    const scoreA = clampNum(raw.scoreA ?? raw.aScore ?? raw.pointsA ?? 0, 0);
+    const scoreB = clampNum(raw.scoreB ?? raw.bScore ?? raw.pointsB ?? 0, 0);
+
+    const endsCount = Array.isArray(raw.ends)
+      ? raw.ends.length
+      : Number.isFinite(Number(raw.endsCount))
+      ? Number(raw.endsCount)
+      : 0;
 
     const tA = _pickTeamBlob(raw, "A") || {};
     const tB = _pickTeamBlob(raw, "B") || {};
 
-    const teamAName = safeName((tA as any).name || (tA as any).label || raw?.teams?.A?.name || "Équipe A");
-    const teamBName = safeName((tB as any).name || (tB as any).label || raw?.teams?.B?.name || "Équipe B");
+    const teamAName = safeName((tA as any).name || (tA as any).label, "Équipe A");
+    const teamBName = safeName((tB as any).name || (tB as any).label, "Équipe B");
 
-    const teamAPlayers = _normalizePlayers((tA as any).players || (tA as any).members || raw?.playersA || []);
-    const teamBPlayers = _normalizePlayers((tB as any).players || (tB as any).members || raw?.playersB || []);
+    const teamAPlayers = _normalizePlayers((tA as any).players || (tA as any).members || raw.playersA || []);
+    const teamBPlayers = _normalizePlayers((tB as any).players || (tB as any).members || raw.playersB || []);
 
     const winnerTeamId: "A" | "B" | null = scoreA === scoreB ? null : scoreA > scoreB ? "A" : "B";
 
@@ -571,4 +614,42 @@ export function normalizePetanqueRecord(raw: any): NormalizedPetanqueRecord | nu
   } catch {
     return null;
   }
+}
+
+// =============================================================
+// BACK-COMPAT EXPORTS (UI pages historiques)
+// =============================================================
+
+// alias exacts attendus par tes pages
+export function aggregatePetanquePlayers(matches: NormalizedMatch[]) {
+  return aggregatePlayers(matches);
+}
+export function computePetanqueDuos(matches: NormalizedMatch[]) {
+  return aggregateDuos(matches);
+}
+export function aggregatePetanqueTeams(matches: NormalizedMatch[]) {
+  return aggregatePetanqueByTeam(matches);
+}
+export function listPetanquePlayersFromMatches(matches: NormalizedMatch[]) {
+  const map = new Map<string, { id: string; name: string; avatarDataUrl?: string | null }>();
+
+  for (const m of matches || []) {
+    (["A", "B"] as TeamId[]).forEach((tid) => {
+      const team = m.teams?.[tid];
+      const players = Array.isArray(team?.players) ? team!.players! : [];
+      players.forEach((p: any, idx: number) => {
+        const id = safePlayerId(p, `${tid}-${m.id}-${idx}`);
+        if (!id) return;
+        if (!map.has(id)) {
+          map.set(id, {
+            id,
+            name: safePlayerName(p, id),
+            avatarDataUrl: typeof p?.avatarDataUrl === "string" ? p.avatarDataUrl : null,
+          });
+        }
+      });
+    });
+  }
+
+  return Array.from(map.values()).sort((a, b) => a.name.localeCompare(b.name));
 }

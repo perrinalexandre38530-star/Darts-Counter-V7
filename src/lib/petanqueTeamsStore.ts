@@ -15,6 +15,21 @@ export type TeamEntity = {
   sport: TeamSport;
   name: string;
   logoDataUrl?: string | null; // base64 dataURL (PNG/JPG)
+
+  // ---------------------------
+  // Champs étendus (optionnels)
+  // - Utilisés aujourd'hui par la Pétanque
+  // - Ignorés par les autres sports
+  // ---------------------------
+  countryCode?: string; // ex: "FR"
+  countryName?: string; // ex: "France"
+  regionCode?: string; // ex: "FR-IDF"
+  regionName?: string; // ex: "Île-de-France"
+  regionLogoDataUrl?: string | null;
+  slogan?: string; // 50 chars max (UI)
+  description?: string;
+  playerIds?: string[]; // ids de profiles locaux
+
   createdAt: number;
   updatedAt: number;
 };
@@ -30,6 +45,12 @@ export type PetanqueTeam = {
   name: string;
   countryCode?: string; // ex: "FR"
   countryName?: string; // ex: "France"
+  regionCode?: string;
+  regionName?: string;
+  regionLogoDataUrl?: string | null;
+  slogan?: string;
+  description?: string;
+  playerIds?: string[];
   logoDataUrl?: string | null;
   createdAt: number;
   updatedAt: number;
@@ -86,11 +107,28 @@ function normalizeTeamEntity(t: any): TeamEntity | null {
   const createdAt = Number(t.createdAt ?? 0) || 0;
   const updatedAt = Number(t.updatedAt ?? 0) || 0;
 
+  const countryCode = typeof t.countryCode === "string" ? t.countryCode.toUpperCase().slice(0, 2) : undefined;
+  const countryName = typeof t.countryName === "string" ? t.countryName : undefined;
+  const regionCode = typeof t.regionCode === "string" ? t.regionCode : undefined;
+  const regionName = typeof t.regionName === "string" ? t.regionName : undefined;
+  const regionLogoDataUrl = t.regionLogoDataUrl ?? null;
+  const slogan = typeof t.slogan === "string" ? t.slogan : undefined;
+  const description = typeof t.description === "string" ? t.description : undefined;
+  const playerIds = Array.isArray(t.playerIds) ? t.playerIds.filter((x: any) => typeof x === "string") : undefined;
+
   return {
     id,
     sport: normalizeSport(t.sport),
     name,
     logoDataUrl: t.logoDataUrl ?? null,
+    countryCode,
+    countryName,
+    regionCode,
+    regionName,
+    regionLogoDataUrl,
+    slogan,
+    description,
+    playerIds,
     createdAt,
     updatedAt,
   };
@@ -175,6 +213,16 @@ export function upsertTeam(team: TeamEntity) {
     createdAt: Number(team.createdAt ?? 0) || ts,
     logoDataUrl: team.logoDataUrl ?? null,
     sport: normalizeSport(team.sport),
+
+    // Champs étendus
+    countryCode: typeof team.countryCode === "string" ? team.countryCode.toUpperCase().slice(0, 2) : team.countryCode,
+    countryName: typeof team.countryName === "string" ? team.countryName : team.countryName,
+    regionCode: typeof team.regionCode === "string" ? team.regionCode : team.regionCode,
+    regionName: typeof team.regionName === "string" ? team.regionName : team.regionName,
+    regionLogoDataUrl: (team as any).regionLogoDataUrl ?? null,
+    slogan: typeof (team as any).slogan === "string" ? (team as any).slogan : (team as any).slogan,
+    description: typeof (team as any).description === "string" ? (team as any).description : (team as any).description,
+    playerIds: Array.isArray((team as any).playerIds) ? (team as any).playerIds.filter((x: any) => typeof x === "string") : (team as any).playerIds,
   };
 
   if (!next.name) next.name = "Team";
@@ -266,8 +314,14 @@ export function loadPetanqueTeams(): PetanqueTeam[] {
   return list.map((t) => ({
     id: t.id,
     name: t.name,
-    countryCode: FALLBACK_CC,
-    countryName: FALLBACK_CN,
+    countryCode: t.countryCode ?? FALLBACK_CC,
+    countryName: t.countryName ?? FALLBACK_CN,
+    regionCode: t.regionCode ?? "",
+    regionName: t.regionName ?? "",
+    regionLogoDataUrl: t.regionLogoDataUrl ?? null,
+    slogan: t.slogan ?? "",
+    description: t.description ?? "",
+    playerIds: Array.isArray(t.playerIds) ? t.playerIds : [],
     logoDataUrl: t.logoDataUrl ?? null,
     createdAt: t.createdAt,
     updatedAt: t.updatedAt,
@@ -287,6 +341,14 @@ export function savePetanqueTeams(list: PetanqueTeam[]) {
       sport: "petanque" as const,
       name: String(t.name || "").trim() || "Équipe",
       logoDataUrl: t.logoDataUrl ?? null,
+      countryCode: (t.countryCode ?? FALLBACK_CC).toUpperCase().slice(0, 2),
+      countryName: t.countryName ?? FALLBACK_CN,
+      regionCode: t.regionCode ?? "",
+      regionName: t.regionName ?? "",
+      regionLogoDataUrl: t.regionLogoDataUrl ?? null,
+      slogan: t.slogan ?? "",
+      description: t.description ?? "",
+      playerIds: Array.isArray(t.playerIds) ? t.playerIds : [],
       createdAt: Number(t.createdAt || ts),
       updatedAt: Number(t.updatedAt || ts),
     }));
@@ -301,6 +363,12 @@ export function createPetanqueTeam(partial?: Partial<PetanqueTeam>): PetanqueTea
     name: (partial?.name ?? "Nouvelle équipe").trim(),
     countryCode: partial?.countryCode ?? FALLBACK_CC,
     countryName: partial?.countryName ?? FALLBACK_CN,
+    regionCode: partial?.regionCode ?? "FR-IDF",
+    regionName: partial?.regionName ?? "Île-de-France",
+    regionLogoDataUrl: partial?.regionLogoDataUrl ?? null,
+    slogan: partial?.slogan ?? "",
+    description: partial?.description ?? "",
+    playerIds: Array.isArray(partial?.playerIds) ? partial?.playerIds : [],
     logoDataUrl: partial?.logoDataUrl ?? null,
     createdAt: partial?.createdAt ?? ts,
     updatedAt: partial?.updatedAt ?? ts,
@@ -315,6 +383,14 @@ export function upsertPetanqueTeam(team: PetanqueTeam) {
     sport: "petanque",
     name: (team.name ?? "").trim() || "Équipe",
     logoDataUrl: team.logoDataUrl ?? null,
+    countryCode: (team.countryCode ?? FALLBACK_CC).toUpperCase().slice(0, 2),
+    countryName: team.countryName ?? FALLBACK_CN,
+    regionCode: team.regionCode ?? "",
+    regionName: team.regionName ?? "",
+    regionLogoDataUrl: team.regionLogoDataUrl ?? null,
+    slogan: team.slogan ?? "",
+    description: team.description ?? "",
+    playerIds: Array.isArray(team.playerIds) ? team.playerIds : [],
     createdAt: team.createdAt ?? ts,
     updatedAt: team.updatedAt ?? ts,
   });
@@ -323,8 +399,14 @@ export function upsertPetanqueTeam(team: PetanqueTeam) {
   const out: PetanqueTeam = {
     id: next.id,
     name: next.name,
-    countryCode: team.countryCode ?? FALLBACK_CC,
-    countryName: team.countryName ?? FALLBACK_CN,
+    countryCode: next.countryCode ?? team.countryCode ?? FALLBACK_CC,
+    countryName: next.countryName ?? team.countryName ?? FALLBACK_CN,
+    regionCode: next.regionCode ?? team.regionCode ?? "",
+    regionName: next.regionName ?? team.regionName ?? "",
+    regionLogoDataUrl: next.regionLogoDataUrl ?? team.regionLogoDataUrl ?? null,
+    slogan: next.slogan ?? team.slogan ?? "",
+    description: next.description ?? team.description ?? "",
+    playerIds: Array.isArray(next.playerIds) ? next.playerIds : Array.isArray(team.playerIds) ? team.playerIds : [],
     logoDataUrl: next.logoDataUrl ?? null,
     createdAt: next.createdAt,
     updatedAt: next.updatedAt,
@@ -343,8 +425,14 @@ export function deletePetanqueTeam(teamId: string) {
     .map((t) => ({
       id: t.id,
       name: t.name,
-      countryCode: FALLBACK_CC,
-      countryName: FALLBACK_CN,
+      countryCode: t.countryCode ?? FALLBACK_CC,
+      countryName: t.countryName ?? FALLBACK_CN,
+      regionCode: t.regionCode ?? "",
+      regionName: t.regionName ?? "",
+      regionLogoDataUrl: t.regionLogoDataUrl ?? null,
+      slogan: t.slogan ?? "",
+      description: t.description ?? "",
+      playerIds: Array.isArray(t.playerIds) ? t.playerIds : [],
       logoDataUrl: t.logoDataUrl ?? null,
       createdAt: t.createdAt,
       updatedAt: t.updatedAt,
