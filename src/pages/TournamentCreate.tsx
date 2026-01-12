@@ -799,6 +799,13 @@ export default function TournamentCreate({ store, go, params }: Props) {
   // ✅ PÉTANQUE : composition (Simple/Doublette/Triplette/Quadrette)
   const [petanqueTeamSize, setPetanqueTeamSize] = React.useState<PetanqueTeamSize>(2);
 
+
+// ✅ PÉTANQUE — équipes (assignation manuelle)
+const [assignMode, setAssignMode] = React.useState<boolean>(true); // true = clic sur joueur => assignation vers l’équipe active
+const [activeTeamIdx, setActiveTeamIdx] = React.useState<number>(0);
+const [teamNames, setTeamNames] = React.useState<Record<number, string>>({});
+const [teamOfPlayer, setTeamOfPlayer] = React.useState<Record<string, number>>({});
+
   // ✅ NEW : max joueurs (optionnel) — vide = illimité
   const [maxPlayers, setMaxPlayers] = React.useState<string>("");
 
@@ -934,9 +941,59 @@ export default function TournamentCreate({ store, go, params }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [profiles.length]);
 
-  const togglePlayer = (id: string) => {
-    setPlayerIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
-  };
+  
+const togglePlayer = (id: string) => {
+  // ✅ PÉTANQUE : si assignMode ON => clic assigne à l’équipe active (avec swap si besoin)
+  if (isPetanque && assignMode) {
+    const pid = String(id);
+
+    // si pas sélectionné : on le sélectionne
+    if (!playerIds.includes(pid)) {
+      setPlayerIds((prev) => [...prev, pid]);
+    }
+
+    // assignation
+    setTeamOfPlayer((prev) => {
+      const selected = Array.from(new Set([...(playerIds || []), pid])).filter(Boolean);
+      const teamCount = petanqueTeamCountFromSelected(selected.length);
+      const ts = Number(petanqueTeamSize) || 1;
+      const next = normalizePetanqueAssignments(selected, prev || {});
+
+      const target = Math.max(0, Math.min(teamCount - 1, Number(activeTeamIdx) || 0));
+
+      // build members list for target team
+      const members: string[] = [];
+      for (const k of Object.keys(next)) if (next[k] === target) members.push(k);
+
+      const currentTeam = next[pid];
+
+      // déjà dans la bonne équipe
+      if (currentTeam === target) return next;
+
+      // si place dispo => move simple
+      if (members.length < ts) {
+        next[pid] = target;
+        return normalizePetanqueAssignments(selected, next);
+      }
+
+      // équipe pleine => swap avec le premier membre (sauf si pid déjà dedans, traité au-dessus)
+      const swapWith = members[0];
+      if (swapWith && swapWith !== pid) {
+        const fromTeam = currentTeam;
+        next[pid] = target;
+        if (fromTeam != null) next[swapWith] = fromTeam;
+        return normalizePetanqueAssignments(selected, next);
+      }
+
+      return normalizePetanqueAssignments(selected, next);
+    });
+
+    return;
+  }
+
+  // ✅ mode normal : toggle sélection joueur
+  setPlayerIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
+};
 
   // ---- bots sélectionnés (hors pétanque)
   const [botIds, setBotIds] = React.useState<string[]>([]);
@@ -959,6 +1016,57 @@ export default function TournamentCreate({ store, go, params }: Props) {
   const petanqueMinOk = totalSelectedIds.length >= petanqueMinPlayers;
 
   const minPlayersOk = isPetanque ? petanqueMinOk : totalSelectedIds.length >= 2;
+
+
+// ✅ PÉTANQUE — nombre d’équipes + normalisation assignations
+const petanqueTeamsCount = React.useMemo(() => {
+  return isPetanque ? petanqueTeamCountFromSelected(totalSelectedIds.length) : 0;
+}, [isPetanque, totalSelectedIds.length, petanqueTeamSize]);
+
+React.useEffect(() => {
+  if (!isPetanque) return;
+
+  // clamp équipe active
+  setActiveTeamIdx((prev) => {
+    const max = Math.max(0, petanqueTeamsCount - 1);
+    const v = Number.isFinite(prev as any) ? (prev as any) : 0;
+    return Math.max(0, Math.min(max, v));
+  });
+
+  // noms par défaut
+  setTeamNames((prev) => {
+    const next = { ...(prev || {}) };
+    for (let i = 0; i < petanqueTeamsCount; i++) {
+      if (!next[i]) next[i] = `Équipe ${i + 1}`;
+    }
+    // nettoyage
+    Object.keys(next).forEach((k) => {
+      const idx = Number(k);
+      if (!Number.isFinite(idx) || idx < 0 || idx >= petanqueTeamsCount) delete next[k];
+    });
+    return next;
+  });
+
+  // assignations
+  setTeamOfPlayer((prev) => normalizePetanqueAssignments(totalSelectedIds, prev || {}));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+}, [isPetanque, petanqueTeamsCount, petanqueTeamSize, totalSelectedIds.join("|")]);
+
+const petanqueTeamsReady = React.useMemo(() => {
+  if (!isPetanque) return true;
+  const { teams, ts, teamCount } = buildPetanqueTeamsFromAssignments(totalSelectedIds);
+
+  if (teamCount < 2) return false;
+  if (teams.some((t: any) => (t.memberIds?.length || 0) !== ts)) return false;
+
+  // chaque joueur sélectionné doit être dans exactement une équipe
+  const flat = teams.flatMap((t: any) => t.memberIds || []);
+  const uniq = new Set(flat);
+  if (uniq.size !== flat.length) return false;
+  if (uniq.size !== totalSelectedIds.length) return false;
+
+  return true;
+}, [isPetanque, totalSelectedIds.join("|"), teamOfPlayer, petanqueTeamSize, teamNames]);
 
   // ---- Format tournoi
   const [format, setFormat] = React.useState<TourFormat>("single_ko");
@@ -998,7 +1106,7 @@ export default function TournamentCreate({ store, go, params }: Props) {
   const [x01Out, setX01Out] = React.useState<"simple" | "double" | "master">(store?.settings?.doubleOut ? "double" : "simple");
 
   // ✅ create gate
-  const canCreate = !!name.trim() && !!mode && minPlayersOk && (!isPetanque || petanqueMultipleOk);
+  const canCreate = !!name.trim() && !!mode && minPlayersOk && (!isPetanque || (petanqueMultipleOk && petanqueTeamsReady));
 
   const TYPE_INFO: Record<TourFormat, string> = {
     single_ko: "Tableau KO : une défaite = élimination. Rapide et clair.",
@@ -1098,170 +1206,263 @@ export default function TournamentCreate({ store, go, params }: Props) {
     return s / selected.length;
   }
 
+
+// --------------------------------------------
+// ✅ PÉTANQUE — équipes (helpers)
+// --------------------------------------------
+
+function petanqueTeamCountFromSelected(nPlayers: number) {
+  const ts = Number(petanqueTeamSize) || 1;
+  return Math.max(0, Math.floor(Math.max(0, nPlayers) / ts));
+}
+
+function buildPetanqueTeamsFromAssignments(selectedIds: string[]) {
+  const ts = Number(petanqueTeamSize) || 1;
+  const teamCount = petanqueTeamCountFromSelected(selectedIds.length);
+
+  const membersByTeam: string[][] = Array.from({ length: teamCount }, () => []);
+  for (const pid of selectedIds) {
+    const t = teamOfPlayer?.[pid];
+    if (Number.isFinite(t) && t >= 0 && t < teamCount) membersByTeam[t].push(pid);
+  }
+
+  // fallback: si certains joueurs ne sont pas assignés (ou hors range), on complète
+  const already = new Set(membersByTeam.flat());
+  const unassigned = selectedIds.filter((id) => !already.has(id));
+  for (const pid of unassigned) {
+    let placed = false;
+    for (let t = 0; t < teamCount; t++) {
+      if (membersByTeam[t].length < ts) {
+        membersByTeam[t].push(pid);
+        placed = true;
+        break;
+      }
+    }
+    if (!placed && teamCount > 0) {
+      membersByTeam[Math.min(teamCount - 1, 0)].push(pid);
+    }
+  }
+
+  const teams = membersByTeam.map((memberIds, idx) => ({
+    idx,
+    id: `team_${idx + 1}`,
+    name: teamNames?.[idx] || `Équipe ${idx + 1}`,
+    memberIds: memberIds.slice(0, ts),
+  }));
+
+  return { teams, ts, teamCount };
+}
+
+function normalizePetanqueAssignments(selectedIds: string[], prev: Record<string, number>) {
+  const ts = Number(petanqueTeamSize) || 1;
+  const teamCount = petanqueTeamCountFromSelected(selectedIds.length);
+
+  // 1) garder uniquement selected + range ok
+  const next: Record<string, number> = {};
+  const counts = Array.from({ length: teamCount }, () => 0);
+
+  for (const pid of selectedIds) {
+    const t = prev?.[pid];
+    if (Number.isFinite(t) && t >= 0 && t < teamCount) {
+      next[pid] = t;
+      counts[t]++;
+    }
+  }
+
+  const teamHasSpace = (t: number) => t >= 0 && t < teamCount && counts[t] < ts;
+
+  // 2) désengorger équipes trop pleines
+  for (const pid of selectedIds) {
+    const t = next[pid];
+    if (!Number.isFinite(t)) continue;
+    if (t < 0 || t >= teamCount) continue;
+    if (counts[t] <= ts) continue;
+
+    // déplacer vers une autre équipe
+    for (let k = 0; k < teamCount; k++) {
+      if (k === t) continue;
+      if (teamHasSpace(k)) {
+        next[pid] = k;
+        counts[t]--;
+        counts[k]++;
+        break;
+      }
+    }
+  }
+
+  // 3) assigner le reste (non assigné)
+  for (const pid of selectedIds) {
+    if (next[pid] != null) continue;
+
+    const preferred = Number(activeTeamIdx) || 0;
+    if (teamHasSpace(preferred)) {
+      next[pid] = preferred;
+      counts[preferred]++;
+      continue;
+    }
+
+    let placed = false;
+    for (let t = 0; t < teamCount; t++) {
+      if (teamHasSpace(t)) {
+        next[pid] = t;
+        counts[t]++;
+        placed = true;
+        break;
+      }
+    }
+    if (!placed && teamCount > 0) {
+      next[pid] = Math.min(teamCount - 1, 0);
+    }
+  }
+
+  return next;
+}
+
   // ✅ KO sizing:
   // - hors pétanque: joueurs
   // - pétanque: équipes => pow2 équipes * teamSize, ou manuel nb équipes * teamSize
-  function computeDesiredSize(currentPlayersCount: number) {
-    if (format === "round_robin") return null;
+  
+// ✅ KO sizing:
+// - hors pétanque: entrants = joueurs
+// - pétanque: entrants = équipes
+//   Auto = prochaine puissance de 2 en équipes (byes), Manuel = nb équipes
+function computeDesiredSize(currentEntrantsCount: number) {
+  if (format === "round_robin") return null;
 
-    if (!isPetanque) {
-      if (bracketAuto) return nextPow2(currentPlayersCount);
-      const manual = Math.floor(numFromText(bracketTarget));
-      if (Number.isFinite(manual) && manual >= 2) return manual;
-      return nextPow2(currentPlayersCount);
-    }
-
-    const teamSize = petanqueTeamSize;
-    const teams = Math.max(1, Math.floor(currentPlayersCount / teamSize));
-
-    if (bracketAuto) return nextPow2(teams) * teamSize;
-
-    const manualTeams = Math.floor(numFromText(bracketTarget));
-    if (Number.isFinite(manualTeams) && manualTeams >= 2) return manualTeams * teamSize;
-
-    return nextPow2(teams) * teamSize;
+  if (!isPetanque) {
+    if (bracketAuto) return nextPow2(currentEntrantsCount);
+    const manual = Math.floor(numFromText(bracketTarget));
+    if (Number.isFinite(manual) && manual >= 2) return manual;
+    return nextPow2(currentEntrantsCount);
   }
 
-  async function createTournament() {
-    if (!canCreate) return;
+  const teams = Math.max(1, Math.floor(currentEntrantsCount));
 
-    // ✅ PÉTANQUE : sécurité (aucun bot, seed random)
-    const effectiveSeedMode = isPetanque ? "random" : seedMode;
+  if (bracketAuto) return nextPow2(teams);
 
-    const cap = Math.floor(numFromText(maxPlayers));
-    const capEnabled = Number.isFinite(cap) && cap > 1;
+  const manualTeams = Math.floor(numFromText(bracketTarget));
+  if (Number.isFinite(manualTeams) && manualTeams >= 2) return manualTeams;
 
-    const selectedProfiles = profiles.filter((p: any) => playerIds.includes(String(p.id)));
+  return nextPow2(teams);
+}
 
-    let merged = selectedProfiles.map((p: any) => {
-      const avg = Number(avgMap?.[p.id] ?? 0) || 0;
+  
+async function createTournament() {
+  if (!canCreate) return;
+
+  // ✅ PÉTANQUE : sécurité (aucun bot, seed random)
+  const effectiveSeedMode = isPetanque ? "random" : seedMode;
+
+  const cap = Math.floor(numFromText(maxPlayers));
+  const capEnabled = Number.isFinite(cap) && cap > 1;
+
+  const selectedProfiles = profiles.filter((p: any) => playerIds.includes(String(p.id)));
+  const profileById = Object.fromEntries(selectedProfiles.map((p: any) => [String(p.id), p]));
+
+  // --------------------------------------------
+  // ✅ MODE PÉTANQUE : on transforme les joueurs en ÉQUIPES (entrants = équipes)
+  // --------------------------------------------
+  if (isPetanque) {
+    const selectedIds = Array.from(new Set([...playerIds])).filter(Boolean);
+
+    const { teams, ts, teamCount } = buildPetanqueTeamsFromAssignments(selectedIds);
+
+    // cap (optionnel) côté pétanque : cap sur JOUEURS -> on tronque puis on normalise
+    let effectiveSelectedIds = selectedIds;
+    if (capEnabled && effectiveSelectedIds.length > cap) {
+      effectiveSelectedIds = shuffle(effectiveSelectedIds).slice(0, cap);
+    }
+
+    const normalizedAssignments = normalizePetanqueAssignments(effectiveSelectedIds, teamOfPlayer || {});
+    const membersByTeam: string[][] = Array.from({ length: teamCount }, () => []);
+    for (const pid of effectiveSelectedIds) {
+      const t = normalizedAssignments[pid];
+      if (Number.isFinite(t) && t >= 0 && t < teamCount) membersByTeam[t].push(pid);
+    }
+
+    // ✅ construire les entrants (équipes)
+    const teamEntrants = membersByTeam.map((memberIds, idx) => {
+      const members = memberIds.slice(0, ts).map((pid) => {
+        const pr = profileById[String(pid)];
+        const avg = Number(avgMap?.[String(pid)] ?? 0) || 0;
+        return {
+          id: String(pid),
+          name: pr?.name || "Joueur",
+          avatarDataUrl: pr?.avatar || null,
+          avg3D: avg,
+          stars: starsFromAvg3D(avg),
+        };
+      });
+
+      const avgTeam =
+        members.length ? members.reduce((acc: number, m: any) => acc + (Number(m.avg3D) || 0), 0) / members.length : 0;
+
       return {
-        id: String(p.id),
-        name: p.name || "Joueur",
-        avatarDataUrl: p.avatar || null,
-        source: "local",
-        avg3D: avg,
-        stars: starsFromAvg3D(avg),
+        id: `team_${idx + 1}`,
+        name: (teamNames?.[idx] || `Équipe ${idx + 1}`).trim() || `Équipe ${idx + 1}`,
+        avatarDataUrl: members?.[0]?.avatarDataUrl || null,
+        source: "team",
+        isBot: false,
+        avg3D: avgTeam,
+        stars: starsFromAvg3D(avgTeam),
+        members,
       };
     });
 
-    // ✅ hors pétanque: possibilité d’ajouter des bots sélectionnés
-    if (!isPetanque) {
-      const selectedBots = botsCatalog
-        .filter((b: any) => botIds.includes(String(b.id)))
-        .map((b: any, idx: number) => ({
-          id: `bot_${String(b.id)}_${idx}_${Date.now()}`,
-          name: b.name,
-          avatarDataUrl: b.avatar ?? null,
-          source: "bot",
-          isBot: true,
-          avg3D: Number(b.avg3D) || 0,
-          stars: starsFromAvg3D(Number(b.avg3D) || 0),
-        }));
-      merged = merged.concat(selectedBots);
-    }
-
-    if (capEnabled && merged.length > cap) {
-      merged = shuffle(merged).slice(0, cap);
-    }
-
-    const seededPlayers =
+    // ✅ seed : aléatoire (toujours en pétanque)
+    const seededTeams =
       effectiveSeedMode === "byLevel"
-        ? merged.slice().sort((a: any, b: any) => Number(b.avg3D || 0) - Number(a.avg3D || 0))
-        : merged;
+        ? teamEntrants.slice().sort((a: any, b: any) => Number(b.avg3D || 0) - Number(a.avg3D || 0))
+        : teamEntrants;
 
-    let finalPlayers = seededPlayers.slice();
+    const entrants = seededTeams;
 
-    // ✅ hors pétanque: auto-fill bots possible
-    const shouldFill = !isPetanque && autoFillBots && format !== "round_robin";
-    const desiredSize = computeDesiredSize(finalPlayers.length);
+    // ✅ desiredSize / bracket : exprimé en NOMBRE D'ÉQUIPES
+    const desiredSize = computeDesiredSize(entrants.length);
 
-    if (shouldFill && desiredSize && finalPlayers.length < desiredSize) {
-      const avgTarget = computeAvgTarget(finalPlayers);
-      const need = Math.max(0, desiredSize - finalPlayers.length);
-      const bots = pickBotsToFill(botsCatalog, need, avgTarget).map((b: any, idx: number) => ({
-        id: `autobot_${String(b.id)}_${idx}_${Date.now()}`,
-        name: b.name,
-        avatarDataUrl: b.avatar ?? null,
-        source: "bot",
-        isBot: true,
-        avg3D: Number(b.avg3D) || 0,
-        stars: starsFromAvg3D(Number(b.avg3D) || 0),
-      }));
-      finalPlayers = finalPlayers.concat(bots);
-    }
-
-    // ✅ règles : X01 spécifiques, Pétanque + autres modes
-    const rules =
-      mode === "x01"
-        ? {
-            start: x01Start,
-            doubleOut: x01Out === "double",
-            inMode: x01In,
-            outMode: x01Out,
-            bestOf,
-            repechageEnabled: !!repechageEnabled,
-            seedMode: effectiveSeedMode,
-            rrRounds: Math.max(1, Number(rrRounds) || 1),
-            playersPerGroup: Math.floor(numFromText(playersPerGroup)) || 0,
-            qualifiersPerGroup: Math.floor(Number(qualifiersPerGroup) || 0),
-            bracketAuto: !!bracketAuto,
-            bracketTarget: Math.floor(numFromText(bracketTarget)) || 0,
-            desiredSize: desiredSize || 0,
-            autoFillBots: !!autoFillBots,
-            maxPlayers: capEnabled ? cap : 0,
-          }
-        : mode === "petanque"
-          ? {
-              targetScore: 13,
-              teamSize: petanqueTeamSize, // 1/2/3/4
-              teamLabel:
-                petanqueTeamSize === 1 ? "simple" : petanqueTeamSize === 2 ? "doublette" : petanqueTeamSize === 3 ? "triplette" : "quadrette",
-              repechageEnabled: !!repechageEnabled,
-              seedMode: "random",
-              rrRounds: Math.max(1, Number(rrRounds) || 1),
-              playersPerGroup: Math.floor(numFromText(playersPerGroup)) || 0,
-              qualifiersPerGroup: Math.floor(Number(qualifiersPerGroup) || 0),
-              bracketAuto: !!bracketAuto,
-              bracketTarget: Math.floor(numFromText(bracketTarget)) || 0, // nb équipes si manuel
-              desiredSize: desiredSize || 0, // nb joueurs visé (équipes * teamSize)
-              maxPlayers: capEnabled ? cap : 0,
-            }
-          : {
-              bestOf,
-              repechageEnabled: !!repechageEnabled,
-              seedMode: effectiveSeedMode,
-              rrRounds: Math.max(1, Number(rrRounds) || 1),
-              playersPerGroup: Math.floor(numFromText(playersPerGroup)) || 0,
-              qualifiersPerGroup: Math.floor(Number(qualifiersPerGroup) || 0),
-              bracketAuto: !!bracketAuto,
-              bracketTarget: Math.floor(numFromText(bracketTarget)) || 0,
-              desiredSize: desiredSize || 0,
-              autoFillBots: !!autoFillBots,
-              maxPlayers: capEnabled ? cap : 0,
-            };
-
-    // ✅ PÉTANQUE: formats autorisés uniquement
+    // ✅ formats autorisés uniquement
     let effectiveFormat: TourFormat = format;
-    if (isPetanque && format === "double_ko") effectiveFormat = "single_ko";
+    if (effectiveFormat === "double_ko") effectiveFormat = "single_ko";
 
-    const stages = buildStagesForEngine(effectiveFormat, finalPlayers.length);
+    const stages = buildStagesForEngine(effectiveFormat, entrants.length);
     const viewKind = viewKindFromFormat(effectiveFormat);
+
+    const rules = {
+      targetScore: 13,
+      teamSize: petanqueTeamSize, // 1/2/3/4
+      teamLabel:
+        petanqueTeamSize === 1 ? "simple" : petanqueTeamSize === 2 ? "doublette" : petanqueTeamSize === 3 ? "triplette" : "quadrette",
+      repechageEnabled: !!repechageEnabled,
+      seedMode: "random",
+      rrRounds: Math.max(1, Number(rrRounds) || 1),
+      playersPerGroup: Math.floor(numFromText(playersPerGroup)) || 0, // = équipes par poule
+      qualifiersPerGroup: Math.floor(Number(qualifiersPerGroup) || 0), // = équipes qualifiées/poule
+      bracketAuto: !!bracketAuto,
+      bracketTarget: Math.floor(numFromText(bracketTarget)) || 0, // nb équipes si manuel
+      desiredSize: desiredSize || 0, // nb équipes visé
+      maxPlayers: capEnabled ? cap : 0, // cap joueurs (optionnel)
+      teams: entrants.map((t: any) => ({
+        id: t.id,
+        name: t.name,
+        memberIds: (t.members || []).map((m: any) => String(m.id)),
+      })),
+    };
 
     const tour: Tournament = createTournamentDraft({
       name: name.trim(),
       source: "local",
       ownerProfileId: (store as any)?.activeProfileId ?? null,
 
-      players: finalPlayers.map((p: any) => ({
-        id: String(p.id),
-        name: p.name || "Joueur",
-        avatarDataUrl: p.avatarDataUrl || null,
-        source: p.source || "local",
-        isBot: !!p.isBot,
+      // ✅ ENGINE voit des "players" = équipes
+      players: entrants.map((t: any) => ({
+        id: String(t.id),
+        name: t.name || "Équipe",
+        avatarDataUrl: t.avatarDataUrl || null,
+        source: "team",
+        isBot: false,
       })),
 
-      game: { mode, rules },
+      game: { mode: "petanque", rules },
       stages,
 
       viewKind,
@@ -1269,19 +1470,24 @@ export default function TournamentCreate({ store, go, params }: Props) {
 
       meta: {
         format: effectiveFormat,
-        seedMode: effectiveSeedMode,
+        seedMode: "random",
         repechageEnabled: !!repechageEnabled,
         rrRounds: Math.max(1, Number(rrRounds) || 1),
         playersPerGroup: Math.floor(numFromText(playersPerGroup)) || 0,
         qualifiersPerGroup: Math.floor(Number(qualifiersPerGroup) || 0),
         bracketAuto: !!bracketAuto,
         bracketTarget: Math.floor(numFromText(bracketTarget)) || 0,
-        desiredSize: desiredSize || 0,
-        autoFillBots: !isPetanque ? !!autoFillBots : false,
+        desiredSize: desiredSize || 0, // nb équipes
+        autoFillBots: false,
         maxPlayers: capEnabled ? cap : 0,
         forceMode,
-        isPetanque,
-        petanqueTeamSize: isPetanque ? petanqueTeamSize : undefined,
+        isPetanque: true,
+        petanqueTeamSize: petanqueTeamSize,
+        petanqueTeams: entrants.map((t: any) => ({
+          id: t.id,
+          name: t.name,
+          members: (t.members || []).map((m: any) => ({ id: m.id, name: m.name, avatarDataUrl: m.avatarDataUrl || null })),
+        })),
       },
     } as any);
 
@@ -1295,20 +1501,173 @@ export default function TournamentCreate({ store, go, params }: Props) {
     }
 
     go("tournament_view", { id: tour.id, forceMode });
+    return;
   }
 
+  // --------------------------------------------
+  // ✅ AUTRES MODES : logique existante (joueurs + bots)
+  // --------------------------------------------
+
+  let merged = selectedProfiles.map((p: any) => {
+    const avg = Number(avgMap?.[p.id] ?? 0) || 0;
+    return {
+      id: String(p.id),
+      name: p.name || "Joueur",
+      avatarDataUrl: p.avatar || null,
+      source: "local",
+      avg3D: avg,
+      stars: starsFromAvg3D(avg),
+    };
+  });
+
+  // ✅ hors pétanque: possibilité d’ajouter des bots sélectionnés
+  const selectedBots = botsCatalog
+    .filter((b: any) => botIds.includes(String(b.id)))
+    .map((b: any, idx: number) => ({
+      id: `bot_${String(b.id)}_${idx}_${Date.now()}`,
+      name: b.name,
+      avatarDataUrl: b.avatar ?? null,
+      source: "bot",
+      isBot: true,
+      avg3D: Number(b.avg3D) || 0,
+      stars: starsFromAvg3D(Number(b.avg3D) || 0),
+    }));
+  merged = merged.concat(selectedBots);
+
+  if (capEnabled && merged.length > cap) {
+    merged = shuffle(merged).slice(0, cap);
+  }
+
+  const seededPlayers =
+    effectiveSeedMode === "byLevel"
+      ? merged.slice().sort((a: any, b: any) => Number(b.avg3D || 0) - Number(a.avg3D || 0))
+      : merged;
+
+  let finalPlayers = seededPlayers.slice();
+
+  // ✅ hors pétanque: auto-fill bots possible
+  const shouldFill = autoFillBots && format !== "round_robin";
+  const desiredSize = computeDesiredSize(finalPlayers.length);
+
+  if (shouldFill && desiredSize && finalPlayers.length < desiredSize) {
+    const avgTarget = computeAvgTarget(finalPlayers);
+    const need = Math.max(0, desiredSize - finalPlayers.length);
+    const bots = pickBotsToFill(botsCatalog, need, avgTarget).map((b: any, idx: number) => ({
+      id: `autobot_${String(b.id)}_${idx}_${Date.now()}`,
+      name: b.name,
+      avatarDataUrl: b.avatar ?? null,
+      source: "bot",
+      isBot: true,
+      avg3D: Number(b.avg3D) || 0,
+      stars: starsFromAvg3D(Number(b.avg3D) || 0),
+    }));
+    finalPlayers = finalPlayers.concat(bots);
+  }
+
+  // ✅ règles : X01 spécifiques + autres modes
+  const rules =
+    mode === "x01"
+      ? {
+          start: x01Start,
+          doubleOut: x01Out === "double",
+          inMode: x01In,
+          outMode: x01Out,
+          bestOf,
+          repechageEnabled: !!repechageEnabled,
+          seedMode: effectiveSeedMode,
+          rrRounds: Math.max(1, Number(rrRounds) || 1),
+          playersPerGroup: Math.floor(numFromText(playersPerGroup)) || 0,
+          qualifiersPerGroup: Math.floor(Number(qualifiersPerGroup) || 0),
+          bracketAuto: !!bracketAuto,
+          bracketTarget: Math.floor(numFromText(bracketTarget)) || 0,
+          desiredSize: desiredSize || 0,
+          autoFillBots: !!autoFillBots,
+          maxPlayers: capEnabled ? cap : 0,
+        }
+      : {
+          bestOf,
+          repechageEnabled: !!repechageEnabled,
+          seedMode: effectiveSeedMode,
+          rrRounds: Math.max(1, Number(rrRounds) || 1),
+          playersPerGroup: Math.floor(numFromText(playersPerGroup)) || 0,
+          qualifiersPerGroup: Math.floor(Number(qualifiersPerGroup) || 0),
+          bracketAuto: !!bracketAuto,
+          bracketTarget: Math.floor(numFromText(bracketTarget)) || 0,
+          desiredSize: desiredSize || 0,
+          autoFillBots: !!autoFillBots,
+          maxPlayers: capEnabled ? cap : 0,
+        };
+
+  const stages = buildStagesForEngine(format, finalPlayers.length);
+  const viewKind = viewKindFromFormat(format);
+
+  const tour: Tournament = createTournamentDraft({
+    name: name.trim(),
+    source: "local",
+    ownerProfileId: (store as any)?.activeProfileId ?? null,
+
+    players: finalPlayers.map((p: any) => ({
+      id: String(p.id),
+      name: p.name || "Joueur",
+      avatarDataUrl: p.avatarDataUrl || null,
+      source: p.source || "local",
+      isBot: !!p.isBot,
+    })),
+
+    game: { mode, rules },
+    stages,
+
+    viewKind,
+    repechage: { enabled: !!repechageEnabled },
+
+    meta: {
+      format,
+      seedMode: effectiveSeedMode,
+      repechageEnabled: !!repechageEnabled,
+      rrRounds: Math.max(1, Number(rrRounds) || 1),
+      playersPerGroup: Math.floor(numFromText(playersPerGroup)) || 0,
+      qualifiersPerGroup: Math.floor(Number(qualifiersPerGroup) || 0),
+      bracketAuto: !!bracketAuto,
+      bracketTarget: Math.floor(numFromText(bracketTarget)) || 0,
+      desiredSize: desiredSize || 0,
+      autoFillBots: !!autoFillBots,
+      maxPlayers: capEnabled ? cap : 0,
+      forceMode,
+      isPetanque,
+      petanqueTeamSize: isPetanque ? petanqueTeamSize : undefined,
+    },
+  } as any);
+
+  const matches = buildInitialMatches(tour);
+
+  try {
+    upsertTournamentLocal(tour as any);
+    upsertMatchesForTournamentLocal(tour.id, matches as any);
+  } catch (e) {
+    console.error("[TournamentCreate] persist failed:", e);
+  }
+
+  go("tournament_view", { id: tour.id, forceMode });
+}
+
   const computedGroups = React.useMemo(() => {
-    if (format !== "groups_ko") return 1;
-    const ppg = clamp(Math.floor(numFromText(playersPerGroup)) || 4, 2, 9999);
-    const n = Math.max(2, totalSelectedIds.length);
-    return Math.max(1, Math.ceil(n / ppg));
-  }, [format, playersPerGroup, totalSelectedIds.length]);
+  if (format !== "groups_ko") return 1;
+  const ppg = clamp(Math.floor(numFromText(playersPerGroup)) || 4, 2, 9999);
+  const entrants = isPetanque ? Math.max(2, petanqueTeamsCount) : Math.max(2, totalSelectedIds.length);
+  return Math.max(1, Math.ceil(entrants / ppg));
+}, [format, playersPerGroup, totalSelectedIds.length, isPetanque, petanqueTeamsCount]);
 
   const desiredSizePreview = React.useMemo(() => {
-    const n = Math.max(2, totalSelectedIds.length);
-    const d = computeDesiredSize(n);
-    return d || 0;
-  }, [totalSelectedIds.length, bracketAuto, bracketTarget, format, isPetanque, petanqueTeamSize]);
+  const entrants = isPetanque ? Math.max(2, petanqueTeamsCount) : Math.max(2, totalSelectedIds.length);
+  const d = computeDesiredSize(entrants);
+  return d || 0;
+}, [totalSelectedIds.length, bracketAuto, bracketTarget, format, isPetanque, petanqueTeamsCount]);
+
+const petanqueTeamsUI = React.useMemo(() => {
+  if (!isPetanque) return [];
+  return buildPetanqueTeamsFromAssignments(totalSelectedIds).teams;
+}, [isPetanque, totalSelectedIds.join("|"), teamOfPlayer, petanqueTeamSize, teamNames]);
+
 
   const infoContent = (() => {
     const k = String(infoKey || "");
@@ -1332,8 +1691,6 @@ export default function TournamentCreate({ store, go, params }: Props) {
 
     return { title: "Info", body: <>—</> };
   })();
-
-  const petanqueTeamsCount = Math.floor(totalSelectedIds.length / petanqueTeamSize);
 
   return (
     <div
@@ -1522,6 +1879,115 @@ export default function TournamentCreate({ store, go, params }: Props) {
           })}
         </div>
 
+
+
+{/* ✅ PÉTANQUE — ÉQUIPES (composition) */}
+{isPetanque ? (
+  <div style={{ marginTop: 12 }}>
+    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 8 }}>
+      <div style={{ fontSize: 12, opacity: 0.82 }}>
+        <b style={{ color: primary }}>{petanqueTeamsCount}</b> équipe(s) •{" "}
+        <span style={{ opacity: 0.75 }}>taille</span> <b style={{ color: primary }}>{petanqueTeamSize}</b>
+      </div>
+
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end", alignItems: "center" }}>
+        <NeonPill active={!assignMode} label="Sélection" onClick={() => setAssignMode(false)} small primary={primary} />
+        <NeonPill active={assignMode} label="Affectation" onClick={() => setAssignMode(true)} small primary={primary} />
+      </div>
+    </div>
+
+    <div style={{ fontSize: 11.5, opacity: 0.72, lineHeight: 1.35, marginBottom: 10 }}>
+      • <b style={{ color: primary }}>Sélection</b> : clic sur un joueur = ajoute / retire.<br />
+      • <b style={{ color: primary }}>Affectation</b> : choisis une équipe ci-dessous, puis clic sur les joueurs pour les mettre dedans (swap automatique si l’équipe est pleine).
+    </div>
+
+    <div style={{ display: "grid", gap: 10 }}>
+      {petanqueTeamsUI.map((t: any) => {
+        const isActive = activeTeamIdx === t.idx;
+        const members = (t.memberIds || []).map((pid: string) => {
+          const pr = profiles.find((p: any) => String(p.id) === String(pid));
+          const avg = Number(avgMap?.[String(pid)] ?? 0) || 0;
+          return { id: String(pid), name: pr?.name || "Joueur", avatar: pr?.avatar || null, avg3D: avg };
+        });
+
+        return (
+          <div
+            key={t.id}
+            style={{
+              borderRadius: 16,
+              border: isActive ? `1px solid ${primary}CC` : "1px solid rgba(255,255,255,0.10)",
+              background: isActive ? `linear-gradient(180deg, ${primary}14, rgba(0,0,0,0.22))` : "rgba(9,11,20,0.72)",
+              padding: 12,
+              boxShadow: isActive ? `0 0 22px ${primary}22` : "none",
+            }}
+            onMouseDown={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              setActiveTeamIdx(t.idx);
+              setAssignMode(true);
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+              <div style={{ display: "grid", gap: 6, width: "100%" }}>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+                  <div style={{ fontWeight: 950, color: primary, fontSize: 12.5 }}>
+                    {isActive ? "✓ " : ""}
+                    Équipe {t.idx + 1}
+                  </div>
+                  <div style={{ fontSize: 11.5, opacity: 0.78 }}>
+                    {members.length}/{petanqueTeamSize}
+                  </div>
+                </div>
+
+                <TextInput
+                  value={teamNames?.[t.idx] || ""}
+                  onChange={(e: any) => setTeamNames((prev: any) => ({ ...(prev || {}), [t.idx]: e.target.value }))}
+                  placeholder={`Nom équipe ${t.idx + 1}`}
+                />
+              </div>
+            </div>
+
+            <div style={{ marginTop: 10, display: "flex", gap: 12, overflowX: "auto", paddingBottom: 6, WebkitOverflowScrolling: "touch" }}>
+              {members.map((m: any) => (
+                <div key={m.id} style={{ display: "grid", justifyItems: "center", gap: 6, minWidth: 92 }}>
+                  <PlayerMedallion name={m.name} dataUrl={m.avatar} avg3D={m.avg3D} active primary={primary} />
+                  <div style={{ fontSize: 11, fontWeight: 950, opacity: 0.9, maxWidth: 92, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", textAlign: "center" }}>
+                    {m.name}
+                  </div>
+                </div>
+              ))}
+
+              {/* emplacements vides */}
+              {Array.from({ length: Math.max(0, petanqueTeamSize - members.length) }).map((_, k) => (
+                <div
+                  key={`empty_${t.id}_${k}`}
+                  style={{
+                    minWidth: 92,
+                    height: 92,
+                    borderRadius: 16,
+                    border: "1px dashed rgba(255,255,255,0.16)",
+                    opacity: 0.6,
+                    display: "grid",
+                    placeItems: "center",
+                    fontSize: 11.5,
+                  }}
+                >
+                  Vide
+                </div>
+              ))}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+
+    {!petanqueTeamsReady ? (
+      <div style={{ marginTop: 10, fontSize: 11.5, opacity: 0.75 }}>
+        ⚠️ Composition invalide : chaque équipe doit contenir exactement {petanqueTeamSize} joueur(s), sans doublon.
+      </div>
+    ) : null}
+  </div>
+) : null}
         {/* BOTS (hors pétanque uniquement) */}
         {!isPetanque ? (
           <>
@@ -1688,7 +2154,7 @@ export default function TournamentCreate({ store, go, params }: Props) {
                   ))}
                 </div>
                 <div style={{ fontSize: 11, opacity: 0.7, lineHeight: 1.35 }}>
-                  Poules auto ≈ <b style={{ color: primary }}>{computedGroups}</b> (sur {Math.max(2, totalSelectedIds.length)} joueurs)
+                  Poules auto ≈ <b style={{ color: primary }}>{computedGroups}</b> (sur {isPetanque ? Math.max(2, petanqueTeamsCount) : Math.max(2, totalSelectedIds.length)} {isPetanque ? "équipes" : "joueurs"})
                 </div>
               </div>
               <InfoIconButton onClick={() => openInfo("groups")} />
@@ -1717,7 +2183,7 @@ export default function TournamentCreate({ store, go, params }: Props) {
 
                 <div style={{ fontSize: 11, opacity: 0.7, lineHeight: 1.35 }}>
                   Taille visée (aperçu) : <b style={{ color: primary }}>{desiredSizePreview || "—"}</b>
-                  {isPetanque ? <span style={{ opacity: 0.75 }}> joueurs</span> : null}
+                  {isPetanque ? <span style={{ opacity: 0.75 }}> équipes</span> : null}
                 </div>
               </div>
               <InfoIconButton onClick={() => openInfo("bracket")} />

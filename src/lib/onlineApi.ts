@@ -15,6 +15,64 @@
 import { supabase } from "./supabaseClient";
 import type { UserAuth, OnlineProfile, OnlineMatch } from "./onlineTypes";
 
+// ============================================================
+// ✅ PGRST204 column-missing fallback (schema cache / tables legacy)
+// - Si une table existe mais n'a pas une colonne (ex: profiles_online sans nickname),
+//   Supabase renvoie PGRST204.
+// - On retire automatiquement la colonne manquante du payload et on retente.
+// ============================================================
+function extractMissingColumn(err: any): string | null {
+  try {
+    const msg = String(err?.message ?? "");
+    // Ex: "Could not find the 'nickname' column of 'profiles_online' in the schema cache"
+    const m = msg.match(/Could not find the '([^']+)' column/i);
+    return m?.[1] ?? null;
+  } catch {
+    return null;
+  }
+}
+
+async function writeWithColumnFallback<T>(
+  exec: (obj: Record<string, any>) => Promise<{ data: T | null; error: any }>,
+  payload: Record<string, any>,
+  opts?: { maxStrips?: number; debugLabel?: string }
+): Promise<{ data: T | null; error: any; stripped: string[] }> {
+  const maxStrips = opts?.maxStrips ?? 8;
+  const debugLabel = opts?.debugLabel ?? "write";
+  const originalKeys = Object.keys(payload || {});
+  let obj: Record<string, any> = { ...(payload || {}) };
+
+  for (let i = 0; i <= maxStrips; i++) {
+    const { data, error } = await exec(obj);
+    if (!error) {
+      const stripped = originalKeys.filter((k) => !(k in obj));
+      if (stripped.length) {
+        console.warn(`[onlineApi] ${debugLabel}: stripped missing cols =`, stripped);
+      }
+      return { data, error: null, stripped };
+    }
+
+    const code = String((error as any)?.code ?? "");
+    if (code !== "PGRST204") return { data: null, error, stripped: [] };
+
+    const col = extractMissingColumn(error);
+    if (!col) return { data: null, error, stripped: [] };
+
+    if (col in obj) {
+      delete obj[col];
+      continue;
+    }
+
+    return { data: null, error, stripped: [] };
+  }
+
+  return {
+    data: null,
+    error: { message: `Too many missing columns while writing (${debugLabel}).` },
+    stripped: [],
+  };
+}
+
 // --------------------------------------------
 // Types publics
 // --------------------------------------------
@@ -232,12 +290,12 @@ function extFromMime(mime: string) {
 // ============================================================
 type SupabaseProfileRow = {
   id: string;
-  nickname: string | null;
-  display_name: string | null;
-  avatar_url: string | null;
-  country: string | null;
-  created_at: string | null;
-  updated_at: string | null;
+  nickname?: string | null; // ✅ optionnel (table legacy peut ne pas avoir la colonne)
+  display_name?: string | null;
+  avatar_url?: string | null;
+  country?: string | null;
+  created_at?: string | null;
+  updated_at?: string | null;
 
   surname?: string | null;
   first_name?: string | null;
@@ -253,16 +311,16 @@ type SupabaseProfileRow = {
 
 function mapProfile(row: SupabaseProfileRow): OnlineProfile {
   return {
-    id: row.id,
-    userId: row.id,
-    displayName: row.display_name ?? row.nickname ?? "",
-    avatarUrl: row.avatar_url ?? undefined,
-    country: row.country ?? undefined,
+    id: String(row.id),
+    userId: String(row.id),
+    displayName: (row.display_name ?? row.nickname ?? "") as any,
+    avatarUrl: (row.avatar_url ?? undefined) as any,
+    country: (row.country ?? undefined) as any,
 
     surname: row.surname ?? "",
     firstName: row.first_name ?? "",
     lastName: row.last_name ?? "",
-    birthDate: row.birth_date ?? null,
+    birthDate: (row.birth_date ?? null) as any,
     city: row.city ?? "",
     email: row.email ?? "",
     phone: row.phone ?? "",
@@ -277,7 +335,7 @@ function mapProfile(row: SupabaseProfileRow): OnlineProfile {
         bestCheckout: 0,
       },
     updatedAt: row.updated_at ? Date.parse(row.updated_at) : now(),
-  };
+  } as any;
 }
 
 type SupabaseLobbyRow = {
@@ -326,6 +384,7 @@ async function ensureAuthedUser() {
 
 async function getOrCreateProfile(userId: string, fallbackNickname: string): Promise<OnlineProfile | null> {
   const PROFILES_TABLE = await resolveProfilesTable();
+
   // SELECT
   const { data: profileRow, error: selErr } = await supabase
     .from(PROFILES_TABLE)
@@ -342,29 +401,35 @@ async function getOrCreateProfile(userId: string, fallbackNickname: string): Pro
 
   if (profileRow) return mapProfile(profileRow as any);
 
-  // CREATE (upsert safe)
-  const { data: created, error: upErr } = await supabase
-    .from(PROFILES_TABLE)
-    .upsert(
-      {
-        id: userId,
-        nickname: fallbackNickname,
-        display_name: fallbackNickname,
-        country: null,
-        avatar_url: null,
-        updated_at: new Date().toISOString(),
-      },
-      { onConflict: "id" }
-    )
-    .select()
-    .single();
+  // CREATE (upsert safe + column fallback)
+  const payload = {
+    id: userId,
+    nickname: fallbackNickname,
+    display_name: fallbackNickname,
+    country: null,
+    avatar_url: null,
+    updated_at: new Date().toISOString(),
+  };
 
-  if (upErr) {
-    console.warn("[onlineApi] profiles upsert error", upErr);
+  const res = await writeWithColumnFallback<any>(
+    async (obj) => {
+      const { data, error } = await supabase
+        .from(PROFILES_TABLE)
+        .upsert(obj as any, { onConflict: "id" })
+        .select()
+        .single();
+      return { data, error };
+    },
+    payload,
+    { debugLabel: `profiles upsert (${PROFILES_TABLE})` }
+  );
+
+  if (res.error) {
+    console.warn("[onlineApi] profiles upsert error", res.error);
     return null;
   }
 
-  return mapProfile(created as any);
+  return mapProfile(res.data as any);
 }
 
 async function buildAuthSessionFromSupabase(): Promise<AuthSession | null> {
@@ -583,10 +648,23 @@ async function updateProfile(patch: UpdateProfilePayload): Promise<OnlineProfile
   if (patch.email !== undefined) dbPatch.email = patch.email;
   if (patch.phone !== undefined) dbPatch.phone = patch.phone;
 
-  const { data, error } = await supabase.from(PROFILES_TABLE).update(dbPatch).eq("id", userId).select().single();
-  if (error) throw new Error(error.message);
+  const res = await writeWithColumnFallback<any>(
+    async (obj) => {
+      const { data, error } = await supabase
+        .from(PROFILES_TABLE)
+        .update(obj as any)
+        .eq("id", userId)
+        .select()
+        .single();
+      return { data, error };
+    },
+    dbPatch,
+    { debugLabel: `profiles update (${PROFILES_TABLE})` }
+  );
 
-  const profile = mapProfile(data as any);
+  if (res.error) throw new Error(res.error.message || "Erreur updateProfile.");
+
+  const profile = mapProfile(res.data as any);
 
   const current = loadAuthFromLS();
   if (current?.user?.id === userId) {
@@ -865,13 +943,16 @@ function mapOnlineMatchFromRow(row: OnlineMatchRow): OnlineMatch {
     userId: String(row.owner_user || "unknown"),
     mode: "x01",
     payload: {
-      // tu peux enrichir ici plus tard
       lobbyCode: row.lobby_code,
       state: row.state_json,
     },
     isTraining: false,
     startedAt: row.created_at ? Date.parse(row.created_at) : now(),
-    finishedAt: row.finished_at ? Date.parse(row.finished_at) : (row.status === "ended" ? now() : now()),
+    finishedAt: row.finished_at
+      ? Date.parse(row.finished_at)
+      : row.status === "ended"
+        ? now()
+        : now(),
   } as any;
 }
 
@@ -951,10 +1032,10 @@ export const onlineApi = {
   listActiveLobbies, // ✅ A
 
   // Match live
-  startMatch,        // ✅ B
-  updateMatchState,  // ✅ B
-  endMatch,          // ✅ B
-  fetchMatchByCode,  // ✅ B
+  startMatch, // ✅ B
+  updateMatchState, // ✅ B
+  endMatch, // ✅ B
+  fetchMatchByCode, // ✅ B
 
   // Matchs (list/history)
   uploadMatch,

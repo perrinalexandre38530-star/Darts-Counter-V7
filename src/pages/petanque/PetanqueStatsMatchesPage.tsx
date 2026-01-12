@@ -1,183 +1,148 @@
-import React from "react";
-import type { Store } from "../../lib/types";
+// =============================================================
+// src/pages/petanque/PetanqueStatsMatchesPage.tsx
+// Stats Pétanque — Matches (liste + résumé)
+// Source : petanqueStore history (localStorage)
+// =============================================================
+
+import React, { useMemo, useState } from "react";
 import { useTheme } from "../../contexts/ThemeContext";
 import { useLang } from "../../contexts/LangContext";
+import { getPetanqueMatches, normalizePetanqueRecord } from "../../lib/petanqueStats";
 
 type Props = {
-  store: Store;
-  go: (tab: any, params?: any) => void;
+  store: any;
+  go: (t: any, p?: any) => void;
   params?: any;
 };
 
-type PetRec = any;
-
-function isPetanqueRecord(r: any) {
-  const kind = String(r?.kind ?? r?.payload?.kind ?? "").toLowerCase();
-  const sport = String(r?.payload?.sport ?? r?.payload?.game ?? r?.payload?.mode ?? "").toLowerCase();
-  if (kind.includes("petanque")) return true;
-  if (sport.includes("petanque")) return true;
-  if (sport.includes("boule")) return true;
-  return false;
+function pillStyle(bg: string, fg: string): React.CSSProperties {
+  return {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 6,
+    borderRadius: 999,
+    padding: "6px 10px",
+    fontSize: 12,
+    fontWeight: 900,
+    border: `1px solid ${bg}`,
+    color: fg,
+    background: "rgba(0,0,0,.22)",
+    letterSpacing: 0.4,
+  };
 }
 
-function safePlayers(rec: any): Array<{ id?: string; name?: string }> {
-  const p1 = Array.isArray(rec?.players) ? rec.players : null;
-  const p2 = Array.isArray(rec?.payload?.players) ? rec.payload.players : null;
-  const list = (p1?.length ? p1 : p2) ?? [];
-  return list
-    .filter(Boolean)
-    .map((p: any) => ({ id: p?.id ?? undefined, name: String(p?.name ?? "").trim() }))
-    .filter((p: any) => p.id || p.name);
-}
-
-function extractScore(rec: any): { a: number | null; b: number | null } {
-  const s =
-    rec?.payload?.score ??
-    rec?.payload?.scores ??
-    rec?.summary?.score ??
-    rec?.summary?.scores ??
-    rec?.payload?.summary?.score ??
-    rec?.payload?.summary?.scores ??
-    null;
-
-  const a =
-    Number.isFinite(Number(s?.a)) ? Number(s.a) :
-    Number.isFinite(Number(s?.A)) ? Number(s.A) :
-    Number.isFinite(Number(rec?.payload?.scoreA)) ? Number(rec.payload.scoreA) :
-    null;
-
-  const b =
-    Number.isFinite(Number(s?.b)) ? Number(s.b) :
-    Number.isFinite(Number(s?.B)) ? Number(s.B) :
-    Number.isFinite(Number(rec?.payload?.scoreB)) ? Number(rec.payload.scoreB) :
-    null;
-
-  return { a, b };
-}
-
-export default function PetanqueStatsMatchesPage({ store, go, params }: Props) {
+export default function PetanqueStatsMatchesPage({ go }: Props) {
   const { theme } = useTheme();
   const { t } = useLang();
 
-  const playerId = params?.playerId ? String(params.playerId) : null;
-  const playerName = params?.playerName ? String(params.playerName) : null;
+  const [q, setQ] = useState("");
 
-  const [query, setQuery] = React.useState("");
-  const [limit, setLimit] = React.useState(80);
+  const rows = useMemo(() => {
+    const raw = getPetanqueMatches();
+    const norm = raw.map(normalizePetanqueRecord).filter(Boolean) as any[];
+    const qq = q.trim().toLowerCase();
+    if (!qq) return norm;
 
-  const list: PetRec[] = React.useMemo(() => {
-    const raw = Array.isArray((store as any)?.history) ? (store as any).history : [];
-    const p = raw.filter(isPetanqueRecord);
-
-    const filteredByPlayer = playerId
-      ? p.filter((r) => {
-          const players = safePlayers(r);
-          return players.some((x) => String(x?.id ?? x?.name ?? "") === playerId);
-        })
-      : p;
-
-    const q = query.trim().toLowerCase();
-    const filteredByQuery = q
-      ? filteredByPlayer.filter((r) => {
-          const players = safePlayers(r).map((x) => String(x.name ?? "").toLowerCase()).join(" ");
-          const id = String(r?.id ?? "");
-          return players.includes(q) || id.toLowerCase().includes(q);
-        })
-      : filteredByPlayer;
-
-    const sorted = filteredByQuery.sort((a, b) => Number(b?.updatedAt ?? b?.createdAt ?? 0) - Number(a?.updatedAt ?? a?.createdAt ?? 0));
-    return sorted.slice(0, limit);
-  }, [store, query, limit, playerId]);
-
-  const title = playerName ? `${t("petanque.matches.title", "MATCHS")} — ${playerName}` : t("petanque.matches.title", "MATCHS");
+    return norm.filter((r) => {
+      const a = String(r?.teams?.A?.name ?? "").toLowerCase();
+      const b = String(r?.teams?.B?.name ?? "").toLowerCase();
+      const names = [...(r?.teams?.A?.players ?? []), ...(r?.teams?.B?.players ?? [])]
+        .map((p: any) => String(p?.name ?? "").toLowerCase())
+        .join(" ");
+      return a.includes(qq) || b.includes(qq) || names.includes(qq);
+    });
+  }, [q]);
 
   return (
-    <div className="container" style={{ minHeight: "100vh", paddingTop: 14, paddingBottom: 24, background: theme.bg, color: theme.text }}>
-      <div style={{ maxWidth: 520, margin: "0 auto", paddingInline: 14 }}>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
-          <button
-            onClick={() => go("stats")}
-            style={{ borderRadius: 999, border: `1px solid ${theme.borderSoft}`, padding: "6px 10px", background: theme.card, color: theme.text, cursor: "pointer" }}
-          >
-            ← {t("common.back", "Retour")}
-          </button>
-          <div style={{ fontSize: 11, fontWeight: 900, color: theme.textSoft, textTransform: "uppercase", letterSpacing: 0.6 }}>{list.length} / {limit}</div>
-        </div>
+    <div style={{ padding: 16 }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+        <button onClick={() => go("stats")} style={{ opacity: 0.9 }}>
+          ← {t("common.back", "Retour")}
+        </button>
+        <div style={{ fontWeight: 1000, letterSpacing: 1.2 }}>{t("petanque.stats.matches", "MATCHES")}</div>
+        <div style={{ width: 32 }} />
+      </div>
 
-        <div style={{ marginTop: 10 }}>
-          <div style={{ fontSize: 28, fontWeight: 900, letterSpacing: 0.9, textTransform: "uppercase", color: theme.primary, textShadow: `0 0 14px ${theme.primary}66`, lineHeight: 1.05 }}>
-            {title}
-          </div>
-          <div style={{ marginTop: 6, color: theme.textSoft, fontSize: 13, lineHeight: 1.35 }}>
-            {t("petanque.matches.subtitle", "Liste des parties Pétanque (tap pour ouvrir le détail).")}
-          </div>
-        </div>
-
-        <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 10, marginTop: 12 }}>
-          <input
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder={t("common.search", "Rechercher…")}
-            style={{ width: "100%", padding: "10px 12px", borderRadius: 12, border: `1px solid ${theme.borderSoft}`, background: theme.card, color: theme.text, outline: "none" }}
-          />
-          <button
-            onClick={() => setLimit((x) => Math.min(300, x + 80))}
-            style={{ borderRadius: 12, border: `1px solid ${theme.primary}66`, background: "rgba(0,0,0,.22)", color: theme.primary, fontWeight: 900, padding: "10px 10px", cursor: "pointer", boxShadow: `0 0 12px ${theme.primary}22` }}
-          >
-            +80
-          </button>
-        </div>
-
-        <div style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 12 }}>
-          {list.length === 0 ? (
-            <Card theme={theme} title={t("petanque.empty.matches", "Aucun match")} subtitle={t("petanque.empty.matches.sub", "Joue une partie Pétanque pour alimenter la liste.")} />
-          ) : (
-            list.map((rec: any) => {
-              const when = Number(rec?.updatedAt ?? rec?.createdAt ?? Date.now());
-              const dateStr = new Date(when).toLocaleString();
-              const players = safePlayers(rec);
-              const score = extractScore(rec);
-              const labelPlayers = players.map((p) => p.name || p.id).filter(Boolean).join(" · ") || "Joueurs";
-              const scoreStr = score.a != null && score.b != null ? `${score.a} - ${score.b}` : "—";
-
-              return (
-                <button
-                  key={String(rec?.id ?? Math.random())}
-                  onClick={() => go("statsDetail", { matchId: rec?.id })}
-                  style={{
-                    textAlign: "left",
-                    borderRadius: 16,
-                    background: theme.card,
-                    border: `1px solid ${theme.borderSoft}`,
-                    boxShadow: `0 16px 32px rgba(0,0,0,.55), 0 0 18px ${theme.primary}22`,
-                    padding: 12,
-                    cursor: "pointer",
-                  }}
-                >
-                  <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 10 }}>
-                    <div style={{ fontWeight: 900, color: theme.primary, textTransform: "uppercase", letterSpacing: 0.6, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                      {labelPlayers}
-                    </div>
-                    <div style={{ fontWeight: 900, color: theme.primary, textShadow: `0 0 10px ${theme.primary}55` }}>{scoreStr}</div>
-                  </div>
-                  <div style={{ marginTop: 6, color: theme.textSoft, fontSize: 12.5, lineHeight: 1.35 }}>
-                    {dateStr}
-                  </div>
-                </button>
-              );
-            })
-          )}
+      <div style={{ marginTop: 10, display: "flex", gap: 10, flexWrap: "wrap" }}>
+        <div style={pillStyle(`rgba(255,255,255,.14)`, theme.text)}>
+          {t("petanque.stats.total", "Total")} : {rows.length}
         </div>
       </div>
-    </div>
-  );
-}
 
-function Card({ theme, title, subtitle }: { theme: any; title: string; subtitle: string }) {
-  return (
-    <div style={{ borderRadius: 16, background: theme.card, border: `1px solid ${theme.borderSoft}`, boxShadow: `0 16px 32px rgba(0,0,0,.55), 0 0 18px ${theme.primary}22`, padding: 14 }}>
-      <div style={{ fontWeight: 900, color: theme.primary, textTransform: "uppercase", letterSpacing: 0.6 }}>{title}</div>
-      <div style={{ marginTop: 6, color: theme.textSoft, fontSize: 13, lineHeight: 1.35 }}>{subtitle}</div>
+      <div style={{ marginTop: 12 }}>
+        <input
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+          placeholder={t("common.search", "Rechercher")} 
+          style={{
+            width: "100%",
+            padding: 10,
+            borderRadius: 12,
+            border: "1px solid rgba(255,255,255,.12)",
+            background: "rgba(20,20,20,.5)",
+            color: "#fff",
+          }}
+        />
+      </div>
+
+      <div style={{ marginTop: 14, display: "grid", gap: 10 }}>
+        {rows.map((m) => {
+          const when = new Date(m.when).toLocaleString();
+          const a = m.teams.A;
+          const b = m.teams.B;
+          const aScore = m.scores.A;
+          const bScore = m.scores.B;
+          const win = m.winnerTeamId;
+
+          const title = `${a.name} ${aScore} — ${bScore} ${b.name}`;
+
+          return (
+            <div
+              key={m.id}
+              style={{
+                borderRadius: 16,
+                padding: 12,
+                border: "1px solid rgba(255,255,255,.12)",
+                background: "rgba(0,0,0,.28)",
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 10 }}>
+                <div style={{ fontWeight: 1000, letterSpacing: 0.6 }}>{title}</div>
+                <div style={{ fontSize: 12, opacity: 0.75 }}>{when}</div>
+              </div>
+
+              <div style={{ marginTop: 6, display: "flex", gap: 8, flexWrap: "wrap" }}>
+                <div style={pillStyle(`rgba(255,255,255,.12)`, theme.textSoft)}>
+                  {t("petanque.stats.mode", "Mode")} : {String(m.mode || "").toUpperCase()}
+                </div>
+                <div style={pillStyle(`rgba(255,255,255,.12)`, theme.textSoft)}>
+                  {t("petanque.stats.ends", "Mènes")} : {m.endsCount}
+                </div>
+                {win ? (
+                  <div style={pillStyle(`rgba(255,198,58,.22)`, theme.text)}>
+                    {t("petanque.stats.winner", "Vainqueur")} : {win === "A" ? a.name : b.name}
+                  </div>
+                ) : (
+                  <div style={pillStyle(`rgba(255,255,255,.12)`, theme.textSoft)}>{t("petanque.stats.draw", "Nul")}</div>
+                )}
+              </div>
+
+              <div style={{ marginTop: 8, fontSize: 12, opacity: 0.82, lineHeight: 1.25 }}>
+                <div>
+                  <span style={{ fontWeight: 900 }}>{a.name}</span> : {(a.players || []).map((p: any) => p.name).join(" · ")}
+                </div>
+                <div>
+                  <span style={{ fontWeight: 900 }}>{b.name}</span> : {(b.players || []).map((p: any) => p.name).join(" · ")}
+                </div>
+              </div>
+            </div>
+          );
+        })}
+
+        {!rows.length ? (
+          <div style={{ opacity: 0.7, padding: 16, textAlign: "center" }}>{t("petanque.stats.empty", "Aucune partie enregistrée.")}</div>
+        ) : null}
+      </div>
     </div>
   );
 }

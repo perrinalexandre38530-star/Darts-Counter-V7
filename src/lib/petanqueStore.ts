@@ -15,6 +15,9 @@
 // ✅ PATCH ROBUSTE (CRASH FIX)
 // - loadPetanqueState() ne renvoie JAMAIS null
 // - garantit st.ends / st.measurements = tableaux
+//
+// ✅ NEW (CRASH FIX réel demandé)
+// - loadPetanqueHistory() exporté (utilisé par pages Stats)
 // ============================================
 
 export type PetanqueTeamId = "A" | "B";
@@ -138,7 +141,7 @@ function normalizeState(anySt: any): PetanqueState | null {
   const endsRaw = Array.isArray(anySt.ends) ? anySt.ends : [];
   const ends: PetanqueEnd[] = endsRaw
     .map((e: any) => {
-      // compat: ancien store pouvait stocker winner/points
+      // compat: store moderne {pointsA/pointsB}
       if (e && typeof e === "object" && ("pointsA" in e || "pointsB" in e)) {
         return {
           id: String(e.id || uid("end")),
@@ -147,6 +150,7 @@ function normalizeState(anySt: any): PetanqueState | null {
           pointsB: clampInt(e.pointsB || 0, 0, 999),
         };
       }
+      // compat: ancien store {winner/points}
       if (e && typeof e === "object" && ("winner" in e || "points" in e)) {
         const w: PetanqueTeamId = e.winner === "B" ? "B" : "A";
         const p = clampInt(e.points || 0, 0, 999);
@@ -165,7 +169,7 @@ function normalizeState(anySt: any): PetanqueState | null {
   const measurements: PetanqueMeasurement[] = measRaw
     .map((m: any) => {
       if (!m || typeof m !== "object") return null;
-      // compat: anciennes mesures dA/dB etc => non convertible en valueMm => on ignore
+
       if ("valueMm" in m) {
         const v = Number(m.valueMm);
         if (!Number.isFinite(v)) return null;
@@ -177,6 +181,8 @@ function normalizeState(anySt: any): PetanqueState | null {
           note: typeof m.note === "string" && m.note.trim() ? m.note.trim() : undefined,
         };
       }
+
+      // compat: anciennes mesures non convertibles => ignorées
       return null;
     })
     .filter(Boolean) as PetanqueMeasurement[];
@@ -384,7 +390,7 @@ export function appendPetanqueHistory(st: PetanqueState) {
   try {
     const safe = ensureState(st);
     const raw = localStorage.getItem(KEY_HISTORY);
-    const list = raw ? (JSON.parse(raw) as PetanqueState[]) : [];
+    const list = raw ? (safeParse<PetanqueState[]>(raw) ?? []) : [];
     list.unshift(safe);
     localStorage.setItem(KEY_HISTORY, JSON.stringify(list.slice(0, 200)));
   } catch {}
@@ -395,18 +401,61 @@ export function archivePetanqueGame(st: PetanqueState) {
   appendPetanqueHistory(st);
 }
 
+// ✅ NEW: export attendu par tes pages Stats (CRASH FIX)
+export function loadPetanqueHistory(opts?: {
+  limit?: number;
+  status?: "active" | "finished";
+  mode?: string;
+}): PetanqueState[] {
+  try {
+    const limit = clampInt(opts?.limit ?? 200, 1, 2000);
+    const status = opts?.status;
+    const mode = typeof opts?.mode === "string" && opts.mode.trim() ? opts.mode.trim() : null;
+
+    const raw = localStorage.getItem(KEY_HISTORY);
+    const arr = raw ? (safeParse<any[]>(raw) ?? []) : [];
+
+    const normalized = arr
+      .map((x) => normalizeState(x))
+      .filter(Boolean)
+      .map((x) => ensureState(x as any));
+
+    const filtered = normalized.filter((g) => {
+      if (status && g.status !== status) return false;
+      if (mode && String(g.mode || "").toLowerCase() !== mode.toLowerCase()) return false;
+      return true;
+    });
+
+    // tri desc par updatedAt
+    filtered.sort((a, b) => Number(b.updatedAt || 0) - Number(a.updatedAt || 0));
+
+    return filtered.slice(0, limit);
+  } catch {
+    return [];
+  }
+}
+
 // ✅ requis par tes écrans: lecture d’un match depuis l’historique
 export function loadPetanqueGameFromHistory(matchId: string): PetanqueState | null {
   try {
     const raw = localStorage.getItem(KEY_HISTORY);
     if (!raw) return null;
+
     const list = safeParse<any[]>(raw) || [];
     const found = list.find((g: any) => String(g?.matchId || g?.gameId || "") === String(matchId));
     const norm = normalizeState(found);
+
     return norm ? ensureState(norm) : null;
   } catch {
     return null;
   }
+}
+
+// (optionnel mais utile) vider l'historique (debug/admin)
+export function clearPetanqueHistory() {
+  try {
+    localStorage.removeItem(KEY_HISTORY);
+  } catch {}
 }
 
 // --------------------------------------------
@@ -466,8 +515,7 @@ export function finishPetanqueMatch(st: PetanqueState): PetanqueState {
   // ✅ on archive (utile pour historiques / stats)
   archivePetanqueGame(done);
 
-  // ✅ IMPORTANT: beaucoup d’écrans veulent éviter “reprendre une partie finie”
-  // Donc on clear l’active après archivage.
+  // ✅ IMPORTANT: éviter “reprendre une partie finie”
   clearPetanqueActive();
 
   return done;

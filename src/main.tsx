@@ -2,6 +2,8 @@
 // src/main.tsx — Entrée principale Cloudflare + React + Tailwind
 // ✅ NEW: SAFE MODE anti "Aïe aïe aïe" (SW/caches)
 // ✅ NEW: ONE-SHOT PURGE (même sans crash) pour virer SW/caches foireux
+// ✅ FIX: ne plus purger automatiquement (freeze Stackblitz "Open in new tab")
+// ✅ FIX: purge=1 NE BOUCLE PLUS (retire ?purge=1 avant reload)
 // ============================================
 import React from "react";
 import { createRoot } from "react-dom/client";
@@ -28,7 +30,9 @@ import "./index.css";
     } catch {}
   };
 
-  window.addEventListener("error", (e: any) => show("window.error", e?.error || e?.message || e));
+  window.addEventListener("error", (e: any) =>
+    show("window.error", e?.error || e?.message || e)
+  );
   window.addEventListener("unhandledrejection", (e: any) =>
     show("unhandledrejection", e?.reason || e)
   );
@@ -260,15 +264,55 @@ async function devUnregisterSW() {
 ============================================================ */
 (async () => {
   try {
-    // ✅ IMPORTANT: si ton app est "bloquée" (pending, nav morte),
-    // active une purge ONE-SHOT en mettant cette clé à "0" dans localStorage
-    // puis reload. (par défaut, on ne purge pas en boucle)
+    // ✅ FIX: NE PLUS purger automatiquement au boot
+    // (Stackblitz "Open in new tab" change d'origine → purge+reload → écran blanc/perçu comme gel)
     //
-    // Pour forcer une purge maintenant: supprime dc_sw_purge_once_v1 dans localStorage puis reload.
+    // Pour forcer une purge ONE-SHOT :
+    // - ajoute ?purge=1 à l'URL
+    // - OU mets localStorage.setItem("dc_force_purge_sw","1") puis reload
     //
-    // ⚠️ OPTION: si tu veux purger automatiquement à chaque nouveau déploiement,
-    // tu peux versionner la clé: "dc_sw_purge_once_v1_build_2026_01_03" etc.
-    await purgeSWAndCachesOnce();
+    // ✅ FIX: purge=1 ne doit JAMAIS boucler → on retire ?purge=1 avant reload + garde-fou SW_PURGE_ONCE_KEY
+    const purgeInfo = (() => {
+      try {
+        const u = new URL(window.location.href);
+        const byQuery = u.searchParams.get("purge") === "1";
+        const byFlag = localStorage.getItem("dc_force_purge_sw") === "1";
+        return { byQuery, byFlag, url: u };
+      } catch {
+        return { byQuery: false, byFlag: false, url: null as any };
+      }
+    })();
+
+    if (purgeInfo.byQuery || purgeInfo.byFlag) {
+      try {
+        // Si déjà purgé une fois → on enlève ?purge=1 et on continue le boot normal
+        if (localStorage.getItem(SW_PURGE_ONCE_KEY) === "1") {
+          try {
+            if (purgeInfo.url) {
+              purgeInfo.url.searchParams.delete("purge");
+              window.history.replaceState({}, "", purgeInfo.url.toString());
+            }
+            localStorage.removeItem("dc_force_purge_sw");
+          } catch {}
+        } else {
+          // Première fois seulement : purge puis reload (SANS ?purge=1)
+          localStorage.setItem(SW_PURGE_ONCE_KEY, "1");
+          localStorage.removeItem("dc_force_purge_sw");
+
+          await disableAllServiceWorkersAndCaches();
+
+          try {
+            if (purgeInfo.url) {
+              purgeInfo.url.searchParams.delete("purge");
+              window.history.replaceState({}, "", purgeInfo.url.toString());
+            }
+          } catch {}
+
+          window.location.reload();
+          return;
+        }
+      } catch {}
+    }
 
     if (import.meta.env.PROD) await registerServiceWorkerProd();
     else await devUnregisterSW();

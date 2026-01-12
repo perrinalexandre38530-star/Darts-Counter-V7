@@ -1,301 +1,243 @@
-import React from "react";
-import type { Store } from "../../lib/types";
+// =============================================================
+// src/pages/petanque/PetanqueStatsLeaderboardsPage.tsx
+// Stats Pétanque — Classements (Players / Teams / Duos)
+// UI proche de StatsLeaderboardsPage (Darts Counter)
+// Source : petanqueStore history (localStorage)
+// =============================================================
+
+import React, { useMemo, useState } from "react";
 import { useTheme } from "../../contexts/ThemeContext";
 import { useLang } from "../../contexts/LangContext";
+import ProfileAvatar from "../../components/ProfileAvatar";
+import {
+  aggregatePetanquePlayers,
+  aggregatePetanqueTeams,
+  computePetanqueDuos,
+  getPetanqueMatches,
+  type PetanqueDuoStat,
+} from "../../lib/petanqueStats";
 
 type Props = {
-  store: Store;
-  go: (tab: any, params?: any) => void;
-  params?: any;
+  store: any;
+  go: (t: any, p?: any) => void;
+  params?: { subTab?: "players" | "teams" | "duos" };
 };
 
-type PetRec = any;
-
-function isPetanqueRecord(r: any) {
-  const kind = String(r?.kind ?? r?.payload?.kind ?? "").toLowerCase();
-  const sport = String(r?.payload?.sport ?? r?.payload?.game ?? r?.payload?.mode ?? "").toLowerCase();
-  if (kind.includes("petanque")) return true;
-  if (sport.includes("petanque")) return true;
-  if (sport.includes("boule")) return true;
-  return false;
+function chipStyle(theme: any, on: boolean): React.CSSProperties {
+  return {
+    border: `1px solid ${on ? theme.primary : "rgba(255,255,255,.10)"}`,
+    background: on ? "rgba(255,198,58,.14)" : "rgba(255,255,255,.06)",
+    color: on ? theme.primary : theme.text,
+    borderRadius: 999,
+    padding: "7px 10px",
+    fontWeight: 900,
+    fontSize: 12,
+    cursor: "pointer",
+    userSelect: "none",
+  };
 }
 
-function safePlayers(rec: any) {
-  const p1 = Array.isArray(rec?.players) ? rec.players : null;
-  const p2 = Array.isArray(rec?.payload?.players) ? rec.payload.players : null;
-  const list = (p1?.length ? p1 : p2) ?? [];
-  return list
-    .filter(Boolean)
-    .map((p: any) => ({ id: String(p?.id ?? p?.name ?? "").trim(), name: String(p?.name ?? "").trim() }))
-    .filter((p: any) => p.id || p.name);
+function rowCard(theme: any): React.CSSProperties {
+  return {
+    border: "1px solid rgba(255,255,255,.10)",
+    background: "rgba(10,10,10,.32)",
+    borderRadius: 14,
+    padding: 12,
+    display: "grid",
+    gap: 10,
+    boxShadow: "0 14px 30px rgba(0,0,0,.30)",
+  };
 }
 
-function extractScore(rec: any): { a: number | null; b: number | null } {
-  const s =
-    rec?.payload?.score ??
-    rec?.payload?.scores ??
-    rec?.summary?.score ??
-    rec?.summary?.scores ??
-    rec?.payload?.summary?.score ??
-    rec?.payload?.summary?.scores ??
-    null;
-
-  const a =
-    Number.isFinite(Number(s?.a)) ? Number(s.a) :
-    Number.isFinite(Number(s?.A)) ? Number(s.A) :
-    Number.isFinite(Number(rec?.payload?.scoreA)) ? Number(rec.payload.scoreA) :
-    null;
-
-  const b =
-    Number.isFinite(Number(s?.b)) ? Number(s.b) :
-    Number.isFinite(Number(s?.B)) ? Number(s.B) :
-    Number.isFinite(Number(rec?.payload?.scoreB)) ? Number(rec.payload.scoreB) :
-    null;
-
-  return { a, b };
-}
-
-function extractSides(rec: any): { A: any[]; B: any[] } {
-  const t = rec?.payload?.teams ?? rec?.payload?.team ?? rec?.teams ?? null;
-
-  const A =
-    (Array.isArray(t?.A?.players) ? t.A.players : null) ??
-    (Array.isArray(t?.a?.players) ? t.a.players : null) ??
-    (Array.isArray(rec?.payload?.sideA) ? rec.payload.sideA : null) ??
-    [];
-
-  const B =
-    (Array.isArray(t?.B?.players) ? t.B.players : null) ??
-    (Array.isArray(t?.b?.players) ? t.b.players : null) ??
-    (Array.isArray(rec?.payload?.sideB) ? rec.payload.sideB : null) ??
-    [];
-
-  const norm = (arr: any[]) =>
-    (arr || [])
-      .filter(Boolean)
-      .map((p: any) => ({ id: String(p?.id ?? p?.name ?? "").trim(), name: String(p?.name ?? "").trim() }))
-      .filter((p: any) => p.id || p.name);
-
-  return { A: norm(A), B: norm(B) };
-}
-
-function winnerSideFromScore(score: { a: number | null; b: number | null }) {
-  if (score.a == null || score.b == null) return null;
-  if (score.a === score.b) return null;
-  return score.a > score.b ? "A" : "B";
-}
-
-type PlayerLB = {
-  id: string;
-  name: string;
-  matches: number;
-  wins: number;
-  losses: number;
-  pointsFor: number;
-  pointsAgainst: number;
-  diff: number;
-};
-
-export default function PetanqueStatsLeaderboardsPage({ store, go }: Props) {
+export default function PetanqueStatsLeaderboardsPage({ store, go, params }: Props) {
   const { theme } = useTheme();
   const { t } = useLang();
 
-  const petanqueHistory: PetRec[] = React.useMemo(() => {
-    const list = Array.isArray((store as any)?.history) ? (store as any).history : [];
-    return list.filter(isPetanqueRecord);
-  }, [store]);
+  const initialSub: any = params?.subTab || "players";
+  const [subTab, setSubTab] = useState<"players" | "teams" | "duos">(initialSub);
 
-  const [tab, setTab] = React.useState<"diff" | "wins" | "winrate">("diff");
+  const { matches, profilesIndex } = useMemo(() => getPetanqueMatches(store?.profiles || []), [store?.profiles]);
+  const playersAgg = useMemo(() => aggregatePetanquePlayers(matches, profilesIndex), [matches, profilesIndex]);
+  const teamsAgg = useMemo(() => aggregatePetanqueTeams(matches), [matches]);
+  const duosAgg = useMemo(() => computePetanqueDuos(matches, profilesIndex), [matches, profilesIndex]);
 
-  const players: PlayerLB[] = React.useMemo(() => {
-    const map = new Map<string, PlayerLB>();
+  const topPlayers = useMemo(() => {
+    const list = Object.values(playersAgg);
+    // tri "valeur" : d'abord winrate, puis diff
+    return list
+      .sort((a, b) => (b.winRate - a.winRate) || (b.diff - a.diff) || (b.wins - a.wins) || (b.matches - a.matches))
+      .slice(0, 40);
+  }, [playersAgg]);
 
-    const bump = (p: any, patch: Partial<PlayerLB>) => {
-      const id = String(p?.id ?? p?.name ?? "").trim();
-      if (!id) return;
-      const name = String(p?.name ?? "").trim() || "Joueur";
-      const prev = map.get(id) ?? { id, name, matches: 0, wins: 0, losses: 0, pointsFor: 0, pointsAgainst: 0, diff: 0 };
-      const next = { ...prev, ...patch, name: prev.name || name };
-      next.diff = (next.pointsFor || 0) - (next.pointsAgainst || 0);
-      map.set(id, next);
-    };
+  const topTeams = useMemo(() => {
+    const list = Object.values(teamsAgg);
+    return list
+      .sort((a, b) => (b.winRate - a.winRate) || (b.diff - a.diff) || (b.wins - a.wins) || (b.matches - a.matches))
+      .slice(0, 40);
+  }, [teamsAgg]);
 
-    for (const rec of petanqueHistory) {
-      const score = extractScore(rec);
-      const sides = extractSides(rec);
-      const winner = winnerSideFromScore(score);
+  const topDuosByWinRate = useMemo(() => {
+    const list: PetanqueDuoStat[] = Object.values(duosAgg);
+    return list
+      .filter((d) => d.matches >= 3)
+      .sort((a, b) => (b.winRate - a.winRate) || (b.wins - a.wins) || (b.matches - a.matches))
+      .slice(0, 40);
+  }, [duosAgg]);
 
-      if ((sides.A?.length || 0) > 0 || (sides.B?.length || 0) > 0) {
-        const aPts = score.a ?? 0;
-        const bPts = score.b ?? 0;
+  const topDuosByMatches = useMemo(() => {
+    const list: PetanqueDuoStat[] = Object.values(duosAgg);
+    return list
+      .sort((a, b) => (b.matches - a.matches) || (b.wins - a.wins) || (b.winRate - a.winRate))
+      .slice(0, 40);
+  }, [duosAgg]);
 
-        for (const p of sides.A) {
-          const id = String(p.id ?? p.name);
-          const prev = map.get(id);
-          bump(p, {
-            matches: (prev?.matches ?? 0) + 1,
-            wins: (prev?.wins ?? 0) + (winner === "A" ? 1 : 0),
-            losses: (prev?.losses ?? 0) + (winner === "B" ? 1 : 0),
-            pointsFor: (prev?.pointsFor ?? 0) + (score.a == null ? 0 : aPts),
-            pointsAgainst: (prev?.pointsAgainst ?? 0) + (score.b == null ? 0 : bPts),
-          });
-        }
-        for (const p of sides.B) {
-          const id = String(p.id ?? p.name);
-          const prev = map.get(id);
-          bump(p, {
-            matches: (prev?.matches ?? 0) + 1,
-            wins: (prev?.wins ?? 0) + (winner === "B" ? 1 : 0),
-            losses: (prev?.losses ?? 0) + (winner === "A" ? 1 : 0),
-            pointsFor: (prev?.pointsFor ?? 0) + (score.b == null ? 0 : bPts),
-            pointsAgainst: (prev?.pointsAgainst ?? 0) + (score.a == null ? 0 : aPts),
-          });
-        }
-      } else {
-        // fallback
-        for (const p of safePlayers(rec)) {
-          const id = String(p.id ?? p.name);
-          const prev = map.get(id);
-          bump(p, { matches: (prev?.matches ?? 0) + 1 });
-        }
-      }
-    }
-
-    const list = Array.from(map.values());
-
-    const sorted = list.sort((a, b) => {
-      const ar = a.matches > 0 ? a.wins / a.matches : 0;
-      const br = b.matches > 0 ? b.wins / b.matches : 0;
-
-      if (tab === "wins") return b.wins - a.wins;
-      if (tab === "winrate") return br - ar;
-      return b.diff - a.diff;
-    });
-
-    return sorted.slice(0, 20);
-  }, [petanqueHistory, tab]);
+  const empty = matches.length === 0;
 
   return (
-    <div className="container" style={{ minHeight: "100vh", paddingTop: 14, paddingBottom: 24, background: theme.bg, color: theme.text }}>
-      <div style={{ maxWidth: 520, margin: "0 auto", paddingInline: 14 }}>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
-          <button
-            onClick={() => go("stats")}
-            style={{ borderRadius: 999, border: `1px solid ${theme.borderSoft}`, padding: "6px 10px", background: theme.card, color: theme.text, cursor: "pointer" }}
-          >
-            ← {t("common.back", "Retour")}
-          </button>
-        </div>
-
-        <div style={{ marginTop: 10 }}>
-          <div style={{ fontSize: 28, fontWeight: 900, letterSpacing: 0.9, textTransform: "uppercase", color: theme.primary, textShadow: `0 0 14px ${theme.primary}66`, lineHeight: 1.05 }}>
-            {t("petanque.lb.title", "CLASSEMENTS")}
-          </div>
-          <div style={{ marginTop: 6, color: theme.textSoft, fontSize: 13, lineHeight: 1.35 }}>
-            {t("petanque.lb.subtitle", "Top joueurs (Diff, Victoires, Win%).")}
-          </div>
-        </div>
-
-        <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
-          <Pill theme={theme} active={tab === "diff"} onClick={() => setTab("diff")} label={t("petanque.lb.diff", "Diff")} />
-          <Pill theme={theme} active={tab === "wins"} onClick={() => setTab("wins")} label={t("petanque.lb.wins", "Victoires")} />
-          <Pill theme={theme} active={tab === "winrate"} onClick={() => setTab("winrate")} label={t("petanque.lb.winrate", "Win%")} />
-        </div>
-
-        <div style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 12 }}>
-          {players.length === 0 ? (
-            <Card theme={theme} title={t("petanque.empty.lb", "Aucune donnée")} subtitle={t("petanque.empty.lb.sub", "Joue une partie Pétanque pour générer les classements.")} />
-          ) : (
-            players.map((p, idx) => <LbRow key={p.id} theme={theme} rank={idx + 1} p={p} />)
-          )}
+    <div style={{ padding: 12 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
+        <button onClick={() => go("stats")} style={{ padding: "8px 10px", borderRadius: 12 }}>
+          ←
+        </button>
+        <div style={{ fontWeight: 1000, letterSpacing: 1.2, color: theme.primary, textTransform: "uppercase" }}>
+          {t("petanque.stats.leaderboards", "CLASSEMENTS")}
         </div>
       </div>
+
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 10 }}>
+        <div style={chipStyle(theme, subTab === "players")} onClick={() => setSubTab("players")}>JOUEURS</div>
+        <div style={chipStyle(theme, subTab === "teams")} onClick={() => setSubTab("teams")}>ÉQUIPES</div>
+        <div style={chipStyle(theme, subTab === "duos")} onClick={() => setSubTab("duos")}>DUOS</div>
+      </div>
+
+      {empty ? (
+        <div style={{ opacity: 0.8, padding: 14, border: "1px dashed rgba(255,255,255,.18)", borderRadius: 14 }}>
+          Aucune partie Pétanque enregistrée pour le moment.
+        </div>
+      ) : null}
+
+      {subTab === "players" ? (
+        <div style={{ display: "grid", gap: 10 }}>
+          <div style={rowCard(theme)}>
+            <div style={{ fontWeight: 900, letterSpacing: 0.8 }}>Top joueurs (winrate + diff)</div>
+            <div style={{ display: "grid", gap: 8 }}>
+              {topPlayers.map((p, idx) => (
+                <div
+                  key={p.playerId}
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "28px 52px 1fr auto",
+                    alignItems: "center",
+                    gap: 10,
+                    padding: "8px 10px",
+                    borderRadius: 12,
+                    border: "1px solid rgba(255,255,255,.10)",
+                    background: "rgba(255,255,255,.04)",
+                  }}
+                >
+                  <div style={{ opacity: 0.9, fontWeight: 900 }}>{idx + 1}</div>
+                  <ProfileAvatar size={42} name={p.name} url={(p as any).avatarUrl} dataUrl={(p as any).avatarDataUrl} />
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ fontWeight: 900, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{p.name}</div>
+                    <div style={{ opacity: 0.8, fontSize: 12 }}>
+                      {p.wins}V-{p.losses}D · {Math.round(p.winRate * 100)}% · diff {p.diff >= 0 ? "+" : ""}
+                      {p.diff}
+                    </div>
+                  </div>
+                  <div style={{ opacity: 0.85, fontWeight: 900 }}>{p.pointsFor}:{p.pointsAgainst}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {subTab === "teams" ? (
+        <div style={{ display: "grid", gap: 10 }}>
+          <div style={rowCard(theme)}>
+            <div style={{ fontWeight: 900, letterSpacing: 0.8 }}>Top équipes</div>
+            <div style={{ display: "grid", gap: 8 }}>
+              {topTeams.map((tm, idx) => (
+                <div
+                  key={tm.teamKey}
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "28px 1fr auto",
+                    alignItems: "center",
+                    gap: 10,
+                    padding: "8px 10px",
+                    borderRadius: 12,
+                    border: "1px solid rgba(255,255,255,.10)",
+                    background: "rgba(255,255,255,.04)",
+                  }}
+                >
+                  <div style={{ opacity: 0.9, fontWeight: 900 }}>{idx + 1}</div>
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ fontWeight: 900, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{tm.teamName}</div>
+                    <div style={{ opacity: 0.8, fontSize: 12 }}>
+                      {tm.wins}V-{tm.losses}D · {Math.round(tm.winRate * 100)}% · diff {tm.diff >= 0 ? "+" : ""}
+                      {tm.diff}
+                    </div>
+                  </div>
+                  <div style={{ opacity: 0.85, fontWeight: 900 }}>{tm.pointsFor}:{tm.pointsAgainst}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {subTab === "duos" ? (
+        <div style={{ display: "grid", gap: 10 }}>
+          <div style={rowCard(theme)}>
+            <div style={{ fontWeight: 900, letterSpacing: 0.8 }}>Duos — meilleurs winrate (min 3 matchs)</div>
+            <div style={{ display: "grid", gap: 8 }}>
+              {topDuosByWinRate.map((d, idx) => (
+                <DuoRow key={d.duoKey} theme={theme} idx={idx} d={d} />
+              ))}
+            </div>
+          </div>
+
+          <div style={rowCard(theme)}>
+            <div style={{ fontWeight: 900, letterSpacing: 0.8 }}>Duos — les plus joués</div>
+            <div style={{ display: "grid", gap: 8 }}>
+              {topDuosByMatches.map((d, idx) => (
+                <DuoRow key={d.duoKey + "-m"} theme={theme} idx={idx} d={d} />
+              ))}
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }
 
-function Pill({ theme, active, label, onClick }: { theme: any; active: boolean; label: string; onClick: () => void }) {
+function DuoRow({ theme, idx, d }: { theme: any; idx: number; d: PetanqueDuoStat }) {
   return (
-    <button
-      onClick={onClick}
+    <div
       style={{
-        borderRadius: 999,
-        border: `1px solid ${active ? theme.primary : theme.borderSoft}`,
-        background: active ? `linear-gradient(180deg, ${theme.primary}33, rgba(0,0,0,.25))` : theme.card,
-        color: active ? theme.primary : theme.textSoft,
-        fontWeight: 900,
+        display: "grid",
+        gridTemplateColumns: "28px 52px 52px 1fr auto",
+        alignItems: "center",
+        gap: 10,
         padding: "8px 10px",
-        cursor: "pointer",
-        boxShadow: active ? `0 0 12px ${theme.primary}55` : "none",
-        textTransform: "uppercase",
-        letterSpacing: 0.6,
-        fontSize: 11,
+        borderRadius: 12,
+        border: "1px solid rgba(255,255,255,.10)",
+        background: "rgba(255,255,255,.04)",
       }}
     >
-      {label}
-    </button>
-  );
-}
-
-function Card({ theme, title, subtitle }: { theme: any; title: string; subtitle: string }) {
-  return (
-    <div style={{ borderRadius: 16, background: theme.card, border: `1px solid ${theme.borderSoft}`, boxShadow: `0 16px 32px rgba(0,0,0,.55), 0 0 18px ${theme.primary}22`, padding: 14 }}>
-      <div style={{ fontWeight: 900, color: theme.primary, textTransform: "uppercase", letterSpacing: 0.6 }}>{title}</div>
-      <div style={{ marginTop: 6, color: theme.textSoft, fontSize: 13, lineHeight: 1.35 }}>{subtitle}</div>
-    </div>
-  );
-}
-
-function Chip({ theme, label, strong }: { theme: any; label: string; strong?: boolean }) {
-  return (
-    <span style={{ fontSize: 11, fontWeight: strong ? 900 : 800, padding: "4px 8px", borderRadius: 999, border: `1px solid ${theme.borderSoft}`, background: "rgba(0,0,0,.18)", color: strong ? theme.primary : theme.textSoft, letterSpacing: 0.3 }}>
-      {label}
-    </span>
-  );
-}
-
-function LbRow({ theme, rank, p }: { theme: any; rank: number; p: any }) {
-  const winrate = p.matches > 0 ? Math.round((p.wins / p.matches) * 100) : 0;
-
-  return (
-    <div style={{ borderRadius: 16, background: theme.card, border: `1px solid ${theme.borderSoft}`, boxShadow: `0 16px 32px rgba(0,0,0,.55), 0 0 18px ${theme.primary}22`, padding: 12 }}>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
-          <div
-            style={{
-              width: 34,
-              height: 34,
-              borderRadius: 12,
-              border: `1px solid ${theme.primary}55`,
-              display: "grid",
-              placeItems: "center",
-              color: theme.primary,
-              fontWeight: 900,
-              background: "rgba(0,0,0,.18)",
-              boxShadow: `0 0 12px ${theme.primary}22`,
-              flexShrink: 0,
-            }}
-          >
-            {rank}
-          </div>
-          <div style={{ minWidth: 0 }}>
-            <div style={{ fontWeight: 900, color: theme.primary, textTransform: "uppercase", letterSpacing: 0.6, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-              {p.name}
-            </div>
-            <div style={{ marginTop: 6, display: "flex", flexWrap: "wrap", gap: 6 }}>
-              <Chip theme={theme} label={`V ${p.wins}`} />
-              <Chip theme={theme} label={`D ${p.losses}`} />
-              <Chip theme={theme} label={`Win ${winrate}%`} />
-              <Chip theme={theme} label={`Diff ${p.diff >= 0 ? "+" : ""}${p.diff}`} strong />
-            </div>
-          </div>
+      <div style={{ opacity: 0.9, fontWeight: 900 }}>{idx + 1}</div>
+      <ProfileAvatar size={42} name={d.p1.name} url={(d.p1 as any).avatarUrl} dataUrl={(d.p1 as any).avatarDataUrl} />
+      <ProfileAvatar size={42} name={d.p2.name} url={(d.p2 as any).avatarUrl} dataUrl={(d.p2 as any).avatarDataUrl} />
+      <div style={{ minWidth: 0 }}>
+        <div style={{ fontWeight: 900, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+          {d.p1.name} · {d.p2.name}
         </div>
-
-        <div style={{ textAlign: "right" }}>
-          <div style={{ fontSize: 11, color: theme.textSoft, fontWeight: 800, textTransform: "uppercase", letterSpacing: 0.6 }}>Matchs</div>
-          <div style={{ fontWeight: 900, color: theme.text, marginTop: 4 }}>{p.matches}</div>
+        <div style={{ opacity: 0.8, fontSize: 12 }}>
+          {d.wins}V-{d.losses}D · {Math.round(d.winRate * 100)}% · {d.matches} matchs
         </div>
       </div>
+      <div style={{ opacity: 0.9, fontWeight: 900, color: theme.primary }}>{Math.round(d.winRate * 100)}%</div>
     </div>
   );
 }

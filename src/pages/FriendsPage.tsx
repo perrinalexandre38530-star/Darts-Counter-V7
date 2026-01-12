@@ -497,6 +497,16 @@ export default function FriendsPage({ store, update, go }: Props) {
   const auth = useAuthOnline() as any;
   const ready = !!auth.ready;
 
+  // ---------------------------------------------------------------------------
+  // ✅ Session state (source unique)
+  // Certains anciens patches utilisaient "sessionState" (UI / gating).
+  // Vite/esbuild ne typecheck pas : une variable manquante compile mais plante
+  // au runtime (ReferenceError). On normalise donc ici.
+  const sessionState: string =
+    auth?.status ?? auth?.sessionState ?? auth?.state ?? (ready ? "signed_out" : "loading");
+  const isSignedIn = sessionState === "signed_in";
+  const sessionUserId = (auth?.user?.id ?? (auth as any)?.userId ?? null) as string | null;
+
   if (!ready) {
     return (
       <div className="container" style={{ padding: 16, paddingBottom: 96, color: "#f5f5f7" }}>
@@ -558,16 +568,7 @@ export default function FriendsPage({ store, update, go }: Props) {
     const id = window.setInterval(() => pingServer().catch(() => {}), 25_000);
     return () => window.clearInterval(id);
   }, [pingServer]);
-
-  
-  
-/* -----------------------------
-   Session Supabase (SOURCE UNIQUE)
------------------------------- */
-const sessionUserId = auth?.user?.id ?? null;
-const isSignedIn = auth?.status === "signed_in" && !!sessionUserId;
-
-/* -----------------------------
+  /* -----------------------------
      Étape 4 — règle finale
   ------------------------------ */
   const canPlayOnline = isSignedIn;

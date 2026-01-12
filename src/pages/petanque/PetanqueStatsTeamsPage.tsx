@@ -1,291 +1,293 @@
-import React from "react";
-import type { Store } from "../../lib/types";
+// =============================================================
+// src/pages/petanque/PetanqueStatsTeamsPage.tsx
+// Stats Pétanque — Équipes
+// - Classements équipes (winrate, diff, points)
+// - "Line-up favori" (combinaison la plus jouée)
+// - Source : petanqueStore history (localStorage)
+// =============================================================
+
+import React, { useMemo, useState } from "react";
 import { useTheme } from "../../contexts/ThemeContext";
 import { useLang } from "../../contexts/LangContext";
+import ProfileAvatar from "../../components/ProfileAvatar";
+import { aggregatePetanqueByTeam, getPetanqueMatches, listPetanquePlayersFromMatches } from "../../lib/petanqueStats";
 
 type Props = {
-  store: Store;
-  go: (tab: any, params?: any) => void;
+  store: any;
+  go: (t: any, p?: any) => void;
   params?: any;
 };
 
-type PetRec = any;
-
-function isPetanqueRecord(r: any) {
-  const kind = String(r?.kind ?? r?.payload?.kind ?? "").toLowerCase();
-  const sport = String(r?.payload?.sport ?? r?.payload?.game ?? r?.payload?.mode ?? "").toLowerCase();
-  if (kind.includes("petanque")) return true;
-  if (sport.includes("petanque")) return true;
-  if (sport.includes("boule")) return true;
-  return false;
+function pct(n: number) {
+  if (!Number.isFinite(n)) return "–";
+  return `${Math.round(n * 100)}%`;
 }
 
-function extractScore(rec: any): { a: number | null; b: number | null } {
-  const s =
-    rec?.payload?.score ??
-    rec?.payload?.scores ??
-    rec?.summary?.score ??
-    rec?.summary?.scores ??
-    rec?.payload?.summary?.score ??
-    rec?.payload?.summary?.scores ??
-    null;
-
-  const a =
-    Number.isFinite(Number(s?.a)) ? Number(s.a) :
-    Number.isFinite(Number(s?.A)) ? Number(s.A) :
-    Number.isFinite(Number(rec?.payload?.scoreA)) ? Number(rec.payload.scoreA) :
-    Number.isFinite(Number(rec?.payload?.teamA?.score)) ? Number(rec.payload.teamA.score) :
-    null;
-
-  const b =
-    Number.isFinite(Number(s?.b)) ? Number(s.b) :
-    Number.isFinite(Number(s?.B)) ? Number(s.B) :
-    Number.isFinite(Number(rec?.payload?.scoreB)) ? Number(rec.payload.scoreB) :
-    Number.isFinite(Number(rec?.payload?.teamB?.score)) ? Number(rec.payload.teamB.score) :
-    null;
-
-  return { a, b };
+function fmt(n: number) {
+  if (!Number.isFinite(n)) return "–";
+  const r = Math.round(n * 10) / 10;
+  return Number.isInteger(r) ? String(r) : r.toFixed(1);
 }
 
-function extractSides(rec: any): { A: any[]; B: any[] } {
-  const t = rec?.payload?.teams ?? rec?.payload?.team ?? rec?.teams ?? null;
-
-  const A =
-    (Array.isArray(t?.A?.players) ? t.A.players : null) ??
-    (Array.isArray(t?.a?.players) ? t.a.players : null) ??
-    (Array.isArray(t?.teamA?.players) ? t.teamA.players : null) ??
-    (Array.isArray(rec?.payload?.teamA?.players) ? rec.payload.teamA.players : null) ??
-    (Array.isArray(rec?.payload?.sideA) ? rec.payload.sideA : null) ??
-    [];
-
-  const B =
-    (Array.isArray(t?.B?.players) ? t.B.players : null) ??
-    (Array.isArray(t?.b?.players) ? t.b.players : null) ??
-    (Array.isArray(t?.teamB?.players) ? t.teamB.players : null) ??
-    (Array.isArray(rec?.payload?.teamB?.players) ? rec.payload.teamB.players : null) ??
-    (Array.isArray(rec?.payload?.sideB) ? rec.payload.sideB : null) ??
-    [];
-
-  const norm = (arr: any[]) =>
-    (arr || [])
-      .filter(Boolean)
-      .map((p: any) => ({
-        id: p?.id ?? undefined,
-        name: String(p?.name ?? "").trim(),
-      }))
-      .filter((p: any) => p.id || p.name);
-
-  return { A: norm(A), B: norm(B) };
+function pill(theme: any, text: string) {
+  return (
+    <span
+      style={{
+        fontSize: 11,
+        fontWeight: 900,
+        padding: "4px 8px",
+        borderRadius: 999,
+        border: `1px solid ${theme.border}`,
+        background: "rgba(0,0,0,.25)",
+        color: theme.text,
+        whiteSpace: "nowrap",
+      }}
+    >
+      {text}
+    </span>
+  );
 }
-
-function winnerSideFromScore(score: { a: number | null; b: number | null }) {
-  if (score.a == null || score.b == null) return null;
-  if (score.a === score.b) return null;
-  return score.a > score.b ? "A" : "B";
-}
-
-function teamKeyFromPlayers(players: Array<{ id?: string; name?: string }>) {
-  const key = (players || [])
-    .map((p) => String(p?.id ?? p?.name ?? "").trim())
-    .filter(Boolean)
-    .sort((a, b) => a.localeCompare(b))
-    .join("|");
-  return key || "team-unknown";
-}
-
-function teamLabel(players: Array<{ id?: string; name?: string }>) {
-  const names = (players || []).map((p) => String(p?.name ?? p?.id ?? "").trim()).filter(Boolean);
-  if (!names.length) return "Équipe";
-  return names.join(" · ");
-}
-
-type TeamAgg = {
-  id: string;
-  label: string;
-  players: Array<{ id?: string; name?: string }>;
-  matches: number;
-  wins: number;
-  losses: number;
-  draws: number;
-  pointsFor: number;
-  pointsAgainst: number;
-  diff: number;
-};
 
 export default function PetanqueStatsTeamsPage({ store, go }: Props) {
   const { theme } = useTheme();
   const { t } = useLang();
 
-  const petanqueHistory: PetRec[] = React.useMemo(() => {
-    const list = Array.isArray((store as any)?.history) ? (store as any).history : [];
-    return list.filter(isPetanqueRecord);
-  }, [store]);
+  const [query, setQuery] = useState("");
+  const [sort, setSort] = useState<"winrate" | "wins" | "diff" | "pf">("winrate");
 
-  const [query, setQuery] = React.useState("");
-  const [sortKey, setSortKey] = React.useState<"diff" | "wins" | "matches" | "winrate">("diff");
+  const matches = useMemo(() => getPetanqueMatches(), []);
+  const playersIndex = useMemo(() => listPetanquePlayersFromMatches(matches), [matches]);
+  const teams = useMemo(() => aggregatePetanqueByTeam(matches), [matches]);
 
-  const teams: TeamAgg[] = React.useMemo(() => {
-    const map = new Map<string, TeamAgg>();
-
-    const upsert = (key: string, label: string, players: any[], patch: Partial<TeamAgg>) => {
-      const prev = map.get(key);
-      const base: TeamAgg = prev ?? {
-        id: key,
-        label,
-        players,
-        matches: 0,
-        wins: 0,
-        losses: 0,
-        draws: 0,
-        pointsFor: 0,
-        pointsAgainst: 0,
-        diff: 0,
-      };
-      const next: TeamAgg = { ...base, ...patch };
-      next.diff = (next.pointsFor || 0) - (next.pointsAgainst || 0);
-      map.set(key, next);
-    };
-
-    for (const rec of petanqueHistory) {
-      const score = extractScore(rec);
-      const sides = extractSides(rec);
-      const winnerSide = winnerSideFromScore(score);
-
-      const aKey = teamKeyFromPlayers(sides.A);
-      const bKey = teamKeyFromPlayers(sides.B);
-      const aLabel = teamLabel(sides.A);
-      const bLabel = teamLabel(sides.B);
-
-      const aPts = score.a ?? 0;
-      const bPts = score.b ?? 0;
-
-      // A
-      upsert(aKey, aLabel, sides.A, {
-        matches: (map.get(aKey)?.matches ?? 0) + 1,
-        wins: (map.get(aKey)?.wins ?? 0) + (winnerSide === "A" ? 1 : 0),
-        losses: (map.get(aKey)?.losses ?? 0) + (winnerSide === "B" ? 1 : 0),
-        draws: (map.get(aKey)?.draws ?? 0) + (winnerSide == null && score.a != null && score.b != null ? 1 : 0),
-        pointsFor: (map.get(aKey)?.pointsFor ?? 0) + (score.a == null ? 0 : aPts),
-        pointsAgainst: (map.get(aKey)?.pointsAgainst ?? 0) + (score.b == null ? 0 : bPts),
-      });
-
-      // B
-      upsert(bKey, bLabel, sides.B, {
-        matches: (map.get(bKey)?.matches ?? 0) + 1,
-        wins: (map.get(bKey)?.wins ?? 0) + (winnerSide === "B" ? 1 : 0),
-        losses: (map.get(bKey)?.losses ?? 0) + (winnerSide === "A" ? 1 : 0),
-        draws: (map.get(bKey)?.draws ?? 0) + (winnerSide == null && score.a != null && score.b != null ? 1 : 0),
-        pointsFor: (map.get(bKey)?.pointsFor ?? 0) + (score.b == null ? 0 : bPts),
-        pointsAgainst: (map.get(bKey)?.pointsAgainst ?? 0) + (score.a == null ? 0 : aPts),
-      });
+  const favLineups = useMemo(() => {
+    const map = new Map<string, { key: string; count: number; wins: number }>();
+    for (const m of matches) {
+      for (const side of ["A", "B"] as const) {
+        const team = m.teams?.[side];
+        const ids = (team?.players || []).map((p: any) => String(p?.id ?? p?.name ?? "").trim()).filter(Boolean);
+        if (!ids.length) continue;
+        ids.sort();
+        const key = ids.join("|");
+        const prev = map.get(key) || { key, count: 0, wins: 0 };
+        prev.count += 1;
+        if (m.winnerTeamId && m.winnerTeamId === side) prev.wins += 1;
+        map.set(key, prev);
+      }
     }
+    return Array.from(map.values())
+      .filter((x) => x.count >= 2)
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 8);
+  }, [matches]);
 
-    const list = Array.from(map.values());
-
+  const list = useMemo(() => {
     const q = query.trim().toLowerCase();
-    const filtered = q ? list.filter((x) => x.label.toLowerCase().includes(q)) : list;
+    const filtered = teams.filter((x) => (q ? String(x.name || "").toLowerCase().includes(q) : true));
 
-    const sorted = filtered.sort((a, b) => {
-      const ar = a.matches > 0 ? a.wins / a.matches : 0;
-      const br = b.matches > 0 ? b.wins / b.matches : 0;
-      if (sortKey === "wins") return b.wins - a.wins;
-      if (sortKey === "matches") return b.matches - a.matches;
-      if (sortKey === "winrate") return br - ar;
-      return b.diff - a.diff;
+    const ordered = filtered.slice().sort((a, b) => {
+      const ar = a.games > 0 ? a.wins / a.games : 0;
+      const br = b.games > 0 ? b.wins / b.games : 0;
+      if (sort === "winrate") return br - ar || b.games - a.games;
+      if (sort === "wins") return b.wins - a.wins || br - ar;
+      if (sort === "diff") return b.diff - a.diff || br - ar;
+      return b.pointsFor - a.pointsFor || br - ar;
     });
+    return ordered;
+  }, [teams, query, sort]);
 
-    return sorted;
-  }, [petanqueHistory, query, sortKey]);
+  const totalGames = useMemo(() => matches.length, [matches]);
+  const totalTeams = useMemo(() => teams.length, [teams]);
 
   return (
-    <div className="container" style={{ minHeight: "100vh", paddingTop: 14, paddingBottom: 24, background: theme.bg, color: theme.text }}>
-      <div style={{ maxWidth: 520, margin: "0 auto", paddingInline: 14 }}>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+    <div style={{ padding: 16 }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+        <button onClick={() => go("stats")} style={{ border: "none", background: "transparent", color: theme.text, fontWeight: 900 }}>
+          ← {t("common.back", "Retour")}
+        </button>
+        <div style={{ fontWeight: 1000, letterSpacing: 1.4, textTransform: "uppercase" }}>{t("petanque.stats.teams", "Équipes")}</div>
+        <div />
+      </div>
+
+      <div style={{ marginTop: 12, display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 10 }}>
+        <div style={{ padding: 12, borderRadius: 14, border: `1px solid ${theme.border}`, background: "rgba(0,0,0,.25)" }}>
+          <div style={{ fontSize: 12, opacity: 0.7 }}>{t("petanque.stats.matches", "Matchs")}</div>
+          <div style={{ fontSize: 22, fontWeight: 1000 }}>{totalGames}</div>
+        </div>
+        <div style={{ padding: 12, borderRadius: 14, border: `1px solid ${theme.border}`, background: "rgba(0,0,0,.25)" }}>
+          <div style={{ fontSize: 12, opacity: 0.7 }}>{t("petanque.stats.teams", "Équipes")}</div>
+          <div style={{ fontSize: 22, fontWeight: 1000 }}>{totalTeams}</div>
+        </div>
+        <div style={{ padding: 12, borderRadius: 14, border: `1px solid ${theme.border}`, background: "rgba(0,0,0,.25)" }}>
+          <div style={{ fontSize: 12, opacity: 0.7 }}>{t("petanque.stats.players", "Joueurs")}</div>
+          <div style={{ fontSize: 22, fontWeight: 1000 }}>{playersIndex.length}</div>
+        </div>
+      </div>
+
+      <div style={{ marginTop: 14, display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+        <input
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder={t("common.search", "Rechercher…")}
+          style={{
+            flex: "1 1 220px",
+            padding: "10px 12px",
+            borderRadius: 12,
+            border: `1px solid ${theme.border}`,
+            background: "rgba(0,0,0,.25)",
+            color: theme.text,
+            outline: "none",
+          }}
+        />
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
           <button
-            onClick={() => go("stats")}
-            style={{ borderRadius: 999, border: `1px solid ${theme.borderSoft}`, padding: "6px 10px", background: theme.card, color: theme.text, cursor: "pointer" }}
+            onClick={() => setSort("winrate")}
+            style={{
+              borderRadius: 999,
+              padding: "8px 10px",
+              border: `1px solid ${sort === "winrate" ? theme.primary : theme.border}`,
+              background: sort === "winrate" ? "rgba(255,255,255,.06)" : "rgba(0,0,0,.2)",
+              color: theme.text,
+              fontWeight: 900,
+              cursor: "pointer",
+            }}
           >
-            ← {t("common.back", "Retour")}
+            Win%
+          </button>
+          <button
+            onClick={() => setSort("wins")}
+            style={{
+              borderRadius: 999,
+              padding: "8px 10px",
+              border: `1px solid ${sort === "wins" ? theme.primary : theme.border}`,
+              background: sort === "wins" ? "rgba(255,255,255,.06)" : "rgba(0,0,0,.2)",
+              color: theme.text,
+              fontWeight: 900,
+              cursor: "pointer",
+            }}
+          >
+            Wins
+          </button>
+          <button
+            onClick={() => setSort("diff")}
+            style={{
+              borderRadius: 999,
+              padding: "8px 10px",
+              border: `1px solid ${sort === "diff" ? theme.primary : theme.border}`,
+              background: sort === "diff" ? "rgba(255,255,255,.06)" : "rgba(0,0,0,.2)",
+              color: theme.text,
+              fontWeight: 900,
+              cursor: "pointer",
+            }}
+          >
+            Diff
+          </button>
+          <button
+            onClick={() => setSort("pf")}
+            style={{
+              borderRadius: 999,
+              padding: "8px 10px",
+              border: `1px solid ${sort === "pf" ? theme.primary : theme.border}`,
+              background: sort === "pf" ? "rgba(255,255,255,.06)" : "rgba(0,0,0,.2)",
+              color: theme.text,
+              fontWeight: 900,
+              cursor: "pointer",
+            }}
+          >
+            PF
           </button>
         </div>
+      </div>
 
-        <div style={{ marginTop: 10 }}>
-          <div style={{ fontSize: 28, fontWeight: 900, letterSpacing: 0.9, textTransform: "uppercase", color: theme.primary, textShadow: `0 0 14px ${theme.primary}66`, lineHeight: 1.05 }}>
-            {t("petanque.teams.title", "STATS ÉQUIPES")}
+      <div style={{ marginTop: 14, display: "grid", gap: 10 }}>
+        {list.length === 0 ? (
+          <div style={{ padding: 14, borderRadius: 14, border: `1px solid ${theme.border}`, opacity: 0.8 }}>{t("common.empty", "Aucune donnée")}</div>
+        ) : (
+          list.map((tm, idx) => {
+            const wr = tm.games > 0 ? tm.wins / tm.games : 0;
+            const name = tm.name || `Équipe ${idx + 1}`;
+            const roster = (tm.roster || []).map((id: string) => playersIndex.find((p) => p.id === id)?.name || id).join(" · ");
+
+            return (
+              <div
+                key={tm.id}
+                style={{
+                  padding: 12,
+                  borderRadius: 14,
+                  border: `1px solid ${theme.border}`,
+                  background: "rgba(0,0,0,.22)",
+                  display: "grid",
+                  gridTemplateColumns: "1fr auto",
+                  gap: 10,
+                }}
+              >
+                <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
+                  <div style={{ width: 34, height: 34, borderRadius: 999, border: `1px solid ${theme.border}`, display: "grid", placeItems: "center", fontWeight: 1000 }}>
+                    {idx + 1}
+                  </div>
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ fontWeight: 1000, letterSpacing: 0.3, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{name}</div>
+                    <div style={{ fontSize: 12, opacity: 0.7, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{roster}</div>
+                  </div>
+                </div>
+
+                <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
+                  {pill(theme, `${tm.wins}-${tm.losses}`)}
+                  {pill(theme, `Win ${pct(wr)}`)}
+                  {pill(theme, `Diff ${fmt(tm.diff)}`)}
+                  {pill(theme, `PF ${fmt(tm.pointsFor)}`)}
+                </div>
+              </div>
+            );
+          })
+        )}
+      </div>
+
+      {favLineups.length ? (
+        <div style={{ marginTop: 18 }}>
+          <div style={{ fontWeight: 1000, letterSpacing: 1.2, textTransform: "uppercase", opacity: 0.9, marginBottom: 8 }}>
+            {t("petanque.stats.favoriteLineups", "Line-ups favoris")}
           </div>
-          <div style={{ marginTop: 6, color: theme.textSoft, fontSize: 13, lineHeight: 1.35 }}>
-            {t("petanque.teams.subtitle", "Bilan par composition (V/D, points pour/contre, diff).")}
+          <div style={{ display: "grid", gap: 10 }}>
+            {favLineups.map((l) => {
+              const ids = l.key.split("|");
+              const names = ids.map((id) => playersIndex.find((p) => p.id === id)?.name || id);
+              const wr = l.count > 0 ? l.wins / l.count : 0;
+              return (
+                <div
+                  key={l.key}
+                  style={{
+                    padding: 12,
+                    borderRadius: 14,
+                    border: `1px solid ${theme.border}`,
+                    background: "rgba(0,0,0,.18)",
+                    display: "grid",
+                    gridTemplateColumns: "1fr auto",
+                    gap: 10,
+                  }}
+                >
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                    {ids.slice(0, 6).map((id) => {
+                      const p = playersIndex.find((x) => x.id === id);
+                      return (
+                        <div key={id} style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                          <ProfileAvatar profile={{ id: p?.id || id, name: p?.name || id, avatarDataUrl: p?.avatarDataUrl || null }} size={26} />
+                          <span style={{ fontSize: 12, fontWeight: 900, opacity: 0.9 }}>{p?.name || id}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, justifyContent: "flex-end", flexWrap: "wrap" }}>
+                    {pill(theme, `${l.wins}/${l.count}`)}
+                    {pill(theme, `Win ${pct(wr)}`)}
+                    {pill(theme, `${names.length} joueurs`)}
+                  </div>
+                </div>
+              );
+            })}
           </div>
         </div>
-
-        <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 10, marginTop: 12 }}>
-          <input
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder={t("common.search", "Rechercher…")}
-            style={{ width: "100%", padding: "10px 12px", borderRadius: 12, border: `1px solid ${theme.borderSoft}`, background: theme.card, color: theme.text, outline: "none" }}
-          />
-          <select
-            value={sortKey}
-            onChange={(e) => setSortKey(e.target.value as any)}
-            style={{ padding: "10px 10px", borderRadius: 12, border: `1px solid ${theme.borderSoft}`, background: theme.card, color: theme.text, fontWeight: 800, cursor: "pointer" }}
-          >
-            <option value="diff">{t("petanque.sort.diff", "Diff")}</option>
-            <option value="wins">{t("petanque.sort.wins", "Victoires")}</option>
-            <option value="winrate">{t("petanque.sort.winrate", "Win%")}</option>
-            <option value="matches">{t("petanque.sort.matches", "Matchs")}</option>
-          </select>
-        </div>
-
-        <div style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 12 }}>
-          {teams.length === 0 ? (
-            <Card theme={theme} title={t("petanque.empty.teams", "Aucune donnée")} subtitle={t("petanque.empty.teams.sub", "Joue une partie Pétanque en équipes pour alimenter les stats.")} />
-          ) : (
-            teams.map((tm) => <TeamRow key={tm.id} theme={theme} team={tm} />)
-          )}
-        </div>
-
-        <div style={{ height: 24 }} />
-      </div>
-    </div>
-  );
-}
-
-function Card({ theme, title, subtitle }: { theme: any; title: string; subtitle: string }) {
-  return (
-    <div style={{ borderRadius: 16, background: theme.card, border: `1px solid ${theme.borderSoft}`, boxShadow: `0 16px 32px rgba(0,0,0,.55), 0 0 18px ${theme.primary}22`, padding: 14 }}>
-      <div style={{ fontWeight: 900, color: theme.primary, textTransform: "uppercase", letterSpacing: 0.6 }}>{title}</div>
-      <div style={{ marginTop: 6, color: theme.textSoft, fontSize: 13, lineHeight: 1.35 }}>{subtitle}</div>
-    </div>
-  );
-}
-
-function Chip({ theme, label, strong }: { theme: any; label: string; strong?: boolean }) {
-  return (
-    <span style={{ fontSize: 11, fontWeight: strong ? 900 : 800, padding: "4px 8px", borderRadius: 999, border: `1px solid ${theme.borderSoft}`, background: "rgba(0,0,0,.18)", color: strong ? theme.primary : theme.textSoft, letterSpacing: 0.3 }}>
-      {label}
-    </span>
-  );
-}
-
-function TeamRow({ theme, team }: { theme: any; team: any }) {
-  const winrate = team.matches > 0 ? Math.round((team.wins / team.matches) * 100) : 0;
-
-  return (
-    <div style={{ borderRadius: 16, background: theme.card, border: `1px solid ${theme.borderSoft}`, boxShadow: `0 16px 32px rgba(0,0,0,.55), 0 0 18px ${theme.primary}22`, padding: 12 }}>
-      <div style={{ fontWeight: 900, color: theme.primary, textTransform: "uppercase", letterSpacing: 0.6, lineHeight: 1.2 }}>
-        {team.label}
-      </div>
-
-      <div style={{ marginTop: 8, display: "flex", flexWrap: "wrap", gap: 6 }}>
-        <Chip theme={theme} label={`V ${team.wins}`} />
-        <Chip theme={theme} label={`D ${team.losses}`} />
-        <Chip theme={theme} label={`N ${team.draws}`} />
-        <Chip theme={theme} label={`Win ${winrate}%`} />
-        <Chip theme={theme} label={`+ ${team.pointsFor}`} />
-        <Chip theme={theme} label={`- ${team.pointsAgainst}`} />
-        <Chip theme={theme} label={`Diff ${team.diff >= 0 ? "+" : ""}${team.diff}`} strong />
-      </div>
+      ) : null}
     </div>
   );
 }
