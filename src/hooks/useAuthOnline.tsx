@@ -6,7 +6,7 @@
 // - init boot: getSession() + onAuthStateChange()
 // - ready=true GARANTI (finally + watchdog) pour éviter blocage AppGate
 // - profile = BONUS (best-effort), n’impacte JAMAIS status/ready
-// - expose: status, ready, loading, session, user, profile, login/signup/logout/refresh
+// - expose: status, ready, loading, session, user, userId, profile, login/signup/logout/refresh
 // ============================================================
 
 import * as React from "react";
@@ -38,6 +38,9 @@ const initial: AuthState = {
 };
 
 type Ctx = AuthState & {
+  // ✅ NEW: ID utilisateur unique (source of truth)
+  userId: string | null;
+
   signup: (payload: { email?: string; nickname: string; password?: string }) => Promise<boolean>;
   login: (payload: { email?: string; nickname?: string; password?: string }) => Promise<boolean>;
   logout: () => Promise<void>;
@@ -91,10 +94,7 @@ async function safeLoadProfileBestEffort(user: User): Promise<OnlineProfile | nu
  * status/ready DOIVENT dépendre UNIQUEMENT de session.user.
  * profile ne doit JAMAIS conditionner signed_in / signed_out.
  */
-function applyAuthFromSession(
-  setState: React.Dispatch<React.SetStateAction<AuthState>>,
-  session: Session | null
-) {
+function applyAuthFromSession(setState: React.Dispatch<React.SetStateAction<AuthState>>, session: Session | null) {
   const user = session?.user ?? null;
 
   if (user) {
@@ -296,6 +296,7 @@ export function AuthOnlineProvider({ children }: { children: React.ReactNode }) 
   const value: Ctx = React.useMemo(
     () => ({
       ...state,
+      userId: state.user?.id ?? null,
       signup,
       login,
       logout,
@@ -313,6 +314,7 @@ export function useAuthOnline() {
     // fallback: évite crash si provider manquant
     return {
       ...initial,
+      userId: null,
       signup: async () => false,
       login: async () => false,
       logout: async () => {},

@@ -68,8 +68,6 @@
 import React from "react";
 import BottomNav from "./components/BottomNav";
 
-import AuthDebugBanner from "./components/AuthDebugBanner";
-
 import AuthStart from "./pages/AuthStart";
 import AccountStart from "./pages/AccountStart";
 
@@ -133,6 +131,10 @@ import TrainingClock from "./pages/TrainingClock";
 import ShanghaiConfigPage from "./pages/ShanghaiConfig";
 import ShanghaiEnd from "./pages/ShanghaiEnd";
 
+// ✅ NEW: Battle Royale (config)
+import BattleRoyaleConfigPage from "./pages/BattleRoyaleConfig";
+import BattleRoyalePlay from "./pages/BattleRoyalePlay";
+
 // ✅ NEW: Spectator
 import SpectatorPage from "./pages/SpectatorPage";
 
@@ -154,6 +156,7 @@ import StatsLeaderboardsPage from "./pages/StatsLeaderboardsPage"; // ⭐ CLASSE
 
 // TOURNOI
 import TournamentCreate from "./pages/TournamentCreate";
+import TournamentComposeTeams from "./pages/TournamentComposeTeams";
 import TournamentView from "./pages/TournamentView";
 import TournamentMatchPlay from "./pages/TournamentMatchPlay";
 import TournamentRoadmap from "./pages/TournamentRoadmap";
@@ -195,6 +198,22 @@ import PetanqueTournamentMatchScore from "./pages/petanque/PetanqueTournamentMat
 // ✅ NEW: Pétanque flow (menu/config/play)
 import PetanqueMenuGames from "./pages/petanque/PetanqueMenuGames";
 import PetanqueConfig from "./pages/petanque/PetanqueConfig";
+
+// ✅ NEW: Baby-Foot (LOCAL)
+import BabyFootHome from "./pages/babyfoot/BabyFootHome";
+import BabyFootMenuGames from "./pages/babyfoot/BabyFootMenuGames";
+import BabyFootConfig from "./pages/babyfoot/BabyFootConfig";
+import BabyFootPlay from "./pages/babyfoot/BabyFootPlay";
+import BabyFootStatsShell from "./pages/babyfoot/BabyFootStatsShell";
+import BabyFootStatsHistoryPage from "./pages/babyfoot/BabyFootStatsHistoryPage";
+
+// ✅ NEW: Ping-Pong (LOCAL)
+import PingPongHome from "./pages/pingpong/PingPongHome";
+import PingPongMenuGames from "./pages/pingpong/PingPongMenuGames";
+import PingPongConfig from "./pages/pingpong/PingPongConfig";
+import PingPongPlay from "./pages/pingpong/PingPongPlay";
+import PingPongStatsShell from "./pages/pingpong/PingPongStatsShell";
+import PingPongStatsHistoryPage from "./pages/pingpong/PingPongStatsHistoryPage";
 
 // Dev helper
 import { installHistoryProbe } from "./dev/devHistoryProbe";
@@ -407,6 +426,16 @@ type Tab =
   | "petanque_menu"
   | "petanque_config"
   | "petanque_play"
+  // ✅ NEW: Tabs Baby-Foot (LOCAL)
+  | "babyfoot_menu"
+  | "babyfoot_config"
+  | "babyfoot_play"
+  | "babyfoot_stats_history"
+  // ✅ NEW: Tabs Ping-Pong (LOCAL)
+  | "pingpong_menu"
+  | "pingpong_config"
+  | "pingpong_play"
+  | "pingpong_stats_history"
   // ✅ NEW: Teams Pétanque (CRUD local)
   | "petanque_teams"
   | "petanque_team_edit"
@@ -426,6 +455,7 @@ type Tab =
   | "petanque.play"
   | "tournaments"
   | "tournament_create"
+  | "tournament_compose_teams"
   | "tournament_view"
   | "tournament_match_play"
   | "tournament_roadmap"
@@ -1569,6 +1599,108 @@ function App() {
     go("petanque_stats_history", { focusMatchId: id });
   }
 
+  /* --------------------------------------------
+      pushBabyFootHistory (FIN DE MATCH BABY-FOOT)
+      - écrit dans store.history + History (IDB)
+      - redirige vers historique Baby-Foot
+  -------------------------------------------- */
+  function pushBabyFootHistory(m: any) {
+    const now = Date.now();
+    const id = (m as any)?.id || (m as any)?.matchId || `babyfoot-${now}-${Math.random().toString(36).slice(2, 8)}`;
+
+    const rawPlayers = (m as any)?.players ?? (m as any)?.payload?.players ?? [];
+    const players = rawPlayers.map((p: any) => {
+      const prof = (store.profiles || []).find((pr) => pr.id === p?.id);
+      return {
+        id: p?.id,
+        name: p?.name ?? prof?.name ?? "",
+        avatarDataUrl: p?.avatarDataUrl ?? prof?.avatarDataUrl ?? null,
+      };
+    });
+
+    const summary = (m as any)?.summary ?? (m as any)?.payload?.summary ?? null;
+
+    const saved: any = {
+      id,
+      kind: (m as any)?.kind || "babyfoot",
+      sport: "babyfoot",
+      status: "finished",
+      players,
+      winnerId: (m as any)?.winnerId || (m as any)?.payload?.winnerId || null,
+      createdAt: (m as any)?.createdAt || now,
+      updatedAt: now,
+      summary,
+      payload: { ...(m as any), players, summary, kind: (m as any)?.kind || "babyfoot", sport: "babyfoot" },
+    };
+
+    setStore((s) => {
+      const list = [...((s as any).history ?? [])];
+      const i = list.findIndex((r: any) => r.id === saved.id);
+      if (i >= 0) list[i] = saved;
+      else list.unshift(saved);
+      const next = { ...(s as any), history: list } as any;
+      queueMicrotask(() => saveStore(next));
+      return next;
+    });
+
+    try {
+      (History as any)?.upsert?.(saved);
+    } catch {}
+
+    go("babyfoot_stats_history", { focusMatchId: id });
+  }
+
+  /* --------------------------------------------
+      pushPingPongHistory (FIN DE MATCH PING-PONG)
+      - écrit dans store.history + History (IDB)
+      - redirige vers historique Ping-Pong
+  -------------------------------------------- */
+  function pushPingPongHistory(m: any) {
+    const now = Date.now();
+    const id = (m as any)?.id || (m as any)?.matchId || `pingpong-${now}-${Math.random().toString(36).slice(2, 8)}`;
+
+    const rawPlayers = (m as any)?.players ?? (m as any)?.payload?.players ?? [];
+    const players = rawPlayers.map((p: any) => {
+      const prof = (store.profiles || []).find((pr) => pr.id === p?.id);
+      return {
+        id: p?.id,
+        name: p?.name ?? prof?.name ?? "",
+        avatarDataUrl: p?.avatarDataUrl ?? prof?.avatarDataUrl ?? null,
+      };
+    });
+
+    const summary = (m as any)?.summary ?? (m as any)?.payload?.summary ?? null;
+
+    const saved: any = {
+      id,
+      kind: (m as any)?.kind || "pingpong",
+      sport: "pingpong",
+      status: "finished",
+      players,
+      winnerId: (m as any)?.winnerId || (m as any)?.payload?.winnerId || null,
+      createdAt: (m as any)?.createdAt || now,
+      updatedAt: now,
+      summary,
+      payload: { ...(m as any), players, summary, kind: (m as any)?.kind || "pingpong", sport: "pingpong" },
+    };
+
+    setStore((s) => {
+      const list = [...((s as any).history ?? [])];
+      const i = list.findIndex((r: any) => r.id === saved.id);
+      if (i >= 0) list[i] = saved;
+      else list.unshift(saved);
+      const next = { ...(s as any), history: list } as any;
+      queueMicrotask(() => saveStore(next));
+      return next;
+    });
+
+    try {
+      (History as any)?.upsert?.(saved);
+    } catch {}
+
+    go("pingpong_stats_history", { focusMatchId: id });
+  }
+
   const historyForUI = React.useMemo(
     () => (store.history || []).map((r: any) => withAvatars(r, store.profiles || [])),
     [store.history, store.profiles]
@@ -1623,6 +1755,10 @@ function App() {
         page =
           activeSport === "petanque" ? (
             <PetanqueHome store={store} update={update} go={go} />
+          ) : activeSport === "babyfoot" ? (
+            <BabyFootHome go={go} />
+          ) : activeSport === "pingpong" ? (
+            <PingPongHome go={go} />
           ) : (
             <Home store={store} update={update} go={go} onConnect={() => go("profiles", { view: "me", autoCreate: true })} />
           );
@@ -1630,7 +1766,16 @@ function App() {
 
       // ✅ GAMES = sport-aware (runtime-safe)
       case "games":
-        page = activeSport === "petanque" ? <PetanqueMenuGames go={go} /> : <Games setTab={(t: any) => go(t)} />;
+        page =
+          activeSport === "petanque" ? (
+            <PetanqueMenuGames go={go} />
+          ) : activeSport === "babyfoot" ? (
+            <BabyFootMenuGames go={go} />
+          ) : activeSport === "pingpong" ? (
+            <PingPongMenuGames go={go} />
+          ) : (
+            <Games setTab={(t: any) => go(t)} />
+          );
         break;
 
       // ✅ NEW (OBLIGATOIRE): Pétanque menu/config/play (snake_case)
@@ -1644,6 +1789,32 @@ function App() {
 
       case "petanque_play":
         page = <PetanquePlay go={go} params={routeParams} onFinish={(m: any) => pushPetanqueHistory(m)} />;
+        break;
+
+      // ✅ NEW: Baby-Foot flow (LOCAL)
+      case "babyfoot_menu":
+        page = <BabyFootMenuGames go={go} />;
+        break;
+
+      case "babyfoot_config":
+        page = <BabyFootConfig go={go} params={routeParams} store={store} />;
+        break;
+
+      case "babyfoot_play":
+        page = <BabyFootPlay go={go} params={routeParams} onFinish={(m: any) => pushBabyFootHistory(m)} />;
+        break;
+
+      // ✅ NEW: Ping-Pong flow (LOCAL)
+      case "pingpong_menu":
+        page = <PingPongMenuGames go={go} />;
+        break;
+
+      case "pingpong_config":
+        page = <PingPongConfig go={go} params={routeParams} store={store} />;
+        break;
+
+      case "pingpong_play":
+        page = <PingPongPlay go={go} params={routeParams} onFinish={(m: any) => pushPingPongHistory(m)} />;
         break;
 
       // ✅ NEW: Teams Pétanque (CRUD local)
@@ -1724,6 +1895,10 @@ function App() {
         page =
           activeSport === "petanque" ? (
             <PetanqueStatsShell store={store} go={go} />
+          ) : activeSport === "babyfoot" ? (
+            <BabyFootStatsShell store={store} go={go} />
+          ) : activeSport === "pingpong" ? (
+            <PingPongStatsShell store={store} go={go} />
           ) : (
             <StatsShell store={store} go={go} />
           );
@@ -1748,6 +1923,16 @@ function App() {
 
       case "petanque_stats_history":
         page = <PetanqueStatsHistoryPage store={store} go={go} params={routeParams} />;
+        break;
+
+      // ✅ BABY-FOOT — STATS/HISTORY (LOCAL)
+      case "babyfoot_stats_history":
+        page = <BabyFootStatsHistoryPage store={store} go={go} params={routeParams} />;
+        break;
+
+      // ✅ PING-PONG — STATS/HISTORY (LOCAL)
+      case "pingpong_stats_history":
+        page = <PingPongStatsHistoryPage store={store} go={go} params={routeParams} />;
         break;
 
       case "statsHub":
@@ -1801,6 +1986,11 @@ function App() {
 
       case "tournament_create":
         page = <TournamentCreate store={store} go={go} params={routeParams} />;
+        break;
+
+
+      case "tournament_compose_teams":
+        page = <TournamentComposeTeams store={store} go={go} params={routeParams} />;
         break;
 
       case "tournament_view": {
@@ -2024,6 +2214,18 @@ function App() {
         page = <ShanghaiEnd params={{ ...routeParams, go }} />;
         break;
 
+      // ✅ NEW: BATTLE ROYALE (CONFIG)
+      case "battle_royale":
+        page = <BattleRoyaleConfigPage store={store} go={go} />;
+        break;
+
+      case "battle_royale_play": {
+        const cfg = routeParams?.config;
+        if (!cfg) { page = <div>Config manquante</div>; break; }
+        page = <BattleRoyalePlay store={store} go={go} config={cfg} onFinish={(m) => pushHistory(m)} />;
+        break;
+      }
+
       case "training":
         page = <TrainingMenu go={go} />;
         break;
@@ -2163,7 +2365,6 @@ function App() {
         <MobileErrorOverlay />
 
         <div className="container" style={{ paddingBottom: 88 }}>
-        {import.meta.env.DEV ? <AuthDebugBanner /> : null}
           <AppGate go={go} tab={tab}>
             {page}
           </AppGate>

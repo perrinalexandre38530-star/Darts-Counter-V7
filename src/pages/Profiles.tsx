@@ -101,7 +101,11 @@ export type PrivateInfo = {
   phone?: string;
   password?: string;
 
-  // lien compte online (hash d’email)
+  // lien compte online (UID Supabase)
+  onlineUserId?: string;
+  onlineEmail?: string;
+
+  // legacy: lien compte online (hash d’email)
   onlineKey?: string;
 
   // prefs app
@@ -2176,7 +2180,9 @@ function PrivateInfoBlock({
       email: String(pi.email || ""),
       phone: String(pi.phone || ""),
       password: String(pi.password || ""),
-      onlineKey: pi.onlineKey, // 👈 on le garde
+      onlineUserId: String((pi as any).onlineUserId || ""),
+      onlineEmail: String((pi as any).onlineEmail || ""),
+      onlineKey: pi.onlineKey, // 👈 legacy
       appLang: pi.appLang,
       appTheme: pi.appTheme,
     };
@@ -2191,6 +2197,8 @@ function PrivateInfoBlock({
     (active as any)?.privateInfo?.email,
     (active as any)?.privateInfo?.phone,
     (active as any)?.privateInfo?.password,
+    (active as any)?.privateInfo?.onlineUserId,
+    (active as any)?.privateInfo?.onlineEmail,
     (active as any)?.privateInfo?.onlineKey,
     (active as any)?.privateInfo?.appLang,
     (active as any)?.privateInfo?.appTheme,
@@ -2653,6 +2661,8 @@ function UnifiedAuthBlock({
       email?: string;
       phone?: string;
       password?: string;
+      onlineUserId?: string;
+      onlineEmail?: string;
       onlineKey?: string;
       appLang?: Lang;
       appTheme?: ThemeId;
@@ -2670,6 +2680,8 @@ function UnifiedAuthBlock({
       email?: string;
       phone?: string;
       password?: string;
+      onlineUserId?: string;
+      onlineEmail?: string;
       onlineKey?: string;
       appLang?: Lang;
       appTheme?: ThemeId;
@@ -2693,6 +2705,8 @@ function UnifiedAuthBlock({
     email?: string;
     phone?: string;
     password?: string;
+    onlineUserId?: string;
+    onlineEmail?: string;
     onlineKey?: string;
     appLang?: Lang;
     appTheme?: ThemeId;
@@ -2816,87 +2830,79 @@ function UnifiedAuthBlock({
 
     if (!emailNorm || !pass) {
       setLoginError(
-        t(
-          "profiles.auth.login.missing",
-          "Merci de renseigner l’email et le mot de passe."
-        )
+        t("profiles.auth.login.missing", "Merci de renseigner l’email et le mot de passe.")
       );
       return;
     }
 
     setLoginError(null);
 
-    // 1) On tente la connexion online
+    // 1) Connexion online
     try {
-      await onlineLogin({
-        email: emailNorm,
-        password: pass,
-        nickname: undefined,
-      });
+      await onlineLogin({ email: emailNorm, password: pass, nickname: undefined });
     } catch (err) {
       console.warn("[profiles] online login error:", err);
       setLoginError(
+        t("profiles.auth.login.error", "Email ou mot de passe incorrect, ou compte inexistant.")
+      );
+      return;
+    }
+
+    // 2) UID Supabase (source de vérité)
+    let uid: string | null = null;
+    try {
+      const { data } = await supabase.auth.getUser();
+      uid = (data as any)?.user?.id ?? null;
+    } catch (err) {
+      console.warn("[profiles] getUser after login error:", err);
+    }
+
+    if (!uid) {
+      setLoginError(
         t(
-          "profiles.auth.login.error",
-          "Email ou mot de passe incorrect, ou compte inexistant."
+          "profiles.auth.login.uidMissing",
+          "Connexion réussie mais UID introuvable. Rafraîchis puis réessaie."
         )
       );
       return;
     }
 
-    // 2) On calcule une clé stable (hash d’email) pour ce compte
-    let onlineKey: string | null = null;
-    try {
-      onlineKey = await sha256(emailNorm);
-    } catch (err) {
-      console.warn("[profiles] sha256 error:", err);
-    }
-
-    // 3) On cherche d’abord par onlineKey, sinon par email
-    let match =
+    // 3) Profil local déjà lié à cet UID
+    let match: Profile | null =
       profiles.find((p) => {
         const pi = ((p as any).privateInfo || {}) as PrivateInfo;
-        const pe = (pi.email || "").trim().toLowerCase();
-        const ok = pi.onlineKey || null;
-
-        if (onlineKey && ok === onlineKey) return true;
-        if (pe && pe === emailNorm) return true;
-        return false;
+        return String((pi as any).onlineUserId || "") === uid;
       }) || null;
 
-    // 4) Si aucun profil local ne correspond
+    // 4) Fallback legacy: email
+    if (!match) {
+      match =
+        profiles.find((p) => {
+          const pi = ((p as any).privateInfo || {}) as PrivateInfo;
+          const pe = String(pi.email || "").trim().toLowerCase();
+          return !!pe && pe === emailNorm;
+        }) || null;
+    }
+
+    // 5) Aucun profil local -> on réutilise le premier, ou on en crée un
     if (!match) {
       if (profiles.length > 0) {
-        // 👉 On RÉUTILISE un profil local existant
-        // (pour ne pas perdre avatar + infos déjà saisies)
-        match = profiles[0];
-
-        const pi = ((match as any).privateInfo || {}) as PrivateInfo;
-        const patched: Partial<PrivateInfo> = {
-          ...pi,
-          email: emailNorm,
-          password: pass,
-          onlineKey: onlineKey || pi.onlineKey,
-        };
-
-        onHydrateProfile?.(match.id, patched);
+        match = profiles[0] as any;
       } else {
-        // 👉 Aucun profil local du tout → on en crée un (cas tout neuf)
         let displayName = emailNorm;
         try {
           const session = await onlineApi.getCurrentSession();
-          displayName =
-            session?.user.nickname ||
-            session?.user.email ||
-            emailNorm;
+          displayName = session?.user.nickname || session?.user.email || emailNorm;
         } catch (err) {
           console.warn("[profiles] getCurrentSession after login error:", err);
         }
 
         const privateInfo: Partial<PrivateInfo> = {
           email: emailNorm,
-          password: pass,
-          onlineKey: onlineKey || undefined,
+          // ⚠️ on ne stocke PAS le mot de passe en local (sécurité)
+          password: "",
+          onlineUserId: uid,
+          onlineEmail: emailNorm,
         };
 
         onCreate(displayName, null, privateInfo);
@@ -2904,18 +2910,18 @@ function UnifiedAuthBlock({
       }
     }
 
-    // 5) Si un profil existe déjà, on s'assure qu'il a bien l’onlineKey
+    // 6) Patch liaison UID (et on nettoie le mot de passe local)
     const pi = ((match as any).privateInfo || {}) as PrivateInfo;
-    if (!pi.onlineKey && onlineKey) {
-      const patched: Partial<PrivateInfo> = {
-        ...pi,
-        onlineKey,
-      };
-      onHydrateProfile?.(match.id, patched);
-    }
+    const patched: Partial<PrivateInfo> = {
+      ...pi,
+      email: emailNorm,
+      password: "",
+      onlineUserId: uid,
+      onlineEmail: emailNorm,
+    };
 
-    // 6) On sélectionne ce profil comme actif
-    onConnect(match.id);
+    onHydrateProfile?.((match as any).id, patched);
+    onConnect((match as any).id);
   }
 
   async function submitCreate() {
@@ -2935,26 +2941,16 @@ function UnifiedAuthBlock({
     }
 
     if (trimmedPass !== trimmedPass2) {
-      alert(
-        t(
-          "profiles.auth.create.passwordMismatch",
-          "Les mots de passe ne correspondent pas."
-        )
-      );
+      alert(t("profiles.auth.create.passwordMismatch", "Les mots de passe ne correspondent pas."));
       return;
     }
 
     if (!country.trim()) {
-      alert(
-        t(
-          "profiles.auth.create.countryMissing",
-          "Merci de renseigner ton pays."
-        )
-      );
+      alert(t("profiles.auth.create.countryMissing", "Merci de renseigner ton pays."));
       return;
     }
 
-    // Clé online stable
+    // legacy : clé online stable (hash d’email) si tu l’utilises encore ailleurs
     let onlineKey: string | null = null;
     try {
       onlineKey = await sha256(trimmedEmail);
@@ -2962,40 +2958,46 @@ function UnifiedAuthBlock({
       console.warn("[profiles] sha256 error (create):", err);
     }
 
-    // On vérifie qu’on n’a pas déjà un profil pour cet email / cette clé
+    // On évite les doublons (par email + onlineKey legacy)
     const already = profiles.find((p) => {
       const pi = ((p as any).privateInfo || {}) as PrivateInfo;
-      const pe = (pi.email || "").trim().toLowerCase();
-      const ok = pi.onlineKey || null;
-
+      const pe = String(pi.email || "").trim().toLowerCase();
+      const ok = (pi as any).onlineKey || null;
       if (onlineKey && ok === onlineKey) return true;
       if (pe && pe === trimmedEmail) return true;
       return false;
     });
 
     if (already) {
-      alert(
-        t(
-          "profiles.auth.create.emailExists",
-          "Un compte existe déjà avec cet email."
-        )
-      );
+      alert(t("profiles.auth.create.emailExists", "Un compte existe déjà avec cet email."));
       return;
+    }
+
+    // 1) Création du compte online (pour récupérer l’UID)
+    let uid: string | null = null;
+    try {
+      await onlineSignup({ email: trimmedEmail, nickname: trimmedName, password: trimmedPass });
+      const { data } = await supabase.auth.getUser();
+      uid = (data as any)?.user?.id ?? null;
+    } catch (err) {
+      console.warn("[profiles] online signup error:", err);
+      uid = null;
     }
 
     const privateInfo: Partial<PrivateInfo> = {
       email: trimmedEmail,
-      password: trimmedPass,
+      // ⚠️ on ne stocke PAS le mot de passe en local (sécurité)
+      password: "",
       firstName: firstName.trim(),
       lastName: lastName.trim(),
       birthDate: birthDate || "",
       country: country || "",
       appLang: uiLang,
       appTheme: uiTheme,
+      ...(uid ? { onlineUserId: uid, onlineEmail: trimmedEmail } : {}),
       onlineKey: onlineKey || undefined,
     };
 
-    // Profil local (+ stats, etc.)
     onCreate(trimmedName, file, privateInfo);
 
     // Applique immédiatement thème + langue à l’app
@@ -3005,17 +3007,6 @@ function UnifiedAuthBlock({
     try {
       setThemeId(uiTheme);
     } catch {}
-
-    // Et on tente la création du compte online lié
-    try {
-      await onlineSignup({
-        email: trimmedEmail,
-        nickname: trimmedName,
-        password: trimmedPass,
-      });
-    } catch (err) {
-      console.warn("[profiles] online signup error:", err);
-    }
 
     setName("");
     setEmail("");

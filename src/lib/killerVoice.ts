@@ -1,12 +1,5 @@
 // src/lib/killerVoice.ts
-// Global Killer Voice Engine (customizable via Settings > Audio, stored in localStorage)
-//
-// Categories:
-// - hit: "{killer} a touché {victim}."
-// - self: "{killer} s'est auto touché."
-// - autokill: "{killer} vient de s'auto éliminer."
-//
-// Variables: {killer}, {victim}
+// Global: customizable Killer TTS (Settings > Audio)
 
 export type KillerVoiceKind = "hit" | "self" | "autokill";
 
@@ -15,128 +8,105 @@ const LS_DELAY = "killer_voice_delay_ms";
 const LS_PHRASES = "killer_voice_phrases_v1";
 
 const DEFAULT_DELAY = 2300;
-const COOLDOWN_MS = 1400;
 
-const DEFAULTS: Record<KillerVoiceKind, string[]> = {
+const DEFAULT_PHRASES: Record<KillerVoiceKind, string[]> = {
   hit: [
     "{killer} a touché {victim}.",
     "{victim} encaisse un tir de {killer}.",
     "{killer} vient de shooter {victim}.",
-    "Touché. {victim} prend un tir de {killer}.",
+    "{victim} prend un tir de {killer}.",
   ],
   self: [
     "Oups… {killer} s’est auto touché.",
     "{killer} se sanctionne tout seul.",
-    "Erreur. {killer} se touche.",
+    "Auto-hit pour {killer}.",
   ],
   autokill: [
     "{killer} vient de s’auto éliminer.",
     "Auto-kill pour {killer}.",
-    "Fin de parcours pour {killer}.",
+    "C’est terminé pour {killer}.",
   ],
 };
 
 let lastLine = "";
 let lastAt = 0;
 
-function safeParse<T>(raw: string | null): T | null {
+function safeParse<T>(raw: string | null, fallback: T): T {
   try {
-    if (!raw) return null;
-    return JSON.parse(raw) as T;
+    if (!raw) return fallback;
+    const v = JSON.parse(raw);
+    return (v ?? fallback) as T;
   } catch {
-    return null;
+    return fallback;
   }
 }
 
-function getEnabled(): boolean {
-  const v = localStorage.getItem(LS_ENABLED);
-  if (v === null) return true; // default ON
-  return v !== "false";
+function renderTpl(tpl: string, vars: Record<string, string>) {
+  return tpl.replace(/\{(\w+)\}/g, (_, k) => vars[k] ?? "");
 }
 
-function getDelay(): number {
-  const n = Number(localStorage.getItem(LS_DELAY));
-  if (!Number.isFinite(n) || n < 0) return DEFAULT_DELAY;
-  return Math.max(0, Math.min(5000, n));
-}
-
-function getPhrases(): Record<KillerVoiceKind, string[]> {
-  const obj = safeParse<any>(localStorage.getItem(LS_PHRASES));
-  const out: any = { ...DEFAULTS };
-  if (obj && typeof obj === "object") {
-    (["hit", "self", "autokill"] as KillerVoiceKind[]).forEach((k) => {
-      const arr = obj[k];
-      if (Array.isArray(arr)) {
-        out[k] = arr
-          .map((s: any) => String(s ?? "").trim())
-          .filter((s: string) => s.length > 0);
-      }
-    });
-  }
-  return out;
-}
-
-function render(tpl: string, vars: { killer: string; victim?: string }) {
-  return tpl
-    .replaceAll("{killer}", vars.killer || "Joueur")
-    .replaceAll("{victim}", vars.victim || "");
-}
-
-function pickNonRepeating(list: string[]) {
-  if (!list.length) return "";
-  if (list.length === 1) return list[0];
-  let next = list[Math.floor(Math.random() * list.length)];
-  let tries = 6;
+function pickNonRepeating(arr: string[]) {
+  if (!arr.length) return "";
+  if (arr.length === 1) return arr[0];
+  let next = arr[Math.floor(Math.random() * arr.length)];
+  let tries = 8;
   while (tries-- > 0 && next === lastLine) {
-    next = list[Math.floor(Math.random() * list.length)];
+    next = arr[Math.floor(Math.random() * arr.length)];
   }
   lastLine = next;
   return next;
 }
 
-export function speakKiller(kind: KillerVoiceKind, vars: { killer: string; victim?: string }) {
-  try {
-    if (typeof window === "undefined") return;
-    if (!getEnabled()) return;
-    const synth = (window as any).speechSynthesis;
-    if (!synth) return;
-
-    const now = Date.now();
-    if (now - lastAt < COOLDOWN_MS) return;
-    lastAt = now;
-
-    const phrases = getPhrases();
-    const pool = phrases[kind] || [];
-    const tpl = pickNonRepeating(pool);
-    const text = render(tpl, vars).trim();
-    if (!text) return;
-
-    const delay = getDelay();
-    setTimeout(() => {
-      try {
-        // If another utterance is active, we replace it (keeps it snappy during play)
-        synth.cancel?.();
-        const u = new SpeechSynthesisUtterance(text);
-        u.lang = "fr-FR";
-        u.rate = 1.0;
-        u.pitch = 1.0;
-        synth.speak(u);
-      } catch {}
-    }, delay);
-  } catch {}
+export function getKillerVoiceEnabled(): boolean {
+  return localStorage.getItem(LS_ENABLED) !== "false";
 }
 
-// Settings helpers (optional)
-export function getKillerVoiceSettings() {
+export function getKillerVoiceDelay(): number {
+  const n = Number(localStorage.getItem(LS_DELAY) || DEFAULT_DELAY);
+  return Number.isFinite(n) ? Math.max(0, n) : DEFAULT_DELAY;
+}
+
+export function getKillerVoicePhrases(): Record<KillerVoiceKind, string[]> {
+  const obj = safeParse<Record<string, any>>(localStorage.getItem(LS_PHRASES), {});
   return {
-    enabled: getEnabled(),
-    delayMs: getDelay(),
-    phrases: getPhrases(),
+    hit: Array.isArray(obj.hit) ? obj.hit.filter(Boolean) : DEFAULT_PHRASES.hit,
+    self: Array.isArray(obj.self) ? obj.self.filter(Boolean) : DEFAULT_PHRASES.self,
+    autokill: Array.isArray(obj.autokill) ? obj.autokill.filter(Boolean) : DEFAULT_PHRASES.autokill,
   };
 }
 
-export function setKillerVoiceSettings(next: { enabled?: boolean; delayMs?: number; phrases?: any }) {
-  if (typeof next.enabled === "boolean") localStorage.setItem(LS_ENABLED, String(next.enabled));
-  if (typeof next.delayMs === "number") localStorage.setItem(LS_DELAY, String(next.delayMs));
-  if (next.phrases) localStorage.setItem(LS_PHRASES, JSON.stringify(next.phrases));
+export function setKillerVoicePhrases(p: Record<KillerVoiceKind, string[]>) {
+  localStorage.setItem(LS_PHRASES, JSON.stringify(p));
+}
+
+export function speakKiller(kind: KillerVoiceKind, vars: { killer: string; victim?: string }) {
+  if (typeof window === "undefined") return;
+  const synth = (window as any).speechSynthesis as SpeechSynthesis | undefined;
+  if (!synth) return;
+  if (!getKillerVoiceEnabled()) return;
+
+  const now = Date.now();
+  if (now - lastAt < 1200) return;
+  lastAt = now;
+
+  const delay = getKillerVoiceDelay();
+  const phrases = getKillerVoicePhrases();
+  const pool = phrases[kind] || DEFAULT_PHRASES[kind] || [];
+  const tpl = pickNonRepeating(pool);
+  const text = renderTpl(tpl, {
+    killer: vars.killer || "Joueur",
+    victim: vars.victim || "",
+  }).trim();
+  if (!text) return;
+
+  setTimeout(() => {
+    try {
+      const u = new SpeechSynthesisUtterance(text);
+      u.lang = "fr-FR";
+      u.rate = 1.0;
+      u.pitch = 1.0;
+      synth.cancel();
+      synth.speak(u);
+    } catch {}
+  }, delay);
 }

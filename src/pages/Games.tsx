@@ -144,8 +144,9 @@ const GAMES: GameDef[] = [
     infoBodyKey: "games.battle.infoBody",
     infoBodyDefault:
       "Mode multijoueur fun avec éliminations successives. Le dernier joueur en vie gagne.",
-    tab: null,
-    enabled: false,
+    // ✅ NEW: route active (page de configuration)
+    tab: "battle_royale",
+    enabled: true,
   },
 ];
 

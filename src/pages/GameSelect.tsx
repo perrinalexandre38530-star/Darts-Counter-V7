@@ -53,8 +53,24 @@ export default function GameSelect({ go }: Props) {
         go(HOME_ROUTE);
       },
     },
-    { id: "pingpong", logo: logoPingPong, enabled: false, onClick: () => {} },
-    { id: "babyfoot", logo: logoBabyFoot, enabled: false, onClick: () => {} },
+    {
+      id: "pingpong",
+      logo: logoPingPong,
+      enabled: true,
+      onClick: () => {
+        setSport("pingpong");
+        go(HOME_ROUTE);
+      },
+    },
+    {
+      id: "babyfoot",
+      logo: logoBabyFoot,
+      enabled: true,
+      onClick: () => {
+        setSport("babyfoot");
+        go(HOME_ROUTE);
+      },
+    },
   ];
 
   return (

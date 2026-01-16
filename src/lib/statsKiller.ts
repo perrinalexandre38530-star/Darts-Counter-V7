@@ -28,6 +28,9 @@ export type KillerStatsAgg = {
   livesTakenTotal: number;
   livesLostTotal: number;
 
+  autoKillsTotal: number;
+  autoKillsAvg: number;
+
   hitsBySegmentAgg: Record<string, number>;
   totalHits: number;
 
@@ -227,6 +230,8 @@ export function computeKillerStatsAggForProfile(memHistory: any[], playerId: str
   let killsTotal = 0;
   let livesTakenTotal = 0;
   let livesLostTotal = 0;
+
+  let autoKillsTotal = 0;
 
   const hitsBySegmentAgg: Record<string, number> = {};
 

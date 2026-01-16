@@ -404,6 +404,7 @@ async function getOrCreateProfile(userId: string, fallbackNickname: string): Pro
   // CREATE (upsert safe + column fallback)
   const payload = {
     id: userId,
+    user_id: userId, // ✅ required by Supabase schema (NOT NULL)
     nickname: fallbackNickname,
     display_name: fallbackNickname,
     country: null,

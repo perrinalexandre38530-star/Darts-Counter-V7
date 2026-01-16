@@ -51,112 +51,6 @@ type Props = {
 
 type Mult = 1 | 2 | 3;
 
-// --------------------------------------------
-// ✅ VOIX IA (TTS navigateur) — variantes FR + anti-répétition
-// - Déclenchement ~2.3s après le SFX
-// - Anti-spam (cooldown) + anti-répétition (évite la même phrase)
-// --------------------------------------------
-type VoiceKind = "kill" | "self_hit" | "auto_kill";
-
-const KILL_VOICES = [
-  "{killer} a touché {victim}.",
-  "{killer} vient de shooter {victim}.",
-  "{victim} prend un tir de {killer}.",
-  "{killer} frappe {victim}.",
-  "{victim} se fait punir par {killer}.",
-  "{killer} sanctionne {victim}.",
-  "{killer} allume {victim}.",
-  "{victim} encaisse de la part de {killer}.",
-  "{killer} règle son compte à {victim}.",
-  "{victim} est touché. Tir signé {killer}.",
-  "{killer} met la pression sur {victim}.",
-  "{killer} ne rate pas {victim}.",
-];
-
-const SELF_HIT_VOICES = [
-  "{killer} s'est auto touché.",
-  "Aïe. {killer} se tire dessus.",
-  "{killer} fait une erreur et se touche.",
-  "Oups. Auto-hit pour {killer}.",
-  "{killer} se punit tout seul.",
-  "{killer} se sanctionne.",
-  "Mauvaise cible : {killer} se touche.",
-  "Auto-touche. {killer} perd des vies.",
-];
-
-const AUTO_KILL_VOICES = [
-  "{killer} vient de s'auto éliminer.",
-  "Auto-kill pour {killer}.",
-  "{killer} s'élimine sur une erreur.",
-  "C'est terminé pour {killer}. Auto-kill.",
-  "{killer} s'est mis K.O. tout seul.",
-  "Fin de parcours : {killer} s'auto kill.",
-];
-
-const VOICE_DELAY_MS = 2300;
-const VOICE_COOLDOWN_MS = 1800;
-
-let __killer_lastVoiceAt = 0;
-let __killer_lastVoiceLine = "";
-
-function killerRenderTpl(tpl: string, vars: Record<string, string>) {
-  return tpl.replace(/\{(\w+)\}/g, (_, k) => vars[k] ?? "");
-}
-
-function killerPickNonRepeating(arr: string[]) {
-  if (!arr?.length) return "";
-  if (arr.length === 1) return arr[0];
-  let tries = 6;
-  let next = arr[Math.floor(Math.random() * arr.length)];
-  while (tries-- > 0 && next === __killer_lastVoiceLine) {
-    next = arr[Math.floor(Math.random() * arr.length)];
-  }
-  __killer_lastVoiceLine = next;
-  return next;
-}
-
-function killerSpeakLater(
-  kind: VoiceKind,
-  vars: { killer: string; victim?: string },
-  enabled: boolean
-) {
-  if (!enabled) return;
-
-  const now = Date.now();
-  if (now - __killer_lastVoiceAt < VOICE_COOLDOWN_MS) return;
-  __killer_lastVoiceAt = now;
-
-  const synth = (globalThis as any).speechSynthesis;
-  if (!synth) return;
-
-  let pool: string[] = [];
-  if (kind === "kill") pool = KILL_VOICES;
-  if (kind === "self_hit") pool = SELF_HIT_VOICES;
-  if (kind === "auto_kill") pool = AUTO_KILL_VOICES;
-
-  const tpl = killerPickNonRepeating(pool);
-  const text = killerRenderTpl(tpl, {
-    killer: vars.killer,
-    victim: vars.victim ?? "",
-  }).trim();
-
-  if (!text) return;
-
-  setTimeout(() => {
-    try {
-      const u = new (globalThis as any).SpeechSynthesisUtterance(text);
-      u.lang = "fr-FR";
-      u.rate = 1.0;
-      u.pitch = 1.0;
-      try {
-        synth.cancel(); // évite overlap
-      } catch {}
-      synth.speak(u);
-    } catch {}
-  }, VOICE_DELAY_MS);
-}
-
-
 type ThrowInput = {
   target: number; // 0 = MISS, 1..20, 25 = BULL
   mult: Mult; // S=1 D=2 T=3
@@ -1070,112 +964,122 @@ function useKillerSfx(enabled: boolean) {
   const audRef = React.useRef<Record<string, HTMLAudioElement | null>>({});
   const unlockedRef = React.useRef(false);
 
+  // ⚠️ /public/sounds => URL runtime = /sounds/...
+  // Robust: essaye plusieurs variantes de casse si ton repo mélange minuscules/majuscules.
   const paths = React.useMemo(() => {
-    // ✅ Vite/Cloudflare: si l'app est servie sous un sous-chemin,
-    // il faut préfixer avec BASE_URL (sinon 404 silencieux).
-    const base = (import.meta as any)?.env?.BASE_URL ?? "/";
-    const normBase = String(base).endsWith("/") ? String(base) : String(base) + "/";
+    const cand = (base: string) => {
+      // base doit être un chemin "/sounds/xxx.mp3"
+      // On tente: tel quel, puis variante avec "Kill"/"Killer" selon les cas.
+      const alts: string[] = [base];
 
-    const u = (p: string) => {
-      // Web URL => JAMAIS de "\\". On normalise au cas où.
-      const clean = String(p || "").replace(/\\/g, "/").replace(/^\/+/, "");
-      return normBase + clean;
+      // killer-kill-X => killer-Kill-X
+      if (base.includes("killer-kill-")) {
+        alts.push(base.replace("killer-kill-", "killer-Kill-"));
+      }
+      // killer-song => Killer-song
+      if (base.includes("killer-song")) {
+        alts.push(base.replace("killer-song", "Killer-song"));
+      }
+      // killer-become => Killer-become
+      if (base.includes("killer-become")) {
+        alts.push(base.replace("killer-become", "killer-become")); // noop (placeholder)
+        alts.push(base.replace("killer-become", "Killer-become"));
+      }
+      // dead / last-dead => Killer-Dead etc (au cas où)
+      if (base.includes("killer-dead")) {
+        alts.push(base.replace("killer-dead", "killer-Dead"));
+        alts.push(base.replace("killer-dead", "Killer-dead"));
+        alts.push(base.replace("killer-dead", "Killer-Dead"));
+      }
+      if (base.includes("killer-last-dead")) {
+        alts.push(base.replace("killer-last-dead", "killer-last-Dead"));
+        alts.push(base.replace("killer-last-dead", "Killer-last-dead"));
+        alts.push(base.replace("killer-last-dead", "Killer-last-Dead"));
+      }
+      // dart-hit => Dart-hit
+      if (base.includes("dart-hit")) {
+        alts.push(base.replace("dart-hit", "dart-Hit"));
+        alts.push(base.replace("dart-hit", "Dart-hit"));
+        alts.push(base.replace("dart-hit", "Dart-Hit"));
+      }
+
+      // unique
+      return Array.from(new Set(alts));
     };
 
-    // ⚠️ fichiers dans /public/sounds/ => URL runtime = {BASE_URL} + "sounds/xxx.mp3"
     return {
-      hit: u("sounds/dart-hit.mp3"),
-      kill1: u("sounds/killer-kill-1.mp3"),
-      kill2: u("sounds/killer-kill-2.mp3"),
-      kill3: u("sounds/killer-kill-3.mp3"),
-      dead: u("sounds/killer-dead.mp3"),
-      intro: u("sounds/killer-song.mp3"),
-      lastDead: u("sounds/killer-last-dead.mp3"),
-      become: u("sounds/killer-become.mp3"),
+      hit: cand("/sounds/dart-hit.mp3"),
+      kill1: cand("/sounds/killer-kill-1.mp3"),
+      kill2: cand("/sounds/killer-kill-2.mp3"),
+      kill3: cand("/sounds/killer-kill-3.mp3"),
+      dead: cand("/sounds/killer-dead.mp3"),
+      intro: cand("/sounds/killer-song.mp3"),
+      lastDead: cand("/sounds/killer-last-dead.mp3"),
+      become: cand("/sounds/killer-become.mp3"),
     };
   }, []);
 
-  const ensureAudio = React.useCallback((key: string, src: string) => {
+  const ensureAudio = React.useCallback((cacheKey: string, src: string) => {
     try {
-      if (audRef.current[key]) return audRef.current[key]!;
+      if (audRef.current[cacheKey]) return audRef.current[cacheKey]!;
       const a = new Audio(src);
       a.preload = "auto";
       a.volume = 0.85;
-      audRef.current[key] = a;
+      audRef.current[cacheKey] = a;
       return a;
     } catch {
-      audRef.current[key] = null;
+      audRef.current[cacheKey] = null;
       return null;
     }
   }, []);
 
-  const playAudio = React.useCallback(
-    (key: string, src: string, vol = 0.85, restart = true) => {
+  const playCandidates = React.useCallback(
+    (key: string, sources: string[], vol = 0.85, restart = true) => {
       if (!enabled) return false;
+      const list = (sources || []).filter(Boolean);
+      if (!list.length) return false;
 
-      // ✅ Variantes de casse (si tes fichiers sont "killer-Kill-1.mp3" etc.)
-      // On NE met JAMAIS de "\\" dans une URL web.
-      const variants = (() => {
-        const s = String(src || "").replace(/\\/g, "/");
-        const list = [s];
-
-        if (s.includes("killer-kill-1.mp3"))
-          list.push(s.replace("killer-kill-1.mp3", "killer-Kill-1.mp3"));
-        if (s.includes("killer-kill-2.mp3"))
-          list.push(s.replace("killer-kill-2.mp3", "killer-Kill-2.mp3"));
-        if (s.includes("killer-kill-3.mp3"))
-          list.push(s.replace("killer-kill-3.mp3", "killer-Kill-3.mp3"));
-        if (s.includes("killer-song.mp3"))
-          list.push(s.replace("killer-song.mp3", "Killer-song.mp3"));
-
-        return Array.from(new Set(list));
-      })();
-
-      const a = ensureAudio(key, variants[0]);
-      if (!a) return false;
-
-      a.preload = "auto";
-      a.volume = vol;
-
-      const tryPlay = (i: number): boolean => {
-        const candidate = variants[i];
-        if (!candidate) return false;
+      // Tentative séquentielle (best effort). On log uniquement si tout échoue.
+      const tryAt = (i: number) => {
+        if (i >= list.length) {
+          console.warn("[KillerSFX] all candidates failed:", key, sources);
+          return;
+        }
+        const src = list[i];
+        const cacheKey = `${key}::${src}`;
+        const a = ensureAudio(cacheKey, src);
+        if (!a) return tryAt(i + 1);
 
         try {
-          if (a.src !== candidate) {
-            a.src = candidate;
-            try {
-              a.load?.();
-            } catch {}
-          }
-
           if (restart) {
-            try {
-              a.pause();
-              a.currentTime = 0;
-            } catch {}
+            a.pause();
+            a.currentTime = 0;
           }
+          a.volume = vol;
+
+          // Si le fichier n'existe pas, on recevra souvent onerror / promise rejection
+          const onError = () => {
+            a.removeEventListener("error", onError as any);
+            tryAt(i + 1);
+          };
+          a.addEventListener("error", onError as any, { once: true } as any);
 
           const p = a.play();
           if (p && typeof (p as any).catch === "function") {
             (p as any).catch((err: any) => {
-              const ok = tryPlay(i + 1);
-              if (!ok) {
-                console.warn("[KillerSFX] play failed (all variants):", key, variants, err);
-              } else {
-                console.warn("[KillerSFX] fallback OK:", key, "=>", variants[i + 1]);
-              }
+              a.removeEventListener("error", onError as any);
+              console.warn("[KillerSFX] play failed:", key, src, err);
+              tryAt(i + 1);
             });
           }
-          return true;
         } catch (err) {
-          const ok = tryPlay(i + 1);
-          if (!ok) console.warn("[KillerSFX] play threw (all variants):", key, variants, err);
-          return ok;
+          console.warn("[KillerSFX] play threw:", key, src, err);
+          tryAt(i + 1);
         }
       };
 
-      return tryPlay(0);
+      tryAt(0);
+      return true;
     },
     [enabled, ensureAudio]
   );
@@ -1228,8 +1132,9 @@ function useKillerSfx(enabled: boolean) {
 
     // précharge (best effort)
     try {
-      Object.entries(paths).forEach(([k, src]) => {
-        ensureAudio(k, src);
+      Object.entries(paths).forEach(([k, srcs]) => {
+        const first = (srcs as any)?.[0];
+        if (first) ensureAudio(`${k}::${first}`, first);
       });
     } catch {}
   }, [enabled, ensureAudio, paths]);
@@ -1239,49 +1144,35 @@ function useKillerSfx(enabled: boolean) {
       unlock,
 
       intro: () => {
-        if (!playAudio("intro", paths.intro, 0.55, true)) {
+        const ok = playCandidates("intro", paths.intro, 0.55, true);
+        if (!ok) {
           beep(520, 60, 0.03);
           setTimeout(() => beep(740, 60, 0.03), 80);
         }
       },
 
       hit: () => {
-        if (!playAudio("hit", paths.hit, 0.85)) beep(780, 40, 0.05);
+        const ok = playCandidates("hit", paths.hit, 0.85);
+        if (!ok) beep(780, 40, 0.05);
       },
 
-      // ✅ son quand un joueur devient KILLER
       become: () => {
-        if (!playAudio("become", paths.become, 0.8, true)) {
+        const ok = playCandidates("become", paths.become, 0.8, true);
+        if (!ok) {
           beep(520, 60, 0.05);
           setTimeout(() => beep(740, 70, 0.05), 70);
           setTimeout(() => beep(980, 90, 0.05), 150);
         }
       },
 
-      // (optionnel) basé sur le mult (S/D/T)
+      // ✅ S/D/T : mult => kill1/kill2/kill3
       kill: (mult: Mult) => {
         const ok =
           mult === 3
-            ? playAudio("kill3", paths.kill3, 0.9)
+            ? playCandidates("kill3", paths.kill3, 0.9)
             : mult === 2
-            ? playAudio("kill2", paths.kill2, 0.9)
-            : playAudio("kill1", paths.kill1, 0.9);
-        if (!ok) {
-          beep(220, 90, 0.07);
-          setTimeout(() => beep(160, 120, 0.07), 90);
-        }
-      },
-
-      // ✅ NOUVEAU: basé sur les vies réellement perdues (actualLoss)
-      killLoss: (loss: number) => {
-        const n = Math.max(1, Math.min(3, Math.floor(Number(loss) || 1))) as Mult;
-
-        const ok =
-          n === 3
-            ? playAudio("kill3", paths.kill3, 0.9)
-            : n === 2
-            ? playAudio("kill2", paths.kill2, 0.9)
-            : playAudio("kill1", paths.kill1, 0.9);
+            ? playCandidates("kill2", paths.kill2, 0.9)
+            : playCandidates("kill1", paths.kill1, 0.9);
 
         if (!ok) {
           beep(220, 90, 0.07);
@@ -1290,21 +1181,132 @@ function useKillerSfx(enabled: boolean) {
       },
 
       death: () => {
-        if (!playAudio("dead", paths.dead, 0.9)) {
+        const ok = playCandidates("dead", paths.dead, 0.9);
+        if (!ok) {
           beep(180, 140, 0.07);
           setTimeout(() => beep(120, 160, 0.07), 120);
         }
       },
 
       lastDead: () => {
-        if (!playAudio("lastDead", paths.lastDead, 0.9, true)) {
+        const ok = playCandidates("lastDead", paths.lastDead, 0.9, true);
+        if (!ok) {
           beep(180, 160, 0.08);
           setTimeout(() => beep(120, 200, 0.08), 140);
           setTimeout(() => beep(90, 260, 0.08), 320);
         }
       },
     };
-  }, [beep, playAudio, paths, unlock]);
+  }, [beep, paths, playCandidates, unlock]);
+}
+
+// -----------------------------
+// ✅ VOICE PACK (FR) + anti-répétition + délai post-SFX
+// -----------------------------
+const KILL_VOICES = [
+  "{killer} a touché {victim}.",
+  "{killer} vient de shooter {victim}.",
+  "{victim} prend un tir de {killer}.",
+  "{killer} frappe {victim}.",
+  "{victim} se fait punir par {killer}.",
+  "{killer} ne rate pas {victim}.",
+  "{killer} descend {victim}.",
+  "{victim} vient de se faire cueillir par {killer}.",
+  "{killer} envoie {victim} au tapis.",
+  "{killer} règle son compte à {victim}.",
+  "{killer} sanctionne {victim}.",
+  "{victim} est touché. Tir signé {killer}.",
+  "{killer} claque un hit sur {victim}.",
+  "{killer} allume {victim}.",
+  "{killer} met la pression sur {victim}.",
+  "{killer} vient de marquer sur {victim}.",
+];
+
+const SELF_HIT_VOICES = [
+  "{killer} s'est auto touché.",
+  "Aïe. {killer} se tire dessus.",
+  "{killer} fait une erreur et se touche.",
+  "Oups. Auto-hit pour {killer}.",
+  "{killer} se punit tout seul.",
+  "{killer} se met en difficulté.",
+  "{killer} se sanctionne.",
+  "Mauvaise cible : {killer} se touche.",
+  "Auto-touche. {killer} perd des vies.",
+];
+
+const AUTO_KILL_VOICES = [
+  "{killer} vient de s'auto éliminer.",
+  "Auto-kill pour {killer}.",
+  "{killer} se sort tout seul de la partie.",
+  "{killer} s'élimine sur une erreur.",
+  "C'est terminé pour {killer}. Auto-kill.",
+  "{killer} s'est mis K.O. tout seul.",
+  "Fin de parcours : {killer} s'auto kill.",
+];
+
+type VoiceKind = "kill" | "self_hit" | "auto_kill";
+
+function useKillerVoice(enabled: boolean) {
+  const lastVoiceAtRef = React.useRef(0);
+  const lastLineRef = React.useRef("");
+
+  const pickNonRepeating = React.useCallback((arr: string[]) => {
+    if (!arr?.length) return "";
+    if (arr.length === 1) return arr[0];
+    let tries = 6;
+    let next = arr[Math.floor(Math.random() * arr.length)];
+    while (tries-- > 0 && next === lastLineRef.current) {
+      next = arr[Math.floor(Math.random() * arr.length)];
+    }
+    lastLineRef.current = next;
+    return next;
+  }, []);
+
+  const renderTpl = React.useCallback((tpl: string, vars: Record<string, string>) => {
+    return String(tpl || "").replace(/\{(\w+)\}/g, (_: any, k: string) => vars[k] ?? "");
+  }, []);
+
+  const speakLater = React.useCallback(
+    (kind: VoiceKind, vars: { killer: string; victim?: string }, delayMs = 2300) => {
+      if (!enabled) return;
+      const synth = (globalThis as any).speechSynthesis as SpeechSynthesis | undefined;
+      if (!synth) return;
+
+      const now = Date.now();
+      if (now - (lastVoiceAtRef.current || 0) < 1800) return;
+      lastVoiceAtRef.current = now;
+
+      let pool: string[] = [];
+      if (kind === "kill") pool = KILL_VOICES;
+      if (kind === "self_hit") pool = SELF_HIT_VOICES;
+      if (kind === "auto_kill") pool = AUTO_KILL_VOICES;
+
+      const tpl = pickNonRepeating(pool);
+      const text = renderTpl(tpl, {
+        killer: vars.killer || "Quelqu'un",
+        victim: vars.victim || "",
+      }).trim();
+
+      if (!text) return;
+
+      setTimeout(() => {
+        try {
+          const u = new SpeechSynthesisUtterance(text);
+          u.lang = "fr-FR";
+          u.rate = 1.0;
+          u.pitch = 1.0;
+          try {
+            // évite superpositions (on préfère une phrase claire)
+            synth.cancel();
+          } catch {}
+          synth.speak(u);
+        } catch {}
+      }, delayMs);
+    },
+    [enabled, pickNonRepeating, renderTpl]
+  );
+
+  return React.useMemo(() => ({ speakLater }), [speakLater]);
 }
 
 // -----------------------------
@@ -1742,9 +1744,11 @@ React.useEffect(() => {
 
   // ✅ SFX enabled by default (sauf config.sfx === false)
   const sfxEnabled = (config as any)?.sfx === false ? false : true;
-  // ✅ Voix IA (TTS) : activée par défaut, désactivable via config.voice === false
-  const voiceEnabled = (config as any)?.voice === false ? false : true;
   const sfx = useKillerSfx(sfxEnabled);
+
+  // ✅ Voice IA (TTS navigateur) — ON par défaut (désactivable via config.voice === false)
+  const voiceEnabled = (config as any)?.voice === false ? false : true;
+  const voice = useKillerVoice(voiceEnabled);
 
 // ✅ UNLOCK audio + intro :
 // - si l'utilisateur a déjà interagi avant d'arriver ici => on tente DIRECT
@@ -2241,7 +2245,9 @@ const blindKillerOn = truthy(
     // - par défaut: dart-hit
     // - si on enlève des vies: on joue killer-kill-1/2/3 et on NE joue PAS dart-hit
     let playKillMult: Mult | 0 = 0;
-    let voiceEvt: null | { kind: VoiceKind; killer: string; victim?: string } = null;
+
+    // ✅ Voice cue (déclenché ~2.3s après le SFX)
+    let voiceCue: { kind: VoiceKind; killer: string; victim?: string } | null = null;
   
     setPlayers((prev) => {
       const next = prev.map((p) => ({
@@ -2432,13 +2438,13 @@ if (thr.target === 25) {
           number: me.number,
           throw: thr,
         });
+
+        // Voice: auto-kill
+        voiceCue = { kind: "auto_kill", killer: me.name };
   
         try {
           sfx.death?.();
         } catch {}
-
-        // ✅ Voix IA (après SFX)
-        voiceEvt = { kind: "auto_kill", killer: me.name || "Joueur" };
   
         return next;
       }
@@ -2495,8 +2501,9 @@ if (me.killerPhase === "ACTIVE") {
       // ✅ IMPORTANT SFX: si perte de vies => kill S/D/T (pas dart-hit)
       playKillMult = thr.mult;
 
-      // ✅ Voix IA (auto-touche)
-      voiceEvt = { kind: "self_hit", killer: me.name || "Joueur" };
+      // Voice: auto-touche
+      voiceCue = { kind: "self_hit", killer: me.name };
+
     }
 
     pushLog(
@@ -2557,8 +2564,9 @@ if (me.killerPhase === "ACTIVE") {
 
       playKillMult = thr.mult;
 
-      // ✅ Voix IA (X shoot Y)
-      voiceEvt = { kind: "kill", killer: me.name || "Joueur", victim: victim.name || "Joueur" };
+      // Voice: kill (après le SFX)
+      voiceCue = { kind: "kill", killer: me.name, victim: victim.name };
+
     }
 
     pushEvent({
@@ -2618,11 +2626,15 @@ if (me.killerPhase === "ACTIVE") {
       else sfx.hit?.();
     } catch {}
 
-    // ✅ VOIX IA (2.3s après le SFX)
+    // ✅ Voice IA (≈ 2.3s après le SFX)
     try {
-      if (voiceEvt) killerSpeakLater(voiceEvt.kind, { killer: voiceEvt.killer, victim: voiceEvt.victim }, voiceEnabled);
+      if (voiceCue) {
+        voice.speakLater(voiceCue.kind, {
+          killer: voiceCue.killer,
+          victim: voiceCue.victim,
+        });
+      }
     } catch {}
-
   }
   
 
