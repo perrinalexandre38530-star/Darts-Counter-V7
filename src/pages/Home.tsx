@@ -6,6 +6,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { useTheme } from "../contexts/ThemeContext";
 import { useLang } from "../contexts/LangContext";
 import { useAuthOnline } from "../hooks/useAuthOnline";
+import { useSport, type SportId } from "../contexts/SportContext";
 
 import type { Store, Profile } from "../lib/types";
 import ActiveProfileCard, {
@@ -25,6 +26,11 @@ import { History } from "../lib/history";
 type Props = {
   store: Store;
   go: (tab: any, params?: any) => void;
+  // ✅ Sport actif forcé (runtime-safe). Si absent, fallback SportContext.
+  activeSport?: SportId;
+  // (compat) App.tsx passe parfois ces props (on les ignore ici)
+  update?: any;
+  onConnect?: () => void;
 };
 
 const PAGE_MAX_WIDTH = 520;
@@ -2097,10 +2103,24 @@ function ensureKillerTickerItemFirst(
    Component
 ============================================================ */
 
-export default function Home({ store, go }: Props) {
+export default function Home({ store, go, activeSport }: Props) {
   const { theme } = useTheme();
   const { t } = useLang();
   const auth = useAuthOnline();
+  const sportCtx = useSport();
+
+  // ✅ sport runtime-safe (App peut forcer activeSport)
+  const sport: SportId = ((activeSport as any) ?? (sportCtx as any)?.sport ?? "darts") as SportId;
+
+  const showOnline = String(sport).toLowerCase() === "darts";
+
+  const sportTitle = useMemo(() => {
+    const s = String(sport).toLowerCase();
+    if (s === "petanque") return "PETANQUE COUNTER";
+    if (s === "babyfoot") return "BABY-FOOT COUNTER";
+    if (s === "pingpong") return "PING-PONG COUNTER";
+    return "DARTS COUNTER";
+  }, [sport]);
 
   const primary = theme.primary ?? "#F6C256";
   const homeHeaderCss = `
@@ -2428,7 +2448,7 @@ React.useEffect(() => {
                 "dcTitlePulse 3.6s ease-in-out infinite, dcTitleShimmer 7s linear infinite",
             }}
           >
-            DARTS COUNTER
+            {sportTitle}
           </div>
         </div>
   
@@ -2681,12 +2701,17 @@ React.useEffect(() => {
             onClick={() => go("games")}
           />
   
-          <HomeBigButton
-            label={t("home.nav.online", "Online")}
-            subtitle={t("home.nav.online.desc", "Matchs à distance avec tes amis")}
-            icon="globe"
-            onClick={() => go("friends")}
-          />
+          {showOnline && (
+            <HomeBigButton
+              label={t("home.nav.online", "Online")}
+              subtitle={t(
+                "home.nav.online.desc",
+                "Matchs à distance avec tes amis"
+              )}
+              icon="globe"
+              onClick={() => go("friends")}
+            />
+          )}
   
           <HomeBigButton
             label={t("home.nav.stats", "Stats")}

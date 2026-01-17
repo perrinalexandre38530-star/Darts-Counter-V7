@@ -183,10 +183,7 @@ export default function BottomNav({
   const sportFromLS: SportId | null = React.useMemo(() => readSportFromLS(), []);
   const sport: SportId = sportFromCtx ?? sportFromLS ?? "darts";
 
-  // ✅ Règle demandée : pas de Online sur les sports LOCAL ONLY
-  // - Pétanque (déjà demandé)
-  // - Baby-Foot
-  // - Ping-Pong
+  // ✅ Règle demandée : pas de Online en Pétanque / Baby-Foot / Ping-Pong
   const sportLc = String(sport).toLowerCase();
   const hideOnline = sportLc === "petanque" || sportLc === "babyfoot" || sportLc === "pingpong";
 

@@ -68,6 +68,8 @@
 import React from "react";
 import BottomNav from "./components/BottomNav";
 
+import AuthDebugBanner from "./components/AuthDebugBanner";
+
 import AuthStart from "./pages/AuthStart";
 import AccountStart from "./pages/AccountStart";
 
@@ -126,7 +128,6 @@ import ProfilesBots from "./pages/ProfilesBots";
 
 import TrainingMenu from "./pages/TrainingMenu";
 import TrainingX01Play from "./pages/TrainingX01Play";
-import TrainingX01Config from "./pages/TrainingX01Config";
 import TrainingClock from "./pages/TrainingClock";
 
 import ShanghaiConfigPage from "./pages/ShanghaiConfig";
@@ -179,7 +180,6 @@ import { AuthOnlineProvider, useAuthOnline } from "./hooks/useAuthOnline";
 // ✅ NEW: Sport context + Pétanque pages
 import { SportProvider, useSport } from "./contexts/SportContext";
 import PetanquePlay from "./pages/petanque/PetanquePlay";
-import PetanqueHome from "./pages/petanque/PetanqueHome";
 import PetanqueTeams from "./pages/petanque/PetanqueTeams";
 import PetanqueTeamEdit from "./pages/petanque/PetanqueTeamEdit";
 
@@ -201,7 +201,6 @@ import PetanqueMenuGames from "./pages/petanque/PetanqueMenuGames";
 import PetanqueConfig from "./pages/petanque/PetanqueConfig";
 
 // ✅ NEW: Baby-Foot (LOCAL)
-import BabyFootHome from "./pages/babyfoot/BabyFootHome";
 import BabyFootMenuGames from "./pages/babyfoot/BabyFootMenuGames";
 import BabyFootConfig from "./pages/babyfoot/BabyFootConfig";
 import BabyFootPlay from "./pages/babyfoot/BabyFootPlay";
@@ -209,7 +208,6 @@ import BabyFootStatsShell from "./pages/babyfoot/BabyFootStatsShell";
 import BabyFootStatsHistoryPage from "./pages/babyfoot/BabyFootStatsHistoryPage";
 
 // ✅ NEW: Ping-Pong (LOCAL)
-import PingPongHome from "./pages/pingpong/PingPongHome";
 import PingPongMenuGames from "./pages/pingpong/PingPongMenuGames";
 import PingPongConfig from "./pages/pingpong/PingPongConfig";
 import PingPongPlay from "./pages/pingpong/PingPongPlay";
@@ -486,7 +484,6 @@ type Tab =
   | "battle_royale"
   | "training"
   | "training_x01"
-  | "training_x01_play"
   | "training_stats"
   | "training_clock"
   | "avatar"
@@ -1754,16 +1751,17 @@ function App() {
       // ✅ HOME = SPORT-AWARE (runtime-safe)
       // IMPORTANT: on utilise activeSport (et non uniquement sportContext) pour éviter le bug "Settings -> Fléchettes -> Home Pétanque".
       case "home":
-        page =
-          activeSport === "petanque" ? (
-            <PetanqueHome store={store} update={update} go={go} />
-          ) : activeSport === "babyfoot" ? (
-            <BabyFootHome store={store} update={update} go={go} />
-          ) : activeSport === "pingpong" ? (
-            <PingPongHome store={store} update={update} go={go} />
-          ) : (
-            <Home store={store} update={update} go={go} onConnect={() => go("profiles", { view: "me", autoCreate: true })} />
-          );
+        // ✅ Home UNIQUE pour tous les sports : même design que Darts,
+        // contenu/labels pilotés par `activeSport`.
+        page = (
+          <Home
+            store={store}
+            update={update}
+            go={go}
+            activeSport={activeSport as any}
+            onConnect={() => go("profiles", { view: "me", autoCreate: true })}
+          />
+        );
         break;
 
       // ✅ GAMES = sport-aware (runtime-safe)
@@ -2233,11 +2231,7 @@ function App() {
         break;
 
       case "training_x01":
-        page = <TrainingX01Config go={go} params={routeParams} />;
-        break;
-
-      case "training_x01_play":
-        page = <TrainingX01Play go={go} params={routeParams} />;
+        page = <TrainingX01Play go={go} />;
         break;
 
       case "training_stats":
@@ -2371,6 +2365,7 @@ function App() {
         <MobileErrorOverlay />
 
         <div className="container" style={{ paddingBottom: 88 }}>
+        {import.meta.env.DEV ? <AuthDebugBanner /> : null}
           <AppGate go={go} tab={tab}>
             {page}
           </AppGate>
