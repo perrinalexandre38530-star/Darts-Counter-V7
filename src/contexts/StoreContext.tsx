@@ -70,3 +70,21 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
 export function useStore() {
   return React.useContext(StoreContext);
 }
+
+// ------------------------------------------------------------
+// Compat: certains écrans importent `useCurrentProfile` depuis
+// `contexts/StoreContext` (héritage d'anciens patches / merges).
+// Pour éviter un crash runtime, on expose ce hook ici.
+// Source de vérité: store V7 (store.activeProfileId + store.profiles).
+// ------------------------------------------------------------
+export function useCurrentProfile<TProfile = any>(): TProfile | null {
+  const { store } = useStore();
+
+  return React.useMemo(() => {
+    const s: any = store ?? (window as any)?.__appStore?.store ?? null;
+    if (!s) return null;
+    const activeId = s.activeProfileId;
+    const list = Array.isArray(s.profiles) ? s.profiles : [];
+    return (list.find((p: any) => p?.id === activeId) ?? null) as TProfile | null;
+  }, [store]);
+}

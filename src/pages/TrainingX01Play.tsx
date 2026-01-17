@@ -987,23 +987,43 @@ function ThrowPreviewBar({
 
 export default function TrainingX01Play({
   go,
+  params,
 }: {
   go?: (tab: any, p?: any) => void;
+  params?: any;
 }) {
   // --------------------------------------------------
   // PROFIL COURANT + AVATAR
   // --------------------------------------------------
   const currentProfile = useCurrentProfile() as Profile | null;
 
+  // --------------------------------------------------
+  // CONFIG verrouillée (vient de la page précédente)
+  // --------------------------------------------------
+  const lockedStartScore =
+    typeof params?.startScore === "number" ? params.startScore : null;
+  const lockedOutMode =
+    params?.outMode === "simple" ||
+    params?.outMode === "double" ||
+    params?.outMode === "master"
+      ? (params.outMode as "simple" | "double" | "master")
+      : null;
+  const isConfigLocked = !!lockedStartScore || !!lockedOutMode;
+
   let avatarSrc: string | null = null;
   if (currentProfile) {
     const p = currentProfile as any;
 
     // 1. Clés les plus probables
-    if (typeof p.avatarUrl === "string") {
+    if (typeof p.avatarDataUrl === "string") {
+      avatarSrc = p.avatarDataUrl;
+    } else if (typeof p.avatarUrl === "string") {
       avatarSrc = p.avatarUrl;
     } else if (typeof p.avatar === "string") {
       avatarSrc = p.avatar;
+    } else if (p.avatar && typeof p.avatar === "object") {
+      if (typeof p.avatar.dataUrl === "string") avatarSrc = p.avatar.dataUrl;
+      else if (typeof p.avatar.url === "string") avatarSrc = p.avatar.url;
     } else {
       // 2. Fallback : on cherche un string qui ressemble à une image
       for (const [key, value] of Object.entries(p)) {
@@ -1023,11 +1043,22 @@ export default function TrainingX01Play({
   }
 
   const [startScore, setStartScore] = React.useState<301 | 501 | 701 | 901>(
-    501
+    (lockedStartScore as any) ?? 501
   );
   const [outMode, setOutMode] = React.useState<
     "simple" | "double" | "master"
-  >("double");
+  >(lockedOutMode ?? "double");
+
+  // Si on revient depuis la page de config avec une nouvelle valeur, on resynchronise.
+  React.useEffect(() => {
+    if (lockedStartScore && START_CHOICES.includes(lockedStartScore as any)) {
+      setStartScore(lockedStartScore as any);
+    }
+    if (lockedOutMode) {
+      setOutMode(lockedOutMode);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lockedStartScore, lockedOutMode]);
 
   const [remaining, setRemaining] = React.useState<number>(startScore);
   const [currentThrow, setCurrentThrow] = React.useState<UIDart[]>([]);
@@ -1546,7 +1577,7 @@ export default function TrainingX01Play({
         </div>
 
         {/* PARAMÈTRES — masqués une fois la partie commencée */}
-        {!started && (
+        {!started && !isConfigLocked && (
           <div
             style={{
               display: "flex",

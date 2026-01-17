@@ -8,6 +8,8 @@
 
 export type PingPongSideId = "A" | "B";
 
+export type PingPongMode = "simple" | "sets" | "tournante";
+
 export type PingPongState = {
   matchId: string;
   createdAt: number;
@@ -16,10 +18,19 @@ export type PingPongState = {
   sideA: string;
   sideB: string;
 
+  // mode
+  mode: PingPongMode;
+
   // configuration
   pointsPerSet: number; // 11 par défaut
   setsToWin: number; // 3 => best-of-5
   winByTwo: boolean; // true par défaut
+
+  // tournante
+  tournantePlayers: string[];
+  tournanteEliminated: string[];
+  tournanteFinished: boolean;
+  tournanteWinner: string | null;
 
   // état
   setIndex: number; // 1..N (affichage)
@@ -64,9 +75,15 @@ export function newPingPongState(partial?: Partial<PingPongState>): PingPongStat
     updatedAt: t,
     sideA: "Joueur A",
     sideB: "Joueur B",
+    mode: "sets",
     pointsPerSet: 11,
     setsToWin: 3,
     winByTwo: true,
+
+    tournantePlayers: [],
+    tournanteEliminated: [],
+    tournanteFinished: false,
+    tournanteWinner: null,
     setIndex: 1,
     pointsA: 0,
     pointsB: 0,
@@ -85,11 +102,24 @@ export function loadPingPongState(): PingPongState {
     if (!raw) return newPingPongState();
     const parsed = JSON.parse(raw);
     // normalisation (robuste aux versions)
+    const mode: PingPongMode = parsed?.mode === "tournante" ? "tournante" : parsed?.mode === "simple" ? "simple" : "sets";
+    const tournantePlayers = Array.isArray(parsed?.tournantePlayers)
+      ? parsed.tournantePlayers.map((s: any) => String(s || "").trim()).filter(Boolean)
+      : [];
+    const tournanteEliminated = Array.isArray(parsed?.tournanteEliminated)
+      ? parsed.tournanteEliminated.map((s: any) => String(s || "").trim()).filter(Boolean)
+      : [];
+
     return newPingPongState({
       ...(parsed || {}),
+      mode,
       pointsPerSet: clampInt(parsed?.pointsPerSet, 5, 99, 11),
       setsToWin: clampInt(parsed?.setsToWin, 1, 9, 3),
       winByTwo: parsed?.winByTwo !== false,
+      tournantePlayers,
+      tournanteEliminated,
+      tournanteFinished: !!parsed?.tournanteFinished,
+      tournanteWinner: typeof parsed?.tournanteWinner === "string" ? parsed.tournanteWinner : null,
     });
   } catch {
     return newPingPongState();
@@ -106,9 +136,14 @@ export function resetPingPong(prev?: PingPongState) {
   const next = newPingPongState({
     sideA: prev?.sideA ?? "Joueur A",
     sideB: prev?.sideB ?? "Joueur B",
+    mode: prev?.mode ?? "sets",
     pointsPerSet: clampInt(prev?.pointsPerSet, 5, 99, 11),
     setsToWin: clampInt(prev?.setsToWin, 1, 9, 3),
     winByTwo: prev?.winByTwo !== false,
+    tournantePlayers: Array.isArray(prev?.tournantePlayers) ? prev!.tournantePlayers : [],
+    tournanteEliminated: [],
+    tournanteFinished: false,
+    tournanteWinner: null,
   });
   savePingPongState(next);
   return next;
@@ -116,19 +151,54 @@ export function resetPingPong(prev?: PingPongState) {
 
 export function setConfig(
   st: PingPongState,
+  mode: PingPongMode,
   sideA: string,
   sideB: string,
   pointsPerSet: number,
   setsToWin: number,
-  winByTwo: boolean
+  winByTwo: boolean,
+  tournantePlayers?: string[]
 ) {
   const next: PingPongState = {
     ...st,
+    mode: mode || "sets",
     sideA: (sideA || "Joueur A").trim(),
     sideB: (sideB || "Joueur B").trim(),
     pointsPerSet: clampInt(pointsPerSet, 5, 99, 11),
     setsToWin: clampInt(setsToWin, 1, 9, 3),
     winByTwo: winByTwo !== false,
+    tournantePlayers: Array.isArray(tournantePlayers)
+      ? tournantePlayers.map((s) => String(s || "").trim()).filter(Boolean)
+      : st.tournantePlayers,
+    tournanteEliminated: [],
+    tournanteFinished: false,
+    tournanteWinner: null,
+    updatedAt: now(),
+  };
+  savePingPongState(next);
+  return next;
+}
+
+export function tournanteEliminate(st: PingPongState, name: string) {
+  if (st.mode !== "tournante") return st;
+  const n = String(name || "").trim();
+  if (!n) return st;
+  if (!Array.isArray(st.tournantePlayers) || st.tournantePlayers.length < 2) return st;
+  if (!st.tournantePlayers.includes(n)) return st;
+
+  const players = st.tournantePlayers.filter((p) => p !== n);
+  const eliminated = [...(st.tournanteEliminated || []), n];
+  const finished = players.length <= 1;
+  const winner = finished ? (players[0] || null) : null;
+
+  const next: PingPongState = {
+    ...st,
+    tournantePlayers: players,
+    tournanteEliminated: eliminated,
+    tournanteFinished: finished,
+    tournanteWinner: winner,
+    finished: finished,
+    winner: null,
     updatedAt: now(),
   };
   savePingPongState(next);
@@ -144,6 +214,7 @@ function isSetWon(pointsA: number, pointsB: number, pointsPerSet: number, winByT
 }
 
 export function addPoint(st: PingPongState, side: PingPongSideId, delta: 1 | -1) {
+  if (st.mode === "tournante") return st;
   const snapshot = {
     updatedAt: st.updatedAt,
     setIndex: st.setIndex,
@@ -172,19 +243,25 @@ export function addPoint(st: PingPongState, side: PingPongSideId, delta: 1 | -1)
     winner = null;
   }
 
-  const setWinner = isSetWon(pointsA, pointsB, st.pointsPerSet, st.winByTwo);
-  if (!finished && setWinner) {
-    if (setWinner === "A") setsA += 1;
-    else setsB += 1;
-
-    // set suivant
-    pointsA = 0;
-    pointsB = 0;
-    setIndex += 1;
-
-    if (setsA >= st.setsToWin || setsB >= st.setsToWin) {
+  const pointWinner = isSetWon(pointsA, pointsB, st.pointsPerSet, st.winByTwo);
+  if (!finished && pointWinner) {
+    if (st.mode === "simple") {
       finished = true;
-      winner = setsA > setsB ? "A" : "B";
+      winner = pointWinner;
+    } else {
+      // mode "sets"
+      if (pointWinner === "A") setsA += 1;
+      else setsB += 1;
+
+      // set suivant
+      pointsA = 0;
+      pointsB = 0;
+      setIndex += 1;
+
+      if (setsA >= st.setsToWin || setsB >= st.setsToWin) {
+        finished = true;
+        winner = setsA > setsB ? "A" : "B";
+      }
     }
   }
 

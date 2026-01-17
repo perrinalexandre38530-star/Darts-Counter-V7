@@ -10,7 +10,7 @@
     "preview": "vite preview",
     "deploy:online": "CLOUDFLARE_API_TOKEN=Js3Bbrw_6N1RoqaAKcRSJY62NHt7OT3eCaadr2Sp CF_ACCOUNT_ID=d20710874f38557e1b8e34bb7c001812 npx wrangler deploy",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test:auth": "node ./tools/test-auth-spine.mjs",
+    "test:auth": "node ./src/tools/test-auth-spine.mjs",
     "test:ci": "pnpm -s typecheck && pnpm -s build && pnpm -s test:auth"
   },
   "dependencies": {

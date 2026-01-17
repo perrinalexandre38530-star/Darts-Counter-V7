@@ -12,26 +12,27 @@ import StatsShell from "./StatsShell";
 import TournamentsHome from "./TournamentsHome";
 
 import PetanqueHome from "./petanque/PetanqueHome";
-import PetanqueHub from "./petanque/PetanqueHub";
 import PetanquePlay from "./petanque/PetanquePlay";
+import PetanqueMenuGames from "./petanque/PetanqueMenuGames";
 
+import BabyFootHome from "./babyfoot/BabyFootHome";
 import BabyFootMenuGames from "./babyfoot/BabyFootMenuGames";
 
+import PingPongHome from "./pingpong/PingPongHome";
 import PingPongMenuGames from "./pingpong/PingPongMenuGames";
 
 export function SportHome(props: any) {
   const { sport } = useSport();
   if (sport === "petanque") return <PetanqueHome {...props} />;
-  // ✅ Pour Baby-Foot & Ping-Pong, on aligne le flux sur "DartsCounter" :
-  // l'entrée du sport affiche le MENU MODES (comme l'onglet Games), pas un écran "resume".
-  if (sport === "babyfoot") return <BabyFootMenuGames {...props} />;
-  if (sport === "pingpong") return <PingPongMenuGames {...props} />;
+  if (sport === "babyfoot") return <BabyFootHome {...props} />;
+  if (sport === "pingpong") return <PingPongHome {...props} />;
   return <Home {...props} />;
 }
 
 export function SportGames(props: any) {
   const { sport } = useSport();
-  if (sport === "petanque") return <PetanqueHub {...props} />;
+  // ✅ Menu "Local" identique DartsCounter, adapté au sport
+  if (sport === "petanque") return <PetanqueMenuGames {...props} />;
   if (sport === "babyfoot") return <BabyFootMenuGames {...props} />;
   if (sport === "pingpong") return <PingPongMenuGames {...props} />;
   return <Games {...props} />;

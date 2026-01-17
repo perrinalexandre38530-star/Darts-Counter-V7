@@ -26,8 +26,11 @@ export default function GameSelect({ go }: Props) {
   const { theme } = useTheme();
   const { setSport } = useSport();
 
-  // ✅ route d'entrée de l'app (BottomNav)
+  // ✅ routes d'entrée (BottomNav)
+  // - Darts: on garde le dashboard "Home"
+  // - Sports locaux (Pétanque/Baby-foot/Ping-pong): on ouvre DIRECTEMENT le menu "Games"
   const HOME_ROUTE = "home";
+  const GAMES_ROUTE = "games";
 
   const items: Array<{
     id: GameId;
@@ -50,7 +53,7 @@ export default function GameSelect({ go }: Props) {
       enabled: true,
       onClick: () => {
         setSport("petanque"); // ✅ MAJ state + persistance LS dc-start-game
-        go(HOME_ROUTE);
+        go(GAMES_ROUTE);
       },
     },
     {
@@ -59,7 +62,7 @@ export default function GameSelect({ go }: Props) {
       enabled: true,
       onClick: () => {
         setSport("pingpong");
-        go(HOME_ROUTE);
+        go(GAMES_ROUTE);
       },
     },
     {
@@ -68,7 +71,7 @@ export default function GameSelect({ go }: Props) {
       enabled: true,
       onClick: () => {
         setSport("babyfoot");
-        go(HOME_ROUTE);
+        go(GAMES_ROUTE);
       },
     },
   ];

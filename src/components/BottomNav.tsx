@@ -183,8 +183,12 @@ export default function BottomNav({
   const sportFromLS: SportId | null = React.useMemo(() => readSportFromLS(), []);
   const sport: SportId = sportFromCtx ?? sportFromLS ?? "darts";
 
-  // ✅ Règle demandée : pas de Online en Pétanque
-  const hideOnline = String(sport).toLowerCase() === "petanque";
+  // ✅ Règle demandée : pas de Online sur les sports LOCAL ONLY
+  // - Pétanque (déjà demandé)
+  // - Baby-Foot
+  // - Ping-Pong
+  const sportLc = String(sport).toLowerCase();
+  const hideOnline = sportLc === "petanque" || sportLc === "babyfoot" || sportLc === "pingpong";
 
   // Couleurs pilotées par le thème
   const bg = (theme as any)?.navBg ?? theme.card ?? "#050608";

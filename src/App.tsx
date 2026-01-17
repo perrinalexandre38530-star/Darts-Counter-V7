@@ -126,6 +126,7 @@ import ProfilesBots from "./pages/ProfilesBots";
 
 import TrainingMenu from "./pages/TrainingMenu";
 import TrainingX01Play from "./pages/TrainingX01Play";
+import TrainingX01Config from "./pages/TrainingX01Config";
 import TrainingClock from "./pages/TrainingClock";
 
 import ShanghaiConfigPage from "./pages/ShanghaiConfig";
@@ -485,6 +486,7 @@ type Tab =
   | "battle_royale"
   | "training"
   | "training_x01"
+  | "training_x01_play"
   | "training_stats"
   | "training_clock"
   | "avatar"
@@ -1756,9 +1758,9 @@ function App() {
           activeSport === "petanque" ? (
             <PetanqueHome store={store} update={update} go={go} />
           ) : activeSport === "babyfoot" ? (
-            <BabyFootHome go={go} />
+            <BabyFootHome store={store} update={update} go={go} />
           ) : activeSport === "pingpong" ? (
-            <PingPongHome go={go} />
+            <PingPongHome store={store} update={update} go={go} />
           ) : (
             <Home store={store} update={update} go={go} onConnect={() => go("profiles", { view: "me", autoCreate: true })} />
           );
@@ -2231,7 +2233,11 @@ function App() {
         break;
 
       case "training_x01":
-        page = <TrainingX01Play go={go} />;
+        page = <TrainingX01Config go={go} params={routeParams} />;
+        break;
+
+      case "training_x01_play":
+        page = <TrainingX01Play go={go} params={routeParams} />;
         break;
 
       case "training_stats":

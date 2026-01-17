@@ -34,6 +34,8 @@ export default function BabyFootPlay({ go, onFinish }: Props) {
       sport: "babyfoot",
       createdAt: st.createdAt || now,
       updatedAt: now,
+      mode: st.mode,
+      teamSizes: { A: st.teamAPlayers, B: st.teamBPlayers },
       teams: {
         A: { id: "A", name: st.teamA },
         B: { id: "B", name: st.teamB },

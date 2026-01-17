@@ -7,12 +7,17 @@
 
 export type BabyFootTeamId = "A" | "B";
 
+export type BabyFootMode = "1v1" | "2v2" | "2v1";
+
 export type BabyFootState = {
   matchId: string;
   createdAt: number;
   updatedAt: number;
   teamA: string;
   teamB: string;
+  mode: BabyFootMode;
+  teamAPlayers: number;
+  teamBPlayers: number;
   scoreA: number;
   scoreB: number;
   target: number; // score cible
@@ -38,6 +43,9 @@ export function newBabyFootState(partial?: Partial<BabyFootState>): BabyFootStat
     updatedAt: t,
     teamA: "Équipe A",
     teamB: "Équipe B",
+    mode: "1v1",
+    teamAPlayers: 1,
+    teamBPlayers: 1,
     scoreA: 0,
     scoreB: 0,
     target: 10,
@@ -69,17 +77,31 @@ export function resetBabyFoot(prev?: BabyFootState) {
   const next = newBabyFootState({
     teamA: prev?.teamA ?? "Équipe A",
     teamB: prev?.teamB ?? "Équipe B",
+    mode: prev?.mode ?? "1v1",
+    teamAPlayers: prev?.teamAPlayers ?? 1,
+    teamBPlayers: prev?.teamBPlayers ?? 1,
     target: prev?.target ?? 10,
   });
   saveBabyFootState(next);
   return next;
 }
 
-export function setTeams(st: BabyFootState, teamA: string, teamB: string, target: number) {
+export function setTeams(
+  st: BabyFootState,
+  teamA: string,
+  teamB: string,
+  target: number,
+  mode: BabyFootMode,
+  teamAPlayers: number,
+  teamBPlayers: number
+) {
   const next: BabyFootState = {
     ...st,
     teamA: (teamA || "Équipe A").trim(),
     teamB: (teamB || "Équipe B").trim(),
+    mode: mode || "1v1",
+    teamAPlayers: Math.max(1, Math.min(4, Number(teamAPlayers) || 1)),
+    teamBPlayers: Math.max(1, Math.min(4, Number(teamBPlayers) || 1)),
     target: Math.max(1, Math.min(99, Number(target) || 10)),
     updatedAt: now(),
   };

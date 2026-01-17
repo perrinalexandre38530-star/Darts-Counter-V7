@@ -24,6 +24,7 @@ import { useTheme } from "../contexts/ThemeContext";
 import { useLang, type Lang } from "../contexts/LangContext";
 import { THEMES, type ThemeId, type AppTheme } from "../theme/themePresets";
 import { useAuthOnline } from "../hooks/useAuthOnline";
+import { AccountToolsPanel } from "../components/account/AccountToolsPanel";
 import { supabase } from "../lib/supabaseClient";
 
 // IMPORTANT: ajuste les chemins si tes assets sont ailleurs
@@ -688,7 +689,15 @@ function AccountPages({
       <section style={sectionBox}>
         <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 10 }}>
           <div style={{ minWidth: 0 }}>
-            <div style={{ fontSize: 16, fontWeight: 900, color: theme.primary, letterSpacing: 0.6, textTransform: "uppercase" }}>
+            <div
+              style={{
+                fontSize: 16,
+                fontWeight: 900,
+                color: theme.primary,
+                letterSpacing: 0.6,
+                textTransform: "uppercase",
+              }}
+            >
               {t("settings.account.titleShort", "Compte")}
             </div>
             <div className="subtitle" style={{ fontSize: 12, color: theme.textSoft, marginTop: 4, lineHeight: 1.35 }}>
@@ -771,11 +780,7 @@ function AccountPages({
                   "Tu n'es pas connecté. Connecte-toi pour synchroniser ton profil (compte unique)."
                 )}
               </div>
-              <button
-                className="btn"
-                style={{ width: "100%" }}
-                onClick={() => go("auth_start" as any)}
-              >
+              <button className="btn" style={{ width: "100%" }} onClick={() => go && go("auth_start" as any)}>
                 {t("settings.account.profile.cta", "Connexion")}
               </button>
             </div>
@@ -828,7 +833,9 @@ function AccountPages({
                   boxShadow: `0 0 18px ${theme.primary}44`,
                 }}
               >
-                {savingProfile ? t("settings.account.save.loading", "Enregistrement…") : t("settings.account.save.btn", "Enregistrer")}
+                {savingProfile
+                  ? t("settings.account.save.loading", "Enregistrement…")
+                  : t("settings.account.save.btn", "Enregistrer")}
               </button>
             </>
           )}
@@ -964,6 +971,11 @@ function AccountPages({
               {t("settings.account.btn.changeGame", "Changer de jeu")}
             </button>
           </div>
+
+          {/* ✅ OUTILS COMPTE — SYNC EXPRESS */}
+          <div style={{ marginTop: 14 }}>
+            <AccountToolsPanel go={go} />
+          </div>
         </section>
       )}
 
@@ -988,7 +1000,15 @@ function AccountPages({
               {t("settings.account.delete.title", "Supprimer mon compte définitivement")}
             </div>
 
-            <p style={{ margin: 0, marginBottom: 10, fontSize: 11, color: "rgba(255,255,255,0.78)", lineHeight: 1.35 }}>
+            <p
+              style={{
+                margin: 0,
+                marginBottom: 10,
+                fontSize: 11,
+                color: "rgba(255,255,255,0.78)",
+                lineHeight: 1.35,
+              }}
+            >
               {t(
                 "settings.account.deleteHintV8",
                 "Cette action supprime le compte cloud (profiles + user_store + auth). L’app recrée automatiquement un nouveau compte anonyme (V8)."
@@ -1060,9 +1080,20 @@ export default function Settings({ go }: Props) {
           marginBottom: 16,
         }}
       >
-        <h2 style={{ margin: 0, marginBottom: 10, fontSize: 18, color: theme.primary }}>{t("settings.theme", "Thème")}</h2>
+        <h2 style={{ margin: 0, marginBottom: 10, fontSize: 18, color: theme.primary }}>
+          {t("settings.theme", "Thème")}
+        </h2>
 
-        <div style={{ marginTop: 12, marginBottom: 6, color: theme.textSoft, fontSize: 13, fontWeight: 600, textTransform: "uppercase" }}>
+        <div
+          style={{
+            marginTop: 12,
+            marginBottom: 6,
+            color: theme.textSoft,
+            fontSize: 13,
+            fontWeight: 600,
+            textTransform: "uppercase",
+          }}
+        >
           ⚡ {t("settings.theme.group.neons", "Néons classiques")}
         </div>
         <div className="dc-scroll-thin" style={{ overflowX: "auto", padding: "6px 0 10px 0", marginTop: 4, marginBottom: 4 }}>
@@ -1083,7 +1114,16 @@ export default function Settings({ go }: Props) {
           </div>
         </div>
 
-        <div style={{ marginTop: 16, marginBottom: 6, color: theme.textSoft, fontSize: 13, fontWeight: 600, textTransform: "uppercase" }}>
+        <div
+          style={{
+            marginTop: 16,
+            marginBottom: 6,
+            color: theme.textSoft,
+            fontSize: 13,
+            fontWeight: 600,
+            textTransform: "uppercase",
+          }}
+        >
           🎨 {t("settings.theme.group.soft", "Couleurs douces")}
         </div>
         <div className="dc-scroll-thin" style={{ overflowX: "auto", padding: "6px 0 10px 0", marginTop: 4, marginBottom: 4 }}>
@@ -1104,7 +1144,16 @@ export default function Settings({ go }: Props) {
           </div>
         </div>
 
-        <div style={{ marginTop: 16, marginBottom: 6, color: theme.textSoft, fontSize: 13, fontWeight: 600, textTransform: "uppercase" }}>
+        <div
+          style={{
+            marginTop: 16,
+            marginBottom: 6,
+            color: theme.textSoft,
+            fontSize: 13,
+            fontWeight: 600,
+            textTransform: "uppercase",
+          }}
+        >
           🌑 {t("settings.theme.group.dark", "Thèmes Dark Premium")}
         </div>
         <div className="dc-scroll-thin" style={{ overflowX: "auto", padding: "6px 0 10px 0", marginTop: 4, marginBottom: 4 }}>
@@ -1139,7 +1188,9 @@ export default function Settings({ go }: Props) {
           marginBottom: 16,
         }}
       >
-        <h2 style={{ margin: 0, marginBottom: 6, fontSize: 18, color: theme.primary }}>{t("settings.lang", "Langue")}</h2>
+        <h2 style={{ margin: 0, marginBottom: 6, fontSize: 18, color: theme.primary }}>
+          {t("settings.lang", "Langue")}
+        </h2>
 
         <div style={{ display: "flex", flexWrap: "wrap", gap: 10, marginTop: 12 }}>
           {LANG_CHOICES.map((opt) => (
@@ -1168,7 +1219,16 @@ export default function Settings({ go }: Props) {
           marginBottom: 24,
         }}
       >
-        <h2 style={{ margin: 0, marginBottom: 6, fontSize: 16, color: theme.primary, textTransform: "uppercase", letterSpacing: 1 }}>
+        <h2
+          style={{
+            margin: 0,
+            marginBottom: 6,
+            fontSize: 16,
+            color: theme.primary,
+            textTransform: "uppercase",
+            letterSpacing: 1,
+          }}
+        >
           {t("settings.reset.title", "Réinitialiser l’application")}
         </h2>
 
@@ -1214,8 +1274,8 @@ export default function Settings({ go }: Props) {
     const ENABLED: Record<GameId, boolean> = {
       darts: true,
       petanque: true,
-      pingpong: false,
-      babyfoot: false,
+      pingpong: true,
+      babyfoot: true,
     };
 
     const onPick = (id: GameId) => {
@@ -1229,8 +1289,8 @@ export default function Settings({ go }: Props) {
 
       if (!go) return;
 
-      if (id === "petanque") go("petanque_menu");
-      else go("home");
+      // ✅ Home est sport-aware (App.tsx) : redirige vers la bonne Home (darts/pétanque/pingpong/babyfoot)
+      go("home");
     };
 
     const onReset = () => {
@@ -1250,7 +1310,9 @@ export default function Settings({ go }: Props) {
           marginBottom: 16,
         }}
       >
-        <h2 style={{ margin: 0, marginBottom: 6, fontSize: 18, color: theme.primary }}>{t("settings.sport.title", "Choix de sport")}</h2>
+        <h2 style={{ margin: 0, marginBottom: 6, fontSize: 18, color: theme.primary }}>
+          {t("settings.sport.title", "Choix de sport")}
+        </h2>
 
         <p className="subtitle" style={{ fontSize: 12, color: theme.textSoft, marginBottom: 12, lineHeight: 1.4 }}>
           {t("settings.sport.subtitle.short", "Sélectionne le jeu à utiliser au démarrage.")}

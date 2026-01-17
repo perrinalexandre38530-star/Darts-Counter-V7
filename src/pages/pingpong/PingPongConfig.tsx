@@ -7,7 +7,7 @@
 
 import React from "react";
 import { useTheme } from "../../contexts/ThemeContext";
-import { loadPingPongState, resetPingPong, setConfig } from "../../lib/pingpongStore";
+import { loadPingPongState, resetPingPong, setConfig, type PingPongMode } from "../../lib/pingpongStore";
 
 type Props = {
   go: (t: any, p?: any) => void;
@@ -15,9 +15,12 @@ type Props = {
   store: any;
 };
 
-export default function PingPongConfig({ go }: Props) {
+export default function PingPongConfig({ go, params }: Props) {
   const { theme } = useTheme();
   const [st, setSt] = React.useState(() => loadPingPongState());
+
+  const mode: PingPongMode =
+    params?.mode === "tournante" ? "tournante" : params?.mode === "simple" ? "simple" : params?.mode === "sets" ? "sets" : st.mode;
 
   const [sideA, setSideA] = React.useState(st.sideA);
   const [sideB, setSideB] = React.useState(st.sideB);
@@ -25,9 +28,29 @@ export default function PingPongConfig({ go }: Props) {
   const [setsToWin, setSetsToWin] = React.useState(String(st.setsToWin || 3));
   const [winByTwo, setWinByTwo] = React.useState(st.winByTwo !== false);
 
+  const [tournanteText, setTournanteText] = React.useState(() =>
+    Array.isArray(st.tournantePlayers) && st.tournantePlayers.length
+      ? st.tournantePlayers.join("\n")
+      : "Joueur 1\nJoueur 2\nJoueur 3\nJoueur 4"
+  );
+
   const onStart = () => {
     const base = resetPingPong(st);
-    const next = setConfig(base, sideA, sideB, Number(pointsPerSet) || 11, Number(setsToWin) || 3, winByTwo);
+    const players = tournanteText
+      .split("\n")
+      .map((s) => String(s || "").trim())
+      .filter(Boolean);
+
+    const next = setConfig(
+      base,
+      mode,
+      sideA,
+      sideB,
+      Number(pointsPerSet) || 11,
+      Number(setsToWin) || 3,
+      winByTwo,
+      mode === "tournante" ? players : undefined
+    );
     setSt(next);
     go("pingpong_play", { matchId: next.matchId });
   };
@@ -38,34 +61,70 @@ export default function PingPongConfig({ go }: Props) {
         <button style={back(theme)} onClick={() => go("games")}>
           ← Retour
         </button>
-        <div style={title}>CONFIG — PING-PONG</div>
+        <div style={title}>
+          CONFIG — PING-PONG{mode === "tournante" ? " · TOURNANTE" : mode === "simple" ? " · SIMPLE" : " · SETS"}
+        </div>
       </div>
 
       <div style={card(theme)}>
-        <div style={label}>Joueur / Équipe A</div>
-        <input value={sideA} onChange={(e) => setSideA(e.target.value)} style={input(theme)} />
+        {mode === "tournante" ? (
+          <>
+            <div style={label}>Joueurs (1 par ligne)</div>
+            <textarea
+              value={tournanteText}
+              onChange={(e) => setTournanteText(e.target.value)}
+              style={{ ...input(theme), minHeight: 140, resize: "vertical", fontFamily: "inherit" }}
+            />
 
-        <div style={{ height: 10 }} />
+            <div style={{ height: 12 }} />
+            <div style={{ fontSize: 12, fontWeight: 800, opacity: 0.8 }}>
+              Astuce : tu peux coller une liste complète. À chaque tour, tu élimines un joueur.
+            </div>
+          </>
+        ) : (
+          <>
+            <div style={label}>Joueur / Équipe A</div>
+            <input value={sideA} onChange={(e) => setSideA(e.target.value)} style={input(theme)} />
 
-        <div style={label}>Joueur / Équipe B</div>
-        <input value={sideB} onChange={(e) => setSideB(e.target.value)} style={input(theme)} />
+            <div style={{ height: 10 }} />
 
-        <div style={{ height: 10 }} />
+            <div style={label}>Joueur / Équipe B</div>
+            <input value={sideB} onChange={(e) => setSideB(e.target.value)} style={input(theme)} />
 
-        <div style={label}>Points par set</div>
-        <input value={pointsPerSet} onChange={(e) => setPointsPerSet(e.target.value)} style={input(theme)} inputMode="numeric" />
+            <div style={{ height: 10 }} />
 
-        <div style={{ height: 10 }} />
+            <div style={label}>Points par {mode === "simple" ? "match" : "set"}</div>
+            <input
+              value={pointsPerSet}
+              onChange={(e) => setPointsPerSet(e.target.value)}
+              style={input(theme)}
+              inputMode="numeric"
+            />
 
-        <div style={label}>Sets gagnants</div>
-        <input value={setsToWin} onChange={(e) => setSetsToWin(e.target.value)} style={input(theme)} inputMode="numeric" />
+            {mode !== "tournante" && (
+              <>
+                <div style={{ height: 10 }} />
 
-        <div style={{ height: 10 }} />
-
-        <label style={checkRow}>
-          <input type="checkbox" checked={winByTwo} onChange={(e) => setWinByTwo(e.target.checked)} />
-          <span style={{ fontWeight: 900, opacity: 0.9 }}>Écart de 2 (règle standard)</span>
-        </label>
+                {mode === "sets" && (
+                  <>
+                    <div style={label}>Sets gagnants</div>
+                    <input
+                      value={setsToWin}
+                      onChange={(e) => setSetsToWin(e.target.value)}
+                      style={input(theme)}
+                      inputMode="numeric"
+                    />
+                    <div style={{ height: 10 }} />
+                  </>
+                )}
+                <label style={checkRow}>
+                  <input type="checkbox" checked={winByTwo} onChange={(e) => setWinByTwo(e.target.checked)} />
+                  <span style={{ fontWeight: 900, opacity: 0.9 }}>Écart de 2 (règle standard)</span>
+                </label>
+              </>
+            )}
+          </>
+        )}
 
         <div style={{ height: 14 }} />
 

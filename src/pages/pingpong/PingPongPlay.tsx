@@ -7,7 +7,13 @@
 
 import React from "react";
 import { useTheme } from "../../contexts/ThemeContext";
-import { addPoint, loadPingPongState, savePingPongState, undo as undoPoint } from "../../lib/pingpongStore";
+import {
+  addPoint,
+  loadPingPongState,
+  savePingPongState,
+  undo as undoPoint,
+  tournanteEliminate,
+} from "../../lib/pingpongStore";
 
 type Props = {
   go: (t: any, p?: any) => void;
@@ -26,12 +32,37 @@ export default function PingPongPlay({ go, onFinish }: Props) {
   const finish = React.useCallback(() => {
     if (!onFinish) return;
     const now = Date.now();
+    if (st.mode === "tournante") {
+      const w = st.tournanteWinner || (Array.isArray(st.tournantePlayers) && st.tournantePlayers.length === 1 ? st.tournantePlayers[0] : null);
+      onFinish({
+        id: st.matchId,
+        kind: "pingpong",
+        sport: "pingpong",
+        createdAt: st.createdAt || now,
+        updatedAt: now,
+        mode: "tournante",
+        players: { active: st.tournantePlayers || [], eliminated: st.tournanteEliminated || [] },
+        winnerName: w,
+        summary: {
+          title: w ? `Tournante — Vainqueur : ${w}` : "Tournante — terminée",
+        },
+      });
+      return;
+    }
+
+    const winnerSideId = st.winner;
+    const title =
+      st.mode === "simple"
+        ? `${st.sideA} ${st.pointsA}–${st.pointsB} ${st.sideB}`
+        : `${st.sideA} ${st.setsA}–${st.setsB} ${st.sideB}`;
+
     onFinish({
       id: st.matchId,
       kind: "pingpong",
       sport: "pingpong",
       createdAt: st.createdAt || now,
       updatedAt: now,
+      mode: st.mode,
       sides: {
         A: { id: "A", name: st.sideA },
         B: { id: "B", name: st.sideB },
@@ -42,10 +73,13 @@ export default function PingPongPlay({ go, onFinish }: Props) {
         points: { A: st.pointsA, B: st.pointsB },
         sets: { A: st.setsA, B: st.setsB },
       },
-      winnerSideId: st.winner,
+      winnerSideId,
       summary: {
-        title: `${st.sideA} ${st.setsA}–${st.setsB} ${st.sideB}`,
-        detail: `Points set ${st.setIndex}: ${st.pointsA}–${st.pointsB}`,
+        title,
+        detail:
+          st.mode === "simple"
+            ? `Points: ${st.pointsA}–${st.pointsB}`
+            : `Points set ${st.setIndex}: ${st.pointsA}–${st.pointsB}`,
       },
     });
   }, [onFinish, st]);
@@ -66,60 +100,102 @@ export default function PingPongPlay({ go, onFinish }: Props) {
         </button>
       </div>
 
-      <div style={kpi(theme)}>
-        <div style={sideBlock(theme)}>
-          <div style={sideName}>{st.sideA}</div>
-          <div style={setsLine}>
-            <span style={setsLabel}>Sets</span>
-            <span style={setsVal}>{st.setsA}</span>
-          </div>
-          <div style={pointsVal}>{st.pointsA}</div>
-          <div style={btnRow}>
-            <button style={btn(theme)} onClick={() => setSt(addPoint(st, "A", +1))}>
-              +1
-            </button>
-            <button style={btn(theme)} onClick={() => setSt(addPoint(st, "A", -1))}>
-              -1
-            </button>
-          </div>
-        </div>
+      {st.mode === "tournante" ? (
+        <div style={kpi(theme)}>
+          <div style={{ gridColumn: "1 / -1", ...sideBlock(theme) }}>
+            <div style={{ fontWeight: 1000, letterSpacing: 1, textAlign: "center" }}>TOURNANTE</div>
+            <div style={{ fontWeight: 900, opacity: 0.85, textAlign: "center", fontSize: 12 }}>
+              Joueurs restants : {(st.tournantePlayers || []).length}
+            </div>
 
-        <div style={mid(theme)}>
-          <div style={vs}>SET {st.setIndex}</div>
-          <div style={meta(theme)}>
-            {st.setsToWin} sets gagnants · {st.pointsPerSet} pts{st.winByTwo ? " · écart 2" : ""}
-          </div>
-          <div style={{ height: 10 }} />
-          <button style={btn(theme)} onClick={() => setSt(undoPoint(st))}>
-            Annuler
-          </button>
-        </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 10 }}>
+              {(st.tournantePlayers || []).map((p) => (
+                <button
+                  key={p}
+                  style={btn(theme)}
+                  onClick={() => {
+                    if (st.tournantePlayers.length <= 1) return;
+                    setSt(tournanteEliminate(st, p));
+                  }}
+                >
+                  Éliminer : {p}
+                </button>
+              ))}
+            </div>
 
-        <div style={sideBlock(theme)}>
-          <div style={sideName}>{st.sideB}</div>
-          <div style={setsLine}>
-            <span style={setsLabel}>Sets</span>
-            <span style={setsVal}>{st.setsB}</span>
-          </div>
-          <div style={pointsVal}>{st.pointsB}</div>
-          <div style={btnRow}>
-            <button style={btn(theme)} onClick={() => setSt(addPoint(st, "B", +1))}>
-              +1
-            </button>
-            <button style={btn(theme)} onClick={() => setSt(addPoint(st, "B", -1))}>
-              -1
-            </button>
+            {(st.tournanteEliminated || []).length > 0 && (
+              <div style={{ marginTop: 12, fontSize: 12, fontWeight: 800, opacity: 0.85 }}>
+                Éliminés : {(st.tournanteEliminated || []).join(", ")}
+              </div>
+            )}
           </div>
         </div>
-      </div>
+      ) : (
+        <div style={kpi(theme)}>
+          <div style={sideBlock(theme)}>
+            <div style={sideName}>{st.sideA}</div>
+            {st.mode === "sets" && (
+              <div style={setsLine}>
+                <span style={setsLabel}>Sets</span>
+                <span style={setsVal}>{st.setsA}</span>
+              </div>
+            )}
+            <div style={pointsVal}>{st.pointsA}</div>
+            <div style={btnRow}>
+              <button style={btn(theme)} onClick={() => setSt(addPoint(st, "A", +1))}>
+                +1
+              </button>
+              <button style={btn(theme)} onClick={() => setSt(addPoint(st, "A", -1))}>
+                -1
+              </button>
+            </div>
+          </div>
+
+          <div style={mid(theme)}>
+            <div style={vs}>{st.mode === "simple" ? "MATCH" : `SET ${st.setIndex}`}</div>
+            <div style={meta(theme)}>
+              {st.mode === "simple"
+                ? `${st.pointsPerSet} pts${st.winByTwo ? " · écart 2" : ""}`
+                : `${st.setsToWin} sets gagnants · ${st.pointsPerSet} pts${st.winByTwo ? " · écart 2" : ""}`}
+            </div>
+            <div style={{ height: 10 }} />
+            <button style={btn(theme)} onClick={() => setSt(undoPoint(st))}>
+              Annuler
+            </button>
+          </div>
+
+          <div style={sideBlock(theme)}>
+            <div style={sideName}>{st.sideB}</div>
+            {st.mode === "sets" && (
+              <div style={setsLine}>
+                <span style={setsLabel}>Sets</span>
+                <span style={setsVal}>{st.setsB}</span>
+              </div>
+            )}
+            <div style={pointsVal}>{st.pointsB}</div>
+            <div style={btnRow}>
+              <button style={btn(theme)} onClick={() => setSt(addPoint(st, "B", +1))}>
+                +1
+              </button>
+              <button style={btn(theme)} onClick={() => setSt(addPoint(st, "B", -1))}>
+                -1
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {st.finished ? (
         <div style={done(theme)}>
-          Match terminé — Victoire : {st.winner === "A" ? st.sideA : st.sideB}
+          {st.mode === "tournante"
+            ? `Tournante terminée${st.tournanteWinner ? ` — Vainqueur : ${st.tournanteWinner}` : ""}`
+            : `Match terminé — Victoire : ${st.winner === "A" ? st.sideA : st.sideB}`}
         </div>
       ) : (
         <div style={hint(theme)}>
-          Points +1/-1. Un set est gagné quand {st.pointsPerSet} points sont atteints{st.winByTwo ? " avec 2 points d'écart" : ""}.
+          {st.mode === "tournante"
+            ? "Tape sur un joueur pour l'éliminer. Le dernier restant gagne."
+            : `Points +1/-1. ${st.mode === "simple" ? "Le match" : "Un set"} est gagné quand ${st.pointsPerSet} points sont atteints${st.winByTwo ? " avec 2 points d'écart" : ""}.`}
         </div>
       )}
     </div>

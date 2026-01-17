@@ -7,7 +7,7 @@
 
 import React from "react";
 import { useTheme } from "../../contexts/ThemeContext";
-import { loadBabyFootState, resetBabyFoot, setTeams } from "../../lib/babyfootStore";
+import { loadBabyFootState, resetBabyFoot, setTeams, type BabyFootMode } from "../../lib/babyfootStore";
 
 type Props = {
   go: (t: any, p?: any) => void;
@@ -15,9 +15,14 @@ type Props = {
   store: any;
 };
 
-export default function BabyFootConfig({ go }: Props) {
+export default function BabyFootConfig({ go, params }: Props) {
   const { theme } = useTheme();
   const [st, setSt] = React.useState(() => loadBabyFootState());
+
+  const mode: BabyFootMode = params?.mode === "2v2" ? "2v2" : params?.mode === "2v1" ? "2v1" : "1v1";
+  const meta = params?.meta || {};
+  const teamAPlayers = Math.max(1, Math.min(4, Number(meta.teamAPlayers) || (mode === "2v1" ? 2 : mode === "2v2" ? 2 : 1)));
+  const teamBPlayers = Math.max(1, Math.min(4, Number(meta.teamBPlayers) || (mode === "2v1" ? 1 : mode === "2v2" ? 2 : 1)));
 
   const [teamA, setTeamA] = React.useState(st.teamA);
   const [teamB, setTeamB] = React.useState(st.teamB);
@@ -25,7 +30,7 @@ export default function BabyFootConfig({ go }: Props) {
 
   const onStart = () => {
     const base = resetBabyFoot(st);
-    const next = setTeams(base, teamA, teamB, Number(target) || 10);
+    const next = setTeams(base, teamA, teamB, Number(target) || 10, mode, teamAPlayers, teamBPlayers);
     setSt(next);
     go("babyfoot_play", { matchId: next.matchId });
   };
@@ -36,7 +41,9 @@ export default function BabyFootConfig({ go }: Props) {
         <button style={back(theme)} onClick={() => go("games")}>
           ← Retour
         </button>
-        <div style={title}>CONFIG — BABY-FOOT</div>
+        <div style={title}>
+          CONFIG — BABY-FOOT · {mode.toUpperCase()} ({teamAPlayers}v{teamBPlayers})
+        </div>
       </div>
 
       <div style={card(theme)}>

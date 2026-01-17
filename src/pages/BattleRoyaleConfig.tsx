@@ -161,7 +161,8 @@ export default function BattleRoyaleConfigPage({ store, go }: Props) {
       style={{
         minHeight: "100vh",
         padding: 14,
-        paddingBottom: 96,
+        // ✅ Laisse de la place au CTA + BottomNav (sinon bouton masqué)
+        paddingBottom: 200,
         background: PAGE_BG,
         color: theme.text,
       }}
@@ -444,10 +445,14 @@ export default function BattleRoyaleConfigPage({ store, go }: Props) {
           position: "fixed",
           left: 0,
           right: 0,
-          bottom: 0,
+          // ✅ BottomNav est rendue en fixed (App.tsx paddingBottom=88)
+          // -> on remonte le CTA pour qu'il soit visible
+          bottom: 88,
           padding: 12,
+          paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 12px)",
           background: `linear-gradient(180deg, transparent, ${PAGE_BG} 35%, ${PAGE_BG})`,
-          zIndex: 10,
+          // ✅ au-dessus de la BottomNav
+          zIndex: 10050,
         }}
       >
         <div

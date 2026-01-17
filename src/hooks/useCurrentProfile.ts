@@ -1,36 +1,36 @@
 // ============================================
 // src/hooks/useCurrentProfile.ts
-// Hook utilitaire : retourne le profil actif
-// en lisant le store global exposé dans App.tsx
-// (window.__appStore).
+// Hook utilitaire : retourne le profil actif.
+//
+// ✅ V7 : source de vérité = StoreContext (si présent) OU window.__appStore.store
+// - Ne dépend pas d'un snapshot figé au mount
+// - Tolérant aux variantes de structure (store/profiles/activeProfileId)
 // ============================================
 
 import * as React from "react";
-import type { Store, Profile } from "../lib/types";
+import type { Profile } from "../lib/types";
+import { useStore } from "../contexts/StoreContext";
 
-declare global {
-  interface Window {
-    __appStore?: Store;
+function readStoreBestEffort(): any | null {
+  try {
+    const w: any = window as any;
+    // App.tsx expose: window.__appStore.store = store
+    return w?.__appStore?.store ?? null;
+  } catch {
+    return null;
   }
 }
 
 export function useCurrentProfile(): Profile | null {
-  const [profile, setProfile] = React.useState<Profile | null>(null);
+  const ctx = useStore();
+  const store = (ctx as any)?.store ?? readStoreBestEffort();
 
-  React.useEffect(() => {
-    // On lit le store global mis à jour par App.tsx
-    const appStore = window.__appStore;
-    if (!appStore) {
-      setProfile(null);
-      return;
-    }
+  // Dépendances primitives (évite rerenders inutiles)
+  const activeId = store?.activeProfileId ?? null;
+  const profiles = Array.isArray(store?.profiles) ? store.profiles : [];
 
-    const activeId = appStore.activeProfileId;
-    const current =
-      (appStore.profiles || []).find((p) => p.id === activeId) ?? null;
-
-    setProfile(current);
-  }, []);
-
-  return profile;
+  return React.useMemo(() => {
+    if (!activeId) return null;
+    return (profiles.find((p: any) => p?.id === activeId) as Profile) ?? null;
+  }, [activeId, profiles]);
 }
