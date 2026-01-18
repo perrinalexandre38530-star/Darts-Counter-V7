@@ -15,6 +15,8 @@ import { useTheme } from "../contexts/ThemeContext";
 import { useLang } from "../contexts/LangContext";
 import ProfileAvatar from "../components/ProfileAvatar";
 import ProfileStarRing from "../components/ProfileStarRing";
+import BackDot from "../components/BackDot";
+import InfoDot from "../components/InfoDot";
 import {
   getDartSetsForProfile,
   getFavoriteDartSetForProfile,
@@ -265,6 +267,21 @@ const PRO_BOTS: BotLite[] = [
 export default function X01ConfigV3({ profiles, onBack, onStart, go }: Props) {
   const { theme } = useTheme() as any;
   const { t } = useLang() as any;
+
+  const [rulesOpen, setRulesOpen] = React.useState(false);
+  const contentRef = React.useRef<HTMLDivElement | null>(null);
+
+  React.useEffect(() => {
+    // Always land at the top when entering config screens
+    try {
+      window.scrollTo({ top: 0, left: 0, behavior: "auto" });
+    } catch {
+      try { window.scrollTo(0, 0); } catch {}
+    }
+    const el = contentRef.current;
+    if (el) el.scrollTop = 0;
+  }, []);
+
 
   const allProfiles: Profile[] = profiles ?? [];
   const humanProfiles = allProfiles.filter((p) => !(p as any).isBot);
@@ -620,48 +637,63 @@ try {
       }}
     >
       {/* HEADER */}
-      <header style={{ marginBottom: 4 }}>
-        <div style={{ display: "flex", alignItems: "center", marginBottom: 6 }}>
-          <button
-            type="button"
-            onClick={onBack}
-            style={{
-              borderRadius: 999,
-              border: "1px solid rgba(255,255,255,0.12)",
-              background: "rgba(10,12,24,0.9)",
-              color: "#f5f5f5",
-              padding: "5px 10px",
-              fontSize: 13,
-              display: "inline-flex",
-              alignItems: "center",
-              gap: 6,
-              cursor: "pointer",
-            }}
-          >
-            <span style={{ fontSize: 16 }}>←</span>
-            <span>{t("x01v3.config.back", "Retour")}</span>
-          </button>
-        </div>
-        <div style={{ textAlign: "center" }}>
-          <div
-            style={{
-              fontSize: 26,
-              fontWeight: 800,
-              letterSpacing: 2,
-              color: primary,
-              textTransform: "uppercase",
-            }}
-          >
-            X01
-          </div>
-          <div style={{ fontSize: 12, opacity: 0.7, color: "#d9d9e4", marginTop: 2 }}>
-            {t("x01v3.config.subtitle", "Configure ton match X01 avant de commencer.")}
-          </div>
-        </div>
+      <header style={{ marginBottom: 6 }}>
+        {(() => {
+          const DOT_SIZE = 36;
+          const DOT_GLOW = `${primary}88`;
+          return (
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "44px 1fr 44px",
+                alignItems: "center",
+                gap: 10,
+                marginBottom: 8,
+              }}
+            >
+              <div style={{ display: "flex", justifyContent: "flex-start" }}>
+                <BackDot
+                  onClick={() => (typeof onBack === "function" ? onBack() : typeof go === "function" ? go("games") : null)}
+                  title={t("common.back", "Retour")}
+                  size={DOT_SIZE}
+                  color={primary}
+                  glow={DOT_GLOW}
+                />
+              </div>
+
+              <div style={{ textAlign: "center", lineHeight: 1.1 }}>
+                <div
+                  style={{
+                    fontSize: 26,
+                    fontWeight: 900,
+                    letterSpacing: 2,
+                    color: primary,
+                    textTransform: "uppercase",
+                  }}
+                >
+                  X01
+                </div>
+                <div style={{ fontSize: 12, opacity: 0.75, color: "#d9d9e4", marginTop: 2 }}>
+                  {t("x01v3.config.subtitle", "Configure ton match X01 avant de commencer.")}
+                </div>
+              </div>
+
+              <div style={{ display: "flex", justifyContent: "flex-end" }}>
+                <InfoDot
+                  onClick={() => setRulesOpen(true)}
+                  title={t("common.rules", "Règles")}
+                  size={DOT_SIZE}
+                  color={primary}
+                  glow={DOT_GLOW}
+                />
+              </div>
+            </div>
+          );
+        })()}
       </header>
 
       {/* CONTENU SCROLLABLE */}
-      <div style={{ flex: 1, overflowY: "auto", paddingTop: 4, paddingBottom: 12 }}>
+      <div ref={contentRef} style={{ flex: 1, overflowY: "auto", paddingTop: 4, paddingBottom: 12 }}>
         {/* --------- BLOC JOUEURS (HUMAINS) --------- */}
         <section
           style={{
@@ -1637,6 +1669,82 @@ window.dispatchEvent(new CustomEvent("dc:x01v3:visit", {
           </button>
         </div>
       </div>
+
+      {/* RULES OVERLAY */}
+      {rulesOpen && (
+        <div
+          onClick={() => setRulesOpen(false)}
+          style={{
+            position: "fixed",
+            inset: 0,
+            zIndex: 9999,
+            background: "rgba(0,0,0,0.62)",
+            display: "flex",
+            alignItems: "flex-end",
+            justifyContent: "center",
+            padding: 14,
+          }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              width: "min(520px, 100%)",
+              maxHeight: "78vh",
+              overflowY: "auto",
+              borderRadius: 18,
+              background: "rgba(12,14,26,0.98)",
+              border: `1px solid ${primary}33`,
+              boxShadow: "0 20px 60px rgba(0,0,0,0.6)",
+              padding: 14,
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginBottom: 10 }}>
+              <div style={{ fontWeight: 950, letterSpacing: 1, color: primary, textTransform: "uppercase" }}>Règles — X01</div>
+              <button
+                type="button"
+                onClick={() => setRulesOpen(false)}
+                style={{
+                  border: "none",
+                  background: "rgba(255,255,255,0.08)",
+                  color: "#fff",
+                  borderRadius: 12,
+                  padding: "6px 10px",
+                  cursor: "pointer",
+                  fontWeight: 900,
+                }}
+              >
+                ✕
+              </button>
+            </div>
+
+            <div style={{ fontSize: 13, color: "rgba(255,255,255,0.82)", lineHeight: 1.35 }}>
+              <div style={{ marginBottom: 10 }}>
+                <b>Objectif</b> : atteindre exactement <b>0</b>. Si tu descends sous 0, c’est <b>Bust</b> et le score revient au début de la volée.
+              </div>
+              <div style={{ marginBottom: 10 }}>
+                <b>IN</b> :
+                <ul style={{ margin: "6px 0 0 18px" }}>
+                  <li><b>Simple IN</b> : tu peux démarrer sur n’importe quel score.</li>
+                  <li><b>Double IN</b> : tu dois commencer par un <b>double</b>.</li>
+                  <li><b>Master IN</b> : tu dois commencer par <b>double ou triple</b>.</li>
+                </ul>
+              </div>
+              <div style={{ marginBottom: 10 }}>
+                <b>OUT</b> :
+                <ul style={{ margin: "6px 0 0 18px" }}>
+                  <li><b>Simple OUT</b> : tu peux finir sur n’importe quel score.</li>
+                  <li><b>Double OUT</b> : tu dois finir sur un <b>double</b>.</li>
+                  <li><b>Master OUT</b> : tu dois finir sur <b>double ou triple</b>.</li>
+                </ul>
+              </div>
+              <div style={{ opacity: 0.8 }}>
+                Les options <b>Sets</b>/<b>Manches</b> déterminent le format du match, et l’ordre de service peut être aléatoire ou alterné selon ton réglage.
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }
@@ -1652,6 +1760,7 @@ type TeamsSectionProps = {
 
 function TeamsSection({ profiles, selectedIds, teamAssignments, setPlayerTeam }: TeamsSectionProps) {
   const { t } = useLang() as any;
+
   const cardBg = "rgba(10, 12, 24, 0.96)";
   const totalPlayers = selectedIds.length;
 

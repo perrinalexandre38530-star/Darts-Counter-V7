@@ -427,6 +427,25 @@ export default function KillerConfigPage(props: Props) {
   // ✅ bouton "i" (règles / variantes)
   const [infoOpen, setInfoOpen] = React.useState<boolean>(false);
 
+  const contentRef = React.useRef<HTMLDivElement | null>(null);
+
+  React.useEffect(() => {
+    try {
+      window.scrollTo(0, 0);
+      document.documentElement.scrollTop = 0;
+      document.body.scrollTop = 0;
+    } catch {}
+    const raf = window.requestAnimationFrame(() => {
+      try {
+        contentRef.current?.scrollTo({ top: 0, behavior: 'auto' as any });
+        // fallback
+        if (contentRef.current) contentRef.current.scrollTop = 0;
+      } catch {}
+    });
+    return () => window.cancelAnimationFrame(raf);
+  }, []);
+
+
   const variantState: Record<VariantKey, boolean> = {
     selfHitWhileKiller,
     selfHitUsesMultiplier,
@@ -664,7 +683,7 @@ export default function KillerConfigPage(props: Props) {
                 gridTemplateColumns: "44px 1fr 44px",
                 alignItems: "center",
                 gap: 10,
-                marginBottom: 8,
+                marginBottom: 10,
               }}
             >
               <div style={{ display: "flex", justifyContent: "flex-start" }}>
@@ -677,7 +696,33 @@ export default function KillerConfigPage(props: Props) {
                 />
               </div>
 
-              <div />
+              <div style={{ textAlign: "center", minWidth: 0 }}>
+                <div
+                  style={{
+                    fontSize: 26,
+                    fontWeight: 900,
+                    letterSpacing: 2,
+                    color: primary,
+                    textTransform: "uppercase",
+                    lineHeight: 1.05,
+                  }}
+                >
+                  KILLER
+                </div>
+                <div
+                  style={{
+                    fontSize: 12,
+                    opacity: 0.75,
+                    color: "#d9d9e4",
+                    marginTop: 2,
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  Choisis les joueurs, assigne les numéros, puis lance le chaos.
+                </div>
+              </div>
 
               <div style={{ display: "flex", justifyContent: "flex-end" }}>
                 <InfoDot
@@ -691,27 +736,10 @@ export default function KillerConfigPage(props: Props) {
             </div>
           );
         })()}
-
-        <div style={{ textAlign: "center" }}>
-          <div
-            style={{
-              fontSize: 26,
-              fontWeight: 900,
-              letterSpacing: 2,
-              color: primary,
-              textTransform: "uppercase",
-            }}
-          >
-            KILLER
-          </div>
-          <div style={{ fontSize: 12, opacity: 0.75, color: "#d9d9e4", marginTop: 2 }}>
-            Choisis les joueurs, assigne les numéros, puis lance le chaos.
-          </div>
-        </div>
       </header>
 
       {/* CONTENT */}
-      <div style={{ flex: 1, overflowY: "auto", paddingTop: 4, paddingBottom: 12 }}>
+      <div ref={contentRef as any} style={{ flex: 1, overflowY: "auto", paddingTop: 4, paddingBottom: 12 }}>
         {/* JOUEURS LOCAUX */}
         <section
           style={{

@@ -150,6 +150,14 @@ export default function ShanghaiConfigPage({ store, go }: Props) {
 
   const [infoOpen, setInfoOpen] = React.useState(false);
 
+  React.useEffect(() => {
+    try {
+      window.scrollTo(0, 0);
+      document.documentElement.scrollTop = 0;
+      document.body.scrollTop = 0;
+    } catch {}
+  }, []);
+
   // ✅ NEW: toggles (persist settings)
   const [sfxEnabled, setSfx] = React.useState<boolean>(() => {
     const v = (store as any)?.settings?.sfxEnabled;
@@ -297,14 +305,14 @@ export default function ShanghaiConfigPage({ store, go }: Props) {
       }}
     >
       <div style={{ padding: 16, maxWidth: 520, margin: "0 auto" }}>
-        {/* Header (1 ligne) : BackDot / Titre centré / InfoDot */}
+        {/* Header : BackDot / Titre+résumé centrés / InfoDot */}
         <div
           style={{
             display: "grid",
             gridTemplateColumns: "44px 1fr 44px",
             alignItems: "center",
             gap: 10,
-            marginBottom: 8,
+            marginBottom: 14,
           }}
         >
           <div style={{ display: "flex", justifyContent: "flex-start" }}>
@@ -317,7 +325,31 @@ export default function ShanghaiConfigPage({ store, go }: Props) {
             />
           </div>
 
-          <div />
+          <div style={{ textAlign: "center", lineHeight: 1.15 }}>
+            <div
+              style={{
+                fontSize: 30,
+                fontWeight: 950,
+                color: theme.primary,
+                textShadow: `0 0 16px ${theme.primary}66`,
+                letterSpacing: 0.8,
+                textTransform: "uppercase",
+              }}
+            >
+              SHANGHAI
+            </div>
+            <div
+              style={{
+                marginTop: 6,
+                fontSize: 12.5,
+                color: theme.textSoft,
+                opacity: 0.88,
+                lineHeight: 1.25,
+              }}
+            >
+              Tours 1–{maxRounds} • Cible = numéro du tour • S/D/T sur la cible
+            </div>
+          </div>
 
           <div style={{ display: "flex", justifyContent: "flex-end" }}>
             <InfoDot
@@ -327,35 +359,6 @@ export default function ShanghaiConfigPage({ store, go }: Props) {
               color={theme.primary}
               glow={theme.primary + "88"}
             />
-          </div>
-        </div>
-
-        {/* ✅ Header style CRICKET (gros néon) */}
-        <div style={{ textAlign: "center", marginTop: 12, marginBottom: 14 }}>
-          <div
-            style={{
-              fontSize: 30,
-              fontWeight: 950,
-              color: theme.primary,
-              textShadow: `0 0 16px ${theme.primary}66`,
-              letterSpacing: 0.8,
-              textTransform: "uppercase",
-            }}
-          >
-            SHANGHAI
-          </div>
-
-          {/* court résumé */}
-          <div
-            style={{
-              marginTop: 6,
-              fontSize: 12.5,
-              color: theme.textSoft,
-              opacity: 0.88,
-              lineHeight: 1.25,
-            }}
-          >
-            Tours 1–{maxRounds} • Cible = numéro du tour • S/D/T sur la cible
           </div>
         </div>
 

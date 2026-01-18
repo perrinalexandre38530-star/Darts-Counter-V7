@@ -402,111 +402,137 @@ export default function WarfarePlay({ go, config }: Props) {
         <InfoDot onClick={() => setInfoOpen(true)} />
       </div>
 
-      {/* Active player card (style Killer) */}
+      {/* Active player card (compact - mini stats like Killer) */}
       <div
         style={{
           marginTop: 12,
-          padding: 14,
+          padding: 12,
           borderRadius: 20,
           border: `1px solid ${theme.borderSoft}`,
           background: CARD_BG,
           boxShadow: "0 10px 24px rgba(0,0,0,0.55)",
         }}
       >
-        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-          <div
-            style={{
-              width: 56,
-              height: 56,
-              borderRadius: 999,
-              border: `2px solid ${theme.primary}`,
-              boxShadow: `0 0 0 4px ${theme.primary}22, 0 0 22px ${theme.primary}66`,
-              overflow: "hidden",
-              background: "rgba(255,255,255,.06)",
-              flex: "0 0 auto",
-            }}
-          >
-            {activePlayer?.avatarDataUrl ? (
-              <img
-                src={activePlayer.avatarDataUrl}
-                alt=""
-                style={{ width: "100%", height: "100%", objectFit: "cover" }}
-              />
-            ) : null}
-          </div>
+        {(() => {
+          const s = getStats(activePlayer?.id);
+          const ownAlive = activeArmy === "TOP" ? aliveTop.length : aliveBottom.length;
+          const oppAlive = activeArmy === "TOP" ? aliveBottom.length : aliveTop.length;
+          const hits = (s.kills || 0) + (s.friendlyKills || 0);
+          const acc = s.darts ? Math.round((hits / s.darts) * 100) : 0;
 
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div
-              style={{
-                fontWeight: 950,
-                color: theme.primary,
-                textShadow: `0 0 14px ${theme.primary}55`,
-                letterSpacing: 0.3,
-                overflow: "hidden",
-                textOverflow: "ellipsis",
-                whiteSpace: "nowrap",
-              }}
-            >
-              {activePlayer?.name || "Joueur"}
+          const statRow = (label: string, value: string | number) => (
+            <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 10 }}>
+              <div style={{ fontSize: 11, fontWeight: 900, color: theme.textSoft, textTransform: "uppercase" }}>{label}</div>
+              <div style={{ fontWeight: 950, letterSpacing: 0.2 }}>{value}</div>
             </div>
-            <div style={{ marginTop: 4, display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+          );
+
+          return (
+            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+              {/* left: avatar + name */}
               <div
                 style={{
-                  padding: "6px 10px",
+                  width: 44,
+                  height: 44,
                   borderRadius: 999,
-                  border: `1px solid ${theme.primary}55`,
-                  background: `${theme.primary}18`,
-                  color: theme.text,
-                  fontWeight: 900,
-                  fontSize: 12,
-                  textTransform: "uppercase",
-                  letterSpacing: 0.6,
+                  border: `2px solid ${theme.primary}`,
+                  boxShadow: `0 0 0 4px ${theme.primary}22, 0 0 18px ${theme.primary}66`,
+                  overflow: "hidden",
+                  background: "rgba(255,255,255,.06)",
+                  flex: "0 0 auto",
                 }}
               >
-                {activeArmy}
+                {activePlayer?.avatarDataUrl ? (
+                  <img src={activePlayer.avatarDataUrl} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                ) : null}
               </div>
-              <div style={{ color: theme.textSoft, fontWeight: 900, fontSize: 12, textTransform: "uppercase" }}>
-                {t("warfare.zones", "Zones")}: <span style={{ color: theme.primary }}>{zonesLabel}</span>
-              </div>
-            </div>
-          </div>
-        </div>
 
-        {/* Stats */}
-        <div style={{ marginTop: 12, display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10 }}>
-          {(() => {
-            const s = getStats(activePlayer?.id);
-            const ownAlive = activeArmy === "TOP" ? aliveTop.length : aliveBottom.length;
-            const oppAlive = activeArmy === "TOP" ? aliveBottom.length : aliveTop.length;
-            const hits = (s.kills || 0) + (s.friendlyKills || 0);
-            const acc = s.darts ? Math.round((hits / s.darts) * 100) : 0;
-            const kpi = (label: string, value: string) => (
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div
+                  style={{
+                    fontWeight: 950,
+                    color: theme.primary,
+                    textShadow: `0 0 14px ${theme.primary}55`,
+                    letterSpacing: 0.3,
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  {activePlayer?.name || "Joueur"}
+                </div>
+                <div style={{ marginTop: 6, display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                  <div
+                    style={{
+                      padding: "5px 10px",
+                      borderRadius: 999,
+                      border: `1px solid ${theme.primary}55`,
+                      background: `${theme.primary}18`,
+                      color: theme.text,
+                      fontWeight: 900,
+                      fontSize: 12,
+                      textTransform: "uppercase",
+                      letterSpacing: 0.6,
+                    }}
+                  >
+                    {activeArmy}
+                  </div>
+                  <div
+                    style={{
+                      padding: "5px 10px",
+                      borderRadius: 999,
+                      border: `1px solid rgba(255,255,255,.16)`,
+                      background: "rgba(0,0,0,.25)",
+                      color: theme.text,
+                      fontWeight: 900,
+                      fontSize: 12,
+                    }}
+                  >
+                    {t("warfare.kpi.soldiers", "Soldats")}: <span style={{ color: theme.primary }}>{ownAlive}/10</span>
+                    <span style={{ marginLeft: 10, color: theme.textSoft }}>{t("warfare.kpi.enemy", "Ennemis")}:</span>{" "}
+                    <span style={{ color: theme.primary }}>{oppAlive}/10</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* right: mini stats box */}
               <div
                 style={{
-                  padding: "10px 12px",
+                  width: 150,
+                  padding: 10,
                   borderRadius: 16,
                   border: `1px solid ${theme.borderSoft}`,
-                  background: "rgba(0,0,0,.25)",
+                  background: "rgba(0,0,0,.22)",
                 }}
               >
-                <div style={{ fontSize: 11, fontWeight: 900, color: theme.textSoft, textTransform: "uppercase" }}>
-                  {label}
+                {statRow(t("warfare.kpi.kills", "Kills"), s.kills || 0)}
+                <div style={{ height: 6 }} />
+                {statRow(t("warfare.kpi.ff", "Friendly"), s.friendlyKills || 0)}
+                <div style={{ height: 6 }} />
+                {statRow(t("warfare.kpi.darts", "Flèches"), s.darts || 0)}
+                <div style={{ height: 6 }} />
+                {statRow(t("warfare.kpi.accuracy", "Précision"), `${acc}%`)}
+
+                <div
+                  style={{
+                    marginTop: 8,
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    gap: 10,
+                    fontSize: 11,
+                    fontWeight: 900,
+                    textTransform: "uppercase",
+                    color: theme.textSoft,
+                  }}
+                >
+                  <span>{t("warfare.zones", "Zones")}</span>
+                  <span style={{ color: theme.primary }}>{zonesLabel}</span>
                 </div>
-                <div style={{ marginTop: 4, fontWeight: 950, letterSpacing: 0.2 }}>{value}</div>
               </div>
-            );
-            return (
-              <>
-                {kpi(t("warfare.kpi.soldiers", "Soldats"), `${ownAlive} / 10`)}
-                {kpi(t("warfare.kpi.kills", "Kills"), String(s.kills || 0))}
-                {kpi(t("warfare.kpi.accuracy", "Précision"), `${acc}%`)}
-                {kpi(t("warfare.kpi.enemy", "Ennemis"), `${oppAlive} / 10`)}
-                {kpi(t("warfare.kpi.ff", "Friendly"), String(s.friendlyKills || 0))}
-                {kpi(t("warfare.kpi.darts", "Flèches"), String(s.darts || 0))}
-              </>
-            );
-          })()}
-        </div>
+            </div>
+          );
+        })()}
       </div>
 
       {/* Armies (stacked TOP then BOTTOM) */}

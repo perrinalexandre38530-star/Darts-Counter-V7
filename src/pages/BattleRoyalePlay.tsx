@@ -17,6 +17,7 @@ import InfoDot from "../components/InfoDot";
 import BackDot from "../components/BackDot";
 import Keypad from "../components/Keypad";
 import type { Dart as UIDart } from "../lib/types";
+import { DartIconColorizable } from "../components/MaskIcon";
 
 import { playImpactFromDart, playSfx, playUiConfirm, playUiClickSoft } from "../lib/sfx";
 import { announceTurn, speak } from "../lib/voice";
@@ -201,27 +202,94 @@ function SurvivorKpi({ value }: { value: any }) {
   );
 }
 
-function DartsDots({ total, used }: { total: number; used: number }) {
-  // ✅ local hook (component scope) — évite le ReferenceError "theme is not defined"
+function DartsIcons({ total, used }: { total: number; used: number }) {
+  // ✅ même affichage que CricketPlay (DartIconColorizable)
   const { theme } = useTheme();
   const n = Math.max(1, Math.min(3, Number(total) || 3));
   const u = Math.max(0, Math.min(n, Number(used) || 0));
   return (
-    <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+    <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
       {Array.from({ length: n }).map((_, i) => {
-        const hit = i < u;
+        const active = i < u;
+        return (
+          <div
+            key={i}
+            style={{ width: 32, height: 32, display: "flex", alignItems: "center", justifyContent: "center" }}
+          >
+            <DartIconColorizable color={theme.primary} active={active} size={30} />
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function dartLabel(d?: UIDart | null) {
+  if (!d) return "";
+  const mult = d.mult === 3 ? "T" : d.mult === 2 ? "D" : "";
+  const val = d.v === 25 ? "BULL" : String(d.v);
+  return mult + val;
+}
+
+function ThrowBlocks({ total, darts }: { total: number; darts: UIDart[] }) {
+  const { theme } = useTheme();
+  const n = Math.max(1, Math.min(3, Number(total) || 3));
+  const list = Array.isArray(darts) ? darts : [];
+  return (
+    <div style={{ display: "grid", gridTemplateColumns: `repeat(${n}, 1fr)`, gap: 8 }}>
+      {Array.from({ length: n }).map((_, i) => {
+        const d = list[i];
+        const has = !!d;
+        const label = dartLabel(d);
         return (
           <div
             key={i}
             style={{
-              width: 12,
-              height: 12,
-              borderRadius: 999,
-              border: `1px solid ${hit ? theme.primary + "AA" : theme.borderSoft}`,
-              background: hit ? theme.primary : "rgba(0,0,0,0.25)",
-              boxShadow: hit ? `0 0 12px ${theme.primary}66` : "none",
+              height: 34,
+              borderRadius: 12,
+              border: `1px solid ${has ? theme.primary + "55" : theme.borderSoft}`,
+              background: has ? theme.primary + "1a" : "rgba(0,0,0,0.18)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              fontWeight: 1000,
+              color: has ? "#fff" : theme.textSoft,
+              boxShadow: has ? `0 0 14px ${theme.primary}22` : "none",
+              textShadow: has ? "0 2px 10px rgba(0,0,0,.55)" : "none",
             }}
-          />
+          >
+            {has ? label : "—"}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function HeartsRow({ lives, maxLives }: { lives: number; maxLives: number }) {
+  const n = Math.max(0, Math.min(12, Number(maxLives) || 0));
+  const left = Math.max(0, Math.min(n, Number(lives) || 0));
+  const pink = "#ff79d6";
+  const off = "rgba(255,255,255,0.22)";
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+      {Array.from({ length: n }).map((_, i) => {
+        const on = i < left;
+        return (
+          <svg
+            key={i}
+            width="14"
+            height="12"
+            viewBox="0 0 48 42"
+            style={{ filter: on ? "drop-shadow(0 0 6px rgba(255,121,214,.35))" : "none" }}
+          >
+            <path
+              d="M24 40s-18-10.8-18-24C6 9.6 10.2 5 16 5c3.1 0 6 1.5 8 4.2C26 6.5 28.9 5 32 5c5.8 0 10 4.6 10 11 0 13.2-18 24-18 24z"
+              fill={on ? pink : off}
+              stroke={on ? "rgba(255,121,214,.85)" : "rgba(255,255,255,.18)"}
+              strokeWidth="1.1"
+            />
+          </svg>
         );
       })}
     </div>
@@ -751,6 +819,22 @@ export default function BattleRoyalePlay({ go, config, onFinish }: Props) {
                   )}
                 </div>
               </div>
+
+              {/* ✅ Nom sous médaillon (comme demandé) */}
+              <div
+                style={{
+                  textAlign: "center",
+                  fontWeight: 1100,
+                  fontSize: 14,
+                  color: theme.primary,
+                  textShadow: `0 0 10px ${theme.primary}55`,
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                {activePlayer?.name || "—"}
+              </div>
             </div>
 
             {/* droite */}
@@ -764,34 +848,16 @@ export default function BattleRoyalePlay({ go, config, onFinish }: Props) {
                 gap: 8,
               }}
             >
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
-                <div style={{ minWidth: 0 }}>
-                  <div style={{ fontSize: 10.5, letterSpacing: 0.9, opacity: 0.85, textTransform: "uppercase" }}>
-                    {t("common.activePlayer", "Joueur actif")}
+              {/* ✅ Pas d'intitulé "Joueur actif" ici : le nom est sous le médaillon (colonne gauche) */}
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 10 }}>
+                {eliminationRule === "life_system" ? (
+                  <HeartKpi value={activePlayer?.lives ?? 0} />
+                ) : (
+                  <div style={miniBadge}>
+                    {t("common.misses", "Ratés")}: {activePlayer?.misses ?? 0}/{missLimit}
                   </div>
-                  <div
-                    style={{
-                      fontSize: 16,
-                      fontWeight: 1000,
-                      overflow: "hidden",
-                      textOverflow: "ellipsis",
-                      whiteSpace: "nowrap",
-                    }}
-                  >
-                    {activePlayer?.name || "—"}
-                  </div>
-                </div>
-
-                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                  {eliminationRule === "life_system" ? (
-                    <HeartKpi value={activePlayer?.lives ?? 0} />
-                  ) : (
-                    <div style={miniBadge}>
-                      {t("common.misses", "Ratés")}: {activePlayer?.misses ?? 0}/{missLimit}
-                    </div>
-                  )}
-                  <SurvivorKpi value={aliveCount} />
-                </div>
+                )}
+                <SurvivorKpi value={aliveCount} />
               </div>
 
               <div
@@ -809,7 +875,7 @@ export default function BattleRoyalePlay({ go, config, onFinish }: Props) {
                 <div style={{ fontSize: 12, fontWeight: 900, color: theme.textSoft }}>
                   {t("common.darts", "Fléchettes")}
                 </div>
-                <DartsDots total={dartsPerTurn} used={currentThrow.length} />
+                <DartsIcons total={dartsPerTurn} used={currentThrow.length} />
               </div>
 
               {ended && (
@@ -874,8 +940,8 @@ export default function BattleRoyalePlay({ go, config, onFinish }: Props) {
                 >
                   <div
                     style={{
-                      width: 34,
-                      height: 34,
+                      width: 46,
+                      height: 46,
                       borderRadius: "50%",
                       overflow: "hidden",
                       border: `1px solid ${theme.borderSoft}`,
@@ -897,29 +963,42 @@ export default function BattleRoyalePlay({ go, config, onFinish }: Props) {
                     )}
                   </div>
 
-                  <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ flex: 1, minWidth: 0, display: "grid", gap: 4 }}>
+                    {eliminationRule === "life_system" && (
+                      <HeartsRow lives={p.lives} maxLives={baseLives} />
+                    )}
+
                     <div
                       style={{
-                        fontWeight: 1000,
+                        fontWeight: 1100,
+                        color: theme.primary,
+                        textShadow: `0 0 10px ${theme.primary}33`,
                         overflow: "hidden",
                         textOverflow: "ellipsis",
                         whiteSpace: "nowrap",
+                        marginLeft: 2, // ✅ aligne légèrement à droite par rapport aux coeurs
                       }}
                     >
                       {p.name}
                     </div>
-                    <div style={{ display: "flex", gap: 8, marginTop: 4, flexWrap: "wrap" }}>
-                      {eliminationRule === "life_system" && (
-                        <span style={miniBadge}>{t("common.lives", "Vies")}: {p.lives}</span>
-                      )}
+
+                    <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                       {eliminationRule === "miss_x" && (
                         <span style={miniBadge}>
                           {t("common.misses", "Ratés")}: {p.misses}/{missLimit}
                         </span>
                       )}
-                      {!p.alive && <span style={{ ...miniBadge, borderColor: "rgba(255,80,80,.35)", color: "rgba(255,200,200,.9)" }}>
-                        {t("common.eliminated", "Éliminé")}
-                      </span>}
+                      {!p.alive && (
+                        <span
+                          style={{
+                            ...miniBadge,
+                            borderColor: "rgba(255,80,80,.35)",
+                            color: "rgba(255,200,200,.9)",
+                          }}
+                        >
+                          {t("common.eliminated", "Éliminé")}
+                        </span>
+                      )}
                     </div>
                   </div>
 
@@ -979,6 +1058,19 @@ export default function BattleRoyalePlay({ go, config, onFinish }: Props) {
 
       {/* Keypad fixed (BottomNav masquée pendant la partie) */}
       <div style={{ marginTop: "auto" }}>
+        {/* ✅ Volée en cours : blocs colorés JUSTE au-dessus du keypad */}
+        <div
+          style={{
+            ...cardShell,
+            padding: 10,
+            margin: "0 auto 10px",
+            maxWidth: 860,
+            background: theme.card,
+          }}
+        >
+          <ThrowBlocks total={dartsPerTurn} darts={currentThrow} />
+        </div>
+
         <Keypad
           currentThrow={currentThrow}
           multiplier={multiplier}
@@ -990,14 +1082,22 @@ export default function BattleRoyalePlay({ go, config, onFinish }: Props) {
           onNumber={onNumber}
           onBull={onBull}
           onValidate={finishTurn}
-          hidePreview={false}
+          hidePreview={true}
           hideTotal={false}
           centerSlot={
             <div style={{ textAlign: "center" }}>
               <div style={{ fontWeight: 1000, fontSize: 12, color: "rgba(255,255,255,.7)" }}>
                 {t("common.target", "Cible")}
               </div>
-              <div style={{ fontWeight: 1100, fontSize: 18, color: theme.primary, textShadow: `0 0 12px ${theme.primary}55` }}>
+              <div
+                style={{
+                  fontWeight: 1200,
+                  fontSize: 22,
+                  color: theme.primary,
+                  textShadow: `0 0 16px ${theme.primary}88, 0 0 6px ${theme.primary}55`,
+                  letterSpacing: 0.4,
+                }}
+              >
                 {fmtTarget(target)}
               </div>
             </div>
