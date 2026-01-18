@@ -5,12 +5,18 @@
 // - Pastille "i" à droite => panneau d'aide (traductions via t())
 // - Modes grisés : non cliquables (enabled = false) + "Coming soon"
 //
-// ✅ CHANGE (REQUEST):
-// - Carte STATISTIQUES (verte) tout en haut -> menu Stats
-// - Cartes FAVORIS (classic/training/variant/challenge/fun) avec couleurs dédiées
-// - Textes centrés dans STAT + FAVORIS
-// - Retire les boutons i sur STAT + FAVORIS
-// - Onglets colorisés par catégorie (OR/VIOLET/BLEU/ROSE/ORANGE)
+// ✅ CHANGE (REQUEST FINAL):
+// - Conserver STATISTIQUES (vert) tout en haut (sans bouton i) -> menu Stats
+// - Conserver FAVORIS (centrés, sans i) SANS annotations "Ton mode ... préféré"
+// - Remettre les cartes TRAINING et TOURNOIS SOUS les favoris
+//   et AU-DESSUS des onglets, séparés par une barre de séparation thème
+// - IMPORTANT ROUTING :
+//   * Carte TRAINING => ouvre le HUB Training (tab "training")
+//   * Favori TRAINING (ex: "Training X01") => ouvre sa CONFIG dédiée si elle existe
+//     - training_x01 => tab "training_x01" (TrainingX01Config)
+//     - tour_horloge => tab "training_clock" (TrainingClockConfig)
+//     - autres trainings => fallback vers "training" (hub)
+// - Onglets colorisés par catégorie comme les favoris
 // ============================================
 
 import React from "react";
@@ -36,7 +42,7 @@ type InfoGame = {
   ready: boolean;
 };
 
-const LS_FAV_PREFIX = "dc:fav:darts:"; // ex: dc:fav:darts:classic = "x01"
+const LS_FAV_PREFIX = "dc:fav:darts:";
 
 function getFavKey(cat: GameCategory) {
   return `${LS_FAV_PREFIX}${cat}`;
@@ -77,19 +83,18 @@ export default function Games({ setTab }: Props) {
     setTab(tab, params);
   }
 
-  // Liste des jeux pour la catégorie
   const gamesForCat = React.useMemo(() => {
     return DARTS_GAMES.filter((g) => g.category === activeCat).slice().sort(sortByPopularity);
   }, [activeCat]);
 
-  // Favorites (un par catégorie)
+  // Favorites
   const favClassic = React.useMemo(() => resolveFavorite("classic"), []);
   const favTraining = React.useMemo(() => resolveFavorite("training"), []);
   const favVariant = React.useMemo(() => resolveFavorite("variant"), []);
   const favChallenge = React.useMemo(() => resolveFavorite("challenge"), []);
   const favFun = React.useMemo(() => resolveFavorite("fun"), []);
 
-  // Helpers
+  // Styles helpers
   function tintedCardStyle(tint: { border: string; bg: string; title: string; glow: string }) {
     return {
       border: `1px solid ${tint.border}`,
@@ -98,7 +103,7 @@ export default function Games({ setTab }: Props) {
     } as React.CSSProperties;
   }
 
-  // ✅ Couleurs demandées
+  // Tints
   const TINT_STATS = {
     border: "rgba(120,255,180,0.40)",
     bg: "linear-gradient(180deg, rgba(120,255,180,0.14), rgba(255,255,255,0.05))",
@@ -134,7 +139,6 @@ export default function Games({ setTab }: Props) {
     glow: "rgba(120,200,255,0.24)",
   };
 
-  // ✅ FUN en rose (modifié)
   const TINT_FUN = {
     border: "rgba(255,120,200,0.48)",
     bg: "linear-gradient(180deg, rgba(255,120,200,0.16), rgba(255,255,255,0.05))",
@@ -150,72 +154,164 @@ export default function Games({ setTab }: Props) {
     return TINT_FUN;
   }
 
+  // ✅ Routing du favori training : config dédiée quand disponible
+  function trainingFavoriteTarget(game: DartsGameDef | null): { tab: string; params?: any } {
+    if (!game) return { tab: "training" };
+    // Si ton App.tsx utilise d'autres noms, adapte ici uniquement.
+    if (game.id === "training_x01") return { tab: "training_x01" };
+    if (game.id === "tour_horloge") return { tab: "training_clock" };
+    // autres trainings : hub
+    return { tab: "training" };
+  }
+
   function renderFavoriteCard(opts: {
     title: string;
-    subtitle: string;
     tint: { border: string; bg: string; title: string; glow: string };
     game: DartsGameDef | null;
     fallbackTab: string;
+    kind: "classic" | "training" | "variant" | "challenge" | "fun";
   }) {
     const g = opts.game;
+  
     const disabled = g ? !g.ready : true;
     const label = g ? g.label : t("games.fav.none", "Aucun favori");
-    const goTab = g ? g.tab : opts.fallbackTab;
-
-    const params = g && goTab === "training" ? { gameId: g.id } : undefined;
-
+  
+    let goTab = g ? g.tab : opts.fallbackTab;
+    let params: any = undefined;
+  
+    // ✅ cas training favori : config dédiée quand dispo
+    if (opts.kind === "training") {
+      if (g?.id === "training_x01") goTab = "training_x01";
+      else if (g?.id === "tour_horloge") goTab = "training_clock";
+      else goTab = "training";
+    }
+  
+    const glow = opts.tint.glow;
+    const border = opts.tint.border;
+    const titleColor = opts.tint.title;
+  
     return (
       <button
-        onClick={() => navigate(disabled ? "mode_not_ready" : goTab, params)}
+        onClick={() => setTab(disabled ? "mode_not_ready" : goTab, params)}
         style={{
           position: "relative",
           width: "100%",
           padding: 14,
-          textAlign: "center", // ✅ centre
+          textAlign: "center",
           borderRadius: 16,
-          border: `1px solid ${theme.borderSoft}`,
-          background: CARD_BG,
           cursor: "pointer",
-          opacity: disabled ? 0.65 : 1,
           overflow: "hidden",
-          ...tintedCardStyle(opts.tint),
+          userSelect: "none",
+          WebkitTapHighlightColor: "transparent",
+  
+          // ✅ “design”
+          border: `1px solid ${border}`,
+          background: opts.tint.bg,
+          boxShadow: disabled
+            ? `0 8px 18px rgba(0,0,0,0.45)`
+            : `0 14px 28px rgba(0,0,0,0.60), 0 0 22px ${glow}`,
+          opacity: disabled ? 0.6 : 1,
+          transform: "translateZ(0)",
+          transition: "transform 140ms ease, box-shadow 140ms ease, opacity 140ms ease",
+        }}
+        onMouseDown={(e) => {
+          // micro “press” (desktop)
+          (e.currentTarget as HTMLButtonElement).style.transform = "scale(0.992)";
+        }}
+        onMouseUp={(e) => {
+          (e.currentTarget as HTMLButtonElement).style.transform = "scale(1)";
+        }}
+        onMouseLeave={(e) => {
+          (e.currentTarget as HTMLButtonElement).style.transform = "scale(1)";
         }}
       >
+        {/* Halo / glow soft */}
+        <div
+          aria-hidden
+          style={{
+            position: "absolute",
+            inset: -40,
+            background: `radial-gradient(320px 180px at 50% 15%, ${glow}, rgba(0,0,0,0) 60%)`,
+            opacity: disabled ? 0.35 : 0.7,
+            pointerEvents: "none",
+            filter: "blur(2px)",
+          }}
+        />
+  
+        {/* Sheen diagonal (reflet) */}
+        <div
+          aria-hidden
+          style={{
+            position: "absolute",
+            top: -60,
+            left: -80,
+            width: 180,
+            height: 220,
+            transform: "rotate(20deg)",
+            background:
+              "linear-gradient(180deg, rgba(255,255,255,0.22), rgba(255,255,255,0.0) 70%)",
+            opacity: disabled ? 0.12 : 0.22,
+            pointerEvents: "none",
+          }}
+        />
+  
+        {/* Inner border subtle */}
+        <div
+          aria-hidden
+          style={{
+            position: "absolute",
+            inset: 1,
+            borderRadius: 15,
+            border: "1px solid rgba(255,255,255,0.08)",
+            pointerEvents: "none",
+          }}
+        />
+  
+        {/* Title category */}
         <div
           style={{
             fontSize: 12,
             fontWeight: 900,
-            letterSpacing: 0.9,
-            color: opts.tint.title,
+            letterSpacing: 1.0,
+            color: titleColor,
             textTransform: "uppercase",
-            textShadow: `0 0 12px ${opts.tint.glow}`,
+            textShadow: `0 0 12px ${glow}`,
           }}
         >
           {opts.title}
         </div>
-
+  
+        {/* Main label */}
         <div
           style={{
             marginTop: 6,
             fontSize: 13,
-            fontWeight: 900,
-            letterSpacing: 0.5,
-            color: theme.text,
+            fontWeight: 950,
+            letterSpacing: 0.6,
+            color: "#fff",
             textTransform: "uppercase",
+            textShadow: disabled ? "none" : "0 0 10px rgba(0,0,0,0.35)",
           }}
         >
           {label}
         </div>
-
-        <div style={{ marginTop: 4, fontSize: 12, color: theme.textSoft, opacity: 0.9 }}>
-          {opts.subtitle}
-          {disabled && (
-            <span style={{ marginLeft: 6, fontSize: 11, fontStyle: "italic", opacity: 0.9 }}>
-              • {t("games.status.comingSoon", "Bientôt disponible")}
-            </span>
-          )}
-        </div>
+  
+        {/* ❌ AUCUNE annotation (ni “préféré”, ni “bientôt disponible”) */}
       </button>
+    );
+  }
+
+  function separatorBar() {
+    return (
+      <div
+        style={{
+          height: 2,
+          borderRadius: 999,
+          background: `linear-gradient(90deg, transparent, ${theme.primary}88, transparent)`,
+          boxShadow: `0 0 14px ${theme.primary}44`,
+          margin: "8px 2px",
+        }}
+      />
     );
   }
 
@@ -229,7 +325,6 @@ export default function Games({ setTab }: Props) {
         color: theme.text,
       }}
     >
-      {/* Titre */}
       <h1
         style={{
           margin: 0,
@@ -254,19 +349,19 @@ export default function Games({ setTab }: Props) {
         {t("games.subtitle", "Choisis un mode de jeu")}
       </div>
 
-      {/* ✅ Quick cards : Stats + Favoris */}
-      <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 14 }}>
-        {/* STATS (vert) - textes centrés */}
+      {/* ✅ Top : Stats + Favoris */}
+      <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 10 }}>
+        {/* STATS (vert) - centre */}
         <button
           onClick={() => {
-            // ⚠️ adapte si ton App.tsx utilise un autre tab, ex: "stats_shell"
+            // ⚠️ adapte si ton App.tsx utilise un autre tab (ex: "stats_shell")
             navigate("stats");
           }}
           style={{
             position: "relative",
             width: "100%",
             padding: 14,
-            textAlign: "center", // ✅ centre
+            textAlign: "center",
             borderRadius: 16,
             border: `1px solid ${theme.borderSoft}`,
             background: CARD_BG,
@@ -287,51 +382,155 @@ export default function Games({ setTab }: Props) {
           >
             {t("games.stats.title", "STATISTIQUES")}
           </div>
-          <div style={{ marginTop: 4, fontSize: 12, color: theme.textSoft, opacity: 0.9 }}>
-            {t("games.stats.subtitle", "Accès au menu Stats (local / online).")}
-          </div>
+
+          {/* ✅ suppression du sous-texte */}
         </button>
 
-        {/* Favoris */}
         {renderFavoriteCard({
           title: t("games.fav.classic.title", "FAVORI — CLASSIQUES"),
-          subtitle: t("games.fav.classic.subtitle", "Ton mode classique préféré."),
           tint: TINT_CLASSIC,
           game: favClassic,
           fallbackTab: "mode_not_ready",
+          kind: "classic",
         })}
 
         {renderFavoriteCard({
           title: t("games.fav.training.title", "FAVORI — TRAINING"),
-          subtitle: t("games.fav.training.subtitle", "Ton entraînement préféré."),
           tint: TINT_TRAINING,
           game: favTraining,
           fallbackTab: "training",
+          kind: "training",
         })}
 
         {renderFavoriteCard({
           title: t("games.fav.variant.title", "FAVORI — VARIANTES"),
-          subtitle: t("games.fav.variant.subtitle", "Ta variante préférée."),
           tint: TINT_VARIANT,
           game: favVariant,
           fallbackTab: "mode_not_ready",
+          kind: "variant",
         })}
 
         {renderFavoriteCard({
           title: t("games.fav.challenge.title", "FAVORI — DÉFIS"),
-          subtitle: t("games.fav.challenge.subtitle", "Ton défi préféré."),
           tint: TINT_CHALLENGE,
           game: favChallenge,
           fallbackTab: "mode_not_ready",
+          kind: "challenge",
         })}
 
         {renderFavoriteCard({
           title: t("games.fav.fun.title", "FAVORI — FUN"),
-          subtitle: t("games.fav.fun.subtitle", "Ton mode fun préféré."),
           tint: TINT_FUN,
           game: favFun,
           fallbackTab: "mode_not_ready",
+          kind: "fun",
         })}
+
+        {/* ✅ Séparateur thème */}
+        {separatorBar()}
+
+        {/* ✅ Remettre TRAINING + TOURNOIS sous les favoris */}
+        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          {/* TRAINING HUB */}
+          <button
+            onClick={() => navigate("training")}
+            style={{
+              position: "relative",
+              width: "100%",
+              padding: 14,
+              paddingRight: 46,
+              textAlign: "left",
+              borderRadius: 16,
+              border: `1px solid ${theme.borderSoft}`,
+              background: CARD_BG,
+              cursor: "pointer",
+              boxShadow: `0 10px 24px rgba(0,0,0,0.55)`,
+              overflow: "hidden",
+            }}
+          >
+            <div
+              style={{
+                fontSize: 14,
+                fontWeight: 800,
+                letterSpacing: 0.8,
+                color: theme.primary,
+                textTransform: "uppercase",
+                textShadow: `0 0 12px ${theme.primary}55`,
+              }}
+            >
+              {t("games.training.title", "TRAINING")}
+            </div>
+            <div style={{ marginTop: 4, fontSize: 12, color: theme.textSoft, opacity: 0.9 }}>
+              {t("games.training.subtitle", "Améliore ta progression.")}
+            </div>
+
+            <div style={{ position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)" }}>
+              <InfoDot
+                onClick={(ev) => {
+                  ev.stopPropagation();
+                  setInfoGame({
+                    label: "Training",
+                    ready: true,
+                    infoTitle: "Training",
+                    infoBody:
+                      "Hub d'entraînement : accès à Training X01, Tour de l'horloge, et autres drills (selon implémentation).",
+                  });
+                }}
+                glow={theme.primary + "88"}
+              />
+            </div>
+          </button>
+
+          {/* TOURNOIS */}
+          <button
+            onClick={() => navigate("tournaments")}
+            style={{
+              position: "relative",
+              width: "100%",
+              padding: 14,
+              paddingRight: 46,
+              textAlign: "left",
+              borderRadius: 16,
+              border: `1px solid ${theme.borderSoft}`,
+              background: CARD_BG,
+              cursor: "pointer",
+              boxShadow: `0 10px 24px rgba(0,0,0,0.55)`,
+              overflow: "hidden",
+            }}
+          >
+            <div
+              style={{
+                fontSize: 14,
+                fontWeight: 800,
+                letterSpacing: 0.8,
+                color: theme.primary,
+                textTransform: "uppercase",
+                textShadow: `0 0 12px ${theme.primary}55`,
+              }}
+            >
+              {t("games.tournaments.title", "TOURNOIS")}
+            </div>
+            <div style={{ marginTop: 4, fontSize: 12, color: theme.textSoft, opacity: 0.9 }}>
+              {t("games.tournaments.subtitle", "Crée des tournois en local (poules, élimination…).")}
+            </div>
+
+            <div style={{ position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)" }}>
+              <InfoDot
+                onClick={(ev) => {
+                  ev.stopPropagation();
+                  setInfoGame({
+                    label: "Tournois",
+                    ready: true,
+                    infoTitle: "Tournois (Local)",
+                    infoBody:
+                      "Crée des tournois en local : round-robin, élimination directe, poules + phase finale, byes et paramètres complets selon le mode.",
+                  });
+                }}
+                glow={theme.primary + "88"}
+              />
+            </div>
+          </button>
+        </div>
       </div>
 
       {/* ✅ Onglets catégories - couleurs liées aux favoris */}
@@ -379,9 +578,7 @@ export default function Games({ setTab }: Props) {
           return (
             <button
               key={g.id}
-              onClick={() =>
-                navigate(disabled ? "mode_not_ready" : g.tab, g.tab === "training" ? { gameId: g.id } : undefined)
-              }
+              onClick={() => navigate(disabled ? "mode_not_ready" : g.tab)}
               style={{
                 position: "relative",
                 width: "100%",
@@ -418,7 +615,6 @@ export default function Games({ setTab }: Props) {
                 )}
               </div>
 
-              {/* Pastille "i" (uniquement sur la liste) */}
               <div style={{ position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)" }}>
                 <InfoDot
                   onClick={(ev) => {

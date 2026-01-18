@@ -200,19 +200,19 @@ function PillButton({ label, active, onClick, primary, primarySoft, compact, dis
   );
 }
 
-/* Médaillon BOT – doré PRO, bleu bots user (copié de KillerConfig)
-   ✅ FIX: aura sélection = EXACTEMENT comme JOUEURS (theme.primary)
+/* Médaillon BOT – PRO doré / bots user bleu
+   ✅ On GARDE le StarRing MEME quand sélectionné
+   ✅ On SUPPRIME le cercle/halo de sélection (pas de boxShadow "active")
+   ✅ La sélection = avatar redevient couleur + opacité (comme joueurs)
 */
 function BotMedallion({
   bot,
   level,
   active,
-  activeGlow,
 }: {
   bot: BotLite;
   level: number;
   active: boolean;
-  activeGlow: string; // ex: `${primary}aa`
 }) {
   const isPro = bot.id.startsWith("bot_pro_");
   const COLOR = isPro ? "#f7c85c" : "#00b4ff";
@@ -241,6 +241,7 @@ function BotMedallion({
 
   return (
     <div style={{ position: "relative", width: WRAP, height: WRAP, flex: "0 0 auto", overflow: "visible" }}>
+      {/* ✅ StarRing TOUJOURS visible */}
       <div
         aria-hidden
         style={{
@@ -268,10 +269,12 @@ function BotMedallion({
           borderRadius: "50%",
           overflow: "hidden",
           margin: "auto",
-          boxShadow: active ? `0 0 28px ${activeGlow}` : "0 0 14px rgba(0,0,0,0.65)",
-          background: active
-            ? `radial-gradient(circle at 30% 20%, #fff8d0, ${COLOR})`
-            : "radial-gradient(circle at 30% 20%, rgba(255,255,255,0.08), rgba(0,0,0,0.6))",
+
+          // ✅ IMPORTANT: PAS de halo/cercle "active"
+          boxShadow: "0 0 14px rgba(0,0,0,0.65)",
+
+          // fond neutre (pas de radial active)
+          background: "radial-gradient(circle at 30% 20%, rgba(255,255,255,0.08), rgba(0,0,0,0.6))",
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
@@ -283,6 +286,8 @@ function BotMedallion({
             height: AVATAR,
             borderRadius: "50%",
             overflow: "hidden",
+
+            // ✅ Sélection = même logique que joueurs (couleur vs gris)
             filter: active ? "none" : "grayscale(100%) brightness(0.55)",
             opacity: active ? 1 : 0.6,
             transition: "filter .2s ease, opacity .2s ease",
@@ -584,127 +589,136 @@ export default function FiveLivesConfig({ store, go, onBack, onStart, onStartGam
         </section>
 
         {/* BOTS */}
-        <section
+<section
+  style={{
+    background: cardBg,
+    borderRadius: 18,
+    padding: 12,
+    marginBottom: 14,
+    boxShadow: "0 16px 40px rgba(0,0,0,0.55)",
+    border: "1px solid rgba(255,255,255,0.04)",
+  }}
+>
+  <div
+    style={{
+      fontSize: 12,
+      textTransform: "uppercase",
+      letterSpacing: 1,
+      fontWeight: 800,
+      color: primary,
+      marginBottom: 10,
+    }}
+  >
+    Bots IA
+  </div>
+
+  <p style={{ fontSize: 11, color: "#7c80a0", marginBottom: 10 }}>
+    Ajoute des bots “PRO” prédéfinis ou tes bots créés dans Profils.
+  </p>
+
+  <div
+    className="dc-scroll-thin"
+    style={{
+      display: "flex",
+      gap: 14,
+      overflowX: "auto",
+      overflowY: "visible",
+      paddingBottom: 10,
+      paddingTop: 14,
+      marginTop: 6,
+      marginBottom: 10,
+    }}
+  >
+    {botProfiles.map((bot) => {
+      const { level } = resolveBotLevel(bot.botLevel);
+      const active = selectedIds.includes(bot.id);
+
+      return (
+        <div
+          key={bot.id}
+          role="button"
+          onClick={() => togglePlayer(bot.id)}
           style={{
-            background: cardBg,
-            borderRadius: 18,
-            padding: 12,
-            marginBottom: 14,
-            boxShadow: "0 16px 40px rgba(0,0,0,0.55)",
-            border: "1px solid rgba(255,255,255,0.04)",
+            minWidth: 96,
+            maxWidth: 96,
+            background: "transparent",
+            border: "none",
+            padding: 0,
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            gap: 6,
+            flexShrink: 0,
+            cursor: "pointer",
+            userSelect: "none",
           }}
         >
-          <div style={{ fontSize: 12, textTransform: "uppercase", letterSpacing: 1, fontWeight: 800, color: primary, marginBottom: 10 }}>
-            Bots IA
-          </div>
-
-          <p style={{ fontSize: 11, color: "#7c80a0", marginBottom: 10 }}>
-            Ajoute des bots “PRO” prédéfinis ou tes bots créés dans Profils.
-          </p>
+          {/* ✅ StarRing gardé même actif ; ✅ pas de halo cercle sélection */}
+          <BotMedallion bot={bot} level={level} active={active} />
 
           <div
-            className="dc-scroll-thin"
             style={{
-              display: "flex",
-              gap: 14,
-              overflowX: "auto",
-              overflowY: "visible",
-              paddingBottom: 10,
-              paddingTop: 14,
-              marginTop: 6,
-              marginBottom: 10,
+              fontSize: 11,
+              fontWeight: 700,
+              textAlign: "center",
+              color: active ? "#f6f2e9" : "#7e8299",
+              maxWidth: "100%",
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap",
+              marginTop: 4,
             }}
+            title={bot.name}
           >
-            {botProfiles.map((bot) => {
-              const { level } = resolveBotLevel(bot.botLevel);
-              const active = selectedIds.includes(bot.id);
-
-              return (
-                <div
-                  key={bot.id}
-                  role="button"
-                  onClick={() => togglePlayer(bot.id)}
-                  style={{
-                    minWidth: 96,
-                    maxWidth: 96,
-                    background: "transparent",
-                    border: "none",
-                    padding: 0,
-                    display: "flex",
-                    flexDirection: "column",
-                    alignItems: "center",
-                    gap: 6,
-                    flexShrink: 0,
-                    cursor: "pointer",
-                    userSelect: "none",
-                  }}
-                >
-                  {/* ✅ aura sélection = thème (comme JOUEURS) */}
-                  <BotMedallion bot={bot} level={level} active={active} activeGlow={`${primary}aa`} />
-
-                  <div
-                    style={{
-                      fontSize: 11,
-                      fontWeight: 700,
-                      textAlign: "center",
-                      color: active ? "#f6f2e9" : "#7e8299",
-                      maxWidth: "100%",
-                      overflow: "hidden",
-                      textOverflow: "ellipsis",
-                      whiteSpace: "nowrap",
-                      marginTop: 4,
-                    }}
-                    title={bot.name}
-                  >
-                    {bot.name}
-                  </div>
-
-                  <div style={{ marginTop: 2, display: "flex", justifyContent: "center" }}>
-                    <span
-                      style={{
-                        padding: "2px 8px",
-                        borderRadius: 999,
-                        fontSize: 9,
-                        fontWeight: 900,
-                        letterSpacing: 0.7,
-                        textTransform: "uppercase",
-                        background: bot.id.startsWith("bot_pro_")
-                          ? "radial-gradient(circle at 30% 0, #ffeaa8, #f7c85c)"
-                          : "radial-gradient(circle at 30% 0, #6af3ff, #008cff)",
-                        color: "#020611",
-                        boxShadow: bot.id.startsWith("bot_pro_")
-                          ? "0 0 12px rgba(247,200,92,0.5)"
-                          : "0 0 12px rgba(0,172,255,0.55)",
-                        border: "1px solid rgba(255,255,255,0.25)",
-                        whiteSpace: "nowrap",
-                      }}
-                    >
-                      {bot.id.startsWith("bot_pro_") ? "PRO" : "BOT"}
-                    </span>
-                  </div>
-                </div>
-              );
-            })}
+            {bot.name}
           </div>
 
-          <button
-            type="button"
-            onClick={() => (typeof go === "function" ? go("profiles_bots") : null)}
-            style={{
-              padding: "6px 10px",
-              borderRadius: 999,
-              border: `1px solid ${primary}`,
-              background: "rgba(255,255,255,0.04)",
-              color: primary,
-              fontWeight: 800,
-              fontSize: 11,
-              textTransform: "uppercase",
-              letterSpacing: 0.7,
-            }}
-          >
-            Gérer mes bots
-          </button>
-        </section>
+          <div style={{ marginTop: 2, display: "flex", justifyContent: "center" }}>
+            <span
+              style={{
+                padding: "2px 8px",
+                borderRadius: 999,
+                fontSize: 9,
+                fontWeight: 900,
+                letterSpacing: 0.7,
+                textTransform: "uppercase",
+                background: bot.id.startsWith("bot_pro_")
+                  ? "radial-gradient(circle at 30% 0, #ffeaa8, #f7c85c)"
+                  : "radial-gradient(circle at 30% 0, #6af3ff, #008cff)",
+                color: "#020611",
+                boxShadow: bot.id.startsWith("bot_pro_")
+                  ? "0 0 12px rgba(247,200,92,0.5)"
+                  : "0 0 12px rgba(0,172,255,0.55)",
+                border: "1px solid rgba(255,255,255,0.25)",
+                whiteSpace: "nowrap",
+              }}
+            >
+              {bot.id.startsWith("bot_pro_") ? "PRO" : "BOT"}
+            </span>
+          </div>
+        </div>
+      );
+    })}
+  </div>
+
+  <button
+    type="button"
+    onClick={() => (typeof go === "function" ? go("profiles_bots") : null)}
+    style={{
+      padding: "6px 10px",
+      borderRadius: 999,
+      border: `1px solid ${primary}`,
+      background: "rgba(255,255,255,0.04)",
+      color: primary,
+      fontWeight: 800,
+      fontSize: 11,
+      textTransform: "uppercase",
+      letterSpacing: 0.7,
+    }}
+  >
+    Gérer mes bots
+  </button>
+</section>
 
         {/* OPTIONS */}
         <section
