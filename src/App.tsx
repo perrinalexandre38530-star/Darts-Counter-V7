@@ -65,7 +65,7 @@
 // - Option B (propre) : go("petanque_stats_players"), etc. (routes créées ici, pages à créer ensuite)
 // ============================================
 
-import React from "react";
+import * as React from "react";
 import BottomNav from "./components/BottomNav";
 
 import AuthStart from "./pages/AuthStart";
@@ -432,6 +432,8 @@ type Tab =
   | "account_start"
   | "auth_start"
   | "auth_forgot"
+  | "auth_v7_login"
+  | "auth_v7_signup"
   | "home"
   | "gameSelect"
   | "games"
@@ -1033,7 +1035,12 @@ function App() {
   // ✅ SPLASH gate (ne s'affiche pas pendant les flows auth)
   const [showSplash, setShowSplash] = React.useState(() => {
     const h = String(window.location.hash || "");
-    const isAuthFlow = h.startsWith("#/auth/callback") || h.startsWith("#/auth/reset") || h.startsWith("#/auth/forgot");
+    const isAuthFlow =
+    h.startsWith("#/auth/callback") ||
+    h.startsWith("#/auth/reset") ||
+    h.startsWith("#/auth/forgot") ||
+    h.startsWith("#/auth/login") ||
+    h.startsWith("#/auth/signup");
     return !isAuthFlow;
   });
 
@@ -1129,7 +1136,13 @@ function App() {
     setRouteParams(params ?? null);
     setTab(next);
 
-    if (next === "auth_callback" || next === "auth_reset" || next === "auth_forgot") {
+    if (
+      next === "auth_callback" ||
+      next === "auth_reset" ||
+      next === "auth_forgot" ||
+      next === "auth_v7_login" ||
+      next === "auth_v7_signup"
+    ) {
       setShowSplash(false);
     }
 
@@ -1205,7 +1218,12 @@ function App() {
           const hasActive = !!base.activeProfileId;
 
           const h = String(window.location.hash || "");
-          const isAuthFlow = h.startsWith("#/auth/callback") || h.startsWith("#/auth/reset") || h.startsWith("#/auth/forgot");
+          const isAuthFlow =
+           h.startsWith("#/auth/callback") ||
+           h.startsWith("#/auth/reset") ||
+           h.startsWith("#/auth/forgot") ||
+           h.startsWith("#/auth/login") ||
+           h.startsWith("#/auth/signup");
 
           if (!isAuthFlow) {
             if (!hasProfiles || !hasActive) {
@@ -2511,7 +2529,13 @@ function AppGate({ go, tab, children }: { go: (t: any, p?: any) => void; tab: an
 
   // pendant les flows auth, on ne gate pas
   const isAuthFlow =
-    tab === "auth_reset" || tab === "auth_callback" || tab === "auth_forgot" || tab === "auth_start" || tab === "account_start";
+  tab === "auth_reset" ||
+  tab === "auth_callback" ||
+  tab === "auth_forgot" ||
+  tab === "auth_start" ||
+  tab === "account_start" ||
+  tab === "auth_v7_login" ||
+  tab === "auth_v7_signup";
 
   if (!ready) {
     return (

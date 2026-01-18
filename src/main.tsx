@@ -16,6 +16,55 @@ import "./index.css";
 (function attachCrashOverlay() {
   if (typeof window === "undefined") return;
 
+  // ============================================================
+  // StackBlitz / WebContainer hardening
+  // - Au refresh en "Open in new tab", Vite peut invalider des chunks
+  //   (dynamic import failed) et l'app reste blanche.
+  // - On tente une récupération "une seule fois" : purge SW/caches +
+  //   reload avec cache-buster.
+  // ============================================================
+  const SB_RECOVER_KEY = "dc_sb_recover_once_v1";
+
+  const isDynImportFail = (x: any) => {
+    const msg = String(x?.message || x?.reason?.message || x || "");
+    return (
+      msg.includes("Failed to fetch dynamically imported module") ||
+      msg.includes("Importing a module script failed") ||
+      msg.includes("dynamically imported module") ||
+      msg.includes("ChunkLoadError")
+    );
+  };
+
+  const recoverOnce = async () => {
+    try {
+      if (sessionStorage.getItem(SB_RECOVER_KEY) === "1") return;
+      sessionStorage.setItem(SB_RECOVER_KEY, "1");
+
+      // Purge best-effort : SW + CacheStorage (si dispo)
+      try {
+        if ("serviceWorker" in navigator) {
+          const regs = await navigator.serviceWorker.getRegistrations();
+          await Promise.all(regs.map((r) => r.unregister().catch(() => {})));
+        }
+      } catch {}
+      try {
+        if (typeof caches !== "undefined" && (caches as any).keys) {
+          const keys = await (caches as any).keys();
+          await Promise.all(keys.map((k: string) => caches.delete(k)));
+        }
+      } catch {}
+
+      // Reload avec cache-buster (préserve hash)
+      try {
+        const u = new URL(window.location.href);
+        u.searchParams.set("sb", String(Date.now()));
+        window.location.replace(u.toString());
+      } catch {
+        window.location.reload();
+      }
+    } catch {}
+  };
+
   const show = (title: string, err: any) => {
     try {
       const el = document.createElement("pre");
@@ -30,12 +79,16 @@ import "./index.css";
     } catch {}
   };
 
-  window.addEventListener("error", (e: any) =>
-    show("window.error", e?.error || e?.message || e)
-  );
-  window.addEventListener("unhandledrejection", (e: any) =>
-    show("unhandledrejection", e?.reason || e)
-  );
+  window.addEventListener("error", (e: any) => {
+    const payload = e?.error || e?.message || e;
+    if (isDynImportFail(payload)) recoverOnce();
+    show("window.error", payload);
+  });
+  window.addEventListener("unhandledrejection", (e: any) => {
+    const payload = e?.reason || e;
+    if (isDynImportFail(payload)) recoverOnce();
+    show("unhandledrejection", payload);
+  });
 })();
 
 /* ============================================================

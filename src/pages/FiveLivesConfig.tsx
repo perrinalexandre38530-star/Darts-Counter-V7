@@ -7,7 +7,7 @@
 // - Lance FiveLivesPlay via go("five_lives_play", { config })
 // =============================================================
 
-import React from "react";
+import * as React from "react";
 import type { Store, Profile } from "../lib/types";
 import { useTheme } from "../contexts/ThemeContext";
 import { useLang } from "../contexts/LangContext";
