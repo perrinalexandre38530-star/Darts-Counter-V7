@@ -212,7 +212,10 @@ function computeFavsFromHitsMap(hitsBySegment: Record<string, number>) {
   return { favSegment, favSegmentHits, favNumber, favNumberHits, totalHits };
 }
 
-export function computeKillerStatsAggForProfile(memHistory: any[], playerId: string | null): KillerStatsAgg {
+export function computeKillerStatsAggForProfile(
+  memHistory: any[],
+  playerId: string | null
+): KillerStatsAgg {
   const list = Array.isArray(memHistory) ? memHistory : [];
   const killer = list.filter(isKillerRecord);
 
@@ -272,25 +275,40 @@ export function computeKillerStatsAggForProfile(memHistory: any[], playerId: str
 
     // -------- auto-kills --------
     const ak = numOr0(
-      me?.autoKills, me?.auto_kills, me?.autoKillCount, me?.auto_kill_count,
-      sp?.autoKills, sp?.auto_kills, sp?.autoKillCount, sp?.auto_kill_count
+      me?.autoKills,
+      me?.auto_kills,
+      me?.autoKillCount,
+      me?.auto_kill_count,
+      sp?.autoKills,
+      sp?.auto_kills,
+      sp?.autoKillCount,
+      sp?.auto_kill_count
     );
     if (ak > 0) autoKillsTotal += ak;
 
+    // -------- lives taken / lost --------
     const lt = numOr0(
-      me?.livesTaken, me?.damageDealt, me?.dmgDealt,
-      sp?.livesTaken, sp?.damageDealt, sp?.dmgDealt
+      me?.livesTaken,
+      me?.damageDealt,
+      me?.dmgDealt,
+      sp?.livesTaken,
+      sp?.damageDealt,
+      sp?.dmgDealt
     );
     if (lt > 0) livesTakenTotal += lt;
 
     const ll = numOr0(
-      me?.livesLost, me?.damageTaken, me?.dmgTaken,
-      sp?.livesLost, sp?.damageTaken, sp?.dmgTaken
+      me?.livesLost,
+      me?.damageTaken,
+      me?.dmgTaken,
+      sp?.livesLost,
+      sp?.damageTaken,
+      sp?.dmgTaken
     );
     if (ll > 0) livesLostTotal += ll;
 
     // -------- hits by segment (Option A) --------
-    // 1) det
+    // 1) me.hitsBySegment
     const hbs1 = me?.hitsBySegment || me?.hits_by_segment || me?.hits || null;
     if (hbs1 && typeof hbs1 === "object") {
       for (const [seg, c0] of Object.entries(hbs1)) {
@@ -302,7 +320,7 @@ export function computeKillerStatsAggForProfile(memHistory: any[], playerId: str
       }
     }
 
-    // 2) fallback: summary.players[i].hitsBySegment
+    // 2) sp.hitsBySegment
     const hbs2 = sp?.hitsBySegment || sp?.hits_by_segment || sp?.hits || null;
     if (hbs2 && typeof hbs2 === "object") {
       for (const [seg, c0] of Object.entries(hbs2)) {
@@ -314,7 +332,7 @@ export function computeKillerStatsAggForProfile(memHistory: any[], playerId: str
       }
     }
 
-    // 3) ✅ NEW: hitsBySegmentByPlayer map
+    // 3) hitsBySegmentByPlayer map
     const map = extractHitsBySegmentMap(summary);
     const mapForMe = map?.[playerId] || map?.[String(playerId)] || null;
     if (mapForMe && typeof mapForMe === "object") {
@@ -333,7 +351,6 @@ export function computeKillerStatsAggForProfile(memHistory: any[], playerId: str
   const autoKillsAvg = played > 0 ? autoKillsTotal / played : 0;
 
   const fav = computeFavsFromHitsMap(hitsBySegmentAgg);
-  const autoKillsAvg = played > 0 ? autoKillsTotal / played : 0;
 
   return {
     played,
@@ -346,9 +363,6 @@ export function computeKillerStatsAggForProfile(memHistory: any[], playerId: str
 
     livesTakenTotal,
     livesLostTotal,
-
-    autoKillsTotal,
-    autoKillsAvg,
 
     autoKillsTotal,
     autoKillsAvg,

@@ -483,12 +483,12 @@ export default function KillerConfigPage(props: Props) {
     if (!selfHitWhileKiller && selfHitUsesMultiplier) setSelfHitUsesMultiplier(false);
   }, [selfHitWhileKiller]);
 
-  // ✅ FIX BLIND: sécurité anti état impossible
+  // ✅ FIX BLIND: incompatibilité (Blind Killer OFF si '1er lancer = choisir son numéro')
   React.useEffect(() => {
-    if (blindKiller && numberAssignMode === "throw") {
-      setNumberAssignMode("random");
+    if (numberAssignMode === "throw" && blindKiller) {
+      setBlindKiller(false);
     }
-  }, [blindKiller, numberAssignMode]);
+  }, [numberAssignMode, blindKiller]);
 
   const [selectedIds, setSelectedIds] = React.useState<string[]>(() => {
     if (humanProfiles.length >= 2) return [humanProfiles[0].id, humanProfiles[1].id];
@@ -912,6 +912,130 @@ export default function KillerConfigPage(props: Props) {
           )}
         </section>
 
+
+
+        {/* BOTS */}
+        <section
+          style={{
+            background: cardBg,
+            borderRadius: 18,
+            padding: 12,
+            marginBottom: 14,
+            boxShadow: "0 16px 40px rgba(0,0,0,0.55)",
+            border: "1px solid rgba(255,255,255,0.04)",
+          }}
+        >
+          <div style={{ fontSize: 12, textTransform: "uppercase", letterSpacing: 1, fontWeight: 800, color: primary, marginBottom: 10 }}>
+            Bots IA
+          </div>
+
+          <p style={{ fontSize: 11, color: "#7c80a0", marginBottom: 10 }}>
+            Ajoute des bots “PRO” prédéfinis ou tes bots créés dans Profils.
+          </p>
+
+          <div
+            className="dc-scroll-thin"
+            style={{
+              display: "flex",
+              gap: 14,
+              overflowX: "auto",
+              overflowY: "visible",
+              paddingBottom: 10,
+              paddingTop: 14,
+              marginTop: 6,
+              marginBottom: 10,
+            }}
+          >
+            {botProfiles.map((bot) => {
+              const { level } = resolveBotLevel(bot.botLevel);
+              const active = selectedIds.includes(bot.id);
+
+              return (
+                <div
+                  key={bot.id}
+                  role="button"
+                  onClick={() => togglePlayer(bot.id)}
+                  style={{
+                    minWidth: 96,
+                    maxWidth: 96,
+                    background: "transparent",
+                    border: "none",
+                    padding: 0,
+                    display: "flex",
+                    flexDirection: "column",
+                    alignItems: "center",
+                    gap: 6,
+                    flexShrink: 0,
+                    cursor: "pointer",
+                    userSelect: "none",
+                  }}
+                >
+                  <BotMedallion bot={bot} level={level} active={active} />
+
+                  <div
+                    style={{
+                      fontSize: 11,
+                      fontWeight: 700,
+                      textAlign: "center",
+                      color: active ? "#f6f2e9" : "#7e8299",
+                      maxWidth: "100%",
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      whiteSpace: "nowrap",
+                      marginTop: 4,
+                    }}
+                    title={bot.name}
+                  >
+                    {bot.name}
+                  </div>
+
+                  <div style={{ marginTop: 2, display: "flex", justifyContent: "center" }}>
+                    <span
+                      style={{
+                        padding: "2px 8px",
+                        borderRadius: 999,
+                        fontSize: 9,
+                        fontWeight: 900,
+                        letterSpacing: 0.7,
+                        textTransform: "uppercase",
+                        background: bot.id.startsWith("bot_pro_")
+                          ? "radial-gradient(circle at 30% 0, #ffeaa8, #f7c85c)"
+                          : "radial-gradient(circle at 30% 0, #6af3ff, #008cff)",
+                        color: "#020611",
+                        boxShadow: bot.id.startsWith("bot_pro_")
+                          ? "0 0 12px rgba(247,200,92,0.5)"
+                          : "0 0 12px rgba(0,172,255,0.55)",
+                        border: "1px solid rgba(255,255,255,0.25)",
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      {bot.id.startsWith("bot_pro_") ? "PRO" : "BOT"}
+                    </span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          <button
+            type="button"
+            onClick={() => (typeof go === "function" ? go("profiles_bots") : null)}
+            style={{
+              padding: "6px 10px",
+              borderRadius: 999,
+              border: `1px solid ${primary}`,
+              background: "rgba(255,255,255,0.04)",
+              color: primary,
+              fontWeight: 800,
+              fontSize: 11,
+              textTransform: "uppercase",
+              letterSpacing: 0.7,
+            }}
+          >
+            Gérer mes bots
+          </button>
+        </section>
+
         {/* OPTIONS */}
         <section
           style={{
@@ -1118,8 +1242,8 @@ export default function KillerConfigPage(props: Props) {
                 onChange={(v) => setVariant("blindKiller", v)}
                 primary={primary}
                 primarySoft={primarySoft}
-                disabled={isVariantDisabled("blindKiller", variantState) && !blindKiller}
-                disabledReason={getConflictReason("blindKiller", variantState)}
+                disabled={(numberAssignMode === "throw" || isVariantDisabled("blindKiller", variantState)) && !blindKiller}
+                disabledReason={numberAssignMode === "throw" ? "Incompatible avec “1er lancer = choisir son numéro”." : getConflictReason("blindKiller", variantState)}
               />
 
               <VariantRow
@@ -1149,128 +1273,6 @@ export default function KillerConfigPage(props: Props) {
               Astuce : certaines variantes sont <b>exclusives</b> pour garder un gameplay lisible (ex : BULL dégâts vs BULL soins).
             </div>
           </div>
-        </section>
-
-        {/* BOTS */}
-        <section
-          style={{
-            background: cardBg,
-            borderRadius: 18,
-            padding: 12,
-            marginBottom: 80,
-            boxShadow: "0 16px 40px rgba(0,0,0,0.55)",
-            border: "1px solid rgba(255,255,255,0.04)",
-          }}
-        >
-          <div style={{ fontSize: 12, textTransform: "uppercase", letterSpacing: 1, fontWeight: 800, color: primary, marginBottom: 10 }}>
-            Bots IA
-          </div>
-
-          <p style={{ fontSize: 11, color: "#7c80a0", marginBottom: 10 }}>
-            Ajoute des bots “PRO” prédéfinis ou tes bots créés dans Profils.
-          </p>
-
-          <div
-            className="dc-scroll-thin"
-            style={{
-              display: "flex",
-              gap: 14,
-              overflowX: "auto",
-              overflowY: "visible",
-              paddingBottom: 10,
-              paddingTop: 14,
-              marginTop: 6,
-              marginBottom: 10,
-            }}
-          >
-            {botProfiles.map((bot) => {
-              const { level } = resolveBotLevel(bot.botLevel);
-              const active = selectedIds.includes(bot.id);
-
-              return (
-                <div
-                  key={bot.id}
-                  role="button"
-                  onClick={() => togglePlayer(bot.id)}
-                  style={{
-                    minWidth: 96,
-                    maxWidth: 96,
-                    background: "transparent",
-                    border: "none",
-                    padding: 0,
-                    display: "flex",
-                    flexDirection: "column",
-                    alignItems: "center",
-                    gap: 6,
-                    flexShrink: 0,
-                    cursor: "pointer",
-                    userSelect: "none",
-                  }}
-                >
-                  <BotMedallion bot={bot} level={level} active={active} />
-
-                  <div
-                    style={{
-                      fontSize: 11,
-                      fontWeight: 700,
-                      textAlign: "center",
-                      color: active ? "#f6f2e9" : "#7e8299",
-                      maxWidth: "100%",
-                      overflow: "hidden",
-                      textOverflow: "ellipsis",
-                      whiteSpace: "nowrap",
-                      marginTop: 4,
-                    }}
-                    title={bot.name}
-                  >
-                    {bot.name}
-                  </div>
-
-                  <div style={{ marginTop: 2, display: "flex", justifyContent: "center" }}>
-                    <span
-                      style={{
-                        padding: "2px 8px",
-                        borderRadius: 999,
-                        fontSize: 9,
-                        fontWeight: 900,
-                        letterSpacing: 0.7,
-                        textTransform: "uppercase",
-                        background: bot.id.startsWith("bot_pro_")
-                          ? "radial-gradient(circle at 30% 0, #ffeaa8, #f7c85c)"
-                          : "radial-gradient(circle at 30% 0, #6af3ff, #008cff)",
-                        color: "#020611",
-                        boxShadow: bot.id.startsWith("bot_pro_")
-                          ? "0 0 12px rgba(247,200,92,0.5)"
-                          : "0 0 12px rgba(0,172,255,0.55)",
-                        border: "1px solid rgba(255,255,255,0.25)",
-                        whiteSpace: "nowrap",
-                      }}
-                    >
-                      {bot.id.startsWith("bot_pro_") ? "PRO" : "BOT"}
-                    </span>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-
-          <button
-            type="button"
-            onClick={() => (typeof go === "function" ? go("profiles_bots") : null)}
-            style={{
-              padding: "6px 10px",
-              borderRadius: 999,
-              border: `1px solid ${primary}`,
-              background: "rgba(255,255,255,0.04)",
-              color: primary,
-              fontWeight: 800,
-              fontSize: 11,
-              textTransform: "uppercase",
-              letterSpacing: 0.7,
-            }}
-          >
-            Gérer mes bots
-          </button>
         </section>
       </div>
 

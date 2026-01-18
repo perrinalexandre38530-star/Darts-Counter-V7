@@ -466,10 +466,43 @@ async function buildAuthSessionFromSupabase(): Promise<AuthSession | null> {
   return authSession;
 }
 
-// ✅ Compat UI: alias "ensureAutoSession" (RESTORE ONLY)
-// (Certaines pages/hook l'appellent encore. On ne crée PAS d'anon.)
+// ============================================================
+// ✅ ALWAYS-CONNECTED (V8)
+// - On veut une session Supabase disponible en permanence.
+// - Si aucune session: on tente signInAnonymously (si activé côté Supabase).
+// - Sinon: on reste signed_out (l'UI doit proposer de se connecter/créer compte).
+//
+// NOTE: certaines pages historiques appellent encore ensureAutoSession().
+// On le garde en alias vers ensureAnonymousSession().
+// ============================================================
+async function ensureAnonymousSession(): Promise<AuthSession | null> {
+  // 1) Déjà connecté ? -> hydrate depuis Supabase
+  const existing = await buildAuthSessionFromSupabase();
+  if (existing?.user?.id) return existing;
+
+  // 2) Pas de session -> tentative de session anonyme
+  try {
+    // Supabase JS v2: signInAnonymously()
+    // (Si la feature est désactivée côté projet, Supabase renverra une erreur)
+    const { error } = await (supabase.auth as any).signInAnonymously?.();
+    if (error) {
+      console.warn("[onlineApi] signInAnonymously error", error);
+      return null;
+    }
+  } catch (e) {
+    // Méthode absente ou exception
+    console.warn("[onlineApi] signInAnonymously unavailable", e);
+    return null;
+  }
+
+  // 3) Rebuild session
+  const after = await buildAuthSessionFromSupabase();
+  return after;
+}
+
+// ✅ Compat UI: alias legacy
 async function ensureAutoSession(): Promise<AuthSession | null> {
-  return await restoreSession();
+  return await ensureAnonymousSession();
 }
 
 // ============================================================
@@ -1014,6 +1047,7 @@ export const onlineApi = {
   signup,
   login,
   restoreSession,
+  ensureAnonymousSession,
   ensureAutoSession, // ✅ compat UI
   logout,
   getCurrentSession,

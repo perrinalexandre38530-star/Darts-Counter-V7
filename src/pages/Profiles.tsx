@@ -672,8 +672,14 @@ export default function Profiles({
       : "menu"
   );
 
-    // ✅ FORCE auth UI (quand on vient de ONLINE)
-    const forceAuth = !!params?.forceAuth;
+    // ✅ FORCE auth UI (quand on vient de ONLINE / AuthStart / Account)
+    // - params.forceAuth : explicite
+    // - params.mode: signin/signup (compat)
+    const mode = String(params?.mode || "").toLowerCase();
+    const forceAuth = !!params?.forceAuth || mode === "signin" || mode === "signup";
+
+    // ✅ Auto-focus create
+    const autoCreateFlag = !!autoCreate || !!params?.autoCreate || mode === "signup";
 
     // ✅ Retour automatique après login (ex: revenir à ONLINE)
     const returnTo =
@@ -1515,7 +1521,7 @@ React.useEffect(() => {
       }}
       onCreate={addProfile}
       onHydrateProfile={(id, patch) => patchProfilePrivateInfo(id, patch)}
-      autoFocusCreate={autoCreate}
+      autoFocusCreate={autoCreateFlag}
     />
   )}
 </Card>

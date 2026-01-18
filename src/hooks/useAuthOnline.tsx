@@ -1,17 +1,12 @@
 // ============================================================
-// src/hooks/useAuthOnline.tsx
-// Auth ONLINE (Supabase) — V8 ALWAYS-CONNECTED (ANON SESSION)
-// ============================================================
-// Objectif V8:
-// - L'app ne doit JAMAIS rester "signed_out" en usage normal.
-// - Si aucune session -> créer une session anonyme automatiquement.
-// - Le "profil local" ne doit pas conditionner l'auth.
-// - Le "profil cloud" est best-effort (ne bloque jamais l'UI).
-//
-// IMPORTANT:
-// - Nécessite que Supabase "Anonymous sign-ins" soit activé côté projet.
-//   Sinon signInAnonymously échouera -> on retombe en signed_out,
-//   mais avec une erreur claire dans state.error.
+// src/hooks/useAuthOnline.ts
+// Auth ONLINE (Supabase) — robust anti-freeze (FIX CRITIQUE)
+// ✅ RÈGLE: NE JAMAIS bloquer l’UI si profile n’existe pas
+// ✅ L’auth = supabase.auth (session/user) POINT.
+// - init boot: getSession() + onAuthStateChange()
+// - ready=true GARANTI (finally + watchdog) pour éviter blocage AppGate
+// - profile = BONUS (best-effort), n’impacte JAMAIS status/ready
+// - expose: status, ready, loading, session, user, userId, profile, login/signup/logout/refresh
 // ============================================================
 
 import * as React from "react";
@@ -28,7 +23,7 @@ type AuthState = {
   status: AuthStatus;
   session: Session | null;
   user: User | null;
-  profile: OnlineProfile | null; // BONUS best-effort
+  profile: OnlineProfile | null; // ⚠️ BONUS: best-effort uniquement
   error?: string | null;
 };
 
@@ -43,50 +38,16 @@ const initial: AuthState = {
 };
 
 type Ctx = AuthState & {
+  // ✅ NEW: ID utilisateur unique (source of truth)
   userId: string | null;
 
   signup: (payload: { email?: string; nickname: string; password?: string }) => Promise<boolean>;
   login: (payload: { email?: string; nickname?: string; password?: string }) => Promise<boolean>;
-
-  // "logout" en V8 = debug uniquement :
-  // on coupe la session puis on recrée une session anonyme.
   logout: () => Promise<void>;
-
   refresh: () => Promise<void>;
 };
 
 const AuthOnlineContext = React.createContext<Ctx | null>(null);
-
-function applyAuthFromSession(
-  setState: React.Dispatch<React.SetStateAction<AuthState>>,
-  session: Session | null,
-  error: string | null = null
-) {
-  const user = session?.user ?? null;
-
-  if (user) {
-    setState((s) => ({
-      ...s,
-      status: "signed_in",
-      session,
-      user,
-      loading: false,
-      ready: true,
-      error,
-    }));
-  } else {
-    setState((s) => ({
-      ...s,
-      status: "signed_out",
-      session: null,
-      user: null,
-      profile: null,
-      loading: false,
-      ready: true,
-      error,
-    }));
-  }
-}
 
 async function safeGetSession(): Promise<Session | null> {
   try {
@@ -99,71 +60,96 @@ async function safeGetSession(): Promise<Session | null> {
   }
 }
 
-/**
- * V8: crée une session anonyme si aucune session n'existe.
- * Retourne la session (ou null si échec).
- */
-async function ensureAnonSession(): Promise<{ session: Session | null; error: string | null }> {
+async function safeEnsureSession(): Promise<Session | null> {
+  const existing = await safeGetSession();
+  if (existing?.user) return existing;
+
+  // V8 desired behavior: always keep an active session (anonymous fallback).
   try {
-    // 1) si déjà une session -> ok
-    const existing = await safeGetSession();
-    if (existing?.user) return { session: existing, error: null };
-
-    // 2) sinon on tente l'anonymous sign-in
-    // NOTE: Supabase JS v2 expose signInAnonymously()
-    const anyAuth: any = supabase.auth as any;
-
-    if (typeof anyAuth.signInAnonymously !== "function") {
-      const msg =
-        "Supabase JS ne supporte pas signInAnonymously() dans cette version. Mets à jour @supabase/supabase-js (v2) ou active un fallback.";
-      console.warn("[useAuthOnline]", msg);
-      return { session: null, error: msg };
-    }
-
-    const { data, error } = await anyAuth.signInAnonymously();
+    const fn = (supabase.auth as any).signInAnonymously;
+    if (typeof fn !== "function") return null;
+    const { data, error } = await fn.call(supabase.auth);
     if (error) throw error;
-
-    const s = data?.session ?? null;
-    if (!s?.user) {
-      return { session: null, error: "Anonymous sign-in: session vide (inattendu)" };
-    }
-    return { session: s, error: null };
-  } catch (e: any) {
-    const msg =
-      e?.message ||
-      "Impossible de créer la session anonyme. Vérifie que 'Anonymous sign-ins' est activé dans Supabase Auth.";
-    console.warn("[useAuthOnline] ensureAnonSession failed:", e);
-    return { session: null, error: msg };
+    return data?.session ?? null;
+  } catch (e) {
+    console.warn("[useAuthOnline] signInAnonymously failed:", e);
+    return null;
   }
 }
 
+
+
+
+
+
+
+
 /**
- * Profile = BONUS (best-effort).
- * Ne doit JAMAIS bloquer ready/status.
+ * Profile = BONUS.
+ * - Ne doit JAMAIS bloquer ready/status.
+ * - Si l’API profile n’existe pas / RLS / table absente => return null tranquille.
  */
-async function safeLoadProfileBestEffort(): Promise<OnlineProfile | null> {
+async function safeLoadProfileBestEffort(user: User): Promise<OnlineProfile | null> {
   try {
     const api: any = onlineApi as any;
 
+    // ✅ onlineApi.getProfile() (V7) : retourne le profil en cache session (LS) ou null
     if (typeof api.getProfile === "function") {
       const res = await api.getProfile();
       return (res?.profile ?? res ?? null) as OnlineProfile | null;
     }
+
+    // Compat très ancien
     if (typeof api.getMyProfile === "function") {
       const res = await api.getMyProfile();
       return (res?.profile ?? res ?? null) as OnlineProfile | null;
     }
+
     return null;
   } catch (e) {
+    // best-effort : on ne casse jamais l'app si table / RLS / schéma KO
     console.warn("[useAuthOnline] safeLoadProfileBestEffort failed:", e);
     return null;
+  }
+}
+
+/**
+ * ✅ FIX CRITIQUE:
+ * status/ready DOIVENT dépendre UNIQUEMENT de session.user.
+ * profile ne doit JAMAIS conditionner signed_in / signed_out.
+ */
+function applyAuthFromSession(setState: React.Dispatch<React.SetStateAction<AuthState>>, session: Session | null) {
+  const user = session?.user ?? null;
+
+  if (user) {
+    setState((s) => ({
+      ...s,
+      status: "signed_in",
+      session,
+      user,
+      // profile inchangé ici (chargé async en bonus)
+      loading: false,
+      ready: true,
+      error: null,
+    }));
+  } else {
+    setState((s) => ({
+      ...s,
+      status: "signed_out",
+      session: null,
+      user: null,
+      profile: null,
+      loading: false,
+      ready: true,
+      error: null,
+    }));
   }
 }
 
 export function AuthOnlineProvider({ children }: { children: React.ReactNode }) {
   const [state, setState] = React.useState<AuthState>(initial);
 
-  // Watchdog anti-freeze
+  // Watchdog anti-freeze (Safari / SW / storage / erreurs réseau)
   React.useEffect(() => {
     const t = window.setTimeout(() => {
       setState((s) => {
@@ -176,19 +162,31 @@ export function AuthOnlineProvider({ children }: { children: React.ReactNode }) 
   }, []);
 
   const refresh = React.useCallback(async () => {
-    setState((s) => ({ ...s, loading: true, status: "checking", error: null }));
+    try {
+      setState((s) => ({ ...s, loading: true, status: "checking" }));
+      const session = await safeEnsureSession();
 
-    // ✅ V8: garantit une session (anon si besoin)
-    const { session, error } = await ensureAnonSession();
-    applyAuthFromSession(setState, session, error);
+      // ✅ Auth = session/user only
+      applyAuthFromSession(setState, session);
 
-    // BONUS: profile cloud (best-effort)
-    if (session?.user) {
-      const profile = await safeLoadProfileBestEffort();
-      setState((s) => {
-        if (!s.user || s.user.id !== session.user.id) return s;
-        return { ...s, profile };
-      });
+      // ✅ BONUS: profile best-effort (n’impacte PAS ready/status)
+      const user = session?.user ?? null;
+      if (user) {
+        const profile = await safeLoadProfileBestEffort(user);
+        setState((s) => {
+          // si on s’est déconnecté entre temps, on ne force pas le profile
+          if (!s.user || s.user.id !== user.id) return s;
+          return { ...s, profile };
+        });
+      }
+    } catch (e: any) {
+      console.warn("[useAuthOnline] refresh fatal:", e);
+      setState((s) => ({
+        ...s,
+        loading: false,
+        ready: true,
+        error: e?.message || "refresh error",
+      }));
     }
   }, []);
 
@@ -197,54 +195,58 @@ export function AuthOnlineProvider({ children }: { children: React.ReactNode }) 
 
     (async () => {
       try {
-        // ✅ Boot V8: session obligatoire (anon si besoin)
-        const { session, error } = await ensureAnonSession();
+        // PROFILES V7: aucune logique "restore" custom.
+        // Supabase décide de la session (getSession/onAuthStateChange).
+
+        const session = await safeEnsureSession();
         if (!alive) return;
 
-        applyAuthFromSession(setState, session, error);
+        // ✅ Auth = session/user only
+        applyAuthFromSession(setState, session);
 
-        // BONUS profile
-        if (session?.user) {
-          safeLoadProfileBestEffort().then((profile) => {
+        // ✅ BONUS profile async (best-effort)
+        const user = session?.user ?? null;
+        if (user) {
+          safeLoadProfileBestEffort(user).then((profile) => {
             if (!alive) return;
             setState((s) => {
-              if (!s.user || s.user.id !== session.user!.id) return s;
+              if (!s.user || s.user.id !== user.id) return s;
               return { ...s, profile };
             });
           });
         }
 
-        // ✅ subscribe auth changes
+        // subscribe auth changes
         const { data } = supabase.auth.onAuthStateChange((event, nextSession) => {
           try {
             if (!alive) return;
 
-            // Si SIGNED_OUT -> V8: on recrée anon immédiatement en arrière-plan
+            // ✅ Auth = session/user only (peu importe profile)
             if (event === "SIGNED_OUT" || !nextSession?.user) {
-              applyAuthFromSession(setState, null, null);
+              applyAuthFromSession(setState, null);
 
-              // recrée anon
-              ensureAnonSession().then(({ session: s2, error: e2 }) => {
+              // Re-establish an anonymous session so the app is never "disconnected".
+              safeEnsureSession().then((s) => {
                 if (!alive) return;
-                applyAuthFromSession(setState, s2, e2);
+                if (s?.user) applyAuthFromSession(setState, s);
               });
-
               return;
             }
 
-            // signed_in
-            applyAuthFromSession(setState, nextSession, null);
+            applyAuthFromSession(setState, nextSession);
 
-            // BONUS profile
-            safeLoadProfileBestEffort().then((profile) => {
+            // ✅ BONUS profile (best-effort) après changement auth
+            const nextUser = nextSession.user;
+            safeLoadProfileBestEffort(nextUser).then((profile) => {
               if (!alive) return;
               setState((s) => {
-                if (!s.user || s.user.id !== nextSession.user.id) return s;
+                if (!s.user || s.user.id !== nextUser.id) return s;
                 return { ...s, profile };
               });
             });
           } catch (e) {
             console.warn("[useAuthOnline] onAuthStateChange handler error:", e);
+            // IMPORTANT: ne jamais bloquer ready
             setState((s) => ({ ...s, loading: false, ready: true }));
           }
         });
@@ -257,7 +259,10 @@ export function AuthOnlineProvider({ children }: { children: React.ReactNode }) 
       } catch (e) {
         console.warn("[useAuthOnline] boot fatal:", e);
       } finally {
-        if (alive) setState((s) => ({ ...s, loading: false, ready: true }));
+        // ✅ ready garanti quoiqu'il arrive
+        if (alive) {
+          setState((s) => ({ ...s, loading: false, ready: true }));
+        }
       }
     })();
 
@@ -298,17 +303,25 @@ export function AuthOnlineProvider({ children }: { children: React.ReactNode }) 
     [refresh]
   );
 
-  // ✅ V8 logout debug: signOut puis recrée anon
   const logout = React.useCallback(async () => {
     try {
       await supabase.auth.signOut();
     } catch (e) {
       console.warn("[useAuthOnline] signOut error:", e);
     } finally {
-      // V8: on redevient "connecté" via anon
-      await refresh();
+      // ✅ force state clean (auth only)
+      setState((s) => ({
+        ...s,
+        status: "signed_out",
+        session: null,
+        user: null,
+        profile: null,
+        loading: false,
+        ready: true,
+        error: null,
+      }));
     }
-  }, [refresh]);
+  }, []);
 
   const value: Ctx = React.useMemo(
     () => ({
@@ -328,6 +341,7 @@ export function AuthOnlineProvider({ children }: { children: React.ReactNode }) 
 export function useAuthOnline() {
   const ctx = React.useContext(AuthOnlineContext);
   if (!ctx) {
+    // fallback: évite crash si provider manquant
     return {
       ...initial,
       userId: null,

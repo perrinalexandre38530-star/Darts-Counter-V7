@@ -2534,7 +2534,7 @@ const blindKillerOn = truthy(
         // ✅ laisse entendre autokill + death avant un éventuel lastDead
         pendingLastDeadDelayMsRef.current = Math.max(
           pendingLastDeadDelayMsRef.current || 0,
-          900
+          1200
         );
         pendingVoiceRef.current = { kind: "auto_kill", killer: me.name };
   
@@ -2609,6 +2609,9 @@ if (me.killerPhase === "ACTIVE") {
     });
 
     if (me.lives <= 0) {
+      // ✅ Mort par auto-pénalité = on la comptabilise comme AUTO-KILL (stat + SFX)
+      me.autoKills = (me.autoKills ?? 0) + 1;
+
       me.eliminated = true;
       me.eliminatedAt = Date.now();
       me.killerPhase = "ARMING";
@@ -2619,9 +2622,17 @@ if (me.killerPhase === "ACTIVE") {
       }
 
       pushLog(`☠️ ${me.name} meurt par auto-pénalité`);
-      // ✅ enchaîner death après le SFX de self-hit
-      pendingSfxRef.current = pendingSfxRef.current || { kind: "self_hit", mult: thr.mult };
+
+      // ✅ SFX/Voice: autoKill + death (évite le "mur" de sons de fin)
+      pendingSfxRef.current = { kind: "auto_kill", mult: thr.mult };
+      pendingVoiceRef.current = { kind: "auto_kill", killer: me.name };
       pendingDeathAfterRef.current = true;
+
+      // ✅ laisse la place au duo (autokill + death) avant le lastDead de fin
+      pendingLastDeadDelayMsRef.current = Math.max(
+        pendingLastDeadDelayMsRef.current || 0,
+        1200
+      );
     }
 
     return next;
@@ -2693,10 +2704,10 @@ if (me.killerPhase === "ACTIVE") {
       pendingSfxRef.current = pendingSfxRef.current || { kind: "kill", mult: thr.mult };
       pendingDeathAfterRef.current = true;
       // ✅ important: si cette élimination finit la partie, ne lance PAS lastDead immédiatement,
-      // sinon il masque le SFX kill/autoKill. On laisse ~650ms.
+      // sinon il masque le SFX kill/autoKill. On laisse ~1100ms.
       pendingLastDeadDelayMsRef.current = Math.max(
         pendingLastDeadDelayMsRef.current || 0,
-        650
+        1100
       );
     } else {
       pushLog(
@@ -3108,7 +3119,7 @@ if (thrSafe.target === 25) {
         pendingDeathAfterRef.current = true;
         pendingLastDeadDelayMsRef.current = Math.max(
           pendingLastDeadDelayMsRef.current || 0,
-          900
+          1200
         );
         pendingVoiceRef.current = { kind: "auto_kill", killer: me2.name };
 

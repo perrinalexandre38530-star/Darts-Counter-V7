@@ -111,7 +111,7 @@ export default function AuthStart({ go }: Props) {
   
           {/* Primary action */}
           <button
-            onClick={() => go("profiles", { view: "me", mode: "signin" })}
+            onClick={() => go("auth_v7_login")}
             style={{
               width: "100%",
               borderRadius: 999,
@@ -131,7 +131,7 @@ export default function AuthStart({ go }: Props) {
   
           {/* Secondary action */}
           <button
-            onClick={() => go("profiles", { view: "me", autoCreate: true, mode: "signup" })}
+            onClick={() => go("auth_v7_signup")}
             style={{
               width: "100%",
               borderRadius: 999,

@@ -70,6 +70,10 @@ import BottomNav from "./components/BottomNav";
 
 import AuthStart from "./pages/AuthStart";
 import AccountStart from "./pages/AccountStart";
+import AuthV7Login from "./pages/AuthV7Login";
+import AuthV7Signup from "./pages/AuthV7Signup";
+import AuthCallback from "./pages/AuthCallback"; // si présent dans ton projet
+import AuthReset from "./pages/AuthReset"; // si présent dans ton projet
 
 import SplashScreen from "./components/SplashScreen";
 
@@ -1090,6 +1094,18 @@ function App() {
         setTab("spectator");
         return;
       }
+      if (h.startsWith("#/auth/login")) {
+        setShowSplash(false);
+        setRouteParams(null);
+        setTab("auth_v7_login");
+        return;
+      }
+      if (h.startsWith("#/auth/signup")) {
+        setShowSplash(false);
+        setRouteParams(null);
+        setTab("auth_v7_signup");
+        return;
+      }
     };
 
     applyHashRoute();
@@ -1121,11 +1137,18 @@ function App() {
       if (next === "auth_callback") window.location.hash = "#/auth/callback";
       else if (next === "auth_reset") window.location.hash = "#/auth/reset";
       else if (next === "auth_forgot") window.location.hash = "#/auth/forgot";
+      else if (next === "auth_v7_login") window.location.hash = "#/auth/login";
+      else if (next === "auth_v7_signup") window.location.hash = "#/auth/signup";
       else if (next === "online") window.location.hash = "#/online";
       else if (next === "spectator") window.location.hash = "#/spectator";
       else {
         const h = String(window.location.hash || "");
-        if (h.startsWith("#/auth/") || h.startsWith("#/online") || h.startsWith("#/spectator")) window.location.hash = "#/";
+        if (
+          h.startsWith("#/auth/") ||
+          h.startsWith("#/online") ||
+          h.startsWith("#/spectator")
+        )
+          window.location.hash = "#/";
       }
     } catch {}
   }
@@ -1746,13 +1769,25 @@ function App() {
         page = <AuthStart go={go} />;
         break;
 
+      case "auth_v7_login":
+        page = <AuthV7Login go={go} />;
+        break;
+
+      case "auth_v7_signup":
+        page = <AuthV7Signup go={go} />;
+        break;
+
       case "auth_reset":
         page = <AuthResetRoute go={go} />;
         break;
 
       case "account_start":
         page = (
-          <AccountStart onLogin={() => go("profiles", { view: "me" })} onCreate={() => go("profiles", { view: "me" })} onForgot={() => go("auth_forgot")} />
+          <AccountStart
+            onLogin={() => go("auth_start")}
+            onCreate={() => go("auth_start")}
+            onForgot={() => go("auth_forgot")}
+          />
         );
         break;
 

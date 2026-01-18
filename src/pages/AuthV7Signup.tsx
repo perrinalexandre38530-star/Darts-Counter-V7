@@ -111,7 +111,7 @@ export default function AuthV7Signup({ go }: Props) {
             <div style={{ fontSize: 13, opacity: 0.95, lineHeight: 1.35 }}>{info}</div>
           ) : null}
 
-          <button onClick={() => go("account_start")} style={secondaryBtnStyle}>
+          <button onClick={() => go("auth_start")} style={secondaryBtnStyle}>
             Retour
           </button>
         </div>
