@@ -5,6 +5,9 @@
 
 import React from "react";
 import Keypad from "../components/Keypad";
+import BackDot from "../components/BackDot";
+import InfoDot from "../components/InfoDot";
+import { useTheme } from "../contexts/ThemeContext";
 import type { Dart as UIDart, Profile } from "../lib/types";
 import { playSound } from "../lib/sound";
 import { useCurrentProfile } from "../hooks/useCurrentProfile";
@@ -992,6 +995,7 @@ export default function TrainingX01Play({
   go?: (tab: any, p?: any) => void;
   params?: any;
 }) {
+  const { theme } = useTheme();
   // --------------------------------------------------
   // PROFIL COURANT + AVATAR
   // --------------------------------------------------
@@ -1516,56 +1520,27 @@ export default function TrainingX01Play({
             marginBottom: 4,
           }}
         >
-          <button
-            type="button"
-            onClick={handleExit}
-            style={{
-              borderRadius: 10,
-              padding: "5px 10px",
-              border: "1px solid rgba(255,180,0,.35)",
-              background: "linear-gradient(180deg,#ffc63a,#ffaf00)",
-              fontWeight: 900,
-              color: "#1a1a1a",
-              boxShadow: "0 4px 14px rgba(255,170,0,.25)",
-              fontSize: 12,
-            }}
-          >
-            ← Training
-          </button>
+          <div style={{ width: 44, display: "flex", alignItems: "center" }}>
+            <BackDot onClick={handleExit} />
+          </div>
 
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <button
+          <div style={{ flex: 1, textAlign: "center" }}>
+            <div
               style={{
-                borderRadius: 999,
-                padding: "5px 12px",
-                border: "1px solid rgba(255,200,80,.45)",
-                background: "linear-gradient(180deg,#ffd865,#ffb700)",
-                color: "#221800",
-                fontWeight: 800,
-                fontSize: 12,
-              }}
-            >
-              Training X01
-            </button>
-
-            <button
-              onClick={() => setShowInfo(true)}
-              style={{
-                width: 22,
-                height: 22,
-                borderRadius: "50%",
-                background: "#ffffff",
-                border: "1px solid #000",
-                color: "#000",
+                fontSize: 18,
                 fontWeight: 900,
-                fontSize: 13,
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
+                letterSpacing: 0.8,
+                textTransform: "uppercase",
+                color: theme.primary,
+                textShadow: `0 0 12px ${theme.primary}66`,
               }}
             >
-              i
-            </button>
+              TRAINING X01
+            </div>
+          </div>
+
+          <div style={{ width: 44, display: "flex", justifyContent: "flex-end" }}>
+            <InfoDot onClick={() => setShowInfo(true)} />
           </div>
         </div>
 
