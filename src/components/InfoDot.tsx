@@ -1,10 +1,7 @@
 // ============================================
 // src/components/InfoDot.tsx
-// InfoDot robuste (anti "button in button")
-// ✅ Pas de <button> => évite DOM nesting warnings
-// ✅ Click fiable mobile/desktop : onPointerDown + onClick
-// ✅ stopPropagation + preventDefault
-// ✅ NEW: look cohérent avec BackDot (mêmes dimensions/halo/border)
+// Petit bouton rond "i" pour afficher une infobulle / modal.
+// ✅ NEW: style harmonisé BackDot (même border/bg/halo)
 // ============================================
 
 import React from "react";
@@ -12,20 +9,23 @@ import { useTheme } from "../contexts/ThemeContext";
 
 type Props = {
   onClick?: (e: any) => void;
+  color?: string;
   glow?: string;
   title?: string;
-  size?: number; // px
-  color?: string;
+  size?: number;
 };
 
 export default function InfoDot({
   onClick,
-  glow,
-  title = "Info",
-  size = 36,
   color,
+  glow,
+  title = "Infos",
+  size = 36,
 }: Props) {
   const { theme } = useTheme();
+
+  const c = color ?? theme.primary;
+  const halo = glow ?? `${c}88`;
 
   const handle = React.useCallback(
     (e: any) => {
@@ -37,9 +37,6 @@ export default function InfoDot({
     },
     [onClick]
   );
-
-  const c = color ?? theme.primary;
-  const halo = glow ?? c + "88";
 
   return (
     <div
@@ -61,7 +58,7 @@ export default function InfoDot({
         cursor: "pointer",
         userSelect: "none",
         WebkitTapHighlightColor: "transparent",
-        border: `1px solid ${c}66`,
+        border: `1px solid ${theme.borderSoft}`,
         background: "rgba(0,0,0,0.22)",
         boxShadow: `0 0 0 2px rgba(0,0,0,0.15), 0 0 14px ${halo}`,
         color: c,
@@ -71,8 +68,8 @@ export default function InfoDot({
     >
       <span
         style={{
-          fontSize: 18,
-          fontWeight: 1000, // ✅ plus gras, comme la flèche
+          fontSize: 16,
+          fontWeight: 1000,
           lineHeight: 1,
           transform: "translateY(-0.5px)",
           textShadow: `0 0 10px ${halo}`,

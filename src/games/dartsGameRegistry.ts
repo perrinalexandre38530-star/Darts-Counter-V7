@@ -8,12 +8,7 @@
 // - Tous les boutons "i" doivent afficher des regles (infoTitle/infoBody)
 // =============================================================
 
-export type GameCategory =
-  | "classic"
-  | "variant"
-  | "training"
-  | "challenge"
-  | "fun";
+export type GameCategory = "classic" | "variant" | "training" | "challenge" | "fun";
 
 export type DartsGameTab =
   | "x01_config_v3"
@@ -31,6 +26,9 @@ export type DartsGameDef = {
   id: string;
   label: string;
   category: GameCategory;
+
+  // entry sert a distinguer l'affichage "Games" vs "Training hub" si besoin,
+  // mais Games.tsx liste par category/tab/entry (selon ton patch).
   entry: "games" | "training";
 
   tab: DartsGameTab;
@@ -44,7 +42,6 @@ export type DartsGameDef = {
 
   statsKey: string;
   ready: boolean;
-
   popularityRank?: number;
 
   infoTitle: string;
@@ -168,6 +165,42 @@ export const dartsGameRegistry: DartsGameDef[] = [
       "Chaque joueur commence avec 5 vies. Vollee de 3 fleches: tu dois faire STRICTEMENT plus que le score total de la vollee precedente (du joueur avant toi). Si tu echoues, tu perds 1 vie. A 0 vie: elimine. Dernier joueur avec des vies = victoire.",
   },
 
+  // ✅ (12) GOLF en Classique (placeholder engine)
+  {
+    id: "golf",
+    label: "Golf",
+    category: "classic",
+    entry: "games",
+    tab: "mode_not_ready",
+    popularityRank: 8,
+    ready: false,
+    maxPlayers: 8,
+    supportsTeams: true,
+    supportsBots: true,
+    statsKey: "game:golf",
+    infoTitle: "Golf",
+    infoBody:
+      "Jeu en manches (9/18). A la manche N, la cible est le numero N (ou une liste). Scoring selon variante (S/D/T). Objectif courant: score le plus bas. A implementer.",
+  },
+
+  // ✅ (7) SCRAM en Classique (placeholder engine)
+  {
+    id: "scram",
+    label: "Scram",
+    category: "classic",
+    entry: "games",
+    tab: "mode_not_ready",
+    popularityRank: 9,
+    ready: false,
+    maxPlayers: 8,
+    supportsTeams: true,
+    supportsBots: true,
+    statsKey: "game:scram",
+    infoTitle: "Scram",
+    infoBody:
+      "Variante type Cricket a roles (closer/scorer). Une equipe ferme des cibles, l'autre marque sur celles non fermee. Puis inversion. Total points gagne. A implementer.",
+  },
+
   // ===========================================================
   // VARIANTES
   // ===========================================================
@@ -187,15 +220,36 @@ export const dartsGameRegistry: DartsGameDef[] = [
     statsKey: "game:cricket:enculette",
     infoTitle: "Enculette / Vache (variante Cricket)",
     infoBody:
-      "Variante de Cricket. Base: 15-20 + Bull. Particularites a definir (ex: penalites sur fermeture, priorites, ou regles de 'vache'). Pour l'instant: visible dans le menu; la logique sera ajoutee sans impacter Cricket standard.",
+      "Variante de Cricket. Base: 15-20 + Bull. Particularites a definir (penalites, priorites...). Pour l'instant: visible dans le menu; logique a ajouter.",
   },
+
+  // ✅ (4) CUT-THROAT CRICKET (variante)
+  {
+    id: "cricket_cut_throat",
+    label: "Cricket Cut-Throat",
+    category: "variant",
+    entry: "games",
+    tab: "cricket",
+    baseGame: "cricket",
+    variantId: "cut_throat",
+    popularityRank: 21,
+    ready: false,
+    maxPlayers: 8,
+    supportsTeams: true,
+    supportsBots: true,
+    statsKey: "game:cricket:cut_throat",
+    infoTitle: "Cut-Throat Cricket",
+    infoBody:
+      "Quand tu marques sur une cible fermee par TOI (et pas fermee par l'adversaire), les points sont AJOUTES au score des adversaires (au lieu du tien). A implementer dans le moteur Cricket (toggle variante).",
+  },
+
   {
     id: "super_bull",
     label: "Super Bull",
     category: "variant",
     entry: "games",
     tab: "mode_not_ready",
-    popularityRank: 21,
+    popularityRank: 22,
     ready: false,
     maxPlayers: 8,
     supportsTeams: true,
@@ -203,7 +257,7 @@ export const dartsGameRegistry: DartsGameDef[] = [
     statsKey: "game:super_bull",
     infoTitle: "Super Bull",
     infoBody:
-      "Objectif centre. Points majoritairement sur Bull/DBull, avec bonus/malus selon config. Exemple classique: Bull = 25, DBull = 50, objectifs par manches, et victoire au meilleur total ou a un score cible. A implementer.",
+      "Objectif centre. Points sur Bull/DBull, bonus/malus selon config. Victoire au meilleur total ou score cible. A implementer.",
   },
   {
     id: "happy_mille",
@@ -213,7 +267,7 @@ export const dartsGameRegistry: DartsGameDef[] = [
     tab: "x01_config_v3",
     baseGame: "x01",
     variantId: "happy_mille",
-    popularityRank: 22,
+    popularityRank: 23,
     ready: false,
     maxPlayers: 8,
     supportsTeams: true,
@@ -221,7 +275,7 @@ export const dartsGameRegistry: DartsGameDef[] = [
     statsKey: "game:x01:happy_mille",
     infoTitle: "Happy Mille (variante X01)",
     infoBody:
-      "Variante orientee objectif. Exemple courant: atteindre 1000 points (ou autre seuil) en X volles, avec regles de bonus (triples) et penalites. Pour l'instant: mode reference; regles finales a figer avant engine.",
+      "Variante orientee objectif. Exemple: atteindre 1000 points (ou autre seuil) avec regles de bonus (triples) et penalites. A figer avant engine.",
   },
   {
     id: "v170",
@@ -231,7 +285,7 @@ export const dartsGameRegistry: DartsGameDef[] = [
     tab: "x01_config_v3",
     baseGame: "x01",
     variantId: "170",
-    popularityRank: 23,
+    popularityRank: 24,
     ready: false,
     maxPlayers: 8,
     supportsTeams: true,
@@ -239,23 +293,7 @@ export const dartsGameRegistry: DartsGameDef[] = [
     statsKey: "game:x01:170",
     infoTitle: "170 (checkout)",
     infoBody:
-      "Defi checkout. Objectif: terminer 170 (T20 + T20 + Bull) ou serie de fins imposees. Variante possible: suite de checkouts a reussir, timer, ou points par finition. A implementer.",
-  },
-  {
-    id: "scram",
-    label: "Scram",
-    category: "variant",
-    entry: "games",
-    tab: "mode_not_ready",
-    popularityRank: 24,
-    ready: false,
-    maxPlayers: 8,
-    supportsTeams: true,
-    supportsBots: true,
-    statsKey: "game:scram",
-    infoTitle: "Scram (Cricket variant)",
-    infoBody:
-      "Variante Cricket en deux phases. Phase 1: une equipe ferme des nombres. Phase 2: l'autre equipe marque des points sur les nombres non fermes. A la fin, on inverse ou on compare selon regle. A implementer.",
+      "Defi checkout. Objectif: terminer 170 (T20 + T20 + Bull) ou checkouts imposes. A implementer.",
   },
 
   // ===========================================================
@@ -275,7 +313,7 @@ export const dartsGameRegistry: DartsGameDef[] = [
     statsKey: "game:count_up",
     infoTitle: "Count-Up",
     infoBody:
-      "Defi scoring simple: additionne tes points sur un nombre fixe de volles (ex: 10 volles). Points = valeurs S/D/T. Classement au meilleur total. A implementer.",
+      "Defi scoring: additionne tes points sur un nombre fixe de volles (ex: 10). Classement au meilleur total. A implementer.",
   },
   {
     id: "halve_it",
@@ -291,7 +329,7 @@ export const dartsGameRegistry: DartsGameDef[] = [
     statsKey: "game:halve_it",
     infoTitle: "Halve-It",
     infoBody:
-      "Cible imposee par manche (ex: 20, 19, 18... Bull). Si tu touches la cible: tu ajoutes les points. Si tu ne touches pas la cible du round: ton score total est divise par 2. Meilleur score final gagne. A implementer.",
+      "Cible imposee par manche (20, 19, 18... Bull). Si tu ne touches pas la cible du round: ton total est divise par 2. A implementer.",
   },
   {
     id: "bobs_27",
@@ -307,7 +345,7 @@ export const dartsGameRegistry: DartsGameDef[] = [
     statsKey: "game:bobs_27",
     infoTitle: "Bob's 27",
     infoBody:
-      "Defi doubles. Tu commences a 27. Chaque round vise un double (D1 puis D2... ou liste). Double touche: + valeur du double. Double rate (0 double touche sur la volee): - valeur du double (ou penalite). A 0: perdu. A implementer.",
+      "Defi doubles. Tu commences a 27. Chaque round vise un double. Double touche: + points. 0 double touche sur la volee: penalite. A implementer.",
   },
   {
     id: "knockout",
@@ -323,7 +361,7 @@ export const dartsGameRegistry: DartsGameDef[] = [
     statsKey: "game:knockout",
     infoTitle: "Knockout",
     infoBody:
-      "Jeu elimination par score. Exemple classique: tu dois faire plus que le joueur precedent (ou atteindre une cible). En echec, tu perds une vie / tu es elimine. Variante proche des 5 vies mais configurable. A implementer.",
+      "Jeu elimination par score. Variante proche des 5 vies mais configurable. A implementer.",
   },
   {
     id: "shooter",
@@ -339,7 +377,7 @@ export const dartsGameRegistry: DartsGameDef[] = [
     statsKey: "game:shooter",
     infoTitle: "Shooter",
     infoBody:
-      "Defi precision. Exemple: sequence de cibles a toucher (nombres, doubles, triples) avec points par reussite et penalites par raté. Format drills, timer possible. A implementer.",
+      "Defi precision: sequence de cibles a toucher, points et penalites. Timer possible. A implementer.",
   },
   {
     id: "baseball",
@@ -355,7 +393,7 @@ export const dartsGameRegistry: DartsGameDef[] = [
     statsKey: "game:baseball",
     infoTitle: "Baseball",
     infoBody:
-      "9 manches. A la manche N, la cible est le numero N. Points = hits sur la cible (S=1xN, D=2xN, T=3xN selon regle). Variante: homerun sur Bull. Meilleur total gagne. A implementer.",
+      "9 manches. Manche N: cible = N. Points selon hits (S/D/T). Meilleur total gagne. A implementer.",
   },
   {
     id: "football",
@@ -371,7 +409,7 @@ export const dartsGameRegistry: DartsGameDef[] = [
     statsKey: "game:football",
     infoTitle: "Football",
     infoBody:
-      "Jeu a etapes (possession + tir). Exemple courant: gagner la possession en touchant Bull, puis marquer un but en touchant une zone cible (ex: doubles/triples) dans un nombre de fleches. Variantes multiples. A implementer.",
+      "Jeu a etapes: possession (Bull) puis tir/but sur zones. Variantes multiples. A implementer.",
   },
   {
     id: "rugby",
@@ -387,7 +425,7 @@ export const dartsGameRegistry: DartsGameDef[] = [
     statsKey: "game:rugby",
     infoTitle: "Rugby",
     infoBody:
-      "Jeu de territoires/essais. Exemple: progresser sur des zones (20->19->18...) puis marquer essai (Bull) et transformation (double). Le detail depend de la variante choisie. A implementer.",
+      "Jeu de territoires/essais. Progression par zones puis essai (Bull) et transformation (double). A implementer.",
   },
   {
     id: "capital",
@@ -403,7 +441,7 @@ export const dartsGameRegistry: DartsGameDef[] = [
     statsKey: "game:capital",
     infoTitle: "Capital",
     infoBody:
-      "Jeu a objectifs imposes par round. Exemple: chaque manche a une regle (ex: seulement doubles, seulement triples, seulement pairs/impairs). Les points valides comptent, les autres valent 0. Meilleur total gagne. A implementer.",
+      "Objectifs par round (doubles seulement, triples seulement, pairs/impairs...). Points valides uniquement. A implementer.",
   },
   {
     id: "departements",
@@ -419,7 +457,7 @@ export const dartsGameRegistry: DartsGameDef[] = [
     statsKey: "game:departements",
     infoTitle: "Departements",
     infoBody:
-      "Jeu a cibles imposees selon une liste (numeros associes a des departements). Exemple: tirer une carte/departement puis toucher le numero correspondant. Points par reussite, objectifs par serie. A implementer.",
+      "Cibles imposees selon liste (numeros associes). Points par reussite, objectifs par serie. A implementer.",
   },
 
   // ===========================================================
@@ -439,7 +477,7 @@ export const dartsGameRegistry: DartsGameDef[] = [
     statsKey: "game:prisoner",
     infoTitle: "Prisoner",
     infoBody:
-      "Jeu fun a roles/etats. Exemple: un joueur devient prisonnier sur echec, les autres doivent le liberer en touchant une cible specifique. Le detail exact depend de ta variante (a preciser). A implementer.",
+      "Jeu fun a roles. Un joueur devient prisonnier sur echec, les autres le liberent via une cible. A implementer.",
   },
   {
     id: "tic_tac_toe",
@@ -455,7 +493,7 @@ export const dartsGameRegistry: DartsGameDef[] = [
     statsKey: "game:tic_tac_toe",
     infoTitle: "Tic-Tac-Toe",
     infoBody:
-      "Grille 3x3. Chaque case correspond a une cible (ex: 1-9, doubles, ou zones). Un joueur prend une case en touchant la cible. 3 alignees = victoire. Variantes possibles. A implementer.",
+      "Grille 3x3. Chaque case = cible. Une case est prise si la cible est touchee. 3 alignees = victoire. A implementer.",
   },
   {
     id: "bastard",
@@ -471,11 +509,29 @@ export const dartsGameRegistry: DartsGameDef[] = [
     statsKey: "game:batard",
     infoTitle: "Batard",
     infoBody:
-      "Jeu fun type 'apero' avec regles maison (souvent objectifs et penalites). Donne-moi la regle exacte de ton club et je l'encode (sinon placeholder).",
+      "Jeu fun type apero avec regles maison. Donne la regle exacte et je l'encode (sinon placeholder).",
+  },
+
+  // (13) mode fun global (placeholder)
+  {
+    id: "fun_gages",
+    label: "Gages / Mode Fun",
+    category: "fun",
+    entry: "games",
+    tab: "mode_not_ready",
+    popularityRank: 53,
+    ready: false,
+    maxPlayers: 12,
+    supportsTeams: true,
+    supportsBots: true,
+    statsKey: "game:fun_gages",
+    infoTitle: "Gages / Mode Fun",
+    infoBody:
+      "Mode fun transversal (gages) declenche sur des evenements (bust, 180, bull...). A brancher via un toggle Settings + overlay gage. A implementer.",
   },
 
   // ===========================================================
-  // TRAINING (hub existant + onglet Training)
+  // TRAINING (hub existant + onglet Training dans Games)
   // ===========================================================
   {
     id: "training_x01",
@@ -491,7 +547,7 @@ export const dartsGameRegistry: DartsGameDef[] = [
     statsKey: "training:x01",
     infoTitle: "Training X01",
     infoBody:
-      "Entrainement base sur X01. Drills de scoring, fins, routines. Stats dans Evolution. Lancement depuis le hub Training.",
+      "Entrainement base sur X01. Drills de scoring, fins, routines. Stats via la carte Evolution (dans le hub Training).",
   },
   {
     id: "tour_horloge",
@@ -507,30 +563,49 @@ export const dartsGameRegistry: DartsGameDef[] = [
     statsKey: "training:clock",
     infoTitle: "Tour de l'horloge",
     infoBody:
-      "Tu dois toucher les numeros dans l'ordre (souvent 1 a 20). Variantes: simples seulement, doubles, triples. Objectif: finir le tour avec le moins de fleches possible.",
+      "Toucher les numeros dans l'ordre (souvent 1 a 20). Variantes: simples, doubles, triples. Objectif: finir avec le moins de fleches possible.",
   },
+
+  // ✅ AJOUT: ces 2 cartes doivent apparaitre dans Games > onglet Training
   {
-    id: "training_evolution",
-    label: "Evolution (stats)",
+    id: "training_doubleio",
+    label: "Double In / Double Out",
     category: "training",
     entry: "training",
     tab: "training",
-    popularityRank: 999,
-    ready: true,
+    popularityRank: 102,
+    ready: false,
     maxPlayers: 1,
     supportsTeams: false,
     supportsBots: false,
-    statsKey: "training:evolution",
-    infoTitle: "Evolution",
+    statsKey: "training:doubleio",
+    infoTitle: "Double In / Double Out",
     infoBody:
-      "Ce bouton ouvre les stats Training (progression, tendances, records). Ce n'est pas un mode de jeu; il doit etre affiche comme un raccourci stats.",
+      "Drill DI/DO. Objectif: fiabiliser tes doubles. Variantes: Double-In, Double-Out ou les deux. Format possible: tentatives ou mini X01. A implementer.",
   },
+  {
+    id: "training_challenges",
+    label: "Challenges",
+    category: "training",
+    entry: "training",
+    tab: "training",
+    popularityRank: 103,
+    ready: false,
+    maxPlayers: 1,
+    supportsTeams: false,
+    supportsBots: false,
+    statsKey: "training:challenges",
+    infoTitle: "Challenges (Training)",
+    infoBody:
+      "Pack de mini-defis (doubles, bull, triples, regularite). Format court, stats de reussite et series. A implementer.",
+  },
+
   {
     id: "super_bull_training",
     label: "Super Bull (Training)",
     category: "training",
     entry: "training",
-    tab: "mode_not_ready",
+    tab: "training",
     popularityRank: 110,
     ready: false,
     maxPlayers: 1,
@@ -539,7 +614,7 @@ export const dartsGameRegistry: DartsGameDef[] = [
     statsKey: "training:super_bull",
     infoTitle: "Super Bull (Training)",
     infoBody:
-      "Drill centre. Exemple: series de 10 fleches, points Bull/DBull, objectifs progressifs. A implementer.",
+      "Drill centre. Series de fleches, points Bull/DBull, objectifs progressifs. A implementer.",
   },
 ];
 

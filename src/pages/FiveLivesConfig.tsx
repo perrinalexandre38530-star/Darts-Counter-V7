@@ -2,13 +2,13 @@
 // =============================================================
 // src/pages/FiveLivesConfig.tsx
 // LES 5 VIES — CONFIG
-// ✅ UI = EXACTEMENT le pattern de KillerConfig (carrousels profils + bots)
+// ✅ UI = pattern KillerConfig (carrousels profils + bots)
 // - Sélection profils locaux (store.profiles)
 // - Ajout bots : PRO + bots user depuis localStorage dc_bots_v1
 // - Options : vies de départ, ordre de départ aléatoire
 // - Lance FiveLivesPlay via go("five_lives_play", { config })
-// ✅ NEW: BackDot (flèche seule) + bouton "i" (InfoDot) + overlay règles inline
-// ✅ NEW: BackDot/InfoDot harmonisés (même taille / halo / couleur thème)
+// ✅ NEW: BackDot + InfoDot harmonisés (même taille / halo / couleur thème)
+// ✅ FIX: aura sélection BOTS = EXACTEMENT comme JOUEURS (theme.primary)
 // =============================================================
 
 import React from "react";
@@ -188,8 +188,8 @@ function PillButton({ label, active, onClick, primary, primarySoft, compact, dis
         background: bg,
         color,
         fontSize: 12,
-        fontWeight: active && !isDisabled ? 700 : 600,
-        boxShadow: active && !isDisabled ? "0 0 12px rgba(0,0,0,0.7)" : "none",
+        fontWeight: active && !isDisabled ? 800 : 650,
+        boxShadow: active && !isDisabled ? `0 0 14px ${primary}55` : "none",
         whiteSpace: "nowrap",
         opacity: isDisabled ? 0.7 : 1,
         cursor: isDisabled ? "default" : "pointer",
@@ -200,8 +200,20 @@ function PillButton({ label, active, onClick, primary, primarySoft, compact, dis
   );
 }
 
-/* Médaillon BOT – doré PRO, bleu bots user (copié de KillerConfig) */
-function BotMedallion({ bot, level, active }: { bot: BotLite; level: number; active: boolean }) {
+/* Médaillon BOT – doré PRO, bleu bots user (copié de KillerConfig)
+   ✅ FIX: aura sélection = EXACTEMENT comme JOUEURS (theme.primary)
+*/
+function BotMedallion({
+  bot,
+  level,
+  active,
+  activeGlow,
+}: {
+  bot: BotLite;
+  level: number;
+  active: boolean;
+  activeGlow: string; // ex: `${primary}aa`
+}) {
   const isPro = bot.id.startsWith("bot_pro_");
   const COLOR = isPro ? "#f7c85c" : "#00b4ff";
   const COLOR_GLOW = isPro ? "rgba(247,200,92,0.9)" : "rgba(0,172,255,0.65)";
@@ -215,14 +227,13 @@ function BotMedallion({ bot, level, active }: { bot: BotLite; level: number; act
   const lvl = Math.max(1, Math.min(5, level));
   const fakeAvg3d = 15 + (lvl - 1) * 12;
 
-  // ✅ IMPORTANT: passer via profile (ProfileAvatar refuse /assets/ si on le met en dataUrl brut)
   const src = normalizeImgSrc(bot.avatarDataUrl);
   const fakeProfile = React.useMemo(
     () =>
       ({
         id: bot.id,
         name: bot.name,
-        avatarUrl: src, // ✅ avatarUrl gagne dans ProfileAvatar
+        avatarUrl: src,
         avatarDataUrl: null,
       }) as any,
     [bot.id, bot.name, src]
@@ -257,7 +268,7 @@ function BotMedallion({ bot, level, active }: { bot: BotLite; level: number; act
           borderRadius: "50%",
           overflow: "hidden",
           margin: "auto",
-          boxShadow: active ? `0 0 24px ${COLOR_GLOW}` : "0 0 14px rgba(0,0,0,0.65)",
+          boxShadow: active ? `0 0 28px ${activeGlow}` : "0 0 14px rgba(0,0,0,0.65)",
           background: active
             ? `radial-gradient(circle at 30% 20%, #fff8d0, ${COLOR})`
             : "radial-gradient(circle at 30% 20%, rgba(255,255,255,0.08), rgba(0,0,0,0.6))",
@@ -296,6 +307,10 @@ export default function FiveLivesConfig({ store, go, onBack, onStart, onStartGam
   const profiles: Profile[] = store?.profiles ?? [];
   const humanProfiles = React.useMemo(() => profiles.filter((p: any) => !(p as any)?.isBot), [profiles]);
 
+  const [startingLives, setStartingLives] = React.useState<number>(5);
+  const [randomStartOrder, setRandomStartOrder] = React.useState<boolean>(true);
+  const [infoOpen, setInfoOpen] = React.useState(false);
+
   const userBots = React.useMemo(() => loadUserBots(), []);
   const botProfiles: BotLite[] = React.useMemo(() => {
     const pro = PRO_BOTS.map((b) => ({ ...b, avatarDataUrl: normalizeImgSrc(b.avatarDataUrl) ?? null }));
@@ -308,14 +323,13 @@ export default function FiveLivesConfig({ store, go, onBack, onStart, onStartGam
     return Array.from(byId.values());
   }, [userBots]);
 
-  const [startingLives, setStartingLives] = React.useState<number>(5);
-  const [randomStartOrder, setRandomStartOrder] = React.useState<boolean>(true);
-
-  const [infoOpen, setInfoOpen] = React.useState(false);
-
   const [selectedIds, setSelectedIds] = React.useState<string[]>(() => {
-    if (humanProfiles.length >= 2) return [humanProfiles[0].id, humanProfiles[1].id];
-    if (humanProfiles.length === 1) return [humanProfiles[0].id];
+    // init : 2 humains si possible
+    if (profiles?.length) {
+      const hp = (profiles as any[]).filter((p) => !(p as any)?.isBot);
+      if (hp.length >= 2) return [hp[0].id, hp[1].id];
+      if (hp.length === 1) return [hp[0].id];
+    }
     return [];
   });
 
@@ -384,19 +398,14 @@ export default function FiveLivesConfig({ store, go, onBack, onStart, onStartGam
     };
 
     const startCb = onStart || onStartGame || onPlay;
-    if (startCb) {
-      startCb(cfg);
-      return;
-    }
-    if (typeof go === "function") {
-      go("five_lives_play", { config: cfg });
-      return;
-    }
+    if (startCb) return startCb(cfg);
+    if (typeof go === "function") return go("five_lives_play", { config: cfg });
+
     console.error("[FiveLivesConfig] Aucun callback de start fourni (onStart/onStartGame/onPlay/go).");
     alert("Impossible de lancer : callback manquant (voir console).");
   }
 
-  // ✅ mêmes paramètres pour BackDot et InfoDot (cohérence)
+  // ✅ mêmes paramètres pour BackDot et InfoDot
   const DOT_SIZE = 36;
   const DOT_GLOW = `${primary}88`;
 
@@ -414,7 +423,6 @@ export default function FiveLivesConfig({ store, go, onBack, onStart, onStartGam
     >
       {/* HEADER */}
       <header style={{ marginBottom: 10 }}>
-        {/* Row unique : BackDot | Titre centré | InfoDot */}
         <div
           style={{
             display: "grid",
@@ -450,17 +458,10 @@ export default function FiveLivesConfig({ store, go, onBack, onStart, onStartGam
           </div>
 
           <div style={{ display: "flex", justifyContent: "flex-end" }}>
-            <InfoDot
-              onClick={() => setInfoOpen(true)}
-              title="Règles"
-              size={DOT_SIZE}
-              color={primary}
-              glow={DOT_GLOW}
-            />
+            <InfoDot onClick={() => setInfoOpen(true)} title="Règles" size={DOT_SIZE} color={primary} glow={DOT_GLOW} />
           </div>
         </div>
 
-        {/* Sous-titre (2e ligne) */}
         <div style={{ textAlign: "center", fontSize: 12, opacity: 0.75, color: "#d9d9e4" }}>
           Volée de 3 fléchettes : tu dois battre STRICTEMENT le score précédent.
         </div>
@@ -504,7 +505,7 @@ export default function FiveLivesConfig({ store, go, onBack, onStart, onStartGam
                   paddingRight: 8,
                 }}
               >
-                {humanProfiles.map((p) => {
+                {humanProfiles.map((p: any) => {
                   const active = selectedIds.includes(p.id);
 
                   return (
@@ -638,7 +639,8 @@ export default function FiveLivesConfig({ store, go, onBack, onStart, onStartGam
                     userSelect: "none",
                   }}
                 >
-                  <BotMedallion bot={bot} level={level} active={active} />
+                  {/* ✅ aura sélection = thème (comme JOUEURS) */}
+                  <BotMedallion bot={bot} level={level} active={active} activeGlow={`${primary}aa`} />
 
                   <div
                     style={{
@@ -780,7 +782,7 @@ export default function FiveLivesConfig({ store, go, onBack, onStart, onStartGam
               textTransform: "uppercase",
               background: canStart ? `linear-gradient(90deg, ${primary}, #ffe9a3)` : "rgba(120,120,120,0.5)",
               color: canStart ? "#151515" : "#2b2bb2",
-              boxShadow: canStart ? "0 0 18px rgba(255, 207, 120, 0.65)" : "none",
+              boxShadow: canStart ? `0 0 18px ${primary}66` : "none",
               opacity: canStart ? 1 : 0.6,
               cursor: canStart ? "pointer" : "default",
             }}
@@ -797,7 +799,7 @@ export default function FiveLivesConfig({ store, go, onBack, onStart, onStartGam
         </div>
       </div>
 
-      {/* ✅ Overlay règles (inline) */}
+      {/* OVERLAY règles */}
       {infoOpen && (
         <div
           onClick={() => setInfoOpen(false)}
@@ -843,14 +845,13 @@ export default function FiveLivesConfig({ store, go, onBack, onStart, onStartGam
               </div>
 
               <div style={{ marginBottom: 10 }}>
-                <b style={{ color: theme.text }}>Principe :</b> chaque joueur commence avec <b>{startingLives}</b>{" "}
-                vies. Une manche = <b>3 fléchettes</b>. Tu dois faire un score <b>STRICTEMENT supérieur</b> au score du
-                joueur précédent.
+                <b style={{ color: theme.text }}>Principe :</b> chaque joueur commence avec <b>{startingLives}</b> vies.
+                Une manche = <b>3 fléchettes</b>. Tu dois faire un score <b>STRICTEMENT supérieur</b> au score du joueur
+                précédent.
               </div>
 
               <div style={{ marginBottom: 10 }}>
-                <b style={{ color: theme.text }}>Échec :</b> si ton score est <b>≤</b> au score à battre, tu perds{" "}
-                <b>1 vie</b>.
+                <b style={{ color: theme.text }}>Échec :</b> si ton score est <b>≤</b> au score à battre, tu perds <b>1 vie</b>.
               </div>
 
               <div style={{ marginBottom: 10 }}>

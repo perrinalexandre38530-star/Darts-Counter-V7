@@ -13,6 +13,7 @@ import type { Store } from "../lib/types";
 import { useTheme } from "../contexts/ThemeContext";
 import { useLang } from "../contexts/LangContext";
 import InfoDot from "../components/InfoDot";
+import ProfileAvatar from "../components/ProfileAvatar";
 
 type Props = {
   store: Store;
@@ -97,17 +98,7 @@ function pillStyle(active: boolean, theme: any): React.CSSProperties {
   };
 }
 
-function avatarCircle(p: PlayerLite, theme: any): React.CSSProperties {
-  return {
-    width: 44,
-    height: 44,
-    borderRadius: "50%",
-    border: `1px solid ${theme.borderSoft}`,
-    background: p.avatarDataUrl ? `url(${p.avatarDataUrl}) center/cover no-repeat` : "rgba(255,255,255,.08)",
-    flex: "0 0 auto",
-    boxShadow: `0 8px 18px rgba(0,0,0,.45)`,
-  };
-}
+// NOTE: avatars rendus via ProfileAvatar (médaillon), comme dans les autres configs.
 
 export default function WarfareConfigPage({ store, go }: Props) {
   const { theme } = useTheme();
@@ -197,17 +188,51 @@ export default function WarfareConfigPage({ store, go }: Props) {
     return { TOP: t("warfare.army.top", "Armée SUPÉRIEURE"), BOTTOM: t("warfare.army.bottom", "Armée INFÉRIEURE") };
   }, [layout, t]);
 
-  // Ensemble des joueurs déjà attribués à une armée (pour griser / bloquer l'autre armée)
-  const chosen = React.useMemo(
-    () => new Set([...teams.TOP.map((p) => p.id), ...teams.BOTTOM.map((p) => p.id)]),
-    [teams]
-  );
-
   const CARD_BG = theme.card;
   const PAGE_BG = theme.bg;
 
   function TeamBlock({ teamKey }: { teamKey: keyof WarfareTeams }) {
     const current = teams[teamKey];
+    const otherKey: keyof WarfareTeams = teamKey === "TOP" ? "BOTTOM" : "TOP";
+    const otherIds = new Set(teams[otherKey].map((p) => p.id));
+    const currentIds = new Set(current.map((p) => p.id));
+    // Dans le carrousel de sélection, on masque :
+    // - les joueurs déjà pris par l'autre armée
+    // - ET ceux déjà sélectionnés dans CETTE armée (sinon doublon visuel)
+    const candidates = allPlayers.filter((p) => !otherIds.has(p.id) && !currentIds.has(p.id));
+
+    const Medallion = ({ p, active }: { p: PlayerLite; active: boolean }) => (
+      <div
+        style={{
+          width: 78,
+          height: 78,
+          borderRadius: "50%",
+          overflow: "hidden",
+          boxShadow: active ? `0 0 28px ${theme.primary}aa` : "0 0 14px rgba(0,0,0,0.65)",
+          background: active
+            ? `radial-gradient(circle at 30% 20%, #fff8d0, ${theme.primary})`
+            : "#111320",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+        }}
+      >
+        <div
+          style={{
+            width: "100%",
+            height: "100%",
+            borderRadius: "50%",
+            overflow: "hidden",
+            filter: active ? "none" : "grayscale(100%) brightness(0.55)",
+            opacity: active ? 1 : 0.6,
+            transition: "filter .2s ease, opacity .2s ease",
+          }}
+        >
+          <ProfileAvatar profile={p as any} size={78} />
+        </div>
+      </div>
+    );
+
     return (
       <div
         style={{
@@ -225,107 +250,137 @@ export default function WarfareConfigPage({ store, go }: Props) {
           <div style={{ fontSize: 12, color: theme.textSoft }}>{current.length}/{MAX_PER_TEAM}</div>
         </div>
 
-        {/* Sélection actuelle */}
-        <div style={{ marginTop: 10, display: "flex", gap: 10, overflowX: "auto", paddingBottom: 6 }}>
+        {/* Sélection actuelle (médaillons) */}
+        <div
+          className="dc-scroll-thin"
+          style={{
+            marginTop: 12,
+            display: "flex",
+            gap: 18,
+            overflowX: "auto",
+            paddingBottom: 10,
+            paddingLeft: 6,
+            paddingRight: 6,
+          }}
+        >
           {current.length === 0 ? (
-            <div style={{ color: theme.textSoft, fontSize: 13 }}>{t("warfare.team.empty", "Ajoute au moins 1 joueur")}</div>
+            <div style={{ color: theme.textSoft, fontSize: 13, paddingBottom: 2 }}>
+              {t("warfare.team.empty", "Ajoute au moins 1 joueur")}
+            </div>
           ) : (
             current.map((p) => (
-              <button
+              <div
                 key={p.id}
+                role="button"
                 onClick={() => removeFrom(teamKey, p.id)}
                 title={t("common.remove", "Retirer")}
                 style={{
+                  minWidth: 122,
+                  maxWidth: 122,
+                  background: "transparent",
+                  border: "none",
+                  padding: 0,
                   display: "flex",
+                  flexDirection: "column",
                   alignItems: "center",
-                  gap: 10,
-                  padding: 10,
-                  borderRadius: 16,
-                  border: `1px solid ${theme.borderSoft}`,
-                  background: "rgba(255,255,255,.05)",
-                  color: theme.text,
+                  gap: 7,
+                  flexShrink: 0,
                   cursor: "pointer",
+                  userSelect: "none",
                 }}
               >
-                <div style={avatarCircle(p, theme)} />
-                <div style={{ display: "flex", flexDirection: "column", lineHeight: 1.1 }}>
-                  <div style={{ fontWeight: 900, fontSize: 13 }}>{p.name}</div>
-                  <div style={{ fontSize: 11, color: theme.textSoft }}>{t("common.tapToRemove", "Clique pour retirer")}</div>
+                <Medallion p={p} active={true} />
+                <div
+                  style={{
+                    fontSize: 12,
+                    fontWeight: 800,
+                    textAlign: "center",
+                    color: "#f6f2e9",
+                    maxWidth: "100%",
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    whiteSpace: "nowrap",
+                  }}
+                  title={p.name}
+                >
+                  {p.name}
                 </div>
-              </button>
+              </div>
             ))
           )}
         </div>
 
         {/* Carrousel de sélection */}
-        <div style={{ marginTop: 10, fontSize: 12, color: theme.textSoft }}>
+        <div style={{ marginTop: 6, fontSize: 12, color: theme.textSoft }}>
           {t("warfare.team.pick", "Sélectionner des joueurs")}
         </div>
-        <div style={{ marginTop: 8, display: "flex", gap: 10, overflowX: "auto", paddingBottom: 6 }}>
-          {allPlayers.map((p) => {
-            const inThis = current.some((x) => x.id === p.id);
-            const inOther = !inThis && chosen.has(p.id);
-            const full = !inThis && current.length >= MAX_PER_TEAM;
 
-            const disabled = inOther || full;
-            const opacity = inOther ? 0.28 : full ? 0.45 : 1;
+        <div
+          className="dc-scroll-thin"
+          style={{
+            marginTop: 10,
+            display: "flex",
+            gap: 18,
+            overflowX: "auto",
+            paddingBottom: 10,
+            paddingLeft: 6,
+            paddingRight: 6,
+          }}
+        >
+          {candidates.map((p) => {
+            const inThis = current.some((x) => x.id === p.id);
+            const full = !inThis && current.length >= MAX_PER_TEAM;
+            const disabled = full;
 
             return (
-              <button
+              <div
                 key={p.id}
+                role="button"
                 onClick={() => {
+                  if (disabled) return;
                   if (inThis) removeFrom(teamKey, p.id);
                   else addTo(teamKey, p);
                 }}
-                disabled={disabled}
+                title={disabled ? t("warfare.team.full", "Armée complète") : p.name}
                 style={{
-                  minWidth: 150,
+                  minWidth: 122,
+                  maxWidth: 122,
+                  background: "transparent",
+                  border: "none",
+                  padding: 0,
                   display: "flex",
+                  flexDirection: "column",
                   alignItems: "center",
-                  gap: 10,
-                  padding: 10,
-                  borderRadius: 16,
-                  border: inThis ? `1px solid ${theme.primary}88` : `1px solid ${theme.borderSoft}`,
-                  background: inThis ? theme.primary + "12" : theme.card,
-                  color: theme.text,
+                  gap: 7,
+                  flexShrink: 0,
                   cursor: disabled ? "default" : "pointer",
-                  opacity,
-                  boxShadow: inThis ? `0 0 18px ${theme.primary}22` : "none",
+                  userSelect: "none",
+                  opacity: disabled ? 0.45 : 1,
                 }}
-                title={inOther ? t("warfare.team.unavailable", "Déjà choisi dans l’autre armée") : p.name}
               >
+                <Medallion p={p} active={inThis} />
                 <div
                   style={{
-                    ...avatarCircle(p, theme),
-                    border: inThis ? `2px solid ${theme.primary}` : `1px solid ${theme.borderSoft}`,
-                    boxShadow: inThis ? `0 0 16px ${theme.primary}44` : `0 8px 18px rgba(0,0,0,.45)`,
-                    filter: inOther ? "grayscale(1)" : "none",
+                    fontSize: 12,
+                    fontWeight: 800,
+                    textAlign: "center",
+                    color: inThis ? theme.primary : theme.text,
+                    maxWidth: "100%",
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    whiteSpace: "nowrap",
                   }}
-                />
-                <div style={{ display: "flex", flexDirection: "column", lineHeight: 1.1, minWidth: 0 }}>
-                  <div style={{ fontWeight: 900, fontSize: 13, color: inThis ? theme.primary : theme.text }}>
-                    {p.name}
-                  </div>
-                  <div style={{ fontSize: 11, color: theme.textSoft }}>
-                    {inThis
-                      ? t("warfare.team.tapToRemove", "Clique pour retirer")
-                      : inOther
-                        ? t("warfare.team.inOther", "Déjà dans l’autre armée")
-                        : p.isBot
-                          ? "BOT"
-                          : t("common.player", "Joueur")}
-                  </div>
+                  title={p.name}
+                >
+                  {p.name}
                 </div>
-              </button>
+              </div>
             );
           })}
         </div>
 
         <div style={{ marginTop: 6, fontSize: 12, color: theme.textSoft }}>
-          {t(
-            "warfare.team.hint",
-            "Un joueur ne peut appartenir qu’à une seule armée (il reste grisé dans l’autre)."
-          )}
+          {t("warfare.team.hint", "Un joueur choisi dans une armée disparaît de l’autre carrousel.")}
         </div>
       </div>
     );
