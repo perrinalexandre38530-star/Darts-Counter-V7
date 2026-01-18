@@ -1,22 +1,22 @@
 // ============================================
 // src/pages/Games.tsx — Sélecteur de modes de jeu
 // Style harmonisé avec TrainingMenu (cartes néon)
-// - Cartes sombres, titre néon
-// - Pastille "i" à droite => panneau d'aide (traductions via t())
-// - Modes grisés : non cliquables (enabled = false) + "Coming soon"
 //
 // ✅ CHANGE (REQUEST FINAL):
-// - Conserver STATISTIQUES (vert) tout en haut (sans bouton i) -> menu Stats
-// - Conserver FAVORIS (centrés, sans i) SANS annotations "Ton mode ... préféré"
-// - Remettre les cartes TRAINING et TOURNOIS SOUS les favoris
+// - STATISTIQUES (vert) tout en haut (sans bouton i) -> menu Stats
+// - FAVORIS (centrés, sans i) + AUCUNE annotation
+// - FAVORIS calculés automatiquement via le NOMBRE DE PARTIES JOUÉES (history)
+//   => plus d’appui long / plus de localStorage fav
+// - Remettre les cartes TRAINING et TOURNOIS sous les favoris
 //   et AU-DESSUS des onglets, séparés par une barre de séparation thème
 // - IMPORTANT ROUTING :
 //   * Carte TRAINING => ouvre le HUB Training (tab "training")
-//   * Favori TRAINING (ex: "Training X01") => ouvre sa CONFIG dédiée si elle existe
+//   * Favori TRAINING => ouvre sa CONFIG dédiée si elle existe
 //     - training_x01 => tab "training_x01" (TrainingX01Config)
 //     - tour_horloge => tab "training_clock" (TrainingClockConfig)
 //     - autres trainings => fallback vers "training" (hub)
 // - Onglets colorisés par catégorie comme les favoris
+// - SUPPRIMER l’onglet "TRAINING" (mais garder la carte TRAINING au-dessus)
 // ============================================
 
 import React from "react";
@@ -30,6 +30,7 @@ import {
   type GameCategory,
   type DartsGameDef,
 } from "../games/dartsGameRegistry";
+import { History } from "../lib/history";
 
 type Props = {
   setTab: (tab: any, params?: any) => void;
@@ -42,18 +43,25 @@ type InfoGame = {
   ready: boolean;
 };
 
-const LS_FAV_PREFIX = "dc:fav:darts:";
+type PlayCountMap = Record<string, number>;
 
-function getFavKey(cat: GameCategory) {
-  return `${LS_FAV_PREFIX}${cat}`;
+function safeUpper(s: string) {
+  return (s || "").toUpperCase();
 }
 
-function getFavoriteId(cat: GameCategory): string | null {
-  try {
-    return localStorage.getItem(getFavKey(cat));
-  } catch {
-    return null;
-  }
+// ✅ derive a “count key” from history records for a given game def
+// We count primarily on `rec.kind` (used by most play pages), fallback to known mode fields.
+function matchRecordToGameId(rec: any, gameId: string): boolean {
+  const k = String(rec?.kind || "");
+  if (k && k === gameId) return true;
+
+  const m1 = String(rec?.game?.mode || "");
+  const m2 = String(rec?.mode || "");
+  const m3 = String(rec?.summary?.mode || "");
+  const m4 = String(rec?.payload?.mode || "");
+
+  // Some modes might store mode-like fields; keep it conservative.
+  return m1 === gameId || m2 === gameId || m3 === gameId || m4 === gameId;
 }
 
 function pickDefaultFavorite(cat: GameCategory): DartsGameDef | null {
@@ -61,38 +69,112 @@ function pickDefaultFavorite(cat: GameCategory): DartsGameDef | null {
   return list[0] ?? null;
 }
 
-function resolveFavorite(cat: GameCategory): DartsGameDef | null {
-  const favId = getFavoriteId(cat);
-  if (favId) {
-    const found = DARTS_GAMES.find((g) => g.id === favId && g.category === cat);
-    if (found) return found;
+function pickFavoriteByCounts(cat: GameCategory, counts: PlayCountMap): DartsGameDef | null {
+  const list = DARTS_GAMES.filter((g) => g.category === cat).slice().sort(sortByPopularity);
+  if (!list.length) return null;
+
+  let best: DartsGameDef | null = null;
+  let bestCount = -1;
+
+  for (const g of list) {
+    const c = counts[g.id] ?? 0;
+    if (c > bestCount) {
+      bestCount = c;
+      best = g;
+    }
   }
-  return pickDefaultFavorite(cat);
+
+  // If no games played in this category => default favorite (by popularity)
+  if (bestCount <= 0) return pickDefaultFavorite(cat);
+  return best;
 }
 
 export default function Games({ setTab }: Props) {
   const { theme } = useTheme();
   const { t } = useLang();
+
   const [activeCat, setActiveCat] = React.useState<GameCategory>("classic");
   const [infoGame, setInfoGame] = React.useState<InfoGame | null>(null);
 
+  // ✅ counts from history (finished matches)
+  const [counts, setCounts] = React.useState<PlayCountMap>({});
+
   const PAGE_BG = theme.bg;
   const CARD_BG = theme.card;
+
+  // ✅ Séparateur visuel (barre néon)
+  const separatorBar = (
+    <div
+      style={{
+        height: 1,
+        margin: "12px 4px",
+        background: `linear-gradient(90deg,
+          rgba(0,0,0,0),
+          ${theme.primary}AA,
+          rgba(255,255,255,0.10),
+          ${theme.primary}AA,
+          rgba(0,0,0,0)
+        )`,
+        boxShadow: `0 0 14px ${theme.primary}55`,
+        borderRadius: 999,
+      }}
+    />
+  );
 
   function navigate(tab: string, params?: any) {
     setTab(tab, params);
   }
 
+  // ✅ Load counts once (and keep resilient)
+  React.useEffect(() => {
+    let alive = true;
+
+    (async () => {
+      try {
+        const rows = await History.listFinished();
+        const map: PlayCountMap = {};
+
+        for (const r of rows as any[]) {
+          // Count against every known game id (small list => ok)
+          for (const g of DARTS_GAMES) {
+            if (matchRecordToGameId(r, g.id)) {
+              map[g.id] = (map[g.id] ?? 0) + 1;
+            }
+          }
+        }
+
+        if (alive) setCounts(map);
+      } catch {
+        if (alive) setCounts({});
+      }
+    })();
+
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  // ✅ Remove TRAINING tab entirely (keep its card above)
+  const visibleCategories = React.useMemo(
+    () => GAME_CATEGORIES.filter((c) => c.id !== "training"),
+    []
+  );
+
+  // ✅ If someone ends up on "training" via stale state, force back to classic.
+  React.useEffect(() => {
+    if (activeCat === "training") setActiveCat("classic");
+  }, [activeCat]);
+
   const gamesForCat = React.useMemo(() => {
     return DARTS_GAMES.filter((g) => g.category === activeCat).slice().sort(sortByPopularity);
   }, [activeCat]);
 
-  // Favorites
-  const favClassic = React.useMemo(() => resolveFavorite("classic"), []);
-  const favTraining = React.useMemo(() => resolveFavorite("training"), []);
-  const favVariant = React.useMemo(() => resolveFavorite("variant"), []);
-  const favChallenge = React.useMemo(() => resolveFavorite("challenge"), []);
-  const favFun = React.useMemo(() => resolveFavorite("fun"), []);
+  // Favorites (computed from counts)
+  const favClassic = React.useMemo(() => pickFavoriteByCounts("classic", counts), [counts]);
+  const favTraining = React.useMemo(() => pickFavoriteByCounts("training", counts), [counts]);
+  const favVariant = React.useMemo(() => pickFavoriteByCounts("variant", counts), [counts]);
+  const favChallenge = React.useMemo(() => pickFavoriteByCounts("challenge", counts), [counts]);
+  const favFun = React.useMemo(() => pickFavoriteByCounts("fun", counts), [counts]);
 
   // Styles helpers
   function tintedCardStyle(tint: { border: string; bg: string; title: string; glow: string }) {
@@ -148,7 +230,6 @@ export default function Games({ setTab }: Props) {
 
   function tintForCategory(cat: GameCategory) {
     if (cat === "classic") return TINT_CLASSIC;
-    if (cat === "training") return TINT_TRAINING;
     if (cat === "variant") return TINT_VARIANT;
     if (cat === "challenge") return TINT_CHALLENGE;
     return TINT_FUN;
@@ -157,10 +238,8 @@ export default function Games({ setTab }: Props) {
   // ✅ Routing du favori training : config dédiée quand disponible
   function trainingFavoriteTarget(game: DartsGameDef | null): { tab: string; params?: any } {
     if (!game) return { tab: "training" };
-    // Si ton App.tsx utilise d'autres noms, adapte ici uniquement.
     if (game.id === "training_x01") return { tab: "training_x01" };
     if (game.id === "tour_horloge") return { tab: "training_clock" };
-    // autres trainings : hub
     return { tab: "training" };
   }
 
@@ -172,24 +251,23 @@ export default function Games({ setTab }: Props) {
     kind: "classic" | "training" | "variant" | "challenge" | "fun";
   }) {
     const g = opts.game;
-  
+
     const disabled = g ? !g.ready : true;
-    const label = g ? g.label : t("games.fav.none", "Aucun favori");
-  
+    const label = g ? safeUpper(g.label) : safeUpper(t("games.fav.none", "AUCUN"));
+
     let goTab = g ? g.tab : opts.fallbackTab;
     let params: any = undefined;
-  
-    // ✅ cas training favori : config dédiée quand dispo
+
     if (opts.kind === "training") {
-      if (g?.id === "training_x01") goTab = "training_x01";
-      else if (g?.id === "tour_horloge") goTab = "training_clock";
-      else goTab = "training";
+      const target = trainingFavoriteTarget(g);
+      goTab = target.tab;
+      params = target.params;
     }
-  
+
     const glow = opts.tint.glow;
     const border = opts.tint.border;
     const titleColor = opts.tint.title;
-  
+
     return (
       <button
         onClick={() => setTab(disabled ? "mode_not_ready" : goTab, params)}
@@ -203,8 +281,7 @@ export default function Games({ setTab }: Props) {
           overflow: "hidden",
           userSelect: "none",
           WebkitTapHighlightColor: "transparent",
-  
-          // ✅ “design”
+
           border: `1px solid ${border}`,
           background: opts.tint.bg,
           boxShadow: disabled
@@ -215,7 +292,6 @@ export default function Games({ setTab }: Props) {
           transition: "transform 140ms ease, box-shadow 140ms ease, opacity 140ms ease",
         }}
         onMouseDown={(e) => {
-          // micro “press” (desktop)
           (e.currentTarget as HTMLButtonElement).style.transform = "scale(0.992)";
         }}
         onMouseUp={(e) => {
@@ -237,8 +313,8 @@ export default function Games({ setTab }: Props) {
             filter: "blur(2px)",
           }}
         />
-  
-        {/* Sheen diagonal (reflet) */}
+
+        {/* Sheen diagonal */}
         <div
           aria-hidden
           style={{
@@ -254,7 +330,7 @@ export default function Games({ setTab }: Props) {
             pointerEvents: "none",
           }}
         />
-  
+
         {/* Inner border subtle */}
         <div
           aria-hidden
@@ -266,8 +342,44 @@ export default function Games({ setTab }: Props) {
             pointerEvents: "none",
           }}
         />
-  
-        {/* Title category */}
+
+        {/* Watermark ★ */}
+        <div
+          aria-hidden
+          style={{
+            position: "absolute",
+            inset: 0,
+            display: "grid",
+            placeItems: "center",
+            fontSize: 64,
+            fontWeight: 900,
+            color: "rgba(255,255,255,0.08)",
+            transform: "translateY(6px)",
+            pointerEvents: "none",
+            textShadow: `0 0 24px ${glow}`,
+            opacity: disabled ? 0.05 : 0.08,
+          }}
+        >
+          ★
+        </div>
+
+        {/* Pill top-right */}
+        <div
+          aria-hidden
+          style={{
+            position: "absolute",
+            right: 10,
+            top: 10,
+            width: 10,
+            height: 10,
+            borderRadius: 999,
+            background: titleColor,
+            boxShadow: `0 0 10px ${glow}, 0 0 18px ${glow}`,
+            opacity: disabled ? 0.35 : 0.85,
+            pointerEvents: "none",
+          }}
+        />
+
         <div
           style={{
             fontSize: 12,
@@ -276,12 +388,13 @@ export default function Games({ setTab }: Props) {
             color: titleColor,
             textTransform: "uppercase",
             textShadow: `0 0 12px ${glow}`,
+            position: "relative",
+            zIndex: 1,
           }}
         >
           {opts.title}
         </div>
-  
-        {/* Main label */}
+
         <div
           style={{
             marginTop: 6,
@@ -291,27 +404,15 @@ export default function Games({ setTab }: Props) {
             color: "#fff",
             textTransform: "uppercase",
             textShadow: disabled ? "none" : "0 0 10px rgba(0,0,0,0.35)",
+            position: "relative",
+            zIndex: 1,
           }}
         >
           {label}
         </div>
-  
-        {/* ❌ AUCUNE annotation (ni “préféré”, ni “bientôt disponible”) */}
-      </button>
-    );
-  }
 
-  function separatorBar() {
-    return (
-      <div
-        style={{
-          height: 2,
-          borderRadius: 999,
-          background: `linear-gradient(90deg, transparent, ${theme.primary}88, transparent)`,
-          boxShadow: `0 0 14px ${theme.primary}44`,
-          margin: "8px 2px",
-        }}
-      />
+        {/* ✅ AUCUNE annotation */}
+      </button>
     );
   }
 
@@ -351,20 +452,15 @@ export default function Games({ setTab }: Props) {
 
       {/* ✅ Top : Stats + Favoris */}
       <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 10 }}>
-        {/* STATS (vert) - centre */}
+        {/* STATS (vert) - centré, sans i */}
         <button
-          onClick={() => {
-            // ⚠️ adapte si ton App.tsx utilise un autre tab (ex: "stats_shell")
-            navigate("stats");
-          }}
+          onClick={() => navigate("stats")}
           style={{
             position: "relative",
             width: "100%",
             padding: 14,
             textAlign: "center",
             borderRadius: 16,
-            border: `1px solid ${theme.borderSoft}`,
-            background: CARD_BG,
             cursor: "pointer",
             overflow: "hidden",
             ...tintedCardStyle(TINT_STATS),
@@ -382,8 +478,6 @@ export default function Games({ setTab }: Props) {
           >
             {t("games.stats.title", "STATISTIQUES")}
           </div>
-
-          {/* ✅ suppression du sous-texte */}
         </button>
 
         {renderFavoriteCard({
@@ -427,7 +521,7 @@ export default function Games({ setTab }: Props) {
         })}
 
         {/* ✅ Séparateur thème */}
-        {separatorBar()}
+        {separatorBar}
 
         {/* ✅ Remettre TRAINING + TOURNOIS sous les favoris */}
         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
@@ -464,7 +558,14 @@ export default function Games({ setTab }: Props) {
               {t("games.training.subtitle", "Améliore ta progression.")}
             </div>
 
-            <div style={{ position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)" }}>
+            <div
+              style={{
+                position: "absolute",
+                right: 10,
+                top: "50%",
+                transform: "translateY(-50%)",
+              }}
+            >
               <InfoDot
                 onClick={(ev) => {
                   ev.stopPropagation();
@@ -473,7 +574,7 @@ export default function Games({ setTab }: Props) {
                     ready: true,
                     infoTitle: "Training",
                     infoBody:
-                      "Hub d'entraînement : accès à Training X01, Tour de l'horloge, et autres drills (selon implémentation).",
+                      "Hub d'entraînement : accès à Training X01, Tour de l'horloge et autres drills (selon implémentation).",
                   });
                 }}
                 glow={theme.primary + "88"}
@@ -514,7 +615,14 @@ export default function Games({ setTab }: Props) {
               {t("games.tournaments.subtitle", "Crée des tournois en local (poules, élimination…).")}
             </div>
 
-            <div style={{ position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)" }}>
+            <div
+              style={{
+                position: "absolute",
+                right: 10,
+                top: "50%",
+                transform: "translateY(-50%)",
+              }}
+            >
               <InfoDot
                 onClick={(ev) => {
                   ev.stopPropagation();
@@ -533,7 +641,7 @@ export default function Games({ setTab }: Props) {
         </div>
       </div>
 
-      {/* ✅ Onglets catégories - couleurs liées aux favoris */}
+      {/* ✅ Onglets catégories - couleurs liées aux favoris (sans TRAINING) */}
       <div
         style={{
           display: "flex",
@@ -543,7 +651,7 @@ export default function Games({ setTab }: Props) {
           marginBottom: 12,
         }}
       >
-        {GAME_CATEGORIES.map((c) => {
+        {visibleCategories.map((c) => {
           const on = c.id === activeCat;
           const tint = tintForCategory(c.id);
 
@@ -615,7 +723,14 @@ export default function Games({ setTab }: Props) {
                 )}
               </div>
 
-              <div style={{ position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)" }}>
+              <div
+                style={{
+                  position: "absolute",
+                  right: 10,
+                  top: "50%",
+                  transform: "translateY(-50%)",
+                }}
+              >
                 <InfoDot
                   onClick={(ev) => {
                     ev.stopPropagation();

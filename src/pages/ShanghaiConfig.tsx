@@ -16,6 +16,7 @@ import type { Store } from "../lib/types";
 import { useTheme } from "../contexts/ThemeContext";
 import { useLang } from "../contexts/LangContext";
 import InfoDot from "../components/InfoDot";
+import BackDot from "../components/BackDot";
 
 // ✅ NEW
 import { setSfxEnabled } from "../lib/sfx";
@@ -296,31 +297,36 @@ export default function ShanghaiConfigPage({ store, go }: Props) {
       }}
     >
       <div style={{ padding: 16, maxWidth: 520, margin: "0 auto" }}>
-        {/* Row top: back + info */}
-        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <button
-            onClick={() => go("games")}
-            style={{
-              padding: "8px 12px",
-              borderRadius: 999,
-              border: `1px solid ${theme.borderSoft}`,
-              background: "rgba(0,0,0,0.22)",
-              color: theme.text,
-              fontWeight: 900,
-              cursor: "pointer",
-            }}
-          >
-            ← {t("common.back", "Retour")}
-          </button>
-          <div style={{ flex: 1 }} />
-          <div
-            onClick={(e) => {
-              e.stopPropagation();
-              setInfoOpen(true);
-            }}
-            style={{ display: "grid", placeItems: "center" }}
-          >
-            <InfoDot glow={theme.primary + "88"} />
+        {/* Header (1 ligne) : BackDot / Titre centré / InfoDot */}
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "44px 1fr 44px",
+            alignItems: "center",
+            gap: 10,
+            marginBottom: 8,
+          }}
+        >
+          <div style={{ display: "flex", justifyContent: "flex-start" }}>
+            <BackDot
+              onClick={() => go("games")}
+              title={t("common.back", "Retour")}
+              size={36}
+              color={theme.primary}
+              glow={theme.primary + "88"}
+            />
+          </div>
+
+          <div />
+
+          <div style={{ display: "flex", justifyContent: "flex-end" }}>
+            <InfoDot
+              onClick={() => setInfoOpen(true)}
+              title={t("common.rules", "Règles")}
+              size={36}
+              color={theme.primary}
+              glow={theme.primary + "88"}
+            />
           </div>
         </div>
 

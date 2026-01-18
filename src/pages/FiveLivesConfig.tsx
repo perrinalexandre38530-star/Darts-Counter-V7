@@ -200,10 +200,10 @@ function PillButton({ label, active, onClick, primary, primarySoft, compact, dis
   );
 }
 
-/* Médaillon BOT – PRO doré / bots user bleu
-   ✅ On GARDE le StarRing MEME quand sélectionné
-   ✅ On SUPPRIME le cercle/halo de sélection (pas de boxShadow "active")
-   ✅ La sélection = avatar redevient couleur + opacité (comme joueurs)
+/* Médaillon BOT – étoiles à l'extérieur (StarRing hors médaillon)
+   ✅ StarRing toujours visible (hors disque)
+   ✅ Aucun cercle/halo de sélection
+   ✅ Sélection = couleur / désélection = gris (comme carousel joueurs)
 */
 function BotMedallion({
   bot,
@@ -222,7 +222,9 @@ function BotMedallion({
   const AVATAR = 96 * SCALE;
   const MEDALLION = 104 * SCALE;
   const STAR = 18 * SCALE;
-  const WRAP = MEDALLION + STAR;
+
+  // ✅ WRAP plus grand pour que les étoiles soient "dehors"
+  const WRAP = MEDALLION + STAR * 2;
 
   const lvl = Math.max(1, Math.min(5, level));
   const fakeAvg3d = 15 + (lvl - 1) * 12;
@@ -240,15 +242,23 @@ function BotMedallion({
   );
 
   return (
-    <div style={{ position: "relative", width: WRAP, height: WRAP, flex: "0 0 auto", overflow: "visible" }}>
-      {/* ✅ StarRing TOUJOURS visible */}
+    <div
+      style={{
+        position: "relative",
+        width: WRAP,
+        height: WRAP,
+        flex: "0 0 auto",
+        overflow: "visible",
+      }}
+    >
+      {/* ✅ StarRing = toujours visible, AU-DESSUS, "dehors" */}
       <div
         aria-hidden
         style={{
           position: "absolute",
           inset: 0,
           pointerEvents: "none",
-          zIndex: 3,
+          zIndex: 5,
           filter: `drop-shadow(0 0 6px ${COLOR_GLOW})`,
         }}
       >
@@ -262,22 +272,27 @@ function BotMedallion({
         />
       </div>
 
+      {/* ✅ Disque médaillon centré, SANS halo active */}
       <div
         style={{
+          position: "absolute",
+          left: "50%",
+          top: "50%",
           width: MEDALLION,
           height: MEDALLION,
+          transform: "translate(-50%, -50%)",
           borderRadius: "50%",
           overflow: "hidden",
-          margin: "auto",
 
-          // ✅ IMPORTANT: PAS de halo/cercle "active"
+          // ✅ Pas de cercle de sélection
           boxShadow: "0 0 14px rgba(0,0,0,0.65)",
 
-          // fond neutre (pas de radial active)
+          // ✅ fond neutre (transparent autour = c'est le WRAP qui est "vide")
           background: "radial-gradient(circle at 30% 20%, rgba(255,255,255,0.08), rgba(0,0,0,0.6))",
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
+          zIndex: 2, // sous le StarRing
         }}
       >
         <div
@@ -287,7 +302,7 @@ function BotMedallion({
             borderRadius: "50%",
             overflow: "hidden",
 
-            // ✅ Sélection = même logique que joueurs (couleur vs gris)
+            // ✅ EXACTEMENT comme joueurs : couleur si selected, gris si non
             filter: active ? "none" : "grayscale(100%) brightness(0.55)",
             opacity: active ? 1 : 0.6,
             transition: "filter .2s ease, opacity .2s ease",
@@ -299,6 +314,7 @@ function BotMedallion({
     </div>
   );
 }
+
 
 export default function FiveLivesConfig({ store, go, onBack, onStart, onStartGame, onPlay }: Props) {
   const { theme } = useTheme();

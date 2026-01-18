@@ -14,6 +14,7 @@ import React from "react";
 import { useTheme } from "../contexts/ThemeContext";
 import { useLang } from "../contexts/LangContext";
 import InfoDot from "../components/InfoDot";
+import BackDot from "../components/BackDot";
 import Keypad from "../components/Keypad";
 import type { Dart as UIDart } from "../lib/types";
 
@@ -101,6 +102,128 @@ function avatarFallback(name: string) {
   const a = (parts[0]?.[0] || "J").toUpperCase();
   const b = (parts[1]?.[0] || "").toUpperCase();
   return (a + b).slice(0, 2);
+}
+
+
+// ✅ KPI style (reprise Killer)
+function HeartKpi({ value }: { value: any }) {
+  const pink = "#ff79d6";
+  return (
+    <div
+      style={{
+        width: 56,
+        height: 48,
+        position: "relative",
+        display: "grid",
+        placeItems: "center",
+        filter: "drop-shadow(0 10px 18px rgba(255,121,214,.22))",
+      }}
+    >
+      <svg width="56" height="48" viewBox="0 0 48 42" style={{ position: "absolute", inset: 0 }}>
+        <defs>
+          <linearGradient id="brHeartPinkG" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0" stopColor="rgba(255,121,214,.36)" />
+            <stop offset="1" stopColor="rgba(0,0,0,.42)" />
+          </linearGradient>
+        </defs>
+        <path
+          d="M24 40s-18-10.8-18-24C6 9.6 10.2 5 16 5c3.1 0 6 1.5 8 4.2C26 6.5 28.9 5 32 5c5.8 0 10 4.6 10 11 0 13.2-18 24-18 24z"
+          fill="url(#brHeartPinkG)"
+          stroke="rgba(255,121,214,.82)"
+          strokeWidth="1.35"
+        />
+        <path
+          d="M24 39s-17-10.2-17-23C7 10.1 11 6 16 6c3 0 5.6 1.6 7.4 4.2C25.4 7.6 28 6 32 6c5 0 9 4.1 9 10 0 12.8-17 23-17 23z"
+          fill="rgba(255,121,214,.10)"
+        />
+      </svg>
+      <div
+        style={{
+          position: "relative",
+          textAlign: "center",
+          lineHeight: 1,
+          fontSize: 18,
+          fontWeight: 1000,
+          color: "#fff",
+          transform: "translateY(2px)",
+          textShadow: "0 2px 10px rgba(0,0,0,.55), 0 1px 0 rgba(0,0,0,.35)",
+        }}
+      >
+        {value}
+      </div>
+    </div>
+  );
+}
+
+function SurvivorKpi({ value }: { value: any }) {
+  const textPinkDark = "#7a0f44";
+  return (
+    <div
+      style={{
+        width: 56,
+        height: 48,
+        position: "relative",
+        display: "grid",
+        placeItems: "center",
+        filter: "drop-shadow(0 0 4px rgba(255, 55, 170, .16))",
+      }}
+    >
+      <svg width="56" height="48" viewBox="0 0 56 48" style={{ position: "absolute", inset: 0 }}>
+        <path
+          d="M28 25c6 0 11-5 11-11S34 3 28 3 17 8 17 14s5 11 11 11z"
+          fill="#ffffff"
+          stroke="rgba(255,255,255,.9)"
+          strokeWidth="1.1"
+        />
+        <path
+          d="M10 45c1-10 10-16 18-16s17 6 18 16"
+          fill="#ffffff"
+          stroke="rgba(255,255,255,.85)"
+          strokeWidth="1.25"
+          strokeLinejoin="round"
+        />
+      </svg>
+      <div
+        style={{
+          position: "relative",
+          textAlign: "center",
+          lineHeight: 1,
+          fontSize: 18,
+          fontWeight: 1000,
+          color: textPinkDark,
+          transform: "translateY(2px)",
+          textShadow: "-1px -1px 0 #fff, 1px -1px 0 #fff, -1px 1px 0 #fff, 1px 1px 0 #fff, 0 0 6px rgba(255,255,255,.22)",
+        }}
+      >
+        {value}
+      </div>
+    </div>
+  );
+}
+
+function DartsDots({ total, used }: { total: number; used: number }) {
+  const n = Math.max(1, Math.min(3, Number(total) || 3));
+  const u = Math.max(0, Math.min(n, Number(used) || 0));
+  return (
+    <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+      {Array.from({ length: n }).map((_, i) => {
+        const hit = i < u;
+        return (
+          <div
+            key={i}
+            style={{
+              width: 12,
+              height: 12,
+              borderRadius: 999,
+              border: `1px solid ${hit ? theme.primary + "AA" : theme.borderSoft}`,
+              background: hit ? theme.primary : "rgba(0,0,0,0.25)",
+              boxShadow: hit ? `0 0 12px ${theme.primary}66` : "none",
+            }}
+          />
+        );
+      })}
+    </div>
+  );
 }
 
 function computeFinalRanking(players: BRPlayerState[]) {
@@ -462,22 +585,13 @@ export default function BattleRoyalePlay({ go, config, onFinish }: Props) {
         }}
       >
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <button
+          <BackDot
             onClick={() => go("battle_royale")}
-            style={{
-              border: `1px solid ${theme.borderSoft}`,
-              background: "rgba(0,0,0,0.25)",
-              color: theme.text,
-              padding: "8px 12px",
-              borderRadius: 999,
-              fontWeight: 900,
-              cursor: "pointer",
-            }}
-          >
-            {t("common.back", "← Retour")}
-          </button>
+            glow={theme.primary + "88"}
+            title={t("common.back", "Retour")}
+          />
 
-          <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ flex: 1, minWidth: 0, textAlign: "center" }}>
             <div
               style={{
                 fontSize: 16,
@@ -493,15 +607,12 @@ export default function BattleRoyalePlay({ go, config, onFinish }: Props) {
             >
               BATTLE ROYALE
             </div>
-            <div style={{ fontSize: 12, color: theme.textSoft, fontWeight: 900 }}>
-              {t("common.round", "Round")} {roundIndex + 1} • {t("common.target", "Cible")}{" "}
-              {fmtTarget(target)}
+            <div style={{ fontSize: 12, color: theme.textSoft, fontWeight: 900, marginTop: 2 }}>
+              {t("common.round", "Round")} {roundIndex + 1} • {t("common.target", "Cible")} {fmtTarget(target)}
             </div>
           </div>
 
-          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <InfoDot onClick={() => setInfoOpen(true)} />
-          </div>
+          <InfoDot onClick={() => setInfoOpen(true)} glow={theme.primary + "88"} />
         </div>
       </div>
 
@@ -517,104 +628,208 @@ export default function BattleRoyalePlay({ go, config, onFinish }: Props) {
         }}
       >
         <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 10, maxWidth: 860, margin: "0 auto" }}>
-        <div style={{ ...cardShell, padding: 12 }}>
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
-            <div style={{ fontWeight: 1000, letterSpacing: 0.4 }}>
-              {t("common.activePlayer", "Joueur actif")}
-            </div>
-            <div style={miniBadge}>
-              {aliveCount} {t("common.alive", "vivants")}
-            </div>
-          </div>
 
-          <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 10 }}>
+        <div style={{ ...cardShell, width: "100%" }}>
+          <div
+            style={{
+              padding: 8,
+              display: "grid",
+              gridTemplateColumns: "1fr 1fr",
+              gap: 8,
+              alignItems: "stretch",
+            }}
+          >
+            {/* gauche (reprend ShanghaiPlay) */}
             <div
               style={{
-                width: 54,
-                height: 54,
-                borderRadius: "50%",
-                overflow: "hidden",
-                border: `2px solid ${theme.primary}66`,
-                boxShadow: `0 0 18px ${theme.primary}44`,
-                background: "rgba(0,0,0,0.25)",
-                flex: "0 0 auto",
+                borderRadius: 16,
+                border: `1px solid ${theme.borderSoft}`,
+                background: "rgba(0,0,0,0.18)",
+                padding: 8,
                 display: "grid",
-                placeItems: "center",
-                fontWeight: 1000,
+                gap: 8,
               }}
             >
-              {activePlayer?.avatarDataUrl ? (
-                <img
-                  src={activePlayer.avatarDataUrl}
-                  alt=""
-                  style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
-                />
-              ) : (
-                <span>{avatarFallback(activePlayer?.name || "J")}</span>
-              )}
-            </div>
+              <div style={{ display: "flex", gap: 8 }}>
+                <div
+                  style={{
+                    flex: 1,
+                    borderRadius: 14,
+                    border: `1px solid ${theme.primary}44`,
+                    background: "linear-gradient(180deg, rgba(0,0,0,.22), rgba(0,0,0,.34))",
+                    boxShadow: `0 0 18px ${theme.primary}22`,
+                    padding: "5px 10px",
+                    display: "grid",
+                    placeItems: "center",
+                    minHeight: 36,
+                  }}
+                >
+                  <div style={{ fontSize: 10.2, letterSpacing: 0.9, opacity: 0.85, textTransform: "uppercase" }}>
+                    {t("common.round", "Round")}
+                  </div>
+                  <div
+                    style={{
+                      fontSize: 16,
+                      fontWeight: 1000,
+                      color: theme.primary,
+                      textShadow: `0 0 10px ${theme.primary}55`,
+                      lineHeight: 1,
+                      marginTop: 1,
+                    }}
+                  >
+                    {roundIndex + 1}
+                  </div>
+                </div>
 
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontSize: 16, fontWeight: 1000, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                {activePlayer?.name || "—"}
+                <div
+                  style={{
+                    flex: 1,
+                    borderRadius: 14,
+                    border: `1px solid ${theme.primary}44`,
+                    background: "linear-gradient(180deg, rgba(0,0,0,.22), rgba(0,0,0,.34))",
+                    boxShadow: `0 0 18px ${theme.primary}22`,
+                    padding: "5px 10px",
+                    display: "grid",
+                    placeItems: "center",
+                    minHeight: 36,
+                  }}
+                >
+                  <div style={{ fontSize: 10.2, letterSpacing: 0.9, opacity: 0.85, textTransform: "uppercase" }}>
+                    {t("common.target", "Cible")}
+                  </div>
+                  <div
+                    style={{
+                      fontSize: 16,
+                      fontWeight: 1000,
+                      color: theme.primary,
+                      textShadow: `0 0 10px ${theme.primary}55`,
+                      lineHeight: 1,
+                      marginTop: 1,
+                    }}
+                  >
+                    {fmtTarget(target)}
+                  </div>
+                </div>
               </div>
-              <div style={{ display: "flex", gap: 8, marginTop: 6, flexWrap: "wrap" }}>
-                {eliminationRule === "life_system" && (
-                  <div style={miniBadge}>
-                    {t("common.lives", "Vies")}: {activePlayer?.lives ?? 0}
-                  </div>
-                )}
-                {eliminationRule === "miss_x" && (
-                  <div style={miniBadge}>
-                    {t("common.misses", "Ratés")}: {activePlayer?.misses ?? 0}/{missLimit}
-                  </div>
-                )}
-                <div style={miniBadge}>
-                  {t("common.darts", "Fléchettes")}: {dartsPerTurn}
+
+              <div
+                style={{
+                  borderRadius: 16,
+                  border: `1px solid ${theme.borderSoft}`,
+                  background: "rgba(0,0,0,0.14)",
+                  padding: 8,
+                  display: "grid",
+                  placeItems: "center",
+                }}
+              >
+                <div
+                  style={{
+                    width: 84,
+                    height: 84,
+                    borderRadius: 999,
+                    overflow: "hidden",
+                    background: "rgba(0,0,0,0.22)",
+                    border: `1px solid ${theme.borderSoft}`,
+                    boxShadow: `0 0 16px rgba(0,0,0,.35)`,
+                    display: "grid",
+                    placeItems: "center",
+                  }}
+                >
+                  {activePlayer?.avatarDataUrl ? (
+                    <img
+                      src={activePlayer.avatarDataUrl}
+                      alt=""
+                      draggable={false}
+                      style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
+                    />
+                  ) : (
+                    <span style={{ opacity: 0.75, fontWeight: 950, fontSize: 22 }}>
+                      {avatarFallback(activePlayer?.name || "J")}
+                    </span>
+                  )}
                 </div>
               </div>
             </div>
 
+            {/* droite */}
             <div
               style={{
-                width: 70,
-                height: 70,
-                borderRadius: 18,
-                border: `1px solid ${theme.primary}55`,
-                background: `linear-gradient(180deg, ${theme.primary}20, rgba(0,0,0,.25))`,
-                boxShadow: `0 0 22px ${theme.primary}2b`,
+                borderRadius: 16,
+                border: `1px solid ${theme.borderSoft}`,
+                background: "rgba(0,0,0,0.18)",
+                padding: 8,
                 display: "grid",
-                placeItems: "center",
+                gap: 8,
               }}
             >
-              <div style={{ fontSize: 22, fontWeight: 1100, letterSpacing: 0.6 }}>
-                {fmtTarget(target)}
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ fontSize: 10.5, letterSpacing: 0.9, opacity: 0.85, textTransform: "uppercase" }}>
+                    {t("common.activePlayer", "Joueur actif")}
+                  </div>
+                  <div
+                    style={{
+                      fontSize: 16,
+                      fontWeight: 1000,
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    {activePlayer?.name || "—"}
+                  </div>
+                </div>
+
+                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                  {eliminationRule === "life_system" ? (
+                    <HeartKpi value={activePlayer?.lives ?? 0} />
+                  ) : (
+                    <div style={miniBadge}>
+                      {t("common.misses", "Ratés")}: {activePlayer?.misses ?? 0}/{missLimit}
+                    </div>
+                  )}
+                  <SurvivorKpi value={aliveCount} />
+                </div>
               </div>
-              <div style={{ fontSize: 11, fontWeight: 900, color: theme.textSoft }}>
-                {t("common.target", "Cible")}
+
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  gap: 10,
+                  borderRadius: 14,
+                  border: `1px solid ${theme.borderSoft}`,
+                  background: "rgba(0,0,0,0.14)",
+                  padding: "8px 10px",
+                }}
+              >
+                <div style={{ fontSize: 12, fontWeight: 900, color: theme.textSoft }}>
+                  {t("common.darts", "Fléchettes")}
+                </div>
+                <DartsDots total={dartsPerTurn} used={currentThrow.length} />
               </div>
+
+              {ended && (
+                <div
+                  style={{
+                    padding: "10px 12px",
+                    borderRadius: 16,
+                    border: `1px solid ${theme.primary}55`,
+                    background: `${theme.primary}18`,
+                    fontWeight: 1000,
+                  }}
+                >
+                  {(() => {
+                    const winner = players.find((p) => p.alive);
+                    return winner
+                      ? `${t("common.winner", "Vainqueur")} : ${winner.name}`
+                      : t("common.finished", "Partie terminée");
+                  })()}
+                </div>
+              )}
             </div>
           </div>
-
-          {ended && (
-            <div
-              style={{
-                marginTop: 10,
-                padding: "10px 12px",
-                borderRadius: 16,
-                border: `1px solid ${theme.primary}55`,
-                background: `${theme.primary}18`,
-                fontWeight: 1000,
-              }}
-            >
-              {(() => {
-                const winner = players.find((p) => p.alive);
-                return winner
-                  ? `${t("common.winner", "Vainqueur")} : ${winner.name}`
-                  : t("common.finished", "Partie terminée");
-              })()}
-            </div>
-          )}
         </div>
 
         <div style={{ ...cardShell, padding: 12 }}>

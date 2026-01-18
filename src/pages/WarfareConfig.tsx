@@ -13,6 +13,7 @@ import type { Store } from "../lib/types";
 import { useTheme } from "../contexts/ThemeContext";
 import { useLang } from "../contexts/LangContext";
 import InfoDot from "../components/InfoDot";
+import BackDot from "../components/BackDot";
 import ProfileAvatar from "../components/ProfileAvatar";
 
 type Props = {
@@ -397,41 +398,38 @@ export default function WarfareConfigPage({ store, go }: Props) {
         color: theme.text,
       }}
     >
-      {/* Header */}
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-        <button
-          onClick={() => go("games")}
-          style={{
-            border: `1px solid ${theme.borderSoft}`,
-            background: theme.card,
-            color: theme.text,
-            borderRadius: 999,
-            padding: "8px 12px",
-            fontWeight: 800,
-            cursor: "pointer",
-          }}
-        >
-          ← {t("common.back", "Retour")}
-        </button>
-        <InfoDot onClick={() => setInfoOpen(true)} glow={theme.primary + "88"} />
-      </div>
+      {/* Header (1 ligne) : BackDot / Titre centré / InfoDot */}
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: 10,
+        }}
+      >
+        <BackDot onClick={() => go("games")} glow={theme.primary + "88"} title={t("common.back", "Retour")} />
 
-      <div style={{ marginTop: 10, textAlign: "center" }}>
         <div
           style={{
-            fontSize: 26,
-            fontWeight: 900,
-            letterSpacing: 1.2,
+            flex: 1,
+            textAlign: "center",
+            fontSize: 24,
+            fontWeight: 1000,
+            letterSpacing: 1.6,
             color: theme.primary,
             textShadow: `0 0 14px ${theme.primary}66`,
             textTransform: "uppercase",
+            lineHeight: 1,
           }}
         >
           {t("warfare.title", "WARFARE")}
         </div>
-        <div style={{ marginTop: 6, fontSize: 13, color: theme.textSoft }}>
-          {t("warfare.subtitle", "Élimine l’armée adverse — attention au friendly fire.")}
-        </div>
+
+        <InfoDot onClick={() => setInfoOpen(true)} glow={theme.primary + "88"} />
+      </div>
+
+      <div style={{ marginTop: 8, textAlign: "center", fontSize: 13, color: theme.textSoft }}>
+        {t("warfare.subtitle", "Élimine l’armée adverse — attention au friendly fire.")}
       </div>
 
       {/* Teams */}

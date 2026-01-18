@@ -11,6 +11,7 @@ import type { Store } from "../lib/types";
 import { useTheme } from "../contexts/ThemeContext";
 import { useLang } from "../contexts/LangContext";
 import InfoDot from "../components/InfoDot";
+import BackDot from "../components/BackDot";
 
 import { setSfxEnabled } from "../lib/sfx";
 import { setVoiceEnabled } from "../lib/voice";
@@ -174,22 +175,13 @@ export default function BattleRoyaleConfigPage({ store, go }: Props) {
         }}
       >
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <button
+          <BackDot
             onClick={() => go("games")}
-            style={{
-              border: `1px solid ${theme.borderSoft}`,
-              background: "rgba(0,0,0,0.25)",
-              color: theme.text,
-              padding: "8px 12px",
-              borderRadius: 999,
-              fontWeight: 900,
-              cursor: "pointer",
-            }}
-          >
-            {t("common.back", "← Retour")}
-          </button>
+            glow={theme.primary + "88"}
+            title={t("common.back", "Retour")}
+          />
 
-          <div style={{ flex: 1 }}>
+          <div style={{ flex: 1, minWidth: 0, textAlign: "center" }}>
             <div
               style={{
                 fontSize: 18,
@@ -210,10 +202,7 @@ export default function BattleRoyaleConfigPage({ store, go }: Props) {
             </div>
           </div>
 
-          <InfoDot
-            onClick={() => setInfoOpen(true)}
-            glow={theme.primary + "88"}
-          />
+          <InfoDot onClick={() => setInfoOpen(true)} glow={theme.primary + "88"} />
         </div>
       </div>
 
@@ -252,13 +241,13 @@ export default function BattleRoyaleConfigPage({ store, go }: Props) {
                 key={p.id}
                 onClick={() => toggle(p.id)}
                 style={{
-                  border: `1px solid ${sel ? theme.primary + "88" : theme.borderSoft}`,
-                  background: sel ? theme.primary + "18" : "rgba(0,0,0,0.18)",
-                  borderRadius: 16,
-                  padding: 10,
-                  minWidth: 92,
+                  border: "none",
+                  background: "transparent",
+                  borderRadius: 12,
+                  padding: 0,
+                  minWidth: 72,
                   cursor: "pointer",
-                  opacity: sel ? 1 : 0.75,
+                  opacity: sel ? 1 : 0.65,
                 }}
               >
                 <div
@@ -454,6 +443,7 @@ export default function BattleRoyaleConfigPage({ store, go }: Props) {
             maxWidth: 720,
             margin: "0 auto",
             display: "flex",
+            justifyContent: "center",
             gap: 10,
             alignItems: "center",
           }}
@@ -486,7 +476,7 @@ export default function BattleRoyaleConfigPage({ store, go }: Props) {
               });
             }}
             style={{
-              flex: 1,
+              width: "min(520px, 100%)",
               borderRadius: 999,
               padding: "12px 14px",
               border: "none",
@@ -500,10 +490,6 @@ export default function BattleRoyaleConfigPage({ store, go }: Props) {
           >
             {t("battle.config.start", "LANCER LA PARTIE")}
           </button>
-
-          <div style={{ fontSize: 12, color: theme.textSoft, minWidth: 140, textAlign: "right" }}>
-            {canEnter ? t("battle.config.ready", "Prêt") : t("battle.config.needTwo", "Min. 2 joueurs")}
-          </div>
         </div>
       </div>
 

@@ -138,7 +138,7 @@ const ptsHint: React.CSSProperties = {
 
 /* ---------- Composant ---------- */
 export default function Keypad({
-  currentThrow,
+  currentThrow: _currentThrow,
   multiplier,
   onSimple,
   onDouble,
@@ -152,6 +152,9 @@ export default function Keypad({
   hideTotal = false,
   centerSlot = null,
 }: Props) {
+  // Defensive: some screens may briefly pass undefined during transitions.
+  const currentThrow = Array.isArray(_currentThrow) ? _currentThrow : [];
+
   const rows = [
     [0, 1, 2, 3, 4, 5, 6],
     [7, 8, 9, 10, 11, 12, 13],
@@ -298,11 +301,8 @@ export default function Keypad({
         </div>
       </div>
 
-      {/* ✅ FIX: le "+0pts" ne doit PAS s’afficher quand hidePreview=true
-          ✅ NEW: et on le masque aussi si hideTotal=true (Killer) ou centerSlot est utilisé */}
-      {!hidePreview && !hideTotal && !centerSlot && (
-        <div style={ptsHint}>+{total} pts</div>
-      )}
+      {/* NOTE: le "+0pts" (aperçu total) a été retiré pour un rendu plus clean
+         et éviter la redondance (les jeux gèrent leur UI de volée). */}
 
       {/* Badges d’aperçu en bas (optionnels) */}
       {!hidePreview && (

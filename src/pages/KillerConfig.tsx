@@ -28,6 +28,8 @@ import { useTheme } from "../contexts/ThemeContext";
 import { useLang } from "../contexts/LangContext";
 import ProfileAvatar from "../components/ProfileAvatar";
 import ProfileStarRing from "../components/ProfileStarRing";
+import BackDot from "../components/BackDot";
+import InfoDot from "../components/InfoDot";
 
 // 🔽 AVATARS BOTS PRO (mêmes chemins que X01ConfigV3)
 import avatarGreenMachine from "../assets/avatars/bots-pro/green-machine.png";
@@ -652,50 +654,43 @@ export default function KillerConfigPage(props: Props) {
     >
       {/* HEADER */}
       <header style={{ marginBottom: 6 }}>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
-          <button
-            type="button"
-            onClick={() => (onBack ? onBack() : typeof go === "function" ? go("games") : null)}
-            style={{
-              borderRadius: 999,
-              border: "1px solid rgba(255,255,255,0.12)",
-              background: "rgba(10,12,24,0.9)",
-              color: "#f5f5f5",
-              padding: "5px 10px",
-              fontSize: 13,
-              display: "inline-flex",
-              alignItems: "center",
-              gap: 6,
-            }}
-          >
-            <span style={{ fontSize: 16 }}>←</span>
-            <span>Retour</span>
-          </button>
+        {(() => {
+          const DOT_SIZE = 36;
+          const DOT_GLOW = `${primary}88`;
+          return (
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "44px 1fr 44px",
+                alignItems: "center",
+                gap: 10,
+                marginBottom: 8,
+              }}
+            >
+              <div style={{ display: "flex", justifyContent: "flex-start" }}>
+                <BackDot
+                  onClick={() => (onBack ? onBack() : typeof go === "function" ? go("games") : null)}
+                  title={t?.("common.back", "Retour") ?? "Retour"}
+                  size={DOT_SIZE}
+                  color={primary}
+                  glow={DOT_GLOW}
+                />
+              </div>
 
-          <button
-            type="button"
-            onClick={() => setInfoOpen(true)}
-            style={{
-              width: 28,
-              height: 28,
-              borderRadius: 999,
-              border: "1px solid rgba(255,255,255,0.18)",
-              background: "rgba(255,255,255,0.06)",
-              color: "#fff",
-              fontWeight: 900,
-              display: "inline-flex",
-              alignItems: "center",
-              justifyContent: "center",
-              boxShadow: "0 0 12px rgba(0,0,0,0.55)",
-              cursor: "pointer",
-              flex: "0 0 auto",
-            }}
-            aria-label="Infos règles Killer"
-            title="Infos"
-          >
-            i
-          </button>
-        </div>
+              <div />
+
+              <div style={{ display: "flex", justifyContent: "flex-end" }}>
+                <InfoDot
+                  onClick={() => setInfoOpen(true)}
+                  title={t?.("common.rules", "Règles") ?? "Règles"}
+                  size={DOT_SIZE}
+                  color={primary}
+                  glow={DOT_GLOW}
+                />
+              </div>
+            </div>
+          );
+        })()}
 
         <div style={{ textAlign: "center" }}>
           <div

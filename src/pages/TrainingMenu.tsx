@@ -10,15 +10,18 @@
 // - ✅ Evolution TOUT EN HAUT
 // - ✅ Suppression du label "Autres modes d’entraînement"
 // - ✅ Ajout Training : Double In/Out + Challenges (pinned cards)
+// ✅ NEW: BackDot en haut pour revenir au menu Games
 // ============================================
 
 import React from "react";
 import { useTheme } from "../contexts/ThemeContext";
 import { useLang } from "../contexts/LangContext";
 import InfoDot from "../components/InfoDot";
+import BackDot from "../components/BackDot";
 import { dartsGameRegistry } from "../games/dartsGameRegistry";
 
 type Tab =
+  | "games"
   | "training"
   | "training_x01"
   | "training_clock"
@@ -214,32 +217,40 @@ export default function TrainingMenu({ go }: Props) {
         color: theme.text,
       }}
     >
-      {/* Titre */}
-      <h1
-        style={{
-          margin: 0,
-          marginBottom: 6,
-          fontSize: 24,
-          color: theme.primary,
-          textAlign: "center",
-          textShadow: `0 0 12px ${theme.primary}66`,
-        }}
-      >
-        {t("training.menu.title", "TRAINING")}
-      </h1>
+      {/* ✅ Header : BackDot + Titre centré */}
+      <div style={{ position: "relative", marginBottom: 10 }}>
+        <div style={{ position: "absolute", left: 0, top: 0 }}>
+          <BackDot
+            onClick={() => navigate("games")}
+            glow={theme.primary + "88"}
+          />
+        </div>
 
-      <div
-        style={{
-          fontSize: 13,
-          color: theme.textSoft,
-          marginBottom: 18,
-          textAlign: "center",
-        }}
-      >
-        {t(
-          "training.menu.subtitle",
-          "Améliore ta progression dans différents modes d’entraînement."
-        )}
+        <h1
+          style={{
+            margin: 0,
+            fontSize: 24,
+            color: theme.primary,
+            textAlign: "center",
+            textShadow: `0 0 12px ${theme.primary}66`,
+          }}
+        >
+          {t("training.menu.title", "TRAINING")}
+        </h1>
+
+        <div
+          style={{
+            fontSize: 13,
+            color: theme.textSoft,
+            marginTop: 6,
+            textAlign: "center",
+          }}
+        >
+          {t(
+            "training.menu.subtitle",
+            "Améliore ta progression dans différents modes d’entraînement."
+          )}
+        </div>
       </div>
 
       {/* Liste des modes (pinned) */}
