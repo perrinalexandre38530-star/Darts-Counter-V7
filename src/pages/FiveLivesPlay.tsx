@@ -1,43 +1,50 @@
-// @ts-nocheck
-// =============================================================
+// ============================================
 // src/pages/FiveLivesPlay.tsx
-// LES 5 VIES — PLAY (style proche KillerPlay)
-// - Volée de 3 fléchettes : doit battre STRICTEMENT le score précédent
-// - Échec => -1 vie ; à 0 vie => éliminé
-// - Dernier joueur en vie => victoire + pushHistory via onFinish
-// =============================================================
+// LES 5 VIES — PLAY
+// Rendu cohérent avec les autres jeux (Warfare/Killer):
+// - Fond theme.bg + cards theme.card
+// - Liste joueurs scrollable + halo actif
+// - Keypad existant (même UX que Warfare)
+// - PNG dead-active/dead-list + coeur (copié de KillerPlay)
+// ============================================
 
 import React from "react";
-import type { Store, Dart as UIDart } from "../lib/types";
+import type { Dart } from "../lib/types";
 import { useTheme } from "../contexts/ThemeContext";
-import ProfileAvatar from "../components/ProfileAvatar";
-import ProfileStarRing from "../components/ProfileStarRing";
+import { useLang } from "../contexts/LangContext";
 import Keypad from "../components/Keypad";
 
 import deadActiveIcon from "../assets/icons/dead-active.png";
 import deadListIcon from "../assets/icons/dead-list.png";
 
-import type { FiveLivesConfig } from "./FiveLivesConfig";
+import type { FiveLivesConfig, FiveLivesPlayerLite } from "./FiveLivesConfig";
 
 type Props = {
-  store: Store;
-  go?: (tab: any, params?: any) => void;
+  store: any;
+  go: (tab: any, params?: any) => void;
   config: FiveLivesConfig;
   onFinish?: (m: any) => void;
 };
 
-type PState = {
-  id: string;
-  name: string;
-  avatarDataUrl?: string | null;
-  isBot?: boolean;
-  botLevel?: string;
+type PlayerState = FiveLivesPlayerLite & {
   lives: number;
   eliminated: boolean;
 };
 
+function fmtDart(d: Dart) {
+  if (d.v === 0) return "MISS";
+  if (d.v === 25) return d.mult === 2 ? "DBULL" : "BULL";
+  return `${d.mult === 3 ? "T" : d.mult === 2 ? "D" : "S"}${d.v}`;
+}
+
+function clampInt(n: any, min: number, max: number, fallback: number) {
+  const x = Math.floor(Number(n));
+  if (!Number.isFinite(x)) return fallback;
+  return Math.max(min, Math.min(max, x));
+}
+
 // -----------------------------
-// ✅ Reprise Killer: Heart KPI + MiniHeart (même rendu visuel)
+// ✅ Heart KPI (copié de KillerPlay)
 // -----------------------------
 function HeartKpi({ value }: { value: any }) {
   return (
@@ -50,8 +57,6 @@ function HeartKpi({ value }: { value: any }) {
         placeItems: "center",
         filter: "drop-shadow(0 10px 18px rgba(255,121,214,.22))",
       }}
-      aria-label={`Vies: ${value}`}
-      title={`Vies: ${value}`}
     >
       <svg width="56" height="48" viewBox="0 0 48 42" style={{ position: "absolute", inset: 0 }}>
         <defs>
@@ -120,6 +125,7 @@ function MiniHeart({ value, active }: { value: any; active?: boolean }) {
           fill="rgba(255,121,214,.12)"
         />
       </svg>
+
       <div
         style={{
           position: "absolute",
@@ -129,8 +135,8 @@ function MiniHeart({ value, active }: { value: any; active?: boolean }) {
           fontSize: 12,
           fontWeight: 1000,
           color: "#fff",
+          textShadow: "0 2px 8px rgba(0,0,0,.55)",
           transform: "translateY(1px)",
-          textShadow: "0 0 6px rgba(255,255,255,.22), 0 2px 8px rgba(0,0,0,.55)",
         }}
       >
         {value}
@@ -139,369 +145,432 @@ function MiniHeart({ value, active }: { value: any; active?: boolean }) {
   );
 }
 
-function scoreOfThrow(darts: UIDart[]) {
-  return (darts || []).reduce((acc, d) => {
-    if (!d) return acc;
-    if (d.v === 0) return acc;
-    if (d.v === 25) return acc + (d.mult === 2 ? 50 : 25);
-    return acc + d.v * d.mult;
-  }, 0);
-}
-
-function fmtChip(d?: UIDart) {
-  if (!d) return "—";
-  if (d.v === 0) return "MISS";
-  if (d.v === 25) return d.mult === 2 ? "DBULL" : "BULL";
-  const p = d.mult === 3 ? "T" : d.mult === 2 ? "D" : "S";
-  return `${p}${d.v}`;
-}
-
-function nextAliveIndex(players: PState[], fromIndex: number) {
-  if (!players?.length) return 0;
-  for (let i = 1; i <= players.length; i++) {
-    const idx = (fromIndex + i) % players.length;
-    if (!players[idx]?.eliminated) return idx;
-  }
-  return fromIndex;
-}
-
 export default function FiveLivesPlay({ store, go, config, onFinish }: Props) {
   const { theme } = useTheme();
+  const { t } = useLang();
 
-  const initialPlayers = React.useMemo<PState[]>(() => {
-    const lives = Number.isFinite(+config?.startingLives) ? Math.max(1, Math.min(20, Math.trunc(+config.startingLives))) : 5;
-    return (config?.players || []).map((p: any) => {
-      const prof = (store?.profiles || []).find((x: any) => x?.id === p?.id);
-      return {
-        id: p?.id,
-        name: p?.name ?? prof?.name ?? "Joueur",
-        avatarDataUrl: p?.avatarDataUrl ?? prof?.avatarDataUrl ?? null,
-        isBot: !!p?.isBot,
-        botLevel: p?.botLevel,
-        lives,
-        eliminated: false,
-      };
-    });
-  }, [config, store?.profiles]);
+  const PAGE_BG = theme.bg;
+  const CARD_BG = theme.card;
 
-  const [players, setPlayers] = React.useState<PState[]>(() => initialPlayers);
-  const [activeIndex, setActiveIndex] = React.useState(0);
+  const startingLives = clampInt((config as any)?.startingLives, 1, 15, 5);
+
+  const [players, setPlayers] = React.useState<PlayerState[]>(() =>
+    (config.players || []).map((p) => ({
+      ...p,
+      lives: startingLives,
+      eliminated: false,
+    }))
+  );
+
+  const [turnIndex, setTurnIndex] = React.useState(0);
+  const [mult, setMult] = React.useState<1 | 2 | 3>(1);
+  const [currentThrow, setCurrentThrow] = React.useState<Dart[]>([]);
   const [lastScoreToBeat, setLastScoreToBeat] = React.useState<number | null>(null);
-  const [visit, setVisit] = React.useState<UIDart[]>([]);
-  const [multiplier, setMultiplier] = React.useState<1 | 2 | 3>(1);
-  const [flash, setFlash] = React.useState<null | { kind: "ok" | "fail" | "out"; msg: string }>(null);
+  const [winnerId, setWinnerId] = React.useState<string | null>(null);
+  const [endOpen, setEndOpen] = React.useState(false);
 
-  // sécurité: si config change, reset
-  React.useEffect(() => {
-    setPlayers(initialPlayers);
-    setActiveIndex(0);
-    setLastScoreToBeat(null);
-    setVisit([]);
-    setMultiplier(1);
-    setFlash(null);
-  }, [initialPlayers]);
+  const aliveIds = React.useMemo(() => players.filter((p) => !p.eliminated).map((p) => p.id), [players]);
 
-  const activePlayer = players?.[activeIndex] || null;
-  const alivePlayers = (players || []).filter((p) => !p.eliminated);
-
-  React.useEffect(() => {
-    if (alivePlayers.length === 1 && players.length >= 2) {
-      const winner = alivePlayers[0];
-      const match = {
-        id: `five-lives-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-        kind: "five_lives",
-        createdAt: config?.createdAt ?? Date.now(),
-        winnerId: winner?.id,
-        players: (players || []).map((p) => ({
-          id: p.id,
-          name: p.name,
-          avatarDataUrl: p.avatarDataUrl ?? null,
-        })),
-        summary: {
-          startingLives: config?.startingLives ?? 5,
-          winnerName: winner?.name,
-        },
-        payload: {
-          mode: "five_lives",
-          startingLives: config?.startingLives ?? 5,
-          randomStartOrder: !!config?.randomStartOrder,
-          players: (players || []).map((p) => ({
-            id: p.id,
-            name: p.name,
-            avatarDataUrl: p.avatarDataUrl ?? null,
-            isBot: !!p.isBot,
-            botLevel: p.botLevel,
-            lives: p.lives,
-            eliminated: p.eliminated,
-          })),
-        },
-      };
-      try {
-        onFinish?.(match);
-      } catch {}
-      // retour Stats ou menu : on reste cohérent avec autres jeux => retour Games
-      setTimeout(() => {
-        try {
-          go?.("statsHub", { tab: "history" });
-        } catch {
-          go?.("games");
-        }
-      }, 350);
+  const activeIndex = React.useMemo(() => {
+    if (!players.length) return 0;
+    const n = players.length;
+    let i = ((turnIndex % n) + n) % n;
+    // saute les éliminés
+    for (let k = 0; k < n; k++) {
+      const idx = (i + k) % n;
+      if (!players[idx]?.eliminated) return idx;
     }
-  }, [alivePlayers.length, players, config, onFinish, go]);
+    return 0;
+  }, [turnIndex, players]);
 
-  function applyThrow(d: UIDart) {
-    setVisit((prev) => {
-      const next = [...(prev || [])];
-      if (next.length >= 3) return next;
-      next.push(d);
-      return next;
-    });
+  const activePlayer = players[activeIndex] || null;
+
+  function nextAliveIndex(from: number, list: PlayerState[]) {
+    const n = list.length;
+    if (!n) return 0;
+    for (let step = 1; step <= n; step++) {
+      const idx = (from + step) % n;
+      if (!list[idx].eliminated) return idx;
+    }
+    return from;
   }
 
-  function undo() {
-    setVisit((prev) => {
-      const next = [...(prev || [])];
-      next.pop();
-      return next;
-    });
+  function computeVisitScore(darts: Dart[]) {
+    return (darts || []).reduce((sum, d) => {
+      if (!d) return sum;
+      const v = Number(d.v) || 0;
+      const m = Number(d.mult) || 1;
+      return sum + v * m;
+    }, 0);
   }
 
-  function validateVisit() {
-    const darts = [...(visit || [])];
-    while (darts.length < 3) darts.push({ v: 0, mult: 1 });
-    const score = scoreOfThrow(darts);
+  function applyTurn(darts: Dart[]) {
+    if (!activePlayer) return;
+    if (winnerId) return;
 
-    // premier joueur (ou après reset) : aucune contrainte
-    if (lastScoreToBeat === null) {
-      setLastScoreToBeat(score);
-      setFlash({ kind: "ok", msg: `Référence : ${score}` });
-      setTimeout(() => setFlash(null), 650);
-      setVisit([]);
-      setMultiplier(1);
-      setActiveIndex((idx) => nextAliveIndex(players, idx));
-      return;
+    const score = computeVisitScore(darts);
+    const shouldBeat = lastScoreToBeat;
+
+    const updated = players.map((p) => ({ ...p }));
+    const p = updated[activeIndex];
+    if (!p || p.eliminated) return;
+
+    if (shouldBeat !== null && score <= shouldBeat) {
+      p.lives = Math.max(0, (p.lives || 0) - 1);
+      if (p.lives <= 0) p.eliminated = true;
     }
 
-    const mustBeat = lastScoreToBeat;
-    const success = score > mustBeat;
+    const alive = updated.filter((x) => !x.eliminated);
+    const nextIdx = nextAliveIndex(activeIndex, updated);
 
-    setPlayers((prev) => {
-      const next = [...prev];
-      const p = { ...(next[activeIndex] as any) };
-      if (!success) {
-        p.lives = Math.max(0, (p.lives || 0) - 1);
-        if (p.lives <= 0) p.eliminated = true;
-      }
-      next[activeIndex] = p as any;
-      return next;
-    });
-
-    if (success) {
-      setFlash({ kind: "ok", msg: `+${score} (OK)` });
-    } else {
-      const livesAfter = Math.max(0, (activePlayer?.lives || 0) - 1);
-      setFlash({ kind: livesAfter <= 0 ? "out" : "fail", msg: livesAfter <= 0 ? "Éliminé" : `Perd 1 vie (${score} ≤ ${mustBeat})` });
+    setPlayers(updated);
+    setTurnIndex(nextIdx);
+    if (alive.length === 1) {
+      setWinnerId(alive[0].id);
+      setEndOpen(true);
     }
 
     setLastScoreToBeat(score);
-    setTimeout(() => setFlash(null), 750);
-    setVisit([]);
-    setMultiplier(1);
-
-    // passer au prochain vivant (si le joueur vient d'être éliminé, il sera skippé)
-    setTimeout(() => {
-      setActiveIndex((idx) => nextAliveIndex(players, idx));
-    }, 120);
+    setCurrentThrow([]);
+    setMult(1);
   }
 
-  const pageBg = "#050509";
-  const accent = theme?.primary || "#ffc63a";
+  function onNumber(v: number) {
+    if (winnerId) return;
+    setCurrentThrow((prev) => {
+      if (prev.length >= 3) return prev;
+      return [...prev, { v, mult } as any];
+    });
+  }
 
-  const card: React.CSSProperties = {
-    background: "linear-gradient(180deg, rgba(22,22,23,.85), rgba(12,12,14,.95))",
-    border: "1px solid rgba(255,255,255,.08)",
-    borderRadius: 18,
-    padding: 12,
-    boxShadow: "0 10px 30px rgba(0,0,0,.35)",
-  };
+  function onBull() {
+    if (winnerId) return;
+    setCurrentThrow((prev) => {
+      if (prev.length >= 3) return prev;
+      return [...prev, { v: 25, mult } as any];
+    });
+  }
 
-  const playerRow = (p: PState, idx: number): React.CSSProperties => {
-    const isActive = idx === activeIndex;
-    const isOut = !!p.eliminated;
-    return {
-      display: "flex",
-      alignItems: "center",
-      gap: 10,
-      padding: 10,
-      borderRadius: 16,
-      border: isActive ? `1px solid ${accent}` : "1px solid rgba(255,255,255,.08)",
-      background: isOut ? "rgba(255,255,255,.03)" : isActive ? "rgba(255,198,58,.10)" : "rgba(255,255,255,.04)",
-      opacity: isOut ? 0.45 : 1,
-      boxShadow: isActive ? `0 0 24px rgba(255,198,58,.22)` : undefined,
-    };
-  };
-
-  const chip: React.CSSProperties = {
-    display: "inline-block",
-    minWidth: 72,
-    textAlign: "center",
-    padding: "10px 12px",
-    borderRadius: 14,
-    background: "rgba(0,0,0,.55)",
-    border: "1px solid rgba(255,255,255,.08)",
-    fontWeight: 900,
-    letterSpacing: 0.4,
-    color: "#e9d7ff",
-    boxShadow: "0 0 22px rgba(250,213,75,.18)",
-  };
+  const visitScore = computeVisitScore(currentThrow);
 
   return (
     <div
       style={{
-        height: "100dvh",
+        minHeight: "100vh",
+        padding: 16,
+        paddingBottom: 110,
+        background: PAGE_BG,
+        color: theme.text,
         overflow: "hidden",
-        background: pageBg,
-        color: "#fff",
-        display: "flex",
-        flexDirection: "column",
-        padding: 10,
-        gap: 10,
-        overscrollBehavior: "none",
       }}
     >
       {/* Header */}
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
         <button
-          onClick={() => (go ? go("five_lives_config") : null)}
+          onClick={() => go("five_lives_config")}
           style={{
-            height: 40,
-            padding: "0 12px",
-            borderRadius: 14,
-            border: "1px solid rgba(255,255,255,.10)",
-            background: "rgba(255,255,255,.06)",
-            color: "#fff",
-            fontWeight: 900,
+            border: `1px solid ${theme.borderSoft}`,
+            background: theme.card,
+            color: theme.text,
+            borderRadius: 999,
+            padding: "8px 12px",
+            fontWeight: 800,
             cursor: "pointer",
           }}
         >
-          ← Retour
+          ← {t("common.back", "Retour")}
         </button>
 
-        <div style={{ textAlign: "center", flex: 1 }}>
-          <div style={{ fontWeight: 1000, letterSpacing: 2, fontSize: 18, color: accent, textShadow: `0 0 18px rgba(255,198,58,.25)` }}>
-            LES 5 VIES
-          </div>
-          <div style={{ fontSize: 12, opacity: 0.8, marginTop: 2 }}>
-            Bats la volée précédente (strictement) ou perds une vie
-          </div>
-        </div>
-
-        <div style={{ width: 96 }} />
-      </div>
-
-      {/* Score à battre */}
-      <div style={{ ...card, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
-        <div>
-          <div style={{ fontSize: 12, opacity: 0.75 }}>Score à battre</div>
-          <div style={{ fontSize: 26, fontWeight: 1000, letterSpacing: 0.5 }}>
+        <div style={{ textAlign: "right" }}>
+          <div style={{ fontSize: 12, color: theme.textSoft }}>{t("fiveLives.toBeat", "Score à battre")}</div>
+          <div style={{ marginTop: 2, fontWeight: 1000, color: theme.primary }}>
             {lastScoreToBeat === null ? "—" : lastScoreToBeat}
           </div>
         </div>
+      </div>
 
-        {/* ✅ KPI Vies (comme Killer) */}
-        <div style={{ display: "flex", justifyContent: "center", alignItems: "center", flex: 1 }}>
-          <HeartKpi value={activePlayer?.eliminated ? 0 : activePlayer?.lives ?? "—"} />
+      <div style={{ marginTop: 10, textAlign: "center" }}>
+        <div
+          style={{
+            fontSize: 26,
+            fontWeight: 900,
+            letterSpacing: 1.2,
+            color: theme.primary,
+            textShadow: `0 0 14px ${theme.primary}66`,
+            textTransform: "uppercase",
+          }}
+        >
+          {t("fiveLives.title", "LES 5 VIES")}
         </div>
-
-        <div style={{ textAlign: "right" }}>
-          <div style={{ fontSize: 12, opacity: 0.75 }}>Joueur</div>
-          <div style={{ fontSize: 16, fontWeight: 900 }}>{activePlayer?.name ?? "—"}</div>
+        <div style={{ marginTop: 6, fontSize: 13, color: theme.textSoft }}>
+          {t("fiveLives.play.subtitle", "Sur 3 fléchettes, fais STRICTEMENT plus que la volée précédente.")}
         </div>
       </div>
 
-      {/* Players */}
-      <div style={{ ...card, flex: 1, overflow: "auto" }}>
-        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-          {(players || []).map((p, idx) => (
-            <div key={p.id} style={playerRow(p, idx)}>
-              <div style={{ position: "relative" }}>
-                <ProfileStarRing size={44} />
-                <ProfileAvatar
-                  avatarDataUrl={p.avatarDataUrl}
-                  size={44}
-                  style={{ position: "absolute", inset: 0, margin: "auto" }}
-                />
-              </div>
+      {/* KPI */}
+      <div
+        style={{
+          marginTop: 14,
+          padding: 14,
+          borderRadius: 18,
+          border: `1px solid ${theme.borderSoft}`,
+          background: CARD_BG,
+          boxShadow: "0 10px 24px rgba(0,0,0,0.55)",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: 12,
+        }}
+      >
+        <div>
+          <div style={{ fontSize: 12, color: theme.textSoft }}>{t("fiveLives.turn", "Tour")}</div>
+          <div style={{ marginTop: 4, fontWeight: 1000, fontSize: 16 }}>
+            {activePlayer ? activePlayer.name : "—"}
+          </div>
+        </div>
 
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontWeight: 950, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                  {p.name}
-                  {p.isBot ? <span style={{ marginLeft: 8, fontSize: 12, opacity: 0.75 }}>(BOT{p.botLevel ? ` · ${p.botLevel}` : ""})</span> : null}
-                </div>
-                <div style={{ fontSize: 12, opacity: 0.75, marginTop: 2 }}>
-                  {p.eliminated ? "Éliminé" : `${p.lives} vie${p.lives > 1 ? "s" : ""}`}
-                </div>
-              </div>
-
-              {/* Vies */}
-              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                {p.eliminated ? (
-                  <img
-                    src={idx === activeIndex ? deadActiveIcon : deadListIcon}
-                    alt="DEAD"
-                    style={{ width: 30, height: 30, objectFit: "contain", filter: "drop-shadow(0 8px 18px rgba(0,0,0,.45))" }}
-                  />
-                ) : (
-                  <MiniHeart value={p.lives} active={idx === activeIndex} />
-                )}
-
-                {/* si on autorise >9 vies, on garde un suffixe lisible */}
-                {!p.eliminated && p.lives > 9 ? (
-                  <span style={{ fontSize: 12, opacity: 0.85, marginLeft: 2 }}>+{p.lives - 9}</span>
-                ) : null}
-              </div>
-            </div>
-          ))}
+        <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+          <div style={{ textAlign: "right" }}>
+            <div style={{ fontSize: 12, color: theme.textSoft }}>{t("fiveLives.visit", "Volée")}</div>
+            <div style={{ marginTop: 2, fontWeight: 1000 }}>{visitScore}</div>
+          </div>
+          {activePlayer ? <HeartKpi value={activePlayer.lives} /> : <HeartKpi value={"—"} />}
         </div>
       </div>
 
-      {/* Chips + Flash */}
-      <div style={{ ...card }}>
-        <div style={{ display: "flex", justifyContent: "center", gap: 10 }}>
-          <span style={chip}>{fmtChip(visit?.[0])}</span>
-          <span style={chip}>{fmtChip(visit?.[1])}</span>
-          <span style={chip}>{fmtChip(visit?.[2])}</span>
+      {/* Liste joueurs (scrollable) */}
+      <div
+        style={{
+          marginTop: 12,
+          padding: 14,
+          borderRadius: 18,
+          border: `1px solid ${theme.borderSoft}`,
+          background: CARD_BG,
+          boxShadow: "0 10px 24px rgba(0,0,0,0.55)",
+          height: "calc(100vh - 16px - 52px - 20px - 70px - 110px)",
+          overflow: "auto",
+        }}
+      >
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+          <div style={{ fontWeight: 900, letterSpacing: 0.7, textTransform: "uppercase", color: theme.primary }}>
+            {t("fiveLives.players", "Joueurs")}
+          </div>
+          <div style={{ fontSize: 12, color: theme.textSoft }}>
+            {aliveIds.length}/{players.length}
+          </div>
         </div>
-        <div style={{ marginTop: 10, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-          <div style={{ fontSize: 12, opacity: 0.75 }}>
-            Total: <span style={{ fontWeight: 1000 }}>{scoreOfThrow(visit)}</span>
-          </div>
-          <div style={{ fontSize: 12, opacity: flash ? 1 : 0, fontWeight: 900, color: flash?.kind === "ok" ? "#8be0b8" : flash?.kind === "out" ? "#ff6b6b" : "#ffc63a" }}>
-            {flash?.msg ?? ""}
-          </div>
+
+        <div style={{ marginTop: 12, display: "grid", gap: 10 }}>
+          {players.map((p, idx) => {
+            const isActive = idx === activeIndex && !p.eliminated && !winnerId;
+            return (
+              <div
+                key={p.id}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  gap: 12,
+                  padding: 12,
+                  borderRadius: 16,
+                  border: `1px solid ${isActive ? theme.primary + "66" : theme.borderSoft}`,
+                  background: isActive ? theme.primary + "10" : "rgba(255,255,255,.03)",
+                  boxShadow: isActive ? `0 0 22px ${theme.primary}18` : "none",
+                  opacity: p.eliminated ? 0.55 : 1,
+                }}
+              >
+                <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
+                  <div
+                    style={{
+                      width: 40,
+                      height: 40,
+                      borderRadius: "50%",
+                      overflow: "hidden",
+                      border: `1px solid ${isActive ? theme.primary : theme.borderSoft}`,
+                      background: "rgba(255,255,255,.06)",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      flexShrink: 0,
+                    }}
+                  >
+                    {p.avatarDataUrl ? (
+                      <img src={p.avatarDataUrl} alt={p.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                    ) : (
+                      <span style={{ fontWeight: 900 }}>{(p.name || "?").slice(0, 1).toUpperCase()}</span>
+                    )}
+                  </div>
+
+                  <div style={{ minWidth: 0 }}>
+                    <div
+                      style={{
+                        fontWeight: 1000,
+                        color: isActive ? theme.primary : theme.text,
+                        whiteSpace: "nowrap",
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                      }}
+                    >
+                      {p.name}
+                    </div>
+                    <div style={{ marginTop: 2, fontSize: 12, color: theme.textSoft }}>
+                      {p.eliminated ? t("fiveLives.dead", "Éliminé") : t("fiveLives.alive", "En jeu")}
+                    </div>
+                  </div>
+                </div>
+
+                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                  {p.eliminated ? (
+                    <img
+                      src={isActive ? (deadActiveIcon as any) : (deadListIcon as any)}
+                      alt="DEAD"
+                      style={{ width: 38, height: 38, objectFit: "contain", filter: "contrast(1.1) brightness(1.05)" }}
+                    />
+                  ) : (
+                    <MiniHeart value={p.lives} active={isActive} />
+                  )}
+                </div>
+              </div>
+            );
+          })}
         </div>
       </div>
 
       {/* Keypad */}
-      <div>
+      <div style={{ position: "fixed", left: 0, right: 0, bottom: 0, padding: 12, zIndex: 30 }}>
         <Keypad
-          currentThrow={visit}
-          multiplier={multiplier}
-          onSimple={() => setMultiplier(1)}
-          onDouble={() => setMultiplier(2)}
-          onTriple={() => setMultiplier(3)}
-          onBackspace={() => {}}
-          onCancel={undo}
-          onNumber={(n: number) => applyThrow({ v: n, mult: multiplier })}
-          onBull={() => {
-            const m = multiplier === 2 ? 2 : 1;
-            applyThrow({ v: 25, mult: m });
+          currentThrow={currentThrow}
+          multiplier={mult}
+          onSimple={() => setMult(1)}
+          onDouble={() => setMult(2)}
+          onTriple={() => setMult(3)}
+          onCancel={() => {
+            // Annuler la volée en cours (comme les autres jeux)
+            setCurrentThrow([]);
           }}
-          onValidate={validateVisit}
-          hidePreview={true}
+          onBackspace={() => setCurrentThrow((prev) => prev.slice(0, -1))}
+          onNumber={onNumber}
+          onBull={onBull}
+          onValidate={() => applyTurn(currentThrow)}
+          hideTotal
+          centerSlot={
+            <div style={{ textAlign: "center" }}>
+              <div style={{ fontSize: 12, color: theme.textSoft }}>{t("fiveLives.throw", "Volée")}</div>
+              <div style={{ marginTop: 4, fontWeight: 900, letterSpacing: 0.4 }}>
+                {currentThrow.length ? currentThrow.map(fmtDart).join("  ") : "—"}
+              </div>
+            </div>
+          }
         />
       </div>
+
+      {/* End overlay */}
+      {endOpen && winnerId && (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(0,0,0,.75)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 80,
+            padding: 16,
+          }}
+        >
+          <div
+            style={{
+              width: "min(520px, 100%)",
+              padding: 18,
+              borderRadius: 18,
+              background: theme.card,
+              border: `1px solid ${theme.primary}55`,
+              boxShadow: `0 18px 40px rgba(0,0,0,.7)`,
+            }}
+          >
+            <div
+              style={{
+                fontSize: 18,
+                fontWeight: 900,
+                color: theme.primary,
+                textTransform: "uppercase",
+                textShadow: `0 0 12px ${theme.primary}66`,
+              }}
+            >
+              {t("fiveLives.win", "Victoire")}
+            </div>
+            <div style={{ marginTop: 10, fontSize: 13, color: theme.textSoft, lineHeight: 1.35 }}>
+              {t("fiveLives.win.desc", "Dernier survivant :")}{" "}
+              <span style={{ fontWeight: 1000, color: theme.text }}>
+                {(players.find((p) => p.id === winnerId)?.name as any) || winnerId}
+              </span>
+            </div>
+
+            <div style={{ marginTop: 12, display: "flex", gap: 10, justifyContent: "flex-end" }}>
+              <button
+                type="button"
+                onClick={() => {
+                  setEndOpen(false);
+                  go("five_lives_config");
+                }}
+                style={{
+                  borderRadius: 999,
+                  padding: "10px 14px",
+                  border: `1px solid ${theme.borderSoft}`,
+                  background: "rgba(0,0,0,0.22)",
+                  color: theme.text,
+                  fontWeight: 900,
+                  cursor: "pointer",
+                }}
+              >
+                {t("common.quit", "Quitter")}
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  // payload history (compatible pushHistory)
+                  const createdAt = Date.now();
+                  const match: any = {
+                    kind: "five_lives",
+                    createdAt,
+                    winnerId,
+                    players: (players || []).map((p) => ({
+                      id: p.id,
+                      name: p.name,
+                      avatarDataUrl: p.avatarDataUrl || null,
+                    })),
+                    summary: {
+                      startingLives,
+                      lastScoreToBeat,
+                    },
+                    payload: {
+                      config,
+                      finalPlayers: players,
+                      winnerId,
+                      startingLives,
+                    },
+                  };
+                  setEndOpen(false);
+                  onFinish?.(match);
+                }}
+                style={{
+                  borderRadius: 999,
+                  padding: "10px 14px",
+                  border: "none",
+                  background: theme.primary,
+                  color: "#000",
+                  fontWeight: 1000,
+                  cursor: "pointer",
+                  boxShadow: `0 12px 26px ${theme.primary}22`,
+                }}
+              >
+                {t("common.save", "Sauvegarder")}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

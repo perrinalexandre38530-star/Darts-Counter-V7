@@ -196,6 +196,15 @@ export default function StatsKiller({ profiles, memHistory, playerId = null, tit
             <Kpi label="Win %" value={`${pct(data.winRate)}`} theme={theme} />
             <Kpi label="Kills" value={`${data.kills || 0}`} theme={theme} />
             <Kpi label="Auto-kills" value={`${Math.round(num(data.agg?.autoKillsTotal, 0))}`} theme={theme} />
+            {num(data.agg?.selfPenaltyHitsTotal, 0) > 0 && (
+              <Kpi label="Auto-hit" value={`${Math.round(num(data.agg?.selfPenaltyHitsTotal, 0))}`} theme={theme} />
+            )}
+            {num(data.agg?.livesStolenTotal, 0) > 0 && (
+              <Kpi label="Vies volées" value={`${Math.round(num(data.agg?.livesStolenTotal, 0))}`} theme={theme} />
+            )}
+            {num(data.agg?.livesHealedTotal, 0) > 0 && (
+              <Kpi label="Vies gagnées" value={`${Math.round(num(data.agg?.livesHealedTotal, 0))}`} theme={theme} />
+            )}
             <Kpi label="Hits total" value={`${data.totalHits || 0}`} theme={theme} />
             <Kpi label="Dernier match" value={lastStr} theme={theme} />
           </>

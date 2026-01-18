@@ -31,6 +31,17 @@ export type KillerStatsAgg = {
   autoKillsTotal: number;
   autoKillsAvg: number;
 
+  // ✅ Variantes (Version B)
+  // Auto-hit = occurrences de touches sur SON numéro en phase ACTIVE quand l'option est activée
+  selfPenaltyHitsTotal: number;
+  selfPenaltyHitsAvg: number;
+
+  // Vies gagnées via LifeSteal / BullHeal (si options activées)
+  livesStolenTotal: number;
+  livesStolenAvg: number;
+  livesHealedTotal: number;
+  livesHealedAvg: number;
+
   hitsBySegmentAgg: Record<string, number>;
   totalHits: number;
 
@@ -212,10 +223,7 @@ function computeFavsFromHitsMap(hitsBySegment: Record<string, number>) {
   return { favSegment, favSegmentHits, favNumber, favNumberHits, totalHits };
 }
 
-export function computeKillerStatsAggForProfile(
-  memHistory: any[],
-  playerId: string | null
-): KillerStatsAgg {
+export function computeKillerStatsAggForProfile(memHistory: any[], playerId: string | null): KillerStatsAgg {
   const list = Array.isArray(memHistory) ? memHistory : [];
   const killer = list.filter(isKillerRecord);
 
@@ -235,6 +243,10 @@ export function computeKillerStatsAggForProfile(
   let livesLostTotal = 0;
 
   let autoKillsTotal = 0;
+
+  let selfPenaltyHitsTotal = 0;
+  let livesStolenTotal = 0;
+  let livesHealedTotal = 0;
 
   const hitsBySegmentAgg: Record<string, number> = {};
 
@@ -273,42 +285,36 @@ export function computeKillerStatsAggForProfile(
     const k = numOr0(me?.kills, me?.killCount, me?.k, sp?.kills, sp?.killCount, sp?.k);
     if (k > 0) killsTotal += k;
 
-    // -------- auto-kills --------
-    const ak = numOr0(
-      me?.autoKills,
-      me?.auto_kills,
-      me?.autoKillCount,
-      me?.auto_kill_count,
-      sp?.autoKills,
-      sp?.auto_kills,
-      sp?.autoKillCount,
-      sp?.auto_kill_count
-    );
-    if (ak > 0) autoKillsTotal += ak;
-
-    // -------- lives taken / lost --------
     const lt = numOr0(
-      me?.livesTaken,
-      me?.damageDealt,
-      me?.dmgDealt,
-      sp?.livesTaken,
-      sp?.damageDealt,
-      sp?.dmgDealt
+      me?.livesTaken, me?.damageDealt, me?.dmgDealt,
+      sp?.livesTaken, sp?.damageDealt, sp?.dmgDealt
     );
     if (lt > 0) livesTakenTotal += lt;
 
     const ll = numOr0(
-      me?.livesLost,
-      me?.damageTaken,
-      me?.dmgTaken,
-      sp?.livesLost,
-      sp?.damageTaken,
-      sp?.dmgTaken
+      me?.livesLost, me?.damageTaken, me?.dmgTaken,
+      sp?.livesLost, sp?.damageTaken, sp?.dmgTaken
     );
     if (ll > 0) livesLostTotal += ll;
 
+    // -------- variantes (autokill / auto-hit / gains de vies) --------
+    const ak = numOr0(me?.autoKills, me?.auto_kills, sp?.autoKills, sp?.auto_kills);
+    if (ak > 0) autoKillsTotal += ak;
+
+    const sh = numOr0(
+      me?.selfPenaltyHits, me?.self_penalty_hits, me?.selfHits,
+      sp?.selfPenaltyHits, sp?.self_penalty_hits, sp?.selfHits
+    );
+    if (sh > 0) selfPenaltyHitsTotal += sh;
+
+    const st = numOr0(me?.livesStolen, me?.lives_stolen, sp?.livesStolen, sp?.lives_stolen);
+    if (st > 0) livesStolenTotal += st;
+
+    const hh = numOr0(me?.livesHealed, me?.lives_healed, sp?.livesHealed, sp?.lives_healed);
+    if (hh > 0) livesHealedTotal += hh;
+
     // -------- hits by segment (Option A) --------
-    // 1) me.hitsBySegment
+    // 1) det
     const hbs1 = me?.hitsBySegment || me?.hits_by_segment || me?.hits || null;
     if (hbs1 && typeof hbs1 === "object") {
       for (const [seg, c0] of Object.entries(hbs1)) {
@@ -320,7 +326,7 @@ export function computeKillerStatsAggForProfile(
       }
     }
 
-    // 2) sp.hitsBySegment
+    // 2) fallback: summary.players[i].hitsBySegment
     const hbs2 = sp?.hitsBySegment || sp?.hits_by_segment || sp?.hits || null;
     if (hbs2 && typeof hbs2 === "object") {
       for (const [seg, c0] of Object.entries(hbs2)) {
@@ -332,7 +338,7 @@ export function computeKillerStatsAggForProfile(
       }
     }
 
-    // 3) hitsBySegmentByPlayer map
+    // 3) ✅ NEW: hitsBySegmentByPlayer map
     const map = extractHitsBySegmentMap(summary);
     const mapForMe = map?.[playerId] || map?.[String(playerId)] || null;
     if (mapForMe && typeof mapForMe === "object") {
@@ -349,6 +355,9 @@ export function computeKillerStatsAggForProfile(
   const winRate = playerId && played > 0 ? (wins / played) * 100 : 0;
   const killsAvg = played > 0 ? killsTotal / played : 0;
   const autoKillsAvg = played > 0 ? autoKillsTotal / played : 0;
+  const selfPenaltyHitsAvg = played > 0 ? selfPenaltyHitsTotal / played : 0;
+  const livesStolenAvg = played > 0 ? livesStolenTotal / played : 0;
+  const livesHealedAvg = played > 0 ? livesHealedTotal / played : 0;
 
   const fav = computeFavsFromHitsMap(hitsBySegmentAgg);
 
@@ -366,6 +375,14 @@ export function computeKillerStatsAggForProfile(
 
     autoKillsTotal,
     autoKillsAvg,
+
+    selfPenaltyHitsTotal,
+    selfPenaltyHitsAvg,
+
+    livesStolenTotal,
+    livesStolenAvg,
+    livesHealedTotal,
+    livesHealedAvg,
 
     hitsBySegmentAgg,
     totalHits: fav.totalHits || 0,

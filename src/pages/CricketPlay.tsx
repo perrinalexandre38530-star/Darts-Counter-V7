@@ -96,6 +96,7 @@ type HitMode = "S" | "D" | "T";
 
 type Props = {
   profiles?: Profile[];
+  params?: any;
   onFinish?: (m: SavedMatch) => void;
 };
 
@@ -390,7 +391,9 @@ function pickCricketBotThrow(state: any, player: any, withPoints: boolean, quali
   return { target: Number(target), mult };
 }
 
-export default function CricketPlay({ profiles, onFinish }: Props) {
+type CricketVariantId = "classic" | "enculette";
+
+export default function CricketPlay({ profiles, params, onFinish }: Props) {
   const allProfiles = profiles ?? [];
 
   // ---- Phase (setup -> play) ----
@@ -405,9 +408,19 @@ export default function CricketPlay({ profiles, onFinish }: Props) {
   const [maxRounds, setMaxRounds] = React.useState<number>(20);
   const [rotateFirstPlayer, setRotateFirstPlayer] = React.useState<boolean>(true);
 
+  // ---- Variante (2A): Cricket classique / Enculette-Vache ----
+  const [variantId, setVariantId] = React.useState<CricketVariantId>("classic");
+
   const [randomStart, setRandomStart] = React.useState<boolean>(false);
   const [teamMode, setTeamMode] = React.useState<boolean>(false);
   const [fillWithBots, setFillWithBots] = React.useState<boolean>(true);
+
+  // Preset depuis la route générique (darts_mode → cricket)
+  React.useEffect(() => {
+    const preset = String(params?.presetVariantId || "").toLowerCase();
+    if (preset === "enculette") setVariantId("enculette");
+    else if (preset) setVariantId("classic");
+  }, [params?.presetVariantId]);
 
 // ---- Match en cours ----
 const [state, setState] = React.useState<CricketState | null>(null);
@@ -1106,7 +1119,7 @@ function buildHistoryRecord(): SavedMatch | null {
   const totalDarts = playersPayload.reduce((a, p) => a + p.hits.length, 0);
 
   return {
-    id: `cricket-${createdAt}-${Math.random().toString(36).slice(2, 8)}`,
+    id: `cricket${variantId === "enculette" ? "-enculette" : ""}-${createdAt}-${Math.random().toString(36).slice(2, 8)}`,
     kind: "cricket",
     status: finishedFlag ? "finished" : "aborted",
     players: playersLite,
@@ -1119,6 +1132,7 @@ function buildHistoryRecord(): SavedMatch | null {
     },
     payload: {
       mode: "cricket",
+      variantId,
       withPoints: scoreMode === "points",
       maxRounds,
       rotateFirstPlayer,
@@ -1451,8 +1465,24 @@ function buildHistoryRecord(): SavedMatch | null {
         {/* PARAMÈTRES DE BASE */}
         <SectionCard
           title="Paramètres de base"
-          subtitle="Mode Cricket standard : 20, 19, 18, 17, 16, 15 & Bull (3 marques pour fermer)."
+          subtitle={
+            variantId === "enculette"
+              ? "Variante Enculette / Vache : même cibles (20..15 + Bull). La règle spécifique pourra être activée ensuite."
+              : "Mode Cricket standard : 20, 19, 18, 17, 16, 15 & Bull (3 marques pour fermer)."
+          }
         >
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 12 }}>
+            <div style={{ fontSize: 13, color: T.textSoft }}>Variante</div>
+            <div style={{ display: "flex", gap: 8 }}>
+              <Pill tone="gold" active={variantId === "classic"} onClick={() => setVariantId("classic")}>
+                Cricket
+              </Pill>
+              <Pill tone="gold" active={variantId === "enculette"} onClick={() => setVariantId("enculette")}>
+                Enculette / Vache
+              </Pill>
+            </div>
+          </div>
+
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
             <div style={{ fontSize: 13, color: T.textSoft }}>Mode de score</div>
             <div style={{ display: "flex", gap: 8 }}>

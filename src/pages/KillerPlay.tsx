@@ -93,6 +93,13 @@ type KillerPlayerState = {
 
   kills: number;
   autoKills?: number;
+  // ✅ Variantes (stats)
+  // Auto-hit = occurrences de touches sur SON numéro en phase ACTIVE quand l'option est activée.
+  // (Version B demandée : occurrences, pas pondéré S/D/T)
+  selfPenaltyHits?: number;
+  // Vies gagnées via LifeSteal / BullHeal (si options activées)
+  livesStolen?: number;
+  livesHealed?: number;
   hitsOnSelf: number;
   totalThrows: number;
   killerThrows: number;
@@ -1775,35 +1782,13 @@ export default function KillerPlay({ store, go, config, onFinish }: Props) {
   // ✅ Son/voix à jouer après la mise à jour d'état (robuste React 18)
   const pendingSfxRef = React.useRef<PendingSfx>(null);
   const pendingDeathAfterRef = React.useRef(false);
-  // ✅ Quand une élimination arrive, on veut laisser le SFX "dégâts" (kill/self/auto)
-  // + le SFX "death" se jouer AVANT le "lastDead" de fin de partie.
-  // Sinon, lastDead démarre immédiatement et masque le SFX autokill.
-  const pendingLastDeadDelayMsRef = React.useRef<number>(0);
   const pendingVoiceRef = React.useRef<
     { kind: VoiceKind; killer: string; victim?: string } | null
   >(null);
 
-  // ✅ mode assignation numéro (robuste : certaines variantes embarquent la config dans options/settings/config)
-  const numberAssignMode: "none" | "throw" | "random" = (() => {
-    const raw =
-      (config as any)?.numberAssignMode ??
-      (config as any)?.options?.numberAssignMode ??
-      (config as any)?.settings?.numberAssignMode ??
-      (config as any)?.config?.numberAssignMode;
-
-    const s = String(raw ?? "").toLowerCase().trim();
-    if (s === "throw" || s === "random" || s === "none") return s as any;
-
-    // legacy bool
-    const legacy =
-      (config as any)?.selectNumberByThrow ??
-      (config as any)?.options?.selectNumberByThrow ??
-      (config as any)?.settings?.selectNumberByThrow ??
-      (config as any)?.config?.selectNumberByThrow;
-    if (truthy(legacy)) return "throw";
-
-    return "none";
-  })();
+  const numberAssignMode: "none" | "throw" | "random" =
+    ((config as any)?.numberAssignMode as any) ||
+    (((config as any)?.selectNumberByThrow ? "throw" : "none") as any);
 
   const inNumberAssignRound =
     numberAssignMode === "throw" || numberAssignMode === "random";
@@ -1914,6 +1899,9 @@ React.useEffect(() => {
         killerPhase: phase,
         kills: 0,
         autoKills: 0,
+        selfPenaltyHits: 0,
+        livesStolen: 0,
+        livesHealed: 0,
         hitsOnSelf: 0,
         totalThrows: 0,
         killerThrows: 0,
@@ -2174,6 +2162,9 @@ React.useEffect(() => {
         killerPhase: p.killerPhase,
         kills: p.kills,
         autoKills: p.autoKills ?? 0,
+        selfPenaltyHits: p.selfPenaltyHits ?? 0,
+        livesStolen: p.livesStolen ?? 0,
+        livesHealed: p.livesHealed ?? 0,
         hitsOnSelf: p.hitsOnSelf,
         totalThrows: p.totalThrows,
         killerThrows: p.killerThrows,
@@ -2437,6 +2428,10 @@ const blindKillerOn = truthy(
     const gained = Math.max(0, me.lives - before);
     if (gained > 0) didSomething = true;
 
+    if (gained > 0) {
+      me.livesHealed = (me.livesHealed ?? 0) + gained;
+    }
+
     pushLog(`💚 ${me.name} fait ${fmtThrow(thr)} → +${gained} vie(s)`);
     pushEvent({ t: Date.now(), type: "BULL_HEAL", actorId: me.id, heal: gained, throw: thr });
   }
@@ -2531,11 +2526,6 @@ const blindKillerOn = truthy(
         // ✅ SFX + voice (après commit)
         pendingSfxRef.current = { kind: "auto_kill", mult: thr.mult };
         pendingDeathAfterRef.current = true;
-        // ✅ laisse entendre autokill + death avant un éventuel lastDead
-        pendingLastDeadDelayMsRef.current = Math.max(
-          pendingLastDeadDelayMsRef.current || 0,
-          1200
-        );
         pendingVoiceRef.current = { kind: "auto_kill", killer: me.name };
   
         return next;
@@ -2580,6 +2570,7 @@ if (me.killerPhase === "ACTIVE") {
       // ✅ AUTO-PÉNALITÉ (KILLER qui touche SON numéro)
   if (me.number && thr.target === me.number && selfPenaltyOn) {
     me.hitsOnSelf = (me.hitsOnSelf ?? 0) + 1;
+    me.selfPenaltyHits = (me.selfPenaltyHits ?? 0) + 1;
 
     const dmg = selfPenaltyMultOn ? dmgFrom(thr.mult, "multiplier") : 1;
 
@@ -2609,9 +2600,6 @@ if (me.killerPhase === "ACTIVE") {
     });
 
     if (me.lives <= 0) {
-      // ✅ Mort par auto-pénalité = on la comptabilise comme AUTO-KILL (stat + SFX)
-      me.autoKills = (me.autoKills ?? 0) + 1;
-
       me.eliminated = true;
       me.eliminatedAt = Date.now();
       me.killerPhase = "ARMING";
@@ -2622,17 +2610,9 @@ if (me.killerPhase === "ACTIVE") {
       }
 
       pushLog(`☠️ ${me.name} meurt par auto-pénalité`);
-
-      // ✅ SFX/Voice: autoKill + death (évite le "mur" de sons de fin)
-      pendingSfxRef.current = { kind: "auto_kill", mult: thr.mult };
-      pendingVoiceRef.current = { kind: "auto_kill", killer: me.name };
+      // ✅ enchaîner death après le SFX de self-hit
+      pendingSfxRef.current = pendingSfxRef.current || { kind: "self_hit", mult: thr.mult };
       pendingDeathAfterRef.current = true;
-
-      // ✅ laisse la place au duo (autokill + death) avant le lastDead de fin
-      pendingLastDeadDelayMsRef.current = Math.max(
-        pendingLastDeadDelayMsRef.current || 0,
-        1200
-      );
     }
 
     return next;
@@ -2661,6 +2641,7 @@ if (me.killerPhase === "ACTIVE") {
       // ✅ LIFE STEAL
       if (lifeStealOn) {
         me.lives = Math.max(0, (me.lives ?? 0) + actualLoss);
+        me.livesStolen = (me.livesStolen ?? 0) + actualLoss;
       }
 
       pendingSfxRef.current = { kind: "kill", mult: thr.mult };
@@ -2703,12 +2684,6 @@ if (me.killerPhase === "ACTIVE") {
       // ✅ enchaîner un "death" APRÈS le SFX de dégâts
       pendingSfxRef.current = pendingSfxRef.current || { kind: "kill", mult: thr.mult };
       pendingDeathAfterRef.current = true;
-      // ✅ important: si cette élimination finit la partie, ne lance PAS lastDead immédiatement,
-      // sinon il masque le SFX kill/autoKill. On laisse ~1100ms.
-      pendingLastDeadDelayMsRef.current = Math.max(
-        pendingLastDeadDelayMsRef.current || 0,
-        1100
-      );
     } else {
       pushLog(
         `🔻 ${me.name} touche ${victim.name} (${fmtThrow(thr)} sur ${thr.target}, -${dmg}) → ${victim.lives} vie(s)`
@@ -2777,18 +2752,8 @@ if (me.killerPhase === "ACTIVE") {
     if (ww && !finishedRef.current) {
       if (!lastDeadPlayedRef.current) {
         lastDeadPlayedRef.current = true;
-        const delay = Math.max(0, pendingLastDeadDelayMsRef.current || 0);
-        pendingLastDeadDelayMsRef.current = 0;
         try {
-          if (delay > 0) {
-            setTimeout(() => {
-              try {
-                sfx.lastDead?.();
-              } catch {}
-            }, delay);
-          } else {
-            sfx.lastDead?.();
-          }
+          sfx.lastDead?.();
         } catch {}
       }
 
@@ -3013,6 +2978,10 @@ if (thrSafe.target === 25) {
     const gained = Math.max(0, me2.lives - before);
     if (gained > 0) didSomething = true;
 
+    if (gained > 0) {
+      me2.livesHealed = (me2.livesHealed ?? 0) + gained;
+    }
+
     pushLog(`💚 ${me2.name} fait ${fmtThrow(thrSafe)} → +${gained} vie(s)`);
     pushEvent({
       t: Date.now(),
@@ -3117,10 +3086,6 @@ if (thrSafe.target === 25) {
 
         pendingSfxRef.current = { kind: "auto_kill", mult: thrSafe.mult };
         pendingDeathAfterRef.current = true;
-        pendingLastDeadDelayMsRef.current = Math.max(
-          pendingLastDeadDelayMsRef.current || 0,
-          1200
-        );
         pendingVoiceRef.current = { kind: "auto_kill", killer: me2.name };
 
         return next;
@@ -3155,6 +3120,7 @@ if (thrSafe.target === 25) {
         // ✅ AUTO-PÉNALITÉ (BOT)
         if (me2.number && thrSafe.target === me2.number && selfPenaltyOn) {
           me2.hitsOnSelf = (me2.hitsOnSelf ?? 0) + 1;
+    me2.selfPenaltyHits = (me2.selfPenaltyHits ?? 0) + 1;
       
           const dmg = selfPenaltyMultOn ? dmgFrom(thrSafe.mult, "multiplier") : 1;
       
@@ -3222,6 +3188,7 @@ if (thrSafe.target === 25) {
             // ✅ LIFE STEAL
             if (lifeStealOn) {
               me2.lives = Math.max(0, (me2.lives ?? 0) + actualLoss);
+              me2.livesStolen = (me2.livesStolen ?? 0) + actualLoss;
             }
       
             pendingSfxRef.current = { kind: "kill", mult: thrSafe.mult };

@@ -4,6 +4,7 @@
 // ✅ Pas de <button> => évite DOM nesting warnings
 // ✅ Click fiable mobile/desktop : onPointerDown + onClick
 // ✅ stopPropagation + preventDefault
+// ✅ NEW: look cohérent avec InfoDot (couleur thème + halo + flèche plus grasse)
 // ============================================
 
 import React from "react";
@@ -14,6 +15,9 @@ type Props = {
   glow?: string;
   title?: string;
   size?: number; // px
+
+  // ✅ NEW: option pour forcer la couleur (sinon theme.primary)
+  color?: string;
 };
 
 export default function BackDot({
@@ -21,6 +25,7 @@ export default function BackDot({
   glow,
   title = "Retour",
   size = 36,
+  color,
 }: Props) {
   const { theme } = useTheme();
 
@@ -35,7 +40,8 @@ export default function BackDot({
     [onClick]
   );
 
-  const halo = glow ?? theme.primary + "88";
+  const c = color ?? theme.primary; // ✅ flèche et bordure = thème
+  const halo = glow ?? c + "88";
 
   return (
     <div
@@ -57,18 +63,19 @@ export default function BackDot({
         cursor: "pointer",
         userSelect: "none",
         WebkitTapHighlightColor: "transparent",
-        border: `1px solid ${theme.borderSoft}`,
+        // ✅ harmonisation visuelle
+        border: `1px solid ${c}66`,
         background: "rgba(0,0,0,0.22)",
         boxShadow: `0 0 0 2px rgba(0,0,0,0.15), 0 0 14px ${halo}`,
-        color: theme.text,
+        color: c,
         flex: "0 0 auto",
         pointerEvents: "auto",
       }}
     >
       <span
         style={{
-          fontSize: 18,
-          fontWeight: 1000,
+          fontSize: 20, // un peu plus présent
+          fontWeight: 1000, // ✅ plus gras
           lineHeight: 1,
           transform: "translateX(-1px)",
           textShadow: `0 0 10px ${halo}`,

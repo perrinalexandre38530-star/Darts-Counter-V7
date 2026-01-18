@@ -45,6 +45,19 @@ function fmtDate(ts: any) {
   }
 }
 
+function truthy(v: any): boolean {
+  if (v === true) return true;
+  if (v === false) return false;
+  if (v === 1) return true;
+  if (v === 0) return false;
+  if (typeof v === "string") {
+    const s = v.trim().toLowerCase();
+    if (s === "true" || s === "1" || s === "on" || s === "yes" || s === "oui") return true;
+    if (s === "false" || s === "0" || s === "off" || s === "no" || s === "non") return false;
+  }
+  return !!v;
+}
+
 function AvatarMedallion({ size, src, name }: { size: number; src?: string | null; name?: string }) {
   const initials = String(name || "J").trim().slice(0, 1).toUpperCase();
   return (
@@ -172,6 +185,12 @@ function normalizeRow(p: any) {
   const killerHits = clampInt(p?.killerHits, 0, 9999, 0);
   const uselessHits = clampInt(p?.uselessHits, 0, 9999, 0);
 
+  // ✅ variantes (si dispo)
+  const autoKills = clampInt(p?.autoKills ?? p?.auto_kills, 0, 9999, 0);
+  const selfPenaltyHits = clampInt(p?.selfPenaltyHits ?? p?.self_penalty_hits ?? p?.selfHits, 0, 9999, 0);
+  const livesStolen = clampInt(p?.livesStolen ?? p?.lives_stolen, 0, 9999, 0);
+  const livesHealed = clampInt(p?.livesHealed ?? p?.lives_healed, 0, 9999, 0);
+
   const number = clampInt(p?.number, 0, 25, 0);
   const eliminated = !!p?.eliminated;
   const isKiller = !!p?.isKiller;
@@ -190,6 +209,10 @@ function normalizeRow(p: any) {
     becomeThrows,
     killerHits,
     uselessHits,
+    autoKills,
+    selfPenaltyHits,
+    livesStolen,
+    livesHealed,
     number,
     eliminated,
     isKiller,
@@ -214,11 +237,27 @@ export default function KillerSummaryPage({ store, go, params }: Props) {
     const winnerId = String(rec?.winnerId || "");
     const cfg = rec?.summary || rec?.payload?.config || rec?.payload?.payload?.config || rec?.payload?.config || null;
 
+    // Variantes (robustes)
+    const selfPenaltyOn = truthy(
+      cfg?.selfHitWhileKiller ??
+        cfg?.selfPenalty ??
+        cfg?.self_penalty ??
+        cfg?.variants?.selfHitWhileKiller ??
+        cfg?.variants?.selfPenalty ??
+        cfg?.variants?.self_penalty
+    );
+    const lifeStealOn = truthy(
+      cfg?.lifeSteal ?? cfg?.life_steal ?? cfg?.variants?.lifeSteal ?? cfg?.variants?.life_steal
+    );
+    const bullHealOn = truthy(
+      cfg?.bullHeal ?? cfg?.bull_heal ?? cfg?.variants?.bullHeal ?? cfg?.variants?.bull_heal
+    );
+
     const livesStart = clampInt(rec?.summary?.livesStart ?? cfg?.lives, 1, 99, 3);
     const becomeRule = rec?.summary?.becomeRule ?? cfg?.becomeRule ?? "single";
     const damageRule = rec?.summary?.damageRule ?? cfg?.damageRule ?? "multiplier";
 
-    return { mode, createdAt, winnerId, livesStart, becomeRule, damageRule };
+    return { mode, createdAt, winnerId, livesStart, becomeRule, damageRule, selfPenaltyOn, lifeStealOn, bullHealOn };
   }, [rec]);
 
   const rows = React.useMemo(() => {
@@ -445,6 +484,10 @@ export default function KillerSummaryPage({ store, go, params }: Props) {
                   </div>
                   <div style={{ fontSize: 11, opacity: 0.85 }}>
                     kills {p.kills} · dmg {p.dmg} · lancers {p.throwsTotal}
+                    {p.autoKills ? ` · autokill ${p.autoKills}` : ""}
+                    {meta.selfPenaltyOn ? ` · auto-hit ${p.selfPenaltyHits || 0}` : ""}
+                    {meta.lifeStealOn ? ` · vies volées ${p.livesStolen || 0}` : ""}
+                    {meta.bullHealOn ? ` · vies gagnées ${p.livesHealed || 0}` : ""}
                     {p.becomeThrows ? ` · become ${p.becomeThrows}` : ""}
                   </div>
                 </div>
@@ -494,6 +537,10 @@ export default function KillerSummaryPage({ store, go, params }: Props) {
                 {line("Total lancers", totalThrows)}
                 {line("Total kills", totalKills)}
                 {line("Total dégâts (vies prises)", totalDmg)}
+                {meta.selfPenaltyOn && line("Total auto-hit", rows.reduce((a, b) => a + (b.selfPenaltyHits || 0), 0))}
+                {line("Total autokill", rows.reduce((a, b) => a + (b.autoKills || 0), 0))}
+                {meta.lifeStealOn && line("Total vies volées", rows.reduce((a, b) => a + (b.livesStolen || 0), 0))}
+                {meta.bullHealOn && line("Total vies gagnées", rows.reduce((a, b) => a + (b.livesHealed || 0), 0))}
                 {line("Moyenne lancers pour devenir KILLER", Number.isFinite(becameAvg) ? becameAvg.toFixed(1) : "—")}
               </>
             );

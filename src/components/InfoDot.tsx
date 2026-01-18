@@ -1,76 +1,85 @@
 // ============================================
 // src/components/InfoDot.tsx
-// FIX validateDOMNesting: <span role="button">
-// + click/keyboard safe
+// InfoDot robuste (anti "button in button")
+// ✅ Pas de <button> => évite DOM nesting warnings
+// ✅ Click fiable mobile/desktop : onPointerDown + onClick
+// ✅ stopPropagation + preventDefault
+// ✅ NEW: look cohérent avec BackDot (mêmes dimensions/halo/border)
 // ============================================
 
 import React from "react";
+import { useTheme } from "../contexts/ThemeContext";
+
+type Props = {
+  onClick?: (e: any) => void;
+  glow?: string;
+  title?: string;
+  size?: number; // px
+  color?: string;
+};
 
 export default function InfoDot({
   onClick,
-  size = 30,
-  color = "#FFFFFF",
-  glow = "rgba(255,255,255,0.35)",
-}: {
-  onClick?: (e: React.MouseEvent) => void;
-  size?: number;
-  color?: string;
-  glow?: string;
-}) {
-  const handleClick = (e: React.MouseEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    onClick?.(e);
-  };
+  glow,
+  title = "Info",
+  size = 36,
+  color,
+}: Props) {
+  const { theme } = useTheme();
 
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key !== "Enter" && e.key !== " ") return;
-    e.preventDefault();
-    e.stopPropagation();
-    // Déclenche la même logique qu'un click (sans fake MouseEvent)
-    // Ici on appelle juste onClick sans event souris (la plupart des handlers s'en foutent)
-    // Si tu veux absolument un MouseEvent: fais un wrapper côté appelant.
-    (onClick as any)?.(e);
-  };
+  const handle = React.useCallback(
+    (e: any) => {
+      try {
+        e?.preventDefault?.();
+        e?.stopPropagation?.();
+      } catch {}
+      onClick?.(e);
+    },
+    [onClick]
+  );
+
+  const c = color ?? theme.primary;
+  const halo = glow ?? c + "88";
 
   return (
-    <span
+    <div
       role="button"
+      aria-label={title}
+      title={title}
       tabIndex={0}
-      aria-label="Info"
-      title="Info"
-      onClick={handleClick}
-      onKeyDown={handleKeyDown}
+      onPointerDown={handle}
+      onClick={handle}
+      onKeyDown={(e: any) => {
+        if (e.key === "Enter" || e.key === " ") handle(e);
+      }}
       style={{
         width: size,
         height: size,
-        borderRadius: "50%",
-        background: "rgba(0,0,0,0.9)",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        color,
-        fontWeight: 800,
-        fontSize: Math.max(12, size * 0.5),
+        borderRadius: 999,
+        display: "grid",
+        placeItems: "center",
         cursor: "pointer",
         userSelect: "none",
         WebkitTapHighlightColor: "transparent",
-        boxShadow: `0 0 6px ${glow}, 0 0 12px ${glow}`,
-        animation: "infodotPulse 1.9s infinite ease-in-out",
+        border: `1px solid ${c}66`,
+        background: "rgba(0,0,0,0.22)",
+        boxShadow: `0 0 0 2px rgba(0,0,0,0.15), 0 0 14px ${halo}`,
+        color: c,
+        flex: "0 0 auto",
+        pointerEvents: "auto",
       }}
     >
-      i
-
-      {/* injecté mais ultra léger ; si tu veux 0 injection, je te fais version sans <style> */}
-      <style>
-        {`
-          @keyframes infodotPulse {
-            0%   { transform: scale(1);   filter: brightness(1); }
-            50%  { transform: scale(1.05); filter: brightness(1.15); }
-            100% { transform: scale(1);   filter: brightness(1); }
-          }
-        `}
-      </style>
-    </span>
+      <span
+        style={{
+          fontSize: 18,
+          fontWeight: 1000, // ✅ plus gras, comme la flèche
+          lineHeight: 1,
+          transform: "translateY(-0.5px)",
+          textShadow: `0 0 10px ${halo}`,
+        }}
+      >
+        i
+      </span>
+    </div>
   );
 }

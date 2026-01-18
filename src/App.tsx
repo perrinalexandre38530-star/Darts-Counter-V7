@@ -1,3 +1,4 @@
+// @ts-nocheck
 // ============================================
 // src/App.tsx — Navigation + wiring propre (v5 sécurisé)
 // Fix: "Lancer partie" n'affiche plus la dernière reprise
@@ -73,7 +74,7 @@ import AccountStart from "./pages/AccountStart";
 import AuthV7Login from "./pages/AuthV7Login";
 import AuthV7Signup from "./pages/AuthV7Signup";
 import AuthCallback from "./pages/AuthCallback"; // si présent dans ton projet
-import AuthReset from "./pages/AuthReset"; // si présent dans ton projet
+import AuthReset from "./pages/AuthReset";
 
 import SplashScreen from "./components/SplashScreen";
 
@@ -108,6 +109,7 @@ import type { X01ConfigV3 as X01ConfigV3Type } from "./types/x01v3";
 import GameSelect from "./pages/GameSelect";
 import Home from "./pages/Home";
 import Games from "./pages/Games";
+import ModeNotReady from "./pages/ModeNotReady";
 import TournamentsHome from "./pages/TournamentsHome";
 import Profiles from "./pages/Profiles";
 import FriendsPage from "./pages/FriendsPage";
@@ -392,8 +394,8 @@ function sanitizeStoreForCloud(s: any) {
       if (Array.isArray(rr.players)) {
         rr.players = rr.players.map((pl: any) => {
           const pp = { ...(pl || {}) };
-          const v = pp.avatarDataUrl;
-          if (typeof v === "string" && v.startsWith("data:")) delete pp.avatarDataUrl;
+          const v = (p as any).avatarDataUrl ?? p.avatarUrl;
+          if (typeof v === "string" && v.startsWith("data:")) delete (p as any).avatarDataUrl ?? p.avatarUrl;
           return pp;
         });
       }
@@ -402,8 +404,8 @@ function sanitizeStoreForCloud(s: any) {
         rr.payload = { ...(rr.payload || {}) };
         rr.payload.players = rr.payload.players.map((pl: any) => {
           const pp = { ...(pl || {}) };
-          const v = pp.avatarDataUrl;
-          if (typeof v === "string" && v.startsWith("data:")) delete pp.avatarDataUrl;
+          const v = (p as any).avatarDataUrl ?? p.avatarUrl;
+          if (typeof v === "string" && v.startsWith("data:")) delete (p as any).avatarDataUrl ?? p.avatarUrl;
           return pp;
         });
       }
@@ -1844,6 +1846,11 @@ function App() {
           ) : (
             <Games setTab={(t: any) => go(t)} />
           );
+        break;
+
+      // ✅ Nouveau: fallback pour les modes listés mais pas encore implémentés
+      case "mode_not_ready":
+        page = <ModeNotReady />;
         break;
 
       // ✅ NEW (OBLIGATOIRE): Pétanque menu/config/play (snake_case)

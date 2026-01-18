@@ -57,6 +57,9 @@ type BRPlayerState = {
   alive: boolean;
   lives: number;
   misses: number;
+
+  // ✅ FINISH / RANKING
+  eliminatedAtRound?: number | null; // roundIndex (0-based) où le joueur a été éliminé
   rank?: number; // 1..N (déterminé à la fin)
 };
 
@@ -100,6 +103,63 @@ function avatarFallback(name: string) {
   return (a + b).slice(0, 2);
 }
 
+function computeFinalRanking(players: BRPlayerState[]) {
+  const list = Array.isArray(players) ? players : [];
+
+  // Survivants en premier (devrait être 1 seul), puis éliminés
+  const alive = list.filter((p) => p?.alive);
+  const dead = list
+    .filter((p) => !p?.alive)
+    .slice()
+    // éliminé le plus tard = mieux classé (donc avant)
+    .sort((a, b) => Number(b?.eliminatedAtRound ?? -1) - Number(a?.eliminatedAtRound ?? -1));
+
+  const ordered = [...alive, ...dead];
+
+  // rank 1..N
+  return ordered.map((p, idx) => ({
+    ...p,
+    rank: idx + 1,
+  }));
+}
+
+function buildBattleRoyaleSummary(opts: {
+  players: BRPlayerState[];
+  eliminationRule: "zero_points" | "miss_x" | "life_system";
+  missLimit: number;
+  dartsPerTurn: number;
+  roundsPlayed: number; // 1-based
+  targets: number[];
+}) {
+  const ranking = computeFinalRanking(opts.players);
+  const winner = ranking[0] || null;
+
+  // Stats simples et fiables (Step 2 utilisera ça pour l’overlay)
+  const perPlayer = ranking.map((p) => ({
+    id: p.id,
+    name: p.name,
+    rank: p.rank ?? 999,
+    alive: p.alive,
+    lives: p.lives,
+    misses: p.misses,
+    eliminatedAtRound: p.eliminatedAtRound ?? null,
+  }));
+
+  return {
+    mode: "battle_royale",
+    winnerId: winner?.id ?? null,
+    winnerName: winner?.name ?? null,
+    ranking: perPlayer,
+    meta: {
+      eliminationRule: opts.eliminationRule,
+      missLimit: opts.missLimit,
+      dartsPerTurn: opts.dartsPerTurn,
+      roundsPlayed: opts.roundsPlayed,
+      targetsCount: opts.targets.length,
+    },
+  };
+}
+
 export default function BattleRoyalePlay({ go, config, onFinish }: Props) {
   const { theme } = useTheme();
   const { t } = useLang();
@@ -123,6 +183,8 @@ export default function BattleRoyalePlay({ go, config, onFinish }: Props) {
       alive: true,
       lives: baseLives,
       misses: 0,
+
+      eliminatedAtRound: null,
     }));
   }, [cfg?.players, baseLives]);
 
@@ -142,6 +204,10 @@ export default function BattleRoyalePlay({ go, config, onFinish }: Props) {
 
   const [infoOpen, setInfoOpen] = React.useState(false);
   const [ended, setEnded] = React.useState(false);
+
+  // ✅ Finish guard (onFinish appelé une seule fois) + données pour overlay (Step 2)
+  const finishOnceRef = React.useRef(false);
+  const [finalSummary, setFinalSummary] = React.useState<any>(null);
 
   const target = TARGETS[roundIndex % TARGETS.length];
 
@@ -241,18 +307,21 @@ export default function BattleRoyalePlay({ go, config, onFinish }: Props) {
           p.lives = Math.max(0, (p.lives || 0) - 1);
           if (p.lives <= 0) {
             p.alive = false;
+            p.eliminatedAtRound = roundIndex;
             eliminatedNow = true;
           }
         }
       } else if (eliminationRule === "zero_points") {
         if (pts <= 0) {
           p.alive = false;
+          p.eliminatedAtRound = roundIndex;
           eliminatedNow = true;
         }
       } else if (eliminationRule === "miss_x") {
         p.misses = (p.misses || 0) + missThisTurn;
         if (p.misses >= missLimit) {
           p.alive = false;
+          p.eliminatedAtRound = roundIndex;
           eliminatedNow = true;
         }
       }
@@ -304,6 +373,48 @@ export default function BattleRoyalePlay({ go, config, onFinish }: Props) {
       });
     }, 0);
   }
+
+  // ✅ FIN: onFinish + summary (une seule fois)
+  React.useEffect(() => {
+    if (!ended) return;
+    if (finishOnceRef.current) return;
+    finishOnceRef.current = true;
+
+    try {
+      const summary = buildBattleRoyaleSummary({
+        players,
+        eliminationRule,
+        missLimit,
+        dartsPerTurn,
+        roundsPlayed: roundIndex + 1,
+        targets: TARGETS,
+      });
+
+      setFinalSummary(summary);
+
+      onFinish?.({
+        kind: "battle_royale",
+        status: "finished",
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+        players: computeFinalRanking(players).map((p) => ({
+          id: p.id,
+          name: p.name,
+          avatarDataUrl: p.avatarDataUrl ?? null,
+        })),
+        winnerId: summary?.winnerId ?? null,
+        summary,
+        payload: {
+          summary,
+          config: cfg,
+          roundsPlayed: roundIndex + 1,
+        },
+      });
+    } catch (e) {
+      console.warn("[BattleRoyale] onFinish summary error:", e);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ended]);
 
   const pageBg = theme.bg;
   const cardBg = theme.card;
@@ -624,6 +735,8 @@ export default function BattleRoyalePlay({ go, config, onFinish }: Props) {
               setCurrentThrow([]);
               setMultiplier(1);
               setEnded(false);
+              finishOnceRef.current = false;
+              setFinalSummary(null);
               if (cfg?.sfxEnabled !== false) {
                 try { playUiClickSoft(); } catch {}
               }

@@ -422,6 +422,9 @@ export default function KillerConfigPage(props: Props) {
   const [bullSplash, setBullSplash] = React.useState<boolean>(false);
   const [bullHeal, setBullHeal] = React.useState<boolean>(false);
 
+  // ✅ bouton "i" (règles / variantes)
+  const [infoOpen, setInfoOpen] = React.useState<boolean>(false);
+
   const variantState: Record<VariantKey, boolean> = {
     selfHitWhileKiller,
     selfHitUsesMultiplier,
@@ -468,10 +471,12 @@ export default function KillerConfigPage(props: Props) {
     if (k === "selfHitWhileKiller") return setSelfHitWhileKiller(true);
     if (k === "lifeSteal") return setLifeSteal(true);
 
-    // ✅ FIX BLIND: blind => force numéros aléatoires
+    // ✅ FIX BLIND: incompatible avec "1er lancer = choisir son numéro"
+    // On évite tout changement silencieux du mode d'attribution :
+    // si "1er lancer" est activé, l'option Blind Killer doit être bloquée.
     if (k === "blindKiller") {
+      if (numberAssignMode === "throw") return; // bloqué (UI grisée + raison)
       setBlindKiller(true);
-      setNumberAssignMode("random");
       return;
     }
 
@@ -483,11 +488,9 @@ export default function KillerConfigPage(props: Props) {
     if (!selfHitWhileKiller && selfHitUsesMultiplier) setSelfHitUsesMultiplier(false);
   }, [selfHitWhileKiller]);
 
-  // ✅ FIX BLIND: incompatibilité (Blind Killer OFF si '1er lancer = choisir son numéro')
+  // ✅ FIX BLIND: si l'utilisateur passe en "1er lancer", on coupe Blind Killer.
   React.useEffect(() => {
-    if (numberAssignMode === "throw" && blindKiller) {
-      setBlindKiller(false);
-    }
+    if (numberAssignMode === "throw" && blindKiller) setBlindKiller(false);
   }, [numberAssignMode, blindKiller]);
 
   const [selectedIds, setSelectedIds] = React.useState<string[]>(() => {
@@ -649,7 +652,7 @@ export default function KillerConfigPage(props: Props) {
     >
       {/* HEADER */}
       <header style={{ marginBottom: 6 }}>
-        <div style={{ display: "flex", alignItems: "center", marginBottom: 6 }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
           <button
             type="button"
             onClick={() => (onBack ? onBack() : typeof go === "function" ? go("games") : null)}
@@ -667,6 +670,30 @@ export default function KillerConfigPage(props: Props) {
           >
             <span style={{ fontSize: 16 }}>←</span>
             <span>Retour</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setInfoOpen(true)}
+            style={{
+              width: 28,
+              height: 28,
+              borderRadius: 999,
+              border: "1px solid rgba(255,255,255,0.18)",
+              background: "rgba(255,255,255,0.06)",
+              color: "#fff",
+              fontWeight: 900,
+              display: "inline-flex",
+              alignItems: "center",
+              justifyContent: "center",
+              boxShadow: "0 0 12px rgba(0,0,0,0.55)",
+              cursor: "pointer",
+              flex: "0 0 auto",
+            }}
+            aria-label="Infos règles Killer"
+            title="Infos"
+          >
+            i
           </button>
         </div>
 
@@ -912,7 +939,248 @@ export default function KillerConfigPage(props: Props) {
           )}
         </section>
 
+        {/* OPTIONS */}
+        <section
+          style={{
+            background: cardBg,
+            borderRadius: 18,
+            padding: 12,
+            marginBottom: 14,
+            boxShadow: "0 16px 40px rgba(0,0,0,0.55)",
+            border: "1px solid rgba(255,255,255,0.04)",
+          }}
+        >
+          <div style={{ fontSize: 12, textTransform: "uppercase", letterSpacing: 1, fontWeight: 800, color: primary, marginBottom: 10 }}>
+            Options
+          </div>
 
+          {/* ✅ ORDRE DE DÉPART */}
+          <div style={{ marginTop: 2, marginBottom: 14 }}>
+            <div style={{ fontSize: 12, color: "#c8cbe4", marginBottom: 6 }}>Ordre de départ</div>
+
+            <div style={{ display: "flex", gap: 10, marginTop: 6 }}>
+              <button
+                type="button"
+                onClick={() => setRandomStartOrder(false)}
+                style={{
+                  flex: 1,
+                  padding: "10px 12px",
+                  borderRadius: 14,
+                  fontWeight: 900,
+                  border: !randomStartOrder ? "1px solid rgba(255,198,58,.55)" : "1px solid rgba(255,255,255,.12)",
+                  background: !randomStartOrder ? "rgba(255,198,58,.18)" : "rgba(0,0,0,.35)",
+                  color: !randomStartOrder ? "#ffe7b0" : "#fff",
+                  cursor: "pointer",
+                }}
+              >
+                Ordre des joueurs
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setRandomStartOrder(true)}
+                style={{
+                  flex: 1,
+                  padding: "10px 12px",
+                  borderRadius: 14,
+                  fontWeight: 900,
+                  border: randomStartOrder ? "1px solid rgba(255,198,58,.55)" : "1px solid rgba(255,255,255,.12)",
+                  background: randomStartOrder ? "rgba(255,198,58,.18)" : "rgba(0,0,0,.35)",
+                  color: randomStartOrder ? "#ffe7b0" : "#fff",
+                  cursor: "pointer",
+                }}
+              >
+                🎲 Aléatoire
+              </button>
+            </div>
+
+            <div style={{ fontSize: 11, color: "#7c80a0", marginTop: 6 }}>
+              Si activé, l’ordre de jeu est mélangé automatiquement au lancement.
+            </div>
+          </div>
+
+          {/* attribution numéros */}
+          <div style={{ marginBottom: 14 }}>
+            <div style={{ fontSize: 12, color: "#c8cbe4", marginBottom: 6 }}>Attribution des numéros</div>
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+              <PillButton
+                label="🎲 Numéros aléatoires"
+                active={numberAssignMode === "random"}
+                onClick={() => setNumberAssignMode("random")}
+                primary={primary}
+                primarySoft={primarySoft}
+              />
+              <PillButton
+                label="🎯 1er lancer = choisir son numéro"
+                active={numberAssignMode === "throw"}
+                onClick={() => {
+                  // si l’utilisateur force "1er lancer" => BLIND OFF
+                  if (blindKiller) setBlindKiller(false);
+                  setNumberAssignMode("throw");
+                }}
+                primary={primary}
+                primarySoft={primarySoft}
+                disabled={blindLocksThrow}
+                title={blindLocksThrow ? "Incompatible avec Blind Killer." : undefined}
+              />
+            </div>
+
+            <div style={{ fontSize: 11, color: "#7c80a0", marginTop: 6 }}>
+              En mode “1er lancer”, les numéros du menu sont ignorés (le premier tir de chaque joueur fixe son numéro).
+            </div>
+
+            {blindLocksThrow && (
+              <div style={{ marginTop: 6, fontSize: 10.5, color: "#ffb3b3", fontWeight: 800, lineHeight: 1.2 }}>
+                Blind Killer est incompatible avec “1er lancer = choisir son numéro”.
+              </div>
+            )}
+          </div>
+
+          {/* vies */}
+          <div style={{ marginBottom: 12 }}>
+            <div style={{ fontSize: 12, color: "#c8cbe4", marginBottom: 6 }}>Vies de départ</div>
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+              {[1, 2, 3, 4, 5, 6].map((n) => (
+                <PillButton
+                  key={n}
+                  label={String(n)}
+                  active={lives === n}
+                  onClick={() => setLives(n)}
+                  primary={primary}
+                  primarySoft={primarySoft}
+                  compact
+                />
+              ))}
+            </div>
+            <div style={{ fontSize: 11, color: "#7c80a0", marginTop: 6 }}>Vies identiques pour tous les joueurs.</div>
+          </div>
+
+          {/* become rule */}
+          <div style={{ marginBottom: 12 }}>
+            <div style={{ fontSize: 12, color: "#c8cbe4", marginBottom: 6 }}>Règle pour devenir KILLER</div>
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+              <PillButton
+                label="Toucher son numéro (simple)"
+                active={becomeRule === "single"}
+                onClick={() => setBecomeRule("single")}
+                primary={primary}
+                primarySoft={primarySoft}
+              />
+              <PillButton
+                label="Double sur son numéro"
+                active={becomeRule === "double"}
+                onClick={() => setBecomeRule("double")}
+                primary={primary}
+                primarySoft={primarySoft}
+              />
+            </div>
+          </div>
+
+          {/* damage rule */}
+          <div style={{ marginBottom: 14 }}>
+            <div style={{ fontSize: 12, color: "#c8cbe4", marginBottom: 6 }}>Dégâts quand on est KILLER</div>
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+              <PillButton
+                label="-1 par hit"
+                active={damageRule === "one"}
+                onClick={() => setDamageRule("one")}
+                primary={primary}
+                primarySoft={primarySoft}
+              />
+              <PillButton
+                label="Multiplicateur (S/D/T)"
+                active={damageRule === "multiplier"}
+                onClick={() => setDamageRule("multiplier")}
+                primary={primary}
+                primarySoft={primarySoft}
+              />
+            </div>
+            <div style={{ fontSize: 11, color: "#7c80a0", marginTop: 6 }}>Quand tu touches le numéro d’un adversaire vivant.</div>
+          </div>
+
+          {/* variantes */}
+          <div style={{ borderTop: "1px solid rgba(255,255,255,0.06)", paddingTop: 10 }}>
+            <div style={{ fontSize: 11, fontWeight: 900, color: "#9fa4c0", textTransform: "uppercase", letterSpacing: 0.9 }}>
+              Variantes
+            </div>
+
+            <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 10 }}>
+              <VariantRow
+                title="Auto-pénalité (toucher son numéro quand KILLER)"
+                desc="Si ON, quand tu es KILLER et que tu touches ton numéro, tu perds des vies (pas mort instant)."
+                value={selfHitWhileKiller}
+                onChange={(v) => setVariant("selfHitWhileKiller", v)}
+                primary={primary}
+                primarySoft={primarySoft}
+                disabled={isVariantDisabled("selfHitWhileKiller", variantState) && !selfHitWhileKiller}
+                disabledReason={getConflictReason("selfHitWhileKiller", variantState)}
+              />
+
+              <VariantRow
+                title="Auto-pénalité = multiplicateur (S/D/T)"
+                desc="Si ON, la pénalité vaut 1/2/3 selon S/D/T (sinon c'est toujours -1)."
+                value={selfHitUsesMultiplier}
+                onChange={(v) => setVariant("selfHitUsesMultiplier", v)}
+                primary={primary}
+                primarySoft={primarySoft}
+                disabled={isVariantDisabled("selfHitUsesMultiplier", variantState) && !selfHitUsesMultiplier}
+                disabledReason={getConflictReason("selfHitUsesMultiplier", variantState)}
+              />
+
+              <VariantRow
+                title="Vol de vies (Life Steal)"
+                desc="Si ON, les vies perdues par la cible sont transférées au KILLER (plus de chaos)."
+                value={lifeSteal}
+                onChange={(v) => setVariant("lifeSteal", v)}
+                primary={primary}
+                primarySoft={primarySoft}
+                disabled={isVariantDisabled("lifeSteal", variantState) && !lifeSteal}
+                disabledReason={getConflictReason("lifeSteal", variantState)}
+              />
+
+              <VariantRow
+                title="Blind Killer (mode aveugle)"
+                desc="Si ON, les numéros sont masqués à l'écran pendant la partie (plus dur, plus fun)."
+                value={blindKiller}
+                onChange={(v) => setVariant("blindKiller", v)}
+                primary={primary}
+                primarySoft={primarySoft}
+                disabled={(numberAssignMode === "throw" && !blindKiller) || (isVariantDisabled("blindKiller", variantState) && !blindKiller)}
+                disabledReason={
+                  numberAssignMode === "throw"
+                    ? "Incompatible avec “1er lancer = choisir son numéro”."
+                    : getConflictReason("blindKiller", variantState)
+                }
+              />
+
+              <VariantRow
+                title="BULL = dégâts à tous (SBULL/DBULL)"
+                desc="Si ON : SBULL enlève 1 vie à chaque adversaire, DBULL enlève 2 vies à chaque adversaire."
+                value={bullSplash}
+                onChange={(v) => setVariant("bullSplash", v)}
+                primary={primary}
+                primarySoft={primarySoft}
+                disabled={isVariantDisabled("bullSplash", variantState) && !bullSplash}
+                disabledReason={getConflictReason("bullSplash", variantState)}
+              />
+
+              <VariantRow
+                title="BULL = soins (récupérer des vies)"
+                desc="Si ON : toucher BULL permet de regagner des vies (selon la règle implémentée en jeu)."
+                value={bullHeal}
+                onChange={(v) => setVariant("bullHeal", v)}
+                primary={primary}
+                primarySoft={primarySoft}
+                disabled={isVariantDisabled("bullHeal", variantState) && !bullHeal}
+                disabledReason={getConflictReason("bullHeal", variantState)}
+              />
+            </div>
+
+            <div style={{ marginTop: 10, fontSize: 10.5, color: "#7c80a0", lineHeight: 1.35 }}>
+              Astuce : certaines variantes sont <b>exclusives</b> pour garder un gameplay lisible (ex : BULL dégâts vs BULL soins).
+            </div>
+          </div>
+        </section>
 
         {/* BOTS */}
         <section
@@ -920,7 +1188,7 @@ export default function KillerConfigPage(props: Props) {
             background: cardBg,
             borderRadius: 18,
             padding: 12,
-            marginBottom: 14,
+            marginBottom: 80,
             boxShadow: "0 16px 40px rgba(0,0,0,0.55)",
             border: "1px solid rgba(255,255,255,0.04)",
           }}
@@ -1035,245 +1303,6 @@ export default function KillerConfigPage(props: Props) {
             Gérer mes bots
           </button>
         </section>
-
-        {/* OPTIONS */}
-        <section
-          style={{
-            background: cardBg,
-            borderRadius: 18,
-            padding: 12,
-            marginBottom: 14,
-            boxShadow: "0 16px 40px rgba(0,0,0,0.55)",
-            border: "1px solid rgba(255,255,255,0.04)",
-          }}
-        >
-          <div style={{ fontSize: 12, textTransform: "uppercase", letterSpacing: 1, fontWeight: 800, color: primary, marginBottom: 10 }}>
-            Options
-          </div>
-
-          {/* ✅ ORDRE DE DÉPART */}
-          <div style={{ marginTop: 2, marginBottom: 14 }}>
-            <div style={{ fontSize: 12, color: "#c8cbe4", marginBottom: 6 }}>Ordre de départ</div>
-
-            <div style={{ display: "flex", gap: 10, marginTop: 6 }}>
-              <button
-                type="button"
-                onClick={() => setRandomStartOrder(false)}
-                style={{
-                  flex: 1,
-                  padding: "10px 12px",
-                  borderRadius: 14,
-                  fontWeight: 900,
-                  border: !randomStartOrder ? "1px solid rgba(255,198,58,.55)" : "1px solid rgba(255,255,255,.12)",
-                  background: !randomStartOrder ? "rgba(255,198,58,.18)" : "rgba(0,0,0,.35)",
-                  color: !randomStartOrder ? "#ffe7b0" : "#fff",
-                  cursor: "pointer",
-                }}
-              >
-                Ordre des joueurs
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setRandomStartOrder(true)}
-                style={{
-                  flex: 1,
-                  padding: "10px 12px",
-                  borderRadius: 14,
-                  fontWeight: 900,
-                  border: randomStartOrder ? "1px solid rgba(255,198,58,.55)" : "1px solid rgba(255,255,255,.12)",
-                  background: randomStartOrder ? "rgba(255,198,58,.18)" : "rgba(0,0,0,.35)",
-                  color: randomStartOrder ? "#ffe7b0" : "#fff",
-                  cursor: "pointer",
-                }}
-              >
-                🎲 Aléatoire
-              </button>
-            </div>
-
-            <div style={{ fontSize: 11, color: "#7c80a0", marginTop: 6 }}>
-              Si activé, l’ordre de jeu est mélangé automatiquement au lancement.
-            </div>
-          </div>
-
-          {/* attribution numéros */}
-          <div style={{ marginBottom: 14 }}>
-            <div style={{ fontSize: 12, color: "#c8cbe4", marginBottom: 6 }}>Attribution des numéros</div>
-            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-              <PillButton
-                label="🎲 Numéros aléatoires"
-                active={numberAssignMode === "random"}
-                onClick={() => setNumberAssignMode("random")}
-                primary={primary}
-                primarySoft={primarySoft}
-              />
-              <PillButton
-                label="🎯 1er lancer = choisir son numéro"
-                active={numberAssignMode === "throw"}
-                onClick={() => {
-                  // si l’utilisateur force "1er lancer" => BLIND OFF
-                  if (blindKiller) setBlindKiller(false);
-                  setNumberAssignMode("throw");
-                }}
-                primary={primary}
-                primarySoft={primarySoft}
-                disabled={blindLocksThrow}
-                title={blindLocksThrow ? "Incompatible avec Blind Killer." : undefined}
-              />
-            </div>
-
-            <div style={{ fontSize: 11, color: "#7c80a0", marginTop: 6 }}>
-              En mode “1er lancer”, les numéros du menu sont ignorés (le premier tir de chaque joueur fixe son numéro).
-            </div>
-
-            {blindLocksThrow && (
-              <div style={{ marginTop: 6, fontSize: 10.5, color: "#ffb3b3", fontWeight: 800, lineHeight: 1.2 }}>
-                Blind Killer force “Numéros aléatoires” (incompatible avec “1er lancer”).
-              </div>
-            )}
-          </div>
-
-          {/* vies */}
-          <div style={{ marginBottom: 12 }}>
-            <div style={{ fontSize: 12, color: "#c8cbe4", marginBottom: 6 }}>Vies de départ</div>
-            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-              {[1, 2, 3, 4, 5, 6].map((n) => (
-                <PillButton
-                  key={n}
-                  label={String(n)}
-                  active={lives === n}
-                  onClick={() => setLives(n)}
-                  primary={primary}
-                  primarySoft={primarySoft}
-                  compact
-                />
-              ))}
-            </div>
-            <div style={{ fontSize: 11, color: "#7c80a0", marginTop: 6 }}>Vies identiques pour tous les joueurs.</div>
-          </div>
-
-          {/* become rule */}
-          <div style={{ marginBottom: 12 }}>
-            <div style={{ fontSize: 12, color: "#c8cbe4", marginBottom: 6 }}>Règle pour devenir KILLER</div>
-            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-              <PillButton
-                label="Toucher son numéro (simple)"
-                active={becomeRule === "single"}
-                onClick={() => setBecomeRule("single")}
-                primary={primary}
-                primarySoft={primarySoft}
-              />
-              <PillButton
-                label="Double sur son numéro"
-                active={becomeRule === "double"}
-                onClick={() => setBecomeRule("double")}
-                primary={primary}
-                primarySoft={primarySoft}
-              />
-            </div>
-          </div>
-
-          {/* damage rule */}
-          <div style={{ marginBottom: 14 }}>
-            <div style={{ fontSize: 12, color: "#c8cbe4", marginBottom: 6 }}>Dégâts quand on est KILLER</div>
-            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-              <PillButton
-                label="-1 par hit"
-                active={damageRule === "one"}
-                onClick={() => setDamageRule("one")}
-                primary={primary}
-                primarySoft={primarySoft}
-              />
-              <PillButton
-                label="Multiplicateur (S/D/T)"
-                active={damageRule === "multiplier"}
-                onClick={() => setDamageRule("multiplier")}
-                primary={primary}
-                primarySoft={primarySoft}
-              />
-            </div>
-            <div style={{ fontSize: 11, color: "#7c80a0", marginTop: 6 }}>Quand tu touches le numéro d’un adversaire vivant.</div>
-          </div>
-
-          {/* variantes */}
-          <div style={{ borderTop: "1px solid rgba(255,255,255,0.06)", paddingTop: 10 }}>
-            <div style={{ fontSize: 11, fontWeight: 900, color: "#9fa4c0", textTransform: "uppercase", letterSpacing: 0.9 }}>
-              Variantes
-            </div>
-
-            <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 10 }}>
-              <VariantRow
-                title="Auto-pénalité (toucher son numéro quand KILLER)"
-                desc="Si ON, quand tu es KILLER et que tu touches ton numéro, tu perds des vies (pas mort instant)."
-                value={selfHitWhileKiller}
-                onChange={(v) => setVariant("selfHitWhileKiller", v)}
-                primary={primary}
-                primarySoft={primarySoft}
-                disabled={isVariantDisabled("selfHitWhileKiller", variantState) && !selfHitWhileKiller}
-                disabledReason={getConflictReason("selfHitWhileKiller", variantState)}
-              />
-
-              <VariantRow
-                title="Auto-pénalité = multiplicateur (S/D/T)"
-                desc="Si ON, la pénalité vaut 1/2/3 selon S/D/T (sinon c'est toujours -1)."
-                value={selfHitUsesMultiplier}
-                onChange={(v) => setVariant("selfHitUsesMultiplier", v)}
-                primary={primary}
-                primarySoft={primarySoft}
-                disabled={isVariantDisabled("selfHitUsesMultiplier", variantState) && !selfHitUsesMultiplier}
-                disabledReason={getConflictReason("selfHitUsesMultiplier", variantState)}
-              />
-
-              <VariantRow
-                title="Vol de vies (Life Steal)"
-                desc="Si ON, les vies perdues par la cible sont transférées au KILLER (plus de chaos)."
-                value={lifeSteal}
-                onChange={(v) => setVariant("lifeSteal", v)}
-                primary={primary}
-                primarySoft={primarySoft}
-                disabled={isVariantDisabled("lifeSteal", variantState) && !lifeSteal}
-                disabledReason={getConflictReason("lifeSteal", variantState)}
-              />
-
-              <VariantRow
-                title="Blind Killer (mode aveugle)"
-                desc="Si ON, les numéros sont masqués à l'écran pendant la partie (plus dur, plus fun)."
-                value={blindKiller}
-                onChange={(v) => setVariant("blindKiller", v)}
-                primary={primary}
-                primarySoft={primarySoft}
-                disabled={(numberAssignMode === "throw" || isVariantDisabled("blindKiller", variantState)) && !blindKiller}
-                disabledReason={numberAssignMode === "throw" ? "Incompatible avec “1er lancer = choisir son numéro”." : getConflictReason("blindKiller", variantState)}
-              />
-
-              <VariantRow
-                title="BULL = dégâts à tous (SBULL/DBULL)"
-                desc="Si ON : SBULL enlève 1 vie à chaque adversaire, DBULL enlève 2 vies à chaque adversaire."
-                value={bullSplash}
-                onChange={(v) => setVariant("bullSplash", v)}
-                primary={primary}
-                primarySoft={primarySoft}
-                disabled={isVariantDisabled("bullSplash", variantState) && !bullSplash}
-                disabledReason={getConflictReason("bullSplash", variantState)}
-              />
-
-              <VariantRow
-                title="BULL = soins (récupérer des vies)"
-                desc="Si ON : toucher BULL permet de regagner des vies (selon la règle implémentée en jeu)."
-                value={bullHeal}
-                onChange={(v) => setVariant("bullHeal", v)}
-                primary={primary}
-                primarySoft={primarySoft}
-                disabled={isVariantDisabled("bullHeal", variantState) && !bullHeal}
-                disabledReason={getConflictReason("bullHeal", variantState)}
-              />
-            </div>
-
-            <div style={{ marginTop: 10, fontSize: 10.5, color: "#7c80a0", lineHeight: 1.35 }}>
-              Astuce : certaines variantes sont <b>exclusives</b> pour garder un gameplay lisible (ex : BULL dégâts vs BULL soins).
-            </div>
-          </div>
-        </section>
       </div>
 
       {/* CTA */}
@@ -1310,6 +1339,132 @@ export default function KillerConfigPage(props: Props) {
           )}
         </div>
       </div>
+
+      {/* ✅ MODAL INFOS : règles / déroulé / variantes */}
+      {infoOpen && (
+        <div
+          onClick={() => setInfoOpen(false)}
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(0,0,0,0.55)",
+            zIndex: 9999,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: 12,
+          }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              width: "min(560px, 96vw)",
+              maxHeight: "min(78vh, 620px)",
+              overflow: "hidden",
+              borderRadius: 18,
+              background: "rgba(12,14,26,0.98)",
+              border: "1px solid rgba(255,255,255,0.10)",
+              boxShadow: "0 30px 80px rgba(0,0,0,0.70)",
+            }}
+          >
+            <div
+              style={{
+                padding: "12px 14px",
+                borderBottom: "1px solid rgba(255,255,255,0.08)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                gap: 10,
+              }}
+            >
+              <div style={{ fontWeight: 1000, color: primary, letterSpacing: 0.8, textTransform: "uppercase" }}>
+                Règles — Killer
+              </div>
+              <button
+                type="button"
+                onClick={() => setInfoOpen(false)}
+                style={{
+                  borderRadius: 999,
+                  border: "1px solid rgba(255,255,255,0.12)",
+                  background: "rgba(255,255,255,0.06)",
+                  color: "#fff",
+                  padding: "6px 10px",
+                  fontWeight: 900,
+                  cursor: "pointer",
+                }}
+              >
+                Fermer
+              </button>
+            </div>
+
+            <div style={{ padding: 14, overflowY: "auto", maxHeight: "calc(min(78vh, 620px) - 52px)" }}>
+              <div style={{ fontSize: 13, color: "#d7daf0", lineHeight: 1.35 }}>
+                <div style={{ fontWeight: 900, color: "#fff", marginBottom: 6 }}>Objectif</div>
+                <div style={{ marginBottom: 12 }}>
+                  Éliminer tous les adversaires. Le dernier joueur vivant gagne.
+                </div>
+
+                <div style={{ fontWeight: 900, color: "#fff", marginBottom: 6 }}>Mise en place</div>
+                <ul style={{ marginTop: 0, marginBottom: 12, paddingLeft: 18 }}>
+                  <li>Chaque joueur a un nombre de vies (1–6).</li>
+                  <li>
+                    Chaque joueur reçoit un <b>numéro</b> (1–20) : soit <b>aléatoire</b>, soit <b>au 1er lancer</b> (option
+                    « 1er lancer = choisir son numéro »).
+                  </li>
+                </ul>
+
+                <div style={{ fontWeight: 900, color: "#fff", marginBottom: 6 }}>Déroulé</div>
+                <ul style={{ marginTop: 0, marginBottom: 12, paddingLeft: 18 }}>
+                  <li>
+                    Tant qu’un joueur n’est pas KILLER, il doit <b>toucher son numéro</b> pour devenir KILLER.
+                  </li>
+                  <li>
+                    Une fois KILLER, il inflige des dégâts en touchant le <b>numéro d’un adversaire vivant</b>.
+                  </li>
+                  <li>Quand un joueur tombe à 0 vie, il est éliminé.</li>
+                </ul>
+
+                <div style={{ fontWeight: 900, color: "#fff", marginBottom: 6 }}>Règles de base configurables</div>
+                <ul style={{ marginTop: 0, marginBottom: 12, paddingLeft: 18 }}>
+                  <li>
+                    <b>Devenir KILLER</b> : toucher son numéro (simple) ou double sur son numéro.
+                  </li>
+                  <li>
+                    <b>Dégâts</b> : « 1 par hit » ou « multiplicateur S/D/T » (S=1, D=2, T=3).
+                  </li>
+                </ul>
+
+                <div style={{ fontWeight: 900, color: "#fff", marginBottom: 6 }}>Variantes</div>
+                <ul style={{ marginTop: 0, marginBottom: 12, paddingLeft: 18 }}>
+                  <li>
+                    <b>Auto‑pénalité</b> : si tu es KILLER et tu touches ton numéro, tu perds des vies.
+                  </li>
+                  <li>
+                    <b>Auto‑pénalité = multiplicateur</b> : la pénalité suit S/D/T au lieu de −1.
+                  </li>
+                  <li>
+                    <b>Vol de vies</b> : les vies perdues par la cible sont transférées au KILLER.
+                  </li>
+                  <li>
+                    <b>Blind Killer</b> : masque les numéros à l’écran pendant la partie (incompatible avec « 1er lancer »).
+                  </li>
+                  <li>
+                    <b>SBULL/DBULL dégâts à tous</b> : SBULL = −1 à tous les adversaires, DBULL = −2.
+                  </li>
+                  <li>
+                    <b>SBULL/DBULL récupérer des vies</b> : touche Bull pour regagner des vies (selon configuration).
+                  </li>
+                </ul>
+
+                <div style={{ fontSize: 11, color: "#9aa0c4" }}>
+                  Astuce : certaines variantes sont incompatibles entre elles. Quand c’est le cas, l’option se grise avec une
+                  explication.
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

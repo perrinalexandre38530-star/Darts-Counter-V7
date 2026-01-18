@@ -5,23 +5,32 @@
 // - Pastille "i" à droite => panneau d'aide
 // - Modes grisés : non cliquables (si enabled = false)
 // - Textes pilotés par LangContext (t())
+// - ✅ FIX doublons : registry list exclut les cartes déjà affichées en haut
+// - ✅ Evolution = carte raccourci STATS, en VERT (pas un jeu)
+// - ✅ Evolution TOUT EN HAUT
+// - ✅ Suppression du label "Autres modes d’entraînement"
+// - ✅ Ajout Training : Double In/Out + Challenges (pinned cards)
 // ============================================
 
 import React from "react";
 import { useTheme } from "../contexts/ThemeContext";
 import { useLang } from "../contexts/LangContext";
 import InfoDot from "../components/InfoDot";
+import { dartsGameRegistry } from "../games/dartsGameRegistry";
 
-type Tab = "training" | "training_x01" | "training_clock" | "training_stats";
+type Tab =
+  | "training"
+  | "training_x01"
+  | "training_clock"
+  | "training_stats"
+  | "darts_mode";
 
 type Props = {
   go?: (tab: Tab, params?: any) => void;
 };
 
-type TrainingId = "x01" | "clock" | "evolution";
-
 type ModeDef = {
-  id: TrainingId;
+  id: string;
   titleKey: string;
   titleDefault: string;
   subtitleKey: string;
@@ -29,47 +38,15 @@ type ModeDef = {
   infoKey: string;
   infoDefault: string;
   tab: Tab | null; // null = à venir
+  params?: any;
   enabled: boolean;
-};
+  badge?: string | null;
 
-const MODES: ModeDef[] = [
-  {
-    id: "x01",
-    titleKey: "training.menu.x01.title",
-    titleDefault: "Training X01",
-    subtitleKey: "training.menu.x01.subtitle",
-    subtitleDefault: "Travaille ton scoring et tes fins",
-    infoKey: "training.menu.x01.info",
-    infoDefault:
-      "Entraînement X01 dédié à la progression : scoring, régularité, finitions, stats détaillées.",
-    tab: "training_x01",
-    enabled: true,
-  },
-  {
-    id: "clock",
-    titleKey: "training.menu.clock.title",
-    titleDefault: "Tour de l’horloge",
-    subtitleKey: "training.menu.clock.subtitle",
-    subtitleDefault: "Simple / Double / Triple",
-    infoKey: "training.menu.clock.info",
-    infoDefault:
-      "Atteins chaque segment du 1 au 20 puis Bull. Mode simple, double ou triple.",
-    tab: "training_clock",
-    enabled: true,
-  },
-  {
-    id: "evolution",
-    titleKey: "training.menu.evolution.title",
-    titleDefault: "Évolution",
-    subtitleKey: "training.menu.evolution.subtitle",
-    subtitleDefault: "Accès direct aux stats Training X01",
-    infoKey: "training.menu.evolution.info",
-    infoDefault:
-      "Accède directement aux statistiques détaillées de tes sessions Training X01 dans l’onglet Stats.",
-    tab: "training_stats", // redirige vers StatsHub onglet Training
-    enabled: true,
-  },
-];
+  // Accent visuel (pour Evolution en vert)
+  accentHex?: string | null;
+  accentBorder?: string | null;
+  accentGlow?: string | null;
+};
 
 export default function TrainingMenu({ go }: Props) {
   const { theme } = useTheme();
@@ -79,14 +56,152 @@ export default function TrainingMenu({ go }: Props) {
   const PAGE_BG = theme.bg;
   const CARD_BG = theme.card;
 
-  function navigate(tab: Tab | null) {
+  const regById = React.useMemo(() => {
+    const m = new Map<string, any>();
+    for (const g of dartsGameRegistry || []) m.set(g.id, g);
+    return m;
+  }, []);
+
+  function navigate(tab: Tab | null, params?: any) {
     if (!tab) return;
     if (!go) {
       console.warn("[TrainingMenu] go() manquant");
       return;
     }
-    go(tab);
+    go(tab, params);
   }
+
+  // IDs des trainings déjà affichés en cartes fixes (donc exclus de la liste auto)
+  const pinnedRegistryIds = React.useMemo(
+    () =>
+      new Set<string>([
+        "training_x01",
+        "tour_horloge",
+        "training_doubleio",
+        "training_challenges",
+        // safety si des vieux IDs traînent
+        "evolution",
+        "training_evolution",
+      ]),
+    []
+  );
+
+  const MODES: ModeDef[] = React.useMemo(() => {
+    const comingSoon = t("training.menu.comingSoon", "En développement");
+
+    const doubleio = regById.get("training_doubleio");
+    const challenges = regById.get("training_challenges");
+
+    const badgeFromRegistry = (g: any) => {
+      if (!g) return comingSoon;
+      return g.ready ? null : comingSoon;
+    };
+
+    // ✅ EVOLUTION en 1er
+    const evolution: ModeDef = {
+      id: "evolution",
+      titleKey: "training.menu.evolution.title",
+      titleDefault: "Évolution",
+      subtitleKey: "training.menu.evolution.subtitle",
+      subtitleDefault: "Accès direct aux stats Training X01",
+      infoKey: "training.menu.evolution.info",
+      infoDefault:
+        "Accède directement aux statistiques détaillées de tes sessions Training X01 dans l’onglet Stats.",
+      tab: "training_stats",
+      enabled: true,
+      accentHex: "#8CFFCB",
+      accentBorder: "rgba(120,255,180,0.35)",
+      accentGlow: "rgba(120,255,180,0.55)",
+    };
+
+    const x01: ModeDef = {
+      id: "x01",
+      titleKey: "training.menu.x01.title",
+      titleDefault: "Training X01",
+      subtitleKey: "training.menu.x01.subtitle",
+      subtitleDefault: "Travaille ton scoring et tes fins",
+      infoKey: "training.menu.x01.info",
+      infoDefault:
+        "Entraînement X01 dédié à la progression : scoring, régularité, finitions, stats détaillées.",
+      tab: "training_x01",
+      enabled: true,
+    };
+
+    const clock: ModeDef = {
+      id: "clock",
+      titleKey: "training.menu.clock.title",
+      titleDefault: "Tour de l’horloge",
+      subtitleKey: "training.menu.clock.subtitle",
+      subtitleDefault: "Simple / Double / Triple",
+      infoKey: "training.menu.clock.info",
+      infoDefault:
+        "Atteins chaque segment du 1 au 20 puis Bull. Mode simple, double ou triple.",
+      tab: "training_clock",
+      enabled: true,
+    };
+
+    const doubleIOCard: ModeDef = {
+      id: "doubleio",
+      titleKey: "training.menu.doubleio.title",
+      titleDefault: "Double In / Double Out",
+      subtitleKey: "training.menu.doubleio.subtitle",
+      subtitleDefault: "Travail DI/DO — précision & régularité",
+      infoKey: "training.menu.doubleio.info",
+      infoDefault:
+        "Entraînement dédié aux doubles : Double In, Double Out ou les deux. Objectif : fiabiliser tes entrées et sorties.",
+      tab: "darts_mode",
+      params: { gameId: "training_doubleio" },
+      enabled: true,
+      badge: badgeFromRegistry(doubleio),
+    };
+
+    const challengesCard: ModeDef = {
+      id: "challenges",
+      titleKey: "training.menu.challenges.title",
+      titleDefault: "Challenges",
+      subtitleKey: "training.menu.challenges.subtitle",
+      subtitleDefault: "Défis courts (doubles, bull, triples…)",
+      infoKey: "training.menu.challenges.info",
+      infoDefault:
+        "Série de défis rapides pour travailler un axe précis : doubles, bull, triples, régularité. Idéal en session courte.",
+      tab: "darts_mode",
+      params: { gameId: "training_challenges" },
+      enabled: true,
+      badge: badgeFromRegistry(challenges),
+    };
+
+    // Ordre final : Evolution -> X01 -> Clock -> DoubleIO -> Challenges
+    return [evolution, x01, clock, doubleIOCard, challengesCard];
+  }, [t, regById]);
+
+  const extraModes: ModeDef[] = React.useMemo(() => {
+    const comingSoon = t("training.menu.comingSoon", "En développement");
+
+    const trainings = (dartsGameRegistry || [])
+      .filter((g: any) => g.entry === "training")
+      .filter((g: any) => !pinnedRegistryIds.has(g.id))
+      .filter((g: any) => {
+        const id = String(g.id || "").toLowerCase();
+        return id !== "evolution" && id !== "training_evolution";
+      });
+
+    trainings.sort((a: any, b: any) => a.label.localeCompare(b.label, "fr"));
+
+    return trainings.map((g: any) => ({
+      id: g.id,
+      titleKey: `training.registry.${g.id}.title`,
+      titleDefault: g.label,
+      subtitleKey: `training.registry.${g.id}.subtitle`,
+      subtitleDefault: "Entraînement dédié",
+      infoKey: `training.registry.${g.id}.info`,
+      infoDefault:
+        "Ce mode est enregistré dans l’application. S’il n’est pas encore implémenté, il s’ouvrira sur l’écran “Mode en cours d’implémentation”.",
+      tab: "darts_mode",
+      params: { gameId: g.id },
+      enabled: true,
+      badge: g.ready ? null : comingSoon,
+    }));
+  }, [t, pinnedRegistryIds]);
 
   return (
     <div
@@ -127,20 +242,27 @@ export default function TrainingMenu({ go }: Props) {
         )}
       </div>
 
-      {/* Liste des modes */}
+      {/* Liste des modes (pinned) */}
       <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
         {MODES.map((m) => {
           const title = t(m.titleKey, m.titleDefault);
           const subtitle = t(m.subtitleKey, m.subtitleDefault);
           const disabled = !m.enabled;
+
           const comingSoonLabel = !m.enabled
             ? t("training.menu.comingSoon", "En développement")
             : null;
 
+          const badge = m.badge ?? comingSoonLabel;
+
+          const accentHex = m.accentHex || theme.primary;
+          const accentBorder = m.accentBorder || theme.borderSoft;
+          const accentGlow = m.accentGlow || `${theme.primary}55`;
+
           return (
             <button
               key={m.id}
-              onClick={() => !disabled && navigate(m.tab)}
+              onClick={() => !disabled && navigate(m.tab, m.params)}
               style={{
                 position: "relative",
                 width: "100%",
@@ -148,7 +270,7 @@ export default function TrainingMenu({ go }: Props) {
                 paddingRight: 46,
                 textAlign: "left",
                 borderRadius: 16,
-                border: `1px solid ${theme.borderSoft}`,
+                border: `1px solid ${accentBorder}`,
                 background: CARD_BG,
                 cursor: disabled ? "default" : "pointer",
                 opacity: disabled ? 0.55 : 1,
@@ -161,15 +283,14 @@ export default function TrainingMenu({ go }: Props) {
                   fontSize: 14,
                   fontWeight: 800,
                   letterSpacing: 0.8,
-                  color: disabled ? theme.textSoft : theme.primary,
+                  color: disabled ? theme.textSoft : accentHex,
                   textTransform: "uppercase",
-                  textShadow: disabled
-                    ? "none"
-                    : `0 0 12px ${theme.primary}55`,
+                  textShadow: disabled ? "none" : `0 0 12px ${accentGlow}`,
                 }}
               >
                 {title}
               </div>
+
               <div
                 style={{
                   marginTop: 4,
@@ -179,7 +300,7 @@ export default function TrainingMenu({ go }: Props) {
                 }}
               >
                 {subtitle}
-                {comingSoonLabel && (
+                {badge && (
                   <span
                     style={{
                       marginLeft: 6,
@@ -188,12 +309,11 @@ export default function TrainingMenu({ go }: Props) {
                       opacity: 0.9,
                     }}
                   >
-                    • {comingSoonLabel}
+                    • {badge}
                   </span>
                 )}
               </div>
 
-              {/* Pastille "i" (InfoDot réutilisé, même style que Games) */}
               <div
                 style={{
                   position: "absolute",
@@ -205,7 +325,11 @@ export default function TrainingMenu({ go }: Props) {
                 <InfoDot
                   size={30}
                   color="#FFFFFF"
-                  glow={`${theme.primary}55`}
+                  glow={
+                    m.id === "evolution"
+                      ? "rgba(120,255,180,0.55)"
+                      : `${theme.primary}55`
+                  }
                   onClick={(e) => {
                     e.stopPropagation();
                     setInfoMode(m);
@@ -216,6 +340,101 @@ export default function TrainingMenu({ go }: Props) {
           );
         })}
       </div>
+
+      {/* ✅ Liste auto registry (SANS label "Autres modes d’entraînement") */}
+      {extraModes.length > 0 && (
+        <div style={{ marginTop: 14 }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            {extraModes.map((m) => {
+              const title = t(m.titleKey, m.titleDefault);
+              const subtitle = t(m.subtitleKey, m.subtitleDefault);
+              const disabled = !m.enabled;
+
+              const comingSoonLabel = !m.enabled
+                ? t("training.menu.comingSoon", "En développement")
+                : null;
+
+              const badge = m.badge ?? comingSoonLabel;
+
+              return (
+                <button
+                  key={m.id}
+                  onClick={() => !disabled && navigate(m.tab, m.params)}
+                  style={{
+                    position: "relative",
+                    width: "100%",
+                    padding: 14,
+                    paddingRight: 46,
+                    textAlign: "left",
+                    borderRadius: 16,
+                    border: `1px solid ${theme.borderSoft}`,
+                    background: CARD_BG,
+                    cursor: disabled ? "default" : "pointer",
+                    opacity: disabled ? 0.55 : 1,
+                    boxShadow: disabled ? "none" : `0 10px 24px rgba(0,0,0,0.55)`,
+                    overflow: "hidden",
+                  }}
+                >
+                  <div
+                    style={{
+                      fontSize: 14,
+                      fontWeight: 800,
+                      letterSpacing: 0.8,
+                      color: disabled ? theme.textSoft : theme.primary,
+                      textTransform: "uppercase",
+                      textShadow: disabled ? "none" : `0 0 12px ${theme.primary}55`,
+                    }}
+                  >
+                    {title}
+                  </div>
+
+                  <div
+                    style={{
+                      marginTop: 4,
+                      fontSize: 12,
+                      color: theme.textSoft,
+                      opacity: 0.9,
+                    }}
+                  >
+                    {subtitle}
+                    {badge && (
+                      <span
+                        style={{
+                          marginLeft: 6,
+                          fontSize: 11,
+                          fontStyle: "italic",
+                          opacity: 0.9,
+                        }}
+                      >
+                        • {badge}
+                      </span>
+                    )}
+                  </div>
+
+                  <div
+                    style={{
+                      position: "absolute",
+                      right: 10,
+                      top: "50%",
+                      transform: "translateY(-50%)",
+                    }}
+                  >
+                    <InfoDot
+                      size={30}
+                      color="#FFFFFF"
+                      glow={`${theme.primary}55`}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setInfoMode(m);
+                      }}
+                    />
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {/* Overlay d'information */}
       {infoMode && (
@@ -239,7 +458,10 @@ export default function TrainingMenu({ go }: Props) {
               padding: 18,
               borderRadius: 18,
               background: theme.card,
-              border: `1px solid ${theme.primary}55`,
+              border:
+                infoMode.id === "evolution"
+                  ? `1px solid rgba(120,255,180,0.55)`
+                  : `1px solid ${theme.primary}55`,
               boxShadow: `0 18px 40px rgba(0,0,0,.7)`,
               color: theme.text,
             }}
@@ -249,13 +471,17 @@ export default function TrainingMenu({ go }: Props) {
                 fontSize: 16,
                 fontWeight: 800,
                 marginBottom: 8,
-                color: theme.primary,
+                color: infoMode.id === "evolution" ? "#8CFFCB" : theme.primary,
                 textTransform: "uppercase",
-                textShadow: `0 0 10px ${theme.primary}55`,
+                textShadow:
+                  infoMode.id === "evolution"
+                    ? "0 0 10px rgba(120,255,180,0.55)"
+                    : `0 0 10px ${theme.primary}55`,
               }}
             >
               {t(infoMode.titleKey, infoMode.titleDefault)}
             </div>
+
             <div
               style={{
                 fontSize: 13,
@@ -266,6 +492,7 @@ export default function TrainingMenu({ go }: Props) {
             >
               {t(infoMode.infoKey, infoMode.infoDefault)}
             </div>
+
             <button
               type="button"
               onClick={() => setInfoMode(null)}
@@ -275,7 +502,7 @@ export default function TrainingMenu({ go }: Props) {
                 padding: "6px 14px",
                 borderRadius: 999,
                 border: "none",
-                background: theme.primary,
+                background: infoMode.id === "evolution" ? "#8CFFCB" : theme.primary,
                 color: "#000",
                 fontWeight: 700,
                 fontSize: 13,
