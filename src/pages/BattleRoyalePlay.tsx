@@ -202,6 +202,8 @@ function SurvivorKpi({ value }: { value: any }) {
 }
 
 function DartsDots({ total, used }: { total: number; used: number }) {
+  // ✅ local hook (component scope) — évite le ReferenceError "theme is not defined"
+  const { theme } = useTheme();
   const n = Math.max(1, Math.min(3, Number(total) || 3));
   const u = Math.max(0, Math.min(n, Number(used) || 0));
   return (

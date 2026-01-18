@@ -34,6 +34,8 @@ import { DartIconColorizable, CricketMarkIcon } from "../components/MaskIcon";
 
 import ProfileAvatar from "../components/ProfileAvatar";
 import ProfileStarRing from "../components/ProfileStarRing";
+import BackDot from "../components/BackDot";
+import InfoDot from "../components/InfoDot";
 
 // 🔽 IMPORTS DE TOUS LES AVATARS BOTS PRO
 import avatarGreenMachine from "../assets/avatars/bots-pro/green-machine.png";
@@ -395,6 +397,9 @@ type CricketVariantId = "classic" | "enculette";
 
 export default function CricketPlay({ profiles, params, onFinish }: Props) {
   const allProfiles = profiles ?? [];
+
+  // ✅ BackDot + InfoDot (règles)
+  const [infoOpen, setInfoOpen] = React.useState(false);
 
   // ---- Phase (setup -> play) ----
   const [phase, setPhase] = React.useState<Phase>("setup");
@@ -1239,24 +1244,49 @@ function buildHistoryRecord(): SavedMatch | null {
           boxSizing: "border-box",
         }}
       >
-        {/* HEADER */}
-        <div style={{ marginBottom: 16 }}>
-          <div
-            style={{
-              fontSize: 26,
-              fontWeight: 900,
-              letterSpacing: 2,
-              textTransform: "uppercase",
-              color: T.gold,
-              textShadow: "0 0 6px rgba(246,194,86,0.8), 0 0 18px rgba(246,194,86,0.6)",
-            }}
-          >
-            Cricket
-          </div>
-          <div style={{ fontSize: 13, marginTop: 4, color: T.textSoft }}>
-            Sélectionne les joueurs et les options pour cette manche.
-          </div>
-        </div>
+
+	    	{/* HEADER (1 ligne) : BackDot / Titre+subtitle centrés / InfoDot */}
+	    	<div
+	    	  style={{
+	    	    marginBottom: 16,
+	    	    display: "flex",
+	    	    alignItems: "center",
+	    	    justifyContent: "space-between",
+	    	    gap: 10,
+	    	  }}
+	    	>
+	    	  <BackDot
+	    	    onClick={() => {
+	    	      try {
+	    	        window.location.hash = "#/";
+	    	      } catch {}
+	    	    }}
+	    	    color={T.gold}
+	    	    glow={"rgba(246,194,86,0.55)"}
+	    	    title="Retour"
+	    	  />
+
+	    	  <div style={{ flex: 1, textAlign: "center", minWidth: 0 }}>
+	    	    <div
+	    	      style={{
+	    	        fontSize: 26,
+	    	        fontWeight: 900,
+	    	        letterSpacing: 2,
+	    	        textTransform: "uppercase",
+	    	        color: T.gold,
+	    	        textShadow: "0 0 6px rgba(246,194,86,0.8), 0 0 18px rgba(246,194,86,0.6)",
+	    	        lineHeight: 1,
+	    	      }}
+	    	    >
+	    	      CRICKET
+	    	    </div>
+	    	    <div style={{ fontSize: 13, marginTop: 4, color: T.textSoft }}>
+	    	      Sélectionne les joueurs et les options pour cette manche.
+	    	    </div>
+	    	  </div>
+
+	    	  <InfoDot onClick={() => setInfoOpen(true)} color={T.gold} glow={"rgba(246,194,86,0.55)"} title="Règles" />
+	    	</div>
 
         {/* JOUEURS (HUMAINS) */}
         <div
@@ -1590,6 +1620,78 @@ function buildHistoryRecord(): SavedMatch | null {
             Lancer la partie
           </button>
         </div>
+
+	        {/* INFO (Règles) */}
+	        {infoOpen && (
+	          <div
+	            onClick={() => setInfoOpen(false)}
+	            style={{
+	              position: "fixed",
+	              inset: 0,
+	              zIndex: 99999,
+	              background: "rgba(0,0,0,0.62)",
+	              display: "flex",
+	              alignItems: "center",
+	              justifyContent: "center",
+	              padding: 16,
+	            }}
+	          >
+	            <div
+	              onClick={(e) => e.stopPropagation()}
+	              style={{
+	                width: "min(520px, 92vw)",
+	                borderRadius: 18,
+	                border: `1px solid ${T.borderSoft}`,
+	                background: "rgba(10,12,20,0.96)",
+	                boxShadow: "0 18px 40px rgba(0,0,0,0.65)",
+	                padding: 14,
+	              }}
+	            >
+	              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+	                <div style={{ fontSize: 14, fontWeight: 1000, letterSpacing: 1.2, color: T.gold, textTransform: "uppercase" }}>
+	                  Règles — Cricket
+	                </div>
+	                <button
+	                  type="button"
+	                  onClick={() => setInfoOpen(false)}
+	                  style={{
+	                    border: "none",
+	                    background: "rgba(255,255,255,0.08)",
+	                    color: "#fff",
+	                    borderRadius: 999,
+	                    padding: "6px 10px",
+	                    fontWeight: 900,
+	                    cursor: "pointer",
+	                  }}
+	                >
+	                  OK
+	                </button>
+	              </div>
+
+	              <div style={{ marginTop: 10, fontSize: 12, color: T.textSoft, lineHeight: 1.45 }}>
+	                <div style={{ marginBottom: 8 }}>
+	                  Cibles : <strong>15–20</strong> + <strong>Bull</strong>.
+	                </div>
+	                <ul style={{ margin: 0, paddingLeft: 18 }}>
+	                  <li>
+	                    Chaque hit ajoute des <strong>marks</strong> (simple=1, double=2, triple=3). À <strong>3 marks</strong>, la cible est
+	                    <strong> fermée</strong>.
+	                  </li>
+	                  <li>
+	                    En mode <strong>Points</strong> : si tu marques sur une cible déjà fermée par toi mais pas par l’adversaire, tu ajoutes des
+	                    points.
+	                  </li>
+	                  <li>
+	                    Victoire : tu fermes toutes les cibles <strong>et</strong> tu as au moins autant de points que l’adversaire (si mode Points).
+	                  </li>
+	                  <li>
+	                    Variante <strong>Enculette / Vache</strong> : même principe, mais les cibles changent (selon le mode choisi).
+	                  </li>
+	                </ul>
+	              </div>
+	            </div>
+	          </div>
+	        )}
       </div>
     );
   }
