@@ -720,18 +720,20 @@ async function pullStoreSnapshot(): Promise<{
   try {
     const { user } = await ensureAuthedUser();
 
+    // ✅ Compat schémas: certaines versions utilisent `payload`, d'autres `data`/`store`
     const { data, error } = await supabase
       .from("user_store")
-      .select("data,store,updated_at,version")
+      .select("payload,data,store,updated_at,version")
       .eq("user_id", user.id)
       .maybeSingle();
 
     if (!data && !error) return { status: "not_found", payload: null, updatedAt: null, version: null };
     if (error) return { status: "error", error };
 
+    const payload = (data as any)?.payload ?? (data as any)?.data ?? (data as any)?.store ?? null;
     return {
       status: "ok",
-      payload: ((data as any)?.data ?? (data as any)?.store ?? null),
+      payload,
       updatedAt: (data as any)?.updated_at ?? null,
       version: (data as any)?.version ?? null,
     };
@@ -739,20 +741,31 @@ async function pullStoreSnapshot(): Promise<{
     return { status: "error", error: e };
   }
 }
-
 async function pushStoreSnapshot(payload: any, version = 8): Promise<void> {
   const { user } = await ensureAuthedUser();
 
-  const row = {
+  // ✅ On écrit `payload` (schéma principal) + legacy `data/store` si colonnes existent
+  const row: any = {
     user_id: user.id,
     version,
     updated_at: new Date().toISOString(),
+    payload,
     data: payload,
     store: payload,
   };
 
-  const { error } = await supabase.from("user_store").upsert(row, { onConflict: "user_id" });
-  if (error) throw new Error(error.message);
+  const res = await writeWithColumnFallback<any>(
+    async (obj) => {
+      const { data, error } = await supabase
+        .from("user_store")
+        .upsert(obj as any, { onConflict: "user_id" });
+      return { data, error };
+    },
+    row,
+    { debugLabel: "user_store upsert" }
+  );
+
+  if (res.error) throw new Error(res.error.message || String(res.error));
 }
 
 // ============================================================

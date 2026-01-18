@@ -2190,7 +2190,7 @@ const petanqueTeamsUI = React.useMemo(() => {
     <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 10, flexWrap: "wrap" }}>
       <div style={{ display: "grid", gap: 8, minWidth: 240, flex: "1 1 260px" }}>
         <RowTitle label="Recherche équipe" />
-        <TextInput value={teamsSearch} onChange={(e: any) => setTeamsSearch(e.target.value)} placeholder="Tape un nom d'équipe…" />
+        <TextInput value={teamsSearch} onChange={(e: any) => setTeamsSearch(e.target.value)} placeholder="Nom de l'équipe" />
       </div>
 
       <div style={{ display: "flex", gap: 8, alignItems: "flex-end", flexWrap: "wrap", justifyContent: "flex-end" }}>
@@ -2263,6 +2263,59 @@ const petanqueTeamsUI = React.useMemo(() => {
     <div style={{ fontSize: 11.5, opacity: 0.75, lineHeight: 1.35, marginBottom: 10 }}>
       Rappel : en mode <b style={{ color: primary }}>Par équipes</b>, chaque équipe doit avoir exactement <b style={{ color: primary }}>{petanqueTeamSize}</b> joueur(s)
       (noms non vides) et il faut au minimum <b style={{ color: primary }}>2</b> équipes.
+    </div>
+
+    {/* ✅ Liste rapide (toujours visible) */}
+    <div
+      style={{
+        marginTop: 10,
+        padding: 10,
+        borderRadius: 12,
+        border: "1px solid rgba(255,255,255,.08)",
+        background: "rgba(10,10,12,.35)",
+      }}
+    >
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+        <div style={{ fontSize: 12, opacity: 0.86, fontWeight: 800 }}>
+          Liste des équipes ({(teamsInput || []).length})
+        </div>
+        <div style={{ fontSize: 11, opacity: 0.7 }}>
+          Clique une équipe pour l’ouvrir et modifier ses joueurs.
+        </div>
+      </div>
+
+      {(teamsInput || []).length === 0 ? (
+        <div style={{ marginTop: 8, fontSize: 12, opacity: 0.75 }}>Aucune équipe pour le moment.</div>
+      ) : (
+        <div style={{ marginTop: 8, display: "flex", flexWrap: "wrap", gap: 8 }}>
+          {(teamsInput || []).map((t: any, idx: number) => (
+            <button
+              key={t?.id || idx}
+              type="button"
+              onClick={() => setTeamsExpandedIdx(idx)}
+              style={{
+                padding: "6px 10px",
+                borderRadius: 999,
+                border: "1px solid rgba(255,255,255,.10)",
+                background: idx === teamsExpandedIdx ? "rgba(255,215,90,.16)" : "rgba(255,255,255,.04)",
+                color: "#fff",
+                fontSize: 12,
+                cursor: "pointer",
+                maxWidth: "100%",
+              }}
+              title={(t?.players || []).filter(Boolean).join(", ")}
+            >
+              <span style={{ opacity: 0.8, marginRight: 6 }}>{idx + 1}.</span>
+              <span style={{ fontWeight: 800 }}>
+                {t?.name?.trim?.() ? t.name.trim() : `Équipe ${idx + 1}`}
+              </span>
+              <span style={{ opacity: 0.75, marginLeft: 8 }}>
+                ({(t?.players || []).filter(Boolean).length}/{petanqueTeamSize})
+              </span>
+            </button>
+          ))}
+        </div>
+      )}
     </div>
 
     <div style={{ display: "grid", gap: 10 }}>

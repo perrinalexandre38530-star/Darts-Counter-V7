@@ -270,6 +270,13 @@ export function computeKillerStatsAggForProfile(memHistory: any[], playerId: str
     const k = numOr0(me?.kills, me?.killCount, me?.k, sp?.kills, sp?.killCount, sp?.k);
     if (k > 0) killsTotal += k;
 
+    // -------- auto-kills --------
+    const ak = numOr0(
+      me?.autoKills, me?.auto_kills, me?.autoKillCount, me?.auto_kill_count,
+      sp?.autoKills, sp?.auto_kills, sp?.autoKillCount, sp?.auto_kill_count
+    );
+    if (ak > 0) autoKillsTotal += ak;
+
     const lt = numOr0(
       me?.livesTaken, me?.damageDealt, me?.dmgDealt,
       sp?.livesTaken, sp?.damageDealt, sp?.dmgDealt
@@ -323,8 +330,10 @@ export function computeKillerStatsAggForProfile(memHistory: any[], playerId: str
 
   const winRate = playerId && played > 0 ? (wins / played) * 100 : 0;
   const killsAvg = played > 0 ? killsTotal / played : 0;
+  const autoKillsAvg = played > 0 ? autoKillsTotal / played : 0;
 
   const fav = computeFavsFromHitsMap(hitsBySegmentAgg);
+  const autoKillsAvg = played > 0 ? autoKillsTotal / played : 0;
 
   return {
     played,
@@ -337,6 +346,12 @@ export function computeKillerStatsAggForProfile(memHistory: any[], playerId: str
 
     livesTakenTotal,
     livesLostTotal,
+
+    autoKillsTotal,
+    autoKillsAvg,
+
+    autoKillsTotal,
+    autoKillsAvg,
 
     hitsBySegmentAgg,
     totalHits: fav.totalHits || 0,

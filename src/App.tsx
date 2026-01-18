@@ -118,6 +118,10 @@ import KillerConfig from "./pages/KillerConfig";
 import KillerPlay from "./pages/KillerPlay";
 import KillerSummaryPage from "./pages/KillerSummaryPage";
 
+// ✅ NEW: LES 5 VIES (CONFIG + PLAY)
+import FiveLivesConfig from "./pages/FiveLivesConfig";
+import FiveLivesPlay from "./pages/FiveLivesPlay";
+
 import ShanghaiPlay from "./pages/ShanghaiPlay";
 import LobbyPick from "./pages/LobbyPick";
 import X01End from "./pages/X01End";
@@ -131,6 +135,10 @@ import TrainingClock from "./pages/TrainingClock";
 
 import ShanghaiConfigPage from "./pages/ShanghaiConfig";
 import ShanghaiEnd from "./pages/ShanghaiEnd";
+
+// ✅ NEW: WARFARE
+import WarfareConfigPage from "./pages/WarfareConfig";
+import WarfarePlay from "./pages/WarfarePlay";
 
 // ✅ NEW: Battle Royale (config)
 import BattleRoyaleConfigPage from "./pages/BattleRoyaleConfig";
@@ -481,9 +489,14 @@ type Tab =
   | "killer_config"
   | "killer_play"
   | "killer_summary"
+  | "five_lives_config"
+  | "five_lives_play"
   | "shanghai"
   | "shanghai_play"
+  | "warfare_config"
+  | "warfare_play"
   | "battle_royale"
+  | "battle_royale_play"
   | "training"
   | "training_x01"
   | "training_x01_play"
@@ -2193,6 +2206,25 @@ function App() {
         page = <KillerSummaryPage store={store} go={go} params={routeParams} />;
         break;
 
+      case "five_lives_config":
+        page = <FiveLivesConfig store={store} go={go} />;
+        break;
+
+      case "five_lives_play": {
+        const cfg = routeParams?.config;
+        if (!cfg) {
+          page = (
+            <div style={{ padding: 16 }}>
+              <button onClick={() => go("five_lives_config")}>← Retour</button>
+              <p>Configuration « Les 5 vies » manquante.</p>
+            </div>
+          );
+          break;
+        }
+        page = <FiveLivesPlay store={store} go={go} config={cfg} onFinish={(m: any) => pushHistory(m)} />;
+        break;
+      }
+
       case "shanghai":
         page = <ShanghaiConfigPage store={store} go={go} />;
         break;
@@ -2215,6 +2247,26 @@ function App() {
       case "shanghai_end":
         page = <ShanghaiEnd params={{ ...routeParams, go }} />;
         break;
+
+      // ✅ NEW: WARFARE
+      case "warfare_config":
+        page = <WarfareConfigPage store={store} go={go} />;
+        break;
+
+      case "warfare_play": {
+        const cfg = routeParams?.config;
+        if (!cfg) {
+          page = (
+            <div style={{ padding: 16 }}>
+              <button onClick={() => go("warfare_config")}>← Retour</button>
+              <p>Configuration WARFARE manquante.</p>
+            </div>
+          );
+          break;
+        }
+        page = <WarfarePlay go={go} config={cfg} />;
+        break;
+      }
 
       // ✅ NEW: BATTLE ROYALE (CONFIG)
       case "battle_royale":
@@ -2368,6 +2420,30 @@ function App() {
     }
   }
 
+  // ============================================================
+  // ✅ FULLSCREEN (BottomNav MASQUÉE) — DARTS GAMEPLAYS
+  // Objectif: libérer l'espace (keypad) pendant les parties.
+  // ============================================================
+  const HIDE_BOTTOM_NAV_TABS = new Set<Tab>([
+    // Hub
+    "gameSelect",
+
+    // Darts (play)
+    "x01",
+    "x01_play_v3",
+    "cricket",
+    "killer_play",
+    "shanghai_play",
+    "warfare_play",
+    "battle_royale_play",
+    "five_lives_play",
+    "training_x01_play",
+    "training_clock",
+
+    // Tournois: match en cours (plein écran)
+    "tournament_match_play",
+  ]);
+
   return (
     <CrashCatcher>
       <>
@@ -2379,8 +2455,8 @@ function App() {
           </AppGate>
         </div>
 
-        {/* ✅ FIX: BottomNav masquée sur gameSelect */}
-        {tab !== "gameSelect" && <BottomNav value={tab as any} onChange={(k: any) => go(k)} />}
+        {/* ✅ BottomNav masquée sur gameSelect + tous les gameplays plein écran */}
+        {!HIDE_BOTTOM_NAV_TABS.has(tab) && <BottomNav value={tab as any} onChange={(k: any) => go(k)} />}
 
         <SWUpdateBanner />
       </>

@@ -24,7 +24,9 @@ type GameId =
   | "x01v3" // ✅ X01 unique (affiché X01, moteur V3)
   | "cricket"
   | "killer"
+  | "five_lives" // ✅ NEW
   | "shanghai"
+  | "warfare" // ✅ NEW
   | "battle";
 
 type GameDef = {
@@ -120,6 +122,20 @@ const GAMES: GameDef[] = [
     enabled: true,
   },
   {
+    id: "five_lives",
+    titleKey: "games.fiveLives.title",
+    titleDefault: "LES 5 VIES",
+    subtitleKey: "games.fiveLives.subtitle",
+    subtitleDefault: "Bats la volée précédente ou perds une vie.",
+    infoTitleKey: "games.fiveLives.infoTitle",
+    infoTitleDefault: "Les 5 vies",
+    infoBodyKey: "games.fiveLives.infoBody",
+    infoBodyDefault:
+      "Chaque joueur commence avec 5 vies. À chaque volée (3 fléchettes), tu dois faire un score STRICTEMENT supérieur au joueur précédent. Sinon, tu perds 1 vie. À 0 vie : éliminé. Le dernier joueur en vie gagne.",
+    tab: "five_lives_config",
+    enabled: true,
+  },
+  {
     id: "shanghai",
     titleKey: "games.shanghai.title",
     titleDefault: "SHANGHAI",
@@ -133,6 +149,23 @@ const GAMES: GameDef[] = [
     tab: "shanghai", // ✅ IMPORTANT : active la navigation
     enabled: true, // ✅ IMPORTANT : plus grisé
   },
+
+  // ✅ NEW: WARFARE (FLECHETTES DE GUERRE)
+  {
+    id: "warfare",
+    titleKey: "games.warfare.title",
+    titleDefault: "WARFARE",
+    subtitleKey: "games.warfare.subtitle",
+    subtitleDefault: "Élimine les soldats adverses (tout le board).",
+    infoTitleKey: "games.warfare.infoTitle",
+    infoTitleDefault: "Warfare",
+    infoBodyKey: "games.warfare.infoBody",
+    infoBodyDefault:
+      "Jeu d’élimination : chaque camp possède 10 nombres (soldats). À ton tour, touche les nombres de l’armée adverse pour les éliminer. Attention : si tu touches un de tes propres soldats, il meurt aussi (friendly fire).",
+    tab: "warfare_config",
+    enabled: true,
+  },
+
   {
     id: "battle",
     titleKey: "games.battle.title",

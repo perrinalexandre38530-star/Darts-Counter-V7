@@ -51,6 +51,25 @@ type Props = {
 
 type Mult = 1 | 2 | 3;
 
+// ------------------------------------------------------------
+// ✅ SFX/VOICE pending events
+//
+// IMPORTANT: ne jamais déduire un son à jouer via une variable
+// locale mutée depuis un setState(updater). En React 18, l'updater
+// peut être différé (mode concurrent), donc la variable locale peut
+// rester à 0 => le mauvais son se joue.
+//
+// On stocke l'intention dans une ref, puis on joue le son après.
+// ------------------------------------------------------------
+type PendingSfx =
+  | { kind: "hit" }
+  | { kind: "kill"; mult: Mult }
+  | { kind: "self_hit"; mult: Mult }
+  | { kind: "auto_kill"; mult: Mult }
+  | { kind: "death" }
+  | { kind: "lastDead" }
+  | null;
+
 type ThrowInput = {
   target: number; // 0 = MISS, 1..20, 25 = BULL
   mult: Mult; // S=1 D=2 T=3
@@ -73,6 +92,7 @@ type KillerPlayerState = {
   killerPhase: KillerPhase; // SELECT -> ARMING -> ACTIVE
 
   kills: number;
+  autoKills?: number;
   hitsOnSelf: number;
   totalThrows: number;
   killerThrows: number;
@@ -1012,6 +1032,12 @@ function useKillerSfx(enabled: boolean) {
       kill1: cand("/sounds/killer-kill-1.mp3"),
       kill2: cand("/sounds/killer-kill-2.mp3"),
       kill3: cand("/sounds/killer-kill-3.mp3"),
+      self1: cand("/sounds/killer-selfhit-1.mp3"),
+      self2: cand("/sounds/killer-selfhit-2.mp3"),
+      self3: cand("/sounds/killer-selfhit-3.mp3"),
+      auto1: cand("/sounds/killer-autokill-1.mp3"),
+      auto2: cand("/sounds/killer-autokill-2.mp3"),
+      auto3: cand("/sounds/killer-autokill-3.mp3"),
       dead: cand("/sounds/killer-dead.mp3"),
       intro: cand("/sounds/killer-song.mp3"),
       lastDead: cand("/sounds/killer-last-dead.mp3"),
@@ -1177,6 +1203,36 @@ function useKillerSfx(enabled: boolean) {
         if (!ok) {
           beep(220, 90, 0.07);
           setTimeout(() => beep(160, 120, 0.07), 90);
+        }
+      },
+
+      // ✅ SELF-HIT (auto-pénalité) : mult => killer-selfhit-1/2/3
+      selfHit: (mult: Mult) => {
+        const ok =
+          mult === 3
+            ? playCandidates("self3", paths.self3, 0.9)
+            : mult === 2
+            ? playCandidates("self2", paths.self2, 0.9)
+            : playCandidates("self1", paths.self1, 0.9);
+
+        if (!ok) {
+          beep(320, 80, 0.06);
+          setTimeout(() => beep(260, 110, 0.06), 80);
+        }
+      },
+
+      // ✅ AUTO-KILL : mult => killer-autokill-1/2/3
+      autoKill: (mult: Mult) => {
+        const ok =
+          mult === 3
+            ? playCandidates("auto3", paths.auto3, 0.9)
+            : mult === 2
+            ? playCandidates("auto2", paths.auto2, 0.9)
+            : playCandidates("auto1", paths.auto1, 0.9);
+
+        if (!ok) {
+          beep(180, 120, 0.07);
+          setTimeout(() => beep(140, 160, 0.07), 110);
         }
       },
 
@@ -1716,9 +1772,38 @@ export default function KillerPlay({ store, go, config, onFinish }: Props) {
   const introPlayedRef = React.useRef(false);
   const lastDeadPlayedRef = React.useRef(false);
 
-  const numberAssignMode: "none" | "throw" | "random" =
-    ((config as any)?.numberAssignMode as any) ||
-    (((config as any)?.selectNumberByThrow ? "throw" : "none") as any);
+  // ✅ Son/voix à jouer après la mise à jour d'état (robuste React 18)
+  const pendingSfxRef = React.useRef<PendingSfx>(null);
+  const pendingDeathAfterRef = React.useRef(false);
+  // ✅ Quand une élimination arrive, on veut laisser le SFX "dégâts" (kill/self/auto)
+  // + le SFX "death" se jouer AVANT le "lastDead" de fin de partie.
+  // Sinon, lastDead démarre immédiatement et masque le SFX autokill.
+  const pendingLastDeadDelayMsRef = React.useRef<number>(0);
+  const pendingVoiceRef = React.useRef<
+    { kind: VoiceKind; killer: string; victim?: string } | null
+  >(null);
+
+  // ✅ mode assignation numéro (robuste : certaines variantes embarquent la config dans options/settings/config)
+  const numberAssignMode: "none" | "throw" | "random" = (() => {
+    const raw =
+      (config as any)?.numberAssignMode ??
+      (config as any)?.options?.numberAssignMode ??
+      (config as any)?.settings?.numberAssignMode ??
+      (config as any)?.config?.numberAssignMode;
+
+    const s = String(raw ?? "").toLowerCase().trim();
+    if (s === "throw" || s === "random" || s === "none") return s as any;
+
+    // legacy bool
+    const legacy =
+      (config as any)?.selectNumberByThrow ??
+      (config as any)?.options?.selectNumberByThrow ??
+      (config as any)?.settings?.selectNumberByThrow ??
+      (config as any)?.config?.selectNumberByThrow;
+    if (truthy(legacy)) return "throw";
+
+    return "none";
+  })();
 
   const inNumberAssignRound =
     numberAssignMode === "throw" || numberAssignMode === "random";
@@ -1828,6 +1913,7 @@ React.useEffect(() => {
         eliminated: false,
         killerPhase: phase,
         kills: 0,
+        autoKills: 0,
         hitsOnSelf: 0,
         totalThrows: 0,
         killerThrows: 0,
@@ -2087,6 +2173,7 @@ React.useEffect(() => {
         isKiller: p.killerPhase === "ACTIVE",
         killerPhase: p.killerPhase,
         kills: p.kills,
+        autoKills: p.autoKills ?? 0,
         hitsOnSelf: p.hitsOnSelf,
         totalThrows: p.totalThrows,
         killerThrows: p.killerThrows,
@@ -2108,6 +2195,7 @@ React.useEffect(() => {
       number: p.number,
       eliminated: p.eliminated,
       kills: p.kills,
+      autoKills: p.autoKills ?? 0,
       livesTaken: p.livesTaken,
     }));
 
@@ -2241,13 +2329,10 @@ const blindKillerOn = truthy(
     setVisit((v) => [...v, thr].slice(0, 3));
     setDartsLeft((d) => Math.max(0, d - 1));
   
-    // ✅ SFX DECISION (IMPORTANT):
-    // - par défaut: dart-hit
-    // - si on enlève des vies: on joue killer-kill-1/2/3 et on NE joue PAS dart-hit
-    let playKillMult: Mult | 0 = 0;
-
-    // ✅ Voice cue (déclenché ~2.3s après le SFX)
-    let voiceCue: { kind: VoiceKind; killer: string; victim?: string } | null = null;
+    // ✅ Reset pending events (sera rempli dans setPlayers)
+    pendingSfxRef.current = null;
+    pendingDeathAfterRef.current = false;
+    pendingVoiceRef.current = null;
   
     setPlayers((prev) => {
       const next = prev.map((p) => ({
@@ -2276,7 +2361,7 @@ const blindKillerOn = truthy(
       }
   
       // BULL / DBULL (25) — variantes possibles si KILLER ACTIF
-if (thr.target === 25) {
+      if (thr.target === 25) {
   const isDBull = thr.mult === 2;
 
   const bullSplashOn = !!(config as any)?.bullSplash; // dmg zone
@@ -2299,6 +2384,7 @@ if (thr.target === 25) {
     const victims = next.filter((p, idx) => idx !== turnIndex && !p.eliminated);
 
     let totalLoss = 0;
+    let anyElim = false;
 
     for (const v of victims) {
       const before = v.lives;
@@ -2313,6 +2399,7 @@ if (thr.target === 25) {
           v.eliminated = true;
           v.eliminatedAt = Date.now();
           me.kills += 1;
+          anyElim = true;
           if (!elimOrderRef.current.includes(v.id)) {
             elimOrderRef.current = [...(elimOrderRef.current || []), v.id];
           }
@@ -2323,7 +2410,8 @@ if (thr.target === 25) {
     if (totalLoss > 0) {
       me.killerHits += 1;
       me.livesTaken += totalLoss;
-      playKillMult = thr.mult;
+      pendingSfxRef.current = { kind: "kill", mult: thr.mult };
+      if (anyElim) pendingDeathAfterRef.current = true;
     }
 
     pushLog(
@@ -2419,6 +2507,7 @@ if (thr.target === 25) {
       // AUTOKILL
       if (autoKillOn && me.number && thr.target === me.number) {
         me.hitsOnSelf += 1;
+        me.autoKills = (me.autoKills ?? 0) + 1;
         me.livesLost += Math.max(0, me.lives);
         me.lives = 0;
         me.eliminated = true;
@@ -2439,12 +2528,15 @@ if (thr.target === 25) {
           throw: thr,
         });
 
-        // Voice: auto-kill
-        voiceCue = { kind: "auto_kill", killer: me.name };
-  
-        try {
-          sfx.death?.();
-        } catch {}
+        // ✅ SFX + voice (après commit)
+        pendingSfxRef.current = { kind: "auto_kill", mult: thr.mult };
+        pendingDeathAfterRef.current = true;
+        // ✅ laisse entendre autokill + death avant un éventuel lastDead
+        pendingLastDeadDelayMsRef.current = Math.max(
+          pendingLastDeadDelayMsRef.current || 0,
+          900
+        );
+        pendingVoiceRef.current = { kind: "auto_kill", killer: me.name };
   
         return next;
       }
@@ -2485,7 +2577,7 @@ if (thr.target === 25) {
   
       // ACTIVE => attaque
 if (me.killerPhase === "ACTIVE") {
-  // ✅ AUTO-PÉNALITÉ (KILLER qui touche SON numéro)
+      // ✅ AUTO-PÉNALITÉ (KILLER qui touche SON numéro)
   if (me.number && thr.target === me.number && selfPenaltyOn) {
     me.hitsOnSelf = (me.hitsOnSelf ?? 0) + 1;
 
@@ -2498,11 +2590,9 @@ if (me.killerPhase === "ACTIVE") {
     if (actualLossMe > 0) {
       me.livesLost += actualLossMe;
 
-      // ✅ IMPORTANT SFX: si perte de vies => kill S/D/T (pas dart-hit)
-      playKillMult = thr.mult;
-
-      // Voice: auto-touche
-      voiceCue = { kind: "self_hit", killer: me.name };
+      // ✅ IMPORTANT SFX: self-hit dédié
+      pendingSfxRef.current = { kind: "self_hit", mult: thr.mult };
+      pendingVoiceRef.current = { kind: "self_hit", killer: me.name };
 
     }
 
@@ -2529,9 +2619,9 @@ if (me.killerPhase === "ACTIVE") {
       }
 
       pushLog(`☠️ ${me.name} meurt par auto-pénalité`);
-      try {
-        sfx.death?.();
-      } catch {}
+      // ✅ enchaîner death après le SFX de self-hit
+      pendingSfxRef.current = pendingSfxRef.current || { kind: "self_hit", mult: thr.mult };
+      pendingDeathAfterRef.current = true;
     }
 
     return next;
@@ -2562,10 +2652,8 @@ if (me.killerPhase === "ACTIVE") {
         me.lives = Math.max(0, (me.lives ?? 0) + actualLoss);
       }
 
-      playKillMult = thr.mult;
-
-      // Voice: kill (après le SFX)
-      voiceCue = { kind: "kill", killer: me.name, victim: victim.name };
+      pendingSfxRef.current = { kind: "kill", mult: thr.mult };
+      pendingVoiceRef.current = { kind: "kill", killer: me.name, victim: victim.name };
 
     }
 
@@ -2601,9 +2689,15 @@ if (me.killerPhase === "ACTIVE") {
         throw: thr,
       });
 
-      try {
-        sfx.death?.();
-      } catch {}
+      // ✅ enchaîner un "death" APRÈS le SFX de dégâts
+      pendingSfxRef.current = pendingSfxRef.current || { kind: "kill", mult: thr.mult };
+      pendingDeathAfterRef.current = true;
+      // ✅ important: si cette élimination finit la partie, ne lance PAS lastDead immédiatement,
+      // sinon il masque le SFX kill/autoKill. On laisse ~650ms.
+      pendingLastDeadDelayMsRef.current = Math.max(
+        pendingLastDeadDelayMsRef.current || 0,
+        650
+      );
     } else {
       pushLog(
         `🔻 ${me.name} touche ${victim.name} (${fmtThrow(thr)} sur ${thr.target}, -${dmg}) → ${victim.lives} vie(s)`
@@ -2620,21 +2714,49 @@ if (me.killerPhase === "ACTIVE") {
       return next;
     });
   
-    // ✅ JOUER LE BON SON (APRÈS la logique)
-    try {
-      if (playKillMult) sfx.kill?.(playKillMult);
-      else sfx.hit?.();
-    } catch {}
+    // ✅ Jouer SFX + Voice APRÈS la maj d'état (robuste React 18)
+    setTimeout(() => {
+      const ps = pendingSfxRef.current;
+      const pv = pendingVoiceRef.current;
+      const thenDeath = pendingDeathAfterRef.current;
 
-    // ✅ Voice IA (≈ 2.3s après le SFX)
-    try {
-      if (voiceCue) {
-        voice.speakLater(voiceCue.kind, {
-          killer: voiceCue.killer,
-          victim: voiceCue.victim,
-        });
-      }
-    } catch {}
+      // reset
+      pendingSfxRef.current = null;
+      pendingVoiceRef.current = null;
+      pendingDeathAfterRef.current = false;
+
+      try {
+        if (!ps) {
+          sfx.hit?.();
+        } else if (ps.kind === "hit") {
+          sfx.hit?.();
+        } else if (ps.kind === "kill") {
+          sfx.kill?.(ps.mult);
+        } else if (ps.kind === "self_hit") {
+          sfx.selfHit?.(ps.mult);
+        } else if (ps.kind === "auto_kill") {
+          sfx.autoKill?.(ps.mult);
+        } else if (ps.kind === "death") {
+          sfx.death?.();
+        } else if (ps.kind === "lastDead") {
+          sfx.lastDead?.();
+        }
+
+        if (thenDeath) {
+          setTimeout(() => {
+            try {
+              sfx.death?.();
+            } catch {}
+          }, 180);
+        }
+      } catch {}
+
+      try {
+        if (pv) {
+          voice.speakLater(pv.kind, { killer: pv.killer, victim: pv.victim });
+        }
+      } catch {}
+    }, 0);
   }
   
 
@@ -2644,8 +2766,18 @@ if (me.killerPhase === "ACTIVE") {
     if (ww && !finishedRef.current) {
       if (!lastDeadPlayedRef.current) {
         lastDeadPlayedRef.current = true;
+        const delay = Math.max(0, pendingLastDeadDelayMsRef.current || 0);
+        pendingLastDeadDelayMsRef.current = 0;
         try {
-          sfx.lastDead?.();
+          if (delay > 0) {
+            setTimeout(() => {
+              try {
+                sfx.lastDead?.();
+              } catch {}
+            }, delay);
+          } else {
+            sfx.lastDead?.();
+          }
         } catch {}
       }
 
@@ -2757,10 +2889,10 @@ React.useEffect(() => {
       sfx.unlock?.();
     } catch {}
 
-    // ✅ SFX DECISION BOT
-    // - par défaut: dart-hit
-    // - si on enlève des vies: killer-kill-1/2/3 et PAS dart-hit
-    let botPlayKillMult: Mult | 0 = 0;
+    // ✅ Reset pending events BOT (sera rempli dans setPlayers)
+    pendingSfxRef.current = null;
+    pendingVoiceRef.current = null;
+    pendingDeathAfterRef.current = false;
 
     setPlayers((prev) => {
       const next = prev.map((p) => ({
@@ -2842,7 +2974,7 @@ if (thrSafe.target === 25) {
     if (totalLoss > 0) {
       me2.killerHits += 1;
       me2.livesTaken += totalLoss;
-      botPlayKillMult = thrSafe.mult;
+      pendingSfxRef.current = { kind: "kill", mult: thrSafe.mult };
     }
 
     pushLog(
@@ -2948,6 +3080,7 @@ if (thrSafe.target === 25) {
 
       if (autoKillOn && me2.number && thrSafe.target === me2.number) {
         me2.hitsOnSelf += 1;
+        me2.autoKills = (me2.autoKills ?? 0) + 1;
         me2.livesLost += Math.max(0, me2.lives);
         me2.lives = 0;
         me2.eliminated = true;
@@ -2971,9 +3104,13 @@ if (thrSafe.target === 25) {
           bot: true,
         });
 
-        try {
-          sfx.death?.();
-        } catch {}
+        pendingSfxRef.current = { kind: "auto_kill", mult: thrSafe.mult };
+        pendingDeathAfterRef.current = true;
+        pendingLastDeadDelayMsRef.current = Math.max(
+          pendingLastDeadDelayMsRef.current || 0,
+          900
+        );
+        pendingVoiceRef.current = { kind: "auto_kill", killer: me2.name };
 
         return next;
       }
@@ -3016,7 +3153,8 @@ if (thrSafe.target === 25) {
       
           if (actualLossMe > 0) {
             me2.livesLost += actualLossMe;
-            botPlayKillMult = thrSafe.mult;
+            pendingSfxRef.current = { kind: "self_hit", mult: thrSafe.mult };
+            pendingVoiceRef.current = { kind: "self_hit", killer: me2.name };
           }
       
           pushLog(
@@ -3043,9 +3181,8 @@ if (thrSafe.target === 25) {
             }
       
             pushLog(`☠️ ${me2.name} meurt par auto-pénalité`);
-            try {
-              sfx.death?.();
-            } catch {}
+            pendingSfxRef.current = pendingSfxRef.current || { kind: "self_hit", mult: thrSafe.mult };
+            pendingDeathAfterRef.current = true;
           }
       
           return next;
@@ -3076,7 +3213,8 @@ if (thrSafe.target === 25) {
               me2.lives = Math.max(0, (me2.lives ?? 0) + actualLoss);
             }
       
-            botPlayKillMult = thrSafe.mult;
+            pendingSfxRef.current = { kind: "kill", mult: thrSafe.mult };
+            pendingVoiceRef.current = { kind: "kill", killer: me2.name, victim: victim.name };
           }
       
           pushEvent({
@@ -3113,9 +3251,9 @@ if (thrSafe.target === 25) {
               bot: true,
             });
       
-            try {
-              sfx.death?.();
-            } catch {}
+            // ✅ enchaîner death après le SFX de dégâts
+            pendingSfxRef.current = pendingSfxRef.current || { kind: "kill", mult: thrSafe.mult };
+            pendingDeathAfterRef.current = true;
           } else {
             pushLog(
               `🔻 ${me2.name} touche ${victim.name} (${fmtThrow(thrSafe)} sur ${thrSafe.target}, -${dmg}) → ${victim.lives} vie(s)`
@@ -3138,11 +3276,49 @@ if (thrSafe.target === 25) {
       return next;
     });
 
-    // ✅ JOUER LE BON SON BOT (APRÈS la logique)
-    try {
-      if (botPlayKillMult) sfx.kill?.(botPlayKillMult);
-      else sfx.hit?.();
-    } catch {}
+    // ✅ Jouer SFX + Voice BOT APRÈS la maj d'état (robuste React 18)
+    setTimeout(() => {
+      const ps = pendingSfxRef.current;
+      const pv = pendingVoiceRef.current;
+      const thenDeath = pendingDeathAfterRef.current;
+
+      // reset
+      pendingSfxRef.current = null;
+      pendingVoiceRef.current = null;
+      pendingDeathAfterRef.current = false;
+
+      try {
+        if (!ps) {
+          sfx.hit?.();
+        } else if (ps.kind === "hit") {
+          sfx.hit?.();
+        } else if (ps.kind === "kill") {
+          sfx.kill?.(ps.mult);
+        } else if (ps.kind === "self_hit") {
+          sfx.selfHit?.(ps.mult);
+        } else if (ps.kind === "auto_kill") {
+          sfx.autoKill?.(ps.mult);
+        } else if (ps.kind === "death") {
+          sfx.death?.();
+        } else if (ps.kind === "lastDead") {
+          sfx.lastDead?.();
+        }
+
+        if (thenDeath) {
+          setTimeout(() => {
+            try {
+              sfx.death?.();
+            } catch {}
+          }, 180);
+        }
+      } catch {}
+
+      try {
+        if (pv) {
+          voice.speakLater(pv.kind, { killer: pv.killer, victim: pv.victim });
+        }
+      } catch {}
+    }, 0);
 
     botBusyRef.current = false;
   }, delay);

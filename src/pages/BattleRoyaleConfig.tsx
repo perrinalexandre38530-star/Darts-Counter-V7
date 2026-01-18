@@ -98,7 +98,7 @@ export default function BattleRoyaleConfigPage({ store, go }: Props) {
   const [dartsPerTurn, setDartsPerTurn] = React.useState<number>(3);
   const [eliminationRule, setEliminationRule] = React.useState<
     "zero_points" | "miss_x" | "life_system"
-  >("life_system");
+  >("");
 
   // ✅ toggles (persist settings)
   const [sfxEnabled, setSfx] = React.useState<boolean>(() => {
@@ -132,11 +132,6 @@ export default function BattleRoyaleConfigPage({ store, go }: Props) {
   // ✅ Start autorisé si au moins 2 participants.
   const canStart = canEnter;
 
-  const selectedPlayers: PlayerLite[] = React.useMemo(() => {
-    const map = new Map(allPlayers.map((p) => [p.id, p] as const));
-    return selectedIds.map((id) => map.get(id)).filter(Boolean) as PlayerLite[];
-  }, [allPlayers, selectedIds]);
-
   const cardShell: React.CSSProperties = {
     borderRadius: 18,
     border: `1px solid ${theme.borderSoft}`,
@@ -161,7 +156,7 @@ export default function BattleRoyaleConfigPage({ store, go }: Props) {
       style={{
         minHeight: "100vh",
         padding: 14,
-        // ✅ Laisse de la place au CTA + BottomNav (sinon bouton masqué)
+        // ✅ Laisse la place au CTA sticky + BottomNav
         paddingBottom: 200,
         background: PAGE_BG,
         color: theme.text,
@@ -434,7 +429,7 @@ export default function BattleRoyaleConfigPage({ store, go }: Props) {
         <div style={{ marginTop: 10, fontSize: 12, color: theme.textSoft }}>
           {t(
             "battle.config.audioNote",
-            "Les sons/voix sont persistés."
+            "Les sons/voix sont déjà persistés. Le gameplay Battle Royale arrive ensuite."
           )}
         </div>
       </div>
@@ -445,8 +440,7 @@ export default function BattleRoyaleConfigPage({ store, go }: Props) {
           position: "fixed",
           left: 0,
           right: 0,
-          // ✅ BottomNav est rendue en fixed (App.tsx paddingBottom=88)
-          // -> on remonte le CTA pour qu'il soit visible
+          // ✅ Remonte au-dessus de la BottomNav (paddingBottom App = 88)
           bottom: 88,
           padding: 12,
           paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 12px)",
@@ -485,7 +479,11 @@ export default function BattleRoyaleConfigPage({ store, go }: Props) {
                 voiceEnabled,
               };
 
-              go("battle_royale_play", { config: cfg, matchId: globalThis.crypto?.randomUUID?.() ?? String(Date.now()) });
+              // ✅ Démarre le gameplay (flow identique Shanghai/Killer)
+              go("battle_royale_play", {
+                config: cfg,
+                matchId: globalThis.crypto?.randomUUID?.() ?? String(Date.now()),
+              });
             }}
             style={{
               flex: 1,
@@ -504,7 +502,7 @@ export default function BattleRoyaleConfigPage({ store, go }: Props) {
           </button>
 
           <div style={{ fontSize: 12, color: theme.textSoft, minWidth: 140, textAlign: "right" }}>
-            {t("battle.config.status", "Prêt")}
+            {canEnter ? t("battle.config.ready", "Prêt") : t("battle.config.needTwo", "Min. 2 joueurs")}
           </div>
         </div>
       </div>

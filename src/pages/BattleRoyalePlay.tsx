@@ -11,7 +11,6 @@
 // ============================================
 
 import React from "react";
-import type { Store, MatchRecord } from "../lib/types";
 import { useTheme } from "../contexts/ThemeContext";
 import { useLang } from "../contexts/LangContext";
 import InfoDot from "../components/InfoDot";
@@ -40,10 +39,13 @@ export type BattleRoyaleConfig = {
 };
 
 type Props = {
-  store: Store;
+  // App.tsx passe aussi `store` pour rester homogène avec les autres modes
+  store?: any;
   go: (tab: any, params?: any) => void;
+  // La config est fournie par BattleRoyaleConfig via App.tsx (routeParams.config)
   config: BattleRoyaleConfig;
-  onFinish?: (m: MatchRecord | any) => void;
+  // Callback fin de partie (historique)
+  onFinish?: (match: any) => void;
 };
 
 type BRPlayerState = {
@@ -98,7 +100,7 @@ function avatarFallback(name: string) {
   return (a + b).slice(0, 2);
 }
 
-export default function BattleRoyalePlay({ store, go, config, onFinish }: Props) {
+export default function BattleRoyalePlay({ go, config, onFinish }: Props) {
   const { theme } = useTheme();
   const { t } = useLang();
 
@@ -303,36 +305,6 @@ export default function BattleRoyalePlay({ store, go, config, onFinish }: Props)
     }, 0);
   }
 
-  function finalizeMatch() {
-    const now = Date.now();
-    const winner = players.find((p) => p.alive) || null;
-
-    const rec: any = {
-      kind: "battle_royale",
-      createdAt: now,
-      players: players.map((p) => ({
-        id: p.id,
-        name: p.name,
-        avatarDataUrl: p.avatarDataUrl ?? null,
-        isBot: p.isBot ?? false,
-      })),
-      winnerId: winner?.id ?? null,
-      summary: {
-        roundsPlayed: roundIndex + 1,
-        eliminationRule,
-        dartsPerTurn,
-        baseLives,
-        missLimit,
-      },
-    };
-
-    try {
-      onFinish?.(rec);
-    } catch {}
-
-    go("battle_royale");
-  }
-
   const pageBg = theme.bg;
   const cardBg = theme.card;
 
@@ -422,8 +394,18 @@ export default function BattleRoyalePlay({ store, go, config, onFinish }: Props)
         </div>
       </div>
 
-      {/* Top KPI row */}
-      <div style={{ display: "grid", gridTemplateColumns: "1.2fr 1fr", gap: 10 }}>
+      {/* Content (scroll) — 1 colonne pour éviter tout débordement */}
+      <div
+        style={{
+          flex: 1,
+          minHeight: 0,
+          overflowY: "auto",
+          WebkitOverflowScrolling: "touch",
+          overscrollBehavior: "contain",
+          paddingBottom: 8,
+        }}
+      >
+        <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 10, maxWidth: 860, margin: "0 auto" }}>
         <div style={{ ...cardShell, padding: 12 }}>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
             <div style={{ fontWeight: 1000, letterSpacing: 0.4 }}>
@@ -520,51 +502,6 @@ export default function BattleRoyalePlay({ store, go, config, onFinish }: Props)
                   ? `${t("common.winner", "Vainqueur")} : ${winner.name}`
                   : t("common.finished", "Partie terminée");
               })()}
-
-              <div style={{ display: "flex", gap: 10, marginTop: 10 }}>
-                <button
-                  type="button"
-                  onClick={finalizeMatch}
-                  style={{
-                    flex: 1,
-                    borderRadius: 999,
-                    padding: "10px 12px",
-                    border: `1px solid ${theme.primary}66`,
-                    background: theme.primary,
-                    color: "#000",
-                    fontWeight: 1100,
-                    cursor: "pointer",
-                    boxShadow: `0 0 22px ${theme.primary}55`,
-                  }}
-                >
-                  {t("common.finish", "TERMINER")}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setPlayers(playersInit);
-                    setRoundIndex(0);
-                    setTurnPtr(0);
-                    setCurrentThrow([]);
-                    setMultiplier(1);
-                    setEnded(false);
-                    if (cfg?.sfxEnabled !== false) {
-                      try { playUiClickSoft(); } catch {}
-                    }
-                  }}
-                  style={{
-                    borderRadius: 999,
-                    padding: "10px 12px",
-                    border: `1px solid ${theme.borderSoft}`,
-                    background: "rgba(0,0,0,0.22)",
-                    color: theme.text,
-                    fontWeight: 1100,
-                    cursor: "pointer",
-                  }}
-                >
-                  {t("common.restart", "REJOUER")}
-                </button>
-              </div>
             </div>
           )}
         </div>
@@ -577,7 +514,7 @@ export default function BattleRoyalePlay({ store, go, config, onFinish }: Props)
           {/* Liste joueurs: seul conteneur scrollable */}
           <div
             style={{
-              maxHeight: 170,
+              maxHeight: "min(32vh, 260px)",
               overflowY: "auto",
               WebkitOverflowScrolling: "touch",
               overscrollBehavior: "contain",
@@ -707,9 +644,10 @@ export default function BattleRoyalePlay({ store, go, config, onFinish }: Props)
             {t("common.restart", "Relancer (MVP)")}
           </button>
         </div>
+        </div>
       </div>
 
-      {/* Keypad fixed */}
+      {/* Keypad fixed (BottomNav masquée pendant la partie) */}
       <div style={{ marginTop: "auto" }}>
         <Keypad
           currentThrow={currentThrow}
