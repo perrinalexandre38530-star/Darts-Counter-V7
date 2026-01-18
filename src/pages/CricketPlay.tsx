@@ -1257,9 +1257,18 @@ function buildHistoryRecord(): SavedMatch | null {
 	    	>
 	    	  <BackDot
 	    	    onClick={() => {
-	    	      try {
-	    	        window.location.hash = "#/";
-	    	      } catch {}
+	        try {
+	          // ✅ Retour vers le menu "Games" (sport-aware) via le routeur central (App.tsx)
+	          const go = (window as any)?.__appGo || (window as any)?.__appStore?.go;
+	          if (typeof go === "function") {
+	            go("games");
+	            return;
+	          }
+	        } catch {}
+	        // Fallback (si go indispo)
+	        try {
+	          window.location.hash = "#/";
+	        } catch {}
 	    	    }}
 	    	    color={T.gold}
 	    	    glow={"rgba(246,194,86,0.55)"}
