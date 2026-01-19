@@ -48,6 +48,26 @@ import NewModesTicker, { type NewModeTickerItem } from "../components/NewModesTi
 import newGameBadge from "../assets/new_game.png";
 import playBadge from "../assets/play.png";
 
+// ✅ Tickers images (Vite): /src/assets/tickers/ticker_<gameId>.png
+// Exemple: ticker_count_up.png
+const TICKERS = import.meta.glob("../assets/tickers/*.png", {
+  eager: true,
+  import: "default",
+}) as Record<string, string>;
+
+function findTickerById(id: string): string | null {
+  const suffix = `/ticker_${id}.png`;
+  for (const k of Object.keys(TICKERS)) {
+    if (k.endsWith(suffix)) return TICKERS[k];
+  }
+  return null;
+}
+
+function getTickerSrcForId(gameId: string): string | null {
+  const key = `../assets/tickers/ticker_${gameId}.png`;
+  return (TICKERS as any)[key] ?? null;
+}
+
 type Props = {
   setTab: (tab: any, params?: any) => void;
 };
@@ -111,6 +131,34 @@ export default function Games({ setTab }: Props) {
 
   // ✅ counts from history (finished matches)
   const [counts, setCounts] = React.useState<PlayCountMap>({});
+
+  // ✅ All-games ticker (random) — shown just above the TRAINING card
+  const allGamesForTicker = React.useMemo(() => {
+    return (DARTS_GAMES || [])
+      .filter((g: any) => g && g.ready)
+      .map((g: any) => ({
+        id: String(g.id),
+        label: String(g.label || g.id),
+        tickerSrc: findTickerById(String(g.id)),
+      }));
+  }, []);
+
+  const [allTickerIdx, setAllTickerIdx] = React.useState(0);
+
+  React.useEffect(() => {
+    if (!allGamesForTicker.length) return;
+    const ms = 3000;
+    const t = window.setInterval(() => {
+      setAllTickerIdx((prev) => {
+        const n = allGamesForTicker.length;
+        if (n <= 1) return 0;
+        let next = Math.floor(Math.random() * n);
+        if (next === prev) next = (next + 1) % n;
+        return next;
+      });
+    }, ms);
+    return () => window.clearInterval(t);
+  }, [allGamesForTicker.length]);
 
   const PAGE_BG = theme.bg;
   const CARD_BG = theme.card;
@@ -508,36 +556,6 @@ export default function Games({ setTab }: Props) {
       </div>
 
       <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 10 }}>
-        {/* ✅ STATS (vert) tout en haut — sans i */}
-        <button
-          onClick={() => navigate("stats")}
-          style={{
-            position: "relative",
-            width: "100%",
-            padding: 14,
-            textAlign: "center",
-            borderRadius: 16,
-            cursor: "pointer",
-            overflow: "hidden",
-            userSelect: "none",
-            WebkitTapHighlightColor: "transparent",
-            ...tintedCardStyle(TINT_STATS),
-          }}
-        >
-          <div
-            style={{
-              fontSize: 12,
-              fontWeight: 900,
-              letterSpacing: 1.0,
-              color: TINT_STATS.title,
-              textTransform: "uppercase",
-              textShadow: `0 0 12px ${TINT_STATS.glow}`,
-            }}
-          >
-            {t("games.stats.title", "STATISTIQUES")}
-          </div>
-        </button>
-
         {/* ✅ TICKER 3 ZONES — images tickers 800x230 en contain */}
         <NewModesTicker
           items={newModes}
@@ -610,6 +628,61 @@ export default function Games({ setTab }: Props) {
 
         {/* ✅ Remettre TRAINING + TOURNOIS sous les favoris */}
         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          {/* ✅ TICKER GLOBAL (aleatoire) — tous les modes avec image ticker_<id>.png */}
+          <div
+            style={{
+              height: 56,
+              borderRadius: 16,
+              border: `1px solid ${TINT_STATS.border}`,
+              background: `linear-gradient(180deg, rgba(120,255,180,0.10), rgba(0,0,0,0.18))`,
+              boxShadow: `0 10px 24px rgba(0,0,0,0.55), 0 0 18px ${TINT_STATS.glow}`,
+              overflow: "hidden",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              padding: 8,
+            }}
+          >
+            {(() => {
+              const current = allGamesForTicker.length
+                ? allGamesForTicker[allTickerIdx % allGamesForTicker.length]
+                : null;
+
+              if (!current) return null;
+
+              // 800 x 230 ratio, mais image en contain dans l'espace dispo
+              return current.tickerSrc ? (
+                <img
+                  src={current.tickerSrc}
+                  alt={current.label}
+                  style={{
+                    width: "100%",
+                    height: "100%",
+                    objectFit: "contain",
+                    display: "block",
+                    filter: "drop-shadow(0 0 10px rgba(0,0,0,0.35))",
+                    transform: "translateZ(0)",
+                  }}
+                />
+              ) : (
+                <div
+                  style={{
+                    width: "100%",
+                    textAlign: "center",
+                    fontWeight: 900,
+                    letterSpacing: 0.8,
+                    color: TINT_STATS.title,
+                    textShadow: `0 0 12px ${TINT_STATS.glow}`,
+                    textTransform: "uppercase",
+                    fontSize: 12,
+                  }}
+                >
+                  {safeUpper(current.label)}
+                </div>
+              );
+            })()}
+          </div>
+
           {/* TRAINING HUB */}
           <button
             onClick={() => navigate("training")}
