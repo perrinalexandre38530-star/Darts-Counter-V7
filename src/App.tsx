@@ -233,6 +233,45 @@ import PingPongStatsHistoryPage from "./pages/pingpong/PingPongStatsHistoryPage"
 import { installHistoryProbe } from "./dev/devHistoryProbe";
 import DartsModeConfig from "./pages/modes/DartsModeConfig";
 import DartsModePlay from "./pages/modes/DartsModePlay";
+
+// ✅ NEW: Darts modes (Config + Play) — MVP pages (câblage dédié)
+import HalveItConfig from "./pages/HalveItConfig";
+import HalveItPlay from "./pages/HalveItPlay";
+import CountUpConfig from "./pages/CountUpConfig";
+import CountUpPlay from "./pages/CountUpPlay";
+import PrisonerConfig from "./pages/PrisonerConfig";
+import PrisonerPlay from "./pages/PrisonerPlay";
+import SuperBullConfig from "./pages/SuperBullConfig";
+import SuperBullPlay from "./pages/SuperBullPlay";
+import ShooterConfig from "./pages/ShooterConfig";
+import ShooterPlay from "./pages/ShooterPlay";
+import TicTacToeConfig from "./pages/TicTacToeConfig";
+import TicTacToePlay from "./pages/TicTacToePlay";
+import KnockoutConfig from "./pages/KnockoutConfig";
+import KnockoutPlay from "./pages/KnockoutPlay";
+import Bobs27Config from "./pages/Bobs27Config";
+import Bobs27Play from "./pages/Bobs27Play";
+import ScramConfig from "./pages/ScramConfig";
+import ScramPlay from "./pages/ScramPlay";
+import BaseballConfig from "./pages/BaseballConfig";
+import BaseballPlay from "./pages/BaseballPlay";
+import Game170Config from "./pages/Game170Config";
+import Game170Play from "./pages/Game170Play";
+import FootballConfig from "./pages/FootballConfig";
+import FootballPlay from "./pages/FootballPlay";
+import BatardConfig from "./pages/BatardConfig";
+import BatardPlay from "./pages/BatardPlay";
+import CapitalConfig from "./pages/CapitalConfig";
+import CapitalPlay from "./pages/CapitalPlay";
+import HappyMilleConfig from "./pages/HappyMilleConfig";
+import HappyMillePlay from "./pages/HappyMillePlay";
+import RugbyConfig from "./pages/RugbyConfig";
+import RugbyPlay from "./pages/RugbyPlay";
+import DepartementsConfig from "./pages/DepartementsConfig";
+import DepartementsPlay from "./pages/DepartementsPlay";
+import EnculetteConfig from "./pages/EnculetteConfig";
+import EnculettePlay from "./pages/EnculettePlay";
+
 if (import.meta.env.DEV) installHistoryProbe();
 
 // =============================================================
@@ -518,6 +557,43 @@ type Tab =
   | "auth_callback"
   | "darts_mode_config"
   | "darts_mode_play"
+  // ✅ NEW: Darts modes dedicated tabs (Config + Play)
+  | "halve_it_config"
+  | "halve_it_play"
+  | "count_up_config"
+  | "count_up_play"
+  | "prisoner_config"
+  | "prisoner_play"
+  | "super_bull_config"
+  | "super_bull_play"
+  | "shooter_config"
+  | "shooter_play"
+  | "tic_tac_toe_config"
+  | "tic_tac_toe_play"
+  | "knockout_config"
+  | "knockout_play"
+  | "bobs_27_config"
+  | "bobs_27_play"
+  | "scram_config"
+  | "scram_play"
+  | "baseball_config"
+  | "baseball_play"
+  | "game_170_config"
+  | "game_170_play"
+  | "football_config"
+  | "football_play"
+  | "batard_config"
+  | "batard_play"
+  | "capital_config"
+  | "capital_play"
+  | "happy_mille_config"
+  | "happy_mille_play"
+  | "rugby_config"
+  | "rugby_play"
+  | "departements_config"
+  | "departements_play"
+  | "enculette_config"
+  | "enculette_play"
   | "auth_reset";
 
 /* redirect TrainingStats → StatsHub */
@@ -2473,6 +2549,139 @@ function App() {
         break;
       }
 
+
+
+      // ============================================================
+      // ✅ NEW: Dedicated Darts modes (Config + Play)
+      // - Chaque page reçoit setTab=go + params=routeParams
+      // - Les Config poussent vers "<mode>_play" avec { config }
+      // ============================================================
+      case "halve_it_config":
+        page = <HalveItConfig setTab={go} params={routeParams} />;
+        break;
+      case "halve_it_play":
+        page = <HalveItPlay setTab={go} params={routeParams} />;
+        break;
+
+      case "count_up_config":
+        page = <CountUpConfig setTab={go} params={routeParams} />;
+        break;
+      case "count_up_play":
+        page = <CountUpPlay setTab={go} params={routeParams} />;
+        break;
+
+      case "prisoner_config":
+        page = <PrisonerConfig setTab={go} params={routeParams} />;
+        break;
+      case "prisoner_play":
+        page = <PrisonerPlay setTab={go} params={routeParams} />;
+        break;
+
+      case "super_bull_config":
+        page = <SuperBullConfig setTab={go} params={routeParams} />;
+        break;
+      case "super_bull_play":
+        page = <SuperBullPlay setTab={go} params={routeParams} />;
+        break;
+
+      case "shooter_config":
+        page = <ShooterConfig setTab={go} params={routeParams} />;
+        break;
+      case "shooter_play":
+        page = <ShooterPlay setTab={go} params={routeParams} />;
+        break;
+
+      case "tic_tac_toe_config":
+        page = <TicTacToeConfig setTab={go} params={routeParams} />;
+        break;
+      case "tic_tac_toe_play":
+        page = <TicTacToePlay setTab={go} params={routeParams} />;
+        break;
+
+      case "knockout_config":
+        page = <KnockoutConfig setTab={go} params={routeParams} />;
+        break;
+      case "knockout_play":
+        page = <KnockoutPlay setTab={go} params={routeParams} />;
+        break;
+
+      case "bobs_27_config":
+        page = <Bobs27Config setTab={go} params={routeParams} />;
+        break;
+      case "bobs_27_play":
+        page = <Bobs27Play setTab={go} params={routeParams} />;
+        break;
+
+      case "scram_config":
+        page = <ScramConfig setTab={go} params={routeParams} />;
+        break;
+      case "scram_play":
+        page = <ScramPlay setTab={go} params={routeParams} />;
+        break;
+
+      case "baseball_config":
+        page = <BaseballConfig setTab={go} params={routeParams} />;
+        break;
+      case "baseball_play":
+        page = <BaseballPlay setTab={go} params={routeParams} />;
+        break;
+
+      case "game_170_config":
+        page = <Game170Config setTab={go} params={routeParams} />;
+        break;
+      case "game_170_play":
+        page = <Game170Play setTab={go} params={routeParams} />;
+        break;
+
+      case "football_config":
+        page = <FootballConfig setTab={go} params={routeParams} />;
+        break;
+      case "football_play":
+        page = <FootballPlay setTab={go} params={routeParams} />;
+        break;
+
+      case "batard_config":
+        page = <BatardConfig setTab={go} params={routeParams} />;
+        break;
+      case "batard_play":
+        page = <BatardPlay setTab={go} params={routeParams} />;
+        break;
+
+      case "capital_config":
+        page = <CapitalConfig setTab={go} params={routeParams} />;
+        break;
+      case "capital_play":
+        page = <CapitalPlay setTab={go} params={routeParams} />;
+        break;
+
+      case "happy_mille_config":
+        page = <HappyMilleConfig setTab={go} params={routeParams} />;
+        break;
+      case "happy_mille_play":
+        page = <HappyMillePlay setTab={go} params={routeParams} />;
+        break;
+
+      case "rugby_config":
+        page = <RugbyConfig setTab={go} params={routeParams} />;
+        break;
+      case "rugby_play":
+        page = <RugbyPlay setTab={go} params={routeParams} />;
+        break;
+
+      case "departements_config":
+        page = <DepartementsConfig setTab={go} params={routeParams} />;
+        break;
+      case "departements_play":
+        page = <DepartementsPlay setTab={go} params={routeParams} />;
+        break;
+
+      case "enculette_config":
+        page = <EnculetteConfig setTab={go} params={routeParams} />;
+        break;
+      case "enculette_play":
+        page = <EnculettePlay setTab={go} params={routeParams} />;
+        break;
+
       case "darts_mode_config": {
         const gameId = routeParams?.gameId;
         page = <DartsModeConfig store={store} go={go} gameId={gameId} />;
@@ -2510,6 +2719,26 @@ function App() {
     "five_lives_play",
     "training_x01_play",
     "training_clock",
+
+    // ✅ NEW: Darts modes (play) — plein écran
+    "halve_it_play",
+    "count_up_play",
+    "prisoner_play",
+    "super_bull_play",
+    "shooter_play",
+    "tic_tac_toe_play",
+    "knockout_play",
+    "bobs_27_play",
+    "scram_play",
+    "baseball_play",
+    "game_170_play",
+    "football_play",
+    "batard_play",
+    "capital_play",
+    "happy_mille_play",
+    "rugby_play",
+    "departements_play",
+    "enculette_play",
 
     // Tournois: match en cours (plein écran)
     "tournament_match_play",
