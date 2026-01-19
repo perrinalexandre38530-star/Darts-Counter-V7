@@ -19,6 +19,10 @@
 // ✅ TICKERS
 // - Ticker du haut (NewModesTicker): NEW + centre + PLAY (OK)
 // - Ticker du bas (juste sous favoris): IMAGE SEULE (sans NEW/PLAY), cliquable
+// - ✅ NEW: Intégrer un ticker discret DANS chaque carte de jeu (liste)
+//   * 75% de la largeur, 100% de la hauteur
+//   * côté droit (sous le bouton "i"), opacity faible
+//   * dégradé des deux côtés pour fondre avec la carte
 //
 // ✅ Chargement images tickers:
 // - Mets tes images: src/assets/tickers/ticker_<gameId>.png
@@ -530,6 +534,59 @@ export default function Games({ setTab }: Props) {
     return () => window.clearInterval(it);
   }, [allTickerPool.length]);
 
+  // ✅ helper: watermark ticker inside game cards (75% width, 100% height, fades)
+  function renderGameTickerWatermark(gameId: string) {
+    const src = findTickerById(gameId);
+    if (!src) return null;
+
+    return (
+      <div
+        aria-hidden
+        style={{
+          position: "absolute",
+          right: 0,
+          top: 0,
+          height: "100%",
+          width: "75%",
+          pointerEvents: "none",
+          opacity: 0.22, // discret
+          zIndex: 0,
+          // dégradé des deux côtés: transparent -> opaque -> transparent
+          WebkitMaskImage:
+            "linear-gradient(90deg, rgba(0,0,0,0) 0%, rgba(0,0,0,1) 16%, rgba(0,0,0,1) 84%, rgba(0,0,0,0) 100%)",
+          maskImage:
+            "linear-gradient(90deg, rgba(0,0,0,0) 0%, rgba(0,0,0,1) 16%, rgba(0,0,0,1) 84%, rgba(0,0,0,0) 100%)",
+        }}
+      >
+        <img
+          src={src}
+          alt=""
+          style={{
+            position: "absolute",
+            inset: 0,
+            width: "100%",
+            height: "100%",
+            objectFit: "cover", // 100% hauteur garanti (peut crop un peu)
+            objectPosition: "center",
+            transform: "translateZ(0)",
+            filter: "contrast(1.05) saturate(1.05) drop-shadow(0 0 10px rgba(0,0,0,0.25))",
+          }}
+          draggable={false}
+        />
+        {/* légère couche pour fondre avec la carte */}
+        <div
+          style={{
+            position: "absolute",
+            inset: 0,
+            background:
+              "linear-gradient(90deg, rgba(0,0,0,0.35) 0%, rgba(0,0,0,0.00) 35%, rgba(0,0,0,0.00) 65%, rgba(0,0,0,0.35) 100%)",
+            opacity: 0.55,
+          }}
+        />
+      </div>
+    );
+  }
+
   return (
     <div
       style={{
@@ -885,25 +942,38 @@ export default function Games({ setTab }: Props) {
                       overflow: "hidden",
                     }}
                   >
-                    <div
-                      style={{
-                        fontSize: 14,
-                        fontWeight: 800,
-                        letterSpacing: 0.8,
-                        color: disabled ? theme.textSoft : theme.primary,
-                        textTransform: "uppercase",
-                        textShadow: disabled ? "none" : `0 0 12px ${theme.primary}55`,
-                      }}
-                    >
-                      {g.label}
-                    </div>
+                    {/* ✅ Watermark ticker (75% largeur / 100% hauteur, fade) */}
+                    {renderGameTickerWatermark(g.id)}
 
-                    <div style={{ marginTop: 4, fontSize: 12, color: theme.textSoft, opacity: 0.9 }}>
-                      {comingSoon && (
-                        <span style={{ fontSize: 11, fontStyle: "italic", opacity: 0.9 }}>
-                          {comingSoon}
-                        </span>
-                      )}
+                    {/* ✅ contenu au-dessus */}
+                    <div style={{ position: "relative", zIndex: 1 }}>
+                      <div
+                        style={{
+                          fontSize: 14,
+                          fontWeight: 800,
+                          letterSpacing: 0.8,
+                          color: disabled ? theme.textSoft : theme.primary,
+                          textTransform: "uppercase",
+                          textShadow: disabled ? "none" : `0 0 12px ${theme.primary}55`,
+                        }}
+                      >
+                        {g.label}
+                      </div>
+
+                      <div
+                        style={{
+                          marginTop: 4,
+                          fontSize: 12,
+                          color: theme.textSoft,
+                          opacity: 0.9,
+                        }}
+                      >
+                        {comingSoon && (
+                          <span style={{ fontSize: 11, fontStyle: "italic", opacity: 0.9 }}>
+                            {comingSoon}
+                          </span>
+                        )}
+                      </div>
                     </div>
 
                     <div
@@ -912,6 +982,7 @@ export default function Games({ setTab }: Props) {
                         right: 10,
                         top: "50%",
                         transform: "translateY(-50%)",
+                        zIndex: 2,
                       }}
                     >
                       <InfoDot
