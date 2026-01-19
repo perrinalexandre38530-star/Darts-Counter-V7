@@ -3,10 +3,8 @@
 // Style harmonisé avec TrainingMenu (cartes néon)
 //
 // ✅ CHANGE (REQUEST FINAL):
-// - STATISTIQUES (vert) tout en haut (sans bouton i) -> menu Stats
 // - FAVORIS (centrés, sans i) + AUCUNE annotation
 // - FAVORIS calculés automatiquement via le NOMBRE DE PARTIES JOUÉES (history)
-//   => plus d’appui long / plus de localStorage fav
 // - Remettre les cartes TRAINING et TOURNOIS sous les favoris
 //   et AU-DESSUS des onglets, séparés par une barre de séparation thème
 // - IMPORTANT ROUTING :
@@ -18,15 +16,13 @@
 // - Onglets colorisés par catégorie comme les favoris
 // - SUPPRIMER l’onglet "TRAINING" (mais garder la carte TRAINING au-dessus)
 //
-// ✅ NEW (ticker demandé):
-// - NEW_GAME.png fixe à gauche (ne bouge jamais)
-// - Centre: 1 nouveau mode à la fois, rotation auto
-//   + image ticker (format source 800x230) affichée en contain (proportions respectées)
-// - Droite: image PLAY fixe (cliquable) => ouvre la CONFIG du mode affiché au centre
+// ✅ TICKERS
+// - Ticker du haut (NewModesTicker): NEW + centre + PLAY (OK)
+// - Ticker du bas (juste sous favoris): IMAGE SEULE (sans NEW/PLAY), cliquable
 //
 // ✅ Chargement images tickers:
 // - Mets tes images: src/assets/tickers/ticker_<gameId>.png
-// - Le composant NewModesTicker les charge automatiquement via import.meta.glob
+// - Chargées via import.meta.glob
 // ============================================
 
 import React from "react";
@@ -43,13 +39,12 @@ import {
 } from "../games/dartsGameRegistry";
 import { History } from "../lib/history";
 
-// ✅ NEW ticker component
+// ✅ NEW ticker component (haut seulement)
 import NewModesTicker, { type NewModeTickerItem } from "../components/NewModesTicker";
 import newGameBadge from "../assets/new_game.png";
 import playBadge from "../assets/play.png";
 
 // ✅ Tickers images (Vite): /src/assets/tickers/ticker_<gameId>.png
-// Exemple: ticker_count_up.png
 const TICKERS = import.meta.glob("../assets/tickers/*.png", {
   eager: true,
   import: "default",
@@ -61,12 +56,6 @@ function findTickerById(id: string): string | null {
     if (k.endsWith(suffix)) return TICKERS[k];
   }
   return null;
-}
-
-// (compat / accès direct si besoin)
-function getTickerSrcForId(gameId: string): string | null {
-  const key = `../assets/tickers/ticker_${gameId}.png`;
-  return (TICKERS as any)[key] ?? null;
 }
 
 type Props = {
@@ -133,11 +122,14 @@ export default function Games({ setTab }: Props) {
   // ✅ counts from history (finished matches)
   const [counts, setCounts] = React.useState<PlayCountMap>({});
 
-  // ✅ helper route (tab / hash / url) — réutilisé par PLAY
+  const PAGE_BG = theme.bg;
+  const CARD_BG = theme.card;
+
   function navigate(tab: string, params?: any) {
     setTab(tab, params);
   }
 
+  // Smart navigation for ticker items
   function navSmart(path: string) {
     if (!path) return;
     const p = String(path);
@@ -161,62 +153,19 @@ export default function Games({ setTab }: Props) {
   }
 
   function configPathForGame(g: any): string {
-    // 1) si registry fournit un champ explicite
     const raw = String(g?.configTab || g?.configPath || "");
     if (raw) return raw.startsWith("tab:") ? raw : `tab:${raw}`;
 
-    // 2) heuristique à partir de g.tab
     const tab = String(g?.tab || "");
     if (tab) {
       if (/config/i.test(tab)) return `tab:${tab}`;
       if (/_play$/i.test(tab)) return `tab:${tab.replace(/_play$/i, "_config")}`;
       if (/Play$/i.test(tab)) return `tab:${tab.replace(/Play$/i, "Config")}`;
       if (/Play/i.test(tab)) return `tab:${tab.replace(/Play/gi, "Config")}`;
-      // fallback raisonnable
       return `tab:${g.id}_config`;
     }
-
-    // 3) fallback ultime
     return `tab:${g.id}_config`;
   }
-
-  // ✅ All-games ticker (random) — shown just above the TRAINING card
-  // ✅ IMPORTANT: on ne garde QUE ceux qui ont une image ticker (sinon rendu vide)
-  const allGamesForTicker = React.useMemo(() => {
-    return (DARTS_GAMES || [])
-      .filter((g: any) => g && g.ready)
-      .map((g: any) => {
-        const id = String(g.id);
-        const tickerSrc = findTickerById(id) || getTickerSrcForId(id);
-        return {
-          id,
-          label: String(g.label || id),
-          tickerSrc,
-          configPath: configPathForGame(g),
-        };
-      })
-      .filter((x: any) => !!x.tickerSrc);
-  }, []);
-
-  const [allTickerIdx, setAllTickerIdx] = React.useState(0);
-
-  React.useEffect(() => {
-    if (!allGamesForTicker.length) return;
-    const ms = 3000;
-    const it = window.setInterval(() => {
-      setAllTickerIdx((prev) => {
-        const n = allGamesForTicker.length;
-        if (n <= 1) return 0;
-        let next = Math.floor(Math.random() * n);
-        if (next === prev) next = (next + 1) % n;
-        return next;
-      });
-    }, ms);
-    return () => window.clearInterval(it);
-  }, [allGamesForTicker.length]);
-
-  const PAGE_BG = theme.bg;
-  const CARD_BG = theme.card;
 
   // ✅ Séparateur visuel (barre néon)
   const separatorBar = (
@@ -286,6 +235,14 @@ export default function Games({ setTab }: Props) {
   const favChallenge = React.useMemo(() => pickFavoriteByCounts("challenge", counts), [counts]);
   const favFun = React.useMemo(() => pickFavoriteByCounts("fun", counts), [counts]);
 
+  // ✅ Routing du favori training : config dédiée quand disponible
+  function trainingFavoriteTarget(game: DartsGameDef | null): { tab: string; params?: any } {
+    if (!game) return { tab: "training" };
+    if (game.id === "training_x01") return { tab: "training_x01" };
+    if (game.id === "tour_horloge") return { tab: "training_clock" };
+    return { tab: "training" };
+  }
+
   // Styles helpers
   function tintedCardStyle(tint: { border: string; bg: string; title: string; glow: string }) {
     return {
@@ -295,7 +252,6 @@ export default function Games({ setTab }: Props) {
     } as React.CSSProperties;
   }
 
-  // Tints
   const TINT_STATS = {
     border: "rgba(120,255,180,0.40)",
     bg: "linear-gradient(180deg, rgba(120,255,180,0.14), rgba(255,255,255,0.05))",
@@ -343,14 +299,6 @@ export default function Games({ setTab }: Props) {
     if (cat === "variant") return TINT_VARIANT;
     if (cat === "challenge") return TINT_CHALLENGE;
     return TINT_FUN;
-  }
-
-  // ✅ Routing du favori training : config dédiée quand disponible
-  function trainingFavoriteTarget(game: DartsGameDef | null): { tab: string; params?: any } {
-    if (!game) return { tab: "training" };
-    if (game.id === "training_x01") return { tab: "training_x01" };
-    if (game.id === "tour_horloge") return { tab: "training_clock" };
-    return { tab: "training" };
   }
 
   function renderFavoriteCard(opts: {
@@ -519,8 +467,7 @@ export default function Games({ setTab }: Props) {
     );
   }
 
-  // ✅ NEW MODES candidates (liste + mapping config)
-  // - le composant chargera: src/assets/tickers/ticker_<id>.png
+  // ✅ Ticker du haut: nouveaux modes
   const newModes: NewModeTickerItem[] = React.useMemo(() => {
     const list = (DARTS_GAMES || []).filter((g: any) => g && g.ready);
 
@@ -548,6 +495,40 @@ export default function Games({ setTab }: Props) {
       configPath: configPathForGame(g),
     }));
   }, []);
+
+  // ✅ Ticker du bas: tous les modes (random), IMAGE SEULE (sans NEW/PLAY)
+  const allTickerPool = React.useMemo(() => {
+    return (DARTS_GAMES || [])
+      .filter((g: any) => g && g.ready)
+      .map((g: any) => {
+        const id = String(g.id);
+        const tickerSrc = findTickerById(id);
+        return {
+          id,
+          label: String(g.label || id),
+          tickerSrc,
+          configPath: configPathForGame(g),
+        };
+      })
+      .filter((x: any) => !!x.tickerSrc);
+  }, []);
+
+  const [allTickerIdx, setAllTickerIdx] = React.useState(0);
+
+  React.useEffect(() => {
+    if (!allTickerPool.length) return;
+    const ms = 2600;
+    const it = window.setInterval(() => {
+      setAllTickerIdx((prev) => {
+        const n = allTickerPool.length;
+        if (n <= 1) return 0;
+        let next = Math.floor(Math.random() * n);
+        if (next === prev) next = (next + 1) % n;
+        return next;
+      });
+    }, ms);
+    return () => window.clearInterval(it);
+  }, [allTickerPool.length]);
 
   return (
     <div
@@ -583,8 +564,9 @@ export default function Games({ setTab }: Props) {
         {t("games.subtitle", "Choisis un mode de jeu")}
       </div>
 
+      {/* ✅ Top : ticker + favoris */}
       <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 10 }}>
-        {/* ✅ TICKER 3 ZONES — images tickers 800x230 en contain */}
+        {/* ✅ TICKER HAUT (NEW + PLAY autorisés) */}
         <NewModesTicker
           items={newModes}
           intervalMs={3000}
@@ -635,32 +617,36 @@ export default function Games({ setTab }: Props) {
 
         {separatorBar}
 
-        {/* ✅ Remettre TRAINING + TOURNOIS sous les favoris */}
+        {/* ✅ TRAINING + TOURNOIS sous favoris */}
         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-          {/* ✅ TICKER GLOBAL (aléatoire) — adapte la hauteur selon la largeur (max 800) */}
+          {/* ✅ TICKER BAS (IMAGE SEULE) — SANS NEW/PLAY */}
           {(() => {
-            const current = allGamesForTicker.length
-              ? allGamesForTicker[allTickerIdx % allGamesForTicker.length]
+            const current = allTickerPool.length
+              ? allTickerPool[allTickerIdx % allTickerPool.length]
               : null;
 
             if (!current) return null;
 
             return (
               <div style={{ display: "flex", justifyContent: "center" }}>
-                <div
+                <button
+                  type="button"
+                  onClick={() => navSmart(current.configPath)}
                   style={{
                     width: "100%",
-                    maxWidth: 800, // ✅ largeur max = PNG
-                    aspectRatio: "800 / 230", // ✅ hauteur auto selon largeur
+                    maxWidth: 800, // largeur max = largeur PNG
+                    aspectRatio: "800 / 230",
                     position: "relative",
                     overflow: "hidden",
                     borderRadius: 18,
                     border: `1px solid ${TINT_STATS.border}`,
                     background: `linear-gradient(180deg, rgba(120,255,180,0.10), rgba(0,0,0,0.18))`,
                     boxShadow: `0 12px 26px rgba(0,0,0,0.55), 0 0 18px ${TINT_STATS.glow}`,
+                    padding: 0,
+                    cursor: "pointer",
                   }}
+                  aria-label={`Ouvrir config ${current.label}`}
                 >
-                  {/* Image ticker (scale-to-fit) */}
                   <img
                     src={current.tickerSrc as any}
                     alt={current.label}
@@ -676,54 +662,7 @@ export default function Games({ setTab }: Props) {
                     }}
                     draggable={false}
                   />
-
-                  {/* NEW gauche — pleine hauteur */}
-                  <img
-                    src={newGameBadge}
-                    alt="NEW"
-                    style={{
-                      position: "absolute",
-                      left: 10,
-                      top: 0,
-                      height: "100%",
-                      width: "auto",
-                      objectFit: "contain",
-                      filter: "drop-shadow(0 10px 18px rgba(0,0,0,0.55))",
-                      pointerEvents: "none",
-                    }}
-                    draggable={false}
-                  />
-
-                  {/* PLAY droite — pleine hauteur, cliquable -> config du mode affiché */}
-                  <button
-                    type="button"
-                    onClick={() => navSmart(current.configPath)}
-                    style={{
-                      position: "absolute",
-                      right: 10,
-                      top: 0,
-                      height: "100%",
-                      background: "transparent",
-                      border: "none",
-                      padding: 0,
-                      cursor: "pointer",
-                    }}
-                    aria-label="PLAY"
-                  >
-                    <img
-                      src={playBadge}
-                      alt="PLAY"
-                      style={{
-                        height: "100%",
-                        width: "auto",
-                        objectFit: "contain",
-                        display: "block",
-                        filter: "drop-shadow(0 10px 18px rgba(0,0,0,0.55))",
-                      }}
-                      draggable={false}
-                    />
-                  </button>
-                </div>
+                </button>
               </div>
             );
           })()}
