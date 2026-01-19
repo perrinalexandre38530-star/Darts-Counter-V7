@@ -15,6 +15,12 @@
 // ✅ NEW (cette demande) :
 // - En TRAINING, tout mode "en développement" (registry.ready === false)
 //   est GRISÉ + NON CLIQUABLE
+//
+// ✅ NEW (watermark tickers) :
+// - Chaque carte affiche un ticker discret (si dispo)
+// - Position: à droite, 75% largeur, 100% hauteur
+// - Dégradé des 2 côtés pour fondu
+// - Chargement: src/assets/tickers/ticker_<gameId>.png via import.meta.glob
 // ============================================
 
 import React from "react";
@@ -55,6 +61,20 @@ type ModeDef = {
   accentGlow?: string | null;
 };
 
+// ✅ Tickers images (Vite): /src/assets/tickers/ticker_<gameId>.png
+const TICKERS = import.meta.glob("../assets/tickers/*.png", {
+  eager: true,
+  import: "default",
+}) as Record<string, string>;
+
+function findTickerById(id: string): string | null {
+  const suffix = `/ticker_${id}.png`;
+  for (const k of Object.keys(TICKERS)) {
+    if (k.endsWith(suffix)) return TICKERS[k];
+  }
+  return null;
+}
+
 export default function TrainingMenu({ go }: Props) {
   const { theme } = useTheme();
   const { t } = useLang();
@@ -76,6 +96,70 @@ export default function TrainingMenu({ go }: Props) {
       return;
     }
     go(tab, params);
+  }
+
+  // ✅ Watermark ticker helper (75% largeur, 100% hauteur, dégradé des 2 côtés)
+  function renderTickerWatermark(opts: { gameId: string; disabled?: boolean }) {
+    const src = findTickerById(opts.gameId);
+    if (!src) return null;
+
+    const disabled = !!opts.disabled;
+
+    return (
+      <div
+        aria-hidden
+        style={{
+          position: "absolute",
+          inset: 0,
+          pointerEvents: "none",
+          zIndex: 0,
+        }}
+      >
+        {/* Container 75% droite */}
+        <div
+          style={{
+            position: "absolute",
+            top: 0,
+            right: 0,
+            height: "100%",
+            width: "75%",
+            overflow: "hidden",
+            opacity: disabled ? 0.14 : 0.22, // discret
+            filter: disabled ? "grayscale(1)" : "none",
+          }}
+        >
+          <img
+            src={src}
+            alt=""
+            draggable={false}
+            style={{
+              width: "100%",
+              height: "100%",
+              objectFit: "cover", // remplit 100% hauteur
+              transform: "translateZ(0)",
+              // léger contraste pour ressortir sans agresser
+              filter: "saturate(1.08) contrast(1.02)",
+              // fondu des 2 côtés (gauche + droite)
+              WebkitMaskImage:
+                "linear-gradient(90deg, rgba(0,0,0,0) 0%, rgba(0,0,0,1) 18%, rgba(0,0,0,1) 82%, rgba(0,0,0,0) 100%)",
+              maskImage:
+                "linear-gradient(90deg, rgba(0,0,0,0) 0%, rgba(0,0,0,1) 18%, rgba(0,0,0,1) 82%, rgba(0,0,0,0) 100%)",
+            }}
+          />
+        </div>
+
+        {/* Micro sheen pour fondre avec le fond de la carte */}
+        <div
+          style={{
+            position: "absolute",
+            inset: 0,
+            background:
+              "linear-gradient(90deg, rgba(0,0,0,0.10) 0%, rgba(0,0,0,0.0) 40%, rgba(0,0,0,0.05) 100%)",
+            opacity: disabled ? 0.55 : 0.45,
+          }}
+        />
+      </div>
+    );
   }
 
   // IDs des trainings déjà affichés en cartes fixes (donc exclus de la liste auto)
@@ -101,8 +185,6 @@ export default function TrainingMenu({ go }: Props) {
 
     const isReady = (g: any) => {
       if (!g) return false;
-      // convention projet: ready === true => jouable
-      // si ready absent, on considère jouable (compat vieux entries)
       if (typeof g.ready === "boolean") return g.ready;
       return true;
     };
@@ -167,7 +249,6 @@ export default function TrainingMenu({ go }: Props) {
         "Entraînement dédié aux doubles : Double In, Double Out ou les deux. Objectif : fiabiliser tes entrées et sorties.",
       tab: "darts_mode",
       params: { gameId: "training_doubleio" },
-      // ✅ IMPORTANT : si en développement => grisé + non cliquable
       enabled: isReady(doubleio),
       badge: badgeFromRegistry(doubleio),
     };
@@ -183,12 +264,10 @@ export default function TrainingMenu({ go }: Props) {
         "Série de défis rapides pour travailler un axe précis : doubles, bull, triples, régularité. Idéal en session courte.",
       tab: "darts_mode",
       params: { gameId: "training_challenges" },
-      // ✅ IMPORTANT : si en développement => grisé + non cliquable
       enabled: isReady(challenges),
       badge: badgeFromRegistry(challenges),
     };
 
-    // Ordre final : Evolution -> X01 -> Clock -> DoubleIO -> Challenges
     return [evolution, x01, clock, doubleIOCard, challengesCard];
   }, [t, regById]);
 
@@ -222,7 +301,6 @@ export default function TrainingMenu({ go }: Props) {
         "Ce mode est enregistré dans l’application. S’il n’est pas encore implémenté, il sera affiché comme “En développement”.",
       tab: "darts_mode",
       params: { gameId: g.id },
-      // ✅ IMPORTANT : si en développement => grisé + non cliquable
       enabled: isReady(g),
       badge: isReady(g) ? null : comingSoon,
     }));
@@ -242,10 +320,7 @@ export default function TrainingMenu({ go }: Props) {
       {/* ✅ Header : BackDot + Titre centré */}
       <div style={{ position: "relative", marginBottom: 10 }}>
         <div style={{ position: "absolute", left: 0, top: 0 }}>
-          <BackDot
-            onClick={() => navigate("games")}
-            glow={theme.primary + "88"}
-          />
+          <BackDot onClick={() => navigate("games")} glow={theme.primary + "88"} />
         </div>
 
         <h1
@@ -282,14 +357,31 @@ export default function TrainingMenu({ go }: Props) {
           const subtitle = t(m.subtitleKey, m.subtitleDefault);
           const disabled = !m.enabled;
 
-          // En training, "en développement" = disabled
           const badge =
-            m.badge ??
-            (disabled ? t("training.menu.comingSoon", "En développement") : null);
+            m.badge ?? (disabled ? t("training.menu.comingSoon", "En développement") : null);
 
           const accentHex = m.accentHex || theme.primary;
           const accentBorder = m.accentBorder || theme.borderSoft;
           const accentGlow = m.accentGlow || `${theme.primary}55`;
+
+          // ✅ map ModeDef.id -> ticker id
+          // - evolution: optional ticker_evolution.png (si tu en crées un)
+          // - x01 -> training_x01
+          // - clock -> tour_horloge
+          // - doubleio -> training_doubleio
+          // - challenges -> training_challenges
+          const tickerId =
+            m.id === "x01"
+              ? "training_x01"
+              : m.id === "clock"
+              ? "tour_horloge"
+              : m.id === "doubleio"
+              ? "training_doubleio"
+              : m.id === "challenges"
+              ? "training_challenges"
+              : m.id === "evolution"
+              ? "evolution"
+              : m.id;
 
           return (
             <button
@@ -308,52 +400,59 @@ export default function TrainingMenu({ go }: Props) {
                 opacity: disabled ? 0.55 : 1,
                 boxShadow: disabled ? "none" : `0 10px 24px rgba(0,0,0,0.55)`,
                 overflow: "hidden",
-                // ✅ rendu "grisé"
                 filter: disabled ? "grayscale(0.65)" : "none",
               }}
             >
-              <div
-                style={{
-                  fontSize: 14,
-                  fontWeight: 800,
-                  letterSpacing: 0.8,
-                  color: disabled ? theme.textSoft : accentHex,
-                  textTransform: "uppercase",
-                  textShadow: disabled ? "none" : `0 0 12px ${accentGlow}`,
-                }}
-              >
-                {title}
+              {/* ✅ Watermark ticker */}
+              {renderTickerWatermark({ gameId: tickerId, disabled })}
+
+              {/* ✅ Content above watermark */}
+              <div style={{ position: "relative", zIndex: 1 }}>
+                <div
+                  style={{
+                    fontSize: 14,
+                    fontWeight: 800,
+                    letterSpacing: 0.8,
+                    color: disabled ? theme.textSoft : accentHex,
+                    textTransform: "uppercase",
+                    textShadow: disabled ? "none" : `0 0 12px ${accentGlow}`,
+                  }}
+                >
+                  {title}
+                </div>
+
+                <div
+                  style={{
+                    marginTop: 4,
+                    fontSize: 12,
+                    color: theme.textSoft,
+                    opacity: 0.9,
+                  }}
+                >
+                  {subtitle}
+                  {badge && (
+                    <span
+                      style={{
+                        marginLeft: 6,
+                        fontSize: 11,
+                        fontStyle: "italic",
+                        opacity: 0.9,
+                      }}
+                    >
+                      • {badge}
+                    </span>
+                  )}
+                </div>
               </div>
 
-              <div
-                style={{
-                  marginTop: 4,
-                  fontSize: 12,
-                  color: theme.textSoft,
-                  opacity: 0.9,
-                }}
-              >
-                {subtitle}
-                {badge && (
-                  <span
-                    style={{
-                      marginLeft: 6,
-                      fontSize: 11,
-                      fontStyle: "italic",
-                      opacity: 0.9,
-                    }}
-                  >
-                    • {badge}
-                  </span>
-                )}
-              </div>
-
+              {/* ✅ InfoDot above everything */}
               <div
                 style={{
                   position: "absolute",
                   right: 10,
                   top: "50%",
                   transform: "translateY(-50%)",
+                  zIndex: 2,
                 }}
               >
                 <InfoDot
@@ -385,10 +484,7 @@ export default function TrainingMenu({ go }: Props) {
               const disabled = !m.enabled;
 
               const badge =
-                m.badge ??
-                (disabled
-                  ? t("training.menu.comingSoon", "En développement")
-                  : null);
+                m.badge ?? (disabled ? t("training.menu.comingSoon", "En développement") : null);
 
               return (
                 <button
@@ -407,44 +503,48 @@ export default function TrainingMenu({ go }: Props) {
                     opacity: disabled ? 0.55 : 1,
                     boxShadow: disabled ? "none" : `0 10px 24px rgba(0,0,0,0.55)`,
                     overflow: "hidden",
-                    // ✅ rendu "grisé"
                     filter: disabled ? "grayscale(0.65)" : "none",
                   }}
                 >
-                  <div
-                    style={{
-                      fontSize: 14,
-                      fontWeight: 800,
-                      letterSpacing: 0.8,
-                      color: disabled ? theme.textSoft : theme.primary,
-                      textTransform: "uppercase",
-                      textShadow: disabled ? "none" : `0 0 12px ${theme.primary}55`,
-                    }}
-                  >
-                    {title}
-                  </div>
+                  {/* ✅ Watermark ticker : id = game id directement */}
+                  {renderTickerWatermark({ gameId: m.id, disabled })}
 
-                  <div
-                    style={{
-                      marginTop: 4,
-                      fontSize: 12,
-                      color: theme.textSoft,
-                      opacity: 0.9,
-                    }}
-                  >
-                    {subtitle}
-                    {badge && (
-                      <span
-                        style={{
-                          marginLeft: 6,
-                          fontSize: 11,
-                          fontStyle: "italic",
-                          opacity: 0.9,
-                        }}
-                      >
-                        • {badge}
-                      </span>
-                    )}
+                  <div style={{ position: "relative", zIndex: 1 }}>
+                    <div
+                      style={{
+                        fontSize: 14,
+                        fontWeight: 800,
+                        letterSpacing: 0.8,
+                        color: disabled ? theme.textSoft : theme.primary,
+                        textTransform: "uppercase",
+                        textShadow: disabled ? "none" : `0 0 12px ${theme.primary}55`,
+                      }}
+                    >
+                      {title}
+                    </div>
+
+                    <div
+                      style={{
+                        marginTop: 4,
+                        fontSize: 12,
+                        color: theme.textSoft,
+                        opacity: 0.9,
+                      }}
+                    >
+                      {subtitle}
+                      {badge && (
+                        <span
+                          style={{
+                            marginLeft: 6,
+                            fontSize: 11,
+                            fontStyle: "italic",
+                            opacity: 0.9,
+                          }}
+                        >
+                          • {badge}
+                        </span>
+                      )}
+                    </div>
                   </div>
 
                   <div
@@ -453,6 +553,7 @@ export default function TrainingMenu({ go }: Props) {
                       right: 10,
                       top: "50%",
                       transform: "translateY(-50%)",
+                      zIndex: 2,
                     }}
                   >
                     <InfoDot
