@@ -63,6 +63,7 @@ function findTickerById(id: string): string | null {
   return null;
 }
 
+// (compat / accès direct si besoin)
 function getTickerSrcForId(gameId: string): string | null {
   const key = `../assets/tickers/ticker_${gameId}.png`;
   return (TICKERS as any)[key] ?? null;
@@ -132,15 +133,69 @@ export default function Games({ setTab }: Props) {
   // ✅ counts from history (finished matches)
   const [counts, setCounts] = React.useState<PlayCountMap>({});
 
+  // ✅ helper route (tab / hash / url) — réutilisé par PLAY
+  function navigate(tab: string, params?: any) {
+    setTab(tab, params);
+  }
+
+  function navSmart(path: string) {
+    if (!path) return;
+    const p = String(path);
+
+    if (p.startsWith("tab:")) {
+      navigate(p.replace("tab:", ""));
+      return;
+    }
+
+    if (!p.includes("/") && !p.includes("#") && !p.includes("?")) {
+      navigate(p);
+      return;
+    }
+
+    if (p.startsWith("#")) {
+      window.location.hash = p.replace(/^#/, "");
+      return;
+    }
+
+    window.location.href = p;
+  }
+
+  function configPathForGame(g: any): string {
+    // 1) si registry fournit un champ explicite
+    const raw = String(g?.configTab || g?.configPath || "");
+    if (raw) return raw.startsWith("tab:") ? raw : `tab:${raw}`;
+
+    // 2) heuristique à partir de g.tab
+    const tab = String(g?.tab || "");
+    if (tab) {
+      if (/config/i.test(tab)) return `tab:${tab}`;
+      if (/_play$/i.test(tab)) return `tab:${tab.replace(/_play$/i, "_config")}`;
+      if (/Play$/i.test(tab)) return `tab:${tab.replace(/Play$/i, "Config")}`;
+      if (/Play/i.test(tab)) return `tab:${tab.replace(/Play/gi, "Config")}`;
+      // fallback raisonnable
+      return `tab:${g.id}_config`;
+    }
+
+    // 3) fallback ultime
+    return `tab:${g.id}_config`;
+  }
+
   // ✅ All-games ticker (random) — shown just above the TRAINING card
+  // ✅ IMPORTANT: on ne garde QUE ceux qui ont une image ticker (sinon rendu vide)
   const allGamesForTicker = React.useMemo(() => {
     return (DARTS_GAMES || [])
       .filter((g: any) => g && g.ready)
-      .map((g: any) => ({
-        id: String(g.id),
-        label: String(g.label || g.id),
-        tickerSrc: findTickerById(String(g.id)),
-      }));
+      .map((g: any) => {
+        const id = String(g.id);
+        const tickerSrc = findTickerById(id) || getTickerSrcForId(id);
+        return {
+          id,
+          label: String(g.label || id),
+          tickerSrc,
+          configPath: configPathForGame(g),
+        };
+      })
+      .filter((x: any) => !!x.tickerSrc);
   }, []);
 
   const [allTickerIdx, setAllTickerIdx] = React.useState(0);
@@ -148,7 +203,7 @@ export default function Games({ setTab }: Props) {
   React.useEffect(() => {
     if (!allGamesForTicker.length) return;
     const ms = 3000;
-    const t = window.setInterval(() => {
+    const it = window.setInterval(() => {
       setAllTickerIdx((prev) => {
         const n = allGamesForTicker.length;
         if (n <= 1) return 0;
@@ -157,7 +212,7 @@ export default function Games({ setTab }: Props) {
         return next;
       });
     }, ms);
-    return () => window.clearInterval(t);
+    return () => window.clearInterval(it);
   }, [allGamesForTicker.length]);
 
   const PAGE_BG = theme.bg;
@@ -181,10 +236,6 @@ export default function Games({ setTab }: Props) {
       }}
     />
   );
-
-  function navigate(tab: string, params?: any) {
-    setTab(tab, params);
-  }
 
   // ✅ Load counts once (and keep resilient)
   React.useEffect(() => {
@@ -491,33 +542,10 @@ export default function Games({ setTab }: Props) {
           );
         });
 
-    // helper pour configPath robuste
-    const configPathFor = (g: any) => {
-      const raw = String(g?.configTab || g?.configPath || "");
-      if (raw) {
-        // accepte "tab:xxx" ou "xxx"
-        return raw.startsWith("tab:") ? raw : `tab:${raw}`;
-      }
-
-      const tab = String(g?.tab || "");
-      if (tab) {
-        // si déjà config
-        if (/config/i.test(tab)) return `tab:${tab}`;
-        // heuristiques (best-effort)
-        if (tab.endsWith("_play")) return `tab:${tab.replace(/_play$/i, "_config")}`;
-        if (tab.endsWith("Play")) return `tab:${tab.replace(/Play$/i, "Config")}`;
-        if (tab.includes("Play")) return `tab:${tab.replace(/Play/gi, "Config")}`;
-        // fallback: tente _config
-        return `tab:${g.id}_config`;
-      }
-
-      return `tab:${g.id}_config`;
-    };
-
     return (base.length ? base : list.slice(0, 6)).slice(0, 12).map((g: any) => ({
       id: String(g.id),
       label: String(g.label),
-      configPath: configPathFor(g),
+      configPath: configPathForGame(g),
     }));
   }, []);
 
@@ -562,26 +590,7 @@ export default function Games({ setTab }: Props) {
           intervalMs={3000}
           leftLogoSrc={newGameBadge}
           playLogoSrc={playBadge}
-          onNavigate={(path) => {
-            if (!path) return;
-            const p = String(path);
-
-            if (p.startsWith("tab:")) {
-              navigate(p.replace("tab:", ""));
-              return;
-            }
-
-            if (!p.includes("/") && !p.includes("#") && !p.includes("?")) {
-              navigate(p);
-              return;
-            }
-
-            if (p.startsWith("#")) {
-              window.location.hash = p.replace(/^#/, "");
-              return;
-            }
-            window.location.href = p;
-          }}
+          onNavigate={(path) => navSmart(String(path || ""))}
         />
 
         {renderFavoriteCard({
@@ -628,60 +637,96 @@ export default function Games({ setTab }: Props) {
 
         {/* ✅ Remettre TRAINING + TOURNOIS sous les favoris */}
         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-          {/* ✅ TICKER GLOBAL (aleatoire) — tous les modes avec image ticker_<id>.png */}
-          <div
-            style={{
-              height: 56,
-              borderRadius: 16,
-              border: `1px solid ${TINT_STATS.border}`,
-              background: `linear-gradient(180deg, rgba(120,255,180,0.10), rgba(0,0,0,0.18))`,
-              boxShadow: `0 10px 24px rgba(0,0,0,0.55), 0 0 18px ${TINT_STATS.glow}`,
-              overflow: "hidden",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              padding: 8,
-            }}
-          >
-            {(() => {
-              const current = allGamesForTicker.length
-                ? allGamesForTicker[allTickerIdx % allGamesForTicker.length]
-                : null;
+          {/* ✅ TICKER GLOBAL (aléatoire) — adapte la hauteur selon la largeur (max 800) */}
+          {(() => {
+            const current = allGamesForTicker.length
+              ? allGamesForTicker[allTickerIdx % allGamesForTicker.length]
+              : null;
 
-              if (!current) return null;
+            if (!current) return null;
 
-              // 800 x 230 ratio, mais image en contain dans l'espace dispo
-              return current.tickerSrc ? (
-                <img
-                  src={current.tickerSrc}
-                  alt={current.label}
-                  style={{
-                    width: "100%",
-                    height: "100%",
-                    objectFit: "contain",
-                    display: "block",
-                    filter: "drop-shadow(0 0 10px rgba(0,0,0,0.35))",
-                    transform: "translateZ(0)",
-                  }}
-                />
-              ) : (
+            return (
+              <div style={{ display: "flex", justifyContent: "center" }}>
                 <div
                   style={{
                     width: "100%",
-                    textAlign: "center",
-                    fontWeight: 900,
-                    letterSpacing: 0.8,
-                    color: TINT_STATS.title,
-                    textShadow: `0 0 12px ${TINT_STATS.glow}`,
-                    textTransform: "uppercase",
-                    fontSize: 12,
+                    maxWidth: 800, // ✅ largeur max = PNG
+                    aspectRatio: "800 / 230", // ✅ hauteur auto selon largeur
+                    position: "relative",
+                    overflow: "hidden",
+                    borderRadius: 18,
+                    border: `1px solid ${TINT_STATS.border}`,
+                    background: `linear-gradient(180deg, rgba(120,255,180,0.10), rgba(0,0,0,0.18))`,
+                    boxShadow: `0 12px 26px rgba(0,0,0,0.55), 0 0 18px ${TINT_STATS.glow}`,
                   }}
                 >
-                  {safeUpper(current.label)}
+                  {/* Image ticker (scale-to-fit) */}
+                  <img
+                    src={current.tickerSrc as any}
+                    alt={current.label}
+                    style={{
+                      position: "absolute",
+                      inset: 0,
+                      width: "100%",
+                      height: "100%",
+                      objectFit: "contain",
+                      display: "block",
+                      transform: "translateZ(0)",
+                      filter: "drop-shadow(0 0 10px rgba(0,0,0,0.35))",
+                    }}
+                    draggable={false}
+                  />
+
+                  {/* NEW gauche — pleine hauteur */}
+                  <img
+                    src={newGameBadge}
+                    alt="NEW"
+                    style={{
+                      position: "absolute",
+                      left: 10,
+                      top: 0,
+                      height: "100%",
+                      width: "auto",
+                      objectFit: "contain",
+                      filter: "drop-shadow(0 10px 18px rgba(0,0,0,0.55))",
+                      pointerEvents: "none",
+                    }}
+                    draggable={false}
+                  />
+
+                  {/* PLAY droite — pleine hauteur, cliquable -> config du mode affiché */}
+                  <button
+                    type="button"
+                    onClick={() => navSmart(current.configPath)}
+                    style={{
+                      position: "absolute",
+                      right: 10,
+                      top: 0,
+                      height: "100%",
+                      background: "transparent",
+                      border: "none",
+                      padding: 0,
+                      cursor: "pointer",
+                    }}
+                    aria-label="PLAY"
+                  >
+                    <img
+                      src={playBadge}
+                      alt="PLAY"
+                      style={{
+                        height: "100%",
+                        width: "auto",
+                        objectFit: "contain",
+                        display: "block",
+                        filter: "drop-shadow(0 10px 18px rgba(0,0,0,0.55))",
+                      }}
+                      draggable={false}
+                    />
+                  </button>
                 </div>
-              );
-            })()}
-          </div>
+              </div>
+            );
+          })()}
 
           {/* TRAINING HUB */}
           <button
@@ -880,9 +925,7 @@ export default function Games({ setTab }: Props) {
 
               {(groups[k] || []).map((g) => {
                 const disabled = !g.ready;
-                const comingSoon = disabled
-                  ? t("games.status.comingSoon", "Bientôt disponible")
-                  : null;
+                const comingSoon = disabled ? t("games.status.comingSoon", "Bientôt disponible") : null;
 
                 return (
                   <button
@@ -916,14 +959,7 @@ export default function Games({ setTab }: Props) {
                       {g.label}
                     </div>
 
-                    <div
-                      style={{
-                        marginTop: 4,
-                        fontSize: 12,
-                        color: theme.textSoft,
-                        opacity: 0.9,
-                      }}
-                    >
+                    <div style={{ marginTop: 4, fontSize: 12, color: theme.textSoft, opacity: 0.9 }}>
                       {comingSoon && (
                         <span style={{ fontSize: 11, fontStyle: "italic", opacity: 0.9 }}>
                           {comingSoon}
@@ -1012,14 +1048,7 @@ export default function Games({ setTab }: Props) {
             </div>
 
             {!infoGame.ready && (
-              <div
-                style={{
-                  fontSize: 12,
-                  fontWeight: 600,
-                  color: theme.primary,
-                  marginBottom: 10,
-                }}
-              >
+              <div style={{ fontSize: 12, fontWeight: 600, color: theme.primary, marginBottom: 10 }}>
                 {t("games.status.comingSoon", "Bientôt disponible")}
               </div>
             )}
