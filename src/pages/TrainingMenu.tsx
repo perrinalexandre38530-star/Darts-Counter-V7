@@ -11,6 +11,10 @@
 // - ✅ Suppression du label "Autres modes d’entraînement"
 // - ✅ Ajout Training : Double In/Out + Challenges (pinned cards)
 // ✅ NEW: BackDot en haut pour revenir au menu Games
+//
+// ✅ NEW (cette demande) :
+// - En TRAINING, tout mode "en développement" (registry.ready === false)
+//   est GRISÉ + NON CLIQUABLE
 // ============================================
 
 import React from "react";
@@ -95,9 +99,18 @@ export default function TrainingMenu({ go }: Props) {
     const doubleio = regById.get("training_doubleio");
     const challenges = regById.get("training_challenges");
 
+    const isReady = (g: any) => {
+      if (!g) return false;
+      // convention projet: ready === true => jouable
+      // si ready absent, on considère jouable (compat vieux entries)
+      if (typeof g.ready === "boolean") return g.ready;
+      return true;
+    };
+
     const badgeFromRegistry = (g: any) => {
       if (!g) return comingSoon;
-      return g.ready ? null : comingSoon;
+      if (typeof g.ready === "boolean") return g.ready ? null : comingSoon;
+      return null;
     };
 
     // ✅ EVOLUTION en 1er
@@ -154,7 +167,8 @@ export default function TrainingMenu({ go }: Props) {
         "Entraînement dédié aux doubles : Double In, Double Out ou les deux. Objectif : fiabiliser tes entrées et sorties.",
       tab: "darts_mode",
       params: { gameId: "training_doubleio" },
-      enabled: true,
+      // ✅ IMPORTANT : si en développement => grisé + non cliquable
+      enabled: isReady(doubleio),
       badge: badgeFromRegistry(doubleio),
     };
 
@@ -169,7 +183,8 @@ export default function TrainingMenu({ go }: Props) {
         "Série de défis rapides pour travailler un axe précis : doubles, bull, triples, régularité. Idéal en session courte.",
       tab: "darts_mode",
       params: { gameId: "training_challenges" },
-      enabled: true,
+      // ✅ IMPORTANT : si en développement => grisé + non cliquable
+      enabled: isReady(challenges),
       badge: badgeFromRegistry(challenges),
     };
 
@@ -179,6 +194,12 @@ export default function TrainingMenu({ go }: Props) {
 
   const extraModes: ModeDef[] = React.useMemo(() => {
     const comingSoon = t("training.menu.comingSoon", "En développement");
+
+    const isReady = (g: any) => {
+      if (!g) return false;
+      if (typeof g.ready === "boolean") return g.ready;
+      return true;
+    };
 
     const trainings = (dartsGameRegistry || [])
       .filter((g: any) => g.entry === "training")
@@ -198,11 +219,12 @@ export default function TrainingMenu({ go }: Props) {
       subtitleDefault: "Entraînement dédié",
       infoKey: `training.registry.${g.id}.info`,
       infoDefault:
-        "Ce mode est enregistré dans l’application. S’il n’est pas encore implémenté, il s’ouvrira sur l’écran “Mode en cours d’implémentation”.",
+        "Ce mode est enregistré dans l’application. S’il n’est pas encore implémenté, il sera affiché comme “En développement”.",
       tab: "darts_mode",
       params: { gameId: g.id },
-      enabled: true,
-      badge: g.ready ? null : comingSoon,
+      // ✅ IMPORTANT : si en développement => grisé + non cliquable
+      enabled: isReady(g),
+      badge: isReady(g) ? null : comingSoon,
     }));
   }, [t, pinnedRegistryIds]);
 
@@ -260,11 +282,10 @@ export default function TrainingMenu({ go }: Props) {
           const subtitle = t(m.subtitleKey, m.subtitleDefault);
           const disabled = !m.enabled;
 
-          const comingSoonLabel = !m.enabled
-            ? t("training.menu.comingSoon", "En développement")
-            : null;
-
-          const badge = m.badge ?? comingSoonLabel;
+          // En training, "en développement" = disabled
+          const badge =
+            m.badge ??
+            (disabled ? t("training.menu.comingSoon", "En développement") : null);
 
           const accentHex = m.accentHex || theme.primary;
           const accentBorder = m.accentBorder || theme.borderSoft;
@@ -287,6 +308,8 @@ export default function TrainingMenu({ go }: Props) {
                 opacity: disabled ? 0.55 : 1,
                 boxShadow: disabled ? "none" : `0 10px 24px rgba(0,0,0,0.55)`,
                 overflow: "hidden",
+                // ✅ rendu "grisé"
+                filter: disabled ? "grayscale(0.65)" : "none",
               }}
             >
               <div
@@ -361,11 +384,11 @@ export default function TrainingMenu({ go }: Props) {
               const subtitle = t(m.subtitleKey, m.subtitleDefault);
               const disabled = !m.enabled;
 
-              const comingSoonLabel = !m.enabled
-                ? t("training.menu.comingSoon", "En développement")
-                : null;
-
-              const badge = m.badge ?? comingSoonLabel;
+              const badge =
+                m.badge ??
+                (disabled
+                  ? t("training.menu.comingSoon", "En développement")
+                  : null);
 
               return (
                 <button
@@ -384,6 +407,8 @@ export default function TrainingMenu({ go }: Props) {
                     opacity: disabled ? 0.55 : 1,
                     boxShadow: disabled ? "none" : `0 10px 24px rgba(0,0,0,0.55)`,
                     overflow: "hidden",
+                    // ✅ rendu "grisé"
+                    filter: disabled ? "grayscale(0.65)" : "none",
                   }}
                 >
                   <div

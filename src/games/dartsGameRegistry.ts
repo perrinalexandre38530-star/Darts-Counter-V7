@@ -24,6 +24,8 @@ export type DartsGameTab =
 
 export type DartsGameDef = {
   id: string;
+  // Sous-categorie d'affichage (groupes a l'interieur d'un onglet Games)
+  subCategory?: string;
   label: string;
   category: GameCategory;
 
@@ -530,6 +532,447 @@ export const dartsGameRegistry: DartsGameDef[] = [
       "Mode fun transversal (gages) declenche sur des evenements (bust, 180, bull...). A brancher via un toggle Settings + overlay gage. A implementer.",
   },
 
+
+
+  // ===========================================================
+  // FUN / ARCADE / STRATEGIE / SURVIE (nouveaux modes a developper)
+  // - Tous ces modes sont declares pour apparaitre dans Games
+  // - Ils ouvrent pour l'instant l'ecran 'mode_not_ready'
+  // ===========================================================
+
+  // 🎳 BOWLING
+  {
+    id: "bowling",
+    label: "Bowling",
+    category: "fun",
+    subCategory: "arcade",
+    entry: "games",
+    tab: "mode_not_ready",
+    popularityRank: 54,
+    ready: false,
+    maxPlayers: 8,
+    supportsTeams: true,
+    supportsBots: true,
+    statsKey: "game:bowling",
+    infoTitle: "Bowling",
+    infoBody:
+      "Adapte le bowling aux flechettes. Format 10 frames. Chaque frame: 1 (ou 2) vollee(s) selon STRIKE/SPARE. Variante simple: Bull/DBull = strike, doubles = spare, sinon tu marques des quilles selon une table de conversion. A implementer.",
+  },
+
+  // 🔢 BINGO
+  {
+    id: "bingo",
+    label: "Bingo",
+    category: "fun",
+    subCategory: "party",
+    entry: "games",
+    tab: "mode_not_ready",
+    popularityRank: 55,
+    ready: false,
+    maxPlayers: 8,
+    supportsTeams: true,
+    supportsBots: true,
+    statsKey: "game:bingo",
+    infoTitle: "Bingo",
+    infoBody:
+      "Chaque joueur a une grille (3x3 ou 5x5) de cibles (ex: 20, D16, Bull...). Une case est validee si la cible est touchee. Objectif: ligne/colonne/diagonale ou full card selon regle. Grilles aleatoires ou communes. A implementer.",
+  },
+
+  // 🏁 FOLLOW THE LEADER
+  {
+    id: "follow_the_leader",
+    label: "Follow the Leader",
+    category: "fun",
+    subCategory: "battle",
+    entry: "games",
+    tab: "mode_not_ready",
+    popularityRank: 56,
+    ready: false,
+    maxPlayers: 8,
+    supportsTeams: false,
+    supportsBots: true,
+    statsKey: "game:follow_the_leader",
+    infoTitle: "Follow the Leader",
+    infoBody:
+      "Le leader lance une vollee. Les suivants doivent reproduire exactement (numero + multiplicateur) ou partiellement (numero seulement) selon config. Echec = penalite (vie, points, elimination). Variante 'Chase/Copycat'. A implementer.",
+  },
+
+  // 🏎️ MARIO KART (Darts Racing)
+  {
+    id: "mario_kart",
+    label: "Mario Kart",
+    category: "fun",
+    subCategory: "arcade",
+    entry: "games",
+    tab: "mode_not_ready",
+    popularityRank: 57,
+    ready: false,
+    maxPlayers: 8,
+    supportsTeams: true,
+    supportsBots: true,
+    statsKey: "game:mario_kart",
+    infoTitle: "Mario Kart",
+    infoBody:
+      "Course sur piste (cases) pilotee par les hits. Triples = boost, doubles = mini-boost, Bull = turbo / item. Des cases declenchent des objets (attaque, bouclier, ralentissement). Premier a franchir l'arrivee gagne. A implementer.",
+  },
+
+  // 🚢 BATAILLE NAVALE (Darts Battleship)
+  {
+    id: "battleship",
+    label: "Bataille Navale",
+    category: "fun",
+    subCategory: "strategie",
+    entry: "games",
+    tab: "mode_not_ready",
+    popularityRank: 58,
+    ready: false,
+    maxPlayers: 4,
+    supportsTeams: true,
+    supportsBots: true,
+    statsKey: "game:battleship",
+    infoTitle: "Bataille Navale",
+    infoBody:
+      "Chaque joueur place une flotte sur une grille de segments (ex: 1-20 + Bull, ou grille custom). Les tirs annoncent une case/segment: touche, coule, rate. Variantes: brouillard de guerre, radar (Bull), frappe multiple (DBull). Victoire: detruire la flotte adverse. A implementer.",
+  },
+
+  // ♟️ TERRITORY / CONQUEST
+  {
+    id: "conquest",
+    label: "Territory / Conquest",
+    category: "fun",
+    subCategory: "strategie",
+    entry: "games",
+    tab: "mode_not_ready",
+    popularityRank: 59,
+    ready: false,
+    maxPlayers: 8,
+    supportsTeams: true,
+    supportsBots: true,
+    statsKey: "game:conquest",
+    infoTitle: "Territory / Conquest",
+    infoBody:
+      "Controle de zones. Chaque segment (ou groupe) est une zone. Toucher une zone la capture (ou ajoute de l'influence). Les adversaires peuvent reprendre. Victoire: majorite de zones ou objectif de domination (Bull central). A implementer.",
+  },
+
+  // 🧩 DOMINATION
+  {
+    id: "domination",
+    label: "Domination",
+    category: "fun",
+    subCategory: "strategie",
+    entry: "games",
+    tab: "mode_not_ready",
+    popularityRank: 60,
+    ready: false,
+    maxPlayers: 8,
+    supportsTeams: true,
+    supportsBots: true,
+    statsKey: "game:domination",
+    infoTitle: "Domination",
+    infoBody:
+      "Chaque round impose une contrainte (doubles uniquement, impairs, bull obligatoire, etc.). Les points/effets ne comptent que si la contrainte est respectee. Variante duel ou equipe. A implementer.",
+  },
+
+  // 💣 MINES & TRAPS
+  {
+    id: "mines_traps",
+    label: "Mines & Traps",
+    category: "fun",
+    subCategory: "strategie",
+    entry: "games",
+    tab: "mode_not_ready",
+    popularityRank: 61,
+    ready: false,
+    maxPlayers: 8,
+    supportsTeams: true,
+    supportsBots: true,
+    statsKey: "game:mines_traps",
+    infoTitle: "Mines & Traps",
+    infoBody:
+      "Chaque joueur place des pieges (segments) de facon cachee. Toucher un piege declenche un malus (perte de points/vie, blocage de tour, etc.). Bull peut servir a scanner ou desamorcer. A implementer.",
+  },
+
+  // ☠️ LAST MAN STANDING
+  {
+    id: "last_man_standing",
+    label: "Last Man Standing",
+    category: "fun",
+    subCategory: "survie",
+    entry: "games",
+    tab: "mode_not_ready",
+    popularityRank: 62,
+    ready: false,
+    maxPlayers: 12,
+    supportsTeams: false,
+    supportsBots: true,
+    statsKey: "game:last_man_standing",
+    infoTitle: "Last Man Standing",
+    infoBody:
+      "Chaque joueur a X vies. Chaque tour, une cible (ou objectif) est imposee. Si tu ne reussis pas, tu perds une vie. A 0 vie: elimine. Dernier survivant gagne. A implementer.",
+  },
+
+  // 💣 BOMB / COUNTDOWN
+  {
+    id: "bomb_countdown",
+    label: "Bomb / Countdown",
+    category: "fun",
+    subCategory: "survie",
+    entry: "games",
+    tab: "mode_not_ready",
+    popularityRank: 63,
+    ready: false,
+    maxPlayers: 12,
+    supportsTeams: true,
+    supportsBots: true,
+    statsKey: "game:bomb_countdown",
+    infoTitle: "Bomb / Countdown",
+    infoBody:
+      "Un compteur descend. Les hits le font baisser (plus tu touches fort, plus ca baisse). Les ratés accelerent la chute. Perdant: celui qui provoque l'explosion (arrive a 0) selon regle. A implementer.",
+  },
+
+  // 🧟 INFECTION
+  {
+    id: "infection",
+    label: "Infection",
+    category: "fun",
+    subCategory: "survie",
+    entry: "games",
+    tab: "mode_not_ready",
+    popularityRank: 64,
+    ready: false,
+    maxPlayers: 12,
+    supportsTeams: false,
+    supportsBots: true,
+    statsKey: "game:infection",
+    infoTitle: "Infection",
+    infoBody:
+      "Un joueur est infecte au depart. Toucher un adversaire propage l'infection (selon cible/condition). Objectif: etre le dernier non infecte ou survivre le plus longtemps. A implementer.",
+  },
+
+  // 🎲 RANDOMIZER
+  {
+    id: "randomizer",
+    label: "Randomizer",
+    category: "fun",
+    subCategory: "party",
+    entry: "games",
+    tab: "mode_not_ready",
+    popularityRank: 65,
+    ready: false,
+    maxPlayers: 12,
+    supportsTeams: true,
+    supportsBots: true,
+    statsKey: "game:randomizer",
+    infoTitle: "Randomizer",
+    infoBody:
+      "A chaque vollee: cible + regle + bonus/malus tires au sort (ex: doubles only, -10 si miss, +turbo si bull). Mode chaos tres rejouable. A implementer.",
+  },
+
+  // 🎰 CASINO
+  {
+    id: "casino",
+    label: "Casino",
+    category: "fun",
+    subCategory: "party",
+    entry: "games",
+    tab: "mode_not_ready",
+    popularityRank: 66,
+    ready: false,
+    maxPlayers: 12,
+    supportsTeams: true,
+    supportsBots: true,
+    statsKey: "game:casino",
+    infoTitle: "Casino",
+    infoBody:
+      "Chaque segment declenche un effet (gain, vol, inversion, banqueroute...). Bull = jackpot. Objectif: atteindre un score cible ou finir meilleur total. A implementer.",
+  },
+
+  // 🌀 CHAOS MODE
+  {
+    id: "chaos_mode",
+    label: "Chaos Mode",
+    category: "fun",
+    subCategory: "party",
+    entry: "games",
+    tab: "mode_not_ready",
+    popularityRank: 67,
+    ready: false,
+    maxPlayers: 12,
+    supportsTeams: true,
+    supportsBots: true,
+    statsKey: "game:chaos_mode",
+    infoTitle: "Chaos Mode",
+    infoBody:
+      "Les regles changent toutes les X fleches (contraintes, bonus, malus). Objectif: survivre ou maximiser le score selon config. A implementer.",
+  },
+
+  // 🤝 CO-OP MISSION
+  {
+    id: "coop_mission",
+    label: "Co-op Mission",
+    category: "fun",
+    subCategory: "coop",
+    entry: "games",
+    tab: "mode_not_ready",
+    popularityRank: 68,
+    ready: false,
+    maxPlayers: 8,
+    supportsTeams: true,
+    supportsBots: true,
+    statsKey: "game:coop_mission",
+    infoTitle: "Co-op Mission",
+    infoBody:
+      "Mode cooperatif: objectifs communs (score cible, liste de cibles, sequence). Roles possibles (attaquant/finisher). Victoire si l'equipe reussit la mission dans le temps/nb de tours. A implementer.",
+  },
+
+  // 👹 BOSS BATTLE
+  {
+    id: "boss_battle",
+    label: "Boss Battle",
+    category: "fun",
+    subCategory: "coop",
+    entry: "games",
+    tab: "mode_not_ready",
+    popularityRank: 69,
+    ready: false,
+    maxPlayers: 8,
+    supportsTeams: true,
+    supportsBots: true,
+    statsKey: "game:boss_battle",
+    infoTitle: "Boss Battle",
+    infoBody:
+      "Un boss a des points de vie et des phases. Certaines zones sont vulnerables selon le round. Les joueurs cooperent pour le battre avant la fin du timer/du nombre de tours. A implementer.",
+  },
+
+  // ===========================================================
+  // TRAINING (nouveaux drills a developper)
+  // ===========================================================
+
+  {
+    id: "training_precision_gauntlet",
+    label: "Precision Gauntlet",
+    category: "training",
+    subCategory: "precision",
+    entry: "training",
+    tab: "training",
+    popularityRank: 120,
+    ready: false,
+    maxPlayers: 1,
+    supportsTeams: false,
+    supportsBots: false,
+    statsKey: "training:precision_gauntlet",
+    infoTitle: "Precision Gauntlet",
+    infoBody:
+      "Suite de cibles imposees. Tu avances uniquement en reussissant. Score possible: temps + penalites de miss. Excellent drill precision. A implementer.",
+  },
+  {
+    id: "training_time_attack",
+    label: "Time Attack",
+    category: "training",
+    subCategory: "performance",
+    entry: "training",
+    tab: "training",
+    popularityRank: 121,
+    ready: false,
+    maxPlayers: 1,
+    supportsTeams: false,
+    supportsBots: false,
+    statsKey: "training:time_attack",
+    infoTitle: "Time Attack",
+    infoBody:
+      "Toucher une liste de cibles le plus vite possible. Miss = penalite temps. Classements locaux/online possibles. A implementer.",
+  },
+  {
+    id: "training_repeat_master",
+    label: "Repeat Master",
+    category: "training",
+    subCategory: "precision",
+    entry: "training",
+    tab: "training",
+    popularityRank: 122,
+    ready: false,
+    maxPlayers: 1,
+    supportsTeams: false,
+    supportsBots: false,
+    statsKey: "training:repeat_master",
+    infoTitle: "Repeat Master",
+    infoBody:
+      "Objectif: toucher N fois de suite la meme cible (numero ou numero+multiplicateur). Echec reset la serie. Drill regularite + mental. A implementer.",
+  },
+  {
+    id: "training_ghost",
+    label: "Ghost Mode",
+    category: "training",
+    subCategory: "performance",
+    entry: "training",
+    tab: "training",
+    popularityRank: 123,
+    ready: false,
+    maxPlayers: 1,
+    supportsTeams: false,
+    supportsBots: false,
+    statsKey: "training:ghost",
+    infoTitle: "Ghost Mode",
+    infoBody:
+      "Affronte ton meilleur score (ou une session enregistree) en parallele. Objectif: battre le 'fantome'. A implementer.",
+  },
+
+  // ===========================================================
+  // EXPERIMENTAL / SIGNATURE (placeholders)
+  // ===========================================================
+
+  {
+    id: "rpg_darts",
+    label: "RPG Darts",
+    category: "fun",
+    subCategory: "experimental",
+    entry: "games",
+    tab: "mode_not_ready",
+    popularityRank: 70,
+    ready: false,
+    maxPlayers: 8,
+    supportsTeams: true,
+    supportsBots: true,
+    statsKey: "game:rpg_darts",
+    infoTitle: "RPG Darts",
+    infoBody:
+      "Meta-game avec progression: niveaux, competences, bonus passifs. Les matchs alimentent l'XP. Mode ultra addictif si persistance activee. A implementer.",
+  },
+  {
+    id: "blind_darts",
+    label: "Blind Darts",
+    category: "fun",
+    subCategory: "experimental",
+    entry: "games",
+    tab: "mode_not_ready",
+    popularityRank: 71,
+    ready: false,
+    maxPlayers: 8,
+    supportsTeams: false,
+    supportsBots: false,
+    statsKey: "game:blind_darts",
+    infoTitle: "Blind Darts",
+    infoBody:
+      "Mode 'a l'aveugle': la cible peut etre cachee partiellement, et/ou les instructions sont minimales. Variante fun pour la concentration. A implementer.",
+  },
+  {
+    id: "sound_darts",
+    label: "Sound Darts",
+    category: "fun",
+    subCategory: "experimental",
+    entry: "games",
+    tab: "mode_not_ready",
+    popularityRank: 72,
+    ready: false,
+    maxPlayers: 8,
+    supportsTeams: false,
+    supportsBots: false,
+    statsKey: "game:sound_darts",
+    infoTitle: "Sound Darts",
+    infoBody:
+      "Mode guide par l'audio: la consigne de cible est annoncee. Reaction rapide, timer possible. A implementer.",
+  },
+
   // ===========================================================
   // TRAINING (hub existant + onglet Training dans Games)
   // ===========================================================
@@ -628,6 +1071,41 @@ export const GAME_CATEGORIES: { id: GameCategory; label: string }[] = [
   { id: "fun", label: "Fun" },
   { id: "training", label: "Training" },
 ];
+
+// Sous-categories (groupage visuel dans Games.tsx).
+// On reste tolerant: si subCategory absent => groupe 'Autres'.
+export const GAME_SUBCATEGORIES: Record<GameCategory, { id: string; label: string }[]> = {
+  classic: [
+    { id: 'classic', label: 'Classiques' },
+  ],
+  variant: [
+    { id: 'x01', label: 'X01' },
+    { id: 'cricket', label: 'Cricket' },
+    { id: 'other', label: 'Autres variantes' },
+  ],
+  challenge: [
+    { id: 'scoring', label: 'Scoring' },
+    { id: 'precision', label: 'Precision' },
+    { id: 'elimination', label: 'Elimination' },
+    { id: 'other', label: 'Autres defis' },
+  ],
+  fun: [
+    { id: 'arcade', label: 'Arcade' },
+    { id: 'party', label: 'Party' },
+    { id: 'battle', label: 'Duel' },
+    { id: 'strategie', label: 'Strategie' },
+    { id: 'survie', label: 'Survie' },
+    { id: 'coop', label: 'Co-op' },
+    { id: 'experimental', label: 'Experimental' },
+    { id: 'other', label: 'Autres' },
+  ],
+  training: [
+    { id: 'precision', label: 'Precision' },
+    { id: 'performance', label: 'Performance' },
+    { id: 'other', label: 'Autres drills' },
+  ],
+};
+
 
 export function sortByPopularity(a: DartsGameDef, b: DartsGameDef) {
   const ar = a.popularityRank ?? 9999;

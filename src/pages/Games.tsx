@@ -26,6 +26,7 @@ import InfoDot from "../components/InfoDot";
 import {
   DARTS_GAMES,
   GAME_CATEGORIES,
+  GAME_SUBCATEGORIES,
   sortByPopularity,
   type GameCategory,
   type DartsGameDef,
@@ -679,74 +680,121 @@ export default function Games({ setTab }: Props) {
 
       {/* Cartes de jeux (liste) */}
       <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-        {gamesForCat.map((g) => {
-          const disabled = !g.ready;
-          const comingSoon = disabled ? t("games.status.comingSoon", "Bientôt disponible") : null;
+        {(() => {
+          const ordered = (GAME_SUBCATEGORIES?.[activeCat] || []).map((s) => s.id);
 
-          return (
-            <button
-              key={g.id}
-              onClick={() => navigate(disabled ? "mode_not_ready" : g.tab)}
-              style={{
-                position: "relative",
-                width: "100%",
-                padding: 14,
-                paddingRight: 46,
-                textAlign: "left",
-                borderRadius: 16,
-                border: `1px solid ${theme.borderSoft}`,
-                background: CARD_BG,
-                cursor: "pointer",
-                opacity: disabled ? 0.55 : 1,
-                boxShadow: disabled ? "none" : `0 10px 24px rgba(0,0,0,0.55)`,
-                overflow: "hidden",
-              }}
-            >
-              <div
-                style={{
-                  fontSize: 14,
-                  fontWeight: 800,
-                  letterSpacing: 0.8,
-                  color: disabled ? theme.textSoft : theme.primary,
-                  textTransform: "uppercase",
-                  textShadow: disabled ? "none" : `0 0 12px ${theme.primary}55`,
-                }}
-              >
-                {g.label}
-              </div>
+          // Group games by subCategory (fallback = 'other')
+          const groups: Record<string, typeof gamesForCat> = {};
+          for (const g of gamesForCat) {
+            const key = (g as any).subCategory ? String((g as any).subCategory) : "other";
+            (groups[key] ||= []).push(g);
+          }
 
-              <div style={{ marginTop: 4, fontSize: 12, color: theme.textSoft, opacity: 0.9 }}>
-                {comingSoon && (
-                  <span style={{ fontSize: 11, fontStyle: "italic", opacity: 0.9 }}>
-                    {comingSoon}
-                  </span>
-                )}
-              </div>
-
-              <div
-                style={{
-                  position: "absolute",
-                  right: 10,
-                  top: "50%",
-                  transform: "translateY(-50%)",
-                }}
-              >
-                <InfoDot
-                  onClick={(ev) => {
-                    ev.stopPropagation();
-                    setInfoGame({
-                      label: g.label,
-                      ready: g.ready,
-                      infoTitle: g.infoTitle,
-                      infoBody: g.infoBody,
-                    });
-                  }}
-                  glow={theme.primary + "88"}
-                />
-              </div>
-            </button>
+          // Stable order: configured first, then any unexpected keys
+          const keys = Array.from(new Set([...ordered, ...Object.keys(groups)])).filter(
+            (k) => (groups[k] || []).length > 0
           );
-        })}
+
+          const labelFor = (k: string) => {
+            const def = (GAME_SUBCATEGORIES?.[activeCat] || []).find((s) => s.id === k);
+            if (def?.label) return def.label;
+            if (k === "other") return t("games.subcat.other", "Autres");
+            return k;
+          };
+
+          return keys.map((k) => (
+            <div key={k} style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              {/* Sous-titre */}
+              <div
+                style={{
+                  marginTop: 6,
+                  marginBottom: 2,
+                  padding: "6px 10px",
+                  borderRadius: 999,
+                  alignSelf: "flex-start",
+                  border: `1px solid ${theme.borderSoft}`,
+                  background: `linear-gradient(180deg, rgba(255,255,255,0.06), rgba(0,0,0,0.08))`,
+                  color: theme.textSoft,
+                  fontWeight: 900,
+                  fontSize: 11,
+                  letterSpacing: 0.6,
+                  textTransform: "uppercase",
+                }}
+              >
+                {labelFor(k)}
+              </div>
+
+              {(groups[k] || []).map((g) => {
+                const disabled = !g.ready;
+                const comingSoon = disabled ? t("games.status.comingSoon", "Bientôt disponible") : null;
+
+                return (
+                  <button
+                    key={g.id}
+                    onClick={() => navigate(disabled ? "mode_not_ready" : g.tab)}
+                    style={{
+                      position: "relative",
+                      width: "100%",
+                      padding: 14,
+                      paddingRight: 46,
+                      textAlign: "left",
+                      borderRadius: 16,
+                      border: `1px solid ${theme.borderSoft}`,
+                      background: CARD_BG,
+                      cursor: "pointer",
+                      opacity: disabled ? 0.55 : 1,
+                      boxShadow: disabled ? "none" : `0 10px 24px rgba(0,0,0,0.55)`,
+                      overflow: "hidden",
+                    }}
+                  >
+                    <div
+                      style={{
+                        fontSize: 14,
+                        fontWeight: 800,
+                        letterSpacing: 0.8,
+                        color: disabled ? theme.textSoft : theme.primary,
+                        textTransform: "uppercase",
+                        textShadow: disabled ? "none" : `0 0 12px ${theme.primary}55`,
+                      }}
+                    >
+                      {g.label}
+                    </div>
+
+                    <div style={{ marginTop: 4, fontSize: 12, color: theme.textSoft, opacity: 0.9 }}>
+                      {comingSoon && (
+                        <span style={{ fontSize: 11, fontStyle: "italic", opacity: 0.9 }}>
+                          {comingSoon}
+                        </span>
+                      )}
+                    </div>
+
+                    <div
+                      style={{
+                        position: "absolute",
+                        right: 10,
+                        top: "50%",
+                        transform: "translateY(-50%)",
+                      }}
+                    >
+                      <InfoDot
+                        onClick={(ev) => {
+                          ev.stopPropagation();
+                          setInfoGame({
+                            label: g.label,
+                            ready: g.ready,
+                            infoTitle: g.infoTitle,
+                            infoBody: g.infoBody,
+                          });
+                        }}
+                        glow={theme.primary + "88"}
+                      />
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          ));
+        })()}
       </div>
 
       {/* Overlay d'information */}
