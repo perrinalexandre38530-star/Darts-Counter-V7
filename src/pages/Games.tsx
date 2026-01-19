@@ -55,9 +55,10 @@ const TICKERS = import.meta.glob("../assets/tickers/*.png", {
 }) as Record<string, string>;
 
 function findTickerById(id: string): string | null {
-  const suffix = `/ticker_${id}.png`;
+  const suffixA = `/ticker_${id}.png`;
+  const suffixB = `/ticker-${id}.png`;
   for (const k of Object.keys(TICKERS)) {
-    if (k.endsWith(suffix)) return TICKERS[k];
+    if (k.endsWith(suffixA) || k.endsWith(suffixB)) return TICKERS[k];
   }
   return null;
 }
@@ -77,6 +78,25 @@ type PlayCountMap = Record<string, number>;
 
 function safeUpper(s: string) {
   return (s || "").toUpperCase();
+}
+
+// ✅ TERRITORIES: ticker watermark depends on UI language (dc_lang_v1)
+// Assets attendus: ticker_territories_<code>.png (ou ticker-territories-<code>.png)
+// Mapping langue -> code ticker: fr->fr, en->en, es->es, de->de, it->it, ru->ru, zh->cn, ja->jp, défaut->world
+function territoriesTickerKeyForLang(langCode: any): string {
+  const l = String(langCode || '').toLowerCase();
+  const map: Record<string, string> = {
+    fr: 'fr',
+    en: 'en',
+    es: 'es',
+    de: 'de',
+    it: 'it',
+    ru: 'ru',
+    zh: 'cn',
+    ja: 'jp',
+  };
+  const code = map[l] || 'world';
+  return `territories_${code}`;
 }
 
 // ✅ derive a “count key” from history records for a given game def
@@ -118,7 +138,7 @@ function pickFavoriteByCounts(cat: GameCategory, counts: PlayCountMap): DartsGam
 
 export default function Games({ setTab }: Props) {
   const { theme } = useTheme();
-  const { t } = useLang();
+  const { t, lang } = useLang();
 
   const [activeCat, setActiveCat] = React.useState<GameCategory>("classic");
   const [infoGame, setInfoGame] = React.useState<InfoGame | null>(null);
@@ -506,7 +526,7 @@ export default function Games({ setTab }: Props) {
       .filter((g: any) => g && g.ready)
       .map((g: any) => {
         const id = String(g.id);
-        const tickerSrc = findTickerById(id);
+        const tickerSrc = id === 'departements' ? findTickerById(territoriesTickerKeyForLang(lang)) : findTickerById(id);
         return {
           id,
           label: String(g.label || id),
@@ -515,7 +535,7 @@ export default function Games({ setTab }: Props) {
         };
       })
       .filter((x: any) => !!x.tickerSrc);
-  }, []);
+  }, [lang]);
 
   const [allTickerIdx, setAllTickerIdx] = React.useState(0);
 
@@ -536,7 +556,7 @@ export default function Games({ setTab }: Props) {
 
   // ✅ helper: watermark ticker inside game cards (75% width, 100% height, fades)
   function renderGameTickerWatermark(gameId: string) {
-    const src = findTickerById(gameId);
+    const src = gameId === 'departements' ? findTickerById(territoriesTickerKeyForLang(lang)) : findTickerById(gameId);
     if (!src) return null;
 
     return (

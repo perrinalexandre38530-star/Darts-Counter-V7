@@ -12,7 +12,7 @@ import { useTheme } from "../contexts/ThemeContext";
 
 type BotLevel = "easy" | "normal" | "hard";
 
-export type CountUpConfigPayload = {
+export type SuperBullConfigPayload = {
   players: number;
   botsEnabled: boolean;
   botLevel: BotLevel;
@@ -20,9 +20,9 @@ export type CountUpConfigPayload = {
   objective: number;
 };
 
-const INFO_TEXT = `Additionne tes points sur X rounds. Score final le plus haut gagne.`;
+const INFO_TEXT = `MVP : jeu orienté Bull. Ici : scoring simple par rounds (à spécialiser Bull/DBull).`;
 
-export default function CountUpConfig(props: any) {
+export default function SuperBullConfig(props: any) {
   const { t } = useLang();
   useTheme();
 
@@ -32,7 +32,7 @@ export default function CountUpConfig(props: any) {
   const [rounds, setRounds] = useState(10);
   const [objective, setObjective] = useState(0);
 
-  const payload: CountUpConfigPayload = { players, botsEnabled, botLevel, rounds, objective };
+  const payload: SuperBullConfigPayload = { players, botsEnabled, botLevel, rounds, objective };
 
   function goBack() {
     if (props?.setTab) return props.setTab("games");
@@ -40,17 +40,17 @@ export default function CountUpConfig(props: any) {
   }
 
   function start() {
-    // App.tsx wiring: tab "count_up_play"
-    if (props?.setTab) return props.setTab("count_up_play", { config: payload });
+    // App.tsx wiring: tab "super_bull_play"
+    if (props?.setTab) return props.setTab("super_bull_play", { config: payload });
     // Router alternative: à adapter au câblage final si besoin
   }
 
   return (
     <div className="page">
       <PageHeader
-        title="COUNT-UP"
+        title="SUPER-BULL"
         left={<BackDot onClick={goBack} />}
-        right={<InfoDot title="Règles COUNT-UP" content={INFO_TEXT} />}
+        right={<InfoDot title="Règles SUPER-BULL" content={INFO_TEXT} />}
       />
 
       <Section title={t("config.players", "Joueurs")}>

@@ -450,7 +450,7 @@ export const dartsGameRegistry: DartsGameDef[] = [
   },
   {
     id: "departements",
-    label: "Departements",
+    label: "TERRITORIES",
     category: "challenge",
     entry: "games",
     tab: "darts_mode_config",
@@ -460,9 +460,9 @@ export const dartsGameRegistry: DartsGameDef[] = [
     supportsTeams: true,
     supportsBots: true,
     statsKey: "game:departements",
-    infoTitle: "Departements",
+    infoTitle: "TERRITORIES",
     infoBody:
-      "Cibles imposees selon liste (numeros associes). Points par reussite, objectifs par serie. A implementer.",
+      "Mode TERRITORIES : cartes (FR/EN/WORLD) + variantes de zones (IT/DE/ES). Objectifs territoriaux a implementer.",
   },
 
   // ===========================================================

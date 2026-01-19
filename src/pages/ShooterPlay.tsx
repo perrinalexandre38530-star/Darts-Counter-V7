@@ -14,9 +14,9 @@ type Config = {
   objective: number;
 };
 
-const INFO_TEXT = `Additionne tes points sur X rounds. Score final le plus haut gagne.`;
+const INFO_TEXT = `MVP : précision/scoring. Ici : scoring simple par rounds.`;
 
-export default function CountUpPlay(props: any) {
+export default function ShooterPlay(props: any) {
   const { t } = useLang();
   useTheme();
 
@@ -83,9 +83,9 @@ export default function CountUpPlay(props: any) {
   return (
     <div className="page">
       <PageHeader
-        title="COUNT-UP"
+        title="SHOOTER"
         left={<BackDot onClick={goBack} />}
-        right={<InfoDot title="Règles COUNT-UP" content={INFO_TEXT} />}
+        right={<InfoDot title="Règles SHOOTER" content={INFO_TEXT} />}
       />
 
       <div style={{ padding: 12 }}>
@@ -103,7 +103,7 @@ export default function CountUpPlay(props: any) {
               <div style={{ fontSize: 12, opacity: 0.8, fontWeight: 900, letterSpacing: 1 }}>
                 {t("generic.round", "ROUND")} {Math.min(roundIdx + 1, cfg.rounds)}/{cfg.rounds}
               </div>
-              <div style={{ fontSize: 18, fontWeight: 1000, marginTop: 6 }}>Count-Up (MVP)</div>
+              <div style={{ fontSize: 18, fontWeight: 1000, marginTop: 6 }}>Shooter (MVP)</div>
             </div>
             <div style={{ textAlign: "right" }}>
               <div style={{ fontSize: 12, opacity: 0.8, fontWeight: 900, letterSpacing: 1 }}>

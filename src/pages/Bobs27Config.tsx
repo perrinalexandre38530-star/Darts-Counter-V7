@@ -12,7 +12,7 @@ import { useTheme } from "../contexts/ThemeContext";
 
 type BotLevel = "easy" | "normal" | "hard";
 
-export type CountUpConfigPayload = {
+export type Bobs27ConfigPayload = {
   players: number;
   botsEnabled: boolean;
   botLevel: BotLevel;
@@ -20,9 +20,9 @@ export type CountUpConfigPayload = {
   objective: number;
 };
 
-const INFO_TEXT = `Additionne tes points sur X rounds. Score final le plus haut gagne.`;
+const INFO_TEXT = `MVP : base jouable. Version complète : doubles 1..20, pénalité si raté.`;
 
-export default function CountUpConfig(props: any) {
+export default function Bobs27Config(props: any) {
   const { t } = useLang();
   useTheme();
 
@@ -32,7 +32,7 @@ export default function CountUpConfig(props: any) {
   const [rounds, setRounds] = useState(10);
   const [objective, setObjective] = useState(0);
 
-  const payload: CountUpConfigPayload = { players, botsEnabled, botLevel, rounds, objective };
+  const payload: Bobs27ConfigPayload = { players, botsEnabled, botLevel, rounds, objective };
 
   function goBack() {
     if (props?.setTab) return props.setTab("games");
@@ -40,17 +40,17 @@ export default function CountUpConfig(props: any) {
   }
 
   function start() {
-    // App.tsx wiring: tab "count_up_play"
-    if (props?.setTab) return props.setTab("count_up_play", { config: payload });
+    // App.tsx wiring: tab "bobs_27_play"
+    if (props?.setTab) return props.setTab("bobs_27_play", { config: payload });
     // Router alternative: à adapter au câblage final si besoin
   }
 
   return (
     <div className="page">
       <PageHeader
-        title="COUNT-UP"
+        title="BOB'S 27"
         left={<BackDot onClick={goBack} />}
-        right={<InfoDot title="Règles COUNT-UP" content={INFO_TEXT} />}
+        right={<InfoDot title="Règles BOB'S 27" content={INFO_TEXT} />}
       />
 
       <Section title={t("config.players", "Joueurs")}>

@@ -10,17 +10,17 @@
 // - ✅ Evolution TOUT EN HAUT
 // - ✅ Suppression du label "Autres modes d’entraînement"
 // - ✅ Ajout Training : Double In/Out + Challenges (pinned cards)
-// ✅ NEW: BackDot en haut pour revenir au menu Games
+// - ✅ NEW: BackDot en haut pour revenir au menu Games
 //
 // ✅ NEW (cette demande) :
 // - En TRAINING, tout mode "en développement" (registry.ready === false)
 //   est GRISÉ + NON CLIQUABLE
 //
-// ✅ NEW (watermark tickers) :
-// - Chaque carte affiche un ticker discret (si dispo)
-// - Position: à droite, 75% largeur, 100% hauteur
-// - Dégradé des 2 côtés pour fondu
-// - Chargement: src/assets/tickers/ticker_<gameId>.png via import.meta.glob
+// ✅ NEW (ticker dans cartes, comme Games) :
+// - Si src/assets/tickers/ticker_<gameId>.png existe => affichage en fond
+// - Fond discret : 75% largeur, 100% hauteur, côté droit
+// - Dégradé de chaque côté pour fusionner avec la carte
+// - Matching tolérant : ticker_super_bull.png fonctionne aussi si id = training_super_bull, super_bull_training, etc.
 // ============================================
 
 import React from "react";
@@ -59,20 +59,116 @@ type ModeDef = {
   accentHex?: string | null;
   accentBorder?: string | null;
   accentGlow?: string | null;
+
+  // ✅ ticker overlay
+  tickerSrc?: string | null;
 };
 
-// ✅ Tickers images (Vite): /src/assets/tickers/ticker_<gameId>.png
 const TICKERS = import.meta.glob("../assets/tickers/*.png", {
   eager: true,
   import: "default",
 }) as Record<string, string>;
 
-function findTickerById(id: string): string | null {
-  const suffix = `/ticker_${id}.png`;
-  for (const k of Object.keys(TICKERS)) {
-    if (k.endsWith(suffix)) return TICKERS[k];
+function normId(id: string) {
+  return String(id || "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, "_")
+    .replace(/[^a-z0-9_]/g, "");
+}
+
+function findTickerSmart(gameId: string): string | null {
+  const raw = normId(gameId);
+  if (!raw) return null;
+
+  // candidats (tolérant)
+  const candidates = Array.from(
+    new Set([
+      raw,
+      raw.replace(/^training_/, ""),
+      raw.replace(/_training$/, ""),
+      raw.replace(/^training/, ""),
+      raw.replace(/training$/, ""),
+    ])
+  ).filter(Boolean);
+
+  // on cherche ticker_<candidate>.png dans /src/assets/tickers/
+  for (const c of candidates) {
+    const suffix = `/ticker_${c}.png`;
+    for (const k of Object.keys(TICKERS)) {
+      if (k.toLowerCase().endsWith(suffix)) return TICKERS[k];
+    }
   }
   return null;
+}
+
+function TickerOverlay({ src }: { src?: string | null }) {
+  if (!src) return null;
+
+  // ✅ 75% largeur, 100% hauteur, à droite
+  return (
+    <div
+      aria-hidden
+      style={{
+        position: "absolute",
+        inset: 0,
+        pointerEvents: "none",
+        zIndex: 0,
+      }}
+    >
+      <div
+        style={{
+          position: "absolute",
+          right: 0,
+          top: 0,
+          bottom: 0,
+          width: "75%",
+          opacity: 0.22,
+          overflow: "hidden",
+        }}
+      >
+        <img
+          src={src}
+          alt=""
+          style={{
+            width: "100%",
+            height: "100%",
+            objectFit: "cover", // remplit toute la zone (100% hauteur)
+            display: "block",
+            transform: "translateZ(0)",
+            filter: "saturate(1.05) contrast(1.05)",
+          }}
+          draggable={false}
+        />
+
+        {/* ✅ fondu gauche */}
+        <div
+          style={{
+            position: "absolute",
+            left: 0,
+            top: 0,
+            bottom: 0,
+            width: "45%",
+            background:
+              "linear-gradient(90deg, rgba(0,0,0,0.95) 0%, rgba(0,0,0,0.55) 40%, rgba(0,0,0,0.0) 100%)",
+          }}
+        />
+
+        {/* ✅ fondu droit */}
+        <div
+          style={{
+            position: "absolute",
+            right: 0,
+            top: 0,
+            bottom: 0,
+            width: "18%",
+            background:
+              "linear-gradient(270deg, rgba(0,0,0,0.85) 0%, rgba(0,0,0,0.25) 55%, rgba(0,0,0,0.0) 100%)",
+          }}
+        />
+      </div>
+    </div>
+  );
 }
 
 export default function TrainingMenu({ go }: Props) {
@@ -98,70 +194,6 @@ export default function TrainingMenu({ go }: Props) {
     go(tab, params);
   }
 
-  // ✅ Watermark ticker helper (75% largeur, 100% hauteur, dégradé des 2 côtés)
-  function renderTickerWatermark(opts: { gameId: string; disabled?: boolean }) {
-    const src = findTickerById(opts.gameId);
-    if (!src) return null;
-
-    const disabled = !!opts.disabled;
-
-    return (
-      <div
-        aria-hidden
-        style={{
-          position: "absolute",
-          inset: 0,
-          pointerEvents: "none",
-          zIndex: 0,
-        }}
-      >
-        {/* Container 75% droite */}
-        <div
-          style={{
-            position: "absolute",
-            top: 0,
-            right: 0,
-            height: "100%",
-            width: "75%",
-            overflow: "hidden",
-            opacity: disabled ? 0.14 : 0.22, // discret
-            filter: disabled ? "grayscale(1)" : "none",
-          }}
-        >
-          <img
-            src={src}
-            alt=""
-            draggable={false}
-            style={{
-              width: "100%",
-              height: "100%",
-              objectFit: "cover", // remplit 100% hauteur
-              transform: "translateZ(0)",
-              // léger contraste pour ressortir sans agresser
-              filter: "saturate(1.08) contrast(1.02)",
-              // fondu des 2 côtés (gauche + droite)
-              WebkitMaskImage:
-                "linear-gradient(90deg, rgba(0,0,0,0) 0%, rgba(0,0,0,1) 18%, rgba(0,0,0,1) 82%, rgba(0,0,0,0) 100%)",
-              maskImage:
-                "linear-gradient(90deg, rgba(0,0,0,0) 0%, rgba(0,0,0,1) 18%, rgba(0,0,0,1) 82%, rgba(0,0,0,0) 100%)",
-            }}
-          />
-        </div>
-
-        {/* Micro sheen pour fondre avec le fond de la carte */}
-        <div
-          style={{
-            position: "absolute",
-            inset: 0,
-            background:
-              "linear-gradient(90deg, rgba(0,0,0,0.10) 0%, rgba(0,0,0,0.0) 40%, rgba(0,0,0,0.05) 100%)",
-            opacity: disabled ? 0.55 : 0.45,
-          }}
-        />
-      </div>
-    );
-  }
-
   // IDs des trainings déjà affichés en cartes fixes (donc exclus de la liste auto)
   const pinnedRegistryIds = React.useMemo(
     () =>
@@ -170,7 +202,6 @@ export default function TrainingMenu({ go }: Props) {
         "tour_horloge",
         "training_doubleio",
         "training_challenges",
-        // safety si des vieux IDs traînent
         "evolution",
         "training_evolution",
       ]),
@@ -195,7 +226,6 @@ export default function TrainingMenu({ go }: Props) {
       return null;
     };
 
-    // ✅ EVOLUTION en 1er
     const evolution: ModeDef = {
       id: "evolution",
       titleKey: "training.menu.evolution.title",
@@ -210,6 +240,7 @@ export default function TrainingMenu({ go }: Props) {
       accentHex: "#8CFFCB",
       accentBorder: "rgba(120,255,180,0.35)",
       accentGlow: "rgba(120,255,180,0.55)",
+      tickerSrc: findTickerSmart("evolution"),
     };
 
     const x01: ModeDef = {
@@ -223,6 +254,7 @@ export default function TrainingMenu({ go }: Props) {
         "Entraînement X01 dédié à la progression : scoring, régularité, finitions, stats détaillées.",
       tab: "training_x01",
       enabled: true,
+      tickerSrc: findTickerSmart("training_x01") ?? findTickerSmart("x01"),
     };
 
     const clock: ModeDef = {
@@ -232,10 +264,10 @@ export default function TrainingMenu({ go }: Props) {
       subtitleKey: "training.menu.clock.subtitle",
       subtitleDefault: "Simple / Double / Triple",
       infoKey: "training.menu.clock.info",
-      infoDefault:
-        "Atteins chaque segment du 1 au 20 puis Bull. Mode simple, double ou triple.",
+      infoDefault: "Atteins chaque segment du 1 au 20 puis Bull. Mode simple, double ou triple.",
       tab: "training_clock",
       enabled: true,
+      tickerSrc: findTickerSmart("tour_horloge") ?? findTickerSmart("training_clock"),
     };
 
     const doubleIOCard: ModeDef = {
@@ -251,6 +283,7 @@ export default function TrainingMenu({ go }: Props) {
       params: { gameId: "training_doubleio" },
       enabled: isReady(doubleio),
       badge: badgeFromRegistry(doubleio),
+      tickerSrc: findTickerSmart("training_doubleio"),
     };
 
     const challengesCard: ModeDef = {
@@ -266,6 +299,7 @@ export default function TrainingMenu({ go }: Props) {
       params: { gameId: "training_challenges" },
       enabled: isReady(challenges),
       badge: badgeFromRegistry(challenges),
+      tickerSrc: findTickerSmart("training_challenges"),
     };
 
     return [evolution, x01, clock, doubleIOCard, challengesCard];
@@ -290,21 +324,118 @@ export default function TrainingMenu({ go }: Props) {
 
     trainings.sort((a: any, b: any) => a.label.localeCompare(b.label, "fr"));
 
-    return trainings.map((g: any) => ({
-      id: g.id,
-      titleKey: `training.registry.${g.id}.title`,
-      titleDefault: g.label,
-      subtitleKey: `training.registry.${g.id}.subtitle`,
-      subtitleDefault: "Entraînement dédié",
-      infoKey: `training.registry.${g.id}.info`,
-      infoDefault:
-        "Ce mode est enregistré dans l’application. S’il n’est pas encore implémenté, il sera affiché comme “En développement”.",
-      tab: "darts_mode",
-      params: { gameId: g.id },
-      enabled: isReady(g),
-      badge: isReady(g) ? null : comingSoon,
-    }));
+    return trainings.map((g: any) => {
+      const ready = isReady(g);
+      return {
+        id: g.id,
+        titleKey: `training.registry.${g.id}.title`,
+        titleDefault: g.label,
+        subtitleKey: `training.registry.${g.id}.subtitle`,
+        subtitleDefault: "Entraînement dédié",
+        infoKey: `training.registry.${g.id}.info`,
+        infoDefault:
+          "Ce mode est enregistré dans l’application. S’il n’est pas encore implémenté, il sera affiché comme “En développement”.",
+        tab: "darts_mode",
+        params: { gameId: g.id },
+        enabled: ready,
+        badge: ready ? null : comingSoon,
+        tickerSrc: findTickerSmart(g.id),
+      };
+    });
   }, [t, pinnedRegistryIds]);
+
+  const renderCard = (m: ModeDef, accent: { hex: string; border: string; glow: string }) => {
+    const title = t(m.titleKey, m.titleDefault);
+    const subtitle = t(m.subtitleKey, m.subtitleDefault);
+    const disabled = !m.enabled;
+
+    const badge =
+      m.badge ?? (disabled ? t("training.menu.comingSoon", "En développement") : null);
+
+    return (
+      <button
+        key={m.id}
+        onClick={() => !disabled && navigate(m.tab, m.params)}
+        style={{
+          position: "relative",
+          width: "100%",
+          padding: 14,
+          paddingRight: 46,
+          textAlign: "left",
+          borderRadius: 16,
+          border: `1px solid ${accent.border}`,
+          background: CARD_BG,
+          cursor: disabled ? "default" : "pointer",
+          opacity: disabled ? 0.55 : 1,
+          boxShadow: disabled ? "none" : `0 10px 24px rgba(0,0,0,0.55)`,
+          overflow: "hidden",
+          filter: disabled ? "grayscale(0.65)" : "none",
+        }}
+      >
+        {/* ✅ ticker discret dans la carte */}
+        <TickerOverlay src={m.tickerSrc} />
+
+        {/* contenu au-dessus */}
+        <div style={{ position: "relative", zIndex: 1 }}>
+          <div
+            style={{
+              fontSize: 14,
+              fontWeight: 800,
+              letterSpacing: 0.8,
+              color: disabled ? theme.textSoft : accent.hex,
+              textTransform: "uppercase",
+              textShadow: disabled ? "none" : `0 0 12px ${accent.glow}`,
+            }}
+          >
+            {title}
+          </div>
+
+          <div
+            style={{
+              marginTop: 4,
+              fontSize: 12,
+              color: theme.textSoft,
+              opacity: 0.9,
+            }}
+          >
+            {subtitle}
+            {badge && (
+              <span
+                style={{
+                  marginLeft: 6,
+                  fontSize: 11,
+                  fontStyle: "italic",
+                  opacity: 0.9,
+                }}
+              >
+                • {badge}
+              </span>
+            )}
+          </div>
+        </div>
+
+        <div
+          style={{
+            position: "absolute",
+            right: 10,
+            top: "50%",
+            transform: "translateY(-50%)",
+            zIndex: 2,
+          }}
+        >
+          <InfoDot
+            size={30}
+            color="#FFFFFF"
+            glow={m.id === "evolution" ? "rgba(120,255,180,0.55)" : `${theme.primary}55`}
+            onClick={(e) => {
+              e.stopPropagation();
+              setInfoMode(m);
+            }}
+          />
+        </div>
+      </button>
+    );
+  };
 
   return (
     <div
@@ -343,237 +474,30 @@ export default function TrainingMenu({ go }: Props) {
             textAlign: "center",
           }}
         >
-          {t(
-            "training.menu.subtitle",
-            "Améliore ta progression dans différents modes d’entraînement."
-          )}
+          {t("training.menu.subtitle", "Améliore ta progression dans différents modes d’entraînement.")}
         </div>
       </div>
 
-      {/* Liste des modes (pinned) */}
+      {/* Pinned modes */}
       <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
         {MODES.map((m) => {
-          const title = t(m.titleKey, m.titleDefault);
-          const subtitle = t(m.subtitleKey, m.subtitleDefault);
-          const disabled = !m.enabled;
-
-          const badge =
-            m.badge ?? (disabled ? t("training.menu.comingSoon", "En développement") : null);
-
           const accentHex = m.accentHex || theme.primary;
           const accentBorder = m.accentBorder || theme.borderSoft;
           const accentGlow = m.accentGlow || `${theme.primary}55`;
-
-          // ✅ map ModeDef.id -> ticker id
-          // - evolution: optional ticker_evolution.png (si tu en crées un)
-          // - x01 -> training_x01
-          // - clock -> tour_horloge
-          // - doubleio -> training_doubleio
-          // - challenges -> training_challenges
-          const tickerId =
-            m.id === "x01"
-              ? "training_x01"
-              : m.id === "clock"
-              ? "tour_horloge"
-              : m.id === "doubleio"
-              ? "training_doubleio"
-              : m.id === "challenges"
-              ? "training_challenges"
-              : m.id === "evolution"
-              ? "evolution"
-              : m.id;
-
-          return (
-            <button
-              key={m.id}
-              onClick={() => !disabled && navigate(m.tab, m.params)}
-              style={{
-                position: "relative",
-                width: "100%",
-                padding: 14,
-                paddingRight: 46,
-                textAlign: "left",
-                borderRadius: 16,
-                border: `1px solid ${accentBorder}`,
-                background: CARD_BG,
-                cursor: disabled ? "default" : "pointer",
-                opacity: disabled ? 0.55 : 1,
-                boxShadow: disabled ? "none" : `0 10px 24px rgba(0,0,0,0.55)`,
-                overflow: "hidden",
-                filter: disabled ? "grayscale(0.65)" : "none",
-              }}
-            >
-              {/* ✅ Watermark ticker */}
-              {renderTickerWatermark({ gameId: tickerId, disabled })}
-
-              {/* ✅ Content above watermark */}
-              <div style={{ position: "relative", zIndex: 1 }}>
-                <div
-                  style={{
-                    fontSize: 14,
-                    fontWeight: 800,
-                    letterSpacing: 0.8,
-                    color: disabled ? theme.textSoft : accentHex,
-                    textTransform: "uppercase",
-                    textShadow: disabled ? "none" : `0 0 12px ${accentGlow}`,
-                  }}
-                >
-                  {title}
-                </div>
-
-                <div
-                  style={{
-                    marginTop: 4,
-                    fontSize: 12,
-                    color: theme.textSoft,
-                    opacity: 0.9,
-                  }}
-                >
-                  {subtitle}
-                  {badge && (
-                    <span
-                      style={{
-                        marginLeft: 6,
-                        fontSize: 11,
-                        fontStyle: "italic",
-                        opacity: 0.9,
-                      }}
-                    >
-                      • {badge}
-                    </span>
-                  )}
-                </div>
-              </div>
-
-              {/* ✅ InfoDot above everything */}
-              <div
-                style={{
-                  position: "absolute",
-                  right: 10,
-                  top: "50%",
-                  transform: "translateY(-50%)",
-                  zIndex: 2,
-                }}
-              >
-                <InfoDot
-                  size={30}
-                  color="#FFFFFF"
-                  glow={
-                    m.id === "evolution"
-                      ? "rgba(120,255,180,0.55)"
-                      : `${theme.primary}55`
-                  }
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setInfoMode(m);
-                  }}
-                />
-              </div>
-            </button>
-          );
+          return renderCard(m, { hex: accentHex, border: accentBorder, glow: accentGlow });
         })}
       </div>
 
-      {/* ✅ Liste auto registry (SANS label "Autres modes d’entraînement") */}
+      {/* Extra registry modes (sans label "Autres...") */}
       {extraModes.length > 0 && (
         <div style={{ marginTop: 14 }}>
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-            {extraModes.map((m) => {
-              const title = t(m.titleKey, m.titleDefault);
-              const subtitle = t(m.subtitleKey, m.subtitleDefault);
-              const disabled = !m.enabled;
-
-              const badge =
-                m.badge ?? (disabled ? t("training.menu.comingSoon", "En développement") : null);
-
-              return (
-                <button
-                  key={m.id}
-                  onClick={() => !disabled && navigate(m.tab, m.params)}
-                  style={{
-                    position: "relative",
-                    width: "100%",
-                    padding: 14,
-                    paddingRight: 46,
-                    textAlign: "left",
-                    borderRadius: 16,
-                    border: `1px solid ${theme.borderSoft}`,
-                    background: CARD_BG,
-                    cursor: disabled ? "default" : "pointer",
-                    opacity: disabled ? 0.55 : 1,
-                    boxShadow: disabled ? "none" : `0 10px 24px rgba(0,0,0,0.55)`,
-                    overflow: "hidden",
-                    filter: disabled ? "grayscale(0.65)" : "none",
-                  }}
-                >
-                  {/* ✅ Watermark ticker : id = game id directement */}
-                  {renderTickerWatermark({ gameId: m.id, disabled })}
-
-                  <div style={{ position: "relative", zIndex: 1 }}>
-                    <div
-                      style={{
-                        fontSize: 14,
-                        fontWeight: 800,
-                        letterSpacing: 0.8,
-                        color: disabled ? theme.textSoft : theme.primary,
-                        textTransform: "uppercase",
-                        textShadow: disabled ? "none" : `0 0 12px ${theme.primary}55`,
-                      }}
-                    >
-                      {title}
-                    </div>
-
-                    <div
-                      style={{
-                        marginTop: 4,
-                        fontSize: 12,
-                        color: theme.textSoft,
-                        opacity: 0.9,
-                      }}
-                    >
-                      {subtitle}
-                      {badge && (
-                        <span
-                          style={{
-                            marginLeft: 6,
-                            fontSize: 11,
-                            fontStyle: "italic",
-                            opacity: 0.9,
-                          }}
-                        >
-                          • {badge}
-                        </span>
-                      )}
-                    </div>
-                  </div>
-
-                  <div
-                    style={{
-                      position: "absolute",
-                      right: 10,
-                      top: "50%",
-                      transform: "translateY(-50%)",
-                      zIndex: 2,
-                    }}
-                  >
-                    <InfoDot
-                      size={30}
-                      color="#FFFFFF"
-                      glow={`${theme.primary}55`}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setInfoMode(m);
-                      }}
-                    />
-                  </div>
-                </button>
-              );
-            })}
+            {extraModes.map((m) => renderCard(m, { hex: theme.primary, border: theme.borderSoft, glow: `${theme.primary}55` }))}
           </div>
         </div>
       )}
 
-      {/* Overlay d'information */}
+      {/* Overlay info */}
       {infoMode && (
         <div
           onClick={() => setInfoMode(null)}

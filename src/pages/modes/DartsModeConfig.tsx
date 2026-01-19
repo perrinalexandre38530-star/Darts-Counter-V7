@@ -7,16 +7,59 @@ import React from "react";
 import InfoDot from "../../components/InfoDot";
 import { getModeById } from "../../lib/dartsModesCatalog";
 
+const TERRITORIES_MAPS: { id: string; label: string }[] = [
+  { id: "FR", label: "France" },
+  { id: "EN", label: "England" },
+  { id: "IT", label: "Italy" },
+  { id: "DE", label: "Germany" },
+  { id: "ES", label: "Spain" },
+  { id: "US", label: "USA" },
+  { id: "CN", label: "China" },
+  { id: "AU", label: "Australia" },
+  { id: "JP", label: "Japan" },
+  { id: "RU", label: "Russia" },
+  { id: "WORLD", label: "World" },
+];
+
 export default function DartsModeConfig({ store, go, gameId }) {
   const mode = getModeById(gameId);
 
+  // ⚙️ restore previous config (if exists)
+  const savedCfg = React.useMemo(() => {
+    try {
+      const raw = localStorage.getItem(`dc_modecfg_${gameId}`);
+      return raw ? JSON.parse(raw) : null;
+    } catch {
+      return null;
+    }
+  }, [gameId]);
+
   const profiles = store?.profiles ?? [];
-  const [selectedIds, setSelectedIds] = React.useState(() => profiles.slice(0, 2).map(p => p.id));
+  const [selectedIds, setSelectedIds] = React.useState(() => {
+    const saved = Array.isArray(savedCfg?.players) ? savedCfg.players.map((p: any) => p?.id).filter(Boolean) : null;
+    return (saved && saved.length ? saved : profiles.slice(0, 2).map((p: any) => p.id)) as any;
+  });
   const [bots, setBots] = React.useState([]);
 
-  const [rounds, setRounds] = React.useState(mode?.defaultRounds ?? 10);
-  const [dartsPerRound, setDartsPerRound] = React.useState(mode?.defaultDarts ?? 3);
-  const [targetScore, setTargetScore] = React.useState(mode?.targetScore ?? "");
+  // Recreate bots from saved config (so selection is consistent)
+  React.useEffect(() => {
+    const saved = Array.isArray(savedCfg?.players) ? savedCfg.players : [];
+    const botPlayers = saved
+      .filter((p: any) => String(p?.id || "").startsWith("bot_"))
+      .map((p: any) => ({ id: p.id, name: p.name || "BOT" }));
+    if (botPlayers.length) setBots(botPlayers);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const [rounds, setRounds] = React.useState(savedCfg?.rounds ?? mode?.defaultRounds ?? 10);
+  const [dartsPerRound, setDartsPerRound] = React.useState(savedCfg?.dartsPerRound ?? mode?.defaultDarts ?? 3);
+  const [targetScore, setTargetScore] = React.useState(savedCfg?.targetScore ?? mode?.targetScore ?? "");
+
+  // TERRITORIES (departements) — map selection
+  const isTerritories = gameId === "departements";
+  const [mapId, setMapId] = React.useState(() => {
+    const v = savedCfg?.mapId;
+    return typeof v === "string" && v ? v : "FR";
+  });
 
   const allPlayers = React.useMemo(() => {
     const botsAsProfiles = bots.map(b => ({ id: b.id, name: b.name, avatarDataUrl: null }));
@@ -45,6 +88,7 @@ export default function DartsModeConfig({ store, go, gameId }) {
       rounds: Math.max(1, Number(rounds) || 1),
       dartsPerRound: Math.max(1, Math.min(3, Number(dartsPerRound) || 3)),
       targetScore: targetScore === "" ? null : Number(targetScore) || null,
+      ...(isTerritories ? { mapId } : {}),
       players: selectedPlayers.map(p => ({ id: p.id, name: p.name, avatarDataUrl: p.avatarDataUrl ?? null })),
     };
     try { localStorage.setItem(`dc_modecfg_${gameId}`, JSON.stringify(cfg)); } catch {}
@@ -144,6 +188,39 @@ export default function DartsModeConfig({ store, go, gameId }) {
           </div>
         </div>
       </div>
+
+      {/* TERRITORIES — Map */}
+      {isTerritories && (
+        <div style={{ background:T.card, border:"1px solid "+T.border, borderRadius:16, padding:12, marginBottom:12 }}>
+          <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:10 }}>
+            <div style={{ fontWeight:900 }}>Carte (pays)</div>
+            <InfoDot
+              title="Carte"
+              body="Choisis la carte qui définit les territoires à jouer (France, Spain, USA...)."
+            />
+          </div>
+          <div style={{ display:"grid", gridTemplateColumns:"1fr", gap:10 }}>
+            <div style={{ background:"rgba(0,0,0,0.22)", border:"1px solid "+T.border, borderRadius:14, padding:10 }}>
+              <div style={{ fontSize:12, color:T.sub }}>Sélection</div>
+              <select value={mapId} onChange={(e)=>setMapId(e.target.value)} style={{
+                width:"100%", marginTop:6, padding:"10px 10px",
+                borderRadius:12, border:"1px solid "+T.border,
+                background:"rgba(255,255,255,0.06)", color:"#fff",
+                fontWeight:900,
+              }}>
+                {TERRITORIES_MAPS.map((m) => (
+                  <option key={m.id} value={m.id} style={{ color:"#000" }}>
+                    {m.label}
+                  </option>
+                ))}
+              </select>
+              <div style={{ fontSize:12, color:T.sub, marginTop:8 }}>
+                Code: <span style={{ color:"#fff", fontWeight:900 }}>{mapId}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Options */}
       <div style={{ background:T.card, border:"1px solid "+T.border, borderRadius:16, padding:12 }}>

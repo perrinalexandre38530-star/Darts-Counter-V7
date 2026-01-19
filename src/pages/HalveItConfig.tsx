@@ -1,5 +1,4 @@
-import React, { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import React, { useMemo, useState } from "react";
 import BackDot from "../components/BackDot";
 import InfoDot from "../components/InfoDot";
 import PageHeader from "../components/PageHeader";
@@ -8,48 +7,55 @@ import OptionRow from "../components/OptionRow";
 import OptionToggle from "../components/OptionToggle";
 import OptionSelect from "../components/OptionSelect";
 import { useLang } from "../contexts/LangContext";
+import { useTheme } from "../contexts/ThemeContext";
 
-const INFO_HALVE_IT = `
-HALVE-IT est un jeu de précision et de régularité.
 
-Chaque manche impose une cible précise.
+type BotLevel = "easy" | "normal" | "hard";
 
-🎯 Si au moins une fléchette touche la cible durant la volée,
-le score du joueur est conservé.
+export type HalveItConfigPayload = {
+  players: number;
+  botsEnabled: boolean;
+  botLevel: BotLevel;
+  rounds: number;
+  objective: number;
+};
 
-❌ Si aucune fléchette ne touche la cible,
-le score du joueur est divisé par deux.
+const INFO_TEXT = `Chaque round impose une cible. Si tu rates totalement la cible : score /2. Score final le plus haut = victoire.`;
 
-Le joueur avec le score final le plus élevé remporte la partie.
-`;
-
-export default function HalveItConfig() {
-  const navigate = useNavigate();
+export default function HalveItConfig(props: any) {
   const { t } = useLang();
+  useTheme();
 
   const [players, setPlayers] = useState(2);
   const [botsEnabled, setBotsEnabled] = useState(false);
-  const [botLevel, setBotLevel] = useState<"easy" | "normal" | "hard">("normal");
+  const [botLevel, setBotLevel] = useState<BotLevel>("normal");
+  const [rounds, setRounds] = useState(10);
+  const [objective, setObjective] = useState(0);
 
-  const [preset, setPreset] = useState<"standard" | "short">("standard");
-  const [bullEnabled, setBullEnabled] = useState(true);
-  const [doubleBull, setDoubleBull] = useState(false);
+  const payload: HalveItConfigPayload = { players, botsEnabled, botLevel, rounds, objective };
+
+  function goBack() {
+    if (props?.setTab) return props.setTab("games");
+    window.history.back();
+  }
+
+  function start() {
+    // App.tsx wiring: tab "halve_it_play"
+    if (props?.setTab) return props.setTab("halve_it_play", { config: payload });
+    // Router alternative: à adapter au câblage final si besoin
+  }
 
   return (
     <div className="page">
       <PageHeader
         title="HALVE-IT"
-        left={<BackDot onClick={() => navigate(-1)} />}
-        right={<InfoDot title="Règles HALVE-IT" content={INFO_HALVE_IT} />}
+        left={<BackDot onClick={goBack} />}
+        right={<InfoDot title="Règles HALVE-IT" content={INFO_TEXT} />}
       />
 
       <Section title={t("config.players", "Joueurs")}>
         <OptionRow label={t("config.playerCount", "Nombre de joueurs")}>
-          <OptionSelect
-            value={players}
-            options={[2, 3, 4]}
-            onChange={setPlayers}
-          />
+          <OptionSelect value={players} options={[2, 3, 4]} onChange={setPlayers} />
         </OptionRow>
 
         <OptionRow label={t("config.bots", "Bots IA")}>
@@ -60,52 +66,29 @@ export default function HalveItConfig() {
           <OptionRow label={t("config.botLevel", "Difficulté IA")}>
             <OptionSelect
               value={botLevel}
-              options={["easy", "normal", "hard"]}
+              options={[
+                { value: "easy", label: "Facile" },
+                { value: "normal", label: "Normal" },
+                { value: "hard", label: "Difficile" },
+              ]}
               onChange={setBotLevel}
             />
           </OptionRow>
         )}
       </Section>
 
-      <Section title={t("config.rules", "Règles de jeu")}>
-        <OptionRow label="Ordre des cibles">
-          <OptionSelect
-            value={preset}
-            options={[
-              { value: "standard", label: "Standard (15 → 20 → Bull)" },
-              { value: "short", label: "Court" },
-            ]}
-            onChange={setPreset}
-          />
+      <Section title={t("config.rules", "Règles")}>
+        <OptionRow label={t("config.rounds", "Rounds")}>
+          <OptionSelect value={rounds} options={[5, 8, 10, 12, 15]} onChange={setRounds} />
         </OptionRow>
 
-        <OptionRow label="Bull activé">
-          <OptionToggle value={bullEnabled} onChange={setBullEnabled} />
+        <OptionRow label={t("config.objective", "Objectif")}>
+          <OptionSelect value={objective} options={[0, 100, 170, 300, 500, 1000]} onChange={setObjective} />
         </OptionRow>
-
-        {bullEnabled && (
-          <OptionRow label="Double Bull">
-            <OptionToggle value={doubleBull} onChange={setDoubleBull} />
-          </OptionRow>
-        )}
       </Section>
 
       <Section>
-        <button
-          className="btn-primary w-full"
-          onClick={() =>
-            navigate("/halve-it/play", {
-              state: {
-                players,
-                botsEnabled,
-                botLevel,
-                preset,
-                bullEnabled,
-                doubleBull,
-              },
-            })
-          }
-        >
+        <button className="btn-primary w-full" onClick={start}>
           {t("config.startGame", "Démarrer la partie")}
         </button>
       </Section>

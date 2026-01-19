@@ -14,9 +14,9 @@ type Config = {
   objective: number;
 };
 
-const INFO_TEXT = `Additionne tes points sur X rounds. Score final le plus haut gagne.`;
+const INFO_TEXT = `MVP : base jouable. Version complète : doubles 1..20, pénalité si raté.`;
 
-export default function CountUpPlay(props: any) {
+export default function Bobs27Play(props: any) {
   const { t } = useLang();
   useTheme();
 
@@ -28,7 +28,7 @@ export default function CountUpPlay(props: any) {
       botsEnabled: false,
       botLevel: "normal",
       rounds: 10,
-      objective: 0,
+      objective: 27,
     };
 
   const [roundIdx, setRoundIdx] = useState(0);
@@ -83,9 +83,9 @@ export default function CountUpPlay(props: any) {
   return (
     <div className="page">
       <PageHeader
-        title="COUNT-UP"
+        title="BOB'S 27"
         left={<BackDot onClick={goBack} />}
-        right={<InfoDot title="Règles COUNT-UP" content={INFO_TEXT} />}
+        right={<InfoDot title="Règles BOB'S 27" content={INFO_TEXT} />}
       />
 
       <div style={{ padding: 12 }}>
@@ -103,7 +103,7 @@ export default function CountUpPlay(props: any) {
               <div style={{ fontSize: 12, opacity: 0.8, fontWeight: 900, letterSpacing: 1 }}>
                 {t("generic.round", "ROUND")} {Math.min(roundIdx + 1, cfg.rounds)}/{cfg.rounds}
               </div>
-              <div style={{ fontSize: 18, fontWeight: 1000, marginTop: 6 }}>Count-Up (MVP)</div>
+              <div style={{ fontSize: 18, fontWeight: 1000, marginTop: 6 }}>Bob's 27 (MVP)</div>
             </div>
             <div style={{ textAlign: "right" }}>
               <div style={{ fontSize: 12, opacity: 0.8, fontWeight: 900, letterSpacing: 1 }}>
