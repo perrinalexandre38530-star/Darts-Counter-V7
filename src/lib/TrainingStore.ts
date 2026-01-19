@@ -24,6 +24,59 @@ function safeParse<T>(raw: string | null, fallback: T): T {
   }
 }
 
+/**
+ * localStorage peut lever QuotaExceededError (souvent sur mobile / Safari / WebView).
+ * On applique un "best-effort" : on prune les plus anciens éléments jusqu'à réussir.
+ */
+function isQuotaExceeded(err: unknown): boolean {
+  const e = err as any;
+  const name = String(e?.name || "");
+  const msg = String(e?.message || "");
+  return (
+    name === "QuotaExceededError" ||
+    name === "NS_ERROR_DOM_QUOTA_REACHED" ||
+    /quota/i.test(name) ||
+    /quota/i.test(msg)
+  );
+}
+
+function trySetItemWithPrune<T>(
+  key: string,
+  list: T[],
+  prune: (current: T[]) => T[],
+  opts?: { maxAttempts?: number },
+): T[] {
+  const maxAttempts = opts?.maxAttempts ?? 8;
+  let current = list;
+  for (let i = 0; i < maxAttempts; i++) {
+    try {
+      localStorage.setItem(key, JSON.stringify(current));
+      return current;
+    } catch (err) {
+      if (!isQuotaExceeded(err)) throw err;
+      const next = prune(current);
+      // si prune ne change rien, on stop (sinon boucle infinie)
+      if (next.length === current.length) {
+        // dernier recours: vider la clé pour éviter crashs en boucle
+        try {
+          localStorage.removeItem(key);
+        } catch {
+          // ignore
+        }
+        return [];
+      }
+      current = next;
+    }
+  }
+  // dernier recours
+  try {
+    localStorage.removeItem(key);
+  } catch {
+    // ignore
+  }
+  return [];
+}
+
 // --------------------------------------------
 // Types X01 — sessions complètes pour StatsHub
 // --------------------------------------------
@@ -67,7 +120,21 @@ function loadHits(): TrainingHit[] {
 }
 
 function saveHits(list: TrainingHit[]) {
-  localStorage.setItem(TRAINING_HITS_KEY, JSON.stringify(list));
+  // Prune progressif: on retire les plus anciens hits (ceux du début)
+  // jusqu'à ce que ça rentre dans le quota.
+  const pruned = trySetItemWithPrune(
+    TRAINING_HITS_KEY,
+    list,
+    (cur) => {
+      // garde ~75% des plus récents
+      const keepFrom = Math.floor(cur.length * 0.25);
+      return cur.slice(keepFrom);
+    },
+  );
+  // Si on a dû prune, on remplace la liste en mémoire pour cohérence
+  if (pruned.length !== list.length) {
+    // nothing else to do (appelants reliront au besoin)
+  }
 }
 
 function loadSessions(): TrainingSession[] {
@@ -78,7 +145,13 @@ function loadSessions(): TrainingSession[] {
 }
 
 function saveSessions(list: TrainingSession[]) {
-  localStorage.setItem(TRAINING_SESSIONS_KEY, JSON.stringify(list));
+  // Les sessions peuvent grossir dans le temps. On garde les plus récentes.
+  trySetItemWithPrune(TRAINING_SESSIONS_KEY, list, (cur) => {
+    // garde les 200 plus récentes, sinon coupe la moitié la plus ancienne
+    if (cur.length > 200) return cur.slice(cur.length - 200);
+    const drop = Math.max(1, Math.floor(cur.length / 2));
+    return cur.slice(drop);
+  });
 }
 
 // ---- X01 solo: sessions complètes (Stats Training X01) ----
@@ -91,7 +164,34 @@ function loadX01Sessions(): TrainingX01Session[] {
 }
 
 function saveX01Sessions(list: TrainingX01Session[]) {
-  localStorage.setItem(TRAINING_X01_STATS_KEY, JSON.stringify(list));
+  // Training X01 peut exploser le quota (dartsDetail). Stratégie:
+  // 1) garder les N dernières sessions
+  // 2) si encore trop gros, on retire dartsDetail des anciennes sessions
+  // 3) si encore trop gros, on coupe plus agressivement
+  const sorted = [...list].sort((a, b) => a.date - b.date); // ancien -> récent
+
+  const prune = (cur: TrainingX01Session[]): TrainingX01Session[] => {
+    // étape A: limiter aux 120 dernières
+    if (cur.length > 120) return cur.slice(cur.length - 120);
+
+    // étape B: enlever les détails des 80% plus anciennes
+    const cutAt = Math.floor(cur.length * 0.2); // on conserve details sur les 20% + récentes
+    const out = cur.map((s, idx) =>
+      idx < cur.length - cutAt
+        ? ({ ...s, dartsDetail: undefined } as TrainingX01Session)
+        : s,
+    );
+
+    // si rien ne change (déjà sans details), coupe moitié
+    const changed = out.some((s, i) => s.dartsDetail !== cur[i]?.dartsDetail);
+    if (!changed) {
+      const drop = Math.max(1, Math.floor(cur.length / 2));
+      return cur.slice(drop);
+    }
+    return out;
+  };
+
+  trySetItemWithPrune(TRAINING_X01_STATS_KEY, sorted, prune);
 }
 
 // --- API PUBLIQUE ---

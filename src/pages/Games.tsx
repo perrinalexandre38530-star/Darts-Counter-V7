@@ -17,6 +17,16 @@
 //     - autres trainings => fallback vers "training" (hub)
 // - Onglets colorisés par catégorie comme les favoris
 // - SUPPRIMER l’onglet "TRAINING" (mais garder la carte TRAINING au-dessus)
+//
+// ✅ NEW (ticker demandé):
+// - NEW_GAME.png fixe à gauche (ne bouge jamais)
+// - Centre: 1 nouveau mode à la fois, rotation auto
+//   + image ticker (format source 800x230) affichée en contain (proportions respectées)
+// - Droite: image PLAY fixe (cliquable) => ouvre la CONFIG du mode affiché au centre
+//
+// ✅ Chargement images tickers:
+// - Mets tes images: src/assets/tickers/ticker_<gameId>.png
+// - Le composant NewModesTicker les charge automatiquement via import.meta.glob
 // ============================================
 
 import React from "react";
@@ -32,6 +42,11 @@ import {
   type DartsGameDef,
 } from "../games/dartsGameRegistry";
 import { History } from "../lib/history";
+
+// ✅ NEW ticker component
+import NewModesTicker, { type NewModeTickerItem } from "../components/NewModesTicker";
+import newGameBadge from "../assets/new_game.png";
+import playBadge from "../assets/play.png";
 
 type Props = {
   setTab: (tab: any, params?: any) => void;
@@ -51,7 +66,6 @@ function safeUpper(s: string) {
 }
 
 // ✅ derive a “count key” from history records for a given game def
-// We count primarily on `rec.kind` (used by most play pages), fallback to known mode fields.
 function matchRecordToGameId(rec: any, gameId: string): boolean {
   const k = String(rec?.kind || "");
   if (k && k === gameId) return true;
@@ -61,7 +75,6 @@ function matchRecordToGameId(rec: any, gameId: string): boolean {
   const m3 = String(rec?.summary?.mode || "");
   const m4 = String(rec?.payload?.mode || "");
 
-  // Some modes might store mode-like fields; keep it conservative.
   return m1 === gameId || m2 === gameId || m3 === gameId || m4 === gameId;
 }
 
@@ -85,7 +98,6 @@ function pickFavoriteByCounts(cat: GameCategory, counts: PlayCountMap): DartsGam
     }
   }
 
-  // If no games played in this category => default favorite (by popularity)
   if (bestCount <= 0) return pickDefaultFavorite(cat);
   return best;
 }
@@ -136,7 +148,6 @@ export default function Games({ setTab }: Props) {
         const map: PlayCountMap = {};
 
         for (const r of rows as any[]) {
-          // Count against every known game id (small list => ok)
           for (const g of DARTS_GAMES) {
             if (matchRecordToGameId(r, g.id)) {
               map[g.id] = (map[g.id] ?? 0) + 1;
@@ -161,7 +172,6 @@ export default function Games({ setTab }: Props) {
     []
   );
 
-  // ✅ If someone ends up on "training" via stale state, force back to classic.
   React.useEffect(() => {
     if (activeCat === "training") setActiveCat("classic");
   }, [activeCat]);
@@ -302,7 +312,6 @@ export default function Games({ setTab }: Props) {
           (e.currentTarget as HTMLButtonElement).style.transform = "scale(1)";
         }}
       >
-        {/* Halo / glow soft */}
         <div
           aria-hidden
           style={{
@@ -315,7 +324,6 @@ export default function Games({ setTab }: Props) {
           }}
         />
 
-        {/* Sheen diagonal */}
         <div
           aria-hidden
           style={{
@@ -332,7 +340,6 @@ export default function Games({ setTab }: Props) {
           }}
         />
 
-        {/* Inner border subtle */}
         <div
           aria-hidden
           style={{
@@ -344,7 +351,6 @@ export default function Games({ setTab }: Props) {
           }}
         />
 
-        {/* Watermark ★ */}
         <div
           aria-hidden
           style={{
@@ -364,7 +370,6 @@ export default function Games({ setTab }: Props) {
           ★
         </div>
 
-        {/* Pill top-right */}
         <div
           aria-hidden
           style={{
@@ -411,11 +416,62 @@ export default function Games({ setTab }: Props) {
         >
           {label}
         </div>
-
-        {/* ✅ AUCUNE annotation */}
       </button>
     );
   }
+
+  // ✅ NEW MODES candidates (liste + mapping config)
+  // - le composant chargera: src/assets/tickers/ticker_<id>.png
+  const newModes: NewModeTickerItem[] = React.useMemo(() => {
+    const list = (DARTS_GAMES || []).filter((g: any) => g && g.ready);
+
+    const explicit = list.filter((g: any) => g.isNew === true);
+    const base = explicit.length
+      ? explicit
+      : list.filter((g: any) => {
+          const id = String(g.id || "");
+          return (
+            id.includes("happy") ||
+            id.includes("t70") ||
+            id.includes("halve") ||
+            id.includes("bobs") ||
+            id.includes("bob") ||
+            id.includes("count") ||
+            id.includes("prison") ||
+            id.includes("encul") ||
+            id.includes("vache")
+          );
+        });
+
+    // helper pour configPath robuste
+    const configPathFor = (g: any) => {
+      const raw = String(g?.configTab || g?.configPath || "");
+      if (raw) {
+        // accepte "tab:xxx" ou "xxx"
+        return raw.startsWith("tab:") ? raw : `tab:${raw}`;
+      }
+
+      const tab = String(g?.tab || "");
+      if (tab) {
+        // si déjà config
+        if (/config/i.test(tab)) return `tab:${tab}`;
+        // heuristiques (best-effort)
+        if (tab.endsWith("_play")) return `tab:${tab.replace(/_play$/i, "_config")}`;
+        if (tab.endsWith("Play")) return `tab:${tab.replace(/Play$/i, "Config")}`;
+        if (tab.includes("Play")) return `tab:${tab.replace(/Play/gi, "Config")}`;
+        // fallback: tente _config
+        return `tab:${g.id}_config`;
+      }
+
+      return `tab:${g.id}_config`;
+    };
+
+    return (base.length ? base : list.slice(0, 6)).slice(0, 12).map((g: any) => ({
+      id: String(g.id),
+      label: String(g.label),
+      configPath: configPathFor(g),
+    }));
+  }, []);
 
   return (
     <div
@@ -451,9 +507,8 @@ export default function Games({ setTab }: Props) {
         {t("games.subtitle", "Choisis un mode de jeu")}
       </div>
 
-      {/* ✅ Top : Stats + Favoris */}
       <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 10 }}>
-        {/* STATS (vert) - centré, sans i */}
+        {/* ✅ STATS (vert) tout en haut — sans i */}
         <button
           onClick={() => navigate("stats")}
           style={{
@@ -464,14 +519,16 @@ export default function Games({ setTab }: Props) {
             borderRadius: 16,
             cursor: "pointer",
             overflow: "hidden",
+            userSelect: "none",
+            WebkitTapHighlightColor: "transparent",
             ...tintedCardStyle(TINT_STATS),
           }}
         >
           <div
             style={{
-              fontSize: 14,
+              fontSize: 12,
               fontWeight: 900,
-              letterSpacing: 0.9,
+              letterSpacing: 1.0,
               color: TINT_STATS.title,
               textTransform: "uppercase",
               textShadow: `0 0 12px ${TINT_STATS.glow}`,
@@ -480,6 +537,34 @@ export default function Games({ setTab }: Props) {
             {t("games.stats.title", "STATISTIQUES")}
           </div>
         </button>
+
+        {/* ✅ TICKER 3 ZONES — images tickers 800x230 en contain */}
+        <NewModesTicker
+          items={newModes}
+          intervalMs={3000}
+          leftLogoSrc={newGameBadge}
+          playLogoSrc={playBadge}
+          onNavigate={(path) => {
+            if (!path) return;
+            const p = String(path);
+
+            if (p.startsWith("tab:")) {
+              navigate(p.replace("tab:", ""));
+              return;
+            }
+
+            if (!p.includes("/") && !p.includes("#") && !p.includes("?")) {
+              navigate(p);
+              return;
+            }
+
+            if (p.startsWith("#")) {
+              window.location.hash = p.replace(/^#/, "");
+              return;
+            }
+            window.location.href = p;
+          }}
+        />
 
         {renderFavoriteCard({
           title: t("games.fav.classic.title", "FAVORI — CLASSIQUES"),
@@ -521,7 +606,6 @@ export default function Games({ setTab }: Props) {
           kind: "fun",
         })}
 
-        {/* ✅ Séparateur thème */}
         {separatorBar}
 
         {/* ✅ Remettre TRAINING + TOURNOIS sous les favoris */}
@@ -683,14 +767,12 @@ export default function Games({ setTab }: Props) {
         {(() => {
           const ordered = (GAME_SUBCATEGORIES?.[activeCat] || []).map((s) => s.id);
 
-          // Group games by subCategory (fallback = 'other')
           const groups: Record<string, typeof gamesForCat> = {};
           for (const g of gamesForCat) {
             const key = (g as any).subCategory ? String((g as any).subCategory) : "other";
             (groups[key] ||= []).push(g);
           }
 
-          // Stable order: configured first, then any unexpected keys
           const keys = Array.from(new Set([...ordered, ...Object.keys(groups)])).filter(
             (k) => (groups[k] || []).length > 0
           );
@@ -704,7 +786,6 @@ export default function Games({ setTab }: Props) {
 
           return keys.map((k) => (
             <div key={k} style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-              {/* Sous-titre */}
               <div
                 style={{
                   marginTop: 6,
@@ -726,7 +807,9 @@ export default function Games({ setTab }: Props) {
 
               {(groups[k] || []).map((g) => {
                 const disabled = !g.ready;
-                const comingSoon = disabled ? t("games.status.comingSoon", "Bientôt disponible") : null;
+                const comingSoon = disabled
+                  ? t("games.status.comingSoon", "Bientôt disponible")
+                  : null;
 
                 return (
                   <button
@@ -760,7 +843,14 @@ export default function Games({ setTab }: Props) {
                       {g.label}
                     </div>
 
-                    <div style={{ marginTop: 4, fontSize: 12, color: theme.textSoft, opacity: 0.9 }}>
+                    <div
+                      style={{
+                        marginTop: 4,
+                        fontSize: 12,
+                        color: theme.textSoft,
+                        opacity: 0.9,
+                      }}
+                    >
                       {comingSoon && (
                         <span style={{ fontSize: 11, fontStyle: "italic", opacity: 0.9 }}>
                           {comingSoon}
@@ -849,7 +939,14 @@ export default function Games({ setTab }: Props) {
             </div>
 
             {!infoGame.ready && (
-              <div style={{ fontSize: 12, fontWeight: 600, color: theme.primary, marginBottom: 10 }}>
+              <div
+                style={{
+                  fontSize: 12,
+                  fontWeight: 600,
+                  color: theme.primary,
+                  marginBottom: 10,
+                }}
+              >
                 {t("games.status.comingSoon", "Bientôt disponible")}
               </div>
             )}

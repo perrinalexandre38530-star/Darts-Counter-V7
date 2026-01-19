@@ -109,7 +109,6 @@ import type { X01ConfigV3 as X01ConfigV3Type } from "./types/x01v3";
 import GameSelect from "./pages/GameSelect";
 import Home from "./pages/Home";
 import Games from "./pages/Games";
-import ModeNotReady from "./pages/ModeNotReady";
 import TournamentsHome from "./pages/TournamentsHome";
 import Profiles from "./pages/Profiles";
 import FriendsPage from "./pages/FriendsPage";
@@ -232,6 +231,8 @@ import PingPongStatsHistoryPage from "./pages/pingpong/PingPongStatsHistoryPage"
 
 // Dev helper
 import { installHistoryProbe } from "./dev/devHistoryProbe";
+import DartsModeConfig from "./pages/modes/DartsModeConfig";
+import DartsModePlay from "./pages/modes/DartsModePlay";
 if (import.meta.env.DEV) installHistoryProbe();
 
 // =============================================================
@@ -515,6 +516,8 @@ type Tab =
   | "x01_play_v3"
   | "sync_center"
   | "auth_callback"
+  | "darts_mode_config"
+  | "darts_mode_play"
   | "auth_reset";
 
 /* redirect TrainingStats → StatsHub */
@@ -1844,13 +1847,8 @@ function App() {
           ) : activeSport === "pingpong" ? (
             <PingPongMenuGames go={go} />
           ) : (
-            <Games setTab={(t: any) => go(t)} />
+            <Games setTab={(t: any, p?: any) => go(t, p)} />
           );
-        break;
-
-      // ✅ Nouveau: fallback pour les modes listés mais pas encore implémentés
-      case "mode_not_ready":
-        page = <ModeNotReady />;
         break;
 
       // ✅ NEW (OBLIGATOIRE): Pétanque menu/config/play (snake_case)
@@ -2472,6 +2470,19 @@ function App() {
             <AvatarCreator size={512} defaultName={targetProfile?.name || ""} onSave={handleSaveAvatarProfile} isBotMode={isBotMode} />
           </div>
         );
+        break;
+      }
+
+      case "darts_mode_config": {
+        const gameId = routeParams?.gameId;
+        page = <DartsModeConfig store={store} go={go} gameId={gameId} />;
+        break;
+      }
+
+      case "darts_mode_play": {
+        const gameId = routeParams?.gameId;
+        const cfg = routeParams?.config;
+        page = <DartsModePlay go={go} gameId={gameId} config={cfg} />;
         break;
       }
 
