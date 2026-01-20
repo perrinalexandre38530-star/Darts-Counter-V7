@@ -2658,6 +2658,8 @@ try {
         }}
       >
         <PlayersListOnly
+          cameraOpen={cameraOpen}
+          setCameraOpen={setCameraOpen}
           players={players}
           profileById={profileById}
           liveStatsByPlayer={liveStatsByPlayer}
@@ -2669,8 +2671,6 @@ try {
           lastVisitsByPlayer={lastVisitsByPlayer}
           lastVisitIsBustByPlayer={lastVisitIsBustByPlayer}
           avg3ByPlayer={avg3ByPlayer}
-          cameraOpen={cameraOpen}
-          setCameraOpen={setCameraOpen}
         />
       </div>
 
@@ -3209,6 +3209,8 @@ function HeaderBlock(props: {
 }
 
 function PlayersListOnly(props: {
+  cameraOpen: boolean;
+  setCameraOpen: (v: boolean) => void;
   players: any[];
   profileById: Record<string, { avatarDataUrl: string | null; name: string }>;
   liveStatsByPlayer: Record<string, any>;
@@ -3220,10 +3222,10 @@ function PlayersListOnly(props: {
   lastVisitsByPlayer: Record<string, UIDart[]>;
   lastVisitIsBustByPlayer: Record<string, boolean>;
   avg3ByPlayer: Record<string, number>;
-  cameraOpen: boolean;
-  setCameraOpen: (v: boolean) => void;
 }) {
   const {
+    cameraOpen,
+    setCameraOpen,
     players,
     profileById,
     liveStatsByPlayer,
@@ -3389,8 +3391,8 @@ function PlayersListOnly(props: {
     
       {/* Caméra assistée overlay (dartsmind-like UX) */}
       <CameraAssistedOverlay
-        open={props.cameraOpen}
-        onClose={() => props.setCameraOpen(false)}
+        open={cameraOpen}
+        onClose={() => setCameraOpen(false)}
         onDart={(d) => {
           try {
             if (typeof window === "undefined") return;
@@ -4129,3 +4131,4 @@ function saveX01V3MatchToHistory({
     );
   }
 }
+

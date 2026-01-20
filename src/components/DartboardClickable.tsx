@@ -1,12 +1,14 @@
 // ============================================
 // src/components/DartboardClickable.tsx
 // Cible interactive (touch/click) => déduit segment + multiplicateur
-// - SVG/Canvas-free: simple div + calcul géométrique
-// - Mapping standard des numéros autour de la cible
-// - Anneaux approximés avec proportions réalistes (suffisant pour une saisie UX)
+// - Basé sur une image (photo) en fond
+// - Détection via coordonnées polaires (angle + rayon)
+// - Mapping standard des numéros (20 en haut, sens horaire)
+// - Anneaux calibrés "UX" (double/triple/bull) + INSET ajustable
 // ============================================
 
-import React from "react";
+import React, { useMemo, useRef, useState } from "react";
+import dartboardPhoto from "../ui_assets/dartboard_photo.png";
 
 type Props = {
   /** Callback segment (0..20, 25) + mult (1..3) */
@@ -21,260 +23,222 @@ type Props = {
   disabled?: boolean;
 };
 
-// Ordre standard (en tournant dans le sens horaire depuis le haut)
+// Numéros standards, en partant du 20 en haut, sens horaire.
 const WEDGE_ORDER = [
   20, 1, 18, 4, 13, 6, 10, 15, 2, 17,
   3, 19, 7, 16, 8, 11, 14, 9, 12, 5,
-];
+] as const;
 
-// Proportions normalisées (r en [0..1]) basées sur des dimensions de board standard.
-// Objectif: UX fiable, pas calibration officielle.
+const TAU = Math.PI * 2;
+const WEDGE = TAU / 20;
+
+// Réglage principal pour "rentrer dans la cible" (compense marges/transparences de l'image).
+// Augmente cette valeur si tu cliques trop facilement sur le "double" externe.
+const INSET_PX = 26;
+
+// Proportions normalisées (r en [0..1]) calibrées pour la photo actuelle.
+// (Ces valeurs sont volontairement "UX": on privilégie la précision de saisie.)
 const R = {
-  DBULL: 0.037, // ~6.35 / 170
-  BULL: 0.094, // ~15.9 / 170
-  TRIPLE_IN: 0.582, // ~99 / 170
-  TRIPLE_OUT: 0.629, // ~107 / 170
-  DOUBLE_IN: 0.953, // ~162 / 170
-  DOUBLE_OUT: 1.0,
-};
+  DBULL: 0.055,
+  BULL: 0.115,
 
-function clamp(n: number, a: number, b: number) {
-  return Math.max(a, Math.min(b, n));
+  TRIPLE_IN: 0.525,
+  TRIPLE_OUT: 0.600,
+
+  DOUBLE_IN: 0.845,
+  DOUBLE_OUT: 0.955,
+} as const;
+
+function clamp01(v: number) {
+  return Math.max(0, Math.min(1, v));
 }
 
-function polarFromEvent(
-  el: HTMLElement,
-  clientX: number,
-  clientY: number
-): { r: number; ang: number } {
-  const rect = el.getBoundingClientRect();
-  const cx = rect.left + rect.width / 2;
-  const cy = rect.top + rect.height / 2;
-  const dx = clientX - cx;
-  const dy = clientY - cy;
-  const radiusPx = Math.min(rect.width, rect.height) / 2;
-  const r = Math.sqrt(dx * dx + dy * dy) / radiusPx;
-  // angle 0 au "haut", sens horaire
-  const ang = Math.atan2(dy, dx); // -pi..pi, 0 à droite
-  const angFromTop = ang + Math.PI / 2;
-  const angCW = (2 * Math.PI - angFromTop) % (2 * Math.PI);
-  return { r, ang: angCW };
+function normAngle0TopClockwise(dx: number, dy: number) {
+  // Browser coords: +x right, +y down.
+  // atan2(dy, dx): right=0, down=+pi/2, left=pi, up=-pi/2.
+  // Add +pi/2 so that up becomes 0. Then increasing angle goes clockwise.
+  let a = Math.atan2(dy, dx) + Math.PI / 2;
+  if (a < 0) a += TAU;
+  return a; // [0..2pi)
 }
 
-function pickWedge(angleCW: number): number {
-  const slice = (2 * Math.PI) / 20;
-  const idx = Math.floor(((angleCW + slice / 2) % (2 * Math.PI)) / slice);
-  return WEDGE_ORDER[clamp(idx, 0, 19)];
+function segmentFromAngle(angle0TopClockwise: number) {
+  // Wedges centered on their number => offset by half-wedge.
+  const idx = Math.floor((angle0TopClockwise + WEDGE / 2) / WEDGE) % 20;
+  return WEDGE_ORDER[idx] ?? 20;
 }
 
-function pickRing(r: number): { segment: number; mult: 1 | 2 | 3 } {
-  if (r > R.DOUBLE_OUT) return { segment: 0, mult: 1 }; // dehors
-  if (r <= R.DBULL) return { segment: 25, mult: 2 }; // 50
-  if (r <= R.BULL) return { segment: 25, mult: 1 }; // 25
-  if (r >= R.DOUBLE_IN && r <= R.DOUBLE_OUT) return { segment: -1 as any, mult: 2 };
-  if (r >= R.TRIPLE_IN && r <= R.TRIPLE_OUT) return { segment: -1 as any, mult: 3 };
-  return { segment: -1 as any, mult: 1 };
+function classifyHit(r: number, angle0TopClockwise: number): { seg: number; mul: 1 | 2 | 3 } {
+  // Outside board => miss (0)
+  if (!(r >= 0) || r > 1.02) return { seg: 0, mul: 1 };
+
+  // Bulls
+  if (r <= R.DBULL) return { seg: 25, mul: 2 };
+  if (r <= R.BULL) return { seg: 25, mul: 1 };
+
+  const seg = segmentFromAngle(angle0TopClockwise);
+
+  // Rings
+  if (r >= R.DOUBLE_IN && r <= R.DOUBLE_OUT) return { seg, mul: 2 };
+  if (r >= R.TRIPLE_IN && r <= R.TRIPLE_OUT) return { seg, mul: 3 };
+
+  // Single
+  return { seg, mul: 1 };
 }
 
-export default function DartboardClickable({
-  onHit,
-  multiplier,
-  size,
-  debug = false,
-  disabled = false,
-}: Props) {
-  const ref = React.useRef<HTMLDivElement | null>(null);
-  const [last, setLast] = React.useState<null | {
-    label: string;
-    x: number;
-    y: number;
-  }>(null);
+export default function DartboardClickable(props: Props) {
+  const { onHit, multiplier, size, debug, disabled } = props;
+  const ref = useRef<HTMLDivElement | null>(null);
+  const [last, setLast] = useState<{ seg: number; mul: 1 | 2 | 3; x: number; y: number } | null>(null);
 
-  function handlePointer(e: React.PointerEvent) {
+  const dimStyle = useMemo(() => {
+    const s = size ?? 320;
+    return { width: s, height: s };
+  }, [size]);
+
+  function handlePointer(e: React.PointerEvent<HTMLDivElement>) {
     if (disabled) return;
     const el = ref.current;
     if (!el) return;
-    const { r, ang } = polarFromEvent(el, e.clientX, e.clientY);
-    const wedge = pickWedge(ang);
-    const ring = pickRing(r);
 
-    // Bull/DBull ignorent le multiplier externe, on fixe.
-    if (ring.segment === 25) {
-      onHit(25, ring.mult);
-      setLast({ label: ring.mult === 2 ? "DBULL" : "BULL", x: e.clientX, y: e.clientY });
-      return;
+    const rect = el.getBoundingClientRect();
+    const cx = rect.left + rect.width / 2;
+    const cy = rect.top + rect.height / 2;
+
+    const x = e.clientX - cx;
+    const y = e.clientY - cy;
+
+    const radiusPx = Math.max(10, Math.min(rect.width, rect.height) / 2 - INSET_PX);
+    const dist = Math.sqrt(x * x + y * y);
+    const r = clamp01(dist / radiusPx);
+
+    const ang = normAngle0TopClockwise(x, y);
+    const hit = classifyHit(r, ang);
+
+    // Safety: éviter tout NaN/Object dans la pipe
+    const seg = Number.isFinite(hit.seg) ? hit.seg : 0;
+    const mul = (hit.mul === 2 || hit.mul === 3) ? hit.mul : 1;
+
+    setLast({ seg, mul, x, y });
+
+    try {
+      onHit(seg, mul);
+    } catch {
+      // noop
     }
-
-    if (ring.segment === 0) {
-      onHit(0, 1);
-      setLast({ label: "MISS", x: e.clientX, y: e.clientY });
-      return;
-    }
-
-    // Anneaux D/T imposent le multiplicateur.
-    const forcedMult = ring.mult;
-    const finalMult: 1 | 2 | 3 = forcedMult === 1 ? multiplier : forcedMult;
-    onHit(wedge, finalMult);
-    const prefix = finalMult === 3 ? "T" : finalMult === 2 ? "D" : "S";
-    setLast({ label: `${prefix}${wedge}`, x: e.clientX, y: e.clientY });
   }
-
-  const px = size ?? 320;
 
   return (
     <div
+      ref={ref}
+      onPointerDown={handlePointer}
       style={{
-        width: size ? px : "100%",
-        maxWidth: size ? px : 520,
+        ...dimStyle,
+        position: "relative",
         margin: "0 auto",
+        touchAction: "none",
+        userSelect: "none",
+        borderRadius: "999px",
+        overflow: "hidden",
+        opacity: disabled ? 0.55 : 1,
+        filter: disabled ? "grayscale(0.3)" : "none",
+        background: "rgba(0,0,0,.25)",
+        border: "1px solid rgba(255,255,255,.10)",
       }}
+      aria-label="Dartboard"
+      role="button"
     >
-      <div
-        ref={ref}
-        onPointerDown={handlePointer}
+      {/* Image */}
+      <img
+        src={dartboardPhoto}
+        alt="dartboard"
+        draggable={false}
         style={{
-          position: "relative",
           width: "100%",
-          aspectRatio: "1 / 1",
-          borderRadius: "999px",
-          border: "1px solid rgba(255,255,255,.10)",
-          background:
-            "radial-gradient(circle at center, rgba(255,255,255,.10) 0%, rgba(0,0,0,.55) 35%, rgba(0,0,0,.85) 100%)",
-          boxShadow: "0 18px 40px rgba(0,0,0,.45)",
-          overflow: "hidden",
-          touchAction: "none",
-          userSelect: "none",
+          height: "100%",
+          objectFit: "contain",
+          display: "block",
+          pointerEvents: "none",
         }}
-        aria-label="Cible interactive"
-        role="button"
+      />
+
+      {/* Badge multiplicateur (état sélectionné parent) */}
+      <div
+        style={{
+          position: "absolute",
+          left: 10,
+          top: 10,
+          padding: "6px 10px",
+          borderRadius: 12,
+          background: "rgba(0,0,0,.55)",
+          border: "1px solid rgba(255,255,255,.10)",
+          color: "rgba(255,255,255,.85)",
+          fontWeight: 900,
+          letterSpacing: 0.3,
+          fontSize: 12,
+          pointerEvents: "none",
+        }}
       >
-        {/* Anneaux visuels (approx.) */}
-        <Ring r={R.DOUBLE_OUT} c="rgba(255,255,255,.08)" />
-        <Ring r={R.DOUBLE_IN} c="rgba(255,255,255,.06)" />
-        <Ring r={R.TRIPLE_OUT} c="rgba(255,255,255,.06)" />
-        <Ring r={R.TRIPLE_IN} c="rgba(255,255,255,.06)" />
-        <Ring r={R.BULL} c="rgba(255,255,255,.10)" />
-        <Ring r={R.DBULL} c="rgba(255,255,255,.18)" />
+        {multiplier === 3 ? "T" : multiplier === 2 ? "D" : "S"}
+      </div>
 
-        {/* Repères 20 secteurs */}
-        <Sectors />
-
-        {/* Badge multiplicateur actif */}
-        <div
-          style={{
-            position: "absolute",
-            left: 12,
-            top: 12,
-            padding: "6px 10px",
-            borderRadius: 12,
-            background: "rgba(0,0,0,.55)",
-            border: "1px solid rgba(255,255,255,.10)",
-            color: "rgba(255,255,255,.85)",
-            fontWeight: 900,
-            letterSpacing: 0.3,
-            fontSize: 12,
-          }}
-          title="Multiplicateur courant (S/D/T)"
-        >
-          {multiplier === 3 ? "TRIPLE" : multiplier === 2 ? "DOUBLE" : "SIMPLE"}
-        </div>
-
-        {/* Flash dernier hit */}
-        {last && (
+      {/* Dernier hit */}
+      {last ? (
+        <>
           <div
             style={{
               position: "absolute",
               left: "50%",
               top: "50%",
-              transform: "translate(-50%, -50%)",
-              padding: "10px 14px",
-              borderRadius: 14,
+              transform: "translate(-50%,-50%)",
+              padding: "6px 10px",
+              borderRadius: 999,
               background: "rgba(0,0,0,.60)",
-              border: "1px solid rgba(255,255,255,.14)",
-              color: "#ffc63a",
+              border: "1px solid rgba(255,255,255,.12)",
+              color: "#ffd46a",
               fontWeight: 1000,
-              fontSize: 18,
-              boxShadow: "0 0 28px rgba(255,198,58,.18)",
+              fontSize: 14,
+              letterSpacing: 0.2,
               pointerEvents: "none",
             }}
           >
-            {last.label}
+            {(last.mul === 3 ? "T" : last.mul === 2 ? "D" : "S") + (last.seg === 25 ? "BULL" : String(last.seg))}
           </div>
-        )}
 
-        {debug && <DebugOverlay />}
-      </div>
-      <div
-        style={{
-          marginTop: 8,
-          textAlign: "center",
-          fontSize: 12,
-          color: "rgba(255,255,255,.55)",
-          fontWeight: 800,
-        }}
-      >
-        Touchez la cible pour enregistrer une fléchette (Bull/DBull auto).
-      </div>
-    </div>
-  );
-}
+          {/* Point visuel */}
+          <div
+            style={{
+              position: "absolute",
+              left: `calc(50% + ${last.x}px)`,
+              top: `calc(50% + ${last.y}px)`,
+              width: 10,
+              height: 10,
+              transform: "translate(-50%,-50%)",
+              borderRadius: 999,
+              background: "rgba(255,255,255,.9)",
+              boxShadow: "0 0 0 2px rgba(0,0,0,.55)",
+              pointerEvents: "none",
+            }}
+          />
+        </>
+      ) : null}
 
-function Ring({ r, c }: { r: number; c: string }) {
-  return (
-    <div
-      style={{
-        position: "absolute",
-        left: "50%",
-        top: "50%",
-        width: `${r * 100}%`,
-        height: `${r * 100}%`,
-        transform: "translate(-50%, -50%)",
-        borderRadius: "999px",
-        border: `1px solid ${c}`,
-      }}
-    />
-  );
-}
-
-function Sectors() {
-  // 20 traits radiaux légers
-  const lines = Array.from({ length: 20 }).map((_, i) => {
-    const deg = (360 / 20) * i;
-    return (
-      <div
-        key={i}
-        style={{
-          position: "absolute",
-          left: "50%",
-          top: "50%",
-          width: 1,
-          height: "50%",
-          transform: `translate(-50%, -100%) rotate(${deg}deg)`,
-          transformOrigin: "50% 100%",
-          background: "rgba(255,255,255,.05)",
-        }}
-      />
-    );
-  });
-  return <>{lines}</>;
-}
-
-function DebugOverlay() {
-  return (
-    <div
-      style={{
-        position: "absolute",
-        inset: 0,
-        pointerEvents: "none",
-        color: "rgba(255,255,255,.18)",
-        fontWeight: 900,
-        fontSize: 11,
-      }}
-    >
-      <div style={{ position: "absolute", left: "50%", top: 0, transform: "translateX(-50%)" }}>N</div>
-      <div style={{ position: "absolute", right: 0, top: "50%", transform: "translateY(-50%)" }}>E</div>
-      <div style={{ position: "absolute", left: "50%", bottom: 0, transform: "translateX(-50%)" }}>S</div>
-      <div style={{ position: "absolute", left: 0, top: "50%", transform: "translateY(-50%)" }}>W</div>
+      {debug ? (
+        <div
+          style={{
+            position: "absolute",
+            left: 0,
+            top: 0,
+            right: 0,
+            bottom: 0,
+            pointerEvents: "none",
+            background:
+              "linear-gradient(to right, rgba(255,255,255,.10) 1px, transparent 1px), linear-gradient(to bottom, rgba(255,255,255,.10) 1px, transparent 1px)",
+            backgroundSize: "20px 20px",
+            mixBlendMode: "overlay",
+          }}
+        />
+      ) : null}
     </div>
   );
 }

@@ -5,15 +5,15 @@ export type PowerUpId = "reinforce" | "steal" | "shield";
 export type PowerUp = {
   id: PowerUpId;
   label: string;
-  value?: number;
   desc: string;
+  value?: number;
 };
 
 type Props = {
   teamColor: string;
   teamIndex: number;
   hand: PowerUp[];
-  selectedIdx: number | null;
+  selectedCardIdx: number | null;
   selectedTarget: number | null; // 1..20
   onSelectCard: (idx: number | null) => void;
   onSelectTarget: (n: number | null) => void;
@@ -25,7 +25,7 @@ export default function TerritoriesPowerUps({
   teamColor,
   teamIndex,
   hand,
-  selectedIdx,
+  selectedCardIdx,
   selectedTarget,
   onSelectCard,
   onSelectTarget,
@@ -49,19 +49,18 @@ export default function TerritoriesPowerUps({
 
         <button
           onClick={onActivate}
-          disabled={disabled || selectedIdx === null || selectedTarget === null}
+          disabled={disabled || selectedCardIdx === null || selectedTarget === null}
           style={{
             padding: "8px 12px",
             borderRadius: 12,
             border: "1px solid rgba(255,255,255,0.14)",
             background:
-              disabled || selectedIdx === null || selectedTarget === null
+              disabled || selectedCardIdx === null || selectedTarget === null
                 ? "rgba(255,255,255,0.06)"
                 : `${teamColor}22`,
             color: "#fff",
             fontWeight: 950,
-            cursor:
-              disabled || selectedIdx === null || selectedTarget === null ? "not-allowed" : "pointer",
+            cursor: disabled || selectedCardIdx === null || selectedTarget === null ? "not-allowed" : "pointer",
           }}
           title="Choisis une carte + un territoire, puis active"
         >
@@ -71,7 +70,7 @@ export default function TerritoriesPowerUps({
 
       <div style={{ marginTop: 10, display: "flex", gap: 8, flexWrap: "wrap" }}>
         {hand.map((p, idx) => {
-          const sel = idx === selectedIdx;
+          const sel = idx === selectedCardIdx;
           return (
             <button
               key={idx}

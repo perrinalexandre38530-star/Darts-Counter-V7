@@ -10,6 +10,11 @@ import { useTheme } from "../contexts/ThemeContext";
 import { useLang } from "../contexts/LangContext";
 import { useCurrentProfile } from "../hooks/useCurrentProfile";
 
+import BackDot from "../components/BackDot";
+import InfoDot from "../components/InfoDot";
+
+import tickerX01 from "../assets/tickers/ticker_x01.png";
+
 type Tab = "training" | "training_x01_play";
 
 type Props = {
@@ -52,12 +57,30 @@ export default function TrainingX01Config({ go }: Props) {
   const { t } = useLang();
   const profile = useCurrentProfile() as any;
 
-  const [startScore, setStartScore] = React.useState<(typeof START_CHOICES)[number]>(501);
-  const [outMode, setOutMode] = React.useState<(typeof OUT_CHOICES)[number]>("double");
-  const [voiceScoreEnabled, setVoiceScoreEnabled] = React.useState<boolean>(false);
+  const [startScore, setStartScore] =
+    React.useState<(typeof START_CHOICES)[number]>(501);
+  const [outMode, setOutMode] =
+    React.useState<(typeof OUT_CHOICES)[number]>("double");
+  const [voiceScoreEnabled, setVoiceScoreEnabled] =
+    React.useState<boolean>(false);
+
+  // panneau règles
+  const [infoOpen, setInfoOpen] = React.useState(false);
+
+  // Toujours afficher la page tout en haut au démarrage
+  React.useLayoutEffect(() => {
+    try {
+      window.scrollTo(0, 0);
+      document.documentElement?.scrollTo?.(0, 0);
+      (document.body as any)?.scrollTo?.(0, 0);
+    } catch {}
+  }, []);
 
   const avatarSrc = resolveAvatarSrc(profile);
-  const playerName = (profile?.name || profile?.nickname || profile?.username || "Joueur") as string;
+  const playerName = (profile?.name ||
+    profile?.nickname ||
+    profile?.username ||
+    "Joueur") as string;
 
   function launch() {
     if (!go) return;
@@ -78,45 +101,126 @@ export default function TrainingX01Config({ go }: Props) {
         minHeight: "100vh",
         background: theme.bg,
         color: theme.text,
-        padding: 16,
-        paddingBottom: 110,
+        // IMPORTANT: padding top à 0 pour que le ticker colle en haut.
+        padding: "0 16px 110px",
       }}
     >
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
-        <button
-          onClick={() => go?.("training" as Tab)}
-          style={{
-            borderRadius: 12,
-            padding: "10px 12px",
-            border: `1px solid ${theme.borderSoft}`,
-            background: theme.card,
-            color: theme.text,
-            fontWeight: 800,
-          }}
-        >
-          {t("common.back", "← Retour")}
-        </button>
+      {/* HEADER TICKER full-width (remplace titre + annotation) */}
+      <div
+        style={{
+          position: "sticky",
+          top: 0,
+          zIndex: 60,
+          paddingTop: "env(safe-area-inset-top)",
+          marginBottom: 12,
+          // full-bleed : annule le padding horizontal du wrapper
+          marginLeft: -16,
+          marginRight: -16,
+        }}
+      >
+        <div style={{ position: "relative" }}>
+          <img
+            src={tickerX01 as any}
+            alt="Training X01"
+            draggable={false}
+            style={{
+              width: "100%",
+              height: 92,
+              objectFit: "cover",
+              display: "block",
+            }}
+          />
 
-        <div style={{ textAlign: "center", flex: 1 }}>
+          {/* Overlay boutons */}
           <div
             style={{
-              fontSize: 18,
-              fontWeight: 900,
-              letterSpacing: 0.8,
-              textTransform: "uppercase",
-              color: theme.primary,
-              textShadow: `0 0 12px ${theme.primary}66`,
+              position: "absolute",
+              inset: 0,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              padding: "0 12px",
+              pointerEvents: "none",
             }}
           >
-            {t("training.x01.config.title", "Training X01")}
-          </div>
-          <div style={{ marginTop: 4, fontSize: 12, color: theme.textSoft }}>
-            {t("training.x01.config.subtitle", "Configure la session avant de jouer")}
+            <div style={{ pointerEvents: "auto" }}>
+              <BackDot
+                onClick={() => go?.("training" as Tab)}
+                title={t("common.back", "Retour")}
+                color={theme.primary}
+                glow={`${theme.primary}88`}
+                size={46}
+              />
+            </div>
+
+            <div style={{ pointerEvents: "auto" }}>
+              <InfoDot
+                onClick={() => setInfoOpen(true)}
+                title={t("common.rules", "Règles")}
+                color={theme.primary}
+                glow={`${theme.primary}88`}
+                size={46}
+              />
+            </div>
           </div>
         </div>
-
-        <div style={{ width: 44 }} />
       </div>
+
+      {/* MODAL INFOS */}
+      {infoOpen && (
+        <div
+          onClick={() => setInfoOpen(false)}
+          style={{
+            position: "fixed",
+            inset: 0,
+            zIndex: 200,
+            background: "rgba(0,0,0,0.6)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: 16,
+          }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              width: "min(520px, 92vw)",
+              background: theme.card,
+              border: `1px solid ${theme.borderSoft}`,
+              borderRadius: 18,
+              padding: 14,
+              boxShadow: "0 18px 40px rgba(0,0,0,0.65)",
+            }}
+          >
+            <div style={{ fontWeight: 1000, marginBottom: 8 }}>
+              {t("training.x01.rules.title", "Training X01 — Règles")}
+            </div>
+            <div style={{ fontSize: 12, color: theme.textSoft, lineHeight: 1.45 }}>
+              {t(
+                "training.x01.rules.body",
+                "Configure le score de départ et la règle de sortie, puis lance la session. La configuration est verrouillée pendant la partie."
+              )}
+            </div>
+
+            <button
+              onClick={() => setInfoOpen(false)}
+              style={{
+                marginTop: 12,
+                width: "100%",
+                padding: "10px 12px",
+                borderRadius: 14,
+                border: `1px solid ${theme.borderSoft}`,
+                background: "rgba(10,10,12,0.92)",
+                color: theme.text,
+                fontWeight: 900,
+                cursor: "pointer",
+              }}
+            >
+              {t("common.close", "Fermer")}
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Voice scoring */}
       <div
@@ -137,15 +241,26 @@ export default function TrainingX01Config({ go }: Props) {
             "Dicte tes 3 fléchettes. La voix récapitule et demande confirmation."
           )}
         </div>
-        <div style={{ display: "flex", gap: 10, alignItems: "center", justifyContent: "space-between" }}>
-          <div style={{ fontSize: 12, opacity: 0.9 }}>{voiceScoreEnabled ? "ON" : "OFF"}</div>
+        <div
+          style={{
+            display: "flex",
+            gap: 10,
+            alignItems: "center",
+            justifyContent: "space-between",
+          }}
+        >
+          <div style={{ fontSize: 12, opacity: 0.9 }}>
+            {voiceScoreEnabled ? "ON" : "OFF"}
+          </div>
           <button
             onClick={() => setVoiceScoreEnabled((v) => !v)}
             style={{
               borderRadius: 999,
               padding: "10px 12px",
               fontWeight: 900,
-              border: voiceScoreEnabled ? `1px solid ${theme.primary}` : `1px solid ${theme.borderSoft}`,
+              border: voiceScoreEnabled
+                ? `1px solid ${theme.primary}`
+                : `1px solid ${theme.borderSoft}`,
               background: voiceScoreEnabled
                 ? `linear-gradient(180deg, ${theme.primary} , rgba(0,0,0,0.4))`
                 : "rgba(10,10,12,0.9)",
@@ -153,7 +268,9 @@ export default function TrainingX01Config({ go }: Props) {
               boxShadow: voiceScoreEnabled ? `0 0 14px ${theme.primary}55` : "none",
             }}
           >
-            {voiceScoreEnabled ? t("common.disable", "Désactiver") : t("common.enable", "Activer")}
+            {voiceScoreEnabled
+              ? t("common.disable", "Désactiver")
+              : t("common.enable", "Activer")}
           </button>
         </div>
       </div>
@@ -187,7 +304,11 @@ export default function TrainingX01Config({ go }: Props) {
           }}
         >
           {avatarSrc ? (
-            <img src={avatarSrc} alt="avatar" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+            <img
+              src={avatarSrc}
+              alt="avatar"
+              style={{ width: "100%", height: "100%", objectFit: "cover" }}
+            />
           ) : (
             <span style={{ fontWeight: 900, opacity: 0.9 }}>?</span>
           )}
@@ -308,8 +429,12 @@ export default function TrainingX01Config({ go }: Props) {
               padding: "10px 12px",
               borderRadius: 999,
               fontWeight: 900,
-              border: voiceScoreEnabled ? `1px solid ${theme.borderSoft}` : `1px solid ${theme.primary}`,
-              background: voiceScoreEnabled ? "rgba(10,10,12,0.9)" : `linear-gradient(180deg, ${theme.primary} , rgba(0,0,0,0.4))`,
+              border: voiceScoreEnabled
+                ? `1px solid ${theme.borderSoft}`
+                : `1px solid ${theme.primary}`,
+              background: voiceScoreEnabled
+                ? "rgba(10,10,12,0.9)"
+                : `linear-gradient(180deg, ${theme.primary} , rgba(0,0,0,0.4))`,
               color: voiceScoreEnabled ? theme.text : "#111",
               boxShadow: voiceScoreEnabled ? "none" : `0 0 14px ${theme.primary}55`,
             }}
@@ -323,8 +448,12 @@ export default function TrainingX01Config({ go }: Props) {
               padding: "10px 12px",
               borderRadius: 999,
               fontWeight: 900,
-              border: voiceScoreEnabled ? `1px solid ${theme.primary}` : `1px solid ${theme.borderSoft}`,
-              background: voiceScoreEnabled ? `linear-gradient(180deg, ${theme.primary} , rgba(0,0,0,0.4))` : "rgba(10,10,12,0.9)",
+              border: voiceScoreEnabled
+                ? `1px solid ${theme.primary}`
+                : `1px solid ${theme.borderSoft}`,
+              background: voiceScoreEnabled
+                ? `linear-gradient(180deg, ${theme.primary} , rgba(0,0,0,0.4))`
+                : "rgba(10,10,12,0.9)",
               color: voiceScoreEnabled ? "#111" : theme.text,
               boxShadow: voiceScoreEnabled ? `0 0 14px ${theme.primary}55` : "none",
             }}

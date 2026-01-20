@@ -23,11 +23,12 @@
 // - Matching tolérant : ticker_super_bull.png fonctionne aussi si id = training_super_bull, super_bull_training, etc.
 // ============================================
 
-import React from "react";
+import React, { useLayoutEffect } from "react";
 import { useTheme } from "../contexts/ThemeContext";
 import { useLang } from "../contexts/LangContext";
 import InfoDot from "../components/InfoDot";
 import BackDot from "../components/BackDot";
+import tickerTraining from "../assets/tickers/ticker_training.png";
 import { dartsGameRegistry } from "../games/dartsGameRegistry";
 
 type Tab =
@@ -174,7 +175,15 @@ function TickerOverlay({ src }: { src?: string | null }) {
 export default function TrainingMenu({ go }: Props) {
   const { theme } = useTheme();
   const { t } = useLang();
-  const [infoMode, setInfoMode] = React.useState<ModeDef | null>(null);
+  
+  useLayoutEffect(() => {
+    try {
+      window.scrollTo(0, 0);
+      document.documentElement.scrollTop = 0;
+      document.body.scrollTop = 0;
+    } catch {}
+  }, []);
+const [infoMode, setInfoMode] = React.useState<ModeDef | null>(null);
 
   const PAGE_BG = theme.bg;
   const CARD_BG = theme.card;
@@ -449,34 +458,48 @@ export default function TrainingMenu({ go }: Props) {
       }}
     >
       {/* ✅ Header : BackDot + Titre centré */}
-      <div style={{ position: "relative", marginBottom: 10 }}>
-        <div style={{ position: "absolute", left: 0, top: 0 }}>
-          <BackDot onClick={() => navigate("games")} glow={theme.primary + "88"} />
-        </div>
-
-        <h1
-          style={{
-            margin: 0,
-            fontSize: 24,
-            color: theme.primary,
-            textAlign: "center",
-            textShadow: `0 0 12px ${theme.primary}66`,
-          }}
-        >
-          {t("training.menu.title", "TRAINING")}
-        </h1>
-
-        <div
-          style={{
-            fontSize: 13,
-            color: theme.textSoft,
-            marginTop: 6,
-            textAlign: "center",
-          }}
-        >
-          {t("training.menu.subtitle", "Améliore ta progression dans différents modes d’entraînement.")}
-        </div>
+      {/* HEADER TICKER (full-width) */}
+<div
+  style={{
+    position: "sticky",
+    top: 0,
+    zIndex: 60,
+    paddingTop: "env(safe-area-inset-top)",
+    marginLeft: -16,
+    marginRight: -16,
+    marginBottom: 10,
+  }}
+>
+  <div style={{ position: "relative" }}>
+    <img
+      src={tickerTraining}
+      alt="Training"
+      draggable={false}
+      style={{
+        width: "100%",
+        height: 92,
+        objectFit: "cover",
+        display: "block",
+      }}
+    />
+    <div
+      style={{
+        position: "absolute",
+        inset: 0,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "space-between",
+        padding: "0 12px",
+        pointerEvents: "none",
+      }}
+    >
+      <div style={{ pointerEvents: "auto" }}>
+        <BackDot onClick={() => navigate("games")} glow={theme.primary + "88"} />
       </div>
+      <div style={{ width: 42 }} />
+    </div>
+  </div>
+</div>
 
       {/* Pinned modes */}
       <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>

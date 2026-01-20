@@ -16,9 +16,10 @@ import type { Store } from "../lib/types";
 import { useTheme } from "../contexts/ThemeContext";
 import { useLang } from "../contexts/LangContext";
 import InfoDot from "../components/InfoDot";
-import ConfigTickerHeader from "../components/ConfigTickerHeader";
-import tickerShanghai from "../assets/tickers/ticker_shanghai.png";
 import BackDot from "../components/BackDot";
+
+// ✅ TICKER
+import tickerShanghai from "../assets/tickers/ticker_shanghai.png";
 
 // ✅ NEW
 import { setSfxEnabled } from "../lib/sfx";
@@ -306,31 +307,71 @@ export default function ShanghaiConfigPage({ store, go }: Props) {
         paddingBottom: 110,
       }}
     >
-        <ConfigTickerHeader
-        src={tickerShanghai as any}
-        alt="Shanghai"
-        height={92}
-        left={
-          <BackDot
-            onClick={() => go("games")}
-            title={t("common.back", "Retour")}
-            size={42}
-            color={theme.primary}
-            glow={theme.primary + "AA"}
-          />
-        }
-        right={
-          <InfoDot
-            onClick={() => setInfoOpen(true)}
-            title={t("common.rules", "Règles")}
-            size={42}
-            color={theme.primary}
-            glow={theme.primary + "AA"}
-          />
-        }
-      />
+      <div style={{ padding: 16, maxWidth: 520, margin: "0 auto" }}>
+        {/* HEADER TICKER full-width (remplace titre + annotation) */}
+        <div
+          style={{
+            position: "sticky",
+            top: 0,
+            zIndex: 60,
+            paddingTop: "env(safe-area-inset-top)",
+            marginBottom: 14,
+          }}
+        >
+          <div
+            style={{
+              position: "relative",
+              // full-bleed (annule le padding de ce wrapper)
+              marginLeft: -16,
+              marginRight: -16,
+            }}
+          >
+            <img
+              src={tickerShanghai as any}
+              alt="Shanghai"
+              draggable={false}
+              style={{
+                width: "100%",
+                height: 92,
+                objectFit: "cover",
+                display: "block",
+              }}
+            />
 
-      <div style={{ padding: 16, paddingTop: 12, maxWidth: 520, margin: "0 auto" }}>
+            {/* Overlay boutons */}
+            <div
+              style={{
+                position: "absolute",
+                inset: 0,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                padding: "0 12px",
+                pointerEvents: "none",
+              }}
+            >
+              <div style={{ pointerEvents: "auto" }}>
+                <BackDot
+                  onClick={() => go("games")}
+                  title={t("common.back", "Retour")}
+                  size={42}
+                  color={theme.primary}
+                  glow={theme.primary + "cc"}
+                />
+              </div>
+
+              <div style={{ pointerEvents: "auto" }}>
+                <InfoDot
+                  onClick={() => setInfoOpen(true)}
+                  title={t("common.rules", "Règles")}
+                  size={42}
+                  color={theme.primary}
+                  glow={theme.primary + "cc"}
+                />
+              </div>
+            </div>
+          </div>
+        </div>
 
         {/* JOUEURS — carrousel X01Multi (sans cartes) */}
         <div style={{ ...cardShell, padding: 14 }}>
