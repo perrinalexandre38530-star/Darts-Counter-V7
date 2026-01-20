@@ -17,6 +17,7 @@ import ProfileAvatar from "../components/ProfileAvatar";
 import ProfileStarRing from "../components/ProfileStarRing";
 import BackDot from "../components/BackDot";
 import InfoDot from "../components/InfoDot";
+import tickerX01 from "../assets/tickers/ticker_x01.png";
 import {
   getDartSetsForProfile,
   getFavoriteDartSetForProfile,
@@ -637,23 +638,40 @@ try {
       }}
     >
       {/* HEADER */}
-      <header style={{ marginBottom: 6 }}>
+      <header style={{ marginBottom: 10, marginLeft: -12, marginRight: -12 }}>
         {(() => {
           const DOT_SIZE = 36;
           const DOT_GLOW = `${primary}88`;
           return (
             <div
               style={{
-                display: "grid",
-                gridTemplateColumns: "44px 1fr 44px",
-                alignItems: "center",
-                gap: 10,
-                marginBottom: 8,
+                position: "relative",
+                width: "100%",
+                paddingTop: "max(6px, env(safe-area-inset-top))",
               }}
             >
-              <div style={{ display: "flex", justifyContent: "flex-start" }}>
+              <img
+                src={tickerX01}
+                alt="X01"
+                style={{
+                  width: "100%",
+                  height: "auto",
+                  display: "block",
+                  userSelect: "none",
+                  pointerEvents: "none",
+                }}
+                draggable={false}
+              />
+
+              <div style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)" }}>
                 <BackDot
-                  onClick={() => (typeof onBack === "function" ? onBack() : typeof go === "function" ? go("games") : null)}
+                  onClick={() =>
+                    typeof onBack === "function"
+                      ? onBack()
+                      : typeof go === "function"
+                      ? go("games")
+                      : null
+                  }
                   title={t("common.back", "Retour")}
                   size={DOT_SIZE}
                   color={primary}
@@ -661,24 +679,7 @@ try {
                 />
               </div>
 
-              <div style={{ textAlign: "center", lineHeight: 1.1 }}>
-                <div
-                  style={{
-                    fontSize: 26,
-                    fontWeight: 900,
-                    letterSpacing: 2,
-                    color: primary,
-                    textTransform: "uppercase",
-                  }}
-                >
-                  X01
-                </div>
-                <div style={{ fontSize: 12, opacity: 0.75, color: "#d9d9e4", marginTop: 2 }}>
-                  {t("x01v3.config.subtitle", "Configure ton match X01 avant de commencer.")}
-                </div>
-              </div>
-
-              <div style={{ display: "flex", justifyContent: "flex-end" }}>
+              <div style={{ position: "absolute", right: 12, top: "50%", transform: "translateY(-50%)" }}>
                 <InfoDot
                   onClick={() => setRulesOpen(true)}
                   title={t("common.rules", "Règles")}
@@ -829,6 +830,122 @@ try {
               </p>
             </>
           )}
+        </section>
+
+        {/* --------- BLOC BOTS IA --------- */}
+        <section
+          style={{
+            background: cardBg,
+            borderRadius: 18,
+            padding: 12,
+            marginBottom: 16,
+            boxShadow: "0 16px 40px rgba(0,0,0,0.55)",
+            border: `1px solid rgba(255,255,255,0.04)`,
+          }}
+        >
+          <h3 style={{ fontSize: 13, textTransform: "uppercase", letterSpacing: 1, fontWeight: 700, color: primary, marginBottom: 10 }}>
+            {t("x01v3.bots.title", "Bots IA")}
+          </h3>
+
+          <p style={{ fontSize: 11, color: "#7c80a0", marginBottom: 10 }}>
+            {t("x01v3.bots.subtitle", 'Ajoute des BOTS IA : bots "pro" prédéfinis ou BOTS que tu as créés dans le menu Profils.')}
+          </p>
+
+          <div
+            style={{
+              display: "flex",
+              gap: 14,
+              overflowX: "auto",
+              overflowY: "visible",
+              paddingBottom: 10,
+              paddingTop: 16,
+              marginTop: 10,
+              marginBottom: 10,
+            }}
+            className="dc-scroll-thin"
+          >
+            {botProfiles.map((bot) => {
+              const { level } = resolveBotLevel(bot.botLevel);
+              const active = selectedIds.includes(bot.id);
+
+              return (
+                <button
+                  key={bot.id}
+                  type="button"
+                  onClick={() => togglePlayer(bot.id)}
+                  style={{
+                    minWidth: 96,
+                    maxWidth: 96,
+                    background: "transparent",
+                    border: "none",
+                    padding: 0,
+                    display: "flex",
+                    flexDirection: "column",
+                    alignItems: "center",
+                    gap: 6,
+                    flexShrink: 0,
+                    cursor: "pointer",
+                  }}
+                >
+                  <BotMedallion bot={bot} level={level} active={active} />
+
+                  <div
+                    style={{
+                      fontSize: 11,
+                      fontWeight: 600,
+                      textAlign: "center",
+                      color: active ? "#f6f2e9" : "#7e8299",
+                      maxWidth: "100%",
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      whiteSpace: "nowrap",
+                      marginTop: 4,
+                    }}
+                  >
+                    {bot.name}
+                  </div>
+
+                  <div style={{ marginTop: 2, display: "flex", justifyContent: "center" }}>
+                    <span
+                      style={{
+                        padding: "2px 8px",
+                        borderRadius: 999,
+                        fontSize: 9,
+                        fontWeight: 800,
+                        letterSpacing: 0.7,
+                        textTransform: "uppercase",
+                        background: "radial-gradient(circle at 30% 0, #6af3ff, #008cff)",
+                        color: "#020611",
+                        boxShadow: "0 0 10px rgba(0,172,255,0.55), 0 0 18px rgba(0,172,255,0.35)",
+                        border: "1px solid rgba(144,228,255,0.9)",
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      BOT
+                    </span>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+
+          <button
+            type="button"
+            onClick={() => go && go("profiles_bots")}
+            style={{
+              padding: "6px 10px",
+              borderRadius: 999,
+              border: `1px solid ${primary}`,
+              background: "rgba(255,255,255,0.04)",
+              color: primary,
+              fontWeight: 700,
+              fontSize: 11,
+              textTransform: "uppercase",
+              cursor: "pointer",
+            }}
+          >
+            {t("x01v3.bots.manage", "Gérer les BOTS")}
+          </button>
         </section>
 
         {/* --------- BLOC PARAMÈTRES DE BASE + AUDIO + EXTERNAL --------- */}
@@ -1524,122 +1641,7 @@ window.dispatchEvent(new CustomEvent("dc:x01v3:visit", {
             setPlayerTeam={setPlayerTeam}
           />
         )}
-
-        {/* --------- BLOC BOTS IA --------- */}
-        <section
-          style={{
-            background: cardBg,
-            borderRadius: 18,
-            padding: 12,
-            marginBottom: 80,
-            boxShadow: "0 16px 40px rgba(0,0,0,0.55)",
-            border: `1px solid rgba(255,255,255,0.04)`,
-          }}
-        >
-          <h3 style={{ fontSize: 13, textTransform: "uppercase", letterSpacing: 1, fontWeight: 700, color: primary, marginBottom: 10 }}>
-            {t("x01v3.bots.title", "Bots IA")}
-          </h3>
-
-          <p style={{ fontSize: 11, color: "#7c80a0", marginBottom: 10 }}>
-            {t("x01v3.bots.subtitle", 'Ajoute des BOTS IA : bots "pro" prédéfinis ou BOTS que tu as créés dans le menu Profils.')}
-          </p>
-
-          <div
-            style={{
-              display: "flex",
-              gap: 14,
-              overflowX: "auto",
-              overflowY: "visible",
-              paddingBottom: 10,
-              paddingTop: 16,
-              marginTop: 10,
-              marginBottom: 10,
-            }}
-            className="dc-scroll-thin"
-          >
-            {botProfiles.map((bot) => {
-              const { level } = resolveBotLevel(bot.botLevel);
-              const active = selectedIds.includes(bot.id);
-
-              return (
-                <button
-                  key={bot.id}
-                  type="button"
-                  onClick={() => togglePlayer(bot.id)}
-                  style={{
-                    minWidth: 96,
-                    maxWidth: 96,
-                    background: "transparent",
-                    border: "none",
-                    padding: 0,
-                    display: "flex",
-                    flexDirection: "column",
-                    alignItems: "center",
-                    gap: 6,
-                    flexShrink: 0,
-                    cursor: "pointer",
-                  }}
-                >
-                  <BotMedallion bot={bot} level={level} active={active} />
-
-                  <div
-                    style={{
-                      fontSize: 11,
-                      fontWeight: 600,
-                      textAlign: "center",
-                      color: active ? "#f6f2e9" : "#7e8299",
-                      maxWidth: "100%",
-                      overflow: "hidden",
-                      textOverflow: "ellipsis",
-                      whiteSpace: "nowrap",
-                      marginTop: 4,
-                    }}
-                  >
-                    {bot.name}
-                  </div>
-
-                  <div style={{ marginTop: 2, display: "flex", justifyContent: "center" }}>
-                    <span
-                      style={{
-                        padding: "2px 8px",
-                        borderRadius: 999,
-                        fontSize: 9,
-                        fontWeight: 800,
-                        letterSpacing: 0.7,
-                        textTransform: "uppercase",
-                        background: "radial-gradient(circle at 30% 0, #6af3ff, #008cff)",
-                        color: "#020611",
-                        boxShadow: "0 0 10px rgba(0,172,255,0.55), 0 0 18px rgba(0,172,255,0.35)",
-                        border: "1px solid rgba(144,228,255,0.9)",
-                        whiteSpace: "nowrap",
-                      }}
-                    >
-                      BOT
-                    </span>
-                  </div>
-                </button>
-              );
-            })}
-          </div>
-
-          <button
-            type="button"
-            onClick={() => go && go("profiles_bots")}
-            style={{
-              padding: "6px 10px",
-              borderRadius: 999,
-              border: `1px solid ${primary}`,
-              background: "rgba(255,255,255,0.04)",
-              color: primary,
-              fontWeight: 700,
-              fontSize: 11,
-              textTransform: "uppercase",
-              cursor: "pointer",
-            }}
-          >
-            {t("x01v3.bots.manage", "Gérer les BOTS")}
-          </button>
-        </section>
+        <div style={{ height: 96 }} />
       </div>
 
       {/* CTA collée au-dessus de la barre de nav */}

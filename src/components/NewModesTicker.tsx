@@ -45,9 +45,28 @@ const tickerGlob = import.meta.glob("../assets/tickers/ticker_*.png", {
 }) as Record<string, string>;
 
 function findTickerById(id: string): string | null {
-  const suffix = `/ticker_${id}.png`;
-  for (const k of Object.keys(tickerGlob)) {
-    if (k.endsWith(suffix)) return tickerGlob[k];
+  const raw = String(id || "");
+  if (!raw) return null;
+
+  // Tolérance aux variations d'id (underscore/tiret/espaces)
+  const norm = raw.trim().toLowerCase();
+  const candidates = Array.from(
+    new Set([
+      norm,
+      norm.replace(/\s+/g, "_"),
+      norm.replace(/\s+/g, "-"),
+      norm.replace(/-/g, "_"),
+      norm.replace(/_/g, "-"),
+      norm.replace(/[^a-z0-9_\-]/g, ""),
+    ])
+  ).filter(Boolean);
+
+  for (const c of candidates) {
+    const suffixA = `/ticker_${c}.png`;
+    const suffixB = `/ticker-${c}.png`;
+    for (const k of Object.keys(tickerGlob)) {
+      if (k.endsWith(suffixA) || k.endsWith(suffixB)) return tickerGlob[k];
+    }
   }
   return null;
 }

@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React from "react";
 import BackDot from "../components/BackDot";
 import InfoDot from "../components/InfoDot";
 import PageHeader from "../components/PageHeader";
@@ -8,70 +8,75 @@ import OptionToggle from "../components/OptionToggle";
 import OptionSelect from "../components/OptionSelect";
 import { useLang } from "../contexts/LangContext";
 import { useTheme } from "../contexts/ThemeContext";
-
+import { TERRITORY_MAPS, type TerritoryMap } from "../lib/territories/maps";
 
 type BotLevel = "easy" | "normal" | "hard";
 
-export type DepartementsConfigPayload = {
+export type TerritoriesConfigPayload = {
   players: number;
   botsEnabled: boolean;
   botLevel: BotLevel;
   rounds: number;
+  /** Objectif = nb de territoires possédés pour gagner */
   objective: number;
-  // TERRITORIES map selection (country / dataset)
-  mapId: string; // ex: FR, EN, IT, DE, ES, US, CN, AU, JP, RU, WORLD
+  /** Pays / map sélectionnée */
+  mapId: string; // "FR" | "EN" | "IT" | ...
 };
 
-const INFO_TEXT = `Choisis une carte (pays) : elle définit les territoires du mode TERRITORIES.\n\nAstuce : le ticker affiché sert d’aperçu visuel de la carte sélectionnée.`;
+const INFO_TEXT = `TERRITORIES
+- Choisis une carte (pays) dans le configurateur (tickers).
+- La partie utilise les territoires de cette carte.
+- Capture : tu prends le contrôle des cases 1..20 (20 territoires tirés de la carte).
+- Tu marques en capturant/tenant des territoires.
+`;
 
-const MAPS: { id: string; label: string; tickerId: string }[] = [
-  { id: "FR", label: "France", tickerId: "fr" },
-  { id: "EN", label: "England", tickerId: "en" },
-  { id: "IT", label: "Italy", tickerId: "it" },
-  { id: "DE", label: "Germany", tickerId: "de" },
-  { id: "ES", label: "Spain", tickerId: "es" },
-  { id: "US", label: "USA", tickerId: "us" },
-  { id: "CN", label: "China", tickerId: "cn" },
-  { id: "AU", label: "Australia", tickerId: "au" },
-  { id: "JP", label: "Japan", tickerId: "jp" },
-  { id: "RU", label: "Russia", tickerId: "ru" },
-  { id: "WORLD", label: "World", tickerId: "world" },
-];
-
-// Load all TERRITORIES tickers from assets (Vite eager import)
-const TICKERS = import.meta.glob("../assets/tickers/ticker_territories_*.png", {
+const tickerGlob = import.meta.glob("../assets/tickers/ticker_territories_*.png", {
   eager: true,
   import: "default",
 }) as Record<string, string>;
 
-function tickerSrcFor(tickerId: string) {
-  // expected file: ticker_territories_<id>.png
-  const key = `../assets/tickers/ticker_territories_${String(tickerId).toLowerCase()}.png`;
-  return TICKERS[key] || "";
+function findTerritoriesTicker(tickerId: string): string | null {
+  const id = String(tickerId || "").toLowerCase();
+  const suffix = `/ticker_territories_${id}.png`;
+  for (const k of Object.keys(tickerGlob)) {
+    if (k.toLowerCase().endsWith(suffix)) return tickerGlob[k];
+  }
+  return null;
 }
+
+const MAP_ORDER = ["FR","EN","IT","DE","ES","US","CN","AU","JP","RU","WORLD"];
 
 export default function DepartementsConfig(props: any) {
   const { t } = useLang();
   useTheme();
 
-  const [players, setPlayers] = useState(2);
-  const [botsEnabled, setBotsEnabled] = useState(false);
-  const [botLevel, setBotLevel] = useState<BotLevel>("normal");
-  const [rounds, setRounds] = useState(10);
-  const [objective, setObjective] = useState(0);
-  const [mapId, setMapId] = useState<string>(() => {
-    try {
-      const raw = localStorage.getItem("dc_modecfg_departements");
-      if (!raw) return "FR";
-      const parsed = JSON.parse(raw);
-      const v = parsed?.mapId;
-      return typeof v === "string" && v ? v : "FR";
-    } catch {
-      return "FR";
-    }
+  const [players, setPlayers] = React.useState(2);
+  const [botsEnabled, setBotsEnabled] = React.useState(false);
+  const [botLevel, setBotLevel] = React.useState<BotLevel>("normal");
+  const [rounds, setRounds] = React.useState(12);
+  const [objective, setObjective] = React.useState(10); // 10 territoires pour gagner (recommandé)
+  const [mapId, setMapId] = React.useState<string>(() => {
+    // fallback simple
+    return "FR";
   });
 
-  const payload: DepartementsConfigPayload = { players, botsEnabled, botLevel, rounds, objective, mapId };
+  const maps: TerritoryMap[] = React.useMemo(() => {
+    const list = MAP_ORDER
+      .map((id) => TERRITORY_MAPS[id])
+      .filter(Boolean);
+    // sécurité si tu ajoutes des maps plus tard
+    const extras = Object.values(TERRITORY_MAPS).filter((m) => !MAP_ORDER.includes(m.id));
+    return [...list, ...extras];
+  }, []);
+
+  const payload: TerritoriesConfigPayload = {
+    players,
+    botsEnabled,
+    botLevel,
+    rounds,
+    objective,
+    mapId,
+  };
 
   function goBack() {
     if (props?.setTab) return props.setTab("games");
@@ -79,16 +84,11 @@ export default function DepartementsConfig(props: any) {
   }
 
   function start() {
-    // Persist in the generic key so DartsModeScaffold / future engine can read it
+    // (Optionnel) persistance locale
     try {
-      localStorage.setItem("dc_modecfg_departements", JSON.stringify({
-        modeId: "departements",
-        ...payload,
-      }));
+      localStorage.setItem("dc_modecfg_departements", JSON.stringify(payload));
     } catch {}
-    // App.tsx wiring: tab "departements_play"
     if (props?.setTab) return props.setTab("departements_play", { config: payload });
-    // Router alternative: à adapter au câblage final si besoin
   }
 
   return (
@@ -99,58 +99,66 @@ export default function DepartementsConfig(props: any) {
         right={<InfoDot title="Règles TERRITORIES" content={INFO_TEXT} />}
       />
 
-      <Section title={t("territories.map", "Carte (pays)")}
-        right={
-          <InfoDot
-            title={t("territories.mapInfoTitle", "Carte")}
-            content={t(
-              "territories.mapInfo",
-              "Choisis la carte (pays) à utiliser. Le ticker affiché sert d’aperçu et la carte est utilisée en jeu."
-            )}
-          />
-        }
-      >
-        <div className="grid grid-cols-2 gap-3">
-          {MAPS.map((m) => {
-            const sel = mapId === m.id;
-            const src = tickerSrcFor(m.tickerId);
+      <Section title={t("territories.map", "Carte (pays)")}>
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(2, minmax(0,1fr))",
+            gap: 10,
+          }}
+        >
+          {maps.map((m) => {
+            const selected = m.id === mapId;
+            const src = findTerritoriesTicker(m.tickerId);
             return (
               <button
                 key={m.id}
-                type="button"
                 onClick={() => setMapId(m.id)}
-                className={`rounded-2xl border px-2.5 pt-2.5 pb-2 text-left transition active:scale-[0.99] ${
-                  sel
-                    ? "border-yellow-300/60 bg-yellow-300/10"
-                    : "border-white/10 bg-white/5 hover:bg-white/7"
-                }`}
+                style={{
+                  textAlign: "left",
+                  borderRadius: 16,
+                  overflow: "hidden",
+                  border: selected
+                    ? "1px solid rgba(120,255,200,0.45)"
+                    : "1px solid rgba(255,255,255,0.10)",
+                  background: selected ? "rgba(120,255,200,0.10)" : "rgba(255,255,255,0.04)",
+                  boxShadow: selected ? "0 12px 28px rgba(0,0,0,0.45)" : "0 10px 24px rgba(0,0,0,0.35)",
+                  cursor: "pointer",
+                }}
               >
-                <div className="w-full overflow-hidden rounded-xl border border-white/10 bg-black/20">
-                  {src ? (
-                    <img
-                      src={src}
-                      alt={m.label}
-                      className="w-full h-[78px] object-cover"
-                      loading="lazy"
-                    />
-                  ) : (
-                    <div className="w-full h-[78px] flex items-center justify-center text-white/50 text-xs">
-                      ticker_territories_{m.tickerId}.png manquant
-                    </div>
-                  )}
-                </div>
-                <div className="mt-2 flex items-center justify-between gap-2">
-                  <div className="min-w-0">
-                    <div className="font-extrabold leading-tight truncate">{m.label}</div>
-                    <div className="text-[11px] text-white/60">{m.id}</div>
+                <div style={{ padding: 10 }}>
+                  <div style={{ fontSize: 12, opacity: 0.85, fontWeight: 950, letterSpacing: 0.6 }}>
+                    {m.id}
                   </div>
+                  <div style={{ marginTop: 4, fontSize: 16, fontWeight: 1000 }}>{m.name}</div>
+                </div>
+
+                <div style={{ padding: 10, paddingTop: 0 }}>
                   <div
-                    className={`h-6 w-6 rounded-full border ${
-                      sel
-                        ? "border-yellow-300/70 bg-yellow-300/20"
-                        : "border-white/15 bg-black/20"
-                    }`}
-                  />
+                    style={{
+                      borderRadius: 14,
+                      overflow: "hidden",
+                      border: "1px solid rgba(255,255,255,0.10)",
+                      background: "rgba(0,0,0,0.20)",
+                      aspectRatio: "800 / 330",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                    }}
+                  >
+                    {src ? (
+                      <img
+                        src={src}
+                        alt={`ticker ${m.id}`}
+                        style={{ width: "100%", height: "100%", objectFit: "cover", opacity: 0.95 }}
+                        draggable={false}
+                      />
+                    ) : (
+                      <div style={{ fontSize: 12, opacity: 0.7, fontWeight: 900 }}>
+                        ticker_territories_{m.tickerId}.png manquant
+                      </div>
+                    )}
+                  </div>
                 </div>
               </button>
             );
@@ -160,7 +168,7 @@ export default function DepartementsConfig(props: any) {
 
       <Section title={t("config.players", "Joueurs")}>
         <OptionRow label={t("config.playerCount", "Nombre de joueurs")}>
-          <OptionSelect value={players} options={[2, 3, 4]} onChange={setPlayers} />
+          <OptionSelect value={players} options={[2, 3, 4, 5, 6]} onChange={setPlayers} />
         </OptionRow>
 
         <OptionRow label={t("config.bots", "Bots IA")}>
@@ -184,11 +192,11 @@ export default function DepartementsConfig(props: any) {
 
       <Section title={t("config.rules", "Règles")}>
         <OptionRow label={t("config.rounds", "Rounds")}>
-          <OptionSelect value={rounds} options={[5, 8, 10, 12, 15]} onChange={setRounds} />
+          <OptionSelect value={rounds} options={[8, 10, 12, 15, 20]} onChange={setRounds} />
         </OptionRow>
 
-        <OptionRow label={t("config.objective", "Objectif")}>
-          <OptionSelect value={objective} options={[0, 100, 170, 300, 500, 1000]} onChange={setObjective} />
+        <OptionRow label={t("territories.objective", "Objectif (territoires)")}>
+          <OptionSelect value={objective} options={[6, 8, 10, 12, 15, 18]} onChange={setObjective} />
         </OptionRow>
       </Section>
 
