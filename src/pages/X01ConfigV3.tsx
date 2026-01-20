@@ -24,6 +24,7 @@ import {
   type DartSet,
 } from "../lib/dartSetsStore";
 import { x01EnsureAudioUnlocked, x01SfxV3Preload } from "../lib/x01SfxV3";
+import { SCORE_INPUT_LS_KEY, type ScoreInputMethod } from "../lib/scoreInput/types";
 
 
 // 🔽 IMPORTS DE TOUS LES AVATARS BOTS PRO
@@ -370,6 +371,18 @@ export default function X01ConfigV3({ profiles, onBack, onStart, go }: Props) {
 
   // ---- NEW : COMPTAGE EXTERNE ----
   const [externalScoringEnabled, setExternalScoringEnabled] = React.useState<boolean>(false);
+  // ---- NEW : SAISIE VOCALE DES SCORES (MVP) ----
+  const [voiceScoreEnabled, setVoiceScoreEnabled] = React.useState<boolean>(false);
+
+  // ---- NEW : METHODE DE SAISIE (Keypad / Cible / Presets / Voice / Auto / IA) ----
+  const [scoreInputMethod, setScoreInputMethod] = React.useState<ScoreInputMethod>(() => {
+    try {
+      const v = (localStorage.getItem(SCORE_INPUT_LS_KEY) || 'keypad') as ScoreInputMethod;
+      if (v === 'keypad' || v === 'dartboard' || v === 'presets' || v === 'voice' || v === 'auto' || v === 'ai') return v;
+    } catch {}
+    return 'keypad';
+  });
+
   const [externalInfoOpen, setExternalInfoOpen] = React.useState<boolean>(false);
   const [externalInfoStep, setExternalInfoStep] = React.useState<1 | 2 | 3>(1);
 
@@ -606,6 +619,13 @@ try {
       // ✅ source de scoring (keypad vs externe)
       scoringSource: externalScoringEnabled ? "external" : "manual",
 
+      // ✅ saisie vocale scores (3 fléchettes + confirmation oui/non)
+      // (ignorée automatiquement si scoringSource=external)
+      voiceScoreInputEnabled: voiceScoreEnabled,
+
+      // ✅ NEW: méthode de saisie préférée (persistée aussi en localStorage)
+      scoreInputDefaultMethod: scoreInputMethod,
+
       // ✅ audio config consommée par X01PlayV3
       audio: { arcadeEnabled, hitEnabled, voiceEnabled, voiceId },
     };
@@ -613,6 +633,9 @@ try {
     if (matchMode === "teams" && teams) baseCfg.teams = teams;
 
     try {
+      try {
+        localStorage.setItem(SCORE_INPUT_LS_KEY, scoreInputMethod);
+      } catch {}
       onStart(baseCfg as X01ConfigV3);
     } catch (e) {
       console.warn("[X01ConfigV3] onStart a échoué :", e);
@@ -1051,7 +1074,132 @@ try {
             </div>
           </div>
 
-          {/* ✅ AUDIO / VOIX */}
+          
+          {/* ✅ FORMAT DU MATCH (intégré dans Paramètres de base) */}
+          <div style={{ marginTop: 10, paddingTop: 10, borderTop: "1px solid rgba(255,255,255,0.06)" }}>
+            <div
+              style={{
+                fontSize: 12,
+                textTransform: "uppercase",
+                letterSpacing: 1,
+                fontWeight: 700,
+                color: primary,
+                marginBottom: 8,
+              }}
+            >
+              {t("x01v3.format", "Format du match")}
+            </div>
+<div style={{ marginBottom: 10 }}>
+            <div style={{ fontSize: 12, color: "#c8cbe4", marginBottom: 6 }}>{t("x01v3.legsPerSet", "Manches par set")}</div>
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+              {LEGS_OPTIONS.map((n) => (
+                <PillButton
+                  key={n}
+                  label={String(n)}
+                  active={legsPerSet === n}
+                  onClick={() => setLegsPerSet(n)}
+                  primary={primary}
+                  primarySoft={primarySoft}
+                  compact
+                />
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <div style={{ fontSize: 12, color: "#c8cbe4", marginBottom: 6 }}>{t("x01v3.setsToWin", "Sets à gagner")}</div>
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+              {SETS_OPTIONS.map((n) => (
+                <PillButton
+                  key={n}
+                  label={String(n)}
+                  active={setsToWin === n}
+                  onClick={() => setSetsToWin(n)}
+                  primary={primary}
+                  primarySoft={primarySoft}
+                  compact
+                />
+              ))}
+            </div>
+          </div>
+          </div>
+
+          {/* ✅ SERVICE / ORDRE DE DÉPART (intégré dans Paramètres de base) */}
+          <div style={{ marginTop: 10, paddingTop: 10, borderTop: "1px solid rgba(255,255,255,0.06)" }}>
+            <div
+              style={{
+                fontSize: 12,
+                textTransform: "uppercase",
+                letterSpacing: 1,
+                fontWeight: 700,
+                color: primary,
+                marginBottom: 8,
+              }}
+            >
+              {t("x01v3.service", "Service / ordre de départ")}
+            </div>
+
+          <div style={{ marginBottom: 12 }}>
+            <div style={{ fontSize: 12, color: "#c8cbe4", marginBottom: 6 }}>{t("x01v3.service", "Service / ordre de départ")}</div>
+            <div style={{ display: "flex", gap: 6 }}>
+              <PillButton
+                label={t("x01v3.service.random", "Aléatoire")}
+                active={serveMode === "random"}
+                onClick={() => setServeMode("random")}
+                primary={primary}
+                primarySoft={primarySoft}
+              />
+              <PillButton
+                label={t("x01v3.service.alternate", "Alterné (officiel)")}
+                active={serveMode === "alternate"}
+                onClick={() => setServeMode("alternate")}
+                primary={primary}
+                primarySoft={primarySoft}
+              />
+            </div>
+          </div>
+
+          <div>
+            <div style={{ fontSize: 12, color: "#c8cbe4", marginBottom: 6 }}>{t("x01v3.matchMode", "Mode de match")}</div>
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+              <PillButton
+                label={t("x01v3.mode.solo", "Solo (1v1)")}
+                active={matchMode === "solo"}
+                onClick={() => {
+                  if (soloDisabled) return;
+                  setMatchMode("solo");
+                }}
+                primary={primary}
+                primarySoft={primarySoft}
+                disabled={soloDisabled}
+              />
+              <PillButton
+                label={t("x01v3.mode.multi", "Multi (FFA)")}
+                active={matchMode === "multi"}
+                onClick={() => {
+                  if (multiDisabled) return;
+                  setMatchMode("multi");
+                }}
+                primary={primary}
+                primarySoft={primarySoft}
+                disabled={multiDisabled}
+              />
+              <PillButton
+                label={t("x01v3.mode.teams", "Équipes")}
+                active={matchMode === "teams"}
+                onClick={() => {
+                  if (teamsDisabled) return;
+                  setMatchMode("teams");
+                }}
+                primary={primary}
+                primarySoft={primarySoft}
+                disabled={teamsDisabled}
+              />
+            </div>
+          </div>
+          </div>
+
+{/* ✅ AUDIO / VOIX */}
           <div style={{ marginTop: 10, paddingTop: 10, borderTop: "1px solid rgba(255,255,255,0.06)" }}>
             <div
               style={{
@@ -1180,6 +1328,153 @@ try {
                 </div>
               </div>
             </div>
+          </div>
+
+
+
+          {/* ✅ METHODE DE SAISIE (UI) */}
+          <div style={{ marginTop: 12, paddingTop: 12, borderTop: "1px solid rgba(255,255,255,0.06)" }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 8 }}>
+              <div style={{ fontSize: 12, textTransform: "uppercase", letterSpacing: 1, fontWeight: 700, color: primary }}>
+                {t("x01v3.inputMethod.title", "Méthode de saisie")}
+              </div>
+            </div>
+
+            <div style={{ fontSize: 12, color: "#c8cbe4", marginBottom: 6 }}>
+              {t(
+                "x01v3.inputMethod.desc",
+                "Choisis l’interface par défaut (tu pourras basculer en match via le hub)."
+              )}
+            </div>
+
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+              <PillButton
+                label={t("x01v3.inputMethod.keypad", "KEYPAD")}
+                active={scoreInputMethod === "keypad"}
+                onClick={() => setScoreInputMethod("keypad")}
+                primary={primary}
+                primarySoft={primarySoft}
+                compact
+              />
+              <PillButton
+                label={t("x01v3.inputMethod.dartboard", "CIBLE")}
+                active={scoreInputMethod === "dartboard"}
+                onClick={() => setScoreInputMethod("dartboard")}
+                primary={primary}
+                primarySoft={primarySoft}
+                compact
+              />
+              <PillButton
+                label={t("x01v3.inputMethod.presets", "PRESETS")}
+                active={scoreInputMethod === "presets"}
+                onClick={() => setScoreInputMethod("presets")}
+                primary={primary}
+                primarySoft={primarySoft}
+                compact
+              />
+            </div>
+
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 6 }}>
+              <PillButton
+                label={t("x01v3.inputMethod.voice", "VOICE")}
+                active={scoreInputMethod === "voice"}
+                onClick={() => setScoreInputMethod("voice")}
+                primary={primary}
+                primarySoft={primarySoft}
+                compact
+              />
+              <PillButton
+                label={t("x01v3.inputMethod.auto", "AUTO")}
+                active={scoreInputMethod === "auto"}
+                onClick={() => setScoreInputMethod("auto")}
+                primary={primary}
+                primarySoft={primarySoft}
+                compact
+              />
+              <PillButton
+                label={t("x01v3.inputMethod.ai", "IA")}
+                active={scoreInputMethod === "ai"}
+                onClick={() => setScoreInputMethod("ai")}
+                primary={primary}
+                primarySoft={primarySoft}
+                compact
+              />
+            </div>
+
+            <div style={{ fontSize: 11, color: "#7c80a0", marginTop: 8 }}>
+              {scoreInputMethod === "dartboard"
+                ? t("x01v3.inputMethod.hintDartboard", "CIBLE : touche la cible pour saisir directement S/D/T.")
+                : scoreInputMethod === "presets"
+                ? t("x01v3.inputMethod.hintPresets", "PRESETS : raccourcis 1 tap (ex: 180) qui remplissent la volée.")
+                : scoreInputMethod === "voice"
+                ? t("x01v3.inputMethod.hintVoice", "VOICE : nécessite d’activer la commande vocale ci-dessous.")
+                : scoreInputMethod === "auto"
+                ? t("x01v3.inputMethod.hintAuto", "AUTO : module d’auto-scoring léger (si disponible).")
+                : scoreInputMethod === "ai"
+                ? t("x01v3.inputMethod.hintAi", "IA : dartsmind-like / vision (si disponible).")
+                : t("x01v3.inputMethod.hintKeypad", "KEYPAD : saisie manuelle classique.")}
+            </div>
+          </div>
+
+          {/* ✅ COMMANDE VOCALE (SAISIE SCORES) */}
+          <div style={{ marginTop: 12, paddingTop: 12, borderTop: "1px solid rgba(255,255,255,0.06)" }}>
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                gap: 10,
+                marginBottom: 8,
+              }}
+            >
+              <div style={{ fontSize: 12, textTransform: "uppercase", letterSpacing: 1, fontWeight: 700, color: primary }}>
+                {t("x01v3.voiceScore.title", "Commande vocale (saisie scores)")}
+              </div>
+            </div>
+
+            <div style={{ fontSize: 12, color: "#c8cbe4", marginBottom: 6 }}>
+              {t(
+                "x01v3.voiceScore.desc",
+                "Le joueur dicte ses 3 fléchettes. La voix récapitule et demande confirmation (oui/non)."
+              )}
+            </div>
+
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+              <PillButton
+                label={t("common.off", "OFF")}
+                active={voiceScoreEnabled === false}
+                onClick={() => setVoiceScoreEnabled(false)}
+                primary={primary}
+                primarySoft={primarySoft}
+                compact
+              />
+              <PillButton
+                label={t("common.on", "ON")}
+                active={voiceScoreEnabled === true}
+                onClick={() => setVoiceScoreEnabled(true)}
+                primary={primary}
+                primarySoft={primarySoft}
+                compact
+              />
+            </div>
+
+            <div style={{ fontSize: 11, color: "#7c80a0", marginTop: 8 }}>
+              {voiceScoreEnabled
+                ? t(
+                    "x01v3.voiceScore.onHint",
+                    "ON : saisie vocale active au début du tour (si supportée). Confirmation obligatoire."
+                  )
+                : t("x01v3.voiceScore.offHint", "OFF : saisie au keypad.")}
+            </div>
+
+            {voiceScoreEnabled && externalScoringEnabled && (
+              <div style={{ fontSize: 11, color: "#ffcc66", marginTop: 8 }}>
+                {t(
+                  "x01v3.voiceScore.warnExternal",
+                  "Note : le comptage externe est activé ; la commande vocale sera ignorée en play."
+                )}
+              </div>
+            )}
           </div>
 
           {/* ✅ COMPTAGE EXTERNE + bouton info */}
@@ -1512,125 +1807,10 @@ window.dispatchEvent(new CustomEvent("dc:x01v3:visit", {
         </section>
 
         {/* --------- BLOC FORMAT DU MATCH --------- */}
-        <section
-          style={{
-            background: cardBg,
-            borderRadius: 18,
-            padding: 12,
-            marginBottom: 12,
-            boxShadow: "0 16px 40px rgba(0,0,0,0.55)",
-            border: `1px solid rgba(255,255,255,0.04)`,
-          }}
-        >
-          <h3 style={{ fontSize: 13, textTransform: "uppercase", letterSpacing: 1, fontWeight: 700, color: primary, marginBottom: 10 }}>
-            {t("x01v3.format", "Format du match")}
-          </h3>
-
-          <div style={{ marginBottom: 10 }}>
-            <div style={{ fontSize: 12, color: "#c8cbe4", marginBottom: 6 }}>{t("x01v3.legsPerSet", "Manches par set")}</div>
-            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-              {LEGS_OPTIONS.map((n) => (
-                <PillButton
-                  key={n}
-                  label={String(n)}
-                  active={legsPerSet === n}
-                  onClick={() => setLegsPerSet(n)}
-                  primary={primary}
-                  primarySoft={primarySoft}
-                  compact
-                />
-              ))}
-            </div>
-          </div>
-
-          <div>
-            <div style={{ fontSize: 12, color: "#c8cbe4", marginBottom: 6 }}>{t("x01v3.setsToWin", "Sets à gagner")}</div>
-            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-              {SETS_OPTIONS.map((n) => (
-                <PillButton
-                  key={n}
-                  label={String(n)}
-                  active={setsToWin === n}
-                  onClick={() => setSetsToWin(n)}
-                  primary={primary}
-                  primarySoft={primarySoft}
-                  compact
-                />
-              ))}
-            </div>
-          </div>
-        </section>
+        
 
         {/* --------- BLOC SERVICE + MODE DE MATCH --------- */}
-        <section
-          style={{
-            background: cardBg,
-            borderRadius: 18,
-            padding: 12,
-            marginBottom: 12,
-            boxShadow: "0 16px 40px rgba(0,0,0,0.55)",
-            border: `1px solid rgba(255,255,255,0.04)`,
-          }}
-        >
-          <div style={{ marginBottom: 12 }}>
-            <div style={{ fontSize: 12, color: "#c8cbe4", marginBottom: 6 }}>{t("x01v3.service", "Service / ordre de départ")}</div>
-            <div style={{ display: "flex", gap: 6 }}>
-              <PillButton
-                label={t("x01v3.service.random", "Aléatoire")}
-                active={serveMode === "random"}
-                onClick={() => setServeMode("random")}
-                primary={primary}
-                primarySoft={primarySoft}
-              />
-              <PillButton
-                label={t("x01v3.service.alternate", "Alterné (officiel)")}
-                active={serveMode === "alternate"}
-                onClick={() => setServeMode("alternate")}
-                primary={primary}
-                primarySoft={primarySoft}
-              />
-            </div>
-          </div>
-
-          <div>
-            <div style={{ fontSize: 12, color: "#c8cbe4", marginBottom: 6 }}>{t("x01v3.matchMode", "Mode de match")}</div>
-            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-              <PillButton
-                label={t("x01v3.mode.solo", "Solo (1v1)")}
-                active={matchMode === "solo"}
-                onClick={() => {
-                  if (soloDisabled) return;
-                  setMatchMode("solo");
-                }}
-                primary={primary}
-                primarySoft={primarySoft}
-                disabled={soloDisabled}
-              />
-              <PillButton
-                label={t("x01v3.mode.multi", "Multi (FFA)")}
-                active={matchMode === "multi"}
-                onClick={() => {
-                  if (multiDisabled) return;
-                  setMatchMode("multi");
-                }}
-                primary={primary}
-                primarySoft={primarySoft}
-                disabled={multiDisabled}
-              />
-              <PillButton
-                label={t("x01v3.mode.teams", "Équipes")}
-                active={matchMode === "teams"}
-                onClick={() => {
-                  if (teamsDisabled) return;
-                  setMatchMode("teams");
-                }}
-                primary={primary}
-                primarySoft={primarySoft}
-                disabled={teamsDisabled}
-              />
-            </div>
-          </div>
-        </section>
+        
 
         {/* --------- BLOC COMPO ÉQUIPES --------- */}
         {matchMode === "teams" && totalPlayers >= 2 && (

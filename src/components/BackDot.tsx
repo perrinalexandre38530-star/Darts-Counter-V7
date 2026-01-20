@@ -22,7 +22,7 @@ export default function BackDot({
   onClick,
   glow,
   title = "Retour",
-  size = 36,
+  size = 46,
   color,
 }: Props) {
   const { theme } = useTheme();
@@ -61,9 +61,9 @@ export default function BackDot({
         cursor: "pointer",
         userSelect: "none",
         WebkitTapHighlightColor: "transparent",
-        border: `1px solid ${theme.borderSoft}`,
-        background: "rgba(0,0,0,0.22)",
-        boxShadow: `0 0 0 2px rgba(0,0,0,0.15), 0 0 14px ${halo}`,
+        border: `2px solid ${theme.borderSoft}`,
+        background: "rgba(0,0,0,0.48)",
+        boxShadow: `0 0 0 2px rgba(0,0,0,0.22), 0 0 18px ${halo}, 0 0 34px ${halo}`,
         color: iconColor,
         flex: "0 0 auto",
         pointerEvents: "auto",
@@ -71,11 +71,11 @@ export default function BackDot({
     >
       <span
         style={{
-          fontSize: 20,
+          fontSize: 24,
           fontWeight: 1000,
           lineHeight: 1,
           transform: "translateX(-1px)",
-          textShadow: `0 0 10px ${halo}`,
+          textShadow: `0 0 12px ${halo}, 0 0 22px ${halo}`,
         }}
       >
         ←

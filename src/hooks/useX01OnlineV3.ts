@@ -173,11 +173,19 @@ export function useX01OnlineV3({
   }
 
   function localApplyUndo() {
-    engine.undoLast();
+    // useX01EngineV3 expose undoLastDart (UNDO illimité)
+    engine.undoLastDart();
   }
 
   function localApplyForceNext() {
-    engine.forceNextPlayer();
+    // Le moteur V3 n'expose pas de "force next" dédié.
+    // On termine donc la visite en cours en complétant avec des MISS,
+    // ce qui provoque naturellement le passage au joueur suivant.
+    const dartsLeft = (engine.state as any)?.visit?.dartsLeft ?? 0;
+    const toThrow = Math.max(0, Math.min(3, Number(dartsLeft) || 0));
+    for (let i = 0; i < toThrow; i++) {
+      engine.throwDart({ segment: 0, multiplier: 0 });
+    }
   }
 
   // ==================================================

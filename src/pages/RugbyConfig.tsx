@@ -2,6 +2,7 @@ import React, { useMemo, useState } from "react";
 import BackDot from "../components/BackDot";
 import InfoDot from "../components/InfoDot";
 import PageHeader from "../components/PageHeader";
+import tickerRugby from "../assets/tickers/ticker_rugby.png";
 import Section from "../components/Section";
 import OptionRow from "../components/OptionRow";
 import OptionToggle from "../components/OptionToggle";
@@ -49,6 +50,7 @@ export default function RugbyConfig(props: any) {
     <div className="page">
       <PageHeader
         title="RUGBY"
+        tickerSrc={tickerRugby}
         left={<BackDot onClick={goBack} />}
         right={<InfoDot title="Règles RUGBY" content={INFO_TEXT} />}
       />

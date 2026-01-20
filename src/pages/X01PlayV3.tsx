@@ -16,13 +16,14 @@ import type {
 import { useX01EngineV3 } from "../hooks/useX01EngineV3";
 import type { Dart as UIDart } from "../lib/types";
 
-import Keypad from "../components/Keypad";
+import ScoreInputHub from "../components/ScoreInputHub";
 import { DuelHeaderCompact } from "../components/DuelHeaderCompact";
 import X01LegOverlayV3 from "../lib/x01v3/x01LegOverlayV3";
 
 import { useTheme } from "../contexts/ThemeContext";
 import { useLang } from "../contexts/LangContext";
 import { History } from "../lib/history";
+import { useVoiceScoreInput } from "../hooks/useVoiceScoreInput";
 
 import EndOfLegOverlay from "../components/EndOfLegOverlay";
 import type { LegStats } from "../lib/stats";
@@ -983,13 +984,117 @@ const isBotTurn = React.useMemo(() => {
 }, [activePlayer]);
 
   // =====================================================
-  // ✅ Source de comptage (manual / external) — AJOUT UNIQUEMENT
-  // - manual  : Keypad (comportement actuel)
-  // - external: un système externe (ex: Scolia / bridge PC) envoie des darts via CustomEvent
+  // ✅ Source de comptage (manual / external)
   // =====================================================
   const scoringSource: ScoringSource =
     ((config as any)?.scoringSource as ScoringSource) ||
     (((config as any)?.externalScoring ? "external" : "manual") as ScoringSource);
+
+  // =====================================================
+  // 🎤 Voice scoring (MVP) — dictée 3 fléchettes + confirmation
+  // - Ignore automatiquement si scoringSource=external ou BOT
+  // =====================================================
+  const voiceScoreEnabled = !!(config as any)?.voiceScoreInputEnabled;
+
+  const speakVoiceScore = React.useCallback(
+    (text: string) => {
+      try {
+        if (typeof window === "undefined") return;
+        const synth = (window as any).speechSynthesis;
+        if (!synth) return;
+
+        try {
+          synth.cancel?.();
+        } catch {}
+
+        const u = new SpeechSynthesisUtterance(text);
+        u.lang = (lang || "fr").startsWith("fr") ? "fr-FR" : lang || "en-US";
+        synth.speak(u);
+      } catch {
+        // ignore
+      }
+    },
+    [lang]
+  );
+
+  const voiceScore = useVoiceScoreInput({
+    enabled:
+      voiceScoreEnabled &&
+      scoringSource !== "external" &&
+      !isBotTurn &&
+      status === "running",
+    lang: (lang || "fr").startsWith("fr") ? "fr-FR" : "en-US",
+    speak: speakVoiceScore,
+    announcePlayer: false, // X01PlayV3 annonce déjà le tour
+    playerName: activePlayer?.name || "",
+    onCommit: (vdarts) => {
+      try {
+        if (!vdarts?.length) return;
+        if (status !== "running") return;
+        if (scoringSource === "external") return;
+        if (isBotTurn) return;
+
+        // UI: dernière volée
+        const pid = activePlayerId as string;
+        const uiDarts: UIDart[] = vdarts.map((d) => {
+          if ((d as any).kind === "BULL") return ({ v: 25, mult: 1 } as any);
+          if ((d as any).kind === "DBULL") return ({ v: 25, mult: 2 } as any);
+          if ((d as any).kind === "MISS") return ({ v: 20, mult: 0 } as any);
+          const kind = (d as any).kind as "S" | "D" | "T";
+          const base = (d as any).base as number;
+          const mult = kind === "T" ? 3 : kind === "D" ? 2 : 1;
+          return ({ v: base, mult } as any);
+        });
+
+        setLastVisitsByPlayer((m) => ({ ...m, [pid]: uiDarts.slice(-3) }));
+
+        // Audio unlock best-effort
+        try {
+          ensureAudioUnlockedNow();
+        } catch {}
+
+        // On pousse au moteur APRÈS confirmation
+        const inputs: X01DartInputV3[] = vdarts.map((d: any) => {
+          if (d.kind === "BULL") return { segment: 25, multiplier: 1 } as any;
+          if (d.kind === "DBULL") return { segment: 25, multiplier: 2 } as any;
+          if (d.kind === "MISS") return { segment: 20, multiplier: 0 } as any;
+          const mult = d.kind === "T" ? 3 : d.kind === "D" ? 2 : 1;
+          return { segment: d.base, multiplier: mult } as any;
+        });
+
+        inputs.forEach((input, index) => {
+          setTimeout(() => {
+            throwDart(input);
+
+            // Autosave + replay log
+            replayDartsRef.current = replayDartsRef.current.concat([input]);
+            persistAutosave();
+          }, index * 10);
+        });
+      } catch (e) {
+        console.warn("[X01PlayV3] voice scoring commit failed", e);
+      }
+    },
+    onNeedManual: () => {
+      try {
+        speakVoiceScore(
+          (lang || "fr").startsWith("fr")
+            ? "Ok. Corrige manuellement au clavier."
+            : "Ok. Please correct manually."
+        );
+      } catch {}
+    },
+  });
+
+  React.useEffect(() => {
+    if (!voiceScoreEnabled) return;
+    if (scoringSource === "external") return;
+    if (status !== "running") return;
+    if (!activePlayerId) return;
+    if (isBotTurn) return;
+    voiceScore.beginTurn();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activePlayerId]);
 
   // Y a-t-il AU MOINS un BOT dans la partie ?
   const hasBots = React.useMemo(
@@ -1607,14 +1712,17 @@ React.useEffect(() => {
   setMultiplier(1);
 }, [activePlayerId]);
 
-function pushDart(value: number) {
+function pushDart(value: number, multOverride?: 1 | 2 | 3) {
   ensureAudioUnlockedNow();
   currentThrowFromEngineRef.current = false;
 
   if (!activePlayerId) return;
   if (currentThrow.length >= 3) return;
 
-  const dart: UIDart = { v: value, mult: multiplier } as UIDart;
+  const forcedMult = multOverride ?? multiplier;
+  const safeMult: 1 | 2 | 3 =
+    value === 25 ? ((forcedMult === 2 ? 2 : 1) as any) : (forcedMult as any);
+  const dart: UIDart = { v: value, mult: safeMult } as UIDart;
 
   // 1) hit
   playHitSfx("dart_hit", { rateLimitMs: 40, volume: 0.55 });
@@ -1706,6 +1814,11 @@ const handleNumber = (value: number) => {
 const handleBull = () => {
   if (isBustLocked) return;
   pushDart(25);
+};
+
+const handleDirectDart = (d: UIDart) => {
+  if (isBustLocked) return;
+  pushDart(d.v, d.mult as any);
 };
 
 const handleBackspace = () => {
@@ -2629,20 +2742,88 @@ try {
               </div>
             ) : null}
 
-          <Keypad
-            currentThrow={currentThrow}
-            multiplier={multiplier}
-            onSimple={handleSimple}
-            onDouble={handleDouble}
-            onTriple={handleTriple}
-            onBackspace={handleBackspace}
-            onCancel={handleCancel}
-            onNumber={handleNumber}
-            onBull={handleBull}
-            onValidate={validateThrow}
-            hidePreview
-            bustLock={isBustLocked}
-          />
+          {voiceScoreEnabled && scoringSource !== "external" && voiceScore.phase !== "OFF" && !isBotTurn && (
+            <div
+              style={{
+                marginBottom: 8,
+                padding: "8px 10px",
+                borderRadius: 14,
+                border: "1px solid rgba(255,255,255,0.10)",
+                background: "rgba(0,0,0,0.25)",
+                boxShadow: "0 10px 24px rgba(0,0,0,0.45)",
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+                <div style={{ fontWeight: 900, letterSpacing: 0.4 }}>
+                  {voiceScore.phase.startsWith("LISTEN")
+                    ? t("x01v3.voiceScore.listening", "Micro : écoute...")
+                    : voiceScore.phase === "RECAP_CONFIRM"
+                    ? t("x01v3.voiceScore.confirm", "Confirmer : oui / non")
+                    : t("x01v3.voiceScore.active", "Commande vocale")}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => voiceScore.stop()}
+                  style={{
+                    borderRadius: 12,
+                    padding: "6px 10px",
+                    border: "1px solid rgba(255,255,255,0.12)",
+                    background: "rgba(255,255,255,0.06)",
+                    color: "#fff",
+                    fontWeight: 900,
+                    cursor: "pointer",
+                    flex: "0 0 auto",
+                  }}
+                >
+                  {t("common.stop", "Stop")}
+                </button>
+              </div>
+              {voiceScore.lastHeard ? (
+                <div style={{ marginTop: 4, fontSize: 12, color: "rgba(255,255,255,0.75)" }}>
+                  {t("x01v3.voiceScore.heard", "Entendu")}: {voiceScore.lastHeard}
+                </div>
+              ) : null}
+              {voiceScore.dartsLabel ? (
+                <div style={{ marginTop: 2, fontSize: 12, color: "rgba(255,255,255,0.75)" }}>
+                  {t("x01v3.voiceScore.rec", "Saisie")}: {voiceScore.dartsLabel}
+                </div>
+              ) : null}
+            </div>
+          )}
+
+          <div
+            style={{
+              pointerEvents:
+                voiceScoreEnabled && scoringSource !== "external" && (voiceScore.phase.startsWith("LISTEN") || voiceScore.phase === "RECAP_CONFIRM")
+                  ? "none"
+                  : "auto",
+              opacity:
+                voiceScoreEnabled && scoringSource !== "external" && (voiceScore.phase.startsWith("LISTEN") || voiceScore.phase === "RECAP_CONFIRM")
+                  ? 0.55
+                  : 1,
+              filter:
+                voiceScoreEnabled && scoringSource !== "external" && (voiceScore.phase.startsWith("LISTEN") || voiceScore.phase === "RECAP_CONFIRM")
+                  ? "grayscale(.15)"
+                  : "none",
+            }}
+          >
+            <ScoreInputHub
+              currentThrow={currentThrow}
+              multiplier={multiplier}
+              onSimple={handleSimple}
+              onDouble={handleDouble}
+              onTriple={handleTriple}
+              onBackspace={handleBackspace}
+              onCancel={handleCancel}
+              onNumber={handleNumber}
+              onBull={handleBull}
+              onValidate={validateThrow}
+              onDirectDart={handleDirectDart}
+              hidePreview
+              showPlaceholders={false}
+              disabled={isBustLocked}
+            />
+          </div>
           </div>
         )}
       </div>

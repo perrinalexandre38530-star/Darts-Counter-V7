@@ -2,6 +2,7 @@ import React, { useMemo, useState } from "react";
 import BackDot from "../components/BackDot";
 import InfoDot from "../components/InfoDot";
 import PageHeader from "../components/PageHeader";
+import tickerV170 from "../assets/tickers/ticker_v170.png";
 import Section from "../components/Section";
 import OptionRow from "../components/OptionRow";
 import OptionToggle from "../components/OptionToggle";
@@ -49,6 +50,7 @@ export default function Game170Config(props: any) {
     <div className="page">
       <PageHeader
         title="170"
+        tickerSrc={tickerV170}
         left={<BackDot onClick={goBack} />}
         right={<InfoDot title="Règles 170" content={INFO_TEXT} />}
       />

@@ -2,6 +2,7 @@ import React, { useMemo, useState } from "react";
 import BackDot from "../components/BackDot";
 import InfoDot from "../components/InfoDot";
 import PageHeader from "../components/PageHeader";
+import tickerBatard from "../assets/tickers/ticker_bastard.png";
 import Section from "../components/Section";
 import OptionRow from "../components/OptionRow";
 import OptionToggle from "../components/OptionToggle";
@@ -49,6 +50,7 @@ export default function BatardConfig(props: any) {
     <div className="page">
       <PageHeader
         title="BÂTARD"
+        tickerSrc={tickerBatard}
         left={<BackDot onClick={goBack} />}
         right={<InfoDot title="Règles BÂTARD" content={INFO_TEXT} />}
       />

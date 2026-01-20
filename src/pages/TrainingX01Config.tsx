@@ -54,6 +54,7 @@ export default function TrainingX01Config({ go }: Props) {
 
   const [startScore, setStartScore] = React.useState<(typeof START_CHOICES)[number]>(501);
   const [outMode, setOutMode] = React.useState<(typeof OUT_CHOICES)[number]>("double");
+  const [voiceScoreEnabled, setVoiceScoreEnabled] = React.useState<boolean>(false);
 
   const avatarSrc = resolveAvatarSrc(profile);
   const playerName = (profile?.name || profile?.nickname || profile?.username || "Joueur") as string;
@@ -64,6 +65,7 @@ export default function TrainingX01Config({ go }: Props) {
       config: {
         startScore,
         outMode,
+        voiceScoreInputEnabled: voiceScoreEnabled,
         // ✅ flag explicite pour masquer la sélection dans le play
         locked: true,
       },
@@ -114,6 +116,46 @@ export default function TrainingX01Config({ go }: Props) {
         </div>
 
         <div style={{ width: 44 }} />
+      </div>
+
+      {/* Voice scoring */}
+      <div
+        style={{
+          marginTop: 12,
+          background: theme.card,
+          border: `1px solid ${theme.borderSoft}`,
+          borderRadius: 16,
+          padding: 12,
+        }}
+      >
+        <div style={{ fontWeight: 900, marginBottom: 8 }}>
+          {t("training.x01.config.voiceScore", "Commande vocale (saisie scores)")}
+        </div>
+        <div style={{ fontSize: 12, color: theme.textSoft, marginBottom: 10 }}>
+          {t(
+            "training.x01.config.voiceScoreHint",
+            "Dicte tes 3 fléchettes. La voix récapitule et demande confirmation."
+          )}
+        </div>
+        <div style={{ display: "flex", gap: 10, alignItems: "center", justifyContent: "space-between" }}>
+          <div style={{ fontSize: 12, opacity: 0.9 }}>{voiceScoreEnabled ? "ON" : "OFF"}</div>
+          <button
+            onClick={() => setVoiceScoreEnabled((v) => !v)}
+            style={{
+              borderRadius: 999,
+              padding: "10px 12px",
+              fontWeight: 900,
+              border: voiceScoreEnabled ? `1px solid ${theme.primary}` : `1px solid ${theme.borderSoft}`,
+              background: voiceScoreEnabled
+                ? `linear-gradient(180deg, ${theme.primary} , rgba(0,0,0,0.4))`
+                : "rgba(10,10,12,0.9)",
+              color: voiceScoreEnabled ? "#111" : theme.text,
+              boxShadow: voiceScoreEnabled ? `0 0 14px ${theme.primary}55` : "none",
+            }}
+          >
+            {voiceScoreEnabled ? t("common.disable", "Désactiver") : t("common.enable", "Activer")}
+          </button>
+        </div>
       </div>
 
       {/* Profil */}
@@ -236,6 +278,59 @@ export default function TrainingX01Config({ go }: Props) {
               {om}
             </button>
           ))}
+        </div>
+      </div>
+
+      {/* Commande vocale (saisie scores) */}
+      <div
+        style={{
+          marginTop: 12,
+          background: theme.card,
+          border: `1px solid ${theme.borderSoft}`,
+          borderRadius: 16,
+          padding: 12,
+        }}
+      >
+        <div style={{ fontWeight: 900, marginBottom: 6 }}>
+          {t("training.x01.config.voiceScore", "Commande vocale (saisie scores)")}
+        </div>
+        <div style={{ fontSize: 12, color: theme.textSoft, marginBottom: 10 }}>
+          {t(
+            "training.x01.config.voiceScoreHint",
+            "Dicte tes 3 fléchettes. Récap + confirmation oui/non avant validation."
+          )}
+        </div>
+
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          <button
+            onClick={() => setVoiceScoreEnabled(false)}
+            style={{
+              padding: "10px 12px",
+              borderRadius: 999,
+              fontWeight: 900,
+              border: voiceScoreEnabled ? `1px solid ${theme.borderSoft}` : `1px solid ${theme.primary}`,
+              background: voiceScoreEnabled ? "rgba(10,10,12,0.9)" : `linear-gradient(180deg, ${theme.primary} , rgba(0,0,0,0.4))`,
+              color: voiceScoreEnabled ? theme.text : "#111",
+              boxShadow: voiceScoreEnabled ? "none" : `0 0 14px ${theme.primary}55`,
+            }}
+          >
+            {t("common.off", "OFF")}
+          </button>
+
+          <button
+            onClick={() => setVoiceScoreEnabled(true)}
+            style={{
+              padding: "10px 12px",
+              borderRadius: 999,
+              fontWeight: 900,
+              border: voiceScoreEnabled ? `1px solid ${theme.primary}` : `1px solid ${theme.borderSoft}`,
+              background: voiceScoreEnabled ? `linear-gradient(180deg, ${theme.primary} , rgba(0,0,0,0.4))` : "rgba(10,10,12,0.9)",
+              color: voiceScoreEnabled ? "#111" : theme.text,
+              boxShadow: voiceScoreEnabled ? `0 0 14px ${theme.primary}55` : "none",
+            }}
+          >
+            {t("common.on", "ON")}
+          </button>
         </div>
       </div>
 

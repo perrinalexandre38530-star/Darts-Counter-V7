@@ -10,7 +10,7 @@ import React from "react";
 import type { Dart } from "../lib/types";
 import { useTheme } from "../contexts/ThemeContext";
 import { useLang } from "../contexts/LangContext";
-import Keypad from "../components/Keypad";
+import ScoreInputHub from "../components/ScoreInputHub";
 import BackDot from "../components/BackDot";
 import InfoDot from "../components/InfoDot";
 import type { WarfareConfig, WarfareZoneRule } from "./WarfareConfig";
@@ -639,7 +639,7 @@ export default function WarfarePlay({ go, config }: Props) {
           </div>
         </div>
 
-        <Keypad
+        <ScoreInputHub
           currentThrow={currentThrow}
           multiplier={mult}
           onSimple={() => setMult(1)}
@@ -653,6 +653,12 @@ export default function WarfarePlay({ go, config }: Props) {
           onNumber={onNumber}
           onBull={onBull}
           onValidate={() => applyTurn(currentThrow)}
+          onDirectDart={(d) => {
+            if (winnerArmy !== null) return;
+            if (currentThrow.length >= 3) return;
+            setCurrentThrow((prev) => [...prev, { v: d.v, mult: d.mult as any } as any]);
+            if (mult !== 1) setMult(1);
+          }}
           hidePreview
           hideTotal
         />

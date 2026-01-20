@@ -58,6 +58,11 @@ export interface X01ConfigV3 {
 
   // Serve: random / alterné
   serveMode: "random" | "alternate";
+
+  // ✅ Voice scoring (MVP)
+  // - Saisie vocale des 3 fléchettes + confirmation oui/non
+  // - Fallback manuel si non supporté / permission refusée
+  voiceScoreInputEnabled?: boolean;
 }
 
 /* -----------------------------------------------

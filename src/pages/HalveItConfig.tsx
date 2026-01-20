@@ -2,6 +2,7 @@ import React, { useMemo, useState } from "react";
 import BackDot from "../components/BackDot";
 import InfoDot from "../components/InfoDot";
 import PageHeader from "../components/PageHeader";
+import tickerHalveIt from "../assets/tickers/ticker_halve_it.png";
 import Section from "../components/Section";
 import OptionRow from "../components/OptionRow";
 import OptionToggle from "../components/OptionToggle";
@@ -49,6 +50,7 @@ export default function HalveItConfig(props: any) {
     <div className="page">
       <PageHeader
         title="HALVE-IT"
+        tickerSrc={tickerHalveIt}
         left={<BackDot onClick={goBack} />}
         right={<InfoDot title="Règles HALVE-IT" content={INFO_TEXT} />}
       />

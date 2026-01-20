@@ -2,6 +2,7 @@ import React, { useMemo, useState } from "react";
 import BackDot from "../components/BackDot";
 import InfoDot from "../components/InfoDot";
 import PageHeader from "../components/PageHeader";
+import tickerBobs27 from "../assets/tickers/ticker_bobs_27.png";
 import Section from "../components/Section";
 import OptionRow from "../components/OptionRow";
 import OptionToggle from "../components/OptionToggle";
@@ -49,6 +50,7 @@ export default function Bobs27Config(props: any) {
     <div className="page">
       <PageHeader
         title="BOB'S 27"
+        tickerSrc={tickerBobs27}
         left={<BackDot onClick={goBack} />}
         right={<InfoDot title="Règles BOB'S 27" content={INFO_TEXT} />}
       />

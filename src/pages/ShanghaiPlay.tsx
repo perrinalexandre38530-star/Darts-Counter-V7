@@ -18,7 +18,7 @@ import React from "react";
 import { useTheme } from "../contexts/ThemeContext";
 import { useLang } from "../contexts/LangContext";
 import InfoDot from "../components/InfoDot";
-import Keypad from "../components/Keypad";
+import ScoreInputHub from "../components/ScoreInputHub";
 import type { Dart as UIDart } from "../lib/types";
 import ShanghaiLogo from "../assets/SHANGHAI.png";
 import TargetBg from "../assets/target_bg.png";
@@ -1399,7 +1399,7 @@ export default function ShanghaiPlay(props: Props) {
               transformOrigin: "bottom center",
             }}
           >
-            <Keypad
+            <ScoreInputHub
               currentThrow={currentThrow}
               multiplier={multiplier}
               onSimple={() => setMultiplier(1)}
@@ -1419,6 +1419,10 @@ export default function ShanghaiPlay(props: Props) {
                 setMultiplier(1);
               }}
               onValidate={validateTurn}
+              onDirectDart={(d) => {
+                pushDart(d);
+                setMultiplier(1);
+              }}
               hidePreview={true}
             />
           </div>

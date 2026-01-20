@@ -34,7 +34,7 @@ import type {
   KillerDamageRule,
   KillerBecomeRule,
 } from "./KillerConfig";
-import Keypad from "../components/Keypad";
+import ScoreInputHub from "../components/ScoreInputHub";
 import InfoDot from "../components/InfoDot";
 
 import killerActiveIcon from "../assets/icons/killer-active.png";
@@ -4196,7 +4196,7 @@ return (
     </div>
 
     <div style={{ marginTop: 10 }} className="dc-killer-keypad">
-      <Keypad
+      <ScoreInputHub
         currentThrow={currentThrow}
         multiplier={multiplier}
         onSimple={() => setMultiplier(1)}
@@ -4210,6 +4210,7 @@ return (
           applyThrow({ target: 25, mult: m });
         }}
         onValidate={handleValidate}
+        onDirectDart={(d) => applyThrow({ target: d.v, mult: d.mult as any })}
         hidePreview={true}
         hideTotal={true}
         centerSlot={

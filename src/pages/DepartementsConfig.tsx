@@ -2,6 +2,7 @@ import React from "react";
 import BackDot from "../components/BackDot";
 import InfoDot from "../components/InfoDot";
 import PageHeader from "../components/PageHeader";
+import tickerDepartements from "../assets/tickers/ticker-departements.png";
 import Section from "../components/Section";
 import OptionRow from "../components/OptionRow";
 import OptionToggle from "../components/OptionToggle";
@@ -95,6 +96,7 @@ export default function DepartementsConfig(props: any) {
     <div className="page">
       <PageHeader
         title="TERRITORIES"
+        tickerSrc={tickerDepartements}
         left={<BackDot onClick={goBack} />}
         right={<InfoDot title="Règles TERRITORIES" content={INFO_TEXT} />}
       />

@@ -15,7 +15,7 @@ import { useTheme } from "../contexts/ThemeContext";
 import { useLang } from "../contexts/LangContext";
 import InfoDot from "../components/InfoDot";
 import BackDot from "../components/BackDot";
-import Keypad from "../components/Keypad";
+import ScoreInputHub from "../components/ScoreInputHub";
 import type { Dart as UIDart } from "../lib/types";
 import { DartIconColorizable } from "../components/MaskIcon";
 
@@ -1071,7 +1071,7 @@ export default function BattleRoyalePlay({ go, config, onFinish }: Props) {
           <ThrowBlocks total={dartsPerTurn} darts={currentThrow} />
         </div>
 
-        <Keypad
+        <ScoreInputHub
           currentThrow={currentThrow}
           multiplier={multiplier}
           onSimple={() => setMultiplier(1)}
@@ -1082,6 +1082,7 @@ export default function BattleRoyalePlay({ go, config, onFinish }: Props) {
           onNumber={onNumber}
           onBull={onBull}
           onValidate={finishTurn}
+          onDirectDart={(d) => pushDart(d)}
           hidePreview={true}
           hideTotal={false}
           centerSlot={

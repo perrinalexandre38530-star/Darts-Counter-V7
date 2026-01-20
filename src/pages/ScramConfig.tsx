@@ -2,6 +2,7 @@ import React, { useMemo, useState } from "react";
 import BackDot from "../components/BackDot";
 import InfoDot from "../components/InfoDot";
 import PageHeader from "../components/PageHeader";
+import tickerScram from "../assets/tickers/ticker_scram.png";
 import Section from "../components/Section";
 import OptionRow from "../components/OptionRow";
 import OptionToggle from "../components/OptionToggle";
@@ -49,6 +50,7 @@ export default function ScramConfig(props: any) {
     <div className="page">
       <PageHeader
         title="SCRAM"
+        tickerSrc={tickerScram}
         left={<BackDot onClick={goBack} />}
         right={<InfoDot title="Règles SCRAM" content={INFO_TEXT} />}
       />
