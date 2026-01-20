@@ -29,6 +29,7 @@ import { useLang } from "../contexts/LangContext";
 import ProfileAvatar from "../components/ProfileAvatar";
 import ProfileStarRing from "../components/ProfileStarRing";
 import BackDot from "../components/BackDot";
+import tickerKiller from "../assets/tickers/ticker_killer.png";
 import InfoDot from "../components/InfoDot";
 
 // 🔽 AVATARS BOTS PRO (mêmes chemins que X01ConfigV3)
@@ -360,6 +361,14 @@ export default function KillerConfigPage(props: Props) {
   const { theme } = useTheme();
   const { t } = useLang();
 
+  React.useLayoutEffect(() => {
+    try {
+      window.scrollTo(0, 0);
+      document.documentElement.scrollTop = 0;
+      document.body.scrollTop = 0;
+    } catch {}
+  }, []);
+
   const primary = theme?.primary ?? "#f7c85c";
   const primarySoft = theme?.primarySoft ?? "rgba(247,200,92,0.16)";
   const textMain = theme?.text ?? "#f5f5ff";
@@ -671,72 +680,56 @@ export default function KillerConfigPage(props: Props) {
         color: textMain,
       }}
     >
-      {/* HEADER */}
-      <header style={{ marginBottom: 6 }}>
-        {(() => {
-          const DOT_SIZE = 36;
-          const DOT_GLOW = `${primary}88`;
-          return (
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: "44px 1fr 44px",
-                alignItems: "center",
-                gap: 10,
-                marginBottom: 10,
-              }}
-            >
-              <div style={{ display: "flex", justifyContent: "flex-start" }}>
-                <BackDot
-                  onClick={() => (onBack ? onBack() : typeof go === "function" ? go("games") : null)}
-                  title={t?.("common.back", "Retour") ?? "Retour"}
-                  size={DOT_SIZE}
-                  color={primary}
-                  glow={DOT_GLOW}
-                />
-              </div>
-
-              <div style={{ textAlign: "center", minWidth: 0 }}>
-                <div
-                  style={{
-                    fontSize: 26,
-                    fontWeight: 900,
-                    letterSpacing: 2,
-                    color: primary,
-                    textTransform: "uppercase",
-                    lineHeight: 1.05,
-                  }}
-                >
-                  KILLER
-                </div>
-                <div
-                  style={{
-                    fontSize: 12,
-                    opacity: 0.75,
-                    color: "#d9d9e4",
-                    marginTop: 2,
-                    overflow: "hidden",
-                    textOverflow: "ellipsis",
-                    whiteSpace: "nowrap",
-                  }}
-                >
-                  Choisis les joueurs, assigne les numéros, puis lance le chaos.
-                </div>
-              </div>
-
-              <div style={{ display: "flex", justifyContent: "flex-end" }}>
-                <InfoDot
-                  onClick={() => setInfoOpen(true)}
-                  title={t?.("common.rules", "Règles") ?? "Règles"}
-                  size={DOT_SIZE}
-                  color={primary}
-                  glow={DOT_GLOW}
-                />
-              </div>
-            </div>
-          );
-        })()}
-      </header>
+      
+{/* HEADER TICKER */}
+<div
+  style={{
+    position: "sticky",
+    top: 0,
+    zIndex: 60,
+    paddingTop: "env(safe-area-inset-top)",
+    marginBottom: 10,
+  }}
+>
+  <div style={{ position: "relative", marginLeft: -12, marginRight: -12 }}>
+    <img
+      src={tickerKiller as any}
+      alt="Killer"
+      draggable={false}
+      style={{ width: "100%", height: 92, objectFit: "cover", display: "block" }}
+    />
+    <div
+      style={{
+        position: "absolute",
+        inset: 0,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "space-between",
+        padding: "0 12px",
+        pointerEvents: "none",
+      }}
+    >
+      <div style={{ pointerEvents: "auto" }}>
+        <BackDot
+          onClick={() => (onBack ? onBack() : typeof go === "function" ? go("games") : null)}
+          title={t?.("common.back", "Retour") ?? "Retour"}
+          size={42}
+          color={primary}
+          glow={`${primary}AA`}
+        />
+      </div>
+      <div style={{ pointerEvents: "auto" }}>
+        <InfoDot
+          onClick={() => setInfoOpen(true)}
+          title={t?.("common.rules", "Règles") ?? "Règles"}
+          size={42}
+          color={primary}
+          glow={`${primary}AA`}
+        />
+      </div>
+    </div>
+  </div>
+</div>
 
       {/* CONTENT */}
       <div ref={contentRef as any} style={{ flex: 1, overflowY: "auto", paddingTop: 4, paddingBottom: 12 }}>

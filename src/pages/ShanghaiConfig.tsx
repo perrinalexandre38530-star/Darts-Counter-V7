@@ -16,6 +16,8 @@ import type { Store } from "../lib/types";
 import { useTheme } from "../contexts/ThemeContext";
 import { useLang } from "../contexts/LangContext";
 import InfoDot from "../components/InfoDot";
+import ConfigTickerHeader from "../components/ConfigTickerHeader";
+import tickerShanghai from "../assets/tickers/ticker_shanghai.png";
 import BackDot from "../components/BackDot";
 
 // ✅ NEW
@@ -304,63 +306,31 @@ export default function ShanghaiConfigPage({ store, go }: Props) {
         paddingBottom: 110,
       }}
     >
-      <div style={{ padding: 16, maxWidth: 520, margin: "0 auto" }}>
-        {/* Header : BackDot / Titre+résumé centrés / InfoDot */}
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "44px 1fr 44px",
-            alignItems: "center",
-            gap: 10,
-            marginBottom: 14,
-          }}
-        >
-          <div style={{ display: "flex", justifyContent: "flex-start" }}>
-            <BackDot
-              onClick={() => go("games")}
-              title={t("common.back", "Retour")}
-              size={36}
-              color={theme.primary}
-              glow={theme.primary + "88"}
-            />
-          </div>
+        <ConfigTickerHeader
+        src={tickerShanghai as any}
+        alt="Shanghai"
+        height={92}
+        left={
+          <BackDot
+            onClick={() => go("games")}
+            title={t("common.back", "Retour")}
+            size={42}
+            color={theme.primary}
+            glow={theme.primary + "AA"}
+          />
+        }
+        right={
+          <InfoDot
+            onClick={() => setInfoOpen(true)}
+            title={t("common.rules", "Règles")}
+            size={42}
+            color={theme.primary}
+            glow={theme.primary + "AA"}
+          />
+        }
+      />
 
-          <div style={{ textAlign: "center", lineHeight: 1.15 }}>
-            <div
-              style={{
-                fontSize: 30,
-                fontWeight: 950,
-                color: theme.primary,
-                textShadow: `0 0 16px ${theme.primary}66`,
-                letterSpacing: 0.8,
-                textTransform: "uppercase",
-              }}
-            >
-              SHANGHAI
-            </div>
-            <div
-              style={{
-                marginTop: 6,
-                fontSize: 12.5,
-                color: theme.textSoft,
-                opacity: 0.88,
-                lineHeight: 1.25,
-              }}
-            >
-              Tours 1–{maxRounds} • Cible = numéro du tour • S/D/T sur la cible
-            </div>
-          </div>
-
-          <div style={{ display: "flex", justifyContent: "flex-end" }}>
-            <InfoDot
-              onClick={() => setInfoOpen(true)}
-              title={t("common.rules", "Règles")}
-              size={36}
-              color={theme.primary}
-              glow={theme.primary + "88"}
-            />
-          </div>
-        </div>
+      <div style={{ padding: 16, paddingTop: 12, maxWidth: 520, margin: "0 auto" }}>
 
         {/* JOUEURS — carrousel X01Multi (sans cartes) */}
         <div style={{ ...cardShell, padding: 14 }}>

@@ -32,6 +32,9 @@ type Props = {
   /** ✅ NEW: injection directe d'une fléchette (pour presets / IA / voice) */
   onDirectDart?: (d: UIDart) => void;
 
+  /** Autoriser l'onglet Presets (par défaut: auto si onDirectDart est fourni) */
+  enablePresets?: boolean;
+
   /** Masquer les 3 badges d’aperçu (si affichés ailleurs) */
   hidePreview?: boolean;
   /** Masquer le total */
@@ -84,6 +87,7 @@ export default function ScoreInputHub({
   onBull,
   onValidate,
   onDirectDart,
+  enablePresets = true,
   hidePreview,
   hideTotal,
   centerSlot,
@@ -96,7 +100,7 @@ export default function ScoreInputHub({
     safeWriteMethod(method);
   }, [method]);
 
-  const allowPresets = !!onDirectDart;
+  const allowPresets = !!onDirectDart && enablePresets;
 
   return (
     <div>

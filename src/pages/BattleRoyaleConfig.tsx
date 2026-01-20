@@ -13,6 +13,8 @@ import { useLang } from "../contexts/LangContext";
 import InfoDot from "../components/InfoDot";
 import BackDot from "../components/BackDot";
 
+import tickerBattleRoyale from "../assets/tickers/ticker_battle_royale.png";
+import tickerImg from "../assets/tickers/ticker_battle_royale.png";
 import { setSfxEnabled } from "../lib/sfx";
 import { setVoiceEnabled } from "../lib/voice";
 
@@ -69,6 +71,14 @@ export default function BattleRoyaleConfigPage({ store, go }: Props) {
   const { theme } = useTheme();
   const { t } = useLang();
 
+
+  React.useLayoutEffect(() => {
+    try {
+      window.scrollTo(0, 0);
+      document.documentElement.scrollTop = 0;
+      document.body.scrollTop = 0;
+    } catch {}
+  }, []);
   const PAGE_BG = theme.bg;
   const CARD_BG = theme.card;
 
@@ -163,48 +173,50 @@ export default function BattleRoyaleConfigPage({ store, go }: Props) {
         color: theme.text,
       }}
     >
-      {/* Header */}
-      <div
-        style={{
-          position: "sticky",
-          top: 0,
-          zIndex: 5,
-          background: PAGE_BG,
-          paddingTop: 4,
-          paddingBottom: 10,
-        }}
-      >
-        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <BackDot
-            onClick={() => go("games")}
-            glow={theme.primary + "88"}
-            title={t("common.back", "Retour")}
-          />
+      
+{/* Header ticker */}
+<div
+  style={{
+    position: "sticky",
+    top: 0,
+    zIndex: 60,
+    paddingTop: "env(safe-area-inset-top)",
+    marginBottom: 10,
+  }}
+>
+  <div style={{ position: "relative", marginLeft: -14, marginRight: -14 }}>
+    <img
+      src={tickerBattleRoyale as any}
+      alt="Battle Royale"
+      draggable={false}
+      style={{ width: "100%", height: 92, objectFit: "cover", display: "block" }}
+    />
 
-          <div style={{ flex: 1, minWidth: 0, textAlign: "center" }}>
-            <div
-              style={{
-                fontSize: 18,
-                fontWeight: 1000,
-                letterSpacing: 1,
-                color: theme.primary,
-                textShadow: `0 0 12px ${theme.primary}66`,
-                textTransform: "uppercase",
-              }}
-            >
-              {t("battle.config.title", "BATTLE ROYALE")}
-            </div>
-            <div style={{ fontSize: 12.5, color: theme.textSoft, marginTop: 2 }}>
-              {t(
-                "battle.config.subtitle",
-                "Sélectionne les joueurs et prépare les règles."
-              )}
-            </div>
-          </div>
-
-          <InfoDot onClick={() => setInfoOpen(true)} glow={theme.primary + "88"} />
-        </div>
+    <div
+      style={{
+        position: "absolute",
+        inset: 0,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "space-between",
+        padding: "0 14px",
+        pointerEvents: "none",
+      }}
+    >
+      <div style={{ pointerEvents: "auto" }}>
+        <BackDot
+          onClick={() => go("games")}
+          glow={theme.primary + "88"}
+          title={t("common.back", "Retour")}
+        />
       </div>
+
+      <div style={{ pointerEvents: "auto" }}>
+        <InfoDot onClick={() => setInfoOpen(true)} glow={theme.primary + "88"} />
+      </div>
+    </div>
+  </div>
+</div>
 
       {/* Players */}
       <div style={{ ...cardShell, padding: 12, marginBottom: 10 }}>

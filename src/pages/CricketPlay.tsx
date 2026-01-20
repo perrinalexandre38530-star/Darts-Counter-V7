@@ -30,12 +30,14 @@ import {
 import { playSound } from "../lib/sound";
 import type { Profile } from "../lib/types";
 import type { SavedMatch } from "../lib/history";
+import { SCORE_INPUT_LS_KEY } from "../lib/scoreInput/types";
 import { DartIconColorizable, CricketMarkIcon } from "../components/MaskIcon";
 
 import ProfileAvatar from "../components/ProfileAvatar";
 import ProfileStarRing from "../components/ProfileStarRing";
 import BackDot from "../components/BackDot";
 import InfoDot from "../components/InfoDot";
+import DartboardClickable from "../components/DartboardClickable";
 
 // 🔽 IMPORTS DE TOUS LES AVATARS BOTS PRO
 import avatarGreenMachine from "../assets/avatars/bots-pro/green-machine.png";
@@ -49,6 +51,9 @@ import avatarBullyBoy from "../assets/avatars/bots-pro/bully-boy.png";
 import avatarTheAsp from "../assets/avatars/bots-pro/the-asp.png";
 import avatarHollywood from "../assets/avatars/bots-pro/hollywood.png";
 import avatarTheFerret from "../assets/avatars/bots-pro/the-ferret.png";
+
+import tickerCricket from "../assets/tickers/ticker_cricket.png";
+import tickerEnculette from "../assets/tickers/ticker_enculette.png";
 
 
 const T = {
@@ -430,6 +435,26 @@ export default function CricketPlay({ profiles, params, onFinish }: Props) {
 // ---- Match en cours ----
 const [state, setState] = React.useState<CricketState | null>(null);
 const [hitMode, setHitMode] = React.useState<HitMode>("S");
+
+// --- Multi-input (KEYPAD / CIBLE) — persistant via SCORE_INPUT_LS_KEY
+type InputMethod = "keypad" | "dartboard";
+const [inputMethod, setInputMethod] = React.useState<InputMethod>(() => {
+  try {
+    const v = localStorage.getItem(SCORE_INPUT_LS_KEY);
+    return v === "dartboard" ? "dartboard" : "keypad";
+  } catch {
+    return "keypad";
+  }
+});
+
+React.useEffect(() => {
+  try {
+    // On écrit uniquement les 2 valeurs utiles pour Cricket
+    localStorage.setItem(SCORE_INPUT_LS_KEY, inputMethod === "dartboard" ? "dartboard" : "keypad");
+  } catch {
+    // ignore
+  }
+}, [inputMethod]);
 const [showHelp, setShowHelp] = React.useState(false);
 const [showEnd, setShowEnd] = React.useState(false);
 
@@ -903,14 +928,16 @@ function renderAvatarCircle(
     return next;
   }
 
-  function registerHit(rawTarget: number) {
+  function registerHit(rawTarget: number, multOverride?: Multiplier) {
     if (!state || !currentPlayer) return;
     if (state.winnerId) return;
     if ((state as any).forcedFinished) return;
 
-    let mult: Multiplier = 1;
-    if (hitMode === "D") mult = 2;
-    if (hitMode === "T") mult = 3;
+    let mult: Multiplier = multOverride ?? 1;
+    if (!multOverride) {
+      if (hitMode === "D") mult = 2;
+      if (hitMode === "T") mult = 3;
+    }
 
     let next = applyCricketHit(state, rawTarget as any, mult) as any;
 
@@ -920,7 +947,7 @@ function renderAvatarCircle(
 
     setState(next);
 
-    if (hitMode === "D" || hitMode === "T") setHitMode("S");
+    if (mult >= 2 || hitMode === "D" || hitMode === "T") setHitMode("S");
   }
 
   function handleKeyPress(value: number) {
@@ -1240,62 +1267,86 @@ function buildHistoryRecord(): SavedMatch | null {
           minHeight: "100vh",
           background: `radial-gradient(circle at top, #1c2540 0, #050712 55%, #000 100%)`,
           color: T.text,
-          padding: "16px 12px 80px",
+          padding: "0 12px 80px",
           boxSizing: "border-box",
         }}
       >
 
-	    	{/* HEADER (1 ligne) : BackDot / Titre+subtitle centrés / InfoDot */}
-	    	<div
-	    	  style={{
-	    	    marginBottom: 16,
-	    	    display: "flex",
-	    	    alignItems: "center",
-	    	    justifyContent: "space-between",
-	    	    gap: 10,
-	    	  }}
-	    	>
-	    	  <BackDot
-	    	    onClick={() => {
-	        try {
-	          // ✅ Retour vers le menu "Games" (sport-aware) via le routeur central (App.tsx)
-	          const go = (window as any)?.__appGo || (window as any)?.__appStore?.go;
-	          if (typeof go === "function") {
-	            go("games");
-	            return;
-	          }
-	        } catch {}
-	        // Fallback (si go indispo)
-	        try {
-	          window.location.hash = "#/";
-	        } catch {}
-	    	    }}
-	    	    color={T.gold}
-	    	    glow={"rgba(246,194,86,0.55)"}
-	    	    title="Retour"
-	    	  />
+	    	{/* HEADER TICKER full-width (remplace titre + annotation) */}
+        <div
+          style={{
+            position: "sticky",
+            top: 0,
+            zIndex: 60,
+            paddingTop: "env(safe-area-inset-top)",
+            marginBottom: 16,
+          }}
+        >
+          <div
+            style={{
+              position: "relative",
+              // full-bleed (annule le padding horizontal de la page)
+              marginLeft: -12,
+              marginRight: -12,
+            }}
+          >
+            <img
+              src={variantId === "enculette" ? tickerEnculette : tickerCricket}
+              alt={variantId === "enculette" ? "Cricket — Enculette" : "Cricket"}
+              draggable={false}
+              style={{
+                width: "100%",
+                height: 92,
+                objectFit: "cover",
+                display: "block",
+              }}
+            />
 
-	    	  <div style={{ flex: 1, textAlign: "center", minWidth: 0 }}>
-	    	    <div
-	    	      style={{
-	    	        fontSize: 26,
-	    	        fontWeight: 900,
-	    	        letterSpacing: 2,
-	    	        textTransform: "uppercase",
-	    	        color: T.gold,
-	    	        textShadow: "0 0 6px rgba(246,194,86,0.8), 0 0 18px rgba(246,194,86,0.6)",
-	    	        lineHeight: 1,
-	    	      }}
-	    	    >
-	    	      CRICKET
-	    	    </div>
-	    	    <div style={{ fontSize: 13, marginTop: 4, color: T.textSoft }}>
-	    	      Sélectionne les joueurs et les options pour cette manche.
-	    	    </div>
-	    	  </div>
+            {/* Overlay boutons */}
+            <div
+              style={{
+                position: "absolute",
+                inset: 0,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                padding: "0 12px",
+                pointerEvents: "none",
+              }}
+            >
+              <div style={{ pointerEvents: "auto" }}>
+                <BackDot
+                  onClick={() => {
+                    try {
+                      // ✅ Retour vers le menu "Games" (sport-aware) via le routeur central (App.tsx)
+                      const go = (window as any)?.__appGo || (window as any)?.__appStore?.go;
+                      if (typeof go === "function") {
+                        go("games");
+                        return;
+                      }
+                    } catch {}
+                    // Fallback (si go indispo)
+                    try {
+                      window.location.hash = "#/";
+                    } catch {}
+                  }}
+                  color={T.gold}
+                  glow={"rgba(246,194,86,0.55)"}
+                  title="Retour"
+                />
+              </div>
 
-	    	  <InfoDot onClick={() => setInfoOpen(true)} color={T.gold} glow={"rgba(246,194,86,0.55)"} title="Règles" />
-	    	</div>
+              <div style={{ pointerEvents: "auto" }}>
+                <InfoDot
+                  onClick={() => setInfoOpen(true)}
+                  color={T.gold}
+                  glow={"rgba(246,194,86,0.55)"}
+                  title="Règles"
+                />
+              </div>
+            </div>
+          </div>
+        </div>
 
         {/* JOUEURS (HUMAINS) */}
         <div
@@ -1716,7 +1767,7 @@ function buildHistoryRecord(): SavedMatch | null {
           minHeight: "100vh",
           background: `radial-gradient(circle at top, #1c2540 0, #050712 55%, #000 100%)`,
           color: T.text,
-          padding: "16px 12px 80px",
+          padding: "0 12px 80px",
           boxSizing: "border-box",
         }}
       >
@@ -2378,6 +2429,76 @@ function buildHistoryRecord(): SavedMatch | null {
     </>
   )}
 </div>
+
+
+
+{/* Cricket — méthode de saisie */}
+<div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
+  <button
+    type="button"
+    onClick={() => setInputMethod("keypad")}
+    disabled={finishedFlag || botThinking}
+    style={{
+      flex: 1,
+      height: 36,
+      borderRadius: 14,
+      border:
+        inputMethod === "keypad"
+          ? "1px solid rgba(255,198,58,.65)"
+          : "1px solid rgba(255,255,255,.10)",
+      background:
+        inputMethod === "keypad"
+          ? "linear-gradient(180deg, rgba(255,198,58,.18), rgba(0,0,0,.12))"
+          : "linear-gradient(180deg, rgba(255,255,255,.06), rgba(0,0,0,.10))",
+      color: inputMethod === "keypad" ? "#ffe8a3" : "rgba(226,232,240,.90)",
+      fontWeight: 900,
+      letterSpacing: 1.0,
+      cursor: finishedFlag || botThinking ? "not-allowed" : "pointer",
+      opacity: finishedFlag || botThinking ? 0.45 : 1,
+    }}
+  >
+    KEYPAD
+  </button>
+
+  <button
+    type="button"
+    onClick={() => setInputMethod("dartboard")}
+    disabled={finishedFlag || botThinking}
+    style={{
+      flex: 1,
+      height: 36,
+      borderRadius: 14,
+      border:
+        inputMethod === "dartboard"
+          ? "1px solid rgba(56,189,248,.55)"
+          : "1px solid rgba(255,255,255,.10)",
+      background:
+        inputMethod === "dartboard"
+          ? "linear-gradient(180deg, rgba(56,189,248,.18), rgba(0,0,0,.12))"
+          : "linear-gradient(180deg, rgba(255,255,255,.06), rgba(0,0,0,.10))",
+      color: inputMethod === "dartboard" ? "#7dd3fc" : "rgba(226,232,240,.90)",
+      fontWeight: 900,
+      letterSpacing: 1.0,
+      cursor: finishedFlag || botThinking ? "not-allowed" : "pointer",
+      opacity: finishedFlag || botThinking ? 0.45 : 1,
+    }}
+  >
+    CIBLE
+  </button>
+</div>
+
+{inputMethod === "dartboard" ? (
+  <div style={{ paddingBottom: 10 }}>
+    <DartboardClickable
+      multiplier={hitMode === "T" ? 3 : hitMode === "D" ? 2 : 1}
+      disabled={finishedFlag || botThinking}
+      onHit={(seg, mul) => {
+        if (finishedFlag || botThinking) return;
+        registerHit(seg === 25 ? 25 : seg, mul as any);
+      }}
+    />
+  </div>
+) : null}
 
 {/* DOUBLE / TRIPLE / BULL */}
 <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>

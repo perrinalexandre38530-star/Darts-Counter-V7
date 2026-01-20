@@ -59,10 +59,44 @@ export interface X01ConfigV3 {
   // Serve: random / alterné
   serveMode: "random" | "alternate";
 
-  // ✅ Voice scoring (MVP)
-  // - Saisie vocale des 3 fléchettes + confirmation oui/non
-  // - Fallback manuel si non supporté / permission refusée
+  // -------------------------------------------------
+  // ✅ EXTENSIONS APP (UI X01 V3)
+  // -------------------------------------------------
+  // Source de scoring (keypad manuel vs source externe)
+  // - "manual"  : saisie classique au keypad
+  // - "external": injections via bridge (Scolia-like) ou caméra assistée
+  scoringSource?: "manual" | "external";
+
+  // Provider quand scoringSource = "external"
+  // - "bridge" : événements externes (PC/bridge)
+  // - "camera" : caméra assistée (tap-to-score sur overlay vidéo)
+  externalProvider?: "bridge" | "camera" | "camera_assisted";
+
+
+  // -------------------------------------------------
+  // ✅ OPTIONS UI / SAISIE (extensions app)
+  // -------------------------------------------------
+  // persistée dans X01ConfigV3.tsx (onglet méthodes)
+  scoreInputDefaultMethod?: any;
+
+  // saisie vocale des scores (3 fléchettes + confirmation)
   voiceScoreInputEnabled?: boolean;
+
+  // compat legacy : flag utilisé par certains listeners
+  externalScoring?: boolean;
+
+  // id match / timestamps (optionnels)
+  id?: string;
+  createdAt?: number;
+  matchMode?: any;
+
+  // Audio consommé côté X01PlayV3 (optionnel)
+  audio?: {
+    arcadeEnabled?: boolean;
+    hitEnabled?: boolean;
+    voiceEnabled?: boolean;
+    voiceId?: string;
+  };
 }
 
 /* -----------------------------------------------

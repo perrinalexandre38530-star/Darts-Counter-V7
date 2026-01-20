@@ -14,6 +14,7 @@ import { useTheme } from "../contexts/ThemeContext";
 import { useLang } from "../contexts/LangContext";
 import InfoDot from "../components/InfoDot";
 import BackDot from "../components/BackDot";
+import tickerWarfare from "../assets/tickers/ticker_warfare.png";
 import ProfileAvatar from "../components/ProfileAvatar";
 
 type Props = {
@@ -104,6 +105,14 @@ function pillStyle(active: boolean, theme: any): React.CSSProperties {
 export default function WarfareConfigPage({ store, go }: Props) {
   const { theme } = useTheme();
   const { t } = useLang();
+
+  React.useLayoutEffect(() => {
+    try {
+      window.scrollTo(0, 0);
+      document.documentElement.scrollTop = 0;
+      document.body.scrollTop = 0;
+    } catch {}
+  }, []);
 
   const locals: PlayerLite[] = React.useMemo(() => {
     return (store?.profiles ?? []).map((p: any) => ({
@@ -398,39 +407,44 @@ export default function WarfareConfigPage({ store, go }: Props) {
         color: theme.text,
       }}
     >
-      {/* Header (1 ligne) : BackDot / Titre centré / InfoDot */}
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          gap: 10,
-        }}
-      >
+      
+{/* Header ticker */}
+<div
+  style={{
+    position: "sticky",
+    top: 0,
+    zIndex: 60,
+    paddingTop: "env(safe-area-inset-top)",
+    marginBottom: 14,
+  }}
+>
+  <div style={{ position: "relative", marginLeft: -16, marginRight: -16 }}>
+    <img
+      src={tickerWarfare as any}
+      alt="Warfare"
+      draggable={false}
+      style={{ width: "100%", height: 92, objectFit: "cover", display: "block" }}
+    />
+    <div
+      style={{
+        position: "absolute",
+        inset: 0,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "space-between",
+        padding: "0 16px",
+        pointerEvents: "none",
+      }}
+    >
+      <div style={{ pointerEvents: "auto" }}>
         <BackDot onClick={() => go("games")} glow={theme.primary + "88"} title={t("common.back", "Retour")} />
-
-        <div
-          style={{
-            flex: 1,
-            textAlign: "center",
-            fontSize: 24,
-            fontWeight: 1000,
-            letterSpacing: 1.6,
-            color: theme.primary,
-            textShadow: `0 0 14px ${theme.primary}66`,
-            textTransform: "uppercase",
-            lineHeight: 1,
-          }}
-        >
-          {t("warfare.title", "WARFARE")}
-        </div>
-
+      </div>
+      <div style={{ pointerEvents: "auto" }}>
         <InfoDot onClick={() => setInfoOpen(true)} glow={theme.primary + "88"} />
       </div>
-
-      <div style={{ marginTop: 8, textAlign: "center", fontSize: 13, color: theme.textSoft }}>
-        {t("warfare.subtitle", "Élimine l’armée adverse — attention au friendly fire.")}
-      </div>
+    </div>
+  </div>
+</div>
 
       {/* Teams */}
       <div style={{ marginTop: 16, display: "flex", flexDirection: "column", gap: 12 }}>

@@ -17,6 +17,8 @@ import { useX01EngineV3 } from "../hooks/useX01EngineV3";
 import type { Dart as UIDart } from "../lib/types";
 
 import ScoreInputHub from "../components/ScoreInputHub";
+// Caméra assistée (dartsmind-like UX)
+import CameraAssistedOverlay from "../components/CameraAssistedOverlay";
 import { DuelHeaderCompact } from "../components/DuelHeaderCompact";
 import X01LegOverlayV3 from "../lib/x01v3/x01LegOverlayV3";
 
@@ -989,6 +991,13 @@ const isBotTurn = React.useMemo(() => {
   const scoringSource: ScoringSource =
     ((config as any)?.scoringSource as ScoringSource) ||
     (((config as any)?.externalScoring ? "external" : "manual") as ScoringSource);
+
+  const externalProvider: "bridge" | "camera_assisted" =
+    (((config as any)?.externalProvider as any) || "bridge") === "camera_assisted" ? "camera_assisted" : "bridge";
+
+  const canUseCameraAssisted = scoringSource === "external" && externalProvider === "camera_assisted";
+  const [cameraOpen, setCameraOpen] = React.useState(false);
+
 
   // =====================================================
   // 🎤 Voice scoring (MVP) — dictée 3 fléchettes + confirmation
@@ -2660,6 +2669,8 @@ try {
           lastVisitsByPlayer={lastVisitsByPlayer}
           lastVisitIsBustByPlayer={lastVisitIsBustByPlayer}
           avg3ByPlayer={avg3ByPlayer}
+          cameraOpen={cameraOpen}
+          setCameraOpen={setCameraOpen}
         />
       </div>
 
@@ -2713,6 +2724,28 @@ try {
                 "x01v3.external.hint",
                 "Les fléchettes sont injectées automatiquement (Scolia/bridge)."
               )}
+            {canUseCameraAssisted && (
+              <div style={{ marginTop: 10, display: "flex", justifyContent: "center" }}>
+                <button
+                  type="button"
+                  onClick={() => setCameraOpen(true)}
+                  style={{
+                    height: 40,
+                    borderRadius: 14,
+                    padding: "0 14px",
+                    border: `1px solid rgba(255,255,255,0.14)`,
+                    background: `linear-gradient(180deg, rgba(255,255,255,0.10), rgba(0,0,0,0.35))`,
+                    color: "#fff",
+                    fontWeight: 900,
+                    cursor: "pointer",
+                    boxShadow: `0 10px 24px rgba(0,0,0,.5)`,
+                  }}
+                >
+                  {t("x01v3.camera.open", "Ouvrir Caméra") }
+                </button>
+              </div>
+            )}
+
             </div>
           </div>
         ) : (
@@ -3187,6 +3220,8 @@ function PlayersListOnly(props: {
   lastVisitsByPlayer: Record<string, UIDart[]>;
   lastVisitIsBustByPlayer: Record<string, boolean>;
   avg3ByPlayer: Record<string, number>;
+  cameraOpen: boolean;
+  setCameraOpen: (v: boolean) => void;
 }) {
   const {
     players,
@@ -3351,7 +3386,21 @@ function PlayersListOnly(props: {
           </div>
         );
       })}
-    </div>
+    
+      {/* Caméra assistée overlay (dartsmind-like UX) */}
+      <CameraAssistedOverlay
+        open={props.cameraOpen}
+        onClose={() => props.setCameraOpen(false)}
+        onDart={(d) => {
+          try {
+            if (typeof window === "undefined") return;
+            window.dispatchEvent(new CustomEvent("dc:x01v3:dart", { detail: { segment: d.segment, multiplier: d.multiplier === 0 ? 1 : d.multiplier } }));
+          } catch (e) {
+            console.warn("[X01PlayV3] camera dispatch failed", e);
+          }
+        }}
+      />
+</div>
   );
 }
 
@@ -4080,4 +4129,3 @@ function saveX01V3MatchToHistory({
     );
   }
 }
-

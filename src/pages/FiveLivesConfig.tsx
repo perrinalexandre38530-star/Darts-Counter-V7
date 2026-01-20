@@ -20,6 +20,7 @@ import ProfileStarRing from "../components/ProfileStarRing";
 import InfoDot from "../components/InfoDot";
 import BackDot from "../components/BackDot";
 
+import tickerFiveLives from "../assets/tickers/ticker_five_lives.png";
 // 🔽 AVATARS BOTS PRO (mêmes chemins que KillerConfig)
 import avatarGreenMachine from "../assets/avatars/bots-pro/green-machine.png";
 import avatarSnakeKing from "../assets/avatars/bots-pro/snake-king.png";
@@ -320,6 +321,14 @@ export default function FiveLivesConfig({ store, go, onBack, onStart, onStartGam
   const { theme } = useTheme();
   const { t } = useLang();
 
+  React.useLayoutEffect(() => {
+    try {
+      window.scrollTo(0, 0);
+      document.documentElement.scrollTop = 0;
+      document.body.scrollTop = 0;
+    } catch {}
+  }, []);
+
   const primary = theme?.primary ?? "#f7c85c";
   const primarySoft = theme?.primarySoft ?? "rgba(247,200,92,0.14)";
   const cardBg = theme?.card ?? "rgba(10,12,24,0.72)";
@@ -442,51 +451,50 @@ export default function FiveLivesConfig({ store, go, onBack, onStart, onStartGam
         color: textMain,
       }}
     >
-      {/* HEADER */}
-      <header style={{ marginBottom: 10 }}>
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "44px 1fr 44px",
-            alignItems: "center",
-            gap: 10,
-            marginBottom: 8,
-          }}
-        >
-          <div style={{ display: "flex", justifyContent: "flex-start" }}>
-            <BackDot
-              onClick={() => (onBack ? onBack() : typeof go === "function" ? go("games") : null)}
-              title={t?.("common.back") || "Retour"}
-              size={DOT_SIZE}
-              color={primary}
-              glow={DOT_GLOW}
-            />
-          </div>
-
-          <div style={{ textAlign: "center" }}>
-            <div
-              style={{
-                fontSize: 26,
-                fontWeight: 900,
-                letterSpacing: 2,
-                color: primary,
-                textTransform: "uppercase",
-                lineHeight: 1.05,
-              }}
-            >
-              LES 5 VIES
-            </div>
-          </div>
-
-          <div style={{ display: "flex", justifyContent: "flex-end" }}>
-            <InfoDot onClick={() => setInfoOpen(true)} title="Règles" size={DOT_SIZE} color={primary} glow={DOT_GLOW} />
-          </div>
-        </div>
-
-        <div style={{ textAlign: "center", fontSize: 12, opacity: 0.75, color: "#d9d9e4" }}>
-          Volée de 3 fléchettes : tu dois battre STRICTEMENT le score précédent.
-        </div>
-      </header>
+      
+{/* HEADER TICKER */}
+<div
+  style={{
+    position: "sticky",
+    top: 0,
+    zIndex: 60,
+    paddingTop: "env(safe-area-inset-top)",
+    marginBottom: 10,
+  }}
+>
+  <div style={{ position: "relative", marginLeft: -12, marginRight: -12 }}>
+    <img
+      src={tickerFiveLives as any}
+      alt="Five Lives"
+      draggable={false}
+      style={{ width: "100%", height: 92, objectFit: "cover", display: "block" }}
+    />
+    <div
+      style={{
+        position: "absolute",
+        inset: 0,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "space-between",
+        padding: "0 12px",
+        pointerEvents: "none",
+      }}
+    >
+      <div style={{ pointerEvents: "auto" }}>
+        <BackDot
+          onClick={() => (onBack ? onBack() : typeof go === "function" ? go("games") : null)}
+          title={t?.("common.back") || "Retour"}
+          size={42}
+          color={primary}
+          glow={`${primary}AA`}
+        />
+      </div>
+      <div style={{ pointerEvents: "auto" }}>
+        <InfoDot onClick={() => setInfoOpen(true)} title="Règles" size={42} color={primary} glow={`${primary}AA`} />
+      </div>
+    </div>
+  </div>
+</div>
 
       {/* CONTENT */}
       <div style={{ flex: 1, overflowY: "auto", paddingTop: 4, paddingBottom: 12 }}>

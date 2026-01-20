@@ -15,6 +15,10 @@ type BotLevel = "easy" | "normal" | "hard";
 
 export type TerritoriesConfigPayload = {
   players: number;
+
+  // ✅ NEW — équipes
+  teamSize: 1 | 2 | 3;
+
   botsEnabled: boolean;
   botLevel: BotLevel;
   rounds: number;
@@ -45,13 +49,17 @@ function findTerritoriesTicker(tickerId: string): string | null {
   return null;
 }
 
-const MAP_ORDER = ["FR","EN","IT","DE","ES","US","CN","AU","JP","RU","WORLD"];
+const MAP_ORDER = ["FR", "EN", "IT", "DE", "ES", "US", "CN", "AU", "JP", "RU", "WORLD"];
 
 export default function DepartementsConfig(props: any) {
   const { t } = useLang();
   useTheme();
 
   const [players, setPlayers] = React.useState(2);
+
+  // ✅ NEW — équipes
+  const [teamSize, setTeamSize] = React.useState<1 | 2 | 3>(1);
+
   const [botsEnabled, setBotsEnabled] = React.useState(false);
   const [botLevel, setBotLevel] = React.useState<BotLevel>("normal");
   const [rounds, setRounds] = React.useState(12);
@@ -61,10 +69,15 @@ export default function DepartementsConfig(props: any) {
     return "FR";
   });
 
+  // ✅ Garde la cohérence : si teamSize * 2 > players, on force players minimum
+  React.useEffect(() => {
+    const minPlayers = teamSize * 2;
+    if (players < minPlayers) setPlayers(minPlayers);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [teamSize]);
+
   const maps: TerritoryMap[] = React.useMemo(() => {
-    const list = MAP_ORDER
-      .map((id) => TERRITORY_MAPS[id])
-      .filter(Boolean);
+    const list = MAP_ORDER.map((id) => TERRITORY_MAPS[id]).filter(Boolean);
     // sécurité si tu ajoutes des maps plus tard
     const extras = Object.values(TERRITORY_MAPS).filter((m) => !MAP_ORDER.includes(m.id));
     return [...list, ...extras];
@@ -72,6 +85,7 @@ export default function DepartementsConfig(props: any) {
 
   const payload: TerritoriesConfigPayload = {
     players,
+    teamSize,
     botsEnabled,
     botLevel,
     rounds,
@@ -105,7 +119,7 @@ export default function DepartementsConfig(props: any) {
         <div
           style={{
             display: "grid",
-            gridTemplateColumns: "repeat(2, minmax(0,1fr))",
+            gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
             gap: 10,
           }}
         >
@@ -170,7 +184,31 @@ export default function DepartementsConfig(props: any) {
 
       <Section title={t("config.players", "Joueurs")}>
         <OptionRow label={t("config.playerCount", "Nombre de joueurs")}>
-          <OptionSelect value={players} options={[2, 3, 4, 5, 6]} onChange={setPlayers} />
+          {/* ✅ Ajuste la liste selon teamSize pour éviter des combinaisons impossibles */}
+          <OptionSelect
+            value={players}
+            options={
+              teamSize === 1
+                ? [2, 3, 4, 5, 6]
+                : teamSize === 2
+                ? [4, 6]
+                : [6]
+            }
+            onChange={setPlayers}
+          />
+        </OptionRow>
+
+        {/* ✅ NEW — Mode équipes */}
+        <OptionRow label={t("territories.teams", "Mode équipes")}>
+          <OptionSelect
+            value={teamSize}
+            options={[
+              { value: 1, label: t("territories.solo", "Solo") },
+              { value: 2, label: t("territories.2v2", "2 vs 2") },
+              { value: 3, label: t("territories.3v3", "3 vs 3") },
+            ]}
+            onChange={(v: any) => setTeamSize(v as 1 | 2 | 3)}
+          />
         </OptionRow>
 
         <OptionRow label={t("config.bots", "Bots IA")}>

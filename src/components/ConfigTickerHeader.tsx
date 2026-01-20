@@ -45,7 +45,7 @@ export default function ConfigTickerHeader({
         paddingTop: "env(safe-area-inset-top)",
       }}
     >
-      <div className="relative w-full">
+      <div className="relative w-full" style={{ marginLeft: -12, marginRight: -12, width: "calc(100% + 24px)" }}>
         <img
           src={src}
           alt={alt}

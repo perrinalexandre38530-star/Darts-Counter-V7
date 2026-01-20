@@ -1089,24 +1089,24 @@ try {
             >
               {t("x01v3.format", "Format du match")}
             </div>
-<div style={{ marginBottom: 10 }}>
-            <div style={{ fontSize: 12, color: "#c8cbe4", marginBottom: 6 }}>{t("x01v3.legsPerSet", "Manches par set")}</div>
-            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-              {LEGS_OPTIONS.map((n) => (
-                <PillButton
-                  key={n}
-                  label={String(n)}
-                  active={legsPerSet === n}
-                  onClick={() => setLegsPerSet(n)}
-                  primary={primary}
-                  primarySoft={primarySoft}
-                  compact
-                />
-              ))}
-            </div>
-          </div>
+		<div style={{ marginBottom: 10 }}>
+	            <div style={{ fontSize: 12, color: "#c8cbe4", marginBottom: 6 }}>{t("x01v3.legsPerSet", "Manches par set")}</div>
+	            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+	              {LEGS_OPTIONS.map((n) => (
+	                <PillButton
+	                  key={n}
+	                  label={String(n)}
+	                  active={legsPerSet === n}
+	                  onClick={() => setLegsPerSet(n)}
+	                  primary={primary}
+	                  primarySoft={primarySoft}
+	                  compact
+	                />
+	              ))}
+	            </div>
+	          </div>
 
-          <div>
+	          <div>
             <div style={{ fontSize: 12, color: "#c8cbe4", marginBottom: 6 }}>{t("x01v3.setsToWin", "Sets à gagner")}</div>
             <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
               {SETS_OPTIONS.map((n) => (
@@ -1120,8 +1120,8 @@ try {
                   compact
                 />
               ))}
-            </div>
-          </div>
+	          </div>
+	          </div>
           </div>
 
           {/* ✅ SERVICE / ORDRE DE DÉPART (intégré dans Paramètres de base) */}

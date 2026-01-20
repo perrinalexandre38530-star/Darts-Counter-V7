@@ -24,6 +24,10 @@ export default function PageHeader(props: {
   } = props;
 
   const hasTicker = !!tickerSrc;
+  // Correspond au padding de .container (src/index.css)
+  const CONTAINER_PAD_TOP = 18;
+  const CONTAINER_PAD_X = 16;
+
 
   return (
     <div
@@ -31,6 +35,12 @@ export default function PageHeader(props: {
         position: "sticky",
         top: 0,
         zIndex: 30,
+        // Full-bleed ticker: neutralise le padding du wrapper `.container` (18px top / 16px sides)
+        marginTop: hasTicker ? -CONTAINER_PAD_TOP : 0,
+        marginLeft: hasTicker ? -CONTAINER_PAD_X : 0,
+        marginRight: hasTicker ? -CONTAINER_PAD_X : 0,
+        width: hasTicker ? "calc(100% + 32px)" : undefined,
+
         padding: hasTicker ? 0 : "12px 12px 10px",
         backdropFilter: "blur(10px)",
         background:

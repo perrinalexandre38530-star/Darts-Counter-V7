@@ -1,240 +1,329 @@
-// ============================================
+// =============================================================
 // src/components/CameraTapScorer.tsx
-// Camera scoring (assisté) — UI "tap sur la cible"
-// - Utilise une calibration locale (center/radius/angle20)
-// - Sur tap, map -> (segment,mult) et dispatch un évènement externe X01V3
-// ============================================
+// Caméra assistée (tap-to-score)
+// - Mode "calibrate" : 3 taps (bull, outer ring, 20) → calibration
+// - Mode "score"     : tap → (segment,multiplier) via calibration
+// - Best-effort : si getUserMedia échoue, l'overlay reste utilisable
+// =============================================================
 
 import React from "react";
-import { loadCameraCalibration } from "../lib/cameraCalibrationStore";
-import { dispatchExternalDart, mapTapToDart } from "../lib/cameraScoringEngine";
+import type { CameraCalibration } from "../lib/cameraCalibrationStore";
+import { buildCalibrationFromTaps, mapTapToDart, type CameraDart, type CameraTap } from "../lib/cameraScoringEngine";
+import { saveCameraCalibration } from "../lib/cameraCalibrationStore";
 
 type Props = {
-  onClose: () => void;
-  onOpenCalibration: () => void;
-  theme?: {
-    primary?: string;
-    text?: string;
-  };
+  mode: "calibrate" | "score";
+  initialCalibration?: CameraCalibration;
+  onCalibration?: (cal: CameraCalibration) => void;
+  onDart?: (dart: CameraDart) => void;
+  onCancel?: () => void;
 };
 
-export default function CameraTapScorer({ onClose, onOpenCalibration, theme }: Props) {
-  const primary = theme?.primary ?? "#f7c85c";
-  const textMain = theme?.text ?? "#f5f5ff";
-
+export default function CameraTapScorer({
+  mode,
+  initialCalibration,
+  onCalibration,
+  onDart,
+  onCancel,
+}: Props) {
   const videoRef = React.useRef<HTMLVideoElement | null>(null);
-  const [err, setErr] = React.useState<string | null>(null);
-  const [ready, setReady] = React.useState<boolean>(false);
-  const [cal, setCal] = React.useState(() => loadCameraCalibration());
-  const [last, setLast] = React.useState<{ label: string; confidence: number } | null>(null);
+  const streamRef = React.useRef<MediaStream | null>(null);
+  const wrapRef = React.useRef<HTMLDivElement | null>(null);
 
-  React.useEffect(() => {
-    setCal(loadCameraCalibration());
-  }, []);
+  const [ready, setReady] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
+  const [cal, setCal] = React.useState<CameraCalibration | null>(initialCalibration ?? null);
 
+  // Calibration steps (3 taps)
+  const [calStep, setCalStep] = React.useState<1 | 2 | 3>(1);
+  const [tapBull, setTapBull] = React.useState<CameraTap | null>(null);
+  const [tapOuter, setTapOuter] = React.useState<CameraTap | null>(null);
+  const [tapTop20, setTapTop20] = React.useState<CameraTap | null>(null);
+
+  // ------------------------------------------------------------
+  // Camera stream lifecycle
+  // ------------------------------------------------------------
   React.useEffect(() => {
-    let stream: MediaStream | null = null;
-    const run = async () => {
+    let cancelled = false;
+
+    async function start() {
       try {
-        setErr(null);
-        setReady(false);
-        stream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: "environment" },
+        setError(null);
+        if (typeof navigator === "undefined" || !navigator.mediaDevices?.getUserMedia) {
+          setError("getUserMedia indisponible");
+          return;
+        }
+
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: {
+            facingMode: { ideal: "environment" },
+            width: { ideal: 1280 },
+            height: { ideal: 720 },
+          },
           audio: false,
         });
-        if (!videoRef.current) return;
-        videoRef.current.srcObject = stream;
-        await videoRef.current.play();
+
+        if (cancelled) {
+          stream.getTracks().forEach((t) => t.stop());
+          return;
+        }
+
+        streamRef.current = stream;
+        if (videoRef.current) {
+          videoRef.current.srcObject = stream;
+          try {
+            await videoRef.current.play();
+          } catch {
+            // Safari/iOS peut exiger une interaction utilisateur
+          }
+        }
         setReady(true);
       } catch (e: any) {
-        setErr(e?.message || "Caméra indisponible");
+        setError(e?.message ? String(e.message) : "Accès caméra refusé");
       }
-    };
-    run();
+    }
+
+    start();
+
     return () => {
+      cancelled = true;
       try {
-        stream?.getTracks()?.forEach((t) => t.stop());
+        const s = streamRef.current;
+        if (s) s.getTracks().forEach((t) => t.stop());
       } catch {}
+      streamRef.current = null;
     };
   }, []);
 
-  function formatDartLabel(d: { segment: number; multiplier: number }) {
-    if (d.segment === 0) return "MISS";
-    if (d.segment === 25 && d.multiplier === 2) return "DBULL (50)";
-    if (d.segment === 25 && d.multiplier === 1) return "BULL (25)";
-    const prefix = d.multiplier === 1 ? "S" : d.multiplier === 2 ? "D" : "T";
-    return `${prefix}${d.segment}`;
-  }
+  // ------------------------------------------------------------
+  // Helpers
+  // ------------------------------------------------------------
+  const getTapNorm = React.useCallback((clientX: number, clientY: number): CameraTap | null => {
+    const el = wrapRef.current;
+    if (!el) return null;
+    const r = el.getBoundingClientRect();
+    if (!r.width || !r.height) return null;
+    const x = (clientX - r.left) / r.width;
+    const y = (clientY - r.top) / r.height;
+    return { x, y };
+  }, []);
 
-  function onTap(e: React.MouseEvent) {
-    if (!cal) {
-      setLast({ label: "Calibration requise", confidence: 0 });
-      return;
-    }
-    const el = e.currentTarget as HTMLDivElement;
-    const rect = el.getBoundingClientRect();
-    const x = (e.clientX - rect.left) / rect.width;
-    const y = (e.clientY - rect.top) / rect.height;
+  const resetCalibrationFlow = React.useCallback(() => {
+    setCalStep(1);
+    setTapBull(null);
+    setTapOuter(null);
+    setTapTop20(null);
+  }, []);
 
-    const res = mapTapToDart(cal, { x, y });
-    if (!res) return;
-    dispatchExternalDart(res.dart);
-    setLast({ label: formatDartLabel(res.dart), confidence: res.confidence });
-  }
+  const commitCalibration = React.useCallback(
+    (bull: CameraTap, outer: CameraTap, top20: CameraTap) => {
+      const next = buildCalibrationFromTaps(bull, outer, top20);
+      setCal(next);
+      try {
+        saveCameraCalibration(next);
+      } catch {}
+      if (onCalibration) onCalibration(next);
+    },
+    [onCalibration]
+  );
+
+  // ------------------------------------------------------------
+  // Tap handler
+  // ------------------------------------------------------------
+  const onTap = React.useCallback(
+    (e: React.MouseEvent | React.TouchEvent) => {
+      const point = "touches" in e ? (e.touches?.[0] ?? null) : (e as any);
+      if (!point) return;
+      const tap = getTapNorm(point.clientX, point.clientY);
+      if (!tap) return;
+
+      if (mode === "calibrate") {
+        if (calStep === 1) {
+          setTapBull(tap);
+          setCalStep(2);
+          return;
+        }
+        if (calStep === 2) {
+          setTapOuter(tap);
+          setCalStep(3);
+          return;
+        }
+        // step 3
+        setTapTop20(tap);
+        if (tapBull && tapOuter) {
+          commitCalibration(tapBull, tapOuter, tap);
+        }
+        // loop possible (si l'utilisateur veut refaire)
+        setCalStep(1);
+        return;
+      }
+
+      // mode score
+      const dart = mapTapToDart(cal, tap);
+      if (dart && onDart) onDart(dart);
+    },
+    [mode, calStep, cal, tapBull, tapOuter, commitCalibration, onDart, getTapNorm]
+  );
+
+  const title = mode === "calibrate" ? "Calibration" : "Caméra";
 
   return (
     <div
+      ref={wrapRef}
+      onClick={onTap as any}
+      onTouchStart={onTap as any}
       style={{
-        position: "fixed",
+        position: "absolute",
         inset: 0,
-        zIndex: 9999,
-        background: "rgba(0,0,0,0.72)",
-        display: "flex",
-        flexDirection: "column",
-        color: textMain,
+        background: "rgba(0,0,0,0.25)",
+        userSelect: "none",
+        touchAction: "none",
       }}
     >
-      {/* Header */}
+      {/* Video */}
+      <video
+        ref={videoRef}
+        playsInline
+        muted
+        style={{
+          position: "absolute",
+          inset: 0,
+          width: "100%",
+          height: "100%",
+          objectFit: "cover",
+          transform: "scaleX(-1)",
+          filter: "contrast(1.05) saturate(1.1)",
+        }}
+      />
+
+      {/* Overlay UI */}
       <div
         style={{
-          padding: "10px 12px",
-          borderBottom: "1px solid rgba(255,255,255,0.10)",
+          position: "absolute",
+          left: 10,
+          right: 10,
+          top: 10,
           display: "flex",
           alignItems: "center",
           justifyContent: "space-between",
           gap: 10,
+          pointerEvents: "none",
         }}
       >
-        <button
-          onClick={onClose}
-          style={{
-            padding: "10px 12px",
-            borderRadius: 12,
-            border: "1px solid rgba(255,255,255,0.14)",
-            background: "rgba(255,255,255,0.06)",
-            color: "#fff",
-            fontWeight: 900,
-            cursor: "pointer",
-          }}
-        >
-          Fermer
-        </button>
-
-        <div style={{ fontWeight: 900, color: primary, letterSpacing: 0.5 }}>
-          Caméra — Tap scoring
-        </div>
-
-        <button
-          onClick={() => {
-            onOpenCalibration();
-          }}
-          style={{
-            padding: "10px 12px",
-            borderRadius: 12,
-            border: `1px solid ${primary}55`,
-            background: `linear-gradient(180deg, ${primary}22, rgba(255,255,255,0.06))`,
-            color: "#fff",
-            fontWeight: 900,
-            cursor: "pointer",
-            boxShadow: `0 0 18px ${primary}22`,
-          }}
-        >
-          Calibrer
-        </button>
-      </div>
-
-      {/* Body */}
-      <div style={{ flex: 1, display: "flex", flexDirection: "column" }}>
-        <div style={{ position: "relative", flex: 1 }} onClick={onTap}>
-          <video
-            ref={videoRef}
-            playsInline
-            muted
-            style={{
-              width: "100%",
-              height: "100%",
-              objectFit: "cover",
-              display: "block",
-              filter: "contrast(1.05) saturate(1.05)",
-            }}
-          />
-
-          {/* Overlay simple */}
-          <div
-            style={{
-              position: "absolute",
-              inset: 0,
-              pointerEvents: "none",
-              border: cal ? `2px solid ${primary}44` : "2px solid rgba(255,255,255,0.10)",
-              boxShadow: cal ? `0 0 30px ${primary}22 inset` : "0 0 22px rgba(0,0,0,0.55) inset",
-            }}
-          />
-
-          {err && (
-            <div
-              style={{
-                position: "absolute",
-                left: 12,
-                right: 12,
-                top: 12,
-                padding: 12,
-                borderRadius: 14,
-                background: "rgba(0,0,0,0.65)",
-                border: "1px solid rgba(255,0,0,0.35)",
-                color: "#ffd0d0",
-                fontWeight: 800,
-              }}
-            >
-              {err}
-            </div>
-          )}
-
-          {!ready && !err && (
-            <div
-              style={{
-                position: "absolute",
-                left: 12,
-                right: 12,
-                top: 12,
-                padding: 12,
-                borderRadius: 14,
-                background: "rgba(0,0,0,0.65)",
-                border: "1px solid rgba(255,255,255,0.12)",
-                color: "#f5f5ff",
-                fontWeight: 800,
-              }}
-            >
-              Initialisation caméra…
-            </div>
-          )}
-        </div>
-
-        {/* Footer info */}
         <div
           style={{
-            padding: "10px 12px",
-            borderTop: "1px solid rgba(255,255,255,0.10)",
-            background: "rgba(0,0,0,0.25)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            gap: 10,
+            pointerEvents: "none",
+            padding: "6px 10px",
+            borderRadius: 12,
+            border: "1px solid rgba(255,255,255,0.14)",
+            background: "rgba(0,0,0,0.35)",
+            color: "#fff",
+            fontSize: 12,
+            fontWeight: 900,
+            letterSpacing: 0.4,
           }}
         >
-          <div style={{ fontSize: 12, color: "rgba(245,245,255,0.82)" }}>
-            {cal ? "Tape sur l'impact (sur l'écran) pour envoyer le tir au match." : "Calibration requise : Calibrer"}
-          </div>
-          <div
+          {title}
+        </div>
+
+        <div style={{ display: "flex", gap: 8, pointerEvents: "auto" }}>
+          {mode === "score" ? (
+            <button
+              type="button"
+              onClick={(ev) => {
+                ev.stopPropagation();
+                resetCalibrationFlow();
+                // bascule en pseudo-calibration via calStep (toujours en mode score)
+                // l'utilisateur peut recalibrer : on l'invite à passer par X01 Config
+              }}
+              style={{
+                height: 32,
+                padding: "0 10px",
+                borderRadius: 12,
+                border: "1px solid rgba(255,255,255,0.14)",
+                background: "rgba(0,0,0,0.35)",
+                color: "#fff",
+                fontWeight: 900,
+                fontSize: 12,
+                cursor: "pointer",
+              }}
+              title="Réinitialiser le flux"
+            >
+              Reset
+            </button>
+          ) : null}
+
+          <button
+            type="button"
+            onClick={(ev) => {
+              ev.stopPropagation();
+              if (onCancel) onCancel();
+            }}
             style={{
-              minWidth: 140,
-              textAlign: "right",
+              height: 32,
+              padding: "0 10px",
+              borderRadius: 12,
+              border: "1px solid rgba(255,255,255,0.14)",
+              background: "rgba(0,0,0,0.35)",
+              color: "#fff",
               fontWeight: 900,
-              color: last ? primary : "rgba(255,255,255,0.55)",
+              fontSize: 12,
+              cursor: "pointer",
             }}
           >
-            {last ? `${last.label}  (${Math.round(last.confidence * 100)}%)` : "—"}
-          </div>
+            Fermer
+          </button>
         </div>
+      </div>
+
+      {/* Hint */}
+      <div
+        style={{
+          position: "absolute",
+          left: 10,
+          right: 10,
+          bottom: 10,
+          display: "flex",
+          flexDirection: "column",
+          gap: 6,
+          pointerEvents: "none",
+        }}
+      >
+        <div
+          style={{
+            padding: "8px 10px",
+            borderRadius: 14,
+            border: "1px solid rgba(255,255,255,0.12)",
+            background: "rgba(0,0,0,0.35)",
+            color: "#fff",
+            fontSize: 12,
+            lineHeight: 1.35,
+          }}
+        >
+          {error ? (
+            <span>{error}</span>
+          ) : mode === "calibrate" ? (
+            <span>
+              <b>Tap {calStep}/3</b> — {calStep === 1 ? "Centre du Bull" : calStep === 2 ? "Anneau extérieur" : "Milieu du 20"}
+            </span>
+          ) : (
+            <span>
+              Tap pour scorer — {cal ? "calibration OK" : "calibration manquante"}
+            </span>
+          )}
+        </div>
+
+        {/* Simple crosshair overlay */}
+        <div
+          style={{
+            alignSelf: "center",
+            width: 68,
+            height: 68,
+            borderRadius: 999,
+            border: "1px solid rgba(255,255,255,0.22)",
+            background: "rgba(0,0,0,0.12)",
+          }}
+        />
       </div>
     </div>
   );
