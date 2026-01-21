@@ -32,6 +32,7 @@
 import React from "react";
 import { useTheme } from "../contexts/ThemeContext";
 import { useLang } from "../contexts/LangContext";
+import { useDevMode } from "../contexts/DevModeContext";
 import InfoDot from "../components/InfoDot";
 import {
   DARTS_GAMES,
@@ -42,6 +43,7 @@ import {
   type DartsGameDef,
 } from "../games/dartsGameRegistry";
 import { History } from "../lib/history";
+import { devClickable, devVisuallyDisabled } from "../lib/devGate";
 
 // ✅ NEW ticker component (haut seulement)
 import NewModesTicker, { type NewModeTickerItem } from "../components/NewModesTicker";
@@ -158,6 +160,7 @@ function pickFavoriteByCounts(cat: GameCategory, counts: PlayCountMap): DartsGam
 export default function Games({ setTab }: Props) {
   const { theme } = useTheme();
   const { t, lang } = useLang();
+  const dev = useDevMode() as any;
 
   const [activeCat, setActiveCat] = React.useState<GameCategory>("classic");
   const [infoGame, setInfoGame] = React.useState<InfoGame | null>(null);
@@ -353,7 +356,9 @@ export default function Games({ setTab }: Props) {
   }) {
     const g = opts.game;
 
-    const disabled = g ? !g.ready : true;
+    const ready = !!g?.ready;
+    const visuallyDisabled = g ? devVisuallyDisabled(ready) : true;
+    const clickable = g ? devClickable(ready, !!dev?.enabled) : false;
     const label = g ? safeUpper(g.label) : safeUpper(t("games.fav.none", "AUCUN"));
 
     let goTab = g ? g.tab : opts.fallbackTab;
@@ -371,7 +376,7 @@ export default function Games({ setTab }: Props) {
 
     return (
       <button
-        onClick={() => setTab(disabled ? "mode_not_ready" : goTab, params)}
+        onClick={() => setTab(clickable ? goTab : "mode_not_ready", params)}
         style={{
           position: "relative",
           width: "100%",
@@ -385,10 +390,10 @@ export default function Games({ setTab }: Props) {
 
           border: `1px solid ${border}`,
           background: opts.tint.bg,
-          boxShadow: disabled
+          boxShadow: visuallyDisabled
             ? `0 8px 18px rgba(0,0,0,0.45)`
             : `0 14px 28px rgba(0,0,0,0.60), 0 0 22px ${glow}`,
-          opacity: disabled ? 0.6 : 1,
+          opacity: visuallyDisabled ? 0.6 : 1,
           transform: "translateZ(0)",
           transition: "transform 140ms ease, box-shadow 140ms ease, opacity 140ms ease",
         }}
@@ -408,7 +413,7 @@ export default function Games({ setTab }: Props) {
             position: "absolute",
             inset: -40,
             background: `radial-gradient(320px 180px at 50% 15%, ${glow}, rgba(0,0,0,0) 60%)`,
-            opacity: disabled ? 0.35 : 0.7,
+            opacity: visuallyDisabled ? 0.35 : 0.7,
             pointerEvents: "none",
             filter: "blur(2px)",
           }}
@@ -425,7 +430,7 @@ export default function Games({ setTab }: Props) {
             transform: "rotate(20deg)",
             background:
               "linear-gradient(180deg, rgba(255,255,255,0.22), rgba(255,255,255,0.0) 70%)",
-            opacity: disabled ? 0.12 : 0.22,
+            opacity: visuallyDisabled ? 0.12 : 0.22,
             pointerEvents: "none",
           }}
         />
@@ -454,7 +459,7 @@ export default function Games({ setTab }: Props) {
             transform: "translateY(6px)",
             pointerEvents: "none",
             textShadow: `0 0 24px ${glow}`,
-            opacity: disabled ? 0.05 : 0.08,
+            opacity: visuallyDisabled ? 0.05 : 0.08,
           }}
         >
           ★
@@ -471,7 +476,7 @@ export default function Games({ setTab }: Props) {
             borderRadius: 999,
             background: titleColor,
             boxShadow: `0 0 10px ${glow}, 0 0 18px ${glow}`,
-            opacity: disabled ? 0.35 : 0.85,
+            opacity: visuallyDisabled ? 0.35 : 0.85,
             pointerEvents: "none",
           }}
         />
@@ -499,7 +504,7 @@ export default function Games({ setTab }: Props) {
             letterSpacing: 0.6,
             color: "#fff",
             textTransform: "uppercase",
-            textShadow: disabled ? "none" : "0 0 10px rgba(0,0,0,0.35)",
+            textShadow: visuallyDisabled ? "none" : "0 0 10px rgba(0,0,0,0.35)",
             position: "relative",
             zIndex: 1,
           }}
@@ -959,13 +964,15 @@ export default function Games({ setTab }: Props) {
               </div>
 
               {(groups[k] || []).map((g) => {
-                const disabled = !g.ready;
-                const comingSoon = disabled ? t("games.status.comingSoon", "Bientôt disponible") : null;
+                const ready = !!g?.ready;
+                const visuallyDisabled = devVisuallyDisabled(ready);
+                const clickable = devClickable(ready, !!dev?.enabled);
+                const comingSoon = visuallyDisabled ? t("games.status.comingSoon", "Bientôt disponible") : null;
 
                 return (
                   <button
                     key={g.id}
-                    onClick={() => navigate(disabled ? "mode_not_ready" : g.tab)}
+                    onClick={() => navigate(clickable ? g.tab : "mode_not_ready")}
                     style={{
                       position: "relative",
                       width: "100%",
@@ -976,8 +983,8 @@ export default function Games({ setTab }: Props) {
                       border: `1px solid ${theme.borderSoft}`,
                       background: CARD_BG,
                       cursor: "pointer",
-                      opacity: disabled ? 0.55 : 1,
-                      boxShadow: disabled ? "none" : `0 10px 24px rgba(0,0,0,0.55)`,
+                      opacity: visuallyDisabled ? 0.55 : 1,
+                      boxShadow: visuallyDisabled ? "none" : `0 10px 24px rgba(0,0,0,0.55)`,
                       overflow: "hidden",
                     }}
                   >
@@ -991,9 +998,9 @@ export default function Games({ setTab }: Props) {
                           fontSize: 14,
                           fontWeight: 800,
                           letterSpacing: 0.8,
-                          color: disabled ? theme.textSoft : theme.primary,
+                          color: visuallyDisabled ? theme.textSoft : theme.primary,
                           textTransform: "uppercase",
-                          textShadow: disabled ? "none" : `0 0 12px ${theme.primary}55`,
+                          textShadow: visuallyDisabled ? "none" : `0 0 12px ${theme.primary}55`,
                         }}
                       >
                         {g.label}

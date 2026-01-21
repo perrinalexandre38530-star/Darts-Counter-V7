@@ -188,6 +188,7 @@ import { LangProvider } from "./contexts/LangContext";
 import { StoreProvider } from "./contexts/StoreContext";
 import { AudioProvider } from "./contexts/AudioContext";
 import { AuthOnlineProvider, useAuthOnline } from "./hooks/useAuthOnline";
+import { DevModeProvider } from "./contexts/DevModeContext";
 
 // ✅ NEW: Sport context + Pétanque pages
 import { SportProvider, useSport } from "./contexts/SportContext";
@@ -2813,19 +2814,21 @@ function AppGate({ go, tab, children }: { go: (t: any, p?: any) => void; tab: an
 export default function AppRoot() {
   return (
     <ThemeProvider>
-      <LangProvider>
-        <StoreProvider>
-          <AudioProvider>
-            <AuthOnlineProvider>
-              <SportProvider>
-                {/* ✅ player audio global persistant (rien à voir avec SFX UI) */}
-                <audio id="dc-splash-audio" src={SplashJingle} preload="auto" style={{ display: "none" }} />
-                <App />
-              </SportProvider>
-            </AuthOnlineProvider>
-          </AudioProvider>
-        </StoreProvider>
-      </LangProvider>
+      <DevModeProvider>
+        <LangProvider>
+          <StoreProvider>
+            <AudioProvider>
+              <AuthOnlineProvider>
+                <SportProvider>
+                  {/* ✅ player audio global persistant (rien à voir avec SFX UI) */}
+                  <audio id="dc-splash-audio" src={SplashJingle} preload="auto" style={{ display: "none" }} />
+                  <App />
+                </SportProvider>
+              </AuthOnlineProvider>
+            </AudioProvider>
+          </StoreProvider>
+        </LangProvider>
+      </DevModeProvider>
     </ThemeProvider>
   );
 }

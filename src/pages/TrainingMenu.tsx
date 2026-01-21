@@ -26,10 +26,12 @@
 import React, { useLayoutEffect } from "react";
 import { useTheme } from "../contexts/ThemeContext";
 import { useLang } from "../contexts/LangContext";
+import { useDevMode } from "../contexts/DevModeContext";
 import InfoDot from "../components/InfoDot";
 import BackDot from "../components/BackDot";
 import tickerTraining from "../assets/tickers/ticker_training.png";
 import { dartsGameRegistry } from "../games/dartsGameRegistry";
+import { devClickable, devVisuallyDisabled } from "../lib/devGate";
 
 type Tab =
   | "games"
@@ -175,6 +177,7 @@ function TickerOverlay({ src }: { src?: string | null }) {
 export default function TrainingMenu({ go }: Props) {
   const { theme } = useTheme();
   const { t } = useLang();
+  const dev = useDevMode() as any;
   
   useLayoutEffect(() => {
     try {
@@ -183,7 +186,7 @@ export default function TrainingMenu({ go }: Props) {
       document.body.scrollTop = 0;
     } catch {}
   }, []);
-const [infoMode, setInfoMode] = React.useState<ModeDef | null>(null);
+  const [infoMode, setInfoMode] = React.useState<ModeDef | null>(null);
 
   const PAGE_BG = theme.bg;
   const CARD_BG = theme.card;
@@ -356,15 +359,15 @@ const [infoMode, setInfoMode] = React.useState<ModeDef | null>(null);
   const renderCard = (m: ModeDef, accent: { hex: string; border: string; glow: string }) => {
     const title = t(m.titleKey, m.titleDefault);
     const subtitle = t(m.subtitleKey, m.subtitleDefault);
-    const disabled = !m.enabled;
+    const visuallyDisabled = devVisuallyDisabled(!!m.enabled);
+    const clickable = devClickable(!!m.enabled, !!dev?.enabled);
 
-    const badge =
-      m.badge ?? (disabled ? t("training.menu.comingSoon", "En développement") : null);
+    const badge = m.badge ?? (visuallyDisabled ? t("training.menu.comingSoon", "En développement") : null);
 
     return (
       <button
         key={m.id}
-        onClick={() => !disabled && navigate(m.tab, m.params)}
+        onClick={() => clickable && navigate(m.tab, m.params)}
         style={{
           position: "relative",
           width: "100%",
@@ -374,11 +377,11 @@ const [infoMode, setInfoMode] = React.useState<ModeDef | null>(null);
           borderRadius: 16,
           border: `1px solid ${accent.border}`,
           background: CARD_BG,
-          cursor: disabled ? "default" : "pointer",
-          opacity: disabled ? 0.55 : 1,
-          boxShadow: disabled ? "none" : `0 10px 24px rgba(0,0,0,0.55)`,
+          cursor: clickable ? "pointer" : "default",
+          opacity: visuallyDisabled ? 0.55 : 1,
+          boxShadow: visuallyDisabled ? "none" : `0 10px 24px rgba(0,0,0,0.55)`,
           overflow: "hidden",
-          filter: disabled ? "grayscale(0.65)" : "none",
+          filter: visuallyDisabled ? "grayscale(0.65)" : "none",
         }}
       >
         {/* ✅ ticker discret dans la carte */}
@@ -391,9 +394,9 @@ const [infoMode, setInfoMode] = React.useState<ModeDef | null>(null);
               fontSize: 14,
               fontWeight: 800,
               letterSpacing: 0.8,
-              color: disabled ? theme.textSoft : accent.hex,
+              color: visuallyDisabled ? theme.textSoft : accent.hex,
               textTransform: "uppercase",
-              textShadow: disabled ? "none" : `0 0 12px ${accent.glow}`,
+              textShadow: visuallyDisabled ? "none" : `0 0 12px ${accent.glow}`,
             }}
           >
             {title}

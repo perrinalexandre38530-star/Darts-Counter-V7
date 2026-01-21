@@ -9,6 +9,8 @@
 import React from "react";
 import { useTheme } from "../contexts/ThemeContext";
 import { useSport } from "../contexts/SportContext";
+import { useDevMode } from "../contexts/DevModeContext";
+import { devClickable, devVisuallyDisabled } from "../lib/devGate";
 
 // IMPORTANT: ajuste les chemins si tu places ailleurs
 import logoDarts from "../assets/games/logo-darts.png";
@@ -25,6 +27,7 @@ type GameId = "darts" | "petanque" | "pingpong" | "babyfoot";
 export default function GameSelect({ go }: Props) {
   const { theme } = useTheme();
   const { setSport } = useSport();
+  const dev = useDevMode() as any;
 
   // ✅ routes d'entrée (BottomNav)
   // - Darts: on garde le dashboard "Home"
@@ -79,18 +82,22 @@ export default function GameSelect({ go }: Props) {
   return (
     <div style={wrap(theme)}>
       <div style={grid}>
-        {items.map((it) => (
+        {items.map((it) => {
+          const visuallyDisabled = devVisuallyDisabled(!!it.enabled);
+          const clickable = devClickable(!!it.enabled, !!dev?.enabled);
+          return (
           <button
             key={it.id}
-            onClick={it.enabled ? it.onClick : undefined}
-            style={tile(theme, it.enabled)}
-            aria-disabled={!it.enabled}
-            title={it.enabled ? "Ouvrir" : "Bientôt"}
+            onClick={clickable ? it.onClick : undefined}
+            style={tile(theme, !visuallyDisabled)}
+            aria-disabled={!clickable}
+            title={clickable ? "Ouvrir" : "Bientôt"}
           >
-            <img src={it.logo} alt={it.id} style={img(theme, it.enabled)} draggable={false} />
-            {!it.enabled && <div style={soonPill(theme)}>SOON</div>}
+            <img src={it.logo} alt={it.id} style={img(theme, !visuallyDisabled)} draggable={false} />
+            {visuallyDisabled && <div style={soonPill(theme)}>SOON</div>}
           </button>
-        ))}
+          );
+        })}
       </div>
     </div>
   );

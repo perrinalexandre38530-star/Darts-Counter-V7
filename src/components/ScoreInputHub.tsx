@@ -46,7 +46,23 @@ type Props = {
   disabled?: boolean;
   /** Autorise l'UI voice/auto/ai (placeholders) */
   showPlaceholders?: boolean;
+
+  /**
+   * Affichage du sélecteur de méthode en match.
+   * - "drawer" (défaut) : une petite flèche ouvre/ferme un bandeau (discret)
+   * - "inline" : bandeau toujours visible
+   * - "hidden" : aucun sélecteur (méthode figée par la config)
+   */
+  switcherMode?: "drawer" | "inline" | "hidden";
 };
+
+function safeReadDevModeEnabled(): boolean {
+  try {
+    return localStorage.getItem("dc:devmode:v1") === "1";
+  } catch {
+    return false;
+  }
+}
 
 function safeReadMethod(): ScoreInputMethod {
   try {
@@ -93,6 +109,7 @@ export default function ScoreInputHub({
   centerSlot,
   disabled = false,
   showPlaceholders = true,
+  switcherMode = "drawer",
 }: Props) {
   const throwTotal = (currentThrow || []).reduce((a, d) => a + (d?.v || 0) * (d?.mult || 1), 0);
 
@@ -133,23 +150,69 @@ export default function ScoreInputHub({
     fontWeight: 900,
     border: "1px solid rgba(255,214,102,0.22)",
   };
+  const devEnabled = safeReadDevModeEnabled();
   const [method, setMethod] = React.useState<ScoreInputMethod>(safeReadMethod);
+
+  // En prod: seules KEYPAD + CIBLE sont officiellement utilisables.
+  // Les autres restent sélectionnables uniquement si le mode développeur est activé.
+  React.useEffect(() => {
+    if (devEnabled) return;
+    if (method === "keypad" || method === "dartboard") return;
+    setMethod("keypad");
+  }, [devEnabled, method]);
 
   React.useEffect(() => {
     safeWriteMethod(method);
   }, [method]);
 
-  const allowPresets = !!onDirectDart && enablePresets;
+  // Presets / Voice / Auto / IA : visibles mais grisés (sauf mode dev)
+  const allowPresets = devEnabled && !!onDirectDart && enablePresets;
+
+  const [switcherOpen, setSwitcherOpen] = React.useState<boolean>(switcherMode === "inline");
+
+  React.useEffect(() => {
+    if (switcherMode === "inline") setSwitcherOpen(true);
+    if (switcherMode === "drawer") setSwitcherOpen(false);
+  }, [switcherMode]);
 
   return (
     <div>
-      <MethodBar
-        method={method}
-        setMethod={setMethod}
-        allowPresets={allowPresets}
-        showPlaceholders={showPlaceholders}
-        disabled={disabled}
-      />
+      {switcherMode !== "hidden" && (
+        <div style={{ marginBottom: 10 }}>
+          {switcherMode === "drawer" && (
+            <div style={{ display: "flex", justifyContent: "flex-end" }}>
+              <button
+                type="button"
+                onClick={() => setSwitcherOpen((v) => !v)}
+                disabled={disabled}
+                aria-label={switcherOpen ? "Réduire les méthodes" : "Afficher les méthodes"}
+                style={{
+                  width: 34,
+                  height: 24,
+                  borderRadius: 999,
+                  border: "1px solid rgba(255,255,255,0.16)",
+                  background: "rgba(0,0,0,0.35)",
+                  color: "rgba(255,255,255,0.85)",
+                  cursor: disabled ? "not-allowed" : "pointer",
+                }}
+              >
+                {switcherOpen ? "▴" : "▾"}
+              </button>
+            </div>
+          )}
+
+          {(switcherMode === "inline" || switcherOpen) && (
+            <MethodBar
+              method={method}
+              setMethod={setMethod}
+              allowPresets={allowPresets}
+              showPlaceholders={showPlaceholders}
+              disabled={disabled}
+              devEnabled={devEnabled}
+            />
+          )}
+        </div>
+      )}
 
       {method === "dartboard" ? (
         <div style={{ paddingBottom: 6 }}>
@@ -280,60 +343,112 @@ function MethodBar({
   allowPresets,
   showPlaceholders,
   disabled,
+  devEnabled,
 }: {
   method: ScoreInputMethod;
   setMethod: (m: ScoreInputMethod) => void;
   allowPresets: boolean;
   showPlaceholders: boolean;
   disabled: boolean;
+  devEnabled: boolean;
 }) {
-  const btn = (id: ScoreInputMethod, label: string, enabled = true) => {
-    const active = method === id;
-    const isDisabled = disabled || !enabled;
+  const btn = (key: ScoreInputMethod, label: string, enabled: boolean) => {
+    const active = method === key;
+    const canClick = !disabled && (enabled || devEnabled);
+    const visuallyDisabled = !enabled;
+
     return (
       <button
-        key={id}
-        type="button"
-        disabled={isDisabled}
-        onClick={() => setMethod(id)}
-        style={{
-          height: 36,
-          borderRadius: 14,
-          border: active
-            ? "1px solid rgba(255,198,58,.65)"
-            : "1px solid rgba(255,255,255,.10)",
-          background: active
-            ? "linear-gradient(180deg, rgba(255,198,58,.30), rgba(0,0,0,.35))"
-            : "rgba(255,255,255,.05)",
-          color: isDisabled
-            ? "rgba(255,255,255,.35)"
-            : active
-              ? "#ffc63a"
-              : "rgba(255,255,255,.82)",
-          fontWeight: 1000,
-          letterSpacing: 0.2,
-          cursor: isDisabled ? "not-allowed" : "pointer",
+        key={key}
+        onClick={() => {
+          if (!canClick) return;
+          setMethod(key);
         }}
-        title={enabled ? label : "Indisponible"}
+        disabled={!canClick}
+        style={{
+          display: "inline-flex",
+          alignItems: "center",
+          gap: 8,
+          padding: "8px 10px",
+          borderRadius: 999,
+          border: "1px solid rgba(255,255,255,0.16)",
+          background: active
+            ? "rgba(0,255,190,0.16)"
+            : "rgba(255,255,255,0.06)",
+          color: "rgba(255,255,255,0.92)",
+          opacity: visuallyDisabled ? (devEnabled ? 0.55 : 0.38) : 1,
+          cursor: canClick ? "pointer" : "not-allowed",
+          userSelect: "none",
+          whiteSpace: "nowrap",
+          fontWeight: 700,
+          letterSpacing: 0.2,
+        }}
+        title={
+          visuallyDisabled
+            ? devEnabled
+              ? "Feature en cours (dev mode : accessible)"
+              : "Feature en cours (non disponible)"
+            : undefined
+        }
       >
-        {label}
+        <span
+          style={{
+            width: 8,
+            height: 8,
+            borderRadius: 999,
+            background: active ? "rgba(0,255,190,0.95)" : "rgba(255,255,255,0.25)",
+            boxShadow: active ? "0 0 10px rgba(0,255,190,0.55)" : "none",
+          }}
+        />
+        <span style={{ fontSize: 12 }}>{label}</span>
+        {visuallyDisabled && devEnabled && (
+          <span
+            style={{
+              fontSize: 10,
+              padding: "2px 6px",
+              borderRadius: 999,
+              background: "rgba(255,255,255,0.10)",
+              border: "1px solid rgba(255,255,255,0.14)",
+              color: "rgba(255,255,255,0.72)",
+            }}
+          >
+            DEV
+          </span>
+        )}
       </button>
     );
   };
 
+  // Règle produit : seuls KEYPAD et CIBLE sont utilisables (pour l'instant).
+  // Le reste est grisé, mais déverrouillable en mode développeur.
+  const enableKeypad = true;
+  const enableDartboard = true;
+  const enablePresets = false;
+  const enableVoice = false;
+  const enableAuto = false;
+  const enableAI = false;
+
   return (
     <div
       style={{
-        display: "grid",
-        gridTemplateColumns: "repeat(4, 1fr)",
+        display: "flex",
         gap: 10,
-        marginBottom: 10,
+        overflowX: "auto",
+        padding: "6px 2px 2px",
+        WebkitOverflowScrolling: "touch",
       }}
     >
-      {btn("keypad", "KEYPAD")}
-      {btn("dartboard", "CIBLE")}
-      {btn("presets", "PRESETS", allowPresets)}
-      {btn("voice", "VOICE", showPlaceholders)}
+      {btn("keypad", "KEYPAD", enableKeypad)}
+      {btn("dartboard", "CIBLE", enableDartboard)}
+
+      {showPlaceholders && (
+        <>
+          {btn("presets", "PRESETS", enablePresets)}
+          {btn("voice", "VOICE", enableVoice)}
+          {btn("auto", "AUTO", enableAuto)}
+          {btn("ai", "CAMERA/IA", enableAI)}
+        </>
+      )}
     </div>
   );
 }
