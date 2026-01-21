@@ -10,6 +10,8 @@ import React from "react";
 import { playSound } from "../lib/sound";
 import type { Profile } from "../lib/types";
 import InfoDot from "../components/InfoDot";
+import BackDot from "../components/BackDot";
+import tickerTourHorloge from "../assets/tickers/ticker_tour_horloge.png";
 
 type ClockMode = "classic" | "doubles" | "triples" | "sdt";
 
@@ -247,6 +249,16 @@ const TrainingClock: React.FC<Props> = (props) => {
   const [history, setHistory] = React.useState<ClockSession[]>([]);
 
   const [showInfo, setShowInfo] = React.useState(false);
+
+  // ✅ Toujours afficher la page en haut au chargement
+  React.useEffect(() => {
+    try {
+      window.scrollTo({ top: 0, left: 0, behavior: "auto" });
+    } catch {
+      window.scrollTo(0, 0);
+    }
+  }, []);
+
 
   // Charger historique local au mount
   React.useEffect(() => {
@@ -599,80 +611,74 @@ const TrainingClock: React.FC<Props> = (props) => {
             gap: 12,
           }}
         >
-                              {/* Header style Cricket : Retour + Titre + InfoDot */}
+                              {/* ================= Header : ticker + dots ================= */}
           <div
             style={{
-              width: "100%",
-              display: "flex",
-              alignItems: "center",
-              gap: 10,
-              marginBottom: 6,
+              position: "sticky",
+              top: 0,
+              zIndex: 50,
+              paddingTop: "env(safe-area-inset-top)",
+              marginBottom: 10,
             }}
           >
-            {/* Retour */}
-            <button
-  type="button"
-  onClick={handleBack}
-  title="Retour"
-  aria-label="Retour"
-  style={{
-    width: 42,
-    height: 42,
-    borderRadius: 999,
-    border: "1px solid rgba(255,198,58,.55)",
-    background: "linear-gradient(180deg, rgba(25,25,30,.98), rgba(5,5,8,.98))",
-    boxShadow: "0 0 14px rgba(255,198,58,.55)",
-    color: "#ffc63a",
-    fontWeight: 900,
-    fontSize: 18,
-    display: "inline-flex",
-    alignItems: "center",
-    justifyContent: "center",
-    flexShrink: 0,
-  }}
->
-  ←
-</button>
+            <div style={{ position: "relative", marginLeft: -16, marginRight: -16 }}>
+              <img
+                src={tickerTourHorloge}
+                alt="Tour de l'Horloge"
+                style={{
+                  width: "100%",
+                  height: 92,
+                  objectFit: "cover",
+                  display: "block",
+                  borderRadius: 16,
+                  border: "1px solid rgba(255,255,255,.10)",
+                  boxShadow: "0 10px 24px rgba(0,0,0,.55)",
+                }}
+              />
 
-            {/* Titre */}
-            <div style={{ flex: 1, minWidth: 0 }}>
+              {/* Dots overlay (visibles) */}
               <div
                 style={{
-                  fontSize: 26,
-                  fontWeight: 900,
-                  letterSpacing: "0.06em",
-                  textTransform: "uppercase",
-                  color: "#f5c14a",
-                  textShadow: "0 0 18px rgba(245,193,74,.45)",
-                  lineHeight: 1.05,
+                  position: "absolute",
+                  inset: 0,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  padding: "0 12px",
+                  pointerEvents: "none",
                 }}
               >
-                TOUR DE L&apos;HORLOGE
-              </div>
-              <div style={{ marginTop: 4, fontSize: 12, opacity: 0.75 }}>
-                Sélectionne les joueurs et les options pour cette session.
+                <div style={{ pointerEvents: "auto" }}>
+                  <BackDot onClick={handleBack} />
+                </div>
+                <div style={{ pointerEvents: "auto" }}>
+                  <InfoDot onClick={() => setShowInfo(true)} />
+                </div>
               </div>
             </div>
-
-            {/* InfoDot */}
-            <button
-              type="button"
-              onClick={() => setShowInfo(true)}
-              style={{
-                background: "transparent",
-                border: "none",
-                padding: 0,
-                cursor: "pointer",
-                flexShrink: 0,
-              }}
-              aria-label="Infos"
-              title="Infos"
-            >
-              <InfoDot />
-            </button>
           </div>
 
-          {/* ================== STEP SETUP ================== */}
+          {/* Titre / sous-titre (sous le ticker) */}
+          <div style={{ textAlign: "center", marginBottom: 2 }}>
+            <div
+              style={{
+                fontSize: 18,
+                fontWeight: 900,
+                letterSpacing: "0.10em",
+                textTransform: "uppercase",
+                color: "#f5c14a",
+                textShadow: "0 0 18px rgba(245,193,74,.45)",
+                lineHeight: 1.05,
+              }}
+            >
+              TOUR DE L&apos;HORLOGE
+            </div>
+            <div style={{ marginTop: 4, fontSize: 12, opacity: 0.75 }}>
+              Sélectionne les joueurs et les options pour cette session.
+            </div>
+          </div>
+
+{/* ================== STEP SETUP ================== */}
           {step === "setup" && (
             <SetupSection
               profiles={profiles}
