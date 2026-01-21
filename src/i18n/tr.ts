@@ -64,14 +64,14 @@ export const tr: Dict = {
   // HOME — PAGE + CARTE PROFIL + BANDEAU ARCADE
   // -----------------------------
   "home.title": "Dashboard",
-  "home.subtitle": "Darts Counter kontrol merkezi",
+  "home.subtitle": "MULTISPORTS SCORING kontrol merkezi",
   "status.online": "Çevrim içi",
   "status.away": "Uzakta",
   "status.offline": "Çevrim dışı",
 
   // Bandeau haut
   "home.welcome": "Hoş geldin",
-  "home.welcome.noProfile": "Darts Counter’a hoş geldin",
+  "home.welcome.noProfile": "MULTISPORTS SCORING’a hoş geldin",
   "home.hero.tagline": "Birkaç dart atmaya hazır mısın?",
 
   // Carte profil actif

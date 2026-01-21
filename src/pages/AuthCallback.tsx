@@ -77,7 +77,7 @@ export default function AuthCallback() {
         }}
       >
         <div style={{ fontSize: 14, opacity: 0.8, marginBottom: 10 }}>
-          Darts Counter • Auth
+          MULTISPORTS SCORING • Auth
         </div>
 
         <div

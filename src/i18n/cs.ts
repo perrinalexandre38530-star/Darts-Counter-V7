@@ -64,14 +64,14 @@ export const cs: Dict = {
   // HOME — DASHBOARD
   // -----------------------------
   "home.title": "Dashboard",
-  "home.subtitle": "Řídicí centrum Darts Counter",
+  "home.subtitle": "Řídicí centrum MULTISPORTS SCORING",
 
   "status.online": "Online",
   "status.away": "Nepřítomen",
   "status.offline": "Offline",
 
   "home.welcome": "Vítejte",
-  "home.welcome.noProfile": "Vítejte v Darts Counter",
+  "home.welcome.noProfile": "Vítejte v MULTISPORTS SCORING",
   "home.hero.tagline": "Připraveni hodit pár šipek?",
 
   // Aktivní profil

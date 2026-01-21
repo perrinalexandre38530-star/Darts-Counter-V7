@@ -64,14 +64,14 @@ export const ru: Dict = {
   // HOME / DASHBOARD
   // -----------------------------
   "home.title": "Дэшборд",
-  "home.subtitle": "Центр управления Darts Counter",
+  "home.subtitle": "Центр управления MULTISPORTS SCORING",
 
   "status.online": "В сети",
   "status.away": "Отошёл",
   "status.offline": "Не в сети",
 
   "home.welcome": "Добро пожаловать",
-  "home.welcome.noProfile": "Добро пожаловать в Darts Counter",
+  "home.welcome.noProfile": "Добро пожаловать в MULTISPORTS SCORING",
   "home.hero.tagline": "Готов бросить пару дротиков?",
 
   // Активный профиль

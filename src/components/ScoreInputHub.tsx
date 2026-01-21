@@ -150,6 +150,7 @@ export default function ScoreInputHub({
     fontWeight: 900,
     border: "1px solid rgba(255,214,102,0.22)",
   };
+
   const devEnabled = safeReadDevModeEnabled();
   const [method, setMethod] = React.useState<ScoreInputMethod>(safeReadMethod);
 
@@ -174,6 +175,27 @@ export default function ScoreInputHub({
     if (switcherMode === "inline") setSwitcherOpen(true);
     if (switcherMode === "drawer") setSwitcherOpen(false);
   }, [switcherMode]);
+
+  // ✅ Unifier la hauteur visuelle du bloc de saisie :
+  // on mesure la hauteur du rendu KEYPAD, puis on applique un minHeight identique aux autres méthodes.
+  const contentMeasureRef = React.useRef<HTMLDivElement | null>(null);
+  const [baseContentHeight, setBaseContentHeight] = React.useState<number>(0);
+
+  React.useLayoutEffect(() => {
+    // On prend la hauteur "référence" quand le Keypad est visible.
+    if (method !== "keypad") return;
+    const el = contentMeasureRef.current;
+    if (!el) return;
+
+    const h = el.getBoundingClientRect().height;
+    if (h && Math.abs(h - baseContentHeight) > 2) setBaseContentHeight(Math.round(h));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [method, currentThrow?.length, multiplier]);
+
+  const contentBoxStyle: React.CSSProperties =
+    baseContentHeight > 0
+      ? { minHeight: baseContentHeight }
+      : undefined;
 
   return (
     <div>
@@ -214,38 +236,36 @@ export default function ScoreInputHub({
         </div>
       )}
 
+      {/* CIBLE */}
       {method === "dartboard" ? (
-        <div style={{ paddingBottom: 6 }}>
+        <div style={{ paddingBottom: 6, ...contentBoxStyle }}>
           <div style={{ display: "flex", justifyContent: "center", marginBottom: 8 }}>
             <DartboardClickable
               size={230}
-            multiplier={multiplier}
-            disabled={disabled}
-            onHit={(seg, mul) => {
-              if (disabled) return;
-              // On route vers le même pipeline que le keypad
-              if (seg === 25) {
-                // bull/dbull => direct dart si possible (sinon fallback bull)
-                if (onDirectDart) onDirectDart({ v: 25, mult: mul });
-                else {
-                  if (mul === 2) onDoubleBull();
-                  else onBull();
+              multiplier={multiplier}
+              disabled={disabled}
+              onHit={(seg, mul) => {
+                if (disabled) return;
+
+                // Bull / DBull
+                if (seg === 25) {
+                  if (onDirectDart) onDirectDart({ v: 25, mult: mul });
+                  else onBull(); // fallback: bull simple (DBull non géré par l'API keypad actuelle)
+                  return;
                 }
-                return;
-              }
 
-              if (onDirectDart) {
-                onDirectDart({ v: seg, mult: mul });
-                return;
-              }
+                // Injection directe (recommandé)
+                if (onDirectDart) {
+                  onDirectDart({ v: seg, mult: mul });
+                  return;
+                }
 
-              // Fallback: best-effort via toggles + onNumber
-              // (moins fiable car state multiplier async, mais mieux que rien)
-              if (mul === 3) onTriple();
-              else if (mul === 2) onDouble();
-              else onSimple();
-              onNumber(seg);
-            }}
+                // Fallback best-effort via toggles + onNumber (moins fiable, mais évite le "rien")
+                if (mul === 3) onTriple();
+                else if (mul === 2) onDouble();
+                else onSimple();
+                onNumber(seg);
+              }}
             />
           </div>
 
@@ -286,8 +306,9 @@ export default function ScoreInputHub({
         </div>
       ) : null}
 
+      {/* PRESETS */}
       {method === "presets" && allowPresets ? (
-        <div style={{ paddingBottom: 2 }}>
+        <div style={{ paddingBottom: 2, ...contentBoxStyle }}>
           <ScorePresetsBar
             disabled={disabled}
             currentCount={(currentThrow || []).length}
@@ -309,9 +330,9 @@ export default function ScoreInputHub({
         </div>
       ) : null}
 
-      {/* Méthode principale (Keypad) */}
+      {/* Méthode principale (Keypad + placeholders) */}
       {method === "keypad" || method === "presets" || method === "voice" || method === "auto" || method === "ai" ? (
-        <div>
+        <div ref={method === "keypad" ? contentMeasureRef : undefined} style={contentBoxStyle}>
           {(method === "voice" || method === "auto" || method === "ai") && showPlaceholders ? (
             <PlaceholderCard method={method} />
           ) : null}
@@ -372,9 +393,7 @@ function MethodBar({
           padding: "8px 10px",
           borderRadius: 999,
           border: "1px solid rgba(255,255,255,0.16)",
-          background: active
-            ? "rgba(0,255,190,0.16)"
-            : "rgba(255,255,255,0.06)",
+          background: active ? "rgba(0,255,190,0.16)" : "rgba(255,255,255,0.06)",
           color: "rgba(255,255,255,0.92)",
           opacity: visuallyDisabled ? (devEnabled ? 0.55 : 0.38) : 1,
           cursor: canClick ? "pointer" : "not-allowed",
@@ -443,7 +462,7 @@ function MethodBar({
 
       {showPlaceholders && (
         <>
-          {btn("presets", "PRESETS", enablePresets)}
+          {btn("presets", "PRESETS", enablePresets && allowPresets)}
           {btn("voice", "VOICE", enableVoice)}
           {btn("auto", "AUTO", enableAuto)}
           {btn("ai", "CAMERA/IA", enableAI)}
@@ -473,17 +492,12 @@ function PlaceholderCard({ method }: { method: ScoreInputMethod }) {
         padding: 12,
         borderRadius: 14,
         border: "1px solid rgba(255,255,255,.10)",
-        background:
-          "linear-gradient(180deg, rgba(10,10,12,.92), rgba(6,6,8,.96))",
+        background: "linear-gradient(180deg, rgba(10,10,12,.92), rgba(6,6,8,.96))",
         boxShadow: "0 10px 24px rgba(0,0,0,.45)",
       }}
     >
-      <div style={{ fontWeight: 1000, letterSpacing: 0.2, color: "#e9d7ff" }}>
-        {title}
-      </div>
-      <div style={{ marginTop: 4, fontSize: 12.5, opacity: 0.72, fontWeight: 800 }}>
-        {subtitle}
-      </div>
+      <div style={{ fontWeight: 1000, letterSpacing: 0.2, color: "#e9d7ff" }}>{title}</div>
+      <div style={{ marginTop: 4, fontSize: 12.5, opacity: 0.72, fontWeight: 800 }}>{subtitle}</div>
     </div>
   );
 }

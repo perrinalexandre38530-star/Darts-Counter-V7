@@ -64,7 +64,7 @@ export const pl: Dict = {
   // HOME — STRONA GŁÓWNA
   // -----------------------------
   "home.title": "Dashboard",
-  "home.subtitle": "Centrum sterowania Darts Counter",
+  "home.subtitle": "Centrum sterowania MULTISPORTS SCORING",
 
   "status.online": "Online",
   "status.away": "Zaraz wracam",
@@ -72,7 +72,7 @@ export const pl: Dict = {
 
   // Nagłówek
   "home.welcome": "Witaj",
-  "home.welcome.noProfile": "Witaj w Darts Counter",
+  "home.welcome.noProfile": "Witaj w MULTISPORTS SCORING",
   "home.hero.tagline": "Gotowy na kilka rzutów?",
 
   // Karta aktywnego profilu

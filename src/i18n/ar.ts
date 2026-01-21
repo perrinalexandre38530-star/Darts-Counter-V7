@@ -64,7 +64,7 @@ export const ar: Dict = {
   // الصفحة الرئيسية / Dashboard
   // -----------------------------
   "home.title": "لوحة التحكم",
-  "home.subtitle": "مركز التحكم في Darts Counter",
+  "home.subtitle": "مركز التحكم في MULTISPORTS SCORING",
 
   "status.online": "متصل",
   "status.away": "بعيد",
@@ -72,7 +72,7 @@ export const ar: Dict = {
 
   // الشريط العلوي
   "home.welcome": "مرحبًا",
-  "home.welcome.noProfile": "مرحبًا في Darts Counter",
+  "home.welcome.noProfile": "مرحبًا في MULTISPORTS SCORING",
   "home.hero.tagline": "هل أنت جاهز لرمي بعض السهام؟",
 
   // بطاقة الملف الشخصي النشط

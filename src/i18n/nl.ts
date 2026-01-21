@@ -64,14 +64,14 @@ export const nl: Dict = {
   // HOME / DASHBOARD
   // -----------------------------
   "home.title": "Dashboard",
-  "home.subtitle": "Darts Counter controlecentrum",
+  "home.subtitle": "MULTISPORTS SCORING controlecentrum",
 
   "status.online": "Online",
   "status.away": "Afwezig",
   "status.offline": "Offline",
 
   "home.welcome": "Welkom",
-  "home.welcome.noProfile": "Welkom bij Darts Counter",
+  "home.welcome.noProfile": "Welkom bij MULTISPORTS SCORING",
   "home.hero.tagline": "Klaar om wat darts te gooien?",
 
   // Actief profiel

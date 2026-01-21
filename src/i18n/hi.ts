@@ -64,14 +64,14 @@ export const hi: Dict = {
   // HOME / डैशबोर्ड
   // -----------------------------
   "home.title": "डैशबोर्ड",
-  "home.subtitle": "Darts Counter नियंत्रण केंद्र",
+  "home.subtitle": "MULTISPORTS SCORING नियंत्रण केंद्र",
 
   "status.online": "ऑनलाइन",
   "status.away": "अनुपस्थित",
   "status.offline": "ऑफ़लाइन",
 
   "home.welcome": "स्वागत है",
-  "home.welcome.noProfile": "Darts Counter में आपका स्वागत है",
+  "home.welcome.noProfile": "MULTISPORTS SCORING में आपका स्वागत है",
   "home.hero.tagline": "कुछ डार्ट फेंकने के लिए तैयार हैं?",
 
   // Active Profile

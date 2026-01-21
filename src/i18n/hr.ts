@@ -64,14 +64,14 @@ export const hr: Dict = {
   // HOME — NADZORNA PLOČA
   // -----------------------------
   "home.title": "Dashboard",
-  "home.subtitle": "Kontrolni centar Darts Counter-a",
+  "home.subtitle": "Kontrolni centar MULTISPORTS SCORING-a",
 
   "status.online": "Online",
   "status.away": "Odsutan",
   "status.offline": "Offline",
 
   "home.welcome": "Dobrodošli",
-  "home.welcome.noProfile": "Dobrodošli u Darts Counter",
+  "home.welcome.noProfile": "Dobrodošli u MULTISPORTS SCORING",
   "home.hero.tagline": "Spremni za nekoliko strelica?",
 
   // Aktivni profil

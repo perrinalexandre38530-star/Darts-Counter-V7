@@ -64,7 +64,7 @@ export const is: Dict = {
   // HOME + ACTIVE PROFILE CARD + TICKER
   // -----------------------------
   "home.title": "Stjórnborð",
-  "home.subtitle": "Stjórnstöð Darts Counter",
+  "home.subtitle": "Stjórnstöð MULTISPORTS SCORING",
 
   "status.online": "Online",
   "status.away": "Fjarverandi",
@@ -72,7 +72,7 @@ export const is: Dict = {
 
   // Header
   "home.welcome": "Velkomin",
-  "home.welcome.noProfile": "Velkomin í Darts Counter",
+  "home.welcome.noProfile": "Velkomin í MULTISPORTS SCORING",
   "home.hero.tagline": "Tilbúin(n) í nokkur píluköst?",
 
   // Active profile

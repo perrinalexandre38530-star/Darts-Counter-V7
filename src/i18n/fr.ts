@@ -66,14 +66,14 @@ export const fr: Dict = {
 // HOME — PAGE + CARTE PROFIL + BANDEAU ARCADE (FR)
 // -----------------------------
 "home.title": "Dashboard",
-"home.subtitle": "Centre de contrôle Darts Counter",
+"home.subtitle": "Centre de contrôle MULTISPORTS SCORING",
 "status.online": "En ligne",
 "status.away": "Absent",
 "status.offline": "Hors ligne",
 
 // Bandeau haut
 "home.welcome": "Bienvenue",
-"home.welcome.noProfile": "Bienvenue dans Darts Counter",
+"home.welcome.noProfile": "Bienvenue dans MULTISPORTS SCORING",
 "home.hero.tagline": "Prêt à lancer quelques fléchettes ?",
 
 // Carte profil actif

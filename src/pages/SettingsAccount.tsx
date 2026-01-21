@@ -159,7 +159,7 @@ export default function SettingsAccount({ store, update }: Props) {
         >
           {t(
             "settings.account.subtitle",
-            "Gère ton compte Darts Counter, ton email, ton mot de passe et tes préférences."
+            "Gère ton compte MULTISPORTS SCORING, ton email, ton mot de passe et tes préférences."
           )}
         </p>
       </section>

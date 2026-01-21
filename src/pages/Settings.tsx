@@ -1358,7 +1358,7 @@ export default function Settings({ go }: Props) {
   async function handleFullReset() {
     const ok = window.confirm(
       "⚠️ RÉINITIALISATION COMPLÈTE ⚠️\n\n" +
-        "Cette action va effacer TOUTES les données locales de Darts Counter sur cet appareil :\n" +
+        "Cette action va effacer TOUTES les données locales de MULTISPORTS SCORING sur cet appareil :\n" +
         "- Profils locaux & BOTS\n" +
         "- Stats & historique de parties\n" +
         "- Réglages, thèmes, langue…\n\n" +

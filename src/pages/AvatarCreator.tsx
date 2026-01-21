@@ -3,7 +3,7 @@
 // Création d'avatar "Option C" façon CHAPA DARTS
 // OPTION B : IA EXTERNE (OpenArt / autre site)
 // - Médaillon noir + double anneau doré (ou BLEU pour les BOTS)
-// - Texte haut : "DARTS COUNTER" plaqué contre l’anneau intérieur (extérieur)
+// - Texte haut : "MULTISPORTS SCORING" plaqué contre l’anneau intérieur (extérieur)
 // - Texte bas : nom choisi, plaqué contre l’anneau intérieur (extérieur)
 // - Import de photo (y compris caricature faite ailleurs) + zoom
 // - Export en PNG (dataURL) via <canvas>
@@ -421,7 +421,7 @@ export default function AvatarCreator({
                 </g>
               )}
 
-              {/* Texte haut : DARTS COUNTER */}
+              {/* Texte haut : MULTISPORTS SCORING */}
               <path
                 id="arcTop"
                 d={`
@@ -442,7 +442,7 @@ export default function AvatarCreator({
                   startOffset="50%"
                   textAnchor="middle"
                 >
-                  DARTS COUNTER
+                  MULTISPORTS SCORING
                 </textPath>
               </text>
 

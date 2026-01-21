@@ -64,14 +64,14 @@ export const zh: Dict = {
   // 首页 / Dashboard
   // -----------------------------
   "home.title": "控制面板",
-  "home.subtitle": "Darts Counter 控制中心",
+  "home.subtitle": "MULTISPORTS SCORING 控制中心",
 
   "status.online": "在线",
   "status.away": "离开",
   "status.offline": "离线",
 
   "home.welcome": "欢迎",
-  "home.welcome.noProfile": "欢迎使用 Darts Counter",
+  "home.welcome.noProfile": "欢迎使用 MULTISPORTS SCORING",
   "home.hero.tagline": "准备好投掷飞镖了吗？",
 
   // 活跃个人档案

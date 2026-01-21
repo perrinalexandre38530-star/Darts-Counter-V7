@@ -64,7 +64,7 @@ export const en: Dict = {
   // HOME — PAGE + PROFILE CARD + ARCADE BANNER
   // -----------------------------
   "home.title": "Dashboard",
-  "home.subtitle": "Darts Counter control center",
+  "home.subtitle": "MULTISPORTS SCORING control center",
 
   "status.online": "Online",
   "status.away": "Away",
@@ -72,7 +72,7 @@ export const en: Dict = {
 
   // Top ribbon
   "home.welcome": "Welcome",
-  "home.welcome.noProfile": "Welcome to Darts Counter",
+  "home.welcome.noProfile": "Welcome to MULTISPORTS SCORING",
   "home.hero.tagline": "Ready to throw some darts?",
 
   // Active profile card

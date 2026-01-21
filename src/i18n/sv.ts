@@ -64,7 +64,7 @@ export const sv: Dict = {
   // HOME + PROFILKORT + ARCADEBANNER
   // -----------------------------
   "home.title": "Dashboard",
-  "home.subtitle": "Kontrollcenter för Darts Counter",
+  "home.subtitle": "Kontrollcenter för MULTISPORTS SCORING",
 
   "status.online": "Online",
   "status.away": "Borta",
@@ -72,7 +72,7 @@ export const sv: Dict = {
 
   // Topprad
   "home.welcome": "Välkommen",
-  "home.welcome.noProfile": "Välkommen till Darts Counter",
+  "home.welcome.noProfile": "Välkommen till MULTISPORTS SCORING",
   "home.hero.tagline": "Redo för några dartkast?",
 
   // Aktiv profil

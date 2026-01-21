@@ -64,7 +64,7 @@ export const pt: Dict = {
   // HOME / DASHBOARD
   // -----------------------------
   "home.title": "Dashboard",
-  "home.subtitle": "Centro de controlo Darts Counter",
+  "home.subtitle": "Centro de controlo MULTISPORTS SCORING",
 
   "status.online": "Online",
   "status.away": "Ausente",
@@ -72,7 +72,7 @@ export const pt: Dict = {
 
   // Bandeau haut
   "home.welcome": "Bem-vindo",
-  "home.welcome.noProfile": "Bem-vindo ao Darts Counter",
+  "home.welcome.noProfile": "Bem-vindo ao MULTISPORTS SCORING",
   "home.hero.tagline": "Pronto para lançar umas setas?",
 
   // Carta perfil ativo
