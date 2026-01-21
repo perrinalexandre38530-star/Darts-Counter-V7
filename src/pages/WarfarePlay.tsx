@@ -7,6 +7,7 @@
 // ============================================
 
 import React from "react";
+import { useViewport } from "../hooks/useViewport";
 import type { Dart } from "../lib/types";
 import { useTheme } from "../contexts/ThemeContext";
 import { useLang } from "../contexts/LangContext";
@@ -59,6 +60,7 @@ function fmt(d?: Dart) {
 
 export default function WarfarePlay({ go, config }: Props) {
   const { theme } = useTheme();
+  const { isLandscapeTablet } = useViewport({ tabletMinWidth: 900 });
   const { t } = useLang();
 
   // ------------------------------------------------------------

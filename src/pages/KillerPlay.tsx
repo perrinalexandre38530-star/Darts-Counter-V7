@@ -28,6 +28,7 @@
 // ============================================
 
 import React from "react";
+import { useViewport } from "../hooks/useViewport";
 import type { Store, MatchRecord, Dart as UIDart } from "../lib/types";
 import type {
   KillerConfig,
@@ -3425,6 +3426,8 @@ const endPlayersOrdered = React.useMemo(() => {
 
 const theme = gold;
 
+  const { isLandscapeTablet } = useViewport({ tabletMinWidth: 900 });
+
 // ✅ BLIND KILLER: on masque les numéros pour tous les joueurs pendant la partie.
 // (On révèle à la fin uniquement.)
 const blindMask = !!blindKillerOn && !showEnd && !finished && !w;
@@ -3441,8 +3444,8 @@ return (
       color: "#fff",
       display: "flex",
       flexDirection: "column",
-      padding: 10,
-      gap: 10,
+      padding: isLandscapeTablet ? 6 : 10,
+      gap: isLandscapeTablet ? 6 : 10,
       overscrollBehavior: "none",
     }}
   >

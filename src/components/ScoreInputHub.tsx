@@ -113,6 +113,7 @@ export default function ScoreInputHub({
 }: Props) {
   const throwTotal = (currentThrow || []).reduce((a, d) => a + (d?.v || 0) * (d?.mult || 1), 0);
 
+  // ✅ FIX demandé : même rendu visuel que le total du KEYPAD (couleur + glow + typo/taille)
   const totalPillStyle: React.CSSProperties = {
     minWidth: 56,
     height: 36,
@@ -121,13 +122,15 @@ export default function ScoreInputHub({
     alignItems: "center",
     justifyContent: "center",
     borderRadius: 999,
-    background: "rgba(0,0,0,0.55)",
-    border: "1px solid rgba(255,214,102,0.35)",
-    boxShadow: "0 0 0 1px rgba(0,0,0,0.35) inset",
+    background: "rgba(0,0,0,0.62)",
+    border: "1px solid rgba(255,214,102,0.42)",
+    boxShadow:
+      "0 0 0 1px rgba(0,0,0,0.40) inset, 0 10px 22px rgba(255,168,0,0.10), 0 0 16px rgba(255,214,102,0.12)",
     color: "#ffd666",
-    fontWeight: 900,
-    fontSize: 16,
+    fontWeight: 1000,
+    fontSize: 18,
     letterSpacing: 0.2,
+    lineHeight: 1,
   };
 
   const btnGoldSmall: React.CSSProperties = {
@@ -192,10 +195,7 @@ export default function ScoreInputHub({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [method, currentThrow?.length, multiplier]);
 
-  const contentBoxStyle: React.CSSProperties =
-    baseContentHeight > 0
-      ? { minHeight: baseContentHeight }
-      : undefined;
+  const contentBoxStyle: React.CSSProperties = baseContentHeight > 0 ? { minHeight: baseContentHeight } : undefined;
 
   return (
     <div>
@@ -477,14 +477,14 @@ function PlaceholderCard({ method }: { method: ScoreInputMethod }) {
     method === "voice"
       ? "Reconnaissance vocale"
       : method === "auto"
-        ? "Auto-scoring"
-        : "IA / Dartsmind-like";
+      ? "Auto-scoring"
+      : "IA / Dartsmind-like";
   const subtitle =
     method === "voice"
       ? "Branchement en cours — le keypad reste disponible en fallback."
       : method === "auto"
-        ? "Module léger — à valider et calibrer (fallback keypad)."
-        : "Module avancé — à intégrer via onDirectDart (fallback keypad).";
+      ? "Module léger — à valider et calibrer (fallback keypad)."
+      : "Module avancé — à intégrer via onDirectDart (fallback keypad).";
   return (
     <div
       style={{

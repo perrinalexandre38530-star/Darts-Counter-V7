@@ -11,6 +11,7 @@
 // ============================================
 
 import React from "react";
+import { useViewport } from "../hooks/useViewport";
 import { useTheme } from "../contexts/ThemeContext";
 import { useLang } from "../contexts/LangContext";
 import InfoDot from "../components/InfoDot";
@@ -205,6 +206,7 @@ function SurvivorKpi({ value }: { value: any }) {
 function DartsIcons({ total, used }: { total: number; used: number }) {
   // ✅ même affichage que CricketPlay (DartIconColorizable)
   const { theme } = useTheme();
+  const { isLandscapeTablet } = useViewport({ tabletMinWidth: 900 });
   const n = Math.max(1, Math.min(3, Number(total) || 3));
   const u = Math.max(0, Math.min(n, Number(used) || 0));
   return (

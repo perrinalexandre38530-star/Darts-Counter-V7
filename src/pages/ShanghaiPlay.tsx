@@ -15,6 +15,7 @@
 // ============================================
 
 import React from "react";
+import { useViewport } from "../hooks/useViewport";
 import { useTheme } from "../contexts/ThemeContext";
 import { useLang } from "../contexts/LangContext";
 import InfoDot from "../components/InfoDot";
@@ -300,6 +301,8 @@ function round1(n: number) {
 }
 
 export default function ShanghaiPlay(props: Props) {
+  const { isLandscapeTablet } = useViewport({ tabletMinWidth: 900 });
+
   const { theme } = useTheme();
   const { t } = useLang();
 
@@ -1379,13 +1382,14 @@ export default function ShanghaiPlay(props: Props) {
       <div
         ref={keypadWrapRef}
         style={{
-          position: "fixed",
-          left: 0,
-          right: 0,
-          bottom: `calc(${BOTTOM_NAV_H}px + env(safe-area-inset-bottom, 0px))`,
+          position: isLandscapeTablet ? "sticky" : "fixed",
+          left: isLandscapeTablet ? undefined : 0,
+          right: isLandscapeTablet ? undefined : 0,
+          bottom: isLandscapeTablet ? 0 : `calc(${BOTTOM_NAV_H}px + env(safe-area-inset-bottom, 0px))`,
           zIndex: 20,
           padding: 10,
           paddingBottom: 12,
+          marginTop: isLandscapeTablet ? 6 : 0,
           background:
             "linear-gradient(180deg, rgba(0,0,0,0.00), rgba(0,0,0,0.55) 18%, rgba(0,0,0,0.82))",
           backdropFilter: "blur(6px)",
