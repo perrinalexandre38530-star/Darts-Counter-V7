@@ -46,17 +46,6 @@ type Props = {
   disabled?: boolean;
   /** Autorise l'UI voice/auto/ai (placeholders) */
   showPlaceholders?: boolean;
-
-  /** Méthode initiale (issue de la config de match, si dispo) */
-  initialMethod?: ScoreInputMethod;
-  /** Callback : changement de méthode dans le hub */
-  onMethodChange?: (m: ScoreInputMethod) => void;
-  /** Force l'affichage de l'onglet AUTO */
-  autoEnabled?: boolean;
-  /** Force l'affichage de l'onglet IA */
-  aiEnabled?: boolean;
-  /** Ouvre l'overlay caméra (mode IA caméra assistée) */
-  onAiOpen?: () => void;
 };
 
 function safeReadMethod(): ScoreInputMethod {
@@ -104,105 +93,69 @@ export default function ScoreInputHub({
   centerSlot,
   disabled = false,
   showPlaceholders = true,
-  initialMethod,
-  onMethodChange,
-  autoEnabled,
-  aiEnabled,
-  onAiOpen,
 }: Props) {
-  const [method, setMethod] = React.useState<ScoreInputMethod>(() => {
-    const m = initialMethod;
-    if (m === "keypad" || m === "dartboard" || m === "presets" || m === "voice" || m === "auto" || m === "ai") {
-      return m;
-    }
-    return safeReadMethod();
-  });
+  const throwTotal = (currentThrow || []).reduce((a, d) => a + (d?.v || 0) * (d?.mult || 1), 0);
 
-  React.useEffect(() => {
-    // si la page Play pousse une méthode (ex: au boot), on la respecte
-    const m = initialMethod;
-    if (!m) return;
-    if (m === method) return;
-    if (m === "keypad" || m === "dartboard" || m === "presets" || m === "voice" || m === "auto" || m === "ai") {
-      setMethod(m);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [initialMethod]);
+  const totalPillStyle: React.CSSProperties = {
+    minWidth: 56,
+    height: 36,
+    padding: "0 12px",
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: 999,
+    background: "rgba(0,0,0,0.55)",
+    border: "1px solid rgba(255,214,102,0.35)",
+    boxShadow: "0 0 0 1px rgba(0,0,0,0.35) inset",
+    color: "#ffd666",
+    fontWeight: 900,
+    fontSize: 16,
+    letterSpacing: 0.2,
+  };
+
+  const btnGoldSmall: React.CSSProperties = {
+    height: 36,
+    padding: "0 14px",
+    borderRadius: 12,
+    background: "linear-gradient(180deg, rgba(255,214,102,0.95), rgba(255,168,0,0.88))",
+    color: "#2b1a00",
+    fontWeight: 900,
+    border: "1px solid rgba(255,214,102,0.35)",
+    boxShadow: "0 10px 22px rgba(255,168,0,0.14)",
+  };
+
+  const btnDarkSmall: React.CSSProperties = {
+    height: 36,
+    padding: "0 14px",
+    borderRadius: 12,
+    background: "rgba(0,0,0,0.45)",
+    color: "rgba(255,255,255,0.9)",
+    fontWeight: 900,
+    border: "1px solid rgba(255,214,102,0.22)",
+  };
+  const [method, setMethod] = React.useState<ScoreInputMethod>(safeReadMethod);
 
   React.useEffect(() => {
     safeWriteMethod(method);
   }, [method]);
 
-  React.useEffect(() => {
-    try {
-      onMethodChange?.(method);
-    } catch {
-      // ignore
-    }
-  }, [method, onMethodChange]);
-
   const allowPresets = !!onDirectDart && enablePresets;
-
-  // Total de volée (best-effort) — utilisé pour l'UI CIBLE (dartboard)
-  const throwTotal = React.useMemo(() => {
-    try {
-      if (!currentThrow || !Array.isArray(currentThrow)) return 0;
-      return currentThrow.reduce((acc: number, d: any) => {
-        // Compat: certains modes passent déjà un nombre ; d'autres un objet { n, m } / { base, mult } / { value }
-        if (typeof d === "number") return acc + (Number.isFinite(d) ? d : 0);
-        if (!d) return acc;
-        if (typeof d.value === "number") return acc + (Number.isFinite(d.value) ? d.value : 0);
-        const n = typeof d.n === "number" ? d.n : typeof d.base === "number" ? d.base : typeof d.num === "number" ? d.num : null;
-        const m = typeof d.m === "number" ? d.m : typeof d.mult === "number" ? d.mult : typeof d.mul === "number" ? d.mul : 1;
-        if (typeof n === "number" && Number.isFinite(n) && Number.isFinite(m)) return acc + n * m;
-        return acc;
-      }, 0);
-    } catch {
-      return 0;
-    }
-  }, [currentThrow]);
 
   return (
     <div>
       <MethodBar
         method={method}
-        setMethod={(m) => {
-          setMethod(m);
-          if (m === "ai") {
-            // UX : ouvrir direct l'overlay caméra si branché
-            try { onAiOpen?.(); } catch {}
-          }
-        }}
+        setMethod={setMethod}
         allowPresets={allowPresets}
         showPlaceholders={showPlaceholders}
         disabled={disabled}
-        autoEnabled={!!autoEnabled}
-        aiEnabled={!!aiEnabled}
       />
 
       {method === "dartboard" ? (
-        <div style={{ paddingBottom: 10 }}>
-          {/* Bouton RETOUR (réduit) */}
-          <div style={{ display: "flex", justifyContent: "flex-start", marginBottom: 10 }}>
-            <button
-              type="button"
-              onClick={() => (onBackspace ? onBackspace() : onCancel())}
-              disabled={disabled}
-              style={{
-                padding: "6px 10px",
-                borderRadius: 12,
-                fontWeight: 900,
-                letterSpacing: 0.3,
-                fontSize: 12,
-                border: "1px solid rgba(255,255,255,0.12)",
-                background: "rgba(255,255,255,0.06)",
-                color: "rgba(255,255,255,0.92)",
-              }}
-            >
-              RETOUR
-            </button>
-          </div>
-          <DartboardClickable
+        <div style={{ paddingBottom: 6 }}>
+          <div style={{ display: "flex", justifyContent: "center", marginBottom: 8 }}>
+            <DartboardClickable
+              size={230}
             multiplier={multiplier}
             disabled={disabled}
             onHit={(seg, mul) => {
@@ -211,7 +164,10 @@ export default function ScoreInputHub({
               if (seg === 25) {
                 // bull/dbull => direct dart si possible (sinon fallback bull)
                 if (onDirectDart) onDirectDart({ v: 25, mult: mul });
-                else onBull();
+                else {
+                  if (mul === 2) onDoubleBull();
+                  else onBull();
+                }
                 return;
               }
 
@@ -227,54 +183,42 @@ export default function ScoreInputHub({
               else onSimple();
               onNumber(seg);
             }}
-          />
+            />
+          </div>
 
-          {/* Bas de panneau — total volée (gauche) + ANNULER (droite) */}
+          {/* Footer CIBLE — total à gauche + Annuler / Valider à droite (même langage visuel que le keypad) */}
           <div
             style={{
               display: "flex",
               alignItems: "center",
               justifyContent: "space-between",
               gap: 10,
-              marginTop: 10,
+              padding: "0 6px",
             }}
           >
-            <div
-              style={{
-                padding: "8px 12px",
-                borderRadius: 14,
-                fontWeight: 950,
-                letterSpacing: 0.3,
-                fontSize: 14,
-                minWidth: 84,
-                textAlign: "center",
-                border: "1px solid rgba(255,255,255,0.12)",
-                background: "rgba(0,0,0,0.35)",
-                color: "rgba(255,255,255,0.92)",
-              }}
-              aria-label="Total volée"
-              title="Total volée"
-            >
-              {Number.isFinite(throwTotal) ? throwTotal : 0}
-            </div>
+            <div style={totalPillStyle}>{throwTotal}</div>
 
-            <button
-              type="button"
-              onClick={onCancel}
-              disabled={disabled}
-              style={{
-                padding: "8px 12px",
-                borderRadius: 12,
-                fontWeight: 950,
-                letterSpacing: 0.3,
-                fontSize: 12,
-                border: "1px solid rgba(255,255,255,0.12)",
-                background: "rgba(255,200,0,0.18)",
-                color: "rgba(255,230,140,0.98)",
-              }}
-            >
-              ANNULER
-            </button>
+            <div style={{ display: "flex", gap: 10 }}>
+              <button
+                type="button"
+                style={btnDarkSmall}
+                disabled={disabled || (currentThrow || []).length === 0}
+                onClick={onCancel}
+                aria-label="Annuler la volée"
+              >
+                ANNULER
+              </button>
+
+              <button
+                type="button"
+                style={btnGoldSmall}
+                disabled={disabled || (currentThrow || []).length === 0}
+                onClick={onValidate}
+                aria-label="Valider la volée"
+              >
+                VALIDER
+              </button>
+            </div>
           </div>
         </div>
       ) : null}
@@ -305,15 +249,8 @@ export default function ScoreInputHub({
       {/* Méthode principale (Keypad) */}
       {method === "keypad" || method === "presets" || method === "voice" || method === "auto" || method === "ai" ? (
         <div>
-          {method === "voice" && showPlaceholders ? <PlaceholderCard method={method} /> : null}
-          {method === "auto" && showPlaceholders ? <PlaceholderCard method={method} /> : null}
-          {method === "ai" ? (
-            <AiCameraCard
-              enabled={!!aiEnabled || showPlaceholders}
-              onOpen={() => {
-                try { onAiOpen?.(); } catch {}
-              }}
-            />
+          {(method === "voice" || method === "auto" || method === "ai") && showPlaceholders ? (
+            <PlaceholderCard method={method} />
           ) : null}
 
           <Keypad
@@ -343,16 +280,12 @@ function MethodBar({
   allowPresets,
   showPlaceholders,
   disabled,
-  autoEnabled,
-  aiEnabled,
 }: {
   method: ScoreInputMethod;
   setMethod: (m: ScoreInputMethod) => void;
   allowPresets: boolean;
   showPlaceholders: boolean;
   disabled: boolean;
-  autoEnabled: boolean;
-  aiEnabled: boolean;
 }) {
   const btn = (id: ScoreInputMethod, label: string, enabled = true) => {
     const active = method === id;
@@ -392,7 +325,7 @@ function MethodBar({
     <div
       style={{
         display: "grid",
-        gridTemplateColumns: "repeat(6, 1fr)",
+        gridTemplateColumns: "repeat(4, 1fr)",
         gap: 10,
         marginBottom: 10,
       }}
@@ -401,8 +334,6 @@ function MethodBar({
       {btn("dartboard", "CIBLE")}
       {btn("presets", "PRESETS", allowPresets)}
       {btn("voice", "VOICE", showPlaceholders)}
-      {btn("auto", "AUTO", showPlaceholders || autoEnabled)}
-      {btn("ai", "IA", showPlaceholders || aiEnabled)}
     </div>
   );
 }
@@ -437,62 +368,6 @@ function PlaceholderCard({ method }: { method: ScoreInputMethod }) {
       </div>
       <div style={{ marginTop: 4, fontSize: 12.5, opacity: 0.72, fontWeight: 800 }}>
         {subtitle}
-      </div>
-    </div>
-  );
-}
-
-function AiCameraCard({
-  enabled,
-  onOpen,
-}: {
-  enabled: boolean;
-  onOpen: () => void;
-}) {
-  return (
-    <div
-      style={{
-        marginBottom: 10,
-        padding: 12,
-        borderRadius: 14,
-        border: "1px solid rgba(255,255,255,.10)",
-        background:
-          "linear-gradient(180deg, rgba(10,10,12,.92), rgba(6,6,8,.96))",
-        boxShadow: "0 10px 24px rgba(0,0,0,.45)",
-      }}
-    >
-      <div style={{ fontWeight: 1000, letterSpacing: 0.2, color: "#e9d7ff" }}>
-        IA / Caméra assistée
-      </div>
-      <div style={{ marginTop: 4, fontSize: 12.5, opacity: 0.72, fontWeight: 800 }}>
-        Mode "dartsmind-like" (calibrage + tap-to-score). Le keypad reste disponible en fallback.
-      </div>
-      <div style={{ display: "flex", gap: 10, marginTop: 10 }}>
-        <button
-          type="button"
-          disabled={!enabled}
-          onClick={() => {
-            if (!enabled) return;
-            onOpen();
-          }}
-          style={{
-            height: 36,
-            borderRadius: 14,
-            padding: "0 12px",
-            border: "1px solid rgba(255,198,58,.55)",
-            background: enabled
-              ? "linear-gradient(180deg, rgba(255,198,58,.26), rgba(0,0,0,.28))"
-              : "rgba(255,255,255,.06)",
-            color: enabled ? "#ffc63a" : "rgba(255,255,255,.4)",
-            fontWeight: 1000,
-            cursor: enabled ? "pointer" : "not-allowed",
-          }}
-        >
-          Ouvrir la caméra
-        </button>
-        <div style={{ alignSelf: "center", fontSize: 11.5, opacity: 0.6, fontWeight: 800 }}>
-          Astuce: tu peux laisser l'overlay ouvert pendant la partie.
-        </div>
       </div>
     </div>
   );

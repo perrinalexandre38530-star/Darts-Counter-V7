@@ -17,6 +17,12 @@
 // ✅ NEW (REQUEST): Vraie page "Compte" simple et efficace :
 //   - Menu Compte (cartes): Profil / Notifications / Sécurité / Danger
 //   - Sous-pages claires (retour interne au menu compte)
+//
+// ✅ NEW (DEV MODE):
+// - Bloc "Développeur" dans Settings (menu) :
+//   • Toggle ON/OFF
+//   • ON = rend cliquables les features grisées (non terminées)
+// - Panel "Tests & Simulations" (best-effort flags locaux, reset ciblés, etc.)
 // ============================================
 
 import React from "react";
@@ -26,6 +32,9 @@ import { THEMES, type ThemeId, type AppTheme } from "../theme/themePresets";
 import { useAuthOnline } from "../hooks/useAuthOnline";
 import { AccountToolsPanel } from "../components/account/AccountToolsPanel";
 import { supabase } from "../lib/supabaseClient";
+
+// ✅ DEV MODE (assure-toi d’avoir DevModeProvider au root)
+import { useDevMode } from "../contexts/DevModeContext";
 
 // IMPORTANT: ajuste les chemins si tes assets sont ailleurs
 import logoDarts from "../assets/games/logo-darts.png";
@@ -273,6 +282,10 @@ const LS_ACCOUNT_PREFS = "dc_account_prefs_v1";
 
 // ✅ Choix jeu/sport au démarrage
 const START_GAME_KEY = "dc-start-game";
+
+// ✅ DEV test flags
+const FORCE_OFFLINE_KEY = "dc:force_offline:v1";
+const SEED_DEMO_KEY = "dc:seed_demo:v1";
 
 type AccountPrefs = {
   emailsNews: boolean;
@@ -546,6 +559,292 @@ function SettingsMenuCard({
         </div>
       </button>
     </div>
+  );
+}
+
+// ---------------- Composant DEV MODE (Settings / menu) ----------------
+
+function DevModeBlock() {
+  const { theme } = useTheme();
+  const { t } = useLang();
+  const dev = useDevMode() as any;
+
+  const enabled: boolean = !!dev?.enabled;
+  const setEnabled: (v: boolean) => void = dev?.setEnabled ?? (() => {});
+
+  const [openTests, setOpenTests] = React.useState(false);
+  const [toast, setToast] = React.useState<string | null>(null);
+
+  const notify = (msg: string) => {
+    setToast(msg);
+    window.setTimeout(() => setToast(null), 1600);
+  };
+
+  const sectionStyle: React.CSSProperties = {
+    background: CARD_BG,
+    borderRadius: 18,
+    border: `1px solid ${theme.borderSoft}`,
+    padding: 16,
+    marginTop: 10,
+  };
+
+  const pillBtn = (active: boolean): React.CSSProperties => ({
+    borderRadius: 999,
+    border: `1px solid ${active ? theme.primary : theme.borderSoft}`,
+    padding: "8px 12px",
+    background: active ? "rgba(0,0,0,0.55)" : "rgba(255,255,255,0.04)",
+    color: active ? theme.primary : theme.textSoft,
+    fontWeight: 900,
+    letterSpacing: 0.6,
+    textTransform: "uppercase",
+    cursor: "pointer",
+    boxShadow: active ? `0 0 14px ${theme.primary}33` : "none",
+  });
+
+  function resetForceOffline() {
+    try {
+      localStorage.removeItem(FORCE_OFFLINE_KEY);
+      notify(t("settings.dev.tests.online", "Online simulé (flag OFF)."));
+    } catch {
+      notify(t("settings.dev.tests.error", "Erreur opération (storage)."));
+    }
+  }
+
+  function setForceOffline() {
+    try {
+      localStorage.setItem(FORCE_OFFLINE_KEY, "1");
+      notify(t("settings.dev.tests.offline", "Offline simulé (flag ON)."));
+    } catch {
+      notify(t("settings.dev.tests.error", "Erreur opération (storage)."));
+    }
+  }
+
+  function seedDemo() {
+    try {
+      localStorage.setItem(SEED_DEMO_KEY, String(Date.now()));
+      notify(t("settings.dev.tests.seed", "Seed démo demandé (flag)."));
+    } catch {
+      notify(t("settings.dev.tests.error", "Erreur opération (storage)."));
+    }
+  }
+
+  function clearOnlyDevFlags() {
+    try {
+      localStorage.removeItem(FORCE_OFFLINE_KEY);
+      localStorage.removeItem(SEED_DEMO_KEY);
+      notify(t("settings.dev.tests.cleared", "Flags DEV supprimés."));
+    } catch {
+      notify(t("settings.dev.tests.error", "Erreur opération (storage)."));
+    }
+  }
+
+  function clearLocalStorageNonCritical() {
+    const ok = window.confirm(
+      "⚠️ Reset local (soft)\n\n" +
+        "Cette action efface le LocalStorage (y compris préférences UI / flags),\n" +
+        "sans tenter de supprimer les bases IndexedDB.\n\n" +
+        "Continuer ?"
+    );
+    if (!ok) return;
+
+    try {
+      localStorage.clear();
+      sessionStorage.clear();
+      notify("LocalStorage vidé. Recharge la page.");
+    } catch {
+      notify("Erreur reset local.");
+    }
+  }
+
+  return (
+    <section style={sectionStyle}>
+      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 10 }}>
+        <div style={{ minWidth: 0 }}>
+          <div
+            style={{
+              margin: 0,
+              marginBottom: 4,
+              fontSize: 16,
+              fontWeight: 900,
+              color: theme.primary,
+              letterSpacing: 0.8,
+              textTransform: "uppercase",
+              textShadow: `0 0 12px ${theme.primary}55`,
+            }}
+          >
+            {t("settings.dev.title", "Développeur")}
+          </div>
+          <div style={{ fontSize: 12, color: theme.textSoft, lineHeight: 1.35 }}>
+            {t(
+              "settings.dev.subtitle",
+              "ON = rend cliquables uniquement les features déjà grisées (non terminées)."
+            )}
+          </div>
+        </div>
+
+        <button
+          type="button"
+          onClick={() => setEnabled(!enabled)}
+          style={pillBtn(enabled)}
+          title={t("settings.dev.toggleHint", "Active/désactive l’unlock des features grisées.")}
+        >
+          {enabled ? "ON" : "OFF"}
+        </button>
+      </div>
+
+      <div style={{ marginTop: 12, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+        <div style={{ fontSize: 12, color: theme.textSoft }}>
+          {enabled
+            ? t("settings.dev.stateOn", "Unlock activé : les boutons gris sont testables.")
+            : t("settings.dev.stateOff", "Unlock inactif : comportement normal (gris = inactif).")}
+        </div>
+
+        <button
+          type="button"
+          onClick={() => setOpenTests((v) => !v)}
+          style={{
+            borderRadius: 12,
+            border: `1px solid ${theme.borderSoft}`,
+            padding: "8px 10px",
+            background: "rgba(255,255,255,0.03)",
+            color: theme.textSoft,
+            fontWeight: 900,
+            cursor: "pointer",
+            whiteSpace: "nowrap",
+          }}
+        >
+          {openTests ? t("settings.dev.tests.hide", "Masquer tests") : t("settings.dev.tests.show", "Tests & simu")}
+        </button>
+      </div>
+
+      {toast && (
+        <div style={{ marginTop: 10, fontSize: 11, color: theme.primary, fontWeight: 800 }}>
+          {toast}
+        </div>
+      )}
+
+      {openTests && (
+        <div
+          style={{
+            marginTop: 12,
+            padding: 12,
+            borderRadius: 14,
+            border: `1px solid ${theme.borderSoft}`,
+            background: "rgba(0,0,0,0.28)",
+          }}
+        >
+          <div style={{ fontWeight: 900, marginBottom: 8, color: "#fff" }}>
+            {t("settings.dev.tests.title", "Tests & Simulations")}
+          </div>
+
+          <div style={{ display: "grid", gap: 8 }}>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+              <button
+                type="button"
+                onClick={setForceOffline}
+                style={{
+                  borderRadius: 12,
+                  border: `1px solid ${theme.borderSoft}`,
+                  padding: "10px 10px",
+                  background: "rgba(255,255,255,0.03)",
+                  color: "#fff",
+                  fontWeight: 800,
+                  cursor: "pointer",
+                }}
+              >
+                {t("settings.dev.tests.offlineBtn", "Simuler OFFLINE")}
+              </button>
+
+              <button
+                type="button"
+                onClick={resetForceOffline}
+                style={{
+                  borderRadius: 12,
+                  border: `1px solid ${theme.borderSoft}`,
+                  padding: "10px 10px",
+                  background: "rgba(255,255,255,0.03)",
+                  color: "#fff",
+                  fontWeight: 800,
+                  cursor: "pointer",
+                }}
+              >
+                {t("settings.dev.tests.onlineBtn", "Simuler ONLINE")}
+              </button>
+            </div>
+
+            <button
+              type="button"
+              onClick={seedDemo}
+              style={{
+                borderRadius: 12,
+                border: `1px solid ${theme.borderSoft}`,
+                padding: "10px 10px",
+                background: "rgba(255,255,255,0.03)",
+                color: "#fff",
+                fontWeight: 800,
+                cursor: "pointer",
+                textAlign: "left",
+              }}
+            >
+              {t("settings.dev.tests.seedBtn", "Seed démo (flag)")}
+              <div style={{ fontSize: 11, color: theme.textSoft, marginTop: 4, lineHeight: 1.35 }}>
+                {t(
+                  "settings.dev.tests.seedHelp",
+                  "Pose un flag local. À brancher côté app (store) pour injecter des profils/parties de test."
+                )}
+              </div>
+            </button>
+
+            <button
+              type="button"
+              onClick={clearOnlyDevFlags}
+              style={{
+                borderRadius: 12,
+                border: `1px solid ${theme.borderSoft}`,
+                padding: "10px 10px",
+                background: "rgba(255,255,255,0.02)",
+                color: theme.textSoft,
+                fontWeight: 900,
+                cursor: "pointer",
+                textAlign: "left",
+              }}
+            >
+              {t("settings.dev.tests.clearFlags", "Supprimer flags DEV")}
+            </button>
+
+            <button
+              type="button"
+              onClick={clearLocalStorageNonCritical}
+              style={{
+                borderRadius: 12,
+                border: "1px solid rgba(255,120,120,0.55)",
+                padding: "10px 10px",
+                background: "rgba(255,0,0,0.06)",
+                color: "#ffb3b3",
+                fontWeight: 900,
+                cursor: "pointer",
+                textAlign: "left",
+              }}
+            >
+              {t("settings.dev.tests.softReset", "Reset local (soft)")}
+              <div style={{ fontSize: 11, color: "rgba(255,255,255,0.75)", marginTop: 4, lineHeight: 1.35 }}>
+                {t(
+                  "settings.dev.tests.softResetHelp",
+                  "Efface LocalStorage/SessionStorage uniquement (sans IndexedDB)."
+                )}
+              </div>
+            </button>
+          </div>
+
+          <div style={{ marginTop: 10, fontSize: 11, color: theme.textSoft, lineHeight: 1.35 }}>
+            {t(
+              "settings.dev.tests.note",
+              "Note : ces tests posent surtout des flags. Pour que ce soit pleinement effectif, lis FORCE_OFFLINE_KEY dans tes modules réseau/sync."
+            )}
+          </div>
+        </div>
+      )}
+    </section>
   );
 }
 
@@ -1096,7 +1395,10 @@ export default function Settings({ go }: Props) {
         >
           ⚡ {t("settings.theme.group.neons", "Néons classiques")}
         </div>
-        <div className="dc-scroll-thin" style={{ overflowX: "auto", padding: "6px 0 10px 0", marginTop: 4, marginBottom: 4 }}>
+        <div
+          className="dc-scroll-thin"
+          style={{ overflowX: "auto", padding: "6px 0 10px 0", marginTop: 4, marginBottom: 4 }}
+        >
           <div style={{ display: "flex", flexWrap: "nowrap", gap: 12 }}>
             {NEONS.map((id) => {
               const meta = THEME_META[id];
@@ -1126,7 +1428,10 @@ export default function Settings({ go }: Props) {
         >
           🎨 {t("settings.theme.group.soft", "Couleurs douces")}
         </div>
-        <div className="dc-scroll-thin" style={{ overflowX: "auto", padding: "6px 0 10px 0", marginTop: 4, marginBottom: 4 }}>
+        <div
+          className="dc-scroll-thin"
+          style={{ overflowX: "auto", padding: "6px 0 10px 0", marginTop: 4, marginBottom: 4 }}
+        >
           <div style={{ display: "flex", flexWrap: "nowrap", gap: 12 }}>
             {SOFTS.map((id) => {
               const meta = THEME_META[id];
@@ -1156,7 +1461,10 @@ export default function Settings({ go }: Props) {
         >
           🌑 {t("settings.theme.group.dark", "Thèmes Dark Premium")}
         </div>
-        <div className="dc-scroll-thin" style={{ overflowX: "auto", padding: "6px 0 10px 0", marginTop: 4, marginBottom: 4 }}>
+        <div
+          className="dc-scroll-thin"
+          style={{ overflowX: "auto", padding: "6px 0 10px 0", marginTop: 4, marginBottom: 4 }}
+        >
           <div style={{ display: "flex", flexWrap: "nowrap", gap: 12 }}>
             {DARKS.map((id) => {
               const meta = THEME_META[id];
@@ -1233,7 +1541,10 @@ export default function Settings({ go }: Props) {
         </h2>
 
         <p style={{ fontSize: 11, color: theme.textSoft, marginBottom: 10, lineHeight: 1.4 }}>
-          {t("settings.reset.subtitle", "Efface tous les profils locaux, BOTS, stats, historique de parties et réglages. Action définitive.")}
+          {t(
+            "settings.reset.subtitle",
+            "Efface tous les profils locaux, BOTS, stats, historique de parties et réglages. Action définitive."
+          )}
         </p>
 
         <button
@@ -1288,8 +1599,6 @@ export default function Settings({ go }: Props) {
       } catch {}
 
       if (!go) return;
-
-      // ✅ Home est sport-aware (App.tsx) : redirige vers la bonne Home (darts/pétanque/pingpong/babyfoot)
       go("home");
     };
 
@@ -1379,7 +1688,9 @@ export default function Settings({ go }: Props) {
                   }}
                 />
 
-                <div style={{ fontSize: 12, color: theme.textSoft, fontWeight: 800, letterSpacing: 0.4 }}>{g.label}</div>
+                <div style={{ fontSize: 12, color: theme.textSoft, fontWeight: 800, letterSpacing: 0.4 }}>
+                  {g.label}
+                </div>
 
                 {!enabled && (
                   <div className="subtitle" style={{ fontSize: 10, color: theme.textSoft, opacity: 0.9 }}>
@@ -1483,7 +1794,9 @@ export default function Settings({ go }: Props) {
             >
               {headerTitle}
             </div>
-            <div style={{ fontSize: 13, lineHeight: 1.35, color: theme.textSoft, maxWidth: 320 }}>{headerSubtitle}</div>
+            <div style={{ fontSize: 13, lineHeight: 1.35, color: theme.textSoft, maxWidth: 320 }}>
+              {headerSubtitle}
+            </div>
           </div>
 
           {tab === "menu" && (
@@ -1544,6 +1857,9 @@ export default function Settings({ go }: Props) {
               theme={theme}
               onClick={() => setTab("general")}
             />
+
+            {/* ✅ DEV MODE BLOCK (directement dans Settings / menu) */}
+            <DevModeBlock />
 
             <div style={{ height: 10 }} />
           </div>

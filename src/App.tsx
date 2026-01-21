@@ -167,7 +167,6 @@ import StatsHub from "./pages/StatsHub";
 import StatsOnline from "./pages/StatsOnline";
 import StatsCricket from "./pages/StatsCricket";
 import StatsLeaderboardsPage from "./pages/StatsLeaderboardsPage"; // ⭐ CLASSEMENTS
-import StatsTerritories from "./pages/StatsTerritories";
 
 // TOURNOI
 import TournamentCreate from "./pages/TournamentCreate";
@@ -524,7 +523,6 @@ type Tab =
   | "spectator"
   | "settings"
   | "stats"
-  | "stats_territories"
   | "statsHub"
   | "stats_online"
   | "cricket_stats"
@@ -2053,10 +2051,6 @@ function App() {
           ) : (
             <StatsShell store={store} go={go} />
           );
-        break;
-
-      case "stats_territories":
-        page = <StatsTerritories setTab={go} params={routeParams} />;
         break;
 
       // ✅ PÉTANQUE — STATS ROUTES (pages dédiées)
