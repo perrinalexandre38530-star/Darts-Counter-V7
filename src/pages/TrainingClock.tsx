@@ -658,26 +658,6 @@ const TrainingClock: React.FC<Props> = (props) => {
             </div>
           </div>
 
-          {/* Titre / sous-titre (sous le ticker) */}
-          <div style={{ textAlign: "center", marginBottom: 2 }}>
-            <div
-              style={{
-                fontSize: 18,
-                fontWeight: 900,
-                letterSpacing: "0.10em",
-                textTransform: "uppercase",
-                color: "#f5c14a",
-                textShadow: "0 0 18px rgba(245,193,74,.45)",
-                lineHeight: 1.05,
-              }}
-            >
-              TOUR DE L&apos;HORLOGE
-            </div>
-            <div style={{ marginTop: 4, fontSize: 12, opacity: 0.75 }}>
-              Sélectionne les joueurs et les options pour cette session.
-            </div>
-          </div>
-
 {/* ================== STEP SETUP ================== */}
           {step === "setup" && (
             <SetupSection
