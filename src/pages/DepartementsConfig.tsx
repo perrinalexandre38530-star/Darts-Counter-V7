@@ -8,43 +8,20 @@ import OptionRow from "../components/OptionRow";
 import OptionToggle from "../components/OptionToggle";
 import OptionSelect from "../components/OptionSelect";
 import ProfileAvatar from "../components/ProfileAvatar";
-import ProfileStarRing from "../components/ProfileStarRing";
 import { useLang } from "../contexts/LangContext";
 import { useTheme } from "../contexts/ThemeContext";
 import { TERRITORY_MAPS, type TerritoryMap } from "../lib/territories/maps";
-import type { Profile } from "../lib/types";
-
-// 🔽 IMPORTS DE TOUS LES AVATARS BOTS PRO (même set que X01ConfigV3)
-import avatarGreenMachine from "../assets/avatars/bots-pro/green-machine.png";
-import avatarSnakeKing from "../assets/avatars/bots-pro/snake-king.png";
-import avatarWonderKid from "../assets/avatars/bots-pro/wonder-kid.png";
-import avatarIceMan from "../assets/avatars/bots-pro/ice-man.png";
-import avatarFlyingScotsman from "../assets/avatars/bots-pro/flying-scotsman.png";
-import avatarCoolHand from "../assets/avatars/bots-pro/cool-hand.png";
-import avatarThePower from "../assets/avatars/bots-pro/the-power.png";
-import avatarBullyBoy from "../assets/avatars/bots-pro/bully-boy.png";
-import avatarTheAsp from "../assets/avatars/bots-pro/the-asp.png";
-import avatarHollywood from "../assets/avatars/bots-pro/hollywood.png";
-import avatarTheFerret from "../assets/avatars/bots-pro/the-ferret.png";
 
 type BotLevel = "easy" | "normal" | "hard";
 
-type BotLite = {
-  id: string;
-  name: string;
-  botLevel?: string;
-  avatarDataUrl?: string | null;
-};
-
 export type TerritoriesConfigPayload = {
   players: number;
-
-  // ✅ NEW — sélection réelle des participants
-  selectedIds: string[]; // profils + bots
-
-  // ✅ NEW — équipes
+  /** ✅ NEW — teams */
   teamSize: 1 | 2 | 3;
-  teams?: Record<string, number>; // participantId -> teamIndex (CHOIX TEAMS)
+  /** ✅ NEW — chosen player ids (humans + bots) */
+  selectedIds: string[];
+  /** ✅ NEW — team assignment by id (0..teamCount-1) */
+  teamsById?: Record<string, number>;
 
   botsEnabled: boolean;
   botLevel: BotLevel;
@@ -56,12 +33,11 @@ export type TerritoriesConfigPayload = {
 };
 
 const INFO_TEXT = `TERRITORIES
-- Choisis une carte (pays) dans le configurateur (tickers).
-- Sélectionne les joueurs (max 6) + bots (optionnel).
-- Mode équipes : SOLO / 2v2 / 3v3.
-- CHOIX TEAMS : tu assignes chaque participant à une Team.
-- La partie utilise 20 territoires tirés de la carte sélectionnée.
-- Objectif : posséder X territoires.
+- Choisis une carte (pays) dans le configurateur.
+- Sélectionne les joueurs (humains + bots) via le carrousel.
+- En mode équipes, assigne chaque joueur à une team (CHOIX TEAMS).
+- La partie utilise 20 territoires tirés de la carte (cases 1..20).
+- Capture à partir de 3 d'influence (strictement max).
 `;
 
 const tickerGlob = import.meta.glob("../assets/tickers/ticker_territories_*.png", {
@@ -79,311 +55,118 @@ function findTerritoriesTicker(tickerId: string): string | null {
 }
 
 const MAP_ORDER = ["FR", "EN", "IT", "DE", "ES", "US", "CN", "AU", "JP", "RU", "WORLD"];
-const MAX_PLAYERS = 6;
+const LS_BOTS_KEY = "dc_bots_v1";
 
-const PRO_BOTS: BotLite[] = [
-  { id: "bot_pro_mvg", name: "Green Machine", botLevel: "Légende", avatarDataUrl: avatarGreenMachine },
-  { id: "bot_pro_wright", name: "Snake King", botLevel: "Pro", avatarDataUrl: avatarSnakeKing },
-  { id: "bot_pro_littler", name: "Wonder Kid", botLevel: "Prodige Pro", avatarDataUrl: avatarWonderKid },
-  { id: "bot_pro_price", name: "Ice Man", botLevel: "Pro", avatarDataUrl: avatarIceMan },
-  { id: "bot_pro_anderson", name: "Flying Scotsman", botLevel: "Légende", avatarDataUrl: avatarFlyingScotsman },
-  { id: "bot_pro_humphries", name: "Cool Hand", botLevel: "Pro", avatarDataUrl: avatarCoolHand },
-  { id: "bot_pro_taylor", name: "The Power", botLevel: "Légende", avatarDataUrl: avatarThePower },
-  { id: "bot_pro_smith", name: "Bully Boy", botLevel: "Pro", avatarDataUrl: avatarBullyBoy },
-  { id: "bot_pro_aspinall", name: "The Asp", botLevel: "Fort", avatarDataUrl: avatarTheAsp },
-  { id: "bot_pro_dobey", name: "Hollywood", botLevel: "Fort", avatarDataUrl: avatarHollywood },
-  { id: "bot_pro_clayton", name: "The Ferret", botLevel: "Fort", avatarDataUrl: avatarTheFerret },
-];
+/** Very tolerant bot detector */
+function isBotLike(p: any) {
+  if (!p) return false;
+  if (p.isBot || p.bot || p.type === "bot") return true;
+  if (typeof p.botLevel === "string" && p.botLevel) return true;
+  if (typeof p.level === "string" && p.level) return true;
+  if (p.kind === "bot") return true;
+  return false;
+}
 
-function loadCustomBots(): BotLite[] {
+type BotLite = { id: string; name: string; avatarDataUrl: string | null; botLevel?: string };
+
+function readUserBotsFromLS(): BotLite[] {
   try {
-    const raw = localStorage.getItem("dc_bots_v1");
+    const raw = localStorage.getItem(LS_BOTS_KEY);
     if (!raw) return [];
-    const arr = JSON.parse(raw);
-    if (!Array.isArray(arr)) return [];
-    return arr
-      .map((b: any) => ({
-        id: String(b.id || b.botId || ""),
-        name: String(b.name || b.label || "Bot"),
-        botLevel: String(b.botLevel || b.level || ""),
-        avatarDataUrl: b.avatarDataUrl || b.avatar || null,
-      }))
-      .filter((b: BotLite) => !!b.id);
+    const parsed = JSON.parse(raw) as any[];
+    if (!Array.isArray(parsed)) return [];
+    return parsed.map((b) => ({
+      id: String(b.id),
+      name: b.name || "BOT",
+      avatarDataUrl: b.avatarDataUrl ?? null,
+      botLevel: b.botLevel ?? b.levelLabel ?? b.levelName ?? b.performanceLevel ?? b.difficulty ?? "",
+    }));
   } catch {
     return [];
   }
 }
 
-function isBotId(id: string) {
-  return String(id || "").startsWith("bot_");
+/** Build a fake profile compatible with ProfileAvatar */
+function botToFakeProfile(b: BotLite) {
+  return {
+    id: b.id,
+    name: b.name,
+    avatarDataUrl: b.avatarDataUrl,
+    isBot: true,
+    botLevel: b.botLevel || "",
+  } as any;
 }
 
-function CardShell({ children }: { children: React.ReactNode }) {
-  return (
-    <div
-      style={{
-        borderRadius: 18,
-        padding: 14,
-        border: "1px solid rgba(255,255,255,0.12)",
-        background: "rgba(255,255,255,0.05)",
-        boxShadow: "0 18px 40px rgba(0,0,0,0.35)",
-      }}
-    >
-      {children}
-    </div>
-  );
-}
-
-function HumanChip({
-  p,
-  active,
-  onClick,
-}: {
-  p: Profile;
-  active: boolean;
-  onClick: () => void;
-}) {
-  const WRAP = 92;
-  const MED = 78;
-
-  const haloColor = active ? "rgba(255,215,100,0.45)" : "rgba(0,0,0,0)";
-  return (
-    <button
-      onClick={onClick}
-      style={{
-        width: WRAP,
-        background: "transparent",
-        border: "none",
-        cursor: "pointer",
-        padding: 0,
-        opacity: active ? 1 : 0.55,
-        filter: active ? "none" : "grayscale(0.9)",
-        transition: "filter .2s ease, opacity .2s ease",
-      }}
-      title={p.name}
-    >
-      <div style={{ width: WRAP, height: WRAP, position: "relative" }}>
-        <div
-          style={{
-            position: "absolute",
-            inset: 0,
-            borderRadius: "50%",
-            boxShadow: active ? `0 0 28px ${haloColor}` : "0 0 14px rgba(0,0,0,0.65)",
-            background: active ? "radial-gradient(circle at 30% 20%, #fff8d0, rgba(255,215,100,0.35))" : "#111320",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-          }}
-        />
-        <div
-          style={{
-            position: "absolute",
-            top: (WRAP - MED) / 2,
-            left: (WRAP - MED) / 2,
-            width: MED,
-            height: MED,
-            borderRadius: "50%",
-            overflow: "hidden",
-            border: active ? "2px solid rgba(255,255,255,0.25)" : "2px solid rgba(255,255,255,0.10)",
-            background: "rgba(0,0,0,0.25)",
-          }}
-        >
-          <ProfileAvatar profile={p} size={MED} />
-        </div>
-
-        {/* star ring (extérieur) */}
-        <div style={{ position: "absolute", inset: -6, pointerEvents: "none", opacity: active ? 1 : 0.55 }}>
-          <ProfileStarRing
-            anchorSize={MED}
-            gapPx={-2}
-            starSize={14}
-            stepDeg={12}
-            avg3d={(p as any)?.stats?.avg3d ?? 0}
-            color={"rgba(255,215,100,0.85)"}
-          />
-        </div>
-      </div>
-
-      <div
-        style={{
-          marginTop: 6,
-          fontSize: 12,
-          fontWeight: 850,
-          textAlign: "center",
-          color: active ? "#f6f2e9" : "#7e8299",
-          maxWidth: "100%",
-          overflow: "hidden",
-          textOverflow: "ellipsis",
-          whiteSpace: "nowrap",
-        }}
-      >
-        {p.name}
-      </div>
-    </button>
-  );
-}
-
-function BotChip({
-  bot,
-  active,
-  onClick,
-}: {
-  bot: BotLite;
-  active: boolean;
-  onClick: () => void;
-}) {
-  const isPro = String(bot.id || "").startsWith("bot_pro_");
-  const COLOR = isPro ? "#f7c85c" : "#00b4ff";
-  const COLOR_GLOW = isPro ? "rgba(247,200,92,0.9)" : "rgba(0,172,255,0.65)";
-
-  const WRAP = 92;
-  const MED = 78;
-
-  return (
-    <button
-      onClick={onClick}
-      style={{
-        width: WRAP,
-        background: "transparent",
-        border: "none",
-        cursor: "pointer",
-        padding: 0,
-        opacity: active ? 1 : 0.55,
-        filter: active ? "none" : "grayscale(0.9)",
-        transition: "filter .2s ease, opacity .2s ease, transform .15s ease",
-        transform: active ? "scale(1.02)" : "scale(1)",
-      }}
-      title={bot.name}
-    >
-      <div style={{ width: WRAP, height: WRAP, position: "relative" }}>
-        <div
-          style={{
-            position: "absolute",
-            inset: 0,
-            borderRadius: "50%",
-            boxShadow: active ? `0 0 24px ${COLOR_GLOW}` : "0 0 14px rgba(0,0,0,0.65)",
-            background: active
-              ? isPro
-                ? "radial-gradient(circle at 30% 20%, #fff3c2, rgba(247,200,92,0.35))"
-                : "radial-gradient(circle at 30% 20%, #bdf6ff, rgba(0,180,255,0.35))"
-              : "#111320",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-          }}
-        />
-        <div
-          style={{
-            position: "absolute",
-            top: (WRAP - MED) / 2,
-            left: (WRAP - MED) / 2,
-            width: MED,
-            height: MED,
-            borderRadius: "50%",
-            overflow: "hidden",
-            border: active ? `2px solid ${COLOR}55` : "2px solid rgba(255,255,255,0.10)",
-            background: "rgba(0,0,0,0.25)",
-          }}
-        >
-          {bot.avatarDataUrl ? (
-            <img
-              src={bot.avatarDataUrl}
-              alt={bot.name}
-              style={{ width: "100%", height: "100%", objectFit: "cover" }}
-              draggable={false}
-            />
-          ) : (
-            <div style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 1000 }}>
-              BOT
-            </div>
-          )}
-        </div>
-
-        {/* star ring */}
-        <div style={{ position: "absolute", inset: -6, pointerEvents: "none", opacity: active ? 1 : 0.55 }}>
-          <ProfileStarRing anchorSize={MED} gapPx={-2} starSize={14} stepDeg={12} avg3d={0} color={COLOR} />
-        </div>
-
-        {/* badge PRO */}
-        {isPro && (
-          <div
-            style={{
-              position: "absolute",
-              right: -2,
-              top: -2,
-              borderRadius: 999,
-              padding: "2px 6px",
-              fontSize: 10,
-              fontWeight: 950,
-              background: "rgba(0,0,0,0.65)",
-              border: `1px solid ${COLOR}99`,
-              color: "#fff",
-            }}
-          >
-            PRO
-          </div>
-        )}
-      </div>
-
-      <div
-        style={{
-          marginTop: 6,
-          fontSize: 12,
-          fontWeight: 850,
-          textAlign: "center",
-          color: active ? "#f6f2e9" : "#7e8299",
-          maxWidth: "100%",
-          overflow: "hidden",
-          textOverflow: "ellipsis",
-          whiteSpace: "nowrap",
-        }}
-      >
-        {bot.name}
-      </div>
-    </button>
-  );
+function clampTeamSize(v: any): 1 | 2 | 3 {
+  const n = Number(v);
+  if (n === 2) return 2;
+  if (n === 3) return 3;
+  return 1;
 }
 
 export default function DepartementsConfig(props: any) {
   const { t } = useLang();
-  const { theme, palette } = useTheme() as any;
-  const primary = (theme?.primary || palette?.primary || "#f5c35b") as string;
+  const theme = useTheme();
 
-  // profils
-  const profiles: Profile[] = Array.isArray(props?.store?.profiles) ? props.store.profiles : [];
+  React.useLayoutEffect(() => {
+    try {
+      window.scrollTo(0, 0);
+      document.documentElement.scrollTop = 0;
+      document.body.scrollTop = 0;
+    } catch {}
+  }, []);
 
-  // maps
-  const [mapId, setMapId] = React.useState<string>("FR");
+  const store = (props as any)?.store ?? (props as any)?.params?.store ?? null;
 
-  // ✅ sélection participants
-  const [selectedIds, setSelectedIds] = React.useState<string[]>([]);
+  // ✅ EXACT pattern as KillerConfig
+  const storeProfiles: any[] = ((store as any)?.profiles || []) as any[];
+  const humanProfiles = storeProfiles.filter((p) => p && !isBotLike(p));
+  // bots from LS (custom bots)
+  const [userBots, setUserBots] = React.useState<BotLite[]>([]);
+
+  React.useEffect(() => {
+    setUserBots(readUserBotsFromLS());
+  }, []);
+
+  const primary = (theme as any)?.primary ?? "#7dffca";
+  const primarySoft = (theme as any)?.primarySoft ?? "rgba(125,255,202,0.16)";
+
+  // ---------------- state
+  const [teamSize, setTeamSize] = React.useState<1 | 2 | 3>(1);
+
   const [botsEnabled, setBotsEnabled] = React.useState(false);
   const [botLevel, setBotLevel] = React.useState<BotLevel>("normal");
 
-  // règles
   const [rounds, setRounds] = React.useState(12);
   const [objective, setObjective] = React.useState(10);
 
-  // ✅ équipes
-  const [teamSize, setTeamSize] = React.useState<1 | 2 | 3>(1);
-  const [teamById, setTeamById] = React.useState<Record<string, number>>({}); // CHOIX TEAMS
+  const [mapId, setMapId] = React.useState<string>(() => "FR");
 
-  // restore local cfg
-  React.useEffect(() => {
+  // selection
+  const [selectedIds, setSelectedIds] = React.useState<string[]>(() => {
+    // try restore
     try {
       const raw = localStorage.getItem("dc_modecfg_departements");
-      if (!raw) return;
-      const saved = JSON.parse(raw);
-      if (saved?.mapId) setMapId(String(saved.mapId));
-      if (Array.isArray(saved?.selectedIds)) setSelectedIds(saved.selectedIds.slice(0, MAX_PLAYERS));
-      if (typeof saved?.botsEnabled === "boolean") setBotsEnabled(saved.botsEnabled);
-      if (saved?.botLevel) setBotLevel(saved.botLevel);
-      if (saved?.rounds) setRounds(saved.rounds);
-      if (saved?.objective) setObjective(saved.objective);
-      if (saved?.teamSize) setTeamSize(saved.teamSize);
-      if (saved?.teams && typeof saved.teams === "object") setTeamById(saved.teams);
+      if (!raw) return [];
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed?.selectedIds)) return parsed.selectedIds.slice(0, 6);
     } catch {}
-  }, []);
+    return [];
+  });
+
+  const [teamsById, setTeamsById] = React.useState<Record<string, number>>({});
+
+  // computed teamCount (CHOIX TEAMS): for solo -> each player its own team; for teams -> user assigns teams,
+  // teamCount is max assigned+1 OR minimum required based on selectedIds length / teamSize.
+  const minPlayers = teamSize === 1 ? 2 : teamSize * 2;
+  const maxPlayers = 6;
+
+  const teamCount = React.useMemo(() => {
+    if (teamSize === 1) return selectedIds.length || 0;
+    const base = Math.floor(selectedIds.length / teamSize);
+    const maxAssigned = Math.max(-1, ...selectedIds.map((id) => (teamsById[id] ?? -1)));
+    return Math.max(base, maxAssigned + 1);
+  }, [selectedIds, teamSize, teamsById]);
 
   const maps: TerritoryMap[] = React.useMemo(() => {
     const list = MAP_ORDER.map((id) => TERRITORY_MAPS[id]).filter(Boolean);
@@ -391,113 +174,91 @@ export default function DepartementsConfig(props: any) {
     return [...list, ...extras];
   }, []);
 
-  const customBots = React.useMemo(() => loadCustomBots(), [botsEnabled]);
-  const allBots = React.useMemo(() => [...PRO_BOTS, ...customBots], [customBots]);
+  function goBack() {
+    if ((props as any)?.go) return (props as any).go("games");
+    if ((props as any)?.setTab) return (props as any).setTab("games");
+    window.history.back();
+  }
 
-  function toggleId(id: string) {
+  function goProfiles() {
+    if ((props as any)?.go) return (props as any).go("profiles");
+    if ((props as any)?.setTab) return (props as any).setTab("profiles");
+  }
+
+  function togglePlayer(id: string) {
     setSelectedIds((prev) => {
-      const has = prev.includes(id);
-      if (has) return prev.filter((x) => x !== id);
-      if (prev.length >= MAX_PLAYERS) return prev;
+      const exists = prev.includes(id);
+      if (exists) {
+        const next = prev.filter((x) => x !== id);
+        return next;
+      }
+      if (prev.length >= maxPlayers) return prev;
       return [...prev, id];
     });
   }
 
-  // Si bots désactivés => retire tous les bots sélectionnés
+  // keep teamsById clean when players removed
   React.useEffect(() => {
-    if (botsEnabled) return;
-    setSelectedIds((prev) => prev.filter((id) => !isBotId(id)));
-  }, [botsEnabled]);
-
-  // ✅ teams count dynamique (dépend du nombre sélectionné)
-  const minPlayers = teamSize === 1 ? 2 : teamSize * 2;
-  const playersCount = selectedIds.length;
-
-  const teamsCount = React.useMemo(() => {
-    if (teamSize === 1) return playersCount; // solo: team = joueur
-    if (playersCount < minPlayers) return 0;
-    if (playersCount % teamSize !== 0) return Math.ceil(playersCount / teamSize); // on affiche quand même
-    return Math.max(2, playersCount / teamSize);
-  }, [teamSize, playersCount, minPlayers]);
-
-  // init team assignments (si manquants)
-  React.useEffect(() => {
-    if (teamSize === 1) {
-      setTeamById({});
-      return;
-    }
-    setTeamById((prev) => {
+    setTeamsById((prev) => {
       const next = { ...prev };
-      const tc = Math.max(2, Math.ceil(Math.max(playersCount, minPlayers) / teamSize));
-      let cursor = 0;
-      for (const id of selectedIds) {
-        if (typeof next[id] !== "number") {
-          next[id] = cursor % tc;
-          cursor++;
-        }
-      }
-      // cleanup removed ids
       for (const k of Object.keys(next)) {
         if (!selectedIds.includes(k)) delete next[k];
       }
       return next;
     });
-  }, [selectedIds, teamSize, playersCount, minPlayers]);
+  }, [selectedIds]);
 
-  // validation teams (CHOIX)
-  const teamCounts = React.useMemo(() => {
-    const counts = Array.from({ length: Math.max(teamsCount, 0) }, () => 0);
-    if (teamSize === 1) return counts;
+  // If bots disabled, remove bot ids from selection
+  React.useEffect(() => {
+    if (botsEnabled) return;
+    setSelectedIds((prev) => {
+      const botIds = new Set(userBots.map((b) => b.id));
+      return prev.filter((id) => !botIds.has(id));
+    });
+  }, [botsEnabled, userBots]);
+
+  // When teamSize changes, ensure min players condition; do not auto-add players (user controls)
+  const selectionValid = React.useMemo(() => {
+    if (selectedIds.length < minPlayers) return false;
+    if (teamSize === 1) return true;
+
+    // need exact multiples
+    if (selectedIds.length % teamSize !== 0) return false;
+
+    // must assign each selected id to a team [0..teamCount-1]
+    // and each team must have exactly teamSize members
+    const counts = Array.from({ length: teamCount }, () => 0);
     for (const id of selectedIds) {
-      const ti = teamById[id];
-      if (typeof ti === "number" && ti >= 0 && ti < counts.length) counts[ti]++;
+      const te = teamsById[id];
+      if (typeof te !== "number" || te < 0 || te >= teamCount) return false;
+      counts[te]++;
     }
-    return counts;
-  }, [selectedIds, teamById, teamsCount, teamSize]);
+    return counts.every((c) => c === teamSize);
+  }, [selectedIds, minPlayers, teamSize, teamsById, teamCount]);
 
-  const teamsValid = React.useMemo(() => {
-    if (teamSize === 1) return playersCount >= 2;
-    if (playersCount < minPlayers) return false;
-    if (playersCount % teamSize !== 0) return false;
-    if (teamsCount < 2) return false;
-    return teamCounts.length === teamsCount && teamCounts.every((c) => c === teamSize);
-  }, [teamSize, playersCount, minPlayers, teamsCount, teamCounts]);
-
-  const canStart = React.useMemo(() => {
-    if (teamSize === 1) return playersCount >= 2;
-    return teamsValid;
-  }, [teamSize, playersCount, teamsValid]);
-
-  function goBack() {
-    if (props?.setTab) return props.setTab("games");
-    window.history.back();
-  }
+  // Build payload
+  const payload: TerritoriesConfigPayload = {
+    players: selectedIds.length,
+    teamSize,
+    selectedIds,
+    teamsById: teamSize === 1 ? undefined : teamsById,
+    botsEnabled,
+    botLevel,
+    rounds,
+    objective,
+    mapId,
+  };
 
   function start() {
-    const payload: TerritoriesConfigPayload = {
-      players: playersCount,
-      selectedIds,
-      teamSize,
-      teams: teamSize === 1 ? undefined : teamById,
-      botsEnabled,
-      botLevel,
-      rounds,
-      objective,
-      mapId,
-    };
+    if (!selectionValid) return;
     try {
       localStorage.setItem("dc_modecfg_departements", JSON.stringify(payload));
     } catch {}
-    if (props?.setTab) return props.setTab("departements_play", { config: payload });
+    if ((props as any)?.go) return (props as any).go("departements_play", { config: payload });
+    if ((props as any)?.setTab) return (props as any).setTab("departements_play", { config: payload });
   }
 
-  function gotoProfiles() {
-    if (props?.setTab) return props.setTab("profiles");
-  }
-
-  function setTeamFor(id: string, teamIndex: number) {
-    setTeamById((prev) => ({ ...prev, [id]: teamIndex }));
-  }
+  const cardBg = "rgba(10, 12, 24, 0.96)";
 
   return (
     <div className="page">
@@ -508,298 +269,374 @@ export default function DepartementsConfig(props: any) {
         right={<InfoDot title="Règles TERRITORIES" content={INFO_TEXT} />}
       />
 
-      {/* MAP CAROUSEL */}
+      {/* MAPS CAROUSEL */}
       <Section title={t("territories.map", "Carte (pays)")}>
-        <CardShell>
-          <div style={{ display: "flex", gap: 10, overflowX: "auto", paddingBottom: 6 }}>
-            {maps.map((m) => {
-              const selected = m.id === mapId;
-              const src = findTerritoriesTicker(m.tickerId);
-              return (
-                <button
-                  key={m.id}
-                  onClick={() => setMapId(m.id)}
-                  style={{
-                    minWidth: 220,
-                    textAlign: "left",
-                    borderRadius: 16,
-                    overflow: "hidden",
-                    border: selected ? `1px solid ${primary}66` : "1px solid rgba(255,255,255,0.10)",
-                    background: selected ? "rgba(120,255,200,0.10)" : "rgba(255,255,255,0.04)",
-                    boxShadow: selected ? "0 12px 28px rgba(0,0,0,0.45)" : "0 10px 24px rgba(0,0,0,0.35)",
-                    cursor: "pointer",
-                    padding: 10,
-                  }}
-                >
-                  <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "baseline" }}>
-                    <div style={{ fontSize: 12, opacity: 0.85, fontWeight: 950, letterSpacing: 0.6 }}>{m.id}</div>
-                    <div style={{ fontSize: 12, opacity: 0.8, fontWeight: 900 }}>{selected ? "SELECTED" : ""}</div>
+        <div className="dc-scroll-thin" style={{ display: "flex", gap: 14, overflowX: "auto", paddingBottom: 10 }}>
+          {maps.map((m) => {
+            const selected = m.id === mapId;
+            const src = findTerritoriesTicker(m.tickerId);
+            return (
+              <button
+                key={m.id}
+                onClick={() => setMapId(m.id)}
+                style={{
+                  minWidth: 210,
+                  maxWidth: 210,
+                  textAlign: "left",
+                  borderRadius: 16,
+                  overflow: "hidden",
+                  border: selected ? `1px solid ${primary}66` : "1px solid rgba(255,255,255,0.10)",
+                  background: selected ? primarySoft : "rgba(255,255,255,0.04)",
+                  boxShadow: selected ? `0 12px 28px ${primary}22` : "0 10px 24px rgba(0,0,0,0.35)",
+                  cursor: "pointer",
+                  padding: 0,
+                  flexShrink: 0,
+                }}
+              >
+                <div style={{ padding: 10 }}>
+                  <div style={{ fontSize: 12, opacity: 0.85, fontWeight: 950, letterSpacing: 0.6 }}>
+                    {m.id}{" "}
+                    {selected && (
+                      <span style={{ marginLeft: 8, fontSize: 11, opacity: 0.9, fontWeight: 950 }}>
+                        SELECTED
+                      </span>
+                    )}
                   </div>
                   <div style={{ marginTop: 4, fontSize: 16, fontWeight: 1000 }}>{m.name}</div>
+                </div>
 
-                  <div style={{ marginTop: 10 }}>
+                <div style={{ padding: 10, paddingTop: 0 }}>
+                  <div
+                    style={{
+                      borderRadius: 14,
+                      overflow: "hidden",
+                      border: "1px solid rgba(255,255,255,0.10)",
+                      background: "rgba(0,0,0,0.20)",
+                      aspectRatio: "800 / 330",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                    }}
+                  >
+                    {src ? (
+                      <img
+                        src={src}
+                        alt={`ticker ${m.id}`}
+                        style={{ width: "100%", height: "100%", objectFit: "cover", opacity: 0.95 }}
+                        draggable={false}
+                      />
+                    ) : (
+                      <div style={{ fontSize: 12, opacity: 0.7, fontWeight: 900 }}>
+                        ticker_territories_{m.tickerId}.png manquant
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </button>
+            );
+          })}
+        </div>
+      </Section>
+
+      {/* PLAYERS CAROUSEL */}
+      <Section title={t("config.players", "Joueurs")}>
+        <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center" }}>
+          <div style={{ fontSize: 12, opacity: 0.85, fontWeight: 950 }}>
+            Sélection : {selectedIds.length}/{maxPlayers} — min {minPlayers}
+          </div>
+          <button className="btn-secondary" onClick={goProfiles}>
+            + Profils
+          </button>
+        </div>
+
+        {humanProfiles.length === 0 ? (
+          <p style={{ fontSize: 13, color: "#b3b8d0", marginTop: 10, marginBottom: 0 }}>
+            Aucun profil local. Crée des joueurs dans <b>Profils</b>.
+          </p>
+        ) : (
+          <div
+            className="dc-scroll-thin"
+            style={{ display: "flex", gap: 18, overflowX: "auto", paddingBottom: 10, marginTop: 12, paddingLeft: 8 }}
+          >
+            {humanProfiles.map((p: any) => {
+              const active = selectedIds.includes(p.id);
+              return (
+                <div
+                  key={p.id}
+                  role="button"
+                  onClick={() => togglePlayer(p.id)}
+                  style={{
+                    minWidth: 122,
+                    maxWidth: 122,
+                    background: "transparent",
+                    border: "none",
+                    padding: 0,
+                    display: "flex",
+                    flexDirection: "column",
+                    alignItems: "center",
+                    gap: 7,
+                    flexShrink: 0,
+                    cursor: "pointer",
+                    userSelect: "none",
+                  }}
+                >
+                  <div
+                    style={{
+                      width: 78,
+                      height: 78,
+                      borderRadius: "50%",
+                      overflow: "hidden",
+                      boxShadow: active ? `0 0 28px ${primary}aa` : "0 0 14px rgba(0,0,0,0.65)",
+                      background: active
+                        ? `radial-gradient(circle at 30% 20%, #fff8d0, ${primary})`
+                        : "#111320",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                    }}
+                  >
                     <div
                       style={{
-                        borderRadius: 14,
+                        width: "100%",
+                        height: "100%",
+                        borderRadius: "50%",
                         overflow: "hidden",
-                        border: "1px solid rgba(255,255,255,0.10)",
-                        background: "rgba(0,0,0,0.20)",
-                        aspectRatio: "800 / 330",
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
+                        filter: active ? "none" : "grayscale(100%) brightness(0.55)",
+                        opacity: active ? 1 : 0.6,
+                        transition: "filter .2s ease, opacity .2s ease",
                       }}
                     >
-                      {src ? (
-                        <img
-                          src={src}
-                          alt={`ticker ${m.id}`}
-                          style={{ width: "100%", height: "100%", objectFit: "cover", opacity: 0.95 }}
-                          draggable={false}
-                        />
-                      ) : (
-                        <div style={{ fontSize: 12, opacity: 0.7, fontWeight: 900 }}>
-                          ticker_territories_{m.tickerId}.png manquant
-                        </div>
-                      )}
+                      <ProfileAvatar profile={p as any} size={78} />
                     </div>
                   </div>
-                </button>
+
+                  <div
+                    style={{
+                      fontSize: 12,
+                      fontWeight: 700,
+                      textAlign: "center",
+                      color: active ? "#f6f2e9" : "#7e8299",
+                      maxWidth: "100%",
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    {p.name}
+                  </div>
+
+                  {/* CHOIX TEAMS (only when teamSize>1 and selected) */}
+                  {teamSize > 1 && active && (
+                    <div style={{ display: "flex", gap: 6, flexWrap: "wrap", justifyContent: "center" }}>
+                      {Array.from({ length: Math.max(2, Math.floor(selectedIds.length / teamSize) || 2) }, (_, i) => i).map(
+                        (te) => {
+                          const sel = teamsById[p.id] === te;
+                          return (
+                            <button
+                              key={te}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setTeamsById((prev) => ({ ...prev, [p.id]: te }));
+                              }}
+                              style={{
+                                padding: "4px 7px",
+                                borderRadius: 999,
+                                border: sel ? `1px solid ${primary}88` : "1px solid rgba(255,255,255,0.12)",
+                                background: sel ? primarySoft : "rgba(0,0,0,0.18)",
+                                color: "#fff",
+                                fontSize: 11,
+                                fontWeight: 950,
+                              }}
+                              title={`Team ${te + 1}`}
+                            >
+                              T{te + 1}
+                            </button>
+                          );
+                        }
+                      )}
+                    </div>
+                  )}
+                </div>
               );
             })}
           </div>
-        </CardShell>
-      </Section>
+        )}
 
-      {/* PLAYERS SELECTION */}
-      <Section title={t("config.players", "Joueurs")}>
-        <CardShell>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 10 }}>
-            <div style={{ fontSize: 12, opacity: 0.85, fontWeight: 950 }}>
-              Sélection : {selectedIds.length}/{MAX_PLAYERS} — min {minPlayers}
+        {/* Teams mode selector */}
+        <div style={{ marginTop: 8 }}>
+          <OptionRow label="Mode équipes">
+            <OptionSelect
+              value={teamSize}
+              options={[
+                { value: 1, label: "Solo" },
+                { value: 2, label: "2 v 2" },
+                { value: 3, label: "3 v 3" },
+              ]}
+              onChange={(v: any) => setTeamSize(clampTeamSize(v))}
+            />
+          </OptionRow>
+          {teamSize > 1 && (
+            <div style={{ marginTop: 6, fontSize: 12, opacity: 0.85, fontWeight: 900 }}>
+              CHOIX TEAMS : assigne chaque participant à une team. Chaque team doit avoir exactement {teamSize} joueurs.
             </div>
+          )}
+        </div>
 
-            <button
-              onClick={gotoProfiles}
-              style={{
-                borderRadius: 12,
-                padding: "8px 10px",
-                border: "1px solid rgba(255,255,255,0.14)",
-                background: "rgba(255,255,255,0.06)",
-                color: "#fff",
-                fontWeight: 950,
-                cursor: "pointer",
-              }}
-            >
-              + Profils
-            </button>
-          </div>
+        {/* Bots */}
+        <div style={{ marginTop: 12, borderRadius: 16, padding: 12, background: cardBg, border: "1px solid rgba(255,255,255,0.10)" }}>
+          <OptionRow label="Bots IA">
+            <OptionToggle value={botsEnabled} onChange={setBotsEnabled} />
+          </OptionRow>
 
-          {/* carrousel humains */}
-          <div style={{ marginTop: 12, display: "flex", gap: 10, overflowX: "auto", paddingBottom: 6 }}>
-            {profiles.map((p) => {
-              const active = selectedIds.includes(p.id);
-              return <HumanChip key={p.id} p={p} active={active} onClick={() => toggleId(p.id)} />;
-            })}
-            {profiles.length === 0 && (
-              <div style={{ fontSize: 12, opacity: 0.7, fontWeight: 900 }}>
-                Aucun profil trouvé. Clique sur “+ Profils”.
-              </div>
-            )}
-          </div>
+          {botsEnabled && (
+            <>
+              <OptionRow label="Difficulté IA">
+                <OptionSelect
+                  value={botLevel}
+                  options={[
+                    { value: "easy", label: "Easy" },
+                    { value: "normal", label: "Normal" },
+                    { value: "hard", label: "Hard" },
+                  ]}
+                  onChange={setBotLevel}
+                />
+              </OptionRow>
 
-          {/* équipes */}
-          <div style={{ marginTop: 12 }}>
-            <OptionRow label={t("territories.teams", "Mode équipes")}>
-              <OptionSelect
-                value={teamSize}
-                options={[
-                  { value: 1, label: t("territories.solo", "Solo") },
-                  { value: 2, label: t("territories.2v2", "2 vs 2") },
-                  { value: 3, label: t("territories.3v3", "3 vs 3") },
-                ]}
-                onChange={(v: any) => setTeamSize(v as 1 | 2 | 3)}
-              />
-            </OptionRow>
-
-            {teamSize > 1 && (
-              <div style={{ marginTop: 8, fontSize: 12, opacity: 0.85, fontWeight: 950 }}>
-                CHOIX TEAMS : assigne chaque participant à une team. Chaque team doit avoir exactement {teamSize} joueurs.
-              </div>
-            )}
-
-            {teamSize > 1 && selectedIds.length > 0 && (
-              <div style={{ marginTop: 10, display: "grid", gridTemplateColumns: "1fr", gap: 8 }}>
-                {selectedIds.map((id) => {
-                  const isBot = isBotId(id);
-                  const p = profiles.find((x) => x.id === id);
-                  const b = allBots.find((x) => x.id === id);
-                  const label = isBot ? (b?.name || "Bot") : (p?.name || "Joueur");
-                  const ti = typeof teamById[id] === "number" ? teamById[id] : 0;
-                  const tc = Math.max(2, teamsCount || 2);
-
-                  return (
-                    <div
-                      key={id}
-                      style={{
-                        borderRadius: 14,
-                        padding: 10,
-                        border: "1px solid rgba(255,255,255,0.10)",
-                        background: "rgba(0,0,0,0.14)",
-                        display: "flex",
-                        justifyContent: "space-between",
-                        gap: 10,
-                        alignItems: "center",
-                      }}
-                    >
-                      <div style={{ display: "flex", gap: 10, alignItems: "center", minWidth: 0 }}>
-                        <div style={{ width: 34, height: 34, borderRadius: 999, overflow: "hidden", border: "1px solid rgba(255,255,255,0.12)" }}>
-                          {isBot ? (
-                            b?.avatarDataUrl ? (
-                              <img src={b.avatarDataUrl} alt={label} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
-                            ) : (
-                              <div style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 1000 }}>B</div>
-                            )
-                          ) : (
-                            <ProfileAvatar profile={p as any} size={34} />
-                          )}
-                        </div>
-                        <div style={{ minWidth: 0 }}>
-                          <div style={{ fontSize: 12, fontWeight: 950, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                            {label}
-                          </div>
-                          <div style={{ fontSize: 11, opacity: 0.75, fontWeight: 850 }}>
-                            {isBot ? "BOT" : "HUMAN"}
-                          </div>
-                        </div>
-                      </div>
-
-                      <div style={{ display: "flex", gap: 6, flexWrap: "wrap", justifyContent: "flex-end" }}>
-                        {Array.from({ length: tc }, (_, k) => k).map((k) => {
-                          const sel = k === ti;
-                          return (
-                            <button
-                              key={k}
-                              onClick={() => setTeamFor(id, k)}
-                              style={{
-                                padding: "6px 10px",
-                                borderRadius: 999,
-                                border: sel ? `1px solid ${primary}88` : "1px solid rgba(255,255,255,0.12)",
-                                background: sel ? `${primary}22` : "rgba(255,255,255,0.06)",
-                                color: "#fff",
-                                fontWeight: 950,
-                                cursor: "pointer",
-                                fontSize: 12,
-                              }}
-                            >
-                              T{k + 1}
-                            </button>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  );
-                })}
-
-                {/* résumé teams */}
-                <div
-                  style={{
-                    marginTop: 6,
-                    borderRadius: 14,
-                    padding: 10,
-                    border: teamsValid ? `1px solid rgba(120,255,200,0.30)` : "1px solid rgba(255,120,120,0.25)",
-                    background: teamsValid ? "rgba(120,255,200,0.10)" : "rgba(255,120,120,0.08)",
-                    fontSize: 12,
-                    fontWeight: 900,
-                    opacity: 0.95,
-                  }}
-                >
-                  {teamsValid
-                    ? `Teams OK : ${teamsCount} teams × ${teamSize}`
-                    : `Teams invalides : sélection multiple de ${teamSize}, et chaque team doit avoir ${teamSize} joueurs.`}
-                  {teamsCount > 0 && (
-                    <div style={{ marginTop: 6, display: "flex", gap: 8, flexWrap: "wrap" }}>
-                      {teamCounts.map((c, i) => (
+              {userBots.length > 0 ? (
+                <div className="dc-scroll-thin" style={{ display: "flex", gap: 18, overflowX: "auto", paddingBottom: 10, marginTop: 10 }}>
+                  {userBots.map((b) => {
+                    const active = selectedIds.includes(b.id);
+                    const fakeProfile = botToFakeProfile(b);
+                    return (
+                      <div
+                        key={b.id}
+                        role="button"
+                        onClick={() => togglePlayer(b.id)}
+                        style={{
+                          minWidth: 122,
+                          maxWidth: 122,
+                          background: "transparent",
+                          border: "none",
+                          padding: 0,
+                          display: "flex",
+                          flexDirection: "column",
+                          alignItems: "center",
+                          gap: 7,
+                          flexShrink: 0,
+                          cursor: "pointer",
+                          userSelect: "none",
+                        }}
+                      >
                         <div
-                          key={i}
                           style={{
-                            padding: "4px 8px",
-                            borderRadius: 999,
-                            border: "1px solid rgba(255,255,255,0.10)",
-                            background: "rgba(0,0,0,0.12)",
+                            width: 78,
+                            height: 78,
+                            borderRadius: "50%",
+                            overflow: "hidden",
+                            boxShadow: active ? `0 0 28px ${primary}aa` : "0 0 14px rgba(0,0,0,0.65)",
+                            background: active
+                              ? `radial-gradient(circle at 30% 20%, #fff8d0, ${primary})`
+                              : "#111320",
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
                           }}
                         >
-                          Team {i + 1}: {c}/{teamSize}
+                          <div
+                            style={{
+                              width: "100%",
+                              height: "100%",
+                              borderRadius: "50%",
+                              overflow: "hidden",
+                              filter: active ? "none" : "grayscale(100%) brightness(0.55)",
+                              opacity: active ? 1 : 0.6,
+                              transition: "filter .2s ease, opacity .2s ease",
+                            }}
+                          >
+                            <ProfileAvatar profile={fakeProfile} size={78} showStars={false} />
+                          </div>
                         </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
-          </div>
 
-          {/* bots */}
-          <div style={{ marginTop: 12 }}>
-            <OptionRow label={t("config.bots", "Bots IA")}>
-              <OptionToggle value={botsEnabled} onChange={setBotsEnabled} />
-            </OptionRow>
+                        <div
+                          style={{
+                            fontSize: 12,
+                            fontWeight: 700,
+                            textAlign: "center",
+                            color: active ? "#f6f2e9" : "#7e8299",
+                            maxWidth: "100%",
+                            overflow: "hidden",
+                            textOverflow: "ellipsis",
+                            whiteSpace: "nowrap",
+                          }}
+                        >
+                          {b.name}
+                        </div>
 
-            {botsEnabled && (
-              <div style={{ marginTop: 10 }}>
-                <OptionRow label={t("config.botLevel", "Difficulté IA")}>
-                  <OptionSelect
-                    value={botLevel}
-                    options={[
-                      { value: "easy", label: "Facile" },
-                      { value: "normal", label: "Normal" },
-                      { value: "hard", label: "Difficile" },
-                    ]}
-                    onChange={setBotLevel}
-                  />
-                </OptionRow>
-
-                <div style={{ marginTop: 12, display: "flex", gap: 10, overflowX: "auto", paddingBottom: 6 }}>
-                  {allBots.map((b) => {
-                    const active = selectedIds.includes(b.id);
-                    return <BotChip key={b.id} bot={b} active={active} onClick={() => toggleId(b.id)} />;
+                        {teamSize > 1 && active && (
+                          <div style={{ display: "flex", gap: 6, flexWrap: "wrap", justifyContent: "center" }}>
+                            {Array.from({ length: Math.max(2, Math.floor(selectedIds.length / teamSize) || 2) }, (_, i) => i).map(
+                              (te) => {
+                                const sel = teamsById[b.id] === te;
+                                return (
+                                  <button
+                                    key={te}
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setTeamsById((prev) => ({ ...prev, [b.id]: te }));
+                                    }}
+                                    style={{
+                                      padding: "4px 7px",
+                                      borderRadius: 999,
+                                      border: sel ? `1px solid ${primary}88` : "1px solid rgba(255,255,255,0.12)",
+                                      background: sel ? primarySoft : "rgba(0,0,0,0.18)",
+                                      color: "#fff",
+                                      fontSize: 11,
+                                      fontWeight: 950,
+                                    }}
+                                    title={`Team ${te + 1}`}
+                                  >
+                                    T{te + 1}
+                                  </button>
+                                );
+                              }
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    );
                   })}
-                  {allBots.length === 0 && (
-                    <div style={{ fontSize: 12, opacity: 0.7, fontWeight: 900 }}>
-                      Aucun bot trouvé.
-                    </div>
-                  )}
                 </div>
-              </div>
-            )}
+              ) : (
+                <div style={{ fontSize: 12, opacity: 0.75, fontWeight: 900, marginTop: 8 }}>
+                  Aucun bot personnalisé trouvé (dc_bots_v1).
+                </div>
+              )}
+            </>
+          )}
+        </div>
+
+        {!selectionValid && (
+          <div style={{ marginTop: 10, fontSize: 12, opacity: 0.85, fontWeight: 900 }}>
+            Sélection / teams non valides : ajuste le nombre de joueurs et les teams.
           </div>
-        </CardShell>
+        )}
       </Section>
 
-      {/* RULES */}
+      {/* Rules */}
       <Section title={t("config.rules", "Règles")}>
-        <CardShell>
-          <OptionRow label={t("config.rounds", "Rounds")}>
-            <OptionSelect value={rounds} options={[8, 10, 12, 15, 20]} onChange={setRounds} />
-          </OptionRow>
+        <OptionRow label={t("config.rounds", "Rounds")}>
+          <OptionSelect value={rounds} options={[8, 10, 12, 15, 20]} onChange={setRounds} />
+        </OptionRow>
 
-          <OptionRow label={t("territories.objective", "Objectif (territoires)")}>
-            <OptionSelect value={objective} options={[6, 8, 10, 12, 15, 18]} onChange={setObjective} />
-          </OptionRow>
-        </CardShell>
+        <OptionRow label={t("territories.objective", "Objectif (territoires)")}>
+          <OptionSelect value={objective} options={[6, 8, 10, 12, 15, 18]} onChange={setObjective} />
+        </OptionRow>
       </Section>
 
       <Section>
-        <button className="btn-primary w-full" onClick={start} disabled={!canStart} style={{ opacity: canStart ? 1 : 0.5 }}>
+        <button className="btn-primary w-full" onClick={start} disabled={!selectionValid}>
           {t("config.startGame", "Démarrer la partie")}
         </button>
-        {!canStart && (
-          <div style={{ marginTop: 8, fontSize: 12, opacity: 0.75, fontWeight: 900, textAlign: "center" }}>
-            {teamSize === 1
-              ? "Sélectionne au moins 2 joueurs."
-              : "Sélection / teams non valides : ajuste le nombre de joueurs et les teams."}
-          </div>
-        )}
       </Section>
     </div>
   );

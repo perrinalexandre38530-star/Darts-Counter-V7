@@ -2670,10 +2670,10 @@ function App() {
         break;
 
       case "departements_config":
-        page = <DepartementsConfig setTab={go} params={routeParams} />;
+        page = <DepartementsConfig store={store} go={go} setTab={go} params={routeParams} />;
         break;
       case "departements_play":
-        page = <DepartementsPlay setTab={go} params={routeParams} />;
+        page = <DepartementsPlay store={store} go={go} setTab={go} params={routeParams} />;
         break;
 
       case "enculette_config":
