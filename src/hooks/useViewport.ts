@@ -43,8 +43,11 @@ export function useViewport(): ViewportState {
   }, []);
 
   const isLandscape = w > 0 && h > 0 ? w > h : false;
-  // Seuil volontairement conservateur pour éviter d'impacter les téléphones.
-  const isTablet = w >= 900;
+  // Seuil "tablette" en paysage :
+  // - 900px était trop conservateur avec visualViewport (barres système / zoom)
+  // - On descend pour couvrir la plupart des tablettes (et gros téléphones) en paysage.
+  //   Le layout paysage-tablette n'est activé QUE si orientation=landscape.
+  const isTablet = w >= 700;
   const isLandscapeTablet = isLandscape && isTablet;
 
   return { w, h, isLandscape, isTablet, isLandscapeTablet };
