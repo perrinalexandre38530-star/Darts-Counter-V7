@@ -3175,6 +3175,10 @@ function HeaderBlock(props: {
     currentVisit,
   } = props;
 
+  // ✅ Landscape tablet: compacte un peu le bloc profil/score
+  const avatarSize = compact ? 92 : 120;
+
+
   const legsWonThisSet =
     (currentPlayer && legsWon[currentPlayer.id]) ?? 0;
   const setsWonTotal =
