@@ -31,6 +31,14 @@ export default function GameSelect({ go }: Props) {
   const { setSport } = useSport();
   const dev = useDevMode() as any;
 
+  // Desktop détecté (souris / trackpad) => on ajoute des contrôles visibles
+  const isDesktop = React.useMemo(() => {
+    if (typeof window === "undefined") return false;
+    const mq1 = window.matchMedia?.("(hover: hover)");
+    const mq2 = window.matchMedia?.("(pointer: fine)");
+    return Boolean(mq1?.matches && mq2?.matches);
+  }, []);
+
   // ✅ routes d'entrée (BottomNav)
   // - Darts: on garde le dashboard "Home"
   // - Sports locaux (Pétanque/Baby-foot/Ping-pong): on ouvre DIRECTEMENT le menu "Games"
@@ -93,13 +101,19 @@ export default function GameSelect({ go }: Props) {
   const startXRef = React.useRef<number | null>(null);
   const draggingRef = React.useRef(false);
 
-  const clampIndex = React.useCallback(
-    (i: number) => Math.max(0, Math.min(items.length - 1, i)),
+  // Desktop drag (souris)
+  const mouseDownRef = React.useRef<number | null>(null);
+
+  const wrapIndex = React.useCallback(
+    (i: number) => {
+      const n = items.length || 1;
+      return ((i % n) + n) % n;
+    },
     [items.length]
   );
 
-  const goPrev = React.useCallback(() => setIndex((i) => clampIndex(i - 1)), [clampIndex]);
-  const goNext = React.useCallback(() => setIndex((i) => clampIndex(i + 1)), [clampIndex]);
+  const goPrev = React.useCallback(() => setIndex((i) => wrapIndex(i - 1)), [wrapIndex]);
+  const goNext = React.useCallback(() => setIndex((i) => wrapIndex(i + 1)), [wrapIndex]);
 
   const onTouchStart = (e: React.TouchEvent) => {
     startXRef.current = e.touches[0]?.clientX ?? null;
@@ -126,6 +140,21 @@ export default function GameSelect({ go }: Props) {
     else if (delta < -55) goNext();
   };
 
+  const onMouseDown = (e: React.MouseEvent) => {
+    // clic gauche uniquement
+    if (e.button !== 0) return;
+    mouseDownRef.current = e.clientX;
+  };
+
+  const onMouseUp = (e: React.MouseEvent) => {
+    const startX = mouseDownRef.current;
+    mouseDownRef.current = null;
+    if (startX == null) return;
+    const delta = e.clientX - startX;
+    if (delta > 55) goPrev();
+    else if (delta < -55) goNext();
+  };
+
   // Desktop: flèches clavier (confort)
   React.useEffect(() => {
     const onKey = (ev: KeyboardEvent) => {
@@ -142,8 +171,16 @@ export default function GameSelect({ go }: Props) {
 
   return (
     <div style={wrap(theme)}>
-      <div style={panel(theme)} onTouchStart={onTouchStart} onTouchMove={onTouchMove} onTouchEnd={onTouchEnd}>
+      <div
+        style={panel(theme)}
+        onTouchStart={onTouchStart}
+        onTouchMove={onTouchMove}
+        onTouchEnd={onTouchEnd}
+        onMouseDown={onMouseDown}
+        onMouseUp={onMouseUp}
+      >
         <div style={title(theme)}>Choisis ton sport</div>
+        <div style={subtitle(theme)}>Fais défiler pour choisir</div>
 
         <button
           key={it.id}
@@ -167,6 +204,18 @@ export default function GameSelect({ go }: Props) {
             <span key={i} style={dot(theme, i === index)} />
           ))}
         </div>
+
+        {/* Contrôles desktop visibles (si souris / trackpad) */}
+        {isDesktop && (
+          <>
+            <button aria-label="Précédent" onClick={goPrev} style={navBtn(theme, "left")}>
+              ‹
+            </button>
+            <button aria-label="Suivant" onClick={goNext} style={navBtn(theme, "right")}>
+              ›
+            </button>
+          </>
+        )}
 
         {/* Zones tactiles discrètes (utile tablette) */}
         <button aria-label="Précédent" onClick={goPrev} style={edgeTap("left")} />
@@ -208,15 +257,32 @@ function panel(theme: any): React.CSSProperties {
 }
 
 function title(theme: any): React.CSSProperties {
-  const isDark = theme?.id?.includes("dark") || theme?.id === "darkTitanium" || theme?.id === "dark";
-  const c = isDark ? "rgba(255,255,255,0.92)" : "rgba(0,0,0,0.86)";
+  // Fond toujours sombre sur cet écran => on force un contraste.
+  const accent =
+    theme?.accent ||
+    theme?.colors?.accent ||
+    theme?.colors?.primary ||
+    theme?.primary ||
+    "#ffd200";
   return {
     fontSize: 26,
     fontWeight: 800,
     letterSpacing: 0.2,
-    color: c,
+    color: accent,
     textAlign: "center",
     padding: "0 6px",
+  };
+}
+
+
+function subtitle(theme: any): React.CSSProperties {
+  return {
+    marginTop: -6,
+    fontSize: 14,
+    fontWeight: 600,
+    letterSpacing: 0.15,
+    color: "rgba(255,255,255,0.88)",
+    textAlign: "center",
   };
 }
 
@@ -264,17 +330,41 @@ function sportImg(theme: any, enabled: boolean): React.CSSProperties {
 }
 
 function sportLabel(theme: any, enabled: boolean): React.CSSProperties {
-  const isDark = theme?.id?.includes("dark") || theme?.id === "darkTitanium" || theme?.id === "dark";
-  const c = isDark ? "rgba(255,255,255,0.86)" : "rgba(0,0,0,0.82)";
+  // Fond toujours sombre sur cet écran => texte toujours clair.
+  const accent = theme?.primary ?? "var(--dc-accent)";
   return {
     fontSize: 18,
     fontWeight: 700,
     opacity: enabled ? 0.9 : 0.7,
-    color: c,
+    color: accent,
     textAlign: "center",
     paddingBottom: 4,
     pointerEvents: "none",
   };
+}
+
+function navBtn(theme: any, side: "left" | "right"): React.CSSProperties {
+  const base: React.CSSProperties = {
+    position: "absolute",
+    top: "50%",
+    transform: "translateY(-50%)",
+    width: 52,
+    height: 52,
+    borderRadius: 999,
+    border: `1px solid rgba(255,255,255,0.16)`,
+    background: "rgba(0,0,0,0.35)",
+    color: "rgba(255,255,255,0.92)",
+    fontSize: 34,
+    fontWeight: 900,
+    lineHeight: "48px",
+    textAlign: "center",
+    cursor: "pointer",
+    userSelect: "none",
+    WebkitUserSelect: "none",
+    boxShadow: "0 10px 30px rgba(0,0,0,0.55)",
+    backdropFilter: "blur(6px)",
+  };
+  return side === "left" ? { ...base, left: 10 } : { ...base, right: 10 };
 }
 
 const dotsWrap: React.CSSProperties = {
@@ -312,7 +402,7 @@ function soonPill(theme: any): React.CSSProperties {
     padding: "6px 10px",
     borderRadius: 999,
     background: bg,
-    color: c,
+    color: accent,
     border: `1px solid ${isDark ? "rgba(255,255,255,0.14)" : "rgba(0,0,0,0.12)"}`,
   };
 }
