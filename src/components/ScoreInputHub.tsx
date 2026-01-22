@@ -7,7 +7,6 @@
 // ============================================
 
 import React from "react";
-import { useViewport } from "../hooks/useViewport";
 import Keypad from "./Keypad";
 import DartboardClickable from "./DartboardClickable";
 import ScorePresetsBar from "./ScorePresetsBar";
@@ -112,8 +111,6 @@ export default function ScoreInputHub({
   showPlaceholders = true,
   switcherMode = "drawer",
 }: Props) {
-  const { isLandscapeTablet } = useViewport();
-
   const throwTotal = (currentThrow || []).reduce((a, d) => a + (d?.v || 0) * (d?.mult || 1), 0);
 
   // ✅ FIX demandé : même rendu visuel que le total du KEYPAD (couleur + glow + typo/taille)
@@ -201,43 +198,18 @@ export default function ScoreInputHub({
   const contentBoxStyle: React.CSSProperties = baseContentHeight > 0 ? { minHeight: baseContentHeight } : undefined;
 
   return (
-    <div
-      style={
-        isLandscapeTablet
-          ? { position: "relative", height: "100%", minHeight: 0, overflow: "hidden" }
-          : undefined
-      }
-    >
-      {switcherMode !== "hidden" && (
+    <div>
+      {/* BARRE DE MÉTHODES (zone fixe, ne doit JAMAIS pousser le keypad / la cible) */}
+      {switcherMode !== "hidden" ? (
         <div
-          style={
-            isLandscapeTablet
-              ? { position: "absolute", top: 10, left: 12, right: 12, zIndex: 20 }
-              : { marginBottom: 10 }
-          }
+          style={{
+            height: 44,
+            marginBottom: 0,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+          }}
         >
-          {switcherMode === "drawer" && (
-            <div style={{ display: "flex", justifyContent: "flex-end" }}>
-              <button
-                type="button"
-                onClick={() => setSwitcherOpen((v) => !v)}
-                disabled={disabled}
-                aria-label={switcherOpen ? "Réduire les méthodes" : "Afficher les méthodes"}
-                style={{
-                  width: 34,
-                  height: 24,
-                  borderRadius: 999,
-                  border: "1px solid rgba(255,255,255,0.16)",
-                  background: "rgba(0,0,0,0.35)",
-                  color: "rgba(255,255,255,0.85)",
-                  cursor: disabled ? "not-allowed" : "pointer",
-                }}
-              >
-                {switcherOpen ? "▴" : "▾"}
-              </button>
-            </div>
-          )}
-
           {(switcherMode === "inline" || switcherOpen) && (
             <MethodBar
               method={method}
@@ -249,34 +221,32 @@ export default function ScoreInputHub({
             />
           )}
         </div>
-      )}
-
+      ) : null}
+  
       {/* CIBLE */}
       {method === "dartboard" ? (
         <div style={{ paddingBottom: 6, ...contentBoxStyle }}>
           <div style={{ display: "flex", justifyContent: "center", marginBottom: 8 }}>
-            <div style={isLandscapeTablet ? { transform: "scale(0.92)", transformOrigin: "top center", width: "100%" } : undefined}>
-
-              <DartboardClickable
+            <DartboardClickable
               size={230}
               multiplier={multiplier}
               disabled={disabled}
               onHit={(seg, mul) => {
                 if (disabled) return;
-
+  
                 // Bull / DBull
                 if (seg === 25) {
                   if (onDirectDart) onDirectDart({ v: 25, mult: mul });
                   else onBull(); // fallback: bull simple (DBull non géré par l'API keypad actuelle)
                   return;
                 }
-
+  
                 // Injection directe (recommandé)
                 if (onDirectDart) {
                   onDirectDart({ v: seg, mult: mul });
                   return;
                 }
-
+  
                 // Fallback best-effort via toggles + onNumber (moins fiable, mais évite le "rien")
                 if (mul === 3) onTriple();
                 else if (mul === 2) onDouble();
@@ -284,10 +254,8 @@ export default function ScoreInputHub({
                 onNumber(seg);
               }}
             />
-
-            </div>
           </div>
-
+  
           {/* Footer CIBLE — total à gauche + Annuler / Valider à droite (même langage visuel que le keypad) */}
           <div
             style={{
@@ -299,7 +267,7 @@ export default function ScoreInputHub({
             }}
           >
             <div style={totalPillStyle}>{throwTotal}</div>
-
+  
             <div style={{ display: "flex", gap: 10 }}>
               <button
                 type="button"
@@ -310,7 +278,7 @@ export default function ScoreInputHub({
               >
                 ANNULER
               </button>
-
+  
               <button
                 type="button"
                 style={btnGoldSmall}
@@ -324,7 +292,7 @@ export default function ScoreInputHub({
           </div>
         </div>
       ) : null}
-
+  
       {/* PRESETS */}
       {method === "presets" && allowPresets ? (
         <div style={{ paddingBottom: 2, ...contentBoxStyle }}>
@@ -348,18 +316,15 @@ export default function ScoreInputHub({
           </div>
         </div>
       ) : null}
-
+  
       {/* Méthode principale (Keypad + placeholders) */}
       {method === "keypad" || method === "presets" || method === "voice" || method === "auto" || method === "ai" ? (
         <div ref={method === "keypad" ? contentMeasureRef : undefined} style={contentBoxStyle}>
           {(method === "voice" || method === "auto" || method === "ai") && showPlaceholders ? (
             <PlaceholderCard method={method} />
           ) : null}
-
-          <div style={isLandscapeTablet ? { transform: "scale(0.92)", transformOrigin: "top center", width: "100%" } : undefined}>
-
-
-            <Keypad
+  
+          <Keypad
             currentThrow={currentThrow}
             multiplier={multiplier}
             onSimple={onSimple}
@@ -374,14 +339,10 @@ export default function ScoreInputHub({
             hideTotal={hideTotal}
             centerSlot={centerSlot}
           />
-
-
-          </div>
         </div>
       ) : null}
     </div>
-  );
-}
+  );  
 
 function MethodBar({
   method,
@@ -525,4 +486,5 @@ function PlaceholderCard({ method }: { method: ScoreInputMethod }) {
       <div style={{ marginTop: 4, fontSize: 12.5, opacity: 0.72, fontWeight: 800 }}>{subtitle}</div>
     </div>
   );
+}
 }

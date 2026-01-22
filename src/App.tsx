@@ -616,6 +616,36 @@ function AuthCallbackRoute({ go }: { go: (t: Tab, p?: any) => void }) {
 
     (async () => {
       try {
+        // ✅ NEW: capture session from Supabase email links (PKCE code or implicit tokens)
+        try {
+          const href = String(window.location.href || "");
+          const u = new URL(href);
+          const fromSearch = u.searchParams.get("code");
+          const fromHashQuery = (() => {
+            const h = String(u.hash || "");
+            const q = h.includes("?") ? h.split("?")[1] : "";
+            return q ? new URLSearchParams(q).get("code") : null;
+          })();
+          const code = fromSearch || fromHashQuery;
+
+          // PKCE flow: exchange code -> session
+          if (code) {
+            await supabase.auth.exchangeCodeForSession(code);
+          } else {
+            // Implicit flow: tokens can be in hash
+            const h = String(u.hash || "").replace(/^#/, "");
+            const qs = h.includes("?") ? h.split("?")[1] : h;
+            const sp = new URLSearchParams(qs);
+            const access_token = sp.get("access_token");
+            const refresh_token = sp.get("refresh_token");
+            if (access_token && refresh_token) {
+              await supabase.auth.setSession({ access_token, refresh_token });
+            }
+          }
+        } catch (e) {
+          console.warn("[auth_callback] session parse/exchange failed", e);
+        }
+
         try {
           await onlineApi.restoreSession();
         } catch {}
@@ -749,6 +779,38 @@ function AuthResetRoute({ go }: { go: (t: Tab, p?: any) => void }) {
   const [pw, setPw] = React.useState("");
   const [pw2, setPw2] = React.useState("");
   const [status, setStatus] = React.useState<string>("");
+  // ✅ NEW: if user lands here from email link, exchange PKCE code / set implicit tokens
+  React.useEffect(() => {
+    (async () => {
+      try {
+        const href = String(window.location.href || "");
+        const u = new URL(href);
+        const fromSearch = u.searchParams.get("code");
+        const fromHashQuery = (() => {
+          const h = String(u.hash || "");
+          const q = h.includes("?") ? h.split("?")[1] : "";
+          return q ? new URLSearchParams(q).get("code") : null;
+        })();
+        const code = fromSearch || fromHashQuery;
+
+        if (code) {
+          await supabase.auth.exchangeCodeForSession(code);
+        } else {
+          const h = String(u.hash || "").replace(/^#/, "");
+          const qs = h.includes("?") ? h.split("?")[1] : h;
+          const sp = new URLSearchParams(qs);
+          const access_token = sp.get("access_token");
+          const refresh_token = sp.get("refresh_token");
+          if (access_token && refresh_token) {
+            await supabase.auth.setSession({ access_token, refresh_token });
+          }
+        }
+      } catch (e) {
+        console.warn("[auth_reset] session parse/exchange failed", e);
+      }
+    })();
+  }, []);
+
 
   async function submit() {
     setStatus("");

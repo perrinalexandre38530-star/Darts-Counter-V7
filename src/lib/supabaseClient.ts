@@ -30,18 +30,17 @@ const PROJECT_REF = supabaseProjectRef(SUPABASE_URL);
 
 // Logs utiles (DEV uniquement)
 if (isDev) {
+  // eslint-disable-next-line no-console
   console.log("[supabaseClient] SUPABASE_URL =", SUPABASE_URL);
+  // eslint-disable-next-line no-console
   console.log("[supabaseClient] PROJECT_REF =", PROJECT_REF);
-  console.log(
-    "[supabaseClient] ANON_KEY(first10) =",
-    (SUPABASE_ANON_KEY || "").slice(0, 10)
-  );
+  // eslint-disable-next-line no-console
+  console.log("[supabaseClient] ANON_KEY(first10) =", (SUPABASE_ANON_KEY || "").slice(0, 10));
 }
 
 if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
-  console.warn(
-    "[supabaseClient] VITE_SUPABASE_URL ou VITE_SUPABASE_ANON_KEY manquants. Supabase sera inactif."
-  );
+  // eslint-disable-next-line no-console
+  console.warn("[supabaseClient] VITE_SUPABASE_URL ou VITE_SUPABASE_ANON_KEY manquants. Supabase sera inactif.");
 }
 
 // ✅ cache global (HMR / imports multiples / double init)
@@ -52,8 +51,16 @@ declare global {
 
 const canUseWindow = typeof window !== "undefined";
 
-// ⚠️ storage: window.localStorage seulement côté navigateur
-const storage = canUseWindow ? window.localStorage : undefined;
+// ⚠️ storage: localStorage seulement côté navigateur
+// (sur certains environnements embarqués, localStorage peut throw → on garde try/catch)
+let storage: Storage | undefined = undefined;
+if (canUseWindow) {
+  try {
+    storage = window.localStorage;
+  } catch {
+    storage = undefined;
+  }
+}
 
 // ✅ storageKey custom UNIQUE par projet Supabase
 // (évite collisions entre environnements/builds/projets)
@@ -68,20 +75,25 @@ function createSupabaseClient(): SupabaseClient {
 
   return createClient(url, key, {
     auth: {
+      // ✅ persistance session (évite devoir se reconnecter à chaque refresh / reload)
       persistSession: true,
       autoRefreshToken: true,
 
-      // ✅ Ton app gère le parsing /#/auth/callback et /#/auth/reset dans App.tsx
-      // => on laisse false ici
+      // ✅ ton app gère le routing hash (/auth/callback, /auth/reset) dans App.tsx
+      // => on évite que le SDK essaye de parser l'URL tout seul (peut être flaky avec hash routing)
       detectSessionInUrl: false,
 
+      // ✅ PKCE recommandé (email magic-link / reset-password)
+      flowType: "pkce",
+
+      // ✅ storage explicite (si dispo). Si undefined, supabase-js retombera sur son fallback.
       storage,
+
+      // ✅ clé de stockage stable et unique
       storageKey: STORAGE_KEY,
     },
   });
 }
 
-export const supabase: SupabaseClient =
-  globalThis.__dc_supabase || createSupabaseClient();
-
+export const supabase: SupabaseClient = globalThis.__dc_supabase || createSupabaseClient();
 globalThis.__dc_supabase = supabase;

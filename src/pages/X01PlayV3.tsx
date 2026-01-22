@@ -7,7 +7,6 @@
 // =============================================================
 
 import React from "react";
-import BackDot from "../components/BackDot";
 import { useViewport } from "../hooks/useViewport";
 
 import type {
@@ -22,6 +21,7 @@ import ScoreInputHub from "../components/ScoreInputHub";
 // Caméra assistée (dartsmind-like UX)
 import CameraAssistedOverlay from "../components/CameraAssistedOverlay";
 import { DuelHeaderCompact } from "../components/DuelHeaderCompact";
+import BackDot from "../components/BackDot";
 import X01LegOverlayV3 from "../lib/x01v3/x01LegOverlayV3";
 
 import { useTheme } from "../contexts/ThemeContext";
@@ -1466,7 +1466,11 @@ const playScoreSfxAndMaybeDelayVoice = React.useCallback(
     // ---- Null sfx (0..10) hors checkout et hors bust ----
     if (!isBustNow && !isCheckoutNow && visitScore >= 0 && visitScore <= 10) {
       if (arcadeEnabled) {
-        const audio = playPublicSound("score-null.mp3", { volume: sfxVolume });
+        // Le sample "score-null" est très discret : on pousse davantage le volume
+        // (capé à 1) pour rester audible même avec un SFX volume bas.
+        const audio = playPublicSound("score-null.mp3", {
+          volume: Math.min(1, sfxVolume + 0.8),
+        });
         if (audio && typeof (audio as any).addEventListener === "function") {
           (audio as any).addEventListener(
             "ended",
@@ -2567,7 +2571,11 @@ try {
               width: "100%",
             }}
           >
-            <BackDot onClick={handleQuit} />
+            <BackDot
+              onClick={handleQuit}
+              title={t("common.quit", "Quitter")}
+              size={40}
+            />
 
             <div style={{ flex: 1, display: "flex", justifyContent: "center" }}>
               {isDuel && useSetsUi && (
@@ -2600,14 +2608,13 @@ try {
             gridTemplateColumns: "1fr 1fr",
             gap: 12,
             padding: 12,
-            paddingBottom: "calc(12px + env(safe-area-inset-bottom))",
             overflow: "hidden",
             alignItems: "stretch",
           }}
         >
           {/* GAUCHE : Player+Score + Liste joueurs (scroll interne) */}
           <div style={{ display: "flex", flexDirection: "column", overflow: "hidden" }}>
-            <div style={{ flex: "0 0 auto", transform: "scale(0.92)", transformOrigin: "top left" }}>
+            <div style={{ flex: "0 0 auto" }}>
               <HeaderBlock
                 currentPlayer={activePlayer}
                 currentAvatar={
@@ -2627,7 +2634,7 @@ try {
               />
             </div>
 
-            <div style={{ flex: 1, minHeight: 0, overflowY: "auto", paddingTop: 6 }}>
+            <div style={{ flex: 1, overflowY: "auto", paddingTop: 10 }}>
               <PlayersListOnly
                 cameraOpen={cameraOpen}
                 setCameraOpen={setCameraOpen}
@@ -2875,7 +2882,7 @@ try {
           top: 0,
           zIndex: 60,
           width: `min(100%, ${CONTENT_MAX}px)`,
-          paddingInline: 10,
+          paddingInline: isLandscapeTablet ? 6 : 10,
           paddingTop: 4,
           paddingBottom: 4,
         }}
@@ -2891,7 +2898,22 @@ try {
           }}
         >
           {/* BOUTON QUITTER */}
-          <BackDot onClick={handleQuit} />
+          <button
+            onClick={handleQuit}
+            style={{
+              borderRadius: 10,
+              padding: "5px 11px",
+              border: "1px solid rgba(255,180,0,.3)",
+              background: "linear-gradient(180deg, #ffc63a, #ffaf00)",
+              color: "#1a1a1a",
+              fontWeight: 900,
+              boxShadow: "0 8px 18px rgba(255,170,0,.25)",
+              fontSize: 13,
+              whiteSpace: "nowrap",
+            }}
+          >
+            ← {t("common.quit", "Quitter")}
+          </button>
 
           {/* HEADER COMPACT (AVATARS + SCORE) */}
           <div
@@ -2966,7 +2988,7 @@ try {
           marginTop: isLandscapeTablet ? 10 : 0,
           bottom: NAV_HEIGHT + keypadH + 8,
           width: `min(100%, ${CONTENT_MAX}px)`,
-          paddingInline: 10,
+          paddingInline: isLandscapeTablet ? 6 : 10,
           paddingTop: 4,
           paddingBottom: 4,
           overflowY: "auto",

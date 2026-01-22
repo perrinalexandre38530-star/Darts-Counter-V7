@@ -19,6 +19,7 @@ import type { Dart as UIDart } from "../lib/types";
 
 import Keypad from "../components/Keypad";
 import { DuelHeaderCompact } from "../components/DuelHeaderCompact";
+import BackDot from "../components/BackDot";
 import X01LegOverlayV3 from "../lib/x01v3/x01LegOverlayV3";
 
 import { useTheme } from "../contexts/ThemeContext";
@@ -2513,22 +2514,11 @@ try {
               width: "100%",
             }}
           >
-            <button
+            <BackDot
               onClick={handleQuit}
-              style={{
-                borderRadius: 10,
-                padding: "5px 11px",
-                border: "1px solid rgba(255,180,0,.3)",
-                background: "linear-gradient(180deg, #ffc63a, #ffaf00)",
-                color: "#1a1a1a",
-                fontWeight: 900,
-                boxShadow: "0 8px 18px rgba(255,170,0,.25)",
-                fontSize: 13,
-                whiteSpace: "nowrap",
-              }}
-            >
-              ← {t("common.quit", "Quitter")}
-            </button>
+              title={t("common.quit", "Quitter")}
+              size={40}
+            />
 
             <div style={{ flex: 1, display: "flex", justifyContent: "center" }}>
               {isDuel && useSetsUi && (
@@ -2569,7 +2559,6 @@ try {
           <div style={{ display: "flex", flexDirection: "column", overflow: "hidden" }}>
             <div style={{ flex: "0 0 auto" }}>
               <HeaderBlock
-                compact={true}
                 currentPlayer={activePlayer}
                 currentAvatar={
                   activePlayer ? profileById[activePlayer.id]?.avatarDataUrl ?? null : null
@@ -2589,7 +2578,7 @@ try {
               />
             </div>
 
-            <div style={{ flex: 1, overflowY: "auto", paddingTop: 6 }}>
+            <div style={{ flex: 1, overflowY: "auto", paddingTop: 10 }}>
               <PlayersListOnly
                 players={players}
                 profileById={profileById}
@@ -2814,7 +2803,7 @@ try {
           top: 0,
           zIndex: 60,
           width: `min(100%, ${CONTENT_MAX}px)`,
-          paddingInline: 10,
+          paddingInline: isLandscapeTablet ? 6 : 10,
           paddingTop: 4,
           paddingBottom: 4,
         }}
@@ -2921,7 +2910,7 @@ try {
           marginTop: isLandscapeTablet ? 10 : 0,
           bottom: NAV_HEIGHT + keypadH + 8,
           width: `min(100%, ${CONTENT_MAX}px)`,
-          paddingInline: 10,
+          paddingInline: isLandscapeTablet ? 6 : 10,
           paddingTop: 4,
           paddingBottom: 4,
           overflowY: "auto",
@@ -3156,10 +3145,8 @@ function HeaderBlock(props: {
   setsWon: Record<string, number>;
   currentVisit: any;
   checkoutText: string | null;
-  compact?: boolean;
 }) {
   const {
-    compact = false,
     currentPlayer,
     currentAvatar,
     currentRemaining,
@@ -3174,10 +3161,6 @@ function HeaderBlock(props: {
     setsWon,
     currentVisit,
   } = props;
-
-  // ✅ Landscape tablet: compacte un peu le bloc profil/score
-  const avatarSize = compact ? 92 : 120;
-
 
   const legsWonThisSet =
     (currentPlayer && legsWon[currentPlayer.id]) ?? 0;
@@ -3223,8 +3206,8 @@ function HeaderBlock(props: {
         >
           <div
             style={{
-              width: avatarSize,
-              height: avatarSize,
+              width: 96,
+              height: 96,
               borderRadius: "50%",
               overflow: "hidden",
               background:
@@ -3322,7 +3305,7 @@ function HeaderBlock(props: {
           {/* SCORE CENTRAL */}
           <div
             style={{
-              fontSize: scoreSize,
+              fontSize: 64,
               fontWeight: 900,
               color: "#ffcf57",
               textShadow: "0 4px 18px rgba(255,195,26,.25)",
