@@ -7,10 +7,10 @@
 // ============================================
 
 import React from "react";
+import { useViewport } from "../hooks/useViewport";
 import Keypad from "./Keypad";
 import DartboardClickable from "./DartboardClickable";
 import ScorePresetsBar from "./ScorePresetsBar";
-import { useViewport } from "../hooks/useViewport";
 import type { Dart as UIDart } from "../lib/types";
 import { SCORE_INPUT_LS_KEY, type ScoreInputMethod } from "../lib/scoreInput/types";
 
@@ -112,6 +112,8 @@ export default function ScoreInputHub({
   showPlaceholders = true,
   switcherMode = "drawer",
 }: Props) {
+  const { isLandscapeTablet } = useViewport();
+
   const throwTotal = (currentThrow || []).reduce((a, d) => a + (d?.v || 0) * (d?.mult || 1), 0);
 
   // ✅ FIX demandé : même rendu visuel que le total du KEYPAD (couleur + glow + typo/taille)
@@ -156,7 +158,6 @@ export default function ScoreInputHub({
   };
 
   const devEnabled = safeReadDevModeEnabled();
-  const { isLandscapeTablet } = useViewport();
   const [method, setMethod] = React.useState<ScoreInputMethod>(safeReadMethod);
 
   // En prod: seules KEYPAD + CIBLE sont officiellement utilisables.
@@ -199,16 +200,19 @@ export default function ScoreInputHub({
 
   const contentBoxStyle: React.CSSProperties = baseContentHeight > 0 ? { minHeight: baseContentHeight } : undefined;
 
-  // En paysage tablette, la barre de sélection (KEYPAD/CIBLE...) ne doit pas pousser le contenu.
-  const topPad = isLandscapeTablet && switcherMode !== "hidden" ? 60 : 0;
-
   return (
-    <div style={isLandscapeTablet ? { position: "relative", height: "100%", minHeight: 0, overflow: "hidden" } : undefined}>
+    <div
+      style={
+        isLandscapeTablet
+          ? { position: "relative", height: "100%", minHeight: 0, overflow: "hidden" }
+          : undefined
+      }
+    >
       {switcherMode !== "hidden" && (
         <div
           style={
             isLandscapeTablet
-              ? { position: "absolute", top: 8, left: 10, right: 10, zIndex: 20, marginBottom: 0 }
+              ? { position: "absolute", top: 10, left: 12, right: 12, zIndex: 20 }
               : { marginBottom: 10 }
           }
         >
@@ -249,9 +253,11 @@ export default function ScoreInputHub({
 
       {/* CIBLE */}
       {method === "dartboard" ? (
-        <div style={{ paddingTop: topPad, paddingBottom: 6, height: "100%", minHeight: 0, overflow: "hidden", ...(contentBoxStyle || {}) }}>
+        <div style={{ paddingBottom: 6, ...contentBoxStyle }}>
           <div style={{ display: "flex", justifyContent: "center", marginBottom: 8 }}>
-            <DartboardClickable
+            <div style={isLandscapeTablet ? { transform: "scale(0.92)", transformOrigin: "top center", width: "100%" } : undefined}>
+
+              <DartboardClickable
               size={230}
               multiplier={multiplier}
               disabled={disabled}
@@ -278,6 +284,8 @@ export default function ScoreInputHub({
                 onNumber(seg);
               }}
             />
+
+            </div>
           </div>
 
           {/* Footer CIBLE — total à gauche + Annuler / Valider à droite (même langage visuel que le keypad) */}
@@ -319,7 +327,7 @@ export default function ScoreInputHub({
 
       {/* PRESETS */}
       {method === "presets" && allowPresets ? (
-        <div style={{ paddingTop: topPad, paddingBottom: 2, height: "100%", minHeight: 0, overflow: "hidden", ...(contentBoxStyle || {}) }}>
+        <div style={{ paddingBottom: 2, ...contentBoxStyle }}>
           <ScorePresetsBar
             disabled={disabled}
             currentCount={(currentThrow || []).length}
@@ -343,19 +351,15 @@ export default function ScoreInputHub({
 
       {/* Méthode principale (Keypad + placeholders) */}
       {method === "keypad" || method === "presets" || method === "voice" || method === "auto" || method === "ai" ? (
-        <div
-          ref={method === "keypad" ? contentMeasureRef : undefined}
-          style={
-            isLandscapeTablet
-              ? { paddingTop: topPad, height: "100%", minHeight: 0, overflow: "hidden", ...(contentBoxStyle || {}) }
-              : contentBoxStyle
-          }
-        >
+        <div ref={method === "keypad" ? contentMeasureRef : undefined} style={contentBoxStyle}>
           {(method === "voice" || method === "auto" || method === "ai") && showPlaceholders ? (
             <PlaceholderCard method={method} />
           ) : null}
 
-          <Keypad
+          <div style={isLandscapeTablet ? { transform: "scale(0.92)", transformOrigin: "top center", width: "100%" } : undefined}>
+
+
+            <Keypad
             currentThrow={currentThrow}
             multiplier={multiplier}
             onSimple={onSimple}
@@ -370,6 +374,9 @@ export default function ScoreInputHub({
             hideTotal={hideTotal}
             centerSlot={centerSlot}
           />
+
+
+          </div>
         </div>
       ) : null}
     </div>

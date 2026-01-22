@@ -7,6 +7,7 @@
 // =============================================================
 
 import React from "react";
+import BackDot from "../components/BackDot";
 import { useViewport } from "../hooks/useViewport";
 
 import type {
@@ -2566,22 +2567,7 @@ try {
               width: "100%",
             }}
           >
-            <button
-              onClick={handleQuit}
-              style={{
-                borderRadius: 10,
-                padding: "5px 11px",
-                border: "1px solid rgba(255,180,0,.3)",
-                background: "linear-gradient(180deg, #ffc63a, #ffaf00)",
-                color: "#1a1a1a",
-                fontWeight: 900,
-                boxShadow: "0 8px 18px rgba(255,170,0,.25)",
-                fontSize: 13,
-                whiteSpace: "nowrap",
-              }}
-            >
-              ← {t("common.quit", "Quitter")}
-            </button>
+            <BackDot onClick={handleQuit} />
 
             <div style={{ flex: 1, display: "flex", justifyContent: "center" }}>
               {isDuel && useSetsUi && (
@@ -2614,15 +2600,15 @@ try {
             gridTemplateColumns: "1fr 1fr",
             gap: 12,
             padding: 12,
+            paddingBottom: "calc(12px + env(safe-area-inset-bottom))",
             overflow: "hidden",
             alignItems: "stretch",
           }}
         >
           {/* GAUCHE : Player+Score + Liste joueurs (scroll interne) */}
           <div style={{ display: "flex", flexDirection: "column", overflow: "hidden" }}>
-            <div style={{ flex: "0 0 auto" }}>
+            <div style={{ flex: "0 0 auto", transform: "scale(0.92)", transformOrigin: "top left" }}>
               <HeaderBlock
-                compact={true}
                 currentPlayer={activePlayer}
                 currentAvatar={
                   activePlayer ? profileById[activePlayer.id]?.avatarDataUrl ?? null : null
@@ -2641,7 +2627,7 @@ try {
               />
             </div>
 
-            <div style={{ flex: 1, overflowY: "auto", paddingTop: 6 }}>
+            <div style={{ flex: 1, minHeight: 0, overflowY: "auto", paddingTop: 6 }}>
               <PlayersListOnly
                 cameraOpen={cameraOpen}
                 setCameraOpen={setCameraOpen}
@@ -2905,22 +2891,7 @@ try {
           }}
         >
           {/* BOUTON QUITTER */}
-          <button
-            onClick={handleQuit}
-            style={{
-              borderRadius: 10,
-              padding: "5px 11px",
-              border: "1px solid rgba(255,180,0,.3)",
-              background: "linear-gradient(180deg, #ffc63a, #ffaf00)",
-              color: "#1a1a1a",
-              fontWeight: 900,
-              boxShadow: "0 8px 18px rgba(255,170,0,.25)",
-              fontSize: 13,
-              whiteSpace: "nowrap",
-            }}
-          >
-            ← {t("common.quit", "Quitter")}
-          </button>
+          <BackDot onClick={handleQuit} />
 
           {/* HEADER COMPACT (AVATARS + SCORE) */}
           <div
@@ -3255,10 +3226,8 @@ function HeaderBlock(props: {
   legsWon: Record<string, number>;
   setsWon: Record<string, number>;
   checkoutText: string | null;
-  compact?: boolean;
 }) {
   const {
-    compact = false,
     currentPlayer,
     currentAvatar,
     currentRemaining,
@@ -3273,11 +3242,6 @@ function HeaderBlock(props: {
     setsWon,
     checkoutText,
   } = props;
-
-  // ✅ Landscape tablet: compacte un peu le bloc profil/score
-  const avatarSize = compact ? 92 : 120;
-  const scoreSize = compact ? 84 : 110;
-
 
   const legsWonThisSet =
     (currentPlayer && legsWon[currentPlayer.id]) ?? 0;
@@ -3323,8 +3287,8 @@ function HeaderBlock(props: {
         >
           <div
             style={{
-              width: avatarSize,
-              height: avatarSize,
+              width: 96,
+              height: 96,
               borderRadius: "50%",
               overflow: "hidden",
               background:
@@ -3422,7 +3386,7 @@ function HeaderBlock(props: {
           {/* SCORE CENTRAL */}
           <div
             style={{
-              fontSize: scoreSize,
+              fontSize: 64,
               fontWeight: 900,
               color: "#ffcf57",
               textShadow: "0 4px 18px rgba(255,195,26,.25)",
