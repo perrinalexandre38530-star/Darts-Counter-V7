@@ -2541,7 +2541,212 @@ try {
   // =====================================================
 
   if (isLandscapeTablet) {
+    
+  // ✅ Layout dédié : tablette en paysage (2 colonnes, sans scroll global)
+  if (isLandscapeTablet) {
     return (
+      <div
+        className={`x01play-container theme-${theme.id}`}
+        style={{
+          height: "100dvh",
+          overflow: "hidden",
+          display: "flex",
+          flexDirection: "column",
+        }}
+      >
+        {/* HEADER — pleine largeur */}
+        <div
+          ref={headerWrapRef}
+          style={{
+            position: "relative",
+            top: 0,
+            zIndex: 60,
+            width: "100%",
+            paddingInline: 10,
+            paddingTop: 4,
+            paddingBottom: 6,
+          }}
+        >
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              width: "100%",
+              marginBottom: 6,
+            }}
+          >
+            <button
+              onClick={handleQuit}
+              style={{
+                borderRadius: 10,
+                padding: "5px 11px",
+                border: "1px solid rgba(255,180,0,.3)",
+                background: "linear-gradient(180deg, #ffc63a, #ffaf00)",
+                color: "#1a1a1a",
+                fontWeight: 900,
+                boxShadow: "0 8px 18px rgba(255,170,0,.25)",
+                fontSize: 13,
+                whiteSpace: "nowrap",
+              }}
+            >
+              ← {t("common.quit", "Quitter")}
+            </button>
+
+            <div style={{ flex: 1, display: "flex", justifyContent: "center" }}>
+              {isDuel && useSetsUi && (
+                <DuelHeaderCompact
+                  leftAvatarUrl={profileById[players[0].id]?.avatarDataUrl ?? ""}
+                  rightAvatarUrl={profileById[players[1].id]?.avatarDataUrl ?? ""}
+                  leftSets={(state as any).setsWon?.[players[0].id] ?? 0}
+                  rightSets={(state as any).setsWon?.[players[1].id] ?? 0}
+                  leftLegs={(state as any).legsWon?.[players[0].id] ?? 0}
+                  rightLegs={(state as any).legsWon?.[players[1].id] ?? 0}
+                />
+              )}
+            </div>
+
+            <SetLegChip
+              currentSet={(state as any).currentSet ?? 1}
+              currentLegInSet={(state as any).currentLeg ?? 1}
+              setsTarget={setsTarget}
+              legsTarget={legsTarget}
+              useSets={useSetsUi}
+            />
+          </div>
+        </div>
+
+        {/* MAIN — 2 colonnes côte à côte (sans scroll global) */}
+        <div
+          style={{
+            flex: 1,
+            minHeight: 0,
+            display: "grid",
+            gridTemplateColumns: "1fr 1fr",
+            gap: 12,
+            padding: 10,
+            boxSizing: "border-box",
+            overflow: "hidden",
+          }}
+        >
+          {/* COLONNE GAUCHE : player + score + liste joueurs scrollable */}
+          <div
+            style={{
+              minWidth: 0,
+              overflow: "hidden",
+              display: "flex",
+              flexDirection: "column",
+              gap: 10,
+            }}
+          >
+            <div style={{ flex: "0 0 auto" }}>
+              <HeaderBlock
+                currentPlayer={activePlayer}
+                currentAvatar={activePlayer ? profileById[activePlayer.id]?.avatarDataUrl ?? null : null}
+                currentRemaining={currentScore}
+                currentThrow={currentThrow}
+                doubleOut={doubleOut}
+                liveRanking={liveRanking}
+                curDarts={curDarts}
+                curM3D={curM3D}
+                bestVisit={bestVisit}
+                legsWon={(state as any).legsWon ?? {}}
+                setsWon={(state as any).setsWon ?? {}}
+                useSets={useSetsUi}
+                currentVisit={currentVisit}
+                checkoutText={checkoutText}
+              />
+            </div>
+
+            <div style={{ flex: 1, minHeight: 0, overflowY: "auto" }}>
+              <PlayersListOnly
+                players={players}
+                profileById={profileById}
+                liveStatsByPlayer={liveStatsByPlayer}
+                start={config.startScore}
+                scoresByPlayer={scores}
+                legsWon={(state as any).legsWon ?? {}}
+                setsWon={(state as any).setsWon ?? {}}
+                useSets={useSetsUi}
+                lastVisitsByPlayer={lastVisitsByPlayer}
+                lastVisitIsBustByPlayer={lastVisitIsBustByPlayer}
+                avg3ByPlayer={avg3ByPlayer}
+              />
+            </div>
+          </div>
+
+          {/* COLONNE DROITE : mode de saisie (inchangé) */}
+          <div style={{ minWidth: 0, overflow: "hidden", display: "flex", flexDirection: "column" }}>
+            <div style={{ flex: 1, minHeight: 0, overflow: "hidden" }}>
+              {isBotTurn ? (
+                <div
+                  style={{
+                    height: "100%",
+                    padding: 14,
+                    borderRadius: 14,
+                    border: "1px solid rgba(255,255,255,0.08)",
+                    background: "rgba(0,0,0,0.20)",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    color: "rgba(255,255,255,0.85)",
+                    fontWeight: 900,
+                    textAlign: "center",
+                  }}
+                >
+                  {t("common.bot_turn", "Tour du bot…")}
+                </div>
+              ) : (
+                <div style={{ height: "100%" }}>
+                  <ScoreInputHub
+                    currentThrow={currentThrow}
+                    multiplier={multiplier}
+                    onSimple={handleSimple}
+                    onDouble={handleDouble}
+                    onTriple={handleTriple}
+                    onBackspace={handleBackspace}
+                    onCancel={handleCancel}
+                    onNumber={handleNumber}
+                    onBull={handleBull}
+                    onValidate={validateThrow}
+                    onDirectDart={handleDirectDart}
+                    hidePreview
+                    showPlaceholders={false}
+                    disabled={isBustLocked}
+                  />
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* OVERLAYS (inchangés) */}
+        <X01LegOverlayV3
+          open={status === "leg_end" || status === "set_end" || status === "match_end"}
+          status={status}
+          config={config}
+          state={state}
+          liveStatsByPlayer={liveStatsByPlayer}
+          onNextLeg={startNextLeg}
+          onExitMatch={handleQuit}
+          onReplaySameConfig={handleReplaySameConfig}
+          onReplayNewConfig={handleReplayNewConfigInternal}
+          onShowSummary={handleShowSummary}
+          onContinueMulti={players.length >= 3 ? handleContinueMulti : undefined}
+        />
+
+        <EndOfLegOverlay
+          open={summaryOpen && !!summaryLegStats}
+          result={summaryLegStats}
+          playersById={summaryPlayersById}
+          onClose={() => setSummaryOpen(false)}
+          onReplay={handleReplaySameConfig}
+        />
+      </div>
+    );
+  }
+
+return (
       <div
         className={`x01play-container theme-${theme.id}`}
         style={{ height: "100dvh", overflow: "hidden", display: "flex", flexDirection: "column" }}
