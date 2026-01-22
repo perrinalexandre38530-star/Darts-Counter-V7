@@ -7,7 +7,7 @@
 // - Anneaux calibrés "UX" (double/triple/bull) + INSET ajustable
 // ============================================
 
-import React, { useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import dartboardPhoto from "../ui_assets/dartboard_photo.png";
 
 type Props = {
@@ -34,19 +34,19 @@ const WEDGE = TAU / 20;
 
 // Réglage principal pour "rentrer dans la cible" (compense marges/transparences de l'image).
 // Augmente cette valeur si tu cliques trop facilement sur le "double" externe.
-const INSET_PX = 26;
+const INSET_PX = 18;
 
 // Proportions normalisées (r en [0..1]) calibrées pour la photo actuelle.
 // (Ces valeurs sont volontairement "UX": on privilégie la précision de saisie.)
 const R = {
-  DBULL: 0.055,
-  BULL: 0.115,
+  DBULL: 0.070,
+  BULL: 0.140,
 
-  TRIPLE_IN: 0.525,
-  TRIPLE_OUT: 0.600,
+  TRIPLE_IN: 0.545,
+  TRIPLE_OUT: 0.625,
 
-  DOUBLE_IN: 0.845,
-  DOUBLE_OUT: 0.955,
+  DOUBLE_IN: 0.865,
+  DOUBLE_OUT: 0.975,
 } as const;
 
 function clamp01(v: number) {
@@ -91,10 +91,19 @@ export default function DartboardClickable(props: Props) {
   const ref = useRef<HTMLDivElement | null>(null);
   const [last, setLast] = useState<{ seg: number; mul: 1 | 2 | 3; x: number; y: number } | null>(null);
 
+  const lastTimerRef = useRef<number | null>(null);
+
   const dimStyle = useMemo(() => {
     const s = size ?? 320;
     return { width: s, height: s };
   }, [size]);
+
+  useEffect(() => {
+    return () => {
+      if (lastTimerRef.current) window.clearTimeout(lastTimerRef.current);
+    };
+  }, []);
+
 
   function handlePointer(e: React.PointerEvent<HTMLDivElement>) {
     if (disabled) return;
@@ -120,6 +129,11 @@ export default function DartboardClickable(props: Props) {
     const mul = (hit.mul === 2 || hit.mul === 3) ? hit.mul : 1;
 
     setLast({ seg, mul, x, y });
+
+    // Auto-hide l’étiquette centrale après 1s pour ne pas gêner BULL/DBULL
+    if (lastTimerRef.current) window.clearTimeout(lastTimerRef.current);
+    lastTimerRef.current = window.setTimeout(() => setLast(null), 1000);
+
 
     try {
       onHit(seg, mul);
