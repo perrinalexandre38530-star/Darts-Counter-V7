@@ -1,3 +1,15 @@
+// ============================================
+// src/pages/DepartementsConfig.tsx
+// TERRITORIES (ex-Départements) — CONFIG
+// OPTION A (UX clarifiée) :
+// - Carrousel pays : drapeau + nom sur la même ligne, pas de "SELECTED"
+// - Carrousel joueurs : sélection jusqu'à 6
+// - Teams : AFFICHAGE STRUCTUREL (slots + noms uniquement) -> PAS de médaillons qui dépassent
+// - Entêtes : simples en couleur thème (pas d'encadré néon ajouté ici)
+// - Boutons "i" (explications) par bloc
+// - Bouton "Démarrer la partie" identique aux autres configs (btn-primary w-full)
+// ============================================
+
 import React from "react";
 import BackDot from "../components/BackDot";
 import InfoDot from "../components/InfoDot";
@@ -31,13 +43,36 @@ export type TerritoriesConfigPayload = {
   mapId: string;
 };
 
-const INFO_TEXT = `TERRITORIES
+const INFO_RULES = `TERRITORIES
 - Choisis une carte (pays) dans le configurateur.
 - Sélectionne jusqu'à 6 participants (profils + bots).
 - Solo : chacun pour soi.
-- 2v2 / 3v3 : l'influence + la capture sont comptées par TEAM.
+- 2v2 / 3v3 : l'influence + la capture sont comptées par TEAM (dans le PLAY).
 - Objectif : posséder X territoires (config) ou fin des rounds.
 `;
+
+const INFO_MAPS = `CARTE (PAYS)
+- Le pays sélectionné définit la liste de zones/territoires.
+- 20 zones sont tirées de cette carte au début de la partie.
+- Le ticker affiché dépend du pays.`;
+
+const INFO_PLAYERS = `JOUEURS
+- Sélectionne les participants qui jouent cette partie.
+- Maximum 6 participants.
+- Tu peux ajouter des profils dans "Profils".
+- Tu peux aussi activer des bots (si disponibles).`;
+
+const INFO_TEAMS = `MODE ÉQUIPES
+- Solo : chacun pour soi.
+- 2v2 : chaque team = 2 joueurs.
+- 3v3 : chaque team = 3 joueurs.
+- Règle : le nombre de joueurs doit être un multiple de la taille d'équipe,
+  et il faut au minimum 2 teams (ex: 4 joueurs en 2v2, 6 joueurs en 3v3).`;
+
+const INFO_BOTS = `BOTS IA
+- Active pour compléter des places.
+- "Auto-complete" ajoute des bots jusqu'au minimum requis,
+  et tente d'atteindre un multiple correct en mode équipes.`;
 
 const MAP_ORDER = ["FR", "EN", "IT", "DE", "ES", "US", "CN", "AU", "JP", "RU", "WORLD"];
 const LS_BOTS_KEY = "dc_bots_v1";
@@ -47,11 +82,31 @@ const tickerGlob = import.meta.glob("../assets/tickers/ticker_territories_*.png"
   import: "default",
 }) as Record<string, string>;
 
+const flagGlob = import.meta.glob("../assets/flags/*.png", {
+  eager: true,
+  import: "default",
+}) as Record<string, string>;
+
 function findTerritoriesTicker(tickerId: string): string | null {
   const id = String(tickerId || "").toLowerCase();
   const suffix = `/ticker_territories_${id}.png`;
   for (const k of Object.keys(tickerGlob)) {
     if (k.toLowerCase().endsWith(suffix)) return tickerGlob[k];
+  }
+  return null;
+}
+
+function findFlag(id: string): string | null {
+  const code = String(id || "").toLowerCase();
+  for (const k of Object.keys(flagGlob)) {
+    const kl = k.toLowerCase();
+    if (kl.endsWith(`/${code}.png`)) return flagGlob[k];
+  }
+  // fallback: EN => GB si tu utilises GB.png
+  if (code === "en") {
+    for (const k of Object.keys(flagGlob)) {
+      if (k.toLowerCase().endsWith("/gb.png")) return flagGlob[k];
+    }
   }
   return null;
 }
@@ -102,41 +157,6 @@ function botToFakeProfile(b: BotLite) {
   } as any;
 }
 
-// ---------- Inline Info (simple modal)
-function InfoMini({
-  title,
-  content,
-  onOpen,
-}: {
-  title: string;
-  content: string;
-  onOpen: (t: string, c: string) => void;
-}) {
-  return (
-    <button
-      onClick={() => onOpen(title, content)}
-      style={{
-        width: 22,
-        height: 22,
-        borderRadius: "50%",
-        border: "1px solid rgba(255,255,255,0.14)",
-        background: "rgba(0,0,0,0.25)",
-        color: "#fff",
-        fontSize: 12,
-        fontWeight: 1000,
-        lineHeight: "22px",
-        textAlign: "center",
-        cursor: "pointer",
-        flexShrink: 0,
-      }}
-      aria-label="info"
-      title={title}
-    >
-      i
-    </button>
-  );
-}
-
 export default function DepartementsConfig(props: any) {
   const { t } = useLang();
   const theme = useTheme();
@@ -150,11 +170,14 @@ export default function DepartementsConfig(props: any) {
   }, []);
 
   const store = (props as any)?.store ?? (props as any)?.params?.store ?? null;
+  const storeProfiles: any[] = ((store as any)?.profiles || []) as any[];
+  const humanProfiles = storeProfiles.filter((p) => p && !isBotLike(p));
 
   const primary = (theme as any)?.primary ?? "#7dffca";
   const primarySoft = (theme as any)?.primarySoft ?? "rgba(125,255,202,0.16)";
+  const cardBg = "rgba(10, 12, 24, 0.96)";
 
-  // ---------- state
+  // ---------------- state
   const [mapId, setMapId] = React.useState<string>(() => "FR");
 
   const [teamSize, setTeamSize] = React.useState<1 | 2 | 3>(1);
@@ -163,7 +186,9 @@ export default function DepartementsConfig(props: any) {
   const [rounds, setRounds] = React.useState(12);
   const [objective, setObjective] = React.useState(10);
 
-  // selection
+  const maxPlayers = 6;
+  const minPlayers = teamSize === 1 ? 2 : teamSize * 2;
+
   const [selectedIds, setSelectedIds] = React.useState<string[]>(() => {
     try {
       const raw = localStorage.getItem("dc_modecfg_departements");
@@ -174,29 +199,26 @@ export default function DepartementsConfig(props: any) {
     return [];
   });
 
-  // Team assignment (Option A: Teams panel with slots)
+  // team assignment
   const [teamsById, setTeamsById] = React.useState<Record<string, number>>({});
   const [pendingId, setPendingId] = React.useState<string | null>(null);
-
-  // Inline info modal
-  const [infoModal, setInfoModal] = React.useState<{ title: string; content: string } | null>(null);
 
   // bots list
   const [userBots, setUserBots] = React.useState<BotLite[]>([]);
   React.useEffect(() => setUserBots(readUserBotsFromLS()), []);
-
-  // store profiles (humans)
-  const storeProfiles: any[] = ((store as any)?.profiles || []) as any[];
-  const humanProfiles = storeProfiles.filter((p) => p && !isBotLike(p));
-
-  const maxPlayers = 6;
-  const minPlayers = teamSize === 1 ? 2 : teamSize * 2;
 
   const maps: TerritoryMap[] = React.useMemo(() => {
     const list = MAP_ORDER.map((id) => TERRITORY_MAPS[id]).filter(Boolean);
     const extras = Object.values(TERRITORY_MAPS).filter((m) => !MAP_ORDER.includes(m.id));
     return [...list, ...extras];
   }, []);
+
+  const profileById = React.useMemo(() => {
+    const m = new Map<string, any>();
+    for (const p of storeProfiles) if (p?.id) m.set(String(p.id), p);
+    for (const b of userBots) m.set(String(b.id), botToFakeProfile(b));
+    return m;
+  }, [storeProfiles, userBots]);
 
   function goBack() {
     if ((props as any)?.go) return (props as any).go("games");
@@ -255,22 +277,22 @@ export default function DepartementsConfig(props: any) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [botsEnabled, userBots]);
 
-  // Derived teamsCount (2 minimum). For 6 players in 2v2 => 3 teams; for 6 players in 3v3 => 2 teams.
-  const neededTeams = React.useMemo(() => {
+  const teamsCount = React.useMemo(() => {
     if (teamSize === 1) return 0;
-    const n = Math.floor(selectedIds.length / teamSize);
-    return Math.max(2, n || 2);
+    const exact = Math.floor(selectedIds.length / teamSize);
+    return Math.max(2, exact || 2);
   }, [selectedIds.length, teamSize]);
 
-  // Team slots model
   const slots = React.useMemo(() => {
     if (teamSize === 1) return [];
-    const out: Array<Array<string | null>> = Array.from({ length: neededTeams }, () =>
+    const out: Array<Array<string | null>> = Array.from({ length: teamsCount }, () =>
       Array.from({ length: teamSize }, () => null)
     );
+
+    // place ids based on teamsById (first-come to first empty slot)
     for (const id of selectedIds) {
       const te = teamsById[id];
-      if (typeof te !== "number" || te < 0 || te >= neededTeams) continue;
+      if (typeof te !== "number" || te < 0 || te >= teamsCount) continue;
       for (let s = 0; s < teamSize; s++) {
         if (!out[te][s]) {
           out[te][s] = id;
@@ -279,7 +301,7 @@ export default function DepartementsConfig(props: any) {
       }
     }
     return out;
-  }, [teamSize, neededTeams, selectedIds, teamsById]);
+  }, [teamSize, teamsCount, selectedIds, teamsById]);
 
   const unassigned = React.useMemo(() => {
     if (teamSize === 1) return [];
@@ -288,9 +310,11 @@ export default function DepartementsConfig(props: any) {
     return selectedIds.filter((id) => !assigned.has(id));
   }, [slots, selectedIds, teamSize]);
 
-  function assignToTeam(teamIndex: number) {
+  function assignToTeam(teamIndex: number, slotIndex: number) {
     if (teamSize === 1) return;
     if (!pendingId) return;
+
+    // prevent overfill same team beyond teamSize by checking slot empty (caller ensures)
     setTeamsById((prev) => ({ ...prev, [pendingId]: teamIndex }));
     setPendingId(null);
   }
@@ -306,9 +330,12 @@ export default function DepartementsConfig(props: any) {
 
   function autoFillTeams() {
     if (teamSize === 1) return;
+
     const ids = [...unassigned];
     if (!ids.length) return;
-    for (let te = 0; te < neededTeams; te++) {
+
+    // Fill team by team, slot by slot
+    for (let te = 0; te < teamsCount; te++) {
       for (let s = 0; s < teamSize; s++) {
         if (slots[te]?.[s]) continue;
         if (!ids.length) return;
@@ -326,14 +353,14 @@ export default function DepartementsConfig(props: any) {
     setSelectedIds((prev) => {
       let next = [...prev];
 
-      // fill to minPlayers first
+      // reach minimum
       for (const id of botIds) {
         if (next.length >= maxPlayers) break;
         if (!next.includes(id)) next.push(id);
         if (next.length >= minPlayers) break;
       }
 
-      // if team mode, also ensure divisible by teamSize
+      // in teams mode, try to reach a proper multiple (without forcing max)
       while (teamSize > 1 && next.length < maxPlayers && next.length % teamSize !== 0) {
         const cand = botIds.find((id) => !next.includes(id));
         if (!cand) break;
@@ -351,14 +378,13 @@ export default function DepartementsConfig(props: any) {
     if (teamSize === 1) return true;
 
     if (selectedIds.length % teamSize !== 0) return false;
-    const teamsExact = selectedIds.length / teamSize;
-    if (teamsExact < 2) return false;
+    const exactTeams = selectedIds.length / teamSize;
+    if (exactTeams < 2) return false;
 
-    // Every selected id must be assigned and each team must have exactly teamSize members
-    const counts = Array.from({ length: teamsExact }, () => 0);
+    const counts = Array.from({ length: exactTeams }, () => 0);
     for (const id of selectedIds) {
       const te = teamsById[id];
-      if (typeof te !== "number" || te < 0 || te >= teamsExact) return false;
+      if (typeof te !== "number" || te < 0 || te >= exactTeams) return false;
       counts[te]++;
     }
     return counts.every((c) => c === teamSize);
@@ -385,15 +411,7 @@ export default function DepartementsConfig(props: any) {
     if ((props as any)?.setTab) return (props as any).setTab("departements_play", { config: payload });
   }
 
-  const cardBg = "rgba(10, 12, 24, 0.96)";
-
-  // Resolve profile by id (humans + bots)
-  const profileById = React.useMemo(() => {
-    const m = new Map<string, any>();
-    for (const p of storeProfiles) if (p?.id) m.set(String(p.id), p);
-    for (const b of userBots) m.set(String(b.id), botToFakeProfile(b));
-    return m;
-  }, [storeProfiles, userBots]);
+  const titleStyle: React.CSSProperties = { color: primary, fontWeight: 1100, letterSpacing: 0.6 };
 
   return (
     <div className="page">
@@ -401,70 +419,15 @@ export default function DepartementsConfig(props: any) {
         title="TERRITORIES"
         tickerSrc={tickerDepartements}
         left={<BackDot onClick={goBack} />}
-        right={<InfoDot title="Règles TERRITORIES" content={INFO_TEXT} />}
+        right={<InfoDot title="Règles TERRITORIES" content={INFO_RULES} />}
       />
 
-      {/* Inline info modal */}
-      {infoModal && (
-        <div
-          onClick={() => setInfoModal(null)}
-          style={{
-            position: "fixed",
-            inset: 0,
-            background: "rgba(0,0,0,0.55)",
-            zIndex: 60,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            padding: 16,
-          }}
-        >
-          <div
-            onClick={(e) => e.stopPropagation()}
-            style={{
-              width: "min(520px, 92vw)",
-              borderRadius: 18,
-              border: "1px solid rgba(255,255,255,0.14)",
-              background: "rgba(10,12,24,0.96)",
-              boxShadow: "0 24px 80px rgba(0,0,0,0.55)",
-              padding: 14,
-            }}
-          >
-            <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center" }}>
-              <div style={{ fontWeight: 1100, letterSpacing: 0.6 }}>{infoModal.title}</div>
-              <button
-                onClick={() => setInfoModal(null)}
-                style={{
-                  width: 30,
-                  height: 30,
-                  borderRadius: 999,
-                  border: "1px solid rgba(255,255,255,0.12)",
-                  background: "rgba(255,255,255,0.06)",
-                  color: "#fff",
-                  fontWeight: 1000,
-                  cursor: "pointer",
-                }}
-              >
-                ×
-              </button>
-            </div>
-            <div style={{ marginTop: 10, fontSize: 13, lineHeight: 1.35, opacity: 0.9, whiteSpace: "pre-wrap" }}>
-              {infoModal.content}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* MAPS CAROUSEL */}
+      {/* MAPS */}
       <Section
         title={
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <span>{t("territories.map", "Carte (pays)")}</span>
-            <InfoMini
-              title="Carte (pays)"
-              content={"La carte choisie définit la liste des territoires (zones) utilisés pendant la partie, et le ticker affiché."}
-              onOpen={(title, content) => setInfoModal({ title, content })}
-            />
+            <span style={titleStyle}>{t("territories.map", "Carte (pays)")}</span>
+            <InfoDot title="Carte (pays)" content={INFO_MAPS} />
           </div>
         }
       >
@@ -472,13 +435,15 @@ export default function DepartementsConfig(props: any) {
           {maps.map((m) => {
             const selected = m.id === mapId;
             const src = findTerritoriesTicker(m.tickerId);
+            const flag = findFlag(m.id);
+
             return (
               <button
                 key={m.id}
                 onClick={() => setMapId(m.id)}
                 style={{
-                  minWidth: 210,
-                  maxWidth: 210,
+                  minWidth: 240,
+                  maxWidth: 240,
                   textAlign: "left",
                   borderRadius: 16,
                   overflow: "hidden",
@@ -490,14 +455,53 @@ export default function DepartementsConfig(props: any) {
                   flexShrink: 0,
                 }}
               >
-                <div style={{ padding: 10 }}>
-                  <div style={{ fontSize: 12, opacity: 0.85, fontWeight: 950, letterSpacing: 0.6 }}>
-                    {m.id}{" "}
-                    {selected && (
-                      <span style={{ marginLeft: 8, fontSize: 11, opacity: 0.9, fontWeight: 950 }}>SELECTED</span>
-                    )}
+                {/* Flag + Name (same line) - no "SELECTED" */}
+                <div style={{ padding: 10, display: "flex", alignItems: "center", gap: 10 }}>
+                  {flag ? (
+                    <img
+                      src={flag}
+                      alt={`${m.id} flag`}
+                      draggable={false}
+                      style={{
+                        width: 28,
+                        height: 18,
+                        objectFit: "cover",
+                        borderRadius: 4,
+                        border: "1px solid rgba(255,255,255,0.14)",
+                        opacity: 0.95,
+                        flexShrink: 0,
+                      }}
+                    />
+                  ) : (
+                    <div
+                      style={{
+                        width: 28,
+                        height: 18,
+                        borderRadius: 4,
+                        border: "1px solid rgba(255,255,255,0.10)",
+                        background: "rgba(0,0,0,0.18)",
+                        flexShrink: 0,
+                      }}
+                    />
+                  )}
+
+                  <div style={{ minWidth: 0, flex: 1 }}>
+                    <div
+                      style={{
+                        fontSize: 14,
+                        fontWeight: 1100,
+                        opacity: 0.95,
+                        whiteSpace: "nowrap",
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                        lineHeight: 1.1,
+                      }}
+                    >
+                      {m.name}
+                    </div>
                   </div>
-                  <div style={{ marginTop: 4, fontSize: 16, fontWeight: 1000 }}>{m.name}</div>
+
+                  <div style={{ fontSize: 11, opacity: 0.7, fontWeight: 950, marginLeft: 6 }}>{m.id}</div>
                 </div>
 
                 <div style={{ padding: 10, paddingTop: 0 }}>
@@ -537,14 +541,8 @@ export default function DepartementsConfig(props: any) {
       <Section
         title={
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <span>{t("config.players", "Joueurs")}</span>
-            <InfoMini
-              title="Joueurs"
-              content={
-                "Sélectionne les participants (jusqu'à 6).\n\nEn mode équipes :\n1) Clique un joueur sélectionné pour le mettre 'en attente'\n2) Clique un slot vide dans TEAMS."
-              }
-              onOpen={(title, content) => setInfoModal({ title, content })}
-            />
+            <span style={titleStyle}>{t("config.players", "Joueurs")}</span>
+            <InfoDot title="Joueurs" content={INFO_PLAYERS} />
           </div>
         }
       >
@@ -552,7 +550,7 @@ export default function DepartementsConfig(props: any) {
           <div style={{ fontSize: 12, opacity: 0.85, fontWeight: 950 }}>
             Sélection : {selectedIds.length}/{maxPlayers} — min {minPlayers}
             {teamSize > 1 && selectedIds.length > 0 && selectedIds.length % teamSize !== 0 && (
-              <span style={{ marginLeft: 10, opacity: 0.9 }}>(doit être multiple de {teamSize})</span>
+              <span style={{ marginLeft: 10, opacity: 0.9 }}>(multiple de {teamSize})</span>
             )}
           </div>
           <button className="btn-secondary" onClick={goProfiles}>
@@ -560,7 +558,6 @@ export default function DepartementsConfig(props: any) {
           </button>
         </div>
 
-        {/* Human carousel */}
         {humanProfiles.length === 0 ? (
           <p style={{ fontSize: 13, color: "#b3b8d0", marginTop: 10, marginBottom: 0 }}>
             Aucun profil local. Crée des joueurs dans <b>Profils</b>.
@@ -580,6 +577,7 @@ export default function DepartementsConfig(props: any) {
             {humanProfiles.map((p: any) => {
               const active = selectedIds.includes(p.id);
               const isPending = pendingId === p.id;
+
               return (
                 <div
                   key={p.id}
@@ -668,67 +666,58 @@ export default function DepartementsConfig(props: any) {
         )}
 
         {/* Mode équipes */}
-        <div style={{ marginTop: 8 }}>
-          <OptionRow
-            label={
-              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                <span>Mode équipes</span>
-                <InfoMini
-                  title="Mode équipes"
-                  content={"Solo : chacun pour soi.\n2v2 / 3v3 : influence par team. Ensuite, place les joueurs dans TEAMS."}
-                  onOpen={(title, content) => setInfoModal({ title, content })}
-                />
-              </div>
-            }
-          >
-            <OptionSelect
-              value={teamSize}
-              options={[
-                { value: 1, label: "Solo" },
-                { value: 2, label: "2 v 2" },
-                { value: 3, label: "3 v 3" },
-              ]}
-              onChange={(v: any) => {
-                const next = clampTeamSize(v);
-                setTeamSize(next);
-                setTeamsById({});
-                setPendingId(null);
-              }}
-            />
-          </OptionRow>
-        </div>
+        <OptionRow
+          label={
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <span style={{ fontWeight: 1000 }}>Mode équipes</span>
+              <InfoDot title="Mode équipes" content={INFO_TEAMS} />
+            </div>
+          }
+        >
+          <OptionSelect
+            value={teamSize}
+            options={[
+              { value: 1, label: "Solo" },
+              { value: 2, label: "2 v 2" },
+              { value: 3, label: "3 v 3" },
+            ]}
+            onChange={(v: any) => {
+              const next = clampTeamSize(v);
+              setTeamSize(next);
+              setTeamsById({});
+              setPendingId(null);
+            }}
+          />
+        </OptionRow>
 
-        {/* Option A: TEAMS PANEL */}
+        {/* TEAMS PANEL — STRUCTURE ONLY (no avatars, no overflow) */}
         {teamSize > 1 && (
           <div style={{ marginTop: 12 }}>
             <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center" }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                <div style={{ fontWeight: 1100, letterSpacing: 0.6 }}>TEAMS</div>
-                <InfoMini
-                  title="TEAMS"
-                  content={
-                    "1) Clique un joueur (bouton 'Assigner') pour le mettre en attente\n2) Clique un slot vide pour l'ajouter à une team\n\nChaque Team doit avoir exactement " +
-                    teamSize +
-                    " joueurs."
-                  }
-                  onOpen={(title, content) => setInfoModal({ title, content })}
-                />
-              </div>
+              <div style={{ fontWeight: 1100, letterSpacing: 0.6, color: primary }}>TEAMS</div>
               <button className="btn-secondary" onClick={autoFillTeams}>
                 Auto-fill
               </button>
             </div>
 
-            {pendingId && (
-              <div style={{ marginTop: 10, fontSize: 12, opacity: 0.9, fontWeight: 950 }}>
-                Joueur en attente :{" "}
-                <span style={{ color: primary }}>{(profileById.get(pendingId)?.name as string) || pendingId}</span> — clique
-                un slot vide.
-              </div>
-            )}
+            <div style={{ marginTop: 8, fontSize: 12, opacity: 0.82, fontWeight: 900 }}>
+              1) Clique “Assigner” sous un joueur • 2) Clique un slot vide • 3) Chaque team = {teamSize} joueurs.
+            </div>
+
+            <div style={{ marginTop: 10, fontSize: 12, opacity: 0.92, fontWeight: 950 }}>
+              {pendingId ? (
+                <>
+                  Joueur à assigner :{" "}
+                  <span style={{ color: primary }}>{(profileById.get(pendingId)?.name as string) || pendingId}</span>{" "}
+                  — clique un slot vide.
+                </>
+              ) : (
+                <>Sélectionne un joueur puis clique “Assigner”.</>
+              )}
+            </div>
 
             <div style={{ marginTop: 10, display: "grid", gridTemplateColumns: "repeat(2, minmax(0,1fr))", gap: 10 }}>
-              {Array.from({ length: Math.max(2, Math.floor(selectedIds.length / teamSize) || 2) }, (_, te) => te).map((te) => {
+              {Array.from({ length: teamsCount }, (_, te) => te).map((te) => {
                 const teamSlots = slots[te] || Array.from({ length: teamSize }, () => null);
                 const filled = teamSlots.filter(Boolean).length;
                 const ok = filled === teamSize;
@@ -762,12 +751,13 @@ export default function DepartementsConfig(props: any) {
                       {teamSlots.map((id, sIdx) => {
                         const isEmpty = !id;
                         const p = id ? profileById.get(id) : null;
+                        const name = (p?.name as string) || id || "—";
 
                         return (
                           <button
                             key={sIdx}
                             onClick={() => {
-                              if (isEmpty) return assignToTeam(te);
+                              if (isEmpty) return assignToTeam(te, sIdx);
                               setPendingId(id);
                             }}
                             style={{
@@ -776,31 +766,34 @@ export default function DepartementsConfig(props: any) {
                               border: isEmpty ? "1px dashed rgba(255,255,255,0.22)" : "1px solid rgba(255,255,255,0.12)",
                               background: isEmpty ? "rgba(0,0,0,0.18)" : "rgba(255,255,255,0.06)",
                               cursor: isEmpty ? (pendingId ? "pointer" : "not-allowed") : "pointer",
-                              minHeight: 96,
+                              minHeight: 72,
+                              display: "flex",
+                              flexDirection: "column",
+                              justifyContent: "center",
+                              alignItems: "center",
+                              gap: 8,
                             }}
-                            title={
-                              isEmpty ? (pendingId ? "Clique pour assigner" : "Sélectionne un joueur d'abord") : "Clique pour sélectionner ce joueur"
-                            }
+                            title={isEmpty ? (pendingId ? "Clique pour assigner" : "Sélectionne un joueur d'abord") : "Clique pour sélectionner ce joueur"}
                           >
                             {isEmpty ? (
-                              <div style={{ opacity: 0.8, fontWeight: 950, fontSize: 12 }}>Slot vide</div>
+                              <div style={{ opacity: 0.85, fontWeight: 950, fontSize: 12, textAlign: "center" }}>
+                                Slot {sIdx + 1}
+                              </div>
                             ) : (
-                              <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 6 }}>
-                                <div style={{ width: 52, height: 52, borderRadius: "50%", overflow: "hidden" }}>
-                                  <ProfileAvatar profile={p as any} size={52} showStars={false} />
-                                </div>
+                              <>
                                 <div
                                   style={{
                                     fontSize: 12,
-                                    fontWeight: 900,
-                                    maxWidth: "100%",
+                                    fontWeight: 1000,
+                                    opacity: 0.95,
+                                    textAlign: "center",
+                                    whiteSpace: "nowrap",
                                     overflow: "hidden",
                                     textOverflow: "ellipsis",
-                                    whiteSpace: "nowrap",
-                                    opacity: 0.95,
+                                    width: "100%",
                                   }}
                                 >
-                                  {p?.name || id}
+                                  {name}
                                 </div>
                                 <button
                                   onClick={(e) => {
@@ -820,7 +813,7 @@ export default function DepartementsConfig(props: any) {
                                 >
                                   Retirer
                                 </button>
-                              </div>
+                              </>
                             )}
                           </button>
                         );
@@ -839,7 +832,7 @@ export default function DepartementsConfig(props: any) {
           </div>
         )}
 
-        {/* Bots */}
+        {/* BOTS */}
         <div
           style={{
             marginTop: 12,
@@ -852,12 +845,8 @@ export default function DepartementsConfig(props: any) {
           <OptionRow
             label={
               <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                <span>Bots IA</span>
-                <InfoMini
-                  title="Bots IA"
-                  content={"Active les bots pour compléter tes teams. Utilise 'Auto-complete' pour compléter automatiquement la sélection."}
-                  onOpen={(title, content) => setInfoModal({ title, content })}
-                />
+                <span style={{ fontWeight: 1000 }}>Bots IA</span>
+                <InfoDot title="Bots IA" content={INFO_BOTS} />
               </div>
             }
           >
@@ -894,6 +883,7 @@ export default function DepartementsConfig(props: any) {
                   {userBots.map((b) => {
                     const active = selectedIds.includes(b.id);
                     const fakeProfile = botToFakeProfile(b);
+
                     return (
                       <div
                         key={b.id}
@@ -923,6 +913,7 @@ export default function DepartementsConfig(props: any) {
                             justifyContent: "center",
                             cursor: "pointer",
                           }}
+                          title={active ? "Clique pour retirer" : "Clique pour ajouter"}
                         >
                           <div
                             style={{
@@ -932,7 +923,6 @@ export default function DepartementsConfig(props: any) {
                               overflow: "hidden",
                               filter: active ? "none" : "grayscale(100%) brightness(0.55)",
                               opacity: active ? 1 : 0.6,
-                              transition: "filter .2s ease, opacity .2s ease",
                             }}
                           >
                             <ProfileAvatar profile={fakeProfile} size={78} showStars={false} />
@@ -965,21 +955,16 @@ export default function DepartementsConfig(props: any) {
         {!selectionValid && (
           <div style={{ marginTop: 10, fontSize: 12, opacity: 0.9, fontWeight: 950 }}>
             Configuration invalide : sélectionne {minPlayers} joueurs minimum
-            {teamSize > 1 ? `, multiple de ${teamSize}, et remplis toutes les teams.` : "."}
+            {teamSize > 1 ? `, un multiple de ${teamSize}, et remplis toutes les teams.` : "."}
           </div>
         )}
       </Section>
 
-      {/* Rules */}
+      {/* RULES */}
       <Section
         title={
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <span>{t("config.rules", "Règles")}</span>
-            <InfoMini
-              title="Règles"
-              content={"Rounds = nombre de tours maximum. Objectif = territoires à posséder pour gagner."}
-              onOpen={(title, content) => setInfoModal({ title, content })}
-            />
+            <span style={titleStyle}>{t("config.rules", "Règles")}</span>
           </div>
         }
       >
@@ -992,6 +977,7 @@ export default function DepartementsConfig(props: any) {
         </OptionRow>
       </Section>
 
+      {/* START */}
       <Section>
         <button className="btn-primary w-full" onClick={start} disabled={!selectionValid}>
           {t("config.startGame", "Démarrer la partie")}
