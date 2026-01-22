@@ -2622,6 +2622,7 @@ try {
           <div style={{ display: "flex", flexDirection: "column", overflow: "hidden" }}>
             <div style={{ flex: "0 0 auto" }}>
               <HeaderBlock
+                compact={true}
                 currentPlayer={activePlayer}
                 currentAvatar={
                   activePlayer ? profileById[activePlayer.id]?.avatarDataUrl ?? null : null
@@ -2640,7 +2641,7 @@ try {
               />
             </div>
 
-            <div style={{ flex: 1, overflowY: "auto", paddingTop: 10 }}>
+            <div style={{ flex: 1, overflowY: "auto", paddingTop: 6 }}>
               <PlayersListOnly
                 cameraOpen={cameraOpen}
                 setCameraOpen={setCameraOpen}
@@ -3254,8 +3255,10 @@ function HeaderBlock(props: {
   legsWon: Record<string, number>;
   setsWon: Record<string, number>;
   checkoutText: string | null;
+  compact?: boolean;
 }) {
   const {
+    compact = false,
     currentPlayer,
     currentAvatar,
     currentRemaining,
@@ -3315,8 +3318,8 @@ function HeaderBlock(props: {
         >
           <div
             style={{
-              width: 96,
-              height: 96,
+              width: avatarSize,
+              height: avatarSize,
               borderRadius: "50%",
               overflow: "hidden",
               background:
@@ -3414,7 +3417,7 @@ function HeaderBlock(props: {
           {/* SCORE CENTRAL */}
           <div
             style={{
-              fontSize: 64,
+              fontSize: scoreSize,
               fontWeight: 900,
               color: "#ffcf57",
               textShadow: "0 4px 18px rgba(255,195,26,.25)",

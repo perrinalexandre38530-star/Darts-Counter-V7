@@ -10,6 +10,7 @@ import React from "react";
 import Keypad from "./Keypad";
 import DartboardClickable from "./DartboardClickable";
 import ScorePresetsBar from "./ScorePresetsBar";
+import { useViewport } from "../hooks/useViewport";
 import type { Dart as UIDart } from "../lib/types";
 import { SCORE_INPUT_LS_KEY, type ScoreInputMethod } from "../lib/scoreInput/types";
 
@@ -155,6 +156,7 @@ export default function ScoreInputHub({
   };
 
   const devEnabled = safeReadDevModeEnabled();
+  const { isLandscapeTablet } = useViewport();
   const [method, setMethod] = React.useState<ScoreInputMethod>(safeReadMethod);
 
   // En prod: seules KEYPAD + CIBLE sont officiellement utilisables.
@@ -197,10 +199,19 @@ export default function ScoreInputHub({
 
   const contentBoxStyle: React.CSSProperties = baseContentHeight > 0 ? { minHeight: baseContentHeight } : undefined;
 
+  // En paysage tablette, la barre de sélection (KEYPAD/CIBLE...) ne doit pas pousser le contenu.
+  const topPad = isLandscapeTablet && switcherMode !== "hidden" ? 60 : 0;
+
   return (
-    <div>
+    <div style={isLandscapeTablet ? { position: "relative", height: "100%", minHeight: 0, overflow: "hidden" } : undefined}>
       {switcherMode !== "hidden" && (
-        <div style={{ marginBottom: 10 }}>
+        <div
+          style={
+            isLandscapeTablet
+              ? { position: "absolute", top: 8, left: 10, right: 10, zIndex: 20, marginBottom: 0 }
+              : { marginBottom: 10 }
+          }
+        >
           {switcherMode === "drawer" && (
             <div style={{ display: "flex", justifyContent: "flex-end" }}>
               <button
@@ -238,7 +249,7 @@ export default function ScoreInputHub({
 
       {/* CIBLE */}
       {method === "dartboard" ? (
-        <div style={{ paddingBottom: 6, ...contentBoxStyle }}>
+        <div style={{ paddingTop: topPad, paddingBottom: 6, height: "100%", minHeight: 0, overflow: "hidden", ...(contentBoxStyle || {}) }}>
           <div style={{ display: "flex", justifyContent: "center", marginBottom: 8 }}>
             <DartboardClickable
               size={230}
@@ -308,7 +319,7 @@ export default function ScoreInputHub({
 
       {/* PRESETS */}
       {method === "presets" && allowPresets ? (
-        <div style={{ paddingBottom: 2, ...contentBoxStyle }}>
+        <div style={{ paddingTop: topPad, paddingBottom: 2, height: "100%", minHeight: 0, overflow: "hidden", ...(contentBoxStyle || {}) }}>
           <ScorePresetsBar
             disabled={disabled}
             currentCount={(currentThrow || []).length}
@@ -332,7 +343,14 @@ export default function ScoreInputHub({
 
       {/* Méthode principale (Keypad + placeholders) */}
       {method === "keypad" || method === "presets" || method === "voice" || method === "auto" || method === "ai" ? (
-        <div ref={method === "keypad" ? contentMeasureRef : undefined} style={contentBoxStyle}>
+        <div
+          ref={method === "keypad" ? contentMeasureRef : undefined}
+          style={
+            isLandscapeTablet
+              ? { paddingTop: topPad, height: "100%", minHeight: 0, overflow: "hidden", ...(contentBoxStyle || {}) }
+              : contentBoxStyle
+          }
+        >
           {(method === "voice" || method === "auto" || method === "ai") && showPlaceholders ? (
             <PlaceholderCard method={method} />
           ) : null}
