@@ -1,53 +1,58 @@
 // ============================================
 // src/hooks/useViewport.ts
-// Viewport helper (tablet landscape layout)
-// - Centralise w/h + orientation flags
-// - Avoids fixed overlays on low-height landscape screens
+// Viewport helper (responsive)
+// - Provides isLandscapeTablet to adapt Play layouts on tablets.
 // ============================================
 
-import * as React from "react";
+import { useEffect, useMemo, useState } from "react";
 
-export type ViewportInfo = {
-  w: number;
-  h: number;
-  isLandscape: boolean;
-  isTablet: boolean;
-  /** True when we want the dedicated 2-column layout */
-  isLandscapeTablet: boolean;
-};
+type Viewport = { w: number; h: number };
 
-function getViewport(): { w: number; h: number } {
-  if (typeof window === "undefined") return { w: 1024, h: 768 };
-  return {
-    w: Math.max(0, window.innerWidth || 0),
-    h: Math.max(0, window.innerHeight || 0),
-  };
+function getViewport(): Viewport {
+  if (typeof window === "undefined") return { w: 0, h: 0 };
+  return { w: window.innerWidth || 0, h: window.innerHeight || 0 };
 }
 
-/**
- * Viewport hook designed for play-screens.
- *
- * Notes:
- * - We use a simple, predictable breakpoint (>= 900px) for tablets.
- * - We rely on w>h for landscape.
- */
-export function useViewport(minTabletWidth = 900): ViewportInfo {
-  const [{ w, h }, setVp] = React.useState(getViewport);
+export function useViewport() {
+  const [vp, setVp] = useState<Viewport>(() => getViewport());
 
-  React.useEffect(() => {
+  useEffect(() => {
     if (typeof window === "undefined") return;
-    const onResize = () => setVp(getViewport());
-    window.addEventListener("resize", onResize);
-    window.addEventListener("orientationchange", onResize);
+
+    let raf = 0;
+    const onResize = () => {
+      if (raf) cancelAnimationFrame(raf);
+      raf = requestAnimationFrame(() => setVp(getViewport()));
+    };
+
+    window.addEventListener("resize", onResize, { passive: true } as any);
+    window.addEventListener("orientationchange", onResize, { passive: true } as any);
+
     return () => {
-      window.removeEventListener("resize", onResize);
-      window.removeEventListener("orientationchange", onResize);
+      if (raf) cancelAnimationFrame(raf);
+      window.removeEventListener("resize", onResize as any);
+      window.removeEventListener("orientationchange", onResize as any);
     };
   }, []);
 
-  const isLandscape = w > h;
-  const isTablet = w >= minTabletWidth;
+  const isLandscape = vp.w > vp.h;
+
+  // Tablet heuristic in CSS pixels:
+  // - Many Android tablets report 800..1200px in landscape (CSS pixels).
+  // - We keep the threshold intentionally moderate to catch "small tablets"
+  //   without impacting phones.
+  const isTablet = vp.w >= 740;
+
   const isLandscapeTablet = isLandscape && isTablet;
 
-  return { w, h, isLandscape, isTablet, isLandscapeTablet };
+  return useMemo(
+    () => ({
+      w: vp.w,
+      h: vp.h,
+      isLandscape,
+      isTablet,
+      isLandscapeTablet,
+    }),
+    [vp.w, vp.h, isLandscape, isTablet, isLandscapeTablet]
+  );
 }

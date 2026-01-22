@@ -7,6 +7,7 @@
 // =============================================================
 
 import React from "react";
+import { useViewport } from "../hooks/useViewport";
 
 import type {
   X01ConfigV3,
@@ -800,6 +801,7 @@ export default function X01Play({
   onShowSummary,
   onReplayNewConfig,
 }: Props) {
+  const { isLandscapeTablet } = useViewport();
   const { theme } = useTheme();
 
   // ✅ IMPORTANT : on récupère aussi la langue courante de l’app
@@ -2486,9 +2488,9 @@ try {
       <div
         ref={headerWrapRef}
         style={{
-          position: "fixed",
-          left: "50%",
-          transform: "translateX(-50%)",
+          position: isLandscapeTablet ? "sticky" : "fixed",
+          left: isLandscapeTablet ? "auto" : "50%",
+          transform: isLandscapeTablet ? "none" : "translateX(-50%)",
           top: 0,
           zIndex: 60,
           width: `min(100%, ${CONTENT_MAX}px)`,
@@ -2592,10 +2594,11 @@ try {
       {/* ZONE JOUEURS — SCROLLABLE ENTRE HEADER ET KEYPAD */}
       <div
         style={{
-          position: "fixed",
-          left: "50%",
-          transform: "translateX(-50%)",
-          top: headerH,
+          position: isLandscapeTablet ? "relative" : "fixed",
+          left: isLandscapeTablet ? "auto" : "50%",
+          transform: isLandscapeTablet ? "none" : "translateX(-50%)",
+          top: isLandscapeTablet ? "auto" : headerH,
+          marginTop: isLandscapeTablet ? 10 : 0,
           bottom: NAV_HEIGHT + keypadH + 8,
           width: `min(100%, ${CONTENT_MAX}px)`,
           paddingInline: 10,
@@ -2624,10 +2627,10 @@ try {
       <div
         ref={keypadWrapRef}
         style={{
-          position: "fixed",
-          left: "50%",
-          transform: "translateX(-50%)",
-          bottom: NAV_HEIGHT,
+          position: isLandscapeTablet ? "sticky" : "fixed",
+          left: isLandscapeTablet ? "auto" : "50%",
+          transform: isLandscapeTablet ? "none" : "translateX(-50%)",
+          bottom: isLandscapeTablet ? 0 : NAV_HEIGHT,
           zIndex: 45,
           padding: "0 10px 4px",
           width: `min(100%, ${CONTENT_MAX}px)`,
