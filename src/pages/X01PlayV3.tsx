@@ -806,11 +806,11 @@ export default function X01PlayV3({
 }: Props) {
   const { theme } = useTheme();
 
+  // ✅ Responsive flags (tablet landscape layout)
+  const { isLandscapeTablet } = useViewport(900);
+
   // ✅ IMPORTANT : on récupère aussi la langue courante de l’app
   const { t, lang } = useLang() as any;
-
-  // ✅ Viewport: layout spécifique paysage tablette
-  const { isLandscapeTablet } = useViewport();
 
   // =====================================================
   // 🔓 UNLOCK AUDIO (réutilisable)
@@ -2535,45 +2535,50 @@ try {
   // =====================================================
 
   // =====================================================
-  // ✅ Layout spécial : paysage tablette (grille 2 colonnes)
-  // - évite les chevauchements (header/score/panels/boutons)
-  // - conserve le layout portrait existant en dessous
+  // ✅ Layout dédié TABLETTE PAYSAGE
+  // - On évite les overlays en `position: fixed` (header/players/keypad)
+  // - Grille 2 colonnes : joueurs à gauche, score+saisie à droite
+  // - Les boutons Annuler/Valider restent dans la zone de saisie (ScoreInputHub)
   // =====================================================
+
   if (isLandscapeTablet) {
     return (
       <div
         className={`x01play-container theme-${theme.id}`}
         style={{
-          height: "100dvh",
           minHeight: "100dvh",
+          height: "100dvh",
           overflow: "hidden",
           display: "flex",
           flexDirection: "column",
+          paddingBottom: NAV_HEIGHT,
         }}
       >
-        {/* TOP BAR (sticky) */}
+        {/* HEADER (sticky) */}
         <div
           ref={headerWrapRef}
           style={{
             position: "sticky",
             top: 0,
             zIndex: 60,
-            padding: "6px 10px 8px",
+            width: "100%",
+            padding: "4px 10px",
             background:
-              "linear-gradient(180deg, rgba(10,10,12,.92), rgba(10,10,12,.55))",
-            backdropFilter: "blur(10px)",
-            borderBottom: "1px solid rgba(255,255,255,.06)",
+              "linear-gradient(180deg, rgba(0,0,0,.55), rgba(0,0,0,0))",
+            backdropFilter: "blur(6px)",
           }}
         >
+          {/* Barre haute */}
           <div
             style={{
               display: "flex",
               justifyContent: "space-between",
               alignItems: "center",
-              width: "100%",
-              gap: 10,
+              width: "min(100%, 1200px)",
+              margin: "0 auto 6px",
             }}
           >
+            {/* BOUTON QUITTER */}
             <button
               onClick={handleQuit}
               style={{
@@ -2591,19 +2596,30 @@ try {
               ← {t("common.quit", "Quitter")}
             </button>
 
-            <div style={{ flex: 1, display: "flex", justifyContent: "center" }}>
-              {isDuel && useSetsUi && (
+            {/* HEADER COMPACT (AVATARS + SCORE) */}
+            <div
+              style={{
+                flex: 1,
+                display: "flex",
+                justifyContent: "center",
+                alignItems: "center",
+                paddingInline: 8,
+              }}
+            >
+              {players?.length === 2 ? (
                 <DuelHeaderCompact
-                  leftAvatarUrl={profileById[players[0].id]?.avatarDataUrl ?? ""}
-                  rightAvatarUrl={profileById[players[1].id]?.avatarDataUrl ?? ""}
-                  leftSets={(state as any).setsWon?.[players[0].id] ?? 0}
-                  rightSets={(state as any).setsWon?.[players[1].id] ?? 0}
+                  left={players[0]}
+                  right={players[1]}
+                  leftAvatar={profileById[players[0].id]?.avatarDataUrl ?? null}
+                  rightAvatar={profileById[players[1].id]?.avatarDataUrl ?? null}
+                  activeId={activePlayerId}
                   leftLegs={(state as any).legsWon?.[players[0].id] ?? 0}
                   rightLegs={(state as any).legsWon?.[players[1].id] ?? 0}
                 />
-              )}
+              ) : null}
             </div>
 
+            {/* CAPSULE SET / LEG */}
             <SetLegChip
               currentSet={(state as any).currentSet ?? 1}
               currentLegInSet={(state as any).currentLeg ?? 1}
@@ -2617,17 +2633,24 @@ try {
         {/* MAIN GRID */}
         <div
           style={{
-            flex: 1,
-            overflow: "hidden",
+            flex: "1 1 auto",
+            minHeight: 0,
+            width: "min(100%, 1200px)",
+            margin: "0 auto",
+            padding: "8px 10px 10px",
             display: "grid",
-            gridTemplateColumns: "minmax(340px, 420px) 1fr",
+            gridTemplateColumns: "360px 1fr",
             gap: 12,
-            padding: 10,
-            paddingBottom: NAV_HEIGHT + 8,
           }}
         >
-          {/* LEFT: liste joueurs / classement */}
-          <div style={{ overflowY: "auto", paddingRight: 2 }}>
+          {/* LEFT: players list */}
+          <div
+            style={{
+              minHeight: 0,
+              overflowY: "auto",
+              paddingRight: 2,
+            }}
+          >
             <PlayersListOnly
               cameraOpen={cameraOpen}
               setCameraOpen={setCameraOpen}
@@ -2645,13 +2668,22 @@ try {
             />
           </div>
 
-          {/* RIGHT: score + saisie */}
-          <div style={{ overflowY: "auto", display: "flex", flexDirection: "column", gap: 10 }}>
-            <div style={{ maxWidth: 980, margin: "0 auto", width: "100%" }}>
+          {/* RIGHT: score + input */}
+          <div
+            style={{
+              minHeight: 0,
+              display: "flex",
+              flexDirection: "column",
+              gap: 10,
+            }}
+          >
+            <div style={{ width: "100%" }}>
               <HeaderBlock
                 currentPlayer={activePlayer}
                 currentAvatar={
-                  activePlayer ? profileById[activePlayer.id]?.avatarDataUrl ?? null : null
+                  activePlayer
+                    ? profileById[activePlayer.id]?.avatarDataUrl ?? null
+                    : null
                 }
                 currentRemaining={currentScore}
                 currentThrow={currentThrow}
@@ -2667,12 +2699,15 @@ try {
               />
             </div>
 
+            {/* KEYPAD / INPUT (sticky bottom inside right column) */}
             <div
               ref={keypadWrapRef}
               style={{
-                width: "100%",
-                maxWidth: 980,
-                margin: "0 auto",
+                marginTop: "auto",
+                position: "sticky",
+                bottom: NAV_HEIGHT,
+                zIndex: 45,
+                paddingBottom: 4,
               }}
             >
               {isBotTurn ? (
@@ -2689,7 +2724,7 @@ try {
                     boxShadow: "0 10px 24px rgba(0,0,0,.5)",
                   }}
                 >
-                  🤖 {activePlayer?.name ?? t("x01v3.bot.name", "BOT")}{" "}
+                  🤖 {activePlayer?.name ?? t("x01v3.bot.name", "BOT")} {" "}
                   {t("x01v3.bot.playing", "joue son tour...")}
                 </div>
               ) : scoringSource === "external" ? (
@@ -2713,7 +2748,13 @@ try {
                       "Les fléchettes sont injectées automatiquement (Scolia/bridge)."
                     )}
                     {canUseCameraAssisted && (
-                      <div style={{ marginTop: 10, display: "flex", justifyContent: "center" }}>
+                      <div
+                        style={{
+                          marginTop: 10,
+                          display: "flex",
+                          justifyContent: "center",
+                        }}
+                      >
                         <button
                           type="button"
                           onClick={() => setCameraOpen(true)}
@@ -2751,17 +2792,33 @@ try {
                     opacity: isBustLocked ? 0.92 : 1,
                   }}
                 >
-                  {/* VOICE SCORE HUD (si actif) */}
-                  {voiceScoreEnabled && scoringSource !== "external" && (
+                  {isBustLocked ? (
+                    <div
+                      style={{
+                        marginBottom: 6,
+                        textAlign: "center",
+                        fontWeight: 900,
+                        letterSpacing: 0.6,
+                        color: "#ff6b6b",
+                        textShadow: "0 0 14px rgba(255,90,90,.35)",
+                      }}
+                    >
+                      BUST — {t("x01v3.bust.lock", "Saisie bloquée")}
+                    </div>
+                  ) : null}
+
+                  {voiceScoreEnabled &&
+                  scoringSource !== "external" &&
+                  voiceScore.phase !== "OFF" &&
+                  !isBotTurn ? (
                     <div
                       style={{
                         marginBottom: 8,
+                        padding: "8px 10px",
                         borderRadius: 14,
                         border: "1px solid rgba(255,255,255,0.10)",
-                        background:
-                          "linear-gradient(180deg, rgba(14,14,18,.92), rgba(8,8,10,.96))",
-                        padding: "8px 10px",
-                        boxShadow: "0 10px 24px rgba(0,0,0,.45)",
+                        background: "rgba(0,0,0,0.25)",
+                        boxShadow: "0 10px 24px rgba(0,0,0,0.45)",
                       }}
                     >
                       <div
@@ -2819,7 +2876,7 @@ try {
                         </div>
                       ) : null}
                     </div>
-                  )}
+                  ) : null}
 
                   <div
                     style={{
@@ -2870,37 +2927,34 @@ try {
         </div>
 
         {/* OVERLAYS */}
-      {/* OVERLAY FIN DE MANCHE / SET / MATCH (V3) */}
-      <X01LegOverlayV3
-        open={
-          status === "leg_end" ||
-          status === "set_end" ||
-          status === "match_end"
-        }
-        status={status}
-        config={config}
-        state={state}
-        liveStatsByPlayer={liveStatsByPlayer}
-        onNextLeg={startNextLeg}
-        onExitMatch={handleQuit}
-        onReplaySameConfig={handleReplaySameConfig}
-        onReplayNewConfig={handleReplayNewConfigInternal}
-        onShowSummary={handleShowSummary}
-        onContinueMulti={players.length >= 3 ? handleContinueMulti : undefined}
-      />
+        <X01LegOverlayV3
+          open={
+            status === "leg_end" ||
+            status === "set_end" ||
+            status === "match_end"
+          }
+          status={status}
+          config={config}
+          state={state}
+          liveStatsByPlayer={liveStatsByPlayer}
+          onNextLeg={startNextLeg}
+          onExitMatch={handleQuit}
+          onReplaySameConfig={handleReplaySameConfig}
+          onReplayNewConfig={handleReplayNewConfigInternal}
+          onShowSummary={handleShowSummary}
+          onContinueMulti={players.length >= 3 ? handleContinueMulti : undefined}
+        />
 
-      {/* OVERLAY RÉSUMÉ — gros tableau + graphs */}
-      <EndOfLegOverlay
-        open={summaryOpen && !!summaryLegStats}
-        result={summaryLegStats}
-        playersById={summaryPlayersById}
-        onClose={() => setSummaryOpen(false)}
-        onReplay={handleReplaySameConfig}
-      />
+        <EndOfLegOverlay
+          open={summaryOpen && !!summaryLegStats}
+          result={summaryLegStats}
+          playersById={summaryPlayersById}
+          onClose={() => setSummaryOpen(false)}
+          onReplay={handleReplaySameConfig}
+        />
       </div>
     );
   }
-
 
   return (
     <div
@@ -4503,3 +4557,4 @@ function saveX01V3MatchToHistory({
     );
   }
 }
+

@@ -1,60 +1,53 @@
 // ============================================
 // src/hooks/useViewport.ts
-// Viewport helpers (orientation / tablet)
-// - Utilisé pour adapter les pages Play en paysage tablette
-// - Client-side only
+// Viewport helper (tablet landscape layout)
+// - Centralise w/h + orientation flags
+// - Avoids fixed overlays on low-height landscape screens
 // ============================================
 
 import * as React from "react";
 
-type Options = {
-  /** Largeur mini (px) pour considérer un affichage "tablette" */
-  tabletMinWidth?: number;
-};
-
 export type ViewportInfo = {
-  width: number;
-  height: number;
+  w: number;
+  h: number;
   isLandscape: boolean;
   isTablet: boolean;
+  /** True when we want the dedicated 2-column layout */
   isLandscapeTablet: boolean;
 };
 
-function readViewport(): { width: number; height: number } {
-  if (typeof window === "undefined") return { width: 0, height: 0 };
-  return { width: window.innerWidth || 0, height: window.innerHeight || 0 };
+function getViewport(): { w: number; h: number } {
+  if (typeof window === "undefined") return { w: 1024, h: 768 };
+  return {
+    w: Math.max(0, window.innerWidth || 0),
+    h: Math.max(0, window.innerHeight || 0),
+  };
 }
 
-export function useViewport(options: Options = {}): ViewportInfo {
-  const tabletMinWidth = options.tabletMinWidth ?? 900;
-
-  const [{ width, height }, setVp] = React.useState(() => readViewport());
+/**
+ * Viewport hook designed for play-screens.
+ *
+ * Notes:
+ * - We use a simple, predictable breakpoint (>= 900px) for tablets.
+ * - We rely on w>h for landscape.
+ */
+export function useViewport(minTabletWidth = 900): ViewportInfo {
+  const [{ w, h }, setVp] = React.useState(getViewport);
 
   React.useEffect(() => {
     if (typeof window === "undefined") return;
-
-    let raf = 0;
-    const onResize = () => {
-      if (raf) cancelAnimationFrame(raf);
-      raf = requestAnimationFrame(() => {
-        setVp(readViewport());
-      });
-    };
-
-    window.addEventListener("resize", onResize, { passive: true } as any);
-    window.addEventListener("orientationchange", onResize, { passive: true } as any);
-    onResize();
-
+    const onResize = () => setVp(getViewport());
+    window.addEventListener("resize", onResize);
+    window.addEventListener("orientationchange", onResize);
     return () => {
-      if (raf) cancelAnimationFrame(raf);
-      window.removeEventListener("resize", onResize as any);
-      window.removeEventListener("orientationchange", onResize as any);
+      window.removeEventListener("resize", onResize);
+      window.removeEventListener("orientationchange", onResize);
     };
   }, []);
 
-  const isLandscape = width > 0 && height > 0 ? width > height : false;
-  const isTablet = width >= tabletMinWidth;
+  const isLandscape = w > h;
+  const isTablet = w >= minTabletWidth;
   const isLandscapeTablet = isLandscape && isTablet;
 
-  return { width, height, isLandscape, isTablet, isLandscapeTablet };
+  return { w, h, isLandscape, isTablet, isLandscapeTablet };
 }
