@@ -2605,6 +2605,7 @@ try {
                   inset: 0,
                   zIndex: 45,
                   width: "100%",
+                  height: "100%",
                 }}
               >
                 {isBotTurn ? (
@@ -2652,6 +2653,7 @@ try {
                       background: isBustLocked ? "rgba(120,0,0,.10)" : "transparent",
                       borderRadius: 14,
                       padding: 6,
+                      height: "100%",
                       boxSizing: "border-box",
                     }}
                   >
@@ -2733,6 +2735,7 @@ try {
                           voiceScoreEnabled && scoringSource !== "external" && (voiceScore.phase.startsWith("LISTEN") || voiceScore.phase === "RECAP_CONFIRM")
                             ? "grayscale(.15)"
                             : "none",
+                        height: "100%",
                       }}
                     >
                       <ScoreInputHub
@@ -2750,7 +2753,7 @@ try {
                         hidePreview
                         showPlaceholders={false}
                         disabled={isBustLocked}
-                       switcherMode="hidden" />
+                      />
                     </div>
                   </div>
                 )}
@@ -2905,7 +2908,7 @@ try {
           transform: isLandscapeTablet ? "none" : "translateX(-50%)",
           top: isLandscapeTablet ? "auto" : headerH,
           marginTop: isLandscapeTablet ? 10 : 0,
-          bottom: NAV_HEIGHT + keypadH + 8,
+          bottom: keypadH + 8,
           width: `min(100%, ${CONTENT_MAX}px)`,
           paddingInline: isLandscapeTablet ? 6 : 10,
           paddingTop: 4,
@@ -2936,7 +2939,7 @@ try {
           position: isLandscapeTablet ? "sticky" : "fixed",
           left: isLandscapeTablet ? "auto" : "50%",
           transform: isLandscapeTablet ? "none" : "translateX(-50%)",
-          bottom: isLandscapeTablet ? 0 : NAV_HEIGHT,
+          bottom: 0,
           zIndex: 45,
           padding: "0 10px 4px",
           width: `min(100%, ${CONTENT_MAX}px)`,
@@ -3217,6 +3220,7 @@ function HeaderBlock(props: {
                 src={currentAvatar}
                 style={{
                   width: "100%",
+                  height: "100%",
                   objectFit: "cover",
                 }}
               />
@@ -3224,6 +3228,7 @@ function HeaderBlock(props: {
               <div
                 style={{
                   width: "100%",
+                  height: "100%",
                   display: "flex",
                   justifyContent: "center",
                   alignItems: "center",
@@ -3524,6 +3529,7 @@ function PlayersListOnly(props: {
                   src={avatarSrc}
                   style={{
                     width: "100%",
+                    height: "100%",
                     objectFit: "cover",
                   }}
                 />
@@ -3531,6 +3537,7 @@ function PlayersListOnly(props: {
                 <div
                   style={{
                     width: "100%",
+                    height: "100%",
                     display: "flex",
                     alignItems: "center",
                     justifyContent: "center",
