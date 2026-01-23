@@ -467,42 +467,27 @@ async function buildAuthSessionFromSupabase(): Promise<AuthSession | null> {
 }
 
 // ============================================================
-// ✅ ALWAYS-CONNECTED (V8)
-// - On veut une session Supabase disponible en permanence.
-// - Si aucune session: on tente signInAnonymously (si activé côté Supabase).
-// - Sinon: on reste signed_out (l'UI doit proposer de se connecter/créer compte).
+// ✅ COMPTE UTILISATEUR UNIQUE
+// - On NE crée PAS de session anonyme.
+// - Si aucune session: on reste signed_out.
 //
 // NOTE: certaines pages historiques appellent encore ensureAutoSession().
-// On le garde en alias vers ensureAnonymousSession().
+// On le garde en alias vers buildAuthSessionFromSupabase().
 // ============================================================
-async function ensureAnonymousSession(): Promise<AuthSession | null> {
-  // 1) Déjà connecté ? -> hydrate depuis Supabase
+async function ensureAutoSession(): Promise<AuthSession | null> {
   const existing = await buildAuthSessionFromSupabase();
-  if (existing?.user?.id) return existing;
-
-  // 2) Pas de session -> tentative de session anonyme
-  try {
-    // Supabase JS v2: signInAnonymously()
-    // (Si la feature est désactivée côté projet, Supabase renverra une erreur)
-    const { error } = await (supabase.auth as any).signInAnonymously?.();
-    if (error) {
-      console.warn("[onlineApi] signInAnonymously error", error);
-      return null;
-    }
-  } catch (e) {
-    // Méthode absente ou exception
-    console.warn("[onlineApi] signInAnonymously unavailable", e);
-    return null;
-  }
-
-  // 3) Rebuild session
-  const after = await buildAuthSessionFromSupabase();
-  return after;
+  return existing?.user?.id ? existing : null;
 }
 
-// ✅ Compat UI: alias legacy
-async function ensureAutoSession(): Promise<AuthSession | null> {
-  return await ensureAnonymousSession();
+// ============================================================
+// ✅ BACKCOMPAT — ensureAnonymousSession()
+// Certaines anciennes pages utilisaient une "session anonyme".
+// Dans l’architecture "compte utilisateur unique", on ne crée
+// plus de session anonyme côté Supabase : on renvoie simplement
+// la session existante si l’utilisateur est connecté.
+// ============================================================
+async function ensureAnonymousSession(): Promise<AuthSession | null> {
+  return await ensureAutoSession();
 }
 
 // ============================================================
@@ -584,9 +569,63 @@ async function login(payload: LoginPayload): Promise<AuthSession> {
   return session;
 }
 
+// ============================================================
+// ✅ HASH-ROUTER AUTH (/#/auth/...) — robust parser
+// - En PKCE, Supabase renvoie souvent `?code=...`.
+// - En implicit (ou selon config), on peut recevoir `#access_token=...`.
+// - Avec un hash-router, ces paramètres peuvent se retrouver DANS window.location.hash.
+//
+// Cette fonction tente de créer la session à partir de l'URL si nécessaire.
+// Elle est idempotente: si aucune info auth n'est présente, elle ne fait rien.
+// ============================================================
+async function maybeConsumeAuthRedirectFromHash(): Promise<void> {
+  if (typeof window === "undefined") return;
+
+  const rawHash = String(window.location.hash || "");
+  if (!rawHash) return;
+
+  // Exemple: "#/auth/callback?code=XXXX"
+  const qIndex = rawHash.indexOf("?");
+  if (qIndex >= 0) {
+    const query = rawHash.slice(qIndex + 1);
+    const sp = new URLSearchParams(query);
+    const code = sp.get("code");
+    if (code) {
+      try {
+        await supabase.auth.exchangeCodeForSession(code);
+      } catch (e) {
+        console.warn("[onlineApi] exchangeCodeForSession failed", e);
+      }
+      return;
+    }
+  }
+
+  // Exemple: "#/auth/callback#access_token=...&refresh_token=..."
+  // ou "#access_token=...&refresh_token=..." (rare)
+  const lastHash = rawHash.lastIndexOf("#");
+  if (lastHash >= 0) {
+    const frag = rawHash.slice(lastHash + 1);
+    if (frag.includes("access_token=") || frag.includes("refresh_token=")) {
+      const sp = new URLSearchParams(frag);
+      const access_token = sp.get("access_token") || "";
+      const refresh_token = sp.get("refresh_token") || "";
+      if (access_token && refresh_token) {
+        try {
+          await supabase.auth.setSession({ access_token, refresh_token });
+        } catch (e) {
+          console.warn("[onlineApi] setSession failed", e);
+        }
+      }
+    }
+  }
+}
+
 // ✅ V7 : restoreSession = RESTORE UNIQUEMENT (pas de création d'utilisateur)
 async function restoreSession(): Promise<AuthSession | null> {
   try {
+    // Hash-router: si on arrive d'un email Supabase, on tente de consommer l'URL.
+    await maybeConsumeAuthRedirectFromHash();
+
     const s = await buildAuthSessionFromSupabase();
     saveAuthToLS(s);
     return s;

@@ -109,3 +109,93 @@ export function ensureOnlineMirrorProfile(store: any, user: any, onlineProfile?:
     activeProfileId: String(active?.id || activeId),
   };
 }
+
+// ============================================================
+// ✅ NEW: Auto-create / link a local profile for a signed-in user
+//
+// Problème réel constaté (mobile / nouvel utilisateur):
+// - Session Supabase persistée OK
+// - MAIS aucun profil local n'existe => l'app repasse par "Compte" et
+//   l'utilisateur a l'impression de devoir se reconnecter à chaque démarrage.
+//
+// Stratégie:
+// - Si un profil local est déjà lié au uid => on le rend actif.
+// - Sinon, si aucun profil local n'existe => on crée un profil minimal id=uid.
+// - Sinon, on lie le profil actif existant au uid (migration douce).
+//
+// Important: on ne crée PAS de mirror "online:<uid>".
+export function ensureLocalProfileForOnlineUser(store: any, user: any, onlineProfile?: any) {
+  if (!store || !user?.id) return store;
+
+  const uid = String(user.id);
+  const email = safeLower(user.email);
+
+  const profiles: any[] = Array.isArray(store.profiles) ? store.profiles : [];
+
+  // 1) Déjà lié ? (par privateInfo.onlineUserId ou par id==uid)
+  const linked = profiles.find((p) => {
+    const id = String(p?.id || "");
+    if (id === uid) return true;
+    const pi = readPrivateInfo(p);
+    return String(pi?.onlineUserId || "") === uid;
+  });
+
+  if (linked) {
+    // S'assure que le privateInfo est bien rempli
+    const pi = readPrivateInfo(linked);
+    const next = writePrivateInfo(
+      {
+        ...linked,
+        ...(onlineProfile
+          ? {
+              name: onlineProfile?.nickname || linked?.name,
+              avatarUrl: onlineProfile?.avatarUrl || linked?.avatarUrl,
+              country: onlineProfile?.country || linked?.country,
+            }
+          : null),
+      },
+      {
+        ...pi,
+        onlineUserId: uid,
+        onlineEmail: email || pi.onlineEmail || "",
+        password: "",
+      }
+    );
+
+    const nextProfiles = profiles.map((p) => (String(p?.id || "") === String(linked?.id || "") ? next : p));
+    return { ...store, profiles: nextProfiles, activeProfileId: String(linked?.id || uid) };
+  }
+
+  // 2) Aucun profil local => on crée un profil minimal id=uid
+  if (profiles.length === 0) {
+    const nickname = String(onlineProfile?.nickname || "").trim();
+    const fallbackName = nickname || (email ? email.split("@")[0] : "Joueur");
+    const newProfile: any = {
+      id: uid,
+      name: fallbackName,
+      avatarDataUrl: onlineProfile?.avatarUrl || undefined,
+      avatarUrl: onlineProfile?.avatarUrl || undefined,
+      country: onlineProfile?.country || "FR",
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    };
+    newProfile.privateInfo = {
+      onlineUserId: uid,
+      onlineEmail: email || "",
+      password: "",
+    };
+
+    return {
+      ...store,
+      profiles: [newProfile],
+      activeProfileId: uid,
+    };
+  }
+
+  // 3) Profils existants mais aucun lié: on lie le profil actif actuel
+  const activeId = String(store.activeProfileId || profiles[0]?.id || "");
+  const active = profiles.find((p) => String(p?.id || "") === activeId) || profiles[0];
+  if (!active) return store;
+
+  return ensureOnlineMirrorProfile(store, user, onlineProfile);
+}

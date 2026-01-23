@@ -13,6 +13,7 @@ import * as React from "react";
 import type { Session, User } from "@supabase/supabase-js";
 import { supabase } from "../lib/supabaseClient";
 import { onlineApi } from "../lib/onlineApi";
+import { ensureLocalProfileForOnlineUser } from "../lib/accountBridge";
 import type { OnlineProfile } from "../lib/onlineTypes";
 
 type AuthStatus = "checking" | "signed_out" | "signed_in";
@@ -64,17 +65,13 @@ async function safeEnsureSession(): Promise<Session | null> {
   const existing = await safeGetSession();
   if (existing?.user) return existing;
 
-  // V8 desired behavior: always keep an active session (anonymous fallback).
-  try {
-    const fn = (supabase.auth as any).signInAnonymously;
-    if (typeof fn !== "function") return null;
-    const { data, error } = await fn.call(supabase.auth);
-    if (error) throw error;
-    return data?.session ?? null;
-  } catch (e) {
-    console.warn("[useAuthOnline] signInAnonymously failed:", e);
-    return null;
-  }
+  // ✅ COMPTE UTILISATEUR UNIQUE (V7)
+  // On NE crée JAMAIS de session anonyme en fallback.
+  // Sinon :
+  // - l’app semble "connectée" sans vrai compte
+  // - on peut avoir l’impression de devoir se reconnecter à chaque fois
+  // - et on pollue Supabase avec des users anonymes.
+  return null;
 }
 
 
@@ -93,9 +90,9 @@ async function safeLoadProfileBestEffort(user: User): Promise<OnlineProfile | nu
   try {
     const api: any = onlineApi as any;
 
-    // ✅ onlineApi.getProfile() (V7) : retourne le profil en cache session (LS) ou null
+    // ✅ onlineApi.getProfile(userId) (V7)
     if (typeof api.getProfile === "function") {
-      const res = await api.getProfile();
+      const res = await api.getProfile(user.id);
       return (res?.profile ?? res ?? null) as OnlineProfile | null;
     }
 
@@ -143,6 +140,20 @@ function applyAuthFromSession(setState: React.Dispatch<React.SetStateAction<Auth
       ready: true,
       error: null,
     }));
+  }
+}
+
+function tryBridgeLocalProfile(user: User, onlineProfile?: OnlineProfile | null) {
+  // ⚠️ Sur un nouvel appareil, l'utilisateur peut être connecté (session persistée)
+  // mais ne pas avoir de profil local => l'app le renvoie vers "Profils" et
+  // donne l'impression qu'il doit se reconnecter à chaque fois.
+  try {
+    const w: any = window as any;
+    const appStore = w.__appStore;
+    if (!appStore || typeof appStore.update !== "function") return;
+    appStore.update((store: any) => ensureLocalProfileForOnlineUser(store, user, onlineProfile || undefined));
+  } catch (e) {
+    console.warn("[useAuthOnline] tryBridgeLocalProfile failed", e);
   }
 }
 
@@ -207,12 +218,18 @@ export function AuthOnlineProvider({ children }: { children: React.ReactNode }) 
         // ✅ BONUS profile async (best-effort)
         const user = session?.user ?? null;
         if (user) {
+          // ✅ Bridge local profile immediately (fallback name from email)
+          tryBridgeLocalProfile(user, null);
+
           safeLoadProfileBestEffort(user).then((profile) => {
             if (!alive) return;
             setState((s) => {
               if (!s.user || s.user.id !== user.id) return s;
               return { ...s, profile };
             });
+
+            // ✅ Bridge local profile with server profile details (name/avatar)
+            tryBridgeLocalProfile(user, profile);
           });
         }
 
@@ -237,12 +254,18 @@ export function AuthOnlineProvider({ children }: { children: React.ReactNode }) 
 
             // ✅ BONUS profile (best-effort) après changement auth
             const nextUser = nextSession.user;
+
+            // ✅ Bridge local profile ASAP
+            tryBridgeLocalProfile(nextUser, null);
+
             safeLoadProfileBestEffort(nextUser).then((profile) => {
               if (!alive) return;
               setState((s) => {
                 if (!s.user || s.user.id !== nextUser.id) return s;
                 return { ...s, profile };
               });
+
+              tryBridgeLocalProfile(nextUser, profile);
             });
           } catch (e) {
             console.warn("[useAuthOnline] onAuthStateChange handler error:", e);

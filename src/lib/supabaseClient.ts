@@ -1,9 +1,10 @@
 // ============================================
 // src/lib/supabaseClient.ts
 // Client Supabase unique pour toute l'app
-// ✅ FIX: singleton HMR-safe => évite "Multiple GoTrueClient instances"
-// ✅ SAFE: n'explose jamais si env manquants (log seulement)
-// ✅ FIX: storageKey unique par projet Supabase (évite collisions StackBlitz/Pages)
+// - Singleton HMR-safe => évite "Multiple GoTrueClient instances"
+// - Safe si env manquants (log seulement)
+// - storageKey stable et unique par projet Supabase (évite collisions)
+// - Hash-router safe: l'app gère elle-même /#/auth/callback et /#/auth/reset
 // ============================================
 
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
@@ -13,7 +14,6 @@ const SUPABASE_ANON_KEY = (import.meta.env.VITE_SUPABASE_ANON_KEY as string) || 
 
 const isDev = !!import.meta.env.DEV;
 
-// --- Helpers ---
 function supabaseProjectRef(url: string): string {
   // Ex: https://abcdefghijk.supabase.co -> "abcdefghijk"
   try {
@@ -40,57 +40,41 @@ if (isDev) {
 
 if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
   // eslint-disable-next-line no-console
-  console.warn("[supabaseClient] VITE_SUPABASE_URL ou VITE_SUPABASE_ANON_KEY manquants. Supabase sera inactif.");
+  console.warn(
+    "[supabaseClient] VITE_SUPABASE_URL ou VITE_SUPABASE_ANON_KEY manquants. Supabase sera inactif."
+  );
 }
 
-// ✅ cache global (HMR / imports multiples / double init)
 declare global {
   // eslint-disable-next-line no-var
   var __dc_supabase: SupabaseClient | undefined;
 }
 
 const canUseWindow = typeof window !== "undefined";
-
-// ⚠️ storage: localStorage seulement côté navigateur
-// (sur certains environnements embarqués, localStorage peut throw → on garde try/catch)
-let storage: Storage | undefined = undefined;
-if (canUseWindow) {
-  try {
-    storage = window.localStorage;
-  } catch {
-    storage = undefined;
-  }
-}
+const storage = canUseWindow ? window.localStorage : undefined;
 
 // ✅ storageKey custom UNIQUE par projet Supabase
-// (évite collisions entre environnements/builds/projets)
-const STORAGE_KEY = `dc-supabase-auth-v1:${PROJECT_REF}`;
+const STORAGE_KEY = `dc-supabase-auth-v2:${PROJECT_REF}`;
 
-// ✅ Création client seulement si pas déjà existant
 function createSupabaseClient(): SupabaseClient {
-  // Même si env manquants, on crée un client "safe" pour éviter crash import,
-  // mais les appels réseau échoueront -> à gérer par try/catch côté appelant.
+  // Même si env manquants, on crée un client "safe" pour éviter crash import.
   const url = SUPABASE_URL || "https://invalid.supabase.co";
   const key = SUPABASE_ANON_KEY || "invalid-anon-key";
 
   return createClient(url, key, {
     auth: {
-      // ✅ persistance session (évite devoir se reconnecter à chaque refresh / reload)
       persistSession: true,
       autoRefreshToken: true,
 
-      // ✅ ton app gère le routing hash (/auth/callback, /auth/reset) dans App.tsx
-      // => on évite que le SDK essaye de parser l'URL tout seul (peut être flaky avec hash routing)
+      // Hash-router: les params de session peuvent être derrière le #
+      // => on gère le parsing / exchange dans onlineApi.restoreSession()
       detectSessionInUrl: false,
 
-      // ✅ PKCE recommandé (email magic-link / reset-password)
-      flowType: "pkce",
-
-      // ✅ storage explicite (si dispo). Si undefined, supabase-js retombera sur son fallback.
       storage,
-
-      // ✅ clé de stockage stable et unique
       storageKey: STORAGE_KEY,
+
+      // PKCE recommandé (magic link / reset)
+      flowType: "pkce",
     },
   });
 }

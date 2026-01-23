@@ -97,6 +97,7 @@ import { warmAggOnce } from "./boot/warmAgg";
 
 // Mode Online
 import { onlineApi } from "./lib/onlineApi";
+import { ensureLocalProfileForOnlineUser } from "./lib/accountBridge";
 
 // ✅ Supabase client
 import { supabase } from "./lib/supabaseClient";
@@ -435,8 +436,11 @@ function sanitizeStoreForCloud(s: any) {
       if (Array.isArray(rr.players)) {
         rr.players = rr.players.map((pl: any) => {
           const pp = { ...(pl || {}) };
-          const v = (p as any).avatarDataUrl ?? p.avatarUrl;
-          if (typeof v === "string" && v.startsWith("data:")) delete (p as any).avatarDataUrl ?? p.avatarUrl;
+          const v = (pp as any).avatarDataUrl ?? (pp as any).avatarUrl;
+          if (typeof v === "string" && v.startsWith("data:")) {
+            if (typeof (pp as any).avatarDataUrl === "string" && (pp as any).avatarDataUrl.startsWith("data:")) delete (pp as any).avatarDataUrl;
+            if (typeof (pp as any).avatarUrl === "string" && (pp as any).avatarUrl.startsWith("data:")) delete (pp as any).avatarUrl;
+          }
           return pp;
         });
       }
@@ -445,8 +449,11 @@ function sanitizeStoreForCloud(s: any) {
         rr.payload = { ...(rr.payload || {}) };
         rr.payload.players = rr.payload.players.map((pl: any) => {
           const pp = { ...(pl || {}) };
-          const v = (p as any).avatarDataUrl ?? p.avatarUrl;
-          if (typeof v === "string" && v.startsWith("data:")) delete (p as any).avatarDataUrl ?? p.avatarUrl;
+          const v = (pp as any).avatarDataUrl ?? (pp as any).avatarUrl;
+          if (typeof v === "string" && v.startsWith("data:")) {
+            if (typeof (pp as any).avatarDataUrl === "string" && (pp as any).avatarDataUrl.startsWith("data:")) delete (pp as any).avatarDataUrl;
+            if (typeof (pp as any).avatarUrl === "string" && (pp as any).avatarUrl.startsWith("data:")) delete (pp as any).avatarUrl;
+          }
           return pp;
         });
       }
@@ -1126,12 +1133,56 @@ function App() {
 
   const [store, setStore] = React.useState<Store>(initialStore);
 
+  // ============================================================
+
+
   // ✅ DEFAULT TAB = gameSelect (si boot OK). Les flows auth/hash peuvent override.
   // ✅ IMPORTANT: GameSelect doit toujours s'afficher (après intro)
   const [tab, setTab] = React.useState<Tab>("gameSelect");
 
   const [routeParams, setRouteParams] = React.useState<any>(null);
   const [loading, setLoading] = React.useState(true);
+
+
+  // ✅ ONLINE→LOCAL BRIDGE (COMPTE UTILISATEUR UNIQUE)
+  // - Si l’utilisateur est connecté Supabase mais qu’aucun profil local actif n’existe,
+  //   on crée / lie un profil local et on le met actif.
+  // - Évite le loop "reconnexion demandée à chaque ouverture" (pas de profil local actif).
+  // ============================================================
+  React.useEffect(() => {
+    if (loading) return;
+    if (!online?.ready) return;
+    if (online.status !== "signed_in") return;
+
+    const hasProfiles = (store?.profiles?.length || 0) > 0;
+    const hasActive = !!(store as any)?.activeProfileId;
+    if (hasProfiles && hasActive) return;
+
+    const user = (online as any)?.user || (online as any)?.session?.user || null;
+    if (!user?.id) return;
+
+    try {
+      setStore((prev) => {
+        const next = ensureLocalProfileForOnlineUser(prev as any, user as any, (online as any)?.profile ?? null) as any;
+        queueMicrotask(() => saveStore(next));
+        return next;
+      });
+
+      // Si on est encore sur un écran de démarrage auth/profil, on bascule vers l'app
+      if (
+        tab === "account_start" ||
+        tab === "auth_start" ||
+        tab === "auth_v7_login" ||
+        tab === "auth_v7_signup"
+      ) {
+        setRouteParams(null);
+        setTab("gameSelect");
+      }
+    } catch (e) {
+      console.warn("[online→local] bridge failed", e);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading, online?.ready, online?.status, (online as any)?.user?.id, tab, store?.profiles?.length, (store as any)?.activeProfileId]);
 
   // ✅ SPORT-AWARE : utilisé pour Home/Games (runtime-safe)
   const sportApi: any = useSport() as any;

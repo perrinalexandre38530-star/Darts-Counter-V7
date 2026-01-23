@@ -978,19 +978,25 @@ export default function Profiles({
     const onlineAvatarUrl =
       op?.avatar_url || op?.avatarUrl || op?.avatar || op?.photo_url || "";
 
-    // ⚠️ id déterministe : c'est la clé utilisée par l'ONLINE (dartsets/stats)
-    const id = `online:${uid}`;
+    // ✅ UNIQUE ACCOUNT: pas de profil "mirror" online:<uid>
+    // On réutilise le profil local lié à ce user_id (ou à défaut le profil actif).
+    const owner =
+      (store?.profiles || []).find((p: any) => String(p?.privateInfo?.userId || "") === String(uid)) ||
+      active ||
+      null;
+
+    if (!owner) return null;
 
     return {
-      ...(active || ({} as any)),
-      id,
-      name: active?.name || onlineName,
-      avatarUrl: onlineAvatarUrl || (active as any)?.avatarUrl,
-      // marqueurs utiles pour filtrage UI si besoin
+      ...(owner as any),
+      // garde le nom local en priorité (modifiable offline), sinon fallback online
+      name: (owner as any)?.name || onlineName,
+      // dans l'UI "Mon profil", on privilégie l'avatar online si dispo
+      avatarUrl: onlineAvatarUrl || (owner as any)?.avatarUrl,
       source: "online",
-      isOnlineMirror: true,
+      isOnlineMirror: false,
     } as any;
-  }, [auth.status, auth.user?.id, (auth as any)?.profile, (auth as any)?.onlineProfile, active?.id, active?.name]);
+  }, [store?.profiles, auth.status, auth.user?.id, (auth as any)?.profile, (auth as any)?.onlineProfile, active?.id, active?.name]);
 
   // Dans "Mon profil", on veut afficher l'avatar ONLINE même si le profil actif local n'en a pas.
   const activeForMeUi = React.useMemo(() => {
