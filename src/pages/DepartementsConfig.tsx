@@ -1,3 +1,4 @@
+// src/pages/DepartementsConfig.tsx
 import React from "react";
 import BackDot from "../components/BackDot";
 import InfoDot from "../components/InfoDot";
@@ -60,6 +61,20 @@ function findTerritoriesTicker(tickerId: string): string | null {
   return null;
 }
 
+const FLAG_GLOB = import.meta.glob("../assets/flags/*.png", { eager: true, import: "default" }) as Record<
+  string,
+  string
+>;
+
+function findFlagForMapId(mapId: string): string | null {
+  const id = String(mapId || "").toUpperCase();
+  const suffix = `/${id}.png`;
+  for (const k of Object.keys(FLAG_GLOB)) {
+    if (k.toUpperCase().endsWith(suffix)) return FLAG_GLOB[k];
+  }
+  return null;
+}
+
 function clampTeamSize(v: any): 1 | 2 | 3 {
   const n = Number(v);
   if (n === 2) return 2;
@@ -70,12 +85,11 @@ function clampTeamSize(v: any): 1 | 2 | 3 {
 type BotLite = { id: string; name: string; avatarDataUrl: string | null; botLevel?: string };
 
 const PRO_BOTS: BotLite[] = [
-  { id: 'pro_green_machine', name: 'Green Machine', avatarDataUrl: avatarGreenMachine, botLevel: 'hard' },
-  { id: 'pro_snake_king', name: 'Snake King', avatarDataUrl: avatarSnakeKing, botLevel: 'hard' },
-  { id: 'pro_wonder_kid', name: 'Wonder Kid', avatarDataUrl: avatarWonderKid, botLevel: 'hard' },
-  { id: 'pro_ice_man', name: 'Ice Man', avatarDataUrl: avatarIceMan, botLevel: 'hard' },
+  { id: "pro_green_machine", name: "Green Machine", avatarDataUrl: avatarGreenMachine, botLevel: "hard" },
+  { id: "pro_snake_king", name: "Snake King", avatarDataUrl: avatarSnakeKing, botLevel: "hard" },
+  { id: "pro_wonder_kid", name: "Wonder Kid", avatarDataUrl: avatarWonderKid, botLevel: "hard" },
+  { id: "pro_ice_man", name: "Ice Man", avatarDataUrl: avatarIceMan, botLevel: "hard" },
 ];
-
 
 function readUserBotsFromLS(): BotLite[] {
   try {
@@ -207,7 +221,8 @@ export default function DepartementsConfig(props: any) {
     custom.forEach(pushUnique);
     setUserBots(merged);
   }, []);
-// store profiles (humans)
+
+  // store profiles (humans)
   const storeProfiles: any[] = ((store as any)?.profiles || []) as any[];
   const humanProfiles = storeProfiles.filter((p) => p && !isBotLike(p));
 
@@ -224,11 +239,6 @@ export default function DepartementsConfig(props: any) {
     if ((props as any)?.go) return (props as any).go("games");
     if ((props as any)?.setTab) return (props as any).setTab("games");
     window.history.back();
-  }
-
-  function goProfiles() {
-    if ((props as any)?.go) return (props as any).go("profiles");
-    if ((props as any)?.setTab) return (props as any).setTab("profiles");
   }
 
   function togglePlayer(id: string) {
@@ -277,22 +287,21 @@ export default function DepartementsConfig(props: any) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [botsEnabled, userBots]);
 
-  // Derived teamsCount (2 minimum). For 6 players in 2v2 => 3 teams; for 6 players in 3v3 => 2 teams.
+  // ✅ Toujours 2 TEAMS en mode équipes (Team 1 + Team 2)
   const neededTeams = React.useMemo(() => {
     if (teamSize === 1) return 0;
-    const n = Math.floor(selectedIds.length / teamSize);
-    return Math.max(2, n || 2);
-  }, [selectedIds.length, teamSize]);
+    return 2;
+  }, [teamSize]);
 
-  // Team slots model
+  // Team slots model (2 teams fixes)
   const slots = React.useMemo(() => {
     if (teamSize === 1) return [];
-    const out: Array<Array<string | null>> = Array.from({ length: neededTeams }, () =>
+    const out: Array<Array<string | null>> = Array.from({ length: 2 }, () =>
       Array.from({ length: teamSize }, () => null)
     );
     for (const id of selectedIds) {
       const te = teamsById[id];
-      if (typeof te !== "number" || te < 0 || te >= neededTeams) continue;
+      if (typeof te !== "number" || te < 0 || te >= 2) continue;
       for (let s = 0; s < teamSize; s++) {
         if (!out[te][s]) {
           out[te][s] = id;
@@ -301,7 +310,7 @@ export default function DepartementsConfig(props: any) {
       }
     }
     return out;
-  }, [teamSize, neededTeams, selectedIds, teamsById]);
+  }, [teamSize, selectedIds, teamsById]);
 
   const unassigned = React.useMemo(() => {
     if (teamSize === 1) return [];
@@ -328,9 +337,10 @@ export default function DepartementsConfig(props: any) {
 
   function autoFillTeams() {
     if (teamSize === 1) return;
-    const ids = [...unassigned];
+    const ids = [...unassigned]; // ✅ inclut humains + bots sélectionnés
     if (!ids.length) return;
-    for (let te = 0; te < neededTeams; te++) {
+
+    for (let te = 0; te < 2; te++) {
       for (let s = 0; s < teamSize; s++) {
         if (slots[te]?.[s]) continue;
         if (!ids.length) return;
@@ -338,6 +348,7 @@ export default function DepartementsConfig(props: any) {
         setTeamsById((prev) => ({ ...prev, [id]: te }));
       }
     }
+    setPendingId(null);
   }
 
   function autoCompleteWithBots() {
@@ -355,15 +366,15 @@ export default function DepartementsConfig(props: any) {
         if (next.length >= minPlayers) break;
       }
 
-      // if team mode, also ensure divisible by teamSize
-      while (teamSize > 1 && next.length < maxPlayers && next.length % teamSize !== 0) {
-        const cand = botIds.find((id) => !next.includes(id));
-        if (!cand) break;
-        next.push(cand);
-      }
-
       return next;
     });
+
+    // ✅ et on auto-remplit les teams (humains + bots)
+    setTimeout(() => {
+      try {
+        autoFillTeams();
+      } catch {}
+    }, 0);
   }
 
   const selectionValid = React.useMemo(() => {
@@ -372,18 +383,17 @@ export default function DepartementsConfig(props: any) {
 
     if (teamSize === 1) return true;
 
-    if (selectedIds.length % teamSize !== 0) return false;
-    const teamsExact = selectedIds.length / teamSize;
-    if (teamsExact < 2) return false;
+    // ✅ mode équipes = EXACTEMENT 2 teams, donc EXACTEMENT 2 * teamSize joueurs
+    if (selectedIds.length !== teamSize * 2) return false;
 
     // Every selected id must be assigned and each team must have exactly teamSize members
-    const counts = Array.from({ length: teamsExact }, () => 0);
+    const counts = [0, 0];
     for (const id of selectedIds) {
       const te = teamsById[id];
-      if (typeof te !== "number" || te < 0 || te >= teamsExact) return false;
+      if (typeof te !== "number" || te < 0 || te > 1) return false;
       counts[te]++;
     }
-    return counts.every((c) => c === teamSize);
+    return counts[0] === teamSize && counts[1] === teamSize;
   }, [selectedIds, minPlayers, maxPlayers, teamSize, teamsById]);
 
   const payload: TerritoriesConfigPayload = {
@@ -494,6 +504,8 @@ export default function DepartementsConfig(props: any) {
           {maps.map((m) => {
             const selected = m.id === mapId;
             const src = findTerritoriesTicker(m.tickerId);
+            const flag = findFlagForMapId(m.id);
+
             return (
               <button
                 key={m.id}
@@ -513,13 +525,29 @@ export default function DepartementsConfig(props: any) {
                 }}
               >
                 <div style={{ padding: 10 }}>
-                  <div style={{ fontSize: 12, opacity: 0.85, fontWeight: 950, letterSpacing: 0.6 }}>
-                    {m.id}{" "}
-                    {selected && (
-                      <span style={{ marginLeft: 8, fontSize: 11, opacity: 0.9, fontWeight: 950 }}>SELECTED</span>
+                  {/* ✅ drapeau + nom sur la même ligne, ✅ plus de "SELECTED" */}
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    {flag ? (
+                      <img
+                        src={flag}
+                        alt={m.id}
+                        style={{ width: 18, height: 18, borderRadius: 4, objectFit: "cover" }}
+                        draggable={false}
+                      />
+                    ) : (
+                      <div
+                        style={{
+                          width: 18,
+                          height: 18,
+                          borderRadius: 4,
+                          background: "rgba(255,255,255,0.10)",
+                          border: "1px solid rgba(255,255,255,0.10)",
+                        }}
+                      />
                     )}
+                    <div style={{ fontSize: 14, fontWeight: 1000 }}>{m.name}</div>
+                    <div style={{ marginLeft: "auto", fontSize: 11, opacity: 0.8, fontWeight: 950 }}>{m.id}</div>
                   </div>
-                  <div style={{ marginTop: 4, fontSize: 16, fontWeight: 1000 }}>{m.name}</div>
                 </div>
 
                 <div style={{ padding: 10, paddingTop: 0 }}>
@@ -573,10 +601,11 @@ export default function DepartementsConfig(props: any) {
         <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center" }}>
           <div style={{ fontSize: 12, opacity: 0.85, fontWeight: 950 }}>
             Sélection : {selectedIds.length}/{maxPlayers} — min {minPlayers}
-            {teamSize > 1 && selectedIds.length > 0 && selectedIds.length % teamSize !== 0 && (
-              <span style={{ marginLeft: 10, opacity: 0.9 }}>(doit être multiple de {teamSize})</span>
+            {teamSize > 1 && selectedIds.length > 0 && selectedIds.length !== teamSize * 2 && (
+              <span style={{ marginLeft: 10, opacity: 0.9 }}>(doit être exactement {teamSize * 2})</span>
             )}
-          </div></div>
+          </div>
+        </div>
 
         {/* Human carousel */}
         {humanProfiles.length === 0 ? (
@@ -732,6 +761,7 @@ export default function DepartementsConfig(props: any) {
                   onOpen={(title, content) => setInfoModal({ title, content })}
                 />
               </div>
+              {/* ✅ garde ton style, mais bouton = même “famille” que config X01 (pas de bouton néon géant) */}
               <button className="btn-secondary" onClick={autoFillTeams}>
                 Auto-fill
               </button>
@@ -745,8 +775,9 @@ export default function DepartementsConfig(props: any) {
               </div>
             )}
 
-            <div style={{ marginTop: 10, display: "grid", gridTemplateColumns: "repeat(2, minmax(0,1fr))", gap: 10 }}>
-              {Array.from({ length: Math.max(2, Math.floor(selectedIds.length / teamSize) || 2) }, (_, te) => te).map((te) => {
+            {/* ✅ TEAMS VERTICALES (Team 1 puis Team 2) */}
+            <div style={{ marginTop: 10, display: "grid", gridTemplateColumns: "repeat(1, minmax(0,1fr))", gap: 10 }}>
+              {[0, 1].map((te) => {
                 const teamSlots = slots[te] || Array.from({ length: teamSize }, () => null);
                 const filled = teamSlots.filter(Boolean).length;
                 const ok = filled === teamSize;
@@ -797,7 +828,11 @@ export default function DepartementsConfig(props: any) {
                               minHeight: 96,
                             }}
                             title={
-                              isEmpty ? (pendingId ? "Clique pour assigner" : "Sélectionne un joueur d'abord") : "Clique pour sélectionner ce joueur"
+                              isEmpty
+                                ? pendingId
+                                  ? "Clique pour assigner"
+                                  : "Sélectionne un joueur d'abord"
+                                : "Clique pour sélectionner ce joueur"
                             }
                           >
                             {isEmpty ? (
@@ -908,7 +943,10 @@ export default function DepartementsConfig(props: any) {
                   Aucun bot personnalisé trouvé (dc_bots_v1).
                 </div>
               ) : (
-                <div className="dc-scroll-thin" style={{ display: "flex", gap: 18, overflowX: "auto", paddingBottom: 10, marginTop: 10 }}>
+                <div
+                  className="dc-scroll-thin"
+                  style={{ display: "flex", gap: 18, overflowX: "auto", paddingBottom: 10, marginTop: 10 }}
+                >
                   {userBots.map((b) => {
                     const active = selectedIds.includes(b.id);
                     const fakeProfile = botToFakeProfile(b);
@@ -983,7 +1021,7 @@ export default function DepartementsConfig(props: any) {
         {!selectionValid && (
           <div style={{ marginTop: 10, fontSize: 12, opacity: 0.9, fontWeight: 950 }}>
             Configuration invalide : sélectionne {minPlayers} joueurs minimum
-            {teamSize > 1 ? `, multiple de ${teamSize}, et remplis toutes les teams.` : "."}
+            {teamSize > 1 ? `, exactement ${teamSize * 2}, et remplis Team 1 + Team 2.` : "."}
           </div>
         )}
       </Section>
@@ -1010,26 +1048,9 @@ export default function DepartementsConfig(props: any) {
         </OptionRow>
       </Section>
 
+      {/* ✅ Bouton EXACTEMENT “famille X01” */}
       <Section>
-        <button
-          onClick={start}
-          disabled={!selectionValid}
-          style={{
-            width: "100%",
-            marginTop: 6,
-            padding: "14px 16px",
-            borderRadius: 18,
-            border: "1px solid rgba(255,215,120,0.38)",
-            background: "linear-gradient(180deg, rgba(255,215,120,0.95), rgba(255,180,60,0.92))",
-            color: "rgba(20,12,2,0.95)",
-            fontWeight: 1100,
-            letterSpacing: 0.6,
-            textTransform: "uppercase",
-            boxShadow: "0 18px 44px rgba(0,0,0,0.45)",
-            opacity: selectionValid ? 1 : 0.45,
-            cursor: selectionValid ? "pointer" : "not-allowed",
-          }}
-        >
+        <button className="btn-primary w-full" onClick={start} disabled={!selectionValid}>
           {t("config.startGame", "Lancer la partie")}
         </button>
       </Section>

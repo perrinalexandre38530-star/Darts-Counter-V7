@@ -54,6 +54,11 @@ type Props = {
    * - "hidden" : aucun sélecteur (méthode figée par la config)
    */
   switcherMode?: "drawer" | "inline" | "hidden";
+
+  /** Figer la hauteur (utile en paysage tablette) */
+  lockContentHeight?: boolean;
+  /** Afficher le sélecteur en overlay (n\'impacte pas la mise en page) */
+  switcherOverlay?: boolean;
 };
 
 function safeReadDevModeEnabled(): boolean {
@@ -110,6 +115,8 @@ export default function ScoreInputHub({
   disabled = false,
   showPlaceholders = true,
   switcherMode = "drawer",
+  lockContentHeight = false,
+  switcherOverlay = false,
 }: Props) {
   const throwTotal = (currentThrow || []).reduce((a, d) => a + (d?.v || 0) * (d?.mult || 1), 0);
 
@@ -195,22 +202,35 @@ export default function ScoreInputHub({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [method, currentThrow?.length, multiplier]);
 
-  const contentBoxStyle: React.CSSProperties = baseContentHeight > 0 ? { minHeight: baseContentHeight } : undefined;
+  const contentBoxStyle: React.CSSProperties = lockContentHeight && baseContentHeight > 0 ? { minHeight: baseContentHeight } : undefined;
 
   return (
     <div>
-      {/* BARRE DE MÉTHODES (zone fixe, ne doit JAMAIS pousser le keypad / la cible) */}
-      {switcherMode !== "hidden" ? (
-        <div
-          style={{
-            height: 44,
-            marginBottom: 0,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-          }}
-        >
-          {(switcherMode === "inline" || switcherOpen) && (
+      {switcherMode !== "hidden" && (
+        <div style={{ marginBottom: 10, position: "relative" }}>
+          {switcherMode === "drawer" && (
+            <div style={{ display: "flex", justifyContent: "flex-end" }}>
+              <button
+                type="button"
+                onClick={() => setSwitcherOpen((v) => !v)}
+                disabled={disabled}
+                aria-label={switcherOpen ? "Réduire les méthodes" : "Afficher les méthodes"}
+                style={{
+                  width: 34,
+                  height: 24,
+                  borderRadius: 999,
+                  border: "1px solid rgba(255,255,255,0.16)",
+                  background: "rgba(0,0,0,0.35)",
+                  color: "rgba(255,255,255,0.85)",
+                  cursor: disabled ? "not-allowed" : "pointer",
+                }}
+              >
+                {switcherOpen ? "▴" : "▾"}
+              </button>
+            </div>
+          )}
+
+          {switcherMode === "inline" ? (
             <MethodBar
               method={method}
               setMethod={setMethod}
@@ -219,10 +239,52 @@ export default function ScoreInputHub({
               disabled={disabled}
               devEnabled={devEnabled}
             />
-          )}
+          ) : switcherOpen ? (
+            switcherOverlay ? (
+              <div
+                style={{
+                  position: "absolute",
+                  top: 42,
+                  left: 0,
+                  right: 0,
+                  zIndex: 50,
+                  paddingTop: 6,
+                }}
+              >
+                <div
+                  style={{
+                    borderRadius: 14,
+                    padding: 10,
+                    background: "rgba(0,0,0,0.55)",
+                    border: "1px solid rgba(255,255,255,0.10)",
+                    boxShadow: "0 12px 30px rgba(0,0,0,0.45)",
+                    backdropFilter: "blur(8px)",
+                  }}
+                >
+                  <MethodBar
+                    method={method}
+                    setMethod={setMethod}
+                    allowPresets={allowPresets}
+                    showPlaceholders={showPlaceholders}
+                    disabled={disabled}
+                    devEnabled={devEnabled}
+                  />
+                </div>
+              </div>
+            ) : (
+              <MethodBar
+                method={method}
+                setMethod={setMethod}
+                allowPresets={allowPresets}
+                showPlaceholders={showPlaceholders}
+                disabled={disabled}
+                devEnabled={devEnabled}
+              />
+            )
+          ) : null}
         </div>
-      ) : null}
-  
+      )}
+
       {/* CIBLE */}
       {method === "dartboard" ? (
         <div style={{ paddingBottom: 6, ...contentBoxStyle }}>
@@ -233,20 +295,20 @@ export default function ScoreInputHub({
               disabled={disabled}
               onHit={(seg, mul) => {
                 if (disabled) return;
-  
+
                 // Bull / DBull
                 if (seg === 25) {
                   if (onDirectDart) onDirectDart({ v: 25, mult: mul });
                   else onBull(); // fallback: bull simple (DBull non géré par l'API keypad actuelle)
                   return;
                 }
-  
+
                 // Injection directe (recommandé)
                 if (onDirectDart) {
                   onDirectDart({ v: seg, mult: mul });
                   return;
                 }
-  
+
                 // Fallback best-effort via toggles + onNumber (moins fiable, mais évite le "rien")
                 if (mul === 3) onTriple();
                 else if (mul === 2) onDouble();
@@ -255,7 +317,7 @@ export default function ScoreInputHub({
               }}
             />
           </div>
-  
+
           {/* Footer CIBLE — total à gauche + Annuler / Valider à droite (même langage visuel que le keypad) */}
           <div
             style={{
@@ -267,7 +329,7 @@ export default function ScoreInputHub({
             }}
           >
             <div style={totalPillStyle}>{throwTotal}</div>
-  
+
             <div style={{ display: "flex", gap: 10 }}>
               <button
                 type="button"
@@ -278,7 +340,7 @@ export default function ScoreInputHub({
               >
                 ANNULER
               </button>
-  
+
               <button
                 type="button"
                 style={btnGoldSmall}
@@ -292,7 +354,7 @@ export default function ScoreInputHub({
           </div>
         </div>
       ) : null}
-  
+
       {/* PRESETS */}
       {method === "presets" && allowPresets ? (
         <div style={{ paddingBottom: 2, ...contentBoxStyle }}>
@@ -316,14 +378,14 @@ export default function ScoreInputHub({
           </div>
         </div>
       ) : null}
-  
+
       {/* Méthode principale (Keypad + placeholders) */}
       {method === "keypad" || method === "presets" || method === "voice" || method === "auto" || method === "ai" ? (
         <div ref={method === "keypad" ? contentMeasureRef : undefined} style={contentBoxStyle}>
           {(method === "voice" || method === "auto" || method === "ai") && showPlaceholders ? (
             <PlaceholderCard method={method} />
           ) : null}
-  
+
           <Keypad
             currentThrow={currentThrow}
             multiplier={multiplier}
@@ -342,7 +404,8 @@ export default function ScoreInputHub({
         </div>
       ) : null}
     </div>
-  );  
+  );
+}
 
 function MethodBar({
   method,
@@ -486,5 +549,4 @@ function PlaceholderCard({ method }: { method: ScoreInputMethod }) {
       <div style={{ marginTop: 4, fontSize: 12.5, opacity: 0.72, fontWeight: 800 }}>{subtitle}</div>
     </div>
   );
-}
 }

@@ -74,13 +74,6 @@ async function safeEnsureSession(): Promise<Session | null> {
   return null;
 }
 
-
-
-
-
-
-
-
 /**
  * Profile = BONUS.
  * - Ne doit JAMAIS bloquer ready/status.
@@ -242,11 +235,8 @@ export function AuthOnlineProvider({ children }: { children: React.ReactNode }) 
             if (event === "SIGNED_OUT" || !nextSession?.user) {
               applyAuthFromSession(setState, null);
 
-              // Re-establish an anonymous session so the app is never "disconnected".
-              safeEnsureSession().then((s) => {
-                if (!alive) return;
-                if (s?.user) applyAuthFromSession(setState, s);
-              });
+              // ✅ COMPTE UNIQUE: NE PAS recréer de session anonyme.
+              // On reste signed_out tant qu'un vrai login n'est pas fait.
               return;
             }
 

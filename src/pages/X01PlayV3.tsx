@@ -18,10 +18,10 @@ import { useX01EngineV3 } from "../hooks/useX01EngineV3";
 import type { Dart as UIDart } from "../lib/types";
 
 import ScoreInputHub from "../components/ScoreInputHub";
+import BackDot from "../components/BackDot";
 // Caméra assistée (dartsmind-like UX)
 import CameraAssistedOverlay from "../components/CameraAssistedOverlay";
 import { DuelHeaderCompact } from "../components/DuelHeaderCompact";
-import BackDot from "../components/BackDot";
 import X01LegOverlayV3 from "../lib/x01v3/x01LegOverlayV3";
 
 import { useTheme } from "../contexts/ThemeContext";
@@ -1466,11 +1466,7 @@ const playScoreSfxAndMaybeDelayVoice = React.useCallback(
     // ---- Null sfx (0..10) hors checkout et hors bust ----
     if (!isBustNow && !isCheckoutNow && visitScore >= 0 && visitScore <= 10) {
       if (arcadeEnabled) {
-        // Le sample "score-null" est très discret : on pousse davantage le volume
-        // (capé à 1) pour rester audible même avec un SFX volume bas.
-        const audio = playPublicSound("score-null.mp3", {
-          volume: Math.min(1, sfxVolume + 0.8),
-        });
+        const audio = playPublicSound("score-null.mp3", { volume: sfxVolume });
         if (audio && typeof (audio as any).addEventListener === "function") {
           (audio as any).addEventListener(
             "ended",
@@ -2571,11 +2567,7 @@ try {
               width: "100%",
             }}
           >
-            <BackDot
-              onClick={handleQuit}
-              title={t("common.quit", "Quitter")}
-              size={40}
-            />
+                        <BackDot onClick={handleQuit} size={40} />
 
             <div style={{ flex: 1, display: "flex", justifyContent: "center" }}>
               {isDuel && useSetsUi && (
@@ -2663,13 +2655,13 @@ try {
                   inset: 0,
                   zIndex: 45,
                   width: "100%",
-                  height: "100%",
+                  
                 }}
               >
                 {isBotTurn ? (
                   <div
                     style={{
-                      padding: 14,
+                      padding: 8,
                       borderRadius: 14,
                       border: "1px solid rgba(255,255,255,0.08)",
                       background:
@@ -2732,7 +2724,7 @@ try {
                       background: isBustLocked ? "rgba(120,0,0,.10)" : "transparent",
                       borderRadius: 14,
                       padding: 6,
-                      height: "100%",
+                      
                       boxSizing: "border-box",
                     }}
                   >
@@ -2814,7 +2806,7 @@ try {
                           voiceScoreEnabled && scoringSource !== "external" && (voiceScore.phase.startsWith("LISTEN") || voiceScore.phase === "RECAP_CONFIRM")
                             ? "grayscale(.15)"
                             : "none",
-                        height: "100%",
+                        
                       }}
                     >
                       <ScoreInputHub
@@ -2882,7 +2874,7 @@ try {
           top: 0,
           zIndex: 60,
           width: `min(100%, ${CONTENT_MAX}px)`,
-          paddingInline: isLandscapeTablet ? 6 : 10,
+          paddingInline: 10,
           paddingTop: 4,
           paddingBottom: 4,
         }}
@@ -2988,7 +2980,7 @@ try {
           marginTop: isLandscapeTablet ? 10 : 0,
           bottom: NAV_HEIGHT + keypadH + 8,
           width: `min(100%, ${CONTENT_MAX}px)`,
-          paddingInline: isLandscapeTablet ? 6 : 10,
+          paddingInline: 10,
           paddingTop: 4,
           paddingBottom: 4,
           overflowY: "auto",
@@ -3323,7 +3315,7 @@ function HeaderBlock(props: {
                 src={currentAvatar}
                 style={{
                   width: "100%",
-                  height: "100%",
+                  
                   objectFit: "cover",
                 }}
               />
@@ -3331,7 +3323,7 @@ function HeaderBlock(props: {
               <div
                 style={{
                   width: "100%",
-                  height: "100%",
+                  
                   display: "flex",
                   justifyContent: "center",
                   alignItems: "center",
@@ -3636,7 +3628,7 @@ function PlayersListOnly(props: {
                   src={avatarSrc}
                   style={{
                     width: "100%",
-                    height: "100%",
+                    
                     objectFit: "cover",
                   }}
                 />
@@ -3644,7 +3636,7 @@ function PlayersListOnly(props: {
                 <div
                   style={{
                     width: "100%",
-                    height: "100%",
+                    
                     display: "flex",
                     alignItems: "center",
                     justifyContent: "center",
