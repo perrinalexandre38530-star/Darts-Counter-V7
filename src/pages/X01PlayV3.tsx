@@ -2534,13 +2534,12 @@ try {
   // =====================================================
 
 // =====================================================
-// Layout spécial : PAYSAGE TABLETTE (FIX CUT + SCROLL)
-// - HEADER pleine largeur en haut (non scroll)
-// - 2 colonnes en dessous (sans scroll global)
-//   * Gauche : HeaderBlock + PlayersListOnly (scroll interne)
-//   * Droite : Saisie (Keypad/Cible/Voice) pleine hauteur
-// - FIX IMPORTANT : minHeight: 0 sur containers grid/flex
-// - SUPPRESSION flèche méthode : switcherMode="hidden" + hard-hide CSS
+// Layout spécial : PAYSAGE TABLETTE
+// - HEADER pleine largeur en haut
+// - 2 blocs côte à côte en dessous (sans scroll global)
+//   * Gauche : Player + Score + Liste joueurs (liste scrollable interne)
+//   * Droite : Mode de saisie (Keypad / Cible / Voice) + boutons inchangés
+// - OVERLAYS inclus DANS le return (sinon JSX cassé)
 // =====================================================
 
 if (isLandscapeTablet) {
@@ -2552,24 +2551,8 @@ if (isLandscapeTablet) {
         overflow: "hidden",
         display: "flex",
         flexDirection: "column",
-        minHeight: 0, // CRITIQUE
       }}
     >
-      {/* Hard-hide : flèche / switcher méthode (sécurité) */}
-      <style>{`
-        .score-input-switcher,
-        .score-input-switcher-toggle,
-        .score-input-method-toggle,
-        .method-switcher,
-        .method-switcher-toggle,
-        .method-switcher-arrow,
-        [data-score-switcher="true"] {
-          display: none !important;
-          visibility: hidden !important;
-          pointer-events: none !important;
-        }
-      `}</style>
-
       {/* HEADER : pleine largeur */}
       <div
         ref={headerWrapRef}
@@ -2577,10 +2560,9 @@ if (isLandscapeTablet) {
           position: "relative",
           zIndex: 60,
           width: "100%",
-          paddingInline: 10,
-          paddingTop: 4,
-          paddingBottom: 4,
-          flex: "0 0 auto",
+          paddingInline: 12,
+          paddingTop: 6,
+          paddingBottom: 6,
         }}
       >
         <div
@@ -2589,13 +2571,12 @@ if (isLandscapeTablet) {
             justifyContent: "space-between",
             alignItems: "center",
             width: "100%",
-            gap: 10,
           }}
         >
-          <BackDot onClick={handleQuit} size={38} />
+          <BackDot onClick={handleQuit} size={40} />
 
-          <div style={{ flex: 1, display: "flex", justifyContent: "center", minWidth: 0 }}>
-            {isDuel && useSetsUi ? (
+          <div style={{ flex: 1, display: "flex", justifyContent: "center" }}>
+            {isDuel && useSetsUi && (
               <DuelHeaderCompact
                 leftAvatarUrl={profileById[players[0].id]?.avatarDataUrl ?? ""}
                 rightAvatarUrl={profileById[players[1].id]?.avatarDataUrl ?? ""}
@@ -2604,7 +2585,7 @@ if (isLandscapeTablet) {
                 leftLegs={(state as any).legsWon?.[players[0].id] ?? 0}
                 rightLegs={(state as any).legsWon?.[players[1].id] ?? 0}
               />
-            ) : null}
+            )}
           </div>
 
           <SetLegChip
@@ -2620,8 +2601,7 @@ if (isLandscapeTablet) {
       {/* MAIN : 2 colonnes sans scroll global */}
       <div
         style={{
-          flex: "1 1 auto",
-          minHeight: 0, // CRITIQUE
+          flex: 1,
           display: "grid",
           gridTemplateColumns: "1fr 1fr",
           gap: 12,
@@ -2630,15 +2610,8 @@ if (isLandscapeTablet) {
           alignItems: "stretch",
         }}
       >
-        {/* GAUCHE : HeaderBlock + PlayersListOnly (scroll interne UNIQUEMENT ici) */}
-        <div
-          style={{
-            display: "flex",
-            flexDirection: "column",
-            minHeight: 0, // CRITIQUE
-            overflow: "hidden",
-          }}
-        >
+        {/* GAUCHE : Player+Score + Liste joueurs (scroll interne) */}
+        <div style={{ display: "flex", flexDirection: "column", overflow: "hidden" }}>
           <div style={{ flex: "0 0 auto" }}>
             <HeaderBlock
               currentPlayer={activePlayer}
@@ -2657,15 +2630,7 @@ if (isLandscapeTablet) {
             />
           </div>
 
-          <div
-            style={{
-              flex: "1 1 auto",
-              minHeight: 0, // CRITIQUE
-              overflowY: "auto",
-              paddingTop: 10,
-              WebkitOverflowScrolling: "touch",
-            }}
-          >
+          <div style={{ flex: 1, overflowY: "auto", paddingTop: 10 }}>
             <PlayersListOnly
               cameraOpen={cameraOpen}
               setCameraOpen={setCameraOpen}
@@ -2684,33 +2649,17 @@ if (isLandscapeTablet) {
           </div>
         </div>
 
-        {/* DROITE : Saisie (doit pouvoir SHRINK => minHeight:0 partout) */}
-        <div
-          style={{
-            display: "flex",
-            flexDirection: "column",
-            minHeight: 0, // CRITIQUE
-            overflow: "hidden",
-          }}
-        >
-          <div
-            style={{
-              flex: "1 1 auto",
-              minHeight: 0, // CRITIQUE
-              overflow: "hidden",
-            }}
-          >
+        {/* DROITE : Mode de saisie (inchangé, mais dans le flow) */}
+        <div style={{ overflow: "hidden", display: "flex", flexDirection: "column" }}>
+          <div style={{ flex: 1, overflow: "hidden" }}>
             <div
               ref={keypadWrapRef}
               style={{
                 position: "relative",
+                inset: 0,
+                zIndex: 45,
                 width: "100%",
                 height: "100%",
-                minHeight: 0, // CRITIQUE
-                overflow: "hidden",
-                zIndex: 45,
-                display: "flex",
-                flexDirection: "column",
               }}
             >
               {isBotTurn ? (
@@ -2744,9 +2693,13 @@ if (isLandscapeTablet) {
                 >
                   🎥 {t("x01v3.external.title", "Comptage externe en cours…")}
                   <div style={{ fontSize: 11.5, opacity: 0.75, marginTop: 6 }}>
-                    {t("x01v3.external.hint", "Les fléchettes sont injectées automatiquement (Scolia/bridge).")}
+                    {t(
+                      "x01v3.external.hint",
+                      "Les fléchettes sont injectées automatiquement (Scolia/bridge)."
+                    )}
                   </div>
-                  {canUseCameraAssisted ? (
+
+                  {canUseCameraAssisted && (
                     <div style={{ marginTop: 10, display: "flex", justifyContent: "center" }}>
                       <button
                         type="button"
@@ -2756,7 +2709,8 @@ if (isLandscapeTablet) {
                           borderRadius: 14,
                           padding: "0 14px",
                           border: "1px solid rgba(255,255,255,0.14)",
-                          background: "linear-gradient(180deg, rgba(255,255,255,0.10), rgba(0,0,0,0.35))",
+                          background:
+                            "linear-gradient(180deg, rgba(255,255,255,0.10), rgba(0,0,0,0.35))",
                           color: "#fff",
                           fontWeight: 900,
                           cursor: "pointer",
@@ -2766,21 +2720,17 @@ if (isLandscapeTablet) {
                         {t("x01v3.camera.open", "Ouvrir Caméra")}
                       </button>
                     </div>
-                  ) : null}
+                  )}
                 </div>
               ) : (
                 <div
                   style={{
-                    flex: "1 1 auto",
-                    minHeight: 0, // CRITIQUE
                     border: isBustLocked ? "1px solid rgba(255,80,80,.65)" : "1px solid transparent",
                     background: isBustLocked ? "rgba(120,0,0,.10)" : "transparent",
                     borderRadius: 14,
                     padding: 6,
+                    height: "100%",
                     boxSizing: "border-box",
-                    overflow: "hidden",
-                    display: "flex",
-                    flexDirection: "column",
                   }}
                 >
                   {isBustLocked ? (
@@ -2792,14 +2742,16 @@ if (isLandscapeTablet) {
                         letterSpacing: 0.6,
                         color: "#ff6b6b",
                         textShadow: "0 0 14px rgba(255,90,90,.35)",
-                        flex: "0 0 auto",
                       }}
                     >
                       BUST — {t("x01v3.bust.lock", "Saisie bloquée")}
                     </div>
                   ) : null}
 
-                  {voiceScoreEnabled && scoringSource !== "external" && voiceScore.phase !== "OFF" && !isBotTurn ? (
+                  {voiceScoreEnabled &&
+                  scoringSource !== "external" &&
+                  voiceScore.phase !== "OFF" &&
+                  !isBotTurn ? (
                     <div
                       style={{
                         marginBottom: 8,
@@ -2808,10 +2760,16 @@ if (isLandscapeTablet) {
                         border: "1px solid rgba(255,255,255,0.10)",
                         background: "rgba(0,0,0,0.25)",
                         boxShadow: "0 10px 24px rgba(0,0,0,0.45)",
-                        flex: "0 0 auto",
                       }}
                     >
-                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+                      <div
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "space-between",
+                          gap: 10,
+                        }}
+                      >
                         <div style={{ fontWeight: 900, letterSpacing: 0.4 }}>
                           {voiceScore.phase.startsWith("LISTEN")
                             ? t("x01v3.voiceScore.listening", "Micro : écoute...")
@@ -2819,6 +2777,7 @@ if (isLandscapeTablet) {
                             ? t("x01v3.voiceScore.confirm", "Confirmer : oui / non")
                             : t("x01v3.voiceScore.active", "Commande vocale")}
                         </div>
+
                         <button
                           type="button"
                           onClick={() => voiceScore.stop()}
@@ -2851,11 +2810,8 @@ if (isLandscapeTablet) {
                     </div>
                   ) : null}
 
-                  {/* Zone saisie : doit pouvoir shrink, sinon bas coupé */}
                   <div
                     style={{
-                      flex: "1 1 auto",
-                      minHeight: 0, // CRITIQUE
                       pointerEvents:
                         voiceScoreEnabled &&
                         scoringSource !== "external" &&
@@ -2874,7 +2830,7 @@ if (isLandscapeTablet) {
                         (voiceScore.phase.startsWith("LISTEN") || voiceScore.phase === "RECAP_CONFIRM")
                           ? "grayscale(.15)"
                           : "none",
-                      overflow: "hidden",
+                      height: "100%",
                     }}
                   >
                     <ScoreInputHub
