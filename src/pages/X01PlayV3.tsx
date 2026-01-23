@@ -2655,7 +2655,6 @@ try {
                   inset: 0,
                   zIndex: 45,
                   width: "100%",
-                  
                 }}
               >
                 {isBotTurn ? (
@@ -2724,7 +2723,6 @@ try {
                       background: isBustLocked ? "rgba(120,0,0,.10)" : "transparent",
                       borderRadius: 14,
                       padding: 6,
-                      
                       boxSizing: "border-box",
                     }}
                   >
@@ -2806,7 +2804,6 @@ try {
                           voiceScoreEnabled && scoringSource !== "external" && (voiceScore.phase.startsWith("LISTEN") || voiceScore.phase === "RECAP_CONFIRM")
                             ? "grayscale(.15)"
                             : "none",
-                        
                       }}
                     >
                       <ScoreInputHub
@@ -2824,7 +2821,7 @@ try {
                         hidePreview
                         showPlaceholders={false}
                         disabled={isBustLocked}
-                      />
+                       switcherMode="hidden" />
                     </div>
                   </div>
                 )}
@@ -3185,7 +3182,7 @@ try {
               hidePreview
               showPlaceholders={false}
               disabled={isBustLocked}
-            />
+             switcherMode="hidden" />
           </div>
           </div>
         )}
@@ -3315,7 +3312,6 @@ function HeaderBlock(props: {
                 src={currentAvatar}
                 style={{
                   width: "100%",
-                  
                   objectFit: "cover",
                 }}
               />
@@ -3323,7 +3319,6 @@ function HeaderBlock(props: {
               <div
                 style={{
                   width: "100%",
-                  
                   display: "flex",
                   justifyContent: "center",
                   alignItems: "center",
@@ -3628,7 +3623,6 @@ function PlayersListOnly(props: {
                   src={avatarSrc}
                   style={{
                     width: "100%",
-                    
                     objectFit: "cover",
                   }}
                 />
@@ -3636,7 +3630,6 @@ function PlayersListOnly(props: {
                 <div
                   style={{
                     width: "100%",
-                    
                     display: "flex",
                     alignItems: "center",
                     justifyContent: "center",
