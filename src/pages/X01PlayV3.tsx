@@ -2533,331 +2533,356 @@ try {
   // Rendu principal : UI du "beau" X01Play
   // =====================================================
 
-  // =====================================================
-  // Layout spécial : PAYSAGE TABLETTE
-  // - HEADER pleine largeur en haut
-  // - 2 blocs côte à côte en dessous (sans scroll global)
-  //   * Gauche : Player + Score + Liste joueurs (liste scrollable interne)
-  //   * Droite : Mode de saisie (Keypad / Cible / Voice) + boutons inchangés
-  // =====================================================
+// =====================================================
+// Layout spécial : PAYSAGE TABLETTE
+// - HEADER pleine largeur en haut
+// - 2 blocs côte à côte en dessous (sans scroll global)
+//   * Gauche : Player + Score + Liste joueurs (liste scrollable interne)
+//   * Droite : Mode de saisie (Keypad / Cible / Voice) + boutons inchangés
+// - OVERLAYS inclus DANS le return (sinon JSX cassé)
+// =====================================================
 
-  if (isLandscapeTablet) {
-    return (
+if (isLandscapeTablet) {
+  return (
+    <div
+      className={`x01play-container theme-${theme.id}`}
+      style={{
+        height: "100dvh",
+        overflow: "hidden",
+        display: "flex",
+        flexDirection: "column",
+      }}
+    >
+      {/* HEADER : pleine largeur */}
       <div
-        className={`x01play-container theme-${theme.id}`}
-        style={{ height: "100dvh", overflow: "hidden", display: "flex", flexDirection: "column" }}
+        ref={headerWrapRef}
+        style={{
+          position: "relative",
+          zIndex: 60,
+          width: "100%",
+          paddingInline: 12,
+          paddingTop: 6,
+          paddingBottom: 6,
+        }}
       >
-        {/* HEADER : pleine largeur */}
         <div
-          ref={headerWrapRef}
           style={{
-            position: "relative",
-            zIndex: 60,
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
             width: "100%",
-            paddingInline: 12,
-            paddingTop: 6,
-            paddingBottom: 6,
           }}
         >
-          <div
-            style={{
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "center",
-              width: "100%",
-            }}
-          >
-                        <BackDot onClick={handleQuit} size={40} />
+          <BackDot onClick={handleQuit} size={40} />
 
-            <div style={{ flex: 1, display: "flex", justifyContent: "center" }}>
-              {isDuel && useSetsUi && (
-                <DuelHeaderCompact
-                  leftAvatarUrl={profileById[players[0].id]?.avatarDataUrl ?? ""}
-                  rightAvatarUrl={profileById[players[1].id]?.avatarDataUrl ?? ""}
-                  leftSets={(state as any).setsWon?.[players[0].id] ?? 0}
-                  rightSets={(state as any).setsWon?.[players[1].id] ?? 0}
-                  leftLegs={(state as any).legsWon?.[players[0].id] ?? 0}
-                  rightLegs={(state as any).legsWon?.[players[1].id] ?? 0}
-                />
-              )}
-            </div>
+          <div style={{ flex: 1, display: "flex", justifyContent: "center" }}>
+            {isDuel && useSetsUi && (
+              <DuelHeaderCompact
+                leftAvatarUrl={profileById[players[0].id]?.avatarDataUrl ?? ""}
+                rightAvatarUrl={profileById[players[1].id]?.avatarDataUrl ?? ""}
+                leftSets={(state as any).setsWon?.[players[0].id] ?? 0}
+                rightSets={(state as any).setsWon?.[players[1].id] ?? 0}
+                leftLegs={(state as any).legsWon?.[players[0].id] ?? 0}
+                rightLegs={(state as any).legsWon?.[players[1].id] ?? 0}
+              />
+            )}
+          </div>
 
-            <SetLegChip
-              currentSet={(state as any).currentSet ?? 1}
-              currentLegInSet={(state as any).currentLeg ?? 1}
-              setsTarget={setsTarget}
-              legsTarget={legsTarget}
+          <SetLegChip
+            currentSet={(state as any).currentSet ?? 1}
+            currentLegInSet={(state as any).currentLeg ?? 1}
+            setsTarget={setsTarget}
+            legsTarget={legsTarget}
+            useSets={useSetsUi}
+          />
+        </div>
+      </div>
+
+      {/* MAIN : 2 colonnes sans scroll global */}
+      <div
+        style={{
+          flex: 1,
+          display: "grid",
+          gridTemplateColumns: "1fr 1fr",
+          gap: 12,
+          padding: 12,
+          overflow: "hidden",
+          alignItems: "stretch",
+        }}
+      >
+        {/* GAUCHE : Player+Score + Liste joueurs (scroll interne) */}
+        <div style={{ display: "flex", flexDirection: "column", overflow: "hidden" }}>
+          <div style={{ flex: "0 0 auto" }}>
+            <HeaderBlock
+              currentPlayer={activePlayer}
+              currentAvatar={activePlayer ? profileById[activePlayer.id]?.avatarDataUrl ?? null : null}
+              currentRemaining={currentScore}
+              currentThrow={currentThrow}
+              doubleOut={doubleOut}
+              liveRanking={liveRanking}
+              curDarts={curDarts}
+              curM3D={curM3D}
+              bestVisit={bestVisit}
+              legsWon={(state as any).legsWon ?? {}}
+              setsWon={(state as any).setsWon ?? {}}
               useSets={useSetsUi}
+              checkoutText={checkoutText}
+            />
+          </div>
+
+          <div style={{ flex: 1, overflowY: "auto", paddingTop: 10 }}>
+            <PlayersListOnly
+              cameraOpen={cameraOpen}
+              setCameraOpen={setCameraOpen}
+              players={players}
+              profileById={profileById}
+              liveStatsByPlayer={liveStatsByPlayer}
+              start={config.startScore}
+              scoresByPlayer={scores}
+              legsWon={(state as any).legsWon ?? {}}
+              setsWon={(state as any).setsWon ?? {}}
+              useSets={useSetsUi}
+              lastVisitsByPlayer={lastVisitsByPlayer}
+              lastVisitIsBustByPlayer={lastVisitIsBustByPlayer}
+              avg3ByPlayer={avg3ByPlayer}
             />
           </div>
         </div>
 
-        {/* MAIN : 2 colonnes sans scroll global */}
-        <div
-          style={{
-            flex: 1,
-            display: "grid",
-            gridTemplateColumns: "1fr 1fr",
-            gap: 12,
-            padding: 12,
-            overflow: "hidden",
-            alignItems: "stretch",
-          }}
-        >
-          {/* GAUCHE : Player+Score + Liste joueurs (scroll interne) */}
-          <div style={{ display: "flex", flexDirection: "column", overflow: "hidden" }}>
-            <div style={{ flex: "0 0 auto" }}>
-              <HeaderBlock
-                currentPlayer={activePlayer}
-                currentAvatar={
-                  activePlayer ? profileById[activePlayer.id]?.avatarDataUrl ?? null : null
-                }
-                currentRemaining={currentScore}
-                currentThrow={currentThrow}
-                doubleOut={doubleOut}
-                liveRanking={liveRanking}
-                curDarts={curDarts}
-                curM3D={curM3D}
-                bestVisit={bestVisit}
-                legsWon={(state as any).legsWon ?? {}}
-                setsWon={(state as any).setsWon ?? {}}
-                useSets={useSetsUi}
-                checkoutText={checkoutText}
-              />
-            </div>
-
-            <div style={{ flex: 1, overflowY: "auto", paddingTop: 10 }}>
-              <PlayersListOnly
-                cameraOpen={cameraOpen}
-                setCameraOpen={setCameraOpen}
-                players={players}
-                profileById={profileById}
-                liveStatsByPlayer={liveStatsByPlayer}
-                start={config.startScore}
-                scoresByPlayer={scores}
-                legsWon={(state as any).legsWon ?? {}}
-                setsWon={(state as any).setsWon ?? {}}
-                useSets={useSetsUi}
-                lastVisitsByPlayer={lastVisitsByPlayer}
-                lastVisitIsBustByPlayer={lastVisitIsBustByPlayer}
-                avg3ByPlayer={avg3ByPlayer}
-              />
-            </div>
-          </div>
-
-          {/* DROITE : Mode de saisie (inchangé, mais dans le flow) */}
-          <div style={{ overflow: "hidden", display: "flex", flexDirection: "column" }}>
-            <div style={{ flex: 1, overflow: "hidden" }}>
-              <div
-                ref={keypadWrapRef}
-                style={{
-                  position: "relative",
-                  inset: 0,
-                  zIndex: 45,
-                  width: "100%",
-                  height: "100%",
-                }}
-              >
-                {isBotTurn ? (
-                  <div
-                    style={{
-                      padding: 8,
-                      borderRadius: 14,
-                      border: "1px solid rgba(255,255,255,0.08)",
-                      background:
-                        "linear-gradient(180deg, rgba(10,10,12,.9), rgba(6,6,8,.95))",
-                      textAlign: "center",
-                      fontSize: 13,
-                      color: "#e3e6ff",
-                      boxShadow: "0 10px 24px rgba(0,0,0,.5)",
-                    }}
-                  >
-                    🤖 {activePlayer?.name ?? t("x01v3.bot.name", "BOT")} {t("x01v3.bot.playing", "joue son tour...")}
+        {/* DROITE : Mode de saisie (inchangé, mais dans le flow) */}
+        <div style={{ overflow: "hidden", display: "flex", flexDirection: "column" }}>
+          <div style={{ flex: 1, overflow: "hidden" }}>
+            <div
+              ref={keypadWrapRef}
+              style={{
+                position: "relative",
+                inset: 0,
+                zIndex: 45,
+                width: "100%",
+                height: "100%",
+              }}
+            >
+              {isBotTurn ? (
+                <div
+                  style={{
+                    padding: 8,
+                    borderRadius: 14,
+                    border: "1px solid rgba(255,255,255,0.08)",
+                    background: "linear-gradient(180deg, rgba(10,10,12,.9), rgba(6,6,8,.95))",
+                    textAlign: "center",
+                    fontSize: 13,
+                    color: "#e3e6ff",
+                    boxShadow: "0 10px 24px rgba(0,0,0,.5)",
+                  }}
+                >
+                  🤖 {activePlayer?.name ?? t("x01v3.bot.name", "BOT")}{" "}
+                  {t("x01v3.bot.playing", "joue son tour...")}
+                </div>
+              ) : scoringSource === "external" ? (
+                <div
+                  style={{
+                    padding: 14,
+                    borderRadius: 14,
+                    border: "1px solid rgba(255,255,255,0.08)",
+                    background: "linear-gradient(180deg, rgba(10,10,12,.9), rgba(6,6,8,.95))",
+                    textAlign: "center",
+                    fontSize: 13,
+                    color: "#e3e6ff",
+                    boxShadow: "0 10px 24px rgba(0,0,0,.5)",
+                  }}
+                >
+                  🎥 {t("x01v3.external.title", "Comptage externe en cours…")}
+                  <div style={{ fontSize: 11.5, opacity: 0.75, marginTop: 6 }}>
+                    {t(
+                      "x01v3.external.hint",
+                      "Les fléchettes sont injectées automatiquement (Scolia/bridge)."
+                    )}
                   </div>
-                ) : scoringSource === "external" ? (
-                  <div
-                    style={{
-                      padding: 14,
-                      borderRadius: 14,
-                      border: "1px solid rgba(255,255,255,0.08)",
-                      background:
-                        "linear-gradient(180deg, rgba(10,10,12,.9), rgba(6,6,8,.95))",
-                      textAlign: "center",
-                      fontSize: 13,
-                      color: "#e3e6ff",
-                      boxShadow: "0 10px 24px rgba(0,0,0,.5)",
-                    }}
-                  >
-                    🎥 {t("x01v3.external.title", "Comptage externe en cours…")}
-                    <div style={{ fontSize: 11.5, opacity: 0.75, marginTop: 6 }}>
-                      {t(
-                        "x01v3.external.hint",
-                        "Les fléchettes sont injectées automatiquement (Scolia/bridge)."
-                      )}
+
+                  {canUseCameraAssisted && (
+                    <div style={{ marginTop: 10, display: "flex", justifyContent: "center" }}>
+                      <button
+                        type="button"
+                        onClick={() => setCameraOpen(true)}
+                        style={{
+                          height: 40,
+                          borderRadius: 14,
+                          padding: "0 14px",
+                          border: "1px solid rgba(255,255,255,0.14)",
+                          background:
+                            "linear-gradient(180deg, rgba(255,255,255,0.10), rgba(0,0,0,0.35))",
+                          color: "#fff",
+                          fontWeight: 900,
+                          cursor: "pointer",
+                          boxShadow: "0 10px 24px rgba(0,0,0,.5)",
+                        }}
+                      >
+                        {t("x01v3.camera.open", "Ouvrir Caméra")}
+                      </button>
                     </div>
-                    {canUseCameraAssisted && (
-                      <div style={{ marginTop: 10, display: "flex", justifyContent: "center" }}>
+                  )}
+                </div>
+              ) : (
+                <div
+                  style={{
+                    border: isBustLocked ? "1px solid rgba(255,80,80,.65)" : "1px solid transparent",
+                    background: isBustLocked ? "rgba(120,0,0,.10)" : "transparent",
+                    borderRadius: 14,
+                    padding: 6,
+                    height: "100%",
+                    boxSizing: "border-box",
+                  }}
+                >
+                  {isBustLocked ? (
+                    <div
+                      style={{
+                        marginBottom: 6,
+                        textAlign: "center",
+                        fontWeight: 900,
+                        letterSpacing: 0.6,
+                        color: "#ff6b6b",
+                        textShadow: "0 0 14px rgba(255,90,90,.35)",
+                      }}
+                    >
+                      BUST — {t("x01v3.bust.lock", "Saisie bloquée")}
+                    </div>
+                  ) : null}
+
+                  {voiceScoreEnabled &&
+                  scoringSource !== "external" &&
+                  voiceScore.phase !== "OFF" &&
+                  !isBotTurn ? (
+                    <div
+                      style={{
+                        marginBottom: 8,
+                        padding: "8px 10px",
+                        borderRadius: 14,
+                        border: "1px solid rgba(255,255,255,0.10)",
+                        background: "rgba(0,0,0,0.25)",
+                        boxShadow: "0 10px 24px rgba(0,0,0,0.45)",
+                      }}
+                    >
+                      <div
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "space-between",
+                          gap: 10,
+                        }}
+                      >
+                        <div style={{ fontWeight: 900, letterSpacing: 0.4 }}>
+                          {voiceScore.phase.startsWith("LISTEN")
+                            ? t("x01v3.voiceScore.listening", "Micro : écoute...")
+                            : voiceScore.phase === "RECAP_CONFIRM"
+                            ? t("x01v3.voiceScore.confirm", "Confirmer : oui / non")
+                            : t("x01v3.voiceScore.active", "Commande vocale")}
+                        </div>
+
                         <button
                           type="button"
-                          onClick={() => setCameraOpen(true)}
+                          onClick={() => voiceScore.stop()}
                           style={{
-                            height: 40,
-                            borderRadius: 14,
-                            padding: "0 14px",
-                            border: `1px solid rgba(255,255,255,0.14)`,
-                            background: `linear-gradient(180deg, rgba(255,255,255,0.10), rgba(0,0,0,0.35))`,
+                            borderRadius: 12,
+                            padding: "6px 10px",
+                            border: "1px solid rgba(255,255,255,0.12)",
+                            background: "rgba(255,255,255,0.06)",
                             color: "#fff",
                             fontWeight: 900,
                             cursor: "pointer",
-                            boxShadow: `0 10px 24px rgba(0,0,0,.5)`,
+                            flex: "0 0 auto",
                           }}
                         >
-                          {t("x01v3.camera.open", "Ouvrir Caméra")}
+                          {t("common.stop", "Stop")}
                         </button>
                       </div>
-                    )}
-                  </div>
-                ) : (
+
+                      {voiceScore.lastHeard ? (
+                        <div style={{ marginTop: 4, fontSize: 12, color: "rgba(255,255,255,0.75)" }}>
+                          {t("x01v3.voiceScore.heard", "Entendu")}: {voiceScore.lastHeard}
+                        </div>
+                      ) : null}
+
+                      {voiceScore.dartsLabel ? (
+                        <div style={{ marginTop: 2, fontSize: 12, color: "rgba(255,255,255,0.75)" }}>
+                          {t("x01v3.voiceScore.rec", "Saisie")}: {voiceScore.dartsLabel}
+                        </div>
+                      ) : null}
+                    </div>
+                  ) : null}
+
                   <div
                     style={{
-                      border: isBustLocked ? "1px solid rgba(255,80,80,.65)" : "1px solid transparent",
-                      background: isBustLocked ? "rgba(120,0,0,.10)" : "transparent",
-                      borderRadius: 14,
-                      padding: 6,
+                      pointerEvents:
+                        voiceScoreEnabled &&
+                        scoringSource !== "external" &&
+                        (voiceScore.phase.startsWith("LISTEN") || voiceScore.phase === "RECAP_CONFIRM")
+                          ? "none"
+                          : "auto",
+                      opacity:
+                        voiceScoreEnabled &&
+                        scoringSource !== "external" &&
+                        (voiceScore.phase.startsWith("LISTEN") || voiceScore.phase === "RECAP_CONFIRM")
+                          ? 0.55
+                          : 1,
+                      filter:
+                        voiceScoreEnabled &&
+                        scoringSource !== "external" &&
+                        (voiceScore.phase.startsWith("LISTEN") || voiceScore.phase === "RECAP_CONFIRM")
+                          ? "grayscale(.15)"
+                          : "none",
                       height: "100%",
-                      boxSizing: "border-box",
                     }}
                   >
-                    {isBustLocked ? (
-                      <div
-                        style={{
-                          marginBottom: 6,
-                          textAlign: "center",
-                          fontWeight: 900,
-                          letterSpacing: 0.6,
-                          color: "#ff6b6b",
-                          textShadow: "0 0 14px rgba(255,90,90,.35)",
-                        }}
-                      >
-                        BUST — {t("x01v3.bust.lock", "Saisie bloquée")}
-                      </div>
-                    ) : null}
-
-                    {voiceScoreEnabled && scoringSource !== "external" && voiceScore.phase !== "OFF" && !isBotTurn ? (
-                      <div
-                        style={{
-                          marginBottom: 8,
-                          padding: "8px 10px",
-                          borderRadius: 14,
-                          border: "1px solid rgba(255,255,255,0.10)",
-                          background: "rgba(0,0,0,0.25)",
-                          boxShadow: "0 10px 24px rgba(0,0,0,0.45)",
-                        }}
-                      >
-                        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
-                          <div style={{ fontWeight: 900, letterSpacing: 0.4 }}>
-                            {voiceScore.phase.startsWith("LISTEN")
-                              ? t("x01v3.voiceScore.listening", "Micro : écoute...")
-                              : voiceScore.phase === "RECAP_CONFIRM"
-                              ? t("x01v3.voiceScore.confirm", "Confirmer : oui / non")
-                              : t("x01v3.voiceScore.active", "Commande vocale")}
-                          </div>
-                          <button
-                            type="button"
-                            onClick={() => voiceScore.stop()}
-                            style={{
-                              borderRadius: 12,
-                              padding: "6px 10px",
-                              border: "1px solid rgba(255,255,255,0.12)",
-                              background: "rgba(255,255,255,0.06)",
-                              color: "#fff",
-                              fontWeight: 900,
-                              cursor: "pointer",
-                              flex: "0 0 auto",
-                            }}
-                          >
-                            {t("common.stop", "Stop")}
-                          </button>
-                        </div>
-                        {voiceScore.lastHeard ? (
-                          <div style={{ marginTop: 4, fontSize: 12, color: "rgba(255,255,255,0.75)" }}>
-                            {t("x01v3.voiceScore.heard", "Entendu")}: {voiceScore.lastHeard}
-                          </div>
-                        ) : null}
-                        {voiceScore.dartsLabel ? (
-                          <div style={{ marginTop: 2, fontSize: 12, color: "rgba(255,255,255,0.75)" }}>
-                            {t("x01v3.voiceScore.rec", "Saisie")}: {voiceScore.dartsLabel}
-                          </div>
-                        ) : null}
-                      </div>
-                    ) : null}
-
-                    <div
-                      style={{
-                        pointerEvents:
-                          voiceScoreEnabled && scoringSource !== "external" && (voiceScore.phase.startsWith("LISTEN") || voiceScore.phase === "RECAP_CONFIRM")
-                            ? "none"
-                            : "auto",
-                        opacity:
-                          voiceScoreEnabled && scoringSource !== "external" && (voiceScore.phase.startsWith("LISTEN") || voiceScore.phase === "RECAP_CONFIRM")
-                            ? 0.55
-                            : 1,
-                        filter:
-                          voiceScoreEnabled && scoringSource !== "external" && (voiceScore.phase.startsWith("LISTEN") || voiceScore.phase === "RECAP_CONFIRM")
-                            ? "grayscale(.15)"
-                            : "none",
-                        height: "100%",
-                      }}
-                    >
-                      <ScoreInputHub
-                        currentThrow={currentThrow}
-                        multiplier={multiplier}
-                        onSimple={handleSimple}
-                        onDouble={handleDouble}
-                        onTriple={handleTriple}
-                        onBackspace={handleBackspace}
-                        onCancel={handleCancel}
-                        onNumber={handleNumber}
-                        onBull={handleBull}
-                        onValidate={validateThrow}
-                        onDirectDart={handleDirectDart}
-                        hidePreview
-                        showPlaceholders={false}
-                        disabled={isBustLocked}
-                      />
-                    </div>
+                    <ScoreInputHub
+                      currentThrow={currentThrow}
+                      multiplier={multiplier}
+                      onSimple={handleSimple}
+                      onDouble={handleDouble}
+                      onTriple={handleTriple}
+                      onBackspace={handleBackspace}
+                      onCancel={handleCancel}
+                      onNumber={handleNumber}
+                      onBull={handleBull}
+                      onValidate={validateThrow}
+                      onDirectDart={handleDirectDart}
+                      hidePreview
+                      showPlaceholders={false}
+                      disabled={isBustLocked}
+                      switcherMode="hidden"
+                    />
                   </div>
-                )}
-              </div>
+                </div>
+              )}
             </div>
           </div>
         </div>
-
-        {/* OVERLAYS (inchangés) */}
-        <X01LegOverlayV3
-          open={status === "leg_end" || status === "set_end" || status === "match_end"}
-          status={status}
-          config={config}
-          state={state}
-          liveStatsByPlayer={liveStatsByPlayer}
-          onNextLeg={startNextLeg}
-          onExitMatch={handleQuit}
-          onReplaySameConfig={handleReplaySameConfig}
-          onReplayNewConfig={handleReplayNewConfigInternal}
-          onShowSummary={handleShowSummary}
-          onContinueMulti={players.length >= 3 ? handleContinueMulti : undefined}
-        />
-
-        <EndOfLegOverlay
-          open={summaryOpen && !!summaryLegStats}
-          result={summaryLegStats}
-          playersById={summaryPlayersById}
-          onClose={() => setSummaryOpen(false)}
-          onReplay={handleReplaySameConfig}
-        />
       </div>
-    );
-  }
+
+      {/* OVERLAYS (inchangés) */}
+      <X01LegOverlayV3
+        open={status === "leg_end" || status === "set_end" || status === "match_end"}
+        status={status}
+        config={config}
+        state={state}
+        liveStatsByPlayer={liveStatsByPlayer}
+        onNextLeg={startNextLeg}
+        onExitMatch={handleQuit}
+        onReplaySameConfig={handleReplaySameConfig}
+        onReplayNewConfig={handleReplayNewConfigInternal}
+        onShowSummary={handleShowSummary}
+        onContinueMulti={players.length >= 3 ? handleContinueMulti : undefined}
+      />
+
+      <EndOfLegOverlay
+        open={summaryOpen && !!summaryLegStats}
+        result={summaryLegStats}
+        playersById={summaryPlayersById}
+        onClose={() => setSummaryOpen(false)}
+        onReplay={handleReplaySameConfig}
+      />
+    </div>
+  );
+}
 
   return (
     <div
@@ -2869,7 +2894,7 @@ try {
         ref={headerWrapRef}
         style={{
           position: isLandscapeTablet ? "sticky" : "fixed",
-          left: isLandscapeTablet ? "auto" : "50%",
+          left: "50%",
           transform: isLandscapeTablet ? "none" : "translateX(-50%)",
           top: 0,
           zIndex: 60,
@@ -2974,7 +2999,7 @@ try {
       <div
         style={{
           position: isLandscapeTablet ? "relative" : "fixed",
-          left: isLandscapeTablet ? "auto" : "50%",
+          left: "50%",
           transform: isLandscapeTablet ? "none" : "translateX(-50%)",
           top: isLandscapeTablet ? "auto" : headerH,
           marginTop: isLandscapeTablet ? 10 : 0,
@@ -3009,7 +3034,7 @@ try {
         ref={keypadWrapRef}
         style={{
           position: isLandscapeTablet ? "sticky" : "fixed",
-          left: isLandscapeTablet ? "auto" : "50%",
+          left: "50%",
           transform: isLandscapeTablet ? "none" : "translateX(-50%)",
           bottom: 0,
           zIndex: 45,

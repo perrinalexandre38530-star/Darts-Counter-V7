@@ -2753,7 +2753,8 @@ try {
                         hidePreview
                         showPlaceholders={false}
                         disabled={isBustLocked}
-                      />
+                        switcherMode="hidden"
+/>
                     </div>
                   </div>
                 )}
@@ -2798,7 +2799,7 @@ try {
         ref={headerWrapRef}
         style={{
           position: isLandscapeTablet ? "sticky" : "fixed",
-          left: isLandscapeTablet ? "auto" : "50%",
+          left: "50%",
           transform: isLandscapeTablet ? "none" : "translateX(-50%)",
           top: 0,
           zIndex: 60,
@@ -2904,7 +2905,7 @@ try {
       <div
         style={{
           position: isLandscapeTablet ? "relative" : "fixed",
-          left: isLandscapeTablet ? "auto" : "50%",
+          left: "50%",
           transform: isLandscapeTablet ? "none" : "translateX(-50%)",
           top: isLandscapeTablet ? "auto" : headerH,
           marginTop: isLandscapeTablet ? 10 : 0,
@@ -2937,7 +2938,7 @@ try {
         ref={keypadWrapRef}
         style={{
           position: isLandscapeTablet ? "sticky" : "fixed",
-          left: isLandscapeTablet ? "auto" : "50%",
+          left: "50%",
           transform: isLandscapeTablet ? "none" : "translateX(-50%)",
           bottom: 0,
           zIndex: 45,
