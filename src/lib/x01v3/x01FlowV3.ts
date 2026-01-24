@@ -23,8 +23,39 @@ export function generateThrowOrderV3(
   previousOrder: X01PlayerId[] | null,
   setIndex: number
 ): X01PlayerId[] {
+  // SOLO / MULTI (comportement historique)
   const base = config.players.map((p) => p.id);
 
+  // TEAMS : construire un ordre intercalé (A1,B1,C1,...,A2,B2,...)
+  const buildTeamsOrder = (teams: { id: string; players: X01PlayerId[] }[]) => {
+    const maxLen = Math.max(0, ...teams.map((t) => t.players.length));
+    const out: X01PlayerId[] = [];
+    for (let i = 0; i < maxLen; i++) {
+      for (const t of teams) {
+        const pid = t.players[i];
+        if (pid) out.push(pid);
+      }
+    }
+    return out.length ? out : base;
+  };
+
+  if (config.gameMode === "teams" && Array.isArray(config.teams) && config.teams.length >= 2) {
+    // Premier set
+    if (!previousOrder) {
+      if (config.serveMode === "random") {
+        const shuffledTeams = shuffleArray(config.teams);
+        return buildTeamsOrder(shuffledTeams);
+      }
+      // alternate : on respecte l'ordre des équipes tel que configuré
+      return buildTeamsOrder(config.teams);
+    }
+
+    // Sets suivants : on décale l'ordre précédent (équivalent "le joueur suivant commence")
+    // => robuste, et cohérent avec solo/multi
+    return rotateArray(previousOrder, 1);
+  }
+
+  // ----- SOLO / MULTI -----
   if (config.serveMode === "random" && !previousOrder) {
     // Premier set : random intégral
     return shuffleArray(base);
@@ -43,6 +74,7 @@ export function generateThrowOrderV3(
 
   return base; // fallback
 }
+
 
 /* -------------------------------------------------------
    Utilitaires

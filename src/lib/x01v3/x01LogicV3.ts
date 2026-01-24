@@ -31,6 +31,30 @@ export function isMultiContinueMode(config: X01ConfigV3): boolean {
 }
 
 /* -------------------------------------------------------
+   Helpers TEAMS : synchroniser le score de toute l'équipe
+   - On conserve state.scores[pid] pour l'UI/stats existants
+   - En mode teams : tous les joueurs d'une team partagent le même score
+------------------------------------------------------- */
+function setScoreForActiveV3(config: X01ConfigV3, state: X01MatchStateV3, newScore: number) {
+  const pid = state.activePlayer;
+  // fallback solo/multi
+  if (config.gameMode !== "teams" || !Array.isArray(config.teams) || !config.teams.length) {
+    state.scores[pid] = newScore;
+    return;
+  }
+
+  const team = config.teams.find((t) => Array.isArray(t.players) && t.players.includes(pid));
+  if (!team) {
+    state.scores[pid] = newScore;
+    return;
+  }
+
+  for (const memberId of team.players) {
+    state.scores[memberId] = newScore;
+  }
+}
+
+/* -------------------------------------------------------
    Type d'entrée depuis le Keypad
 ------------------------------------------------------- */
 export interface X01DartInputV3 {
@@ -197,7 +221,7 @@ export function applyDartToCurrentPlayerV3(
     visit.currentScore = visit.startingScore;
 
     // Mise à jour du score global du joueur actif
-    state.scores[state.activePlayer] = visit.startingScore;
+    setScoreForActiveV3(config, state, visit.startingScore);
 
     // La visite est terminée
     visit.dartsLeft = 0;
@@ -216,7 +240,7 @@ export function applyDartToCurrentPlayerV3(
 
   // Pas bust → on applique le nouveau score
   visit.currentScore = scoreAfter;
-  state.scores[state.activePlayer] = scoreAfter;
+  setScoreForActiveV3(config, state, scoreAfter);
 
   // On enregistre le dart
   visit.darts.push(dart);

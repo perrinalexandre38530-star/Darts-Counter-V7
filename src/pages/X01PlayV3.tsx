@@ -36,6 +36,25 @@ import { buildLegStatsFromV3LiveForOverlay } from "../lib/x01v3/x01V3LegStatsAda
 import { StatsBridge } from "../lib/statsBridge";
 import { loadBots } from "./ProfilesBots";
 
+
+
+type HeaderBlockProps = {
+  currentPlayer: any;
+  currentAvatar: string | null;
+  currentRemaining: number;
+  currentThrow: UIDart[];
+  doubleOut: boolean;
+  liveRanking: { id: string; name: string; score: number }[];
+  curDarts: number;
+  curM3D: string;
+  bestVisit: number;
+  useSets: boolean;
+  legsWon: Record<string, number>;
+  setsWon: Record<string, number>;
+  checkoutText: string | null;
+};
+
+
 import {
   x01SfxV3Preload,
   x01PlaySfxV3,
@@ -1121,16 +1140,62 @@ const isBotTurn = React.useMemo(() => {
 
   // ---------------- Avatars (depuis config.players) ----------------
 
-const profileById = React.useMemo(() => {
-  const m: Record<string, { avatarDataUrl: string | null; name: string }> = {};
-  for (const p of players as any[]) {
-    m[p.id] = {
-      avatarDataUrl: resolveAvatar(p),
-      name: p.name,
-    };
-  }
-  return m;
-}, [players]);
+  const profileById = React.useMemo(() => {
+    const m: Record<string, { avatarDataUrl: string | null; name: string }> = {};
+    for (const p of players as any[]) {
+      m[p.id] = {
+        avatarDataUrl: resolveAvatar(p),
+        name: p.name,
+      };
+    }
+    return m;
+  }, [players, resolveAvatar]);
+  
+  const isTeamsMode =
+    ((config as any).gameMode === "teams" || (config as any).matchMode === "teams") &&
+    Array.isArray((config as any).teams) &&
+    ((config as any).teams?.length ?? 0) >= 2;
+
+const teamsView = React.useMemo(() => {
+  if (!isTeamsMode) return null;
+
+  const teams = ((config as any).teams as any[]) || [];
+  const playersById: Record<string, any> = Object.fromEntries(
+    (players as any[]).map((p: any) => [p.id, p])
+  );
+
+  return teams
+    .map((t: any) => {
+      const ids: string[] = Array.isArray(t.players) ? t.players : [];
+      const members = ids
+        .map((id) => playersById[id])
+        .filter(Boolean)
+        .map((p: any) => ({
+          id: p.id,
+          name: p.name,
+          avatar: profileById[p.id]?.avatarDataUrl ?? null,
+          isActive: p.id === activePlayerId,
+        }));
+
+      const score =
+        ids.length > 0 ? (scores as any)[ids[0]] ?? (scores as any)[activePlayerId] : (scores as any)[activePlayerId];
+
+      return {
+        id: t.id,
+        name: t.name || "TEAM",
+        playerIds: ids,
+        players: members,
+        score,
+      };
+    })
+    .filter((t: any) => t.players.length > 0);
+}, [isTeamsMode, (config as any).teams, players, profileById, scores, activePlayerId]);
+
+const activeTeam = React.useMemo(() => {
+  if (!teamsView || !activePlayerId) return null;
+  return (teamsView as any[]).find((t: any) => (t.playerIds || []).includes(activePlayerId)) || null;
+}, [teamsView, activePlayerId]);
+
 
   const currentScore =
     (activePlayer && scores[activePlayer.id]) ?? config.startScore;
@@ -2068,6 +2133,13 @@ React.useEffect(() => {
         const remainingAfter = scoreBefore - visitScore;
         const lastD = ui[ui.length - 1];
         const lastIsDouble = !!lastD && (lastD.mult === 2 || (lastD.v === 25 && lastD.mult === 2));
+        const lastIsTriple = !!lastD && lastD.mult === 3;
+
+        const lastIsFinisher =
+        (outMode === "double") ? lastIsDouble :
+        (outMode === "master") ? (lastIsDouble || lastIsTriple) :
+         true;
+
         const isCheckoutNow = !isBustNow && remainingAfter === 0 && lastIsFinisher;
 
         playScoreSfxAndMaybeDelayVoice({
@@ -2144,6 +2216,19 @@ React.useEffect(() => {
   }, [players, liveStatsByPlayer, scores, config.startScore]);
 
   const miniRanking: MiniRankingRow[] = React.useMemo(() => {
+    if (isTeamsMode && teamsView.length) {
+      return teamsView
+        .map((t) => ({
+          id: ("team:" + t.teamId) as any,
+          name: t.teamName,
+          score: t.score,
+          legsWon: 0,
+          setsWon: 0,
+          avg3: 0,
+        }))
+        .sort((a, b) => a.score - b.score);
+    }
+
     return players
       .map((p: any) => {
         const pid = p.id as X01PlayerId;
@@ -2162,7 +2247,7 @@ React.useEffect(() => {
         if (b.legsWon !== a.legsWon) return b.legsWon - a.legsWon;
         return a.score - b.score;
       });
-  }, [players, scores, state, config.startScore, avg3ByPlayer]);
+  }, [isTeamsMode, teamsView, players, scores, state, config.startScore, avg3ByPlayer]);
 
   const liveRanking = React.useMemo(
     () =>
@@ -2613,6 +2698,24 @@ if (isLandscapeTablet) {
         {/* GAUCHE : Player+Score + Liste joueurs (scroll interne) */}
         <div style={{ display: "flex", flexDirection: "column", overflow: "hidden" }}>
           <div style={{ flex: "0 0 auto" }}>
+            {isTeamsMode && activeTeam ? (
+            <TeamHeaderBlock
+              teamName={activeTeam.name}
+              teamPlayers={activeTeam.players}
+              activePlayerId={activePlayerId}
+              teamScore={activeTeam.score}
+              currentThrow={currentThrow}
+              liveRanking={liveRanking}
+              curDarts={curDarts}
+              curM3D={curM3D}
+              bestVisit={bestVisit}
+              useSets={useSetsUi}
+              teamLegsWon={(state as any).teamLegsWon ?? {}}
+              teamSetsWon={(state as any).teamSetsWon ?? {}}
+              teamId={activeTeam.id}
+              checkoutText={checkoutText}
+            />
+          ) : (
             <HeaderBlock
               currentPlayer={activePlayer}
               currentAvatar={activePlayer ? profileById[activePlayer.id]?.avatarDataUrl ?? null : null}
@@ -2628,9 +2731,26 @@ if (isLandscapeTablet) {
               useSets={useSetsUi}
               checkoutText={checkoutText}
             />
+          )}
           </div>
 
           <div style={{ flex: 1, overflowY: "auto", paddingTop: 10 }}>
+            {isTeamsMode && teamsView ? (
+            <TeamsPlayersList
+              cameraOpen={cameraOpen}
+              setCameraOpen={setCameraOpen}
+              teams={teamsView}
+              activePlayerId={activePlayerId}
+              profileById={profileById}
+              liveStatsByPlayer={liveStatsByPlayer}
+              start={config.startScore}
+              scoresByPlayer={scores}
+              useSets={useSetsUi}
+              lastVisitsByPlayer={lastVisitsByPlayer}
+              lastVisitIsBustByPlayer={lastVisitIsBustByPlayer}
+              avg3ByPlayer={avg3ByPlayer}
+            />
+          ) : (
             <PlayersListOnly
               cameraOpen={cameraOpen}
               setCameraOpen={setCameraOpen}
@@ -2646,6 +2766,7 @@ if (isLandscapeTablet) {
               lastVisitIsBustByPlayer={lastVisitIsBustByPlayer}
               avg3ByPlayer={avg3ByPlayer}
             />
+          )}
           </div>
         </div>
 
@@ -2973,6 +3094,24 @@ if (isLandscapeTablet) {
             margin: "0 auto",
           }}
         >
+          {isTeamsMode && activeTeam ? (
+          <TeamHeaderBlock
+            teamId={activeTeam.id}
+            teamName={activeTeam.name}
+            teamPlayers={activeTeam.players}
+            activePlayerId={activePlayerId}
+            teamScore={activeTeam.score}
+            currentThrow={currentThrow}
+            liveRanking={liveRanking}
+            curDarts={curDarts}
+            curM3D={curM3D}
+            bestVisit={bestVisit}
+            useSets={useSetsUi}
+            teamLegsWon={(state as any).teamLegsWon ?? {}}
+            teamSetsWon={(state as any).teamSetsWon ?? {}}
+            checkoutText={checkoutText}
+          />
+        ) : (
           <HeaderBlock
             currentPlayer={activePlayer}
             currentAvatar={
@@ -2992,7 +3131,8 @@ if (isLandscapeTablet) {
             useSets={useSetsUi}
             checkoutText={checkoutText}
           />
-        </div>
+        )}
+</div>
       </div>
 
       {/* ZONE JOUEURS — SCROLLABLE ENTRE HEADER ET KEYPAD */}
@@ -3012,6 +3152,22 @@ if (isLandscapeTablet) {
           zIndex: 40,
         }}
       >
+        {isTeamsMode && teamsView ? (
+        <TeamsPlayersList
+          cameraOpen={cameraOpen}
+          setCameraOpen={setCameraOpen}
+          teams={teamsView}
+          activePlayerId={activePlayerId}
+          profileById={profileById}
+          liveStatsByPlayer={liveStatsByPlayer}
+          start={config.startScore}
+          scoresByPlayer={scores}
+          useSets={useSetsUi}
+          lastVisitsByPlayer={lastVisitsByPlayer}
+          lastVisitIsBustByPlayer={lastVisitIsBustByPlayer}
+          avg3ByPlayer={avg3ByPlayer}
+        />
+      ) : (
         <PlayersListOnly
           cameraOpen={cameraOpen}
           setCameraOpen={setCameraOpen}
@@ -3027,6 +3183,7 @@ if (isLandscapeTablet) {
           lastVisitIsBustByPlayer={lastVisitIsBustByPlayer}
           avg3ByPlayer={avg3ByPlayer}
         />
+      )}
       </div>
 
       {/* KEYPAD FIXE EN BAS, ALIGNÉ EN LARGEUR */}
@@ -3251,21 +3408,7 @@ if (isLandscapeTablet) {
 // Sous-composants UI (repris du beau X01Play, adaptés V3)
 // =============================================================
 
-function HeaderBlock(props: {
-  currentPlayer: any;
-  currentAvatar: string | null;
-  currentRemaining: number;
-  currentThrow: UIDart[];
-  doubleOut: boolean;
-  liveRanking: { id: string; name: string; score: number }[];
-  curDarts: number;
-  curM3D: string;
-  bestVisit: number;
-  useSets: boolean;
-  legsWon: Record<string, number>;
-  setsWon: Record<string, number>;
-  checkoutText: string | null;
-}) {
+function HeaderBlock(props: HeaderBlockProps) {
   const {
     currentPlayer,
     currentAvatar,
@@ -3562,6 +3705,514 @@ function HeaderBlock(props: {
     </div>
   );
 }
+
+
+function TeamHeaderBlock(props: {
+  teamId: string;
+  teamName: string;
+  teamPlayers: Array<{ id: string; name: string; avatar: string | null; isActive: boolean }>;
+  activePlayerId: string;
+  teamScore: number;
+  currentThrow: UIDart[];
+  liveRanking: { id: string; name: string; score: number }[];
+  curDarts: number;
+  curM3D: string;
+  bestVisit: number;
+  useSets: boolean;
+  teamLegsWon: Record<string, number>;
+  teamSetsWon: Record<string, number>;
+  checkoutText: string | null;
+}) {
+  const {
+    teamId,
+    teamName,
+    teamPlayers,
+    activePlayerId,
+    teamScore,
+    currentThrow,
+    liveRanking,
+    curDarts,
+    curM3D,
+    bestVisit,
+    useSets,
+    teamLegsWon,
+    teamSetsWon,
+    checkoutText,
+  } = props;
+
+  const active = teamPlayers.find((p) => p.id === activePlayerId) || teamPlayers[0];
+
+  const legsWonThisSet = teamLegsWon?.[teamId] ?? 0;
+  const setsWonTotal = teamSetsWon?.[teamId] ?? 0;
+
+  const remainingAfterAll = Math.max(
+    (teamScore ?? 0) -
+      currentThrow.reduce((s: number, d: UIDart) => s + dartValue(d), 0),
+    0
+  );
+
+  return (
+    <div
+      style={{
+        background:
+          "radial-gradient(120% 140% at 0% 0%, rgba(255,195,26,.10), transparent 55%), linear-gradient(180deg, rgba(15,15,18,.9), rgba(10,10,12,.8))",
+        border: "1px solid rgba(255,255,255,.08)",
+        borderRadius: 18,
+        padding: 7,
+        boxShadow: "0 8px 26px rgba(0,0,0,.35)",
+      }}
+    >
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "auto 1fr",
+          gap: 8,
+          alignItems: "center",
+        }}
+      >
+        {/* TEAM MEDALLIONS + STATS */}
+        <div
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            gap: 5,
+          }}
+        >
+          <div
+            style={{
+              fontSize: 11,
+              fontWeight: 900,
+              color: "#e9ecff",
+              opacity: 0.9,
+              letterSpacing: 0.3,
+            }}
+          >
+            {teamName}
+          </div>
+
+          {/* Medaillons superposés */}
+          <div style={{ position: "relative", width: 112, height: 96 }}>
+            {teamPlayers.slice(0, 4).map((p, i) => {
+              const isActive = p.id === activePlayerId;
+              const size = isActive ? 86 : 76;
+              const left = 8 + i * 14;
+              const top = isActive ? 4 : 10;
+              const z = isActive ? 50 : 10 + i;
+
+              return (
+                <div
+                  key={p.id}
+                  style={{
+                    position: "absolute",
+                    left,
+                    top,
+                    width: size,
+                    height: size,
+                    borderRadius: "50%",
+                    overflow: "hidden",
+                    background: "linear-gradient(180deg,#1b1b1f,#111114)",
+                    boxShadow: isActive
+                      ? "0 0 0 2px rgba(255,195,26,.45), 0 10px 26px rgba(255,195,26,.18)"
+                      : "0 6px 18px rgba(0,0,0,.35)",
+                    transform: isActive ? "scale(1.00)" : "scale(.98)",
+                    zIndex: z,
+                    border: "1px solid rgba(255,255,255,.10)",
+                  }}
+                >
+                  {p.avatar ? (
+                    <img
+                      src={p.avatar}
+                      style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                    />
+                  ) : (
+                    <div
+                      style={{
+                        width: "100%",
+                        height: "100%",
+                        display: "flex",
+                        justifyContent: "center",
+                        alignItems: "center",
+                        color: "#999",
+                        fontWeight: 700,
+                      }}
+                    >
+                      ?
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+
+          <div
+            style={{
+              fontWeight: 900,
+              fontSize: 17,
+              color: "#ffcf57",
+              textAlign: "center",
+            }}
+          >
+            {active?.name ?? "—"}
+          </div>
+
+          <div style={{ fontSize: 11.5, color: "#d9dbe3" }}>
+            {useSets ? (
+              <>
+                Manches : <b>{legsWonThisSet}</b> • Sets : <b>{setsWonTotal}</b>
+              </>
+            ) : (
+              <>
+                Manches : <b>{legsWonThisSet}</b>
+              </>
+            )}
+          </div>
+
+          <div style={{ ...miniCard, width: 176, height: "auto", padding: 7 }}>
+            <div style={miniText}>
+              <div>
+                Meilleure volée : <b>{bestVisit}</b>
+              </div>
+              <div>
+                Moy/3D : <b>{curM3D}</b>
+              </div>
+              <div>
+                Darts jouées : <b>{curDarts}</b>
+              </div>
+              <div>
+                Volée : <b>{currentThrow.length}/3</b>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* SCORE + PASTILLES + RANKING */}
+        <div
+          style={{
+            textAlign: "center",
+            display: "flex",
+            flexDirection: "column",
+            gap: 5,
+          }}
+        >
+          <div
+            style={{
+              fontSize: 64,
+              fontWeight: 900,
+              color: "#ffcf57",
+              textShadow: "0 4px 18px rgba(255,195,26,.25)",
+              lineHeight: 1.02,
+            }}
+          >
+            {remainingAfterAll}
+          </div>
+
+          <div style={{ display: "flex", gap: 5, justifyContent: "center" }}>
+            {[0, 1, 2].map((i) => {
+              const d = currentThrow[i];
+              const wouldBust =
+                (teamScore ?? 0) -
+                  currentThrow
+                    .slice(0, i + 1)
+                    .reduce((s: number, x: UIDart) => s + dartValue(x), 0) <
+                0;
+
+              const st = chipStyle(d, wouldBust);
+
+              return (
+                <span
+                  key={i}
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    minWidth: 40,
+                    height: 28,
+                    padding: "0 10px",
+                    borderRadius: 10,
+                    border: st.border as string,
+                    background: st.background as string,
+                    color: st.color as string,
+                    fontWeight: 800,
+                    fontSize: 13,
+                  }}
+                >
+                  {fmt(d)}
+                </span>
+              );
+            })}
+          </div>
+
+          {checkoutText ? (
+            <div style={{ marginTop: 3, display: "flex", justifyContent: "center" }}>
+              <div
+                style={{
+                  display: "inline-flex",
+                  padding: 5,
+                  borderRadius: 12,
+                  border: "1px solid rgba(255,255,255,.08)",
+                  background:
+                    "radial-gradient(120% 120% at 50% 0%, rgba(255,195,26,.10), rgba(30,30,34,.95))",
+                  minWidth: 170,
+                  gap: 6,
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}
+              >
+                <span
+                  style={{
+                    padding: "3px 8px",
+                    borderRadius: 8,
+                    border: "1px solid rgba(255,187,51,.4)",
+                    background: "rgba(255,187,51,.12)",
+                    color: "#ffc63a",
+                    fontWeight: 900,
+                    whiteSpace: "nowrap",
+                    fontSize: 13,
+                  }}
+                >
+                  {checkoutText}
+                </span>
+              </div>
+            </div>
+          ) : null}
+
+          {/* Mini ranking (inchangé) */}
+          <div
+            style={{
+              ...miniCard,
+              alignSelf: "center",
+              width: "min(310px,100%)",
+              height: "auto",
+              padding: 6,
+            }}
+          >
+            <div
+              style={{
+                maxHeight: 3 * 26,
+                overflow: liveRanking.length > 3 ? "auto" : "visible",
+              }}
+            >
+              {liveRanking.map((r, i) => (
+                <div key={r.id} style={miniRankRow}>
+                  <div style={miniRankName}>
+                    {i + 1}. {r.name}
+                  </div>
+                  <div style={r.score === 0 ? miniRankScoreFini : miniRankScore}>
+                    {r.score === 0 ? "FINI" : r.score}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function TeamsPlayersList(props: {
+  cameraOpen: boolean;
+  setCameraOpen: (v: boolean) => void;
+  teams: any[];
+  activePlayerId: string;
+  profileById: Record<string, { avatarDataUrl: string | null; name: string }>;
+  liveStatsByPlayer: Record<string, any>;
+  start: number;
+  scoresByPlayer: Record<string, number>;
+  useSets: boolean;
+  lastVisitsByPlayer: Record<string, UIDart[]>;
+  lastVisitIsBustByPlayer: Record<string, boolean>;
+  avg3ByPlayer: Record<string, number>;
+}) {
+  const {
+    cameraOpen,
+    setCameraOpen,
+    teams,
+    activePlayerId,
+    profileById,
+    liveStatsByPlayer,
+    start,
+    scoresByPlayer,
+    lastVisitsByPlayer,
+    lastVisitIsBustByPlayer,
+    avg3ByPlayer,
+  } = props;
+
+  return (
+    <div
+      style={{
+        background:
+          "linear-gradient(180deg, rgba(15,15,18,.9), rgba(10,10,12,.85))",
+        border: "1px solid rgba(255,255,255,.08)",
+        borderRadius: 18,
+        padding: 9,
+        marginBottom: 8,
+        boxShadow: "0 8px 24px rgba(0,0,0,.35)",
+      }}
+    >
+      {teams.map((team: any) => {
+        const teamScore =
+          team?.playerIds?.length
+            ? scoresByPlayer[team.playerIds[0]] ?? start
+            : start;
+
+        return (
+          <div
+            key={team.id}
+            style={{
+              borderRadius: 14,
+              border: "1px solid rgba(255,255,255,.08)",
+              background:
+                "linear-gradient(180deg, rgba(28,28,32,.55), rgba(18,18,20,.55))",
+              padding: 8,
+              marginBottom: 8,
+            }}
+          >
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                marginBottom: 6,
+              }}
+            >
+              <div style={{ fontWeight: 900, color: "#e9ecff" }}>
+                {team.name}
+              </div>
+              <div style={{ fontWeight: 900, color: teamScore === 0 ? "#7fe2a9" : "#ffcf57" }}>
+                {teamScore === 0 ? "FINI" : teamScore}
+              </div>
+            </div>
+
+            {(team.players || []).map((p: any) => {
+              const prof = profileById[p.id];
+              const avatarSrc = prof?.avatarDataUrl ?? null;
+              const live = liveStatsByPlayer[p.id];
+
+              const dCount: number = live?.dartsThrown ?? 0;
+              const a3d =
+                dCount > 0 ? (avg3ByPlayer[p.id] ?? 0).toFixed(2) : "0.00";
+
+              const isActive = p.id === activePlayerId;
+              const score = scoresByPlayer[p.id] ?? start;
+
+              return (
+                <div
+                  key={p.id}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 9,
+                    padding: "7px 9px",
+                    borderRadius: 12,
+                    background: isActive
+                      ? "linear-gradient(180deg, rgba(255,195,26,.14), rgba(18,18,20,.65))"
+                      : "linear-gradient(180deg, rgba(28,28,32,.65), rgba(18,18,20,.65))",
+                    border: isActive
+                      ? "1px solid rgba(255,195,26,.35)"
+                      : "1px solid rgba(255,255,255,.07)",
+                    marginBottom: 5,
+                  }}
+                >
+                  {/* Avatar */}
+                  <div
+                    style={{
+                      width: 36,
+                      height: 36,
+                      borderRadius: "50%",
+                      overflow: "hidden",
+                      background: "rgba(255,255,255,.06)",
+                    }}
+                  >
+                    {avatarSrc ? (
+                      <img
+                        src={avatarSrc}
+                        style={{
+                          width: "100%",
+                          height: "100%",
+                          objectFit: "cover",
+                        }}
+                      />
+                    ) : (
+                      <div
+                        style={{
+                          width: "100%",
+                          height: "100%",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          fontWeight: 700,
+                          color: "#999",
+                        }}
+                      >
+                        ?
+                      </div>
+                    )}
+                  </div>
+
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 8,
+                        flexWrap: "wrap",
+                      }}
+                    >
+                      <div
+                        style={{
+                          fontWeight: 800,
+                          color: isActive ? "#ffcf57" : "#dfe3ff",
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        {p.name}
+                      </div>
+
+                      {renderLastVisitChips(p.id, lastVisitsByPlayer, (lastVisitIsBustByPlayer as any)?.[p.id])}
+                    </div>
+                    <div style={{ fontSize: 11.5, color: "#cfd1d7", marginTop: 2 }}>
+                      Darts: {dCount} • Moy/3D: {a3d}
+                    </div>
+                  </div>
+
+                  <div
+                    style={{
+                      fontWeight: 900,
+                      color: score === 0 ? "#7fe2a9" : "#ffcf57",
+                    }}
+                  >
+                    {score}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        );
+      })}
+
+      {/* Caméra assistée overlay (dartsmind-like UX) */}
+      <CameraAssistedOverlay
+        open={cameraOpen}
+        onClose={() => setCameraOpen(false)}
+        onDart={(d) => {
+          try {
+            if (typeof window === "undefined") return;
+            window.dispatchEvent(
+              new CustomEvent("dc:x01v3:dart", {
+                detail: { segment: d.segment, multiplier: d.multiplier === 0 ? 1 : d.multiplier },
+              })
+            );
+          } catch (e) {
+            console.warn("[X01PlayV3] camera dispatch failed", e);
+          }
+        }}
+      />
+    </div>
+  );
+}
+
 
 function PlayersListOnly(props: {
   cameraOpen: boolean;

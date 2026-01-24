@@ -61,6 +61,17 @@ function createInitialMatchState(config: X01ConfigV3): X01MatchStateV3 {
     setsWon[p.id] = 0;
   }
 
+// Teams : init legs/sets gagnés par équipe (évite undefined)
+const teamLegsWon: Record<string, number> | undefined =
+  config.gameMode === "teams" && Array.isArray(config.teams)
+    ? Object.fromEntries(config.teams.map((t) => [t.id, 0]))
+    : undefined;
+
+const teamSetsWon: Record<string, number> | undefined =
+  config.gameMode === "teams" && Array.isArray(config.teams)
+    ? Object.fromEntries(config.teams.map((t) => [t.id, 0]))
+    : undefined;
+
   const throwOrder = generateThrowOrderV3(config, null, 1);
 
   const state: X01MatchStateV3 = {
@@ -72,6 +83,8 @@ function createInitialMatchState(config: X01ConfigV3): X01MatchStateV3 {
     scores,
     legsWon,
     setsWon,
+    teamLegsWon,
+    teamSetsWon,
     visit: null as any,
     status: "playing",
   };

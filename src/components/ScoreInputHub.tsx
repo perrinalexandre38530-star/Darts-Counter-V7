@@ -57,6 +57,11 @@ type Props = {
 
   /** Figer la hauteur (utile en paysage tablette) */
   lockContentHeight?: boolean;
+  /**
+   * Adapter automatiquement le contenu à la hauteur disponible (sans scroll)
+   * en appliquant un scale (utile en paysage tablette pour ne rien couper).
+   */
+  fitToParent?: boolean;
   /** Afficher le sélecteur en overlay (n\'impacte pas la mise en page) */
   switcherOverlay?: boolean;
 };
@@ -116,6 +121,7 @@ export default function ScoreInputHub({
   showPlaceholders = true,
   switcherMode = "drawer",
   lockContentHeight = false,
+  fitToParent = false,
   switcherOverlay = false,
 }: Props) {
   const throwTotal = (currentThrow || []).reduce((a, d) => a + (d?.v || 0) * (d?.mult || 1), 0);
@@ -191,6 +197,17 @@ export default function ScoreInputHub({
   const contentMeasureRef = React.useRef<HTMLDivElement | null>(null);
   const [baseContentHeight, setBaseContentHeight] = React.useState<number>(0);
 
+  // Auto-fit: scale le contenu pour qu'il tienne dans la hauteur disponible
+  // (principalement pour l'affichage paysage tablette).
+  const fitOuterRef = React.useRef<HTMLDivElement | null>(null);
+  const fitInnerRef = React.useRef<HTMLDivElement | null>(null);
+  const [fitScale, setFitScale] = React.useState<number>(1);
+
+  const setMeasureAndFitInnerRef = React.useCallback((el: HTMLDivElement | null) => {
+    fitInnerRef.current = el;
+    contentMeasureRef.current = el;
+  }, []);
+
   React.useLayoutEffect(() => {
     // On prend la hauteur "référence" quand le Keypad est visible.
     if (method !== "keypad") return;
@@ -202,7 +219,48 @@ export default function ScoreInputHub({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [method, currentThrow?.length, multiplier]);
 
-  const contentBoxStyle: React.CSSProperties = lockContentHeight && baseContentHeight > 0 ? { minHeight: baseContentHeight } : undefined;
+  React.useLayoutEffect(() => {
+    if (!fitToParent) {
+      if (fitScale !== 1) setFitScale(1);
+      return;
+    }
+
+    const compute = () => {
+      const outer = fitOuterRef.current;
+      const inner = fitInnerRef.current;
+      if (!outer || !inner) return;
+
+      const oh = outer.getBoundingClientRect().height;
+      const ow = outer.getBoundingClientRect().width;
+      // scrollHeight/scrollWidth pour prendre en compte le contenu non contraint
+      const ih = Math.max(inner.scrollHeight, inner.getBoundingClientRect().height);
+      const iw = Math.max(inner.scrollWidth, inner.getBoundingClientRect().width);
+
+      if (!oh || !ow || !ih || !iw) return;
+
+      const sH = oh / ih;
+      const sW = ow / iw;
+      const s = Math.min(1, sH, sW);
+      const rounded = Math.max(0.6, Math.round(s * 1000) / 1000);
+      if (Math.abs(rounded - fitScale) > 0.01) setFitScale(rounded);
+    };
+
+    // Mesure après paint
+    const raf = requestAnimationFrame(compute);
+    const onResize = () => compute();
+    window.addEventListener("resize", onResize);
+
+    return () => {
+      cancelAnimationFrame(raf);
+      window.removeEventListener("resize", onResize);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fitToParent, method, switcherOpen, currentThrow?.length, multiplier]);
+
+  const contentBoxStyle: React.CSSProperties = {
+    ...(lockContentHeight && baseContentHeight > 0 ? { minHeight: baseContentHeight } : null),
+    ...(fitToParent ? { height: "100%", display: "flex", flexDirection: "column", minHeight: 0 } : null),
+  };
 
   return (
     <div>
@@ -287,7 +345,32 @@ export default function ScoreInputHub({
 
       {/* CIBLE */}
       {method === "dartboard" ? (
-        <div style={{ paddingBottom: 6, ...contentBoxStyle }}>
+        <div
+          ref={fitToParent ? fitOuterRef : null}
+          style={{
+            paddingBottom: 6,
+            ...contentBoxStyle,
+            ...(fitToParent
+              ? {
+                  flex: 1,
+                  minHeight: 0,
+                  overflow: "hidden",
+                }
+              : {}),
+          }}
+        >
+          <div
+            ref={fitToParent ? setMeasureAndFitInnerRef : contentMeasureRef}
+            style={
+              fitToParent
+                ? {
+                    transform: `scale(${fitScale})`,
+                    transformOrigin: "top left",
+                    width: fitScale < 1 ? `${100 / fitScale}%` : "100%",
+                  }
+                : undefined
+            }
+          >
           <div style={{ display: "flex", justifyContent: "center", marginBottom: 8 }}>
             <DartboardClickable
               size={230}
@@ -352,6 +435,7 @@ export default function ScoreInputHub({
               </button>
             </div>
           </div>
+          </div>
         </div>
       ) : null}
 
@@ -381,7 +465,31 @@ export default function ScoreInputHub({
 
       {/* Méthode principale (Keypad + placeholders) */}
       {method === "keypad" || method === "presets" || method === "voice" || method === "auto" || method === "ai" ? (
-        <div ref={method === "keypad" ? contentMeasureRef : undefined} style={contentBoxStyle}>
+        <div
+          ref={fitToParent ? fitOuterRef : null}
+          style={{
+            ...contentBoxStyle,
+            ...(fitToParent
+              ? {
+                  flex: 1,
+                  minHeight: 0,
+                  overflow: "hidden",
+                }
+              : null),
+          }}
+        >
+          <div
+            ref={fitToParent ? setMeasureAndFitInnerRef : method === "keypad" ? contentMeasureRef : undefined}
+            style={
+              fitToParent
+                ? {
+                    transform: `scale(${fitScale})`,
+                    transformOrigin: "top left",
+                    width: fitScale < 1 ? `${100 / fitScale}%` : "100%",
+                  }
+                : undefined
+            }
+          >
           {(method === "voice" || method === "auto" || method === "ai") && showPlaceholders ? (
             <PlaceholderCard method={method} />
           ) : null}
@@ -401,6 +509,7 @@ export default function ScoreInputHub({
             hideTotal={hideTotal}
             centerSlot={centerSlot}
           />
+          </div>
         </div>
       ) : null}
     </div>
