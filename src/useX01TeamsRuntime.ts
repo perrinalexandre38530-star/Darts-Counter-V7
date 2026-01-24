@@ -4,7 +4,16 @@ export type X01Team = {
   id: string;
   name: string;
   score: number;
-  players: string[];
+  // source de vérité: players
+  players?: string[];
+  // compat legacy (ancien patch): playerIds
+  playerIds?: string[];
+};
+
+const getTeamPlayers = (team: X01Team): string[] => {
+  if (Array.isArray(team.players)) return team.players;
+  if (Array.isArray(team.playerIds)) return team.playerIds;
+  return [];
 };
 
 export function useX01TeamsRuntime(initialTeams: X01Team[]) {
@@ -27,7 +36,9 @@ export function useX01TeamsRuntime(initialTeams: X01Team[]) {
 
   function rotate() {
     const team = teams[activeTeamIndex];
-    setActivePlayerInTeamIndex((i) => (i + 1) % team.players.length);
+    const members = getTeamPlayers(team);
+    const m = Math.max(1, members.length);
+    setActivePlayerInTeamIndex((i) => (i + 1) % m);
     setActiveTeamIndex((i) => (i + 1) % teams.length);
   }
 

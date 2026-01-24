@@ -21,6 +21,13 @@ import {
   type X01OutModeV3,
 } from "./x01CheckoutV3";
 
+// Compat: certains configs ont utilisé `playerIds` au lieu de `players`.
+const teamPlayers = (t: any): string[] => {
+  if (Array.isArray(t?.players)) return t.players;
+  if (Array.isArray(t?.playerIds)) return t.playerIds;
+  return [];
+};
+
 /* -------------------------------------------------------
    Mode MULTI "Free For All" (sans équipes)
    => utilisé pour le comportement "Continuer" en X01V3
@@ -43,13 +50,13 @@ function setScoreForActiveV3(config: X01ConfigV3, state: X01MatchStateV3, newSco
     return;
   }
 
-  const team = config.teams.find((t) => Array.isArray(t.players) && t.players.includes(pid));
+  const team = config.teams.find((t: any) => teamPlayers(t).includes(pid));
   if (!team) {
     state.scores[pid] = newScore;
     return;
   }
 
-  for (const memberId of team.players) {
+  for (const memberId of teamPlayers(team)) {
     state.scores[memberId] = newScore;
   }
 }

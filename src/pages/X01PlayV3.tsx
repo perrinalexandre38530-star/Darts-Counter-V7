@@ -1166,7 +1166,12 @@ const teamsView = React.useMemo(() => {
 
   return teams
     .map((t: any) => {
-      const ids: string[] = Array.isArray(t.players) ? t.players : [];
+      // Compat: certains configs ont utilisé `playerIds` au lieu de `players`.
+      const ids: string[] = Array.isArray(t.players)
+        ? t.players
+        : Array.isArray(t.playerIds)
+        ? t.playerIds
+        : [];
       const members = ids
         .map((id) => playersById[id])
         .filter(Boolean)

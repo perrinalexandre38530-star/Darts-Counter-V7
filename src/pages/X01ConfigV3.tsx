@@ -530,12 +530,18 @@ export default function X01ConfigV3({ profiles, onBack, onStart, go }: Props) {
       return null;
     }
 
+    // Le runtime TEAMS (Play/Logic) attend `players: string[]`.
+    // Un ancien patch écrivait `playerIds`, ce qui casse l'affichage/logic.
+    // On écrit donc `players` (source de vérité) et on conserve `playerIds`
+    // en alias pour compatibilité.
     return usedTeams.map((tid) => ({
       id: tid,
       name: TEAM_LABELS[tid],
       color: TEAM_COLORS[tid],
+      players: teamBuckets[tid],
+      // compat: tolère les builds qui lisaient encore `playerIds`
       playerIds: teamBuckets[tid],
-    }));
+    })) as any;
   }
 
   // ---- validation & lancement ----
