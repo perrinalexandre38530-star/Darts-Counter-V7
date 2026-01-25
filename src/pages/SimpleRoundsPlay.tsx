@@ -2,29 +2,26 @@ import React, { useMemo, useState } from "react";
 import BackDot from "../components/BackDot";
 import InfoDot from "../components/InfoDot";
 import PageHeader from "../components/PageHeader";
-import tickerBaseball from "../assets/tickers/ticker_baseball.png";
 import { useLang } from "../contexts/LangContext";
 import { useTheme } from "../contexts/ThemeContext";
+import { SIMPLE_ROUND_VARIANTS } from "../lib/simpleRounds/variants";
+import type { CommonConfig } from "../lib/simpleRounds/types";
 
-type BotLevel = "easy" | "normal" | "hard";
-type Config = {
-  players: number;
-  botsEnabled: boolean;
-  botLevel: BotLevel;
-  rounds: number;
-  objective: number;
+const clamp = (n: number) => {
+  const v = Math.round(Number.isFinite(n) ? n : 0);
+  return Math.max(0, Math.min(180, v));
 };
 
-const INFO_TEXT = `MVP : base jouable. Version complète : innings 1..9 (cible = inning).`;
-
-export default function BaseballPlay(props: any) {
+export default function SimpleRoundsPlay(props: any) {
   const { t } = useLang();
   useTheme();
 
-  const cfg: Config =
-    (props?.params?.config as Config) ||
-    (props?.config as Config) ||
-    {
+  const variantId: string = props?.variantId ?? "count_up";
+  const spec = SIMPLE_ROUND_VARIANTS[variantId];
+
+  const cfg: CommonConfig =
+    (props?.params?.config as CommonConfig) ||
+    (props?.config as CommonConfig) || {
       players: 2,
       botsEnabled: false,
       botLevel: "normal",
@@ -32,93 +29,110 @@ export default function BaseballPlay(props: any) {
       objective: 0,
     };
 
-  const [roundIdx, setRoundIdx] = useState(0);
+  const [roundIdx, setRoundIdx] = useState(0); // 0..cfg.rounds
   const [playerIdx, setPlayerIdx] = useState(0);
   const [scores, setScores] = useState<number[]>(() => Array.from({ length: cfg.players }, () => 0));
   const [visit, setVisit] = useState(0);
+  const [gameOver, setGameOver] = useState(false);
+  const [winnerIdx, setWinnerIdx] = useState<number | null>(null);
 
-  const isFinished = roundIdx >= cfg.rounds;
+  const isFinished = gameOver || roundIdx >= cfg.rounds;
 
   const winner = useMemo(() => {
     if (!isFinished) return null;
-    let best = -Infinity;
-    let w = 0;
-    for (let i = 0; i < scores.length; i++) {
-      if (scores[i] > best) {
-        best = scores[i];
-        w = i;
-      }
-    }
-    return { idx: w, score: best };
-  }, [isFinished, scores]);
+    if (winnerIdx != null) return { idx: winnerIdx, score: scores[winnerIdx] };
+    const idx = spec?.computeWinnerOnEnd(scores) ?? 0;
+    return { idx, score: scores[idx] };
+  }, [isFinished, winnerIdx, scores, spec]);
 
   function goBack() {
     if (props?.setTab) return props.setTab("games");
     window.history.back();
   }
 
-  function clamp(n: number) {
-    if (!Number.isFinite(n)) return 0;
-    return Math.max(0, Math.min(180, Math.floor(n)));
+  function advanceTurn(nextScores: number[], forcedWinner: number | null) {
+    setScores(nextScores);
+
+    if (forcedWinner != null) {
+      setWinnerIdx(forcedWinner);
+      setGameOver(true);
+      return;
+    }
+
+    // next player
+    let nextPlayer = playerIdx + 1;
+    let nextRound = roundIdx;
+
+    if (nextPlayer >= cfg.players) {
+      nextPlayer = 0;
+      nextRound = roundIdx + 1;
+    }
+
+    setPlayerIdx(nextPlayer);
+    setRoundIdx(nextRound);
+
+    if (nextRound >= cfg.rounds) {
+      setGameOver(true);
+    }
   }
 
   function validate() {
-    if (isFinished) return;
+    if (!spec) return;
     const v = clamp(visit);
 
-    setScores((prev) => {
-      const out = [...prev];
-      out[playerIdx] = out[playerIdx] + v;
-      return out;
+    const res = spec.applyVisit({
+      visit: v,
+      currentScore: scores[playerIdx] ?? 0,
+      objective: cfg.objective,
+      roundIndex: roundIdx,
     });
 
+    const nextScores = [...scores];
+    nextScores[playerIdx] = (nextScores[playerIdx] ?? 0) + (res.delta ?? 0);
+
+    const forceWin = !!res.forceWin;
+    advanceTurn(nextScores, forceWin ? playerIdx : null);
     setVisit(0);
+  }
 
-    const nextP = (playerIdx + 1) % cfg.players;
-    const nextR = nextP === 0 ? roundIdx + 1 : roundIdx;
-
-    setPlayerIdx(nextP);
-    setRoundIdx(nextR);
+  if (!spec) {
+    return (
+      <div className="page" style={{ padding: 16, color: "#fff" }}>
+        Variante inconnue: {String(variantId)}
+      </div>
+    );
   }
 
   return (
     <div className="page">
       <PageHeader
-        title="BASEBALL"
-        tickerSrc={tickerBaseball}
+        title={spec.title}
+        tickerSrc={spec.tickerSrc}
         left={<BackDot onClick={goBack} />}
-        right={<InfoDot title="Règles BASEBALL" content={INFO_TEXT} />}
+        right={<InfoDot title={spec.infoTitle} content={spec.infoText} />}
       />
 
-      <div style={{ padding: 12 }}>
+      <div style={{ padding: 14 }}>
         <div
           style={{
-            borderRadius: 18,
-            padding: 14,
-            border: "1px solid rgba(255,255,255,0.12)",
-            background: "rgba(255,255,255,0.05)",
-            boxShadow: "0 18px 40px rgba(0,0,0,0.35)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: 10,
+            marginBottom: 10,
           }}
         >
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-            <div>
-              <div style={{ fontSize: 12, opacity: 0.8, fontWeight: 900, letterSpacing: 1 }}>
-                {t("generic.round", "ROUND")} {Math.min(roundIdx + 1, cfg.rounds)}/{cfg.rounds}
-              </div>
-              <div style={{ fontSize: 18, fontWeight: 1000, marginTop: 6 }}>Baseball (MVP)</div>
-            </div>
-            <div style={{ textAlign: "right" }}>
-              <div style={{ fontSize: 12, opacity: 0.8, fontWeight: 900, letterSpacing: 1 }}>
-                {t("generic.player", "JOUEUR")}
-              </div>
-              <div style={{ fontSize: 18, fontWeight: 1000, marginTop: 6 }}>
-                {isFinished ? "—" : `${playerIdx + 1}/${cfg.players}`}
-              </div>
-            </div>
+          <div style={{ fontWeight: 1000 }}>
+            {t("generic.round", "Round")} {Math.min(roundIdx + 1, cfg.rounds)}/{cfg.rounds}
           </div>
+          {!isFinished && (
+            <div style={{ fontWeight: 900, opacity: 0.9 }}>
+              {t("generic.turn", "Tour")} : {t("generic.player", "Joueur")} {playerIdx + 1}
+            </div>
+          )}
         </div>
 
-        <div style={{ marginTop: 12, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+        <div style={{ display: "grid", gridTemplateColumns: `repeat(${cfg.players}, minmax(0,1fr))`, gap: 10 }}>
           {scores.map((s, i) => {
             const active = !isFinished && i === playerIdx;
             return (
@@ -143,13 +157,13 @@ export default function BaseballPlay(props: any) {
         {!isFinished && (
           <div style={{ marginTop: 12 }}>
             <div style={{ fontSize: 12, opacity: 0.8, fontWeight: 950, letterSpacing: 0.8 }}>
-              {t("generic.visit", "VOLÉE")} — {t("generic.input", "entre un score 0..180 (MVP)")}
+              {t("generic.visit", "VOLÉE")} — {t("generic.input", "entre un score 0..180")}
             </div>
 
             <div style={{ marginTop: 10, display: "flex", gap: 10 }}>
               <input
                 value={String(visit)}
-                onChange={(e) => setVisit(clamp(Number(e.target.value))) }
+                onChange={(e) => setVisit(clamp(Number(e.target.value)))}
                 inputMode="numeric"
                 style={{
                   flex: 1,

@@ -269,7 +269,13 @@ export function useX01CoreV2(params: UseX01CoreV2Params) {
   function validateThrow() {
     if (!currentThrow.length) return;
     const p = currentPlayer;
-    const oldScore = scores[p.id];
+    // En mode TEAMS, le score est porté par l'équipe (tous les joueurs partagent le même score).
+    const playerTeamId = getTeamIdForPlayer(p.id);
+    const teamMemberIds = playerTeamId
+      ? players.filter((pl) => getTeamIdForPlayer(pl.id) === playerTeamId).map((pl) => pl.id)
+      : [p.id];
+    const scoreRefId = teamMemberIds[0] ?? p.id;
+    const oldScore = scores[scoreRefId];
     const pts = currentThrow.reduce((s, d) => s + dartValue(d), 0);
     const after = oldScore - pts;
 
@@ -298,7 +304,11 @@ export function useX01CoreV2(params: UseX01CoreV2Params) {
     };
 
     setVisits((v) => [...v, visit]);
-    setScores((s) => ({ ...s, [p.id]: finalScore }));
+    setScores((s) => {
+      const next = { ...s };
+      for (const id of teamMemberIds) next[id] = finalScore;
+      return next;
+    });
     setCurrentThrow([]);
 
     if (isCheckout) {

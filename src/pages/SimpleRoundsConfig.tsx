@@ -2,47 +2,41 @@ import React, { useMemo, useState } from "react";
 import BackDot from "../components/BackDot";
 import InfoDot from "../components/InfoDot";
 import PageHeader from "../components/PageHeader";
-import tickerPrisoner from "../assets/tickers/ticker_prisoner.png";
 import Section from "../components/Section";
 import OptionRow from "../components/OptionRow";
 import OptionToggle from "../components/OptionToggle";
 import OptionSelect from "../components/OptionSelect";
 import { useLang } from "../contexts/LangContext";
 import { useTheme } from "../contexts/ThemeContext";
+import { SIMPLE_ROUND_VARIANTS } from "../lib/simpleRounds/variants";
+import type { CommonConfig } from "../lib/simpleRounds/types";
 
-
-type BotLevel = "easy" | "normal" | "hard";
-
-export type PrisonerConfigPayload = {
-  players: number;
-  botsEnabled: boolean;
-  botLevel: BotLevel;
-  rounds: number;
-  lives: number;
-  objective: number;
-};
-
-const INFO_TEXT = `PRISONER (mode fun)
-
-Règles (version jouable):
-- Tous les joueurs jouent une volée par round (saisie simple 0..180).
-- À la fin du round, le plus petit score perd 1 vie.
-- Quand un joueur n'a plus de vies, il est éliminé.
-- Le dernier joueur en vie gagne.
-- Limite de rounds optionnelle (si atteinte: meilleur total gagne).`;
-
-export default function PrisonerConfig(props: any) {
+export default function SimpleRoundsConfig(props: any) {
   const { t } = useLang();
   useTheme();
 
-  const [players, setPlayers] = useState(2);
-  const [botsEnabled, setBotsEnabled] = useState(false);
-  const [botLevel, setBotLevel] = useState<BotLevel>("normal");
-  const [rounds, setRounds] = useState(10);
-  const [lives, setLives] = useState(3);
-  const [objective, setObjective] = useState(0);
+  const variantId: string = props?.variantId ?? "count_up";
+  const playTab: string = props?.playTab ?? "count_up_play";
+  const spec = SIMPLE_ROUND_VARIANTS[variantId];
 
-  const payload: PrisonerConfigPayload = { players, botsEnabled, botLevel, rounds, lives, objective };
+  if (!spec) {
+    return (
+      <div className="page" style={{ padding: 16, color: "#fff" }}>
+        Variante inconnue: {String(variantId)}
+      </div>
+    );
+  }
+
+  const [players, setPlayers] = useState(spec.defaults.players);
+  const [botsEnabled, setBotsEnabled] = useState(spec.defaults.botsEnabled);
+  const [botLevel, setBotLevel] = useState(spec.defaults.botLevel);
+  const [rounds, setRounds] = useState(spec.defaults.rounds);
+  const [objective, setObjective] = useState(spec.defaults.objective);
+
+  const payload: CommonConfig = useMemo(
+    () => ({ players, botsEnabled, botLevel, rounds, objective }),
+    [players, botsEnabled, botLevel, rounds, objective]
+  );
 
   function goBack() {
     if (props?.setTab) return props.setTab("games");
@@ -50,23 +44,21 @@ export default function PrisonerConfig(props: any) {
   }
 
   function start() {
-    // App.tsx wiring: tab "prisoner_play"
-    if (props?.setTab) return props.setTab("prisoner_play", { config: payload });
-    // Router alternative: à adapter au câblage final si besoin
+    if (props?.setTab) return props.setTab(playTab, { config: payload });
   }
 
   return (
     <div className="page">
       <PageHeader
-        title="PRISONER"
-        tickerSrc={tickerPrisoner}
+        title={spec.title}
+        tickerSrc={spec.tickerSrc}
         left={<BackDot onClick={goBack} />}
-        right={<InfoDot title="Règles PRISONER" content={INFO_TEXT} />}
+        right={<InfoDot title={spec.infoTitle} content={spec.infoText} />}
       />
 
       <Section title={t("config.players", "Joueurs")}>
         <OptionRow label={t("config.playerCount", "Nombre de joueurs")}>
-          <OptionSelect value={players} options={[2, 3, 4]} onChange={setPlayers} />
+          <OptionSelect value={players} options={spec.playersOptions} onChange={setPlayers} />
         </OptionRow>
 
         <OptionRow label={t("config.bots", "Bots IA")}>
@@ -90,15 +82,11 @@ export default function PrisonerConfig(props: any) {
 
       <Section title={t("config.rules", "Règles")}>
         <OptionRow label={t("config.rounds", "Rounds")}>
-          <OptionSelect value={rounds} options={[5, 8, 10, 12, 15]} onChange={setRounds} />
-        </OptionRow>
-
-        <OptionRow label={t("config.lives", "Vies")}>
-          <OptionSelect value={lives} options={[1, 2, 3, 4, 5]} onChange={setLives} />
+          <OptionSelect value={rounds} options={spec.roundsOptions} onChange={setRounds} />
         </OptionRow>
 
         <OptionRow label={t("config.objective", "Objectif")}>
-          <OptionSelect value={objective} options={[0, 100, 170, 300, 500, 1000]} onChange={setObjective} />
+          <OptionSelect value={objective} options={spec.objectiveOptions} onChange={setObjective} />
         </OptionRow>
       </Section>
 

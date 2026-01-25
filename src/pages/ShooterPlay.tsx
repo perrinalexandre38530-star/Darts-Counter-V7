@@ -2,6 +2,7 @@ import React, { useMemo, useState } from "react";
 import BackDot from "../components/BackDot";
 import InfoDot from "../components/InfoDot";
 import PageHeader from "../components/PageHeader";
+import tickerShooter from "../assets/tickers/ticker_shooter.png";
 import { useLang } from "../contexts/LangContext";
 import { useTheme } from "../contexts/ThemeContext";
 
@@ -80,10 +81,18 @@ export default function ShooterPlay(props: any) {
     setRoundIdx(nextR);
   }
 
+  function replay() {
+    setRoundIdx(0);
+    setPlayerIdx(0);
+    setScores(Array.from({ length: cfg.players }, () => 0));
+    setVisit(0);
+  }
+
   return (
     <div className="page">
       <PageHeader
         title="SHOOTER"
+        tickerSrc={tickerShooter}
         left={<BackDot onClick={goBack} />}
         right={<InfoDot title="Règles SHOOTER" content={INFO_TEXT} />}
       />
@@ -191,6 +200,42 @@ export default function ShooterPlay(props: any) {
             }}
           >
             {t("generic.winner", "Gagnant")} : {t("generic.player", "Joueur")} {winner.idx + 1} — {winner.score}
+          </div>
+        )}
+
+        {isFinished && (
+          <div style={{ marginTop: 12, display: "flex", gap: 10 }}>
+            <button
+              onClick={replay}
+              style={{
+                flex: 1,
+                borderRadius: 14,
+                border: "1px solid rgba(120,255,200,0.22)",
+                background: "rgba(120,255,200,0.14)",
+                padding: "12px 14px",
+                fontWeight: 1000,
+                cursor: "pointer",
+                color: "#fff",
+              }}
+            >
+              {t("generic.replay", "Rejouer")}
+            </button>
+
+            <button
+              onClick={goBack}
+              style={{
+                flex: 1,
+                borderRadius: 14,
+                border: "1px solid rgba(255,255,255,0.16)",
+                background: "rgba(255,255,255,0.06)",
+                padding: "12px 14px",
+                fontWeight: 1000,
+                cursor: "pointer",
+                color: "#fff",
+              }}
+            >
+              {t("generic.menu", "Menu")}
+            </button>
           </div>
         )}
       </div>

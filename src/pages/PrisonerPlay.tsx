@@ -2,6 +2,7 @@ import React, { useMemo, useState } from "react";
 import BackDot from "../components/BackDot";
 import InfoDot from "../components/InfoDot";
 import PageHeader from "../components/PageHeader";
+import tickerPrisoner from "../assets/tickers/ticker_prisoner.png";
 import { useLang } from "../contexts/LangContext";
 import { useTheme } from "../contexts/ThemeContext";
 
@@ -84,6 +85,7 @@ export default function PrisonerPlay(props: any) {
     <div className="page">
       <PageHeader
         title="PRISONER"
+        tickerSrc={tickerPrisoner}
         left={<BackDot onClick={goBack} />}
         right={<InfoDot title="Règles PRISONER" content={INFO_TEXT} />}
       />

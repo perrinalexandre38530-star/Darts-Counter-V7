@@ -40,6 +40,7 @@ import avatarTheAsp from "../assets/avatars/bots-pro/the-asp.png";
 import avatarHollywood from "../assets/avatars/bots-pro/hollywood.png";
 import avatarTheFerret from "../assets/avatars/bots-pro/the-ferret.png";
 
+// UI-only: "multi" = plusieurs joueurs en mode classique (pas teams)
 type MatchModeV3 = "solo" | "multi" | "teams";
 type InModeV3 = "simple" | "double" | "master";
 type OutModeV3 = "simple" | "double" | "master";
@@ -530,18 +531,12 @@ export default function X01ConfigV3({ profiles, onBack, onStart, go }: Props) {
       return null;
     }
 
-    // Le runtime TEAMS (Play/Logic) attend `players: string[]`.
-    // Un ancien patch écrivait `playerIds`, ce qui casse l'affichage/logic.
-    // On écrit donc `players` (source de vérité) et on conserve `playerIds`
-    // en alias pour compatibilité.
     return usedTeams.map((tid) => ({
       id: tid,
       name: TEAM_LABELS[tid],
       color: TEAM_COLORS[tid],
       players: teamBuckets[tid],
-      // compat: tolère les builds qui lisaient encore `playerIds`
-      playerIds: teamBuckets[tid],
-    })) as any;
+    }));
   }
 
   // ---- validation & lancement ----
@@ -570,7 +565,7 @@ try {
   // ignore
 }
 
-    let teams: null | Array<{ id: TeamId; name: string; color: string; playerIds: string[] }> = null;
+    let teams: null | Array<{ id: TeamId; name: string; color: string; players: string[] }> = null;
 
     if (matchMode === "teams") {
       teams = validateTeams();
@@ -618,6 +613,9 @@ try {
       legsPerSet,
       setsToWin,
       serveMode,
+      // ✅ L'engine V3 se base sur `gameMode` ("solo" | "teams")
+      // `matchMode` reste un champ UI/backward-compat ("solo" | "multi" | "teams")
+      gameMode: matchMode === "teams" ? "teams" : "solo",
       matchMode,
       players,
       createdAt: Date.now(),

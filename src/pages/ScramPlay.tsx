@@ -2,6 +2,7 @@ import React, { useMemo, useState } from "react";
 import BackDot from "../components/BackDot";
 import InfoDot from "../components/InfoDot";
 import PageHeader from "../components/PageHeader";
+import tickerScram from "../assets/tickers/ticker_scram.png";
 import { useLang } from "../contexts/LangContext";
 import { useTheme } from "../contexts/ThemeContext";
 
@@ -12,6 +13,12 @@ type Config = {
   botLevel: BotLevel;
   rounds: number;
   objective: number;
+};
+
+type Turn = {
+  roundIdx: number;
+  playerIdx: number;
+  visit: number;
 };
 
 const INFO_TEXT = `MVP : base jouable. Version complète : offense/defense type Cricket.`;
@@ -35,8 +42,16 @@ export default function ScramPlay(props: any) {
   const [playerIdx, setPlayerIdx] = useState(0);
   const [scores, setScores] = useState<number[]>(() => Array.from({ length: cfg.players }, () => 0));
   const [visit, setVisit] = useState(0);
+  const [history, setHistory] = useState<Turn[]>([]);
 
-  const isFinished = roundIdx >= cfg.rounds;
+  // Fin: soit on a joué tous les rounds, soit un objectif (score) est atteint.
+  const objectiveReached = useMemo(() => {
+    const obj = Number(cfg.objective || 0);
+    if (!obj || obj <= 0) return false;
+    return scores.some((s) => s >= obj);
+  }, [cfg.objective, scores]);
+
+  const isFinished = roundIdx >= cfg.rounds || objectiveReached;
 
   const winner = useMemo(() => {
     if (!isFinished) return null;
@@ -71,6 +86,8 @@ export default function ScramPlay(props: any) {
       return out;
     });
 
+    setHistory((h) => [...h, { roundIdx, playerIdx, visit: v }]);
+
     setVisit(0);
 
     const nextP = (playerIdx + 1) % cfg.players;
@@ -80,10 +97,30 @@ export default function ScramPlay(props: any) {
     setRoundIdx(nextR);
   }
 
+  function undo() {
+    setHistory((h) => {
+      if (!h.length) return h;
+      const last = h[h.length - 1];
+
+      setScores((prev) => {
+        const out = [...prev];
+        out[last.playerIdx] = Math.max(0, (out[last.playerIdx] || 0) - (last.visit || 0));
+        return out;
+      });
+
+      setRoundIdx(last.roundIdx);
+      setPlayerIdx(last.playerIdx);
+      setVisit(last.visit);
+
+      return h.slice(0, -1);
+    });
+  }
+
   return (
     <div className="page">
       <PageHeader
         title="SCRAM"
+        tickerSrc={tickerScram}
         left={<BackDot onClick={goBack} />}
         right={<InfoDot title="Règles SCRAM" content={INFO_TEXT} />}
       />
@@ -174,6 +211,25 @@ export default function ScramPlay(props: any) {
                 }}
               >
                 {t("generic.validate", "Valider")}
+              </button>
+            </div>
+
+            <div style={{ marginTop: 10, display: "flex", justifyContent: "flex-end" }}>
+              <button
+                onClick={undo}
+                disabled={!history.length}
+                style={{
+                  borderRadius: 12,
+                  border: "1px solid rgba(255,255,255,0.12)",
+                  background: !history.length ? "rgba(255,255,255,0.03)" : "rgba(255,255,255,0.06)",
+                  padding: "10px 12px",
+                  fontWeight: 950,
+                  cursor: !history.length ? "not-allowed" : "pointer",
+                  color: "#fff",
+                  opacity: !history.length ? 0.55 : 1,
+                }}
+              >
+                {t("generic.undo", "Annuler")}
               </button>
             </div>
           </div>

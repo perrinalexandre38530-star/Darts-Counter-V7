@@ -15,6 +15,7 @@
 // ============================================
 
 import React from "react";
+import BackDot from "../components/BackDot";
 import { useViewport } from "../hooks/useViewport";
 import { useTheme } from "../contexts/ThemeContext";
 import { useLang } from "../contexts/LangContext";
@@ -470,15 +471,16 @@ export default function ShanghaiPlay(props: Props) {
   }, []);
 
   const goShanghaiConfig = React.useCallback(() => {
-    const go = (props as any)?.params?.go;
+    // ✅ Navigation robuste: on privilégie le "go" passé directement par App.tsx
+    const go = (props as any)?.go ?? (props as any)?.params?.go;
     if (typeof go === "function") {
-      const candidates = [
-        "shanghai_config",
-        "shanghaiConfig",
-        "shanghai_setup",
-        "shanghai_settings",
-        "shanghai",
-      ];
+      try {
+        // Route officielle dans App.tsx
+        go("shanghai");
+        return;
+      } catch {}
+      // Fallbacks (anciens ids éventuels)
+      const candidates = ["shanghai_config", "shanghaiConfig", "shanghai_setup", "shanghai_settings", "shanghai"];
       for (const id of candidates) {
         try {
           go(id);
@@ -486,10 +488,7 @@ export default function ShanghaiPlay(props: Props) {
         } catch {}
       }
     }
-    if (typeof props.onExit === "function") {
-      props.onExit();
-      return;
-    }
+    // Derniers recours (si la page a été ouverte hors du routeur interne)
     try {
       window.location.hash = "#/shanghai";
       return;
@@ -980,49 +979,9 @@ export default function ShanghaiPlay(props: Props) {
               position: "relative",
             }}
           >
-            {/* ✅ BOUTON RETOUR SUPPRIMÉ (visuel) */}
+            {/* ✅ BackDot — retour config Shanghai */}
+            <BackDot onClick={() => goShanghaiConfig()} />
 
-            {/* ✅ ADD: ZONE TAP INVISIBLE "RETOUR CONFIG" (fonctionne vraiment) */}
-            <div
-              aria-label="Retour config Shanghai"
-              title="Retour config Shanghai"
-              onClick={(e) => {
-                try {
-                  e.preventDefault();
-                  e.stopPropagation();
-                } catch {}
-                goShanghaiConfig();
-              }}
-              onPointerUp={(e) => {
-                try {
-                  e.preventDefault();
-                  e.stopPropagation();
-                } catch {}
-                goShanghaiConfig();
-              }}
-              onTouchEnd={(e) => {
-                try {
-                  e.preventDefault();
-                  e.stopPropagation();
-                } catch {}
-                goShanghaiConfig();
-              }}
-              style={{
-                position: "absolute",
-                left: 0,
-                top: 0,
-                width: 42,
-                height: 42,
-                borderRadius: 14,
-                // 🔥 IMPORTANT: capte les clics même si d'autres éléments existent
-                pointerEvents: "auto",
-                zIndex: 9999,
-                cursor: "pointer",
-                userSelect: "none",
-                // ✅ si tu veux voir la zone (debug), décommente:
-                // background: "rgba(255,0,0,0.25)",
-              }}
-            />
 
             <div style={{ flex: 1, display: "flex", justifyContent: "center" }}>
               <img

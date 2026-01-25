@@ -1,4 +1,3 @@
-// src/pages/DepartementsConfig.tsx
 import React from "react";
 import BackDot from "../components/BackDot";
 import InfoDot from "../components/InfoDot";
@@ -57,20 +56,6 @@ function findTerritoriesTicker(tickerId: string): string | null {
   const suffix = `/ticker_territories_${id}.png`;
   for (const k of Object.keys(tickerGlob)) {
     if (k.toLowerCase().endsWith(suffix)) return tickerGlob[k];
-  }
-  return null;
-}
-
-const FLAG_GLOB = import.meta.glob("../assets/flags/*.png", { eager: true, import: "default" }) as Record<
-  string,
-  string
->;
-
-function findFlagForMapId(mapId: string): string | null {
-  const id = String(mapId || "").toUpperCase();
-  const suffix = `/${id}.png`;
-  for (const k of Object.keys(FLAG_GLOB)) {
-    if (k.toUpperCase().endsWith(suffix)) return FLAG_GLOB[k];
   }
   return null;
 }
@@ -140,6 +125,7 @@ function InfoMini({
 }) {
   return (
     <button
+      type="button"
       onClick={() => onOpen(title, content)}
       style={{
         width: 18,
@@ -150,10 +136,11 @@ function InfoMini({
         color: "#fff",
         fontSize: 12,
         fontWeight: 1000,
-        lineHeight: "22px",
+        lineHeight: "18px",
         textAlign: "center",
         cursor: "pointer",
         flexShrink: 0,
+        pointerEvents: "auto",
       }}
       aria-label="info"
       title={title}
@@ -200,7 +187,7 @@ export default function DepartementsConfig(props: any) {
     return [];
   });
 
-  // Team assignment (Option A: Teams panel with slots)
+  // Team assignment (Teams panel with slots)
   const [teamsById, setTeamsById] = React.useState<Record<string, number>>({});
   const [pendingId, setPendingId] = React.useState<string | null>(null);
 
@@ -287,21 +274,22 @@ export default function DepartementsConfig(props: any) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [botsEnabled, userBots]);
 
-  // ✅ Toujours 2 TEAMS en mode équipes (Team 1 + Team 2)
+  // Derived teamsCount (2 minimum). For 6 players in 2v2 => 3 teams; for 6 players in 3v3 => 2 teams.
   const neededTeams = React.useMemo(() => {
     if (teamSize === 1) return 0;
-    return 2;
-  }, [teamSize]);
+    const n = Math.floor(selectedIds.length / teamSize);
+    return Math.max(2, n || 2);
+  }, [selectedIds.length, teamSize]);
 
-  // Team slots model (2 teams fixes)
+  // Team slots model
   const slots = React.useMemo(() => {
     if (teamSize === 1) return [];
-    const out: Array<Array<string | null>> = Array.from({ length: 2 }, () =>
+    const out: Array<Array<string | null>> = Array.from({ length: neededTeams }, () =>
       Array.from({ length: teamSize }, () => null)
     );
     for (const id of selectedIds) {
       const te = teamsById[id];
-      if (typeof te !== "number" || te < 0 || te >= 2) continue;
+      if (typeof te !== "number" || te < 0 || te >= neededTeams) continue;
       for (let s = 0; s < teamSize; s++) {
         if (!out[te][s]) {
           out[te][s] = id;
@@ -310,7 +298,7 @@ export default function DepartementsConfig(props: any) {
       }
     }
     return out;
-  }, [teamSize, selectedIds, teamsById]);
+  }, [teamSize, neededTeams, selectedIds, teamsById]);
 
   const unassigned = React.useMemo(() => {
     if (teamSize === 1) return [];
@@ -337,10 +325,10 @@ export default function DepartementsConfig(props: any) {
 
   function autoFillTeams() {
     if (teamSize === 1) return;
-    const ids = [...unassigned]; // ✅ inclut humains + bots sélectionnés
+    const ids = [...unassigned];
     if (!ids.length) return;
 
-    for (let te = 0; te < 2; te++) {
+    for (let te = 0; te < neededTeams; te++) {
       for (let s = 0; s < teamSize; s++) {
         if (slots[te]?.[s]) continue;
         if (!ids.length) return;
@@ -348,11 +336,13 @@ export default function DepartementsConfig(props: any) {
         setTeamsById((prev) => ({ ...prev, [id]: te }));
       }
     }
-    setPendingId(null);
   }
 
-  function autoCompleteWithBots() {
+  // ✅ FIX: n'ajoute plus de bots si la config est déjà "complète"
+  function autoCompleteWithBots(selectionValidNow: boolean) {
     if (!botsEnabled) return;
+    if (selectionValidNow) return; // <- FIX: ne touche pas si déjà OK
+
     const botIds = userBots.map((b) => b.id).filter(Boolean);
     if (!botIds.length) return;
 
@@ -366,15 +356,15 @@ export default function DepartementsConfig(props: any) {
         if (next.length >= minPlayers) break;
       }
 
+      // if team mode, ensure divisible by teamSize (sans dépasser)
+      while (teamSize > 1 && next.length < maxPlayers && next.length % teamSize !== 0) {
+        const cand = botIds.find((id) => !next.includes(id));
+        if (!cand) break;
+        next.push(cand);
+      }
+
       return next;
     });
-
-    // ✅ et on auto-remplit les teams (humains + bots)
-    setTimeout(() => {
-      try {
-        autoFillTeams();
-      } catch {}
-    }, 0);
   }
 
   const selectionValid = React.useMemo(() => {
@@ -383,17 +373,18 @@ export default function DepartementsConfig(props: any) {
 
     if (teamSize === 1) return true;
 
-    // ✅ mode équipes = EXACTEMENT 2 teams, donc EXACTEMENT 2 * teamSize joueurs
-    if (selectedIds.length !== teamSize * 2) return false;
+    if (selectedIds.length % teamSize !== 0) return false;
+    const teamsExact = selectedIds.length / teamSize;
+    if (teamsExact < 2) return false;
 
     // Every selected id must be assigned and each team must have exactly teamSize members
-    const counts = [0, 0];
+    const counts = Array.from({ length: teamsExact }, () => 0);
     for (const id of selectedIds) {
       const te = teamsById[id];
-      if (typeof te !== "number" || te < 0 || te > 1) return false;
+      if (typeof te !== "number" || te < 0 || te >= teamsExact) return false;
       counts[te]++;
     }
-    return counts[0] === teamSize && counts[1] === teamSize;
+    return counts.every((c) => c === teamSize);
   }, [selectedIds, minPlayers, maxPlayers, teamSize, teamsById]);
 
   const payload: TerritoriesConfigPayload = {
@@ -426,6 +417,19 @@ export default function DepartementsConfig(props: any) {
     for (const b of userBots) m.set(String(b.id), botToFakeProfile(b));
     return m;
   }, [storeProfiles, userBots]);
+
+  // "Neon theme button" inline helper (auto-fill / auto-complete)
+  const neonBtnStyle: React.CSSProperties = {
+    padding: "6px 10px",
+    borderRadius: 999,
+    border: `1px solid ${primary}66`,
+    background: "rgba(0,0,0,0.18)",
+    color: "#fff",
+    fontSize: 11,
+    fontWeight: 950,
+    cursor: "pointer",
+    boxShadow: `0 0 14px ${primary}33`,
+  };
 
   return (
     <div className="page">
@@ -504,8 +508,6 @@ export default function DepartementsConfig(props: any) {
           {maps.map((m) => {
             const selected = m.id === mapId;
             const src = findTerritoriesTicker(m.tickerId);
-            const flag = findFlagForMapId(m.id);
-
             return (
               <button
                 key={m.id}
@@ -525,29 +527,8 @@ export default function DepartementsConfig(props: any) {
                 }}
               >
                 <div style={{ padding: 10 }}>
-                  {/* ✅ drapeau + nom sur la même ligne, ✅ plus de "SELECTED" */}
-                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                    {flag ? (
-                      <img
-                        src={flag}
-                        alt={m.id}
-                        style={{ width: 18, height: 18, borderRadius: 4, objectFit: "cover" }}
-                        draggable={false}
-                      />
-                    ) : (
-                      <div
-                        style={{
-                          width: 18,
-                          height: 18,
-                          borderRadius: 4,
-                          background: "rgba(255,255,255,0.10)",
-                          border: "1px solid rgba(255,255,255,0.10)",
-                        }}
-                      />
-                    )}
-                    <div style={{ fontSize: 14, fontWeight: 1000 }}>{m.name}</div>
-                    <div style={{ marginLeft: "auto", fontSize: 11, opacity: 0.8, fontWeight: 950 }}>{m.id}</div>
-                  </div>
+                  <div style={{ fontSize: 12, opacity: 0.85, fontWeight: 950, letterSpacing: 0.6 }}>{m.id}</div>
+                  <div style={{ marginTop: 4, fontSize: 16, fontWeight: 1000 }}>{m.name}</div>
                 </div>
 
                 <div style={{ padding: 10, paddingTop: 0 }}>
@@ -591,7 +572,7 @@ export default function DepartementsConfig(props: any) {
             <InfoMini
               title="Joueurs"
               content={
-                "Sélectionne les participants (jusqu'à 6).\n\nEn mode équipes :\n1) Clique un joueur sélectionné pour le mettre 'en attente'\n2) Clique un slot vide dans TEAMS."
+                "Sélectionne les participants (jusqu'à 6).\n\nEn mode équipes :\n1) Clique 'Assigner' sous un joueur sélectionné\n2) Clique un slot vide dans TEAMS."
               }
               onOpen={(title, content) => setInfoModal({ title, content })}
             />
@@ -601,8 +582,8 @@ export default function DepartementsConfig(props: any) {
         <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center" }}>
           <div style={{ fontSize: 12, opacity: 0.85, fontWeight: 950 }}>
             Sélection : {selectedIds.length}/{maxPlayers} — min {minPlayers}
-            {teamSize > 1 && selectedIds.length > 0 && selectedIds.length !== teamSize * 2 && (
-              <span style={{ marginLeft: 10, opacity: 0.9 }}>(doit être exactement {teamSize * 2})</span>
+            {teamSize > 1 && selectedIds.length > 0 && selectedIds.length % teamSize !== 0 && (
+              <span style={{ marginLeft: 10, opacity: 0.9 }}>(doit être multiple de {teamSize})</span>
             )}
           </div>
         </div>
@@ -702,6 +683,7 @@ export default function DepartementsConfig(props: any) {
                         fontSize: 11,
                         fontWeight: 950,
                         cursor: "pointer",
+                        boxShadow: isPending ? `0 0 14px ${primary}33` : "none",
                       }}
                       title="Clique puis assigne dans TEAMS"
                     >
@@ -745,7 +727,7 @@ export default function DepartementsConfig(props: any) {
           </OptionRow>
         </div>
 
-        {/* Option A: TEAMS PANEL */}
+        {/* TEAMS PANEL */}
         {teamSize > 1 && (
           <div style={{ marginTop: 12 }}>
             <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center" }}>
@@ -754,15 +736,15 @@ export default function DepartementsConfig(props: any) {
                 <InfoMini
                   title="TEAMS"
                   content={
-                    "1) Clique un joueur (bouton 'Assigner') pour le mettre en attente\n2) Clique un slot vide pour l'ajouter à une team\n\nChaque Team doit avoir exactement " +
+                    "1) Clique 'Assigner' sous un joueur (humain OU bot) pour le mettre en attente\n2) Clique un slot vide pour l'ajouter à une team\n\nChaque Team doit avoir exactement " +
                     teamSize +
                     " joueurs."
                   }
                   onOpen={(title, content) => setInfoModal({ title, content })}
                 />
               </div>
-              {/* ✅ garde ton style, mais bouton = même “famille” que config X01 (pas de bouton néon géant) */}
-              <button className="btn-secondary" onClick={autoFillTeams}>
+
+              <button type="button" onClick={autoFillTeams} style={neonBtnStyle}>
                 Auto-fill
               </button>
             </div>
@@ -775,9 +757,12 @@ export default function DepartementsConfig(props: any) {
               </div>
             )}
 
-            {/* ✅ TEAMS VERTICALES (Team 1 puis Team 2) */}
-            <div style={{ marginTop: 10, display: "grid", gridTemplateColumns: "repeat(1, minmax(0,1fr))", gap: 10 }}>
-              {[0, 1].map((te) => {
+            {/* ✅ 1 colonne: teams empilées */}
+            <div style={{ marginTop: 10, display: "grid", gridTemplateColumns: "1fr", gap: 10 }}>
+              {Array.from(
+                { length: Math.max(2, Math.floor(selectedIds.length / teamSize) || 2) },
+                (_, te) => te
+              ).map((te) => {
                 const teamSlots = slots[te] || Array.from({ length: teamSize }, () => null);
                 const filled = teamSlots.filter(Boolean).length;
                 const ok = filled === teamSize;
@@ -815,6 +800,7 @@ export default function DepartementsConfig(props: any) {
                         return (
                           <button
                             key={sIdx}
+                            type="button"
                             onClick={() => {
                               if (isEmpty) return assignToTeam(te);
                               setPendingId(id);
@@ -856,6 +842,7 @@ export default function DepartementsConfig(props: any) {
                                   {p?.name || id}
                                 </div>
                                 <button
+                                  type="button"
                                   onClick={(e) => {
                                     e.stopPropagation();
                                     unassignId(id);
@@ -933,7 +920,12 @@ export default function DepartementsConfig(props: any) {
 
               <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", marginTop: 8 }}>
                 <div style={{ fontSize: 12, opacity: 0.85, fontWeight: 950 }}>Bots : {userBots.length}</div>
-                <button className="btn-secondary" onClick={autoCompleteWithBots} disabled={!userBots.length}>
+                <button
+                  type="button"
+                  onClick={() => autoCompleteWithBots(selectionValid)}
+                  disabled={!userBots.length}
+                  style={{ ...neonBtnStyle, opacity: userBots.length ? 1 : 0.5, cursor: userBots.length ? "pointer" : "not-allowed" }}
+                >
                   Auto-complete
                 </button>
               </div>
@@ -943,13 +935,12 @@ export default function DepartementsConfig(props: any) {
                   Aucun bot personnalisé trouvé (dc_bots_v1).
                 </div>
               ) : (
-                <div
-                  className="dc-scroll-thin"
-                  style={{ display: "flex", gap: 18, overflowX: "auto", paddingBottom: 10, marginTop: 10 }}
-                >
+                <div className="dc-scroll-thin" style={{ display: "flex", gap: 18, overflowX: "auto", paddingBottom: 10, marginTop: 10 }}>
                   {userBots.map((b) => {
                     const active = selectedIds.includes(b.id);
                     const fakeProfile = botToFakeProfile(b);
+                    const isPending = pendingId === b.id;
+
                     return (
                       <div
                         key={b.id}
@@ -973,6 +964,8 @@ export default function DepartementsConfig(props: any) {
                             borderRadius: "50%",
                             overflow: "hidden",
                             boxShadow: active ? `0 0 28px ${primary}aa` : "0 0 14px rgba(0,0,0,0.65)",
+                            outline: isPending ? `2px solid ${primary}` : "none",
+                            outlineOffset: 2,
                             background: active ? `radial-gradient(circle at 30% 20%, #fff8d0, ${primary})` : "#111320",
                             display: "flex",
                             alignItems: "center",
@@ -1009,6 +1002,28 @@ export default function DepartementsConfig(props: any) {
                         >
                           {b.name}
                         </div>
+
+                        {/* ✅ FIX: bots assignables aussi */}
+                        {teamSize > 1 && active && (
+                          <button
+                            type="button"
+                            onClick={() => setPendingId((prev) => (prev === b.id ? null : b.id))}
+                            style={{
+                              padding: "4px 10px",
+                              borderRadius: 999,
+                              border: `1px solid ${primary}66`,
+                              background: isPending ? primarySoft : "rgba(0,0,0,0.18)",
+                              color: "#fff",
+                              fontSize: 11,
+                              fontWeight: 950,
+                              cursor: "pointer",
+                              boxShadow: isPending ? `0 0 14px ${primary}33` : "none",
+                            }}
+                            title="Clique puis assigne dans TEAMS"
+                          >
+                            {isPending ? "En attente" : "Assigner"}
+                          </button>
+                        )}
                       </div>
                     );
                   })}
@@ -1021,7 +1036,7 @@ export default function DepartementsConfig(props: any) {
         {!selectionValid && (
           <div style={{ marginTop: 10, fontSize: 12, opacity: 0.9, fontWeight: 950 }}>
             Configuration invalide : sélectionne {minPlayers} joueurs minimum
-            {teamSize > 1 ? `, exactement ${teamSize * 2}, et remplis Team 1 + Team 2.` : "."}
+            {teamSize > 1 ? `, multiple de ${teamSize}, et remplis toutes les teams.` : "."}
           </div>
         )}
       </Section>
@@ -1048,10 +1063,28 @@ export default function DepartementsConfig(props: any) {
         </OptionRow>
       </Section>
 
-      {/* ✅ Bouton EXACTEMENT “famille X01” */}
       <Section>
-        <button className="btn-primary w-full" onClick={start} disabled={!selectionValid}>
-          {t("config.startGame", "Lancer la partie")}
+        {/* ✅ Même signature X01ConfigV3 */}
+        <button
+          onClick={start}
+          disabled={!selectionValid}
+          style={{
+            width: "100%",
+            marginTop: 6,
+            padding: "14px 16px",
+            borderRadius: 18,
+            border: "1px solid rgba(255,215,120,0.38)",
+            background: "linear-gradient(180deg, rgba(255,215,120,0.95), rgba(255,180,60,0.92))",
+            color: "rgba(20,12,2,0.95)",
+            fontWeight: 1100,
+            letterSpacing: 0.6,
+            textTransform: "uppercase",
+            boxShadow: "0 18px 44px rgba(0,0,0,0.45)",
+            opacity: selectionValid ? 1 : 0.45,
+            cursor: selectionValid ? "pointer" : "not-allowed",
+          }}
+        >
+          {t("config.startGame", "LANCER LA PARTIE")}
         </button>
       </Section>
     </div>

@@ -50,29 +50,54 @@ import { History, type SavedMatch, type PlayerLite } from "../lib/history";
 // Helpers internes
 // -------------------------------------------------------------
 
+function normalizeConfigV3(input: X01ConfigV3): X01ConfigV3 {
+  const anyIn: any = input as any;
+  // backward-compat: certains écrans ont longtemps stocké `matchMode`
+  const legacyMode = anyIn.matchMode;
+  let gameMode: X01ConfigV3["gameMode"] = input.gameMode;
+
+  if (!gameMode) {
+    if (legacyMode === "teams") gameMode = "teams";
+    else if (Array.isArray((input as any).teams) && (input as any).teams.length >= 2) {
+      // Si on a des équipes cohérentes, on considère TEAMS.
+      gameMode = "teams";
+    } else {
+      gameMode = "solo";
+    }
+  }
+
+  // En mode non-teams, on ignore les équipes pour éviter les états incohérents.
+  if (gameMode !== "teams") {
+    return { ...input, gameMode, teams: undefined } as any;
+  }
+
+  return { ...input, gameMode } as any;
+}
+
 function createInitialMatchState(config: X01ConfigV3): X01MatchStateV3 {
+  const cfg = normalizeConfigV3(config);
   const scores: Record<string, number> = {};
   const legsWon: Record<string, number> = {};
   const setsWon: Record<string, number> = {};
 
-  for (const p of config.players) {
-    scores[p.id] = config.startScore;
+  for (const p of cfg.players) {
+    scores[p.id] = cfg.startScore;
     legsWon[p.id] = 0;
     setsWon[p.id] = 0;
   }
 
 // Teams : init legs/sets gagnés par équipe (évite undefined)
 const teamLegsWon: Record<string, number> | undefined =
-  config.gameMode === "teams" && Array.isArray(config.teams)
-    ? Object.fromEntries(config.teams.map((t) => [t.id, 0]))
+  cfg.gameMode === "teams" && Array.isArray(cfg.teams)
+    ? Object.fromEntries(cfg.teams.map((t) => [t.id, 0]))
     : undefined;
 
 const teamSetsWon: Record<string, number> | undefined =
-  config.gameMode === "teams" && Array.isArray(config.teams)
-    ? Object.fromEntries(config.teams.map((t) => [t.id, 0]))
+  cfg.gameMode === "teams" && Array.isArray(cfg.teams)
+    ? Object.fromEntries(cfg.teams.map((t) => [t.id, 0]))
     : undefined;
 
-  const throwOrder = generateThrowOrderV3(config, null, 1);
+  const throwOrder = generateThrowOrderV3(cfg, null, 1);
 
   const state: X01MatchStateV3 = {
     matchId: crypto.randomUUID(),
@@ -99,7 +124,7 @@ const teamSetsWon: Record<string, number> | undefined =
     state.visit.checkoutSuggestion = extAdaptCheckoutSuggestion({
       score: state.visit.currentScore,
       dartsLeft: state.visit.dartsLeft,
-      outMode: config.outMode,
+      outMode: cfg.outMode,
     });
   }
 

@@ -110,6 +110,7 @@ import type { X01ConfigV3 as X01ConfigV3Type } from "./types/x01v3";
 import GameSelect from "./pages/GameSelect";
 import Home from "./pages/Home";
 import Games from "./pages/Games";
+import ModeNotReady from "./pages/ModeNotReady";
 import TournamentsHome from "./pages/TournamentsHome";
 import Profiles from "./pages/Profiles";
 import FriendsPage from "./pages/FriendsPage";
@@ -240,6 +241,8 @@ import DartsModePlay from "./pages/modes/DartsModePlay";
 import HalveItConfig from "./pages/HalveItConfig";
 import HalveItPlay from "./pages/HalveItPlay";
 import CountUpConfig from "./pages/CountUpConfig";
+import DefiConfig from "./pages/DefiConfig";
+import DefiPlay from "./pages/DefiPlay";
 import CountUpPlay from "./pages/CountUpPlay";
 import PrisonerConfig from "./pages/PrisonerConfig";
 import PrisonerPlay from "./pages/PrisonerPlay";
@@ -255,6 +258,8 @@ import Bobs27Config from "./pages/Bobs27Config";
 import Bobs27Play from "./pages/Bobs27Play";
 import ScramConfig from "./pages/ScramConfig";
 import ScramPlay from "./pages/ScramPlay";
+import GolfConfig from "./pages/GolfConfig";
+import GolfPlay from "./pages/GolfPlay";
 import BaseballConfig from "./pages/BaseballConfig";
 import BaseballPlay from "./pages/BaseballPlay";
 import Game170Config from "./pages/Game170Config";
@@ -262,6 +267,8 @@ import Game170Play from "./pages/Game170Play";
 import FootballConfig from "./pages/FootballConfig";
 import FootballPlay from "./pages/FootballPlay";
 import BatardConfig from "./pages/BatardConfig";
+import FunGagesConfig from "./pages/FunGagesConfig";
+import FunGagesPlay from "./pages/FunGagesPlay";
 import BatardPlay from "./pages/BatardPlay";
 import CapitalConfig from "./pages/CapitalConfig";
 import CapitalPlay from "./pages/CapitalPlay";
@@ -487,6 +494,7 @@ type Tab =
   | "home"
   | "gameSelect"
   | "games"
+  | "mode_not_ready"
   // ✅ NEW (OBLIGATOIRE): Tabs Pétanque (snake_case)
   | "petanque_menu"
   | "petanque_config"
@@ -584,6 +592,8 @@ type Tab =
   | "bobs_27_play"
   | "scram_config"
   | "scram_play"
+  | "golf_config"
+  | "golf_play"
   | "baseball_config"
   | "baseball_play"
   | "game_170_config"
@@ -592,6 +602,8 @@ type Tab =
   | "football_play"
   | "batard_config"
   | "batard_play"
+  | "fun_gages_config"
+  | "fun_gages_play"
   | "capital_config"
   | "capital_play"
   | "happy_mille_config"
@@ -2671,17 +2683,17 @@ function App() {
       // - Les Config poussent vers "<mode>_play" avec { config }
       // ============================================================
       case "halve_it_config":
-        page = <HalveItConfig setTab={go} params={routeParams} />;
+        page = <DefiConfig setTab={go} params={{ ...routeParams, modeId: "halve_it" }} />;
         break;
       case "halve_it_play":
-        page = <HalveItPlay setTab={go} params={routeParams} />;
+        page = <DefiPlay setTab={go} params={{ ...routeParams, modeId: "halve_it" }} />;
         break;
 
       case "count_up_config":
-        page = <CountUpConfig setTab={go} params={routeParams} />;
+        page = <DefiConfig setTab={go} params={{ ...routeParams, modeId: "count_up" }} />;
         break;
       case "count_up_play":
-        page = <CountUpPlay setTab={go} params={routeParams} />;
+        page = <DefiPlay setTab={go} params={{ ...routeParams, modeId: "count_up" }} />;
         break;
 
       case "prisoner_config":
@@ -2733,6 +2745,13 @@ function App() {
         page = <ScramPlay setTab={go} params={routeParams} />;
         break;
 
+      case "golf_config":
+        page = <GolfConfig setTab={go} params={routeParams} />;
+        break;
+      case "golf_play":
+        page = <GolfPlay setTab={go} params={routeParams} />;
+        break;
+
       case "baseball_config":
         page = <BaseballConfig setTab={go} params={routeParams} />;
         break;
@@ -2759,6 +2778,13 @@ function App() {
         break;
       case "batard_play":
         page = <BatardPlay setTab={go} params={routeParams} />;
+        break;
+
+      case "fun_gages_config":
+        page = <FunGagesConfig setTab={go} params={routeParams} />;
+        break;
+      case "fun_gages_play":
+        page = <FunGagesPlay setTab={go} params={routeParams} />;
         break;
 
       case "capital_config":
@@ -2808,6 +2834,10 @@ function App() {
         page = <DartsModePlay go={go} gameId={gameId} config={cfg} />;
         break;
       }
+
+      case "mode_not_ready":
+        page = <ModeNotReady go={go} params={routeParams} />;
+        break;
 
       default:
         page = <GameSelect go={go} />;

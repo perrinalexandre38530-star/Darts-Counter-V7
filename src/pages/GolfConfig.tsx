@@ -1,10 +1,10 @@
 // @ts-nocheck
 // =============================================================
-// src/pages/ScramConfig.tsx
-// SCRAM — Config (PRO) alignée design X01/Killer (carrousels profils + bots)
+// src/pages/GolfConfig.tsx
+// GOLF — Config (PRO) alignée design X01/Killer (carrousels profils + bots)
 // - Sélection joueurs via carrousel (profils locaux)
 // - Sélection BOTS IA via carrousel (profils isBot + LS "dc_bots_v1")
-// - Options : objectif points phase SCRAM + cap de rounds (sécurité)
+// - Options PRO: 9/18, ordre trous, scoring, pénalité miss, grille, équipes
 // =============================================================
 
 import React, { useMemo, useState, useEffect } from "react";
@@ -15,7 +15,11 @@ import ProfileAvatar from "../components/ProfileAvatar";
 import BackDot from "../components/BackDot";
 import InfoDot from "../components/InfoDot";
 import PageHeader from "../components/PageHeader";
-import tickerScram from "../assets/tickers/ticker_scram.png";
+import tickerGolf from "../assets/tickers/ticker_golf.png";
+
+type BotLevel = "easy" | "normal" | "hard";
+type HoleOrderMode = "chronological" | "random";
+type GolfScoringMode = "strokes" | "points";
 
 export type PlayerLite = {
   id: string;
@@ -23,32 +27,39 @@ export type PlayerLite = {
   avatarDataUrl?: any | null;
   avatarUrl?: any | null;
   isBot?: boolean;
+  botLevel?: BotLevel | string;
 };
 
-export type ScramConfigPayload = {
+export type GolfConfigPayload = {
   players: number; // compat (Play actuel)
-  playersList?: PlayerLite[];
+  playersList?: PlayerLite[]; // futur / UI
+  holes: 9 | 18;
+  teamsEnabled: boolean;
   botsEnabled: boolean;
-  targetPoints: number; // objectif phase SCRAM
-  roundCap: number; // 0 = illimité
+  botLevel: BotLevel;
+  missStrokes: 4 | 5 | 6;
+  holeOrderMode: HoleOrderMode;
+  scoringMode: GolfScoringMode;
+  showHoleGrid: boolean;
 };
 
 const LS_BOTS_KEY = "dc_bots_v1";
 
-const INFO_TEXT = `SCRAM — règles
+const INFO_TEXT = `GOLF (Darts) — règles
 
-Phase 1: RACE
-- Deux équipes A/B. Une équipe "ferme" les cibles (20..15 + BULL).
-- Chaque cible se ferme à 3 marques (S=1, D=2, T=3).
-- Quand une équipe a fermé toutes les cibles, on passe en phase SCRAM.
+Principe
+- 9 ou 18 trous.
+- Au trou N, la cible est le numéro N.
+- 3 flèches par joueur, puis on valide.
 
-Phase 2: SCRAM (points)
-- Les marques deviennent des points sur les cibles non fermées (comme Cricket).
-- Objectif: atteindre le total de points configuré (par équipe).
+Scoring
+- Strokes : 1/2/3 selon la flèche du 1er hit, sinon pénalité (4/5/6). Score bas gagne.
+- Points : 3/2/1 selon la flèche du 1er hit, sinon 0. Score haut gagne.
 
-Notes
-- Équipes: alternance joueurs 1/2 (TEAM A = indices pairs, TEAM B = impairs).
-- Undo: annule la dernière volée / action.`;
+Options
+- Ordre des trous : chronologique ou aléatoire.
+- Grille des trous : tableau récapitulatif en partie.
+- Équipes (A/B) : total équipe = somme des joueurs (alternance 1/2).`;
 
 function loadBotsFromLS(): PlayerLite[] {
   try {
@@ -63,6 +74,7 @@ function loadBotsFromLS(): PlayerLite[] {
         avatarDataUrl: b?.avatarDataUrl ?? null,
         avatarUrl: b?.avatarUrl ?? null,
         isBot: true,
+        botLevel: (b?.botLevel as any) ?? "normal",
       }))
       .filter((x: any) => x.id && x.name);
   } catch {
@@ -70,24 +82,42 @@ function loadBotsFromLS(): PlayerLite[] {
   }
 }
 
-function Pill(props: { label: string; active?: boolean; onClick?: () => void; disabled?: boolean }) {
+function Pill(props: {
+  label: string;
+  active?: boolean;
+  onClick?: () => void;
+  disabled?: boolean;
+  tone?: "primary" | "neutral";
+}) {
   const { label, active, onClick, disabled } = props;
+  const tone = props.tone ?? "neutral";
+  const bg = active
+    ? tone === "primary"
+      ? "rgba(255,220,80,0.22)"
+      : "rgba(255,255,255,0.10)"
+    : "rgba(255,255,255,0.06)";
+  const border = active
+    ? tone === "primary"
+      ? "1px solid rgba(255,220,80,0.65)"
+      : "1px solid rgba(255,255,255,0.22)"
+    : "1px solid rgba(255,255,255,0.10)";
   return (
     <button
       type="button"
       onClick={onClick}
       disabled={disabled}
       style={{
-        border: active ? "1px solid rgba(255,220,80,0.65)" : "1px solid rgba(255,255,255,0.10)",
-        background: active ? "rgba(255,220,80,0.18)" : "rgba(255,255,255,0.06)",
+        border,
+        background: bg,
         color: "#e9ecff",
         padding: "8px 12px",
         borderRadius: 999,
         fontSize: 12,
-        fontWeight: 900,
+        fontWeight: 800,
         letterSpacing: 0.4,
         opacity: disabled ? 0.5 : 1,
         cursor: disabled ? "not-allowed" : "pointer",
+        boxShadow: active ? "0 0 16px rgba(255,220,80,0.25)" : "none",
         whiteSpace: "nowrap",
       }}
     >
@@ -96,7 +126,12 @@ function Pill(props: { label: string; active?: boolean; onClick?: () => void; di
   );
 }
 
-function AvatarTile(props: { p: PlayerLite; active: boolean; onToggle: () => void; accent: string }) {
+function AvatarTile(props: {
+  p: PlayerLite;
+  active: boolean;
+  onToggle: () => void;
+  accent: string;
+}) {
   const { p, active, onToggle, accent } = props;
   return (
     <div
@@ -123,7 +158,9 @@ function AvatarTile(props: { p: PlayerLite; active: boolean; onToggle: () => voi
           borderRadius: "50%",
           overflow: "hidden",
           boxShadow: active ? `0 0 28px ${accent}aa` : "0 0 14px rgba(0,0,0,0.65)",
-          background: active ? `radial-gradient(circle at 30% 20%, #fff8d0, ${accent})` : "#111320",
+          background: active
+            ? `radial-gradient(circle at 30% 20%, #fff8d0, ${accent})`
+            : "#111320",
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
@@ -137,14 +174,15 @@ function AvatarTile(props: { p: PlayerLite; active: boolean; onToggle: () => voi
             overflow: "hidden",
             filter: active ? "none" : "grayscale(100%) brightness(0.55)",
             opacity: active ? 1 : 0.6,
+            transition: "filter 0.2s ease, opacity 0.2s ease",
           }}
         >
           <ProfileAvatar
             profile={{
               id: p.id,
               name: p.name,
-              avatarDataUrl: (p as any).avatarDataUrl ?? null,
-              avatarUrl: (p as any).avatarUrl ?? null,
+              avatarDataUrl: p.avatarDataUrl ?? null,
+              avatarUrl: p.avatarUrl ?? null,
             }}
             size={78}
             ring={active ? "gold" : "none"}
@@ -168,14 +206,20 @@ function AvatarTile(props: { p: PlayerLite; active: boolean; onToggle: () => voi
         {p.name}
       </div>
 
-      <div style={{ fontSize: 10, fontWeight: 800, color: "rgba(255,255,255,0.45)" }}>
-        {p.isBot ? "BOT" : "JOUEUR"}
-      </div>
+      {p.isBot ? (
+        <div style={{ fontSize: 10, fontWeight: 800, color: "rgba(255,255,255,0.55)" }}>
+          BOT
+        </div>
+      ) : (
+        <div style={{ fontSize: 10, fontWeight: 800, color: "rgba(255,255,255,0.35)" }}>
+          JOUEUR
+        </div>
+      )}
     </div>
   );
 }
 
-export default function ScramConfig(props: { store?: Store; setTab?: any }) {
+export default function GolfConfig(props: { store?: Store; setTab?: any }) {
   const { t } = useLang() as any;
   const theme = useTheme() as any;
 
@@ -191,6 +235,7 @@ export default function ScramConfig(props: { store?: Store; setTab?: any }) {
       avatarDataUrl: p.avatarDataUrl ?? null,
       avatarUrl: p.avatarUrl ?? null,
       isBot: !!p.isBot,
+      botLevel: p.botLevel ?? "normal",
     }));
   }, [props?.store]);
 
@@ -214,12 +259,19 @@ export default function ScramConfig(props: { store?: Store; setTab?: any }) {
     humanProfiles.slice(0, 2).map((p) => p.id)
   );
   const [botsEnabled, setBotsEnabled] = useState(false);
-  const [selectedBotIds, setSelectedBotIds] = useState<string[]>([]);
+  const [selectedBotIds, setSelectedBotIds] = useState<string[]>(() => []);
 
-  const [targetPoints, setTargetPoints] = useState(200);
-  const [roundCap, setRoundCap] = useState(0);
+  // PRO options
+  const [holes, setHoles] = useState<9 | 18>(9);
+  const [holeOrderMode, setHoleOrderMode] = useState<HoleOrderMode>("chronological");
+  const [scoringMode, setScoringMode] = useState<GolfScoringMode>("strokes");
+  const [missStrokes, setMissStrokes] = useState<4 | 5 | 6>(4);
+  const [showHoleGrid, setShowHoleGrid] = useState(true);
+  const [teamsEnabled, setTeamsEnabled] = useState(false);
+  const [botLevel, setBotLevel] = useState<BotLevel>("normal");
 
   useEffect(() => {
+    // sync default selection once profiles loaded
     if (selectedHumanIds.length === 0 && humanProfiles.length > 0) {
       setSelectedHumanIds(humanProfiles.slice(0, 2).map((p) => p.id));
     }
@@ -236,15 +288,20 @@ export default function ScramConfig(props: { store?: Store; setTab?: any }) {
     return [...humans, ...bots];
   }, [humanProfiles, botProfiles, selectedHumanIds, selectedBotIds, botsEnabled]);
 
-  const playersCount = selectedPlayersList.length;
+  const playersCount = Math.max(0, selectedPlayersList.length);
   const canStart = playersCount >= 2;
 
-  const payload: ScramConfigPayload = {
+  const payload: GolfConfigPayload = {
     players: Math.max(2, Math.min(8, playersCount || 2)),
     playersList: selectedPlayersList.slice(0, 8),
+    holes,
+    teamsEnabled: teamsEnabled && playersCount >= 2,
     botsEnabled,
-    targetPoints,
-    roundCap,
+    botLevel,
+    missStrokes,
+    holeOrderMode,
+    scoringMode,
+    showHoleGrid,
   };
 
   function goBack() {
@@ -254,16 +311,16 @@ export default function ScramConfig(props: { store?: Store; setTab?: any }) {
 
   function start() {
     if (!canStart) return;
-    if (props?.setTab) return props.setTab("scram_play", { config: payload });
+    if (props?.setTab) return props.setTab("golf_play", { config: payload });
   }
 
   return (
     <div className="page" style={{ display: "flex", flexDirection: "column", minHeight: "100vh" }}>
       <PageHeader
-        title="SCRAM"
-        tickerSrc={tickerScram}
+        title="GOLF"
+        tickerSrc={tickerGolf}
         left={<BackDot onClick={goBack} />}
-        right={<InfoDot title="Règles SCRAM" content={INFO_TEXT} />}
+        right={<InfoDot title="Règles GOLF" content={INFO_TEXT} />}
       />
 
       <div style={{ flex: 1, overflowY: "auto", paddingTop: 4, paddingBottom: 12 }}>
@@ -309,6 +366,7 @@ export default function ScramConfig(props: { store?: Store; setTab?: any }) {
                   marginBottom: 8,
                   paddingLeft: 24,
                   paddingRight: 8,
+                  justifyContent: "flex-start",
                 }}
                 className="dc-scroll-thin"
               >
@@ -324,9 +382,20 @@ export default function ScramConfig(props: { store?: Store; setTab?: any }) {
               </div>
 
               <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
-                <Pill label={`Sélection: ${selectedHumanIds.length}`} active />
-                <Pill label="Sélectionner 2" onClick={() => setSelectedHumanIds(humanProfiles.slice(0, 2).map((p) => p.id))} />
-                <Pill label="Vider" onClick={() => setSelectedHumanIds([])} disabled={selectedHumanIds.length === 0} />
+                <Pill
+                  label={`${t("config.selected", "Sélection")}: ${selectedHumanIds.length}`}
+                  active
+                  tone="primary"
+                />
+                <Pill
+                  label={t("config.select2", "Sélectionner 2")}
+                  onClick={() => setSelectedHumanIds(humanProfiles.slice(0, 2).map((p) => p.id))}
+                />
+                <Pill
+                  label={t("config.clear", "Vider")}
+                  onClick={() => setSelectedHumanIds([])}
+                  disabled={selectedHumanIds.length === 0}
+                />
               </div>
             </>
           )}
@@ -351,7 +420,7 @@ export default function ScramConfig(props: { store?: Store; setTab?: any }) {
                 cursor: "pointer",
               }}
             >
-              {botsEnabled ? "ON" : "OFF"}
+              {botsEnabled ? t("common.on", "ON") : t("common.off", "OFF")}
             </button>
           </div>
 
@@ -389,8 +458,23 @@ export default function ScramConfig(props: { store?: Store; setTab?: any }) {
               )}
 
               <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
-                <Pill label={`Bots: ${selectedBotIds.length}`} active />
-                <Pill label="Vider" onClick={() => setSelectedBotIds([])} disabled={selectedBotIds.length === 0} />
+                <Pill
+                  label={`${t("config.selectedBots", "Bots")}: ${selectedBotIds.length}`}
+                  active
+                />
+                <Pill
+                  label={t("config.clear", "Vider")}
+                  onClick={() => setSelectedBotIds([])}
+                  disabled={selectedBotIds.length === 0}
+                />
+                <Pill label="Facile" active={botLevel === "easy"} onClick={() => setBotLevel("easy")} />
+                <Pill
+                  label="Normal"
+                  active={botLevel === "normal"}
+                  onClick={() => setBotLevel("normal")}
+                  tone="primary"
+                />
+                <Pill label="Difficile" active={botLevel === "hard"} onClick={() => setBotLevel("hard")} />
               </div>
             </>
           )}
@@ -421,28 +505,56 @@ export default function ScramConfig(props: { store?: Store; setTab?: any }) {
           </div>
 
           <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-            {[100, 150, 200, 250, 300].map((v) => (
-              <Pill
-                key={v}
-                label={`Objectif: ${v}`}
-                active={targetPoints === v}
-                onClick={() => setTargetPoints(v)}
-              />
-            ))}
+            <Pill label="9 trous" active={holes === 9} onClick={() => setHoles(9)} tone="primary" />
+            <Pill label="18 trous" active={holes === 18} onClick={() => setHoles(18)} />
+            <Pill
+              label={t("golf.orderChrono", "Chronologique")}
+              active={holeOrderMode === "chronological"}
+              onClick={() => setHoleOrderMode("chronological")}
+            />
+            <Pill
+              label={t("golf.orderRandom", "Aléatoire")}
+              active={holeOrderMode === "random"}
+              onClick={() => setHoleOrderMode("random")}
+            />
           </div>
 
           <div style={{ height: 10 }} />
           <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-            <Pill label={`Cap rounds: ${roundCap === 0 ? "∞" : roundCap}`} active />
-            {[0, 5, 7, 9, 11, 13].map((v) => (
-              <Pill
-                key={v}
-                label={v === 0 ? "Illimité" : String(v)}
-                active={roundCap === v}
-                onClick={() => setRoundCap(v)}
-              />
+            <Pill
+              label={t("golf.modeStrokes", "Strokes (score bas)")}
+              active={scoringMode === "strokes"}
+              onClick={() => setScoringMode("strokes")}
+              tone="primary"
+            />
+            <Pill
+              label={t("golf.modePoints", "Points (score haut)")}
+              active={scoringMode === "points"}
+              onClick={() => setScoringMode("points")}
+            />
+            <Pill label={`Pénalité miss: ${missStrokes}`} active tone="primary" />
+            {[4, 5, 6].map((v) => (
+              <Pill key={v} label={`${v}`} active={missStrokes === v} onClick={() => setMissStrokes(v as any)} />
             ))}
-            <Pill label={`Total joueurs: ${playersCount}`} active />
+          </div>
+
+          <div style={{ height: 10 }} />
+          <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+            <Pill
+              label={t("golf.teams", "Mode équipes")}
+              active={teamsEnabled}
+              onClick={() => setTeamsEnabled((x) => !x)}
+            />
+            <Pill
+              label={t("golf.grid", "Grille trous")}
+              active={showHoleGrid}
+              onClick={() => setShowHoleGrid((x) => !x)}
+            />
+            <Pill
+              label={`${t("config.totalPlayers", "Total joueurs")}: ${playersCount}`}
+              active
+              tone="primary"
+            />
           </div>
         </section>
 

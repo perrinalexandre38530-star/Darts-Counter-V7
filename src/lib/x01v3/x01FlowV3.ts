@@ -27,12 +27,14 @@ export function generateThrowOrderV3(
   const base = config.players.map((p) => p.id);
 
   // TEAMS : construire un ordre intercalé (A1,B1,C1,...,A2,B2,...)
-  const buildTeamsOrder = (teams: { id: string; players: X01PlayerId[] }[]) => {
-    const maxLen = Math.max(0, ...teams.map((t) => t.players.length));
+  const buildTeamsOrder = (teams: { id: string; players?: X01PlayerId[] }[]) => {
+    // Défensif: si une équipe n'a pas encore de joueurs assignés,
+    // on évite un crash et on retombe sur l'ordre "base".
+    const maxLen = Math.max(0, ...teams.map((t) => (Array.isArray(t.players) ? t.players.length : 0)));
     const out: X01PlayerId[] = [];
     for (let i = 0; i < maxLen; i++) {
       for (const t of teams) {
-        const pid = t.players[i];
+        const pid = Array.isArray(t.players) ? t.players[i] : undefined;
         if (pid) out.push(pid);
       }
     }

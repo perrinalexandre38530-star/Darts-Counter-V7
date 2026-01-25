@@ -1151,6 +1151,7 @@ const isBotTurn = React.useMemo(() => {
     return m;
   }, [players, resolveAvatar]);
   
+  // Backward-compat: anciens builds stockaient `matchMode`.
   const isTeamsMode =
     ((config as any).gameMode === "teams" || (config as any).matchMode === "teams") &&
     Array.isArray((config as any).teams) &&
@@ -1166,12 +1167,7 @@ const teamsView = React.useMemo(() => {
 
   return teams
     .map((t: any) => {
-      // Compat: certains configs ont utilisé `playerIds` au lieu de `players`.
-      const ids: string[] = Array.isArray(t.players)
-        ? t.players
-        : Array.isArray(t.playerIds)
-        ? t.playerIds
-        : [];
+      const ids: string[] = Array.isArray(t.players) ? t.players : [];
       const members = ids
         .map((id) => playersById[id])
         .filter(Boolean)
@@ -1198,7 +1194,7 @@ const teamsView = React.useMemo(() => {
 
 const activeTeam = React.useMemo(() => {
   if (!teamsView || !activePlayerId) return null;
-  return (teamsView as any[]).find((t: any) => (t.playerIds || []).includes(activePlayerId)) || null;
+  return (teamsView as any[]).find((t: any) => (t.players || []).includes(activePlayerId)) || null;
 }, [teamsView, activePlayerId]);
 
 
@@ -2221,19 +2217,6 @@ React.useEffect(() => {
   }, [players, liveStatsByPlayer, scores, config.startScore]);
 
   const miniRanking: MiniRankingRow[] = React.useMemo(() => {
-    if (isTeamsMode && teamsView.length) {
-      return teamsView
-        .map((t) => ({
-          id: ("team:" + t.teamId) as any,
-          name: t.teamName,
-          score: t.score,
-          legsWon: 0,
-          setsWon: 0,
-          avg3: 0,
-        }))
-        .sort((a, b) => a.score - b.score);
-    }
-
     return players
       .map((p: any) => {
         const pid = p.id as X01PlayerId;
@@ -2252,7 +2235,7 @@ React.useEffect(() => {
         if (b.legsWon !== a.legsWon) return b.legsWon - a.legsWon;
         return a.score - b.score;
       });
-  }, [isTeamsMode, teamsView, players, scores, state, config.startScore, avg3ByPlayer]);
+  }, [players, scores, state, config.startScore, avg3ByPlayer]);
 
   const liveRanking = React.useMemo(
     () =>
@@ -4058,8 +4041,8 @@ function TeamsPlayersList(props: {
     >
       {teams.map((team: any) => {
         const teamScore =
-          team?.playerIds?.length
-            ? scoresByPlayer[team.playerIds[0]] ?? start
+          team?.players?.length
+            ? scoresByPlayer[team.players[0]] ?? start
             : start;
 
         return (
