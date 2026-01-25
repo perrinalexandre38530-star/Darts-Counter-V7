@@ -432,6 +432,16 @@ export default function CricketPlay({ profiles, params, onFinish }: Props) {
     else if (preset) setVariantId("classic");
   }, [params?.presetVariantId]);
 
+  // Preset Cut-Throat depuis le registry (Cricket Cut-Throat)
+  const isCutThroatRoute = String(params?.variantId || '').toLowerCase() === 'cut_throat';
+  React.useEffect(() => {
+    if (isCutThroatRoute) {
+      setScoreMode('points'); // Cut-throat = points obligatoires
+      // On garde variantId UI (classic/enculette) mais le moteur bascule en cut-throat via option.
+    }
+  }, [isCutThroatRoute]);
+
+
 // ---- Match en cours ----
 const [state, setState] = React.useState<CricketState | null>(null);
 const [hitMode, setHitMode] = React.useState<HitMode>("S");
@@ -874,7 +884,8 @@ function renderAvatarCircle(
     }
 
     const match = createCricketMatch(players, {
-      withPoints: scoreMode === "points",
+      withPoints: (scoreMode === "points") || isCutThroatRoute,
+      cutThroat: isCutThroatRoute,
       maxRounds,
     });
 

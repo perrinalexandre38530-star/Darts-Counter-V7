@@ -972,7 +972,12 @@ export default function Games({ setTab }: Props) {
                 return (
                   <button
                     key={g.id}
-                    onClick={() => navigate(clickable ? g.tab : "mode_not_ready")}
+                    onClick={() => {
+                      if (!clickable) return navigate("mode_not_ready");
+                      // Support des variantes via params (ex: Cricket Cut-Throat)
+                      const params = g.variantId ? { gameId: g.id, baseGame: g.baseGame, variantId: g.variantId } : undefined;
+                      return navigate(g.tab, params);
+                    }}
                     style={{
                       position: "relative",
                       width: "100%",

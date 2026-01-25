@@ -39,6 +39,7 @@ export type CricketState = {
   remainingDarts: number;
   winnerId: string | null;
   withPoints: boolean;
+  cutThroat: boolean;
   maxRounds: number;
   roundNumber: number;
   history: CricketHistoryEntry[];
@@ -78,13 +79,15 @@ function closedCount(p: CricketPlayerState): number {
 export type CreateCricketMatchOptions = {
   withPoints?: boolean;
   maxRounds?: number;
+  cutThroat?: boolean;
 };
 
 export function createCricketMatch(
   players: { id: string; name: string }[],
   opts: CreateCricketMatchOptions = {}
 ): CricketState {
-  const withPoints = opts.withPoints ?? true;
+  const cutThroat = opts.cutThroat ?? false;
+  const withPoints = (opts.withPoints ?? true) || cutThroat; // Cut-throat implique des points
   const maxRounds = opts.maxRounds ?? 20;
 
   const baseMarks: Record<CricketTarget, number> = {
@@ -110,6 +113,7 @@ export function createCricketMatch(
     remainingDarts: 3,
     winnerId: null,
     withPoints,
+    cutThroat,
     maxRounds,
     roundNumber: 1,
     history: [],
@@ -130,17 +134,24 @@ function checkWinner(state: CricketState): string | null {
     return closedPlayers[0].id;
   }
 
-  // avec points : fermé + score >= aux autres, et meilleur score
+  // avec points : règles selon variante
   const bestCandidate = closedPlayers.reduce<CricketPlayerState | null>(
     (best, player) => {
       const otherScores = state.players
         .filter((p) => p.id !== player.id)
         .map((p) => p.score);
       const maxOther = otherScores.length ? Math.max(...otherScores) : Number.NEGATIVE_INFINITY;
+      const minOther = otherScores.length ? Math.min(...otherScores) : Number.POSITIVE_INFINITY;
 
-      // doit être au moins à égalité de points
+      if (state.cutThroat) {
+        // Cut-throat : fermé + score <= aux autres (on cherche le plus petit score)
+        if (player.score > minOther) return best;
+        if (!best || player.score < best.score) return player;
+        return best;
+      }
+
+      // Standard : fermé + score >= aux autres (on cherche le plus grand score)
       if (player.score < maxOther) return best;
-
       if (!best || player.score > best.score) return player;
       return best;
     },
@@ -158,7 +169,9 @@ function winnerOnMaxRounds(state: CricketState): string | null {
 
   const ranked = [...state.players].sort((a, b) => {
     // 1) si points -> score
-    if (state.withPoints && b.score !== a.score) return b.score - a.score;
+    if (state.withPoints && b.score !== a.score) {
+      return state.cutThroat ? (a.score - b.score) : (b.score - a.score);
+    }
 
     // 2) nb de cibles fermées
     const bc = closedCount(b);
@@ -216,7 +229,17 @@ export function applyCricketHit(
 
         if (surplusDelta > 0) {
           const value = cricketTarget === 25 ? 25 : (cricketTarget as number);
-          player.score += surplusDelta * value;
+          const delta = surplusDelta * value;
+          if (next.cutThroat) {
+            // Cut-throat : points ajoutés aux adversaires qui n'ont pas fermé cette cible
+            next.players.forEach((opp, idx) => {
+              if (idx === playerIndex) return;
+              const oppMarks = opp.marks[cricketTarget] ?? 0;
+              if (!isClosed(oppMarks)) opp.score += delta;
+            });
+          } else {
+            player.score += delta;
+          }
         }
       }
     }

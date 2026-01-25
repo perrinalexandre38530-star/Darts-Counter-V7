@@ -139,6 +139,7 @@ import TrainingMenu from "./pages/TrainingMenu";
 import TrainingX01Config from "./pages/TrainingX01Config";
 import TrainingX01Play from "./pages/TrainingX01Play";
 import TrainingClock from "./pages/TrainingClock";
+import TrainingModePage from "./pages/TrainingModePage";
 
 import ShanghaiConfigPage from "./pages/ShanghaiConfig";
 import ShanghaiEnd from "./pages/ShanghaiEnd";
@@ -566,6 +567,7 @@ type Tab =
   | "training_x01_play"
   | "training_stats"
   | "training_clock"
+  | "training_mode"
   | "avatar"
   | "x01_config_v3"
   | "x01_play_v3"
@@ -799,36 +801,62 @@ function AuthResetRoute({ go }: { go: (t: Tab, p?: any) => void }) {
   const [pw2, setPw2] = React.useState("");
   const [status, setStatus] = React.useState<string>("");
   // ✅ NEW: if user lands here from email link, exchange PKCE code / set implicit tokens
+    // ✅ NEW: if user lands here from email link, establish a valid Supabase session
+  // Supports multiple Supabase email URL shapes (hash-router + implicit tokens + PKCE code).
   React.useEffect(() => {
     (async () => {
       try {
         const href = String(window.location.href || "");
         const u = new URL(href);
+
+        // Some providers / routers produce double-hash URLs:
+        //   https://site/#access_token=...&refresh_token=...#/auth/reset
+        // Keep only the left part (params) for parsing.
+        const rawHash = String(u.hash || "").replace(/^#/, "");
+        const hashLeft = rawHash.includes("#/") ? rawHash.split("#/")[0] : rawHash;
+
+        // 1) PKCE code can appear in:
+        //   - ?code=... (search)
+        //   - #/auth/reset?code=... (hash query)
+        //   - .../#/code=<uuid>/auth/reset (path-ish, rare)
         const fromSearch = u.searchParams.get("code");
         const fromHashQuery = (() => {
           const h = String(u.hash || "");
           const q = h.includes("?") ? h.split("?")[1] : "";
           return q ? new URLSearchParams(q).get("code") : null;
         })();
-        const code = fromSearch || fromHashQuery;
+        const fromAny = (() => {
+          const m = href.match(/code=([0-9a-fA-F-]{36})/);
+          return m ? m[1] : null;
+        })();
+
+        const code = fromSearch || fromHashQuery || fromAny;
+
+        // 2) Implicit tokens live in the hash fragment (access_token/refresh_token)
+        const sp = new URLSearchParams(hashLeft.includes("?") ? hashLeft.split("?")[1] : hashLeft);
+        const access_token = sp.get("access_token");
+        const refresh_token = sp.get("refresh_token");
+
+        if (access_token && refresh_token) {
+          await supabase.auth.setSession({ access_token, refresh_token });
+          return;
+        }
 
         if (code) {
+          // PKCE: requires the code_verifier stored in localStorage in the same browser context.
           await supabase.auth.exchangeCodeForSession(code);
-        } else {
-          const h = String(u.hash || "").replace(/^#/, "");
-          const qs = h.includes("?") ? h.split("?")[1] : h;
-          const sp = new URLSearchParams(qs);
-          const access_token = sp.get("access_token");
-          const refresh_token = sp.get("refresh_token");
-          if (access_token && refresh_token) {
-            await supabase.auth.setSession({ access_token, refresh_token });
-          }
+          return;
         }
+
+        // If we reach here, the URL does not contain usable auth payload.
+        // The user cannot reset password from this page without the email link.
+        console.warn("[auth_reset] No code or tokens found in URL.");
       } catch (e) {
         console.warn("[auth_reset] session parse/exchange failed", e);
       }
     })();
   }, []);
+
 
 
   async function submit() {
@@ -2439,7 +2467,13 @@ function App() {
         break;
 
       case "cricket":
-        page = <CricketPlay profiles={store.profiles ?? []} onFinish={(m: any) => pushHistory(m)} />;
+        page = (
+          <CricketPlay
+            profiles={store.profiles ?? []}
+            params={routeParams}
+            onFinish={(m: any) => pushHistory(m)}
+          />
+        );
         break;
 
       case "killer":
@@ -2562,6 +2596,16 @@ function App() {
       case "training_clock":
         page = <TrainingClock profiles={store.profiles ?? []} activeProfileId={store.activeProfileId ?? null} go={go} />;
         break;
+
+      case "training_mode": {
+        const modeId: string | undefined = routeParams?.modeId || routeParams?.gameId;
+        if (!modeId) {
+          page = <div style={{ padding: 16 }}>Mode Training manquant</div>;
+          break;
+        }
+        page = <TrainingModePage modeId={modeId} onExit={() => go("training")} />;
+        break;
+      }
 
       case "avatar": {
         const botId: string | undefined = routeParams?.botId;

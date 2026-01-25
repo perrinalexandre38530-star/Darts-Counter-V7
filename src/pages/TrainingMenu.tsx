@@ -39,6 +39,7 @@ type Tab =
   | "training_x01"
   | "training_clock"
   | "training_stats"
+  | "training_mode"
   | "darts_mode";
 
 type Props = {
@@ -291,8 +292,8 @@ export default function TrainingMenu({ go }: Props) {
       infoKey: "training.menu.doubleio.info",
       infoDefault:
         "Entraînement dédié aux doubles : Double In, Double Out ou les deux. Objectif : fiabiliser tes entrées et sorties.",
-      tab: "darts_mode",
-      params: { gameId: "training_doubleio" },
+      tab: "training_mode",
+      params: { modeId: "training_doubleio" },
       enabled: isReady(doubleio),
       badge: badgeFromRegistry(doubleio),
       tickerSrc: findTickerSmart("training_doubleio"),
@@ -307,8 +308,8 @@ export default function TrainingMenu({ go }: Props) {
       infoKey: "training.menu.challenges.info",
       infoDefault:
         "Série de défis rapides pour travailler un axe précis : doubles, bull, triples, régularité. Idéal en session courte.",
-      tab: "darts_mode",
-      params: { gameId: "training_challenges" },
+      tab: "training_mode",
+      params: { modeId: "training_challenges" },
       enabled: isReady(challenges),
       badge: badgeFromRegistry(challenges),
       tickerSrc: findTickerSmart("training_challenges"),
@@ -347,8 +348,8 @@ export default function TrainingMenu({ go }: Props) {
         infoKey: `training.registry.${g.id}.info`,
         infoDefault:
           "Ce mode est enregistré dans l’application. S’il n’est pas encore implémenté, il sera affiché comme “En développement”.",
-        tab: "darts_mode",
-        params: { gameId: g.id },
+        tab: "training_mode",
+        params: { modeId: g.id },
         enabled: ready,
         badge: ready ? null : comingSoon,
         tickerSrc: findTickerSmart(g.id),

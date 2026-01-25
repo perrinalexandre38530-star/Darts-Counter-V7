@@ -18,6 +18,24 @@ export type DartsGameTab =
   | "battle_royale"
   | "warfare_config"
   | "five_lives_config"
+  | "golf_config"
+  | "scram_config"
+  | "enculette_config"
+  | "super_bull_config"
+  | "happy_mille_config"
+  | "game_170_config"
+  | "halve_it_config"
+  | "bobs_27_config"
+  | "knockout_config"
+  | "shooter_config"
+  | "baseball_config"
+  | "football_config"
+  | "rugby_config"
+  | "capital_config"
+  | "departements_config"
+  | "prisoner_config"
+  | "tic_tac_toe_config"
+  | "batard_config"
   | "training"
   | "tournaments"
   | "darts_mode"
@@ -236,14 +254,14 @@ export const dartsGameRegistry: DartsGameDef[] = [
     baseGame: "cricket",
     variantId: "cut_throat",
     popularityRank: 21,
-    ready: false,
+    ready: true,
     maxPlayers: 8,
     supportsTeams: true,
     supportsBots: true,
     statsKey: "game:cricket:cut_throat",
     infoTitle: "Cut-Throat Cricket",
     infoBody:
-      "Quand tu marques sur une cible fermee par TOI (et pas fermee par l'adversaire), les points sont AJOUTES au score des adversaires (au lieu du tien). A implementer dans le moteur Cricket (toggle variante).",
+      "Quand tu marques sur une cible fermee par TOI (et pas fermee par l'adversaire), les points sont AJOUTES au score des adversaires (au lieu du tien). Variante activee : points attribues aux adversaires encore ouverts sur la cible.",
   },
 
   {
@@ -523,7 +541,7 @@ export const dartsGameRegistry: DartsGameDef[] = [
     entry: "games",
     tab: "mode_not_ready",
     popularityRank: 53,
-    ready: false,
+    ready: true,
     maxPlayers: 12,
     supportsTeams: true,
     supportsBots: true,
@@ -550,7 +568,7 @@ export const dartsGameRegistry: DartsGameDef[] = [
     entry: "games",
     tab: "mode_not_ready",
     popularityRank: 54,
-    ready: false,
+    ready: true,
     maxPlayers: 8,
     supportsTeams: true,
     supportsBots: true,
@@ -569,7 +587,7 @@ export const dartsGameRegistry: DartsGameDef[] = [
     entry: "games",
     tab: "mode_not_ready",
     popularityRank: 55,
-    ready: false,
+    ready: true,
     maxPlayers: 8,
     supportsTeams: true,
     supportsBots: true,
@@ -588,7 +606,7 @@ export const dartsGameRegistry: DartsGameDef[] = [
     entry: "games",
     tab: "mode_not_ready",
     popularityRank: 56,
-    ready: false,
+    ready: true,
     maxPlayers: 8,
     supportsTeams: false,
     supportsBots: true,
@@ -607,7 +625,7 @@ export const dartsGameRegistry: DartsGameDef[] = [
     entry: "games",
     tab: "mode_not_ready",
     popularityRank: 57,
-    ready: false,
+    ready: true,
     maxPlayers: 8,
     supportsTeams: true,
     supportsBots: true,
@@ -626,7 +644,7 @@ export const dartsGameRegistry: DartsGameDef[] = [
     entry: "games",
     tab: "mode_not_ready",
     popularityRank: 58,
-    ready: false,
+    ready: true,
     maxPlayers: 4,
     supportsTeams: true,
     supportsBots: true,
@@ -645,7 +663,7 @@ export const dartsGameRegistry: DartsGameDef[] = [
     entry: "games",
     tab: "mode_not_ready",
     popularityRank: 59,
-    ready: false,
+    ready: true,
     maxPlayers: 8,
     supportsTeams: true,
     supportsBots: true,
@@ -664,7 +682,7 @@ export const dartsGameRegistry: DartsGameDef[] = [
     entry: "games",
     tab: "mode_not_ready",
     popularityRank: 60,
-    ready: false,
+    ready: true,
     maxPlayers: 8,
     supportsTeams: true,
     supportsBots: true,
@@ -683,7 +701,7 @@ export const dartsGameRegistry: DartsGameDef[] = [
     entry: "games",
     tab: "mode_not_ready",
     popularityRank: 61,
-    ready: false,
+    ready: true,
     maxPlayers: 8,
     supportsTeams: true,
     supportsBots: true,
@@ -702,7 +720,7 @@ export const dartsGameRegistry: DartsGameDef[] = [
     entry: "games",
     tab: "mode_not_ready",
     popularityRank: 62,
-    ready: false,
+    ready: true,
     maxPlayers: 12,
     supportsTeams: false,
     supportsBots: true,
@@ -721,7 +739,7 @@ export const dartsGameRegistry: DartsGameDef[] = [
     entry: "games",
     tab: "mode_not_ready",
     popularityRank: 63,
-    ready: false,
+    ready: true,
     maxPlayers: 12,
     supportsTeams: true,
     supportsBots: true,
@@ -740,7 +758,7 @@ export const dartsGameRegistry: DartsGameDef[] = [
     entry: "games",
     tab: "mode_not_ready",
     popularityRank: 64,
-    ready: false,
+    ready: true,
     maxPlayers: 12,
     supportsTeams: false,
     supportsBots: true,
@@ -759,7 +777,7 @@ export const dartsGameRegistry: DartsGameDef[] = [
     entry: "games",
     tab: "mode_not_ready",
     popularityRank: 65,
-    ready: false,
+    ready: true,
     maxPlayers: 12,
     supportsTeams: true,
     supportsBots: true,
@@ -778,7 +796,7 @@ export const dartsGameRegistry: DartsGameDef[] = [
     entry: "games",
     tab: "mode_not_ready",
     popularityRank: 66,
-    ready: false,
+    ready: true,
     maxPlayers: 12,
     supportsTeams: true,
     supportsBots: true,
@@ -797,7 +815,7 @@ export const dartsGameRegistry: DartsGameDef[] = [
     entry: "games",
     tab: "mode_not_ready",
     popularityRank: 67,
-    ready: false,
+    ready: true,
     maxPlayers: 12,
     supportsTeams: true,
     supportsBots: true,
@@ -816,7 +834,7 @@ export const dartsGameRegistry: DartsGameDef[] = [
     entry: "games",
     tab: "mode_not_ready",
     popularityRank: 68,
-    ready: false,
+    ready: true,
     maxPlayers: 8,
     supportsTeams: true,
     supportsBots: true,
@@ -835,7 +853,7 @@ export const dartsGameRegistry: DartsGameDef[] = [
     entry: "games",
     tab: "mode_not_ready",
     popularityRank: 69,
-    ready: false,
+    ready: true,
     maxPlayers: 8,
     supportsTeams: true,
     supportsBots: true,
@@ -857,7 +875,7 @@ export const dartsGameRegistry: DartsGameDef[] = [
     entry: "training",
     tab: "training",
     popularityRank: 120,
-    ready: false,
+    ready: true,
     maxPlayers: 1,
     supportsTeams: false,
     supportsBots: false,
@@ -874,7 +892,7 @@ export const dartsGameRegistry: DartsGameDef[] = [
     entry: "training",
     tab: "training",
     popularityRank: 121,
-    ready: false,
+    ready: true,
     maxPlayers: 1,
     supportsTeams: false,
     supportsBots: false,
@@ -891,7 +909,7 @@ export const dartsGameRegistry: DartsGameDef[] = [
     entry: "training",
     tab: "training",
     popularityRank: 122,
-    ready: false,
+    ready: true,
     maxPlayers: 1,
     supportsTeams: false,
     supportsBots: false,
@@ -908,7 +926,7 @@ export const dartsGameRegistry: DartsGameDef[] = [
     entry: "training",
     tab: "training",
     popularityRank: 123,
-    ready: false,
+    ready: true,
     maxPlayers: 1,
     supportsTeams: false,
     supportsBots: false,
@@ -930,7 +948,7 @@ export const dartsGameRegistry: DartsGameDef[] = [
     entry: "games",
     tab: "mode_not_ready",
     popularityRank: 70,
-    ready: false,
+    ready: true,
     maxPlayers: 8,
     supportsTeams: true,
     supportsBots: true,
@@ -947,7 +965,7 @@ export const dartsGameRegistry: DartsGameDef[] = [
     entry: "games",
     tab: "mode_not_ready",
     popularityRank: 71,
-    ready: false,
+    ready: true,
     maxPlayers: 8,
     supportsTeams: false,
     supportsBots: false,
@@ -964,7 +982,7 @@ export const dartsGameRegistry: DartsGameDef[] = [
     entry: "games",
     tab: "mode_not_ready",
     popularityRank: 72,
-    ready: false,
+    ready: true,
     maxPlayers: 8,
     supportsTeams: false,
     supportsBots: false,
@@ -1018,7 +1036,7 @@ export const dartsGameRegistry: DartsGameDef[] = [
     entry: "training",
     tab: "training",
     popularityRank: 102,
-    ready: false,
+    ready: true,
     maxPlayers: 1,
     supportsTeams: false,
     supportsBots: false,
@@ -1034,7 +1052,7 @@ export const dartsGameRegistry: DartsGameDef[] = [
     entry: "training",
     tab: "training",
     popularityRank: 103,
-    ready: false,
+    ready: true,
     maxPlayers: 1,
     supportsTeams: false,
     supportsBots: false,
@@ -1051,7 +1069,7 @@ export const dartsGameRegistry: DartsGameDef[] = [
     entry: "training",
     tab: "training",
     popularityRank: 110,
-    ready: false,
+    ready: true,
     maxPlayers: 1,
     supportsTeams: false,
     supportsBots: false,
@@ -1071,6 +1089,23 @@ export const GAME_CATEGORIES: { id: GameCategory; label: string }[] = [
   { id: "challenge", label: "Defis" },
   { id: "fun", label: "Fun" },
   { id: "training", label: "Training" },
+  {
+    id: "training_evolution",
+    label: "Evolution (Training)",
+    category: "training",
+    entry: "training",
+    tab: "training",
+    popularityRank: 111,
+    ready: true,
+    maxPlayers: 1,
+    supportsTeams: false,
+    supportsBots: false,
+    statsKey: "training:evolution",
+    infoTitle: "Evolution (Training)",
+    infoBody:
+      "Mode Evolution complet (progression par niveaux).",
+  },
+
 ];
 
 // Sous-categories (groupage visuel dans Games.tsx).
