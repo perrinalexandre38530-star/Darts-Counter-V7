@@ -1,24 +1,29 @@
 // ============================================
-// TRAINING — Calcul statistiques
+// src/training/engine/trainingStats.ts
+// Stats Training minimal
 // ============================================
 
-import { TrainingSessionState, TrainingStats } from "./trainingTypes";
+import type { TrainingState } from "./trainingEngine";
 
-export function computeTrainingStats(
-  state: TrainingSessionState
-): TrainingStats {
-  const dartsThrown = state.darts.length;
-  const hits = state.darts.filter((d) => d.hit).length;
-  const accuracy = dartsThrown > 0 ? hits / dartsThrown : 0;
+export type TrainingStats = {
+  darts: number;
+  hits: number;
+  hitRate: number;
+  score: number;
+  ppm: number; // points per minute
+};
 
-  const durationMs =
-    (state.endedAt ?? Date.now()) - state.startedAt;
+export function computeTrainingStats(state: TrainingState): TrainingStats {
+  const darts = state.darts || 0;
+  const hits = state.hits || 0;
+  const hitRate = darts > 0 ? hits / darts : 0;
 
-  return {
-    dartsThrown,
-    hits,
-    accuracy,
-    score: state.score,
-    durationMs,
-  };
+  const end = state.endedAt ?? Date.now();
+  const ms = Math.max(1, end - state.startedAt);
+  const minutes = ms / 60000;
+
+  const score = state.score || 0;
+  const ppm = minutes > 0 ? score / minutes : 0;
+
+  return { darts, hits, hitRate, score, ppm };
 }

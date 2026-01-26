@@ -1,40 +1,59 @@
 // ============================================
-// TRAINING — Footer commun (stats rapides)
+// src/training/ui/TrainingFooter.tsx
+// Footer stats (score / hit% / ppm)
 // ============================================
 
 import React from "react";
-import type { TrainingStats } from "../engine/trainingTypes";
+import { useTheme } from "../../contexts/ThemeContext";
+import type { TrainingStats } from "../engine/trainingStats";
 
-type Props = {
+function fmtPct(v: number) {
+  const n = Math.round((v || 0) * 100);
+  return `${n}%`;
+}
+function fmtNum(v: number) {
+  return Math.round(v || 0).toString();
+}
+
+export default function TrainingFooter({
+  stats,
+  rightSlot,
+}: {
   stats: TrainingStats;
-};
-
-export default function TrainingFooter({ stats }: Props) {
+  rightSlot?: React.ReactNode;
+}) {
+  const { theme } = useTheme();
   return (
     <div
       style={{
-        display: "flex",
-        gap: 10,
-        alignItems: "center",
-        justifyContent: "space-between",
-        padding: "10px 12px",
-        borderRadius: 14,
-        border: "1px solid rgba(255,255,255,0.10)",
-        background: "rgba(0,0,0,0.35)",
-        marginTop: 10,
+        position: "fixed",
+        left: 0,
+        right: 0,
+        bottom: 0,
+        padding: 12,
+        paddingBottom: "calc(12px + env(safe-area-inset-bottom))",
+        background: "linear-gradient(180deg, rgba(0,0,0,0) 0%, rgba(0,0,0,.78) 35%, rgba(0,0,0,.90) 100%)",
+        borderTop: `1px solid ${theme.borderSoft}`,
+        zIndex: 70,
       }}
     >
-      <div style={{ fontSize: 12, opacity: 0.85 }}>
-        Darts: <b>{stats.dartsThrown}</b>
-      </div>
-      <div style={{ fontSize: 12, opacity: 0.85 }}>
-        Hits: <b>{stats.hits}</b>
-      </div>
-      <div style={{ fontSize: 12, opacity: 0.85 }}>
-        Précision: <b>{(stats.accuracy * 100).toFixed(1)}%</b>
-      </div>
-      <div style={{ fontSize: 12, opacity: 0.85 }}>
-        Score: <b>{stats.score}</b>
+      <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+        <div style={{ flex: 1, display: "flex", gap: 10 }}>
+          <div style={{ flex: 1, borderRadius: 14, padding: 10, border: `1px solid ${theme.borderSoft}`, background: "rgba(0,0,0,.45)" }}>
+            <div style={{ fontSize: 10, opacity: 0.75, fontWeight: 900, letterSpacing: 0.8 }}>SCORE</div>
+            <div style={{ marginTop: 4, fontWeight: 900, fontSize: 18, color: theme.primary }}>{fmtNum(stats.score)}</div>
+          </div>
+          <div style={{ flex: 1, borderRadius: 14, padding: 10, border: `1px solid ${theme.borderSoft}`, background: "rgba(0,0,0,.45)" }}>
+            <div style={{ fontSize: 10, opacity: 0.75, fontWeight: 900, letterSpacing: 0.8 }}>HIT %</div>
+            <div style={{ marginTop: 4, fontWeight: 900, fontSize: 18, color: theme.primary }}>{fmtPct(stats.hitRate)}</div>
+          </div>
+          <div style={{ flex: 1, borderRadius: 14, padding: 10, border: `1px solid ${theme.borderSoft}`, background: "rgba(0,0,0,.45)" }}>
+            <div style={{ fontSize: 10, opacity: 0.75, fontWeight: 900, letterSpacing: 0.8 }}>PPM</div>
+            <div style={{ marginTop: 4, fontWeight: 900, fontSize: 18, color: theme.primary }}>{fmtNum(stats.ppm)}</div>
+          </div>
+        </div>
+
+        {rightSlot ? <div style={{ marginLeft: 8 }}>{rightSlot}</div> : null}
       </div>
     </div>
   );

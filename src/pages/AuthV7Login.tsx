@@ -14,9 +14,38 @@ export default function AuthV7Login({ go }: Props) {
   const [password, setPassword] = React.useState("");
   const [loading, setLoading] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
+  const [canResend, setCanResend] = React.useState(false);
+
+  async function resendConfirm() {
+    const e = email.trim();
+    if (!e || !e.includes("@")) {
+      setError("Entre une adresse email valide pour renvoyer l’email.");
+      return;
+    }
+    setLoading(true);
+    try {
+      const emailRedirectTo = `${window.location.origin}${window.location.pathname}#/auth/callback`;
+      const { error: err } = await supabase.auth.resend({
+        type: "signup",
+        email: e,
+        options: { emailRedirectTo },
+      });
+      if (err) {
+        setError(err.message);
+        return;
+      }
+      setError("Email de confirmation renvoyé ✅ Ouvre le DERNIER email reçu.");
+      setCanResend(false);
+    } catch (e: any) {
+      setError(e?.message || "Impossible de renvoyer l’email.");
+    } finally {
+      setLoading(false);
+    }
+  }
 
   const onSubmit = async () => {
     setError(null);
+    setCanResend(false);
     const e = email.trim();
     if (!e || !e.includes("@")) return setError("Entre une adresse email valide.");
     if (!password) return setError("Entre ton mot de passe.");
@@ -25,7 +54,10 @@ export default function AuthV7Login({ go }: Props) {
     try {
       const { error: err } = await supabase.auth.signInWithPassword({ email: e, password });
       if (err) {
-        setError(err.message);
+        const msg = err.message || "Connexion impossible.";
+        setError(msg);
+        // Supabase renvoie souvent "Email not confirmed"
+        if (/not confirmed/i.test(msg)) setCanResend(true);
         return;
       }
       go("home");
@@ -88,7 +120,14 @@ export default function AuthV7Login({ go }: Props) {
           </div>
 
           {error ? (
-            <div style={{ fontSize: 13, opacity: 0.95, lineHeight: 1.35 }}>{error}</div>
+            <div style={{ display: "grid", gap: 8 }}>
+              <div style={{ fontSize: 13, opacity: 0.95, lineHeight: 1.35 }}>{error}</div>
+              {canResend ? (
+                <button onClick={resendConfirm} disabled={loading} style={secondaryBtnStyle}>
+                  Renvoyer l’email de confirmation
+                </button>
+              ) : null}
+            </div>
           ) : null}
 
           <button onClick={() => go("auth_start")} style={secondaryBtnStyle}>

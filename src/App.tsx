@@ -67,6 +67,8 @@
 // ============================================
 
 import * as React from "react";
+const { useEffect, useMemo, useState, useRef, useCallback } = React;
+import { migrateLocalStorageToIndexedDB } from "./lib/storageMigration";
 import BottomNav from "./components/BottomNav";
 
 import AuthStart from "./pages/AuthStart";
@@ -1158,6 +1160,10 @@ function SWUpdateBanner() {
                 APP
 -------------------------------------------- */
 function App() {
+  useEffect(() => {
+    migrateLocalStorageToIndexedDB();
+  }, []);
+
   // ============================================================
   // ✅ CLOUD SNAPSHOT SYNC (source unique Supabase)
   // ============================================================

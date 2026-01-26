@@ -1,44 +1,69 @@
 // ============================================
-// TRAINING — Engine commun
+// src/training/engine/trainingEngine.ts
+// Engine Training minimal (stateless UI-friendly)
 // ============================================
 
-import {
-    TrainingSessionConfig,
-    TrainingSessionState,
-    TrainingTarget,
-  } from "./trainingTypes";
-  import {
-    createTrainingSession,
-    registerThrow,
-    endTrainingSession,
-  } from "./trainingSession";
-  
-  export class TrainingEngine {
-    config: TrainingSessionConfig;
-    state: TrainingSessionState;
-  
-    constructor(config: TrainingSessionConfig) {
-      this.config = config;
-      this.state = createTrainingSession(config);
-    }
-  
-    throw(target: TrainingTarget | null, hit: boolean, score: number) {
-      if (this.isFinished()) return;
-      registerThrow(this.state, target, hit, score);
-  
-      if (this.config.maxDarts &&
-          this.state.darts.length >= this.config.maxDarts) {
-        this.finish(true);
-      }
-    }
-  
-    finish(success: boolean) {
-      if (this.state.success !== null) return;
-      endTrainingSession(this.state, success);
-    }
-  
-    isFinished() {
-      return this.state.success !== null;
-    }
+export type TrainingMode =
+  | "TIME_ATTACK"
+  | "DOUBLE"
+  | "PRECISION"
+  | "SUPER_BULL"
+  | "GHOST"
+  | "REPEAT"
+  | "CHALLENGES"
+  | "EVOLUTION";
+
+export type TrainingEngineOptions = {
+  mode: TrainingMode;
+  timeLimitMs?: number;
+  maxDarts?: number;
+};
+
+export type TrainingThrow = {
+  value?: number | "BULL" | "DBULL";
+  multiplier?: 1 | 2 | 3;
+};
+
+export type TrainingState = {
+  mode: TrainingMode;
+  startedAt: number;
+  endedAt: number | null;
+  finished: boolean;
+  success: boolean | null;
+
+  darts: number;
+  hits: number;
+  score: number;
+};
+
+export class TrainingEngine {
+  state: TrainingState;
+
+  constructor(opts: TrainingEngineOptions) {
+    this.state = {
+      mode: opts.mode,
+      startedAt: Date.now(),
+      endedAt: null,
+      finished: false,
+      success: null,
+      darts: 0,
+      hits: 0,
+      score: 0,
+    };
   }
-  
+
+  throw(t: TrainingThrow | null, hit: boolean, score: number) {
+    if (this.state.finished) return;
+
+    this.state.darts += 1;
+    if (hit) this.state.hits += 1;
+    this.state.score += Math.max(0, score || 0);
+  }
+
+  finish(success: boolean) {
+    if (this.state.finished) return;
+    this.state.finished = true;
+    this.state.success = success;
+    this.state.endedAt = Date.now();
+  }
+}

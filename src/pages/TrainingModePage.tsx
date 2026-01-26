@@ -1,139 +1,78 @@
 // ============================================
 // src/pages/TrainingModePage.tsx
-// Shell Training "custom" — Config -> Play (fidèle au flow Config/Play)
-// - App.tsx ouvre l'onglet "training_mode" avec params: { modeId }
-// - Ici: on affiche d'abord la page Config, puis Play
-// - Back en Config => onExit() (retour TrainingMenu)
-// - Back en Play => retour Config (comme X01/Killer)
+// Training custom modes : Config -> Play (persist config)
 // ============================================
 
 import React from "react";
+import type { Profile } from "../lib/types";
+import { getLastConfig, setLastConfig } from "../training/lib/trainingPersist";
 
-import RepeatMasterConfig from "../training/modes/repeat/RepeatMasterConfig";
-import RepeatMasterPlay from "../training/modes/repeat/RepeatMasterPlay";
-
-import PrecisionConfig from "../training/modes/precision/PrecisionConfig";
-import PrecisionGauntletPlay from "../training/modes/precision/PrecisionGauntletPlay";
-
+// Configs
 import TimeAttackConfig from "../training/modes/timeattack/TimeAttackConfig";
-import TimeAttackPlay from "../training/modes/timeattack/TimeAttackPlay";
-
-import GhostConfig from "../training/modes/ghost/GhostConfig";
-import GhostModePlay from "../training/modes/ghost/GhostModePlay";
-
 import DoubleIOConfig from "../training/modes/double/DoubleIOConfig";
-import DoubleInOutPlay from "../training/modes/double/DoubleInOutPlay";
-
-import ChallengesConfig from "../training/modes/challenges/ChallengesConfig";
-import ChallengesPlay from "../training/modes/challenges/ChallengesPlay";
-
-import EvolutionConfig from "../training/modes/evolution/EvolutionConfig";
-import EvolutionPlay from "../training/modes/evolution/EvolutionPlay";
-
+import PrecisionConfig from "../training/modes/precision/PrecisionConfig";
 import SuperBullConfig from "../training/modes/superbull/SuperBullConfig";
+import GhostConfig from "../training/modes/ghost/GhostConfig";
+import RepeatMasterConfig from "../training/modes/repeat/RepeatMasterConfig";
+import ChallengesConfig from "../training/modes/challenges/ChallengesConfig";
+import EvolutionConfig from "../training/modes/evolution/EvolutionConfig";
+
+// Plays
+import TimeAttackPlay from "../training/modes/timeattack/TimeAttackPlay";
+import DoubleInOutPlay from "../training/modes/double/DoubleInOutPlay";
+import PrecisionGauntletPlay from "../training/modes/precision/PrecisionGauntletPlay";
 import SuperBullPlay from "../training/modes/superbull/SuperBullPlay";
+import GhostModePlay from "../training/modes/ghost/GhostModePlay";
+import RepeatMasterPlay from "../training/modes/repeat/RepeatMasterPlay";
+import ChallengesPlay from "../training/modes/challenges/ChallengesPlay";
+import EvolutionPlay from "../training/modes/evolution/EvolutionPlay";
 
 type Props = {
   modeId: string;
-  onExit: () => void; // retour TrainingMenu
+  onExit: () => void;
+  profiles?: Profile[];
 };
 
-function norm(id: string) {
-  return String(id || "")
-    .trim()
-    .toLowerCase()
-    .replace(/\s+/g, "_")
-    .replace(/[^a-z0-9_]/g, "");
-}
+export default function TrainingModePage({ modeId, onExit, profiles }: Props) {
+  const id = String(modeId || "").trim().toLowerCase();
 
-function resolveModeId(raw: string) {
-  const id = norm(raw);
+  const [phase, setPhase] = React.useState<"config" | "play">("config");
+  const [cfg, setCfg] = React.useState<any>(() => getLastConfig(id));
 
-  // Alias tolérants
-  if (id === "training_super_bull" || id === "training_superbull" || id === "super_bull")
-    return "super_bull_training";
+  const start = (c: any) => {
+    setCfg(c);
+    setLastConfig(id, c);
+    setPhase("play");
+  };
 
-  if (id === "evolution") return "training_evolution";
+  const isPrecision = id === "training_precision_gauntlet";
+  const isTimeAttack = id === "training_time_attack";
+  const isRepeat = id === "training_repeat_master";
+  const isGhost = id === "training_ghost";
+  const isDouble = id === "training_doubleio";
+  const isChallenges = id === "training_challenges";
+  const isEvolution = id === "training_evolution";
+  const isSuperBull = id === "training_super_bull";
 
-  return id;
-}
-
-export default function TrainingModePage({ modeId, onExit }: Props) {
-  const [config, setConfig] = React.useState<any | null>(null);
-
-  const id = resolveModeId(modeId);
-
-  // Back dans Play => retour config (fidèle aux configs X01/Killer)
-  const exitToConfig = React.useCallback(() => {
-    setConfig(null);
-  }, []);
-
-  // Back dans Config => retour TrainingMenu
-  const exitToMenu = React.useCallback(() => {
-    setConfig(null);
-    onExit();
-  }, [onExit]);
-
-  if (id === "training_precision_gauntlet") {
-    if (!config) return <PrecisionConfig onStart={setConfig} onExit={exitToMenu} />;
-    return <PrecisionGauntletPlay config={config} onExit={exitToConfig} />;
+  if (phase === "config") {
+    if (isPrecision) return <PrecisionConfig profiles={profiles} onStart={start} onExit={onExit} />;
+    if (isTimeAttack) return <TimeAttackConfig profiles={profiles} onStart={start} onExit={onExit} />;
+    if (isRepeat) return <RepeatMasterConfig profiles={profiles} onStart={start} onExit={onExit} />;
+    if (isGhost) return <GhostConfig profiles={profiles} onStart={start} onExit={onExit} />;
+    if (isDouble) return <DoubleIOConfig profiles={profiles} onStart={start} onExit={onExit} />;
+    if (isChallenges) return <ChallengesConfig profiles={profiles} onStart={start} onExit={onExit} />;
+    if (isEvolution) return <EvolutionConfig profiles={profiles} onStart={start} onExit={onExit} />;
+    if (isSuperBull) return <SuperBullConfig profiles={profiles} onStart={start} onExit={onExit} />;
+    return null;
   }
 
-  if (id === "training_time_attack") {
-    if (!config) return <TimeAttackConfig onStart={setConfig} onExit={exitToMenu} />;
-    return <TimeAttackPlay config={config} onExit={exitToConfig} />;
-  }
-
-  if (id === "training_repeat_master") {
-    if (!config) return <RepeatMasterConfig onStart={setConfig} onExit={exitToMenu} />;
-    return <RepeatMasterPlay config={config} onExit={exitToConfig} />;
-  }
-
-  if (id === "training_ghost") {
-    if (!config) return <GhostConfig onStart={setConfig} onExit={exitToMenu} />;
-    return <GhostModePlay config={config} onExit={exitToConfig} />;
-  }
-
-  if (id === "training_doubleio") {
-    if (!config) return <DoubleIOConfig onStart={setConfig} onExit={exitToMenu} />;
-    return <DoubleInOutPlay config={config} onExit={exitToConfig} />;
-  }
-
-  if (id === "training_challenges") {
-    if (!config) return <ChallengesConfig onStart={setConfig} onExit={exitToMenu} />;
-    return <ChallengesPlay config={config} onExit={exitToConfig} />;
-  }
-
-  if (id === "super_bull_training") {
-    if (!config) return <SuperBullConfig onStart={setConfig} onExit={exitToMenu} />;
-    return <SuperBullPlay config={config} onExit={exitToConfig} />;
-  }
-
-  if (id === "training_evolution") {
-    if (!config) return <EvolutionConfig onStart={setConfig} onExit={exitToMenu} />;
-    return <EvolutionPlay config={config} onExit={exitToConfig} />;
-  }
-
-  return (
-    <div style={{ padding: 16 }}>
-      <div style={{ fontWeight: 900, marginBottom: 6 }}>Mode Training indisponible</div>
-      <div style={{ opacity: 0.8, marginBottom: 14 }}>ID : {modeId}</div>
-      <button
-        type="button"
-        onClick={exitToMenu}
-        style={{
-          height: 40,
-          padding: "0 14px",
-          borderRadius: 12,
-          border: "1px solid rgba(255,255,255,0.16)",
-          background: "rgba(0,0,0,0.45)",
-          color: "rgba(255,255,255,0.92)",
-          fontWeight: 900,
-          cursor: "pointer",
-        }}
-      >
-        Retour
-      </button>
-    </div>
-  );
+  if (isPrecision) return <PrecisionGauntletPlay config={cfg} onExit={onExit} />;
+  if (isTimeAttack) return <TimeAttackPlay config={cfg} onExit={onExit} />;
+  if (isRepeat) return <RepeatMasterPlay config={cfg} onExit={onExit} />;
+  if (isGhost) return <GhostModePlay config={cfg} onExit={onExit} />;
+  if (isDouble) return <DoubleInOutPlay config={cfg} onExit={onExit} />;
+  if (isChallenges) return <ChallengesPlay config={cfg} onExit={onExit} />;
+  if (isEvolution) return <EvolutionPlay config={cfg} onExit={onExit} />;
+  if (isSuperBull) return <SuperBullPlay config={cfg} onExit={onExit} />;
+  return null;
 }

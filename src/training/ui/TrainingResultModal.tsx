@@ -1,25 +1,26 @@
 // ============================================
-// TRAINING — Modal de résultat (simple, robuste)
+// src/training/ui/TrainingResultModal.tsx
+// Modal de fin (victoire / échec) — simple et robuste
 // ============================================
 
 import React from "react";
-import type { TrainingStats } from "../engine/trainingTypes";
-
-type Props = {
-  open: boolean;
-  stats: TrainingStats;
-  success: boolean;
-  onClose: () => void;
-  title?: string;
-};
+import { useTheme } from "../../contexts/ThemeContext";
+import type { TrainingStats } from "../engine/trainingStats";
 
 export default function TrainingResultModal({
   open,
-  stats,
   success,
-  onClose,
   title,
-}: Props) {
+  stats,
+  onClose,
+}: {
+  open: boolean;
+  success: boolean;
+  title: string;
+  stats: TrainingStats;
+  onClose: () => void;
+}) {
+  const { theme } = useTheme();
   if (!open) return null;
 
   return (
@@ -28,75 +29,59 @@ export default function TrainingResultModal({
       style={{
         position: "fixed",
         inset: 0,
-        zIndex: 1000,
-        background: "rgba(0,0,0,0.72)",
+        background: "rgba(0,0,0,0.78)",
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
-        padding: 14,
+        zIndex: 120,
       }}
     >
       <div
         onClick={(e) => e.stopPropagation()}
         style={{
-          width: "min(420px, 100%)",
+          width: "min(520px, calc(100vw - 24px))",
           borderRadius: 18,
           padding: 16,
-          background: "rgba(10,10,12,0.96)",
-          border: `1px solid ${
-            success ? "rgba(140,255,203,0.55)" : "rgba(255,80,80,0.45)"
-          }`,
-          boxShadow: "0 18px 40px rgba(0,0,0,0.75)",
-          color: "#fff",
+          background: "rgba(10,10,10,0.92)",
+          border: `1px solid ${success ? "rgba(0,255,190,.55)" : "rgba(255,80,120,.55)"}`,
+          boxShadow: "0 18px 50px rgba(0,0,0,0.8)",
+          color: theme.text,
         }}
       >
         <div
           style={{
-            fontSize: 16,
             fontWeight: 900,
+            fontSize: 16,
+            marginBottom: 6,
+            color: success ? "#7CFFD7" : "#FF6A9A",
             textTransform: "uppercase",
             letterSpacing: 0.8,
-            marginBottom: 10,
-            color: success ? "#8CFFCB" : "#FF6A6A",
-            textShadow: success
-              ? "0 0 10px rgba(140,255,203,0.35)"
-              : "0 0 10px rgba(255,80,80,0.35)",
           }}
         >
-          {title ?? (success ? "Succès" : "Échec")}
+          {title}
         </div>
 
-        <div style={{ fontSize: 13, opacity: 0.9, lineHeight: 1.45 }}>
-          <div>
-            Darts : <b>{stats.dartsThrown}</b>
-          </div>
-          <div>
-            Hits : <b>{stats.hits}</b>
-          </div>
-          <div>
-            Précision : <b>{(stats.accuracy * 100).toFixed(1)}%</b>
-          </div>
-          <div>
-            Score : <b>{stats.score}</b>
-          </div>
+        <div style={{ fontSize: 13, opacity: 0.9, marginBottom: 12 }}>
+          Score: <b style={{ color: theme.primary }}>{Math.round(stats.score)}</b> • Hit:{" "}
+          <b style={{ color: theme.primary }}>{Math.round(stats.hitRate * 100)}%</b> • PPM:{" "}
+          <b style={{ color: theme.primary }}>{Math.round(stats.ppm)}</b>
         </div>
 
         <button
           type="button"
           onClick={onClose}
           style={{
-            marginTop: 14,
+            height: 44,
             width: "100%",
-            padding: "10px 12px",
             borderRadius: 999,
             border: "none",
+            background: theme.primary,
+            color: "#000",
             fontWeight: 900,
             cursor: "pointer",
-            background: success ? "#8CFFCB" : "#FF6A6A",
-            color: "#000",
           }}
         >
-          OK
+          Retour
         </button>
       </div>
     </div>

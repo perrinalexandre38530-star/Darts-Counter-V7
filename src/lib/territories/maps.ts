@@ -12,6 +12,16 @@ export type TerritoryZone = {
   weight?: number;   // optionnel (équilibrage futur)
 };
 
+// -------------------------------------------------------------
+// Compat API — utilisée par les pages PLAY/CONFIG (ex: DepartementsPlay.tsx)
+// -------------------------------------------------------------
+export type TerritoryDef = {
+  id: string;
+  name: string;
+  short?: string;
+  weight?: number;
+};
+
 export type TerritoryMap = {
   id: string; // "FR", "EN", "IT", ... "WORLD"
   name: string;
@@ -229,3 +239,51 @@ export const TERRITORY_MAPS: Record<string, TerritoryMap> = {
   RU: MAP_RU,
   WORLD: MAP_WORLD,
 };
+
+function normalizeMapId(input: string | undefined | null): keyof typeof TERRITORY_MAPS {
+  const raw = String(input || "").trim();
+  if (!raw) return "FR";
+
+  const k = raw.toUpperCase();
+  if ((TERRITORY_MAPS as any)[k]) return k as keyof typeof TERRITORY_MAPS;
+
+  const low = raw.toLowerCase();
+  if (low === "fr" || low === "france" || low === "departements" || low === "départements") return "FR";
+  if (low === "en" || low === "england" || low === "uk" || low === "gb") return "EN";
+  if (low === "it" || low === "italy" || low === "italie") return "IT";
+  if (low === "de" || low === "germany" || low === "allemagne") return "DE";
+  if (low === "es" || low === "spain" || low === "espagne") return "ES";
+  if (low === "us" || low === "usa" || low === "unitedstates" || low === "united-states") return "US";
+  if (low === "cn" || low === "china" || low === "chine") return "CN";
+  if (low === "au" || low === "australia" || low === "australie") return "AU";
+  if (low === "jp" || low === "japan" || low === "japon") return "JP";
+  if (low === "ru" || low === "russia" || low === "russie") return "RU";
+  if (low === "world" || low === "monde") return "WORLD";
+
+  return "FR";
+}
+
+/**
+ * API compat: renvoie la liste des territoires d'une map (pour UI/PLAY).
+ * - stable: renvoie toujours un tableau (fallback FR)
+ * - format: { id, name, short?, weight? }
+ */
+export function getTerritoriesForMap(mapId: string): TerritoryDef[] {
+  const key = normalizeMapId(mapId);
+  const map = TERRITORY_MAPS[key] || TERRITORY_MAPS.FR;
+  return map.zones.map((z) => ({
+    id: z.id,
+    name: z.label,
+    short: z.short,
+    weight: z.weight,
+  }));
+}
+
+// -------------------------------------------------------------
+// Meta helpers (ticker, name, etc.)
+// -------------------------------------------------------------
+export function getTerritoryMapMeta(mapId: string): { id: string; name: string; tickerId: string } {
+  const key = normalizeMapId(mapId);
+  const map = TERRITORY_MAPS[key] || TERRITORY_MAPS.FR;
+  return { id: map.id, name: map.name, tickerId: map.tickerId };
+}

@@ -9,6 +9,7 @@
 
 import type { Store, Profile } from "./types";
 import { emitCloudChange } from "./cloudEvents";
+import { exportHistoryDump, importHistoryDump } from "./historyCloud";
 
 /* ---------- Constantes ---------- */
 const DB_NAME = "darts-counter-v5";
@@ -586,9 +587,10 @@ export async function exportAll(): Promise<any> {
   const lsDump = exportLocalStorageDc();
 
   return {
-    _v: 1,
+    _v: 2,
     idb: idbDump,
     localStorage: lsDump,
+    history: await exportHistoryDump().catch(() => ({ _v: 1, rows: {} })),
     exportedAt: new Date().toISOString(),
   };
 }
@@ -607,6 +609,13 @@ export async function importAll(dump: any): Promise<void> {
     }
 
     importLocalStorageDc(lsDump);
+
+// ✅ NEW (_v:2): import History IDB dump if present
+try {
+  if (dump.history && dump.history._v === 1) {
+    await importHistoryDump(dump.history, { replace: true });
+  }
+} catch {}
     return;
   }
 

@@ -1,22 +1,58 @@
-// SuperBullConfig — bull-only
+// SuperBullConfig — Config (participants + objectif)
 import React, { useState } from "react";
+import type { Profile } from "../../../lib/types";
 import TrainingShell from "../../shell/TrainingShell";
 import TrainingHeader from "../../ui/TrainingHeader";
+import TrainingParticipantsBlock from "../../ui/TrainingParticipantsBlock";
+import TrainingOptionCard from "../../ui/TrainingOptionCard";
+import TrainingStartButton from "../../ui/TrainingStartButton";
 
-export default function SuperBullConfig({ onStart, onExit }:{onStart:(cfg:any)=>void; onExit:()=>void}) {
-  const [target,setTarget]=useState(100);
+export default function SuperBullConfig({
+  profiles,
+  onStart,
+  onExit,
+}: {
+  profiles?: Profile[];
+  onStart: (cfg: any) => void;
+  onExit: () => void;
+}) {
+  const [selectedPlayerIds, setSelectedPlayerIds] = useState<string[]>(() => {
+    const first = profiles && profiles[0]?.id ? [profiles[0].id] : [];
+    return first.length ? first : [];
+  });
+  const [selectedBotIds, setSelectedBotIds] = useState<string[]>([]);
+  const [target, setTarget] = useState(100);
+
   return (
     <TrainingShell
-      header={<TrainingHeader onBack={onExit} rules={<p>Touche Bull/DBull pour atteindre le score cible.</p>} />}
+      header={
+        <TrainingHeader
+          title="Super Bull"
+          onBack={onExit}
+          rules={<p>BULL=25, DBULL=50. Atteins le score objectif.</p>}
+        />
+      }
       body={
         <div>
-          <h3>Score objectif</h3>
-          {[50,100,150].map(v=>(
-            <button key={v} onClick={()=>setTarget(v)} style={{marginRight:8}}>{v}</button>
+          <TrainingParticipantsBlock
+            profiles={profiles}
+            selectedPlayerIds={selectedPlayerIds}
+            setSelectedPlayerIds={setSelectedPlayerIds}
+            selectedBotIds={selectedBotIds}
+            setSelectedBotIds={setSelectedBotIds}
+          />
+
+          {[50, 100, 150].map((v) => (
+            <TrainingOptionCard
+              key={v}
+              title={`${v} points`}
+              subtitle={v === 50 ? "Rapide" : v === 100 ? "Standard" : "Long"}
+              active={target === v}
+              onClick={() => setTarget(v)}
+            />
           ))}
-          <div style={{marginTop:16}}>
-            <button onClick={()=>onStart({target})}>Lancer</button>
-          </div>
+
+          <TrainingStartButton onClick={() => onStart({ target, selectedPlayerIds, selectedBotIds })} />
         </div>
       }
     />

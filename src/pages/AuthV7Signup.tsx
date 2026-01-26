@@ -27,17 +27,30 @@ export default function AuthV7Signup({ go }: Props) {
 
     setLoading(true);
     try {
-      const { error: err } = await supabase.auth.signUp({
+      const emailRedirectTo = `${window.location.origin}${window.location.pathname}#/auth/callback`;
+
+      const { data, error: err } = await supabase.auth.signUp({
         email: e,
         password,
+        options: {
+          emailRedirectTo,
+        },
       });
       if (err) {
         setError(err.message);
         return;
       }
       // Selon la config Supabase, il peut y avoir une confirmation email.
-      setInfo("Compte créé. Si une confirmation email est requise, ouvre le dernier email reçu.");
-      go("home");
+// ✅ Si session fournie => connecté immédiatement.
+// ✅ Sinon => l'utilisateur doit confirmer l'email; on reste sur cet écran avec un message clair.
+if (data?.session) {
+  setInfo("Compte créé et connecté ✅");
+  go("home");
+} else {
+  setInfo(
+    "Compte créé ✅ Ouvre le DERNIER email reçu pour confirmer ton compte, puis reviens sur l’app."
+  );
+}
     } catch (e: any) {
       setError(e?.message || "Création de compte impossible.");
     } finally {

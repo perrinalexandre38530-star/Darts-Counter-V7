@@ -9,6 +9,57 @@ import React from "react";
 import { createRoot } from "react-dom/client";
 import "./index.css";
 
+// ============================================================
+// Dynamic import recovery (WebContainer/StackBlitz hardening)
+// - If Vite serves stale module URLs (App.tsx?t=...), the dynamic import can fail.
+// - We attempt a ONE-SHOT recovery: unregister SW + clear CacheStorage + reload with cache-buster.
+// ============================================================
+const DC_DYN_IMPORT_RECOVER_KEY = "dc_dyn_import_recover_once_v1";
+
+function isDynImportFail(x: any) {
+  const msg = String(x?.message || x?.reason?.message || x || "");
+  return (
+    msg.includes("Failed to fetch dynamically imported module") ||
+    msg.includes("Importing a module script failed") ||
+    msg.includes("dynamically imported module") ||
+    msg.includes("ChunkLoadError")
+  );
+}
+
+async function recoverDynamicImportOnce() {
+  try {
+    if (sessionStorage.getItem(DC_DYN_IMPORT_RECOVER_KEY) === "1") return false;
+    sessionStorage.setItem(DC_DYN_IMPORT_RECOVER_KEY, "1");
+
+    // Purge best-effort: unregister SW + clear CacheStorage
+    try {
+      if ("serviceWorker" in navigator) {
+        const regs = await navigator.serviceWorker.getRegistrations();
+        await Promise.all(regs.map((r) => r.unregister().catch(() => {})));
+      }
+    } catch {}
+    try {
+      if (typeof caches !== "undefined" && (caches as any).keys) {
+        const keys = await (caches as any).keys();
+        await Promise.all(keys.map((k: string) => caches.delete(k)));
+      }
+    } catch {}
+
+    // Reload with cache-buster
+    try {
+      const u = new URL(window.location.href);
+      u.searchParams.set("sb", String(Date.now()));
+      window.location.replace(u.toString());
+    } catch {
+      window.location.reload();
+    }
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+
 // ❌ IMPORTANT: NE PAS WRAPPER AuthOnlineProvider ICI
 // ✅ Il doit être UNIQUEMENT dans App.tsx (un seul provider global)
 
@@ -25,7 +76,8 @@ import "./index.css";
   // ============================================================
   const SB_RECOVER_KEY = "dc_sb_recover_once_v1";
 
-  const isDynImportFail = (x: any) => {
+  // Reuse global helper
+  const _isDynImportFail = (x: any) => {
     const msg = String(x?.message || x?.reason?.message || x || "");
     return (
       msg.includes("Failed to fetch dynamically imported module") ||
@@ -81,12 +133,12 @@ import "./index.css";
 
   window.addEventListener("error", (e: any) => {
     const payload = e?.error || e?.message || e;
-    if (isDynImportFail(payload)) recoverOnce();
+    if (_isDynImportFail(payload)) recoverOnce();
     show("window.error", payload);
   });
   window.addEventListener("unhandledrejection", (e: any) => {
     const payload = e?.reason || e;
-    if (isDynImportFail(payload)) recoverOnce();
+    if (_isDynImportFail(payload)) recoverOnce();
     show("unhandledrejection", payload);
   });
 })();
@@ -387,6 +439,13 @@ async function devUnregisterSW() {
     setSafeMode(false);
   } catch (e) {
     console.error("[BOOT CRASH]", e);
+
+    // ✅ If the crash is a stale Vite chunk / dynamic import failure, try an automatic one-shot recovery.
+    if (isDynImportFail(e)) {
+      const recovered = await recoverDynamicImportOnce();
+      if (recovered) return;
+    }
+
     bootCrashScreen(e);
   }
 })();

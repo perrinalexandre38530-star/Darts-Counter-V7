@@ -1161,6 +1161,9 @@ const teamsView = React.useMemo(() => {
   if (!isTeamsMode) return null;
 
   const teams = ((config as any).teams as any[]) || [];
+  const teamMetaById: Record<string, { name?: string; color?: string }> = Object.fromEntries(
+    teams.map((t: any) => [String(t.id), { name: t.name, color: t.color }])
+  );
   const playersById: Record<string, any> = Object.fromEntries(
     (players as any[]).map((p: any) => [p.id, p])
   );
@@ -1183,7 +1186,8 @@ const teamsView = React.useMemo(() => {
 
       return {
         id: t.id,
-        name: t.name || "TEAM",
+        name: t.name || teamMetaById[String(t.id)]?.name || "TEAM",
+        color: t.color || teamMetaById[String(t.id)]?.color || "#ffcf57",
         playerIds: ids,
         players: members,
         score,
@@ -1194,7 +1198,7 @@ const teamsView = React.useMemo(() => {
 
 const activeTeam = React.useMemo(() => {
   if (!teamsView || !activePlayerId) return null;
-  return (teamsView as any[]).find((t: any) => (t.players || []).includes(activePlayerId)) || null;
+  return (teamsView as any[]).find((t: any) => (t.playerIds || []).includes(activePlayerId)) || null;
 }, [teamsView, activePlayerId]);
 
 
@@ -2238,13 +2242,26 @@ React.useEffect(() => {
   }, [players, scores, state, config.startScore, avg3ByPlayer]);
 
   const liveRanking = React.useMemo(
-    () =>
-      miniRanking.map((r) => ({
+    () => {
+      // En TEAMS : mini-classement par équipes (pas par joueurs)
+      if (isTeamsMode && Array.isArray(teamsView)) {
+        return (teamsView as any[])
+          .map((t: any) => ({
+            id: String(t.id),
+            name: String(t.name || "TEAM"),
+            score: Number(t.score ?? config.startScore),
+          }))
+          .sort((a: any, b: any) => a.score - b.score);
+      }
+
+      // Solo/Multi : mini-classement par joueurs
+      return miniRanking.map((r) => ({
         id: r.id,
         name: r.name,
         score: r.score,
-      })),
-    [miniRanking]
+      }));
+    },
+    [miniRanking, isTeamsMode, teamsView, config.startScore]
   );
 
   // Stats joueur actif
@@ -2688,6 +2705,7 @@ if (isLandscapeTablet) {
           <div style={{ flex: "0 0 auto" }}>
             {isTeamsMode && activeTeam ? (
             <TeamHeaderBlock
+              teamColor={activeTeam.color}
               teamName={activeTeam.name}
               teamPlayers={activeTeam.players}
               activePlayerId={activePlayerId}
@@ -3084,6 +3102,7 @@ if (isLandscapeTablet) {
         >
           {isTeamsMode && activeTeam ? (
           <TeamHeaderBlock
+            teamColor={activeTeam.color}
             teamId={activeTeam.id}
             teamName={activeTeam.name}
             teamPlayers={activeTeam.players}
@@ -3696,6 +3715,7 @@ function HeaderBlock(props: HeaderBlockProps) {
 
 
 function TeamHeaderBlock(props: {
+  teamColor?: string;
   teamId: string;
   teamName: string;
   teamPlayers: Array<{ id: string; name: string; avatar: string | null; isActive: boolean }>;
@@ -3712,6 +3732,7 @@ function TeamHeaderBlock(props: {
   checkoutText: string | null;
 }) {
   const {
+    teamColor,
     teamId,
     teamName,
     teamPlayers,
@@ -3727,6 +3748,8 @@ function TeamHeaderBlock(props: {
     teamSetsWon,
     checkoutText,
   } = props;
+
+  const color = teamColor || "#ffcf57";
 
   const active = teamPlayers.find((p) => p.id === activePlayerId) || teamPlayers[0];
 
@@ -3767,18 +3790,6 @@ function TeamHeaderBlock(props: {
             gap: 5,
           }}
         >
-          <div
-            style={{
-              fontSize: 11,
-              fontWeight: 900,
-              color: "#e9ecff",
-              opacity: 0.9,
-              letterSpacing: 0.3,
-            }}
-          >
-            {teamName}
-          </div>
-
           {/* Medaillons superposés */}
           <div style={{ position: "relative", width: 112, height: 96 }}>
             {teamPlayers.slice(0, 4).map((p, i) => {
@@ -3837,7 +3848,7 @@ function TeamHeaderBlock(props: {
             style={{
               fontWeight: 900,
               fontSize: 17,
-              color: "#ffcf57",
+              color,
               textAlign: "center",
             }}
           >
@@ -3887,12 +3898,27 @@ function TeamHeaderBlock(props: {
             style={{
               fontSize: 64,
               fontWeight: 900,
-              color: "#ffcf57",
-              textShadow: "0 4px 18px rgba(255,195,26,.25)",
+              color,
+              textShadow: "0 4px 18px rgba(0,0,0,.35)",
               lineHeight: 1.02,
             }}
           >
             {remainingAfterAll}
+          </div>
+
+          {/* Nom d'équipe AU-DESSUS du score (gain de place + cohérence) */}
+          <div
+            style={{
+              marginTop: -6,
+              fontSize: 14,
+              fontWeight: 900,
+              letterSpacing: 0.3,
+              color,
+              textTransform: "uppercase",
+              opacity: 0.95,
+            }}
+          >
+            {teamName}
           </div>
 
           <div style={{ display: "flex", gap: 5, justifyContent: "center" }}>
@@ -4040,10 +4066,15 @@ function TeamsPlayersList(props: {
       }}
     >
       {teams.map((team: any) => {
-        const teamScore =
-          team?.players?.length
-            ? scoresByPlayer[team.players[0]] ?? start
-            : start;
+        const teamColor = team?.color || "#ffcf57";
+        const anchorId: string | undefined =
+          Array.isArray(team?.playerIds) && team.playerIds.length
+            ? String(team.playerIds[0])
+            : Array.isArray(team?.players) && team.players.length
+            ? String((team.players[0] as any)?.id || "")
+            : undefined;
+
+        const teamScore = anchorId ? scoresByPlayer[anchorId] ?? start : start;
 
         return (
           <div
@@ -4065,10 +4096,10 @@ function TeamsPlayersList(props: {
                 marginBottom: 6,
               }}
             >
-              <div style={{ fontWeight: 900, color: "#e9ecff" }}>
+              <div style={{ fontWeight: 900, color: teamColor }}>
                 {team.name}
               </div>
-              <div style={{ fontWeight: 900, color: teamScore === 0 ? "#7fe2a9" : "#ffcf57" }}>
+              <div style={{ fontWeight: 900, color: teamScore === 0 ? "#7fe2a9" : teamColor }}>
                 {teamScore === 0 ? "FINI" : teamScore}
               </div>
             </div>
@@ -4151,7 +4182,7 @@ function TeamsPlayersList(props: {
                       <div
                         style={{
                           fontWeight: 800,
-                          color: isActive ? "#ffcf57" : "#dfe3ff",
+                          color: teamColor,
                           whiteSpace: "nowrap",
                         }}
                       >
@@ -4165,13 +4196,22 @@ function TeamsPlayersList(props: {
                     </div>
                   </div>
 
+                  {/* Contribution joueur -> équipe (volées + points marqués) */}
                   <div
                     style={{
-                      fontWeight: 900,
-                      color: score === 0 ? "#7fe2a9" : "#ffcf57",
+                      textAlign: "right",
+                      minWidth: 90,
+                      fontSize: 11.5,
+                      lineHeight: 1.15,
+                      color: "#d9dbe3",
                     }}
                   >
-                    {score}
+                    <div style={{ fontWeight: 900, color: teamColor }}>
+                      Volées: {Number(live?.visits ?? 0)}
+                    </div>
+                    <div style={{ fontWeight: 800, opacity: 0.95 }}>
+                      Points: {Number(live?.totalScore ?? 0)}
+                    </div>
                   </div>
                 </div>
               );

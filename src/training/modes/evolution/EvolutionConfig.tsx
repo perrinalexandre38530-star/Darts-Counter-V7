@@ -1,27 +1,53 @@
-// EvolutionConfig — progression adaptative
+// EvolutionConfig — Config (participants + durée + niveau départ)
 import React, { useState } from "react";
+import type { Profile } from "../../../lib/types";
 import TrainingShell from "../../shell/TrainingShell";
 import TrainingHeader from "../../ui/TrainingHeader";
+import TrainingParticipantsBlock from "../../ui/TrainingParticipantsBlock";
+import TrainingOptionCard from "../../ui/TrainingOptionCard";
+import TrainingStartButton from "../../ui/TrainingStartButton";
 
-export default function EvolutionConfig({ onStart, onExit }:{onStart:(cfg:any)=>void; onExit:()=>void}) {
-  const [seconds,setSeconds]=useState(180);
-  const [startLevel,setStartLevel]=useState(1);
+export default function EvolutionConfig({
+  profiles,
+  onStart,
+  onExit,
+}: {
+  profiles?: Profile[];
+  onStart: (cfg: any) => void;
+  onExit: () => void;
+}) {
+  const [selectedPlayerIds, setSelectedPlayerIds] = useState<string[]>(() => {
+    const first = profiles && profiles[0]?.id ? [profiles[0].id] : [];
+    return first.length ? first : [];
+  });
+  const [selectedBotIds, setSelectedBotIds] = useState<string[]>([]);
+  const [seconds, setSeconds] = useState(180);
+  const [startLevel, setStartLevel] = useState(1);
+
   return (
     <TrainingShell
-      header={<TrainingHeader onBack={onExit} rules={<p>Mode adaptatif : tu montes en niveau si tu réussis, tu redescends si tu rates.</p>} />}
+      header={<TrainingHeader title="Evolution" onBack={onExit} rules={<p>Réussite = +1 niveau, raté = -1 niveau. Fin au timer.</p>} />}
       body={
         <div>
-          <h3>Durée</h3>
-          {[60,120,180,300].map(s=>(
-            <button key={s} onClick={()=>setSeconds(s)} style={{marginRight:8}}>{s}s</button>
+          <TrainingParticipantsBlock
+            profiles={profiles}
+            selectedPlayerIds={selectedPlayerIds}
+            setSelectedPlayerIds={setSelectedPlayerIds}
+            selectedBotIds={selectedBotIds}
+            setSelectedBotIds={setSelectedBotIds}
+          />
+
+          <div style={{ fontWeight: 900, marginBottom: 6 }}>Durée</div>
+          {[60, 120, 180, 300].map((s) => (
+            <TrainingOptionCard key={s} title={`${s} secondes`} active={seconds === s} onClick={() => setSeconds(s)} />
           ))}
-          <h3 style={{marginTop:12}}>Niveau de départ</h3>
-          {[1,3,5].map(l=>(
-            <button key={l} onClick={()=>setStartLevel(l)} style={{marginRight:8}}>L{l}</button>
+
+          <div style={{ fontWeight: 900, margin: "10px 0 6px" }}>Niveau de départ</div>
+          {[1, 3, 5].map((l) => (
+            <TrainingOptionCard key={l} title={`Niveau ${l}`} active={startLevel === l} onClick={() => setStartLevel(l)} />
           ))}
-          <div style={{marginTop:16}}>
-            <button onClick={()=>onStart({seconds, startLevel})}>Lancer</button>
-          </div>
+
+          <TrainingStartButton onClick={() => onStart({ seconds, startLevel, selectedPlayerIds, selectedBotIds })} />
         </div>
       }
     />
