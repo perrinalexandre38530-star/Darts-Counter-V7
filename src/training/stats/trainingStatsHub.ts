@@ -4,6 +4,10 @@
 // Stockage localStorage (stable, simple)
 // ============================================
 
+
+import { saveTrainingEvent } from "../sync/trainingEventStore";
+import { normalizeTrainingMetrics } from "../sync/trainingNormalize";
+
 export type TrainingStatsRow = {
   sessions: number;
   darts: number;
@@ -80,7 +84,12 @@ function migrateIfNeeded() {
   }
 }
 
-export function recordTrainingSession(modeId: string, darts: number, points: number) {
+export function recordTrainingSession(
+  modeId: string,
+  darts: number,
+  points: number,
+  meta?: any
+) {
   migrateIfNeeded();
   const id = String(modeId || "unknown");
   const s = loadV2();
@@ -91,6 +100,30 @@ export function recordTrainingSession(modeId: string, darts: number, points: num
   s.byMode[id] = row;
   addRow(s.global, darts, points);
   saveV2(s);
+
+  // ---- LOT20: normalize + emit event (best-effort, does not break gameplay)
+  try {
+    const userId =
+      (typeof meta?.userId === "string" && meta.userId) ||
+      localStorage.getItem("dc_user_id") ||
+      undefined;
+
+    const n = normalizeTrainingMetrics(id, darts, points, meta || {});
+    saveTrainingEvent({
+      id: (crypto as any)?.randomUUID ? (crypto as any).randomUUID() : String(Date.now()) + "-" + Math.random().toString(16).slice(2),
+      userId,
+      modeId: id,
+      participantId: String(meta?.participantId || "global"),
+      participantType: (meta?.participantType === "bot" ? "bot" : "player"),
+      score: n.score,
+      durationMs: n.durationMs,
+      meta: n.meta,
+      createdAt: Date.now(),
+      synced: false,
+    });
+  } catch {
+    // ignore
+  }
 }
 
 export function recordTrainingParticipantSession(
@@ -98,7 +131,8 @@ export function recordTrainingParticipantSession(
   participantId: string,
   kind: ParticipantKind,
   darts: number,
-  points: number
+  points: number,
+  meta?: any
 ) {
   migrateIfNeeded();
   const mid = String(modeId || "unknown");
@@ -126,6 +160,28 @@ export function recordTrainingParticipantSession(
 
   s.byParticipant[pid] = p;
   saveV2(s);
+
+  // ---- LOT20: normalize + emit event (best-effort)
+  try {
+    const userId =
+      (typeof meta?.userId === "string" && meta.userId) ||
+      localStorage.getItem("dc_user_id") ||
+      undefined;
+
+    const n = normalizeTrainingMetrics(mid, darts, points, meta || {});
+    saveTrainingEvent({
+      id: (crypto as any)?.randomUUID ? (crypto as any).randomUUID() : String(Date.now()) + "-" + Math.random().toString(16).slice(2),
+      userId,
+      modeId: mid,
+      participantId: pid,
+      participantType: kind,
+      score: n.score,
+      durationMs: n.durationMs,
+      meta: n.meta,
+      createdAt: Date.now(),
+      synced: false,
+    });
+  } catch {}
 }
 
 export function getTrainingStatsGlobal(): TrainingStatsRow {

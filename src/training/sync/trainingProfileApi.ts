@@ -7,3 +7,11 @@ export async function fetchTrainingProfileSummary(userId: string) {
   if (error) throw error;
   return data;
 }
+
+export async function fetchTrainingProfileSummaryModes(userId: string) {
+  const { data, error } = await supabase.rpc("get_training_profile_summary_modes", {
+    p_user_id: userId,
+  });
+  if (error) throw error;
+  return data;
+}

@@ -17,41 +17,28 @@ type UserBot = {
   id: string;
   name: string;
   avatarDataUrl?: string | null;
+  botLevel?: string;
 };
 
 const LS_BOTS_KEY = "dc_bots_v1";
 
-const LS_BOTS_KEYS = ["dc_bots_v1", "dc-bots-v1", "dcBotsV1", "darts-counter-bots", "bots"];
-
-// BOTS intégrés (toujours dispo) — fallback si aucun bot créé dans Profils
-const DEFAULT_BOTS: UserBot[] = [
-  { id: "bot_easy_rookie", name: "Rookie", avatarDataUrl: null },
-  { id: "bot_easy_nova", name: "Nova", avatarDataUrl: null },
-  { id: "bot_med_blade", name: "Blade", avatarDataUrl: null },
-  { id: "bot_med_venom", name: "Venom", avatarDataUrl: null },
-  { id: "bot_hard_ace", name: "Ace", avatarDataUrl: null },
-  { id: "bot_hard_legend", name: "Legend", avatarDataUrl: null },
-];
-
-function safeParseBotsFromLS(): UserBot[] {
+// IMPORTANT: on n'affiche que les bots que l'utilisateur a réellement créés via Profils > Bots.
+// (Pas de "fake bots" par défaut.)
+function readUserBotsFromLS(): UserBot[] {
   if (typeof window === "undefined") return [];
   try {
-    const out: UserBot[] = [];
-    for (const key of LS_BOTS_KEYS) {
-      const raw = window.localStorage.getItem(key);
-      if (!raw) continue;
-      const arr = JSON.parse(raw);
-      if (!Array.isArray(arr)) continue;
-      for (const b of arr) {
-        const id = String((b as any)?.id ?? "");
-        const name = String((b as any)?.name ?? "BOT");
-        const avatarDataUrl = (b as any)?.avatarDataUrl ?? (b as any)?.avatarUrl ?? null;
-        if (id && name) out.push({ id, name, avatarDataUrl });
-      }
-    }
-    const map = new Map<string, UserBot>();
-    out.forEach((b) => map.set(b.id, b));
-    return Array.from(map.values());
+    const raw = window.localStorage.getItem(LS_BOTS_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as any[];
+    if (!Array.isArray(parsed)) return [];
+    return parsed
+      .map((b) => ({
+        id: String(b?.id ?? ""),
+        name: String(b?.name ?? "BOT"),
+        avatarDataUrl: (b?.avatarDataUrl ?? null) as string | null,
+        botLevel: String(b?.botLevel ?? b?.level ?? "") || undefined,
+      }))
+      .filter((b) => !!b.id);
   } catch {
     return [];
   }
@@ -61,17 +48,16 @@ function botsFromStoreProfiles(profiles: any[]): UserBot[] {
   return (profiles || [])
     .filter((p: any) => !!p?.isBot)
     .map((p: any) => ({
-      id: String(p.id),
-      name: String(p.name ?? "BOT"),
-      avatarDataUrl: p.avatarDataUrl ?? p.avatarUrl ?? null,
+      id: String(p?.id ?? ""),
+      name: String(p?.name ?? "BOT"),
+      avatarDataUrl: (p?.avatarDataUrl ?? p?.avatarUrl ?? null) as string | null,
+      botLevel: String(p?.botLevel ?? p?.level ?? "") || undefined,
     }))
-    .filter((b: any) => b.id && b.name);
+    .filter((b: any) => !!b.id);
 }
 
 function loadBots(profiles: any[]): UserBot[] {
-  const storeBots = botsFromStoreProfiles(profiles);
-  const lsBots = safeParseBotsFromLS();
-  const merged = [...storeBots, ...lsBots, ...DEFAULT_BOTS];
+  const merged = [...botsFromStoreProfiles(profiles), ...readUserBotsFromLS()];
   const map = new Map<string, UserBot>();
   merged.forEach((b) => map.set(b.id, b));
   return Array.from(map.values());
@@ -88,12 +74,6 @@ export type ScramConfigPayload = {
   objective: number;  // 0 = pas d'objectif
 };
 
-
-function normalizeImgSrc(src: any): string | undefined {
-  if (!src) return undefined;
-  if (typeof src !== "string") return undefined;
-  return src;
-}
 
 export default function ScramConfig(props: any) {
   const { t } = useLang();
@@ -240,9 +220,9 @@ export default function ScramConfig(props: any) {
                     profile: {
                       id: b.id,
                       name: b.name,
-                      avatarUrl: normalizeImgSrc(b.avatarDataUrl),
-                      avatarDataUrl: null,
+                      avatarDataUrl: b.avatarDataUrl ?? null,
                       isBot: true,
+                      botLevel: b.botLevel ?? "",
                     },
                   })
                 )}

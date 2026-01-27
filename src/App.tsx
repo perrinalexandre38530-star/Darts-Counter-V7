@@ -142,6 +142,7 @@ import TrainingX01Config from "./pages/TrainingX01Config";
 import TrainingX01Play from "./pages/TrainingX01Play";
 import TrainingClock from "./pages/TrainingClock";
 import TrainingModePage from "./pages/TrainingModePage";
+import { useTrainingAutoSync } from "./training/sync/useTrainingAutoSync";
 
 import ShanghaiConfigPage from "./pages/ShanghaiConfig";
 import ShanghaiEnd from "./pages/ShanghaiEnd";
@@ -1163,6 +1164,9 @@ function App() {
   useEffect(() => {
     migrateLocalStorageToIndexedDB();
   }, []);
+
+  // LOT20: auto-sync training events (best-effort)
+  useTrainingAutoSync();
 
   // ============================================================
   // ✅ CLOUD SNAPSHOT SYNC (source unique Supabase)

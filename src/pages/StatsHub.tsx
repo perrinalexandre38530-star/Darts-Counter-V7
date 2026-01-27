@@ -26,6 +26,8 @@ import type { CricketProfileStats } from "../lib/cricketStats";
 import StatsX01Compare from "./StatsX01Compare";
 import StatsTrainingSummary from "../components/stats/StatsTrainingSummary";
 import StatsTrainingModesLocal from "../components/stats/StatsTrainingModesLocal";
+import StatsTrainingLeaderboards from "../components/stats/StatsTrainingLeaderboards";
+import TrainingProfileCard from "../components/profile/TrainingProfileCard";
 import { useCurrentProfile } from "../hooks/useCurrentProfile";
 import { computeKillerAggForPlayer } from "../lib/statsKillerAgg";
 
@@ -3966,6 +3968,7 @@ const filteredPlayers = React.useMemo(() => {
 const [selectedPlayerId, setSelectedPlayerId] = React.useState<string | null>(
   activePlayerId ? String(activePlayerId) : null
 );
+const [trainingSubView, setTrainingSubView] = React.useState<"stats" | "leaderboards">("stats");
 
 // Si le parent change initialPlayerId / playerId → on suit
 React.useEffect(() => {
@@ -4387,14 +4390,63 @@ if (nameLen > 16) nameFontSize = 18;
 if (nameLen > 22) nameFontSize = 16;
 if (nameLen > 28) nameFontSize = 14;
 
+const trainingModeOptions = [
+  { id: "training_time_attack", name: "Time Attack" },
+  { id: "training_ghost", name: "Ghost" },
+  { id: "training_precision_gauntlet", name: "Precision" },
+  { id: "training_doubleio", name: "Double In/Out" },
+  { id: "training_super_bull", name: "Super Bull" },
+  { id: "training_repeat_master", name: "Repeat Master" },
+  { id: "training_challenges", name: "Challenges" },
+  { id: "training_evolution", name: "Evolution" },
+];
+
 // ============================================================
 //  ROUTAGE PRINCIPAL PAR "tab" (StatsShell)
 // ============================================================
 if (tab === "training") {
+  const pill = (active: boolean): React.CSSProperties => ({
+    borderRadius: 999,
+    padding: "8px 10px",
+    border: "1px solid rgba(255,255,255,0.18)",
+    background: active ? "rgba(255,255,255,0.10)" : "rgba(0,0,0,0.22)",
+    fontWeight: 900,
+    letterSpacing: 0.4,
+  });
+
   return (
-    <div style={{ padding: 16, paddingBottom: 80 }}>
-      <TrainingX01StatsTab />
-      <StatsTrainingModesLocal />
+    <div style={{ padding: 16, paddingBottom: 80, display: "flex", flexDirection: "column", gap: 12 }}>
+      <TrainingProfileCard />
+
+      <div
+        style={{
+          display: "flex",
+          gap: 10,
+          flexWrap: "wrap",
+          alignItems: "center",
+          justifyContent: "center",
+          borderRadius: 18,
+          border: "1px solid rgba(255,255,255,0.12)",
+          background: "rgba(0,0,0,0.18)",
+          padding: 10,
+        }}
+      >
+        <button style={pill(trainingSubView === "stats")} onClick={() => setTrainingSubView("stats")}>
+          Stats
+        </button>
+        <button style={pill(trainingSubView === "leaderboards")} onClick={() => setTrainingSubView("leaderboards")}>
+          Classements
+        </button>
+      </div>
+
+      {trainingSubView === "leaderboards" ? (
+        <StatsTrainingLeaderboards modeOptions={trainingModeOptions} defaultModeId={"training_time_attack"} />
+      ) : (
+        <>
+          <TrainingX01StatsTab />
+          <StatsTrainingModesLocal />
+        </>
+      )}
     </div>
   );
 }

@@ -1,11 +1,14 @@
 import { loadTrainingEvents, markEventSynced } from "./trainingEventStore";
 import { supabase } from "../../lib/supabaseClient";
 
-export async function syncTrainingEvents(userId: string) {
-  const events = loadTrainingEvents().filter(e => !e.synced);
+export async function syncTrainingEvents(currentUserId: string) {
+  const events = loadTrainingEvents().filter((e) => !e.synced);
   if (!events.length) return;
 
   for (const ev of events) {
+    const userId = currentUserId || ev.userId;
+    if (!userId) continue;
+
     const { error } = await supabase.from("training_stats_events").insert({
       id: ev.id,
       user_id: userId,

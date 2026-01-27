@@ -6,11 +6,12 @@
 // =============================================================
 
 import React from "react";
-import StatsTrainingPublicLeaderboard from "./StatsTrainingPublicLeaderboard";
 import { useTheme } from "../../contexts/ThemeContext";
 import { useLang } from "../../contexts/LangContext";
 import { getTrainingStats } from "../../training/stats/trainingStatsHub";
 
+
+import TrainingModeLeaderboardCard from "../training/TrainingModeLeaderboardCard";
 type Row = { id: string; label: string };
 
 const MODES: Row[] = [
@@ -36,9 +37,9 @@ export default function StatsTrainingModesLocal() {
   const { theme } = useTheme();
   const { t } = useLang();
 
-  const [globalOpenMode, setGlobalOpenMode] = React.useState<string | null>(null);
-
   const [store, setStore] = React.useState<Record<string, any>>({});
+  const [openModeId, setOpenModeId] = React.useState<string | null>(null);
+
 
   React.useEffect(() => {
     setStore((getTrainingStats() as any) || {});
@@ -154,34 +155,29 @@ export default function StatsTrainingModesLocal() {
                   {fmt1(modePpm)}
                 </div>
               </div>
-            
-              <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
-                <button
-                  onClick={() =>
-                    setGlobalOpenMode((prev) => (prev === modeId ? null : modeId))
-                  }
-                  style={{
-                    border: "1px solid rgba(255,255,255,0.18)",
-                    background: "rgba(0,0,0,0.25)",
-                    color: "inherit",
-                    borderRadius: 10,
-                    padding: "6px 10px",
-                    fontWeight: 900,
-                    cursor: "pointer",
-                  }}
-                >
-                  {globalOpenMode === modeId ? "▲" : "▼"}{" "}
-                  {t("stats.training.global.btn", "Global")}
-                </button>
-              </div>
 
-              {globalOpenMode === modeId && (
-                <div style={{ marginTop: 8 }}>
-                  <StatsTrainingPublicLeaderboard modeId={modeId} modeLabel={title} />
-                </div>
-              )}
-
+<div style={{ marginTop: 10, display: "flex", justifyContent: "flex-end" }}>
+  <button
+    onClick={() => setOpenModeId((cur) => (cur === m.id ? null : m.id))}
+    style={{
+      borderRadius: 12,
+      padding: "6px 10px",
+      border: `1px solid ${theme.primary}66`,
+      background: "rgba(0,0,0,0.25)",
+      color: "white",
+      fontWeight: 900,
+      cursor: "pointer",
+      fontSize: 12,
+    }}
+  >
+    {openModeId === m.id ? "Fermer classement" : "Classement"}
+  </button>
 </div>
+
+{openModeId === m.id ? (
+  <TrainingModeLeaderboardCard modeId={m.id} modeLabel={m.label} />
+) : null}
+            </div>
           );
         })}
       </div>
