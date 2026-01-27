@@ -1,84 +1,109 @@
-// PrecisionGauntletPlay — UI Play harmonisée (HUD + result)
+// ============================================
+// TRAINING — Precision Gauntlet
+// Objectif : suite de cibles, une erreur = fin
+// ============================================
+
 import React, { useMemo, useState } from "react";
-import TrainingShell from "../../shell/TrainingShell";
 import TrainingHeader from "../../ui/TrainingHeader";
 import TrainingFooter from "../../ui/TrainingFooter";
-import TrainingHudRow from "../../ui/TrainingHudRow";
 import TrainingResultModal from "../../ui/TrainingResultModal";
 import { TrainingEngine } from "../../engine/trainingEngine";
 import { computeTrainingStats } from "../../engine/trainingStats";
+import type { TrainingTarget } from "../../engine/trainingTypes";
 import ScoreInputHub from "../../../components/ScoreInputHub";
 
-function isTargetHit(current: string, t: any, hit: boolean) {
-  if (!hit || !t) return false;
-  if (current === "BULL") return t.value === "BULL";
-  if (current === "DBULL") return t.value === "DBULL";
-  const n = parseInt(String(current).replace(/[^0-9]/g, ""), 10);
-  return t.value === n;
-}
+const GAUNTLET: TrainingTarget[] = [
+  { label: "20", value: 20 },
+  { label: "T19", value: 19, multiplier: 3 },
+  { label: "D18", value: 18, multiplier: 2 },
+  { label: "BULL", value: "BULL" },
+  { label: "DBULL", value: "DBULL" },
+];
+import { recordTrainingSession, recordTrainingParticipantSession } from "../../stats/trainingStatsHub";
 
-export default function PrecisionGauntletPlay({
-  config,
-  onExit,
-}: {
-  config: { targets: string[]; lives: number };
-  onExit: () => void;
-}) {
-  const engine = useMemo(() => new TrainingEngine({ mode: "PRECISION" }), []);
-  const [idx, setIdx] = useState(0);
-  const [lives, setLives] = useState(config.lives);
+
+export default function PrecisionGauntletPlay({ config, onExit }: { config: any; onExit: () => void }) {
+  const engine = useMemo(
+    () =>
+      new TrainingEngine({
+        mode: "PRECISION",
+      }),
+    []
+  );
+
+  const [index, setIndex] = useState(0);
   const [ended, setEnded] = useState(false);
-  const [success, setSuccess] = useState(false);
 
-  const current = config.targets[idx];
-  const stats = computeTrainingStats(engine.state);
+  const current = GAUNTLET[index];
 
-  function finish(ok: boolean) {
-    engine.finish(ok);
-    setSuccess(ok);
-    setEnded(true);
+  function onThrow(target: TrainingTarget | null, hit: boolean, score: number) {
+    if (
+      !hit ||
+      !target ||
+      target.value !== current.value ||
+      target.multiplier !== current.multiplier
+    ) {
+      engine.finish(false);
+      setEnded(true);
+      return;
+    }
+
+    engine.throw(target, hit, score);
+
+    if (index + 1 >= GAUNTLET.length) {
+      engine.finish(true);
+      setEnded(true);
+    } else {
+      setIndex(index + 1);
+    }
   }
 
-  return (
+  const stats = computeTrainingStats(engine.state);
+
+  
+  const recordedRef = React.useRef(false);
+  React.useEffect(() => {
+    if (!ended) return;
+    if (recordedRef.current) return;
+    recordedRef.current = true;
+
+    const darts = (stats as any)?.dartsThrown ?? 0;
+    const points = (stats as any)?.score ?? 0;
+
+    recordTrainingSession("training_precision_gauntlet", darts, points);
+
+    const pIds: string[] = Array.isArray(config?.selectedPlayerIds) ? config.selectedPlayerIds : [];
+    const bIds: string[] = Array.isArray(config?.selectedBotIds) ? config.selectedBotIds : [];
+
+    for (const pid of pIds) recordTrainingParticipantSession("training_precision_gauntlet", pid, "player", darts, points);
+    for (const bid of bIds) recordTrainingParticipantSession("training_precision_gauntlet", bid, "bot", darts, points);
+  }, [ended]);
+return (
     <>
-      <TrainingShell
-        header={
-          <TrainingHeader
-            title="Precision"
-            onBack={onExit}
-            rules={<p>Atteins la cible courante. Raté = perte de vie (si vies activées).</p>}
-          />
-        }
-        body={
+      <TrainingHeader onBack={onExit} 
+        title="ticker_precision"
+        rules={
           <>
-            <TrainingHudRow
-              left={{ label: "Cible", value: current }}
-              mid={{ label: "Étape", value: `${idx + 1}/${config.targets.length}` }}
-              right={{ label: "Vies", value: lives }}
-            />
-            <ScoreInputHub
-              onThrow={(t: any, hit: boolean, score: number) => {
-                const ok = isTargetHit(current, t, hit);
-                engine.throw(t, ok, ok ? score : 0);
-                if (ok) {
-                  if (idx + 1 >= config.targets.length) finish(true);
-                  else setIdx((i) => i + 1);
-                } else {
-                  if (lives > 0) setLives((l) => l - 1);
-                  else finish(false);
-                }
-              }}
-            />
+            <p>Enchaîne les cibles imposées.</p>
+            <p>Une seule erreur met fin à la session.</p>
           </>
         }
-        footer={<TrainingFooter stats={stats} />}
       />
+
+      <div className="training-target">
+        Cible : {current.label}
+      </div>
+
+      <ScoreInputHub
+        onThrow={(t, hit, score) => onThrow(t, hit, score)}
+      />
+
+      <TrainingFooter stats={stats} />
 
       <TrainingResultModal
         open={ended}
-        success={success}
-        title={success ? "Parcours validé" : "Échec"}
         stats={stats}
+        success={engine.state.success === true}
         onClose={onExit}
       />
     </>

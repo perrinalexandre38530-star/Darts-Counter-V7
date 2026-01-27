@@ -1,110 +1,107 @@
-// EvolutionPlay — UI Play harmonisée (HUD + timer + result)
-import React, { useEffect, useMemo, useState } from "react";
-import TrainingShell from "../../shell/TrainingShell";
+// ============================================
+// TRAINING — Evolution
+// Objectif : difficulté adaptative
+// ============================================
+
+import React, { useMemo, useState } from "react";
 import TrainingHeader from "../../ui/TrainingHeader";
 import TrainingFooter from "../../ui/TrainingFooter";
-import TrainingHudRow from "../../ui/TrainingHudRow";
 import TrainingResultModal from "../../ui/TrainingResultModal";
 import { TrainingEngine } from "../../engine/trainingEngine";
 import { computeTrainingStats } from "../../engine/trainingStats";
+import type { TrainingTarget } from "../../engine/trainingTypes";
 import ScoreInputHub from "../../../components/ScoreInputHub";
 
-const LEVELS = [
-  { label: "S20", need: "S20" },
-  { label: "T20", need: "T20" },
-  { label: "D20", need: "D20" },
-  { label: "T19", need: "T19" },
-  { label: "D18", need: "D18" },
-  { label: "BULL", need: "BULL" },
-  { label: "DBULL", need: "DBULL" },
+const LEVELS: TrainingTarget[][] = [
+  [{ label: "20", value: 20 }],
+  [{ label: "T20", value: 20, multiplier: 3 }],
+  [{ label: "D20", value: 20, multiplier: 2 }],
+  [{ label: "BULL", value: "BULL" }],
 ];
+import { recordTrainingSession, recordTrainingParticipantSession } from "../../stats/trainingStatsHub";
 
-function isMatch(id: string, t: any, hit: boolean) {
-  if (!hit || !t) return false;
-  if (id === "BULL") return t.value === "BULL";
-  if (id === "DBULL") return t.value === "DBULL";
-  const m = id[0];
-  const n = parseInt(id.slice(1), 10);
-  const mult = m === "S" ? 1 : m === "D" ? 2 : 3;
-  return t.value === n && t.multiplier === mult;
-}
 
-export default function EvolutionPlay({ config, onExit }: { config: { seconds: number; startLevel: number }; onExit: () => void }) {
-  const engine = useMemo(() => new TrainingEngine({ mode: "EVOLUTION" }), []);
-  const [level, setLevel] = useState(Math.max(1, Math.min(LEVELS.length, config.startLevel)));
+export default function EvolutionPlay({ config, onExit }: { config: any; onExit: () => void }) {
+  const engine = useMemo(
+    () =>
+      new TrainingEngine({
+        mode: "EVOLUTION",
+      }),
+    []
+  );
+
+  const [level, setLevel] = useState(0);
   const [ended, setEnded] = useState(false);
-  const [remaining, setRemaining] = useState(config.seconds);
 
-  const stats = computeTrainingStats(engine.state);
-  const current = LEVELS[level - 1];
+  const target = LEVELS[level][0];
 
-  useEffect(() => {
-    const start = Date.now();
-    const tick = () => {
-      const elapsed = Math.floor((Date.now() - start) / 1000);
-      const left = Math.max(0, config.seconds - elapsed);
-      setRemaining(left);
-      if (left <= 0) {
+  function onThrow(targetHit: TrainingTarget | null, hit: boolean, score: number) {
+    if (
+      hit &&
+      targetHit?.value === target.value &&
+      targetHit?.multiplier === target.multiplier
+    ) {
+      engine.throw(targetHit, hit, score);
+      if (level + 1 < LEVELS.length) {
+        setLevel(level + 1);
+      } else {
         engine.finish(true);
         setEnded(true);
       }
-    };
-    const id = window.setInterval(tick, 250);
-    tick();
-    return () => window.clearInterval(id);
-  }, []);
+    } else {
+      engine.finish(false);
+      setEnded(true);
+    }
+  }
 
-  return (
+  const stats = computeTrainingStats(engine.state);
+
+  
+  const recordedRef = React.useRef(false);
+  React.useEffect(() => {
+    if (!ended) return;
+    if (recordedRef.current) return;
+    recordedRef.current = true;
+
+    const darts = (stats as any)?.dartsThrown ?? 0;
+    const points = (stats as any)?.score ?? 0;
+
+    recordTrainingSession("training_evolution", darts, points);
+
+    const pIds: string[] = Array.isArray(config?.selectedPlayerIds) ? config.selectedPlayerIds : [];
+    const bIds: string[] = Array.isArray(config?.selectedBotIds) ? config.selectedBotIds : [];
+
+    for (const pid of pIds) recordTrainingParticipantSession("training_evolution", pid, "player", darts, points);
+    for (const bid of bIds) recordTrainingParticipantSession("training_evolution", bid, "bot", darts, points);
+  }, [ended]);
+return (
     <>
-      <TrainingShell
-        header={
-          <TrainingHeader
-            title="Evolution"
-            onBack={onExit}
-            rules={<p>Réussite = +1 niveau, raté = -1 niveau. Fin au timer.</p>}
-          />
-        }
-        body={
+      <TrainingHeader onBack={onExit} 
+        title="ticker_evolution"
+        rules={
           <>
-            <TrainingHudRow
-              left={{ label: "Temps", value: `${remaining}s` }}
-              mid={{ label: "Niveau", value: level }}
-              right={{ label: "Cible", value: current.label }}
-            />
-            <ScoreInputHub
-              onThrow={(t: any, hit: boolean, score: number) => {
-                engine.throw(t, hit, score);
-                const ok = isMatch(current.need, t, hit);
-                setLevel((l) => (ok ? Math.min(LEVELS.length, l + 1) : Math.max(1, l - 1)));
-              }}
-            />
-            <div style={{ marginTop: 10 }}>
-              <button
-                type="button"
-                onClick={() => {
-                  engine.finish(true);
-                  setEnded(true);
-                }}
-                style={{
-                  height: 44,
-                  width: "100%",
-                  borderRadius: 999,
-                  border: "1px solid rgba(255,255,255,0.16)",
-                  background: "rgba(0,0,0,0.45)",
-                  color: "rgba(255,255,255,0.92)",
-                  fontWeight: 900,
-                  cursor: "pointer",
-                }}
-              >
-                Terminer
-              </button>
-            </div>
+            <p>La difficulté augmente à chaque réussite.</p>
+            <p>Une erreur met fin à la session.</p>
           </>
         }
-        footer={<TrainingFooter stats={stats} />}
       />
 
-      <TrainingResultModal open={ended} success={true} title="Session terminée" stats={stats} onClose={onExit} />
+      <div className="training-target">
+        Niveau {level + 1} — Cible : {target.label}
+      </div>
+
+      <ScoreInputHub
+        onThrow={(t, hit, score) => onThrow(t, hit, score)}
+      />
+
+      <TrainingFooter stats={stats} />
+
+      <TrainingResultModal
+        open={ended}
+        stats={stats}
+        success={engine.state.success === true}
+        onClose={onExit}
+      />
     </>
   );
 }

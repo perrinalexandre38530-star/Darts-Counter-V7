@@ -1,78 +1,44 @@
 // ============================================
-// src/training/ui/TrainingHeader.tsx
-// Header Training (ticker + BackDot + InfoDot)
+// TRAINING — Header commun (BackDot optionnel)
 // ============================================
 
 import React from "react";
-import { useTheme } from "../../contexts/ThemeContext";
 import BackDot from "../../components/BackDot";
 import InfoDot from "../../components/InfoDot";
-import tickerTraining from "../../assets/tickers/ticker_training.png";
 
-export default function TrainingHeader({
-  title,
-  rules,
-  onBack,
-}: {
-  title?: string;
-  rules?: React.ReactNode;
-  onBack?: () => void;
-}) {
-  const { theme } = useTheme();
+type Props = {
+  title: string;
+  rules: React.ReactNode;
+  onBack?: (() => void) | null;
+};
+
+export default function TrainingHeader({ title, rules, onBack }: Props) {
   const [open, setOpen] = React.useState(false);
 
   return (
-    <>
-      <div
-        style={{
-          position: "sticky",
-          top: 0,
-          zIndex: 60,
-          paddingTop: "env(safe-area-inset-top)",
-          marginBottom: 10,
-        }}
-      >
-        <div style={{ position: "relative" }}>
-          <img
-            src={tickerTraining}
-            alt="Training"
-            draggable={false}
-            style={{ width: "100%", height: 92, objectFit: "cover", display: "block" }}
-          />
+    <div
+      style={{
+        position: "sticky",
+        top: 0,
+        zIndex: 30,
+        padding: 12,
+        paddingTop: "calc(env(safe-area-inset-top) + 10px)",
+        background: "rgba(0,0,0,0.55)",
+        backdropFilter: "blur(8px)",
+        borderBottom: "1px solid rgba(255,255,255,0.10)",
+      }}
+    >
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+        <div style={{ width: 42 }}>
+          {onBack ? <BackDot onClick={onBack} /> : null}
+        </div>
 
-          <div
-            style={{
-              position: "absolute",
-              inset: 0,
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-              padding: "0 12px",
-            }}
-          >
-            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-              <BackDot onClick={onBack} glow={theme.primary + "88"} />
-              {title ? (
-                <div
-                  style={{
-                    fontWeight: 900,
-                    letterSpacing: 0.7,
-                    textTransform: "uppercase",
-                    textShadow: `0 0 10px ${theme.primary}55`,
-                  }}
-                >
-                  {title}
-                </div>
-              ) : null}
-            </div>
+        <div style={{ flex: 1, textAlign: "center", fontWeight: 900, letterSpacing: 1.1 }}>
+          {title}
+        </div>
 
-            <InfoDot
-              size={34}
-              color="#FFFFFF"
-              glow={theme.primary + "66"}
-              onClick={() => setOpen(true)}
-            />
-          </div>
+        <div style={{ width: 42, display: "flex", justifyContent: "flex-end" }}>
+          <InfoDot onClick={() => setOpen(true)} />
         </div>
       </div>
 
@@ -82,43 +48,41 @@ export default function TrainingHeader({
           style={{
             position: "fixed",
             inset: 0,
-            background: "rgba(0,0,0,0.75)",
+            background: "rgba(0,0,0,0.72)",
+            zIndex: 50,
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
-            zIndex: 100,
+            padding: 16,
           }}
         >
           <div
             onClick={(e) => e.stopPropagation()}
             style={{
-              width: "min(520px, calc(100vw - 24px))",
+              maxWidth: 520,
+              width: "100%",
               borderRadius: 18,
-              background: "rgba(10,10,10,0.92)",
-              border: `1px solid ${theme.primary}55`,
-              boxShadow: "0 18px 50px rgba(0,0,0,0.75)",
+              background: "rgba(0,0,0,0.92)",
+              border: "1px solid rgba(255,255,255,0.14)",
               padding: 16,
-              color: theme.text,
+              boxShadow: "0 18px 40px rgba(0,0,0,0.7)",
+              color: "rgba(255,255,255,0.92)",
             }}
           >
-            <div style={{ fontWeight: 900, marginBottom: 8, color: theme.primary }}>
-              Règles & objectifs
-            </div>
-            <div style={{ fontSize: 13, lineHeight: 1.4, opacity: 0.9 }}>
-              {rules ?? <p>Règles non définies.</p>}
-            </div>
+            <div style={{ fontWeight: 900, marginBottom: 8 }}>Règles</div>
+            <div style={{ fontSize: 13, lineHeight: 1.5, opacity: 0.95 }}>{rules}</div>
+
             <button
               type="button"
               onClick={() => setOpen(false)}
               style={{
-                marginLeft: "auto",
                 marginTop: 12,
+                marginLeft: "auto",
                 display: "block",
-                height: 40,
-                padding: "0 16px",
+                padding: "8px 14px",
                 borderRadius: 999,
                 border: "none",
-                background: theme.primary,
+                background: "rgba(255,255,255,0.9)",
                 color: "#000",
                 fontWeight: 900,
                 cursor: "pointer",
@@ -129,6 +93,6 @@ export default function TrainingHeader({
           </div>
         </div>
       ) : null}
-    </>
+    </div>
   );
 }

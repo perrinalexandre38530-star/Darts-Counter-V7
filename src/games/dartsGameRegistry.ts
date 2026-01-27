@@ -1089,23 +1089,6 @@ export const GAME_CATEGORIES: { id: GameCategory; label: string }[] = [
   { id: "challenge", label: "Defis" },
   { id: "fun", label: "Fun" },
   { id: "training", label: "Training" },
-  {
-    id: "training_evolution",
-    label: "Evolution (Training)",
-    category: "training",
-    entry: "training",
-    tab: "training",
-    popularityRank: 111,
-    ready: true,
-    maxPlayers: 1,
-    supportsTeams: false,
-    supportsBots: false,
-    statsKey: "training:evolution",
-    infoTitle: "Evolution (Training)",
-    infoBody:
-      "Mode Evolution complet (progression par niveaux).",
-  },
-
 ];
 
 // Sous-categories (groupage visuel dans Games.tsx).

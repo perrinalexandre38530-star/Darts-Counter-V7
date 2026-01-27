@@ -1,253 +1,183 @@
 import React, { useEffect, useMemo, useState } from "react";
-import type { Store, Profile } from "../lib/types";
 import BackDot from "../components/BackDot";
 import InfoDot from "../components/InfoDot";
 import PageHeader from "../components/PageHeader";
-import tickerGolf from "../assets/tickers/ticker_golf.png";
 import Section from "../components/Section";
 import OptionRow from "../components/OptionRow";
 import OptionToggle from "../components/OptionToggle";
 import OptionSelect from "../components/OptionSelect";
-import ProfileAvatar from "../components/ProfileAvatar";
+import ProfileMedallionCarousel, { type MedallionItem } from "../components/ProfileMedallionCarousel";
 import { useLang } from "../contexts/LangContext";
 import { useTheme } from "../contexts/ThemeContext";
+import tickerGolf from "../assets/tickers/ticker_golf.png";
 
 type BotLevel = "easy" | "normal" | "hard";
-type HoleOrderMode = "chronological" | "random";
-type GolfScoringMode = "strokes" | "points";
 
-export type PlayerLite = {
+type UserBot = {
   id: string;
   name: string;
-  avatarDataUrl?: any | null;
-  avatarUrl?: any | null;
-  isBot?: boolean;
-  botLevel?: BotLevel;
+  avatarDataUrl?: string | null;
 };
 
+const LS_BOTS_KEY = "dc_bots_v1";
+
+const INFO_TEXT = `Règles :\n- 9 ou 18 trous.\n- Au trou N, la cible est N.\n- 3 flèches par joueur.\n- Le trou se score en 'strokes' (moins = mieux) ou en 'points' (plus = mieux).\n`;
+
 export type GolfConfigPayload = {
-  // compat
+  selectedIds: string[];
   players: number;
-
-  // PRO
-  playersList?: PlayerLite[];
-
   holes: 9 | 18;
   teamsEnabled: boolean;
-
   botsEnabled: boolean;
   botLevel: BotLevel;
-
-  /** Si aucune touche de la cible sur 3 flèches, on applique ces "coups" (strokes). */
   missStrokes: 4 | 5 | 6;
-
-  /** Ordre des trous (1..9/18) */
-  holeOrderMode: HoleOrderMode;
-
-  /** Mode de scoring : strokes (score bas gagne) / points (score haut gagne) */
-  scoringMode: GolfScoringMode;
-
-  /** Afficher la grille des trous en partie */
+  scoringMode: "strokes" | "points";
+  holeOrder: "chronological" | "random";
   showHoleGrid: boolean;
 };
 
-const INFO_TEXT = `GOLF (Darts) — règles
+const LS_BOTS_KEYS = ["dc_bots_v1", "dc-bots-v1", "dcBotsV1", "darts-counter-bots", "bots"];
 
-Principe
-- 9 ou 18 trous.
-- Au trou N, la cible est le numéro N.
-- 3 flèches par joueur, puis on valide.
+// BOTS intégrés (toujours dispo) — fallback si aucun bot créé dans Profils
+const DEFAULT_BOTS: UserBot[] = [
+  { id: "bot_easy_rookie", name: "Rookie", avatarDataUrl: null },
+  { id: "bot_easy_nova", name: "Nova", avatarDataUrl: null },
+  { id: "bot_med_blade", name: "Blade", avatarDataUrl: null },
+  { id: "bot_med_venom", name: "Venom", avatarDataUrl: null },
+  { id: "bot_hard_ace", name: "Ace", avatarDataUrl: null },
+  { id: "bot_hard_legend", name: "Legend", avatarDataUrl: null },
+];
 
-Scoring
-- Strokes : 1/2/3 selon la flèche du 1er hit, sinon pénalité (4/5/6). Score bas gagne.
-- Points : 3/2/1 selon la flèche du 1er hit, sinon 0. Score haut gagne.
-
-Options PRO
-- Ordre des trous : chronologique ou aléatoire.
-- Grille des trous : tableau récapitulatif en partie.
-- Équipes (A/B) : total équipe = somme des joueurs.`;
-
-function loadUserBots(): PlayerLite[] {
+function safeParseBotsFromLS(): UserBot[] {
+  if (typeof window === "undefined") return [];
   try {
-    const raw = localStorage.getItem("dc_bots_v1");
-    if (!raw) return [];
-    const arr = JSON.parse(raw);
-    if (!Array.isArray(arr)) return [];
-    return arr
-      .map((b: any) => ({
-        id: String(b?.id ?? ""),
-        name: String(b?.name ?? "BOT"),
-        avatarDataUrl: b?.avatarDataUrl ?? b?.avatarUrl ?? null,
-        avatarUrl: b?.avatarUrl ?? null,
-        isBot: true,
-        botLevel: (b?.botLevel as BotLevel) || "normal",
-      }))
-      .filter((b: any) => b.id && b.name);
+    const out: UserBot[] = [];
+    for (const key of LS_BOTS_KEYS) {
+      const raw = window.localStorage.getItem(key);
+      if (!raw) continue;
+      const arr = JSON.parse(raw);
+      if (!Array.isArray(arr)) continue;
+      for (const b of arr) {
+        const id = String((b as any)?.id ?? "");
+        const name = String((b as any)?.name ?? "BOT");
+        const avatarDataUrl = (b as any)?.avatarDataUrl ?? (b as any)?.avatarUrl ?? null;
+        if (id && name) out.push({ id, name, avatarDataUrl });
+      }
+    }
+    const map = new Map<string, UserBot>();
+    out.forEach((b) => map.set(b.id, b));
+    return Array.from(map.values());
   } catch {
     return [];
   }
 }
 
-
-function isBotLike(p: any) {
-  if (!p) return false;
-  if (p.isBot || p.bot || p.type === "bot" || p.kind === "bot") return true;
-  if (typeof p.botLevel === "string" && p.botLevel) return true;
-  if (typeof p.level === "string" && p.level) return true;
-  return false;
+function botsFromStoreProfiles(profiles: any[]): UserBot[] {
+  return (profiles || [])
+    .filter((p: any) => !!p?.isBot)
+    .map((p: any) => ({
+      id: String(p.id),
+      name: String(p.name ?? "BOT"),
+      avatarDataUrl: p.avatarDataUrl ?? p.avatarUrl ?? null,
+    }))
+    .filter((b: any) => b.id && b.name);
 }
 
-function botToFakeProfile(b: PlayerLite, forcedLevel?: BotLevel) {
-  return {
-    id: b.id,
-    name: b.name,
-    avatarDataUrl: (b as any).avatarDataUrl ?? (b as any).avatarUrl ?? null,
-    avatarUrl: (b as any).avatarUrl ?? null,
-    isBot: true,
-    botLevel: (forcedLevel ?? b.botLevel ?? "normal") as BotLevel,
-  } as any;
+function loadBots(profiles: any[]): UserBot[] {
+  const storeBots = botsFromStoreProfiles(profiles);
+  const lsBots = safeParseBotsFromLS();
+  const merged = [...storeBots, ...lsBots, ...DEFAULT_BOTS];
+  const map = new Map<string, UserBot>();
+  merged.forEach((b) => map.set(b.id, b));
+  return Array.from(map.values());
 }
 
-export default function GolfConfig(props: { store?: Store; go?: any; setTab?: any }) {
+
+function normalizeImgSrc(src: any): string | undefined {
+  if (!src) return undefined;
+  if (typeof src !== "string") return undefined;
+  return src;
+}
+
+export default function GolfConfig(props: any) {
   const { t } = useLang();
-  const theme = useTheme();
+  const theme = useTheme() as any;
+  const primary = theme?.primary ?? "#7dffca";
+  const primarySoft = theme?.primarySoft ?? "rgba(125,255,202,0.16)";
 
-  const primary = (theme as any)?.primary ?? "#7dffca";
-  const primarySoft = (theme as any)?.primarySoft ?? "rgba(125,255,202,0.16)";
-  const cardBg = "rgba(0,0,0,0.30)";
+  const storeProfiles = (props?.store?.profiles ?? []) as any[];
+  const humanProfiles = useMemo(() => storeProfiles.filter((p) => !p?.isBot), [storeProfiles]);
 
-  const storeProfiles: PlayerLite[] = useMemo(() => {
-    const ps = (props?.store as any)?.profiles as Profile[] | undefined;
-    if (!ps || !Array.isArray(ps)) return [];
-    return ps.map((p) => ({
-      id: p.id,
-      name: p.name,
-      avatarDataUrl: (p as any).avatarDataUrl ?? null,
-      avatarUrl: (p as any).avatarUrl ?? null,
-      isBot: (p as any).isBot ?? false,
-      botLevel: (p as any).botLevel ?? "normal",
-    }));
-  }, [props?.store]);
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [pendingId, setPendingId] = useState<string | null>(null);
 
-  const userBots = useMemo(() => loadUserBots(), []);
-
-  const humanProfiles = useMemo(() => storeProfiles.filter((p) => !isBotLike(p)), [storeProfiles]);
-  const botsFromStore = useMemo(() => storeProfiles.filter((p) => isBotLike(p)), [storeProfiles]);
-
-  const mergedBots = useMemo(() => {
-    const byId = new Map<string, PlayerLite>();
-    [...botsFromStore, ...userBots].forEach((b) => {
-      if (!b?.id) return;
-      if (byId.has(b.id)) return;
-      byId.set(b.id, { ...b, isBot: true });
-    });
-    return Array.from(byId.values());
-  }, [botsFromStore, userBots]);
-
-  const available = useMemo(() => {
-    const byId = new Map<string, PlayerLite>();
-    [...humanProfiles, ...mergedBots].forEach((p) => {
-      if (!p?.id) return;
-      if (byId.has(p.id)) return;
-      byId.set(p.id, p);
-    });
-    return Array.from(byId.values());
-  }, [humanProfiles, mergedBots]);
-
+  const [holes, setHoles] = useState<9 | 18>(9);
   const [teamsEnabled, setTeamsEnabled] = useState(false);
   const [botsEnabled, setBotsEnabled] = useState(false);
   const [botLevel, setBotLevel] = useState<BotLevel>("normal");
-
-
-  // If bots disabled, remove bots from selection
-  useEffect(() => {
-    if (botsEnabled) return;
-    const botIds = new Set(mergedBots.map((b) => b.id));
-    setSelectedIds((prev) => prev.filter((id) => !botIds.has(id)));
-  }, [botsEnabled, mergedBots]);
-
-  const [holes, setHoles] = useState<9 | 18>(9);
-  const [holeOrderMode, setHoleOrderMode] = useState<HoleOrderMode>("chronological");
-  const [scoringMode, setScoringMode] = useState<GolfScoringMode>("strokes");
   const [missStrokes, setMissStrokes] = useState<4 | 5 | 6>(4);
+  const [scoringMode, setScoringMode] = useState<"strokes" | "points">("strokes");
+  const [holeOrder, setHoleOrder] = useState<"chronological" | "random">("chronological");
   const [showHoleGrid, setShowHoleGrid] = useState(true);
 
-  // --- Sélection joueurs (PRO) : on privilégie les profils existants.
-  const defaultIds = useMemo(() => available.slice(0, 2).map((p) => p.id), [available]);
-  const [selectedIds, setSelectedIds] = useState<string[]>(defaultIds);
+  const minPlayers = 2;
+  const maxPlayers = 8;
 
-  // keep defaults in sync (first entry)
+  const [userBots, setUserBots] = useState<UserBot[]>([]);
   useEffect(() => {
-    if (!available.length) return;
-    setSelectedIds((prev) => {
-      if (prev && prev.length >= 2) return prev;
-      const next = available.slice(0, 2).map((p) => p.id);
-      return next.length ? next : prev;
-    });
-  }, [available]);
+    // Charge les bots depuis : store.profiles (isBot), localStorage (clés historiques), + fallback bots intégrés
+    setUserBots(loadBots(storeProfiles));
+  }, [storeProfiles]);
 
-  const selectedPlayers = useMemo(() => {
-    const map = new Map(available.map((p) => [p.id, p] as const));
-    const list = selectedIds.map((id) => map.get(id)).filter(Boolean) as PlayerLite[];
-    // fallback si aucun profil dispo
-    if (!list.length) {
-      return [
-        { id: "p1", name: "Joueur 1" },
-        { id: "p2", name: "Joueur 2" },
-      ];
+  const botIds = useMemo(() => new Set(userBots.map((b) => b.id)), [userBots]);
+
+  useEffect(() => {
+    if (!botsEnabled) {
+      setSelectedIds((prev) => prev.filter((id) => !botIds.has(id)));
     }
-    // forcer min 2
-    if (list.length === 1) return [list[0], { id: "p2", name: "Joueur 2" }];
-    return list;
-  }, [available, selectedIds]);
+  }, [botsEnabled, botIds]);
 
-  const playersCount = Math.max(2, Math.min(8, selectedPlayers.length));
-
-  const payload: GolfConfigPayload = useMemo(
-    () => ({
-      players: playersCount,
-      playersList: selectedPlayers.slice(0, playersCount),
-      holes,
-      teamsEnabled,
-      botsEnabled,
-      botLevel,
-      missStrokes,
-      holeOrderMode,
-      scoringMode,
-      showHoleGrid,
-    }),
-    [
-      playersCount,
-      selectedPlayers,
-      holes,
-      teamsEnabled,
-      botsEnabled,
-      botLevel,
-      missStrokes,
-      holeOrderMode,
-      scoringMode,
-      showHoleGrid,
-    ]
-  );
+  const canStart = selectedIds.length >= minPlayers;
+  const canTeams = useMemo(() => selectedIds.length >= 2, [selectedIds.length]);
 
   function goBack() {
     if (props?.setTab) return props.setTab("games");
-    if (props?.go) return props.go("games");
     window.history.back();
   }
 
-  function start() {
-    if (props?.setTab) return props.setTab("golf_play", { config: payload });
-    if (props?.go) return props.go("golf_play", { config: payload });
+  function togglePlayer(id: string) {
+    setSelectedIds((prev) => {
+      const has = prev.includes(id);
+      if (has) {
+        if (pendingId === id) {
+          setPendingId(null);
+          return prev.filter((x) => x !== id);
+        }
+        setPendingId(id);
+        return prev;
+      }
+      setPendingId(null);
+      if (prev.length >= maxPlayers) return prev;
+      return [...prev, id];
+    });
   }
 
-  // --- UI helpers (médaillons)
-  const pillStyle: React.CSSProperties = {
-    borderRadius: 999,
-    border: `1px solid ${theme.borderSoft}`,
-    background: "rgba(0,0,0,0.25)",
-    padding: "10px 12px",
+  function start() {
+    if (!canStart) return;
+  const payload: GolfConfigPayload = {
+    selectedIds,
+    players: selectedIds.length,
+    holes,
+    teamsEnabled: canTeams ? teamsEnabled : false,
+    botsEnabled,
+    botLevel,
+    missStrokes,
+    scoringMode,
+    holeOrder,
+    showHoleGrid,
   };
+    if (props?.setTab) return props.setTab("golf_play", { config: payload });
+  }
 
   return (
     <div className="page">
@@ -258,248 +188,108 @@ export default function GolfConfig(props: { store?: Store; go?: any; setTab?: an
         right={<InfoDot title="Règles GOLF" content={INFO_TEXT} />}
       />
 
-      
-<Section title={t("config.players", "Joueurs")}>
-  <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center" }}>
-    <div style={{ fontSize: 12, opacity: 0.85, fontWeight: 950 }}>
-      Sélection : {selectedIds.length}/8 — min 2
-    </div>
-  </div>
-
-  {/* Profils locaux (humains) */}
-  {humanProfiles.length === 0 ? (
-    <p style={{ fontSize: 11, color: "#b3b8d0", marginTop: 10, marginBottom: 0 }}>
-      Aucun profil local. Tu peux créer des joueurs dans <b>Profils</b>.
-    </p>
-  ) : (
-    <div
-      className="dc-scroll-thin"
-      style={{
-        display: "flex",
-        gap: 18,
-        overflowX: "auto",
-        paddingBottom: 10,
-        marginTop: 12,
-        paddingLeft: 8,
-      }}
-    >
-      {humanProfiles.map((p: any) => {
-        const active = selectedIds.includes(p.id);
-        return (
-          <div
-            key={p.id}
-            style={{
-              minWidth: 122,
-              maxWidth: 122,
-              display: "flex",
-              flexDirection: "column",
-              alignItems: "center",
-              gap: 7,
-              flexShrink: 0,
-              userSelect: "none",
-            }}
-          >
-            <div
-              role="button"
-              onClick={() =>
-                setSelectedIds((prev) => {
-                  const exists = prev.includes(p.id);
-                  if (exists) {
-                    if (prev.length <= 2) return prev;
-                    return prev.filter((x) => x !== p.id);
-                  }
-                  if (prev.length >= 8) return prev;
-                  return [...prev, p.id];
-                })
-              }
-              style={{
-                width: 78,
-                height: 78,
-                borderRadius: "50%",
-                overflow: "hidden",
-                boxShadow: active ? `0 0 28px ${primary}aa` : "0 0 14px rgba(0,0,0,0.65)",
-                background: active ? `radial-gradient(circle at 30% 20%, #fff8d0, ${primary})` : "#111320",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                cursor: "pointer",
-              }}
-              title={active ? "Cliquer pour retirer" : "Cliquer pour ajouter"}
-            >
-              <div
-                style={{
-                  width: "100%",
-                  height: "100%",
-                  borderRadius: "50%",
-                  overflow: "hidden",
-                  filter: active ? "none" : "grayscale(100%) brightness(0.55)",
-                  opacity: active ? 1 : 0.6,
-                  transition: "filter .2s ease, opacity .2s ease",
-                }}
-              >
-                <ProfileAvatar profile={p as any} size={78} />
-              </div>
-            </div>
-
-            <div
-              style={{
-                fontSize: 12,
-                fontWeight: 700,
-                textAlign: "center",
-                color: active ? "#f6f2e9" : "#7e8299",
-                maxWidth: "100%",
-                overflow: "hidden",
-                textOverflow: "ellipsis",
-                whiteSpace: "nowrap",
-              }}
-            >
-              {p.name}
-            </div>
+      <Section title={t("config.players", "Joueurs")}>
+        <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center" }}>
+          <div style={{ fontSize: 12, opacity: 0.85, fontWeight: 950 }}>
+            Sélection : {selectedIds.length}/{maxPlayers} — min {minPlayers}
           </div>
-        );
-      })}
-    </div>
-  )}
-
-  {/* Options joueurs */}
-  <div style={{ marginTop: 6 }}>
-    <OptionRow label={t("config.teams", "Mode équipes (A/B)")}>
-      <OptionToggle value={teamsEnabled} onChange={setTeamsEnabled} />
-    </OptionRow>
-
-    <OptionRow label={t("config.bots", "Bots IA")}>
-      <OptionToggle value={botsEnabled} onChange={setBotsEnabled} />
-    </OptionRow>
-
-    {botsEnabled && (
-      <OptionRow label={t("config.botLevel", "Difficulté IA")}>
-        <OptionSelect
-          value={botLevel}
-          options={[
-            { value: "easy", label: "Facile" },
-            { value: "normal", label: "Normal" },
-            { value: "hard", label: "Difficile" },
-          ]}
-          onChange={setBotLevel}
-        />
-      </OptionRow>
-    )}
-  </div>
-
-  {/* Bots IA */}
-  {botsEnabled && (
-    <div
-      style={{
-        marginTop: 10,
-        borderRadius: 16,
-        padding: 12,
-        background: cardBg,
-        border: "1px solid rgba(255,255,255,0.10)",
-      }}
-    >
-      <div style={{ fontSize: 12, opacity: 0.85, fontWeight: 950 }}>Bots : {mergedBots.length}</div>
-
-      {mergedBots.length === 0 ? (
-        <div style={{ fontSize: 12, opacity: 0.75, fontWeight: 900, marginTop: 8 }}>
-          Aucun bot trouvé. Crée des bots dans <b>Profils</b> ou via le stockage <b>dc_bots_v1</b>.
         </div>
-      ) : (
-        <div className="dc-scroll-thin" style={{ display: "flex", gap: 18, overflowX: "auto", paddingBottom: 10, marginTop: 10 }}>
-          {mergedBots.map((b) => {
-            const active = selectedIds.includes(b.id);
-            const fakeProfile = botToFakeProfile(b, botLevel);
-            return (
-              <div
-                key={b.id}
-                style={{
-                  minWidth: 122,
-                  maxWidth: 122,
-                  display: "flex",
-                  flexDirection: "column",
-                  alignItems: "center",
-                  gap: 7,
-                  flexShrink: 0,
-                  userSelect: "none",
-                }}
-              >
-                <div
-                  role="button"
-                  onClick={() =>
-                    setSelectedIds((prev) => {
-                      const exists = prev.includes(b.id);
-                      if (exists) {
-                        if (prev.length <= 2) return prev;
-                        return prev.filter((x) => x !== b.id);
-                      }
-                      if (prev.length >= 8) return prev;
-                      return [...prev, b.id];
-                    })
-                  }
-                  style={{
-                    width: 78,
-                    height: 78,
-                    borderRadius: "50%",
-                    overflow: "hidden",
-                    boxShadow: active ? `0 0 28px ${primary}aa` : "0 0 14px rgba(0,0,0,0.65)",
-                    background: active ? `radial-gradient(circle at 30% 20%, #fff8d0, ${primary})` : "#111320",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    cursor: "pointer",
-                  }}
-                  title={active ? "Cliquer pour retirer" : "Cliquer pour ajouter"}
-                >
-                  <div
-                    style={{
-                      width: "100%",
-                      height: "100%",
-                      borderRadius: "50%",
-                      overflow: "hidden",
-                      filter: active ? "none" : "grayscale(100%) brightness(0.55)",
-                      opacity: active ? 1 : 0.6,
-                      transition: "filter .2s ease, opacity .2s ease",
-                    }}
-                  >
-                    <ProfileAvatar profile={fakeProfile} size={78} showStars={false} />
-                  </div>
-                </div>
 
-                <div
-                  style={{
-                    fontSize: 12,
-                    fontWeight: 700,
-                    textAlign: "center",
-                    color: active ? "#f6f2e9" : "#7e8299",
-                    maxWidth: "100%",
-                    overflow: "hidden",
-                    textOverflow: "ellipsis",
-                    whiteSpace: "nowrap",
-                  }}
-                >
-                  {b.name}
-                </div>
+        {/* Human carousel ALWAYS visible */}
+        {humanProfiles.length === 0 ? (
+          <p style={{ fontSize: 13, color: "#b3b8d0", marginTop: 10, marginBottom: 0 }}>
+            Aucun profil local. Crée des joueurs dans <b>Profils</b>.
+          </p>
+        ) : (
+          <ProfileMedallionCarousel
+            items={humanProfiles.map(
+              (p: any): MedallionItem => ({
+                id: String(p.id),
+                name: String(p.name ?? ""),
+                profile: p,
+              })
+            )}
+            selectedIds={selectedIds}
+            onToggle={togglePlayer}
+            primary={primary}
+            primarySoft={primarySoft}
+            padLeft={8}
+          />
+        )}
+
+        <OptionRow label={t("config.bots", "Bots IA")}>
+          <OptionToggle value={botsEnabled} onChange={setBotsEnabled} />
+        </OptionRow>
+
+        {/* Bot carousel ONLY when enabled */}
+        {botsEnabled && (
+          <>
+            <OptionRow label={t("config.botLevel", "Difficulté IA")}>
+              <OptionSelect
+                value={botLevel}
+                options={[
+                  { value: "easy", label: "Easy" },
+                  { value: "normal", label: "Normal" },
+                  { value: "hard", label: "Hard" },
+                ]}
+                onChange={(v: any) => setBotLevel(v)}
+              />
+            </OptionRow>
+
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", marginTop: 8 }}>
+              <div style={{ fontSize: 12, opacity: 0.85, fontWeight: 950 }}>Bots : {userBots.length}</div>
+            </div>
+
+            {userBots.length === 0 ? (
+              <div style={{ fontSize: 12, opacity: 0.75, fontWeight: 900, marginTop: 8 }}>
+                Aucun bot personnalisé trouvé (dc_bots_v1). Crée des bots dans <b>Profils</b>.
               </div>
-            );
-          })}
-        </div>
-      )}
-    </div>
-  )}
-</Section>
+            ) : (
+              <ProfileMedallionCarousel
+                items={userBots.map(
+                  (b): MedallionItem => ({
+                    id: String(b.id),
+                    name: String(b.name ?? "BOT"),
+                    profile: {
+                      id: b.id,
+                      name: b.name,
+                      avatarUrl: normalizeImgSrc(b.avatarDataUrl),
+                      avatarDataUrl: null,
+                      isBot: true,
+                    },
+                  })
+                )}
+                selectedIds={selectedIds}
+                onToggle={togglePlayer}
+                primary={primary}
+                primarySoft={primarySoft}
+                padLeft={8}
+              />
+            )}
+          </>
+        )}
+      </Section>
 
       <Section title={t("config.rules", "Règles")}>
         <OptionRow label={t("golf.holes", "Nombre de trous")}>
-          <OptionSelect value={holes} options={[9, 18]} onChange={(v: any) => setHoles(v === 18 ? 18 : 9)} />
+          <OptionSelect
+            value={holes}
+            options={[
+              { value: 9, label: "9" },
+              { value: 18, label: "18" },
+            ]}
+            onChange={(v: any) => setHoles(Number(v) as any)}
+          />
         </OptionRow>
 
         <OptionRow label={t("golf.holeOrder", "Ordre des trous")}>
           <OptionSelect
-            value={holeOrderMode}
+            value={holeOrder}
             options={[
-              { value: "chronological", label: "Chronologique" },
-              { value: "random", label: "Aléatoire" },
+              { value: "chronological", label: t("common.chrono", "Chronologique") },
+              { value: "random", label: t("common.random", "Aléatoire") },
             ]}
-            onChange={setHoleOrderMode}
+            onChange={(v: any) => setHoleOrder(v)}
           />
         </OptionRow>
 
@@ -507,27 +297,45 @@ export default function GolfConfig(props: { store?: Store; go?: any; setTab?: an
           <OptionSelect
             value={scoringMode}
             options={[
-              { value: "strokes", label: "Strokes (score bas gagne)" },
-              { value: "points", label: "Points (score haut gagne)" },
+              { value: "strokes", label: t("golf.strokes", "Strokes (score bas gagne)") },
+              { value: "points", label: t("golf.points", "Points (score haut gagne)") },
             ]}
-            onChange={setScoringMode}
+            onChange={(v: any) => setScoringMode(v)}
           />
         </OptionRow>
 
         <OptionRow label={t("golf.missPenalty", "Pénalité si aucun hit")}>
-          <OptionSelect value={missStrokes} options={[4, 5, 6]} onChange={setMissStrokes} />
+          <OptionSelect
+            value={missStrokes}
+            options={[
+              { value: 4, label: "4" },
+              { value: 5, label: "5" },
+              { value: 6, label: "6" },
+            ]}
+            onChange={(v: any) => setMissStrokes(Number(v) as any)}
+          />
         </OptionRow>
 
-        <OptionRow label={t("golf.showGrid", "Afficher la grille des trous")}>
+        <OptionRow label={t("golf.grid", "Afficher la grille des trous")}>
           <OptionToggle value={showHoleGrid} onChange={setShowHoleGrid} />
         </OptionRow>
+
+        <OptionRow label={t("golf.teams", "Mode équipes (A/B)")}>
+          <OptionToggle value={teamsEnabled} onChange={setTeamsEnabled} />
+        </OptionRow>
       </Section>
 
-      <Section>
-        <button className="btn-primary w-full" onClick={start} disabled={selectedIds.length < 2}>
-          {t("config.startGame", "Démarrer la partie")}
+
+      <div style={{ padding: "0 14px 18px" }}>
+        <button className="btn-primary" style={{ width: "100%", opacity: canStart ? 1 : 0.55 }} disabled={!canStart} onClick={start}>
+          {t("common.start", "Démarrer la partie")}
         </button>
-      </Section>
+        {!canStart && (
+          <div style={{ fontSize: 12, opacity: 0.75, marginTop: 10, textAlign: "center" }}>
+            Sélectionne au moins {minPlayers} joueurs (humains et/ou bots).
+          </div>
+        )}
+      </div>
     </div>
   );
 }

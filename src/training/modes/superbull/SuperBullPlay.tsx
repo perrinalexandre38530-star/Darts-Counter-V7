@@ -1,76 +1,81 @@
-// SuperBullPlay — UI Play harmonisée (HUD + result)
+// ============================================
+// TRAINING — Super Bull
+// Objectif : Bull / DBull uniquement, avec streak
+// ============================================
+
 import React, { useMemo, useState } from "react";
-import TrainingShell from "../../shell/TrainingShell";
 import TrainingHeader from "../../ui/TrainingHeader";
 import TrainingFooter from "../../ui/TrainingFooter";
-import TrainingHudRow from "../../ui/TrainingHudRow";
 import TrainingResultModal from "../../ui/TrainingResultModal";
 import { TrainingEngine } from "../../engine/trainingEngine";
 import { computeTrainingStats } from "../../engine/trainingStats";
+import type { TrainingTarget } from "../../engine/trainingTypes";
 import ScoreInputHub from "../../../components/ScoreInputHub";
+import { recordTrainingSession, recordTrainingParticipantSession } from "../../stats/trainingStatsHub";
 
-export default function SuperBullPlay({
-  config,
-  onExit,
-}: {
-  config: { target: number };
-  onExit: () => void;
-}) {
-  const engine = useMemo(() => new TrainingEngine({ mode: "SUPER_BULL" }), []);
-  const [score, setScore] = useState(0);
+
+export default function SuperBullPlay({ config, onExit }: { config: any; onExit: () => void }) {
+  const engine = useMemo(
+    () =>
+      new TrainingEngine({
+        mode: "SUPER_BULL",
+      }),
+    []
+  );
+
   const [ended, setEnded] = useState(false);
+
+  function onThrow(target: TrainingTarget | null, hit: boolean, score: number) {
+    if (!hit || (target?.value !== "BULL" && target?.value !== "DBULL")) {
+      engine.finish(false);
+      setEnded(true);
+      return;
+    }
+    engine.throw(target, hit, score);
+  }
 
   const stats = computeTrainingStats(engine.state);
 
-  function pts(t: any, hit: boolean) {
-    if (!hit) return 0;
-    if (t?.value === "DBULL") return 50;
-    if (t?.value === "BULL") return 25;
-    return 0;
-  }
+  
+  const recordedRef = React.useRef(false);
+  React.useEffect(() => {
+    if (!ended) return;
+    if (recordedRef.current) return;
+    recordedRef.current = true;
 
-  return (
+    const darts = (stats as any)?.dartsThrown ?? 0;
+    const points = (stats as any)?.score ?? 0;
+
+    recordTrainingSession("training_super_bull", darts, points);
+
+    const pIds: string[] = Array.isArray(config?.selectedPlayerIds) ? config.selectedPlayerIds : [];
+    const bIds: string[] = Array.isArray(config?.selectedBotIds) ? config.selectedBotIds : [];
+
+    for (const pid of pIds) recordTrainingParticipantSession("training_super_bull", pid, "player", darts, points);
+    for (const bid of bIds) recordTrainingParticipantSession("training_super_bull", bid, "bot", darts, points);
+  }, [ended]);
+return (
     <>
-      <TrainingShell
-        header={
-          <TrainingHeader
-            title="Super Bull"
-            onBack={onExit}
-            rules={<p>BULL=25, DBULL=50. Atteins l’objectif le plus vite possible.</p>}
-          />
-        }
-        body={
+      <TrainingHeader onBack={onExit} 
+        title="ticker_superbull"
+        rules={
           <>
-            <TrainingHudRow
-              left={{ label: "Objectif", value: config.target }}
-              mid={{ label: "Score", value: score }}
-              right={{ label: "Darts", value: stats.darts }}
-            />
-            <ScoreInputHub
-              onThrow={(t: any, hit: boolean) => {
-                const p = pts(t, hit);
-                if (p <= 0) {
-                  engine.throw(t, false, 0);
-                  return;
-                }
-                setScore((s) => s + p);
-                engine.throw(t, true, p);
-                if (score + p >= config.target) {
-                  engine.finish(true);
-                  setEnded(true);
-                }
-              }}
-            />
+            <p>Seuls le Bull et le Double Bull comptent.</p>
+            <p>Une flèche ailleurs termine la session.</p>
           </>
         }
-        footer={<TrainingFooter stats={stats} />}
       />
+
+      <ScoreInputHub
+        onThrow={(t, hit, score) => onThrow(t, hit, score)}
+      />
+
+      <TrainingFooter stats={stats} />
 
       <TrainingResultModal
         open={ended}
-        success={true}
-        title="Objectif atteint"
         stats={stats}
+        success={engine.state.success === true}
         onClose={onExit}
       />
     </>

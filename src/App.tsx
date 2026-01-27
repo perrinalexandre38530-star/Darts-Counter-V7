@@ -2609,7 +2609,7 @@ function App() {
           page = <div style={{ padding: 16 }}>Mode Training manquant</div>;
           break;
         }
-        page = <TrainingModePage modeId={modeId} onExit={() => go("training")} />;
+        page = <TrainingModePage modeId={modeId} profiles={store.profiles ?? []} onExit={() => go("training")} />;
         break;
       }
 
@@ -2789,14 +2789,14 @@ function App() {
         break;
 
       case "scram_config":
-        page = <ScramConfig setTab={go} params={routeParams} />;
+        page = <ScramConfig store={store} go={go} setTab={go} params={routeParams} />;
         break;
       case "scram_play":
         page = <ScramPlay setTab={go} params={routeParams} />;
         break;
 
       case "golf_config":
-        page = <GolfConfig setTab={go} params={routeParams} />;
+        page = <GolfConfig store={store} go={go} setTab={go} params={routeParams} />;
         break;
       case "golf_play":
         page = <GolfPlay setTab={go} params={routeParams} />;

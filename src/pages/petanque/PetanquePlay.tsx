@@ -220,6 +220,8 @@ type PlayerStats = {
   bec: number;
   butAnnulation: number;
   butPoint: number;
+  pousseeAssist: number;
+  pousseeConcede: number;
 };
 
 const EMPTY_STATS: PlayerStats = {
@@ -230,6 +232,23 @@ const EMPTY_STATS: PlayerStats = {
   bec: 0,
   butAnnulation: 0,
   butPoint: 0,
+  pousseeAssist: 0,
+  pousseeConcede: 0,
+};
+
+
+// UI meta pour les KPI stats (couleurs + icônes temporaires)
+// (les icônes seront remplacées par vos icônes pétanque custom)
+const STAT_UI: Record<string, { icon: string; color: string; tip: string }> = {
+  points: { icon: "🏁", color: "#f7c85c", tip: "Points marqués" },
+  pointage: { icon: "📍", color: "#7dd3fc", tip: "Pointage / placement" },
+  tirReussi: { icon: "🎯", color: "#fb7185", tip: "Tir réussi" },
+  carreau: { icon: "💥", color: "#22d3ee", tip: "Carreau" },
+  bec: { icon: "🪨", color: "#f59e0b", tip: "Bec (touche)" },
+  trou: { icon: "🕳️", color: "#a3a3a3", tip: "Trou / manqué" },
+  butAnnulation: { icon: "🚫", color: "#f87171", tip: "But KO (annulation)" },
+  butPoint: { icon: "✅", color: "#34d399", tip: "But + (point sur but)" },
+  poussee: { icon: "🟣", color: "#a78bfa", tip: "Poussée (assist / concede)" },
 };
 
 function clamp0(n: number) {
@@ -459,6 +478,19 @@ function extractTeams(st: any, matchCfg: any): { A: TeamLine; B: TeamLine } {
     if (!B.players.length && b2.length) B.players = normalizePlayers(b2, profilesIndex);
   }
 
+
+  // ✅ Fallback SOLO (1v1) : cfg.players[] sans team (ordre A=0, B=1)
+  // Dans PetanqueConfig, en mode singles, `teams` peut être undefined mais `players` est toujours présent.
+  // On affecte donc automatiquement les 2 premiers joueurs à A/B pour afficher noms + avatars médaillons.
+  if ((!A.players.length || !B.players.length) && Array.isArray(matchCfg?.players)) {
+    const modeGuess = asStr(matchCfg?.mode ?? matchCfg?.cfg?.mode).toLowerCase();
+    const global = normalizePlayers(matchCfg.players, profilesIndex);
+    if (global.length >= 2 && (modeGuess === "singles" || modeGuess === "1v1" || modeGuess === "simple")) {
+      if (!A.players.length) A.players = [global[0]];
+      if (!B.players.length) B.players = [global[1]];
+    }
+  }
+
   return { A, B };
 }
 
@@ -478,6 +510,10 @@ function statLabel(k: keyof PlayerStats) {
       return "But KO";
     case "butPoint":
       return "But +";
+    case "pousseeAssist":
+      return "Poussée +";
+    case "pousseeConcede":
+      return "Poussée −";
     default:
       return k;
   }
@@ -492,6 +528,7 @@ function PetanqueHeaderArcade(props: {
   allowMeasurements: boolean;
   onMeasure: () => void;
   isFfa3: boolean;
+  isSingles?: boolean;
 
   teams?: { A: TeamLine; B: TeamLine };
   scoreA?: number;
@@ -538,6 +575,17 @@ function PetanqueHeaderArcade(props: {
       : null) ||
     null;
 
+  const isSingles = !!props.isSingles;
+
+  const nameA =
+    isSingles
+      ? prettyPlayerName(teams?.A?.players?.[0]?.name ?? "", "Joueur A")
+      : teams?.A?.name || "TEAM A";
+
+  const nameB =
+    isSingles
+      ? prettyPlayerName(teams?.B?.players?.[0]?.name ?? "", "Joueur B")
+      : teams?.B?.name || "TEAM B";
     return (
       <div
         style={{
@@ -690,9 +738,9 @@ function PetanqueHeaderArcade(props: {
                       overflow: "hidden",
                       textOverflow: "ellipsis",
                     }}
-                    title={teams?.A?.name || "TEAM A"}
+                    title={nameA}
                   >
-                    {teams?.A?.name || "TEAM A"}
+                    {nameA}
                   </div>
                 </div>
     
@@ -824,9 +872,9 @@ function PetanqueHeaderArcade(props: {
                       textOverflow: "ellipsis",
                       textAlign: "right",
                     }}
-                    title={teams?.B?.name || "TEAM B"}
+                    title={nameB}
                   >
-                    {teams?.B?.name || "TEAM B"}
+                    {nameB}
                   </div>
                 </div>
               </div>
@@ -952,6 +1000,21 @@ React.useEffect(() => {
   // ==========================================
   const teams = React.useMemo(() => extractTeams(stSafe as any, matchCfg), [stSafe, matchCfg]);
 
+  const isSingles = matchMode === "singles";
+
+  const sideLabel = React.useCallback(
+    (tid: "A" | "B") => {
+      if (!teams) return tid === "A" ? "Joueur A" : "Joueur B";
+      if (!isSingles) return tid === "A" ? teams.A.name : teams.B.name;
+      const nm = tid === "A" ? teams.A.players?.[0]?.name ?? "" : teams.B.players?.[0]?.name ?? "";
+      return prettyPlayerName(nm, tid === "A" ? "Joueur A" : "Joueur B");
+    },
+    [isSingles, teams]
+  );
+
+  const [showAdvanced, setShowAdvanced] = React.useState(false);
+
+
   const matchKey = React.useMemo(() => {
     const id =
       (st as any)?.matchId ??
@@ -1016,11 +1079,37 @@ React.useEffect(() => {
   const [endTeam, setEndTeam] = React.useState<PetanqueTeamId>("A");
   const [endPts, setEndPts] = React.useState<number>(1);
   const [endNote, setEndNote] = React.useState<string>("");
+  const [endStatPlayerId, setEndStatPlayerId] = React.useState<string | null>(null);
+  const [endLegendOpen, setEndLegendOpen] = React.useState(false);
+  const [endPushPick, setEndPushPick] = React.useState(false);
+  const [endMeneStats, setEndMeneStats] = React.useState<Record<string, number>>(() => ({
+    carreau: 0,
+    tirReussi: 0,
+    trou: 0,
+    bec: 0,
+    butAnnulation: 0,
+    butPoint: 0,
+    pousseeAssist: 0,
+    pousseeConcede: 0,
+  }));
 
   const openEndSheet = React.useCallback((team: PetanqueTeamId) => {
     setEndTeam(team);
     setEndPts(1);
     setEndNote("");
+    setEndStatPlayerId(null);
+    setEndLegendOpen(false);
+    setEndPushPick(false);
+    setEndMeneStats({
+      carreau: 0,
+      tirReussi: 0,
+      trou: 0,
+      bec: 0,
+      butAnnulation: 0,
+      butPoint: 0,
+      pousseeAssist: 0,
+      pousseeConcede: 0,
+    });
     setEndSheetOpen(true);
   }, []);
 
@@ -1116,6 +1205,16 @@ React.useEffect(() => {
   const commitEndFromSheet = React.useCallback(() => {
     // ✅ On réutilise TON flux existant (store + maybeOpenAssignPoints)
     onAdd(endTeam, endPts);
+    // ✅ SUITE 1 (1v1): attribution MANUELLE des actions/stats à un joueur choisi
+    if (matchMode === "singles" && endStatPlayerId) {
+      const entries = Object.entries(endMeneStats || {});
+      for (const [k, v] of entries) {
+        const n = Number(v) || 0;
+        if (!n) continue;
+        bumpPlayerStat(endStatPlayerId, k as any, n);
+      }
+    }
+
 
     // note optionnelle : si tu veux l’attacher à l’historique des mènes,
     // il faudrait étendre petanqueStore. Pour l’instant on la garde en UI.
@@ -1169,10 +1268,10 @@ React.useEffect(() => {
   const manualText = React.useMemo(() => {
     if (!canComputeManual) return "Renseigne les 2 distances (cm).";
     if (manualWinner === "TIE") return `Égalité (≤ ${tolN} cm) — à re-mesurer`;
-    if (manualWinner === "A") return `${teams.A.name} est devant (+${deltaManual.toFixed(1)} cm)`;
-    if (manualWinner === "B") return `${teams.B.name} est devant (+${deltaManual.toFixed(1)} cm)`;
+    if (manualWinner === "A") return `${sideLabel("A")} est devant (+${deltaManual.toFixed(1)} cm)`;
+    if (manualWinner === "B") return `${sideLabel("B")} est devant (+${deltaManual.toFixed(1)} cm)`;
     return "";
-  }, [canComputeManual, manualWinner, tolN, deltaManual, teams.A.name, teams.B.name]);
+  }, [canComputeManual, manualWinner, tolN, deltaManual, sideLabel("A"), sideLabel("B")]);
 
   const onSaveManual = () => {
     if (!canComputeManual) return;
@@ -1819,6 +1918,7 @@ React.useEffect(() => {
         allowMeasurements={allowMeasurements}
         onMeasure={() => setMeasureOpen(true)}
         isFfa3={isFfa3}
+        isSingles={matchMode === "singles"}
         teams={teams}
         scoreA={(st as any).scoreA ?? 0}
         scoreB={(st as any).scoreB ?? 0}
@@ -1831,7 +1931,7 @@ React.useEffect(() => {
 
       <div style={{ paddingTop: headerPad, display: "flex", flexDirection: "column", gap: 12 }}>
         {/* ✅ COMPOSITION (2 colonnes côte à côte) */}
-{!isFfa3 && (
+{!isFfa3 && matchMode !== "singles" && (
   <div className="card" style={card(theme)}>
     <div className="subtitle" style={sub(theme)}>ÉQUIPES</div>
 
@@ -1922,20 +2022,22 @@ React.useEffect(() => {
   <div className="card" style={card(theme)}>
     <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
       <div className="subtitle" style={sub(theme)}>STATS — Résumé</div>
-      <div className="subtitle" style={muted(theme)}>Top 3 par stat</div>
+      <div className="subtitle" style={muted(theme)}>{matchMode === "singles" ? "Top par stat" : "Top 3 par stat"}</div>
     </div>
 
     {(() => {
       const all = [...teams.A.players, ...teams.B.players];
 
-      const defs: Array<{ k: keyof PlayerStats; label: string }> = [
-        { k: "points", label: "Points" },
-        { k: "carreau", label: "Carreau" },
-        { k: "tirReussi", label: "Tir OK" },
-        { k: "trou", label: "Trou" },
-        { k: "bec", label: "Bec" },
-        { k: "butAnnulation", label: "But KO" },
-        { k: "butPoint", label: "But +" },
+      const defs: Array<{ k: keyof PlayerStats; label: string; uiKey: string }> = [
+        { k: "points", label: "Points", uiKey: "points" },
+        { k: "carreau", label: "Carreau", uiKey: "carreau" },
+        { k: "tirReussi", label: "Tir OK", uiKey: "tirReussi" },
+        { k: "trou", label: "Trou", uiKey: "trou" },
+        { k: "bec", label: "Bec", uiKey: "bec" },
+        { k: "butAnnulation", label: "But KO", uiKey: "butAnnulation" },
+        { k: "butPoint", label: "But +", uiKey: "butPoint" },
+        { k: "pousseeAssist", label: "Poussée +", uiKey: "poussee" },
+        { k: "pousseeConcede", label: "Poussée −", uiKey: "poussee" },
       ];
 
       const top3 = (k: keyof PlayerStats) =>
@@ -1957,10 +2059,43 @@ React.useEffect(() => {
             const rows = top3(d.k);
 
             return (
-              <div key={String(d.k)} className="card" style={cardSoft(theme)}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 10 }}>
-                  <div className="subtitle" style={sub(theme)}>{d.label}</div>
-                  <div className="subtitle" style={muted(theme)}>Top</div>
+              <div
+                key={String(d.k)}
+                className="card"
+                style={{
+                  ...cardSoft(theme),
+                  border: `1px solid ${cssVarOr("rgba(255,255,255,0.10)", "--stroke")}`,
+                  boxShadow: `0 0 22px ${(STAT_UI[d.uiKey]?.color ?? "#ffffff")}22`,
+                }}
+              >
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
+                    <div
+                      style={{
+                        width: 30,
+                        height: 30,
+                        borderRadius: 999,
+                        display: "grid",
+                        placeItems: "center",
+                        background: `${(STAT_UI[d.uiKey]?.color ?? "#ffffff")}18`,
+                        border: `1px solid ${(STAT_UI[d.uiKey]?.color ?? "#ffffff")}55`,
+                        boxShadow: `0 0 18px ${(STAT_UI[d.uiKey]?.color ?? "#ffffff")}33`,
+                        flex: "0 0 auto",
+                      }}
+                      title={STAT_UI[d.uiKey]?.tip ?? d.label}
+                    >
+                      <span style={{ fontSize: 14 }}>{STAT_UI[d.uiKey]?.icon ?? "•"}</span>
+                    </div>
+
+                    <div style={{ minWidth: 0 }}>
+                      <div className="subtitle" style={{ ...sub(theme), whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                        {d.label}
+                      </div>
+                      <div className="subtitle" style={muted(theme)}>
+                        {matchMode === "singles" ? "Top" : "Top 3"}
+                      </div>
+                    </div>
+                  </div>
                 </div>
 
                 {!rows.length ? (
@@ -2002,7 +2137,7 @@ React.useEffect(() => {
 )}
 
                 {/* ✅ STATS JOUEURS (COMPACT) */}
-                {!isFfa3 && (
+                {!isFfa3 && matchMode !== "singles" && (
           <div className="card" style={card(theme)}>
             <div
               style={{
@@ -2038,8 +2173,8 @@ React.useEffect(() => {
             ) : (
               <div style={{ display: "grid", gap: 10 }}>
                 {[
-                  { label: teams.A.name, color: pickTeamColor(theme, "A"), list: teams.A.players },
-                  { label: teams.B.name, color: pickTeamColor(theme, "B"), list: teams.B.players },
+                  { label: sideLabel("A"), color: pickTeamColor(theme, "A"), list: teams.A.players },
+                  { label: sideLabel("B"), color: pickTeamColor(theme, "B"), list: teams.B.players },
                 ].map((g, gi) => (
                   <div key={gi} className="card" style={cardSoft(theme)}>
                     <div className="subtitle" style={{ ...sub(theme), color: g.color }}>
@@ -2176,7 +2311,30 @@ React.useEffect(() => {
         </div>
 
         {/* ✅ MESURES (historique) */}
-        <div className="card" style={card(theme)}>
+        {/* ✅ OPTIONS AVANCÉES (replié en 1v1) */}
+        {isSingles && (
+          <div className="card" style={card(theme)}>
+            <button
+              className="btn ghost"
+              style={{
+                ...ghost(theme),
+                width: "100%",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                padding: "12px 14px",
+                borderRadius: 16,
+              }}
+              onClick={() => setShowAdvanced((v) => !v)}
+            >
+              <span style={{ fontWeight: 950, letterSpacing: 0.6 }}>Options avancées</span>
+              <span style={{ opacity: 0.85 }}>{showAdvanced ? "▲" : "▼"}</span>
+            </button>
+          </div>
+        )}
+
+        {(!isSingles || showAdvanced) && (<>
+s*<div className="card" style={card(theme)}>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
             <div className="subtitle" style={sub(theme)}>
               Mesurages
@@ -2200,7 +2358,7 @@ React.useEffect(() => {
             <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
               {measurements.slice(0, 8).map((m) => {
                 const who =
-                  m.winner === "TIE" ? "Égalité" : m.winner === "A" ? teams.A.name : teams.B.name;
+                  m.winner === "TIE" ? "Égalité" : m.winner === "A" ? sideLabel("A") : sideLabel("B");
                 return (
                   <div key={m.id} style={endRow(theme)}>
                     <div className="badge" style={pill(theme)}>
@@ -2256,7 +2414,7 @@ React.useEffect(() => {
               {(st as any).ends.map((e: any, idx: number) => (
                 <div key={e.id} style={endRow(theme)}>
                   <div className="badge" style={pill(theme)}>
-                    {e.winner === "A" ? teams.A.name : teams.B.name}
+                    {e.winner === "A" ? sideLabel("A") : sideLabel("B")}
                   </div>
                   <div style={endTxt(theme)}>
                     +{e.points} — mène #{(st as any).ends.length - idx}
@@ -2267,6 +2425,7 @@ React.useEffect(() => {
           )}
         </div>
 
+        </>)}
         {/* =========================================================
     ✅ SHEET "MÈNE" (points + validation) — déclenché par + sous score
 ========================================================= */}
@@ -2304,7 +2463,7 @@ React.useEffect(() => {
             Mène jouée
           </div>
           <div className="subtitle" style={muted(theme)}>
-            Équipe : {endTeam === "A" ? teams.A.name : teams.B.name}
+            {matchMode === "singles" ? "Joueur" : "Équipe"} : {endTeam === "A" ? (matchMode === "singles" ? prettyPlayerName(teams.A.players?.[0]?.name ?? sideLabel("A"), "Joueur A") : sideLabel("A")) : (matchMode === "singles" ? prettyPlayerName(teams.B.players?.[0]?.name ?? sideLabel("B"), "Joueur B") : sideLabel("B"))}
           </div>
         </div>
 
@@ -2333,8 +2492,226 @@ React.useEffect(() => {
         <div style={{ marginTop: 10 }}>
           <div className="subtitle" style={label(theme)}>Sélection</div>
           <div className="badge" style={pill(theme)}>
-            {endTeam === "A" ? teams.A.name : teams.B.name} — +{endPts}
+            {endTeam === "A" ? (matchMode === "singles" ? prettyPlayerName(teams.A.players?.[0]?.name ?? sideLabel("A"), "Joueur A") : sideLabel("A")) : (matchMode === "singles" ? prettyPlayerName(teams.B.players?.[0]?.name ?? sideLabel("B"), "Joueur B") : sideLabel("B"))} — +{endPts}
           </div>
+
+        {/* =========================================================
+            ✅ SUITE 1 — Attribution MANUELLE des actions/stats (1v1)
+        ========================================================== */}
+        {matchMode === "singles" && (
+          <div style={{ marginTop: 14 }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+              <div className="subtitle" style={label(theme)}>Attribuer les actions à</div>
+              <button
+                className="btn ghost"
+                style={{ ...ghost(theme), height: 34, width: 34, padding: 0, borderRadius: 999, border: `1px solid ${cssVarOr("rgba(255,255,255,0.18)", "--stroke")}`, boxShadow: `0 0 14px rgba(255,255,255,0.12)` }}
+                onClick={() => setEndLegendOpen((v) => !v)}
+                title="Légende des stats"
+              >
+                ℹ︎
+              </button>
+            </div>
+
+            {/* Sélecteur joueur */}
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 10, marginTop: 8 }}>
+              {(["A", "B"] as const).map((side) => {
+                const t = side === "A" ? teams.A : teams.B;
+                const p = t.players?.[0];
+                const pid = asStr(p?.id ?? `${side}`);
+                const nm = prettyPlayerName(p?.name ?? t.name, side === "A" ? "Joueur A" : "Joueur B");
+                const col = pickTeamColor(theme, side);
+                const isOn = endStatPlayerId === pid;
+
+                return (
+                  <button
+                    key={side}
+                    className="btn"
+                    style={{
+                      ...ptBtn(theme),
+                      padding: 10,
+                      height: "auto",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 10,
+                      justifyContent: "flex-start",
+                      border: `1px solid ${isOn ? col : cssVarOr("rgba(255,255,255,0.10)", "--stroke")}`,
+                      boxShadow: isOn ? `0 0 18px ${col}44` : "none",
+                      opacity: 1,
+                    }}
+                    onClick={() => setEndStatPlayerId(pid)}
+                  >
+                    <MedallionAvatar
+                      src={p?.profile ? getAvatarSrc(p.profile) : null}
+                      size={46}
+                      border={`${col}88`}
+                      glow={`${col}28`}
+                      fallback={(nm || "?").slice(0, 1).toUpperCase()}
+                    />
+                    <div style={{ minWidth: 0, textAlign: "left" }}>
+                      <div style={{ fontWeight: 1100 as any, fontSize: 13, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                        {nm}
+                      </div>
+                      <div className="subtitle" style={{ ...muted(theme), fontSize: 11 }}>
+                        {isOn ? "Sélectionné" : "Tap pour sélectionner"}
+                      </div>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* KPI stats */}
+            <div style={{ marginTop: 12 }}>
+              <div className="subtitle" style={label(theme)}>Détails stats</div>
+
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+                  gap: 10,
+                  marginTop: 8,
+                  opacity: endStatPlayerId ? 1 : 0.45,
+                  pointerEvents: endStatPlayerId ? "auto" : "none",
+                }}
+              >
+                {[
+                  ["tirReussi", "Tir OK"],
+                  ["carreau", "Carreau"],
+                  ["bec", "Bec"],
+                  ["trou", "Trou"],
+                  ["butAnnulation", "But KO"],
+                  ["butPoint", "But +"],
+                ].map(([k, lab]) => {
+                  const val = Number((endMeneStats as any)?.[k] ?? 0) || 0;
+                  const ui = (STAT_UI as any)[k] ?? { icon: "•", color: cssVarOr(theme.primary, "--accent"), tip: lab };
+
+                  return (
+                    <button
+                      key={k}
+                      className="btn"
+                      style={{ ...ptBtn(theme), display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 12px", border: `1px solid ${ui.color}55`, background: `${ui.color}12`, boxShadow: `0 0 18px ${ui.color}22` }}
+                      onClick={() =>
+                        setEndMeneStats((s: any) => ({ ...s, [k]: (Number(s?.[k] ?? 0) || 0) + 1 }))
+                      }
+                      title={endStatPlayerId ? "Ajouter +1" : "Sélectionne un joueur"}
+                    >
+                      <span style={{ display: "flex", alignItems: "center", gap: 8, fontWeight: 1000 as any }}><span style={{ width: 22, height: 22, borderRadius: 999, display: "grid", placeItems: "center", background: `${ui.color}22`, border: `1px solid ${ui.color}55`, boxShadow: `0 0 14px ${ui.color}22` }}>{ui.icon}</span><span>{lab}</span></span>
+                      <span className="badge" style={pill(theme)}>+{val}</span>
+                    </button>
+                  );
+                })}
+
+                {/* Poussée (Push) : mini choix assist / concede */}
+                <button
+                  className="btn"
+                  style={{
+                    ...ptBtn(theme),
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                    padding: "10px 12px",
+                    gridColumn: "1 / -1",
+                    border: `1px solid ${STAT_UI.poussee.color}66`,
+                    background: `${STAT_UI.poussee.color}12`,
+                    boxShadow: `0 0 18px ${STAT_UI.poussee.color}22`,
+                  }}
+                  onClick={() => setEndPushPick(true)}
+                  title={endStatPlayerId ? "Ajouter une poussée (choix rapide)" : "Sélectionne un joueur"}
+                >
+                  <span style={{ display: "flex", alignItems: "center", gap: 8, fontWeight: 1000 as any }}><span style={{ width: 22, height: 22, borderRadius: 999, display: "grid", placeItems: "center", background: `${STAT_UI.poussee.color}22`, border: `1px solid ${STAT_UI.poussee.color}66`, boxShadow: `0 0 14px ${STAT_UI.poussee.color}22` }}>{STAT_UI.poussee.icon}</span><span>Poussée</span></span>
+                  <span className="badge" style={pill(theme)}>
+                    +{(Number((endMeneStats as any)?.pousseeAssist ?? 0) || 0) + (Number((endMeneStats as any)?.pousseeConcede ?? 0) || 0)}
+                  </span>
+                </button>
+              </div>
+
+              {/* mini choix poussee */}
+              {endPushPick && (
+                <div style={{ marginTop: 10, display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 10 }}>
+                  <button
+                    className="btn"
+                    style={{ ...ptBtn(theme), padding: 10 }}
+                    onClick={() => {
+                      setEndMeneStats((s: any) => ({ ...s, pousseeAssist: (Number(s?.pousseeAssist ?? 0) || 0) + 1 }));
+                      setEndPushPick(false);
+                    }}
+                  >
+                    Assist (+)
+                  </button>
+                  <button
+                    className="btn"
+                    style={{ ...ptBtn(theme), padding: 10 }}
+                    onClick={() => {
+                      setEndMeneStats((s: any) => ({ ...s, pousseeConcede: (Number(s?.pousseeConcede ?? 0) || 0) + 1 }));
+                      setEndPushPick(false);
+                    }}
+                  >
+                    Concede (−)
+                  </button>
+                </div>
+              )}
+
+              {/* légende */}
+              {endLegendOpen && (
+                <div className="card" style={{ ...cardSoft(theme), marginTop: 12 }}>
+                  <div className="subtitle" style={sub(theme)}>Légende</div>
+                  <div className="subtitle" style={muted(theme)}>
+                    Les points appartiennent au tableau (équipe). Les actions ci-dessous sont créditées au joueur sélectionné, indépendamment du gain de la mène.
+                  </div>
+                  
+                  <div style={{ marginTop: 12, display: "grid", gap: 10 }}>
+                    {[
+                      ["tirReussi", "Tir OK", "Tir réussi (impact utile)."],
+                      ["carreau", "Carreau", "Tir + reprise du point."],
+                      ["bec", "Bec", "Touche / bec (action de tir ou collision)."],
+                      ["trou", "Trou", "Tir manqué / trou."],
+                      ["butAnnulation", "But KO", "Annulation / but sorti / point annulé."],
+                      ["butPoint", "But +", "Point sur but / bonus."],
+                      ["poussee", "Poussée", "Assist = j’ai poussé une boule amie qui devient point. Concede = j’ai poussé une boule adverse qui devient point."],
+                    ].map(([k, title, desc]) => {
+                      const ui = (STAT_UI as any)[k] ?? { icon: "•", color: "#ffffff", tip: title };
+                      return (
+                        <div
+                          key={k}
+                          style={{
+                            display: "flex",
+                            alignItems: "flex-start",
+                            gap: 10,
+                            padding: "10px 10px",
+                            borderRadius: 14,
+                            border: `1px solid ${ui.color}44`,
+                            background: `${ui.color}0f`,
+                            boxShadow: `0 0 16px ${ui.color}18`,
+                          }}
+                        >
+                          <div
+                            style={{
+                              width: 30,
+                              height: 30,
+                              borderRadius: 999,
+                              display: "grid",
+                              placeItems: "center",
+                              background: `${ui.color}22`,
+                              border: `1px solid ${ui.color}55`,
+                              boxShadow: `0 0 14px ${ui.color}22`,
+                              flex: "0 0 auto",
+                            }}
+                          >
+                            <span style={{ fontSize: 14 }}>{ui.icon}</span>
+                          </div>
+                          <div style={{ minWidth: 0 }}>
+                            <div className="subtitle" style={{ ...sub(theme), marginBottom: 2 }}>{title}</div>
+                            <div className="subtitle" style={muted(theme)}>{desc}</div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
         </div>
 
         <div style={{ marginTop: 10 }}>
@@ -2585,7 +2962,7 @@ React.useEffect(() => {
                     Attribution des points
                   </div>
                   <div className="subtitle" style={muted(theme)}>
-                    {pendingAssign.team === "A" ? teams.A.name : teams.B.name} — +
+                    {pendingAssign.team === "A" ? sideLabel("A") : sideLabel("B")} — +
                     {pendingAssign.pts}
                   </div>
                 </div>
@@ -2841,7 +3218,7 @@ React.useEffect(() => {
                   <div style={grid2}>
                     <div className="card" style={cardSoft(theme)}>
                       <div className="subtitle" style={sub(theme)}>
-                        {teams.A.name}
+                        {sideLabel("A")}
                       </div>
                       <input
                         className="input"
@@ -2855,7 +3232,7 @@ React.useEffect(() => {
 
                     <div className="card" style={cardSoft(theme)}>
                       <div className="subtitle" style={sub(theme)}>
-                        {teams.B.name}
+                        {sideLabel("B")}
                       </div>
                       <input
                         className="input"
@@ -2954,14 +3331,14 @@ React.useEffect(() => {
                         style={modeBtn(theme, addSide === "A")}
                         onClick={() => setAddSide("A")}
                       >
-                        Ajouter {teams.A.name}
+                        Ajouter {sideLabel("A")}
                       </button>
                       <button
                         className="btn"
                         style={modeBtn(theme, addSide === "B")}
                         onClick={() => setAddSide("B")}
                       >
-                        Ajouter {teams.B.name}
+                        Ajouter {sideLabel("B")}
                       </button>
                       <button
                         className="btn ghost"
@@ -3230,7 +3607,7 @@ React.useEffect(() => {
                           onClick={() => setAssignSide("A")}
                           disabled={!liveOn}
                         >
-                          Assigner {teams.A.name}
+                          Assigner {sideLabel("A")}
                         </button>
                         <button
                           className="btn"
@@ -3238,7 +3615,7 @@ React.useEffect(() => {
                           onClick={() => setAssignSide("B")}
                           disabled={!liveOn}
                         >
-                          Assigner {teams.B.name}
+                          Assigner {sideLabel("B")}
                         </button>
 
                         <button
@@ -3258,7 +3635,7 @@ React.useEffect(() => {
                           onClick={() => setLiveAddSide("A")}
                           disabled={!liveOn}
                         >
-                          Ajouter {teams.A.name}
+                          Ajouter {sideLabel("A")}
                         </button>
                         <button
                           className="btn"
@@ -3266,7 +3643,7 @@ React.useEffect(() => {
                           onClick={() => setLiveAddSide("B")}
                           disabled={!liveOn}
                         >
-                          Ajouter {teams.B.name}
+                          Ajouter {sideLabel("B")}
                         </button>
                       </>
                     )}
@@ -3499,8 +3876,8 @@ React.useEffect(() => {
                             : autoWinner === "TIE"
                             ? "Égalité"
                             : autoWinner === "A"
-                            ? teams.A.name
-                            : teams.B.name}
+                            ? sideLabel("A")
+                            : sideLabel("B")}
                           {" — "}
                           Détection: {detectOn ? "ON" : "OFF"}
                         </>

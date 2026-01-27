@@ -25,6 +25,7 @@ import type { CricketProfileStats } from "../lib/cricketStats";
 // ✅ KEEP en import normal (léger / utilisé souvent)
 import StatsX01Compare from "./StatsX01Compare";
 import StatsTrainingSummary from "../components/stats/StatsTrainingSummary";
+import StatsTrainingModesLocal from "../components/stats/StatsTrainingModesLocal";
 import { useCurrentProfile } from "../hooks/useCurrentProfile";
 import { computeKillerAggForPlayer } from "../lib/statsKillerAgg";
 
@@ -4393,6 +4394,7 @@ if (tab === "training") {
   return (
     <div style={{ padding: 16, paddingBottom: 80 }}>
       <TrainingX01StatsTab />
+      <StatsTrainingModesLocal />
     </div>
   );
 }

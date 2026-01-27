@@ -1,73 +1,87 @@
-// GhostModePlay — UI Play harmonisée (HUD + result)
+// ============================================
+// TRAINING — Ghost Mode
+// Objectif : jouer contre une moyenne cible (ghost)
+// ============================================
+
 import React, { useMemo, useState } from "react";
-import TrainingShell from "../../shell/TrainingShell";
 import TrainingHeader from "../../ui/TrainingHeader";
 import TrainingFooter from "../../ui/TrainingFooter";
-import TrainingHudRow from "../../ui/TrainingHudRow";
 import TrainingResultModal from "../../ui/TrainingResultModal";
 import { TrainingEngine } from "../../engine/trainingEngine";
 import { computeTrainingStats } from "../../engine/trainingStats";
+import type { TrainingTarget } from "../../engine/trainingTypes";
 import ScoreInputHub from "../../../components/ScoreInputHub";
 
-export default function GhostModePlay({
-  config,
-  onExit,
-}: {
-  config: { avg: number };
-  onExit: () => void;
-}) {
-  const engine = useMemo(() => new TrainingEngine({ mode: "GHOST", maxDarts: 30 }), []);
-  const [darts, setDarts] = useState(0);
+const GHOST_AVG = 60;
+const MAX_DARTS = 30;
+import { recordTrainingSession, recordTrainingParticipantSession } from "../../stats/trainingStatsHub";
+
+
+export default function GhostModePlay({ config, onExit }: { config: any; onExit: () => void }) {
+  const engine = useMemo(
+    () =>
+      new TrainingEngine({
+        mode: "GHOST",
+        maxDarts: MAX_DARTS,
+      }),
+    []
+  );
+
   const [ended, setEnded] = useState(false);
-  const [success, setSuccess] = useState(false);
+
+  function onThrow(target: TrainingTarget | null, hit: boolean, score: number) {
+    engine.throw(target, hit, score);
+
+    if (engine.state.darts.length >= MAX_DARTS) {
+      const avg =
+        engine.state.score / (engine.state.darts.length / 3);
+      engine.finish(avg >= GHOST_AVG);
+      setEnded(true);
+    }
+  }
 
   const stats = computeTrainingStats(engine.state);
 
-  function finish() {
-    const myAvg = engine.state.score / 10;
-    const ok = myAvg >= config.avg;
-    engine.finish(ok);
-    setSuccess(ok);
-    setEnded(true);
-  }
+  
+  const recordedRef = React.useRef(false);
+  React.useEffect(() => {
+    if (!ended) return;
+    if (recordedRef.current) return;
+    recordedRef.current = true;
 
-  return (
+    const darts = (stats as any)?.dartsThrown ?? 0;
+    const points = (stats as any)?.score ?? 0;
+
+    recordTrainingSession("training_ghost", darts, points);
+
+    const pIds: string[] = Array.isArray(config?.selectedPlayerIds) ? config.selectedPlayerIds : [];
+    const bIds: string[] = Array.isArray(config?.selectedBotIds) ? config.selectedBotIds : [];
+
+    for (const pid of pIds) recordTrainingParticipantSession("training_ghost", pid, "player", darts, points);
+    for (const bid of bIds) recordTrainingParticipantSession("training_ghost", bid, "bot", darts, points);
+  }, [ended]);
+return (
     <>
-      <TrainingShell
-        header={
-          <TrainingHeader
-            title="Ghost"
-            onBack={onExit}
-            rules={<p>30 flèches. Objectif: moyenne ≥ {config.avg}.</p>}
-          />
-        }
-        body={
+      <TrainingHeader onBack={onExit} 
+        title="ticker_ghost"
+        rules={
           <>
-            <TrainingHudRow
-              left={{ label: "Objectif", value: config.avg }}
-              mid={{ label: "Darts", value: `${darts}/30` }}
-              right={{ label: "Score", value: stats.score }}
-            />
-            <ScoreInputHub
-              onThrow={(t: any, hit: boolean, score: number) => {
-                engine.throw(t, hit, score);
-                setDarts((d) => {
-                  const next = d + 1;
-                  if (next >= 30) finish();
-                  return next;
-                });
-              }}
-            />
+            <p>Affronte un ghost à {GHOST_AVG} de moyenne.</p>
+            <p>30 flèches pour faire mieux.</p>
           </>
         }
-        footer={<TrainingFooter stats={stats} />}
       />
+
+      <ScoreInputHub
+        onThrow={(t, hit, score) => onThrow(t, hit, score)}
+      />
+
+      <TrainingFooter stats={stats} />
 
       <TrainingResultModal
         open={ended}
-        success={success}
-        title={success ? "Ghost battu" : "Ghost perdu"}
         stats={stats}
+        success={engine.state.success === true}
         onClose={onExit}
       />
     </>

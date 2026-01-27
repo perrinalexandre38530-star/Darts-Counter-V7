@@ -1,95 +1,87 @@
-// RepeatMasterPlay — UI Play harmonisée (HUD + result)
+// ============================================
+// TRAINING — Repeat Master
+// Objectif : répéter la même cible le plus longtemps possible
+// ============================================
+
 import React, { useMemo, useState } from "react";
-import TrainingShell from "../../shell/TrainingShell";
 import TrainingHeader from "../../ui/TrainingHeader";
 import TrainingFooter from "../../ui/TrainingFooter";
-import TrainingHudRow from "../../ui/TrainingHudRow";
 import TrainingResultModal from "../../ui/TrainingResultModal";
 import { TrainingEngine } from "../../engine/trainingEngine";
 import { computeTrainingStats } from "../../engine/trainingStats";
+import type { TrainingTarget } from "../../engine/trainingTypes";
 import ScoreInputHub from "../../../components/ScoreInputHub";
 
-function isTargetMatch(targetId: string, t: any, hit: boolean) {
-  if (!hit || !t) return false;
-  if (targetId === "BULL") return t.value === "BULL";
-  if (targetId === "DBULL") return t.value === "DBULL";
-  const m = targetId[0]; // S/T/D
-  const n = parseInt(targetId.slice(1), 10);
-  const mult = m === "S" ? 1 : m === "D" ? 2 : 3;
-  return t.value === n && t.multiplier === mult;
-}
+const TARGET: TrainingTarget = {
+  label: "T20",
+  value: 20,
+  multiplier: 3,
+};
+import { recordTrainingSession, recordTrainingParticipantSession } from "../../stats/trainingStatsHub";
 
-export default function RepeatMasterPlay({
-  config,
-  onExit,
-}: {
-  config: { target: string; goal: number; hardcore: boolean };
-  onExit: () => void;
-}) {
-  const engine = useMemo(() => new TrainingEngine({ mode: "REPEAT" }), []);
-  const [streak, setStreak] = useState(0);
-  const [best, setBest] = useState(0);
+
+export default function RepeatMasterPlay({ config, onExit }: { config: any; onExit: () => void }) {
+  const engine = useMemo(
+    () =>
+      new TrainingEngine({
+        mode: "REPEAT",
+      }),
+    []
+  );
+
   const [ended, setEnded] = useState(false);
-  const [success, setSuccess] = useState(false);
+
+  function onThrow(target: TrainingTarget | null, hit: boolean, score: number) {
+    if (!hit || target?.value !== TARGET.value || target?.multiplier !== TARGET.multiplier) {
+      engine.finish(false);
+      setEnded(true);
+      return;
+    }
+    engine.throw(target, hit, score);
+  }
 
   const stats = computeTrainingStats(engine.state);
 
-  function finish(ok: boolean) {
-    engine.finish(ok);
-    setSuccess(ok);
-    setEnded(true);
-  }
+  
+  const recordedRef = React.useRef(false);
+  React.useEffect(() => {
+    if (!ended) return;
+    if (recordedRef.current) return;
+    recordedRef.current = true;
 
-  return (
+    const darts = (stats as any)?.dartsThrown ?? 0;
+    const points = (stats as any)?.score ?? 0;
+
+    recordTrainingSession("training_repeat_master", darts, points);
+
+    const pIds: string[] = Array.isArray(config?.selectedPlayerIds) ? config.selectedPlayerIds : [];
+    const bIds: string[] = Array.isArray(config?.selectedBotIds) ? config.selectedBotIds : [];
+
+    for (const pid of pIds) recordTrainingParticipantSession("training_repeat_master", pid, "player", darts, points);
+    for (const bid of bIds) recordTrainingParticipantSession("training_repeat_master", bid, "bot", darts, points);
+  }, [ended]);
+return (
     <>
-      <TrainingShell
-        header={
-          <TrainingHeader
-            title="Repeat Master"
-            onBack={onExit}
-            rules={
-              <p>
-                Cible: <b>{config.target}</b>. Objectif: streak {config.goal}. Mode{" "}
-                {config.hardcore ? "Hardcore" : "Soft"}.
-              </p>
-            }
-          />
-        }
-        body={
+      <TrainingHeader onBack={onExit} 
+        title="ticker_repeat"
+        rules={
           <>
-            <TrainingHudRow
-              left={{ label: "Streak", value: `${streak}/${config.goal}` }}
-              mid={{ label: "Best", value: best }}
-              right={{ label: "Cible", value: config.target }}
-            />
-
-            <ScoreInputHub
-              onThrow={(t: any, hit: boolean, score: number) => {
-                const ok = isTargetMatch(config.target, t, hit);
-                engine.throw(t, ok, ok ? score : 0);
-                if (ok) {
-                  setStreak((s) => {
-                    const next = s + 1;
-                    setBest((b) => Math.max(b, next));
-                    if (next >= config.goal) finish(true);
-                    return next;
-                  });
-                } else {
-                  if (config.hardcore) finish(false);
-                  else setStreak(0);
-                }
-              }}
-            />
+            <p>Répète la même cible sans erreur.</p>
+            <p>Une erreur met fin immédiatement à la session.</p>
           </>
         }
-        footer={<TrainingFooter stats={stats} />}
       />
+
+      <ScoreInputHub
+        onThrow={(t, hit, score) => onThrow(t, hit, score)}
+      />
+
+      <TrainingFooter stats={stats} />
 
       <TrainingResultModal
         open={ended}
-        success={success}
-        title={success ? "Streak validé" : "Session terminée"}
         stats={stats}
+        success={engine.state.success === true}
         onClose={onExit}
       />
     </>

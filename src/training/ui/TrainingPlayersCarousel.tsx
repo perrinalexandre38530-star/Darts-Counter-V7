@@ -1,6 +1,6 @@
 // ============================================
 // src/training/ui/TrainingPlayersCarousel.tsx
-// Carrousel de joueurs locaux (style TrainingClock / Territories)
+// Carrousel de joueurs locaux
 // ============================================
 
 import React from "react";
@@ -44,16 +44,13 @@ export default function TrainingPlayersCarousel({
 
   return (
     <div
-      className="dcPlayerCarousel"
       style={{
         display: "flex",
         gap: 12,
         overflowX: "auto",
-        overflowY: "hidden",
         paddingBottom: 6,
         paddingRight: 6,
         WebkitOverflowScrolling: "touch",
-        alignItems: "flex-start",
       }}
     >
       {list.map((p) => {

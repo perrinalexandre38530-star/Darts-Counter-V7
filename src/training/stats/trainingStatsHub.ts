@@ -1,0 +1,156 @@
+// ============================================
+// src/training/stats/trainingStatsHub.ts
+// Stats Training (V2) — global + par mode + par participant (player/bot)
+// Stockage localStorage (stable, simple)
+// ============================================
+
+export type TrainingStatsRow = {
+  sessions: number;
+  darts: number;
+  points: number;
+};
+
+export type ParticipantKind = "player" | "bot";
+
+const KEY_V2 = "dc_training_stats_v2";
+const KEY_V1 = "dc_training_stats_v1"; // fallback (anciens patchs)
+
+type StoreV2 = {
+  global?: TrainingStatsRow;
+  byMode?: Record<string, TrainingStatsRow>;
+  byParticipant?: Record<
+    string,
+    {
+      kind: ParticipantKind;
+      global: TrainingStatsRow;
+      byMode: Record<string, TrainingStatsRow>;
+    }
+  >;
+};
+
+function emptyRow(): TrainingStatsRow {
+  return { sessions: 0, darts: 0, points: 0 };
+}
+
+function addRow(a: TrainingStatsRow, darts: number, points: number) {
+  a.sessions += 1;
+  a.darts += Math.max(0, Math.floor(darts || 0));
+  a.points += Math.max(0, Math.floor(points || 0));
+}
+
+function loadV2(): StoreV2 {
+  try {
+    const raw = localStorage.getItem(KEY_V2);
+    if (!raw) return {};
+    const v = JSON.parse(raw);
+    return typeof v === "object" && v ? (v as StoreV2) : {};
+  } catch {
+    return {};
+  }
+}
+
+function saveV2(s: StoreV2) {
+  try {
+    localStorage.setItem(KEY_V2, JSON.stringify(s));
+  } catch {}
+}
+
+// ✅ migration légère (si V1 existe)
+function migrateIfNeeded() {
+  try {
+    const rawV2 = localStorage.getItem(KEY_V2);
+    if (rawV2) return;
+    const rawV1 = localStorage.getItem(KEY_V1);
+    if (!rawV1) return;
+
+    const v1 = JSON.parse(rawV1) as Record<string, TrainingStatsRow>;
+    const s: StoreV2 = { global: emptyRow(), byMode: {}, byParticipant: {} };
+    for (const [modeId, row] of Object.entries(v1 || {})) {
+      const r = s.byMode![modeId] ?? emptyRow();
+      r.sessions += row.sessions || 0;
+      r.darts += row.darts || 0;
+      r.points += row.points || 0;
+      s.byMode![modeId] = r;
+
+      addRow(s.global!, row.darts || 0, row.points || 0);
+    }
+    saveV2(s);
+  } catch {
+    // ignore
+  }
+}
+
+export function recordTrainingSession(modeId: string, darts: number, points: number) {
+  migrateIfNeeded();
+  const id = String(modeId || "unknown");
+  const s = loadV2();
+  if (!s.global) s.global = emptyRow();
+  if (!s.byMode) s.byMode = {};
+  const row = s.byMode[id] ?? emptyRow();
+  addRow(row, darts, points);
+  s.byMode[id] = row;
+  addRow(s.global, darts, points);
+  saveV2(s);
+}
+
+export function recordTrainingParticipantSession(
+  modeId: string,
+  participantId: string,
+  kind: ParticipantKind,
+  darts: number,
+  points: number
+) {
+  migrateIfNeeded();
+  const mid = String(modeId || "unknown");
+  const pid = String(participantId || "").trim();
+  if (!pid) return;
+
+  const s = loadV2();
+  if (!s.byParticipant) s.byParticipant = {};
+  const p =
+    s.byParticipant[pid] ??
+    ({
+      kind,
+      global: emptyRow(),
+      byMode: {},
+    } as any);
+
+  // ne pas écraser kind si déjà défini
+  if (!p.kind) p.kind = kind;
+
+  if (!p.byMode) p.byMode = {};
+  const row = p.byMode[mid] ?? emptyRow();
+  addRow(row, darts, points);
+  p.byMode[mid] = row;
+  addRow(p.global, darts, points);
+
+  s.byParticipant[pid] = p;
+  saveV2(s);
+}
+
+export function getTrainingStatsGlobal(): TrainingStatsRow {
+  migrateIfNeeded();
+  const s = loadV2();
+  return s.global ?? emptyRow();
+}
+
+export function getTrainingStatsByMode(): Record<string, TrainingStatsRow> {
+  migrateIfNeeded();
+  const s = loadV2();
+  return s.byMode ?? {};
+}
+
+export function getTrainingParticipantStore(): StoreV2["byParticipant"] {
+  migrateIfNeeded();
+  const s = loadV2();
+  return s.byParticipant ?? {};
+}
+
+// Compat export (certains écrans importent getTrainingStats)
+export function getTrainingStats() {
+  return {
+    global: getTrainingStatsGlobal(),
+    byMode: getTrainingStatsByMode(),
+    byParticipant: getTrainingParticipantStore(),
+  };
+}

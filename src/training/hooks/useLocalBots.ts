@@ -1,38 +1,54 @@
-import { useEffect, useState } from "react";
-
 // ============================================
 // src/training/hooks/useLocalBots.ts
-// Hook local simple pour BOTS IA (training)
-// Lecture depuis localStorage ("dc_local_bots")
+// Lecture BOTS (CPU) depuis localStorage (ProfilesBots.tsx: dc_bots_v1)
 // ============================================
+
+import React from "react";
+
+export type BotLevel = "easy" | "medium" | "strong" | "pro" | "legend";
 
 export type BotProfile = {
   id: string;
   name: string;
-  level?: string;
-  avatarUrl?: string;
+  level: BotLevel;
+  botLevel?: string | null;
+  avatarSeed?: string | number | null;
+  avatarUrl?: string | null;
 };
 
-const STORAGE_KEY = "dc_local_bots";
+const LS_KEY = "dc_bots_v1";
 
-function readBots(): BotProfile[] {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed : [];
-  } catch {
-    return [];
-  }
-}
+export function useLocalBots() {
+  const [bots, setBots] = React.useState<BotProfile[]>([]);
 
-export function useLocalBots(): BotProfile[] {
-  const [bots, setBots] = useState<BotProfile[]>(() => readBots());
+  React.useEffect(() => {
+    const load = () => {
+      try {
+        const raw = localStorage.getItem(LS_KEY);
+        if (!raw) return setBots([]);
+        const arr = JSON.parse(raw);
+        if (!Array.isArray(arr)) return setBots([]);
+        setBots(
+          arr
+            .filter(Boolean)
+            .map((b: any) => ({
+              id: String(b.id ?? ""),
+              name: String(b.name ?? "BOT"),
+              level: (b.level ?? "medium") as BotLevel,
+              botLevel: b.botLevel ?? b.level ?? null,
+              avatarSeed: b.avatarSeed ?? null,
+              avatarUrl: b.avatarUrl ?? null,
+            }))
+            .filter((b) => b.id)
+        );
+      } catch {
+        setBots([]);
+      }
+    };
 
-  useEffect(() => {
-    const refresh = () => setBots(readBots());
-    window.addEventListener("storage", refresh);
-    return () => window.removeEventListener("storage", refresh);
+    load();
+    window.addEventListener("storage", load);
+    return () => window.removeEventListener("storage", load);
   }, []);
 
   return bots;

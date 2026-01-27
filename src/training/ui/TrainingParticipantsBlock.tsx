@@ -1,13 +1,13 @@
 // ============================================
 // src/training/ui/TrainingParticipantsBlock.tsx
-// Bloc commun : Joueurs locaux + BOTS IA (carrousels)
+// Bloc commun : Joueurs locaux + BOTS IA
 // ============================================
 
 import React from "react";
 import type { Profile } from "../../lib/types";
+import { useTheme } from "../../contexts/ThemeContext";
 import TrainingPlayersCarousel from "./TrainingPlayersCarousel";
 import TrainingBotsCarousel from "./TrainingBotsCarousel";
-import { useTheme } from "../../contexts/ThemeContext";
 
 export default function TrainingParticipantsBlock({
   profiles,
@@ -46,9 +46,7 @@ export default function TrainingParticipantsBlock({
         Sélectionne tes joueurs locaux et/ou des BOTS IA.
       </div>
 
-      <div style={{ fontWeight: 900, fontSize: 12, opacity: 0.9, marginBottom: 6 }}>
-        Joueurs locaux
-      </div>
+      <div style={{ fontWeight: 900, fontSize: 12, opacity: 0.9, marginBottom: 6 }}>Joueurs locaux</div>
       <TrainingPlayersCarousel
         profiles={profiles}
         selectedIds={selectedPlayerIds}
@@ -59,9 +57,7 @@ export default function TrainingParticipantsBlock({
 
       <div style={{ height: 10 }} />
 
-      <div style={{ fontWeight: 900, fontSize: 12, opacity: 0.9, marginBottom: 6 }}>
-        BOTS IA
-      </div>
+      <div style={{ fontWeight: 900, fontSize: 12, opacity: 0.9, marginBottom: 6 }}>BOTS IA</div>
       <TrainingBotsCarousel selectedIds={selectedBotIds} onChange={setSelectedBotIds} max={maxBots} />
     </div>
   );

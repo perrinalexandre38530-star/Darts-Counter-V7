@@ -1,6 +1,6 @@
 // ============================================
 // src/training/ui/TrainingBotsCarousel.tsx
-// Carrousel BOTS IA (CPU) — lecture depuis useLocalBots() ou props
+// Carrousel BOTS IA
 // ============================================
 
 import React from "react";
@@ -13,7 +13,7 @@ function badge(level: string) {
   if (l === "medium") return "MED";
   if (l === "strong") return "STR";
   if (l === "pro") return "PRO";
-  if (l === "legend") return "LEGEND";
+  if (l === "legend") return "LEG";
   return l.toUpperCase();
 }
 
@@ -41,19 +41,7 @@ export default function TrainingBotsCarousel({
   }
 
   return (
-    <div
-      className="dcBotCarousel"
-      style={{
-        display: "flex",
-        gap: 12,
-        overflowX: "auto",
-        overflowY: "hidden",
-        paddingBottom: 6,
-        paddingRight: 6,
-        WebkitOverflowScrolling: "touch",
-        alignItems: "flex-start",
-      }}
-    >
+    <div style={{ display: "flex", gap: 12, overflowX: "auto", paddingBottom: 6, paddingRight: 6 }}>
       {list.map((b) => {
         const selected = selectedIds.includes(b.id);
         return (
@@ -63,10 +51,7 @@ export default function TrainingBotsCarousel({
             title={b.name}
             onClick={() => {
               const exists = selectedIds.includes(b.id);
-              if (exists) {
-                onChange(selectedIds.filter((id) => id !== b.id));
-                return;
-              }
+              if (exists) return onChange(selectedIds.filter((id) => id !== b.id));
               if (selectedIds.length >= max) return;
               onChange([...selectedIds, b.id]);
             }}

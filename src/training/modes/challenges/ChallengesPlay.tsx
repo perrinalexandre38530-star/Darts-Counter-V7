@@ -1,103 +1,116 @@
-// ChallengesPlay — UI Play harmonisée (HUD + result)
+// ============================================
+// TRAINING — Challenges
+// Objectif : scénarios à objectifs
+// ============================================
+
 import React, { useMemo, useState } from "react";
-import TrainingShell from "../../shell/TrainingShell";
 import TrainingHeader from "../../ui/TrainingHeader";
 import TrainingFooter from "../../ui/TrainingFooter";
-import TrainingHudRow from "../../ui/TrainingHudRow";
 import TrainingResultModal from "../../ui/TrainingResultModal";
 import { TrainingEngine } from "../../engine/trainingEngine";
 import { computeTrainingStats } from "../../engine/trainingStats";
+import type { TrainingTarget } from "../../engine/trainingTypes";
 import ScoreInputHub from "../../../components/ScoreInputHub";
 
-function isDouble(t: any, hit: boolean) {
-  return !!hit && t?.multiplier === 2 && typeof t?.value === "number";
-}
-function isMatch(id: string, t: any, hit: boolean) {
-  if (!hit || !t) return false;
-  if (id === "BULL") return t.value === "BULL";
-  if (id === "DBULL") return t.value === "DBULL";
-  const m = id[0];
-  const n = parseInt(id.slice(1), 10);
-  const mult = m === "S" ? 1 : m === "D" ? 2 : 3;
-  return t.value === n && t.multiplier === mult;
-}
+type Challenge = {
+  title: string;
+  description: string;
+  target: TrainingTarget;
+  darts: number;
+};
+
+const CHALLENGES: Challenge[] = [
+  {
+    title: "Triple 20",
+    description: "Touche le T20 en 6 flèches",
+    target: { label: "T20", value: 20, multiplier: 3 },
+    darts: 6,
+  },
+  {
+    title: "Double Bull",
+    description: "Touche le DBULL en 9 flèches",
+    target: { label: "DBULL", value: "DBULL" },
+    darts: 9,
+  },
+];
+import { recordTrainingSession, recordTrainingParticipantSession } from "../../stats/trainingStatsHub";
+
 
 export default function ChallengesPlay({ config, onExit }: { config: any; onExit: () => void }) {
-  const engine = useMemo(() => new TrainingEngine({ mode: "CHALLENGES", maxDarts: config.darts }), []);
+  const challenge = CHALLENGES[0];
+
+  const engine = useMemo(
+    () =>
+      new TrainingEngine({
+        mode: "CHALLENGES",
+        maxDarts: challenge.darts,
+      }),
+    []
+  );
+
   const [ended, setEnded] = useState(false);
-  const [success, setSuccess] = useState(false);
-  const [progress, setProgress] = useState(0);
-  const [remaining, setRemaining] = useState(config.darts);
+
+  function onThrow(target: TrainingTarget | null, hit: boolean, score: number) {
+    engine.throw(target, hit, score);
+
+    if (
+      hit &&
+      target?.value === challenge.target.value &&
+      target?.multiplier === challenge.target.multiplier
+    ) {
+      engine.finish(true);
+      setEnded(true);
+      return;
+    }
+
+    if (engine.state.darts.length >= challenge.darts) {
+      engine.finish(false);
+      setEnded(true);
+    }
+  }
 
   const stats = computeTrainingStats(engine.state);
 
-  function finish(ok: boolean) {
-    engine.finish(ok);
-    setSuccess(ok);
-    setEnded(true);
-  }
+  
+  const recordedRef = React.useRef(false);
+  React.useEffect(() => {
+    if (!ended) return;
+    if (recordedRef.current) return;
+    recordedRef.current = true;
 
-  const title =
-    config.kind === "doubles"
-      ? `Doubles ${progress}/${config.goal}`
-      : config.kind === "sequence"
-      ? `Séquence ${progress}/${config.seq.length}`
-      : "Checkout 40";
+    const darts = (stats as any)?.dartsThrown ?? 0;
+    const points = (stats as any)?.score ?? 0;
 
-  return (
+    recordTrainingSession("training_challenges", darts, points);
+
+    const pIds: string[] = Array.isArray(config?.selectedPlayerIds) ? config.selectedPlayerIds : [];
+    const bIds: string[] = Array.isArray(config?.selectedBotIds) ? config.selectedBotIds : [];
+
+    for (const pid of pIds) recordTrainingParticipantSession("training_challenges", pid, "player", darts, points);
+    for (const bid of bIds) recordTrainingParticipantSession("training_challenges", bid, "bot", darts, points);
+  }, [ended]);
+return (
     <>
-      <TrainingShell
-        header={<TrainingHeader title="Challenges" onBack={onExit} rules={<p>Objectif : {title}. Darts limités.</p>} />}
-        body={
+      <TrainingHeader onBack={onExit} 
+        title="ticker_challenges"
+        rules={
           <>
-            <TrainingHudRow
-              left={{ label: "Objectif", value: title }}
-              mid={{ label: "Restant", value: remaining }}
-              right={{ label: "Score", value: stats.score }}
-            />
-
-            <ScoreInputHub
-              onThrow={(t: any, hit: boolean, score: number) => {
-                engine.throw(t, hit, score);
-                setRemaining((r: number) => r - 1);
-
-                if (config.kind === "doubles") {
-                  if (isDouble(t, hit)) {
-                    setProgress((p) => {
-                      const next = p + 1;
-                      if (next >= config.goal) finish(true);
-                      return next;
-                    });
-                  }
-                }
-
-                if (config.kind === "sequence") {
-                  const need = config.seq[progress];
-                  if (isMatch(need, t, hit)) {
-                    const next = progress + 1;
-                    setProgress(next);
-                    if (next >= config.seq.length) finish(true);
-                  }
-                }
-
-                if (config.kind === "checkout40") {
-                  // minimal: D20 direct => succès
-                  if (hit && t?.multiplier === 2 && t?.value === 20) finish(true);
-                }
-
-                if (remaining - 1 <= 0 && !ended) finish(false);
-              }}
-            />
+            <p>{challenge.title}</p>
+            <p>{challenge.description}</p>
           </>
         }
-        footer={<TrainingFooter stats={stats} />}
       />
+
+      <ScoreInputHub
+        onThrow={(t, hit, score) => onThrow(t, hit, score)}
+      />
+
+      <TrainingFooter stats={stats} />
 
       <TrainingResultModal
         open={ended}
-        success={success}
-        title={success ? "Défi réussi" : "Défi raté"}
         stats={stats}
+        success={engine.state.success === true}
         onClose={onExit}
       />
     </>

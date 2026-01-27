@@ -1,90 +1,105 @@
-// DoubleInOutPlay — UI Play harmonisée (HUD + footer)
+// ============================================
+// TRAINING — Double In / Double Out
+// Objectif : enchaîner les doubles
+// ============================================
+
 import React, { useMemo, useState } from "react";
-import TrainingShell from "../../shell/TrainingShell";
 import TrainingHeader from "../../ui/TrainingHeader";
 import TrainingFooter from "../../ui/TrainingFooter";
-import TrainingHudRow from "../../ui/TrainingHudRow";
 import TrainingResultModal from "../../ui/TrainingResultModal";
 import { TrainingEngine } from "../../engine/trainingEngine";
 import { computeTrainingStats } from "../../engine/trainingStats";
+import type { TrainingTarget } from "../../engine/trainingTypes";
 import ScoreInputHub from "../../../components/ScoreInputHub";
 
-export default function DoubleInOutPlay({
-  config,
-  onExit,
-}: {
-  config: { mode: "DI" | "DO" | "DIDO" };
-  onExit: () => void;
-}) {
-  const engine = useMemo(() => new TrainingEngine({ mode: "DOUBLE" }), []);
-  const [validated, setValidated] = useState(0);
+const DOUBLES: TrainingTarget[] = Array.from({ length: 20 }).map(
+  (_, i) => ({
+    label: `D${i + 1}`,
+    value: i + 1,
+    multiplier: 2,
+  })
+);
+import { recordTrainingSession, recordTrainingParticipantSession } from "../../stats/trainingStatsHub";
+
+
+export default function DoubleInOutPlay({ config, onExit }: { config: any; onExit: () => void }) {
+  const engine = useMemo(
+    () =>
+      new TrainingEngine({
+        mode: "DOUBLE",
+      }),
+    []
+  );
+
+  const [index, setIndex] = useState(0);
   const [ended, setEnded] = useState(false);
+
+  const current = DOUBLES[index];
+
+  function onThrow(target: TrainingTarget | null, hit: boolean, score: number) {
+    if (
+      hit &&
+      target?.value === current.value &&
+      target?.multiplier === 2
+    ) {
+      engine.throw(target, hit, score);
+      if (index + 1 >= DOUBLES.length) {
+        engine.finish(true);
+        setEnded(true);
+      } else {
+        setIndex(index + 1);
+      }
+    } else {
+      engine.throw(target, false, 0);
+    }
+  }
 
   const stats = computeTrainingStats(engine.state);
 
-  return (
+  
+  const recordedRef = React.useRef(false);
+  React.useEffect(() => {
+    if (!ended) return;
+    if (recordedRef.current) return;
+    recordedRef.current = true;
+
+    const darts = (stats as any)?.dartsThrown ?? 0;
+    const points = (stats as any)?.score ?? 0;
+
+    recordTrainingSession("training_doubleio", darts, points);
+
+    const pIds: string[] = Array.isArray(config?.selectedPlayerIds) ? config.selectedPlayerIds : [];
+    const bIds: string[] = Array.isArray(config?.selectedBotIds) ? config.selectedBotIds : [];
+
+    for (const pid of pIds) recordTrainingParticipantSession("training_doubleio", pid, "player", darts, points);
+    for (const bid of bIds) recordTrainingParticipantSession("training_doubleio", bid, "bot", darts, points);
+  }, [ended]);
+return (
     <>
-      <TrainingShell
-        header={
-          <TrainingHeader
-            title="Double In/Out"
-            onBack={onExit}
-            rules={
-              <p>
-                Mode: <b>{config.mode}</b>. Seuls les doubles valident l’objectif. Objectif: enchaîner un maximum de doubles.
-              </p>
-            }
-          />
-        }
-        body={
+      <TrainingHeader onBack={onExit} 
+        title="ticker_double"
+        rules={
           <>
-            <TrainingHudRow
-              left={{ label: "Mode", value: config.mode }}
-              mid={{ label: "Validés", value: validated }}
-              right={{ label: "Darts", value: stats.darts }}
-            />
-            <ScoreInputHub
-              onThrow={(t: any, hit: boolean, score: number) => {
-                const isDouble = !!hit && t?.multiplier === 2;
-                if (isDouble) setValidated((v) => v + 1);
-                engine.throw(t, isDouble, isDouble ? score : 0);
-              }}
-            />
+            <p>Touche chaque double dans l’ordre.</p>
+            <p>Les ratés sont comptabilisés.</p>
           </>
-        }
-        footer={
-          <TrainingFooter
-            stats={stats}
-            rightSlot={
-              <button
-                type="button"
-                onClick={() => {
-                  engine.finish(true);
-                  setEnded(true);
-                }}
-                style={{
-                  height: 46,
-                  padding: "0 14px",
-                  borderRadius: 999,
-                  border: "1px solid rgba(255,255,255,0.16)",
-                  background: "rgba(0,0,0,0.45)",
-                  color: "rgba(255,255,255,0.92)",
-                  fontWeight: 900,
-                  cursor: "pointer",
-                }}
-              >
-                Terminer
-              </button>
-            }
-          />
         }
       />
 
+      <div className="training-target">
+        Double cible : {current.label}
+      </div>
+
+      <ScoreInputHub
+        onThrow={(t, hit, score) => onThrow(t, hit, score)}
+      />
+
+      <TrainingFooter stats={stats} />
+
       <TrainingResultModal
         open={ended}
-        success={true}
-        title="Session terminée"
         stats={stats}
+        success={engine.state.success === true}
         onClose={onExit}
       />
     </>
