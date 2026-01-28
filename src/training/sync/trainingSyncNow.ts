@@ -1,43 +1,19 @@
-// ============================================
-// src/training/sync/trainingSyncNow.ts
-// LOT 27 — best-effort immediate sync after a run is recorded
-// - No React deps
-// - Debounced + guarded
-// ============================================
+import { trainingSyncQueueEnqueueSoon, trainingSyncQueueTry } from "./trainingSyncQueue";
 
-import { syncTrainingEvents } from "./trainingSyncEngine";
+let lastKick = 0;
 
-let inFlight: Promise<void> | null = null;
-let lastTs = 0;
-
-export async function trainingSyncNowBestEffort(reason?: string) {
+export async function trainingSyncNowBestEffort() {
   try {
     const now = Date.now();
-    // debounce (avoid double record calls)
-    if (now - lastTs < 1500) return;
-    lastTs = now;
+    if (now - lastKick < 1500) return;
+    lastKick = now;
 
-    const userId =
-      (typeof localStorage !== "undefined" && localStorage.getItem("dc_user_id")) || "";
+    trainingSyncQueueEnqueueSoon();
+
+    const userId = (typeof localStorage !== "undefined" && localStorage.getItem("dc_user_id")) || "";
     if (!userId) return;
+    if (typeof navigator !== "undefined" && navigator.onLine === false) return;
 
-    // if offline, don't spam
-    if (typeof navigator !== "undefined" && navigator && navigator.onLine === false) return;
-
-    if (!inFlight) {
-      inFlight = (async () => {
-        try {
-          await syncTrainingEvents(userId);
-        } catch {
-          // ignore
-        } finally {
-          inFlight = null;
-        }
-      })();
-    }
-
-    await inFlight;
-  } catch {
-    // ignore
-  }
+    await trainingSyncQueueTry(userId);
+  } catch {}
 }

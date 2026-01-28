@@ -26,6 +26,8 @@ import { useTheme } from "../../contexts/ThemeContext";
 import { useLang } from "../../contexts/LangContext";
 import ProfileAvatar from "../../components/ProfileAvatar";
 import InfoDot from "../../components/InfoDot";
+import BackDot from "../../components/BackDot";
+
 
 // ✅ NEW: Store unique Teams
 import {
@@ -34,6 +36,18 @@ import {
   fileToDataUrl,
   type TeamEntity,
 } from "../../lib/teamsStore";
+
+// ✅ Tickers (même logique que Games — DartsCounter)
+const tickerImports = import.meta.glob("../../assets/tickers/*.png", {
+  eager: true,
+  import: "default",
+}) as Record<string, string>;
+
+function pickTicker(filename: string) {
+  const wanted = "/" + filename;
+  const key = Object.keys(tickerImports).find((k) => k.endsWith(wanted));
+  return key ? tickerImports[key] : null;
+}
 
 type PetanqueModeId =
   | "singles"
@@ -255,6 +269,149 @@ export default function PetanqueConfig({ store, go, params }: Props) {
 
   // ✅ NEW: modes SOLO = pas d'équipes (UI & payload)
   const isSoloNoTeams = isFfa3 || effectiveMode === "singles";
+
+  // -------------------------
+  // ✅ HEADER (Ticker + BackDot + InfoDot) — PETANQUE CONFIG
+  // HEADER_TICKER_RULES_V1
+  // -------------------------
+  const [rulesOpen, setRulesOpen] = React.useState(false);
+
+  const headerModeLabel = isTournament ? "tournament" : effectiveMode;
+
+  const headerTickerName = (() => {
+    if (isTournament) return "ticker_petanque_tournois.png";
+    if (effectiveMode === "training") return "ticker_petanque_training.png";
+    switch (effectiveMode) {
+      case "singles": return "ticker_petanque_1v1.png";
+      case "ffa3": return "ticker_petanque_free_for_all.png";
+      case "doublette": return "ticker_petanque_2v2.png";
+      case "triplette": return "ticker_petanque_3v3.png";
+      case "quadrette": return "ticker_petanque_4v4.png";
+      case "variants": return "ticker_petanque_variantes.png";
+      case "handicap": return "ticker_petanque_variantes.png";
+      default: return "ticker_petanque_1v1.png";
+    }
+  })();
+
+  const headerTickerSrc = pickTicker(headerTickerName);
+
+  const headerRules = React.useMemo(() => {
+    // ⚠️ Texte destiné au bloc "i" (InfoDot) du header.
+    // Objectif: expliquer règles + déroulement + subtilités (même si on joue "amical").
+    const common = [
+      "• Objectif : être la 1ʳᵉ équipe/joueur à atteindre le score cible (13 par défaut).",
+      "• Déroulement : on joue des mènes. À chaque mène, chaque camp joue toutes ses boules (en alternant).",
+      "• Score d’une mène : seule l’équipe la plus proche marque, en comptant ses boules plus proches que la meilleure boule adverse (0 à 3 points le plus souvent).",
+      "• Ordre de jeu : l’équipe qui marque démarre la mène suivante et garde le but.",
+      "",
+      "RÈGLES OFFICIELLES (repères)",
+      "• Cercle : 50 cm de diamètre (pieds entièrement à l’intérieur, sans dépasser, au moment du lancer).",
+      "• Distance du but (adultes / catégories standard) : ~6 à 10 m (certaines catégories jeunes peuvent avoir d’autres distances).",
+      "• Placement du cercle : en général à 1 m minimum des lignes/obstacles (selon terrain & règlement appliqué).",
+      "• Boule/but sortis : une boule sortie est morte. Si le but sort pendant la mène, la mène est nulle (0 point) SAUF cas classique : une équipe n’a plus de boules à jouer → l’autre marque autant de points qu’il lui reste de boules en main.",
+      "• Mesurage : on mesure si doute (autorisé ici via l’option).",
+      "",
+      "SUBTILITÉS (que beaucoup oublient)",
+      "• « Boule + proche » : si tu joues cette variante amicale, c’est une règle de départ, pas une règle officielle.",
+      "• Une boule qui touche une ligne après l’arrêt (sortie) est généralement considérée sortie (balle morte) — en officiel on s’en tient au règlement du terrain/compétition.",
+      "• Une mène peut être rejouée/annulée selon les règles locales (but déplacé hors-limites, but introuvable, etc.).",
+    ];
+
+    if (isTournament) {
+      return {
+        title: "TOURNOI",
+        lines: [
+          "• Format : poules ou élimination directe (selon config).",
+          "• Chaque match du tournoi suit le mode choisi (base mode).",
+          "• Vainqueur : selon le bracket / classement de poule.",
+          "",
+          "Base mode : " + String(tournamentBaseMode),
+          "",
+          ...common,
+        ],
+      };
+    }
+
+    if (effectiveMode === "training") {
+      return {
+        title: "ENTRAÎNEMENT",
+        lines: [
+          "• Session libre : tu peux mesurer / enregistrer des stats pendant la session.",
+          "• Pas d’obligation d’équipes : tu joues comme tu veux (solo ou en équipes).",
+          "• Les options (score, départ, ordre) servent surtout de repères — adapte en amical.",
+          "",
+          ...common,
+        ],
+      };
+    }
+
+    switch (effectiveMode) {
+      case "singles":
+        return {
+          title: "MATCH SIMPLE (1V1)",
+          lines: [
+            "• 2 joueurs, chacun pour soi (pas d’équipes).",
+            "• Chacun a 3 boules (par défaut).",
+            "",
+            ...common,
+          ],
+        };
+      case "ffa3":
+        return {
+          title: "MATCH À 3 (CHACUN POUR SOI)",
+          lines: [
+            "• 3 joueurs, chacun pour soi (pas d’équipes).",
+            "• Le score de la mène est attribué au joueur le plus proche (il compte ses boules plus proches que la meilleure boule des autres).",
+            "",
+            ...common,
+          ],
+        };
+      case "doublette":
+        return {
+          title: "DOUBLETTE (2V2)",
+          lines: [
+            "• 2 équipes de 2 joueurs.",
+            "• En général 3 boules/joueur (6 boules/équipe).",
+            "",
+            ...common,
+          ],
+        };
+      case "triplette":
+        return {
+          title: "TRIPLETTE (3V3)",
+          lines: [
+            "• 2 équipes de 3 joueurs.",
+            "• En officiel : souvent 2 boules/joueur (6 boules/équipe).",
+            "",
+            ...common,
+          ],
+        };
+      case "quadrette":
+        return {
+          title: "QUADRETTE (4V4)",
+          lines: [
+            "• 2 équipes de 4 joueurs.",
+            "• Ici : 2 boules/joueur (8 boules/équipe) — utile en amical/club si vous avez assez de boules.",
+            "",
+            ...common,
+          ],
+        };
+      case "variants":
+      case "handicap":
+        return {
+          title: "VARIANTES / HANDICAP",
+          lines: [
+            "• Équipes impaires possibles (1v2, 2v3, 3v4, ...).",
+            "• Compensation : on peut ajuster les boules/joueur pour équilibrer les chances.",
+            "• Score auto : le score cible peut s’ajuster selon le total de boules/équipe (tu peux le changer).",
+            "",
+            ...common,
+          ],
+        };
+      default:
+        return { title: "RÈGLES", lines: common };
+    }
+  }, [effectiveMode, isTournament, tournamentBaseMode]);
 
   // ✅ Sans bots IA
   const profiles: Profile[] = React.useMemo(
@@ -776,50 +933,93 @@ function handleStart() {
         color: textMain,
       }}
     >
-      {/* HEADER */}
-      <header style={{ marginBottom: 4 }}>
-        <div style={{ display: "flex", alignItems: "center", marginBottom: 6 }}>
-          <button
-            type="button"
-            onClick={() => go("petanque_menu" as any)}
+            {/* HEADER */}
+      <header style={{ marginBottom: 10 }}>
+        {/* PETANQUE_CONFIG_HEADER_TICKER_V1 */}
+        <div
+          style={{
+            position: "relative",
+            height: 66,
+            borderRadius: 18,
+            overflow: "hidden",
+            background: "rgba(10,12,24,0.86)",
+            border: "1px solid rgba(255,255,255,0.10)",
+            boxShadow: "0 14px 34px rgba(0,0,0,0.45)",
+            marginBottom: 10,
+          }}
+        >
+          {/* Ticker full-width (dessous) */}
+          {headerTickerSrc && (
+            <img
+              src={headerTickerSrc}
+              alt=""
+              style={{
+                position: "absolute",
+                inset: 0,
+                width: "100%",
+                height: "100%",
+                objectFit: "cover",
+                objectPosition: "center",
+                opacity: 0.92,
+                filter: "saturate(1.05) contrast(1.05)",
+              }}
+            />
+          )}
+
+          {/* Overlay sombre léger pour lisibilité */}
+          <div
             style={{
-              borderRadius: 999,
-              border: "1px solid rgba(255,255,255,0.12)",
-              background: "rgba(10,12,24,0.9)",
-              color: "#f5f5f5",
-              padding: "5px 10px",
-              fontSize: 13,
-              display: "inline-flex",
+              position: "absolute",
+              inset: 0,
+              background:
+                "linear-gradient(90deg, rgba(5,6,12,0.78) 0%, rgba(5,6,12,0.35) 40%, rgba(5,6,12,0.70) 100%)",
+            }}
+          />
+
+          {/* BackDot & InfoDot au premier plan */}
+          <div
+            style={{
+              position: "absolute",
+              inset: 0,
+              display: "flex",
               alignItems: "center",
-              gap: 6,
-              cursor: "pointer",
+              justifyContent: "space-between",
+              padding: "0 10px",
+              zIndex: 3,
             }}
           >
-            <span style={{ fontSize: 16 }}>←</span>
-            <span>{t("common.back", "Retour")}</span>
-          </button>
+            <BackDot onClick={() => go("petanque_menu" as any)} />
+            <InfoDot
+              onClick={(ev: any) => {
+                ev?.stopPropagation?.();
+                setRulesOpen(true);
+              }}
+              glow={(theme?.primary ?? primary) + "88"}
+            />
+          </div>
         </div>
 
         <div style={{ textAlign: "center" }}>
-          <div style={{ fontSize: 26, fontWeight: 800, letterSpacing: 2, color: primary, textTransform: "uppercase" }}>
-            {t("petanque.config.title", "Configuration")}
-          </div>
           <div style={{ fontSize: 12, opacity: 0.7, color: "#d9d9e4", marginTop: 2 }}>
             {t("petanque.config.subtitle", "Prépare ta partie avant de commencer.")}
           </div>
 
           <div style={{ marginTop: 6, fontSize: 12, color: "#b8bdd8" }}>
-            {t("petanque.config.mode", "Mode")} :{" "}
-            <b style={{ color: "#fff" }}>
-              {isTournament ? `tournament (${tournamentBaseMode})` : effectiveMode}
-            </b>
+            {t("petanque.config.mode", "Mode")} : {" "}
+            <b style={{ color: "#fff" }}>{headerModeLabel}{isTournament ? " (" + String(tournamentBaseMode) + ")" : ""}</b>
           </div>
 
           {isSoloNoTeams && (
             <div style={{ marginTop: 6, fontSize: 11, color: "#9ea3bf" }}>
               {effectiveMode === "singles"
-                ? t("petanque.config.singlesSoloHint", "Singles : mode solo — sélectionne exactement 2 joueurs (J1/J2).")
-                : t("petanque.config.ffa3Hint", "FFA3 : mode solo — sélectionne exactement 3 joueurs (J1/J2/J3).")}
+                ? t(
+                    "petanque.config.singlesSoloHint",
+                    "Singles : mode solo — sélectionne exactement 2 joueurs (J1/J2)."
+                  )
+                : t(
+                    "petanque.config.ffa3Hint",
+                    "FFA3 : mode solo — sélectionne exactement 3 joueurs (J1/J2/J3)."
+                  )}
             </div>
           )}
         </div>
@@ -1856,6 +2056,65 @@ function handleStart() {
           </div>
         </div>
       )}
+      {/* PETANQUE_CONFIG_RULES_MODAL_V1 */}
+      {rulesOpen && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          onClick={() => setRulesOpen(false)}
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(0,0,0,0.55)",
+            zIndex: 9999,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: 16,
+          }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              width: "min(560px, 92vw)",
+              borderRadius: 18,
+              border: "1px solid rgba(255,255,255,0.14)",
+              background: "rgba(18, 22, 33, 0.94)",
+              boxShadow: "0 18px 44px rgba(0,0,0,0.45)",
+              padding: 16,
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+              <div style={{ fontWeight: 1000, letterSpacing: 0.5, color: primary }}>
+                {headerRules.title}
+              </div>
+              <button
+                type="button"
+                onClick={() => setRulesOpen(false)}
+                style={{
+                  border: "1px solid rgba(255,255,255,0.14)",
+                  background: "transparent",
+                  borderRadius: 999,
+                  padding: "6px 10px",
+                  color: "rgba(255,255,255,0.92)",
+                  cursor: "pointer",
+                }}
+              >
+                ✕
+              </button>
+            </div>
+
+            <div style={{ marginTop: 10, opacity: 0.92, fontSize: 13, lineHeight: 1.35, color: "#e7e8f4" }}>
+              {headerRules.lines.map((ln, i) => (
+                <div key={i} style={{ marginTop: ln === "" ? 10 : 6, opacity: ln === "" ? 0.0 : 1 }}>
+                  {ln}
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }

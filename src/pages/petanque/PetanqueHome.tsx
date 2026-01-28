@@ -14,12 +14,25 @@ import ArcadeTicker, { type ArcadeTickerItem } from "../../components/home/Arcad
 
 import { loadPetanqueState } from "../../lib/petanqueStore";
 
-import tickerPetanqueActu from "../../assets/tickers/ticker_petanque_actu.png";
-import tickerPetanqueNouveaute from "../../assets/tickers/ticker_petanque_nouveaute.png";
-import tickerPetanqueResultats from "../../assets/tickers/ticker_petanque_resultats.png";
-import tickerPetanqueEvenements from "../../assets/tickers/ticker_petanque_evenements.png";
-import tickerPetanqueAstuce from "../../assets/tickers/ticker_petanque_astuce.png";
+import tickerPetanqueActu1 from "../../assets/tickers/ticker_petanque_actu.png";
+import tickerPetanqueActu2 from "../../assets/tickers/ticker_petanque_actu_2.png";
+import tickerPetanqueActu3 from "../../assets/tickers/ticker_petanque_actu_3.png";
 
+import tickerPetanqueNouveaute1 from "../../assets/tickers/ticker_petanque_nouveaute.png";
+import tickerPetanqueNouveaute2 from "../../assets/tickers/ticker_petanque_nouveaute_2.png";
+import tickerPetanqueNouveaute3 from "../../assets/tickers/ticker_petanque_nouveaute_3.png";
+
+import tickerPetanqueResultats1 from "../../assets/tickers/ticker_petanque_resultats.png";
+import tickerPetanqueResultats2 from "../../assets/tickers/ticker_petanque_resultats_2.png";
+import tickerPetanqueResultats3 from "../../assets/tickers/ticker_petanque_resultats_3.png";
+
+import tickerPetanqueEvenements1 from "../../assets/tickers/ticker_petanque_evenements.png";
+import tickerPetanqueEvenements2 from "../../assets/tickers/ticker_petanque_evenements_2.png";
+import tickerPetanqueEvenements3 from "../../assets/tickers/ticker_petanque_evenements_3.png";
+
+import tickerPetanqueAstuce1 from "../../assets/tickers/ticker_petanque_astuce.png";
+import tickerPetanqueAstuce2 from "../../assets/tickers/ticker_petanque_astuce_2.png";
+import tickerPetanqueAstuce3 from "../../assets/tickers/ticker_petanque_astuce_3.png";
 type Props = {
   store: Store;
   go: (tab: any, params?: any) => void;
@@ -438,11 +451,11 @@ const P_IMG_NEWS_2 = svgToDataUri(`
 
 const TICKER_IMAGES = {
   // ✅ Home "infos" (nouveautés / actu / résultats / événements)
-  news: [tickerPetanqueActu],
-  new: [tickerPetanqueNouveaute],
-  results: [tickerPetanqueResultats],
-  events: [tickerPetanqueEvenements],
-  tip: [tickerPetanqueAstuce],
+  news: [tickerPetanqueActu1, tickerPetanqueActu2, tickerPetanqueActu3],
+  new: [tickerPetanqueNouveaute1, tickerPetanqueNouveaute2, tickerPetanqueNouveaute3],
+  results: [tickerPetanqueResultats1, tickerPetanqueResultats2, tickerPetanqueResultats3],
+  events: [tickerPetanqueEvenements1, tickerPetanqueEvenements2, tickerPetanqueEvenements3],
+  tip: [tickerPetanqueAstuce1, tickerPetanqueAstuce2, tickerPetanqueAstuce3],
 
   // legacy (data-uri) conservé si tu veux réutiliser plus tard
   local: [P_IMG_BOULES_1, P_IMG_BOULES_2],
@@ -451,7 +464,6 @@ const TICKER_IMAGES = {
   tipNews: [P_IMG_NEWS_1, P_IMG_NEWS_2],
   global: [P_IMG_BOULES_1, P_IMG_BOULES_2],
 } as const;
-
 
 function hashStringToInt(str: string): number {
   let h = 2166136261;
@@ -462,16 +474,41 @@ function hashStringToInt(str: string): number {
   return h >>> 0;
 }
 
-function pickTickerImage<K extends keyof typeof TICKER_IMAGES>(key: K, seed: string): string {
+// ✅ FIX: support "avoid" pour empêcher 2 backgrounds identiques visibles en même temps
+function pickTickerImage<K extends keyof typeof TICKER_IMAGES>(
+  key: K,
+  seed: string,
+  opts?: { avoid?: string[] }
+): string {
   const arr = TICKER_IMAGES[key];
-  if (!arr || arr.length === 0) return "";
-  const idx = hashStringToInt(`${key}::${seed}`) % arr.length;
-  const picked = String(arr[idx] ?? "").trim();
-  if (!picked) return "";
-  // imports Vite => string URL, data-uri ok, http ok
+  const list = Array.isArray(arr) ? arr.map((x) => String(x ?? "").trim()).filter(Boolean) : [];
+  if (!list.length) return "";
+
+  const avoid = (opts?.avoid ?? []).map((x) => String(x ?? "").trim()).filter(Boolean);
+
+  let idx = hashStringToInt(`${key}::${seed}`) % list.length;
+  let picked = list[idx] ?? "";
+
+  // ✅ évite doublon (si possible)
+  if (picked && avoid.includes(picked) && list.length > 1) {
+    picked = list[(idx + 1) % list.length] ?? picked;
+    if (picked && avoid.includes(picked) && list.length > 2) {
+      picked = list[(idx + 2) % list.length] ?? picked;
+    }
+  }
+
   return picked;
 }
 
+
+
+function themeKeyFromId(id: string): keyof typeof TICKER_IMAGES {
+  if (id.includes("petanque-results")) return "results";
+  if (id.includes("petanque-events")) return "events";
+  if (id.includes("petanque-tip")) return "tip";
+  if (id.includes("petanque-new")) return "new";
+  return "news";
+}
 
 function safeActiveProfile(store: Store): Profile | null {
   const profiles = store?.profiles ?? [];
@@ -501,7 +538,7 @@ function useAutoFitTitle(deps: any[] = []) {
       // eslint-disable-next-line @typescript-eslint/no-unused-expressions
       text.offsetHeight;
 
-      const available = wrap.clientWidth;
+      const available = Math.max(0, wrap.clientWidth - 12); // safety padding
       const needed = text.scrollWidth;
 
       if (!available || !needed) {
@@ -515,7 +552,10 @@ function useAutoFitTitle(deps: any[] = []) {
       }
 
       const s = Math.max(0.72, Math.min(1, available / needed));
-      setScale(s);
+      // safety margin to avoid last-letter clipping (subpixel)
+      const sSafe = Math.max(0.72, Math.min(1, s * 0.985));
+      setScale(sSafe);
+      return;
     };
 
     measure();
@@ -562,85 +602,84 @@ export default function PetanqueHome({ store, go }: Props) {
   const seed = String(activeProfile?.id ?? "anon");
 
   const tickerItems: ArcadeTickerItem[] = useMemo(() => {
-  const st = loadPetanqueState();
-  const ends = Array.isArray(st?.ends) ? st.ends.length : 0;
-  const a = Number(st?.scoreA ?? 0) || 0;
-  const b = Number(st?.scoreB ?? 0) || 0;
-  const target = Number(st?.target ?? 13) || 13;
-  const finished = !!st?.finished;
+    const st = loadPetanqueState();
+    const ends = Array.isArray(st?.ends) ? st.ends.length : 0;
+    const a = Number(st?.scoreA ?? 0) || 0;
+    const b = Number(st?.scoreB ?? 0) || 0;
+    const target = Number(st?.target ?? 13) || 13;
+    const finished = !!st?.finished;
 
-  // ✅ Résultats / reprise (dépend de l'état local)
-  const resume = finished
-    ? t("petanque.home.ticker.results.finished", "Partie terminée — consulte le résumé ou relance une partie.")
-    : ends > 0
-    ? t("petanque.home.ticker.results.live", `Partie en cours : ${a} — ${b} (objectif ${target}).`)
-    : t("petanque.home.ticker.results.empty", "Aucun résultat récent — lance une partie pour commencer.");
+    // ✅ Résultats / reprise (dépend de l'état local)
+    const resume = finished
+      ? t("petanque.home.ticker.results.finished", "Partie terminée — consulte le résumé ou relance une partie.")
+      : ends > 0
+      ? t("petanque.home.ticker.results.live", `Partie en cours : ${a} — ${b} (objectif ${target}).`)
+      : t("petanque.home.ticker.results.empty", "Aucun résultat récent — lance une partie pour commencer.");
 
-  // ✅ Contenu “éditorial” : tu pourras brancher ça plus tard (Supabase/news feed)
-  const actuText = t(
-    "petanque.home.ticker.news.text",
-    "Infos du moment : nouvelles variantes, correctifs UI, et améliorations du mode Local."
-  );
+    // ✅ Contenu “éditorial” : tu pourras brancher ça plus tard (Supabase/news feed)
+    const actuText = t(
+      "petanque.home.ticker.news.text",
+      "Infos du moment : nouvelles variantes, correctifs UI, et améliorations du mode Local."
+    );
 
-  const newText = t(
-    "petanque.home.ticker.new.text",
-    "Nouveautés : tickers dédiés (Actu / Nouveauté / Résultats / Événements) + visuels importés en assets."
-  );
+    const newText = t(
+      "petanque.home.ticker.new.text",
+      "Nouveautés : tickers dédiés (Actu / Nouveauté / Résultats / Événements) + visuels importés en assets."
+    );
 
-  const eventsText = t(
-    "petanque.home.ticker.events.text",
-    "Événements : crée un tournoi, lance un challenge, ou consulte le calendrier."
-  );
+    const eventsText = t(
+      "petanque.home.ticker.events.text",
+      "Événements : crée un tournoi, lance un challenge, ou consulte le calendrier."
+    );
 
-  const tipText = t(
-    "petanque.home.ticker.tip.text",
-    "Astuce : annonce la mène et confirme la marque avant de reprendre le jeu."
-  );
+    const tipText = t(
+      "petanque.home.ticker.tip.text",
+      "Astuce : annonce la mène et confirme la marque avant de reprendre le jeu."
+    );
 
-  return [
-    {
-      id: "petanque-news",
-      title: t("petanque.home.ticker.news.title", "Actualité"),
-      text: actuText,
-      detail: t("petanque.home.ticker.news.detail", "Actu · Patch · Infos"),
-      backgroundImage: pickTickerImage("news", `${seed}::petanque-news`),
-      accentColor: "#00E5A8",
-    },
-    {
-      id: "petanque-new",
-      title: t("petanque.home.ticker.new.title", "Nouveauté"),
-      text: newText,
-      detail: t("petanque.home.ticker.new.detail", "UI · Assets · Cohérence"),
-      backgroundImage: pickTickerImage("new", `${seed}::petanque-new`),
-      accentColor: theme.primary ?? "#F6C256",
-    },
-    {
-      id: "petanque-results",
-      title: t("petanque.home.ticker.results.title", "Résultats"),
-      text: resume,
-      detail: ends > 0 ? `${ends} mènes · ${a}—${b} · obj ${target}` : "",
-      backgroundImage: pickTickerImage("results", `${seed}::petanque-results`),
-      accentColor: "#FF7A18",
-    },
-    {
-      id: "petanque-events",
-      title: t("petanque.home.ticker.events.title", "Événements"),
-      text: eventsText,
-      detail: t("petanque.home.ticker.events.detail", "Tournois · Défis · Stats"),
-      backgroundImage: pickTickerImage("events", `${seed}::petanque-events`),
-      accentColor: "#7DBEFF",
-    },
-    {
-      id: "petanque-tip",
-      title: t("petanque.home.ticker.tip.title", "Astuce"),
-      text: tipText,
-      detail: t("petanque.home.ticker.tip.detail", "Rythme · Clarté · Fair-play"),
-      backgroundImage: pickTickerImage("tip", `${seed}::petanque-tip`),
-      accentColor: "#FFFFFF",
-    },
-  ];
-}, [seed, theme.primary, t, kpis.ends, kpis.scoreA, kpis.scoreB, kpis.target, kpis.finished]);
-
+    return [
+      {
+        id: "petanque-news",
+        title: t("petanque.home.ticker.news.title", "Actualité"),
+        text: actuText,
+        detail: t("petanque.home.ticker.news.detail", "Actu · Patch · Infos"),
+        backgroundImage: pickTickerImage("news", `${seed}::petanque-news`),
+        accentColor: "#00E5A8",
+      },
+      {
+        id: "petanque-new",
+        title: t("petanque.home.ticker.new.title", "Nouveauté"),
+        text: newText,
+        detail: t("petanque.home.ticker.new.detail", "UI · Assets · Cohérence"),
+        backgroundImage: pickTickerImage("new", `${seed}::petanque-new`),
+        accentColor: theme.primary ?? "#F6C256",
+      },
+      {
+        id: "petanque-results",
+        title: t("petanque.home.ticker.results.title", "Résultats"),
+        text: resume,
+        detail: ends > 0 ? `${ends} mènes · ${a}—${b} · obj ${target}` : "",
+        backgroundImage: pickTickerImage("results", `${seed}::petanque-results`),
+        accentColor: "#FF7A18",
+      },
+      {
+        id: "petanque-events",
+        title: t("petanque.home.ticker.events.title", "Événements"),
+        text: eventsText,
+        detail: t("petanque.home.ticker.events.detail", "Tournois · Défis · Stats"),
+        backgroundImage: pickTickerImage("events", `${seed}::petanque-events`),
+        accentColor: "#7DBEFF",
+      },
+      {
+        id: "petanque-tip",
+        title: t("petanque.home.ticker.tip.title", "Astuce"),
+        text: tipText,
+        detail: t("petanque.home.ticker.tip.detail", "Rythme · Clarté · Fair-play"),
+        backgroundImage: pickTickerImage("tip", `${seed}::petanque-tip`),
+        accentColor: "#FFFFFF",
+      },
+    ];
+  }, [seed, theme.primary, t, kpis.ends, kpis.scoreA, kpis.scoreB, kpis.target, kpis.finished]);
 
   const [tickerIndex, setTickerIndex] = useState(0);
 
@@ -661,15 +700,29 @@ export default function PetanqueHome({ store, go }: Props) {
   const detailAccent = currentTicker?.accentColor ?? theme.primary ?? "#F6C256";
   const leftTitle = currentTicker?.title ?? t("petanque.home.detail.left.title", "Pétanque");
   const leftText = currentTicker?.text ?? "";
-  const statsBackgroundImage = currentTicker?.backgroundImage ?? "";
 
-  const rightTitle = t("petanque.home.detail.right.title", "Accès rapide");
-  const rightText = t(
-    "petanque.home.detail.right.text",
-    "Lance une partie, ouvre le menu Pétanque, ou va sur Tournois/Stats."
+  // ✅ FIX: évite d'avoir le même background sur le ticker du haut + la carte gauche (visible en même temps)
+  const currentKey = themeKeyFromId(currentTicker?.id ?? "");
+
+  // ✅ fond dynamique (change quand le ticker défile) + évite doublons visibles
+  const statsBackgroundImage = pickTickerImage(currentKey as any, `${seed}::left::${currentTicker?.id ?? "none"}`,
+    { avoid: [currentTicker?.backgroundImage ?? ""] }
   );
+const secondaryTicker = tickerItems.length
+    ? tickerItems[(tickerIndex + 1) % tickerItems.length]
+    : null;
 
-  const primary = theme.primary ?? "#F6C256";
+  const rightTitle = secondaryTicker?.title ?? t("petanque.home.detail.right.title", "Infos");
+  const rightText = secondaryTicker?.text ?? t("petanque.home.detail.right.text", "");
+  const rightDetail = secondaryTicker?.detail ?? "";
+  
+
+  const rightBgImage = secondaryTicker
+    ? pickTickerImage(themeKeyFromId(secondaryTicker.id) as any, `${seed}::right::${secondaryTicker.id}`, {
+        avoid: [statsBackgroundImage ?? "", currentTicker?.backgroundImage ?? ""],
+      })
+    : pickTickerImage("tipNews", `${seed}::petanque-right`);
+const primary = theme.primary ?? "#F6C256";
 
   // ✅ Auto-fit sur les petits écrans (ne coupe jamais le titre)
   const { wrapRef: titleWrapRef, textRef: titleTextRef, scale: titleScale } = useAutoFitTitle([
@@ -721,7 +774,7 @@ export default function PetanqueHome({ store, go }: Props) {
           </div>
 
           {/* ✅ Container + auto-fit scale */}
-          <div ref={titleWrapRef} style={{ width: "100%", overflow: "hidden" }}>
+          <div ref={titleWrapRef} style={{ width: "100%", overflow: "hidden", paddingInline: 6, boxSizing: "border-box" }}>
             <div
               ref={titleTextRef}
               style={{
@@ -741,6 +794,7 @@ export default function PetanqueHome({ store, go }: Props) {
                 animation: "dcTitlePulse 3.6s ease-in-out infinite, dcTitleShimmer 7s linear infinite",
                 transform: `scale(${titleScale})`,
                 transformOrigin: "center",
+                paddingRight: 6, // avoid last-letter clipping
               }}
             >
               PETANQUE COUNTER
@@ -801,7 +855,7 @@ export default function PetanqueHome({ store, go }: Props) {
               background: "radial-gradient(circle at top, rgba(255,255,255,0.06), rgba(3,4,10,1))",
             }}
           >
-            <div style={{ display: "flex", gap: 8 }}>
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
               {/* gauche */}
               <div
                 style={{
@@ -876,7 +930,7 @@ export default function PetanqueHome({ store, go }: Props) {
                   position: "relative",
                   minHeight: 108,
                   backgroundColor: "#05060C",
-                  backgroundImage: `url("${pickTickerImage("tipNews", `${seed}::petanque-right`)}")`,
+                  backgroundImage: rightBgImage ? `url("${rightBgImage}")` : undefined,
                   backgroundSize: "cover",
                   backgroundPosition: "center",
                 }}
@@ -915,63 +969,17 @@ export default function PetanqueHome({ store, go }: Props) {
                     {rightText}
                   </div>
 
-                  <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 6 }}>
-                    <QuickBtn
-                      theme={theme}
-                      tint={theme.primary}
-                      label={t("petanque.home.quick.play", "Lancer / Reprendre")}
-                      onClick={() => go("petanque_play")}
-                    />
-                    <QuickBtn
-                      theme={theme}
-                      tint={"#00E5A8"}
-                      label={t("petanque.home.quick.measure", "Mesurer")}
-                      onClick={() => go("petanque_play", { openMeasure: true })}
-                    />
-                    <QuickBtn
-                      theme={theme}
-                      tint={"#FF7A18"}
-                      label={t("petanque.home.quick.tournaments", "Tournois")}
-                      onClick={() => go("tournaments" as any)}
-                    />
-                    <QuickBtn
-                      theme={theme}
-                      tint={"#FFFFFF"}
-                      label={t("petanque.home.quick.games", "Menu Jeux")}
-                      onClick={() => go("games")}
-                    />
-                  </div>
+                  {rightDetail ? (
+                    <div style={{ marginTop: 2, fontSize: 10, fontWeight: 800, opacity: 0.9, color: "#FFFFFF" }}>
+                      {rightDetail}
+                    </div>
+                  ) : null}
                 </div>
               </div>
-            </div>
           </div>
+        </div>
         </div>
       )}
-
-      {/* ✅ Résumé — mêmes extérieurs */}
-      <div style={{ ...sectionWrap, marginTop: 8 }}>
-        <div
-          style={{
-            borderRadius: 18,
-            border: `1px solid ${theme.borderSoft ?? "rgba(255,255,255,0.12)"}`,
-            background: "linear-gradient(180deg, rgba(255,255,255,0.06), rgba(255,255,255,0.02))",
-            padding: 12,
-            boxShadow: "0 14px 30px rgba(0,0,0,0.55)",
-          }}
-        >
-          <div style={{ fontSize: 12, fontWeight: 900, letterSpacing: 0.8, textTransform: "uppercase", color: theme.primary }}>
-            {t("petanque.home.resume.title", "Résumé")}
-          </div>
-          <div style={{ marginTop: 8, display: "flex", alignItems: "center", justifyContent: "center", gap: 10 }}>
-            <Pill theme={theme} label={t("petanque.home.teamA", "Équipe A")} />
-            <div style={{ fontWeight: 1000, fontSize: 24, letterSpacing: 1 }}>
-              {kpis.scoreA} — {kpis.scoreB}
-            </div>
-            <Pill theme={theme} label={t("petanque.home.teamB", "Équipe B")} />
-          </div>
-        </div>
-      </div>
-
       <div style={{ height: 26 }} />
     </div>
   );
@@ -998,50 +1006,3 @@ function MiniKpi({ label, value, primary, theme }: any) {
   );
 }
 
-function QuickBtn({ theme, tint, label, onClick }: any) {
-  const c = String(tint || "#FFFFFF");
-  return (
-    <button
-      onClick={onClick}
-      style={{
-        width: "100%",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        textAlign: "center",
-        borderRadius: 14,
-        border: `1px solid ${c}55`,
-        background: `linear-gradient(180deg, ${c}22, rgba(0,0,0,0.55))`,
-        color: c,
-        fontWeight: 950,
-        fontSize: 12,
-        letterSpacing: 0.6,
-        padding: "10px 12px",
-        cursor: "pointer",
-        boxShadow: `0 0 0 1px rgba(0,0,0,0.35), 0 10px 18px rgba(0,0,0,0.55)`,
-      }}
-    >
-      {label}
-    </button>
-  );
-}
-
-function Pill({ theme, label }: any) {
-  return (
-    <div
-      style={{
-        padding: "7px 12px",
-        borderRadius: 999,
-        border: `1px solid ${theme.borderSoft ?? "rgba(255,255,255,0.12)"}`,
-        background: "rgba(0,0,0,0.25)",
-        color: "rgba(255,255,255,0.92)",
-        fontWeight: 950,
-        fontSize: 12,
-        letterSpacing: 0.4,
-        whiteSpace: "nowrap",
-      }}
-    >
-      {label}
-    </div>
-  );
-}

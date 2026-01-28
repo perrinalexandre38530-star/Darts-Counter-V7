@@ -34,6 +34,7 @@ import { useTheme } from "../contexts/ThemeContext";
 import { useLang } from "../contexts/LangContext";
 import { useDevMode } from "../contexts/DevModeContext";
 import InfoDot from "../components/InfoDot";
+import BackDot from "../components/BackDot";
 import {
   DARTS_GAMES,
   GAME_CATEGORIES,
@@ -641,6 +642,19 @@ export default function Games({ setTab }: Props) {
         color: theme.text,
       }}
     >
+      {/* ✅ BackDot retour Home (fixe en haut à gauche) */}
+      <div
+        style={{
+          position: "fixed",
+          top: 12,
+          left: 12,
+          zIndex: 60,
+        }}
+      >
+        <BackDot onClick={() => setTab("home")} />
+      </div>
+
+
       <h1
         style={{
           margin: 0,

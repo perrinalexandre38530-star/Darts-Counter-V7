@@ -1,6 +1,6 @@
 import { useEffect } from "react";
-import { syncTrainingEvents } from "./trainingSyncEngine";
 import { useAuthOnline } from "../../hooks/useAuthOnline";
+import { trainingSyncQueueTry, trainingSyncQueueEnqueueSoon } from "./trainingSyncQueue";
 
 export function useTrainingAutoSync() {
   const { user, online } = useAuthOnline();
@@ -15,26 +15,26 @@ export function useTrainingAutoSync() {
   useEffect(() => {
     if (!user || !online) return;
 
-    let cancelled = false;
+    let alive = true;
 
-    const run = async () => {
-      if (cancelled) return;
-      try {
-        await syncTrainingEvents(user.id);
-      } catch {
-        // ignore
-      }
+    trainingSyncQueueEnqueueSoon();
+    trainingSyncQueueTry(user.id);
+
+    const onFocus = () => {
+      if (!alive) return;
+      trainingSyncQueueEnqueueSoon();
+      trainingSyncQueueTry(user.id);
     };
 
-    run();
-
-    const onFocus = () => run();
     window.addEventListener("focus", onFocus);
 
-    const t = window.setInterval(run, 30000);
+    const t = window.setInterval(() => {
+      if (!alive) return;
+      trainingSyncQueueTry(user.id);
+    }, 15000);
 
     return () => {
-      cancelled = true;
+      alive = false;
       window.removeEventListener("focus", onFocus);
       window.clearInterval(t);
     };

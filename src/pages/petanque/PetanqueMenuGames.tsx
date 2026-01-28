@@ -7,6 +7,7 @@
 // ✅ NEW: FFA 3 JOUEURS (chacun pour soi) — 3 boules/joueur => max 3 points/mène
 // ✅ NEW: TOURNOI (scope PÉTANQUE uniquement) — ouvre le menu tournois avec forceMode="petanque"
 // ✅ Compat routes: supporte "petanque.config" ET "petanque_config"
+// ✅ UI REQUEST: titres simplifiés (sans 1v1/2v2/3v3/4v4) + tout le détail dans le bouton (i)
 // ============================================
 
 import React from "react";
@@ -77,66 +78,97 @@ type ModeDef = {
   enabled: boolean;
 };
 
+// =============================================================
+// ⚠️ UI: titres simplifiés + sous-titres masqués (tout passe par InfoDot)
+// =============================================================
 const MODES: ModeDef[] = [
   {
     id: "singles",
     titleKey: "petanque.modes.singles.title",
-    titleDefault: "MATCH SIMPLE (1v1)",
+    titleDefault: "MATCH SIMPLE",
     subtitleKey: "petanque.modes.singles.subtitle",
-    subtitleDefault: "Deux joueurs — une équipe chacun.",
+    subtitleDefault: "",
     infoTitleKey: "petanque.modes.singles.infoTitle",
-    infoTitleDefault: "Match simple (1v1)",
+    infoTitleDefault: "Match simple (1 contre 1)",
     infoBodyKey: "petanque.modes.singles.infoBody",
-    infoBodyDefault: "Partie classique en tête-à-tête. 3 boules/joueur → maximum 3 points par mène.",
+    infoBodyDefault:
+      "• 2 joueurs, 1 contre 1.\n" +
+      "• 3 boules par joueur et par mène (max 3 points/mène).\n" +
+      "• Comptage des points à chaque mène.\n" +
+      "• Victoire : premier à 13 points.\n\n" +
+      "Déroulé : lancer du but → alternance des tirs → fin de mène → comptage → nouvelle mène.",
     enabled: true,
   },
   {
     id: "ffa3",
     titleKey: "petanque.modes.ffa3.title",
-    titleDefault: "MATCH À 3 (CHACUN POUR SOI)",
+    titleDefault: "MATCH À 3",
     subtitleKey: "petanque.modes.ffa3.subtitle",
-    subtitleDefault: "Trois joueurs — le premier à 13 gagne.",
+    subtitleDefault: "",
     infoTitleKey: "petanque.modes.ffa3.infoTitle",
-    infoTitleDefault: "Match à 3 (FFA)",
+    infoTitleDefault: "Match à 3 (chacun pour soi)",
     infoBodyKey: "petanque.modes.ffa3.infoBody",
     infoBodyDefault:
-      "3 joueurs, chacun joue pour soi. 3 boules/joueur. Un seul joueur gagne la mène et marque des points. Maximum 3 points par mène.",
+      "• 3 joueurs indépendants (pas d'équipes).\n" +
+      "• 3 boules par joueur et par mène.\n" +
+      "• Une seule personne « gagne la mène » et marque les points.\n" +
+      "• Max 3 points par mène.\n" +
+      "• Victoire : premier à 13 points.\n\n" +
+      "Déroulé : chaque joueur joue pour son score → fin de mène → comptage → reprise jusqu’à 13.",
     enabled: true,
   },
   {
     id: "doublette",
     titleKey: "petanque.modes.doublette.title",
-    titleDefault: "DOUBLETTE (2v2)",
+    titleDefault: "DOUBLETTE",
     subtitleKey: "petanque.modes.doublette.subtitle",
-    subtitleDefault: "Deux équipes de deux joueurs.",
+    subtitleDefault: "",
     infoTitleKey: "petanque.modes.doublette.infoTitle",
-    infoTitleDefault: "Doublette (2v2)",
+    infoTitleDefault: "Doublette (2 contre 2)",
     infoBodyKey: "petanque.modes.doublette.infoBody",
-    infoBodyDefault: "Mode équipe 2 contre 2. Standard : 3 boules/joueur → 6 boules/équipe → max 6 points par mène.",
+    infoBodyDefault:
+      "• 2 équipes de 2 joueurs.\n" +
+      "• Standard : 3 boules par joueur (6 boules/équipe).\n" +
+      "• Score commun à l’équipe.\n" +
+      "• Max 6 points par mène.\n" +
+      "• Victoire : première équipe à 13 points.\n\n" +
+      "Déroulé : alternance des joueurs dans chaque équipe → comptage par équipe → nouvelle mène.",
     enabled: true,
   },
   {
     id: "triplette",
     titleKey: "petanque.modes.triplette.title",
-    titleDefault: "TRIPLETTE (3v3)",
+    titleDefault: "TRIPLETTE",
     subtitleKey: "petanque.modes.triplette.subtitle",
-    subtitleDefault: "Deux équipes de trois joueurs.",
+    subtitleDefault: "",
     infoTitleKey: "petanque.modes.triplette.infoTitle",
-    infoTitleDefault: "Triplette (3v3)",
+    infoTitleDefault: "Triplette (3 contre 3)",
     infoBodyKey: "petanque.modes.triplette.infoBody",
-    infoBodyDefault: "Mode équipe 3 contre 3. Standard : 2 boules/joueur → 6 boules/équipe → max 6 points par mène.",
+    infoBodyDefault:
+      "• 2 équipes de 3 joueurs.\n" +
+      "• Standard : 2 boules par joueur (6 boules/équipe).\n" +
+      "• Score commun à l’équipe.\n" +
+      "• Max 6 points par mène.\n" +
+      "• Victoire : première équipe à 13 points.\n\n" +
+      "Déroulé : rotation complète des joueurs → comptage par équipe → reprise.",
     enabled: true,
   },
   {
     id: "quadrette",
     titleKey: "petanque.modes.quadrette.title",
-    titleDefault: "QUADRETTE (4v4)",
+    titleDefault: "QUADRETTE",
     subtitleKey: "petanque.modes.quadrette.subtitle",
-    subtitleDefault: "Deux équipes de quatre joueurs (2 boules/joueur).",
+    subtitleDefault: "",
     infoTitleKey: "petanque.modes.quadrette.infoTitle",
-    infoTitleDefault: "Quadrette (4v4)",
+    infoTitleDefault: "Quadrette (4 contre 4)",
     infoBodyKey: "petanque.modes.quadrette.infoBody",
-    infoBodyDefault: "Mode équipe 4 contre 4. Standard : 2 boules/joueur → 8 boules/équipe → max 8 points par mène.",
+    infoBodyDefault:
+      "• 2 équipes de 4 joueurs.\n" +
+      "• Standard : 2 boules par joueur (8 boules/équipe).\n" +
+      "• Score commun à l’équipe.\n" +
+      "• Max 8 points par mène.\n" +
+      "• Victoire : première équipe à 13 points.\n\n" +
+      "Déroulé : parties plus longues → rotation complète → comptage par équipe.",
     enabled: true,
   },
   {
@@ -144,24 +176,31 @@ const MODES: ModeDef[] = [
     titleKey: "petanque.modes.variants.title",
     titleDefault: "VARIANTES",
     subtitleKey: "petanque.modes.variants.subtitle",
-    subtitleDefault: "Équipes impaires (1v2, 2v3, 3v4…) avec compensation de boules.",
+    subtitleDefault: "",
     infoTitleKey: "petanque.modes.variants.infoTitle",
     infoTitleDefault: "Variantes (équipes impaires)",
     infoBodyKey: "petanque.modes.variants.infoBody",
     infoBodyDefault:
-      "Presets 1v2 / 2v3 / 3v4 / 4v3… avec répartition automatique des boules par joueur et score cible ajustable.",
+      "• Formats déséquilibrés : 1v2, 2v3, 3v4, etc.\n" +
+      "• Compensation automatique du nombre de boules.\n" +
+      "• Score cible (13 par défaut) ajustable selon le preset.\n\n" +
+      "Déroulé : choisis un preset → l’app répartit les boules → partie équilibrée malgré l’écart.",
     enabled: true,
   },
   {
     id: "training",
     titleKey: "petanque.modes.training.title",
-    titleDefault: "ENTRAÎNEMENT",
+    titleDefault: "TRAINING",
     subtitleKey: "petanque.modes.training.subtitle",
-    subtitleDefault: "Exercices & mesures (manuel/photo/live).",
+    subtitleDefault: "",
     infoTitleKey: "petanque.modes.training.infoTitle",
     infoTitleDefault: "Entraînement",
     infoBodyKey: "petanque.modes.training.infoBody",
-    infoBodyDefault: "Mode entraînement : mesure des distances, exercices, capture manuel/photo/live.",
+    infoBodyDefault:
+      "• Exercices & mesures (pointage / tir / précision).\n" +
+      "• Pas de victoire à 13 : tu fais des séries.\n" +
+      "• Saisie manuel / photo / live selon config.\n\n" +
+      "Déroulé : choisis un exercice → séries → stats & progression.",
     enabled: true,
   },
   {
@@ -169,11 +208,15 @@ const MODES: ModeDef[] = [
     titleKey: "petanque.modes.tournament.title",
     titleDefault: "TOURNOI",
     subtitleKey: "petanque.modes.tournament.subtitle",
-    subtitleDefault: "Multi-parties — élimination / poules (selon config).",
+    subtitleDefault: "",
     infoTitleKey: "petanque.modes.tournament.infoTitle",
     infoTitleDefault: "Tournoi Pétanque",
     infoBodyKey: "petanque.modes.tournament.infoBody",
-    infoBodyDefault: "Mode tournoi Pétanque. La structure (élimination directe, poules, nombre d’équipes) se règle dans la page de configuration.",
+    infoBodyDefault:
+      "• Mode multi-parties (poules / élimination / mix).\n" +
+      "• Paramétrage : nombre d’équipes, format, règles KO/poules.\n" +
+      "• Navigation vers le menu tournois filtré Pétanque.\n\n" +
+      "Déroulé : création → matchs → suivi → classement final.",
     enabled: true,
   },
 ];
@@ -200,9 +243,10 @@ export default function PetanqueMenuGames({ go, setTab }: Props) {
       setTab("home" as any);
       return;
     }
-    console.error("[PetanqueMenuGames] Aucun handler de navigation pour HOME: props.go et props.setTab sont absents.");
+    console.error(
+      "[PetanqueMenuGames] Aucun handler de navigation pour HOME: props.go et props.setTab sont absents."
+    );
   }
-
 
   // ✅ même logique que "Games" : un ticker discret DANS chaque carte (watermark)
   // (2/3 à droite du bouton, opacity faible, fade des bords)
@@ -243,7 +287,8 @@ export default function PetanqueMenuGames({ go, setTab }: Props) {
     const wmObjectPosition = "80% center";
 
     // ✅ Dégradé constant (ne pas déplacer)
-    const mask = "linear-gradient(90deg, rgba(0,0,0,0) 0%, rgba(0,0,0,1) 18%, rgba(0,0,0,1) 82%, rgba(0,0,0,0) 100%)";
+    const mask =
+      "linear-gradient(90deg, rgba(0,0,0,0) 0%, rgba(0,0,0,1) 18%, rgba(0,0,0,1) 82%, rgba(0,0,0,0) 100%)";
 
     // ✅ Décalage image vers la gauche (seulement pour les modes où le libellé est rogné)
     const shiftLeftPct: number = keepAsIs
@@ -288,8 +333,11 @@ export default function PetanqueMenuGames({ go, setTab }: Props) {
             height: "100%",
             objectFit: "cover",
             objectPosition: wmObjectPosition,
-            transform: shiftLeftPct ? `translateX(-${shiftLeftPct}%) translateZ(0)` : "translateZ(0)",
-            filter: "contrast(1.05) saturate(1.05) drop-shadow(0 0 10px rgba(0,0,0,0.25))",
+            transform: shiftLeftPct
+              ? `translateX(-${shiftLeftPct}%) translateZ(0)`
+              : "translateZ(0)",
+            filter:
+              "contrast(1.05) saturate(1.05) drop-shadow(0 0 10px rgba(0,0,0,0.25))",
           }}
           draggable={false}
         />
@@ -328,7 +376,9 @@ export default function PetanqueMenuGames({ go, setTab }: Props) {
       return;
     }
 
-    console.error("[PetanqueMenuGames] Aucun handler de navigation: props.go et props.setTab sont absents.");
+    console.error(
+      "[PetanqueMenuGames] Aucun handler de navigation: props.go et props.setTab sont absents."
+    );
   }
 
   function navigate(mode: PetanqueModeId) {
@@ -338,7 +388,13 @@ export default function PetanqueMenuGames({ go, setTab }: Props) {
     }
 
     const mappedMode =
-      mode === "singles" ? "simple" : mode === "ffa3" ? "ffa3" : mode === "variants" ? "variants" : mode;
+      mode === "singles"
+        ? "simple"
+        : mode === "ffa3"
+        ? "ffa3"
+        : mode === "variants"
+        ? "variants"
+        : mode;
 
     const maxEndPoints = getMaxEndPoints(mode);
 
@@ -363,39 +419,63 @@ export default function PetanqueMenuGames({ go, setTab }: Props) {
       return;
     }
 
-    console.error("[PetanqueMenuGames] Aucun handler de navigation: props.go et props.setTab sont absents.");
+    console.error(
+      "[PetanqueMenuGames] Aucun handler de navigation: props.go et props.setTab sont absents."
+    );
   }
 
   return (
-    <div style={{ minHeight: "100vh", padding: 16, paddingBottom: 90, background: theme.bg, color: theme.text }}>
-      <div style={{ position: "relative", display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 18 }}>
+    <div
+      style={{
+        minHeight: "100vh",
+        padding: 16,
+        paddingBottom: 90,
+        background: theme.bg,
+        color: theme.text,
+      }}
+    >
+      <div
+        style={{
+          position: "relative",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          marginBottom: 18,
+        }}
+      >
         <div style={{ position: "absolute", left: 0, top: 0 }}>
           <BackDot onClick={goHome} />
         </div>
         <div style={{ textAlign: "center" }}>
           <h1
-        style={{
-          margin: 0,
-          marginBottom: 6,
-          fontSize: 24,
-          color: theme.primary,
-          textAlign: "center",
-          textShadow: `0 0 12px ${theme.primary}66`,
-        }}
-      >
-        {t("petanque.menu.title", "PÉTANQUE")}
-      </h1>
+            style={{
+              margin: 0,
+              marginBottom: 6,
+              fontSize: 24,
+              color: theme.primary,
+              textAlign: "center",
+              textShadow: `0 0 12px ${theme.primary}66`,
+            }}
+          >
+            {t("petanque.menu.title", "PÉTANQUE")}
+          </h1>
 
-          <div style={{ fontSize: 13, color: theme.textSoft, marginBottom: 18, textAlign: "center" }}>
-        {t("petanque.menu.subtitle", "Choisis un mode")}
-      </div>
+          <div
+            style={{
+              fontSize: 13,
+              color: theme.textSoft,
+              marginBottom: 18,
+              textAlign: "center",
+            }}
+          >
+            {t("petanque.menu.subtitle", "Choisis un mode")}
+          </div>
         </div>
       </div>
 
       <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
         {MODES.map((m) => {
           const title = t(m.titleKey, m.titleDefault);
-          const subtitle = t(m.subtitleKey, m.subtitleDefault);
           const disabled = !m.enabled;
 
           return (
@@ -435,10 +515,18 @@ export default function PetanqueMenuGames({ go, setTab }: Props) {
                   {title}
                 </div>
 
-                <div style={{ marginTop: 4, fontSize: 12, color: theme.textSoft, opacity: 0.9 }}>{subtitle}</div>
+                {/* UI REQUEST: pas de sous-titre visible */}
               </div>
 
-              <div style={{ position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)", zIndex: 2 }}>
+              <div
+                style={{
+                  position: "absolute",
+                  right: 10,
+                  top: "50%",
+                  transform: "translateY(-50%)",
+                  zIndex: 2,
+                }}
+              >
                 <InfoDot
                   onClick={(ev: any) => {
                     try {
@@ -478,6 +566,7 @@ export default function PetanqueMenuGames({ go, setTab }: Props) {
               border: `1px solid ${theme.primary}55`,
               boxShadow: `0 18px 40px rgba(0,0,0,0.7)`,
               color: theme.text,
+              whiteSpace: "pre-line",
             }}
           >
             <div
@@ -493,7 +582,14 @@ export default function PetanqueMenuGames({ go, setTab }: Props) {
               {t(infoMode.infoTitleKey, infoMode.infoTitleDefault)}
             </div>
 
-            <div style={{ fontSize: 13, lineHeight: 1.4, color: theme.textSoft, marginBottom: 12 }}>
+            <div
+              style={{
+                fontSize: 13,
+                lineHeight: 1.4,
+                color: theme.textSoft,
+                marginBottom: 12,
+              }}
+            >
               {t(infoMode.infoBodyKey, infoMode.infoBodyDefault)}
             </div>
 

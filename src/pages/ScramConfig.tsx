@@ -1,173 +1,149 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useMemo, useState } from "react";
+import type { Store, Profile } from "../lib/types";
 import BackDot from "../components/BackDot";
 import InfoDot from "../components/InfoDot";
 import PageHeader from "../components/PageHeader";
+import tickerScram from "../assets/tickers/ticker_scram.png";
 import Section from "../components/Section";
 import OptionRow from "../components/OptionRow";
 import OptionToggle from "../components/OptionToggle";
 import OptionSelect from "../components/OptionSelect";
-import ProfileMedallionCarousel, { type MedallionItem } from "../components/ProfileMedallionCarousel";
+import ProfileAvatar from "../components/ProfileAvatar";
+import { PRO_BOTS } from "../lib/botsPro";
+import { getProBotAvatar } from "../lib/botsProAvatars";
 import { useLang } from "../contexts/LangContext";
 import { useTheme } from "../contexts/ThemeContext";
-import tickerScram from "../assets/tickers/ticker_scram.png";
 
 type BotLevel = "easy" | "normal" | "hard";
 
-type UserBot = {
+export type PlayerLite = {
   id: string;
   name: string;
-  avatarDataUrl?: string | null;
+  avatarDataUrl?: any | null;
+  avatarUrl?: any | null;
+  isBot?: boolean;
+  botLevel?: BotLevel;
 };
 
-const LS_BOTS_KEY = "dc_bots_v1";
+export type ScramConfigPayload = {
+  players: number;            // compat
+  playersList?: PlayerLite[]; // PRO
+  botsEnabled: boolean;
+  botLevel: BotLevel;
 
-const LS_BOTS_KEYS = ["dc_bots_v1", "dc-bots-v1", "dcBotsV1", "darts-counter-bots", "bots"];
+  /** Objectif de points en phase SCRAM (0 = pas d'objectif) */
+  objectivePoints: number;
 
+  /** Cap de rounds (0 = illimité) */
+  roundCap: number;
+};
 
-function safeParseBotsFromLS(): UserBot[] {
-  if (typeof window === "undefined") return [];
+const INFO_TEXT = `SCRAM — règles (PRO)
+
+Phase 1 — RACE (fermeture)
+- Les cibles sont : 20, 19, 18, 17, 16, 15 et BULL.
+- Chaque équipe doit "fermer" toutes les cibles (3 hits par cible).
+
+Phase 2 — SCRAM (points)
+- Quand une équipe a fermé TOUTES les cibles, elle passe en phase SCRAM.
+- Elle marque des points en touchant des cibles que l’équipe adverse N’A PAS fermées.
+- Objectif optionnel : atteindre X points en phase SCRAM.
+
+Équipes
+- 2 à 8 joueurs : répartis automatiquement en TEAM A / TEAM B (alternance).`;
+
+function loadUserBots(): PlayerLite[] {
   try {
-    const out: UserBot[] = [];
-    for (const key of LS_BOTS_KEYS) {
-      const raw = window.localStorage.getItem(key);
-      if (!raw) continue;
-      const arr = JSON.parse(raw);
-      if (!Array.isArray(arr)) continue;
-      for (const b of arr) {
-        const id = String((b as any)?.id ?? "");
-        const name = String((b as any)?.name ?? "BOT");
-        const avatarDataUrl = (b as any)?.avatarDataUrl ?? (b as any)?.avatarUrl ?? null;
-        if (id && name) out.push({ id, name, avatarDataUrl });
-      }
-    }
-    const map = new Map<string, UserBot>();
-    out.forEach((b) => map.set(b.id, b));
-    return Array.from(map.values());
+    const raw = localStorage.getItem("dc_bots_v1");
+    if (!raw) return [];
+    const arr = JSON.parse(raw);
+    if (!Array.isArray(arr)) return [];
+    return arr
+      .map((b: any) => ({
+        id: String(b?.id ?? ""),
+        name: String(b?.name ?? "BOT"),
+        avatarDataUrl: b?.avatarDataUrl ?? b?.avatarUrl ?? null,
+        avatarUrl: b?.avatarUrl ?? null,
+        isBot: true,
+        botLevel: (b?.botLevel as BotLevel) || "normal",
+      }))
+      .filter((b: any) => b.id && b.name);
   } catch {
     return [];
   }
 }
 
-function isBotProfile(p: any): boolean {
-  if (!p) return false;
-  if (p.isBot === true) return true;
-  const bl = typeof p.botLevel === "string" ? p.botLevel.trim() : "";
-  if (bl) return true;
-  const lvl = typeof p.level === "string" ? p.level.trim() : "";
-  if (lvl && ["easy","medium","strong","pro","legend","normal","hard"].includes(lvl)) return true;
-  const kind = typeof p.kind === "string" ? p.kind : "";
-  if (kind.toLowerCase() === "bot") return true;
-  return false;
-}
-
-function botsFromStoreProfiles(profiles: any[]): UserBot[] {
-  return (profiles || [])
-    .filter((p: any) => !!p?.isBot)
-    .map((p: any) => ({
-      id: String(p.id),
-      name: String(p.name ?? "BOT"),
-      avatarDataUrl: p.avatarDataUrl ?? p.avatarUrl ?? null,
-    }))
-    .filter((b: any) => b.id && b.name);
-}
-
-function loadBots(profiles: any[]): UserBot[] {
-  const storeBots = botsFromStoreProfiles(profiles);
-  const lsBots = safeParseBotsFromLS();
-  const merged = [...storeBots, ...lsBots];
-  const map = new Map<string, UserBot>();
-  merged.forEach((b) => map.set(b.id, b));
-  return Array.from(map.values());
-}
-
-const INFO_TEXT = `SCRAM (type Cricket Race → Scram)\n- Phase RACE : fermer 20..15 + BULL avant l'adversaire.\n- Phase SCRAM : dès qu'une équipe a fermé, elle marque des points sur les cibles ouvertes tant que l'autre n'a pas fermé.\n`;
-
-export type ScramConfigPayload = {
-  selectedIds: string[];
-  players: number;
-  botsEnabled: boolean;
-  botLevel: BotLevel;
-  rounds: number;     // 0 = illimité
-  objective: number;  // 0 = pas d'objectif
-};
-
-
-function normalizeImgSrc(src: any): string | undefined {
-  if (!src) return undefined;
-  if (typeof src !== "string") return undefined;
-  return src;
-}
-
-export default function ScramConfig(props: any) {
+export default function ScramConfig(props: { store?: Store; go?: any; setTab?: any }) {
   const { t } = useLang();
-  const theme = useTheme() as any;
-  const primary = theme?.primary ?? "#7dffca";
-  const primarySoft = theme?.primarySoft ?? "rgba(125,255,202,0.16)";
+  const theme = useTheme();
 
-  const storeProfiles = (props?.store?.profiles ?? []) as any[];
-  const humanProfiles = useMemo(() => storeProfiles.filter((p: any) => !isBotProfile(p)), [storeProfiles]);
+  const storeProfiles: PlayerLite[] = useMemo(() => {
+    const ps = (props?.store as any)?.profiles as Profile[] | undefined;
+    if (!ps || !Array.isArray(ps)) return [];
+    return ps.map((p) => ({
+      id: p.id,
+      name: p.name,
+      avatarDataUrl: (p as any).avatarDataUrl ?? null,
+      avatarUrl: (p as any).avatarUrl ?? null,
+      isBot: (p as any).isBot ?? false,
+      botLevel: (p as any).botLevel ?? "normal",
+    }));
+  }, [props?.store]);
 
-  const [selectedIds, setSelectedIds] = useState<string[]>([]);
-  const [pendingId, setPendingId] = useState<string | null>(null);
+  const userBots = useMemo(() => loadUserBots(), []);
+  const available = useMemo(() => {
+    const byId = new Map<string, PlayerLite>();
+    [...storeProfiles, ...userBots].forEach((p) => byId.set(p.id, p));
+    return Array.from(byId.values());
+  }, [storeProfiles, userBots]);
+
+  const defaultIds = useMemo(() => available.slice(0, 2).map((p) => p.id), [available]);
+  const [selectedIds, setSelectedIds] = useState<string[]>(defaultIds);
+
+  const selectedPlayers = useMemo(() => {
+    const map = new Map(available.map((p) => [p.id, p] as const));
+    const list = selectedIds.map((id) => map.get(id)).filter(Boolean) as PlayerLite[];
+    if (!list.length) return [{ id: "p1", name: "Joueur 1" }, { id: "p2", name: "Joueur 2" }];
+    if (list.length === 1) return [list[0], { id: "p2", name: "Joueur 2" }];
+    return list;
+  }, [available, selectedIds]);
+
+  const playersCount = Math.max(2, Math.min(8, selectedPlayers.length));
 
   const [botsEnabled, setBotsEnabled] = useState(false);
   const [botLevel, setBotLevel] = useState<BotLevel>("normal");
-  const [rounds, setRounds] = useState(0);
-  const [objective, setObjective] = useState(200);
+  const [objectivePoints, setObjectivePoints] = useState(200);
+  const [roundCap, setRoundCap] = useState(0);
 
-  const minPlayers = 2;
-  const maxPlayers = 8;
-
-  const [userBots, setUserBots] = useState<UserBot[]>([]);
-  useEffect(() => {
-    setUserBots(loadBots(storeProfiles));
-  }, [storeProfiles]);
-
-  const botIds = useMemo(() => new Set(userBots.map((b) => b.id)), [userBots]);
-
-  useEffect(() => {
-    if (!botsEnabled) {
-      setSelectedIds((prev) => prev.filter((id) => !botIds.has(id)));
-    }
-  }, [botsEnabled, botIds]);
-
-  const canStart = selectedIds.length >= minPlayers;
-  const canTeams = useMemo(() => selectedIds.length >= 2, [selectedIds.length]);
+  const payload: ScramConfigPayload = useMemo(
+    () => ({
+      players: playersCount,
+      playersList: selectedPlayers.slice(0, playersCount),
+      botsEnabled,
+      botLevel,
+      objectivePoints,
+      roundCap,
+    }),
+    [playersCount, selectedPlayers, botsEnabled, botLevel, objectivePoints, roundCap]
+  );
 
   function goBack() {
     if (props?.setTab) return props.setTab("games");
+    if (props?.go) return props.go("games");
     window.history.back();
   }
 
-  function togglePlayer(id: string) {
-    setSelectedIds((prev) => {
-      const has = prev.includes(id);
-      if (has) {
-        if (pendingId === id) {
-          setPendingId(null);
-          return prev.filter((x) => x !== id);
-        }
-        setPendingId(id);
-        return prev;
-      }
-      setPendingId(null);
-      if (prev.length >= maxPlayers) return prev;
-      return [...prev, id];
-    });
+  function start() {
+    if (props?.setTab) return props.setTab("scram_play", { config: payload });
+    if (props?.go) return props.go("scram_play", { config: payload });
   }
 
-  function start() {
-    if (!canStart) return;
-  const payload: ScramConfigPayload = {
-    selectedIds,
-    players: selectedIds.length,
-    botsEnabled,
-    botLevel,
-    rounds,
-    objective,
+  const pillStyle: React.CSSProperties = {
+    borderRadius: 999,
+    border: `1px solid ${theme.borderSoft}`,
+    background: "rgba(0,0,0,0.25)",
+    padding: "10px 12px",
   };
-    if (props?.setTab) return props.setTab("scram_play", { config: payload });
-  }
 
   return (
     <div className="page">
@@ -179,129 +155,123 @@ export default function ScramConfig(props: any) {
       />
 
       <Section title={t("config.players", "Joueurs")}>
-        <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center" }}>
-          <div style={{ fontSize: 12, opacity: 0.85, fontWeight: 950 }}>
-            Sélection : {selectedIds.length}/{maxPlayers} — min {minPlayers}
-          </div>
+        <div className="dc-scroll-thin" style={{ display: "flex", gap: 14, overflowX: "auto", padding: "6px 2px 10px" }}>
+          {selectedPlayers.slice(0, playersCount).map((p, idx) => (
+            <div
+              key={p.id}
+              role="button"
+              tabIndex={0}
+              onClick={() => {
+                setSelectedIds((prev) => {
+                  if (prev.length <= 2) return prev;
+                  return prev.filter((x) => x !== p.id);
+                });
+              }}
+              style={{
+                width: 86,
+                minWidth: 86,
+                textAlign: "center",
+                cursor: selectedIds.length > 2 ? "pointer" : "default",
+              }}
+              title={selectedIds.length > 2 ? "Cliquer pour retirer" : ""}
+            >
+              <div
+                style={{
+                  width: 86,
+                  height: 86,
+                  borderRadius: "50%",
+                  padding: 4,
+                  background: "rgba(0,0,0,0.35)",
+                  border: `1px solid ${theme.borderSoft}`,
+                  boxShadow: `0 0 18px ${theme.primary}33`,
+                }}
+              >
+                <ProfileAvatar profile={p as any} size={78} />
+              </div>
+              <div style={{ marginTop: 8, fontWeight: 900, fontSize: 12, color: theme.text }}>
+                {p.name || `${t("generic.player", "Joueur")} ${idx + 1}`}
+              </div>
+            </div>
+          ))}
         </div>
 
-        {/* Human carousel ALWAYS visible */}
-        {humanProfiles.length === 0 ? (
-          <p style={{ fontSize: 13, color: "#b3b8d0", marginTop: 10, marginBottom: 0 }}>
-            Aucun profil local. Crée des joueurs dans <b>Profils</b>.
-          </p>
-        ) : (
-          <ProfileMedallionCarousel
-            items={humanProfiles.map(
-              (p: any): MedallionItem => ({
-                id: String(p.id),
-                name: String(p.name ?? ""),
-                profile: p,
-              })
-            )}
-            selectedIds={selectedIds}
-            onToggle={togglePlayer}
-            primary={primary}
-            primarySoft={primarySoft}
-            padLeft={8}
+        <OptionRow label={t("config.playerCount", "Nombre de joueurs")}>
+          <OptionSelect
+            value={playersCount}
+            options={[2, 3, 4, 5, 6, 7, 8]}
+            onChange={(n: number) => {
+              const target = Math.max(2, Math.min(8, Number(n) || 2));
+              setSelectedIds((prev) => {
+                const cur = [...prev];
+                const pool = available.map((p) => p.id).filter((id) => !cur.includes(id));
+                while (cur.length < target && pool.length) cur.push(pool.shift()!);
+                while (cur.length > target) cur.pop();
+                return cur.length ? cur : prev;
+              });
+            }}
           />
-        )}
+        </OptionRow>
 
         <OptionRow label={t("config.bots", "Bots IA")}>
           <OptionToggle value={botsEnabled} onChange={setBotsEnabled} />
         </OptionRow>
 
-        {/* Bot carousel ONLY when enabled */}
         {botsEnabled && (
-          <>
-            <OptionRow label={t("config.botLevel", "Difficulté IA")}>
-              <OptionSelect
-                value={botLevel}
-                options={[
-                  { value: "easy", label: "Easy" },
-                  { value: "normal", label: "Normal" },
-                  { value: "hard", label: "Hard" },
-                ]}
-                onChange={(v: any) => setBotLevel(v)}
-              />
-            </OptionRow>
+          <OptionRow label={t("config.botLevel", "Difficulté IA")}>
+            <OptionSelect
+              value={botLevel}
+              options={[
+                { value: "easy", label: "Facile" },
+                { value: "normal", label: "Normal" },
+                { value: "hard", label: "Difficile" },
+              ]}
+              onChange={setBotLevel}
+            />
+          </OptionRow>
+        )}
 
-            <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", marginTop: 8 }}>
-              <div style={{ fontSize: 12, opacity: 0.85, fontWeight: 950 }}>Bots : {userBots.length}</div>
+        {available.length > 0 && (
+          <div style={{ marginTop: 12 }}>
+            <div style={{ fontSize: 12, color: theme.textSoft, marginBottom: 8 }}>
+              Ajouter un profil (cliquer) :
             </div>
-
-            {userBots.length === 0 ? (
-              <div style={{ fontSize: 12, opacity: 0.75, fontWeight: 900, marginTop: 8 }}>
-                Aucun bot personnalisé trouvé (dc_bots_v1). Crée des bots dans <b>Profils</b>.
-              </div>
-            ) : (
-              <ProfileMedallionCarousel
-                items={userBots.map(
-                  (b): MedallionItem => ({
-                    id: String(b.id),
-                    name: String(b.name ?? "BOT"),
-                    profile: {
-                      id: b.id,
-                      name: b.name,
-                      avatarUrl: normalizeImgSrc(b.avatarDataUrl),
-                      avatarDataUrl: null,
-                      isBot: true,
-                    },
-                  })
-                )}
-                selectedIds={selectedIds}
-                onToggle={togglePlayer}
-                primary={primary}
-                primarySoft={primarySoft}
-                padLeft={8}
-              />
-            )}
-          </>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
+              {available
+                .filter((p) => !selectedIds.includes(p.id))
+                .slice(0, 18)
+                .map((p) => (
+                  <div
+                    key={p.id}
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => setSelectedIds((prev) => (prev.length >= 8 ? prev : [...prev, p.id]))}
+                    style={{ ...pillStyle, display: "flex", alignItems: "center", gap: 10, cursor: "pointer" }}
+                    title="Ajouter"
+                  >
+                    <ProfileAvatar profile={p as any} size={34} />
+                    <div style={{ fontWeight: 900, fontSize: 12 }}>{p.name}</div>
+                  </div>
+                ))}
+            </div>
+          </div>
         )}
       </Section>
 
       <Section title={t("config.rules", "Règles")}>
-        <OptionRow label={t("scram.objective", "Objectif points (phase SCRAM)")}>
-          <OptionSelect
-            value={objective}
-            options={[
-              { value: 100, label: "100" },
-              { value: 150, label: "150" },
-              { value: 200, label: "200" },
-              { value: 250, label: "250" },
-              { value: 300, label: "300" },
-            ]}
-            onChange={(v: any) => setObjective(Number(v) as any)}
-          />
+        <OptionRow label={t("scram.objectivePoints", "Objectif points (phase SCRAM)")}>
+          <OptionSelect value={objectivePoints} options={[0, 50, 100, 150, 200, 300, 500]} onChange={setObjectivePoints} />
         </OptionRow>
 
-        <OptionRow label={t("scram.rounds", "Cap de rounds (0 = illimité)")}>
-          <OptionSelect
-            value={rounds}
-            options={[
-              { value: 0, label: t("common.unlimited", "Illimité") },
-              { value: 5, label: "5" },
-              { value: 7, label: "7" },
-              { value: 9, label: "9" },
-              { value: 11, label: "11" },
-              { value: 13, label: "13" },
-            ]}
-            onChange={(v: any) => setRounds(Number(v) as any)}
-          />
+        <OptionRow label={t("scram.roundCap", "Cap de rounds (0 = illimité)")}>
+          <OptionSelect value={roundCap} options={[0, 5, 8, 10, 12, 15, 20]} onChange={setRoundCap} />
         </OptionRow>
       </Section>
 
-
-      <div style={{ padding: "0 14px 18px" }}>
-        <button className="btn-primary" style={{ width: "100%", opacity: canStart ? 1 : 0.55 }} disabled={!canStart} onClick={start}>
-          {t("common.start", "Démarrer la partie")}
+      <Section>
+        <button className="btn-primary w-full" onClick={start}>
+          {t("config.startGame", "Démarrer la partie")}
         </button>
-        {!canStart && (
-          <div style={{ fontSize: 12, opacity: 0.75, marginTop: 10, textAlign: "center" }}>
-            Sélectionne au moins {minPlayers} joueurs (humains et/ou bots).
-          </div>
-        )}
-      </div>
+      </Section>
     </div>
   );
 }
