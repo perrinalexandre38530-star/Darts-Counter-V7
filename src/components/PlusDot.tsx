@@ -1,8 +1,8 @@
 // ============================================
 // src/components/PlusDot.tsx
-// Petit bouton rond "+" façon InfoDot/BackDot
-// ✅ Rend toujours un "+" visible (SVG fallback) même si l’asset PNG ne charge pas
-// ✅ Même border/bg/halo que InfoDot
+// Bouton rond "+" (même style que InfoDot / BackDot)
+// - Couleurs calées sur le thème
+// - Halo neon + bord soft
 // ============================================
 
 import React from "react";
@@ -10,36 +10,23 @@ import { useTheme } from "../contexts/ThemeContext";
 
 type Props = {
   onClick?: (e: any) => void;
-  title?: string;
-  size?: number;
-  /** Optionnel: source image (PNG). Si non fourni ou si erreur, fallback SVG. */
-  iconSrc?: any;
   color?: string;
   glow?: string;
+  title?: string;
+  size?: number;
 };
-
-function normalizeImgSrc(v: any): string | null {
-  if (!v) return null;
-  if (typeof v === "string") return v;
-  // Vite static import { default: "..." }
-  if (typeof v === "object" && typeof v.default === "string") return v.default;
-  return null;
-}
 
 export default function PlusDot({
   onClick,
-  title = "Ajouter / retirer des stats",
-  size = 46,
-  iconSrc,
   color,
   glow,
+  title = "Ajouter / modifier",
+  size = 46,
 }: Props) {
   const { theme } = useTheme();
+
   const c = color ?? theme.primary;
   const halo = glow ?? `${c}88`;
-
-  const [imgOk, setImgOk] = React.useState(true);
-  const src = normalizeImgSrc(iconSrc);
 
   const handle = React.useCallback(
     (e: any) => {
@@ -78,41 +65,19 @@ export default function PlusDot({
         color: c,
         flex: "0 0 auto",
         pointerEvents: "auto",
-        overflow: "hidden",
       }}
     >
-      {/* PNG optionnel */}
-      {src && imgOk ? (
-        <img
-          src={src}
-          alt="+"
-          draggable={false}
-          onError={() => setImgOk(false)}
-          style={{
-            width: Math.round(size * 0.46),
-            height: Math.round(size * 0.46),
-            objectFit: "contain",
-            // rend l’icône visible même si PNG noir: on force un rendu "neon"
-            filter: `drop-shadow(0 0 10px ${halo}) drop-shadow(0 0 18px ${halo})`,
-          }}
-        />
-      ) : (
-        // Fallback: SVG "+" (toujours visible)
-        <svg
-          width={Math.round(size * 0.46)}
-          height={Math.round(size * 0.46)}
-          viewBox="0 0 24 24"
-          aria-hidden="true"
-          style={{
-            filter: `drop-shadow(0 0 10px ${halo}) drop-shadow(0 0 18px ${halo})`,
-          }}
-        >
-          <path
-            d="M11 5h2v14h-2zM5 11h14v2H5z"
-            fill={c}
-          />
-        </svg>
-      )}
+      <span
+        style={{
+          fontSize: 26,
+          fontWeight: 1000,
+          lineHeight: 1,
+          transform: "translateY(-1px)",
+          textShadow: `0 0 12px ${halo}, 0 0 22px ${halo}`,
+        }}
+      >
+        +
+      </span>
     </div>
   );
 }
