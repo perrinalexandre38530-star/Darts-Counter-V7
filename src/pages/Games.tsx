@@ -642,23 +642,26 @@ export default function Games({ setTab }: Props) {
         color: theme.text,
       }}
     >
-      {/* ✅ BackDot retour Home (fixe en haut à gauche) */}
+      
+      {/* Header row: BackDot a gauche + Titre centre (meme ligne) */}
       <div
         style={{
-          position: "fixed",
-          top: 12,
-          left: 12,
-          zIndex: 60,
+          position: "relative",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          marginBottom: 6,
+          minHeight: 36,
         }}
       >
-        <BackDot onClick={() => setTab("home")} />
-      </div>
+        <div style={{ position: "absolute", left: 0, top: "50%", transform: "translateY(-50%)" }}>
+          <BackDot onClick={() => setTab("home")} />
+        </div>
 
-
-      <h1
+        <h1
         style={{
           margin: 0,
-          marginBottom: 6,
+          
           fontSize: 24,
           color: theme.primary,
           textAlign: "center",
@@ -667,6 +670,8 @@ export default function Games({ setTab }: Props) {
       >
         {t("games.title", "TOUS LES JEUX")}
       </h1>
+      </div>
+
 
       <div
         style={{

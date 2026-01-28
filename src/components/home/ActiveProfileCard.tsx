@@ -78,7 +78,7 @@ type Props = {
   profile: Profile | null;
   stats: ActiveProfileStats;
   // optionnel : si Home le fournit, on l'utilise, sinon fallback sur profile.status
-  status?: "online" | "away" | "offline";
+  status?: "online" | "away" | "offline" | null;
 };
 
 type SlideDef = {
@@ -518,17 +518,20 @@ function ActiveProfileCard({ profile, stats, status: statusProp }: Props) {
   const slide = slides[index] ?? slides[0];
 
   // Statut (prop > profil > online par défaut)
-  const status: "online" | "away" | "offline" =
-    statusProp ??
-    (((profile as any).status as "online" | "away" | "offline" | undefined) ??
-      "online");
+  const status: "online" | "away" | "offline" | null =
+    statusProp === null
+      ? null
+      : statusProp ??
+        (((profile as any).status as "online" | "away" | "offline" | undefined) ?? "online");
 
   const statusColor =
     status === "online"
       ? "#18FF6D"
       : status === "away"
       ? "#FFD95E"
-      : "#888888";
+      : status === "offline"
+      ? "#888888"
+      : "transparent";
 
   // Accent pour le shimmer du nom (lié au thème)
   const accent = (theme as any).accent ?? primary;
@@ -669,43 +672,43 @@ function ActiveProfileCard({ profile, stats, status: statusProp }: Props) {
                   {profileName}
                 </span>
               </span>
-            </div>
-
-            {/* Statut */}
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 6,
-                marginTop: 2,
-              }}
-            >
-              <span
+            </div>            {/* Statut (optionnel) */}
+            {status ? (
+              <div
                 style={{
-                  width: 8,
-                  height: 8,
-                  borderRadius: "50%",
-                  backgroundColor: statusColor,
-                  boxShadow:
-                    status === "offline"
-                      ? "none"
-                      : `0 0 8px ${statusColor}, 0 0 14px ${statusColor}`,
-                }}
-              />
-              <span
-                style={{
-                  fontSize: 13,
-                  fontWeight: 600,
-                  color: theme.textSoft ?? "rgba(255,255,255,0.7)",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 6,
+                  marginTop: 2,
                 }}
               >
-                {status === "online"
-                  ? t("status.online", "En ligne")
-                  : status === "away"
-                  ? t("status.away", "Absent")
-                  : t("status.offline", "Hors ligne")}
-              </span>
-            </div>
+                <span
+                  style={{
+                    width: 8,
+                    height: 8,
+                    borderRadius: "50%",
+                    backgroundColor: statusColor,
+                    boxShadow:
+                      status === "offline"
+                        ? "none"
+                        : `0 0 8px ${statusColor}, 0 0 14px ${statusColor}`,
+                  }}
+                />
+                <span
+                  style={{
+                    fontSize: 13,
+                    fontWeight: 600,
+                    color: theme.textSoft ?? "rgba(255,255,255,0.7)",
+                  }}
+                >
+                  {status === "online"
+                    ? t("status.online", "En ligne")
+                    : status === "away"
+                    ? t("status.away", "Absent")
+                    : t("status.offline", "Hors ligne")}
+                </span>
+              </div>
+            ) : null}
           </div>
         </div>
 

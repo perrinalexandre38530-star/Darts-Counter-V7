@@ -1,277 +1,427 @@
-import React, { useMemo, useState } from "react";
-import type { Store, Profile } from "../lib/types";
+// =============================================================
+// src/pages/ScramConfig.tsx
+// SCRAM — Config PRO (UX alignée sur DepartementsConfig / X01Config)
+// - Carrousel Profils (humains) toujours visible
+// - Carrousel Bots IA visible si toggle activé
+// - Bots = PRO_BOTS + bots custom (localStorage dc_bots_v1)
+// - Sélection via click (selectedIds)
+// =============================================================
+
+import React from "react";
 import BackDot from "../components/BackDot";
 import InfoDot from "../components/InfoDot";
 import PageHeader from "../components/PageHeader";
-import tickerScram from "../assets/tickers/ticker_scram.png";
 import Section from "../components/Section";
 import OptionRow from "../components/OptionRow";
 import OptionToggle from "../components/OptionToggle";
 import OptionSelect from "../components/OptionSelect";
 import ProfileAvatar from "../components/ProfileAvatar";
-import { PRO_BOTS } from "../lib/botsPro";
-import { getProBotAvatar } from "../lib/botsProAvatars";
 import { useLang } from "../contexts/LangContext";
 import { useTheme } from "../contexts/ThemeContext";
 
+import tickerScram from "../assets/tickers/ticker_scram.png";
+
+import avatarGreenMachine from "../assets/avatars/bots-pro/green-machine.png";
+import avatarSnakeKing from "../assets/avatars/bots-pro/snake-king.png";
+import avatarWonderKid from "../assets/avatars/bots-pro/wonder-kid.png";
+import avatarIceMan from "../assets/avatars/bots-pro/ice-man.png";
+
 type BotLevel = "easy" | "normal" | "hard";
 
-export type PlayerLite = {
-  id: string;
-  name: string;
-  avatarDataUrl?: any | null;
-  avatarUrl?: any | null;
-  isBot?: boolean;
-  botLevel?: BotLevel;
-};
-
 export type ScramConfigPayload = {
-  players: number;            // compat
-  playersList?: PlayerLite[]; // PRO
+  players: number;
+  selectedIds: string[];
   botsEnabled: boolean;
   botLevel: BotLevel;
-
-  /** Objectif de points en phase SCRAM (0 = pas d'objectif) */
-  objectivePoints: number;
-
-  /** Cap de rounds (0 = illimité) */
-  roundCap: number;
+  objective: number;
+  roundsCap: number; // 0 = illimité
 };
 
-const INFO_TEXT = `SCRAM — règles (PRO)
+const LS_CFG_KEY = "dc_modecfg_scram";
+const LS_BOTS_KEY = "dc_bots_v1";
 
-Phase 1 — RACE (fermeture)
-- Les cibles sont : 20, 19, 18, 17, 16, 15 et BULL.
-- Chaque équipe doit "fermer" toutes les cibles (3 hits par cible).
+type BotLite = { id: string; name: string; avatarDataUrl: string | null; botLevel?: string };
 
-Phase 2 — SCRAM (points)
-- Quand une équipe a fermé TOUTES les cibles, elle passe en phase SCRAM.
-- Elle marque des points en touchant des cibles que l’équipe adverse N’A PAS fermées.
-- Objectif optionnel : atteindre X points en phase SCRAM.
+const PRO_BOTS: BotLite[] = [
+  { id: "pro_green_machine", name: "Green Machine", avatarDataUrl: avatarGreenMachine, botLevel: "hard" },
+  { id: "pro_snake_king", name: "Snake King", avatarDataUrl: avatarSnakeKing, botLevel: "hard" },
+  { id: "pro_wonder_kid", name: "Wonder Kid", avatarDataUrl: avatarWonderKid, botLevel: "hard" },
+  { id: "pro_ice_man", name: "Ice Man", avatarDataUrl: avatarIceMan, botLevel: "hard" },
+];
 
-Équipes
-- 2 à 8 joueurs : répartis automatiquement en TEAM A / TEAM B (alternance).`;
-
-function loadUserBots(): PlayerLite[] {
+function readUserBotsFromLS(): BotLite[] {
   try {
-    const raw = localStorage.getItem("dc_bots_v1");
+    const raw = localStorage.getItem(LS_BOTS_KEY);
     if (!raw) return [];
-    const arr = JSON.parse(raw);
-    if (!Array.isArray(arr)) return [];
-    return arr
-      .map((b: any) => ({
-        id: String(b?.id ?? ""),
-        name: String(b?.name ?? "BOT"),
-        avatarDataUrl: b?.avatarDataUrl ?? b?.avatarUrl ?? null,
-        avatarUrl: b?.avatarUrl ?? null,
-        isBot: true,
-        botLevel: (b?.botLevel as BotLevel) || "normal",
+    const parsed = JSON.parse(raw) as any[];
+    if (!Array.isArray(parsed)) return [];
+    return parsed
+      .map((b) => ({
+        id: String(b.id),
+        name: b.name || "BOT",
+        avatarDataUrl: b.avatarDataUrl ?? null,
+        botLevel: b.botLevel ?? b.levelLabel ?? b.levelName ?? b.performanceLevel ?? b.difficulty ?? "",
       }))
-      .filter((b: any) => b.id && b.name);
+      .filter((b) => !!b.id);
   } catch {
     return [];
   }
 }
 
-export default function ScramConfig(props: { store?: Store; go?: any; setTab?: any }) {
+function botToFakeProfile(b: BotLite) {
+  return {
+    id: b.id,
+    name: b.name,
+    avatarDataUrl: b.avatarDataUrl,
+    isBot: true,
+    botLevel: b.botLevel || "",
+  } as any;
+}
+
+function isBotLike(p: any) {
+  if (!p) return false;
+  if (p.isBot || p.bot || p.type === "bot" || p.kind === "bot") return true;
+  if (typeof p.botLevel === "string" && p.botLevel) return true;
+  if (typeof p.level === "string" && p.level) return true;
+  return false;
+}
+
+export default function ScramConfig(props: any) {
   const { t } = useLang();
   const theme = useTheme();
 
-  const storeProfiles: PlayerLite[] = useMemo(() => {
-    const ps = (props?.store as any)?.profiles as Profile[] | undefined;
-    if (!ps || !Array.isArray(ps)) return [];
-    return ps.map((p) => ({
-      id: p.id,
-      name: p.name,
-      avatarDataUrl: (p as any).avatarDataUrl ?? null,
-      avatarUrl: (p as any).avatarUrl ?? null,
-      isBot: (p as any).isBot ?? false,
-      botLevel: (p as any).botLevel ?? "normal",
-    }));
-  }, [props?.store]);
+  React.useLayoutEffect(() => {
+    try {
+      window.scrollTo(0, 0);
+      document.documentElement.scrollTop = 0;
+      document.body.scrollTop = 0;
+    } catch {}
+  }, []);
 
-  const userBots = useMemo(() => loadUserBots(), []);
-  const available = useMemo(() => {
-    const byId = new Map<string, PlayerLite>();
-    [...storeProfiles, ...userBots].forEach((p) => byId.set(p.id, p));
-    return Array.from(byId.values());
-  }, [storeProfiles, userBots]);
+  const store = (props as any)?.store ?? (props as any)?.params?.store ?? null;
 
-  const defaultIds = useMemo(() => available.slice(0, 2).map((p) => p.id), [available]);
-  const [selectedIds, setSelectedIds] = useState<string[]>(defaultIds);
+  const primary = (theme as any)?.primary ?? "#7dffca";
 
-  const selectedPlayers = useMemo(() => {
-    const map = new Map(available.map((p) => [p.id, p] as const));
-    const list = selectedIds.map((id) => map.get(id)).filter(Boolean) as PlayerLite[];
-    if (!list.length) return [{ id: "p1", name: "Joueur 1" }, { id: "p2", name: "Joueur 2" }];
-    if (list.length === 1) return [list[0], { id: "p2", name: "Joueur 2" }];
-    return list;
-  }, [available, selectedIds]);
+  const storeProfiles: any[] = Array.isArray((store as any)?.profiles) ? (store as any).profiles : [];
+  const humanProfiles = storeProfiles.filter((p) => !isBotLike(p));
 
-  const playersCount = Math.max(2, Math.min(8, selectedPlayers.length));
+  const [botsEnabled, setBotsEnabled] = React.useState(false);
+  const [botLevel, setBotLevel] = React.useState<BotLevel>("normal");
+  const [objective, setObjective] = React.useState<number>(200);
+  const [roundsCap, setRoundsCap] = React.useState<number>(0);
 
-  const [botsEnabled, setBotsEnabled] = useState(false);
-  const [botLevel, setBotLevel] = useState<BotLevel>("normal");
-  const [objectivePoints, setObjectivePoints] = useState(200);
-  const [roundCap, setRoundCap] = useState(0);
+  const [userBots, setUserBots] = React.useState<BotLite[]>([]);
+  React.useEffect(() => {
+    const custom = readUserBotsFromLS();
+    const m = new Map<string, BotLite>();
+    for (const b of PRO_BOTS) m.set(b.id, b);
+    for (const b of custom) m.set(b.id, b);
+    setUserBots(Array.from(m.values()));
+  }, []);
 
-  const payload: ScramConfigPayload = useMemo(
-    () => ({
-      players: playersCount,
-      playersList: selectedPlayers.slice(0, playersCount),
+  const [selectedIds, setSelectedIds] = React.useState<string[]>(() => {
+    try {
+      const raw = localStorage.getItem(LS_CFG_KEY);
+      if (!raw) return [];
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed?.selectedIds)) return parsed.selectedIds.slice(0, 8);
+    } catch {}
+    // fallback: 2 premiers profils humains
+    return humanProfiles.slice(0, 2).map((p) => String(p.id));
+  });
+
+  // persist
+  React.useEffect(() => {
+    try {
+      localStorage.setItem(
+        LS_CFG_KEY,
+        JSON.stringify({ selectedIds, botsEnabled, botLevel, objective, roundsCap })
+      );
+    } catch {}
+  }, [selectedIds, botsEnabled, botLevel, objective, roundsCap]);
+
+  // si bots off => virer les bots sélectionnés
+  React.useEffect(() => {
+    if (botsEnabled) return;
+    const botIds = new Set(userBots.map((b) => b.id));
+    setSelectedIds((prev) => prev.filter((id) => !botIds.has(id)));
+  }, [botsEnabled, userBots]);
+
+  function togglePlayer(id: string) {
+    setSelectedIds((prev) => {
+      const has = prev.includes(id);
+      if (has) return prev.filter((x) => x !== id);
+      if (prev.length >= 8) return prev;
+      return [...prev, id];
+    });
+  }
+
+  function onStart() {
+    const payload: ScramConfigPayload = {
+      players: selectedIds.length,
+      selectedIds,
       botsEnabled,
       botLevel,
-      objectivePoints,
-      roundCap,
-    }),
-    [playersCount, selectedPlayers, botsEnabled, botLevel, objectivePoints, roundCap]
-  );
+      objective,
+      roundsCap,
+    };
 
-  function goBack() {
-    if (props?.setTab) return props.setTab("games");
-    if (props?.go) return props.go("games");
-    window.history.back();
+    // compat go(tab, params) ou navigation props.go
+    const go = (props as any)?.go ?? (props as any)?.params?.go;
+    if (typeof go === "function") {
+      go("scram.play", payload);
+      return;
+    }
+    const setTab = (props as any)?.setTab;
+    if (typeof setTab === "function") {
+      setTab("scram.play", payload);
+    }
   }
 
-  function start() {
-    if (props?.setTab) return props.setTab("scram_play", { config: payload });
-    if (props?.go) return props.go("scram_play", { config: payload });
-  }
-
-  const pillStyle: React.CSSProperties = {
-    borderRadius: 999,
-    border: `1px solid ${theme.borderSoft}`,
-    background: "rgba(0,0,0,0.25)",
-    padding: "10px 12px",
-  };
+  const canStart = selectedIds.length >= 2;
+  const cardBg = "linear-gradient(180deg, rgba(255,255,255,0.06), rgba(0,0,0,0.28))";
 
   return (
-    <div className="page">
+    <div style={{ minHeight: "100dvh" }}>
       <PageHeader
         title="SCRAM"
-        tickerSrc={tickerScram}
-        left={<BackDot onClick={goBack} />}
-        right={<InfoDot title="Règles SCRAM" content={INFO_TEXT} />}
+        left={<BackDot onClick={() => (props as any)?.go?.("games") || (props as any)?.setTab?.("games")} />}
+        right={
+          <InfoDot
+            title="SCRAM"
+            body={
+              "Phase RACE: fermer toutes les cibles (20→15 + Bull). Puis phase SCRAM: marquer des points pendant que l'autre team ferme. Premier à l'objectif (ou fin de rounds) gagne." 
+            }
+          />
+        }
+        ticker={tickerScram}
       />
 
-      <Section title={t("config.players", "Joueurs")}>
-        <div className="dc-scroll-thin" style={{ display: "flex", gap: 14, overflowX: "auto", padding: "6px 2px 10px" }}>
-          {selectedPlayers.slice(0, playersCount).map((p, idx) => (
-            <div
-              key={p.id}
-              role="button"
-              tabIndex={0}
-              onClick={() => {
-                setSelectedIds((prev) => {
-                  if (prev.length <= 2) return prev;
-                  return prev.filter((x) => x !== p.id);
-                });
-              }}
-              style={{
-                width: 86,
-                minWidth: 86,
-                textAlign: "center",
-                cursor: selectedIds.length > 2 ? "pointer" : "default",
-              }}
-              title={selectedIds.length > 2 ? "Cliquer pour retirer" : ""}
-            >
-              <div
-                style={{
-                  width: 86,
-                  height: 86,
-                  borderRadius: "50%",
-                  padding: 4,
-                  background: "rgba(0,0,0,0.35)",
-                  border: `1px solid ${theme.borderSoft}`,
-                  boxShadow: `0 0 18px ${theme.primary}33`,
-                }}
-              >
-                <ProfileAvatar profile={p as any} size={78} />
-              </div>
-              <div style={{ marginTop: 8, fontWeight: 900, fontSize: 12, color: theme.text }}>
-                {p.name || `${t("generic.player", "Joueur")} ${idx + 1}`}
-              </div>
-            </div>
-          ))}
-        </div>
-
-        <OptionRow label={t("config.playerCount", "Nombre de joueurs")}>
-          <OptionSelect
-            value={playersCount}
-            options={[2, 3, 4, 5, 6, 7, 8]}
-            onChange={(n: number) => {
-              const target = Math.max(2, Math.min(8, Number(n) || 2));
-              setSelectedIds((prev) => {
-                const cur = [...prev];
-                const pool = available.map((p) => p.id).filter((id) => !cur.includes(id));
-                while (cur.length < target && pool.length) cur.push(pool.shift()!);
-                while (cur.length > target) cur.pop();
-                return cur.length ? cur : prev;
-              });
+      <div style={{ padding: 12, paddingTop: 10 }}>
+        <Section title={t("players") || "JOUEURS"}>
+          <div
+            style={{
+              borderRadius: 18,
+              padding: 12,
+              background: cardBg,
+              border: "1px solid rgba(255,255,255,0.10)",
             }}
-          />
-        </OptionRow>
-
-        <OptionRow label={t("config.bots", "Bots IA")}>
-          <OptionToggle value={botsEnabled} onChange={setBotsEnabled} />
-        </OptionRow>
-
-        {botsEnabled && (
-          <OptionRow label={t("config.botLevel", "Difficulté IA")}>
-            <OptionSelect
-              value={botLevel}
-              options={[
-                { value: "easy", label: "Facile" },
-                { value: "normal", label: "Normal" },
-                { value: "hard", label: "Difficile" },
-              ]}
-              onChange={setBotLevel}
-            />
-          </OptionRow>
-        )}
-
-        {available.length > 0 && (
-          <div style={{ marginTop: 12 }}>
-            <div style={{ fontSize: 12, color: theme.textSoft, marginBottom: 8 }}>
-              Ajouter un profil (cliquer) :
+          >
+            <div style={{ fontSize: 12, opacity: 0.85, fontWeight: 950, marginBottom: 8 }}>
+              Sélection : {selectedIds.length}/8 — min 2
             </div>
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
-              {available
-                .filter((p) => !selectedIds.includes(p.id))
-                .slice(0, 18)
-                .map((p) => (
+
+            {/* Profils */}
+            <div className="dc-scroll-thin" style={{ display: "flex", gap: 18, overflowX: "auto", paddingBottom: 10 }}>
+              {humanProfiles.map((p) => {
+                const id = String(p.id);
+                const active = selectedIds.includes(id);
+                return (
                   <div
-                    key={p.id}
-                    role="button"
-                    tabIndex={0}
-                    onClick={() => setSelectedIds((prev) => (prev.length >= 8 ? prev : [...prev, p.id]))}
-                    style={{ ...pillStyle, display: "flex", alignItems: "center", gap: 10, cursor: "pointer" }}
-                    title="Ajouter"
+                    key={id}
+                    style={{
+                      minWidth: 122,
+                      maxWidth: 122,
+                      display: "flex",
+                      flexDirection: "column",
+                      alignItems: "center",
+                      gap: 7,
+                      flexShrink: 0,
+                      userSelect: "none",
+                    }}
                   >
-                    <ProfileAvatar profile={p as any} size={34} />
-                    <div style={{ fontWeight: 900, fontSize: 12 }}>{p.name}</div>
+                    <div
+                      role="button"
+                      onClick={() => togglePlayer(id)}
+                      style={{
+                        width: 78,
+                        height: 78,
+                        borderRadius: "50%",
+                        overflow: "hidden",
+                        boxShadow: active ? `0 0 28px ${primary}aa` : "0 0 14px rgba(0,0,0,0.65)",
+                        background: active
+                          ? `radial-gradient(circle at 30% 20%, #fff8d0, ${primary})`
+                          : "#111320",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        cursor: "pointer",
+                      }}
+                    >
+                      <div
+                        style={{
+                          width: "100%",
+                          height: "100%",
+                          borderRadius: "50%",
+                          overflow: "hidden",
+                          filter: active ? "none" : "grayscale(100%) brightness(0.55)",
+                          opacity: active ? 1 : 0.6,
+                          transition: "filter .2s ease, opacity .2s ease",
+                        }}
+                      >
+                        <ProfileAvatar profile={p} size={78} showStars={false} />
+                      </div>
+                    </div>
+                    <div
+                      style={{
+                        fontSize: 12,
+                        fontWeight: 700,
+                        textAlign: "center",
+                        color: active ? "#f6f2e9" : "#7e8299",
+                        maxWidth: "100%",
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      {p.name || "Joueur"}
+                    </div>
                   </div>
-                ))}
+                );
+              })}
+            </div>
+
+            {/* Bots */}
+            <div style={{ marginTop: 10 }}>
+              <OptionRow label="Bots IA">
+                <OptionToggle value={botsEnabled} onChange={setBotsEnabled} />
+              </OptionRow>
+
+              {botsEnabled && (
+                <>
+                  <OptionRow label="Difficulté IA">
+                    <OptionSelect
+                      value={botLevel}
+                      options={[
+                        { value: "easy", label: "Easy" },
+                        { value: "normal", label: "Normal" },
+                        { value: "hard", label: "Hard" },
+                      ]}
+                      onChange={setBotLevel}
+                    />
+                  </OptionRow>
+
+                  <div style={{ fontSize: 12, opacity: 0.85, fontWeight: 950, marginTop: 8 }}>
+                    Bots : {userBots.length}
+                  </div>
+
+                  {userBots.length > 0 && (
+                    <div
+                      className="dc-scroll-thin"
+                      style={{ display: "flex", gap: 18, overflowX: "auto", paddingBottom: 10, marginTop: 10 }}
+                    >
+                      {userBots.map((b) => {
+                        const active = selectedIds.includes(b.id);
+                        const fakeProfile = botToFakeProfile(b);
+                        return (
+                          <div
+                            key={b.id}
+                            style={{
+                              minWidth: 122,
+                              maxWidth: 122,
+                              display: "flex",
+                              flexDirection: "column",
+                              alignItems: "center",
+                              gap: 7,
+                              flexShrink: 0,
+                              userSelect: "none",
+                            }}
+                          >
+                            <div
+                              role="button"
+                              onClick={() => togglePlayer(b.id)}
+                              style={{
+                                width: 78,
+                                height: 78,
+                                borderRadius: "50%",
+                                overflow: "hidden",
+                                boxShadow: active ? `0 0 28px ${primary}aa` : "0 0 14px rgba(0,0,0,0.65)",
+                                background: active
+                                  ? `radial-gradient(circle at 30% 20%, #fff8d0, ${primary})`
+                                  : "#111320",
+                                display: "flex",
+                                alignItems: "center",
+                                justifyContent: "center",
+                                cursor: "pointer",
+                              }}
+                            >
+                              <div
+                                style={{
+                                  width: "100%",
+                                  height: "100%",
+                                  borderRadius: "50%",
+                                  overflow: "hidden",
+                                  filter: active ? "none" : "grayscale(100%) brightness(0.55)",
+                                  opacity: active ? 1 : 0.6,
+                                  transition: "filter .2s ease, opacity .2s ease",
+                                }}
+                              >
+                                <ProfileAvatar profile={fakeProfile} size={78} showStars={false} />
+                              </div>
+                            </div>
+                            <div
+                              style={{
+                                fontSize: 12,
+                                fontWeight: 700,
+                                textAlign: "center",
+                                color: active ? "#f6f2e9" : "#7e8299",
+                                maxWidth: "100%",
+                                overflow: "hidden",
+                                textOverflow: "ellipsis",
+                                whiteSpace: "nowrap",
+                              }}
+                            >
+                              {b.name}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </>
+              )}
             </div>
           </div>
-        )}
-      </Section>
+        </Section>
 
-      <Section title={t("config.rules", "Règles")}>
-        <OptionRow label={t("scram.objectivePoints", "Objectif points (phase SCRAM)")}>
-          <OptionSelect value={objectivePoints} options={[0, 50, 100, 150, 200, 300, 500]} onChange={setObjectivePoints} />
-        </OptionRow>
+        <Section title="RÈGLES">
+          <div
+            style={{
+              borderRadius: 18,
+              padding: 12,
+              background: cardBg,
+              border: "1px solid rgba(255,255,255,0.10)",
+            }}
+          >
+            <OptionRow label="Objectif points (phase SCRAM)">
+              <OptionSelect
+                value={objective}
+                options={[150, 200, 250, 300].map((v) => ({ value: v, label: String(v) }))}
+                onChange={(v: any) => setObjective(Number(v) || 200)}
+              />
+            </OptionRow>
 
-        <OptionRow label={t("scram.roundCap", "Cap de rounds (0 = illimité)")}>
-          <OptionSelect value={roundCap} options={[0, 5, 8, 10, 12, 15, 20]} onChange={setRoundCap} />
-        </OptionRow>
-      </Section>
+            <OptionRow label="Cap de rounds (0 = illimité)">
+              <OptionSelect
+                value={roundsCap}
+                options={[0, 5, 7, 9, 11, 13].map((v) => ({ value: v, label: v === 0 ? "Illimité" : String(v) }))}
+                onChange={(v: any) => setRoundsCap(Number(v) || 0)}
+              />
+            </OptionRow>
+          </div>
+        </Section>
 
-      <Section>
-        <button className="btn-primary w-full" onClick={start}>
-          {t("config.startGame", "Démarrer la partie")}
-        </button>
-      </Section>
+        <div style={{ padding: 12, paddingTop: 4 }}>
+          <button className="btn-primary" disabled={!canStart} onClick={onStart} style={{ width: "100%" }}>
+            {t("start") || "Démarrer la partie"}
+          </button>
+          {!canStart && (
+            <div style={{ marginTop: 10, fontSize: 12, opacity: 0.75, fontWeight: 900, textAlign: "center" }}>
+              Sélectionne au moins 2 joueurs (humains et/ou bots).
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
