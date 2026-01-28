@@ -13,6 +13,7 @@ import React from "react";
 import { useTheme } from "../../contexts/ThemeContext";
 import { useLang } from "../../contexts/LangContext";
 import InfoDot from "../../components/InfoDot";
+import BackDot from "../../components/BackDot";
 
 // ✅ Tickers images (Vite): /src/assets/tickers/ticker_<id>.png
 // On réutilise la même logique que src/pages/Games.tsx
@@ -190,6 +191,19 @@ export default function PetanqueMenuGames({ go, setTab }: Props) {
   // ✅ Tournois existants (Darts) — on les réutilise mais filtrés via params.forceMode="petanque"
   const ROUTE_TOURNAMENTS = "tournaments";
 
+  function goHome() {
+    if (typeof go === "function") {
+      go("home" as any);
+      return;
+    }
+    if (typeof setTab === "function") {
+      setTab("home" as any);
+      return;
+    }
+    console.error("[PetanqueMenuGames] Aucun handler de navigation pour HOME: props.go et props.setTab sont absents.");
+  }
+
+
   // ✅ même logique que "Games" : un ticker discret DANS chaque carte (watermark)
   // (2/3 à droite du bouton, opacity faible, fade des bords)
   function tickerKeyForMode(mode: PetanqueModeId): string {
@@ -354,7 +368,12 @@ export default function PetanqueMenuGames({ go, setTab }: Props) {
 
   return (
     <div style={{ minHeight: "100vh", padding: 16, paddingBottom: 90, background: theme.bg, color: theme.text }}>
-      <h1
+      <div style={{ position: "relative", display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 18 }}>
+        <div style={{ position: "absolute", left: 0, top: 0 }}>
+          <BackDot onClick={goHome} />
+        </div>
+        <div style={{ textAlign: "center" }}>
+          <h1
         style={{
           margin: 0,
           marginBottom: 6,
@@ -367,8 +386,10 @@ export default function PetanqueMenuGames({ go, setTab }: Props) {
         {t("petanque.menu.title", "PÉTANQUE")}
       </h1>
 
-      <div style={{ fontSize: 13, color: theme.textSoft, marginBottom: 18, textAlign: "center" }}>
+          <div style={{ fontSize: 13, color: theme.textSoft, marginBottom: 18, textAlign: "center" }}>
         {t("petanque.menu.subtitle", "Choisis un mode")}
+      </div>
+        </div>
       </div>
 
       <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>

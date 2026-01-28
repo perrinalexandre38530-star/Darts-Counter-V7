@@ -752,114 +752,144 @@ function PetanqueHeaderArcade(props: {
   const scoreFontSize =
     Math.max(String(_sa).length, String(_sb).length) >= 2 ? 22 : 28;
 
-  const [scoreMenuOpen, setScoreMenuOpen] = React.useState(false);
-  const scoreBtnRef = React.useRef<HTMLButtonElement | null>(null);
-  const scoreMenuRef = React.useRef<HTMLDivElement | null>(null);
-
-  React.useEffect(() => {
-    if (!scoreMenuOpen) return;
-
-    const onDown = (ev: any) => {
-      const t = ev?.target as any;
-      const btn = scoreBtnRef.current;
-      const menu = scoreMenuRef.current;
-      if (btn && (btn === t || btn.contains(t))) return;
-      if (menu && (menu === t || menu.contains(t))) return;
-      setScoreMenuOpen(false);
-    };
-
-    // capture pour passer avant les handlers React
-    window.addEventListener("pointerdown", onDown, true);
-    return () => window.removeEventListener("pointerdown", onDown, true);
-  }, [scoreMenuOpen]);
-
+    const [scoreMenuOpen, setScoreMenuOpen] = React.useState(false);
 
   const ScoreMenu = () => {
     if (!scoreMenuOpen) return null;
+
     return (
       <div
-        onClick={(e) => e.stopPropagation()}
-        ref={scoreMenuRef}
+        onPointerDown={(e) => {
+          try {
+            e.preventDefault();
+            e.stopPropagation();
+          } catch {}
+          setScoreMenuOpen(false);
+        }}
         style={{
-          position: "absolute",
-          left: 0,
-          top: "calc(100% + 8px)",
-          zIndex: 60,
-          width: 240,
-          borderRadius: 14,
-          border: `1px solid ${cssVarOr("rgba(255,255,255,0.14)", "--stroke")}`,
-          background: "rgba(10, 12, 24, 0.96)",
-          boxShadow: "0 16px 40px rgba(0,0,0,0.6)",
-          padding: 10,
+          position: "fixed",
+          inset: 0,
+          zIndex: 9999,
+          background: "rgba(0,0,0,0.55)",
+          display: "grid",
+          placeItems: "center",
+          padding: 14,
         }}
       >
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8 }}>
-          <button
-                    ref={scoreBtnRef}
-                    className="btn"
-                    style={{
-              borderRadius: 999,
-              padding: "8px 10px",
-              border: `1px solid ${colorA}66`,
-              background: "rgba(255,255,255,0.06)",
-              color: colorA,
-              fontWeight: 1100 as any,
-              cursor: onAddEndA ? "pointer" : "not-allowed",
-              opacity: onAddEndA ? 1 : 0.5,
-            }}
-            onClick={() => {
-              onAddEndA?.();
-              setScoreMenuOpen(false);
-            }}
-            disabled={!onAddEndA}
-            title="Ajouter une mène (A marque)"
-          >
-            A +
-          </button>
-
-          <button
-            className="btn"
+        <div
+          onPointerDown={(e) => {
+            try {
+              e.preventDefault();
+              e.stopPropagation();
+            } catch {}
+          }}
+          style={{
+            width: "min(320px, 92vw)",
+            borderRadius: 16,
+            border: `1px solid ${cssVarOr("rgba(255,255,255,0.14)", "--stroke")}`,
+            background: "rgba(10, 12, 24, 0.96)",
+            boxShadow: "0 18px 50px rgba(0,0,0,0.7)",
+            padding: 12,
+          }}
+        >
+          <div
             style={{
-              borderRadius: 999,
-              padding: "8px 10px",
-              border: `1px solid ${cssVarOr("rgba(255,255,255,0.16)", "--stroke")}`,
-              background: "rgba(255,255,255,0.06)",
-              color: "rgba(255,255,255,0.86)",
-              fontWeight: 1100 as any,
-              cursor: onAddEndNull ? "pointer" : "not-allowed",
-              opacity: onAddEndNull ? 1 : 0.5,
+              fontWeight: 1000,
+              letterSpacing: 0.6,
+              marginBottom: 10,
+              textAlign: "center",
+              textTransform: "uppercase",
+              color: "rgba(255,255,255,0.88)",
             }}
-            onClick={() => {
-              onAddEndNull?.();
-              setScoreMenuOpen(false);
-            }}
-            disabled={!onAddEndNull}
-            title="Mène nulle (0)"
           >
-            0
-          </button>
+            Score — Ajouter une mène
+          </div>
 
-          <button
-            className="btn"
-            style={{
-              borderRadius: 999,
-              padding: "8px 10px",
-              border: `1px solid ${colorB}66`,
-              background: "rgba(255,255,255,0.06)",
-              color: colorB,
-              fontWeight: 1100 as any,
-              cursor: onAddEndB ? "pointer" : "not-allowed",
-              opacity: onAddEndB ? 1 : 0.5,
-            }}
-            onClick={() => {
-              onAddEndB?.();
-              setScoreMenuOpen(false);
-            }}
-            disabled={!onAddEndB}
-            title="Ajouter une mène (B marque)"
-          >
-            B +
-          </button>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10 }}>
+            <button
+              className="btn"
+              style={{
+                borderRadius: 999,
+                padding: "10px 10px",
+                border: `1px solid ${colorA}66`,
+                background: "rgba(255,255,255,0.06)",
+                color: colorA,
+                fontWeight: 1100 as any,
+                cursor: onAddEndA ? "pointer" : "not-allowed",
+                opacity: onAddEndA ? 1 : 0.5,
+              }}
+              onClick={() => {
+                onAddEndA?.();
+                setScoreMenuOpen(false);
+              }}
+              disabled={!onAddEndA}
+              title="A marque"
+            >
+              A +
+            </button>
+
+            <button
+              className="btn"
+              style={{
+                borderRadius: 999,
+                padding: "10px 10px",
+                border: `1px solid ${cssVarOr("rgba(255,255,255,0.16)", "--stroke")}`,
+                background: "rgba(255,255,255,0.06)",
+                color: "rgba(255,255,255,0.86)",
+                fontWeight: 1100 as any,
+                cursor: onAddEndNull ? "pointer" : "not-allowed",
+                opacity: onAddEndNull ? 1 : 0.5,
+              }}
+              onClick={() => {
+                onAddEndNull?.();
+                setScoreMenuOpen(false);
+              }}
+              disabled={!onAddEndNull}
+              title="Mène nulle"
+            >
+              0
+            </button>
+
+            <button
+              className="btn"
+              style={{
+                borderRadius: 999,
+                padding: "10px 10px",
+                border: `1px solid ${colorB}66`,
+                background: "rgba(255,255,255,0.06)",
+                color: colorB,
+                fontWeight: 1100 as any,
+                cursor: onAddEndB ? "pointer" : "not-allowed",
+                opacity: onAddEndB ? 1 : 0.5,
+              }}
+              onClick={() => {
+                onAddEndB?.();
+                setScoreMenuOpen(false);
+              }}
+              disabled={!onAddEndB}
+              title="B marque"
+            >
+              B +
+            </button>
+          </div>
+
+          <div style={{ display: "flex", justifyContent: "center", marginTop: 12 }}>
+            <button
+              className="btn"
+              style={{
+                borderRadius: 999,
+                padding: "8px 12px",
+                border: `1px solid ${cssVarOr("rgba(255,255,255,0.16)", "--stroke")}`,
+                background: "rgba(255,255,255,0.06)",
+                color: "rgba(255,255,255,0.86)",
+                fontWeight: 1100 as any,
+                cursor: "pointer",
+              }}
+              onClick={() => setScoreMenuOpen(false)}
+            >
+              Fermer
+            </button>
+          </div>
         </div>
       </div>
     );
@@ -1178,13 +1208,14 @@ function PetanqueHeaderArcade(props: {
                         e.preventDefault();
                         e.stopPropagation();
                       } catch {}
-                      setScoreMenuOpen((v) => !v);
+                      setScoreMenuOpen(true);
                     }}
                     onClick={(e) => {
                       try {
                         e.preventDefault();
                         e.stopPropagation();
                       } catch {}
+                      setScoreMenuOpen(true);
                     }}
                     title="Ajouter le résultat d'une mène"
                   >
@@ -1422,6 +1453,9 @@ const [duelVisible, setDuelVisible] = React.useState<Record<DuelStatKey, boolean
   return next as Record<DuelStatKey, boolean>;
 });
 
+const [statsMenuOpen, setStatsMenuOpen] = React.useState(false);
+const [statsTargetTeam, setStatsTargetTeam] = React.useState<PetanqueTeamId>("A");
+
 React.useEffect(() => {
   try {
     localStorage.setItem(duelVisibleKey, JSON.stringify(duelVisible));
@@ -1480,6 +1514,241 @@ const bumpStat = React.useCallback(
   },
   []
 );
+
+const StatsMenu = () => {
+  if (!statsMenuOpen) return null;
+
+  const aId = (stSafe.teams?.A?.players?.[0]?.id ?? "A") as string;
+  const bId = (stSafe.teams?.B?.players?.[0]?.id ?? "B") as string;
+  const targetId = statsTargetTeam === "A" ? aId : bId;
+  const targetColor = statsTargetTeam === "A" ? colorA : colorB;
+
+  const statActions: { k: keyof PlayerStats; label: string; icon: any }[] = [
+    { k: "pointage", label: "Pointage", icon: icoPointage },
+    { k: "bec", label: "Bec", icon: icoBEC },
+    { k: "trou", label: "Trou", icon: icoTrou },
+    { k: "tirReussi", label: "Tir réussi", icon: icoTir },
+    { k: "carreau", label: "Carreau", icon: icoCarreau },
+    { k: "pousseeAssist", label: "PTS Assist", icon: icoAssist },
+    { k: "pousseeConcede", label: "PTS Concede", icon: icoConcede },
+  ];
+
+  const visActions: { k: DuelStatKey; label: string; icon: any }[] = [
+    { k: "menes", label: "Mènes", icon: icoBouclier },
+    { k: "points", label: "Points", icon: icoPointage },
+    { k: "pointage", label: "Pointage", icon: icoPointage },
+    { k: "bec", label: "Becs", icon: icoBEC },
+    { k: "tirs", label: "Tirs", icon: icoTir },
+    { k: "trou", label: "Trous", icon: icoTrou },
+    { k: "tirReussi", label: "Tirs réussis", icon: icoTir },
+    { k: "carreau", label: "Carreaux", icon: icoCarreau },
+    { k: "pousseeAssist", label: "PTS Assist", icon: icoAssist },
+    { k: "pousseeConcede", label: "PTS Concede", icon: icoConcede },
+  ];
+
+  return (
+    <div
+      onPointerDown={(e) => {
+        try {
+          e.preventDefault();
+          e.stopPropagation();
+        } catch {}
+        setStatsMenuOpen(false);
+      }}
+      style={{
+        position: "fixed",
+        inset: 0,
+        zIndex: 9999,
+        background: "rgba(0,0,0,0.55)",
+        display: "grid",
+        placeItems: "center",
+        padding: 14,
+      }}
+    >
+      <div
+        onPointerDown={(e) => {
+          try {
+            e.preventDefault();
+            e.stopPropagation();
+          } catch {}
+        }}
+        style={{
+          width: "min(520px, 94vw)",
+          maxHeight: "min(80vh, 680px)",
+          overflow: "auto",
+          borderRadius: 18,
+          border: `1px solid ${cssVarOr("rgba(255,255,255,0.14)", "--stroke")}`,
+          background: "rgba(10, 12, 24, 0.96)",
+          boxShadow: "0 18px 55px rgba(0,0,0,0.7)",
+          padding: 14,
+        }}
+      >
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "1fr auto",
+            gap: 10,
+            alignItems: "center",
+            marginBottom: 10,
+          }}
+        >
+          <div style={{ fontWeight: 1000, letterSpacing: 0.6, textTransform: "uppercase" }}>
+            Statistiques — Ajouter / masquer
+          </div>
+          <button
+            className="btn"
+            style={{
+              borderRadius: 999,
+              padding: "8px 12px",
+              border: `1px solid ${cssVarOr("rgba(255,255,255,0.16)", "--stroke")}`,
+              background: "rgba(255,255,255,0.06)",
+              color: "rgba(255,255,255,0.86)",
+              fontWeight: 1100 as any,
+            }}
+            onClick={() => setStatsMenuOpen(false)}
+          >
+            Fermer
+          </button>
+        </div>
+
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 12 }}>
+          <button
+            className="btn"
+            style={{
+              borderRadius: 14,
+              padding: "10px 12px",
+              border: `1px solid ${statsTargetTeam === "A" ? colorA + "66" : "rgba(255,255,255,0.14)"}`,
+              background:
+                statsTargetTeam === "A"
+                  ? "linear-gradient(180deg, rgba(255,210,74,.10), rgba(0,0,0,.35))"
+                  : "rgba(255,255,255,0.04)",
+              color: colorA,
+              fontWeight: 1100 as any,
+              cursor: "pointer",
+            }}
+            onClick={() => setStatsTargetTeam("A")}
+          >
+            TEAM A
+          </button>
+          <button
+            className="btn"
+            style={{
+              borderRadius: 14,
+              padding: "10px 12px",
+              border: `1px solid ${statsTargetTeam === "B" ? colorB + "66" : "rgba(255,255,255,0.14)"}`,
+              background:
+                statsTargetTeam === "B"
+                  ? "linear-gradient(180deg, rgba(106,214,200,.10), rgba(0,0,0,.35))"
+                  : "rgba(255,255,255,0.04)",
+              color: colorB,
+              fontWeight: 1100 as any,
+              cursor: "pointer",
+            }}
+            onClick={() => setStatsTargetTeam("B")}
+          >
+            TEAM B
+          </button>
+        </div>
+
+        <div style={{ fontWeight: 950, opacity: 0.92, marginBottom: 8 }}>
+          Ajouter une action (pour {statsTargetTeam === "A" ? "TEAM A" : "TEAM B"})
+        </div>
+
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 10 }}>
+          {statActions.map((it) => (
+            <div
+              key={String(it.k)}
+              style={{
+                borderRadius: 14,
+                border: `1px solid ${cssVarOr("rgba(255,255,255,0.14)", "--stroke")}`,
+                background: "rgba(255,255,255,0.04)",
+                padding: 10,
+                display: "grid",
+                gridTemplateColumns: "auto 1fr auto auto",
+                alignItems: "center",
+                gap: 10,
+              }}
+            >
+              <img src={it.icon} alt="" style={{ width: 22, height: 22, objectFit: "contain" }} draggable={false} />
+              <div style={{ fontWeight: 950, fontSize: 13, minWidth: 0 }}>{it.label}</div>
+              <button
+                className="btn"
+                style={{
+                  borderRadius: 999,
+                  width: 36,
+                  height: 32,
+                  border: `1px solid ${targetColor}66`,
+                  background: "rgba(255,255,255,0.06)",
+                  color: targetColor,
+                  fontWeight: 1200 as any,
+                }}
+                onClick={() => bumpStat(targetId, it.k, -1)}
+                title="Retirer"
+              >
+                −
+              </button>
+              <button
+                className="btn"
+                style={{
+                  borderRadius: 999,
+                  width: 36,
+                  height: 32,
+                  border: `1px solid ${targetColor}66`,
+                  background: "rgba(255,255,255,0.06)",
+                  color: targetColor,
+                  fontWeight: 1200 as any,
+                }}
+                onClick={() => bumpStat(targetId, it.k, +1)}
+                title="Ajouter"
+              >
+                +
+              </button>
+            </div>
+          ))}
+        </div>
+
+        <div style={{ height: 14 }} />
+
+        <div style={{ fontWeight: 950, opacity: 0.92, marginBottom: 8 }}>Afficher / masquer des lignes</div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 10 }}>
+          {visActions.map((it) => {
+            const on = duelVisible[it.k] !== false;
+            return (
+              <button
+                key={it.k}
+                className="btn"
+                onClick={() => toggleDuelVisible(it.k)}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 10,
+                  padding: "10px 12px",
+                  borderRadius: 14,
+                  border: `1px solid ${on ? theme.primary + "66" : "rgba(255,255,255,0.14)"}`,
+                  background: on
+                    ? "linear-gradient(180deg, rgba(255,210,74,.10), rgba(0,0,0,.35))"
+                    : "rgba(255,255,255,0.04)",
+                  boxShadow: on ? `0 0 18px ${theme.primary}22` : undefined,
+                }}
+              >
+                <img
+                  src={it.icon}
+                  alt=""
+                  style={{ width: 22, height: 22, objectFit: "contain", opacity: on ? 1 : 0.45 }}
+                  draggable={false}
+                />
+                <div style={{ flex: 1, minWidth: 0, textAlign: "left" }}>
+                  <div style={{ fontWeight: 950, fontSize: 13 }}>{it.label}</div>
+                  <div style={{ opacity: 0.75, fontSize: 12 }}>{on ? "Visible" : "Masquée"}</div>
+                </div>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+};
 
 // ==========================================
 // ✅ UI COMPACTE : sheet joueur + attribution points après mène
@@ -2473,64 +2742,10 @@ return (
     }}
   >
     <PlusDot
-      title="Choisir les statistiques"      content={
-        <div style={{ display: "grid", gap: 12 }}>
-          <div style={{ fontWeight: 1000, letterSpacing: 0.3 }}>Afficher / masquer des lignes</div>
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
-              gap: 10,
-            }}
-          >
-            {([
-              { k: "menes", label: "Mènes", icon: icoBouclier },
-              { k: "points", label: "Points", icon: icoPointage },
-              { k: "pointage", label: "Pointage", icon: icoPointage },
-              { k: "bec", label: "Becs", icon: icoBEC },
-              { k: "tirs", label: "Tirs", icon: icoTir },
-              { k: "trou", label: "Trous", icon: icoTrou },
-              { k: "tirReussi", label: "Tirs réussis", icon: icoTir },
-              { k: "carreau", label: "Carreaux", icon: icoCarreau },
-              { k: "pousseeAssist", label: "PTS Assist", icon: icoAssist },
-              { k: "pousseeConcede", label: "PTS Concede", icon: icoConcede },
-            ] as { k: DuelStatKey; label: string; icon: any }[]).map((it) => {
-              const on = duelVisible[it.k] !== false;
-              return (
-                <button
-                  key={it.k}
-                  className="btn"
-                  onClick={() => toggleDuelVisible(it.k)}
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 10,
-                    padding: "10px 12px",
-                    borderRadius: 14,
-                    border: `1px solid ${on ? theme.primary + "66" : "rgba(255,255,255,0.14)"}`,
-                    background: on
-                      ? "linear-gradient(180deg, rgba(255,210,74,.10), rgba(0,0,0,.35))"
-                      : "rgba(255,255,255,0.04)",
-                    boxShadow: on ? `0 0 18px ${theme.primary}22` : undefined,
-                  }}
-                >
-                  <img
-                    src={it.icon}
-                    alt=""
-                    style={{ width: 22, height: 22, objectFit: "contain", opacity: on ? 1 : 0.45 }}
-                    draggable={false}
-                  />
-                  <div style={{ flex: 1, minWidth: 0, textAlign: "left" }}>
-                    <div style={{ fontWeight: 950, fontSize: 13 }}>{it.label}</div>
-                    <div style={{ opacity: 0.75, fontSize: 12 }}>{on ? "Visible" : "Masquée"}</div>
-                  </div>
-                </button>
-              );
-            })}
-          </div>
-        </div>
-      }
+      title="Statistiques (ajout / affichage)"
+      onClick={() => setStatsMenuOpen(true)}
     />
+    <StatsMenu />
 
     <div
       className="subtitle"
