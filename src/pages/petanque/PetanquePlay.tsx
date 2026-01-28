@@ -38,7 +38,6 @@ import BackDot from "../../components/BackDot";
 import InfoDot from "../../components/InfoDot";
 import PlusDot from "../../components/PlusDot";
 
-import plusDotIcon from "../../assets/ui/plusdot.png";
 
 import tickerP1v1 from "../../assets/tickers/ticker_petanque_1v1.png";
 import tickerP2v2 from "../../assets/tickers/ticker_petanque_2v2.png";
@@ -754,12 +753,33 @@ function PetanqueHeaderArcade(props: {
     Math.max(String(_sa).length, String(_sb).length) >= 2 ? 22 : 28;
 
   const [scoreMenuOpen, setScoreMenuOpen] = React.useState(false);
+  const scoreBtnRef = React.useRef<HTMLButtonElement | null>(null);
+  const scoreMenuRef = React.useRef<HTMLDivElement | null>(null);
+
+  React.useEffect(() => {
+    if (!scoreMenuOpen) return;
+
+    const onDown = (ev: any) => {
+      const t = ev?.target as any;
+      const btn = scoreBtnRef.current;
+      const menu = scoreMenuRef.current;
+      if (btn && (btn === t || btn.contains(t))) return;
+      if (menu && (menu === t || menu.contains(t))) return;
+      setScoreMenuOpen(false);
+    };
+
+    // capture pour passer avant les handlers React
+    window.addEventListener("pointerdown", onDown, true);
+    return () => window.removeEventListener("pointerdown", onDown, true);
+  }, [scoreMenuOpen]);
+
 
   const ScoreMenu = () => {
     if (!scoreMenuOpen) return null;
     return (
       <div
         onClick={(e) => e.stopPropagation()}
+        ref={scoreMenuRef}
         style={{
           position: "absolute",
           left: 0,
@@ -775,8 +795,9 @@ function PetanqueHeaderArcade(props: {
       >
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8 }}>
           <button
-            className="btn"
-            style={{
+                    ref={scoreBtnRef}
+                    className="btn"
+                    style={{
               borderRadius: 999,
               padding: "8px 10px",
               border: `1px solid ${colorA}66`,
@@ -1152,13 +1173,23 @@ function PetanqueHeaderArcade(props: {
                       textTransform: "uppercase",
                       cursor: "pointer",
                     }}
-                    onClick={(e) => {
-                      e.stopPropagation();
+                    onPointerDown={(e) => {
+                      try {
+                        e.preventDefault();
+                        e.stopPropagation();
+                      } catch {}
                       setScoreMenuOpen((v) => !v);
+                    }}
+                    onClick={(e) => {
+                      try {
+                        e.preventDefault();
+                        e.stopPropagation();
+                      } catch {}
                     }}
                     title="Ajouter le résultat d'une mène"
                   >
-                    Score
+                    SCORE{" "}
+                    <span style={{ marginLeft: 6, opacity: 0.95 }}>+</span>
                   </button>
                   <ScoreMenu />
                 </div>
@@ -2442,9 +2473,7 @@ return (
     }}
   >
     <PlusDot
-      title="Choisir les statistiques"
-      iconSrc={plusDotIcon}
-      content={
+      title="Choisir les statistiques"      content={
         <div style={{ display: "grid", gap: 12 }}>
           <div style={{ fontWeight: 1000, letterSpacing: 0.3 }}>Afficher / masquer des lignes</div>
           <div

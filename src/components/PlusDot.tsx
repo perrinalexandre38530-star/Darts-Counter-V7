@@ -1,8 +1,8 @@
 // ============================================
 // src/components/PlusDot.tsx
-// Bouton rond "+" (même style que InfoDot / BackDot)
-// - Couleurs calées sur le thème
-// - Halo neon + bord soft
+// Bouton rond "+" — icône SVG fournie (pas de texte)
+// ✅ Thème appliqué sur les traits noirs (fill currentColor)
+// ✅ Même rendu que BackDot/InfoDot (halo + drop-shadow)
 // ============================================
 
 import React from "react";
@@ -21,7 +21,7 @@ export default function PlusDot({
   color,
   glow,
   title = "Ajouter / modifier",
-  size = 46,
+  size = 42,
 }: Props) {
   const { theme } = useTheme();
 
@@ -38,6 +38,8 @@ export default function PlusDot({
     },
     [onClick]
   );
+
+  const iconSize = Math.max(22, Math.round(size * 0.62));
 
   return (
     <div
@@ -67,17 +69,36 @@ export default function PlusDot({
         pointerEvents: "auto",
       }}
     >
-      <span
+      <svg
+        width={iconSize}
+        height={iconSize}
+        viewBox="0 0 1024 1024"
+        xmlns="http://www.w3.org/2000/svg"
+        aria-hidden="true"
+        focusable="false"
         style={{
-          fontSize: 26,
-          fontWeight: 1000,
-          lineHeight: 1,
-          transform: "translateY(-1px)",
-          textShadow: `0 0 12px ${halo}, 0 0 22px ${halo}`,
+          display: "block",
+          filter: `drop-shadow(0 0 10px ${halo}) drop-shadow(0 0 18px ${halo})`,
         }}
       >
-        +
-      </span>
+        <g
+          transform="translate(0.000000,1024.000000) scale(0.100000,-0.100000)"
+          fill="currentColor"
+          stroke="none"
+        >
+          <path d="M4118 8924 c-62 -33 -58 54 -58 -1414 l0 -1340 -1340 0 c-1179 0
+-1345 -2 -1370 -15 -63 -33 -60 22 -60 -1050 0 -1072 -3 -1017 60 -1050 25
+-13 191 -15 1370 -15 l1340 0 0 -1340 c0 -1179 2 -1345 15 -1370 33 -63 -22
+-60 1050 -60 1072 0 1017 -3 1050 60 13 25 15 191 15 1370 l0 1340 1340 0
+c1179 0 1345 2 1370 15 63 33 60 -22 60 1050 0 1072 3 1017 -60 1050 -25 13
+-191 15 -1370 15 l-1340 0 0 1340 c0 1473 4 1382 -60 1415 -44 22 -1971 22
+-2012 -1z m1832 -1564 c0 -1473 -4 -1382 60 -1415 25 -13 191 -15 1370 -15
+l1340 0 0 -825 0 -825 -1340 0 c-1473 0 -1382 4 -1415 -60 -13 -25 -15 -191
+-15 -1370 l0 -1340 -825 0 -825 0 0 1340 c0 1179 -2 1345 -15 1370 -33 64 58
+60 -1415 60 l-1340 0 0 825 0 825 1355 2 1355 3 27 28 28 27 3 1355 2 1355
+825 0 825 0 0 -1340z"/>
+        </g>
+      </svg>
     </div>
   );
 }

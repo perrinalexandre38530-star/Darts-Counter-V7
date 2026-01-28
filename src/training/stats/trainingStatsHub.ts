@@ -7,6 +7,7 @@
 
 import { saveTrainingEvent } from "../sync/trainingEventStore";
 import { normalizeTrainingMetrics } from "../sync/trainingNormalize";
+import { trainingSyncNowBestEffort } from "../sync/trainingSyncNow";
 
 export type TrainingStatsRow = {
   sessions: number;
@@ -124,6 +125,9 @@ export function recordTrainingSession(
   } catch {
     // ignore
   }
+
+  // ---- LOT27: immediate sync (best-effort)
+  try { void trainingSyncNowBestEffort("global"); } catch {}
 }
 
 export function recordTrainingParticipantSession(
@@ -182,6 +186,10 @@ export function recordTrainingParticipantSession(
       synced: false,
     });
   } catch {}
+
+
+  // ---- LOT27: immediate sync (best-effort)
+  try { void trainingSyncNowBestEffort("participant"); } catch {}
 }
 
 export function getTrainingStatsGlobal(): TrainingStatsRow {

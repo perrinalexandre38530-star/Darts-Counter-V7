@@ -14,6 +14,40 @@ import { useTheme } from "../../contexts/ThemeContext";
 import { useLang } from "../../contexts/LangContext";
 import InfoDot from "../../components/InfoDot";
 
+// ✅ Tickers images (Vite): /src/assets/tickers/ticker_<id>.png
+// On réutilise la même logique que src/pages/Games.tsx
+const TICKERS = import.meta.glob("../../assets/tickers/*.png", {
+  eager: true,
+  import: "default",
+}) as Record<string, string>;
+
+function findTickerById(id: string): string | null {
+  const raw = String(id || "");
+  if (!raw) return null;
+
+  // Tolérant (underscore, tiret, espaces) pour éviter les "missing ticker"
+  const norm = raw.trim().toLowerCase();
+  const candidates = Array.from(
+    new Set([
+      norm,
+      norm.replace(/\s+/g, "_"),
+      norm.replace(/\s+/g, "-"),
+      norm.replace(/-/g, "_"),
+      norm.replace(/_/g, "-"),
+      norm.replace(/[^a-z0-9_\-]/g, ""),
+    ])
+  ).filter(Boolean);
+
+  for (const c of candidates) {
+    const suffixA = `/ticker_${c}.png`;
+    const suffixB = `/ticker-${c}.png`;
+    for (const k of Object.keys(TICKERS)) {
+      if (k.endsWith(suffixA) || k.endsWith(suffixB)) return TICKERS[k];
+    }
+  }
+  return null;
+}
+
 type Props = {
   go?: (tab: any, params?: any) => void;
   setTab?: (tab: any) => void;
@@ -156,6 +190,108 @@ export default function PetanqueMenuGames({ go, setTab }: Props) {
   // ✅ Tournois existants (Darts) — on les réutilise mais filtrés via params.forceMode="petanque"
   const ROUTE_TOURNAMENTS = "tournaments";
 
+  // ✅ même logique que "Games" : un ticker discret DANS chaque carte (watermark)
+  // (2/3 à droite du bouton, opacity faible, fade des bords)
+  function tickerKeyForMode(mode: PetanqueModeId): string {
+    switch (mode) {
+      case "singles":
+        return "petanque_1v1";
+      case "ffa3":
+        return "petanque_free_for_all";
+      case "doublette":
+        return "petanque_2v2";
+      case "triplette":
+        return "petanque_3v3";
+      case "quadrette":
+        return "petanque_4v4";
+      case "variants":
+        return "petanque_variantes";
+      case "training":
+        return "petanque_training";
+      case "tournament":
+        return "petanque_tournois";
+      default:
+        return "petanque";
+    }
+  }
+
+  function renderModeTickerWatermark(mode: PetanqueModeId) {
+    const src = findTickerById(tickerKeyForMode(mode));
+    if (!src) return null;
+
+    // ✅ Lisibilité du libellé des tickers (1v1 / 2v2 / 3v3 / 4v4 / variantes...)
+    // IMPORTANT (request): on NE TOUCHE PAS au dégradé (mask) — il doit commencer au même endroit.
+    // On règle uniquement le problème en décalant l'IMAGE vers la gauche (sans déplacer le mask).
+    // TRAINING & TOURNOIS sont déjà OK → on les garde tels quels.
+    const keepAsIs = mode === "training" || mode === "tournament";
+
+    const wmWidth = keepAsIs ? "74%" : "78%";
+    const wmObjectPosition = "80% center";
+
+    // ✅ Dégradé constant (ne pas déplacer)
+    const mask = "linear-gradient(90deg, rgba(0,0,0,0) 0%, rgba(0,0,0,1) 18%, rgba(0,0,0,1) 82%, rgba(0,0,0,0) 100%)";
+
+    // ✅ Décalage image vers la gauche (seulement pour les modes où le libellé est rogné)
+    const shiftLeftPct: number = keepAsIs
+      ? 0
+      : mode === "quadrette"
+      ? 12
+      : mode === "ffa3"
+      ? 12
+      : mode === "singles"
+      ? 10
+      : mode === "doublette"
+      ? 10
+      : mode === "triplette"
+      ? 10
+      : mode === "variants"
+      ? 10
+      : 10;
+
+    return (
+      <div
+        aria-hidden
+        style={{
+          position: "absolute",
+          right: 0,
+          top: 0,
+          height: "100%",
+          width: wmWidth,
+          pointerEvents: "none",
+          opacity: keepAsIs ? 0.24 : 0.26,
+          zIndex: 0,
+          WebkitMaskImage: mask,
+          maskImage: mask,
+        }}
+      >
+        <img
+          src={src}
+          alt=""
+          style={{
+            position: "absolute",
+            inset: 0,
+            width: "100%",
+            height: "100%",
+            objectFit: "cover",
+            objectPosition: wmObjectPosition,
+            transform: shiftLeftPct ? `translateX(-${shiftLeftPct}%) translateZ(0)` : "translateZ(0)",
+            filter: "contrast(1.05) saturate(1.05) drop-shadow(0 0 10px rgba(0,0,0,0.25))",
+          }}
+          draggable={false}
+        />
+        <div
+          style={{
+            position: "absolute",
+            inset: 0,
+            background:
+              "linear-gradient(90deg, rgba(0,0,0,0.42) 0%, rgba(0,0,0,0.00) 35%, rgba(0,0,0,0.00) 65%, rgba(0,0,0,0.42) 100%)",
+            opacity: 0.55,
+          }}
+        />
+      </div>
+    );
+  }
+
   function getMaxEndPoints(mode: PetanqueModeId): number {
     if (mode === "singles") return 3;
     if (mode === "ffa3") return 3;
@@ -260,22 +396,28 @@ export default function PetanqueMenuGames({ go, setTab }: Props) {
                 overflow: "hidden",
               }}
             >
-              <div
-                style={{
-                  fontSize: 14,
-                  fontWeight: 800,
-                  letterSpacing: 0.8,
-                  color: disabled ? theme.textSoft : theme.primary,
-                  textTransform: "uppercase",
-                  textShadow: disabled ? "none" : `0 0 12px ${theme.primary}55`,
-                }}
-              >
-                {title}
+              {/* ✅ Ticker (watermark) sur ~2/3 à droite */}
+              {renderModeTickerWatermark(m.id)}
+
+              {/* ✅ contenu au-dessus */}
+              <div style={{ position: "relative", zIndex: 1 }}>
+                <div
+                  style={{
+                    fontSize: 14,
+                    fontWeight: 800,
+                    letterSpacing: 0.8,
+                    color: disabled ? theme.textSoft : theme.primary,
+                    textTransform: "uppercase",
+                    textShadow: disabled ? "none" : `0 0 12px ${theme.primary}55`,
+                  }}
+                >
+                  {title}
+                </div>
+
+                <div style={{ marginTop: 4, fontSize: 12, color: theme.textSoft, opacity: 0.9 }}>{subtitle}</div>
               </div>
 
-              <div style={{ marginTop: 4, fontSize: 12, color: theme.textSoft, opacity: 0.9 }}>{subtitle}</div>
-
-              <div style={{ position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)" }}>
+              <div style={{ position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)", zIndex: 2 }}>
                 <InfoDot
                   onClick={(ev: any) => {
                     try {

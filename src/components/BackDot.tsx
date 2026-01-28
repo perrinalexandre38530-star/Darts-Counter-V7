@@ -22,7 +22,7 @@ export default function BackDot({
   onClick,
   glow,
   title = "Retour",
-  size = 46,
+  size = 42,
   color,
 }: Props) {
   const { theme } = useTheme();
@@ -63,22 +63,22 @@ export default function BackDot({
         WebkitTapHighlightColor: "transparent",
         border: `2px solid ${theme.borderSoft}`,
         background: "rgba(0,0,0,0.48)",
-        boxShadow: `0 0 0 2px rgba(0,0,0,0.22), 0 0 18px ${halo}, 0 0 34px ${halo}`,
+        boxShadow: `0 0 0 2px rgba(0,0,0,0.22), 0 0 22px ${halo}, 0 0 44px ${halo}`,
         color: iconColor,
         flex: "0 0 auto",
         pointerEvents: "auto",
       }}
     >
       <svg
-        width={Math.max(18, Math.round(size * 0.48))}
-        height={Math.max(18, Math.round(size * 0.48))}
+        width={Math.max(18, Math.round(size * 0.52))}
+        height={Math.max(18, Math.round(size * 0.52))}
         viewBox="0 0 512 512"
         xmlns="http://www.w3.org/2000/svg"
         aria-hidden="true"
         focusable="false"
         style={{
           display: "block",
-          filter: `drop-shadow(0 0 10px ${halo}) drop-shadow(0 0 18px ${halo})`,
+          filter: `drop-shadow(0 0 14px ${halo}) drop-shadow(0 0 24px ${halo})`,
         }}
       >
         <g

@@ -14,6 +14,12 @@ import ArcadeTicker, { type ArcadeTickerItem } from "../../components/home/Arcad
 
 import { loadPetanqueState } from "../../lib/petanqueStore";
 
+import tickerPetanqueActu from "../../assets/tickers/ticker_petanque_actu.png";
+import tickerPetanqueNouveaute from "../../assets/tickers/ticker_petanque_nouveaute.png";
+import tickerPetanqueResultats from "../../assets/tickers/ticker_petanque_resultats.png";
+import tickerPetanqueEvenements from "../../assets/tickers/ticker_petanque_evenements.png";
+import tickerPetanqueAstuce from "../../assets/tickers/ticker_petanque_astuce.png";
+
 type Props = {
   store: Store;
   go: (tab: any, params?: any) => void;
@@ -431,13 +437,21 @@ const P_IMG_NEWS_2 = svgToDataUri(`
 `);
 
 const TICKER_IMAGES = {
+  // ✅ Home "infos" (nouveautés / actu / résultats / événements)
+  news: [tickerPetanqueActu],
+  new: [tickerPetanqueNouveaute],
+  results: [tickerPetanqueResultats],
+  events: [tickerPetanqueEvenements],
+  tip: [tickerPetanqueAstuce],
+
+  // legacy (data-uri) conservé si tu veux réutiliser plus tard
   local: [P_IMG_BOULES_1, P_IMG_BOULES_2],
   training: [P_IMG_MESURE_1, P_IMG_MESURE_2],
   leaderboard: [P_IMG_TOURNOI_1, P_IMG_TOURNOI_2],
-  tip: [P_IMG_TIP_1, P_IMG_TIP_2],
   tipNews: [P_IMG_NEWS_1, P_IMG_NEWS_2],
   global: [P_IMG_BOULES_1, P_IMG_BOULES_2],
 } as const;
+
 
 function hashStringToInt(str: string): number {
   let h = 2166136261;
@@ -452,11 +466,12 @@ function pickTickerImage<K extends keyof typeof TICKER_IMAGES>(key: K, seed: str
   const arr = TICKER_IMAGES[key];
   if (!arr || arr.length === 0) return "";
   const idx = hashStringToInt(`${key}::${seed}`) % arr.length;
-  const picked = arr[idx] ?? "";
-  if (picked.startsWith("data:image/")) return picked;
-  if (picked.startsWith("http")) return picked;
-  return IMG_BASE + picked;
+  const picked = String(arr[idx] ?? "").trim();
+  if (!picked) return "";
+  // imports Vite => string URL, data-uri ok, http ok
+  return picked;
 }
+
 
 function safeActiveProfile(store: Store): Profile | null {
   const profiles = store?.profiles ?? [];
@@ -547,54 +562,85 @@ export default function PetanqueHome({ store, go }: Props) {
   const seed = String(activeProfile?.id ?? "anon");
 
   const tickerItems: ArcadeTickerItem[] = useMemo(() => {
-    const st = loadPetanqueState();
-    const ends = Array.isArray(st?.ends) ? st.ends.length : 0;
-    const a = Number(st?.scoreA ?? 0) || 0;
-    const b = Number(st?.scoreB ?? 0) || 0;
-    const target = Number(st?.target ?? 13) || 13;
-    const finished = !!st?.finished;
+  const st = loadPetanqueState();
+  const ends = Array.isArray(st?.ends) ? st.ends.length : 0;
+  const a = Number(st?.scoreA ?? 0) || 0;
+  const b = Number(st?.scoreB ?? 0) || 0;
+  const target = Number(st?.target ?? 13) || 13;
+  const finished = !!st?.finished;
 
-    const resume = finished
-      ? t("petanque.home.ticker.resume.finished", "Partie terminée — relance une nouvelle partie.")
-      : ends > 0
-      ? t("petanque.home.ticker.resume.dynamic", `Reprends ta partie : ${a} — ${b} (objectif ${target}).`)
-      : t("petanque.home.ticker.resume.empty", "Aucune mène enregistrée — lance une partie pour commencer.");
+  // ✅ Résultats / reprise (dépend de l'état local)
+  const resume = finished
+    ? t("petanque.home.ticker.results.finished", "Partie terminée — consulte le résumé ou relance une partie.")
+    : ends > 0
+    ? t("petanque.home.ticker.results.live", `Partie en cours : ${a} — ${b} (objectif ${target}).`)
+    : t("petanque.home.ticker.results.empty", "Aucun résultat récent — lance une partie pour commencer.");
 
-    return [
-      {
-        id: "petanque-resume",
-        title: t("petanque.home.ticker.resume.title", "Pétanque — Partie"),
-        text: resume,
-        detail: ends > 0 ? `${ends} mènes · ${a}—${b} · obj ${target}` : "",
-        backgroundImage: pickTickerImage("local", `${seed}::petanque-resume`),
-        accentColor: theme.primary ?? "#F6C256",
-      },
-      {
-        id: "petanque-measure",
-        title: t("petanque.home.ticker.measure.title", "Mesurage"),
-        text: t("petanque.home.ticker.measure.text", "Mesure rapide : égalité, cochonnet, terrain incliné."),
-        detail: t("petanque.home.ticker.measure.detail", "Manuel · Photo · LIVE radar"),
-        backgroundImage: pickTickerImage("training", `${seed}::petanque-measure`),
-        accentColor: "#00E5A8",
-      },
-      {
-        id: "petanque-tournaments",
-        title: t("petanque.home.ticker.tournaments.title", "Tournois"),
-        text: t("petanque.home.ticker.tournaments.text", "Crée et gère tes tournois. (Mode commun multi-sport)"),
-        detail: t("petanque.home.ticker.tournaments.detail", "KO · Poules · RR"),
-        backgroundImage: pickTickerImage("leaderboard", `${seed}::petanque-tournaments`),
-        accentColor: "#FF7A18",
-      },
-      {
-        id: "petanque-tip",
-        title: t("petanque.home.ticker.tip.title", "Astuce"),
-        text: t("petanque.home.ticker.tip.text", "Annonce clairement la mène et la marque avant de reprendre le jeu."),
-        detail: t("petanque.home.ticker.tip.detail", "Rythme · Clarté · Fair-play"),
-        backgroundImage: pickTickerImage("tip", `${seed}::petanque-tip`),
-        accentColor: "#FFFFFF",
-      },
-    ];
-  }, [seed, theme.primary, t, kpis.ends, kpis.scoreA, kpis.scoreB, kpis.target, kpis.finished]);
+  // ✅ Contenu “éditorial” : tu pourras brancher ça plus tard (Supabase/news feed)
+  const actuText = t(
+    "petanque.home.ticker.news.text",
+    "Infos du moment : nouvelles variantes, correctifs UI, et améliorations du mode Local."
+  );
+
+  const newText = t(
+    "petanque.home.ticker.new.text",
+    "Nouveautés : tickers dédiés (Actu / Nouveauté / Résultats / Événements) + visuels importés en assets."
+  );
+
+  const eventsText = t(
+    "petanque.home.ticker.events.text",
+    "Événements : crée un tournoi, lance un challenge, ou consulte le calendrier."
+  );
+
+  const tipText = t(
+    "petanque.home.ticker.tip.text",
+    "Astuce : annonce la mène et confirme la marque avant de reprendre le jeu."
+  );
+
+  return [
+    {
+      id: "petanque-news",
+      title: t("petanque.home.ticker.news.title", "Actualité"),
+      text: actuText,
+      detail: t("petanque.home.ticker.news.detail", "Actu · Patch · Infos"),
+      backgroundImage: pickTickerImage("news", `${seed}::petanque-news`),
+      accentColor: "#00E5A8",
+    },
+    {
+      id: "petanque-new",
+      title: t("petanque.home.ticker.new.title", "Nouveauté"),
+      text: newText,
+      detail: t("petanque.home.ticker.new.detail", "UI · Assets · Cohérence"),
+      backgroundImage: pickTickerImage("new", `${seed}::petanque-new`),
+      accentColor: theme.primary ?? "#F6C256",
+    },
+    {
+      id: "petanque-results",
+      title: t("petanque.home.ticker.results.title", "Résultats"),
+      text: resume,
+      detail: ends > 0 ? `${ends} mènes · ${a}—${b} · obj ${target}` : "",
+      backgroundImage: pickTickerImage("results", `${seed}::petanque-results`),
+      accentColor: "#FF7A18",
+    },
+    {
+      id: "petanque-events",
+      title: t("petanque.home.ticker.events.title", "Événements"),
+      text: eventsText,
+      detail: t("petanque.home.ticker.events.detail", "Tournois · Défis · Stats"),
+      backgroundImage: pickTickerImage("events", `${seed}::petanque-events`),
+      accentColor: "#7DBEFF",
+    },
+    {
+      id: "petanque-tip",
+      title: t("petanque.home.ticker.tip.title", "Astuce"),
+      text: tipText,
+      detail: t("petanque.home.ticker.tip.detail", "Rythme · Clarté · Fair-play"),
+      backgroundImage: pickTickerImage("tip", `${seed}::petanque-tip`),
+      accentColor: "#FFFFFF",
+    },
+  ];
+}, [seed, theme.primary, t, kpis.ends, kpis.scoreA, kpis.scoreB, kpis.target, kpis.finished]);
+
 
   const [tickerIndex, setTickerIndex] = useState(0);
 

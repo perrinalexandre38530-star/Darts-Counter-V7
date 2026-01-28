@@ -17,7 +17,6 @@ type UserBot = {
   id: string;
   name: string;
   avatarDataUrl?: string | null;
-  botLevel?: string;
 };
 
 const LS_BOTS_KEY = "dc_bots_v1";
@@ -37,48 +36,71 @@ export type GolfConfigPayload = {
   showHoleGrid: boolean;
 };
 
+const LS_BOTS_KEYS = ["dc_bots_v1", "dc-bots-v1", "dcBotsV1", "darts-counter-bots", "bots"];
 
-// IMPORTANT: on n'affiche que les bots que l'utilisateur a réellement créés via Profils > Bots.
-// (Pas de "fake bots" par défaut.)
-function readUserBotsFromLS(): UserBot[] {
+
+function safeParseBotsFromLS(): UserBot[] {
   if (typeof window === "undefined") return [];
   try {
-    const raw = window.localStorage.getItem(LS_BOTS_KEY);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw) as any[];
-    if (!Array.isArray(parsed)) return [];
-    return parsed
-      .map((b) => ({
-        id: String(b?.id ?? ""),
-        name: String(b?.name ?? "BOT"),
-        avatarDataUrl: (b?.avatarDataUrl ?? null) as string | null,
-        botLevel: String(b?.botLevel ?? b?.level ?? "") || undefined,
-      }))
-      .filter((b) => !!b.id);
+    const out: UserBot[] = [];
+    for (const key of LS_BOTS_KEYS) {
+      const raw = window.localStorage.getItem(key);
+      if (!raw) continue;
+      const arr = JSON.parse(raw);
+      if (!Array.isArray(arr)) continue;
+      for (const b of arr) {
+        const id = String((b as any)?.id ?? "");
+        const name = String((b as any)?.name ?? "BOT");
+        const avatarDataUrl = (b as any)?.avatarDataUrl ?? (b as any)?.avatarUrl ?? null;
+        if (id && name) out.push({ id, name, avatarDataUrl });
+      }
+    }
+    const map = new Map<string, UserBot>();
+    out.forEach((b) => map.set(b.id, b));
+    return Array.from(map.values());
   } catch {
     return [];
   }
+}
+
+function isBotProfile(p: any): boolean {
+  if (!p) return false;
+  if (p.isBot === true) return true;
+  const bl = typeof p.botLevel === "string" ? p.botLevel.trim() : "";
+  if (bl) return true;
+  const lvl = typeof p.level === "string" ? p.level.trim() : "";
+  if (lvl && ["easy","medium","strong","pro","legend","normal","hard"].includes(lvl)) return true;
+  const kind = typeof p.kind === "string" ? p.kind : "";
+  if (kind.toLowerCase() === "bot") return true;
+  return false;
 }
 
 function botsFromStoreProfiles(profiles: any[]): UserBot[] {
   return (profiles || [])
     .filter((p: any) => !!p?.isBot)
     .map((p: any) => ({
-      id: String(p?.id ?? ""),
-      name: String(p?.name ?? "BOT"),
-      avatarDataUrl: (p?.avatarDataUrl ?? p?.avatarUrl ?? null) as string | null,
-      botLevel: String(p?.botLevel ?? p?.level ?? "") || undefined,
+      id: String(p.id),
+      name: String(p.name ?? "BOT"),
+      avatarDataUrl: p.avatarDataUrl ?? p.avatarUrl ?? null,
     }))
-    .filter((b) => !!b.id);
+    .filter((b: any) => b.id && b.name);
 }
 
 function loadBots(profiles: any[]): UserBot[] {
-  const merged = [...botsFromStoreProfiles(profiles), ...readUserBotsFromLS()];
+  const storeBots = botsFromStoreProfiles(profiles);
+  const lsBots = safeParseBotsFromLS();
+  const merged = [...storeBots, ...lsBots];
   const map = new Map<string, UserBot>();
   merged.forEach((b) => map.set(b.id, b));
   return Array.from(map.values());
 }
 
+
+function normalizeImgSrc(src: any): string | undefined {
+  if (!src) return undefined;
+  if (typeof src !== "string") return undefined;
+  return src;
+}
 
 export default function GolfConfig(props: any) {
   const { t } = useLang();
@@ -87,7 +109,7 @@ export default function GolfConfig(props: any) {
   const primarySoft = theme?.primarySoft ?? "rgba(125,255,202,0.16)";
 
   const storeProfiles = (props?.store?.profiles ?? []) as any[];
-  const humanProfiles = useMemo(() => storeProfiles.filter((p) => !p?.isBot), [storeProfiles]);
+  const humanProfiles = useMemo(() => storeProfiles.filter((p: any) => !isBotProfile(p)), [storeProfiles]);
 
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [pendingId, setPendingId] = useState<string | null>(null);
@@ -106,7 +128,7 @@ export default function GolfConfig(props: any) {
 
   const [userBots, setUserBots] = useState<UserBot[]>([]);
   useEffect(() => {
-    // Charge les bots depuis Profils > Bots (localStorage dc_bots_v1) + éventuels profils isBot.
+    // Charge les bots depuis : store.profiles (isBot), localStorage (clés historiques), + fallback bots intégrés
     setUserBots(loadBots(storeProfiles));
   }, [storeProfiles]);
 
@@ -234,9 +256,9 @@ export default function GolfConfig(props: any) {
                     profile: {
                       id: b.id,
                       name: b.name,
-                      avatarDataUrl: b.avatarDataUrl ?? null,
+                      avatarUrl: normalizeImgSrc(b.avatarDataUrl),
+                      avatarDataUrl: null,
                       isBot: true,
-                      botLevel: b.botLevel ?? "",
                     },
                   })
                 )}

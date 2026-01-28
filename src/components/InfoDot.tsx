@@ -35,7 +35,7 @@ export default function InfoDot({
   onClick,
   glow,
   title = "Infos",
-  size = 46,
+  size = 42,
   color,
   content,
 }: Props) {
@@ -61,7 +61,7 @@ export default function InfoDot({
   );
 
   // 🔥 icône volontairement plus grosse que BackDot pour être lisible
-  const iconSize = Math.max(24, Math.round(size * 0.62));
+  const iconSize = Math.max(26, Math.round(size * 0.68));
 
   return (
     <>
@@ -86,7 +86,7 @@ export default function InfoDot({
           WebkitTapHighlightColor: "transparent",
           border: `2px solid ${theme.borderSoft}`,
           background: "rgba(0,0,0,0.48)",
-          boxShadow: `0 0 0 2px rgba(0,0,0,0.22), 0 0 18px ${halo}, 0 0 34px ${halo}`,
+          boxShadow: `0 0 0 2px rgba(0,0,0,0.22), 0 0 22px ${halo}, 0 0 44px ${halo}`,
           color: iconColor, // ✅ la couleur THEME se propage au SVG via currentColor
           flex: "0 0 auto",
           pointerEvents: "auto",
@@ -101,7 +101,7 @@ export default function InfoDot({
           focusable="false"
           style={{
             display: "block",
-            filter: `drop-shadow(0 0 10px ${halo}) drop-shadow(0 0 18px ${halo})`,
+            filter: `drop-shadow(0 0 14px ${halo}) drop-shadow(0 0 24px ${halo})`,
           }}
         >
           {/* IMPORTANT: fill="currentColor" (pas de noir hardcodé) */}
