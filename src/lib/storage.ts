@@ -319,10 +319,27 @@ function normalizeStoreAvatarsCompatSync<T extends any>(store: T): { store: T; c
       const avatarPath = typeof p.avatarPath === "string" ? p.avatarPath.trim() : "";
       const avatarDataUrl = typeof p.avatarDataUrl === "string" ? p.avatarDataUrl.trim() : "";
 
+      // ✅ legacy champs rencontrés dans d'anciennes versions
+      const legacyAvatar =
+        (typeof p.avatar === "string" ? String(p.avatar).trim() : "") ||
+        (typeof p.photoDataUrl === "string" ? String(p.photoDataUrl).trim() : "") ||
+        (typeof p.photoUrl === "string" ? String(p.photoUrl).trim() : "");
+
       if (!avatarDataUrl) {
         if (avatarUrl) {
           changed = true;
           return { ...p, avatarDataUrl: avatarUrl };
+        }
+
+        if (
+          legacyAvatar &&
+          (legacyAvatar.startsWith("http://") ||
+            legacyAvatar.startsWith("https://") ||
+            legacyAvatar.startsWith("data:") ||
+            legacyAvatar.startsWith("blob:"))
+        ) {
+          changed = true;
+          return { ...p, avatarDataUrl: legacyAvatar };
         }
 
         if (

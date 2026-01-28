@@ -36,6 +36,9 @@ import { loadOpenCv } from "../../lib/vision/opencv";
 import type { Profile } from "../../lib/types";
 import BackDot from "../../components/BackDot";
 import InfoDot from "../../components/InfoDot";
+import PlusDot from "../../components/PlusDot";
+
+import plusDotIcon from "../../assets/ui/plusdot.png";
 
 import tickerP1v1 from "../../assets/tickers/ticker_petanque_1v1.png";
 import tickerP2v2 from "../../assets/tickers/ticker_petanque_2v2.png";
@@ -58,6 +61,7 @@ go: (tab: any, params?: any) => void;
 cfg?: any;
 matchMode?: string;
 params?: any;
+store?: any;
 // ✅ NEW: bridge fin de partie -> App (store.history)
 onFinish?: (rec: any) => void;
 };
@@ -137,15 +141,84 @@ const alt =
 return side === "A" ? primary : alt;
 }
 
+function normalizeImport(v: any): string | null {
+  if (!v) return null;
+  if (typeof v === "string") {
+    const s = v.trim();
+    return s ? s : null;
+  }
+  if (typeof v === "object") {
+    const d = (v as any).default;
+    if (typeof d === "string") {
+      const s = d.trim();
+      return s ? s : null;
+    }
+  }
+  return null;
+}
+
+function normalizeImgSrc(raw: any): string | null {
+  const s = normalizeImport(raw);
+  if (!s) return null;
+
+  if (s.startsWith("data:") || s.startsWith("blob:")) return s;
+
+  if (s.startsWith("http://") || s.startsWith("https://")) return s.replace(/ /g, "%20");
+  if (s.startsWith("/assets/")) return s.replace(/ /g, "%20");
+  if (s.startsWith("./") || s.startsWith("../")) return s.replace(/ /g, "%20");
+  if (/\.(png|jpg|jpeg|webp|gif|svg)(\?.*)?$/i.test(s)) return s.replace(/ /g, "%20");
+
+  return null;
+}
+
+function withCacheBust(src: string, salt: string) {
+  if (!src) return src;
+  if (/^data:|^blob:/i.test(src)) return src;
+  const hasQ = src.includes("?");
+  return `${src}${hasQ ? "&" : "?"}v=${encodeURIComponent(salt)}`;
+}
+
 function getAvatarSrc(p: any): string | null {
-return (
-  p?.avatarDataUrl ||
-  p?.avatarUrl ||
-  p?.avatar ||
-  p?.photoDataUrl ||
-  p?.photoUrl ||
-  null
-);
+  const raw =
+    p?.avatarUrl ??
+    p?.avatarDataUrl ??
+    p?.avatar ??
+    p?.photoDataUrl ??
+    p?.photoUrl ??
+    null;
+
+  const normalized = normalizeImgSrc(raw);
+  if (!normalized) return null;
+
+  const salt =
+    (p && typeof p?.avatarUpdatedAt === "number" && String(p.avatarUpdatedAt)) ||
+    (typeof normalized === "string" ? normalized.slice(-24) : "") ||
+    String(Date.now());
+
+  return withCacheBust(normalized, salt);
+}
+
+// =====================
+// STATS SUMMARY VISIBILITY (local)
+// =====================
+const LS_VISIBLE_STATS_DUEL = "petanque_visible_stats_duel_v1";
+
+type VisibleMap = Record<string, boolean>;
+
+function loadVisibleMap(): VisibleMap {
+  try {
+    const raw = localStorage.getItem(LS_VISIBLE_STATS_DUEL);
+    if (!raw) return {};
+    const obj = JSON.parse(raw);
+    if (obj && typeof obj === "object") return obj;
+  } catch {}
+  return {};
+}
+
+function saveVisibleMap(map: VisibleMap) {
+  try {
+    localStorage.setItem(LS_VISIBLE_STATS_DUEL, JSON.stringify(map));
+  } catch {}
 }
 
 /** safe string */
@@ -175,20 +248,33 @@ return s;
 }
 
 function MedallionAvatar({
-src,
-size = 66,
-border,
-glow,
-fallback,
+  src,
+  size = 66,
+  border,
+  glow,
+  fallback,
 }: {
-src: string | null;
-size?: number;
-border: string;
-glow: string;
-fallback?: string;
+  src: any; // string | {default:string} | null
+  size?: number;
+  border: string;
+  glow: string;
+  fallback?: string;
 }) {
-return (
-  <div
+  const [broken, setBroken] = React.useState(false);
+
+  const safeSrc = React.useMemo(() => {
+    setBroken(false);
+    const normalized = normalizeImgSrc(src);
+    if (!normalized) return null;
+    const salt =
+      (typeof normalized === "string" ? normalized.slice(-24) : "") ||
+      String(Date.now());
+    return withCacheBust(normalized, salt);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [src]);
+
+  return (
+    <div
     style={{
       width: size,
       height: size,
@@ -202,9 +288,10 @@ return (
       flex: "0 0 auto",
     }}
   >
-    {src ? (
+    {safeSrc && !broken ? (
       <img
-        src={src}
+        src={safeSrc || ""}
+        onError={() => setBroken(true)}
         alt=""
         draggable={false}
         style={{
@@ -232,6 +319,7 @@ type PlayerLine = {
 id: string; // profileId (ou fallback)
 name: string;
 role?: PlayerRole;
+avatarDataUrl?: string | null;
 profile?: Profile;
 };
 
@@ -301,9 +389,11 @@ try {
 * Extraction tolérante Teams + roster depuis matchCfg (priorité) puis st.
 * Fallback sur st.teamA/st.teamB.
 */
-function extractTeams(st: any, matchCfg: any): { A: TeamLine; B: TeamLine } {
+function extractTeams(st: any, matchCfg: any, storeProfiles?: any[]): { A: TeamLine; B: TeamLine } {
 const asStr = (v: any) => (v == null ? "" : String(v)).trim();
 
+// IMPORTANT: ne jamais renvoyer "[object Object]" (ça casse les <img> et bloque les fallbacks)
+// -> on normalise comme une vraie src image.
 const normalizeLogo = (raw: any): string | null => {
   if (!raw) return null;
   const v =
@@ -317,9 +407,10 @@ const normalizeLogo = (raw: any): string | null => {
     raw?.img ??
     raw?.medal ??
     raw?.badge ??
-    raw;
-  const s = asStr(v);
-  return s ? s : null;
+    null;
+
+  // ✅ support string OU import Vite ({default: string})
+  return normalizeImgSrc(v);
 };
 
 // ✅ IMPORTANT: dans TON PetanqueConfig, les profils "résolvables" arrivent via cfg.players
@@ -329,6 +420,7 @@ const profilesArr = (
   matchCfg?.cfg?.profiles ??
   matchCfg?.players ??
   matchCfg?.cfg?.players ??
+  storeProfiles ??
   []
 ) as any[];
 
@@ -360,6 +452,13 @@ const normalizePlayers = (
           id: asStr(maybeProfile?.id) || asStr(p) || `p-${idx}`,
           name,
           role: (maybeProfile?.role as PlayerRole) ?? undefined,
+          avatarDataUrl:
+            maybeProfile?.avatarDataUrl ??
+            maybeProfile?.avatarUrl ??
+            maybeProfile?.avatar ??
+            maybeProfile?.photoDataUrl ??
+            maybeProfile?.photoUrl ??
+            null,
           profile: maybeProfile as Profile,
         };
       }
@@ -387,7 +486,20 @@ const normalizePlayers = (
           ? (p as Profile)
           : undefined);
 
-      return { id, name, role, profile };
+      const avatarDataUrl =
+        p?.avatarDataUrl ??
+        p?.avatarUrl ??
+        p?.avatar ??
+        p?.photoDataUrl ??
+        p?.photoUrl ??
+        prof?.avatarDataUrl ??
+        prof?.avatarUrl ??
+        prof?.avatar ??
+        prof?.photoDataUrl ??
+        prof?.photoUrl ??
+        null;
+
+      return { id, name, role, avatarDataUrl, profile };
     })
     .filter(Boolean);
 };
@@ -543,93 +655,198 @@ switch (k) {
 // ✅ HEADER "ARCADE" FIXED
 // =====================
 function PetanqueHeaderArcade(props: {
-theme: any;
-go: (tab: any, params?: any) => void;
-cfg?: any;
-matchMode?: string;
-allowMeasurements: boolean;
-onMeasure: () => void;
-isFfa3: boolean;
-isSingles?: boolean;
+  theme: any;
+  go: (tab: any, params?: any) => void;
+  cfg?: any;
+  matchMode?: string;
+  allowMeasurements: boolean;
+  onMeasure: () => void;
+  isFfa3: boolean;
+  isSingles?: boolean;
 
-teams?: { A: TeamLine; B: TeamLine };
-scoreA?: number;
-scoreB?: number;
+  teams?: { A: TeamLine; B: TeamLine };
+  scoreA?: number;
+  scoreB?: number;
 
-ffaPlayers?: string[];
-ffaScores?: number[];
-ffaWinnerIdx?: number | null;
+  ffaPlayers?: string[];
+  ffaScores?: number[];
+  ffaWinnerIdx?: number | null;
 
-onAddEndA?: () => void;
-onAddEndB?: () => void;
-onAddEndNull?: () => void;
+  onAddEndA?: () => void;
+  onAddEndB?: () => void;
+  onAddEndNull?: () => void;
 }) {
-const {
-  theme,
-  go,
-  cfg,
-  matchMode: matchModeProp,
-  allowMeasurements,
-  onMeasure,
-  isFfa3,
-  teams,
-  scoreA,
-  scoreB,
-  ffaPlayers,
-  ffaScores,
-  ffaWinnerIdx,
-  onAddEndA,
-  onAddEndB,
-  onAddEndNull,
-} = props;
+  const {
+    theme,
+    go,
+    cfg,
+    matchMode: matchModeProp,
+    allowMeasurements,
+    onMeasure,
+    isFfa3,
+    teams,
+    scoreA,
+    scoreB,
+    ffaPlayers,
+    ffaScores,
+    ffaWinnerIdx,
+    onAddEndA,
+    onAddEndB,
+    onAddEndNull,
+  } = props;
 
-const colorA = pickTeamColor(theme, "A");
-const colorB = pickTeamColor(theme, "B");
+  const colorA = pickTeamColor(theme, "A");
+  const colorB = pickTeamColor(theme, "B");
 
-const _sa = scoreA ?? 0;
-const _sb = scoreB ?? 0;
-const maxScoreDigits = Math.max(String(_sa).length, String(_sb).length);
-const scoreFontSize = maxScoreDigits >= 2 ? 22 : 28;
-const scorePadX = maxScoreDigits >= 2 ? 10 : 14;
+  const _sa = scoreA ?? 0;
+  const _sb = scoreB ?? 0;
 
+  const isSingles = !!props.isSingles;
 
-// Taille du libellé 'MESURER' (plus petit que le score)
-const DEFAULT_MEASURE_FONT_SIZE = maxScoreDigits >= 2 ? 11 : 12;
-// ✅ LOGO D'ÉQUIPE > AVATAR JOUEUR > FALLBACK
-const teamAImg =
-  teams?.A?.logoDataUrl ||
-  (teams?.A?.players?.[0]?.profile
-    ? getAvatarSrc(teams.A.players[0].profile)
-    : null) ||
-  null;
+  // ✅ Derive mode + team size locally (avoid ReferenceError: matchMode/teamSize)
+  const teamSize = Math.max(
+    teams?.A?.players?.length ?? 0,
+    teams?.B?.players?.length ?? 0
+  );
+  const matchMode = (matchModeProp ||
+    (isFfa3 ? "ffa3" : isSingles ? "singles" : "teams")) as any;
 
-const teamBImg =
-  teams?.B?.logoDataUrl ||
-  (teams?.B?.players?.[0]?.profile
-    ? getAvatarSrc(teams.B.players[0].profile)
-    : null) ||
-  null;
+  const is1v1 = matchMode === "singles";
+  const is2v2 = teamSize === 2;
+  const is3v3 = teamSize === 3;
+  const is4v4 = teamSize === 4;
 
-const isSingles = !!props.isSingles;
+  const ticker = is1v1
+    ? tickerP1v1
+    : is2v2
+      ? tickerP2v2
+      : is3v3
+        ? tickerP3v3
+        : is4v4
+          ? tickerP4v4
+          : null;
 
-// ✅ Derive mode + team size locally (avoid ReferenceError: matchMode/teamSize)
-const teamSize = Math.max(
-  teams?.A?.players?.length ?? 0,
-  teams?.B?.players?.length ?? 0
-);
-const matchMode = (matchModeProp || (isFfa3 ? "ffa3" : isSingles ? "singles" : "teams")) as any;
+  // ⚠️ IMPORTANT: `logoDataUrl` peut contenir des valeurs non-image (ex: "[object Object]")
+  // -> on ne l'utilise QUE si c'est une vraie src image.
+  const teamAImg =
+    normalizeImgSrc(teams?.A?.logoDataUrl) ||
+    (teams?.A?.players?.[0]?.profile ? getAvatarSrc(teams.A.players[0].profile) : null) ||
+    normalizeImgSrc(teams?.A?.players?.[0]?.avatarDataUrl) ||
+    null;
 
-const nameA =
-  isSingles
-    ? prettyPlayerName(teams?.A?.players?.[0]?.name ?? "", "Joueur A")
-    : teams?.A?.name || "TEAM A";
+  const teamBImg =
+    normalizeImgSrc(teams?.B?.logoDataUrl) ||
+    (teams?.B?.players?.[0]?.profile ? getAvatarSrc(teams.B.players[0].profile) : null) ||
+    normalizeImgSrc(teams?.B?.players?.[0]?.avatarDataUrl) ||
+    null;
 
-const nameB =
-  isSingles
-    ? prettyPlayerName(teams?.B?.players?.[0]?.name ?? "", "Joueur B")
-    : teams?.B?.name || "TEAM B";
+  const nameA =
+    isSingles
+      ? prettyPlayerName(teams?.A?.players?.[0]?.name ?? "", "Joueur A")
+      : teams?.A?.name || "TEAM A";
+
+  const nameB =
+    isSingles
+      ? prettyPlayerName(teams?.B?.players?.[0]?.name ?? "", "Joueur B")
+      : teams?.B?.name || "TEAM B";
+
+  const scoreFontSize =
+    Math.max(String(_sa).length, String(_sb).length) >= 2 ? 22 : 28;
+
+  const [scoreMenuOpen, setScoreMenuOpen] = React.useState(false);
+
+  const ScoreMenu = () => {
+    if (!scoreMenuOpen) return null;
+    return (
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          position: "absolute",
+          left: 0,
+          top: "calc(100% + 8px)",
+          zIndex: 60,
+          width: 240,
+          borderRadius: 14,
+          border: `1px solid ${cssVarOr("rgba(255,255,255,0.14)", "--stroke")}`,
+          background: "rgba(10, 12, 24, 0.96)",
+          boxShadow: "0 16px 40px rgba(0,0,0,0.6)",
+          padding: 10,
+        }}
+      >
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8 }}>
+          <button
+            className="btn"
+            style={{
+              borderRadius: 999,
+              padding: "8px 10px",
+              border: `1px solid ${colorA}66`,
+              background: "rgba(255,255,255,0.06)",
+              color: colorA,
+              fontWeight: 1100 as any,
+              cursor: onAddEndA ? "pointer" : "not-allowed",
+              opacity: onAddEndA ? 1 : 0.5,
+            }}
+            onClick={() => {
+              onAddEndA?.();
+              setScoreMenuOpen(false);
+            }}
+            disabled={!onAddEndA}
+            title="Ajouter une mène (A marque)"
+          >
+            A +
+          </button>
+
+          <button
+            className="btn"
+            style={{
+              borderRadius: 999,
+              padding: "8px 10px",
+              border: `1px solid ${cssVarOr("rgba(255,255,255,0.16)", "--stroke")}`,
+              background: "rgba(255,255,255,0.06)",
+              color: "rgba(255,255,255,0.86)",
+              fontWeight: 1100 as any,
+              cursor: onAddEndNull ? "pointer" : "not-allowed",
+              opacity: onAddEndNull ? 1 : 0.5,
+            }}
+            onClick={() => {
+              onAddEndNull?.();
+              setScoreMenuOpen(false);
+            }}
+            disabled={!onAddEndNull}
+            title="Mène nulle (0)"
+          >
+            0
+          </button>
+
+          <button
+            className="btn"
+            style={{
+              borderRadius: 999,
+              padding: "8px 10px",
+              border: `1px solid ${colorB}66`,
+              background: "rgba(255,255,255,0.06)",
+              color: colorB,
+              fontWeight: 1100 as any,
+              cursor: onAddEndB ? "pointer" : "not-allowed",
+              opacity: onAddEndB ? 1 : 0.5,
+            }}
+            onClick={() => {
+              onAddEndB?.();
+              setScoreMenuOpen(false);
+            }}
+            disabled={!onAddEndB}
+            title="Ajouter une mène (B marque)"
+          >
+            B +
+          </button>
+        </div>
+      </div>
+    );
+  };
+
   return (
     <div
+      onClick={() => setScoreMenuOpen(false)}
       style={{
         position: "sticky",
         left: 0,
@@ -644,110 +861,97 @@ const nameB =
       }}
     >
       <div style={{ width: "100%", maxWidth: 520, margin: "0 auto" }}>
-        
-{/* Nav row */}
-<div
-style={{
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "space-between",
-  gap: 10,
-  marginBottom: 10,
-}}
->
-<BackDot
-  title="Retour"
-  onClick={() => {
-    // Retour config Pétanque (ou menu Pétanque si cfg introuvable)
-    try {
-      go("petanque_config", cfg ? { cfg } : undefined);
-    } catch {
-      go("petanque_menu");
-    }
-  }}
-/>
+        {/* Nav row */}
+        {/* Ticker : edge-to-edge, et Back/Info superposés DESSUS (comme les configs darts) */}
+        <div
+          style={{
+            position: "relative",
+            width: "calc(100% + 20px)",
+            marginLeft: -10,
+            marginRight: -10,
+            marginBottom: 10,
+          }}
+        >
+          {ticker ? (
+            <img
+              src={ticker}
+              alt="Mode"
+              style={{
+                width: "100%",
+                height: 62,
+                objectFit: "cover",
+                borderRadius: 0,
+                filter: `drop-shadow(0 0 16px ${theme.primary}55)`,
+                opacity: 0.98,
+                userSelect: "none",
+                display: "block",
+              }}
+              draggable={false}
+            />
+          ) : (
+          <div
+            style={{
+              fontSize: 16,
+              fontWeight: 1000,
+              letterSpacing: 2.2,
+              textTransform: "uppercase",
+              color: theme.primary,
+              textShadow: `0 0 14px ${theme.primary}55`,
+              padding: "10px 12px",
+              borderRadius: 14,
+              border: `1px solid ${theme.primary}33`,
+              background: "linear-gradient(180deg, rgba(0,0,0,.22), rgba(0,0,0,.36))",
+              boxShadow: `0 0 18px ${theme.primary}22`,
+              marginBottom: 0,
+              textAlign: "center",
+            }}
+          >
+            PÉTANQUE
+          </div>
+          )}
 
-<div style={{ flex: 1, display: "flex", alignItems: "center", padding: "0 6px", minWidth: 0 }}>
-  {(() => {
-    const is1v1 = matchMode === "singles";
-    const is2v2 = teamSize === 2;
-    const is3v3 = teamSize === 3;
-    const is4v4 = teamSize === 4;
-    const ticker = is1v1
-      ? tickerP1v1
-      : is2v2
-        ? tickerP2v2
-        : is3v3
-          ? tickerP3v3
-          : is4v4
-            ? tickerP4v4
-            : null;
+          <div style={{ position: "absolute", left: 10, top: 8 }}>
+            <BackDot
+              title="Retour"
+              onClick={() => {
+                try {
+                  go("petanque_config", cfg ? { cfg } : undefined);
+                } catch {
+                  go("petanque_menu");
+                }
+              }}
+            />
+          </div>
 
-    return ticker ? (
-      <img
-        src={ticker}
-        alt="Mode"
-        style={{
-          height: 40,
-          width: "100%",
-          objectFit: "cover",
-          borderRadius: 12,
-          filter: `drop-shadow(0 0 14px ${theme.primary}55)`,
-          opacity: 0.98,
-          userSelect: "none",
-        }}
-        draggable={false}
-      />
-    ) : (
-      <div
-        style={{
-          fontSize: 16,
-          fontWeight: 1000,
-          letterSpacing: 2.2,
-          textTransform: "uppercase",
-          color: theme.primary,
-          textShadow: `0 0 14px ${theme.primary}55`,
-          padding: "6px 12px",
-          borderRadius: 999,
-          border: `1px solid ${theme.primary}33`,
-          background: "linear-gradient(180deg, rgba(0,0,0,.22), rgba(0,0,0,.36))",
-          boxShadow: `0 0 18px ${theme.primary}22`,
-        }}
-      >
-        PÉTANQUE
-      </div>
-    );
-  })()}
-</div>
+          <div style={{ position: "absolute", right: 10, top: 8 }}>
+            <InfoDot
+              title="Règles & variantes"
+              content={
+                <div style={{ display: "grid", gap: 10 }}>
+                  <div style={{ fontWeight: 1100 }}>Règles (rappel rapide)</div>
+                  <div style={{ opacity: 0.9, lineHeight: 1.35 }}>
+                    Une mène = un échange. Une équipe marque des points (1 à 6) selon le nombre de boules
+                    mieux placées que la meilleure boule adverse.
+                  </div>
+                  <div style={{ fontWeight: 1100 }}>Variantes</div>
+                  <ul style={{ margin: 0, paddingLeft: 18, opacity: 0.9, lineHeight: 1.35 }}>
+                    <li>1v1 (tête-à-tête)</li>
+                    <li>2v2 (doublette)</li>
+                    <li>3v3 (triplette)</li>
+                    <li>4v4 (quadrette)</li>
+                  </ul>
+                  <div style={{ fontWeight: 1100 }}>Stats</div>
+                  <div style={{ opacity: 0.9, lineHeight: 1.35 }}>
+                    Tu peux attribuer des actions par joueur (carreau, tir OK, trou, bec, but KO, but +, poussée +/−)
+                    indépendamment du point au tableau.
+                  </div>
+                </div>
+              }
+            />
+          </div>
+        </div>
 
-<InfoDot
-  title="Règles & variantes"
-  content={
-    <div style={{ display: "grid", gap: 10 }}>
-      <div style={{ fontWeight: 1100 }}>Règles (rappel rapide)</div>
-      <div style={{ opacity: 0.9, lineHeight: 1.35 }}>
-        Une mène = un échange. Une équipe marque des points (1 à 6) selon le nombre de boules
-        mieux placées que la meilleure boule adverse.
-      </div>
-      <div style={{ fontWeight: 1100 }}>Variantes</div>
-      <ul style={{ margin: 0, paddingLeft: 18, opacity: 0.9, lineHeight: 1.35 }}>
-        <li>1v1 (tête-à-tête)</li>
-        <li>2v2 (doublette)</li>
-        <li>3v3 (triplette)</li>
-        <li>4v4 (quadrette)</li>
-      </ul>
-      <div style={{ fontWeight: 1100 }}>Stats</div>
-      <div style={{ opacity: 0.9, lineHeight: 1.35 }}>
-        Tu peux attribuer des actions par joueur (carreau, tir OK, trou, bec, but KO, but +, poussée +/−)
-        indépendamment du point au tableau.
-      </div>
-    </div>
-  }
-/>
-</div>
-
-{/* KPI card */}
-
+        {/* Header content */}
         <div
           style={{
             borderRadius: 18,
@@ -758,8 +962,6 @@ style={{
             padding: 10,
           }}
         >
-          {/* Mesurer déplacé sous le score */}
-
           {isFfa3 ? (
             <div
               style={{
@@ -799,70 +1001,69 @@ style={{
               </div>
             </div>
           ) : (
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: "1fr auto 1fr",
-                gap: 10,
-                alignItems: "center",
-              }}
-            >
-              {/* TEAM A */}
-              <div style={{ display: "grid", justifyItems: "start", gap: 6, minWidth: 0 }}>
-                <MedallionAvatar
-                  src={teamAImg}
-                  size={72}
-                  border={`${colorA}88`}
-                  glow={`${colorA}35`}
-                  fallback="A"
-                />
-                <div
-                  style={{
-                    fontSize: 11,
-                    fontWeight: 950,
-                    letterSpacing: 0.8,
-                    textTransform: "uppercase",
-                    color: colorA,
-                    textShadow: `0 0 12px ${colorA}55`,
-                    maxWidth: 160,
-                    whiteSpace: "nowrap",
-                    overflow: "hidden",
-                    textOverflow: "ellipsis",
-                    textAlign: "center",
-                  }}
-                  title={nameA}
-                >
-                  {nameA}
-                </div>
-              </div>
-  
-              {/* ✅ SCORE KPI + (+ sous chaque équipe) */}
+            <>
+              {/* 3 blocs centrés (A / SCORE / B) */}
               <div
                 style={{
-                  borderRadius: 16,
-                  padding: "10px 14px",
-                  border: `1px solid ${theme.primary}55`,
-                  background: "linear-gradient(180deg, rgba(0,0,0,.18), rgba(0,0,0,.38))",
-                  boxShadow: `0 0 22px ${theme.primary}22`,
                   display: "grid",
-                  placeItems: "center",
-                  minWidth: 170,
-                  gap: 10,
+                  // ✅ évite le débordement sur petits écrans : les côtés peuvent shrink
+                  gridTemplateColumns: "minmax(0, 1fr) auto minmax(0, 1fr)",
+                  gap: 8,
+                  alignItems: "center",
                 }}
               >
-                <div style={{ display: "grid", placeItems: "center" }}>
+                <div style={{ display: "grid", justifyItems: "center", gap: 6, minWidth: 0 }}>
+                  <MedallionAvatar
+                    src={teamAImg}
+                    size={72}
+                    border={`${colorA}88`}
+                    glow={`${colorA}35`}
+                    fallback="A"
+                  />
+                  <div
+                    style={{
+                      fontSize: 12,
+                      fontWeight: 950,
+                      letterSpacing: 0.8,
+                      textTransform: "uppercase",
+                      color: colorA,
+                      textShadow: `0 0 12px ${colorA}55`,
+                      maxWidth: 150,
+                      whiteSpace: "nowrap",
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      textAlign: "center",
+                    }}
+                    title={nameA}
+                  >
+                    {nameA}
+                  </div>
+                </div>
+
+                <div
+                  style={{
+                    borderRadius: 16,
+                    padding: "9px 12px",
+                    border: `1px solid ${theme.primary}55`,
+                    background: "linear-gradient(180deg, rgba(0,0,0,.18), rgba(0,0,0,.38))",
+                    boxShadow: `0 0 22px ${theme.primary}22`,
+                    display: "grid",
+                    placeItems: "center",
+                    minWidth: 140,
+                    gap: 6,
+                  }}
+                >
                   <div
                     style={{
                       fontSize: 10.5,
                       letterSpacing: 1.2,
                       textTransform: "uppercase",
                       opacity: 0.85,
-                      marginBottom: 2,
                     }}
                   >
                     Score
                   </div>
-  
+
                   <div style={{ display: "flex", alignItems: "baseline", gap: 10 }}>
                     <div
                       style={{
@@ -875,7 +1076,7 @@ style={{
                         textAlign: "right",
                       }}
                     >
-                      {scoreA ?? 0}
+                      {_sa}
                     </div>
                     <div style={{ opacity: 0.65, fontWeight: 900 }}>—</div>
                     <div
@@ -889,88 +1090,109 @@ style={{
                         textAlign: "left",
                       }}
                     >
-                      {scoreB ?? 0}
+                      {_sb}
                     </div>
                   </div>
                 </div>
-  
-                {/* ✅ + sous chaque score */}
-                <div
-                  style={{
-                    display: "grid",
-                    gridTemplateColumns: "1fr 1fr",
-                    gap: 10,
-                    width: "100%",
-                  }}
-                >
-<button
+
+                <div style={{ display: "grid", justifyItems: "center", gap: 6, minWidth: 0 }}>
+                  <MedallionAvatar
+                    src={teamBImg}
+                    size={72}
+                    border={`${colorB}88`}
+                    glow={`${colorB}35`}
+                    fallback="B"
+                  />
+                  <div
+                    style={{
+                      fontSize: 12,
+                      fontWeight: 950,
+                      letterSpacing: 0.8,
+                      textTransform: "uppercase",
+                      color: colorB,
+                      textShadow: `0 0 12px ${colorB}55`,
+                      maxWidth: 150,
+                      whiteSpace: "nowrap",
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      textAlign: "center",
+                    }}
+                    title={nameB}
+                  >
+                    {nameB}
+                  </div>
+                </div>
+              </div>
+
+              {/* Boutons sous le header (Score / Mesure) */}
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "1fr 1fr",
+                  gap: 0,
+                  marginTop: 10,
+                  borderRadius: 14,
+                  overflow: "hidden",
+                  border: `1px solid ${cssVarOr("rgba(255,255,255,0.16)", "--stroke")}`,
+                  background: "rgba(255,255,255,0.04)",
+                }}
+              >
+                <div style={{ position: "relative" }}>
+                  <button
                     className="btn"
                     style={{
-                      borderRadius: 999,
-                      padding: "6px 10px",
-                      border: `1px solid ${cssVarOr("rgba(255,255,255,0.16)", "--stroke")}`,
-                      background: "rgba(255,255,255,0.06)",
-                      color: colorB,
+                      borderRadius: 0,
+                      padding: "10px 12px",
+                      width: "100%",
+                      border: "none",
+                      background: "transparent",
+                      color: theme.primary,
                       fontWeight: 1100 as any,
+                      letterSpacing: 1.6,
+                      textTransform: "uppercase",
                       cursor: "pointer",
                     }}
-                    onClick={onAddEndB}
-                    disabled={!onAddEndB}
-                    title="Ajouter une mène pour l'équipe B"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setScoreMenuOpen((v) => !v);
+                    }}
+                    title="Ajouter le résultat d'une mène"
                   >
-                    +
+                    Score
                   </button>
+                  <ScoreMenu />
                 </div>
 
-                {allowMeasurements && (
+                {allowMeasurements ? (
                   <button
                     className="btn primary"
                     style={{
                       ...chipBtn(theme),
                       width: "100%",
-                      padding: "6px 10px",
-                      marginTop: 4,
+                      padding: "10px 12px",
                       fontWeight: 1100,
                       letterSpacing: 1.6,
                       textTransform: "uppercase",
+                      borderRadius: 0,
+                      borderTop: "none",
+                      borderBottom: "none",
+                      borderRight: "none",
+                      borderLeft: `1px solid ${cssVarOr("rgba(255,255,255,0.12)", "--stroke")}`,
+                      background: "transparent",
                     }}
-                    onClick={onMeasure}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onMeasure();
+                    }}
                     title="Mesurer (distance / point)"
                   >
-                    Mesurer
+                    Mesure
                   </button>
+                ) : (
+                  <div />
                 )}
               </div>
-  
-              {/* TEAM B */}
-              <div style={{ display: "grid", justifyItems: "end", gap: 6, minWidth: 0 }}>
-                <MedallionAvatar
-                  src={teamBImg}
-                  size={72}
-                  border={`${colorB}88`}
-                  glow={`${colorB}35`}
-                  fallback="B"
-                />
-                <div
-                  style={{
-                    fontSize: 11,
-                    fontWeight: 950,
-                    letterSpacing: 0.8,
-                    textTransform: "uppercase",
-                    color: colorB,
-                    textShadow: `0 0 12px ${colorB}55`,
-                    maxWidth: 160,
-                    whiteSpace: "nowrap",
-                    overflow: "hidden",
-                    textOverflow: "ellipsis",
-                    textAlign: "center",
-                  }}
-                  title={nameB}
-                >
-                  {nameB}
-                </div>
-              </div>
-            </div>
+            </>
           )}
         </div>
       </div>
@@ -984,7 +1206,7 @@ const colorA = "var(--petanque-a, var(--accent, #d6b46a))";
 const colorB = "var(--petanque-b, var(--accent2, #6ad6c8))";
 // --------------------------------------------
 
-const { go, params, onFinish } = props;
+const { go, params, onFinish, store } = props;
 // ✅ Route params
 const matchMode = (params?.mode ?? params?.cfg?.mode ?? "singles") as any;
 const isFfa3 = matchMode === "ffa3";
@@ -1119,9 +1341,65 @@ const PTS_FFA3 = [0, 1, 2, 3];
 // ==========================================
 // ✅ TEAMS + player stats (localStorage)
 // ==========================================
-const teams = React.useMemo(() => extractTeams(stSafe as any, matchCfg), [stSafe, matchCfg]);
+const teams = React.useMemo(() => extractTeams(stSafe as any, matchCfg, Array.isArray(store?.profiles) ? store.profiles : undefined), [stSafe, matchCfg, store?.profiles]);
 
 const isSingles = matchMode === "singles";
+
+// ==========================================
+// ✅ STATS RÉSUMÉ : lignes visibles (persistées)
+// ==========================================
+type DuelStatKey =
+  | "menes"
+  | "points"
+  | "pointage"
+  | "bec"
+  | "tirs"
+  | "trou"
+  | "tirReussi"
+  | "carreau"
+  | "pousseeAssist"
+  | "pousseeConcede";
+
+const duelVisibleKey = React.useMemo(() => {
+  const id =
+    (st as any)?.matchId ??
+    (st as any)?.startedAt ??
+    (st as any)?.createdAt ??
+    (matchCfg as any)?.id ??
+    "current";
+  return `bsc-petanque-duel-visible-v1:${String(id)}`;
+}, [st, matchCfg]);
+
+const ALL_DUEL_STATS: DuelStatKey[] = [
+  "menes",
+  "points",
+  "pointage",
+  "bec",
+  "tirs",
+  "trou",
+  "tirReussi",
+  "carreau",
+  "pousseeAssist",
+  "pousseeConcede",
+];
+
+const [duelVisible, setDuelVisible] = React.useState<Record<DuelStatKey, boolean>>(() => {
+  const raw = typeof window !== "undefined" ? localStorage.getItem(duelVisibleKey) : null;
+  const parsed = safeJsonParse<Record<string, any>>(raw, {});
+  const next: any = {};
+  for (const k of ALL_DUEL_STATS) next[k] = parsed?.[k] !== false;
+  return next as Record<DuelStatKey, boolean>;
+});
+
+React.useEffect(() => {
+  try {
+    localStorage.setItem(duelVisibleKey, JSON.stringify(duelVisible));
+  } catch {}
+}, [duelVisibleKey, duelVisible]);
+
+const toggleDuelVisible = React.useCallback((k: DuelStatKey) => {
+  setDuelVisible((prev) => ({ ...prev, [k]: !prev[k] }));
+}, []);
 
 const sideLabel = React.useCallback(
   (tid: "A" | "B") => {
@@ -2156,16 +2434,86 @@ return (
 <div className="card" style={{ marginTop: 12, padding: 12 }}>
   <div
     style={{
-      display: "flex",
+      display: "grid",
+      gridTemplateColumns: "auto 1fr auto",
       alignItems: "center",
-      justifyContent: "space-between",
       gap: 10,
       marginBottom: 10,
     }}
   >
-    <div className="subtitle" style={sub(theme)}>
-      STATS — Duel
+    <PlusDot
+      title="Choisir les statistiques"
+      iconSrc={plusDotIcon}
+      content={
+        <div style={{ display: "grid", gap: 12 }}>
+          <div style={{ fontWeight: 1000, letterSpacing: 0.3 }}>Afficher / masquer des lignes</div>
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+              gap: 10,
+            }}
+          >
+            {([
+              { k: "menes", label: "Mènes", icon: icoBouclier },
+              { k: "points", label: "Points", icon: icoPointage },
+              { k: "pointage", label: "Pointage", icon: icoPointage },
+              { k: "bec", label: "Becs", icon: icoBEC },
+              { k: "tirs", label: "Tirs", icon: icoTir },
+              { k: "trou", label: "Trous", icon: icoTrou },
+              { k: "tirReussi", label: "Tirs réussis", icon: icoTir },
+              { k: "carreau", label: "Carreaux", icon: icoCarreau },
+              { k: "pousseeAssist", label: "PTS Assist", icon: icoAssist },
+              { k: "pousseeConcede", label: "PTS Concede", icon: icoConcede },
+            ] as { k: DuelStatKey; label: string; icon: any }[]).map((it) => {
+              const on = duelVisible[it.k] !== false;
+              return (
+                <button
+                  key={it.k}
+                  className="btn"
+                  onClick={() => toggleDuelVisible(it.k)}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 10,
+                    padding: "10px 12px",
+                    borderRadius: 14,
+                    border: `1px solid ${on ? theme.primary + "66" : "rgba(255,255,255,0.14)"}`,
+                    background: on
+                      ? "linear-gradient(180deg, rgba(255,210,74,.10), rgba(0,0,0,.35))"
+                      : "rgba(255,255,255,0.04)",
+                    boxShadow: on ? `0 0 18px ${theme.primary}22` : undefined,
+                  }}
+                >
+                  <img
+                    src={it.icon}
+                    alt=""
+                    style={{ width: 22, height: 22, objectFit: "contain", opacity: on ? 1 : 0.45 }}
+                    draggable={false}
+                  />
+                  <div style={{ flex: 1, minWidth: 0, textAlign: "left" }}>
+                    <div style={{ fontWeight: 950, fontSize: 13 }}>{it.label}</div>
+                    <div style={{ opacity: 0.75, fontSize: 12 }}>{on ? "Visible" : "Masquée"}</div>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      }
+    />
+
+    <div
+      className="subtitle"
+      style={{
+        ...sub(theme),
+        textAlign: "center",
+        justifySelf: "center",
+      }}
+    >
+      Statistiques
     </div>
+
     <InfoDot
       title="Légende"
       content={
@@ -2176,8 +2524,12 @@ return (
             attribuées manuellement au joueur qui a réalisé l’action.
           </div>
           <div style={{ display: "grid", gap: 4, opacity: 0.85 }}>
-            <div>• <b>Poussée +</b> = j’ai poussé une boule amie qui devient point (assist).</div>
-            <div>• <b>Poussée −</b> = j’ai poussé une boule adverse qui devient point (concede).</div>
+            <div>
+              • <b>Poussée +</b> = j’ai poussé une boule amie qui devient point (assist).
+            </div>
+            <div>
+              • <b>Poussée −</b> = j’ai poussé une boule adverse qui devient point (concede).
+            </div>
           </div>
         </div>
       }
@@ -2193,18 +2545,20 @@ return (
     const menesA = (ends ?? []).filter((e: any) => e?.scoringTeam === "A").length;
     const menesB = (ends ?? []).filter((e: any) => e?.scoringTeam === "B").length;
 
-    const rows = [
-      { label: "Mènes", a: menesA, b: menesB },
-      { label: "Points", a: (stSafe as any).scoreA ?? 0, b: (stSafe as any).scoreB ?? 0 },
-      { label: "Pointage", a: a.pointage ?? 0, b: b.pointage ?? 0 },
-      { label: "Becs", a: a.bec ?? 0, b: b.bec ?? 0 },
-      { label: "Tirs", a: (a.tirReussi ?? 0) + (a.trou ?? 0) + (a.bec ?? 0), b: (b.tirReussi ?? 0) + (b.trou ?? 0) + (b.bec ?? 0) },
-      { label: "Trous", a: a.trou ?? 0, b: b.trou ?? 0 },
-      { label: "Tirs réussis", a: a.tirReussi ?? 0, b: b.tirReussi ?? 0 },
-      { label: "Carreaux", a: a.carreau ?? 0, b: b.carreau ?? 0 },
-      { label: "PTS Assist", a: a.pousseeAssist ?? 0, b: b.pousseeAssist ?? 0 },
-      { label: "PTS Concede", a: a.pousseeConcede ?? 0, b: b.pousseeConcede ?? 0 },
-    ];
+    const rows = (
+      [
+        { k: "menes" as DuelStatKey, label: "Mènes", a: menesA, b: menesB },
+        { k: "points" as DuelStatKey, label: "Points", a: (stSafe as any).scoreA ?? 0, b: (stSafe as any).scoreB ?? 0 },
+        { k: "pointage" as DuelStatKey, label: "Pointage", a: a.pointage ?? 0, b: b.pointage ?? 0 },
+        { k: "bec" as DuelStatKey, label: "Becs", a: a.bec ?? 0, b: b.bec ?? 0 },
+        { k: "tirs" as DuelStatKey, label: "Tirs", a: (a.tirReussi ?? 0) + (a.trou ?? 0) + (a.bec ?? 0), b: (b.tirReussi ?? 0) + (b.trou ?? 0) + (b.bec ?? 0) },
+        { k: "trou" as DuelStatKey, label: "Trous", a: a.trou ?? 0, b: b.trou ?? 0 },
+        { k: "tirReussi" as DuelStatKey, label: "Tirs réussis", a: a.tirReussi ?? 0, b: b.tirReussi ?? 0 },
+        { k: "carreau" as DuelStatKey, label: "Carreaux", a: a.carreau ?? 0, b: b.carreau ?? 0 },
+        { k: "pousseeAssist" as DuelStatKey, label: "PTS Assist", a: a.pousseeAssist ?? 0, b: b.pousseeAssist ?? 0 },
+        { k: "pousseeConcede" as DuelStatKey, label: "PTS Concede", a: a.pousseeConcede ?? 0, b: b.pousseeConcede ?? 0 },
+      ]
+    ).filter((r) => duelVisible[r.k] !== false);
 
     return (
       <div

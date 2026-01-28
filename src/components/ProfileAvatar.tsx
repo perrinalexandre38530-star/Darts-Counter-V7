@@ -31,6 +31,10 @@ type ProfileLike = {
   avatarDataUrl?: any | null; // ⚠️ string OU import png (object {default})
   avatarUrl?: any | null; // idem
   avatarPath?: any | null;
+  // ✅ legacy/compat: certains écrans/anciens stores utilisent ces champs
+  avatar?: any | null;
+  photoDataUrl?: any | null;
+  photoUrl?: any | null;
   avatarUpdatedAt?: number | null;
   stats?: { avg3D?: number | null; avg3?: number | null } | null;
 };
@@ -46,7 +50,11 @@ type VisualOpts = {
 type Props =
   | (VisualOpts & {
       dataUrl?: any;
+      // ✅ compat legacy callers (beaucoup d'écrans passent `url` / `name`)
+      url?: any;
       label?: string;
+      // ✅ compat legacy callers
+      name?: string;
       size?: number;
       avg3D?: number | null;
       showStars?: boolean;
@@ -134,6 +142,9 @@ async function getProfileByIdFromStore(
         avatarUrl: pr?.avatarUrl ?? null,
         avatarDataUrl: pr?.avatarDataUrl ?? null,
         avatarPath: pr?.avatarPath ?? null,
+        avatar: (pr as any)?.avatar ?? null,
+        photoDataUrl: (pr as any)?.photoDataUrl ?? null,
+        photoUrl: (pr as any)?.photoUrl ?? null,
         avatarUpdatedAt: (pr as any)?.avatarUpdatedAt ?? null,
         stats: pr?.stats ?? null,
       });
@@ -151,7 +162,10 @@ function isLiteProfile(p: ProfileLike | null): boolean {
   const hasAny =
     (normalizeImport(p.avatarUrl) || "") ||
     (normalizeImport(p.avatarDataUrl) || "") ||
-    (normalizeImport(p.avatarPath) || "");
+    (normalizeImport(p.avatarPath) || "") ||
+    (normalizeImport((p as any)?.avatar) || "") ||
+    (normalizeImport((p as any)?.photoDataUrl) || "") ||
+    (normalizeImport((p as any)?.photoUrl) || "");
   return !hasAny;
 }
 
@@ -216,7 +230,11 @@ export default function ProfileAvatar(props: Props) {
 
   const p: ProfileLike | null = resolvedProfile ?? inputProfile;
 
-  const name = ("label" in props ? props.label : undefined) ?? p?.name ?? "P";
+  const name =
+    ("label" in props ? props.label : undefined) ??
+    ((props as any)?.name as string | undefined) ??
+    p?.name ??
+    "P";
 
   const avg3D =
     ("avg3D" in props ? props.avg3D : undefined) ??
@@ -231,23 +249,31 @@ export default function ProfileAvatar(props: Props) {
   const textColor = props.textColor ?? "#f5f5ff";
 
   // SOURCE ORDER
+  // ✅ compat legacy callers: certains écrans passent `url` au lieu de `dataUrl`
   const propDataUrl =
-    "dataUrl" in props ? normalizeImport(props.dataUrl) ?? "" : "";
+    "dataUrl" in props
+      ? normalizeImport((props as any).dataUrl) ??
+        normalizeImport((props as any).url) ??
+        ""
+      : "";
 
   const avatarUrl = normalizeImport(p?.avatarUrl) ?? "";
   const avatarPath = normalizeImport(p?.avatarPath) ?? "";
   const avatarDataUrl = normalizeImport(p?.avatarDataUrl) ?? "";
-
-  const dataUrlLooksHuge =
-    avatarDataUrl.startsWith("data:image/") && avatarDataUrl.length > 200_000;
+  const legacyAvatar =
+    normalizeImport((p as any)?.avatar) ||
+    normalizeImport((p as any)?.photoDataUrl) ||
+    normalizeImport((p as any)?.photoUrl) ||
+    "";
 
   const rawImg = React.useMemo(() => {
     if (propDataUrl) return propDataUrl;
     if (avatarUrl) return avatarUrl; // ✅ Supabase gagne
     if (avatarPath) return avatarPath;
-    if (avatarDataUrl && !dataUrlLooksHuge) return avatarDataUrl;
+    if (avatarDataUrl) return avatarDataUrl;
+    if (legacyAvatar) return legacyAvatar;
     return null;
-  }, [propDataUrl, avatarUrl, avatarPath, avatarDataUrl, dataUrlLooksHuge]);
+  }, [propDataUrl, avatarUrl, avatarPath, avatarDataUrl, legacyAvatar]);
 
   const [imgBroken, setImgBroken] = React.useState(false);
   React.useEffect(() => setImgBroken(false), [rawImg]);

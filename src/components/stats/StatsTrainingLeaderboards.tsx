@@ -197,7 +197,7 @@ export default function StatsTrainingLeaderboards({
                 key={(r.user_id || idx) + ":" + idx}
                 style={{
                   display: "grid",
-                  gridTemplateColumns: "46px 1fr 110px 70px",
+                  gridTemplateColumns: "46px 1fr 110px 230px",
                   gap: 10,
                   alignItems: "center",
                   padding: "8px 10px",
@@ -239,7 +239,20 @@ export default function StatsTrainingLeaderboards({
                   )}
                 </div>
 
-                <div style={{ justifySelf: "end", fontWeight: 1000, opacity: 0.95 }}>{r.tier ?? "—"}</div>
+<div style={{ justifySelf: "end", display: "flex", alignItems: "center", gap: 10 }}>
+  {Array.isArray(r.sparkline_30d) && r.sparkline_30d.length >= 3 ? (
+    <Sparkline values={r.sparkline_30d.map((v: any) => Number(v) || 0)} />
+  ) : (
+    <div style={{ width: 160, height: 42, opacity: 0.25 }} />
+  )}
+  <div style={{ textAlign: "right", minWidth: 52 }}>
+    <div style={{ fontWeight: 1000, opacity: 0.95 }}>{r.tier ?? "—"}</div>
+    <div style={{ fontSize: 12, opacity: 0.75, fontWeight: 900 }}>
+      {r.trend_7d != null ? (Number(r.trend_7d) >= 0 ? "+" : "") + Number(r.trend_7d).toFixed(1) : "—"}
+      <span style={{ opacity: 0.55, fontWeight: 800 }}> /7j</span>
+    </div>
+  </div>
+</div>
               </div>
             ))}
           </div>

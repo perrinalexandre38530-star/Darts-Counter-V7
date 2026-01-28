@@ -570,7 +570,14 @@ function handleStart() {
     .map((p: any) => ({
       id: p.id,
       name: safeStr(p.displayName, "") || safeStr(p.name, "Joueur"),
-      avatarDataUrl: p.avatarDataUrl ?? p.avatarUrl ?? null,
+      // ✅ compat: anciennes versions pouvaient utiliser `avatar` / `photoDataUrl` / `photoUrl`
+      avatarDataUrl:
+        p.avatarDataUrl ??
+        p.avatarUrl ??
+        p.avatar ??
+        p.photoDataUrl ??
+        p.photoUrl ??
+        null,
     }));
 
   const cfg: PetanqueConfigPayload = {

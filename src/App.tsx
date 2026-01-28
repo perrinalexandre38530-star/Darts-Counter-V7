@@ -2101,7 +2101,7 @@ function App() {
         break;
 
       case "petanque_play":
-        page = <PetanquePlay go={go} params={routeParams} onFinish={(m: any) => pushPetanqueHistory(m)} />;
+        page = <PetanquePlay go={go} params={routeParams} store={store} onFinish={(m: any) => pushPetanqueHistory(m)} />;
         break;
 
       // ✅ NEW: Baby-Foot flow (LOCAL)
@@ -2149,7 +2149,7 @@ function App() {
         break;
 
       case "petanque.play":
-        page = <PetanquePlay go={go} params={routeParams} onFinish={(m: any) => pushPetanqueHistory(m)} />;
+        page = <PetanquePlay go={go} params={routeParams} store={store} onFinish={(m: any) => pushPetanqueHistory(m)} />;
         break;
 
       case "petanque_tournaments":

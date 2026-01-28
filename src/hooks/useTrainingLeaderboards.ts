@@ -5,6 +5,9 @@ export type PeriodFilter = "all" | "7d" | "30d";
 export type BoardScope = "global" | "mode";
 
 export type TrainingLeaderboardRow = {
+  trend_7d?: number | null;
+  trend_30d?: number | null;
+  sparkline_30d?: number[] | null;
   user_id: string;
   public_name: string;
   avatar_url?: string | null;
@@ -43,11 +46,24 @@ export function useTrainingLeaderboards(params: {
       setError(null);
       try {
         if (scope === "global") {
-          const { data, error } = await supabase.rpc("get_training_global_leaderboard", {
+          let data: any = null;
+          let error: any = null;
+          // LOT25: try v2 (trends). Fallback LOT22 if not deployed.
+          ({ data, error } = await supabase.rpc("get_training_global_leaderboard_v2", {
             p_limit: limit,
             p_period_days: days,
             p_include_bots: includeBots,
-          });
+          }));
+          if (error) {
+            // fallback LOT22
+            const r2 = await supabase.rpc("get_training_global_leaderboard", {
+              p_limit: limit,
+              p_period_days: days,
+              p_include_bots: includeBots,
+            });
+            data = r2.data;
+            error = r2.error;
+          }
           if (error) throw error;
           if (!alive) return;
           setRows((data as any) || []);
@@ -61,12 +77,25 @@ export function useTrainingLeaderboards(params: {
           return;
         }
 
-        const { data, error } = await supabase.rpc("get_training_mode_leaderboard_v2", {
+        let data: any = null;
+        let error: any = null;
+        // LOT25: try v3 (trends+sparse). Fallback LOT22 v2 if not deployed.
+        ({ data, error } = await supabase.rpc("get_training_mode_leaderboard_v3", {
           p_mode_id: modeId,
           p_limit: limit,
           p_period_days: days,
           p_include_bots: includeBots,
-        });
+        }));
+        if (error) {
+          const r2 = await supabase.rpc("get_training_mode_leaderboard_v2", {
+            p_mode_id: modeId,
+            p_limit: limit,
+            p_period_days: days,
+            p_include_bots: includeBots,
+          });
+          data = r2.data;
+          error = r2.error;
+        }
         if (error) throw error;
         if (!alive) return;
         setRows((data as any) || []);
