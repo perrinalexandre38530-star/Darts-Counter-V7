@@ -11,6 +11,7 @@
 import React from "react";
 import { useTheme } from "../../contexts/ThemeContext";
 import { useLang } from "../../contexts/LangContext";
+import BackDot from "../../components/BackDot";
 import trophyCup from "../../ui_assets/trophy-cup.png";
 
 type Props = {
@@ -334,9 +335,7 @@ export default function X01LegOverlayV3({
                 {t("x01.leg_overlay.next_leg", "MANCHE SUIVANTE")}
               </button>
 
-              <button style={btnGhost} onClick={quitMatch}>
-                {t("common.quit", "Quitter")}
-              </button>
+              <BackDot onClick={quitMatch} size={40} />
             </div>
           ) : (
             <div style={{ marginTop: 18 }}>
@@ -378,9 +377,7 @@ export default function X01LegOverlayV3({
                   </button>
                 )}
 
-                <button style={btnGhostWide} onClick={quitMatch}>
-                  {t("common.quit", "Quitter")}
-                </button>
+                <BackDot onClick={quitMatch} size={40} />
               </div>
             </div>
           )}

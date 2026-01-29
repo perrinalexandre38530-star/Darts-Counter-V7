@@ -1136,7 +1136,7 @@ const isBotTurn = React.useMemo(() => {
   const setsTarget = config.setsToWin ?? 1;
   const legsTarget = config.legsPerSet ?? 1;
   const isDuel = players.length === 2;
-  const useSetsUi = isDuel && setsTarget > 1;
+  const useSetsUi = (setsTarget > 1) || (legsTarget > 1);
 
   // ---------------- Avatars (depuis config.players) ----------------
 
@@ -1162,7 +1162,7 @@ const teamsView = React.useMemo(() => {
 
   const teams = ((config as any).teams as any[]) || [];
   const teamMetaById: Record<string, { name?: string; color?: string }> = Object.fromEntries(
-    teams.map((t: any) => [String(t.id), { name: t.name, color: t.color }])
+    teams.map((t: any) => [String(t.id), { name: t.name, color: t.color || (String(t.name||"").toLowerCase().includes("pink") ? "#ff4fd8" : String(t.name||"").toLowerCase().includes("rose") ? "#ff4fd8" : String(t.name||"").toLowerCase().includes("gold") ? "#ffcf57" : undefined) }])
   );
   const playersById: Record<string, any> = Object.fromEntries(
     (players as any[]).map((p: any) => [p.id, p])
@@ -2684,11 +2684,32 @@ if (isLandscapeTablet) {
             justifyContent: "space-between",
             alignItems: "center",
             width: "100%",
+            position: "relative",
           }}
         >
           <BackDot onClick={handleQuit} size={40} />
 
           <div style={{ flex: 1, display: "flex", justifyContent: "center" }}>
+            {useSetsUi && (
+              <div
+                style={{
+                  position: "absolute",
+                  right: 14,
+                  top: 10,
+                  padding: "6px 10px",
+                  borderRadius: 999,
+                  border: "1px solid rgba(255,255,255,0.14)",
+                  background: "rgba(0,0,0,0.35)",
+                  boxShadow: "0 10px 26px rgba(0,0,0,0.45)",
+                  fontSize: 12,
+                  color: "#ffd36a",
+                }}
+              >
+                {setsTarget > 1 ? `Set ${state.currentSet}/${setsTarget} • ` : ""}
+                {`Leg ${state.currentLeg}/${legsTarget}`}
+              </div>
+            )}
+
             {isDuel && useSetsUi && (
               <DuelHeaderCompact
                 leftAvatarUrl={profileById[players[0].id]?.avatarDataUrl ?? ""}
@@ -3863,6 +3884,7 @@ function TeamHeaderBlock(props: {
             {active?.name ?? "—"}
           </div>
 
+          {(legsWonThisSet > 0 || setsWonTotal > 0) && (
           <div style={{ fontSize: 11.5, color: "#d9dbe3" }}>
             {useSets ? (
               <>
@@ -3874,6 +3896,7 @@ function TeamHeaderBlock(props: {
               </>
             )}
           </div>
+          )}
 
           <div style={{ ...miniCard, width: 176, height: "auto", padding: 7 }}>
             <div style={miniText}>
@@ -4405,6 +4428,7 @@ function PlayersListOnly(props: {
               >
                 Darts: {dCount} • Moy/3D: {a3d}
               </div>
+              {(legsWonThisSet > 0 || setsWonTotal > 0) && (
               <div
                 style={{
                   fontSize: 11.5,
@@ -4416,6 +4440,7 @@ function PlayersListOnly(props: {
                   ? `Manches : ${legsWonThisSet} • Sets : ${setsWonTotal}`
                   : `Manches : ${legsWonThisSet}`}
               </div>
+              )}
             </div>
 
             {/* Score */}
