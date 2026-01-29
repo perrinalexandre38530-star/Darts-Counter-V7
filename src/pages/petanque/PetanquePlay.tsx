@@ -53,7 +53,9 @@ import icoBouclier from "../../assets/petanque_icons/Bouclier.png";
 import icoBut from "../../assets/petanque_icons/But.png";
 import icoReprise from "../../assets/petanque_icons/Reprise.png";
 import icoAssist from "../../assets/petanque_icons/Assist.png";
-import icoConcede from "../../assets/petanque_icons/Concede.png";
+// NOTE: certains builds (Windows/StackBlitz) peuvent casser sur la casse du nom de fichier.
+// On standardise sur "concede.png" (alias ajouté dans src/assets/petanque_icons).
+import icoConcede from "../../assets/petanque_icons/concede.png";
 
 
 type Props = {
@@ -1209,14 +1211,16 @@ function PetanqueHeaderArcade(props: {
                         e.preventDefault();
                         e.stopPropagation();
                       } catch {}
-                      setScoreMenuOpen(true);
+                      // ✅ BIG PATCH: ouverture du « EndSheet » (mène + points + stats)
+                      openEndSheet("A");
                     }}
                     onClick={(e) => {
                       try {
                         e.preventDefault();
                         e.stopPropagation();
                       } catch {}
-                      setScoreMenuOpen(true);
+                      // ✅ BIG PATCH: ouverture du « EndSheet » (mène + points + stats)
+                      openEndSheet("A");
                     }}
                     title="Ajouter le résultat d'une mène"
                   >

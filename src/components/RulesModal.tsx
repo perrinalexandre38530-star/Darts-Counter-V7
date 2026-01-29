@@ -9,6 +9,8 @@ export default function RulesModal({open,onClose,title,children}:{open:boolean;o
         position: "fixed",
         inset: 0,
         background: "rgba(0,0,0,.6)",
+        // iOS/Android: évite que le "center" paraisse collé en haut (barre d'adresse / 100vh buggy)
+        minHeight: "100dvh",
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
@@ -54,7 +56,23 @@ export default function RulesModal({open,onClose,title,children}:{open:boolean;o
         >
           ×
         </button>
-        <div className="subtitle" style={{lineHeight:1.6}}>{children}</div>
+        <div className="subtitle" style={{ lineHeight: 1.6 }}>{children}</div>
+
+        <div style={{ display: "flex", justifyContent: "center", marginTop: 14 }}>
+          <button
+            className="btn"
+            onClick={onClose}
+            style={{
+              padding: "10px 18px",
+              borderRadius: 999,
+              border: "1px solid rgba(255,255,255,0.18)",
+              background: "rgba(0,0,0,0.25)",
+              color: "#fff",
+            }}
+          >
+            Fermer
+          </button>
+        </div>
       </div>
     </div>
   );

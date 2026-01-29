@@ -1299,13 +1299,18 @@ const activeTeam = React.useMemo(() => {
     }
   }, [config, state]);
 
-  // Reprise auto : au premier rendu, on rejoue toutes les fléchettes sauvegardées
+  // Reprise auto : DÉSACTIVÉE par défaut (évite les "volées fantômes").
+// Pour forcer une reprise (debug), mettre localStorage[AUTOSAVE_KEY + ":resume"] = "1"
+// puis recharger la page.
   React.useEffect(() => {
     if (hasReplayedRef.current) return;
     hasReplayedRef.current = true;
 
     if (typeof window === "undefined") return;
     try {
+      const resumeFlag = window.localStorage.getItem(AUTOSAVE_KEY + ":resume");
+      if (resumeFlag !== "1") return;
+
       const raw = window.localStorage.getItem(AUTOSAVE_KEY);
       if (!raw) return;
       const snap = JSON.parse(raw) as X01V3AutosaveSnapshot;
@@ -1347,6 +1352,7 @@ const activeTeam = React.useMemo(() => {
       if (typeof window !== "undefined") {
         try {
           window.localStorage.removeItem(AUTOSAVE_KEY);
+          window.localStorage.removeItem(AUTOSAVE_KEY + ":resume");
         } catch (e) {
           console.warn("[X01PlayV3] clear autosave failed", e);
         }
@@ -2205,20 +2211,28 @@ React.useEffect(() => {
       const pid = p.id as X01PlayerId;
       const live = liveStatsByPlayer[pid];
       const dartsThrown = live?.dartsThrown ?? 0;
+
       if (!dartsThrown) {
         map[pid] = 0;
         continue;
       }
-      const scoreNow = scores[pid] ?? config.startScore;
-      const scored = config.startScore - scoreNow;
+
+      // ✅ IMPORTANT:
+      // - Solo: moyenne basée sur la baisse du score du joueur (startScore - scoreNow)
+      // - Teams: score restant est partagé => on base la moyenne sur la contribution individuelle (live.totalScore)
+      const scored = isTeamsMode
+        ? (live?.totalScore ?? 0)
+        : (config.startScore - (scores[pid] ?? config.startScore));
+
       if (scored <= 0) {
         map[pid] = 0;
         continue;
       }
+
       map[pid] = (scored / dartsThrown) * 3;
     }
     return map;
-  }, [players, liveStatsByPlayer, scores, config.startScore]);
+  }, [players, liveStatsByPlayer, scores, config.startScore, isTeamsMode]);
 
   const miniRanking: MiniRankingRow[] = React.useMemo(() => {
     return players
@@ -2346,6 +2360,14 @@ React.useEffect(() => {
   // =====================================================
 
   function handleQuit() {
+    // ✅ En quittant un match, on purge l'autosave pour éviter toute reprise "fantôme"
+    try {
+      if (typeof window !== "undefined") {
+        window.localStorage.removeItem(AUTOSAVE_KEY);
+        window.localStorage.removeItem(AUTOSAVE_KEY + ":resume");
+      }
+    } catch {}
+
     if (onExit) {
       onExit();
       return;
@@ -5165,4 +5187,3 @@ function saveX01V3MatchToHistory({
     );
   }
 }
-

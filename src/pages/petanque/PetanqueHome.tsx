@@ -13,6 +13,7 @@ import ActiveProfileCard from "../../components/home/ActiveProfileCard";
 import ArcadeTicker, { type ArcadeTickerItem } from "../../components/home/ArcadeTicker";
 
 import { loadPetanqueState } from "../../lib/petanqueStore";
+import { getPetanqueMatches } from "../../lib/petanqueStats";
 
 import tickerPetanqueActu1 from "../../assets/tickers/ticker_petanque_actu.png";
 import tickerPetanqueActu2 from "../../assets/tickers/ticker_petanque_actu_2.png";
@@ -38,11 +39,11 @@ type Props = {
   go: (tab: any, params?: any) => void;
 };
 
-const PAGE_MAX_WIDTH = 520;
+const PAGE_MAX_WIDTH = 720;
 const DETAIL_INTERVAL_MS = 7000;
 
 // ✅ Alignement unique (mêmes extérieurs partout)
-const SECTION_PAD_X = 18;
+const SECTION_PAD_X = 10;
 const sectionWrap: React.CSSProperties = {
   width: "100%",
   maxWidth: PAGE_MAX_WIDTH,
@@ -538,7 +539,7 @@ function useAutoFitTitle(deps: any[] = []) {
       // eslint-disable-next-line @typescript-eslint/no-unused-expressions
       text.offsetHeight;
 
-      const available = Math.max(0, wrap.clientWidth - 12); // safety padding
+      const available = wrap.clientWidth;
       const needed = text.scrollWidth;
 
       if (!available || !needed) {
@@ -552,10 +553,7 @@ function useAutoFitTitle(deps: any[] = []) {
       }
 
       const s = Math.max(0.72, Math.min(1, available / needed));
-      // safety margin to avoid last-letter clipping (subpixel)
-      const sSafe = Math.max(0.72, Math.min(1, s * 0.985));
-      setScale(sSafe);
-      return;
+      setScale(s);
     };
 
     measure();
@@ -573,6 +571,43 @@ export default function PetanqueHome({ store, go }: Props) {
   const { t } = useLang();
 
   const activeProfile = useMemo(() => safeActiveProfile(store), [store]);
+
+// ✅ KPI Pétanque (LOCAL) pour le KPI "Vue globale" du profil actif
+// - sessions : nb de matchs où le profil apparaît (Team A/B)
+// - win% : ratio de victoires
+// - moy.3d : réutilisé ici comme "moy. mènes / match"
+const petanqueGlobalStats = useMemo(() => {
+  const matches = getPetanqueMatches();
+  const profId = String(activeProfile?.id ?? "").trim();
+  const profName = String((activeProfile as any)?.name ?? "").trim().toLowerCase();
+
+  if (!matches.length) return { sessions: 0, wins: 0, winrate: 0, avgEnds: 0 };
+  if (!profId && !profName) return { sessions: 0, wins: 0, winrate: 0, avgEnds: 0 };
+
+  let sessions = 0;
+  let wins = 0;
+  let endsSum = 0;
+
+  for (const m of matches) {
+    const inA = (m.teams?.A?.players || []).some(
+      (p) => String(p?.id ?? "") === profId || String(p?.name ?? "").toLowerCase() === profName
+    );
+    const inB = (m.teams?.B?.players || []).some(
+      (p) => String(p?.id ?? "") === profId || String(p?.name ?? "").toLowerCase() === profName
+    );
+    const teamOfProfile = inA ? "A" : inB ? "B" : null;
+    if (!teamOfProfile) continue;
+
+    sessions += 1;
+    endsSum += Number(m.endsCount || 0) || 0;
+    if (m.winner && m.winner === teamOfProfile) wins += 1;
+  }
+
+  const winrate = sessions > 0 ? wins / sessions : 0;
+  const avgEnds = sessions > 0 ? endsSum / sessions : 0;
+  return { sessions, wins, winrate, avgEnds };
+}, [activeProfile]);
+
 
   const [kpis, setKpis] = useState<{
     ends: number;
@@ -715,14 +750,11 @@ const secondaryTicker = tickerItems.length
   const rightTitle = secondaryTicker?.title ?? t("petanque.home.detail.right.title", "Infos");
   const rightText = secondaryTicker?.text ?? t("petanque.home.detail.right.text", "");
   const rightDetail = secondaryTicker?.detail ?? "";
-  
-
+  const avoidRight = [statsBackgroundImage ?? "", currentTicker?.backgroundImage ?? ""].filter(Boolean) as string[];
   const rightBgImage = secondaryTicker
-    ? pickTickerImage(themeKeyFromId(secondaryTicker.id) as any, `${seed}::right::${secondaryTicker.id}`, {
-        avoid: [statsBackgroundImage ?? "", currentTicker?.backgroundImage ?? ""],
-      })
+    ? pickTickerImage(themeKeyFromId(secondaryTicker.id) as any, `${seed}::right::${secondaryTicker.id}`, { avoid: avoidRight })
     : pickTickerImage("tipNews", `${seed}::petanque-right`);
-const primary = theme.primary ?? "#F6C256";
+  const primary = theme.primary ?? "#F6C256";
 
   // ✅ Auto-fit sur les petits écrans (ne coupe jamais le titre)
   const { wrapRef: titleWrapRef, textRef: titleTextRef, scale: titleScale } = useAutoFitTitle([
@@ -774,7 +806,7 @@ const primary = theme.primary ?? "#F6C256";
           </div>
 
           {/* ✅ Container + auto-fit scale */}
-          <div ref={titleWrapRef} style={{ width: "100%", overflow: "hidden", paddingInline: 6, boxSizing: "border-box" }}>
+          <div ref={titleWrapRef} style={{ width: "100%", overflow: "hidden" }}>
             <div
               ref={titleTextRef}
               style={{
@@ -794,7 +826,6 @@ const primary = theme.primary ?? "#F6C256";
                 animation: "dcTitlePulse 3.6s ease-in-out infinite, dcTitleShimmer 7s linear infinite",
                 transform: `scale(${titleScale})`,
                 transformOrigin: "center",
-                paddingRight: 6, // avoid last-letter clipping
               }}
             >
               PETANQUE COUNTER
@@ -807,18 +838,17 @@ const primary = theme.primary ?? "#F6C256";
       {activeProfile && (
         <div style={sectionWrap}>
           <ActiveProfileCard
+            hideStatus
             profile={activeProfile as any}
             stats={
               {
-                games: 0,
-                wins: 0,
-                winRate01: 0,
-                avg3D: 0,
-                bestVisit: 0,
-                bestCheckout: 0,
+                ratingGlobal: null,
+                winrateGlobal: petanqueGlobalStats.winrate,
+                avg3DGlobal: petanqueGlobalStats.avgEnds,
+                sessionsGlobal: petanqueGlobalStats.sessions,
+                favoriteNumberLabel: "—",
               } as any
             }
-            status={"offline" as any}
           />
         </div>
       )}
@@ -855,7 +885,7 @@ const primary = theme.primary ?? "#F6C256";
               background: "radial-gradient(circle at top, rgba(255,255,255,0.06), rgba(3,4,10,1))",
             }}
           >
-            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            <div style={{ display: "flex", gap: 8 }}>
               {/* gauche */}
               <div
                 style={{
@@ -930,7 +960,7 @@ const primary = theme.primary ?? "#F6C256";
                   position: "relative",
                   minHeight: 108,
                   backgroundColor: "#05060C",
-                  backgroundImage: rightBgImage ? `url("${rightBgImage}")` : undefined,
+                  backgroundImage: `url("${rightBgImage}")`,
                   backgroundSize: "cover",
                   backgroundPosition: "center",
                 }}
@@ -976,8 +1006,8 @@ const primary = theme.primary ?? "#F6C256";
                   ) : null}
                 </div>
               </div>
+            </div>
           </div>
-        </div>
         </div>
       )}
       <div style={{ height: 26 }} />
@@ -1005,4 +1035,5 @@ function MiniKpi({ label, value, primary, theme }: any) {
     </div>
   );
 }
+
 

@@ -172,31 +172,24 @@ function ensureExtendedStatsFor(st: X01StatsLiveV3) {
 }
 
 function recordDartOn(st: X01StatsLiveV3, v: number, m: number) {
+  // On conserve le détail pour l'UI (dernières fléchettes, overlay, etc.)
   st.dartsDetail!.push({ v, m });
 
-  // MISS
-  if (v === 0 || m === 0) {
-    st.miss!++;
-    return;
-  }
+  // MISS : on ne retouche pas les compteurs "live" (déjà gérés par applyVisitToLiveStatsV3)
+  if (v === 0 || m === 0) return;
 
-  const score = v * m;
-  st.totalScore! += score;
-
-  // Compteurs S / D / T
+  // Compteurs S / D / T (utilisés par finalizeStatsFor)
   if (m === 1) st.hitsSingle!++;
   if (m === 2) st.hitsDouble!++;
   if (m === 3) st.hitsTriple!++;
 
-  // Bulls (25 / DBULL = 25 x2)
+  // Bulls (info utile côté UI)
   if (v === 25) {
     (st as any).bull = ((st as any).bull || 0) + 1;
-    if (m === 2) {
-      (st as any).dBull = ((st as any).dBull || 0) + 1;
-    }
+    if (m === 2) (st as any).dBull = ((st as any).dBull || 0) + 1;
   }
 
-  // 🔒 bucket local pour satisfaire TS et être sûr que le segment existe
+  // hitsBySegment (détail S/D/T par segment)
   const bucket =
     st.hitsBySegment![v] ??
     (st.hitsBySegment![v] = { S: 0, D: 0, T: 0 });
@@ -208,18 +201,18 @@ function recordDartOn(st: X01StatsLiveV3, v: number, m: number) {
 
 function recordVisitOn(
   st: X01StatsLiveV3,
-  darts: Array<{ v: number; m: number }>
+  darts: Array<{ v: number; m: number }>,
+  wasBust: boolean
 ) {
-  st.visits!++;
-
   let total = 0;
+
   for (const d of darts) {
     recordDartOn(st, d.v, d.m);
     total += d.v * d.m;
   }
 
-  // Score de la volée (pour power scoring)
-  const visitScore = total;
+  // Score de la volée (pour power scoring) : 0 si bust
+  const visitScore = wasBust ? 0 : total;
 
   if (visitScore >= 180) {
     (st as any).h180 = ((st as any).h180 || 0) + 1;
@@ -233,6 +226,7 @@ function recordVisitOn(
 
   st.scorePerVisit!.push(visitScore);
 }
+
 
 function finalizeStatsFor(st: X01StatsLiveV3) {
   const totalDarts =
@@ -415,7 +409,7 @@ function rebuildMatchFromHistory(
       stPlayer.bust = (stPlayer.bust || 0) + 1;
     }
 
-    recordVisitOn(stPlayer, dartsArr);
+    recordVisitOn(stPlayer, dartsArr, result.bust);
     finalizeStatsFor(stPlayer);
 
     live[pid] = stPlayer;
@@ -651,14 +645,10 @@ function applyDartWithFlow(
   applyVisitToLiveStatsV3(st, visit as any, result.bust, isCheckout);
 
   // Patch étendu : hits/miss/bust/segments + power scoring
-  ensureExtendedStatsFor(st);
+  ensureExtendedStatsFor(st); 
 
-  if (result.bust) {
-    st.bust = (st.bust || 0) + 1;
-  }
-
-  recordVisitOn(st, darts);
-  finalizeStatsFor(st);
+  recordVisitOn(st, darts, result.bust);
+finalizeStatsFor(st);
 
   liveMap[pid] = st;
   (m as any).liveStatsByPlayer = liveMap;
@@ -901,6 +891,15 @@ export function useX01EngineV3({
     initialState ? structuredClone(initialState) : createInitialMatchState(config)
   );
 
+  // -----------------------------------------------------------
+  // ✅ stateRef: évite les doubles appels StrictMode sur setState(updater)
+  // On calcule nextState/nextLive UNE seule fois et on commit via setState(nextState).
+  // -----------------------------------------------------------
+  const stateRef = React.useRef<X01MatchStateV3>(state);
+  React.useEffect(() => {
+    stateRef.current = state;
+  }, [state]);
+
   const initialLive = React.useMemo(() => {
     if (initialLiveStats) {
       return structuredClone(initialLiveStats);
@@ -971,33 +970,36 @@ export function useX01EngineV3({
 
   const throwDart = React.useCallback(
     (input: X01DartInputV3) => {
-      setState((prevState) => {
-        const prevLive = liveStatsByPlayerRef.current;
+      const prevState = stateRef.current;
+      const prevLive = liveStatsByPlayerRef.current;
 
-        // Snapshot complet avant d'appliquer le dart (UNDO par dart)
-        undoStackRef.current.push({
-          state: structuredClone(prevState),
-          liveStats: structuredClone(prevLive),
-        });
-
-        // Historique brut {v,m}
-        dartsHistoryRef.current.push({
-          v: input.segment,
-          m: input.multiplier,
-        });
-
-        const { state: nextState, liveStats: nextLive } = applyDartWithFlow(
-          config,
-          prevState,
-          prevLive,
-          input
-        );
-
-        liveStatsByPlayerRef.current = nextLive;
-        setLiveStatsByPlayer(nextLive);
-
-        return nextState;
+      // Snapshot complet avant d'appliquer le dart (UNDO par dart)
+      undoStackRef.current.push({
+        state: structuredClone(prevState),
+        liveStats: structuredClone(prevLive),
       });
+
+      // Historique brut {v,m}
+      dartsHistoryRef.current.push({
+        v: input.segment,
+        m: input.multiplier,
+      });
+
+      // Calcule UNE seule fois (évite double-exec StrictMode)
+      const { state: nextState, liveStats: nextLive } = applyDartWithFlow(
+        config,
+        prevState,
+        prevLive,
+        input
+      );
+
+      // Commit refs d'abord (pour enchaîner plusieurs darts rapidement)
+      stateRef.current = nextState;
+      liveStatsByPlayerRef.current = nextLive;
+
+      // Puis commit React state
+      setLiveStatsByPlayer(nextLive);
+      setState(nextState);
     },
     [config]
   );
