@@ -194,7 +194,7 @@ export default function ScramConfig(props: any) {
             }
           />
         }
-        ticker={tickerScram}
+        tickerSrc={tickerScram}
       />
 
       <div style={{ padding: 12, paddingTop: 10 }}>

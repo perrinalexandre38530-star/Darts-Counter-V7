@@ -36,6 +36,7 @@ import { loadOpenCv } from "../../lib/vision/opencv";
 import type { Profile } from "../../lib/types";
 import BackDot from "../../components/BackDot";
 import InfoDot from "../../components/InfoDot";
+import RulesModal from "../../components/RulesModal";
 import PlusDot from "../../components/PlusDot";
 
 
@@ -52,7 +53,7 @@ import icoBouclier from "../../assets/petanque_icons/Bouclier.png";
 import icoBut from "../../assets/petanque_icons/But.png";
 import icoReprise from "../../assets/petanque_icons/Reprise.png";
 import icoAssist from "../../assets/petanque_icons/Assist.png";
-import icoConcede from "../../assets/petanque_icons/Concède.png";
+import icoConcede from "../../assets/petanque_icons/Concede.png";
 
 
 type Props = {
@@ -1454,6 +1455,7 @@ const [duelVisible, setDuelVisible] = React.useState<Record<DuelStatKey, boolean
 });
 
 const [statsMenuOpen, setStatsMenuOpen] = React.useState(false);
+const [rulesOpen, setRulesOpen] = React.useState(false);
 const [statsTargetTeam, setStatsTargetTeam] = React.useState<PetanqueTeamId>("A");
 
 React.useEffect(() => {
@@ -1775,6 +1777,10 @@ const closePlayerSheet = () => {
 // ✅ SHEET "MÈNE" (sous le score) : choix points + note
 // =====================================================
 const [endSheetOpen, setEndSheetOpen] = React.useState(false);
+const [endTeamId, setEndTeamId] = React.useState('A');
+const [matchStartedAt, setMatchStartedAt] = React.useState(null);
+const [lastMeneStartedAt, setLastMeneStartedAt] = React.useState(null);
+const [lastMeneDurationMs, setLastMeneDurationMs] = React.useState(0);
 const [endTeam, setEndTeam] = React.useState<PetanqueTeamId>("A");
 const [endPts, setEndPts] = React.useState<number>(1);
 const [endNote, setEndNote] = React.useState<string>("");
@@ -1792,9 +1798,28 @@ const [endMeneStats, setEndMeneStats] = React.useState<Record<string, number>>((
   pousseeConcede: 0,
 }));
 
+const END_ACTION_KEYS = ['carreau','tirReussi','trou','bec','butPoint'];
+const getEndStatsSum = (obj: Record<string, number>) => END_ACTION_KEYS.reduce((acc,k)=>acc+(obj?.[k]||0),0);
+const bumpEndStat = (key: string, delta: number) => {
+  setEndMeneStats((prev) => {
+    const next = { ...prev };
+    const cur = Number(next[key] || 0);
+    const sum = getEndStatsSum(next);
+    if (delta > 0 && END_ACTION_KEYS.includes(key)) {
+      if (sum >= endPts) return prev;
+    }
+    const nv = Math.max(0, cur + delta);
+    next[key] = nv;
+    return next;
+  });
+};
+
+
 const openEndSheet = React.useCallback((team: PetanqueTeamId) => {
   setEndTeam(team);
+  setEndTeamId(team);
   setEndPts(1);
+
   setEndNote("");
   setEndStatPlayerId(null);
   setEndLegendOpen(false);
@@ -3232,6 +3257,27 @@ return (
       {/* =========================================================
           ✅ SHEET "MÈNE" (points + validation) — déclenché par + sous score
       ========================================================= */}
+      {rulesOpen && (
+        <RulesModal open={rulesOpen} onClose={() => setRulesOpen(false)} title="Règles (rappel rapide)">
+          <div style={{ lineHeight: 1.45, fontSize: 14, color: '#e5e7eb' }}>
+            <p style={{ margin: '0 0 10px 0' }}>
+              Une mène = un échange. Une équipe marque des points (1 à 6) selon le nombre de boules mieux placées que la meilleure boule adverse.
+            </p>
+            <div style={{ fontWeight: 900, margin: '10px 0 6px 0' }}>Variantes</div>
+            <ul style={{ margin: 0, paddingLeft: 18 }}>
+              <li>1v1 (tête-à-tête)</li>
+              <li>2v2 (doublette)</li>
+              <li>3v3 (triplette)</li>
+              <li>4v4 (quadrette)</li>
+            </ul>
+            <div style={{ fontWeight: 900, margin: '12px 0 6px 0' }}>Stats</div>
+            <p style={{ margin: 0 }}>
+              Tu peux attribuer des actions par joueur (carreau, tir réussi, trou, bec, points concédés, etc.).
+            </p>
+          </div>
+        </RulesModal>
+      )}
+
       {!isFfa3 && endSheetOpen && (
         <div
           style={overlayCentered}
@@ -3509,10 +3555,19 @@ return (
                             ),
                           }));
                         const inc = () =>
-                          setEndMeneStats((s: any) => ({
-                            ...s,
-                            [k]: (Number(s?.[k] ?? 0) || 0) + 1,
-                          }));
+                          setEndMeneStats((s: any) => {
+                            const cur = Number(s?.[k] ?? 0) || 0;
+                            const key = String(k);
+                            if (END_ACTION_KEYS.includes(key)) {
+                              const sum = END_ACTION_KEYS.reduce(
+                                (acc: number, kk: string) =>
+                                  acc + (Number(s?.[kk] ?? 0) || 0),
+                                0
+                              );
+                              if (sum >= endPts) return s;
+                            }
+                            return { ...s, [k]: cur + 1 };
+                          });
 
                         return (
                           <div

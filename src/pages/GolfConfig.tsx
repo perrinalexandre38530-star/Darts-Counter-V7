@@ -217,7 +217,7 @@ export default function GolfConfig(props: any) {
             }
           />
         }
-        ticker={tickerGolf}
+        tickerSrc={tickerGolf}
       />
 
       <div style={{ padding: 12, paddingTop: 10 }}>
