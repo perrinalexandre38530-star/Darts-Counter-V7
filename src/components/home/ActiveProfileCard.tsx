@@ -673,7 +673,7 @@ function ActiveProfileCard({ hideStatus, profile, stats, status: statusProp }: P
             </div>
 
             {/* Statut */}
-            {!hideStatus && (
+            {!hideStatus && status && (
             <div
               style={{
                 display: "flex",

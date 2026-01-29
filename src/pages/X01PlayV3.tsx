@@ -2264,6 +2264,7 @@ React.useEffect(() => {
             id: String(t.id),
             name: String(t.name || "TEAM"),
             score: Number(t.score ?? config.startScore),
+            color: String(t.color || "#ffcf57"),
           }))
           .sort((a: any, b: any) => a.score - b.score);
       }
@@ -3063,23 +3064,8 @@ if (isLandscapeTablet) {
             marginBottom: 6,
           }}
         >
-          {/* BOUTON QUITTER */}
-          <button
-            onClick={handleQuit}
-            style={{
-              borderRadius: 10,
-              padding: "5px 11px",
-              border: "1px solid rgba(255,180,0,.3)",
-              background: "linear-gradient(180deg, #ffc63a, #ffaf00)",
-              color: "#1a1a1a",
-              fontWeight: 900,
-              boxShadow: "0 8px 18px rgba(255,170,0,.25)",
-              fontSize: 13,
-              whiteSpace: "nowrap",
-            }}
-          >
-            ← {t("common.quit", "Quitter")}
-          </button>
+          {/* BACKDOT (remplace Quitter) */}
+          <BackDot onClick={handleQuit} size={40} />
 
           {/* HEADER COMPACT (AVATARS + SCORE) */}
           <div
@@ -3713,7 +3699,7 @@ function HeaderBlock(props: HeaderBlockProps) {
             >
               {liveRanking.map((r, i) => (
                 <div key={r.id} style={miniRankRow}>
-                  <div style={miniRankName}>
+                  <div style={{ ...miniRankName, color: (r as any).color || miniRankName.color }}>
                     {i + 1}. {r.name}
                   </div>
                   <div
@@ -4031,7 +4017,7 @@ function TeamHeaderBlock(props: {
             >
               {liveRanking.map((r, i) => (
                 <div key={r.id} style={miniRankRow}>
-                  <div style={miniRankName}>
+                  <div style={{ ...miniRankName, color: (r as any).color || miniRankName.color }}>
                     {i + 1}. {r.name}
                   </div>
                   <div style={r.score === 0 ? miniRankScoreFini : miniRankScore}>

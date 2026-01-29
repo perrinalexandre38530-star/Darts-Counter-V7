@@ -39,11 +39,11 @@ type Props = {
   go: (tab: any, params?: any) => void;
 };
 
-const PAGE_MAX_WIDTH = 720;
+const PAGE_MAX_WIDTH = 920;
 const DETAIL_INTERVAL_MS = 7000;
 
 // ✅ Alignement unique (mêmes extérieurs partout)
-const SECTION_PAD_X = 10;
+const SECTION_PAD_X = 6;
 const sectionWrap: React.CSSProperties = {
   width: "100%",
   maxWidth: PAGE_MAX_WIDTH,
@@ -577,30 +577,57 @@ export default function PetanqueHome({ store, go }: Props) {
 // - win% : ratio de victoires
 // - moy.3d : réutilisé ici comme "moy. mènes / match"
 const petanqueGlobalStats = useMemo(() => {
-  const matches = getPetanqueMatches();
   const profId = String(activeProfile?.id ?? "").trim();
   const profName = String((activeProfile as any)?.name ?? "").trim().toLowerCase();
 
-  if (!matches.length) return { sessions: 0, wins: 0, winrate: 0, avgEnds: 0 };
-  if (!profId && !profName) return { sessions: 0, wins: 0, winrate: 0, avgEnds: 0 };
+  const matches = getPetanqueMatches();
+
+  // Fallback : si aucun historique, on prend l'état local courant (partie en cours / terminée)
+  const st = loadPetanqueState();
+  const stEnds = Array.isArray(st?.ends) ? st.ends.length : 0;
+  const stFinished = String(st?.status ?? "") === "finished" || !!(st as any)?.finishedAt;
+
+  const hasProfile = !!profId || !!profName;
+
+  const resolveTeam = (teams: any): ("A" | "B" | null) => {
+    const A = (teams?.A?.players || teams?.A || []).flat?.() ?? (teams?.A?.players || teams?.A || []);
+    const B = (teams?.B?.players || teams?.B || []).flat?.() ?? (teams?.B?.players || teams?.B || []);
+    const inA = Array.isArray(A) && A.some((p: any) => String(p?.id ?? "") === profId || String(p?.name ?? "").toLowerCase() === profName);
+    const inB = Array.isArray(B) && B.some((p: any) => String(p?.id ?? "") === profId || String(p?.name ?? "").toLowerCase() === profName);
+    return inA ? "A" : inB ? "B" : null;
+  };
 
   let sessions = 0;
   let wins = 0;
   let endsSum = 0;
 
-  for (const m of matches) {
-    const inA = (m.teams?.A?.players || []).some(
-      (p) => String(p?.id ?? "") === profId || String(p?.name ?? "").toLowerCase() === profName
-    );
-    const inB = (m.teams?.B?.players || []).some(
-      (p) => String(p?.id ?? "") === profId || String(p?.name ?? "").toLowerCase() === profName
-    );
-    const teamOfProfile = inA ? "A" : inB ? "B" : null;
-    if (!teamOfProfile) continue;
+  if (matches.length && hasProfile) {
+    for (const m of matches) {
+      const inA = (m.teams?.A?.players || []).some(
+        (p) => String(p?.id ?? "") === profId || String(p?.name ?? "").toLowerCase() === profName
+      );
+      const inB = (m.teams?.B?.players || []).some(
+        (p) => String(p?.id ?? "") === profId || String(p?.name ?? "").toLowerCase() === profName
+      );
+      const teamOfProfile = inA ? "A" : inB ? "B" : null;
+      if (!teamOfProfile) continue;
 
-    sessions += 1;
-    endsSum += Number(m.endsCount || 0) || 0;
-    if (m.winner && m.winner === teamOfProfile) wins += 1;
+      sessions += 1;
+      endsSum += Number(m.endsCount || 0) || 0;
+      if (m.winner && m.winner === teamOfProfile) wins += 1;
+    }
+  } else if (stEnds > 0 || stFinished) {
+    // Pas d'historique => on affiche au moins 1 session si une partie existe
+    sessions = 1;
+    endsSum = stEnds;
+
+    if (hasProfile) {
+      const team = resolveTeam((st as any)?.teams);
+      const winnerRaw = String((st as any)?.winnerTeamId ?? (st as any)?.winner ?? "").toUpperCase();
+      const winner = winnerRaw === "A" || winnerRaw === "B" ? winnerRaw : null;
+
+      if (team && winner && team === winner) wins = 1;
+    }
   }
 
   const winrate = sessions > 0 ? wins / sessions : 0;
@@ -838,7 +865,7 @@ const secondaryTicker = tickerItems.length
       {activeProfile && (
         <div style={sectionWrap}>
           <ActiveProfileCard
-            hideStatus
+            hideStatus={true}
             profile={activeProfile as any}
             stats={
               {
