@@ -13,6 +13,7 @@
 // =============================================================
 
 import * as React from "react";
+import { useDevMode } from "../contexts/DevModeContext";
 
 import type {
   X01ConfigV3,
@@ -45,6 +46,34 @@ import {
 
 import { extAdaptCheckoutSuggestion } from "../lib/x01v3/x01CheckoutV3";
 import { History, type SavedMatch, type PlayerLite } from "../lib/history";
+import { setX01DevSimEnabled } from "../lib/x01v3/x01DevSim";
+
+
+function safeTeamPlayers(team: any): string[] {
+  const arr = team?.players;
+  if (Array.isArray(arr)) return arr.filter(Boolean);
+  const legacy = team?.playerIds;
+  if (Array.isArray(legacy)) return legacy.filter(Boolean);
+  return [];
+}
+
+function setScoresForPlayerOrTeam(cfg: X01ConfigV3, state: X01MatchStateV3, pid: X01PlayerId, newScore: number) {
+  // SOLO/MULTI : score individuel
+  if (cfg.gameMode !== "teams" || !Array.isArray((cfg as any).teams) || !(cfg as any).teams.length) {
+    state.scores[pid] = newScore;
+    return;
+  }
+  // TEAMS : on applique le score à tous les membres de l'équipe du joueur actif (score partagé)
+  const teams: any[] = (cfg as any).teams;
+  const team = teams.find((t) => safeTeamPlayers(t).includes(pid));
+  if (!team) {
+    state.scores[pid] = newScore;
+    return;
+  }
+  for (const memberId of safeTeamPlayers(team)) {
+    state.scores[memberId as X01PlayerId] = newScore;
+  }
+}
 
 // -------------------------------------------------------------
 // Helpers internes
@@ -653,7 +682,35 @@ finalizeStatsFor(st);
   liveMap[pid] = st;
   (m as any).liveStatsByPlayer = liveMap;
 
-  // ======================================================
+  
+  // -------------------------------------------------------------
+  // 🔥 FIX CRITIQUE BUST (vital en TEAMS)
+  // - applyDartToCurrentPlayerV3 fait déjà le rollback, MAIS certains flows/UI
+  //   pouvaient repartir avec un score partiel / sans rotation.
+  // => On impose ici un rollback autoritaire + rotation + nouvelle visite.
+  // -------------------------------------------------------------
+  if (result.bust) {
+    // 1) rollback autoritaire du score (solo + teams)
+    setScoresForPlayerOrTeam(config, m, pid, visit.startingScore);
+
+    // 2) joueur suivant (FIN DE TOUR HARD)
+    m.activePlayer = getNextPlayerV3(m);
+
+    // 3) nouvelle visite propre (évite toute incohérence visit.currentScore vs state.scores)
+    startNewVisitV3(m);
+    if (m.visit) {
+      m.visit.checkoutSuggestion = extAdaptCheckoutSuggestion({
+        score: m.visit.currentScore,
+        dartsLeft: m.visit.dartsLeft,
+        outMode: config.outMode,
+      });
+    }
+
+    m.status = "playing";
+    return { state: m, liveStats: liveMap };
+  }
+
+// ======================================================
   // 🔥 MODE MULTI "CONTINUER" (Free For All, sans équipes)
   // - On continue tant qu'il reste au moins 2 joueurs non finis
   // - Le dernier garde ses points, ne finit jamais, pas de checkout
@@ -890,6 +947,20 @@ export function useX01EngineV3({
   const [state, setState] = React.useState<X01MatchStateV3>(() =>
     initialState ? structuredClone(initialState) : createInitialMatchState(config)
   );
+
+  // -----------------------------------------------------------
+  // DEV SIM (console) — uniquement si DevMode activé
+  // - gated par import.meta.env.DEV dans setX01DevSimEnabled
+  // - expose window.__x01Sim.help() / bustTeams33() / bustSolo33()
+  // -----------------------------------------------------------
+  const dev = useDevMode();
+  React.useEffect(() => {
+    setX01DevSimEnabled(!!dev.enabled, {
+      createInitialMatchState,
+      applyDartWithFlow,
+      createEmptyLiveStatsV3,
+    });
+  }, [dev.enabled]);
 
   // -----------------------------------------------------------
   // ✅ stateRef: évite les doubles appels StrictMode sur setState(updater)

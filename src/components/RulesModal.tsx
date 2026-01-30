@@ -10,7 +10,8 @@ export default function RulesModal({open,onClose,title,children}:{open:boolean;o
         inset: 0,
         background: "rgba(0,0,0,.6)",
         // iOS/Android: évite que le "center" paraisse collé en haut (barre d'adresse / 100vh buggy)
-        minHeight: "100dvh",
+        height: "100dvh",
+        minHeight: "100vh",
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
@@ -27,6 +28,8 @@ export default function RulesModal({open,onClose,title,children}:{open:boolean;o
           maxHeight: "80vh",
           overflow: "auto",
           position: "relative",
+          margin: 0,
+          transform: "none",
         }}
         onClick={(e) => e.stopPropagation()}
       >

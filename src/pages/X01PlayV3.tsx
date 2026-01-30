@@ -826,9 +826,13 @@ export default function X01PlayV3({
 }: Props) {
   const { isLandscapeTablet } = useViewport();
   const { theme } = useTheme();
+  const themePrimary = (theme as any)?.colors?.primary ?? (theme as any)?.primary ?? "#ffcc55";
 
   // ✅ IMPORTANT : on récupère aussi la langue courante de l’app
   const { t, lang } = useLang() as any;
+
+  // ✅ Panel flottant JOUEURS (ouvre la liste existante dans un modal scrollable)
+  const [playersPanelOpen, setPlayersPanelOpen] = React.useState(false);
 
   // =====================================================
   // 🔓 UNLOCK AUDIO (réutilisable)
@@ -971,7 +975,7 @@ const {
   startNextLeg,
 } = useX01EngineV3({ config });
 
-const players = config.players;
+const players = (config as any)?.players ?? [];
 const activePlayer = players.find((p) => p.id === activePlayerId) || null;
 
 // ============================================================
@@ -1133,10 +1137,29 @@ const isBotTurn = React.useMemo(() => {
     [players]
   );
 
-  const setsTarget = config.setsToWin ?? 1;
-  const legsTarget = config.legsPerSet ?? 1;
+  // Targets SETS/LEGS (robuste: compat anciens configs / modes TEAMS)
+  const setsTarget = Math.max(
+    1,
+    Number(
+      (config as any).setsToWin ??
+        (config as any).setsTarget ??
+        (config as any).sets ??
+        (config as any).setsToWinCount ??
+        1
+    )
+  );
+  const legsTarget = Math.max(
+    1,
+    Number(
+      (config as any).legsPerSet ??
+        (config as any).legsTarget ??
+        (config as any).legs ??
+        (config as any).legsToWin ??
+        1
+    )
+  );
   const isDuel = players.length === 2;
-  const useSetsUi = (setsTarget > 1) || (legsTarget > 1);
+  const useSetsUi = setsTarget > 1 || legsTarget > 1;
 
   // ---------------- Avatars (depuis config.players) ----------------
 
@@ -2045,6 +2068,12 @@ const validateThrow = async () => {
 
       if (index === inputs.length - 1) {
         isValidatingRef.current = false;
+
+        // ✅ CRITIQUE (BUST / TEAMS): resync UI depuis le moteur après la fin de visite
+        // (évite de conserver des fléchettes affichées sur la visite suivante)
+        window.setTimeout(() => {
+          forceSyncFromEngine();
+        }, 0);
       }
     }, index * 10);
   });
@@ -2710,15 +2739,35 @@ if (isLandscapeTablet) {
               </div>
             )}
 
-            {isDuel && useSetsUi && (
-              <DuelHeaderCompact
-                leftAvatarUrl={profileById[players[0].id]?.avatarDataUrl ?? ""}
-                rightAvatarUrl={profileById[players[1].id]?.avatarDataUrl ?? ""}
-                leftSets={(state as any).setsWon?.[players[0].id] ?? 0}
-                rightSets={(state as any).setsWon?.[players[1].id] ?? 0}
-                leftLegs={(state as any).legsWon?.[players[0].id] ?? 0}
-                rightLegs={(state as any).legsWon?.[players[1].id] ?? 0}
-              />
+                        {/* Scoreboard SET/LEG (même rendu que SOLO) */}
+            {useSetsUi && isTeamsMode && teamsView && (teamsView as any[]).length >= 2 ? (
+              (teamsView as any[]).length === 2 ? (
+                <DuelHeaderCompact
+                  leftAvatarUrl={((teamsView as any[])[0]?.players?.[0]?.avatar as string) ?? ""}
+                  rightAvatarUrl={((teamsView as any[])[1]?.players?.[0]?.avatar as string) ?? ""}
+                  leftSets={(state as any).teamSetsWon?.[((teamsView as any[])[0]?.id as any)] ?? 0}
+                  rightSets={(state as any).teamSetsWon?.[((teamsView as any[])[1]?.id as any)] ?? 0}
+                  leftLegs={(state as any).teamLegsWon?.[((teamsView as any[])[0]?.id as any)] ?? 0}
+                  rightLegs={(state as any).teamLegsWon?.[((teamsView as any[])[1]?.id as any)] ?? 0}
+                />
+              ) : (
+                <TeamsHeaderCompact
+                  teams={teamsView as any[]}
+                  teamLegsWon={(state as any).teamLegsWon ?? {}}
+                  teamSetsWon={(state as any).teamSetsWon ?? {}}
+                />
+              )
+            ) : (
+              isDuel && useSetsUi && (
+                <DuelHeaderCompact
+                  leftAvatarUrl={profileById[players[0].id]?.avatarDataUrl ?? ""}
+                  rightAvatarUrl={profileById[players[1].id]?.avatarDataUrl ?? ""}
+                  leftSets={(state as any).setsWon?.[players[0].id] ?? 0}
+                  rightSets={(state as any).setsWon?.[players[1].id] ?? 0}
+                  leftLegs={(state as any).legsWon?.[players[0].id] ?? 0}
+                  rightLegs={(state as any).legsWon?.[players[1].id] ?? 0}
+                />
+              )
             )}
           </div>
 
@@ -3096,19 +3145,35 @@ if (isLandscapeTablet) {
               justifyContent: "center",
             }}
           >
-            {isDuel && useSetsUi && (
-              <DuelHeaderCompact
-                leftAvatarUrl={
-                  profileById[players[0].id]?.avatarDataUrl ?? ""
-                }
-                rightAvatarUrl={
-                  profileById[players[1].id]?.avatarDataUrl ?? ""
-                }
-                leftSets={(state as any).setsWon?.[players[0].id] ?? 0}
-                rightSets={(state as any).setsWon?.[players[1].id] ?? 0}
-                leftLegs={(state as any).legsWon?.[players[0].id] ?? 0}
-                rightLegs={(state as any).legsWon?.[players[1].id] ?? 0}
-              />
+            {/* Scoreboard SET/LEG dans la barre tout en haut (comme SOLO) */}
+            {useSetsUi && isTeamsMode && teamsView && (teamsView as any[]).length >= 2 ? (
+              (teamsView as any[]).length === 2 ? (
+                <DuelHeaderCompact
+                  leftAvatarUrl={((teamsView as any[])[0]?.players?.[0]?.avatar as string) ?? ""}
+                  rightAvatarUrl={((teamsView as any[])[1]?.players?.[0]?.avatar as string) ?? ""}
+                  leftSets={(state as any).teamSetsWon?.[((teamsView as any[])[0]?.id as any)] ?? 0}
+                  rightSets={(state as any).teamSetsWon?.[((teamsView as any[])[1]?.id as any)] ?? 0}
+                  leftLegs={(state as any).teamLegsWon?.[((teamsView as any[])[0]?.id as any)] ?? 0}
+                  rightLegs={(state as any).teamLegsWon?.[((teamsView as any[])[1]?.id as any)] ?? 0}
+                />
+              ) : (
+                <TeamsHeaderCompact
+                  teams={teamsView as any[]}
+                  teamLegsWon={(state as any).teamLegsWon ?? {}}
+                  teamSetsWon={(state as any).teamSetsWon ?? {}}
+                />
+              )
+            ) : (
+              isDuel && useSetsUi && (
+                <DuelHeaderCompact
+                  leftAvatarUrl={profileById[players[0].id]?.avatarDataUrl ?? ""}
+                  rightAvatarUrl={profileById[players[1].id]?.avatarDataUrl ?? ""}
+                  leftSets={(state as any).setsWon?.[players[0].id] ?? 0}
+                  rightSets={(state as any).setsWon?.[players[1].id] ?? 0}
+                  leftLegs={(state as any).legsWon?.[players[0].id] ?? 0}
+                  rightLegs={(state as any).legsWon?.[players[1].id] ?? 0}
+                />
+              )
             )}
           </div>
 
@@ -3171,7 +3236,7 @@ if (isLandscapeTablet) {
 </div>
       </div>
 
-      {/* ZONE JOUEURS — SCROLLABLE ENTRE HEADER ET KEYPAD */}
+      {/* ZONE JOUEURS — bouton + modal flottant scrollable */}
       <div
         style={{
           position: isLandscapeTablet ? "relative" : "fixed",
@@ -3182,47 +3247,183 @@ if (isLandscapeTablet) {
           bottom: keypadH + 8,
           width: `min(100%, ${CONTENT_MAX}px)`,
           paddingInline: 10,
-          paddingTop: 4,
-          paddingBottom: 4,
-          overflowY: "auto",
+          paddingTop: 6,
+          paddingBottom: 6,
           zIndex: 40,
+          pointerEvents: "auto",
         }}
       >
-        {isTeamsMode && teamsView ? (
-        <TeamsPlayersList
-          cameraOpen={cameraOpen}
-          setCameraOpen={setCameraOpen}
-          teams={teamsView}
-          activePlayerId={activePlayerId}
-          profileById={profileById}
-          liveStatsByPlayer={liveStatsByPlayer}
-          start={config.startScore}
-          scoresByPlayer={scores}
-          useSets={useSetsUi}
-          lastVisitsByPlayer={lastVisitsByPlayer}
-          lastVisitIsBustByPlayer={lastVisitIsBustByPlayer}
-          avg3ByPlayer={avg3ByPlayer}
-        />
-      ) : (
-        <PlayersListOnly
-          cameraOpen={cameraOpen}
-          setCameraOpen={setCameraOpen}
-          players={players}
-          profileById={profileById}
-          liveStatsByPlayer={liveStatsByPlayer}
-          start={config.startScore}
-          scoresByPlayer={scores}
-          legsWon={(state as any).legsWon ?? {}}
-          setsWon={(state as any).setsWon ?? {}}
-          useSets={useSetsUi}
-          lastVisitsByPlayer={lastVisitsByPlayer}
-          lastVisitIsBustByPlayer={lastVisitIsBustByPlayer}
-          avg3ByPlayer={avg3ByPlayer}
-        />
-      )}
+        {/* Case JOUEURS (remplace la liste inline) */}
+        <button
+          type="button"
+          onClick={() => setPlayersPanelOpen(true)}
+          style={{
+            width: "100%",
+            borderRadius: 14,
+            padding: "12px 14px",
+            border: "1px solid rgba(255,255,255,0.10)",
+            background:
+              "linear-gradient(180deg, rgba(16,16,18,.92), rgba(10,10,12,.96))",
+            boxShadow: "0 14px 34px rgba(0,0,0,0.55)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            cursor: "pointer",
+          }}
+        >
+          <span style={{ fontWeight: 900, letterSpacing: 1.2, textTransform: "uppercase", color: ((theme as any)?.colors?.primary ?? (theme as any)?.primary ?? "#ffcc55") as any }}>JOUEURS</span>
+          <span
+            style={{
+              opacity: 0.9,
+              fontWeight: 800,
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 10,
+            }}
+          >
+            <span
+              style={{
+                width: 26,
+                height: 26,
+                borderRadius: 999,
+                border: `2px solid ${themePrimary}`,
+                color: themePrimary,
+                background: "rgba(0,0,0,0.25)",
+                display: "inline-flex",
+                alignItems: "center",
+                justifyContent: "center",
+                fontSize: 12,
+                fontWeight: 900,
+                boxShadow: `0 0 14px ${themePrimary}55`,
+              }}
+            >
+              {Array.isArray(players) ? players.length : 0}
+            </span>
+            <span style={{ opacity: 0.7 }}>▾</span>
+          </span>
+        </button>
       </div>
 
-      {/* KEYPAD FIXE EN BAS, ALIGNÉ EN LARGEUR */}
+      {/* MODAL FLOTTANT — contient la liste existante (solo/teams) */}
+      {playersPanelOpen && (
+        <div
+          onClick={() => setPlayersPanelOpen(false)}
+          style={{
+            position: "fixed",
+            inset: 0,
+            zIndex: 9999,
+            background: "rgba(0,0,0,0.55)",
+            backdropFilter: "blur(6px)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: 14,
+          }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              width: `min(96vw, ${CONTENT_MAX}px)`,
+              maxHeight: "78vh",
+              overflowY: "auto",
+              borderRadius: 18,
+              border: "1px solid rgba(255,255,255,0.12)",
+              background:
+                "linear-gradient(180deg, rgba(16,16,18,.96), rgba(10,10,12,.98))",
+              boxShadow: "0 28px 70px rgba(0,0,0,0.75)",
+              padding: 12,
+            }}
+          >
+            <div
+              style={{
+                position: "sticky",
+                top: 0,
+                zIndex: 2,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                gap: 10,
+                padding: "8px 8px 10px",
+                background:
+                  "linear-gradient(180deg, rgba(16,16,18,.98), rgba(16,16,18,.92))",
+                borderBottom: "1px solid rgba(255,255,255,0.08)",
+                borderTopLeftRadius: 16,
+                borderTopRightRadius: 16,
+              }}
+            >
+              <div style={{ fontWeight: 900, letterSpacing: 0.6 }}>
+                <span
+                  style={{
+                    color:
+                      ((theme as any)?.colors?.primary ??
+                        (theme as any)?.primary ??
+                        "#ffcc55") as any,
+                    textTransform: "uppercase",
+                  }}
+                >
+                  Joueurs
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setPlayersPanelOpen(false)}
+                style={{
+                  width: 34,
+                  height: 34,
+                  borderRadius: 999,
+                  border: "1px solid rgba(255,255,255,0.14)",
+                  background: "rgba(0,0,0,0.35)",
+                  color: "rgba(255,255,255,0.9)",
+                  fontWeight: 900,
+                  cursor: "pointer",
+                }}
+                aria-label="close"
+                title="Fermer"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* ✅ LISTE D'ORIGINE (inchangée) */}
+            <div style={{ padding: "10px 6px 6px" }}>
+              {isTeamsMode && teamsView ? (
+                <TeamsPlayersList
+                  cameraOpen={cameraOpen}
+                  setCameraOpen={setCameraOpen}
+                  teams={teamsView}
+                  activePlayerId={activePlayerId}
+                  profileById={profileById}
+                  liveStatsByPlayer={liveStatsByPlayer}
+                  start={config.startScore}
+                  scoresByPlayer={scores}
+                  useSets={useSetsUi}
+                  lastVisitsByPlayer={lastVisitsByPlayer}
+                  lastVisitIsBustByPlayer={lastVisitIsBustByPlayer}
+                  avg3ByPlayer={avg3ByPlayer}
+                />
+              ) : (
+                <PlayersListOnly
+                  cameraOpen={cameraOpen}
+                  setCameraOpen={setCameraOpen}
+                  players={players}
+                  profileById={profileById}
+                  liveStatsByPlayer={liveStatsByPlayer}
+                  start={config.startScore}
+                  scoresByPlayer={scores}
+                  legsWon={(state as any).legsWon ?? {}}
+                  setsWon={(state as any).setsWon ?? {}}
+                  useSets={useSetsUi}
+                  lastVisitsByPlayer={lastVisitsByPlayer}
+                  lastVisitIsBustByPlayer={lastVisitIsBustByPlayer}
+                  avg3ByPlayer={avg3ByPlayer}
+                />
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+{/* KEYPAD FIXE EN BAS, ALIGNÉ EN LARGEUR */}
       <div
         ref={keypadWrapRef}
         style={{
@@ -4470,6 +4671,87 @@ function PlayersListOnly(props: {
         }}
       />
 </div>
+  );
+}
+
+
+// =====================================================
+// ✅ Header compact SET/LEG — MODE TEAMS (2 à 4 équipes)
+// - Si 2 équipes : on utilise DuelHeaderCompact au-dessus.
+// - Si 3/4 équipes : on affiche une rangée d’avatars + micro KPIs Sets/Legs.
+// =====================================================
+function TeamsHeaderCompact({
+  teams,
+  teamLegsWon,
+  teamSetsWon,
+}: {
+  teams: Array<{ id: string; name: string; color: string; players: Array<{ avatar: string | null }> }>;
+  teamLegsWon: Record<string, number>;
+  teamSetsWon: Record<string, number>;
+}) {
+  const shown = (teams || []).slice(0, 4);
+
+  return (
+    <div
+      style={{
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        gap: 10,
+        paddingInline: 8,
+      }}
+    >
+      {shown.map((t) => {
+        const avatar = (t as any)?.players?.[0]?.avatar ?? "";
+        const sets = teamSetsWon?.[String(t.id)] ?? 0;
+        const legs = teamLegsWon?.[String(t.id)] ?? 0;
+        return (
+          <div
+            key={String(t.id)}
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              gap: 4,
+              minWidth: 44,
+            }}
+          >
+            <div
+              style={{
+                width: 34,
+                height: 34,
+                borderRadius: 999,
+                border: `2px solid ${t.color || "rgba(255,255,255,0.22)"}`,
+                background: "rgba(0,0,0,0.35)",
+                boxShadow: "0 10px 24px rgba(0,0,0,0.45)",
+                overflow: "hidden",
+              }}
+            >
+              {avatar ? (
+                <img
+                  src={avatar}
+                  alt={t.name}
+                  style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                />
+              ) : null}
+            </div>
+
+            <div
+              style={{
+                display: "flex",
+                gap: 6,
+                fontSize: 11,
+                lineHeight: 1,
+                color: "rgba(255,255,255,0.92)",
+              }}
+            >
+              <span style={{ color: "rgba(255,255,255,0.72)" }}>{sets}S</span>
+              <span style={{ color: "#ffd36a" }}>{legs}L</span>
+            </div>
+          </div>
+        );
+      })}
+    </div>
   );
 }
 

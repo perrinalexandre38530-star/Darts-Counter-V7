@@ -76,8 +76,14 @@ export type ActiveProfileStats = {
 
 type Props = {
   hideStatus?: boolean;
+
+  // ✅ override des KPIs (ex: Pétanque)
+  globalKpis?: { label: string; value: string | number }[];
+  globalTitle?: string;
+
   profile: Profile | null;
   stats: ActiveProfileStats;
+
   // optionnel : si Home le fournit, on l'utilise, sinon fallback sur profile.status
   status?: "online" | "away" | "offline";
 };
@@ -104,15 +110,8 @@ function fmtNum(v?: MaybeNum, decimals = 1): string {
 ============================================================ */
 
 const statsNameCss = `
-.dc-stats-name-wrapper {
-  position: relative;
-  isolation: isolate;
-}
-
-.dc-stats-name-base,
-.dc-stats-name-shimmer {
-  position: relative;
-}
+.dc-stats-name-wrapper { position: relative; isolation: isolate; }
+.dc-stats-name-base, .dc-stats-name-shimmer { position: relative; }
 
 .dc-stats-name-base {
   color: var(--dc-accent, #f6c256);
@@ -143,18 +142,9 @@ const statsNameCss = `
 }
 
 @keyframes dcStatsNameShimmer {
-  0% {
-    background-position: -80% 0;
-    transform: scale(1);
-  }
-  45% {
-    background-position: 130% 0;
-    transform: scale(1.05);
-  }
-  100% {
-    background-position: 130% 0;
-    transform: scale(1);
-  }
+  0%   { background-position: -80% 0; transform: scale(1); }
+  45%  { background-position: 130% 0; transform: scale(1.05); }
+  100% { background-position: 130% 0; transform: scale(1); }
 }
 `;
 
@@ -173,7 +163,14 @@ function useInjectStatsNameCss() {
    Composant principal
 ============================================================ */
 
-function ActiveProfileCard({ hideStatus, profile, stats, status: statusProp }: Props) {
+function ActiveProfileCard({
+  hideStatus,
+  globalKpis,
+  globalTitle,
+  profile,
+  stats,
+  status: statusProp,
+}: Props) {
   const { theme } = useTheme();
   const { t } = useLang();
   const [index, setIndex] = useState(0);
@@ -217,61 +214,34 @@ function ActiveProfileCard({ hideStatus, profile, stats, status: statusProp }: P
     // 1) Vue globale — TOUJOURS AFFICHÉE
     out.push({
       id: "global",
-      title: t("home.stats.global", "Vue globale"),
-      rows: [
-        {
-          label: t("home.stats.rating", "rating"),
-          value: fmtNum(s.ratingGlobal, 1),
-        },
-        {
-          label: t("home.stats.winrateGlobal", "win%"),
-          value: fmtPct(s.winrateGlobal),
-        },
-        {
-          label: t("home.stats.avg3dGlobal", "moy.3d"),
-          value: fmtNum(s.avg3DGlobal, 2),
-        },
-        {
-          label: t("home.stats.sessionsGlobal", "sessions"),
-          value: fmtNum(s.sessionsGlobal, 0),
-        },
-        {
-          label: t("home.stats.favoriteNumber", "numéro favori"),
-          value: s.favoriteNumberLabel ?? "—",
-        },
-      ],
+      title: globalTitle ?? t("home.stats.global", "Vue globale"),
+      rows:
+        globalKpis && globalKpis.length
+          ? globalKpis.map((k) => ({
+              label: String(k.label),
+              value: String(k.value),
+            }))
+          : [
+              { label: t("home.stats.rating", "rating"), value: fmtNum(s.ratingGlobal, 1) },
+              { label: t("home.stats.winrateGlobal", "win%"), value: fmtPct(s.winrateGlobal) },
+              { label: t("home.stats.avg3dGlobal", "moy.3d"), value: fmtNum(s.avg3DGlobal, 2) },
+              { label: t("home.stats.sessionsGlobal", "sessions"), value: fmtNum(s.sessionsGlobal, 0) },
+              { label: t("home.stats.favoriteNumber", "numéro favori"), value: s.favoriteNumberLabel ?? "—" },
+            ],
     });
 
-    // ✅ 2) Killer (dans le carrousel de droite)
+    // 2) Killer
     if (hasKillerData) {
       out.push({
         id: "killer",
         title: t("home.stats.killer", "killer"),
         rows: [
-          {
-            label: t("home.stats.killerSessions", "sessions"),
-            value: fmtNum(killerSessions, 0),
-          },
-          {
-            label: t("home.stats.killerWinrate", "win%"),
-            value: fmtPct(killerWinrate01),
-          },
-          {
-            label: t("home.stats.killerKills", "kills"),
-            value: fmtNum(killerKills, 0),
-          },
-          {
-            label: t("home.stats.killerHits", "hits"),
-            value: fmtNum(killerTotalHits, 0),
-          },
-          {
-            label: t("home.stats.killerFavNumberHits", "hits n°"),
-            value: fmtNum(killerFavNumberHits, 0),
-          },
-          {
-            label: t("home.stats.killerFavSegmentHits", "hits seg"),
-            value: fmtNum(killerFavSegmentHits, 0),
-          },
+          { label: t("home.stats.killerSessions", "sessions"), value: fmtNum(killerSessions, 0) },
+          { label: t("home.stats.killerWinrate", "win%"), value: fmtPct(killerWinrate01) },
+          { label: t("home.stats.killerKills", "kills"), value: fmtNum(killerKills, 0) },
+          { label: t("home.stats.killerHits", "hits"), value: fmtNum(killerTotalHits, 0) },
+          { label: t("home.stats.killerFavNumberHits", "hits n°"), value: fmtNum(killerFavNumberHits, 0) },
+          { label: t("home.stats.killerFavSegmentHits", "hits seg"), value: fmtNum(killerFavSegmentHits, 0) },
         ],
       });
     }
@@ -288,30 +258,12 @@ function ActiveProfileCard({ hideStatus, profile, stats, status: statusProp }: P
         id: "records",
         title: t("home.stats.records", "records"),
         rows: [
-          {
-            label: t("home.stats.bestVisitX01", "best visit"),
-            value: fmtNum(s.recordBestVisitX01, 0),
-          },
-          {
-            label: t("home.stats.bestCOX01", "best co"),
-            value: fmtNum(s.recordBestCOX01, 0),
-          },
-          {
-            label: t("home.stats.minDarts501", "min darts 501"),
-            value: fmtNum(s.recordMinDarts501, 0),
-          },
-          {
-            label: t("home.stats.bestAvg3DX01", "best moy.3d"),
-            value: fmtNum(s.recordBestAvg3DX01, 2),
-          },
-          {
-            label: t("home.stats.bestStreak", "meilleure série"),
-            value: fmtNum(s.recordBestStreak, 0),
-          },
-          {
-            label: t("home.stats.bestCricketScore", "best cricket"),
-            value: fmtNum(s.recordBestCricketScore, 0),
-          },
+          { label: t("home.stats.bestVisitX01", "best visit"), value: fmtNum(s.recordBestVisitX01, 0) },
+          { label: t("home.stats.bestCOX01", "best co"), value: fmtNum(s.recordBestCOX01, 0) },
+          { label: t("home.stats.minDarts501", "min darts 501"), value: fmtNum(s.recordMinDarts501, 0) },
+          { label: t("home.stats.bestAvg3DX01", "best moy.3d"), value: fmtNum(s.recordBestAvg3DX01, 2) },
+          { label: t("home.stats.bestStreak", "meilleure série"), value: fmtNum(s.recordBestStreak, 0) },
+          { label: t("home.stats.bestCricketScore", "best cricket"), value: fmtNum(s.recordBestCricketScore, 0) },
         ],
       });
     }
@@ -322,35 +274,17 @@ function ActiveProfileCard({ hideStatus, profile, stats, status: statusProp }: P
         id: "online",
         title: t("home.stats.online", "online"),
         rows: [
-          {
-            label: t("home.stats.onlineMatches", "matchs"),
-            value: fmtNum(s.onlineMatches, 0),
-          },
-          {
-            label: t("home.stats.onlineWinrate", "win%"),
-            value: fmtPct(s.onlineWinrate),
-          },
-          {
-            label: t("home.stats.onlineAvg3D", "moy.3d"),
-            value: fmtNum(s.onlineAvg3D, 2),
-          },
-          {
-            label: t("home.stats.onlineBestVisit", "best visit"),
-            value: fmtNum(s.onlineBestVisit, 0),
-          },
-          {
-            label: t("home.stats.onlineBestCO", "best co"),
-            value: fmtNum(s.onlineBestCO, 0),
-          },
+          { label: t("home.stats.onlineMatches", "matchs"), value: fmtNum(s.onlineMatches, 0) },
+          { label: t("home.stats.onlineWinrate", "win%"), value: fmtPct(s.onlineWinrate) },
+          { label: t("home.stats.onlineAvg3D", "moy.3d"), value: fmtNum(s.onlineAvg3D, 2) },
+          { label: t("home.stats.onlineBestVisit", "best visit"), value: fmtNum(s.onlineBestVisit, 0) },
+          { label: t("home.stats.onlineBestCO", "best co"), value: fmtNum(s.onlineBestCO, 0) },
           {
             label: t("home.stats.onlineRank", "rank"),
             value:
               s.onlineRank != null
                 ? s.onlineBestRank != null
-                  ? `${fmtNum(s.onlineRank, 0)} (${fmtNum(
-                      s.onlineBestRank,
-                      0
-                    )})`
+                  ? `${fmtNum(s.onlineRank, 0)} (${fmtNum(s.onlineBestRank, 0)})`
                   : fmtNum(s.onlineRank, 0)
                 : "—",
           },
@@ -364,30 +298,12 @@ function ActiveProfileCard({ hideStatus, profile, stats, status: statusProp }: P
         id: "x01multi",
         title: t("home.stats.x01multi", "x01 multi"),
         rows: [
-          {
-            label: t("home.stats.avg3d", "moy.3d"),
-            value: fmtNum(s.x01MultiAvg3D, 2),
-          },
-          {
-            label: t("home.stats.sessions", "sessions"),
-            value: fmtNum(s.x01MultiSessions, 0),
-          },
-          {
-            label: t("home.stats.winrate", "win%"),
-            value: fmtPct(s.x01MultiWinrate),
-          },
-          {
-            label: t("home.stats.bestVisit", "best visit"),
-            value: fmtNum(s.x01MultiBestVisit, 0),
-          },
-          {
-            label: t("home.stats.bestCO", "best co"),
-            value: fmtNum(s.x01MultiBestCO, 0),
-          },
-          {
-            label: t("home.stats.minDarts", "min darts"),
-            value: s.x01MultiMinDartsLabel ?? "—",
-          },
+          { label: t("home.stats.avg3d", "moy.3d"), value: fmtNum(s.x01MultiAvg3D, 2) },
+          { label: t("home.stats.sessions", "sessions"), value: fmtNum(s.x01MultiSessions, 0) },
+          { label: t("home.stats.winrate", "win%"), value: fmtPct(s.x01MultiWinrate) },
+          { label: t("home.stats.bestVisit", "best visit"), value: fmtNum(s.x01MultiBestVisit, 0) },
+          { label: t("home.stats.bestCO", "best co"), value: fmtNum(s.x01MultiBestCO, 0) },
+          { label: t("home.stats.minDarts", "min darts"), value: s.x01MultiMinDartsLabel ?? "—" },
         ],
       });
     }
@@ -398,107 +314,52 @@ function ActiveProfileCard({ hideStatus, profile, stats, status: statusProp }: P
         id: "cricket",
         title: t("home.stats.cricket", "cricket"),
         rows: [
-          {
-            label: t("home.stats.pointsPerRound", "pts/round"),
-            value: fmtNum(s.cricketPointsPerRound, 1),
-          },
-          {
-            label: t("home.stats.hitsTotal", "hits"),
-            value: fmtNum(s.cricketHitsTotal, 0),
-          },
-          {
-            label: t("home.stats.closeRate", "close%"),
-            value: fmtPct(s.cricketCloseRate),
-          },
-          {
-            label: t("home.stats.legsWinrate", "legs%"),
-            value: fmtPct(s.cricketLegsWinrate),
-          },
-          {
-            label: t("home.stats.close201918", "20/19/18"),
-            value: fmtNum(s.cricketAvgClose201918, 1),
-          },
-          {
-            label: t("home.stats.openings", "openings"),
-            value: fmtNum(s.cricketOpenings, 0),
-          },
+          { label: t("home.stats.pointsPerRound", "pts/round"), value: fmtNum(s.cricketPointsPerRound, 1) },
+          { label: t("home.stats.hitsTotal", "hits"), value: fmtNum(s.cricketHitsTotal, 0) },
+          { label: t("home.stats.closeRate", "close%"), value: fmtPct(s.cricketCloseRate) },
+          { label: t("home.stats.legsWinrate", "legs%"), value: fmtPct(s.cricketLegsWinrate) },
+          { label: t("home.stats.close201918", "20/19/18"), value: fmtNum(s.cricketAvgClose201918, 1) },
+          { label: t("home.stats.openings", "openings"), value: fmtNum(s.cricketOpenings, 0) },
         ],
       });
     }
 
     // 7) Training X01
-    if (
-      (s.trainingHitsS ?? 0) +
-        (s.trainingHitsD ?? 0) +
-        (s.trainingHitsT ?? 0) >
-      0
-    ) {
+    if ((s.trainingHitsS ?? 0) + (s.trainingHitsD ?? 0) + (s.trainingHitsT ?? 0) > 0) {
       out.push({
         id: "trainingx01",
         title: t("home.stats.trainingX01", "training x01"),
         rows: [
-          {
-            label: t("home.stats.avg3dTraining", "moy.3d"),
-            value: fmtNum(s.trainingAvg3D, 2),
-          },
-          {
-            label: t("home.stats.hitsS", "hits s"),
-            value: fmtNum(s.trainingHitsS, 0),
-          },
-          {
-            label: t("home.stats.hitsD", "hits d"),
-            value: fmtNum(s.trainingHitsD, 0),
-          },
-          {
-            label: t("home.stats.hitsT", "hits t"),
-            value: fmtNum(s.trainingHitsT, 0),
-          },
-          {
-            label: t("home.stats.goalSuccess", "obj%"),
-            value: fmtPct(s.trainingGoalSuccessRate),
-          },
-          {
-            label: t("home.stats.bestCOTraining", "best co"),
-            value: fmtNum(s.trainingBestCO, 0),
-          },
+          { label: t("home.stats.avg3dTraining", "moy.3d"), value: fmtNum(s.trainingAvg3D, 2) },
+          { label: t("home.stats.hitsS", "hits s"), value: fmtNum(s.trainingHitsS, 0) },
+          { label: t("home.stats.hitsD", "hits d"), value: fmtNum(s.trainingHitsD, 0) },
+          { label: t("home.stats.hitsT", "hits t"), value: fmtNum(s.trainingHitsT, 0) },
+          { label: t("home.stats.goalSuccess", "obj%"), value: fmtPct(s.trainingGoalSuccessRate) },
+          { label: t("home.stats.bestCOTraining", "best co"), value: fmtNum(s.trainingBestCO, 0) },
         ],
       });
     }
 
-    // 8) Tour de l'Horloge
+    // 8) Horloge
     if ((s.clockTargetsHit ?? 0) > 0) {
       out.push({
         id: "clock",
         title: t("home.stats.clock", "horloge"),
         rows: [
-          {
-            label: t("home.stats.targetsHit", "cibles"),
-            value: fmtNum(s.clockTargetsHit, 0),
-          },
-          {
-            label: t("home.stats.clockSuccess", "succès%"),
-            value: fmtPct(s.clockSuccessRate),
-          },
+          { label: t("home.stats.targetsHit", "cibles"), value: fmtNum(s.clockTargetsHit, 0) },
+          { label: t("home.stats.clockSuccess", "succès%"), value: fmtPct(s.clockSuccessRate) },
           {
             label: t("home.stats.clockTime", "temps"),
-            value:
-              s.clockTotalTimeSec != null
-                ? `${Math.round(s.clockTotalTimeSec / 60)} min`
-                : "—",
+            value: s.clockTotalTimeSec != null ? `${Math.round(s.clockTotalTimeSec / 60)} min` : "—",
           },
-          {
-            label: t("home.stats.bestStreakClock", "série"),
-            value: fmtNum(s.clockBestStreak, 0),
-          },
+          { label: t("home.stats.bestStreakClock", "série"), value: fmtNum(s.clockBestStreak, 0) },
         ],
       });
     }
 
-    // ✅ 7 slides max
     return out.length > 0 ? out.slice(0, 7) : [];
-  }, [stats, t]);
+  }, [stats, t, globalTitle, globalKpis]);
 
-  // Reset index quand les slides changent
   useEffect(() => {
     if (!slides.length) {
       setIndex(0);
@@ -507,37 +368,25 @@ function ActiveProfileCard({ hideStatus, profile, stats, status: statusProp }: P
     setIndex((i) => (i >= slides.length ? 0 : i));
   }, [slides.length]);
 
-  // Auto-carrousel 7s
   useEffect(() => {
     if (slides.length <= 1) return;
-    const id = window.setInterval(() => {
-      setIndex((i) => (i + 1) % slides.length);
-    }, 7000);
+    const id = window.setInterval(() => setIndex((i) => (i + 1) % slides.length), 7000);
     return () => window.clearInterval(id);
   }, [slides.length]);
 
   const slide = slides[index] ?? slides[0];
 
-  // Statut (prop > profil > online par défaut)
   const status: "online" | "away" | "offline" =
     statusProp ??
-    (((profile as any).status as "online" | "away" | "offline" | undefined) ??
-      "online");
+    (((profile as any).status as "online" | "away" | "offline" | undefined) ?? "online");
 
   const statusColor =
-    status === "online"
-      ? "#18FF6D"
-      : status === "away"
-      ? "#FFD95E"
-      : "#888888";
+    status === "online" ? "#18FF6D" : status === "away" ? "#FFD95E" : "#888888";
 
-  // Accent pour le shimmer du nom (lié au thème)
   const accent = (theme as any).accent ?? primary;
   const accentSoft = (theme as any).accent20 ?? `${primary}33`;
-
   const profileName = profile.name?.trim() || t("home.noName", "Joueur");
 
-  // Handler tap pour passer manuellement au slide suivant
   const handleNextSlide = () => {
     if (!slides.length || slides.length <= 1) return;
     setIndex((i) => (i + 1) % slides.length);
@@ -560,15 +409,8 @@ function ActiveProfileCard({ hideStatus, profile, stats, status: statusProp }: P
           alignItems: "stretch",
         }}
       >
-        {/* Colonne gauche : avatar médaillon + nom + statut sur carte dorée */}
-        <div
-          style={{
-            width: 130,
-            minWidth: 130,
-            display: "flex",
-            alignItems: "stretch",
-          }}
-        >
+        {/* Colonne gauche */}
+        <div style={{ width: 130, minWidth: 130, display: "flex", alignItems: "stretch" }}>
           <div
             style={{
               borderRadius: 22,
@@ -585,29 +427,14 @@ function ActiveProfileCard({ hideStatus, profile, stats, status: statusProp }: P
               width: "100%",
             }}
           >
-            {/* Médaillon : avatar + couronne d’étoiles colorée */}
-            <div
-              style={{
-                position: "relative",
-                width: 84,
-                height: 84,
-                marginBottom: 4,
-              }}
-            >
-              {/* Avatar au centre */}
+            <div style={{ position: "relative", width: 84, height: 84, marginBottom: 4 }}>
               <ProfileAvatar
                 size={84}
-                dataUrl={
-                  (profile as any).avatarDataUrl ??
-                  (profile as any).avatarUrl ??
-                  undefined
-                }
+                dataUrl={(profile as any).avatarDataUrl ?? (profile as any).avatarUrl ?? undefined}
                 label={profile?.name?.[0]?.toUpperCase() || "?"}
                 ringColor={primary}
-                showStars={false} // on gère les étoiles manuellement ici
+                showStars={false}
               />
-
-              {/* Couronne d’étoiles basée sur la moyenne globale */}
               <ProfileStarRing
                 anchorSize={84}
                 avg3d={stats.avg3DGlobal ?? 0}
@@ -618,13 +445,8 @@ function ActiveProfileCard({ hideStatus, profile, stats, status: statusProp }: P
               />
             </div>
 
-            {/* NOM AVEC EFFET STATS (wrapper base + shimmer) */}
-            <div
-              style={{
-                marginTop: 2,
-                maxWidth: "100%",
-              }}
-            >
+            {/* NOM shimmer */}
+            <div style={{ marginTop: 2, maxWidth: "100%" }}>
               <span
                 className="dc-stats-name-wrapper"
                 style={
@@ -641,8 +463,7 @@ function ActiveProfileCard({ hideStatus, profile, stats, status: statusProp }: P
                   style={{
                     fontSize: 20,
                     fontWeight: 900,
-                    fontFamily:
-                      '"Luckiest Guy","Impact","system-ui",sans-serif',
+                    fontFamily: '"Luckiest Guy","Impact","system-ui",sans-serif',
                     whiteSpace: "nowrap",
                     overflow: "hidden",
                     textOverflow: "ellipsis",
@@ -652,14 +473,12 @@ function ActiveProfileCard({ hideStatus, profile, stats, status: statusProp }: P
                 >
                   {profileName}
                 </span>
-
                 <span
                   className="dc-stats-name-shimmer"
                   style={{
                     fontSize: 20,
                     fontWeight: 900,
-                    fontFamily:
-                      '"Luckiest Guy","Impact","system-ui",sans-serif',
+                    fontFamily: '"Luckiest Guy","Impact","system-ui",sans-serif',
                     whiteSpace: "nowrap",
                     overflow: "hidden",
                     textOverflow: "ellipsis",
@@ -674,45 +493,29 @@ function ActiveProfileCard({ hideStatus, profile, stats, status: statusProp }: P
 
             {/* Statut */}
             {!hideStatus && status && (
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 6,
-                marginTop: 2,
-              }}
-            >
-              <span
-                style={{
-                  width: 8,
-                  height: 8,
-                  borderRadius: "50%",
-                  backgroundColor: statusColor,
-                  boxShadow:
-                    status === "offline"
-                      ? "none"
-                      : `0 0 8px ${statusColor}, 0 0 14px ${statusColor}`,
-                }}
-              />
-              <span
-                style={{
-                  fontSize: 13,
-                  fontWeight: 600,
-                  color: theme.textSoft ?? "rgba(255,255,255,0.7)",
-                }}
-              >
-                {status === "online"
-                  ? t("status.online", "En ligne")
-                  : status === "away"
-                  ? t("status.away", "Absent")
-                  : t("status.offline", "Hors ligne")}
-              </span>
-            </div>
-                      )}
-</div>
+              <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 2 }}>
+                <span
+                  style={{
+                    width: 8,
+                    height: 8,
+                    borderRadius: "50%",
+                    backgroundColor: statusColor,
+                    boxShadow: status === "offline" ? "none" : `0 0 8px ${statusColor}, 0 0 14px ${statusColor}`,
+                  }}
+                />
+                <span style={{ fontSize: 13, fontWeight: 600, color: theme.textSoft ?? "rgba(255,255,255,0.7)" }}>
+                  {status === "online"
+                    ? t("status.online", "En ligne")
+                    : status === "away"
+                    ? t("status.away", "Absent")
+                    : t("status.offline", "Hors ligne")}
+                </span>
+              </div>
+            )}
+          </div>
         </div>
 
-        {/* Colonne droite : mini-card thème + KPIs centrés */}
+        {/* Colonne droite */}
         <div
           onClick={handleNextSlide}
           style={{
@@ -727,7 +530,6 @@ function ActiveProfileCard({ hideStatus, profile, stats, status: statusProp }: P
             cursor: slides.length > 1 ? "pointer" : "default",
           }}
         >
-          {/* halo externe léger pour la carte de stats */}
           <div
             aria-hidden
             style={{
@@ -740,23 +542,8 @@ function ActiveProfileCard({ hideStatus, profile, stats, status: statusProp }: P
           />
 
           {slide && (
-            <div
-              key={slide.id}
-              style={{
-                position: "relative",
-                display: "flex",
-                flexDirection: "column",
-                gap: 8,
-              }}
-            >
-              <div
-                style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  alignItems: "baseline",
-                  marginBottom: 4,
-                }}
-              >
+            <div key={slide.id} style={{ position: "relative", display: "flex", flexDirection: "column", gap: 8 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 4 }}>
                 <div
                   style={{
                     fontSize: 14,
@@ -771,13 +558,7 @@ function ActiveProfileCard({ hideStatus, profile, stats, status: statusProp }: P
                 </div>
               </div>
 
-              <div
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "repeat(2, minmax(0,1fr))",
-                  gap: 8,
-                }}
-              >
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0,1fr))", gap: 8 }}>
                 {slide.rows.map((row) => (
                   <KpiCell
                     key={row.label}
@@ -795,10 +576,6 @@ function ActiveProfileCard({ hideStatus, profile, stats, status: statusProp }: P
     </>
   );
 }
-
-/* ============================================================
-   Bloc KPI (style Training X01) — label minuscule + valeur centrée
-============================================================ */
 
 type KpiCellProps = {
   label: string;
@@ -823,19 +600,10 @@ function KpiCell({ label, value, primary, theme }: KpiCellProps) {
         textAlign: "center",
       }}
     >
-      <div
-        style={{
-          fontSize: 10,
-          letterSpacing: 0.4,
-          opacity: 0.8,
-          marginBottom: 3,
-          textTransform: "lowercase",
-        }}
-      >
+      <div style={{ fontSize: 10, letterSpacing: 0.4, opacity: 0.8, marginBottom: 3, textTransform: "lowercase" }}>
         {label}
       </div>
 
-      {/* petite séparation néon */}
       <div
         style={{
           height: 2,

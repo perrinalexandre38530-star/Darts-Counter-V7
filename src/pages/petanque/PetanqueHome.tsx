@@ -39,11 +39,11 @@ type Props = {
   go: (tab: any, params?: any) => void;
 };
 
-const PAGE_MAX_WIDTH = 920;
+const PAGE_MAX_WIDTH = 620;
 const DETAIL_INTERVAL_MS = 7000;
 
 // ✅ Alignement unique (mêmes extérieurs partout)
-const SECTION_PAD_X = 6;
+const SECTION_PAD_X = 10;
 const sectionWrap: React.CSSProperties = {
   width: "100%",
   maxWidth: PAGE_MAX_WIDTH,
@@ -585,58 +585,82 @@ const petanqueGlobalStats = useMemo(() => {
   // Fallback : si aucun historique, on prend l'état local courant (partie en cours / terminée)
   const st = loadPetanqueState();
   const stEnds = Array.isArray(st?.ends) ? st.ends.length : 0;
-  const stFinished = String(st?.status ?? "") === "finished" || !!(st as any)?.finishedAt;
+  const stFinished = String((st as any)?.status ?? "") === "finished" || !!(st as any)?.finishedAt || !!(st as any)?.finished;
 
   const hasProfile = !!profId || !!profName;
 
   const resolveTeam = (teams: any): ("A" | "B" | null) => {
     const A = (teams?.A?.players || teams?.A || []).flat?.() ?? (teams?.A?.players || teams?.A || []);
     const B = (teams?.B?.players || teams?.B || []).flat?.() ?? (teams?.B?.players || teams?.B || []);
-    const inA = Array.isArray(A) && A.some((p: any) => String(p?.id ?? "") === profId || String(p?.name ?? "").toLowerCase() === profName);
-    const inB = Array.isArray(B) && B.some((p: any) => String(p?.id ?? "") === profId || String(p?.name ?? "").toLowerCase() === profName);
+    const inA = A.some((p: any) => String(p?.id ?? "") === profId || String(p?.name ?? "").trim().toLowerCase() === profName);
+    const inB = B.some((p: any) => String(p?.id ?? "") === profId || String(p?.name ?? "").trim().toLowerCase() === profName);
     return inA ? "A" : inB ? "B" : null;
   };
 
   let sessions = 0;
   let wins = 0;
   let endsSum = 0;
+  let pointsSum = 0;
+  let diffSum = 0;
+  let carreauxSum = 0;
 
   if (matches.length && hasProfile) {
     for (const m of matches) {
-      const inA = (m.teams?.A?.players || []).some(
-        (p) => String(p?.id ?? "") === profId || String(p?.name ?? "").toLowerCase() === profName
-      );
-      const inB = (m.teams?.B?.players || []).some(
-        (p) => String(p?.id ?? "") === profId || String(p?.name ?? "").toLowerCase() === profName
-      );
-      const teamOfProfile = inA ? "A" : inB ? "B" : null;
+      const teamOfProfile = resolveTeam(m?.teams);
       if (!teamOfProfile) continue;
 
       sessions += 1;
-      endsSum += Number(m.endsCount || 0) || 0;
-      if (m.winner && m.winner === teamOfProfile) wins += 1;
+
+      const ptsA = Number(m?.scoreA ?? m?.scores?.A ?? 0) || 0;
+      const ptsB = Number(m?.scoreB ?? m?.scores?.B ?? 0) || 0;
+
+      const winner = String(m?.winner ?? m?.winTeam ?? "").toUpperCase();
+      if ((winner === "A" || winner === "B") && winner === teamOfProfile) wins += 1;
+
+      const ends = Number(m?.ends ?? m?.endsCount ?? m?.mènes ?? m?.menes ?? 0) || 0;
+      endsSum += ends;
+
+      const ptsMe = teamOfProfile === "A" ? ptsA : ptsB;
+      const ptsOpp = teamOfProfile === "A" ? ptsB : ptsA;
+      pointsSum += ptsMe;
+      diffSum += ptsMe - ptsOpp;
+
+      // Carreaux: supporte plusieurs noms possibles en attendant une normalisation
+      carreauxSum +=
+        Number(m?.stats?.carreaux ?? m?.carreaux ?? m?.kpis?.carreaux ?? m?.shots?.carreaux ?? 0) || 0;
     }
-  } else if (stEnds > 0 || stFinished) {
-    // Pas d'historique => on affiche au moins 1 session si une partie existe
-    sessions = 1;
+  } else {
+    // Pas d'historique : on affiche au moins quelque chose de cohérent
+    sessions = 0;
+    wins = 0;
     endsSum = stEnds;
-
-    if (hasProfile) {
-      const team = resolveTeam((st as any)?.teams);
-      const winnerRaw = String((st as any)?.winnerTeamId ?? (st as any)?.winner ?? "").toUpperCase();
-      const winner = winnerRaw === "A" || winnerRaw === "B" ? winnerRaw : null;
-
-      if (team && winner && team === winner) wins = 1;
-    }
+    pointsSum = 0;
+    diffSum = 0;
+    carreauxSum = 0;
   }
 
-  const winrate = sessions > 0 ? wins / sessions : 0;
-  const avgEnds = sessions > 0 ? endsSum / sessions : 0;
-  return { sessions, wins, winrate, avgEnds };
+  const winRate = sessions > 0 ? wins / sessions : 0;
+  const avgPts = sessions > 0 ? pointsSum / sessions : 0;
+
+  // "Rating" Pétanque : score simple et stable (0..999)
+  // - priorise Win% puis Pts/match, sans jamais afficher NaN/undefined
+  const rating = sessions > 0 ? Math.max(0, Math.min(999, Math.round(winRate * 100 + avgPts * 2))) : 0;
+
+  return {
+    sessions,
+    wins,
+    winRate, // 0..1
+    avgPts,
+    ptsPerEnd: endsSum > 0 ? pointsSum / endsSum : 0,
+    menes: endsSum,
+    carreaux: carreauxSum,
+    rating,
+    // legacy fields if you still use them elsewhere
+    avgEnds: sessions > 0 ? endsSum / sessions : stEnds,
+    finished: stFinished,
+  };
 }, [activeProfile]);
-
-
-  const [kpis, setKpis] = useState<{
+const [kpis, setKpis] = useState<{
     ends: number;
     scoreA: number;
     scoreB: number;
@@ -867,15 +891,32 @@ const secondaryTicker = tickerItems.length
           <ActiveProfileCard
             hideStatus={true}
             profile={activeProfile as any}
+            // ✅ Stats "globales" affichées dans le bloc Profil actif
             stats={
               {
-                ratingGlobal: null,
-                winrateGlobal: petanqueGlobalStats.winrate,
-                avg3DGlobal: petanqueGlobalStats.avgEnds,
+                ratingGlobal: petanqueGlobalStats.rating,
+                winrateGlobal: petanqueGlobalStats.winRate,
+                avg3DGlobal: petanqueGlobalStats.avgPts,
                 sessionsGlobal: petanqueGlobalStats.sessions,
                 favoriteNumberLabel: "—",
               } as any
             }
+            // ✅ Mode Pétanque: libellés + valeurs dédiées
+            globalTitle={t("petanque.home.global.title", "Vue globale")}
+            globalKpis={[
+              { label: t("petanque.kpi.rating", "rating"), value: petanqueGlobalStats.rating },
+              { label: t("petanque.kpi.menes", "mènes"), value: petanqueGlobalStats.menes },
+              { label: t("petanque.kpi.win", "win%"), value: `${Math.round(petanqueGlobalStats.winRate * 100)}%` },
+              {
+                label: t("petanque.kpi.avgPts", "moy. pts/match"),
+                value: Number(petanqueGlobalStats.avgPts).toFixed(1),
+              },
+              { label: t("petanque.kpi.carreaux", "carreaux"), value: petanqueGlobalStats.carreaux },
+              {
+                label: t("petanque.kpi.ptsPerEnd", "pts/mène"),
+                value: Number(petanqueGlobalStats.ptsPerEnd).toFixed(2),
+              },
+            ]}
           />
         </div>
       )}
@@ -961,7 +1002,14 @@ const secondaryTicker = tickerItems.length
                     {leftText}
                   </div>
 
-                  <div style={{ marginTop: 2, display: "grid", gridTemplateColumns: "repeat(2, minmax(0,1fr))", gap: 6 }}>
+                  <div
+                    style={{
+                      marginTop: 2,
+                      display: "grid",
+                      gridTemplateColumns: "repeat(2, minmax(0,1fr))",
+                      gap: 6,
+                    }}
+                  >
                     <MiniKpi
                       label={t("petanque.home.kpi.ends", "Mènes")}
                       value={String(kpis.ends)}
@@ -987,7 +1035,7 @@ const secondaryTicker = tickerItems.length
                   position: "relative",
                   minHeight: 108,
                   backgroundColor: "#05060C",
-                  backgroundImage: `url("${rightBgImage}")`,
+                  backgroundImage: rightBgImage ? `url("${rightBgImage}")` : undefined,
                   backgroundSize: "cover",
                   backgroundPosition: "center",
                 }}
@@ -1037,6 +1085,7 @@ const secondaryTicker = tickerItems.length
           </div>
         </div>
       )}
+
       <div style={{ height: 26 }} />
     </div>
   );

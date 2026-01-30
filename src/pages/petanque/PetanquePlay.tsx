@@ -38,6 +38,11 @@ import BackDot from "../../components/BackDot";
 import InfoDot from "../../components/InfoDot";
 import RulesModal from "../../components/RulesModal";
 import PlusDot from "../../components/PlusDot";
+import PetanqueMeneWizard, {
+  type MeneWizardAllocation,
+  type MeneWizardMode,
+  type MeneWizardParticipant,
+} from "../../components/PetanqueMeneWizard";
 
 
 import tickerP1v1 from "../../assets/tickers/ticker_petanque_1v1.png";
@@ -1211,16 +1216,16 @@ function PetanqueHeaderArcade(props: {
                         e.preventDefault();
                         e.stopPropagation();
                       } catch {}
-                      // ✅ BIG PATCH: ouverture du « EndSheet » (mène + points + stats)
-                      openEndSheet("A");
+                      // ✅ BIG PATCH V2: ouvre Wizard SCORE (default sur A)
+                      onAddEndA?.();
                     }}
                     onClick={(e) => {
                       try {
                         e.preventDefault();
                         e.stopPropagation();
                       } catch {}
-                      // ✅ BIG PATCH: ouverture du « EndSheet » (mène + points + stats)
-                      openEndSheet("A");
+                      // ✅ BIG PATCH V2: ouvre Wizard SCORE (default sur A)
+                      onAddEndA?.();
                     }}
                     title="Ajouter le résultat d'une mène"
                   >
@@ -1410,6 +1415,80 @@ const PTS_FFA3 = [0, 1, 2, 3];
 // ==========================================
 const teams = React.useMemo(() => extractTeams(stSafe as any, matchCfg, Array.isArray(store?.profiles) ? store.profiles : undefined), [stSafe, matchCfg, store?.profiles]);
 
+// =====================================================
+// ✅ BIG PATCH V2 — Participants & Icons (Wizard)
+// =====================================================
+const meneStatIcons = React.useMemo(
+  () => ({
+    pointage: normalizeImport(icoPointage) as any,
+    bec: normalizeImport(icoBEC) as any,
+    trou: normalizeImport(icoTrou) as any,
+    tirReussi: normalizeImport(icoTir) as any,
+    carreau: normalizeImport(icoCarreau) as any,
+    pousseeAssist: normalizeImport(icoAssist) as any,
+    pousseeConcede: normalizeImport(icoConcede) as any,
+  }),
+  []
+);
+
+const meneParticipants: MeneWizardParticipant[] = React.useMemo(() => {
+  if (matchMode === "ffa3") {
+    return (ffaPlayers ?? ["Joueur 1", "Joueur 2", "Joueur 3"]).map((nm, i) => ({
+      id: `ffa-${i}`,
+      label: prettyPlayerName(String(nm ?? ""), `Joueur ${i + 1}`),
+      kind: "player" as const,
+      avatarSrc: null,
+    }));
+  }
+
+  const mkPlayer = (tid: "A" | "B", idx: number) => {
+    const t = tid === "A" ? teams.A : teams.B;
+    const p = t.players?.[idx];
+    const pid = asStr(p?.id ?? tid);
+    const label = prettyPlayerName(p?.name ?? t.name, tid === "A" ? "Joueur A" : "Joueur B");
+    return {
+      id: pid,
+      label,
+      avatarSrc: p?.profile ? getAvatarSrc(p.profile) : null,
+    };
+  };
+
+  if (matchMode === "singles") {
+    // 1v1 : deux "participants" = les deux joueurs
+    const pa = mkPlayer("A", 0);
+    const pb = mkPlayer("B", 0);
+    return [
+      { id: "A", label: pa.label, kind: "player" as const, avatarSrc: pa.avatarSrc },
+      { id: "B", label: pb.label, kind: "player" as const, avatarSrc: pb.avatarSrc },
+    ];
+  }
+
+  // équipes : 2 participants = Team A / Team B avec members
+  const ta = {
+    id: "A",
+    label: String(teams.A.name ?? "Team A"),
+    kind: "team" as const,
+    avatarSrc: normalizeImgSrc(teams.A.logo) ?? null,
+    members: (teams.A.players ?? []).map((p, idx) => ({
+      id: asStr(p.id ?? `A-${idx}`),
+      label: prettyPlayerName(p.name, `Joueur ${idx + 1}`),
+      avatarSrc: p.profile ? getAvatarSrc(p.profile) : null,
+    })),
+  };
+  const tb = {
+    id: "B",
+    label: String(teams.B.name ?? "Team B"),
+    kind: "team" as const,
+    avatarSrc: normalizeImgSrc(teams.B.logo) ?? null,
+    members: (teams.B.players ?? []).map((p, idx) => ({
+      id: asStr(p.id ?? `B-${idx}`),
+      label: prettyPlayerName(p.name, `Joueur ${idx + 1}`),
+      avatarSrc: p.profile ? getAvatarSrc(p.profile) : null,
+    })),
+  };
+  return [ta, tb];
+}, [matchMode, ffaPlayers, teams]);
+
 const isSingles = matchMode === "singles";
 
 // ==========================================
@@ -1461,6 +1540,31 @@ const [duelVisible, setDuelVisible] = React.useState<Record<DuelStatKey, boolean
 const [statsMenuOpen, setStatsMenuOpen] = React.useState(false);
 const [rulesOpen, setRulesOpen] = React.useState(false);
 const [statsTargetTeam, setStatsTargetTeam] = React.useState<PetanqueTeamId>("A");
+
+// =====================================================
+// ✅ BIG PATCH V2 — Wizard (SCORE+ et +stats)
+// - Modal centré (X/Y)
+// - Sélecteur gagnant (carrousel)
+// - Compteur points (- / 0 / +)
+// - Allocation actions bornée par points (mode score)
+// - En mode équipes: picker joueur (attribuer action)
+// =====================================================
+const [meneWizardOpen, setMeneWizardOpen] = React.useState(false);
+const [meneWizardMode, setMeneWizardMode] = React.useState<MeneWizardMode>("score");
+const [meneWizardDefaultWinner, setMeneWizardDefaultWinner] = React.useState<string>("A");
+
+const openMeneWizard = React.useCallback(
+  (mode: MeneWizardMode, defaultWinnerId?: string) => {
+    setMeneWizardMode(mode);
+    setMeneWizardDefaultWinner(defaultWinnerId ?? (matchMode === "ffa3" ? "ffa-0" : "A"));
+    setMeneWizardOpen(true);
+  },
+  [matchMode]
+);
+
+const closeMeneWizard = React.useCallback(() => {
+  setMeneWizardOpen(false);
+}, []);
 
 React.useEffect(() => {
   try {
@@ -2662,8 +2766,8 @@ return (
       ffaPlayers={ffaPlayers}
       ffaScores={ffaScores}
       ffaWinnerIdx={ffaWinnerIdx}
-      onAddEndA={() => openEndSheet("A")}
-      onAddEndB={() => openEndSheet("B")}
+      onAddEndA={() => openMeneWizard("score", "A")}
+      onAddEndB={() => openMeneWizard("score", "B")}
       onAddEndNull={onAddEndNull}
     />
 
@@ -2772,7 +2876,7 @@ return (
   >
     <PlusDot
       title="Statistiques (ajout / affichage)"
-      onClick={() => setStatsMenuOpen(true)}
+      onClick={() => openMeneWizard("stats")}
     />
     <StatsMenu />
 
@@ -3280,6 +3384,74 @@ return (
             </p>
           </div>
         </RulesModal>
+      )}
+
+      {/* =========================================================
+          ✅ BIG PATCH V2 — WIZARD (SCORE+ / +stats)
+          - Centré X/Y
+          - Carrousel gagnant/cible
+          - Compteur points (mode score)
+          - Allocation stats bornée par points
+      ========================================================= */}
+      {meneWizardOpen && (
+        <PetanqueMeneWizard
+          open={meneWizardOpen}
+          mode={meneWizardMode}
+          theme={theme}
+          participants={meneParticipants}
+          statIcons={meneStatIcons as any}
+          initialWinnerId={meneWizardDefaultWinner}
+          initialPoints={meneWizardMode === "stats" ? 0 : 0}
+          maxPoints={matchMode === "ffa3" ? 3 : 6}
+          onClose={closeMeneWizard}
+          onConfirm={({ winnerId, points, allocations }) => {
+            try {
+              // ====== Mode SCORE: ajoute une mène + points ======
+              if (meneWizardMode === "score") {
+                if (matchMode === "ffa3") {
+                  const m = String(winnerId || "");
+                  const idx = m.startsWith("ffa-") ? Number(m.split("-")[1] || 0) : 0;
+                  if (!Number.isNaN(idx)) addFfaEnd(idx, points);
+                } else {
+                  const team = (winnerId === "B" ? "B" : "A") as PetanqueTeamId;
+                  // ✅ utilise le moteur store (score A/B)
+                  onAdd(team, points);
+                }
+              }
+
+              // ====== Stats allocations (score & stats mode) ======
+              // Map keys déjà identiques à PlayerStats
+              const perPlayerPts: Record<string, number> = {};
+              for (const a of allocations as MeneWizardAllocation[]) {
+                const v = Number((a as any).value || 0);
+                if (!v) continue;
+                perPlayerPts[a.playerId] = (perPlayerPts[a.playerId] || 0) + v;
+                // @ts-ignore
+                bumpStat(a.playerId, a.stat as any, v);
+              }
+              // si mode score: on crédite aussi "points" au(x) joueur(s)
+              if (meneWizardMode === "score") {
+                const ids = Object.keys(perPlayerPts);
+                if (ids.length) {
+                  for (const pid of ids) {
+                    bumpStat(pid, "points", perPlayerPts[pid] || 0);
+                    bumpStat(pid, "menes", 1);
+                  }
+                } else if (matchMode !== "ffa3" && points > 0) {
+                  // fallback: premier joueur du camp gagnant
+                  const roster = (winnerId === "B" ? teams.B.players : teams.A.players) ?? [];
+                  const pid = roster?.[0]?.id ? String(roster[0].id) : null;
+                  if (pid) {
+                    bumpStat(pid, "points", points);
+                    bumpStat(pid, "menes", 1);
+                  }
+                }
+              }
+            } finally {
+              closeMeneWizard();
+            }
+          }}
+        />
       )}
 
       {!isFfa3 && endSheetOpen && (

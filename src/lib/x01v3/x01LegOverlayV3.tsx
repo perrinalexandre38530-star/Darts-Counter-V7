@@ -65,6 +65,11 @@ export default function X01LegOverlayV3({
   const legsWon = state?.legsWon ?? {};
   const setsWon = state?.setsWon ?? {};
 
+  const isTeams = (config as any)?.gameMode === "teams" && Array.isArray((config as any)?.teams) && ((config as any)?.teams?.length ?? 0) >= 2;
+  const teams = ((config as any)?.teams ?? []) as any[];
+  const teamLegsWon = (state as any)?.teamLegsWon ?? {};
+  const teamSetsWon = (state as any)?.teamSetsWon ?? {};
+
   const currentSet = state?.currentSet ?? 1;
   const currentLeg = state?.currentLeg ?? 1;
   const legsPerSet = config?.legsPerSet ?? "?";
@@ -76,24 +81,52 @@ export default function X01LegOverlayV3({
   // ------------------------------------------------------------
   // Détermination vainqueur / classement
   // ------------------------------------------------------------
+  // ------------------------------------------------------------
+  // Détermination vainqueur (solo/multi) / équipe gagnante (teams)
+  // ------------------------------------------------------------
   const winnerId =
-    state?.lastLegWinnerId ||
-    state?.lastWinnerId ||
-    state?.lastWinningPlayerId ||
+    (state as any)?.lastLegWinnerId ||
+    (state as any)?.lastWinnerId ||
+    (state as any)?.lastWinningPlayerId ||
     null;
 
-  const winner =
-    players.find((p: any) => p.id === winnerId) || players[0] || null;
+  const winner = !isTeams
+    ? players.find((p: any) => p.id === winnerId) || players[0] || null
+    : null;
 
   const opponent =
-    winner && players.length >= 2
+    !isTeams && winner && players.length >= 2
       ? players.find((p: any) => p.id !== winner.id)
       : null;
 
-  const winnerSets = winner ? setsWon[winner.id] ?? 0 : 0;
-  const winnerLegs = winner ? legsWon[winner.id] ?? 0 : 0;
-  const opponentSets = opponent ? setsWon[opponent.id] ?? 0 : 0;
-  const opponentLegs = opponent ? legsWon[opponent.id] ?? 0 : 0;
+  const winnerSets = !isTeams && winner ? (setsWon as any)[winner.id] ?? 0 : 0;
+  const winnerLegs = !isTeams && winner ? (legsWon as any)[winner.id] ?? 0 : 0;
+  const opponentSets = !isTeams && opponent ? (setsWon as any)[opponent.id] ?? 0 : 0;
+  const opponentLegs = !isTeams && opponent ? (legsWon as any)[opponent.id] ?? 0 : 0;
+
+  // Teams: on déduit l'équipe gagnante via teamSetsWon/teamLegsWon (fallback: 1ère team)
+  const rankedTeams = isTeams
+    ? [...teams].sort((a: any, b: any) => {
+        const aSets = (teamSetsWon as any)[a.id] ?? 0;
+        const bSets = (teamSetsWon as any)[b.id] ?? 0;
+        if (bSets !== aSets) return bSets - aSets;
+        const aLegs = (teamLegsWon as any)[a.id] ?? 0;
+        const bLegs = (teamLegsWon as any)[b.id] ?? 0;
+        if (bLegs !== aLegs) return bLegs - aLegs;
+
+        const aRem = (a.players || []).reduce(
+          (sum: number, pid: string) => sum + ((scores as any)[pid] ?? (config?.startScore ?? 0)),
+          0
+        );
+        const bRem = (b.players || []).reduce(
+          (sum: number, pid: string) => sum + ((scores as any)[pid] ?? (config?.startScore ?? 0)),
+          0
+        );
+        return aRem - bRem;
+      })
+    : [];
+
+  const winningTeam = isTeams ? rankedTeams[0] || teams[0] || null : null;
 
   const victoryLabel =
     status === "match_end"
@@ -150,9 +183,10 @@ export default function X01LegOverlayV3({
   // ------------------------------------------------------------
   // Classement multi (3+ joueurs)
   // ------------------------------------------------------------
-  const isMulti = players.length >= 3;
+  const isDuel = !isTeams && players.length === 2;
+  const isMultiPlayers = !isTeams && players.length >= 3;
 
-  const rankedPlayers = isMulti
+  const rankedPlayers = isMultiPlayers
     ? [...players].sort((a: any, b: any) => {
         const aSets = setsWon[a.id] ?? 0;
         const bSets = setsWon[b.id] ?? 0;
@@ -278,8 +312,19 @@ export default function X01LegOverlayV3({
             </div>
           </div>
 
-          {/* 1v1 : duel layout / 3+ : classement */}
-          {!isMulti ? (
+          {/* Solo/Multijoueurs : duel ou classement joueurs — TEAMS : classement équipes */}
+          {isTeams ? (
+            <TeamRankingLayout
+              teams={rankedTeams}
+              players={players}
+              scores={scores}
+              teamSetsWon={teamSetsWon}
+              teamLegsWon={teamLegsWon}
+              accent={accent}
+              t={t}
+              startScore={config?.startScore ?? 0}
+            />
+          ) : isDuel ? (
             <DuelLayout
               winner={winner}
               opponent={opponent}
@@ -302,7 +347,7 @@ export default function X01LegOverlayV3({
           )}
 
           {/* Mini stats vainqueur + perdant */}
-          {showMiniStats && (
+          {!isTeams && showMiniStats && (
             <div
               style={{
                 display: "flex",
@@ -326,6 +371,15 @@ export default function X01LegOverlayV3({
                 lose={opponent ? String(oBestVisit) : "-"}
               />
             </div>
+          )}
+
+          {status === "match_end" && (
+            <RecordsPanels
+              players={players}
+              liveStatsByPlayer={liveStatsByPlayer}
+              accent={accent}
+              t={t}
+            />
           )}
 
           {/* BOUTONS */}
@@ -698,6 +752,322 @@ function RankingLayout({
             </div>
           );
         })}
+      </div>
+    </div>
+  );
+}
+
+
+// ------------------------------------------------------------
+// Layout classement TEAMS (jusqu'à 4 équipes)
+// ------------------------------------------------------------
+function TeamRankingLayout({
+  teams,
+  players,
+  scores,
+  teamSetsWon,
+  teamLegsWon,
+  startScore,
+  accent,
+  t,
+}: {
+  teams: any[];
+  players: any[];
+  scores: Record<string, number>;
+  teamSetsWon: Record<string, number>;
+  teamLegsWon: Record<string, number>;
+  startScore: number;
+  accent: string;
+  t: (k: string, d: string) => string;
+}) {
+  if (!teams || teams.length === 0) return null;
+
+  const playerById: Record<string, any> = {};
+  for (const p of players || []) playerById[p.id] = p;
+
+  return (
+    <div style={{ marginTop: 4 }}>
+      <div
+        style={{
+          fontSize: 13,
+          fontWeight: 700,
+          color: accent,
+          marginBottom: 6,
+        }}
+      >
+        {t("x01.leg_overlay.final_ranking_teams", "Classement final (équipes)")}
+      </div>
+
+      <div
+        style={{
+          borderRadius: 16,
+          border: "1px solid rgba(255,255,255,0.18)",
+          background:
+            "linear-gradient(145deg,rgba(0,0,0,0.9),rgba(0,0,0,0.45))",
+          padding: 8,
+        }}
+      >
+        {teams.map((team: any, index: number) => {
+          const rank = index + 1;
+          const st = (teamSetsWon as any)[team.id] ?? 0;
+          const lg = (teamLegsWon as any)[team.id] ?? 0;
+
+          const memberIds: string[] = (team.players || []).filter(Boolean);
+          const remaining = memberIds.reduce(
+            (sum, pid) => sum + ((scores as any)[pid] ?? startScore),
+            0
+          );
+
+          return (
+            <div
+              key={team.id}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 10,
+                padding: "8px 8px",
+                borderRadius: 14,
+                background:
+                  rank === 1
+                    ? "rgba(255,215,120,0.1)"
+                    : "rgba(255,255,255,0.04)",
+                marginBottom: 6,
+              }}
+            >
+              <div
+                style={{
+                  width: 22,
+                  textAlign: "center",
+                  fontWeight: 900,
+                  color: rank === 1 ? accent : "#ddd",
+                  fontSize: 13,
+                }}
+              >
+                {rank}.
+              </div>
+
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "baseline",
+                    justifyContent: "space-between",
+                    gap: 10,
+                  }}
+                >
+                  <div
+                    style={{
+                      fontSize: 14,
+                      fontWeight: 850,
+                      color: "#fff",
+                      whiteSpace: "nowrap",
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                    }}
+                  >
+                    {team.name}
+                  </div>
+
+                  <div
+                    style={{
+                      fontSize: 11,
+                      color: "#cfd1d7",
+                      fontWeight: 750,
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    Sets {st} · Legs {lg} · Score {remaining}
+                  </div>
+                </div>
+
+                <div
+                  style={{
+                    display: "flex",
+                    gap: 6,
+                    marginTop: 6,
+                    flexWrap: "wrap",
+                  }}
+                >
+                  {memberIds.map((pid) => {
+                    const p = playerById[pid];
+                    const avatar =
+                      p?.avatarDataUrl || p?.avatarUrl || p?.photoUrl || p?.avatar || null;
+                    const s = (scores as any)[pid] ?? startScore;
+
+                    return (
+                      <div
+                        key={pid}
+                        style={{
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: 6,
+                          padding: "3px 6px",
+                          borderRadius: 999,
+                          background: "rgba(0,0,0,0.35)",
+                          border: "1px solid rgba(255,255,255,0.10)",
+                        }}
+                      >
+                        <AvatarMedallion avatar={avatar} size={22} />
+                        <div style={{ display: "flex", flexDirection: "column", lineHeight: 1.05 }}>
+                          <div
+                            style={{
+                              fontSize: 11,
+                              fontWeight: 750,
+                              color: "#fff",
+                              maxWidth: 110,
+                              whiteSpace: "nowrap",
+                              overflow: "hidden",
+                              textOverflow: "ellipsis",
+                            }}
+                          >
+                            {p?.name ?? "—"}
+                          </div>
+                          <div style={{ fontSize: 10, color: "#cfd1d7", fontWeight: 700 }}>
+                            {s}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ------------------------------------------------------------
+// Records (match_end) : Meilleure Visit + Best Score
+// - Affiche le top joueur (avatar + valeur)
+// - Mini classement en dessous
+// ------------------------------------------------------------
+function RecordsPanels({
+  players,
+  liveStatsByPlayer,
+  accent,
+  t,
+}: {
+  players: any[];
+  liveStatsByPlayer: any;
+  accent: string;
+  t: (k: string, d: string) => string;
+}) {
+  const statsBy = liveStatsByPlayer || {};
+
+  const byBestVisit = [...(players || [])]
+    .map((p) => ({
+      p,
+      v: (statsBy?.[p.id]?.bestVisit ?? 0) as number,
+    }))
+    .sort((a, b) => b.v - a.v);
+
+  const byBestScore = [...(players || [])]
+    .map((p) => ({
+      p,
+      v: (statsBy?.[p.id]?.totalScore ?? 0) as number,
+    }))
+    .sort((a, b) => b.v - a.v);
+
+  const TopK = ({
+    title,
+    items,
+  }: {
+    title: string;
+    items: { p: any; v: number }[];
+  }) => {
+    const top = items[0];
+    if (!top) return null;
+
+    const avatar =
+      top.p?.avatarDataUrl || top.p?.avatarUrl || top.p?.photoUrl || top.p?.avatar || null;
+
+    return (
+      <div
+        style={{
+          flex: 1,
+          borderRadius: 16,
+          border: "1px solid rgba(255,255,255,0.18)",
+          background:
+            "linear-gradient(145deg,rgba(0,0,0,0.78),rgba(0,0,0,0.38))",
+          padding: 10,
+          minWidth: 0,
+        }}
+      >
+        <div style={{ fontSize: 12, fontWeight: 850, color: accent, marginBottom: 8 }}>
+          {title}
+        </div>
+
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <AvatarMedallion avatar={avatar} size={42} />
+          <div style={{ minWidth: 0 }}>
+            <div
+              style={{
+                fontSize: 13,
+                fontWeight: 850,
+                color: "#fff",
+                whiteSpace: "nowrap",
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+              }}
+            >
+              {top.p?.name ?? "—"}
+            </div>
+            <div style={{ fontSize: 18, fontWeight: 950, color: accent, marginTop: 2 }}>
+              {top.v}
+            </div>
+          </div>
+        </div>
+
+        <div style={{ marginTop: 8 }}>
+          {items.slice(0, 4).map((it, idx) => (
+            <div
+              key={it.p?.id ?? idx}
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                gap: 10,
+                padding: "4px 2px",
+                borderTop: idx === 0 ? "none" : "1px solid rgba(255,255,255,0.08)",
+                fontSize: 11,
+                color: "#cfd1d7",
+              }}
+            >
+              <span
+                style={{
+                  maxWidth: 160,
+                  whiteSpace: "nowrap",
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                }}
+              >
+                {idx + 1}. {it.p?.name ?? "—"}
+              </span>
+              <span style={{ fontWeight: 850, color: "#fff" }}>{it.v}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  };
+
+  return (
+    <div style={{ marginTop: 12 }}>
+      <div style={{ fontSize: 12, fontWeight: 850, color: "#cfd1d7", marginBottom: 8 }}>
+        {t("x01.leg_overlay.records", "Records")}
+      </div>
+
+      <div style={{ display: "flex", gap: 10 }}>
+        <TopK
+          title={t("x01.leg_overlay.best_visit", "Meilleure Visit")}
+          items={byBestVisit}
+        />
+        <TopK
+          title={t("x01.leg_overlay.best_score", "Best Score")}
+          items={byBestScore}
+        />
       </div>
     </div>
   );
