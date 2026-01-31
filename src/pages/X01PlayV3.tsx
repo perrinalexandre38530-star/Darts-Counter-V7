@@ -2927,6 +2927,7 @@ if (isLandscapeTablet) {
                   style={{
                     padding: 8,
                     borderRadius: 14,
+                    mixBlendMode: "screen",
                     border: "1px solid rgba(255,255,255,0.08)",
                     background: "linear-gradient(180deg, rgba(10,10,12,.9), rgba(6,6,8,.95))",
                     textAlign: "center",
@@ -2943,6 +2944,7 @@ if (isLandscapeTablet) {
                   style={{
                     padding: 14,
                     borderRadius: 14,
+                    mixBlendMode: "screen",
                     border: "1px solid rgba(255,255,255,0.08)",
                     background: "linear-gradient(180deg, rgba(10,10,12,.9), rgba(6,6,8,.95))",
                     textAlign: "center",
@@ -2967,6 +2969,7 @@ if (isLandscapeTablet) {
                         style={{
                           height: 40,
                           borderRadius: 14,
+                    mixBlendMode: "screen",
                           padding: "0 14px",
                           border: "1px solid rgba(255,255,255,0.14)",
                           background:
@@ -2988,6 +2991,7 @@ if (isLandscapeTablet) {
                     border: isBustLocked ? "1px solid rgba(255,80,80,.65)" : "1px solid transparent",
                     background: isBustLocked ? "rgba(120,0,0,.10)" : "transparent",
                     borderRadius: 14,
+                    mixBlendMode: "screen",
                     padding: 6,
                     height: "100%",
                     boxSizing: "border-box",
@@ -3017,6 +3021,7 @@ if (isLandscapeTablet) {
                         marginBottom: 8,
                         padding: "8px 10px",
                         borderRadius: 14,
+                    mixBlendMode: "screen",
                         border: "1px solid rgba(255,255,255,0.10)",
                         background: "rgba(0,0,0,0.25)",
                         boxShadow: "0 10px 24px rgba(0,0,0,0.45)",
@@ -3300,6 +3305,7 @@ if (isLandscapeTablet) {
           style={{
             width: "100%",
             borderRadius: 14,
+                    mixBlendMode: "screen",
             padding: "12px 14px",
             border: "1px solid rgba(255,255,255,0.10)",
             background:
@@ -3481,6 +3487,7 @@ if (isLandscapeTablet) {
             style={{
               padding: 14,
               borderRadius: 14,
+                    mixBlendMode: "screen",
               border: "1px solid rgba(255,255,255,0.08)",
               background:
                 "linear-gradient(180deg, rgba(10,10,12,.9), rgba(6,6,8,.95))",
@@ -3498,6 +3505,7 @@ if (isLandscapeTablet) {
             style={{
               padding: 14,
               borderRadius: 14,
+                    mixBlendMode: "screen",
               border: "1px solid rgba(255,255,255,0.08)",
               background:
                 "linear-gradient(180deg, rgba(10,10,12,.9), rgba(6,6,8,.95))",
@@ -3521,6 +3529,7 @@ if (isLandscapeTablet) {
                   style={{
                     height: 40,
                     borderRadius: 14,
+                    mixBlendMode: "screen",
                     padding: "0 14px",
                     border: `1px solid rgba(255,255,255,0.14)`,
                     background: `linear-gradient(180deg, rgba(255,255,255,0.10), rgba(0,0,0,0.35))`,
@@ -3543,6 +3552,7 @@ if (isLandscapeTablet) {
               border: isBustLocked ? "1px solid rgba(255,80,80,.65)" : "1px solid transparent",
               background: isBustLocked ? "rgba(120,0,0,.10)" : "transparent",
               borderRadius: 14,
+                    mixBlendMode: "screen",
               padding: 6,
               boxShadow: isBustLocked ? "0 0 0 1px rgba(255,80,80,.25), 0 10px 24px rgba(0,0,0,.45)" : undefined,
               filter: isBustLocked ? "grayscale(.25) saturate(.9)" : undefined,
@@ -3570,6 +3580,7 @@ if (isLandscapeTablet) {
                 marginBottom: 8,
                 padding: "8px 10px",
                 borderRadius: 14,
+                    mixBlendMode: "screen",
                 border: "1px solid rgba(255,255,255,0.10)",
                 background: "rgba(0,0,0,0.25)",
                 boxShadow: "0 10px 24px rgba(0,0,0,0.45)",
@@ -3857,12 +3868,13 @@ function HeaderBlock(props: HeaderBlockProps) {
                     width: "calc(100% + 12px)",
                     height: "calc(100% + 12px)",
                     objectFit: "cover",
-                    opacity: 0.075,
-                    filter: "blur(0.8px) saturate(1.05)",
+                    opacity: 0.14,
+                    filter: "blur(0.35px) saturate(1.15) contrast(1.08)",
                     transform: "scale(1.15)",
                     pointerEvents: "none",
                     zIndex: 0,
                     borderRadius: 14,
+                    mixBlendMode: "screen",
                   }}
                 />
                 <div
@@ -3871,8 +3883,9 @@ function HeaderBlock(props: HeaderBlockProps) {
                     position: "absolute",
                     inset: -6,
                     borderRadius: 14,
+                    mixBlendMode: "screen",
                     background:
-                      "radial-gradient(circle at 50% 40%, rgba(0,0,0,0.10), rgba(0,0,0,0.55) 70%, rgba(0,0,0,0.75))",
+                      "radial-gradient(circle at 50% 40%, rgba(0,0,0,0.10), rgba(0,0,0,0.45) 70%, rgba(0,0,0,0.70))",
                     pointerEvents: "none",
                     zIndex: 0,
                   }}
@@ -4393,6 +4406,7 @@ function TeamsPlayersList(props: {
             key={team.id}
             style={{
               borderRadius: 14,
+                    mixBlendMode: "screen",
               border: "1px solid rgba(255,255,255,.08)",
               background:
                 "linear-gradient(180deg, rgba(28,28,32,.55), rgba(18,18,20,.55))",

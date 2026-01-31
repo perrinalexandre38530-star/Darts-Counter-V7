@@ -100,6 +100,9 @@ export default function PetanqueMeneWizard(props: Props) {
   const [memberPickForWinner, setMemberPickForWinner] = React.useState<string>(winnerId);
   const [memberChosenId, setMemberChosenId] = React.useState<string | null>(null);
 
+  // UX: in stats grid we show only big icons; editing happens in a small popover (- 0 +)
+  const [activeStat, setActiveStat] = React.useState<StatKey | null>(null);
+
   const winner = React.useMemo(
     () => participants.find((p) => p.id === winnerId) ?? participants[0],
     [participants, winnerId]
@@ -118,6 +121,7 @@ export default function PetanqueMeneWizard(props: Props) {
     setMemberPickOpen(false);
     setMemberPickStat(null);
     setMemberChosenId(null);
+    setActiveStat(null);
   }, [open, initialWinnerId, initialPoints, initialMeneStartedAt, participants]);
 
   // timer
@@ -176,6 +180,19 @@ export default function PetanqueMeneWizard(props: Props) {
       winner?.kind === "team" ? (winner.members?.[0]?.id ?? winner.id) : winner.id;
     safeBump(targetPlayerId, stat, delta);
   };
+
+  const getWinnerStatValue = React.useCallback(
+    (stat: StatKey) => {
+      if (!winner) return 0;
+      if (winner.kind === "team") {
+        let t = 0;
+        for (const m of winner.members ?? []) t += Number(alloc[keyFor(m.id, stat)] || 0);
+        return t;
+      }
+      return Number(alloc[keyFor(winner.id, stat)] || 0);
+    },
+    [alloc, winner]
+  );
 
   const confirm = () => {
     if (!canConfirm) return;
@@ -408,60 +425,141 @@ export default function PetanqueMeneWizard(props: Props) {
             <div style={{ fontWeight: 950, marginBottom: 8 }}>
               Comment les points ont été marqués ?
             </div>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 10 }}>
+            {/*
+              UX: grid d'icônes lisible.
+              On clique une icône -> popover (- 0 +) pour modifier cette action.
+            */}
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 12 }}>
               {stats.map((it) => {
-                // aggregate value across all players for that stat (winner/team members)
-                let v = 0;
-                if (winner?.kind === "team") {
-                  for (const m of winner.members ?? []) {
-                    v += Number(alloc[keyFor(m.id, it.k)] || 0);
-                  }
-                } else {
-                  v = Number(alloc[keyFor(winner.id, it.k)] || 0);
-                }
-
-                const disabledPlus = mustMatchPoints && allocatedTotal >= points;
+                const v = getWinnerStatValue(it.k);
+                const on = activeStat === it.k;
 
                 return (
-                  <div
+                  <button
                     key={it.k}
+                    onClick={() => setActiveStat(it.k)}
                     style={{
-                      borderRadius: 16,
-                      border: `1px solid ${theme?.borderSoft ?? "rgba(255,255,255,0.14)"}`,
-                      background: "rgba(255,255,255,0.04)",
-                      padding: 10,
+                      ...btn,
+                      borderRadius: 18,
+                      padding: "14px 12px",
+                      background: on ? "rgba(255,255,255,0.10)" : "rgba(255,255,255,0.05)",
+                      border: `1px solid ${on ? (theme?.primary ?? "#FFD24A") + "88" : theme?.borderSoft ?? "rgba(255,255,255,0.14)"}`,
                       display: "flex",
                       flexDirection: "column",
-                      gap: 8,
-                      minWidth: 0,
+                      alignItems: "center",
+                      justifyContent: "center",
+                      gap: 10,
+                      position: "relative",
+                      minHeight: 108,
                     }}
+                    title={it.label}
                   >
-                    <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
-                      <img
-                        src={statIcons[it.k]}
-                        alt=""
-                        style={{ width: 26, height: 26, objectFit: "contain", flex: "0 0 auto" }}
-                        draggable={false}
-                      />
-                      <div style={{ minWidth: 0, flex: 1 }}>
-                        <div style={{ fontWeight: 1000, fontSize: 13, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                          {it.label}
-                        </div>
-                        {winner?.kind === "team" && (winner.members?.length ?? 0) > 1 ? (
-                          <div style={{ opacity: 0.7, fontSize: 12, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                            {memberChosenId ? `Attribué à: ${winner.members?.find((m)=>m.id===memberChosenId)?.label ?? ""}` : "Choix joueur à la prochaine action"}
-                          </div>
-                        ) : (
-                          <div style={{ opacity: 0.7, fontSize: 12 }}>
-                            {winner?.kind === "team" ? "Équipe" : "Joueur"}
-                          </div>
-                        )}
+                    {/* badge valeur seulement si > 0 (plus lisible, pas de 0 partout) */}
+                    {v > 0 ? (
+                      <div
+                        style={{
+                          position: "absolute",
+                          top: 10,
+                          right: 10,
+                          minWidth: 26,
+                          height: 26,
+                          padding: "0 8px",
+                          borderRadius: 999,
+                          display: "grid",
+                          placeItems: "center",
+                          border: `1px solid ${(theme?.primary ?? "#FFD24A")}99`,
+                          color: theme?.primary ?? "#FFD24A",
+                          fontWeight: 1100,
+                          background: "rgba(0,0,0,0.35)",
+                        }}
+                      >
+                        {v}
                       </div>
+                    ) : null}
+
+                    <img
+                      src={statIcons[it.k]}
+                      alt=""
+                      style={{ width: 56, height: 56, objectFit: "contain", filter: "drop-shadow(0 10px 24px rgba(0,0,0,0.5))" }}
+                      draggable={false}
+                    />
+                    <div style={{ fontWeight: 1000, fontSize: 12, opacity: 0.92, textAlign: "center", lineHeight: 1.15 }}>
+                      {it.label}
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Popover édition (- 0 +) */}
+            {activeStat ? (() => {
+              const it = stats.find((s) => s.k === activeStat);
+              if (!it) return null;
+              const v = getWinnerStatValue(it.k);
+              const disabledPlus = mustMatchPoints && allocatedTotal >= points;
+              const isTeamMulti = winner?.kind === "team" && (winner.members?.length ?? 0) > 1;
+
+              return (
+                <div
+                  role="presentation"
+                  onPointerDown={(e) => {
+                    // click outside popover closes only the popover
+                    if (e.target === e.currentTarget) setActiveStat(null);
+                  }}
+                  style={{
+                    position: "fixed",
+                    inset: 0,
+                    zIndex: 10000,
+                    background: "rgba(0,0,0,0.35)",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    padding: 14,
+                    backdropFilter: "blur(8px)",
+                  }}
+                >
+                  <div
+                    style={{
+                      width: "min(420px, 92vw)",
+                      borderRadius: 18,
+                      border: `1px solid ${theme?.borderSoft ?? "rgba(255,255,255,0.14)"}`,
+                      background: "rgba(10,12,24,0.98)",
+                      boxShadow: "0 28px 90px rgba(0,0,0,0.75)",
+                      padding: 14,
+                    }}
+                    onPointerDown={(e) => e.stopPropagation()}
+                  >
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
+                        <img
+                          src={statIcons[it.k]}
+                          alt=""
+                          style={{ width: 36, height: 36, objectFit: "contain" }}
+                          draggable={false}
+                        />
+                        <div style={{ minWidth: 0 }}>
+                          <div style={{ fontWeight: 1200, letterSpacing: 0.2 }}>{it.label}</div>
+                          <div style={{ opacity: 0.72, fontSize: 12, marginTop: 2 }}>
+                            {isTeamMulti
+                              ? (memberChosenId
+                                  ? `Attribué à : ${winner?.members?.find((m) => m.id === memberChosenId)?.label ?? ""}`
+                                  : "Choix joueur à la prochaine action")
+                              : (winner?.kind === "team" ? "Équipe" : "Joueur")}
+                          </div>
+                        </div>
+                      </div>
+                      <button
+                        style={{ ...btn, padding: "8px 12px" }}
+                        onClick={() => setActiveStat(null)}
+                        title="Fermer"
+                      >
+                        Fermer
+                      </button>
                     </div>
 
-                    <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 10, flexWrap: "wrap" }}>
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 14, marginTop: 14 }}>
                       <button
-                        style={{ ...btn, width: 40, height: 36, padding: 0, opacity: v > 0 ? 1 : 0.7 }}
+                        style={{ ...btn, width: 58, height: 52, padding: 0, fontSize: 22, opacity: v > 0 ? 1 : 0.75 }}
                         onClick={() => requestBump(it.k, -1)}
                         title="-"
                       >
@@ -469,22 +567,23 @@ export default function PetanqueMeneWizard(props: Props) {
                       </button>
                       <div
                         style={{
-                          width: 36,
-                          height: 36,
+                          width: 64,
+                          height: 64,
                           borderRadius: 999,
                           display: "grid",
                           placeItems: "center",
-                          border: `1px solid ${theme?.primary ?? "#FFD24A"}66`,
+                          border: `1px solid ${theme?.primary ?? "#FFD24A"}77`,
                           color: theme?.primary ?? "#FFD24A",
-                          fontWeight: 1100,
-                          fontVariantNumeric: "tabular-nums" as any,
+                          fontSize: 22,
+                          fontWeight: 1200,
+                          background: "rgba(255,255,255,0.05)",
                         }}
-                        title="Valeur allouée"
+                        title="Valeur"
                       >
                         {v}
                       </div>
                       <button
-                        style={{ ...btn, width: 40, height: 36, padding: 0, opacity: disabledPlus ? 0.45 : 1 }}
+                        style={{ ...btn, width: 58, height: 52, padding: 0, fontSize: 22, opacity: disabledPlus ? 0.45 : 1 }}
                         onClick={() => requestBump(it.k, +1)}
                         title="+"
                         disabled={disabledPlus}
@@ -492,10 +591,16 @@ export default function PetanqueMeneWizard(props: Props) {
                         +
                       </button>
                     </div>
+
+                    {mustMatchPoints ? (
+                      <div style={{ opacity: 0.75, fontSize: 12, textAlign: "center", marginTop: 10 }}>
+                        Alloué : {allocatedTotal}/{points}
+                      </div>
+                    ) : null}
                   </div>
-                );
-              })}
-            </div>
+                </div>
+              );
+            })() : null}
           </div>
 
           {/* footer */}
