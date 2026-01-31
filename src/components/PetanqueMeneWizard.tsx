@@ -430,61 +430,68 @@ export default function PetanqueMeneWizard(props: Props) {
                       border: `1px solid ${theme?.borderSoft ?? "rgba(255,255,255,0.14)"}`,
                       background: "rgba(255,255,255,0.04)",
                       padding: 10,
-                      display: "grid",
-                      gridTemplateColumns: "auto 1fr auto auto auto",
-                      alignItems: "center",
-                      gap: 10,
+                      display: "flex",
+                      flexDirection: "column",
+                      gap: 8,
+                      minWidth: 0,
                     }}
                   >
-                    <img
-                      src={statIcons[it.k]}
-                      alt=""
-                      style={{ width: 26, height: 26, objectFit: "contain" }}
-                      draggable={false}
-                    />
-                    <div style={{ minWidth: 0 }}>
-                      <div style={{ fontWeight: 1000, fontSize: 13 }}>{it.label}</div>
-                      {winner?.kind === "team" && (winner.members?.length ?? 0) > 1 ? (
-                        <div style={{ opacity: 0.7, fontSize: 12 }}>
-                          {memberChosenId ? `Attribué à: ${winner.members?.find((m)=>m.id===memberChosenId)?.label ?? ""}` : "Choix joueur à la prochaine action"}
+                    <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
+                      <img
+                        src={statIcons[it.k]}
+                        alt=""
+                        style={{ width: 26, height: 26, objectFit: "contain", flex: "0 0 auto" }}
+                        draggable={false}
+                      />
+                      <div style={{ minWidth: 0, flex: 1 }}>
+                        <div style={{ fontWeight: 1000, fontSize: 13, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                          {it.label}
                         </div>
-                      ) : (
-                        <div style={{ opacity: 0.7, fontSize: 12 }}>
-                          {winner?.kind === "team" ? "Équipe" : "Joueur"}
-                        </div>
-                      )}
+                        {winner?.kind === "team" && (winner.members?.length ?? 0) > 1 ? (
+                          <div style={{ opacity: 0.7, fontSize: 12, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                            {memberChosenId ? `Attribué à: ${winner.members?.find((m)=>m.id===memberChosenId)?.label ?? ""}` : "Choix joueur à la prochaine action"}
+                          </div>
+                        ) : (
+                          <div style={{ opacity: 0.7, fontSize: 12 }}>
+                            {winner?.kind === "team" ? "Équipe" : "Joueur"}
+                          </div>
+                        )}
+                      </div>
                     </div>
 
-                    <button
-                      style={{ ...btn, width: 40, height: 36, padding: 0, opacity: v > 0 ? 1 : 0.7 }}
-                      onClick={() => requestBump(it.k, -1)}
-                      title="-"
-                    >
-                      −
-                    </button>
-                    <div
-                      style={{
-                        width: 36,
-                        height: 36,
-                        borderRadius: 999,
-                        display: "grid",
-                        placeItems: "center",
-                        border: `1px solid ${theme?.primary ?? "#FFD24A"}66`,
-                        color: theme?.primary ?? "#FFD24A",
-                        fontWeight: 1100,
-                      }}
-                      title="Valeur allouée"
-                    >
-                      {v}
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 10, flexWrap: "wrap" }}>
+                      <button
+                        style={{ ...btn, width: 40, height: 36, padding: 0, opacity: v > 0 ? 1 : 0.7 }}
+                        onClick={() => requestBump(it.k, -1)}
+                        title="-"
+                      >
+                        −
+                      </button>
+                      <div
+                        style={{
+                          width: 36,
+                          height: 36,
+                          borderRadius: 999,
+                          display: "grid",
+                          placeItems: "center",
+                          border: `1px solid ${theme?.primary ?? "#FFD24A"}66`,
+                          color: theme?.primary ?? "#FFD24A",
+                          fontWeight: 1100,
+                          fontVariantNumeric: "tabular-nums" as any,
+                        }}
+                        title="Valeur allouée"
+                      >
+                        {v}
+                      </div>
+                      <button
+                        style={{ ...btn, width: 40, height: 36, padding: 0, opacity: disabledPlus ? 0.45 : 1 }}
+                        onClick={() => requestBump(it.k, +1)}
+                        title="+"
+                        disabled={disabledPlus}
+                      >
+                        +
+                      </button>
                     </div>
-                    <button
-                      style={{ ...btn, width: 40, height: 36, padding: 0, opacity: disabledPlus ? 0.45 : 1 }}
-                      onClick={() => requestBump(it.k, +1)}
-                      title="+"
-                      disabled={disabledPlus}
-                    >
-                      +
-                    </button>
                   </div>
                 );
               })}

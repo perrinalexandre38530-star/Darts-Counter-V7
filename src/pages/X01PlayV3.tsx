@@ -9,6 +9,7 @@
 import React, { useEffect } from "react";
 import { useViewport } from "../hooks/useViewport";
 
+import { getTeamAvatarUrl } from "../assets/teamAvatars";
 import type {
   X01ConfigV3,
   X01PlayerId,
@@ -27,8 +28,6 @@ import { extAdaptCheckoutSuggestion, type X01OutModeV3 } from "../lib/x01v3/x01C
 
 import { useTheme } from "../contexts/ThemeContext";
 import { useLang } from "../contexts/LangContext";
-
-import { useDevMode } from "../contexts/DevModeContext";
 import { History } from "../lib/history";
 import { useVoiceScoreInput } from "../hooks/useVoiceScoreInput";
 
@@ -821,6 +820,33 @@ function computeCheckoutText(
 // Composant principal X01PlayV3
 // =============================================================
 
+
+// --- TEAM AVATAR (assets preferred) ---
+type _TeamSkin = "pink" | "gold" | "blue" | "green";
+const teamAvatarSrc = (skin: _TeamSkin) => getTeamAvatarUrl(skin);
+
+// --- TEAM SKIN RESOLVER (from team name/color) ---
+type TeamSkin = "pink" | "gold" | "blue" | "green";
+const resolveTeamSkin = (team: any): TeamSkin => {
+  const n = String(team?.name ?? "").toLowerCase();
+  const c = String(team?.color ?? "").toLowerCase();
+
+  // name hints
+  if (n.includes("pink") || n.includes("rose")) return "pink";
+  if (n.includes("gold") || n.includes("jaune") || n.includes("yellow")) return "gold";
+  if (n.includes("blue") || n.includes("bleu")) return "blue";
+  if (n.includes("green") || n.includes("vert")) return "green";
+
+  // color hints (hex-ish)
+  if (c.includes("ff4f") || c.includes("ff00") || c.includes("pink") || c.includes("magenta")) return "pink";
+  if (c.includes("ffcf") || c.includes("ffb8") || c.includes("gold") || c.includes("yellow")) return "gold";
+  if (c.includes("18a0") || c.includes("00b0") || c.includes("blue") || c.includes("cyan")) return "blue";
+  if (c.includes("00e6") || c.includes("00f5") || c.includes("green")) return "green";
+
+  // stable fallback
+  return "gold";
+};
+const teamAvatarUrl = (team: any) => getTeamAvatarUrl(resolveTeamSkin(team));
 export default function X01PlayV3({
   config,
   onExit,
@@ -1002,12 +1028,8 @@ const forceSyncFromEngine = React.useCallback(() => {
 
   // ✅ CRITIQUE: la liste joueurs lit lastVisitsByPlayer, pas currentThrow
   if (activePlayerId) {
-    // ⚠️ IMPORTANT: ne pas écraser la "dernière volée" validée avec une visite vide (après validation/rotation)
-    // On sync seulement si on a des fléchettes (cas UNDO / resync en cours de volée)
-    if (raw.length) {
-      setLastVisitsByPlayer((m) => ({ ...m, [activePlayerId]: raw }));
-      setLastVisitIsBustByPlayer((m) => ({ ...m, [activePlayerId]: false }));
-    }
+    setLastVisitsByPlayer((m) => ({ ...m, [activePlayerId]: raw }));
+    setLastVisitIsBustByPlayer((m) => ({ ...m, [activePlayerId]: false }));
   }
 }, [state, activePlayerId]);
 
@@ -1218,6 +1240,8 @@ const teamsView = React.useMemo(() => {
         id: t.id,
         name: t.name || teamMetaById[String(t.id)]?.name || "TEAM",
         color: t.color || teamMetaById[String(t.id)]?.color || "#ffcf57",
+        avatarUrl: teamAvatarUrl(t),
+
         playerIds: ids,
         players: members,
         score,
@@ -2757,8 +2781,8 @@ if (isLandscapeTablet) {
             {useSetsUi && isTeamsMode && teamsView && (teamsView as any[]).length >= 2 ? (
               (teamsView as any[]).length === 2 ? (
                 <DuelHeaderCompact
-                  leftAvatarUrl={((teamsView as any[])[0]?.players?.[0]?.avatar as string) ?? ""}
-                  rightAvatarUrl={((teamsView as any[])[1]?.players?.[0]?.avatar as string) ?? ""}
+                  leftAvatarUrl={((teamsView as any[])[0]?.avatarUrl as string) ?? ""}
+                  rightAvatarUrl={((teamsView as any[])[1]?.avatarUrl as string) ?? ""}
                   leftSets={(state as any).teamSetsWon?.[((teamsView as any[])[0]?.id as any)] ?? 0}
                   rightSets={(state as any).teamSetsWon?.[((teamsView as any[])[1]?.id as any)] ?? 0}
                   leftLegs={(state as any).teamLegsWon?.[((teamsView as any[])[0]?.id as any)] ?? 0}
@@ -3163,8 +3187,8 @@ if (isLandscapeTablet) {
             {useSetsUi && isTeamsMode && teamsView && (teamsView as any[]).length >= 2 ? (
               (teamsView as any[]).length === 2 ? (
                 <DuelHeaderCompact
-                  leftAvatarUrl={((teamsView as any[])[0]?.players?.[0]?.avatar as string) ?? ""}
-                  rightAvatarUrl={((teamsView as any[])[1]?.players?.[0]?.avatar as string) ?? ""}
+                  leftAvatarUrl={((teamsView as any[])[0]?.avatarUrl as string) ?? ""}
+                  rightAvatarUrl={((teamsView as any[])[1]?.avatarUrl as string) ?? ""}
                   leftSets={(state as any).teamSetsWon?.[((teamsView as any[])[0]?.id as any)] ?? 0}
                   rightSets={(state as any).teamSetsWon?.[((teamsView as any[])[1]?.id as any)] ?? 0}
                   leftLegs={(state as any).teamLegsWon?.[((teamsView as any[])[0]?.id as any)] ?? 0}
@@ -4765,119 +4789,7 @@ function TeamsHeaderCompact({
           </div>
         );
       })}
-    
-      {/* ===== DEV X01 PANEL (DevMode) ===== */}
-      {dev?.enabled ? (
-        <>
-          <button
-            type="button"
-            onClick={() => setDevX01Open((v) => !v)}
-            style={{
-              position: "fixed",
-              right: 10,
-              bottom: 10,
-              zIndex: 2147483647,
-              padding: "10px 12px",
-              borderRadius: 14,
-              border: "1px solid rgba(255,255,255,.25)",
-              background: "rgba(255,40,40,.92)",
-              color: "#fff",
-              fontWeight: 900,
-              fontSize: 12,
-              letterSpacing: 0.3,
-              boxShadow: "0 10px 26px rgba(0,0,0,.45)",
-              cursor: "pointer",
-            }}
-            aria-label="Dev X01"
-          >
-            DEV X01
-          </button>
-
-          {devX01Open ? (
-            <div
-              style={{
-                position: "fixed",
-                right: 10,
-                bottom: 62,
-                zIndex: 2147483647,
-                width: 280,
-                borderRadius: 16,
-                border: "1px solid rgba(255,255,255,.12)",
-                background: "linear-gradient(180deg, rgba(18,18,22,.96), rgba(10,10,12,.92))",
-                boxShadow: "0 14px 40px rgba(0,0,0,.55)",
-                padding: 12,
-                color: "#fff",
-              }}
-            >
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                <div style={{ fontWeight: 900, fontSize: 13 }}>DEV PANEL X01</div>
-                <button
-                  type="button"
-                  onClick={() => setDevX01Open(false)}
-                  style={{
-                    border: "none",
-                    background: "rgba(255,255,255,.08)",
-                    color: "#fff",
-                    borderRadius: 10,
-                    padding: "6px 8px",
-                    cursor: "pointer",
-                    fontWeight: 900,
-                  }}
-                >
-                  ✕
-                </button>
-              </div>
-
-              <div style={{ marginTop: 10, fontSize: 12, opacity: 0.9 }}>
-                activePlayerId: <b>{String(activePlayerId || "")}</b>
-              </div>
-
-              <div style={{ marginTop: 10, display: "flex", gap: 8, alignItems: "center" }}>
-                <div style={{ fontSize: 12, opacity: 0.9 }}>Score</div>
-                <input
-                  value={devScore}
-                  onChange={(e) => setDevScore(parseInt(e.target.value || "0", 10) || 0)}
-                  style={{
-                    flex: 1,
-                    background: "rgba(255,255,255,.06)",
-                    border: "1px solid rgba(255,255,255,.10)",
-                    color: "#fff",
-                    borderRadius: 10,
-                    padding: "8px 10px",
-                    outline: "none",
-                  }}
-                />
-              </div>
-
-              <button
-                type="button"
-                onClick={() => {
-                  const mode: any = (config as any)?.finishMode ?? (config as any)?.outMode ?? "double";
-                  const sugg = extAdaptCheckoutSuggestion({ score: devScore, outMode: mode });
-                  console.log("[DEV X01] checkout suggestion", { devScore, mode, sugg });
-                  console.log("[DEV X01] lastVisitsByPlayer", lastVisitsByPlayer);
-                  alert(`Checkout(${mode}) ${devScore}: ${sugg?.label || sugg?.text || JSON.stringify(sugg)}`);
-                }}
-                style={{
-                  marginTop: 10,
-                  width: "100%",
-                  border: "none",
-                  borderRadius: 12,
-                  padding: "10px 12px",
-                  fontWeight: 900,
-                  cursor: "pointer",
-                  background: "rgba(255,200,0,.95)",
-                  color: "#111",
-                }}
-              >
-                Test checkout + log lastVisits
-              </button>
-            </div>
-          ) : null}
-        </>
-      ) : null}
-
-</div>
+    </div>
   );
 }
 
