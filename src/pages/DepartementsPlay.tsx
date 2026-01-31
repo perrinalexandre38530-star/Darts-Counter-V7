@@ -1,73 +1,53 @@
+// ============================================
+// src/pages/DepartementsPlay.tsx
+// TERRITORIES (Départements / Pays) — PLAY (STEP 5 FIX)
+// ✅ Carte cliquable + colorisée + liée au pays choisi en config
+// ✅ Pas de texte "AU TOUR DE" : le joueur actif est indiqué visuellement (glow)
+// ✅ Utilise le moteur PUR (src/territories/engine.ts)
+// ✅ France: base = france_departements.svg (déjà dans le projet) + overlay régions (france_regions.svg)
+// ============================================
+
 import React from "react";
 
+import PageHeader from "../components/PageHeader";
 import BackDot from "../components/BackDot";
 import InfoDot from "../components/InfoDot";
-import PageHeader from "../components/PageHeader";
 import ScoreInputHub from "../components/ScoreInputHub";
-import RulesModal from "../components/RulesModal";
-
-import tickerTerritoriesFR from "../assets/tickers/ticker_territories_fr.png";
-import tickerTerritoriesEN from "../assets/tickers/ticker_territories_en.png";
-import tickerTerritoriesDE from "../assets/tickers/ticker_territories_de.png";
-import tickerTerritoriesIT from "../assets/tickers/ticker_territories_it.png";
-import tickerTerritoriesES from "../assets/tickers/ticker_territories_es.png";
-import tickerTerritoriesUS from "../assets/tickers/ticker_territories_us.png";
-import tickerTerritoriesCN from "../assets/tickers/ticker_territories_cn.png";
-import tickerTerritoriesAU from "../assets/tickers/ticker_territories_au.png";
-import tickerTerritoriesJP from "../assets/tickers/ticker_territories_jp.png";
-import tickerTerritoriesRU from "../assets/tickers/ticker_territories_ru.png";
-import tickerTerritoriesWORLD from "../assets/tickers/ticker_territories_world.png";
-
-import franceMapSvgRaw from "../assets/maps/france_departements.svg?raw";
 
 import type { Dart as UIDart } from "../lib/types";
-import { getTerritoriesForMap, type TerritoryDef } from "../lib/territories/maps";
+import { useTheme } from "../contexts/ThemeContext";
+import { useLang } from "../contexts/LangContext";
 
-// =====================================================================================
-// src/pages/DepartementsPlay.tsx
-// TERRITORIES (Départements) — PLAY (Keypad darts)
-//
-// Objectif (MVP):
-// - Choisir un département (cible = son numéro)
-// - Jouer 3 fléchettes via le Keypad (ScoreInputHub)
-// - Si total volée == numéro du département => capture du territoire par l'équipe active
-// - Alternance équipes + rotation joueurs si multi-joueurs
-//
-// UI:
-// - ✅ Recadrage: carte en "flex:1" + SVG forcé en 100%/100% (contain)
-// - ✅ Ticker: TERRITORIES dynamique selon mapId/pays (dans PageHeader)
-// - ✅ Keypad: vrai keypad darts (ScoreInputHub)
-// - ✅ Règles: modal locale (n'altère pas InfoDot global)
-// - ✅ Header joueur actif compact
-// =====================================================================================
+import type { TerritoriesCountry, TerritoriesGameState, TerritoriesPlayer, TerritoriesTeam } from "../territories/types";
+import { buildTerritoriesMap } from "../territories/map";
+import TerritoriesMapView from "../territories/TerritoriesMapView";
+import { normalizeTerritoriesState, selectTerritory, applyVisit, endTurn } from "../territories/engine";
 
-type TeamKey = 0 | 1;
-
-type PlayConfig = {
-  mapId?: string; // "france" | "england" ...
-  rounds?: number;
-  objectiveTerritories?: number;
-  teamMode?: "solo" | "2v2" | "3v3";
-  teams?: {
-    team1: { ids: string[]; names?: string[] };
-    team2: { ids: string[]; names?: string[] };
-  };
+// Config payload saved by DepartementsConfig.tsx
+export type TerritoriesConfigPayload = {
+  players: number;
+  teamSize: 1 | 2 | 3;
+  selectedIds: string[];
+  teamsById?: Record<string, number>;
+  botsEnabled: boolean;
+  botLevel: "easy" | "normal" | "hard";
+  rounds: number;
+  objective: number;
+  mapId: string; // FR / EN / IT / ...
 };
 
-type TerritoryState = {
-  owner: TeamKey | null;
-  lastVisit?: { total: number; darts: UIDart[] };
-};
+const tickerGlob = import.meta.glob("../assets/tickers/ticker_territories_*.png", {
+  eager: true,
+  import: "default",
+}) as Record<string, string>;
 
-const TEAM_LABEL: Record<TeamKey, string> = { 0: "TEAM Gold", 1: "TEAM Pink" };
-
-function getTeamPlayers(cfg: PlayConfig, team: TeamKey): string[] {
-  const t = team === 0 ? cfg.teams?.team1 : cfg.teams?.team2;
-  const names = (t?.names && t.names.length ? t.names : null) as string[] | null;
-  const ids = (t?.ids && t.ids.length ? t.ids : null) as string[] | null;
-  if (names) return names;
-  if (ids) return ids;
-  return team === 0 ? ["Player A"] : ["Player B"];
+function findTerritoriesTicker(mapId: string): string | null {
+  const id = String(mapId || "").toLowerCase();
+  const suffix = `/ticker_territories_${id}.png`;
+  for (const k of Object.keys(tickerGlob)) {
+    if (k.toLowerCase().endsWith(suffix)) return tickerGlob[k];
+  }
+  return null;
 }
 
 function safeParse<T>(raw: string | null): T | null {
@@ -79,201 +59,201 @@ function safeParse<T>(raw: string | null): T | null {
   }
 }
 
-function normalizeMapToTickerKey(mapId?: string): string {
-  const m = (mapId || "france").toLowerCase();
-  if (m.includes("fr") || m.includes("france")) return "fr";
-  if (m.includes("en") || m.includes("england") || m.includes("uk") || m.includes("gb")) return "en";
-  if (m.includes("de") || m.includes("germany")) return "de";
-  if (m.includes("it") || m.includes("italy")) return "it";
-  if (m.includes("es") || m.includes("spain")) return "es";
-  if (m.includes("us") || m.includes("usa")) return "us";
-  if (m.includes("cn") || m.includes("china")) return "cn";
-  if (m.includes("au") || m.includes("australia")) return "au";
-  if (m.includes("jp") || m.includes("japan")) return "jp";
-  if (m.includes("ru") || m.includes("russia")) return "ru";
-  return "world";
+function normalizeMapIdToCountry(mapId?: string): TerritoriesCountry {
+  const m = String(mapId || "FR").toUpperCase().trim();
+  // Config uses EN for England => we map to UK svg pack
+  if (m === "EN" || m === "UK" || m === "GB") return "UK";
+  if (m === "FR") return "FR";
+  if (m === "IT") return "IT";
+  if (m === "DE") return "DE";
+  if (m === "ES") return "ES";
+  if (m === "US") return "US";
+  if (m === "CN") return "CN";
+  if (m === "AU") return "AU";
+  if (m === "JP") return "JP";
+  if (m === "RU") return "RU";
+  if (m === "WORLD") return "WORLD";
+  return "FR";
 }
 
-function tickerForMap(mapId?: string): string {
-  switch (normalizeMapToTickerKey(mapId)) {
-    case "fr":
-      return tickerTerritoriesFR;
-    case "en":
-      return tickerTerritoriesEN;
-    case "de":
-      return tickerTerritoriesDE;
-    case "it":
-      return tickerTerritoriesIT;
-    case "es":
-      return tickerTerritoriesES;
-    case "us":
-      return tickerTerritoriesUS;
-    case "cn":
-      return tickerTerritoriesCN;
-    case "au":
-      return tickerTerritoriesAU;
-    case "jp":
-      return tickerTerritoriesJP;
-    case "ru":
-      return tickerTerritoriesRU;
-    default:
-      return tickerTerritoriesWORLD;
+function shortName(id: string) {
+  const s = String(id || "").trim();
+  if (!s) return "Player";
+  if (s.length <= 12) return s;
+  return `${s.slice(0, 12)}…`;
+}
+
+const SOLO_COLORS = ["#ffd25a", "#ff5abe", "#52f7ff", "#7cff6b", "#c38bff", "#ff8f52"];
+
+function interleaveTeams(team0: string[], team1: string[]) {
+  const out: string[] = [];
+  const n = Math.max(team0.length, team1.length);
+  for (let i = 0; i < n; i++) {
+    if (team0[i]) out.push(team0[i]);
+    if (team1[i]) out.push(team1[i]);
   }
+  return out;
 }
 
 function dartScore(d: UIDart) {
   if (!d) return 0;
-  if (d.v === 0) return 0; // MISS
-  if (d.v === 25) return d.mult === 2 ? 50 : 25; // BULL / DBULL
+  if (d.v === 0) return 0;
+  if (d.v === 25) return d.mult === 2 ? 50 : 25;
   return d.v * (d.mult || 1);
 }
-function throwTotal(darts: UIDart[]) {
-  return (darts || []).reduce((acc, d) => acc + dartScore(d), 0);
+
+function computeVisitScores(darts: UIDart[]) {
+  const norm: UIDart[] = [...(darts || [])];
+  while (norm.length < 3) norm.push({ v: 0, mult: 1 });
+  return norm.slice(0, 3).map(dartScore);
 }
 
-/** Ex: "FR-75" => 75, "75" => 75, "2A" => 2 (MVP), "FR-2B" => 2 */
-function parseDeptTarget(id: string): number | null {
-  if (!id) return null;
-  const up = id.toUpperCase();
-  if (up.includes("2A") || up.includes("2B")) return 2; // MVP Corse (à affiner)
-  const nums = up.match(/\d+/g);
-  if (!nums || !nums.length) return null;
-  const n = Number(nums[nums.length - 1]);
-  if (!Number.isFinite(n)) return null;
-  return n;
-}
-
-function pad2(n: number) {
-  return String(n).padStart(2, "0");
-}
-
-function countOwned(territories: TerritoryDef[], stateById: Record<string, TerritoryState>) {
-  let a = 0;
-  let b = 0;
-  for (const t of territories) {
-    const st = stateById[t.id];
-    if (!st) continue;
-    if (st.owner === 0) a++;
-    if (st.owner === 1) b++;
+function countOwnedByOwnerId(state: TerritoriesGameState): Record<string, number> {
+  const out: Record<string, number> = {};
+  for (const t of state.map.territories) {
+    if (!t.ownerId) continue;
+    out[t.ownerId] = (out[t.ownerId] || 0) + 1;
   }
-  return { 0: a, 1: b } as Record<TeamKey, number>;
+  return out;
 }
+
+const RULES_TEXT = (objective: number) => `TERRITORIES
+
+But
+- Capturer ${objective} territoires.
+
+Déroulement (Mode Libre)
+1) Clique sur un territoire sur la carte pour choisir l'objectif.
+2) Joue une volée de 3 fléchettes au keypad.
+3) Valider : si la règle de capture est remplie, tu prends le territoire.
+4) Tour suivant.
+
+Notes
+- Le tour n'est pas affiché en texte : l'avatar actif est glow.
+- La carte est le coeur du gameplay (clic + couleurs).`;
 
 export default function DepartementsPlay(props: any) {
-  const cfg: PlayConfig =
-    props?.params?.config ||
-    props?.config ||
-    safeParse<PlayConfig>(localStorage.getItem("dc_departements_cfg")) ||
-    safeParse<PlayConfig>(localStorage.getItem("dc_territories_cfg")) ||
-    {};
+  const { t } = useLang();
+  const { theme } = useTheme();
 
-  const mapId = cfg.mapId || "france";
-  const roundsTotal = Math.max(1, Number(cfg.rounds || 12));
-  const objectiveTerritories = Math.max(1, Number(cfg.objectiveTerritories || 10));
+  const cfg =
+    (props?.params?.config as TerritoriesConfigPayload) ||
+    (props?.config as TerritoriesConfigPayload) ||
+    safeParse<TerritoriesConfigPayload>(localStorage.getItem("dc_modecfg_departements")) || {
+      players: 2,
+      teamSize: 1,
+      selectedIds: ["Player A", "Player B"],
+      botsEnabled: false,
+      botLevel: "normal",
+      rounds: 12,
+      objective: 10,
+      mapId: "FR",
+    };
 
-  const territories: TerritoryDef[] = React.useMemo(() => getTerritoriesForMap(mapId), [mapId]);
+  const mapId = String(cfg.mapId || "FR");
+  const country = normalizeMapIdToCountry(mapId);
+  const maxRounds = Math.max(1, Number(cfg.rounds || 12));
+  const objective = Math.max(1, Number(cfg.objective || 10));
 
-  const [round, setRound] = React.useState(1);
-  const [activeTeam, setActiveTeam] = React.useState<TeamKey>(0);
+  const tickerSrc = findTerritoriesTicker(mapId) || findTerritoriesTicker(country) || undefined;
 
-  // Modal règles (LOCAL) — ne touche pas InfoDot global
-  const [showRules, setShowRules] = React.useState(false);
+  // Build players/teams + owner colors
+  const { players, teams, ownerColors } = React.useMemo(() => {
+    if (cfg.teamSize > 1 && Array.isArray(cfg.selectedIds) && cfg.selectedIds.length) {
+      const teamsById = cfg.teamsById || {};
+      const team0 = cfg.selectedIds.filter((id) => teamsById[id] === 0);
+      const team1 = cfg.selectedIds.filter((id) => teamsById[id] === 1);
+      const order = interleaveTeams(team0, team1);
 
-  // Rotation joueurs par équipe
-  const teamPlayers = React.useMemo(
-    () => ({ 0: getTeamPlayers(cfg, 0), 1: getTeamPlayers(cfg, 1) }) as Record<TeamKey, string[]>,
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [cfg]
-  );
-  const [playerIdxByTeam, setPlayerIdxByTeam] = React.useState<Record<TeamKey, number>>({ 0: 0, 1: 0 });
+      const t0: TerritoriesTeam = { id: "TEAM0", name: "TEAM Gold", color: "#ffd25a" };
+      const t1: TerritoriesTeam = { id: "TEAM1", name: "TEAM Pink", color: "#ff5abe" };
 
-  const activePlayerName = React.useMemo(() => {
-    const list = teamPlayers[activeTeam] || [];
-    if (!list.length) return TEAM_LABEL[activeTeam];
-    const idx = playerIdxByTeam[activeTeam] ?? 0;
-    return list[idx % list.length];
-  }, [activeTeam, playerIdxByTeam, teamPlayers]);
+      const ps: TerritoriesPlayer[] = order.map((id) => ({
+        id,
+        name: shortName(id),
+        color: teamsById[id] === 1 ? t1.color : t0.color,
+        teamId: teamsById[id] === 1 ? t1.id : t0.id,
+        capturedTerritories: [],
+      }));
 
-  const [selectedId, setSelectedId] = React.useState<string>(() => territories[0]?.id || "");
+      return {
+        players: ps,
+        teams: [t0, t1],
+        ownerColors: { [t0.id]: t0.color, [t1.id]: t1.color } as Record<string, string>,
+      };
+    }
 
-  // Keypad darts
+    const ids = Array.isArray(cfg.selectedIds) && cfg.selectedIds.length ? cfg.selectedIds : ["Player A", "Player B"];
+    const ps: TerritoriesPlayer[] = ids.map((id, i) => ({
+      id,
+      name: shortName(id),
+      color: SOLO_COLORS[i % SOLO_COLORS.length],
+      capturedTerritories: [],
+    }));
+
+    const colors: Record<string, string> = {};
+    for (const p of ps) colors[p.id] = p.color;
+
+    return { players: ps, teams: undefined as any, ownerColors: colors };
+  }, [cfg.teamSize, JSON.stringify(cfg.selectedIds), JSON.stringify(cfg.teamsById)]);
+
+  // Engine state
+  const initialState = React.useMemo<TerritoriesGameState>(() => {
+    const map = buildTerritoriesMap(country);
+    const base: TerritoriesGameState = {
+      config: {
+        country,
+        targetSelectionMode: "free",
+        captureRule: "exact",
+        multiCapture: false,
+        minTerritoryValue: 1,
+        allowEnemyCapture: true,
+        maxRounds,
+        victoryCondition: { type: "territories", value: objective },
+        voiceAnnouncements: false,
+      },
+      players,
+      teams,
+      map,
+      turnIndex: 0,
+      roundIndex: 1,
+      turn: {
+        activePlayerId: players[0]?.id || "P1",
+        selectedTerritoryId: undefined,
+        dartsThrown: 0,
+        capturedThisTurn: [],
+      },
+      status: "playing",
+    };
+
+    const norm = normalizeTerritoriesState(base);
+    return norm.state;
+  }, [country, maxRounds, objective, players, teams]);
+
+  const [game, setGame] = React.useState<TerritoriesGameState>(initialState);
+
+  React.useEffect(() => {
+    setGame(initialState);
+    setCurrentThrow([]);
+    setMultiplier(1);
+  }, [initialState]);
+
+  const activePlayer = React.useMemo(() => game.players.find((p) => p.id === game.turn.activePlayerId), [game]);
+  const activeColor = activePlayer?.color || theme?.accent || "#52f7ff";
+  const themeColor = theme?.accent || activeColor;
+
+  // Score input state
   const [multiplier, setMultiplier] = React.useState<1 | 2 | 3>(1);
   const [currentThrow, setCurrentThrow] = React.useState<UIDart[]>([]);
 
-  const [stateById, setStateById] = React.useState<Record<string, TerritoryState>>(() => {
-    const init: Record<string, TerritoryState> = {};
-    for (const t of territories) init[t.id] = { owner: null };
-    return init;
-  });
+  const ownedByOwner = React.useMemo(() => countOwnedByOwnerId(game), [game]);
 
-  // Re-init si la liste des territoires change (map switch)
-  React.useEffect(() => {
-    if (!territories.length) return;
-    setSelectedId((prev) => (territories.some((t) => t.id === prev) ? prev : territories[0].id));
-    setStateById(() => {
-      const init: Record<string, TerritoryState> = {};
-      for (const t of territories) init[t.id] = { owner: null };
-      return init;
-    });
-    setCurrentThrow([]);
-    setMultiplier(1);
-    setRound(1);
-    setActiveTeam(0);
-    setPlayerIdxByTeam({ 0: 0, 1: 0 });
-  }, [mapId, territories]);
-
-  const mapHostRef = React.useRef<HTMLDivElement | null>(null);
-
-  // Recadrage + colorisation SVG
-  React.useEffect(() => {
-    const host = mapHostRef.current;
-    if (!host) return;
-
-    const svg = host.querySelector("svg");
-    if (!svg) return;
-
-    // Forcer "contain"
-    (svg as any).style.width = "100%";
-    (svg as any).style.height = "100%";
-    (svg as any).style.maxWidth = "100%";
-    (svg as any).style.maxHeight = "100%";
-
-    try {
-      if (!svg.getAttribute("preserveAspectRatio")) svg.setAttribute("preserveAspectRatio", "xMidYMid meet");
-      const vb = svg.getAttribute("viewBox");
-      if (!vb) {
-        const w = Number(String(svg.getAttribute("width") || "0").replace(/[^0-9.]/g, "")) || 1000;
-        const h = Number(String(svg.getAttribute("height") || "0").replace(/[^0-9.]/g, "")) || 1000;
-        svg.setAttribute("viewBox", `0 0 ${w} ${h}`);
-      }
-    } catch {}
-
-    // reset style
-    const all = svg.querySelectorAll<SVGPathElement>("path[data-numerodepartement]");
-    all.forEach((p) => {
-      p.style.fill = "rgba(255,255,255,0.05)";
-      p.style.stroke = "rgba(255,255,255,0.15)";
-      p.style.strokeWidth = "0.8";
-    });
-
-    // Apply owners
-    for (const [id, st] of Object.entries(stateById)) {
-      if (st.owner === null) continue;
-
-      const target = parseDeptTarget(id);
-      if (!target) continue;
-
-      const deptCode = pad2(target);
-      const el = svg.querySelector<SVGPathElement>(`path[data-numerodepartement="${deptCode}"]`);
-      if (!el) continue;
-
-      el.style.fill = st.owner === 0 ? "rgba(255, 210, 90, 0.35)" : "rgba(255, 90, 190, 0.35)";
-      el.style.stroke = st.owner === 0 ? "rgba(255, 210, 90, 0.75)" : "rgba(255, 90, 190, 0.75)";
-      el.style.strokeWidth = "1.2";
-    }
-  }, [stateById]);
-
-  const ownedCount = React.useMemo(() => countOwned(territories, stateById), [stateById, territories]);
+  const selectionLabel = React.useMemo(() => {
+    const id = game.turn.selectedTerritoryId;
+    if (!id) return "—";
+    const ttt = game.map.territories.find((x) => x.id === id);
+    return ttt ? `${ttt.name} (${ttt.id})` : id;
+  }, [game.turn.selectedTerritoryId, game.map.territories]);
 
   function goBack() {
     if (props?.go) return props.go("departements_config", { config: cfg });
@@ -281,329 +261,150 @@ export default function DepartementsPlay(props: any) {
     window.history.back();
   }
 
-  function nextTurn() {
-    setCurrentThrow([]);
-    setMultiplier(1);
-
-    // incrémente le joueur de l'équipe qui vient de jouer
-    setPlayerIdxByTeam((prev) => {
-      const list = teamPlayers[activeTeam] || [];
-      const mod = Math.max(1, list.length);
-      const next = { ...prev };
-      next[activeTeam] = ((prev[activeTeam] ?? 0) + 1) % mod;
-      return next;
-    });
-
-    setActiveTeam((t) => (t === 0 ? 1 : 0));
-    if (activeTeam === 1) setRound((r) => Math.min(roundsTotal, r + 1));
-  }
-
-  // === ScoreInputHub handlers (compat Keypad)
-  function handleSimple() {
-    setMultiplier(1);
-  }
-  function handleDouble() {
-    setMultiplier(2);
-  }
-  function handleTriple() {
-    setMultiplier(3);
-  }
-  function handleNumber(n: number) {
-    if (currentThrow.length >= 3) return;
-    const d: UIDart = { v: n, mult: multiplier };
-    setCurrentThrow((prev) => [...prev, d]);
-    setMultiplier(1);
-  }
-  function handleBull() {
-    if (currentThrow.length >= 3) return;
-    const d: UIDart = { v: 25, mult: multiplier === 2 ? 2 : 1 };
-    setCurrentThrow((prev) => [...prev, d]);
-    setMultiplier(1);
-  }
-  function handleBackspace() {
-    if (!currentThrow.length) return;
-    setCurrentThrow((prev) => prev.slice(0, -1));
-  }
-  function handleCancel() {
-    setCurrentThrow([]);
-    setMultiplier(1);
+  function handleMapSelect(territoryId: string) {
+    const res = selectTerritory(game, territoryId);
+    if (res.error) return;
+    setGame(res.state);
   }
 
   function validateThrow() {
-    if (!selectedId) return;
+    if (game.status !== "playing") return;
 
-    // Normaliser à 3 flèches
-    const darts: UIDart[] = [...currentThrow];
-    while (darts.length < 3) darts.push({ v: 0, mult: 1 });
+    if (game.config.targetSelectionMode === "free" && !game.turn.selectedTerritoryId) return;
 
-    const total = throwTotal(darts);
-    const target = parseDeptTarget(selectedId);
-    const isHit = target !== null && total === target;
+    const dartScores = computeVisitScores(currentThrow);
+    const r1 = applyVisit(game, dartScores);
+    if (r1.error) return;
 
-    setStateById((prev) => {
-      const cur = prev[selectedId] || { owner: null };
-      const next: Record<string, TerritoryState> = { ...prev };
-      next[selectedId] = {
-        owner: isHit ? activeTeam : cur.owner,
-        lastVisit: { total, darts },
-      };
+    let next = r1.state;
 
-      const owned = countOwned(territories, next);
-      if (owned[0] >= objectiveTerritories || owned[1] >= objectiveTerritories) {
-        // eslint-disable-next-line no-alert
-        alert(`${owned[0] >= objectiveTerritories ? TEAM_LABEL[0] : TEAM_LABEL[1]} gagne !`);
-      } else {
-        nextTurn();
-      }
-      return next;
-    });
+    // Victory check
+    const ownedNow = countOwnedByOwnerId(next);
+    const need = next.config.victoryCondition.type === "territories" ? next.config.victoryCondition.value : 9999;
+    const possibleOwners = next.teams?.length ? next.teams.map((t2) => t2.id) : next.players.map((p2) => p2.id);
+    const winner = possibleOwners.find((oid) => (ownedNow[oid] || 0) >= need);
+    if (winner) {
+      setGame({ ...next, status: "game_end" });
+      return;
+    }
+
+    const r2 = endTurn(next);
+    setGame(r2.state);
+    setCurrentThrow([]);
+    setMultiplier(1);
   }
 
-  const selectedTarget = parseDeptTarget(selectedId);
-  const tickerSrc = tickerForMap(mapId);
-
   return (
-    <div
-      style={{
-        minHeight: "100vh",
-        background: "#050607",
-        color: "#fff",
-        display: "flex",
-        flexDirection: "column",
-      }}
-    >
+    <div style={{ minHeight: "100vh", background: "#050607", color: "#fff", display: "flex", flexDirection: "column" }}>
       <PageHeader
         tickerSrc={tickerSrc}
         tickerAlt="TERRITORIES"
         tickerHeight={92}
         left={<BackDot onClick={goBack} />}
-        right={<InfoDot title="Règles" onClick={() => setShowRules(true)} />}
+        right={<InfoDot title="Règles" content={RULES_TEXT(objective)} />}
       />
 
-      {/* Corps */}
-      <div style={{ padding: 12, display: "flex", flexDirection: "column", gap: 10, flex: 1, minHeight: 0 }}>
-        {/* Bandeau compact (joueur actif + round + objectif) */}
-        <div
-          style={{
-            display: "flex",
-            gap: 10,
-            alignItems: "center",
-            justifyContent: "space-between",
-            padding: "8px 10px",
-            borderRadius: 12,
-            border: "1px solid rgba(255,255,255,0.10)",
-            background: "rgba(255,255,255,0.03)",
-          }}
-        >
-          <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
-            <div style={{ fontSize: 12, opacity: 0.75, whiteSpace: "nowrap" }}>À jouer :</div>
-            <div
-              style={{
-                fontSize: 13,
-                fontWeight: 1000,
-                overflow: "hidden",
-                textOverflow: "ellipsis",
-                whiteSpace: "nowrap",
-                maxWidth: 190,
-              }}
-            >
-              {activePlayerName}
-            </div>
-
-            <div
-              style={{
-                fontSize: 12,
-                fontWeight: 900,
-                padding: "4px 8px",
-                borderRadius: 999,
-                border: activeTeam === 0 ? "1px solid rgba(255,210,90,0.55)" : "1px solid rgba(255,90,190,0.55)",
-                background: activeTeam === 0 ? "rgba(255,210,90,0.12)" : "rgba(255,90,190,0.12)",
-                flex: "0 0 auto",
-              }}
-            >
-              {TEAM_LABEL[activeTeam]}
-            </div>
-          </div>
-
-          <div style={{ display: "flex", alignItems: "center", gap: 10, flex: "0 0 auto" }}>
-            <div style={{ opacity: 0.85, fontSize: 12 }}>
-              {normalizeMapToTickerKey(mapId).toUpperCase()} — ROUND {round}/{roundsTotal}
-            </div>
-            <div style={{ opacity: 0.85, fontSize: 12 }}>Objectif : {objectiveTerritories}</div>
-          </div>
+      {/* Players HUD (no text for turn) */}
+      <div style={{ padding: "10px 12px", display: "flex", gap: 10, alignItems: "center" }}>
+        <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", flex: 1 }}>
+          {game.players.map((p) => {
+            const isActive = p.id === game.turn.activePlayerId;
+            return (
+              <div
+                key={p.id}
+                title={p.name}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 8,
+                  padding: "6px 10px",
+                  borderRadius: 14,
+                  background: "rgba(255,255,255,0.06)",
+                  border: isActive ? `1px solid ${p.color}` : "1px solid rgba(255,255,255,0.08)",
+                  boxShadow: isActive ? `0 0 10px ${p.color}` : "none",
+                }}
+              >
+                <div style={{ width: 18, height: 18, borderRadius: 999, background: p.color, boxShadow: isActive ? `0 0 10px ${p.color}` : "none" }} />
+                <div style={{ fontSize: 12, opacity: isActive ? 1 : 0.75 }}>{p.name}</div>
+              </div>
+            );
+          })}
         </div>
 
-        {/* Scores */}
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-          <div
-            style={{
-              borderRadius: 12,
-              padding: 10,
-              border: "1px solid rgba(255,210,90,0.35)",
-              background: "rgba(255,210,90,0.08)",
-            }}
-          >
-            <div style={{ fontSize: 12, opacity: 0.85 }}>{TEAM_LABEL[0]}</div>
-            <div style={{ fontSize: 18, fontWeight: 800 }}>
-              {ownedCount[0]}/{objectiveTerritories}
-            </div>
+        <div style={{ minWidth: 150, textAlign: "right" }}>
+          <div style={{ fontSize: 12, opacity: 0.85 }}>
+            {t?.("round") || "Round"} {game.roundIndex}/{maxRounds}
           </div>
-
-          <div
-            style={{
-              borderRadius: 12,
-              padding: 10,
-              border: "1px solid rgba(255,90,190,0.35)",
-              background: "rgba(255,90,190,0.08)",
-            }}
-          >
-            <div style={{ fontSize: 12, opacity: 0.85 }}>{TEAM_LABEL[1]}</div>
-            <div style={{ fontSize: 18, fontWeight: 800 }}>
-              {ownedCount[1]}/{objectiveTerritories}
-            </div>
+          <div style={{ fontSize: 12, opacity: 0.85 }}>
+            {t?.("objective") || "Objectif"}: {objective}
           </div>
         </div>
+      </div>
 
-        {/* Bloc carte */}
-        <div
-          style={{
-            borderRadius: 14,
-            border: "1px solid rgba(255,255,255,0.12)",
-            background: "rgba(255,255,255,0.04)",
-            padding: 10,
-            display: "flex",
-            flexDirection: "column",
-            gap: 10,
-            flex: 1,
-            minHeight: 0,
-          }}
-        >
-          <div style={{ opacity: 0.9, fontSize: 12 }}>
-            Territoire : <b>{selectedId || "-"}</b>
-            {selectedTarget !== null ? (
-              <>
-                {" "}
-                — Cible : <b>{selectedTarget}</b>
-              </>
-            ) : null}{" "}
-            — Volée : <b>{throwTotal(currentThrow)}</b> ({currentThrow.length}/3)
-          </div>
-
-          <div
-            ref={mapHostRef}
-            style={{
-              borderRadius: 14,
-              overflow: "hidden",
-              background: "rgba(0,0,0,0.55)",
-              border: "1px solid rgba(255,255,255,0.10)",
-              flex: 1,
-              minHeight: 0,
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-            }}
-            dangerouslySetInnerHTML={{ __html: franceMapSvgRaw }}
-          />
+      {/* Selection + progress */}
+      <div style={{ padding: "0 12px 8px", display: "flex", justifyContent: "space-between", gap: 12 }}>
+        <div style={{ fontSize: 12, opacity: 0.9 }}>
+          Objectif sélectionné: <span style={{ color: activeColor }}>{selectionLabel}</span>
         </div>
-
-        {/* Liste (scroll) — ne doit jamais pousser la carte */}
-        <div
-          style={{
-            borderRadius: 14,
-            border: "1px solid rgba(255,255,255,0.12)",
-            background: "rgba(255,255,255,0.03)",
-            padding: 10,
-            overflow: "auto",
-            maxHeight: "18vh",
-          }}
-        >
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-            {territories.map((t, idx) => {
-              const st = stateById[t.id];
-              const isSel = t.id === selectedId;
-              const owner = st?.owner;
-
-              return (
-                <button
-                  key={t.id}
-                  onClick={() => setSelectedId(t.id)}
-                  style={{
-                    textAlign: "left",
-                    borderRadius: 14,
-                    padding: 12,
-                    border: isSel ? "1px solid rgba(255,255,255,0.28)" : "1px solid rgba(255,255,255,0.12)",
-                    background:
-                      owner === 0
-                        ? "rgba(255,210,90,0.08)"
-                        : owner === 1
-                        ? "rgba(255,90,190,0.08)"
-                        : "rgba(255,255,255,0.04)",
-                    color: "#fff",
-                  }}
-                >
-                  <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
-                    <div style={{ fontWeight: 800, fontSize: 13 }}>{t.name || `Territory #${idx + 1}`}</div>
-                    <div style={{ opacity: 0.6, fontSize: 12 }}>{t.id}</div>
-                  </div>
-
-                  <div style={{ marginTop: 6, fontSize: 12, opacity: 0.85 }}>
-                    {owner === null ? "Libre" : `Capturé par ${TEAM_LABEL[owner]}`}
-                    {st?.lastVisit ? ` — Dernière volée: ${st.lastVisit.total}` : ""}
-                  </div>
-                </button>
-              );
-            })}
-          </div>
+        <div style={{ fontSize: 12, opacity: 0.85 }}>
+          Possessions:{" "}
+          {game.teams?.length
+            ? `${game.teams[0].name} ${ownedByOwner[game.teams[0].id] || 0} • ${game.teams[1].name} ${ownedByOwner[game.teams[1].id] || 0}`
+            : `${ownedByOwner[game.turn.activePlayerId] || 0}`}
         </div>
+      </div>
 
-        {/* Keypad darts */}
+      {/* MAP */}
+      <div style={{ flex: 1, padding: 12 }}>
         <div
           style={{
-            borderRadius: 14,
-            border: "1px solid rgba(255,255,255,0.12)",
-            background: "rgba(0,0,0,0.25)",
-            padding: 10,
+            width: "100%",
+            height: "100%",
+            borderRadius: 18,
+            background: "rgba(12, 14, 26, 0.65)",
+            border: "1px solid rgba(255,255,255,0.08)",
+            overflow: "hidden",
           }}
         >
-          <ScoreInputHub
-            currentThrow={currentThrow}
-            multiplier={multiplier}
-            onSimple={handleSimple}
-            onDouble={handleDouble}
-            onTriple={handleTriple}
-            onBackspace={handleBackspace}
-            onCancel={handleCancel}
-            onNumber={handleNumber}
-            onBull={handleBull}
-            onValidate={validateThrow}
-            hidePreview={false}
-            showPlaceholders={false}
-            switcherMode="hidden"
+          <TerritoriesMapView
+            country={country}
+            map={game.map}
+            ownerColors={ownerColors}
+            selectedTerritoryId={game.turn.selectedTerritoryId}
+            activeColor={activeColor}
+            themeColor={themeColor}
+            interactive={game.config.targetSelectionMode === "free" && game.status === "playing"}
+            onSelectTerritory={handleMapSelect}
           />
         </div>
       </div>
 
-      <RulesModal open={showRules} onClose={() => setShowRules(false)} title="Règles — TERRITORIES">
-        <div style={{ whiteSpace: "pre-line" }}>
-{`But : capturer des départements.
-
-Tour de jeu :
-- Alternance des équipes (Gold / Pink)
-- Si multi-joueurs : rotation automatique des joueurs dans chaque équipe
-
-À ton tour :
-1) Sélectionne un département (liste)
-2) Joue 3 fléchettes via le keypad
-3) VALIDER : si total de la volée = numéro du département, il est capturé
-
-Victoire :
-- Première équipe à ${objectiveTerritories} territoires capturés
-
-Notes (MVP) :
-- Corse 2A/2B : temporairement traité comme "2" (à améliorer)
-- Variante à venir : fermeture de régions (bonus)`}
-        </div>
-      </RulesModal>
+      {/* KEYPAD */}
+      <div style={{ paddingBottom: 10 }}>
+        <ScoreInputHub
+          currentThrow={currentThrow}
+          multiplier={multiplier}
+          onSimple={() => setMultiplier(1)}
+          onDouble={() => setMultiplier(2)}
+          onTriple={() => setMultiplier(3)}
+          onNumber={(n) => {
+            if (currentThrow.length >= 3) return;
+            setCurrentThrow((prev) => [...prev, { v: n, mult: multiplier }]);
+            setMultiplier(1);
+          }}
+          onBull={() => {
+            if (currentThrow.length >= 3) return;
+            setCurrentThrow((prev) => [...prev, { v: 25, mult: multiplier === 2 ? 2 : 1 }]);
+            setMultiplier(1);
+          }}
+          onBackspace={() => setCurrentThrow((prev) => prev.slice(0, -1))}
+          onCancel={() => {
+            setCurrentThrow([]);
+            setMultiplier(1);
+          }}
+          onValidate={validateThrow}
+        />
+      </div>
     </div>
   );
 }

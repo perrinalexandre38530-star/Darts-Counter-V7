@@ -54,6 +54,7 @@ type HeaderBlockProps = {
   legsWon: Record<string, number>;
   setsWon: Record<string, number>;
   checkoutText: string | null;
+  scoreBgUrl?: string | null;
 };
 
 
@@ -2867,7 +2868,8 @@ if (isLandscapeTablet) {
               setsWon={(state as any).setsWon ?? {}}
               useSets={useSetsUi}
               checkoutText={checkoutText}
-            />
+            scoreBgUrl={isTeamsMode ? (activeTeam as any)?.avatarUrl ?? null : null}
+              />
           )}
           </div>
 
@@ -3698,6 +3700,7 @@ function HeaderBlock(props: HeaderBlockProps) {
     legsWon,
     setsWon,
     checkoutText,
+    scoreBgUrl,
   } = props;
 
   const legsWonThisSet =
@@ -3841,16 +3844,55 @@ function HeaderBlock(props: HeaderBlockProps) {
           }}
         >
           {/* SCORE CENTRAL */}
-          <div
-            style={{
-              fontSize: 64,
-              fontWeight: 900,
-              color: "#ffcf57",
-              textShadow: "0 4px 18px rgba(255,195,26,.25)",
-              lineHeight: 1.02,
-            }}
-          >
-            {remainingAfterAll}
+          <div style={{ position: "relative", display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
+            {scoreBgUrl ? (
+              <>
+                <img
+                  src={scoreBgUrl}
+                  alt=""
+                  aria-hidden="true"
+                  style={{
+                    position: "absolute",
+                    inset: -6,
+                    width: "calc(100% + 12px)",
+                    height: "calc(100% + 12px)",
+                    objectFit: "cover",
+                    opacity: 0.075,
+                    filter: "blur(0.8px) saturate(1.05)",
+                    transform: "scale(1.15)",
+                    pointerEvents: "none",
+                    zIndex: 0,
+                    borderRadius: 14,
+                  }}
+                />
+                <div
+                  aria-hidden="true"
+                  style={{
+                    position: "absolute",
+                    inset: -6,
+                    borderRadius: 14,
+                    background:
+                      "radial-gradient(circle at 50% 40%, rgba(0,0,0,0.10), rgba(0,0,0,0.55) 70%, rgba(0,0,0,0.75))",
+                    pointerEvents: "none",
+                    zIndex: 0,
+                  }}
+                />
+              </>
+            ) : null}
+
+            <div
+              style={{
+                fontSize: 64,
+                fontWeight: 900,
+                color: "#ffcf57",
+                textShadow: "0 4px 18px rgba(255,195,26,.25)",
+                lineHeight: 1.02,
+                position: "relative",
+                zIndex: 1,
+              }}
+            >
+              {remainingAfterAll}
+            </div>
           </div>
 
           {/* Pastilles live */}
