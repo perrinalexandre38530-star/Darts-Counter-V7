@@ -996,14 +996,6 @@ export function useX01EngineV3({
   // Historique interne de tous les darts saisis (pour rebuildFromDarts)
   const dartsHistoryRef = React.useRef<Array<{ v: number; m: number }>>([]);
 
-  // Stack UNDO : snapshots complets (state + liveStats) avant chaque dart
-  const undoStackRef = React.useRef<
-    Array<{
-      state: X01MatchStateV3;
-      liveStats: Record<X01PlayerId, X01StatsLiveV3>;
-    }>
-  >([]);
-
   // -----------------------------------------------------------
   // rebuildFromDarts : reconstruit le match depuis une liste
   // de X01DartInputV3 (pour l'UI qui garde son propre historique)
@@ -1019,7 +1011,6 @@ export function useX01EngineV3({
 
       // on synchronise aussi l'historique interne
       dartsHistoryRef.current = dartsVM.slice();
-      undoStackRef.current = []; // on reset la stack UNDO, on repart "propre"
 
       const { newState, newLiveStats } = rebuildMatchFromHistory(
         config,
@@ -1043,12 +1034,6 @@ export function useX01EngineV3({
     (input: X01DartInputV3) => {
       const prevState = stateRef.current;
       const prevLive = liveStatsByPlayerRef.current;
-
-      // Snapshot complet avant d'appliquer le dart (UNDO par dart)
-      undoStackRef.current.push({
-        state: structuredClone(prevState),
-        liveStats: structuredClone(prevLive),
-      });
 
       // Historique brut {v,m}
       dartsHistoryRef.current.push({
@@ -1080,18 +1065,24 @@ export function useX01EngineV3({
   // -----------------------------------------------------------
 
   const undoLastDart = React.useCallback(() => {
-    const snapshot = undoStackRef.current.pop();
-    if (!snapshot) return;
+    // ✅ Option A (robuste) : UNDO = pop dernier dart + rebuild complet depuis l'historique
+    if (dartsHistoryRef.current.length === 0) return;
 
-    setState(snapshot.state);
-    setLiveStatsByPlayer(snapshot.liveStats);
-    liveStatsByPlayerRef.current = snapshot.liveStats;
+    dartsHistoryRef.current.pop();
 
-    // on enlève aussi le dernier dart brut si on utilise dartsHistoryRef
-    if (dartsHistoryRef.current.length > 0) {
-      dartsHistoryRef.current.pop();
-    }
-  }, []);
+    const { newState, newLiveStats } = rebuildMatchFromHistory(
+      config,
+      dartsHistoryRef.current.slice(),
+      { matchId: stateRef.current.matchId }
+    );
+
+    // Sync refs + React state (évite état "fantôme" au prochain tir)
+    stateRef.current = newState;
+    liveStatsByPlayerRef.current = newLiveStats;
+
+    setLiveStatsByPlayer(newLiveStats);
+    setState(newState);
+  }, [config]);
 
   // -----------------------------------------------------------
   // startNextLeg
@@ -1106,7 +1097,6 @@ export function useX01EngineV3({
       return clone;
     });
     dartsHistoryRef.current = [];
-    undoStackRef.current = [];
   }, [config]);
 
   // -----------------------------------------------------------

@@ -338,6 +338,8 @@ players: PlayerLine[];
 };
 
 type PlayerStats = {
+pointage: number;
+reprise: number;
 points: number;
 carreau: number;
 tirReussi: number;
@@ -351,6 +353,7 @@ pousseeConcede: number;
 
 const EMPTY_STATS: PlayerStats = {
 points: 0,
+pointage: 0,
 carreau: 0,
 tirReussi: 0,
 trou: 0,
@@ -1454,16 +1457,30 @@ const meneParticipants: MeneWizardParticipant[] = React.useMemo(() => {
   };
 
   if (matchMode === "singles") {
-    // 1v1 : deux "participants" = les deux joueurs
+    // 1v1 : 2 participants = "A" / "B" (pour le score),
+    // mais les STATS doivent être créditées au vrai playerId.
     const pa = mkPlayer("A", 0);
     const pb = mkPlayer("B", 0);
+
     return [
-      { id: "A", label: pa.label, kind: "player" as const, avatarSrc: pa.avatarSrc },
-      { id: "B", label: pb.label, kind: "player" as const, avatarSrc: pb.avatarSrc },
+      {
+        id: "A",
+        label: pa.label,
+        kind: "team" as const,
+        avatarSrc: pa.avatarSrc,
+        members: [{ id: pa.id, label: pa.label, avatarSrc: pa.avatarSrc }],
+      },
+      {
+        id: "B",
+        label: pb.label,
+        kind: "team" as const,
+        avatarSrc: pb.avatarSrc,
+        members: [{ id: pb.id, label: pb.label, avatarSrc: pb.avatarSrc }],
+      },
     ];
   }
 
-  // équipes : 2 participants = Team A / Team B avec members
+// équipes : 2 participants = Team A / Team B avec members
   const ta = {
     id: "A",
     label: String(teams.A.name ?? "Team A"),
@@ -1896,6 +1913,7 @@ const [endStatPlayerId, setEndStatPlayerId] = React.useState<string | null>(null
 const [endLegendOpen, setEndLegendOpen] = React.useState(false);
 const [endPushPick, setEndPushPick] = React.useState(false);
 const [endMeneStats, setEndMeneStats] = React.useState<Record<string, number>>(() => ({
+  pointage: 0,
   carreau: 0,
   tirReussi: 0,
   trou: 0,
@@ -1906,7 +1924,7 @@ const [endMeneStats, setEndMeneStats] = React.useState<Record<string, number>>((
   pousseeConcede: 0,
 }));
 
-const END_ACTION_KEYS = ['carreau','tirReussi','trou','bec','butPoint'];
+const END_ACTION_KEYS = ['pointage','carreau','tirReussi','trou','bec','butPoint','pousseeAssist','pousseeConcede'];
 const getEndStatsSum = (obj: Record<string, number>) => END_ACTION_KEYS.reduce((acc,k)=>acc+(obj?.[k]||0),0);
 const bumpEndStat = (key: string, delta: number) => {
   setEndMeneStats((prev) => {
@@ -1929,10 +1947,17 @@ const openEndSheet = React.useCallback((team: PetanqueTeamId) => {
   setEndPts(1);
 
   setEndNote("");
-  setEndStatPlayerId(null);
+  try {
+    const roster = team === 'A' ? teams.A.players : teams.B.players;
+    const pid = roster?.[0]?.id ? String(roster[0].id) : null;
+    setEndStatPlayerId(pid);
+  } catch {
+    setEndStatPlayerId(null);
+  }
   setEndLegendOpen(false);
   setEndPushPick(false);
   setEndMeneStats({
+    pointage: 0,
     carreau: 0,
     tirReussi: 0,
     trou: 0,
@@ -2044,16 +2069,35 @@ const onNew = React.useCallback(() => {
 const commitEndFromSheet = React.useCallback(() => {
   // ✅ On réutilise TON flux existant (store + maybeOpenAssignPoints)
   onAdd(endTeam, endPts);
-  // ✅ SUITE 1 (1v1): attribution MANUELLE des actions/stats à un joueur choisi
-  if (matchMode === "singles" && endStatPlayerId) {
-    const entries = Object.entries(endMeneStats || {});
-    for (const [k, v] of entries) {
+  // ✅ Attribution des actions/stats à un joueur cible (selon sélection)
+  const resolvedPid =
+    endStatPlayerId ??
+    (endTeam === "A"
+      ? (teams.A.players?.[0]?.id ? String(teams.A.players[0].id) : null)
+      : (teams.B.players?.[0]?.id ? String(teams.B.players[0].id) : null));
+
+  if (resolvedPid) {
+    const allowed: Record<string, keyof PlayerStats> = {
+      pointage: "pointage",
+      carreau: "carreau",
+      tirReussi: "tirReussi",
+      trou: "trou",
+      bec: "bec",
+      butAnnulation: "butAnnulation",
+      butPoint: "butPoint",
+      reprise: "reprise",
+      pousseeAssist: "pousseeAssist",
+      pousseeConcede: "pousseeConcede",
+    };
+
+    for (const [k, v] of Object.entries(endMeneStats || {})) {
       const n = Number(v) || 0;
       if (!n) continue;
-      bumpPlayerStat(endStatPlayerId, k as any, n);
+      const mapped = allowed[String(k)];
+      if (!mapped) continue;
+      bumpStat(resolvedPid, mapped, n);
     }
   }
-
 
   // note optionnelle : si tu veux l’attacher à l’historique des mènes,
   // il faudrait étendre petanqueStore. Pour l’instant on la garde en UI.
@@ -2928,7 +2972,7 @@ return (
         { k: "points" as DuelStatKey, label: "Points", a: (stSafe as any).scoreA ?? 0, b: (stSafe as any).scoreB ?? 0 },
         { k: "pointage" as DuelStatKey, label: "Pointage", a: a.pointage ?? 0, b: b.pointage ?? 0 },
         { k: "bec" as DuelStatKey, label: "Becs", a: a.bec ?? 0, b: b.bec ?? 0 },
-        { k: "tirs" as DuelStatKey, label: "Tirs", a: (a.tirReussi ?? 0) + (a.trou ?? 0) + (a.bec ?? 0), b: (b.tirReussi ?? 0) + (b.trou ?? 0) + (b.bec ?? 0) },
+        { k: "tirs" as DuelStatKey, label: "Tirs", a: (a.carreau ?? 0) + (a.tirReussi ?? 0) + (a.trou ?? 0), b: (b.carreau ?? 0) + (b.tirReussi ?? 0) + (b.trou ?? 0) },
         { k: "trou" as DuelStatKey, label: "Trous", a: a.trou ?? 0, b: b.trou ?? 0 },
         { k: "tirReussi" as DuelStatKey, label: "Tirs réussis", a: a.tirReussi ?? 0, b: b.tirReussi ?? 0 },
         { k: "carreau" as DuelStatKey, label: "Carreaux", a: a.carreau ?? 0, b: b.carreau ?? 0 },

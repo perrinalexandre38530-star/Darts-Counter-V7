@@ -36,6 +36,8 @@ type Props = {
   initialWinnerId?: string;
   initialPoints?: number;
   maxPoints?: number;
+  /** If provided, the mene timer starts from this timestamp instead of Date.now() on open. */
+  initialMeneStartedAt?: number;
   onClose: () => void;
   onConfirm: (payload: {
     winnerId: string;
@@ -74,6 +76,7 @@ export default function PetanqueMeneWizard(props: Props) {
     initialWinnerId,
     initialPoints,
     maxPoints = 6,
+    initialMeneStartedAt,
     onClose,
     onConfirm,
   } = props;
@@ -108,14 +111,14 @@ export default function PetanqueMeneWizard(props: Props) {
     setWinnerId(initialWinnerId ?? participants?.[0]?.id ?? "A");
     setPoints(typeof initialPoints === "number" ? initialPoints : 0);
     setAlloc({});
-    setMeneStartedAt(Date.now());
+    setMeneStartedAt(typeof initialMeneStartedAt === "number" ? initialMeneStartedAt : Date.now());
     setPaused(false);
     setPauseStartedAt(null);
     setPausedMs(0);
     setMemberPickOpen(false);
     setMemberPickStat(null);
     setMemberChosenId(null);
-  }, [open, initialWinnerId, initialPoints, participants]);
+  }, [open, initialWinnerId, initialPoints, initialMeneStartedAt, participants]);
 
   // timer
   const [, tick] = React.useState(0);

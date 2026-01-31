@@ -6,7 +6,7 @@
 // + Autosave localStorage (reprise après coupure)
 // =============================================================
 
-import React from "react";
+import React, { useEffect } from "react";
 import { useViewport } from "../hooks/useViewport";
 
 import type {
@@ -23,9 +23,12 @@ import BackDot from "../components/BackDot";
 import CameraAssistedOverlay from "../components/CameraAssistedOverlay";
 import { DuelHeaderCompact } from "../components/DuelHeaderCompact";
 import X01LegOverlayV3 from "../lib/x01v3/x01LegOverlayV3";
+import { extAdaptCheckoutSuggestion, type X01OutModeV3 } from "../lib/x01v3/x01CheckoutV3";
 
 import { useTheme } from "../contexts/ThemeContext";
 import { useLang } from "../contexts/LangContext";
+
+import { useDevMode } from "../contexts/DevModeContext";
 import { History } from "../lib/history";
 import { useVoiceScoreInput } from "../hooks/useVoiceScoreInput";
 
@@ -999,8 +1002,12 @@ const forceSyncFromEngine = React.useCallback(() => {
 
   // ✅ CRITIQUE: la liste joueurs lit lastVisitsByPlayer, pas currentThrow
   if (activePlayerId) {
-    setLastVisitsByPlayer((m) => ({ ...m, [activePlayerId]: raw }));
-    setLastVisitIsBustByPlayer((m) => ({ ...m, [activePlayerId]: false }));
+    // ⚠️ IMPORTANT: ne pas écraser la "dernière volée" validée avec une visite vide (après validation/rotation)
+    // On sync seulement si on a des fléchettes (cas UNDO / resync en cours de volée)
+    if (raw.length) {
+      setLastVisitsByPlayer((m) => ({ ...m, [activePlayerId]: raw }));
+      setLastVisitIsBustByPlayer((m) => ({ ...m, [activePlayerId]: false }));
+    }
   }
 }, [state, activePlayerId]);
 
@@ -1752,23 +1759,30 @@ const bustSoundTimeoutRef = React.useRef<number | null>(null);
 //    ou
 
   const checkoutText = React.useMemo(() => {
-    // on ne propose des checkouts que pendant une partie
-    if (status !== "running") return null;
+  // on ne propose des checkouts que pendant une partie
+  if (status !== "running") return null;
 
-    // remaining après la saisie en cours (preview)
-    const remaining = currentScore - sumThrow(currentThrow);
-    const dartsLeft = Math.max(0, 3 - (currentThrow?.length || 0));
-    if (remaining <= 0) return null;
-    if (dartsLeft <= 0) return null;
+  // remaining après la saisie en cours (preview)
+  const remaining = currentScore - sumThrow(currentThrow);
+  const dartsLeft = Math.max(0, 3 - (currentThrow?.length || 0));
 
-    // finishMode / outMode (SIMPLE / DOUBLE / MASTER)
-    const outMode: "single" | "double" | "master" =
-      ((config as any).finishMode as any) ||
-      ((config as any).outMode as any) ||
-      (((config as any).doubleOut === true ? "double" : "single") as any);
+  // aucun checkout possible si <= 1 (impossible de finir) ou plus de darts
+  if (remaining <= 1) return null;
+  if (dartsLeft <= 0) return null;
 
-    return computeCheckoutText(remaining, dartsLeft, outMode);
-  }, [status, currentThrow, currentScore, config]);
+  // finishMode / outMode (SIMPLE / DOUBLE / MASTER)
+  // ⚠️ dans ce projet, certains écrans utilisent "finishMode"
+  const outMode: X01OutModeV3 =
+    ((config as any).finishMode as any) ||
+    ((config as any).outMode as any) ||
+    (((config as any).doubleOut === true ? "double" : "simple") as any);
+
+  const sug = extAdaptCheckoutSuggestion({ score: remaining, dartsLeft, outMode });
+  if (!sug) return null;
+
+  const txt = formatCheckoutFromVisit(sug);
+  return txt || null;
+}, [status, currentThrow, currentScore, config]);
   // de la saisie locale sur le keypad
 
   const currentThrowFromEngineRef = React.useRef(false);
@@ -4751,7 +4765,119 @@ function TeamsHeaderCompact({
           </div>
         );
       })}
-    </div>
+    
+      {/* ===== DEV X01 PANEL (DevMode) ===== */}
+      {dev?.enabled ? (
+        <>
+          <button
+            type="button"
+            onClick={() => setDevX01Open((v) => !v)}
+            style={{
+              position: "fixed",
+              right: 10,
+              bottom: 10,
+              zIndex: 2147483647,
+              padding: "10px 12px",
+              borderRadius: 14,
+              border: "1px solid rgba(255,255,255,.25)",
+              background: "rgba(255,40,40,.92)",
+              color: "#fff",
+              fontWeight: 900,
+              fontSize: 12,
+              letterSpacing: 0.3,
+              boxShadow: "0 10px 26px rgba(0,0,0,.45)",
+              cursor: "pointer",
+            }}
+            aria-label="Dev X01"
+          >
+            DEV X01
+          </button>
+
+          {devX01Open ? (
+            <div
+              style={{
+                position: "fixed",
+                right: 10,
+                bottom: 62,
+                zIndex: 2147483647,
+                width: 280,
+                borderRadius: 16,
+                border: "1px solid rgba(255,255,255,.12)",
+                background: "linear-gradient(180deg, rgba(18,18,22,.96), rgba(10,10,12,.92))",
+                boxShadow: "0 14px 40px rgba(0,0,0,.55)",
+                padding: 12,
+                color: "#fff",
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                <div style={{ fontWeight: 900, fontSize: 13 }}>DEV PANEL X01</div>
+                <button
+                  type="button"
+                  onClick={() => setDevX01Open(false)}
+                  style={{
+                    border: "none",
+                    background: "rgba(255,255,255,.08)",
+                    color: "#fff",
+                    borderRadius: 10,
+                    padding: "6px 8px",
+                    cursor: "pointer",
+                    fontWeight: 900,
+                  }}
+                >
+                  ✕
+                </button>
+              </div>
+
+              <div style={{ marginTop: 10, fontSize: 12, opacity: 0.9 }}>
+                activePlayerId: <b>{String(activePlayerId || "")}</b>
+              </div>
+
+              <div style={{ marginTop: 10, display: "flex", gap: 8, alignItems: "center" }}>
+                <div style={{ fontSize: 12, opacity: 0.9 }}>Score</div>
+                <input
+                  value={devScore}
+                  onChange={(e) => setDevScore(parseInt(e.target.value || "0", 10) || 0)}
+                  style={{
+                    flex: 1,
+                    background: "rgba(255,255,255,.06)",
+                    border: "1px solid rgba(255,255,255,.10)",
+                    color: "#fff",
+                    borderRadius: 10,
+                    padding: "8px 10px",
+                    outline: "none",
+                  }}
+                />
+              </div>
+
+              <button
+                type="button"
+                onClick={() => {
+                  const mode: any = (config as any)?.finishMode ?? (config as any)?.outMode ?? "double";
+                  const sugg = extAdaptCheckoutSuggestion({ score: devScore, outMode: mode });
+                  console.log("[DEV X01] checkout suggestion", { devScore, mode, sugg });
+                  console.log("[DEV X01] lastVisitsByPlayer", lastVisitsByPlayer);
+                  alert(`Checkout(${mode}) ${devScore}: ${sugg?.label || sugg?.text || JSON.stringify(sugg)}`);
+                }}
+                style={{
+                  marginTop: 10,
+                  width: "100%",
+                  border: "none",
+                  borderRadius: 12,
+                  padding: "10px 12px",
+                  fontWeight: 900,
+                  cursor: "pointer",
+                  background: "rgba(255,200,0,.95)",
+                  color: "#111",
+                }}
+              >
+                Test checkout + log lastVisits
+              </button>
+            </div>
+          ) : null}
+        </>
+      ) : null}
+
+</div>
   );
 }
 
