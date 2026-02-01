@@ -369,8 +369,7 @@ export default function TerritoriesMapView(props: TerritoriesMapViewProps) {
   );
 
   const onPointerDown = React.useCallback((e: React.PointerEvent<HTMLDivElement>) => {
-    (e.currentTarget as any).setPointerCapture?.(e.pointerId);
-    pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+        pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
     didPan.current = false;
   }, []);
 

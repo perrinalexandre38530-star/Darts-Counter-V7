@@ -27,7 +27,36 @@ import svgSpain from "./svg/spain.svg?raw";
 import svgUKCounties from "./svg/united-kingdom-counties.svg?raw";
 import svgUSA from "./svg/usa.svg?raw";
 import svgWorld from "./svg/world.svg?raw";
+import svgNorway from "./svg/norway.svg?raw";
+import svgUNRegions from "./svg/un-regions.svg?raw";
+import svgSouthAmerica from "./svg/south-america.svg?raw";
+import svgNorthAmerica from "./svg/north-america.svg?raw";
+import svgAsia from "./svg/asia.svg?raw";
+import svgEurope from "./svg/europe.svg?raw";
 
+import svgSpainProvinces from "./svg/spain-provinces.svg?raw";
+import svgUkraine from "./svg/ukraine.svg?raw";
+import svgSwitzerland from "./svg/switzerland.svg?raw";
+import svgSweden from "./svg/sweden.svg?raw";
+import svgSouthKorea from "./svg/south-korea.svg?raw";
+import svgSaudiArabia from "./svg/saudi-arabia.svg?raw";
+import svgPoland from "./svg/poland.svg?raw";
+import svgNetherlands from "./svg/netherlands.svg?raw";
+import svgMexico from "./svg/mexico.svg?raw";
+import svgIndia from "./svg/india.svg?raw";
+import svgIceland from "./svg/iceland.svg?raw";
+import svgGreece from "./svg/greece.svg?raw";
+import svgFinland from "./svg/finland.svg?raw";
+import svgEgypt from "./svg/egypt.svg?raw";
+import svgDenmark from "./svg/denmark.svg?raw";
+import svgCzechRepublic from "./svg/czech-republic.svg?raw";
+import svgCroatia from "./svg/croatia.svg?raw";
+import svgCanada from "./svg/canada.svg?raw";
+import svgBrazil from "./svg/brazil.svg?raw";
+import svgBelgium from "./svg/belgium.svg?raw";
+import svgAustria from "./svg/austria.svg?raw";
+import svgArgentina from "./svg/argentina.svg?raw";
+import svgAfrica from "./svg/africa.svg?raw";
 export type TerritoryValueStrategy = "code_numeric" | "hash_20_99" | "hash_21_180";
 
 export interface TerritoryMetaOverride {
@@ -65,6 +94,68 @@ export function getBaseSvgForCountry(country: TerritoriesCountry): string {
       return svgUKCounties;
     case "US":
       return svgUSA;
+
+    case "AF":
+      return svgAfrica;
+    case "AR":
+      return svgArgentina;
+    case "AT":
+      return svgAustria;
+    case "BE":
+      return svgBelgium;
+    case "BR":
+      return svgBrazil;
+    case "CA":
+      return svgCanada;
+    case "HR":
+      return svgCroatia;
+    case "CZ":
+      return svgCzechRepublic;
+    case "DK":
+      return svgDenmark;
+    case "EG":
+      return svgEgypt;
+    case "FI":
+      return svgFinland;
+    case "GR":
+      return svgGreece;
+    case "IS":
+      return svgIceland;
+    case "IN":
+      return svgIndia;
+    case "MX":
+      return svgMexico;
+    case "NL":
+      return svgNetherlands;
+    case "NO":
+      return svgNorway;
+    case "PL":
+      return svgPoland;
+    case "SA":
+      return svgSaudiArabia;
+    case "KR":
+      return svgSouthKorea;
+    case "SE":
+      return svgSweden;
+    case "CH":
+      return svgSwitzerland;
+    case "UA":
+      return svgUkraine;
+    case "EU":
+      return svgEurope;
+    case "ASIA":
+      return svgAsia;
+    case "NA":
+      return svgNorthAmerica;
+    case "SAM":
+      return svgSouthAmerica;
+    case "UN":
+      return svgUNRegions;
+    case "EN":
+      return svgUKCounties;
+    case "UK":
+      return svgUKCounties;
+
     case "WORLD":
       return svgWorld;
     default:

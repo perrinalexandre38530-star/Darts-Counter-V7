@@ -211,6 +211,341 @@ export const MAP_RU: TerritoryMap = {
 // -------------------------------------------------------------
 // WORLD (fallback abstrait)
 // -------------------------------------------------------------
+
+// -------------------------------------------------------------
+// Afrique
+// -------------------------------------------------------------
+export const MAP_AF: TerritoryMap = {
+  id: "AF",
+  name: "Afrique",
+  kind: "svg",
+  tickerId: "af",
+  zones: [],
+};
+
+
+// -------------------------------------------------------------
+// Argentine
+// -------------------------------------------------------------
+export const MAP_AR: TerritoryMap = {
+  id: "AR",
+  name: "Argentine",
+  kind: "svg",
+  tickerId: "ar",
+  zones: [],
+};
+
+
+// -------------------------------------------------------------
+// Autriche
+// -------------------------------------------------------------
+export const MAP_AT: TerritoryMap = {
+  id: "AT",
+  name: "Autriche",
+  kind: "svg",
+  tickerId: "at",
+  zones: [],
+};
+
+
+// -------------------------------------------------------------
+// Belgique
+// -------------------------------------------------------------
+export const MAP_BE: TerritoryMap = {
+  id: "BE",
+  name: "Belgique",
+  kind: "svg",
+  tickerId: "be",
+  zones: [],
+};
+
+
+// -------------------------------------------------------------
+// Brésil
+// -------------------------------------------------------------
+export const MAP_BR: TerritoryMap = {
+  id: "BR",
+  name: "Brésil",
+  kind: "svg",
+  tickerId: "br",
+  zones: [],
+};
+
+
+// -------------------------------------------------------------
+// Canada
+// -------------------------------------------------------------
+export const MAP_CA: TerritoryMap = {
+  id: "CA",
+  name: "Canada",
+  kind: "svg",
+  tickerId: "ca",
+  zones: [],
+};
+
+
+// -------------------------------------------------------------
+// Croatie
+// -------------------------------------------------------------
+export const MAP_HR: TerritoryMap = {
+  id: "HR",
+  name: "Croatie",
+  kind: "svg",
+  tickerId: "hr",
+  zones: [],
+};
+
+
+// -------------------------------------------------------------
+// Tchéquie
+// -------------------------------------------------------------
+export const MAP_CZ: TerritoryMap = {
+  id: "CZ",
+  name: "Tchéquie",
+  kind: "svg",
+  tickerId: "cz",
+  zones: [],
+};
+
+
+// -------------------------------------------------------------
+// Danemark
+// -------------------------------------------------------------
+export const MAP_DK: TerritoryMap = {
+  id: "DK",
+  name: "Danemark",
+  kind: "svg",
+  tickerId: "dk",
+  zones: [],
+};
+
+
+// -------------------------------------------------------------
+// Égypte
+// -------------------------------------------------------------
+export const MAP_EG: TerritoryMap = {
+  id: "EG",
+  name: "Égypte",
+  kind: "svg",
+  tickerId: "eg",
+  zones: [],
+};
+
+
+// -------------------------------------------------------------
+// Finlande
+// -------------------------------------------------------------
+export const MAP_FI: TerritoryMap = {
+  id: "FI",
+  name: "Finlande",
+  kind: "svg",
+  tickerId: "fi",
+  zones: [],
+};
+
+
+// -------------------------------------------------------------
+// Grèce
+// -------------------------------------------------------------
+export const MAP_GR: TerritoryMap = {
+  id: "GR",
+  name: "Grèce",
+  kind: "svg",
+  tickerId: "gr",
+  zones: [],
+};
+
+
+// -------------------------------------------------------------
+// Islande
+// -------------------------------------------------------------
+export const MAP_IS: TerritoryMap = {
+  id: "IS",
+  name: "Islande",
+  kind: "svg",
+  tickerId: "is",
+  zones: [],
+};
+
+
+// -------------------------------------------------------------
+// Inde
+// -------------------------------------------------------------
+export const MAP_IN: TerritoryMap = {
+  id: "IN",
+  name: "Inde",
+  kind: "svg",
+  tickerId: "in",
+  zones: [],
+};
+
+
+// -------------------------------------------------------------
+// Mexique
+// -------------------------------------------------------------
+export const MAP_MX: TerritoryMap = {
+  id: "MX",
+  name: "Mexique",
+  kind: "svg",
+  tickerId: "mx",
+  zones: [],
+};
+
+
+// -------------------------------------------------------------
+// Pays-Bas
+// -------------------------------------------------------------
+export const MAP_NL: TerritoryMap = {
+  id: "NL",
+  name: "Pays-Bas",
+  kind: "svg",
+  tickerId: "nl",
+  zones: [],
+};
+
+
+// -------------------------------------------------------------
+// Pologne
+// -------------------------------------------------------------
+export const MAP_PL: TerritoryMap = {
+  id: "PL",
+  name: "Pologne",
+  kind: "svg",
+  tickerId: "pl",
+  zones: [],
+};
+
+
+// -------------------------------------------------------------
+// Arabie saoudite
+// -------------------------------------------------------------
+export const MAP_SA: TerritoryMap = {
+  id: "SA",
+  name: "Arabie saoudite",
+  kind: "svg",
+  tickerId: "sa",
+  zones: [],
+};
+
+
+// -------------------------------------------------------------
+// Corée du Sud
+// -------------------------------------------------------------
+export const MAP_KR: TerritoryMap = {
+  id: "KR",
+  name: "Corée du Sud",
+  kind: "svg",
+  tickerId: "kr",
+  zones: [],
+};
+
+
+// -------------------------------------------------------------
+// Suède
+// -------------------------------------------------------------
+export const MAP_SE: TerritoryMap = {
+  id: "SE",
+  name: "Suède",
+  kind: "svg",
+  tickerId: "se",
+  zones: [],
+};
+
+
+// -------------------------------------------------------------
+// Suisse
+// -------------------------------------------------------------
+export const MAP_CH: TerritoryMap = {
+  id: "CH",
+  name: "Suisse",
+  kind: "svg",
+  tickerId: "ch",
+  zones: [],
+};
+
+
+// -------------------------------------------------------------
+// Ukraine
+// -------------------------------------------------------------
+export const MAP_UA: TerritoryMap = {
+  id: "UA",
+  name: "Ukraine",
+  kind: "svg",
+  tickerId: "ua",
+  zones: [],
+};
+
+
+// -------------------------------------------------------------
+// Europe
+// -------------------------------------------------------------
+export const MAP_EU: TerritoryMap = {
+  id: "EU",
+  name: "Europe",
+  kind: "svg",
+  tickerId: "eu",
+  zones: [],
+};
+
+
+// -------------------------------------------------------------
+// Asie
+// -------------------------------------------------------------
+export const MAP_ASIA: TerritoryMap = {
+  id: "ASIA",
+  name: "Asie",
+  kind: "svg",
+  tickerId: "asia",
+  zones: [],
+};
+
+
+// -------------------------------------------------------------
+// Amérique du Nord
+// -------------------------------------------------------------
+export const MAP_NA: TerritoryMap = {
+  id: "NA",
+  name: "Amérique du Nord",
+  kind: "svg",
+  tickerId: "na",
+  zones: [],
+};
+
+
+// -------------------------------------------------------------
+// Amérique du Sud
+// -------------------------------------------------------------
+export const MAP_SAM: TerritoryMap = {
+  id: "SAM",
+  name: "Amérique du Sud",
+  kind: "svg",
+  tickerId: "sam",
+  zones: [],
+};
+
+
+// -------------------------------------------------------------
+// Monde (UN)
+// -------------------------------------------------------------
+export const MAP_UN: TerritoryMap = {
+  id: "UN",
+  name: "Monde (UN)",
+  kind: "svg",
+  tickerId: "un",
+  zones: [],
+};
+
+// -------------------------------------------------------------
+// Norvège
+// -------------------------------------------------------------
+export const MAP_NO: TerritoryMap = {
+  id: "NO",
+  name: "Norvège",
+  kind: "svg",
+  tickerId: "no",
+  zones: [],
+};
+
 export const MAP_WORLD: TerritoryMap = {
   id: "WORLD",
   name: "World",
@@ -237,6 +572,34 @@ export const TERRITORY_MAPS: Record<string, TerritoryMap> = {
   AU: MAP_AU,
   JP: MAP_JP,
   RU: MAP_RU,
+  AF: MAP_AF,
+  AR: MAP_AR,
+  AT: MAP_AT,
+  BE: MAP_BE,
+  BR: MAP_BR,
+  CA: MAP_CA,
+  HR: MAP_HR,
+  CZ: MAP_CZ,
+  DK: MAP_DK,
+  EG: MAP_EG,
+  FI: MAP_FI,
+  GR: MAP_GR,
+  IS: MAP_IS,
+  IN: MAP_IN,
+  MX: MAP_MX,
+  NL: MAP_NL,
+  NO: MAP_NO,
+  PL: MAP_PL,
+  SA: MAP_SA,
+  KR: MAP_KR,
+  SE: MAP_SE,
+  CH: MAP_CH,
+  UA: MAP_UA,
+  EU: MAP_EU,
+  ASIA: MAP_ASIA,
+  NA: MAP_NA,
+  SAM: MAP_SAM,
+  UN: MAP_UN,
   WORLD: MAP_WORLD,
 };
 

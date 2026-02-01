@@ -56,7 +56,6 @@ Conseils
 `;
 
 // Alphabetical order (carousel)
-const MAP_ORDER = ["AU", "CN", "DE", "EN", "ES", "FR", "IT", "JP", "RU", "US", "WORLD"];
 const LS_BOTS_KEY = "dc_bots_v1";
 
 const tickerGlob = import.meta.glob("../assets/tickers/ticker_territories_*.png", {
@@ -228,7 +227,10 @@ export default function DepartementsConfig(props: any) {
   const mapCardWidthRef = React.useRef<number>(0);
 
   const maps = React.useMemo(() => {
-    return MAP_ORDER.map((id) => ({ id, ...TERRITORY_MAPS[id] })).filter((m) => !!m);
+    return Object.keys(TERRITORY_MAPS)
+      .map((id) => ({ id, ...(TERRITORY_MAPS as any)[id] }))
+      .filter((m) => !!m)
+      .sort((a, b) => String(a.name || a.id).localeCompare(String(b.name || b.id), "fr"));
   }, []);
 
   const loopMaps = React.useMemo(() => {
@@ -259,9 +261,10 @@ export default function DepartementsConfig(props: any) {
 
   const cycleMap = React.useCallback(
     (dir: -1 | 1) => {
-      const idx = MAP_ORDER.indexOf(mapId as any);
-      const n = MAP_ORDER.length;
-      const nextId = MAP_ORDER[(idx + dir + n) % n];
+      let idx = maps.findIndex((m) => m.id === mapId);
+              if (idx < 0) idx = 0;
+              const n = maps.length || 1;
+      const nextId = maps[(idx + dir + n) % n]?.id ?? maps[0]?.id;
       setMapId(nextId);
 
       // Also scroll to keep it centered-ish
@@ -576,171 +579,173 @@ export default function DepartementsConfig(props: any) {
           </div>
         }
       >
-        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          {/* Prev */}
-          <button
-            type="button"
-            onClick={() => {
-              // wrap selection
-              const idx = MAP_ORDER.indexOf(mapId as any);
-              const prev = MAP_ORDER[(idx - 1 + MAP_ORDER.length) % MAP_ORDER.length];
-              setMapId(prev);
-              // keep carousel visually centered
-              if (mapStripRef.current && mapCardWidthRef.current) {
-                mapStripRef.current.scrollLeft -= (mapCardWidthRef.current + 14);
-              }
-            }}
-            style={{
-              width: 42,
-              height: 42,
-              borderRadius: 14,
-              border: "1px solid rgba(255,255,255,0.12)",
-              background: "rgba(0,0,0,0.35)",
-              color: "rgba(255,255,255,0.9)",
-              cursor: "pointer",
-              display: "grid",
-              placeItems: "center",
-              flexShrink: 0,
-            }}
-            aria-label="Précédent"
-            title="Précédent"
-          >
-            ‹
-          </button>
-
-          {/* Infinite-feel strip */}
+        
+          {/* Full-bleed carousel (ticker = full width) */}
           <div
-            ref={mapStripRef}
-            className="dc-scroll-thin"
-            style={{ display: "flex", gap: 14, overflowX: "auto", paddingBottom: 10, flex: 1, scrollSnapType: "x mandatory" }}
-            onScroll={() => {
-              const el = mapStripRef.current;
-              if (!el) return;
-              const third = el.scrollWidth / 3;
-              if (!third) return;
-              if (el.scrollLeft < third * 0.3) el.scrollLeft += third;
-              else if (el.scrollLeft > third * 1.7) el.scrollLeft -= third;
+            style={{
+              position: "relative",
+              width: "calc(100% + 24px)",
+              marginLeft: -12,
+              marginRight: -12,
             }}
           >
-            {loopMaps.map((m, idx) => {
-            const selected = m.id === mapId;
-            const src = findTerritoriesTicker(m.tickerId);
-            const flag = findFlagForMapId(m.id);
+            {/* Infinite-feel strip */}
+            <div
+              ref={mapStripRef}
+              className="dc-scroll-thin"
+              style={{
+                display: "flex",
+                gap: 0,
+                overflowX: "auto",
+                paddingBottom: 10,
+                flex: 1,
+                scrollSnapType: "x mandatory",
+              }}
+              onScroll={() => {
+                const el = mapStripRef.current;
+                if (!el) return;
+                const third = el.scrollWidth / 3;
+                if (!third) return;
+                if (el.scrollLeft < third * 0.3) el.scrollLeft += third;
+                else if (el.scrollLeft > third * 1.7) el.scrollLeft -= third;
+              }}
+            >
+              {loopMaps.map((m, idx) => {
+                const selected = m.id === mapId;
+                const src = findTerritoriesTicker(m.tickerId);
 
-            return (
-              <button
-                key={`${m.id}-${idx}`}
-                ref={idx === 0 ? (el) => {
-                  // measure one card width once
-                  if (el && !mapCardWidthRef.current) {
-                    mapCardWidthRef.current = (el as HTMLButtonElement).getBoundingClientRect().width;
-                  }
-                } : undefined}
-                onClick={() => setMapId(m.id)}
-                style={{
-                  minWidth: 210,
-                  maxWidth: 210,
-                  textAlign: "left",
-                  borderRadius: 16,
-                  overflow: "hidden",
-                  border: selected ? `1px solid ${primary}66` : "1px solid rgba(255,255,255,0.10)",
-                  background: selected ? primarySoft : "rgba(255,255,255,0.04)",
-                  boxShadow: selected ? `0 12px 28px ${primary}22` : "0 10px 24px rgba(0,0,0,0.35)",
-                  cursor: "pointer",
-                  padding: 0,
-                  flexShrink: 0,
-                  scrollSnapAlign: "center",
-                }}
-              >
-                <div style={{ padding: 10 }}>
-                  {/* ✅ drapeau + nom sur la même ligne, ✅ plus de "SELECTED" */}
-                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                    {flag ? (
-                      <img
-                        src={flag}
-                        alt={m.id}
-                        style={{ width: 18, height: 18, borderRadius: 4, objectFit: "cover" }}
-                        draggable={false}
-                      />
-                    ) : (
+                return (
+                  <div
+                    key={idx + "-" + m.id}
+                    data-map-card
+                    style={{
+                      scrollSnapAlign: "center",
+                      cursor: "pointer",
+                      flexShrink: 0,
+                      minWidth: "100%",
+                      maxWidth: "100%",
+                      paddingLeft: 12,
+                      paddingRight: 12,
+                    }}
+                    onClick={() => setMapId(m.id)}
+                  >
+                    <div
+                      style={{
+                        borderRadius: 18,
+                        overflow: "hidden",
+                        border: selected ? "1px solid rgba(255,255,255,0.20)" : "1px solid rgba(255,255,255,0.10)",
+                        boxShadow: selected
+                          ? "0 0 18px rgba(255,255,255,0.10), 0 0 42px rgba(255,255,255,0.06)"
+                          : "0 10px 24px rgba(0,0,0,0.35)",
+                        background: "rgba(0,0,0,0.25)",
+                      }}
+                    >
+                      {/* Title row */}
                       <div
                         style={{
-                          width: 18,
-                          height: 18,
-                          borderRadius: 4,
-                          background: "rgba(255,255,255,0.10)",
-                          border: "1px solid rgba(255,255,255,0.10)",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "space-between",
+                          padding: "10px 12px",
+                          gap: 12,
+                          background: "rgba(0,0,0,0.35)",
+                          borderBottom: "1px solid rgba(255,255,255,0.06)",
                         }}
-                      />
-                    )}
-                    <div style={{ fontSize: 14, fontWeight: 1000 }}>{m.name}</div>
-                    <div style={{ marginLeft: "auto", fontSize: 11, opacity: 0.8, fontWeight: 950 }}>{m.id}</div>
-                  </div>
-                </div>
-
-                <div style={{ padding: 10, paddingTop: 0 }}>
-                  <div
-                    style={{
-                      borderRadius: 14,
-                      overflow: "hidden",
-                      border: "1px solid rgba(255,255,255,0.10)",
-                      background: "rgba(0,0,0,0.20)",
-                      aspectRatio: "800 / 330",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                    }}
-                  >
-                    {src ? (
-                      <img
-                        src={src}
-                        alt={`ticker ${m.id}`}
-                        style={{ width: "100%", height: "100%", objectFit: "cover", opacity: 0.95 }}
-                        draggable={false}
-                      />
-                    ) : (
-                      <div style={{ fontSize: 12, opacity: 0.7, fontWeight: 900 }}>
-                        ticker_territories_{m.tickerId}.png manquant
+                      >
+                        <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
+                          <div
+                            style={{
+                              width: 14,
+                              height: 14,
+                              borderRadius: 4,
+                              border: "1px solid rgba(255,255,255,0.25)",
+                              background: selected ? "rgba(255,255,255,0.18)" : "transparent",
+                              flexShrink: 0,
+                            }}
+                          />
+                          <div style={{ fontWeight: 900, letterSpacing: 0.4, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                            {m.name}
+                          </div>
+                        </div>
+                        <div style={{ opacity: 0.75, fontWeight: 900, letterSpacing: 1.2 }}>{m.id}</div>
                       </div>
-                    )}
-                  </div>
-                </div>
-              </button>
-            );
-          })}
-          </div>
 
-          {/* Next */}
-          <button
-            type="button"
-            onClick={() => {
-              const idx = MAP_ORDER.indexOf(mapId as any);
-              const next = MAP_ORDER[(idx + 1) % MAP_ORDER.length];
-              setMapId(next);
-              if (mapStripRef.current && mapCardWidthRef.current) {
-                mapStripRef.current.scrollLeft += (mapCardWidthRef.current + 14);
-              }
-            }}
-            style={
-              {
-                width: 42,
-                height: 42,
-                borderRadius: 14,
-                border: "1px solid rgba(255,255,255,0.12)",
-                background: "rgba(0,0,0,0.35)",
-                color: "rgba(255,255,255,0.9)",
+                      {/* Ticker image full width */}
+                      <div style={{ width: "100%", aspectRatio: "800 / 230", background: "rgba(0,0,0,0.30)" }}>
+                        {src ? (
+                          <img
+                            src={src}
+                            alt={m.name}
+                            style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
+                          />
+                        ) : (
+                          <div style={{ width: "100%", height: "100%", display: "grid", placeItems: "center", opacity: 0.7, fontWeight: 900 }}>
+                            ticker {m.id}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Overlay arrows (on top of ticker) */}
+            <button
+              onClick={() => cycleMap(-1)}
+              style={{
+                position: "absolute",
+                left: 10,
+                top: "50%",
+                transform: "translateY(-20%)",
+                width: 44,
+                height: 44,
+                borderRadius: 999,
+                border: "1px solid rgba(255,255,255,0.16)",
+                background: "rgba(0,0,0,0.55)",
+                boxShadow: "0 10px 22px rgba(0,0,0,0.45)",
+                color: "#fff",
+                fontSize: 22,
+                fontWeight: 900,
                 cursor: "pointer",
                 display: "grid",
                 placeItems: "center",
-                flexShrink: 0,
-              } as React.CSSProperties
-            }
-            aria-label="Suivant"
-            title="Suivant"
-          >
-            ›
-          </button>
-        </div>
+                zIndex: 5,
+              }}
+              aria-label="Précédent"
+              title="Précédent"
+            >
+              ‹
+            </button>
+
+            <button
+              onClick={() => cycleMap(1)}
+              style={{
+                position: "absolute",
+                right: 10,
+                top: "50%",
+                transform: "translateY(-20%)",
+                width: 44,
+                height: 44,
+                borderRadius: 999,
+                border: "1px solid rgba(255,255,255,0.16)",
+                background: "rgba(0,0,0,0.55)",
+                boxShadow: "0 10px 22px rgba(0,0,0,0.45)",
+                color: "#fff",
+                fontSize: 22,
+                fontWeight: 900,
+                cursor: "pointer",
+                display: "grid",
+                placeItems: "center",
+                zIndex: 5,
+              }}
+              aria-label="Suivant"
+              title="Suivant"
+            >
+              ›
+            </button>
+          </div>
+
       </Section>
 
       {/* PLAYERS */}
@@ -1291,7 +1296,7 @@ export default function DepartementsConfig(props: any) {
             position: "fixed",
             left: 0,
             right: 0,
-            bottom: 76,
+            bottom: "calc(112px + env(safe-area-inset-bottom))",
             padding: "0 12px",
             zIndex: 30,
           }}
