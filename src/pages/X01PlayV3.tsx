@@ -3733,28 +3733,7 @@ function HeaderBlock(props: HeaderBlockProps) {
         overflow: "hidden",
       }}
     >
-      {/* Avatar joueur en fond — sur toute la carte (fade à gauche comme les tickers GAMES) */}
-      {!!bgAvatarUrl && (
-        <div
-          aria-hidden
-          style={{
-            position: "absolute",
-            inset: 0,
-            backgroundImage: `url(${bgAvatarUrl})`,
-            backgroundRepeat: "no-repeat",
-            backgroundPosition: "100% 50%",
-            // ✅ remplit la hauteur de la carte, recadré et légèrement zoomé
-            backgroundSize: "auto 140%",
-            opacity: 0.1,
-            filter: "saturate(1.05) contrast(1.05)",
-            pointerEvents: "none",
-            userSelect: "none",
-            zIndex: 0,
-          }}
-        />
-      )}
-
-      {/* Dégradé gauche -> droite pour fondre le logo dans le fond (≈ 3/4 de la carte) */}
+            {/* Dégradé gauche -> droite pour fondre le logo dans le fond (≈ 3/4 de la carte) */}
       <div
         aria-hidden
         style={{
@@ -3882,13 +3861,48 @@ function HeaderBlock(props: HeaderBlockProps) {
             display: "flex",
             flexDirection: "column",
             gap: 5,
+            position: "relative",
+            overflow: "visible",
           }}
         >
+          {/* BG ancré AU SCORE (centre = centre du 501) */}
+          {!!bgAvatarUrl && (
+            <img
+              src={bgAvatarUrl}
+              aria-hidden
+              style={{
+                position: "absolute",
+                top: "40%",
+                left: "60%",
+                transform: "translate(-50%, -50%)",
+                height: "250%",
+                width: "auto",
+                WebkitMaskImage:
+                  "linear-gradient(90deg, rgba(0,0,0,0) 0%, rgba(0,0,0,0.2) 25%, rgba(0,0,0,0.85) 52%, rgba(0,0,0,1) 69%, rgba(0,0,0,1) 100%)",
+                maskImage:
+                  "linear-gradient(90deg, rgba(0,0,0,0) 0%, rgba(0,0,0,0.2) 25%, rgba(0,0,0,0.85) 52%, rgba(0,0,0,1) 69%, rgba(0,0,0,1) 100%)",
+                WebkitMaskRepeat: "no-repeat",
+                maskRepeat: "no-repeat",
+                WebkitMaskSize: "100% 100%",
+                maskSize: "100% 100%",
+
+                opacity: 0.22,
+                filter:
+                  "saturate(1.35) contrast(1.18) brightness(1.08) drop-shadow(-10px 0 26px rgba(0,0,0,.55))",
+                pointerEvents: "none",
+                userSelect: "none",
+                zIndex: 0,
+              }}
+            />
+          )}
+
           {/* SCORE CENTRAL */}
           <div
             style={{
               fontSize: 64,
               fontWeight: 900,
+              position: "relative",
+              zIndex: 2,
               color: "#ffcf57",
               textShadow: "0 4px 18px rgba(255,195,26,.25)",
               lineHeight: 1.02,
@@ -3903,6 +3917,8 @@ function HeaderBlock(props: HeaderBlockProps) {
               display: "flex",
               gap: 5,
               justifyContent: "center",
+              position: "relative",
+              zIndex: 2,
             }}
           >
             {[0, 1, 2].map((i) => {
@@ -4114,19 +4130,28 @@ function TeamHeaderBlock(props: {
         overflow: "hidden",
       }}
     >
-      {/* TEAM logo en fond: couvre la carte + fade à gauche (style tickers GAMES) */}
+      {/* BG TEAM sur toute la carte (meme rendu que SOLO) */}
       {!!teamLogoUrl && (
-        <div
+        <img
+          src={teamLogoUrl}
           aria-hidden
           style={{
             position: "absolute",
-            inset: 0,
-            backgroundImage: `url(${teamLogoUrl})`,
-            backgroundRepeat: "no-repeat",
-            backgroundPosition: "100% 50%",
-            backgroundSize: "auto 120%",
-            opacity: 0.1,
-            filter: "saturate(1.15) contrast(1.05)",
+            top: "44%",
+            left: "72%",
+            transform: "translate(-50%, -50%)",
+            height: "150%",
+            width: "auto",
+            opacity: 0.14,
+            filter: "saturate(1.20) contrast(1.10) brightness(1.06) drop-shadow(-8px 0 22px rgba(0,0,0,.55))",
+            WebkitMaskImage:
+              "linear-gradient(90deg, rgba(0,0,0,0) 0%, rgba(0,0,0,0.2) 18%, rgba(0,0,0,0.85) 45%, rgba(0,0,0,1) 62%, rgba(0,0,0,1) 100%)",
+            maskImage:
+              "linear-gradient(90deg, rgba(0,0,0,0) 0%, rgba(0,0,0,0.2) 18%, rgba(0,0,0,0.85) 45%, rgba(0,0,0,1) 62%, rgba(0,0,0,1) 100%)",
+            WebkitMaskRepeat: "no-repeat",
+            maskRepeat: "no-repeat",
+            WebkitMaskSize: "100% 100%",
+            maskSize: "100% 100%",
             pointerEvents: "none",
             userSelect: "none",
             zIndex: 0,
@@ -4134,7 +4159,7 @@ function TeamHeaderBlock(props: {
         />
       )}
 
-      {/* Dégradé côté gauche (fondre le logo sur ~3/4) */}
+            {/* Dégradé côté gauche (fondre le logo sur ~3/4) */}
       <div
         aria-hidden
         style={{

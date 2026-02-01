@@ -686,6 +686,7 @@ function PetanqueHeaderArcade(props: {
   matchStartedAt: number | null;
   lastMeneStartedAt: number | null;
   timerView: "mene" | "match";
+  meneNumber: number;
   onStartMatch: () => void;
   onToggleTimerView: () => void;
 }) {
@@ -706,6 +707,7 @@ function PetanqueHeaderArcade(props: {
     matchStartedAt,
     lastMeneStartedAt,
     timerView,
+    meneNumber,
     onStartMatch,
     onToggleTimerView,
   } = props;
@@ -1125,10 +1127,22 @@ function PetanqueHeaderArcade(props: {
                       }}
                       title="Cliquer pour basculer Mène / Partie"
                     >
-                      {timerView === "mene" ? "Mène" : "Partie"}{" "}
-                      <span style={{ marginLeft: 8, fontVariantNumeric: "tabular-nums" }}>
-                        {fmtClock(timerView === "mene" ? meneElapsed : matchElapsed)}
-                      </span>
+
+                      {timerView === "mene" ? (
+                        <>
+                          MENE {meneNumber} :{" "}
+                          <span style={{ marginLeft: 8, fontVariantNumeric: "tabular-nums" }}>
+                            {fmtClock(meneElapsed)}
+                          </span>
+                        </>
+                      ) : (
+                        <>
+                          PARTIE :{" "}
+                          <span style={{ marginLeft: 8, fontVariantNumeric: "tabular-nums" }}>
+                            {fmtClock(matchElapsed)}
+                          </span>
+                        </>
+                      )}
                     </button>
                   )}
                 </div>
@@ -2727,6 +2741,7 @@ return (
       matchStartedAt={matchStartedAt}
       lastMeneStartedAt={lastMeneStartedAt}
       timerView={timerView}
+      meneNumber={Math.max(1, (stSafe.ends?.length ?? 0) + 1)}
       onStartMatch={startMatch}
       onToggleTimerView={() => setTimerView((v) => (v === "mene" ? "match" : "mene"))}
     />
@@ -3381,34 +3396,71 @@ return (
               }
 
               // ====== Stats allocations (score & stats mode) ======
-              // Map keys déjà identiques à PlayerStats
-              const perPlayerPts: Record<string, number> = {};
-              for (const a of allocations as MeneWizardAllocation[]) {
+              // allocations -> PlayerStats keys (identiques)
+              const allocs = allocations as MeneWizardAllocation[];
+              for (const a of allocs) {
                 const v = Number((a as any).value || 0);
                 if (!v) continue;
-                perPlayerPts[a.playerId] = (perPlayerPts[a.playerId] || 0) + v;
                 // @ts-ignore
                 bumpStat(a.playerId, a.stat as any, v);
               }
-              // si mode score: on crédite aussi "points" au(x) joueur(s)
+
+              // ====== Crédit "points" / "mènes" (uniquement quand on valide un SCORE) ======
+              // IMPORTANT:
+              // - Les actions (mode stats) ne touchent jamais au score
+              // - Les points concédés (pousseeConcede) sont attribués à l'adversaire,
+              //   mais les points restent crédités au camp gagnant.
               if (meneWizardMode === "score") {
-                const ids = Object.keys(perPlayerPts);
-                if (ids.length) {
-                  for (const pid of ids) {
-                    bumpStat(pid, "points", perPlayerPts[pid] || 0);
+                const winnerTeam: PetanqueTeamId | null = matchMode === "ffa3" ? null : (winnerId === "B" ? "B" : "A");
+
+                // helpers pour savoir si un playerId appartient à A/B
+                const rosterA = (teams.A.players ?? []).map((p) => String(p.id));
+                const rosterB = (teams.B.players ?? []).map((p) => String(p.id));
+                const isInWinner = (pid: string) => {
+                  if (matchMode === "ffa3") return pid === String(winnerId);
+                  return winnerTeam === "A" ? rosterA.includes(pid) : rosterB.includes(pid);
+                };
+
+                let concededPts = 0;
+                const pointsByPlayer: Record<string, number> = {};
+                for (const a of allocs) {
+                  const v = Number((a as any).value || 0);
+                  if (!v) continue;
+                  if ((a as any).stat === "pousseeConcede") {
+                    concededPts += v;
+                    continue;
+                  }
+                  if (isInWinner(String(a.playerId))) {
+                    pointsByPlayer[String(a.playerId)] = (pointsByPlayer[String(a.playerId)] || 0) + v;
+                  }
+                }
+
+                // Les points concédés sont comptés dans le total gagné,
+                // on les crédite au 1er joueur du camp gagnant (ou au seul joueur en 1v1).
+                if (concededPts > 0 && matchMode !== "ffa3") {
+                  const winnerRoster = winnerTeam === "A" ? rosterA : rosterB;
+                  const pid = winnerRoster[0];
+                  if (pid) pointsByPlayer[pid] = (pointsByPlayer[pid] || 0) + concededPts;
+                }
+
+                const creditedIds = Object.keys(pointsByPlayer);
+                if (creditedIds.length) {
+                  for (const pid of creditedIds) {
+                    bumpStat(pid, "points", pointsByPlayer[pid] || 0);
                     bumpStat(pid, "menes", 1);
                   }
                 } else if (matchMode !== "ffa3" && points > 0) {
-                  // fallback: premier joueur du camp gagnant
-                  const roster = (winnerId === "B" ? teams.B.players : teams.A.players) ?? [];
-                  const pid = roster?.[0]?.id ? String(roster[0].id) : null;
+                  // fallback: 1er joueur du camp gagnant
+                  const winnerRoster = winnerTeam === "A" ? rosterA : rosterB;
+                  const pid = winnerRoster[0];
                   if (pid) {
                     bumpStat(pid, "points", points);
                     bumpStat(pid, "menes", 1);
                   }
                 }
               }
-            } finally {
+
+} finally {
               closeMeneWizard();
             }
           }}

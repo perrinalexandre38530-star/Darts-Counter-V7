@@ -151,15 +151,15 @@ export default function PetanqueMeneWizard(props: Props) {
 
   const keyFor = (playerId: string, stat: StatKey) => `${playerId}|${stat}`;
 
+
   const safeBump = (playerId: string, stat: StatKey, delta: 1 | -1) => {
     setAlloc((prev) => {
+      const prevTotal = sumAlloc(prev);
+      if (delta > 0 && mustMatchPoints && prevTotal >= points) return prev;
+
       const next = { ...prev };
       const k = keyFor(playerId, stat);
       const cur = Number(next[k] || 0);
-
-      if (delta > 0 && mustMatchPoints && allocatedTotal >= points) {
-        return prev;
-      }
       const nv = clamp(cur + delta, 0, 99);
       if (nv <= 0) delete next[k];
       else next[k] = nv;
@@ -168,16 +168,31 @@ export default function PetanqueMeneWizard(props: Props) {
   };
 
   const requestBump = (stat: StatKey, delta: 1 | -1) => {
+    // Special rule: PTS Concede must be attributed to the OPPOSITE camp/player.
+    const isConcede = stat === "pousseeConcede";
+
+    const pickParticipant = (pid: string) => participants.find((p) => p.id === pid) ?? participants[0];
+    const opponentOf = (pid: string) => {
+      if (participants.length < 2) return pid;
+      if (pid === "A") return "B";
+      if (pid === "B") return "A";
+      const other = participants.find((p) => p.id !== pid);
+      return other?.id ?? pid;
+    };
+
+    const basePid = isConcede ? opponentOf(winner.id) : winner.id;
+    const baseParticipant = pickParticipant(basePid);
+
     // in team mode, require selecting a member (unless 1 member)
-    const members = winner?.members ?? [];
-    if (winner?.kind === "team" && members.length > 1) {
-      // if we already have a chosen member, apply directly
-      const chosen = memberChosenId && members.some((m) => m.id === memberChosenId) ? memberChosenId : null;
+    const members = baseParticipant?.members ?? [];
+    if (baseParticipant?.kind === "team" && members.length > 1) {
+      const chosen =
+        memberChosenId && members.some((m) => m.id === memberChosenId) ? memberChosenId : null;
       if (chosen) {
         safeBump(chosen, stat, delta);
         return;
       }
-      setMemberPickForWinner(winner.id);
+      setMemberPickForWinner(baseParticipant.id);
       setMemberPickStat(stat);
       setMemberPickDelta(delta);
       setMemberPickOpen(true);
@@ -185,7 +200,10 @@ export default function PetanqueMeneWizard(props: Props) {
     }
 
     const targetPlayerId =
-      winner?.kind === "team" ? (winner.members?.[0]?.id ?? winner.id) : winner.id;
+      baseParticipant?.kind === "team"
+        ? (baseParticipant.members?.[0]?.id ?? baseParticipant.id)
+        : baseParticipant.id;
+
     safeBump(targetPlayerId, stat, delta);
   };
 
@@ -269,18 +287,31 @@ export default function PetanqueMeneWizard(props: Props) {
 
   const titleTxt = title ?? (mode === "score" ? "SCORE — Ajouter une mène" : "Statistiques — Ajouter une action");
 
-  const stats: Array<{ k: StatKey; label: string }> = [
+  const ALL_STATS: Array<{ k: StatKey; label: string }> = [
     { k: "pointage", label: "Pointage" },
     { k: "bec", label: "Bec" },
     { k: "trou", label: "Trou" },
     { k: "tirReussi", label: "Tir réussi" },
     { k: "carreau", label: "Carreau" },
     { k: "reprise", label: "Reprise" },
-    { k: "butAnnulation", label: "But KO" },
+    { k: "butAnnulation", label: "Bouclier" },
     { k: "butPoint", label: "But +" },
     { k: "pousseeAssist", label: "PTS Assist" },
     { k: "pousseeConcede", label: "PTS Concede" },
   ];
+
+  // In SCORE mode, we only allow stats that can explain the scored points.
+  // (No "Trou" / "Bouclier" / "But +" / "Reprise" in scoring attribution)
+  const SCORE_STATS: Array<{ k: StatKey; label: string }> = [
+    { k: "pointage", label: "Pointage" },
+    { k: "bec", label: "Bec" },
+    { k: "tirReussi", label: "Tir réussi" },
+    { k: "carreau", label: "Carreau" },
+    { k: "pousseeAssist", label: "PTS Assist" },
+    { k: "pousseeConcede", label: "PTS Concede" },
+  ];
+
+  const stats: Array<{ k: StatKey; label: string }> = mode === "score" ? SCORE_STATS : ALL_STATS;
 
   const statByKey = React.useMemo(() => {
     const m = new Map<StatKey, string>();

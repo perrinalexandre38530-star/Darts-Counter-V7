@@ -56,7 +56,7 @@ Conseils
 `;
 
 // Alphabetical order (carousel)
-const MAP_ORDER = ["AU", "CN", "EN", "FR", "DE", "IT", "JP", "RU", "ES", "US", "WORLD"];
+const MAP_ORDER = ["AU", "CN", "DE", "EN", "ES", "FR", "IT", "JP", "RU", "US", "WORLD"];
 const LS_BOTS_KEY = "dc_bots_v1";
 
 const tickerGlob = import.meta.glob("../assets/tickers/ticker_territories_*.png", {

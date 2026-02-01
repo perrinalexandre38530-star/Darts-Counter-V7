@@ -59,6 +59,39 @@ const tickerGlob = import.meta.glob("../assets/tickers/ticker_territories_*.png"
   import: "default",
 }) as Record<string, string>;
 
+// France regions icons (used in "values" modal when victory is by regions)
+const regionsFrGlob = import.meta.glob("../assets/regions_fr/FR-*.png", {
+  eager: true,
+  import: "default",
+}) as Record<string, string>;
+
+// INSEE region codes => (short icon code + display name)
+const FR_REGION_META: Record<string, { code: string; name: string }> = {
+  "FR-11": { code: "IDF", name: "Île-de-France" },
+  "FR-24": { code: "CVL", name: "Centre-Val de Loire" },
+  "FR-27": { code: "BFC", name: "Bourgogne-Franche-Comté" },
+  "FR-28": { code: "NOR", name: "Normandie" },
+  "FR-32": { code: "HDF", name: "Hauts-de-France" },
+  "FR-44": { code: "GES", name: "Grand Est" },
+  "FR-52": { code: "PDL", name: "Pays de la Loire" },
+  "FR-53": { code: "BRE", name: "Bretagne" },
+  "FR-75": { code: "NAQ", name: "Nouvelle-Aquitaine" },
+  "FR-76": { code: "OCC", name: "Occitanie" },
+  "FR-84": { code: "ARA", name: "Auvergne-Rhône-Alpes" },
+  "FR-93": { code: "PAC", name: "Provence-Alpes-Côte d’Azur" },
+  "FR-94": { code: "COR", name: "Corse" },
+};
+
+function findFrRegionIcon(regionCode: string): string | null {
+  const code = String(regionCode || "").toUpperCase().trim();
+  if (!code) return null;
+  const suffix = `/FR-${code}.png`;
+  for (const k of Object.keys(regionsFrGlob)) {
+    if (k.toUpperCase().endsWith(suffix.toUpperCase())) return regionsFrGlob[k];
+  }
+  return null;
+}
+
 function findTerritoriesTicker(mapId: string): string | null {
   const id = String(mapId || "").toLowerCase();
   const suffix = `/ticker_territories_${id}.png`;
@@ -79,18 +112,17 @@ function safeParse<T>(raw: string | null): T | null {
 
 function normalizeMapIdToCountry(mapId?: string): TerritoriesCountry {
   const m = String(mapId || "FR").toUpperCase().trim();
-  // Config uses EN for England => we map to UK svg pack
-  if (m === "EN" || m === "UK" || m === "GB") return "UK";
-  if (m === "FR") return "FR";
-  if (m === "IT") return "IT";
-  if (m === "DE") return "DE";
-  if (m === "ES") return "ES";
-  if (m === "US") return "US";
-  if (m === "CN") return "CN";
-  if (m === "AU") return "AU";
-  if (m === "JP") return "JP";
-  if (m === "RU") return "RU";
+
+  // Legacy aliases
+  if (m === "EN" || m === "GB" || m === "UK") return "UK";
   if (m === "WORLD") return "WORLD";
+
+  const supported: TerritoriesCountry[] = [
+    "FR","UK","IT","DE","ES","US","CN","AU","JP","RU","WORLD",
+    "AF","AR","ASIA","AT","BE","BR","CA","HR","CZ","DK","EG","EU","FI","GR","IS","IN","MX","NL","NA","NO","PL","SA","SAM","KR","SE","CH","UA","UN",
+  ];
+
+  if (supported.includes(m as TerritoriesCountry)) return m as TerritoriesCountry;
   return "FR";
 }
 
@@ -331,6 +363,82 @@ export default function DepartementsPlay(props: any) {
     return ttt ? `${ttt.name} • ${ttt.value} (${ttt.id})` : id;
   }, [game.turn.selectedTerritoryId, game.map.territories]);
 
+  const isFrRegionsVictory = country === "FR" && victoryMode === "regions";
+
+// Region ownership (FR) — a region is owned when ALL its departments share the same owner.
+const ownedRegionsByOwner = React.useMemo(() => {
+  if (!isFrRegionsVictory) return null;
+
+  const byRegion = new Map<string, any[]>();
+  for (const tt of game.map.territories) {
+    const regionId = String((tt as any).region || "FR-00");
+    const arr = byRegion.get(regionId) || [];
+    arr.push(tt);
+    byRegion.set(regionId, arr);
+  }
+
+  const regionOwner: Record<string, string | undefined> = {};
+  for (const [regionId, terrs] of byRegion.entries()) {
+    if (!terrs.length) continue;
+
+    const first = terrs[0]?.ownerId ? String(terrs[0].ownerId) : "";
+    if (!first) {
+      regionOwner[regionId] = undefined;
+      continue;
+    }
+    const allSame = terrs.every((t) => (t?.ownerId ? String(t.ownerId) : "") === first);
+    regionOwner[regionId] = allSame ? first : undefined;
+  }
+
+  const possibleOwners = game.teams?.length ? game.teams.map((t) => t.id) : game.players.map((p) => p.id);
+  const counts: Record<string, number> = {};
+  for (const oid of possibleOwners) counts[String(oid)] = 0;
+
+  for (const rid of Object.keys(regionOwner)) {
+    const owner = regionOwner[rid];
+    if (owner && counts[owner] != null) counts[owner] += 1;
+  }
+  return counts;
+}, [isFrRegionsVictory, game.map.territories, game.players, game.teams]);
+
+  const valuesByRegion = React.useMemo(() => {
+    if (!isFrRegionsVictory) return null;
+
+    const groups = new Map<string, any[]>();
+    for (const t of game.map.territories) {
+      const key = String((t as any).region || "FR-00");
+      const arr = groups.get(key) || [];
+      arr.push(t);
+      groups.set(key, arr);
+    }
+
+    const out = [...groups.entries()].map(([regionId, items]) => {
+      const meta = FR_REGION_META[regionId as keyof typeof FR_REGION_META];
+      const name = meta?.name || regionId;
+      const icon = meta?.code ? findFrRegionIcon(meta.code) : undefined;
+      const sorted = [...items].sort((a, b) => (a.value - b.value) || String(a.name).localeCompare(String(b.name)));
+      return { regionId, name, icon, items: sorted };
+    });
+
+    // Alphabetical by region name
+    out.sort((a, b) => a.name.localeCompare(b.name, "fr", { sensitivity: "base" }));
+    return out;
+  }, [isFrRegionsVictory, game.map.territories]);
+
+  const regionGroupsForValues = React.useMemo(() => {
+    if (!valuesByRegion) return null;
+    return valuesByRegion.map((g) => {
+      const meta = FR_REGION_META[g.regionId as keyof typeof FR_REGION_META];
+      return {
+        key: g.regionId,
+        name: g.name,
+        code: meta?.code || "",
+        iconSrc: meta?.code ? findFrRegionIcon(meta.code) : null,
+        items: g.items,
+      };
+    });
+  }, [valuesByRegion]);
+
   function goBack() {
     if (props?.go) return props.go("departements_config", { config: effectiveCfg });
     if (props?.setTab) return props.setTab("games");
@@ -490,13 +598,13 @@ export default function DepartementsPlay(props: any) {
                 <div style={{ minWidth: 140, padding: "10px 12px", borderRadius: 14, background: "rgba(0,0,0,0.25)", border: `1px solid ${game.teams[0].color}55` }}>
                   <div style={{ fontSize: 12, opacity: 0.85 }}>{game.teams[0].name}</div>
                   <div style={{ fontSize: 22, fontWeight: 900, color: game.teams[0].color }}>
-                    {(ownedByOwner[game.teams[0].id] || 0)}/{victoryMode === "territories" ? winTerritories : victoryMode === "regions" ? winRegions : winTerritories}
+                    {(victoryMode === "regions" && ownedRegionsByOwner ? (ownedRegionsByOwner[game.teams[0].id] || 0) : ((victoryMode === "regions" && ownedRegionsByOwner ? (ownedRegionsByOwner[game.teams[0].id] || 0) : (ownedByOwner[game.teams[0].id] || 0))))}/{victoryMode === "territories" ? winTerritories : victoryMode === "regions" ? winRegions : winTerritories}
                   </div>
                 </div>
                 <div style={{ minWidth: 140, padding: "10px 12px", borderRadius: 14, background: "rgba(0,0,0,0.25)", border: `1px solid ${game.teams[1].color}55` }}>
                   <div style={{ fontSize: 12, opacity: 0.85 }}>{game.teams[1].name}</div>
                   <div style={{ fontSize: 22, fontWeight: 900, color: game.teams[1].color }}>
-                    {(ownedByOwner[game.teams[1].id] || 0)}/{victoryMode === "territories" ? winTerritories : victoryMode === "regions" ? winRegions : winTerritories}
+                    {(victoryMode === "regions" && ownedRegionsByOwner ? (ownedRegionsByOwner[game.teams[1].id] || 0) : ((victoryMode === "regions" && ownedRegionsByOwner ? (ownedRegionsByOwner[game.teams[1].id] || 0) : (ownedByOwner[game.teams[1].id] || 0))))}/{victoryMode === "territories" ? winTerritories : victoryMode === "regions" ? winRegions : winTerritories}
                   </div>
                 </div>
               </>
@@ -504,7 +612,7 @@ export default function DepartementsPlay(props: any) {
               <div style={{ minWidth: 180, padding: "10px 12px", borderRadius: 14, background: "rgba(0,0,0,0.25)", border: `1px solid ${activeColor}55` }}>
                 <div style={{ fontSize: 12, opacity: 0.85 }}>Possessions</div>
                 <div style={{ fontSize: 22, fontWeight: 900, color: activeColor }}>
-                  {(ownedByOwner[game.turn.activePlayerId] || 0)}/{victoryMode === "territories" ? winTerritories : winTerritories}
+                  {(victoryMode === "regions" && ownedRegionsByOwner ? (ownedRegionsByOwner[game.turn.activePlayerId] || 0) : ((victoryMode === "regions" && ownedRegionsByOwner ? (ownedRegionsByOwner[game.turn.activePlayerId] || 0) : (ownedByOwner[game.turn.activePlayerId] || 0))))}/{victoryMode === "territories" ? winTerritories : winTerritories}
                 </div>
               </div>
             )}
@@ -534,29 +642,98 @@ export default function DepartementsPlay(props: any) {
                 <div style={{ fontSize: 14, fontWeight: 900, marginBottom: 8 }}>Valeurs des territoires</div>
                 <div style={{ fontSize: 12, opacity: 0.8, marginBottom: 10 }}>Chaque territoire a une valeur cible (score total sur une volée).</div>
                 <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                  {[...game.map.territories]
-                    .sort((a, b) => (a.value - b.value) || a.name.localeCompare(b.name))
-                    .map((tt) => (
-                      <div
-                        key={tt.id}
-                        style={{
-                          display: "flex",
-                          alignItems: "center",
-                          justifyContent: "space-between",
-                          gap: 10,
-                          padding: "10px 12px",
-                          borderRadius: 12,
-                          background: "rgba(255,255,255,0.04)",
-                          border: "1px solid rgba(255,255,255,0.08)",
-                        }}
-                      >
-                        <div style={{ minWidth: 52, textAlign: "center", fontWeight: 900, color: themeColor }}>{tt.value}</div>
-                        <div style={{ flex: 1, minWidth: 0 }}>
-                          <div style={{ fontSize: 13, fontWeight: 800, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{tt.name}</div>
-                          <div style={{ fontSize: 11, opacity: 0.7 }}>{tt.id}</div>
+                  {isFrRegionsVictory && regionGroupsForValues ? (
+                    regionGroupsForValues.map((g) => (
+                      <div key={g.key} style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                        <div
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 10,
+                            padding: "10px 12px",
+                            borderRadius: 14,
+                            background: "rgba(255,255,255,0.05)",
+                            border: "1px solid rgba(255,255,255,0.10)",
+                          }}
+                        >
+                          {g.iconSrc ? (
+                            <img
+                              src={g.iconSrc}
+                              alt={g.name}
+                              style={{ width: 28, height: 28, objectFit: "contain", filter: "drop-shadow(0 0 10px rgba(0,0,0,0.35))" }}
+                            />
+                          ) : (
+                            <div
+                              style={{
+                                width: 28,
+                                height: 28,
+                                borderRadius: 10,
+                                background: "rgba(0,0,0,0.25)",
+                                border: "1px solid rgba(255,255,255,0.12)",
+                                display: "grid",
+                                placeItems: "center",
+                                fontWeight: 900,
+                                fontSize: 12,
+                              }}
+                            >
+                              R
+                            </div>
+                          )}
+
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ fontSize: 13, fontWeight: 900, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{g.name}</div>
+                            <div style={{ fontSize: 11, opacity: 0.7 }}>{g.code || g.key}</div>
+                          </div>
                         </div>
+
+                        {g.items.map((tt) => (
+                          <div
+                            key={tt.id}
+                            style={{
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "space-between",
+                              gap: 10,
+                              padding: "10px 12px",
+                              borderRadius: 12,
+                              background: "rgba(255,255,255,0.04)",
+                              border: "1px solid rgba(255,255,255,0.08)",
+                            }}
+                          >
+                            <div style={{ minWidth: 52, textAlign: "center", fontWeight: 900, color: themeColor }}>{tt.value}</div>
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                              <div style={{ fontSize: 13, fontWeight: 800, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{tt.name}</div>
+                              <div style={{ fontSize: 11, opacity: 0.7 }}>{tt.id}</div>
+                            </div>
+                          </div>
+                        ))}
                       </div>
-                    ))}
+                    ))
+                  ) : (
+                    [...game.map.territories]
+                      .sort((a, b) => (a.value - b.value) || a.name.localeCompare(b.name))
+                      .map((tt) => (
+                        <div
+                          key={tt.id}
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "space-between",
+                            gap: 10,
+                            padding: "10px 12px",
+                            borderRadius: 12,
+                            background: "rgba(255,255,255,0.04)",
+                            border: "1px solid rgba(255,255,255,0.08)",
+                          }}
+                        >
+                          <div style={{ minWidth: 52, textAlign: "center", fontWeight: 900, color: themeColor }}>{tt.value}</div>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ fontSize: 13, fontWeight: 800, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{tt.name}</div>
+                            <div style={{ fontSize: 11, opacity: 0.7 }}>{tt.id}</div>
+                          </div>
+                        </div>
+                      ))
+                  )}
                 </div>
               </div>
             }
@@ -572,8 +749,8 @@ export default function DepartementsPlay(props: any) {
         <div style={{ fontSize: 12, opacity: 0.85 }}>
           Possessions:{" "}
           {game.teams?.length
-            ? `${game.teams[0].name} ${ownedByOwner[game.teams[0].id] || 0} • ${game.teams[1].name} ${ownedByOwner[game.teams[1].id] || 0}`
-            : `${ownedByOwner[game.turn.activePlayerId] || 0}`}
+            ? `${game.teams[0].name} ${(victoryMode === "regions" && ownedRegionsByOwner ? (ownedRegionsByOwner[game.teams[0].id] || 0) : (ownedByOwner[game.teams[0].id] || 0))} • ${game.teams[1].name} ${(victoryMode === "regions" && ownedRegionsByOwner ? (ownedRegionsByOwner[game.teams[1].id] || 0) : (ownedByOwner[game.teams[1].id] || 0))}`
+            : `${(victoryMode === "regions" && ownedRegionsByOwner ? (ownedRegionsByOwner[game.turn.activePlayerId] || 0) : (ownedByOwner[game.turn.activePlayerId] || 0))}`}
         </div>
       </div>
 
