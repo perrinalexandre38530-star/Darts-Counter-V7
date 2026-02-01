@@ -55,7 +55,8 @@ Conseils
 - Utilise la carte pour repérer rapidement les zones déjà prises / encore libres.
 `;
 
-const MAP_ORDER = ["FR", "EN", "IT", "DE", "ES", "US", "CN", "AU", "JP", "RU", "WORLD"];
+// Alphabetical order (carousel)
+const MAP_ORDER = ["AU", "CN", "EN", "FR", "DE", "IT", "JP", "RU", "ES", "US", "WORLD"];
 const LS_BOTS_KEY = "dc_bots_v1";
 
 const tickerGlob = import.meta.glob("../assets/tickers/ticker_territories_*.png", {
@@ -222,6 +223,56 @@ export default function DepartementsConfig(props: any) {
   // Inline info modal
   const [infoModal, setInfoModal] = React.useState<{ title: string; content: string } | null>(null);
 
+  // Map carousel (infinite loop feel)
+  const mapStripRef = React.useRef<HTMLDivElement | null>(null);
+  const mapCardWidthRef = React.useRef<number>(0);
+
+  const maps = React.useMemo(() => {
+    return MAP_ORDER.map((id) => ({ id, ...TERRITORY_MAPS[id] })).filter((m) => !!m);
+  }, []);
+
+  const loopMaps = React.useMemo(() => {
+    // triple list to allow scroll-wrap
+    return [...maps, ...maps, ...maps];
+  }, [maps]);
+
+  React.useLayoutEffect(() => {
+    const el = mapStripRef.current;
+    if (!el) return;
+    // Move initial scroll to the middle copy
+    requestAnimationFrame(() => {
+      const third = el.scrollWidth / 3;
+      el.scrollLeft = third;
+      // Estimate card width (first child)
+      const first = el.querySelector<HTMLElement>("[data-map-card='1']");
+      if (first) mapCardWidthRef.current = first.getBoundingClientRect().width;
+    });
+  }, [loopMaps.length]);
+
+  const onMapStripScroll = React.useCallback(() => {
+    const el = mapStripRef.current;
+    if (!el) return;
+    const third = el.scrollWidth / 3;
+    if (el.scrollLeft < third * 0.35) el.scrollLeft += third;
+    else if (el.scrollLeft > third * 1.65) el.scrollLeft -= third;
+  }, []);
+
+  const cycleMap = React.useCallback(
+    (dir: -1 | 1) => {
+      const idx = MAP_ORDER.indexOf(mapId as any);
+      const n = MAP_ORDER.length;
+      const nextId = MAP_ORDER[(idx + dir + n) % n];
+      setMapId(nextId);
+
+      // Also scroll to keep it centered-ish
+      const el = mapStripRef.current;
+      if (!el) return;
+      const cw = mapCardWidthRef.current || 240;
+      el.scrollBy({ left: dir * (cw + 14), behavior: "smooth" });
+    },
+    [mapId]
+  );
+
   // bots list (PRO + bots personnalisés)
   const [userBots, setUserBots] = React.useState<BotLite[]>([]);
   React.useEffect(() => {
@@ -244,11 +295,7 @@ export default function DepartementsConfig(props: any) {
   const maxPlayers = 6;
   const minPlayers = teamSize === 1 ? 2 : teamSize * 2;
 
-  const maps: TerritoryMap[] = React.useMemo(() => {
-    const list = MAP_ORDER.map((id) => TERRITORY_MAPS[id]).filter(Boolean);
-    const extras = Object.values(TERRITORY_MAPS).filter((m) => !MAP_ORDER.includes(m.id));
-    return [...list, ...extras];
-  }, []);
+  // (maps) is already memoized above (alphabetical order)
 
   function goBack() {
     if ((props as any)?.go) return (props as any).go("games");
@@ -529,15 +576,66 @@ export default function DepartementsConfig(props: any) {
           </div>
         }
       >
-        <div className="dc-scroll-thin" style={{ display: "flex", gap: 14, overflowX: "auto", paddingBottom: 10 }}>
-          {maps.map((m) => {
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          {/* Prev */}
+          <button
+            type="button"
+            onClick={() => {
+              // wrap selection
+              const idx = MAP_ORDER.indexOf(mapId as any);
+              const prev = MAP_ORDER[(idx - 1 + MAP_ORDER.length) % MAP_ORDER.length];
+              setMapId(prev);
+              // keep carousel visually centered
+              if (mapStripRef.current && mapCardWidthRef.current) {
+                mapStripRef.current.scrollLeft -= (mapCardWidthRef.current + 14);
+              }
+            }}
+            style={{
+              width: 42,
+              height: 42,
+              borderRadius: 14,
+              border: "1px solid rgba(255,255,255,0.12)",
+              background: "rgba(0,0,0,0.35)",
+              color: "rgba(255,255,255,0.9)",
+              cursor: "pointer",
+              display: "grid",
+              placeItems: "center",
+              flexShrink: 0,
+            }}
+            aria-label="Précédent"
+            title="Précédent"
+          >
+            ‹
+          </button>
+
+          {/* Infinite-feel strip */}
+          <div
+            ref={mapStripRef}
+            className="dc-scroll-thin"
+            style={{ display: "flex", gap: 14, overflowX: "auto", paddingBottom: 10, flex: 1, scrollSnapType: "x mandatory" }}
+            onScroll={() => {
+              const el = mapStripRef.current;
+              if (!el) return;
+              const third = el.scrollWidth / 3;
+              if (!third) return;
+              if (el.scrollLeft < third * 0.3) el.scrollLeft += third;
+              else if (el.scrollLeft > third * 1.7) el.scrollLeft -= third;
+            }}
+          >
+            {loopMaps.map((m, idx) => {
             const selected = m.id === mapId;
             const src = findTerritoriesTicker(m.tickerId);
             const flag = findFlagForMapId(m.id);
 
             return (
               <button
-                key={m.id}
+                key={`${m.id}-${idx}`}
+                ref={idx === 0 ? (el) => {
+                  // measure one card width once
+                  if (el && !mapCardWidthRef.current) {
+                    mapCardWidthRef.current = (el as HTMLButtonElement).getBoundingClientRect().width;
+                  }
+                } : undefined}
                 onClick={() => setMapId(m.id)}
                 style={{
                   minWidth: 210,
@@ -551,6 +649,7 @@ export default function DepartementsConfig(props: any) {
                   cursor: "pointer",
                   padding: 0,
                   flexShrink: 0,
+                  scrollSnapAlign: "center",
                 }}
               >
                 <div style={{ padding: 10 }}>
@@ -609,6 +708,38 @@ export default function DepartementsConfig(props: any) {
               </button>
             );
           })}
+          </div>
+
+          {/* Next */}
+          <button
+            type="button"
+            onClick={() => {
+              const idx = MAP_ORDER.indexOf(mapId as any);
+              const next = MAP_ORDER[(idx + 1) % MAP_ORDER.length];
+              setMapId(next);
+              if (mapStripRef.current && mapCardWidthRef.current) {
+                mapStripRef.current.scrollLeft += (mapCardWidthRef.current + 14);
+              }
+            }}
+            style={
+              {
+                width: 42,
+                height: 42,
+                borderRadius: 14,
+                border: "1px solid rgba(255,255,255,0.12)",
+                background: "rgba(0,0,0,0.35)",
+                color: "rgba(255,255,255,0.9)",
+                cursor: "pointer",
+                display: "grid",
+                placeItems: "center",
+                flexShrink: 0,
+              } as React.CSSProperties
+            }
+            aria-label="Suivant"
+            title="Suivant"
+          >
+            ›
+          </button>
         </div>
       </Section>
 

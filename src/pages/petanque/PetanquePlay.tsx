@@ -682,9 +682,12 @@ function PetanqueHeaderArcade(props: {
   ffaScores?: number[];
   ffaWinnerIdx?: number | null;
 
-  onAddEndA?: () => void;
-  onAddEndB?: () => void;
-  onAddEndNull?: () => void;
+  // ✅ Match timers (Start button + chrono)
+  matchStartedAt: number | null;
+  lastMeneStartedAt: number | null;
+  timerView: "mene" | "match";
+  onStartMatch: () => void;
+  onToggleTimerView: () => void;
 }) {
   const {
     theme,
@@ -700,9 +703,11 @@ function PetanqueHeaderArcade(props: {
     ffaPlayers,
     ffaScores,
     ffaWinnerIdx,
-    onAddEndA,
-    onAddEndB,
-    onAddEndNull,
+    matchStartedAt,
+    lastMeneStartedAt,
+    timerView,
+    onStartMatch,
+    onToggleTimerView,
   } = props;
 
   const colorA = pickTeamColor(theme, "A");
@@ -763,148 +768,18 @@ function PetanqueHeaderArcade(props: {
   const scoreFontSize =
     Math.max(String(_sa).length, String(_sb).length) >= 2 ? 22 : 28;
 
-    const [scoreMenuOpen, setScoreMenuOpen] = React.useState(false);
-
-  const ScoreMenu = () => {
-    if (!scoreMenuOpen) return null;
-
-    return (
-      <div
-        onPointerDown={(e) => {
-          try {
-            e.preventDefault();
-            e.stopPropagation();
-          } catch {}
-          setScoreMenuOpen(false);
-        }}
-        style={{
-          position: "fixed",
-          inset: 0,
-          zIndex: 9999,
-          background: "rgba(0,0,0,0.55)",
-          display: "grid",
-          placeItems: "center",
-          padding: 14,
-        }}
-      >
-        <div
-          onPointerDown={(e) => {
-            try {
-              e.preventDefault();
-              e.stopPropagation();
-            } catch {}
-          }}
-          style={{
-            width: "min(320px, 92vw)",
-            borderRadius: 16,
-            border: `1px solid ${cssVarOr("rgba(255,255,255,0.14)", "--stroke")}`,
-            background: "rgba(10, 12, 24, 0.96)",
-            boxShadow: "0 18px 50px rgba(0,0,0,0.7)",
-            padding: 12,
-          }}
-        >
-          <div
-            style={{
-              fontWeight: 1000,
-              letterSpacing: 0.6,
-              marginBottom: 10,
-              textAlign: "center",
-              textTransform: "uppercase",
-              color: "rgba(255,255,255,0.88)",
-            }}
-          >
-            Score — Ajouter une mène
-          </div>
-
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10 }}>
-            <button
-              className="btn"
-              style={{
-                borderRadius: 999,
-                padding: "10px 10px",
-                border: `1px solid ${colorA}66`,
-                background: "rgba(255,255,255,0.06)",
-                color: colorA,
-                fontWeight: 1100 as any,
-                cursor: onAddEndA ? "pointer" : "not-allowed",
-                opacity: onAddEndA ? 1 : 0.5,
-              }}
-              onClick={() => {
-                onAddEndA?.();
-                setScoreMenuOpen(false);
-              }}
-              disabled={!onAddEndA}
-              title="A marque"
-            >
-              A +
-            </button>
-
-            <button
-              className="btn"
-              style={{
-                borderRadius: 999,
-                padding: "10px 10px",
-                border: `1px solid ${cssVarOr("rgba(255,255,255,0.16)", "--stroke")}`,
-                background: "rgba(255,255,255,0.06)",
-                color: "rgba(255,255,255,0.86)",
-                fontWeight: 1100 as any,
-                cursor: onAddEndNull ? "pointer" : "not-allowed",
-                opacity: onAddEndNull ? 1 : 0.5,
-              }}
-              onClick={() => {
-                onAddEndNull?.();
-                setScoreMenuOpen(false);
-              }}
-              disabled={!onAddEndNull}
-              title="Mène nulle"
-            >
-              0
-            </button>
-
-            <button
-              className="btn"
-              style={{
-                borderRadius: 999,
-                padding: "10px 10px",
-                border: `1px solid ${colorB}66`,
-                background: "rgba(255,255,255,0.06)",
-                color: colorB,
-                fontWeight: 1100 as any,
-                cursor: onAddEndB ? "pointer" : "not-allowed",
-                opacity: onAddEndB ? 1 : 0.5,
-              }}
-              onClick={() => {
-                onAddEndB?.();
-                setScoreMenuOpen(false);
-              }}
-              disabled={!onAddEndB}
-              title="B marque"
-            >
-              B +
-            </button>
-          </div>
-
-          <div style={{ display: "flex", justifyContent: "center", marginTop: 12 }}>
-            <button
-              className="btn"
-              style={{
-                borderRadius: 999,
-                padding: "8px 12px",
-                border: `1px solid ${cssVarOr("rgba(255,255,255,0.16)", "--stroke")}`,
-                background: "rgba(255,255,255,0.06)",
-                color: "rgba(255,255,255,0.86)",
-                fontWeight: 1100 as any,
-                cursor: "pointer",
-              }}
-              onClick={() => setScoreMenuOpen(false)}
-            >
-              Fermer
-            </button>
-          </div>
-        </div>
-      </div>
-    );
+  const fmtClock = (ms: number) => {
+    const s = Math.max(0, Math.floor(ms / 1000));
+    const hh = Math.floor(s / 3600);
+    const mm = Math.floor((s % 3600) / 60);
+    const ss = s % 60;
+    const p2 = (n: number) => String(n).padStart(2, "0");
+    return hh > 0 ? `${hh}:${p2(mm)}:${p2(ss)}` : `${p2(mm)}:${p2(ss)}`;
   };
+
+  const nowMs = Date.now();
+  const matchElapsed = matchStartedAt ? nowMs - matchStartedAt : 0;
+  const meneElapsed = lastMeneStartedAt ? nowMs - lastMeneStartedAt : 0;
 
   return (
     <div
@@ -1200,42 +1075,62 @@ function PetanqueHeaderArcade(props: {
                 }}
               >
                 <div style={{ position: "relative" }}>
-                  <button
-                    className="btn"
-                    style={{
-                      borderRadius: 0,
-                      padding: "10px 12px",
-                      width: "100%",
-                      border: "none",
-                      background: "transparent",
-                      color: theme.primary,
-                      fontWeight: 1100 as any,
-                      letterSpacing: 1.6,
-                      textTransform: "uppercase",
-                      cursor: "pointer",
-                    }}
-                    onPointerDown={(e) => {
-                      try {
-                        e.preventDefault();
-                        e.stopPropagation();
-                      } catch {}
-                      // ✅ BIG PATCH V2: ouvre Wizard SCORE (default sur A)
-                      onAddEndA?.();
-                    }}
-                    onClick={(e) => {
-                      try {
-                        e.preventDefault();
-                        e.stopPropagation();
-                      } catch {}
-                      // ✅ BIG PATCH V2: ouvre Wizard SCORE (default sur A)
-                      onAddEndA?.();
-                    }}
-                    title="Ajouter le résultat d'une mène"
-                  >
-                    SCORE{" "}
-                    <span style={{ marginLeft: 6, opacity: 0.95 }}>+</span>
-                  </button>
-                  <ScoreMenu />
+                  {!matchStartedAt ? (
+                    <button
+                      className="btn"
+                      style={{
+                        borderRadius: 0,
+                        padding: "10px 12px",
+                        width: "100%",
+                        border: "none",
+                        background: "transparent",
+                        color: theme.primary,
+                        fontWeight: 1100 as any,
+                        letterSpacing: 1.6,
+                        textTransform: "uppercase",
+                        cursor: "pointer",
+                      }}
+                      onClick={(e) => {
+                        try {
+                          e.preventDefault();
+                          e.stopPropagation();
+                        } catch {}
+                        onStartMatch?.();
+                      }}
+                      title="Démarrer la partie (lance le chrono)"
+                    >
+                      Démarrer
+                    </button>
+                  ) : (
+                    <button
+                      className="btn"
+                      style={{
+                        borderRadius: 0,
+                        padding: "10px 12px",
+                        width: "100%",
+                        border: "none",
+                        background: "transparent",
+                        color: theme.primary,
+                        fontWeight: 1100 as any,
+                        letterSpacing: 1.2,
+                        textTransform: "uppercase",
+                        cursor: "pointer",
+                      }}
+                      onClick={(e) => {
+                        try {
+                          e.preventDefault();
+                          e.stopPropagation();
+                        } catch {}
+                        onToggleTimerView?.();
+                      }}
+                      title="Cliquer pour basculer Mène / Partie"
+                    >
+                      {timerView === "mene" ? "Mène" : "Partie"}{" "}
+                      <span style={{ marginLeft: 8, fontVariantNumeric: "tabular-nums" }}>
+                        {fmtClock(timerView === "mene" ? meneElapsed : matchElapsed)}
+                      </span>
+                    </button>
+                  )}
                 </div>
 
                 {allowMeasurements ? (
@@ -1307,6 +1202,29 @@ const [st, setSt] = React.useState<PetanqueState>(() => {
 const stSafe = React.useMemo<PetanqueState>(() => {
   return st ?? resetPetanque();
 }, [st]);
+
+	// =====================================================
+	// ✅ MATCH TIMERS (DÉMARRER + chrono mène/partie)
+	// IMPORTANT: déclarés TÔT pour éviter TDZ ("Cannot access 'matchStartedAt' before initialization")
+	// =====================================================
+	const [matchStartedAt, setMatchStartedAt] = React.useState<number | null>(null);
+	const [lastMeneStartedAt, setLastMeneStartedAt] = React.useState<number | null>(null);
+	const [lastMeneDurationMs, setLastMeneDurationMs] = React.useState(0);
+	const [timerView, setTimerView] = React.useState<"mene" | "match">("mene");
+	const [, forceTimerTick] = React.useState(0);
+	React.useEffect(() => {
+	  if (!matchStartedAt) return;
+	  const t = window.setInterval(() => forceTimerTick((x) => x + 1), 250);
+	  return () => window.clearInterval(t);
+	}, [matchStartedAt]);
+
+	const startMatch = React.useCallback(() => {
+	  if (matchStartedAt) return;
+	  const now = Date.now();
+	  setMatchStartedAt(now);
+	  setLastMeneStartedAt(now);
+	  setLastMeneDurationMs(0);
+	}, [matchStartedAt]);
 
 const ends = stSafe.ends;
 const measurements = stSafe.measurements;
@@ -1428,10 +1346,10 @@ const meneStatIcons = React.useMemo(
     trou: normalizeImport(icoTrou) as any,
     tirReussi: normalizeImport(icoTir) as any,
     carreau: normalizeImport(icoCarreau) as any,
-    // ✅ extras (10 icônes)
+
     reprise: normalizeImport(icoReprise) as any,
-    butKo: normalizeImport(icoBouclier) as any,
-    butPlus: normalizeImport(icoBut) as any,
+    butAnnulation: normalizeImport(icoBouclier) as any,
+    butPoint: normalizeImport(icoBut) as any,
     pousseeAssist: normalizeImport(icoAssist) as any,
     pousseeConcede: normalizeImport(icoConcede) as any,
   }),
@@ -1562,11 +1480,12 @@ const [meneWizardDefaultWinner, setMeneWizardDefaultWinner] = React.useState<str
 
 const openMeneWizard = React.useCallback(
   (mode: MeneWizardMode, defaultWinnerId?: string) => {
+    if (!matchStartedAt) return;
     setMeneWizardMode(mode);
     setMeneWizardDefaultWinner(defaultWinnerId ?? (matchMode === "ffa3" ? "ffa-0" : "A"));
     setMeneWizardOpen(true);
   },
-  [matchMode]
+  [matchMode, matchStartedAt]
 );
 
 const closeMeneWizard = React.useCallback(() => {
@@ -1893,9 +1812,7 @@ const closePlayerSheet = () => {
 // =====================================================
 const [endSheetOpen, setEndSheetOpen] = React.useState(false);
 const [endTeamId, setEndTeamId] = React.useState('A');
-const [matchStartedAt, setMatchStartedAt] = React.useState(null);
-const [lastMeneStartedAt, setLastMeneStartedAt] = React.useState(null);
-const [lastMeneDurationMs, setLastMeneDurationMs] = React.useState(0);
+// (match timers are declared near the top of PetanquePlay to avoid TDZ issues)
 const [endTeam, setEndTeam] = React.useState<PetanqueTeamId>("A");
 const [endPts, setEndPts] = React.useState<number>(1);
 const [endNote, setEndNote] = React.useState<string>("");
@@ -2029,10 +1946,17 @@ const onAdd = React.useCallback(
       return finishPetanqueMatch(next as any) as any;
     });
 
+    // ✅ Reset chrono de mène (si la partie est démarrée)
+    if (matchStartedAt) {
+      const now = Date.now();
+      setLastMeneDurationMs(lastMeneStartedAt ? Math.max(0, now - lastMeneStartedAt) : 0);
+      setLastMeneStartedAt(now);
+    }
+
     // ✅ L’attribution points ne concerne que le mode équipes
     if (!isFfa3) maybeOpenAssignPoints(team, pts);
   },
-  [isFfa3, maybeOpenAssignPoints]
+  [isFfa3, maybeOpenAssignPoints, matchStartedAt, lastMeneStartedAt]
 );
 
 // ✅ Mène nulle (0 point): on log une mène jouée sans modifier le score.
@@ -2800,9 +2724,11 @@ return (
       ffaPlayers={ffaPlayers}
       ffaScores={ffaScores}
       ffaWinnerIdx={ffaWinnerIdx}
-      onAddEndA={() => openMeneWizard("score", "A")}
-      onAddEndB={() => openMeneWizard("score", "B")}
-      onAddEndNull={onAddEndNull}
+      matchStartedAt={matchStartedAt}
+      lastMeneStartedAt={lastMeneStartedAt}
+      timerView={timerView}
+      onStartMatch={startMatch}
+      onToggleTimerView={() => setTimerView((v) => (v === "mene" ? "match" : "mene"))}
     />
 
     <div style={{ paddingTop: 12, display: "flex", flexDirection: "column", gap: 12 }}>
@@ -2910,7 +2836,7 @@ return (
   >
     <PlusDot
       title="Statistiques (ajout / affichage)"
-      onClick={() => openMeneWizard("stats")}
+      onClick={() => { if (!matchStartedAt) return; openMeneWizard("stats"); }}
     />
     <StatsMenu />
 
@@ -3438,6 +3364,7 @@ return (
           initialPoints={meneWizardMode === "stats" ? 0 : 0}
           maxPoints={matchMode === "ffa3" ? 3 : 6}
           onClose={closeMeneWizard}
+          onSwitchMode={(m) => setMeneWizardMode(m)}
           onConfirm={({ winnerId, points, allocations }) => {
             try {
               // ====== Mode SCORE: ajoute une mène + points ======

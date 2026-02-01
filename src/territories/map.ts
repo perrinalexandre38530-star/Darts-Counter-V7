@@ -74,7 +74,8 @@ export function getBaseSvgForCountry(country: TerritoriesCountry): string {
 
 /** Optional overlay SVG (region boundaries etc). */
 export function getOverlaySvgForCountry(country: TerritoriesCountry): string | null {
-  if (country === "FR") return null; // overlay regions disabled (use logical regions via territory.region)
+  // France: region boundaries overlay (departments remain in the base map).
+  if (country === "FR") return svgFranceRegions;
   return null;
 }
 

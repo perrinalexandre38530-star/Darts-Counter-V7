@@ -371,7 +371,8 @@ export function applyVisit(input: TerritoriesGameState, dartScores: number[], op
     }
   }
 
-  const t = findTerritory(state, territoryId);(state, territoryId);
+  // Find target territory
+  const t = findTerritory(state, territoryId);
   if (!t) return { state, events, error: "Unknown territory." };
 
   state.turn.dartsThrown = Math.min(3, state.turn.dartsThrown + dartScores.length);
@@ -399,6 +400,24 @@ export function applyVisit(input: TerritoriesGameState, dartScores: number[], op
   events.push({ type: "territory_captured", playerId: state.turn.activePlayerId, territoryId });
 
   return { state, events };
+}
+
+// --------------------------------------------
+// HELPERS exported for UI (scoreboards / HUD)
+// --------------------------------------------
+
+/**
+ * Count territories owned by each ownerId.
+ * - In solo: ownerId is playerId.
+ * - In teams: ownerId is teamId.
+ */
+export function countOwnedByOwnerId(state: TerritoriesGameState): Record<string, number> {
+  const out: Record<string, number> = {};
+  for (const t of state.map.territories) {
+    if (!t.ownerId) continue;
+    out[t.ownerId] = (out[t.ownerId] || 0) + 1;
+  }
+  return out;
 }
 
 export function endTurn(input: TerritoriesGameState): EngineResult {

@@ -3723,14 +3723,52 @@ function HeaderBlock(props: HeaderBlockProps) {
         borderRadius: 18,
         padding: 7,
         boxShadow: "0 8px 26px rgba(0,0,0,.35)",
+        position: "relative",
+        overflow: "hidden",
       }}
     >
+      {/* Logo TEAM en fond — sur toute la carte (fade à gauche comme les tickers GAMES) */}
+      {!!teamLogoUrl && (
+        <div
+          aria-hidden
+          style={{
+            position: "absolute",
+            inset: 0,
+            backgroundImage: `url(${teamLogoUrl})`,
+            backgroundRepeat: "no-repeat",
+            backgroundPosition: "right center",
+            // ✅ remplit la hauteur de la carte, et s'étire visuellement sur la largeur
+            backgroundSize: "auto 128%",
+            opacity: 0.11,
+            filter: "saturate(1.15) contrast(1.05)",
+            pointerEvents: "none",
+            userSelect: "none",
+            zIndex: 0,
+          }}
+        />
+      )}
+
+      {/* Dégradé gauche -> droite pour fondre le logo dans le fond (≈ 3/4 de la carte) */}
+      <div
+        aria-hidden
+        style={{
+          position: "absolute",
+          inset: 0,
+          background:
+            "linear-gradient(90deg, rgba(10,10,12,.98) 0%, rgba(10,10,12,.92) 28%, rgba(10,10,12,.62) 52%, rgba(10,10,12,.22) 68%, rgba(10,10,12,0) 80%)",
+          pointerEvents: "none",
+          zIndex: 1,
+        }}
+      />
+
       <div
         style={{
           display: "grid",
           gridTemplateColumns: "auto 1fr",
           gap: 8,
           alignItems: "center",
+          position: "relative",
+          zIndex: 2,
         }}
       >
         {/* AVATAR + STATS */}
@@ -3949,6 +3987,8 @@ function HeaderBlock(props: HeaderBlockProps) {
               width: "min(310px,100%)",
               height: "auto",
               padding: 6,
+              position: "relative",
+              zIndex: 2,
             }}
           >
             <div
@@ -3999,6 +4039,26 @@ function TeamHeaderBlock(props: {
   teamSetsWon: Record<string, number>;
   checkoutText: string | null;
 }) {
+  // =====================================================
+  // Team logo (fond) — derrière le score (TEAMS only)
+  // =====================================================
+  const guessTeamSkin = (
+    name: string,
+    id: string,
+    colorHex?: string
+  ): "pink" | "gold" | "blue" | "green" => {
+    const n = String(name || "").toLowerCase();
+    const i = String(id || "").toLowerCase();
+    const c = String(colorHex || "").toLowerCase();
+
+    const has = (k: string) => n.includes(k) || i.includes(k);
+
+    if (has("pink") || has("rose") || c.includes("ff4f") || c.includes("ff2") || c.includes("d8")) return "pink";
+    if (has("gold") || has("or") || has("yellow") || c.includes("ffb") || c.includes("ffc") || c.includes("d3")) return "gold";
+    if (has("blue") || has("bleu") || c.includes("18a0") || c.includes("00f") || c.includes("2d") || c.includes("4f")) return "blue";
+    if (has("green") || has("vert") || c.includes("00e") || c.includes("0e") || c.includes("76") || c.includes("2ecc")) return "green";
+    return "gold";
+  };
   const {
     teamColor,
     teamId,
@@ -4018,6 +4078,11 @@ function TeamHeaderBlock(props: {
   } = props;
 
   const color = teamColor || "#ffcf57";
+
+  const teamLogoUrl = React.useMemo(() => {
+    const skin = guessTeamSkin(teamName, teamId, teamColor);
+    return getTeamAvatarUrl(skin as any);
+  }, [teamName, teamId, teamColor]);
 
   const active = teamPlayers.find((p) => p.id === activePlayerId) || teamPlayers[0];
 
@@ -4039,14 +4104,51 @@ function TeamHeaderBlock(props: {
         borderRadius: 18,
         padding: 7,
         boxShadow: "0 8px 26px rgba(0,0,0,.35)",
+        position: "relative",
+        overflow: "hidden",
       }}
     >
+      {/* TEAM logo en fond: couvre la carte + fade à gauche (style tickers GAMES) */}
+      {!!teamLogoUrl && (
+        <div
+          aria-hidden
+          style={{
+            position: "absolute",
+            inset: 0,
+            backgroundImage: `url(${teamLogoUrl})`,
+            backgroundRepeat: "no-repeat",
+            backgroundPosition: "100% 50%",
+            backgroundSize: "auto 120%",
+            opacity: 0.1,
+            filter: "saturate(1.15) contrast(1.05)",
+            pointerEvents: "none",
+            userSelect: "none",
+            zIndex: 0,
+          }}
+        />
+      )}
+
+      {/* Dégradé côté gauche (fondre le logo sur ~3/4) */}
+      <div
+        aria-hidden
+        style={{
+          position: "absolute",
+          inset: 0,
+          background:
+            "linear-gradient(90deg, rgba(10,10,12,.98) 0%, rgba(10,10,12,.92) 28%, rgba(10,10,12,.55) 54%, rgba(10,10,12,0) 78%)",
+          pointerEvents: "none",
+          zIndex: 1,
+        }}
+      />
+
       <div
         style={{
           display: "grid",
           gridTemplateColumns: "auto 1fr",
           gap: 8,
           alignItems: "center",
+          position: "relative",
+          zIndex: 2,
         }}
       >
         {/* TEAM MEDALLIONS + STATS */}
@@ -4162,6 +4264,8 @@ function TeamHeaderBlock(props: {
             display: "flex",
             flexDirection: "column",
             gap: 5,
+            position: "relative",
+            overflow: "hidden",
           }}
         >
           <div
@@ -4171,6 +4275,8 @@ function TeamHeaderBlock(props: {
               color,
               textShadow: "0 4px 18px rgba(0,0,0,.35)",
               lineHeight: 1.02,
+              position: "relative",
+              zIndex: 2,
             }}
           >
             {remainingAfterAll}
@@ -4186,12 +4292,22 @@ function TeamHeaderBlock(props: {
               color,
               textTransform: "uppercase",
               opacity: 0.95,
+              position: "relative",
+              zIndex: 2,
             }}
           >
             {teamName}
           </div>
 
-          <div style={{ display: "flex", gap: 5, justifyContent: "center" }}>
+          <div
+            style={{
+              display: "flex",
+              gap: 5,
+              justifyContent: "center",
+              position: "relative",
+              zIndex: 2,
+            }}
+          >
             {[0, 1, 2].map((i) => {
               const d = currentThrow[i];
               const wouldBust =

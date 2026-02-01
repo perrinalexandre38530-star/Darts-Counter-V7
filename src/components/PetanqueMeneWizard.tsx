@@ -7,8 +7,8 @@ type StatKey =
   | "tirReussi"
   | "carreau"
   | "reprise"
-  | "butKo"
-  | "butPlus"
+  | "butAnnulation"
+  | "butPoint"
   | "pousseeAssist"
   | "pousseeConcede";
 
@@ -42,6 +42,7 @@ type Props = {
   /** If provided, the mene timer starts from this timestamp instead of Date.now() on open. */
   initialMeneStartedAt?: number;
   onClose: () => void;
+  onSwitchMode?: (mode: MeneWizardMode) => void;
   onConfirm: (payload: {
     winnerId: string;
     points: number;
@@ -81,6 +82,7 @@ export default function PetanqueMeneWizard(props: Props) {
     maxPoints = 6,
     initialMeneStartedAt,
     onClose,
+    onSwitchMode,
     onConfirm,
   } = props;
 
@@ -111,10 +113,13 @@ export default function PetanqueMeneWizard(props: Props) {
     [participants, winnerId]
   );
 
-  // reset when opened
+  // reset ONLY when the sheet is opened.
+  // IMPORTANT: do NOT depend on `participants` identity here, otherwise the sheet/popovers will
+  // auto-close on every parent re-render (participants arrays are often reconstructed).
   React.useEffect(() => {
     if (!open) return;
-    setWinnerId(initialWinnerId ?? participants?.[0]?.id ?? "A");
+    const firstId = participants?.[0]?.id ?? "A";
+    setWinnerId(initialWinnerId ?? firstId);
     setPoints(typeof initialPoints === "number" ? initialPoints : 0);
     setAlloc({});
     setMeneStartedAt(typeof initialMeneStartedAt === "number" ? initialMeneStartedAt : Date.now());
@@ -125,7 +130,7 @@ export default function PetanqueMeneWizard(props: Props) {
     setMemberPickStat(null);
     setMemberChosenId(null);
     setAdjustStat(null);
-  }, [open, initialWinnerId, initialPoints, initialMeneStartedAt, participants]);
+  }, [open]);
 
   // timer
   const [, tick] = React.useState(0);
@@ -271,8 +276,8 @@ export default function PetanqueMeneWizard(props: Props) {
     { k: "tirReussi", label: "Tir réussi" },
     { k: "carreau", label: "Carreau" },
     { k: "reprise", label: "Reprise" },
-    { k: "butKo", label: "But KO" },
-    { k: "butPlus", label: "But +" },
+    { k: "butAnnulation", label: "But KO" },
+    { k: "butPoint", label: "But +" },
     { k: "pousseeAssist", label: "PTS Assist" },
     { k: "pousseeConcede", label: "PTS Concede" },
   ];
@@ -317,13 +322,32 @@ export default function PetanqueMeneWizard(props: Props) {
               {mode === "score" ? ` — Alloué: ${allocatedTotal}/${points}` : ""}
             </div>
           </div>
-          <button
-            style={{ ...btn, padding: "8px 12px" }}
-            onClick={onClose}
-            title="Fermer"
-          >
-            Fermer
-          </button>
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            {mode === "stats" && (
+              <button
+                style={{
+                  ...btn,
+                  padding: "8px 12px",
+                  border: `1px solid ${(theme?.primary ?? "#FFD24A")}88`,
+                  color: theme?.primary ?? "#FFD24A",
+                  background: "rgba(255,255,255,0.04)",
+                  fontWeight: 1100,
+                  letterSpacing: 1.2,
+                }}
+                onClick={() => onSwitchMode?.("score")}
+                title="Ajouter une mène (score)"
+              >
+                SCORE&nbsp;+
+              </button>
+            )}
+            <button
+              style={{ ...btn, padding: "8px 12px" }}
+              onClick={onClose}
+              title="Fermer"
+            >
+              Fermer
+            </button>
+          </div>
         </div>
 
         <div style={{ padding: 14, display: "flex", flexDirection: "column", gap: 14 }}>
