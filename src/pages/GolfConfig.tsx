@@ -193,12 +193,13 @@ export default function GolfConfig(props: any) {
 
     const go = (props as any)?.go ?? (props as any)?.params?.go;
     if (typeof go === "function") {
-      go("golf.play", payload);
+      // ✅ route App.tsx: "golf_play" + GolfPlay lit params.config
+      go("golf_play", { config: payload });
       return;
     }
     const setTab = (props as any)?.setTab;
     if (typeof setTab === "function") {
-      setTab("golf.play", payload);
+      setTab("golf_play", { config: payload });
     }
   }
 
@@ -212,8 +213,8 @@ export default function GolfConfig(props: any) {
         right={
           <InfoDot
             title="GOLF"
-            body={
-              "Chaque trou = cible N (1..9/18). Chaque joueur lance 3 flèches: score du trou = nombre de coups (strokes) ou points. Pénalité si aucun hit. Le total le plus bas gagne (mode strokes)."
+            content={
+              "Règles GOLF (darts)\n\n- Partie en 9 ou 18 trous.\n- Au trou N, la cible est le numéro N (1..9 ou 1..18).\n- Chaque joueur a 3 flèches.\n- Score du trou = 1 si tu touches la cible à la 1ère flèche, 2 à la 2e, 3 à la 3e.\n- Si tu ne touches pas la cible : pénalité (configurable).\n- Total = somme des trous. Score le plus bas = vainqueur (mode Strokes)."
             }
           />
         }
@@ -465,15 +466,38 @@ export default function GolfConfig(props: any) {
           </div>
         </Section>
 
-        <div style={{ padding: 12, paddingTop: 4 }}>
-          <button className="btn-primary" disabled={!canStart} onClick={onStart} style={{ width: "100%" }}>
-            {t("start") || "Démarrer la partie"}
-          </button>
-          {!canStart && (
-            <div style={{ marginTop: 10, fontSize: 12, opacity: 0.75, fontWeight: 900, textAlign: "center" }}>
-              Sélectionne au moins 2 joueurs (humains et/ou bots).
-            </div>
-          )}
+        {/* CTA collée au-dessus de la barre de nav (même design que X01/Killer) */}
+        <div style={{ height: 96 }} />
+        <div style={{ position: "fixed", left: 0, right: 0, bottom: 88, padding: "6px 12px 8px", pointerEvents: "none" }}>
+          <div style={{ pointerEvents: "auto" }}>
+            <button
+              type="button"
+              onClick={onStart}
+              disabled={!canStart}
+              style={{
+                width: "100%",
+                height: 46,
+                borderRadius: 999,
+                border: "none",
+                fontWeight: 800,
+                fontSize: 14,
+                letterSpacing: 1,
+                textTransform: "uppercase",
+                background: canStart ? `linear-gradient(90deg, ${primary}, #ffe9a3)` : "rgba(120,120,120,0.5)",
+                color: canStart ? "#151515" : "#2b2b52",
+                boxShadow: canStart ? "0 0 18px rgba(255, 207, 120, 0.65)" : "none",
+                opacity: canStart ? 1 : 0.6,
+                cursor: canStart ? "pointer" : "default",
+              }}
+            >
+              {t("x01v3.start", "Lancer la partie")}
+            </button>
+            {!canStart && (
+              <div style={{ marginTop: 8, fontSize: 12, opacity: 0.75, fontWeight: 900, textAlign: "center" }}>
+                Sélectionne au moins 2 joueurs (humains et/ou bots).
+              </div>
+            )}
+          </div>
         </div>
       </div>
     </div>

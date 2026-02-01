@@ -87,7 +87,8 @@ export default function GolfPlay(props: any) {
   }, [isFinished, teams, totals]);
 
   function goBack() {
-    if (props?.setTab) return props.setTab("games");
+    // ✅ retour cohérent : revient sur la config GOLF, en conservant le setup
+    if (props?.setTab) return props.setTab("golf_config", { config: cfg });
     window.history.back();
   }
 
