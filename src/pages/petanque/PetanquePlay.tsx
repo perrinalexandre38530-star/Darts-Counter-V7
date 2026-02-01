@@ -2044,7 +2044,7 @@ const cfgFromStorage = (typeof loadPetanqueConfig === "function"
   ? loadPetanqueConfig()
   : null) as any;
 const effectiveCfg = (cfgFromParams ?? cfgFromStorage) as any;
-const allowMeasurements: boolean = (effectiveCfg?.options?.allowMeasurements ?? true) === true;
+const allowMeasurements: boolean = (effectiveCfg?.measurementAllowed ?? effectiveCfg?.options?.allowMeasurements ?? true) === true;
 
 React.useEffect(() => {
   if (!allowMeasurements && measureOpen) setMeasureOpen(false);
@@ -2091,6 +2091,7 @@ const onSaveManual = () => {
       dA: dAN,
       dB: dBN,
       tol: tolN,
+      unit: "cm",
       note,
     })
   );
@@ -2243,6 +2244,7 @@ const onSavePhoto = () => {
       dA: Number(minA_photo),
       dB: Number(minB_photo),
       tol: Math.max(0, Number(tolN) || 0),
+      unit: pxPerCm ? "cm" : "px",
       note: extra,
     })
   );

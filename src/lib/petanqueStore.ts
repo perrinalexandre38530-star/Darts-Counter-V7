@@ -33,8 +33,22 @@ export type PetanqueEnd = {
 export type PetanqueMeasurement = {
   id: string;
   at: number;
+
+  // origine / méthode
   from: "live" | "photo" | "manual";
+
+  /**
+   * Valeur "canonique" pour tri/lecture rapide.
+   * Convention: millimètres si unit="cm" (cm * 10), sinon valeur brute si unit="px".
+   */
   valueMm: number;
+
+  // ✅ NEW: payload riche (utilisé par PetanquePlay)
+  dA?: number; // distance équipe A (cm ou px selon unit)
+  dB?: number; // distance équipe B (cm ou px selon unit)
+  tol?: number; // tolérance (cm ou px selon unit)
+  unit?: "cm" | "px";
+
   note?: string;
 };
 
@@ -178,6 +192,10 @@ function normalizeState(anySt: any): PetanqueState | null {
           at: Number(m.at || now),
           from: m.from === "live" || m.from === "photo" || m.from === "manual" ? m.from : "manual",
           valueMm: v,
+          dA: Number.isFinite(Number((m as any).dA)) ? Number((m as any).dA) : undefined,
+          dB: Number.isFinite(Number((m as any).dB)) ? Number((m as any).dB) : undefined,
+          tol: Number.isFinite(Number((m as any).tol)) ? Math.max(0, Number((m as any).tol)) : undefined,
+          unit: (m as any).unit === "px" ? "px" : "cm",
           note: typeof m.note === "string" && m.note.trim() ? m.note.trim() : undefined,
         };
       }
@@ -350,7 +368,22 @@ export function addMeasurement(st: PetanqueState, m: Omit<PetanqueMeasurement, "
   const id = uid("m");
   const at = Date.now();
 
-  const valueMm = Number((m as any)?.valueMm);
+  // ✅ Compat: soit valueMm direct, soit dA/dB(+tol) depuis PetanquePlay
+  const unit: "cm" | "px" = (m as any)?.unit === "px" ? "px" : "cm";
+
+  let valueMm = Number((m as any)?.valueMm);
+
+  const dA = Number((m as any)?.dA);
+  const dB = Number((m as any)?.dB);
+  const tol = Number((m as any)?.tol);
+
+  // Si pas de valueMm, on dérive depuis dA/dB (distances A/B)
+  if (!Number.isFinite(valueMm)) {
+    if (!Number.isFinite(dA) || !Number.isFinite(dB) || dA < 0 || dB < 0) return st;
+    const delta = Math.abs(dA - dB); // unit: cm ou px
+    valueMm = unit === "cm" ? delta * 10 : delta; // cm -> mm, px -> "brut"
+  }
+
   if (!Number.isFinite(valueMm) || valueMm < 0) return st;
 
   const from: "live" | "photo" | "manual" =
@@ -358,12 +391,27 @@ export function addMeasurement(st: PetanqueState, m: Omit<PetanqueMeasurement, "
       ? (m as any).from
       : "manual";
 
-  const note = typeof (m as any)?.note === "string" && (m as any).note.trim() ? (m as any).note.trim() : undefined;
+  const note =
+    typeof (m as any)?.note === "string" && (m as any).note.trim() ? (m as any).note.trim() : undefined;
 
   const next: PetanqueState = {
     ...st,
     updatedAt: at,
-    measurements: [{ id, at, from, valueMm, note }, ...(st.measurements || [])],
+    measurements: [
+      {
+        id,
+        at,
+        from,
+        valueMm,
+        note,
+        // ✅ NEW: conserver les champs riches si fournis
+        dA: Number.isFinite(dA) ? dA : undefined,
+        dB: Number.isFinite(dB) ? dB : undefined,
+        tol: Number.isFinite(tol) ? Math.max(0, tol) : undefined,
+        unit,
+      },
+      ...(st.measurements || []),
+    ],
   };
 
   savePetanqueState(next);
