@@ -28,7 +28,7 @@ import svgUKCounties from "./svg/united-kingdom-counties.svg?raw";
 import svgUSA from "./svg/usa.svg?raw";
 import svgWorld from "./svg/world.svg?raw";
 
-export type TerritoryValueStrategy = "code_numeric" | "hash_20_99";
+export type TerritoryValueStrategy = "code_numeric" | "hash_20_99" | "hash_21_180";
 
 export interface TerritoryMetaOverride {
   name?: string;
@@ -74,7 +74,7 @@ export function getBaseSvgForCountry(country: TerritoriesCountry): string {
 
 /** Optional overlay SVG (region boundaries etc). */
 export function getOverlaySvgForCountry(country: TerritoriesCountry): string | null {
-  if (country === "FR") return svgFranceRegionsOverlay;
+  if (country === "FR") return null; // overlay regions disabled (use logical regions via territory.region)
   return null;
 }
 
@@ -133,7 +133,7 @@ function extractByPathId(svgText: string, country: TerritoriesCountry, opts: Bui
       country,
       region: country,
       name: id,
-      value: defaultValueForId(id, opts.valueStrategy ?? "hash_20_99"),
+      value: defaultValueForId(id, opts.valueStrategy ?? "hash_21_180"),
       svgPathId: pid.trim(),
       ownerId: undefined,
     };
@@ -237,7 +237,8 @@ export function defaultValueForId(territoryId: string, strategy: TerritoryValueS
   }
 
   const h = hash32(territoryId);
-  return 20 + (h % 80); // 20..99
+  if (strategy === "hash_21_180") return 21 + (h % 160); // 21..180
+  return 20 + (h % 80); // 20..99 (legacy)
 }
 
 export function buildSvgPathIdToTerritoryIdIndex(map: TerritoriesMap): Record<string, string> {

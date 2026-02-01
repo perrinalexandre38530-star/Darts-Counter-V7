@@ -10,6 +10,8 @@ export type CommonConfig = {
   players: number;
   botsEnabled: boolean;
   botLevel: BotLevel;
+  /** Nombre de joueurs humains (les suivants deviennent des bots si botsEnabled) */
+  humansCount?: number;
   rounds: number;
   /** 0 => pas d'objectif (fin aux rounds) */
   objective: number;

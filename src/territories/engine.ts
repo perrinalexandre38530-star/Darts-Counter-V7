@@ -109,28 +109,91 @@ function countTerritoriesOwned(state: TerritoriesGameState, ownerId: OwnerId): n
   return state.map.territories.filter((t) => t.ownerId === ownerId).length;
 }
 
-function checkVictory(state: TerritoriesGameState): { gameEnded: boolean } {
+function computeRegionOwnership(state: TerritoriesGameState): Record<string, OwnerId | undefined> {
+  const out: Record<string, OwnerId | undefined> = {};
+  const byRegion: Record<string, Territory[]> = {};
+
+  for (const t of state.map.territories) {
+    const r = String(t.region || "").trim();
+    if (!r) continue;
+    (byRegion[r] ||= []).push(t);
+  }
+
+  for (const regionId of Object.keys(byRegion)) {
+    const list = byRegion[regionId];
+    if (!list.length) continue;
+    const firstOwner = list[0].ownerId as OwnerId | undefined;
+    if (!firstOwner) {
+      out[regionId] = undefined;
+      continue;
+    }
+    const allSame = list.every((tt) => (tt.ownerId as OwnerId | undefined) === firstOwner);
+    out[regionId] = allSame ? firstOwner : undefined;
+  }
+  return out;
+}
+
+function countOwnedRegions(state: TerritoriesGameState, ownerId: OwnerId): number {
+  const owned = computeRegionOwnership(state);
+  let n = 0;
+  for (const k of Object.keys(owned)) if (owned[k] === ownerId) n += 1;
+  return n;
+}
+
+function checkVictory(state: TerritoriesGameState, nowMs: number = Date.now()): { gameEnded: boolean; winnerId?: OwnerId } {
   const { victoryCondition, maxRounds } = state.config;
+  const possibleOwners: OwnerId[] = state.teams?.length ? state.teams.map((t) => t.id) : state.players.map((p) => p.id);
 
   if (victoryCondition.type === "territories") {
-    const possibleOwners: OwnerId[] = state.teams?.length
-      ? state.teams.map((t) => t.id)
-      : state.players.map((p) => p.id);
-
     for (const ownerId of possibleOwners) {
       if (countTerritoriesOwned(state, ownerId) >= victoryCondition.value) {
-        return { gameEnded: true };
+        return { gameEnded: true, winnerId: ownerId };
       }
     }
+    return { gameEnded: false };
+  }
+
+  if (victoryCondition.type === "regions") {
+    for (const ownerId of possibleOwners) {
+      if (countOwnedRegions(state, ownerId) >= victoryCondition.value) {
+        return { gameEnded: true, winnerId: ownerId };
+      }
+    }
+    return { gameEnded: false };
+  }
+
+  if (victoryCondition.type === "time") {
+    const started = state.meta?.startedAtMs ?? nowMs;
+    const endAt = started + Math.max(1, victoryCondition.minutes) * 60_000;
+    if (nowMs < endAt) return { gameEnded: false };
+
+    let bestOwner: OwnerId | undefined = undefined;
+    let bestN = -1;
+    let tie = false;
+
+    for (const ownerId of possibleOwners) {
+      const n = countTerritoriesOwned(state, ownerId);
+      if (n > bestN) {
+        bestN = n;
+        bestOwner = ownerId;
+        tie = false;
+      } else if (n === bestN) {
+        tie = true;
+      }
+    }
+
+    if (!bestOwner) return { gameEnded: true };
+    if (tie) return { gameEnded: true };
+    return { gameEnded: true, winnerId: bestOwner };
   }
 
   if (victoryCondition.type === "rounds") {
-    if (state.roundIndex >= maxRounds) return { gameEnded: true };
+    if (state.roundIndex > maxRounds) return { gameEnded: true };
+    return { gameEnded: false };
   }
 
   return { gameEnded: false };
 }
-
 function advanceTurnIndex(state: TerritoriesGameState): void {
   const n = state.players.length;
   const wasLastPlayer = ((state.turnIndex + 1) % n) === 0;
@@ -274,13 +337,41 @@ export function applyVisit(input: TerritoriesGameState, dartScores: number[], op
     if (state.config.targetSelectionMode === "free") {
       return { state, events, error: "No selected territory (free mode requires selection before visit)." };
     }
-    const imposed = chooseImposedTarget(state, ownerId);
-    if (!imposed) return { state, events, error: "No eligible territory available." };
-    territoryId = imposed;
-    state.turn.selectedTerritoryId = imposed;
+
+    // by_score: the visit score selects the target automatically
+    if (state.config.targetSelectionMode === "by_score") {
+      const total = dartScores.reduce((a, b) => a + b, 0);
+      const eligible = state.map.territories.filter((tt) => isEligibleTerritory(state, tt, ownerId));
+
+      let chosen: Territory | undefined;
+      if (state.config.captureRule === "exact") {
+        chosen = eligible.find((tt) => tt.value === total);
+      } else {
+        // greater_or_equal: pick the highest value <= total
+        const candidates = eligible.filter((tt) => tt.value <= total).sort((a, b) => b.value - a.value);
+        chosen = candidates[0];
+      }
+
+      if (chosen) {
+        territoryId = chosen.id;
+        state.turn.selectedTerritoryId = chosen.id;
+        events.push({ type: "territory_selected", playerId: state.turn.activePlayerId, territoryId: chosen.id });
+      } else {
+        // no matching territory -> just consume the visit, no capture
+        state.turn.dartsThrown = Math.min(3, state.turn.dartsThrown + dartScores.length);
+        events.push({ type: "territory_failed", playerId: state.turn.activePlayerId });
+        return { state, events };
+      }
+    } else {
+      // imposed
+      const imposed = chooseImposedTarget(state, ownerId);
+      if (!imposed) return { state, events, error: "No eligible territory available." };
+      territoryId = imposed;
+      state.turn.selectedTerritoryId = imposed;
+    }
   }
 
-  const t = findTerritory(state, territoryId);
+  const t = findTerritory(state, territoryId);(state, territoryId);
   if (!t) return { state, events, error: "Unknown territory." };
 
   state.turn.dartsThrown = Math.min(3, state.turn.dartsThrown + dartScores.length);

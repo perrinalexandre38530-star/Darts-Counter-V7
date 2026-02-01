@@ -95,16 +95,37 @@ export function deriveX01(rec: any): SimpleMatchStats {
 export function deriveSimpleStats(rec: any): SimpleMatchStats {
   const kind = String(rec?.kind || "x01");
   if (kind === "x01") return deriveX01(rec);
-  // fallback : squelette vide mais stable
-  return {
+  // Fallback générique : si un match fournit déjà des maps dans summary,
+  // on les exploite (utile pour SimpleRounds / variantes / défis).
+  const players = (rec?.players || []).map((p: any) => p.id);
+  const sum = rec?.summary || {};
+
+  const out: SimpleMatchStats = {
     kind,
-    playerIds: (rec?.players || []).map((p: any) => p.id),
+    playerIds: players,
     winnerId: rec?.winnerId ?? null,
     createdAt: rec?.createdAt,
     avg3ByPlayer: {},
     dartsByPlayer: {},
     bestVisitByPlayer: {},
     bestCheckoutByPlayer: {},
-    co: 0,
+    co: typeof sum.co === "number" ? N(sum.co) : 0,
   };
+
+  // avg3
+  addMap(out.avg3ByPlayer, sum.avg3ByPlayer);
+
+  // darts (peut être total ou map)
+  if (typeof sum.darts === "number") {
+    const per = Math.floor(N(sum.darts) / Math.max(players.length || 1, 1));
+    for (const id of players) out.dartsByPlayer[id] = (out.dartsByPlayer[id] || 0) + per;
+  } else {
+    addMap(out.dartsByPlayer, sum.darts);
+  }
+
+  // bestVisit / bestCheckout
+  addMap(out.bestVisitByPlayer, sum.bestVisitByPlayer);
+  addMap(out.bestCheckoutByPlayer, sum.bestCheckoutByPlayer);
+
+  return out;
 }

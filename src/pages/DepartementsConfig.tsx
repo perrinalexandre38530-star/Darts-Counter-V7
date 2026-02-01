@@ -200,6 +200,10 @@ export default function DepartementsConfig(props: any) {
   const [rounds, setRounds] = React.useState(12);
   const [objective, setObjective] = React.useState(10);
 
+  const [targetSelectionMode, setTargetSelectionMode] = React.useState<"free" | "by_score">("free");
+  const [victoryMode, setVictoryMode] = React.useState<"territories" | "regions" | "time">("territories");
+  const [objectiveRegions, setObjectiveRegions] = React.useState<number>(3);
+  const [timeLimitMin, setTimeLimitMin] = React.useState<number>(20);
   // selection
   const [selectedIds, setSelectedIds] = React.useState<string[]>(() => {
     try {
@@ -424,7 +428,12 @@ export default function DepartementsConfig(props: any) {
     botsEnabled,
     botLevel,
     rounds,
-    objective,
+    objective, // kept for backward compatibility = territories target
+    objectiveTerritories: objective,
+    targetSelectionMode,
+    victoryMode,
+    objectiveRegions,
+    timeLimitMin,
     mapId,
   };
 
@@ -1114,6 +1123,34 @@ export default function DepartementsConfig(props: any) {
         <OptionRow label={t("territories.objective", "Objectif (territoires)")}>
           <OptionSelect value={objective} options={[6, 8, 10, 12, 15, 18]} onChange={setObjective} />
         </OptionRow>
+
+        <OptionRow label={t("territories.targetMode", "Sélection de cible")}>
+          <OptionSelect
+            value={targetSelectionMode}
+            options={["free", "by_score"]}
+            onChange={setTargetSelectionMode as any}
+          />
+        </OptionRow>
+
+        <OptionRow label={t("territories.victoryMode", "Condition de victoire")}>
+          <OptionSelect
+            value={victoryMode}
+            options={["territories", "regions", "time"]}
+            onChange={setVictoryMode as any}
+          />
+        </OptionRow>
+
+        {victoryMode === "regions" && (
+          <OptionRow label={t("territories.objectiveRegions", "Objectif (régions)")}>
+            <OptionSelect value={objectiveRegions} options={[1,2,3,4,5,6,7,8,9,10]} onChange={setObjectiveRegions} />
+          </OptionRow>
+        )}
+
+        {victoryMode === "time" && (
+          <OptionRow label={t("territories.timeLimit", "Temps de partie")}>
+            <OptionSelect value={timeLimitMin} options={[15,20,30,60]} onChange={setTimeLimitMin} />
+          </OptionRow>
+        )}
       </Section>
 
       {/* ✅ Bouton EXACTEMENT “famille X01” */}

@@ -18,7 +18,7 @@ export type TerritoriesCountry =
 
 export interface TerritoriesConfig {
   country: TerritoriesCountry;
-  targetSelectionMode: "imposed" | "free";
+  targetSelectionMode: "imposed" | "free" | "by_score";
   captureRule: "exact" | "greater_or_equal";
   multiCapture: boolean;
   minTerritoryValue?: number;
@@ -69,6 +69,9 @@ export interface TerritoriesTurnState {
 }
 
 export interface TerritoriesGameState {
+  meta?: {
+    startedAtMs?: number;
+  };
   config: TerritoriesConfig;
   players: TerritoriesPlayer[];
   teams?: TerritoriesTeam[];

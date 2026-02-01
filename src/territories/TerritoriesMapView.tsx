@@ -1,16 +1,10 @@
 // ============================================
-// TERRITORIES — MAP VIEW (REACT) — FIT / RESPONSIVE PATCH
+// TERRITORIES — MAP VIEW (REACT) — FIT + ZOOM/PAN (SAFE)
 // Location: src/territories/TerritoriesMapView.tsx
 //
-// Fixes:
-// - Force SVG to fit its container (mobile-friendly)
-// - Ensures viewBox exists, sets preserveAspectRatio
-// - Removes fixed width/height attributes if present
-// - Adds centered layout + safe overflow handling
-//
-// Notes:
-// - "meet" keeps entire map visible (no crop).
-// - If you later prefer "slice" (full-bleed crop), change PRESERVE_ASPECT.
+// ✅ Fix: themeColor was referenced without being in scope (crash)
+// ✅ Keeps your working SVG render/injection logic
+// ✅ Adds minimal zoom/pan wrapper (wheel + drag) without breaking clicks
 // ============================================
 
 import React from "react";
@@ -72,7 +66,8 @@ function injectStylesAndFills(params: {
   activeColor: string;
   themeColor: string;
 }): string {
-  const { svgRaw, country, map, fillByTerritoryId, selectedTerritoryId, activeColor } = params;
+  // ✅ IMPORTANT: include themeColor in destructuring (fix crash)
+  const { svgRaw, country, map, fillByTerritoryId, selectedTerritoryId, activeColor, themeColor } = params;
 
   const parser = new DOMParser();
   const doc = parser.parseFromString(svgRaw, "image/svg+xml");
@@ -102,6 +97,9 @@ function injectStylesAndFills(params: {
       0%, 100% { opacity: 1; }
       50% { opacity: 0.85; }
     }
+
+    /* Optional: theme stroke hint for non-FR packs */
+    .territory-theme-stroke { stroke: ${themeColor}; }
   `;
   svg.insertBefore(styleEl, svg.firstChild);
 
@@ -145,14 +143,25 @@ function injectOverlayStyles(overlayRaw: string, themeColor: string, viewBox: st
 
   prepareSvgRoot(svg, viewBox);
 
+  // IMPORTANT: scope styles to overlay only, so it never "bleeds" to base map
+  svg.classList.add("territories-overlay");
+
   const styleEl = doc.createElementNS("http://www.w3.org/2000/svg", "style");
   styleEl.textContent = `
-    path { fill: none !important; stroke: ${themeColor}; stroke-width: 2.2; vector-effect: non-scaling-stroke; opacity: 0.9; }
-    * { pointer-events: none; }
+    .territories-overlay path { fill: none !important; stroke: ${themeColor}; stroke-width: 2.0; stroke-linecap: round; stroke-linejoin: round; vector-effect: non-scaling-stroke; opacity: 0.85; }
+    .territories-overlay * { pointer-events: none; }
   `;
   svg.insertBefore(styleEl, svg.firstChild);
 
   return svg.outerHTML;
+}
+
+// ---------- Zoom/Pan helpers ----------
+const SCALE_MIN = 1;
+const SCALE_MAX = 4;
+
+function clamp(n: number, a: number, b: number) {
+  return Math.max(a, Math.min(b, n));
 }
 
 export default function TerritoriesMapView(props: TerritoriesMapViewProps) {
@@ -213,6 +222,60 @@ export default function TerritoriesMapView(props: TerritoriesMapViewProps) {
     [interactive, onSelectTerritory, country, isSelectableTerritoryId]
   );
 
+  // -------- Zoom/Pan state (minimal) --------
+  const [scale, setScale] = React.useState(1);
+  const [tx, setTx] = React.useState(0);
+  const [ty, setTy] = React.useState(0);
+  const lastPoint = React.useRef<{ x: number; y: number } | null>(null);
+
+  const resetView = React.useCallback(() => {
+    setScale(1);
+    setTx(0);
+    setTy(0);
+  }, []);
+
+  const onWheel = React.useCallback(
+    (e: React.WheelEvent<HTMLDivElement>) => {
+      e.preventDefault();
+      const next = clamp(scale * (e.deltaY < 0 ? 1.1 : 0.9), SCALE_MIN, SCALE_MAX);
+      setScale(next);
+      if (next === 1) {
+        setTx(0);
+        setTy(0);
+      }
+    },
+    [scale]
+  );
+
+  const onPointerDown = React.useCallback(
+    (e: React.PointerEvent<HTMLDivElement>) => {
+      if (scale <= 1) return;
+      lastPoint.current = { x: e.clientX, y: e.clientY };
+      (e.currentTarget as any).setPointerCapture?.(e.pointerId);
+    },
+    [scale]
+  );
+
+  const onPointerMove = React.useCallback(
+    (e: React.PointerEvent<HTMLDivElement>) => {
+      if (scale <= 1) return;
+      if (!lastPoint.current) return;
+
+      const dx = e.clientX - lastPoint.current.x;
+      const dy = e.clientY - lastPoint.current.y;
+      setTx((v) => v + dx);
+      setTy((v) => v + dy);
+      lastPoint.current = { x: e.clientX, y: e.clientY };
+    },
+    [scale]
+  );
+
+  const onPointerUp = React.useCallback(() => {
+    lastPoint.current = null;
+  }, []);
+
+  const showReset = scale !== 1 || tx !== 0 || ty !== 0;
+
   return (
     <div
       className={className}
@@ -221,32 +284,87 @@ export default function TerritoriesMapView(props: TerritoriesMapViewProps) {
         width: "100%",
         height: "100%",
         overflow: "hidden",
-        display: "grid",
-        placeItems: "center",
         ...style,
       }}
+      onWheel={onWheel}
+      onPointerDown={onPointerDown}
+      onPointerMove={onPointerMove}
+      onPointerUp={onPointerUp}
+      onPointerCancel={onPointerUp}
       onClick={onClick}
     >
+      {/* ZOOM WRAPPER */}
       <div
         style={{
           width: "100%",
           height: "100%",
-          userSelect: "none",
-          pointerEvents: interactive ? "auto" : "none",
+          transform: `translate3d(${tx}px, ${ty}px, 0) scale(${scale})`,
+          transformOrigin: "center center",
+          willChange: "transform",
+          display: "grid",
+          placeItems: "center",
         }}
-        dangerouslySetInnerHTML={{ __html: baseSvgHtml }}
-      />
-
-      {overlaySvgHtml && (
+      >
         <div
           style={{
-            position: "absolute",
-            inset: 0,
-            pointerEvents: "none",
-            userSelect: "none",
+            position: "relative",
+            width: "100%",
+            height: "100%",
+            overflow: "hidden",
+            display: "grid",
+            placeItems: "center",
           }}
-          dangerouslySetInnerHTML={{ __html: overlaySvgHtml }}
-        />
+        >
+          <div
+            style={{
+              width: "100%",
+              height: "100%",
+              userSelect: "none",
+              pointerEvents: interactive ? "auto" : "none",
+            }}
+            dangerouslySetInnerHTML={{ __html: baseSvgHtml }}
+          />
+
+          {overlaySvgHtml && (
+            <div
+              style={{
+                position: "absolute",
+                inset: 0,
+                pointerEvents: "none",
+                userSelect: "none",
+              }}
+              dangerouslySetInnerHTML={{ __html: overlaySvgHtml }}
+            />
+          )}
+        </div>
+      </div>
+
+      {showReset && (
+        <button
+          type="button"
+          onClick={resetView}
+          style={{
+            position: "absolute",
+            right: 10,
+            bottom: 10,
+            width: 38,
+            height: 38,
+            borderRadius: 12,
+            border: "1px solid rgba(255,255,255,0.18)",
+            background: "rgba(0,0,0,0.35)",
+            color: "rgba(255,255,255,0.9)",
+            display: "grid",
+            placeItems: "center",
+            boxShadow: "0 0 10px rgba(0,0,0,0.45)",
+            backdropFilter: "blur(6px)",
+            cursor: "pointer",
+            zIndex: 5,
+          }}
+          aria-label="Reset zoom"
+          title="Reset"
+        >
+          ↺
+        </button>
       )}
     </div>
   );

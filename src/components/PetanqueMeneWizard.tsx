@@ -6,6 +6,9 @@ type StatKey =
   | "trou"
   | "tirReussi"
   | "carreau"
+  | "reprise"
+  | "butKo"
+  | "butPlus"
   | "pousseeAssist"
   | "pousseeConcede";
 
@@ -100,8 +103,8 @@ export default function PetanqueMeneWizard(props: Props) {
   const [memberPickForWinner, setMemberPickForWinner] = React.useState<string>(winnerId);
   const [memberChosenId, setMemberChosenId] = React.useState<string | null>(null);
 
-  // UX: in stats grid we show only big icons; editing happens in a small popover (- 0 +)
-  const [activeStat, setActiveStat] = React.useState<StatKey | null>(null);
+  // ✅ icon-click => open a small in-wizard popover to adjust - 0 +
+  const [adjustStat, setAdjustStat] = React.useState<StatKey | null>(null);
 
   const winner = React.useMemo(
     () => participants.find((p) => p.id === winnerId) ?? participants[0],
@@ -121,7 +124,7 @@ export default function PetanqueMeneWizard(props: Props) {
     setMemberPickOpen(false);
     setMemberPickStat(null);
     setMemberChosenId(null);
-    setActiveStat(null);
+    setAdjustStat(null);
   }, [open, initialWinnerId, initialPoints, initialMeneStartedAt, participants]);
 
   // timer
@@ -180,19 +183,6 @@ export default function PetanqueMeneWizard(props: Props) {
       winner?.kind === "team" ? (winner.members?.[0]?.id ?? winner.id) : winner.id;
     safeBump(targetPlayerId, stat, delta);
   };
-
-  const getWinnerStatValue = React.useCallback(
-    (stat: StatKey) => {
-      if (!winner) return 0;
-      if (winner.kind === "team") {
-        let t = 0;
-        for (const m of winner.members ?? []) t += Number(alloc[keyFor(m.id, stat)] || 0);
-        return t;
-      }
-      return Number(alloc[keyFor(winner.id, stat)] || 0);
-    },
-    [alloc, winner]
-  );
 
   const confirm = () => {
     if (!canConfirm) return;
@@ -280,9 +270,33 @@ export default function PetanqueMeneWizard(props: Props) {
     { k: "trou", label: "Trou" },
     { k: "tirReussi", label: "Tir réussi" },
     { k: "carreau", label: "Carreau" },
+    { k: "reprise", label: "Reprise" },
+    { k: "butKo", label: "But KO" },
+    { k: "butPlus", label: "But +" },
     { k: "pousseeAssist", label: "PTS Assist" },
     { k: "pousseeConcede", label: "PTS Concede" },
   ];
+
+  const statByKey = React.useMemo(() => {
+    const m = new Map<StatKey, string>();
+    for (const s of stats) m.set(s.k, s.label);
+    return m;
+  }, []);
+
+  const totalForStat = (k: StatKey) => {
+    let v = 0;
+    if (winner?.kind === "team") {
+      for (const m of winner.members ?? []) v += Number(alloc[keyFor(m.id, k)] || 0);
+    } else {
+      v = Number(alloc[keyFor(winner.id, k)] || 0);
+    }
+    return v;
+  };
+
+  const openAdjust = (k: StatKey) => {
+    setAdjustStat(k);
+    setAdjustOpen(true);
+  };
 
   return (
     <div
@@ -425,182 +439,194 @@ export default function PetanqueMeneWizard(props: Props) {
             <div style={{ fontWeight: 950, marginBottom: 8 }}>
               Comment les points ont été marqués ?
             </div>
-            {/*
-              UX: grid d'icônes lisible.
-              On clique une icône -> popover (- 0 +) pour modifier cette action.
-            */}
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 12 }}>
+            {/* ✅ Lisibilité: grandes icônes + libellé, les contrôles - 0 + s'ouvrent au clic */}
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 10 }}>
               {stats.map((it) => {
-                const v = getWinnerStatValue(it.k);
-                const on = activeStat === it.k;
+                let v = 0;
+                if (winner?.kind === "team") {
+                  for (const m of winner.members ?? []) v += Number(alloc[keyFor(m.id, it.k)] || 0);
+                } else {
+                  v = Number(alloc[keyFor(winner.id, it.k)] || 0);
+                }
 
                 return (
                   <button
                     key={it.k}
-                    onClick={() => setActiveStat(it.k)}
+                    type="button"
+                    onPointerDown={(e) => {
+                      // important: évite un "flash" (fermeture immédiate par handlers parents)
+                      e.preventDefault();
+                      e.stopPropagation();
+                    }}
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      setAdjustStat(it.k);
+                    }}
                     style={{
                       ...btn,
+                      width: "100%",
+                      padding: 14,
                       borderRadius: 18,
-                      padding: "14px 12px",
-                      background: on ? "rgba(255,255,255,0.10)" : "rgba(255,255,255,0.05)",
-                      border: `1px solid ${on ? (theme?.primary ?? "#FFD24A") + "88" : theme?.borderSoft ?? "rgba(255,255,255,0.14)"}`,
+                      border: `1px solid ${theme?.borderSoft ?? "rgba(255,255,255,0.14)"}`,
+                      background: "rgba(255,255,255,0.04)",
                       display: "flex",
                       flexDirection: "column",
                       alignItems: "center",
                       justifyContent: "center",
                       gap: 10,
                       position: "relative",
-                      minHeight: 108,
+                      minHeight: 104,
                     }}
                     title={it.label}
                   >
-                    {/* badge valeur seulement si > 0 (plus lisible, pas de 0 partout) */}
-                    {v > 0 ? (
+                    {!!v && (
                       <div
                         style={{
                           position: "absolute",
                           top: 10,
                           right: 10,
-                          minWidth: 26,
+                          width: 26,
                           height: 26,
-                          padding: "0 8px",
                           borderRadius: 999,
                           display: "grid",
                           placeItems: "center",
-                          border: `1px solid ${(theme?.primary ?? "#FFD24A")}99`,
+                          border: `1px solid ${(theme?.primary ?? "#FFD24A")}66`,
                           color: theme?.primary ?? "#FFD24A",
                           fontWeight: 1100,
-                          background: "rgba(0,0,0,0.35)",
+                          background: "rgba(0,0,0,0.20)",
                         }}
                       >
                         {v}
                       </div>
-                    ) : null}
+                    )}
 
                     <img
                       src={statIcons[it.k]}
                       alt=""
-                      style={{ width: 56, height: 56, objectFit: "contain", filter: "drop-shadow(0 10px 24px rgba(0,0,0,0.5))" }}
+                      style={{ width: 56, height: 56, objectFit: "contain", filter: "drop-shadow(0 6px 14px rgba(0,0,0,0.45))" }}
                       draggable={false}
+                      onError={(ev) => {
+                        // évite les carrés vides si une icône manque: on cache l'image
+                        try {
+                          (ev.currentTarget as any).style.display = "none";
+                        } catch {}
+                      }}
                     />
-                    <div style={{ fontWeight: 1000, fontSize: 12, opacity: 0.92, textAlign: "center", lineHeight: 1.15 }}>
-                      {it.label}
-                    </div>
+                    <div style={{ fontWeight: 1000, fontSize: 13, opacity: 0.95 }}>{it.label}</div>
                   </button>
                 );
               })}
             </div>
 
-            {/* Popover édition (- 0 +) */}
-            {activeStat ? (() => {
-              const it = stats.find((s) => s.k === activeStat);
-              if (!it) return null;
-              const v = getWinnerStatValue(it.k);
-              const disabledPlus = mustMatchPoints && allocatedTotal >= points;
-              const isTeamMulti = winner?.kind === "team" && (winner.members?.length ?? 0) > 1;
-
-              return (
+            {/* popover - 0 + (dans le wizard, pas de portal => ne disparaît pas) */}
+            {adjustStat && (
+              <div
+                onPointerDown={(e) => e.stopPropagation()}
+                style={{
+                  position: "fixed",
+                  inset: 0,
+                  zIndex: 10000,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  padding: 14,
+                  background: "rgba(0,0,0,0.45)",
+                }}
+              >
                 <div
-                  role="presentation"
-                  onPointerDown={(e) => {
-                    // click outside popover closes only the popover
-                    if (e.target === e.currentTarget) setActiveStat(null);
-                  }}
+                  onPointerDown={(e) => e.stopPropagation()}
                   style={{
-                    position: "fixed",
-                    inset: 0,
-                    zIndex: 10000,
-                    background: "rgba(0,0,0,0.35)",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
+                    width: "min(420px, 92vw)",
+                    borderRadius: 18,
+                    border: `1px solid ${theme?.borderSoft ?? "rgba(255,255,255,0.14)"}`,
+                    background: "rgba(10,12,24,0.98)",
+                    boxShadow: "0 26px 80px rgba(0,0,0,0.70)",
                     padding: 14,
-                    backdropFilter: "blur(8px)",
                   }}
                 >
-                  <div
-                    style={{
-                      width: "min(420px, 92vw)",
-                      borderRadius: 18,
-                      border: `1px solid ${theme?.borderSoft ?? "rgba(255,255,255,0.14)"}`,
-                      background: "rgba(10,12,24,0.98)",
-                      boxShadow: "0 28px 90px rgba(0,0,0,0.75)",
-                      padding: 14,
-                    }}
-                    onPointerDown={(e) => e.stopPropagation()}
-                  >
-                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
-                      <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
-                        <img
-                          src={statIcons[it.k]}
-                          alt=""
-                          style={{ width: 36, height: 36, objectFit: "contain" }}
-                          draggable={false}
-                        />
-                        <div style={{ minWidth: 0 }}>
-                          <div style={{ fontWeight: 1200, letterSpacing: 0.2 }}>{it.label}</div>
-                          <div style={{ opacity: 0.72, fontSize: 12, marginTop: 2 }}>
-                            {isTeamMulti
-                              ? (memberChosenId
-                                  ? `Attribué à : ${winner?.members?.find((m) => m.id === memberChosenId)?.label ?? ""}`
-                                  : "Choix joueur à la prochaine action")
-                              : (winner?.kind === "team" ? "Équipe" : "Joueur")}
-                          </div>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
+                      <img
+                        src={statIcons[adjustStat]}
+                        alt=""
+                        style={{ width: 34, height: 34, objectFit: "contain" }}
+                        draggable={false}
+                      />
+                      <div style={{ minWidth: 0 }}>
+                        <div style={{ fontWeight: 1100 }}>{statByKey.get(adjustStat) ?? adjustStat}</div>
+                        <div style={{ opacity: 0.72, fontSize: 12 }}>
+                          {winner?.kind === "team" ? "Équipe" : "Joueur"}
+                          {mustMatchPoints ? ` — ${allocatedTotal}/${points}` : ""}
                         </div>
                       </div>
-                      <button
-                        style={{ ...btn, padding: "8px 12px" }}
-                        onClick={() => setActiveStat(null)}
-                        title="Fermer"
-                      >
-                        Fermer
-                      </button>
                     </div>
-
-                    <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 14, marginTop: 14 }}>
-                      <button
-                        style={{ ...btn, width: 58, height: 52, padding: 0, fontSize: 22, opacity: v > 0 ? 1 : 0.75 }}
-                        onClick={() => requestBump(it.k, -1)}
-                        title="-"
-                      >
-                        −
-                      </button>
-                      <div
-                        style={{
-                          width: 64,
-                          height: 64,
-                          borderRadius: 999,
-                          display: "grid",
-                          placeItems: "center",
-                          border: `1px solid ${theme?.primary ?? "#FFD24A"}77`,
-                          color: theme?.primary ?? "#FFD24A",
-                          fontSize: 22,
-                          fontWeight: 1200,
-                          background: "rgba(255,255,255,0.05)",
-                        }}
-                        title="Valeur"
-                      >
-                        {v}
-                      </div>
-                      <button
-                        style={{ ...btn, width: 58, height: 52, padding: 0, fontSize: 22, opacity: disabledPlus ? 0.45 : 1 }}
-                        onClick={() => requestBump(it.k, +1)}
-                        title="+"
-                        disabled={disabledPlus}
-                      >
-                        +
-                      </button>
-                    </div>
-
-                    {mustMatchPoints ? (
-                      <div style={{ opacity: 0.75, fontSize: 12, textAlign: "center", marginTop: 10 }}>
-                        Alloué : {allocatedTotal}/{points}
-                      </div>
-                    ) : null}
+                    <button
+                      style={{ ...btn, padding: "8px 10px" }}
+                      onClick={() => setAdjustStat(null)}
+                      title="Fermer"
+                    >
+                      Fermer
+                    </button>
                   </div>
+
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 14, marginTop: 14 }}>
+                    <button
+                      style={{ ...btn, width: 52, height: 46, padding: 0, fontSize: 22 }}
+                      onClick={() => requestBump(adjustStat, -1)}
+                      title="-"
+                    >
+                      −
+                    </button>
+                    <div
+                      style={{
+                        width: 54,
+                        height: 54,
+                        borderRadius: 999,
+                        display: "grid",
+                        placeItems: "center",
+                        border: `1px solid ${(theme?.primary ?? "#FFD24A")}66`,
+                        color: theme?.primary ?? "#FFD24A",
+                        fontWeight: 1200,
+                        fontSize: 20,
+                      }}
+                    >
+                      {(() => {
+                        if (winner?.kind === "team") {
+                          let vv = 0;
+                          for (const m of winner.members ?? []) vv += Number(alloc[keyFor(m.id, adjustStat)] || 0);
+                          return vv;
+                        }
+                        return Number(alloc[keyFor(winner.id, adjustStat)] || 0);
+                      })()}
+                    </div>
+                    <button
+                      style={{
+                        ...btn,
+                        width: 52,
+                        height: 46,
+                        padding: 0,
+                        fontSize: 22,
+                        opacity: mustMatchPoints && allocatedTotal >= points ? 0.45 : 1,
+                      }}
+                      onClick={() => requestBump(adjustStat, +1)}
+                      title="+"
+                      disabled={mustMatchPoints && allocatedTotal >= points}
+                    >
+                      +
+                    </button>
+                  </div>
+
+                  {winner?.kind === "team" && (winner.members?.length ?? 0) > 1 && (
+                    <div style={{ marginTop: 12, opacity: 0.75, fontSize: 12, textAlign: "center" }}>
+                      {memberChosenId
+                        ? `Attribué à: ${winner.members?.find((m) => m.id === memberChosenId)?.label ?? ""}`
+                        : "Choix joueur: un clic te demandera le joueur si nécessaire"}
+                    </div>
+                  )}
                 </div>
-              );
-            })() : null}
+              </div>
+            )}
           </div>
 
           {/* footer */}

@@ -30,12 +30,13 @@ export default function SimpleRoundsConfig(props: any) {
   const [players, setPlayers] = useState(spec.defaults.players);
   const [botsEnabled, setBotsEnabled] = useState(spec.defaults.botsEnabled);
   const [botLevel, setBotLevel] = useState(spec.defaults.botLevel);
+  const [humansCount, setHumansCount] = useState<number>(spec.defaults.humansCount ?? 1);
   const [rounds, setRounds] = useState(spec.defaults.rounds);
   const [objective, setObjective] = useState(spec.defaults.objective);
 
   const payload: CommonConfig = useMemo(
-    () => ({ players, botsEnabled, botLevel, rounds, objective }),
-    [players, botsEnabled, botLevel, rounds, objective]
+    () => ({ players, botsEnabled, botLevel, humansCount: botsEnabled ? Math.min(Math.max(1, Number(humansCount || 1)), Math.max(1, players - 1)) : players, rounds, objective }),
+    [players, botsEnabled, botLevel, humansCount, rounds, objective]
   );
 
   function goBack() {
@@ -64,6 +65,17 @@ export default function SimpleRoundsConfig(props: any) {
         <OptionRow label={t("config.bots", "Bots IA")}>
           <OptionToggle value={botsEnabled} onChange={setBotsEnabled} />
         </OptionRow>
+
+
+        {botsEnabled && players > 1 && (
+          <OptionRow label={t("config.humansCount", "Joueurs humains")}>
+            <OptionSelect
+              value={Math.min(Math.max(1, humansCount), players - 1)}
+              options={Array.from({ length: Math.max(1, players - 1) }, (_, i) => i + 1)}
+              onChange={(v: any) => setHumansCount(Number(v))}
+            />
+          </OptionRow>
+        )}
 
         {botsEnabled && (
           <OptionRow label={t("config.botLevel", "Difficulté IA")}>

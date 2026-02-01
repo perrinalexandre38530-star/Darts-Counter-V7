@@ -26,7 +26,7 @@ export const SIMPLE_ROUND_VARIANTS: Record<string, VariantSpec> = {
     playersOptions: [2, 3, 4],
     roundsOptions: [5, 8, 10, 12, 15],
     objectiveOptions: [0, 100, 170, 300, 500, 1000],
-    defaults: { players: 2, botsEnabled: false, botLevel: "normal", rounds: 10, objective: 0 },
+    defaults: { players: 2, botsEnabled: false, botLevel: "normal", rounds: 10, objective: 0 , humansCount: 1 },
     applyVisit: ({ visit, currentScore, objective }) => {
       const v = clampVisit(visit);
       const next = currentScore + v;
@@ -51,13 +51,13 @@ export const SIMPLE_ROUND_VARIANTS: Record<string, VariantSpec> = {
     title: "SUPER BULL",
     tickerSrc: tickerSuperBull,
     infoTitle: "Règles SUPER BULL",
-    infoText: "Additionne tes points sur X rounds. Variante orientée gros scores. Si un objectif est défini, le premier à l'atteindre gagne.",
+    infoText: "Objectif: marquer un maximum de points **BULL** (25/50) sur X rounds. Chaque volée correspond à la somme des points BULL sur 3 fléchettes (0..150). Le plus haut score gagne. Si un objectif est défini, le premier à l\'atteindre gagne.",
     playersOptions: [2, 3, 4],
     roundsOptions: [5, 8, 10, 12, 15],
-    objectiveOptions: [0, 100, 170, 200, 300, 500, 1000],
-    defaults: { players: 2, botsEnabled: false, botLevel: "normal", rounds: 10, objective: 200 },
+    objectiveOptions: [0, 100, 150, 200, 300, 500],
+    defaults: { players: 2, botsEnabled: false, botLevel: "normal", rounds: 10, objective: 200 , humansCount: 1 },
     applyVisit: ({ visit, currentScore, objective }) => {
-      const v = clampVisit(visit);
+      const v = Math.max(0, Math.min(150, clampVisit(visit)));
       const next = currentScore + v;
       if (objective > 0 && next >= objective) return { delta: v, forceWin: true };
       return { delta: v };
@@ -84,7 +84,7 @@ export const SIMPLE_ROUND_VARIANTS: Record<string, VariantSpec> = {
     playersOptions: [2, 3, 4],
     roundsOptions: [5, 8, 10, 12, 15],
     objectiveOptions: [0, 300, 500, 700, 1000, 1200],
-    defaults: { players: 2, botsEnabled: false, botLevel: "normal", rounds: 10, objective: 1000 },
+    defaults: { players: 2, botsEnabled: false, botLevel: "normal", rounds: 10, objective: 1000 , humansCount: 1 },
     applyVisit: ({ visit, currentScore, objective }) => {
       const v = clampVisit(visit);
       const next = currentScore + v;
@@ -113,7 +113,7 @@ export const SIMPLE_ROUND_VARIANTS: Record<string, VariantSpec> = {
     playersOptions: [2, 3, 4],
     roundsOptions: [5, 8, 10, 12, 15],
     objectiveOptions: [0, 100, 200, 300, 500, 1000],
-    defaults: { players: 2, botsEnabled: false, botLevel: "normal", rounds: 10, objective: 0 },
+    defaults: { players: 2, botsEnabled: false, botLevel: "normal", rounds: 10, objective: 0 , humansCount: 1 },
     applyVisit: ({ visit, currentScore, objective }) => {
       const v = clampVisit(visit);
       const penalty = v === 0 ? -50 : 0;
@@ -144,7 +144,7 @@ export const SIMPLE_ROUND_VARIANTS: Record<string, VariantSpec> = {
     playersOptions: [2, 3, 4],
     roundsOptions: [5, 8, 10, 12, 15],
     objectiveOptions: [170],
-    defaults: { players: 2, botsEnabled: false, botLevel: "normal", rounds: 10, objective: 170 },
+    defaults: { players: 2, botsEnabled: false, botLevel: "normal", rounds: 10, objective: 170 , humansCount: 1 },
     applyVisit: ({ visit, objective }) => {
       const v = clampVisit(visit);
       const ok = v === objective;

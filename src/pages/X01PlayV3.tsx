@@ -54,7 +54,6 @@ type HeaderBlockProps = {
   legsWon: Record<string, number>;
   setsWon: Record<string, number>;
   checkoutText: string | null;
-  scoreBgUrl?: string | null;
 };
 
 
@@ -2868,8 +2867,7 @@ if (isLandscapeTablet) {
               setsWon={(state as any).setsWon ?? {}}
               useSets={useSetsUi}
               checkoutText={checkoutText}
-            scoreBgUrl={isTeamsMode ? (activeTeam as any)?.avatarUrl ?? null : null}
-              />
+            />
           )}
           </div>
 
@@ -2927,7 +2925,6 @@ if (isLandscapeTablet) {
                   style={{
                     padding: 8,
                     borderRadius: 14,
-                    mixBlendMode: "screen",
                     border: "1px solid rgba(255,255,255,0.08)",
                     background: "linear-gradient(180deg, rgba(10,10,12,.9), rgba(6,6,8,.95))",
                     textAlign: "center",
@@ -2944,7 +2941,6 @@ if (isLandscapeTablet) {
                   style={{
                     padding: 14,
                     borderRadius: 14,
-                    mixBlendMode: "screen",
                     border: "1px solid rgba(255,255,255,0.08)",
                     background: "linear-gradient(180deg, rgba(10,10,12,.9), rgba(6,6,8,.95))",
                     textAlign: "center",
@@ -2969,7 +2965,6 @@ if (isLandscapeTablet) {
                         style={{
                           height: 40,
                           borderRadius: 14,
-                    mixBlendMode: "screen",
                           padding: "0 14px",
                           border: "1px solid rgba(255,255,255,0.14)",
                           background:
@@ -2991,7 +2986,6 @@ if (isLandscapeTablet) {
                     border: isBustLocked ? "1px solid rgba(255,80,80,.65)" : "1px solid transparent",
                     background: isBustLocked ? "rgba(120,0,0,.10)" : "transparent",
                     borderRadius: 14,
-                    mixBlendMode: "screen",
                     padding: 6,
                     height: "100%",
                     boxSizing: "border-box",
@@ -3021,7 +3015,6 @@ if (isLandscapeTablet) {
                         marginBottom: 8,
                         padding: "8px 10px",
                         borderRadius: 14,
-                    mixBlendMode: "screen",
                         border: "1px solid rgba(255,255,255,0.10)",
                         background: "rgba(0,0,0,0.25)",
                         boxShadow: "0 10px 24px rgba(0,0,0,0.45)",
@@ -3305,7 +3298,6 @@ if (isLandscapeTablet) {
           style={{
             width: "100%",
             borderRadius: 14,
-                    mixBlendMode: "screen",
             padding: "12px 14px",
             border: "1px solid rgba(255,255,255,0.10)",
             background:
@@ -3487,7 +3479,6 @@ if (isLandscapeTablet) {
             style={{
               padding: 14,
               borderRadius: 14,
-                    mixBlendMode: "screen",
               border: "1px solid rgba(255,255,255,0.08)",
               background:
                 "linear-gradient(180deg, rgba(10,10,12,.9), rgba(6,6,8,.95))",
@@ -3505,7 +3496,6 @@ if (isLandscapeTablet) {
             style={{
               padding: 14,
               borderRadius: 14,
-                    mixBlendMode: "screen",
               border: "1px solid rgba(255,255,255,0.08)",
               background:
                 "linear-gradient(180deg, rgba(10,10,12,.9), rgba(6,6,8,.95))",
@@ -3529,7 +3519,6 @@ if (isLandscapeTablet) {
                   style={{
                     height: 40,
                     borderRadius: 14,
-                    mixBlendMode: "screen",
                     padding: "0 14px",
                     border: `1px solid rgba(255,255,255,0.14)`,
                     background: `linear-gradient(180deg, rgba(255,255,255,0.10), rgba(0,0,0,0.35))`,
@@ -3552,7 +3541,6 @@ if (isLandscapeTablet) {
               border: isBustLocked ? "1px solid rgba(255,80,80,.65)" : "1px solid transparent",
               background: isBustLocked ? "rgba(120,0,0,.10)" : "transparent",
               borderRadius: 14,
-                    mixBlendMode: "screen",
               padding: 6,
               boxShadow: isBustLocked ? "0 0 0 1px rgba(255,80,80,.25), 0 10px 24px rgba(0,0,0,.45)" : undefined,
               filter: isBustLocked ? "grayscale(.25) saturate(.9)" : undefined,
@@ -3580,7 +3568,6 @@ if (isLandscapeTablet) {
                 marginBottom: 8,
                 padding: "8px 10px",
                 borderRadius: 14,
-                    mixBlendMode: "screen",
                 border: "1px solid rgba(255,255,255,0.10)",
                 background: "rgba(0,0,0,0.25)",
                 boxShadow: "0 10px 24px rgba(0,0,0,0.45)",
@@ -3711,7 +3698,6 @@ function HeaderBlock(props: HeaderBlockProps) {
     legsWon,
     setsWon,
     checkoutText,
-    scoreBgUrl,
   } = props;
 
   const legsWonThisSet =
@@ -3855,57 +3841,16 @@ function HeaderBlock(props: HeaderBlockProps) {
           }}
         >
           {/* SCORE CENTRAL */}
-          <div style={{ position: "relative", display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
-            {scoreBgUrl ? (
-              <>
-                <img
-                  src={scoreBgUrl}
-                  alt=""
-                  aria-hidden="true"
-                  style={{
-                    position: "absolute",
-                    inset: -6,
-                    width: "calc(100% + 12px)",
-                    height: "calc(100% + 12px)",
-                    objectFit: "cover",
-                    opacity: 0.14,
-                    filter: "blur(0.35px) saturate(1.15) contrast(1.08)",
-                    transform: "scale(1.15)",
-                    pointerEvents: "none",
-                    zIndex: 0,
-                    borderRadius: 14,
-                    mixBlendMode: "screen",
-                  }}
-                />
-                <div
-                  aria-hidden="true"
-                  style={{
-                    position: "absolute",
-                    inset: -6,
-                    borderRadius: 14,
-                    mixBlendMode: "screen",
-                    background:
-                      "radial-gradient(circle at 50% 40%, rgba(0,0,0,0.10), rgba(0,0,0,0.45) 70%, rgba(0,0,0,0.70))",
-                    pointerEvents: "none",
-                    zIndex: 0,
-                  }}
-                />
-              </>
-            ) : null}
-
-            <div
-              style={{
-                fontSize: 64,
-                fontWeight: 900,
-                color: "#ffcf57",
-                textShadow: "0 4px 18px rgba(255,195,26,.25)",
-                lineHeight: 1.02,
-                position: "relative",
-                zIndex: 1,
-              }}
-            >
-              {remainingAfterAll}
-            </div>
+          <div
+            style={{
+              fontSize: 64,
+              fontWeight: 900,
+              color: "#ffcf57",
+              textShadow: "0 4px 18px rgba(255,195,26,.25)",
+              lineHeight: 1.02,
+            }}
+          >
+            {remainingAfterAll}
           </div>
 
           {/* Pastilles live */}
@@ -4406,7 +4351,6 @@ function TeamsPlayersList(props: {
             key={team.id}
             style={{
               borderRadius: 14,
-                    mixBlendMode: "screen",
               border: "1px solid rgba(255,255,255,.08)",
               background:
                 "linear-gradient(180deg, rgba(28,28,32,.55), rgba(18,18,20,.55))",

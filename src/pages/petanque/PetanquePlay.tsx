@@ -674,13 +674,6 @@ function PetanqueHeaderArcade(props: {
   isFfa3: boolean;
   isSingles?: boolean;
 
-  // ✅ Match timers (controlled by PetanquePlay)
-  matchStartedAt?: number | null;
-  meneStartedAt?: number | null;
-  timerView?: "mene" | "match";
-  onToggleTimerView?: () => void;
-  onStartMatch?: () => void;
-
   teams?: { A: TeamLine; B: TeamLine };
   scoreA?: number;
   scoreB?: number;
@@ -701,11 +694,6 @@ function PetanqueHeaderArcade(props: {
     allowMeasurements,
     onMeasure,
     isFfa3,
-    matchStartedAt,
-    meneStartedAt,
-    timerView,
-    onToggleTimerView,
-    onStartMatch,
     teams,
     scoreA,
     scoreB,
@@ -747,28 +735,6 @@ function PetanqueHeaderArcade(props: {
         : is4v4
           ? tickerP4v4
           : null;
-
-  // ✅ Timers (match / mène) — display only
-  const [tick, setTick] = React.useState(0);
-  React.useEffect(() => {
-    if (!matchStartedAt && !meneStartedAt) return;
-    const id = window.setInterval(() => setTick((t) => t + 1), 1000);
-    return () => window.clearInterval(id);
-  }, [matchStartedAt, meneStartedAt]);
-
-  const fmtClock = (ms: number) => {
-    const sec = Math.max(0, Math.floor(ms / 1000));
-    const h = Math.floor(sec / 3600);
-    const m = Math.floor((sec % 3600) / 60);
-    const s = sec % 60;
-    const mm = String(m).padStart(2, "0");
-    const ss = String(s).padStart(2, "0");
-    return h > 0 ? `${h}:${mm}:${ss}` : `${mm}:${ss}`;
-  };
-
-  const matchMs = matchStartedAt ? Date.now() - Number(matchStartedAt) : 0;
-  const meneMs = meneStartedAt ? Date.now() - Number(meneStartedAt) : 0;
-  void tick; // force re-render every second when timers active
 
   // ⚠️ IMPORTANT: `logoDataUrl` peut contenir des valeurs non-image (ex: "[object Object]")
   // -> on ne l'utilise QUE si c'est une vraie src image.
@@ -1234,61 +1200,42 @@ function PetanqueHeaderArcade(props: {
                 }}
               >
                 <div style={{ position: "relative" }}>
-                  {!matchStartedAt ? (
-                    <button
-                      className="btn"
-                      style={{
-                        borderRadius: 0,
-                        padding: "10px 12px",
-                        width: "100%",
-                        border: "none",
-                        background: "transparent",
-                        color: theme.primary,
-                        fontWeight: 1100 as any,
-                        letterSpacing: 1.6,
-                        textTransform: "uppercase",
-                        cursor: "pointer",
-                      }}
-                      onClick={(e) => {
-                        try {
-                          e.preventDefault();
-                          e.stopPropagation();
-                        } catch {}
-                        onStartMatch?.();
-                      }}
-                      title="Démarrer la partie (lance le chrono)"
-                    >
-                      Démarrer
-                    </button>
-                  ) : (
-                    <button
-                      className="btn"
-                      style={{
-                        borderRadius: 0,
-                        padding: "10px 12px",
-                        width: "100%",
-                        border: "none",
-                        background: "transparent",
-                        color: theme.primary,
-                        fontWeight: 1100 as any,
-                        letterSpacing: 1.6,
-                        textTransform: "uppercase",
-                        cursor: "pointer",
-                      }}
-                      onClick={(e) => {
-                        try {
-                          e.preventDefault();
-                          e.stopPropagation();
-                        } catch {}
-                        onToggleTimerView?.();
-                      }}
-                      title="Cliquer pour basculer Mène / Partie"
-                    >
-                      {(timerView || "mene") === "match"
-                        ? `Partie ${fmtClock(matchMs)}`
-                        : `Mène ${fmtClock(meneMs)}`}
-                    </button>
-                  )}
+                  <button
+                    className="btn"
+                    style={{
+                      borderRadius: 0,
+                      padding: "10px 12px",
+                      width: "100%",
+                      border: "none",
+                      background: "transparent",
+                      color: theme.primary,
+                      fontWeight: 1100 as any,
+                      letterSpacing: 1.6,
+                      textTransform: "uppercase",
+                      cursor: "pointer",
+                    }}
+                    onPointerDown={(e) => {
+                      try {
+                        e.preventDefault();
+                        e.stopPropagation();
+                      } catch {}
+                      // ✅ BIG PATCH V2: ouvre Wizard SCORE (default sur A)
+                      onAddEndA?.();
+                    }}
+                    onClick={(e) => {
+                      try {
+                        e.preventDefault();
+                        e.stopPropagation();
+                      } catch {}
+                      // ✅ BIG PATCH V2: ouvre Wizard SCORE (default sur A)
+                      onAddEndA?.();
+                    }}
+                    title="Ajouter le résultat d'une mène"
+                  >
+                    SCORE{" "}
+                    <span style={{ marginLeft: 6, opacity: 0.95 }}>+</span>
+                  </button>
+                  <ScoreMenu />
                 </div>
 
                 {allowMeasurements ? (
@@ -1462,11 +1409,6 @@ const undoFfaEnd = () => {
 const resetFfa = () => {
   setFfaScores([0, 0, 0]);
   setFfaEnds([]);
-  // ✅ reset timers
-  setMatchStartedAt(null);
-  setLastMeneStartedAt(null);
-  setLastMeneDurationMs(0);
-  setTimerView("mene");
 };
 
 const PTS_FFA3 = [0, 1, 2, 3];
@@ -1486,6 +1428,10 @@ const meneStatIcons = React.useMemo(
     trou: normalizeImport(icoTrou) as any,
     tirReussi: normalizeImport(icoTir) as any,
     carreau: normalizeImport(icoCarreau) as any,
+    // ✅ extras (10 icônes)
+    reprise: normalizeImport(icoReprise) as any,
+    butKo: normalizeImport(icoBouclier) as any,
+    butPlus: normalizeImport(icoBut) as any,
     pousseeAssist: normalizeImport(icoAssist) as any,
     pousseeConcede: normalizeImport(icoConcede) as any,
   }),
@@ -1950,20 +1896,6 @@ const [endTeamId, setEndTeamId] = React.useState('A');
 const [matchStartedAt, setMatchStartedAt] = React.useState(null);
 const [lastMeneStartedAt, setLastMeneStartedAt] = React.useState(null);
 const [lastMeneDurationMs, setLastMeneDurationMs] = React.useState(0);
-const [timerView, setTimerView] = React.useState<"mene" | "match">("mene");
-
-const startMatch = React.useCallback(() => {
-  if (matchStartedAt) return;
-  const now = Date.now();
-  setMatchStartedAt(now);
-  setLastMeneStartedAt(now);
-  setLastMeneDurationMs(0);
-  setTimerView("mene");
-}, [matchStartedAt]);
-
-const toggleTimerView = React.useCallback(() => {
-  setTimerView((v) => (v === "mene" ? "match" : "mene"));
-}, []);
 const [endTeam, setEndTeam] = React.useState<PetanqueTeamId>("A");
 const [endPts, setEndPts] = React.useState<number>(1);
 const [endNote, setEndNote] = React.useState<string>("");
@@ -2115,11 +2047,6 @@ const onUndo = React.useCallback(() => {
 }, []);
 
 const onNew = React.useCallback(() => {
-  // ✅ reset timers
-  setMatchStartedAt(null);
-  setLastMeneStartedAt(null);
-  setLastMeneDurationMs(0);
-  setTimerView("mene");
   setSt(
     startNewPetanqueGame({
       teamA: params?.cfg?.teamA,
@@ -2867,13 +2794,6 @@ return (
       onMeasure={() => setMeasureOpen(true)}
       isFfa3={isFfa3}
       isSingles={matchMode === "singles"}
-
-      matchStartedAt={matchStartedAt as any}
-      meneStartedAt={lastMeneStartedAt as any}
-      timerView={timerView}
-      onToggleTimerView={toggleTimerView}
-      onStartMatch={startMatch}
-
       teams={teams}
       scoreA={(st as any).scoreA ?? 0}
       scoreB={(st as any).scoreB ?? 0}
@@ -3562,16 +3482,6 @@ return (
                 }
               }
             } finally {
-              // ✅ Timer: fin de mène -> reset pour la mène suivante (si partie démarrée)
-              if (meneWizardMode === "score" && matchStartedAt) {
-                const now = Date.now();
-                try {
-                  if (lastMeneStartedAt) {
-                    setLastMeneDurationMs(now - Number(lastMeneStartedAt));
-                  }
-                } catch {}
-                setLastMeneStartedAt(now);
-              }
               closeMeneWizard();
             }
           }}

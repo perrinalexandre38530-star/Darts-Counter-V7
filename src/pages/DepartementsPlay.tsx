@@ -117,6 +117,27 @@ function countOwnedByOwnerId(state: TerritoriesGameState): Record<string, number
   return out;
 }
 
+function countRegionsOwned(state: TerritoriesGameState, ownerId: string): number {
+  const byRegion: Record<string, string[]> = {};
+  for (const t of state.map.territories) {
+    const r = String((t as any).region || "").trim();
+    if (!r) continue;
+    (byRegion[r] ||= []).push(t.id);
+  }
+  let n = 0;
+  for (const regionId of Object.keys(byRegion)) {
+    const tids = byRegion[regionId];
+    if (!tids.length) continue;
+    const allOwned = tids.every((tid) => {
+      const tt = state.map.territories.find((x) => x.id === tid);
+      return tt && tt.ownerId === ownerId;
+    });
+    if (allOwned) n += 1;
+  }
+  return n;
+}
+
+
 const RULES_TEXT = (objective: number) => `TERRITORIES
 
 But
@@ -153,7 +174,15 @@ export default function DepartementsPlay(props: any) {
   const mapId = String(cfg.mapId || "FR");
   const country = normalizeMapIdToCountry(mapId);
   const maxRounds = Math.max(1, Number(cfg.rounds || 12));
-  const objective = Math.max(1, Number(cfg.objective || 10));
+  const targetSelectionMode = (cfg.targetSelectionMode || "free") as "free" | "by_score";
+  const victoryMode = (cfg.victoryMode || "territories") as "territories" | "regions" | "time";
+
+  const objectiveTerritories = Math.max(1, Number(cfg.objectiveTerritories ?? cfg.objective ?? 10));
+  const objectiveRegions = Math.max(1, Number(cfg.objectiveRegions ?? 3));
+  const timeLimitMin = Math.max(1, Number(cfg.timeLimitMin ?? 20));
+
+  // display objective (depends on victory mode)
+  const objective = victoryMode === "regions" ? objectiveRegions : victoryMode === "time" ? objectiveTerritories : objectiveTerritories;
 
   const tickerSrc = findTerritoriesTicker(mapId) || findTerritoriesTicker(country) || undefined;
 
@@ -201,15 +230,22 @@ export default function DepartementsPlay(props: any) {
   const initialState = React.useMemo<TerritoriesGameState>(() => {
     const map = buildTerritoriesMap(country);
     const base: TerritoriesGameState = {
+      meta: { startedAtMs: Date.now() },
       config: {
         country,
-        targetSelectionMode: "free",
+        targetSelectionMode,
+        
         captureRule: "exact",
         multiCapture: false,
         minTerritoryValue: 1,
         allowEnemyCapture: true,
         maxRounds,
-        victoryCondition: { type: "territories", value: objective },
+        victoryCondition:
+          victoryMode === "regions"
+            ? { type: "regions", value: objectiveRegions }
+            : victoryMode === "time"
+              ? { type: "time", minutes: timeLimitMin }
+              : { type: "territories", value: objectiveTerritories },
         voiceAnnouncements: false,
       },
       players,
@@ -228,7 +264,7 @@ export default function DepartementsPlay(props: any) {
 
     const norm = normalizeTerritoriesState(base);
     return norm.state;
-  }, [country, maxRounds, objective, players, teams]);
+  }, [country, maxRounds, objectiveTerritories, objectiveRegions, timeLimitMin, victoryMode, targetSelectionMode, players, teams]);
 
   const [game, setGame] = React.useState<TerritoriesGameState>(initialState);
 
@@ -246,7 +282,34 @@ export default function DepartementsPlay(props: any) {
   const [multiplier, setMultiplier] = React.useState<1 | 2 | 3>(1);
   const [currentThrow, setCurrentThrow] = React.useState<UIDart[]>([]);
 
-  const ownedByOwner = React.useMemo(() => countOwnedByOwnerId(game), [game]);
+  
+  // Time mode: tick every 500ms to detect end (winner = most territories)
+  const [nowMs, setNowMs] = React.useState<number>(() => Date.now());
+  React.useEffect(() => {
+    if (victoryMode !== "time") return;
+    const id = window.setInterval(() => setNowMs(Date.now()), 500);
+    return () => window.clearInterval(id);
+  }, [victoryMode]);
+
+  React.useEffect(() => {
+    if (victoryMode !== "time") return;
+    const started = game.meta?.startedAtMs ?? Date.now();
+    const endAt = started + timeLimitMin * 60_000;
+    if (nowMs < endAt) return;
+
+    const owned = countOwnedByOwnerId(game);
+    const owners = game.teams?.length ? game.teams.map((t2) => t2.id) : game.players.map((p2) => p2.id);
+    let bestOwner: string | null = null;
+    let bestN = -1;
+    let tie = false;
+    for (const oid of owners) {
+      const n = owned[oid] || 0;
+      if (n > bestN) { bestN = n; bestOwner = oid; tie = false; }
+      else if (n === bestN) { tie = true; }
+    }
+    setGame((g) => (g.status === "playing" ? { ...g, status: "game_end" } : g));
+  }, [victoryMode, nowMs, timeLimitMin, game]);
+const ownedByOwner = React.useMemo(() => countOwnedByOwnerId(game), [game]);
 
   const selectionLabel = React.useMemo(() => {
     const id = game.turn.selectedTerritoryId;
@@ -271,6 +334,7 @@ export default function DepartementsPlay(props: any) {
     if (game.status !== "playing") return;
 
     if (game.config.targetSelectionMode === "free" && !game.turn.selectedTerritoryId) return;
+    // by_score mode: no selection needed
 
     const dartScores = computeVisitScores(currentThrow);
     const r1 = applyVisit(game, dartScores);
@@ -280,13 +344,28 @@ export default function DepartementsPlay(props: any) {
 
     // Victory check
     const ownedNow = countOwnedByOwnerId(next);
-    const need = next.config.victoryCondition.type === "territories" ? next.config.victoryCondition.value : 9999;
+
     const possibleOwners = next.teams?.length ? next.teams.map((t2) => t2.id) : next.players.map((p2) => p2.id);
-    const winner = possibleOwners.find((oid) => (ownedNow[oid] || 0) >= need);
-    if (winner) {
-      setGame({ ...next, status: "game_end" });
-      return;
+
+    if (victoryMode === "territories") {
+      const need = objectiveTerritories;
+      const winner = possibleOwners.find((oid) => (ownedNow[oid] || 0) >= need);
+      if (winner) {
+        setGame({ ...next, status: "game_end" });
+        return;
+      }
     }
+
+    if (victoryMode === "regions") {
+      const need = objectiveRegions;
+      const winner = possibleOwners.find((oid) => countRegionsOwned(next, oid) >= need);
+      if (winner) {
+        setGame({ ...next, status: "game_end" });
+        return;
+      }
+    }
+
+    // time mode is handled by a timer effect (most territories at end)
 
     const r2 = endTurn(next);
     setGame(r2.state);
