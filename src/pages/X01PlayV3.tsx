@@ -3714,6 +3714,12 @@ function HeaderBlock(props: HeaderBlockProps) {
     0
   );
 
+  // =====================================================
+  // SOLO avatar en fond — sur toute la carte (fade à gauche)
+  // même concept que le logo TEAM en mode TEAMS
+  // =====================================================
+  const bgAvatarUrl = currentAvatar || null;
+
   return (
     <div
       style={{
@@ -3727,20 +3733,20 @@ function HeaderBlock(props: HeaderBlockProps) {
         overflow: "hidden",
       }}
     >
-      {/* Logo TEAM en fond — sur toute la carte (fade à gauche comme les tickers GAMES) */}
-      {!!teamLogoUrl && (
+      {/* Avatar joueur en fond — sur toute la carte (fade à gauche comme les tickers GAMES) */}
+      {!!bgAvatarUrl && (
         <div
           aria-hidden
           style={{
             position: "absolute",
             inset: 0,
-            backgroundImage: `url(${teamLogoUrl})`,
+            backgroundImage: `url(${bgAvatarUrl})`,
             backgroundRepeat: "no-repeat",
-            backgroundPosition: "right center",
-            // ✅ remplit la hauteur de la carte, et s'étire visuellement sur la largeur
-            backgroundSize: "auto 128%",
-            opacity: 0.11,
-            filter: "saturate(1.15) contrast(1.05)",
+            backgroundPosition: "100% 50%",
+            // ✅ remplit la hauteur de la carte, recadré et légèrement zoomé
+            backgroundSize: "auto 140%",
+            opacity: 0.1,
+            filter: "saturate(1.05) contrast(1.05)",
             pointerEvents: "none",
             userSelect: "none",
             zIndex: 0,
