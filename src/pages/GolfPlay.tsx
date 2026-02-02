@@ -1,4 +1,4 @@
-import React, { useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import BackDot from "../components/BackDot";
 import InfoDot from "../components/InfoDot";
 import PageHeader from "../components/PageHeader";
@@ -18,8 +18,22 @@ type Props = {
   setTab?: AnyFn; // setTab("golf_config", {config}) etc.
   go?: AnyFn; // go("golf_config", {config}) etc.
   tabParams?: any; // { config }
+  params?: any; // { config } (selon App.tsx)
   store?: any; // profiles store (optionnel)
 };
+
+// Ticker : supporte plusieurs images "parcours" si elles existent.
+// Fallback : tickerGolf.
+const GOLF_TICKERS: string[] = [tickerGolf];
+
+function shuffle<T>(arr: T[]): T[] {
+  const a = arr.slice();
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
 
 const INFO_TEXT =
   "GOLF (fléchettes) :\n" +
@@ -246,7 +260,7 @@ function GolfHeaderBlock(props: {
           zIndex: 2,
         }}
       >
-        {/* AVATAR + IDENTITÉ + STATS */}
+        {/* AVATAR + STATS — en GOLF on retire le nom sous l'avatar */}
         <div
           style={{
             display: "flex",
@@ -283,23 +297,7 @@ function GolfHeaderBlock(props: {
             )}
           </div>
 
-          <div
-            style={{
-              fontWeight: 900,
-              fontSize: 17,
-              color: "#ffcf57",
-              maxWidth: 176,
-              overflow: "hidden",
-              textOverflow: "ellipsis",
-              whiteSpace: "nowrap",
-            }}
-          >
-            {currentPlayer?.name ?? "—"}
-          </div>
-
-          <div style={{ fontSize: 11.5, color: "#d9dbe3" }}>
-            Joueur : <b>{playerIdx + 1}/{playersCount}</b>
-          </div>
+          {/* (nom + joueur 1/2 supprimés, affichés ailleurs) */}
 
           {/* Mini card stats joueur actif (clone X01 mini card) */}
           <div style={{ ...miniCard, width: 176, height: "auto", padding: 7 }}>
@@ -378,41 +376,29 @@ function GolfHeaderBlock(props: {
             {currentTotal}
           </div>
 
-          {/* Pastilles live (3 flèches) */}
-          <div
-            style={{
-              display: "flex",
-              gap: 5,
-              justifyContent: "center",
-              position: "relative",
-              zIndex: 2,
-            }}
-          >
-            {[0, 1, 2].map((i) => {
-              const label = chips[i] ?? "—";
-              const st = chipStyleGolf(label === "—" ? "—" : label);
-              return (
-                <span
-                  key={i}
-                  style={{
-                    display: "inline-flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    minWidth: 40,
-                    height: 28,
-                    padding: "0 10px",
-                    borderRadius: 10,
-                    border: st.border,
-                    background: st.background,
-                    color: st.color,
-                    fontWeight: 900,
-                    fontSize: 13,
-                  }}
-                >
-                  {label}
-                </span>
-              );
-            })}
+          {/* À la place des pastilles X01 (inutile en GOLF) : nom du joueur actif */}
+          <div style={{ position: "relative", zIndex: 2, marginTop: 2 }}>
+            <div
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                justifyContent: "center",
+                maxWidth: 176,
+                padding: "6px 10px",
+                borderRadius: 12,
+                border: "1px solid rgba(255,255,255,.12)",
+                background: "rgba(0,0,0,.28)",
+                color: "#ffcf57",
+                fontWeight: 900,
+                fontSize: 14,
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
+              }}
+              title={currentPlayer?.name ?? ""}
+            >
+              {currentPlayer?.name ?? "—"}
+            </div>
           </div>
 
           {/* Mini ranking (top 3) — clone X01 */}
@@ -476,9 +462,11 @@ function GolfHeaderBlock(props: {
 }
 
 export default function GolfPlay(props: Props) {
-  const { setTab, go, tabParams, store } = props;
+  const { setTab, go, tabParams, params, store } = props;
 
-  const cfg: GolfConfig = (tabParams?.config ?? {}) as GolfConfig;
+  // Compat routing : certains écrans passent via params, d'autres via tabParams
+  const routeParams = (params ?? tabParams ?? {}) as any;
+  const cfg: GolfConfig = (routeParams?.config ?? {}) as GolfConfig;
 
   const holes = clamp(Number(cfg.holes ?? 9), 1, 18);
   const missStrokes = clamp(Number(cfg.missStrokes ?? 4), 1, 12);
@@ -526,6 +514,31 @@ export default function GolfPlay(props: Props) {
   const [playerIdx, setPlayerIdx] = useState(0); // 0..players-1
   const [isFinished, setIsFinished] = useState(false);
 
+  // Ticker "parcours" : tirage aléatoire sans répétition sur une même partie.
+  const tickerPoolRef = useRef<string[]>([]);
+  const [tickerSrc, setTickerSrc] = useState<string>(() => {
+    tickerPoolRef.current = shuffle(GOLF_TICKERS);
+    return tickerPoolRef.current[0] ?? tickerGolf;
+  });
+
+  useEffect(() => {
+    // On change au début de chaque trou (sauf 1er rendu)
+    if (holeIdx <= 0) return;
+    const pool = tickerPoolRef.current;
+    // si pool vide -> reshuffle, mais on évite de reprendre immédiatement le même
+    let nextPool = pool.slice(1);
+    if (nextPool.length === 0) {
+      nextPool = shuffle(GOLF_TICKERS);
+      if (nextPool[0] === tickerSrc && nextPool.length > 1) {
+        const tmp = nextPool[0];
+        nextPool[0] = nextPool[1];
+        nextPool[1] = tmp;
+      }
+    }
+    tickerPoolRef.current = nextPool;
+    setTickerSrc(nextPool[0] ?? tickerGolf);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [holeIdx]);
   const historyRef = useRef<HistoryEntry[]>([]);
 
   const totals = useMemo(() => {
@@ -744,7 +757,7 @@ export default function GolfPlay(props: Props) {
     <div className="page">
       <PageHeader
         title="GOLF"
-        tickerSrc={tickerGolf}
+        tickerSrc={tickerSrc}
         left={<BackDot onClick={goBack} />}
         right={<InfoDot title="Règles GOLF" content={INFO_TEXT} />}
       />
@@ -769,6 +782,93 @@ export default function GolfPlay(props: Props) {
           }))}
           isFinished={isFinished}
         />
+
+        {/* Liste des joueurs (UX comme X01PlayV3) */}
+        <div
+          style={{
+            ...cardBase,
+            padding: 10,
+            marginBottom: 12,
+            overflowX: "auto",
+            WebkitOverflowScrolling: "touch",
+          }}
+        >
+          <div
+            style={{
+              display: "flex",
+              gap: 10,
+              alignItems: "center",
+              minWidth: "max-content",
+            }}
+          >
+            {roster.map((p, idx) => {
+              const isA = !isFinished && idx === playerIdx;
+              return (
+                <div
+                  key={p.id}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 8,
+                    padding: "8px 10px",
+                    borderRadius: 14,
+                    border: isA
+                      ? "1px solid rgba(120,255,220,0.40)"
+                      : "1px solid rgba(255,255,255,0.10)",
+                    background: isA
+                      ? "linear-gradient(180deg, rgba(120,255,220,0.10), rgba(0,0,0,0.22))"
+                      : "rgba(0,0,0,0.20)",
+                    boxShadow: isA ? "0 10px 24px rgba(0,0,0,0.35)" : undefined,
+                  }}
+                >
+                  <div
+                    style={{
+                      width: 34,
+                      height: 34,
+                      borderRadius: "50%",
+                      overflow: "hidden",
+                      border: "1px solid rgba(255,255,255,.18)",
+                      background: "rgba(0,0,0,.35)",
+                      display: "grid",
+                      placeItems: "center",
+                    }}
+                  >
+                    {p.avatar ? (
+                      <img
+                        src={p.avatar}
+                        alt=""
+                        style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                      />
+                    ) : (
+                      <span style={{ color: "rgba(255,255,255,0.45)", fontWeight: 900 }}>
+                        {idx + 1}
+                      </span>
+                    )}
+                  </div>
+
+                  <div style={{ minWidth: 0 }}>
+                    <div
+                      style={{
+                        fontWeight: 900,
+                        fontSize: 13,
+                        color: isA ? "#b9ffe9" : "rgba(255,255,255,0.90)",
+                        maxWidth: 120,
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      {p.name}
+                    </div>
+                    <div style={{ fontSize: 12, opacity: 0.75, fontWeight: 900 }}>
+                      {totals[idx] ?? 0}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
 
         {/* CONTENU DE JEU */}
         <div
@@ -806,88 +906,8 @@ export default function GolfPlay(props: Props) {
             Résultat du trou — choisis sur quelle flèche tu touches la cible
           </div>
 
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "1fr 1fr",
-              gap: 10,
-              marginTop: 10,
-            }}
-          >
-            <button
-              onClick={() => commitScore(1)}
-              style={{
-                padding: "14px 12px",
-                borderRadius: 14,
-                border: "1px solid rgba(120,255,220,0.35)",
-                background: "rgba(40,120,90,0.22)",
-                color: "white",
-                fontWeight: 1000,
-                fontSize: 16,
-              }}
-            >
-              Hit 1
-            </button>
-            <button
-              onClick={() => commitScore(2)}
-              style={{
-                padding: "14px 12px",
-                borderRadius: 14,
-                border: "1px solid rgba(120,255,220,0.35)",
-                background: "rgba(40,120,90,0.22)",
-                color: "white",
-                fontWeight: 1000,
-                fontSize: 16,
-              }}
-            >
-              Hit 2
-            </button>
-            <button
-              onClick={() => commitScore(3)}
-              style={{
-                padding: "14px 12px",
-                borderRadius: 14,
-                border: "1px solid rgba(120,255,220,0.35)",
-                background: "rgba(40,120,90,0.22)",
-                color: "white",
-                fontWeight: 1000,
-                fontSize: 16,
-              }}
-            >
-              Hit 3
-            </button>
-            <button
-              onClick={() => commitScore(missStrokes)}
-              style={{
-                padding: "14px 12px",
-                borderRadius: 14,
-                border: "1px solid rgba(255,120,120,0.35)",
-                background: "rgba(120,40,40,0.22)",
-                color: "white",
-                fontWeight: 1000,
-                fontSize: 16,
-              }}
-            >
-              Miss ({missStrokes})
-            </button>
-          </div>
-
-          <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 10 }}>
-            <button
-              onClick={undo}
-              disabled={historyRef.current.length === 0}
-              style={{
-                padding: "10px 12px",
-                borderRadius: 12,
-                border: "1px solid rgba(255,255,255,0.14)",
-                background: "rgba(0,0,0,0.25)",
-                color: "rgba(255,255,255,0.8)",
-                fontWeight: 900,
-                opacity: historyRef.current.length === 0 ? 0.45 : 1,
-              }}
-            >
-              Annuler
-            </button>
+          <div style={{ marginTop: 10, opacity: 0.7, fontWeight: 800, fontSize: 12 }}>
+            Saisie en bas (HIT 1/2/3 / MISS) → pour garder l'écran "grille" propre.
           </div>
         </div>
 
@@ -903,6 +923,110 @@ export default function GolfPlay(props: Props) {
               </>
             )}
           </>
+        )}
+
+        {/* SAISIE (déplacée en bas) */}
+        {!isFinished && (
+          <div style={{ ...cardBase, padding: 12, marginTop: 12 }}>
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "baseline",
+              }}
+            >
+              <div style={{ fontWeight: 1000, color: "rgba(255,255,255,0.92)" }}>
+                SAISIE
+              </div>
+              <div style={{ opacity: 0.75, fontWeight: 900 }}>
+                Trou {holeIdx + 1}/{holes} · Cible {target}
+              </div>
+            </div>
+
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "1fr 1fr",
+                gap: 10,
+                marginTop: 10,
+              }}
+            >
+              <button
+                onClick={() => commitScore(1)}
+                style={{
+                  padding: "14px 12px",
+                  borderRadius: 14,
+                  border: "1px solid rgba(120,255,220,0.35)",
+                  background: "rgba(40,120,90,0.22)",
+                  color: "white",
+                  fontWeight: 1000,
+                  fontSize: 16,
+                }}
+              >
+                Hit 1
+              </button>
+              <button
+                onClick={() => commitScore(2)}
+                style={{
+                  padding: "14px 12px",
+                  borderRadius: 14,
+                  border: "1px solid rgba(120,255,220,0.35)",
+                  background: "rgba(40,120,90,0.22)",
+                  color: "white",
+                  fontWeight: 1000,
+                  fontSize: 16,
+                }}
+              >
+                Hit 2
+              </button>
+              <button
+                onClick={() => commitScore(3)}
+                style={{
+                  padding: "14px 12px",
+                  borderRadius: 14,
+                  border: "1px solid rgba(120,255,220,0.35)",
+                  background: "rgba(40,120,90,0.22)",
+                  color: "white",
+                  fontWeight: 1000,
+                  fontSize: 16,
+                }}
+              >
+                Hit 3
+              </button>
+              <button
+                onClick={() => commitScore(missStrokes)}
+                style={{
+                  padding: "14px 12px",
+                  borderRadius: 14,
+                  border: "1px solid rgba(255,120,120,0.35)",
+                  background: "rgba(120,40,40,0.22)",
+                  color: "white",
+                  fontWeight: 1000,
+                  fontSize: 16,
+                }}
+              >
+                Miss ({missStrokes})
+              </button>
+            </div>
+
+            <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 10 }}>
+              <button
+                onClick={undo}
+                disabled={historyRef.current.length === 0}
+                style={{
+                  padding: "10px 12px",
+                  borderRadius: 12,
+                  border: "1px solid rgba(255,255,255,0.14)",
+                  background: "rgba(0,0,0,0.25)",
+                  color: "rgba(255,255,255,0.8)",
+                  fontWeight: 900,
+                  opacity: historyRef.current.length === 0 ? 0.45 : 1,
+                }}
+              >
+                Annuler
+              </button>
+            </div>
+          </div>
         )}
 
         {isFinished && (
