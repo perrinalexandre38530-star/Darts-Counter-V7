@@ -453,29 +453,29 @@ function GolfHeaderBlock(props: {
               </div>
 
               <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 6 }}>
-                <div style={{ borderRadius: 10, padding: "6px 0", textAlign: "center", border: "1px solid rgba(120,255,220,0.35)", background: "rgba(40,120,90,0.22)", fontWeight: 1000 }}>
-                  <div style={{ fontSize: 11, opacity: 0.9 }}>S</div>
-                  <div style={{ fontSize: 14, color: "#b9ffe9" }}>{currentStats.s}</div>
+                <div style={{ borderRadius: 10, padding: "6px 0", textAlign: "center", border: "1px solid rgba(255,255,255,0.18)", background: "rgba(0,0,0,0.18)", fontWeight: 1000 }}>
+                  <div style={{ fontSize: 11, opacity: 0.9, color: "rgba(255,255,255,0.92)" }}>S</div>
+                  <div style={{ fontSize: 14, color: "rgba(255,255,255,0.95)" }}>{currentStats.s}</div>
                 </div>
                 <div style={{ borderRadius: 10, padding: "6px 0", textAlign: "center", border: "1px solid rgba(255,195,26,0.35)", background: "rgba(255,195,26,0.16)", fontWeight: 1000 }}>
                   <div style={{ fontSize: 11, opacity: 0.9, color: "#ffcf57" }}>D</div>
                   <div style={{ fontSize: 14, color: "#ffcf57" }}>{currentStats.d}</div>
                 </div>
                 <div style={{ borderRadius: 10, padding: "6px 0", textAlign: "center", border: "1px solid rgba(120,255,220,0.35)", background: "rgba(40,120,90,0.22)", fontWeight: 1000 }}>
-                  <div style={{ fontSize: 11, opacity: 0.9 }}>T</div>
+                  <div style={{ fontSize: 11, opacity: 0.9, color: "#b9ffe9" }}>T</div>
                   <div style={{ fontSize: 14, color: "#b9ffe9" }}>{currentStats.t}</div>
                 </div>
                 <div style={{ borderRadius: 10, padding: "6px 0", textAlign: "center", border: "1px solid rgba(255,120,120,0.35)", background: "rgba(120,40,40,0.22)", fontWeight: 1000 }}>
-                  <div style={{ fontSize: 11, opacity: 0.9 }}>M</div>
+                  <div style={{ fontSize: 11, opacity: 0.9, color: "#ffb2b2" }}>M</div>
                   <div style={{ fontSize: 14, color: "#ffb2b2" }}>{currentStats.miss}</div>
                 </div>
               </div>
 
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6, opacity: 0.95, fontWeight: 900 }}>
-                <div>%1st <b>{p1}%</b></div>
-                <div>%2nd <b>{p2}%</b></div>
-                <div>%3rd <b>{p3}%</b></div>
-                <div>%Miss <b>{pMiss}%</b></div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6, opacity: 0.98, fontWeight: 900 }}>
+                <div style={{ color: "#ffcf57" }}>%1st <b style={{ color: "#ffcf57" }}>{p1}%</b></div>
+                <div style={{ color: "#b9ffe9" }}>%2nd <b style={{ color: "#b9ffe9" }}>{p2}%</b></div>
+                <div style={{ color: "rgba(185,255,233,0.92)" }}>%3rd <b style={{ color: "rgba(185,255,233,0.92)" }}>{p3}%</b></div>
+                <div style={{ color: "#ffb2b2" }}>%Miss <b style={{ color: "#ffb2b2" }}>{pMiss}%</b></div>
               </div>
             </div>
           </div>
