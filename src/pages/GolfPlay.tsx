@@ -1,135 +1,381 @@
-import React, { useMemo, useState } from "react";
+import React, { useMemo, useRef, useState } from "react";
 import BackDot from "../components/BackDot";
 import InfoDot from "../components/InfoDot";
 import PageHeader from "../components/PageHeader";
 import tickerGolf from "../assets/tickers/ticker_golf.png";
-import { useLang } from "../contexts/LangContext";
-import { useTheme } from "../contexts/ThemeContext";
-import type { GolfConfigPayload } from "./GolfConfig";
 
-type Turn = {
-  holeIdx: number; // 0-based
-  playerIdx: number;
-  strokes: number;
+/**
+ * GOLF (darts) — Play
+ * - Header profil actif "comme X01PlayV3" (avatar + nom + mini stats / score + mini classement + watermark avatar)
+ * - Supprime les 2 cartes joueurs en dessous (inutile)
+ * - Affichage trous pleine largeur : 1–9, et 10–18 en dessous si 18 trous
+ * - Saisie : Hit 1/2/3 / Miss(pénalité) + Undo
+ */
+
+type AnyFn = (...args: any[]) => any;
+
+type Props = {
+  setTab?: AnyFn; // setTab("golf_config", {config}) etc.
+  go?: AnyFn; // go("golf_config", {config}) etc.
+  tabParams?: any; // { config }
+  store?: any; // profiles store (optionnel)
 };
 
-const INFO_TEXT = `Règles GOLF (darts) — version jouable\n\n- Partie en 9 ou 18 trous.\n- Au trou N, la cible est le numéro N (1..9 ou 1..18).\n- Chaque joueur a 3 flèches.\n- Score du trou = 1 si tu touches la cible à la 1ère flèche, 2 à la 2e, 3 à la 3e.\n- Si tu ne touches pas la cible : pénalité (configurable).\n- Total = somme des trous. Score le plus bas = vainqueur.`;
+const INFO_TEXT =
+  "GOLF (fléchettes) :\n" +
+  "- Trou N = cible N.\n" +
+  "- 3 flèches par joueur.\n" +
+  "- Hit sur 1ère flèche = 1, sur 2e = 2, sur 3e = 3.\n" +
+  "- Si aucune flèche ne touche : pénalité (configurable).\n" +
+  "- Score total le plus bas gagne.";
 
-function safeInt(n: any, fallback = 0) {
-  const x = Number(n);
-  if (!Number.isFinite(x)) return fallback;
-  return Math.floor(x);
+function clamp(n: number, a: number, b: number) {
+  return Math.max(a, Math.min(b, n));
 }
 
-export default function GolfPlay(props: any) {
-  const { t } = useLang();
-  useTheme();
+function safeStr(v: any, fallback = "") {
+  if (typeof v === "string") return v;
+  if (v == null) return fallback;
+  return String(v);
+}
 
-  const cfg: GolfConfigPayload =
-    (props?.params?.config as GolfConfigPayload) ||
-    (props?.config as GolfConfigPayload) ||
-    {
-      players: 2,
-      holes: 9,
-      teamsEnabled: false,
-      botsEnabled: false,
-      botLevel: "normal",
-      missStrokes: 4,
-    };
+function sum(nums: number[]) {
+  let s = 0;
+  for (const n of nums) s += n;
+  return s;
+}
 
-  const players = Math.max(2, Math.min(8, safeInt(cfg.players, 2)));
-  const holes = cfg.holes === 18 ? 18 : 9;
-  const missStrokes = cfg.missStrokes ?? 4;
+function getProfilesMap(store: any): Record<string, any> {
+  // ultra défensif : selon tes stores
+  const profiles =
+    store?.profiles ??
+    store?.profilesStore?.profiles ??
+    store?.profileStore?.profiles ??
+    store?.profiles_v7 ??
+    [];
+  const out: Record<string, any> = {};
+  if (Array.isArray(profiles)) {
+    for (const p of profiles) {
+      if (!p?.id) continue;
+      out[p.id] = p;
+    }
+  }
+  return out;
+}
 
-  const [holeIdx, setHoleIdx] = useState(0);
-  const [playerIdx, setPlayerIdx] = useState(0);
-  const [holeScores, setHoleScores] = useState<number[][]>(() =>
-    Array.from({ length: players }, () => Array.from({ length: holes }, () => 0))
-  );
-  const [history, setHistory] = useState<Turn[]>([]);
+type GolfConfig = {
+  holes?: number; // 9 ou 18
+  order?: "chronological" | "random";
+  scoringMode?: "strokes"; // (on garde)
+  missStrokes?: number; // pénalité si aucun hit
+  showGrid?: boolean;
+  selectedIds?: string[]; // ids profils
+  botsOn?: boolean;
+  teamsMode?: boolean;
+};
 
-  const isFinished = holeIdx >= holes;
+type HistoryEntry = {
+  holeIdx: number;
+  playerIdx: number;
+  prev: (number | null)[][];
+};
+
+export default function GolfPlay(props: Props) {
+  const { setTab, go, tabParams, store } = props;
+
+  const cfg: GolfConfig = (tabParams?.config ?? {}) as GolfConfig;
+
+  const holes = clamp(Number(cfg.holes ?? 9), 1, 18);
+  const missStrokes = clamp(Number(cfg.missStrokes ?? 4), 1, 12);
+  const showGrid = cfg.showGrid !== false;
+
+  const profilesById = useMemo(() => getProfilesMap(store), [store]);
+
+  // roster : si config a selectedIds, on construit un roster avec noms/avatars
+  const roster = useMemo(() => {
+    const ids: string[] = Array.isArray(cfg.selectedIds) ? cfg.selectedIds : [];
+    if (ids.length) {
+      return ids.map((id, i) => {
+        const p = profilesById[id];
+        return {
+          id,
+          name: safeStr(p?.name, `Joueur ${i + 1}`),
+          avatar:
+            p?.avatarDataUrl ??
+            p?.avatarUrl ??
+            p?.avatar ??
+            p?.photoUrl ??
+            null,
+        };
+      });
+    }
+    // fallback si pas de config
+    return [
+      { id: "p1", name: "Joueur 1", avatar: null },
+      { id: "p2", name: "Joueur 2", avatar: null },
+    ];
+  }, [cfg.selectedIds, profilesById]);
+
+  const playersCount = roster.length || 2;
+
+  // scores[playerIdx][holeIdx] = strokes (1/2/3/miss) ou null
+  const [scores, setScores] = useState<(number | null)[][]>(() => {
+    const s: (number | null)[][] = [];
+    for (let p = 0; p < playersCount; p++) {
+      s.push(Array.from({ length: holes }, () => null));
+    }
+    return s;
+  });
+
+  const [holeIdx, setHoleIdx] = useState(0); // 0..holes-1
+  const [playerIdx, setPlayerIdx] = useState(0); // 0..players-1
+  const [isFinished, setIsFinished] = useState(false);
+
+  const historyRef = useRef<HistoryEntry[]>([]);
 
   const totals = useMemo(() => {
-    return holeScores.map((row) => row.reduce((a, b) => a + (b || 0), 0));
-  }, [holeScores]);
+    return scores.map((row) => sum(row.map((v) => (typeof v === "number" ? v : 0))));
+  }, [scores]);
 
-  const teams = useMemo(() => {
-    if (!cfg.teamsEnabled) return null;
-    const a: number[] = [];
-    const b: number[] = [];
-    for (let i = 0; i < players; i++) {
-      (i % 2 === 0 ? a : b).push(i);
-    }
-    const sum = (idxs: number[]) => idxs.reduce((acc, i) => acc + (totals[i] || 0), 0);
-    return {
-      A: { players: a, total: sum(a) },
-      B: { players: b, total: sum(b) },
-    };
-  }, [cfg.teamsEnabled, players, totals]);
+  const ranking = useMemo(() => {
+    const arr = roster.map((p, idx) => ({
+      idx,
+      id: p.id,
+      name: p.name,
+      avatar: p.avatar,
+      total: totals[idx] ?? 0,
+    }));
+    arr.sort((a, b) => a.total - b.total);
+    return arr;
+  }, [roster, totals]);
 
-  const winner = useMemo(() => {
-    if (!isFinished) return null;
-    if (teams) {
-      const w = teams.A.total <= teams.B.total ? "A" : "B";
-      const best = Math.min(teams.A.total, teams.B.total);
-      return { kind: "team" as const, label: `TEAM ${w}`, total: best };
-    }
-    let best = Infinity;
-    let w = 0;
-    for (let i = 0; i < totals.length; i++) {
-      if (totals[i] < best) {
-        best = totals[i];
-        w = i;
-      }
-    }
-    return { kind: "player" as const, idx: w, total: best };
-  }, [isFinished, teams, totals]);
+  const activePlayer = !isFinished ? roster[playerIdx] : null;
+  const activeAvatar = activePlayer?.avatar ?? null;
+  const activeName = activePlayer?.name ?? "—";
+  const activeTotal = !isFinished ? (totals[playerIdx] ?? 0) : 0;
+
+  const target = holeIdx + 1; // cible = numéro du trou (chronologique)
 
   function goBack() {
-    // ✅ retour cohérent : revient sur la config GOLF, en conservant le setup
-    if (props?.setTab) return props.setTab("golf_config", { config: cfg });
-    window.history.back();
+    const payload = { config: cfg };
+    if (typeof setTab === "function") {
+      setTab("golf_config", payload);
+      return;
+    }
+    if (typeof go === "function") {
+      go("golf_config", payload);
+      return;
+    }
+    // fallback : rien
   }
 
-  function record(strokes: number) {
-    if (isFinished) return;
-    const s = Math.max(1, Math.min(10, safeInt(strokes, missStrokes)));
-
-    setHoleScores((prev) => {
-      const out = prev.map((r) => [...r]);
-      out[playerIdx][holeIdx] = s;
-      return out;
+  function pushHistory(prevScores: (number | null)[][]) {
+    historyRef.current.push({
+      holeIdx,
+      playerIdx,
+      prev: prevScores.map((r) => r.slice()),
     });
+    if (historyRef.current.length > 100) historyRef.current.shift();
+  }
 
-    setHistory((h) => [...h, { holeIdx, playerIdx, strokes: s }]);
+  function commitScore(strokes: number) {
+    if (isFinished) return;
 
-    const nextP = (playerIdx + 1) % players;
-    const nextH = nextP === 0 ? holeIdx + 1 : holeIdx;
+    setScores((prev) => {
+      pushHistory(prev);
 
-    setPlayerIdx(nextP);
-    setHoleIdx(nextH);
+      const next = prev.map((r) => r.slice());
+      next[playerIdx][holeIdx] = strokes;
+
+      // next turn
+      const nextPlayer = playerIdx + 1;
+      if (nextPlayer < playersCount) {
+        setPlayerIdx(nextPlayer);
+      } else {
+        // next hole
+        const nextHole = holeIdx + 1;
+        if (nextHole < holes) {
+          setHoleIdx(nextHole);
+          setPlayerIdx(0);
+        } else {
+          setIsFinished(true);
+        }
+      }
+
+      return next;
+    });
   }
 
   function undo() {
-    setHistory((h) => {
-      if (!h.length) return h;
-      const last = h[h.length - 1];
-
-      setHoleScores((prev) => {
-        const out = prev.map((r) => [...r]);
-        out[last.playerIdx][last.holeIdx] = 0;
-        return out;
-      });
-
-      setHoleIdx(last.holeIdx);
-      setPlayerIdx(last.playerIdx);
-
-      return h.slice(0, -1);
-    });
+    const h = historyRef.current.pop();
+    if (!h) return;
+    setScores(h.prev);
+    setHoleIdx(h.holeIdx);
+    setPlayerIdx(h.playerIdx);
+    setIsFinished(false);
   }
 
-  const targetNumber = holeIdx + 1;
+  // -------------------------------
+  // UI helpers (styles “comme X01”)
+  // -------------------------------
+  const cardBase: React.CSSProperties = {
+    borderRadius: 18,
+    border: "1px solid rgba(255,255,255,0.10)",
+    background:
+      "linear-gradient(180deg, rgba(255,255,255,0.06), rgba(0,0,0,0.28))",
+    boxShadow: "0 18px 40px rgba(0,0,0,0.35)",
+  };
+
+  const pill: React.CSSProperties = {
+    borderRadius: 999,
+    padding: "6px 10px",
+    border: "1px solid rgba(255,255,255,0.14)",
+    background: "rgba(0,0,0,0.35)",
+    boxShadow: "0 10px 26px rgba(0,0,0,0.45)",
+    fontSize: 12,
+    color: "#ffd36a",
+    fontWeight: 800,
+    whiteSpace: "nowrap",
+  };
+
+  const avatarRing: React.CSSProperties = {
+    width: 56,
+    height: 56,
+    borderRadius: 999,
+    border: "2px solid rgba(120,255,220,0.85)",
+    boxShadow: "0 0 0 4px rgba(0,0,0,0.35), 0 0 18px rgba(120,255,220,0.35)",
+    background: "rgba(0,0,0,0.35)",
+    overflow: "hidden",
+    display: "grid",
+    placeItems: "center",
+    flex: "0 0 auto",
+  };
+
+  const watermarkStyle: React.CSSProperties = activeAvatar
+    ? {
+        backgroundImage: `url(${activeAvatar})`,
+        backgroundRepeat: "no-repeat",
+        backgroundPosition: "110% 35%",
+        backgroundSize: "160px",
+      }
+    : {};
+
+  function HolesTableBlock(props: {
+    start: number; // 1-based
+    end: number; // 1-based
+    title: string;
+  }) {
+    const { start, end, title } = props;
+    const cols = end - start + 1;
+
+    const headerCells = Array.from({ length: cols }, (_, i) => start + i);
+
+    return (
+      <div style={{ ...cardBase, padding: 12, marginTop: 12 }}>
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "baseline",
+            marginBottom: 8,
+          }}
+        >
+          <div style={{ color: "rgba(255,255,255,0.9)", fontWeight: 900 }}>
+            {title}
+          </div>
+          <div style={{ opacity: 0.7, fontSize: 12 }}>Score bas gagne</div>
+        </div>
+
+        <div style={{ overflowX: "hidden" }}>
+          {/* header */}
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: `46px repeat(${cols}, minmax(0, 1fr)) 64px`,
+              gap: 6,
+              padding: "8px 8px",
+              borderRadius: 12,
+              background: "rgba(0,0,0,0.30)",
+              border: "1px solid rgba(255,255,255,0.08)",
+              fontSize: 12,
+              fontWeight: 900,
+              color: "rgba(255,255,255,0.72)",
+            }}
+          >
+            <div>#</div>
+            {headerCells.map((n) => (
+              <div key={n} style={{ textAlign: "center" }}>
+                {n}
+              </div>
+            ))}
+            <div style={{ textAlign: "right" }}>Total</div>
+          </div>
+
+          {/* rows */}
+          {roster.map((p, pIdx) => {
+            const row = scores[pIdx] || [];
+            const slice = row.slice(start - 1, end);
+            const rowTotal = totals[pIdx] ?? 0;
+            const isActive = !isFinished && pIdx === playerIdx;
+
+            return (
+              <div
+                key={p.id}
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: `46px repeat(${cols}, minmax(0, 1fr)) 64px`,
+                  gap: 6,
+                  padding: "10px 8px",
+                  borderRadius: 12,
+                  marginTop: 8,
+                  border: "1px solid rgba(255,255,255,0.08)",
+                  background: isActive
+                    ? "linear-gradient(180deg, rgba(120,255,220,0.10), rgba(0,0,0,0.22))"
+                    : "rgba(0,0,0,0.18)",
+                }}
+              >
+                <div
+                  style={{
+                    fontWeight: 900,
+                    color: isActive ? "rgba(160,255,235,0.95)" : "rgba(255,255,255,0.75)",
+                  }}
+                >
+                  {pIdx + 1}
+                </div>
+
+                {slice.map((v, i) => {
+                  const val = typeof v === "number" ? v : "—";
+                  const isCurrentCell =
+                    !isFinished && pIdx === playerIdx && holeIdx === (start - 1 + i);
+
+                  return (
+                    <div
+                      key={i}
+                      style={{
+                        textAlign: "center",
+                        fontWeight: 900,
+                        color: isCurrentCell
+                          ? "#b9ffe9"
+                          : typeof v === "number"
+                          ? "rgba(255,255,255,0.92)"
+                          : "rgba(255,255,255,0.35)",
+                      }}
+                    >
+                      {val}
+                    </div>
+                  );
+                })}
+
+                <div style={{ textAlign: "right", fontWeight: 900, color: "#ffd36a" }}>
+                  {rowTotal}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="page">
@@ -141,189 +387,310 @@ export default function GolfPlay(props: any) {
       />
 
       <div style={{ padding: 12 }}>
+        {/* ===============================
+            HEADER PROFIL ACTIF (comme X01PlayV3)
+            - Avatar + nom + mini stats à gauche
+            - Score + mini classement à droite
+            - Avatar watermark en fond du bloc score
+           =============================== */}
         <div
           style={{
-            borderRadius: 18,
-            padding: 14,
-            border: "1px solid rgba(255,255,255,0.12)",
-            background: "rgba(255,255,255,0.05)",
-            boxShadow: "0 18px 40px rgba(0,0,0,0.35)",
+            ...cardBase,
+            padding: 12,
+            marginBottom: 12,
+            display: "flex",
+            gap: 12,
+            alignItems: "stretch",
           }}
         >
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
-            <div>
-              <div style={{ fontSize: 12, opacity: 0.8, fontWeight: 900, letterSpacing: 1 }}>
-                {t("generic.hole", "TROU")} {Math.min(holeIdx + 1, holes)}/{holes}
-              </div>
-              <div style={{ marginTop: 6, fontSize: 18, fontWeight: 1000 }}>
-                {t("golf.target", "Cible")} : {isFinished ? "—" : targetNumber}
-              </div>
+          {/* LEFT : avatar + nom + mini stats */}
+          <div style={{ display: "flex", gap: 12, alignItems: "center", minWidth: 0, flex: 1 }}>
+            <div style={avatarRing}>
+              {activeAvatar ? (
+                <img
+                  src={activeAvatar}
+                  alt=""
+                  style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                />
+              ) : (
+                <div style={{ color: "rgba(255,255,255,0.65)", fontWeight: 900 }}>
+                  {playerIdx + 1}
+                </div>
+              )}
             </div>
 
-            <div style={{ textAlign: "right" }}>
-              <div style={{ fontSize: 12, opacity: 0.8, fontWeight: 900, letterSpacing: 1 }}>
-                {t("generic.player", "JOUEUR")}
+            <div style={{ minWidth: 0 }}>
+              <div style={{ opacity: 0.7, fontSize: 12, fontWeight: 900 }}>
+                JOUEUR ACTIF
               </div>
-              <div style={{ marginTop: 6, fontSize: 18, fontWeight: 1000 }}>
-                {isFinished ? "—" : `${playerIdx + 1}/${players}`}
-              </div>
-            </div>
-          </div>
-
-          {cfg.teamsEnabled && teams && (
-            <div style={{ marginTop: 10, display: "flex", gap: 10, justifyContent: "space-between" }}>
-              <div style={{ fontWeight: 950, opacity: 0.95 }}>
-                TEAM A: {teams.A.total}
-              </div>
-              <div style={{ fontWeight: 950, opacity: 0.95 }}>
-                TEAM B: {teams.B.total}
-              </div>
-            </div>
-          )}
-        </div>
-
-        <div style={{ marginTop: 12, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-          {totals.map((total, i) => {
-            const active = !isFinished && i === playerIdx;
-            return (
               <div
-                key={i}
                 style={{
-                  borderRadius: 16,
-                  padding: 12,
-                  border: active ? "1px solid rgba(120,255,200,0.35)" : "1px solid rgba(255,255,255,0.10)",
-                  background: active ? "rgba(120,255,200,0.10)" : "rgba(255,255,255,0.04)",
+                  fontSize: 18,
+                  fontWeight: 1000,
+                  color: "rgba(255,255,255,0.95)",
+                  lineHeight: 1.05,
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  whiteSpace: "nowrap",
+                  maxWidth: "54vw",
                 }}
               >
-                <div style={{ fontSize: 12, opacity: 0.8, fontWeight: 950 }}>
-                  {t("generic.player", "Joueur")} {i + 1}
-                </div>
-                <div style={{ marginTop: 6, fontSize: 22, fontWeight: 1000 }}>{total}</div>
+                {activeName}
               </div>
-            );
-          })}
-        </div>
 
-        {!isFinished && (
-          <div style={{ marginTop: 12 }}>
-            <div style={{ fontSize: 12, opacity: 0.8, fontWeight: 950, letterSpacing: 0.8 }}>
-              {t("golf.enter", "Résultat du trou")} — {t("golf.tap", "choisis sur quelle flèche tu touches la cible")}
-            </div>
-
-            <div style={{ marginTop: 10, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-              <button onClick={() => record(1)} style={btnStyle(true)}>
-                {t("golf.hit", "Hit")} 1
-              </button>
-              <button onClick={() => record(2)} style={btnStyle(true)}>
-                {t("golf.hit", "Hit")} 2
-              </button>
-              <button onClick={() => record(3)} style={btnStyle(true)}>
-                {t("golf.hit", "Hit")} 3
-              </button>
-              <button onClick={() => record(missStrokes)} style={btnStyle(false)}>
-                {t("golf.miss", "Miss")} ({missStrokes})
-              </button>
-            </div>
-
-            <div style={{ marginTop: 10, display: "flex", justifyContent: "flex-end" }}>
-              <button onClick={undo} disabled={!history.length} style={undoStyle(!history.length)}>
-                {t("generic.undo", "Annuler")}
-              </button>
+              {/* mini stats dessous */}
+              <div style={{ display: "flex", gap: 8, marginTop: 8, flexWrap: "wrap" }}>
+                <div style={pill}>Trou {holeIdx + 1}/{holes}</div>
+                <div style={pill}>Cible {target}</div>
+                <div style={pill}>Joueur {playerIdx + 1}/{playersCount}</div>
+              </div>
             </div>
           </div>
-        )}
 
-        {isFinished && winner && (
+          {/* RIGHT : score + mini classement (avec watermark) */}
           <div
             style={{
-              marginTop: 12,
+              width: 165,
               borderRadius: 18,
-              padding: 14,
-              border: "1px solid rgba(255,215,100,0.35)",
-              background: "rgba(255,215,100,0.12)",
-              fontWeight: 1000,
+              border: "1px solid rgba(255,255,255,0.10)",
+              background:
+                "linear-gradient(180deg, rgba(255,215,120,0.08), rgba(0,0,0,0.30))",
+              boxShadow: "0 18px 40px rgba(0,0,0,0.35)",
+              padding: 10,
+              position: "relative",
+              overflow: "hidden",
+              ...watermarkStyle,
             }}
           >
-            {t("generic.winner", "Gagnant")} :{" "}
-            {winner.kind === "team" ? winner.label : `${t("generic.player", "Joueur")} ${winner.idx + 1}`} — {winner.total}
+            {/* watermark overlay */}
+            {activeAvatar && (
+              <div
+                style={{
+                  position: "absolute",
+                  inset: 0,
+                  background:
+                    "linear-gradient(90deg, rgba(0,0,0,0.65), rgba(0,0,0,0.15))",
+                  pointerEvents: "none",
+                }}
+              />
+            )}
+
+            <div style={{ position: "relative" }}>
+              <div style={{ fontSize: 12, fontWeight: 900, opacity: 0.7 }}>SCORE</div>
+              <div
+                style={{
+                  fontSize: 34,
+                  fontWeight: 1000,
+                  color: "#ffd36a",
+                  lineHeight: 1,
+                  marginTop: 2,
+                }}
+              >
+                {activeTotal}
+              </div>
+
+              {/* mini classement */}
+              <div style={{ marginTop: 10 }}>
+                <div style={{ fontSize: 11, fontWeight: 900, opacity: 0.65, marginBottom: 6 }}>
+                  Classement
+                </div>
+
+                <div style={{ display: "grid", gap: 6 }}>
+                  {ranking.slice(0, Math.min(3, ranking.length)).map((r, i) => {
+                    const isMe = !isFinished && r.idx === playerIdx;
+                    return (
+                      <div
+                        key={r.id}
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "space-between",
+                          gap: 8,
+                          padding: "6px 8px",
+                          borderRadius: 12,
+                          border: "1px solid rgba(255,255,255,0.10)",
+                          background: isMe
+                            ? "rgba(120,255,220,0.12)"
+                            : "rgba(0,0,0,0.22)",
+                        }}
+                      >
+                        <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
+                          <div
+                            style={{
+                              width: 22,
+                              height: 22,
+                              borderRadius: 999,
+                              overflow: "hidden",
+                              border: "1px solid rgba(255,255,255,0.18)",
+                              background: "rgba(0,0,0,0.30)",
+                              flex: "0 0 auto",
+                            }}
+                          >
+                            {r.avatar ? (
+                              <img
+                                src={r.avatar}
+                                alt=""
+                                style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                              />
+                            ) : null}
+                          </div>
+
+                          <div
+                            style={{
+                              fontSize: 12,
+                              fontWeight: 900,
+                              color: "rgba(255,255,255,0.88)",
+                              overflow: "hidden",
+                              textOverflow: "ellipsis",
+                              whiteSpace: "nowrap",
+                              maxWidth: 80,
+                            }}
+                          >
+                            {i + 1}. {r.name}
+                          </div>
+                        </div>
+
+                        <div style={{ fontSize: 12, fontWeight: 1000, color: "#ffd36a" }}>
+                          {r.total}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
           </div>
+        </div>
+
+        {/* CONTENU DE JEU (sans les 2 cartes joueurs inutiles) */}
+        <div
+          style={{
+            ...cardBase,
+            padding: 12,
+            marginBottom: 12,
+          }}
+        >
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
+            <div style={{ fontWeight: 1000, color: "rgba(255,255,255,0.92)" }}>
+              TROU {holeIdx + 1}/{holes}
+            </div>
+            <div style={{ opacity: 0.75, fontWeight: 900 }}>JOUEUR {playerIdx + 1}/{playersCount}</div>
+          </div>
+
+          <div style={{ marginTop: 6, fontSize: 18, fontWeight: 1000 }}>
+            Cible : <span style={{ color: "#b9ffe9" }}>{target}</span>
+          </div>
+
+          <div style={{ marginTop: 10, opacity: 0.85, fontWeight: 800 }}>
+            Résultat du trou — choisis sur quelle flèche tu touches la cible
+          </div>
+
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginTop: 10 }}>
+            <button
+              onClick={() => commitScore(1)}
+              style={{
+                padding: "14px 12px",
+                borderRadius: 14,
+                border: "1px solid rgba(120,255,220,0.35)",
+                background: "rgba(40,120,90,0.22)",
+                color: "white",
+                fontWeight: 1000,
+                fontSize: 16,
+              }}
+            >
+              Hit 1
+            </button>
+            <button
+              onClick={() => commitScore(2)}
+              style={{
+                padding: "14px 12px",
+                borderRadius: 14,
+                border: "1px solid rgba(120,255,220,0.35)",
+                background: "rgba(40,120,90,0.22)",
+                color: "white",
+                fontWeight: 1000,
+                fontSize: 16,
+              }}
+            >
+              Hit 2
+            </button>
+            <button
+              onClick={() => commitScore(3)}
+              style={{
+                padding: "14px 12px",
+                borderRadius: 14,
+                border: "1px solid rgba(120,255,220,0.35)",
+                background: "rgba(40,120,90,0.22)",
+                color: "white",
+                fontWeight: 1000,
+                fontSize: 16,
+              }}
+            >
+              Hit 3
+            </button>
+            <button
+              onClick={() => commitScore(missStrokes)}
+              style={{
+                padding: "14px 12px",
+                borderRadius: 14,
+                border: "1px solid rgba(255,120,120,0.35)",
+                background: "rgba(120,40,40,0.22)",
+                color: "white",
+                fontWeight: 1000,
+                fontSize: 16,
+              }}
+            >
+              Miss ({missStrokes})
+            </button>
+          </div>
+
+          <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 10 }}>
+            <button
+              onClick={undo}
+              disabled={historyRef.current.length === 0}
+              style={{
+                padding: "10px 12px",
+                borderRadius: 12,
+                border: "1px solid rgba(255,255,255,0.14)",
+                background: "rgba(0,0,0,0.25)",
+                color: "rgba(255,255,255,0.8)",
+                fontWeight: 900,
+                opacity: historyRef.current.length === 0 ? 0.45 : 1,
+              }}
+            >
+              Annuler
+            </button>
+          </div>
+        </div>
+
+        {/* GRILLE TROUS (pleine largeur, 1–9 puis 10–18) */}
+        {showGrid && (
+          <>
+            {holes <= 9 ? (
+              <HolesTableBlock start={1} end={holes} title={`Trous 1–${holes}`} />
+            ) : (
+              <>
+                <HolesTableBlock start={1} end={9} title="Trous 1–9" />
+                <HolesTableBlock start={10} end={holes} title={`Trous 10–${holes}`} />
+              </>
+            )}
+          </>
         )}
 
-        <div style={{ marginTop: 12, overflowX: "auto" }}>
-          <table style={{ width: "100%", borderCollapse: "separate", borderSpacing: 0 }}>
-            <thead>
-              <tr>
-                <th style={thStyle}>#</th>
-                {Array.from({ length: holes }, (_, i) => (
-                  <th key={i} style={thStyle}> {i + 1} </th>
-                ))}
-                <th style={thStyle}>{t("generic.total", "Total")}</th>
-              </tr>
-            </thead>
-            <tbody>
-              {holeScores.map((row, p) => (
-                <tr key={p}>
-                  <td style={tdStyle(true)}>{p + 1}</td>
-                  {row.map((v, i) => (
-                    <td key={i} style={tdStyle(false)}>
-                      {v || "—"}
-                    </td>
-                  ))}
-                  <td style={tdStyle(true)}>{totals[p]}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        {/* FIN */}
+        {isFinished && (
+          <div style={{ ...cardBase, padding: 14, marginTop: 12 }}>
+            <div style={{ fontWeight: 1000, fontSize: 16, color: "#ffd36a" }}>Partie terminée</div>
+            <div style={{ marginTop: 8 }}>
+              {ranking[0] ? (
+                <div style={{ fontWeight: 1000, color: "rgba(255,255,255,0.92)" }}>
+                  Vainqueur : {ranking[0].name} — {ranking[0].total}
+                </div>
+              ) : null}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
-}
-
-function btnStyle(primary: boolean): React.CSSProperties {
-  return {
-    borderRadius: 14,
-    border: primary ? "1px solid rgba(120,255,200,0.22)" : "1px solid rgba(255,120,120,0.22)",
-    background: primary ? "rgba(120,255,200,0.14)" : "rgba(255,120,120,0.14)",
-    padding: "14px 14px",
-    fontWeight: 1000,
-    cursor: "pointer",
-    color: "#fff",
-  };
-}
-
-function undoStyle(disabled: boolean): React.CSSProperties {
-  return {
-    borderRadius: 12,
-    border: "1px solid rgba(255,255,255,0.12)",
-    background: disabled ? "rgba(255,255,255,0.03)" : "rgba(255,255,255,0.06)",
-    padding: "10px 12px",
-    fontWeight: 950,
-    cursor: disabled ? "not-allowed" : "pointer",
-    color: "#fff",
-    opacity: disabled ? 0.55 : 1,
-  };
-}
-
-const thStyle: React.CSSProperties = {
-  position: "sticky",
-  top: 0,
-  textAlign: "center",
-  fontSize: 12,
-  opacity: 0.85,
-  fontWeight: 900,
-  padding: "8px 6px",
-  borderBottom: "1px solid rgba(255,255,255,0.10)",
-  background: "rgba(0,0,0,0.25)",
-};
-
-function tdStyle(bold: boolean): React.CSSProperties {
-  return {
-    textAlign: "center",
-    fontWeight: bold ? 1000 : 900,
-    padding: "10px 6px",
-    borderBottom: "1px solid rgba(255,255,255,0.08)",
-    background: "rgba(255,255,255,0.02)",
-    minWidth: 38,
-  };
 }

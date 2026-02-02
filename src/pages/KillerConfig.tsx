@@ -52,6 +52,8 @@ export type KillerBecomeRule = "single" | "double";
 export type KillerDamageRule = "one" | "multiplier";
 export type KillerNumberAssignMode = "random" | "throw";
 
+
+export type KillerResurrectionMode = "off" | "one_player_once" | "all_once" | "all";
 export type KillerConfigPlayer = {
   id: string;
   name: string;
@@ -82,6 +84,11 @@ export type KillerConfig = {
   // ✅ Variantes BULL
   bullSplash: boolean; // SBULL => -1 à tous les adversaires ; DBULL => -2 à tous
   bullHeal: boolean; // toucher BULL permet de regagner des vies (selon implémentation KillerPlay)
+
+  // ✅ Résurrection
+  resurrectionMode?: KillerResurrectionMode; // off | one_player_once | all_once | all
+  resurrectionLives?: number; // 1..6
+
 
   players: KillerConfigPlayer[];
 };
@@ -433,8 +440,14 @@ export default function KillerConfigPage(props: Props) {
   const [bullSplash, setBullSplash] = React.useState<boolean>(false);
   const [bullHeal, setBullHeal] = React.useState<boolean>(false);
 
+
+  // ✅ Résurrection
+  const [resurrectionMode, setResurrectionMode] = React.useState<KillerResurrectionMode>("off");
+  const [resurrectionLives, setResurrectionLives] = React.useState<number>(1);
+
   // ✅ bouton "i" (règles / variantes)
   const [infoOpen, setInfoOpen] = React.useState<boolean>(false);
+  const [resInfo, setResInfo] = React.useState<{ title: string; text: string } | null>(null);
 
   const contentRef = React.useRef<HTMLDivElement | null>(null);
 
@@ -462,6 +475,10 @@ export default function KillerConfigPage(props: Props) {
     blindKiller,
     bullSplash,
     bullHeal,
+
+      resurrectionMode,
+      resurrectionLives: clampInt(resurrectionLives, 1, 6, 1),
+
   };
 
   function setVariant(k: VariantKey, v: boolean) {
@@ -955,6 +972,130 @@ export default function KillerConfigPage(props: Props) {
           )}
         </section>
 
+      {/* BOTS */}
+        <section
+          style={{
+            background: cardBg,
+            borderRadius: 18,
+            padding: 12,
+            marginBottom: 14,
+            boxShadow: "0 16px 40px rgba(0,0,0,0.55)",
+            border: "1px solid rgba(255,255,255,0.04)",
+          }}
+        >
+          <div style={{ fontSize: 12, textTransform: "uppercase", letterSpacing: 1, fontWeight: 800, color: primary, marginBottom: 10 }}>
+            Bots IA
+          </div>
+
+          <p style={{ fontSize: 11, color: "#7c80a0", marginBottom: 10 }}>
+            Ajoute des bots “PRO” prédéfinis ou tes bots créés dans Profils.
+          </p>
+
+          <div
+            className="dc-scroll-thin"
+            style={{
+              display: "flex",
+              gap: 14,
+              overflowX: "auto",
+              overflowY: "visible",
+              paddingBottom: 10,
+              paddingTop: 14,
+              marginTop: 6,
+              marginBottom: 10,
+            }}
+          >
+            {botProfiles.map((bot) => {
+              const { level } = resolveBotLevel(bot.botLevel);
+              const active = selectedIds.includes(bot.id);
+
+              return (
+                <div
+                  key={bot.id}
+                  role="button"
+                  onClick={() => togglePlayer(bot.id)}
+                  style={{
+                    minWidth: 96,
+                    maxWidth: 96,
+                    background: "transparent",
+                    border: "none",
+                    padding: 0,
+                    display: "flex",
+                    flexDirection: "column",
+                    alignItems: "center",
+                    gap: 6,
+                    flexShrink: 0,
+                    cursor: "pointer",
+                    userSelect: "none",
+                  }}
+                >
+                  <BotMedallion bot={bot} level={level} active={active} />
+
+                  <div
+                    style={{
+                      fontSize: 11,
+                      fontWeight: 700,
+                      textAlign: "center",
+                      color: active ? "#f6f2e9" : "#7e8299",
+                      maxWidth: "100%",
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      whiteSpace: "nowrap",
+                      marginTop: 4,
+                    }}
+                    title={bot.name}
+                  >
+                    {bot.name}
+                  </div>
+
+                  <div style={{ marginTop: 2, display: "flex", justifyContent: "center" }}>
+                    <span
+                      style={{
+                        padding: "2px 8px",
+                        borderRadius: 999,
+                        fontSize: 9,
+                        fontWeight: 900,
+                        letterSpacing: 0.7,
+                        textTransform: "uppercase",
+                        background: bot.id.startsWith("bot_pro_")
+                          ? "radial-gradient(circle at 30% 0, #ffeaa8, #f7c85c)"
+                          : "radial-gradient(circle at 30% 0, #6af3ff, #008cff)",
+                        color: "#020611",
+                        boxShadow: bot.id.startsWith("bot_pro_")
+                          ? "0 0 12px rgba(247,200,92,0.5)"
+                          : "0 0 12px rgba(0,172,255,0.55)",
+                        border: "1px solid rgba(255,255,255,0.25)",
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      {bot.id.startsWith("bot_pro_") ? "PRO" : "BOT"}
+                    </span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          <button
+            type="button"
+            onClick={() => (typeof go === "function" ? go("profiles_bots") : null)}
+            style={{
+              padding: "6px 10px",
+              borderRadius: 999,
+              border: `1px solid ${primary}`,
+              background: "rgba(255,255,255,0.04)",
+              color: primary,
+              fontWeight: 800,
+              fontSize: 11,
+              textTransform: "uppercase",
+              letterSpacing: 0.7,
+            }}
+          >
+            Gérer mes bots
+          </button>
+        </section>
+
+
+
         {/* OPTIONS */}
         <section
           style={{
@@ -1190,7 +1331,177 @@ export default function KillerConfigPage(props: Props) {
                 disabled={isVariantDisabled("bullHeal", variantState) && !bullHeal}
                 disabledReason={getConflictReason("bullHeal", variantState)}
               />
-            </div>
+            
+
+              <div
+                style={{
+                  borderRadius: 14,
+                  border: "1px solid rgba(255,255,255,0.06)",
+                  background: "rgba(0,0,0,0.20)",
+                  padding: 12,
+                }}
+              >
+                <div style={{ fontWeight: 900, color: "#fff", marginBottom: 6 }}>
+                  Résurrection
+                </div>
+                <div style={{ opacity: 0.78, fontSize: 12, lineHeight: 1.25, marginBottom: 10 }}>
+                  Si un joueur touche le numéro d’un joueur DEAD, il peut lui redonner {resurrectionLives} vie(s), selon le mode choisi.
+                </div>
+
+                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                  {/* OFF */}
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+                    <PillButton
+                      label="OFF"
+                      active={resurrectionMode === "off"}
+                      onClick={() => setResurrectionMode("off")}
+                      primary={primary}
+                      primarySoft={primarySoft}
+                      compact
+                    />
+                    <button
+                      type="button"
+                      aria-label="Info OFF"
+                      onClick={() => setResInfo({ title: "OFF", text: "Aucune résurrection possible." })}
+                      style={{
+                        width: 18,
+                        height: 18,
+                        borderRadius: 999,
+                        border: "1px solid rgba(255,255,255,0.14)",
+                        background: "rgba(255,255,255,0.06)",
+                        color: "rgba(255,255,255,0.70)",
+                        fontSize: 11,
+                        fontWeight: 900,
+                        lineHeight: "18px",
+                        textAlign: "center",
+                        cursor: "pointer",
+                      }}
+                      title="Détails"
+                    >
+                      i
+                    </button>
+                  </div>
+                
+                  {/* 1 Joueur (1×) */}
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+                    <PillButton
+                      label="1 Joueur (1×)"
+                      active={resurrectionMode === "one_player_once"}
+                      onClick={() => setResurrectionMode("one_player_once")}
+                      primary={primary}
+                      primarySoft={primarySoft}
+                      compact
+                    />
+                    <button
+                      type="button"
+                      aria-label="Info 1 Joueur"
+                      onClick={() => setResInfo({ title: "1 Joueur (1×)", text: "Une seule résurrection possible dans toute la partie. Un seul joueur (au total) peut revenir une fois." })}
+                      style={{
+                        width: 18,
+                        height: 18,
+                        borderRadius: 999,
+                        border: "1px solid rgba(255,255,255,0.14)",
+                        background: "rgba(255,255,255,0.06)",
+                        color: "rgba(255,255,255,0.70)",
+                        fontSize: 11,
+                        fontWeight: 900,
+                        lineHeight: "18px",
+                        textAlign: "center",
+                        cursor: "pointer",
+                      }}
+                      title="Détails"
+                    >
+                      i
+                    </button>
+                  </div>
+                
+                  {/* All (1×) */}
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+                    <PillButton
+                      label="All (1×)"
+                      active={resurrectionMode === "all_once"}
+                      onClick={() => setResurrectionMode("all_once")}
+                      primary={primary}
+                      primarySoft={primarySoft}
+                      compact
+                    />
+                    <button
+                      type="button"
+                      aria-label="Info All 1×"
+                      onClick={() => setResInfo({ title: "All (1×)", text: "Chaque joueur peut être ressuscité une seule fois maximum." })}
+                      style={{
+                        width: 18,
+                        height: 18,
+                        borderRadius: 999,
+                        border: "1px solid rgba(255,255,255,0.14)",
+                        background: "rgba(255,255,255,0.06)",
+                        color: "rgba(255,255,255,0.70)",
+                        fontSize: 11,
+                        fontWeight: 900,
+                        lineHeight: "18px",
+                        textAlign: "center",
+                        cursor: "pointer",
+                      }}
+                      title="Détails"
+                    >
+                      i
+                    </button>
+                  </div>
+                
+                  {/* All (illimité) */}
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+                    <PillButton
+                      label="All (illimité)"
+                      active={resurrectionMode === "all"}
+                      onClick={() => setResurrectionMode("all")}
+                      primary={primary}
+                      primarySoft={primarySoft}
+                      compact
+                    />
+                    <button
+                      type="button"
+                      aria-label="Info All illimité"
+                      onClick={() => setResInfo({ title: "All (illimité)", text: "Chaque joueur peut être ressuscité autant de fois que nécessaire." })}
+                      style={{
+                        width: 18,
+                        height: 18,
+                        borderRadius: 999,
+                        border: "1px solid rgba(255,255,255,0.14)",
+                        background: "rgba(255,255,255,0.06)",
+                        color: "rgba(255,255,255,0.70)",
+                        fontSize: 11,
+                        fontWeight: 900,
+                        lineHeight: "18px",
+                        textAlign: "center",
+                        cursor: "pointer",
+                      }}
+                      title="Détails"
+                    >
+                      i
+                    </button>
+                  </div>
+                </div>
+
+                {resurrectionMode !== "off" && (
+                  <div style={{ marginTop: 12 }}>
+                    <div style={{ fontSize: 12, opacity: 0.75, marginBottom: 8 }}>Vies données au ressuscité</div>
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                      {[1, 2, 3, 4, 5, 6].map((n) => (
+                        <PillButton
+                          key={n}
+                          label={String(n)}
+                          active={resurrectionLives === n}
+                          onClick={() => setResurrectionLives(n)}
+                          primary={primary}
+                          primarySoft={primarySoft}
+                          compact
+                        />
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+</div>
 
             <div style={{ marginTop: 10, fontSize: 10.5, color: "#7c80a0", lineHeight: 1.35 }}>
               Astuce : certaines variantes sont <b>exclusives</b> pour garder un gameplay lisible (ex : BULL dégâts vs BULL soins).
@@ -1198,127 +1509,6 @@ export default function KillerConfigPage(props: Props) {
           </div>
         </section>
 
-        {/* BOTS */}
-        <section
-          style={{
-            background: cardBg,
-            borderRadius: 18,
-            padding: 12,
-            marginBottom: 80,
-            boxShadow: "0 16px 40px rgba(0,0,0,0.55)",
-            border: "1px solid rgba(255,255,255,0.04)",
-          }}
-        >
-          <div style={{ fontSize: 12, textTransform: "uppercase", letterSpacing: 1, fontWeight: 800, color: primary, marginBottom: 10 }}>
-            Bots IA
-          </div>
-
-          <p style={{ fontSize: 11, color: "#7c80a0", marginBottom: 10 }}>
-            Ajoute des bots “PRO” prédéfinis ou tes bots créés dans Profils.
-          </p>
-
-          <div
-            className="dc-scroll-thin"
-            style={{
-              display: "flex",
-              gap: 14,
-              overflowX: "auto",
-              overflowY: "visible",
-              paddingBottom: 10,
-              paddingTop: 14,
-              marginTop: 6,
-              marginBottom: 10,
-            }}
-          >
-            {botProfiles.map((bot) => {
-              const { level } = resolveBotLevel(bot.botLevel);
-              const active = selectedIds.includes(bot.id);
-
-              return (
-                <div
-                  key={bot.id}
-                  role="button"
-                  onClick={() => togglePlayer(bot.id)}
-                  style={{
-                    minWidth: 96,
-                    maxWidth: 96,
-                    background: "transparent",
-                    border: "none",
-                    padding: 0,
-                    display: "flex",
-                    flexDirection: "column",
-                    alignItems: "center",
-                    gap: 6,
-                    flexShrink: 0,
-                    cursor: "pointer",
-                    userSelect: "none",
-                  }}
-                >
-                  <BotMedallion bot={bot} level={level} active={active} />
-
-                  <div
-                    style={{
-                      fontSize: 11,
-                      fontWeight: 700,
-                      textAlign: "center",
-                      color: active ? "#f6f2e9" : "#7e8299",
-                      maxWidth: "100%",
-                      overflow: "hidden",
-                      textOverflow: "ellipsis",
-                      whiteSpace: "nowrap",
-                      marginTop: 4,
-                    }}
-                    title={bot.name}
-                  >
-                    {bot.name}
-                  </div>
-
-                  <div style={{ marginTop: 2, display: "flex", justifyContent: "center" }}>
-                    <span
-                      style={{
-                        padding: "2px 8px",
-                        borderRadius: 999,
-                        fontSize: 9,
-                        fontWeight: 900,
-                        letterSpacing: 0.7,
-                        textTransform: "uppercase",
-                        background: bot.id.startsWith("bot_pro_")
-                          ? "radial-gradient(circle at 30% 0, #ffeaa8, #f7c85c)"
-                          : "radial-gradient(circle at 30% 0, #6af3ff, #008cff)",
-                        color: "#020611",
-                        boxShadow: bot.id.startsWith("bot_pro_")
-                          ? "0 0 12px rgba(247,200,92,0.5)"
-                          : "0 0 12px rgba(0,172,255,0.55)",
-                        border: "1px solid rgba(255,255,255,0.25)",
-                        whiteSpace: "nowrap",
-                      }}
-                    >
-                      {bot.id.startsWith("bot_pro_") ? "PRO" : "BOT"}
-                    </span>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-
-          <button
-            type="button"
-            onClick={() => (typeof go === "function" ? go("profiles_bots") : null)}
-            style={{
-              padding: "6px 10px",
-              borderRadius: 999,
-              border: `1px solid ${primary}`,
-              background: "rgba(255,255,255,0.04)",
-              color: primary,
-              fontWeight: 800,
-              fontSize: 11,
-              textTransform: "uppercase",
-              letterSpacing: 0.7,
-            }}
-          >
-            Gérer mes bots
-          </button>
-        </section>
       </div>
 
       {/* CTA */}
@@ -1477,6 +1667,57 @@ export default function KillerConfigPage(props: Props) {
                   explication.
                 </div>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ✅ mini modal : détails Résurrection */}
+      {resInfo && (
+        <div
+          onClick={() => setResInfo(null)}
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(0,0,0,0.55)",
+            zIndex: 9998,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: 12,
+          }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              width: "min(520px, 96vw)",
+              borderRadius: 18,
+              background: "rgba(12,14,26,0.98)",
+              border: "1px solid rgba(255,255,255,0.10)",
+              boxShadow: "0 30px 80px rgba(0,0,0,0.70)",
+              padding: 14,
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+              <div style={{ fontWeight: 1000, color: primary, letterSpacing: 0.6 }}>{resInfo.title}</div>
+              <button
+                type="button"
+                onClick={() => setResInfo(null)}
+                style={{
+                  borderRadius: 999,
+                  border: "1px solid rgba(255,255,255,0.12)",
+                  background: "rgba(255,255,255,0.06)",
+                  color: "#fff",
+                  padding: "6px 10px",
+                  fontWeight: 900,
+                  cursor: "pointer",
+                }}
+              >
+                OK
+              </button>
+            </div>
+            <div style={{ marginTop: 10, fontSize: 12.5, color: "#d7daf0", lineHeight: 1.35 }}>
+              {resInfo.text}
             </div>
           </div>
         </div>

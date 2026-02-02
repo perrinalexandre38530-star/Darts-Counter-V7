@@ -35,6 +35,9 @@ import EndOfLegOverlay from "../components/EndOfLegOverlay";
 import type { LegStats } from "../lib/stats";
 import { buildLegStatsFromV3LiveForOverlay } from "../lib/x01v3/x01V3LegStatsAdapter";
 
+// ✅ Layout unifié (MEP)
+import GameplayLayout from "../components/gameplay/GameplayLayout";
+
 import { StatsBridge } from "../lib/statsBridge";
 import { loadBots } from "./ProfilesBots";
 
@@ -3147,43 +3150,13 @@ if (isLandscapeTablet) {
       className={`x01play-container theme-${theme.id}`}
       style={{ overflow: "hidden", minHeight: "100vh" }}
     >
-      {/* HEADER FIXE */}
-      <div
-        ref={headerWrapRef}
-        style={{
-          position: isLandscapeTablet ? "sticky" : "fixed",
-          left: "50%",
-          transform: isLandscapeTablet ? "none" : "translateX(-50%)",
-          top: 0,
-          zIndex: 60,
-          width: `min(100%, ${CONTENT_MAX}px)`,
-          paddingInline: 10,
-          paddingTop: 4,
-          paddingBottom: 4,
-        }}
-      >
-        {/* Barre haute */}
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "center",
-            width: "100%",
-            marginBottom: 6,
-          }}
-        >
-          {/* BACKDOT (remplace Quitter) */}
-          <BackDot onClick={handleQuit} size={40} />
-
-          {/* HEADER COMPACT (AVATARS + SCORE) */}
-          <div
-            style={{
-              flex: 1,
-              display: "flex",
-              justifyContent: "center",
-            }}
-          >
-            {/* Scoreboard SET/LEG dans la barre tout en haut (comme SOLO) */}
+      {/* ✅ MEP: Layout unifié (Header + Profil Actif + Joueurs modal + Volée + Saisie) */}
+      <GameplayLayout
+        title=""
+        onBack={handleQuit}
+        showInfo={false}
+        headerInline={
+          <div ref={headerWrapRef} style={{ width: "100%" }}>
             {useSetsUi && isTeamsMode && teamsView && (teamsView as any[]).length >= 2 ? (
               (teamsView as any[]).length === 2 ? (
                 <DuelHeaderCompact
@@ -3202,7 +3175,8 @@ if (isLandscapeTablet) {
                 />
               )
             ) : (
-              isDuel && useSetsUi && (
+              isDuel &&
+              useSetsUi && (
                 <DuelHeaderCompact
                   leftAvatarUrl={profileById[players[0].id]?.avatarDataUrl ?? ""}
                   rightAvatarUrl={profileById[players[1].id]?.avatarDataUrl ?? ""}
@@ -3214,8 +3188,8 @@ if (isLandscapeTablet) {
               )
             )}
           </div>
-
-          {/* CAPSULE SET / LEG */}
+        }
+        headerRight={
           <SetLegChip
             currentSet={(state as any).currentSet ?? 1}
             currentLegInSet={(state as any).currentLeg ?? 1}
@@ -3223,258 +3197,158 @@ if (isLandscapeTablet) {
             legsTarget={legsTarget}
             useSets={useSetsUi}
           />
-        </div>
-
-        {/* HEADER BLOCK (avatar + score + chips + mini ranking) */}
-        <div
-          style={{
-            maxWidth: CONTENT_MAX,
-            margin: "0 auto",
-          }}
-        >
-          {isTeamsMode && activeTeam ? (
-          <TeamHeaderBlock
-            teamColor={activeTeam.color}
-            teamId={activeTeam.id}
-            teamName={activeTeam.name}
-            teamPlayers={activeTeam.players}
-            activePlayerId={activePlayerId}
-            teamScore={activeTeam.score}
-            currentThrow={currentThrow}
-            liveRanking={liveRanking}
-            curDarts={curDarts}
-            curM3D={curM3D}
-            bestVisit={bestVisit}
-            useSets={useSetsUi}
-            teamLegsWon={(state as any).teamLegsWon ?? {}}
-            teamSetsWon={(state as any).teamSetsWon ?? {}}
-            checkoutText={checkoutText}
-          />
-        ) : (
-          <HeaderBlock
-            currentPlayer={activePlayer}
-            currentAvatar={
-              activePlayer
-                ? profileById[activePlayer.id]?.avatarDataUrl ?? null
-                : null
-            }
-            currentRemaining={currentScore}
-            currentThrow={currentThrow}
-            doubleOut={doubleOut}
-            liveRanking={liveRanking}
-            curDarts={curDarts}
-            curM3D={curM3D}
-            bestVisit={bestVisit}
-            legsWon={(state as any).legsWon ?? {}}
-            setsWon={(state as any).setsWon ?? {}}
-            useSets={useSetsUi}
-            checkoutText={checkoutText}
-          />
-        )}
-</div>
-      </div>
-
-      {/* ZONE JOUEURS — bouton + modal flottant scrollable */}
-      <div
-        style={{
-          position: isLandscapeTablet ? "relative" : "fixed",
-          left: "50%",
-          transform: isLandscapeTablet ? "none" : "translateX(-50%)",
-          top: isLandscapeTablet ? "auto" : headerH,
-          marginTop: isLandscapeTablet ? 10 : 0,
-          bottom: keypadH + 8,
-          width: `min(100%, ${CONTENT_MAX}px)`,
-          paddingInline: 10,
-          paddingTop: 6,
-          paddingBottom: 6,
-          zIndex: 40,
-          pointerEvents: "auto",
-        }}
-      >
-        {/* Case JOUEURS (remplace la liste inline) */}
-        <button
-          type="button"
-          onClick={() => setPlayersPanelOpen(true)}
-          style={{
-            width: "100%",
-            borderRadius: 14,
-            padding: "12px 14px",
-            border: "1px solid rgba(255,255,255,0.10)",
-            background:
-              "linear-gradient(180deg, rgba(16,16,18,.92), rgba(10,10,12,.96))",
-            boxShadow: "0 14px 34px rgba(0,0,0,0.55)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            cursor: "pointer",
-          }}
-        >
-          <span style={{ fontWeight: 900, letterSpacing: 1.2, textTransform: "uppercase", color: ((theme as any)?.colors?.primary ?? (theme as any)?.primary ?? "#ffcc55") as any }}>JOUEURS</span>
+        }
+        activeProfileHeader={
+          <div style={{ maxWidth: CONTENT_MAX, margin: "0 auto" }}>
+            {isTeamsMode && activeTeam ? (
+              <TeamHeaderBlock
+                teamColor={activeTeam.color}
+                teamId={activeTeam.id}
+                teamName={activeTeam.name}
+                teamPlayers={activeTeam.players}
+                activePlayerId={activePlayerId}
+                teamScore={activeTeam.score}
+                currentThrow={currentThrow}
+                liveRanking={liveRanking}
+                curDarts={curDarts}
+                curM3D={curM3D}
+                bestVisit={bestVisit}
+                useSets={useSetsUi}
+                teamLegsWon={(state as any).teamLegsWon ?? {}}
+                teamSetsWon={(state as any).teamSetsWon ?? {}}
+                checkoutText={checkoutText}
+              />
+            ) : (
+              <HeaderBlock
+                currentPlayer={activePlayer}
+                currentAvatar={
+                  activePlayer
+                    ? profileById[activePlayer.id]?.avatarDataUrl ?? null
+                    : null
+                }
+                currentRemaining={currentScore}
+                currentThrow={currentThrow}
+                doubleOut={doubleOut}
+                liveRanking={liveRanking}
+                curDarts={curDarts}
+                curM3D={curM3D}
+                bestVisit={bestVisit}
+                legsWon={(state as any).legsWon ?? {}}
+                setsWon={(state as any).setsWon ?? {}}
+                useSets={useSetsUi}
+                checkoutText={checkoutText}
+              />
+            )}
+          </div>
+        }
+        playersRowLabel="JOUEURS"
+        playersRowLabelColor={themePrimary}
+        playersPanelTitle="Joueurs"
+        playersRowRight={
           <span
             style={{
-              opacity: 0.9,
-              fontWeight: 800,
+              width: 26,
+              height: 26,
+              borderRadius: 999,
+              border: `2px solid ${themePrimary}`,
+              color: themePrimary,
+              background: "rgba(0,0,0,0.25)",
               display: "inline-flex",
               alignItems: "center",
-              gap: 10,
+              justifyContent: "center",
+              fontSize: 12,
+              fontWeight: 900,
+              boxShadow: `0 0 14px ${themePrimary}55`,
             }}
           >
-            <span
-              style={{
-                width: 26,
-                height: 26,
-                borderRadius: 999,
-                border: `2px solid ${themePrimary}`,
-                color: themePrimary,
-                background: "rgba(0,0,0,0.25)",
-                display: "inline-flex",
-                alignItems: "center",
-                justifyContent: "center",
-                fontSize: 12,
-                fontWeight: 900,
-                boxShadow: `0 0 14px ${themePrimary}55`,
-              }}
-            >
-              {Array.isArray(players) ? players.length : 0}
-            </span>
-            <span style={{ opacity: 0.7 }}>▾</span>
+            {Array.isArray(players) ? players.length : 0}
           </span>
-        </button>
-      </div>
-
-      {/* MODAL FLOTTANT — contient la liste existante (solo/teams) */}
-      {playersPanelOpen && (
-        <div
-          onClick={() => setPlayersPanelOpen(false)}
-          style={{
-            position: "fixed",
-            inset: 0,
-            zIndex: 9999,
-            background: "rgba(0,0,0,0.55)",
-            backdropFilter: "blur(6px)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            padding: 14,
-          }}
-        >
+        }
+        playersPanel={
+          <div style={{ padding: "6px 4px" }}>
+            {isTeamsMode && teamsView ? (
+              <TeamsPlayersList
+                cameraOpen={cameraOpen}
+                setCameraOpen={setCameraOpen}
+                teams={teamsView}
+                activePlayerId={activePlayerId}
+                profileById={profileById}
+                liveStatsByPlayer={liveStatsByPlayer}
+                start={config.startScore}
+                scoresByPlayer={scores}
+                useSets={useSetsUi}
+                lastVisitsByPlayer={lastVisitsByPlayer}
+                lastVisitIsBustByPlayer={lastVisitIsBustByPlayer}
+                avg3ByPlayer={avg3ByPlayer}
+              />
+            ) : (
+              <PlayersListOnly
+                cameraOpen={cameraOpen}
+                setCameraOpen={setCameraOpen}
+                players={players}
+                profileById={profileById}
+                liveStatsByPlayer={liveStatsByPlayer}
+                start={config.startScore}
+                scoresByPlayer={scores}
+                legsWon={(state as any).legsWon ?? {}}
+                setsWon={(state as any).setsWon ?? {}}
+                useSets={useSetsUi}
+                lastVisitsByPlayer={lastVisitsByPlayer}
+                lastVisitIsBustByPlayer={lastVisitIsBustByPlayer}
+                avg3ByPlayer={avg3ByPlayer}
+              />
+            )}
+          </div>
+        }
+        volleyInputDisplay={
           <div
-            onClick={(e) => e.stopPropagation()}
             style={{
-              width: `min(96vw, ${CONTENT_MAX}px)`,
-              maxHeight: "78vh",
-              overflowY: "auto",
-              borderRadius: 18,
-              border: "1px solid rgba(255,255,255,0.12)",
-              background:
-                "linear-gradient(180deg, rgba(16,16,18,.96), rgba(10,10,12,.98))",
-              boxShadow: "0 28px 70px rgba(0,0,0,0.75)",
-              padding: 12,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: 12,
+              flexWrap: "wrap",
             }}
           >
-            <div
-              style={{
-                position: "sticky",
-                top: 0,
-                zIndex: 2,
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "space-between",
-                gap: 10,
-                padding: "8px 8px 10px",
-                background:
-                  "linear-gradient(180deg, rgba(16,16,18,.98), rgba(16,16,18,.92))",
-                borderBottom: "1px solid rgba(255,255,255,0.08)",
-                borderTopLeftRadius: 16,
-                borderTopRightRadius: 16,
-              }}
-            >
-              <div style={{ fontWeight: 900, letterSpacing: 0.6 }}>
-                <span
-                  style={{
-                    color:
-                      ((theme as any)?.colors?.primary ??
-                        (theme as any)?.primary ??
-                        "#ffcc55") as any,
-                    textTransform: "uppercase",
-                  }}
-                >
-                  Joueurs
+            <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+              {(currentThrow || []).length ? (
+                <span style={{ display: "inline-flex", gap: 6 }}>
+                  {(currentThrow || []).map((d: any, i: number) => {
+                    const st = chipStyle(d, false);
+                    return (
+                      <span
+                        key={i}
+                        style={{
+                          minWidth: 36,
+                          padding: "2px 8px",
+                          borderRadius: 10,
+                          fontSize: 11,
+                          fontWeight: 900,
+                          background: st.background as string,
+                          border: st.border as string,
+                          color: st.color as string,
+                        }}
+                      >
+                        {fmt(d)}
+                      </span>
+                    );
+                  })}
                 </span>
-              </div>
-              <button
-                type="button"
-                onClick={() => setPlayersPanelOpen(false)}
-                style={{
-                  width: 34,
-                  height: 34,
-                  borderRadius: 999,
-                  border: "1px solid rgba(255,255,255,0.14)",
-                  background: "rgba(0,0,0,0.35)",
-                  color: "rgba(255,255,255,0.9)",
-                  fontWeight: 900,
-                  cursor: "pointer",
-                }}
-                aria-label="close"
-                title="Fermer"
-              >
-                ✕
-              </button>
-            </div>
-
-            {/* ✅ LISTE D'ORIGINE (inchangée) */}
-            <div style={{ padding: "10px 6px 6px" }}>
-              {isTeamsMode && teamsView ? (
-                <TeamsPlayersList
-                  cameraOpen={cameraOpen}
-                  setCameraOpen={setCameraOpen}
-                  teams={teamsView}
-                  activePlayerId={activePlayerId}
-                  profileById={profileById}
-                  liveStatsByPlayer={liveStatsByPlayer}
-                  start={config.startScore}
-                  scoresByPlayer={scores}
-                  useSets={useSetsUi}
-                  lastVisitsByPlayer={lastVisitsByPlayer}
-                  lastVisitIsBustByPlayer={lastVisitIsBustByPlayer}
-                  avg3ByPlayer={avg3ByPlayer}
-                />
               ) : (
-                <PlayersListOnly
-                  cameraOpen={cameraOpen}
-                  setCameraOpen={setCameraOpen}
-                  players={players}
-                  profileById={profileById}
-                  liveStatsByPlayer={liveStatsByPlayer}
-                  start={config.startScore}
-                  scoresByPlayer={scores}
-                  legsWon={(state as any).legsWon ?? {}}
-                  setsWon={(state as any).setsWon ?? {}}
-                  useSets={useSetsUi}
-                  lastVisitsByPlayer={lastVisitsByPlayer}
-                  lastVisitIsBustByPlayer={lastVisitIsBustByPlayer}
-                  avg3ByPlayer={avg3ByPlayer}
-                />
+                <span style={{ opacity: 0.7, fontWeight: 700 }}>
+                  {t("x01v3.emptyVisit", "—")}
+                </span>
               )}
             </div>
-          </div>
-        </div>
-      )}
 
-{/* KEYPAD FIXE EN BAS, ALIGNÉ EN LARGEUR */}
-      <div
-        ref={keypadWrapRef}
-        style={{
-          position: isLandscapeTablet ? "sticky" : "fixed",
-          left: "50%",
-          transform: isLandscapeTablet ? "none" : "translateX(-50%)",
-          bottom: 0,
-          zIndex: 45,
-          padding: "0 10px 4px",
-          width: `min(100%, ${CONTENT_MAX}px)`,
-        }}
-      >
-        {isBotTurn ? (
+            <div style={{ fontWeight: 900, opacity: 0.9 }}>
+              {sumThrow(currentThrow)}
+            </div>
+          </div>
+        }
+        inputModes={
+          <div ref={keypadWrapRef} style={{ width: "100%" }}>
+            {isBotTurn ? (
           <div
             style={{
               padding: 14,
@@ -3646,7 +3520,9 @@ if (isLandscapeTablet) {
           </div>
           </div>
         )}
-      </div>
+          </div>
+        }
+      />
 
       {/* OVERLAY FIN DE MANCHE / SET / MATCH (V3) */}
       <X01LegOverlayV3

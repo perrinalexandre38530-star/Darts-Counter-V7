@@ -2293,6 +2293,32 @@ const blindKillerOn = truthy(
     (config as any)?.rules?.blind_killer
 );
 
+// ✅ RÉSURRECTION
+type ResurrectionMode = "off" | "one_player_once" | "all_once" | "all";
+
+// lecture robuste (tolère anciennes structures)
+const resurrectionMode: ResurrectionMode = ((config as any)?.resurrectionMode ??
+  (config as any)?.resurrection_mode ??
+  (config as any)?.variants?.resurrectionMode ??
+  (config as any)?.options?.resurrectionMode ??
+  "off") as any;
+
+const resurrectionLives = clampInt(
+  (config as any)?.resurrectionLives ??
+    (config as any)?.resurrection_lives ??
+    (config as any)?.variants?.resurrectionLives ??
+    (config as any)?.options?.resurrectionLives ??
+    1,
+  1,
+  6,
+  1
+);
+
+// Tracking usages
+const resGlobalUsedRef = React.useRef<boolean>(false); // "1 seul ressuscité (1×)"
+const resByPidUsedRef = React.useRef<Record<string, boolean>>({}); // "All 1×"
+
+
 
   function applyThrow(t: ThrowInput) {
     if (inputDisabledBase) return;
@@ -2619,7 +2645,59 @@ if (me.killerPhase === "ACTIVE") {
     return next;
   }
 
-  // ✅ HIT VICTIME (numéro d'un adversaire vivant)
+  // ✅ 
+
+  // ✅ RÉSURRECTION : toucher le numéro d’un joueur éliminé
+  if (resurrectionMode !== "off" && me.killerPhase === "ACTIVE") {
+    const deadIdx = next.findIndex(
+      (p, idx) => idx !== turnIndex && !!p.eliminated && p.number === thr.target
+    );
+
+    if (deadIdx >= 0) {
+      const dead = next[deadIdx];
+
+      // pas d’auto-résurrection (évite comportements bizarres)
+      if (dead.id !== me.id) {
+        const alreadyUsedGlobal = resGlobalUsedRef.current;
+        const alreadyUsedForTarget = !!resByPidUsedRef.current[dead.id];
+
+        const canRes =
+          resurrectionMode === "all" ||
+          (resurrectionMode === "one_player_once" && !alreadyUsedGlobal) ||
+          (resurrectionMode === "all_once" && !alreadyUsedForTarget);
+
+        if (canRes) {
+          // marquer consommation
+          if (resurrectionMode === "one_player_once") resGlobalUsedRef.current = true;
+          if (resurrectionMode === "all_once") resByPidUsedRef.current[dead.id] = true;
+
+          dead.eliminated = false;
+          dead.eliminatedAt = null;
+          dead.lives = clampInt(resurrectionLives, 1, 6, 1);
+          dead.isKiller = false;
+          dead.killerPhase = "ARMING";
+          dead.becameAtThrow = null;
+
+          me.offensiveThrows += 1;
+
+          pushLog(`🧟‍♂️ ${me.name} ressuscite ${dead.name} (+${dead.lives} vie${dead.lives > 1 ? "s" : ""})`);
+          pushEvent({
+            t: Date.now(),
+            type: "RESURRECT",
+            actorId: me.id,
+            targetId: dead.id,
+            lives: dead.lives,
+            mode: resurrectionMode,
+            throw: thr,
+          });
+
+          pendingSfxRef.current = pendingSfxRef.current || { kind: "hit" };
+          return next; // hit consommé par la résurrection
+        }
+      }
+    }
+  }
+	// HIT VICTIME (numéro d'un adversaire vivant)
   const victimIdx = next.findIndex(
     (p, idx) => idx !== turnIndex && !p.eliminated && p.number === thr.target
   );

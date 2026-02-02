@@ -71,6 +71,11 @@ export type PetanqueState = {
 
   // payload UI (facultatif)
   meta?: any;
+
+
+  // ✅ Snapshot config (pour rejouer/auditer/stats)
+  configSnapshot?: any;
+  configVersion?: string;
   teams?: any;
   players?: any[];
 };
@@ -117,6 +122,8 @@ function createPetanqueInitialState(overrides: Partial<PetanqueState> = {}): Pet
     scoreB: 0,
     ends: [],
     measurements: [],
+    configSnapshot: undefined,
+    configVersion: undefined,
     ...overrides,
   };
 }
@@ -513,8 +520,16 @@ export function clearPetanqueHistory() {
 // ✅ attendu par certains écrans/configs : démarre un match neuf, force score à 0
 export function startNewPetanqueGame(params?: Partial<PetanqueState>): PetanqueState {
   const now = Date.now();
-  const mode = typeof params?.mode === "string" && params.mode ? params.mode : "simple";
-  const targetScore = clampInt((params as any)?.targetScore ?? 13, 1, 999);
+  const cfg = (params as any)?.meta?.cfg;
+  const mode =
+    (typeof (params as any)?.mode === "string" && (params as any).mode)
+      ? (params as any).mode
+      : (typeof cfg?.mode === "string" && cfg.mode ? cfg.mode : "simple");
+  const targetScore = clampInt(
+    (params as any)?.targetScore ?? (params as any)?.target ?? cfg?.targetScore ?? cfg?.target ?? 13,
+    1,
+    999
+  );
 
   const st: PetanqueState = ensureState({
     matchId: uid("petanque"),
@@ -528,6 +543,9 @@ export function startNewPetanqueGame(params?: Partial<PetanqueState>): PetanqueS
     scoreB: 0,
     ends: [],
     measurements: [],
+    configSnapshot: (params as any)?.configSnapshot ?? (params as any)?.meta?.configSnapshot ?? (params as any)?.meta?.cfg,
+    configVersion: (params as any)?.configVersion ?? ((params as any)?.meta?.cfg ? "petanque_cfg_v1" : undefined),
+
     meta: params?.meta,
     teams: params?.teams,
     players: params?.players,
