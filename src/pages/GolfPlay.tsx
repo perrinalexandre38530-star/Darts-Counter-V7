@@ -806,37 +806,56 @@ export default function GolfPlay(props: Props) {
     const headerCells = Array.from({ length: cols }, (_, i) => start + i);
     const headerTargets = headerCells.map((h) => holeTargets[h - 1] ?? h);
 
+    const cellPill = (v: number) => {
+      // 1 = Double (hole in one), 3 = Triple, 4 = Simple, 5 = Miss
+      if (v === 1) return { border: "1px solid rgba(255,195,26,.45)", background: "rgba(255,195,26,.16)", color: "#ffcf57" };
+      if (v === 3) return { border: "1px solid rgba(120,255,220,.45)", background: "rgba(120,255,220,.14)", color: "#b9ffe9" };
+      if (v === 4) return { border: "1px solid rgba(255,255,255,.16)", background: "rgba(255,255,255,.08)", color: "rgba(255,255,255,.92)" };
+      return { border: "1px solid rgba(255,95,95,.45)", background: "rgba(255,95,95,.14)", color: "#ffb2b2" };
+    };
+
     return (
-      <div style={{ ...cardBase, padding: 12, marginTop: 12 }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 8 }}>
-          <div style={{ color: "#ffcf57", fontWeight: 1000, textShadow: "0 3px 14px rgba(255,195,26,.18)" }}>{title}</div>
-          <div style={{ opacity: 0.7, fontSize: 12 }}>Score bas gagne</div>
+      <div
+        style={{
+          ...cardBase,
+          padding: 12,
+          marginTop: 12,
+          background:
+            "radial-gradient(120% 160% at 0% 0%, rgba(120,255,220,0.10), transparent 55%), linear-gradient(180deg, rgba(255,255,255,0.06), rgba(0,0,0,0.30))",
+        }}
+      >
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 10 }}>
+          <div style={{ color: "#b9ffe9", fontWeight: 1000, textShadow: "0 0 16px rgba(120,255,220,.18)" }}>{title}</div>
+          <div style={{ opacity: 0.72, fontSize: 12, fontWeight: 900 }}>Score bas gagne</div>
         </div>
 
         <div style={{ overflowX: "hidden" }}>
+          {/* header */}
           <div
             style={{
               display: "grid",
               gridTemplateColumns: `46px repeat(${cols}, minmax(0, 1fr)) 64px`,
               gap: 6,
               padding: "8px 8px",
-              borderRadius: 12,
-              background: "rgba(0,0,0,0.30)",
-              border: "1px solid rgba(255,255,255,0.08)",
+              borderRadius: 14,
+              background: "linear-gradient(180deg, rgba(0,0,0,0.35), rgba(0,0,0,0.18))",
+              border: "1px solid rgba(255,255,255,0.10)",
               fontSize: 12,
-              fontWeight: 900,
-              color: "rgba(255,255,255,0.72)",
+              fontWeight: 1000,
+              color: "rgba(255,255,255,0.75)",
+              boxShadow: "inset 0 1px 0 rgba(255,255,255,0.06)",
             }}
           >
             <div>#</div>
             {headerTargets.map((n, idx) => (
-              <div key={idx} style={{ textAlign: "center" }}>
+              <div key={idx} style={{ textAlign: "center", letterSpacing: 0.4 }}>
                 {n}
               </div>
             ))}
             <div style={{ textAlign: "right" }}>Total</div>
           </div>
 
+          {/* rows */}
           {roster.map((p, pIdx) => {
             const row = scores[pIdx] || [];
             const slice = row.slice(start - 1, end);
@@ -851,34 +870,83 @@ export default function GolfPlay(props: Props) {
                   gridTemplateColumns: `46px repeat(${cols}, minmax(0, 1fr)) 64px`,
                   gap: 6,
                   padding: "10px 8px",
-                  borderRadius: 12,
-                  marginTop: 8,
-                  border: "1px solid rgba(255,255,255,0.08)",
-                  background: isActive ? "linear-gradient(180deg, rgba(120,255,220,0.10), rgba(0,0,0,0.22))" : "rgba(0,0,0,0.18)",
+                  borderRadius: 14,
+                  marginTop: 10,
+                  border: isActive ? "1px solid rgba(120,255,220,0.22)" : "1px solid rgba(255,255,255,0.08)",
+                  background: isActive
+                    ? "linear-gradient(180deg, rgba(120,255,220,0.10), rgba(0,0,0,0.22))"
+                    : "linear-gradient(180deg, rgba(0,0,0,0.22), rgba(0,0,0,0.12))",
+                  boxShadow: isActive ? "0 14px 30px rgba(0,0,0,0.35)" : "none",
                 }}
               >
-                <div style={{ fontWeight: 900, color: isActive ? "rgba(160,255,235,0.95)" : "rgba(255,255,255,0.75)" }}>
+                <div style={{ fontWeight: 1000, color: isActive ? "#b9ffe9" : "rgba(255,255,255,0.78)" }}>
                   {pIdx + 1}
                 </div>
 
                 {slice.map((v, i) => {
-                  const val = typeof v === "number" ? v : "—";
                   const isCurrentCell = !isFinished && pIdx === playerIdx && holeIdx === start - 1 + i;
+
+                  if (typeof v !== "number") {
+                    return (
+                      <div
+                        key={i}
+                        style={{
+                          textAlign: "center",
+                          fontWeight: 1000,
+                          color: isCurrentCell ? "rgba(185,255,233,0.85)" : "rgba(255,255,255,0.28)",
+                        }}
+                      >
+                        —
+                      </div>
+                    );
+                  }
+
+                  const st = cellPill(v);
+
                   return (
-                    <div
-                      key={i}
-                      style={{
-                        textAlign: "center",
-                        fontWeight: 900,
-                        color: isCurrentCell ? "#b9ffe9" : typeof v === "number" ? "rgba(255,255,255,0.92)" : "rgba(255,255,255,0.35)",
-                      }}
-                    >
-                      {val}
+                    <div key={i} style={{ display: "flex", justifyContent: "center" }}>
+                      <div
+                        style={{
+                          minWidth: 30,
+                          height: 26,
+                          padding: "0 10px",
+                          display: "inline-flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          borderRadius: 12,
+                          border: st.border,
+                          background: st.background,
+                          color: st.color,
+                          fontWeight: 1000,
+                          boxShadow: isCurrentCell ? "0 0 18px rgba(120,255,220,0.18)" : "none",
+                        }}
+                      >
+                        {v}
+                      </div>
                     </div>
                   );
                 })}
 
-                <div style={{ textAlign: "right", fontWeight: 900, color: "#ffd36a" }}>{rowTotal}</div>
+                <div style={{ display: "flex", justifyContent: "flex-end" }}>
+                  <div
+                    style={{
+                      minWidth: 44,
+                      height: 26,
+                      padding: "0 10px",
+                      display: "inline-flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      borderRadius: 12,
+                      border: "1px solid rgba(255,195,26,.35)",
+                      background: "rgba(255,195,26,.10)",
+                      color: "#ffcf57",
+                      fontWeight: 1000,
+                      letterSpacing: 0.2,
+                    }}
+                  >
+                    {rowTotal}
+                  </div>
+                </div>
               </div>
             );
           })}
@@ -887,7 +955,7 @@ export default function GolfPlay(props: Props) {
     );
   }
 
-  // Chips d'état du tour (3 flèches)
+// Chips d'état du tour (3 flèches)
   const throwChips = [0, 1, 2].map((i) => {
     const k = turnThrows[i];
     if (!k) return "—";
@@ -1116,13 +1184,16 @@ export default function GolfPlay(props: Props) {
                 disabled={turnThrows.length === 0}
                 style={{
                   flex: 1,
-                  padding: "11px 12px",
-                  borderRadius: 12,
-                  border: "1px solid rgba(120,255,220,0.35)",
-                  background: "linear-gradient(180deg, rgba(40,120,90,0.30), rgba(0,0,0,0.22))",
-                  color: "white",
-                  boxShadow: "0 12px 28px rgba(0,0,0,0.35), 0 0 18px rgba(120,255,220,0.18)",
-                  fontWeight: 950,
+                  padding: "12px 12px",
+                  borderRadius: 14,
+                  border: "1px solid rgba(120,255,220,0.40)",
+                  background: "linear-gradient(180deg, rgba(120,255,220,0.20), rgba(0,0,0,0.30))",
+                  color: "rgba(255,255,255,0.96)",
+                  boxShadow:
+                    "0 14px 32px rgba(0,0,0,0.40), inset 0 1px 0 rgba(255,255,255,0.10), 0 0 18px rgba(120,255,220,0.18)",
+                  fontWeight: 1000,
+                  letterSpacing: 0.8,
+                  textTransform: "uppercase",
                   opacity: turnThrows.length === 0 ? 0.45 : 1,
                 }}
               >
@@ -1134,13 +1205,14 @@ export default function GolfPlay(props: Props) {
                 disabled={historyRef.current.length === 0}
                 style={{
                   width: 120,
-                  padding: "11px 12px",
-                  borderRadius: 12,
-                  border: "1px solid rgba(255,255,255,0.16)",
-                  background: "linear-gradient(180deg, rgba(255,255,255,0.06), rgba(0,0,0,0.28))",
+                  padding: "12px 12px",
+                  borderRadius: 14,
+                  border: "1px solid rgba(255,255,255,0.14)",
+                  background: "linear-gradient(180deg, rgba(255,255,255,0.08), rgba(0,0,0,0.32))",
                   color: "rgba(255,255,255,0.92)",
-                  boxShadow: "0 12px 28px rgba(0,0,0,0.35)",
-                  fontWeight: 950,
+                  boxShadow: "0 14px 32px rgba(0,0,0,0.40), inset 0 1px 0 rgba(255,255,255,0.08)",
+                  fontWeight: 1000,
+                  letterSpacing: 0.4,
                   opacity: historyRef.current.length === 0 ? 0.45 : 1,
                 }}
               >
