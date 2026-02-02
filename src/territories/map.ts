@@ -57,7 +57,10 @@ import svgBelgium from "./svg/belgium.svg?raw";
 import svgAustria from "./svg/austria.svg?raw";
 import svgArgentina from "./svg/argentina.svg?raw";
 import svgAfrica from "./svg/africa.svg?raw";
-export type TerritoryValueStrategy = "code_numeric" | "hash_20_99" | "hash_21_180";
+// How to assign numeric "values" to territories (used by the capture rule).
+// - FR uses department codes (code_numeric).
+// - Most countries are more playable with a deterministic numbering.
+export type TerritoryValueStrategy = "code_numeric" | "hash_20_99" | "hash_21_180" | "sequential";
 
 export interface TerritoryMetaOverride {
   name?: string;
@@ -194,18 +197,26 @@ export function buildTerritoriesMap(country: TerritoriesCountry, opts: BuildMapO
   const svg = getBaseSvgForCountry(country);
   const svgViewBox = getViewBoxFromSvg(svg);
 
+  // ✅ Default: for non-FR maps, use deterministic sequential numbering.
+  // (FR is already numeric via department codes).
+  const effectiveOpts: BuildMapOptions = {
+    ...opts,
+    valueStrategy:
+      opts.valueStrategy ?? (country === "FR" ? "code_numeric" : "sequential"),
+  };
+
   let territories: Territory[] = [];
 
   if (country === "FR") {
-    territories = extractFranceDepartments(svg, opts);
+    territories = extractFranceDepartments(svg, effectiveOpts);
   } else if (country === "WORLD") {
-    territories = extractByPathId(svg, country, opts).map((t) => ({
+    territories = extractByPathId(svg, country, effectiveOpts).map((t) => ({
       ...t,
       id: normalizeTerritoryId("WORLD", t.id),
       country: "WORLD",
     }));
   } else {
-    territories = extractByPathId(svg, country, opts);
+    territories = extractByPathId(svg, country, effectiveOpts);
   }
 
   return { country, svgViewBox, territories };
@@ -218,6 +229,14 @@ function extractByPathId(svgText: string, country: TerritoriesCountry, opts: Bui
   let m: RegExpExecArray | null;
   while ((m = re.exec(svgText))) ids.push(m[1]);
 
+  // Stable order for sequential numbering
+  const sorted = [...ids].sort((a, b) => String(a).localeCompare(String(b), undefined, { numeric: true, sensitivity: "base" }));
+  const seqValueById: Record<string, number> = {};
+  if (opts.valueStrategy === "sequential") {
+    let n = 1;
+    for (const pid of sorted) seqValueById[pid] = n++;
+  }
+
   return ids.map((pid) => {
     const id = pid.trim();
     const base: Territory = {
@@ -225,7 +244,10 @@ function extractByPathId(svgText: string, country: TerritoriesCountry, opts: Bui
       country,
       region: country,
       name: id,
-      value: defaultValueForId(id, opts.valueStrategy ?? "hash_21_180"),
+      value:
+        opts.valueStrategy === "sequential"
+          ? (seqValueById[pid] ?? defaultValueForId(id, "hash_21_180"))
+          : defaultValueForId(id, (opts.valueStrategy ?? "hash_21_180") as any),
       svgPathId: pid.trim(),
       ownerId: undefined,
     };

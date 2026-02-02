@@ -2796,7 +2796,8 @@ function App() {
         page = <ScramConfig store={store} go={go} setTab={go} params={routeParams} />;
         break;
       case "scram_play":
-        page = <ScramPlay setTab={go} params={routeParams} />;
+        // ✅ pass store so ScramPlay can resolve player avatars/names like other Play pages
+        page = <ScramPlay store={store} setTab={go} params={routeParams} />;
         break;
 
       case "golf_config":

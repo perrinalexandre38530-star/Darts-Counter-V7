@@ -169,12 +169,14 @@ export default function ScramConfig(props: any) {
     // compat go(tab, params) ou navigation props.go
     const go = (props as any)?.go ?? (props as any)?.params?.go;
     if (typeof go === "function") {
-      go("scram.play", payload);
+      // compat: routes "scram_play" (App.tsx) et "scram.play"
+      try { go("scram_play", payload); } catch {}
+      try { go("scram.play", payload); } catch {}
       return;
     }
     const setTab = (props as any)?.setTab;
     if (typeof setTab === "function") {
-      setTab("scram.play", payload);
+      setTab("scram_play", payload);
     }
   }
 

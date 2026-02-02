@@ -3,7 +3,7 @@
 // ============================================
 
 /* ---------- Modes (moteur) ---------- */
-export type Mode = "x01" | "cricket" | "killer" | "shanghai";
+export type Mode = "x01" | "cricket" | "killer" | "shanghai" | "scram";
 
 /* ---------- Darts (moteur) ---------- */
 export type DartBed = "S" | "D" | "T" | "OB" | "IB" | "MISS";
@@ -60,11 +60,41 @@ export type ShanghaiRules = {
   instantWinOnShanghai?: boolean; // défaut true
 };
 
+export type ScramRules = {
+  /**
+   * Objectif de points pour l'équipe "scorers" en phase SCRAM.
+   * Si 0, la condition de victoire est uniquement "closers ont tout fermé".
+   */
+  objective: number;
+  /** Cap de tours (0 = illimité). Un "tour" = une volée (0..3 fléchettes) d'un joueur. */
+  maxRounds?: number;
+  /** Inclure le bull (25) dans les cibles. */
+  useBull?: boolean;
+  /** Nombre de marques nécessaires pour fermer une cible (défaut 3, comme Cricket). */
+  marksToClose?: 1 | 2 | 3;
+};
+
+
+export type ScramRules = {
+  /**
+   * Objectif de points pour l'équipe "scorers" en phase SCRAM.
+   * Si 0, la condition de victoire est uniquement "closers ont tout fermé".
+   */
+  objective: number;
+  /** Cap de tours (0 = illimité). Un "tour" = une volée (0..3 fléchettes) d'un joueur. */
+  maxRounds?: number;
+  /** Inclure le bull (25) dans les cibles. */
+  useBull?: boolean;
+  /** Nombre de marques nécessaires pour fermer une cible (défaut 3, comme Cricket). */
+  marksToClose?: 1 | 2 | 3;
+};
+
 export type MatchRules =
   | ({ mode: "x01" } & X01Rules)
   | ({ mode: "cricket" } & CricketRules)
   | ({ mode: "killer" } & KillerRules)
-  | ({ mode: "shanghai" } & ShanghaiRules);
+  | ({ mode: "shanghai" } & ShanghaiRules)
+  | ({ mode: "scram" } & ScramRules);
 
 /* ---------- Interface commune moteur ---------- */
 export type GameEngine<State extends BaseGameState = BaseGameState> = {
@@ -91,7 +121,7 @@ import type {
 export function toMode(ui: UIGameMode): Mode {
   // UI: "X01" | "Cricket" | "Killer" | "Shanghai"
   const m = ui.toLowerCase();
-  if (m === "x01" || m === "cricket" || m === "killer" || m === "shanghai") {
+  if (m === "x01" || m === "cricket" || m === "killer" || m === "shanghai" || m === "scram") {
     return m as Mode;
   }
   // Par défaut (sécurité)

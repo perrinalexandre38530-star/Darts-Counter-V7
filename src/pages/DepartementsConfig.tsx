@@ -201,9 +201,54 @@ export default function DepartementsConfig(props: any) {
   const [objective, setObjective] = React.useState(10);
 
   const [targetSelectionMode, setTargetSelectionMode] = React.useState<"free" | "by_score">("free");
+  const [captureRule, setCaptureRule] = React.useState<"exact" | "gte">("exact");
   const [victoryMode, setVictoryMode] = React.useState<"territories" | "regions" | "time">("territories");
   const [objectiveRegions, setObjectiveRegions] = React.useState<number>(3);
   const [timeLimitMin, setTimeLimitMin] = React.useState<number>(20);
+
+  // Load previously saved config (not only selectedIds)
+  React.useEffect(() => {
+    try {
+      const raw = localStorage.getItem("dc_modecfg_departements");
+      if (!raw) return;
+      const parsed: any = JSON.parse(raw);
+
+      if (parsed?.mapId) setMapId(String(parsed.mapId));
+      if (parsed?.teamSize) setTeamSize(parsed.teamSize);
+      if (typeof parsed?.botsEnabled === "boolean") setBotsEnabled(parsed.botsEnabled);
+      if (parsed?.botLevel) setBotLevel(parsed.botLevel);
+      if (parsed?.rounds) setRounds(Number(parsed.rounds) || 12);
+
+      // Objective / win territories (support legacy keys)
+      const objT = parsed?.winTerritories ?? parsed?.objectiveTerritories ?? parsed?.objective;
+      if (objT != null) setObjective(Math.max(1, Number(objT) || 10));
+
+      const tsm = parsed?.targetSelectionMode;
+      if (tsm === "free" || tsm === "by_score") setTargetSelectionMode(tsm);
+
+      const cr = parsed?.captureRule;
+      if (cr === "exact" || cr === "gte") setCaptureRule(cr);
+
+      const vm = parsed?.victoryMode;
+      if (vm === "territories" || vm === "regions" || vm === "time") setVictoryMode(vm);
+
+      const objR = parsed?.winRegions ?? parsed?.objectiveRegions;
+      if (objR != null) setObjectiveRegions(Math.max(1, Number(objR) || 3));
+
+      if (parsed?.timeLimitMin != null) setTimeLimitMin(Math.max(1, Number(parsed.timeLimitMin) || 20));
+
+      if (parsed?.teamsById && typeof parsed.teamsById === "object") setTeamsById(parsed.teamsById);
+    } catch {
+      // ignore
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Disable Regions victory unless FR (until we have proper region grouping for other maps)
+  React.useEffect(() => {
+    const isFR = String(mapId || "").toUpperCase() === "FR";
+    if (!isFR && victoryMode === "regions") setVictoryMode("territories");
+  }, [mapId, victoryMode]);
   // selection
   const [selectedIds, setSelectedIds] = React.useState<string[]>(() => {
     try {
@@ -478,8 +523,14 @@ export default function DepartementsConfig(props: any) {
     botsEnabled,
     botLevel,
     rounds,
-    objective, // kept for backward compatibility = territories target
+    // Legacy keys (kept): objective/objectiveTerritories
+    objective,
     objectiveTerritories: objective,
+
+    // ✅ Engine/play keys
+    winTerritories: objective,
+    winRegions: objectiveRegions,
+    captureRule,
     targetSelectionMode,
     victoryMode,
     objectiveRegions,
@@ -1268,15 +1319,19 @@ export default function DepartementsConfig(props: any) {
           />
         </OptionRow>
 
+        <OptionRow label={t("territories.captureRule", "Règle de capture")}>
+          <OptionSelect value={captureRule} options={["exact", "gte"]} onChange={setCaptureRule as any} />
+        </OptionRow>
+
         <OptionRow label={t("territories.victoryMode", "Condition de victoire")}>
           <OptionSelect
             value={victoryMode}
-            options={["territories", "regions", "time"]}
+            options={String(mapId || "").toUpperCase() === "FR" ? ["territories", "regions", "time"] : ["territories", "time"]}
             onChange={setVictoryMode as any}
           />
         </OptionRow>
 
-        {victoryMode === "regions" && (
+        {victoryMode === "regions" && String(mapId || "").toUpperCase() === "FR" && (
           <OptionRow label={t("territories.objectiveRegions", "Objectif (régions)")}>
             <OptionSelect value={objectiveRegions} options={[1,2,3,4,5,6,7,8,9,10]} onChange={setObjectiveRegions} />
           </OptionRow>

@@ -48,13 +48,17 @@ export type TerritoriesCountry =
 export interface TerritoriesConfig {
   country: TerritoriesCountry;
   targetSelectionMode: "imposed" | "free" | "by_score";
-  captureRule: "exact" | "greater_or_equal";
+  // ✅ Align with UI/config vocabulary
+  captureRule: "exact" | "gte";
   multiCapture: boolean;
   minTerritoryValue?: number;
   allowEnemyCapture: boolean;
   maxRounds: number;
+  // ✅ Full victory modes supported by the engine + UI
   victoryCondition:
     | { type: "territories"; value: number }
+    | { type: "regions"; value: number }
+    | { type: "time"; minutes: number }
     | { type: "rounds" };
   voiceAnnouncements: boolean;
 }

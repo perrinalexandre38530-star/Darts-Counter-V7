@@ -46,7 +46,9 @@ function buildTerritoryFillIndex(map: TerritoriesMap, ownerColors: OwnerColorInd
 }
 
 // Countries that benefit from "slice" (full-bleed) because their SVGs often have large margins
-const SLICE_COUNTRIES: TerritoriesCountry[] = ["ES", "US", "CN", "RU", "WORLD"];
+// We avoid `slice` because some MapSVG exports have inconsistent viewBox values,
+// and `slice` may crop islands/borders. We always render with `meet` + auto-fit.
+const SLICE_COUNTRIES: TerritoriesCountry[] = [];
 
 // ---- Color helpers ----
 function clamp01(n: number) {
@@ -201,11 +203,23 @@ function injectStylesAndFills(params: {
     /* Responsive safety */
     svg { width: 100%; height: 100%; display: block; }
 
-    /* Default neutral */
-    path { cursor: pointer; }
+    /* Reset backgrounds coming from some SVG exports */
+    rect { fill: transparent !important; }
 
-    /* Base borders */
-    path { stroke: rgba(255,255,255,0.65); stroke-width: 0.75; vector-effect: non-scaling-stroke; }
+    /* Default neutral */
+    path, polygon, polyline { cursor: pointer; }
+
+    /* Base borders: outlines only (no grey interiors) */
+    path, polygon, polyline {
+      stroke: rgba(255,255,255,0.70);
+      stroke-width: 0.85;
+      vector-effect: non-scaling-stroke;
+      fill: none !important;
+    }
+
+    /* Owned territories: allow fill via inline style/attribute */
+    [data-owned="1"] { fill: var(--owned-fill) !important; }
+
 
     /* Selected glow */
     .territory-selected {
@@ -232,21 +246,20 @@ function injectStylesAndFills(params: {
       const tid = `FR-${dep}`;
       const ownerFill = fillByTerritoryId[tid];
 
-      // Region tagging
+      // Region tagging (stroke only). No region fill tint.
       const regionCode = FR_DEP_TO_REGION[dep] || "UNK";
       if (regionCode !== "UNK") {
         p.classList.add(`fr-region-${regionCode}`);
-        // If not owned, tint by region to visually "group" departments into regions
-        if (!ownerFill) {
-          const rc = regionColorByCode[regionCode] || themeColor;
-          const rcRgb = hexToRgb(rc) || themeRgb;
-          p.setAttribute("fill", rgbToRgba(rcRgb, 0.12));
-        } else {
-          p.setAttribute("fill", ownerFill);
-        }
+      }
+
+      // Owned => filled, otherwise outline only
+      if (ownerFill) {
+        p.setAttribute("data-owned", "1");
+        (p as any).style?.setProperty?.("--owned-fill", ownerFill);
+        p.setAttribute("fill", ownerFill);
       } else {
-        // Unknown (shouldn't happen) => neutral
-        p.setAttribute("fill", ownerFill ? ownerFill : "rgba(120,120,120,0.22)");
+        p.removeAttribute("data-owned");
+        p.setAttribute("fill", "none");
       }
 
       if (selectedTerritoryId && selectedTerritoryId === tid) p.classList.add("territory-selected");
@@ -264,7 +277,14 @@ function injectStylesAndFills(params: {
     if (!p) continue;
 
     const fill = fillByTerritoryId[t.id];
-    p.setAttribute("fill", fill ? fill : "rgba(120,120,120,0.25)");
+    if (fill) {
+      p.setAttribute("data-owned", "1");
+      (p as any).style?.setProperty?.("--owned-fill", fill);
+      p.setAttribute("fill", fill);
+    } else {
+      p.removeAttribute("data-owned");
+      p.setAttribute("fill", "none");
+    }
 
     if (selectedTerritoryId && selectedTerritoryId === t.id) p.classList.add("territory-selected");
     else p.classList.remove("territory-selected");
@@ -338,6 +358,81 @@ export default function TerritoriesMapView(props: TerritoriesMapViewProps) {
     if (typeof window === "undefined" || typeof DOMParser === "undefined") return overlayRaw;
     return injectOverlayStyles(overlayRaw, themeColor, map.svgViewBox, country);
   }, [overlayRaw, themeColor, map.svgViewBox, country]);
+
+  // ✅ Auto-fit SVG viewBox after mount (fixes many MapSVG exports with broken/shifted viewBox)
+  const baseLayerRef = React.useRef<HTMLDivElement | null>(null);
+  const overlayLayerRef = React.useRef<HTMLDivElement | null>(null);
+
+  const autoFit = React.useCallback((host: HTMLDivElement | null) => {
+    if (!host) return;
+    const svg = host.querySelector("svg") as any;
+    if (!svg || typeof svg.getBBox !== "function") return;
+
+    // Make it responsive
+    try {
+      svg.removeAttribute("width");
+      svg.removeAttribute("height");
+      svg.setAttribute("preserveAspectRatio", "xMidYMid meet");
+      svg.style.width = "100%";
+      svg.style.height = "100%";
+      svg.style.display = "block";
+    } catch {}
+
+    // If viewBox is missing or obviously wrong, compute a tight bbox.
+    // (We do it always, but only apply if bbox looks sane.)
+    try {
+      // Compute union bbox from real geometry elements (avoids rect/background breaking sizing)
+      const els = Array.from(svg.querySelectorAll("path,polygon,polyline,circle,ellipse")) as any[];
+      let ux: number | null = null;
+      let uy: number | null = null;
+      let ux2: number | null = null;
+      let uy2: number | null = null;
+
+      for (const el of els) {
+        if (!el || typeof el.getBBox !== "function") continue;
+        const tag = String(el.tagName || "").toLowerCase();
+        if (tag === "rect") continue;
+
+        const b = el.getBBox();
+        if (!b || !isFinite(b.x) || !isFinite(b.y) || !isFinite(b.width) || !isFinite(b.height)) continue;
+        if (b.width <= 0 || b.height <= 0) continue;
+
+        const x1 = b.x;
+        const y1 = b.y;
+        const x2 = b.x + b.width;
+        const y2 = b.y + b.height;
+
+        ux = ux == null ? x1 : Math.min(ux, x1);
+        uy = uy == null ? y1 : Math.min(uy, y1);
+        ux2 = ux2 == null ? x2 : Math.max(ux2, x2);
+        uy2 = uy2 == null ? y2 : Math.max(uy2, y2);
+      }
+
+      if (ux == null || uy == null || ux2 == null || uy2 == null) {
+        const bbox = svg.getBBox();
+        if (!bbox || !isFinite(bbox.width) || !isFinite(bbox.height)) return;
+        if (bbox.width <= 0 || bbox.height <= 0) return;
+        ux = bbox.x;
+        uy = bbox.y;
+        ux2 = bbox.x + bbox.width;
+        uy2 = bbox.y + bbox.height;
+      }
+
+      const w = Math.max(1, ux2 - ux);
+      const h = Math.max(1, uy2 - uy);
+
+      const pad = Math.max(w, h) * 0.02;
+      const vb = `${ux - pad} ${uy - pad} ${w + pad * 2} ${h + pad * 2}`;
+      svg.setAttribute("viewBox", vb);
+    } catch {
+      // ignore
+    }
+  }, []);
+
+  React.useLayoutEffect(() => {
+    autoFit(baseLayerRef.current);
+    autoFit(overlayLayerRef.current);
+  }, [autoFit, baseSvgHtml, overlaySvgHtml]);
 
   // -------- Zoom/Pan state --------
   const [scale, setScale] = React.useState(1);
@@ -487,6 +582,7 @@ export default function TerritoriesMapView(props: TerritoriesMapViewProps) {
           }}
         >
           <div
+            ref={baseLayerRef}
             style={{
               width: "100%",
               height: "100%",
@@ -498,6 +594,7 @@ export default function TerritoriesMapView(props: TerritoriesMapViewProps) {
 
           {overlaySvgHtml && (
             <div
+              ref={overlayLayerRef}
               style={{
                 position: "absolute",
                 inset: 0,

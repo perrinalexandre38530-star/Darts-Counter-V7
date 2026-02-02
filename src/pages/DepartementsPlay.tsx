@@ -244,8 +244,11 @@ export default function DepartementsPlay(props: any) {
   const captureRule: "exact" | "gte" = effectiveCfg.captureRule === "gte" ? "gte" : "exact";
   const victoryMode: "territories" | "regions" | "time" =
     effectiveCfg.victoryMode === "regions" ? "regions" : effectiveCfg.victoryMode === "time" ? "time" : "territories";
-  const winTerritories = Math.max(1, Number(effectiveCfg.winTerritories || effectiveCfg.objective || 10));
-  const winRegions = Math.max(1, Number(effectiveCfg.winRegions || 3));
+  const winTerritories = Math.max(
+    1,
+    Number(effectiveCfg.winTerritories || (effectiveCfg as any).objectiveTerritories || effectiveCfg.objective || 10)
+  );
+  const winRegions = Math.max(1, Number(effectiveCfg.winRegions || (effectiveCfg as any).objectiveRegions || 3));
   const timeLimitMin = Math.max(1, Number(effectiveCfg.timeLimitMin || 20));
 
   const tickerSrc = findTerritoriesTicker(mapId) || findTerritoriesTicker(country) || undefined;
@@ -356,12 +359,22 @@ export default function DepartementsPlay(props: any) {
 
   const ownedByOwner = React.useMemo(() => countOwnedByOwnerId(game), [game]);
 
+  const selectedTerritory = React.useMemo(() => {
+    const id = game.turn.selectedTerritoryId;
+    if (!id) return null;
+    return game.map.territories.find((x) => x.id === id) || null;
+  }, [game.turn.selectedTerritoryId, game.map.territories]);
+
   const selectionLabel = React.useMemo(() => {
     const id = game.turn.selectedTerritoryId;
     if (!id) return "—";
     const ttt = game.map.territories.find((x) => x.id === id);
     return ttt ? `${ttt.name} • ${ttt.value} (${ttt.id})` : id;
   }, [game.turn.selectedTerritoryId, game.map.territories]);
+
+  const objectiveValueLabel = selectedTerritory ? String(selectedTerritory.value) : "—";
+  const territoryNameLabel = selectedTerritory ? selectedTerritory.name : "—";
+
 
   const isFrRegionsVictory = country === "FR" && victoryMode === "regions";
 
@@ -617,24 +630,12 @@ const ownedRegionsByOwner = React.useMemo(() => {
               </div>
             )}
           </div>
-
-          {/* Round / objective */}
-          <div style={{ minWidth: 150, textAlign: "right" }}>
-            <div style={{ fontSize: 12, opacity: 0.85 }}>
-              {t?.("round") || "Round"} {game.roundIndex}/{maxRounds}
-            </div>
-            {victoryMode === "time" ? (
-              <div style={{ fontSize: 12, opacity: 0.85 }}>{t?.("time") || "Temps"}: {timeRemaining ?? "—"}</div>
-            ) : (
-              <div style={{ fontSize: 12, opacity: 0.85 }}>{t?.("objective") || "Objectif"}: {victoryMode === "regions" ? `${winRegions} régions` : `${winTerritories} territoires`}</div>
-            )}
-          </div>
         </div>
       </div>
 
       {/* TERRITORY VALUES (info modal) */}
       {showValues && (
-        <div style={{ padding: "0 12px 4px", display: "flex", justifyContent: "flex-end" }}>
+        <div style={{ padding: "0 12px 4px", display: "none", justifyContent: "flex-end" }}>
           <InfoDot
             title="Valeurs des territoires"
             content={
@@ -742,7 +743,7 @@ const ownedRegionsByOwner = React.useMemo(() => {
       )}
 
       {/* Selection + progress */}
-      <div style={{ padding: "0 12px 8px", display: "flex", justifyContent: "space-between", gap: 12 }}>
+      <div style={{ padding: "0 12px 8px", display: "none", justifyContent: "space-between", gap: 12 }}>
         <div style={{ fontSize: 12, opacity: 0.9 }}>
           Objectif sélectionné: <span style={{ color: activeColor }}>{selectionLabel}</span>
         </div>
@@ -754,18 +755,187 @@ const ownedRegionsByOwner = React.useMemo(() => {
         </div>
       </div>
 
+      {/* KPI: objective + territory (above map) */}
+      <div style={{ padding: "0 12px 10px", display: "flex", gap: 12 }}>
+        <div style={{ flex: 1, minWidth: 0, padding: "12px 14px", borderRadius: 16, background: "rgba(0,0,0,0.22)", border: "1px solid rgba(255,255,255,0.10)", boxShadow: "0 0 18px rgba(0,0,0,0.35)" }}>
+          <div style={{ fontSize: 11, letterSpacing: 1.2, opacity: 0.75, fontWeight: 900 }}>OBJECTIF</div>
+          <div style={{ fontSize: 18, fontWeight: 950, color: activeColor, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+            {selectedTerritory ? selectedTerritory.value : "—"}
+          </div>
+        </div>
+        <div style={{ flex: 1, minWidth: 0, padding: "12px 14px", borderRadius: 16, background: "rgba(0,0,0,0.22)", border: "1px solid rgba(255,255,255,0.10)", boxShadow: "0 0 18px rgba(0,0,0,0.35)" }}>
+          <div style={{ fontSize: 11, letterSpacing: 1.2, opacity: 0.75, fontWeight: 900 }}>TERRITOIRE</div>
+          <div style={{ fontSize: 18, fontWeight: 950, color: "#fff", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+            {selectedTerritory ? selectedTerritory.name : "—"}
+          </div>
+        </div>
+      </div>
+
+      {/* KPI OBJECTIF + TERRITOIRE (above map) */}
+      <div style={{ padding: "0 12px 8px", display: "flex", gap: 12 }}>
+        <div style={{ flex: 1, padding: "12px 12px", borderRadius: 14, background: "rgba(0,0,0,0.25)", border: `1px solid ${activeColor}55` }}>
+          <div style={{ fontSize: 11, letterSpacing: 1.2, opacity: 0.75 }}>OBJECTIF</div>
+          <div style={{ marginTop: 4, fontSize: 18, fontWeight: 950, color: activeColor }}>{objectiveValueLabel}</div>
+        </div>
+        <div style={{ flex: 1, padding: "12px 12px", borderRadius: 14, background: "rgba(0,0,0,0.25)", border: "1px solid rgba(255,255,255,0.10)" }}>
+          <div style={{ fontSize: 11, letterSpacing: 1.2, opacity: 0.75 }}>TERRITOIRE</div>
+          <div style={{ marginTop: 4, fontSize: 18, fontWeight: 950, color: "#fff", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{territoryNameLabel}</div>
+        </div>
+      </div>
+
       {/* MAP */}
       <div style={{ flex: 1, padding: 12 }}>
         <div
           style={{
             width: "100%",
             height: "100%",
+            position: "relative",
             borderRadius: 18,
             background: "rgba(12, 14, 26, 0.65)",
             border: "1px solid rgba(255,255,255,0.08)",
             overflow: "hidden",
           }}
         >
+          {showValues && (
+            <div style={{ position: "absolute", left: 10, top: 10, pointerEvents: "auto" }}>
+              <InfoDot
+                title="Valeurs des territoires"
+                content={
+                  <div style={{ maxHeight: "70vh", overflow: "auto" }} className="dc-scroll-thin">
+                    <div style={{ fontSize: 14, fontWeight: 900, marginBottom: 8 }}>Valeurs des territoires</div>
+                    <div style={{ fontSize: 12, opacity: 0.8, marginBottom: 10 }}>
+                      Chaque territoire a une valeur cible (score total sur une volée).
+                    </div>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                      {isFrRegionsVictory && regionGroupsForValues ? (
+                        regionGroupsForValues.map((g) => (
+                          <div key={g.key} style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                            <div
+                              style={{
+                                display: "flex",
+                                alignItems: "center",
+                                gap: 10,
+                                padding: "10px 12px",
+                                borderRadius: 14,
+                                background: "rgba(255,255,255,0.05)",
+                                border: "1px solid rgba(255,255,255,0.10)",
+                              }}
+                            >
+                              {g.iconSrc ? (
+                                <img
+                                  src={g.iconSrc}
+                                  alt={g.name}
+                                  style={{ width: 28, height: 28, objectFit: "contain", filter: "drop-shadow(0 0 10px rgba(0,0,0,0.35))" }}
+                                />
+                              ) : (
+                                <div
+                                  style={{
+                                    width: 28,
+                                    height: 28,
+                                    borderRadius: 10,
+                                    background: "rgba(0,0,0,0.25)",
+                                    border: "1px solid rgba(255,255,255,0.12)",
+                                    display: "grid",
+                                    placeItems: "center",
+                                    fontWeight: 900,
+                                    fontSize: 12,
+                                  }}
+                                >
+                                  R
+                                </div>
+                              )}
+
+                              <div style={{ flex: 1, minWidth: 0 }}>
+                                <div
+                                  style={{
+                                    fontSize: 13,
+                                    fontWeight: 900,
+                                    whiteSpace: "nowrap",
+                                    overflow: "hidden",
+                                    textOverflow: "ellipsis",
+                                  }}
+                                >
+                                  {g.name}
+                                </div>
+                                <div style={{ fontSize: 11, opacity: 0.7 }}>{g.code || g.key}</div>
+                              </div>
+                            </div>
+
+                            {g.items.map((tt) => (
+                              <div
+                                key={tt.id}
+                                style={{
+                                  display: "flex",
+                                  alignItems: "center",
+                                  justifyContent: "space-between",
+                                  gap: 10,
+                                  padding: "10px 12px",
+                                  borderRadius: 12,
+                                  background: "rgba(255,255,255,0.04)",
+                                  border: "1px solid rgba(255,255,255,0.08)",
+                                }}
+                              >
+                                <div style={{ minWidth: 52, textAlign: "center", fontWeight: 900, color: themeColor }}>{tt.value}</div>
+                                <div style={{ flex: 1, minWidth: 0 }}>
+                                  <div
+                                    style={{
+                                      fontSize: 13,
+                                      fontWeight: 800,
+                                      whiteSpace: "nowrap",
+                                      overflow: "hidden",
+                                      textOverflow: "ellipsis",
+                                    }}
+                                  >
+                                    {tt.name}
+                                  </div>
+                                  <div style={{ fontSize: 11, opacity: 0.7 }}>{tt.id}</div>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        ))
+                      ) : (
+                        [...game.map.territories]
+                          .sort((a, b) => a.value - b.value || a.name.localeCompare(b.name))
+                          .map((tt) => (
+                            <div
+                              key={tt.id}
+                              style={{
+                                display: "flex",
+                                alignItems: "center",
+                                justifyContent: "space-between",
+                                gap: 10,
+                                padding: "10px 12px",
+                                borderRadius: 12,
+                                background: "rgba(255,255,255,0.04)",
+                                border: "1px solid rgba(255,255,255,0.08)",
+                              }}
+                            >
+                              <div style={{ minWidth: 52, textAlign: "center", fontWeight: 900, color: themeColor }}>{tt.value}</div>
+                              <div style={{ flex: 1, minWidth: 0 }}>
+                                <div
+                                  style={{
+                                    fontSize: 13,
+                                    fontWeight: 800,
+                                    whiteSpace: "nowrap",
+                                    overflow: "hidden",
+                                    textOverflow: "ellipsis",
+                                  }}
+                                >
+                                  {tt.name}
+                                </div>
+                                <div style={{ fontSize: 11, opacity: 0.7 }}>{tt.id}</div>
+                              </div>
+                            </div>
+                          ))
+                      )}
+                    </div>
+                  </div>
+                }
+              />
+            </div>
+          )}
+
           <TerritoriesMapView
             country={country}
             map={game.map}
@@ -781,6 +951,7 @@ const ownedRegionsByOwner = React.useMemo(() => {
 
       {/* KEYPAD */}
       <div style={{ paddingBottom: 10 }}>
+
         <ScoreInputHub
           currentThrow={currentThrow}
           multiplier={multiplier}

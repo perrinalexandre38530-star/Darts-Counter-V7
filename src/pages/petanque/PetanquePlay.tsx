@@ -1235,10 +1235,15 @@ const stSafe = React.useMemo<PetanqueState>(() => {
 	const startMatch = React.useCallback(() => {
 	  if (matchStartedAt) return;
 	  const now = Date.now();
+	  // Fresh start: si aucune mène n'a été validée, on repart sur des stats propres
+	  // (évite de ré-afficher des stats d'une session précédente via localStorage).
+	  if (((stSafe as any)?.ends ?? []).length === 0) {
+	    setPlayerStats({});
+	  }
 	  setMatchStartedAt(now);
 	  setLastMeneStartedAt(now);
 	  setLastMeneDurationMs(0);
-	}, [matchStartedAt]);
+	}, [matchStartedAt, stSafe]);
 
 const ends = stSafe.ends;
 const measurements = stSafe.measurements;
@@ -1992,6 +1997,11 @@ const onNew = React.useCallback(() => {
       target: params?.cfg?.target ?? 13,
     })
   );
+  // reset timers + stats locaux
+  setMatchStartedAt(null);
+  setLastMeneStartedAt(null);
+  setLastMeneDurationMs(0);
+  setPlayerStats({});
 }, [params]);
 
 const commitEndFromSheet = React.useCallback(() => {
@@ -3400,11 +3410,20 @@ return (
               // ====== Stats allocations (score & stats mode) ======
               // allocations -> PlayerStats keys (identiques)
               const allocs = allocations as MeneWizardAllocation[];
+
+              // normalise playerId éventuel ("A"/"B") -> vrai playerId
+              const resolvePid = (raw: any): string => {
+                const s = String(raw ?? "");
+                if (s === "A") return String(teams?.A?.players?.[0]?.id ?? "A");
+                if (s === "B") return String(teams?.B?.players?.[0]?.id ?? "B");
+                return s;
+              };
+
               for (const a of allocs) {
                 const v = Number((a as any).value || 0);
                 if (!v) continue;
                 // @ts-ignore
-                bumpStat(a.playerId, a.stat as any, v);
+                bumpStat(resolvePid((a as any).playerId), (a as any).stat as any, v);
               }
 
               // ====== Crédit "points" / "mènes" (uniquement quand on valide un SCORE) ======
@@ -3432,8 +3451,8 @@ return (
                     concededPts += v;
                     continue;
                   }
-                  if (isInWinner(String(a.playerId))) {
-                    pointsByPlayer[String(a.playerId)] = (pointsByPlayer[String(a.playerId)] || 0) + v;
+                  if (isInWinner(resolvePid((a as any).playerId))) {
+                    pointsByPlayer[resolvePid((a as any).playerId)] = (pointsByPlayer[resolvePid((a as any).playerId)] || 0) + v;
                   }
                 }
 
