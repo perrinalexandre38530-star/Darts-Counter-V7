@@ -37,6 +37,7 @@ import { buildLegStatsFromV3LiveForOverlay } from "../lib/x01v3/x01V3LegStatsAda
 
 // ✅ Layout unifié (MEP)
 import GameplayLayout from "../components/gameplay/GameplayLayout";
+import tickerX01 from "../assets/tickers/ticker_x01.png";
 
 import { StatsBridge } from "../lib/statsBridge";
 import { loadBots } from "./ProfilesBots";
@@ -3155,48 +3156,59 @@ if (isLandscapeTablet) {
         title=""
         onBack={handleQuit}
         showInfo={false}
-        headerInline={
+        headerCenter={
           <div ref={headerWrapRef} style={{ width: "100%" }}>
-            {useSetsUi && isTeamsMode && teamsView && (teamsView as any[]).length >= 2 ? (
-              (teamsView as any[]).length === 2 ? (
-                <DuelHeaderCompact
-                  leftAvatarUrl={((teamsView as any[])[0]?.avatarUrl as string) ?? ""}
-                  rightAvatarUrl={((teamsView as any[])[1]?.avatarUrl as string) ?? ""}
-                  leftSets={(state as any).teamSetsWon?.[((teamsView as any[])[0]?.id as any)] ?? 0}
-                  rightSets={(state as any).teamSetsWon?.[((teamsView as any[])[1]?.id as any)] ?? 0}
-                  leftLegs={(state as any).teamLegsWon?.[((teamsView as any[])[0]?.id as any)] ?? 0}
-                  rightLegs={(state as any).teamLegsWon?.[((teamsView as any[])[1]?.id as any)] ?? 0}
-                />
-              ) : (
-                <TeamsHeaderCompact
-                  teams={teamsView as any[]}
-                  teamLegsWon={(state as any).teamLegsWon ?? {}}
-                  teamSetsWon={(state as any).teamSetsWon ?? {}}
-                />
-              )
-            ) : (
-              isDuel &&
-              useSetsUi && (
-                <DuelHeaderCompact
-                  leftAvatarUrl={profileById[players[0].id]?.avatarDataUrl ?? ""}
-                  rightAvatarUrl={profileById[players[1].id]?.avatarDataUrl ?? ""}
-                  leftSets={(state as any).setsWon?.[players[0].id] ?? 0}
-                  rightSets={(state as any).setsWon?.[players[1].id] ?? 0}
-                  leftLegs={(state as any).legsWon?.[players[0].id] ?? 0}
-                  rightLegs={(state as any).legsWon?.[players[1].id] ?? 0}
-                />
-              )
-            )}
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                width: "100%",
+                gap: 10,
+              }}
+            >
+              <div style={{ flex: 1, display: "flex", justifyContent: "center" }}>
+                {useSetsUi && isTeamsMode && teamsView && (teamsView as any[]).length >= 2 ? (
+                  (teamsView as any[]).length === 2 ? (
+                    <DuelHeaderCompact
+                      leftAvatarUrl={((teamsView as any[])[0]?.avatarUrl as string) ?? ""}
+                      rightAvatarUrl={((teamsView as any[])[1]?.avatarUrl as string) ?? ""}
+                      leftSets={(state as any).teamSetsWon?.[((teamsView as any[])[0]?.id as any)] ?? 0}
+                      rightSets={(state as any).teamSetsWon?.[((teamsView as any[])[1]?.id as any)] ?? 0}
+                      leftLegs={(state as any).teamLegsWon?.[((teamsView as any[])[0]?.id as any)] ?? 0}
+                      rightLegs={(state as any).teamLegsWon?.[((teamsView as any[])[1]?.id as any)] ?? 0}
+                    />
+                  ) : (
+                    <TeamsHeaderCompact
+                      teams={teamsView as any[]}
+                      teamLegsWon={(state as any).teamLegsWon ?? {}}
+                      teamSetsWon={(state as any).teamSetsWon ?? {}}
+                    />
+                  )
+                ) : (
+                  isDuel &&
+                  useSetsUi && (
+                    <DuelHeaderCompact
+                      leftAvatarUrl={profileById[players[0].id]?.avatarDataUrl ?? ""}
+                      rightAvatarUrl={profileById[players[1].id]?.avatarDataUrl ?? ""}
+                      leftSets={(state as any).setsWon?.[players[0].id] ?? 0}
+                      rightSets={(state as any).setsWon?.[players[1].id] ?? 0}
+                      leftLegs={(state as any).legsWon?.[players[0].id] ?? 0}
+                      rightLegs={(state as any).legsWon?.[players[1].id] ?? 0}
+                    />
+                  )
+                )}
+              </div>
+
+              <SetLegChip
+                currentSet={(state as any).currentSet ?? 1}
+                currentLegInSet={(state as any).currentLeg ?? 1}
+                setsTarget={setsTarget}
+                legsTarget={legsTarget}
+                useSets={useSetsUi}
+              />
+            </div>
           </div>
-        }
-        headerRight={
-          <SetLegChip
-            currentSet={(state as any).currentSet ?? 1}
-            currentLegInSet={(state as any).currentLeg ?? 1}
-            setsTarget={setsTarget}
-            legsTarget={legsTarget}
-            useSets={useSetsUi}
-          />
         }
         activeProfileHeader={
           <div style={{ maxWidth: CONTENT_MAX, margin: "0 auto" }}>
@@ -3242,7 +3254,7 @@ if (isLandscapeTablet) {
           </div>
         }
         playersRowLabel="JOUEURS"
-        playersRowLabelColor={themePrimary}
+        playersRowTicker={tickerX01}
         playersPanelTitle="Joueurs"
         playersRowRight={
           <span
@@ -3310,23 +3322,48 @@ if (isLandscapeTablet) {
               flexWrap: "wrap",
             }}
           >
-            <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+            {/* Total volée (même esprit que le total keypad : doré + glow) */}
+            <div
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                justifyContent: "center",
+                minWidth: 44,
+                height: 34,
+                padding: "0 12px",
+                borderRadius: 14,
+                border: "1px solid rgba(245, 200, 76, .55)",
+                background: "rgba(0,0,0,0.28)",
+                color: "#f5c84c",
+                fontWeight: 1000,
+                letterSpacing: 0.4,
+                boxShadow: "0 0 18px rgba(245, 200, 76, .20), 0 0 32px rgba(245, 200, 76, .12)",
+                textShadow: "0 0 14px rgba(245, 200, 76, .35)",
+              }}
+            >
+              {sumThrow(currentThrow)}
+            </div>
+
+            {/* Chips de la volée (sans tiret quand vide) */}
+            <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", flex: 1, justifyContent: "center" }}>
               {(currentThrow || []).length ? (
-                <span style={{ display: "inline-flex", gap: 6 }}>
+                <span style={{ display: "inline-flex", gap: 6, flexWrap: "wrap", justifyContent: "center" }}>
                   {(currentThrow || []).map((d: any, i: number) => {
                     const st = chipStyle(d, false);
                     return (
                       <span
                         key={i}
                         style={{
-                          minWidth: 36,
-                          padding: "2px 8px",
-                          borderRadius: 10,
-                          fontSize: 11,
+                          minWidth: 54,
+                          padding: "6px 14px",
+                          borderRadius: 14,
+                          fontSize: 16,
                           fontWeight: 900,
                           background: st.background as string,
                           border: st.border as string,
                           color: st.color as string,
+                          boxShadow: "0 0 14px rgba(0,0,0,0.35)",
+                          textShadow: "0 0 10px rgba(0,0,0,0.45)",
                         }}
                       >
                         {fmt(d)}
@@ -3334,15 +3371,7 @@ if (isLandscapeTablet) {
                     );
                   })}
                 </span>
-              ) : (
-                <span style={{ opacity: 0.7, fontWeight: 700 }}>
-                  {t("x01v3.emptyVisit", "—")}
-                </span>
-              )}
-            </div>
-
-            <div style={{ fontWeight: 900, opacity: 0.9 }}>
-              {sumThrow(currentThrow)}
+              ) : null}
             </div>
           </div>
         }

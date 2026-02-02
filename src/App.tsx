@@ -2803,7 +2803,8 @@ function App() {
         page = <GolfConfig store={store} go={go} setTab={go} params={routeParams} />;
         break;
       case "golf_play":
-        page = <GolfPlay setTab={go} params={routeParams} />;
+        // ✅ pass store so GolfPlay can resolve avatars (needed for the X01PlayV3-like header)
+        page = <GolfPlay store={store} setTab={go} params={routeParams} />;
         break;
 
       case "baseball_config":

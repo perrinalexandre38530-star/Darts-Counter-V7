@@ -80,6 +80,401 @@ type HistoryEntry = {
   prev: (number | null)[][];
 };
 
+// ---------------- Header "Joueur actif" (CLONE X01PlayV3) ----------------
+
+const miniCard: React.CSSProperties = {
+  width: "clamp(150px, 22vw, 190px)",
+  height: 86,
+  padding: 6,
+  borderRadius: 12,
+  background:
+    "linear-gradient(180deg,rgba(22,22,26,.96),rgba(14,14,16,.98))",
+  border: "1px solid rgba(255,255,255,.10)",
+  boxShadow: "0 10px 22px rgba(0,0,0,.35)",
+};
+
+const miniText: React.CSSProperties = {
+  fontSize: 12,
+  color: "#d9dbe3",
+  lineHeight: 1.25,
+};
+
+const miniRankRow: React.CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "space-between",
+  padding: "3px 6px",
+  borderRadius: 6,
+  background: "rgba(255,255,255,.04)",
+  marginBottom: 3,
+  fontSize: 11,
+  lineHeight: 1.15,
+};
+
+const miniRankName: React.CSSProperties = {
+  fontWeight: 800,
+  color: "#ffcf57",
+};
+
+const miniRankScore: React.CSSProperties = {
+  fontWeight: 900,
+  color: "#ffcf57",
+};
+
+const miniRankScoreFini: React.CSSProperties = {
+  fontWeight: 900,
+  color: "#7fe2a9",
+};
+
+const avatarMedallion: React.CSSProperties = {
+  width: 96,
+  height: 96,
+  borderRadius: "50%",
+  overflow: "hidden",
+  background: "linear-gradient(180deg,#1b1b1f,#111114)",
+  boxShadow: "0 10px 28px rgba(0,0,0,.42)",
+  border: "2px solid rgba(120,255,220,.70)",
+  outline: "4px solid rgba(0,0,0,.35)",
+};
+
+const tinyAvatar: React.CSSProperties = {
+  width: 18,
+  height: 18,
+  borderRadius: "50%",
+  overflow: "hidden",
+  border: "1px solid rgba(255,255,255,.16)",
+  background: "rgba(0,0,0,.35)",
+  flex: "0 0 auto",
+  marginRight: 6,
+};
+
+function chipStyleGolf(label: string) {
+  // Copie "feel" X01 chips : gold/neutral/red
+  if (label === "HIT") {
+    return {
+      border: "1px solid rgba(255,195,26,.35)",
+      background: "rgba(255,195,26,.16)",
+      color: "#ffcf57",
+    };
+  }
+  if (label === "MISS") {
+    return {
+      border: "1px solid rgba(255,95,95,.35)",
+      background: "rgba(255,95,95,.14)",
+      color: "#ffb2b2",
+    };
+  }
+  return {
+    border: "1px solid rgba(255,255,255,.12)",
+    background: "rgba(255,255,255,.06)",
+    color: "#d9dbe3",
+  };
+}
+
+function GolfHeaderBlock(props: {
+  currentPlayer: { id: string; name: string; avatar: string | null } | null;
+  currentAvatar: string | null;
+  currentTotal: number;
+  holes: number;
+  holeIdx: number;
+  target: number;
+  playerIdx: number;
+  playersCount: number;
+  holeValue: number | null; // strokes sur ce trou pour ce joueur
+  liveRanking: { id: string; name: string; score: number; avatar: string | null }[];
+  isFinished: boolean;
+}) {
+  const {
+    currentPlayer,
+    currentAvatar,
+    currentTotal,
+    holes,
+    holeIdx,
+    target,
+    playerIdx,
+    playersCount,
+    holeValue,
+    liveRanking,
+    isFinished,
+  } = props;
+
+  // Chips façon X01 (3 pastilles). On matérialise sur quelle flèche la cible a été touchée.
+  let chips: string[] = ["—", "—", "—"];
+  if (typeof holeValue === "number") {
+    if (holeValue === 1) chips = ["HIT", "—", "—"];
+    else if (holeValue === 2) chips = ["—", "HIT", "—"];
+    else if (holeValue === 3) chips = ["—", "—", "HIT"];
+    else chips = ["MISS", "MISS", "MISS"];
+  }
+
+  const bgAvatarUrl = currentAvatar || null;
+
+  return (
+    <div
+      style={{
+        background:
+          "radial-gradient(120% 140% at 0% 0%, rgba(255,195,26,.10), transparent 55%), linear-gradient(180deg, rgba(15,15,18,.9), rgba(10,10,12,.8))",
+        border: "1px solid rgba(255,255,255,.08)",
+        borderRadius: 18,
+        padding: 7,
+        boxShadow: "0 8px 26px rgba(0,0,0,.35)",
+        position: "relative",
+        overflow: "hidden",
+        marginBottom: 12,
+      }}
+    >
+      {/* Dégradé gauche -> droite pour fondre le watermark dans le fond */}
+      <div
+        aria-hidden
+        style={{
+          position: "absolute",
+          inset: 0,
+          background:
+            "linear-gradient(90deg, rgba(10,10,12,.98) 0%, rgba(10,10,12,.92) 28%, rgba(10,10,12,.62) 52%, rgba(10,10,12,.22) 68%, rgba(10,10,12,0) 82%)",
+          pointerEvents: "none",
+          zIndex: 1,
+        }}
+      />
+
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "auto 1fr",
+          gap: 8,
+          alignItems: "center",
+          position: "relative",
+          zIndex: 2,
+        }}
+      >
+        {/* AVATAR + IDENTITÉ + STATS */}
+        <div
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            gap: 5,
+          }}
+        >
+          <div style={avatarMedallion}>
+            {currentAvatar ? (
+              <img
+                src={currentAvatar}
+                alt=""
+                style={{
+                  width: "100%",
+                  height: "100%",
+                  objectFit: "cover",
+                }}
+              />
+            ) : (
+              <div
+                style={{
+                  width: "100%",
+                  height: "100%",
+                  display: "flex",
+                  justifyContent: "center",
+                  alignItems: "center",
+                  color: "#999",
+                  fontWeight: 800,
+                }}
+              >
+                ?
+              </div>
+            )}
+          </div>
+
+          <div
+            style={{
+              fontWeight: 900,
+              fontSize: 17,
+              color: "#ffcf57",
+              maxWidth: 176,
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap",
+            }}
+          >
+            {currentPlayer?.name ?? "—"}
+          </div>
+
+          <div style={{ fontSize: 11.5, color: "#d9dbe3" }}>
+            Joueur : <b>{playerIdx + 1}/{playersCount}</b>
+          </div>
+
+          {/* Mini card stats joueur actif (clone X01 mini card) */}
+          <div style={{ ...miniCard, width: 176, height: "auto", padding: 7 }}>
+            <div style={miniText}>
+              <div>
+                Total : <b>{currentTotal}</b>
+              </div>
+              <div>
+                Trou : <b>{holeIdx + 1}/{holes}</b>
+              </div>
+              <div>
+                Cible : <b>{target}</b>
+              </div>
+              <div>
+                Résultat trou : <b>{typeof holeValue === "number" ? holeValue : "—"}</b>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* SCORE + PASTILLES + RANKING */}
+        <div
+          style={{
+            textAlign: "center",
+            display: "flex",
+            flexDirection: "column",
+            gap: 5,
+            position: "relative",
+            overflow: "hidden",
+            borderRadius: 14,
+            padding: 6,
+          }}
+        >
+          {/* BG avatar ancré AU SCORE (watermark type X01) */}
+          {!!bgAvatarUrl && (
+            <img
+              src={bgAvatarUrl}
+              aria-hidden
+              style={{
+                position: "absolute",
+                top: "48%",
+                left: "66%",
+                transform: "translate(-50%, -50%)",
+                height: "270%",
+                width: "auto",
+                WebkitMaskImage:
+                  "linear-gradient(90deg, rgba(0,0,0,0) 0%, rgba(0,0,0,0.15) 22%, rgba(0,0,0,0.82) 52%, rgba(0,0,0,1) 72%, rgba(0,0,0,1) 100%)",
+                maskImage:
+                  "linear-gradient(90deg, rgba(0,0,0,0) 0%, rgba(0,0,0,0.15) 22%, rgba(0,0,0,0.82) 52%, rgba(0,0,0,1) 72%, rgba(0,0,0,1) 100%)",
+                WebkitMaskRepeat: "no-repeat",
+                maskRepeat: "no-repeat",
+                WebkitMaskSize: "100% 100%",
+                maskSize: "100% 100%",
+                opacity: 0.22,
+                filter:
+                  "saturate(1.35) contrast(1.18) brightness(1.08) drop-shadow(-10px 0 26px rgba(0,0,0,.55))",
+                pointerEvents: "none",
+                userSelect: "none",
+                zIndex: 0,
+              }}
+            />
+          )}
+
+          {/* SCORE CENTRAL (TOTAL strokes) */}
+          <div
+            style={{
+              fontSize: 64,
+              fontWeight: 900,
+              position: "relative",
+              zIndex: 2,
+              color: "#ffcf57",
+              textShadow: "0 4px 18px rgba(255,195,26,.25)",
+              lineHeight: 1.02,
+            }}
+          >
+            {currentTotal}
+          </div>
+
+          {/* Pastilles live (3 flèches) */}
+          <div
+            style={{
+              display: "flex",
+              gap: 5,
+              justifyContent: "center",
+              position: "relative",
+              zIndex: 2,
+            }}
+          >
+            {[0, 1, 2].map((i) => {
+              const label = chips[i] ?? "—";
+              const st = chipStyleGolf(label === "—" ? "—" : label);
+              return (
+                <span
+                  key={i}
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    minWidth: 40,
+                    height: 28,
+                    padding: "0 10px",
+                    borderRadius: 10,
+                    border: st.border,
+                    background: st.background,
+                    color: st.color,
+                    fontWeight: 900,
+                    fontSize: 13,
+                  }}
+                >
+                  {label}
+                </span>
+              );
+            })}
+          </div>
+
+          {/* Mini ranking (top 3) — clone X01 */}
+          <div style={{ ...miniCard, margin: "0 auto", height: "auto", width: 176 }}>
+            <div
+              style={{
+                fontSize: 11,
+                color: "#d9dbe3",
+                marginBottom: 4,
+                textAlign: "left",
+                paddingLeft: 2,
+                opacity: 0.9,
+              }}
+            >
+              Classement
+            </div>
+
+            <div style={{ padding: "0 2px 2px 2px" }}>
+              {liveRanking.slice(0, 3).map((r, i) => (
+                <div key={r.id} style={miniRankRow}>
+                  <span
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      minWidth: 0,
+                      overflow: "hidden",
+                    }}
+                  >
+                    <span style={tinyAvatar}>
+                      {r.avatar ? (
+                        <img
+                          src={r.avatar}
+                          alt=""
+                          style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                        />
+                      ) : null}
+                    </span>
+                    <span
+                      style={{
+                        ...miniRankName,
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                        whiteSpace: "nowrap",
+                        maxWidth: 120,
+                      }}
+                    >
+                      {i + 1}. {r.name}
+                    </span>
+                  </span>
+                  <span style={isFinished ? miniRankScoreFini : miniRankScore}>
+                    {r.score}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function GolfPlay(props: Props) {
   const { setTab, go, tabParams, store } = props;
 
@@ -151,7 +546,6 @@ export default function GolfPlay(props: Props) {
 
   const activePlayer = !isFinished ? roster[playerIdx] : null;
   const activeAvatar = activePlayer?.avatar ?? null;
-  const activeName = activePlayer?.name ?? "—";
   const activeTotal = !isFinished ? (totals[playerIdx] ?? 0) : 0;
 
   const target = holeIdx + 1; // cible = numéro du trou (chronologique)
@@ -166,7 +560,6 @@ export default function GolfPlay(props: Props) {
       go("golf_config", payload);
       return;
     }
-    // fallback : rien
   }
 
   function pushHistory(prevScores: (number | null)[][]) {
@@ -215,9 +608,6 @@ export default function GolfPlay(props: Props) {
     setIsFinished(false);
   }
 
-  // -------------------------------
-  // UI helpers (styles “comme X01”)
-  // -------------------------------
   const cardBase: React.CSSProperties = {
     borderRadius: 18,
     border: "1px solid rgba(255,255,255,0.10)",
@@ -226,40 +616,6 @@ export default function GolfPlay(props: Props) {
     boxShadow: "0 18px 40px rgba(0,0,0,0.35)",
   };
 
-  const pill: React.CSSProperties = {
-    borderRadius: 999,
-    padding: "6px 10px",
-    border: "1px solid rgba(255,255,255,0.14)",
-    background: "rgba(0,0,0,0.35)",
-    boxShadow: "0 10px 26px rgba(0,0,0,0.45)",
-    fontSize: 12,
-    color: "#ffd36a",
-    fontWeight: 800,
-    whiteSpace: "nowrap",
-  };
-
-  const avatarRing: React.CSSProperties = {
-    width: 56,
-    height: 56,
-    borderRadius: 999,
-    border: "2px solid rgba(120,255,220,0.85)",
-    boxShadow: "0 0 0 4px rgba(0,0,0,0.35), 0 0 18px rgba(120,255,220,0.35)",
-    background: "rgba(0,0,0,0.35)",
-    overflow: "hidden",
-    display: "grid",
-    placeItems: "center",
-    flex: "0 0 auto",
-  };
-
-  const watermarkStyle: React.CSSProperties = activeAvatar
-    ? {
-        backgroundImage: `url(${activeAvatar})`,
-        backgroundRepeat: "no-repeat",
-        backgroundPosition: "110% 35%",
-        backgroundSize: "160px",
-      }
-    : {};
-
   function HolesTableBlock(props: {
     start: number; // 1-based
     end: number; // 1-based
@@ -267,7 +623,6 @@ export default function GolfPlay(props: Props) {
   }) {
     const { start, end, title } = props;
     const cols = end - start + 1;
-
     const headerCells = Array.from({ length: cols }, (_, i) => start + i);
 
     return (
@@ -287,7 +642,6 @@ export default function GolfPlay(props: Props) {
         </div>
 
         <div style={{ overflowX: "hidden" }}>
-          {/* header */}
           <div
             style={{
               display: "grid",
@@ -311,7 +665,6 @@ export default function GolfPlay(props: Props) {
             <div style={{ textAlign: "right" }}>Total</div>
           </div>
 
-          {/* rows */}
           {roster.map((p, pIdx) => {
             const row = scores[pIdx] || [];
             const slice = row.slice(start - 1, end);
@@ -337,7 +690,9 @@ export default function GolfPlay(props: Props) {
                 <div
                   style={{
                     fontWeight: 900,
-                    color: isActive ? "rgba(160,255,235,0.95)" : "rgba(255,255,255,0.75)",
+                    color: isActive
+                      ? "rgba(160,255,235,0.95)"
+                      : "rgba(255,255,255,0.75)",
                   }}
                 >
                   {pIdx + 1}
@@ -346,7 +701,9 @@ export default function GolfPlay(props: Props) {
                 {slice.map((v, i) => {
                   const val = typeof v === "number" ? v : "—";
                   const isCurrentCell =
-                    !isFinished && pIdx === playerIdx && holeIdx === (start - 1 + i);
+                    !isFinished &&
+                    pIdx === playerIdx &&
+                    holeIdx === start - 1 + i;
 
                   return (
                     <div
@@ -366,7 +723,13 @@ export default function GolfPlay(props: Props) {
                   );
                 })}
 
-                <div style={{ textAlign: "right", fontWeight: 900, color: "#ffd36a" }}>
+                <div
+                  style={{
+                    textAlign: "right",
+                    fontWeight: 900,
+                    color: "#ffd36a",
+                  }}
+                >
                   {rowTotal}
                 </div>
               </div>
@@ -387,194 +750,52 @@ export default function GolfPlay(props: Props) {
       />
 
       <div style={{ padding: 12 }}>
-        {/* ===============================
-            HEADER PROFIL ACTIF (comme X01PlayV3)
-            - Avatar + nom + mini stats à gauche
-            - Score + mini classement à droite
-            - Avatar watermark en fond du bloc score
-           =============================== */}
+        {/* HEADER PROFIL ACTIF — CLONE X01PlayV3 */}
+        <GolfHeaderBlock
+          currentPlayer={activePlayer}
+          currentAvatar={activeAvatar}
+          currentTotal={activeTotal}
+          holes={holes}
+          holeIdx={holeIdx}
+          target={target}
+          playerIdx={playerIdx}
+          playersCount={playersCount}
+          holeValue={(scores[playerIdx] && scores[playerIdx][holeIdx]) ?? null}
+          liveRanking={ranking.map((r) => ({
+            id: r.id,
+            name: r.name,
+            score: r.total,
+            avatar: r.avatar ?? null,
+          }))}
+          isFinished={isFinished}
+        />
+
+        {/* CONTENU DE JEU */}
         <div
           style={{
             ...cardBase,
             padding: 12,
             marginBottom: 12,
-            display: "flex",
-            gap: 12,
-            alignItems: "stretch",
           }}
         >
-          {/* LEFT : avatar + nom + mini stats */}
-          <div style={{ display: "flex", gap: 12, alignItems: "center", minWidth: 0, flex: 1 }}>
-            <div style={avatarRing}>
-              {activeAvatar ? (
-                <img
-                  src={activeAvatar}
-                  alt=""
-                  style={{ width: "100%", height: "100%", objectFit: "cover" }}
-                />
-              ) : (
-                <div style={{ color: "rgba(255,255,255,0.65)", fontWeight: 900 }}>
-                  {playerIdx + 1}
-                </div>
-              )}
-            </div>
-
-            <div style={{ minWidth: 0 }}>
-              <div style={{ opacity: 0.7, fontSize: 12, fontWeight: 900 }}>
-                JOUEUR ACTIF
-              </div>
-              <div
-                style={{
-                  fontSize: 18,
-                  fontWeight: 1000,
-                  color: "rgba(255,255,255,0.95)",
-                  lineHeight: 1.05,
-                  overflow: "hidden",
-                  textOverflow: "ellipsis",
-                  whiteSpace: "nowrap",
-                  maxWidth: "54vw",
-                }}
-              >
-                {activeName}
-              </div>
-
-              {/* mini stats dessous */}
-              <div style={{ display: "flex", gap: 8, marginTop: 8, flexWrap: "wrap" }}>
-                <div style={pill}>Trou {holeIdx + 1}/{holes}</div>
-                <div style={pill}>Cible {target}</div>
-                <div style={pill}>Joueur {playerIdx + 1}/{playersCount}</div>
-              </div>
-            </div>
-          </div>
-
-          {/* RIGHT : score + mini classement (avec watermark) */}
           <div
             style={{
-              width: 165,
-              borderRadius: 18,
-              border: "1px solid rgba(255,255,255,0.10)",
-              background:
-                "linear-gradient(180deg, rgba(255,215,120,0.08), rgba(0,0,0,0.30))",
-              boxShadow: "0 18px 40px rgba(0,0,0,0.35)",
-              padding: 10,
-              position: "relative",
-              overflow: "hidden",
-              ...watermarkStyle,
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "baseline",
             }}
           >
-            {/* watermark overlay */}
-            {activeAvatar && (
-              <div
-                style={{
-                  position: "absolute",
-                  inset: 0,
-                  background:
-                    "linear-gradient(90deg, rgba(0,0,0,0.65), rgba(0,0,0,0.15))",
-                  pointerEvents: "none",
-                }}
-              />
-            )}
-
-            <div style={{ position: "relative" }}>
-              <div style={{ fontSize: 12, fontWeight: 900, opacity: 0.7 }}>SCORE</div>
-              <div
-                style={{
-                  fontSize: 34,
-                  fontWeight: 1000,
-                  color: "#ffd36a",
-                  lineHeight: 1,
-                  marginTop: 2,
-                }}
-              >
-                {activeTotal}
-              </div>
-
-              {/* mini classement */}
-              <div style={{ marginTop: 10 }}>
-                <div style={{ fontSize: 11, fontWeight: 900, opacity: 0.65, marginBottom: 6 }}>
-                  Classement
-                </div>
-
-                <div style={{ display: "grid", gap: 6 }}>
-                  {ranking.slice(0, Math.min(3, ranking.length)).map((r, i) => {
-                    const isMe = !isFinished && r.idx === playerIdx;
-                    return (
-                      <div
-                        key={r.id}
-                        style={{
-                          display: "flex",
-                          alignItems: "center",
-                          justifyContent: "space-between",
-                          gap: 8,
-                          padding: "6px 8px",
-                          borderRadius: 12,
-                          border: "1px solid rgba(255,255,255,0.10)",
-                          background: isMe
-                            ? "rgba(120,255,220,0.12)"
-                            : "rgba(0,0,0,0.22)",
-                        }}
-                      >
-                        <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
-                          <div
-                            style={{
-                              width: 22,
-                              height: 22,
-                              borderRadius: 999,
-                              overflow: "hidden",
-                              border: "1px solid rgba(255,255,255,0.18)",
-                              background: "rgba(0,0,0,0.30)",
-                              flex: "0 0 auto",
-                            }}
-                          >
-                            {r.avatar ? (
-                              <img
-                                src={r.avatar}
-                                alt=""
-                                style={{ width: "100%", height: "100%", objectFit: "cover" }}
-                              />
-                            ) : null}
-                          </div>
-
-                          <div
-                            style={{
-                              fontSize: 12,
-                              fontWeight: 900,
-                              color: "rgba(255,255,255,0.88)",
-                              overflow: "hidden",
-                              textOverflow: "ellipsis",
-                              whiteSpace: "nowrap",
-                              maxWidth: 80,
-                            }}
-                          >
-                            {i + 1}. {r.name}
-                          </div>
-                        </div>
-
-                        <div style={{ fontSize: 12, fontWeight: 1000, color: "#ffd36a" }}>
-                          {r.total}
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* CONTENU DE JEU (sans les 2 cartes joueurs inutiles) */}
-        <div
-          style={{
-            ...cardBase,
-            padding: 12,
-            marginBottom: 12,
-          }}
-        >
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
-            <div style={{ fontWeight: 1000, color: "rgba(255,255,255,0.92)" }}>
+            <div
+              style={{
+                fontWeight: 1000,
+                color: "rgba(255,255,255,0.92)",
+              }}
+            >
               TROU {holeIdx + 1}/{holes}
             </div>
-            <div style={{ opacity: 0.75, fontWeight: 900 }}>JOUEUR {playerIdx + 1}/{playersCount}</div>
+            <div style={{ opacity: 0.75, fontWeight: 900 }}>
+              JOUEUR {playerIdx + 1}/{playersCount}
+            </div>
           </div>
 
           <div style={{ marginTop: 6, fontSize: 18, fontWeight: 1000 }}>
@@ -585,7 +806,14 @@ export default function GolfPlay(props: Props) {
             Résultat du trou — choisis sur quelle flèche tu touches la cible
           </div>
 
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginTop: 10 }}>
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "1fr 1fr",
+              gap: 10,
+              marginTop: 10,
+            }}
+          >
             <button
               onClick={() => commitScore(1)}
               style={{
@@ -677,10 +905,11 @@ export default function GolfPlay(props: Props) {
           </>
         )}
 
-        {/* FIN */}
         {isFinished && (
           <div style={{ ...cardBase, padding: 14, marginTop: 12 }}>
-            <div style={{ fontWeight: 1000, fontSize: 16, color: "#ffd36a" }}>Partie terminée</div>
+            <div style={{ fontWeight: 1000, fontSize: 16, color: "#ffd36a" }}>
+              Partie terminée
+            </div>
             <div style={{ marginTop: 8 }}>
               {ranking[0] ? (
                 <div style={{ fontWeight: 1000, color: "rgba(255,255,255,0.92)" }}>
