@@ -1068,11 +1068,26 @@ export default function GolfPlay(props: Props) {
         {/* GRILLE TROUS */}
         {showGrid && (
           <>
-            {holes <= 9 ? <HolesTableBlock start={1} end={holes} title={`Trous 1–${holes}`} /> : (
-              <>
-                <HolesTableBlock start={1} end={9} title="Trous 1–9" />
-                <HolesTableBlock start={10} end={holes} title={`Trous 10–${holes}`} />
-              </>
+            {holes <= 9 ? (
+              <HolesTableBlock start={1} end={holes} title={`Trous 1–${holes}`} />
+            ) : (
+              <div
+                style={{
+                  display: "flex",
+                  gap: 12,
+                  overflowX: "auto",
+                  WebkitOverflowScrolling: "touch",
+                  scrollSnapType: "x mandatory",
+                  paddingBottom: 2,
+                }}
+              >
+                <div style={{ flex: "0 0 100%", scrollSnapAlign: "start" }}>
+                  <HolesTableBlock start={1} end={9} title="Trous 1–9" />
+                </div>
+                <div style={{ flex: "0 0 100%", scrollSnapAlign: "start" }}>
+                  <HolesTableBlock start={10} end={holes} title={`Trous 10–${holes}`} />
+                </div>
+              </div>
             )}
           </>
         )}
