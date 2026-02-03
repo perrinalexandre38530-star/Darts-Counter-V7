@@ -44,6 +44,10 @@ const PARCOURS_TICKERS = Object.values(
   })
 ) as string[];
 
+// Alias attendu par certaines parties du code (random/no-repeat).
+// Fallback sécurité : si aucun ticker "parcours" n'existe, on utilise le ticker du mode.
+const GOLF_TICKERS: string[] = PARCOURS_TICKERS.length ? PARCOURS_TICKERS : [tickerGolf];
+
 function shuffle<T>(arr: T[]): T[] {
   const a = arr.slice();
   for (let i = a.length - 1; i > 0; i--) {
@@ -449,7 +453,7 @@ function GolfHeaderBlock(props: {
             <div style={{ ...miniText, display: "flex", flexDirection: "column", gap: 8 }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
                 <span style={{ opacity: 0.9 }}>Darts</span>
-                <b>{currentStats.darts}</b>
+                <span style={{ minWidth: 34, textAlign: "center", padding: "2px 8px", borderRadius: 10, border: "1px solid rgba(120,255,220,.35)", background: "rgba(120,255,220,.14)", color: "#b9ffe9", fontWeight: 1000, fontSize: 12, boxShadow: "0 10px 18px rgba(0,0,0,.25)" }}>{currentStats.darts}</span>
               </div>
 
               <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 6 }}>
@@ -471,12 +475,24 @@ function GolfHeaderBlock(props: {
                 </div>
               </div>
 
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6, opacity: 0.98, fontWeight: 900 }}>
-                <div style={{ color: "#ffcf57" }}>%1st <b style={{ color: "#ffcf57" }}>{p1}%</b></div>
-                <div style={{ color: "#b9ffe9" }}>%2nd <b style={{ color: "#b9ffe9" }}>{p2}%</b></div>
-                <div style={{ color: "rgba(185,255,233,0.92)" }}>%3rd <b style={{ color: "rgba(185,255,233,0.92)" }}>{p3}%</b></div>
-                <div style={{ color: "#ffb2b2" }}>%Miss <b style={{ color: "#ffb2b2" }}>{pMiss}%</b></div>
-              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6, opacity: 0.98 }}>
+  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 6 }}>
+    <span style={{ fontSize: 10.5, letterSpacing: 0.7, color: "rgba(255,255,255,0.86)", fontWeight: 900 }}>%1ST</span>
+    <span style={{ minWidth: 46, textAlign: "center", padding: "3px 8px", borderRadius: 10, border: "1px solid rgba(255,195,26,.35)", background: "rgba(255,195,26,.14)", color: "#ffcf57", fontWeight: 1000, fontSize: 12, boxShadow: "0 10px 18px rgba(0,0,0,.25)" }}>{p1}%</span>
+  </div>
+  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 6 }}>
+    <span style={{ fontSize: 10.5, letterSpacing: 0.7, color: "rgba(255,255,255,0.86)", fontWeight: 900 }}>%2ND</span>
+    <span style={{ minWidth: 46, textAlign: "center", padding: "3px 8px", borderRadius: 10, border: "1px solid rgba(120,255,220,.35)", background: "rgba(120,255,220,.12)", color: "#b9ffe9", fontWeight: 1000, fontSize: 12, boxShadow: "0 10px 18px rgba(0,0,0,.25)" }}>{p2}%</span>
+  </div>
+  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 6 }}>
+    <span style={{ fontSize: 10.5, letterSpacing: 0.7, color: "rgba(255,255,255,0.86)", fontWeight: 900 }}>%3RD</span>
+    <span style={{ minWidth: 46, textAlign: "center", padding: "3px 8px", borderRadius: 10, border: "1px solid rgba(120,255,220,.30)", background: "rgba(120,255,220,.09)", color: "rgba(185,255,233,0.92)", fontWeight: 1000, fontSize: 12, boxShadow: "0 10px 18px rgba(0,0,0,.25)" }}>{p3}%</span>
+  </div>
+  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 6 }}>
+    <span style={{ fontSize: 10.5, letterSpacing: 0.7, color: "rgba(255,255,255,0.86)", fontWeight: 900 }}>%MISS</span>
+    <span style={{ minWidth: 46, textAlign: "center", padding: "3px 8px", borderRadius: 10, border: "1px solid rgba(255,120,120,.35)", background: "rgba(255,120,120,.10)", color: "#ffb2b2", fontWeight: 1000, fontSize: 12, boxShadow: "0 10px 18px rgba(0,0,0,.25)" }}>{pMiss}%</span>
+  </div>
+</div>
             </div>
           </div>
         </div>
@@ -640,6 +656,14 @@ export default function GolfPlay(props: Props) {
   const [playerIdx, setPlayerIdx] = useState(0);
   const [isFinished, setIsFinished] = useState(false);
 
+  // "Tableau des scores" : carte compacte + popup (tables 1–9 et 10–18 empilées)
+  const [showScoresModal, setShowScoresModal] = useState(false);
+  const scoreTickerPoolRef = useRef<string[]>([]);
+  const [scoreCardTickerSrc, setScoreCardTickerSrc] = useState<string>(() => {
+    scoreTickerPoolRef.current = shuffle(GOLF_TICKERS);
+    return scoreTickerPoolRef.current[0] ?? tickerGolf;
+  });
+
   // Throws du tour (jusqu'à 3) : on garde uniquement le TYPE, le score final est celui de la DERNIÈRE
   const [turnThrows, setTurnThrows] = useState<ThrowKind[]>([]);
 
@@ -657,6 +681,27 @@ export default function GolfPlay(props: Props) {
     const next = pool[holeIdx] ?? pool[pool.length - 1] ?? tickerGolf;
     setHoleTickerSrc(next);
   }, [holeIdx]);
+
+  // Ticker de la carte "TABLEAU DES SCORES" : défilement auto (sans répétition immédiate)
+  useEffect(() => {
+    if (!showGrid) return;
+    const id = window.setInterval(() => {
+      const pool = scoreTickerPoolRef.current;
+      let nextPool = pool.slice(1);
+      if (nextPool.length === 0) {
+        nextPool = shuffle(GOLF_TICKERS);
+        // évite de reprendre immédiatement la même image
+        if (nextPool[0] === scoreCardTickerSrc && nextPool.length > 1) {
+          const tmp = nextPool[0];
+          nextPool[0] = nextPool[1];
+          nextPool[1] = tmp;
+        }
+      }
+      scoreTickerPoolRef.current = nextPool;
+      setScoreCardTickerSrc(nextPool[0] ?? tickerGolf);
+    }, 2600);
+    return () => window.clearInterval(id);
+  }, [showGrid, scoreCardTickerSrc]);
 
   const historyRef = useRef<HistoryEntry[]>([]);
 
@@ -879,8 +924,42 @@ export default function GolfPlay(props: Props) {
                   boxShadow: isActive ? "0 14px 30px rgba(0,0,0,0.35)" : "none",
                 }}
               >
-                <div style={{ fontWeight: 1000, color: isActive ? "#b9ffe9" : "rgba(255,255,255,0.78)" }}>
-                  {pIdx + 1}
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "center" }}>
+                  <div
+                    style={{
+                      width: 28,
+                      height: 28,
+                      borderRadius: "50%",
+                      overflow: "hidden",
+                      border: isActive
+                        ? "1px solid rgba(120,255,220,.55)"
+                        : "1px solid rgba(255,255,255,.14)",
+                      boxShadow: isActive
+                        ? "0 0 0 3px rgba(0,0,0,.28), 0 0 16px rgba(120,255,220,.25)"
+                        : "0 0 0 3px rgba(0,0,0,.28)",
+                      background: "rgba(0,0,0,.35)",
+                      display: "grid",
+                      placeItems: "center",
+                    }}
+                  >
+                    {p.avatar ? (
+                      <img
+                        src={p.avatar}
+                        alt=""
+                        style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                      />
+                    ) : (
+                      <span
+                        style={{
+                          fontWeight: 1000,
+                          fontSize: 13,
+                          color: isActive ? "#b9ffe9" : "rgba(255,255,255,0.78)",
+                        }}
+                      >
+                        {pIdx + 1}
+                      </span>
+                    )}
+                  </div>
                 </div>
 
                 {slice.map((v, i) => {
@@ -1065,31 +1144,138 @@ export default function GolfPlay(props: Props) {
           </div>
         </div>
 
-        {/* GRILLE TROUS */}
+        {/* TABLEAU DES SCORES : carte compacte (ouvre un bloc flottant avec 1–9 / 10–18 empilés) */}
         {showGrid && (
-          <>
-            {holes <= 9 ? (
-              <HolesTableBlock start={1} end={holes} title={`Trous 1–${holes}`} />
-            ) : (
+          <div style={{ marginTop: 12 }}>
+            <button
+              type="button"
+              onClick={() => setShowScoresModal(true)}
+              style={{
+                ...cardBase,
+                padding: 0,
+                width: "100%",
+                borderRadius: 18,
+                overflow: "hidden",
+                cursor: "pointer",
+                position: "relative",
+              }}
+            >
+              {/* background ticker */}
+              <div
+                aria-hidden
+                style={{
+                  position: "absolute",
+                  inset: 0,
+                  backgroundImage: `url(${scoreCardTickerSrc})`,
+                  backgroundSize: "cover",
+                  backgroundPosition: "center",
+                  opacity: 0.55,
+                  filter: "saturate(1.15) contrast(1.08)",
+                }}
+              />
+              {/* overlay */}
+              <div
+                aria-hidden
+                style={{
+                  position: "absolute",
+                  inset: 0,
+                  background:
+                    "linear-gradient(90deg, rgba(0,0,0,.76) 0%, rgba(0,0,0,.48) 45%, rgba(0,0,0,.76) 100%), radial-gradient(120% 140% at 0% 0%, rgba(120,255,220,.18), transparent 55%)",
+                }}
+              />
+
               <div
                 style={{
+                  position: "relative",
+                  zIndex: 1,
+                  height: 76,
                   display: "flex",
-                  gap: 12,
-                  overflowX: "auto",
-                  WebkitOverflowScrolling: "touch",
-                  scrollSnapType: "x mandatory",
-                  paddingBottom: 2,
+                  alignItems: "center",
+                  justifyContent: "center",
+                  fontWeight: 1000,
+                  letterSpacing: 1,
+                  color: "rgba(255,255,255,.92)",
+                  textShadow: "0 8px 22px rgba(0,0,0,.55)",
+                  textTransform: "uppercase",
                 }}
               >
-                <div style={{ flex: "0 0 100%", scrollSnapAlign: "start" }}>
-                  <HolesTableBlock start={1} end={9} title="Trous 1–9" />
-                </div>
-                <div style={{ flex: "0 0 100%", scrollSnapAlign: "start" }}>
-                  <HolesTableBlock start={10} end={holes} title={`Trous 10–${holes}`} />
+                TABLEAU DES SCORES
+              </div>
+            </button>
+
+            {showScoresModal && (
+              <div
+                role="dialog"
+                aria-modal="true"
+                onClick={() => setShowScoresModal(false)}
+                style={{
+                  position: "fixed",
+                  inset: 0,
+                  background: "rgba(0,0,0,.64)",
+                  backdropFilter: "blur(6px)",
+                  WebkitBackdropFilter: "blur(6px)",
+                  zIndex: 9999,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  padding: 12,
+                }}
+              >
+                <div
+                  onClick={(e) => e.stopPropagation()}
+                  style={{
+                    ...cardBase,
+                    width: "min(680px, 100%)",
+                    maxHeight: "82vh",
+                    overflow: "hidden",
+                    borderRadius: 20,
+                    position: "relative",
+                  }}
+                >
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      padding: "10px 12px",
+                      borderBottom: "1px solid rgba(255,255,255,0.10)",
+                    }}
+                  >
+                    <div style={{ fontWeight: 1000, color: "rgba(255,255,255,.92)" }}>
+                      TABLEAU DES SCORES
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setShowScoresModal(false)}
+                      style={{
+                        height: 34,
+                        padding: "0 12px",
+                        borderRadius: 12,
+                        border: "1px solid rgba(255,255,255,0.14)",
+                        background: "rgba(0,0,0,0.30)",
+                        color: "rgba(255,255,255,0.85)",
+                        fontWeight: 900,
+                        cursor: "pointer",
+                      }}
+                    >
+                      Fermer
+                    </button>
+                  </div>
+
+                  <div style={{ padding: 12, overflowY: "auto", maxHeight: "calc(82vh - 56px)" }}>
+                    {holes <= 9 ? (
+                      <HolesTableBlock start={1} end={holes} title={`Trous 1–${holes}`} />
+                    ) : (
+                      <>
+                        <HolesTableBlock start={1} end={9} title="Trous 1–9" />
+                        <HolesTableBlock start={10} end={holes} title={`Trous 10–${holes}`} />
+                      </>
+                    )}
+                  </div>
                 </div>
               </div>
             )}
-          </>
+          </div>
         )}
 
         {/* SAISIE (en bas) — sans titres "SAISIE" / trou-cible */}
@@ -1164,8 +1350,9 @@ export default function GolfPlay(props: Props) {
                 style={{
                   padding: "14px 12px",
                   borderRadius: 14,
-                  border: "1px solid rgba(255,255,255,0.18)",
-                  background: "rgba(0,0,0,0.18)",
+                  border: "1px solid rgba(70,160,255,0.45)",
+                  background: "rgba(20,85,185,0.22)",
+                  boxShadow: "0 14px 34px rgba(0,0,0,0.45), 0 0 18px rgba(70,160,255,0.16)",
                   color: "white",
                   fontWeight: 1000,
                   fontSize: 16,
@@ -1246,6 +1433,84 @@ export default function GolfPlay(props: Props) {
                   Vainqueur : {ranking[0].name} — {ranking[0].total}
                 </div>
               ) : null}
+            </div>
+          </div>
+        )}
+
+        {/* POPUP TABLEAU DES SCORES */}
+        {showScoresModal && (
+          <div
+            onClick={() => setShowScoresModal(false)}
+            style={{
+              position: "fixed",
+              inset: 0,
+              background: "rgba(0,0,0,0.70)",
+              backdropFilter: "blur(8px)",
+              WebkitBackdropFilter: "blur(8px)",
+              zIndex: 50,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              padding: 14,
+            }}
+          >
+            <div
+              onClick={(e) => e.stopPropagation()}
+              style={{
+                width: "min(820px, 96vw)",
+                maxHeight: "86vh",
+                overflow: "hidden",
+                borderRadius: 18,
+                border: "1px solid rgba(255,255,255,0.12)",
+                background:
+                  "radial-gradient(120% 140% at 0% 0%, rgba(255,195,26,.10), transparent 55%), linear-gradient(180deg, rgba(15,15,18,.96), rgba(10,10,12,.94))",
+                boxShadow: "0 24px 70px rgba(0,0,0,0.55)",
+              }}
+            >
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  padding: "12px 12px 10px 12px",
+                  borderBottom: "1px solid rgba(255,255,255,0.08)",
+                }}
+              >
+                <div style={{ fontWeight: 1000, letterSpacing: 0.8, color: "#ffd36a" }}>
+                  TABLEAU DES SCORES
+                </div>
+                <button
+                  onClick={() => setShowScoresModal(false)}
+                  style={{
+                    width: 38,
+                    height: 38,
+                    borderRadius: 12,
+                    border: "1px solid rgba(255,255,255,0.14)",
+                    background: "rgba(0,0,0,0.28)",
+                    color: "rgba(255,255,255,0.92)",
+                    fontWeight: 1000,
+                  }}
+                >
+                  ✕
+                </button>
+              </div>
+
+              <div
+                style={{
+                  padding: 12,
+                  overflowY: "auto",
+                  maxHeight: "calc(86vh - 60px)",
+                }}
+              >
+                {holes <= 9 ? (
+                  <HolesTableBlock start={1} end={holes} title={`Trous 1–${holes}`} />
+                ) : (
+                  <>
+                    <HolesTableBlock start={1} end={9} title="Trous 1–9" />
+                    <HolesTableBlock start={10} end={holes} title={`Trous 10–${holes}`} />
+                  </>
+                )}
+              </div>
             </div>
           </div>
         )}

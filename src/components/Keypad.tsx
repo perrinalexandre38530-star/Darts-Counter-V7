@@ -165,6 +165,24 @@ export default function Keypad({
 
   return (
     <div style={wrapCard}>
+      {/* Badges de volée — AU DESSUS du keypad (comme X01/Golf) */}
+      {!hidePreview && (
+        <div
+          style={{
+            marginBottom: 12,
+            display: "flex",
+            justifyContent: "center",
+            gap: 12,
+            flexWrap: "nowrap",
+            width: "100%",
+          }}
+        >
+          <span style={{ ...chip, marginRight: 0, color: "#eec7ff" }}>{fmt(currentThrow[0])}</span>
+          <span style={{ ...chip, marginRight: 0, color: "#cfe6ff" }}>{fmt(currentThrow[1])}</span>
+          <span style={{ ...chip, marginRight: 0, color: "#ffe7c0" }}>{fmt(currentThrow[2])}</span>
+        </div>
+      )}
+
       {/* (Barre Flèche 1/2/3 supprimée) */}
 
       {/* DOUBLE / TRIPLE / ANNULER */}
@@ -304,14 +322,7 @@ export default function Keypad({
       {/* NOTE: le "+0pts" (aperçu total) a été retiré pour un rendu plus clean
          et éviter la redondance (les jeux gèrent leur UI de volée). */}
 
-      {/* Badges d’aperçu en bas (optionnels) */}
-      {!hidePreview && (
-        <div style={{ marginTop: 12 }}>
-          <span style={{ ...chip, color: "#eec7ff" }}>{fmt(currentThrow[0])}</span>
-          <span style={{ ...chip, color: "#cfe6ff" }}>{fmt(currentThrow[1])}</span>
-          <span style={{ ...chip, color: "#ffe7c0" }}>{fmt(currentThrow[2])}</span>
-        </div>
-      )}
+      {/* NOTE: le badge volée a été déplacé en haut pour éviter qu'il passe sous le keypad */}
     </div>
   );
 }

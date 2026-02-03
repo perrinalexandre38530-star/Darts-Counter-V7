@@ -185,13 +185,6 @@ export default function ScoreInputHub({
   // Presets / Voice / Auto / IA : visibles mais grisés (sauf mode dev)
   const allowPresets = devEnabled && !!onDirectDart && enablePresets;
 
-  const [switcherOpen, setSwitcherOpen] = React.useState<boolean>(switcherMode === "inline");
-
-  React.useEffect(() => {
-    if (switcherMode === "inline") setSwitcherOpen(true);
-    if (switcherMode === "drawer") setSwitcherOpen(false);
-  }, [switcherMode]);
-
   // ✅ Unifier la hauteur visuelle du bloc de saisie :
   // on mesure la hauteur du rendu KEYPAD, puis on applique un minHeight identique aux autres méthodes.
   const contentMeasureRef = React.useRef<HTMLDivElement | null>(null);
@@ -255,7 +248,7 @@ export default function ScoreInputHub({
       window.removeEventListener("resize", onResize);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [fitToParent, method, switcherOpen, currentThrow?.length, multiplier]);
+  }, [fitToParent, method, currentThrow?.length, multiplier]);
 
   const contentBoxStyle: React.CSSProperties = {
     ...(lockContentHeight && baseContentHeight > 0 ? { minHeight: baseContentHeight } : null),
@@ -265,81 +258,15 @@ export default function ScoreInputHub({
   return (
     <div>
       {switcherMode !== "hidden" && (
-        <div style={{ marginBottom: 10, position: "relative" }}>
-          {switcherMode === "drawer" && (
-            <div style={{ display: "flex", justifyContent: "flex-end" }}>
-              <button
-                type="button"
-                onClick={() => setSwitcherOpen((v) => !v)}
-                disabled={disabled}
-                aria-label={switcherOpen ? "Réduire les méthodes" : "Afficher les méthodes"}
-                style={{
-                  width: 34,
-                  height: 24,
-                  borderRadius: 999,
-                  border: "1px solid rgba(255,255,255,0.16)",
-                  background: "rgba(0,0,0,0.35)",
-                  color: "rgba(255,255,255,0.85)",
-                  cursor: disabled ? "not-allowed" : "pointer",
-                }}
-              >
-                {switcherOpen ? "▴" : "▾"}
-              </button>
-            </div>
-          )}
-
-          {switcherMode === "inline" ? (
-            <MethodBar
-              method={method}
-              setMethod={setMethod}
-              allowPresets={allowPresets}
-              showPlaceholders={showPlaceholders}
-              disabled={disabled}
-              devEnabled={devEnabled}
-            />
-          ) : switcherOpen ? (
-            switcherOverlay ? (
-              <div
-                style={{
-                  position: "absolute",
-                  top: 42,
-                  left: 0,
-                  right: 0,
-                  zIndex: 50,
-                  paddingTop: 6,
-                }}
-              >
-                <div
-                  style={{
-                    borderRadius: 14,
-                    padding: 10,
-                    background: "rgba(0,0,0,0.55)",
-                    border: "1px solid rgba(255,255,255,0.10)",
-                    boxShadow: "0 12px 30px rgba(0,0,0,0.45)",
-                    backdropFilter: "blur(8px)",
-                  }}
-                >
-                  <MethodBar
-                    method={method}
-                    setMethod={setMethod}
-                    allowPresets={allowPresets}
-                    showPlaceholders={showPlaceholders}
-                    disabled={disabled}
-                    devEnabled={devEnabled}
-                  />
-                </div>
-              </div>
-            ) : (
-              <MethodBar
-                method={method}
-                setMethod={setMethod}
-                allowPresets={allowPresets}
-                showPlaceholders={showPlaceholders}
-                disabled={disabled}
-                devEnabled={devEnabled}
-              />
-            )
-          ) : null}
+        <div style={{ marginBottom: 10 }}>
+          <MethodBar
+            method={method}
+            setMethod={setMethod}
+            allowPresets={allowPresets}
+            showPlaceholders={showPlaceholders}
+            disabled={disabled}
+            devEnabled={devEnabled}
+          />
         </div>
       )}
 

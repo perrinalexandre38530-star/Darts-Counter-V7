@@ -46,9 +46,7 @@ function buildTerritoryFillIndex(map: TerritoriesMap, ownerColors: OwnerColorInd
 }
 
 // Countries that benefit from "slice" (full-bleed) because their SVGs often have large margins
-// We avoid `slice` because some MapSVG exports have inconsistent viewBox values,
-// and `slice` may crop islands/borders. We always render with `meet` + auto-fit.
-const SLICE_COUNTRIES: TerritoriesCountry[] = [];
+const SLICE_COUNTRIES: TerritoriesCountry[] = ["ES", "US", "CN", "RU", "WORLD"];
 
 // ---- Color helpers ----
 function clamp01(n: number) {
@@ -203,23 +201,17 @@ function injectStylesAndFills(params: {
     /* Responsive safety */
     svg { width: 100%; height: 100%; display: block; }
 
-    /* Reset backgrounds coming from some SVG exports */
-    rect { fill: transparent !important; }
-
     /* Default neutral */
-    path, polygon, polyline { cursor: pointer; }
+    /*
+      IMPORTANT (mobile UX): many maps are rendered with fill="none" to keep a contours-only look.
+      With thin strokes, tapping becomes nearly impossible because the hit area is only the stroke.
+      We force pointer-events on paths AND we keep a near-transparent fill on "unowned" territories
+      (see below) so the whole polygon remains tappable.
+    */
+    path { cursor: pointer; pointer-events: all; }
 
-    /* Base borders: outlines only (no grey interiors) */
-    path, polygon, polyline {
-      stroke: rgba(255,255,255,0.70);
-      stroke-width: 0.85;
-      vector-effect: non-scaling-stroke;
-      fill: none !important;
-    }
-
-    /* Owned territories: allow fill via inline style/attribute */
-    [data-owned="1"] { fill: var(--owned-fill) !important; }
-
+    /* Base borders */
+    path { stroke: rgba(255,255,255,0.65); stroke-width: 0.75; vector-effect: non-scaling-stroke; }
 
     /* Selected glow */
     .territory-selected {
@@ -238,7 +230,6 @@ function injectStylesAndFills(params: {
 
   if (country === "FR") {
     const paths = Array.from(svg.querySelectorAll("path[data-numerodepartement]")) as SVGPathElement[];
-    const themeRgb = hexToRgb(themeColor) || { r: 255, g: 210, b: 90 };
 
     for (const p of paths) {
       const dep = p.getAttribute("data-numerodepartement");
@@ -246,21 +237,12 @@ function injectStylesAndFills(params: {
       const tid = `FR-${dep}`;
       const ownerFill = fillByTerritoryId[tid];
 
-      // Region tagging (stroke only). No region fill tint.
+      // Region tagging (stroke only). We keep contours-only when unowned to ensure captures are clearly visible.
       const regionCode = FR_DEP_TO_REGION[dep] || "UNK";
-      if (regionCode !== "UNK") {
-        p.classList.add(`fr-region-${regionCode}`);
-      }
+      if (regionCode !== "UNK") p.classList.add(`fr-region-${regionCode}`);
 
-      // Owned => filled, otherwise outline only
-      if (ownerFill) {
-        p.setAttribute("data-owned", "1");
-        (p as any).style?.setProperty?.("--owned-fill", ownerFill);
-        p.setAttribute("fill", ownerFill);
-      } else {
-        p.removeAttribute("data-owned");
-        p.setAttribute("fill", "none");
-      }
+      // Fill: owned => visible fill. Unowned => near-transparent fill to keep full tap hitbox.
+      p.setAttribute("fill", ownerFill ? ownerFill : "rgba(0,0,0,0.015)");
 
       if (selectedTerritoryId && selectedTerritoryId === tid) p.classList.add("territory-selected");
       else p.classList.remove("territory-selected");
@@ -277,14 +259,8 @@ function injectStylesAndFills(params: {
     if (!p) continue;
 
     const fill = fillByTerritoryId[t.id];
-    if (fill) {
-      p.setAttribute("data-owned", "1");
-      (p as any).style?.setProperty?.("--owned-fill", fill);
-      p.setAttribute("fill", fill);
-    } else {
-      p.removeAttribute("data-owned");
-      p.setAttribute("fill", "none");
-    }
+    // Owned => visible fill. Unowned => near-transparent fill for reliable tapping.
+    p.setAttribute("fill", fill ? fill : "rgba(0,0,0,0.015)");
 
     if (selectedTerritoryId && selectedTerritoryId === t.id) p.classList.add("territory-selected");
     else p.classList.remove("territory-selected");
@@ -358,81 +334,6 @@ export default function TerritoriesMapView(props: TerritoriesMapViewProps) {
     if (typeof window === "undefined" || typeof DOMParser === "undefined") return overlayRaw;
     return injectOverlayStyles(overlayRaw, themeColor, map.svgViewBox, country);
   }, [overlayRaw, themeColor, map.svgViewBox, country]);
-
-  // ✅ Auto-fit SVG viewBox after mount (fixes many MapSVG exports with broken/shifted viewBox)
-  const baseLayerRef = React.useRef<HTMLDivElement | null>(null);
-  const overlayLayerRef = React.useRef<HTMLDivElement | null>(null);
-
-  const autoFit = React.useCallback((host: HTMLDivElement | null) => {
-    if (!host) return;
-    const svg = host.querySelector("svg") as any;
-    if (!svg || typeof svg.getBBox !== "function") return;
-
-    // Make it responsive
-    try {
-      svg.removeAttribute("width");
-      svg.removeAttribute("height");
-      svg.setAttribute("preserveAspectRatio", "xMidYMid meet");
-      svg.style.width = "100%";
-      svg.style.height = "100%";
-      svg.style.display = "block";
-    } catch {}
-
-    // If viewBox is missing or obviously wrong, compute a tight bbox.
-    // (We do it always, but only apply if bbox looks sane.)
-    try {
-      // Compute union bbox from real geometry elements (avoids rect/background breaking sizing)
-      const els = Array.from(svg.querySelectorAll("path,polygon,polyline,circle,ellipse")) as any[];
-      let ux: number | null = null;
-      let uy: number | null = null;
-      let ux2: number | null = null;
-      let uy2: number | null = null;
-
-      for (const el of els) {
-        if (!el || typeof el.getBBox !== "function") continue;
-        const tag = String(el.tagName || "").toLowerCase();
-        if (tag === "rect") continue;
-
-        const b = el.getBBox();
-        if (!b || !isFinite(b.x) || !isFinite(b.y) || !isFinite(b.width) || !isFinite(b.height)) continue;
-        if (b.width <= 0 || b.height <= 0) continue;
-
-        const x1 = b.x;
-        const y1 = b.y;
-        const x2 = b.x + b.width;
-        const y2 = b.y + b.height;
-
-        ux = ux == null ? x1 : Math.min(ux, x1);
-        uy = uy == null ? y1 : Math.min(uy, y1);
-        ux2 = ux2 == null ? x2 : Math.max(ux2, x2);
-        uy2 = uy2 == null ? y2 : Math.max(uy2, y2);
-      }
-
-      if (ux == null || uy == null || ux2 == null || uy2 == null) {
-        const bbox = svg.getBBox();
-        if (!bbox || !isFinite(bbox.width) || !isFinite(bbox.height)) return;
-        if (bbox.width <= 0 || bbox.height <= 0) return;
-        ux = bbox.x;
-        uy = bbox.y;
-        ux2 = bbox.x + bbox.width;
-        uy2 = bbox.y + bbox.height;
-      }
-
-      const w = Math.max(1, ux2 - ux);
-      const h = Math.max(1, uy2 - uy);
-
-      const pad = Math.max(w, h) * 0.02;
-      const vb = `${ux - pad} ${uy - pad} ${w + pad * 2} ${h + pad * 2}`;
-      svg.setAttribute("viewBox", vb);
-    } catch {
-      // ignore
-    }
-  }, []);
-
-  React.useLayoutEffect(() => {
-    autoFit(baseLayerRef.current);
-    autoFit(overlayLayerRef.current);
-  }, [autoFit, baseSvgHtml, overlaySvgHtml]);
 
   // -------- Zoom/Pan state --------
   const [scale, setScale] = React.useState(1);
@@ -510,10 +411,34 @@ export default function TerritoriesMapView(props: TerritoriesMapViewProps) {
     setTy((v) => v + dy);
   }, [scale]);
 
-  const onPointerUp = React.useCallback((e: React.PointerEvent<HTMLDivElement>) => {
-    pointers.current.delete(e.pointerId);
-    if (pointers.current.size < 2) lastPinchDist.current = null;
-  }, []);
+  const onPointerUp = React.useCallback(
+    (e: React.PointerEvent<HTMLDivElement>) => {
+      pointers.current.delete(e.pointerId);
+      if (pointers.current.size < 2) lastPinchDist.current = null;
+
+      // Mobile reliability: on some browsers, a tap does not always dispatch a click
+      // when pointer events/zoom transforms are involved. We therefore treat a
+      // "pointerup" without pan/pinch as a selection attempt.
+      if (!interactive) return;
+      if (didPan.current) {
+        didPan.current = false;
+        return;
+      }
+
+      // Only apply this fallback for touch/pen (mouse clicks are handled via onClick)
+      if (e.pointerType === "mouse") return;
+
+      const el = document.elementFromPoint(e.clientX, e.clientY) as Element | null;
+      const pathEl = el?.closest?.("path") as SVGPathElement | null;
+      if (!pathEl) return;
+
+      const tid = getTerritoryIdFromSvgElement(country, pathEl);
+      if (!tid) return;
+      if (isSelectableTerritoryId && !isSelectableTerritoryId(tid)) return;
+      onSelectTerritory?.(tid);
+    },
+    [interactive, country, isSelectableTerritoryId, onSelectTerritory]
+  );
 
   const showReset = scale !== 1 || tx !== 0 || ty !== 0;
 
@@ -582,7 +507,6 @@ export default function TerritoriesMapView(props: TerritoriesMapViewProps) {
           }}
         >
           <div
-            ref={baseLayerRef}
             style={{
               width: "100%",
               height: "100%",
@@ -594,7 +518,6 @@ export default function TerritoriesMapView(props: TerritoriesMapViewProps) {
 
           {overlaySvgHtml && (
             <div
-              ref={overlayLayerRef}
               style={{
                 position: "absolute",
                 inset: 0,

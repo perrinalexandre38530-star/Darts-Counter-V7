@@ -55,6 +55,53 @@ Conseils
 - Utilise la carte pour repérer rapidement les zones déjà prises / encore libres.
 `;
 
+const HELP_OBJECTIF = `Objectif (territoires)
+- Nombre de territoires à posséder pour gagner.
+- Victoire immédiate dès que l'objectif est atteint.
+- Si les rounds se terminent avant : le joueur/équipe avec le plus de possessions gagne.`;
+
+const HELP_SELECTION = `Sélection de cible
+FREE : vous choisissez le territoire.
+IMPOSED : le territoire est imposé.
+BY SCORE : le territoire est déterminé automatiquement par le score.
+(La sélection carte est informative uniquement.)`;
+
+const HELP_CAPTURE = `Règle de capture
+EXACT : le score doit être exactement égal.
+D'autres règles peuvent autoriser une marge.`;
+
+function TinyInfoButton({ onClick, title }: { onClick: () => void; title: string }) {
+  return (
+    <button
+      type="button"
+      aria-label={title}
+      onClick={(e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        onClick();
+      }}
+      style={{
+        width: 16,
+        height: 16,
+        borderRadius: 16,
+        border: "1px solid #fff",
+        background: "transparent",
+        color: "#fff",
+        fontSize: 11,
+        fontWeight: 700,
+        lineHeight: "16px",
+        display: "inline-flex",
+        alignItems: "center",
+        justifyContent: "center",
+        cursor: "pointer",
+      }}
+    >
+      i
+    </button>
+  );
+}
+
+
 // Alphabetical order (carousel)
 const LS_BOTS_KEY = "dc_bots_v1";
 
@@ -1307,11 +1354,57 @@ export default function DepartementsConfig(props: any) {
           <OptionSelect value={rounds} options={[8, 10, 12, 15, 20]} onChange={setRounds} />
         </OptionRow>
 
-        <OptionRow label={t("territories.objective", "Objectif (territoires)")}>
+        <OptionRow label={
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <span>{t("territories.objective", "Objectif (territoires)")}</span>
+            <InfoDot
+              size={18}
+              title="Aide : Objectif"
+              content={(
+                <div style={{ padding: 14, maxWidth: 520, lineHeight: 1.35 }}>
+                  <>
+                  <div style={{ fontWeight: 800, marginBottom: 6 }}>Objectif (territoires)</div>
+                  <div>
+                    Nombre de territoires à conquérir pour gagner (si la condition de victoire est <b>territories</b>).
+                  </div>
+                  <div style={{ opacity: 0.8, marginTop: 8 }}>
+                    Astuce : en fin de rounds, le joueur avec le plus de possessions est devant.
+                  </div>
+                </>
+                </div>
+              )}
+            />
+          </div>
+        }>
           <OptionSelect value={objective} options={[6, 8, 10, 12, 15, 18]} onChange={setObjective} />
         </OptionRow>
 
-        <OptionRow label={t("territories.targetMode", "Sélection de cible")}>
+        <OptionRow label={
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <span>{t("territories.targetMode", "Sélection de cible")}</span>
+            <InfoDot
+              size={18}
+              title="Aide : Sélection"
+              content={(
+                <div style={{ padding: 14, maxWidth: 520, lineHeight: 1.35 }}>
+                  <>
+                  <div style={{ fontWeight: 800, marginBottom: 6 }}>Sélection de cible</div>
+                  <div style={{ marginBottom: 8 }}>
+                    <b>FREE</b> : tu choisis un territoire sur la carte avant la volée.
+                  </div>
+                  <div style={{ marginBottom: 8 }}>
+                    <b>IMPOSED</b> : un territoire est imposé, il faut faire son numéro pour le prendre.
+                  </div>
+                  <div>
+                    <b>BY SCORE</b> : le score de ta volée détermine automatiquement le territoire capturé.
+                    Le clic sur la carte sert uniquement à afficher le nom/le numéro (info).
+                  </div>
+                </>
+                </div>
+              )}
+            />
+          </div>
+        }>
           <OptionSelect
             value={targetSelectionMode}
             options={["free", "by_score"]}
@@ -1319,7 +1412,28 @@ export default function DepartementsConfig(props: any) {
           />
         </OptionRow>
 
-        <OptionRow label={t("territories.captureRule", "Règle de capture")}>
+        <OptionRow label={
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <span>{t("territories.captureRule", "Règle de capture")}</span>
+            <InfoDot
+              size={18}
+              title="Aide : Capture"
+              content={(
+                <div style={{ padding: 14, maxWidth: 520, lineHeight: 1.35 }}>
+                  <>
+                  <div style={{ fontWeight: 800, marginBottom: 6 }}>Règle de capture</div>
+                  <div style={{ marginBottom: 8 }}>
+                    <b>exact</b> : score = valeur du territoire.
+                  </div>
+                  <div>
+                    <b>gte</b> : score ≥ valeur du territoire (plus permissif).
+                  </div>
+                </>
+                </div>
+              )}
+            />
+          </div>
+        }>
           <OptionSelect value={captureRule} options={["exact", "gte"]} onChange={setCaptureRule as any} />
         </OptionRow>
 
@@ -1332,7 +1446,7 @@ export default function DepartementsConfig(props: any) {
         </OptionRow>
 
         {victoryMode === "regions" && String(mapId || "").toUpperCase() === "FR" && (
-          <OptionRow label={t("territories.objectiveRegions", "Objectif (régions)")}>
+          <OptionRow label={<div style={{ display: "flex", alignItems: "center", gap: 6 }}><span>{t("territories.objectiveRegions", "Objectif (régions)")}</span><TinyInfoButton title="Objectif" onClick={() => setInfoModal({ title: "Objectif", content: HELP_OBJECTIF })} /></div>}>
             <OptionSelect value={objectiveRegions} options={[1,2,3,4,5,6,7,8,9,10]} onChange={setObjectiveRegions} />
           </OptionRow>
         )}

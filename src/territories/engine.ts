@@ -255,7 +255,13 @@ export function selectTerritory(input: TerritoriesGameState, territoryId: string
   const events: VoiceEvent[] = [];
 
   if (state.status !== "playing") return { state, events, error: "Game is not in playing state." };
-  if (state.config.targetSelectionMode !== "free") return { state, events, error: "Target selection is not free mode." };
+  // 🔁 Restore map click selection:
+  // - free: normal selection
+  // - by_score: selection is allowed for INFO/HUD only (the SCORE decides capture)
+  // - imposed: selection is forced by the engine
+  if (state.config.targetSelectionMode === "imposed") {
+    return { state, events, error: "Target selection is imposed mode." };
+  }
 
   const ownerId = getOwnerIdForActive(state);
   if (!ownerId) return { state, events, error: "Active player not found." };
@@ -331,44 +337,54 @@ export function applyVisit(input: TerritoriesGameState, dartScores: number[], op
   const ownerId = getOwnerIdForActive(state);
   if (!ownerId) return { state, events, error: "Active player not found." };
 
+  const total = dartScores.reduce((a, b) => a + b, 0);
+
+  // Territory target resolution
+  // - free: must preselect a territory
+  // - imposed: engine imposes the target
+  // - by_score: the SCORE decides the target (map selection is INFO-ONLY and must NOT affect capture)
   let territoryId = opts.territoryId ?? state.turn.selectedTerritoryId;
 
-  if (!territoryId) {
+  if (state.config.targetSelectionMode === "by_score") {
+    // In by_score mode, ALWAYS derive the target from the visit score.
+    // Any manual selection is kept only for UI display and must not change the capture result.
+    const eligible = state.map.territories.filter((tt) => isEligibleTerritory(state, tt, ownerId));
+
+    let chosen: Territory | undefined;
+    if (state.config.captureRule === "exact") {
+      const matches = eligible.filter((tt) => tt.value === total);
+      if (matches.length) chosen = matches[Math.floor(Math.random() * matches.length)];
+    } else {
+      // gte: pick the highest value <= total
+      const candidates = eligible.filter((tt) => tt.value <= total);
+      if (candidates.length) {
+        const best = Math.max(...candidates.map((c) => c.value));
+        const bestOnes = candidates.filter((c) => c.value === best);
+        chosen = bestOnes[Math.floor(Math.random() * bestOnes.length)];
+      }
+    }
+
+    if (!chosen) {
+      // no matching territory -> just consume the visit, no capture
+      state.turn.dartsThrown = Math.min(3, state.turn.dartsThrown + dartScores.length);
+      events.push({ type: "territory_failed", playerId: state.turn.activePlayerId });
+      return { state, events };
+    }
+
+    territoryId = chosen.id;
+    // Keep for HUD highlight only (does not drive the capture in by_score)
+    state.turn.selectedTerritoryId = chosen.id;
+    events.push({ type: "territory_selected", playerId: state.turn.activePlayerId, territoryId: chosen.id });
+  } else if (!territoryId) {
     if (state.config.targetSelectionMode === "free") {
       return { state, events, error: "No selected territory (free mode requires selection before visit)." };
     }
 
-    // by_score: the visit score selects the target automatically
-    if (state.config.targetSelectionMode === "by_score") {
-      const total = dartScores.reduce((a, b) => a + b, 0);
-      const eligible = state.map.territories.filter((tt) => isEligibleTerritory(state, tt, ownerId));
-
-      let chosen: Territory | undefined;
-      if (state.config.captureRule === "exact") {
-        chosen = eligible.find((tt) => tt.value === total);
-      } else {
-        // greater_or_equal: pick the highest value <= total
-        const candidates = eligible.filter((tt) => tt.value <= total).sort((a, b) => b.value - a.value);
-        chosen = candidates[0];
-      }
-
-      if (chosen) {
-        territoryId = chosen.id;
-        state.turn.selectedTerritoryId = chosen.id;
-        events.push({ type: "territory_selected", playerId: state.turn.activePlayerId, territoryId: chosen.id });
-      } else {
-        // no matching territory -> just consume the visit, no capture
-        state.turn.dartsThrown = Math.min(3, state.turn.dartsThrown + dartScores.length);
-        events.push({ type: "territory_failed", playerId: state.turn.activePlayerId });
-        return { state, events };
-      }
-    } else {
-      // imposed
-      const imposed = chooseImposedTarget(state, ownerId);
-      if (!imposed) return { state, events, error: "No eligible territory available." };
-      territoryId = imposed;
-      state.turn.selectedTerritoryId = imposed;
-    }
+    // imposed
+    const imposed = chooseImposedTarget(state, ownerId);
+    if (!imposed) return { state, events, error: "No eligible territory available." };
+    territoryId = imposed;
+    state.turn.selectedTerritoryId = imposed;
   }
 
   // Find target territory
@@ -382,7 +398,7 @@ export function applyVisit(input: TerritoriesGameState, dartScores: number[], op
     return { state, events };
   }
 
-  const total = dartScores.reduce((a, b) => a + b, 0);
+  // total already computed above
   const success = state.config.captureRule === "exact" ? total === t.value : total >= t.value;
 
   if (!success) {

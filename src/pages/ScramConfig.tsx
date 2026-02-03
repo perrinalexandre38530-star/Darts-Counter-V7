@@ -156,7 +156,12 @@ export default function ScramConfig(props: any) {
     });
   }
 
-  function onStart() {
+  function onStart(e?: any) {
+    try {
+      e?.preventDefault?.();
+      e?.stopPropagation?.();
+    } catch {}
+
     const payload: ScramConfigPayload = {
       players: selectedIds.length,
       selectedIds,
@@ -166,18 +171,42 @@ export default function ScramConfig(props: any) {
       roundsCap,
     };
 
+    // Debug (utile si "start" reset l'app): on garde le dernier payload
+    try {
+      localStorage.setItem("dc_last_scram_start_payload", JSON.stringify(payload));
+    } catch {}
+
     // compat go(tab, params) ou navigation props.go
     const go = (props as any)?.go ?? (props as any)?.params?.go;
-    if (typeof go === "function") {
-      // compat: routes "scram_play" (App.tsx) et "scram.play"
-      try { go("scram_play", payload); } catch {}
-      try { go("scram.play", payload); } catch {}
-      return;
-    }
     const setTab = (props as any)?.setTab;
-    if (typeof setTab === "function") {
-      setTab("scram_play", payload);
+
+    // 1) chemin normal : go("scram_play", payload)
+    if (typeof go === "function") {
+      try {
+        go("scram_play", payload);
+      } catch {
+        try {
+          go("scram.play", payload);
+        } catch {}
+      }
+    } else if (typeof setTab === "function") {
+      try {
+        setTab("scram_play", payload);
+      } catch {}
     }
+
+    // 2) safety net : App expose window.__appGo (voir App.tsx)
+    // Certains environnements mobile peuvent perdre la prop go lors d'un re-render.
+    try {
+      const appGo = (window as any)?.__appGo || (window as any)?.__appStore?.go;
+      if (typeof appGo === "function") {
+        window.setTimeout(() => {
+          try {
+            appGo("scram_play", payload);
+          } catch {}
+        }, 40);
+      }
+    } catch {}
   }
 
   const canStart = selectedIds.length >= 2;
@@ -414,7 +443,13 @@ export default function ScramConfig(props: any) {
         </Section>
 
         <div style={{ padding: 12, paddingTop: 4 }}>
-          <button className="btn-primary" disabled={!canStart} onClick={onStart} style={{ width: "100%" }}>
+          <button
+            type="button"
+            className="btn-primary"
+            disabled={!canStart}
+            onClick={onStart}
+            style={{ width: "100%" }}
+          >
             {t("start") || "Démarrer la partie"}
           </button>
           {!canStart && (

@@ -37,6 +37,7 @@ import { buildLegStatsFromV3LiveForOverlay } from "../lib/x01v3/x01V3LegStatsAda
 
 // ✅ Layout unifié (MEP)
 import GameplayLayout from "../components/gameplay/GameplayLayout";
+import tickerX01 from "../assets/tickers/ticker_x01.png";
 
 import { StatsBridge } from "../lib/statsBridge";
 import { loadBots } from "./ProfilesBots";
@@ -3109,7 +3110,7 @@ if (isLandscapeTablet) {
                       hidePreview
                       showPlaceholders={false}
                       disabled={isBustLocked}
-                      switcherMode="inline"
+                      switcherMode="hidden"
                     />
                   </div>
                 </div>
@@ -3253,6 +3254,7 @@ if (isLandscapeTablet) {
           </div>
         }
         playersRowLabel="JOUEURS"
+        playersRowTicker={tickerX01}
         playersPanelTitle="Joueurs"
         playersRowRight={
           <span
@@ -3352,14 +3354,16 @@ if (isLandscapeTablet) {
                       <span
                         key={i}
                         style={{
-                          minWidth: 36,
-                          padding: "2px 8px",
-                          borderRadius: 10,
-                          fontSize: 11,
+                          minWidth: 54,
+                          padding: "6px 14px",
+                          borderRadius: 14,
+                          fontSize: 16,
                           fontWeight: 900,
                           background: st.background as string,
                           border: st.border as string,
                           color: st.color as string,
+                          boxShadow: "0 0 14px rgba(0,0,0,0.35)",
+                          textShadow: "0 0 10px rgba(0,0,0,0.45)",
                         }}
                       >
                         {fmt(d)}
