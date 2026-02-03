@@ -162,18 +162,32 @@ export default function GameplayLayout({
 
   const infoEnabled = (showInfo ?? !!onInfo) && !!onInfo;
 
+  // ✅ Anti-overflow / tablet-safe:
+  // - On verrouille le viewport en tablette (pas de scroll horizontal global)
+  // - On permet un scroll vertical interne par colonne.
+  const outerStyle: React.CSSProperties = isTablet
+    ? {
+        height: "100svh",
+        width: "100%",
+        overflow: "hidden",
+      }
+    : { width: "100%" };
+
   const containerStyle: React.CSSProperties = {
     width: "100%",
-    maxWidth: isTablet ? 1180 : 920,
+    // En tablette on évite les maxWidth trop agressifs qui forcent du layout.
+    maxWidth: isTablet ? "100%" : 920,
     margin: "0 auto",
-    padding: "10px 10px 14px",
+    padding: isTablet ? "10px 12px 12px" : "10px 10px 14px",
     display: "flex",
     flexDirection: "column",
     gap: 10,
+    ...(isTablet ? { height: "100%", minHeight: 0 } : null),
   };
 
   return (
-    <div style={containerStyle}>
+    <div style={outerStyle}>
+      <div style={containerStyle}>
       {/* 1) HEADER SCOREBOARD + MENU & INFOS */}
       <div
         className="card"
@@ -261,13 +275,26 @@ export default function GameplayLayout({
       ) : (
         <div
           style={{
+            flex: 1,
+            minHeight: 0,
+            overflow: "hidden",
             display: "grid",
-            gridTemplateColumns: "1fr 1fr",
+            // ✅ minmax(0, …) empêche les enfants de forcer un overflow horizontal.
+            gridTemplateColumns: "minmax(0, 0.95fr) minmax(0, 1.05fr)",
             gap: 10,
           }}
         >
           {/* LEFT: profil + joueurs */}
-          <div style={{ display: "flex", flexDirection: "column", gap: 10, minHeight: 0 }}>
+          <div
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              gap: 10,
+              minHeight: 0,
+              minWidth: 0,
+              overflow: "hidden",
+            }}
+          >
             {activeProfileHeader ? (
               <div className="card" style={{ padding: "10px 12px" }}>
                 {activeProfileHeader}
@@ -275,7 +302,10 @@ export default function GameplayLayout({
             ) : null}
 
             {playersInSidebar ? (
-              <div className="card" style={{ padding: "10px 12px", flex: 1, minHeight: 0 }}>
+              <div
+                className="card"
+                style={{ padding: "10px 12px", flex: 1, minHeight: 0, minWidth: 0, overflow: "hidden" }}
+              >
                 <div
                   style={{
                     display: "flex",
@@ -291,7 +321,7 @@ export default function GameplayLayout({
                   {playersRowRight}
                 </div>
 
-                <div style={{ overflow: "auto", maxHeight: "100%", paddingRight: 4 }}>
+                <div style={{ overflowY: "auto", overflowX: "hidden", maxHeight: "100%", paddingRight: 4 }}>
                   {playersPanel}
                 </div>
               </div>
@@ -310,7 +340,16 @@ export default function GameplayLayout({
           </div>
 
           {/* RIGHT: volée + modes */}
-          <div style={{ display: "flex", flexDirection: "column", gap: 10, minHeight: 0 }}>
+          <div
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              gap: 10,
+              minHeight: 0,
+              minWidth: 0,
+              overflow: "hidden",
+            }}
+          >
             {volleyInputDisplay ? (
               <div className="card" style={{ padding: "10px 12px" }}>
                 {volleyInputDisplay}
@@ -318,13 +357,17 @@ export default function GameplayLayout({
             ) : null}
 
             {inputModes ? (
-              <div className="card" style={{ padding: "10px 12px", flex: 1, minHeight: 0 }}>
-                {inputModes}
+              <div
+                className="card"
+                style={{ padding: "10px 12px", flex: 1, minHeight: 0, minWidth: 0, overflow: "hidden" }}
+              >
+                <div style={{ height: "100%", minHeight: 0, overflow: "hidden" }}>{inputModes}</div>
               </div>
             ) : null}
           </div>
         </div>
       )}
+      </div>
     </div>
   );
 }

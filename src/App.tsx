@@ -2930,6 +2930,7 @@ function App() {
     "knockout_play",
     "bobs_27_play",
     "scram_play",
+    "golf_play",
     "baseball_play",
     "game_170_play",
     "football_play",

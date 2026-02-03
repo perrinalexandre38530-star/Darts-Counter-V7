@@ -315,6 +315,7 @@ const miniCard: React.CSSProperties = {
   width: "clamp(150px, 22vw, 190px)",
   padding: 7,
   borderRadius: 12,
+  overflow: "hidden",
   background:
     "linear-gradient(180deg,rgba(22,22,26,.96),rgba(14,14,16,.98))",
   border: "1px solid rgba(255,255,255,.10)",
@@ -457,9 +458,9 @@ function GolfHeaderBlock(props: {
               </div>
 
               <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 6 }}>
-                <div style={{ borderRadius: 10, padding: "6px 0", textAlign: "center", border: "1px solid rgba(255,255,255,0.18)", background: "rgba(0,0,0,0.18)", fontWeight: 1000 }}>
-                  <div style={{ fontSize: 11, opacity: 0.9, color: "rgba(255,255,255,0.92)" }}>S</div>
-                  <div style={{ fontSize: 14, color: "rgba(255,255,255,0.95)" }}>{currentStats.s}</div>
+                <div style={{ borderRadius: 10, padding: "6px 0", textAlign: "center", border: "1px solid rgba(70,160,255,0.45)", background: "rgba(20,85,185,0.22)", boxShadow: "0 0 18px rgba(70,160,255,0.16)", fontWeight: 1000 }}>
+                  <div style={{ fontSize: 11, opacity: 0.92, color: "#bfeaff" }}>S</div>
+                  <div style={{ fontSize: 14, color: "#bfeaff" }}>{currentStats.s}</div>
                 </div>
                 <div style={{ borderRadius: 10, padding: "6px 0", textAlign: "center", border: "1px solid rgba(255,195,26,0.35)", background: "rgba(255,195,26,0.16)", fontWeight: 1000 }}>
                   <div style={{ fontSize: 11, opacity: 0.9, color: "#ffcf57" }}>D</div>
@@ -477,20 +478,20 @@ function GolfHeaderBlock(props: {
 
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6, opacity: 0.98 }}>
   <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 6 }}>
-    <span style={{ fontSize: 10.5, letterSpacing: 0.7, color: "rgba(255,255,255,0.86)", fontWeight: 900 }}>%1ST</span>
-    <span style={{ minWidth: 46, textAlign: "center", padding: "3px 8px", borderRadius: 10, border: "1px solid rgba(255,195,26,.35)", background: "rgba(255,195,26,.14)", color: "#ffcf57", fontWeight: 1000, fontSize: 12, boxShadow: "0 10px 18px rgba(0,0,0,.25)" }}>{p1}%</span>
+    <span style={{ fontSize: 9.5, letterSpacing: 0.7, color: "rgba(255,255,255,0.78)", fontWeight: 900 }}>%1ST</span>
+    <span style={{ minWidth: 46, textAlign: "center", padding: "3px 8px", borderRadius: 10, border: "1px solid rgba(255,195,26,.35)", background: "rgba(255,195,26,.14)", color: "#ffcf57", fontWeight: 1000, fontSize: 12, boxShadow: "0 10px 18px rgba(0,0,0,.25)" }}>{p1}</span>
   </div>
   <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 6 }}>
-    <span style={{ fontSize: 10.5, letterSpacing: 0.7, color: "rgba(255,255,255,0.86)", fontWeight: 900 }}>%2ND</span>
-    <span style={{ minWidth: 46, textAlign: "center", padding: "3px 8px", borderRadius: 10, border: "1px solid rgba(120,255,220,.35)", background: "rgba(120,255,220,.12)", color: "#b9ffe9", fontWeight: 1000, fontSize: 12, boxShadow: "0 10px 18px rgba(0,0,0,.25)" }}>{p2}%</span>
+    <span style={{ fontSize: 9.5, letterSpacing: 0.7, color: "rgba(255,255,255,0.78)", fontWeight: 900 }}>%2ND</span>
+    <span style={{ minWidth: 46, textAlign: "center", padding: "3px 8px", borderRadius: 10, border: "1px solid rgba(120,255,220,.35)", background: "rgba(120,255,220,.12)", color: "#b9ffe9", fontWeight: 1000, fontSize: 12, boxShadow: "0 10px 18px rgba(0,0,0,.25)" }}>{p2}</span>
   </div>
   <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 6 }}>
-    <span style={{ fontSize: 10.5, letterSpacing: 0.7, color: "rgba(255,255,255,0.86)", fontWeight: 900 }}>%3RD</span>
-    <span style={{ minWidth: 46, textAlign: "center", padding: "3px 8px", borderRadius: 10, border: "1px solid rgba(120,255,220,.30)", background: "rgba(120,255,220,.09)", color: "rgba(185,255,233,0.92)", fontWeight: 1000, fontSize: 12, boxShadow: "0 10px 18px rgba(0,0,0,.25)" }}>{p3}%</span>
+    <span style={{ fontSize: 9.5, letterSpacing: 0.7, color: "rgba(255,255,255,0.78)", fontWeight: 900 }}>%3RD</span>
+    <span style={{ minWidth: 46, textAlign: "center", padding: "3px 8px", borderRadius: 10, border: "1px solid rgba(120,255,220,.30)", background: "rgba(120,255,220,.09)", color: "rgba(185,255,233,0.92)", fontWeight: 1000, fontSize: 12, boxShadow: "0 10px 18px rgba(0,0,0,.25)" }}>{p3}</span>
   </div>
   <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 6 }}>
-    <span style={{ fontSize: 10.5, letterSpacing: 0.7, color: "rgba(255,255,255,0.86)", fontWeight: 900 }}>%MISS</span>
-    <span style={{ minWidth: 46, textAlign: "center", padding: "3px 8px", borderRadius: 10, border: "1px solid rgba(255,120,120,.35)", background: "rgba(255,120,120,.10)", color: "#ffb2b2", fontWeight: 1000, fontSize: 12, boxShadow: "0 10px 18px rgba(0,0,0,.25)" }}>{pMiss}%</span>
+    <span style={{ fontSize: 9.5, letterSpacing: 0.7, color: "rgba(255,255,255,0.78)", fontWeight: 900 }}>%MISS</span>
+    <span style={{ minWidth: 46, textAlign: "center", padding: "3px 8px", borderRadius: 10, border: "1px solid rgba(255,120,120,.35)", background: "rgba(255,120,120,.10)", color: "#ffb2b2", fontWeight: 1000, fontSize: 12, boxShadow: "0 10px 18px rgba(0,0,0,.25)" }}>{pMiss}</span>
   </div>
 </div>
             </div>
@@ -1047,7 +1048,7 @@ export default function GolfPlay(props: Props) {
   function chipStyle(label: string): React.CSSProperties {
     if (label === "D") return { border: "1px solid rgba(255,195,26,.35)", background: "rgba(255,195,26,.16)", color: "#ffcf57" };
     if (label === "T") return { border: "1px solid rgba(120,255,220,.35)", background: "rgba(120,255,220,.14)", color: "#b9ffe9" };
-    if (label === "S") return { border: "1px solid rgba(255,255,255,.16)", background: "rgba(255,255,255,.08)", color: "#d9dbe3" };
+    if (label === "S") return { border: "1px solid rgba(70,160,255,.45)", background: "rgba(20,85,185,.22)", color: "#bfeaff", boxShadow: "0 0 18px rgba(70,160,255,.16)" };
     if (label === "M") return { border: "1px solid rgba(255,95,95,.35)", background: "rgba(255,95,95,.14)", color: "#ffb2b2" };
     return { border: "1px solid rgba(255,255,255,.12)", background: "rgba(255,255,255,.06)", color: "#d9dbe3" };
   }
@@ -1258,7 +1259,7 @@ export default function GolfPlay(props: Props) {
                         cursor: "pointer",
                       }}
                     >
-                      Fermer
+                      FERMER
                     </button>
                   </div>
 
@@ -1314,13 +1315,14 @@ export default function GolfPlay(props: Props) {
                 onClick={() => recordThrow("D")}
                 disabled={turnThrows.length >= 3}
                 style={{
-                  padding: "14px 12px",
+                  padding: "18px 14px",
+                  minHeight: 56,
                   borderRadius: 14,
                   border: "1px solid rgba(255,195,26,0.35)",
                   background: "rgba(255,195,26,0.16)",
                   color: "white",
                   fontWeight: 1000,
-                  fontSize: 16,
+                  fontSize: 18,
                   opacity: turnThrows.length >= 3 ? 0.55 : 1,
                 }}
               >
@@ -1331,13 +1333,14 @@ export default function GolfPlay(props: Props) {
                 onClick={() => recordThrow("T")}
                 disabled={turnThrows.length >= 3}
                 style={{
-                  padding: "14px 12px",
+                  padding: "18px 14px",
+                  minHeight: 56,
                   borderRadius: 14,
                   border: "1px solid rgba(120,255,220,0.35)",
                   background: "rgba(40,120,90,0.22)",
                   color: "white",
                   fontWeight: 1000,
-                  fontSize: 16,
+                  fontSize: 18,
                   opacity: turnThrows.length >= 3 ? 0.55 : 1,
                 }}
               >
@@ -1348,14 +1351,15 @@ export default function GolfPlay(props: Props) {
                 onClick={() => recordThrow("S")}
                 disabled={turnThrows.length >= 3}
                 style={{
-                  padding: "14px 12px",
+                  padding: "18px 14px",
+                  minHeight: 56,
                   borderRadius: 14,
                   border: "1px solid rgba(70,160,255,0.45)",
                   background: "rgba(20,85,185,0.22)",
                   boxShadow: "0 14px 34px rgba(0,0,0,0.45), 0 0 18px rgba(70,160,255,0.16)",
                   color: "white",
                   fontWeight: 1000,
-                  fontSize: 16,
+                  fontSize: 18,
                   opacity: turnThrows.length >= 3 ? 0.55 : 1,
                 }}
               >
@@ -1366,13 +1370,14 @@ export default function GolfPlay(props: Props) {
                 onClick={() => recordThrow("M")}
                 disabled={turnThrows.length >= 3}
                 style={{
-                  padding: "14px 12px",
+                  padding: "18px 14px",
+                  minHeight: 56,
                   borderRadius: 14,
                   border: "1px solid rgba(255,120,120,0.35)",
                   background: "rgba(120,40,40,0.22)",
                   color: "white",
                   fontWeight: 1000,
-                  fontSize: 16,
+                  fontSize: 18,
                   opacity: turnThrows.length >= 3 ? 0.55 : 1,
                 }}
               >
@@ -1388,11 +1393,11 @@ export default function GolfPlay(props: Props) {
                   flex: 1,
                   padding: "12px 12px",
                   borderRadius: 14,
-                  border: "1px solid rgba(120,255,220,0.40)",
-                  background: "linear-gradient(180deg, rgba(120,255,220,0.20), rgba(0,0,0,0.30))",
-                  color: "rgba(255,255,255,0.96)",
+                  border: "1px solid rgba(255,105,180,0.45)",
+                  background: "linear-gradient(180deg, rgba(255,215,236,0.95), rgba(255,186,221,0.90))",
+                  color: "#b01863",
                   boxShadow:
-                    "0 14px 32px rgba(0,0,0,0.40), inset 0 1px 0 rgba(255,255,255,0.10), 0 0 18px rgba(120,255,220,0.18)",
+                    "0 14px 32px rgba(0,0,0,0.40), inset 0 1px 0 rgba(255,255,255,0.28), 0 0 18px rgba(255,105,180,0.18)",
                   fontWeight: 1000,
                   letterSpacing: 0.8,
                   textTransform: "uppercase",
@@ -1406,19 +1411,19 @@ export default function GolfPlay(props: Props) {
                 onClick={undo}
                 disabled={historyRef.current.length === 0}
                 style={{
-                  width: 120,
+                  width: 140,
                   padding: "12px 12px",
                   borderRadius: 14,
-                  border: "1px solid rgba(255,255,255,0.14)",
-                  background: "linear-gradient(180deg, rgba(255,255,255,0.08), rgba(0,0,0,0.32))",
-                  color: "rgba(255,255,255,0.92)",
-                  boxShadow: "0 14px 32px rgba(0,0,0,0.40), inset 0 1px 0 rgba(255,255,255,0.08)",
+                  border: "1px solid rgba(255,180,0,.30)",
+                  background: "linear-gradient(180deg, #ffc63a, #ffaf00)",
+                  color: "#1a1a1a",
+                  boxShadow: "0 10px 22px rgba(255,170,0,.28), 0 14px 32px rgba(0,0,0,0.35)",
                   fontWeight: 1000,
-                  letterSpacing: 0.4,
+                  letterSpacing: 0.6,
                   opacity: historyRef.current.length === 0 ? 0.45 : 1,
                 }}
               >
-                Annuler
+                ANNULER
               </button>
             </div>
           </div>
@@ -1437,83 +1442,7 @@ export default function GolfPlay(props: Props) {
           </div>
         )}
 
-        {/* POPUP TABLEAU DES SCORES */}
-        {showScoresModal && (
-          <div
-            onClick={() => setShowScoresModal(false)}
-            style={{
-              position: "fixed",
-              inset: 0,
-              background: "rgba(0,0,0,0.70)",
-              backdropFilter: "blur(8px)",
-              WebkitBackdropFilter: "blur(8px)",
-              zIndex: 50,
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              padding: 14,
-            }}
-          >
-            <div
-              onClick={(e) => e.stopPropagation()}
-              style={{
-                width: "min(820px, 96vw)",
-                maxHeight: "86vh",
-                overflow: "hidden",
-                borderRadius: 18,
-                border: "1px solid rgba(255,255,255,0.12)",
-                background:
-                  "radial-gradient(120% 140% at 0% 0%, rgba(255,195,26,.10), transparent 55%), linear-gradient(180deg, rgba(15,15,18,.96), rgba(10,10,12,.94))",
-                boxShadow: "0 24px 70px rgba(0,0,0,0.55)",
-              }}
-            >
-              <div
-                style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  alignItems: "center",
-                  padding: "12px 12px 10px 12px",
-                  borderBottom: "1px solid rgba(255,255,255,0.08)",
-                }}
-              >
-                <div style={{ fontWeight: 1000, letterSpacing: 0.8, color: "#ffd36a" }}>
-                  TABLEAU DES SCORES
-                </div>
-                <button
-                  onClick={() => setShowScoresModal(false)}
-                  style={{
-                    width: 38,
-                    height: 38,
-                    borderRadius: 12,
-                    border: "1px solid rgba(255,255,255,0.14)",
-                    background: "rgba(0,0,0,0.28)",
-                    color: "rgba(255,255,255,0.92)",
-                    fontWeight: 1000,
-                  }}
-                >
-                  ✕
-                </button>
-              </div>
-
-              <div
-                style={{
-                  padding: 12,
-                  overflowY: "auto",
-                  maxHeight: "calc(86vh - 60px)",
-                }}
-              >
-                {holes <= 9 ? (
-                  <HolesTableBlock start={1} end={holes} title={`Trous 1–${holes}`} />
-                ) : (
-                  <>
-                    <HolesTableBlock start={1} end={9} title="Trous 1–9" />
-                    <HolesTableBlock start={10} end={holes} title={`Trous 10–${holes}`} />
-                  </>
-                )}
-              </div>
-            </div>
-          </div>
-        )}
+        
       </div>
     </div>
   );

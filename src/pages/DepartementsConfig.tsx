@@ -55,6 +55,19 @@ Conseils
 - Utilise la carte pour repérer rapidement les zones déjà prises / encore libres.
 `;
 
+
+
+const HELP_OBJECTIF_REGIONS = `Objectif (régions)
+- Nombre de régions à posséder pour gagner quand la condition de victoire est REGIONS.`;
+const HELP_VICTORY = `Condition de victoire
+TERRITORIES
+- Gagne en atteignant l'objectif (territoires).
+
+REGIONS (FR uniquement)
+- Gagne en atteignant l'objectif (régions).
+
+TIME
+- Gagne au temps : à la fin, le joueur/équipe avec le plus de possessions est gagnant.`;
 const HELP_OBJECTIF = `Objectif (territoires)
 - Nombre de territoires à posséder pour gagner.
 - Victoire immédiate dès que l'objectif est atteint.
@@ -69,38 +82,6 @@ BY SCORE : le territoire est déterminé automatiquement par le score.
 const HELP_CAPTURE = `Règle de capture
 EXACT : le score doit être exactement égal.
 D'autres règles peuvent autoriser une marge.`;
-
-function TinyInfoButton({ onClick, title }: { onClick: () => void; title: string }) {
-  return (
-    <button
-      type="button"
-      aria-label={title}
-      onClick={(e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        onClick();
-      }}
-      style={{
-        width: 16,
-        height: 16,
-        borderRadius: 16,
-        border: "1px solid #fff",
-        background: "transparent",
-        color: "#fff",
-        fontSize: 11,
-        fontWeight: 700,
-        lineHeight: "16px",
-        display: "inline-flex",
-        alignItems: "center",
-        justifyContent: "center",
-        cursor: "pointer",
-      }}
-    >
-      i
-    </button>
-  );
-}
-
 
 // Alphabetical order (carousel)
 const LS_BOTS_KEY = "dc_bots_v1";
@@ -1355,24 +1336,12 @@ export default function DepartementsConfig(props: any) {
         </OptionRow>
 
         <OptionRow label={
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
             <span>{t("territories.objective", "Objectif (territoires)")}</span>
-            <InfoDot
-              size={18}
-              title="Aide : Objectif"
-              content={(
-                <div style={{ padding: 14, maxWidth: 520, lineHeight: 1.35 }}>
-                  <>
-                  <div style={{ fontWeight: 800, marginBottom: 6 }}>Objectif (territoires)</div>
-                  <div>
-                    Nombre de territoires à conquérir pour gagner (si la condition de victoire est <b>territories</b>).
-                  </div>
-                  <div style={{ opacity: 0.8, marginTop: 8 }}>
-                    Astuce : en fin de rounds, le joueur avec le plus de possessions est devant.
-                  </div>
-                </>
-                </div>
-              )}
+            <InfoMini
+              title="Objectif (territoires)"
+              content={HELP_OBJECTIF}
+              onOpen={(title, content) => setInfoModal({ title, content })}
             />
           </div>
         }>
@@ -1380,28 +1349,12 @@ export default function DepartementsConfig(props: any) {
         </OptionRow>
 
         <OptionRow label={
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
             <span>{t("territories.targetMode", "Sélection de cible")}</span>
-            <InfoDot
-              size={18}
-              title="Aide : Sélection"
-              content={(
-                <div style={{ padding: 14, maxWidth: 520, lineHeight: 1.35 }}>
-                  <>
-                  <div style={{ fontWeight: 800, marginBottom: 6 }}>Sélection de cible</div>
-                  <div style={{ marginBottom: 8 }}>
-                    <b>FREE</b> : tu choisis un territoire sur la carte avant la volée.
-                  </div>
-                  <div style={{ marginBottom: 8 }}>
-                    <b>IMPOSED</b> : un territoire est imposé, il faut faire son numéro pour le prendre.
-                  </div>
-                  <div>
-                    <b>BY SCORE</b> : le score de ta volée détermine automatiquement le territoire capturé.
-                    Le clic sur la carte sert uniquement à afficher le nom/le numéro (info).
-                  </div>
-                </>
-                </div>
-              )}
+            <InfoMini
+              title="Sélection de cible"
+              content={HELP_SELECTION}
+              onOpen={(title, content) => setInfoModal({ title, content })}
             />
           </div>
         }>
@@ -1413,31 +1366,19 @@ export default function DepartementsConfig(props: any) {
         </OptionRow>
 
         <OptionRow label={
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
             <span>{t("territories.captureRule", "Règle de capture")}</span>
-            <InfoDot
-              size={18}
-              title="Aide : Capture"
-              content={(
-                <div style={{ padding: 14, maxWidth: 520, lineHeight: 1.35 }}>
-                  <>
-                  <div style={{ fontWeight: 800, marginBottom: 6 }}>Règle de capture</div>
-                  <div style={{ marginBottom: 8 }}>
-                    <b>exact</b> : score = valeur du territoire.
-                  </div>
-                  <div>
-                    <b>gte</b> : score ≥ valeur du territoire (plus permissif).
-                  </div>
-                </>
-                </div>
-              )}
+            <InfoMini
+              title="Règle de capture"
+              content={HELP_CAPTURE}
+              onOpen={(title, content) => setInfoModal({ title, content })}
             />
           </div>
         }>
           <OptionSelect value={captureRule} options={["exact", "gte"]} onChange={setCaptureRule as any} />
         </OptionRow>
 
-        <OptionRow label={t("territories.victoryMode", "Condition de victoire")}>
+        <OptionRow label={<div style={{ display: "flex", alignItems: "center", gap: 10 }}><span>{t("territories.victoryMode", "Condition de victoire")}</span><InfoMini title="Condition de victoire" content={HELP_VICTORY} onOpen={(t, c) => setInfoModal({ title: t, content: c })} /></div>}>
           <OptionSelect
             value={victoryMode}
             options={String(mapId || "").toUpperCase() === "FR" ? ["territories", "regions", "time"] : ["territories", "time"]}
@@ -1446,7 +1387,7 @@ export default function DepartementsConfig(props: any) {
         </OptionRow>
 
         {victoryMode === "regions" && String(mapId || "").toUpperCase() === "FR" && (
-          <OptionRow label={<div style={{ display: "flex", alignItems: "center", gap: 6 }}><span>{t("territories.objectiveRegions", "Objectif (régions)")}</span><TinyInfoButton title="Objectif" onClick={() => setInfoModal({ title: "Objectif", content: HELP_OBJECTIF })} /></div>}>
+          <OptionRow label={<div style={{ display: "flex", alignItems: "center", gap: 10 }}><span>{t("territories.objectiveRegions", "Objectif (régions)")}</span><InfoMini title="Objectif (régions)" content={HELP_OBJECTIF_REGIONS} onOpen={(t, c) => setInfoModal({ title: t, content: c })} /></div>}>
             <OptionSelect value={objectiveRegions} options={[1,2,3,4,5,6,7,8,9,10]} onChange={setObjectiveRegions} />
           </OptionRow>
         )}

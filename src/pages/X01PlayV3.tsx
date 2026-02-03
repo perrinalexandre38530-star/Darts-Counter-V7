@@ -37,10 +37,33 @@ import { buildLegStatsFromV3LiveForOverlay } from "../lib/x01v3/x01V3LegStatsAda
 
 // ✅ Layout unifié (MEP)
 import GameplayLayout from "../components/gameplay/GameplayLayout";
-import tickerX01 from "../assets/tickers/ticker_x01.png";
 
 import { StatsBridge } from "../lib/statsBridge";
 import { loadBots } from "./ProfilesBots";
+
+// Local helper matching GameplayLayout breakpoint (tablet landscape/wide).
+function useMediaQuery(query: string) {
+  const [matches, setMatches] = React.useState(false);
+
+  React.useEffect(() => {
+    if (typeof window === "undefined" || !window.matchMedia) return;
+    const mql = window.matchMedia(query);
+    const onChange = () => setMatches(!!mql.matches);
+    onChange();
+    try {
+      mql.addEventListener("change", onChange);
+      return () => mql.removeEventListener("change", onChange);
+    } catch {
+      // Safari legacy
+      // @ts-ignore
+      mql.addListener(onChange);
+      // @ts-ignore
+      return () => mql.removeListener(onChange);
+    }
+  }, [query]);
+
+  return matches;
+}
 
 
 
@@ -858,6 +881,7 @@ export default function X01PlayV3({
   onReplayNewConfig,
 }: Props) {
   const { isLandscapeTablet } = useViewport();
+  const isWideTabletLayout = useMediaQuery("(min-width: 900px) and (orientation: landscape)");
   const { theme } = useTheme();
   const themePrimary = (theme as any)?.colors?.primary ?? (theme as any)?.primary ?? "#ffcc55";
 
@@ -3110,7 +3134,10 @@ if (isLandscapeTablet) {
                       hidePreview
                       showPlaceholders={false}
                       disabled={isBustLocked}
-                      switcherMode="hidden"
+                      switcherMode="inline"
+                      // ✅ Tablet: on scale automatiquement le keypad pour éviter tout dépassement.
+                      fitToParent={isWideTabletLayout}
+                      lockContentHeight={isWideTabletLayout}
                     />
                   </div>
                 </div>
@@ -3254,7 +3281,6 @@ if (isLandscapeTablet) {
           </div>
         }
         playersRowLabel="JOUEURS"
-        playersRowTicker={tickerX01}
         playersPanelTitle="Joueurs"
         playersRowRight={
           <span
@@ -3354,16 +3380,14 @@ if (isLandscapeTablet) {
                       <span
                         key={i}
                         style={{
-                          minWidth: 54,
-                          padding: "6px 14px",
-                          borderRadius: 14,
-                          fontSize: 16,
+                          minWidth: 36,
+                          padding: "2px 8px",
+                          borderRadius: 10,
+                          fontSize: 11,
                           fontWeight: 900,
                           background: st.background as string,
                           border: st.border as string,
                           color: st.color as string,
-                          boxShadow: "0 0 14px rgba(0,0,0,0.35)",
-                          textShadow: "0 0 10px rgba(0,0,0,0.45)",
                         }}
                       >
                         {fmt(d)}
