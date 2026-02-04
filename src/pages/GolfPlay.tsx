@@ -604,25 +604,11 @@ export default function GolfPlay(props: Props) {
 
   // Compat routing : certains écrans passent via params, d'autres via tabParams
   const routeParams = (params ?? tabParams ?? {}) as any;
-  const cfgRaw = (routeParams?.config ?? {}) as any;
-  // ✅ Normalisation config (GolfConfig.tsx -> GolfPlay.tsx)
-  const cfg: GolfConfig = (cfgRaw ?? {}) as GolfConfig;
+  const cfg: GolfConfig = (routeParams?.config ?? {}) as GolfConfig;
 
-  const roundsMode = (
-    (cfgRaw as any).display === "rounds" ||
-    (cfgRaw as any).scoreMode === "rounds" ||
-    (cfgRaw as any).format === "rounds" ||
-    (cfgRaw as any).rounds === true
-  );
-  const holes = clamp(Number(cfgRaw.holes ?? cfg.holes ?? 9), 1, 18);
-  const holeOrderMode =
-    (cfgRaw as any).holeOrderMode ??
-    (cfgRaw as any).order ??
-    (cfgRaw as any).holeOrder ??
-    (cfgRaw as any).targetOrder ??
-    (cfgRaw as any).sequence ??
-    null;
-  const showGrid = ((cfgRaw as any).showHoleGrid ?? (cfgRaw as any).showGrid ?? cfg.showGrid ?? true) !== false;
+  const roundsMode = ((cfg as any).display === "rounds" || (cfg as any).scoreMode === "rounds" || (cfg as any).format === "rounds" || (cfg as any).rounds === true);
+  const holes = clamp(Number(cfg.holes ?? 9), 1, 18);
+  const showGrid = cfg.showGrid !== false;
 
   const profilesById = useMemo(() => getProfilesMap(store), [store]);
 
@@ -650,13 +636,48 @@ export default function GolfPlay(props: Props) {
   // Ordre des cibles (stable) : chronologique ou random
   const holeTargets = useMemo(() => {
     const base = Array.from({ length: holes }, (_, i) => i + 1);
-    const raw = holeOrderMode;
-    const norm = String(raw ?? "").toLowerCase().normalize("NFD").replace(/[\\u0300-\\u036f]/g, "");
-    const isRandom = raw === true || norm === "random" || norm.includes("random") || norm.includes("shuffle") || norm.includes("alea");
-    return isRandom ? shuffle(base) : base;
-  }, [holes, holeOrderMode]);
 
-  // scores[playerIdx][holeIdx] = score final du trou (1/3/4/5) ou null
+    // Normalisation ultra-defensive: la config peut stocker "aleatoire", "random", boolean, etc.
+    // ✅ on supporte explicitement holeOrderMode (clé utilisée côté config)
+    const raw =
+      (cfg as any).holeOrderMode ??
+      (cfg as any).order ??
+      (cfg as any).targetOrder ??
+      (cfg as any).holesOrder ??
+      (cfg as any).sequence ??
+      (cfg as any).randomOrder ??
+      (cfg as any).isRandom ??
+      null;
+
+    const rawNorm = String(raw ?? "")
+      .toLowerCase()
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, ""); // enlève les accents
+
+    const isRandom =
+      raw === true ||
+      rawNorm.includes("alea") ||
+      rawNorm.includes("random") ||
+      rawNorm.includes("shuffle");
+
+    if (!isRandom) return base;
+
+    // Shuffle stable sur la partie.
+    const out = shuffle(base);
+
+    // ✅ UX: éviter que la 1ère cible soit systématiquement "1" (donne l'impression que le mode aléatoire ne marche pas)
+    if (out.length > 1 && out[0] === 1) {
+      const j = out.findIndex((v) => v !== 1);
+      if (j > 0) {
+        const tmp = out[0];
+        out[0] = out[j];
+        out[j] = tmp;
+      }
+    }
+
+    return out;
+  }, [holes, cfg]);
+// scores[playerIdx][holeIdx] = score final du trou (1/3/4/5) ou null
   const [scores, setScores] = useState<(number | null)[][]>(() => {
     const s: (number | null)[][] = [];
     for (let p = 0; p < playersCount; p++) s.push(Array.from({ length: holes }, () => null));
