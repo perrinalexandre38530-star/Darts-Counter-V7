@@ -3,6 +3,8 @@ import BackDot from "../components/BackDot";
 import InfoDot from "../components/InfoDot";
 import PageHeader from "../components/PageHeader";
 import tickerGolf from "../assets/tickers/ticker_golf.png";
+import teamGoldLogo from "../ui_assets/teams/team_gold.png";
+import teamPinkLogo from "../ui_assets/teams/team_pink.png";
 
 /**
  * GOLF (darts) — Play
@@ -101,10 +103,19 @@ function getProfilesMap(store: any): Record<string, any> {
 
 type GolfConfig = {
   holes?: number; // 9 ou 18
-  order?: "chronological" | "random"; // ordre des cibles (stable)
+  holesCount?: number; // alias possible
   selectedIds?: string[]; // ids profils
-  showGrid?: boolean;
+  teamsEnabled?: boolean;
+  botsEnabled?: boolean;
+  botLevel?: any;
+  missStrokes?: number; // 4/5/6 (si mode "rounds")
+  holeOrderMode?: "chronological" | "random"; // config officielle
+  order?: "chronological" | "random"; // legacy
+  scoringMode?: "strokes" | "rounds"; // config officielle
+  showHoleGrid?: boolean; // config officielle
+  showGrid?: boolean; // legacy
 };
+
 
 type PlayerStat = {
   darts: number;
@@ -121,11 +132,15 @@ type PlayerStat = {
 type HistoryEntry = {
   holeIdx: number;
   playerIdx: number;
+  teamTurn: 0 | 1;
+  teamCursor: [number, number];
   isFinished: boolean;
   prevScores: (number | null)[][];
+  prevTeamScores: (number | null)[][];
   prevTurnThrows: ThrowKind[];
   prevStats: PlayerStat[];
 };
+
 
 type ThrowKind = "D" | "T" | "S" | "M"; // Double / Triple / Simple / Miss
 
@@ -377,12 +392,14 @@ const tinyAvatar: React.CSSProperties = {
 };
 
 function GolfHeaderBlock(props: {
+
   currentPlayer: { id: string; name: string; avatar: string | null } | null;
   currentAvatar: string | null;
   currentTotal: number;
   currentStats: PlayerStat;
   liveRanking: { id: string; name: string; score: number; avatar: string | null }[];
   isFinished: boolean;
+  teamBadge?: { label: string; color: string } | null;
 }) {
   const { currentPlayer, currentAvatar, currentTotal, currentStats, liveRanking, isFinished } = props;
 
@@ -538,6 +555,28 @@ function GolfHeaderBlock(props: {
             padding: 6,
           }}
         >
+{props.teamBadge ? (
+  <div style={{ display: "flex", justifyContent: "center", marginBottom: 2, position: "relative", zIndex: 2 }}>
+    <div
+      style={{
+        height: 20,
+        padding: "0 10px",
+        borderRadius: 999,
+        border: `1px solid ${props.teamBadge.color}55`,
+        background: `${props.teamBadge.color}22`,
+        color: props.teamBadge.color,
+        fontWeight: 1000,
+        fontSize: 11,
+        letterSpacing: 1,
+        textTransform: "uppercase",
+        boxShadow: `0 0 18px ${props.teamBadge.color}22`,
+      }}
+    >
+      {props.teamBadge.label}
+    </div>
+  </div>
+) : null}
+
           <div
             style={{
               fontSize: 64,
@@ -606,9 +645,16 @@ export default function GolfPlay(props: Props) {
   const routeParams = (params ?? tabParams ?? {}) as any;
   const cfg: GolfConfig = (routeParams?.config ?? {}) as GolfConfig;
 
-  const roundsMode = ((cfg as any).display === "rounds" || (cfg as any).scoreMode === "rounds" || (cfg as any).format === "rounds" || (cfg as any).rounds === true);
-  const holes = clamp(Number(cfg.holes ?? 9), 1, 18);
-  const showGrid = cfg.showGrid !== false;
+  const roundsMode =
+  (cfg as any).scoringMode === "rounds" ||
+  (cfg as any).display === "rounds" ||
+  (cfg as any).scoreMode === "rounds" ||
+  (cfg as any).format === "rounds" ||
+  (cfg as any).rounds === true;
+
+const holes = clamp(Number((cfg as any).holes ?? (cfg as any).holesCount ?? 9), 1, 18);
+const showGrid = ((cfg as any).showHoleGrid ?? (cfg as any).showGrid ?? true) !== false;
+const teamsEnabled = !!(cfg as any).teamsEnabled;
 
   const profilesById = useMemo(() => getProfilesMap(store), [store]);
 
@@ -632,6 +678,11 @@ export default function GolfPlay(props: Props) {
   }, [cfg.selectedIds, profilesById]);
 
   const playersCount = roster.length || 2;
+
+  const teamAIdxs = useMemo(() => (teamsEnabled ? roster.map((_, i) => i).filter((i) => i % 2 === 0) : []), [teamsEnabled, roster]);
+  const teamBIdxs = useMemo(() => (teamsEnabled ? roster.map((_, i) => i).filter((i) => i % 2 === 1) : []), [teamsEnabled, roster]);
+  const teamsOk = teamsEnabled && teamAIdxs.length > 0 && teamBIdxs.length > 0;
+
 
   // Ordre des cibles (stable) : chronologique ou random
   const holeTargets = useMemo(() => {
@@ -684,12 +735,27 @@ export default function GolfPlay(props: Props) {
     return s;
   });
 
-  const [statsByPlayer, setStatsByPlayer] = useState<PlayerStat[]>(() =>
+  
+// Scores par équipe (TEAM GOLD / TEAM PINK) — utilisé quand teamsEnabled=true
+const [teamScores, setTeamScores] = useState<(number | null)[][]>(() => {
+  return [
+    Array.from({ length: holes }, () => null),
+    Array.from({ length: holes }, () => null),
+  ];
+});
+
+const [statsByPlayer, setStatsByPlayer] = useState<PlayerStat[]>(() =>
     Array.from({ length: playersCount }, () => ({ darts: 0, miss: 0, d: 0, t: 0, s: 0, turns: 0, hit1: 0, hit2: 0, hit3: 0 }))
   );
 
   const [holeIdx, setHoleIdx] = useState(0);
+
+  // Non-teams
   const [playerIdx, setPlayerIdx] = useState(0);
+
+  // Teams (A/B) : alternance équipe->équipe et rotation des joueurs dans chaque équipe
+  const [teamTurn, setTeamTurn] = useState<0 | 1>(0); // 0=A, 1=B
+  const [teamCursor, setTeamCursor] = useState<[number, number]>([0, 0]); // index du prochain joueur à utiliser dans chaque équipe
   const [isFinished, setIsFinished] = useState(false);
 
   // "Tableau des scores" : carte compacte + popup (tables 1–9 et 10–18 empilées)
@@ -741,18 +807,42 @@ export default function GolfPlay(props: Props) {
 
   const historyRef = useRef<HistoryEntry[]>([]);
 
-  const totals = useMemo(() => scores.map((row) => sum(row.map((v) => (typeof v === "number" ? v : 0)))), [scores]);
+  const playerTotals = useMemo(() => scores.map((row) => sum(row.map((v) => (typeof v === "number" ? v : 0)))), [scores]);
+const teamTotals = useMemo(() => teamScores.map((row) => sum(row.map((v) => (typeof v === "number" ? v : 0)))), [teamScores]);
 
-  const ranking = useMemo(() => {
-    const arr = roster.map((p, idx) => ({ idx, id: p.id, name: p.name, avatar: p.avatar, total: totals[idx] ?? 0 }));
+const ranking = useMemo(() => {
+  if (teamsOk) {
+    const arr = [
+      { idx: 0, id: "teamA", name: "TEAM GOLD", avatar: teamGoldLogo, total: teamTotals[0] ?? 0 },
+      { idx: 1, id: "teamB", name: "TEAM PINK", avatar: teamPinkLogo, total: teamTotals[1] ?? 0 },
+    ];
     arr.sort((a, b) => a.total - b.total);
     return arr;
-  }, [roster, totals]);
+  }
+  const arr = roster.map((p, idx) => ({ idx, id: p.id, name: p.name, avatar: p.avatar, total: playerTotals[idx] ?? 0 }));
+  arr.sort((a, b) => a.total - b.total);
+  return arr;
+}, [roster, playerTotals, teamsOk, teamTotals]);
 
-  const activePlayer = !isFinished ? roster[playerIdx] : null;
-  const activeAvatar = activePlayer?.avatar ?? null;
-  const activeTotal = !isFinished ? totals[playerIdx] ?? 0 : 0;
-  const activeStats = !isFinished ? statsByPlayer[playerIdx] ?? { darts: 0, miss: 0, d: 0, t: 0, s: 0 } : { darts: 0, miss: 0, d: 0, t: 0, s: 0 };
+
+  const activePlayerIdx = !teamsOk
+  ? playerIdx
+  : (() => {
+      const ids = teamTurn === 0 ? teamAIdxs : teamBIdxs;
+      const cur = teamCursor[teamTurn] ?? 0;
+      if (!ids.length) return playerIdx;
+      return ids[cur % ids.length];
+    })();
+
+const activePlayer = !isFinished ? roster[activePlayerIdx] : null;
+const activeAvatar = activePlayer?.avatar ?? null;
+const activeTotal = !isFinished ? (teamsOk ? (teamTotals[teamTurn] ?? 0) : (playerTotals[activePlayerIdx] ?? 0)) : 0;
+const activeStats =
+  !isFinished
+    ? statsByPlayer[activePlayerIdx] ??
+      { darts: 0, miss: 0, d: 0, t: 0, s: 0, turns: 0, hit1: 0, hit2: 0, hit3: 0 }
+    : { darts: 0, miss: 0, d: 0, t: 0, s: 0, turns: 0, hit1: 0, hit2: 0, hit3: 0 };
+
 
   const target = holeTargets[holeIdx] ?? (holeIdx + 1);
 
@@ -762,19 +852,24 @@ export default function GolfPlay(props: Props) {
     if (typeof go === "function") return go("golf_config", payload);
   }
 
-  function pushHistory(prevScores: (number | null)[][], prevTurn: ThrowKind[], prevStats: PlayerStat[]) {
-    historyRef.current.push({
-      holeIdx,
-      playerIdx,
-      isFinished,
-      prevScores: prevScores.map((r) => r.slice()),
-      prevTurnThrows: prevTurn.slice(),
-      prevStats: prevStats.map((s) => ({ ...s })),
-    });
-    if (historyRef.current.length > 200) historyRef.current.shift();
-  }
+  function pushHistory(prevScores: (number | null)[][], prevTeamScores: (number | null)[][], prevTurn: ThrowKind[], prevStats: PlayerStat[]) {
+  historyRef.current.push({
+    holeIdx,
+    playerIdx,
+    teamTurn,
+    teamCursor,
+    isFinished,
+    prevScores: prevScores.map((r) => r.slice()),
+    prevTeamScores: prevTeamScores.map((r) => r.slice()),
+    prevTurnThrows: prevTurn.slice(),
+    prevStats: prevStats.map((s) => ({ ...s })),
+  });
+  if (historyRef.current.length > 200) historyRef.current.shift();
+}
+
 
   function advanceAfterFinalize() {
+  if (!teamsOk) {
     // next player / next hole
     const nextPlayer = playerIdx + 1;
     if (nextPlayer < playersCount) {
@@ -791,28 +886,60 @@ export default function GolfPlay(props: Props) {
       setIsFinished(true);
       setTurnThrows([]);
     }
-  }
-
-  function finalizeTurn(prevScores: (number | null)[][], nextScores: (number | null)[][], prevTurn: ThrowKind[]) {
-    // le score du trou est la DERNIÈRE flèche lancée
-    const last = prevTurn[prevTurn.length - 1];
-    const holeScore = last ? kindToScore(last) : null;
-    if (holeScore == null) return;
-
-    nextScores[playerIdx][holeIdx] = holeScore;
     return;
   }
+
+  // Teams: A joue, puis B joue, puis on passe au trou suivant
+  if (teamTurn === 0) {
+    setTeamCursor((prev) => [prev[0] + 1, prev[1]]);
+    setTeamTurn(1);
+    setTurnThrows([]);
+    return;
+  }
+
+  setTeamCursor((prev) => [prev[0], prev[1] + 1]);
+  setTeamTurn(0);
+  setTurnThrows([]);
+
+  const nextHole = holeIdx + 1;
+  if (nextHole < holes) {
+    setHoleIdx(nextHole);
+  } else {
+    setIsFinished(true);
+  }
+}
+
+  function finalizeTurn(
+  prevScores: (number | null)[][],
+  nextScores: (number | null)[][],
+  prevTeamScores: (number | null)[][],
+  nextTeamScores: (number | null)[][],
+  prevTurn: ThrowKind[]
+) {
+  // le score du trou est la DERNIÈRE flèche lancée
+  const last = prevTurn[prevTurn.length - 1];
+  const holeScore = last ? kindToScore(last) : null;
+  if (holeScore == null) return;
+
+  if (teamsOk) {
+    nextTeamScores[teamTurn][holeIdx] = holeScore;
+    return;
+  }
+
+  nextScores[playerIdx][holeIdx] = holeScore;
+}
+
 
   function recordThrow(kind: ThrowKind) {
     if (isFinished) return;
     setScores((prevScores) => {
       const prevTurn = turnThrows.slice();
       const prevStats = statsByPlayer.map((s) => ({ ...s }));
-      pushHistory(prevScores, prevTurn, prevStats);
+      pushHistory(prevScores, teamScores, prevTurn, prevStats);
 
       // update stats
       const nextStats = prevStats.map((s) => ({ ...s }));
-      const st = nextStats[playerIdx] ?? { darts: 0, miss: 0, d: 0, t: 0, s: 0, turns: 0, hit1: 0, hit2: 0, hit3: 0 };
+      const st = nextStats[activePlayerIdx] ?? { darts: 0, miss: 0, d: 0, t: 0, s: 0, turns: 0, hit1: 0, hit2: 0, hit3: 0 };
       const dartIdx = prevTurn.length; // 0..2
       if (dartIdx === 0) st.turns += 1;
       st.darts += 1;
@@ -826,7 +953,7 @@ export default function GolfPlay(props: Props) {
         if (dartIdx === 1) st.hit2 += 1;
         if (dartIdx === 2) st.hit3 += 1;
       }
-      nextStats[playerIdx] = st;
+      nextStats[activePlayerIdx] = st;
       setStatsByPlayer(nextStats);
 
       // update turnThrows
@@ -834,12 +961,15 @@ export default function GolfPlay(props: Props) {
       setTurnThrows(nextTurn);
 
       // update scores if this throw ends the turn (3 darts)
-      const nextScores = prevScores.map((r) => r.slice());
-      if (nextTurn.length >= 3) {
-        finalizeTurn(prevScores, nextScores, nextTurn);
-        // advance
-        setTimeout(() => advanceAfterFinalize(), 0);
-      }
+const nextScores = prevScores.map((r) => r.slice());
+const nextTeamScores = teamScores.map((r) => r.slice());
+
+if (nextTurn.length >= 3) {
+  finalizeTurn(prevScores, nextScores, teamScores, nextTeamScores, nextTurn);
+  if (teamsOk) setTeamScores(nextTeamScores);
+  // advance
+  setTimeout(() => advanceAfterFinalize(), 0);
+}
 
       return nextScores;
     });
@@ -852,25 +982,33 @@ export default function GolfPlay(props: Props) {
     setScores((prevScores) => {
       const prevTurn = turnThrows.slice();
       const prevStats = statsByPlayer.map((s) => ({ ...s }));
-      pushHistory(prevScores, prevTurn, prevStats);
+      pushHistory(prevScores, teamScores, prevTurn, prevStats);
 
       const nextScores = prevScores.map((r) => r.slice());
-      finalizeTurn(prevScores, nextScores, prevTurn);
-      setTimeout(() => advanceAfterFinalize(), 0);
-      return nextScores;
+const nextTeamScores = teamScores.map((r) => r.slice());
+
+finalizeTurn(prevScores, nextScores, teamScores, nextTeamScores, prevTurn);
+if (teamsOk) setTeamScores(nextTeamScores);
+
+setTimeout(() => advanceAfterFinalize(), 0);
+return nextScores;
     });
   }
 
   function undo() {
-    const h = historyRef.current.pop();
-    if (!h) return;
-    setScores(h.prevScores.map((r) => r.slice()));
-    setHoleIdx(h.holeIdx);
-    setPlayerIdx(h.playerIdx);
-    setIsFinished(h.isFinished);
-    setTurnThrows(h.prevTurnThrows.slice());
-    setStatsByPlayer(h.prevStats.map((s) => ({ ...s })));
-  }
+  const h = historyRef.current.pop();
+  if (!h) return;
+  setScores(h.prevScores.map((r) => r.slice()));
+  setTeamScores(h.prevTeamScores.map((r) => r.slice()));
+  setHoleIdx(h.holeIdx);
+  setPlayerIdx(h.playerIdx);
+  setTeamTurn(h.teamTurn);
+  setTeamCursor(h.teamCursor);
+  setIsFinished(h.isFinished);
+  setTurnThrows(h.prevTurnThrows.slice());
+  setStatsByPlayer(h.prevStats.map((s) => ({ ...s })));
+}
+
 
   // ---------------- UI helpers ----------------
   const cardBase: React.CSSProperties = {
@@ -937,11 +1075,11 @@ export default function GolfPlay(props: Props) {
           </div>
 
           {/* rows */}
-          {roster.map((p, pIdx) => {
-            const row = scores[pIdx] || [];
+          {(teamsOk ? [{ id: 'teamA', name: 'TEAM GOLD', avatar: teamGoldLogo }, { id: 'teamB', name: 'TEAM PINK', avatar: teamPinkLogo }] : roster).map((p, pIdx) => {
+            const row = (teamsOk ? teamScores[pIdx] : scores[pIdx]) || [];
             const slice = row.slice(start - 1, end);
-            const rowTotal = totals[pIdx] ?? 0;
-            const isActive = !isFinished && pIdx === playerIdx;
+            const rowTotal = (teamsOk ? teamTotals[pIdx] : playerTotals[pIdx]) ?? 0;
+            const isActive = !isFinished && (teamsOk ? pIdx === teamTurn : pIdx === playerIdx);
 
             return (
               <div
@@ -999,7 +1137,7 @@ export default function GolfPlay(props: Props) {
                 </div>
 
                 {slice.map((v, i) => {
-                  const isCurrentCell = !isFinished && pIdx === playerIdx && holeIdx === start - 1 + i;
+                  const isCurrentCell = !isFinished && (teamsOk ? pIdx === teamTurn : pIdx === playerIdx) && holeIdx === start - 1 + i;
 
                   if (typeof v !== "number") {
                     return (
@@ -1095,24 +1233,34 @@ export default function GolfPlay(props: Props) {
       <div style={{ padding: 12 }}>
         {/* Carousel joueurs (clone KILLER) */}
         <GolfPlayersCarousel
-          players={roster.map((p, idx) => ({
-            id: p.id,
-            name: p.name,
-            avatar: p.avatar ?? null,
-            total: totals[idx] ?? 0,
-          }))}
-          activeId={!isFinished ? roster[playerIdx]?.id : null}
-          theme={"#b9ffe9"}
-        />
+  players={
+    teamsOk
+      ? [
+          { id: "teamA", name: "TEAM GOLD", avatar: teamGoldLogo, total: teamTotals[0] ?? 0 },
+          { id: "teamB", name: "TEAM PINK", avatar: teamPinkLogo, total: teamTotals[1] ?? 0 },
+        ]
+      : roster.map((p, idx) => ({
+          id: p.id,
+          name: p.name,
+          avatar: p.avatar ?? null,
+          total: playerTotals[idx] ?? 0,
+        }))
+  }
+  activeId={!isFinished ? (teamsOk ? (teamTurn === 0 ? "teamA" : "teamB") : roster[playerIdx]?.id) : null}
+  theme={teamsOk ? (teamTurn === 0 ? "#ffcf57" : "#ff7ac8") : "#b9ffe9"}
+/>
+
 
         <GolfHeaderBlock
-          currentPlayer={activePlayer}
-          currentAvatar={activeAvatar}
-          currentTotal={activeTotal}
-          currentStats={activeStats}
-          liveRanking={ranking.map((r) => ({ id: r.id, name: r.name, score: r.total, avatar: r.avatar ?? null }))}
-          isFinished={isFinished}
-        />
+  currentPlayer={activePlayer}
+  currentAvatar={activeAvatar}
+  currentTotal={activeTotal}
+  currentStats={activeStats}
+  liveRanking={ranking.map((r: any) => ({ id: r.id, name: r.name, score: r.total, avatar: r.avatar ?? null }))}
+  isFinished={isFinished}
+  teamBadge={teamsOk ? { label: teamTurn === 0 ? "TEAM GOLD" : "TEAM PINK", color: teamTurn === 0 ? "#ffcf57" : "#ff7ac8" } : null}
+/>
+
 
         {/* Bandeau TROU / ticker parcours / CIBLE (ticker plein, texte sur l’image) */}
         <div
