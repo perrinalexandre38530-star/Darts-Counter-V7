@@ -1,46 +1,70 @@
 // =============================================================
 // src/pages/ScramPlay.tsx
-// SCRAM — PLAY (engine v1)
-// - Phase RACE + Phase SCRAM (team-based)
-// - Input via DartboardClickable (0..3 fléchettes) + Validate / Undo
-// - UI "plateau" lisible + mini-stats live
-// IMPORTANT: Bull mapping
-//   - OB = v=25
-//   - IB = v=50
-// (aligné sur uiThrowToGameDarts/uiDartToGameDart)
+// SCRAM — PLAY (Cricket-style UI)
+// - Reprend l'ergonomie CricketPlay : tableau cibles + modes KEYPAD/CIBLE + S/D/T + Dartboard
+// - Branché sur le moteur ScramEngine via useScramEngine
 // =============================================================
 
 import React from "react";
 import BackDot from "../components/BackDot";
 import InfoDot from "../components/InfoDot";
-import PageHeader from "../components/PageHeader";
 import DartboardClickable from "../components/DartboardClickable";
+import { CricketMarkIcon } from "../components/MaskIcon";
 import tickerScram from "../assets/tickers/ticker_scram.png";
-import { useLang } from "../contexts/LangContext";
 import { useTheme } from "../contexts/ThemeContext";
+import { useLang } from "../contexts/LangContext";
 import { useScramEngine } from "../hooks/useScramEngine";
 
-type UIDart = { v: number; mult: 1 | 2 | 3; label?: string };
+type TeamId = "A" | "B";
+type HitMode = "S" | "D" | "T";
+type InputMethod = "keypad" | "dartboard";
 
-type ConfigPayload = {
-  selectedIds: string[];
-  objective: number;
-  roundsCap: number;
-  // compat
-  players?: number;
+type UIDart = { v: number; mult: 1 | 2 | 3 };
+
+const T = {
+  bg: "#050712",
+  card: "#121420",
+  text: "#FFFFFF",
+  textSoft: "rgba(255,255,255,0.7)",
+  gold: "#F6C256",
+  borderSoft: "rgba(255,255,255,0.10)",
 };
 
-const INFO_TEXT =
-  "SCRAM (v1) — 2 phases\n\n" +
-  "1) RACE : les 2 équipes ferment 20→15 (+ Bull) en 3 marques (S=1, D=2, T=3 ; Bull=OB(25)/IB(50)).\n" +
-  "2) SCRAM : l'équipe qui a gagné la RACE devient SCORERS (elle marque des points).\n" +
-  "   L'autre équipe devient CLOSERS (elle ferme les cibles).\n\n" +
-  "Victoire :\n" +
-  "- SCORERS atteignent l'objectif de points → SCORERS gagnent\n" +
-  "- CLOSERS ferment toutes les cibles → CLOSERS gagnent";
+const TARGETS: number[] = [20, 19, 18, 17, 16, 15, 25];
 
-function toLabel(d: UIDart): string {
-  if (!d || !Number.isFinite(d.v)) return "MISS";
+const TARGET_COLORS: Record<number, string> = {
+  15: "#F6C256",
+  16: "#fbbf24",
+  17: "#fb923c",
+  18: "#f97316",
+  19: "#fb7185",
+  20: "#ef4444",
+  25: "#b91c1c",
+};
+
+const SCORE_INPUT_LS_KEY = "dc_score_input_method"; // même clé que cricket (fallback)
+
+function labelTarget(t: number) {
+  return t === 25 ? "BULL" : String(t);
+}
+
+function clampMarks(n: any) {
+  const v = Number(n);
+  return Number.isFinite(v) ? Math.max(0, Math.min(3, Math.floor(v))) : 0;
+}
+
+function bullToUIDart(mode: HitMode): UIDart {
+  // SCRAM: OB=25, IB=50 (aligné sur uiThrowToGameDarts)
+  if (mode === "S") return { v: 25, mult: 1 };
+  return { v: 50, mult: 1 };
+}
+
+function modeToMult(mode: HitMode): 1 | 2 | 3 {
+  return mode === "S" ? 1 : mode === "D" ? 2 : 3;
+}
+
+function uiDartLabel(d: UIDart) {
+  if (!d) return "—";
   if (d.v === 0) return "MISS";
   if (d.v === 25) return "OB";
   if (d.v === 50) return "IB";
@@ -48,456 +72,440 @@ function toLabel(d: UIDart): string {
   return `${p}${d.v}`;
 }
 
-function safeInt(v: any, fallback = 0) {
-  const n = Number(v);
-  return Number.isFinite(n) ? Math.floor(n) : fallback;
-}
-
-function computeLiveMiniStats(state: any) {
-  // Agrégats simples à partir de state.history (BaseEngine)
-  const out = {
-    darts: 0,
-    miss: 0,
-    s: 0,
-    d: 0,
-    t: 0,
-    ob: 0,
-    ib: 0,
-    byTeam: {
-      A: { darts: 0, miss: 0, s: 0, d: 0, t: 0, ob: 0, ib: 0 },
-      B: { darts: 0, miss: 0, s: 0, d: 0, t: 0, ob: 0, ib: 0 },
-    } as any,
-  };
-
-  const teamByPlayer: Record<string, "A" | "B"> = state?.teamByPlayer ?? {};
-
+function computeMini(state: any) {
+  const out = { darts: 0, miss: 0, s: 0, d: 0, t: 0, ob: 0, ib: 0 };
   for (const h of state?.history ?? []) {
-    const team = teamByPlayer[String(h.playerId)] ?? "A";
     for (const dart of h?.darts ?? []) {
       out.darts += 1;
-      out.byTeam[team].darts += 1;
-
-      if (!dart || dart.bed === "MISS") {
-        out.miss += 1;
-        out.byTeam[team].miss += 1;
-        continue;
-      }
-
-      if (dart.bed === "S") { out.s += 1; out.byTeam[team].s += 1; }
-      else if (dart.bed === "D") { out.d += 1; out.byTeam[team].d += 1; }
-      else if (dart.bed === "T") { out.t += 1; out.byTeam[team].t += 1; }
-      else if (dart.bed === "OB") { out.ob += 1; out.byTeam[team].ob += 1; }
-      else if (dart.bed === "IB") { out.ib += 1; out.byTeam[team].ib += 1; }
+      if (!dart || dart.bed === "MISS") out.miss += 1;
+      if (dart?.bed === "S") out.s += 1;
+      if (dart?.bed === "D") out.d += 1;
+      if (dart?.bed === "T") out.t += 1;
+      if (dart?.bed === "OB") out.ob += 1;
+      if (dart?.bed === "IB") out.ib += 1;
     }
   }
-
   return out;
 }
 
 export default function ScramPlay(props: any) {
   const { t } = useLang();
-  const theme = useTheme();
+  const { theme } = useTheme();
 
-  const cfg: ConfigPayload =
-    (props?.params as any) ||
-    (props?.config as any) ||
-    ({ selectedIds: [], objective: 200, roundsCap: 0 } as any);
+  const profiles = (props?.profiles ?? []) as any[];
+  const params = props?.params ?? props ?? {};
+  const selectedIds: string[] =
+    params?.selectedIds ??
+    params?.scram_config?.selectedIds ??
+    params?.payload?.selectedIds ??
+    [];
 
-  const store = (props as any)?.store ?? null;
-  const storeProfiles: any[] = Array.isArray((store as any)?.profiles) ? (store as any).profiles : [];
-  const profileById = React.useMemo(() => {
-    const m = new Map<string, any>();
-    for (const p of storeProfiles) m.set(String(p.id), p);
-    return m;
-  }, [storeProfiles]);
+  const objective = Number(params?.objective ?? params?.scram_config?.objective ?? 200) || 200;
+  const roundsCap = Number(params?.roundsCap ?? params?.scram_config?.roundsCap ?? 0) || 0;
 
-  const selectedIds = Array.isArray(cfg.selectedIds) ? cfg.selectedIds : [];
   const players = React.useMemo(() => {
-    const out: { id: string; name: string }[] = [];
-    for (let i = 0; i < selectedIds.length; i++) {
-      const id = String(selectedIds[i]);
-      const p = profileById.get(id);
-      out.push({ id, name: p?.name || p?.username || p?.display_name || `Joueur ${i + 1}` });
-    }
-    return out;
-  }, [profileById, selectedIds.join("|")]);
+    const chosen = profiles.filter((p) => selectedIds.includes(p.id));
+    // fallback (évite init vide)
+    return chosen.length ? chosen : profiles.slice(0, 2);
+  }, [profiles, selectedIds.join("|")]);
 
-  // sécurité
-  const safePlayers = players.length >= 2 ? players : [{ id: "p1", name: "Joueur 1" }, { id: "p2", name: "Joueur 2" }];
-
-  const { state, play, undo, canUndo, isFinished } = useScramEngine(safePlayers as any, {
-    objective: safeInt(cfg.objective || 0),
-    maxRounds: safeInt(cfg.roundsCap || 0),
+  const { state, play, undo, canUndo, isFinished, winner } = useScramEngine(players as any, {
+    objective,
+    maxRounds: roundsCap,
     useBull: true,
     marksToClose: 3,
   });
 
-  const primary = (theme as any)?.primary ?? "#7dffca";
-  const teamA = (theme as any)?.pink ?? "#ff6bd6";
-  const teamB = (theme as any)?.gold ?? "#f6c256";
-
-  const currentPlayer = state.players[state.currentPlayerIndex];
-  const currentTeam = state.teamByPlayer[currentPlayer?.id] ?? "A";
-
-  const [mult, setMult] = React.useState<1 | 2 | 3>(1);
-  const [throwDarts, setThrowDarts] = React.useState<UIDart[]>([]);
+  const [hitMode, setHitMode] = React.useState<HitMode>("S");
+  const [inputMethod, setInputMethod] = React.useState<InputMethod>(() => {
+    try {
+      const v = localStorage.getItem(SCORE_INPUT_LS_KEY);
+      return v === "dartboard" ? "dartboard" : "keypad";
+    } catch {
+      return "keypad";
+    }
+  });
 
   React.useEffect(() => {
-    // clear throw on turn change
-    setThrowDarts([]);
-  }, [state.turnIndex]);
+    try {
+      localStorage.setItem(SCORE_INPUT_LS_KEY, inputMethod);
+    } catch {}
+  }, [inputMethod]);
 
-  function onHit(seg: number, m: 1 | 2 | 3) {
+  const [throwDarts, setThrowDarts] = React.useState<UIDart[]>([]);
+  const maxDarts = 3;
+
+  const currentPlayer = state?.players?.[state?.currentPlayerIndex ?? 0];
+  const teamByPlayer = (state?.teamByPlayer ?? {}) as Record<string, TeamId>;
+  const activeTeam: TeamId = teamByPlayer[String(currentPlayer?.id)] ?? "A";
+
+  const phase = state?.phase ?? "race";
+  const mini = React.useMemo(() => computeMini(state), [state?.history]);
+
+  // Marks getters
+  const marksRace = (team: TeamId, target: number) => clampMarks(state?.raceMarks?.[team]?.[target] ?? 0);
+  const marksClosers = (target: number) => clampMarks(state?.closersMarks?.[target] ?? 0);
+
+  function onKeyPress(value: number) {
     if (isFinished) return;
-    setThrowDarts((prev) => {
-      if (prev.length >= 3) return prev;
-
-      // DartboardClickable: seg = 1..20, ou 25 pour bull
-      // 🔥 mapping bull: OB=25 (single), IB=50 (double)
-      let v = 0;
-      let multLocal: 1 | 2 | 3 = m;
-
-      if (seg === 25) {
-        v = m === 2 ? 50 : 25;
-        multLocal = 1; // pour label; le bed est dérivé de v (25/50)
-      } else {
-        v = Math.max(0, Math.min(20, Math.floor(seg)));
-      }
-
-      const d: UIDart = { v, mult: multLocal, label: "" };
-      d.label = toLabel(d);
-      return [...prev, d];
-    });
+    if (throwDarts.length >= maxDarts) return;
+    if (value === 25) {
+      setThrowDarts((prev) => [...prev, bullToUIDart(hitMode)]);
+      return;
+    }
+    const mult = modeToMult(hitMode);
+    setThrowDarts((prev) => [...prev, { v: value, mult }]);
   }
 
-  function validate() {
+  function onDartboardHit(hit: any) {
     if (isFinished) return;
-    // v=25/50 gère OB/IB automatiquement via uiThrowToGameDarts
-    play(throwDarts.map((d) => ({ v: d.v, mult: d.mult })) as any);
+    if (!hit) return;
+    if (throwDarts.length >= maxDarts) return;
+
+    const v = Number(hit?.value ?? hit?.v ?? 0) || 0;
+    const mult = Number(hit?.multiplier ?? hit?.mult ?? hit?.m ?? 1) as 1 | 2 | 3;
+    // Normalize bull
+    if (v === 25 && mult >= 2) {
+      setThrowDarts((prev) => [...prev, { v: 50, mult: 1 }]);
+      return;
+    }
+    setThrowDarts((prev) => [...prev, { v, mult: (mult === 2 ? 2 : mult === 3 ? 3 : 1) }]);
+  }
+
+  function onClear() {
     setThrowDarts([]);
   }
 
-  function clearThrow() {
+  function onValidate() {
+    if (isFinished) return;
+    if (!throwDarts.length) return;
+    play(throwDarts as any);
     setThrowDarts([]);
   }
 
-  function goBack() {
-    const go = (props as any)?.setTab ?? (props as any)?.go;
-    if (typeof go === "function") return go("scram_config");
-    window.history.back();
-  }
+  // UI helpers
+  const pill = (active: boolean, color: string) => ({
+    flex: 1,
+    padding: "12px 0",
+    borderRadius: 999,
+    border: `1px solid ${active ? color : "rgba(255,255,255,0.12)"}`,
+    background: active ? "rgba(255,255,255,0.06)" : "rgba(255,255,255,0.03)",
+    color: active ? "#fff" : "rgba(255,255,255,0.75)",
+    fontWeight: 900,
+    letterSpacing: 1,
+  } as React.CSSProperties);
 
-  const phaseLabel = state.phase === "race" ? "RACE" : state.phase === "scram" ? "SCRAM" : "FIN";
-  const scorers = state.scorersTeam;
-  const closers = state.closersTeam;
+  const keypadNums = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20];
 
-  const mini = React.useMemo(() => computeLiveMiniStats(state), [state]);
-
-  const activeTeamStats = currentTeam === "A" ? mini.byTeam.A : mini.byTeam.B;
-
-  function targetLabel(tg: number) {
-    return tg === 25 ? "B" : String(tg);
-  }
-
-  function renderMarksRow(marks: any, color: string) {
-    return (
-      <div style={{ display: "grid", gridTemplateColumns: `repeat(${state.targets.length}, 1fr)`, gap: 8 }}>
-        {state.targets.map((tg: number) => {
-          const v = Math.min(state.rules.marksToClose, Math.max(0, Number(marks?.[tg] ?? 0)));
-          const closed = v >= state.rules.marksToClose;
-          return (
-            <div
-              key={tg}
-              style={{
-                borderRadius: 14,
-                padding: "10px 8px",
-                border: "1px solid rgba(255,255,255,0.10)",
-                background: closed ? "rgba(0,0,0,0.42)" : "rgba(255,255,255,0.05)",
-              }}
-            >
-              <div style={{ fontSize: 12, fontWeight: 1000, opacity: 0.9 }}>{targetLabel(tg)}</div>
-              <div style={{ marginTop: 8, display: "flex", gap: 4, justifyContent: "center" }}>
-                {Array.from({ length: state.rules.marksToClose }).map((_, i) => (
-                  <div
-                    key={i}
-                    style={{
-                      width: 10,
-                      height: 10,
-                      borderRadius: 999,
-                      border: "1px solid rgba(255,255,255,0.22)",
-                      background: i < v ? color : "rgba(255,255,255,0.10)",
-                      boxShadow: i < v ? `0 0 12px ${color}` : "none",
-                    }}
-                  />
-                ))}
-              </div>
-            </div>
-          );
-        })}
-      </div>
-    );
-  }
+  const infoText =
+    "SCRAM — 2 phases\n\n" +
+    "RACE : les 2 équipes ferment 20→15 (+ Bull) en 3 marques.\n" +
+    "SCRAM : l'équipe gagnante de la RACE devient SCORERS (marque des points), l'autre CLOSERS (ferme).\n\n" +
+    "Victoire : SCORERS atteignent l'objectif OU CLOSERS ferment toutes les cibles.";
 
   return (
-    <div className="page">
-      <PageHeader
-        title="SCRAM"
-        tickerSrc={tickerScram}
-        left={<BackDot onClick={goBack} />}
-        right={<InfoDot title="Règles SCRAM" content={INFO_TEXT} />}
-      />
+    <div style={{ minHeight: "100vh", background: T.bg, color: T.text }}>
+      {/* Header ticker */}
+      <div style={{ position: "sticky", top: 0, zIndex: 30, background: "rgba(0,0,0,0.6)", backdropFilter: "blur(10px)" }}>
+        <div style={{ padding: 10, display: "flex", gap: 10, alignItems: "center" }}>
+          <BackDot onClick={() => props?.go?.("local") ?? props?.navigate?.("/local")} />
+          <div style={{ flex: 1 }} />
+          <InfoDot text={infoText} />
+        </div>
+        <div style={{ padding: "0 12px 10px" }}>
+          <img
+            src={tickerScram}
+            alt="SCRAM"
+            style={{ width: "100%", height: 92, objectFit: "cover", borderRadius: 16, border: "1px solid rgba(255,255,255,0.10)" }}
+          />
+        </div>
+      </div>
 
-      <div style={{ padding: 12 }}>
-        {/* Top status */}
+      <div style={{ padding: 14, maxWidth: 820, margin: "0 auto" }}>
+        {/* Status card */}
         <div
           style={{
             borderRadius: 18,
             padding: 14,
-            border: "1px solid rgba(255,255,255,0.12)",
-            background: "rgba(255,255,255,0.05)",
-            boxShadow: "0 18px 40px rgba(0,0,0,0.35)",
+            background: "rgba(255,255,255,0.04)",
+            border: "1px solid rgba(255,255,255,0.10)",
           }}
         >
-          <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12 }}>
             <div>
-              <div style={{ fontSize: 12, opacity: 0.8, fontWeight: 950, letterSpacing: 1 }}>
-                {t("generic.phase", "PHASE")} {phaseLabel}
+              <div style={{ fontWeight: 900, opacity: 0.85 }}>PHASE {String(phase).toUpperCase()}</div>
+              <div style={{ fontSize: 26, fontWeight: 1000, lineHeight: 1.05 }}>{currentPlayer?.name ?? "—"}</div>
+              <div style={{ marginTop: 6, opacity: 0.85 }}>
+                Équipe: <span style={{ fontWeight: 900, color: activeTeam === "A" ? "#f472b6" : "#F6C256" }}>{activeTeam}</span>
               </div>
-              <div style={{ fontSize: 18, fontWeight: 1100, marginTop: 6 }}>
-                {isFinished ? "Partie terminée" : `${currentPlayer?.name || "—"}`}
-              </div>
-              <div style={{ marginTop: 6, fontSize: 12, opacity: 0.85 }}>
-                Équipe: <span style={{ fontWeight: 1000, color: currentTeam === "A" ? teamA : teamB }}>{currentTeam}</span>
-                {state.phase === "scram" && (
-                  <>
-                    {" "}— rôle: {currentTeam === scorers ? "SCORER" : currentTeam === closers ? "CLOSER" : "—"}
-                  </>
-                )}
-              </div>
-
-              {/* mini-stats live (actif) */}
-              <div
-                style={{
-                  marginTop: 10,
-                  display: "flex",
-                  gap: 10,
-                  flexWrap: "wrap",
-                  alignItems: "center",
-                  fontSize: 12,
-                  opacity: 0.9,
-                }}
-              >
-                <span><b>Darts</b> {activeTeamStats.darts}</span>
-                <span><b>Miss</b> {activeTeamStats.miss}</span>
-                <span><b>S</b> {activeTeamStats.s}</span>
-                <span><b>D</b> {activeTeamStats.d}</span>
-                <span><b>T</b> {activeTeamStats.t}</span>
-                <span><b>OB</b> {activeTeamStats.ob}</span>
-                <span><b>IB</b> {activeTeamStats.ib}</span>
+              <div style={{ marginTop: 8, fontSize: 13, opacity: 0.9 }}>
+                Darts {mini.darts} • Miss {mini.miss} • S {mini.s} • D {mini.d} • T {mini.t} • OB {mini.ob} • IB {mini.ib}
               </div>
             </div>
-
             <div style={{ textAlign: "right" }}>
-              <div style={{ fontSize: 12, opacity: 0.8, fontWeight: 950, letterSpacing: 1 }}>SCRAM SCORE</div>
-              <div style={{ fontSize: 22, fontWeight: 1100, marginTop: 6, color: primary }}>{state.scramScore}</div>
-              <div style={{ marginTop: 6, fontSize: 12, opacity: 0.85 }}>
-                Objectif: <span style={{ fontWeight: 1000 }}>{state.rules.objective || "—"}</span>
-              </div>
+              <div style={{ fontWeight: 900, opacity: 0.75 }}>SCRAM SCORE</div>
+              <div style={{ fontSize: 34, fontWeight: 1000, color: "#34d399" }}>{Number(state?.scramScore ?? 0)}</div>
+              <div style={{ opacity: 0.85, marginTop: 6 }}>Objectif: <b>{objective}</b></div>
             </div>
           </div>
+
+          {isFinished ? (
+            <div style={{ marginTop: 12, padding: 10, borderRadius: 14, background: "rgba(34,197,94,0.10)", border: "1px solid rgba(34,197,94,0.35)" }}>
+              <b>Partie terminée</b> — Vainqueur: <b>{String(winner ?? state?.winningTeam ?? "—")}</b>
+            </div>
+          ) : null}
         </div>
 
-        {/* Targets state */}
-        <div style={{ marginTop: 12 }}>
-          {state.phase === "race" ? (
-            <>
-              <div style={{ display: "flex", gap: 10, alignItems: "center", marginBottom: 10 }}>
-                <div style={{ fontWeight: 1100, opacity: 0.9 }}>RACE — fermeture des cibles</div>
-                {state.raceWinner && (
-                  <div style={{ marginLeft: "auto", fontWeight: 1100 }}>
-                    Gagnant: <span style={{ color: state.raceWinner === "A" ? teamA : teamB }}>{state.raceWinner}</span>
+        {/* Targets table (Cricket-style) */}
+        <div style={{ marginTop: 14 }}>
+          <div style={{ fontSize: 22, fontWeight: 1000 }}>RACE — fermeture des cibles</div>
+          <div
+            style={{
+              marginTop: 10,
+              borderRadius: 18,
+              background: "rgba(255,255,255,0.03)",
+              border: "1px solid rgba(255,255,255,0.10)",
+              overflow: "hidden",
+            }}
+          >
+            <div style={{ display: "grid", gridTemplateColumns: "92px 1fr 1fr", padding: "10px 12px", borderBottom: "1px solid rgba(255,255,255,0.08)" }}>
+              <div style={{ opacity: 0.75, fontWeight: 900 }}>Cible</div>
+              <div style={{ textAlign: "center", fontWeight: 1000, color: "#f472b6" }}>TEAM A</div>
+              <div style={{ textAlign: "center", fontWeight: 1000, color: "#F6C256" }}>TEAM B</div>
+            </div>
+
+            {TARGETS.map((target) => {
+              const a = phase === "race" ? marksRace("A", target) : (state?.raceMarks?.A ? clampMarks(state?.raceMarks?.A?.[target]) : 0);
+              const b = phase === "race" ? marksRace("B", target) : (state?.raceMarks?.B ? clampMarks(state?.raceMarks?.B?.[target]) : 0);
+              const closers = phase === "scram" ? marksClosers(target) : 0;
+
+              // In SCRAM phase: show closers marks on closers column
+              const closersTeam: TeamId | null = (state?.closersTeam ?? null) as any;
+              const showA = phase === "scram" && closersTeam === "A" ? closers : a;
+              const showB = phase === "scram" && closersTeam === "B" ? closers : b;
+
+              const color = TARGET_COLORS[target] ?? "#fff";
+
+              const cell = (n: number, accent: string) => (
+                <div
+                  style={{
+                    height: 46,
+                    borderRadius: 14,
+                    background: "rgba(32, 40, 70, 0.35)",
+                    border: "1px solid rgba(255,255,255,0.08)",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    gap: 6,
+                  }}
+                >
+                  <CricketMarkIcon marks={n} color={accent} size={20} />
+                </div>
+              );
+
+              return (
+                <div
+                  key={target}
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "92px 1fr 1fr",
+                    gap: 10,
+                    padding: "10px 12px",
+                    borderBottom: "1px solid rgba(255,255,255,0.06)",
+                    alignItems: "center",
+                  }}
+                >
+                  <div
+                    style={{
+                      height: 46,
+                      borderRadius: 14,
+                      background: "rgba(0,0,0,0.20)",
+                      border: `1px solid rgba(255,255,255,0.10)`,
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      fontWeight: 1000,
+                      fontSize: 18,
+                      color: "#fff",
+                      boxShadow: `0 0 0 1px rgba(0,0,0,0.25), 0 0 18px rgba(0,0,0,0.20)`,
+                    }}
+                  >
+                    {target === 25 ? "B" : target}
                   </div>
-                )}
-              </div>
-
-              <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 12 }}>
-                <div>
-                  <div style={{ fontSize: 12, fontWeight: 1000, opacity: 0.85, marginBottom: 8, color: teamA }}>TEAM A</div>
-                  {renderMarksRow(state.raceMarks.A, teamA)}
+                  {cell(showA, "#f472b6")}
+                  {cell(showB, "#F6C256")}
                 </div>
-                <div>
-                  <div style={{ fontSize: 12, fontWeight: 1000, opacity: 0.85, marginBottom: 8, color: teamB }}>TEAM B</div>
-                  {renderMarksRow(state.raceMarks.B, teamB)}
-                </div>
-              </div>
-            </>
-          ) : (
-            <>
-              <div style={{ display: "flex", gap: 10, alignItems: "center", marginBottom: 10 }}>
-                <div style={{ fontWeight: 1100, opacity: 0.9 }}>SCRAM — CLOSERS ferment, SCORERS marquent</div>
-                <div style={{ marginLeft: "auto", fontSize: 12, opacity: 0.9 }}>
-                  SCORERS: <span style={{ color: scorers === "A" ? teamA : teamB, fontWeight: 1100 }}>{scorers}</span>
-                  {" · "}
-                  CLOSERS: <span style={{ color: closers === "A" ? teamA : teamB, fontWeight: 1100 }}>{closers}</span>
-                </div>
-              </div>
-
-              <div>
-                <div style={{ fontSize: 12, fontWeight: 1000, opacity: 0.85, marginBottom: 8 }}>
-                  Progression CLOSERS ({closers})
-                </div>
-                {renderMarksRow(state.closersMarks, closers === "A" ? teamA : teamB)}
-              </div>
-            </>
-          )}
+              );
+            })}
+          </div>
         </div>
 
         {/* Input */}
         <div style={{ marginTop: 14 }}>
-          <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
+          <div style={{ display: "flex", gap: 10 }}>
             <button
-              onClick={() => setMult(1)}
-              style={{
-                flex: 1,
-                borderRadius: 14,
-                border: mult === 1 ? `1px solid ${primary}` : "1px solid rgba(255,255,255,0.12)",
-                background: mult === 1 ? "rgba(125,255,202,0.12)" : "rgba(255,255,255,0.05)",
-                color: "#fff",
-                padding: "10px 8px",
-                fontWeight: 1100,
-              }}
+              type="button"
+              onClick={() => setInputMethod("keypad")}
+              style={pill(inputMethod === "keypad", "#F6C256")}
             >
+              KEYPAD
+            </button>
+            <button
+              type="button"
+              onClick={() => setInputMethod("dartboard")}
+              style={pill(inputMethod === "dartboard", "#F6C256")}
+            >
+              CIBLE
+            </button>
+          </div>
+
+          <div style={{ marginTop: 10, display: "flex", gap: 10 }}>
+            <button type="button" onClick={() => setHitMode("S")} style={pill(hitMode === "S", "#34d399")}>
               S
             </button>
-            <button
-              onClick={() => setMult(2)}
-              style={{
-                flex: 1,
-                borderRadius: 14,
-                border: mult === 2 ? `1px solid ${primary}` : "1px solid rgba(255,255,255,0.12)",
-                background: mult === 2 ? "rgba(125,255,202,0.12)" : "rgba(255,255,255,0.05)",
-                color: "#fff",
-                padding: "10px 8px",
-                fontWeight: 1100,
-              }}
-            >
+            <button type="button" onClick={() => setHitMode("D")} style={pill(hitMode === "D", "#22d3ee")}>
               D
             </button>
-            <button
-              onClick={() => setMult(3)}
-              style={{
-                flex: 1,
-                borderRadius: 14,
-                border: mult === 3 ? `1px solid ${primary}` : "1px solid rgba(255,255,255,0.12)",
-                background: mult === 3 ? "rgba(125,255,202,0.12)" : "rgba(255,255,255,0.05)",
-                color: "#fff",
-                padding: "10px 8px",
-                fontWeight: 1100,
-              }}
-            >
+            <button type="button" onClick={() => setHitMode("T")} style={pill(hitMode === "T", "#a855f7")}>
               T
             </button>
           </div>
 
-          <DartboardClickable onHit={onHit} multiplier={mult} disabled={isFinished} />
+          <button
+            type="button"
+            onClick={() => onKeyPress(25)}
+            disabled={isFinished || throwDarts.length >= maxDarts}
+            style={{
+              width: "100%",
+              marginTop: 10,
+              padding: "12px 14px",
+              borderRadius: 16,
+              border: "1px solid rgba(255,255,255,0.12)",
+              background: "rgba(34,197,94,0.20)",
+              fontWeight: 1000,
+              letterSpacing: 0.5,
+              color: "#d1fae5",
+            }}
+          >
+            BULL (S=OB / D,T=IB)
+          </button>
 
-          <div style={{ marginTop: 10, display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+          {inputMethod === "keypad" ? (
             <div
               style={{
-                flex: 1,
-                minWidth: 220,
-                borderRadius: 14,
-                border: "1px solid rgba(255,255,255,0.12)",
-                background: "rgba(0,0,0,0.22)",
-                padding: "10px 12px",
+                marginTop: 10,
+                borderRadius: 18,
+                padding: 12,
+                background: "rgba(255,255,255,0.03)",
+                border: "1px solid rgba(255,255,255,0.10)",
               }}
             >
-              <div style={{ fontSize: 12, opacity: 0.8, fontWeight: 950 }}>Volée</div>
-              <div style={{ marginTop: 6, fontSize: 18, fontWeight: 1200 }}>
-                {throwDarts.length ? (
-                  throwDarts.map((d, i) => (
-                    <span key={i} style={{ marginRight: 12, color: d.v === 0 ? "rgba(255,255,255,0.55)" : "#fff" }}>
-                      {toLabel(d)}
-                    </span>
-                  ))
-                ) : (
-                  "—"
-                )}
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 10 }}>
+                {keypadNums.map((n) => (
+                  <button
+                    key={n}
+                    type="button"
+                    onClick={() => onKeyPress(n)}
+                    disabled={isFinished || throwDarts.length >= maxDarts}
+                    style={{
+                      height: 48,
+                      borderRadius: 16,
+                      border: "1px solid rgba(255,255,255,0.10)",
+                      background: "rgba(32, 40, 70, 0.45)",
+                      color: "#fff",
+                      fontWeight: 1000,
+                      fontSize: 16,
+                    }}
+                  >
+                    {n}
+                  </button>
+                ))}
+              </div>
+            </div>
+          ) : (
+            <div style={{ marginTop: 10 }}>
+              <DartboardClickable onHit={onDartboardHit as any} disabled={isFinished || throwDarts.length >= maxDarts} />
+            </div>
+          )}
+
+          {/* Volley footer */}
+          <div
+            style={{
+              marginTop: 12,
+              borderRadius: 18,
+              padding: 12,
+              background: "rgba(255,255,255,0.03)",
+              border: "1px solid rgba(255,255,255,0.10)",
+            }}
+          >
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
+              <div style={{ opacity: 0.9 }}>
+                <div style={{ fontWeight: 900 }}>Volée</div>
+                <div style={{ marginTop: 4, fontSize: 16, fontWeight: 900 }}>
+                  {throwDarts.length ? throwDarts.map(uiDartLabel).join("  ·  ") : "—"}
+                </div>
+              </div>
+              <div style={{ display: "flex", gap: 10 }}>
+                <button
+                  type="button"
+                  onClick={onClear}
+                  disabled={!throwDarts.length || isFinished}
+                  style={{
+                    padding: "10px 14px",
+                    borderRadius: 14,
+                    border: "1px solid rgba(255,255,255,0.10)",
+                    background: "rgba(255,255,255,0.04)",
+                    color: "#fff",
+                    opacity: !throwDarts.length || isFinished ? 0.4 : 1,
+                    fontWeight: 900,
+                  }}
+                >
+                  Clear
+                </button>
+                <button
+                  type="button"
+                  onClick={() => (canUndo ? undo() : null)}
+                  disabled={!canUndo || isFinished}
+                  style={{
+                    padding: "10px 14px",
+                    borderRadius: 14,
+                    border: "1px solid rgba(255,255,255,0.10)",
+                    background: "rgba(255,255,255,0.04)",
+                    color: "#fff",
+                    opacity: !canUndo || isFinished ? 0.4 : 1,
+                    fontWeight: 900,
+                  }}
+                >
+                  Undo
+                </button>
               </div>
             </div>
 
             <button
-              onClick={clearThrow}
+              type="button"
+              onClick={onValidate}
               disabled={!throwDarts.length || isFinished}
               style={{
-                borderRadius: 14,
-                border: "1px solid rgba(255,255,255,0.12)",
-                background: "rgba(255,255,255,0.06)",
-                color: "#fff",
-                padding: "12px 12px",
-                fontWeight: 1100,
-                opacity: !throwDarts.length || isFinished ? 0.5 : 1,
+                width: "100%",
+                marginTop: 12,
+                padding: "14px 16px",
+                borderRadius: 999,
+                border: "1px solid rgba(34,197,94,0.45)",
+                background: "rgba(34,197,94,0.22)",
+                color: "#d1fae5",
+                fontWeight: 1000,
+                letterSpacing: 1,
+                opacity: !throwDarts.length || isFinished ? 0.45 : 1,
               }}
             >
-              Clear
+              VALIDER
             </button>
-            <button
-              onClick={undo}
-              disabled={!canUndo}
-              style={{
-                borderRadius: 14,
-                border: "1px solid rgba(255,255,255,0.12)",
-                background: "rgba(255,255,255,0.06)",
-                color: "#fff",
-                padding: "12px 12px",
-                fontWeight: 1100,
-                opacity: canUndo ? 1 : 0.5,
-              }}
-            >
-              Undo
-            </button>
-            <button
-              onClick={validate}
-              disabled={isFinished}
-              style={{
-                borderRadius: 14,
-                border: `1px solid ${primary}`,
-                background: "rgba(125,255,202,0.14)",
-                color: "#fff",
-                padding: "12px 14px",
-                fontWeight: 1200,
-                opacity: isFinished ? 0.5 : 1,
-              }}
-            >
-              Valider
-            </button>
-          </div>
 
-          {/* mini agrégats globaux */}
-          <div style={{ marginTop: 12, fontSize: 12, opacity: 0.85 }}>
-            Total: <b>{mini.darts}</b> darts · <b>{mini.miss}</b> miss · <b>{mini.s}</b>S / <b>{mini.d}</b>D / <b>{mini.t}</b>T · <b>{mini.ob}</b>OB / <b>{mini.ib}</b>IB
+            <div style={{ marginTop: 10, fontSize: 13, opacity: 0.8 }}>
+              Total: {mini.darts} darts • {mini.miss} miss • {mini.s}S / {mini.d}D / {mini.t}T • {mini.ob}OB / {mini.ib}IB
+            </div>
           </div>
         </div>
-
-        {isFinished && (
-          <div
-            style={{
-              marginTop: 14,
-              borderRadius: 18,
-              padding: 14,
-              border: "1px solid rgba(255,255,255,0.12)",
-              background: "rgba(255,255,255,0.05)",
-            }}
-          >
-            <div style={{ fontSize: 12, fontWeight: 950, opacity: 0.85, letterSpacing: 1 }}>RÉSULTAT</div>
-            <div style={{ marginTop: 6, fontSize: 18, fontWeight: 1200 }}>
-              Équipe gagnante: <span style={{ color: state.winningTeam === "A" ? teamA : teamB }}>{state.winningTeam || "—"}</span>
-            </div>
-            <div style={{ marginTop: 10, fontSize: 12, opacity: 0.9 }}>
-              Team A: {mini.byTeam.A.darts} darts / {mini.byTeam.A.miss} miss · Team B: {mini.byTeam.B.darts} darts / {mini.byTeam.B.miss} miss
-            </div>
-          </div>
-        )}
       </div>
     </div>
   );
