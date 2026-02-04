@@ -136,7 +136,6 @@ function kindToScore(k: ThrowKind): number {
   return 5;
 }
 
-
 // ---------------- Carousel joueurs (CLONE style KILLER header carousel) ----------------
 
 function GolfAvatarChip({
@@ -414,23 +413,46 @@ function GolfHeaderBlock(props: {
         marginBottom: 12,
       }}
     >
-      {/* Watermark avatar (plein bloc header) */}
+      {/* Watermark avatar — cadré sur la zone SCORE (droite), plein hauteur header */}
       {!!bgAvatarUrl && (
-        <img src={bgAvatarUrl} aria-hidden style={{position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover", objectPosition: "70% 40%", opacity: 0.22, filter: "saturate(1.35) contrast(1.18) brightness(1.05)", WebkitMaskImage: "linear-gradient(90deg, rgba(0,0,0,1) 0%, rgba(0,0,0,1) 28%, rgba(0,0,0,0.88) 50%, rgba(0,0,0,0.35) 70%, rgba(0,0,0,0) 86%)", maskImage: "linear-gradient(90deg, rgba(0,0,0,1) 0%, rgba(0,0,0,1) 28%, rgba(0,0,0,0.88) 50%, rgba(0,0,0,0.35) 70%, rgba(0,0,0,0) 86%)", WebkitMaskRepeat: "no-repeat", maskRepeat: "no-repeat", WebkitMaskSize: "100% 100%", maskSize: "100% 100%", pointerEvents: "none", userSelect: "none", zIndex: 0}} />
+        <div
+          aria-hidden
+          style={{
+            position: "absolute",
+            inset: 0,
+            zIndex: 0,
+            pointerEvents: "none",
+            userSelect: "none",
+            overflow: "hidden",
+          }}
+        >
+          <img
+            src={bgAvatarUrl}
+            alt=""
+            style={{
+              position: "absolute",
+              top: 0,
+              bottom: 0,
+              right: "-18%",
+              width: "78%",
+              height: "100%",
+              objectFit: "cover",
+              objectPosition: "50% 40%",
+              transform: "scale(1.12)",
+              opacity: 0.22,
+              filter: "saturate(1.35) contrast(1.18) brightness(1.05)",
+            }}
+          />
+          <div
+            style={{
+              position: "absolute",
+              inset: 0,
+              background:
+                "linear-gradient(90deg, rgba(10,10,12,.98) 0%, rgba(10,10,12,.92) 34%, rgba(10,10,12,.55) 60%, rgba(10,10,12,.18) 76%, rgba(10,10,12,0) 90%)",
+            }}
+          />
+        </div>
       )}
-
-      {/* Dégradé gauche -> droite pour fondre le watermark dans le fond */}
-      <div
-        aria-hidden
-        style={{
-          position: "absolute",
-          inset: 0,
-          background:
-            "linear-gradient(90deg, rgba(10,10,12,.98) 0%, rgba(10,10,12,.92) 28%, rgba(10,10,12,.62) 52%, rgba(10,10,12,.22) 68%, rgba(10,10,12,0) 82%)",
-          pointerEvents: "none",
-          zIndex: 1,
-        }}
-      />
 
       <div
         style={{
@@ -482,23 +504,23 @@ function GolfHeaderBlock(props: {
               </div>
 
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6, opacity: 0.98 }}>
-  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 6 }}>
-    <span style={{ fontSize: 8, lineHeight: 1, letterSpacing: 0.4, color: "rgba(255,255,255,0.72)", fontWeight: 900, textTransform: "lowercase", whiteSpace: "nowrap" }}>%1st</span>
-    <span style={{ minWidth: 46, textAlign: "center", padding: "3px 8px", borderRadius: 10, border: "1px solid rgba(255,195,26,.35)", background: "rgba(255,195,26,.14)", color: "#ffcf57", fontWeight: 1000, fontSize: 12, boxShadow: "0 10px 18px rgba(0,0,0,.25)" }}>{p1}</span>
-  </div>
-  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 6 }}>
-    <span style={{ fontSize: 8, lineHeight: 1, letterSpacing: 0.4, color: "rgba(255,255,255,0.72)", fontWeight: 900, textTransform: "lowercase", whiteSpace: "nowrap" }}>%2nd</span>
-    <span style={{ minWidth: 46, textAlign: "center", padding: "3px 8px", borderRadius: 10, border: "1px solid rgba(120,255,220,.35)", background: "rgba(120,255,220,.12)", color: "#b9ffe9", fontWeight: 1000, fontSize: 12, boxShadow: "0 10px 18px rgba(0,0,0,.25)" }}>{p2}</span>
-  </div>
-  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 6 }}>
-    <span style={{ fontSize: 8, lineHeight: 1, letterSpacing: 0.4, color: "rgba(255,255,255,0.72)", fontWeight: 900, textTransform: "lowercase", whiteSpace: "nowrap" }}>%3rd</span>
-    <span style={{ minWidth: 46, textAlign: "center", padding: "3px 8px", borderRadius: 10, border: "1px solid rgba(120,255,220,.30)", background: "rgba(120,255,220,.09)", color: "rgba(185,255,233,0.92)", fontWeight: 1000, fontSize: 12, boxShadow: "0 10px 18px rgba(0,0,0,.25)" }}>{p3}</span>
-  </div>
-  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 6 }}>
-    <span style={{ fontSize: 8, lineHeight: 1, letterSpacing: 0.4, color: "rgba(255,255,255,0.72)", fontWeight: 900, textTransform: "lowercase", whiteSpace: "nowrap" }}>%miss</span>
-    <span style={{ minWidth: 46, textAlign: "center", padding: "3px 8px", borderRadius: 10, border: "1px solid rgba(255,120,120,.35)", background: "rgba(255,120,120,.10)", color: "#ffb2b2", fontWeight: 1000, fontSize: 12, boxShadow: "0 10px 18px rgba(0,0,0,.25)" }}>{pMiss}</span>
-  </div>
-</div>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 6 }}>
+                  <span style={{ fontSize: 8, lineHeight: 1, letterSpacing: 0.4, color: "rgba(255,255,255,0.72)", fontWeight: 900, textTransform: "lowercase", whiteSpace: "nowrap" }}>%1st</span>
+                  <span style={{ minWidth: 46, textAlign: "center", padding: "3px 8px", borderRadius: 10, border: "1px solid rgba(255,195,26,.35)", background: "rgba(255,195,26,.14)", color: "#ffcf57", fontWeight: 1000, fontSize: 12, boxShadow: "0 10px 18px rgba(0,0,0,.25)" }}>{p1}</span>
+                </div>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 6 }}>
+                  <span style={{ fontSize: 8, lineHeight: 1, letterSpacing: 0.4, color: "rgba(255,255,255,0.72)", fontWeight: 900, textTransform: "lowercase", whiteSpace: "nowrap" }}>%2nd</span>
+                  <span style={{ minWidth: 46, textAlign: "center", padding: "3px 8px", borderRadius: 10, border: "1px solid rgba(120,255,220,.35)", background: "rgba(120,255,220,.12)", color: "#b9ffe9", fontWeight: 1000, fontSize: 12, boxShadow: "0 10px 18px rgba(0,0,0,.25)" }}>{p2}</span>
+                </div>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 6 }}>
+                  <span style={{ fontSize: 8, lineHeight: 1, letterSpacing: 0.4, color: "rgba(255,255,255,0.72)", fontWeight: 900, textTransform: "lowercase", whiteSpace: "nowrap" }}>%3rd</span>
+                  <span style={{ minWidth: 46, textAlign: "center", padding: "3px 8px", borderRadius: 10, border: "1px solid rgba(120,255,220,.30)", background: "rgba(120,255,220,.09)", color: "rgba(185,255,233,0.92)", fontWeight: 1000, fontSize: 12, boxShadow: "0 10px 18px rgba(0,0,0,.25)" }}>{p3}</span>
+                </div>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 6 }}>
+                  <span style={{ fontSize: 8, lineHeight: 1, letterSpacing: 0.4, color: "rgba(255,255,255,0.72)", fontWeight: 900, textTransform: "lowercase", whiteSpace: "nowrap" }}>%miss</span>
+                  <span style={{ minWidth: 46, textAlign: "center", padding: "3px 8px", borderRadius: 10, border: "1px solid rgba(255,120,120,.35)", background: "rgba(255,120,120,.10)", color: "#ffb2b2", fontWeight: 1000, fontSize: 12, boxShadow: "0 10px 18px rgba(0,0,0,.25)" }}>{pMiss}</span>
+                </div>
+              </div>
             </div>
           </div>
         </div>
@@ -516,7 +538,6 @@ function GolfHeaderBlock(props: {
             padding: 6,
           }}
         >
-
           <div
             style={{
               fontSize: 64,
@@ -548,7 +569,7 @@ function GolfHeaderBlock(props: {
             {playerName}
           </div>
 
-          {/* Mini ranking (top 3) */}
+          {/* Mini ranking */}
           <div style={{ ...miniCard, margin: "0 auto", height: "auto", width: 176 }}>
             <div style={{ fontSize: 11, color: "#d9dbe3", marginBottom: 4, textAlign: "left", paddingLeft: 2, opacity: 0.9 }}>
               Classement
@@ -583,12 +604,25 @@ export default function GolfPlay(props: Props) {
 
   // Compat routing : certains écrans passent via params, d'autres via tabParams
   const routeParams = (params ?? tabParams ?? {}) as any;
-  const cfg: GolfConfig = (routeParams?.config ?? {}) as GolfConfig;
+  const cfgRaw = (routeParams?.config ?? {}) as any;
+  // ✅ Normalisation config (GolfConfig.tsx -> GolfPlay.tsx)
+  const cfg: GolfConfig = (cfgRaw ?? {}) as GolfConfig;
 
-  
-  const roundsMode = ((cfg as any).display === "rounds" || (cfg as any).scoreMode === "rounds" || (cfg as any).format === "rounds" || (cfg as any).rounds === true);
-const holes = clamp(Number(cfg.holes ?? 9), 1, 18);
-  const showGrid = cfg.showGrid !== false;
+  const roundsMode = (
+    (cfgRaw as any).display === "rounds" ||
+    (cfgRaw as any).scoreMode === "rounds" ||
+    (cfgRaw as any).format === "rounds" ||
+    (cfgRaw as any).rounds === true
+  );
+  const holes = clamp(Number(cfgRaw.holes ?? cfg.holes ?? 9), 1, 18);
+  const holeOrderMode =
+    (cfgRaw as any).holeOrderMode ??
+    (cfgRaw as any).order ??
+    (cfgRaw as any).holeOrder ??
+    (cfgRaw as any).targetOrder ??
+    (cfgRaw as any).sequence ??
+    null;
+  const showGrid = ((cfgRaw as any).showHoleGrid ?? (cfgRaw as any).showGrid ?? cfg.showGrid ?? true) !== false;
 
   const profilesById = useMemo(() => getProfilesMap(store), [store]);
 
@@ -616,9 +650,11 @@ const holes = clamp(Number(cfg.holes ?? 9), 1, 18);
   // Ordre des cibles (stable) : chronologique ou random
   const holeTargets = useMemo(() => {
     const base = Array.from({ length: holes }, (_, i) => i + 1);
-    if (cfg.order === "random") return shuffle(base);
-    return base;
-  }, [cfg.order, holes]);
+    const raw = holeOrderMode;
+    const norm = String(raw ?? "").toLowerCase().normalize("NFD").replace(/[\\u0300-\\u036f]/g, "");
+    const isRandom = raw === true || norm === "random" || norm.includes("random") || norm.includes("shuffle") || norm.includes("alea");
+    return isRandom ? shuffle(base) : base;
+  }, [holes, holeOrderMode]);
 
   // scores[playerIdx][holeIdx] = score final du trou (1/3/4/5) ou null
   const [scores, setScores] = useState<(number | null)[][]>(() => {
@@ -678,7 +714,7 @@ const holes = clamp(Number(cfg.holes ?? 9), 1, 18);
       }
       scoreTickerPoolRef.current = nextPool;
       setScoreCardTickerSrc(nextPool[0] ?? tickerGolf);
-    }, 2600);
+    }, 6000);
     return () => window.clearInterval(id);
   }, [showGrid, scoreCardTickerSrc]);
 
@@ -1013,7 +1049,7 @@ const holes = clamp(Number(cfg.holes ?? 9), 1, 18);
     );
   }
 
-// Chips d'état du tour (3 flèches)
+  // Chips d'état du tour (3 flèches)
   const throwChips = [0, 1, 2].map((i) => {
     const k = turnThrows[i];
     if (!k) return "—";
@@ -1036,7 +1072,6 @@ const holes = clamp(Number(cfg.holes ?? 9), 1, 18);
       <PageHeader title="GOLF" tickerSrc={tickerGolf} left={<BackDot onClick={goBack} />} right={<InfoDot title="Règles GOLF" content={INFO_TEXT} />} />
 
       <div style={{ padding: 12 }}>
-        
         {/* Carousel joueurs (clone KILLER) */}
         <GolfPlayersCarousel
           players={roster.map((p, idx) => ({
@@ -1049,7 +1084,7 @@ const holes = clamp(Number(cfg.holes ?? 9), 1, 18);
           theme={"#b9ffe9"}
         />
 
-<GolfHeaderBlock
+        <GolfHeaderBlock
           currentPlayer={activePlayer}
           currentAvatar={activeAvatar}
           currentTotal={activeTotal}
@@ -1163,22 +1198,24 @@ const holes = clamp(Number(cfg.holes ?? 9), 1, 18);
                 }}
               />
 
-              <div
-                style={{
-                  position: "relative",
-                  zIndex: 1,
-                  height: 76,
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  fontWeight: 1000,
-                  letterSpacing: 1,
-                  color: "rgba(255,255,255,.92)",
-                  textShadow: "0 8px 22px rgba(0,0,0,.55)",
-                  textTransform: "uppercase",
-                }}
-              >
-                TABLEAU DES SCORES
+<div
+  style={{
+    position: "relative",
+    zIndex: 1,
+    height: 76,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    fontWeight: 1000,
+    fontSize: 18,                 // ⬅️ légèrement plus gros
+    letterSpacing: 1.4,
+    color: "#b9ffe9",             // ⬅️ couleur thème Golf
+    textShadow:
+      "0 0 16px rgba(120,255,220,.35), 0 8px 22px rgba(0,0,0,.55)",
+    textTransform: "uppercase",
+  }}
+>
+  TABLEAU DES SCORES
               </div>
             </button>
 
@@ -1248,7 +1285,7 @@ const holes = clamp(Number(cfg.holes ?? 9), 1, 18);
                           ROUNDS
                         </div>
                         <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                          {players.map((p, idx) => (
+                          {roster.map((p, idx) => (
                             <div key={p.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
                               <div style={{ display: "inline-flex", alignItems: "center", minWidth: 0, overflow: "hidden" }}>
                                 <span style={{ ...tinyAvatar, width: 20, height: 20 }}>
@@ -1444,8 +1481,6 @@ const holes = clamp(Number(cfg.holes ?? 9), 1, 18);
             </div>
           </div>
         )}
-
-        
       </div>
     </div>
   );
