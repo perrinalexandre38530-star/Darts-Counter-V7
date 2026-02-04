@@ -1,8 +1,9 @@
 // =============================================================
 // src/pages/babyfoot/BabyFootPlay.tsx
-// Baby-Foot — Play (LOCAL ONLY) — V2
-// - Score A/B + undo
-// - Events + chrono
+// Baby-Foot — Play (LOCAL ONLY) — V3
+// - Goals + Undo
+// - Chrono (règlementaire) + prolongation + tirs au but
+// - Sets (BO3/BO5) + handicap + golden goal
 // - ✅ onFinish(payload) compatible pushBabyFootHistory() in App.tsx
 //   -> players[] (profile ids) + winnerId (profile id)
 // =============================================================
@@ -12,11 +13,12 @@ import { useTheme } from "../../contexts/ThemeContext";
 
 import BackDot from "../../components/BackDot";
 import InfoDot from "../../components/InfoDot";
-import ProfileAvatar from "../../components/ProfileAvatar";
 
 import {
   addGoal,
+  addPenalty,
   computeDurationMs,
+  finishByTime,
   loadBabyFootState,
   saveBabyFootState,
   undo as undoGoal,
@@ -37,16 +39,43 @@ function fmt(ms: number) {
   return `${mm}:${ss}`;
 }
 
+function clamp(n: number, a: number, b: number) {
+  return Math.max(a, Math.min(b, n));
+}
+
 export default function BabyFootPlay({ go, onFinish }: Props) {
   const { theme } = useTheme();
+
   const [state, setState] = useState<BabyFootState>(() => loadBabyFootState());
-  const [now, setNow] = useState(Date.now());
+  const [now, setNow] = useState<number>(Date.now());
 
-  const [pickTeam, setPickTeam] = useState<BabyFootTeamId | null>(null);
+  // scorer picker (goals / penalties)
+  const [pick, setPick] = useState<{ kind: "goal" | "penalty"; team: BabyFootTeamId } | null>(null);
 
+  // tick clock + auto finish by time
   useEffect(() => {
-    const t = setInterval(() => setNow(Date.now()), 500);
+    const t = setInterval(() => {
+      const ts = Date.now();
+      setNow(ts);
+
+      const current = loadBabyFootState();
+      if (current.finished) return;
+
+      const next = finishByTime(ts);
+      if (next.updatedAt !== current.updatedAt || next.phase !== current.phase || next.finished !== current.finished) {
+        setState(next);
+        saveBabyFootState(next);
+      }
+    }, 250);
+
     return () => clearInterval(t);
+  }, []);
+
+  // keep state fresh on focus
+  useEffect(() => {
+    const onFocus = () => setState(loadBabyFootState());
+    window.addEventListener("focus", onFocus);
+    return () => window.removeEventListener("focus", onFocus);
   }, []);
 
   const teamAIds = state.teamAProfileIds || [];
@@ -58,10 +87,13 @@ export default function BabyFootPlay({ go, onFinish }: Props) {
 
   const durationMs = useMemo(() => computeDurationMs(state), [state.startedAt, state.finishedAt, now, state.updatedAt]);
 
-  const finishIfNeeded = (next: BabyFootState) => {
+  const chronoOn = !!state.matchDurationSec;
+  const isOT = state.phase === "overtime";
+  const isPens = state.phase === "penalties";
+
+  function finishIfNeeded(next: BabyFootState) {
     if (!next.finished || !next.winner) return;
 
-    // winnerId: use first selected profile of the winner team
     const winnerTeamIds = next.winner === "A" ? next.teamAProfileIds : next.teamBProfileIds;
     const winnerId = (winnerTeamIds && winnerTeamIds[0]) || null;
 
@@ -76,7 +108,22 @@ export default function BabyFootPlay({ go, onFinish }: Props) {
       teamA: next.teamA,
       teamB: next.teamB,
       mode: next.mode,
+
+      // scoring
       target: next.target,
+      setsBestOf: next.setsBestOf,
+      setTarget: next.setTarget,
+      setsWonA: next.setsWonA,
+      setsWonB: next.setsWonB,
+      setResults: next.setResults || [],
+
+      handicapA: next.handicapA,
+      handicapB: next.handicapB,
+      goldenGoal: next.goldenGoal,
+
+      // timer
+      matchDurationSec: next.matchDurationSec,
+      overtimeSec: next.overtimeSec,
 
       scoreA: next.scoreA,
       scoreB: next.scoreB,
@@ -84,6 +131,10 @@ export default function BabyFootPlay({ go, onFinish }: Props) {
 
       players,
       winnerId,
+
+      phase: next.phase,
+      penA: next.penA,
+      penB: next.penB,
 
       events: next.events || [],
       durationMs: computeDurationMs(next),
@@ -95,149 +146,209 @@ export default function BabyFootPlay({ go, onFinish }: Props) {
         teamB: next.teamB,
         winnerTeam: next.winner,
         durationMs: computeDurationMs(next),
+        setsBestOf: next.setsBestOf,
+        setsWonA: next.setsWonA,
+        setsWonB: next.setsWonB,
+        penA: next.penA,
+        penB: next.penB,
       },
     };
 
     onFinish?.(payload);
     go("babyfoot_stats_history");
-  };
+  }
 
-  const add = (team: BabyFootTeamId, scorerId?: string | null) => {
-    const next = addGoal(team, scorerId);
+  function apply(next: BabyFootState) {
     setState(next);
     saveBabyFootState(next);
     finishIfNeeded(next);
-  };
+  }
 
-  const onPlus = (team: BabyFootTeamId) => {
+  function chooseScorer(team: BabyFootTeamId, kind: "goal" | "penalty") {
     const ids = team === "A" ? teamAIds : teamBIds;
     if (ids.length <= 1) {
-      add(team, ids[0] ?? null);
+      if (kind === "goal") apply(addGoal(team, ids[0] ?? null));
+      else apply(addPenalty(team, ids[0] ?? null));
       return;
     }
-    setPickTeam(team);
-  };
+    setPick({ team, kind });
+  }
 
-  const onPickScorer = (id: string) => {
-    const team = pickTeam;
-    if (!team) return;
-    setPickTeam(null);
-    add(team, id);
-  };
+  function onPickScorer(id: string) {
+    const ctx = pick;
+    if (!ctx) return;
+    setPick(null);
+    if (ctx.kind === "goal") apply(addGoal(ctx.team, id));
+    else apply(addPenalty(ctx.team, id));
+  }
 
-  const onUndo = () => {
+  function onUndo() {
     const next = undoGoal();
     setState(next);
     saveBabyFootState(next);
-  };
+  }
+
+  const setsEnabled = state.setsBestOf === 3 || state.setsBestOf === 5;
+  const setsNeed = setsEnabled ? Math.floor(state.setsBestOf / 2) + 1 : 0;
+
+  // remaining time (regulation)
+  const remainingSec = useMemo(() => {
+    if (!chronoOn || !state.startedAt || state.finished) return null;
+    const dur = clamp(state.matchDurationSec || 0, 0, 3600);
+    const elapsed = Math.floor((now - state.startedAt) / 1000);
+    return Math.max(0, dur - elapsed);
+  }, [chronoOn, state.matchDurationSec, state.startedAt, state.finished, now]);
+
+  // remaining time OT
+  const otRemainingSec = useMemo(() => {
+    if (!isOT || !state.overtimeStartedAt || state.finished) return null;
+    const dur = clamp(state.overtimeSec || 0, 0, 600);
+    const elapsed = Math.floor((now - state.overtimeStartedAt) / 1000);
+    return Math.max(0, dur - elapsed);
+  }, [isOT, state.overtimeSec, state.overtimeStartedAt, state.finished, now]);
 
   return (
     <div style={wrap(theme)}>
       <div style={topRow}>
         <BackDot onClick={() => go("babyfoot_menu")} />
         <div style={topTitle}>BABY-FOOT — PLAY</div>
-        <InfoDot title="Baby-foot" body="Score A/B • Undo • Chrono • Local only" />
+        <InfoDot
+          title="Baby-foot"
+          body="Goals • Undo • Chrono • OT • Penalties • Sets"
+          glow={theme.primary + "88"}
+        />
       </div>
 
+      {/* header match */}
       <div style={header(theme)}>
-        <div style={teamBox}>
+        <div style={rowTeam}>
           <div style={teamName}>{state.teamA}</div>
-          <div style={avatarsRow}>
-            {teamAIds.map((id) => (
-              <div key={id} style={avatarWrap}>
-                <ProfileAvatar profile={{ id }} size={38} />
-              </div>
-            ))}
-          </div>
+          <div style={score(theme)}>{state.scoreA}</div>
+          <button onClick={() => chooseScorer("A", isPens ? "penalty" : "goal")} style={btnPlus(theme, "A", isPens)}>
+            {isPens ? "+ PEN" : "+ BUT"}
+          </button>
         </div>
 
         <div style={midBox}>
-          <div style={timer(theme)}>{fmt(durationMs)}</div>
-          <div style={target}>
-            CIBLE <span style={{ opacity: 0.95 }}>{state.target}</span>
+          <div style={midTitle(theme)}>
+            {state.goldenGoal ? "GOLDEN GOAL" : setsEnabled ? `SETS BO${state.setsBestOf}` : `TARGET ${state.target}`}
           </div>
-        </div>
 
-        <div style={teamBox}>
-          <div style={{ ...teamName, textAlign: "right" }}>{state.teamB}</div>
-          <div style={{ ...avatarsRow, justifyContent: "flex-end" }}>
-            {teamBIds.map((id) => (
-              <div key={id} style={avatarWrap}>
-                <ProfileAvatar profile={{ id }} size={38} />
+          {setsEnabled && (
+            <div style={{ marginTop: 6, display: "flex", gap: 10, alignItems: "center", justifyContent: "center" }}>
+              <div style={setsPill(theme, state.setsWonA)}>{state.setsWonA}</div>
+              <div style={{ fontWeight: 1000, opacity: 0.8 }}>SETS</div>
+              <div style={setsPill(theme, state.setsWonB)}>{state.setsWonB}</div>
+            </div>
+          )}
+
+          {chronoOn && (
+            <div style={{ marginTop: 10, textAlign: "center" }}>
+              <div style={{ fontWeight: 1000, letterSpacing: 0.7, color: theme.primary }}>
+                {isOT ? "OVERTIME" : "CHRONO"}
               </div>
-            ))}
-          </div>
+              <div style={{ marginTop: 4, fontSize: 20, fontWeight: 1000 }}>
+                {isOT ? `${String(otRemainingSec ?? 0).padStart(2, "0")}` : fmt(durationMs)}
+              </div>
+              {!isOT && remainingSec !== null && (
+                <div style={{ marginTop: 2, fontSize: 12, color: theme.textSoft, fontWeight: 900 }}>
+                  Temps restant : {Math.floor(remainingSec / 60)}:{String(remainingSec % 60).padStart(2, "0")}
+                </div>
+              )}
+              {isOT && otRemainingSec !== null && (
+                <div style={{ marginTop: 2, fontSize: 12, color: theme.textSoft, fontWeight: 900 }}>
+                  OT restant : {Math.floor(otRemainingSec / 60)}:{String(otRemainingSec % 60).padStart(2, "0")}
+                </div>
+              )}
+            </div>
+          )}
+
+          {isPens && (
+            <div style={{ marginTop: 10, textAlign: "center" }}>
+              <div style={{ fontWeight: 1000, letterSpacing: 0.7, color: theme.primary }}>TIRS AU BUT</div>
+              <div style={{ marginTop: 6, fontSize: 16, fontWeight: 1000 }}>
+                {state.penA} — {state.penB}
+              </div>
+              <div style={{ marginTop: 2, fontSize: 12, color: theme.textSoft, fontWeight: 900 }}>
+                Manche : {state.penRound}
+              </div>
+            </div>
+          )}
+        </div>
+
+        <div style={rowTeam}>
+          <div style={teamName}>{state.teamB}</div>
+          <div style={score(theme)}>{state.scoreB}</div>
+          <button onClick={() => chooseScorer("B", isPens ? "penalty" : "goal")} style={btnPlus(theme, "B", isPens)}>
+            {isPens ? "+ PEN" : "+ BUT"}
+          </button>
         </div>
       </div>
 
-      <div style={scoreRow}>
-        <div style={scoreCard(theme)}>
-          <div style={scoreNum}>{state.scoreA}</div>
-          <button style={plusBtn(theme)} onClick={() => onPlus("A")} disabled={state.finished}>
-            + BUT
-          </button>
-        </div>
-
-        <div style={vs(theme)}>
-          <div style={vsTxt}>VS</div>
-        </div>
-
-        <div style={scoreCard(theme)}>
-          <div style={scoreNum}>{state.scoreB}</div>
-          <button style={plusBtn(theme)} onClick={() => onPlus("B")} disabled={state.finished}>
-            + BUT
-          </button>
-        </div>
-      </div>
-
-      <div style={actionsRow}>
-        <button style={ghostBtn(theme)} onClick={onUndo}>
+      <div style={{ display: "flex", gap: 10, marginTop: 12 }}>
+        <button onClick={onUndo} style={btnSecondary(theme)}>
           ANNULER
         </button>
         <button
-          style={ghostBtn(theme)}
           onClick={() => {
-            // restart match keeping config
-            const s = loadBabyFootState();
-            const reset = {
-              ...s,
-              scoreA: 0,
-              scoreB: 0,
-              finished: false,
-              winner: null,
-              undo: [],
-              events: [],
-              startedAt: Date.now(),
-              finishedAt: null,
-              updatedAt: Date.now(),
-            } as BabyFootState;
-            saveBabyFootState(reset);
-            setState(reset);
+            // manual finish: winner by score or go penalties if tie
+            const current = loadBabyFootState();
+            if (current.finished) return;
+            const ts = Date.now();
+            const next = finishByTime(ts); // this will handle OT/penalties if chrono enabled
+            setState(next);
+            saveBabyFootState(next);
           }}
+          style={btnSecondary(theme)}
         >
-          RESTART
+          CHECK
         </button>
       </div>
 
-      {pickTeam && (
-        <div style={overlay}>
-          <div style={modal(theme)}>
-            <div style={modalTitle}>Qui a marqué ?</div>
-            <div style={modalSub}>
-              Équipe {pickTeam === "A" ? state.teamA : state.teamB} • Choisis le buteur
+      {/* picker scorer (team has 2 profiles) */}
+      {pick && (
+        <div
+          onClick={() => setPick(null)}
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(0,0,0,0.55)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: 16,
+            zIndex: 9999,
+          }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              width: "100%",
+              maxWidth: 520,
+              borderRadius: 18,
+              border: `1px solid ${theme.borderSoft ?? "rgba(255,255,255,0.14)"}`,
+              background: theme.card,
+              padding: 16,
+              boxShadow: "0 18px 60px rgba(0,0,0,0.55)",
+              color: theme.text,
+            }}
+          >
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center" }}>
+              <div style={{ fontWeight: 1000, fontSize: 16 }}>
+                {pick.kind === "goal" ? "But marqué par…" : "Tir au but par…"} (TEAM {pick.team})
+              </div>
+              <button onClick={() => setPick(null)} style={btnTiny(theme)}>
+                X
+              </button>
             </div>
 
-            <div style={pickerRow}>
-              {(pickTeam === "A" ? teamAIds : teamBIds).map((id) => (
-                <button key={id} style={pickerBtn(theme)} onClick={() => onPickScorer(id)}>
-                  <ProfileAvatar profile={{ id }} size={54} />
+            <div style={{ marginTop: 12, display: "flex", gap: 10, flexWrap: "wrap" }}>
+              {(pick.team === "A" ? teamAIds : teamBIds).map((id) => (
+                <button key={id} onClick={() => onPickScorer(id)} style={btnPick(theme)}>
+                  {id.slice(0, 8)}
                 </button>
               ))}
             </div>
-
-            <button style={pickerCancel(theme)} onClick={() => setPickTeam(null)}>
-              Annuler
-            </button>
           </div>
         </div>
       )}
@@ -245,156 +356,91 @@ export default function BabyFootPlay({ go, onFinish }: Props) {
   );
 }
 
-const wrap = (theme: any) => ({
-  minHeight: "100vh",
-  padding: 14,
-  background: theme?.colors?.bg ?? "#05060a",
-  color: theme?.colors?.text ?? "#fff",
-});
+function wrap(theme: any) {
+  return { minHeight: "100vh", padding: 16, paddingBottom: 90, background: theme.bg, color: theme.text };
+}
 
-const topRow: any = {
-  display: "grid",
-  gridTemplateColumns: "48px 1fr 48px",
-  alignItems: "center",
-  gap: 10,
-  marginBottom: 12,
-};
+const topRow: any = { display: "grid", gridTemplateColumns: "48px 1fr 48px", alignItems: "center", gap: 10, marginBottom: 12 };
+const topTitle: any = { textAlign: "center", fontWeight: 950, letterSpacing: 1, opacity: 0.95 };
 
-const topTitle: any = { textAlign: "center", fontWeight: 900, letterSpacing: 1, opacity: 0.95 };
+function header(theme: any) {
+  return {
+    borderRadius: 18,
+    border: `1px solid ${theme.borderSoft ?? "rgba(255,255,255,0.14)"}`,
+    background: theme.card,
+    padding: 14,
+    boxShadow: "0 12px 28px rgba(0,0,0,0.35)",
+    display: "grid",
+    gridTemplateColumns: "1fr 1.4fr 1fr",
+    gap: 10,
+    alignItems: "stretch",
+  };
+}
 
-const header = (theme: any) => ({
-  display: "grid",
-  gridTemplateColumns: "1fr 120px 1fr",
-  gap: 10,
-  padding: 12,
-  borderRadius: 18,
-  background: "rgba(255,255,255,0.06)",
-  border: "1px solid rgba(255,255,255,0.10)",
-  boxShadow: "0 12px 28px rgba(0,0,0,0.35)",
-});
-
-const teamBox: any = { display: "grid", gap: 6 };
-
-const teamName: any = { fontWeight: 950, letterSpacing: 0.6, opacity: 0.95 };
-
-const avatarsRow: any = { display: "flex", gap: 8, flexWrap: "wrap" };
-
-const avatarWrap: any = { width: 40, height: 40, display: "grid", placeItems: "center" };
-
-const midBox: any = { display: "grid", justifyItems: "center", gap: 6 };
-
-const timer = (theme: any) => ({
-  fontWeight: 950,
-  letterSpacing: 1,
-  padding: "8px 10px",
-  borderRadius: 12,
-  border: "1px solid rgba(255,255,255,0.14)",
-  background: "rgba(0,0,0,0.20)",
-  minWidth: 90,
-  textAlign: "center",
-});
-
-const target: any = { fontSize: 12, opacity: 0.8, letterSpacing: 1, fontWeight: 900 };
-
-const scoreRow: any = {
-  display: "grid",
-  gridTemplateColumns: "1fr 84px 1fr",
-  gap: 10,
-  marginTop: 12,
-};
-
-const scoreCard = (theme: any) => ({
-  borderRadius: 18,
-  background: "rgba(255,255,255,0.06)",
-  border: "1px solid rgba(255,255,255,0.10)",
-  padding: 14,
-  display: "grid",
-  gap: 12,
-  justifyItems: "center",
-  boxShadow: "0 12px 28px rgba(0,0,0,0.35)",
-});
-
-const scoreNum: any = { fontSize: 64, lineHeight: 1, fontWeight: 950, letterSpacing: 1 };
-
-const plusBtn = (theme: any) => ({
-  width: "100%",
-  height: 46,
-  borderRadius: 14,
-  border: "1px solid rgba(255,255,255,0.18)",
-  background: "rgba(255,255,255,0.14)",
-  color: theme?.colors?.text ?? "#fff",
-  fontWeight: 950,
-  letterSpacing: 1,
-  cursor: "pointer",
-});
-
-const vs = (theme: any) => ({
-  display: "grid",
-  placeItems: "center",
-  borderRadius: 18,
-  border: "1px solid rgba(255,255,255,0.10)",
-  background: "rgba(0,0,0,0.20)",
-});
-
-const vsTxt: any = { fontWeight: 950, letterSpacing: 2, opacity: 0.7 };
-
-const actionsRow: any = { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginTop: 12 };
-
-const ghostBtn = (theme: any) => ({
-  height: 48,
-  borderRadius: 14,
-  border: "1px solid rgba(255,255,255,0.14)",
-  background: "rgba(0,0,0,0.16)",
-  color: theme?.colors?.text ?? "#fff",
-  fontWeight: 950,
-  letterSpacing: 1,
-  cursor: "pointer",
-});
-
-const overlay: any = {
-  position: "fixed",
-  inset: 0,
-  background: "rgba(0,0,0,0.55)",
-  display: "grid",
-  placeItems: "center",
-  padding: 14,
-};
-
-const modal = (theme: any) => ({
-  width: "min(520px, 100%)",
-  borderRadius: 18,
-  border: "1px solid rgba(255,255,255,0.12)",
-  background: "rgba(10,12,18,0.96)",
-  boxShadow: "0 22px 70px rgba(0,0,0,0.6)",
-  padding: 14,
-  display: "grid",
-  gap: 10,
-});
-
-const modalTitle: any = { fontWeight: 950, letterSpacing: 0.6, fontSize: 16 };
-const modalSub: any = { opacity: 0.75, fontWeight: 700 };
-
-const pickerRow: any = { display: "flex", gap: 12, flexWrap: "wrap", marginTop: 6 };
-
-const pickerBtn = (theme: any) => ({
-  width: 72,
-  height: 72,
-  borderRadius: 18,
-  border: "1px solid rgba(255,255,255,0.14)",
-  background: "rgba(255,255,255,0.06)",
-  display: "grid",
-  placeItems: "center",
-  cursor: "pointer",
-});
-
-const pickerCancel = (theme: any) => ({
-  marginTop: 8,
-  height: 44,
-  borderRadius: 14,
-  border: "1px solid rgba(255,255,255,0.12)",
-  background: "rgba(0,0,0,0.18)",
-  color: theme?.colors?.text ?? "#fff",
-  fontWeight: 900,
-  letterSpacing: 1,
-  cursor: "pointer",
-});
+const rowTeam: any = { display: "flex", flexDirection: "column", justifyContent: "space-between", gap: 8 };
+const teamName: any = { fontWeight: 1000, letterSpacing: 0.6, opacity: 0.95 };
+function score(theme: any) {
+  return { fontSize: 34, fontWeight: 1000, color: theme.primary, textShadow: `0 0 12px ${theme.primary}55` };
+}
+function btnPlus(theme: any, team: "A" | "B", isPens: boolean) {
+  const tint = team === "A" ? "rgba(0,200,255,0.18)" : "rgba(255,120,190,0.16)";
+  return {
+    padding: "12px 12px",
+    borderRadius: 16,
+    border: "1px solid rgba(255,255,255,0.14)",
+    background: tint,
+    color: theme.text,
+    fontWeight: 1000,
+    cursor: "pointer",
+  };
+}
+const midBox: any = { display: "flex", flexDirection: "column", justifyContent: "center", padding: "4px 6px" };
+function midTitle(theme: any) {
+  return { textAlign: "center", fontWeight: 1000, letterSpacing: 0.9, color: theme.textSoft };
+}
+function setsPill(theme: any, v: number) {
+  return {
+    minWidth: 44,
+    textAlign: "center" as const,
+    padding: "8px 10px",
+    borderRadius: 999,
+    border: `1px solid ${theme.primary}55`,
+    background: `${theme.primary}12`,
+    color: theme.primary,
+    fontWeight: 1000,
+  };
+}
+function btnSecondary(theme: any) {
+  return {
+    flex: 1,
+    padding: "12px 12px",
+    borderRadius: 16,
+    border: "1px solid rgba(255,255,255,0.14)",
+    background: "rgba(0,0,0,0.22)",
+    color: theme.text,
+    fontWeight: 1000,
+    cursor: "pointer",
+  };
+}
+function btnTiny(theme: any) {
+  return {
+    border: "1px solid rgba(255,255,255,0.14)",
+    background: "rgba(0,0,0,0.18)",
+    color: theme.text,
+    fontWeight: 900,
+    borderRadius: 12,
+    padding: "8px 10px",
+    cursor: "pointer",
+  };
+}
+function btnPick(theme: any) {
+  return {
+    padding: "10px 12px",
+    borderRadius: 14,
+    border: `1px solid ${theme.borderSoft ?? "rgba(255,255,255,0.14)"}`,
+    background: "rgba(0,0,0,0.20)",
+    color: theme.text,
+    fontWeight: 1000,
+    cursor: "pointer",
+  };
+}

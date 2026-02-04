@@ -32,6 +32,18 @@ export default function BabyFootMenuDefis({ onBack, go }: Props) {
           <div style={pill}>PLAY</div>
         </button>
 
+        <button style={card(theme)} onClick={() => go("babyfoot_config", { presetMode: "1v1", presetTarget: 3, presetDurationSec: 90 })}>
+          <div style={cardTitle}>CLUTCH 3</div>
+          <div style={cardSub}>1v1 • premier à 3 • 90 sec</div>
+          <div style={pill}>90s</div>
+        </button>
+
+        <button style={card(theme)} onClick={() => go("babyfoot_config", { presetMode: "2v2", presetBestOf: 5, presetSetTarget: 3 })}>
+          <div style={cardTitle}>ENDURANCE</div>
+          <div style={cardSub}>2v2 • BO5 • 3 buts/set</div>
+          <div style={pill}>BO5</div>
+        </button>
+
         <div style={note}>
           DÉFIS : on pourra ajouter ici des règles spécifiques (ex: sets, handicap, combo, etc.) sans toucher aux autres sports.
         </div>

@@ -10,6 +10,73 @@ import BackDot from "../BackDot";
 import InfoDot from "../InfoDot";
 import RulesModal from "../RulesModal";
 import { useTheme } from "../../contexts/ThemeContext";
+import tickerX01 from "../../assets/tickers/ticker_x01.png";
+
+// Scale children down (never up) to fit the available box.
+function FitBox({
+  children,
+  minScale = 0.55,
+  maxScale = 1,
+}: {
+  children: React.ReactNode;
+  minScale?: number;
+  maxScale?: number;
+}) {
+  const outerRef = React.useRef<HTMLDivElement | null>(null);
+  const innerRef = React.useRef<HTMLDivElement | null>(null);
+  const [scale, setScale] = React.useState(1);
+
+  React.useLayoutEffect(() => {
+    const outer = outerRef.current;
+    const inner = innerRef.current;
+    if (!outer || !inner) return;
+
+    const compute = () => {
+      const ob = outer.getBoundingClientRect();
+      const ow = ob.width;
+      const oh = ob.height;
+      const iw = Math.max(inner.scrollWidth, inner.getBoundingClientRect().width);
+      const ih = Math.max(inner.scrollHeight, inner.getBoundingClientRect().height);
+      if (!ow || !oh || !iw || !ih) return;
+
+      const s = Math.min(maxScale, ow / iw, oh / ih);
+      const clamped = Math.max(minScale, Math.min(maxScale, Math.round(s * 1000) / 1000));
+      setScale(clamped);
+    };
+
+    compute();
+    let ro: ResizeObserver | null = null;
+    try {
+      ro = new ResizeObserver(() => compute());
+      ro.observe(outer);
+      ro.observe(inner);
+    } catch {
+      // ignore
+    }
+    window.addEventListener("resize", compute);
+    window.addEventListener("orientationchange", compute);
+    return () => {
+      window.removeEventListener("resize", compute);
+      window.removeEventListener("orientationchange", compute);
+      if (ro) ro.disconnect();
+    };
+  }, [minScale, maxScale]);
+
+  return (
+    <div ref={outerRef} style={{ height: "100%", width: "100%", overflow: "hidden" }}>
+      <div
+        ref={innerRef}
+        style={{
+          transform: `scale(${scale})`,
+          transformOrigin: "top left",
+          width: scale < 1 ? `${100 / scale}%` : "100%",
+        }}
+      >
+        {children}
+      </div>
+    </div>
+  );
+}
 
 function useMediaQuery(query: string) {
   const [matches, setMatches] = React.useState(false);
@@ -35,6 +102,8 @@ function useMediaQuery(query: string) {
 }
 
 type Props = {
+  /** Identifiant du mode (ex: "x01"). Sert de fallback pour certains assets (ex ticker). */
+  modeId?: string;
   /** Titre centré du header (optionnel). Si headerCenter est fourni, il prime. */
   title?: string;
   /** Contenu centré du header (ex: scoreboard compact). */
@@ -60,9 +129,11 @@ type Props = {
   playersPanel?: React.ReactNode;
   playersRowRight?: React.ReactNode;
   playersRowLabel?: string;
-  /** Image ticker en fond du bloc "JOUEURS" (ex: ticker_x01.png). */
-  playersRowTicker?: string;
   playersPanelMode?: "modal" | "sidebar-auto";
+  /** Image de fond (ticker) du bandeau JOUEURS (ex: ticker_x01.png). */
+  playersBannerImage?: string;
+  /** Opacité du ticker (0..1) */
+  playersBannerOpacity?: number;
 
   /** Tablet */
   forceLayout?: "auto" | "phone" | "tablet";
@@ -72,6 +143,7 @@ type Props = {
 };
 
 export default function GameplayLayout({
+  modeId,
   title = "",
   headerCenter,
   onBack,
@@ -85,8 +157,9 @@ export default function GameplayLayout({
   playersPanel,
   playersRowRight,
   playersRowLabel = "JOUEURS",
-  playersRowTicker,
   playersPanelMode = "sidebar-auto",
+  playersBannerImage,
+  playersBannerOpacity = 0.55,
   volleyInputDisplay,
   inputModes,
   forceLayout = "auto",
@@ -102,6 +175,11 @@ export default function GameplayLayout({
 
   const playersInSidebar = isTablet && canOpenPlayers && playersPanelMode === "sidebar-auto";
   const showPlayersRowAsButton = canOpenPlayers && !playersInSidebar;
+
+  // Fallback garanti: si on oublie de passer playersBannerImage, certains modes ont un ticker "obligatoire".
+  // (Objectif: éviter que le ticker X01 "disparaisse" au gré des patchs.)
+  const effectivePlayersBannerImage =
+    playersBannerImage ?? (modeId === "x01" ? (tickerX01 as unknown as string) : undefined);
 
   const renderPlayersRow = () => (
     <div
@@ -122,19 +200,47 @@ export default function GameplayLayout({
         userSelect: "none",
         WebkitTapHighlightColor: "transparent",
         border: `1px solid ${theme.borderSoft}`,
-        background: playersRowTicker
-          ? `linear-gradient(90deg, rgba(0,0,0,0.78), rgba(0,0,0,0.32)), url(${playersRowTicker}) center / cover no-repeat`
-          : showPlayersRowAsButton
-          ? "rgba(0,0,0,0.28)"
-          : "rgba(0,0,0,0.18)",
+        background: showPlayersRowAsButton ? "rgba(0,0,0,0.28)" : "rgba(0,0,0,0.18)",
+        position: "relative",
+        overflow: "hidden",
       }}
     >
+      {/* Ticker en fond (NE PAS LE SUPPRIMER côté X01 : c'est une identité visuelle du bandeau) */}
+      {effectivePlayersBannerImage ? (
+        <>
+          <div
+            aria-hidden
+            style={{
+              position: "absolute",
+              inset: 0,
+              backgroundImage: `url(${effectivePlayersBannerImage})`,
+              backgroundSize: "cover",
+              backgroundPosition: "center",
+              opacity: playersBannerOpacity,
+              filter: "saturate(1.05) contrast(1.05)",
+              transform: "scale(1.02)",
+            }}
+          />
+          <div
+            aria-hidden
+            style={{
+              position: "absolute",
+              inset: 0,
+              background:
+                "linear-gradient(90deg, rgba(0,0,0,0.88) 0%, rgba(0,0,0,0.62) 48%, rgba(0,0,0,0.88) 100%)",
+            }}
+          />
+        </>
+      ) : null}
+
       <div
         style={{
           display: "flex",
           alignItems: "center",
           justifyContent: "space-between",
           gap: 10,
+          position: "relative",
+          zIndex: 1,
         }}
       >
         <div style={{ fontWeight: 900, letterSpacing: 0.4, color: theme.primary }}>
@@ -162,27 +268,24 @@ export default function GameplayLayout({
 
   const infoEnabled = (showInfo ?? !!onInfo) && !!onInfo;
 
-  // ✅ Anti-overflow / tablet-safe:
-  // - On verrouille le viewport en tablette (pas de scroll horizontal global)
-  // - On permet un scroll vertical interne par colonne.
-  const outerStyle: React.CSSProperties = isTablet
-    ? {
-        height: "100svh",
-        width: "100%",
-        overflow: "hidden",
-      }
-    : { width: "100%" };
+  // ⚠️ Barrières anti-dépassement : le layout gameplay ne doit JAMAIS déborder en largeur/hauteur.
+  // On verrouille le viewport (100svh) et on force les zones internes à shrink (minHeight/minWidth à 0).
+  const outerStyle: React.CSSProperties = {
+    height: "100svh",
+    width: "100%",
+    overflow: "hidden",
+  };
 
   const containerStyle: React.CSSProperties = {
+    height: "100%",
     width: "100%",
-    // En tablette on évite les maxWidth trop agressifs qui forcent du layout.
-    maxWidth: isTablet ? "100%" : 920,
+    maxWidth: isTablet ? 1180 : 920,
     margin: "0 auto",
-    padding: isTablet ? "10px 12px 12px" : "10px 10px 14px",
+    padding: "10px 10px 14px",
     display: "flex",
     flexDirection: "column",
     gap: 10,
-    ...(isTablet ? { height: "100%", minHeight: 0 } : null),
+    minHeight: 0,
   };
 
   return (
@@ -239,7 +342,7 @@ export default function GameplayLayout({
 
       {/* 2+) CONTENU */}
       {!isTablet ? (
-        <>
+        <div style={{ display: "flex", flexDirection: "column", gap: 10, flex: 1, minHeight: 0, overflow: "hidden" }}>
           {/* 2) HEADER PROFIL ACTIF */}
           {activeProfileHeader ? (
             <div className="card" style={{ padding: "10px 12px" }}>
@@ -265,25 +368,37 @@ export default function GameplayLayout({
             </div>
           ) : null}
 
-          {/* 5) MODES DE SAISIE */}
+          {/* 5) MODES DE SAISIE — doit toujours tenir dans l'écran */}
           {inputModes ? (
-            <div className="card" style={{ padding: "10px 12px", minHeight: 180 }}>
-              {inputModes}
+            <div
+              className="card"
+              style={{
+                padding: "10px 12px",
+                flex: 1,
+                minHeight: 0,
+                overflow: "hidden",
+              }}
+            >
+              <div style={{ height: "100%", minHeight: 0 }}>
+                <FitBox minScale={0.52} maxScale={1}>
+                  {inputModes}
+                </FitBox>
+              </div>
             </div>
           ) : null}
-        </>
+        </div>
       ) : (
-        <div
-          style={{
-            flex: 1,
-            minHeight: 0,
-            overflow: "hidden",
-            display: "grid",
-            // ✅ minmax(0, …) empêche les enfants de forcer un overflow horizontal.
-            gridTemplateColumns: "minmax(0, 0.95fr) minmax(0, 1.05fr)",
-            gap: 10,
-          }}
-        >
+        <div style={{ flex: 1, minHeight: 0, overflow: "hidden" }}>
+          <div
+            style={{
+              display: "grid",
+              // minmax(0,1fr) = empêche le débordement horizontal des enfants (shadows, min-width, etc.)
+              gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr)",
+              gap: 10,
+              height: "100%",
+              minHeight: 0,
+            }}
+          >
           {/* LEFT: profil + joueurs */}
           <div
             style={{
@@ -304,7 +419,7 @@ export default function GameplayLayout({
             {playersInSidebar ? (
               <div
                 className="card"
-                style={{ padding: "10px 12px", flex: 1, minHeight: 0, minWidth: 0, overflow: "hidden" }}
+                style={{ padding: "10px 12px", flex: 1, minHeight: 0, overflow: "hidden" }}
               >
                 <div
                   style={{
@@ -321,7 +436,7 @@ export default function GameplayLayout({
                   {playersRowRight}
                 </div>
 
-                <div style={{ overflowY: "auto", overflowX: "hidden", maxHeight: "100%", paddingRight: 4 }}>
+                <div style={{ overflow: "auto", maxHeight: "100%", paddingRight: 4 }}>
                   {playersPanel}
                 </div>
               </div>
@@ -359,11 +474,16 @@ export default function GameplayLayout({
             {inputModes ? (
               <div
                 className="card"
-                style={{ padding: "10px 12px", flex: 1, minHeight: 0, minWidth: 0, overflow: "hidden" }}
+                style={{ padding: "10px 12px", flex: 1, minHeight: 0, overflow: "hidden" }}
               >
-                <div style={{ height: "100%", minHeight: 0, overflow: "hidden" }}>{inputModes}</div>
+                <div style={{ height: "100%", minHeight: 0 }}>
+                  <FitBox minScale={0.58} maxScale={1}>
+                    {inputModes}
+                  </FitBox>
+                </div>
               </div>
             ) : null}
+          </div>
           </div>
         </div>
       )}

@@ -17,6 +17,11 @@ type Props = {
 export default function BabyFootMenuTournoi({ onBack, go }: Props) {
   const { theme } = useTheme();
 
+  const openTournaments = () => {
+    // Reuse global tournaments shell, but force baby-foot context.
+    go("tournaments", { forceMode: "babyfoot" });
+  };
+
   return (
     <div style={wrap(theme)}>
       <div style={topRow}>
@@ -26,14 +31,14 @@ export default function BabyFootMenuTournoi({ onBack, go }: Props) {
       </div>
 
       <div style={grid}>
-        <button style={card(theme)} onClick={() => go("babyfoot_config", { presetMode: "1v1", presetTarget: 9 })}>
-          <div style={cardTitle}>CLASSIC 9</div>
-          <div style={cardSub}>Preset jouable • 1v1 • premier à 9</div>
-          <div style={pill}>PLAY</div>
+        <button style={card(theme)} onClick={openTournaments}>
+          <div style={cardTitle}>TOURNOIS</div>
+          <div style={cardSub}>Brackets / poules • local</div>
+          <div style={pill}>OPEN</div>
         </button>
 
         <div style={note}>
-          TOURNOI : on pourra ajouter ici des règles spécifiques (ex: sets, handicap, combo, etc.) sans toucher aux autres sports.
+          Ici, on enverra vers le module Tournois global, mais avec un contexte baby-foot (forceMode).
         </div>
       </div>
     </div>

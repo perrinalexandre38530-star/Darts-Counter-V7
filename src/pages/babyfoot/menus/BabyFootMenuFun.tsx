@@ -32,6 +32,24 @@ export default function BabyFootMenuFun({ onBack, go }: Props) {
           <div style={pill}>PLAY</div>
         </button>
 
+        <button style={card(theme)} onClick={() => go("babyfoot_config", { presetMode: "1v1", presetGoldenGoal: true, presetTarget: 1 })}>
+          <div style={cardTitle}>GOLDEN GOAL</div>
+          <div style={cardSub}>1v1 • premier but gagne</div>
+          <div style={pill}>GG</div>
+        </button>
+
+        <button style={card(theme)} onClick={() => go("babyfoot_config", { presetMode: "2v1", presetTarget: 10, presetHandicapA: 0, presetHandicapB: 2 })}>
+          <div style={cardTitle}>HANDICAP</div>
+          <div style={cardSub}>2v1 • TEAM B démarre à +2</div>
+          <div style={pill}>H+2</div>
+        </button>
+
+        <button style={card(theme)} onClick={() => go("babyfoot_config", { presetMode: "2v2", presetBestOf: 3, presetSetTarget: 5 })}>
+          <div style={cardTitle}>SETS BO3</div>
+          <div style={cardSub}>2v2 • 2 sets gagnants • 5 buts</div>
+          <div style={pill}>BO3</div>
+        </button>
+
         <div style={note}>
           FUN : on pourra ajouter ici des règles spécifiques (ex: sets, handicap, combo, etc.) sans toucher aux autres sports.
         </div>

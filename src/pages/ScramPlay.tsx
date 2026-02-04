@@ -20,7 +20,6 @@ import { useLang } from "../contexts/LangContext";
 import { useTheme } from "../contexts/ThemeContext";
 import { useScramEngine } from "../hooks/useScramEngine";
 
-import GameplayLayout from "../components/gameplay/GameplayLayout";
 type UIDart = { v: number; mult: 1 | 2 | 3; label?: string };
 
 type ConfigPayload = {
@@ -95,7 +94,7 @@ function computeLiveMiniStats(state: any) {
   return out;
 }
 
-function ScramPlayMain(props: any) {
+export default function ScramPlay(props: any) {
   const { t } = useLang();
   const theme = useTheme();
 
@@ -501,17 +500,5 @@ function ScramPlayMain(props: any) {
         )}
       </div>
     </div>
-  );
-}
-
-export default function ScramPlay(props: any) {
-  return (
-    <GameplayLayout
-      headerCenter={<div />}
-      activeProfileHeader={<div />}
-      playersPanel={<div />}
-      volleyInputDisplay={<div />}
-      inputModes={<ScramPlayMain {...props} />}
-    />
   );
 }

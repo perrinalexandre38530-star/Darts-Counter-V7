@@ -37,33 +37,10 @@ import { buildLegStatsFromV3LiveForOverlay } from "../lib/x01v3/x01V3LegStatsAda
 
 // ✅ Layout unifié (MEP)
 import GameplayLayout from "../components/gameplay/GameplayLayout";
+import tickerX01 from "../assets/tickers/ticker_x01.png";
 
 import { StatsBridge } from "../lib/statsBridge";
 import { loadBots } from "./ProfilesBots";
-
-// Local helper matching GameplayLayout breakpoint (tablet landscape/wide).
-function useMediaQuery(query: string) {
-  const [matches, setMatches] = React.useState(false);
-
-  React.useEffect(() => {
-    if (typeof window === "undefined" || !window.matchMedia) return;
-    const mql = window.matchMedia(query);
-    const onChange = () => setMatches(!!mql.matches);
-    onChange();
-    try {
-      mql.addEventListener("change", onChange);
-      return () => mql.removeEventListener("change", onChange);
-    } catch {
-      // Safari legacy
-      // @ts-ignore
-      mql.addListener(onChange);
-      // @ts-ignore
-      return () => mql.removeListener(onChange);
-    }
-  }, [query]);
-
-  return matches;
-}
 
 
 
@@ -881,7 +858,6 @@ export default function X01PlayV3({
   onReplayNewConfig,
 }: Props) {
   const { isLandscapeTablet } = useViewport();
-  const isWideTabletLayout = useMediaQuery("(min-width: 900px) and (orientation: landscape)");
   const { theme } = useTheme();
   const themePrimary = (theme as any)?.colors?.primary ?? (theme as any)?.primary ?? "#ffcc55";
 
@@ -3134,10 +3110,7 @@ if (isLandscapeTablet) {
                       hidePreview
                       showPlaceholders={false}
                       disabled={isBustLocked}
-                      switcherMode="inline"
-                      // ✅ Tablet: on scale automatiquement le keypad pour éviter tout dépassement.
-                      fitToParent={isWideTabletLayout}
-                      lockContentHeight={isWideTabletLayout}
+                      switcherMode="hidden"
                     />
                   </div>
                 </div>
@@ -3180,6 +3153,7 @@ if (isLandscapeTablet) {
     >
       {/* ✅ MEP: Layout unifié (Header + Profil Actif + Joueurs modal + Volée + Saisie) */}
       <GameplayLayout
+        modeId="x01"
         title=""
         onBack={handleQuit}
         showInfo={false}
@@ -3281,6 +3255,8 @@ if (isLandscapeTablet) {
           </div>
         }
         playersRowLabel="JOUEURS"
+        // ⚠️ Identité visuelle : le ticker X01 doit rester en fond du bandeau JOUEURS.
+        playersBannerImage={tickerX01}
         playersPanelTitle="Joueurs"
         playersRowRight={
           <span
@@ -3400,7 +3376,10 @@ if (isLandscapeTablet) {
           </div>
         }
         inputModes={
-          <div ref={keypadWrapRef} style={{ width: "100%" }}>
+          <div
+            ref={keypadWrapRef}
+            style={{ width: "100%", height: "100%", minHeight: 0, display: "flex", flexDirection: "column" }}
+          >
             {isBotTurn ? (
           <div
             style={{
@@ -3413,6 +3392,9 @@ if (isLandscapeTablet) {
               fontSize: 13,
               color: "#e3e6ff",
               boxShadow: "0 10px 24px rgba(0,0,0,.5)",
+              flex: 1,
+              minHeight: 0,
+              overflow: "hidden",
             }}
           >
             🤖 {activePlayer?.name ?? t("x01v3.bot.name", "BOT")}{" "}
@@ -3540,6 +3522,9 @@ if (isLandscapeTablet) {
 
           <div
             style={{
+              flex: 1,
+              minHeight: 0,
+              overflow: "hidden",
               pointerEvents:
                 voiceScoreEnabled && scoringSource !== "external" && (voiceScore.phase.startsWith("LISTEN") || voiceScore.phase === "RECAP_CONFIRM")
                   ? "none"
@@ -3569,6 +3554,9 @@ if (isLandscapeTablet) {
               hidePreview
               showPlaceholders={false}
               disabled={isBustLocked}
+              // ✅ UX: pas de dropdown, modes visibles, et auto-fit pour que le keypad ne force JAMAIS un scroll.
+              switcherMode="inline"
+              fitToParent
             />
           </div>
           </div>
@@ -3691,13 +3679,14 @@ function HeaderBlock(props: HeaderBlockProps) {
             display: "flex",
             flexDirection: "column",
             alignItems: "center",
-            gap: 5,
+            gap: 4,
           }}
         >
           <div
             style={{
-              width: 96,
-              height: 96,
+              // ✅ Légère réduction pour gagner un peu de hauteur (mobile/tablette)
+              width: 88,
+              height: 88,
               borderRadius: "50%",
               overflow: "hidden",
               background:

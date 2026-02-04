@@ -25,19 +25,19 @@ export default function BabyFootMenuTraining({ onBack, go }: Props) {
       </div>
 
       <div style={grid}>
-        <button style={card(theme)} onClick={() => go("babyfoot_config", { presetMode: "1v1", presetTarget: 5 })}>
+        <button style={card(theme)} onClick={() => go("babyfoot_config", { presetMode: "1v1", presetTarget: 5, presetDurationSec: 180 })}>
           <div style={cardTitle}>SPEED 5</div>
           <div style={cardSub}>1v1 • premier à 5</div>
           <div style={pill}>TARGET 5</div>
         </button>
 
-        <button style={card(theme)} onClick={() => go("babyfoot_config", { presetMode: "2v2", presetTarget: 7 })}>
+        <button style={card(theme)} onClick={() => go("babyfoot_config", { presetMode: "2v2", presetTarget: 7, presetDurationSec: 210 })}>
           <div style={cardTitle}>TEAM QUICK 7</div>
           <div style={cardSub}>2v2 • premier à 7</div>
           <div style={pill}>TARGET 7</div>
         </button>
 
-        <button style={card(theme)} onClick={() => go("babyfoot_config", { presetMode: "2v1", presetTarget: 6 })}>
+        <button style={card(theme)} onClick={() => go("babyfoot_config", { presetMode: "2v1", presetTarget: 6, presetDurationSec: 240 })}>
           <div style={cardTitle}>CHALLENGE 2V1</div>
           <div style={cardSub}>2v1 • premier à 6</div>
           <div style={pill}>TARGET 6</div>

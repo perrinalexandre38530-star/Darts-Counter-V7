@@ -5,6 +5,10 @@
 // - Carrousel Bots IA visible si toggle activé
 // - Bots = PRO_BOTS + bots custom (localStorage dc_bots_v1)
 // - Sélection via click (selectedIds)
+// - Mode TEAMS: GOLD / PINK / BLUE / GREEN (2 à 4 équipes, 3 possible)
+//   + assignation manuelle ou auto (round-robin)
+//   + équipes déséquilibrées autorisées (5/7 joueurs, etc.)
+// - Ordre de départ: Chronologique ou Aléatoire (joueurs ou équipes)
 // =============================================================
 
 import React from "react";
@@ -23,6 +27,12 @@ import InfoDot from "../components/InfoDot";
 
 import tickerGolf from "../assets/tickers/ticker_golf.png";
 
+// ✅ Logos teams (déjà présents dans le projet)
+import teamGoldLogo from "../ui_assets/teams/team_gold.png";
+import teamPinkLogo from "../ui_assets/teams/team_pink.png";
+import teamBlueLogo from "../ui_assets/teams/team_blue.png";
+import teamGreenLogo from "../ui_assets/teams/team_green.png";
+
 // ✅ Avatars PRO bots (assets locaux)
 import avatarGreenMachine from "../assets/avatars/bots-pro/green-machine.png";
 import avatarSnakeKing from "../assets/avatars/bots-pro/snake-king.png";
@@ -32,17 +42,28 @@ import avatarIceMan from "../assets/avatars/bots-pro/ice-man.png";
 type BotLevel = "easy" | "normal" | "hard";
 type HoleOrderMode = "chronological" | "random";
 type GolfScoringMode = "strokes" | "points";
+type StartOrderMode = "chronological" | "random";
+type TeamKey = "gold" | "pink" | "blue" | "green";
 
 export type GolfConfigPayload = {
   players: number;
   selectedIds: string[];
   holes: 9 | 18;
+
   teamsEnabled: boolean;
+  teamCount?: 2 | 3 | 4;
+  teamAssignments?: Record<string, TeamKey>;
+
   botsEnabled: boolean;
   botLevel: BotLevel;
+
   missStrokes: 4 | 5 | 6;
   holeOrderMode: HoleOrderMode;
   scoringMode: GolfScoringMode;
+
+  // ✅ ordre de départ (joueurs ou équipes)
+  startOrderMode: StartOrderMode;
+
   showHoleGrid: boolean;
 };
 
@@ -57,6 +78,15 @@ const PRO_BOTS: BotLite[] = [
   { id: "pro_wonder_kid", name: "Wonder Kid", avatarDataUrl: avatarWonderKid, botLevel: "hard" },
   { id: "pro_ice_man", name: "Ice Man", avatarDataUrl: avatarIceMan, botLevel: "hard" },
 ];
+
+const TEAM_META: Record<TeamKey, { label: string; color: string; logo: string }> = {
+  gold: { label: "TEAM GOLD", color: "#ffcf57", logo: teamGoldLogo },
+  pink: { label: "TEAM PINK", color: "#ff7ac8", logo: teamPinkLogo },
+  blue: { label: "TEAM BLUE", color: "#6bb7ff", logo: teamBlueLogo },
+  green: { label: "TEAM GREEN", color: "#7fe2a9", logo: teamGreenLogo },
+};
+
+const TEAM_KEYS_ALL: TeamKey[] = ["gold", "pink", "blue", "green"];
 
 function readUserBotsFromLS(): BotLite[] {
   try {
@@ -95,6 +125,13 @@ function isBotLike(p: any) {
   return false;
 }
 
+function normalizeTeamCount(n: any): 2 | 3 | 4 {
+  const v = Number(n);
+  if (v === 3) return 3;
+  if (v >= 4) return 4;
+  return 2;
+}
+
 export default function GolfConfig(props: any) {
   const { t } = useLang();
   const theme = useTheme();
@@ -115,6 +152,9 @@ export default function GolfConfig(props: any) {
   const cardBg = "linear-gradient(180deg, rgba(255,255,255,0.06), rgba(0,0,0,0.28))";
 
   const [teamsEnabled, setTeamsEnabled] = React.useState(false);
+  const [teamCount, setTeamCount] = React.useState<2 | 3 | 4>(2);
+  const [teamAssignments, setTeamAssignments] = React.useState<Record<string, TeamKey>>({});
+
   const [botsEnabled, setBotsEnabled] = React.useState(false);
   const [botLevel, setBotLevel] = React.useState<BotLevel>("normal");
   const [holes, setHoles] = React.useState<9 | 18>(9);
@@ -122,6 +162,9 @@ export default function GolfConfig(props: any) {
   const [scoringMode, setScoringMode] = React.useState<GolfScoringMode>("strokes");
   const [missStrokes, setMissStrokes] = React.useState<4 | 5 | 6>(4);
   const [showHoleGrid, setShowHoleGrid] = React.useState(true);
+
+  // ✅ ordre de départ (joueurs ou équipes)
+  const [startOrderMode, setStartOrderMode] = React.useState<StartOrderMode>("chronological");
 
   const [userBots, setUserBots] = React.useState<BotLite[]>([]);
   React.useEffect(() => {
@@ -132,41 +175,107 @@ export default function GolfConfig(props: any) {
     setUserBots(Array.from(m.values()));
   }, []);
 
+  // Load config LS
   const [selectedIds, setSelectedIds] = React.useState<string[]>(() => {
     try {
       const raw = localStorage.getItem(LS_CFG_KEY);
-      if (!raw) return [];
-      const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed?.selectedIds)) return parsed.selectedIds.slice(0, 8);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed?.selectedIds)) return parsed.selectedIds.slice(0, 8);
+      }
     } catch {}
     return humanProfiles.slice(0, 2).map((p) => String(p.id));
   });
 
-  // persist
+  React.useEffect(() => {
+    try {
+      const raw = localStorage.getItem(LS_CFG_KEY);
+      if (!raw) return;
+      const parsed = JSON.parse(raw);
+
+      setTeamsEnabled(!!parsed?.teamsEnabled);
+      setTeamCount(normalizeTeamCount(parsed?.teamCount ?? 2));
+      setTeamAssignments((parsed?.teamAssignments && typeof parsed.teamAssignments === "object") ? parsed.teamAssignments : {});
+
+      setBotsEnabled(!!parsed?.botsEnabled);
+      setBotLevel((parsed?.botLevel === "easy" || parsed?.botLevel === "hard" || parsed?.botLevel === "normal") ? parsed.botLevel : "normal");
+
+      setHoles(Number(parsed?.holes) === 18 ? 18 : 9);
+      setHoleOrderMode(parsed?.holeOrderMode === "random" ? "random" : "chronological");
+      setScoringMode(parsed?.scoringMode === "points" ? "points" : "strokes");
+      setMissStrokes((Number(parsed?.missStrokes) === 5 ? 5 : Number(parsed?.missStrokes) === 6 ? 6 : 4) as any);
+      setShowHoleGrid(parsed?.showHoleGrid !== false);
+
+      setStartOrderMode(parsed?.startOrderMode === "random" ? "random" : "chronological");
+    } catch {}
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Persist
   React.useEffect(() => {
     try {
       localStorage.setItem(
         LS_CFG_KEY,
         JSON.stringify({
           selectedIds,
+
           teamsEnabled,
+          teamCount,
+          teamAssignments,
+
           botsEnabled,
           botLevel,
+
           holes,
           holeOrderMode,
           scoringMode,
           missStrokes,
+
+          startOrderMode,
+
           showHoleGrid,
         })
       );
     } catch {}
-  }, [selectedIds, teamsEnabled, botsEnabled, botLevel, holes, holeOrderMode, scoringMode, missStrokes, showHoleGrid]);
+  }, [
+    selectedIds,
+    teamsEnabled,
+    teamCount,
+    teamAssignments,
+    botsEnabled,
+    botLevel,
+    holes,
+    holeOrderMode,
+    scoringMode,
+    missStrokes,
+    startOrderMode,
+    showHoleGrid,
+  ]);
 
+  // Si bots désactivés: retirer ids bots
   React.useEffect(() => {
     if (botsEnabled) return;
     const botIds = new Set(userBots.map((b) => b.id));
     setSelectedIds((prev) => prev.filter((id) => !botIds.has(id)));
   }, [botsEnabled, userBots]);
+
+  // Nettoyage assignments quand roster change + auto fallback round-robin
+  React.useEffect(() => {
+    if (!teamsEnabled) return;
+
+    const keys = TEAM_KEYS_ALL.slice(0, teamCount);
+    setTeamAssignments((prev) => {
+      const next: Record<string, TeamKey> = {};
+      let rr = 0;
+      for (const id of selectedIds) {
+        const assigned = prev[id];
+        const valid = assigned && keys.includes(assigned);
+        next[id] = (valid ? assigned : keys[rr % keys.length]) as TeamKey;
+        rr++;
+      }
+      return next;
+    });
+  }, [teamsEnabled, teamCount, selectedIds]);
 
   function togglePlayer(id: string) {
     setSelectedIds((prev) => {
@@ -182,18 +291,25 @@ export default function GolfConfig(props: any) {
       players: selectedIds.length,
       selectedIds,
       holes,
+
       teamsEnabled,
+      teamCount: teamsEnabled ? teamCount : undefined,
+      teamAssignments: teamsEnabled ? teamAssignments : undefined,
+
       botsEnabled,
       botLevel,
+
       missStrokes,
       holeOrderMode,
       scoringMode,
+
+      startOrderMode,
+
       showHoleGrid,
     };
 
     const go = (props as any)?.go ?? (props as any)?.params?.go;
     if (typeof go === "function") {
-      // ✅ route App.tsx: "golf_play" + GolfPlay lit params.config
       go("golf_play", { config: payload });
       return;
     }
@@ -203,7 +319,20 @@ export default function GolfConfig(props: any) {
     }
   }
 
-  const canStart = selectedIds.length >= 2;
+  // canStart : min 2 joueurs, et en teams => min 2 équipes non vides
+  const enabledKeys = TEAM_KEYS_ALL.slice(0, teamCount);
+  const teamNonEmptyCount = React.useMemo(() => {
+    if (!teamsEnabled) return 0;
+    const counts: Record<string, number> = {};
+    enabledKeys.forEach((k) => (counts[k] = 0));
+    selectedIds.forEach((id, idx) => {
+      const k = teamAssignments[id] ?? enabledKeys[idx % enabledKeys.length];
+      counts[k] = (counts[k] ?? 0) + 1;
+    });
+    return Object.values(counts).filter((n) => n > 0).length;
+  }, [teamsEnabled, enabledKeys, selectedIds, teamAssignments]);
+
+  const canStart = selectedIds.length >= 2 && (!teamsEnabled || teamNonEmptyCount >= 2);
 
   return (
     <div style={{ minHeight: "100dvh" }}>
@@ -214,7 +343,7 @@ export default function GolfConfig(props: any) {
           <InfoDot
             title="GOLF"
             content={
-              "Règles GOLF (darts)\n\n- Partie en 9 ou 18 trous.\n- Au trou N, la cible est le numéro N (1..9 ou 1..18).\n- Chaque joueur a 3 flèches.\n- Score du trou = 1 si tu touches la cible à la 1ère flèche, 2 à la 2e, 3 à la 3e.\n- Si tu ne touches pas la cible : pénalité (configurable).\n- Total = somme des trous. Score le plus bas = vainqueur (mode Strokes)."
+              "Règles GOLF (darts)\n\n- Partie en 9 ou 18 trous.\n- Ordre des trous: Chronologique ou Aléatoire.\n- Chaque tour: jusqu’à 3 flèches.\n- Le score du trou dépend du dernier tir validé.\n- Total bas = vainqueur (Strokes) ou total haut = vainqueur (Points)."
             }
           />
         }
@@ -306,9 +435,159 @@ export default function GolfConfig(props: any) {
             </div>
 
             {/* Toggles */}
-            <OptionRow label="Mode équipes (A/B)">
+            <OptionRow label="Mode équipes (TEAMS)">
               <OptionToggle value={teamsEnabled} onChange={setTeamsEnabled} />
             </OptionRow>
+
+            {teamsEnabled && (
+              <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 10 }}>
+                <div style={{ display: "flex", gap: 10, alignItems: "center", justifyContent: "space-between" }}>
+                  <div style={{ fontWeight: 900, opacity: 0.88 }}>Nombre d&apos;équipes</div>
+                  <select
+                    value={teamCount}
+                    onChange={(e) => setTeamCount(normalizeTeamCount(e.target.value))}
+                    style={{
+                      height: 44,
+                      borderRadius: 14,
+                      padding: "0 14px",
+                      border: "1px solid rgba(255,255,255,0.14)",
+                      background: "rgba(0,0,0,0.22)",
+                      color: "rgba(255,255,255,0.92)",
+                      fontWeight: 900,
+                      minWidth: 110,
+                    }}
+                  >
+                    <option value="2">2</option>
+                    <option value="3">3</option>
+                    <option value="4">4</option>
+                  </select>
+                </div>
+
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center" }}>
+                  <div style={{ fontWeight: 900, opacity: 0.82 }}>Assignation des joueurs</div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const keys = TEAM_KEYS_ALL.slice(0, teamCount);
+                      const next: Record<string, TeamKey> = {};
+                      selectedIds.forEach((id, idx) => {
+                        next[id] = keys[idx % keys.length];
+                      });
+                      setTeamAssignments(next);
+                    }}
+                    style={{
+                      height: 38,
+                      padding: "0 12px",
+                      borderRadius: 12,
+                      border: "1px solid rgba(255,255,255,0.14)",
+                      background: "rgba(0,0,0,0.24)",
+                      color: "rgba(255,255,255,0.88)",
+                      fontWeight: 900,
+                      cursor: "pointer",
+                    }}
+                  >
+                    Auto
+                  </button>
+                </div>
+
+                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                  {selectedIds.map((id, idx) => {
+                    const hp = humanProfiles.find((p) => String(p.id) === id);
+                    const bp = userBots.find((b) => String(b.id) === id);
+                    const name = hp?.name || bp?.name || "Joueur";
+                    const avatar = (hp as any)?.avatarDataUrl || (hp as any)?.avatarUrl || (bp as any)?.avatarDataUrl || null;
+
+                    const keys = TEAM_KEYS_ALL.slice(0, teamCount);
+                    const current = teamAssignments[id] ?? keys[idx % keys.length];
+
+                    return (
+                      <div
+                        key={id}
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "space-between",
+                          gap: 10,
+                          padding: 10,
+                          borderRadius: 16,
+                          border: "1px solid rgba(255,255,255,0.10)",
+                          background: "rgba(0,0,0,0.18)",
+                        }}
+                      >
+                        <div style={{ display: "inline-flex", alignItems: "center", gap: 10, minWidth: 0 }}>
+                          <div
+                            style={{
+                              width: 34,
+                              height: 34,
+                              borderRadius: "50%",
+                              overflow: "hidden",
+                              border: "1px solid rgba(255,255,255,0.14)",
+                              background: "rgba(0,0,0,0.30)",
+                              flex: "0 0 auto",
+                            }}
+                          >
+                            {avatar ? (
+                              <img src={avatar} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                            ) : null}
+                          </div>
+                          <div style={{ fontWeight: 900, opacity: 0.92, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                            {name}
+                          </div>
+                        </div>
+
+                        <div style={{ display: "flex", flexWrap: "wrap", gap: 8, justifyContent: "flex-end" }}>
+                          {keys.map((k) => {
+                            const meta = TEAM_META[k];
+                            const active = current === k;
+                            return (
+                              <button
+                                key={k}
+                                type="button"
+                                onClick={() => setTeamAssignments((prev) => ({ ...prev, [id]: k }))}
+                                style={{
+                                  flex: "0 0 auto",
+                                  height: 34,
+                                  padding: "0 10px",
+                                  borderRadius: 999,
+                                  border: active ? `1px solid ${meta.color}88` : "1px solid rgba(255,255,255,0.14)",
+                                  background: active ? `${meta.color}22` : "rgba(0,0,0,0.20)",
+                                  color: active ? meta.color : "rgba(255,255,255,0.84)",
+                                  fontWeight: 1000,
+                                  cursor: "pointer",
+                                  display: "inline-flex",
+                                  alignItems: "center",
+                                  gap: 8,
+                                }}
+                              >
+                                <img
+                                  src={meta.logo}
+                                  alt=""
+                                  style={{
+                                    width: 18,
+                                    height: 18,
+                                    objectFit: "contain",
+                                    filter: "drop-shadow(0 4px 10px rgba(0,0,0,.35))",
+                                  }}
+                                />
+                                <span style={{ fontSize: 11, letterSpacing: 0.3 }}>
+                                  {meta.label.replace("TEAM ", "")}
+                                </span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {teamNonEmptyCount < 2 && (
+                  <div style={{ fontSize: 12, opacity: 0.75, fontWeight: 900, marginTop: 4 }}>
+                    ⚠️ Il faut au moins 2 équipes non vides pour lancer une partie TEAMS.
+                  </div>
+                )}
+              </div>
+            )}
 
             <OptionRow label="Bots IA">
               <OptionToggle value={botsEnabled} onChange={setBotsEnabled} />
@@ -441,6 +720,17 @@ export default function GolfConfig(props: any) {
               />
             </OptionRow>
 
+            <OptionRow label={`Ordre de départ (${teamsEnabled ? "équipes" : "joueurs"})`}>
+              <OptionSelect
+                value={startOrderMode}
+                options={[
+                  { value: "chronological", label: "Chronologique" },
+                  { value: "random", label: "Aléatoire" },
+                ]}
+                onChange={(v: any) => setStartOrderMode(v === "random" ? "random" : "chronological")}
+              />
+            </OptionRow>
+
             <OptionRow label="Mode de scoring">
               <OptionSelect
                 value={scoringMode}
@@ -494,7 +784,9 @@ export default function GolfConfig(props: any) {
             </button>
             {!canStart && (
               <div style={{ marginTop: 8, fontSize: 12, opacity: 0.75, fontWeight: 900, textAlign: "center" }}>
-                Sélectionne au moins 2 joueurs (humains et/ou bots).
+                {teamsEnabled
+                  ? "Sélectionne au moins 2 joueurs, et au moins 2 équipes non vides."
+                  : "Sélectionne au moins 2 joueurs (humains et/ou bots)."}
               </div>
             )}
           </div>

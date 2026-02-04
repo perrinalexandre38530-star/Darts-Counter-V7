@@ -185,6 +185,9 @@ export default function ScoreInputHub({
   // Presets / Voice / Auto / IA : visibles mais grisés (sauf mode dev)
   const allowPresets = devEnabled && !!onDirectDart && enablePresets;
 
+  // ⚠️ UX: en gameplay on évite les menus repliables (ça fait perdre de la hauteur).
+  // On traite "drawer" comme "inline" (toujours visible) et on garde "hidden" pour figer.
+
   // ✅ Unifier la hauteur visuelle du bloc de saisie :
   // on mesure la hauteur du rendu KEYPAD, puis on applique un minHeight identique aux autres méthodes.
   const contentMeasureRef = React.useRef<HTMLDivElement | null>(null);
@@ -223,29 +226,47 @@ export default function ScoreInputHub({
       const inner = fitInnerRef.current;
       if (!outer || !inner) return;
 
-      const oh = outer.getBoundingClientRect().height;
-      const ow = outer.getBoundingClientRect().width;
+      const ob = outer.getBoundingClientRect();
+      const ib = inner.getBoundingClientRect();
+
+      const oh = ob.height;
+      const ow = ob.width;
+
       // scrollHeight/scrollWidth pour prendre en compte le contenu non contraint
-      const ih = Math.max(inner.scrollHeight, inner.getBoundingClientRect().height);
-      const iw = Math.max(inner.scrollWidth, inner.getBoundingClientRect().width);
+      const ih = Math.max(inner.scrollHeight, ib.height);
+      const iw = Math.max(inner.scrollWidth, ib.width);
 
       if (!oh || !ow || !ih || !iw) return;
 
       const sH = oh / ih;
       const sW = ow / iw;
       const s = Math.min(1, sH, sW);
-      const rounded = Math.max(0.6, Math.round(s * 1000) / 1000);
+      // Descend plus bas sur petits écrans pour éviter le scroll.
+      const rounded = Math.max(0.52, Math.round(s * 1000) / 1000);
       if (Math.abs(rounded - fitScale) > 0.01) setFitScale(rounded);
     };
 
-    // Mesure après paint
     const raf = requestAnimationFrame(compute);
+
+    // ResizeObserver = recalcul quand la hauteur dispo change (rotation, safe areas, etc.)
+    let ro: ResizeObserver | null = null;
+    try {
+      ro = new ResizeObserver(() => compute());
+      if (fitOuterRef.current) ro.observe(fitOuterRef.current);
+      if (fitInnerRef.current) ro.observe(fitInnerRef.current);
+    } catch {
+      // ignore
+    }
+
     const onResize = () => compute();
     window.addEventListener("resize", onResize);
+    window.addEventListener("orientationchange", onResize);
 
     return () => {
       cancelAnimationFrame(raf);
       window.removeEventListener("resize", onResize);
+      window.removeEventListener("orientationchange", onResize);
+      if (ro) ro.disconnect();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fitToParent, method, currentThrow?.length, multiplier]);
@@ -255,10 +276,10 @@ export default function ScoreInputHub({
     ...(fitToParent ? { height: "100%", display: "flex", flexDirection: "column", minHeight: 0 } : null),
   };
 
-  return (
-    <div>
+  const content = (
+    <>
       {switcherMode !== "hidden" && (
-        <div style={{ marginBottom: 10 }}>
+        <div style={{ marginBottom: 8 }}>
           <MethodBar
             method={method}
             setMethod={setMethod}
@@ -272,32 +293,7 @@ export default function ScoreInputHub({
 
       {/* CIBLE */}
       {method === "dartboard" ? (
-        <div
-          ref={fitToParent ? fitOuterRef : null}
-          style={{
-            paddingBottom: 6,
-            ...contentBoxStyle,
-            ...(fitToParent
-              ? {
-                  flex: 1,
-                  minHeight: 0,
-                  overflow: "hidden",
-                }
-              : {}),
-          }}
-        >
-          <div
-            ref={fitToParent ? setMeasureAndFitInnerRef : contentMeasureRef}
-            style={
-              fitToParent
-                ? {
-                    transform: `scale(${fitScale})`,
-                    transformOrigin: "top left",
-                    width: fitScale < 1 ? `${100 / fitScale}%` : "100%",
-                  }
-                : undefined
-            }
-          >
+        <div style={{ paddingBottom: 6, ...contentBoxStyle }}>
           <div style={{ display: "flex", justifyContent: "center", marginBottom: 8 }}>
             <DartboardClickable
               size={230}
@@ -309,17 +305,15 @@ export default function ScoreInputHub({
                 // Bull / DBull
                 if (seg === 25) {
                   if (onDirectDart) onDirectDart({ v: 25, mult: mul });
-                  else onBull(); // fallback: bull simple (DBull non géré par l'API keypad actuelle)
+                  else onBull();
                   return;
                 }
 
-                // Injection directe (recommandé)
                 if (onDirectDart) {
                   onDirectDart({ v: seg, mult: mul });
                   return;
                 }
 
-                // Fallback best-effort via toggles + onNumber (moins fiable, mais évite le "rien")
                 if (mul === 3) onTriple();
                 else if (mul === 2) onDouble();
                 else onSimple();
@@ -328,7 +322,7 @@ export default function ScoreInputHub({
             />
           </div>
 
-          {/* Footer CIBLE — total à gauche + Annuler / Valider à droite (même langage visuel que le keypad) */}
+          {/* Footer CIBLE — total à gauche + Annuler / Valider à droite */}
           <div
             style={{
               display: "flex",
@@ -362,7 +356,6 @@ export default function ScoreInputHub({
               </button>
             </div>
           </div>
-          </div>
         </div>
       ) : null}
 
@@ -393,30 +386,9 @@ export default function ScoreInputHub({
       {/* Méthode principale (Keypad + placeholders) */}
       {method === "keypad" || method === "presets" || method === "voice" || method === "auto" || method === "ai" ? (
         <div
-          ref={fitToParent ? fitOuterRef : null}
-          style={{
-            ...contentBoxStyle,
-            ...(fitToParent
-              ? {
-                  flex: 1,
-                  minHeight: 0,
-                  overflow: "hidden",
-                }
-              : null),
-          }}
+          ref={method === "keypad" ? contentMeasureRef : undefined}
+          style={{ ...contentBoxStyle }}
         >
-          <div
-            ref={fitToParent ? setMeasureAndFitInnerRef : method === "keypad" ? contentMeasureRef : undefined}
-            style={
-              fitToParent
-                ? {
-                    transform: `scale(${fitScale})`,
-                    transformOrigin: "top left",
-                    width: fitScale < 1 ? `${100 / fitScale}%` : "100%",
-                  }
-                : undefined
-            }
-          >
           {(method === "voice" || method === "auto" || method === "ai") && showPlaceholders ? (
             <PlaceholderCard method={method} />
           ) : null}
@@ -436,9 +408,28 @@ export default function ScoreInputHub({
             hideTotal={hideTotal}
             centerSlot={centerSlot}
           />
-          </div>
         </div>
       ) : null}
+    </>
+  );
+
+  if (!fitToParent) {
+    return <div>{content}</div>;
+  }
+
+  // ✅ Fit global: on scale TOUT le bloc (method bar + contenu) pour que ça tienne sans scroll.
+  return (
+    <div ref={fitOuterRef} style={{ height: "100%", minHeight: 0, overflow: "hidden" }}>
+      <div
+        ref={setMeasureAndFitInnerRef}
+        style={{
+          transform: `scale(${fitScale})`,
+          transformOrigin: "top left",
+          width: fitScale < 1 ? `${100 / fitScale}%` : "100%",
+        }}
+      >
+        {content}
+      </div>
     </div>
   );
 }

@@ -5,6 +5,8 @@ import PageHeader from "../components/PageHeader";
 import tickerGolf from "../assets/tickers/ticker_golf.png";
 import teamGoldLogo from "../ui_assets/teams/team_gold.png";
 import teamPinkLogo from "../ui_assets/teams/team_pink.png";
+import teamBlueLogo from "../ui_assets/teams/team_blue.png";
+import teamGreenLogo from "../ui_assets/teams/team_green.png";
 
 /**
  * GOLF (darts) — Play
@@ -102,10 +104,13 @@ function getProfilesMap(store: any): Record<string, any> {
 }
 
 type GolfConfig = {
+  startOrderMode?: "chronological" | "random";
   holes?: number; // 9 ou 18
   holesCount?: number; // alias possible
   selectedIds?: string[]; // ids profils
   teamsEnabled?: boolean;
+  teamCount?: 2 | 3 | 4;
+  teamAssignments?: Record<string, "gold" | "pink" | "blue" | "green">;
   botsEnabled?: boolean;
   botLevel?: any;
   missStrokes?: number; // 4/5/6 (si mode "rounds")
@@ -132,14 +137,15 @@ type PlayerStat = {
 type HistoryEntry = {
   holeIdx: number;
   playerIdx: number;
-  teamTurn: 0 | 1;
-  teamCursor: [number, number];
+  teamTurnPos: number;
+  teamCursor: [number, number, number, number];
   isFinished: boolean;
   prevScores: (number | null)[][];
   prevTeamScores: (number | null)[][];
   prevTurnThrows: ThrowKind[];
   prevStats: PlayerStat[];
 };
+
 
 
 type ThrowKind = "D" | "T" | "S" | "M"; // Double / Triple / Simple / Miss
@@ -150,6 +156,15 @@ function kindToScore(k: ThrowKind): number {
   if (k === "S") return 4;
   return 5;
 }
+
+type TeamKey = "gold" | "pink" | "blue" | "green";
+const TEAM_KEYS_ALL: TeamKey[] = ["gold", "pink", "blue", "green"];
+const TEAM_META: Record<TeamKey, { label: string; color: string; logo: string }> = {
+  gold: { label: "TEAM GOLD", color: "#ffcf57", logo: teamGoldLogo },
+  pink: { label: "TEAM PINK", color: "#ff7ac8", logo: teamPinkLogo },
+  blue: { label: "TEAM BLUE", color: "#6bb7ff", logo: teamBlueLogo },
+  green: { label: "TEAM GREEN", color: "#7fe2a9", logo: teamGreenLogo },
+};
 
 // ---------------- Carousel joueurs (CLONE style KILLER header carousel) ----------------
 
@@ -401,7 +416,7 @@ function GolfHeaderBlock(props: {
   isFinished: boolean;
   teamBadge?: { label: string; color: string } | null;
 }) {
-  const { currentPlayer, currentAvatar, currentTotal, currentStats, liveRanking, isFinished } = props;
+  const { currentPlayer, currentAvatar, currentTotal, currentStats, liveRanking, isFinished, teamBadge } = props;
 
   const bgAvatarUrl = currentAvatar || null;
   const playerName = (currentPlayer?.name ?? "—").toUpperCase();
@@ -415,6 +430,16 @@ function GolfHeaderBlock(props: {
   const p2 = pct(currentStats.hit2 || 0, turns);
   const p3 = pct(currentStats.hit3 || 0, turns);
   const pMiss = pct(currentStats.miss || 0, currentStats.darts || 0);
+
+  const accent = teamBadge?.color ?? "#ffcf57";
+  const medSize = teamBadge ? 84 : 96;
+  const medallionStyle: React.CSSProperties = {
+    ...avatarMedallion,
+    width: medSize,
+    height: medSize,
+    border: `2px solid ${accent}B3`,
+    boxShadow: `0 10px 28px rgba(0,0,0,.42), 0 0 18px ${accent}33`,
+  };
 
   return (
     <div
@@ -476,14 +501,14 @@ function GolfHeaderBlock(props: {
           display: "grid",
           gridTemplateColumns: "auto 1fr",
           gap: 10,
-          alignItems: "center",
+          alignItems: teamBadge ? "start" : "center",
           position: "relative",
           zIndex: 2,
         }}
       >
         {/* AVATAR + MINI STATS (demandées) */}
         <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 8 }}>
-          <div style={avatarMedallion}>
+          <div style={medallionStyle}>
             {currentAvatar ? (
               <img src={currentAvatar} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
             ) : (
@@ -555,27 +580,28 @@ function GolfHeaderBlock(props: {
             padding: 6,
           }}
         >
-{props.teamBadge ? (
-  <div style={{ display: "flex", justifyContent: "center", marginBottom: 2, position: "relative", zIndex: 2 }}>
-    <div
-      style={{
-        height: 20,
-        padding: "0 10px",
-        borderRadius: 999,
-        border: `1px solid ${props.teamBadge.color}55`,
-        background: `${props.teamBadge.color}22`,
-        color: props.teamBadge.color,
-        fontWeight: 1000,
-        fontSize: 11,
-        letterSpacing: 1,
-        textTransform: "uppercase",
-        boxShadow: `0 0 18px ${props.teamBadge.color}22`,
-      }}
-    >
-      {props.teamBadge.label}
-    </div>
+{teamBadge ? (
+  <div
+    style={{
+      display: "inline-flex",
+      alignSelf: "center",
+      padding: "4px 10px",
+      borderRadius: 999,
+      border: `1px solid ${teamBadge.color}55`,
+      background: `${teamBadge.color}22`,
+      color: teamBadge.color,
+      fontWeight: 1000,
+      letterSpacing: 0.6,
+      fontSize: 12,
+      textTransform: "uppercase",
+      boxShadow: "0 10px 20px rgba(0,0,0,.28)",
+    }}
+  >
+    {teamBadge.label}
   </div>
 ) : null}
+
+
 
           <div
             style={{
@@ -583,8 +609,8 @@ function GolfHeaderBlock(props: {
               fontWeight: 900,
               position: "relative",
               zIndex: 2,
-              color: "#ffcf57",
-              textShadow: "0 4px 18px rgba(255,195,26,.25)",
+              color: accent,
+              textShadow: `0 4px 18px ${accent}33`,
               lineHeight: 1.02,
             }}
           >
@@ -599,7 +625,7 @@ function GolfHeaderBlock(props: {
               fontWeight: 950,
               letterSpacing: 1.2,
               fontSize: 14,
-              color: "#ffcf57",
+              color: accent,
               opacity: 0.95,
               textTransform: "uppercase",
             }}
@@ -656,6 +682,25 @@ const holes = clamp(Number((cfg as any).holes ?? (cfg as any).holesCount ?? 9), 
 const showGrid = ((cfg as any).showHoleGrid ?? (cfg as any).showGrid ?? true) !== false;
 const teamsEnabled = !!(cfg as any).teamsEnabled;
 
+const startOrderRaw =
+  (cfg as any).startOrderMode ??
+  (cfg as any).startOrder ??
+  (cfg as any).startOrderPlayers ??
+  (cfg as any).startOrderTeams ??
+  (cfg as any).randomStart ??
+  null;
+
+const startOrderNorm = String(startOrderRaw ?? "")
+  .toLowerCase()
+  .normalize("NFD")
+  .replace(/[\u0300-\u036f]/g, "");
+
+const startRandom =
+  startOrderRaw === true ||
+  startOrderNorm.includes("alea") ||
+  startOrderNorm.includes("random") ||
+  startOrderNorm.includes("shuffle");
+
   const profilesById = useMemo(() => getProfilesMap(store), [store]);
 
   // roster : si config a selectedIds, on construit un roster avec noms/avatars
@@ -679,9 +724,48 @@ const teamsEnabled = !!(cfg as any).teamsEnabled;
 
   const playersCount = roster.length || 2;
 
-  const teamAIdxs = useMemo(() => (teamsEnabled ? roster.map((_, i) => i).filter((i) => i % 2 === 0) : []), [teamsEnabled, roster]);
-  const teamBIdxs = useMemo(() => (teamsEnabled ? roster.map((_, i) => i).filter((i) => i % 2 === 1) : []), [teamsEnabled, roster]);
-  const teamsOk = teamsEnabled && teamAIdxs.length > 0 && teamBIdxs.length > 0;
+// Teams: jusqu'à 4 équipes (Gold / Pink / Blue / Green)
+const teamCountRaw = Number((cfg as any).teamCount ?? 2);
+const teamCount = (teamCountRaw === 3 ? 3 : teamCountRaw >= 4 ? 4 : 2) as 2 | 3 | 4;
+
+const enabledTeamKeys = useMemo<TeamKey[]>(() => {
+  if (!teamsEnabled) return [];
+  return TEAM_KEYS_ALL.slice(0, teamCount);
+}, [teamsEnabled, teamCount]);
+
+const teamAssignmentsRaw = ((cfg as any).teamAssignments ?? {}) as Record<string, TeamKey>;
+
+const teamMembersIdxs = useMemo(() => {
+  const out: Record<TeamKey, number[]> = { gold: [], pink: [], blue: [], green: [] };
+  if (!teamsEnabled) return out;
+
+  // auto-assign fallback (round-robin) pour tout joueur non assigné / invalide
+  let rr = 0;
+  const denom = Math.max(1, enabledTeamKeys.length);
+  for (let i = 0; i < roster.length; i++) {
+    const pid = roster[i]?.id;
+    const assigned = pid ? teamAssignmentsRaw[pid] : undefined;
+    const valid = assigned && enabledTeamKeys.includes(assigned);
+    const key = (valid ? assigned : enabledTeamKeys[rr % denom]) as TeamKey;
+    rr++;
+    out[key].push(i);
+  }
+  return out;
+}, [teamsEnabled, roster, enabledTeamKeys, teamAssignmentsRaw]);
+
+const activeTeamKeys = useMemo(() => {
+  if (!teamsEnabled) return [] as TeamKey[];
+  return enabledTeamKeys.filter((k) => (teamMembersIdxs[k]?.length ?? 0) > 0);
+}, [teamsEnabled, enabledTeamKeys, teamMembersIdxs]);
+
+const teamsOk = teamsEnabled && activeTeamKeys.length >= 2;
+
+const teamIndexByKey = useMemo(() => {
+  const m: Record<string, number> = {};
+  enabledTeamKeys.forEach((k, idx) => (m[k] = idx));
+  return m as Record<TeamKey, number>;
+}, [enabledTeamKeys]);
+
 
 
   // Ordre des cibles (stable) : chronologique ou random
@@ -736,12 +820,9 @@ const teamsEnabled = !!(cfg as any).teamsEnabled;
   });
 
   
-// Scores par équipe (TEAM GOLD / TEAM PINK) — utilisé quand teamsEnabled=true
+// Scores par équipe (GOLD/PINK/BLUE/GREEN) — 4 slots fixes (les équipes actives dépendent de teamCount + assignements)
 const [teamScores, setTeamScores] = useState<(number | null)[][]>(() => {
-  return [
-    Array.from({ length: holes }, () => null),
-    Array.from({ length: holes }, () => null),
-  ];
+  return TEAM_KEYS_ALL.map(() => Array.from({ length: holes }, () => null));
 });
 
 const [statsByPlayer, setStatsByPlayer] = useState<PlayerStat[]>(() =>
@@ -753,10 +834,30 @@ const [statsByPlayer, setStatsByPlayer] = useState<PlayerStat[]>(() =>
   // Non-teams
   const [playerIdx, setPlayerIdx] = useState(0);
 
-  // Teams (A/B) : alternance équipe->équipe et rotation des joueurs dans chaque équipe
-  const [teamTurn, setTeamTurn] = useState<0 | 1>(0); // 0=A, 1=B
-  const [teamCursor, setTeamCursor] = useState<[number, number]>([0, 0]); // index du prochain joueur à utiliser dans chaque équipe
+  // Teams : alternance équipe->équipe et rotation des joueurs dans chaque équipe
+  const [teamTurnPos, setTeamTurnPos] = useState(0); // index dans activeTeamKeys
+  const [teamCursor, setTeamCursor] = useState<[number, number, number, number]>([0, 0, 0, 0]); // cursor par TEAM_KEYS_ALL
   const [isFinished, setIsFinished] = useState(false);
+
+  // ✅ Ordre de départ (joueur/équipe) — stable sur la partie
+  const initStartOrderRef = useRef(false);
+  useEffect(() => {
+    if (initStartOrderRef.current) return;
+    initStartOrderRef.current = true;
+
+    if (!startRandom) return;
+
+    if (teamsOk) {
+      const n = activeTeamKeys.length;
+      if (n > 1) setTeamTurnPos(Math.floor(Math.random() * n));
+      return;
+    }
+
+    // Non-teams: randomise juste le 1er joueur (le reste suit l'ordre normal)
+    if (playersCount > 1) {
+      setPlayerIdx(Math.floor(Math.random() * playersCount));
+    }
+  }, [startRandom, teamsOk, activeTeamKeys.length, playersCount]);
 
   // "Tableau des scores" : carte compacte + popup (tables 1–9 et 10–18 empilées)
   const [showScoresModal, setShowScoresModal] = useState(false);
@@ -812,31 +913,51 @@ const teamTotals = useMemo(() => teamScores.map((row) => sum(row.map((v) => (typ
 
 const ranking = useMemo(() => {
   if (teamsOk) {
-    const arr = [
-      { idx: 0, id: "teamA", name: "TEAM GOLD", avatar: teamGoldLogo, total: teamTotals[0] ?? 0 },
-      { idx: 1, id: "teamB", name: "TEAM PINK", avatar: teamPinkLogo, total: teamTotals[1] ?? 0 },
-    ];
+    const arr = enabledTeamKeys
+      .filter((k) => (teamMembersIdxs[k]?.length ?? 0) > 0)
+      .map((k) => ({
+        idx: teamIndexByKey[k] ?? 0,
+        id: `team_${k}`,
+        name: TEAM_META[k].label,
+        avatar: TEAM_META[k].logo,
+        total: teamTotals[teamIndexByKey[k] ?? 0] ?? 0,
+        color: TEAM_META[k].color,
+      }));
     arr.sort((a, b) => a.total - b.total);
     return arr;
   }
   const arr = roster.map((p, idx) => ({ idx, id: p.id, name: p.name, avatar: p.avatar, total: playerTotals[idx] ?? 0 }));
   arr.sort((a, b) => a.total - b.total);
   return arr;
-}, [roster, playerTotals, teamsOk, teamTotals]);
+}, [roster, playerTotals, teamsOk, teamTotals, enabledTeamKeys, teamMembersIdxs, teamIndexByKey]);
 
 
-  const activePlayerIdx = !teamsOk
+
+  const activeTeamKey: TeamKey | null = teamsOk ? (activeTeamKeys[teamTurnPos] ?? null) : null;
+useEffect(() => {
+  if (!teamsOk) return;
+  setTeamTurnPos((p) => {
+    const max = Math.max(0, activeTeamKeys.length - 1);
+    return p > max ? 0 : p;
+  });
+}, [teamsOk, activeTeamKeys.length]);
+
+
+const activePlayerIdx = !teamsOk
   ? playerIdx
   : (() => {
-      const ids = teamTurn === 0 ? teamAIdxs : teamBIdxs;
-      const cur = teamCursor[teamTurn] ?? 0;
+      const k = activeTeamKey;
+      if (!k) return playerIdx;
+      const ids = teamMembersIdxs[k] ?? [];
+      const keyIndex = TEAM_KEYS_ALL.indexOf(k);
+      const cur = teamCursor[keyIndex] ?? 0;
       if (!ids.length) return playerIdx;
       return ids[cur % ids.length];
     })();
 
 const activePlayer = !isFinished ? roster[activePlayerIdx] : null;
 const activeAvatar = activePlayer?.avatar ?? null;
-const activeTotal = !isFinished ? (teamsOk ? (teamTotals[teamTurn] ?? 0) : (playerTotals[activePlayerIdx] ?? 0)) : 0;
+const activeTotal = !isFinished ? (teamsOk && activeTeamKey ? (teamTotals[teamIndexByKey[activeTeamKey] ?? 0] ?? 0) : (playerTotals[activePlayerIdx] ?? 0)) : 0;
 const activeStats =
   !isFinished
     ? statsByPlayer[activePlayerIdx] ??
@@ -852,11 +973,16 @@ const activeStats =
     if (typeof go === "function") return go("golf_config", payload);
   }
 
-  function pushHistory(prevScores: (number | null)[][], prevTeamScores: (number | null)[][], prevTurn: ThrowKind[], prevStats: PlayerStat[]) {
+  function pushHistory(
+  prevScores: (number | null)[][],
+  prevTeamScores: (number | null)[][],
+  prevTurn: ThrowKind[],
+  prevStats: PlayerStat[]
+) {
   historyRef.current.push({
     holeIdx,
     playerIdx,
-    teamTurn,
+    teamTurnPos,
     teamCursor,
     isFinished,
     prevScores: prevScores.map((r) => r.slice()),
@@ -866,7 +992,6 @@ const activeStats =
   });
   if (historyRef.current.length > 200) historyRef.current.shift();
 }
-
 
   function advanceAfterFinalize() {
   if (!teamsOk) {
@@ -889,18 +1014,27 @@ const activeStats =
     return;
   }
 
-  // Teams: A joue, puis B joue, puis on passe au trou suivant
-  if (teamTurn === 0) {
-    setTeamCursor((prev) => [prev[0] + 1, prev[1]]);
-    setTeamTurn(1);
-    setTurnThrows([]);
+  // Teams: équipe->équipe (uniquement les équipes actives), rotation des joueurs dans l'équipe
+  const k = activeTeamKey;
+  if (k) {
+    const idx = TEAM_KEYS_ALL.indexOf(k);
+    setTeamCursor((prev) => {
+      const next = prev.slice() as [number, number, number, number];
+      next[idx] = (next[idx] ?? 0) + 1;
+      return next;
+    });
+  }
+
+  const nextPos = teamTurnPos + 1;
+  setTurnThrows([]);
+
+  if (nextPos < activeTeamKeys.length) {
+    setTeamTurnPos(nextPos);
     return;
   }
 
-  setTeamCursor((prev) => [prev[0], prev[1] + 1]);
-  setTeamTurn(0);
-  setTurnThrows([]);
-
+  // fin de rotation -> trou suivant
+  setTeamTurnPos(0);
   const nextHole = holeIdx + 1;
   if (nextHole < holes) {
     setHoleIdx(nextHole);
@@ -908,6 +1042,7 @@ const activeStats =
     setIsFinished(true);
   }
 }
+
 
   function finalizeTurn(
   prevScores: (number | null)[][],
@@ -922,7 +1057,10 @@ const activeStats =
   if (holeScore == null) return;
 
   if (teamsOk) {
-    nextTeamScores[teamTurn][holeIdx] = holeScore;
+    if (activeTeamKey) {
+      const ti = teamIndexByKey[activeTeamKey] ?? 0;
+      nextTeamScores[ti][holeIdx] = holeScore;
+    }
     return;
   }
 
@@ -1002,7 +1140,7 @@ return nextScores;
   setTeamScores(h.prevTeamScores.map((r) => r.slice()));
   setHoleIdx(h.holeIdx);
   setPlayerIdx(h.playerIdx);
-  setTeamTurn(h.teamTurn);
+  setTeamTurnPos(h.teamTurnPos);
   setTeamCursor(h.teamCursor);
   setIsFinished(h.isFinished);
   setTurnThrows(h.prevTurnThrows.slice());
@@ -1075,11 +1213,16 @@ return nextScores;
           </div>
 
           {/* rows */}
-          {(teamsOk ? [{ id: 'teamA', name: 'TEAM GOLD', avatar: teamGoldLogo }, { id: 'teamB', name: 'TEAM PINK', avatar: teamPinkLogo }] : roster).map((p, pIdx) => {
-            const row = (teamsOk ? teamScores[pIdx] : scores[pIdx]) || [];
+          {(teamsOk
+            ? enabledTeamKeys
+                .filter((k) => (teamMembersIdxs[k]?.length ?? 0) > 0)
+                .map((k) => ({ id: `team_${k}`, name: TEAM_META[k].label, avatar: TEAM_META[k].logo, teamKey: k as TeamKey, teamIndex: teamIndexByKey[k] ?? 0 }))
+            : roster.map((p) => ({ ...p, teamKey: null as any, teamIndex: -1 }))
+          ).map((p: any, pIdx: number) => {
+            const row = (teamsOk ? teamScores[p.teamIndex] : scores[pIdx]) || [];
             const slice = row.slice(start - 1, end);
-            const rowTotal = (teamsOk ? teamTotals[pIdx] : playerTotals[pIdx]) ?? 0;
-            const isActive = !isFinished && (teamsOk ? pIdx === teamTurn : pIdx === playerIdx);
+            const rowTotal = (teamsOk ? teamTotals[p.teamIndex] : playerTotals[pIdx]) ?? 0;
+            const isActive = !isFinished && (teamsOk ? (activeTeamKey ? p.teamKey === activeTeamKey : false) : pIdx === playerIdx);
 
             return (
               <div
@@ -1137,7 +1280,7 @@ return nextScores;
                 </div>
 
                 {slice.map((v, i) => {
-                  const isCurrentCell = !isFinished && (teamsOk ? pIdx === teamTurn : pIdx === playerIdx) && holeIdx === start - 1 + i;
+                  const isCurrentCell = !isFinished && (teamsOk ? (activeTeamKey ? p.teamKey === activeTeamKey : false) : pIdx === playerIdx) && holeIdx === start - 1 + i;
 
                   if (typeof v !== "number") {
                     return (
@@ -1226,6 +1369,77 @@ return nextScores;
     return { border: "1px solid rgba(255,255,255,.12)", background: "rgba(255,255,255,.06)", color: "#d9dbe3" };
   }
 
+  function keyValueBadge(kind: ThrowKind, value: number) {
+    const base: React.CSSProperties = {
+      width: 26,
+      height: 22,
+      borderRadius: 7,
+      display: "inline-flex",
+      alignItems: "center",
+      justifyContent: "center",
+      fontWeight: 1000,
+      fontSize: 13,
+      letterSpacing: 0.2,
+      flex: "0 0 auto",
+      boxShadow: "0 10px 22px rgba(0,0,0,.35)",
+    };
+    if (kind === "D")
+      return (
+        <span
+          style={{
+            ...base,
+            border: "1px solid rgba(255,195,26,0.55)",
+            background: "rgba(255,195,26,0.18)",
+            color: "#ffcf57",
+            boxShadow: "0 0 18px rgba(255,195,26,0.18), 0 10px 22px rgba(0,0,0,.35)",
+          }}
+        >
+          {value}
+        </span>
+      );
+    if (kind === "T")
+      return (
+        <span
+          style={{
+            ...base,
+            border: "1px solid rgba(120,255,220,0.55)",
+            background: "rgba(120,255,220,0.14)",
+            color: "#b9ffe9",
+            boxShadow: "0 0 18px rgba(120,255,220,0.16), 0 10px 22px rgba(0,0,0,.35)",
+          }}
+        >
+          {value}
+        </span>
+      );
+    if (kind === "S")
+      return (
+        <span
+          style={{
+            ...base,
+            border: "1px solid rgba(70,160,255,0.60)",
+            background: "rgba(20,85,185,0.22)",
+            color: "#bfeaff",
+            boxShadow: "0 0 18px rgba(70,160,255,0.18), 0 10px 22px rgba(0,0,0,.35)",
+          }}
+        >
+          {value}
+        </span>
+      );
+    return (
+      <span
+        style={{
+          ...base,
+          border: "1px solid rgba(255,120,120,0.55)",
+          background: "rgba(255,120,120,0.12)",
+          color: "#ffb2b2",
+          boxShadow: "0 0 18px rgba(255,120,120,0.16), 0 10px 22px rgba(0,0,0,.35)",
+        }}
+      >
+        {value}
+      </span>
+    );
+  }
+
   return (
     <div className="page">
       <PageHeader title="GOLF" tickerSrc={tickerGolf} left={<BackDot onClick={goBack} />} right={<InfoDot title="Règles GOLF" content={INFO_TEXT} />} />
@@ -1235,10 +1449,14 @@ return nextScores;
         <GolfPlayersCarousel
   players={
     teamsOk
-      ? [
-          { id: "teamA", name: "TEAM GOLD", avatar: teamGoldLogo, total: teamTotals[0] ?? 0 },
-          { id: "teamB", name: "TEAM PINK", avatar: teamPinkLogo, total: teamTotals[1] ?? 0 },
-        ]
+      ? enabledTeamKeys
+          .filter((k) => (teamMembersIdxs[k]?.length ?? 0) > 0)
+          .map((k) => ({
+            id: `team_${k}`,
+            name: TEAM_META[k].label,
+            avatar: TEAM_META[k].logo,
+            total: teamTotals[teamIndexByKey[k] ?? 0] ?? 0,
+          }))
       : roster.map((p, idx) => ({
           id: p.id,
           name: p.name,
@@ -1246,19 +1464,23 @@ return nextScores;
           total: playerTotals[idx] ?? 0,
         }))
   }
-  activeId={!isFinished ? (teamsOk ? (teamTurn === 0 ? "teamA" : "teamB") : roster[playerIdx]?.id) : null}
-  theme={teamsOk ? (teamTurn === 0 ? "#ffcf57" : "#ff7ac8") : "#b9ffe9"}
+  activeId={
+    !isFinished
+      ? teamsOk && activeTeamKey
+        ? `team_${activeTeamKey}`
+        : roster[activePlayerIdx]?.id
+      : null
+  }
+  theme={"#b9ffe9"}
 />
-
-
-        <GolfHeaderBlock
+<GolfHeaderBlock
   currentPlayer={activePlayer}
   currentAvatar={activeAvatar}
   currentTotal={activeTotal}
   currentStats={activeStats}
   liveRanking={ranking.map((r: any) => ({ id: r.id, name: r.name, score: r.total, avatar: r.avatar ?? null }))}
   isFinished={isFinished}
-  teamBadge={teamsOk ? { label: teamTurn === 0 ? "TEAM GOLD" : "TEAM PINK", color: teamTurn === 0 ? "#ffcf57" : "#ff7ac8" } : null}
+  teamBadge={teamsOk && activeTeamKey ? { label: TEAM_META[activeTeamKey].label, color: TEAM_META[activeTeamKey].color } : null}
 />
 
 
@@ -1535,7 +1757,10 @@ return nextScores;
                   opacity: turnThrows.length >= 3 ? 0.55 : 1,
                 }}
               >
-                DOUBLE (1)
+                <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 10 }}>
+                  <span style={{ letterSpacing: 0.6 }}>DOUBLE</span>
+                  {keyValueBadge("D", 1)}
+                </span>
               </button>
 
               <button
@@ -1553,7 +1778,10 @@ return nextScores;
                   opacity: turnThrows.length >= 3 ? 0.55 : 1,
                 }}
               >
-                TRIPLE (3)
+                <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 10 }}>
+                  <span style={{ letterSpacing: 0.6 }}>TRIPLE</span>
+                  {keyValueBadge("T", 3)}
+                </span>
               </button>
 
               <button
@@ -1572,7 +1800,10 @@ return nextScores;
                   opacity: turnThrows.length >= 3 ? 0.55 : 1,
                 }}
               >
-                SIMPLE (4)
+                <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 10 }}>
+                  <span style={{ letterSpacing: 0.6 }}>SIMPLE</span>
+                  {keyValueBadge("S", 4)}
+                </span>
               </button>
 
               <button
@@ -1590,7 +1821,10 @@ return nextScores;
                   opacity: turnThrows.length >= 3 ? 0.55 : 1,
                 }}
               >
-                MISS (5)
+                <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 10 }}>
+                  <span style={{ letterSpacing: 0.6 }}>MISS</span>
+                  {keyValueBadge("M", 5)}
+                </span>
               </button>
             </div>
 

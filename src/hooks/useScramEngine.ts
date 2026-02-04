@@ -16,8 +16,17 @@ export type UseScramEngineRules = {
 };
 
 export function useScramEngine(players: Player[], rules: UseScramEngineRules) {
+  const safePlayers = React.useMemo(() => {
+    const clean = (players ?? []).filter((p: any) => p && typeof p.id === 'string' && p.id.length > 0);
+    if (clean.length >= 2) return clean;
+    return [
+      { id: 'p1', name: clean[0]?.name ?? 'Joueur 1' },
+      { id: 'p2', name: 'Joueur 2' },
+    ] as Player[];
+  }, [Array.isArray(players) ? players.map((p:any)=>p?.id).join('|') : '']);
+
   const init = React.useMemo(() => {
-    return ScramEngine.initGame(players, {
+    return ScramEngine.initGame(safePlayers, {
       mode: "scram",
       objective: rules.objective,
       maxRounds: rules.maxRounds ?? 0,
@@ -25,7 +34,7 @@ export function useScramEngine(players: Player[], rules: UseScramEngineRules) {
       marksToClose: rules.marksToClose ?? 3,
     } as any);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [players.map((p) => p.id).join("|"), rules.objective, rules.maxRounds, rules.useBull, rules.marksToClose]);
+  }, [safePlayers.map((p) => p.id).join("|"), rules.objective, rules.maxRounds, rules.useBull, rules.marksToClose]);
 
   const [stack, setStack] = React.useState<ScramState[]>([init]);
 
