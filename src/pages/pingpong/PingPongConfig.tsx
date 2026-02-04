@@ -19,11 +19,25 @@ export default function PingPongConfig({ go, params }: Props) {
   const { theme } = useTheme();
   const [st, setSt] = React.useState(() => loadPingPongState());
 
-  const mode: PingPongMode =
-    params?.mode === "tournante" ? "tournante" : params?.mode === "simple" ? "simple" : params?.mode === "sets" ? "sets" : st.mode;
+  // On accepte plusieurs ids (menu "games" / anciennes versions)
+  const uiMode: string = String(params?.mode ?? st.mode ?? "sets");
+  const isTournante = uiMode === "tournante";
+  const isTraining = uiMode === "training";
+  const is2v2 = uiMode === "match_2v2";
+  const is2v1 = uiMode === "match_2v1";
 
-  const [sideA, setSideA] = React.useState(st.sideA);
-  const [sideB, setSideB] = React.useState(st.sideB);
+  // Le moteur actuel est basé sur "sets" (ou "tournante").
+  // - 1v1 / 2v2 / 2v1 => sets (avec setsToWin réglable, ex 1 pour un match en 1 set)
+  // - tournante => tournante
+  const engineMode: PingPongMode = isTournante ? "tournante" : "sets";
+
+  // Champs joueurs (UI) — servent à composer sideA/sideB
+  const parsedA = React.useMemo(() => splitNames(st.sideA), [st.sideA]);
+  const parsedB = React.useMemo(() => splitNames(st.sideB), [st.sideB]);
+  const [a1, setA1] = React.useState(parsedA[0] || "Joueur A");
+  const [a2, setA2] = React.useState(parsedA[1] || "");
+  const [b1, setB1] = React.useState(parsedB[0] || "Joueur B");
+  const [b2, setB2] = React.useState(parsedB[1] || "");
   const [pointsPerSet, setPointsPerSet] = React.useState(String(st.pointsPerSet || 11));
   const [setsToWin, setSetsToWin] = React.useState(String(st.setsToWin || 3));
   const [winByTwo, setWinByTwo] = React.useState(st.winByTwo !== false);
@@ -41,15 +55,25 @@ export default function PingPongConfig({ go, params }: Props) {
       .map((s) => String(s || "").trim())
       .filter(Boolean);
 
+    // Training est un écran séparé.
+    if (isTraining) {
+      go("pingpong_training");
+      return;
+    }
+
+    // Compose sides selon le format.
+    const nextSideA = is2v2 || is2v1 ? joinNames([a1, a2]) : (a1 || "Joueur A").trim();
+    const nextSideB = is2v2 ? joinNames([b1, b2]) : is2v1 ? (b1 || "Joueur B").trim() : (b1 || "Joueur B").trim();
+
     const next = setConfig(
       base,
-      mode,
-      sideA,
-      sideB,
+      engineMode,
+      nextSideA,
+      nextSideB,
       Number(pointsPerSet) || 11,
       Number(setsToWin) || 3,
       winByTwo,
-      mode === "tournante" ? players : undefined
+      isTournante ? players : undefined
     );
     setSt(next);
     go("pingpong_play", { matchId: next.matchId });
@@ -62,12 +86,20 @@ export default function PingPongConfig({ go, params }: Props) {
           ← Retour
         </button>
         <div style={title}>
-          CONFIG — PING-PONG{mode === "tournante" ? " · TOURNANTE" : mode === "simple" ? " · SIMPLE" : " · SETS"}
+          CONFIG — PING-PONG
+          {isTraining ? " · TRAINING" : isTournante ? " · TOURNANTE" : is2v2 ? " · 2V2" : is2v1 ? " · 2V1" : " · 1V1"}
         </div>
       </div>
 
       <div style={card(theme)}>
-        {mode === "tournante" ? (
+        {isTraining ? (
+          <>
+            <div style={{ fontWeight: 1000, letterSpacing: 0.6, marginBottom: 6 }}>Training</div>
+            <div style={{ fontSize: 12, fontWeight: 800, opacity: 0.85, lineHeight: 1.45 }}>
+              Lance une session d'entraînement (compteur de réussites, séries, temps).
+            </div>
+          </>
+        ) : isTournante ? (
           <>
             <div style={label}>Joueurs (1 par ligne)</div>
             <textarea
@@ -83,17 +115,33 @@ export default function PingPongConfig({ go, params }: Props) {
           </>
         ) : (
           <>
-            <div style={label}>Joueur / Équipe A</div>
-            <input value={sideA} onChange={(e) => setSideA(e.target.value)} style={input(theme)} />
+            <div style={label}>{is2v2 || is2v1 ? "Équipe A" : "Joueur A"}</div>
+            <input value={a1} onChange={(e) => setA1(e.target.value)} style={input(theme)} />
+
+            {(is2v2 || is2v1) && (
+              <>
+                <div style={{ height: 10 }} />
+                <div style={label}>Joueur A2</div>
+                <input value={a2} onChange={(e) => setA2(e.target.value)} style={input(theme)} />
+              </>
+            )}
 
             <div style={{ height: 10 }} />
 
-            <div style={label}>Joueur / Équipe B</div>
-            <input value={sideB} onChange={(e) => setSideB(e.target.value)} style={input(theme)} />
+            <div style={label}>{is2v2 ? "Équipe B" : "Joueur B"}</div>
+            <input value={b1} onChange={(e) => setB1(e.target.value)} style={input(theme)} />
+
+            {is2v2 && (
+              <>
+                <div style={{ height: 10 }} />
+                <div style={label}>Joueur B2</div>
+                <input value={b2} onChange={(e) => setB2(e.target.value)} style={input(theme)} />
+              </>
+            )}
 
             <div style={{ height: 10 }} />
 
-            <div style={label}>Points par {mode === "simple" ? "match" : "set"}</div>
+            <div style={label}>Points par set</div>
             <input
               value={pointsPerSet}
               onChange={(e) => setPointsPerSet(e.target.value)}
@@ -101,22 +149,19 @@ export default function PingPongConfig({ go, params }: Props) {
               inputMode="numeric"
             />
 
-            {mode !== "tournante" && (
+            {true && (
               <>
                 <div style={{ height: 10 }} />
 
-                {mode === "sets" && (
-                  <>
-                    <div style={label}>Sets gagnants</div>
-                    <input
-                      value={setsToWin}
-                      onChange={(e) => setSetsToWin(e.target.value)}
-                      style={input(theme)}
-                      inputMode="numeric"
-                    />
-                    <div style={{ height: 10 }} />
-                  </>
-                )}
+                <div style={label}>Sets gagnants</div>
+                <input
+                  value={setsToWin}
+                  onChange={(e) => setSetsToWin(e.target.value)}
+                  style={input(theme)}
+                  inputMode="numeric"
+                />
+                <div style={{ height: 10 }} />
+
                 <label style={checkRow}>
                   <input type="checkbox" checked={winByTwo} onChange={(e) => setWinByTwo(e.target.checked)} />
                   <span style={{ fontWeight: 900, opacity: 0.9 }}>Écart de 2 (règle standard)</span>
@@ -129,11 +174,27 @@ export default function PingPongConfig({ go, params }: Props) {
         <div style={{ height: 14 }} />
 
         <button style={primary(theme)} onClick={onStart}>
-          Lancer la partie
+          {isTraining ? "Lancer le training" : "Lancer la partie"}
         </button>
       </div>
     </div>
   );
+}
+
+function splitNames(raw: string): string[] {
+  const s = String(raw || "").trim();
+  if (!s) return [];
+  // tolérant : "A · B" / "A & B" / "A + B" / "A,B"
+  const parts = s
+    .split(/\s*(?:·|&|\+|,|\/|\|)\s*/g)
+    .map((x) => String(x || "").trim())
+    .filter(Boolean);
+  return parts.slice(0, 4);
+}
+
+function joinNames(names: string[]): string {
+  const out = (names || []).map((s) => String(s || "").trim()).filter(Boolean);
+  return out.length ? out.join(" · ") : "";
 }
 
 function isDark(theme: any) {

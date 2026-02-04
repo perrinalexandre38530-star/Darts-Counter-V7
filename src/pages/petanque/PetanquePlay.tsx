@@ -1446,7 +1446,10 @@ type DuelStatKey =
   | "tirs"
   | "trou"
   | "tirReussi"
-  | "carreau"
+    | "carreau"
+  | "reprise"
+  | "butAnnulation"
+  | "butPoint"
   | "pousseeAssist"
   | "pousseeConcede";
 
@@ -1469,6 +1472,9 @@ const ALL_DUEL_STATS: DuelStatKey[] = [
   "trou",
   "tirReussi",
   "carreau",
+  "reprise",
+  "butAnnulation",
+  "butPoint",
   "pousseeAssist",
   "pousseeConcede",
 ];
@@ -1610,6 +1616,9 @@ const StatsMenu = () => {
     { k: "trou", label: "Trou", icon: icoTrou },
     { k: "tirReussi", label: "Tir réussi", icon: icoTir },
     { k: "carreau", label: "Carreau", icon: icoCarreau },
+    { k: "reprise", label: "Reprise", icon: icoReprise },
+    { k: "butAnnulation", label: "Bouclier", icon: icoBouclier },
+    { k: "butPoint", label: "But +", icon: icoBut },
     { k: "pousseeAssist", label: "PTS Assist", icon: icoAssist },
     { k: "pousseeConcede", label: "PTS Concede", icon: icoConcede },
   ];
@@ -1623,6 +1632,9 @@ const StatsMenu = () => {
     { k: "trou", label: "Trous", icon: icoTrou },
     { k: "tirReussi", label: "Tirs réussis", icon: icoTir },
     { k: "carreau", label: "Carreaux", icon: icoCarreau },
+    { k: "reprise", label: "Reprise", icon: icoReprise },
+    { k: "butAnnulation", label: "Bouclier", icon: icoBouclier },
+    { k: "butPoint", label: "But +", icon: icoBut },
     { k: "pousseeAssist", label: "PTS Assist", icon: icoAssist },
     { k: "pousseeConcede", label: "PTS Concede", icon: icoConcede },
   ];
@@ -2906,23 +2918,68 @@ return (
 
     <InfoDot
       title="Légende"
-      content={
-        <div style={{ display: "grid", gap: 8 }}>
-          <div style={{ fontWeight: 900 }}>Comment ça marche</div>
-          <div style={{ opacity: 0.8 }}>
-            Les points appartiennent à l’équipe. Les actions (tir, carreau, poussée…) sont
-            attribuées manuellement au joueur qui a réalisé l’action.
+      content={(
+        <div style={{ display: "grid", gap: 10 }}>
+          <div style={{ fontWeight: 1000, fontSize: 16 }}>Légende des statistiques</div>
+
+          <div style={{ opacity: 0.86, lineHeight: 1.35 }}>
+            • <b>Points</b> = score de la mène (attribué via <b>SCORE +</b>).<br />
+            • <b>Actions</b> (tir, trou, carreau, reprise…) = événements pendant la mène, sans impact direct
+            sur le score.
           </div>
-          <div style={{ display: "grid", gap: 4, opacity: 0.85 }}>
-            <div>
-              • <b>Poussée +</b> = j’ai poussé une boule amie qui devient point (assist).
-            </div>
-            <div>
-              • <b>Poussée −</b> = j’ai poussé une boule adverse qui devient point (concede).
-            </div>
+
+          <div
+            style={{
+              display: "grid",
+              // 1 icône / ligne (plus lisible sur mobile)
+              gridTemplateColumns: "minmax(0, 1fr)",
+              gap: 10,
+            }}
+          >
+            {[ 
+              { icon: icoPointage, title: "Pointage", desc: "Point (joué) — peut exister sans gagner la mène." },
+              { icon: icoBEC, title: "Bec", desc: "Tenue du but / bec (action)." },
+              { icon: icoTrou, title: "Trou", desc: "Tir raté." },
+              { icon: icoTir, title: "Tir réussi", desc: "Tir réussi (sans point obligatoire)." },
+              { icon: icoCarreau, title: "Carreau", desc: "Carreau (tir qui remplace)." },
+              { icon: icoReprise, title: "Reprise", desc: "Reprise d’initiative / reprise du point." },
+              { icon: icoBouclier, title: "Bouclier", desc: "But KO / annulation (action)." },
+              { icon: icoBut, title: "But +", desc: "Point sur but / bonus (action)." },
+              { icon: icoAssist, title: "PTS Assist", desc: "Poussée + : ta boule devient point (assist)." },
+              { icon: icoConcede, title: "PTS Concede", desc: "Poussée − : tu concèdes un point à l’adversaire." },
+            ].map((it) => (
+              <div
+                key={it.title}
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "42px 1fr",
+                  gap: 10,
+                  alignItems: "center",
+                  padding: 10,
+                  borderRadius: 14,
+                  border: `1px solid ${cssVarOr("rgba(255,255,255,0.12)", "--stroke")}`,
+                  background: "rgba(255,255,255,0.04)",
+                }}
+              >
+                <img
+                  src={normalizeImport(it.icon) as any}
+                  alt={it.title}
+                  style={{ width: 42, height: 42, objectFit: "contain", filter: "drop-shadow(0 0 10px rgba(0,0,0,0.35))" }}
+                />
+                <div style={{ display: "grid", gap: 2 }}>
+                  <div style={{ fontWeight: 1000 }}>{it.title}</div>
+                  <div style={{ opacity: 0.82, fontSize: 12.5, lineHeight: 1.25 }}>{it.desc}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <div style={{ opacity: 0.8, fontSize: 12.5 }}>
+            Astuce : les actions peuvent être saisies pendant la mène, puis au moment de <b>SCORE +</b> tu
+            attribues uniquement les statistiques qui expliquent les points marqués (sans dépasser le total).
           </div>
         </div>
-      }
+      )}
     />
   </div>
 
@@ -2945,6 +3002,9 @@ return (
         { k: "trou" as DuelStatKey, label: "Trous", a: a.trou ?? 0, b: b.trou ?? 0 },
         { k: "tirReussi" as DuelStatKey, label: "Tirs réussis", a: a.tirReussi ?? 0, b: b.tirReussi ?? 0 },
         { k: "carreau" as DuelStatKey, label: "Carreaux", a: a.carreau ?? 0, b: b.carreau ?? 0 },
+        { k: "reprise" as DuelStatKey, label: "Reprise", a: a.reprise ?? 0, b: b.reprise ?? 0 },
+        { k: "butAnnulation" as DuelStatKey, label: "Bouclier", a: a.butAnnulation ?? 0, b: b.butAnnulation ?? 0 },
+        { k: "butPoint" as DuelStatKey, label: "But +", a: a.butPoint ?? 0, b: b.butPoint ?? 0 },
         { k: "pousseeAssist" as DuelStatKey, label: "PTS Assist", a: a.pousseeAssist ?? 0, b: b.pousseeAssist ?? 0 },
         { k: "pousseeConcede" as DuelStatKey, label: "PTS Concede", a: a.pousseeConcede ?? 0, b: b.pousseeConcede ?? 0 },
       ]

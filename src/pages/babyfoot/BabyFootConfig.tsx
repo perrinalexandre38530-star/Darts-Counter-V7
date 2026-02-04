@@ -1,10 +1,10 @@
 // =============================================================
 // src/pages/babyfoot/BabyFootConfig.tsx
-// Config Baby-Foot (LOCAL ONLY) — V3
+// Config Baby-Foot (LOCAL ONLY) — V2
 // - Mode 1v1 / 2v2 / 2v1
 // - Sélection de profils réels par équipe (comme Darts/Pétanque)
-// - Score cible (ou Sets BO3/BO5) + Handicap + Golden Goal
-// - Chrono + prolongation + tirs au but (auto)
+// - Score cible
+// - Démarre la partie avec un state babyfootStore propre
 // =============================================================
 
 import React, { useMemo, useState } from "react";
@@ -23,7 +23,7 @@ import {
   setTarget,
   setTeams,
   setTeamsProfiles,
-  setOptions,
+  setAdvancedOptions,
   startMatch,
   type BabyFootMode,
 } from "../../lib/babyfootStore";
@@ -38,44 +38,31 @@ function clamp(n: number, a: number, b: number) {
   return Math.max(a, Math.min(b, n));
 }
 
-function toInt(v: any, fallback: number) {
-  const n = Number(v);
-  return Number.isFinite(n) ? Math.trunc(n) : fallback;
-}
-
 export default function BabyFootConfig({ go, store, params }: Props) {
   const { theme } = useTheme();
   const { t } = useLang();
 
   const saved = useMemo(() => loadBabyFootState(), []);
-
-  const presetMode = (params as any)?.presetMode as BabyFootMode | undefined;
+    const presetMode = (params as any)?.presetMode as BabyFootMode | undefined;
   const presetTarget = (params as any)?.presetTarget as number | undefined;
-  const presetDurationSec = (params as any)?.presetDurationSec as number | undefined;
-  const presetGoldenGoal = !!(params as any)?.presetGoldenGoal;
-  const presetBestOf = (params as any)?.presetBestOf as 0 | 3 | 5 | undefined;
-  const presetSetTarget = (params as any)?.presetSetTarget as number | undefined;
-  const presetHandicapA = (params as any)?.presetHandicapA as number | undefined;
-  const presetHandicapB = (params as any)?.presetHandicapB as number | undefined;
-
   const [mode, setModeUI] = useState<BabyFootMode>(presetMode || saved.mode || "1v1");
   const [teamA, setTeamA] = useState(saved.teamA || "TEAM A");
   const [teamB, setTeamB] = useState(saved.teamB || "TEAM B");
-
-  // scoring
   const [target, setTargetUI] = useState<number>(presetTarget ?? saved.target ?? 10);
 
-  // options
-  const [goldenGoal, setGoldenGoal] = useState<boolean>(presetGoldenGoal || saved.goldenGoal || false);
-  const [setsBestOf, setSetsBestOf] = useState<0 | 3 | 5>((presetBestOf ?? saved.setsBestOf ?? 0) as any);
-  const [setTarget, setSetTarget] = useState<number>(presetSetTarget ?? saved.setTarget ?? 7);
-  const [handicapA, setHandicapA] = useState<number>(presetHandicapA ?? saved.handicapA ?? 0);
-  const [handicapB, setHandicapB] = useState<number>(presetHandicapB ?? saved.handicapB ?? 0);
+  // Options avancées (V3)
+  const [useTimer, setUseTimer] = useState<boolean>(Number.isFinite((saved as any).matchDurationSec) && (saved as any).matchDurationSec > 0);
+  const [durationSec, setDurationSec] = useState<number>(params?.presetDurationSec ?? ((saved as any).matchDurationSec ?? 180));
+  const [overtimeSec, setOvertimeSec] = useState<number>(((saved as any).overtimeSec ?? 60));
+  const [goldenGoal, setGoldenGoal] = useState<boolean>(!!(saved as any).goldenGoal);
+  const [overtimeGoldenGoal, setOvertimeGoldenGoal] = useState<boolean>((saved as any).overtimeGoldenGoal === undefined ? true : !!(saved as any).overtimeGoldenGoal);
 
-  // timer
-  const [chronoOn, setChronoOn] = useState<boolean>(presetDurationSec ? true : saved.matchDurationSec ? true : false);
-  const [durationSec, setDurationSec] = useState<number>(presetDurationSec ?? saved.matchDurationSec ?? 210);
-  const [overtimeSec, setOvertimeSec] = useState<number>(saved.overtimeSec ?? 60);
+  const [setsEnabled, setSetsEnabled] = useState<boolean>(!!(saved as any).setsEnabled);
+  const [setsBestOf, setSetsBestOf] = useState<1 | 3 | 5>((((saved as any).setsBestOf ?? 3) === 5 ? 5 : ((saved as any).setsBestOf ?? 3) === 1 ? 1 : 3) as any);
+  const [setTarget, setSetTarget] = useState<number>(((saved as any).setTarget ?? 5));
+
+  const [handicapA, setHandicapA] = useState<number>(((saved as any).handicapA ?? 0));
+  const [handicapB, setHandicapB] = useState<number>(((saved as any).handicapB ?? 0));
 
   const [selA, setSelA] = useState<string[]>(Array.isArray(saved.teamAProfileIds) ? saved.teamAProfileIds : []);
   const [selB, setSelB] = useState<string[]>(Array.isArray(saved.teamBProfileIds) ? saved.teamBProfileIds : []);
@@ -94,6 +81,7 @@ export default function BabyFootConfig({ go, store, params }: Props) {
         const has = prev.includes(id);
         if (has) return prev.filter((x) => x !== id);
         if (prev.length >= capA) return prev; // cap
+        // prevent selecting same profile in both teams
         if (selB.includes(id)) return prev;
         return [...prev, id];
       });
@@ -109,45 +97,47 @@ export default function BabyFootConfig({ go, store, params }: Props) {
   };
 
   const onStart = () => {
-    const tgt = clamp(toInt(target, 10), 1, 99);
-    const bo: 0 | 3 | 5 = setsBestOf === 3 || setsBestOf === 5 ? setsBestOf : 0;
-
+    // persist config in store
     resetBabyFoot({
       teamA,
       teamB,
       mode,
       teamAPlayers: capA,
       teamBPlayers: capB,
-      target: tgt,
-
+      target: clamp(target, 1, 99),
       teamAProfileIds: selA.slice(0, capA),
       teamBProfileIds: selB.slice(0, capB),
 
-      goldenGoal: !!goldenGoal,
-      setsBestOf: bo,
-      setTarget: clamp(toInt(setTarget, 7), 1, 30),
-      handicapA: clamp(toInt(handicapA, 0), 0, 20),
-      handicapB: clamp(toInt(handicapB, 0), 0, 20),
+      matchDurationSec: useTimer ? clamp(durationSec, 30, 3600) : null,
+      overtimeSec: clamp(overtimeSec, 0, 600),
+      goldenGoal,
+      overtimeGoldenGoal,
 
-      matchDurationSec: chronoOn ? clamp(toInt(durationSec, 210), 10, 3600) : null,
-      overtimeSec: clamp(toInt(overtimeSec, 60), 0, 600),
+      setsEnabled,
+      setsBestOf,
+      setTarget: clamp(setTarget, 1, 99),
+
+      handicapA: clamp(handicapA, 0, 20),
+      handicapB: clamp(handicapB, 0, 20),
     });
 
     setTeams(teamA, teamB);
     setMode(mode);
-    setTarget(tgt);
+    setTarget(clamp(target, 1, 99));
     setTeamsProfiles(selA.slice(0, capA), selB.slice(0, capB));
-    setOptions({
-      goldenGoal: !!goldenGoal,
-      setsBestOf: bo,
-      setTarget: clamp(toInt(setTarget, 7), 1, 30),
-      handicapA: clamp(toInt(handicapA, 0), 0, 20),
-      handicapB: clamp(toInt(handicapB, 0), 0, 20),
-      matchDurationSec: chronoOn ? clamp(toInt(durationSec, 210), 10, 3600) : null,
-      overtimeSec: clamp(toInt(overtimeSec, 60), 0, 600),
+    setAdvancedOptions({
+      matchDurationSec: useTimer ? clamp(durationSec, 30, 3600) : null,
+      overtimeSec: clamp(overtimeSec, 0, 600),
+      goldenGoal,
+      overtimeGoldenGoal,
+      setsEnabled,
+      setsBestOf,
+      setTarget: clamp(setTarget, 1, 99),
+      handicapA: clamp(handicapA, 0, 20),
+      handicapB: clamp(handicapB, 0, 20),
     });
-
     startMatch();
+
     go("babyfoot_play");
   };
 
@@ -156,253 +146,326 @@ export default function BabyFootConfig({ go, store, params }: Props) {
       <div style={topRow}>
         <BackDot onClick={() => go("babyfoot_menu")} />
         <div style={topTitle}>BABY-FOOT — CONFIG</div>
-        <InfoDot title="Baby-foot" body="Profils • Modes • Sets • Chrono • Local only" />
+        <InfoDot
+          title={t?.("babyfoot.config.infoTitle") ?? "Baby-foot"}
+          body={
+            t?.("babyfoot.config.infoBody") ??
+            "Configure le format, les équipes, les profils et le score cible. Local only."
+          }
+        />
       </div>
 
       <div style={card(theme)}>
-        <div style={h2(theme)}>{t("babyfoot.config.mode", "Mode")}</div>
-        <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+        <div style={sectionTitle}>FORMAT</div>
+        <div style={modeRow}>
           {(["1v1", "2v2", "2v1"] as BabyFootMode[]).map((m) => (
             <button
               key={m}
+              style={modeBtn(theme, mode === m)}
               onClick={() => {
                 setModeUI(m);
-                // auto-resize selection caps
+                // trim selections to caps
                 const nextCapA = m === "2v2" || m === "2v1" ? 2 : 1;
                 const nextCapB = m === "2v2" ? 2 : 1;
-                setSelA((prev) => prev.slice(0, nextCapA));
-                setSelB((prev) => prev.slice(0, nextCapB));
+                setSelA((x) => x.slice(0, nextCapA));
+                setSelB((x) => x.slice(0, nextCapB));
               }}
-              style={pill(theme, mode === m)}
             >
               {m.toUpperCase()}
             </button>
           ))}
         </div>
-      </div>
 
-      <div style={card(theme)}>
-        <div style={h2(theme)}>{t("babyfoot.config.teams", "Équipes")}</div>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-          <div>
-            <div style={label(theme)}>TEAM A</div>
+        <div style={row2}>
+          <div style={col}>
+            <div style={label}>Nom équipe A</div>
             <input value={teamA} onChange={(e) => setTeamA(e.target.value)} style={input(theme)} />
           </div>
-          <div>
-            <div style={label(theme)}>TEAM B</div>
+          <div style={col}>
+            <div style={label}>Nom équipe B</div>
             <input value={teamB} onChange={(e) => setTeamB(e.target.value)} style={input(theme)} />
           </div>
         </div>
-      </div>
 
-      <div style={card(theme)}>
-        <div style={h2(theme)}>{t("babyfoot.config.players", "Joueurs")}</div>
-
-        <div style={sub(theme)}>
-          TEAM A — {selA.length}/{capA}
-        </div>
-        <ProfileMedallionCarousel
-          items={medallions as any}
-          selectedIds={selA}
-          onToggle={(id: string) => toggle("A", id)}
-          maxSelected={capA}
-        />
-
-        <div style={{ height: 10 }} />
-
-        <div style={sub(theme)}>
-          TEAM B — {selB.length}/{capB}
-        </div>
-        <ProfileMedallionCarousel
-          items={medallions as any}
-          selectedIds={selB}
-          onToggle={(id: string) => toggle("B", id)}
-          maxSelected={capB}
-        />
-
-        {!canStart && (
-          <div style={{ marginTop: 10, color: theme.textSoft, fontWeight: 800, fontSize: 12 }}>
-            {t("babyfoot.config.needPlayers", "Sélectionne le bon nombre de joueurs pour chaque équipe.")}
-          </div>
-        )}
-      </div>
-
-      <div style={card(theme)}>
-        <div style={h2(theme)}>{t("babyfoot.config.scoring", "Règles de score")}</div>
-
-        <div style={row}>
-          <div style={label(theme)}>{t("babyfoot.config.goldenGoal", "Golden goal")}</div>
-          <button onClick={() => setGoldenGoal((v) => !v)} style={toggleBtn(theme, goldenGoal)}>
-            {goldenGoal ? t("common.on", "ON") : t("common.off", "OFF")}
-          </button>
-        </div>
-
-        <div style={row}>
-          <div style={label(theme)}>{t("babyfoot.config.sets", "Sets")}</div>
-          <select value={String(setsBestOf)} onChange={(e) => setSetsBestOf(toInt(e.target.value, 0) as any)} style={select(theme)}>
-            <option value="0">{t("babyfoot.config.sets.off", "Off (score cible)")}</option>
-            <option value="3">{t("babyfoot.config.sets.bo3", "BO3")}</option>
-            <option value="5">{t("babyfoot.config.sets.bo5", "BO5")}</option>
-          </select>
-        </div>
-
-        {setsBestOf ? (
-          <div style={row}>
-            <div style={label(theme)}>{t("babyfoot.config.setTarget", "But(s) pour gagner un set")}</div>
-            <input
-              value={String(setTarget)}
-              onChange={(e) => setSetTarget(toInt(e.target.value, 7))}
-              style={smallInput(theme)}
-              inputMode="numeric"
-            />
-          </div>
-        ) : (
-          <div style={row}>
-            <div style={label(theme)}>{t("babyfoot.config.target", "Score cible")}</div>
+        <div style={{ ...row2, marginTop: 14 }}>
+          <div style={col}>
+            <div style={label}>Score cible</div>
             <input
               value={String(target)}
-              onChange={(e) => setTargetUI(toInt(e.target.value, 10))}
-              style={smallInput(theme)}
+              onChange={(e) => setTargetUI(parseInt(e.target.value || "0", 10))}
+              style={input(theme)}
               inputMode="numeric"
             />
-          </div>
-        )}
 
-        <div style={row}>
-          <div style={label(theme)}>{t("babyfoot.config.handicap", "Handicap (départ)")}</div>
-          <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
-            <div style={{ fontWeight: 900, opacity: 0.8 }}>A</div>
-            <input value={String(handicapA)} onChange={(e) => setHandicapA(toInt(e.target.value, 0))} style={tinyInput(theme)} inputMode="numeric" />
-            <div style={{ fontWeight: 900, opacity: 0.8 }}>B</div>
-            <input value={String(handicapB)} onChange={(e) => setHandicapB(toInt(e.target.value, 0))} style={tinyInput(theme)} inputMode="numeric" />
+          </div>
+
+          {/* Options avancées */}
+          <div style={{ ...card(theme), marginTop: 12 }}>
+            <div style={{ ...sectionTitle, marginBottom: 10 }}>Options avancées</div>
+
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+              <div style={col}>
+                <div style={label}>Chrono</div>
+                <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                  <button
+                    onClick={() => setUseTimer((v) => !v)}
+                    style={pill(theme, useTimer)}
+                  >
+                    {useTimer ? "ON" : "OFF"}
+                  </button>
+                  <input
+                    value={String(durationSec)}
+                    onChange={(e) => setDurationSec(parseInt(e.target.value || "0", 10))}
+                    style={{ ...input(theme), width: 120, opacity: useTimer ? 1 : 0.45 }}
+                    inputMode="numeric"
+                    disabled={!useTimer}
+                  />
+                  <div style={{ fontSize: 12, opacity: 0.75, fontWeight: 900 }}>sec</div>
+                </div>
+              </div>
+
+              <div style={col}>
+                <div style={label}>Prolongation</div>
+                <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                  <input
+                    value={String(overtimeSec)}
+                    onChange={(e) => setOvertimeSec(parseInt(e.target.value || "0", 10))}
+                    style={{ ...input(theme), width: 120 }}
+                    inputMode="numeric"
+                  />
+                  <div style={{ fontSize: 12, opacity: 0.75, fontWeight: 900 }}>sec</div>
+                </div>
+                <div style={{ marginTop: 6 }}>
+                  <label style={{ display: "flex", gap: 8, alignItems: "center", fontSize: 12, fontWeight: 900, opacity: 0.85 }}>
+                    <input
+                      type="checkbox"
+                      checked={overtimeGoldenGoal}
+                      onChange={(e) => setOvertimeGoldenGoal(!!e.target.checked)}
+                    />
+                    Golden goal (prolongation)
+                  </label>
+                </div>
+              </div>
+
+              <div style={col}>
+                <div style={label}>Golden Goal (match)</div>
+                <label style={{ display: "flex", gap: 8, alignItems: "center", fontSize: 12, fontWeight: 900, opacity: 0.85 }}>
+                  <input type="checkbox" checked={goldenGoal} onChange={(e) => setGoldenGoal(!!e.target.checked)} />
+                  1er but = victoire
+                </label>
+              </div>
+
+              <div style={col}>
+                <div style={label}>Sets</div>
+                <label style={{ display: "flex", gap: 8, alignItems: "center", fontSize: 12, fontWeight: 900, opacity: 0.85 }}>
+                  <input type="checkbox" checked={setsEnabled} onChange={(e) => setSetsEnabled(!!e.target.checked)} />
+                  Activer les sets (BO3/BO5)
+                </label>
+                <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 8, opacity: setsEnabled ? 1 : 0.45 }}>
+                  <select
+                    value={String(setsBestOf)}
+                    onChange={(e) => setSetsBestOf((parseInt(e.target.value || "3", 10) as any) as 1 | 3 | 5)}
+                    style={{ ...input(theme), height: 42, padding: "0 10px" }}
+                    disabled={!setsEnabled}
+                  >
+                    <option value="1">BO1</option>
+                    <option value="3">BO3</option>
+                    <option value="5">BO5</option>
+                  </select>
+                  <div style={{ fontSize: 12, opacity: 0.75, fontWeight: 900 }}>Set cible</div>
+                  <input
+                    value={String(setTarget)}
+                    onChange={(e) => setSetTarget(parseInt(e.target.value || "0", 10))}
+                    style={{ ...input(theme), width: 90 }}
+                    inputMode="numeric"
+                    disabled={!setsEnabled}
+                  />
+                </div>
+              </div>
+
+              <div style={col}>
+                <div style={label}>Handicap</div>
+                <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                  <div style={{ fontSize: 12, opacity: 0.75, fontWeight: 900 }}>A</div>
+                  <input
+                    value={String(handicapA)}
+                    onChange={(e) => setHandicapA(parseInt(e.target.value || "0", 10))}
+                    style={{ ...input(theme), width: 80 }}
+                    inputMode="numeric"
+                  />
+                  <div style={{ fontSize: 12, opacity: 0.75, fontWeight: 900 }}>B</div>
+                  <input
+                    value={String(handicapB)}
+                    onChange={(e) => setHandicapB(parseInt(e.target.value || "0", 10))}
+                    style={{ ...input(theme), width: 80 }}
+                    inputMode="numeric"
+                  />
+                </div>
+                <div style={{ marginTop: 6, fontSize: 12, opacity: 0.7, fontWeight: 800 }}>
+                  Bonus appliqué au score initial (par set si sets activés).
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div style={col}>
+            <div style={label}>Rappel</div>
+            <div style={hint}>
+              {capA} joueur(s) équipe A • {capB} joueur(s) équipe B
+            </div>
           </div>
         </div>
       </div>
 
       <div style={card(theme)}>
-        <div style={h2(theme)}>{t("babyfoot.config.timer", "Chrono")}</div>
-
-        <div style={row}>
-          <div style={label(theme)}>{t("babyfoot.config.timer.enable", "Activer chrono")}</div>
-          <button onClick={() => setChronoOn((v) => !v)} style={toggleBtn(theme, chronoOn)}>
-            {chronoOn ? t("common.on", "ON") : t("common.off", "OFF")}
-          </button>
-        </div>
-
-        {chronoOn && (
-          <>
-            <div style={row}>
-              <div style={label(theme)}>{t("babyfoot.config.timer.duration", "Durée (sec)")}</div>
-              <input value={String(durationSec)} onChange={(e) => setDurationSec(toInt(e.target.value, 210))} style={smallInput(theme)} inputMode="numeric" />
-            </div>
-
-            <div style={row}>
-              <div style={label(theme)}>{t("babyfoot.config.timer.overtime", "Prolongation (sec)")}</div>
-              <input value={String(overtimeSec)} onChange={(e) => setOvertimeSec(toInt(e.target.value, 60))} style={smallInput(theme)} inputMode="numeric" />
-            </div>
-
-            <div style={{ marginTop: 8, color: theme.textSoft, fontWeight: 800, fontSize: 12, lineHeight: 1.35 }}>
-              {t(
-                "babyfoot.config.timer.rule",
-                "En cas d'égalité à la fin du temps : prolongation (si >0), sinon tirs au but automatiques."
-              )}
-            </div>
-          </>
-        )}
+        <div style={sectionTitle}>JOUEURS — ÉQUIPE A</div>
+        <ProfileMedallionCarousel
+          items={medallions}
+          selectedIds={selA}
+          onToggle={(id) => toggle("A", id)}
+          theme={theme}
+          maxSelected={capA}
+        />
+        <div style={smallHint}>Sélectionne {capA} profil(s). (Un profil ne peut pas être dans les 2 équipes.)</div>
       </div>
 
-      <button
-        onClick={onStart}
-        disabled={!canStart}
-        style={{
-          width: "100%",
-          marginTop: 12,
-          padding: "14px 14px",
-          borderRadius: 18,
-          border: "1px solid rgba(255,255,255,0.14)",
-          background: canStart ? theme.primary : "rgba(255,255,255,0.08)",
-          color: canStart ? "#001018" : theme.textSoft,
-          fontWeight: 1000,
-          letterSpacing: 1,
-          cursor: canStart ? "pointer" : "not-allowed",
-          boxShadow: canStart ? `0 0 22px ${theme.primary}55` : "none",
-        }}
-      >
-        {t("babyfoot.config.start", "LANCER LA PARTIE")}
+      <div style={card(theme)}>
+        <div style={sectionTitle}>JOUEURS — ÉQUIPE B</div>
+        <ProfileMedallionCarousel
+          items={medallions}
+          selectedIds={selB}
+          onToggle={(id) => toggle("B", id)}
+          theme={theme}
+          maxSelected={capB}
+        />
+        <div style={smallHint}>Sélectionne {capB} profil(s).</div>
+      </div>
+
+      <button style={cta(theme, canStart)} onClick={onStart} disabled={!canStart}>
+        LANCER LA PARTIE
       </button>
     </div>
   );
 }
 
-const row: any = { display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginTop: 10 };
+const wrap = (theme: any) => ({
+  minHeight: "100vh",
+  padding: 14,
+  background: theme?.colors?.bg ?? "#05060a",
+  color: theme?.colors?.text ?? "#fff",
+});
 
-function wrap(theme: any) {
-  return { minHeight: "100vh", padding: 16, paddingBottom: 90, background: theme.bg, color: theme.text };
-}
-const topRow: any = { display: "grid", gridTemplateColumns: "48px 1fr 48px", alignItems: "center", gap: 10, marginBottom: 12 };
-const topTitle: any = { textAlign: "center", fontWeight: 950, letterSpacing: 1, opacity: 0.95 };
-function card(theme: any) {
-  return {
-    borderRadius: 18,
-    border: `1px solid ${theme.borderSoft ?? "rgba(255,255,255,0.14)"}`,
-    background: theme.card,
-    padding: 14,
-    marginBottom: 12,
-    boxShadow: "0 12px 28px rgba(0,0,0,0.35)",
-  };
-}
-function h2(theme: any) {
-  return { fontWeight: 1000, color: theme.primary, letterSpacing: 0.8, marginBottom: 10 };
-}
-function sub(theme: any) {
-  return { fontSize: 12, color: theme.textSoft, fontWeight: 900, marginBottom: 6 };
-}
-function label(theme: any) {
-  return { fontSize: 12, color: theme.textSoft, fontWeight: 900 };
-}
-function input(theme: any) {
-  return {
-    width: "100%",
-    padding: "10px 12px",
-    borderRadius: 14,
-    border: "1px solid rgba(255,255,255,0.14)",
-    background: "rgba(0,0,0,0.20)",
-    color: theme.text,
-    fontWeight: 900,
-    outline: "none",
-  };
-}
-function smallInput(theme: any) {
-  return { ...input(theme), width: 96, textAlign: "center" as const };
-}
-function tinyInput(theme: any) {
-  return { ...input(theme), width: 70, textAlign: "center" as const, padding: "8px 10px" };
-}
-function select(theme: any) {
-  return { ...input(theme), width: 220, padding: "9px 10px" };
-}
-function pill(theme: any, active: boolean) {
-  return {
-    padding: "10px 12px",
-    borderRadius: 999,
-    border: `1px solid ${active ? theme.primary : "rgba(255,255,255,0.14)"}`,
-    background: active ? `${theme.primary}22` : "rgba(0,0,0,0.20)",
-    color: active ? theme.primary : theme.text,
-    fontWeight: 1000,
-    cursor: "pointer",
-    minWidth: 80,
-  };
-}
-function toggleBtn(theme: any, on: boolean) {
-  return {
-    padding: "8px 12px",
-    borderRadius: 999,
-    border: `1px solid ${on ? theme.primary : "rgba(255,255,255,0.14)"}`,
-    background: on ? `${theme.primary}22` : "rgba(0,0,0,0.20)",
-    color: on ? theme.primary : theme.textSoft,
-    fontWeight: 1000,
-    cursor: "pointer",
-    minWidth: 74,
-    textAlign: "center" as const,
-  };
-}
+const topRow: any = {
+  display: "grid",
+  gridTemplateColumns: "48px 1fr 48px",
+  alignItems: "center",
+  gap: 10,
+  marginBottom: 12,
+};
+
+const topTitle: any = {
+  textAlign: "center",
+  fontWeight: 900,
+  letterSpacing: 1,
+  opacity: 0.95,
+};
+
+const card = (theme: any) => ({
+  background: "rgba(255,255,255,0.06)",
+  border: "1px solid rgba(255,255,255,0.10)",
+  borderRadius: 16,
+  padding: 12,
+  marginBottom: 12,
+  boxShadow: "0 12px 28px rgba(0,0,0,0.35)",
+});
+
+const sectionTitle: any = {
+  fontWeight: 900,
+  letterSpacing: 0.6,
+  marginBottom: 10,
+  opacity: 0.9,
+};
+
+const modeRow: any = {
+  display: "grid",
+  gridTemplateColumns: "repeat(3, 1fr)",
+  gap: 10,
+};
+
+const modeBtn = (theme: any, active: boolean) => ({
+  padding: "12px 10px",
+  borderRadius: 14,
+  border: "1px solid rgba(255,255,255,0.16)",
+  background: active ? "rgba(255,255,255,0.16)" : "rgba(0,0,0,0.22)",
+  color: theme?.colors?.text ?? "#fff",
+  fontWeight: 900,
+  cursor: "pointer",
+});
+
+
+
+const pill = (theme: any, active: boolean) => ({
+  height: 36,
+  padding: "0 14px",
+  borderRadius: 999,
+  border: "1px solid rgba(255,255,255,0.16)",
+  background: active ? "rgba(255,255,255,0.18)" : "rgba(0,0,0,0.22)",
+  color: theme?.colors?.text ?? "#fff",
+  fontWeight: 950,
+  letterSpacing: 0.8,
+  cursor: "pointer",
+});
+const row2: any = {
+  display: "grid",
+  gridTemplateColumns: "1fr 1fr",
+  gap: 10,
+  marginTop: 12,
+};
+
+const col: any = { display: "grid", gap: 6 };
+
+const label: any = {
+  fontSize: 12,
+  opacity: 0.85,
+  fontWeight: 800,
+  letterSpacing: 0.4,
+};
+
+const input = (theme: any) => ({
+  height: 42,
+  borderRadius: 12,
+  border: "1px solid rgba(255,255,255,0.14)",
+  background: "rgba(0,0,0,0.22)",
+  color: theme?.colors?.text ?? "#fff",
+  padding: "0 12px",
+  outline: "none",
+  fontWeight: 800,
+});
+
+const hint: any = {
+  height: 42,
+  borderRadius: 12,
+  border: "1px dashed rgba(255,255,255,0.16)",
+  background: "rgba(0,0,0,0.12)",
+  display: "flex",
+  alignItems: "center",
+  padding: "0 12px",
+  opacity: 0.9,
+  fontWeight: 800,
+};
+
+const smallHint: any = { marginTop: 8, opacity: 0.7, fontSize: 12 };
+
+const cta = (theme: any, enabled: boolean) => ({
+  marginTop: 6,
+  width: "100%",
+  height: 54,
+  borderRadius: 16,
+  border: "1px solid rgba(255,255,255,0.18)",
+  background: enabled ? "rgba(255,255,255,0.18)" : "rgba(255,255,255,0.08)",
+  color: theme?.colors?.text ?? "#fff",
+  fontWeight: 950,
+  letterSpacing: 1,
+  cursor: enabled ? "pointer" : "not-allowed",
+  boxShadow: enabled ? "0 14px 34px rgba(0,0,0,0.35)" : "none",
+});

@@ -88,6 +88,46 @@ const TEAM_META: Record<TeamKey, { label: string; color: string; logo: string }>
 
 const TEAM_KEYS_ALL: TeamKey[] = ["gold", "pink", "blue", "green"];
 
+
+function TeamPillButton({
+  label,
+  color,
+  active,
+  onClick,
+  disabled,
+}: {
+  label: string;
+  color: string;
+  active: boolean;
+  onClick: () => void;
+  disabled?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      disabled={!!disabled}
+      onClick={onClick}
+      style={{
+        height: 34,
+        padding: "0 12px",
+        borderRadius: 999,
+        border: active ? `1px solid ${color}` : "1px solid rgba(255,255,255,0.12)",
+        background: active ? `linear-gradient(180deg, ${color}33, rgba(0,0,0,0.22))` : "rgba(0,0,0,0.18)",
+        color: active ? color : "rgba(255,255,255,0.85)",
+        fontWeight: 950,
+        fontSize: 12,
+        letterSpacing: 0.4,
+        boxShadow: active ? `0 0 18px ${color}26` : "none",
+        cursor: disabled ? "default" : "pointer",
+        opacity: disabled ? 0.5 : 1,
+        whiteSpace: "nowrap",
+      }}
+    >
+      {label}
+    </button>
+  );
+}
+
 function readUserBotsFromLS(): BotLite[] {
   try {
     const raw = localStorage.getItem(LS_BOTS_KEY);
@@ -149,7 +189,7 @@ export default function GolfConfig(props: any) {
   const humanProfiles = storeProfiles.filter((p) => !isBotLike(p));
 
   const primary = (theme as any)?.primary ?? "#7dffca";
-  const cardBg = "linear-gradient(180deg, rgba(255,255,255,0.06), rgba(0,0,0,0.28))";
+  const cardBg = "radial-gradient(120% 160% at 0% 0%, rgba(125,255,202,0.14), transparent 55%), linear-gradient(180deg, rgba(255,255,255,0.08), rgba(0,0,0,0.34))";
 
   const [teamsEnabled, setTeamsEnabled] = React.useState(false);
   const [teamCount, setTeamCount] = React.useState<2 | 3 | 4>(2);
@@ -351,13 +391,117 @@ export default function GolfConfig(props: any) {
       />
 
       <div style={{ padding: 12, paddingTop: 10 }}>
+        {/* HERO banner (style X01/Killer) */}
+        <div
+          style={{
+            borderRadius: 18,
+            overflow: "hidden",
+            border: "1px solid rgba(255,255,255,0.12)",
+            background: "rgba(0,0,0,0.22)",
+            boxShadow: "0 18px 40px rgba(0,0,0,0.38)",
+            marginBottom: 14,
+            position: "relative",
+            height: 86,
+          }}
+        >
+          <div
+            aria-hidden
+            style={{
+              position: "absolute",
+              inset: 0,
+              backgroundImage: `url(${tickerGolf})`,
+              backgroundSize: "cover",
+              backgroundPosition: "center",
+              filter: "saturate(1.12) contrast(1.08)",
+              opacity: 0.85,
+            }}
+          />
+          <div
+            aria-hidden
+            style={{
+              position: "absolute",
+              inset: 0,
+              background:
+                "linear-gradient(90deg, rgba(0,0,0,.86) 0%, rgba(0,0,0,.42) 42%, rgba(0,0,0,.84) 100%), radial-gradient(120% 140% at 0% 0%, rgba(125,255,202,.20), transparent 60%)",
+            }}
+          />
+          <div style={{ position: "relative", zIndex: 1, padding: "12px 14px" }}>
+            <div
+              style={{
+                fontWeight: 1000,
+                letterSpacing: 1.2,
+                textTransform: "uppercase",
+                color: "rgba(255,255,255,0.92)",
+                textShadow: "0 10px 26px rgba(0,0,0,0.55)",
+                fontSize: 16,
+              }}
+            >
+              Configuration
+            </div>
+            <div style={{ marginTop: 6, display: "flex", gap: 10, flexWrap: "wrap" }}>
+              <span
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 8,
+                  padding: "6px 10px",
+                  borderRadius: 999,
+                  border: "1px solid rgba(255,255,255,0.14)",
+                  background: "rgba(0,0,0,0.26)",
+                  color: primary,
+                  fontWeight: 900,
+                  fontSize: 12,
+                  letterSpacing: 0.6,
+                }}
+              >
+                {holes} trous
+              </span>
+              <span
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 8,
+                  padding: "6px 10px",
+                  borderRadius: 999,
+                  border: "1px solid rgba(255,255,255,0.14)",
+                  background: "rgba(0,0,0,0.26)",
+                  color: "rgba(255,255,255,0.85)",
+                  fontWeight: 900,
+                  fontSize: 12,
+                  letterSpacing: 0.6,
+                }}
+              >
+                {holeOrderMode === "random" ? "Trous aléatoires" : "Trous chronologiques"}
+              </span>
+              <span
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 8,
+                  padding: "6px 10px",
+                  borderRadius: 999,
+                  border: "1px solid rgba(255,255,255,0.14)",
+                  background: teamsEnabled ? "rgba(255,207,87,0.12)" : "rgba(0,0,0,0.26)",
+                  color: teamsEnabled ? "#ffcf57" : "rgba(255,255,255,0.75)",
+                  fontWeight: 900,
+                  fontSize: 12,
+                  letterSpacing: 0.6,
+                }}
+              >
+                {teamsEnabled ? `TEAMS (${teamCount})` : "SOLO"}
+              </span>
+            </div>
+          </div>
+        </div>
+
         <Section title={t("players") || "JOUEURS"}>
           <div
             style={{
               borderRadius: 18,
               padding: 12,
               background: cardBg,
-              border: "1px solid rgba(255,255,255,0.10)",
+              border: "1px solid rgba(255,255,255,0.12)",
+              boxShadow: "0 14px 34px rgba(0,0,0,0.40), inset 0 1px 0 rgba(255,255,255,0.06)",
             }}
           >
             <div style={{ fontSize: 12, opacity: 0.85, fontWeight: 950, marginBottom: 8 }}>
@@ -441,8 +585,7 @@ export default function GolfConfig(props: any) {
 
             {teamsEnabled && (
               <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 10 }}>
-                <div style={{ display: "flex", gap: 10, alignItems: "center", justifyContent: "space-between" }}>
-                  <div style={{ fontWeight: 900, opacity: 0.88 }}>Nombre d&apos;équipes</div>
+                <OptionRow label="Nombre d'équipes" hint="2 à 4 (3 possible)">
                   <select
                     value={teamCount}
                     onChange={(e) => setTeamCount(normalizeTeamCount(e.target.value))}
@@ -461,27 +604,28 @@ export default function GolfConfig(props: any) {
                     <option value="3">3</option>
                     <option value="4">4</option>
                   </select>
-                </div>
+                </OptionRow>
 
+                
                 <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center" }}>
-                  <div style={{ fontWeight: 900, opacity: 0.82 }}>Assignation des joueurs</div>
+                  <div style={{ fontWeight: 900, opacity: 0.82 }}>Assignation</div>
                   <button
                     type="button"
                     onClick={() => {
                       const keys = TEAM_KEYS_ALL.slice(0, teamCount);
                       const next: Record<string, TeamKey> = {};
                       selectedIds.forEach((id, idx) => {
-                        next[id] = keys[idx % keys.length];
+                        next[id] = keys[idx % keys.length] as TeamKey;
                       });
                       setTeamAssignments(next);
                     }}
                     style={{
-                      height: 38,
+                      height: 34,
                       padding: "0 12px",
                       borderRadius: 12,
                       border: "1px solid rgba(255,255,255,0.14)",
-                      background: "rgba(0,0,0,0.24)",
-                      color: "rgba(255,255,255,0.88)",
+                      background: "rgba(0,0,0,0.22)",
+                      color: "rgba(255,255,255,0.90)",
                       fontWeight: 900,
                       cursor: "pointer",
                     }}
@@ -490,15 +634,33 @@ export default function GolfConfig(props: any) {
                   </button>
                 </div>
 
-                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                {/* ✅ Assignation type X01Config : lignes compactes + pills d’équipes */}
+                <div
+                  style={{
+                    padding: 10,
+                    borderRadius: 16,
+                    border: "1px solid rgba(255,255,255,0.12)",
+                    background: "rgba(0,0,0,0.18)",
+                    boxShadow: "inset 0 1px 0 rgba(255,255,255,0.06)",
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: 8,
+                  }}
+                >
                   {selectedIds.map((id, idx) => {
                     const hp = humanProfiles.find((p) => String(p.id) === id);
                     const bp = userBots.find((b) => String(b.id) === id);
-                    const name = hp?.name || bp?.name || "Joueur";
-                    const avatar = (hp as any)?.avatarDataUrl || (hp as any)?.avatarUrl || (bp as any)?.avatarDataUrl || null;
+
+                    const name = (hp as any)?.name || (bp as any)?.name || "Joueur";
+                    const avatar =
+                      (hp as any)?.avatarDataUrl ||
+                      (hp as any)?.avatarUrl ||
+                      (bp as any)?.avatarDataUrl ||
+                      null;
 
                     const keys = TEAM_KEYS_ALL.slice(0, teamCount);
-                    const current = teamAssignments[id] ?? keys[idx % keys.length];
+                    const current = (teamAssignments[id] ?? keys[idx % keys.length]) as TeamKey;
+                    const meta = TEAM_META[current] ?? TEAM_META.gold;
 
                     return (
                       <div
@@ -508,71 +670,65 @@ export default function GolfConfig(props: any) {
                           alignItems: "center",
                           justifyContent: "space-between",
                           gap: 10,
-                          padding: 10,
+                          padding: "10px 12px",
                           borderRadius: 16,
                           border: "1px solid rgba(255,255,255,0.10)",
-                          background: "rgba(0,0,0,0.18)",
+                          background: "linear-gradient(180deg, rgba(255,255,255,0.06), rgba(0,0,0,0.24))",
                         }}
                       >
-                        <div style={{ display: "inline-flex", alignItems: "center", gap: 10, minWidth: 0 }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
                           <div
                             style={{
-                              width: 34,
-                              height: 34,
+                              width: 42,
+                              height: 42,
                               borderRadius: "50%",
                               overflow: "hidden",
-                              border: "1px solid rgba(255,255,255,0.14)",
-                              background: "rgba(0,0,0,0.30)",
+                              border: `1px solid ${meta.color}55`,
+                              boxShadow: `0 0 0 3px rgba(0,0,0,.28), 0 0 16px ${meta.color}22`,
+                              background: "rgba(0,0,0,0.35)",
                               flex: "0 0 auto",
+                              display: "grid",
+                              placeItems: "center",
                             }}
                           >
                             {avatar ? (
                               <img src={avatar} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
-                            ) : null}
+                            ) : (
+                              <div style={{ fontWeight: 1000, color: "rgba(255,255,255,0.78)" }}>
+                              {String(name || "J").slice(0, 1).toUpperCase()}
+                            </div>
+                            )}
                           </div>
-                          <div style={{ fontWeight: 900, opacity: 0.92, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                            {name}
+
+                          <div style={{ minWidth: 0 }}>
+                            <div
+                              style={{
+                                fontWeight: 950,
+                                color: "rgba(255,255,255,0.92)",
+                                overflow: "hidden",
+                                textOverflow: "ellipsis",
+                                whiteSpace: "nowrap",
+                                maxWidth: 160,
+                              }}
+                            >
+                              {name}
+                            </div>
                           </div>
                         </div>
 
-                        <div style={{ display: "flex", flexWrap: "wrap", gap: 8, justifyContent: "flex-end" }}>
+                        <div style={{ display: "flex", gap: 6, flexWrap: "wrap", justifyContent: "flex-end" }}>
                           {keys.map((k) => {
-                            const meta = TEAM_META[k];
-                            const active = current === k;
+                            const m = TEAM_META[k];
                             return (
-                              <button
+                              <TeamPillButton
                                 key={k}
-                                type="button"
-                                onClick={() => setTeamAssignments((prev) => ({ ...prev, [id]: k }))}
-                                style={{
-                                  flex: "0 0 auto",
-                                  height: 34,
-                                  padding: "0 10px",
-                                  borderRadius: 999,
-                                  border: active ? `1px solid ${meta.color}88` : "1px solid rgba(255,255,255,0.14)",
-                                  background: active ? `${meta.color}22` : "rgba(0,0,0,0.20)",
-                                  color: active ? meta.color : "rgba(255,255,255,0.84)",
-                                  fontWeight: 1000,
-                                  cursor: "pointer",
-                                  display: "inline-flex",
-                                  alignItems: "center",
-                                  gap: 8,
+                                label={m.label.replace("TEAM ", "")}
+                                color={m.color}
+                                active={current === k}
+                                onClick={() => {
+                                  setTeamAssignments((prev) => ({ ...prev, [id]: k }));
                                 }}
-                              >
-                                <img
-                                  src={meta.logo}
-                                  alt=""
-                                  style={{
-                                    width: 18,
-                                    height: 18,
-                                    objectFit: "contain",
-                                    filter: "drop-shadow(0 4px 10px rgba(0,0,0,.35))",
-                                  }}
-                                />
-                                <span style={{ fontSize: 11, letterSpacing: 0.3 }}>
-                                  {meta.label.replace("TEAM ", "")}
-                                </span>
-                              </button>
+                              />
                             );
                           })}
                         </div>
@@ -581,8 +737,8 @@ export default function GolfConfig(props: any) {
                   })}
                 </div>
 
-                {teamNonEmptyCount < 2 && (
-                  <div style={{ fontSize: 12, opacity: 0.75, fontWeight: 900, marginTop: 4 }}>
+{teamNonEmptyCount < 2 && (
+                  <div style={{ fontSize: 12, opacity: 0.78, fontWeight: 900, marginTop: 4 }}>
                     ⚠️ Il faut au moins 2 équipes non vides pour lancer une partie TEAMS.
                   </div>
                 )}
@@ -695,7 +851,8 @@ export default function GolfConfig(props: any) {
               borderRadius: 18,
               padding: 12,
               background: cardBg,
-              border: "1px solid rgba(255,255,255,0.10)",
+              border: "1px solid rgba(255,255,255,0.12)",
+              boxShadow: "0 14px 34px rgba(0,0,0,0.40), inset 0 1px 0 rgba(255,255,255,0.06)",
             }}
           >
             <OptionRow label="Nombre de trous">
@@ -720,7 +877,7 @@ export default function GolfConfig(props: any) {
               />
             </OptionRow>
 
-            <OptionRow label={`Ordre de départ (${teamsEnabled ? "équipes" : "joueurs"})`}>
+            <OptionRow label="Ordre de départ" hint={teamsEnabled ? "Équipes" : "Joueurs"}>
               <OptionSelect
                 value={startOrderMode}
                 options={[
@@ -731,18 +888,18 @@ export default function GolfConfig(props: any) {
               />
             </OptionRow>
 
-            <OptionRow label="Mode de scoring">
+            <OptionRow label="Mode de scoring" hint={scoringMode === "strokes" ? "Score bas gagne" : "Score haut gagne"}>
               <OptionSelect
                 value={scoringMode}
                 options={[
-                  { value: "strokes", label: "Strokes (score bas gagne)" },
-                  { value: "points", label: "Points (score haut gagne)" },
+                  { value: "strokes", label: "Strokes" },
+                  { value: "points", label: "Points" },
                 ]}
                 onChange={(v: any) => setScoringMode(v === "points" ? "points" : "strokes")}
               />
             </OptionRow>
 
-            <OptionRow label="Pénalité si aucun hit">
+            <OptionRow label="Pénalité (miss)">
               <OptionSelect
                 value={missStrokes}
                 options={[4, 5, 6].map((v) => ({ value: v, label: String(v) }))}
