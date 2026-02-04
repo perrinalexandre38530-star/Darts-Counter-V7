@@ -450,7 +450,7 @@ function GolfHeaderBlock(props: {
           </div>
 
           {/* Mini card stats joueur actif: Darts / Miss / D / T / S */}
-          <div style={{ ...miniCard, width: 176 }}>
+          <div style={{ ...miniCard, width: 176, maxWidth: 176, boxSizing: "border-box" }}>
             <div style={{ ...miniText, display: "flex", flexDirection: "column", gap: 8 }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
                 <span style={{ opacity: 0.9 }}>Darts</span>
@@ -478,19 +478,19 @@ function GolfHeaderBlock(props: {
 
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6, opacity: 0.98 }}>
   <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 6 }}>
-    <span style={{ fontSize: 9.5, letterSpacing: 0.7, color: "rgba(255,255,255,0.78)", fontWeight: 900 }}>%1ST</span>
+    <span style={{ fontSize: 8, lineHeight: 1, letterSpacing: 0.4, color: "rgba(255,255,255,0.72)", fontWeight: 900, textTransform: "lowercase", whiteSpace: "nowrap" }}>%1st</span>
     <span style={{ minWidth: 46, textAlign: "center", padding: "3px 8px", borderRadius: 10, border: "1px solid rgba(255,195,26,.35)", background: "rgba(255,195,26,.14)", color: "#ffcf57", fontWeight: 1000, fontSize: 12, boxShadow: "0 10px 18px rgba(0,0,0,.25)" }}>{p1}</span>
   </div>
   <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 6 }}>
-    <span style={{ fontSize: 9.5, letterSpacing: 0.7, color: "rgba(255,255,255,0.78)", fontWeight: 900 }}>%2ND</span>
+    <span style={{ fontSize: 8, lineHeight: 1, letterSpacing: 0.4, color: "rgba(255,255,255,0.72)", fontWeight: 900, textTransform: "lowercase", whiteSpace: "nowrap" }}>%2nd</span>
     <span style={{ minWidth: 46, textAlign: "center", padding: "3px 8px", borderRadius: 10, border: "1px solid rgba(120,255,220,.35)", background: "rgba(120,255,220,.12)", color: "#b9ffe9", fontWeight: 1000, fontSize: 12, boxShadow: "0 10px 18px rgba(0,0,0,.25)" }}>{p2}</span>
   </div>
   <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 6 }}>
-    <span style={{ fontSize: 9.5, letterSpacing: 0.7, color: "rgba(255,255,255,0.78)", fontWeight: 900 }}>%3RD</span>
+    <span style={{ fontSize: 8, lineHeight: 1, letterSpacing: 0.4, color: "rgba(255,255,255,0.72)", fontWeight: 900, textTransform: "lowercase", whiteSpace: "nowrap" }}>%3rd</span>
     <span style={{ minWidth: 46, textAlign: "center", padding: "3px 8px", borderRadius: 10, border: "1px solid rgba(120,255,220,.30)", background: "rgba(120,255,220,.09)", color: "rgba(185,255,233,0.92)", fontWeight: 1000, fontSize: 12, boxShadow: "0 10px 18px rgba(0,0,0,.25)" }}>{p3}</span>
   </div>
   <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 6 }}>
-    <span style={{ fontSize: 9.5, letterSpacing: 0.7, color: "rgba(255,255,255,0.78)", fontWeight: 900 }}>%MISS</span>
+    <span style={{ fontSize: 8, lineHeight: 1, letterSpacing: 0.4, color: "rgba(255,255,255,0.72)", fontWeight: 900, textTransform: "lowercase", whiteSpace: "nowrap" }}>%miss</span>
     <span style={{ minWidth: 46, textAlign: "center", padding: "3px 8px", borderRadius: 10, border: "1px solid rgba(255,120,120,.35)", background: "rgba(255,120,120,.10)", color: "#ffb2b2", fontWeight: 1000, fontSize: 12, boxShadow: "0 10px 18px rgba(0,0,0,.25)" }}>{pMiss}</span>
   </div>
 </div>
@@ -578,8 +578,8 @@ function GolfHeaderBlock(props: {
               Classement
             </div>
 
-            <div style={{ padding: "0 2px 2px 2px" }}>
-              {liveRanking.slice(0, 3).map((r, i) => (
+            <div style={{ padding: "0 2px 2px 2px", maxHeight: 96, overflowY: "auto", overscrollBehavior: "contain" }}>
+              {liveRanking.map((r, i) => (
                 <div key={r.id} style={miniRankRow}>
                   <span style={{ display: "inline-flex", alignItems: "center", minWidth: 0, overflow: "hidden" }}>
                     <span style={tinyAvatar}>
@@ -609,7 +609,9 @@ export default function GolfPlay(props: Props) {
   const routeParams = (params ?? tabParams ?? {}) as any;
   const cfg: GolfConfig = (routeParams?.config ?? {}) as GolfConfig;
 
-  const holes = clamp(Number(cfg.holes ?? 9), 1, 18);
+  
+  const roundsMode = ((cfg as any).display === "rounds" || (cfg as any).scoreMode === "rounds" || (cfg as any).format === "rounds" || (cfg as any).rounds === true);
+const holes = clamp(Number(cfg.holes ?? 9), 1, 18);
   const showGrid = cfg.showGrid !== false;
 
   const profilesById = useMemo(() => getProfilesMap(store), [store]);
@@ -1264,6 +1266,31 @@ export default function GolfPlay(props: Props) {
                   </div>
 
                   <div style={{ padding: 12, overflowY: "auto", maxHeight: "calc(82vh - 56px)" }}>
+                    {roundsMode && (
+                      <div style={{ ...cardBase, padding: 10, marginBottom: 12, borderRadius: 16 }}>
+                        <div style={{ fontWeight: 1000, marginBottom: 8, color: "rgba(255,255,255,.92)" }}>
+                          ROUNDS
+                        </div>
+                        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                          {players.map((p, idx) => (
+                            <div key={p.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
+                              <div style={{ display: "inline-flex", alignItems: "center", minWidth: 0, overflow: "hidden" }}>
+                                <span style={{ ...tinyAvatar, width: 20, height: 20 }}>
+                                  {p.avatar ? <img src={p.avatar} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : null}
+                                </span>
+                                <span style={{ fontWeight: 900, opacity: 0.92, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                                  {p.name}
+                                </span>
+                              </div>
+                              <span style={{ minWidth: 46, textAlign: "center", padding: "4px 10px", borderRadius: 12, border: "1px solid rgba(255,255,255,0.14)", background: "rgba(0,0,0,0.28)", fontWeight: 1000 }}>
+                                {statsByPlayer[idx]?.turns ?? 0}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
                     {holes <= 9 ? (
                       <HolesTableBlock start={1} end={holes} title={`Trous 1–${holes}`} />
                     ) : (

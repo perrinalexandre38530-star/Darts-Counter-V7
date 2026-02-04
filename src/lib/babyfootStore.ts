@@ -1,284 +1,289 @@
 // =============================================================
 // src/lib/babyfootStore.ts
 // Baby-Foot (LOCAL ONLY)
-// - Stocke l'état de match en localStorage
-// - Indépendant des autres sports (Darts/Pétanque/PingPong)
-// - v2: équipes + profils + events + chrono + historique exploitable
+//
+// ✅ V2 (rebased on project): teams + profiles + events + timer
+// - Backward compatible with existing saved state (v1)
+// - No dependency on Darts/Pétanque/PingPong
 // =============================================================
 
 export type BabyFootTeamId = "A" | "B";
 export type BabyFootMode = "1v1" | "2v2" | "2v1";
 
 export type BabyFootEvent =
-  | {
-      type: "start";
-      at: number;
-      matchId: string;
-    }
-  | {
-      type: "goal";
-      at: number;
-      team: BabyFootTeamId;
-      delta: 1 | -1;
-      // optionnel: but attribué à un joueur (si tu ajoutes plus tard la saisie joueur)
-      playerId?: string | null;
-      scoreA: number;
-      scoreB: number;
-    }
-  | {
-      type: "undo";
-      at: number;
-      scoreA: number;
-      scoreB: number;
-      finished: boolean;
-      winner: BabyFootTeamId | null;
-    }
-  | {
-      type: "finish";
-      at: number;
-      winner: BabyFootTeamId | null;
-      scoreA: number;
-      scoreB: number;
-      target: number;
-    };
-
-export type BabyFootPlayer = {
-  id: string;
-  name: string;
-  avatarDataUrl?: string | null;
-  team: BabyFootTeamId;
-};
+  | { t: "start"; at: number }
+  | { t: "goal"; at: number; team: BabyFootTeamId; scorerId?: string | null }
+  | { t: "undo"; at: number }
+  | { t: "finish"; at: number; winner: BabyFootTeamId };
 
 export type BabyFootState = {
   matchId: string;
   createdAt: number;
   updatedAt: number;
 
-  // config
+  // display
   teamA: string;
   teamB: string;
+
+  // match format
   mode: BabyFootMode;
   teamAPlayers: number;
   teamBPlayers: number;
-  target: number; // score cible
 
-  // profils sélectionnés (snap du moment)
-  players: BabyFootPlayer[];
+  // ✅ V2: selected profile ids (for stats/history)
+  teamAProfileIds: string[];
+  teamBProfileIds: string[];
 
-  // runtime
-  startedAt: number | null;
-  finishedAt: number | null;
+  // score
   scoreA: number;
   scoreB: number;
+  target: number;
+
+  // timer
+  startedAt: number | null;
+  finishedAt: number | null;
+
+  // status
   finished: boolean;
   winner: BabyFootTeamId | null;
 
+  // ✅ V2: events log
   events: BabyFootEvent[];
 
-  // undo simple (pile de snapshots)
-  undo: Array<Pick<BabyFootState, "scoreA" | "scoreB" | "finished" | "winner" | "updatedAt" | "finishedAt" | "events">>;
+  // undo simple (stack of snapshots)
+  undo: Array<
+    Pick<BabyFootState, "scoreA" | "scoreB" | "finished" | "winner" | "updatedAt" | "events" | "finishedAt">
+  >;
 };
 
-const LS_KEY = "dc-babyfoot-state";
+const LS_KEY = "babyfoot_state_v2";
 
-function now() {
-  return Date.now();
+function uid() {
+  return `bf-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
-function genId() {
-  const t = now();
-  return (globalThis as any)?.crypto?.randomUUID?.() ?? `babyfoot-${t}-${Math.random().toString(36).slice(2, 8)}`;
-}
-
-export function newBabyFootState(partial?: Partial<BabyFootState>): BabyFootState {
-  const t = now();
-  const id = genId();
+export function defaultBabyFootState(partial?: Partial<BabyFootState>): BabyFootState {
+  const now = Date.now();
   return {
-    matchId: id,
-    createdAt: t,
-    updatedAt: t,
+    matchId: uid(),
+    createdAt: now,
+    updatedAt: now,
 
-    teamA: "Équipe A",
-    teamB: "Équipe B",
+    teamA: "TEAM A",
+    teamB: "TEAM B",
+
     mode: "1v1",
     teamAPlayers: 1,
     teamBPlayers: 1,
-    target: 10,
 
-    players: [],
+    teamAProfileIds: [],
+    teamBProfileIds: [],
+
+    scoreA: 0,
+    scoreB: 0,
+    target: 10,
 
     startedAt: null,
     finishedAt: null,
-    scoreA: 0,
-    scoreB: 0,
+
     finished: false,
     winner: null,
 
     events: [],
 
     undo: [],
-    ...(partial || {}),
+    ...partial,
   };
 }
 
-// backwards compat: merge safe defaults
+// Backward compat: migrate old v1 shape to v2
+function migrate(raw: any): BabyFootState {
+  if (!raw || typeof raw !== "object") return defaultBabyFootState();
+
+  const now = Date.now();
+  const v2: BabyFootState = defaultBabyFootState({
+    matchId: raw.matchId || raw.id || uid(),
+    createdAt: raw.createdAt || now,
+    updatedAt: raw.updatedAt || now,
+    teamA: raw.teamA ?? "TEAM A",
+    teamB: raw.teamB ?? "TEAM B",
+    mode: raw.mode ?? "1v1",
+    teamAPlayers: raw.teamAPlayers ?? (raw.mode === "2v2" ? 2 : raw.mode === "2v1" ? 2 : 1),
+    teamBPlayers: raw.teamBPlayers ?? (raw.mode === "2v2" ? 2 : 1),
+    scoreA: Number(raw.scoreA ?? 0),
+    scoreB: Number(raw.scoreB ?? 0),
+    target: Number(raw.target ?? 10),
+    finished: !!raw.finished,
+    winner: raw.winner ?? null,
+  });
+
+  // v2 fields
+  v2.teamAProfileIds = Array.isArray(raw.teamAProfileIds) ? raw.teamAProfileIds.filter(Boolean) : [];
+  v2.teamBProfileIds = Array.isArray(raw.teamBProfileIds) ? raw.teamBProfileIds.filter(Boolean) : [];
+
+  v2.startedAt = typeof raw.startedAt === "number" ? raw.startedAt : null;
+  v2.finishedAt = typeof raw.finishedAt === "number" ? raw.finishedAt : null;
+
+  v2.events = Array.isArray(raw.events) ? raw.events : [];
+  v2.undo = Array.isArray(raw.undo) ? raw.undo : [];
+
+  return v2;
+}
+
 export function loadBabyFootState(): BabyFootState {
   try {
     const raw = localStorage.getItem(LS_KEY);
-    if (!raw) return newBabyFootState();
-    const parsed = JSON.parse(raw) || {};
-    return newBabyFootState({
-      ...parsed,
-      // harden fields
-      players: Array.isArray(parsed.players) ? parsed.players : [],
-      events: Array.isArray(parsed.events) ? parsed.events : [],
-      undo: Array.isArray(parsed.undo) ? parsed.undo : [],
-      startedAt: typeof parsed.startedAt === "number" ? parsed.startedAt : null,
-      finishedAt: typeof parsed.finishedAt === "number" ? parsed.finishedAt : null,
-    });
+    if (!raw) return defaultBabyFootState();
+    return migrate(JSON.parse(raw));
   } catch {
-    return newBabyFootState();
+    return defaultBabyFootState();
   }
 }
 
-export function saveBabyFootState(st: BabyFootState) {
+export function saveBabyFootState(state: BabyFootState) {
   try {
-    localStorage.setItem(LS_KEY, JSON.stringify(st));
+    localStorage.setItem(LS_KEY, JSON.stringify(state));
   } catch {}
 }
 
-/**
- * Réinitialise une nouvelle partie en conservant la config (noms, mode, profils…)
- */
-export function resetBabyFoot(prev?: BabyFootState) {
-  const next = newBabyFootState({
-    teamA: prev?.teamA ?? "Équipe A",
-    teamB: prev?.teamB ?? "Équipe B",
-    mode: prev?.mode ?? "1v1",
-    teamAPlayers: prev?.teamAPlayers ?? 1,
-    teamBPlayers: prev?.teamBPlayers ?? 1,
-    target: prev?.target ?? 10,
-    players: prev?.players ?? [],
-  });
+export function resetBabyFoot(partial?: Partial<BabyFootState>) {
+  const s = defaultBabyFootState(partial);
+  saveBabyFootState(s);
+  return s;
+}
 
-  const t = now();
-  next.startedAt = t;
-  next.events = [{ type: "start", at: t, matchId: next.matchId }];
-
+export function setTeams(teamA: string, teamB: string) {
+  const s = loadBabyFootState();
+  const next = { ...s, teamA, teamB, updatedAt: Date.now() };
   saveBabyFootState(next);
   return next;
 }
 
-export function setConfig(
-  st: BabyFootState,
-  cfg: {
-    teamA: string;
-    teamB: string;
-    target: number;
-    mode: BabyFootMode;
-    teamAPlayers: number;
-    teamBPlayers: number;
-    players: BabyFootPlayer[];
-  }
-) {
+export function setMode(mode: BabyFootMode) {
+  const s = loadBabyFootState();
+  const teamAPlayers = mode === "2v2" || mode === "2v1" ? 2 : 1;
+  const teamBPlayers = mode === "2v2" ? 2 : 1;
+  const next = { ...s, mode, teamAPlayers, teamBPlayers, updatedAt: Date.now() };
+  saveBabyFootState(next);
+  return next;
+}
+
+export function setTarget(target: number) {
+  const s = loadBabyFootState();
+  const next = { ...s, target: Math.max(1, Math.floor(target || 1)), updatedAt: Date.now() };
+  saveBabyFootState(next);
+  return next;
+}
+
+export function setTeamsProfiles(teamAProfileIds: string[], teamBProfileIds: string[]) {
+  const s = loadBabyFootState();
+  const next = {
+    ...s,
+    teamAProfileIds: Array.from(new Set((teamAProfileIds || []).filter(Boolean))),
+    teamBProfileIds: Array.from(new Set((teamBProfileIds || []).filter(Boolean))),
+    updatedAt: Date.now(),
+  };
+  saveBabyFootState(next);
+  return next;
+}
+
+export function startMatch() {
+  const s = loadBabyFootState();
+  const now = Date.now();
   const next: BabyFootState = {
-    ...st,
-    teamA: (cfg.teamA || "Équipe A").trim(),
-    teamB: (cfg.teamB || "Équipe B").trim(),
-    mode: cfg.mode || "1v1",
-    teamAPlayers: Math.max(1, Math.min(4, Number(cfg.teamAPlayers) || 1)),
-    teamBPlayers: Math.max(1, Math.min(4, Number(cfg.teamBPlayers) || 1)),
-    target: Math.max(1, Math.min(99, Number(cfg.target) || 10)),
-    players: Array.isArray(cfg.players) ? cfg.players : [],
-    updatedAt: now(),
+    ...s,
+    scoreA: 0,
+    scoreB: 0,
+    finished: false,
+    winner: null,
+    undo: [],
+    startedAt: now,
+    finishedAt: null,
+    events: [{ t: "start", at: now }],
+    updatedAt: now,
   };
   saveBabyFootState(next);
   return next;
 }
 
-export function addGoal(st: BabyFootState, team: BabyFootTeamId, delta: 1 | -1, playerId?: string | null) {
-  const snapshot = {
-    scoreA: st.scoreA,
-    scoreB: st.scoreB,
-    finished: st.finished,
-    winner: st.winner,
-    finishedAt: st.finishedAt,
-    updatedAt: st.updatedAt,
-    events: st.events,
+function pushUndo(s: BabyFootState): BabyFootState {
+  const snap = {
+    scoreA: s.scoreA,
+    scoreB: s.scoreB,
+    finished: s.finished,
+    winner: s.winner,
+    updatedAt: s.updatedAt,
+    events: s.events,
+    finishedAt: s.finishedAt,
   };
+  const stack = [...(s.undo || []), snap].slice(-50);
+  return { ...s, undo: stack };
+}
 
-  let scoreA = st.scoreA;
-  let scoreB = st.scoreB;
-  if (team === "A") scoreA = Math.max(0, scoreA + delta);
-  else scoreB = Math.max(0, scoreB + delta);
+export function addGoal(team: BabyFootTeamId, scorerId?: string | null) {
+  let s = loadBabyFootState();
+  if (s.finished) return s;
+
+  s = pushUndo(s);
+  const now = Date.now();
+
+  let scoreA = s.scoreA;
+  let scoreB = s.scoreB;
+  if (team === "A") scoreA += 1;
+  else scoreB += 1;
 
   let finished = false;
   let winner: BabyFootTeamId | null = null;
-  let finishedAt: number | null = st.finishedAt;
+  let finishedAt: number | null = s.finishedAt;
 
-  if (scoreA >= st.target || scoreB >= st.target) {
+  if (scoreA >= s.target || scoreB >= s.target) {
     finished = true;
-    winner = scoreA > scoreB ? "A" : scoreB > scoreA ? "B" : null;
-    finishedAt = now();
+    winner = scoreA >= s.target ? "A" : "B";
+    finishedAt = now;
   }
 
-  const evAt = now();
-  let events: BabyFootEvent[] = [
-    ...(st.events || []),
-    {
-      type: "goal",
-      at: evAt,
-      team,
-      delta,
-      playerId: playerId ?? null,
-      scoreA,
-      scoreB,
-    },
-  ];
-
-  if (finished) {
-    events = [
-      ...events,
-      { type: "finish", at: finishedAt || evAt, winner, scoreA, scoreB, target: st.target },
-    ];
-  }
+  const events = [...(s.events || []), { t: "goal", at: now, team, scorerId: scorerId ?? null } as BabyFootEvent];
+  if (finished && winner) events.push({ t: "finish", at: now, winner });
 
   const next: BabyFootState = {
-    ...st,
+    ...s,
     scoreA,
     scoreB,
     finished,
     winner,
     finishedAt,
-    updatedAt: evAt,
     events,
-    undo: [snapshot, ...(st.undo || [])].slice(0, 200),
+    updatedAt: now,
   };
 
   saveBabyFootState(next);
   return next;
 }
 
-export function undo(st: BabyFootState) {
-  const u = (st.undo || [])[0];
-  if (!u) return st;
+export function undo() {
+  const s = loadBabyFootState();
+  const stack = s.undo || [];
+  const last = stack[stack.length - 1];
+  if (!last) return s;
 
-  const evAt = now();
+  const now = Date.now();
   const next: BabyFootState = {
-    ...st,
-    scoreA: u.scoreA,
-    scoreB: u.scoreB,
-    finished: u.finished,
-    winner: u.winner,
-    finishedAt: u.finishedAt ?? null,
-    updatedAt: evAt,
-    events: [
-      ...(u.events || []),
-      { type: "undo", at: evAt, scoreA: u.scoreA, scoreB: u.scoreB, finished: u.finished, winner: u.winner },
-    ],
-    undo: (st.undo || []).slice(1),
+    ...s,
+    scoreA: last.scoreA,
+    scoreB: last.scoreB,
+    finished: last.finished,
+    winner: last.winner,
+    finishedAt: last.finishedAt ?? null,
+    events: [...(last.events || []), { t: "undo", at: now } as BabyFootEvent],
+    undo: stack.slice(0, -1),
+    updatedAt: now,
   };
-
   saveBabyFootState(next);
   return next;
+}
+
+export function computeDurationMs(s: BabyFootState) {
+  const start = s.startedAt ?? s.createdAt;
+  const end = s.finishedAt ?? Date.now();
+  return Math.max(0, end - start);
 }

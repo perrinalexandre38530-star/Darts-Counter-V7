@@ -1,14 +1,28 @@
 // =============================================================
 // src/pages/babyfoot/BabyFootPlay.tsx
-// Baby-Foot — Play (LOCAL ONLY) — v2
+// Baby-Foot — Play (LOCAL ONLY) — V2
 // - Score A/B + undo
-// - Chrono basé sur startedAt/finishedAt
-// - Appelle onFinish() avec players[] + winnerId (profil) pour pushBabyFootHistory()
+// - Events + chrono
+// - ✅ onFinish(payload) compatible pushBabyFootHistory() in App.tsx
+//   -> players[] (profile ids) + winnerId (profile id)
 // =============================================================
 
-import React from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { useTheme } from "../../contexts/ThemeContext";
-import { addGoal, loadBabyFootState, saveBabyFootState, undo as undoGoal, type BabyFootTeamId } from "../../lib/babyfootStore";
+
+import BackDot from "../../components/BackDot";
+import InfoDot from "../../components/InfoDot";
+import ProfileAvatar from "../../components/ProfileAvatar";
+
+import {
+  addGoal,
+  computeDurationMs,
+  loadBabyFootState,
+  saveBabyFootState,
+  undo as undoGoal,
+  type BabyFootTeamId,
+  type BabyFootState,
+} from "../../lib/babyfootStore";
 
 type Props = {
   go: (t: any, p?: any) => void;
@@ -16,276 +30,371 @@ type Props = {
   onFinish?: (m: any) => void;
 };
 
-function msToClock(ms: number) {
-  const s = Math.max(0, Math.floor(ms / 1000));
-  const m = Math.floor(s / 60);
-  const r = s % 60;
-  return `${String(m).padStart(2, "0")}:${String(r).padStart(2, "0")}`;
+function fmt(ms: number) {
+  const s = Math.floor(ms / 1000);
+  const mm = String(Math.floor(s / 60)).padStart(2, "0");
+  const ss = String(s % 60).padStart(2, "0");
+  return `${mm}:${ss}`;
 }
 
 export default function BabyFootPlay({ go, onFinish }: Props) {
   const { theme } = useTheme();
-  const [st, setSt] = React.useState(() => loadBabyFootState());
-  const [tick, setTick] = React.useState(0);
+  const [state, setState] = useState<BabyFootState>(() => loadBabyFootState());
+  const [now, setNow] = useState(Date.now());
 
-  React.useEffect(() => {
-    saveBabyFootState(st);
-  }, [st]);
+  const [pickTeam, setPickTeam] = useState<BabyFootTeamId | null>(null);
 
-  React.useEffect(() => {
-    const id = window.setInterval(() => setTick((t) => t + 1), 1000);
-    return () => window.clearInterval(id);
+  useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), 500);
+    return () => clearInterval(t);
   }, []);
 
-  const durationMs = React.useMemo(() => {
-    const start = st.startedAt ?? st.createdAt ?? Date.now();
-    const end = st.finished ? (st.finishedAt ?? Date.now()) : Date.now();
-    return end - start;
-  }, [st.startedAt, st.createdAt, st.finished, st.finishedAt, tick]);
+  const teamAIds = state.teamAProfileIds || [];
+  const teamBIds = state.teamBProfileIds || [];
+  const players = useMemo(() => {
+    const ids = [...teamAIds, ...teamBIds].filter(Boolean);
+    return ids.map((id) => ({ id }));
+  }, [teamAIds.join("|"), teamBIds.join("|")]);
 
-  const finish = React.useCallback(() => {
-    if (!onFinish) return;
-    const now = Date.now();
+  const durationMs = useMemo(() => computeDurationMs(state), [state.startedAt, state.finishedAt, now, state.updatedAt]);
 
-    const players = (st.players || []).map((p) => ({
-      id: p.id,
-      name: p.name ?? "",
-      avatarDataUrl: p.avatarDataUrl ?? null,
-      team: p.team,
-    }));
+  const finishIfNeeded = (next: BabyFootState) => {
+    if (!next.finished || !next.winner) return;
 
-    const winnerTeam: BabyFootTeamId | null = st.winner;
-    const winnerPlayer = winnerTeam ? (st.players || []).find((p) => p.team === winnerTeam) : null;
+    // winnerId: use first selected profile of the winner team
+    const winnerTeamIds = next.winner === "A" ? next.teamAProfileIds : next.teamBProfileIds;
+    const winnerId = (winnerTeamIds && winnerTeamIds[0]) || null;
 
-    onFinish({
-      id: st.matchId,
+    const payload: any = {
+      id: next.matchId,
+      matchId: next.matchId,
+      createdAt: next.createdAt,
+      updatedAt: next.updatedAt,
       kind: "babyfoot",
       sport: "babyfoot",
-      createdAt: st.createdAt || now,
-      updatedAt: now,
 
-      mode: st.mode,
-      target: st.target,
+      teamA: next.teamA,
+      teamB: next.teamB,
+      mode: next.mode,
+      target: next.target,
 
-      teams: {
-        A: { id: "A", name: st.teamA },
-        B: { id: "B", name: st.teamB },
-      },
-      scores: { A: st.scoreA, B: st.scoreB },
+      scoreA: next.scoreA,
+      scoreB: next.scoreB,
+      winnerTeam: next.winner,
 
       players,
-      winnerId: winnerPlayer?.id ?? null,
+      winnerId,
 
-      durationMs,
-
-      events: st.events || [],
+      events: next.events || [],
+      durationMs: computeDurationMs(next),
 
       summary: {
-        title: `${st.teamA} ${st.scoreA}–${st.scoreB} ${st.teamB}`,
-        subtitle: winnerTeam ? `Victoire : ${winnerTeam === "A" ? st.teamA : st.teamB}` : "Match nul",
+        scoreA: next.scoreA,
+        scoreB: next.scoreB,
+        teamA: next.teamA,
+        teamB: next.teamB,
+        winnerTeam: next.winner,
+        durationMs: computeDurationMs(next),
       },
-    });
-  }, [onFinish, st, durationMs]);
+    };
 
-  React.useEffect(() => {
-    if (st.finished) {
-      // Auto push history dès que le match est terminé
-      finish();
+    onFinish?.(payload);
+    go("babyfoot_stats_history");
+  };
+
+  const add = (team: BabyFootTeamId, scorerId?: string | null) => {
+    const next = addGoal(team, scorerId);
+    setState(next);
+    saveBabyFootState(next);
+    finishIfNeeded(next);
+  };
+
+  const onPlus = (team: BabyFootTeamId) => {
+    const ids = team === "A" ? teamAIds : teamBIds;
+    if (ids.length <= 1) {
+      add(team, ids[0] ?? null);
+      return;
     }
-  }, [st.finished, finish]);
+    setPickTeam(team);
+  };
 
-  const inc = (team: BabyFootTeamId, delta: 1 | -1) => setSt((prev) => addGoal(prev, team, delta));
-  const undo = () => setSt((prev) => undoGoal(prev));
+  const onPickScorer = (id: string) => {
+    const team = pickTeam;
+    if (!team) return;
+    setPickTeam(null);
+    add(team, id);
+  };
+
+  const onUndo = () => {
+    const next = undoGoal();
+    setState(next);
+    saveBabyFootState(next);
+  };
 
   return (
     <div style={wrap(theme)}>
-      <div style={head}>
-        <button style={back(theme)} onClick={() => go("babyfoot_menu")}>
-          ✕
-        </button>
-        <div style={title}>BABY-FOOT</div>
-        <div style={clock(theme)}>{msToClock(durationMs)}</div>
+      <div style={topRow}>
+        <BackDot onClick={() => go("babyfoot_menu")} />
+        <div style={topTitle}>BABY-FOOT — PLAY</div>
+        <InfoDot title="Baby-foot" body="Score A/B • Undo • Chrono • Local only" />
       </div>
 
-      <div style={kpi(theme)}>
-        <div style={teamBlock(theme)}>
-          <div style={teamName}>{st.teamA}</div>
-          <div style={teamScore}>{st.scoreA}</div>
-          <div style={btnRow}>
-            <button style={btn(theme)} onClick={() => inc("A", +1)}>
-              +1
-            </button>
-            <button style={btn(theme)} onClick={() => inc("A", -1)}>
-              -1
-            </button>
+      <div style={header(theme)}>
+        <div style={teamBox}>
+          <div style={teamName}>{state.teamA}</div>
+          <div style={avatarsRow}>
+            {teamAIds.map((id) => (
+              <div key={id} style={avatarWrap}>
+                <ProfileAvatar profile={{ id }} size={38} />
+              </div>
+            ))}
           </div>
         </div>
 
-        <div style={mid(theme)}>
-          <div style={vs}>VS</div>
-          <div style={target(theme)}>Cible : {st.target}</div>
-          <div style={{ height: 10 }} />
-          <button style={btn(theme)} onClick={undo} disabled={!st.undo?.length}>
-            Annuler
+        <div style={midBox}>
+          <div style={timer(theme)}>{fmt(durationMs)}</div>
+          <div style={target}>
+            CIBLE <span style={{ opacity: 0.95 }}>{state.target}</span>
+          </div>
+        </div>
+
+        <div style={teamBox}>
+          <div style={{ ...teamName, textAlign: "right" }}>{state.teamB}</div>
+          <div style={{ ...avatarsRow, justifyContent: "flex-end" }}>
+            {teamBIds.map((id) => (
+              <div key={id} style={avatarWrap}>
+                <ProfileAvatar profile={{ id }} size={38} />
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      <div style={scoreRow}>
+        <div style={scoreCard(theme)}>
+          <div style={scoreNum}>{state.scoreA}</div>
+          <button style={plusBtn(theme)} onClick={() => onPlus("A")} disabled={state.finished}>
+            + BUT
           </button>
-          <div style={{ height: 8 }} />
-          {!st.finished ? (
-            <button style={ghost(theme)} onClick={finish}>
-              Terminer & sauvegarder
-            </button>
-          ) : null}
         </div>
 
-        <div style={teamBlock(theme)}>
-          <div style={teamName}>{st.teamB}</div>
-          <div style={teamScore}>{st.scoreB}</div>
-          <div style={btnRow}>
-            <button style={btn(theme)} onClick={() => inc("B", +1)}>
-              +1
-            </button>
-            <button style={btn(theme)} onClick={() => inc("B", -1)}>
-              -1
-            </button>
-          </div>
+        <div style={vs(theme)}>
+          <div style={vsTxt}>VS</div>
+        </div>
+
+        <div style={scoreCard(theme)}>
+          <div style={scoreNum}>{state.scoreB}</div>
+          <button style={plusBtn(theme)} onClick={() => onPlus("B")} disabled={state.finished}>
+            + BUT
+          </button>
         </div>
       </div>
 
-      {st.finished ? (
-        <div style={done(theme)}>
-          Match terminé{st.winner ? ` — Victoire : ${st.winner === "A" ? st.teamA : st.teamB}` : " — Match nul"}
+      <div style={actionsRow}>
+        <button style={ghostBtn(theme)} onClick={onUndo}>
+          ANNULER
+        </button>
+        <button
+          style={ghostBtn(theme)}
+          onClick={() => {
+            // restart match keeping config
+            const s = loadBabyFootState();
+            const reset = {
+              ...s,
+              scoreA: 0,
+              scoreB: 0,
+              finished: false,
+              winner: null,
+              undo: [],
+              events: [],
+              startedAt: Date.now(),
+              finishedAt: null,
+              updatedAt: Date.now(),
+            } as BabyFootState;
+            saveBabyFootState(reset);
+            setState(reset);
+          }}
+        >
+          RESTART
+        </button>
+      </div>
+
+      {pickTeam && (
+        <div style={overlay}>
+          <div style={modal(theme)}>
+            <div style={modalTitle}>Qui a marqué ?</div>
+            <div style={modalSub}>
+              Équipe {pickTeam === "A" ? state.teamA : state.teamB} • Choisis le buteur
+            </div>
+
+            <div style={pickerRow}>
+              {(pickTeam === "A" ? teamAIds : teamBIds).map((id) => (
+                <button key={id} style={pickerBtn(theme)} onClick={() => onPickScorer(id)}>
+                  <ProfileAvatar profile={{ id }} size={54} />
+                </button>
+              ))}
+            </div>
+
+            <button style={pickerCancel(theme)} onClick={() => setPickTeam(null)}>
+              Annuler
+            </button>
+          </div>
         </div>
-      ) : (
-        <div style={hint(theme)}>Appuie sur +1 / -1 pour mettre à jour le score. Annuler = undo.</div>
       )}
     </div>
   );
 }
 
-function isDark(theme: any) {
-  return theme?.id?.includes("dark") || theme?.id === "darkTitanium" || theme?.id === "dark";
-}
+const wrap = (theme: any) => ({
+  minHeight: "100vh",
+  padding: 14,
+  background: theme?.colors?.bg ?? "#05060a",
+  color: theme?.colors?.text ?? "#fff",
+});
 
-function wrap(theme: any): React.CSSProperties {
-  return {
-    height: "100dvh",
-    overflow: "hidden",
-    padding: 14,
-    color: theme?.colors?.text ?? "#fff",
-    background: isDark(theme)
-      ? "radial-gradient(1200px 600px at 50% 10%, rgba(255,255,255,0.08), rgba(0,0,0,0.92))"
-      : "radial-gradient(1200px 600px at 50% 10%, rgba(0,0,0,0.06), rgba(255,255,255,0.92))",
-  };
-}
+const topRow: any = {
+  display: "grid",
+  gridTemplateColumns: "48px 1fr 48px",
+  alignItems: "center",
+  gap: 10,
+  marginBottom: 12,
+};
 
-const head: React.CSSProperties = { display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 12 };
-const title: React.CSSProperties = { fontWeight: 1000, letterSpacing: 1.2, fontSize: 14, opacity: 0.95 };
+const topTitle: any = { textAlign: "center", fontWeight: 900, letterSpacing: 1, opacity: 0.95 };
 
-function back(theme: any): React.CSSProperties {
-  return {
-    border: "none",
-    borderRadius: 12,
-    width: 44,
-    height: 44,
-    background: isDark(theme) ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.06)",
-    color: theme?.colors?.text ?? "#fff",
-    fontWeight: 900,
-    fontSize: 18,
-  };
-}
+const header = (theme: any) => ({
+  display: "grid",
+  gridTemplateColumns: "1fr 120px 1fr",
+  gap: 10,
+  padding: 12,
+  borderRadius: 18,
+  background: "rgba(255,255,255,0.06)",
+  border: "1px solid rgba(255,255,255,0.10)",
+  boxShadow: "0 12px 28px rgba(0,0,0,0.35)",
+});
 
-function clock(theme: any): React.CSSProperties {
-  return {
-    minWidth: 70,
-    textAlign: "right",
-    fontWeight: 1000,
-    letterSpacing: 1.2,
-    opacity: 0.9,
-    padding: "10px 12px",
-    borderRadius: 12,
-    background: isDark(theme) ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.05)",
-    border: isDark(theme) ? "1px solid rgba(255,255,255,0.08)" : "1px solid rgba(0,0,0,0.08)",
-  };
-}
+const teamBox: any = { display: "grid", gap: 6 };
 
-function kpi(theme: any): React.CSSProperties {
-  return {
-    display: "grid",
-    gridTemplateColumns: "1fr 0.8fr 1fr",
-    gap: 12,
-    alignItems: "stretch",
-  };
-}
+const teamName: any = { fontWeight: 950, letterSpacing: 0.6, opacity: 0.95 };
 
-function teamBlock(theme: any): React.CSSProperties {
-  return {
-    borderRadius: 18,
-    padding: 14,
-    background: isDark(theme) ? "rgba(255,255,255,0.06)" : "rgba(255,255,255,0.75)",
-    border: isDark(theme) ? "1px solid rgba(255,255,255,0.08)" : "1px solid rgba(0,0,0,0.06)",
-    boxShadow: isDark(theme) ? "0 10px 30px rgba(0,0,0,0.35)" : "0 10px 30px rgba(0,0,0,0.10)",
-  };
-}
+const avatarsRow: any = { display: "flex", gap: 8, flexWrap: "wrap" };
 
-const teamName: React.CSSProperties = { fontWeight: 900, opacity: 0.9, fontSize: 13 };
-const teamScore: React.CSSProperties = { fontWeight: 1100, fontSize: 52, lineHeight: "58px", marginTop: 8 };
+const avatarWrap: any = { width: 40, height: 40, display: "grid", placeItems: "center" };
 
-const btnRow: React.CSSProperties = { display: "flex", gap: 10, marginTop: 10 };
+const midBox: any = { display: "grid", justifyItems: "center", gap: 6 };
 
-function btn(theme: any): React.CSSProperties {
-  return {
-    flex: 1,
-    border: "none",
-    borderRadius: 14,
-    padding: "12px 10px",
-    background: theme?.colors?.primary ?? "#7dffca",
-    color: "#06110c",
-    fontWeight: 1000,
-    letterSpacing: 0.6,
-  };
-}
+const timer = (theme: any) => ({
+  fontWeight: 950,
+  letterSpacing: 1,
+  padding: "8px 10px",
+  borderRadius: 12,
+  border: "1px solid rgba(255,255,255,0.14)",
+  background: "rgba(0,0,0,0.20)",
+  minWidth: 90,
+  textAlign: "center",
+});
 
-function ghost(theme: any): React.CSSProperties {
-  return {
-    width: "100%",
-    borderRadius: 14,
-    padding: "10px 10px",
-    border: isDark(theme) ? "1px solid rgba(255,255,255,0.14)" : "1px solid rgba(0,0,0,0.12)",
-    background: "transparent",
-    color: theme?.colors?.text ?? "#fff",
-    fontWeight: 900,
-  };
-}
+const target: any = { fontSize: 12, opacity: 0.8, letterSpacing: 1, fontWeight: 900 };
 
-function mid(theme: any): React.CSSProperties {
-  return {
-    borderRadius: 18,
-    padding: 14,
-    background: isDark(theme) ? "rgba(255,255,255,0.04)" : "rgba(255,255,255,0.55)",
-    border: isDark(theme) ? "1px solid rgba(255,255,255,0.06)" : "1px solid rgba(0,0,0,0.06)",
-    display: "flex",
-    flexDirection: "column",
-    alignItems: "center",
-    justifyContent: "center",
-  };
-}
+const scoreRow: any = {
+  display: "grid",
+  gridTemplateColumns: "1fr 84px 1fr",
+  gap: 10,
+  marginTop: 12,
+};
 
-const vs: React.CSSProperties = { fontWeight: 1000, opacity: 0.75, letterSpacing: 2.2 };
-function target(theme: any): React.CSSProperties {
-  return { fontWeight: 900, opacity: 0.9, marginTop: 6 };
-}
+const scoreCard = (theme: any) => ({
+  borderRadius: 18,
+  background: "rgba(255,255,255,0.06)",
+  border: "1px solid rgba(255,255,255,0.10)",
+  padding: 14,
+  display: "grid",
+  gap: 12,
+  justifyItems: "center",
+  boxShadow: "0 12px 28px rgba(0,0,0,0.35)",
+});
 
-function done(theme: any): React.CSSProperties {
-  return {
-    marginTop: 14,
-    borderRadius: 16,
-    padding: 12,
-    textAlign: "center",
-    fontWeight: 1000,
-    background: isDark(theme) ? "rgba(125,255,202,0.12)" : "rgba(0,0,0,0.06)",
-    border: isDark(theme) ? "1px solid rgba(125,255,202,0.22)" : "1px solid rgba(0,0,0,0.08)",
-  };
-}
+const scoreNum: any = { fontSize: 64, lineHeight: 1, fontWeight: 950, letterSpacing: 1 };
 
-function hint(theme: any): React.CSSProperties {
-  return { marginTop: 12, opacity: 0.82, fontWeight: 700, textAlign: "center" };
-}
+const plusBtn = (theme: any) => ({
+  width: "100%",
+  height: 46,
+  borderRadius: 14,
+  border: "1px solid rgba(255,255,255,0.18)",
+  background: "rgba(255,255,255,0.14)",
+  color: theme?.colors?.text ?? "#fff",
+  fontWeight: 950,
+  letterSpacing: 1,
+  cursor: "pointer",
+});
+
+const vs = (theme: any) => ({
+  display: "grid",
+  placeItems: "center",
+  borderRadius: 18,
+  border: "1px solid rgba(255,255,255,0.10)",
+  background: "rgba(0,0,0,0.20)",
+});
+
+const vsTxt: any = { fontWeight: 950, letterSpacing: 2, opacity: 0.7 };
+
+const actionsRow: any = { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginTop: 12 };
+
+const ghostBtn = (theme: any) => ({
+  height: 48,
+  borderRadius: 14,
+  border: "1px solid rgba(255,255,255,0.14)",
+  background: "rgba(0,0,0,0.16)",
+  color: theme?.colors?.text ?? "#fff",
+  fontWeight: 950,
+  letterSpacing: 1,
+  cursor: "pointer",
+});
+
+const overlay: any = {
+  position: "fixed",
+  inset: 0,
+  background: "rgba(0,0,0,0.55)",
+  display: "grid",
+  placeItems: "center",
+  padding: 14,
+};
+
+const modal = (theme: any) => ({
+  width: "min(520px, 100%)",
+  borderRadius: 18,
+  border: "1px solid rgba(255,255,255,0.12)",
+  background: "rgba(10,12,18,0.96)",
+  boxShadow: "0 22px 70px rgba(0,0,0,0.6)",
+  padding: 14,
+  display: "grid",
+  gap: 10,
+});
+
+const modalTitle: any = { fontWeight: 950, letterSpacing: 0.6, fontSize: 16 };
+const modalSub: any = { opacity: 0.75, fontWeight: 700 };
+
+const pickerRow: any = { display: "flex", gap: 12, flexWrap: "wrap", marginTop: 6 };
+
+const pickerBtn = (theme: any) => ({
+  width: 72,
+  height: 72,
+  borderRadius: 18,
+  border: "1px solid rgba(255,255,255,0.14)",
+  background: "rgba(255,255,255,0.06)",
+  display: "grid",
+  placeItems: "center",
+  cursor: "pointer",
+});
+
+const pickerCancel = (theme: any) => ({
+  marginTop: 8,
+  height: 44,
+  borderRadius: 14,
+  border: "1px solid rgba(255,255,255,0.12)",
+  background: "rgba(0,0,0,0.18)",
+  color: theme?.colors?.text ?? "#fff",
+  fontWeight: 900,
+  letterSpacing: 1,
+  cursor: "pointer",
+});

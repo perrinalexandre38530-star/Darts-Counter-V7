@@ -1,272 +1,309 @@
 // =============================================================
 // src/pages/babyfoot/BabyFootConfig.tsx
-// Config Baby-Foot (LOCAL ONLY) — v2
-// - Sélection des profils (comme Darts/Pétanque) + équipes
-// - Modes : 1v1 / 2v2 / 2v1
-// - Démarre une nouvelle partie en réinitialisant le state local
+// Config Baby-Foot (LOCAL ONLY) — V2
+// - Mode 1v1 / 2v2 / 2v1
+// - Sélection de profils réels par équipe (comme Darts/Pétanque)
+// - Score cible
+// - Démarre la partie avec un state babyfootStore propre
 // =============================================================
 
-import React from "react";
+import React, { useMemo, useState } from "react";
 import { useTheme } from "../../contexts/ThemeContext";
-import ProfileMedallionCarousel, { type MedallionItem } from "../../components/ProfileMedallionCarousel";
+import { useLang } from "../../contexts/LangContext";
+
+import BackDot from "../../components/BackDot";
+import InfoDot from "../../components/InfoDot";
+import ProfileMedallionCarousel from "../../components/ProfileMedallionCarousel";
+import type { Store, Profile } from "../../lib/types";
+
 import {
   loadBabyFootState,
   resetBabyFoot,
-  setConfig,
+  setMode,
+  setTarget,
+  setTeams,
+  setTeamsProfiles,
+  startMatch,
   type BabyFootMode,
-  type BabyFootPlayer,
-  type BabyFootTeamId,
 } from "../../lib/babyfootStore";
 
 type Props = {
   go: (t: any, p?: any) => void;
   params?: any;
-  store: any;
+  store: Store;
 };
 
-export default function BabyFootConfig({ go, params, store }: Props) {
+function clamp(n: number, a: number, b: number) {
+  return Math.max(a, Math.min(b, n));
+}
+
+export default function BabyFootConfig({ go, store, params }: Props) {
   const { theme } = useTheme();
-  const [st, setSt] = React.useState(() => loadBabyFootState());
+  const { t } = useLang();
 
-  const mode: BabyFootMode = params?.mode === "2v2" ? "2v2" : params?.mode === "2v1" ? "2v1" : "1v1";
-  const meta = params?.meta || {};
-  const teamAPlayers = Math.max(
-    1,
-    Math.min(4, Number(meta.teamAPlayers) || (mode === "2v1" ? 2 : mode === "2v2" ? 2 : 1))
-  );
-  const teamBPlayers = Math.max(1, Math.min(4, Number(meta.teamBPlayers) || (mode === "2v1" ? 1 : mode === "2v2" ? 2 : 1)));
+  const saved = useMemo(() => loadBabyFootState(), []);
+    const presetMode = (params as any)?.presetMode as BabyFootMode | undefined;
+  const presetTarget = (params as any)?.presetTarget as number | undefined;
+  const [mode, setModeUI] = useState<BabyFootMode>(presetMode || saved.mode || "1v1");
+  const [teamA, setTeamA] = useState(saved.teamA || "TEAM A");
+  const [teamB, setTeamB] = useState(saved.teamB || "TEAM B");
+  const [target, setTargetUI] = useState<number>(presetTarget ?? saved.target ?? 10);
 
-  const profiles = Array.isArray(store?.profiles) ? store.profiles : [];
-  const humanProfiles = profiles.filter((p: any) => !(p as any)?.isBot);
+  const [selA, setSelA] = useState<string[]>(Array.isArray(saved.teamAProfileIds) ? saved.teamAProfileIds : []);
+  const [selB, setSelB] = useState<string[]>(Array.isArray(saved.teamBProfileIds) ? saved.teamBProfileIds : []);
 
-  const items: MedallionItem[] = humanProfiles.map((p: any) => ({
-    id: p.id,
-    name: p.name ?? "",
-    profile: p,
-  }));
+  const capA = mode === "2v2" || mode === "2v1" ? 2 : 1;
+  const capB = mode === "2v2" ? 2 : 1;
 
-  const primary = theme?.colors?.primary ?? "#7dffca";
-  const primarySoft = theme?.colors?.primarySoft ?? "rgba(125,255,202,0.16)";
+  const profiles: Profile[] = (store as any)?.profiles || [];
+  const medallions = profiles.map((p) => ({ id: p.id, name: p.name, profile: p }));
 
-  // Prefill: active profile in team A if possible
-  const activeProfileId: string | null = store?.activeProfileId ?? null;
+  const canStart = selA.length === capA && selB.length === capB;
 
-  const [teamA, setTeamA] = React.useState(st.teamA);
-  const [teamB, setTeamB] = React.useState(st.teamB);
-  const [target, setTarget] = React.useState(String(st.target || 10));
-
-  const [teamAIds, setTeamAIds] = React.useState<string[]>(() => {
-    const existing = (st.players || []).filter((pl) => pl.team === "A").map((pl) => pl.id);
-    if (existing.length) return existing.slice(0, teamAPlayers);
-    if (activeProfileId) return [activeProfileId].slice(0, teamAPlayers);
-    return [];
-  });
-  const [teamBIds, setTeamBIds] = React.useState<string[]>(() => {
-    const existing = (st.players || []).filter((pl) => pl.team === "B").map((pl) => pl.id);
-    if (existing.length) return existing.slice(0, teamBPlayers);
-    return [];
-  });
-
-  // ajuster si on change de mode (tailles)
-  React.useEffect(() => {
-    setTeamAIds((ids) => ids.slice(0, teamAPlayers));
-    setTeamBIds((ids) => ids.slice(0, teamBPlayers));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [teamAPlayers, teamBPlayers]);
-
-  function toggleFor(team: BabyFootTeamId, id: string) {
+  const toggle = (team: "A" | "B", id: string) => {
     if (team === "A") {
-      setTeamAIds((prev) => {
+      setSelA((prev) => {
         const has = prev.includes(id);
-        const next = has ? prev.filter((x) => x !== id) : [...prev, id];
-        // retirer aussi de l'autre team si présent
-        const cleaned = next.filter((x, i, arr) => arr.indexOf(x) === i).slice(0, teamAPlayers);
-        return cleaned;
+        if (has) return prev.filter((x) => x !== id);
+        if (prev.length >= capA) return prev; // cap
+        // prevent selecting same profile in both teams
+        if (selB.includes(id)) return prev;
+        return [...prev, id];
       });
-      setTeamBIds((prev) => prev.filter((x) => x !== id));
     } else {
-      setTeamBIds((prev) => {
+      setSelB((prev) => {
         const has = prev.includes(id);
-        const next = has ? prev.filter((x) => x !== id) : [...prev, id];
-        const cleaned = next.filter((x, i, arr) => arr.indexOf(x) === i).slice(0, teamBPlayers);
-        return cleaned;
+        if (has) return prev.filter((x) => x !== id);
+        if (prev.length >= capB) return prev;
+        if (selA.includes(id)) return prev;
+        return [...prev, id];
       });
-      setTeamAIds((prev) => prev.filter((x) => x !== id));
     }
-  }
-
-  function buildPlayers(): BabyFootPlayer[] {
-    const getProfile = (id: string) => humanProfiles.find((p: any) => p.id === id);
-    const mk = (id: string, team: BabyFootTeamId): BabyFootPlayer => {
-      const p = getProfile(id);
-      return {
-        id,
-        team,
-        name: p?.name ?? "",
-        avatarDataUrl: p?.avatarDataUrl ?? null,
-      };
-    };
-    const a = teamAIds.slice(0, teamAPlayers).map((id) => mk(id, "A"));
-    const b = teamBIds.slice(0, teamBPlayers).map((id) => mk(id, "B"));
-    return [...a, ...b];
-  }
-
-  const canStart = teamAIds.length === teamAPlayers && teamBIds.length === teamBPlayers;
+  };
 
   const onStart = () => {
-    const base = resetBabyFoot(st);
-    const next = setConfig(base, {
+    // persist config in store
+    resetBabyFoot({
       teamA,
       teamB,
-      target: Number(target) || 10,
       mode,
-      teamAPlayers,
-      teamBPlayers,
-      players: buildPlayers(),
+      teamAPlayers: capA,
+      teamBPlayers: capB,
+      target: clamp(target, 1, 99),
+      teamAProfileIds: selA.slice(0, capA),
+      teamBProfileIds: selB.slice(0, capB),
     });
-    setSt(next);
-    go("babyfoot_play", { matchId: next.matchId });
+
+    setTeams(teamA, teamB);
+    setMode(mode);
+    setTarget(clamp(target, 1, 99));
+    setTeamsProfiles(selA.slice(0, capA), selB.slice(0, capB));
+    startMatch();
+
+    go("babyfoot_play");
   };
 
   return (
     <div style={wrap(theme)}>
-      <div style={head}>
-        <button style={back(theme)} onClick={() => go("babyfoot_menu")}>
-          ← Retour
-        </button>
-        <div style={title}>
-          CONFIG — BABY-FOOT · {mode.toUpperCase()} ({teamAPlayers}v{teamBPlayers})
+      <div style={topRow}>
+        <BackDot onClick={() => go("babyfoot_menu")} />
+        <div style={topTitle}>BABY-FOOT — CONFIG</div>
+        <InfoDot
+          title={t?.("babyfoot.config.infoTitle") ?? "Baby-foot"}
+          body={
+            t?.("babyfoot.config.infoBody") ??
+            "Configure le format, les équipes, les profils et le score cible. Local only."
+          }
+        />
+      </div>
+
+      <div style={card(theme)}>
+        <div style={sectionTitle}>FORMAT</div>
+        <div style={modeRow}>
+          {(["1v1", "2v2", "2v1"] as BabyFootMode[]).map((m) => (
+            <button
+              key={m}
+              style={modeBtn(theme, mode === m)}
+              onClick={() => {
+                setModeUI(m);
+                // trim selections to caps
+                const nextCapA = m === "2v2" || m === "2v1" ? 2 : 1;
+                const nextCapB = m === "2v2" ? 2 : 1;
+                setSelA((x) => x.slice(0, nextCapA));
+                setSelB((x) => x.slice(0, nextCapB));
+              }}
+            >
+              {m.toUpperCase()}
+            </button>
+          ))}
+        </div>
+
+        <div style={row2}>
+          <div style={col}>
+            <div style={label}>Nom équipe A</div>
+            <input value={teamA} onChange={(e) => setTeamA(e.target.value)} style={input(theme)} />
+          </div>
+          <div style={col}>
+            <div style={label}>Nom équipe B</div>
+            <input value={teamB} onChange={(e) => setTeamB(e.target.value)} style={input(theme)} />
+          </div>
+        </div>
+
+        <div style={{ ...row2, marginTop: 14 }}>
+          <div style={col}>
+            <div style={label}>Score cible</div>
+            <input
+              value={String(target)}
+              onChange={(e) => setTargetUI(parseInt(e.target.value || "0", 10))}
+              style={input(theme)}
+              inputMode="numeric"
+            />
+          </div>
+          <div style={col}>
+            <div style={label}>Rappel</div>
+            <div style={hint}>
+              {capA} joueur(s) équipe A • {capB} joueur(s) équipe B
+            </div>
+          </div>
         </div>
       </div>
 
       <div style={card(theme)}>
-        <div style={label}>Équipe A</div>
-        <input value={teamA} onChange={(e) => setTeamA(e.target.value)} style={input(theme)} />
-
-        <div style={{ height: 10 }} />
-
-        <div style={label}>Équipe B</div>
-        <input value={teamB} onChange={(e) => setTeamB(e.target.value)} style={input(theme)} />
-
-        <div style={{ height: 12 }} />
-
-        <div style={label}>Score cible</div>
-        <input value={target} onChange={(e) => setTarget(e.target.value)} style={input(theme)} inputMode="numeric" />
+        <div style={sectionTitle}>JOUEURS — ÉQUIPE A</div>
+        <ProfileMedallionCarousel
+          items={medallions}
+          selectedIds={selA}
+          onToggle={(id) => toggle("A", id)}
+          theme={theme}
+          maxSelected={capA}
+        />
+        <div style={smallHint}>Sélectionne {capA} profil(s). (Un profil ne peut pas être dans les 2 équipes.)</div>
       </div>
 
       <div style={card(theme)}>
-        <div style={label}>Joueurs — {teamAPlayers} pour {teamA}</div>
+        <div style={sectionTitle}>JOUEURS — ÉQUIPE B</div>
         <ProfileMedallionCarousel
-          items={items}
-          selectedIds={teamAIds}
-          onToggle={(id) => toggleFor("A", id)}
-          primary={primary}
-          primarySoft={primarySoft}
-          grayscaleInactive
-          padLeft={8}
+          items={medallions}
+          selectedIds={selB}
+          onToggle={(id) => toggle("B", id)}
+          theme={theme}
+          maxSelected={capB}
         />
-
-        <div style={{ height: 14 }} />
-
-        <div style={label}>Joueurs — {teamBPlayers} pour {teamB}</div>
-        <ProfileMedallionCarousel
-          items={items}
-          selectedIds={teamBIds}
-          onToggle={(id) => toggleFor("B", id)}
-          primary={primary}
-          primarySoft={primarySoft}
-          grayscaleInactive
-          padLeft={8}
-        />
-
-        {!items.length ? (
-          <div style={warn(theme)}>Aucun profil disponible. Crée un profil dans Profils.</div>
-        ) : !canStart ? (
-          <div style={warn(theme)}>
-            Sélectionne {teamAPlayers} joueur(s) pour {teamA} et {teamBPlayers} pour {teamB}.
-          </div>
-        ) : null}
+        <div style={smallHint}>Sélectionne {capB} profil(s).</div>
       </div>
 
-      <div style={{ height: 10 }} />
-
-      <button style={cta(theme, !canStart)} disabled={!canStart} onClick={onStart}>
+      <button style={cta(theme, canStart)} onClick={onStart} disabled={!canStart}>
         LANCER LA PARTIE
       </button>
     </div>
   );
 }
 
-function isDark(theme: any) {
-  return theme?.id?.includes("dark") || theme?.id === "darkTitanium" || theme?.id === "dark";
-}
+const wrap = (theme: any) => ({
+  minHeight: "100vh",
+  padding: 14,
+  background: theme?.colors?.bg ?? "#05060a",
+  color: theme?.colors?.text ?? "#fff",
+});
 
-function wrap(theme: any): React.CSSProperties {
-  return {
-    height: "100dvh",
-    overflow: "auto",
-    padding: 14,
-    color: theme?.colors?.text ?? "#fff",
-    background: isDark(theme)
-      ? "radial-gradient(1200px 600px at 50% 10%, rgba(255,255,255,0.08), rgba(0,0,0,0.92))"
-      : "radial-gradient(1200px 600px at 50% 10%, rgba(0,0,0,0.06), rgba(255,255,255,0.92))",
-  };
-}
+const topRow: any = {
+  display: "grid",
+  gridTemplateColumns: "48px 1fr 48px",
+  alignItems: "center",
+  gap: 10,
+  marginBottom: 12,
+};
 
-const head: React.CSSProperties = { display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 10 };
-const title: React.CSSProperties = { fontWeight: 900, letterSpacing: 0.6, fontSize: 13, opacity: 0.95 };
+const topTitle: any = {
+  textAlign: "center",
+  fontWeight: 900,
+  letterSpacing: 1,
+  opacity: 0.95,
+};
 
-function back(theme: any): React.CSSProperties {
-  return {
-    border: "none",
-    borderRadius: 12,
-    padding: "10px 12px",
-    background: isDark(theme) ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.06)",
-    color: theme?.colors?.text ?? "#fff",
-    fontWeight: 800,
-  };
-}
+const card = (theme: any) => ({
+  background: "rgba(255,255,255,0.06)",
+  border: "1px solid rgba(255,255,255,0.10)",
+  borderRadius: 16,
+  padding: 12,
+  marginBottom: 12,
+  boxShadow: "0 12px 28px rgba(0,0,0,0.35)",
+});
 
-function card(theme: any): React.CSSProperties {
-  return {
-    borderRadius: 16,
-    padding: 12,
-    background: isDark(theme) ? "rgba(255,255,255,0.06)" : "rgba(255,255,255,0.75)",
-    boxShadow: isDark(theme) ? "0 10px 30px rgba(0,0,0,0.35)" : "0 10px 30px rgba(0,0,0,0.10)",
-    border: isDark(theme) ? "1px solid rgba(255,255,255,0.08)" : "1px solid rgba(0,0,0,0.06)",
-    marginBottom: 10,
-  };
-}
+const sectionTitle: any = {
+  fontWeight: 900,
+  letterSpacing: 0.6,
+  marginBottom: 10,
+  opacity: 0.9,
+};
 
-const label: React.CSSProperties = { fontSize: 12, fontWeight: 800, opacity: 0.9, marginBottom: 6 };
+const modeRow: any = {
+  display: "grid",
+  gridTemplateColumns: "repeat(3, 1fr)",
+  gap: 10,
+};
 
-function input(theme: any): React.CSSProperties {
-  return {
-    width: "100%",
-    borderRadius: 12,
-    padding: "10px 12px",
-    border: isDark(theme) ? "1px solid rgba(255,255,255,0.12)" : "1px solid rgba(0,0,0,0.10)",
-    background: isDark(theme) ? "rgba(0,0,0,0.35)" : "rgba(255,255,255,0.9)",
-    color: theme?.colors?.text ?? "#fff",
-    fontWeight: 800,
-    outline: "none",
-  };
-}
+const modeBtn = (theme: any, active: boolean) => ({
+  padding: "12px 10px",
+  borderRadius: 14,
+  border: "1px solid rgba(255,255,255,0.16)",
+  background: active ? "rgba(255,255,255,0.16)" : "rgba(0,0,0,0.22)",
+  color: theme?.colors?.text ?? "#fff",
+  fontWeight: 900,
+  cursor: "pointer",
+});
 
-function warn(theme: any): React.CSSProperties {
-  return { marginTop: 10, fontSize: 12, opacity: 0.9, color: isDark(theme) ? "rgba(255,255,255,0.82)" : "rgba(0,0,0,0.72)" };
-}
+const row2: any = {
+  display: "grid",
+  gridTemplateColumns: "1fr 1fr",
+  gap: 10,
+  marginTop: 12,
+};
 
-function cta(theme: any, disabled: boolean): React.CSSProperties {
-  return {
-    width: "100%",
-    border: "none",
-    borderRadius: 16,
-    padding: "14px 14px",
-    fontWeight: 1000,
-    letterSpacing: 1.2,
-    background: disabled ? (isDark(theme) ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.08)") : theme?.colors?.primary ?? "#7dffca",
-    color: disabled ? (theme?.colors?.text ?? "#fff") : "#06110c",
-    opacity: disabled ? 0.6 : 1,
-  };
-}
+const col: any = { display: "grid", gap: 6 };
+
+const label: any = {
+  fontSize: 12,
+  opacity: 0.85,
+  fontWeight: 800,
+  letterSpacing: 0.4,
+};
+
+const input = (theme: any) => ({
+  height: 42,
+  borderRadius: 12,
+  border: "1px solid rgba(255,255,255,0.14)",
+  background: "rgba(0,0,0,0.22)",
+  color: theme?.colors?.text ?? "#fff",
+  padding: "0 12px",
+  outline: "none",
+  fontWeight: 800,
+});
+
+const hint: any = {
+  height: 42,
+  borderRadius: 12,
+  border: "1px dashed rgba(255,255,255,0.16)",
+  background: "rgba(0,0,0,0.12)",
+  display: "flex",
+  alignItems: "center",
+  padding: "0 12px",
+  opacity: 0.9,
+  fontWeight: 800,
+};
+
+const smallHint: any = { marginTop: 8, opacity: 0.7, fontSize: 12 };
+
+const cta = (theme: any, enabled: boolean) => ({
+  marginTop: 6,
+  width: "100%",
+  height: 54,
+  borderRadius: 16,
+  border: "1px solid rgba(255,255,255,0.18)",
+  background: enabled ? "rgba(255,255,255,0.18)" : "rgba(255,255,255,0.08)",
+  color: theme?.colors?.text ?? "#fff",
+  fontWeight: 950,
+  letterSpacing: 1,
+  cursor: enabled ? "pointer" : "not-allowed",
+  boxShadow: enabled ? "0 14px 34px rgba(0,0,0,0.35)" : "none",
+});
