@@ -166,6 +166,24 @@ const TEAM_META: Record<TeamKey, { label: string; color: string; logo: string }>
   green: { label: "TEAM GREEN", color: "#7fe2a9", logo: teamGreenLogo },
 };
 
+function getTeamColorByLabel(label?: string): string | null {
+  const t = String(label || "").trim().toUpperCase();
+  for (const k of TEAM_KEYS_ALL) {
+    if (t === TEAM_META[k].label) return TEAM_META[k].color;
+  }
+  return null;
+}
+
+
+function getTeamLogoByLabel(label?: string): string | null {
+  const t = String(label || "").trim().toUpperCase();
+  for (const k of TEAM_KEYS_ALL) {
+    if (t === TEAM_META[k].label) return TEAM_META[k].logo;
+  }
+  return null;
+}
+
+
 // ---------------- Carousel joueurs (CLONE style KILLER header carousel) ----------------
 
 function GolfAvatarChip({
@@ -185,6 +203,10 @@ function GolfAvatarChip({
     .trim()
     .slice(0, 1)
     .toUpperCase();
+
+  const isTeam = String(name || "").trim().toUpperCase().startsWith("TEAM ");
+
+  const teamColor = (isTeam ? (getTeamColorByLabel(name) || theme) : theme);
 
   const neon = isActive
     ? `0 0 0 1px rgba(120,255,220,.22), 0 0 18px rgba(120,255,220,.16), 0 0 42px rgba(120,255,220,.10)`
@@ -255,7 +277,7 @@ function GolfAvatarChip({
             style={{
               fontSize: 12,
               fontWeight: 1000,
-              color: isActive ? theme : "rgba(255,255,255,.92)",
+              color: isActive ? teamColor : (isTeam ? teamColor : "rgba(255,255,255,.92)"),
               letterSpacing: 0.2,
               overflow: "hidden",
               textOverflow: "ellipsis",
@@ -272,7 +294,7 @@ function GolfAvatarChip({
           style={{
             fontSize: 16,
             fontWeight: 1000,
-            color: theme,
+            color: isTeam ? teamColor : theme,
             letterSpacing: 0.6,
             textShadow: isActive ? `0 0 12px rgba(120,255,220,.16)` : "none",
           }}
@@ -361,17 +383,22 @@ const miniRankRow: React.CSSProperties = {
   display: "flex",
   alignItems: "center",
   justifyContent: "space-between",
+  gap: 8,
+  minWidth: 0,
+  overflow: "hidden",
   padding: "3px 6px",
   borderRadius: 6,
   background: "rgba(255,255,255,.04)",
   marginBottom: 3,
-  fontSize: 11,
+  fontSize: 10,
   lineHeight: 1.15,
 };
 
 const miniRankName: React.CSSProperties = {
-  fontWeight: 800,
+  fontWeight: 900,
+  fontSize: 10,
   color: "#ffcf57",
+  letterSpacing: 0.2,
 };
 
 const miniRankScore: React.CSSProperties = {
@@ -418,7 +445,7 @@ function GolfHeaderBlock(props: {
 }) {
   const { currentPlayer, currentAvatar, currentTotal, currentStats, liveRanking, isFinished, teamBadge } = props;
 
-  const bgAvatarUrl = currentAvatar || null;
+  const bgAvatarUrl = (teamBadge?.label ? getTeamLogoByLabel(teamBadge.label) : null) || currentAvatar || null;
   const playerName = (currentPlayer?.name ?? "—").toUpperCase();
 
   const turns = Math.max(1, currentStats.turns || 0);
@@ -635,25 +662,45 @@ function GolfHeaderBlock(props: {
           </div>
 
           {/* Mini ranking */}
-          <div style={{ ...miniCard, margin: "0 auto", height: "auto", width: 176 }}>
+          <div style={{ ...miniCard, margin: "0 auto", height: "auto", width: "clamp(148px, 44vw, 176px)" }}>
             <div style={{ fontSize: 11, color: "#d9dbe3", marginBottom: 4, textAlign: "left", paddingLeft: 2, opacity: 0.9 }}>
               Classement
             </div>
 
             <div style={{ padding: "0 2px 2px 2px", maxHeight: 96, overflowY: "auto", overscrollBehavior: "contain" }}>
               {liveRanking.map((r, i) => (
-                <div key={r.id} style={miniRankRow}>
-                  <span style={{ display: "inline-flex", alignItems: "center", minWidth: 0, overflow: "hidden" }}>
+                <div
+                  key={r.id}
+                  style={{
+                    ...miniRankRow,
+                    display: "grid",
+                    gridTemplateColumns: "1fr auto",
+                    alignItems: "center",
+                    columnGap: 8,
+                  }}
+                >
+                  <div style={{ display: "inline-flex", alignItems: "center", minWidth: 0, overflow: "hidden" }}>
                     <span style={tinyAvatar}>
                       {r.avatar ? (
                         <img src={r.avatar} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
                       ) : null}
                     </span>
-                    <span style={{ ...miniRankName, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 120 }}>
+                    <span style={{ ...miniRankName, color: getTeamColorByLabel(r.name) ?? miniRankName.color, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                       {i + 1}. {r.name}
                     </span>
+                  </div>
+
+                  <span
+                    style={{
+                      ...(isFinished ? miniRankScoreFini : miniRankScore),
+                      justifySelf: "end",
+                      minWidth: 26,
+                      textAlign: "right",
+                      flexShrink: 0,
+                    }}
+                  >
+                    {r.score}
                   </span>
-                  <span style={isFinished ? miniRankScoreFini : miniRankScore}>{r.score}</span>
                 </div>
               ))}
             </div>
