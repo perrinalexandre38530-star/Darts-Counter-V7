@@ -241,7 +241,7 @@ function GolfAvatarChip({
 
         <div
           style={{
-            fontSize: 18,
+            fontSize: 16,
             fontWeight: 1000,
             color: theme,
             letterSpacing: 0.6,
@@ -414,6 +414,11 @@ function GolfHeaderBlock(props: {
         marginBottom: 12,
       }}
     >
+      {/* Watermark avatar (plein bloc header) */}
+      {!!bgAvatarUrl && (
+        <img src={bgAvatarUrl} aria-hidden style={{position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover", objectPosition: "70% 40%", opacity: 0.22, filter: "saturate(1.35) contrast(1.18) brightness(1.05)", WebkitMaskImage: "linear-gradient(90deg, rgba(0,0,0,1) 0%, rgba(0,0,0,1) 28%, rgba(0,0,0,0.88) 50%, rgba(0,0,0,0.35) 70%, rgba(0,0,0,0) 86%)", maskImage: "linear-gradient(90deg, rgba(0,0,0,1) 0%, rgba(0,0,0,1) 28%, rgba(0,0,0,0.88) 50%, rgba(0,0,0,0.35) 70%, rgba(0,0,0,0) 86%)", WebkitMaskRepeat: "no-repeat", maskRepeat: "no-repeat", WebkitMaskSize: "100% 100%", maskSize: "100% 100%", pointerEvents: "none", userSelect: "none", zIndex: 0}} />
+      )}
+
       {/* Dégradé gauche -> droite pour fondre le watermark dans le fond */}
       <div
         aria-hidden
@@ -511,35 +516,6 @@ function GolfHeaderBlock(props: {
             padding: 6,
           }}
         >
-          {/* Watermark avatar */}
-          {!!bgAvatarUrl && (
-            <img
-              src={bgAvatarUrl}
-              aria-hidden
-              style={{
-                position: "absolute",
-                top: "48%",
-                left: "66%",
-                transform: "translate(-50%, -50%)",
-                height: "270%",
-                width: "auto",
-                WebkitMaskImage:
-                  "linear-gradient(90deg, rgba(0,0,0,0) 0%, rgba(0,0,0,0.15) 22%, rgba(0,0,0,0.82) 52%, rgba(0,0,0,1) 72%, rgba(0,0,0,1) 100%)",
-                maskImage:
-                  "linear-gradient(90deg, rgba(0,0,0,0) 0%, rgba(0,0,0,0.15) 22%, rgba(0,0,0,0.82) 52%, rgba(0,0,0,1) 72%, rgba(0,0,0,1) 100%)",
-                WebkitMaskRepeat: "no-repeat",
-                maskRepeat: "no-repeat",
-                WebkitMaskSize: "100% 100%",
-                maskSize: "100% 100%",
-                opacity: 0.22,
-                filter:
-                  "saturate(1.35) contrast(1.18) brightness(1.08) drop-shadow(-10px 0 26px rgba(0,0,0,.55))",
-                pointerEvents: "none",
-                userSelect: "none",
-                zIndex: 0,
-              }}
-            />
-          )}
 
           <div
             style={{
@@ -1342,14 +1318,14 @@ const holes = clamp(Number(cfg.holes ?? 9), 1, 18);
                 onClick={() => recordThrow("D")}
                 disabled={turnThrows.length >= 3}
                 style={{
-                  padding: "18px 14px",
-                  minHeight: 56,
+                  padding: "14px 12px",
+                  minHeight: 48,
                   borderRadius: 14,
                   border: "1px solid rgba(255,195,26,0.35)",
                   background: "rgba(255,195,26,0.16)",
                   color: "white",
                   fontWeight: 1000,
-                  fontSize: 18,
+                  fontSize: 16,
                   opacity: turnThrows.length >= 3 ? 0.55 : 1,
                 }}
               >
@@ -1360,14 +1336,14 @@ const holes = clamp(Number(cfg.holes ?? 9), 1, 18);
                 onClick={() => recordThrow("T")}
                 disabled={turnThrows.length >= 3}
                 style={{
-                  padding: "18px 14px",
-                  minHeight: 56,
+                  padding: "14px 12px",
+                  minHeight: 48,
                   borderRadius: 14,
                   border: "1px solid rgba(120,255,220,0.35)",
                   background: "rgba(40,120,90,0.22)",
                   color: "white",
                   fontWeight: 1000,
-                  fontSize: 18,
+                  fontSize: 16,
                   opacity: turnThrows.length >= 3 ? 0.55 : 1,
                 }}
               >
@@ -1378,15 +1354,15 @@ const holes = clamp(Number(cfg.holes ?? 9), 1, 18);
                 onClick={() => recordThrow("S")}
                 disabled={turnThrows.length >= 3}
                 style={{
-                  padding: "18px 14px",
-                  minHeight: 56,
+                  padding: "14px 12px",
+                  minHeight: 48,
                   borderRadius: 14,
                   border: "1px solid rgba(70,160,255,0.45)",
                   background: "rgba(20,85,185,0.22)",
                   boxShadow: "0 14px 34px rgba(0,0,0,0.45), 0 0 18px rgba(70,160,255,0.16)",
                   color: "white",
                   fontWeight: 1000,
-                  fontSize: 18,
+                  fontSize: 16,
                   opacity: turnThrows.length >= 3 ? 0.55 : 1,
                 }}
               >
@@ -1397,14 +1373,14 @@ const holes = clamp(Number(cfg.holes ?? 9), 1, 18);
                 onClick={() => recordThrow("M")}
                 disabled={turnThrows.length >= 3}
                 style={{
-                  padding: "18px 14px",
-                  minHeight: 56,
+                  padding: "14px 12px",
+                  minHeight: 48,
                   borderRadius: 14,
                   border: "1px solid rgba(255,120,120,0.35)",
                   background: "rgba(120,40,40,0.22)",
                   color: "white",
                   fontWeight: 1000,
-                  fontSize: 18,
+                  fontSize: 16,
                   opacity: turnThrows.length >= 3 ? 0.55 : 1,
                 }}
               >
