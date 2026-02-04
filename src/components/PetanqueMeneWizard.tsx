@@ -288,7 +288,6 @@ export default function PetanqueMeneWizard(props: Props) {
   const titleTxt = title ?? (mode === "score" ? "SCORE — Ajouter une mène" : "Statistiques — Ajouter une action");
 
   const ALL_STATS: Array<{ k: StatKey; label: string }> = [
-    { k: "pointage", label: "Pointage" },
     { k: "bec", label: "Bec" },
     { k: "trou", label: "Trou" },
     { k: "tirReussi", label: "Tir réussi" },
@@ -296,8 +295,6 @@ export default function PetanqueMeneWizard(props: Props) {
     { k: "reprise", label: "Reprise" },
     { k: "butAnnulation", label: "Bouclier" },
     { k: "butPoint", label: "But +" },
-    { k: "pousseeAssist", label: "PTS Assist" },
-    { k: "pousseeConcede", label: "PTS Concede" },
   ];
 
   // In SCORE mode, we only allow stats that can explain the scored points.

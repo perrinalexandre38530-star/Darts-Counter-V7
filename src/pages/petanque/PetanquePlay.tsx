@@ -1559,6 +1559,32 @@ React.useEffect(() => {
   }
 }, [matchKey, playerStats]);
 
+// ✅ Auto-reset: si on arrive sur une nouvelle partie (0-0, aucune mène),
+// on ne doit pas ré-afficher des stats persistées d’une session précédente.
+const didAutoResetStatsRef = React.useRef(false);
+React.useEffect(() => {
+  if (didAutoResetStatsRef.current) return;
+  if (matchStartedAt) return;
+
+  const a = Number((stSafe as any).scoreA ?? 0);
+  const b = Number((stSafe as any).scoreB ?? 0);
+  const endsLen = Array.isArray((stSafe as any).ends) ? (stSafe as any).ends.length : 0;
+
+  const hasAny = Object.values(playerStats).some((ps: any) =>
+    ps && Object.values(ps).some((v: any) => Number(v) > 0)
+  );
+
+  if (a == 0 && b == 0 && endsLen == 0 && hasAny) {
+    didAutoResetStatsRef.current = true;
+    setPlayerStats({});
+    try {
+      localStorage.removeItem(matchKey);
+    } catch {
+      // ignore
+    }
+  }
+}, [matchStartedAt, matchKey, playerStats, stSafe]);
+
 const bumpStat = React.useCallback(
   (playerId: string, key: keyof PlayerStats, delta: number) => {
     setPlayerStats((prev) => {
