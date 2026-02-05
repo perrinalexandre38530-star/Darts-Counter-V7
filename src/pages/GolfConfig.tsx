@@ -658,8 +658,10 @@ export default function GolfConfig(props: any) {
                       (bp as any)?.avatarDataUrl ||
                       null;
 
-                    const keys = TEAM_KEYS_ALL.slice(0, teamCount);
-                    const current = (teamAssignments[id] ?? keys[idx % keys.length]) as TeamKey;
+                    // Teams disponibles selon le nombre d'équipes choisi (2..4)
+                    const enabledTeams = TEAM_KEYS_ALL.slice(0, teamCount);
+                    const current = (teamAssignments[id] ?? enabledTeams[idx % enabledTeams.length]) as TeamKey;
+
                     const meta = TEAM_META[current] ?? TEAM_META.gold;
 
                     return (
@@ -668,64 +670,94 @@ export default function GolfConfig(props: any) {
                         style={{
                           display: "flex",
                           alignItems: "center",
-                          justifyContent: "space-between",
-                          gap: 10,
+                          gap: 12,
                           padding: "10px 12px",
                           borderRadius: 16,
                           border: "1px solid rgba(255,255,255,0.10)",
                           background: "linear-gradient(180deg, rgba(255,255,255,0.06), rgba(0,0,0,0.24))",
                         }}
                       >
-                        <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
+                        {/* Colonne joueur : avatar + nom en dessous */}
+                        <div
+                          style={{
+                            width: 72,
+                            flex: "0 0 auto",
+                            display: "flex",
+                            flexDirection: "column",
+                            alignItems: "center",
+                            gap: 6,
+                            minWidth: 0,
+                          }}
+                        >
                           <div
                             style={{
-                              width: 42,
-                              height: 42,
+                              width: 44,
+                              height: 44,
                               borderRadius: "50%",
                               overflow: "hidden",
                               border: `1px solid ${meta.color}55`,
                               boxShadow: `0 0 0 3px rgba(0,0,0,.28), 0 0 16px ${meta.color}22`,
                               background: "rgba(0,0,0,0.35)",
-                              flex: "0 0 auto",
                               display: "grid",
                               placeItems: "center",
                             }}
                           >
                             {avatar ? (
-                              <img src={avatar} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                              <img
+                                src={avatar}
+                                alt=""
+                                style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                              />
                             ) : (
-                              <div style={{ fontWeight: 1000, color: "rgba(255,255,255,0.78)" }}>
-                              {String(name || "J").slice(0, 1).toUpperCase()}
-                            </div>
+                              <span style={{ fontWeight: 1000, color: "rgba(255,255,255,0.78)" }}>
+                                {String(name || "J").slice(0, 1).toUpperCase()}
+                              </span>
                             )}
                           </div>
 
-                          <div style={{ minWidth: 0 }}>
-                            <div
-                              style={{
-                                fontWeight: 950,
-                                color: "rgba(255,255,255,0.92)",
-                                overflow: "hidden",
-                                textOverflow: "ellipsis",
-                                whiteSpace: "nowrap",
-                                maxWidth: 160,
-                              }}
-                            >
-                              {name}
-                            </div>
+                          <div
+                            title={name}
+                            style={{
+                              width: "100%",
+                              textAlign: "center",
+                              fontWeight: 950,
+                              fontSize: 11,
+                              opacity: 0.9,
+                              overflow: "hidden",
+                              textOverflow: "ellipsis",
+                              whiteSpace: "nowrap",
+                            }}
+                          >
+                            {name}
                           </div>
                         </div>
 
-                        <div style={{ display: "flex", gap: 6, flexWrap: "wrap", justifyContent: "flex-end" }}>
-                          {keys.map((k) => {
+                        {/* Colonne teams : 4 pills sur la largeur */}
+                        <div
+                          style={{
+                            flex: 1,
+                            minWidth: 0,
+                            display: "grid",
+                            gridTemplateColumns: "repeat(4, minmax(0, 1fr))",
+                            gap: 8,
+                            alignItems: "center",
+                            justifyItems: "stretch",
+                          }}
+                        >
+                          {TEAM_KEYS_ALL.map((k) => {
                             const m = TEAM_META[k];
+                            const enabled = enabledTeams.includes(k);
+                            const active = current === k;
+
                             return (
                               <TeamPillButton
                                 key={k}
                                 label={m.label.replace("TEAM ", "")}
                                 color={m.color}
-                                active={current === k}
+                                active={active}
+                                disabled={!enabled}
                                 onClick={() => {
+                                  if (!enabled) return;
                                   setTeamAssignments((prev) => ({ ...prev, [id]: k }));
                                 }}
                               />

@@ -50,9 +50,7 @@ function FitBox({
       ro = new ResizeObserver(() => compute());
       ro.observe(outer);
       ro.observe(inner);
-    } catch {
-      // ignore
-    }
+    } catch {}
     window.addEventListener("resize", compute);
     window.addEventListener("orientationchange", compute);
     return () => {
@@ -102,43 +100,31 @@ function useMediaQuery(query: string) {
 }
 
 type Props = {
-  /** Identifiant du mode (ex: "x01"). Sert de fallback pour certains assets (ex ticker). */
   modeId?: string;
-  /** Titre centré du header (optionnel). Si headerCenter est fourni, il prime. */
   title?: string;
-  /** Contenu centré du header (ex: scoreboard compact). */
   headerCenter?: React.ReactNode;
 
-  /** Actions header */
   onBack?: () => void;
   onInfo?: () => void;
   showInfo?: boolean;
 
-  /** Taille des dots */
   backDotSize?: number;
   infoDotSize?: number;
 
-  /** Contenus (slots) */
-  headerScoreboard?: React.ReactNode; // fallback sous le header si headerCenter n'est pas utilisé
+  headerScoreboard?: React.ReactNode;
   activeProfileHeader?: React.ReactNode;
   volleyInputDisplay?: React.ReactNode;
   inputModes?: React.ReactNode;
 
-  /** Bloc joueurs */
   playersPanelTitle?: string;
   playersPanel?: React.ReactNode;
   playersRowRight?: React.ReactNode;
   playersRowLabel?: string;
   playersPanelMode?: "modal" | "sidebar-auto";
-  /** Image de fond (ticker) du bandeau JOUEURS (ex: ticker_x01.png). */
   playersBannerImage?: string;
-  /** Opacité du ticker (0..1) */
   playersBannerOpacity?: number;
 
-  /** Tablet */
   forceLayout?: "auto" | "phone" | "tablet";
-
-  /** En mode debug / overlay (optionnel) */
   topRightExtra?: React.ReactNode;
 };
 
@@ -176,8 +162,6 @@ export default function GameplayLayout({
   const playersInSidebar = isTablet && canOpenPlayers && playersPanelMode === "sidebar-auto";
   const showPlayersRowAsButton = canOpenPlayers && !playersInSidebar;
 
-  // Fallback garanti: si on oublie de passer playersBannerImage, certains modes ont un ticker "obligatoire".
-  // (Objectif: éviter que le ticker X01 "disparaisse" au gré des patchs.)
   const effectivePlayersBannerImage =
     playersBannerImage ?? (modeId === "x01" ? (tickerX01 as unknown as string) : undefined);
 
@@ -205,7 +189,6 @@ export default function GameplayLayout({
         overflow: "hidden",
       }}
     >
-      {/* Ticker en fond (NE PAS LE SUPPRIMER côté X01 : c'est une identité visuelle du bandeau) */}
       {effectivePlayersBannerImage ? (
         <>
           <div
@@ -217,8 +200,6 @@ export default function GameplayLayout({
               backgroundSize: "cover",
               backgroundPosition: "center",
               opacity: playersBannerOpacity,
-              filter: "saturate(1.05) contrast(1.05)",
-              transform: "scale(1.02)",
             }}
           />
           <div
@@ -246,21 +227,9 @@ export default function GameplayLayout({
         <div style={{ fontWeight: 900, letterSpacing: 0.4, color: theme.primary }}>
           {playersRowLabel}
         </div>
-
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           {playersRowRight}
-          {showPlayersRowAsButton ? (
-            <span
-              style={{
-                opacity: 0.8,
-                fontWeight: 900,
-                fontSize: 16,
-                transform: "translateY(-1px)",
-              }}
-            >
-              ▾
-            </span>
-          ) : null}
+          {showPlayersRowAsButton ? <span style={{ fontWeight: 900 }}>▾</span> : null}
         </div>
       </div>
     </div>
@@ -268,225 +237,119 @@ export default function GameplayLayout({
 
   const infoEnabled = (showInfo ?? !!onInfo) && !!onInfo;
 
-  // ⚠️ Barrières anti-dépassement : le layout gameplay ne doit JAMAIS déborder en largeur/hauteur.
-  // On verrouille le viewport (100svh) et on force les zones internes à shrink (minHeight/minWidth à 0).
-  const outerStyle: React.CSSProperties = {
-    height: "100svh",
-    width: "100%",
-    overflow: "hidden",
-  };
-
-  const containerStyle: React.CSSProperties = {
-    height: "100%",
-    width: "100%",
-    maxWidth: isTablet ? 1180 : 920,
-    margin: "0 auto",
-    padding: "10px 10px 14px",
-    display: "flex",
-    flexDirection: "column",
-    gap: 10,
-    minHeight: 0,
-  };
-
   return (
-    <div style={outerStyle}>
-      <div style={containerStyle}>
-      {/* 1) HEADER SCOREBOARD + MENU & INFOS */}
+    <div style={{ height: "100svh", width: "100%", overflow: "hidden" }}>
       <div
-        className="card"
         style={{
-          padding: "10px 12px",
-          position: "relative",
-          overflow: "hidden",
+          height: "100%",
+          maxWidth: isTablet ? 1180 : 920,
+          margin: "0 auto",
+          padding: "10px 10px 14px",
+          display: "flex",
+          flexDirection: "column",
+          gap: 10,
+          minHeight: 0,
         }}
       >
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            gap: 10,
-          }}
-        >
-          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+        {/* HEADER */}
+        <div className="card" style={{ padding: "10px 12px" }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
             <BackDot onClick={onBack} size={backDotSize} />
-          </div>
-
-          <div style={{ flex: 1, display: "flex", justifyContent: "center" }}>
-            {headerCenter ? (
-              headerCenter
-            ) : (
-              <div
-                style={{
-                  textAlign: "center",
-                  fontWeight: 800,
-                  letterSpacing: 0.3,
-                  opacity: 0.95,
-                }}
-              >
-                {title}
-              </div>
-            )}
-          </div>
-
-          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            {topRightExtra}
-            {infoEnabled ? <InfoDot onClick={onInfo} size={infoDotSize} /> : null}
-          </div>
-        </div>
-
-        {!headerCenter && headerScoreboard ? (
-          <div style={{ marginTop: 10 }}>{headerScoreboard}</div>
-        ) : null}
-      </div>
-
-      {/* 2+) CONTENU */}
-      {!isTablet ? (
-        <div style={{ display: "flex", flexDirection: "column", gap: 10, flex: 1, minHeight: 0, overflow: "hidden" }}>
-          {/* 2) HEADER PROFIL ACTIF */}
-          {activeProfileHeader ? (
-            <div className="card" style={{ padding: "10px 12px" }}>
-              {activeProfileHeader}
+            <div style={{ flex: 1, textAlign: "center", fontWeight: 800 }}>
+              {headerCenter ?? title}
             </div>
-          ) : null}
-
-          {/* 3) JOUEURS (modal) */}
-          {renderPlayersRow()}
-
-          <RulesModal
-            open={openPlayers}
-            onClose={() => setOpenPlayers(false)}
-            title={playersPanelTitle}
-          >
-            <div style={{ padding: 2 }}>{playersPanel}</div>
-          </RulesModal>
-
-          {/* 4) VOLÉE */}
-          {volleyInputDisplay ? (
-            <div className="card" style={{ padding: "10px 12px" }}>
-              {volleyInputDisplay}
+            <div style={{ display: "flex", gap: 10 }}>
+              {topRightExtra}
+              {infoEnabled ? <InfoDot onClick={onInfo} size={infoDotSize} /> : null}
             </div>
-          ) : null}
-
-          {/* 5) MODES DE SAISIE — doit toujours tenir dans l'écran */}
-          {inputModes ? (
-            <div
-              className="card"
-              style={{
-                padding: "10px 12px",
-                flex: 1,
-                minHeight: 0,
-                overflow: "hidden",
-              }}
-            >
-              <div style={{ height: "100%", minHeight: 0 }}>
-                <FitBox minScale={0.52} maxScale={1}>
-                  {inputModes}
-                </FitBox>
-              </div>
-            </div>
+          </div>
+          {!headerCenter && headerScoreboard ? (
+            <div style={{ marginTop: 10 }}>{headerScoreboard}</div>
           ) : null}
         </div>
-      ) : (
-        <div style={{ flex: 1, minHeight: 0, overflow: "hidden" }}>
-          <div
-            style={{
-              display: "grid",
-              // minmax(0,1fr) = empêche le débordement horizontal des enfants (shadows, min-width, etc.)
-              gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr)",
-              gap: 10,
-              height: "100%",
-              minHeight: 0,
-            }}
-          >
-          {/* LEFT: profil + joueurs */}
-          <div
-            style={{
-              display: "flex",
-              flexDirection: "column",
-              gap: 10,
-              minHeight: 0,
-              minWidth: 0,
-              overflow: "hidden",
-            }}
-          >
+
+        {!isTablet ? (
+          <div style={{ display: "flex", flexDirection: "column", gap: 10, flex: 1, minHeight: 0 }}>
             {activeProfileHeader ? (
               <div className="card" style={{ padding: "10px 12px" }}>
                 {activeProfileHeader}
               </div>
             ) : null}
 
-            {playersInSidebar ? (
+            {renderPlayersRow()}
+
+            <RulesModal open={openPlayers} onClose={() => setOpenPlayers(false)} title={playersPanelTitle}>
+              <div style={{ padding: 2 }}>{playersPanel}</div>
+            </RulesModal>
+
+            {volleyInputDisplay ? (
               <div
                 className="card"
-                style={{ padding: "10px 12px", flex: 1, minHeight: 0, overflow: "hidden" }}
+                style={{
+                  padding: "10px 12px",
+                  flex: 1,
+                  minHeight: 0,
+                  overflow: "auto",
+                }}
               >
-                <div
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                    gap: 10,
-                    marginBottom: 8,
-                  }}
-                >
-                  <div style={{ fontWeight: 900, letterSpacing: 0.4, color: theme.primary }}>
-                    {playersRowLabel}
-                  </div>
-                  {playersRowRight}
-                </div>
-
-                <div style={{ overflow: "auto", maxHeight: "100%", paddingRight: 4 }}>
-                  {playersPanel}
-                </div>
-              </div>
-            ) : (
-              <>
-                {renderPlayersRow()}
-                <RulesModal
-                  open={openPlayers}
-                  onClose={() => setOpenPlayers(false)}
-                  title={playersPanelTitle}
-                >
-                  <div style={{ padding: 2 }}>{playersPanel}</div>
-                </RulesModal>
-              </>
-            )}
-          </div>
-
-          {/* RIGHT: volée + modes */}
-          <div
-            style={{
-              display: "flex",
-              flexDirection: "column",
-              gap: 10,
-              minHeight: 0,
-              minWidth: 0,
-              overflow: "hidden",
-            }}
-          >
-            {volleyInputDisplay ? (
-              <div className="card" style={{ padding: "10px 12px" }}>
                 {volleyInputDisplay}
               </div>
             ) : null}
 
             {inputModes ? (
-              <div
-                className="card"
-                style={{ padding: "10px 12px", flex: 1, minHeight: 0, overflow: "hidden" }}
-              >
-                <div style={{ height: "100%", minHeight: 0 }}>
+              <div className="card" style={{ padding: "10px 12px", flex: "0 0 auto" }}>
+                <FitBox minScale={0.52} maxScale={1}>
+                  {inputModes}
+                </FitBox>
+              </div>
+            ) : null}
+          </div>
+        ) : (
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "minmax(0,1fr) minmax(0,1fr)",
+              gap: 10,
+              flex: 1,
+              minHeight: 0,
+            }}
+          >
+            <div style={{ display: "flex", flexDirection: "column", gap: 10, minHeight: 0 }}>
+              {activeProfileHeader ? (
+                <div className="card" style={{ padding: "10px 12px" }}>
+                  {activeProfileHeader}
+                </div>
+              ) : null}
+
+              {playersInSidebar ? (
+                <div
+                  className="card"
+                  style={{ padding: "10px 12px", flex: 1, minHeight: 0, overflow: "auto" }}
+                >
+                  {playersPanel}
+                </div>
+              ) : (
+                renderPlayersRow()
+              )}
+            </div>
+
+            <div style={{ display: "flex", flexDirection: "column", gap: 10, minHeight: 0 }}>
+              {volleyInputDisplay ? (
+                <div className="card" style={{ padding: "10px 12px" }}>
+                  {volleyInputDisplay}
+                </div>
+              ) : null}
+
+              {inputModes ? (
+                <div className="card" style={{ padding: "10px 12px", flex: "0 0 auto" }}>
                   <FitBox minScale={0.58} maxScale={1}>
                     {inputModes}
                   </FitBox>
                 </div>
-              </div>
-            ) : null}
+              ) : null}
+            </div>
           </div>
-          </div>
-        </div>
-      )}
+        )}
       </div>
     </div>
   );

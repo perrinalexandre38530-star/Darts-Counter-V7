@@ -3153,10 +3153,10 @@ if (isLandscapeTablet) {
     >
       {/* ✅ MEP: Layout unifié (Header + Profil Actif + Joueurs modal + Volée + Saisie) */}
       <GameplayLayout
-        modeId="x01"
         title=""
         onBack={handleQuit}
         showInfo={false}
+        flexRegion="players"
         headerCenter={
           <div ref={headerWrapRef} style={{ width: "100%" }}>
             <div
@@ -3679,14 +3679,13 @@ function HeaderBlock(props: HeaderBlockProps) {
             display: "flex",
             flexDirection: "column",
             alignItems: "center",
-            gap: 4,
+            gap: 5,
           }}
         >
           <div
             style={{
-              // ✅ Légère réduction pour gagner un peu de hauteur (mobile/tablette)
-              width: 88,
-              height: 88,
+              width: 96,
+              height: 96,
               borderRadius: "50%",
               overflow: "hidden",
               background:

@@ -1,17 +1,19 @@
-// =============================================================
+// ============================================
 // src/pages/pingpong/PingPongMenuGames.tsx
-// Menu GAMES Ping-Pong — même UX que BabyFootMenuMatch (cartes plein largeur + tickers)
-// ✅ Modes: 1v1 / 2v2 / 2v1 / Tournante / Training
-// ✅ Header: ticker_pingpong_games (image) + BackDot à gauche (retour Accueil/Games)
-// =============================================================
+// Menu Ping-Pong — même UX que les menus Games (Baby-Foot/Pétanque)
+// ✅ Cartes plein largeur + watermark tickers
+// ✅ Header ticker_pingpong_games en haut (remplace le texte)
+// ✅ BackDot à l'extrême gauche -> retour accueil Games
+// ============================================
 
 import React from "react";
+import { useTheme } from "../../contexts/ThemeContext";
 import { useLang } from "../../contexts/LangContext";
 import BackDot from "../../components/BackDot";
 import InfoDot from "../../components/InfoDot";
 
-// ✅ Tickers images (Vite) — inclut aussi les sous-dossiers si tu en as
-const TICKERS = import.meta.glob("../../assets/tickers/**/*.png", {
+// ✅ Tickers images (Vite)
+const TICKERS = import.meta.glob("../../assets/tickers/*.png", {
   eager: true,
   import: "default",
 }) as Record<string, string>;
@@ -32,12 +34,18 @@ function getTicker(id: string | null | undefined) {
 
   for (const c of candidates) {
     const suffixA = `/ticker_${c}.png`;
-    const suffixB = `/${c}.png`;
-
-    for (const [path, url] of Object.entries(TICKERS)) {
-      const p = path.toLowerCase();
-      if (p.endsWith(suffixA) || p.endsWith(suffixB)) return url;
+    const suffixB = `/ticker-${c}.png`;
+    for (const k of Object.keys(TICKERS)) {
+      if (k.endsWith(suffixA) || k.endsWith(suffixB)) return TICKERS[k];
     }
+  }
+  return null;
+}
+
+function getTickerFromCandidates(ids: Array<string | null | undefined>) {
+  for (const id of ids) {
+    const src = getTicker(id);
+    if (src) return src;
   }
   return null;
 }
@@ -46,227 +54,305 @@ type Props = {
   go: (tab: any, params?: any) => void;
 };
 
+type PingPongModeId = "match_1v1" | "match_2v2" | "match_2v1" | "tournante" | "training";
+
 type ModeDef = {
-  id: string;
-  titleKey: string;
-  titleDefault: string;
-  subtitleKey: string;
-  subtitleDefault: string;
-  infoTitleKey: string;
-  infoTitleDefault: string;
-  infoBodyKey: string;
-  infoBodyDefault: string;
+  id: PingPongModeId;
+  label: string; // petit titre affiché sur la carte
+  tickerCandidates: string[];
   enabled: boolean;
-  tickerId: string; // sans "ticker_" et sans extension
-  route: { tab: string; params: any };
 };
 
+// ✅ 5 modes (comme demandé) — libellés dans les tickers
 const MODES: ModeDef[] = [
-  {
-    id: "pp_1v1",
-    titleKey: "pingpong.modes.1v1.title",
-    titleDefault: "1V1",
-    subtitleKey: "pingpong.modes.1v1.subtitle",
-    subtitleDefault: "1v1 — un joueur par côté.",
-    infoTitleKey: "pingpong.modes.1v1.infoTitle",
-    infoTitleDefault: "Match 1v1",
-    infoBodyKey: "pingpong.modes.1v1.infoBody",
-    infoBodyDefault: "Partie classique 1 contre 1 (un set direct).",
-    enabled: true,
-    tickerId: "pingpong_1v1",
-    route: { tab: "pingpong_config", params: { mode: "simple", format: "1v1" } },
-  },
-  {
-    id: "pp_2v2",
-    titleKey: "pingpong.modes.2v2.title",
-    titleDefault: "2V2",
-    subtitleKey: "pingpong.modes.2v2.subtitle",
-    subtitleDefault: "2v2 — deux joueurs par côté.",
-    infoTitleKey: "pingpong.modes.2v2.infoTitle",
-    infoTitleDefault: "Match 2v2",
-    infoBodyKey: "pingpong.modes.2v2.infoBody",
-    infoBodyDefault: "Partie équipes 2 contre 2.",
-    enabled: true,
-    tickerId: "pingpong_2v2",
-    route: { tab: "pingpong_config", params: { mode: "simple", format: "2v2" } },
-  },
-  {
-    id: "pp_2v1",
-    titleKey: "pingpong.modes.2v1.title",
-    titleDefault: "2V1",
-    subtitleKey: "pingpong.modes.2v1.subtitle",
-    subtitleDefault: "2v1 — avantage numérique.",
-    infoTitleKey: "pingpong.modes.2v1.infoTitle",
-    infoTitleDefault: "Match 2v1",
-    infoBodyKey: "pingpong.modes.2v1.infoBody",
-    infoBodyDefault: "Partie asymétrique 2 contre 1.",
-    enabled: true,
-    tickerId: "pingpong_2v1",
-    route: { tab: "pingpong_config", params: { mode: "simple", format: "2v1" } },
-  },
-  {
-    id: "pp_tournante",
-    titleKey: "pingpong.modes.tournante.title",
-    titleDefault: "Tournante",
-    subtitleKey: "pingpong.modes.tournante.subtitle",
-    subtitleDefault: "Joueurs illimités — 1 éliminé à chaque tour.",
-    infoTitleKey: "pingpong.modes.tournante.infoTitle",
-    infoTitleDefault: "Tournante",
-    infoBodyKey: "pingpong.modes.tournante.infoBody",
-    infoBodyDefault: "Mode club : une file de joueurs, duel, éliminations successives.",
-    enabled: true,
-    tickerId: "pingpong_tournante",
-    route: { tab: "pingpong_config", params: { mode: "tournante" } },
-  },
-  {
-    id: "pp_training",
-    titleKey: "pingpong.modes.training.title",
-    titleDefault: "Training",
-    subtitleKey: "pingpong.modes.training.subtitle",
-    subtitleDefault: "Entraînement — stats et séries.",
-    infoTitleKey: "pingpong.modes.training.infoTitle",
-    infoTitleDefault: "Training",
-    infoBodyKey: "pingpong.modes.training.infoBody",
-    infoBodyDefault: "Mode entraînement (work-in-progress) — démarre une session simple.",
-    enabled: true,
-    tickerId: "pingpong_training",
-    route: { tab: "pingpong_config", params: { mode: "simple", format: "training", training: true } },
-  },
+  { id: "match_1v1", label: "1V1", tickerCandidates: ["pingpong_1v1"], enabled: true },
+  { id: "match_2v2", label: "2V2", tickerCandidates: ["pingpong_2v2"], enabled: true },
+  { id: "match_2v1", label: "2V1", tickerCandidates: ["pingpong_2v1"], enabled: true },
+  { id: "tournante", label: "TOURNANTE", tickerCandidates: ["pingpong_tournante"], enabled: true },
+  { id: "training", label: "TRAINING", tickerCandidates: ["pingpong_training"], enabled: true },
 ];
 
 export default function PingPongMenuGames({ go }: Props) {
-  const { t } = useLang();
+  const { theme } = useTheme();
+  const lang = useLang() as any;
+  const t = lang?.t ?? ((_: string, fallback: string) => fallback);
 
-const tr = (key: string, fallback: string) => {
-  const v = t?.(key);
-  return v && v !== key ? v : fallback;
-};
+  const [infoModeId, setInfoModeId] = React.useState<PingPongModeId | null>(null);
 
+  const INFO: Record<PingPongModeId, { title: string; body: string }> = {
+    match_1v1: {
+      title: t("pingpong.modes.1v1.infoTitle", "1v1"),
+      body: t("pingpong.modes.1v1.infoBody", "Match 1 contre 1."),
+    },
+    match_2v2: {
+      title: t("pingpong.modes.2v2.infoTitle", "2v2"),
+      body: t("pingpong.modes.2v2.infoBody", "Match en double : 2 contre 2."),
+    },
+    match_2v1: {
+      title: t("pingpong.modes.2v1.infoTitle", "2v1"),
+      body: t("pingpong.modes.2v1.infoBody", "Match asymétrique : 2 contre 1."),
+    },
+    tournante: {
+      title: t("pingpong.modes.tournante.infoTitle", "Tournante"),
+      body: t("pingpong.modes.tournante.infoBody", "Rotation autour de la table, élimination progressive."),
+    },
+    training: {
+      title: t("pingpong.modes.training.infoTitle", "Training"),
+      body: t("pingpong.modes.training.infoBody", "Entraînement solo (stats et objectifs)."),
+    },
+  };
 
-  const onBack = () => go("games");
+  function navigate(mode: PingPongModeId) {
+    // Tous les modes passent par la config (comme demandé)
+    go("pingpong_config", { mode });
+  }
 
-  const headerTicker = getTicker("pingpong_games");
+  function ModeTicker({ tickerCandidates }: { tickerCandidates: string[] }) {
+    const src = getTickerFromCandidates(tickerCandidates);
+    if (!src) return null;
 
-  return (
-    <div style={{ minHeight: "100vh" }}>
-      {/* Header ticker (remplace le texte) */}
-      {headerTicker ? (
+    // On affiche le ticker EN ENTIER, mais dans une zone réduite
+    // pour laisser la place au bouton InfoDot à droite.
+        // On affiche le ticker EN ENTIER (texte dans le ticker), mais on le réduit/décale
+    // pour (1) laisser une marge à gauche/droite et (2) réserver une zone à droite pour le bouton InfoDot.
+    const rightGutter = 74; // réserve pour le cercle + marge
+    const sideInset = 10;
+    const vertInset = 6;
+
+    return (
+      <div aria-hidden style={{ position: "absolute", inset: 0, zIndex: 0 }}>
+        {/* Zone image réduite (pas de crop) */}
         <div
-          style={{ position: "relative", width: "100%", marginBottom: 14, background: "rgba(0,0,0,0.65)", aspectRatio: "800 / 230", overflow: "hidden" }}
+          style={{
+            position: "absolute",
+            left: sideInset,
+            right: rightGutter,
+            top: vertInset,
+            bottom: vertInset,
+            overflow: "hidden",
+            background: "rgba(0,0,0,0.85)",
+            borderRadius: 14,
+          }}
         >
           <img
-            src={headerTicker}
-            alt="Ping-Pong Games"
-            style={{ width: "100%", height: "100%", objectFit: "contain", objectPosition: "center", display: "block" }}
+            src={src}
+            alt=""
+            style={{
+              width: "100%",
+              height: "100%",
+              objectFit: "contain",
+              // On ancre à droite pour voir le libellé du mode (1V1/2V2/etc) dans le ticker.
+              objectPosition: "right center",
+              display: "block",
+              transform: "translateZ(0)",
+            }}
+            draggable={false}
+          />
+
+          {/* Dégradé gauche (marge + vignette) */}
+          <div
+            style={{
+              position: "absolute",
+              inset: 0,
+              background:
+                "linear-gradient(90deg, rgba(0,0,0,0.85) 0%, rgba(0,0,0,0.45) 10%, rgba(0,0,0,0.00) 22%)",
+              pointerEvents: "none",
+            }}
+          />
+
+          {/* Dégradé droite pour transition vers la zone Info */}
+          <div
+            style={{
+              position: "absolute",
+              inset: 0,
+              background:
+                "linear-gradient(90deg, rgba(0,0,0,0.00) 0%, rgba(0,0,0,0.00) 58%, rgba(0,0,0,0.45) 82%, rgba(0,0,0,0.90) 100%)",
+              pointerEvents: "none",
+            }}
+          />
+        </div>
+
+        {/* Zone droite (derrière InfoDot) */}
+        <div
+          style={{
+            position: "absolute",
+            right: 0,
+            top: 0,
+            bottom: 0,
+            width: rightGutter,
+            background: "rgba(0,0,0,0.55)",
+            pointerEvents: "none",
+          }}
+        />
+      </div>
+    );
+
+  }
+
+  const headerSrc = getTickerFromCandidates(["pingpong_games"]);
+
+  return (
+    <div style={{ minHeight: "100vh", padding: 16, paddingBottom: 90, background: theme.bg, color: theme.text }}>
+      {/* HEADER ticker_pingpong_games */}
+      {headerSrc && (
+        <div
+          style={{
+            position: "relative",
+            // Pleine largeur écran (pas dans un bloc)
+            width: "calc(100% + 32px)",
+            marginLeft: -16,
+            marginRight: -16,
+            aspectRatio: "800 / 230" as any,
+            overflow: "hidden",
+            background: "rgba(0,0,0,0.85)",
+            boxShadow: "0 10px 24px rgba(0,0,0,0.55)",
+            borderBottom: `1px solid ${theme.borderSoft ?? "rgba(255,255,255,0.14)"}`,
+            marginBottom: 14,
+          }}
+        >
+          <img
+            src={headerSrc}
+            alt="PING-PONG GAMES"
+            style={{
+              position: "absolute",
+              inset: 0,
+              width: "100%",
+              height: "100%",
+              // Pas de crop : afficher le ticker en entier
+              objectFit: "contain",
+              objectPosition: "center center",
+            }}
+            draggable={false}
+          />
+          <div
+            style={{
+              position: "absolute",
+              inset: 0,
+              background: "linear-gradient(90deg, rgba(0,0,0,0.55) 0%, rgba(0,0,0,0.10) 42%, rgba(0,0,0,0.00) 70%)",
+            }}
           />
 
           {/* BackDot extrême gauche */}
-          <div style={{ position: "absolute", left: 10, top: 10, zIndex: 2 }}>
-            <BackDot onClick={onBack} />
+          <div style={{ position: "absolute", left: 10, top: 10, zIndex: 5 }}>
+            <BackDot onClick={() => go("games")} />
           </div>
-        </div>
-      ) : (
-        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14 }}>
-          <BackDot onClick={onBack} />
-          <div style={{ fontWeight: 950, letterSpacing: 1, opacity: 0.95 }}>PING-PONG — GAMES</div>
         </div>
       )}
 
-      <div style={{ padding: 14 }}>
-        {/* Cards (plein largeur) */}
-        <div style={{ display: "grid", gap: 12 }}>
-        {MODES.filter((m) => m.enabled).map((m) => {
-          const ticker = getTicker(m.tickerId);
+      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+        {MODES.map((m) => {
+          const disabled = !m.enabled;
+
           return (
-            <div
+            <button
               key={m.id}
+              onClick={() => !disabled && navigate(m.id)}
               style={{
                 position: "relative",
                 width: "100%",
-                borderRadius: 18,
+                height: 74,
+                padding: 0,
+                paddingRight: 0,
+                textAlign: "left",
+                borderRadius: 16,
+                border: `1px solid ${theme.borderSoft ?? "rgba(255,255,255,0.14)"}`,
+                background: theme.card,
+                boxShadow: "0 10px 24px rgba(0,0,0,0.55)",
+                cursor: disabled ? "not-allowed" : "pointer",
+                opacity: disabled ? 0.55 : 1,
                 overflow: "hidden",
-                boxShadow: "0 10px 28px rgba(0,0,0,.55)",
-                border: "1px solid rgba(255,255,255,.08)",
-                background: "rgba(12,14,20,.55)",
-                cursor: "pointer",
+            background: "rgba(0,0,0,0.85)",
               }}
-              onClick={() => go(m.route.tab, m.route.params)}
-              role="button"
-              tabIndex={0}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" || e.key === " ") go(m.route.tab, m.route.params);
-              }}
-            >              {/* Ticker background (inset + safe zone à droite pour InfoDot) */}
-              {ticker ? (
-                <>
-                  <img
-                    src={ticker}
-                    alt={m.titleDefault}
-                    style={{
-                      position: "absolute",
-                      top: 10,
-                      bottom: 10,
-                      left: 10,
-                      right: 74, // réserve pour le bouton i
-                      objectFit: "cover",
-                      objectPosition: "center",
-                      filter: "saturate(1.05)",
-                      opacity: 0.98,
-                      borderRadius: 14,
-                    }}
-                  />
+            >
+              {/* Ticker complet (texte DANS le ticker) + réduit pour laisser place au i */}
+              <ModeTicker tickerCandidates={m.tickerCandidates} />
 
-                  {/* Fade pour ne pas coller aux bords + lisibilité */}
-                  <div
-                    style={{
-                      position: "absolute",
-                      inset: 0,
-                      background:
-                        "linear-gradient(90deg, rgba(0,0,0,.60) 0%, rgba(0,0,0,.18) 52%, rgba(0,0,0,0) 70%, rgba(0,0,0,.85) 100%)",
-                    }}
-                  />
-
-                  {/* Zone droite dédiée au bouton InfoDot (évite de recouvrir le texte du ticker) */}
-                  <div
-                    style={{
-                      position: "absolute",
-                      top: 0,
-                      right: 0,
-                      bottom: 0,
-                      width: 86,
-                      background: "linear-gradient(90deg, rgba(0,0,0,0) 0%, rgba(6,8,12,.92) 85%)",
-                    }}
-                  />
-                </>
-              ) : null}
-
-              {/* Label minimal (seul texte en code) */}
-              <div style={{ position: "relative", padding: "16px 96px 16px 18px" }}>
-                <div style={{ fontSize: 18, fontWeight: 950, letterSpacing: 1, textTransform: "uppercase" }}>
-                  {m.titleDefault}
-                </div>
-              </div>
-
-              {/* InfoDot en bout */}
+              {/* Titre minimal (en plus du texte dans le ticker) */}
               <div
                 style={{
                   position: "absolute",
-                  right: 16,
+                  left: 18,
                   top: "50%",
                   transform: "translateY(-50%)",
-                  zIndex: 3,
+                  zIndex: 2,
+                  fontSize: 20,
+                  fontWeight: 900,
+                  letterSpacing: 1,
+                  color: "rgba(255,255,255,0.95)",
+                  textShadow: "0 2px 10px rgba(0,0,0,0.75)",
                 }}
               >
-                <InfoDot title={tr(m.infoTitleKey, m.infoTitleDefault)} body={tr(m.infoBodyKey, m.infoBodyDefault)} />
+                {m.label}
               </div>
-            </div>
+
+              <div style={{ position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)", zIndex: 3 }}>
+                <InfoDot
+                  onClick={(e: any) => {
+                    try {
+                      e?.stopPropagation?.();
+                      e?.preventDefault?.();
+                    } catch {}
+                    setInfoModeId(m.id);
+                  }}
+                  glow={theme.primary + "88"}
+                />
+              </div>
+            </button>
           );
         })}
-        </div>
       </div>
 
-      {/* Safe bottom padding vs bottom nav */}
-      <div style={{ height: 80 }} />
+      {/* Modal Info */}
+      {infoModeId && (
+        <div
+          onClick={() => setInfoModeId(null)}
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(0,0,0,0.55)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: 16,
+            zIndex: 9999,
+          }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              width: "100%",
+              maxWidth: 520,
+              borderRadius: 18,
+              border: `1px solid ${theme.cardSoft ?? "rgba(255,255,255,0.14)"}`,
+              background: theme.card,
+              padding: 16,
+              color: theme.text,
+              boxShadow: "0 24px 70px rgba(0,0,0,0.55)",
+            }}
+          >
+            <div style={{ fontWeight: 1000, color: theme.primary, fontSize: 18, marginBottom: 8 }}>{INFO[infoModeId].title}</div>
+
+            <div style={{ color: theme.textSoft, fontSize: 13, fontWeight: 800, lineHeight: 1.45 }}>{INFO[infoModeId].body}</div>
+
+            <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 14 }}>
+              <button
+                onClick={() => setInfoModeId(null)}
+                style={{
+                  borderRadius: 14,
+                  padding: "10px 12px",
+                  border: `1px solid ${theme.cardSoft ?? "rgba(255,255,255,0.14)"}`,
+                  background: "rgba(255,255,255,0.06)",
+                  color: theme.text,
+                  fontWeight: 900,
+                  cursor: "pointer",
+                }}
+              >
+                OK
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -276,8 +276,8 @@ export default function ScoreInputHub({
     ...(fitToParent ? { height: "100%", display: "flex", flexDirection: "column", minHeight: 0 } : null),
   };
 
-  const content = (
-    <>
+  return (
+    <div>
       {switcherMode !== "hidden" && (
         <div style={{ marginBottom: 8 }}>
           <MethodBar
@@ -293,7 +293,35 @@ export default function ScoreInputHub({
 
       {/* CIBLE */}
       {method === "dartboard" ? (
-        <div style={{ paddingBottom: 6, ...contentBoxStyle }}>
+        <div
+          ref={fitToParent ? fitOuterRef : null}
+          style={{
+            paddingBottom: 6,
+            ...contentBoxStyle,
+            ...(fitToParent
+              ? {
+                  flex: 1,
+                  minHeight: 0,
+                  overflow: "hidden",
+                  display: "flex",
+                  flexDirection: "column",
+                  justifyContent: "flex-end",
+                }
+              : {}),
+          }}
+        >
+          <div
+            ref={fitToParent ? setMeasureAndFitInnerRef : contentMeasureRef}
+            style={
+              fitToParent
+                ? {
+                    transform: `scale(${fitScale})`,
+                    transformOrigin: "bottom left",
+                    width: fitScale < 1 ? `${100 / fitScale}%` : "100%",
+                  }
+                : undefined
+            }
+          >
           <div style={{ display: "flex", justifyContent: "center", marginBottom: 8 }}>
             <DartboardClickable
               size={230}
@@ -305,15 +333,17 @@ export default function ScoreInputHub({
                 // Bull / DBull
                 if (seg === 25) {
                   if (onDirectDart) onDirectDart({ v: 25, mult: mul });
-                  else onBull();
+                  else onBull(); // fallback: bull simple (DBull non géré par l'API keypad actuelle)
                   return;
                 }
 
+                // Injection directe (recommandé)
                 if (onDirectDart) {
                   onDirectDart({ v: seg, mult: mul });
                   return;
                 }
 
+                // Fallback best-effort via toggles + onNumber (moins fiable, mais évite le "rien")
                 if (mul === 3) onTriple();
                 else if (mul === 2) onDouble();
                 else onSimple();
@@ -322,7 +352,7 @@ export default function ScoreInputHub({
             />
           </div>
 
-          {/* Footer CIBLE — total à gauche + Annuler / Valider à droite */}
+          {/* Footer CIBLE — total à gauche + Annuler / Valider à droite (même langage visuel que le keypad) */}
           <div
             style={{
               display: "flex",
@@ -356,6 +386,7 @@ export default function ScoreInputHub({
               </button>
             </div>
           </div>
+          </div>
         </div>
       ) : null}
 
@@ -386,9 +417,33 @@ export default function ScoreInputHub({
       {/* Méthode principale (Keypad + placeholders) */}
       {method === "keypad" || method === "presets" || method === "voice" || method === "auto" || method === "ai" ? (
         <div
-          ref={method === "keypad" ? contentMeasureRef : undefined}
-          style={{ ...contentBoxStyle }}
+          ref={fitToParent ? fitOuterRef : null}
+          style={{
+            ...contentBoxStyle,
+            ...(fitToParent
+              ? {
+                  flex: 1,
+                  minHeight: 0,
+                  overflow: "hidden",
+                  display: "flex",
+                  flexDirection: "column",
+                  justifyContent: "flex-end",
+                }
+              : null),
+          }}
         >
+          <div
+            ref={fitToParent ? setMeasureAndFitInnerRef : method === "keypad" ? contentMeasureRef : undefined}
+            style={
+              fitToParent
+                ? {
+                    transform: `scale(${fitScale})`,
+                    transformOrigin: "bottom left",
+                    width: fitScale < 1 ? `${100 / fitScale}%` : "100%",
+                  }
+                : undefined
+            }
+          >
           {(method === "voice" || method === "auto" || method === "ai") && showPlaceholders ? (
             <PlaceholderCard method={method} />
           ) : null}
@@ -408,28 +463,9 @@ export default function ScoreInputHub({
             hideTotal={hideTotal}
             centerSlot={centerSlot}
           />
+          </div>
         </div>
       ) : null}
-    </>
-  );
-
-  if (!fitToParent) {
-    return <div>{content}</div>;
-  }
-
-  // ✅ Fit global: on scale TOUT le bloc (method bar + contenu) pour que ça tienne sans scroll.
-  return (
-    <div ref={fitOuterRef} style={{ height: "100%", minHeight: 0, overflow: "hidden" }}>
-      <div
-        ref={setMeasureAndFitInnerRef}
-        style={{
-          transform: `scale(${fitScale})`,
-          transformOrigin: "top left",
-          width: fitScale < 1 ? `${100 / fitScale}%` : "100%",
-        }}
-      >
-        {content}
-      </div>
     </div>
   );
 }
