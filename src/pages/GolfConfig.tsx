@@ -634,142 +634,131 @@ export default function GolfConfig(props: any) {
                   </button>
                 </div>
 
-                {/* ✅ Assignation type X01Config : lignes compactes + pills d’équipes */}
-                <div
-                  style={{
-                    padding: 10,
-                    borderRadius: 16,
-                    border: "1px solid rgba(255,255,255,0.12)",
-                    background: "rgba(0,0,0,0.18)",
-                    boxShadow: "inset 0 1px 0 rgba(255,255,255,0.06)",
-                    display: "flex",
-                    flexDirection: "column",
-                    gap: 8,
+
+{/* ✅ Assignation type X01Config (avatar + nom dessous, 4 teams sur une ligne) */}
+<div
+  style={{
+    padding: 10,
+    borderRadius: 16,
+    border: "1px solid rgba(255,255,255,0.12)",
+    background: "rgba(0,0,0,0.18)",
+    boxShadow: "inset 0 1px 0 rgba(255,255,255,0.06)",
+    display: "flex",
+    flexDirection: "column",
+    gap: 10,
+  }}
+>
+  {selectedIds.map((id, idx) => {
+    const hp = humanProfiles.find((p) => String((p as any).id) === id);
+    const bp = userBots.find((b) => String((b as any).id) === id);
+
+    const name = (hp as any)?.name || (bp as any)?.name || "Joueur";
+    const avatar =
+      (hp as any)?.avatarDataUrl ||
+      (hp as any)?.avatarUrl ||
+      (bp as any)?.avatarDataUrl ||
+      null;
+
+    const availableKeys = TEAM_KEYS_ALL.slice(0, teamCount);
+    const fallbackKey = availableKeys[idx % Math.max(1, availableKeys.length)] || "gold";
+    const current = (teamAssignments[id] ?? fallbackKey) as TeamKey;
+
+    return (
+      <div
+        key={id}
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 12,
+          padding: 10,
+          borderRadius: 16,
+          border: "1px solid rgba(255,255,255,0.10)",
+          background: "linear-gradient(180deg, rgba(255,255,255,0.04), rgba(0,0,0,0.18))",
+        }}
+      >
+        {/* Col joueur (avatar + nom dessous) */}
+        <div
+          style={{
+            width: 92,
+            flex: "0 0 92px",
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            gap: 6,
+            minWidth: 0,
+          }}
+        >
+          <div
+            style={{
+              width: 46,
+              height: 46,
+              borderRadius: "50%",
+              overflow: "hidden",
+              border: "1px solid rgba(255,255,255,0.14)",
+              background: "rgba(0,0,0,0.28)",
+              boxShadow: "0 0 0 4px rgba(0,0,0,0.28)",
+              display: "grid",
+              placeItems: "center",
+            }}
+          >
+            {avatar ? (
+              <img src={avatar} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+            ) : (
+              <span style={{ fontWeight: 1000, opacity: 0.78 }}>{String(name).slice(0, 1).toUpperCase()}</span>
+            )}
+          </div>
+
+          <div
+            title={name}
+            style={{
+              fontSize: 12,
+              fontWeight: 950,
+              color: "rgba(255,255,255,0.92)",
+              textAlign: "center",
+              lineHeight: 1.1,
+              width: "100%",
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap",
+            }}
+          >
+            {name}
+          </div>
+        </div>
+
+        {/* Col équipes (4 pills, style X01Config) */}
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(4, minmax(0, 1fr))",
+              gap: 8,
+              alignItems: "center",
+            }}
+          >
+            {TEAM_KEYS_ALL.map((k) => {
+              const m = TEAM_META[k];
+              const disabled = !availableKeys.includes(k);
+              return (
+                <TeamPillButton
+                  key={k}
+                  label={m.short}
+                  color={m.color}
+                  active={current === k}
+                  disabled={disabled}
+                  onClick={() => {
+                    if (disabled) return;
+                    setTeamAssignments((prev) => ({ ...prev, [id]: k }));
                   }}
-                >
-                  {selectedIds.map((id, idx) => {
-                    const hp = humanProfiles.find((p) => String(p.id) === id);
-                    const bp = userBots.find((b) => String(b.id) === id);
-
-                    const name = (hp as any)?.name || (bp as any)?.name || "Joueur";
-                    const avatar =
-                      (hp as any)?.avatarDataUrl ||
-                      (hp as any)?.avatarUrl ||
-                      (bp as any)?.avatarDataUrl ||
-                      null;
-
-                    // Teams disponibles selon le nombre d'équipes choisi (2..4)
-                    const enabledTeams = TEAM_KEYS_ALL.slice(0, teamCount);
-                    const current = (teamAssignments[id] ?? enabledTeams[idx % enabledTeams.length]) as TeamKey;
-
-                    const meta = TEAM_META[current] ?? TEAM_META.gold;
-
-                    return (
-                      <div
-                        key={id}
-                        style={{
-                          display: "flex",
-                          alignItems: "center",
-                          gap: 12,
-                          padding: "10px 12px",
-                          borderRadius: 16,
-                          border: "1px solid rgba(255,255,255,0.10)",
-                          background: "linear-gradient(180deg, rgba(255,255,255,0.06), rgba(0,0,0,0.24))",
-                        }}
-                      >
-                        {/* Colonne joueur : avatar + nom en dessous */}
-                        <div
-                          style={{
-                            width: 72,
-                            flex: "0 0 auto",
-                            display: "flex",
-                            flexDirection: "column",
-                            alignItems: "center",
-                            gap: 6,
-                            minWidth: 0,
-                          }}
-                        >
-                          <div
-                            style={{
-                              width: 44,
-                              height: 44,
-                              borderRadius: "50%",
-                              overflow: "hidden",
-                              border: `1px solid ${meta.color}55`,
-                              boxShadow: `0 0 0 3px rgba(0,0,0,.28), 0 0 16px ${meta.color}22`,
-                              background: "rgba(0,0,0,0.35)",
-                              display: "grid",
-                              placeItems: "center",
-                            }}
-                          >
-                            {avatar ? (
-                              <img
-                                src={avatar}
-                                alt=""
-                                style={{ width: "100%", height: "100%", objectFit: "cover" }}
-                              />
-                            ) : (
-                              <span style={{ fontWeight: 1000, color: "rgba(255,255,255,0.78)" }}>
-                                {String(name || "J").slice(0, 1).toUpperCase()}
-                              </span>
-                            )}
-                          </div>
-
-                          <div
-                            title={name}
-                            style={{
-                              width: "100%",
-                              textAlign: "center",
-                              fontWeight: 950,
-                              fontSize: 11,
-                              opacity: 0.9,
-                              overflow: "hidden",
-                              textOverflow: "ellipsis",
-                              whiteSpace: "nowrap",
-                            }}
-                          >
-                            {name}
-                          </div>
-                        </div>
-
-                        {/* Colonne teams : 4 pills sur la largeur */}
-                        <div
-                          style={{
-                            flex: 1,
-                            minWidth: 0,
-                            display: "grid",
-                            gridTemplateColumns: "repeat(4, minmax(0, 1fr))",
-                            gap: 8,
-                            alignItems: "center",
-                            justifyItems: "stretch",
-                          }}
-                        >
-                          {TEAM_KEYS_ALL.map((k) => {
-                            const m = TEAM_META[k];
-                            const enabled = enabledTeams.includes(k);
-                            const active = current === k;
-
-                            return (
-                              <TeamPillButton
-                                key={k}
-                                label={m.label.replace("TEAM ", "")}
-                                color={m.color}
-                                active={active}
-                                disabled={!enabled}
-                                onClick={() => {
-                                  if (!enabled) return;
-                                  setTeamAssignments((prev) => ({ ...prev, [id]: k }));
-                                }}
-                              />
-                            );
-                          })}
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-
-{teamNonEmptyCount < 2 && (
+                />
+              );
+            })}
+          </div>
+        </div>
+      </div>
+    );
+  })}
+</div>{teamNonEmptyCount < 2 && (
                   <div style={{ fontSize: 12, opacity: 0.78, fontWeight: 900, marginTop: 4 }}>
                     ⚠️ Il faut au moins 2 équipes non vides pour lancer une partie TEAMS.
                   </div>
