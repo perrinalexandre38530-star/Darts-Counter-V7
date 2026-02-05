@@ -44,6 +44,28 @@ import { loadBots } from "./ProfilesBots";
 
 
 
+
+function useMediaQueryLocal(query: string) {
+  const [matches, setMatches] = React.useState(false);
+  React.useEffect(() => {
+    if (typeof window === "undefined" || !window.matchMedia) return;
+    const mql = window.matchMedia(query);
+    const onChange = () => setMatches(!!mql.matches);
+    onChange();
+    try {
+      mql.addEventListener("change", onChange);
+      return () => mql.removeEventListener("change", onChange);
+    } catch {
+      // Safari legacy
+      // @ts-ignore
+      mql.addListener(onChange);
+      // @ts-ignore
+      return () => mql.removeListener(onChange);
+    }
+  }, [query]);
+  return matches;
+}
+
 type HeaderBlockProps = {
   currentPlayer: any;
   currentAvatar: string | null;
@@ -859,7 +881,9 @@ export default function X01PlayV3({
 }: Props) {
   const { isLandscapeTablet } = useViewport();
   const { theme } = useTheme();
-  const themePrimary = (theme as any)?.colors?.primary ?? (theme as any)?.primary ?? "#ffcc55";
+  
+  const isTabletUi = useMediaQueryLocal("(min-width: 900px) and (orientation: landscape)");
+const themePrimary = (theme as any)?.colors?.primary ?? (theme as any)?.primary ?? "#ffcc55";
 
   // ✅ IMPORTANT : on récupère aussi la langue courante de l’app
   const { t, lang } = useLang() as any;
@@ -3156,8 +3180,16 @@ if (isLandscapeTablet) {
         title=""
         onBack={handleQuit}
         showInfo={false}
-        flexRegion="players"
-        headerCenter={
+        topRightExtra={isTabletUi ? (
+          <SetLegChip
+                currentSet={(state as any).currentSet ?? 1}
+                currentLegInSet={(state as any).currentLeg ?? 1}
+                setsTarget={setsTarget}
+                legsTarget={legsTarget}
+                useSets={useSetsUi}
+              />
+        ) : null}
+        headerCenter={!isTabletUi ? (
           <div ref={headerWrapRef} style={{ width: "100%" }}>
             <div
               style={{
@@ -3210,9 +3242,47 @@ if (isLandscapeTablet) {
               />
             </div>
           </div>
-        }
+        
+        ) : null}
         activeProfileHeader={
           <div style={{ maxWidth: CONTENT_MAX, margin: "0 auto" }}>
+            {isTabletUi ? (
+              <div style={{ marginBottom: 10, display: "flex", justifyContent: "center" }}>
+                <div style={{ display: "flex", justifyContent: "center" }}>
+                {useSetsUi && isTeamsMode && teamsView && (teamsView as any[]).length >= 2 ? (
+                  (teamsView as any[]).length === 2 ? (
+                    <DuelHeaderCompact
+                      leftAvatarUrl={((teamsView as any[])[0]?.avatarUrl as string) ?? ""}
+                      rightAvatarUrl={((teamsView as any[])[1]?.avatarUrl as string) ?? ""}
+                      leftSets={(state as any).teamSetsWon?.[((teamsView as any[])[0]?.id as any)] ?? 0}
+                      rightSets={(state as any).teamSetsWon?.[((teamsView as any[])[1]?.id as any)] ?? 0}
+                      leftLegs={(state as any).teamLegsWon?.[((teamsView as any[])[0]?.id as any)] ?? 0}
+                      rightLegs={(state as any).teamLegsWon?.[((teamsView as any[])[1]?.id as any)] ?? 0}
+                    />
+                  ) : (
+                    <TeamsHeaderCompact
+                      teams={teamsView as any[]}
+                      teamLegsWon={(state as any).teamLegsWon ?? {}}
+                      teamSetsWon={(state as any).teamSetsWon ?? {}}
+                    />
+                  )
+                ) : (
+                  isDuel &&
+                  useSetsUi && (
+                    <DuelHeaderCompact
+                      leftAvatarUrl={profileById[players[0].id]?.avatarDataUrl ?? ""}
+                      rightAvatarUrl={profileById[players[1].id]?.avatarDataUrl ?? ""}
+                      leftSets={(state as any).setsWon?.[players[0].id] ?? 0}
+                      rightSets={(state as any).setsWon?.[players[1].id] ?? 0}
+                      leftLegs={(state as any).legsWon?.[players[0].id] ?? 0}
+                      rightLegs={(state as any).legsWon?.[players[1].id] ?? 0}
+                    />
+                  )
+                )}
+              </div>
+              </div>
+            ) : null}
+
             {isTeamsMode && activeTeam ? (
               <TeamHeaderBlock
                 teamColor={activeTeam.color}

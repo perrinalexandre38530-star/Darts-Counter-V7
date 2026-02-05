@@ -7,6 +7,7 @@
 // ============================================
 
 import React from "react";
+import RulesModal from "./RulesModal";
 import Keypad from "./Keypad";
 import DartboardClickable from "./DartboardClickable";
 import ScorePresetsBar from "./ScorePresetsBar";
@@ -168,6 +169,7 @@ export default function ScoreInputHub({
   };
 
   const devEnabled = safeReadDevModeEnabled();
+  const [openMode, setOpenMode] = React.useState(false);
   const [method, setMethod] = React.useState<ScoreInputMethod>(safeReadMethod);
 
   // En prod: seules KEYPAD + CIBLE sont officiellement utilisables.
@@ -277,8 +279,92 @@ export default function ScoreInputHub({
   };
 
   return (
-    <div>
-      {switcherMode !== "hidden" && (
+    <div style={{ position: "relative" }}>
+      
+{switcherMode === "hidden" && (
+  <>
+    <button
+      type="button"
+      onClick={() => setOpenMode(true)}
+      style={{
+        position: "absolute",
+        top: 10,
+        left: 10,
+        zIndex: 5,
+        height: 30,
+        padding: "0 10px",
+        borderRadius: 999,
+        border: "1px solid rgba(255,255,255,0.16)",
+        background: "rgba(0,0,0,0.46)",
+        color: "rgba(255,255,255,0.92)",
+        fontWeight: 900,
+        fontSize: 12,
+        letterSpacing: 0.4,
+        display: "inline-flex",
+        alignItems: "center",
+        gap: 8,
+        cursor: disabled ? "not-allowed" : "pointer",
+        opacity: disabled ? 0.55 : 1,
+        userSelect: "none",
+        WebkitTapHighlightColor: "transparent",
+      }}
+      disabled={disabled}
+      aria-label="Choisir le mode de saisie"
+    >
+      MODE
+      <span style={{ opacity: 0.75, fontWeight: 1000 }}>
+        {method === "dartboard" ? "CIBLE" : "KEYPAD"}
+      </span>
+    </button>
+
+    <RulesModal open={openMode} onClose={() => setOpenMode(false)} title="Mode de saisie">
+      <div style={{ display: "flex", flexDirection: "column", gap: 10, padding: 6 }}>
+        <button
+          type="button"
+          onClick={() => {
+            setMethod("keypad");
+            setOpenMode(false);
+          }}
+          disabled={disabled}
+          className="btn"
+          style={{
+            padding: "12px 14px",
+            borderRadius: 14,
+            border: "1px solid rgba(255,255,255,0.14)",
+            background: method === "keypad" ? "rgba(0,255,190,0.16)" : "rgba(255,255,255,0.06)",
+            color: "rgba(255,255,255,0.92)",
+            fontWeight: 900,
+            letterSpacing: 0.3,
+          }}
+        >
+          KEYPAD
+        </button>
+
+        <button
+          type="button"
+          onClick={() => {
+            setMethod("dartboard");
+            setOpenMode(false);
+          }}
+          disabled={disabled}
+          className="btn"
+          style={{
+            padding: "12px 14px",
+            borderRadius: 14,
+            border: "1px solid rgba(255,255,255,0.14)",
+            background: method === "dartboard" ? "rgba(0,255,190,0.16)" : "rgba(255,255,255,0.06)",
+            color: "rgba(255,255,255,0.92)",
+            fontWeight: 900,
+            letterSpacing: 0.3,
+          }}
+        >
+          CIBLE
+        </button>
+      </div>
+    </RulesModal>
+  </>
+)}
+{switcherMode !== "hidden" && (
         <div style={{ marginBottom: 8 }}>
           <MethodBar
             method={method}
@@ -303,9 +389,6 @@ export default function ScoreInputHub({
                   flex: 1,
                   minHeight: 0,
                   overflow: "hidden",
-                  display: "flex",
-                  flexDirection: "column",
-                  justifyContent: "flex-end",
                 }
               : {}),
           }}
@@ -316,7 +399,7 @@ export default function ScoreInputHub({
               fitToParent
                 ? {
                     transform: `scale(${fitScale})`,
-                    transformOrigin: "bottom left",
+                    transformOrigin: "top left",
                     width: fitScale < 1 ? `${100 / fitScale}%` : "100%",
                   }
                 : undefined
@@ -425,9 +508,6 @@ export default function ScoreInputHub({
                   flex: 1,
                   minHeight: 0,
                   overflow: "hidden",
-                  display: "flex",
-                  flexDirection: "column",
-                  justifyContent: "flex-end",
                 }
               : null),
           }}
@@ -438,7 +518,7 @@ export default function ScoreInputHub({
               fitToParent
                 ? {
                     transform: `scale(${fitScale})`,
-                    transformOrigin: "bottom left",
+                    transformOrigin: "top left",
                     width: fitScale < 1 ? `${100 / fitScale}%` : "100%",
                   }
                 : undefined
