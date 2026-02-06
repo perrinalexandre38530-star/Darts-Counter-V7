@@ -57,7 +57,7 @@ export type GolfConfigPayload = {
   botsEnabled: boolean;
   botLevel: BotLevel;
 
-  missStrokes: 4 | 5 | 6;
+  missStrokes: 4 | 5 | 6 | 7 | 8;
   holeOrderMode: HoleOrderMode;
   scoringMode: GolfScoringMode;
 
@@ -200,7 +200,7 @@ export default function GolfConfig(props: any) {
   const [holes, setHoles] = React.useState<9 | 18>(9);
   const [holeOrderMode, setHoleOrderMode] = React.useState<HoleOrderMode>("chronological");
   const [scoringMode, setScoringMode] = React.useState<GolfScoringMode>("strokes");
-  const [missStrokes, setMissStrokes] = React.useState<4 | 5 | 6>(4);
+  const [missStrokes, setMissStrokes] = React.useState<4 | 5 | 6 | 7 | 8>(5);
   const [showHoleGrid, setShowHoleGrid] = React.useState(true);
 
   // ✅ ordre de départ (joueurs ou équipes)
@@ -243,7 +243,7 @@ export default function GolfConfig(props: any) {
       setHoles(Number(parsed?.holes) === 18 ? 18 : 9);
       setHoleOrderMode(parsed?.holeOrderMode === "random" ? "random" : "chronological");
       setScoringMode(parsed?.scoringMode === "points" ? "points" : "strokes");
-      setMissStrokes((Number(parsed?.missStrokes) === 5 ? 5 : Number(parsed?.missStrokes) === 6 ? 6 : 4) as any);
+      setMissStrokes((Number(parsed?.missStrokes) === 4 ? 4 : Number(parsed?.missStrokes) === 5 ? 5 : Number(parsed?.missStrokes) === 6 ? 6 : Number(parsed?.missStrokes) === 7 ? 7 : Number(parsed?.missStrokes) === 8 ? 8 : 5) as any);
       setShowHoleGrid(parsed?.showHoleGrid !== false);
 
       setStartOrderMode(parsed?.startOrderMode === "random" ? "random" : "chronological");
@@ -923,8 +923,8 @@ export default function GolfConfig(props: any) {
             <OptionRow label="Pénalité (miss)">
               <OptionSelect
                 value={missStrokes}
-                options={[4, 5, 6].map((v) => ({ value: v, label: String(v) }))}
-                onChange={(v: any) => setMissStrokes((Number(v) as any) || 4)}
+                options={[4, 5, 6, 7, 8].map((v) => ({ value: v, label: String(v) }))}
+                onChange={(v: any) => setMissStrokes(((Number(v) as any) || 5) as any)}
               />
             </OptionRow>
 

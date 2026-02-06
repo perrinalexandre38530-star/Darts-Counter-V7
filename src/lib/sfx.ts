@@ -16,6 +16,14 @@ export function setSfxEnabled(v: boolean) {
 // ✅ Shanghai: fichiers DANS src/assets/sounds/
 import shanghaiIntroUrl from "../assets/sounds/shanghai.mp3";
 import shanghaiMissUrl from "../assets/sounds/shanghai-miss.mp3";
+// 🏌️ Golf: fichiers DANS src/assets/sounds/
+import golfBogeyUrl from "../assets/sounds/golf_bogey.mp3";
+import golfParUrl from "../assets/sounds/golf_par.mp3";
+import golfBirdieUrl from "../assets/sounds/golf_birdie.mp3";
+import golfEagleUrl from "../assets/sounds/golf_eagle.mp3";
+import golfMissUrl from "../assets/sounds/golf_miss.mp3";
+import golfSimpleUrl from "../assets/sounds/golf_simple.mp3";
+
 
 // 🔊 URLs publiques (public/sounds) + URLs assets (import)
 const SFX = {
@@ -36,6 +44,14 @@ const SFX = {
   // Shanghai (assets import)
   shanghai: shanghaiIntroUrl,
   shanghaiMiss: shanghaiMissUrl,
+
+  // 🏌️ Golf (assets import)
+  golfEagle: golfEagleUrl,
+  golfBirdie: golfBirdieUrl,
+  golfPar: golfParUrl,
+  golfBogey: golfBogeyUrl,
+  golfMiss: golfMissUrl,
+  golfSimple: golfSimpleUrl,
 } as const;
 
 type SfxKey = keyof typeof SFX;

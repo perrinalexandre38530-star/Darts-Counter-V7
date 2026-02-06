@@ -3,10 +3,18 @@ import BackDot from "../components/BackDot";
 import InfoDot from "../components/InfoDot";
 import PageHeader from "../components/PageHeader";
 import tickerGolf from "../assets/tickers/ticker_golf.png";
+import tickerGolfEagle from "../assets/tickers/ticker_golf_eagle.png";
+import tickerGolfBirdie from "../assets/tickers/ticker_golf_birdie.png";
+import tickerGolfPar from "../assets/tickers/ticker_golf_par.png";
+import tickerGolfBogey from "../assets/tickers/ticker_golf_bogey.png";
+import tickerGolfMiss from "../assets/tickers/ticker_golf_miss.png";
 import teamGoldLogo from "../ui_assets/teams/team_gold.png";
 import teamPinkLogo from "../ui_assets/teams/team_pink.png";
 import teamBlueLogo from "../ui_assets/teams/team_blue.png";
 import teamGreenLogo from "../ui_assets/teams/team_green.png";
+import { playSfx } from "../lib/sfx";
+import { speak } from "../lib/voice";
+import { useLang } from "../contexts/LangContext";
 
 /**
  * GOLF (darts) — Play
@@ -69,6 +77,49 @@ const INFO_TEXT =
   "  Double=1 • Triple=3 • Simple=4 • Miss=5\n" +
   "- Le score total le plus bas gagne.";
 
+
+function langToLocale(lang: string | undefined): string {
+  const l = (lang ?? "fr").toLowerCase();
+  switch (l) {
+    case "fr": return "fr-FR";
+    case "en": return "en-US";
+    case "es": return "es-ES";
+    case "de": return "de-DE";
+    case "it": return "it-IT";
+    case "pt": return "pt-PT";
+    case "nl": return "nl-NL";
+    case "ru": return "ru-RU";
+    case "zh": return "zh-CN";
+    case "ja": return "ja-JP";
+    case "ar": return "ar-SA";
+    case "hi": return "hi-IN";
+    case "tr": return "tr-TR";
+    case "da": return "da-DK";
+    case "no": return "nb-NO";
+    case "sv": return "sv-SE";
+    case "is": return "is-IS";
+    case "pl": return "pl-PL";
+    case "ro": return "ro-RO";
+    case "sr": return "sr-RS";
+    case "hr": return "hr-HR";
+    case "cs": return "cs-CZ";
+    default:
+      return `${l}-${l.toUpperCase()}`;
+  }
+}
+
+function perfLabelFR(perf: string) {
+  switch (perf) {
+    case "EAGLE": return "un EAGLE";
+    case "BIRDIE": return "un BIRDIE";
+    case "PAR": return "un PAR";
+    case "BOGEY": return "un BOGEY";
+    case "SIMPLE": return "un SIMPLE";
+    case "MISS": return "un MISS";
+    default: return perf;
+  }
+}
+
 function clamp(n: number, a: number, b: number) {
   return Math.max(a, Math.min(b, n));
 }
@@ -113,7 +164,7 @@ type GolfConfig = {
   teamAssignments?: Record<string, "gold" | "pink" | "blue" | "green">;
   botsEnabled?: boolean;
   botLevel?: any;
-  missStrokes?: number; // 4/5/6 (si mode "rounds")
+  missStrokes?: number; // configurable: 4..8
   holeOrderMode?: "chronological" | "random"; // config officielle
   order?: "chronological" | "random"; // legacy
   scoringMode?: "strokes" | "rounds"; // config officielle
@@ -150,13 +201,15 @@ type HistoryEntry = {
 
 
 
-type ThrowKind = "D" | "T" | "S" | "M"; // Double / Triple / Simple / Miss
+type ThrowKind = "DB" | "B" | "D" | "T" | "S" | "M"; // DBull / Bull / Double / Triple / Simple / Miss
 
-function kindToScore(k: ThrowKind): number {
-  if (k === "D") return 1;
-  if (k === "T") return 3;
-  if (k === "S") return 4;
-  return 5;
+function kindToScore(k: ThrowKind, missStrokes: number): number {
+  if (k === "DB") return -2; // Eagle
+  if (k === "B") return -1; // Birdie
+  if (k === "D") return 0; // Par
+  if (k === "T") return 1; // Bogey
+  if (k === "S") return 3; // Double Bogey
+  return missStrokes; // configurable
 }
 
 type TeamKey = "gold" | "pink" | "blue" | "green";
@@ -444,8 +497,9 @@ function GolfHeaderBlock(props: {
   liveRanking: { id: string; name: string; score: number; avatar: string | null }[];
   isFinished: boolean;
   teamBadge?: { label: string; color: string } | null;
+  perfOverlay?: PerfKey | null;
 }) {
-  const { currentPlayer, currentAvatar, currentTotal, currentStats, liveRanking, isFinished, teamBadge } = props;
+  const { currentPlayer, currentAvatar, currentTotal, currentStats, liveRanking, isFinished, teamBadge, perfOverlay } = props;
 
   const bgAvatarUrl = (teamBadge?.label ? getTeamLogoByLabel(teamBadge.label) : null) || currentAvatar || null;
   const playerName = (currentPlayer?.name ?? "—").toUpperCase();
@@ -522,6 +576,24 @@ function GolfHeaderBlock(props: {
                 "linear-gradient(90deg, rgba(10,10,12,.98) 0%, rgba(10,10,12,.92) 34%, rgba(10,10,12,.55) 60%, rgba(10,10,12,.18) 76%, rgba(10,10,12,0) 90%)",
             }}
           />
+          {perfOverlay === "SIMPLE" && (
+            <div
+              style={{
+                position: "absolute",
+                inset: 0,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                fontWeight: 1000,
+                letterSpacing: 2,
+                color: "white",
+                textShadow: "0 6px 18px rgba(0,0,0,0.85)",
+                fontSize: 28,
+              }}
+            >
+              SIMPLE
+            </div>
+          )}
         </div>
       )}
 
@@ -718,6 +790,8 @@ export default function GolfPlay(props: Props) {
 
   // Compat routing : certains écrans passent via params, d'autres via tabParams
   const routeParams = (params ?? tabParams ?? {}) as any;
+  const { lang } = useLang();
+  const ttsLang = useMemo(() => langToLocale(lang), [lang]);
   const cfg: GolfConfig = (routeParams?.config ?? {}) as GolfConfig;
 
   const roundsMode =
@@ -730,6 +804,7 @@ export default function GolfPlay(props: Props) {
 const holes = clamp(Number((cfg as any).holes ?? (cfg as any).holesCount ?? 9), 1, 18);
 const showGrid = ((cfg as any).showHoleGrid ?? (cfg as any).showGrid ?? true) !== false;
 const teamsEnabled = !!(cfg as any).teamsEnabled;
+const missStrokesVal = clamp(Number((cfg as any).missStrokes ?? 5), 4, 8);
 
 const startOrderRaw =
   (cfg as any).startOrderMode ??
@@ -934,6 +1009,42 @@ const [statsByPlayer, setStatsByPlayer] = useState<PlayerStat[]>(() =>
   // Throws du tour (jusqu'à 3) : on garde uniquement le TYPE, le score final est celui de la DERNIÈRE
   const [turnThrows, setTurnThrows] = useState<ThrowKind[]>([]);
 
+  // ✅ Ticker performance (EAGLE/BIRDIE/PAR/BOGEY/MISS) + SFX associé
+  type PerfKey = "EAGLE" | "BIRDIE" | "PAR" | "BOGEY" | "SIMPLE" | "MISS";
+  const [perfOverlay, setPerfOverlay] = useState<PerfKey | null>(null);
+  const perfTimerRef = useRef<number | null>(null);
+  const lastPerfRef = useRef<PerfKey | null>(null);
+
+  const lastActorNameRef = useRef<string>("");
+  const ttsTimerRef = useRef<number | null>(null);
+  const lastHoleIdxRef = useRef<number>(-1);
+  const initialTurnSpokenRef = useRef(false);
+
+  function triggerPerf(perf: PerfKey) {
+    try {
+      if (perfTimerRef.current) window.clearTimeout(perfTimerRef.current);
+      setPerfOverlay(perf);
+      // 🔊 Son cohérent
+      if (perf === "EAGLE") playSfx("golfEagle");
+      else if (perf === "BIRDIE") playSfx("golfBirdie");
+      else if (perf === "PAR") playSfx("golfPar");
+      else if (perf === "BOGEY") playSfx("golfBogey");
+      else if (perf === "SIMPLE") playSfx("golfSimple");
+      else playSfx("golfMiss");
+
+      perfTimerRef.current = window.setTimeout(() => setPerfOverlay(null), 1600);
+    } catch {}
+  }
+
+  function kindToPerf(k: ThrowKind): PerfKey {
+    if (k === "DB") return "EAGLE";
+    if (k === "B") return "BIRDIE";
+    if (k === "D") return "PAR";
+    if (k === "T") return "BOGEY";
+    if (k === "S") return "SIMPLE";
+    return "MISS";
+  }
+
   // Ticker "parcours" : aléatoire sans répétition sur une même partie, change à chaque trou
   const tickerList = (PARCOURS_TICKERS.length ? PARCOURS_TICKERS : [tickerGolf]).slice();
   const tickerPoolRef = useRef<string[]>([]);
@@ -994,6 +1105,70 @@ const ranking = useMemo(() => {
   arr.sort((a, b) => a.total - b.total);
   return arr;
 }, [roster, playerTotals, teamsOk, teamTotals, enabledTeamKeys, teamMembersIdxs, teamIndexByKey]);
+
+  // ✅ TTS: classement provisoire à chaque changement de trou
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    if (lastHoleIdxRef.current === -1) {
+      lastHoleIdxRef.current = holeIdx;
+      return;
+    }
+    if (holeIdx === lastHoleIdxRef.current) return;
+
+    // on annonce le TOP 3 après validation d'un trou
+    const top = (ranking ?? []).slice(0, 3);
+    if (top.length > 0) {
+      const parts = top.map((r, i) => `${i + 1}. ${r.name} ${r.total}`);
+      const msg =
+        lang === "fr"
+          ? `Classement provisoire. ${parts.join(", ")}.`
+          : `Provisional ranking. ${parts.join(", ")}.`;
+      window.setTimeout(() => speak(msg, { lang: ttsLang }), 900);
+    }
+
+    lastHoleIdxRef.current = holeIdx;
+  }, [holeIdx, ranking, lang, ttsLang]);
+
+  // ✅ TTS: classement final
+  const finalSpokenRef = useRef(false);
+  useEffect(() => {
+    if (!isFinished) return;
+    if (finalSpokenRef.current) return;
+    finalSpokenRef.current = true;
+
+    const top = (ranking ?? []).slice(0, 3);
+    if (top.length > 0) {
+      const winner = top[0];
+      const parts = top.map((r, i) => `${i + 1}. ${r.name} ${r.total}`);
+      const msg =
+        lang === "fr"
+          ? `Partie terminée. Victoire de ${winner.name}. Classement final. ${parts.join(", ")}.`
+          : `Game over. Winner is ${winner.name}. Final ranking. ${parts.join(", ")}.`;
+      window.setTimeout(() => speak(msg, { lang: ttsLang }), 1200);
+    }
+  }, [isFinished, ranking, lang, ttsLang]);
+
+  // ✅ TTS: annonce du premier joueur au début de partie
+  useEffect(() => {
+    if (initialTurnSpokenRef.current) return;
+    if (playersCount <= 0) return;
+
+    try {
+      const p = players[playerIdx];
+      const name = safeStr(p?.name ?? p?.label ?? p?.pseudo ?? "");
+      if (!name) return;
+      initialTurnSpokenRef.current = true;
+      window.setTimeout(
+        () => speak(lang === "fr" ? `${name}, à toi de jouer.` : `${name}, your turn.`, { lang: ttsLang }),
+        700
+      );
+    } catch {
+      // ignore
+    }
+  }, [playersCount, playerIdx, lang, ttsLang]);
+
+
 
 
 
@@ -1058,22 +1233,80 @@ const activeStats =
 }
 
   function advanceAfterFinalize() {
+  // ✅ ticker + son sur validation (au moment où l'on passe au joueur suivant)
+  const validatedPerf = lastPerfRef.current;
+  if (validatedPerf) {
+    triggerPerf(validatedPerf);
+    lastPerfRef.current = null;
+
+    // ✅ TTS: commentaire sur l'action validée (après le SFX/ticker)
+    if (ttsTimerRef.current) window.clearTimeout(ttsTimerRef.current);
+    const actor = (lastActorNameRef.current || "").trim();
+    if (actor) {
+      const text =
+        lang === "fr"
+          ? `${actor} a réalisé ${perfLabelFR(validatedPerf)}.`
+          : `${actor} ${validatedPerf}.`;
+      ttsTimerRef.current = window.setTimeout(() => speak(text, { lang: ttsLang }), 650);
+    }
+  }
   if (!teamsOk) {
     // Ordre joueurs: on avance dans playerOrder, et on ne change de trou qu'après que TOUT le monde a joué
     const nextPos = turnPos + 1;
     if (nextPos < playersCount) {
+      const nextPlayerIndex = playerOrder[nextPos] ?? playerIdx;
       setTurnPos(nextPos);
-      setPlayerIdx(playerOrder[nextPos] ?? playerIdx);
+      setPlayerIdx(nextPlayerIndex);
       setTurnThrows([]);
+
+      // ✅ TTS: annonce du prochain joueur
+      try {
+        const p = players[nextPlayerIndex];
+        const name = safeStr(p?.name ?? p?.label ?? p?.pseudo ?? "");
+        if (name) {
+          const delay = validatedPerf ? 1450 : 150;
+          window.setTimeout(
+            () =>
+              speak(
+                lang === "fr" ? `${name}, à toi de jouer.` : `${name}, your turn.`,
+                { lang: ttsLang }
+              ),
+            delay
+          );
+        }
+      } catch {
+        // ignore
+      }
+
       return;
     }
 
     const nextHole = holeIdx + 1;
     if (nextHole < holes) {
+      const nextPlayerIndex = playerOrder[0] ?? 0;
       setHoleIdx(nextHole);
       setTurnPos(0);
-      setPlayerIdx(playerOrder[0] ?? 0);
+      setPlayerIdx(nextPlayerIndex);
       setTurnThrows([]);
+
+      // ✅ TTS: annonce du prochain joueur (début nouveau trou)
+      try {
+        const p = players[nextPlayerIndex];
+        const name = safeStr(p?.name ?? p?.label ?? p?.pseudo ?? "");
+        if (name) {
+          const delay = validatedPerf ? 1450 : 150;
+          window.setTimeout(
+            () =>
+              speak(
+                lang === "fr" ? `Nouveau trou. ${name}, à toi de jouer.` : `New hole. ${name}, your turn.`,
+                { lang: ttsLang }
+              ),
+            delay
+          );
+        }
+      } catch {
+        // ignore
+      }
     } else {
       setIsFinished(true);
       setTurnThrows([]);
@@ -1097,6 +1330,26 @@ const activeStats =
 
   if (nextPos < activeTeamKeys.length) {
     setTeamTurnPos(nextPos);
+
+    // ✅ TTS: annonce équipe suivante
+    try {
+      const k2 = activeTeamKeys[nextPos];
+      const label = (k2 ?? "").toUpperCase();
+      const delay = validatedPerf ? 1450 : 150;
+      if (label) {
+        window.setTimeout(
+          () =>
+            speak(
+              lang === "fr" ? `Équipe ${label}, à vous de jouer.` : `Team ${label}, your turn.`,
+              { lang: ttsLang }
+            ),
+          delay
+        );
+      }
+    } catch {
+      // ignore
+    }
+
     return;
   }
 
@@ -1120,7 +1373,8 @@ const activeStats =
 ) {
   // le score du trou est la DERNIÈRE flèche lancée
   const last = prevTurn[prevTurn.length - 1];
-  const holeScore = last ? kindToScore(last) : null;
+  if (last) lastPerfRef.current = kindToPerf(last);
+  const holeScore = last ? kindToScore(last, missStrokesVal) : null;
   if (holeScore == null) return;
 
   if (teamsOk) {
@@ -1183,6 +1437,14 @@ if (nextTurn.length >= 3) {
   function stopTurn() {
     if (isFinished) return;
     if (turnThrows.length <= 0) return;
+
+    // ✅ mémorise le joueur qui vient de jouer (pour TTS après validation)
+    try {
+      const p = players[playerIdx];
+      lastActorNameRef.current = safeStr(p?.name ?? p?.label ?? p?.pseudo ?? "");
+    } catch {
+      lastActorNameRef.current = "";
+    }
 
     setScores((prevScores) => {
       const prevTurn = turnThrows.slice();
@@ -1452,6 +1714,34 @@ return nextScores;
       flex: "0 0 auto",
       boxShadow: "0 10px 22px rgba(0,0,0,.35)",
     };
+    if (kind === "DB")
+      return (
+        <span
+          style={{
+            ...base,
+            border: "1px solid rgba(180,120,255,0.6)",
+            background: "rgba(180,120,255,0.18)",
+            color: "#d8b6ff",
+            boxShadow: "0 0 18px rgba(180,120,255,0.18), 0 10px 22px rgba(0,0,0,.35)",
+          }}
+        >
+          {value}
+        </span>
+      );
+    if (kind === "B")
+      return (
+        <span
+          style={{
+            ...base,
+            border: "1px solid rgba(125,255,202,0.6)",
+            background: "rgba(125,255,202,0.18)",
+            color: "#7dffca",
+            boxShadow: "0 0 18px rgba(125,255,202,0.18), 0 10px 22px rgba(0,0,0,.35)",
+          }}
+        >
+          {value}
+        </span>
+      );
     if (kind === "D")
       return (
         <span
@@ -1513,6 +1803,63 @@ return nextScores;
     <div className="page">
       <PageHeader title="GOLF" tickerSrc={tickerGolf} left={<BackDot onClick={goBack} />} right={<InfoDot title="Règles GOLF" content={INFO_TEXT} />} />
 
+      {/* ✅ Ticker perf (flottant) */}
+      {perfOverlay && (
+        <div
+          style={{
+            position: "fixed",
+            left: "50%",
+            top: "50%",
+            transform: "translate(-50%, -50%)",
+            zIndex: 9999,
+            pointerEvents: "none",
+            width: "min(520px, calc(100vw - 24px))",
+            filter: "drop-shadow(0 18px 34px rgba(0,0,0,0.65))",
+          }}
+        >
+          <img
+            src={
+              perfOverlay === "EAGLE"
+                ? tickerGolfEagle
+                : perfOverlay === "BIRDIE"
+                  ? tickerGolfBirdie
+                  : perfOverlay === "PAR"
+                    ? tickerGolfPar
+                    : perfOverlay === "BOGEY"
+                       ? tickerGolfBogey
+                       : perfOverlay === "SIMPLE"
+                         ? tickerGolf
+                         : tickerGolfMiss
+            }
+            alt={perfOverlay}
+            style={{
+              width: "100%",
+              height: "auto",
+              borderRadius: 14,
+            }}
+          />
+          {perfOverlay === "SIMPLE" && (
+            <div
+              style={{
+                position: "absolute",
+                inset: 0,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                fontWeight: 1000,
+                letterSpacing: 2,
+                color: "white",
+                textShadow: "0 6px 18px rgba(0,0,0,0.85)",
+                fontSize: 28,
+              }}
+            >
+              SIMPLE
+            </div>
+          )}
+        </div>
+      )}
+
+
       <div style={{ padding: 12 }}>
         {/* Carousel joueurs (clone KILLER) */}
         <GolfPlayersCarousel
@@ -1550,6 +1897,8 @@ return nextScores;
   liveRanking={ranking.map((r: any) => ({ id: r.id, name: r.name, score: r.total, avatar: r.avatar ?? null }))}
   isFinished={isFinished}
   teamBadge={teamsOk && activeTeamKey ? { label: TEAM_META[activeTeamKey].label, color: TEAM_META[activeTeamKey].color } : null}
+
+  perfOverlay={perfOverlay}
 />
 
 
@@ -1810,25 +2159,75 @@ return nextScores;
               })}
             </div>
 
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
+                gap: 8,
+                width: "100%",
+                boxSizing: "border-box",
+              }}
+            >
+              <button
+                onClick={() => recordThrow("DB")}
+                disabled={turnThrows.length >= 3}
+                style={{
+                  padding: "10px 8px",
+                  minHeight: 42,
+                  borderRadius: 12,
+                  border: "1px solid rgba(180,120,255,0.38)",
+                  background: "rgba(120,60,170,0.22)",
+                  color: "white",
+                  fontWeight: 1000,
+                  fontSize: 14,
+                  opacity: turnThrows.length >= 3 ? 0.55 : 1,
+                }}
+              >
+                <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
+                  <span style={{ letterSpacing: 0.4 }}>DBULL</span>
+                  {keyValueBadge("DB", kindToScore("DB", missStrokesVal))}
+                </span>
+              </button>
+
+              <button
+                onClick={() => recordThrow("B")}
+                disabled={turnThrows.length >= 3}
+                style={{
+                  padding: "10px 8px",
+                  minHeight: 42,
+                  borderRadius: 12,
+                  border: "1px solid rgba(120,255,202,0.38)",
+                  background: "rgba(30,120,90,0.22)",
+                  color: "white",
+                  fontWeight: 1000,
+                  fontSize: 14,
+                  opacity: turnThrows.length >= 3 ? 0.55 : 1,
+                }}
+              >
+                <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
+                  <span style={{ letterSpacing: 0.4 }}>BULL</span>
+                  {keyValueBadge("B", kindToScore("B", missStrokesVal))}
+                </span>
+              </button>
+
               <button
                 onClick={() => recordThrow("D")}
                 disabled={turnThrows.length >= 3}
                 style={{
-                  padding: "14px 12px",
-                  minHeight: 48,
-                  borderRadius: 14,
+                  padding: "10px 8px",
+                  minHeight: 42,
+                  borderRadius: 12,
                   border: "1px solid rgba(255,195,26,0.35)",
                   background: "rgba(255,195,26,0.16)",
                   color: "white",
                   fontWeight: 1000,
-                  fontSize: 16,
+                  fontSize: 14,
                   opacity: turnThrows.length >= 3 ? 0.55 : 1,
                 }}
               >
-                <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 10 }}>
-                  <span style={{ letterSpacing: 0.6 }}>DOUBLE</span>
-                  {keyValueBadge("D", 1)}
+                <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
+                  <span style={{ letterSpacing: 0.4 }}>DOUBLE</span>
+                  {keyValueBadge("D", kindToScore("D", missStrokesVal))}
                 </span>
               </button>
 
@@ -1836,20 +2235,20 @@ return nextScores;
                 onClick={() => recordThrow("T")}
                 disabled={turnThrows.length >= 3}
                 style={{
-                  padding: "14px 12px",
-                  minHeight: 48,
-                  borderRadius: 14,
+                  padding: "10px 8px",
+                  minHeight: 42,
+                  borderRadius: 12,
                   border: "1px solid rgba(120,255,220,0.35)",
                   background: "rgba(40,120,90,0.22)",
                   color: "white",
                   fontWeight: 1000,
-                  fontSize: 16,
+                  fontSize: 14,
                   opacity: turnThrows.length >= 3 ? 0.55 : 1,
                 }}
               >
-                <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 10 }}>
-                  <span style={{ letterSpacing: 0.6 }}>TRIPLE</span>
-                  {keyValueBadge("T", 3)}
+                <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
+                  <span style={{ letterSpacing: 0.4 }}>TRIPLE</span>
+                  {keyValueBadge("T", kindToScore("T", missStrokesVal))}
                 </span>
               </button>
 
@@ -1857,21 +2256,21 @@ return nextScores;
                 onClick={() => recordThrow("S")}
                 disabled={turnThrows.length >= 3}
                 style={{
-                  padding: "14px 12px",
-                  minHeight: 48,
-                  borderRadius: 14,
+                  padding: "10px 8px",
+                  minHeight: 42,
+                  borderRadius: 12,
                   border: "1px solid rgba(70,160,255,0.45)",
                   background: "rgba(20,85,185,0.22)",
                   boxShadow: "0 14px 34px rgba(0,0,0,0.45), 0 0 18px rgba(70,160,255,0.16)",
                   color: "white",
                   fontWeight: 1000,
-                  fontSize: 16,
+                  fontSize: 14,
                   opacity: turnThrows.length >= 3 ? 0.55 : 1,
                 }}
               >
-                <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 10 }}>
-                  <span style={{ letterSpacing: 0.6 }}>SIMPLE</span>
-                  {keyValueBadge("S", 4)}
+                <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
+                  <span style={{ letterSpacing: 0.4 }}>SIMPLE</span>
+                  {keyValueBadge("S", kindToScore("S", missStrokesVal))}
                 </span>
               </button>
 
@@ -1879,20 +2278,20 @@ return nextScores;
                 onClick={() => recordThrow("M")}
                 disabled={turnThrows.length >= 3}
                 style={{
-                  padding: "14px 12px",
-                  minHeight: 48,
-                  borderRadius: 14,
+                  padding: "10px 8px",
+                  minHeight: 42,
+                  borderRadius: 12,
                   border: "1px solid rgba(255,120,120,0.35)",
                   background: "rgba(120,40,40,0.22)",
                   color: "white",
                   fontWeight: 1000,
-                  fontSize: 16,
+                  fontSize: 14,
                   opacity: turnThrows.length >= 3 ? 0.55 : 1,
                 }}
               >
-                <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 10 }}>
-                  <span style={{ letterSpacing: 0.6 }}>MISS</span>
-                  {keyValueBadge("M", 5)}
+                <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
+                  <span style={{ letterSpacing: 0.4 }}>MISS</span>
+                  {keyValueBadge("M", kindToScore("M", missStrokesVal))}
                 </span>
               </button>
             </div>
