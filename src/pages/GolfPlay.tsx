@@ -137,6 +137,8 @@ type PlayerStat = {
 type HistoryEntry = {
   holeIdx: number;
   playerIdx: number;
+  startAt: number;
+  turnPos: number;
   teamTurnPos: number;
   teamCursor: [number, number, number, number];
   isFinished: boolean;
@@ -583,7 +585,7 @@ function GolfHeaderBlock(props: {
                 </div>
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 6 }}>
                   <span style={{ fontSize: 8, lineHeight: 1, letterSpacing: 0.4, color: "rgba(255,255,255,0.72)", fontWeight: 900, textTransform: "lowercase", whiteSpace: "nowrap" }}>%3rd</span>
-                  <span style={{ minWidth: 46, textAlign: "center", padding: "3px 8px", borderRadius: 10, border: "1px solid rgba(255,145,0,.55)", background: "rgba(255,145,0,.14)", color: "#ffb347", fontWeight: 1000, fontSize: 12, boxShadow: "0 10px 18px rgba(0,0,0,.25)" }}>{p3}</span>
+                  <span style={{ minWidth: 46, textAlign: "center", padding: "3px 8px", borderRadius: 10, border: "1px solid rgba(120,255,220,.30)", background: "rgba(120,255,220,.09)", color: "rgba(185,255,233,0.92)", fontWeight: 1000, fontSize: 12, boxShadow: "0 10px 18px rgba(0,0,0,.25)" }}>{p3}</span>
                 </div>
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 6 }}>
                   <span style={{ fontSize: 8, lineHeight: 1, letterSpacing: 0.4, color: "rgba(255,255,255,0.72)", fontWeight: 900, textTransform: "lowercase", whiteSpace: "nowrap" }}>%miss</span>
@@ -881,6 +883,18 @@ const [statsByPlayer, setStatsByPlayer] = useState<PlayerStat[]>(() =>
   // Non-teams
   const [playerIdx, setPlayerIdx] = useState(0);
 
+  // Ordre de départ (joueurs) : on garde un ordre circulaire stable sur toute la partie
+  const [startAt, setStartAt] = useState(0); // index de départ dans la liste roster
+
+
+  const playerOrder = useMemo(() => {
+    const base = Array.from({ length: playersCount }, (_, i) => i);
+    if (!startRandom || playersCount <= 1) return base;
+    const s = ((startAt % playersCount) + playersCount) % playersCount;
+    return base.slice(s).concat(base.slice(0, s));
+  }, [playersCount, startRandom, startAt]);
+  const [turnPos, setTurnPos] = useState(0); // position courante dans l'ordre de jeu (0..playersCount-1)
+
   // Teams : alternance équipe->équipe et rotation des joueurs dans chaque équipe
   const [teamTurnPos, setTeamTurnPos] = useState(0); // index dans activeTeamKeys
   const [teamCursor, setTeamCursor] = useState<[number, number, number, number]>([0, 0, 0, 0]); // cursor par TEAM_KEYS_ALL
@@ -900,9 +914,12 @@ const [statsByPlayer, setStatsByPlayer] = useState<PlayerStat[]>(() =>
       return;
     }
 
-    // Non-teams: randomise juste le 1er joueur (le reste suit l'ordre normal)
+    // Non-teams: ordre circulaire aléatoire (stable sur la partie)
     if (playersCount > 1) {
-      setPlayerIdx(Math.floor(Math.random() * playersCount));
+      const start = Math.floor(Math.random() * playersCount);
+      setStartAt(start);
+      setTurnPos(0);
+      setPlayerIdx(start);
     }
   }, [startRandom, teamsOk, activeTeamKeys.length, playersCount]);
 
@@ -1042,17 +1059,20 @@ const activeStats =
 
   function advanceAfterFinalize() {
   if (!teamsOk) {
-    // next player / next hole
-    const nextPlayer = playerIdx + 1;
-    if (nextPlayer < playersCount) {
-      setPlayerIdx(nextPlayer);
+    // Ordre joueurs: on avance dans playerOrder, et on ne change de trou qu'après que TOUT le monde a joué
+    const nextPos = turnPos + 1;
+    if (nextPos < playersCount) {
+      setTurnPos(nextPos);
+      setPlayerIdx(playerOrder[nextPos] ?? playerIdx);
       setTurnThrows([]);
       return;
     }
+
     const nextHole = holeIdx + 1;
     if (nextHole < holes) {
       setHoleIdx(nextHole);
-      setPlayerIdx(0);
+      setTurnPos(0);
+      setPlayerIdx(playerOrder[0] ?? 0);
       setTurnThrows([]);
     } else {
       setIsFinished(true);
@@ -1187,6 +1207,8 @@ return nextScores;
   setTeamScores(h.prevTeamScores.map((r) => r.slice()));
   setHoleIdx(h.holeIdx);
   setPlayerIdx(h.playerIdx);
+  setStartAt(h.startAt ?? 0);
+  setTurnPos(h.turnPos ?? 0);
   setTeamTurnPos(h.teamTurnPos);
   setTeamCursor(h.teamCursor);
   setIsFinished(h.isFinished);

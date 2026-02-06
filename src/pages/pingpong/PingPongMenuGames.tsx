@@ -4,6 +4,7 @@
 // ✅ Cartes plein largeur + watermark tickers
 // ✅ Header ticker_pingpong_games en haut (remplace le texte)
 // ✅ BackDot à l'extrême gauche -> retour accueil Games
+// ✅ Titres en couleurs thème + glow renforcé
 // ============================================
 
 import React from "react";
@@ -54,7 +55,12 @@ type Props = {
   go: (tab: any, params?: any) => void;
 };
 
-type PingPongModeId = "match_1v1" | "match_2v2" | "match_2v1" | "tournante" | "training";
+type PingPongModeId =
+  | "match_1v1"
+  | "match_2v2"
+  | "match_2v1"
+  | "tournante"
+  | "training";
 
 type ModeDef = {
   id: PingPongModeId;
@@ -94,7 +100,10 @@ export default function PingPongMenuGames({ go }: Props) {
     },
     tournante: {
       title: t("pingpong.modes.tournante.infoTitle", "Tournante"),
-      body: t("pingpong.modes.tournante.infoBody", "Rotation autour de la table, élimination progressive."),
+      body: t(
+        "pingpong.modes.tournante.infoBody",
+        "Rotation autour de la table, élimination progressive."
+      ),
     },
     training: {
       title: t("pingpong.modes.training.infoTitle", "Training"),
@@ -107,13 +116,35 @@ export default function PingPongMenuGames({ go }: Props) {
     go("pingpong_config", { mode });
   }
 
+  // 🎨 Couleurs titres par mode (dynamiques thème)
+  function getModeColor(id: PingPongModeId) {
+    const primary = theme?.primary ?? "rgba(110,180,255,1)";
+    const danger = theme?.danger ?? "rgba(255,90,110,1)";
+    const warning = theme?.warning ?? "rgba(255,180,80,1)";
+    const success = theme?.success ?? "rgba(110,255,170,1)";
+    const purple = (theme as any)?.purple ?? "rgba(190,130,255,1)";
+
+    switch (id) {
+      case "match_1v1":
+        return primary;
+      case "match_2v2":
+        return danger;
+      case "match_2v1":
+        return purple;
+      case "tournante":
+        return warning;
+      case "training":
+        return success;
+      default:
+        return primary;
+    }
+  }
+
   function ModeTicker({ tickerCandidates }: { tickerCandidates: string[] }) {
     const src = getTickerFromCandidates(tickerCandidates);
     if (!src) return null;
 
-    // On affiche le ticker EN ENTIER, mais dans une zone réduite
-    // pour laisser la place au bouton InfoDot à droite.
-        // On affiche le ticker EN ENTIER (texte dans le ticker), mais on le réduit/décale
+    // On affiche le ticker EN ENTIER (texte dans le ticker), mais on le réduit/décale
     // pour (1) laisser une marge à gauche/droite et (2) réserver une zone à droite pour le bouton InfoDot.
     const rightGutter = 74; // réserve pour le cercle + marge
     const sideInset = 10;
@@ -186,13 +217,20 @@ export default function PingPongMenuGames({ go }: Props) {
         />
       </div>
     );
-
   }
 
   const headerSrc = getTickerFromCandidates(["pingpong_games"]);
 
   return (
-    <div style={{ minHeight: "100vh", padding: 16, paddingBottom: 90, background: theme.bg, color: theme.text }}>
+    <div
+      style={{
+        minHeight: "100vh",
+        padding: 16,
+        paddingBottom: 90,
+        background: theme.bg,
+        color: theme.text,
+      }}
+    >
       {/* HEADER ticker_pingpong_games */}
       {headerSrc && (
         <div
@@ -228,13 +266,14 @@ export default function PingPongMenuGames({ go }: Props) {
             style={{
               position: "absolute",
               inset: 0,
-              background: "linear-gradient(90deg, rgba(0,0,0,0.55) 0%, rgba(0,0,0,0.10) 42%, rgba(0,0,0,0.00) 70%)",
+              background:
+                "linear-gradient(90deg, rgba(0,0,0,0.55) 0%, rgba(0,0,0,0.10) 42%, rgba(0,0,0,0.00) 70%)",
             }}
           />
 
           {/* BackDot extrême gauche */}
           <div style={{ position: "absolute", left: 10, top: 10, zIndex: 5 }}>
-            <BackDot onClick={() => go("games")} />
+            <BackDot onClick={() => go("pingpong_home")} />
           </div>
         </div>
       )}
@@ -242,6 +281,7 @@ export default function PingPongMenuGames({ go }: Props) {
       <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
         {MODES.map((m) => {
           const disabled = !m.enabled;
+          const titleColor = getModeColor(m.id);
 
           return (
             <button
@@ -252,7 +292,6 @@ export default function PingPongMenuGames({ go }: Props) {
                 width: "100%",
                 height: 74,
                 padding: 0,
-                paddingRight: 0,
                 textAlign: "left",
                 borderRadius: 16,
                 border: `1px solid ${theme.borderSoft ?? "rgba(255,255,255,0.14)"}`,
@@ -261,31 +300,41 @@ export default function PingPongMenuGames({ go }: Props) {
                 cursor: disabled ? "not-allowed" : "pointer",
                 opacity: disabled ? 0.55 : 1,
                 overflow: "hidden",
-            background: "rgba(0,0,0,0.85)",
+                background: "rgba(0,0,0,0.85)",
               }}
             >
               {/* Ticker complet (texte DANS le ticker) + réduit pour laisser place au i */}
               <ModeTicker tickerCandidates={m.tickerCandidates} />
 
-              {/* Titre minimal (en plus du texte dans le ticker) */}
+              {/* Titre minimal + couleur thème + glow renforcé */}
               <div
                 style={{
                   position: "absolute",
-                  left: 18,
+                  left: 20, // (2) léger ajustement position
                   top: "50%",
                   transform: "translateY(-50%)",
                   zIndex: 2,
                   fontSize: 20,
-                  fontWeight: 900,
+                  fontWeight: 1000,
                   letterSpacing: 1,
-                  color: "rgba(255,255,255,0.95)",
-                  textShadow: "0 2px 10px rgba(0,0,0,0.75)",
+                  color: titleColor,
+                  textShadow:
+                    // (1) glow renforcé
+                    "0 0 10px rgba(0,0,0,0.95), 0 0 18px rgba(0,0,0,0.65), 0 0 22px currentColor, 0 0 34px currentColor",
                 }}
               >
                 {m.label}
               </div>
 
-              <div style={{ position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)", zIndex: 3 }}>
+              <div
+                style={{
+                  position: "absolute",
+                  right: 10,
+                  top: "50%",
+                  transform: "translateY(-50%)",
+                  zIndex: 3,
+                }}
+              >
                 <InfoDot
                   onClick={(e: any) => {
                     try {
@@ -294,7 +343,7 @@ export default function PingPongMenuGames({ go }: Props) {
                     } catch {}
                     setInfoModeId(m.id);
                   }}
-                  glow={theme.primary + "88"}
+                  glow={(theme.primary ?? "rgba(110,180,255,1)") + "88"}
                 />
               </div>
             </button>
@@ -330,9 +379,20 @@ export default function PingPongMenuGames({ go }: Props) {
               boxShadow: "0 24px 70px rgba(0,0,0,0.55)",
             }}
           >
-            <div style={{ fontWeight: 1000, color: theme.primary, fontSize: 18, marginBottom: 8 }}>{INFO[infoModeId].title}</div>
+            <div
+              style={{
+                fontWeight: 1000,
+                color: theme.primary,
+                fontSize: 18,
+                marginBottom: 8,
+              }}
+            >
+              {INFO[infoModeId].title}
+            </div>
 
-            <div style={{ color: theme.textSoft, fontSize: 13, fontWeight: 800, lineHeight: 1.45 }}>{INFO[infoModeId].body}</div>
+            <div style={{ color: theme.textSoft, fontSize: 13, fontWeight: 800, lineHeight: 1.45 }}>
+              {INFO[infoModeId].body}
+            </div>
 
             <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 14 }}>
               <button
