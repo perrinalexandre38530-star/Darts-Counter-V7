@@ -75,6 +75,7 @@ import { computeCricketLegStats, type CricketHit } from "./StatsCricket";
 import type { Store } from "./types";
 import { loadStore } from "./storage";
 import { onlineApi } from "./onlineApi";
+import { EventBuffer } from "./sync/EventBuffer";
 
 // mini-sanitize local (anti data: énormes + perfs)
 function _sanitizeStoreForCloudMini(s: any) {
@@ -1316,6 +1317,43 @@ export async function upsert(rec: SavedMatch): Promise<void> {
     // ✅ PUSH SNAPSHOT TO CLOUD (debounced)
     // ================================
     scheduleCloudSnapshotPush("history:upsert");
+
+    // ================================
+    // ✅ EVENT BUFFER (multi-device sync)
+    // ================================
+    try {
+      const kind = String(rec.kind || safe.kind || "");
+      const sport = kind.includes("petanque")
+        ? "petanque"
+        : kind.includes("baby")
+        ? "babyfoot"
+        : kind.includes("ping")
+        ? "pingpong"
+        : kind.includes("territ")
+        ? "territories"
+        : "darts";
+
+      // On push un payload compact (pas la partie complète)
+      EventBuffer.push({
+        sport,
+        mode: kind || sport,
+        event_type: "MATCH_SAVED",
+        payload: {
+          id: safe.id,
+          matchId: safe.matchId,
+          kind: safe.kind,
+          status: safe.status,
+          winnerId: safe.winnerId,
+          players: safe.players,
+          createdAt: safe.createdAt,
+          updatedAt: safe.updatedAt,
+          summary: safe.summary ?? null,
+        },
+      }).catch(() => {});
+
+      // tentative de sync opportuniste (non bloquante)
+      EventBuffer.syncNow().catch(() => {});
+    } catch {}
   } catch (e) {
     console.warn("[history.upsert] fallback localStorage (IDB indispo?):", e);
 
@@ -1341,6 +1379,40 @@ export async function upsert(rec: SavedMatch): Promise<void> {
       // ✅ PUSH SNAPSHOT TO CLOUD (debounced)
       // ================================
       scheduleCloudSnapshotPush("history:upsert:ls_fallback");
+
+      // ================================
+      // ✅ EVENT BUFFER (multi-device sync)
+      // ================================
+      try {
+        const kind = String(rec.kind || safe.kind || "");
+        const sport = kind.includes("petanque")
+          ? "petanque"
+          : kind.includes("baby")
+          ? "babyfoot"
+          : kind.includes("ping")
+          ? "pingpong"
+          : kind.includes("territ")
+          ? "territories"
+          : "darts";
+
+        EventBuffer.push({
+          sport,
+          mode: kind || sport,
+          event_type: "MATCH_SAVED",
+          payload: {
+            id: safe.id,
+            matchId: safe.matchId,
+            kind: safe.kind,
+            status: safe.status,
+            winnerId: safe.winnerId,
+            players: safe.players,
+            createdAt: safe.createdAt,
+            updatedAt: safe.updatedAt,
+            summary: safe.summary ?? null,
+          },
+        }).catch(() => {});
+        EventBuffer.syncNow().catch(() => {});
+      } catch {}
     } catch {}
   }
 }

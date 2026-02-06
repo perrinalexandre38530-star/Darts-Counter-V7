@@ -13,6 +13,7 @@
 // ============================================================
 
 import { supabase } from "./supabaseClient";
+import { EventBuffer } from "./sync/EventBuffer";
 import type { UserAuth, OnlineProfile, OnlineMatch } from "./onlineTypes";
 
 // ============================================================
@@ -628,6 +629,11 @@ async function restoreSession(): Promise<AuthSession | null> {
 
     const s = await buildAuthSessionFromSupabase();
     saveAuthToLS(s);
+
+    // ✅ opportuniste: flush des événements locaux vers Supabase dès qu'on a un uid
+    try {
+      EventBuffer.syncNow().catch(() => {});
+    } catch {}
     return s;
   } catch (e) {
     console.warn("[onlineApi] restoreSession error", e);

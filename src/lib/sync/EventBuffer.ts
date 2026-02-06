@@ -1,78 +1,93 @@
+// ============================================
 // src/lib/sync/EventBuffer.ts
-// ============================================================
-// EventBuffer — Offline-first event queue for multi-device sync
-//
-// ✅ Goals (Step 1):
-// - Do NOT change existing gameplay/history engine.
-// - Collect facts ("events") locally even when offline.
-// - Sync to Supabase when user is authenticated.
-// - Never lose events; only mark as synced after successful write.
-//
-// Notes:
-// - We keep our own lightweight IndexedDB ("dc-events-v1") to avoid risky migrations.
-// - We use a column-missing fallback (PGRST204) to stay compatible with current DB schema.
-// ============================================================
+// Offline-first event buffer + sync vers Supabase
+// - Stocke en IndexedDB les événements non envoyés
+// - Sync dès que user_id existe et réseau dispo
+// - Tolérant aux variations de schéma (fallback colonnes)
+// ============================================
 
 import { supabase } from "../supabaseClient";
-import { onlineApi } from "../onlineApi";
 import { getDeviceId } from "../device";
 
-export type GameEventV1 = {
-  id: string;            // uuid
-  user_id: string | null;
-  device_id: string;
-  sport: string;         // darts | petanque | babyfoot | pingpong | territories | etc
-  mode: string;          // x01 | cricket | training | ...
-  event_type: string;    // THROW | MATCH_END | TRAINING_RUN | ...
-  payload: any;          // JSON
-  created_at: string;    // ISO
-  synced: boolean;
-  synced_at: string | null;
-};
+export type GameEventSport = "darts" | "petanque" | "babyfoot" | "pingpong" | "territories" | string;
 
-type PushInput = Omit<GameEventV1, "id" | "created_at" | "synced" | "synced_at" | "device_id" | "user_id"> & {
-  // optional overrides
-  user_id?: string | null;
-  device_id?: string;
-};
+export interface GameEvent {
+  id: string;
+  user_id: string; // auth.users.id
+  device_id: string;
+  sport: GameEventSport;
+  mode: string;
+  event_type: string;
+  payload: any;
+  created_at: string; // ISO
+  synced: boolean;
+}
 
 const DB_NAME = "dc-events-v1";
 const DB_VER = 1;
 const STORE = "events";
 
-function openDB(): Promise<IDBDatabase> {
-  return new Promise((resolve, reject) => {
-    const req = indexedDB.open(DB_NAME, DB_VER);
+function canUseWindow(): boolean {
+  return typeof window !== "undefined";
+}
 
+function nowIso(): string {
+  return new Date().toISOString();
+}
+
+function openDb(): Promise<IDBDatabase> {
+  return new Promise((resolve, reject) => {
+    if (!canUseWindow() || !("indexedDB" in window)) {
+      reject(new Error("IndexedDB indisponible"));
+      return;
+    }
+
+    const req = indexedDB.open(DB_NAME, DB_VER);
     req.onupgradeneeded = () => {
       const db = req.result;
-
       if (!db.objectStoreNames.contains(STORE)) {
         const st = db.createObjectStore(STORE, { keyPath: "id" });
-        // index for sync scan
-        st.createIndex("by_synced_createdAt", ["synced", "created_at"], { unique: false });
-        st.createIndex("by_createdAt", "created_at", { unique: false });
+        st.createIndex("by_synced", "synced", { unique: false });
+        st.createIndex("by_created_at", "created_at", { unique: false });
       }
     };
-
     req.onsuccess = () => resolve(req.result);
-    req.onerror = () => reject(req.error);
+    req.onerror = () => reject(req.error || new Error("IDB open failed"));
   });
 }
 
 async function withStore<T>(mode: IDBTransactionMode, fn: (st: IDBObjectStore) => Promise<T>): Promise<T> {
-  const db = await openDB();
+  const db = await openDb();
   return await new Promise<T>((resolve, reject) => {
     const tx = db.transaction(STORE, mode);
     const st = tx.objectStore(STORE);
-    fn(st).then(resolve).catch(reject);
-    tx.onerror = () => reject(tx.error);
+
+    fn(st)
+      .then((out) => {
+        tx.oncomplete = () => {
+          try {
+            db.close();
+          } catch {}
+          resolve(out);
+        };
+        tx.onerror = () => reject(tx.error || new Error("IDB tx error"));
+        tx.onabort = () => reject(tx.error || new Error("IDB tx abort"));
+      })
+      .catch((e) => {
+        try {
+          tx.abort();
+        } catch {}
+        try {
+          db.close();
+        } catch {}
+        reject(e);
+      });
   });
 }
 
-async function putEvent(ev: GameEventV1): Promise<void> {
-  await withStore("readwrite", (st) => {
-    return new Promise<void>((resolve, reject) => {
+async function idbPut(ev: GameEvent): Promise<void> {
+  await withStore("readwrite", async (st) => {
+    await new Promise<void>((resolve, reject) => {
       const req = st.put(ev);
       req.onsuccess = () => resolve();
       req.onerror = () => reject(req.error);
@@ -80,173 +95,247 @@ async function putEvent(ev: GameEventV1): Promise<void> {
   });
 }
 
-async function getUnsynced(limit = 250): Promise<GameEventV1[]> {
-  return await withStore("readonly", (st) => {
-    return new Promise<GameEventV1[]>((resolve, reject) => {
-      const out: GameEventV1[] = [];
-      const ix = st.index("by_synced_createdAt");
-      const range = IDBKeyRange.bound([false, ""], [false, "\uffff"]);
-      const req = ix.openCursor(range, "next");
-
+async function idbListUnsynced(limit = 200): Promise<GameEvent[]> {
+  return await withStore("readonly", async (st) => {
+    const idx = st.index("by_synced");
+    return await new Promise<GameEvent[]>((resolve, reject) => {
+      const out: GameEvent[] = [];
+      const req = idx.openCursor(IDBKeyRange.only(false));
       req.onsuccess = () => {
         const cur = req.result as IDBCursorWithValue | null;
-        if (!cur) return resolve(out);
-        out.push(cur.value as GameEventV1);
-        if (out.length >= limit) return resolve(out);
+        if (!cur) {
+          resolve(out);
+          return;
+        }
+        out.push(cur.value as GameEvent);
+        if (out.length >= limit) {
+          resolve(out);
+          return;
+        }
         cur.continue();
       };
-
       req.onerror = () => reject(req.error);
     });
   });
 }
 
-async function markSynced(ids: string[], syncedAtIso: string): Promise<void> {
+async function idbMarkSynced(ids: string[]): Promise<void> {
   if (!ids.length) return;
-
-  await withStore("readwrite", (st) => {
-    return new Promise<void>((resolve, reject) => {
-      let pending = ids.length;
-      const done = () => {
-        pending -= 1;
-        if (pending <= 0) resolve();
-      };
-
-      for (const id of ids) {
+  await withStore("readwrite", async (st) => {
+    for (const id of ids) {
+      // eslint-disable-next-line no-await-in-loop
+      await new Promise<void>((resolve) => {
         const getReq = st.get(id);
         getReq.onsuccess = () => {
-          const ev = getReq.result as GameEventV1 | undefined;
-          if (!ev) return done();
-          const putReq = st.put({ ...ev, synced: true, synced_at: syncedAtIso });
-          putReq.onsuccess = () => done();
-          putReq.onerror = () => done();
+          const val = getReq.result as GameEvent | undefined;
+          if (!val) {
+            resolve();
+            return;
+          }
+          const putReq = st.put({ ...val, synced: true });
+          putReq.onsuccess = () => resolve();
+          putReq.onerror = () => resolve();
         };
-        getReq.onerror = () => done();
-      }
-    });
+        getReq.onerror = () => resolve();
+      });
+    }
   });
 }
 
-// ============================================================
-// Supabase write with missing-column fallback (PGRST204)
-// ============================================================
-function extractMissingColumn(err: any): string | null {
+function isOnline(): boolean {
+  if (!canUseWindow()) return true;
+  return navigator.onLine !== false;
+}
+
+function authUserId(): string {
   try {
-    const msg = String(err?.message ?? "");
-    const m = msg.match(/Could not find the '([^']+)' column/i);
-    return m?.[1] ?? null;
+    const u = (supabase as any)?.auth?.getUser ? null : null;
+  } catch {}
+  // On évite await ici; on lit le cache localStorage du GoTrue via supabase.
+  // Le vrai user_id est récupéré dans syncNow() via getUser().
+  return "";
+}
+
+async function getAuthedUserId(): Promise<string> {
+  try {
+    const { data, error } = await supabase.auth.getUser();
+    if (error) return "";
+    return String(data?.user?.id || "");
   } catch {
-    return null;
+    return "";
   }
 }
 
-async function upsertWithColumnFallback(table: string, row: Record<string, any>) {
-  let payload = { ...row };
-  // try at most 6 times (avoid infinite loop)
-  for (let i = 0; i < 6; i++) {
-    const { error } = await supabase.from(table).upsert(payload as any, {
-      onConflict: "id",
-      ignoreDuplicates: true,
-    } as any);
+// --------- Schema fallback helpers ---------
 
-    if (!error) return;
+type InsertRow = Record<string, any>;
 
-    const missing = extractMissingColumn(error);
-    if (missing && missing in payload) {
-      delete payload[missing];
-      continue;
+function looksLikeMissingColumnError(err: any): boolean {
+  const msg = String(err?.message || err?.details || "").toLowerCase();
+  // PostgREST PGRST204 (column not found) or similar
+  return msg.includes("pgrst204") || msg.includes("column") && msg.includes("does not exist");
+}
+
+function extractMissingColumn(err: any): string | "" {
+  const msg = String(err?.message || err?.details || "");
+  const m1 = msg.match(/column\s+"?([a-zA-Z0-9_]+)"?\s+of\s+relation/i);
+  if (m1?.[1]) return m1[1];
+  const m2 = msg.match(/Could not find the '([a-zA-Z0-9_]+)' column/i);
+  if (m2?.[1]) return m2[1];
+  return "";
+}
+
+async function insertWithColumnFallback(rows: InsertRow[], debugLabel: string): Promise<{ ok: boolean; error?: any }>
+{
+  // Tentatives: insert direct -> si colonne manquante, on retire la colonne et on retente (max 6 colonnes)
+  let current = rows.map((r) => ({ ...r }));
+  for (let attempt = 0; attempt < 7; attempt++) {
+    const { error } = await supabase.from("stats_events").insert(current as any, { returning: "minimal" } as any);
+    if (!error) return { ok: true };
+
+    if (!looksLikeMissingColumnError(error)) {
+      console.warn(`[EventBuffer] ${debugLabel} insert failed`, error);
+      return { ok: false, error };
     }
 
-    throw error;
+    const col = extractMissingColumn(error);
+    if (!col) {
+      console.warn(`[EventBuffer] ${debugLabel} missing column (unknown)`, error);
+      return { ok: false, error };
+    }
+
+    // remove column from all rows
+    current = current.map((r) => {
+      const c = { ...r };
+      delete c[col];
+      return c;
+    });
+
+    console.warn(`[EventBuffer] ${debugLabel} retry without column '${col}'`);
   }
+
+  return { ok: false, error: new Error("Too many schema fallback attempts") };
 }
 
-// ============================================================
-// Public API
-// ============================================================
 export const EventBuffer = {
-  async push(input: PushInput & { sport: string; mode: string; event_type: string; payload: any }) {
+  /**
+   * Push un évènement en buffer local.
+   * - Ne jette jamais (failsafe)
+   */
+  async push(input: Omit<GameEvent, "id" | "created_at" | "synced" | "device_id" | "user_id"> & {
+    user_id?: string;
+    device_id?: string;
+  }) {
     try {
-      const sess = await onlineApi.getCurrentSession().catch(() => null);
-      const uid = String((sess as any)?.user?.id || "") || null;
+      const id = globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random()}`;
+      const device_id = input.device_id || getDeviceId();
 
-      const ev: GameEventV1 = {
-        id: crypto.randomUUID?.() ?? String(Date.now()) + "-" + String(Math.random()).slice(2),
-        user_id: input.user_id ?? uid,
-        device_id: input.device_id ?? getDeviceId(),
-        sport: String(input.sport || "unknown"),
-        mode: String(input.mode || "unknown"),
-        event_type: String(input.event_type || "unknown"),
+      // user_id: si pas connecté, on bufferise quand même (""), la sync attendra
+      const user_id = String(input.user_id || "");
+
+      const ev: GameEvent = {
+        id,
+        user_id,
+        device_id,
+        sport: input.sport,
+        mode: input.mode,
+        event_type: input.event_type,
         payload: input.payload ?? null,
-        created_at: new Date().toISOString(),
+        created_at: nowIso(),
         synced: false,
-        synced_at: null,
       };
 
-      await putEvent(ev);
+      await idbPut(ev);
 
-      // Optional: lightweight signal for UI/debug
+      // petit signal UI
       try {
-        if (typeof window !== "undefined") {
-          window.dispatchEvent(new Event("dc-eventbuffer-updated"));
-        }
+        if (canUseWindow()) window.dispatchEvent(new Event("dc-events-buffer-updated"));
       } catch {}
     } catch (e) {
-      // Never crash gameplay because of sync layer
-      console.warn("[EventBuffer.push] failed:", e);
+      console.warn("[EventBuffer] push failed", e);
     }
   },
 
-  async listUnsynced(limit = 250) {
-    return await getUnsynced(limit);
+  async listUnsynced(limit = 200): Promise<GameEvent[]> {
+    try {
+      return await idbListUnsynced(limit);
+    } catch {
+      return [];
+    }
   },
 
-  async syncNow(opts?: { max?: number }) {
-    // Only sync if authenticated
-    const sess = await onlineApi.getCurrentSession().catch(() => null);
-    const uid = String((sess as any)?.user?.id || "");
-    if (!uid) return;
+  async markSynced(ids: string[]): Promise<void> {
+    try {
+      await idbMarkSynced(ids);
+    } catch {}
+  },
 
-    const max = Math.max(1, Math.min(1000, opts?.max ?? 250));
-    const batch = await getUnsynced(max);
-    if (!batch.length) return;
+  /**
+   * Envoie les events non syncés vers Supabase (table stats_events)
+   * - tolérant schéma (retire colonnes manquantes et retente)
+   */
+  async syncNow(opts?: { limit?: number }): Promise<void> {
+    try {
+      if (!isOnline()) return;
 
-    const syncedAt = new Date().toISOString();
-    const syncedIds: string[] = [];
+      const uid = await getAuthedUserId();
+      if (!uid) return;
 
-    for (const ev of batch) {
-      // attach user_id late if it was created offline before auth
-      const user_id = ev.user_id || uid;
+      const unsynced = await idbListUnsynced(opts?.limit ?? 200);
+      if (!unsynced.length) return;
 
-      const row: Record<string, any> = {
-        id: ev.id,
-        user_id,
-        device_id: ev.device_id,
-        sport: ev.sport,
-        mode: ev.mode,
-        event_type: ev.event_type,
-        payload: ev.payload,
-        created_at: ev.created_at,
-      };
+      // On complète user_id/device_id si absents
+      const device_id = getDeviceId();
+
+      const rows: InsertRow[] = unsynced.map((e) => ({
+        id: e.id,
+        user_id: e.user_id || uid,
+        device_id: e.device_id || device_id,
+        sport: e.sport,
+        mode: e.mode,
+        event_type: e.event_type,
+        payload: e.payload ?? null,
+        created_at: e.created_at,
+      }));
+
+      const res = await insertWithColumnFallback(rows, "stats_events");
+      if (!res.ok) return;
+
+      await idbMarkSynced(unsynced.map((e) => e.id));
 
       try {
-        // prefer writing into stats_events (already present in your schema)
-        await upsertWithColumnFallback("stats_events", row);
-        syncedIds.push(ev.id);
-      } catch (e) {
-        // stop on first failure: keep ordering; don't mark partially unknown
-        console.warn("[EventBuffer.syncNow] write failed, stop batch:", e);
-        break;
-      }
+        if (canUseWindow()) window.dispatchEvent(new Event("dc-events-synced"));
+      } catch {}
+    } catch (e) {
+      console.warn("[EventBuffer] syncNow failed", e);
     }
+  },
 
-    await markSynced(syncedIds, syncedAt);
+  /**
+   * Installe des triggers de sync :
+   * - retour en ligne
+   * - intervalle
+   */
+  installAutoSync(opts?: { intervalMs?: number }) {
+    if (!canUseWindow()) return () => {};
 
-    // Optional notify
-    try {
-      if (typeof window !== "undefined") {
-        window.dispatchEvent(new Event("dc-eventbuffer-synced"));
-      }
-    } catch {}
+    const onOnline = () => {
+      EventBuffer.syncNow().catch(() => {});
+    };
+    window.addEventListener("online", onOnline);
+
+    const intervalMs = Math.max(15_000, opts?.intervalMs ?? 45_000);
+    const timer = window.setInterval(() => {
+      EventBuffer.syncNow().catch(() => {});
+    }, intervalMs);
+
+    return () => {
+      try {
+        window.removeEventListener("online", onOnline);
+      } catch {}
+      try {
+        window.clearInterval(timer);
+      } catch {}
+    };
   },
 };

@@ -99,6 +99,7 @@ import { warmAggOnce } from "./boot/warmAgg";
 
 // Mode Online
 import { onlineApi } from "./lib/onlineApi";
+import { EventBuffer } from "./lib/sync/EventBuffer";
 import { ensureLocalProfileForOnlineUser } from "./lib/accountBridge";
 
 // ✅ Supabase client
@@ -1163,6 +1164,17 @@ function SWUpdateBanner() {
 function App() {
   useEffect(() => {
     migrateLocalStorageToIndexedDB();
+  }, []);
+
+  // ✅ Multi-device: auto-sync des événements vers Supabase (best-effort)
+  useEffect(() => {
+    const uninstall = EventBuffer.installAutoSync({ intervalMs: 45_000 });
+    EventBuffer.syncNow().catch(() => {});
+    return () => {
+      try {
+        uninstall();
+      } catch {}
+    };
   }, []);
 
   // LOT20: auto-sync training events (best-effort)
