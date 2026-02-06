@@ -5,6 +5,7 @@ import PageHeader from "../components/PageHeader";
 import tickerGolf from "../assets/tickers/ticker_golf.png";
 import tickerGolfEagle from "../assets/tickers/ticker_golf_eagle.png";
 import tickerGolfBirdie from "../assets/tickers/ticker_golf_birdie.png";
+import tickerGolfSimple from "../assets/tickers/ticker_golf_simple.png";
 import tickerGolfPar from "../assets/tickers/ticker_golf_par.png";
 import tickerGolfBogey from "../assets/tickers/ticker_golf_bogey.png";
 import tickerGolfMiss from "../assets/tickers/ticker_golf_miss.png";
@@ -12,7 +13,7 @@ import teamGoldLogo from "../ui_assets/teams/team_gold.png";
 import teamPinkLogo from "../ui_assets/teams/team_pink.png";
 import teamBlueLogo from "../ui_assets/teams/team_blue.png";
 import teamGreenLogo from "../ui_assets/teams/team_green.png";
-import { playSfx } from "../lib/sfx";
+import { playSfx, playGolfIntro, stopGolfIntro, playGolfTickerSound } from "../lib/sfx";
 import { speak } from "../lib/voice";
 import { useLang } from "../contexts/LangContext";
 
@@ -179,6 +180,8 @@ type PlayerStat = {
   d: number;
   t: number;
   s: number;
+  b: number; // bull
+  db: number; // double bull
   turns: number; // nb de tours démarrés
   hit1: number; // réussite à la 1ère flèche (D/T/S)
   hit2: number; // réussite à la 2e flèche
@@ -501,6 +504,13 @@ function GolfHeaderBlock(props: {
 }) {
   const { currentPlayer, currentAvatar, currentTotal, currentStats, liveRanking, isFinished, teamBadge, perfOverlay } = props;
 
+  // ✅ Défilement auto mini-stats : S/D/T/M puis B/DB/T/M (toutes ~6.5s)
+  const [showBullStats, setShowBullStats] = useState(false);
+  useEffect(() => {
+    const id = window.setInterval(() => setShowBullStats((v) => !v), 6500);
+    return () => window.clearInterval(id);
+  }, []);
+
   const bgAvatarUrl = (teamBadge?.label ? getTeamLogoByLabel(teamBadge.label) : null) || currentAvatar || null;
   const playerName = (currentPlayer?.name ?? "—").toUpperCase();
 
@@ -576,24 +586,6 @@ function GolfHeaderBlock(props: {
                 "linear-gradient(90deg, rgba(10,10,12,.98) 0%, rgba(10,10,12,.92) 34%, rgba(10,10,12,.55) 60%, rgba(10,10,12,.18) 76%, rgba(10,10,12,0) 90%)",
             }}
           />
-          {perfOverlay === "SIMPLE" && (
-            <div
-              style={{
-                position: "absolute",
-                inset: 0,
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                fontWeight: 1000,
-                letterSpacing: 2,
-                color: "white",
-                textShadow: "0 6px 18px rgba(0,0,0,0.85)",
-                fontSize: 28,
-              }}
-            >
-              SIMPLE
-            </div>
-          )}
         </div>
       )}
 
@@ -628,13 +620,32 @@ function GolfHeaderBlock(props: {
               </div>
 
               <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 6 }}>
-                <div style={{ borderRadius: 10, padding: "6px 0", textAlign: "center", border: "1px solid rgba(70,160,255,0.45)", background: "rgba(20,85,185,0.22)", boxShadow: "0 0 18px rgba(70,160,255,0.16)", fontWeight: 1000 }}>
-                  <div style={{ fontSize: 11, opacity: 0.92, color: "#bfeaff" }}>S</div>
-                  <div style={{ fontSize: 14, color: "#bfeaff" }}>{currentStats.s}</div>
+                <div
+                  style={{
+                    borderRadius: 10,
+                    padding: "6px 0",
+                    textAlign: "center",
+                    border: showBullStats ? "1px solid rgba(255,120,220,0.45)" : "1px solid rgba(70,160,255,0.45)",
+                    background: showBullStats ? "rgba(160,35,115,0.22)" : "rgba(20,85,185,0.22)",
+                    boxShadow: showBullStats ? "0 0 18px rgba(255,120,220,0.14)" : "0 0 18px rgba(70,160,255,0.16)",
+                    fontWeight: 1000,
+                  }}
+                >
+                  <div style={{ fontSize: 11, opacity: 0.92, color: showBullStats ? "#ffb3ec" : "#bfeaff" }}>{showBullStats ? "B" : "S"}</div>
+                  <div style={{ fontSize: 14, color: showBullStats ? "#ffb3ec" : "#bfeaff" }}>{showBullStats ? currentStats.b : currentStats.s}</div>
                 </div>
-                <div style={{ borderRadius: 10, padding: "6px 0", textAlign: "center", border: "1px solid rgba(255,195,26,0.35)", background: "rgba(255,195,26,0.16)", fontWeight: 1000 }}>
-                  <div style={{ fontSize: 11, opacity: 0.9, color: "#ffcf57" }}>D</div>
-                  <div style={{ fontSize: 14, color: "#ffcf57" }}>{currentStats.d}</div>
+                <div
+                  style={{
+                    borderRadius: 10,
+                    padding: "6px 0",
+                    textAlign: "center",
+                    border: showBullStats ? "1px solid rgba(170,120,255,0.35)" : "1px solid rgba(255,195,26,0.35)",
+                    background: showBullStats ? "rgba(120,70,185,0.18)" : "rgba(255,195,26,0.16)",
+                    fontWeight: 1000,
+                  }}
+                >
+                  <div style={{ fontSize: 11, opacity: 0.9, color: showBullStats ? "#e1ccff" : "#ffcf57" }}>{showBullStats ? "DB" : "D"}</div>
+                  <div style={{ fontSize: 14, color: showBullStats ? "#e1ccff" : "#ffcf57" }}>{showBullStats ? currentStats.db : currentStats.d}</div>
                 </div>
                 <div style={{ borderRadius: 10, padding: "6px 0", textAlign: "center", border: "1px solid rgba(120,255,220,0.35)", background: "rgba(40,120,90,0.22)", fontWeight: 1000 }}>
                   <div style={{ fontSize: 11, opacity: 0.9, color: "#b9ffe9" }}>T</div>
@@ -794,6 +805,19 @@ export default function GolfPlay(props: Props) {
   const ttsLang = useMemo(() => langToLocale(lang), [lang]);
   const cfg: GolfConfig = (routeParams?.config ?? {}) as GolfConfig;
 
+
+  // 🎵 Musique d'intro (à l'entrée du jeu)
+  useEffect(() => {
+    try {
+      playGolfIntro(0.45);
+      return () => {
+        try { stopGolfIntro(); } catch {}
+      };
+    } catch {
+      return;
+    }
+  }, []);
+
   const roundsMode =
   (cfg as any).scoringMode === "rounds" ||
   (cfg as any).display === "rounds" ||
@@ -950,7 +974,7 @@ const [teamScores, setTeamScores] = useState<(number | null)[][]>(() => {
 });
 
 const [statsByPlayer, setStatsByPlayer] = useState<PlayerStat[]>(() =>
-    Array.from({ length: playersCount }, () => ({ darts: 0, miss: 0, d: 0, t: 0, s: 0, turns: 0, hit1: 0, hit2: 0, hit3: 0 }))
+    Array.from({ length: playersCount }, () => ({ darts: 0, miss: 0, d: 0, t: 0, s: 0, b: 0, db: 0, turns: 0, hit1: 0, hit2: 0, hit3: 0 }))
   );
 
   const [holeIdx, setHoleIdx] = useState(0);
@@ -1017,13 +1041,44 @@ const [statsByPlayer, setStatsByPlayer] = useState<PlayerStat[]>(() =>
 
   const lastActorNameRef = useRef<string>("");
   const ttsTimerRef = useRef<number | null>(null);
+  const lastTtsVariantRef = useRef<number>(-1);
   const lastHoleIdxRef = useRef<number>(-1);
   const initialTurnSpokenRef = useRef(false);
+
+  // 🔊 Petit "blip" arcade à l'apparition du ticker perf (sans asset)
+  function playTickerBlip() {
+    try {
+      if (typeof window === "undefined") return;
+      const AC: any = (window as any).AudioContext || (window as any).webkitAudioContext;
+      if (!AC) return;
+      const ctx = new AC();
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = "square";
+      osc.frequency.value = 880;
+      gain.gain.value = 0.0001;
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      const t0 = ctx.currentTime;
+      osc.start(t0);
+      gain.gain.exponentialRampToValueAtTime(0.18, t0 + 0.01);
+      gain.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.08);
+      osc.stop(t0 + 0.085);
+      osc.onended = () => {
+        try { ctx.close(); } catch {}
+      };
+    } catch {
+      // ignore
+    }
+  }
 
   function triggerPerf(perf: PerfKey) {
     try {
       if (perfTimerRef.current) window.clearTimeout(perfTimerRef.current);
       setPerfOverlay(perf);
+      // 🔊 SFX + petit blip arcade + bruitage ticker
+      playTickerBlip();
+      try { playGolfTickerSound(perf as any); } catch {}
       // 🔊 Son cohérent
       if (perf === "EAGLE") playSfx("golfEagle");
       else if (perf === "BIRDIE") playSfx("golfBirdie");
@@ -1043,6 +1098,53 @@ const [statsByPlayer, setStatsByPlayer] = useState<PlayerStat[]>(() =>
     if (k === "T") return "BOGEY";
     if (k === "S") return "SIMPLE";
     return "MISS";
+  }
+
+  function pickVariant(max: number) {
+    if (max <= 1) return 0;
+    let i = Math.floor(Math.random() * max);
+    if (i === lastTtsVariantRef.current) i = (i + 1) % max;
+    lastTtsVariantRef.current = i;
+    return i;
+  }
+
+  function buildCombinedTts(opts: { actor?: string; perf?: PerfKey; nextPlayer?: string; isNewHole?: boolean }) {
+    const actor = (opts.actor ?? "").trim();
+    const next = (opts.nextPlayer ?? "").trim();
+    const perf = opts.perf ?? null;
+
+    if (lang === "fr") {
+      const perfTxt = perf ? perfLabelFR(perf) : "";
+      const isHole = !!opts.isNewHole;
+
+      const templates = [
+        (a: string, p: string, n: string) => `${a} a réalisé ${p}. ${isHole ? `Nouveau trou. ` : ""}${n}, à toi de jouer.`,
+        (a: string, p: string, n: string) => `${p}, pour ${a}. ${isHole ? `On passe au trou suivant. ` : ""}${n}, à toi.`,
+        (a: string, p: string, n: string) => `Action validée : ${a}, ${p}. ${isHole ? `Nouveau trou. ` : ""}${n}, c'est à toi.`,
+      ];
+
+      if (actor && perfTxt && next) {
+        const idx = pickVariant(templates.length);
+        return templates[idx](actor, perfTxt, next);
+      }
+      if (next) {
+        return `${isHole ? "Nouveau trou. " : ""}${next}, à toi de jouer.`;
+      }
+      return "";
+    }
+
+    // EN + fallback (simple)
+    const perfTxt = perf ? String(perf).toLowerCase() : "";
+    const templatesEn = [
+      (a: string, p: string, n: string) => `${a} scored ${p}. ${opts.isNewHole ? "New hole. " : ""}${n}, your turn.`,
+      (a: string, p: string, n: string) => `${p} for ${a}. ${opts.isNewHole ? "Next hole. " : ""}${n}, you're up.`,
+    ];
+    if (actor && perfTxt && next) {
+      const idx = pickVariant(templatesEn.length);
+      return templatesEn[idx](actor, perfTxt, next);
+    }
+    if (next) return `${opts.isNewHole ? "New hole. " : ""}${next}, your turn.`;
+    return "";
   }
 
   // Ticker "parcours" : aléatoire sans répétition sur une même partie, change à chaque trou
@@ -1200,8 +1302,8 @@ const activeTotal = !isFinished ? (teamsOk && activeTeamKey ? (teamTotals[teamIn
 const activeStats =
   !isFinished
     ? statsByPlayer[activePlayerIdx] ??
-      { darts: 0, miss: 0, d: 0, t: 0, s: 0, turns: 0, hit1: 0, hit2: 0, hit3: 0 }
-    : { darts: 0, miss: 0, d: 0, t: 0, s: 0, turns: 0, hit1: 0, hit2: 0, hit3: 0 };
+      { darts: 0, miss: 0, d: 0, t: 0, s: 0, b: 0, db: 0, turns: 0, hit1: 0, hit2: 0, hit3: 0 }
+    : { darts: 0, miss: 0, d: 0, t: 0, s: 0, b: 0, db: 0, turns: 0, hit1: 0, hit2: 0, hit3: 0 };
 
 
   const target = holeTargets[holeIdx] ?? (holeIdx + 1);
@@ -1238,17 +1340,6 @@ const activeStats =
   if (validatedPerf) {
     triggerPerf(validatedPerf);
     lastPerfRef.current = null;
-
-    // ✅ TTS: commentaire sur l'action validée (après le SFX/ticker)
-    if (ttsTimerRef.current) window.clearTimeout(ttsTimerRef.current);
-    const actor = (lastActorNameRef.current || "").trim();
-    if (actor) {
-      const text =
-        lang === "fr"
-          ? `${actor} a réalisé ${perfLabelFR(validatedPerf)}.`
-          : `${actor} ${validatedPerf}.`;
-      ttsTimerRef.current = window.setTimeout(() => speak(text, { lang: ttsLang }), 650);
-    }
   }
   if (!teamsOk) {
     // Ordre joueurs: on avance dans playerOrder, et on ne change de trou qu'après que TOUT le monde a joué
@@ -1259,20 +1350,16 @@ const activeStats =
       setPlayerIdx(nextPlayerIndex);
       setTurnThrows([]);
 
-      // ✅ TTS: annonce du prochain joueur
+      // ✅ TTS: après SFX/ticker, commentaire action précédente + annonce du joueur suivant (variantes)
       try {
+        if (ttsTimerRef.current) window.clearTimeout(ttsTimerRef.current);
         const p = players[nextPlayerIndex];
-        const name = safeStr(p?.name ?? p?.label ?? p?.pseudo ?? "");
-        if (name) {
-          const delay = validatedPerf ? 1450 : 150;
-          window.setTimeout(
-            () =>
-              speak(
-                lang === "fr" ? `${name}, à toi de jouer.` : `${name}, your turn.`,
-                { lang: ttsLang }
-              ),
-            delay
-          );
+        const nextName = safeStr(p?.name ?? p?.label ?? p?.pseudo ?? "");
+        const actor = (lastActorNameRef.current || "").trim();
+        const text = buildCombinedTts({ actor, perf: validatedPerf ?? undefined, nextPlayer: nextName, isNewHole: false });
+        if (text) {
+          const delay = validatedPerf ? 950 : 150;
+          ttsTimerRef.current = window.setTimeout(() => speak(text, { lang: ttsLang }), delay);
         }
       } catch {
         // ignore
@@ -1289,20 +1376,16 @@ const activeStats =
       setPlayerIdx(nextPlayerIndex);
       setTurnThrows([]);
 
-      // ✅ TTS: annonce du prochain joueur (début nouveau trou)
+      // ✅ TTS: après SFX/ticker, commentaire action précédente + annonce du joueur suivant (nouveau trou)
       try {
+        if (ttsTimerRef.current) window.clearTimeout(ttsTimerRef.current);
         const p = players[nextPlayerIndex];
-        const name = safeStr(p?.name ?? p?.label ?? p?.pseudo ?? "");
-        if (name) {
-          const delay = validatedPerf ? 1450 : 150;
-          window.setTimeout(
-            () =>
-              speak(
-                lang === "fr" ? `Nouveau trou. ${name}, à toi de jouer.` : `New hole. ${name}, your turn.`,
-                { lang: ttsLang }
-              ),
-            delay
-          );
+        const nextName = safeStr(p?.name ?? p?.label ?? p?.pseudo ?? "");
+        const actor = (lastActorNameRef.current || "").trim();
+        const text = buildCombinedTts({ actor, perf: validatedPerf ?? undefined, nextPlayer: nextName, isNewHole: true });
+        if (text) {
+          const delay = validatedPerf ? 950 : 150;
+          ttsTimerRef.current = window.setTimeout(() => speak(text, { lang: ttsLang }), delay);
         }
       } catch {
         // ignore
@@ -1398,14 +1481,25 @@ const activeStats =
 
       // update stats
       const nextStats = prevStats.map((s) => ({ ...s }));
-      const st = nextStats[activePlayerIdx] ?? { darts: 0, miss: 0, d: 0, t: 0, s: 0, turns: 0, hit1: 0, hit2: 0, hit3: 0 };
+      const st = nextStats[activePlayerIdx] ?? { darts: 0, miss: 0, d: 0, t: 0, s: 0, b: 0, db: 0, turns: 0, hit1: 0, hit2: 0, hit3: 0 };
       const dartIdx = prevTurn.length; // 0..2
-      if (dartIdx === 0) st.turns += 1;
+      if (dartIdx === 0) {
+        st.turns += 1;
+        // ✅ mémorise l'acteur (utile si le tour se termine en 3 flèches sans stop)
+        try {
+          const p = players[playerIdx];
+          lastActorNameRef.current = safeStr(p?.name ?? p?.label ?? p?.pseudo ?? "");
+        } catch {
+          // ignore
+        }
+      }
       st.darts += 1;
       if (kind === "M") st.miss += 1;
       if (kind === "D") st.d += 1;
       if (kind === "T") st.t += 1;
       if (kind === "S") st.s += 1;
+      if (kind === "B") st.b += 1;
+      if (kind === "DB") st.db += 1;
       // réussite sur la flèche (pas un miss)
       if (kind !== "M") {
         if (dartIdx === 0) st.hit1 += 1;
@@ -1733,10 +1827,10 @@ return nextScores;
         <span
           style={{
             ...base,
-            border: "1px solid rgba(125,255,202,0.6)",
-            background: "rgba(125,255,202,0.18)",
-            color: "#7dffca",
-            boxShadow: "0 0 18px rgba(125,255,202,0.18), 0 10px 22px rgba(0,0,0,.35)",
+            border: "1px solid rgba(255,120,220,0.65)",
+            background: "rgba(255,120,220,0.18)",
+            color: "#ff9fe6",
+            boxShadow: "0 0 18px rgba(255,120,220,0.18), 0 10px 22px rgba(0,0,0,.35)",
           }}
         >
           {value}
@@ -1828,7 +1922,7 @@ return nextScores;
                     : perfOverlay === "BOGEY"
                        ? tickerGolfBogey
                        : perfOverlay === "SIMPLE"
-                         ? tickerGolf
+                         ? tickerGolfSimple
                          : tickerGolfMiss
             }
             alt={perfOverlay}
@@ -2179,7 +2273,7 @@ return nextScores;
                   background: "rgba(120,60,170,0.22)",
                   color: "white",
                   fontWeight: 1000,
-                  fontSize: 14,
+                  fontSize: 12,
                   opacity: turnThrows.length >= 3 ? 0.55 : 1,
                 }}
               >
@@ -2196,11 +2290,11 @@ return nextScores;
                   padding: "10px 8px",
                   minHeight: 42,
                   borderRadius: 12,
-                  border: "1px solid rgba(120,255,202,0.38)",
-                  background: "rgba(30,120,90,0.22)",
+                  border: "1px solid rgba(255,120,220,0.45)",
+                  background: "rgba(160,35,115,0.22)",
                   color: "white",
                   fontWeight: 1000,
-                  fontSize: 14,
+                  fontSize: 12,
                   opacity: turnThrows.length >= 3 ? 0.55 : 1,
                 }}
               >
@@ -2221,7 +2315,7 @@ return nextScores;
                   background: "rgba(255,195,26,0.16)",
                   color: "white",
                   fontWeight: 1000,
-                  fontSize: 14,
+                  fontSize: 12,
                   opacity: turnThrows.length >= 3 ? 0.55 : 1,
                 }}
               >
@@ -2242,7 +2336,7 @@ return nextScores;
                   background: "rgba(40,120,90,0.22)",
                   color: "white",
                   fontWeight: 1000,
-                  fontSize: 14,
+                  fontSize: 12,
                   opacity: turnThrows.length >= 3 ? 0.55 : 1,
                 }}
               >
@@ -2264,7 +2358,7 @@ return nextScores;
                   boxShadow: "0 14px 34px rgba(0,0,0,0.45), 0 0 18px rgba(70,160,255,0.16)",
                   color: "white",
                   fontWeight: 1000,
-                  fontSize: 14,
+                  fontSize: 12,
                   opacity: turnThrows.length >= 3 ? 0.55 : 1,
                 }}
               >
@@ -2285,7 +2379,7 @@ return nextScores;
                   background: "rgba(120,40,40,0.22)",
                   color: "white",
                   fontWeight: 1000,
-                  fontSize: 14,
+                  fontSize: 12,
                   opacity: turnThrows.length >= 3 ? 0.55 : 1,
                 }}
               >

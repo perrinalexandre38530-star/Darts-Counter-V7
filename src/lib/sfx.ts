@@ -23,6 +23,13 @@ import golfBirdieUrl from "../assets/sounds/golf_birdie.mp3";
 import golfEagleUrl from "../assets/sounds/golf_eagle.mp3";
 import golfMissUrl from "../assets/sounds/golf_miss.mp3";
 import golfSimpleUrl from "../assets/sounds/golf_simple.mp3";
+import golfIntroUrl from "../assets/sounds/golf_intro.mp3";
+import golfTickerEagleUrl from "../assets/sounds/golf_ticker_eagle.wav";
+import golfTickerBirdieUrl from "../assets/sounds/golf_ticker_birdie.wav";
+import golfTickerParUrl from "../assets/sounds/golf_ticker_par.wav";
+import golfTickerBogeyUrl from "../assets/sounds/golf_ticker_bogey.wav";
+import golfTickerSimpleUrl from "../assets/sounds/golf_ticker_simple.wav";
+import golfTickerMissUrl from "../assets/sounds/golf_ticker_miss.wav";
 
 
 // 🔊 URLs publiques (public/sounds) + URLs assets (import)
@@ -52,6 +59,7 @@ const SFX = {
   golfBogey: golfBogeyUrl,
   golfMiss: golfMissUrl,
   golfSimple: golfSimpleUrl,
+  golfIntro: golfIntroUrl,
 } as const;
 
 type SfxKey = keyof typeof SFX;
@@ -172,6 +180,59 @@ function playSafeUrl(url?: string, vol = 0.9) {
 /** Joue un son par clé */
 export function playSfx(key: SfxKey) {
   playSafeUrl(SFX[key]);
+}
+
+// 🏌️ Golf — musique d'intro (arrivée dans GolfPlay)
+let _golfIntroAudio: HTMLAudioElement | null = null;
+export function playGolfIntro(volume: number = 0.5) {
+  try {
+    // stop previous
+    if (_golfIntroAudio) {
+      try { _golfIntroAudio.pause(); } catch {}
+      _golfIntroAudio = null;
+    }
+    if (!SFX_ENABLED) return;
+    const a = new Audio(SFX.golfIntro);
+    a.preload = "none";
+    (a as any).playsInline = true;
+    a.volume = Math.max(0, Math.min(1, volume));
+    _golfIntroAudio = a;
+    const p = a.play();
+    if (p && typeof (p as any).catch === "function") p.catch(() => {});
+  } catch {
+    // noop
+  }
+}
+
+export function stopGolfIntro() {
+  try {
+    if (_golfIntroAudio) {
+      try { _golfIntroAudio.pause(); } catch {}
+      _golfIntroAudio = null;
+    }
+  } catch {}
+}
+
+// 🏌️ Golf — bruitages "arcade" propres aux tickers (en plus des SFX)
+const GOLF_TICKER_SOUNDS: Record<string, string> = {
+  EAGLE: golfTickerEagleUrl,
+  BIRDIE: golfTickerBirdieUrl,
+  PAR: golfTickerParUrl,
+  BOGEY: golfTickerBogeyUrl,
+  SIMPLE: golfTickerSimpleUrl,
+  MISS: golfTickerMissUrl,
+};
+
+export function playGolfTickerSound(perf: keyof typeof GOLF_TICKER_SOUNDS, volume: number = 0.95) {
+  try {
+    if (!SFX_ENABLED) return;
+    const url = GOLF_TICKER_SOUNDS[perf];
+    if (!url) return;
+    // utilise le même système SAFE
+    playSafeUrl(url, Math.max(0, Math.min(1, volume)));
+  } catch {
+    // noop
+  }
 }
 
 /** Son d'impact standard (TOUS MODES) */
