@@ -30,6 +30,8 @@ export default function StatsTerritories(props: any) {
   const { t } = useLang();
   useTheme();
 
+  const embedded = Boolean(props?.embedded);
+
   const [items, setItems] = React.useState<TerritoriesMatch[]>(() => loadTerritoriesHistory());
 
   function goBack() {
@@ -60,14 +62,41 @@ export default function StatsTerritories(props: any) {
   }, [items]);
 
   return (
-    <div className="page">
-      <PageHeader
-        title="STATS — TERRITORIES"
-        left={<BackDot onClick={goBack} />}
-        right={<InfoDot title="Stats TERRITORIES" content={INFO_TEXT} />}
-      />
+    <div className={embedded ? undefined : "page"}>
+      {!embedded && (
+        <PageHeader
+          title="STATS — TERRITORIES"
+          left={<BackDot onClick={goBack} />}
+          right={<InfoDot title="Stats TERRITORIES" content={INFO_TEXT} />}
+        />
+      )}
 
-      <div style={{ padding: 12, display: "flex", flexDirection: "column", gap: 12 }}>
+      {embedded && (
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+          <div style={{ fontWeight: 1000, letterSpacing: 0.4 }}>TERRITORIES</div>
+          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            <button
+              onClick={refresh}
+              style={{
+                borderRadius: 999,
+                border: "1px solid rgba(255,255,255,0.14)",
+                background: "rgba(255,255,255,0.06)",
+                padding: "6px 10px",
+                color: "#fff",
+                fontWeight: 950,
+                cursor: "pointer",
+                fontSize: 11,
+              }}
+            >
+              {t("generic.refresh", "Rafraîchir")}
+            </button>
+
+            <InfoDot title="Stats TERRITORIES" content={INFO_TEXT} />
+          </div>
+        </div>
+      )}
+
+      <div style={{ padding: embedded ? 0 : 12, display: "flex", flexDirection: "column", gap: 12, marginTop: embedded ? 10 : 0 }}>
         <Section title={t("stats.overview", "Vue d'ensemble")}>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 10 }}>
             <div

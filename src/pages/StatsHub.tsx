@@ -50,6 +50,9 @@ const StatsDartSetsSection = React.lazy(
   () => import("../components/StatsDartSetsSection")
 );
 
+// ✅ TERRITORIES (stats locales)
+const StatsTerritoriesTab = React.lazy(() => import("./StatsTerritories"));
+
 import {
   loadNormalizedHistory,
   type NormalizedMatch,
@@ -286,7 +289,17 @@ type Props = {
 
   // Navigation depuis History / X01PlayV3
   initialPlayerId?: string | null;
-  initialStatsSubTab?: "dashboard" | "x01_multi";
+  initialStatsSubTab?:
+    | "dashboard"
+    | "dartsets"
+    | "x01_multi"
+    | "x01_compare"
+    | "cricket"
+    | "shanghai"
+    | "killer"
+    | "territories"
+    | "leaderboards"
+    | "history";
 
   // Nouveau : mode d’ouverture
   mode?: StatsMode; // "active" = joueur actif / "locals" = profils locaux
@@ -3681,6 +3694,7 @@ const modeDefs = React.useMemo(
     { key: "cricket", label: "Cricket" },
     { key: "shanghai", label: "Shanghai" }, // ✅ NEW
     { key: "killer", label: "Killer" },
+    { key: "territories", label: "Territories" },
     { key: "leaderboards", label: "Classements" },
     { key: "history", label: "Historique" },
   ],
@@ -4644,6 +4658,10 @@ return (
                         const pid = selectedPlayer.id;
                         const q: any = quick as any;
 
+                        // ✅ Source "HOME-like" : on préfère la moyenne déjà calculée
+                        // par le dashboard global (même logique que la Home via statsBridge).
+                        const dashAvg3 = Number((dashboardToShow as any)?.avg3Overall);
+
                         const pick = (...vals: any[]) => {
                           for (const v of vals) {
                             const n = Number(v);
@@ -4653,6 +4671,7 @@ return (
                         };
 
                         const avg3d = pick(
+                          dashAvg3,
                           q?.byId?.[pid]?.avg3d,
                           q?.byId?.[pid]?.avg3,
                           q?.[pid]?.avg3d,
@@ -4661,8 +4680,9 @@ return (
                           q?.avg3
                         );
 
-                        const avg3dForRing =
-                          Number.isFinite(avg3d) && avg3d > 0 ? avg3d : 20;
+                        // ✅ IMPORTANT : même rendu que sur HOME.
+                        // Pas de fallback arbitraire : si avg3=0, on affiche 0 étoile.
+                        const avg3dForRing = Number.isFinite(avg3d) ? Math.max(0, avg3d) : 0;
 
                         const AVATAR = 110;
                         const BORDER = 10;
@@ -5109,6 +5129,14 @@ return (
                     }
                     title="KILLER"
                   />
+                </React.Suspense>
+              </div>
+            )}
+
+            {currentMode === "territories" && (
+              <div style={card}>
+                <React.Suspense fallback={<LazyFallback label="Chargement Territories…" />}>
+                  <StatsTerritoriesTab embedded />
                 </React.Suspense>
               </div>
             )}

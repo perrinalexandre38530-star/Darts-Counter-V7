@@ -100,6 +100,7 @@ import { warmAggOnce } from "./boot/warmAgg";
 // Mode Online
 import { onlineApi } from "./lib/onlineApi";
 import { EventBuffer } from "./lib/sync/EventBuffer";
+import { importHistoryFromCloud } from "./lib/sync/EventImport";
 import { ensureLocalProfileForOnlineUser } from "./lib/accountBridge";
 
 // ✅ Supabase client
@@ -1170,6 +1171,9 @@ function App() {
   useEffect(() => {
     const uninstall = EventBuffer.installAutoSync({ intervalMs: 45_000 });
     EventBuffer.syncNow().catch(() => {});
+
+    // ✅ Multi-device: pull cloud -> history local (best-effort)
+    importHistoryFromCloud({ limit: 400 }).catch(() => {});
     return () => {
       try {
         uninstall();

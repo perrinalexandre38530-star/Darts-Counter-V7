@@ -5,6 +5,11 @@
 // + Cache/pool Audio + unlock autoplay
 // + ✅ UI clicks (click / soft / confirm) servis depuis /public/sounds
 // ✅ SAFE: aucun Audio créé au boot (lazy), play() ne doit JAMAIS crash l’UI
+//
+// 🏌️ Golf:
+// - Intro: src/assets/sounds/golf_intro.mp3
+// - Variantes perfs: golf_{perf}_{n}.mp3 (tolère quelques noms "bizarres" ex: golf_eagle_3..mp3)
+// - Bruitages tickers: golf_ticker_*.wav
 // ============================================
 
 let SFX_ENABLED = true;
@@ -12,25 +17,24 @@ let SFX_ENABLED = true;
 export function setSfxEnabled(v: boolean) {
   SFX_ENABLED = !!v;
 }
+export function isSfxEnabled() {
+  return SFX_ENABLED;
+}
 
 // ✅ Shanghai: fichiers DANS src/assets/sounds/
 import shanghaiIntroUrl from "../assets/sounds/shanghai.mp3";
 import shanghaiMissUrl from "../assets/sounds/shanghai-miss.mp3";
-// 🏌️ Golf: fichiers DANS src/assets/sounds/
-import golfBogeyUrl from "../assets/sounds/golf_bogey.mp3";
-import golfParUrl from "../assets/sounds/golf_par.mp3";
-import golfBirdieUrl from "../assets/sounds/golf_birdie.mp3";
-import golfEagleUrl from "../assets/sounds/golf_eagle.mp3";
-import golfMissUrl from "../assets/sounds/golf_miss.mp3";
-import golfSimpleUrl from "../assets/sounds/golf_simple.mp3";
+
+// 🏌️ Golf — intro (fichier présent dans ton repo)
 import golfIntroUrl from "../assets/sounds/golf_intro.mp3";
+
+// 🏌️ Golf — bruitages "arcade" tickers
 import golfTickerEagleUrl from "../assets/sounds/golf_ticker_eagle.wav";
 import golfTickerBirdieUrl from "../assets/sounds/golf_ticker_birdie.wav";
 import golfTickerParUrl from "../assets/sounds/golf_ticker_par.wav";
 import golfTickerBogeyUrl from "../assets/sounds/golf_ticker_bogey.wav";
 import golfTickerSimpleUrl from "../assets/sounds/golf_ticker_simple.wav";
 import golfTickerMissUrl from "../assets/sounds/golf_ticker_miss.wav";
-
 
 // 🔊 URLs publiques (public/sounds) + URLs assets (import)
 const SFX = {
@@ -53,12 +57,6 @@ const SFX = {
   shanghaiMiss: shanghaiMissUrl,
 
   // 🏌️ Golf (assets import)
-  golfEagle: golfEagleUrl,
-  golfBirdie: golfBirdieUrl,
-  golfPar: golfParUrl,
-  golfBogey: golfBogeyUrl,
-  golfMiss: golfMissUrl,
-  golfSimple: golfSimpleUrl,
   golfIntro: golfIntroUrl,
 } as const;
 
@@ -66,21 +64,13 @@ type SfxKey = keyof typeof SFX;
 
 /**
  * ✅ Petit pool Audio pour éviter le lag et permettre chevauchements légers.
- * - On garde plusieurs instances par son
- * - On recycle la première qui est libre, sinon on clone
- *
- * ✅ SAFE MOBILE:
- * - Aucun Audio créé tant qu’on n’a pas joué un son (donc pas au boot)
- * - Tous les accès Audio sont try/catch
+ * ✅ SAFE MOBILE: lazy + try/catch partout
  */
 const POOL_MAX_PER_URL = 4;
 const pool = new Map<string, HTMLAudioElement[]>();
 
 function makeAudio(url: string) {
-  // ⚠️ lazy instanciation -> appelée seulement au moment d’un playSafeUrl()
   const a = new Audio(url);
-  // ✅ évite des downloads agressifs au boot (il n’y a pas de création au boot de toute façon)
-  // mais sur certains navigateurs ça aide à rester “soft”.
   a.preload = "none";
   (a as any).playsInline = true;
   a.volume = 0.9;
@@ -94,41 +84,32 @@ function getFromPool(url: string) {
     pool.set(url, list);
   }
 
-  // 1) si une instance est disponible (paused/ended), on la reprend
   for (const a of list) {
     try {
       if (a.paused || a.ended) return a;
-    } catch {
-      // si un élément est “cassé”, on l’ignore
-    }
+    } catch {}
   }
 
-  // 2) sinon on clone si on peut
   if (list.length < POOL_MAX_PER_URL) {
     try {
       const a = makeAudio(url);
       list.push(a);
       return a;
-    } catch {
-      // ignore
-    }
+    } catch {}
   }
 
-  // 3) sinon on recycle la première (fallback)
   return list[0];
 }
 
 /**
  * ✅ IMPORTANT (autoplay mobile):
  * appelle ça sur un vrai geste utilisateur (clic "LANCER LA PARTIE").
- * Ça "débloque" souvent l'audio HTML5.
  */
 export async function unlockAudio() {
   if (!SFX_ENABLED) return;
 
   try {
-    // On tente un play ultra court en muet, puis pause.
-    const url = SFX.hit; // un son garanti en public
+    const url = SFX.hit;
     const a = getFromPool(url);
     if (!a) return;
 
@@ -138,20 +119,15 @@ export async function unlockAudio() {
     } catch {}
 
     const p = a.play();
-    if (p && typeof (p as any).then === "function") {
-      await p;
-    }
+    if (p && typeof (p as any).then === "function") await p;
 
     try {
       a.pause();
       a.currentTime = 0;
       a.muted = false;
-      // après unlock, on peut laisser preload auto pour réduire le lag sur les plays suivants
       a.preload = "auto";
     } catch {}
-  } catch {
-    // Si le navigateur refuse encore, pas grave : ça se débloquera au 1er vrai play après geste.
-  }
+  } catch {}
 }
 
 function playSafeUrl(url?: string, vol = 0.9) {
@@ -164,17 +140,12 @@ function playSafeUrl(url?: string, vol = 0.9) {
     try {
       a.volume = vol;
       a.currentTime = 0;
-      // dès qu’on commence à utiliser, on peut autoriser le préchargement
       a.preload = "auto";
     } catch {}
 
     const p = a.play();
-    if (p && typeof (p as any).catch === "function") {
-      p.catch(() => {});
-    }
-  } catch {
-    // ✅ ne jamais casser l’app
-  }
+    if (p && typeof (p as any).catch === "function") p.catch(() => {});
+  } catch {}
 }
 
 /** Joue un son par clé */
@@ -186,22 +157,27 @@ export function playSfx(key: SfxKey) {
 let _golfIntroAudio: HTMLAudioElement | null = null;
 export function playGolfIntro(volume: number = 0.5) {
   try {
-    // stop previous
     if (_golfIntroAudio) {
       try { _golfIntroAudio.pause(); } catch {}
       _golfIntroAudio = null;
     }
     if (!SFX_ENABLED) return;
-    const a = new Audio(SFX.golfIntro);
-    a.preload = "none";
-    (a as any).playsInline = true;
-    a.volume = Math.max(0, Math.min(1, volume));
+
+    const a = getFromPool(SFX.golfIntro);
+    if (!a) return;
+
+    try {
+      a.preload = "auto";
+      (a as any).playsInline = true;
+      a.volume = Math.max(0, Math.min(1, volume));
+      a.currentTime = 0;
+    } catch {}
+
     _golfIntroAudio = a;
+
     const p = a.play();
     if (p && typeof (p as any).catch === "function") p.catch(() => {});
-  } catch {
-    // noop
-  }
+  } catch {}
 }
 
 export function stopGolfIntro() {
@@ -214,25 +190,107 @@ export function stopGolfIntro() {
 }
 
 // 🏌️ Golf — bruitages "arcade" propres aux tickers (en plus des SFX)
-const GOLF_TICKER_SOUNDS: Record<string, string> = {
+const GOLF_TICKER_SOUNDS = {
   EAGLE: golfTickerEagleUrl,
   BIRDIE: golfTickerBirdieUrl,
   PAR: golfTickerParUrl,
   BOGEY: golfTickerBogeyUrl,
   SIMPLE: golfTickerSimpleUrl,
   MISS: golfTickerMissUrl,
-};
+} as const;
 
-export function playGolfTickerSound(perf: keyof typeof GOLF_TICKER_SOUNDS, volume: number = 0.95) {
+export function playGolfTickerSound(
+  perf: keyof typeof GOLF_TICKER_SOUNDS,
+  volume: number = 0.95
+) {
   try {
     if (!SFX_ENABLED) return;
     const url = GOLF_TICKER_SOUNDS[perf];
     if (!url) return;
-    // utilise le même système SAFE
     playSafeUrl(url, Math.max(0, Math.min(1, volume)));
-  } catch {
-    // noop
+  } catch {}
+}
+
+// 🏌️ Golf — SFX perfs (4 variantes) via glob (robuste)
+export type GolfPerf = "EAGLE" | "BIRDIE" | "PAR" | "BOGEY" | "SIMPLE" | "MISS";
+
+/**
+ * ✅ Pattern ABSOLU Vite (/src/...)
+ * Exemples:
+ * - golf_eagle_1.mp3 ... golf_eagle_4.mp3
+ * - golf_eagle_3..mp3 (toléré)
+ */
+const GOLF_VARIANTS_GLOB = import.meta.glob("/src/assets/sounds/golf_*_*.mp3", {
+  eager: true,
+  import: "default",
+}) as Record<string, string>;
+
+const GOLF_PERF_VARIANTS: Record<GolfPerf, Array<{ n: number; url: string }>> = {
+  EAGLE: [],
+  BIRDIE: [],
+  PAR: [],
+  BOGEY: [],
+  SIMPLE: [],
+  MISS: [],
+};
+
+function perfAndNFromPath(p: string): { perf: GolfPerf; n: number } | null {
+  // accepte: golf_eagle_3..mp3 -> n=3
+  const m = p.match(/golf_(eagle|birdie|par|bogey|simple|miss)_(\d+)(?:\.+)?\.mp3$/i);
+  if (!m) return null;
+  const key = m[1].toLowerCase();
+  const n = Number(m[2]);
+  if (!Number.isFinite(n)) return null;
+
+  let perf: GolfPerf | null = null;
+  if (key === "eagle") perf = "EAGLE";
+  else if (key === "birdie") perf = "BIRDIE";
+  else if (key === "par") perf = "PAR";
+  else if (key === "bogey") perf = "BOGEY";
+  else if (key === "simple") perf = "SIMPLE";
+  else if (key === "miss") perf = "MISS";
+
+  if (!perf) return null;
+  return { perf, n };
+}
+
+for (const [path, url] of Object.entries(GOLF_VARIANTS_GLOB)) {
+  const parsed = perfAndNFromPath(path);
+  if (!parsed) continue;
+  GOLF_PERF_VARIANTS[parsed.perf].push({ n: parsed.n, url });
+}
+
+// tri stable par n
+for (const perf of Object.keys(GOLF_PERF_VARIANTS) as GolfPerf[]) {
+  GOLF_PERF_VARIANTS[perf].sort((a, b) => a.n - b.n);
+}
+
+const _golfLastIdx: Partial<Record<GolfPerf, number>> = {};
+
+function pickVariant(perf: GolfPerf) {
+  const list = GOLF_PERF_VARIANTS[perf];
+  if (!list || list.length === 0) return null;
+
+  const last = _golfLastIdx[perf];
+  let i = 0;
+
+  if (list.length === 1) {
+    i = 0;
+  } else {
+    do {
+      i = Math.floor(Math.random() * list.length);
+    } while (i === last);
   }
+
+  _golfLastIdx[perf] = i;
+  return list[i]?.url ?? list[0]?.url ?? null;
+}
+
+/** Joue le SFX de perf Golf (variantes + anti-répétition) */
+export function playGolfPerfSfx(perf: GolfPerf, volume: number = 0.85) {
+  const url = pickVariant(perf);
+  if (!url) return;
+  playSafeUrl(url, Math.max(0, Math.min(1, volume)));
 }
 
 /** Son d'impact standard (TOUS MODES) */
@@ -256,48 +314,38 @@ export function playImpactFromDart(
   });
 }
 
-/** Son MISS (Shanghai uniquement) */
 export function playShanghaiMiss() {
   playSfx("shanghaiMiss");
 }
 
-/** Son ambiance au début de Shanghai */
 export function playShanghaiIntro() {
   playSfx("shanghai");
 }
 
-/** Son spécial 180 */
 export function playOneEighty(total: number) {
   if (total === 180) playSfx("180");
 }
 
-/** Son de bust */
 export function playBust(isBust: boolean) {
   if (isBust) playSfx("bust");
 }
 
 /* ============================================================
    ✅ UI CLICKS — centralisés dans le même moteur/pool
-   Utilise-les dans tes boutons/cards/pills/keypad
 ============================================================ */
 
-/** Click standard (bouton principal, CTA) */
 export function playUiClick() {
-  // un peu plus bas que les impacts
   playSafeUrl(SFX.uiClick, 0.55);
 }
 
-/** Click soft (pills / toggles / chips) */
 export function playUiClickSoft() {
   playSafeUrl(SFX.uiClickSoft, 0.45);
 }
 
-/** Confirm (validation / save / quitter) */
 export function playUiConfirm() {
   playSafeUrl(SFX.uiConfirm, 0.65);
 }
 
-/** Alias pratique (si tu veux importer un objet) */
 export const UISfx = {
   click: playUiClick,
   soft: playUiClickSoft,

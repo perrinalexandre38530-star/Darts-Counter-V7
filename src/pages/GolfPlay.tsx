@@ -13,8 +13,8 @@ import teamGoldLogo from "../ui_assets/teams/team_gold.png";
 import teamPinkLogo from "../ui_assets/teams/team_pink.png";
 import teamBlueLogo from "../ui_assets/teams/team_blue.png";
 import teamGreenLogo from "../ui_assets/teams/team_green.png";
-import { playSfx, playGolfIntro, stopGolfIntro, playGolfTickerSound } from "../lib/sfx";
-import { speak } from "../lib/voice";
+import { playGolfPerfSfx, playGolfIntro, stopGolfIntro, playGolfTickerSound, unlockAudio } from "../lib/sfx";
+import { speak, setVoiceEnabled } from "../lib/voice";
 import { useLang } from "../contexts/LangContext";
 
 /**
@@ -809,9 +809,14 @@ export default function GolfPlay(props: Props) {
   // 🎵 Musique d'intro (à l'entrée du jeu)
   useEffect(() => {
     try {
+      setVoiceEnabled(true);
       playGolfIntro(0.45);
       return () => {
         try { stopGolfIntro(); } catch {}
+        try {
+          if (ttsTimerRef.current) window.clearTimeout(ttsTimerRef.current);
+          if (ttsRankTimerRef.current) window.clearTimeout(ttsRankTimerRef.current);
+        } catch {}
       };
     } catch {
       return;
@@ -1041,6 +1046,7 @@ const [statsByPlayer, setStatsByPlayer] = useState<PlayerStat[]>(() =>
 
   const lastActorNameRef = useRef<string>("");
   const ttsTimerRef = useRef<number | null>(null);
+  const ttsRankTimerRef = useRef<number | null>(null);
   const lastTtsVariantRef = useRef<number>(-1);
   const lastHoleIdxRef = useRef<number>(-1);
   const initialTurnSpokenRef = useRef(false);
@@ -1079,13 +1085,10 @@ const [statsByPlayer, setStatsByPlayer] = useState<PlayerStat[]>(() =>
       // 🔊 SFX + petit blip arcade + bruitage ticker
       playTickerBlip();
       try { playGolfTickerSound(perf as any); } catch {}
-      // 🔊 Son cohérent
-      if (perf === "EAGLE") playSfx("golfEagle");
-      else if (perf === "BIRDIE") playSfx("golfBirdie");
-      else if (perf === "PAR") playSfx("golfPar");
-      else if (perf === "BOGEY") playSfx("golfBogey");
-      else if (perf === "SIMPLE") playSfx("golfSimple");
-      else playSfx("golfMiss");
+      // 🔊 SFX perf (4 variantes) + unlock mobile
+      unlockAudio();
+      playGolfPerfSfx(perf as any);
+
 
       perfTimerRef.current = window.setTimeout(() => setPerfOverlay(null), 1600);
     } catch {}
@@ -1147,7 +1150,30 @@ const [statsByPlayer, setStatsByPlayer] = useState<PlayerStat[]>(() =>
     return "";
   }
 
-  // Ticker "parcours" : aléatoire sans répétition sur une même partie, change à chaque trou
+  
+  function buildRankingTts(kind: "intermediate" | "final") {
+    const top = ranking.slice(0, 3).map((r) => safeStr(r.name)).filter(Boolean);
+    if (top.length === 0) return "";
+    const a = top[0] ?? "";
+    const b = top[1] ?? "";
+    const c = top[2] ?? "";
+
+    if (lang === "fr") {
+      const head = kind === "final" ? "Classement final." : "Classement intermédiaire.";
+      // ✅ Format strict demandé: Head + 1er/2e/3e noms uniquement
+      if (a && b && c) return `${head} Premier ${a}. Deuxième ${b}. Troisième ${c}.`;
+      if (a && b) return `${head} Premier ${a}. Deuxième ${b}.`;
+      return `${head} Premier ${a}.`;
+    }
+
+    const head = kind === "final" ? "Final ranking." : "Intermediate ranking.";
+    if (a && b && c) return `${head} First ${a}. Second ${b}. Third ${c}.`;
+    if (a && b) return `${head} First ${a}. Second ${b}.`;
+    return `${head} First ${a}.`;
+  }
+
+
+// Ticker "parcours" : aléatoire sans répétition sur une même partie, change à chaque trou
   const tickerList = (PARCOURS_TICKERS.length ? PARCOURS_TICKERS : [tickerGolf]).slice();
   const tickerPoolRef = useRef<string[]>([]);
   const [holeTickerSrc, setHoleTickerSrc] = useState<string>(() => {
@@ -1208,48 +1234,9 @@ const ranking = useMemo(() => {
   return arr;
 }, [roster, playerTotals, teamsOk, teamTotals, enabledTeamKeys, teamMembersIdxs, teamIndexByKey]);
 
-  // ✅ TTS: classement provisoire à chaque changement de trou
-  useEffect(() => {
-    if (typeof window === "undefined") return;
+  // ✅ TTS classement provisoire : géré via advanceAfterFinalize() (désactivé ici)
 
-    if (lastHoleIdxRef.current === -1) {
-      lastHoleIdxRef.current = holeIdx;
-      return;
-    }
-    if (holeIdx === lastHoleIdxRef.current) return;
-
-    // on annonce le TOP 3 après validation d'un trou
-    const top = (ranking ?? []).slice(0, 3);
-    if (top.length > 0) {
-      const parts = top.map((r, i) => `${i + 1}. ${r.name} ${r.total}`);
-      const msg =
-        lang === "fr"
-          ? `Classement provisoire. ${parts.join(", ")}.`
-          : `Provisional ranking. ${parts.join(", ")}.`;
-      window.setTimeout(() => speak(msg, { lang: ttsLang }), 900);
-    }
-
-    lastHoleIdxRef.current = holeIdx;
-  }, [holeIdx, ranking, lang, ttsLang]);
-
-  // ✅ TTS: classement final
-  const finalSpokenRef = useRef(false);
-  useEffect(() => {
-    if (!isFinished) return;
-    if (finalSpokenRef.current) return;
-    finalSpokenRef.current = true;
-
-    const top = (ranking ?? []).slice(0, 3);
-    if (top.length > 0) {
-      const winner = top[0];
-      const parts = top.map((r, i) => `${i + 1}. ${r.name} ${r.total}`);
-      const msg =
-        lang === "fr"
-          ? `Partie terminée. Victoire de ${winner.name}. Classement final. ${parts.join(", ")}.`
-          : `Game over. Winner is ${winner.name}. Final ranking. ${parts.join(", ")}.`;
-      window.setTimeout(() => speak(msg, { lang: ttsLang }), 1200);
-    }
-  }, [isFinished, ranking, lang, ttsLang]);
+  // ✅ TTS classement final : géré via advanceAfterFinalize() (désactivé ici)
 
   // ✅ TTS: annonce du premier joueur au début de partie
   useEffect(() => {
@@ -1350,20 +1337,22 @@ const activeStats =
       setPlayerIdx(nextPlayerIndex);
       setTurnThrows([]);
 
-      // ✅ TTS: après SFX/ticker, commentaire action précédente + annonce du joueur suivant (variantes)
+      // ✅ TTS: annonce du joueur suivant (toujours) — après SFX/ticker
       try {
         if (ttsTimerRef.current) window.clearTimeout(ttsTimerRef.current);
         const p = players[nextPlayerIndex];
         const nextName = safeStr(p?.name ?? p?.label ?? p?.pseudo ?? "");
-        const actor = (lastActorNameRef.current || "").trim();
-        const text = buildCombinedTts({ actor, perf: validatedPerf ?? undefined, nextPlayer: nextName, isNewHole: false });
-        if (text) {
-          const delay = validatedPerf ? 950 : 150;
-          ttsTimerRef.current = window.setTimeout(() => speak(text, { lang: ttsLang }), delay);
+        if (nextName) {
+          const delay = 2600; // laisse le SFX/ticker respirer
+          ttsTimerRef.current = window.setTimeout(
+            () => speak(lang === "fr" ? `À toi de jouer, ${nextName}.` : `${nextName}, your turn.`, { lang: ttsLang }),
+            delay
+          );
         }
       } catch {
         // ignore
       }
+
 
       return;
     }
@@ -1376,23 +1365,46 @@ const activeStats =
       setPlayerIdx(nextPlayerIndex);
       setTurnThrows([]);
 
-      // ✅ TTS: après SFX/ticker, commentaire action précédente + annonce du joueur suivant (nouveau trou)
+      // ✅ TTS: annonce du joueur suivant (toujours) — après SFX/ticker (nouveau trou)
       try {
         if (ttsTimerRef.current) window.clearTimeout(ttsTimerRef.current);
         const p = players[nextPlayerIndex];
         const nextName = safeStr(p?.name ?? p?.label ?? p?.pseudo ?? "");
-        const actor = (lastActorNameRef.current || "").trim();
-        const text = buildCombinedTts({ actor, perf: validatedPerf ?? undefined, nextPlayer: nextName, isNewHole: true });
-        if (text) {
-          const delay = validatedPerf ? 950 : 150;
-          ttsTimerRef.current = window.setTimeout(() => speak(text, { lang: ttsLang }), delay);
+        if (nextName) {
+          const delay = 2600;
+          ttsTimerRef.current = window.setTimeout(
+            () => speak(lang === "fr" ? `À toi de jouer, ${nextName}.` : `${nextName}, your turn.`, { lang: ttsLang }),
+            delay
+          );
+        }
+      } catch {
+        // ignore
+      }
+
+      // ✅ TTS classement intermédiaire (format strict), après la phrase "à toi de jouer"
+      try {
+        if (ttsRankTimerRef.current) window.clearTimeout(ttsRankTimerRef.current);
+        const msgRank = buildRankingTts("intermediate");
+        if (msgRank) {
+          ttsRankTimerRef.current = window.setTimeout(() => speak(msgRank, { lang: ttsLang }), 5200);
         }
       } catch {
         // ignore
       }
     } else {
-      setIsFinished(true);
+            setIsFinished(true);
       setTurnThrows([]);
+
+      // ✅ TTS classement final (format strict) — après SFX/ticker
+      try {
+        if (ttsRankTimerRef.current) window.clearTimeout(ttsRankTimerRef.current);
+        const msgFinal = buildRankingTts("final");
+        if (msgFinal) {
+          ttsRankTimerRef.current = window.setTimeout(() => speak(msgFinal, { lang: ttsLang }), 2600);
+        }
+      } catch {
+        // ignore
+      }
     }
     return;
   }
@@ -1418,7 +1430,7 @@ const activeStats =
     try {
       const k2 = activeTeamKeys[nextPos];
       const label = (k2 ?? "").toUpperCase();
-      const delay = validatedPerf ? 1450 : 150;
+      const delay = 2600;
       if (label) {
         window.setTimeout(
           () =>
@@ -1443,6 +1455,17 @@ const activeStats =
     setHoleIdx(nextHole);
   } else {
     setIsFinished(true);
+
+    // ✅ TTS classement final (format strict) — après SFX/ticker
+    try {
+      if (ttsRankTimerRef.current) window.clearTimeout(ttsRankTimerRef.current);
+      const msgFinal = buildRankingTts("final");
+      if (msgFinal) {
+        ttsRankTimerRef.current = window.setTimeout(() => speak(msgFinal, { lang: ttsLang }), 2600);
+      }
+    } catch {
+      // ignore
+    }
   }
 }
 
@@ -1902,54 +1925,52 @@ return nextScores;
         <div
           style={{
             position: "fixed",
-            left: "50%",
-            top: "50%",
-            transform: "translate(-50%, -50%)",
+            inset: 0,
             zIndex: 9999,
             pointerEvents: "none",
-            width: "min(520px, calc(100vw - 24px))",
-            filter: "drop-shadow(0 18px 34px rgba(0,0,0,0.65))",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
           }}
         >
-          <img
-            src={
-              perfOverlay === "EAGLE"
-                ? tickerGolfEagle
-                : perfOverlay === "BIRDIE"
-                  ? tickerGolfBirdie
-                  : perfOverlay === "PAR"
-                    ? tickerGolfPar
-                    : perfOverlay === "BOGEY"
-                       ? tickerGolfBogey
-                       : perfOverlay === "SIMPLE"
-                         ? tickerGolfSimple
-                         : tickerGolfMiss
-            }
-            alt={perfOverlay}
+          {/* Backdrop pour éviter de voir le UI derrière (transparences des tickers) */}
+          <div
             style={{
-              width: "100%",
-              height: "auto",
-              borderRadius: 14,
+              position: "absolute",
+              inset: 0,
+              background: "rgba(0,0,0,0.55)",
+              backdropFilter: "blur(2px)",
             }}
           />
-          {perfOverlay === "SIMPLE" && (
-            <div
+          <div
+            style={{
+              position: "relative",
+              width: "min(520px, calc(100vw - 24px))",
+              filter: "drop-shadow(0 18px 34px rgba(0,0,0,0.65))",
+            }}
+          >
+            <img
+              src={
+                perfOverlay === "EAGLE"
+                  ? tickerGolfEagle
+                  : perfOverlay === "BIRDIE"
+                    ? tickerGolfBirdie
+                    : perfOverlay === "PAR"
+                      ? tickerGolfPar
+                      : perfOverlay === "BOGEY"
+                        ? tickerGolfBogey
+                        : perfOverlay === "SIMPLE"
+                          ? tickerGolfSimple
+                          : tickerGolfMiss
+              }
+              alt=""
               style={{
-                position: "absolute",
-                inset: 0,
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                fontWeight: 1000,
-                letterSpacing: 2,
-                color: "white",
-                textShadow: "0 6px 18px rgba(0,0,0,0.85)",
-                fontSize: 28,
+                width: "100%",
+                height: "auto",
+                borderRadius: 14,
               }}
-            >
-              SIMPLE
-            </div>
-          )}
+            />
+          </div>
         </div>
       )}
 

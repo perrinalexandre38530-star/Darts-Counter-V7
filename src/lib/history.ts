@@ -77,6 +77,27 @@ import { loadStore } from "./storage";
 import { onlineApi } from "./onlineApi";
 import { EventBuffer } from "./sync/EventBuffer";
 
+// ============================================================
+// ✅ CLOUD IMPORT GUARD
+// - Quand on importe des events cloud -> History local,
+//   on ne veut PAS re-pusher un event (boucle infinie).
+// ============================================================
+let __HISTORY_SUPPRESS_EVENTBUFFER = false;
+
+/**
+ * Upsert depuis le cloud (import multi-device).
+ * - Écrit dans History local
+ * - Ne repousse pas un event (anti-loop)
+ */
+export async function upsertFromCloud(rec: SavedMatch): Promise<void> {
+  __HISTORY_SUPPRESS_EVENTBUFFER = true;
+  try {
+    await upsert(rec);
+  } finally {
+    __HISTORY_SUPPRESS_EVENTBUFFER = false;
+  }
+}
+
 // mini-sanitize local (anti data: énormes + perfs)
 function _sanitizeStoreForCloudMini(s: any) {
   let clone: any;
@@ -1322,6 +1343,9 @@ export async function upsert(rec: SavedMatch): Promise<void> {
     // ✅ EVENT BUFFER (multi-device sync)
     // ================================
     try {
+      if (__HISTORY_SUPPRESS_EVENTBUFFER) {
+        // Import cloud -> History : ne pas reboucler
+      } else {
       const kind = String(rec.kind || safe.kind || "");
       const sport = kind.includes("petanque")
         ? "petanque"
@@ -1353,6 +1377,7 @@ export async function upsert(rec: SavedMatch): Promise<void> {
 
       // tentative de sync opportuniste (non bloquante)
       EventBuffer.syncNow().catch(() => {});
+      }
     } catch {}
   } catch (e) {
     console.warn("[history.upsert] fallback localStorage (IDB indispo?):", e);
@@ -1384,6 +1409,9 @@ export async function upsert(rec: SavedMatch): Promise<void> {
       // ✅ EVENT BUFFER (multi-device sync)
       // ================================
       try {
+        if (__HISTORY_SUPPRESS_EVENTBUFFER) {
+          // Import cloud -> History : ne pas reboucler
+        } else {
         const kind = String(rec.kind || safe.kind || "");
         const sport = kind.includes("petanque")
           ? "petanque"
@@ -1412,6 +1440,7 @@ export async function upsert(rec: SavedMatch): Promise<void> {
           },
         }).catch(() => {});
         EventBuffer.syncNow().catch(() => {});
+        }
       } catch {}
     } catch {}
   }

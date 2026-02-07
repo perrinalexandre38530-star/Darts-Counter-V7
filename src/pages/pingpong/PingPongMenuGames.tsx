@@ -273,7 +273,7 @@ export default function PingPongMenuGames({ go }: Props) {
 
           {/* BackDot extrême gauche */}
           <div style={{ position: "absolute", left: 10, top: 10, zIndex: 5 }}>
-            <BackDot onClick={() => go("pingpong_home")} />
+            <BackDot onClick={() => go("home")} />
           </div>
         </div>
       )}

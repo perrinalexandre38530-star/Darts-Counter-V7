@@ -297,14 +297,6 @@ export default function StatsShell({ store, go }: Props) {
         />
 
         <StatsShellCard
-          title="TERRITORIES"
-          subtitle="Stats locales du mode TERRITORIES (domination, maps jouées, historique)."
-          theme={theme}
-          onClick={() => go("stats_territories")}
-          onInfo={() => setInfoMode("history")}
-        />
-
-        <StatsShellCard
           title={t("statsShell.training.title", "TRAINING")}
           subtitle={t(
             "statsShell.training.subtitle",
