@@ -1,11 +1,14 @@
 // =============================================================
 // src/pages/babyfoot/BabyFootStatsHistoryPage.tsx
-// Baby-Foot — Historique + résumé (LOCAL)
-// - Source: store.history (App.tsx pushBabyFootHistory)
-// - ✅ Stats avancées: winrate, buts/match, penalties, séries
+// Baby-Foot — Historique + STATS (LOCAL) — V4.5 + V4.6 + V4.7 (FULL)
+// ✅ V4.5: filtres période + mode (1v1/2v2/2v1/all) + recherche
+// ✅ V4.6: stats équipes (compositions réelles Team A/Team B)
+// ✅ V4.7: duels (comparatif joueur vs joueur)
+// ⚠️ Tolérant aux payloads (V2/V3/V4): summary / events / penalties / sets…
+// Source: store.history (App.tsx pushBabyFootHistory)
 // =============================================================
 
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { useTheme } from "../../contexts/ThemeContext";
 import { useLang } from "../../contexts/LangContext";
 import BackDot from "../../components/BackDot";
@@ -17,392 +20,643 @@ type Props = {
   params?: any;
 };
 
-function pillStyle(theme: any): React.CSSProperties {
+type TeamId = "A" | "B";
+
+function safeNum(v: any, d = 0) {
+  const n = Number(v);
+  return Number.isFinite(n) ? n : d;
+}
+function fmt(ms?: number) {
+  const s = Math.max(0, Math.floor((ms || 0) / 1000));
+  const mm = String(Math.floor(s / 60)).padStart(2, "0");
+  const ss = String(s % 60).padStart(2, "0");
+  return `${mm}:${ss}`;
+}
+function clamp01(x: number) {
+  if (!Number.isFinite(x)) return 0;
+  return Math.max(0, Math.min(1, x));
+}
+
+function getPayload(h: any) {
+  // history record may be { payload: state } or { payload: { payload: state } }
+  const p0 = h?.payload ?? {};
+  const p1 = p0?.payload ?? p0;
+  return p1 ?? {};
+}
+
+function getEvents(payload: any): any[] {
+  const ev = payload?.events ?? payload?.payload?.events ?? payload?.summary?.events ?? [];
+  return Array.isArray(ev) ? ev : [];
+}
+
+function getMode(payload: any): "1v1" | "2v2" | "2v1" | "unknown" {
+  const m = String(payload?.mode ?? payload?.meta?.mode ?? payload?.summary?.mode ?? "").trim();
+  if (m === "1v1" || m === "2v2" || m === "2v1") return m;
+  return "unknown";
+}
+
+function getTeams(payload: any) {
+  const teamA = payload?.teamA ?? payload?.summary?.teamA ?? "TEAM A";
+  const teamB = payload?.teamB ?? payload?.summary?.teamB ?? "TEAM B";
+  const scoreA = safeNum(payload?.scoreA ?? payload?.summary?.scoreA, 0);
+  const scoreB = safeNum(payload?.scoreB ?? payload?.summary?.scoreB, 0);
+  const teamAIds = Array.isArray(payload?.teamAProfileIds) ? payload.teamAProfileIds : [];
+  const teamBIds = Array.isArray(payload?.teamBProfileIds) ? payload.teamBProfileIds : [];
+  return { teamA, teamB, scoreA, scoreB, teamAIds, teamBIds };
+}
+
+function getWinnerTeam(payload: any): TeamId | null {
+  const w = payload?.winnerTeam ?? payload?.winner ?? payload?.summary?.winnerTeam ?? null;
+  if (w === "A" || w === "B") return w;
+  const { scoreA, scoreB } = getTeams(payload);
+  if (scoreA === scoreB) return null;
+  return scoreA > scoreB ? "A" : "B";
+}
+
+function teamKey(ids: string[]) {
+  const a = (Array.isArray(ids) ? ids : []).filter(Boolean).slice(0, 4).sort();
+  return a.join("|") || "—";
+}
+
+function computePenalties(payload: any) {
+  const p = payload?.penalties ?? payload?.summary?.penalties ?? null;
+  if (p && typeof p === "object") {
+    return {
+      shotsA: safeNum(p.shotsA, 0),
+      shotsB: safeNum(p.shotsB, 0),
+      goalsA: safeNum(p.goalsA, 0),
+      goalsB: safeNum(p.goalsB, 0),
+    };
+  }
+  // derive from events
+  const ev = getEvents(payload);
+  let shotsA = 0, shotsB = 0, goalsA = 0, goalsB = 0;
+  for (const e of ev) {
+    if (e?.t !== "penalty") continue;
+    const team = e?.team;
+    const scored = !!e?.scored;
+    if (team === "A") { shotsA += 1; if (scored) goalsA += 1; }
+    if (team === "B") { shotsB += 1; if (scored) goalsB += 1; }
+  }
+  if (shotsA + shotsB === 0) return null;
+  return { shotsA, shotsB, goalsA, goalsB };
+}
+
+function pill(theme: any, active?: boolean): React.CSSProperties {
+  const border = theme?.borderSoft ?? theme?.border ?? "rgba(255,255,255,0.14)";
   return {
     display: "inline-flex",
     alignItems: "center",
     gap: 8,
-    padding: "6px 10px",
+    padding: "7px 10px",
     borderRadius: 999,
-    border: `1px solid ${theme.border}`,
-    background: theme.card,
-    color: theme.text,
+    border: `1px solid ${active ? "rgba(255,255,255,0.26)" : border}`,
+    background: active ? "rgba(255,255,255,0.10)" : (theme?.card ?? "rgba(255,255,255,0.06)"),
+    color: theme?.text ?? "#fff",
     fontSize: 12,
-    fontWeight: 800,
+    fontWeight: 900,
     letterSpacing: 0.2,
+    cursor: "pointer",
+    userSelect: "none",
   };
 }
 
-function fmt(ms?: number) {
-  const v = Math.max(0, Math.floor((ms || 0) / 1000));
-  const mm = String(Math.floor(v / 60)).padStart(2, "0");
-  const ss = String(v % 60).padStart(2, "0");
-  return `${mm}:${ss}`;
-}
-
-function safeNum(n: any, d = 0) {
-  const v = Number(n);
-  return Number.isFinite(v) ? v : d;
-}
-
-type PlayerAgg = {
-  id: string;
-  name: string;
-  played: number;
-  wins: number;
-  goals: number;
-  goalsForTeam: number;
-  pensScored: number;
-  pensMissed: number;
-  // series
-  bestWinStreak: number;
-  currentWinStreak: number;
-};
-
 export default function BabyFootStatsHistoryPage({ store, go }: Props) {
   const { theme } = useTheme();
-  const { t } = useLang();
+  const lang = useLang() as any;
+  const t = lang?.t ?? ((_: string, fb: string) => fb);
 
+  // ---------------- V4.5 filters
+  const [period, setPeriod] = useState<"7" | "30" | "90" | "all">("30");
+  const [mode, setMode] = useState<"all" | "1v1" | "2v2" | "2v1">("all");
   const [q, setQ] = useState("");
+
+  // ---------------- V4.7 duel selectors
+  const [duelA, setDuelA] = useState<string>("");
+  const [duelB, setDuelB] = useState<string>("");
+
+  const profilesById = useMemo(() => {
+    const map: Record<string, any> = {};
+    for (const p of (store?.profiles ?? [])) if (p?.id) map[p.id] = p;
+    return map;
+  }, [store?.profiles]);
 
   const all = useMemo(() => {
     const list = (store?.history ?? []).filter((h: any) => h?.sport === "babyfoot" || h?.kind === "babyfoot");
     return list.sort((a: any, b: any) => (b?.createdAt || 0) - (a?.createdAt || 0));
   }, [store?.history]);
 
+  const availableModes = useMemo(() => {
+    const s = new Set<string>();
+    for (const h of all) {
+      const m = getMode(getPayload(h));
+      if (m === "1v1" || m === "2v2" || m === "2v1") s.add(m);
+    }
+    const arr = Array.from(s) as Array<"1v1" | "2v2" | "2v1">;
+    arr.sort((a, b) => (a === "1v1" ? -1 : a.localeCompare(b)));
+    return arr;
+  }, [all]);
+
+  const filtered = useMemo(() => {
+    const now = Date.now();
+    const days = period === "all" ? null : period === "7" ? 7 : period === "30" ? 30 : 90;
+    const cutoff = days != null ? now - days * 24 * 3600 * 1000 : null;
+    const s = q.trim().toLowerCase();
+
+    return all.filter((h: any) => {
+      if (h?.status && h.status !== "finished") return false;
+      if (cutoff != null && (h?.createdAt || 0) < cutoff) return false;
+
+      const payload = getPayload(h);
+      const m = getMode(payload);
+      if (mode !== "all" && m !== mode) return false;
+
+      if (!s) return true;
+      const players = Array.isArray(h?.players) ? h.players : Array.isArray(payload?.players) ? payload.players : [];
+      const names = players.map((p: any) => (p?.name || profilesById[p?.id]?.name || "").toLowerCase()).join(" ");
+      const teams = `${payload?.teamA ?? ""} ${payload?.teamB ?? ""}`.toLowerCase();
+      return names.includes(s) || teams.includes(s);
+    });
+  }, [all, period, mode, q, profilesById]);
+
+  const playerOptions = useMemo(() => {
+    const ids = new Set<string>();
+    for (const h of filtered) {
+      const payload = getPayload(h);
+      const { teamAIds, teamBIds } = getTeams(payload);
+      for (const id of teamAIds) ids.add(id);
+      for (const id of teamBIds) ids.add(id);
+
+      const players = Array.isArray(h?.players) ? h.players : Array.isArray(payload?.players) ? payload.players : [];
+      for (const p of players) if (p?.id) ids.add(p.id);
+    }
+
+    const arr = Array.from(ids).map((id) => ({
+      id,
+      name: (profilesById[id]?.name ?? "").trim() || id.slice(0, 6),
+    }));
+    arr.sort((a, b) => a.name.localeCompare(b.name));
+    return arr;
+  }, [filtered, profilesById]);
+
+  useEffect(() => {
+    if (!duelA && playerOptions.length) setDuelA(playerOptions[0].id);
+    if (!duelB && playerOptions.length > 1) setDuelB(playerOptions[1].id);
+  }, [playerOptions, duelA, duelB]);
+
   const agg = useMemo(() => {
-    // per player aggregations
-    const byId: Record<string, PlayerAgg> = {};
-    const resultsByPlayer: Record<string, boolean[]> = {}; // chronological ASC array of wins/losses for streaks
+    type P = {
+      id: string;
+      name: string;
+      played: number;
+      wins: number;
+      goals: number; // from events goal scorerId
+      pensShots: number;
+      pensGoals: number;
+      bestStreak: number;
+      currentStreak: number;
+    };
+    type Tm = {
+      key: string;
+      label: string;
+      ids: string[];
+      played: number;
+      wins: number;
+      gf: number;
+      ga: number;
+      pensShots: number;
+      pensGoals: number;
+    };
+
+    const byPlayer: Record<string, P> = {};
+    const byTeam: Record<string, Tm> = {};
+    const currentStreak: Record<string, number> = {};
+    const bestStreak: Record<string, number> = {};
 
     let matches = 0;
     let goals = 0;
     let totalDurationMs = 0;
 
-    let pensScoredAll = 0;
-    let pensMissedAll = 0;
+    const chrono = [...filtered].sort((a: any, b: any) => (a?.createdAt || 0) - (b?.createdAt || 0));
 
-    // helper: register player
-    const ensure = (p: any) => {
-      const id = p?.id;
+    const ensurePlayer = (id: string) => {
       if (!id) return null;
-      if (!byId[id]) {
-        byId[id] = {
+      if (!byPlayer[id]) {
+        byPlayer[id] = {
           id,
-          name: p?.name || "",
+          name: (profilesById[id]?.name ?? "").trim() || id.slice(0, 6),
           played: 0,
           wins: 0,
           goals: 0,
-          goalsForTeam: 0,
-          pensScored: 0,
-          pensMissed: 0,
-          bestWinStreak: 0,
-          currentWinStreak: 0,
+          pensShots: 0,
+          pensGoals: 0,
+          bestStreak: 0,
+          currentStreak: 0,
         };
-      } else if (!byId[id].name && p?.name) {
-        byId[id].name = p.name;
       }
-      return byId[id];
+      return byPlayer[id];
     };
 
-    // We need chronological for streaks
-    const chrono = [...all].slice().sort((a: any, b: any) => (a?.createdAt || 0) - (b?.createdAt || 0));
+    const ensureTeam = (ids: string[], label: string) => {
+      const key = teamKey(ids);
+      if (!byTeam[key]) {
+        byTeam[key] = {
+          key,
+          label,
+          ids: (ids || []).filter(Boolean),
+          played: 0,
+          wins: 0,
+          gf: 0,
+          ga: 0,
+          pensShots: 0,
+          pensGoals: 0,
+        };
+      }
+      return byTeam[key];
+    };
 
     for (const h of chrono) {
-      if (h?.status && h.status !== "finished") continue;
-
-      const payload = h?.payload || {};
-      const scoreA = safeNum(payload?.scoreA ?? payload?.summary?.scoreA, 0);
-      const scoreB = safeNum(payload?.scoreB ?? payload?.summary?.scoreB, 0);
-      const durationMs = safeNum(payload?.durationMs ?? payload?.summary?.durationMs, 0);
+      const payload = getPayload(h);
+      const { teamA, teamB, scoreA, scoreB, teamAIds, teamBIds } = getTeams(payload);
+      const dur = safeNum(payload?.durationMs ?? payload?.summary?.durationMs, 0);
+      const winner = getWinnerTeam(payload);
 
       matches += 1;
       goals += Math.max(0, scoreA) + Math.max(0, scoreB);
-      totalDurationMs += Math.max(0, durationMs);
+      totalDurationMs += Math.max(0, dur);
 
-      const players = Array.isArray(h?.players)
-        ? h.players
-        : Array.isArray(payload?.players)
-        ? payload.players
-        : [];
-
-      // build quick team membership (if present in payload)
-      const teamAIds: string[] = Array.isArray(payload?.teamAProfileIds) ? payload.teamAProfileIds : [];
-      const teamBIds: string[] = Array.isArray(payload?.teamBProfileIds) ? payload.teamBProfileIds : [];
-
-      // count played
-      for (const p of players) {
-        const a = ensure(p);
-        if (!a) continue;
-        a.played += 1;
+      // Players
+      for (const id of new Set([...teamAIds, ...teamBIds])) {
+        const p = ensurePlayer(id);
+        if (!p) continue;
+        p.played += 1;
+        const won = winner ? (winner === "A" ? teamAIds.includes(id) : teamBIds.includes(id)) : false;
+        if (won) p.wins += 1;
       }
 
-      const winnerId = h?.winnerId ?? payload?.winnerId ?? null;
-      const winnerTeam = payload?.winnerTeam ?? h?.winnerTeam ?? null;
-
-      // mark win/loss sequence for streaks
-      for (const p of players) {
-        const id = p?.id;
-        if (!id) continue;
-
-        const won =
-          winnerId === id ||
-          (winnerTeam === "A" && teamAIds.includes(id)) ||
-          (winnerTeam === "B" && teamBIds.includes(id));
-
-        if (!resultsByPlayer[id]) resultsByPlayer[id] = [];
-        resultsByPlayer[id].push(!!won);
-
-        if (won && byId[id]) byId[id].wins += 1;
+      // Goals (scorerId)
+      for (const e of getEvents(payload)) {
+        if (e?.t !== "goal") continue;
+        const pid = e?.scorerId;
+        if (!pid) continue;
+        const p = ensurePlayer(pid);
+        if (!p) continue;
+        p.goals += 1;
       }
 
-      // Goals + penalties by scorerId (events)
-      const events: any[] = Array.isArray(payload?.events) ? payload.events : Array.isArray(payload?.payload?.events) ? payload.payload.events : [];
-      for (const e of events) {
-        const tEv = e?.t;
-        if (tEv === "goal") {
-          const scorerId = e?.scorerId ?? null;
-          const team: "A" | "B" | null = e?.team ?? null;
-          if (scorerId && byId[scorerId]) {
-            byId[scorerId].goals += 1;
-            if (team === "A") byId[scorerId].goalsForTeam += 1;
-            if (team === "B") byId[scorerId].goalsForTeam += 1;
-          }
-        }
-        if (tEv === "penalty") {
-          const scorerId = e?.scorerId ?? null;
-          const scored = !!e?.scored;
-          if (scorerId && byId[scorerId]) {
-            if (scored) byId[scorerId].pensScored += 1;
-            else byId[scorerId].pensMissed += 1;
-          }
-          if (scored) pensScoredAll += 1;
-          else pensMissedAll += 1;
+      // Penalties
+      const pen = computePenalties(payload);
+      if (pen) {
+        // team level (by composition)
+        const tA = ensureTeam(teamAIds, teamA);
+        const tB = ensureTeam(teamBIds, teamB);
+        tA.pensShots += pen.shotsA; tA.pensGoals += pen.goalsA;
+        tB.pensShots += pen.shotsB; tB.pensGoals += pen.goalsB;
+
+        // player level if shooterId present
+        for (const e of getEvents(payload)) {
+          if (e?.t !== "penalty") continue;
+          const pid = e?.scorerId ?? e?.shooterId;
+          if (!pid) continue;
+          const p = ensurePlayer(pid);
+          if (!p) continue;
+          p.pensShots += 1;
+          if (e?.scored) p.pensGoals += 1;
         }
       }
-    }
 
-    // compute streaks
-    for (const [id, seq] of Object.entries(resultsByPlayer)) {
-      const p = byId[id];
-      if (!p) continue;
+      // Teams by composition
+      const tA = ensureTeam(teamAIds, teamA);
+      const tB = ensureTeam(teamBIds, teamB);
+      tA.played += 1; tB.played += 1;
+      tA.gf += scoreA; tA.ga += scoreB;
+      tB.gf += scoreB; tB.ga += scoreA;
+      if (winner === "A") tA.wins += 1;
+      if (winner === "B") tB.wins += 1;
 
-      let best = 0;
-      let cur = 0;
-      for (const won of seq) {
-        if (won) {
-          cur += 1;
-          best = Math.max(best, cur);
+      // streaks per player (wins only; draw resets)
+      for (const id of new Set([...teamAIds, ...teamBIds])) {
+        if (!winner) {
+          currentStreak[id] = 0;
         } else {
-          cur = 0;
+          const won = winner === "A" ? teamAIds.includes(id) : teamBIds.includes(id);
+          currentStreak[id] = won ? (currentStreak[id] || 0) + 1 : 0;
         }
+        bestStreak[id] = Math.max(bestStreak[id] || 0, currentStreak[id] || 0);
       }
-      p.bestWinStreak = best;
-
-      // current streak from latest going backwards
-      let current = 0;
-      for (let i = seq.length - 1; i >= 0; i--) {
-        if (seq[i]) current += 1;
-        else break;
-      }
-      p.currentWinStreak = current;
     }
 
-    const players = Object.values(byId);
+    for (const id of Object.keys(byPlayer)) {
+      byPlayer[id].bestStreak = bestStreak[id] || 0;
+      byPlayer[id].currentStreak = currentStreak[id] || 0;
+    }
 
-    const topWins = players
-      .slice()
-      .sort((a, b) => b.wins - a.wins || b.played - a.played || (a.name || "").localeCompare(b.name || ""))
-      .slice(0, 6);
+    const players = Object.values(byPlayer);
+    const teams = Object.values(byTeam);
 
-    const topWinrate = players
+    const topWinrate = [...players]
       .filter((p) => p.played >= 5)
-      .slice()
-      .sort((a, b) => b.wins / b.played - a.wins / a.played || b.played - a.played)
-      .slice(0, 6);
+      .sort((a, b) => (b.wins / Math.max(1, b.played)) - (a.wins / Math.max(1, a.played)))
+      .slice(0, 8);
 
-    const topGoalsPerMatch = players
-      .filter((p) => p.played >= 3)
-      .slice()
-      .sort((a, b) => b.goals / b.played - a.goals / a.played || b.goals - a.goals)
-      .slice(0, 6);
+    const topGoals = [...players].sort((a, b) => b.goals - a.goals).slice(0, 8);
 
-    const topStreak = players
+    const topGPM = [...players]
       .filter((p) => p.played >= 3)
-      .slice()
-      .sort((a, b) => b.bestWinStreak - a.bestWinStreak || b.wins - a.wins)
-      .slice(0, 6);
+      .sort((a, b) => (b.goals / Math.max(1, b.played)) - (a.goals / Math.max(1, a.played)))
+      .slice(0, 8);
+
+    const streaks = [...players]
+      .filter((p) => p.bestStreak > 0)
+      .sort((a, b) => b.bestStreak - a.bestStreak || b.currentStreak - a.currentStreak)
+      .slice(0, 8);
+
+    const topTeams = [...teams]
+      .filter((tm) => tm.played >= 3)
+      .sort((a, b) => (b.wins / Math.max(1, b.played)) - (a.wins / Math.max(1, a.played)) || ((b.gf - b.ga) - (a.gf - a.ga)))
+      .slice(0, 8);
 
     return {
       matches,
       goals,
-      avgGoals: matches > 0 ? goals / matches : 0,
-      avgDurationMs: matches > 0 ? totalDurationMs / matches : 0,
-      pensScoredAll,
-      pensMissedAll,
-      penRate: pensScoredAll + pensMissedAll > 0 ? pensScoredAll / (pensScoredAll + pensMissedAll) : 0,
-
-      topWins,
+      avgGoals: matches ? goals / matches : 0,
+      avgDurMs: matches ? totalDurationMs / matches : 0,
+      players,
+      teams,
       topWinrate,
-      topGoalsPerMatch,
-      topStreak,
+      topGoals,
+      topGPM,
+      streaks,
+      topTeams,
     };
-  }, [all]);
+  }, [filtered, profilesById]);
 
-  const filtered = useMemo(() => {
-    const s = q.trim().toLowerCase();
-    if (!s) return all;
+  const duel = useMemo(() => {
+    if (!duelA || !duelB || duelA === duelB) return null;
 
-    return all.filter((h: any) => {
-      const p = Array.isArray(h?.players) ? h.players : [];
-      const names = p.map((x: any) => (x?.name || "").toLowerCase()).join(" ");
-      const summary = JSON.stringify(h?.summary || h?.payload?.summary || {}).toLowerCase();
-      return names.includes(s) || summary.includes(s);
-    });
-  }, [all, q]);
+    let matches = 0;
+    let aWins = 0;
+    let bWins = 0;
+    let draws = 0;
+    let aGoals = 0;
+    let bGoals = 0;
+
+    for (const h of filtered) {
+      const payload = getPayload(h);
+      const { teamAIds, teamBIds } = getTeams(payload);
+
+      const hasA = teamAIds.includes(duelA) || teamBIds.includes(duelA);
+      const hasB = teamAIds.includes(duelB) || teamBIds.includes(duelB);
+      if (!hasA || !hasB) continue;
+
+      matches += 1;
+
+      const winner = getWinnerTeam(payload);
+      if (!winner) draws += 1;
+      else {
+        const aInA = teamAIds.includes(duelA);
+        const aWon = winner === "A" ? aInA : !aInA;
+        if (aWon) aWins += 1;
+        else bWins += 1;
+      }
+
+      for (const e of getEvents(payload)) {
+        if (e?.t !== "goal") continue;
+        if (e?.scorerId === duelA) aGoals += 1;
+        if (e?.scorerId === duelB) bGoals += 1;
+      }
+    }
+
+    return { matches, aWins, bWins, draws, aGoals, bGoals };
+  }, [duelA, duelB, filtered]);
+
+  const modeLabel = mode === "all" ? "Tous" : mode.toUpperCase();
+  const periodLabel = period === "all" ? "Total" : `${period}j`;
 
   return (
     <div style={wrap(theme)}>
       <div style={topRow}>
         <BackDot onClick={() => go("babyfoot_menu")} />
-        <div style={topTitle}>{t?.("babyfoot.stats.history") ?? "BABY-FOOT — STATS"}</div>
+        <div style={topTitle}>{t("babyfoot.stats.title", "BABY-FOOT — STATS")}</div>
         <div />
       </div>
 
-      <div style={summaryCard(theme)}>
-        <div style={summaryTitle}>Résumé</div>
-        <div style={summaryGrid}>
-          <div style={kpi(theme)}>
-            <div style={kpiLabel}>Matchs</div>
-            <div style={kpiValue}>{agg.matches}</div>
-          </div>
-          <div style={kpi(theme)}>
-            <div style={kpiLabel}>Buts</div>
-            <div style={kpiValue}>{agg.goals}</div>
-          </div>
-          <div style={kpi(theme)}>
-            <div style={kpiLabel}>Buts / match</div>
-            <div style={kpiValue}>{agg.avgGoals.toFixed(1)}</div>
-          </div>
-          <div style={kpi(theme)}>
-            <div style={kpiLabel}>Durée moyenne</div>
-            <div style={kpiValue}>{fmt(agg.avgDurationMs)}</div>
-          </div>
+      {/* Filters */}
+      <div style={card(theme)}>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+          <div style={{ fontWeight: 950, opacity: 0.9 }}>Période</div>
+          {(["7", "30", "90", "all"] as const).map((p) => (
+            <div key={p} style={pill(theme, period === p)} onClick={() => setPeriod(p)}>
+              {p === "all" ? "Total" : `${p}j`}
+            </div>
+          ))}
+
+          <div style={{ width: 10 }} />
+          <div style={{ fontWeight: 950, opacity: 0.9 }}>Mode</div>
+          <select style={select(theme)} value={mode} onChange={(e) => setMode(e.target.value as any)}>
+            <option value="all">Tous</option>
+            {availableModes.map((m) => (
+              <option key={m} value={m}>
+                {m.toUpperCase()}
+              </option>
+            ))}
+          </select>
         </div>
 
-        <div style={{ marginTop: 10, display: "flex", gap: 10, flexWrap: "wrap" }}>
-          <div style={pillStyle(theme)}>
-            Penalties ✅ {agg.pensScoredAll} / ❌ {agg.pensMissedAll}
+        <div style={{ marginTop: 10, display: "grid", gridTemplateColumns: "1fr auto", gap: 10, alignItems: "center" }}>
+          <input
+            style={search(theme)}
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            placeholder="Recherche (joueur / team…)"
+          />
+          <div style={pill(theme, true)}>
+            {filtered.length} matchs • {modeLabel} • {periodLabel}
           </div>
-          <div style={pillStyle(theme)}>Réussite {(agg.penRate * 100).toFixed(0)}%</div>
-          <div style={pillStyle(theme)}>Winrate (min 5 matchs)</div>
-        </div>
-
-        <div style={lbTitle}>Top victoires</div>
-        <div style={lbRow}>
-          {agg.topWins.length === 0 ? (
-            <div style={{ opacity: 0.7, fontWeight: 700 }}>Aucun match enregistré.</div>
-          ) : (
-            agg.topWins.map((p) => (
-              <PlayerChip key={p.id} theme={theme} id={p.id} name={p.name} lines={[`${p.wins}W • ${p.played}J`]} />
-            ))
-          )}
-        </div>
-
-        <div style={lbTitle}>Top winrate (≥ 5 matchs)</div>
-        <div style={lbRow}>
-          {agg.topWinrate.length === 0 ? (
-            <div style={{ opacity: 0.7, fontWeight: 700 }}>Pas assez de données (min 5 matchs).</div>
-          ) : (
-            agg.topWinrate.map((p) => (
-              <PlayerChip
-                key={p.id}
-                theme={theme}
-                id={p.id}
-                name={p.name}
-                lines={[`${Math.round((p.wins / Math.max(1, p.played)) * 100)}% • ${p.wins}W/${p.played}J`]}
-              />
-            ))
-          )}
-        </div>
-
-        <div style={lbTitle}>Top buts / match (≥ 3 matchs)</div>
-        <div style={lbRow}>
-          {agg.topGoalsPerMatch.length === 0 ? (
-            <div style={{ opacity: 0.7, fontWeight: 700 }}>Pas assez de données (events buts manquants).</div>
-          ) : (
-            agg.topGoalsPerMatch.map((p) => (
-              <PlayerChip
-                key={p.id}
-                theme={theme}
-                id={p.id}
-                name={p.name}
-                lines={[
-                  `${(p.goals / Math.max(1, p.played)).toFixed(2)} but/match`,
-                  `${p.goals} buts • ${p.played} matchs`,
-                ]}
-              />
-            ))
-          )}
-        </div>
-
-        <div style={lbTitle}>Séries de victoires</div>
-        <div style={lbRow}>
-          {agg.topStreak.length === 0 ? (
-            <div style={{ opacity: 0.7, fontWeight: 700 }}>Pas assez de données.</div>
-          ) : (
-            agg.topStreak.map((p) => (
-              <PlayerChip
-                key={p.id}
-                theme={theme}
-                id={p.id}
-                name={p.name}
-                lines={[
-                  `Best: ${p.bestWinStreak}W`,
-                  `Actuelle: ${p.currentWinStreak}W`,
-                ]}
-              />
-            ))
-          )}
         </div>
       </div>
 
-      <div style={searchRow}>
-        <input style={search(theme)} value={q} onChange={(e) => setQ(e.target.value)} placeholder="Filtrer (nom / score / etc.)" />
-        <div style={pillStyle(theme)}>{filtered.length} matchs</div>
+      {/* Summary */}
+      <div style={{ marginTop: 10, ...card(theme) }}>
+        <div style={{ fontWeight: 1000, letterSpacing: 0.6, marginBottom: 10 }}>Résumé</div>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+          <KPI theme={theme} label="Matchs" value={String(agg.matches)} />
+          <KPI theme={theme} label="Buts" value={String(agg.goals)} />
+          <KPI theme={theme} label="Buts / match" value={agg.avgGoals.toFixed(1)} />
+          <KPI theme={theme} label="Durée moyenne" value={fmt(agg.avgDurMs)} />
+        </div>
       </div>
 
-      <div style={list}>
-        {filtered.map((m: any) => {
-          const payload = m?.payload || {};
-          const players = Array.isArray(m?.players) ? m.players : [];
-          const scoreA = safeNum(payload?.scoreA ?? payload?.summary?.scoreA, 0);
-          const scoreB = safeNum(payload?.scoreB ?? payload?.summary?.scoreB, 0);
-          const teamA = payload?.teamA ?? payload?.summary?.teamA ?? "A";
-          const teamB = payload?.teamB ?? payload?.summary?.teamB ?? "B";
-          const dur = safeNum(payload?.durationMs ?? payload?.summary?.durationMs, 0);
-
-          return (
-            <div key={m.id} style={row(theme)}>
-              <div style={rowTop}>
-                <div style={rowTitle}>
-                  {teamA} <span style={{ opacity: 0.65 }}>vs</span> {teamB}
+      {/* Players */}
+      <div style={sectionTitle}>Joueurs</div>
+      <div style={grid2}>
+        <Board
+          theme={theme}
+          title="Top winrate"
+          subtitle="≥ 5 matchs"
+          rows={agg.topWinrate.map((p) => ({
+            id: p.id,
+            left: p.name,
+            right: `${Math.round((p.wins / Math.max(1, p.played)) * 100)}% • ${p.wins}/${p.played}`,
+          }))}
+        />
+        <Board
+          theme={theme}
+          title="Top buteurs"
+          subtitle="Goals"
+          rows={agg.topGoals.map((p) => ({ id: p.id, left: p.name, right: `${p.goals} buts` }))}
+        />
+        <Board
+          theme={theme}
+          title="Buts / match"
+          subtitle="≥ 3 matchs"
+          rows={agg.topGPM.map((p) => ({ id: p.id, left: p.name, right: `${(p.goals / Math.max(1, p.played)).toFixed(2)}` }))}
+        />
+        <div style={card(theme)}>
+          <div style={{ fontWeight: 1000, letterSpacing: 0.6 }}>Séries</div>
+          <div style={{ marginTop: 10, display: "grid", gap: 8 }}>
+            {agg.streaks.length === 0 ? (
+              <div style={{ opacity: 0.7, fontWeight: 800 }}>Pas assez de données.</div>
+            ) : (
+              agg.streaks.map((p) => (
+                <div key={p.id} style={rowItem(theme)}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
+                    <ProfileAvatar profile={{ id: p.id }} size={28} />
+                    <div style={{ fontWeight: 950, overflow: "hidden", textOverflow: "ellipsis" }}>{p.name}</div>
+                  </div>
+                  <div style={{ fontWeight: 950, opacity: 0.95 }}>Best {p.bestStreak} • Actuelle {p.currentStreak}</div>
                 </div>
-                <div style={pillStyle(theme)}>{fmt(dur)}</div>
+              ))
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Teams */}
+      <div style={sectionTitle}>Équipes</div>
+      <div style={{ marginTop: 10, ...card(theme) }}>
+        <div style={{ fontWeight: 1000, letterSpacing: 0.6 }}>Top équipes (compositions)</div>
+        <div style={{ marginTop: 10, display: "grid", gap: 10 }}>
+          {agg.topTeams.length === 0 ? (
+            <div style={{ opacity: 0.7, fontWeight: 800 }}>Pas assez de matchs (≥ 3) pour des stats équipes.</div>
+          ) : (
+            agg.topTeams.map((tm) => {
+              const wr = tm.wins / Math.max(1, tm.played);
+              const diff = tm.gf - tm.ga;
+              const penPct = tm.pensShots > 0 ? tm.pensGoals / tm.pensShots : null;
+              return (
+                <div key={tm.key} style={teamCard(theme)}>
+                  <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+                    <div style={{ fontWeight: 1000 }}>
+                      {tm.label} <span style={{ opacity: 0.55, fontWeight: 900 }}>• {tm.ids.length} joueur(s)</span>
+                    </div>
+                    <div style={pill(theme, true)}>{Math.round(wr * 100)}%</div>
+                  </div>
+
+                  <div style={{ marginTop: 10, display: "flex", gap: 10, flexWrap: "wrap" }}>
+                    <StatChip theme={theme} label="W/L" value={`${tm.wins}/${tm.played}`} />
+                    <StatChip theme={theme} label="DIFF" value={`${diff >= 0 ? "+" : ""}${diff}`} />
+                    <StatChip theme={theme} label="B/M" value={(tm.gf / Math.max(1, tm.played)).toFixed(1)} />
+                    <StatChip theme={theme} label="PEN" value={penPct == null ? "—" : `${Math.round(penPct * 100)}% (${tm.pensGoals}/${tm.pensShots})`} />
+                  </div>
+
+                  <div style={{ marginTop: 10, display: "flex", gap: 8, flexWrap: "wrap" }}>
+                    {tm.ids.slice(0, 4).map((id) => (
+                      <div key={id} style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                        <ProfileAvatar profile={{ id }} size={26} />
+                        <div style={{ fontWeight: 900, opacity: 0.85 }}>{(profilesById[id]?.name ?? "").trim() || id.slice(0, 6)}</div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              );
+            })
+          )}
+        </div>
+      </div>
+
+      {/* Duels */}
+      <div style={sectionTitle}>Duels</div>
+      <div style={{ marginTop: 10, ...card(theme) }}>
+        <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+          <div style={{ fontWeight: 1000, letterSpacing: 0.6 }}>Joueur vs Joueur</div>
+          <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+            <select style={select(theme)} value={duelA} onChange={(e) => setDuelA(e.target.value)}>
+              {playerOptions.map((p) => (
+                <option key={p.id} value={p.id}>{p.name}</option>
+              ))}
+            </select>
+            <div style={{ fontWeight: 950, opacity: 0.7 }}>VS</div>
+            <select style={select(theme)} value={duelB} onChange={(e) => setDuelB(e.target.value)}>
+              {playerOptions.map((p) => (
+                <option key={p.id} value={p.id}>{p.name}</option>
+              ))}
+            </select>
+          </div>
+        </div>
+
+        {!duel || duelA === duelB ? (
+          <div style={{ marginTop: 10, opacity: 0.7, fontWeight: 800 }}>Choisis 2 joueurs différents.</div>
+        ) : (
+          <div style={{ marginTop: 12 }}>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+              <DuelSide theme={theme} id={duelA} profilesById={profilesById} stats={{
+                matches: duel.matches, wins: duel.aWins, draws: duel.draws, goals: duel.aGoals
+              }} />
+              <DuelSide theme={theme} id={duelB} profilesById={profilesById} stats={{
+                matches: duel.matches, wins: duel.bWins, draws: duel.draws, goals: duel.bGoals
+              }} />
+            </div>
+
+            <div style={{ marginTop: 12 }}>
+              <div style={{ fontWeight: 950, opacity: 0.85, marginBottom: 6 }}>Head-to-head</div>
+              <div style={barOuter(theme)}>
+                {(() => {
+                  const m = Math.max(1, duel.matches);
+                  const aP = clamp01(duel.aWins / m);
+                  const dP = clamp01(duel.draws / m);
+                  const bP = clamp01(duel.bWins / m);
+                  return (
+                    <div style={{ display: "flex", height: 14, borderRadius: 999, overflow: "hidden" }}>
+                      <div style={{ width: `${aP * 100}%`, background: "rgba(124,255,196,0.55)" }} />
+                      <div style={{ width: `${dP * 100}%`, background: "rgba(255,255,255,0.18)" }} />
+                      <div style={{ width: `${bP * 100}%`, background: "rgba(255,102,204,0.55)" }} />
+                    </div>
+                  );
+                })()}
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* History */}
+      <div style={sectionTitle}>Historique</div>
+      <div style={{ marginTop: 10, display: "grid", gap: 10 }}>
+        {filtered.map((h: any) => {
+          const payload = getPayload(h);
+          const { teamA, teamB, scoreA, scoreB } = getTeams(payload);
+          const dur = safeNum(payload?.durationMs ?? payload?.summary?.durationMs, 0);
+          const players = Array.isArray(h?.players) ? h.players : Array.isArray(payload?.players) ? payload.players : [];
+          return (
+            <div key={h.id} style={historyRow(theme)}>
+              <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center" }}>
+                <div style={{ fontWeight: 950 }}>{teamA} <span style={{ opacity: 0.6 }}>vs</span> {teamB}</div>
+                <div style={pill(theme, true)}>{fmt(dur)}</div>
               </div>
 
-              <div style={rowMid}>
-                <div style={score}>{scoreA}</div>
+              <div style={{ display: "flex", gap: 10, alignItems: "baseline", justifyContent: "center", marginTop: 10 }}>
+                <div style={{ fontSize: 28, fontWeight: 950 }}>{scoreA}</div>
                 <div style={{ opacity: 0.6, fontWeight: 900 }}>—</div>
-                <div style={score}>{scoreB}</div>
+                <div style={{ fontSize: 28, fontWeight: 950 }}>{scoreB}</div>
               </div>
 
-              <div style={playersRow}>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginTop: 10 }}>
                 {players.slice(0, 6).map((p: any) => (
                   <div key={p.id} style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
                     <ProfileAvatar profile={p} size={26} />
                     <div style={{ opacity: 0.8, fontWeight: 800, overflow: "hidden", textOverflow: "ellipsis" }}>
-                      {p?.name || p?.id?.slice(0, 6)}
+                      {p?.name || profilesById[p?.id]?.name || p?.id?.slice(0, 6)}
                     </div>
                   </div>
                 ))}
@@ -415,29 +669,111 @@ export default function BabyFootStatsHistoryPage({ store, go }: Props) {
   );
 }
 
-function PlayerChip({ theme, id, name, lines }: { theme: any; id: string; name?: string; lines: string[] }) {
+/* ---------- small components ---------- */
+
+function KPI({ theme, label, value }: { theme: any; label: string; value: string }) {
   return (
-    <div style={lbItem(theme)}>
-      <div style={{ width: 34, height: 34, display: "grid", placeItems: "center" }}>
-        <ProfileAvatar profile={{ id }} size={30} />
+    <div style={kpi(theme)}>
+      <div style={{ opacity: 0.7, fontWeight: 800, fontSize: 12 }}>{label}</div>
+      <div style={{ fontSize: 22, fontWeight: 950, letterSpacing: 0.6 }}>{value}</div>
+    </div>
+  );
+}
+
+function Board({
+  theme,
+  title,
+  subtitle,
+  rows,
+}: {
+  theme: any;
+  title: string;
+  subtitle?: string;
+  rows: Array<{ id: string; left: string; right: string }>;
+}) {
+  return (
+    <div style={card(theme)}>
+      <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "baseline" }}>
+        <div style={{ fontWeight: 1000, letterSpacing: 0.6 }}>{title}</div>
+        {subtitle ? <div style={{ opacity: 0.65, fontWeight: 900, fontSize: 12 }}>{subtitle}</div> : null}
       </div>
-      <div style={{ minWidth: 0 }}>
-        <div style={lbName}>{name || id.slice(0, 6)}</div>
-        {lines.map((l, idx) => (
-          <div key={idx} style={lbSub}>
-            {l}
-          </div>
-        ))}
+      <div style={{ marginTop: 10, display: "grid", gap: 8 }}>
+        {rows.length === 0 ? (
+          <div style={{ opacity: 0.7, fontWeight: 800 }}>Pas assez de données.</div>
+        ) : (
+          rows.map((r) => (
+            <div key={r.id} style={rowItem(theme)}>
+              <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
+                <ProfileAvatar profile={{ id: r.id }} size={28} />
+                <div style={{ fontWeight: 950, overflow: "hidden", textOverflow: "ellipsis" }}>{r.left}</div>
+              </div>
+              <div style={{ fontWeight: 950, opacity: 0.95 }}>{r.right}</div>
+            </div>
+          ))
+        )}
       </div>
     </div>
   );
 }
 
+function StatChip({ theme, label, value }: { theme: any; label: string; value: string }) {
+  return (
+    <div
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        gap: 8,
+        padding: "6px 10px",
+        borderRadius: 999,
+        border: "1px solid rgba(255,255,255,0.12)",
+        background: "rgba(0,0,0,0.18)",
+        color: theme?.text ?? "#fff",
+        fontWeight: 950,
+        fontSize: 12,
+        letterSpacing: 0.3,
+      }}
+    >
+      <span style={{ opacity: 0.65 }}>{label}</span>
+      <span>{value}</span>
+    </div>
+  );
+}
+
+function DuelSide({ theme, id, profilesById, stats }: any) {
+  const name = (profilesById?.[id]?.name ?? "").trim() || String(id).slice(0, 6);
+  return (
+    <div style={duelSide(theme)}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+        <ProfileAvatar profile={{ id }} size={34} />
+        <div style={{ fontWeight: 1000 }}>{name}</div>
+      </div>
+      <div style={{ marginTop: 10, display: "grid", gap: 8 }}>
+        <StatLine label="Matchs" value={String(stats?.matches ?? 0)} />
+        <StatLine label="Victoires" value={String(stats?.wins ?? 0)} />
+        <StatLine label="Nuls" value={String(stats?.draws ?? 0)} />
+        <StatLine label="Buts (scorés)" value={String(stats?.goals ?? 0)} />
+      </div>
+    </div>
+  );
+}
+
+function StatLine({ label, value }: { label: string; value: string }) {
+  return (
+    <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
+      <div style={{ opacity: 0.72, fontWeight: 900 }}>{label}</div>
+      <div style={{ fontWeight: 1000 }}>{value}</div>
+    </div>
+  );
+}
+
+/* ---------- styles ---------- */
+
 const wrap = (theme: any) => ({
   minHeight: "100vh",
   padding: 14,
-  background: theme?.colors?.bg ?? "#05060a",
-  color: theme?.colors?.text ?? "#fff",
+  paddingBottom: 90,
+  background: theme?.bg ?? "#05060a",
+  color: theme?.text ?? "#fff",
 });
 
 const topRow: any = {
@@ -450,87 +786,82 @@ const topRow: any = {
 
 const topTitle: any = { textAlign: "center", fontWeight: 900, letterSpacing: 1, opacity: 0.95 };
 
-const summaryCard = (theme: any) => ({
+const card = (theme: any) => ({
   borderRadius: 18,
-  background: "rgba(255,255,255,0.06)",
-  border: "1px solid rgba(255,255,255,0.10)",
-  padding: 14,
-  boxShadow: "0 18px 60px rgba(0,0,0,0.40)",
-});
-
-const summaryTitle: any = { fontWeight: 1000, letterSpacing: 0.6, marginBottom: 10 };
-
-const summaryGrid: any = {
-  display: "grid",
-  gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
-  gap: 10,
-};
-
-const kpi = (theme: any) => ({
-  borderRadius: 16,
-  background: "rgba(0,0,0,0.18)",
-  border: "1px solid rgba(255,255,255,0.10)",
+  border: `1px solid ${theme?.borderSoft ?? theme?.border ?? "rgba(255,255,255,0.14)"}`,
+  background: theme?.card ?? "rgba(255,255,255,0.06)",
   padding: 12,
+  boxShadow: "0 12px 28px rgba(0,0,0,0.35)",
 });
 
-const kpiLabel: any = { fontSize: 12, fontWeight: 900, opacity: 0.75 };
-const kpiValue: any = { fontSize: 22, fontWeight: 1000, letterSpacing: 0.6, marginTop: 6 };
-
-const lbTitle: any = { marginTop: 14, fontWeight: 1000, letterSpacing: 0.5, opacity: 0.95 };
-
-const lbRow: any = { marginTop: 10, display: "flex", gap: 10, flexWrap: "wrap" };
-
-const lbItem = (theme: any) => ({
-  display: "flex",
-  alignItems: "center",
-  gap: 10,
-  padding: "10px 12px",
-  borderRadius: 16,
-  border: "1px solid rgba(255,255,255,0.10)",
-  background: "rgba(0,0,0,0.18)",
-  minWidth: 190,
-  flex: "1 1 190px",
-});
-
-const lbName: any = { fontWeight: 950, letterSpacing: 0.4, overflow: "hidden", textOverflow: "ellipsis" };
-const lbSub: any = { fontSize: 12, fontWeight: 900, opacity: 0.7 };
-
-const searchRow: any = { marginTop: 12, display: "flex", gap: 10, alignItems: "center" };
-
-const search = (theme: any) => ({
-  flex: 1,
-  height: 44,
-  borderRadius: 14,
-  border: "1px solid rgba(255,255,255,0.12)",
-  background: "rgba(0,0,0,0.18)",
-  color: theme?.colors?.text ?? "#fff",
-  padding: "0 12px",
+const select = (theme: any) => ({
+  height: 34,
+  borderRadius: 12,
+  border: `1px solid ${theme?.borderSoft ?? theme?.border ?? "rgba(255,255,255,0.14)"}`,
+  background: "rgba(0,0,0,0.20)",
+  color: theme?.text ?? "#fff",
+  padding: "0 10px",
   fontWeight: 900,
   outline: "none",
 });
 
-const list: any = { marginTop: 12, display: "flex", flexDirection: "column", gap: 10 };
-
-const row = (theme: any) => ({
-  borderRadius: 18,
-  background: "rgba(255,255,255,0.06)",
-  border: "1px solid rgba(255,255,255,0.10)",
-  padding: 12,
-  boxShadow: "0 14px 40px rgba(0,0,0,0.35)",
+const search = (theme: any) => ({
+  height: 40,
+  borderRadius: 12,
+  border: `1px solid ${theme?.borderSoft ?? theme?.border ?? "rgba(255,255,255,0.14)"}`,
+  background: "rgba(0,0,0,0.20)",
+  color: theme?.text ?? "#fff",
+  padding: "0 12px",
+  fontWeight: 800,
+  outline: "none",
 });
 
-const rowTop: any = { display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 };
+const kpi = (theme: any) => ({
+  borderRadius: 14,
+  border: "1px solid rgba(255,255,255,0.10)",
+  background: "rgba(0,0,0,0.18)",
+  padding: 10,
+});
 
-const rowTitle: any = { fontWeight: 1000, letterSpacing: 0.6 };
+const sectionTitle: any = { marginTop: 14, fontWeight: 1000, letterSpacing: 0.8, opacity: 0.95 };
 
-const rowMid: any = {
-  marginTop: 10,
+const grid2: any = { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginTop: 10 };
+
+const rowItem = (theme: any) => ({
   display: "flex",
   alignItems: "center",
-  justifyContent: "center",
+  justifyContent: "space-between",
   gap: 10,
-};
+  borderRadius: 14,
+  border: "1px solid rgba(255,255,255,0.10)",
+  background: "rgba(0,0,0,0.18)",
+  padding: 10,
+});
 
-const score: any = { fontSize: 28, fontWeight: 1000, letterSpacing: 1 };
+const teamCard = (theme: any) => ({
+  borderRadius: 18,
+  border: "1px solid rgba(255,255,255,0.10)",
+  background: "rgba(0,0,0,0.18)",
+  padding: 12,
+});
 
-const playersRow: any = { marginTop: 10, display: "flex", gap: 10, flexWrap: "wrap" };
+const duelSide = (theme: any) => ({
+  borderRadius: 16,
+  border: "1px solid rgba(255,255,255,0.10)",
+  background: "rgba(0,0,0,0.18)",
+  padding: 12,
+});
+
+const barOuter = (theme: any) => ({
+  borderRadius: 999,
+  border: "1px solid rgba(255,255,255,0.12)",
+  background: "rgba(0,0,0,0.18)",
+  padding: 4,
+});
+
+const historyRow = (theme: any) => ({
+  borderRadius: 18,
+  border: `1px solid ${theme?.borderSoft ?? theme?.border ?? "rgba(255,255,255,0.14)"}`,
+  background: theme?.card ?? "rgba(255,255,255,0.06)",
+  padding: 12,
+});

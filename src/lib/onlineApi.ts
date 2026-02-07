@@ -14,6 +14,7 @@
 
 import { supabase } from "./supabaseClient";
 import { EventBuffer } from "./sync/EventBuffer";
+import { importHistoryFromCloud } from "./sync/CloudHistoryImport";
 import type { UserAuth, OnlineProfile, OnlineMatch } from "./onlineTypes";
 
 // ============================================================
@@ -633,6 +634,12 @@ async function restoreSession(): Promise<AuthSession | null> {
     // ✅ opportuniste: flush des événements locaux vers Supabase dès qu'on a un uid
     try {
       EventBuffer.syncNow().catch(() => {});
+    } catch {}
+
+    // ✅ opportuniste: pull léger du cloud -> History (multi-device)
+    // (best-effort, paginé, ne casse jamais le boot)
+    try {
+      importHistoryFromCloud({ maxPages: 2, pageSize: 150 }).catch(() => {});
     } catch {}
     return s;
   } catch (e) {

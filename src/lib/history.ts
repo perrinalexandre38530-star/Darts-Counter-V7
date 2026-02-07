@@ -62,6 +62,13 @@ export type SavedMatch = {
   [k: string]: any;
 };
 
+export type CloudImportResult = {
+  applied: "cloud" | "local" | "conflict_only";
+  baseId: string;
+  conflictId?: string;
+  reason?: string;
+};
+
 /* =========================
    Cricket stats (nouveau)
 ========================= */
@@ -77,24 +84,22 @@ import { loadStore } from "./storage";
 import { onlineApi } from "./onlineApi";
 import { EventBuffer } from "./sync/EventBuffer";
 
-// ============================================================
+// =========================
 // ✅ CLOUD IMPORT GUARD
-// - Quand on importe des events cloud -> History local,
-//   on ne veut PAS re-pusher un event (boucle infinie).
-// ============================================================
-let __HISTORY_SUPPRESS_EVENTBUFFER = false;
-
-/**
- * Upsert depuis le cloud (import multi-device).
- * - Écrit dans History local
- * - Ne repousse pas un event (anti-loop)
- */
-export async function upsertFromCloud(rec: SavedMatch): Promise<void> {
-  __HISTORY_SUPPRESS_EVENTBUFFER = true;
+// - Quand on importe depuis le cloud, on évite:
+//   - de re-push des events (boucle)
+//   - de re-déclencher des syncs opportunistes
+// =========================
+let __historyCloudImportDepth = 0;
+function isCloudImporting(): boolean {
+  return __historyCloudImportDepth > 0;
+}
+async function withCloudImportGuard<T>(fn: () => Promise<T>): Promise<T> {
+  __historyCloudImportDepth++;
   try {
-    await upsert(rec);
+    return await fn();
   } finally {
-    __HISTORY_SUPPRESS_EVENTBUFFER = false;
+    __historyCloudImportDepth = Math.max(0, __historyCloudImportDepth - 1);
   }
 }
 
@@ -1341,44 +1346,43 @@ export async function upsert(rec: SavedMatch): Promise<void> {
 
     // ================================
     // ✅ EVENT BUFFER (multi-device sync)
+    // - IMPORTANT: ne jamais re-push quand on importe depuis le cloud (anti-boucle)
     // ================================
-    try {
-      if (__HISTORY_SUPPRESS_EVENTBUFFER) {
-        // Import cloud -> History : ne pas reboucler
-      } else {
-      const kind = String(rec.kind || safe.kind || "");
-      const sport = kind.includes("petanque")
-        ? "petanque"
-        : kind.includes("baby")
-        ? "babyfoot"
-        : kind.includes("ping")
-        ? "pingpong"
-        : kind.includes("territ")
-        ? "territories"
-        : "darts";
+    if (!isCloudImporting()) {
+      try {
+        const kind = String(rec.kind || safe.kind || "");
+        const sport = kind.includes("petanque")
+          ? "petanque"
+          : kind.includes("baby")
+          ? "babyfoot"
+          : kind.includes("ping")
+          ? "pingpong"
+          : kind.includes("territ")
+          ? "territories"
+          : "darts";
 
-      // On push un payload compact (pas la partie complète)
-      EventBuffer.push({
-        sport,
-        mode: kind || sport,
-        event_type: "MATCH_SAVED",
-        payload: {
-          id: safe.id,
-          matchId: safe.matchId,
-          kind: safe.kind,
-          status: safe.status,
-          winnerId: safe.winnerId,
-          players: safe.players,
-          createdAt: safe.createdAt,
-          updatedAt: safe.updatedAt,
-          summary: safe.summary ?? null,
-        },
-      }).catch(() => {});
+        // On push un payload compact (pas la partie complète)
+        EventBuffer.push({
+          sport,
+          mode: kind || sport,
+          event_type: "MATCH_SAVED",
+          payload: {
+            id: safe.id,
+            matchId: safe.matchId,
+            kind: safe.kind,
+            status: safe.status,
+            winnerId: safe.winnerId,
+            players: safe.players,
+            createdAt: safe.createdAt,
+            updatedAt: safe.updatedAt,
+            summary: safe.summary ?? null,
+          },
+        }).catch(() => {});
 
-      // tentative de sync opportuniste (non bloquante)
-      EventBuffer.syncNow().catch(() => {});
-      }
-    } catch {}
+        // tentative de sync opportuniste (non bloquante)
+        EventBuffer.syncNow().catch(() => {});
+      } catch {}
+    }
   } catch (e) {
     console.warn("[history.upsert] fallback localStorage (IDB indispo?):", e);
 
@@ -1407,42 +1411,144 @@ export async function upsert(rec: SavedMatch): Promise<void> {
 
       // ================================
       // ✅ EVENT BUFFER (multi-device sync)
+      // - IMPORTANT: ne jamais re-push quand on importe depuis le cloud (anti-boucle)
       // ================================
-      try {
-        if (__HISTORY_SUPPRESS_EVENTBUFFER) {
-          // Import cloud -> History : ne pas reboucler
-        } else {
-        const kind = String(rec.kind || safe.kind || "");
-        const sport = kind.includes("petanque")
-          ? "petanque"
-          : kind.includes("baby")
-          ? "babyfoot"
-          : kind.includes("ping")
-          ? "pingpong"
-          : kind.includes("territ")
-          ? "territories"
-          : "darts";
+      if (!isCloudImporting()) {
+        try {
+          const kind = String(rec.kind || safe.kind || "");
+          const sport = kind.includes("petanque")
+            ? "petanque"
+            : kind.includes("baby")
+            ? "babyfoot"
+            : kind.includes("ping")
+            ? "pingpong"
+            : kind.includes("territ")
+            ? "territories"
+            : "darts";
 
-        EventBuffer.push({
-          sport,
-          mode: kind || sport,
-          event_type: "MATCH_SAVED",
-          payload: {
-            id: safe.id,
-            matchId: safe.matchId,
-            kind: safe.kind,
-            status: safe.status,
-            winnerId: safe.winnerId,
-            players: safe.players,
-            createdAt: safe.createdAt,
-            updatedAt: safe.updatedAt,
-            summary: safe.summary ?? null,
-          },
-        }).catch(() => {});
-        EventBuffer.syncNow().catch(() => {});
-        }
-      } catch {}
+          EventBuffer.push({
+            sport,
+            mode: kind || sport,
+            event_type: "MATCH_SAVED",
+            payload: {
+              id: safe.id,
+              matchId: safe.matchId,
+              kind: safe.kind,
+              status: safe.status,
+              winnerId: safe.winnerId,
+              players: safe.players,
+              createdAt: safe.createdAt,
+              updatedAt: safe.updatedAt,
+              summary: safe.summary ?? null,
+            },
+          }).catch(() => {});
+          EventBuffer.syncNow().catch(() => {});
+        } catch {}
+      }
     } catch {}
+  }
+}
+
+// ============================================
+// ✅ CLOUD IMPORT (multi-device)
+// - Upsert depuis le cloud avec anti-boucle
+// - Détecte divergence et conserve une copie "conflict" si besoin
+// ============================================
+
+function _stableBaseId(rec: any): string {
+  const id = String(rec?.id || "").trim();
+  const matchId = String(rec?.matchId || "").trim();
+  return matchId || id;
+}
+
+function _conflictId(baseId: string, suffix: string): string {
+  const safe = baseId.replace(/[^a-zA-Z0-9_-]/g, "_");
+  const s = suffix.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 24);
+  return `${safe}__conflict__${s}`;
+}
+
+function _payloadHashLite(payload: any): string {
+  try {
+    const s = JSON.stringify(payload ?? null);
+    let h = 0;
+    for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0;
+    return String(h);
+  } catch {
+    return "";
+  }
+}
+
+export async function upsertFromCloud(
+  rec: SavedMatch,
+  meta?: { cloudEventId?: string; cloudCreatedAt?: string }
+): Promise<CloudImportResult> {
+  const baseId = _stableBaseId(rec);
+  if (!baseId) {
+    return { applied: "conflict_only", baseId: "", reason: "missing_base_id" };
+  }
+
+  return await withCloudImportGuard(async () => {
+    const local = await get(baseId).catch(() => null);
+
+    const localUpdated = Number((local as any)?.updatedAt || 0);
+    const cloudUpdated = Number((rec as any)?.updatedAt || 0);
+
+    const localHash = _payloadHashLite((local as any)?.payload);
+    const cloudHash = _payloadHashLite((rec as any)?.payload);
+
+    // Si local existe et est plus récent -> on garde local, mais on garde la version cloud en "conflict" si elle diffère
+    if (local && localUpdated && cloudUpdated && localUpdated > cloudUpdated) {
+      if (localHash !== cloudHash) {
+        const cid = _conflictId(baseId, meta?.cloudEventId || rec.createdAt?.toString?.() || rec.updatedAt?.toString?.() || Date.now().toString());
+        const conflict = {
+          ...(rec as any),
+          id: cid,
+          matchId: baseId,
+          conflictOf: baseId,
+          conflictReason: "cloud_older_than_local",
+          conflictCloudCreatedAt: meta?.cloudCreatedAt || "",
+          conflictCreatedAt: Date.now(),
+        } as SavedMatch;
+        await upsert(conflict);
+        return { applied: "local", baseId, conflictId: cid, reason: "cloud_older_than_local" };
+      }
+      return { applied: "local", baseId, reason: "local_newer_same_payload" };
+    }
+
+    // Si divergence sans info temporelle fiable: on conserve cloud en conflict (et on garde local)
+    if (local && localHash && cloudHash && localHash !== cloudHash && !(cloudUpdated > localUpdated)) {
+      const cid = _conflictId(baseId, meta?.cloudEventId || Date.now().toString());
+      const conflict = {
+        ...(rec as any),
+        id: cid,
+        matchId: baseId,
+        conflictOf: baseId,
+        conflictReason: "divergent_payload",
+        conflictCloudCreatedAt: meta?.cloudCreatedAt || "",
+        conflictCreatedAt: Date.now(),
+      } as SavedMatch;
+      await upsert(conflict);
+      return { applied: "conflict_only", baseId, conflictId: cid, reason: "divergent_payload" };
+    }
+
+    // Sinon: la version cloud est acceptée (plus récente ou pas de conflit)
+    const normalized = { ...(rec as any), id: baseId, matchId: baseId } as SavedMatch;
+    await upsert(normalized);
+    return { applied: "cloud", baseId };
+  });
+}
+
+export async function listConflicts(): Promise<SavedMatch[]> {
+  const rows = await list().catch(() => [] as SavedMatch[]);
+  return rows.filter((r: any) => !!r?.conflictOf);
+}
+
+export async function clearConflicts(baseId?: string): Promise<void> {
+  const conflicts = await listConflicts();
+  const targets = baseId ? conflicts.filter((c: any) => c?.conflictOf === baseId) : conflicts;
+  for (const c of targets) {
+    // eslint-disable-next-line no-await-in-loop
+    await remove(String(c.id)).catch(() => {});
   }
 }
 
@@ -1630,6 +1736,19 @@ export const History = {
     await upsert(rec);
     _applyUpsertToCache(rec);
   },
+  // ✅ import cloud (anti-boucle + conflits)
+  async upsertFromCloud(rec: SavedMatch, meta?: { cloudEventId?: string; cloudCreatedAt?: string }) {
+    const res = await upsertFromCloud(rec, meta);
+    // update cache only if base record changed
+    if (res.applied === "cloud") {
+      _applyUpsertToCache({ ...(rec as any), id: res.baseId, matchId: res.baseId } as any);
+    } else if (res.conflictId) {
+      _applyUpsertToCache({ ...(rec as any), id: res.conflictId, matchId: res.baseId, conflictOf: res.baseId } as any);
+    }
+    return res;
+  },
+  listConflicts,
+  clearConflicts,
   async remove(id: string) {
     await remove(id);
     _applyRemoveToCache(id);

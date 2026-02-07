@@ -12,6 +12,14 @@ import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 const SUPABASE_URL = (import.meta.env.VITE_SUPABASE_URL as string) || "";
 const SUPABASE_ANON_KEY = (import.meta.env.VITE_SUPABASE_ANON_KEY as string) || "";
 
+// ✅ Exports de diagnostic (évite de "deviner" quand Supabase est injoignable)
+// - url: valeur réellement injectée par Vite
+// - hasEnv: true si URL + KEY présentes
+export const __SUPABASE_ENV__ = {
+  url: SUPABASE_URL,
+  hasEnv: !!SUPABASE_URL && !!SUPABASE_ANON_KEY,
+} as const;
+
 const isDev = !!import.meta.env.DEV;
 
 function supabaseProjectRef(url: string): string {
@@ -47,7 +55,7 @@ if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
 
 declare global {
   // eslint-disable-next-line no-var
-  var __dc_supabase: SupabaseClient | undefined;
+  var __dc_supabase_by_ref: Record<string, SupabaseClient> | undefined;
 }
 
 const canUseWindow = typeof window !== "undefined";
@@ -58,10 +66,14 @@ const STORAGE_KEY = `dc-supabase-auth-v2:${PROJECT_REF}`;
 
 function createSupabaseClient(): SupabaseClient {
   // Même si env manquants, on crée un client "safe" pour éviter crash import.
-  const url = SUPABASE_URL || "https://invalid.supabase.co";
-  const key = SUPABASE_ANON_KEY || "invalid-anon-key";
+  // ⚠️ MAIS on ne met plus une URL "invalid" qui masque le vrai problème :
+  // on garde une URL vide et c'est l'UI qui affichera un message clair.
+  const url = SUPABASE_URL || "";
+  const key = SUPABASE_ANON_KEY || "";
 
-  return createClient(url, key, {
+  // Si url/key vides, createClient plantera au moment du fetch => "Failed to fetch".
+  // C'est attendu : on affiche une erreur explicite côté écran de login.
+  return createClient(url || "https://invalid.supabase.co", key || "invalid-anon-key", {
     auth: {
       persistSession: true,
       autoRefreshToken: true,
@@ -79,5 +91,10 @@ function createSupabaseClient(): SupabaseClient {
   });
 }
 
-export const supabase: SupabaseClient = globalThis.__dc_supabase || createSupabaseClient();
-globalThis.__dc_supabase = supabase;
+// ✅ Singleton HMR-safe **par projet Supabase**.
+// Si tu changes VITE_SUPABASE_URL (rebase/zip différent), on évite de garder
+// un ancien client pointant vers un autre projet (cause typique des "Failed to fetch").
+const byRef = (globalThis.__dc_supabase_by_ref ||= {});
+
+export const supabase: SupabaseClient = byRef[PROJECT_REF] || createSupabaseClient();
+byRef[PROJECT_REF] = supabase;

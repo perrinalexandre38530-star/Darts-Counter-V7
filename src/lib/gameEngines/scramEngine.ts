@@ -1,246 +1,328 @@
 // ============================================
 // src/lib/gameEngines/scramEngine.ts
-// SCRAM (team-based) — 2 phases
-// - Phase RACE: les deux équipes ferment 20..15 (+ bull optionnel) en "marks" (défaut 3)
-// - Phase SCRAM: l'équipe qui a gagné la RACE devient "SCORERS" (marque des points)
-//                l'autre devient "CLOSERS" (ferme les cibles). Fin:
-//                - SCORERS atteignent objective => SCORERS gagnent
-//                - CLOSERS ferment toutes les cibles => CLOSERS gagnent
-// Notes:
-// - Le moteur est volontairement "state-centric" (contrôle/phase), pas score-centric.
-// - getWinner() renvoie le 1er joueur de l'équipe gagnante (compat UI existante).
+// SCRAM (Cricket-like) — engine
+// ✅ Phase RACE: fermeture des cibles (15–20 + Bull optionnel), sans points
+// ✅ Transition auto RACE -> SCRAM quand une équipe ferme toutes les cibles
+// ✅ Phase SCRAM:
+//    - SCORERS (équipe qui a gagné la RACE) marquent des points
+//      uniquement sur des cibles déjà fermées par eux ET non fermées par l'adversaire
+//    - CLOSERS essaient de fermer pour bloquer le scoring
+// ✅ Victoire:
+//    - SCORERS gagnent si score >= objectif
+//    - CLOSERS gagnent si ils ferment toutes les cibles avant que l'objectif soit atteint
+// ✅ Compatible UI Cricket (mêmes notions S/D/T + Bull, même flow « 1 tour = 3 fléchettes »)
 // ============================================
 
-import type {
-  BaseGameState,
-  Player,
-  GameDart as Dart,
-  MatchRules,
-  GameEngine,
-  ScramRules,
-} from "../types-game";
-import { makeBaseState, pushTurn } from "./baseEngine";
+import type { Player } from "../types-game";
+import type { GameDart } from "../types-game";
 
-type TeamId = "A" | "B";
-type Phase = "race" | "scram" | "finished";
-type Target = 15 | 16 | 17 | 18 | 19 | 20 | 25; // 25 = bull (OB/IB)
+export type ScramTeam = "A" | "B";
+export type ScramPhase = "race" | "scram";
 
-const DEFAULT_TARGETS: Target[] = [20, 19, 18, 17, 16, 15, 25];
-
-type Marks = Record<Target, number>; // 0..marksToClose
-
-function otherTeam(t: TeamId): TeamId {
-  return t === "A" ? "B" : "A";
-}
-
-function hitToMarks(d: Dart, target: Target): number {
-  if (d.bed === "MISS") return 0;
-  if (target === 25) {
-    if (d.bed === "OB") return 1;
-    if (d.bed === "IB") return 2;
-    return 0;
-  }
-  if (d.number !== target) return 0;
-  if (d.bed === "S") return 1;
-  if (d.bed === "D") return 2;
-  if (d.bed === "T") return 3;
-  return 0;
-}
-
-function hitToPoints(d: Dart, target: Target): number {
-  if (d.bed === "MISS") return 0;
-  if (target === 25) {
-    if (d.bed === "OB") return 25;
-    if (d.bed === "IB") return 50;
-    return 0;
-  }
-  if (d.number !== target) return 0;
-  const mult = d.bed === "S" ? 1 : d.bed === "D" ? 2 : d.bed === "T" ? 3 : 0;
-  return target * mult;
-}
-
-function emptyMarks(targets: Target[]): Marks {
-  return Object.fromEntries(targets.map((t) => [t, 0])) as Marks;
-}
-
-function isClosed(m: Marks, targets: Target[], marksToClose: number): boolean {
-  return targets.every((t) => (m[t] ?? 0) >= marksToClose);
-}
-
-export type ScramState = BaseGameState & {
-  rules: Required<Pick<ScramRules, "objective" | "useBull" | "marksToClose">> & {
-    maxRounds: number; // 0 = illimité
-  };
-  phase: Phase;
-  targets: Target[];
-
-  // Assignation équipe (par playerId)
-  teamByPlayer: Record<string, TeamId>;
-  teams: Record<TeamId, string[]>; // ids
-
-  // Phase RACE
-  raceMarks: Record<TeamId, Marks>;
-  raceWinner: TeamId | null;
-
-  // Phase SCRAM
-  scorersTeam: TeamId | null;
-  closersTeam: TeamId | null;
-  closersMarks: Marks; // marks de l'équipe "closers" uniquement
-  scramScore: number;  // points des "scorers" uniquement
-
-  // Fin
-  winningTeam: TeamId | null;
+export type ScramRules = {
+  mode: "scram";
+  objective: number;        // points à atteindre pendant la phase SCRAM
+  maxRounds: number;        // 0 = illimité (un round = passage complet de tous les joueurs)
+  useBull: boolean;         // inclure Bull dans les cibles
+  marksToClose: 1 | 2 | 3;  // marks nécessaires pour « fermer » (par défaut 3)
 };
 
-export const ScramEngine: GameEngine<ScramState> = {
-  initGame(players: Player[], rules: MatchRules): ScramState {
-    const r0 = (rules.mode === "scram" ? rules : ({} as any)) as ScramRules;
+export type Target = 15 | 16 | 17 | 18 | 19 | 20 | 25; // 25 = Bull
 
-    const useBull = r0.useBull !== false;
-    const objective = Math.max(0, Math.floor(Number(r0.objective ?? 200)));
-    const marksToClose = (r0.marksToClose ?? 3) as 1 | 2 | 3;
-    const maxRounds = Math.max(0, Math.floor(Number(r0.maxRounds ?? 0)));
+export type TargetMarks = Record<Target, number>;
 
-    const base = makeBaseState("scram", players);
-    const targets = (useBull ? DEFAULT_TARGETS : DEFAULT_TARGETS.filter((t) => t !== 25)) as Target[];
+export type ScramState = {
+  sport: "darts";
+  mode: "scram";
+  rules: ScramRules;
 
-    // Assignation simple: alternance A/B selon l'ordre des joueurs
-    const teamByPlayer: Record<string, TeamId> = {};
-    const teams: Record<TeamId, string[]> = { A: [], B: [] };
-    players.forEach((p, idx) => {
-      const team: TeamId = idx % 2 === 0 ? "A" : "B";
-      teamByPlayer[p.id] = team;
-      teams[team].push(p.id);
-    });
+  players: Player[];
+  activePlayerIndex: number;
+  round: number; // 1..n
+
+  phase: ScramPhase;
+
+  // Phase RACE
+  raceMarks: Record<ScramTeam, TargetMarks>;
+
+  // Phase SCRAM
+  scorersTeam: ScramTeam | null;
+  closersTeam: ScramTeam | null;
+  scorersMarks: TargetMarks; // marks de l'équipe scorers
+  closersMarks: TargetMarks; // marks de l'équipe closers
+  scramScore: number;        // score des scorers pendant la phase scram
+
+  // Stats (côté UI: "Darts / Miss / S / D / T / OB / IB")
+  stats: Record<
+    ScramTeam,
+    { darts: number; miss: number; s: number; d: number; t: number; ob: number; ib: number }
+  >;
+
+  // Fin de partie
+  winnerTeam: ScramTeam | null;
+  finished: boolean;
+
+  // Historique minimal
+  history: Array<{
+    id: string;
+    createdAt: string;
+    playerId: string;
+    team: ScramTeam;
+    phase: ScramPhase;
+    darts: GameDart[];
+    scramScoreDelta: number;
+    snapshot?: any;
+  }>;
+};
+
+const TARGETS_BASE: Target[] = [15, 16, 17, 18, 19, 20];
+const BULL: Target = 25;
+
+function nowIso() {
+  return new Date().toISOString();
+}
+
+function teamForPlayerIndex(i: number): ScramTeam {
+  return i % 2 === 0 ? "A" : "B";
+}
+
+function emptyMarks(useBull: boolean): TargetMarks {
+  const obj: any = { 15: 0, 16: 0, 17: 0, 18: 0, 19: 0, 20: 0, 25: 0 };
+  if (!useBull) obj[25] = 0; // reste présent mais ignoré par targets()
+  return obj as TargetMarks;
+}
+
+function targets(rules: ScramRules): Target[] {
+  return rules.useBull ? [...TARGETS_BASE, BULL] : [...TARGETS_BASE];
+}
+
+function isClosed(marks: number, rules: ScramRules) {
+  return marks >= rules.marksToClose;
+}
+
+function allClosed(m: TargetMarks, rules: ScramRules) {
+  for (const t of targets(rules)) {
+    if (!isClosed(m[t], rules)) return false;
+  }
+  return true;
+}
+
+function cloneMarks(m: TargetMarks): TargetMarks {
+  return { 15: m[15], 16: m[16], 17: m[17], 18: m[18], 19: m[19], 20: m[20], 25: m[25] } as TargetMarks;
+}
+
+function dartToTarget(d: GameDart): { target: Target; isBull: boolean } | null {
+  // GameDart attendu: { value: number, multiplier: 1|2|3, label?: string }
+  // Bull : value peut être 25 (OB) ou 50 (IB) selon conversion. On mappe vers target=25.
+  if (!d) return null;
+  const v = (d as any).value;
+  if (v === 25 || v === 50) return { target: 25, isBull: true };
+  if (v === 15 || v === 16 || v === 17 || v === 18 || v === 19 || v === 20) return { target: v as Target, isBull: false };
+  return null;
+}
+
+function bullPoints(d: GameDart) {
+  const v = (d as any).value;
+  if (v === 50) return 50; // inner bull
+  return 25;               // outer bull (25)
+}
+
+function pointsForDart(d: GameDart): number {
+  const { isBull } = dartToTarget(d) ?? { isBull: false };
+  if (isBull) return bullPoints(d);
+  const v = (d as any).value ?? 0;
+  const mult = (d as any).multiplier ?? 1;
+  return v * mult;
+}
+
+function idTurn(state: ScramState) {
+  return `${state.mode}-${state.round}-${state.activePlayerIndex}-${state.history.length + 1}`;
+}
+
+export const ScramEngine = {
+  initGame(players: Player[], rulesInput: Partial<ScramRules>): ScramState {
+    const rules: ScramRules = {
+      mode: "scram",
+      objective: typeof rulesInput.objective === "number" ? rulesInput.objective : 200,
+      maxRounds: typeof rulesInput.maxRounds === "number" ? rulesInput.maxRounds : 0,
+      useBull: rulesInput.useBull !== false,
+      marksToClose: (rulesInput.marksToClose ?? 3) as 1 | 2 | 3,
+    };
+
+    const safePlayers = (players ?? []).filter((p: any) => p && typeof p.id === "string" && p.id.length > 0);
+    const finalPlayers =
+      safePlayers.length >= 2
+        ? safePlayers
+        : ([{ id: "p1", name: safePlayers[0]?.name ?? "Joueur 1" }, { id: "p2", name: "Joueur 2" }] as Player[]);
 
     return {
-      ...base,
-      rules: { objective, useBull, marksToClose, maxRounds },
+      sport: "darts",
+      mode: "scram",
+      rules,
+      players: finalPlayers,
+      activePlayerIndex: 0,
+      round: 1,
       phase: "race",
-      targets,
-      teamByPlayer,
-      teams,
-      raceMarks: { A: emptyMarks(targets), B: emptyMarks(targets) },
-      raceWinner: null,
+      raceMarks: { A: emptyMarks(rules.useBull), B: emptyMarks(rules.useBull) },
       scorersTeam: null,
       closersTeam: null,
-      closersMarks: emptyMarks(targets),
+      scorersMarks: emptyMarks(rules.useBull),
+      closersMarks: emptyMarks(rules.useBull),
       scramScore: 0,
-      winningTeam: null,
+      stats: {
+        A: { darts: 0, miss: 0, s: 0, d: 0, t: 0, ob: 0, ib: 0 },
+        B: { darts: 0, miss: 0, s: 0, d: 0, t: 0, ob: 0, ib: 0 },
+      },
+      winnerTeam: null,
+      finished: false,
+      history: [],
     };
   },
 
-  playTurn(state: ScramState, darts: Dart[]): ScramState {
-    if (state.phase === "finished") return state;
+  playTurn(state: ScramState, dartsInput: GameDart[]): ScramState {
+    if (state.finished) return state;
 
-    // maxRounds: si cap atteint => fin (sécurité)
-    if (state.rules.maxRounds > 0 && state.turnIndex >= state.rules.maxRounds * state.players.length) {
-      const forcedWinner: TeamId = state.scramScore >= state.rules.objective ? (state.scorersTeam ?? "A") : (state.closersTeam ?? "B");
-      return {
-        ...state,
-        phase: "finished",
-        endedAt: Date.now(),
-        winningTeam: forcedWinner,
-      };
-    }
-
-    const pid = state.players[state.currentPlayerIndex]?.id;
-    const team: TeamId = state.teamByPlayer[pid] ?? "A";
-
-    const slice = darts.slice(0, 3);
-
-    // --- Phase RACE ---
-    if (state.phase === "race") {
-      const next: ScramState = {
-        ...state,
-        raceMarks: { ...state.raceMarks, [team]: { ...state.raceMarks[team] } },
-      };
-
-      const m = next.raceMarks[team];
-      let notes = "";
-
-      for (const d of slice) {
-        for (const t of next.targets) {
-          const add = hitToMarks(d, t);
-          if (!add) continue;
-          m[t] = Math.min(next.rules.marksToClose, (m[t] ?? 0) + add);
-        }
-      }
-
-      const closed = isClosed(m, next.targets, next.rules.marksToClose);
-      if (closed) {
-        next.raceWinner = team;
-        next.phase = "scram";
-        next.scorersTeam = team;
-        next.closersTeam = otherTeam(team);
-        next.closersMarks = emptyMarks(next.targets);
-        next.scramScore = 0;
-        notes = `RACE WON by ${team} → SCRAM start (SCORERS=${team})`;
-      }
-
-      const advanced = pushTurn(next, { darts: slice, scoreDelta: 0, notes: notes || "race" });
-      return advanced;
-    }
-
-    // --- Phase SCRAM ---
-    const scorers = state.scorersTeam ?? "A";
-    const closers = state.closersTeam ?? otherTeam(scorers);
-
-    let next: ScramState = {
+    const darts = (dartsInput ?? []).slice(0, 3);
+    const next: ScramState = {
       ...state,
-      closersMarks: { ...state.closersMarks },
+      raceMarks: { A: cloneMarks(state.raceMarks.A), B: cloneMarks(state.raceMarks.B) },
+      scorersMarks: cloneMarks(state.scorersMarks),
+      closersMarks: cloneMarks(state.closersMarks),
+      stats: {
+        A: { ...state.stats.A },
+        B: { ...state.stats.B },
+      },
+      history: [...state.history],
     };
 
-    let gained = 0;
-    let notes = "";
+    const player = next.players[next.activePlayerIndex];
+    const team = teamForPlayerIndex(next.activePlayerIndex);
 
-    if (team === scorers) {
-      // SCORERS: marquent des points sur les cibles NON fermées par les CLOSERS
-      for (const d of slice) {
-        for (const t of next.targets) {
-          if ((next.closersMarks[t] ?? 0) >= next.rules.marksToClose) continue;
-          const pts = hitToPoints(d, t);
-          if (pts) gained += pts;
-        }
+    // --- stats volley
+    next.stats[team].darts += darts.length;
+
+    let scramScoreDelta = 0;
+
+    for (const d of darts) {
+      const mapped = dartToTarget(d);
+      if (!mapped) {
+        next.stats[team].miss += 1;
+        continue;
       }
-      next.scramScore = next.scramScore + gained;
-      notes = gained > 0 ? `scram +${gained}` : "scram";
-    } else if (team === closers) {
-      // CLOSERS: ferment les cibles
-      for (const d of slice) {
-        for (const t of next.targets) {
-          const add = hitToMarks(d, t);
-          if (!add) continue;
-          next.closersMarks[t] = Math.min(next.rules.marksToClose, (next.closersMarks[t] ?? 0) + add);
-        }
+
+      const mult = (d as any).multiplier ?? 1;
+
+      // Stats S/D/T + Bull
+      if (mapped.isBull) {
+        if ((d as any).value === 50 || mult === 2) next.stats[team].ib += 1;
+        else next.stats[team].ob += 1;
+      } else {
+        if (mult === 1) next.stats[team].s += 1;
+        else if (mult === 2) next.stats[team].d += 1;
+        else if (mult === 3) next.stats[team].t += 1;
       }
-      notes = "close";
+
+      if (next.phase === "race") {
+        // fermeture, sans points
+        const cur = next.raceMarks[team][mapped.target] ?? 0;
+        next.raceMarks[team][mapped.target] = Math.min(next.rules.marksToClose, cur + mult);
+        continue;
+      }
+
+      // phase SCRAM
+      const scorers = next.scorersTeam!;
+      const closers = next.closersTeam!;
+
+      if (team === scorers) {
+        // scoring si cible déjà fermée chez scorers et pas fermée chez closers
+        const sClosed = isClosed(next.scorersMarks[mapped.target], next.rules);
+        const cClosed = isClosed(next.closersMarks[mapped.target], next.rules);
+
+        if (sClosed && !cClosed) {
+          scramScoreDelta += pointsForDart(d);
+        } else {
+          // sinon : au mieux on complète les marks scorers (mais ils sont supposés déjà fermés au départ)
+          const cur = next.scorersMarks[mapped.target] ?? 0;
+          next.scorersMarks[mapped.target] = Math.min(next.rules.marksToClose, cur + mult);
+        }
+      } else if (team === closers) {
+        // closers ferment pour bloquer
+        const cur = next.closersMarks[mapped.target] ?? 0;
+        next.closersMarks[mapped.target] = Math.min(next.rules.marksToClose, cur + mult);
+      }
     }
 
-    const scorersWin = next.rules.objective > 0 && next.scramScore >= next.rules.objective;
-    const closersWin = isClosed(next.closersMarks, next.targets, next.rules.marksToClose);
+    // --- fin volley: transitions / victoire
+    if (next.phase === "race") {
+      const aWin = allClosed(next.raceMarks.A, next.rules);
+      const bWin = allClosed(next.raceMarks.B, next.rules);
 
-    if (scorersWin || closersWin) {
-      next.phase = "finished";
-      next.endedAt = Date.now();
-      next.winningTeam = scorersWin ? scorers : closers;
-      notes = scorersWin ? `WIN ${scorers} (objective)` : `WIN ${closers} (closed)`;
+      if (aWin || bWin) {
+        const winner: ScramTeam = aWin ? "A" : "B";
+        const loser: ScramTeam = winner === "A" ? "B" : "A";
+
+        next.phase = "scram";
+        next.scorersTeam = winner;
+        next.closersTeam = loser;
+
+        // On réutilise les marks accumulés pendant la race
+        next.scorersMarks = cloneMarks(next.raceMarks[winner]);
+        next.closersMarks = cloneMarks(next.raceMarks[loser]);
+        next.scramScore = 0;
+      }
+    } else {
+      // phase scram
+      next.scramScore += scramScoreDelta;
+
+      if (next.scramScore >= next.rules.objective) {
+        next.finished = true;
+        next.winnerTeam = next.scorersTeam;
+      } else if (allClosed(next.closersMarks, next.rules)) {
+        // closers ont tout fermé avant l'objectif
+        next.finished = true;
+        next.winnerTeam = next.closersTeam;
+      }
     }
 
-    next = pushTurn(next, { darts: slice, scoreDelta: gained, notes });
+    // --- history
+    next.history.push({
+      id: idTurn(next),
+      createdAt: nowIso(),
+      playerId: player?.id ?? "unknown",
+      team,
+      phase: next.phase,
+      darts,
+      scramScoreDelta,
+    });
+
+    // --- next player / round
+    const prevIndex = next.activePlayerIndex;
+    next.activePlayerIndex = (next.activePlayerIndex + 1) % next.players.length;
+
+    if (next.activePlayerIndex === 0 && prevIndex !== 0) {
+      next.round += 1;
+      if (next.rules.maxRounds > 0 && next.round > next.rules.maxRounds && !next.finished) {
+        // Tie-break simple : si on dépasse le cap sans fin, l'équipe scorers gagne si elle mène (score > 0),
+        // sinon closers (ça pousse à fermer).
+        next.finished = true;
+        if (next.phase === "scram" && next.scorersTeam && next.closersTeam) {
+          next.winnerTeam = next.scramScore > 0 ? next.scorersTeam : next.closersTeam;
+        } else {
+          // si encore en race: équipe qui a le plus de cibles fermées
+          const sum = (m: TargetMarks) => targets(next.rules).reduce((acc, t) => acc + Math.min(next.rules.marksToClose, m[t] ?? 0), 0);
+          next.winnerTeam = sum(next.raceMarks.A) >= sum(next.raceMarks.B) ? "A" : "B";
+        }
+      }
+    }
+
     return next;
   },
 
-  isGameOver(state: ScramState): boolean {
-    return state.phase === "finished";
+  isGameOver(state: ScramState) {
+    return !!state.finished;
   },
 
-  getWinner(state: ScramState): Player | null {
-    if (state.phase !== "finished") return null;
-    const wt = state.winningTeam;
-    if (!wt) return null;
-    const winnerId = state.teams[wt]?.[0];
-    if (!winnerId) return null;
-    return state.players.find((p) => p.id === winnerId) ?? null;
+  getWinner(state: ScramState) {
+    return state.winnerTeam;
   },
 };

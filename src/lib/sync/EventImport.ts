@@ -1,160 +1,143 @@
 // ============================================
 // src/lib/sync/EventImport.ts
-// Cloud -> Local import (multi-device)
-// - Lit les events Supabase (table: stats_events) pour l'utilisateur connecté
-// - Recrée des entrées History "light" (sans payload lourd)
-// - Déduplication par matchId/id + updatedAt
-// - Checkpoint local pour import incrémental
+// Import MATCH events from Supabase (stats_events) into local History.
+// - Incremental with checkpoint (created_at)
+// - Paging (range)
+// - Best-effort + schema tolerant (minimal select)
 // ============================================
 
 import { supabase } from "../supabaseClient";
 import type { SavedMatch } from "../history";
 import { upsertFromCloud } from "../history";
 
-const LS_LAST_PULL = "dc_cloud_events_last_pull_iso_v1";
+type RawEventRow = {
+  id?: string;
+  event_type?: string;
+  payload?: any;
+  created_at?: string;
+};
+
+const LSK_CHECKPOINT = "dc_cloud_events_checkpoint_v1";
+
+type Checkpoint = {
+  lastCreatedAtIso: string | null;
+};
 
 function canUseWindow(): boolean {
   return typeof window !== "undefined";
 }
 
-function getLastPullIso(): string {
-  if (!canUseWindow()) return "";
+function readCheckpoint(): Checkpoint {
+  if (!canUseWindow()) return { lastCreatedAtIso: null };
   try {
-    return String(window.localStorage.getItem(LS_LAST_PULL) || "");
+    const raw = localStorage.getItem(LSK_CHECKPOINT);
+    if (!raw) return { lastCreatedAtIso: null };
+    const parsed = JSON.parse(raw);
+    const v = String(parsed?.lastCreatedAtIso || "").trim();
+    return { lastCreatedAtIso: v || null };
   } catch {
-    return "";
+    return { lastCreatedAtIso: null };
   }
 }
 
-function setLastPullIso(iso: string) {
+function writeCheckpoint(cp: Checkpoint) {
   if (!canUseWindow()) return;
   try {
-    window.localStorage.setItem(LS_LAST_PULL, String(iso || ""));
+    localStorage.setItem(LSK_CHECKPOINT, JSON.stringify(cp));
   } catch {}
 }
 
-function safeNum(v: any): number | undefined {
-  const n = Number(v);
-  return Number.isFinite(n) ? n : undefined;
+function isIsoDate(s: any): s is string {
+  return typeof s === "string" && /\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/.test(s);
 }
 
-function normalizeMatchFromEventPayload(p: any): SavedMatch | null {
-  if (!p || typeof p !== "object") return null;
-
-  const id = String(p.id || p.matchId || "");
+function normalizeToSavedMatch(payload: any): SavedMatch | null {
+  if (!payload || typeof payload !== "object") return null;
+  const id = String(payload?.matchId || payload?.id || "").trim();
   if (!id) return null;
 
-  const kind = typeof p.kind === "string" ? p.kind : undefined;
-  const status = typeof p.status === "string" ? (p.status as any) : undefined;
-  const matchId = typeof p.matchId === "string" ? p.matchId : undefined;
-  const winnerId = typeof p.winnerId === "string" ? p.winnerId : (p.winnerId == null ? null : undefined);
-
-  const createdAt = safeNum(p.createdAt);
-  const updatedAt = safeNum(p.updatedAt);
-
-  const players = Array.isArray(p.players)
-    ? p.players
-        .map((pl: any) => {
-          if (!pl || typeof pl !== "object") return null;
-          const pid = String(pl.id || "");
-          if (!pid) return null;
-          return {
-            id: pid,
-            name: typeof pl.name === "string" ? pl.name : undefined,
-            avatarDataUrl: typeof pl.avatarDataUrl === "string" ? pl.avatarDataUrl : null,
-          };
-        })
-        .filter(Boolean)
-    : undefined;
-
-  const summary = p.summary && typeof p.summary === "object" ? (p.summary as any) : null;
-
+  // On importe une version light (si payload complet absent)
   const rec: SavedMatch = {
     id,
-    matchId,
-    kind,
-    status,
-    winnerId: winnerId as any,
-    players,
-    createdAt,
-    updatedAt,
-    summary: summary ?? null,
-    payload: null, // import "light" (pas de payload lourd)
+    matchId: String(payload?.matchId || id),
+    kind: payload?.kind || payload?.mode || "x01",
+    status: payload?.status || "finished",
+    winnerId: payload?.winnerId ?? null,
+    players: Array.isArray(payload?.players) ? payload.players : [],
+    createdAt: typeof payload?.createdAt === "number" ? payload.createdAt : undefined,
+    updatedAt: typeof payload?.updatedAt === "number" ? payload.updatedAt : undefined,
+    summary: payload?.summary ?? null,
+    // payload complet éventuellement present
+    payload: payload?.payload ?? undefined,
   };
-
   return rec;
 }
 
-export type CloudImportResult = {
-  pulled: number;
-  imported: number;
-  lastPulledIso: string;
-};
-
-/**
- * Import incrémental des events cloud -> History local.
- * - Ne casse jamais l'app (failsafe)
- * - Ne nécessite aucune migration DB
- */
 export async function importHistoryFromCloud(opts?: {
-  limit?: number;
-  forceSinceIso?: string;
-}): Promise<CloudImportResult> {
-  const limit = Math.max(1, Math.min(1000, opts?.limit ?? 400));
+  pageSize?: number;
+  maxPages?: number;
+}): Promise<{ imported: number }>
+{
+  const pageSize = Math.min(1000, Math.max(50, opts?.pageSize ?? 300));
+  const maxPages = Math.min(25, Math.max(1, opts?.maxPages ?? 6));
 
   try {
     const { data: userData, error: userErr } = await supabase.auth.getUser();
-    if (userErr) return { pulled: 0, imported: 0, lastPulledIso: getLastPullIso() };
+    if (userErr) return { imported: 0 };
     const uid = String(userData?.user?.id || "");
-    if (!uid) return { pulled: 0, imported: 0, lastPulledIso: getLastPullIso() };
+    if (!uid) return { imported: 0 };
 
-    const sinceIso = String(opts?.forceSinceIso || getLastPullIso() || "");
-
-    // select minimal pour éviter PGRST204 si colonnes manquantes
-    let q = supabase
-      .from("stats_events")
-      .select("id,event_type,payload,created_at")
-      .eq("user_id", uid)
-      .in("event_type", ["MATCH_SAVED", "MATCH_FINISH"])
-      .order("created_at", { ascending: true })
-      .limit(limit);
-
-    if (sinceIso) q = q.gt("created_at", sinceIso);
-
-    const { data, error } = await q;
-    if (error) {
-      console.warn("[EventImport] read stats_events failed", error);
-      return { pulled: 0, imported: 0, lastPulledIso: getLastPullIso() };
-    }
-
-    const rows = Array.isArray(data) ? data : [];
-    if (!rows.length) return { pulled: 0, imported: 0, lastPulledIso: getLastPullIso() };
-
+    const cp = readCheckpoint();
     let imported = 0;
-    let lastIso = sinceIso;
+    let lastSeenCreatedAt = cp.lastCreatedAtIso;
 
-    for (const r of rows) {
-      const created_at = String((r as any).created_at || "");
-      if (created_at) lastIso = created_at;
+    for (let page = 0; page < maxPages; page++) {
+      let q = supabase
+        .from("stats_events")
+        .select("id,event_type,payload,created_at")
+        .eq("user_id", uid)
+        .in("event_type", ["MATCH_SAVED", "MATCH_FINISH", "MATCH_BEGIN"])
+        .order("created_at", { ascending: true })
+        .range(page * pageSize, page * pageSize + pageSize - 1);
 
-      const rec = normalizeMatchFromEventPayload((r as any).payload);
-      if (!rec) continue;
+      if (lastSeenCreatedAt && isIsoDate(lastSeenCreatedAt)) {
+        q = q.gt("created_at", lastSeenCreatedAt);
+      }
 
-      // upsert en mode "cloud" (ne repousse pas un event)
-      // eslint-disable-next-line no-await-in-loop
-      await upsertFromCloud(rec);
-      imported++;
+      const { data, error } = await q;
+      if (error) {
+        console.warn("[EventImport] importHistoryFromCloud failed", error);
+        break;
+      }
+
+      const rows = (data || []) as RawEventRow[];
+      if (!rows.length) break;
+
+      for (const r of rows) {
+        const rec = normalizeToSavedMatch(r.payload);
+        if (!rec) continue;
+        // best-effort: upsertFromCloud évite les boucles (EventBuffer + cloud snapshots)
+        // eslint-disable-next-line no-await-in-loop
+        await upsertFromCloud(rec);
+        imported += 1;
+        if (r.created_at && isIsoDate(r.created_at)) lastSeenCreatedAt = r.created_at;
+      }
+
+      // si page incomplète, on a fini
+      if (rows.length < pageSize) break;
     }
 
-    if (lastIso) setLastPullIso(lastIso);
-
-    try {
-      if (canUseWindow()) window.dispatchEvent(new Event("dc-cloud-import-finished"));
-    } catch {}
-
-    return { pulled: rows.length, imported, lastPulledIso: lastIso || getLastPullIso() };
+    writeCheckpoint({ lastCreatedAtIso: lastSeenCreatedAt || cp.lastCreatedAtIso });
+    return { imported };
   } catch (e) {
-    console.warn("[EventImport] importHistoryFromCloud failed", e);
-    return { pulled: 0, imported: 0, lastPulledIso: getLastPullIso() };
+    console.warn("[EventImport] importHistoryFromCloud exception", e);
+    return { imported: 0 };
   }
+}
+
+export function resetCloudEventsCheckpoint() {
+  if (!canUseWindow()) return;
+  try {
+    localStorage.removeItem(LSK_CHECKPOINT);
+  } catch {}
 }

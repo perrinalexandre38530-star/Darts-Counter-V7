@@ -12,7 +12,6 @@ import {
   loadPingPongState,
   savePingPongState,
   undo as undoPoint,
-  tournanteEliminate,
 } from "../../lib/pingpongStore";
 
 type Props = {
@@ -41,7 +40,7 @@ export default function PingPongPlay({ go, onFinish }: Props) {
         createdAt: st.createdAt || now,
         updatedAt: now,
         mode: "tournante",
-        players: { active: st.tournantePlayers || [], eliminated: st.tournanteEliminated || [] },
+        players: { active: [st.tournanteActiveA, st.tournanteActiveB, ...(st.tournanteQueue || [])].filter(Boolean), eliminated: st.tournanteEliminated || [] },
         winnerName: w,
         summary: {
           title: w ? `Tournante — Vainqueur : ${w}` : "Tournante — terminée",
@@ -91,7 +90,7 @@ export default function PingPongPlay({ go, onFinish }: Props) {
   return (
     <div style={wrap(theme)}>
       <div style={head}>
-        <button style={back(theme)} onClick={() => go("home")}>
+        <button style={back(theme)} onClick={() => go("pingpong_menu")}>
           ✕
         </button>
         <div style={title}>PING-PONG</div>
@@ -102,35 +101,82 @@ export default function PingPongPlay({ go, onFinish }: Props) {
 
       {st.mode === "tournante" ? (
         <div style={kpi(theme)}>
-          <div style={{ gridColumn: "1 / -1", ...sideBlock(theme) }}>
-            <div style={{ fontWeight: 1000, letterSpacing: 1, textAlign: "center" }}>TOURNANTE</div>
-            <div style={{ fontWeight: 900, opacity: 0.85, textAlign: "center", fontSize: 12 }}>
-              Joueurs restants : {(st.tournantePlayers || []).length}
+          <div style={sideBlock(theme)}>
+            <div style={sideName}>{st.tournanteActiveA || "—"}</div>
+            <div style={setsLine}>
+              <span style={setsLabel}>Manches</span>
+              <span style={setsVal}>{Math.max(0, (st.setIndex || 1) - 1)}</span>
             </div>
-
-            <div style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 10 }}>
-              {(st.tournantePlayers || []).map((p) => (
-                <button
-                  key={p}
-                  style={btn(theme)}
-                  onClick={() => {
-                    if (st.tournantePlayers.length <= 1) return;
-                    setSt(tournanteEliminate(st, p));
-                  }}
-                >
-                  Éliminer : {p}
-                </button>
-              ))}
+            <div style={pointsVal}>{st.pointsA}</div>
+            <div style={btnRow}>
+              <button
+                style={btn(theme)}
+                onClick={() => !st.finished && setSt(addPoint(st, "A", +1))}
+              >
+                +1
+              </button>
+              <button
+                style={btn(theme)}
+                onClick={() => !st.finished && setSt(addPoint(st, "A", -1))}
+              >
+                -1
+              </button>
             </div>
+          </div>
 
+          <div style={mid(theme)}>
+            <div style={vs}>{`TOUR ${st.setIndex || 1}`}</div>
+            <div style={meta(theme)}>
+              {`${st.pointsPerSet} pts${st.winByTwo ? " · écart 2" : ""} · perdant éliminé`}
+            </div>
+            <div style={{ height: 10 }} />
+            <button style={btn(theme)} onClick={() => setSt(undoPoint(st))}>
+              Annuler
+            </button>
+            <div style={{ height: 10 }} />
+            <div style={{ fontSize: 12, fontWeight: 900, opacity: 0.85, textAlign: "center" }}>
+              Attente : {(st.tournanteQueue || []).length}
+            </div>
+          </div>
+
+          <div style={sideBlock(theme)}>
+            <div style={sideName}>{st.tournanteActiveB || "—"}</div>
+            <div style={setsLine}>
+              <span style={setsLabel}>Éliminés</span>
+              <span style={setsVal}>{(st.tournanteEliminated || []).length}</span>
+            </div>
+            <div style={pointsVal}>{st.pointsB}</div>
+            <div style={btnRow}>
+              <button
+                style={btn(theme)}
+                onClick={() => !st.finished && setSt(addPoint(st, "B", +1))}
+              >
+                +1
+              </button>
+              <button
+                style={btn(theme)}
+                onClick={() => !st.finished && setSt(addPoint(st, "B", -1))}
+              >
+                -1
+              </button>
+            </div>
+          </div>
+
+          <div style={{ gridColumn: "1 / -1", ...sideBlock(theme), paddingTop: 12 }}>
+            {(st.tournanteQueue || []).length > 0 && (
+              <div style={{ fontSize: 12, fontWeight: 900, opacity: 0.9, marginBottom: 6 }}>
+                File d'attente : {(st.tournanteQueue || []).join(" · ")}
+              </div>
+            )}
             {(st.tournanteEliminated || []).length > 0 && (
-              <div style={{ marginTop: 12, fontSize: 12, fontWeight: 800, opacity: 0.85 }}>
-                Éliminés : {(st.tournanteEliminated || []).join(", ")}
+              <div style={{ fontSize: 12, fontWeight: 900, opacity: 0.85 }}>
+                Éliminés : {(st.tournanteEliminated || []).join(" · ")}
               </div>
             )}
           </div>
         </div>
       ) : (
+
         <div style={kpi(theme)}>
           <div style={sideBlock(theme)}>
             <div style={sideName}>{st.sideA}</div>

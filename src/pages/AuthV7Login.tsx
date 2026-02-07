@@ -3,7 +3,7 @@
 // PROFILES V7 — Connexion email + mot de passe (simple, pro)
 // ============================================
 import React from "react";
-import { supabase } from "../lib/supabaseClient";
+import { supabase, __SUPABASE_ENV__ } from "../lib/supabaseClient";
 
 type Props = {
   go: (t: any, p?: any) => void;
@@ -15,6 +15,20 @@ export default function AuthV7Login({ go }: Props) {
   const [loading, setLoading] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const [canResend, setCanResend] = React.useState(false);
+
+  // Ping simple pour distinguer "mauvais mot de passe" vs "Supabase injoignable"
+  const pingSupabase = async () => {
+    if (!__SUPABASE_ENV__.url) return false;
+    try {
+      // Endpoint public/cheap (ne nécessite pas d'auth)
+      const res = await fetch(`${__SUPABASE_ENV__.url}/auth/v1/health`, {
+        headers: { apikey: (import.meta.env.VITE_SUPABASE_ANON_KEY as string) || "" },
+      });
+      return res.ok;
+    } catch {
+      return false;
+    }
+  };
 
   async function resendConfirm() {
     const e = email.trim();
@@ -50,8 +64,27 @@ export default function AuthV7Login({ go }: Props) {
     if (!e || !e.includes("@")) return setError("Entre une adresse email valide.");
     if (!password) return setError("Entre ton mot de passe.");
 
+    // ✅ Guard : si env Supabase non injectés, on affiche une erreur explicite
+    if (!__SUPABASE_ENV__.hasEnv) {
+      setError(
+        `Supabase non configuré (VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY manquants).\nURL actuelle: ${
+          __SUPABASE_ENV__.url || "(vide)"
+        }`
+      );
+      return;
+    }
+
     setLoading(true);
     try {
+      // ✅ si Supabase est injoignable => message clair au lieu de "Failed to fetch"
+      const ok = await pingSupabase();
+      if (!ok) {
+        setError(
+          `Impossible de joindre Supabase (réseau / DNS / bloqueur / URL).\nURL: ${__SUPABASE_ENV__.url}`
+        );
+        return;
+      }
+
       const { error: err } = await supabase.auth.signInWithPassword({ email: e, password });
       if (err) {
         const msg = err.message || "Connexion impossible.";

@@ -13,7 +13,7 @@ import teamGoldLogo from "../ui_assets/teams/team_gold.png";
 import teamPinkLogo from "../ui_assets/teams/team_pink.png";
 import teamBlueLogo from "../ui_assets/teams/team_blue.png";
 import teamGreenLogo from "../ui_assets/teams/team_green.png";
-import { playGolfPerfSfx, playGolfIntro, stopGolfIntro, playGolfTickerSound, unlockAudio } from "../lib/sfx";
+import { playGolfIntro, stopGolfIntro, playGolfTickerSound, playGolfPerfSfx, unlockAudio } from "../lib/sfx";
 import { speak, setVoiceEnabled } from "../lib/voice";
 import { useLang } from "../contexts/LangContext";
 
@@ -38,6 +38,11 @@ import { useLang } from "../contexts/LangContext";
  */
 
 type AnyFn = (...args: any[]) => any;
+
+// 🔊 Timing sons/voix
+const PERF_SFX_DELAY_MS = 1500; // décale le SFX perf après le bruitage arcade
+const TTS_AFTER_AUDIO_MS = 2600 + PERF_SFX_DELAY_MS; // laisse passer blip + sfx perf
+
 
 type Props = {
   setTab?: AnyFn; // setTab("golf_config", {config}) etc.
@@ -1044,6 +1049,9 @@ const [statsByPlayer, setStatsByPlayer] = useState<PlayerStat[]>(() =>
   const perfTimerRef = useRef<number | null>(null);
   const lastPerfRef = useRef<PerfKey | null>(null);
 
+  // 🔊 Sert à retarder la voix jusqu'à la fin des sons en cours
+  const audioBusyUntilRef = useRef<number>(0);
+
   const lastActorNameRef = useRef<string>("");
   const ttsTimerRef = useRef<number | null>(null);
   const ttsRankTimerRef = useRef<number | null>(null);
@@ -1081,14 +1089,18 @@ const [statsByPlayer, setStatsByPlayer] = useState<PlayerStat[]>(() =>
   function triggerPerf(perf: PerfKey) {
     try {
       if (perfTimerRef.current) window.clearTimeout(perfTimerRef.current);
-      setPerfOverlay(perf);
-      // 🔊 SFX + petit blip arcade + bruitage ticker
+      setPerfOverlay(perf);      // 🔊 SFX + petit blip arcade + bruitage ticker (immédiat)
       playTickerBlip();
       try { playGolfTickerSound(perf as any); } catch {}
-      // 🔊 SFX perf (4 variantes) + unlock mobile
-      unlockAudio();
-      playGolfPerfSfx(perf as any);
 
+      // marque la fenêtre audio occupée (blip + ticker + sfx perf)
+      audioBusyUntilRef.current = Date.now() + TTS_AFTER_AUDIO_MS + 200;
+
+      // 🔓 unlock mobile + 🔊 SFX perf (décalé de 1.5s pour laisser respirer le blip)
+      try { unlockAudio(); } catch {}
+      window.setTimeout(() => {
+        try { playGolfPerfSfx(perf as any, 0.9); } catch {}
+      }, PERF_SFX_DELAY_MS);
 
       perfTimerRef.current = window.setTimeout(() => setPerfOverlay(null), 1600);
     } catch {}
@@ -1244,7 +1256,7 @@ const ranking = useMemo(() => {
     if (playersCount <= 0) return;
 
     try {
-      const p = players[playerIdx];
+      const p = players[activePlayerIdx];
       const name = safeStr(p?.name ?? p?.label ?? p?.pseudo ?? "");
       if (!name) return;
       initialTurnSpokenRef.current = true;
@@ -1343,7 +1355,8 @@ const activeStats =
         const p = players[nextPlayerIndex];
         const nextName = safeStr(p?.name ?? p?.label ?? p?.pseudo ?? "");
         if (nextName) {
-          const delay = 2600; // laisse le SFX/ticker respirer
+          const delay = Math.max(TTS_AFTER_AUDIO_MS, audioBusyUntilRef.current - Date.now() + 80);
+          // après blip + SFX perf
           ttsTimerRef.current = window.setTimeout(
             () => speak(lang === "fr" ? `À toi de jouer, ${nextName}.` : `${nextName}, your turn.`, { lang: ttsLang }),
             delay
@@ -1371,7 +1384,7 @@ const activeStats =
         const p = players[nextPlayerIndex];
         const nextName = safeStr(p?.name ?? p?.label ?? p?.pseudo ?? "");
         if (nextName) {
-          const delay = 2600;
+          const delay = Math.max(TTS_AFTER_AUDIO_MS, audioBusyUntilRef.current - Date.now() + 80);
           ttsTimerRef.current = window.setTimeout(
             () => speak(lang === "fr" ? `À toi de jouer, ${nextName}.` : `${nextName}, your turn.`, { lang: ttsLang }),
             delay
@@ -1400,7 +1413,7 @@ const activeStats =
         if (ttsRankTimerRef.current) window.clearTimeout(ttsRankTimerRef.current);
         const msgFinal = buildRankingTts("final");
         if (msgFinal) {
-          ttsRankTimerRef.current = window.setTimeout(() => speak(msgFinal, { lang: ttsLang }), 2600);
+          ttsRankTimerRef.current = window.setTimeout(() => speak(msgFinal, { lang: ttsLang }), Math.max(TTS_AFTER_AUDIO_MS, audioBusyUntilRef.current - Date.now() + 80));
         }
       } catch {
         // ignore
@@ -1409,50 +1422,109 @@ const activeStats =
     return;
   }
 
-  // Teams: équipe->équipe (uniquement les équipes actives), rotation des joueurs dans l'équipe
+  // Teams: rotation par JOUEURS dans chaque équipe (tous les membres jouent chaque trou)
   const k = activeTeamKey;
+  setTurnThrows([]);
+
   if (k) {
-    const idx = TEAM_KEYS_ALL.indexOf(k);
+    const memberIdxs = teamMembersIdxs[k] ?? [];
+    const keyIndex = TEAM_KEYS_ALL.indexOf(k);
+    const cur = teamCursor[keyIndex] ?? 0;
+    const nextMember = cur + 1;
+
+    // ✅ On reste sur la même équipe tant que tous ses membres n'ont pas joué le trou
+    if (memberIdxs.length && nextMember < memberIdxs.length) {
+      setTeamCursor((prev) => {
+        const next = prev.slice() as [number, number, number, number];
+        next[keyIndex] = nextMember;
+        return next;
+      });
+
+      // ✅ TTS: annonce joueur suivant (même équipe) après SFX/ticker
+      try {
+        if (ttsTimerRef.current) window.clearTimeout(ttsTimerRef.current);
+        const pi = memberIdxs[nextMember];
+        const p = roster[pi];
+        const nextName = safeStr(p?.name ?? p?.label ?? p?.pseudo ?? "");
+        if (nextName) {
+          ttsTimerRef.current = window.setTimeout(
+            () => speak(lang === "fr" ? `À toi de jouer, ${nextName}.` : `${nextName}, your turn.`, { lang: ttsLang }),
+            TTS_AFTER_AUDIO_MS
+          );
+        }
+      } catch {}
+      return;
+    }
+
+    // ✅ équipe terminée sur ce trou -> reset curseur membre pour cette équipe (prochain trou)
     setTeamCursor((prev) => {
       const next = prev.slice() as [number, number, number, number];
-      next[idx] = (next[idx] ?? 0) + 1;
+      next[keyIndex] = 0;
       return next;
     });
   }
 
+  // ✅ équipe suivante
   const nextPos = teamTurnPos + 1;
-  setTurnThrows([]);
 
   if (nextPos < activeTeamKeys.length) {
     setTeamTurnPos(nextPos);
 
-    // ✅ TTS: annonce équipe suivante
+    // force le curseur membre de l'équipe suivante à 0
     try {
       const k2 = activeTeamKeys[nextPos];
-      const label = (k2 ?? "").toUpperCase();
-      const delay = 2600;
-      if (label) {
-        window.setTimeout(
-          () =>
-            speak(
-              lang === "fr" ? `Équipe ${label}, à vous de jouer.` : `Team ${label}, your turn.`,
-              { lang: ttsLang }
-            ),
-          delay
-        );
+      if (k2) {
+        const idx2 = TEAM_KEYS_ALL.indexOf(k2);
+        setTeamCursor((prev) => {
+          const next = prev.slice() as [number, number, number, number];
+          next[idx2] = 0;
+          return next;
+        });
+
+        // ✅ TTS: annonce premier joueur de l'équipe suivante
+        const ids2 = teamMembersIdxs[k2] ?? [];
+        const pi2 = ids2[0];
+        const p2 = roster[pi2];
+        const nextName2 = safeStr(p2?.name ?? p2?.label ?? p2?.pseudo ?? "");
+        if (nextName2) {
+          if (ttsTimerRef.current) window.clearTimeout(ttsTimerRef.current);
+          ttsTimerRef.current = window.setTimeout(
+            () => speak(lang === "fr" ? `À toi de jouer, ${nextName2}.` : `${nextName2}, your turn.`, { lang: ttsLang }),
+            TTS_AFTER_AUDIO_MS
+          );
+        }
       }
-    } catch {
-      // ignore
-    }
+    } catch {}
 
     return;
   }
 
   // fin de rotation -> trou suivant
   setTeamTurnPos(0);
+  // reset tous les curseurs équipe à 0 pour le nouveau trou
+  setTeamCursor([0, 0, 0, 0]);
+
   const nextHole = holeIdx + 1;
   if (nextHole < holes) {
     setHoleIdx(nextHole);
+
+    // ✅ TTS: annonce premier joueur de la première équipe active au nouveau trou
+    try {
+      const k0 = activeTeamKeys[0];
+      if (k0) {
+        const ids0 = teamMembersIdxs[k0] ?? [];
+        const pi0 = ids0[0];
+        const p0 = roster[pi0];
+        const n0 = safeStr(p0?.name ?? p0?.label ?? p0?.pseudo ?? "");
+        if (n0) {
+          if (ttsTimerRef.current) window.clearTimeout(ttsTimerRef.current);
+          ttsTimerRef.current = window.setTimeout(
+            () => speak(lang === "fr" ? `À toi de jouer, ${n0}.` : `${n0}, your turn.`, { lang: ttsLang }),
+            TTS_AFTER_AUDIO_MS
+          );
+        }
+      }
+    } catch {}
   } else {
     setIsFinished(true);
 
@@ -1461,12 +1533,13 @@ const activeStats =
       if (ttsRankTimerRef.current) window.clearTimeout(ttsRankTimerRef.current);
       const msgFinal = buildRankingTts("final");
       if (msgFinal) {
-        ttsRankTimerRef.current = window.setTimeout(() => speak(msgFinal, { lang: ttsLang }), 2600);
+        ttsRankTimerRef.current = window.setTimeout(() => speak(msgFinal, { lang: ttsLang }), Math.max(TTS_AFTER_AUDIO_MS, audioBusyUntilRef.current - Date.now() + 80));
       }
     } catch {
       // ignore
     }
   }
+
 }
 
 
@@ -1483,16 +1556,27 @@ const activeStats =
   const holeScore = last ? kindToScore(last, missStrokesVal) : null;
   if (holeScore == null) return;
 
-  if (teamsOk) {
-    if (activeTeamKey) {
-      const ti = teamIndexByKey[activeTeamKey] ?? 0;
-      nextTeamScores[ti][holeIdx] = holeScore;
-    }
-    return;
-  }
+  // ✅ Toujours écrire le score sur le joueur ACTIF (solo + teams)
+  nextScores[activePlayerIdx][holeIdx] = holeScore;
 
-  nextScores[playerIdx][holeIdx] = holeScore;
+  // ✅ En mode TEAMS, on calcule le score d'équipe uniquement quand TOUS les membres ont joué ce trou
+  if (teamsOk && activeTeamKey) {
+    const ti = teamIndexByKey[activeTeamKey] ?? 0;
+    const memberIdxs = teamMembersIdxs[activeTeamKey] ?? [];
+    if (memberIdxs.length) {
+      const vals = memberIdxs
+        .map((pi) => nextScores[pi]?.[holeIdx])
+        .filter((v) => v !== null && v !== undefined) as number[];
+
+      // si tous les membres ont un score pour ce trou -> commit équipe (best ball = min)
+      if (vals.length === memberIdxs.length) {
+        const best = Math.min(...vals);
+        nextTeamScores[ti][holeIdx] = best;
+      }
+    }
+  }
 }
+
 
 
   function recordThrow(kind: ThrowKind) {
@@ -1612,12 +1696,18 @@ return nextScores;
     const headerTargets = headerCells.map((h) => holeTargets[h - 1] ?? h);
 
     const cellPill = (v: number) => {
-      // 1 = Double (hole in one), 3 = Triple, 4 = Simple, 5 = Miss
-      if (v === 1) return { border: "1px solid rgba(255,195,26,.45)", background: "rgba(255,195,26,.16)", color: "#ffcf57" };
-      if (v === 3) return { border: "1px solid rgba(120,255,220,.45)", background: "rgba(120,255,220,.14)", color: "#b9ffe9" };
-      if (v === 4) return { border: "1px solid rgba(255,255,255,.16)", background: "rgba(255,255,255,.08)", color: "rgba(255,255,255,.92)" };
-      return { border: "1px solid rgba(255,95,95,.45)", background: "rgba(255,95,95,.14)", color: "#ffb2b2" };
-    };
+  // On veut des chiffres simples colorés (pas de chip néon)
+  // DBull = -2 (violet) / Bull = -1 (rose) — on garde aussi 0 en fallback si tu l'utilises ailleurs
+  if (v === -2) return { color: "#d8b6ff" };
+  if (v === -1 || v === 0) return { color: "#ff9fe6" };
+
+  // 1 = Double (hole in one), 3 = Triple, 4 = Simple, M = Miss (missStrokesVal)
+  if (v === 1) return { color: "#ffcf57" };
+  if (v === 3) return { color: "#b9ffe9" };
+  if (v === 4) return { color: "rgba(255,255,255,.92)" };
+  return { color: "#ffb2b2" };
+};
+
 
     return (
       <div
@@ -1758,8 +1848,8 @@ return nextScores;
                           alignItems: "center",
                           justifyContent: "center",
                           borderRadius: 12,
-                          border: st.border,
-                          background: st.background,
+                          border: "none",
+                          background: "transparent",
                           color: st.color,
                           fontWeight: 1000,
                           boxShadow: isCurrentCell ? "0 0 18px rgba(120,255,220,0.18)" : "none",
@@ -1800,22 +1890,36 @@ return nextScores;
   }
 
   // Chips d'état du tour (3 flèches)
-  const throwChips = [0, 1, 2].map((i) => {
-    const k = turnThrows[i];
-    if (!k) return "—";
-    if (k === "D") return "D";
-    if (k === "T") return "T";
-    if (k === "S") return "S";
-    return "M";
-  });
+const throwChips = [0, 1, 2].map((i) => {
+  const k = turnThrows[i];
+  if (!k) return "—";
+  if (k === "DB") return "DB";
+  if (k === "B") return "B";
+  if (k === "D") return "D";
+  if (k === "T") return "T";
+  if (k === "S") return "S";
+  return "M";
+});
+
 
   function chipStyle(label: string): React.CSSProperties {
-    if (label === "D") return { border: "1px solid rgba(255,195,26,.35)", background: "rgba(255,195,26,.16)", color: "#ffcf57" };
-    if (label === "T") return { border: "1px solid rgba(120,255,220,.35)", background: "rgba(120,255,220,.14)", color: "#b9ffe9" };
-    if (label === "S") return { border: "1px solid rgba(70,160,255,.45)", background: "rgba(20,85,185,.22)", color: "#bfeaff", boxShadow: "0 0 18px rgba(70,160,255,.16)" };
-    if (label === "M") return { border: "1px solid rgba(255,95,95,.35)", background: "rgba(255,95,95,.14)", color: "#ffb2b2" };
-    return { border: "1px solid rgba(255,255,255,.12)", background: "rgba(255,255,255,.06)", color: "#d9dbe3" };
-  }
+  if (label === "DB")
+    return { border: "1px solid rgba(180,120,255,0.55)", background: "rgba(120,60,170,0.20)", color: "#d8b6ff" };
+  if (label === "B")
+    return { border: "1px solid rgba(255,120,220,0.55)", background: "rgba(160,35,115,0.20)", color: "#ff9fe6" };
+  if (label === "D") return { border: "1px solid rgba(255,195,26,.35)", background: "rgba(255,195,26,.16)", color: "#ffcf57" };
+  if (label === "T") return { border: "1px solid rgba(120,255,220,.35)", background: "rgba(120,255,220,.14)", color: "#b9ffe9" };
+  if (label === "S")
+    return {
+      border: "1px solid rgba(70,160,255,.45)",
+      background: "rgba(20,85,185,.22)",
+      color: "#bfeaff",
+      boxShadow: "0 0 18px rgba(70,160,255,.16)",
+    };
+  if (label === "M") return { border: "1px solid rgba(255,95,95,.35)", background: "rgba(255,95,95,.14)", color: "#ffb2b2" };
+  return { border: "1px solid rgba(255,255,255,.12)", background: "rgba(255,255,255,.06)", color: "#d9dbe3" };
+}
+
 
   function keyValueBadge(kind: ThrowKind, value: number) {
     const base: React.CSSProperties = {
@@ -2261,8 +2365,8 @@ return nextScores;
                       height: 30,
                       padding: "0 12px",
                       borderRadius: 12,
-                      border: st.border as any,
-                      background: st.background as any,
+                      border: "none",
+                      background: "transparent",
                       color: st.color as any,
                       fontWeight: 900,
                       fontSize: 13,

@@ -39,7 +39,8 @@ export default function PingPongConfig({ go, params }: Props) {
   const [b1, setB1] = React.useState(parsedB[0] || "Joueur B");
   const [b2, setB2] = React.useState(parsedB[1] || "");
   const [pointsPerSet, setPointsPerSet] = React.useState(String(st.pointsPerSet || 11));
-  const [setsToWin, setSetsToWin] = React.useState(String(st.setsToWin || 3));
+  const defaultSetsToWin = uiMode === "match_1v1" ? 1 : (st.setsToWin || 3);
+  const [setsToWin, setSetsToWin] = React.useState(String(defaultSetsToWin));
   const [winByTwo, setWinByTwo] = React.useState(st.winByTwo !== false);
 
   const [tournanteText, setTournanteText] = React.useState(() =>
@@ -82,7 +83,7 @@ export default function PingPongConfig({ go, params }: Props) {
   return (
     <div style={wrap(theme)}>
       <div style={head}>
-        <button style={back(theme)} onClick={() => go("games")}>
+        <button style={back(theme)} onClick={() => go("pingpong_menu")}>
           ← Retour
         </button>
         <div style={title}>
@@ -108,9 +109,26 @@ export default function PingPongConfig({ go, params }: Props) {
               style={{ ...input(theme), minHeight: 140, resize: "vertical", fontFamily: "inherit" }}
             />
 
+
+            <div style={{ height: 10 }} />
+
+            <div style={label}>Points par manche</div>
+            <input
+              value={pointsPerSet}
+              onChange={(e) => setPointsPerSet(e.target.value)}
+              style={input(theme)}
+              inputMode="numeric"
+            />
+
+            <div style={{ height: 10 }} />
+            <label style={checkRow}>
+              <input type="checkbox" checked={winByTwo} onChange={(e) => setWinByTwo(e.target.checked)} />
+              <span style={{ fontWeight: 900, opacity: 0.9 }}>Écart de 2 (règle standard)</span>
+            </label>
+
             <div style={{ height: 12 }} />
             <div style={{ fontSize: 12, fontWeight: 800, opacity: 0.8 }}>
-              Astuce : tu peux coller une liste complète. À chaque tour, tu élimines un joueur.
+              Astuce : tu peux coller une liste complète. À chaque tour, le perdant est éliminé.
             </div>
           </>
         ) : (

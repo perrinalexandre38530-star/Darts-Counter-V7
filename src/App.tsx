@@ -235,6 +235,7 @@ import PingPongHome from "./pages/pingpong/PingPongHome";
 import PingPongMenuGames from "./pages/pingpong/PingPongMenuGames";
 import PingPongConfig from "./pages/pingpong/PingPongConfig";
 import PingPongPlay from "./pages/pingpong/PingPongPlay";
+import PingPongTraining from "./pages/pingpong/PingPongTraining";
 import PingPongStatsShell from "./pages/pingpong/PingPongStatsShell";
 import PingPongStatsHistoryPage from "./pages/pingpong/PingPongStatsHistoryPage";
 
@@ -514,6 +515,7 @@ type Tab =
   | "pingpong_menu"
   | "pingpong_config"
   | "pingpong_play"
+  | "pingpong_training"
   | "pingpong_stats_history"
   // ✅ NEW: Teams Pétanque (CRUD local)
   | "petanque_teams"
@@ -2144,6 +2146,10 @@ function App() {
 
       case "pingpong_play":
         page = <PingPongPlay go={go} params={routeParams} onFinish={(m: any) => pushPingPongHistory(m)} />;
+        break;
+
+      case "pingpong_training":
+        page = <PingPongTraining go={go} params={routeParams} />;
         break;
 
       // ✅ NEW: Teams Pétanque (CRUD local)
