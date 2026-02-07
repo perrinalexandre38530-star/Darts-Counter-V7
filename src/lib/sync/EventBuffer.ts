@@ -287,16 +287,27 @@ export const EventBuffer = {
       // On complète user_id/device_id si absents
       const device_id = getDeviceId();
 
-      const rows: InsertRow[] = unsynced.map((e) => ({
-        id: e.id,
-        user_id: e.user_id || uid,
-        device_id: e.device_id || device_id,
-        sport: e.sport,
-        mode: e.mode,
-        event_type: e.event_type,
-        payload: e.payload ?? null,
-        created_at: e.created_at,
-      }));
+      // ✅ Schéma réel côté Supabase (ton projet) :
+// stats_events: id, owner_user_id, player_profile_id, type, payload, created_at
+// On mappe donc nos events bufferisés vers ces colonnes.
+const rows: InsertRow[] = unsynced.map((e) => ({
+  id: e.id,
+  owner_user_id: (e.user_id || uid),
+  // player_profile_id: optionnel (non utilisé pour l’instant)
+  type: `${e.sport}:${e.event_type}`,
+  payload: {
+    meta: {
+      client_event_id: e.id,
+      sport: e.sport,
+      mode: e.mode,
+      event_type: e.event_type,
+      device_id: e.device_id || device_id,
+      created_at: e.created_at,
+    },
+    data: e.payload ?? null,
+  },
+  created_at: e.created_at,
+}));
 
       const res = await insertWithColumnFallback(rows, "stats_events");
       if (!res.ok) return;

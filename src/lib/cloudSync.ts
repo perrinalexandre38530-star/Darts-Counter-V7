@@ -7,7 +7,7 @@
 
 import { onCloudChange } from "./cloudEvents";
 import { onlineApi } from "./onlineApi";
-import { saveStore } from "./storage";
+import { exportCloudSnapshot, saveStore } from "./storage";
 
 const DEBOUNCE_MS = 1200;
 const PULL_INTERVAL_MS = 60_000;
@@ -32,11 +32,18 @@ function applyStore(next: any) {
 }
 
 async function pushNow() {
-  const store = getStore();
-  if (!store) return;
-
-  const payload = { version: 8, store };
-  await onlineApi.pushStoreSnapshot(payload, 8);
+  // ✅ push COMPLET : store + localStorage(dc_*) + indexedDB (kv/history/etc.)
+  try {
+    const snapshot: any = await exportCloudSnapshot();
+    const v = (snapshot as any)?.v ?? 8;
+    await onlineApi.pushStoreSnapshot(snapshot as any, v);
+  } catch (e) {
+    // fallback minimal
+    const store = getStore();
+    if (!store) return;
+    const payload = { version: 8, store };
+    await onlineApi.pushStoreSnapshot(payload as any, 8);
+  }
 }
 
 async function pullNow() {

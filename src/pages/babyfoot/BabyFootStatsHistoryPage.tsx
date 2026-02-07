@@ -14,6 +14,8 @@ import { useLang } from "../../contexts/LangContext";
 import BackDot from "../../components/BackDot";
 import ProfileAvatar from "../../components/ProfileAvatar";
 
+import { computeDecisiveGoals, computeMomentum, computePenaltyImpact, computeShotConversion } from "../../lib/babyfootQualityStats";
+
 type Props = {
   store: any;
   go: (t: any, p?: any) => void;
@@ -215,6 +217,8 @@ export default function BabyFootStatsHistoryPage({ store, go }: Props) {
       pensGoals: number;
       bestStreak: number;
       currentStreak: number;
+      decisiveGoals: number;
+      momentumBursts: number;
     };
     type Tm = {
       key: string;
@@ -237,6 +241,13 @@ export default function BabyFootStatsHistoryPage({ store, go }: Props) {
     let goals = 0;
     let totalDurationMs = 0;
 
+    // ✅ V4.8.1 Qualité de jeu (best-effort / tolérant)
+    let decisiveTotal = 0;
+    let penaltyDecisiveTotal = 0;
+    let momentumTotal = 0;
+    let convShots = 0;
+    let convGoals = 0;
+
     const chrono = [...filtered].sort((a: any, b: any) => (a?.createdAt || 0) - (b?.createdAt || 0));
 
     const ensurePlayer = (id: string) => {
@@ -252,6 +263,8 @@ export default function BabyFootStatsHistoryPage({ store, go }: Props) {
           pensGoals: 0,
           bestStreak: 0,
           currentStreak: 0,
+          decisiveGoals: 0,
+          momentumBursts: 0,
         };
       }
       return byPlayer[id];
@@ -334,6 +347,46 @@ export default function BabyFootStatsHistoryPage({ store, go }: Props) {
       if (winner === "A") tA.wins += 1;
       if (winner === "B") tB.wins += 1;
 
+
+// ✅ V4.8.1 Qualité de jeu
+const ev = getEvents(payload);
+
+// Buts décisifs (égalisation / but final) — nécessite scorerId pour attribution joueur
+const decisive = computeDecisiveGoals({ events: ev as any, scoreA, scoreB });
+decisiveTotal += decisive.length;
+for (const g of decisive as any[]) {
+  const pid = g?.scorerId;
+  if (!pid) continue;
+  const p = ensurePlayer(pid);
+  if (p) p.decisiveGoals += 1;
+}
+
+// Momentum (bursts de buts dans une fenêtre)
+const bursts = computeMomentum(ev as any, 20000);
+if (Array.isArray(bursts) && bursts.length) {
+  momentumTotal += bursts.reduce((acc: number, b: any) => acc + (b?.count || 0), 0);
+  for (const b of bursts) {
+    // attribution approximative : tout scorerId présent dans la fenêtre
+    const ids = new Set<string>(
+      (ev as any[]).filter((e: any) => e?.t === "goal" && e?.at >= b.from && e?.at <= b.to).map((e: any) => e?.scorerId).filter(Boolean)
+    );
+    ids.forEach((id) => {
+      const p = ensurePlayer(id);
+      if (p) p.momentumBursts += 1;
+    });
+  }
+}
+
+// Penalties décisifs (match décidé aux TAB)
+const penImpact = computePenaltyImpact({ events: ev as any, scoreA, scoreB });
+if (penImpact) penaltyDecisiveTotal += 1;
+
+// Conversion tirs (si events "shot" existent)
+const conv = computeShotConversion(ev as any);
+if (conv?.shots > 0) {
+  convShots += conv.shots;
+  convGoals += conv.goals;
+}
       // streaks per player (wins only; draw resets)
       for (const id of new Set([...teamAIds, ...teamBIds])) {
         if (!winner) {
@@ -388,6 +441,12 @@ export default function BabyFootStatsHistoryPage({ store, go }: Props) {
       topGPM,
       streaks,
       topTeams,
+      decisiveTotal,
+      penaltyDecisiveTotal,
+      momentumTotal,
+      convPct,
+      topDecisive,
+      topMomentum,
     };
   }, [filtered, profilesById]);
 
@@ -486,6 +545,49 @@ export default function BabyFootStatsHistoryPage({ store, go }: Props) {
           <KPI theme={theme} label="Durée moyenne" value={fmt(agg.avgDurMs)} />
         </div>
       </div>
+
+{/* Qualité */}
+<div style={sectionTitle}>Qualité de jeu</div>
+<div style={{ marginTop: 10, ...card(theme) }}>
+  <div style={{ fontWeight: 1000, letterSpacing: 0.6, marginBottom: 10 }}>Qualité</div>
+  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+    <KPI theme={theme} label="Buts décisifs" value={String((agg as any).decisiveTotal ?? 0)} />
+    <KPI theme={theme} label="Penalties décisifs" value={String((agg as any).penaltyDecisiveTotal ?? 0)} />
+    <KPI theme={theme} label="Momentum (bursts)" value={String((agg as any).momentumTotal ?? 0)} />
+    <KPI
+      theme={theme}
+      label="Conversion tirs"
+      value={(agg as any).convPct == null ? "—" : `${Math.round(((agg as any).convPct as number) * 100)}%`}
+    />
+  </div>
+
+  <div style={{ marginTop: 10, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+    <Board
+      theme={theme}
+      title="Top buts décisifs"
+      subtitle="(scorerId)"
+      rows={(((agg as any).topDecisive ?? []) as any[]).map((p: any) => ({
+        id: p.id,
+        left: p.name,
+        right: `${p.decisiveGoals}`,
+      }))}
+    />
+    <Board
+      theme={theme}
+      title="Top momentum"
+      subtitle="bursts"
+      rows={(((agg as any).topMomentum ?? []) as any[]).map((p: any) => ({
+        id: p.id,
+        left: p.name,
+        right: `${p.momentumBursts}`,
+      }))}
+    />
+  </div>
+
+  <div style={{ marginTop: 10, opacity: 0.72, fontWeight: 800, fontSize: 12, lineHeight: 1.35 }}>
+    Notes : la conversion nécessite des events <code>shot</code>. Les buts décisifs sont calculés en best-effort (égalisation / but final).
+  </div>
+</div>
 
       {/* Players */}
       <div style={sectionTitle}>Joueurs</div>

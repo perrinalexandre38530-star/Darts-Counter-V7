@@ -759,6 +759,18 @@ export default function HistoryPage({
   function goResume(e: SavedEntry, preview?: boolean) {
     const resumeId = e.resumeId || matchLink(e) || e.id;
 
+    // GOLF
+    if (baseMode(e) === "golf") {
+      go("golf_play", {
+        resumeId,
+        from: preview ? "history_preview" : "history",
+        preview: !!preview,
+        mode: "golf",
+      });
+      return;
+    }
+
+
     if (isKillerEntry(e)) {
       safeGo(["killer_play", "killer"], {
         resumeId,

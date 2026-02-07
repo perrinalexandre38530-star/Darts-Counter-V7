@@ -426,7 +426,9 @@ function GolfPlayersCarousel({
 // ---------------- Header "Joueur actif" (CLONE feel X01PlayV3) ----------------
 
 const miniCard: React.CSSProperties = {
-  width: "clamp(150px, 22vw, 190px)",
+  // ✅ Responsive (phone safe): this panel must never overflow the viewport
+  width: "clamp(140px, 44vw, 190px)",
+  maxWidth: "48vw",
   padding: 7,
   borderRadius: 12,
   overflow: "hidden",
@@ -437,39 +439,55 @@ const miniCard: React.CSSProperties = {
 };
 
 const miniText: React.CSSProperties = {
-  fontSize: 12,
+  // font scales down on phone
+  fontSize: "clamp(10px, 2.6vw, 12px)",
   color: "#d9dbe3",
   lineHeight: 1.25,
 };
 
 const miniRankRow: React.CSSProperties = {
-  display: "flex",
+  // ✅ score column is fixed, name truncates — prevents overflow
+  display: "grid",
+  gridTemplateColumns: "1fr auto",
   alignItems: "center",
-  justifyContent: "space-between",
-  gap: 8,
+  gap: 6,
   minWidth: 0,
   overflow: "hidden",
   padding: "3px 6px",
   borderRadius: 6,
   background: "rgba(255,255,255,.04)",
   marginBottom: 3,
-  fontSize: 10,
+  fontSize: "clamp(9px, 2.3vw, 10px)",
   lineHeight: 1.15,
 };
 
 const miniRankName: React.CSSProperties = {
   fontWeight: 900,
-  fontSize: 10,
+  fontSize: "inherit",
   color: "#ffcf57",
   letterSpacing: 0.2,
+  minWidth: 0,
+  overflow: "hidden",
+  textOverflow: "ellipsis",
+  whiteSpace: "nowrap",
 };
 
 const miniRankScore: React.CSSProperties = {
+  flex: "0 0 auto",
+  minWidth: 28,
+  textAlign: "right",
+  fontVariantNumeric: "tabular-nums",
+  fontSize: "clamp(9px, 2.3vw, 10px)",
   fontWeight: 900,
   color: "#ffcf57",
 };
 
 const miniRankScoreFini: React.CSSProperties = {
+  flex: "0 0 auto",
+  minWidth: 28,
+  textAlign: "right",
+  fontVariantNumeric: "tabular-nums",
+  fontSize: "clamp(9px, 2.3vw, 10px)",
   fontWeight: 900,
   color: "#7fe2a9",
 };
@@ -2351,7 +2369,7 @@ const throwChips = [0, 1, 2].map((i) => {
         {!isFinished && (
           <div style={{ ...cardBase, padding: 12, marginTop: 12 }}>
             {/* chips de tour */}
-            <div style={{ display: "flex", gap: 8, justifyContent: "center", marginBottom: 10 }}>
+            <div style={{ display: "flex", gap: 6, justifyContent: "center", marginBottom: 10 }}>
               {throwChips.map((lab, i) => {
                 const st = chipStyle(lab);
                 return (
@@ -2382,7 +2400,7 @@ const throwChips = [0, 1, 2].map((i) => {
               style={{
                 display: "grid",
                 gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
-                gap: 8,
+                gap: 6,
                 width: "100%",
                 boxSizing: "border-box",
               }}

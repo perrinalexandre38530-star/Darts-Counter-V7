@@ -82,6 +82,7 @@ import { computeCricketLegStats, type CricketHit } from "./StatsCricket";
 import type { Store } from "./types";
 import { loadStore } from "./storage";
 import { onlineApi } from "./onlineApi";
+import { emitCloudChange } from "./cloudEvents";
 import { EventBuffer } from "./sync/EventBuffer";
 
 // =========================
@@ -1343,6 +1344,7 @@ export async function upsert(rec: SavedMatch): Promise<void> {
     // ✅ PUSH SNAPSHOT TO CLOUD (debounced)
     // ================================
     scheduleCloudSnapshotPush("history:upsert");
+    try { emitCloudChange("history:upsert"); } catch {}
 
     // ================================
     // ✅ EVENT BUFFER (multi-device sync)
@@ -1408,6 +1410,7 @@ export async function upsert(rec: SavedMatch): Promise<void> {
       // ✅ PUSH SNAPSHOT TO CLOUD (debounced)
       // ================================
       scheduleCloudSnapshotPush("history:upsert:ls_fallback");
+    try { emitCloudChange("history:upsert:ls_fallback"); } catch {}
 
       // ================================
       // ✅ EVENT BUFFER (multi-device sync)
@@ -1575,6 +1578,7 @@ export async function remove(id: string): Promise<void> {
 
     // ✅ CLOUD
     scheduleCloudSnapshotPush("history:remove");
+    try { emitCloudChange("history:remove"); } catch {}
   } catch {
     try {
       const rows = readLegacyRowsSafe() as any[];
@@ -1592,6 +1596,7 @@ export async function remove(id: string): Promise<void> {
 
       // ✅ CLOUD
       scheduleCloudSnapshotPush("history:remove:ls_fallback");
+    try { emitCloudChange("history:remove:ls_fallback"); } catch {}
     } catch {}
   }
 }
@@ -1619,6 +1624,7 @@ export async function clear(): Promise<void> {
 
     // ✅ CLOUD
     scheduleCloudSnapshotPush("history:clear");
+    try { emitCloudChange("history:clear"); } catch {}
   } catch {
     try {
       localStorage.removeItem(LSK);
@@ -1634,6 +1640,7 @@ export async function clear(): Promise<void> {
 
       // ✅ CLOUD
       scheduleCloudSnapshotPush("history:clear:ls_fallback");
+    try { emitCloudChange("history:clear:ls_fallback"); } catch {}
     } catch {}
   }
 }

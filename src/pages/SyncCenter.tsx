@@ -13,8 +13,8 @@ import type { Store } from "../lib/types";
 import { useTheme } from "../contexts/ThemeContext";
 import { useLang } from "../contexts/LangContext";
 import { loadStore, saveStore } from "../lib/storage";
-import { importHistoryFromCloud } from "../lib/sync/CloudHistoryImport";
-import { History } from "../lib/history";
+import { EventBuffer } from "../lib/sync/EventBuffer";
+import SyncStatusChip from "../components/sync/SyncStatusChip";
 
 type Props = {
   store: Store;
@@ -30,6 +30,17 @@ export default function SyncCenter({ store, go, profileId }: Props) {
   const { t } = useLang();
 
   const [mode, setMode] = React.useState<PanelMode>("local");
+
+  async function handleForceSupabaseSync() {
+    try {
+      setLocalMessage(t("syncCenter.supabase.syncing", "Sync Supabase…"));
+      await EventBuffer.syncNow({ limit: 500 });
+      setLocalMessage(t("syncCenter.supabase.synced", "Sync Supabase OK."));
+    } catch (e) {
+      console.warn(e);
+      setLocalMessage(t("syncCenter.supabase.syncError", "Sync Supabase impossible."));
+    }
+  }
 
   // --- LOCAL EXPORT / IMPORT ---
   const [exportJson, setExportJson] = React.useState<string>("");
@@ -47,27 +58,6 @@ export default function SyncCenter({ store, go, profileId }: Props) {
   // --- Aide ---
   const [showHelp, setShowHelp] = React.useState(false);
 
-  // --- SUPABASE (multi-device) ---
-  const [sbStatus, setSbStatus] = React.useState<string>("");
-  const [conflictsCount, setConflictsCount] = React.useState<number>(0);
-
-  async function refreshConflicts() {
-    try {
-      const rows = await History.listConflicts();
-      setConflictsCount(rows.length);
-    } catch {
-      setConflictsCount(0);
-    }
-  }
-
-  React.useEffect(() => {
-    refreshConflicts().catch(() => {});
-    // refresh on history updates
-    const onUpd = () => refreshConflicts().catch(() => {});
-    window.addEventListener("dc-history-updated", onUpd);
-    return () => window.removeEventListener("dc-history-updated", onUpd);
-  }, []);
-
   // Helpers
   const safeStringify = (data: any) => {
     try {
@@ -76,45 +66,6 @@ export default function SyncCenter({ store, go, profileId }: Props) {
       return "";
     }
   };
-
-  // =====================================================
-  // SUPABASE (multi-device) — pull/import History + conflits
-  // =====================================================
-  async function handleSupabaseImportHistory() {
-    try {
-      setSbStatus(t("syncCenter.supabase.importing", "Import Supabase en cours…"));
-      const res = await importHistoryFromCloud({ maxPages: 6, pageSize: 200 });
-      await refreshConflicts();
-      setSbStatus(
-        t(
-          "syncCenter.supabase.importDone",
-          `Import terminé : ${res.imported} match(s) • ${res.conflicts} conflit(s)`
-        )
-      );
-    } catch (e: any) {
-      setSbStatus(
-        t(
-          "syncCenter.supabase.importFail",
-          `Import Supabase échoué : ${String(e?.message || e || "")}`
-        )
-      );
-    }
-  }
-
-  async function handleClearConflicts() {
-    try {
-      await History.clearConflicts();
-      await refreshConflicts();
-      setSbStatus(t("syncCenter.supabase.conflictsCleared", "Conflits supprimés."));
-    } catch (e: any) {
-      setSbStatus(
-        t(
-          "syncCenter.supabase.conflictsClearFail",
-          `Suppression conflits échouée : ${String(e?.message || e || "")}`
-        )
-      );
-    }
-  }
 
   // =====================================================
   // IMPORT GÉNÉRIQUE — store complet / profil / peer
@@ -772,10 +723,6 @@ export default function SyncCenter({ store, go, profileId }: Props) {
           <LocalPanel
             theme={theme}
             t={t}
-            supabaseStatus={sbStatus}
-            conflictsCount={conflictsCount}
-            onSupabaseImport={handleSupabaseImportHistory}
-            onClearConflicts={handleClearConflicts}
             exportJson={exportJson}
             importJson={importJson}
             message={localMessage}
@@ -785,6 +732,7 @@ export default function SyncCenter({ store, go, profileId }: Props) {
             onDownload={handleDownloadJson}
             onImport={handleImportFromTextarea}
             onImportFile={handleImportFromFile}
+            onForceSupabaseSync={handleForceSupabaseSync}
           />
         )}
 
@@ -1114,10 +1062,6 @@ function SyncCard({
 function LocalPanel({
   theme,
   t,
-  supabaseStatus,
-  conflictsCount,
-  onSupabaseImport,
-  onClearConflicts,
   exportJson,
   importJson,
   message,
@@ -1127,13 +1071,10 @@ function LocalPanel({
   onDownload,
   onImport,
   onImportFile,
+  onForceSupabaseSync,
 }: {
   theme: any;
   t: (k: string, f: string) => string;
-  supabaseStatus: string;
-  conflictsCount: number;
-  onSupabaseImport: () => void;
-  onClearConflicts: () => void;
   exportJson: string;
   importJson: string;
   message: string;
@@ -1143,6 +1084,7 @@ function LocalPanel({
   onDownload: () => void;
   onImport: () => void;
   onImportFile: (e: React.ChangeEvent<HTMLInputElement>) => void;
+  onForceSupabaseSync: () => void;
 }) {
   return (
     <div
@@ -1154,6 +1096,25 @@ function LocalPanel({
         boxShadow: "0 18px 40px rgba(0,0,0,.85)",
       }}
     >
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, marginBottom: 10 }}>
+        <SyncStatusChip />
+        <button
+          onClick={onForceSupabaseSync}
+          style={{
+            padding: "8px 12px",
+            borderRadius: 12,
+            border: "1px solid rgba(255,255,255,0.16)",
+            background: "rgba(255,255,255,0.06)",
+            color: "white",
+            cursor: "pointer",
+            fontWeight: 800,
+            letterSpacing: 0.2,
+          }}
+        >
+          {t("syncCenter.supabase.force", "Forcer sync")}
+        </button>
+      </div>
+
       <div
         style={{
           fontSize: 13,
@@ -1178,82 +1139,6 @@ function LocalPanel({
         {t(
           "syncCenter.local.desc",
           "Permet de sauvegarder l'intégralité de tes stats dans un fichier, ou de restaurer un export sur un autre appareil."
-        )}
-      </div>
-
-      {/* ✅ MULTI-DEVICE (Supabase events) */}
-      <div
-        style={{
-          marginTop: 10,
-          marginBottom: 10,
-          padding: 10,
-          borderRadius: 14,
-          border: `1px solid ${theme.borderSoft}`,
-          background: "linear-gradient(145deg, rgba(0,0,0,0.75), rgba(30,30,30,0.75))",
-          boxShadow: "0 12px 28px rgba(0,0,0,.65)",
-        }}
-      >
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
-          <div style={{ fontSize: 12, fontWeight: 900, color: theme.primary, letterSpacing: 0.6 }}>
-            {t("syncCenter.supabase.title", "Compte multi-appareils (Supabase)")}
-          </div>
-          <div
-            style={{
-              fontSize: 11,
-              color: conflictsCount > 0 ? theme.danger : theme.textSoft,
-              fontWeight: 800,
-            }}
-          >
-            {conflictsCount > 0
-              ? t("syncCenter.supabase.conflicts", `Conflits : ${conflictsCount}`)
-              : t("syncCenter.supabase.noConflicts", "Aucun conflit")}
-          </div>
-        </div>
-
-        <div style={{ fontSize: 11.5, color: theme.textSoft, marginTop: 6, lineHeight: 1.35 }}>
-          {t(
-            "syncCenter.supabase.desc",
-            "Importe tes parties jouées sur un autre appareil. Si deux versions divergent, une copie est conservée en conflit (tu peux les supprimer ici)."
-          )}
-        </div>
-
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 8 }}>
-          <button
-            onClick={onSupabaseImport}
-            style={{
-              padding: "9px 10px",
-              borderRadius: 12,
-              border: `1px solid ${theme.borderSoft}`,
-              background: theme.card2,
-              color: theme.text,
-              fontWeight: 900,
-              fontSize: 12,
-              cursor: "pointer",
-            }}
-          >
-            {t("syncCenter.supabase.importBtn", "Importer depuis Supabase")}
-          </button>
-          {conflictsCount > 0 && (
-            <button
-              onClick={onClearConflicts}
-              style={{
-                padding: "9px 10px",
-                borderRadius: 12,
-                border: `1px solid ${theme.borderSoft}`,
-                background: "rgba(255,40,60,0.12)",
-                color: theme.text,
-                fontWeight: 900,
-                fontSize: 12,
-                cursor: "pointer",
-              }}
-            >
-              {t("syncCenter.supabase.clearConflicts", "Supprimer les conflits")}
-            </button>
-          )}
-        </div>
-
-        {!!supabaseStatus && (
-          <div style={{ marginTop: 8, fontSize: 11.5, color: theme.textSoft }}>{supabaseStatus}</div>
         )}
       </div>
 
