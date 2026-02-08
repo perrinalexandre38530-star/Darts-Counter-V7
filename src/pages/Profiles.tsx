@@ -972,7 +972,6 @@ export default function Profiles({
       op?.displayName ||
       op?.nickname ||
       op?.username ||
-      op?.email ||
       "Moi";
 
     const onlineAvatarUrl =

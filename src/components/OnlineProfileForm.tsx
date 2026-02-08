@@ -14,13 +14,12 @@ export default function OnlineProfileForm() {
   const { user, profile, loading, refresh } = useAuthOnline();
 
   const [form, setForm] = React.useState({
-    surname: "",
+    nickname: "",
     firstName: "",
     lastName: "",
     birthDate: "",
     country: "",
     city: "",
-    email: "",
     phone: "",
   });
 
@@ -33,13 +32,13 @@ export default function OnlineProfileForm() {
     if (!profile) return;
 
     setForm({
-      surname: profile.surname || "",
+      // ⚠️ "Surnom" = nickname/displayName (PAS surname)
+      nickname: (profile.nickname || profile.displayName || "") as any,
       firstName: profile.firstName || "",
       lastName: profile.lastName || "",
       birthDate: profile.birthDate || "",
       country: profile.country || "",
       city: profile.city || "",
-      email: profile.email || user?.email || "",
       phone: profile.phone || "",
     });
   }, [profile, user]);
@@ -65,13 +64,14 @@ export default function OnlineProfileForm() {
       setSaving(true);
 
       await onlineApi.updateProfile({
-        surname: form.surname,
+        // ✅ important: "Surnom" doit mettre à jour nickname/display_name
+        nickname: form.nickname,
+        displayName: form.nickname,
         firstName: form.firstName,
         lastName: form.lastName,
         birthDate: form.birthDate,
         country: form.country,
         city: form.city,
-        email: form.email,
         phone: form.phone,
       });
 
@@ -106,8 +106,8 @@ export default function OnlineProfileForm() {
 
       <label>Surnom</label>
       <input
-        name="surname"
-        value={form.surname}
+        name="nickname"
+        value={form.nickname}
         onChange={handleChange}
         placeholder="Surnom"
       />
@@ -154,10 +154,9 @@ export default function OnlineProfileForm() {
 
       <label>Email</label>
       <input
-        name="email"
         type="email"
-        value={form.email}
-        onChange={handleChange}
+        value={user?.email || ""}
+        readOnly
         placeholder="Email"
       />
 

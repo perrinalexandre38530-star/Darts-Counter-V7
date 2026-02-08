@@ -25,7 +25,6 @@ export type OnlineProfileRow = {
   last_name?: string | null;
   birth_date?: string | null;
   city?: string | null;
-  email?: string | null;
   phone?: string | null;
 
   updated_at?: string | null;
@@ -44,7 +43,6 @@ function mapRow(row: any): OnlineProfileRow {
     last_name: row?.last_name ?? null,
     birth_date: row?.birth_date ?? null,
     city: row?.city ?? null,
-    email: row?.email ?? null,
     phone: row?.phone ?? null,
     updated_at: row?.updated_at ?? null,
     created_at: row?.created_at ?? null,
@@ -87,7 +85,6 @@ export async function updateOnlineProfile(
     "last_name",
     "birth_date",
     "city",
-    "email",
     "phone",
   ] as const;
 
@@ -105,36 +102,4 @@ export async function updateOnlineProfile(
   }
   if (res.error || !res.data) return null;
   return mapRow(res.data);
-}
-
-export async function updateOnlineProfile(
-  userId: string,
-  patch: Partial<OnlineProfileRow>
-): Promise<OnlineProfileRow | null> {
-  const uid = String(userId || "").trim();
-  if (!uid) return null;
-
-  const dbPatch: any = { updated_at: new Date().toISOString() };
-  // whitelist champs
-  const allowed = [
-    "nickname",
-    "display_name",
-    "avatar_url",
-    "country",
-    "surname",
-    "first_name",
-    "last_name",
-    "birth_date",
-    "city",
-    "email",
-    "phone",
-  ] as const;
-
-  for (const k of allowed) {
-    if (k in patch) dbPatch[k] = (patch as any)[k];
-  }
-
-  const { data, error } = await supabase.from("profiles").update(dbPatch).eq("id", uid).select("*").single();
-  if (error || !data) return null;
-  return mapRow(data);
 }
