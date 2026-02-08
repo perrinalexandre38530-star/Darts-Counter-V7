@@ -142,7 +142,7 @@ export default function PingPongStatsHistoryPage({ store, go }: Props) {
             key={it.id}
             style={cardStyle(theme)}
             onClick={() => {
-              // plus tard: ouvrir un détail/replay
+              go("pingpong_match_detail", { id: it.id });
             }}
           >
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>

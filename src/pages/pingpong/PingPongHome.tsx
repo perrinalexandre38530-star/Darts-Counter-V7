@@ -14,7 +14,7 @@ import type { Store, Profile } from "../../lib/types";
 import ActiveProfileCard, { type ActiveProfileStats } from "../../components/home/ActiveProfileCard";
 import ArcadeTicker, { type ArcadeTickerItem } from "../../components/home/ArcadeTicker";
 
-import { loadPingPongState } from "../../lib/pingpongStore";
+import { loadPingPongState, newPingPongState, savePingPongState } from "../../lib/pingpongStore";
 
 type Props = {
   store: Store;
@@ -102,6 +102,26 @@ export default function PingPongHome({ store, go }: Props) {
   }, []);
 
   const seed = String(activeProfile?.id ?? "anon");
+
+  // ✅ Reprendre un match (state non terminé + contenu non vide)
+  const canResume = React.useMemo(() => {
+    const st: any = resume;
+    if (!st) return false;
+    if (st.finished) return false;
+
+    const hasScore = !!(st.setsA || st.setsB || st.pointsA || st.pointsB || (st.setIndex && st.setIndex > 1));
+    const hasTournante = st.mode === "tournante" && !!(
+      st.tournanteActiveA ||
+      st.tournanteActiveB ||
+      (Array.isArray(st.tournanteQueue) && st.tournanteQueue.length) ||
+      (Array.isArray(st.tournanteEliminated) && st.tournanteEliminated.length) ||
+      (st.pointsA || st.pointsB) ||
+      (st.setIndex && st.setIndex > 1)
+    );
+
+    return hasScore || hasTournante;
+  }, [resume]);
+
 
   const tickerItems: ArcadeTickerItem[] = useMemo(() => {
     const st = resume;
@@ -215,7 +235,30 @@ export default function PingPongHome({ store, go }: Props) {
             <button style={btn(theme)} onClick={() => go("home")}>{t("home.cta.home", "Accueil")}</button>
             <button style={btn(theme)} onClick={() => go("games")}>{t("home.cta.local", "Local")}</button>
             <button style={btnGhost(theme)} onClick={() => go("pingpong_config")}>{t("pingpong.cta.config", "Configurer")}</button>
-            <button style={btnGhost(theme)} onClick={() => go("pingpong_play")}>{t("pingpong.cta.play", "Jouer")}</button>
+            {canResume && (
+              <button
+                style={btn(theme)}
+                onClick={() => go("pingpong_play")}
+              >
+                {t("pingpong.cta.resume", "Reprendre")}
+              </button>
+            )}
+
+            <button
+              style={btnGhost(theme)}
+              onClick={() => {
+                // Nouvelle partie : reset du state local
+                if (canResume) {
+                  try {
+                    savePingPongState(newPingPongState());
+                  } catch {}
+                  setResume(loadPingPongState());
+                }
+                go("pingpong_play");
+              }}
+            >
+              {canResume ? t("pingpong.cta.new", "Nouvelle partie") : t("pingpong.cta.play", "Jouer")}
+            </button>
             <button style={btnGhost(theme)} onClick={() => go("stats")}>{t("home.cta.stats", "Stats")}</button>
             <button style={btnGhost(theme)} onClick={() => go("tournaments", { forceMode: "pingpong" })}>{t("home.cta.tournaments", "Tournois")}</button>
           </div>

@@ -32,6 +32,11 @@ type Props = {
   onFinish?: (m: any) => void;
 };
 
+
+function tourResultKey(tournamentId: any, matchId: any) {
+  return `bf_tour_result_${String(tournamentId || "")}_${String(matchId || "")}`;
+}
+
 function fmt(ms: number) {
   const s = Math.floor(ms / 1000);
   const mm = String(Math.floor(s / 60)).padStart(2, "0");
@@ -44,7 +49,7 @@ function lastPhaseAt(s: BabyFootState, phase: string) {
   return ev?.at ?? null;
 }
 
-export default function BabyFootPlay({ go, onFinish }: Props) {
+export default function BabyFootPlay({ go, onFinish, params }: Props) {
   const { theme } = useTheme();
   const [state, setState] = useState<BabyFootState>(() => startIfNeeded());
   const [now, setNow] = useState(Date.now());
@@ -143,7 +148,29 @@ export default function BabyFootPlay({ go, onFinish }: Props) {
     try {
       onFinish?.(payload);
     } catch {}
-    // navigate to history if caller didn't
+    
+    // ✅ V5.3 Tournoi bridge (SAFE): si on vient d'un match de tournoi,
+    // on stocke le résultat pour import/soumission depuis TournamentMatchPlay.
+    try {
+      const tid = (params as any)?.tournamentId ?? (params as any)?.tournament_id;
+      const mid = (params as any)?.tournamentMatchId ?? (params as any)?.matchId;
+      if (tid && mid && typeof localStorage !== "undefined") {
+        const k = tourResultKey(tid, mid);
+        localStorage.setItem(
+          k,
+          JSON.stringify({
+            tournamentId: tid,
+            matchId: mid,
+            scoreA: state.scoreA,
+            scoreB: state.scoreB,
+            winnerTeam,
+            winnerId,
+            finishedAt: payload.finishedAt ?? Date.now(),
+          })
+        );
+      }
+    } catch {}
+// navigate to history if caller didn't
     // (App.tsx typically redirects already; we keep safe)
   }, [state.finished]);
 
@@ -416,6 +443,19 @@ function PickScorerModal({ theme, title, ids, onPick, onClose }: any) {
           >
             FERMER
           </button>
+      {state.finished && ((params as any)?.tournamentId || (params as any)?.tournamentMatchId) ? (
+        <button
+          style={{ ...btn(theme), marginTop: 10, border: "1px solid rgba(255,255,255,0.22)" }}
+          onClick={() => {
+            const tid = (params as any)?.tournamentId ?? (params as any)?.tournament_id;
+            const mid = (params as any)?.tournamentMatchId ?? (params as any)?.matchId;
+            if (tid && mid) go("tournament_match_play", { tournamentId: tid, matchId: mid, forceMode: "babyfoot" });
+          }}
+        >
+          RETOUR TOURNOI (IMPORT RÉSULTAT)
+        </button>
+      ) : null}
+
         </div>
 
         <div style={{ marginTop: 12, display: "flex", gap: 10, flexWrap: "wrap" }}>

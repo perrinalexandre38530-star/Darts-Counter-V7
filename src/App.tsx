@@ -239,6 +239,7 @@ import PingPongPlay from "./pages/pingpong/PingPongPlay";
 import PingPongTraining from "./pages/pingpong/PingPongTraining";
 import PingPongStatsShell from "./pages/pingpong/PingPongStatsShell";
 import PingPongStatsHistoryPage from "./pages/pingpong/PingPongStatsHistoryPage";
+import PingPongMatchDetail from "./pages/pingpong/PingPongMatchDetail";
 
 // Dev helper
 import { installHistoryProbe } from "./dev/devHistoryProbe";
@@ -518,6 +519,7 @@ type Tab =
   | "pingpong_play"
   | "pingpong_training"
   | "pingpong_stats_history"
+  | "pingpong_match_detail"
   // ✅ NEW: Teams Pétanque (CRUD local)
   | "petanque_teams"
   | "petanque_team_edit"
@@ -2319,6 +2321,10 @@ function App() {
       // ✅ PING-PONG — STATS/HISTORY (LOCAL)
       case "pingpong_stats_history":
         page = <PingPongStatsHistoryPage store={store} go={go} params={routeParams} />;
+        break;
+
+      case "pingpong_match_detail":
+        page = <PingPongMatchDetail store={store} go={go} params={routeParams} />;
         break;
 
       case "statsHub":

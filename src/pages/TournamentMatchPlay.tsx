@@ -413,6 +413,26 @@ export default function TournamentMatchPlay({ store, go, params }: any) {
   if (isBabyFootMode) {
     const winnerId = bfSa === bfSb ? null : (bfSa > bfSb ? aId : bId);
 
+
+    // ✅ V5.3: Import rapide depuis l'historique Baby-Foot (si tu as joué le match dans l'app)
+    const lastPlayed = (() => {
+      try {
+        const hist = (store?.history ?? []).filter((h: any) => h?.sport === "babyfoot" || h?.kind === "babyfoot");
+        const candidates = hist
+          .filter((h: any) => {
+            const players = Array.isArray(h?.players) ? h.players : [];
+            const ids = players.map((p: any) => p?.id).filter(Boolean);
+            return ids.includes(aId) && ids.includes(bId);
+          })
+          .sort((a: any, b: any) => (b?.createdAt || 0) - (a?.createdAt || 0));
+        return candidates[0] || null;
+      } catch {
+        return null;
+      }
+    })();
+
+    const canImport = !!lastPlayed && safeNum(lastPlayed?.summary?.scoreA, -1) >= 0 && safeNum(lastPlayed?.summary?.scoreB, -1) >= 0;
+
     return (
       <div style={{ minHeight: "100vh", padding: 16, paddingBottom: 90, background: theme.bg, color: theme.text }}>
         <button onClick={() => go("tournament_view", { id: tournamentId, forceMode: "babyfoot" })}>← Retour tournoi</button>
@@ -434,6 +454,35 @@ export default function TournamentMatchPlay({ store, go, params }: any) {
           <div style={{ marginTop: 12, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
             <div>
               <div style={{ fontWeight: 900, opacity: 0.8, marginBottom: 6 }}>{nameOf(tour, aId)}</div>
+
+          {canImport ? (
+            <button
+              onClick={() => {
+                try {
+                  setBfErr("");
+                  const a = safeNum(lastPlayed?.summary?.scoreA, 0);
+                  const b = safeNum(lastPlayed?.summary?.scoreB, 0);
+                  setBfSa(Math.max(0, Math.min(99, a)));
+                  setBfSb(Math.max(0, Math.min(99, b)));
+                } catch {}
+              }}
+              style={{
+                marginTop: 10,
+                width: "100%",
+                height: 44,
+                borderRadius: 14,
+                border: `1px solid ${theme.borderSoft}`,
+                background: "rgba(255,255,255,0.08)",
+                color: theme.text,
+                fontWeight: 950,
+                letterSpacing: 0.5,
+                cursor: "pointer",
+              }}
+            >
+              IMPORTER DERNIÈRE PARTIE JOUÉE
+            </button>
+          ) : null}
+
               <input
                 inputMode="numeric"
                 value={String(bfSa)}
