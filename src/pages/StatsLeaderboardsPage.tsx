@@ -20,6 +20,7 @@ import { useTheme } from "../contexts/ThemeContext";
 import { useLang } from "../contexts/LangContext";
 import ProfileAvatar from "../components/ProfileAvatar";
 import { History } from "../lib/history";
+import { loadTerritoriesHistory, type TerritoriesMatch } from "../lib/territories/territoriesStats";
 // Optionnel (si tu l’as dans ton projet). On n’en dépend pas pour éviter de casser.
 import { computeKillerAgg } from "../lib/statsKillerAgg";
 
@@ -36,7 +37,8 @@ type LeaderboardMode =
   | "killer"
   | "shanghai"
   | "battle_royale"
-  | "clock";
+  | "clock"
+  | "territories";
 
 type PeriodKey = "D" | "W" | "M" | "Y" | "ALL" | "TOUT";
 
@@ -103,6 +105,7 @@ const MODE_DEFS: {
   { id: "shanghai", label: "SHANGHAI", metrics: ["wins", "winRate", "matches"] },
   { id: "battle_royale", label: "BATTLE ROYALE", metrics: ["wins", "winRate", "matches"] },
   { id: "clock", label: "TOUR DE L’HORLOGE", metrics: ["wins", "winRate", "matches"] },
+  { id: "territories", label: "TERRITORIES", metrics: ["wins", "winRate", "matches"] },
 ];
 
 // ------------------------------
@@ -692,6 +695,79 @@ function computeRowsFromHistory(
   return rows;
 }
 
+function computeRowsFromTerritories(
+  profiles: ProfileLite[],
+  metric: MetricKey
+): Row[] {
+  const matches = loadTerritoriesHistory();
+
+  const byId = new Map<string, ProfileLite>();
+  for (const p of profiles) byId.set(p.id, p);
+
+  type Agg = {
+    id: string;
+    name: string;
+    avatar?: string;
+    matches: number;
+    wins: number;
+  };
+
+  const agg = new Map<string, Agg>();
+
+  const ensure = (id: string, fallbackName?: string, fallbackAvatar?: string) => {
+    const p = byId.get(id);
+    const name = p?.name || fallbackName || "—";
+    const avatar = p?.avatar || fallbackAvatar;
+    let a = agg.get(id);
+    if (!a) {
+      a = { id, name, avatar, matches: 0, wins: 0 };
+      agg.set(id, a);
+    } else {
+      // refresh name/avatar if needed
+      if (a.name === "—" && name !== "—") a.name = name;
+      if (!a.avatar && avatar) a.avatar = avatar;
+    }
+    return a;
+  };
+
+  for (const m of matches) {
+    const players = Array.isArray((m as any).players) ? (m as any).players : [];
+    if (!players.length) continue;
+
+    const winnerTeam = typeof (m as any).winnerTeam === "number" ? (m as any).winnerTeam : 0;
+
+    for (const pl of players) {
+      const pid = String(pl.profileId || "").trim();
+      if (!pid) continue;
+      const a = ensure(pid, pl.name, pl.avatar);
+      a.matches += 1;
+      if (typeof pl.teamIndex === "number" && pl.teamIndex === winnerTeam) a.wins += 1;
+    }
+  }
+
+  const rows: Row[] = Array.from(agg.values()).map((a) => {
+    const winRate = a.matches > 0 ? Math.round((a.wins / a.matches) * 1000) / 10 : 0;
+    return {
+      profileId: a.id,
+      name: a.name,
+      avatar: a.avatar,
+      wins: a.wins,
+      winRate,
+      matches: a.matches,
+      avg3: 0,
+      bestVisit: 0,
+      bestCheckout: 0,
+      kills: 0,
+      favNumberHits: 0,
+      favSegmentHits: 0,
+      totalHits: 0,
+    };
+  });
+
+  rows.sort((a, b) => (b[metric] - a[metric]) || (b.matches - a.matches));
+  return rows;
+}
+
 function metricLabel(m: MetricKey) {
   switch (m) {
     case "wins":
@@ -889,6 +965,12 @@ export default function StatsLeaderboardsPage({ store }: Props) {
       const filtered = includeBots ? out : out.filter((r) => !isBotRow(r, botsMap, profileIds));
       return filtered;
     };
+
+    // ✅ TERRITORIES : hors History (localStorage)
+    if (mode === "territories") {
+      const base = computeRowsFromTerritories(profiles || [], metric);
+      return sortRows(sanitizeAndFilter(base));
+    }
 
     // ✅ KILLER : on essaie computeKillerAgg si dispo et compatible, sinon fallback sur computeRowsFromHistory
     if (mode === "killer") {

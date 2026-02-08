@@ -687,9 +687,16 @@ export default function DepartementsPlay(props: any) {
       durationMs,
       winnerTeam: winnerTeamIndex,
       captured: ownersOrder.map((oid) => capturedByOwner[oid] || 0),
+      darts: ownersOrder.map((oid) => dartsByOwner[oid] || 0),
       steals: ownersOrder.map((oid) => stealsByOwner[oid] || 0),
       lost: ownersOrder.map((oid) => lostByOwner[oid] || 0),
       domination: ownersOrder.map((oid) => ownedCounts[oid] || 0),
+      players: players.map((p) => ({
+        id: p.id,
+        name: p.name,
+        avatar: (p as any).avatar,
+        teamId: (p as any).teamId,
+      })),
     });
 
     recordedRef.current = true;

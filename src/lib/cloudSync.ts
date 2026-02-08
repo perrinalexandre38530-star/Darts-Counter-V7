@@ -7,7 +7,7 @@
 
 import { onCloudChange } from "./cloudEvents";
 import { onlineApi } from "./onlineApi";
-import { exportCloudSnapshot, saveStore, importAll, getKV, setKV } from "./storage";
+import { exportCloudSnapshot, saveStore, importAll, getKV, setKV, loadStore } from "./storage";
 
 const DEBOUNCE_MS = 1200;
 const PULL_INTERVAL_MS = 60_000;
@@ -93,10 +93,68 @@ async function pullNow() {
 
     if (!cloudStore || typeof cloudStore !== "object") return;
 
-    applyStore(cloudStore);
+    // ⚠️ Sécurité anti-perte : ne jamais écraser un local "riche" par un cloud "vide"
+    // (scénario classique : données en local avant connexion, puis profil cloud ...
+    let nextStore: any = cloudStore;
+    try {
+      const local = await loadStore();
+      const localHistory = Array.isArray(local?.history) ? local.history.length : 0;
+      const cloudHistory = Array.isArray((cloudStore as any)?.history) ? (cloudStore as any).history.length : 0;
+
+      // Heuristique: si le cloud semble vide/moins riche, on garde le local pour les data lourdes.
+      if (local && typeof local === "object") {
+        const merged: any = { ...cloudStore };
+
+        // history
+        if (localHistory > cloudHistory) merged.history = local.history;
+
+        // saved (configurations / presets)
+        if (local?.saved && (!merged.saved || Object.keys(merged.saved).length < Object.keys(local.saved).length)) {
+          merged.saved = local.saved;
+        }
+
+        // profiles: merge par id, préférer le cloud pour nickname/avatar quand présent
+        const cp = (cloudStore as any)?.profiles || {};
+        const lp = (local as any)?.profiles || {};
+        const outProfiles: any = { ...lp, ...cp };
+        for (const id of Object.keys(lp)) {
+          const a = lp[id];
+          const b = cp[id];
+          if (!b) continue;
+          outProfiles[id] = {
+            ...a,
+            ...b,
+            nickname: (b.nickname ?? a.nickname),
+            displayName: (b.displayName ?? a.displayName),
+            avatarUrl: (b.avatarUrl ?? a.avatarUrl),
+          };
+        }
+        merged.profiles = outProfiles;
+
+        // settings: garder cloud, mais fallback local si cloud absent
+        if (!merged.settings && (local as any).settings) merged.settings = (local as any).settings;
+
+        // active profile id: préférer cloud sinon local
+        if (!merged.activeProfileId && (local as any).activeProfileId) merged.activeProfileId = (local as any).activeProfileId;
+
+        // Si le cloud n'a rien mais le local oui, on applique le merged (donc local) puis on push.
+        nextStore = merged;
+
+        const cloudLooksEmpty = cloudHistory === 0 && Object.keys(cp).length <= 1;
+        const localLooksRich = localHistory > 0 || Object.keys(lp).length > 1;
+        if (cloudLooksEmpty && localLooksRich) {
+          // Push immédiat pour remonter les données locales vers le cloud
+          try { await pushNow(); } catch {}
+        }
+      }
+    } catch {
+      nextStore = cloudStore;
+    }
+
+    applyStore(nextStore);
 
     try {
-      await saveStore(cloudStore);
+      await saveStore(nextStore);
     } catch {}
 
     if (updatedAt) {

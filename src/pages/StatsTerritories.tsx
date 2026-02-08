@@ -26,9 +26,10 @@ const INFO_TEXT = `STATS TERRITORIES
 
 function fmtDate(ts: number) {
   try {
-    return new Date(ts).toLocaleString();
+    const d = new Date(ts);
+    return Number.isFinite(d.getTime()) ? d.toLocaleString() : "—";
   } catch {
-    return String(ts);
+    return "—";
   }
 }
 
@@ -141,10 +142,70 @@ export default function StatsTerritories(props: any) {
     return Math.round((sum / items.length) * 10) / 10;
   }, [items]);
 
+  const breakdown = React.useMemo(() => {
+    let solo = 0;
+    let teams = 0;
+    let totalDarts = 0;
+    let totalSteals = 0;
+    let totalLost = 0;
+    let totalDurationMs = 0;
+    let durationCount = 0;
+    const objectives: Record<string, number> = {};
+    const victoryTypes: Record<string, number> = {};
+
+    for (const it of items) {
+      const mode = String((it as any).mode ?? "solo");
+      if (mode === "teams") teams++;
+      else solo++;
+
+      totalDarts += n((it as any).darts);
+      totalSteals += n((it as any).steals);
+      totalLost += n((it as any).lost);
+
+      const dur = n((it as any).durationMs);
+      if (dur > 0) {
+        totalDurationMs += dur;
+        durationCount++;
+      }
+
+      const obj = String((it as any).objective ?? "");
+      if (obj) objectives[obj] = (objectives[obj] ?? 0) + 1;
+
+      const v = String((it as any).victoryType ?? "");
+      if (v) victoryTypes[v] = (victoryTypes[v] ?? 0) + 1;
+    }
+
+    const avgDarts = items.length ? Math.round((totalDarts / items.length) * 10) / 10 : 0;
+    const avgSteals = items.length ? Math.round((totalSteals / items.length) * 10) / 10 : 0;
+    const avgLost = items.length ? Math.round((totalLost / items.length) * 10) / 10 : 0;
+    const avgDurationMin = durationCount
+      ? Math.round(((totalDurationMs / durationCount) / 60000) * 10) / 10
+      : 0;
+
+    const topObjective = Object.entries(objectives).sort((a, b) => b[1] - a[1])[0]?.[0];
+    const topVictory = Object.entries(victoryTypes).sort((a, b) => b[1] - a[1])[0]?.[0];
+
+    return {
+      solo,
+      teams,
+      totalDarts,
+      totalSteals,
+      totalLost,
+      avgDarts,
+      avgSteals,
+      avgLost,
+      avgDurationMin,
+      topObjective,
+      topVictory,
+      objectives,
+      victoryTypes,
+    };
+  }, [items]);
+
   const last7 = React.useMemo(() => {
     const now = Date.now();
     const d7 = 7 * 24 * 3600 * 1000;
-    return items.filter((it) => now - n(it.when) <= d7).length;
+    return items.filter((it) => now - n((it as any).ts ?? (it as any).when) <= d7).length;
   }, [items]);
 
   const bestGame = React.useMemo(() => {
@@ -160,6 +221,60 @@ export default function StatsTerritories(props: any) {
       }
     }
     return best;
+  }, [items]);
+
+  const records = React.useMemo(() => {
+    if (!items.length) {
+      return {
+        bestCaptures: null as TerritoriesMatch | null,
+        bestSteals: null as TerritoriesMatch | null,
+        bestEfficiency: null as TerritoriesMatch | null,
+        longest: null as TerritoriesMatch | null,
+      };
+    }
+
+    let bestCaptures: TerritoriesMatch | null = null;
+    let bestCapturesVal = -1;
+
+    let bestSteals: TerritoriesMatch | null = null;
+    let bestStealsVal = -1;
+
+    let bestEfficiency: TerritoriesMatch | null = null;
+    let bestEfficiencyVal = -1;
+
+    let longest: TerritoriesMatch | null = null;
+    let longestVal = -1;
+
+    for (const it of items) {
+      const w = n(it.winnerTeam);
+      const capW = n((it.captured || [])[w] ?? 0);
+      if (capW > bestCapturesVal) {
+        bestCapturesVal = capW;
+        bestCaptures = it;
+      }
+
+      const steals = n((it as any).steals);
+      if (steals > bestStealsVal) {
+        bestStealsVal = steals;
+        bestSteals = it;
+      }
+
+      const darts = n((it as any).darts);
+      const capTotal = Array.isArray(it.captured) ? it.captured.map(n).reduce((a, b) => a + b, 0) : 0;
+      const eff = darts > 0 ? capTotal / darts : 0;
+      if (eff > bestEfficiencyVal) {
+        bestEfficiencyVal = eff;
+        bestEfficiency = it;
+      }
+
+      const dur = n((it as any).durationMs);
+      if (dur > longestVal) {
+        longestVal = dur;
+        longest = it;
+      }
+    }
+
+    return { bestCaptures, bestSteals, bestEfficiency, longest };
   }, [items]);
 
   // =====================
@@ -402,6 +517,85 @@ export default function StatsTerritories(props: any) {
               {t("territories.capturesPerRound", "Captures / tour")}: {avgCapturesPerRound}
             </div>
           </div>
+
+          <div
+            style={{
+              ...kpiBox,
+              borderColor: "rgba(255,221,120,.55)",
+              boxShadow:
+                "0 0 0 1px rgba(255,221,120,.14), 0 0 12px rgba(255,221,120,.45)",
+            }}
+          >
+            <div style={kpiLabel}>{t("territories.modes", "Modes")}</div>
+            <div style={{ ...kpiValueMain, color: T.gold }}>
+              {breakdown.solo} / {breakdown.teams}
+            </div>
+            <div style={{ fontSize: 11, color: T.text70 }}>
+              {t("territories.soloTeams", "Solo / Teams")}
+            </div>
+          </div>
+
+          <div
+            style={{
+              ...kpiBox,
+              borderColor: "rgba(255,255,255,.12)",
+              boxShadow:
+                "0 0 0 1px rgba(255,255,255,.10), 0 0 12px rgba(255,255,255,.20)",
+            }}
+          >
+            <div style={kpiLabel}>{t("territories.darts", "Darts")}</div>
+            <div style={{ ...kpiValueMain, color: "#EAEAEA" }}>{breakdown.avgDarts}</div>
+            <div style={{ fontSize: 11, color: T.text70 }}>
+              {t("territories.dartsTotal", "Total")}: {breakdown.totalDarts}
+            </div>
+          </div>
+
+          <div
+            style={{
+              ...kpiBox,
+              borderColor: "rgba(255,120,190,.45)",
+              boxShadow:
+                "0 0 0 1px rgba(255,120,190,.12), 0 0 12px rgba(255,120,190,.35)",
+            }}
+          >
+            <div style={kpiLabel}>{t("territories.steals", "Steals")}</div>
+            <div style={{ ...kpiValueMain, color: "#FF78BE" }}>{breakdown.avgSteals}</div>
+            <div style={{ fontSize: 11, color: T.text70 }}>
+              {t("territories.lost", "Lost")}: {breakdown.avgLost} • {t("territories.avg", "moy.")}
+            </div>
+          </div>
+
+          <div
+            style={{
+              ...kpiBox,
+              borderColor: "rgba(71,181,255,.35)",
+              boxShadow:
+                "0 0 0 1px rgba(71,181,255,.10), 0 0 12px rgba(71,181,255,.30)",
+            }}
+          >
+            <div style={kpiLabel}>{t("territories.duration", "Durée")}</div>
+            <div style={{ ...kpiValueMain, color: "#47B5FF" }}>
+              {breakdown.avgDurationMin}
+            </div>
+            <div style={{ fontSize: 11, color: T.text70 }}>{t("territories.minutesAvg", "minutes (moy.)")}</div>
+          </div>
+
+          <div
+            style={{
+              ...kpiBox,
+              borderColor: "rgba(246,194,86,.35)",
+              boxShadow:
+                "0 0 0 1px rgba(246,194,86,.10), 0 0 12px rgba(246,194,86,.28)",
+            }}
+          >
+            <div style={kpiLabel}>{t("territories.victory", "Victoire")}</div>
+            <div style={{ ...kpiValueMain, color: T.gold }}>
+              {breakdown.topVictory ? String(breakdown.topVictory).toUpperCase() : "—"}
+            </div>
+            <div style={{ fontSize: 11, color: T.text70 }}>
+              {t("territories.objective", "Objectif")}: {breakdown.topObjective ?? "—"}
+            </div>
+          </div>
         </div>
 
         {/* TOP MAPS */}
@@ -441,7 +635,7 @@ export default function StatsTerritories(props: any) {
             {t("stats.records", "Records")}
           </div>
 
-          {bestGame ? (
+          {items.length ? (
             <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
               <div style={row}>
                 <div style={{ minWidth: 0 }}>
@@ -449,11 +643,67 @@ export default function StatsTerritories(props: any) {
                     {t("territories.bestDom", "Meilleure domination (winner)")}
                   </div>
                   <div style={{ fontSize: 11, color: T.text70 }}>
-                    {TERRITORY_MAPS[bestGame.mapId]?.name || bestGame.mapId} • {fmtDate(bestGame.when)}
+                    {records.bestGame ? `${TERRITORY_MAPS[records.bestGame.mapId]?.name || records.bestGame.mapId} • ${fmtDate(n((records.bestGame as any).ts ?? (records.bestGame as any).when))}` : "—"}
                   </div>
                 </div>
                 <div style={{ fontWeight: 1000, color: "#47B5FF" }}>
-                  {n(bestGame.domination?.[n(bestGame.winnerTeam)] ?? 0)}
+                  {records.bestGame ? n(records.bestGame.domination?.[n(records.bestGame.winnerTeam)] ?? 0) : 0}
+                </div>
+              </div>
+
+              <div style={row}>
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ fontWeight: 1000, color: "#ddd" }}>
+                    {t("territories.bestCaptures", "Meilleures captures (winner)")}
+                  </div>
+                  <div style={{ fontSize: 11, color: T.text70 }}>
+                    {records.bestCaptures ? `${TERRITORY_MAPS[records.bestCaptures.mapId]?.name || records.bestCaptures.mapId} • ${fmtDate(n((records.bestCaptures as any).ts ?? (records.bestCaptures as any).when))}` : "—"}
+                  </div>
+                </div>
+                <div style={{ fontWeight: 1000, color: "#7CFF9A" }}>
+                  {records.bestCaptures ? n(records.bestCaptures.captured?.[n(records.bestCaptures.winnerTeam)] ?? 0) : 0}
+                </div>
+              </div>
+
+              <div style={row}>
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ fontWeight: 1000, color: "#ddd" }}>
+                    {t("territories.bestSteals", "Meilleurs steals")}
+                  </div>
+                  <div style={{ fontSize: 11, color: T.text70 }}>
+                    {records.bestSteals ? `${TERRITORY_MAPS[records.bestSteals.mapId]?.name || records.bestSteals.mapId} • ${fmtDate(n((records.bestSteals as any).ts ?? (records.bestSteals as any).when))}` : "—"}
+                  </div>
+                </div>
+                <div style={{ fontWeight: 1000, color: "#FF78BE" }}>
+                  {records.bestSteals ? n((records.bestSteals as any).steals ?? 0) : 0}
+                </div>
+              </div>
+
+              <div style={row}>
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ fontWeight: 1000, color: "#ddd" }}>
+                    {t("territories.bestEfficiency", "Meilleure efficacité (cap/dart)")}
+                  </div>
+                  <div style={{ fontSize: 11, color: T.text70 }}>
+                    {records.bestEfficiency ? `${TERRITORY_MAPS[records.bestEfficiency.mapId]?.name || records.bestEfficiency.mapId} • ${fmtDate(n((records.bestEfficiency as any).ts ?? (records.bestEfficiency as any).when))}` : "—"}
+                  </div>
+                </div>
+                <div style={{ fontWeight: 1000, color: T.gold }}>
+                  {records.bestEfficiency ? Math.round(n((records.bestEfficiency as any).capturesPerDart) * 1000) / 1000 : 0}
+                </div>
+              </div>
+
+              <div style={row}>
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ fontWeight: 1000, color: "#ddd" }}>
+                    {t("territories.longest", "Partie la plus longue")}
+                  </div>
+                  <div style={{ fontSize: 11, color: T.text70 }}>
+                    {records.longest ? `${TERRITORY_MAPS[records.longest.mapId]?.name || records.longest.mapId} • ${fmtDate(n((records.longest as any).ts ?? (records.longest as any).when))}` : "—"}
+                  </div>
+                </div>
+                <div style={{ fontWeight: 1000, color: "#47B5FF" }}>
+                  {records.longest ? Math.round(n((records.longest as any).durationMs) / 60000) : 0}m
                 </div>
               </div>
             </div>
@@ -481,6 +731,7 @@ export default function StatsTerritories(props: any) {
                 const wCap = n(cap[w] ?? 0);
                 const totalCap = cap.reduce((a, b) => a + n(b), 0);
                 const share = totalCap > 0 ? Math.round((wCap / totalCap) * 1000) / 10 : 0;
+                const modeLabel = (it.mode || "solo") === "teams" ? t("common.teams", "Teams") : t("common.solo", "Solo");
 
                 return (
                   <div key={it.id} style={row}>
@@ -494,10 +745,38 @@ export default function StatsTerritories(props: any) {
                         }}
                       >
                         <div style={{ fontWeight: 1000, color: "#ddd" }}>{mapName}</div>
-                        <div style={{ fontSize: 11, color: T.text70 }}>{fmtDate(it.when)}</div>
+                        <div style={{ fontSize: 11, color: T.text70 }}>{fmtDate(n((it as any).ts ?? (it as any).when))}</div>
+                        <span
+                          style={{
+                            fontSize: 10,
+                            fontWeight: 1000,
+                            padding: "2px 8px",
+                            borderRadius: 999,
+                            border: "1px solid rgba(255,255,255,0.14)",
+                            background: "rgba(0,0,0,0.25)",
+                            color: "#ddd",
+                          }}
+                        >
+                          {modeLabel}
+                        </span>
+                        <span
+                          style={{
+                            fontSize: 10,
+                            fontWeight: 1000,
+                            padding: "2px 8px",
+                            borderRadius: 999,
+                            border: "1px solid rgba(255,215,0,0.22)",
+                            background: "rgba(255,215,0,0.08)",
+                            color: T.gold,
+                          }}
+                        >
+                          {t("territories.objective", "Obj")}: {n(it.objective)}
+                        </span>
                       </div>
                       <div style={{ fontSize: 11, color: T.text70, marginTop: 2 }}>
                         {t("territories.rounds", "Tours")}: {n(it.rounds)} • {t("territories.domination", "Dom")}: {wDom} • {t("territories.captures", "Cap")}: {wCap} ({share}%)
+                        {Number.isFinite(n(it.darts)) ? ` • ${t("territories.darts", "Darts")}: ${n(it.darts)}` : ""}
+                        {Number.isFinite(n(it.steals)) ? ` • ${t("territories.steals", "Steals")}: ${n(it.steals)}` : ""}
                       </div>
                     </div>
                     <div style={{ fontWeight: 1000, color: T.gold }}>{wDom}</div>
