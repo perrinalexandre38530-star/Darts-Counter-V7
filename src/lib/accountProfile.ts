@@ -1,5 +1,12 @@
 import { supabase } from "./supabaseClient";
 
+
+function looksLikeMissingColumnError(err: any): boolean {
+  const msg = String(err?.message || err?.details || "").toLowerCase();
+  return msg.includes("pgrst204") || (msg.includes("column") && msg.includes("does not exist"));
+}
+
+
 export type AccountProfile = {
   user_id: string;
   display_name: string;
@@ -9,27 +16,35 @@ export type AccountProfile = {
 };
 
 export async function ensureAccountProfile(userId: string, fallbackName: string) {
-  // 1) Lecture
-  const { data: existing, error: selErr } = await supabase
-    .from("account_profile")
-    .select("*")
-    .eq("user_id", userId)
-    .maybeSingle();
+  const uid = String(userId || "").trim();
+  if (!uid) throw new Error("Missing userId");
 
-  if (selErr) throw selErr;
-  if (existing) return existing as AccountProfile;
+  // 1) Lecture (compat: user_id OU owner_user_id)
+  const trySelect = async (col: "user_id" | "owner_user_id") => {
+    return await supabase.from("account_profile").select("*").eq(col, uid).maybeSingle();
+  };
+
+  let sel = await trySelect("user_id");
+  if (sel.error && looksLikeMissingColumnError(sel.error)) {
+    sel = await trySelect("owner_user_id");
+  }
+  if (sel.error) throw sel.error;
+  if (sel.data) return sel.data as any as AccountProfile;
 
   // 2) Création explicite (pas de trigger)
-  const { data: created, error: insErr } = await supabase
-    .from("account_profile")
-    .insert({
-      user_id: userId,
+  const tryInsert = async (col: "user_id" | "owner_user_id") => {
+    const row: any = {
       display_name: fallbackName,
       avatar_url: null,
-    })
-    .select("*")
-    .single();
+    };
+    row[col] = uid;
+    return await supabase.from("account_profile").insert(row).select("*").single();
+  };
 
-  if (insErr) throw insErr;
-  return created as AccountProfile;
+  let ins = await tryInsert("user_id");
+  if (ins.error && looksLikeMissingColumnError(ins.error)) {
+    ins = await tryInsert("owner_user_id");
+  }
+  if (ins.error) throw ins.error;
+  return ins.data as any as AccountProfile;
 }

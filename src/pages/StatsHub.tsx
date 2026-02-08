@@ -674,6 +674,9 @@ function classifyRecordMode(rec: SavedMatch): string {
   // Killer
   if (tag.includes("killer")) return "killer";
 
+  // Golf
+  if (tag.includes("golf")) return "golf";
+
   // Battle Royale (si tu l’utilises dans History)
   if (tag.includes("battle") || tag.includes("royale")) return "battle_royale";
 
@@ -879,6 +882,17 @@ const card: React.CSSProperties = {
   boxShadow: "0 10px 26px rgba(0,0,0,.35)",
   backdropFilter: "blur(10px)",
 };
+
+
+const softCard: React.CSSProperties = {
+  ...card,
+  background: "rgba(0,0,0,0.22)",
+  border: `1px solid ${T.edge}`,
+  borderRadius: 16,
+  padding: 12,
+  boxShadow: "none",
+};
+
 
 const row: React.CSSProperties = {
   ...card,
@@ -3694,6 +3708,7 @@ const modeDefs = React.useMemo(
     { key: "cricket", label: "Cricket" },
     { key: "shanghai", label: "Shanghai" }, // ✅ NEW
     { key: "killer", label: "Killer" },
+    { key: "golf", label: "Golf" },
     { key: "territories", label: "Territories" },
     { key: "leaderboards", label: "Classements" },
     { key: "history", label: "Historique" },
@@ -5133,7 +5148,276 @@ return (
               </div>
             )}
 
-            {currentMode === "territories" && (
+            
+            {currentMode === "golf" && (
+              <div style={card}>
+                <div style={{ padding: 18 }}>
+                  <div style={{ fontWeight: 1000, letterSpacing: 1, color: "#ffd56a", marginBottom: 10 }}>
+                    GOLF — Stats
+                  </div>
+
+                  {(() => {
+            const golfMatches = records.filter((r) => classifyRecordMode(r) === "golf");
+            const finished = golfMatches.filter((m) => Boolean(m.finished_at));
+            const inprog = golfMatches.filter((m) => !m.finished_at);
+
+            const box = { ...softCard, padding: 14 } as React.CSSProperties;
+            const label = { opacity: 0.85, fontSize: 12 } as React.CSSProperties;
+            const value = { fontSize: 20, fontWeight: 1000 } as React.CSSProperties;
+            const sub = { marginTop: 2, fontSize: 11, opacity: 0.75 } as React.CSSProperties;
+
+            const readNum = (v: any) => {
+              if (typeof v === "number" && Number.isFinite(v)) return v;
+              if (typeof v === "string") {
+                const n = Number(v);
+                return Number.isFinite(n) ? n : 0;
+              }
+              return 0;
+            };
+
+            const pick = (obj: any, keys: string[]) => {
+              for (const k of keys) {
+                if (obj && obj[k] != null) return readNum(obj[k]);
+              }
+              return 0;
+            };
+
+            type GolfAgg = {
+              s: number;
+              d: number;
+              t: number;
+              miss: number;
+              bull: number;
+              dbull: number;
+              turns: number;
+              hit1: number;
+              hit2: number;
+              hit3: number;
+              holesWon: number;
+              holes2nd: number;
+              holes3rd: number;
+              holesPlayed: number;
+            };
+
+            const zero: GolfAgg = {
+              s: 0,
+              d: 0,
+              t: 0,
+              miss: 0,
+              bull: 0,
+              dbull: 0,
+              turns: 0,
+              hit1: 0,
+              hit2: 0,
+              hit3: 0,
+              holesWon: 0,
+              holes2nd: 0,
+              holes3rd: 0,
+              holesPlayed: 0,
+            };
+
+            const extractPlayerGolfStats = (m: any): GolfAgg => {
+              const pid = activeProfileId;
+              const s = m?.summary ?? {};
+              const p = m?.payload ?? {};
+
+              const byPlayer =
+                (s?.playerStats && (s.playerStats[pid] || s.playerStats[String(pid)])) ||
+                (s?.perPlayer && (s.perPlayer[pid] || s.perPlayer[String(pid)])) ||
+                (p?.playerStats && (p.playerStats[pid] || p.playerStats[String(pid)])) ||
+                (p?.perPlayer && (p.perPlayer[pid] || p.perPlayer[String(pid)])) ||
+                (p?.statsByPlayer && (p.statsByPlayer[pid] || p.statsByPlayer[String(pid)])) ||
+                null;
+
+              const src = byPlayer || s?.stats || p?.stats || s || p;
+
+              return {
+                s: pick(src, ["s", "simple", "singles", "par"]),
+                d: pick(src, ["d", "double", "doubles", "bogey"]),
+                t: pick(src, ["t", "triple", "triples", "doubleBogey"]),
+                miss: pick(src, ["miss", "m", "misses"]),
+                bull: pick(src, ["bull", "b"]),
+                dbull: pick(src, ["dbull", "dBull", "doubleBull", "db"]),
+                turns: pick(src, ["turns", "tours"]),
+                hit1: pick(src, ["hit1", "hits1", "firstHits"]),
+                hit2: pick(src, ["hit2", "hits2", "secondHits"]),
+                hit3: pick(src, ["hit3", "hits3", "thirdHits"]),
+                holesWon: pick(src, ["holesWon", "holes1st", "firsts", "p1"]),
+                holes2nd: pick(src, ["holes2nd", "second", "p2"]),
+                holes3rd: pick(src, ["holes3rd", "third", "p3"]),
+                holesPlayed: pick(src, ["holesPlayed", "holes", "trous"]),
+              };
+            };
+
+            const agg = finished.reduce((acc: GolfAgg, m: any) => {
+              const st = extractPlayerGolfStats(m);
+              (Object.keys(acc) as (keyof GolfAgg)[]).forEach((k) => {
+                acc[k] += st[k] || 0;
+              });
+              return acc;
+            }, { ...zero });
+
+            const totalNums = finished
+              .map((m: any) => {
+                const s = m?.summary ?? {};
+                const t =
+                  s?.totals?.[activeProfileId] ??
+                  s?.totals?.[String(activeProfileId)] ??
+                  s?.total ??
+                  (Array.isArray(s?.players)
+                    ? s.players.find((pp: any) => pp?.id === activeProfileId || pp?.id === String(activeProfileId))?.total
+                    : 0);
+                return readNum(t);
+              })
+              .filter((n: number) => Number.isFinite(n) && n !== 0);
+
+            const bestTotal = totalNums.length ? Math.min(...totalNums) : null;
+            const totalAvg = totalNums.length ? Math.round((totalNums.reduce((a, b) => a + b, 0) / totalNums.length) * 10) / 10 : null;
+
+            const hitsTotal = agg.s + agg.d + agg.t + agg.bull + agg.dbull + agg.miss;
+            const pct = (n: number, d: number) => (d > 0 ? Math.round((n / d) * 100) : 0);
+
+            return (
+              <>
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+                    gap: 12,
+                  }}
+                >
+                  <div style={box}>
+                    <div style={label}>Parties terminées</div>
+                    <div style={value}>{finished.length}</div>
+                  </div>
+                  <div style={box}>
+                    <div style={label}>Parties en cours</div>
+                    <div style={value}>{inprog.length}</div>
+                  </div>
+                  <div style={box}>
+                    <div style={label}>Meilleur total</div>
+                    <div style={value}>{bestTotal ?? "—"}</div>
+                  </div>
+                  <div style={box}>
+                    <div style={label}>Total moyen</div>
+                    <div style={value}>{totalAvg ?? "—"}</div>
+                  </div>
+
+                  <div style={box}>
+                    <div style={label}>Simple</div>
+                    <div style={value}>{agg.s}</div>
+                    <div style={sub}>Par</div>
+                  </div>
+                  <div style={box}>
+                    <div style={label}>Double</div>
+                    <div style={value}>{agg.d}</div>
+                    <div style={sub}>Bogey</div>
+                  </div>
+                  <div style={box}>
+                    <div style={label}>Triple</div>
+                    <div style={value}>{agg.t}</div>
+                    <div style={sub}>Double Bogey</div>
+                  </div>
+                  <div style={box}>
+                    <div style={label}>Miss</div>
+                    <div style={value}>{agg.miss}</div>
+                    <div style={sub}>{hitsTotal ? `${pct(agg.miss, hitsTotal)}%` : "—"}</div>
+                  </div>
+
+                  <div style={box}>
+                    <div style={label}>BULL</div>
+                    <div style={value}>{agg.bull}</div>
+                    <div style={sub}>Birdie</div>
+                  </div>
+                  <div style={box}>
+                    <div style={label}>DBULL</div>
+                    <div style={value}>{agg.dbull}</div>
+                    <div style={sub}>Eagle</div>
+                  </div>
+
+                  <div style={box}>
+                    <div style={label}>%1st</div>
+                    <div style={value}>{agg.holesPlayed ? `${pct(agg.holesWon, agg.holesPlayed)}%` : "—"}</div>
+                    <div style={sub}>Trous gagnés</div>
+                  </div>
+                  <div style={box}>
+                    <div style={label}>%2nd</div>
+                    <div style={value}>{agg.holesPlayed ? `${pct(agg.holes2nd, agg.holesPlayed)}%` : "—"}</div>
+                    <div style={sub}>2e place</div>
+                  </div>
+                  <div style={box}>
+                    <div style={label}>%3rd</div>
+                    <div style={value}>{agg.holesPlayed ? `${pct(agg.holes3rd, agg.holesPlayed)}%` : "—"}</div>
+                    <div style={sub}>3e place</div>
+                  </div>
+                  <div style={box}>
+                    <div style={label}>Tours</div>
+                    <div style={value}>{agg.turns}</div>
+                    <div style={sub}>Volées</div>
+                  </div>
+                </div>
+
+                <div
+                  style={{
+                    marginTop: 12,
+                    padding: 12,
+                    borderRadius: 14,
+                    border: "1px solid rgba(255,255,255,0.10)",
+                    background: "linear-gradient(180deg, rgba(255,255,255,0.05), rgba(0,0,0,0.18))",
+                  }}
+                >
+                  <div style={{ fontSize: 12, opacity: 0.85, marginBottom: 8 }}>Répartition des hits</div>
+                  {[
+                    { k: "DBULL (Eagle)", v: agg.dbull },
+                    { k: "BULL (Birdie)", v: agg.bull },
+                    { k: "Triple (Double Bogey)", v: agg.t },
+                    { k: "Double (Bogey)", v: agg.d },
+                    { k: "Simple (Par)", v: agg.s },
+                    { k: "Miss", v: agg.miss },
+                  ].map((row) => {
+                    const p = hitsTotal ? Math.round((row.v / hitsTotal) * 100) : 0;
+                    return (
+                      <div
+                        key={row.k}
+                        style={{
+                          display: "grid",
+                          gridTemplateColumns: "140px 1fr 44px",
+                          alignItems: "center",
+                          gap: 10,
+                          marginTop: 6,
+                        }}
+                      >
+                        <div style={{ fontSize: 12, opacity: 0.8, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{row.k}</div>
+                        <div
+                          style={{
+                            height: 10,
+                            borderRadius: 999,
+                            background: "rgba(255,255,255,0.10)",
+                            overflow: "hidden",
+                            border: "1px solid rgba(255,255,255,0.08)",
+                          }}
+                        >
+                          <div
+                            style={{
+                              height: "100%",
+                              width: hitsTotal ? `${p}%` : "0%",
+                              background: "linear-gradient(90deg, rgba(120,255,230,0.55), rgba(255,180,80,0.55))",
+                            }}
+                          />
+                        </div>
+                        <div style={{ fontSize: 12, textAlign: "right", opacity: 0.85 }}>{hitsTotal ? `${p}%` : "—"}</div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </>
+            );
+          })()}
+                </div>
+              </div>
+            )}
+
+{currentMode === "territories" && (
               <div style={card}>
                 <React.Suspense fallback={<LazyFallback label="Chargement Territories…" />}>
                   <StatsTerritoriesTab embedded />

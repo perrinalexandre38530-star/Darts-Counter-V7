@@ -20,11 +20,47 @@ import logoPetanque from "../assets/games/logo-petanque.png";
 import logoPingPong from "../assets/games/logo-pingpong.png";
 import logoBabyFoot from "../assets/games/logo-babyfoot.png";
 
+// ✅ Sports à venir (affichés en SOON dans le GameSelect)
+import logoArchery from "../assets/games/logo-archery.png";
+import logoMolkky from "../assets/games/logo-molkky.png";
+import logoPadel from "../assets/games/logo-padel.png";
+import logoPickleball from "../assets/games/logo-pickleball.png";
+import logoFrisbee from "../assets/games/logo-frisbee.png";
+import logoBillard from "../assets/games/logo-billard.png";
+import logoBadminton from "../assets/games/logo-badminton.png";
+import logoBasket from "../assets/games/logo-basket.png";
+import logoCornhole from "../assets/games/logo-cornhole.png";
+import logoDiceGame from "../assets/games/logo-dicegame.png";
+import logoFoot from "../assets/games/logo-foot.png";
+import logoRugby from "../assets/games/logo-rugby.png";
+import logoVolley from "../assets/games/logo-volley.png";
+import logoTennis from "../assets/games/logo-tennis.png";
+import logoChess from "../assets/games/logo-chess.png";
+
 type Props = {
   go: (route: any) => void;
 };
 
-type GameId = "darts" | "petanque" | "pingpong" | "babyfoot";
+type GameId =
+  | "darts"
+  | "petanque"
+  | "pingpong"
+  | "babyfoot"
+  | "archery"
+  | "molkky"
+  | "padel"
+  | "pickleball"
+  | "frisbee"
+  | "billard"
+  | "badminton"
+  | "basket"
+  | "cornhole"
+  | "dicegame"
+  | "foot"
+  | "rugby"
+  | "volley"
+  | "tennis"
+  | "chess";
 
 export default function GameSelect({ go }: Props) {
   const { theme } = useTheme();
@@ -92,7 +128,127 @@ export default function GameSelect({ go }: Props) {
         go(GAMES_ROUTE);
       },
     },
+
+    // ------------------------------
+    // ✅ Sports à venir (SOON)
+    // ------------------------------
+    {
+      id: "archery",
+      label: "Tir à l'arc",
+      logo: logoArchery,
+      enabled: false,
+      onClick: () => {},
+    },
+    {
+      id: "molkky",
+      label: "Mölkky",
+      logo: logoMolkky,
+      enabled: false,
+      onClick: () => {},
+    },
+    {
+      id: "padel",
+      label: "Padel",
+      logo: logoPadel,
+      enabled: false,
+      onClick: () => {},
+    },
+    {
+      id: "pickleball",
+      label: "Pickleball",
+      logo: logoPickleball,
+      enabled: false,
+      onClick: () => {},
+    },
+    {
+      id: "frisbee",
+      label: "Frisbee",
+      logo: logoFrisbee,
+      enabled: false,
+      onClick: () => {},
+    },
+    {
+      id: "billard",
+      label: "Billard",
+      logo: logoBillard,
+      enabled: false,
+      onClick: () => {},
+    },
+    {
+      id: "badminton",
+      label: "Badminton",
+      logo: logoBadminton,
+      enabled: false,
+      onClick: () => {},
+    },
+    {
+      id: "basket",
+      label: "Basket",
+      logo: logoBasket,
+      enabled: false,
+      onClick: () => {},
+    },
+    {
+      id: "cornhole",
+      label: "Cornhole",
+      logo: logoCornhole,
+      enabled: false,
+      onClick: () => {},
+    },
+    {
+      id: "dicegame",
+      label: "Dice Game",
+      logo: logoDiceGame,
+      enabled: false,
+      onClick: () => {},
+    },
+    {
+      id: "foot",
+      label: "Foot",
+      logo: logoFoot,
+      enabled: false,
+      onClick: () => {},
+    },
+    {
+      id: "rugby",
+      label: "Rugby",
+      logo: logoRugby,
+      enabled: false,
+      onClick: () => {},
+    },
+    {
+      id: "volley",
+      label: "Volley",
+      logo: logoVolley,
+      enabled: false,
+      onClick: () => {},
+    },
+    {
+      id: "tennis",
+      label: "Tennis",
+      logo: logoTennis,
+      enabled: false,
+      onClick: () => {},
+    },
+    {
+      id: "chess",
+      label: "Échecs",
+      logo: logoChess,
+      enabled: false,
+      onClick: () => {},
+    },
   ];
+
+  // ✅ TRI DEMANDÉ :
+  // 1) sports disponibles d’abord
+  // 2) sports grisés ensuite
+  // 3) ordre alphabétique FR dans chaque groupe
+  const sortedItems = React.useMemo(() => {
+    const copy = [...items];
+    copy.sort((a, b) => a.label.localeCompare(b.label, "fr"));
+    copy.sort((a, b) => Number(b.enabled) - Number(a.enabled));
+    return copy;
+  }, [items]);
 
   // ------------------------------------------
   // Swipe (mobile / tablette)
@@ -106,14 +262,19 @@ export default function GameSelect({ go }: Props) {
 
   const wrapIndex = React.useCallback(
     (i: number) => {
-      const n = items.length || 1;
+      const n = sortedItems.length || 1;
       return ((i % n) + n) % n;
     },
-    [items.length]
+    [sortedItems.length]
   );
 
   const goPrev = React.useCallback(() => setIndex((i) => wrapIndex(i - 1)), [wrapIndex]);
   const goNext = React.useCallback(() => setIndex((i) => wrapIndex(i + 1)), [wrapIndex]);
+
+  // ✅ si la taille change, on évite un index hors plage
+  React.useEffect(() => {
+    setIndex((i) => wrapIndex(i));
+  }, [wrapIndex]);
 
   const onTouchStart = (e: React.TouchEvent) => {
     startXRef.current = e.touches[0]?.clientX ?? null;
@@ -165,7 +326,7 @@ export default function GameSelect({ go }: Props) {
     return () => window.removeEventListener("keydown", onKey);
   }, [goPrev, goNext]);
 
-  const it = items[index];
+  const it = sortedItems[index];
   const visuallyDisabled = devVisuallyDisabled(!!it.enabled);
   const clickable = devClickable(!!it.enabled, !!dev?.enabled);
 
@@ -189,18 +350,13 @@ export default function GameSelect({ go }: Props) {
           aria-disabled={!clickable}
           title={clickable ? "Ouvrir" : "Bientôt"}
         >
-          <img
-            src={it.logo}
-            alt={it.label}
-            style={sportImg(theme, !visuallyDisabled)}
-            draggable={false}
-          />
+          <img src={it.logo} alt={it.label} style={sportImg(theme, !visuallyDisabled)} draggable={false} />
           <div style={sportLabel(theme, !visuallyDisabled)}>{it.label}</div>
           {visuallyDisabled && <div style={soonPill(theme)}>SOON</div>}
         </button>
 
         <div style={dotsWrap}>
-          {items.map((_, i) => (
+          {sortedItems.map((_, i) => (
             <span key={i} style={dot(theme, i === index)} />
           ))}
         </div>
@@ -264,16 +420,19 @@ function title(theme: any): React.CSSProperties {
     theme?.colors?.primary ||
     theme?.primary ||
     "#ffd200";
+
+  // ✅ fallback sûr (évite un crash si une variable n'existe pas)
+  const fallback = accent;
+
   return {
     fontSize: 26,
     fontWeight: 800,
     letterSpacing: 0.2,
-    color: accent,
+    color: theme?.accent1 || theme?.accent2 || fallback,
     textAlign: "center",
     padding: "0 6px",
   };
 }
-
 
 function subtitle(theme: any): React.CSSProperties {
   return {
@@ -290,11 +449,7 @@ function sportTile(theme: any, enabled: boolean): React.CSSProperties {
   const isDark = theme?.id?.includes("dark") || theme?.id === "darkTitanium" || theme?.id === "dark";
   const border = isDark ? "rgba(255,255,255,0.14)" : "rgba(0,0,0,0.10)";
   const bg = isDark ? "rgba(255,255,255,0.045)" : "rgba(0,0,0,0.03)";
-  const glow = enabled
-    ? isDark
-      ? "0 18px 60px rgba(0,0,0,0.65)"
-      : "0 18px 60px rgba(0,0,0,0.22)"
-    : "none";
+  const glow = enabled ? (isDark ? "0 18px 60px rgba(0,0,0,0.65)" : "0 18px 60px rgba(0,0,0,0.22)") : "none";
 
   return {
     position: "relative",
@@ -317,7 +472,7 @@ function sportTile(theme: any, enabled: boolean): React.CSSProperties {
 
 function sportImg(theme: any, enabled: boolean): React.CSSProperties {
   const size = "min(320px, 72vw)"; // gros logo (1 sport à la fois)
-  const glow = enabled ? (theme?.accentGlow ?? "0 0 0 rgba(0,0,0,0)") : "none";
+  const glow = enabled ? theme?.accentGlow ?? "0 0 0 rgba(0,0,0,0)" : "none";
 
   return {
     width: size,
@@ -331,12 +486,21 @@ function sportImg(theme: any, enabled: boolean): React.CSSProperties {
 
 function sportLabel(theme: any, enabled: boolean): React.CSSProperties {
   // Fond toujours sombre sur cet écran => texte toujours clair.
-  const accent = theme?.primary ?? "var(--dc-accent)";
+  const accent =
+    theme?.accent ||
+    theme?.colors?.accent ||
+    theme?.colors?.primary ||
+    theme?.primary ||
+    "#ffd200";
+
+  // ✅ fallback sûr (évite un crash si une variable n'existe pas)
+  const fallback = accent;
+
   return {
     fontSize: 18,
     fontWeight: 700,
     opacity: enabled ? 0.9 : 0.7,
-    color: accent,
+    color: theme?.accent1 || theme?.accent2 || fallback,
     textAlign: "center",
     paddingBottom: 4,
     pointerEvents: "none",
@@ -391,7 +555,7 @@ function dot(theme: any, active: boolean): React.CSSProperties {
 function soonPill(theme: any): React.CSSProperties {
   const isDark = theme?.id?.includes("dark") || theme?.id === "darkTitanium" || theme?.id === "dark";
   const bg = isDark ? "rgba(255,255,255,0.12)" : "rgba(0,0,0,0.10)";
-  const c = isDark ? "rgba(255,255,255,0.92)" : "rgba(0,0,0,0.78)";
+  const fallback = isDark ? "rgba(255,255,255,0.92)" : "rgba(0,0,0,0.78)";
   return {
     position: "absolute",
     top: 10,
@@ -402,7 +566,7 @@ function soonPill(theme: any): React.CSSProperties {
     padding: "6px 10px",
     borderRadius: 999,
     background: bg,
-    color: accent,
+    color: theme?.accent1 || theme?.accent2 || fallback,
     border: `1px solid ${isDark ? "rgba(255,255,255,0.14)" : "rgba(0,0,0,0.12)"}`,
   };
 }
@@ -420,7 +584,5 @@ function edgeTap(side: "left" | "right"): React.CSSProperties {
     padding: 0,
     cursor: "default",
   };
-  return side === "left"
-    ? { ...common, left: 0 }
-    : { ...common, right: 0 };
+  return side === "left" ? { ...common, left: 0 } : { ...common, right: 0 };
 }

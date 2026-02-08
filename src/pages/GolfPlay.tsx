@@ -1,3 +1,14 @@
+
+// === GOLF SCORE DISPLAY (ADD) ===
+const GOLF_SCORE_DISPLAY: Record<number, { label: string; color: string }> = {
+  [-2]: { label: "DB", color: "#9b5cff" }, // violet
+  [-1]: { label: "B",  color: "#ff4fa3" }, // rose
+  [0]:  { label: "D",  color: "#ffd34d" }, // OR
+  [1]:  { label: "T",  color: "#4dff88" }, // GREEN
+  [3]:  { label: "S",  color: "#4da3ff" }, // BLUE
+  [5]:  { label: "M",  color: "#ff4d4d" }, // RED
+};
+
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import BackDot from "../components/BackDot";
 import InfoDot from "../components/InfoDot";
@@ -828,6 +839,10 @@ export default function GolfPlay(props: Props) {
   const ttsLang = useMemo(() => langToLocale(lang), [lang]);
   const cfg: GolfConfig = (routeParams?.config ?? {}) as GolfConfig;
 
+  // Throws du tour (jusqu'à 3) : on garde uniquement le TYPE, le score final est celui de la DERNIÈRE
+  const [turnThrows, setTurnThrows] = useState<ThrowKind[]>([]);
+
+
 
   // 🎵 Musique d'intro (à l'entrée du jeu)
   useEffect(() => {
@@ -897,6 +912,9 @@ const startRandom =
       { id: "p2", name: "Joueur 2", avatar: null },
     ];
   }, [cfg.selectedIds, profilesById]);
+
+  // Alias compat : ancien code attendait `players`
+  const players = roster;
 
   const playersCount = roster.length || 2;
 
@@ -989,7 +1007,15 @@ const teamIndexByKey = useMemo(() => {
     return out;
   }, [holes, cfg]);
 // scores[playerIdx][holeIdx] = score final du trou (1/3/4/5) ou null
-  const [scores, setScores] = useState<(number | null)[][]>(() => {
+  
+// === HAS PLAYED AT LEAST ONE HOLE (ADD) ===
+const hasPlayedAtLeastOneHole = React.useMemo(() => {
+  return Object.values(scores ?? {}).some(ps =>
+    Object.values(ps ?? {}).length > 0
+  );
+}, [scores]);
+
+const [scores, setScores] = useState<(number | null)[][]>(() => {
     const s: (number | null)[][] = [];
     for (let p = 0; p < playersCount; p++) s.push(Array.from({ length: holes }, () => null));
     return s;
@@ -1059,7 +1085,6 @@ const [statsByPlayer, setStatsByPlayer] = useState<PlayerStat[]>(() =>
   });
 
   // Throws du tour (jusqu'à 3) : on garde uniquement le TYPE, le score final est celui de la DERNIÈRE
-  const [turnThrows, setTurnThrows] = useState<ThrowKind[]>([]);
 
   // ✅ Ticker performance (EAGLE/BIRDIE/PAR/BOGEY/MISS) + SFX associé
   type PerfKey = "EAGLE" | "BIRDIE" | "PAR" | "BOGEY" | "SIMPLE" | "MISS";

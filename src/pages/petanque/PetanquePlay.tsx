@@ -1225,6 +1225,27 @@ const stSafe = React.useMemo<PetanqueState>(() => {
 	const [lastMeneStartedAt, setLastMeneStartedAt] = React.useState<number | null>(null);
 	const [lastMeneDurationMs, setLastMeneDurationMs] = React.useState(0);
 	const [timerView, setTimerView] = React.useState<"mene" | "match">("mene");
+
+type MeneLog = {
+  meneNumber: number;
+  startedAt: number;
+  endedAt: number;
+  durationMs: number;
+  winnerTeam: PetanqueTeamId;
+  points: number;
+  scoreAfter?: { a: number; b: number };
+  scoreBreakdown?: Partial<Record<PetanqueStatKey, number>>;
+};
+
+const [meneLogs, setMeneLogs] = React.useState<MeneLog[]>([]);
+const [historyExpanded, setHistoryExpanded] = React.useState(false);
+
+function formatMs(ms: number) {
+  const total = Math.max(0, Math.floor(ms / 1000));
+  const m = Math.floor(total / 60);
+  const s = total % 60;
+  return `${m}:${String(s).padStart(2, "0")}`;
+}
 	const [, forceTimerTick] = React.useState(0);
 	React.useEffect(() => {
 	  if (!matchStartedAt) return;
@@ -1235,15 +1256,10 @@ const stSafe = React.useMemo<PetanqueState>(() => {
 	const startMatch = React.useCallback(() => {
 	  if (matchStartedAt) return;
 	  const now = Date.now();
-	  // Fresh start: si aucune mène n'a été validée, on repart sur des stats propres
-	  // (évite de ré-afficher des stats d'une session précédente via localStorage).
-	  if (((stSafe as any)?.ends ?? []).length === 0) {
-	    setPlayerStats({});
-	  }
 	  setMatchStartedAt(now);
 	  setLastMeneStartedAt(now);
 	  setLastMeneDurationMs(0);
-	}, [matchStartedAt, stSafe]);
+	}, [matchStartedAt]);
 
 const ends = stSafe.ends;
 const measurements = stSafe.measurements;
@@ -1446,10 +1462,7 @@ type DuelStatKey =
   | "tirs"
   | "trou"
   | "tirReussi"
-    | "carreau"
-  | "reprise"
-  | "butAnnulation"
-  | "butPoint"
+  | "carreau"
   | "pousseeAssist"
   | "pousseeConcede";
 
@@ -1472,9 +1485,6 @@ const ALL_DUEL_STATS: DuelStatKey[] = [
   "trou",
   "tirReussi",
   "carreau",
-  "reprise",
-  "butAnnulation",
-  "butPoint",
   "pousseeAssist",
   "pousseeConcede",
 ];
@@ -1565,32 +1575,6 @@ React.useEffect(() => {
   }
 }, [matchKey, playerStats]);
 
-// ✅ Auto-reset: si on arrive sur une nouvelle partie (0-0, aucune mène),
-// on ne doit pas ré-afficher des stats persistées d’une session précédente.
-const didAutoResetStatsRef = React.useRef(false);
-React.useEffect(() => {
-  if (didAutoResetStatsRef.current) return;
-  if (matchStartedAt) return;
-
-  const a = Number((stSafe as any).scoreA ?? 0);
-  const b = Number((stSafe as any).scoreB ?? 0);
-  const endsLen = Array.isArray((stSafe as any).ends) ? (stSafe as any).ends.length : 0;
-
-  const hasAny = Object.values(playerStats).some((ps: any) =>
-    ps && Object.values(ps).some((v: any) => Number(v) > 0)
-  );
-
-  if (a == 0 && b == 0 && endsLen == 0 && hasAny) {
-    didAutoResetStatsRef.current = true;
-    setPlayerStats({});
-    try {
-      localStorage.removeItem(matchKey);
-    } catch {
-      // ignore
-    }
-  }
-}, [matchStartedAt, matchKey, playerStats, stSafe]);
-
 const bumpStat = React.useCallback(
   (playerId: string, key: keyof PlayerStats, delta: number) => {
     setPlayerStats((prev) => {
@@ -1616,9 +1600,6 @@ const StatsMenu = () => {
     { k: "trou", label: "Trou", icon: icoTrou },
     { k: "tirReussi", label: "Tir réussi", icon: icoTir },
     { k: "carreau", label: "Carreau", icon: icoCarreau },
-    { k: "reprise", label: "Reprise", icon: icoReprise },
-    { k: "butAnnulation", label: "Bouclier", icon: icoBouclier },
-    { k: "butPoint", label: "But +", icon: icoBut },
     { k: "pousseeAssist", label: "PTS Assist", icon: icoAssist },
     { k: "pousseeConcede", label: "PTS Concede", icon: icoConcede },
   ];
@@ -1632,9 +1613,6 @@ const StatsMenu = () => {
     { k: "trou", label: "Trous", icon: icoTrou },
     { k: "tirReussi", label: "Tirs réussis", icon: icoTir },
     { k: "carreau", label: "Carreaux", icon: icoCarreau },
-    { k: "reprise", label: "Reprise", icon: icoReprise },
-    { k: "butAnnulation", label: "Bouclier", icon: icoBouclier },
-    { k: "butPoint", label: "But +", icon: icoBut },
     { k: "pousseeAssist", label: "PTS Assist", icon: icoAssist },
     { k: "pousseeConcede", label: "PTS Concede", icon: icoConcede },
   ];
@@ -2035,14 +2013,21 @@ const onNew = React.useCallback(() => {
       target: params?.cfg?.target ?? 13,
     })
   );
-  // reset timers + stats locaux
-  setMatchStartedAt(null);
-  setLastMeneStartedAt(null);
-  setLastMeneDurationMs(0);
-  setPlayerStats({});
+  setMeneLogs([]);
+  setHistoryExpanded(false);
 }, [params]);
 
 const commitEndFromSheet = React.useCallback(() => {
+  // ✅ Durée de mène = temps écoulé depuis le début de la mène (pas depuis l'ouverture du sheet)
+  const now = Date.now();
+  const startedAt = lastMeneStartedAt ?? matchStartedAt ?? now;
+  const durationMs = matchStartedAt ? Math.max(0, now - startedAt) : 0;
+  const prevScoreA = stSafe?.scoreA ?? 0;
+  const prevScoreB = stSafe?.scoreB ?? 0;
+  const meneNumber = (stSafe?.ends?.length ?? meneLogs.length ?? 0) + 1;
+  const scoreAfterA = endTeam === "A" ? prevScoreA + endPts : prevScoreA;
+  const scoreAfterB = endTeam === "B" ? prevScoreB + endPts : prevScoreB;
+
   // ✅ On réutilise TON flux existant (store + maybeOpenAssignPoints)
   onAdd(endTeam, endPts);
   // ✅ Attribution des actions/stats à un joueur cible (selon sélection)
@@ -2077,8 +2062,24 @@ const commitEndFromSheet = React.useCallback(() => {
 
   // note optionnelle : si tu veux l’attacher à l’historique des mènes,
   // il faudrait étendre petanqueStore. Pour l’instant on la garde en UI.
-  closeEndSheet();
-}, [endTeam, endPts, onAdd, closeEndSheet]);
+  
+// ✅ Historique des mènes (récap + frise)
+setMeneLogs((prev) => [
+  ...prev,
+  {
+    meneNumber,
+    startedAt,
+    endedAt: now,
+    durationMs,
+    winnerTeam: endTeam,
+    points: endPts,
+    scoreAfter: { a: scoreAfterA, b: scoreAfterB },
+    scoreBreakdown: endMeneStats ?? undefined,
+  },
+]);
+
+closeEndSheet();
+}, [endTeam, endPts, onAdd, closeEndSheet, meneLogs.length]);
 
 // ==========================
 // ✅ MESURAGE (sheet)
@@ -2918,68 +2919,23 @@ return (
 
     <InfoDot
       title="Légende"
-      content={(
-        <div style={{ display: "grid", gap: 10 }}>
-          <div style={{ fontWeight: 1000, fontSize: 16 }}>Légende des statistiques</div>
-
-          <div style={{ opacity: 0.86, lineHeight: 1.35 }}>
-            • <b>Points</b> = score de la mène (attribué via <b>SCORE +</b>).<br />
-            • <b>Actions</b> (tir, trou, carreau, reprise…) = événements pendant la mène, sans impact direct
-            sur le score.
+      content={
+        <div style={{ display: "grid", gap: 8 }}>
+          <div style={{ fontWeight: 900 }}>Comment ça marche</div>
+          <div style={{ opacity: 0.8 }}>
+            Les points appartiennent à l’équipe. Les actions (tir, carreau, poussée…) sont
+            attribuées manuellement au joueur qui a réalisé l’action.
           </div>
-
-          <div
-            style={{
-              display: "grid",
-              // 1 icône / ligne (plus lisible sur mobile)
-              gridTemplateColumns: "minmax(0, 1fr)",
-              gap: 10,
-            }}
-          >
-            {[ 
-              { icon: icoPointage, title: "Pointage", desc: "Point (joué) — peut exister sans gagner la mène." },
-              { icon: icoBEC, title: "Bec", desc: "Tenue du but / bec (action)." },
-              { icon: icoTrou, title: "Trou", desc: "Tir raté." },
-              { icon: icoTir, title: "Tir réussi", desc: "Tir réussi (sans point obligatoire)." },
-              { icon: icoCarreau, title: "Carreau", desc: "Carreau (tir qui remplace)." },
-              { icon: icoReprise, title: "Reprise", desc: "Reprise d’initiative / reprise du point." },
-              { icon: icoBouclier, title: "Bouclier", desc: "But KO / annulation (action)." },
-              { icon: icoBut, title: "But +", desc: "Point sur but / bonus (action)." },
-              { icon: icoAssist, title: "PTS Assist", desc: "Poussée + : ta boule devient point (assist)." },
-              { icon: icoConcede, title: "PTS Concede", desc: "Poussée − : tu concèdes un point à l’adversaire." },
-            ].map((it) => (
-              <div
-                key={it.title}
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "42px 1fr",
-                  gap: 10,
-                  alignItems: "center",
-                  padding: 10,
-                  borderRadius: 14,
-                  border: `1px solid ${cssVarOr("rgba(255,255,255,0.12)", "--stroke")}`,
-                  background: "rgba(255,255,255,0.04)",
-                }}
-              >
-                <img
-                  src={normalizeImport(it.icon) as any}
-                  alt={it.title}
-                  style={{ width: 42, height: 42, objectFit: "contain", filter: "drop-shadow(0 0 10px rgba(0,0,0,0.35))" }}
-                />
-                <div style={{ display: "grid", gap: 2 }}>
-                  <div style={{ fontWeight: 1000 }}>{it.title}</div>
-                  <div style={{ opacity: 0.82, fontSize: 12.5, lineHeight: 1.25 }}>{it.desc}</div>
-                </div>
-              </div>
-            ))}
-          </div>
-
-          <div style={{ opacity: 0.8, fontSize: 12.5 }}>
-            Astuce : les actions peuvent être saisies pendant la mène, puis au moment de <b>SCORE +</b> tu
-            attribues uniquement les statistiques qui expliquent les points marqués (sans dépasser le total).
+          <div style={{ display: "grid", gap: 4, opacity: 0.85 }}>
+            <div>
+              • <b>Poussée +</b> = j’ai poussé une boule amie qui devient point (assist).
+            </div>
+            <div>
+              • <b>Poussée −</b> = j’ai poussé une boule adverse qui devient point (concede).
+            </div>
           </div>
         </div>
-      )}
+      }
     />
   </div>
 
@@ -3002,9 +2958,6 @@ return (
         { k: "trou" as DuelStatKey, label: "Trous", a: a.trou ?? 0, b: b.trou ?? 0 },
         { k: "tirReussi" as DuelStatKey, label: "Tirs réussis", a: a.tirReussi ?? 0, b: b.tirReussi ?? 0 },
         { k: "carreau" as DuelStatKey, label: "Carreaux", a: a.carreau ?? 0, b: b.carreau ?? 0 },
-        { k: "reprise" as DuelStatKey, label: "Reprise", a: a.reprise ?? 0, b: b.reprise ?? 0 },
-        { k: "butAnnulation" as DuelStatKey, label: "Bouclier", a: a.butAnnulation ?? 0, b: b.butAnnulation ?? 0 },
-        { k: "butPoint" as DuelStatKey, label: "But +", a: a.butPoint ?? 0, b: b.butPoint ?? 0 },
         { k: "pousseeAssist" as DuelStatKey, label: "PTS Assist", a: a.pousseeAssist ?? 0, b: b.pousseeAssist ?? 0 },
         { k: "pousseeConcede" as DuelStatKey, label: "PTS Concede", a: a.pousseeConcede ?? 0, b: b.pousseeConcede ?? 0 },
       ]
@@ -3496,20 +3449,11 @@ return (
               // ====== Stats allocations (score & stats mode) ======
               // allocations -> PlayerStats keys (identiques)
               const allocs = allocations as MeneWizardAllocation[];
-
-              // normalise playerId éventuel ("A"/"B") -> vrai playerId
-              const resolvePid = (raw: any): string => {
-                const s = String(raw ?? "");
-                if (s === "A") return String(teams?.A?.players?.[0]?.id ?? "A");
-                if (s === "B") return String(teams?.B?.players?.[0]?.id ?? "B");
-                return s;
-              };
-
               for (const a of allocs) {
                 const v = Number((a as any).value || 0);
                 if (!v) continue;
                 // @ts-ignore
-                bumpStat(resolvePid((a as any).playerId), (a as any).stat as any, v);
+                bumpStat(a.playerId, a.stat as any, v);
               }
 
               // ====== Crédit "points" / "mènes" (uniquement quand on valide un SCORE) ======
@@ -3537,8 +3481,8 @@ return (
                     concededPts += v;
                     continue;
                   }
-                  if (isInWinner(resolvePid((a as any).playerId))) {
-                    pointsByPlayer[resolvePid((a as any).playerId)] = (pointsByPlayer[resolvePid((a as any).playerId)] || 0) + v;
+                  if (isInWinner(String(a.playerId))) {
+                    pointsByPlayer[String(a.playerId)] = (pointsByPlayer[String(a.playerId)] || 0) + v;
                   }
                 }
 

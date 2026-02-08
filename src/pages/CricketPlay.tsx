@@ -28,6 +28,7 @@ import {
   type CricketState,
 } from "../lib/cricketEngine";
 import { playSound } from "../lib/sound";
+import { useCricketStatsRecorder } from "../hooks/useCricketStatsRecorder";
 import type { Profile } from "../lib/types";
 import type { SavedMatch } from "../lib/history";
 import { SCORE_INPUT_LS_KEY } from "../lib/scoreInput/types";
@@ -442,6 +443,16 @@ export default function CricketPlay({ profiles, params, onFinish }: Props) {
   }, [isCutThroatRoute]);
 
 
+
+// ---- Recorder STATS (par fléchette) ----
+const legIdRef = React.useRef<string>(`cricket:${Date.now()}:${Math.random().toString(36).slice(2, 7)}`);
+const cricketRecorder = useCricketStatsRecorder(legIdRef.current);
+
+const scoringVariant = React.useMemo(() => {
+  if (isCutThroatRoute) return "cut-throat";
+  return scoreMode === "no-points" ? "no-points" : "points";
+}, [isCutThroatRoute, scoreMode]);
+
 // ---- Match en cours ----
 const [state, setState] = React.useState<CricketState | null>(null);
 const [hitMode, setHitMode] = React.useState<HitMode>("S");
@@ -650,9 +661,99 @@ React.useEffect(() => {
         let mult = pick.mult as any;
         if (mult > 1 && Math.random() > preferHighMult) mult = 1;
 
-        let next = applyCricketHit(prev as any, pick.target as any, mult) as any;
+        const before = prev as any;
 
-        // SFX
+        // ---- STATS recorder : log bot dart ----
+        try {
+          const pid = String(before.players?.[before.currentPlayerIndex]?.id ?? "");
+          const beforeP = before.players?.[before.currentPlayerIndex];
+          const beforeScore = Number(beforeP?.score ?? 0);
+          const beforeMarksRaw = beforeP?.marks?.[pick.target] ?? 0;
+          const beforeMarks = Math.min(3, Number(beforeMarksRaw ?? 0));
+
+          const hitsSoFar = extractHitsForPlayerFromState(before, pid).length;
+          const visitIndex = Math.floor(hitsSoFar / 3);
+          const dartIndex = (hitsSoFar % 3) as 0 | 1 | 2;
+
+          let seg: any = "MISS";
+          let ring: any = "MISS";
+          let marks = 0;
+          let rawScore = 0;
+
+          const rawTarget = Number(pick.target);
+
+          if (rawTarget === 25) {
+            seg = 25;
+            if (mult >= 2) ring = "DB";
+            else ring = "SB";
+            marks = mult >= 2 ? 2 : 1;
+            rawScore = (25 * (mult >= 2 ? 2 : 1));
+          } else if (rawTarget >= 15 && rawTarget <= 20) {
+            seg = rawTarget;
+            ring = mult >= 3 ? "T" : mult >= 2 ? "D" : "S";
+            marks = mult;
+            rawScore = rawTarget * mult;
+          }
+
+          let next = applyCricketHit(before as any, pick.target as any, mult) as any;
+
+          const afterP = next.players?.[before.currentPlayerIndex];
+          const afterScore = Number(afterP?.score ?? 0);
+          const scoredPoints = Math.max(0, afterScore - beforeScore);
+
+          let inflictedPoints = 0;
+          if (isCutThroatRoute) {
+            for (let i = 0; i < (next.players?.length ?? 0); i++) {
+              if (i === before.currentPlayerIndex) continue;
+              const ds = Number(next.players[i]?.score ?? 0) - Number(before.players[i]?.score ?? 0);
+              if (ds > 0) inflictedPoints += ds;
+            }
+          }
+
+          const afterMarksRaw = (afterP?.marks?.[pick.target] ?? beforeMarksRaw);
+          const afterMarks = Math.min(3, Number(afterMarksRaw ?? 0));
+          const closedSegmentNow = (rawTarget === 25 || (rawTarget >= 15 && rawTarget <= 20))
+            ? (beforeMarks < 3 && afterMarks >= 3)
+            : false;
+
+          const winningThrow = !before.winnerId && !!next.winnerId;
+
+          cricketRecorder.logDart({
+            legId: legIdRef.current,
+            playerId: pid,
+            visitIndex,
+            dartIndex,
+            segment: seg,
+            ring,
+            marks,
+            rawScore,
+            scoredPoints,
+            inflictedPoints,
+            beforeMarksOnSegment: beforeMarks,
+            afterMarksOnSegment: afterMarks,
+            closedSegmentNow,
+            winningThrow,
+          });
+
+          // SFX
+          sfxForHit(pick.target, mult);
+
+          // hard stop maxRounds
+          next = maybeApplyMaxRoundsHardStop(next);
+
+          return next;
+        } catch {
+          let next = applyCricketHit(prev as any, pick.target as any, mult) as any;
+
+          // SFX
+          sfxForHit(pick.target, mult);
+
+          // hard stop maxRounds
+          next = maybeApplyMaxRoundsHardStop(next);
+
+          return next;
+        }
+
         sfxForHit(pick.target, mult);
 
         // hard stop maxRounds
@@ -889,6 +990,10 @@ function renderAvatarCircle(
       maxRounds,
     });
 
+    // new legId + reset recorder
+    legIdRef.current = `cricket:${Date.now()}:${Math.random().toString(36).slice(2, 7)}`;
+    cricketRecorder.resetLeg(legIdRef.current);
+
     setState(match);
     setPhase("play");
     setHitMode("S");
@@ -950,13 +1055,99 @@ function renderAvatarCircle(
       if (hitMode === "T") mult = 3;
     }
 
-    let next = applyCricketHit(state, rawTarget as any, mult) as any;
+    const prev = state as any;
 
-    sfxForHit(rawTarget, mult);
+    // ---- STATS recorder : log 1 dart ----
+    try {
+      const pid = String(prev.players?.[prev.currentPlayerIndex]?.id ?? "");
+      const beforeP = prev.players?.[prev.currentPlayerIndex];
+      const beforeScore = Number(beforeP?.score ?? 0);
 
-    next = maybeApplyMaxRoundsHardStop(next);
+      const beforeMarksRaw = beforeP?.marks?.[rawTarget] ?? 0;
+      const beforeMarks = Math.min(3, Number(beforeMarksRaw ?? 0));
 
-    setState(next);
+      const hitsSoFar = extractHitsForPlayerFromState(prev, pid).length;
+      const visitIndex = Math.floor(hitsSoFar / 3);
+      const dartIndex = (hitsSoFar % 3) as 0 | 1 | 2;
+
+      let seg: any = "MISS";
+      let ring: any = "MISS";
+      let marks = 0;
+      let rawScore = 0;
+
+      if (rawTarget === 25) {
+        seg = 25;
+        if (mult >= 2) ring = "DB";
+        else ring = "SB";
+        marks = mult >= 2 ? 2 : 1;
+        rawScore = (25 * (mult >= 2 ? 2 : 1));
+      } else if (rawTarget >= 15 && rawTarget <= 20) {
+        seg = rawTarget;
+        ring = mult >= 3 ? "T" : mult >= 2 ? "D" : "S";
+        marks = mult;
+        rawScore = rawTarget * mult;
+      }
+
+      let nextTmp = applyCricketHit(prev, rawTarget as any, mult) as any;
+
+      const afterP = nextTmp.players?.[nextTmp.history?.[nextTmp.history.length - 1]?.playerIndex ?? nextTmp.currentPlayerIndex] ?? nextTmp.players?.[prev.currentPlayerIndex];
+      const afterScore = Number(afterP?.score ?? 0);
+      const scoredPoints = Math.max(0, afterScore - beforeScore);
+
+      // Cut-throat: points ajoutés aux adversaires
+      let inflictedPoints = 0;
+      if (isCutThroatRoute) {
+        for (let i = 0; i < (nextTmp.players?.length ?? 0); i++) {
+          if (i === prev.currentPlayerIndex) continue;
+          const ds = Number(nextTmp.players[i]?.score ?? 0) - Number(prev.players[i]?.score ?? 0);
+          if (ds > 0) inflictedPoints += ds;
+        }
+      }
+
+      const afterMarksRaw = (afterP?.marks?.[rawTarget] ?? beforeMarksRaw);
+      const afterMarks = Math.min(3, Number(afterMarksRaw ?? 0));
+      const closedSegmentNow = (rawTarget === 25 || (rawTarget >= 15 && rawTarget <= 20))
+        ? (beforeMarks < 3 && afterMarks >= 3)
+        : false;
+
+      const winningThrow = !prev.winnerId && !!nextTmp.winnerId;
+
+      cricketRecorder.logDart({
+        matchId: (prev as any)?.matchId,
+        setId: (prev as any)?.setId,
+        legId: legIdRef.current,
+
+        playerId: pid,
+        visitIndex,
+        dartIndex,
+
+        segment: seg,
+        ring,
+
+        marks,
+        rawScore,
+        scoredPoints,
+        inflictedPoints,
+
+        beforeMarksOnSegment: beforeMarks,
+        afterMarksOnSegment: afterMarks,
+        closedSegmentNow,
+
+        winningThrow,
+      });
+
+      // SFX / hard stop
+      sfxForHit(rawTarget, mult);
+      nextTmp = maybeApplyMaxRoundsHardStop(nextTmp);
+
+      setState(nextTmp);
+    } catch (e) {
+      // fallback : si recorder fail, on applique juste le hit
+      let next = applyCricketHit(state, rawTarget as any, mult) as any;
+      sfxForHit(rawTarget, mult);
+      next = maybeApplyMaxRoundsHardStop(next);
+      setState(next);
+    }
 
     if (mult >= 2 || hitMode === "D" || hitMode === "T") setHitMode("S");
   }
@@ -978,6 +1169,7 @@ function renderAvatarCircle(
   function handleUndo() {
     if (!state) return;
     const next = undoLastCricketHit(state) as any;
+    try { cricketRecorder.eventsRef.current.pop(); } catch {}
     if ((next as any).forcedFinished) (next as any).forcedFinished = false;
     setState(next);
     playSound("undo");
@@ -996,13 +1188,18 @@ function renderAvatarCircle(
       nextPlayers.map((p) => ({ id: p.id, name: p.name })),
       {
         withPoints: scoreMode === "points",
+        cutThroat: isCutThroatRoute,
         maxRounds,
       }
     );
 
+    // new legId + reset recorder
+    legIdRef.current = `cricket:${Date.now()}:${Math.random().toString(36).slice(2, 7)}`;
+    cricketRecorder.resetLeg(legIdRef.current);
+
     setState(match);
     setHitMode("S");
-    setLegStartAt(Date.now());
+    setLegStartAt(Date.now());;
     setShowEnd(false);
     playSound("start");
   }
@@ -1021,19 +1218,62 @@ function renderAvatarCircle(
 // --------------------------------------------------
 
 function computeLegStatsForPlayer(p: any) {
-  const marks = p?.marks || {};
-  const totalMarks = CRICKET_TARGETS.reduce((acc: number, t: any) => acc + Number(marks[t] ?? 0), 0);
-  const totalPoints = Number(p?.score ?? 0);
+  if (!state) {
+    return {
+      legId: legIdRef.current,
+      playerId: String(p?.id ?? ""),
+      mode: teamMode ? "teams" : "solo",
+      scoringVariant,
+      variantId,
+      cutThroat: isCutThroatRoute,
+      darts: 0,
+      visits: 0,
+      totalMarks: 0,
+      totalPoints: 0,
+      totalInflictedPoints: 0,
+      mpr: 0,
+      hitRate: 0,
+      scoringRate: 0,
+      won: false,
+      winningDartIndex: 0,
+      winningVisitIndex: 0,
+      opponentTotalPoints: 0,
+      perSegment: {
+        15: { segment: 15, marks: 0, closes: 0, pointsScored: 0 },
+        16: { segment: 16, marks: 0, closes: 0, pointsScored: 0 },
+        17: { segment: 17, marks: 0, closes: 0, pointsScored: 0 },
+        18: { segment: 18, marks: 0, closes: 0, pointsScored: 0 },
+        19: { segment: 19, marks: 0, closes: 0, pointsScored: 0 },
+        20: { segment: 20, marks: 0, closes: 0, pointsScored: 0 },
+        25: { segment: 25, marks: 0, closes: 0, pointsScored: 0 },
+      },
+      bestVisitMarks: 0,
+      avgMarksWhenScoring: 0,
+      closeOrder: [],
+      startedAt: legStartAt ?? Date.now(),
+      endedAt: Date.now(),
+      durationMs: 0,
+    };
+  }
 
-  return {
-    legs: 1,
-    totalMarks,
-    totalPoints,
-    closedTargets: CRICKET_TARGETS.reduce(
-      (acc: number, t: any) => acc + (Number(marks[t] ?? 0) >= 3 ? 1 : 0),
-      0
-    ),
-  };
+  const pid = String(p?.id ?? "");
+  const won = !!state.winnerId && String(state.winnerId) === pid;
+
+  const oppScores = (state.players || [])
+    .filter((x: any) => String(x?.id ?? "") !== pid)
+    .map((x: any) => Number(x?.score ?? 0));
+
+  const opponentTotalPoints = oppScores.length ? Math.max(...oppScores) : 0;
+
+  return cricketRecorder.computeLegStatsForPlayer(pid, {
+    mode: teamMode ? "teams" : "solo",
+    won,
+    opponentTotalPoints,
+    opponentLabel: teamMode ? "Team" : "Opponent",
+    scoringVariant,
+    variantId,
+    cutThroat: isCutThroatRoute,
+  });
 }
 
 // --------------------------------------------------
@@ -1176,7 +1416,9 @@ function buildHistoryRecord(): SavedMatch | null {
     payload: {
       mode: "cricket",
       variantId,
+      scoringVariant,
       withPoints: scoreMode === "points",
+      cutThroat: isCutThroatRoute,
       maxRounds,
       rotateFirstPlayer,
       randomStart,

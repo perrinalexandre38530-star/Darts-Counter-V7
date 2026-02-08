@@ -2,12 +2,12 @@
 // src/lib/cloudSync.ts (V8 simple)
 // - source unique: window.__appStore.store
 // - push debounced sur emitCloudChange
-// - pull périodique
+// - pull périodique (optionnel)
 // ============================================
 
 import { onCloudChange } from "./cloudEvents";
 import { onlineApi } from "./onlineApi";
-import { exportCloudSnapshot, saveStore } from "./storage";
+import { exportCloudSnapshot, saveStore, importAll, getKV, setKV } from "./storage";
 
 const DEBOUNCE_MS = 1200;
 const PULL_INTERVAL_MS = 60_000;
@@ -47,16 +47,66 @@ async function pushNow() {
 }
 
 async function pullNow() {
-  const res = await onlineApi.pullStoreSnapshot();
-  if (res.status !== "ok") return;
-
-  const cloudStore = res.payload?.store ?? null;
-  if (!cloudStore) return;
-
-  applyStore(cloudStore);
   try {
-    await saveStore(cloudStore);
-  } catch {}
+    const res: any = await onlineApi.pullStoreSnapshot();
+    if (!res || res.status !== "ok") return;
+
+    const updatedAt: string | null = (res as any)?.updatedAt ?? null;
+    const payload: any = (res as any)?.payload ?? null;
+    if (!payload) return;
+
+    // ✅ Anti-rollback: ignore pull if cloud is not newer than what we already applied.
+    const lastPulledAt: string | null = (await getKV("__cloud:last_pulled_at__").catch(() => null)) as any;
+    if (updatedAt && lastPulledAt) {
+      try {
+        if (new Date(updatedAt).getTime() <= new Date(lastPulledAt).getTime()) {
+          return;
+        }
+      } catch {}
+    }
+
+    // ✅ Support snapshot formats:
+    // - Full snapshot: { _v:2, idb:{store:...}, localStorage:{...}, history:{...} }
+    // - Store-only legacy: { store: {...} } or direct store object
+    let cloudStore: any =
+      payload?.store ??
+      payload?.idb?.store ??
+      payload?.idb?.["store"] ??
+      null;
+
+    // If it's a full snapshot, import it (writes IDB + dc_* localStorage + history)
+    if (payload && typeof payload === "object" && (payload as any)._v === 2) {
+      try {
+        await importAll(payload);
+      } catch {}
+
+      // Re-read store from IDB after import
+      try {
+        cloudStore = await getKV("store");
+      } catch {}
+    }
+
+    // Last chance: if payload itself looks like a Store
+    if (!cloudStore && payload && typeof payload === "object" && !payload._v && (payload.profiles || payload.history || payload.activeProfileId)) {
+      cloudStore = payload;
+    }
+
+    if (!cloudStore || typeof cloudStore !== "object") return;
+
+    applyStore(cloudStore);
+
+    try {
+      await saveStore(cloudStore);
+    } catch {}
+
+    if (updatedAt) {
+      await setKV("__cloud:last_pulled_at__", updatedAt).catch(() => {});
+    } else {
+      await setKV("__cloud:last_pulled_at__", new Date().toISOString()).catch(() => {});
+    }
+  } catch {
+    // silent
+  }
 }
 
 function schedulePush() {
@@ -68,7 +118,7 @@ function schedulePush() {
   }, DEBOUNCE_MS);
 }
 
-export function startCloudSync(opts?: { pullOnStart?: boolean }) {
+export function startCloudSync(opts?: { pullOnStart?: boolean; disablePull?: boolean }) {
   if (running) return;
   running = true;
 
@@ -78,9 +128,11 @@ export function startCloudSync(opts?: { pullOnStart?: boolean }) {
     pullNow().catch(() => {});
   }
 
-  pullTimer = window.setInterval(() => {
-    pullNow().catch(() => {});
-  }, PULL_INTERVAL_MS) as any;
+  if (!opts?.disablePull) {
+    pullTimer = window.setInterval(() => {
+      pullNow().catch(() => {});
+    }, PULL_INTERVAL_MS) as any;
+  }
 }
 
 export function stopCloudSync() {

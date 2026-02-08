@@ -806,11 +806,33 @@ async function pullStoreSnapshot(): Promise<{
     const { user } = await ensureAuthedUser();
 
     // ✅ Compat schémas: certaines versions utilisent `payload`, d'autres `data`/`store`
-    const { data, error } = await supabase
-      .from("user_store")
-      .select("payload,data,store,updated_at,version")
-      .eq("user_id", user.id)
-      .maybeSingle();
+    // ✅ Compat clé: certaines versions utilisent `user_id`, d'autres `owner_user_id`
+    const selectCols = "payload,data,store,updated_at,version";
+    let data: any = null;
+    let error: any = null;
+
+    // A) user_id
+    {
+      const r = await supabase.from("user_store").select(selectCols).eq("user_id", user.id).maybeSingle();
+      data = r.data as any;
+      error = r.error as any;
+    }
+
+    // B) fallback owner_user_id si colonne absente / schéma legacy
+    if (error) {
+      const msg = String((error as any)?.message || error);
+      const lower = msg.toLowerCase();
+      const looksMissingUserId =
+        lower.includes("could not find the 'user_id' column") ||
+        (lower.includes("column") && lower.includes("user_id") && lower.includes("does not exist")) ||
+        String((error as any)?.code || "") === "PGRST204";
+
+      if (looksMissingUserId) {
+        const r2 = await supabase.from("user_store").select(selectCols).eq("owner_user_id", user.id).maybeSingle();
+        data = r2.data as any;
+        error = r2.error as any;
+      }
+    }
 
     if (!data && !error) return { status: "not_found", payload: null, updatedAt: null, version: null };
     if (error) return { status: "error", error };
@@ -826,12 +848,15 @@ async function pullStoreSnapshot(): Promise<{
     return { status: "error", error: e };
   }
 }
+
 async function pushStoreSnapshot(payload: any, version = 8): Promise<void> {
   const { user } = await ensureAuthedUser();
 
   // ✅ On écrit `payload` (schéma principal) + legacy `data/store` si colonnes existent
-  const row: any = {
+  // ✅ Compat clé: `user_id` OU `owner_user_id` selon ton schéma Supabase
+  const base: any = {
     user_id: user.id,
+    owner_user_id: user.id,
     version,
     updated_at: new Date().toISOString(),
     payload,
@@ -839,16 +864,33 @@ async function pushStoreSnapshot(payload: any, version = 8): Promise<void> {
     store: payload,
   };
 
-  const res = await writeWithColumnFallback<any>(
-    async (obj) => {
-      const { data, error } = await supabase
-        .from("user_store")
-        .upsert(obj as any, { onConflict: "user_id" });
-      return { data, error };
-    },
-    row,
-    { debugLabel: "user_store upsert" }
-  );
+  // 1) Essai upsert sur user_id
+  const tryUpsert = async (obj: any, onConflict: "user_id" | "owner_user_id") => {
+    return await writeWithColumnFallback<any>(
+      async (cleanObj) => {
+        const { data, error } = await supabase.from("user_store").upsert(cleanObj as any, { onConflict } as any);
+        return { data, error };
+      },
+      obj,
+      { debugLabel: `user_store upsert (${onConflict})` }
+    );
+  };
+
+  let res = await tryUpsert(base, "user_id");
+
+  // 2) Si ça échoue parce que user_id n'existe pas, retry owner_user_id
+  if (res.error) {
+    const msg = String((res.error as any)?.message || res.error);
+    const lower = msg.toLowerCase();
+    const looksMissingUserId =
+      lower.includes("could not find the 'user_id' column") ||
+      (lower.includes("column") && lower.includes("user_id") && lower.includes("does not exist")) ||
+      String((res.error as any)?.code || "") === "PGRST204";
+
+    if (looksMissingUserId) {
+      res = await tryUpsert(base, "owner_user_id");
+    }
+  }
 
   if (res.error) throw new Error(res.error.message || String(res.error));
 }

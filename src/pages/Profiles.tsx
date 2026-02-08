@@ -981,7 +981,12 @@ export default function Profiles({
     // ✅ UNIQUE ACCOUNT: pas de profil "mirror" online:<uid>
     // On réutilise le profil local lié à ce user_id (ou à défaut le profil actif).
     const owner =
-      (store?.profiles || []).find((p: any) => String(p?.privateInfo?.userId || "") === String(uid)) ||
+      (store?.profiles || []).find((p: any) => {
+        const pi = (p as any)?.privateInfo || {};
+        const legacyUserId = String((pi as any)?.userId || "");
+        const onlineUserId = String((pi as any)?.onlineUserId || "");
+        return (onlineUserId && onlineUserId === String(uid)) || (legacyUserId && legacyUserId === String(uid));
+      }) ||
       active ||
       null;
 
@@ -992,7 +997,7 @@ export default function Profiles({
       // garde le nom local en priorité (modifiable offline), sinon fallback online
       name: (owner as any)?.name || onlineName,
       // dans l'UI "Mon profil", on privilégie l'avatar online si dispo
-      avatarUrl: onlineAvatarUrl || (owner as any)?.avatarUrl,
+      avatarUrl: onlineAvatarUrl || (owner as any)?.avatarUrl || (getAvatarCacheLib(String((owner as any)?.id || ""))?.avatarUrl || getAvatarCacheLib(String((owner as any)?.id || ""))?.avatarDataUrl || ""),
       source: "online",
       isOnlineMirror: false,
     } as any;
@@ -2901,10 +2906,10 @@ function UnifiedAuthBlock({
       if (profiles.length > 0) {
         match = profiles[0] as any;
       } else {
-        let displayName = emailNorm;
+        let displayName = (emailNorm ? emailNorm.split("@")[0] : "Joueur");
         try {
           const session = await onlineApi.getCurrentSession();
-          displayName = session?.user.nickname || session?.user.email || emailNorm;
+          displayName = session?.user.user_metadata?.full_name || session?.user.user_metadata?.name || session?.user.user_metadata?.nickname || session?.user.nickname || (session?.user.email ? String(session.user.email).split("@")[0] : "Joueur");
         } catch (err) {
           console.warn("[profiles] getCurrentSession after login error:", err);
         }

@@ -30,6 +30,7 @@ type LogDartArgs = {
   marks: number;
   rawScore: number;
   scoredPoints: number;
+  inflictedPoints?: number;
 
   beforeMarksOnSegment: number;
   afterMarksOnSegment: number;
@@ -40,6 +41,9 @@ type LogDartArgs = {
 };
 
 type ComputeOptions = {
+  scoringVariant?: "points" | "no-points" | "cut-throat";
+  variantId?: string;
+  cutThroat?: boolean;
   mode?: "solo" | "teams";
   teamId?: string;
   teamName?: string;
@@ -76,6 +80,7 @@ export function useCricketStatsRecorder(initialLegId: string) {
       marks: args.marks,
       rawScore: args.rawScore,
       scoredPoints: args.scoredPoints,
+      inflictedPoints: args.inflictedPoints,
       beforeMarksOnSegment: args.beforeMarksOnSegment,
       afterMarksOnSegment: args.afterMarksOnSegment,
       closedSegmentNow: args.closedSegmentNow,
@@ -106,6 +111,9 @@ export function useCricketStatsRecorder(initialLegId: string) {
       opponentLabel: options?.opponentLabel,
       startedAt: startedAtRef.current,
       endedAt,
+      scoringVariant: options?.scoringVariant,
+      variantId: options?.variantId,
+      cutThroat: options?.cutThroat,
     });
   };
 

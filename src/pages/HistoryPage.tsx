@@ -761,17 +761,27 @@ export default function HistoryPage({
 
     // GOLF
     if (baseMode(e) === "golf") {
-      go("golf_play", {
+      const ok = safeGo(["golf_play", "golf"], {
+        rec: e,
         resumeId,
         from: preview ? "history_preview" : "history",
         preview: !!preview,
         mode: "golf",
+        config: (e as any)?.payload?.config ?? (e as any)?.decoded?.config ?? null,
       });
+      if (!ok) {
+        go("golf_play", {
+          rec: e,
+          resumeId,
+          from: preview ? "history_preview" : "history",
+          preview: !!preview,
+          mode: "golf",
+          config: (e as any)?.payload?.config ?? (e as any)?.decoded?.config ?? null,
+        });
+      }
       return;
     }
-
-
-    if (isKillerEntry(e)) {
+if (isKillerEntry(e)) {
       safeGo(["killer_play", "killer"], {
         resumeId,
         from: preview ? "history_preview" : "history",

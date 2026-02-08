@@ -19,6 +19,9 @@ export type CricketRing =
 
 export type CricketPlayerId = string;
 
+// Variante de scoring
+export type CricketScoringVariant = "points" | "no-points" | "cut-throat";
+
 // ----------- EVENT PAR FLECHETTE ----------------
 
 export type CricketDartEvent = {
@@ -37,6 +40,9 @@ export type CricketDartEvent = {
   marks: number; // 0..3 (DB = 2 marks sur bull)
   rawScore: number; // points théoriques (ex: T20 => 60)
   scoredPoints: number; // points réellement ajoutés (0 si pas de score)
+
+  // Cut-throat : points infligés aux adversaires (0 sinon)
+  inflictedPoints?: number;
 
   // Infos de clôture
   beforeMarksOnSegment: number; // 0..3 (chez ce joueur)
@@ -72,6 +78,11 @@ export type CricketLegStats = {
 
   // Contexte de jeu
   mode: "solo" | "teams"; // SOLO vs ÉQUIPES
+
+  // Variantes
+  scoringVariant: CricketScoringVariant;
+  variantId?: string; // ex: \"classic\" / \"enculette\" / \"cut_throat\"
+  cutThroat?: boolean;
   teamId?: string; // ex: "gold" / "blue"
   teamName?: string; // ex: "Team Gold"
 
@@ -80,6 +91,8 @@ export type CricketLegStats = {
   visits: number;
   totalMarks: number;
   totalPoints: number; // total de points marqués pendant cette manche
+  totalInflictedPoints: number; // points infligés (cut-throat)
+
 
   // Efficacité
   mpr: number; // totalMarks / visits
@@ -126,6 +139,9 @@ export function computeCricketLegStats(
     opponentLabel?: string;
     startedAt?: number;
     endedAt?: number;
+    scoringVariant?: CricketScoringVariant;
+    variantId?: string;
+    cutThroat?: boolean;
   }
 ): CricketLegStats {
   const playerEvents = events.filter((e) => e.playerId === playerId);
@@ -137,6 +153,7 @@ export function computeCricketLegStats(
 
   let totalMarks = 0;
   let totalPoints = 0;
+  let totalInflictedPoints = 0;
   let hits = 0;
   let scoringHits = 0;
 
@@ -157,9 +174,10 @@ export function computeCricketLegStats(
   playerEvents.forEach((e) => {
     totalMarks += e.marks;
     totalPoints += e.scoredPoints;
+    totalInflictedPoints += (e as any).inflictedPoints ? Number((e as any).inflictedPoints) : 0;
 
     if (e.ring !== "MISS") hits++;
-    if (e.scoredPoints > 0) scoringHits++;
+    if (e.scoredPoints > 0 || ((e as any).inflictedPoints ?? 0) > 0) scoringHits++;
 
     if (e.segment !== "MISS") {
       const segId = e.segment as CricketSegmentId;
@@ -212,6 +230,11 @@ export function computeCricketLegStats(
     playerId,
 
     mode: options?.mode ?? "solo",
+
+    scoringVariant: options?.scoringVariant ?? "points",
+    variantId: options?.variantId,
+    cutThroat: options?.cutThroat ?? (options?.scoringVariant === "cut-throat"),
+
     teamId: options?.teamId,
     teamName: options?.teamName,
 
@@ -219,6 +242,7 @@ export function computeCricketLegStats(
     visits,
     totalMarks,
     totalPoints,
+    totalInflictedPoints,
 
     mpr,
     hitRate,
@@ -287,6 +311,33 @@ export type CricketProfileStats = {
   avgPointsFor: number;
   avgPointsAgainst: number;
 
+  totalInflictedPoints: number;
+  avgInflictedPoints: number;
+
+  byScoringVariant: Record<CricketScoringVariant, {
+    matches: number;
+    wins: number;
+    losses: number;
+    darts: number;
+    visits: number;
+    marks: number;
+    pointsFor: number;
+    pointsAgainst: number;
+    pointsInflicted: number;
+  }>;
+
+  byVariantId: Record<string, {
+    matches: number;
+    wins: number;
+    losses: number;
+    darts: number;
+    visits: number;
+    marks: number;
+    pointsFor: number;
+    pointsAgainst: number;
+    pointsInflicted: number;
+  }>;
+
   totalDarts: number;
   totalMarks: number;
 
@@ -334,6 +385,39 @@ export function aggregateCricketProfileStats(
   let sumHits = 0;
   let sumScoringHits = 0;
 
+  // Variantes (points / no-points / cut-throat + variantes custom)
+  type _Bucket = {
+    matches: number;
+    wins: number;
+    losses: number;
+    darts: number;
+    visits: number;
+    marks: number;
+    pointsFor: number;
+    pointsAgainst: number;
+    pointsInflicted: number;
+  };
+
+  const makeBucket = (): _Bucket => ({
+    matches: 0,
+    wins: 0,
+    losses: 0,
+    darts: 0,
+    visits: 0,
+    marks: 0,
+    pointsFor: 0,
+    pointsAgainst: 0,
+    pointsInflicted: 0,
+  });
+
+  const byScoringVariant: Record<CricketScoringVariant, _Bucket> = {
+    "points": makeBucket(),
+    "no-points": makeBucket(),
+    "cut-throat": makeBucket(),
+  };
+
+  const byVariantId: Record<string, _Bucket> = {};
+
   // Tri par date pour un historique "du plus récent au plus ancien"
   const sorted = [...legs].sort((a, b) => b.endedAt - a.endedAt);
 
@@ -346,6 +430,17 @@ export function aggregateCricketProfileStats(
     if (isSolo) matchesSolo++;
     if (isTeam) matchesTeams++;
 
+    const scoringVariant: CricketScoringVariant =
+      (leg as any).scoringVariant ??
+      ((leg as any).cutThroat ? "cut-throat" : undefined) ??
+      // best-effort: si aucun point et aucune variante => no-points
+      (leg.totalPoints === 0 && (leg as any).totalInflictedPoints === 0 ? "no-points" : "points");
+
+    const variantIdKey = String((leg as any).variantId ?? "classic");
+
+    const bucketSV = byScoringVariant[scoringVariant] ?? byScoringVariant["points"];
+    const bucketVID = (byVariantId[variantIdKey] ??= makeBucket());
+
     if (leg.won) {
       winsTotal++;
       if (isSolo) winsSolo++;
@@ -355,6 +450,35 @@ export function aggregateCricketProfileStats(
       if (isSolo) lossesSolo++;
       if (isTeam) lossesTeams++;
     }
+
+    // Buckets variantes
+    bucketSV.matches += 1;
+    bucketVID.matches += 1;
+    if (leg.won) {
+      bucketSV.wins += 1;
+      bucketVID.wins += 1;
+    } else {
+      bucketSV.losses += 1;
+      bucketVID.losses += 1;
+    }
+
+    bucketSV.darts += leg.darts;
+    bucketVID.darts += leg.darts;
+
+    bucketSV.visits += leg.visits;
+    bucketVID.visits += leg.visits;
+
+    bucketSV.marks += leg.totalMarks;
+    bucketVID.marks += leg.totalMarks;
+
+    bucketSV.pointsFor += leg.totalPoints;
+    bucketVID.pointsFor += leg.totalPoints;
+
+    bucketSV.pointsAgainst += leg.opponentTotalPoints ?? 0;
+    bucketVID.pointsAgainst += leg.opponentTotalPoints ?? 0;
+
+    bucketSV.pointsInflicted += (leg as any).totalInflictedPoints ?? 0;
+    bucketVID.pointsInflicted += (leg as any).totalInflictedPoints ?? 0;
 
     // Record de points sur une manche
     if (leg.totalPoints > bestPointsInMatch) {
@@ -366,6 +490,7 @@ export function aggregateCricketProfileStats(
     // Accumulateurs globaux
     totalPointsFor += leg.totalPoints;
     totalPointsAgainst += leg.opponentTotalPoints ?? 0;
+    totalInflictedPoints += (leg as any).totalInflictedPoints ?? 0;
 
     totalDarts += leg.darts;
     totalMarks += leg.totalMarks;
@@ -395,6 +520,9 @@ export function aggregateCricketProfileStats(
     matchesTotal > 0 ? totalPointsFor / matchesTotal : 0;
   const avgPointsAgainst =
     matchesTotal > 0 ? totalPointsAgainst / matchesTotal : 0;
+
+  const avgInflictedPoints =
+    matchesTotal > 0 ? totalInflictedPoints / matchesTotal : 0;
 
   const globalMpr =
     totalVisits > 0 ? totalMarks / totalVisits : 0;
@@ -429,6 +557,12 @@ export function aggregateCricketProfileStats(
     totalPointsAgainst,
     avgPointsFor,
     avgPointsAgainst,
+
+    totalInflictedPoints,
+    avgInflictedPoints,
+
+    byScoringVariant,
+    byVariantId,
 
     totalDarts,
     totalMarks,

@@ -759,6 +759,14 @@ function collectCricketLegsFromMatch(m: NormalizedMatch, profileId: string): Cri
       startedAt: N((leg as any).startedAt, startedAt) || startedAt,
       endedAt: N((leg as any).endedAt, endedAt) || endedAt,
       opponentLabel: (leg as any).opponentLabel ?? (me as any).opponentLabel ?? opponentLabelFallback,
+
+      // Variantes (best-effort)
+      variantId: (leg as any).variantId ?? decoded?.variantId ?? payloadObj?.variantId ?? raw?.variantId ?? decoded?.config?.variantId ?? undefined,
+      cutThroat: (leg as any).cutThroat ?? decoded?.cutThroat ?? payloadObj?.cutThroat ?? decoded?.config?.cutThroat ?? payloadObj?.withPoints === false ? false : undefined,
+      scoringVariant:
+        (leg as any).scoringVariant ??
+        ((leg as any).cutThroat || decoded?.cutThroat || payloadObj?.cutThroat || decoded?.config?.cutThroat ? "cut-throat" : undefined) ??
+        ((payloadObj?.withPoints === false || decoded?.withPoints === false || decoded?.config?.withPoints === false) ? "no-points" : "points"),
     };
 
     if (String(fixed.playerId) === pid) out.push(fixed);

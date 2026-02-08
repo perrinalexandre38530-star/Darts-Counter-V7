@@ -88,7 +88,7 @@ import CrashCatcher from "./components/CrashCatcher";
 import MobileErrorOverlay from "./components/MobileErrorOverlay";
 
 // Persistance (IndexedDB via storage.ts)
-import { loadStore, saveStore } from "./lib/storage";
+import { loadStore, saveStore, exportCloudSnapshot, installLocalStorageDcHook } from "./lib/storage";
 // OPFS / StorageManager — demande la persistance une fois au boot
 import { ensurePersisted } from "./lib/deviceStore";
 // 🔒 Garde-fou localStorage (purge legacy si trop plein)
@@ -99,6 +99,7 @@ import { warmAggOnce } from "./boot/warmAgg";
 
 // Mode Online
 import { onlineApi } from "./lib/onlineApi";
+import { startCloudSync, stopCloudSync } from "./lib/cloudSync";
 import { EventBuffer } from "./lib/sync/EventBuffer";
 import { importHistoryFromCloud } from "./lib/sync/EventImport";
 import { ensureLocalProfileForOnlineUser } from "./lib/accountBridge";
@@ -1198,6 +1199,7 @@ function App() {
   const cloudHydratedUserRef = React.useRef<string>("");
 
   const cloudPushTimerRef = React.useRef<number | null>(null);
+  const cloudSyncOnRef = React.useRef(false);
 
   const [store, setStore] = React.useState<Store>(initialStore);
 
@@ -1546,6 +1548,13 @@ function App() {
   }, [wipeAllLocalData]);
 
   // ============================================================
+  // ✅ LocalStorage DC hook (emitCloudChange sur dc_* / dc-*)
+  // ============================================================
+  React.useEffect(() => {
+    installLocalStorageDcHook();
+  }, []);
+
+  // ============================================================
   // ✅ CLOUD HYDRATE (source unique)
   // ============================================================
   React.useEffect(() => {
@@ -1591,8 +1600,8 @@ function App() {
 
           if (isCloudEmpty && hasLocalData) {
             try {
-              const cloudSeed = sanitizeStoreForCloud(store);
-              await onlineApi.pushStoreSnapshot(cloudSeed);
+              const cloudSeed = await exportCloudSnapshot();
+              await onlineApi.pushStoreSnapshot(cloudSeed as any, (cloudSeed as any)?.v ?? 8);
               console.log("[cloud] cloud empty -> seeded from local");
             } catch (e) {
               console.warn("[cloud] seed from local failed", e);
@@ -1658,8 +1667,8 @@ function App() {
             (store?.history?.length || 0) > 0;
 
           if (hasLocalData) {
-            const cloudSeed = sanitizeStoreForCloud(store);
-            await onlineApi.pushStoreSnapshot(cloudSeed);
+            const cloudSeed = await exportCloudSnapshot();
+              await onlineApi.pushStoreSnapshot(cloudSeed as any, (cloudSeed as any)?.v ?? 8);
           } else {
             console.warn("[cloud] no snapshot yet + local empty -> skip seed (avoid wiping cloud by mistake)");
           }
@@ -1680,12 +1689,45 @@ function App() {
   }, [loading, online?.ready, online?.status, cloudHydrated, store]);
 
   // ============================================================
+  // ✅ CLOUD SYNC (push-only via emitCloudChange)
+  // - pousse une snapshot COMPLETE quand localStorage dc_* change
+  // - évite le "rien sur autre appareil" quand les données ne passent pas par store
+  // ============================================================
+  React.useEffect(() => {
+    if (loading) return;
+    if (!cloudHydrated) return;
+    if (!online?.ready || online.status !== "signed_in") {
+      if (cloudSyncOnRef.current) {
+        stopCloudSync();
+        cloudSyncOnRef.current = false;
+      }
+      return;
+    }
+
+    if (!cloudSyncOnRef.current) {
+      startCloudSync({ pullOnStart: true, disablePull: false });
+      cloudSyncOnRef.current = true;
+      console.log("[cloud] cloudSync started (push+pull)");
+    }
+
+    return () => {
+      if (cloudSyncOnRef.current) {
+        stopCloudSync();
+        cloudSyncOnRef.current = false;
+      }
+    };
+  }, [loading, cloudHydrated, online?.ready, online?.status]);
+
+  // ============================================================
   // ✅ CLOUD PUSH (debounce)
   // ============================================================
   React.useEffect(() => {
     if (loading) return;
     if (!cloudHydrated) return;
     if (!online?.ready || online.status !== "signed_in") return;
+
+
+    if (cloudSyncOnRef.current) return; // push géré par cloudSync (snapshot complète)
 
     if (cloudPushTimerRef.current) {
       window.clearTimeout(cloudPushTimerRef.current);
@@ -1694,8 +1736,8 @@ function App() {
 
     cloudPushTimerRef.current = window.setTimeout(async () => {
       try {
-        const cloudSeed = sanitizeStoreForCloud(store);
-        await onlineApi.pushStoreSnapshot(cloudSeed);
+        const cloudSeed = await exportCloudSnapshot();
+              await onlineApi.pushStoreSnapshot(cloudSeed as any, (cloudSeed as any)?.v ?? 8);
       } catch (e) {
         console.warn("[cloud] push snapshot error", e);
       }
@@ -1827,8 +1869,13 @@ function App() {
       return next;
     });
 
+    // ================================
+    // ✅ Persist in History (IndexedDB) then navigate
+    // (avoid opening StatsHub before the match is indexed)
+    // ================================
+    let upsertPromise: any = null;
     try {
-      (History as any)?.upsert?.(saved);
+      upsertPromise = (History as any)?.upsert?.(saved);
     } catch {}
 
     try {
@@ -1861,8 +1908,13 @@ function App() {
           .catch(() => {});
       }
     } catch {}
+    const nav = () => go("statsHub", { tab: "history" });
 
-    go("statsHub", { tab: "history" });
+    if (upsertPromise && typeof (upsertPromise as any).then === "function") {
+      (upsertPromise as any).finally(() => nav());
+    } else {
+      nav();
+    }
   }
 
 
