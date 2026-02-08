@@ -727,6 +727,15 @@ export default function Profiles({
 
   function renameProfile(id: string, name: string) {
     setProfilesSafe((arr) => arr.map((p) => (p.id === id ? { ...p, name } : p)));
+    // ✅ Si c'est le profil lié au compte Supabase, on synchronise aussi le surnom ONLINE.
+    // (source of truth multi-device)
+    try {
+      if (auth.status === "signed_in" && auth.user?.id && String(id) === String(auth.user.id)) {
+        (onlineApi as any)
+          ?.updateProfile?.({ nickname: name, displayName: name })
+          .catch?.(() => {});
+      }
+    } catch {}
     try { (window as any).__flushCloudNow?.(); } catch {}
   }
 
@@ -1469,20 +1478,39 @@ React.useEffect(() => {
           />
         ) : (
           <>
-            <button
-              className="btn sm"
-              onClick={() => setView("menu")}
-              style={{
-                marginBottom: 10,
-                borderRadius: 999,
-                paddingInline: 14,
-                background: "transparent",
-                border: `1px solid ${theme.borderSoft}`,
-                fontSize: 12,
-              }}
-            >
-              ← {t("profiles.menu.back", "Retour au menu Profils")}
-            </button>
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap", marginBottom: 10 }}>
+              <button
+                className="btn sm"
+                onClick={() => setView("menu")}
+                style={{
+                  borderRadius: 999,
+                  paddingInline: 14,
+                  background: "transparent",
+                  border: `1px solid ${theme.borderSoft}`,
+                  fontSize: 12,
+                }}
+              >
+                ← {t("profiles.menu.back", "Retour au menu Profils")}
+              </button>
+
+              {auth.status === "signed_in" && (
+                <button
+                  className="btn sm"
+                  onClick={() => auth.logout?.()}
+                  style={{
+                    borderRadius: 999,
+                    paddingInline: 14,
+                    background: "rgba(255,255,255,0.06)",
+                    border: `1px solid ${theme.borderSoft}`,
+                    fontSize: 12,
+                    fontWeight: 900,
+                    color: "#fff",
+                  }}
+                >
+                  {t("profiles.logout", "Se déconnecter")}
+                </button>
+              )}
+            </div>
 
             {view === "me" && (
               <>

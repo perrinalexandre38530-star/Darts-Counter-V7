@@ -1247,7 +1247,7 @@ function AccountPages({
                 flex: "1 1 180px",
               }}
             >
-              {t("settings.account.btn.logout", "Se déconnecter (debug)")}
+              {t("settings.account.btn.logout", "Se déconnecter")}
             </button>
 
             <button

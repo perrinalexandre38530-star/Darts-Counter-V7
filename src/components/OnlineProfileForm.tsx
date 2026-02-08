@@ -11,7 +11,7 @@ import { useAuthOnline } from "../hooks/useAuthOnline";
 import { onlineApi } from "../lib/onlineApi";
 
 export default function OnlineProfileForm() {
-  const { user, profile, loading } = useAuthOnline();
+  const { user, profile, loading, refresh } = useAuthOnline();
 
   const [form, setForm] = React.useState({
     surname: "",
@@ -74,6 +74,12 @@ export default function OnlineProfileForm() {
         email: form.email,
         phone: form.phone,
       });
+
+      // ✅ Force refresh du profile en mémoire (sinon l'autre device ne verra le changement
+      // qu'au prochain boot) + réhydratation locale via bridge App.tsx
+      try {
+        await refresh?.();
+      } catch {}
 
       alert("Profil online mis à jour !");
     } catch (err) {

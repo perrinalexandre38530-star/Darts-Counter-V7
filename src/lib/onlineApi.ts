@@ -734,18 +734,21 @@ async function updateProfile(patch: UpdateProfilePayload): Promise<OnlineProfile
   if (patch.email !== undefined) dbPatch.email = patch.email;
   if (patch.phone !== undefined) dbPatch.phone = patch.phone;
 
+  // ✅ IMPORTANT: sur certains projets, la ligne profile peut ne pas exister.
+  // update() ne crée pas la ligne -> on fait un upsert (id + user_id).
+  const upsertPayload: any = { id: userId, user_id: userId, ...dbPatch };
+
   const res = await writeWithColumnFallback<any>(
     async (obj) => {
       const { data, error } = await supabase
         .from(PROFILES_TABLE)
-        .update(obj as any)
-        .eq("id", userId)
+        .upsert(obj as any, { onConflict: "id" })
         .select()
         .single();
       return { data, error };
     },
-    dbPatch,
-    { debugLabel: `profiles update (${PROFILES_TABLE})` }
+    upsertPayload,
+    { debugLabel: `profiles upsert (${PROFILES_TABLE})` }
   );
 
   if (res.error) throw new Error(res.error.message || "Erreur updateProfile.");

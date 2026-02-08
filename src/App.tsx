@@ -1224,10 +1224,9 @@ function App() {
     if (!online?.ready) return;
     if (online.status !== "signed_in") return;
 
-    const hasProfiles = (store?.profiles?.length || 0) > 0;
-    const hasActive = !!(store as any)?.activeProfileId;
-    if (hasProfiles && hasActive) return;
-
+    // ✅ V7 ACCOUNT CORE CLEAN:
+    // On applique TOUJOURS le bridge vers un profil local stable id==uid.
+    // Sinon, deux appareils peuvent chacun "lier" un profil local différent, ce qui casse la synchro.
     const user = (online as any)?.user || (online as any)?.session?.user || null;
     if (!user?.id) return;
 
@@ -1252,7 +1251,7 @@ function App() {
       console.warn("[online→local] bridge failed", e);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [loading, online?.ready, online?.status, (online as any)?.user?.id, tab, store?.profiles?.length, (store as any)?.activeProfileId]);
+  }, [loading, online?.ready, online?.status, (online as any)?.user?.id, (online as any)?.profile?.nickname, (online as any)?.profile?.avatarUrl, tab]);
 
   // ✅ SPORT-AWARE : utilisé pour Home/Games (runtime-safe)
   const sportApi: any = useSport() as any;

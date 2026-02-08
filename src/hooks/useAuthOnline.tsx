@@ -14,6 +14,7 @@ import type { Session, User } from "@supabase/supabase-js";
 import { supabase } from "../lib/supabaseClient";
 import { onlineApi } from "../lib/onlineApi";
 import { ensureLocalProfileForOnlineUser } from "../lib/accountBridge";
+import { purgeAccountLocalData } from "../lib/accountPurge";
 import type { OnlineProfile } from "../lib/onlineTypes";
 
 type AuthStatus = "checking" | "signed_out" | "signed_in";
@@ -318,10 +319,16 @@ export function AuthOnlineProvider({ children }: { children: React.ReactNode }) 
 
   const logout = React.useCallback(async () => {
     try {
+      // 1) Supabase session out
       await supabase.auth.signOut();
     } catch (e) {
       console.warn("[useAuthOnline] signOut error:", e);
     } finally {
+      // 2) Purge local caches (IDB + localStorage dc_*) pour éviter reconnexion fantôme
+      try {
+        await purgeAccountLocalData();
+      } catch {}
+
       // ✅ force state clean (auth only)
       setState((s) => ({
         ...s,
@@ -333,6 +340,15 @@ export function AuthOnlineProvider({ children }: { children: React.ReactNode }) 
         ready: true,
         error: null,
       }));
+
+      // 3) Retour visuel sur l'écran login (App.tsx utilise HashRouter)
+      try {
+        if (typeof window !== "undefined") {
+          window.location.hash = "#/auth/login";
+          // Le reload garantit un état mémoire clean après purge
+          window.location.reload();
+        }
+      } catch {}
     }
   }, []);
 

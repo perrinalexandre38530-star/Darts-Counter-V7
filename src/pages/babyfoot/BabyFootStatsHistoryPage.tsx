@@ -219,6 +219,13 @@ export default function BabyFootStatsHistoryPage({ store, go }: Props) {
       currentStreak: number;
       decisiveGoals: number;
       momentumBursts: number;
+
+      // ✅ V5.1
+      points: number;
+      draws: number;
+      losses: number;
+      gf: number;
+      ga: number;
     };
     type Tm = {
       key: string;
@@ -230,6 +237,11 @@ export default function BabyFootStatsHistoryPage({ store, go }: Props) {
       ga: number;
       pensShots: number;
       pensGoals: number;
+
+      // ✅ V5.1
+      points: number;
+      draws: number;
+      losses: number;
     };
 
     const byPlayer: Record<string, P> = {};
@@ -261,10 +273,20 @@ export default function BabyFootStatsHistoryPage({ store, go }: Props) {
           goals: 0,
           pensShots: 0,
           pensGoals: 0,
+
+          points: 0,
+          draws: 0,
+          losses: 0,
           bestStreak: 0,
           currentStreak: 0,
           decisiveGoals: 0,
           momentumBursts: 0,
+
+          points: 0,
+          draws: 0,
+          losses: 0,
+          gf: 0,
+          ga: 0,
         };
       }
       return byPlayer[id];
@@ -283,6 +305,10 @@ export default function BabyFootStatsHistoryPage({ store, go }: Props) {
           ga: 0,
           pensShots: 0,
           pensGoals: 0,
+
+          points: 0,
+          draws: 0,
+          losses: 0,
         };
       }
       return byTeam[key];
@@ -293,6 +319,8 @@ export default function BabyFootStatsHistoryPage({ store, go }: Props) {
       const { teamA, teamB, scoreA, scoreB, teamAIds, teamBIds } = getTeams(payload);
       const dur = safeNum(payload?.durationMs ?? payload?.summary?.durationMs, 0);
       const winner = getWinnerTeam(payload);
+
+      const ev = getEvents(payload);
 
       matches += 1;
       goals += Math.max(0, scoreA) + Math.max(0, scoreB);
@@ -305,6 +333,16 @@ export default function BabyFootStatsHistoryPage({ store, go }: Props) {
         p.played += 1;
         const won = winner ? (winner === "A" ? teamAIds.includes(id) : teamBIds.includes(id)) : false;
         if (won) p.wins += 1;
+
+        // V5.1 points (W=3, D=1)
+        if (!winner) { p.draws += 1; p.points += 1; }
+        else if (won) p.points += 3;
+        else p.losses += 1;
+
+        // GF/GA approximated by team score
+        const inA = teamAIds.includes(id);
+        p.gf += inA ? scoreA : scoreB;
+        p.ga += inA ? scoreB : scoreA;
       }
 
       // Goals (scorerId)
@@ -347,9 +385,13 @@ export default function BabyFootStatsHistoryPage({ store, go }: Props) {
       if (winner === "A") tA.wins += 1;
       if (winner === "B") tB.wins += 1;
 
+      // V5.1 points (W=3, D=1)
+      if (!winner) { tA.draws += 1; tB.draws += 1; tA.points += 1; tB.points += 1; }
+      else if (winner === "A") { tA.points += 3; tB.losses += 1; }
+      else { tB.points += 3; tA.losses += 1; }
+
 
 // ✅ V4.8.1 Qualité de jeu
-const ev = getEvents(payload);
 
 // Buts décisifs (égalisation / but final) — nécessite scorerId pour attribution joueur
 const decisive = computeDecisiveGoals({ events: ev as any, scoreA, scoreB });
@@ -429,6 +471,17 @@ if (conv?.shots > 0) {
       .sort((a, b) => (b.wins / Math.max(1, b.played)) - (a.wins / Math.max(1, a.played)) || ((b.gf - b.ga) - (a.gf - a.ga)))
       .slice(0, 8);
 
+    // ✅ V5.1 Classements (points)
+    const topPlayersPoints = [...players]
+      .filter((p) => p.played >= 3)
+      .sort((a, b) => (b.points - a.points) || ((b.gf - b.ga) - (a.gf - a.ga)) || (b.goals - a.goals))
+      .slice(0, 12);
+
+    const topTeamsPoints = [...teams]
+      .filter((tm) => tm.played >= 3)
+      .sort((a, b) => (b.points - a.points) || ((b.gf - b.ga) - (a.gf - a.ga)) || (b.gf - a.gf))
+      .slice(0, 12);
+
     return {
       matches,
       goals,
@@ -441,6 +494,8 @@ if (conv?.shots > 0) {
       topGPM,
       streaks,
       topTeams,
+      topPlayersPoints,
+      topTeamsPoints,
       decisiveTotal,
       penaltyDecisiveTotal,
       momentumTotal,
@@ -629,6 +684,49 @@ if (conv?.shots > 0) {
                   <div style={{ fontWeight: 950, opacity: 0.95 }}>Best {p.bestStreak} • Actuelle {p.currentStreak}</div>
                 </div>
               ))
+            )}
+          </div>
+        </div>
+      </div>
+
+
+      {/* Rankings */}
+      <div style={sectionTitle}>Classements</div>
+      <div style={grid2}>
+        <Board
+          theme={theme}
+          title="Classement joueurs"
+          subtitle="Points (W=3 / D=1)"
+          rows={agg.topPlayersPoints.map((p: any) => ({
+            id: p.id,
+            left: p.name,
+            right: `${p.points} pts • ${p.wins}V/${p.draws}N/${p.losses}D • GD ${(p.gf - p.ga) >= 0 ? "+" : ""}${p.gf - p.ga}`,
+          }))}
+        />
+
+        <div style={card(theme)}>
+          <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "baseline" }}>
+            <div style={{ fontWeight: 1000, letterSpacing: 0.6 }}>Classement équipes</div>
+            <div style={{ opacity: 0.65, fontWeight: 900, fontSize: 12 }}>Points (compositions)</div>
+          </div>
+
+          <div style={{ marginTop: 10, display: "grid", gap: 8 }}>
+            {agg.topTeamsPoints.length === 0 ? (
+              <div style={{ opacity: 0.7, fontWeight: 800 }}>Pas assez de données (≥ 3 matchs).</div>
+            ) : (
+              agg.topTeamsPoints.map((tm: any) => {
+                const gd = (tm.gf - tm.ga) || 0;
+                return (
+                  <div key={tm.key} style={rowItem(theme)}>
+                    <div style={{ fontWeight: 950, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      {tm.label} <span style={{ opacity: 0.6, fontWeight: 900 }}>• {tm.ids?.length || 0} j.</span>
+                    </div>
+                    <div style={{ fontWeight: 950, opacity: 0.95 }}>
+                      {tm.points} pts • {tm.wins}V/{tm.draws}N/{tm.losses}D • GD {gd >= 0 ? "+" : ""}{gd}
+                    </div>
+                  </div>
+                );
+              })
             )}
           </div>
         </div>
