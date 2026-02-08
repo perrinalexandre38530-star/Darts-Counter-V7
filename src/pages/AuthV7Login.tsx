@@ -4,6 +4,7 @@
 // ============================================
 import React from "react";
 import { supabase, __SUPABASE_ENV__ } from "../lib/supabaseClient";
+import { purgeLegacyLocalStorageIfNeeded } from "../lib/storageQuota";
 
 type Props = {
   go: (t: any, p?: any) => void;
@@ -76,6 +77,10 @@ export default function AuthV7Login({ go }: Props) {
 
     setLoading(true);
     try {
+      // ✅ Sur mobile, le localStorage peut être saturé (stats/history) => Supabase auth ne peut pas persister la session.
+      // On purge AVANT le sign-in pour éviter l'erreur "exceeded the quota".
+      purgeLegacyLocalStorageIfNeeded(true);
+
       // ✅ si Supabase est injoignable => message clair au lieu de "Failed to fetch"
       const ok = await pingSupabase();
       if (!ok) {
@@ -85,7 +90,13 @@ export default function AuthV7Login({ go }: Props) {
         return;
       }
 
-      const { error: err } = await supabase.auth.signInWithPassword({ email: e, password });
+      let { error: err } = await supabase.auth.signInWithPassword({ email: e, password });
+
+      // Retry 1x si quota (Safari/Android WebView peuvent throw via storage)
+      if (err && /quota/i.test(err.message || "")) {
+        purgeLegacyLocalStorageIfNeeded(true);
+        ({ error: err } = await supabase.auth.signInWithPassword({ email: e, password }));
+      }
       if (err) {
         const msg = err.message || "Connexion impossible.";
         setError(msg);

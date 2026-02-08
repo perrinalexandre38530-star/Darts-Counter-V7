@@ -1,8 +1,14 @@
+// ============================================
+// src/pages/StatsTerritories.tsx
+// Centre de statistiques — TERRITORIES
+// Objectif: même rendu "dashboard" que l'onglet X01 (KPIs + sections),
+// tout en restant robuste quand il n'y a aucune donnée.
+// ============================================
+
 import React from "react";
 import BackDot from "../components/BackDot";
 import InfoDot from "../components/InfoDot";
 import PageHeader from "../components/PageHeader";
-import Section from "../components/Section";
 import { useLang } from "../contexts/LangContext";
 import { useTheme } from "../contexts/ThemeContext";
 import { TERRITORY_MAPS } from "../lib/territories/maps";
@@ -15,7 +21,7 @@ import {
 const INFO_TEXT = `STATS TERRITORIES
 
 - Parties enregistrées localement (sur l'appareil)
-- KPIs : maps jouées, winrate, domination
+- KPIs : maps jouées, domination, captures, volumes
 - Reset possible via le bouton "effacer"`;
 
 function fmtDate(ts: number) {
@@ -26,37 +32,47 @@ function fmtDate(ts: number) {
   }
 }
 
+function n(v: any): number {
+  const x = Number(v);
+  return Number.isFinite(x) ? x : 0;
+}
+
+function clamp01(v: number) {
+  return Math.max(0, Math.min(1, v));
+}
+
 export default function StatsTerritories(props: any) {
   const { t } = useLang();
   const { theme } = useTheme();
 
   const embedded = Boolean(props?.embedded);
 
-  const [items, setItems] = React.useState<TerritoriesMatch[]>(() => loadTerritoriesHistory());
+  const [items, setItems] = React.useState<TerritoriesMatch[]>(() =>
+    loadTerritoriesHistory()
+  );
 
-  // Auto-refresh when Territories history updates (same event used by History)
-  React.useEffect(() => {
-    const onUpd = () => setItems(loadTerritoriesHistory());
-    const onStorage = (e: StorageEvent) => {
-      if (e.key === "dc_territories_history_v1") onUpd();
-    };
-    window.addEventListener("dc-territories-updated", onUpd);
-    window.addEventListener("dc-history-updated", onUpd);
-    window.addEventListener("storage", onStorage);
-    return () => {
-      window.removeEventListener("dc-territories-updated", onUpd);
-      window.removeEventListener("dc-history-updated", onUpd);
-      window.removeEventListener("storage", onStorage);
-    };
+  const refresh = React.useCallback(() => {
+    setItems(loadTerritoriesHistory());
   }, []);
+
+  React.useEffect(() => {
+    // refresh if history changes
+    const onUpd = () => refresh();
+    if (typeof window !== "undefined") {
+      window.addEventListener("dc-territories-updated", onUpd);
+      window.addEventListener("dc-history-updated", onUpd);
+    }
+    return () => {
+      if (typeof window !== "undefined") {
+        window.removeEventListener("dc-territories-updated", onUpd);
+        window.removeEventListener("dc-history-updated", onUpd);
+      }
+    };
+  }, [refresh]);
 
   function goBack() {
     if (props?.setTab) return props.setTab("stats");
     window.history.back();
-  }
-
-  function refresh() {
-    setItems(loadTerritoriesHistory());
   }
 
   function clearAll() {
@@ -64,236 +80,153 @@ export default function StatsTerritories(props: any) {
     refresh();
   }
 
+  // =====================
+  // Aggregations
+  // =====================
   const total = items.length;
+
   const byMap = React.useMemo(() => {
     const m: Record<string, number> = {};
     for (const it of items) m[it.mapId] = (m[it.mapId] || 0) + 1;
     return Object.entries(m).sort((a, b) => b[1] - a[1]);
   }, [items]);
 
-  const avgDom = React.useMemo(() => {
-    if (!items.length) return 0;
-    const sum = items.reduce((acc, it) => acc + Math.max(...(it.domination || [0])), 0);
-    return Math.round((sum / items.length) * 10) / 10;
-  }, [items]);
+  const uniqueMaps = byMap.length;
 
   const avgRounds = React.useMemo(() => {
     if (!items.length) return 0;
-    const sum = items.reduce((acc, it) => acc + (Number(it.rounds) || 0), 0);
+    const sum = items.reduce((acc, it) => acc + n(it.rounds), 0);
     return Math.round((sum / items.length) * 10) / 10;
   }, [items]);
 
-  const bestWinDom = React.useMemo(() => {
-    let best = 0;
-    let bestId: string | null = null;
+  const avgDomWinner = React.useMemo(() => {
+    if (!items.length) return 0;
+    let sum = 0;
     for (const it of items) {
-      const v = Math.max(...(it.domination || [0]));
-      if (v > best) {
-        best = v;
-        bestId = it.id;
-      }
+      const w = n(it.winnerTeam);
+      sum += n(it.domination?.[w] ?? 0);
     }
-    return { best, bestId };
+    return Math.round((sum / items.length) * 10) / 10;
   }, [items]);
+
+  const avgCaptures = React.useMemo(() => {
+    if (!items.length) return 0;
+    let sum = 0;
+    for (const it of items) {
+      const cap = Array.isArray(it.captured) ? it.captured : [];
+      sum += cap.reduce((a, b) => a + n(b), 0);
+    }
+    return Math.round((sum / items.length) * 10) / 10;
+  }, [items]);
+
+  const avgCapturesPerRound = React.useMemo(() => {
+    const r = avgRounds || 0;
+    if (r <= 0) return 0;
+    return Math.round((avgCaptures / r) * 10) / 10;
+  }, [avgCaptures, avgRounds]);
 
   const avgMargin = React.useMemo(() => {
     if (!items.length) return 0;
     let sum = 0;
     for (const it of items) {
-      const dom = (it.domination || []).map((x) => Number(x) || 0);
-      const sorted = [...dom].sort((a, b) => b - a);
-      const margin = (sorted[0] || 0) - (sorted[1] || 0);
-      sum += margin;
+      const dom = Array.isArray(it.domination) ? it.domination.map(n) : [];
+      const w = n(it.winnerTeam);
+      const wv = n(dom[w] ?? 0);
+      const ov = Math.max(
+        0,
+        ...dom.filter((_, idx) => idx !== w)
+      );
+      sum += Math.max(0, wv - ov);
     }
     return Math.round((sum / items.length) * 10) / 10;
   }, [items]);
 
-  const bestMargin = React.useMemo(() => {
-    let best = 0;
-    let bestId: string | null = null;
-    for (const it of items) {
-      const dom = (it.domination || []).map((x) => Number(x) || 0);
-      const sorted = [...dom].sort((a, b) => b - a);
-      const margin = (sorted[0] || 0) - (sorted[1] || 0);
-      if (margin > best) {
-        best = margin;
-        bestId = it.id;
-      }
-    }
-    return { best, bestId };
-  }, [items]);
-
-
-  const totalCaptures = React.useMemo(() => {
-    let sum = 0;
-    for (const it of items) {
-      const caps = Array.isArray(it.captured) ? it.captured : [];
-      for (const c of caps) sum += Number(c) || 0;
-    }
-    return sum;
-  }, [items]);
-
-  const avgCapturesPerMatch = React.useMemo(() => {
-    if (!items.length) return 0;
-    return Math.round((totalCaptures / items.length) * 10) / 10;
-  }, [items, totalCaptures]);
-
-  const avgCapturesPerRound = React.useMemo(() => {
-    if (!items.length) return 0;
-    let sum = 0;
-    let rounds = 0;
-    for (const it of items) {
-      const r = Number(it.rounds) || 0;
-      if (r > 0) {
-        rounds += r;
-        const caps = Array.isArray(it.captured) ? it.captured : [];
-        for (const c of caps) sum += Number(c) || 0;
-      }
-    }
-    if (rounds <= 0) return 0;
-    return Math.round((sum / rounds) * 10) / 10;
-  }, [items]);
-
-  const captureMargins = React.useMemo(() => {
-    // capture margin = best captures - 2nd best captures
-    let best = 0;
-    let bestId: string | null = null;
-    let sum = 0;
-    let count = 0;
-
-    for (const it of items) {
-      const caps = (Array.isArray(it.captured) ? it.captured : []).map((x) => Number(x) || 0);
-      if (!caps.length) continue;
-      const sorted = [...caps].sort((a, b) => b - a);
-      const m = (sorted[0] || 0) - (sorted[1] || 0);
-      sum += m;
-      count += 1;
-      if (m > best) {
-        best = m;
-        bestId = it.id;
-      }
-    }
-
-    return {
-      avg: count ? Math.round((sum / count) * 10) / 10 : 0,
-      best,
-      bestId,
-    };
-  }, [items]);
-
-  const winnerCaptureKPIs = React.useMemo(() => {
-    // % matches where winner has the most captures; and average winner capture share
-    let winsMost = 0;
-    let count = 0;
-    let shareSum = 0;
-
-    for (const it of items) {
-      const caps = (Array.isArray(it.captured) ? it.captured : []).map((x) => Number(x) || 0);
-      if (!caps.length) continue;
-
-      const total = caps.reduce((a, b) => a + b, 0);
-      const winnerIdx = Number(it.winnerTeam) || 0;
-      const w = caps[winnerIdx] ?? 0;
-      const max = Math.max(...caps);
-
-      if (total > 0) shareSum += w / total;
-      if (w === max) winsMost += 1;
-
-      count += 1;
-    }
-
-    return {
-      pctWinnerMostCaptures: count ? Math.round((winsMost / count) * 100) : 0,
-      avgWinnerSharePct: count ? Math.round(((shareSum / count) * 1000)) / 10 : 0,
-    };
-  }, [items]);
-
-  const mapGameplay = React.useMemo(() => {
-    // Per-map aggregates
-    type Agg = {
-      mapId: string;
-      matches: number;
-      roundsSum: number;
-      marginSum: number;
-      domWinSum: number;
-      capturesSum: number;
-    };
-    const m: Record<string, Agg> = {};
-
-    for (const it of items) {
-      const mapId = String(it.mapId || "");
-      if (!mapId) continue;
-
-      if (!m[mapId]) {
-        m[mapId] = { mapId, matches: 0, roundsSum: 0, marginSum: 0, domWinSum: 0, capturesSum: 0 };
-      }
-
-      const dom = (Array.isArray(it.domination) ? it.domination : []).map((x) => Number(x) || 0);
-      const sortedDom = [...dom].sort((a, b) => b - a);
-      const margin = (sortedDom[0] || 0) - (sortedDom[1] || 0);
-
-      const winDom = dom.length ? Math.max(...dom) : 0;
-      const caps = (Array.isArray(it.captured) ? it.captured : []).map((x) => Number(x) || 0);
-      const totalCaps = caps.reduce((a, b) => a + b, 0);
-
-      m[mapId].matches += 1;
-      m[mapId].roundsSum += Number(it.rounds) || 0;
-      m[mapId].marginSum += margin;
-      m[mapId].domWinSum += winDom;
-      m[mapId].capturesSum += totalCaps;
-    }
-
-    const arr = Object.values(m).map((a) => ({
-      mapId: a.mapId,
-      matches: a.matches,
-      avgRounds: a.matches ? Math.round((a.roundsSum / a.matches) * 10) / 10 : 0,
-      avgMargin: a.matches ? Math.round((a.marginSum / a.matches) * 10) / 10 : 0,
-      avgWinDom: a.matches ? Math.round((a.domWinSum / a.matches) * 10) / 10 : 0,
-      avgCaptures: a.matches ? Math.round((a.capturesSum / a.matches) * 10) / 10 : 0,
-    }));
-
-    const toughest = [...arr].sort((a, b) => b.avgRounds - a.avgRounds)[0] || null;
-    const mostContested = [...arr].sort((a, b) => a.avgMargin - b.avgMargin)[0] || null;
-    const mostAction = [...arr].sort((a, b) => b.avgCaptures - a.avgCaptures)[0] || null;
-
-    // leaderboard: by avgWinDom (dominant winners)
-    const topByDom = [...arr].sort((a, b) => b.avgWinDom - a.avgWinDom).slice(0, 6);
-
-    return { toughest, mostContested, mostAction, topByDom };
-  }, [items]);
-
-  const byFormat = React.useMemo(() => {
-    const m: Record<string, number> = {};
-    for (const it of items) {
-      const label = it.teamSize === 1 ? "Solo" : `${it.teamSize}v${it.teamSize}`;
-      m[label] = (m[label] || 0) + 1;
-    }
-    return Object.entries(m).sort((a, b) => b[1] - a[1]);
-  }, [items]);
-
-  const byObjective = React.useMemo(() => {
-    const m: Record<string, number> = {};
-    for (const it of items) {
-      const k = String(it.objective ?? "?");
-      m[k] = (m[k] || 0) + 1;
-    }
-    return Object.entries(m).sort((a, b) => b[1] - a[1]);
-  }, [items]);
-
-  const recent7 = React.useMemo(() => {
+  const last7 = React.useMemo(() => {
     const now = Date.now();
-    const seven = 7 * 24 * 3600 * 1000;
-    return items.filter((it) => now - (it.when || 0) <= seven);
+    const d7 = 7 * 24 * 3600 * 1000;
+    return items.filter((it) => now - n(it.when) <= d7).length;
   }, [items]);
 
-  const accent = theme?.accent ?? "#FFD700";
-  const kpiCardStyle: React.CSSProperties = {
-    borderRadius: 16,
-    padding: 12,
-    border: `1px solid ${accent}2A`,
-    background: "rgba(255,255,255,0.05)",
+  const bestGame = React.useMemo(() => {
+    if (!items.length) return null;
+    let best: TerritoriesMatch | null = null;
+    let bestDom = -1;
+    for (const it of items) {
+      const w = n(it.winnerTeam);
+      const dom = n(it.domination?.[w] ?? 0);
+      if (dom > bestDom) {
+        bestDom = dom;
+        best = it;
+      }
+    }
+    return best;
+  }, [items]);
+
+  // =====================
+  // Style "X01-like"
+  // =====================
+  const T = {
+    gold: theme.primary,
+    text: theme.text ?? "#FFFFFF",
+    text70: "rgba(255,255,255,.70)",
+    cardBg: "rgba(7,8,16,0.98)",
+    edge: theme.edgeColor ?? "rgba(255,255,255,0.10)",
   };
 
+  const card: React.CSSProperties = {
+    background: T.cardBg,
+    borderRadius: 22,
+    border: `1px solid ${T.edge}`,
+    boxShadow: "0 18px 32px rgba(0,0,0,.90)",
+    padding: 12,
+  };
+
+  const goldNeon: React.CSSProperties = {
+    color: T.gold,
+    textTransform: "uppercase",
+    letterSpacing: 0.9,
+    fontWeight: 900,
+    textShadow: `0 0 6px ${T.gold}CC, 0 0 14px ${T.gold}88`,
+  };
+
+  const kpiBox: React.CSSProperties = {
+    borderRadius: 18,
+    padding: 10,
+    background: "linear-gradient(180deg,#18181A,#0F0F12)",
+    border: "1px solid rgba(255,255,255,.16)",
+    boxShadow: "0 10px 24px rgba(0,0,0,.55)",
+    display: "flex",
+    flexDirection: "column",
+    gap: 2,
+    minHeight: 70,
+  };
+
+  const kpiLabel: React.CSSProperties = {
+    fontSize: 10,
+    textTransform: "uppercase",
+    letterSpacing: 0.6,
+    color: T.text70,
+  };
+
+  const kpiValueMain: React.CSSProperties = {
+    fontSize: 18,
+    fontWeight: 900,
+  };
+
+  const row: React.CSSProperties = {
+    borderRadius: 16,
+    padding: 10,
+    border: "1px solid rgba(255,255,255,0.10)",
+    background: "rgba(255,255,255,0.04)",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 10,
+  };
+
+  // =====================
+  // Render
+  // =====================
   return (
     <div className={embedded ? undefined : "page"}>
       {!embedded && (
@@ -305,8 +238,17 @@ export default function StatsTerritories(props: any) {
       )}
 
       {embedded && (
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
-          <div style={{ fontWeight: 1000, letterSpacing: 0.4 }}>TERRITORIES</div>
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: 10,
+          }}
+        >
+          <div style={{ fontWeight: 1000, letterSpacing: 0.4 }}>
+            TERRITORIES
+          </div>
           <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
             <button
               onClick={refresh}
@@ -329,48 +271,35 @@ export default function StatsTerritories(props: any) {
         </div>
       )}
 
-      <div style={{ padding: embedded ? 0 : 12, display: "flex", flexDirection: "column", gap: 12, marginTop: embedded ? 10 : 0 }}>
-        <Section title={t("stats.overview", "Vue d'ensemble")}>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 10 }}>
-            <div
-              style={kpiCardStyle}
-            >
-              <div style={{ fontSize: 12, opacity: 0.8, fontWeight: 950 }}>{t("stats.matches", "Parties")}</div>
-              <div style={{ marginTop: 6, fontSize: 22, fontWeight: 1000 }}>{total}</div>
-            </div>
-
-            <div
-              style={kpiCardStyle}
-            >
-              <div style={{ fontSize: 12, opacity: 0.8, fontWeight: 950 }}>{t("territories.maps", "Maps")}</div>
-              <div style={{ marginTop: 6, fontSize: 22, fontWeight: 1000 }}>{byMap.length}</div>
-            </div>
-
-            <div
-              style={kpiCardStyle}
-            >
-              <div style={{ fontSize: 12, opacity: 0.8, fontWeight: 950 }}>{t("territories.avgDom", "Domination")}</div>
-              <div style={{ marginTop: 6, fontSize: 22, fontWeight: 1000 }}>{avgDom}</div>
-            </div>
+      <div
+        style={{
+          padding: embedded ? 0 : 12,
+          display: "flex",
+          flexDirection: "column",
+          gap: 12,
+          marginTop: embedded ? 10 : 0,
+        }}
+      >
+        {/* HEADER CARD */}
+        <div style={{ ...card, padding: 14 }}>
+          <div style={{ ...goldNeon, fontSize: 18, marginBottom: 8, textAlign: "center" }}>
+            {t("territories.title", "Territories")}
+          </div>
+          <div style={{ fontSize: 12, color: T.text70, textAlign: "center" }}>
+            {t(
+              "territories.subtitle",
+              "Vue d'ensemble + gameplay (même style que X01)"
+            )}
           </div>
 
-          {/* ======== KPIs avancés ======== */}
-          <div style={{ marginTop: 10, display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 10 }}>
-            <div style={kpiCardStyle}>
-              <div style={{ fontSize: 12, opacity: 0.8, fontWeight: 950 }}>{t("territories.avgRounds", "Tours (moy.)")}</div>
-              <div style={{ marginTop: 6, fontSize: 22, fontWeight: 1000 }}>{avgRounds}</div>
-            </div>
-            <div style={kpiCardStyle}>
-              <div style={{ fontSize: 12, opacity: 0.8, fontWeight: 950 }}>{t("territories.avgMargin", "Écart (moy.)")}</div>
-              <div style={{ marginTop: 6, fontSize: 22, fontWeight: 1000 }}>{avgMargin}</div>
-            </div>
-            <div style={kpiCardStyle}>
-              <div style={{ fontSize: 12, opacity: 0.8, fontWeight: 950 }}>{t("territories.last7", "7 derniers jours")}</div>
-              <div style={{ marginTop: 6, fontSize: 22, fontWeight: 1000 }}>{recent7.length}</div>
-            </div>
-          </div>
-
-          <div style={{ marginTop: 10, display: "flex", gap: 10 }}>
+          <div
+            style={{
+              marginTop: 12,
+              display: "flex",
+              gap: 10,
+              justifyContent: "center",
+            }}
+          >
             <button
               onClick={refresh}
               style={{
@@ -381,6 +310,7 @@ export default function StatsTerritories(props: any) {
                 color: "#fff",
                 fontWeight: 950,
                 cursor: "pointer",
+                minWidth: 110,
               }}
             >
               {t("generic.refresh", "Rafraîchir")}
@@ -396,461 +326,195 @@ export default function StatsTerritories(props: any) {
                 color: "#fff",
                 fontWeight: 950,
                 cursor: "pointer",
+                minWidth: 110,
               }}
               title="Supprime l'historique TERRITORIES local"
             >
               {t("generic.clear", "Effacer")}
             </button>
           </div>
-        
-        <Section title={t("territories.gameplay", "Gameplay")}>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 10 }}>
-            <div style={kpiCardStyle}>
-              <div style={{ fontSize: 12, opacity: 0.8, fontWeight: 950 }}>{t("territories.capturesTotal", "Captures")}</div>
-              <div style={{ marginTop: 6, fontSize: 22, fontWeight: 1000 }}>{totalCaptures}</div>
-            </div>
+        </div>
 
-            <div style={kpiCardStyle}>
-              <div style={{ fontSize: 12, opacity: 0.8, fontWeight: 950 }}>{t("territories.capturesAvg", "Captures (moy.)")}</div>
-              <div style={{ marginTop: 6, fontSize: 22, fontWeight: 1000 }}>{avgCapturesPerMatch}</div>
-            </div>
-
-            <div style={kpiCardStyle}>
-              <div style={{ fontSize: 12, opacity: 0.8, fontWeight: 950 }}>{t("territories.capturesPerRound", "Captures / tour")}</div>
-              <div style={{ marginTop: 6, fontSize: 22, fontWeight: 1000 }}>{avgCapturesPerRound}</div>
-            </div>
-          </div>
-
-          <div style={{ marginTop: 12, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-            <div
-              style={{
-                borderRadius: 16,
-                padding: 12,
-                border: "1px solid rgba(255,255,255,0.10)",
-                background: "rgba(0,0,0,0.16)",
-              }}
-            >
-              <div style={{ fontWeight: 1000, marginBottom: 8, color: accent }}>
-                {t("territories.winnerCaptures", "Winner & captures")}
-              </div>
-
-              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
-                  <div style={{ fontWeight: 950, opacity: 0.9 }}>
-                    {t("territories.pctWinnerMostCaptures", "Winner = + de captures")}
-                  </div>
-                  <div style={{ fontWeight: 1000 }}>{winnerCaptureKPIs.pctWinnerMostCaptures}%</div>
-                </div>
-
-                <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
-                  <div style={{ fontWeight: 950, opacity: 0.9 }}>
-                    {t("territories.avgWinnerCaptureShare", "Share captures (winner)")}
-                  </div>
-                  <div style={{ fontWeight: 1000 }}>{winnerCaptureKPIs.avgWinnerSharePct}%</div>
-                </div>
-
-                <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
-                  <div style={{ fontWeight: 950, opacity: 0.9 }}>
-                    {t("territories.captureMarginAvg", "Écart captures (moy.)")}
-                  </div>
-                  <div style={{ fontWeight: 1000 }}>{captureMargins.avg}</div>
-                </div>
-
-                <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
-                  <div style={{ fontWeight: 950, opacity: 0.9 }}>
-                    {t("territories.captureMarginBest", "Écart captures (max)")}
-                  </div>
-                  <div style={{ fontWeight: 1000 }}>{captureMargins.best}</div>
-                </div>
-              </div>
-            </div>
-
-            <div
-              style={{
-                borderRadius: 16,
-                padding: 12,
-                border: "1px solid rgba(255,255,255,0.10)",
-                background: "rgba(0,0,0,0.16)",
-              }}
-            >
-              <div style={{ fontWeight: 1000, marginBottom: 8, color: accent }}>
-                {t("territories.mapsGameplay", "Maps gameplay")}
-              </div>
-
-              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                <RowKV
-                  label={t("territories.toughestMap", "Map la + longue")}
-                  value={mapGameplay.toughest ? `${TERRITORY_MAPS[mapGameplay.toughest.mapId]?.name || mapGameplay.toughest.mapId} · ${mapGameplay.toughest.avgRounds}` : "—"}
-                />
-                <RowKV
-                  label={t("territories.mostContestedMap", "Map la + serrée")}
-                  value={mapGameplay.mostContested ? `${TERRITORY_MAPS[mapGameplay.mostContested.mapId]?.name || mapGameplay.mostContested.mapId} · ${mapGameplay.mostContested.avgMargin}` : "—"}
-                />
-                <RowKV
-                  label={t("territories.mostActionMap", "Map la + action")}
-                  value={mapGameplay.mostAction ? `${TERRITORY_MAPS[mapGameplay.mostAction.mapId]?.name || mapGameplay.mostAction.mapId} · ${mapGameplay.mostAction.avgCaptures}` : "—"}
-                />
-              </div>
-
-              <div style={{ marginTop: 10, fontSize: 12, opacity: 0.75 }}>
-                {t("territories.mapsGameplayHint", "Longue = + de tours · Serrée = faible écart · Action = + de captures")}
-              </div>
+        {/* KPIs */}
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(2, minmax(0,1fr))",
+            gap: 10,
+          }}
+        >
+          <div
+            style={{
+              ...kpiBox,
+              borderColor: "rgba(246,194,86,.9)",
+              boxShadow:
+                "0 0 0 1px rgba(246,194,86,.35), 0 0 14px rgba(246,194,86,.7)",
+            }}
+          >
+            <div style={kpiLabel}>{t("stats.matches", "Parties")}</div>
+            <div style={{ ...kpiValueMain, color: T.gold }}>{total}</div>
+            <div style={{ fontSize: 11, color: T.text70 }}>
+              {uniqueMaps} {t("territories.maps", "maps")} • {last7} {t("stats.last7", "7j")}
             </div>
           </div>
 
-          <div style={{ marginTop: 12 }}>
-            <div style={{ fontWeight: 1000, marginBottom: 8, color: accent }}>
-              {t("territories.topByDom", "Top maps — domination (avg winner)")}
-            </div>
-
-            {mapGameplay.topByDom?.length ? (
-              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                {mapGameplay.topByDom.map((m) => (
-                  <div
-                    key={m.mapId}
-                    style={{
-                      borderRadius: 14,
-                      padding: 10,
-                      border: "1px solid rgba(255,255,255,0.10)",
-                      background: "rgba(0,0,0,0.16)",
-                      display: "grid",
-                      gridTemplateColumns: "1fr auto auto",
-                      gap: 12,
-                      alignItems: "center",
-                    }}
-                  >
-                    <div style={{ fontWeight: 1000, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                      {TERRITORY_MAPS[m.mapId]?.name || m.mapId}
-                      <span style={{ opacity: 0.7, marginLeft: 8, fontSize: 12 }}>
-                        ({m.matches})
-                      </span>
-                    </div>
-                    <div style={{ fontWeight: 1000, opacity: 0.9 }}>{t("territories.dom", "Dom")} {m.avgWinDom}</div>
-                    <div style={{ fontWeight: 1000, opacity: 0.85 }}>{t("territories.rnds", "Tours")} {m.avgRounds}</div>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <div style={{ fontSize: 13, opacity: 0.8 }}>{t("stats.empty", "Aucune partie enregistrée.")}</div>
-            )}
-          </div>
-        </Section>
-
-
-</Section>
-
-        <Section title={t("territories.insights", "Aperçus")}> 
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-            <div
-              style={{
-                borderRadius: 16,
-                padding: 12,
-                border: "1px solid rgba(255,255,255,0.10)",
-                background: "rgba(0,0,0,0.16)",
-              }}
-            >
-              <div style={{ fontWeight: 1000, marginBottom: 8, color: accent }}>
-                {t("territories.formats", "Formats")}
-              </div>
-              {byFormat.length ? (
-                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                  {byFormat.slice(0, 6).map(([k, n]) => (
-                    <div key={k} style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
-                      <div style={{ fontWeight: 950, opacity: 0.9 }}>{k}</div>
-                      <div style={{ fontWeight: 1000 }}>{n}</div>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <div style={{ fontSize: 13, opacity: 0.8 }}>{t("stats.empty", "Aucune partie enregistrée.")}</div>
-              )}
-            </div>
-
-            <div
-              style={{
-                borderRadius: 16,
-                padding: 12,
-                border: "1px solid rgba(255,255,255,0.10)",
-                background: "rgba(0,0,0,0.16)",
-              }}
-            >
-              <div style={{ fontWeight: 1000, marginBottom: 8, color: accent }}>
-                {t("territories.objectives", "Objectifs")}
-              </div>
-              {byObjective.length ? (
-                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                  {byObjective.slice(0, 6).map(([k, n]) => (
-                    <div key={k} style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
-                      <div style={{ fontWeight: 950, opacity: 0.9 }}>
-                        {t("territories.objective", "Objective")}: {k}
-                      </div>
-                      <div style={{ fontWeight: 1000 }}>{n}</div>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <div style={{ fontSize: 13, opacity: 0.8 }}>{t("stats.empty", "Aucune partie enregistrée.")}</div>
-              )}
+          <div
+            style={{
+              ...kpiBox,
+              borderColor: "rgba(71,181,255,.6)",
+              boxShadow:
+                "0 0 0 1px rgba(71,181,255,.16), 0 0 12px rgba(71,181,255,.55)",
+            }}
+          >
+            <div style={kpiLabel}>{t("territories.domWinner", "Domination (winner)")}</div>
+            <div style={{ ...kpiValueMain, color: "#47B5FF" }}>{avgDomWinner}</div>
+            <div style={{ fontSize: 11, color: T.text70 }}>
+              {t("territories.marginAvg", "Écart moyen")}: {avgMargin}
             </div>
           </div>
 
-          <div style={{ marginTop: 12, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-            <div
-              style={{
-                borderRadius: 16,
-                padding: 12,
-                border: "1px solid rgba(255,255,255,0.10)",
-                background: "rgba(0,0,0,0.16)",
-              }}
-            >
-              <div style={{ fontWeight: 1000, marginBottom: 8, color: accent }}>
-                {t("territories.records", "Records")}
-              </div>
-              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
-                  <div style={{ fontWeight: 950, opacity: 0.9 }}>{t("territories.bestWinDom", "Meilleure domination")}</div>
-                  <div style={{ fontWeight: 1000 }}>{bestWinDom.best}</div>
-                </div>
-                <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
-                  <div style={{ fontWeight: 950, opacity: 0.9 }}>{t("territories.bestMargin", "Plus gros écart")}</div>
-                  <div style={{ fontWeight: 1000 }}>{bestMargin.best}</div>
-                </div>
-              </div>
-              <div style={{ marginTop: 8, fontSize: 12, opacity: 0.75 }}>
-                {t("territories.recordsHint", "Les records sont calculés sur les parties enregistrées localement.")}
-              </div>
-            </div>
-
-            <div
-              style={{
-                borderRadius: 16,
-                padding: 12,
-                border: "1px solid rgba(255,255,255,0.10)",
-                background: "rgba(0,0,0,0.16)",
-              }}
-            >
-              <div style={{ fontWeight: 1000, marginBottom: 8, color: accent }}>
-                {t("territories.recent", "Récents")}
-              </div>
-              {recent7.length ? (
-                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                  {recent7.slice(0, 5).map((it) => {
-                    const mapName = TERRITORY_MAPS[it.mapId]?.name || it.mapId;
-                    const win = Math.max(...(it.domination || [0]));
-                    return (
-                      <div key={it.id} style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
-                        <div style={{ fontWeight: 950, opacity: 0.9, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                          {mapName}
-                        </div>
-                        <div style={{ fontWeight: 1000 }}>{win}</div>
-                      </div>
-                    );
-                  })}
-                </div>
-              ) : (
-                <div style={{ fontSize: 13, opacity: 0.8 }}>{t("territories.noRecent", "Aucune partie sur les 7 derniers jours.")}</div>
-              )}
-            </div>
-          </div>
-        </Section>
-
-        <Section title={t("territories.analysis", "Analyse")}> 
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-            <div
-              style={{
-                borderRadius: 16,
-                padding: 12,
-                border: "1px solid rgba(255,255,255,0.10)",
-                background: "rgba(0,0,0,0.14)",
-              }}
-            >
-              <div style={{ fontWeight: 1000, marginBottom: 8 }}>{t("territories.formats", "Formats")}</div>
-              {byFormat.length ? (
-                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                  {byFormat.slice(0, 6).map(([k, n]) => (
-                    <div
-                      key={k}
-                      style={{
-                        display: "flex",
-                        justifyContent: "space-between",
-                        gap: 10,
-                        padding: "8px 10px",
-                        borderRadius: 12,
-                        border: "1px solid rgba(255,255,255,0.10)",
-                        background: "rgba(255,255,255,0.04)",
-                        fontWeight: 900,
-                      }}
-                    >
-                      <span>{k}</span>
-                      <span style={{ opacity: 0.85 }}>{n}</span>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <div style={{ fontSize: 13, opacity: 0.8 }}>{t("stats.empty", "Aucune partie enregistrée.")}</div>
-              )}
-            </div>
-
-            <div
-              style={{
-                borderRadius: 16,
-                padding: 12,
-                border: "1px solid rgba(255,255,255,0.10)",
-                background: "rgba(0,0,0,0.14)",
-              }}
-            >
-              <div style={{ fontWeight: 1000, marginBottom: 8 }}>{t("territories.objectives", "Objectifs")}</div>
-              {byObjective.length ? (
-                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                  {byObjective.slice(0, 6).map(([k, n]) => (
-                    <div
-                      key={k}
-                      style={{
-                        display: "flex",
-                        justifyContent: "space-between",
-                        gap: 10,
-                        padding: "8px 10px",
-                        borderRadius: 12,
-                        border: "1px solid rgba(255,255,255,0.10)",
-                        background: "rgba(255,255,255,0.04)",
-                        fontWeight: 900,
-                      }}
-                    >
-                      <span>{t("territories.objective", "Objective")}: {k}</span>
-                      <span style={{ opacity: 0.85 }}>{n}</span>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <div style={{ fontSize: 13, opacity: 0.8 }}>{t("stats.empty", "Aucune partie enregistrée.")}</div>
-              )}
+          <div
+            style={{
+              ...kpiBox,
+              borderColor: "rgba(255,184,222,.6)",
+              boxShadow:
+                "0 0 0 1px rgba(255,184,222,.16), 0 0 12px rgba(255,184,222,.55)",
+            }}
+          >
+            <div style={kpiLabel}>{t("territories.roundsAvg", "Tours (moy.)")}</div>
+            <div style={{ ...kpiValueMain, color: "#FFB8DE" }}>{avgRounds}</div>
+            <div style={{ fontSize: 11, color: T.text70 }}>
+              {t("territories.objective", "Objectif")}: {items[0]?.objective ?? "—"}
             </div>
           </div>
 
-          <div style={{ marginTop: 10, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-            <div
-              style={{
-                borderRadius: 16,
-                padding: 12,
-                border: "1px solid rgba(255,255,255,0.10)",
-                background: "rgba(0,0,0,0.14)",
-              }}
-            >
-              <div style={{ fontWeight: 1000, marginBottom: 6 }}>{t("territories.bestDom", "Meilleure domination")}</div>
-              <div style={{ fontSize: 13, opacity: 0.9 }}>
-                {t("territories.bestDomValue", "Score max (team gagnante)")}: <strong>{bestWinDom.best}</strong>
-              </div>
-              <div style={{ marginTop: 6, fontSize: 12, opacity: 0.7 }}>
-                {bestWinDom.bestId ? `#${bestWinDom.bestId}` : "—"}
-              </div>
-            </div>
-
-            <div
-              style={{
-                borderRadius: 16,
-                padding: 12,
-                border: "1px solid rgba(255,255,255,0.10)",
-                background: "rgba(0,0,0,0.14)",
-              }}
-            >
-              <div style={{ fontWeight: 1000, marginBottom: 6 }}>{t("territories.bestMargin", "Plus gros écart")}</div>
-              <div style={{ fontSize: 13, opacity: 0.9 }}>
-                {t("territories.bestMarginValue", "Écart max")}: <strong>{bestMargin.best}</strong>
-              </div>
-              <div style={{ marginTop: 6, fontSize: 12, opacity: 0.7 }}>
-                {bestMargin.bestId ? `#${bestMargin.bestId}` : "—"}
-              </div>
+          <div
+            style={{
+              ...kpiBox,
+              borderColor: "rgba(124,255,154,.6)",
+              boxShadow:
+                "0 0 0 1px rgba(124,255,154,.16), 0 0 12px rgba(124,255,154,.55)",
+            }}
+          >
+            <div style={kpiLabel}>{t("territories.captures", "Captures")}</div>
+            <div style={{ ...kpiValueMain, color: "#7CFF9A" }}>{avgCaptures}</div>
+            <div style={{ fontSize: 11, color: T.text70 }}>
+              {t("territories.capturesPerRound", "Captures / tour")}: {avgCapturesPerRound}
             </div>
           </div>
-        </Section>
+        </div>
 
-        <Section title={t("territories.topMaps", "Maps les plus jouées")}>
+        {/* TOP MAPS */}
+        <div style={card}>
+          <div style={{ ...goldNeon, fontSize: 13, marginBottom: 10 }}>
+            {t("territories.topMaps", "Maps les plus jouées")}
+          </div>
+
           {byMap.length ? (
             <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-              {byMap.slice(0, 8).map(([mapId, n]) => {
+              {byMap.slice(0, 8).map(([mapId, count]) => {
                 const name = TERRITORY_MAPS[mapId]?.name || mapId;
+                const ratio = total > 0 ? clamp01(count / total) : 0;
                 return (
-                  <div
-                    key={mapId}
-                    style={{
-                      borderRadius: 14,
-                      padding: 10,
-                      border: "1px solid rgba(255,255,255,0.10)",
-                      background: "rgba(0,0,0,0.16)",
-                      display: "flex",
-                      justifyContent: "space-between",
-                      gap: 12,
-                    }}
-                  >
-                    <div style={{ fontWeight: 1000 }}>{name}</div>
-                    <div style={{ fontWeight: 1000, opacity: 0.85 }}>{n}</div>
+                  <div key={mapId} style={row}>
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ fontWeight: 1000, color: "#ddd" }}>{name}</div>
+                      <div style={{ fontSize: 11, color: T.text70 }}>
+                        {t("stats.share", "Part")}: {Math.round(ratio * 100)}%
+                      </div>
+                    </div>
+                    <div style={{ fontWeight: 1000, color: T.gold }}>{count}</div>
                   </div>
                 );
               })}
             </div>
           ) : (
-            <div style={{ fontSize: 13, opacity: 0.8 }}>{t("stats.empty", "Aucune partie enregistrée.")}</div>
+            <div style={{ fontSize: 13, color: T.text70 }}>
+              {t("stats.empty", "Aucune partie enregistrée.")}
+            </div>
           )}
-        </Section>
+        </div>
 
-        <Section title={t("stats.history", "Historique")}> 
+        {/* RECORDS */}
+        <div style={card}>
+          <div style={{ ...goldNeon, fontSize: 13, marginBottom: 10 }}>
+            {t("stats.records", "Records")}
+          </div>
+
+          {bestGame ? (
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              <div style={row}>
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ fontWeight: 1000, color: "#ddd" }}>
+                    {t("territories.bestDom", "Meilleure domination (winner)")}
+                  </div>
+                  <div style={{ fontSize: 11, color: T.text70 }}>
+                    {TERRITORY_MAPS[bestGame.mapId]?.name || bestGame.mapId} • {fmtDate(bestGame.when)}
+                  </div>
+                </div>
+                <div style={{ fontWeight: 1000, color: "#47B5FF" }}>
+                  {n(bestGame.domination?.[n(bestGame.winnerTeam)] ?? 0)}
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div style={{ fontSize: 13, color: T.text70 }}>
+              {t("stats.empty", "Aucune partie enregistrée.")}
+            </div>
+          )}
+        </div>
+
+        {/* HISTORY */}
+        <div style={card}>
+          <div style={{ ...goldNeon, fontSize: 13, marginBottom: 10 }}>
+            {t("stats.history", "Historique")}
+          </div>
+
           {items.length ? (
-            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-              {items.slice(0, 30).map((it) => {
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              {items.slice(0, 25).map((it) => {
                 const mapName = TERRITORY_MAPS[it.mapId]?.name || it.mapId;
+                const dom = Array.isArray(it.domination) ? it.domination.map(n) : [];
+                const cap = Array.isArray(it.captured) ? it.captured.map(n) : [];
+                const w = n(it.winnerTeam);
+                const wDom = n(dom[w] ?? 0);
+                const wCap = n(cap[w] ?? 0);
+                const totalCap = cap.reduce((a, b) => a + n(b), 0);
+                const share = totalCap > 0 ? Math.round((wCap / totalCap) * 1000) / 10 : 0;
+
                 return (
-                  <div
-                    key={it.id}
-                    style={{
-                      borderRadius: 16,
-                      padding: 12,
-                      border: "1px solid rgba(255,255,255,0.10)",
-                      background: "rgba(255,255,255,0.04)",
-                    }}
-                  >
-                    <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
-                      <div style={{ fontWeight: 1000 }}>{mapName}</div>
-                      <div style={{ fontSize: 12, opacity: 0.8, fontWeight: 900 }}>{fmtDate(it.when)}</div>
+                  <div key={it.id} style={row}>
+                    <div style={{ minWidth: 0 }}>
+                      <div
+                        style={{
+                          display: "flex",
+                          gap: 8,
+                          alignItems: "baseline",
+                          flexWrap: "wrap",
+                        }}
+                      >
+                        <div style={{ fontWeight: 1000, color: "#ddd" }}>{mapName}</div>
+                        <div style={{ fontSize: 11, color: T.text70 }}>{fmtDate(it.when)}</div>
+                      </div>
+                      <div style={{ fontSize: 11, color: T.text70, marginTop: 2 }}>
+                        {t("territories.rounds", "Tours")}: {n(it.rounds)} • {t("territories.domination", "Dom")}: {wDom} • {t("territories.captures", "Cap")}: {wCap} ({share}%)
+                      </div>
                     </div>
-                    <div style={{ marginTop: 6, fontSize: 12, opacity: 0.85, fontWeight: 900 }}>
-                      Teams: {it.teams} — {it.teamSize === 1 ? "Solo" : `${it.teamSize}v${it.teamSize}`} — Objective: {it.objective}
-                    </div>
-                    <div style={{ marginTop: 10, display: "flex", gap: 8, flexWrap: "wrap" }}>
-                      {(it.domination || []).map((d, i) => (
-                        <div
-                          key={i}
-                          style={{
-                            padding: "6px 10px",
-                            borderRadius: 999,
-                            border: "1px solid rgba(255,255,255,0.10)",
-                            background: i === it.winnerTeam ? "rgba(255,215,100,0.14)" : "rgba(0,0,0,0.14)",
-                            fontSize: 12,
-                            fontWeight: 950,
-                          }}
-                        >
-                          T{i + 1}: {d}
-                        </div>
-                      ))}
-                    </div>
+                    <div style={{ fontWeight: 1000, color: T.gold }}>{wDom}</div>
                   </div>
                 );
               })}
             </div>
           ) : (
-            <div style={{ fontSize: 13, opacity: 0.8 }}>{t("stats.empty", "Aucune partie enregistrée.")}</div>
+            <div style={{ fontSize: 13, color: T.text70, textAlign: "center" }}>
+              {t(
+                "territories.noData",
+                "Aucune partie enregistrée — lance une partie Territories et tes stats apparaîtront ici."
+              )}
+            </div>
           )}
-        </Section>
+        </div>
       </div>
-    </div>
-  );
-}
-
-
-function RowKV({ label, value }: { label: string; value: any }) {
-  return (
-    <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
-      <div style={{ fontWeight: 950, opacity: 0.9 }}>{label}</div>
-      <div style={{ fontWeight: 1000, opacity: 0.95, textAlign: "right" }}>{value}</div>
     </div>
   );
 }

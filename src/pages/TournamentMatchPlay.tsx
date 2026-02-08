@@ -289,6 +289,8 @@ export default function TournamentMatchPlay({ store, go, params }: any) {
 
   const mode = detectMode(tour);
 
+  const isBabyFootMode = isBabyFoot || mode === "babyfoot" || String((tour as any)?.game?.rules?.sport || "").toLowerCase() === "babyfoot";
+
   const aId = String((tm as any).aPlayerId || "");
   const bId = String((tm as any).bPlayerId || "");
 
@@ -304,6 +306,11 @@ export default function TournamentMatchPlay({ store, go, params }: any) {
   const [petSa, setPetSa] = React.useState<number>(0);
   const [petSb, setPetSb] = React.useState<number>(0);
   const [petErr, setPetErr] = React.useState<string>("");
+
+  // ✅ Baby-foot (tournoi) — saisie score simple
+  const [bfSa, setBfSa] = React.useState<number>(0);
+  const [bfSb, setBfSb] = React.useState<number>(0);
+  const [bfErr, setBfErr] = React.useState<string>("");
 
   React.useEffect(() => {
     // reset quand on change de match / tournoi / mode
@@ -399,7 +406,131 @@ export default function TournamentMatchPlay({ store, go, params }: any) {
     );
   }
 
+  
   // ------------------------------------------------------------
+  // ✅ BABY-FOOT — saisie score simple (tournoi)
+  // ------------------------------------------------------------
+  if (isBabyFootMode) {
+    const winnerId = bfSa === bfSb ? null : (bfSa > bfSb ? aId : bId);
+
+    return (
+      <div style={{ minHeight: "100vh", padding: 16, paddingBottom: 90, background: theme.bg, color: theme.text }}>
+        <button onClick={() => go("tournament_view", { id: tournamentId, forceMode: "babyfoot" })}>← Retour tournoi</button>
+
+        <div
+          style={{
+            marginTop: 12,
+            borderRadius: 18,
+            border: `1px solid ${theme.borderSoft}`,
+            background: theme.card,
+            padding: 14,
+          }}
+        >
+          <div style={{ fontWeight: 1000, letterSpacing: 0.8 }}>BABY-FOOT — Score du match</div>
+          <div style={{ marginTop: 6, opacity: 0.8, fontWeight: 800 }}>
+            {nameOf(tour, aId)} vs {nameOf(tour, bId)}
+          </div>
+
+          <div style={{ marginTop: 12, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+            <div>
+              <div style={{ fontWeight: 900, opacity: 0.8, marginBottom: 6 }}>{nameOf(tour, aId)}</div>
+              <input
+                inputMode="numeric"
+                value={String(bfSa)}
+                onChange={(e) => setBfSa(Math.max(0, Math.min(99, Number(e.target.value || 0))))}
+                style={{
+                  width: "100%",
+                  height: 46,
+                  borderRadius: 14,
+                  border: `1px solid ${theme.borderSoft}`,
+                  background: "rgba(0,0,0,0.18)",
+                  color: theme.text,
+                  padding: "0 12px",
+                  fontWeight: 950,
+                  fontSize: 18,
+                  outline: "none",
+                }}
+              />
+            </div>
+
+            <div>
+              <div style={{ fontWeight: 900, opacity: 0.8, marginBottom: 6 }}>{nameOf(tour, bId)}</div>
+              <input
+                inputMode="numeric"
+                value={String(bfSb)}
+                onChange={(e) => setBfSb(Math.max(0, Math.min(99, Number(e.target.value || 0))))}
+                style={{
+                  width: "100%",
+                  height: 46,
+                  borderRadius: 14,
+                  border: `1px solid ${theme.borderSoft}`,
+                  background: "rgba(0,0,0,0.18)",
+                  color: theme.text,
+                  padding: "0 12px",
+                  fontWeight: 950,
+                  fontSize: 18,
+                  outline: "none",
+                }}
+              />
+            </div>
+          </div>
+
+          {bfErr ? (
+            <div style={{ marginTop: 10, color: "#ff6b6b", fontWeight: 900 }}>{bfErr}</div>
+          ) : null}
+
+          <button
+            onClick={async () => {
+              try {
+                setBfErr("");
+                if (bfSa === bfSb) {
+                  setBfErr("Score nul : il faut un vainqueur pour valider un match de tournoi.");
+                  return;
+                }
+
+                const winnerId2 = bfSa > bfSb ? aId : bId;
+
+                const now = Date.now();
+                const payload = {
+                  kind: "babyfoot",
+                  sport: "babyfoot",
+                  createdAt: now,
+                  players: [
+                    { id: aId, name: nameOf(tour, aId), avatarDataUrl: avatarOf(tour, aId) },
+                    { id: bId, name: nameOf(tour, bId), avatarDataUrl: avatarOf(tour, bId) },
+                  ],
+                  winnerId: winnerId2,
+                  summary: { kind: "babyfoot", scoreA: bfSa, scoreB: bfSb, winnerId: winnerId2 },
+                  payload: { kind: "babyfoot", scoreA: bfSa, scoreB: bfSb, winnerId: winnerId2 },
+                };
+
+                await finishAndSubmit(payload, null);
+              } catch (e: any) {
+                console.error("[babyfoot_tournament] submit error", e);
+                setBfErr(e?.message || "Erreur lors de la validation.");
+              }
+            }}
+            style={{
+              marginTop: 12,
+              width: "100%",
+              height: 50,
+              borderRadius: 16,
+              border: "none",
+              fontWeight: 1000,
+              letterSpacing: 0.8,
+              background: "linear-gradient(180deg,#7cffc4,#21e7a7)",
+              color: "#052016",
+              cursor: "pointer",
+            }}
+          >
+            VALIDER LE MATCH
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+// ------------------------------------------------------------
   // ✅ PÉTANQUE — saisie score simple (tournoi)
   // ------------------------------------------------------------
   if (isPetanque) {

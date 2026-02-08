@@ -53,7 +53,7 @@ type Props = {
   params?: any; // ✅ IMPORTANT: route params (ex: { forceMode: "petanque" })
 };
 
-type Mode = "x01" | "cricket" | "killer" | "shanghai" | "petanque";
+type Mode = "x01" | "cricket" | "killer" | "shanghai" | "petanque" | "babyfoot";
 type TourFormat = "single_ko" | "double_ko" | "round_robin" | "groups_ko";
 type BestOf = 1 | 3 | 5 | 7;
 
@@ -65,6 +65,7 @@ const MODE_LABEL: Record<Mode, string> = {
   killer: "Killer",
   shanghai: "Shanghai",
   petanque: "Pétanque",
+  babyfoot: "Baby-foot",
 };
 
 // ✅ Thème unique (doré)
@@ -783,11 +784,12 @@ export default function TournamentCreate({ store, go, params }: Props) {
   // ✅ FORCE MODE (PÉTANQUE)
   const forceMode = String(params?.forceMode ?? "").toLowerCase();
   const isPetanque = forceMode === "petanque";
+  const isBabyFoot = forceMode === "babyfoot";
 
   const [name, setName] = React.useState("Mon tournoi");
 
   // ✅ IMPORTANT: si forceMode=petanque => mode verrouillé
-  const [mode, setMode] = React.useState<Mode | null>(isPetanque ? "petanque" : null);
+  const [mode, setMode] = React.useState<Mode | null>(isPetanque ? "petanque" : isBabyFoot ? "babyfoot" : null);
   const [sheetMode, setSheetMode] = React.useState(false);
 
   React.useEffect(() => {
@@ -795,6 +797,12 @@ export default function TournamentCreate({ store, go, params }: Props) {
     setMode("petanque");
     setSheetMode(false);
   }, [isPetanque]);
+
+  React.useEffect(() => {
+    if (!isBabyFoot) return;
+    setMode("babyfoot");
+    setSheetMode(false);
+  }, [isBabyFoot]);
 
   // ✅ PÉTANQUE : composition (Simple/Doublette/Triplette/Quadrette)
   const [petanqueTeamSize, setPetanqueTeamSize] = React.useState<PetanqueTeamSize>(2);
@@ -1718,9 +1726,28 @@ async function createTournament() {
     finalPlayers = finalPlayers.concat(bots);
   }
 
-  // ✅ règles : X01 spécifiques + autres modes
+  // ✅ règles : X01 spécifiques + autres modes (+ baby-foot)
   const rules =
-    mode === "x01"
+    mode === "babyfoot"
+      ? {
+          bestOf,
+          repechageEnabled: !!repechageEnabled,
+          seedMode: effectiveSeedMode,
+          rrRounds: Math.max(1, Number(rrRounds) || 1),
+          playersPerGroup: Math.floor(numFromText(playersPerGroup)) || 0,
+          qualifiersPerGroup: Math.floor(Number(qualifiersPerGroup) || 0),
+          bracketAuto: !!bracketAuto,
+          bracketTarget: Math.floor(numFromText(bracketTarget)) || 0,
+          desiredSize: desiredSize || 0,
+          autoFillBots: false, // ⚠️ pas de bots auto en baby-foot (pour l'instant)
+          maxPlayers: capEnabled ? cap : 0,
+
+          // baby-foot specific
+          sport: "babyfoot",
+          matchMode: (forceMode === "babyfoot" ? "1v1" : "1v1"),
+          target: 10,
+        }
+      : mode === "x01"
       ? {
           start: x01Start,
           doubleOut: x01Out === "double",
@@ -1947,7 +1974,7 @@ const petanqueTeamsUI = React.useMemo(() => {
               </div>
 
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                {(["x01", "cricket", "killer", "shanghai"] as Mode[]).map((m) => (
+                {(["babyfoot", "x01", "cricket", "killer", "shanghai"] as Mode[]).map((m) => (
                   <NeonPill key={m} active={mode === m} label={MODE_LABEL[m]} onClick={() => setMode(m)} primary={primary} />
                 ))}
               </div>
@@ -2704,7 +2731,7 @@ const petanqueTeamsUI = React.useMemo(() => {
       <Sheet open={sheetMode && !isPetanque} title="Choisir un mode" onClose={() => setSheetMode(false)} primary={primary}>
         <div style={{ display: "grid", gap: 10 }}>
           <div style={{ display: "grid", gap: 8 }}>
-            {(["x01", "cricket", "killer", "shanghai"] as Mode[]).map((m) => (
+            {(["babyfoot", "x01", "cricket", "killer", "shanghai"] as Mode[]).map((m) => (
               <button
                 key={m}
                 type="button"

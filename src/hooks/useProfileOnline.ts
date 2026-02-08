@@ -53,15 +53,25 @@ export async function fetchOnlineProfile(userId: string): Promise<OnlineProfileR
   const uid = String(userId || "").trim();
   if (!uid) return null;
 
-  // compat: profiles.id OU profiles.owner_user_id
-  const trySelect = async (col: "id" | "owner_user_id") => {
+  // Compat schémas :
+  // - `profiles.id = auth.uid()` (pattern recommandé)
+  // - `profiles.user_id = auth.uid()` (anciens patchs)
+  // - `profiles.owner_user_id = auth.uid()` (anciens patchs)
+  const trySelect = async (col: "id" | "user_id" | "owner_user_id") => {
     return await supabase.from("profiles").select("*").eq(col, uid).single();
   };
 
+  // 1) id
   let res = await trySelect("id");
-  if (res.error && looksLikeMissingColumnError(res.error)) {
-    res = await trySelect("owner_user_id");
-  }
+  if (!res.error && res.data) return mapRow(res.data);
+
+  // 2) user_id
+  res = await trySelect("user_id");
+  if (!res.error && res.data) return mapRow(res.data);
+
+  // 3) owner_user_id (si la colonne n'existe pas, on ignore)
+  res = await trySelect("owner_user_id");
+  if (res.error && looksLikeMissingColumnError(res.error)) return null;
   if (res.error || !res.data) return null;
   return mapRow(res.data);
 }
@@ -92,14 +102,21 @@ export async function updateOnlineProfile(
     if (k in patch) dbPatch[k] = (patch as any)[k];
   }
 
-  const tryUpdate = async (col: "id" | "owner_user_id") => {
+  const tryUpdate = async (col: "id" | "user_id" | "owner_user_id") => {
     return await supabase.from("profiles").update(dbPatch).eq(col, uid).select("*").single();
   };
 
+  // 1) id
   let res = await tryUpdate("id");
-  if (res.error && looksLikeMissingColumnError(res.error)) {
-    res = await tryUpdate("owner_user_id");
-  }
+  if (!res.error && res.data) return mapRow(res.data);
+
+  // 2) user_id
+  res = await tryUpdate("user_id");
+  if (!res.error && res.data) return mapRow(res.data);
+
+  // 3) owner_user_id
+  res = await tryUpdate("owner_user_id");
+  if (res.error && looksLikeMissingColumnError(res.error)) return null;
   if (res.error || !res.data) return null;
   return mapRow(res.data);
 }

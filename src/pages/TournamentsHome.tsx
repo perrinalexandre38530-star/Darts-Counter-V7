@@ -3,6 +3,7 @@
 // TOURNOIS — HOME (LOCAL) UI clean (v1) + ✅ SCOPE via params.forceMode
 // ✅ Darts par défaut (inchangé)
 // ✅ Pétanque : si params.forceMode === "petanque" => filtre + libellés + create pré-rempli
+// ✅ Baby-Foot : si params.forceMode === "babyfoot" => filtre + libellés + create pré-rempli
 // ============================================
 
 import React from "react";
@@ -292,7 +293,7 @@ function TickerRow({
 
   const canAuto = !!resumeCounts && (resumeCounts.playable ?? 0) > 0;
 
-  const baseCreateParams = isPetanque ? { forceMode: "petanque" } : {};
+  const baseCreateParams = isPetanque ? { forceMode: "petanque" } : isBabyFoot ? { forceMode: "babyfoot" } : {};
 
   const items = [
     {
@@ -425,6 +426,7 @@ export default function TournamentsHome({ store, go, source = "local", params }:
   // ✅ SCOPE via route params
   const forceMode = String((params as any)?.forceMode || (params as any)?.sport || "").toLowerCase();
   const isPetanque = forceMode === "petanque";
+  const isBabyFoot = forceMode === "babyfoot";
 
   const reload = React.useCallback(() => {
     setLoading(true);
@@ -513,7 +515,7 @@ export default function TournamentsHome({ store, go, source = "local", params }:
     <div className="container" style={{ padding: 16, paddingBottom: 96, color: "#f5f5f7" }}>
       <Card tone="gold">
         <div style={{ fontWeight: 950, fontSize: 20, letterSpacing: 0.5 }}>
-          {isPetanque ? "TOURNOIS PÉTANQUE" : "TOURNOIS"}
+          {isPetanque ? "TOURNOIS PÉTANQUE" : isBabyFoot ? "TOURNOIS BABY-FOOT" : "TOURNOIS"}
         </div>
         <div style={{ opacity: 0.82, fontSize: 12.5, marginTop: 4, lineHeight: 1.35 }}>
           {isPetanque

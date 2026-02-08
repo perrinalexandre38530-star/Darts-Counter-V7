@@ -8,7 +8,7 @@
 // ============================================
 
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
-import { supabaseAuthStorage } from "./supabaseAuthStorage";
+import { purgeLegacyLocalStorageIfNeeded } from "./storageQuota";
 
 const SUPABASE_URL = (import.meta.env.VITE_SUPABASE_URL as string) || "";
 const SUPABASE_ANON_KEY = (import.meta.env.VITE_SUPABASE_ANON_KEY as string) || "";
@@ -60,13 +60,77 @@ declare global {
 }
 
 const canUseWindow = typeof window !== "undefined";
-// ⚠️ IMPORTANT
-// L'app utilise (par design) beaucoup de stockage local (snapshots, store, assets...).
-// Sur certains environnements (mobile / webview / PWA), localStorage a une quota faible.
-// Résultat: Supabase Auth échoue à écrire la session => impossible de se connecter
-// "Failed to execute 'setItem' on 'Storage'... exceeded the quota".
-// ✅ Fix: on stocke la session Supabase Auth dans IndexedDB.
-const storage = canUseWindow ? supabaseAuthStorage : undefined;
+
+// ⚠️ Sur mobile (surtout Android/WebView), le localStorage peut être saturé par des vieux
+// caches/historiques. Si le quota est dépassé, Supabase Auth ne peut plus persister la session
+// (erreur "exceeded the quota"), donc on ne restaure rien au reboot.
+// => On purge les vieux gros keys **avant** de créer le client et on utilise un storage "safe".
+if (canUseWindow) {
+  purgeLegacyLocalStorageIfNeeded({ force: false });
+}
+
+type StorageLike = {
+  getItem: (key: string) => string | null;
+  setItem: (key: string, value: string) => void;
+  removeItem: (key: string) => void;
+};
+
+function safeStorage(): StorageLike | undefined {
+  if (!canUseWindow) return undefined;
+
+  const ls = window.localStorage;
+  const ss = window.sessionStorage;
+
+  const trySet = (s: StorageLike, key: string, value: string) => {
+    try {
+      s.setItem(key, value);
+      return true;
+    } catch {
+      return false;
+    }
+  };
+
+  return {
+    getItem: (key: string) => {
+      try {
+        const v = ls.getItem(key);
+        if (v != null) return v;
+      } catch {
+        // ignore
+      }
+      try {
+        return ss.getItem(key);
+      } catch {
+        return null;
+      }
+    },
+    setItem: (key: string, value: string) => {
+      // 1) localStorage
+      if (trySet(ls, key, value)) return;
+
+      // 2) purge + retry localStorage
+      purgeLegacyLocalStorageIfNeeded({ force: true });
+      if (trySet(ls, key, value)) return;
+
+      // 3) fallback sessionStorage (moins persistant, mais évite le blocage)
+      trySet(ss, key, value);
+    },
+    removeItem: (key: string) => {
+      try {
+        ls.removeItem(key);
+      } catch {
+        // ignore
+      }
+      try {
+        ss.removeItem(key);
+      } catch {
+        // ignore
+      }
+    },
+  };
+}
+
+const storage = safeStorage();
 
 // ✅ storageKey custom UNIQUE par projet Supabase
 const STORAGE_KEY = `dc-supabase-auth-v2:${PROJECT_REF}`;
