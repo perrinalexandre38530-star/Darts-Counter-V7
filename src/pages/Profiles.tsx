@@ -727,15 +727,6 @@ export default function Profiles({
 
   function renameProfile(id: string, name: string) {
     setProfilesSafe((arr) => arr.map((p) => (p.id === id ? { ...p, name } : p)));
-    // ✅ Si c'est le profil lié au compte Supabase, on synchronise aussi le surnom ONLINE.
-    // (source of truth multi-device)
-    try {
-      if (auth.status === "signed_in" && auth.user?.id && String(id) === String(auth.user.id)) {
-        (onlineApi as any)
-          ?.updateProfile?.({ nickname: name, displayName: name })
-          .catch?.(() => {});
-      }
-    } catch {}
     try { (window as any).__flushCloudNow?.(); } catch {}
   }
 
@@ -1478,39 +1469,20 @@ React.useEffect(() => {
           />
         ) : (
           <>
-            <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap", marginBottom: 10 }}>
-              <button
-                className="btn sm"
-                onClick={() => setView("menu")}
-                style={{
-                  borderRadius: 999,
-                  paddingInline: 14,
-                  background: "transparent",
-                  border: `1px solid ${theme.borderSoft}`,
-                  fontSize: 12,
-                }}
-              >
-                ← {t("profiles.menu.back", "Retour au menu Profils")}
-              </button>
-
-              {auth.status === "signed_in" && (
-                <button
-                  className="btn sm"
-                  onClick={() => auth.logout?.()}
-                  style={{
-                    borderRadius: 999,
-                    paddingInline: 14,
-                    background: "rgba(255,255,255,0.06)",
-                    border: `1px solid ${theme.borderSoft}`,
-                    fontSize: 12,
-                    fontWeight: 900,
-                    color: "#fff",
-                  }}
-                >
-                  {t("profiles.logout", "Se déconnecter")}
-                </button>
-              )}
-            </div>
+            <button
+              className="btn sm"
+              onClick={() => setView("menu")}
+              style={{
+                marginBottom: 10,
+                borderRadius: 999,
+                paddingInline: 14,
+                background: "transparent",
+                border: `1px solid ${theme.borderSoft}`,
+                fontSize: 12,
+              }}
+            >
+              ← {t("profiles.menu.back", "Retour au menu Profils")}
+            </button>
 
             {view === "me" && (
               <>
@@ -1931,6 +1903,17 @@ function ActiveProfileBlock({
       ? "#9AA0AA"
       : "#1FB46A";
 
+  // ✅ IMPORTANT (multi-appareils):
+  // Le label sous l'avatar DOIT afficher le surnom (nickname) s'il existe.
+  // Sinon on retombe sur name.
+  const displayName = React.useMemo(() => {
+    const pi = ((active as any)?.privateInfo || {}) as any;
+    const nick = String(pi?.nickname || "").trim();
+    if (nick) return nick;
+    const n = String((active as any)?.name || "").trim();
+    return n || "—";
+  }, [active]);
+
   // =========================
   // ÉTAT ÉDITION
   // =========================
@@ -2108,7 +2091,7 @@ function ActiveProfileBlock({
         <ProfileAvatar
           size={AVATAR}
           dataUrl={avatarSrc}
-          label={active?.name?.[0]?.toUpperCase() || "?"}
+          label={displayName?.[0]?.toUpperCase() || "?"}
           showStars={false}
         />
       </div>
@@ -2132,9 +2115,9 @@ function ActiveProfileBlock({
                 "--dc-accent": primary,
               }}
             >
-              <span className="dc-stats-name-base">{active?.name || "—"}</span>
+              <span className="dc-stats-name-base">{displayName}</span>
               <span className="dc-stats-name-shimmer">
-                {active?.name || "—"}
+                {displayName}
               </span>
             </span>
           </button>
