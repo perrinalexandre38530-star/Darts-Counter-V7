@@ -42,6 +42,23 @@ import logoPetanque from "../assets/games/logo-petanque.png";
 import logoPingPong from "../assets/games/logo-pingpong.png";
 import logoBabyFoot from "../assets/games/logo-babyfoot.png";
 
+// ✅ Sports à venir (SOON)
+import logoArchery from "../assets/games/logo-archery.png";
+import logoMolkky from "../assets/games/logo-molkky.png";
+import logoPadel from "../assets/games/logo-padel.png";
+import logoPickleball from "../assets/games/logo-pickleball.png";
+import logoFrisbee from "../assets/games/logo-frisbee.png";
+import logoBillard from "../assets/games/logo-billard.png";
+import logoBadminton from "../assets/games/logo-badminton.png";
+import logoBasket from "../assets/games/logo-basket.png";
+import logoCornhole from "../assets/games/logo-cornhole.png";
+import logoDiceGame from "../assets/games/logo-dicegame.png";
+import logoFoot from "../assets/games/logo-foot.png";
+import logoRugby from "../assets/games/logo-rugby.png";
+import logoVolley from "../assets/games/logo-volley.png";
+import logoTennis from "../assets/games/logo-tennis.png";
+import logoChess from "../assets/games/logo-chess.png";
+
 type Props = { go?: (tab: any, params?: any) => void };
 
 // ---------------- Thèmes dispo + descriptions fallback ----------------
@@ -1572,13 +1589,50 @@ export default function Settings({ go }: Props) {
   }
 
   function SportSection() {
-    type GameId = "darts" | "petanque" | "pingpong" | "babyfoot";
+    type GameId =
+      | "darts"
+      | "petanque"
+      | "pingpong"
+      | "babyfoot"
+      | "archery"
+      | "molkky"
+      | "padel"
+      | "pickleball"
+      | "frisbee"
+      | "billard"
+      | "badminton"
+      | "basket"
+      | "cornhole"
+      | "dicegame"
+      | "foot"
+      | "rugby"
+      | "volley"
+      | "tennis"
+      | "chess";
 
     const GAMES: { id: GameId; label: string; logo: string }[] = [
+      // ✅ DISPONIBLES
       { id: "darts", label: "Fléchettes", logo: logoDarts },
       { id: "petanque", label: "Pétanque", logo: logoPetanque },
       { id: "pingpong", label: "Ping-Pong", logo: logoPingPong },
       { id: "babyfoot", label: "Babyfoot", logo: logoBabyFoot },
+
+      // ⏳ SOON
+      { id: "archery", label: "Tir à l'arc", logo: logoArchery },
+      { id: "badminton", label: "Badminton", logo: logoBadminton },
+      { id: "basket", label: "Basket", logo: logoBasket },
+      { id: "billard", label: "Billard", logo: logoBillard },
+      { id: "chess", label: "Échecs", logo: logoChess },
+      { id: "cornhole", label: "Cornhole", logo: logoCornhole },
+      { id: "dicegame", label: "Dice Game", logo: logoDiceGame },
+      { id: "foot", label: "Foot", logo: logoFoot },
+      { id: "frisbee", label: "Frisbee", logo: logoFrisbee },
+      { id: "molkky", label: "Mölkky", logo: logoMolkky },
+      { id: "padel", label: "Padel", logo: logoPadel },
+      { id: "pickleball", label: "Pickleball", logo: logoPickleball },
+      { id: "rugby", label: "Rugby", logo: logoRugby },
+      { id: "tennis", label: "Tennis", logo: logoTennis },
+      { id: "volley", label: "Volley", logo: logoVolley },
     ];
 
     // ✅ Jeux réellement disponibles
@@ -1587,7 +1641,32 @@ export default function Settings({ go }: Props) {
       petanque: true,
       pingpong: true,
       babyfoot: true,
+
+      // ⏳ SOON
+      archery: false,
+      molkky: false,
+      padel: false,
+      pickleball: false,
+      frisbee: false,
+      billard: false,
+      badminton: false,
+      basket: false,
+      cornhole: false,
+      dicegame: false,
+      foot: false,
+      rugby: false,
+      volley: false,
+      tennis: false,
+      chess: false,
     };
+
+    // ✅ Tri demandé: disponibles d'abord, puis SOON (grisés), ordre alphabétique FR
+    const sortedGames = React.useMemo(() => {
+      const copy = [...GAMES];
+      copy.sort((a, b) => a.label.localeCompare(b.label, "fr"));
+      copy.sort((a, b) => Number(!!ENABLED[b.id]) - Number(!!ENABLED[a.id]));
+      return copy;
+    }, []);
 
     const onPick = (id: GameId) => {
       try {
@@ -1628,7 +1707,7 @@ export default function Settings({ go }: Props) {
         </p>
 
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-          {GAMES.map((g) => {
+          {sortedGames.map((g) => {
             const enabled = !!ENABLED[g.id];
 
             return (

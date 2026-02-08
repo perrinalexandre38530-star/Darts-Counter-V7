@@ -13,6 +13,17 @@ export type TerritoriesMatch = {
 
 const KEY = "dc_territories_history_v1";
 
+function emitUpdated() {
+  try {
+    if (typeof window !== "undefined") {
+      // Unifie le refresh du "Centre de statistiques" (StatsHub écoute déjà cet event)
+      window.dispatchEvent(new Event("dc-history-updated"));
+      // Event dédié Territories (optionnel)
+      window.dispatchEvent(new Event("dc-territories-updated"));
+    }
+  } catch {}
+}
+
 export function loadTerritoriesHistory(): TerritoriesMatch[] {
   try {
     const raw = localStorage.getItem(KEY);
@@ -30,10 +41,12 @@ export function pushTerritoriesHistory(m: TerritoriesMatch) {
   try {
     localStorage.setItem(KEY, JSON.stringify(next));
   } catch {}
+  emitUpdated();
 }
 
 export function clearTerritoriesHistory() {
   try {
     localStorage.removeItem(KEY);
   } catch {}
+  emitUpdated();
 }
