@@ -883,16 +883,15 @@ const card: React.CSSProperties = {
   backdropFilter: "blur(10px)",
 };
 
-
+// ✅ Variante "soft" (sans padding par défaut) — utilisée par certains blocs (ex: GOLF)
+// ⚠️ IMPORTANT: doit exister pour éviter ReferenceError: softCard is not defined
 const softCard: React.CSSProperties = {
-  ...card,
   background: "rgba(0,0,0,0.22)",
   border: `1px solid ${T.edge}`,
-  borderRadius: 16,
-  padding: 12,
-  boxShadow: "none",
+  borderRadius: 18,
+  boxShadow: "0 8px 22px rgba(0,0,0,.28)",
+  backdropFilter: "blur(10px)",
 };
-
 
 const row: React.CSSProperties = {
   ...card,
@@ -5106,15 +5105,13 @@ return (
 
             {currentMode === "cricket" && (
               <div style={card}>
-                {cricketStats ? (
-                  <React.Suspense fallback={<LazyFallback label="Chargement Cricket…" />}>
-                    <StatsCricketDashboard stats={cricketStats} />
-                  </React.Suspense>
-                ) : (
-                  <div style={{ color: T.text70, fontSize: 13 }}>
-                    Aucune statistique Cricket disponible.
-                  </div>
-                )}
+                <React.Suspense fallback={<LazyFallback label="Chargement Cricket…" />}>
+                  {/*
+                    IMPORTANT: on affiche TOUJOURS le dashboard.
+                    Il gère déjà l'état "vide" (stats null/undefined => 0 partout).
+                  */}
+                  <StatsCricketDashboard stats={cricketStats} />
+                </React.Suspense>
               </div>
             )}
 
