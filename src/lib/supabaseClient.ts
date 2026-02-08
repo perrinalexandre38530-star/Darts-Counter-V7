@@ -8,6 +8,7 @@
 // ============================================
 
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import { supabaseAuthStorage } from "./supabaseAuthStorage";
 
 const SUPABASE_URL = (import.meta.env.VITE_SUPABASE_URL as string) || "";
 const SUPABASE_ANON_KEY = (import.meta.env.VITE_SUPABASE_ANON_KEY as string) || "";
@@ -59,7 +60,13 @@ declare global {
 }
 
 const canUseWindow = typeof window !== "undefined";
-const storage = canUseWindow ? window.localStorage : undefined;
+// ⚠️ IMPORTANT
+// L'app utilise (par design) beaucoup de stockage local (snapshots, store, assets...).
+// Sur certains environnements (mobile / webview / PWA), localStorage a une quota faible.
+// Résultat: Supabase Auth échoue à écrire la session => impossible de se connecter
+// "Failed to execute 'setItem' on 'Storage'... exceeded the quota".
+// ✅ Fix: on stocke la session Supabase Auth dans IndexedDB.
+const storage = canUseWindow ? supabaseAuthStorage : undefined;
 
 // ✅ storageKey custom UNIQUE par projet Supabase
 const STORAGE_KEY = `dc-supabase-auth-v2:${PROJECT_REF}`;

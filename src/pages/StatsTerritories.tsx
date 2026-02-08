@@ -123,6 +123,145 @@ export default function StatsTerritories(props: any) {
     return { best, bestId };
   }, [items]);
 
+
+  const totalCaptures = React.useMemo(() => {
+    let sum = 0;
+    for (const it of items) {
+      const caps = Array.isArray(it.captured) ? it.captured : [];
+      for (const c of caps) sum += Number(c) || 0;
+    }
+    return sum;
+  }, [items]);
+
+  const avgCapturesPerMatch = React.useMemo(() => {
+    if (!items.length) return 0;
+    return Math.round((totalCaptures / items.length) * 10) / 10;
+  }, [items, totalCaptures]);
+
+  const avgCapturesPerRound = React.useMemo(() => {
+    if (!items.length) return 0;
+    let sum = 0;
+    let rounds = 0;
+    for (const it of items) {
+      const r = Number(it.rounds) || 0;
+      if (r > 0) {
+        rounds += r;
+        const caps = Array.isArray(it.captured) ? it.captured : [];
+        for (const c of caps) sum += Number(c) || 0;
+      }
+    }
+    if (rounds <= 0) return 0;
+    return Math.round((sum / rounds) * 10) / 10;
+  }, [items]);
+
+  const captureMargins = React.useMemo(() => {
+    // capture margin = best captures - 2nd best captures
+    let best = 0;
+    let bestId: string | null = null;
+    let sum = 0;
+    let count = 0;
+
+    for (const it of items) {
+      const caps = (Array.isArray(it.captured) ? it.captured : []).map((x) => Number(x) || 0);
+      if (!caps.length) continue;
+      const sorted = [...caps].sort((a, b) => b - a);
+      const m = (sorted[0] || 0) - (sorted[1] || 0);
+      sum += m;
+      count += 1;
+      if (m > best) {
+        best = m;
+        bestId = it.id;
+      }
+    }
+
+    return {
+      avg: count ? Math.round((sum / count) * 10) / 10 : 0,
+      best,
+      bestId,
+    };
+  }, [items]);
+
+  const winnerCaptureKPIs = React.useMemo(() => {
+    // % matches where winner has the most captures; and average winner capture share
+    let winsMost = 0;
+    let count = 0;
+    let shareSum = 0;
+
+    for (const it of items) {
+      const caps = (Array.isArray(it.captured) ? it.captured : []).map((x) => Number(x) || 0);
+      if (!caps.length) continue;
+
+      const total = caps.reduce((a, b) => a + b, 0);
+      const winnerIdx = Number(it.winnerTeam) || 0;
+      const w = caps[winnerIdx] ?? 0;
+      const max = Math.max(...caps);
+
+      if (total > 0) shareSum += w / total;
+      if (w === max) winsMost += 1;
+
+      count += 1;
+    }
+
+    return {
+      pctWinnerMostCaptures: count ? Math.round((winsMost / count) * 100) : 0,
+      avgWinnerSharePct: count ? Math.round(((shareSum / count) * 1000)) / 10 : 0,
+    };
+  }, [items]);
+
+  const mapGameplay = React.useMemo(() => {
+    // Per-map aggregates
+    type Agg = {
+      mapId: string;
+      matches: number;
+      roundsSum: number;
+      marginSum: number;
+      domWinSum: number;
+      capturesSum: number;
+    };
+    const m: Record<string, Agg> = {};
+
+    for (const it of items) {
+      const mapId = String(it.mapId || "");
+      if (!mapId) continue;
+
+      if (!m[mapId]) {
+        m[mapId] = { mapId, matches: 0, roundsSum: 0, marginSum: 0, domWinSum: 0, capturesSum: 0 };
+      }
+
+      const dom = (Array.isArray(it.domination) ? it.domination : []).map((x) => Number(x) || 0);
+      const sortedDom = [...dom].sort((a, b) => b - a);
+      const margin = (sortedDom[0] || 0) - (sortedDom[1] || 0);
+
+      const winDom = dom.length ? Math.max(...dom) : 0;
+      const caps = (Array.isArray(it.captured) ? it.captured : []).map((x) => Number(x) || 0);
+      const totalCaps = caps.reduce((a, b) => a + b, 0);
+
+      m[mapId].matches += 1;
+      m[mapId].roundsSum += Number(it.rounds) || 0;
+      m[mapId].marginSum += margin;
+      m[mapId].domWinSum += winDom;
+      m[mapId].capturesSum += totalCaps;
+    }
+
+    const arr = Object.values(m).map((a) => ({
+      mapId: a.mapId,
+      matches: a.matches,
+      avgRounds: a.matches ? Math.round((a.roundsSum / a.matches) * 10) / 10 : 0,
+      avgMargin: a.matches ? Math.round((a.marginSum / a.matches) * 10) / 10 : 0,
+      avgWinDom: a.matches ? Math.round((a.domWinSum / a.matches) * 10) / 10 : 0,
+      avgCaptures: a.matches ? Math.round((a.capturesSum / a.matches) * 10) / 10 : 0,
+    }));
+
+    const toughest = [...arr].sort((a, b) => b.avgRounds - a.avgRounds)[0] || null;
+    const mostContested = [...arr].sort((a, b) => a.avgMargin - b.avgMargin)[0] || null;
+    const mostAction = [...arr].sort((a, b) => b.avgCaptures - a.avgCaptures)[0] || null;
+
+    // leaderboard: by avgWinDom (dominant winners)
+    const topByDom = [...arr].sort((a, b) => b.avgWinDom - a.avgWinDom).slice(0, 6);
+
+    return { toughest, mostContested, mostAction, topByDom };
+  }, [items]);
+
   const byFormat = React.useMemo(() => {
     const m: Record<string, number> = {};
     for (const it of items) {
@@ -263,7 +402,142 @@ export default function StatsTerritories(props: any) {
               {t("generic.clear", "Effacer")}
             </button>
           </div>
+        
+        <Section title={t("territories.gameplay", "Gameplay")}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 10 }}>
+            <div style={kpiCardStyle}>
+              <div style={{ fontSize: 12, opacity: 0.8, fontWeight: 950 }}>{t("territories.capturesTotal", "Captures")}</div>
+              <div style={{ marginTop: 6, fontSize: 22, fontWeight: 1000 }}>{totalCaptures}</div>
+            </div>
+
+            <div style={kpiCardStyle}>
+              <div style={{ fontSize: 12, opacity: 0.8, fontWeight: 950 }}>{t("territories.capturesAvg", "Captures (moy.)")}</div>
+              <div style={{ marginTop: 6, fontSize: 22, fontWeight: 1000 }}>{avgCapturesPerMatch}</div>
+            </div>
+
+            <div style={kpiCardStyle}>
+              <div style={{ fontSize: 12, opacity: 0.8, fontWeight: 950 }}>{t("territories.capturesPerRound", "Captures / tour")}</div>
+              <div style={{ marginTop: 6, fontSize: 22, fontWeight: 1000 }}>{avgCapturesPerRound}</div>
+            </div>
+          </div>
+
+          <div style={{ marginTop: 12, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+            <div
+              style={{
+                borderRadius: 16,
+                padding: 12,
+                border: "1px solid rgba(255,255,255,0.10)",
+                background: "rgba(0,0,0,0.16)",
+              }}
+            >
+              <div style={{ fontWeight: 1000, marginBottom: 8, color: accent }}>
+                {t("territories.winnerCaptures", "Winner & captures")}
+              </div>
+
+              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
+                  <div style={{ fontWeight: 950, opacity: 0.9 }}>
+                    {t("territories.pctWinnerMostCaptures", "Winner = + de captures")}
+                  </div>
+                  <div style={{ fontWeight: 1000 }}>{winnerCaptureKPIs.pctWinnerMostCaptures}%</div>
+                </div>
+
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
+                  <div style={{ fontWeight: 950, opacity: 0.9 }}>
+                    {t("territories.avgWinnerCaptureShare", "Share captures (winner)")}
+                  </div>
+                  <div style={{ fontWeight: 1000 }}>{winnerCaptureKPIs.avgWinnerSharePct}%</div>
+                </div>
+
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
+                  <div style={{ fontWeight: 950, opacity: 0.9 }}>
+                    {t("territories.captureMarginAvg", "Écart captures (moy.)")}
+                  </div>
+                  <div style={{ fontWeight: 1000 }}>{captureMargins.avg}</div>
+                </div>
+
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
+                  <div style={{ fontWeight: 950, opacity: 0.9 }}>
+                    {t("territories.captureMarginBest", "Écart captures (max)")}
+                  </div>
+                  <div style={{ fontWeight: 1000 }}>{captureMargins.best}</div>
+                </div>
+              </div>
+            </div>
+
+            <div
+              style={{
+                borderRadius: 16,
+                padding: 12,
+                border: "1px solid rgba(255,255,255,0.10)",
+                background: "rgba(0,0,0,0.16)",
+              }}
+            >
+              <div style={{ fontWeight: 1000, marginBottom: 8, color: accent }}>
+                {t("territories.mapsGameplay", "Maps gameplay")}
+              </div>
+
+              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                <RowKV
+                  label={t("territories.toughestMap", "Map la + longue")}
+                  value={mapGameplay.toughest ? `${TERRITORY_MAPS[mapGameplay.toughest.mapId]?.name || mapGameplay.toughest.mapId} · ${mapGameplay.toughest.avgRounds}` : "—"}
+                />
+                <RowKV
+                  label={t("territories.mostContestedMap", "Map la + serrée")}
+                  value={mapGameplay.mostContested ? `${TERRITORY_MAPS[mapGameplay.mostContested.mapId]?.name || mapGameplay.mostContested.mapId} · ${mapGameplay.mostContested.avgMargin}` : "—"}
+                />
+                <RowKV
+                  label={t("territories.mostActionMap", "Map la + action")}
+                  value={mapGameplay.mostAction ? `${TERRITORY_MAPS[mapGameplay.mostAction.mapId]?.name || mapGameplay.mostAction.mapId} · ${mapGameplay.mostAction.avgCaptures}` : "—"}
+                />
+              </div>
+
+              <div style={{ marginTop: 10, fontSize: 12, opacity: 0.75 }}>
+                {t("territories.mapsGameplayHint", "Longue = + de tours · Serrée = faible écart · Action = + de captures")}
+              </div>
+            </div>
+          </div>
+
+          <div style={{ marginTop: 12 }}>
+            <div style={{ fontWeight: 1000, marginBottom: 8, color: accent }}>
+              {t("territories.topByDom", "Top maps — domination (avg winner)")}
+            </div>
+
+            {mapGameplay.topByDom?.length ? (
+              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                {mapGameplay.topByDom.map((m) => (
+                  <div
+                    key={m.mapId}
+                    style={{
+                      borderRadius: 14,
+                      padding: 10,
+                      border: "1px solid rgba(255,255,255,0.10)",
+                      background: "rgba(0,0,0,0.16)",
+                      display: "grid",
+                      gridTemplateColumns: "1fr auto auto",
+                      gap: 12,
+                      alignItems: "center",
+                    }}
+                  >
+                    <div style={{ fontWeight: 1000, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      {TERRITORY_MAPS[m.mapId]?.name || m.mapId}
+                      <span style={{ opacity: 0.7, marginLeft: 8, fontSize: 12 }}>
+                        ({m.matches})
+                      </span>
+                    </div>
+                    <div style={{ fontWeight: 1000, opacity: 0.9 }}>{t("territories.dom", "Dom")} {m.avgWinDom}</div>
+                    <div style={{ fontWeight: 1000, opacity: 0.85 }}>{t("territories.rnds", "Tours")} {m.avgRounds}</div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div style={{ fontSize: 13, opacity: 0.8 }}>{t("stats.empty", "Aucune partie enregistrée.")}</div>
+            )}
+          </div>
         </Section>
+
+
+</Section>
 
         <Section title={t("territories.insights", "Aperçus")}> 
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
@@ -567,6 +841,16 @@ export default function StatsTerritories(props: any) {
           )}
         </Section>
       </div>
+    </div>
+  );
+}
+
+
+function RowKV({ label, value }: { label: string; value: any }) {
+  return (
+    <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
+      <div style={{ fontWeight: 950, opacity: 0.9 }}>{label}</div>
+      <div style={{ fontWeight: 1000, opacity: 0.95, textAlign: "right" }}>{value}</div>
     </div>
   );
 }

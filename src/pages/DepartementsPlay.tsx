@@ -35,6 +35,7 @@ import {
   endTurn,
   countOwnedByOwnerId,
 } from "../territories/engine";
+import { pushTerritoriesHistory } from "../lib/territories/territoriesStats";
 
 // Config payload saved by DepartementsConfig.tsx
 export type TerritoriesConfigPayload = {
@@ -223,6 +224,7 @@ const RULES_TEXT = (cfg: {
 
 export default function DepartementsPlay(props: any) {
   const { theme } = useTheme();
+  const hasRecordedTerritoriesMatchRef = React.useRef(false);
 
   // Profiles store (names + avatars)
   const store = (props as any)?.store ?? (props as any)?.params?.store ?? null;
@@ -393,6 +395,65 @@ export default function DepartementsPlay(props: any) {
     for (const p of players) out[p.id] = { darts: 0, captures: 0, steals: 0, lost: 0 };
     setPlayerStats(out);
   }, [initialState, players]);
+
+  // Persist match into Territories stats history when the game ends (once)
+  React.useEffect(() => {
+    if (game.status !== "game_end") return;
+    if (hasRecordedTerritoriesMatchRef.current) return;
+
+    try {
+      const owned = countOwnedByOwnerId(game);
+      const ownerIds = game.teams?.length
+        ? game.teams.map((t) => t.id)
+        : game.players.map((p) => p.id);
+
+      const domination = ownerIds.map((oid) => Number(owned[oid] || 0));
+
+      // captures: if we don't have a capture timeline, use final domination as a safe proxy
+      const captured = [...domination];
+
+      // winner = best domination (tie => first)
+      let winnerIdx = 0;
+      let best = -1;
+      domination.forEach((v, i) => {
+        if (v > best) {
+          best = v;
+          winnerIdx = i;
+        }
+      });
+
+      const matchId = `terr_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+
+      pushTerritoriesHistory({
+        id: matchId,
+        ts: Date.now(),
+        mapId: String(game.config.country || "unknown"),
+        mapName: undefined,
+        format: game.teams?.length ? "teams" : "solo",
+        teamsCount: ownerIds.length,
+        winnerTeam: winnerIdx,
+        rounds: Number(game.roundIndex) || 0,
+        domination,
+        captured,
+      });
+
+      hasRecordedTerritoriesMatchRef.current = true;
+
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new CustomEvent("dc-history-updated"));
+      }
+    } catch {
+      // Never crash gameplay because of stats recording
+    }
+  }, [game, game.status]);
+
+  // Reset recording guard when a new game starts / resumes playing
+  React.useEffect(() => {
+    if (game.status === "playing") {
+      hasRecordedTerritoriesMatchRef.current = false;
+    }
+  }, [game.status]);
+
 
   const activePlayer = React.useMemo(
     () => game.players.find((p) => p.id === game.turn.activePlayerId),

@@ -42,6 +42,8 @@ import logoPetanque from "../assets/games/logo-petanque.png";
 import logoPingPong from "../assets/games/logo-pingpong.png";
 import logoBabyFoot from "../assets/games/logo-babyfoot.png";
 
+
+
 // ✅ Sports à venir (SOON)
 import logoArchery from "../assets/games/logo-archery.png";
 import logoMolkky from "../assets/games/logo-molkky.png";
@@ -58,7 +60,6 @@ import logoRugby from "../assets/games/logo-rugby.png";
 import logoVolley from "../assets/games/logo-volley.png";
 import logoTennis from "../assets/games/logo-tennis.png";
 import logoChess from "../assets/games/logo-chess.png";
-
 type Props = { go?: (tab: any, params?: any) => void };
 
 // ---------------- Thèmes dispo + descriptions fallback ----------------
@@ -968,6 +969,25 @@ function AccountPages({
     }
   }
 
+  async function handleLogoutAndRedirect() {
+    try {
+      await logout?.();
+    } catch (e) {
+      // eslint-disable-next-line no-console
+      console.warn("[settings] logout error", e);
+    } finally {
+      // ✅ On force l’arrivée sur la page de connexion
+      if (go) {
+        go("auth_start" as any);
+      } else {
+        try {
+          window.location.hash = "#/auth";
+        } catch {}
+      }
+    }
+  }
+
+
   const sectionBox: React.CSSProperties = {
     background: CARD_BG,
     borderRadius: 18,
@@ -1250,7 +1270,7 @@ function AccountPages({
             <button
               type="button"
               className="btn sm"
-              onClick={() => logout?.()}
+              onClick={handleLogoutAndRedirect}
               disabled={loading}
               style={{
                 borderRadius: 999,
@@ -1588,7 +1608,7 @@ export default function Settings({ go }: Props) {
     );
   }
 
-  function SportSection() {
+    function SportSection() {
     type GameId =
       | "darts"
       | "petanque"
