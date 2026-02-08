@@ -443,6 +443,18 @@ export function endTurn(input: TerritoriesGameState): EngineResult {
   if (state.status !== "playing") return { state, events, error: "Game is not in playing state." };
   if (!state.players.length) return { state, events, error: "No players." };
 
+  // ✅ IMPORTANT:
+  // Victory must be evaluated *before* advancing the turn.
+  // Otherwise, a player who just reached the objective will never be detected
+  // (because turnIndex/activePlayerId is already moved to the next player).
+  const pre = checkVictory(state);
+  if (pre.gameEnded) {
+    state.status = "game_end";
+    // keep the current activePlayerId as the one who just played
+    events.push({ type: "game_end", playerId: state.turn.activePlayerId });
+    return { state, events };
+  }
+
   advanceTurnIndex(state);
   setActivePlayerFromTurnIndex(state);
   resetTurnState(state);
@@ -458,12 +470,7 @@ export function endTurn(input: TerritoriesGameState): EngineResult {
     }
   }
 
-  const { gameEnded } = checkVictory(state);
-  if (gameEnded) {
-    state.status = "game_end";
-    events.push({ type: "game_end", playerId: state.turn.activePlayerId });
-    return { state, events };
-  }
+  // Victory is evaluated at the start of endTurn (pre-advance).
 
   events.push({ type: "turn_start", playerId: state.turn.activePlayerId });
   return { state, events };
