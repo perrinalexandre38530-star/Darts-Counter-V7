@@ -7,7 +7,7 @@
 
 import { onCloudChange } from "./cloudEvents";
 import { onlineApi } from "./onlineApi";
-import { exportCloudSnapshot, saveStore, importAll, getKV, setKV, loadStore } from "./storage";
+import { exportCloudSnapshot, saveStore, importAll, getKV, setKV } from "./storage";
 
 const DEBOUNCE_MS = 1200;
 const PULL_INTERVAL_MS = 60_000;
@@ -17,6 +17,68 @@ let unsub: null | (() => void) = null;
 
 let pushTimer: number | null = null;
 let pullTimer: number | null = null;
+
+// ------------------------------------------------------------
+// Merge helpers (anti-perte)
+// - heuristique volontairement conservative
+// - but: éviter d'écraser un store local non vide par un pull cloud
+// ------------------------------------------------------------
+
+function isPlainObject(v: any): v is Record<string, any> {
+  return !!v && typeof v === "object" && !Array.isArray(v);
+}
+
+function storeLooksEmpty(s: any): boolean {
+  if (!s || typeof s !== "object") return true;
+  // heuristique: si pas de profiles, pas de history, pas de dartSets
+  const profilesCount = s?.profiles ? Object.keys(s.profiles).length : 0;
+  const historyCount = s?.history ? (Array.isArray(s.history) ? s.history.length : Object.keys(s.history || {}).length) : 0;
+  const dartSetsCount = s?.dartSets ? (Array.isArray(s.dartSets) ? s.dartSets.length : Object.keys(s.dartSets || {}).length) : 0;
+  return profilesCount === 0 && historyCount === 0 && dartSetsCount === 0;
+}
+
+function mergeArrays(a: any[], b: any[]): any[] {
+  // union simple, avec optimisation quand les items ont un id/uid
+  const hasId = (x: any) => x && typeof x === "object" && ("id" in x || "uid" in x);
+  if (a.every(hasId) && b.every(hasId)) {
+    const map = new Map<string, any>();
+    for (const it of a) map.set(String((it as any).id ?? (it as any).uid), it);
+    for (const it of b) {
+      const k = String((it as any).id ?? (it as any).uid);
+      map.set(k, { ...(map.get(k) || {}), ...it });
+    }
+    return Array.from(map.values());
+  }
+  const seen = new Set<string>();
+  const out: any[] = [];
+  for (const it of [...a, ...b]) {
+    const k = typeof it === "string" ? `s:${it}` : typeof it === "number" ? `n:${it}` : JSON.stringify(it);
+    if (seen.has(k)) continue;
+    seen.add(k);
+    out.push(it);
+  }
+  return out;
+}
+
+function deepMergeConservative(local: any, cloud: any): any {
+  if (cloud == null) return local;
+  if (local == null) return cloud;
+
+  if (Array.isArray(local) && Array.isArray(cloud)) return mergeArrays(local, cloud);
+
+  if (isPlainObject(local) && isPlainObject(cloud)) {
+    const out: Record<string, any> = { ...cloud, ...local };
+    // priorité au LOCAL (pour éviter de perdre ce que l'utilisateur vient de faire)
+    for (const k of Object.keys(cloud)) {
+      if (!(k in local)) out[k] = cloud[k];
+      else out[k] = deepMergeConservative(local[k], cloud[k]);
+    }
+    return out;
+  }
+
+  // types différents => garder local
+  return local;
+}
 
 function getStore(): any | null {
   if (typeof window === "undefined") return null;
@@ -93,68 +155,10 @@ async function pullNow() {
 
     if (!cloudStore || typeof cloudStore !== "object") return;
 
-    // ⚠️ Sécurité anti-perte : ne jamais écraser un local "riche" par un cloud "vide"
-    // (scénario classique : données en local avant connexion, puis profil cloud ...
-    let nextStore: any = cloudStore;
-    try {
-      const local = await loadStore();
-      const localHistory = Array.isArray(local?.history) ? local.history.length : 0;
-      const cloudHistory = Array.isArray((cloudStore as any)?.history) ? (cloudStore as any).history.length : 0;
-
-      // Heuristique: si le cloud semble vide/moins riche, on garde le local pour les data lourdes.
-      if (local && typeof local === "object") {
-        const merged: any = { ...cloudStore };
-
-        // history
-        if (localHistory > cloudHistory) merged.history = local.history;
-
-        // saved (configurations / presets)
-        if (local?.saved && (!merged.saved || Object.keys(merged.saved).length < Object.keys(local.saved).length)) {
-          merged.saved = local.saved;
-        }
-
-        // profiles: merge par id, préférer le cloud pour nickname/avatar quand présent
-        const cp = (cloudStore as any)?.profiles || {};
-        const lp = (local as any)?.profiles || {};
-        const outProfiles: any = { ...lp, ...cp };
-        for (const id of Object.keys(lp)) {
-          const a = lp[id];
-          const b = cp[id];
-          if (!b) continue;
-          outProfiles[id] = {
-            ...a,
-            ...b,
-            nickname: (b.nickname ?? a.nickname),
-            displayName: (b.displayName ?? a.displayName),
-            avatarUrl: (b.avatarUrl ?? a.avatarUrl),
-          };
-        }
-        merged.profiles = outProfiles;
-
-        // settings: garder cloud, mais fallback local si cloud absent
-        if (!merged.settings && (local as any).settings) merged.settings = (local as any).settings;
-
-        // active profile id: préférer cloud sinon local
-        if (!merged.activeProfileId && (local as any).activeProfileId) merged.activeProfileId = (local as any).activeProfileId;
-
-        // Si le cloud n'a rien mais le local oui, on applique le merged (donc local) puis on push.
-        nextStore = merged;
-
-        const cloudLooksEmpty = cloudHistory === 0 && Object.keys(cp).length <= 1;
-        const localLooksRich = localHistory > 0 || Object.keys(lp).length > 1;
-        if (cloudLooksEmpty && localLooksRich) {
-          // Push immédiat pour remonter les données locales vers le cloud
-          try { await pushNow(); } catch {}
-        }
-      }
-    } catch {
-      nextStore = cloudStore;
-    }
-
-    applyStore(nextStore);
+    applyStore(cloudStore);
 
     try {
-      await saveStore(nextStore);
+      await saveStore(cloudStore);
     } catch {}
 
     if (updatedAt) {
@@ -162,6 +166,66 @@ async function pullNow() {
     } else {
       await setKV("__cloud:last_pulled_at__", new Date().toISOString()).catch(() => {});
     }
+  } catch {
+    // silent
+  }
+}
+
+// ------------------------------------------------------------
+// ✅ Public: merge local + cloud without data loss
+// Strategy:
+// - Pull cloud snapshot (store-only or full snapshot)
+// - If one side is empty => take the other
+// - Otherwise deep-merge conservatively (prefer LOCAL values when conflicts)
+// - Apply merged store locally, then push merged snapshot to cloud
+// ------------------------------------------------------------
+export async function mergeNow() {
+  try {
+    const sess = await getSessionSafe();
+    const uid = sess?.user?.id;
+    if (!uid) return;
+
+    // --- local
+    const localStore = getStore();
+
+    // --- cloud
+    const pulled = await onlineApi.pullStoreSnapshot(uid);
+    const payload = pulled?.payload;
+    let cloudStore: any = payload?.store ?? payload?.idb?.store ?? null;
+    if (payload && typeof payload === "object" && (payload as any)._v === 2) {
+      // Full snapshot format — store is inside idb.store
+      cloudStore = payload?.idb?.store ?? cloudStore;
+    }
+    if (!cloudStore && payload && typeof payload === "object" && !payload._v && (payload.profiles || payload.history || payload.activeProfileId)) {
+      cloudStore = payload;
+    }
+
+    const localEmpty = !localStore || typeof localStore !== "object" || Object.keys(localStore).length === 0;
+    const cloudEmpty = !cloudStore || typeof cloudStore !== "object" || Object.keys(cloudStore).length === 0;
+
+    if (cloudEmpty && localEmpty) return;
+
+    if (localEmpty && !cloudEmpty) {
+      applyStore(cloudStore);
+      await saveStore(cloudStore).catch(() => {});
+      await setKV("__cloud:last_pulled_at__", pulled?.updated_at ?? new Date().toISOString()).catch(() => {});
+      return;
+    }
+
+    if (!localEmpty && cloudEmpty) {
+      await pushNow();
+      return;
+    }
+
+    // Both non-empty => merge conservatively (prefer local on conflicts)
+    const merged = mergeDeep(localStore, cloudStore);
+
+    applyStore(merged);
+    await saveStore(merged).catch(() => {});
+
+    // Push merged store (store-only snapshot is enough, server stores payload JSON)
+    await onlineApi.pushStoreSnapshot(uid, { store: merged, _note: "mergeNow" }, 8).catch(() => {});
+    await setKV("__cloud:last_pulled_at__", new Date().toISOString()).catch(() => {});
   } catch {
     // silent
   }

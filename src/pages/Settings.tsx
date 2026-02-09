@@ -32,6 +32,7 @@ import { THEMES, type ThemeId, type AppTheme } from "../theme/themePresets";
 import { useAuthOnline } from "../hooks/useAuthOnline";
 import { AccountToolsPanel } from "../components/account/AccountToolsPanel";
 import { supabase } from "../lib/supabaseClient";
+import { mergeNow } from "../lib/cloudSync";
 
 // ✅ DEV MODE (assure-toi d’avoir DevModeProvider au root)
 import { useDevMode } from "../contexts/DevModeContext";
@@ -41,8 +42,6 @@ import logoDarts from "../assets/games/logo-darts.png";
 import logoPetanque from "../assets/games/logo-petanque.png";
 import logoPingPong from "../assets/games/logo-pingpong.png";
 import logoBabyFoot from "../assets/games/logo-babyfoot.png";
-
-
 
 // ✅ Sports à venir (SOON)
 import logoArchery from "../assets/games/logo-archery.png";
@@ -60,6 +59,7 @@ import logoRugby from "../assets/games/logo-rugby.png";
 import logoVolley from "../assets/games/logo-volley.png";
 import logoTennis from "../assets/games/logo-tennis.png";
 import logoChess from "../assets/games/logo-chess.png";
+
 type Props = { go?: (tab: any, params?: any) => void };
 
 // ---------------- Thèmes dispo + descriptions fallback ----------------
@@ -172,6 +172,13 @@ function injectSettingsAnimationsOnce() {
     }
   `;
   document.head.appendChild(style);
+}
+
+function safeAlert(msg: string) {
+  try {
+    // eslint-disable-next-line no-alert
+    alert(msg);
+  } catch {}
 }
 
 // ---------------- Bouton de thème (compact) ----------------
@@ -899,6 +906,9 @@ function AccountPages({
   const [savingProfile, setSavingProfile] = React.useState(false);
   const [deleting, setDeleting] = React.useState(false);
 
+  const [merging, setMerging] = React.useState(false);
+  const [mergeMsg, setMergeMsg] = React.useState<string | null>(null);
+
   const [message, setMessage] = React.useState<string | null>(null);
   const [error, setError] = React.useState<string | null>(null);
 
@@ -968,25 +978,6 @@ function AccountPages({
       setDeleting(false);
     }
   }
-
-  async function handleLogoutAndRedirect() {
-    try {
-      await logout?.();
-    } catch (e) {
-      // eslint-disable-next-line no-console
-      console.warn("[settings] logout error", e);
-    } finally {
-      // ✅ On force l’arrivée sur la page de connexion
-      if (go) {
-        go("auth_start" as any);
-      } else {
-        try {
-          window.location.hash = "#/auth";
-        } catch {}
-      }
-    }
-  }
-
 
   const sectionBox: React.CSSProperties = {
     background: CARD_BG,
@@ -1270,7 +1261,7 @@ function AccountPages({
             <button
               type="button"
               className="btn sm"
-              onClick={handleLogoutAndRedirect}
+              onClick={() => logout?.()}
               disabled={loading}
               style={{
                 borderRadius: 999,
@@ -1285,6 +1276,46 @@ function AccountPages({
               }}
             >
               {t("settings.account.btn.logout", "Se déconnecter")}
+            </button>
+
+            <button
+              type="button"
+              onClick={async () => {
+                if (merging) return;
+                setMergeMsg(null);
+                setError(null);
+                setMessage(null);
+                setMerging(true);
+                try {
+                  await mergeNow({ source: "manual" } as any);
+                  setMergeMsg(t("settings.account.merge.ok", "Fusion terminée : local + cloud"));
+                } catch (e: any) {
+                  setMergeMsg(null);
+                  setError(e?.message ?? String(e));
+                  safeAlert(`Fusion échouée : ${e?.message ?? e}`);
+                } finally {
+                  setMerging(false);
+                }
+              }}
+              disabled={loading || !isSignedIn || merging}
+              style={{
+                borderRadius: 999,
+                border: `1px solid ${theme.primary}66`,
+                padding: "10px 12px",
+                background: "rgba(0,0,0,0.35)",
+                color: theme.primary,
+                fontWeight: 900,
+                cursor: !isSignedIn || loading || merging ? "not-allowed" : "pointer",
+                boxShadow: `0 0 14px ${theme.primary}22`,
+                flex: "1 1 220px",
+                opacity: !isSignedIn || loading || merging ? 0.55 : 1,
+              }}
+              title={t(
+                "settings.account.merge.tip",
+                "Fusionne tes données locales avec ton compte cloud (anti-perte). Recommandé après première connexion sur un appareil."
+              )}
+            >
+              {merging ? t("settings.account.merge.busy", "Fusion…") : t("settings.account.merge", "Fusionner local + cloud")}
             </button>
 
             <button
@@ -1307,6 +1338,24 @@ function AccountPages({
               {t("settings.account.btn.changeGame", "Changer de jeu")}
             </button>
           </div>
+
+          {(mergeMsg || error) && (
+            <div
+              style={{
+                marginTop: 10,
+                padding: "10px 12px",
+                borderRadius: 12,
+                border: `1px solid ${error ? "rgba(255,0,0,0.35)" : theme.borderSoft}`,
+                background: error ? "rgba(255,0,0,0.08)" : "rgba(255,255,255,0.05)",
+                color: error ? "rgba(255,140,140,0.95)" : theme.text,
+                fontSize: 12,
+                fontWeight: 800,
+                lineHeight: 1.35,
+              }}
+            >
+              {error ? `Erreur : ${error}` : mergeMsg}
+            </div>
+          )}
 
           {/* ✅ OUTILS COMPTE — SYNC EXPRESS */}
           <div style={{ marginTop: 14 }}>
@@ -1608,7 +1657,7 @@ export default function Settings({ go }: Props) {
     );
   }
 
-    function SportSection() {
+  function SportSection() {
     type GameId =
       | "darts"
       | "petanque"

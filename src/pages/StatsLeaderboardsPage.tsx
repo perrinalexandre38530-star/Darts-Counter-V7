@@ -53,7 +53,12 @@ type MetricKey =
   | "kills"
   | "favNumberHits"
   | "favSegmentHits"
-  | "totalHits";
+  | "totalHits"
+  // ✅ NEW (territories)
+  | "captures"
+  | "avgDom"
+  | "avgRounds"
+  | "capPerRound";
 
 type Row = {
   id: string;
@@ -64,6 +69,12 @@ type Row = {
   losses: number;
   matches: number;
   winRate: number;
+
+  // ✅ TERRITORIES
+  captures: number;
+  avgDom: number;
+  avgRounds: number;
+  capPerRound: number;
 
   avg3: number;
   bestVisit: number;
@@ -105,7 +116,11 @@ const MODE_DEFS: {
   { id: "shanghai", label: "SHANGHAI", metrics: ["wins", "winRate", "matches"] },
   { id: "battle_royale", label: "BATTLE ROYALE", metrics: ["wins", "winRate", "matches"] },
   { id: "clock", label: "TOUR DE L’HORLOGE", metrics: ["wins", "winRate", "matches"] },
-  { id: "territories", label: "TERRITORIES", metrics: ["wins", "winRate", "matches"] },
+  {
+    id: "territories",
+    label: "TERRITORIES",
+    metrics: ["wins", "winRate", "matches", "captures", "avgDom", "avgRounds", "capPerRound"],
+  },
 ];
 
 // ------------------------------
@@ -710,6 +725,9 @@ function computeRowsFromTerritories(
     avatar?: string;
     matches: number;
     wins: number;
+    captures: number;
+    dom: number;
+    rounds: number;
   };
 
   const agg = new Map<string, Agg>();
@@ -720,7 +738,7 @@ function computeRowsFromTerritories(
     const avatar = p?.avatar || fallbackAvatar;
     let a = agg.get(id);
     if (!a) {
-      a = { id, name, avatar, matches: 0, wins: 0 };
+      a = { id, name, avatar, matches: 0, wins: 0, captures: 0, dom: 0, rounds: 0 };
       agg.set(id, a);
     } else {
       // refresh name/avatar if needed
@@ -735,25 +753,48 @@ function computeRowsFromTerritories(
     if (!players.length) continue;
 
     const winnerTeam = typeof (m as any).winnerTeam === "number" ? (m as any).winnerTeam : 0;
+    const caps: number[] = Array.isArray((m as any).captured)
+      ? (m as any).captured.map((x: any) => Number(x) || 0)
+      : [];
+    const doms: number[] = Array.isArray((m as any).domination)
+      ? (m as any).domination.map((x: any) => Number(x) || 0)
+      : [];
+    const rounds = Number((m as any).rounds) || 0;
 
     for (const pl of players) {
       const pid = String(pl.profileId || "").trim();
       if (!pid) continue;
       const a = ensure(pid, pl.name, pl.avatar);
       a.matches += 1;
-      if (typeof pl.teamIndex === "number" && pl.teamIndex === winnerTeam) a.wins += 1;
+      const ti = typeof pl.teamIndex === "number" ? pl.teamIndex : 0;
+      if (ti === winnerTeam) a.wins += 1;
+
+      // Per-team stats
+      a.captures += Number(caps[ti] ?? 0) || 0;
+      a.dom += Number(doms[ti] ?? 0) || 0;
+      a.rounds += rounds;
     }
   }
 
   const rows: Row[] = Array.from(agg.values()).map((a) => {
     const winRate = a.matches > 0 ? Math.round((a.wins / a.matches) * 1000) / 10 : 0;
+    const avgDom = a.matches > 0 ? Math.round((a.dom / a.matches) * 10) / 10 : 0;
+    const avgRounds = a.matches > 0 ? Math.round((a.rounds / a.matches) * 10) / 10 : 0;
+    const capPerRound = a.rounds > 0 ? Math.round((a.captures / a.rounds) * 100) / 100 : 0;
     return {
+      id: a.id,
       profileId: a.id,
       name: a.name,
       avatar: a.avatar,
+      avatarDataUrl: a.avatar,
       wins: a.wins,
+      losses: Math.max(0, a.matches - a.wins),
       winRate,
       matches: a.matches,
+      captures: a.captures,
+      avgDom,
+      avgRounds,
+      capPerRound,
       avg3: 0,
       bestVisit: 0,
       bestCheckout: 0,
@@ -790,6 +831,14 @@ function metricLabel(m: MetricKey) {
       return "Segment favori";
     case "totalHits":
       return "Hits total";
+    case "captures":
+      return "Captures";
+    case "avgDom":
+      return "Domination (moy.)";
+    case "avgRounds":
+      return "Tours (moy.)";
+    case "capPerRound":
+      return "Captures / tour";
     default:
       return "Stat";
   }
@@ -942,6 +991,14 @@ export default function StatsLeaderboardsPage({ store }: Props) {
           return numOr0(r?.favNumberHits);
         case "totalHits":
           return numOr0(r?.totalHits);
+        case "captures":
+          return numOr0(r?.captures);
+        case "avgDom":
+          return numOr0(r?.avgDom);
+        case "avgRounds":
+          return numOr0(r?.avgRounds);
+        case "capPerRound":
+          return numOr0(r?.capPerRound);
         default:
           return 0;
       }

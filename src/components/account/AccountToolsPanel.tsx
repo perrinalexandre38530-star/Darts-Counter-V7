@@ -12,7 +12,8 @@ import { useLang } from "../../contexts/LangContext";
 import { useAuthOnline } from "../../hooks/useAuthOnline";
 import { onlineApi } from "../../lib/onlineApi";
 import { hydrateFromOnline, pushLocalSnapshotToOnline } from "../../lib/hydrateFromOnline";
-import { exportCloudSnapshot } from "../../lib/storage";
+import { exportCloudSnapshot, exportAll } from "../../lib/storage";
+import { mergeNow } from "../../lib/cloudSync";
 
 type Props = {
   go?: (tab: any, params?: any) => void;
@@ -280,6 +281,49 @@ export function AccountToolsPanel({ go }: Props) {
     }
   }
 
+  async function doMergeAntiPerte(conflict: "newest" | "local" | "cloud" = "newest") {
+    const uid = auth.session?.user?.id;
+    if (!uid) {
+      addLog("MERGE: ERR not logged");
+      return;
+    }
+    setBusy(true);
+    setCompareResult(null);
+    try {
+      addLog(`MERGE: start (conflict=${conflict})`);
+      const res = await mergeNow(uid, { conflict });
+      addLog(`MERGE: ok (applied_local=${res?.applied_local ? "yes" : "no"}, pushed_cloud=${res?.pushed_cloud ? "yes" : "no"})`);
+      await loadDiagnostics();
+    } catch (e: any) {
+      addLog(`MERGE: error (${e?.message ?? e})`);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function doExportBackupLocal() {
+    setBusy(true);
+    setCompareResult(null);
+    try {
+      addLog("BACKUP: exportAll start");
+      const dump = await exportAll();
+      const blob = new Blob([JSON.stringify(dump)], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `dc_backup_local_${new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-")}.json`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+      addLog("BACKUP: ok (download)");
+    } catch (e: any) {
+      addLog(`BACKUP: error (${e?.message ?? e})`);
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function doCompare() {
     if (!diag) return;
 
@@ -445,6 +489,36 @@ export function AccountToolsPanel({ go }: Props) {
 
             <button type="button" onClick={doRefreshSession} disabled={busy} style={btnBase}>
               {t("settings.account.tools.refreshSession", "Refresh session")}
+            </button>
+
+            <button
+              type="button"
+              onClick={() => doMergeAntiPerte("newest")}
+              disabled={busy || !auth.session}
+              style={{ ...btnBase, borderColor: `${theme.gold}66`, color: theme.gold }}
+              title="Fusionne cloud + local sans perte, applique local puis pousse le merge"
+            >
+              {t("settings.account.tools.merge", "MERGE anti-perte")}
+            </button>
+
+            <button
+              type="button"
+              onClick={() => doMergeAntiPerte("local")}
+              disabled={busy || !auth.session}
+              style={{ ...btnBase, borderColor: `${theme.primary}66`, color: theme.primary }}
+              title="Force la priorité au LOCAL en cas de conflit (import local vers cloud)"
+            >
+              {t("settings.account.tools.importLocal", "Importer local -> cloud")}
+            </button>
+
+            <button
+              type="button"
+              onClick={doExportBackupLocal}
+              disabled={busy}
+              style={{ ...btnBase, borderColor: "rgba(255,255,255,0.25)", color: theme.text }}
+              title="Télécharge un backup JSON complet (store+history+dc_*)"
+            >
+              {t("settings.account.tools.exportBackup", "Exporter backup local")}
             </button>
 
             <button

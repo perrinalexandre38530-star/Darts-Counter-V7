@@ -14,7 +14,8 @@ import { exportHistoryDump, importHistoryDump } from "./historyCloud";
 /* ---------- Constantes ---------- */
 const DB_NAME = "darts-counter-v5";
 const STORE_NAME = "kv";
-const STORE_KEY = "store";
+// Exporté car utilisé par d'autres modules (sync/auth/migrations)
+export const STORE_KEY = "store";
 const LEGACY_LS_KEY = "darts-counter-store-v3";
 
 /* ============================================================
@@ -474,9 +475,6 @@ export async function loadStore<T extends Store>(): Promise<T | null> {
         try {
           const payload = await compressGzip(JSON.stringify(norm.store));
           await idbSet(STORE_KEY, payload);
-
-    // ✅ signal cloud après saveStore OK (store = coeur de l’app)
-    try { emitCloudChange("store:save"); } catch {}
         } catch {}
       }
 
@@ -529,14 +527,10 @@ export async function saveStore<T extends Store>(store: T, opts?: SaveOpts): Pro
     }
 
     await idbSet(STORE_KEY, payload);
-
-    // ✅ signal cloud après saveStore OK (store = coeur de l’app)
-    try { emitCloudChange("store:save"); } catch {}
   } catch (err) {
     console.error("[storage] saveStore error:", err);
     try {
       localStorage.setItem(LEGACY_LS_KEY, JSON.stringify(store));
-      try { emitCloudChange("store:save:ls"); } catch {}
     } catch {}
   }
 }
@@ -956,9 +950,6 @@ export async function nukeAllKeepActiveProfile(): Promise<void> {
     try {
       const payload = await compressGzip(JSON.stringify(newStore));
       await idbSet(STORE_KEY, payload);
-
-    // ✅ signal cloud après saveStore OK (store = coeur de l’app)
-    try { emitCloudChange("store:save"); } catch {}
     } catch (err) {
       console.warn("[storage] unable to write minimal store after reset", err);
     }

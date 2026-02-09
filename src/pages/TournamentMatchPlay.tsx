@@ -32,7 +32,22 @@ import X01PlayV3 from "./X01PlayV3";
 import CricketPlay from "./CricketPlay";
 import KillerPlay from "./KillerPlay";
 
+// ✅ Baby-Foot store (pour lancer un vrai match depuis un match de tournoi)
+import {
+  resetBabyFoot,
+  setMode as setBabyFootMode,
+  setTeams as setBabyFootTeams,
+  setTeamsProfiles as setBabyFootTeamsProfiles,
+  setTarget as setBabyFootTarget,
+  setAdvancedOptions as setBabyFootAdvanced,
+  startMatch as startBabyFootMatch,
+} from "../lib/babyfootStore";
+
 const LS_ONLINE_MATCHES_KEY = "dc_online_matches_v1";
+
+function bfTourKey(tournamentId: any, matchId: any) {
+  return `bf_tour_result_${String(tournamentId || "")}_${String(matchId || "")}`;
+}
 
 // ⚠️ mêmes valeurs que TournamentView.tsx (si tu les utilises côté engine)
 const BYE = "__BYE__";
@@ -414,6 +429,27 @@ export default function TournamentMatchPlay({ store, go, params }: any) {
     const winnerId = bfSa === bfSb ? null : (bfSa > bfSb ? aId : bId);
 
 
+    const tid = (params as any)?.tournamentId ?? (params as any)?.tournament_id;
+    const mid = (params as any)?.matchId ?? (params as any)?.tournamentMatchId;
+
+    // ✅ V5.4: Résultat direct stocké par BabyFootPlay (bridge tournoi)
+    const storedResult = (() => {
+      try {
+        if (!tid || !mid || typeof localStorage === "undefined") return null;
+        const raw = localStorage.getItem(bfTourKey(tid, mid));
+        if (!raw) return null;
+        const obj = JSON.parse(raw);
+        if (!obj) return null;
+        const a = safeNum(obj?.scoreA, -1);
+        const b = safeNum(obj?.scoreB, -1);
+        if (a < 0 || b < 0) return null;
+        return { scoreA: a, scoreB: b, winnerId: obj?.winnerId ?? null, finishedAt: obj?.finishedAt ?? null };
+      } catch {
+        return null;
+      }
+    })();
+
+
     // ✅ V5.3: Import rapide depuis l'historique Baby-Foot (si tu as joué le match dans l'app)
     const lastPlayed = (() => {
       try {
@@ -454,6 +490,82 @@ export default function TournamentMatchPlay({ store, go, params }: any) {
           <div style={{ marginTop: 12, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
             <div>
               <div style={{ fontWeight: 900, opacity: 0.8, marginBottom: 6 }}>{nameOf(tour, aId)}</div>
+
+          <button
+            onClick={() => {
+              try {
+                setBfErr("");
+                // Prépare un vrai match Baby-Foot (SAFE) et lance le gameplay
+                resetBabyFoot();
+                setBabyFootMode("1v1");
+                setBabyFootTeams(nameOf(tour, aId), nameOf(tour, bId));
+                setBabyFootTeamsProfiles([String(aId)], [String(bId)]);
+                setBabyFootTarget(10);
+                setBabyFootAdvanced({
+                  // defaults raisonnables tournoi (tu pourras ouvrir ça plus tard)
+                  chronoEnabled: false,
+                  matchDurationSec: null,
+                  overtimeEnabled: false,
+                  overtimeSec: null,
+                  penaltiesEnabled: false,
+                  goldenGoalEnabled: false,
+                  setsEnabled: false,
+                  setsBestOf: 3,
+                  setTarget: 10,
+                  handicapA: 0,
+                  handicapB: 0,
+                });
+                startBabyFootMatch();
+                go("babyfoot_play", {
+                  tournamentId: (params as any)?.tournamentId ?? (params as any)?.tournament_id,
+                  tournamentMatchId: (params as any)?.matchId ?? (params as any)?.tournamentMatchId,
+                });
+              } catch (e: any) {
+                setBfErr(String(e?.message || e || "Erreur lancement match"));
+              }
+            }}
+            style={{
+              marginTop: 10,
+              width: "100%",
+              height: 48,
+              borderRadius: 14,
+              border: `1px solid ${theme.borderSoft}`,
+              background: "rgba(124,255,196,0.14)",
+              color: theme.text,
+              fontWeight: 1000,
+              letterSpacing: 0.6,
+              cursor: "pointer",
+            }}
+          >
+            LANCER LE MATCH BABY-FOOT
+          </button>
+
+          {storedResult ? (
+            <button
+              onClick={() => {
+                try {
+                  setBfErr("");
+                  setBfSa(Math.max(0, Math.min(99, safeNum(storedResult.scoreA, 0))));
+                  setBfSb(Math.max(0, Math.min(99, safeNum(storedResult.scoreB, 0))));
+                } catch {}
+              }}
+              style={{
+                marginTop: 10,
+                width: "100%",
+                height: 44,
+                borderRadius: 14,
+                border: `1px solid ${theme.borderSoft}`,
+                background: "rgba(255,255,255,0.08)",
+                color: theme.text,
+                fontWeight: 950,
+                letterSpacing: 0.5,
+                cursor: "pointer",
+              }}
+            >
+              IMPORTER RÉSULTAT DU MATCH JOUÉ
+            </button>
+          ) : null}
+
 
           {canImport ? (
             <button

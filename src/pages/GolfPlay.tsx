@@ -1006,30 +1006,28 @@ const teamIndexByKey = useMemo(() => {
 
     return out;
   }, [holes, cfg]);
-// scores[playerIdx][holeIdx] = score final du trou (1/3/4/5) ou null
-  
-// === HAS PLAYED AT LEAST ONE HOLE (ADD) ===
-const hasPlayedAtLeastOneHole = React.useMemo(() => {
-  return Object.values(scores ?? {}).some(ps =>
-    Object.values(ps ?? {}).length > 0
-  );
-}, [scores]);
-
-const [scores, setScores] = useState<(number | null)[][]>(() => {
+  // scores[playerIdx][holeIdx] = score final du trou (1/3/4/5) ou null
+  const [scores, setScores] = useState<(number | null)[][]>(() => {
     const s: (number | null)[][] = [];
     for (let p = 0; p < playersCount; p++) s.push(Array.from({ length: holes }, () => null));
     return s;
   });
 
-  
-// Scores par équipe (GOLD/PINK/BLUE/GREEN) — 4 slots fixes (les équipes actives dépendent de teamCount + assignements)
-const [teamScores, setTeamScores] = useState<(number | null)[][]>(() => {
-  return TEAM_KEYS_ALL.map(() => Array.from({ length: holes }, () => null));
-});
+  // Scores par équipe (GOLD/PINK/BLUE/GREEN) — 4 slots fixes (les équipes actives dépendent de teamCount + assignements)
+  const [teamScores, setTeamScores] = useState<(number | null)[][]>(() => {
+    return TEAM_KEYS_ALL.map(() => Array.from({ length: holes }, () => null));
+  });
 
-const [statsByPlayer, setStatsByPlayer] = useState<PlayerStat[]>(() =>
-    Array.from({ length: playersCount }, () => ({ darts: 0, miss: 0, d: 0, t: 0, s: 0, b: 0, db: 0, turns: 0, hit1: 0, hit2: 0, hit3: 0 }))
-  );
+  // === HAS PLAYED AT LEAST ONE HOLE (for history save gating) ===
+  // ✅ true si au moins un score non-null a été saisi (joueurs ou équipes)
+  const hasPlayedAtLeastOneHole = React.useMemo(() => {
+    const anyNonNull = (mat: (number | null)[][]) => mat.some((row) => row.some((v) => v !== null));
+    return teamsOk ? anyNonNull(teamScores) : anyNonNull(scores);
+  }, [teamsOk, scores, teamScores]);
+
+	  const [statsByPlayer, setStatsByPlayer] = useState<PlayerStat[]>(() =>
+	    Array.from({ length: playersCount }, () => ({ darts: 0, miss: 0, d: 0, t: 0, s: 0, b: 0, db: 0, turns: 0, hit1: 0, hit2: 0, hit3: 0 }))
+	  );
 
   const [holeIdx, setHoleIdx] = useState(0);
 

@@ -263,10 +263,12 @@ function TickerRow({
   go,
   setFilter,
   isPetanque,
+  isBabyFoot,
 }: {
   go: (tab: any, params?: any) => void;
   setFilter: (k: FilterKey) => void;
   isPetanque: boolean;
+  isBabyFoot: boolean;
 }) {
   const rawTours = listTournamentsLocal() || [];
   const tours = (Array.isArray(rawTours) ? rawTours : []).filter((t: any) => {
@@ -574,7 +576,8 @@ export default function TournamentsHome({ store, go, source = "local", params }:
           </button>
         </div>
 
-        <TickerRow go={go} setFilter={setFilter} isPetanque={isPetanque} />
+        <TickerRow go={go} setFilter={setFilter} isPetanque={isPetanque}
+        isBabyFoot={isBabyFoot} />
       </Card>
 
       {/* FILTER BAR */}

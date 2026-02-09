@@ -596,6 +596,62 @@ export default function StatsTerritories(props: any) {
               {t("territories.objective", "Objectif")}: {breakdown.topObjective ?? "—"}
             </div>
           </div>
+
+          <div
+            style={{
+              ...kpiBox,
+              borderColor: "rgba(255,255,255,.18)",
+              boxShadow: "0 0 0 1px rgba(255,255,255,.08), 0 0 12px rgba(255,255,255,.12)",
+            }}
+          >
+            <div style={kpiLabel}>{t("territories.dartsAvg", "Darts (moy.)")}</div>
+            <div style={{ ...kpiValueMain, color: T.text }}>{avgDarts}</div>
+            <div style={{ fontSize: 11, color: T.text70 }}>
+              {t("territories.totalDarts", "Total")}: {totalDarts}
+            </div>
+          </div>
+
+          <div
+            style={{
+              ...kpiBox,
+              borderColor: "rgba(255,210,120,.35)",
+              boxShadow: "0 0 0 1px rgba(255,210,120,.12), 0 0 12px rgba(255,210,120,.22)",
+            }}
+          >
+            <div style={kpiLabel}>{t("territories.stealsAvg", "Steals (moy.)")}</div>
+            <div style={{ ...kpiValueMain, color: T.gold }}>{avgSteals}</div>
+            <div style={{ fontSize: 11, color: T.text70 }}>
+              {t("territories.totalSteals", "Total")}: {totalSteals}
+            </div>
+          </div>
+
+          <div
+            style={{
+              ...kpiBox,
+              borderColor: "rgba(255,90,90,.35)",
+              boxShadow: "0 0 0 1px rgba(255,90,90,.12), 0 0 12px rgba(255,90,90,.22)",
+            }}
+          >
+            <div style={kpiLabel}>{t("territories.lostAvg", "Lost (moy.)")}</div>
+            <div style={{ ...kpiValueMain, color: "#FF5A5A" }}>{avgLost}</div>
+            <div style={{ fontSize: 11, color: T.text70 }}>
+              {t("territories.totalLost", "Total")}: {totalLost}
+            </div>
+          </div>
+
+          <div
+            style={{
+              ...kpiBox,
+              borderColor: "rgba(180,170,255,.35)",
+              boxShadow: "0 0 0 1px rgba(180,170,255,.12), 0 0 12px rgba(180,170,255,.22)",
+            }}
+          >
+            <div style={kpiLabel}>{t("territories.durationAvg", "Durée (moy.)")}</div>
+            <div style={{ ...kpiValueMain, color: "#B4AAFF" }}>{avgDurationMin}m</div>
+            <div style={{ fontSize: 11, color: T.text70 }}>
+              {t("territories.roundsPerMin", "Tours/min")}: {avgRoundsPerMin}
+            </div>
+          </div>
         </div>
 
         {/* TOP MAPS */}
