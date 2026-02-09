@@ -1,8 +1,16 @@
 // =============================================================
 // src/pages/babyfoot/menus/BabyFootMenuMatch.tsx
-// Menu MATCH Baby-Foot — mêmes cartes "Games" (plein largeur) + tickers
-// ✅ Modes: 1v1 / 2v2 / 2v1
-// ✅ Tickers fournis: ticker_babyfoot_1v1 / 2v2 / 2v1
+// Menu MATCH — Baby-Foot (sport autonome)
+//
+// ✅ UI V3.3 (corrigée):
+//   - header ticker + BackDot à droite (pas de InfoDot header)
+//   - cartes : ticker dans un viewport à droite (~3/4) + fade gauche sur le ticker
+//   - titre visible à gauche en couleur thème (sans annotations sous le titre)
+//   - règles/infos maximales dans le bouton InfoDot (modal)
+// ✅ IMPORTANT : "titre sur le ticker centré en hauteur"
+//   → Ajuste objectPosition Y via TICKER_Y (par carte)
+// ✅ Tickers: /src/assets/tickers/ticker_babyfoot_*.png
+// ✅ Modes: 1v1 / 2v2 / 2v1 + TOURNOI + LIGUE
 // =============================================================
 
 import React from "react";
@@ -10,6 +18,8 @@ import { useTheme } from "../../../contexts/ThemeContext";
 import { useLang } from "../../../contexts/LangContext";
 import BackDot from "../../../components/BackDot";
 import InfoDot from "../../../components/InfoDot";
+
+import logoBabyFoot from "../../../assets/games/logo-babyfoot.png";
 
 // ✅ Tickers images (Vite)
 const TICKERS = import.meta.glob("../../../assets/tickers/*.png", {
@@ -46,7 +56,12 @@ type Props = {
   go: (t: any, p?: any) => void;
 };
 
-type ModeId = "match_1v1" | "match_2v2" | "match_2v1" | "tournament";
+type ModeId =
+  | "match_1v1"
+  | "match_2v2"
+  | "match_2v1"
+  | "tournament"
+  | "league";
 
 type ModeDef = {
   id: ModeId;
@@ -59,6 +74,7 @@ type ModeDef = {
   infoBodyKey: string;
   infoBodyDefault: string;
   enabled: boolean;
+  status: "OK" | "BETA" | "WIP";
   tickerId?: string | null;
 };
 
@@ -72,8 +88,15 @@ const MODES: ModeDef[] = [
     infoTitleKey: "babyfoot.modes.1v1.infoTitle",
     infoTitleDefault: "Match 1v1",
     infoBodyKey: "babyfoot.modes.1v1.infoBody",
-    infoBodyDefault: "Partie classique 1 contre 1. Configure score cible, profils et options.",
+    infoBodyDefault:
+      "Règles & setup (1v1)\n" +
+      "• 1 joueur VS 1 joueur (1 profil par équipe).\n" +
+      "• Choisis les profils, le score cible et les options de match.\n" +
+      "• But = +1 (ou règles du preset si activées).\n" +
+      "• Fin de match : équipe qui atteint le score cible en premier.\n" +
+      "• Historique/Stats : sauvegarde locale du match (si activée).",
     enabled: true,
+    status: "OK",
     tickerId: "babyfoot_1v1",
   },
   {
@@ -85,8 +108,15 @@ const MODES: ModeDef[] = [
     infoTitleKey: "babyfoot.modes.2v2.infoTitle",
     infoTitleDefault: "Match 2v2",
     infoBodyKey: "babyfoot.modes.2v2.infoBody",
-    infoBodyDefault: "Deux joueurs par équipe. Configure score cible et sélectionne les profils.",
+    infoBodyDefault:
+      "Règles & setup (2v2)\n" +
+      "• 2 joueurs par équipe (4 profils au total).\n" +
+      "• Compositions réelles : Team A / Team B.\n" +
+      "• Choisis score cible, options et éventuellement chrono/preset.\n" +
+      "• Fin : première équipe au score cible.\n" +
+      "• Conseillé : activer l’historique pour stats de duels/équipes.",
     enabled: true,
+    status: "OK",
     tickerId: "babyfoot_2v2",
   },
   {
@@ -98,8 +128,14 @@ const MODES: ModeDef[] = [
     infoTitleKey: "babyfoot.modes.2v1.infoTitle",
     infoTitleDefault: "Variante 2v1",
     infoBodyKey: "babyfoot.modes.2v1.infoBody",
-    infoBodyDefault: "2 joueurs dans une équipe contre 1 joueur dans l'autre.",
+    infoBodyDefault:
+      "Règles & setup (2v1)\n" +
+      "• 2 joueurs dans une équipe contre 1 joueur dans l'autre.\n" +
+      "• Idéal pour équilibrer un écart de niveau.\n" +
+      "• Configure score cible et profils.\n" +
+      "• Fin : équipe au score cible.",
     enabled: true,
+    status: "OK",
     tickerId: "babyfoot_2v1",
   },
   {
@@ -111,11 +147,43 @@ const MODES: ModeDef[] = [
     infoTitleKey: "babyfoot.modes.tournament.infoTitle",
     infoTitleDefault: "Tournoi Baby-Foot",
     infoBodyKey: "babyfoot.modes.tournament.infoBody",
-    infoBodyDefault: "Ouvre le module Tournois avec scope Baby-Foot.",
+    infoBodyDefault:
+      "Tournoi (WIP)\n" +
+      "• Module Tournois avec scope Baby-Foot.\n" +
+      "• Poules / KO, planning, résultats + stats.\n" +
+      "• À venir : templates (2v2), gestion équipes, classement final.",
     enabled: true,
-    tickerId: null,
+    status: "WIP",
+    tickerId: "babyfoot_tournoi",
+  },
+  {
+    id: "league",
+    titleKey: "babyfoot.modes.league.title",
+    titleDefault: "LIGUE",
+    subtitleKey: "babyfoot.modes.league.subtitle",
+    subtitleDefault: "Classement • saisons • clubs",
+    infoTitleKey: "babyfoot.modes.league.infoTitle",
+    infoTitleDefault: "Ligue Baby-Foot",
+    infoBodyKey: "babyfoot.modes.league.infoBody",
+    infoBodyDefault:
+      "Ligue (à venir)\n" +
+      "• Saisons, clubs, classement, ELO/points, calendrier.\n" +
+      "• Stats : buts, séries, victoires/défaites, duels, compositions.\n" +
+      "• Les matchs du module MATCH alimenteront la ligue.",
+    enabled: false,
+    status: "WIP",
+    tickerId: "babyfoot_ligue",
   },
 ];
+
+// ✅ Ajuste si le texte DANS le ticker est trop haut/bas
+const TICKER_Y: Partial<Record<ModeId, number>> = {
+  match_1v1: 50,
+  match_2v2: 50,
+  match_2v1: 50,
+  tournament: 50,
+  league: 50,
+};
 
 export default function BabyFootMenuMatch({ onBack, go }: Props) {
   const { theme } = useTheme();
@@ -128,11 +196,13 @@ export default function BabyFootMenuMatch({ onBack, go }: Props) {
     go("tournaments", { forceMode: "babyfoot" });
   }
 
+  function openLeague() {
+    // placeholder
+  }
+
   function navigate(mode: ModeId) {
-    if (mode === "tournament") {
-      openTournaments();
-      return;
-    }
+    if (mode === "tournament") return openTournaments();
+    if (mode === "league") return openLeague();
 
     const meta =
       mode === "match_1v1"
@@ -144,73 +214,81 @@ export default function BabyFootMenuMatch({ onBack, go }: Props) {
     go("babyfoot_config", { mode, meta });
   }
 
-  function Watermark({ tickerId }: { tickerId?: string | null }) {
-    const src = getTicker(tickerId);
-    if (!src) return null;
+  const cardHeight = 86;
 
-    const mask =
-      "linear-gradient(90deg, rgba(0,0,0,0.00) 0%, rgba(0,0,0,0.78) 18%, rgba(0,0,0,1.00) 55%, rgba(0,0,0,1.00) 100%)";
+  // ✅ Zone ticker à droite ≈ 3/4
+  const tickerLeftPct = 26; // commence à ~26% => ticker ≈ 74%
+  const tickerWidthPct = 100 - tickerLeftPct;
 
-    return (
-      <div
-        aria-hidden
-        style={{
-          position: "absolute",
-          right: 0,
-          top: 0,
-          height: "100%",
-          width: "78%",
-          pointerEvents: "none",
-          opacity: 0.85,
-          zIndex: 0,
-          WebkitMaskImage: mask as any,
-          maskImage: mask as any,
-        }}
-      >
+  // ✅ fade SUR LA GAUCHE DU TICKER (bord du tickerViewport)
+  const tickerLeftFade =
+    "linear-gradient(90deg, rgba(0,0,0,0.95) 0%, rgba(0,0,0,0.65) 40%, rgba(0,0,0,0.18) 70%, rgba(0,0,0,0.00) 100%)";
+
+  // ✅ mini fade droite (pour InfoDot lisible)
+  const rightFade =
+    "linear-gradient(270deg, rgba(0,0,0,0.86) 0%, rgba(0,0,0,0.45) 55%, rgba(0,0,0,0.00) 100%)";
+
+  return (
+    <div
+      style={{
+        minHeight: "100vh",
+        padding: 16,
+        paddingBottom: 90,
+        background: theme.bg,
+        color: theme.text,
+      }}
+    >
+      {/* HEADER */}
+      <div style={{ position: "relative", width: "100%", marginBottom: 10 }}>
         <img
-          src={src}
-          alt=""
+          src={getTicker("babyfoot_match") || logoBabyFoot}
+          alt="Baby-Foot — Match"
           style={{
-            position: "absolute",
-            inset: 0,
             width: "100%",
-            height: "100%",
+            height: 90,
             objectFit: "cover",
-            objectPosition: "right center",
-            transform: "translateX(-6%) translateZ(0)",
-            filter: "contrast(1.02) saturate(1.02)",
+            borderRadius: 14,
+            border: `1px solid ${theme.borderSoft ?? "rgba(255,255,255,0.14)"}`,
+            boxShadow: "0 10px 26px rgba(0,0,0,0.35)",
           }}
           draggable={false}
         />
         <div
           style={{
             position: "absolute",
-            inset: 0,
-            background:
-              "linear-gradient(90deg, rgba(0,0,0,0.36) 0%, rgba(0,0,0,0.00) 38%, rgba(0,0,0,0.00) 70%, rgba(0,0,0,0.50) 100%)",
+            right: 10,
+            top: "50%",
+            transform: "translateY(-50%)",
+            zIndex: 2,
           }}
-        />
-      </div>
-    );
-  }
-
-  return (
-    <div style={{ minHeight: "100vh", padding: 16, paddingBottom: 90, background: theme.bg, color: theme.text }}>
-      <div style={{ display: "grid", gridTemplateColumns: "48px 1fr 48px", alignItems: "center", gap: 10, marginBottom: 12 }}>
-        <BackDot onClick={onBack} />
-        <div style={{ textAlign: "center", fontWeight: 950, letterSpacing: 1, opacity: 0.95 }}>BABY-FOOT — MATCH</div>
-        <InfoDot title="Match" body="Choisis un mode puis configure la partie (profils, score cible, chrono, etc.)." glow={theme.primary + "88"} />
+        >
+          <BackDot onClick={onBack} />
+        </div>
       </div>
 
-      <div style={{ fontSize: 13, color: theme.textSoft, marginBottom: 14, textAlign: "center", fontWeight: 850 }}>
+      {/* TEXTE */}
+      <div
+        style={{
+          margin: "4px 0 12px",
+          textAlign: "center",
+          fontWeight: 950,
+          letterSpacing: 0.8,
+          color: theme.textSoft,
+          textShadow: "0 6px 18px rgba(0,0,0,0.45)",
+          opacity: 0.95,
+        }}
+      >
         {t("babyfoot.match.subtitle", "Choisis un format de match")}
       </div>
 
-      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+      {/* CARTES */}
+      <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
         {MODES.map((m) => {
           const title = t(m.titleKey, m.titleDefault);
           const subtitle = t(m.subtitleKey, m.subtitleDefault);
           const disabled = !m.enabled;
+          const src = getTicker(m.tickerId) || logoBabyFoot;
+          const y = TICKER_Y[m.id] ?? 50;
 
           return (
             <button
@@ -219,28 +297,117 @@ export default function BabyFootMenuMatch({ onBack, go }: Props) {
               style={{
                 position: "relative",
                 width: "100%",
-                padding: 14,
-                paddingRight: 54,
+                padding: 0,
                 textAlign: "left",
                 borderRadius: 16,
                 border: `1px solid ${theme.borderSoft ?? "rgba(255,255,255,0.14)"}`,
                 background: theme.card,
-                boxShadow: "0 10px 24px rgba(0,0,0,0.55)",
                 cursor: disabled ? "not-allowed" : "pointer",
                 opacity: disabled ? 0.55 : 1,
+                boxShadow: "0 10px 24px rgba(0,0,0,0.55)",
                 overflow: "hidden",
               }}
             >
-              <Watermark tickerId={m.tickerId} />
+              <div style={{ position: "relative", width: "100%", height: cardHeight }}>
+                {/* ✅ Viewport ticker à droite (≈ 3/4) */}
+                <div
+                  style={{
+                    position: "absolute",
+                    top: 0,
+                    bottom: 0,
+                    left: `${tickerLeftPct}%`,
+                    width: `${tickerWidthPct}%`,
+                    overflow: "hidden",
+                  }}
+                >
+                  {/* image ticker (non coupée) */}
+                  <img
+                    src={src}
+                    alt={title}
+                    style={{
+                      position: "absolute",
+                      inset: 0,
+                      width: "100%",
+                      height: "100%",
+                      objectFit: "contain", // ✅ ne coupe pas le texte du ticker
+                      objectPosition: `50% ${y}%`,
+                      transform: "translateZ(0)",
+                      filter: "contrast(1.02) saturate(1.02)",
+                    }}
+                    draggable={false}
+                  />
 
-              <div style={{ position: "relative", zIndex: 1 }}>
-                <div style={{ fontWeight: 1000, letterSpacing: 0.8, fontSize: 15, color: theme.primary, textShadow: `0 0 12px ${theme.primary}55` }}>
-                  {title}
+                  {/* ✅ dégradé SUR LA GAUCHE DU TICKER */}
+                  <div
+                    aria-hidden
+                    style={{
+                      position: "absolute",
+                      left: 0,
+                      top: 0,
+                      height: "100%",
+                      width: "34%", // intensité du fade dans le ticker
+                      background: tickerLeftFade,
+                      pointerEvents: "none",
+                    }}
+                  />
                 </div>
-                <div style={{ marginTop: 6, fontSize: 12, color: theme.textSoft, fontWeight: 850, lineHeight: 1.35 }}>{subtitle}</div>
+
+                {/* ✅ léger dégradé à droite pour InfoDot */}
+                <div
+                  aria-hidden
+                  style={{
+                    position: "absolute",
+                    right: 0,
+                    top: 0,
+                    height: "100%",
+                    width: "30%",
+                    background: rightFade,
+                    pointerEvents: "none",
+                    opacity: 0.95,
+                  }}
+                />
               </div>
 
-              <div style={{ position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)", zIndex: 3 }}>
+              {/* TITRE à gauche */}
+              <div
+                style={{
+                  position: "absolute",
+                  left: 14,
+                  top: "50%",
+                  transform: "translateY(-50%)",
+                  zIndex: 2,
+                  maxWidth: `${tickerLeftPct - 6}%`,
+                  pointerEvents: "none",
+                }}
+              >
+                <div
+                  style={{
+                    fontSize: 14,
+                    fontWeight: 1000,
+                    letterSpacing: 0.9,
+                    color: theme.primary,
+                    textTransform: "uppercase",
+                    textShadow: `0 0 12px ${theme.primary}55, 0 8px 24px rgba(0,0,0,0.70)`,
+                    lineHeight: 1.05,
+                    whiteSpace: "nowrap",
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                  }}
+                >
+                  {title}
+                </div>
+              </div>
+
+              {/* InfoDot */}
+              <div
+                style={{
+                  position: "absolute",
+                  right: 10,
+                  top: "50%",
+                  transform: "translateY(-50%)",
+                  zIndex: 3,
+                }}
+              >
                 <InfoDot
                   onClick={(e: any) => {
                     try {
@@ -252,11 +419,17 @@ export default function BabyFootMenuMatch({ onBack, go }: Props) {
                   glow={theme.primary + "88"}
                 />
               </div>
+
+              {/* accessibilité */}
+              <span style={{ position: "absolute", left: -9999, top: -9999 }}>
+                {title} — {subtitle}
+              </span>
             </button>
           );
         })}
       </div>
 
+      {/* MODAL */}
       {infoMode && (
         <div
           onClick={() => setInfoMode(null)}
@@ -275,7 +448,7 @@ export default function BabyFootMenuMatch({ onBack, go }: Props) {
             onClick={(e) => e.stopPropagation()}
             style={{
               width: "100%",
-              maxWidth: 520,
+              maxWidth: 560,
               borderRadius: 18,
               border: `1px solid ${theme.borderSoft ?? "rgba(255,255,255,0.14)"}`,
               background: theme.card,
@@ -284,8 +457,17 @@ export default function BabyFootMenuMatch({ onBack, go }: Props) {
               color: theme.text,
             }}
           >
-            <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center" }}>
-              <div style={{ fontWeight: 1000, fontSize: 16 }}>{t(infoMode.infoTitleKey, infoMode.infoTitleDefault)}</div>
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                gap: 10,
+                alignItems: "center",
+              }}
+            >
+              <div style={{ fontWeight: 1000, fontSize: 16 }}>
+                {t(infoMode.infoTitleKey, infoMode.infoTitleDefault)}
+              </div>
               <button
                 onClick={() => setInfoMode(null)}
                 style={{
@@ -301,8 +483,35 @@ export default function BabyFootMenuMatch({ onBack, go }: Props) {
                 OK
               </button>
             </div>
-            <div style={{ marginTop: 10, fontSize: 13, lineHeight: 1.45, color: theme.textSoft }}>
+
+            <div
+              style={{
+                marginTop: 10,
+                fontSize: 13,
+                lineHeight: 1.5,
+                color: theme.textSoft,
+                whiteSpace: "pre-line",
+              }}
+            >
               {t(infoMode.infoBodyKey, infoMode.infoBodyDefault)}
+            </div>
+
+            <div
+              style={{
+                marginTop: 14,
+                display: "inline-flex",
+                gap: 8,
+                alignItems: "center",
+                border: "1px solid rgba(255,255,255,0.14)",
+                background: "rgba(0,0,0,0.18)",
+                padding: "6px 10px",
+                borderRadius: 999,
+                fontWeight: 950,
+                letterSpacing: 0.6,
+                fontSize: 11,
+              }}
+            >
+              {infoMode.status}
             </div>
           </div>
         </div>

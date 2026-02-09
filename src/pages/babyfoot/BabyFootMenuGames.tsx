@@ -1,8 +1,9 @@
 // ============================================
 // src/pages/babyfoot/BabyFootMenuGames.tsx
-// Entry point Baby-Foot — garde la route App.tsx "babyfoot_menu"
-// ✅ Affiche le HUB (Match / Fun / Défis / Training / Tournoi / Stats)
-// ✅ N'écrase rien côté Darts / Pétanque / PingPong
+// Entry point Baby-Foot — route App.tsx "babyfoot_menu"
+// ✅ Affiche le HUB (Match / Fun / Défis / Training)
+// ✅ Délègue aux sous-menus (menus/*)
+// ✅ Back depuis le HUB => Home BabyFoot
 // ============================================
 
 import React from "react";
@@ -23,25 +24,40 @@ type Section = "hub" | "match" | "fun" | "defis" | "training" | "tournoi";
 export default function BabyFootMenuGames({ go }: Props) {
   const [section, setSection] = React.useState<Section>("hub");
 
-  if (section === "match") return <BabyFootMenuMatch go={go} />;
-  if (section === "training") return <BabyFootMenuTraining go={go} />;
-  if (section === "fun") return <BabyFootMenuFun go={go} />;
-  if (section === "defis") return <BabyFootMenuDefis go={go} />;
-  if (section === "tournoi") return <BabyFootMenuTournoi go={go} />;
+  const backToHub = () => setSection("hub");
+
+  // Back HUB -> Home BabyFoot (et fallback hash)
+  const backToHome = () => {
+    try {
+      // si App.tsx a une route dédiée
+      go("babyfoot");
+      return;
+    } catch {}
+    try {
+      // HashRouter fallback (Stackblitz)
+      window.location.hash = "#/babyfoot";
+    } catch {}
+  };
+
+  if (section === "match")
+    return <BabyFootMenuMatch onBack={backToHub} go={go} />;
+  if (section === "training")
+    return <BabyFootMenuTraining onBack={backToHub} go={go} />;
+  if (section === "fun") return <BabyFootMenuFun onBack={backToHub} go={go} />;
+  if (section === "defis")
+    return <BabyFootMenuDefis onBack={backToHub} go={go} />;
+  if (section === "tournoi")
+    return <BabyFootMenuTournoi onBack={backToHub} go={go} />;
 
   return (
     <BabyFootGamesHub
-      onBack={() => go("games")}
-      onSelect={(s) => {
-        if (s === "stats") {
-          go("babyfoot_stats_history");
-          return;
-        }
-        if (s === "match") setSection("match");
-        else if (s === "training") setSection("training");
-        else if (s === "fun") setSection("fun");
-        else if (s === "defis") setSection("defis");
-        else if (s === "tournoi") setSection("tournoi");
+      onBack={backToHome}
+      onSelect={(s: any) => {
+        if (s === "match") return setSection("match");
+        if (s === "training") return setSection("training");
+        if (s === "fun") return setSection("fun");
+        if (s === "defis") return setSection("defis");
+        if (s === "tournoi") return setSection("tournoi");
       }}
     />
   );
