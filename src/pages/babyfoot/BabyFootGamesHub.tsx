@@ -1,8 +1,12 @@
 // =============================================================
 // src/pages/babyfoot/BabyFootGamesHub.tsx
 // HUB Games — Baby-Foot (sport autonome)
-// ✅ UI V2: cartes plein largeur (1 colonne) + tickers sur certaines cartes
+// ✅ UI V3: cartes = tickers FULL WIDTH (sans titres/annotations visibles)
+// ✅ Détails intégrés via InfoDot sur chaque carte (ouvre modal)
+// ✅ Header: ticker + BackDot à droite (InfoDot header retiré)
+// ✅ Texte: "Choisir une catégorie" entre le header et les cartes
 // ✅ Tickers: /src/assets/tickers/ticker_babyfoot_*.png
+// ❌ TOURNOI + STATS exclus du GameHub
 // =============================================================
 
 import React from "react";
@@ -42,7 +46,8 @@ function getTicker(id: string | null | undefined) {
   return null;
 }
 
-type Section = "match" | "fun" | "defis" | "training" | "tournoi" | "stats";
+// ✅ Sections DISPONIBLES dans le GameHub (catégories uniquement)
+type Section = "match" | "fun" | "defis" | "training";
 
 type Props = {
   onBack: () => void;
@@ -56,10 +61,10 @@ type CardDef = {
   status: "OK" | "BETA" | "WIP";
   infoTitle: string;
   infoBody: string;
-  // optional ticker id
   tickerId?: string | null;
 };
 
+// ✅ GameHub = catégories (PAS de modes 1v1 / 2v2 ici)
 const CARDS: CardDef[] = [
   {
     id: "match",
@@ -67,8 +72,9 @@ const CARDS: CardDef[] = [
     subtitle: "1v1 • 2v2 • 2v1",
     status: "OK",
     infoTitle: "Match",
-    infoBody: "Modes de match local : 1v1, 2v2, 2v1. Sélection profils + score cible.",
-    tickerId: "babyfoot_2v2",
+    infoBody:
+      "Accès aux matchs baby-foot locaux. Choix des équipes et du mode (1v1, 2v2, 2v1).",
+    tickerId: "babyfoot_match",
   },
   {
     id: "training",
@@ -76,7 +82,8 @@ const CARDS: CardDef[] = [
     subtitle: "Match rapide • presets",
     status: "BETA",
     infoTitle: "Training",
-    infoBody: "Presets rapides (score cible / chrono) pour enchaîner des matchs courts.",
+    infoBody:
+      "Presets rapides (score cible, chrono) pour s’entraîner efficacement.",
     tickerId: "babyfoot_training",
   },
   {
@@ -85,7 +92,8 @@ const CARDS: CardDef[] = [
     subtitle: "Modes fun (preset)",
     status: "WIP",
     infoTitle: "Fun",
-    infoBody: "À venir : variantes fun (golden goal, handicap, séries, etc.).",
+    infoBody: "Variantes fun à venir : golden goal, handicaps, défis rapides.",
+    tickerId: "babyfoot_fun",
   },
   {
     id: "defis",
@@ -93,23 +101,8 @@ const CARDS: CardDef[] = [
     subtitle: "Challenges (preset)",
     status: "WIP",
     infoTitle: "Défis",
-    infoBody: "À venir : challenges baby-foot (séries, objectifs, chrono, etc.).",
-  },
-  {
-    id: "tournoi",
-    title: "TOURNOI",
-    subtitle: "Local • à venir",
-    status: "WIP",
-    infoTitle: "Tournoi",
-    infoBody: "À venir : tournoi baby-foot local (poules / KO) dédié baby-foot.",
-  },
-  {
-    id: "stats",
-    title: "STATS",
-    subtitle: "Résumé + historique",
-    status: "OK",
-    infoTitle: "Stats",
-    infoBody: "Historique et résumé des matchs baby-foot (local).",
+    infoBody: "Challenges baby-foot à objectifs (séries, précision, chrono).",
+    tickerId: "babyfoot_defis",
   },
 ];
 
@@ -117,76 +110,23 @@ export default function BabyFootGamesHub({ onBack, onSelect }: Props) {
   const { theme } = useTheme();
   const [info, setInfo] = React.useState<CardDef | null>(null);
 
-  function badgeStyle(status: CardDef["status"]) {
-    const base: any = {
-      position: "absolute",
-      right: 12,
-      top: 12,
-      padding: "4px 10px",
-      borderRadius: 999,
-      fontWeight: 900,
-      letterSpacing: 0.8,
-      fontSize: 11,
-      border: "1px solid rgba(255,255,255,0.14)",
-      background: "rgba(0,0,0,0.20)",
-      zIndex: 2,
-    };
-    if (status === "OK") return { ...base, color: "#d7ffef" };
-    if (status === "BETA") return { ...base, color: "#ffe7ad" };
-    return { ...base, color: "#ffb9b9" };
-  }
-
-  function Watermark({ tickerId }: { tickerId?: string | null }) {
-    const src = getTicker(tickerId) || logoBabyFoot;
-    const isTicker = !!getTicker(tickerId);
-
-    const mask =
-      "linear-gradient(90deg, rgba(0,0,0,0.00) 0%, rgba(0,0,0,0.70) 18%, rgba(0,0,0,1.00) 55%, rgba(0,0,0,1.00) 100%)";
-
-    return (
-      <div
-        aria-hidden
-        style={{
-          position: "absolute",
-          right: 0,
-          top: 0,
-          height: "100%",
-          width: "70%",
-          pointerEvents: "none",
-          opacity: isTicker ? 0.42 : 0.26,
-          zIndex: 0,
-          WebkitMaskImage: mask as any,
-          maskImage: mask as any,
-        }}
-      >
-        <img
-          src={src}
-          alt=""
-          style={{
-            position: "absolute",
-            inset: 0,
-            width: "100%",
-            height: "100%",
-            objectFit: "cover",
-            objectPosition: "right center",
-            transform: "translateX(-6%) translateZ(0)",
-            filter: isTicker
-              ? "contrast(1.02) saturate(1.02) drop-shadow(0 0 10px rgba(0,0,0,0.25))"
-              : "contrast(1.05) saturate(1.05) drop-shadow(0 0 10px rgba(0,0,0,0.25))",
-          }}
-          draggable={false}
-        />
-        <div
-          style={{
-            position: "absolute",
-            inset: 0,
-            background:
-              "linear-gradient(90deg, rgba(0,0,0,0.42) 0%, rgba(0,0,0,0.00) 35%, rgba(0,0,0,0.00) 65%, rgba(0,0,0,0.42) 100%)",
-            opacity: 0.55,
-          }}
-        />
-      </div>
-    );
+  // ✅ Back doit retourner sur Home (BabyFoot)
+  // (fallback hash pour sécuriser en Stackblitz / HashRouter)
+  function goHome() {
+    try {
+      // priorité : navigation parent
+      onBack?.();
+    } catch {}
+    try {
+      // fallback hard : Home babyfoot
+      if (typeof window !== "undefined") {
+        const h = String(window.location.hash || "");
+        // si on est déjà dans babyfoot, on force la racine babyfoot
+        if (!h.includes("babyfoot") || !h.endsWith("/babyfoot")) {
+          window.location.hash = "#/babyfoot";
+        }
+      }
+    } catch {}
   }
 
   return (
@@ -199,8 +139,8 @@ export default function BabyFootGamesHub({ onBack, onSelect }: Props) {
         color: theme.text,
       }}
     >
-      {/* Header ticker (Baby-Foot only) */}
-      <div style={{ position: "relative", width: "100%", marginBottom: 12 }}>
+      {/* HEADER TICKER (sans InfoDot) */}
+      <div style={{ position: "relative", width: "100%", marginBottom: 10 }}>
         <img
           src={getTicker("babyfoot_games") || logoBabyFoot}
           alt="Baby-Foot — Games"
@@ -209,115 +149,107 @@ export default function BabyFootGamesHub({ onBack, onSelect }: Props) {
             height: 90,
             objectFit: "cover",
             borderRadius: 14,
-            border: `1px solid ${theme.borderSoft ?? "rgba(255,255,255,0.14)"}`,
+            border: `1px solid ${
+              theme.borderSoft ?? "rgba(255,255,255,0.14)"
+            }`,
             boxShadow: "0 10px 26px rgba(0,0,0,0.35)",
           }}
+          draggable={false}
         />
 
-        <div style={{ position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)", zIndex: 2 }}>
-          <BackDot onClick={onBack} />
-        </div>
-
-        <div style={{ position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)", zIndex: 2 }}>
-          <InfoDot
-            title="Baby-foot"
-            body="Sport autonome. Menus dédiés. Local only."
-            glow={theme.primary + "88"}
-          />
-        </div>
-      </div>
-
-      <div
-        style={{
-          position: "relative",
-          borderRadius: 18,
-          overflow: "hidden",
-          border: `1px solid ${theme.borderSoft ?? "rgba(255,255,255,0.14)"}`,
-          background: theme.card,
-          padding: 14,
-          marginBottom: 14,
-          boxShadow: "0 12px 28px rgba(0,0,0,0.35)",
-        }}
-      >
+        {/* BackDot à droite (à la place du i du header) */}
         <div
           style={{
             position: "absolute",
-            inset: 0,
-            background:
-              "radial-gradient(800px 300px at 30% 10%, rgba(255,255,255,0.14), transparent 60%), radial-gradient(600px 240px at 80% 90%, rgba(255,255,255,0.10), transparent 55%)",
-            opacity: 0.75,
+            right: 10,
+            top: "50%",
+            transform: "translateY(-50%)",
+            zIndex: 2,
           }}
-        />
-        <img src={logoBabyFoot} alt="babyfoot" style={{ width: 84, height: 84, objectFit: "contain", position: "relative" }} draggable={false} />
-        <div style={{ marginTop: 6, fontWeight: 950, letterSpacing: 1, position: "relative" }}>Choisis une catégorie</div>
-        <div style={{ marginTop: 2, opacity: 0.75, fontWeight: 800, position: "relative" }}>
-          Match • Fun • Défis • Training • Tournoi • Stats
+        >
+          <BackDot onClick={goHome} />
         </div>
       </div>
 
-      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-        {CARDS.map((c) => (
-          <button
-            key={c.id}
-            onClick={() => onSelect(c.id)}
-            style={{
-              position: "relative",
-              width: "100%",
-              padding: 14,
-              paddingRight: 54,
-              textAlign: "left",
-              borderRadius: 16,
-              border: `1px solid ${theme.borderSoft ?? "rgba(255,255,255,0.14)"}`,
-              background: theme.card,
-              cursor: "pointer",
-              boxShadow: "0 10px 24px rgba(0,0,0,0.55)",
-              overflow: "hidden",
-            }}
-          >
-            <Watermark tickerId={c.tickerId} />
-
-            <div style={{ position: "relative", zIndex: 1 }}>
-              <div
-                style={{
-                  fontSize: 14,
-                  fontWeight: 900,
-                  letterSpacing: 0.9,
-                  color: theme.primary,
-                  textTransform: "uppercase",
-                  textShadow: `0 0 12px ${theme.primary}55`,
-                }}
-              >
-                {c.title}
-              </div>
-              <div style={{ marginTop: 6, fontSize: 12, color: theme.textSoft, fontWeight: 850, lineHeight: 1.35 }}>{c.subtitle}</div>
-            </div>
-
-            <div style={badgeStyle(c.status)}>{c.status}</div>
-
-            <div
-              style={{
-                position: "absolute",
-                right: 10,
-                top: "50%",
-                transform: "translateY(-50%)",
-                zIndex: 3,
-              }}
-            >
-              <InfoDot
-                onClick={(ev: any) => {
-                  try {
-                    ev?.stopPropagation?.();
-                    ev?.preventDefault?.();
-                  } catch {}
-                  setInfo(c);
-                }}
-                glow={theme.primary + "88"}
-              />
-            </div>
-          </button>
-        ))}
+      {/* TEXTE ENTRE HEADER ET CARTES */}
+      <div
+        style={{
+          margin: "4px 0 12px",
+          textAlign: "center",
+          fontWeight: 950,
+          letterSpacing: 0.8,
+          color: theme.textSoft,
+          textShadow: "0 6px 18px rgba(0,0,0,0.45)",
+          opacity: 0.95,
+        }}
+      >
+        Choisir une catégorie
       </div>
 
+      {/* CARTES = TICKERS FULL WIDTH (sans titres/annotations visibles) */}
+      <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+        {CARDS.map((c) => {
+          const src = getTicker(c.tickerId) || logoBabyFoot;
+          return (
+            <button
+              key={c.id}
+              onClick={() => onSelect(c.id)}
+              style={{
+                position: "relative",
+                width: "100%",
+                padding: 0,
+                textAlign: "left",
+                borderRadius: 16,
+                border: `1px solid ${
+                  theme.borderSoft ?? "rgba(255,255,255,0.14)"
+                }`,
+                background: theme.card,
+                cursor: "pointer",
+                boxShadow: "0 10px 24px rgba(0,0,0,0.55)",
+                overflow: "hidden",
+              }}
+            >
+              {/* ticker full width */}
+              <img
+                src={src}
+                alt={c.title}
+                style={{
+                  width: "100%",
+                  height: 86,
+                  display: "block",
+                  objectFit: "cover",
+                  objectPosition: "center",
+                }}
+                draggable={false}
+              />
+
+              {/* Détail intégré dans la carte (InfoDot) */}
+              <div
+                style={{
+                  position: "absolute",
+                  right: 10,
+                  top: "50%",
+                  transform: "translateY(-50%)",
+                  zIndex: 3,
+                }}
+              >
+                <InfoDot
+                  onClick={(ev: any) => {
+                    try {
+                      ev?.stopPropagation?.();
+                      ev?.preventDefault?.();
+                    } catch {}
+                    setInfo(c);
+                  }}
+                  glow={theme.primary + "88"}
+                />
+              </div>
+            </button>
+          );
+        })}
+      </div>
+
+      {/* MODAL DÉTAILS */}
       {info && (
         <div
           onClick={() => setInfo(null)}
@@ -338,15 +270,26 @@ export default function BabyFootGamesHub({ onBack, onSelect }: Props) {
               width: "100%",
               maxWidth: 520,
               borderRadius: 18,
-              border: `1px solid ${theme.borderSoft ?? "rgba(255,255,255,0.14)"}`,
+              border: `1px solid ${
+                theme.borderSoft ?? "rgba(255,255,255,0.14)"
+              }`,
               background: theme.card,
               padding: 16,
               boxShadow: "0 18px 60px rgba(0,0,0,0.55)",
               color: theme.text,
             }}
           >
-            <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center" }}>
-              <div style={{ fontWeight: 1000, fontSize: 16 }}>{info.infoTitle}</div>
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                gap: 10,
+                alignItems: "center",
+              }}
+            >
+              <div style={{ fontWeight: 1000, fontSize: 16 }}>
+                {info.infoTitle}
+              </div>
               <button
                 onClick={() => setInfo(null)}
                 style={{
@@ -362,7 +305,47 @@ export default function BabyFootGamesHub({ onBack, onSelect }: Props) {
                 OK
               </button>
             </div>
-            <div style={{ marginTop: 10, fontSize: 13, lineHeight: 1.45, color: theme.textSoft }}>{info.infoBody}</div>
+
+            <div
+              style={{
+                marginTop: 10,
+                fontSize: 13,
+                lineHeight: 1.45,
+                color: theme.textSoft,
+                fontWeight: 800,
+              }}
+            >
+              {info.subtitle}
+            </div>
+
+            <div
+              style={{
+                marginTop: 10,
+                fontSize: 13,
+                lineHeight: 1.45,
+                color: theme.textSoft,
+              }}
+            >
+              {info.infoBody}
+            </div>
+
+            <div
+              style={{
+                marginTop: 14,
+                display: "inline-flex",
+                gap: 8,
+                alignItems: "center",
+                border: "1px solid rgba(255,255,255,0.14)",
+                background: "rgba(0,0,0,0.18)",
+                padding: "6px 10px",
+                borderRadius: 999,
+                fontWeight: 950,
+                letterSpacing: 0.6,
+                fontSize: 11,
+              }}
+            >
+              {info.status}
+            </div>
           </div>
         </div>
       )}
