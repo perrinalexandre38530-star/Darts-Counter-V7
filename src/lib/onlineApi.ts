@@ -82,7 +82,10 @@ async function writeWithColumnFallback<T>(
 // Types publics
 // --------------------------------------------
 export type AuthSession = {
-  token: string; // peut être "" si signup en attente de confirmation email
+  token: string; // access_token
+  refreshToken: string;
+  expiresAt: number | null;
+  userId: string | null;
   user: UserAuth;
   profile: OnlineProfile | null;
 };
@@ -652,26 +655,47 @@ async function maybeConsumeAuthRedirectFromHash(): Promise<void> {
 // ✅ V7 : restoreSession = RESTORE UNIQUEMENT (pas de création d'utilisateur)
 async function restoreSession(): Promise<AuthSession | null> {
   try {
-    // Hash-router: si on arrive d'un email Supabase, on tente de consommer l'URL.
+    // 0) Hash-router auth callback parsing (best-effort)
     await maybeConsumeAuthRedirectFromHash();
 
-    const s = await buildAuthSessionFromSupabase();
-    saveAuthToLS(s);
+    // 1) Try live Supabase session
+    const live = await buildAuthSessionFromSupabase();
+    if (live) {
+      // ✅ opportuniste: pull léger du cloud -> History (multi-device)
+      // (best-effort, paginé, ne casse jamais le boot)
+      try {
+        importHistoryFromCloud({ maxPages: 2, pageSize: 150 }).catch(() => {});
+      } catch {}
+      return live;
+    }
 
-    // ✅ opportuniste: flush des événements locaux vers Supabase dès qu'on a un uid
-    try {
-      EventBuffer.syncNow().catch(() => {});
-    } catch {}
+    // 2) Try rehydrate from localStorage (mobile-safe)
+    const cached = loadAuthFromLS();
+    if (cached?.token && cached.refreshToken) {
+      try {
+        await supabase.auth.setSession({
+          access_token: cached.token,
+          refresh_token: cached.refreshToken,
+        });
+        const retry = await buildAuthSessionFromSupabase();
+        if (retry) {
+          try {
+            importHistoryFromCloud({ maxPages: 2, pageSize: 150 }).catch(() => {});
+          } catch {}
+          return retry;
+        }
+      } catch (e) {
+        console.warn("[onlineApi] rehydrate setSession failed", e);
+      }
+    }
 
-    // ✅ opportuniste: pull léger du cloud -> History (multi-device)
-    // (best-effort, paginé, ne casse jamais le boot)
-    try {
-      importHistoryFromCloud({ maxPages: 2, pageSize: 150 }).catch(() => {});
-    } catch {}
-    return s;
+    return null;
   } catch (e) {
     console.warn("[onlineApi] restoreSession error", e);
-    saveAuthToLS(null);
+    // si la session est cassée, on nettoie pour éviter des états "fantômes"
+    try {
+      saveAuthToLS(null);
+    } catch {}
     return null;
   }
 }
@@ -837,7 +861,7 @@ async function pullStoreSnapshot(): Promise<{
 
     // ✅ Compat schémas: certaines versions utilisent `payload`, d'autres `data`/`store`
     // ✅ Compat clé: certaines versions utilisent `user_id`, d'autres `owner_user_id`
-    const selectCols = "payload,data,store,updated_at,version";
+    const selectCols = "*"; // ✅ SAFE: évite PGRST204 si colonnes legacy (ex: payload absent)
     let data: any = null;
     let error: any = null;
 
@@ -888,7 +912,7 @@ async function pullStoreSnapshot(): Promise<{
     if (!data && !error) return { status: "not_found", payload: null, updatedAt: null, version: null };
     if (error) return { status: "error", error };
 
-    const payload = (data as any)?.payload ?? (data as any)?.data ?? (data as any)?.store ?? null;
+    const payload = (data as any)?.payload ?? (data as any)?.data ?? (data as any)?.store ?? (data as any)?.store_json ?? (data as any)?.snapshot_json ?? (data as any)?.state_json ?? (data as any)?.snapshot ?? null;
     return {
       status: "ok",
       payload,

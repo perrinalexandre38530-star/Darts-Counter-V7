@@ -231,11 +231,23 @@ return {
   // ------------------------------------------------------------
   const avgDarts = n(breakdown.avgDarts);
   const avgDurationMin = n(breakdown.avgDurationMin);
-  const capturesPerDart = avgDarts > 0 ? n(avgCapturesPerRound) / avgDarts : 0;
+  // --- Derived ratios (robust: never ReferenceError even if a metric is missing) ---
+  const totalRoundsAll = n((breakdown as any).totalRounds);
+  const totalDartsAll = n((breakdown as any).totalDarts);
+  const totalCapturesAll = n((breakdown as any).totalCaptures);
+  const totalStealsAll = n((breakdown as any).totalSteals);
+  const totalLostAll = n((breakdown as any).totalLost);
+
+  // Per-round (global) rates
+  const avgStealsPerRound = totalRoundsAll > 0 ? totalStealsAll / totalRoundsAll : 0;
+  const avgLostPerRound = totalRoundsAll > 0 ? totalLostAll / totalRoundsAll : 0;
+
+  // Per-dart (global) rate
+  const capturesPerDart = totalDartsAll > 0 ? totalCapturesAll / totalDartsAll : 0;
   const dartsPerCapture = n(avgCapturesPerRound) > 0 ? avgDarts / n(avgCapturesPerRound) : 0;
   const capturesPerMin = avgDurationMin > 0 ? n(avgCapturesPerRound) / avgDurationMin : 0;
-  const stealsPerMin = avgDurationMin > 0 ? n(avgStealsPerRound) / avgDurationMin : 0;
-  const lostPerMin = avgDurationMin > 0 ? n(avgLostPerRound) / avgDurationMin : 0;
+  const stealsPerMin = avgDurationMin > 0 ? avgStealsPerRound / avgDurationMin : 0;
+  const lostPerMin = avgDurationMin > 0 ? avgLostPerRound / avgDurationMin : 0;
 
   const last7 = React.useMemo(() => {
     const now = Date.now();

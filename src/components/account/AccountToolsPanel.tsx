@@ -169,13 +169,24 @@ export function AccountToolsPanel({ go }: Props) {
       try {
         const res = await onlineApi.pullStoreSnapshot();
         cloudStatus = res.status;
+        if (res.status === "error") {
+          const msg = (res as any)?.error?.message ?? String((res as any)?.error ?? "unknown_error");
+          addLog(`CLOUD: pull error (${msg})`);
+          cloudUpdatedAt = null;
+          cloudVersion = null;
+          cloudSize = null;
+          cloudHash = null;
+        }
+
         cloudUpdatedAt = res.updatedAt ?? null;
         cloudVersion = (res as any).version ?? null;
 
-        const payload = (res as any).payload ?? null;
-        const s = safeJsonStringify(payload);
-        cloudSize = s ? s.length : 0;
-        cloudHash = s ? hashString(s) : null;
+        if (cloudStatus === "ok") {
+          const payload = (res as any).payload ?? null;
+          const s = safeJsonStringify(payload);
+          cloudSize = s ? s.length : 0;
+          cloudHash = s ? hashString(s) : null;
+        }
       } catch (e: any) {
         cloudStatus = "error";
         addLog(`CLOUD: pull error (${e?.message ?? e})`);
