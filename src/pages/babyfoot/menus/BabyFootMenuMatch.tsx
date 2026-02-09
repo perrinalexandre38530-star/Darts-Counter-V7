@@ -2,13 +2,16 @@
 // src/pages/babyfoot/menus/BabyFootMenuMatch.tsx
 // Menu MATCH — Baby-Foot (sport autonome)
 //
-// ✅ UI V3.3 (corrigée):
+// ✅ UI V3.4 (ajustée):
 //   - header ticker + BackDot à droite (pas de InfoDot header)
-//   - cartes : ticker dans un viewport à droite (~3/4) + fade gauche sur le ticker
-//   - titre visible à gauche en couleur thème (sans annotations sous le titre)
-//   - règles/infos maximales dans le bouton InfoDot (modal)
-// ✅ IMPORTANT : "titre sur le ticker centré en hauteur"
-//   → Ajuste objectPosition Y via TICKER_Y (par carte)
+//   - cartes : zone titre à gauche + ticker “plein cadre” décalé VERS LA GAUCHE
+//     pour mieux voir le contenu du visuel
+//   - dégradés :
+//       * fondu gauche (fort) pour laisser le titre lisible (style Games Darts/Pétanque)
+//       * fondu droite pour lisibilité du bouton InfoDot
+//   - pas d’annotations sous le titre (tout passe dans InfoDot / modal)
+// ✅ IMPORTANT : “centrer en hauteur le texte sur le ticker”
+//   → on recadre verticalement l’image via objectPosition Y (TICKER_Y)
 // ✅ Tickers: /src/assets/tickers/ticker_babyfoot_*.png
 // ✅ Modes: 1v1 / 2v2 / 2v1 + TOURNOI + LIGUE
 // =============================================================
@@ -111,7 +114,7 @@ const MODES: ModeDef[] = [
     infoBodyDefault:
       "Règles & setup (2v2)\n" +
       "• 2 joueurs par équipe (4 profils au total).\n" +
-      "• Compositions réelles : Team A / Team B.\n" +
+      "• Compositions réelles : Team A / Team B (utile pour stats d’équipes).\n" +
       "• Choisis score cible, options et éventuellement chrono/preset.\n" +
       "• Fin : première équipe au score cible.\n" +
       "• Conseillé : activer l’historique pour stats de duels/équipes.",
@@ -132,7 +135,8 @@ const MODES: ModeDef[] = [
       "Règles & setup (2v1)\n" +
       "• 2 joueurs dans une équipe contre 1 joueur dans l'autre.\n" +
       "• Idéal pour équilibrer un écart de niveau.\n" +
-      "• Configure score cible et profils.\n" +
+      "• Configure score cible et profils (2 profils côté équipe, 1 profil côté solo).\n" +
+      "• Option recommandée : handicap/preset si disponible (à venir).\n" +
       "• Fin : équipe au score cible.",
     enabled: true,
     status: "OK",
@@ -149,8 +153,8 @@ const MODES: ModeDef[] = [
     infoBodyKey: "babyfoot.modes.tournament.infoBody",
     infoBodyDefault:
       "Tournoi (WIP)\n" +
-      "• Module Tournois avec scope Baby-Foot.\n" +
-      "• Poules / KO, planning, résultats + stats.\n" +
+      "• Ouvre le module Tournois avec un scope Baby-Foot.\n" +
+      "• Objectif : poules / KO, planning, résultats + stats.\n" +
       "• À venir : templates (2v2), gestion équipes, classement final.",
     enabled: true,
     status: "WIP",
@@ -169,14 +173,15 @@ const MODES: ModeDef[] = [
       "Ligue (à venir)\n" +
       "• Saisons, clubs, classement, ELO/points, calendrier.\n" +
       "• Stats : buts, séries, victoires/défaites, duels, compositions.\n" +
-      "• Les matchs du module MATCH alimenteront la ligue.",
+      "• Intégration : matchs du module MATCH alimenteront la ligue.",
     enabled: false,
     status: "WIP",
     tickerId: "babyfoot_ligue",
   },
 ];
 
-// ✅ Ajuste si le texte DANS le ticker est trop haut/bas
+// ✅ Recadrage vertical des tickers (pour centrer le texte DANS l'image)
+// Valeur = pourcentage Y de object-position (0 = haut, 50 = centre, 100 = bas)
 const TICKER_Y: Partial<Record<ModeId, number>> = {
   match_1v1: 50,
   match_2v2: 50,
@@ -197,7 +202,7 @@ export default function BabyFootMenuMatch({ onBack, go }: Props) {
   }
 
   function openLeague() {
-    // placeholder
+    // placeholder (page à créer plus tard)
   }
 
   function navigate(mode: ModeId) {
@@ -216,17 +221,12 @@ export default function BabyFootMenuMatch({ onBack, go }: Props) {
 
   const cardHeight = 86;
 
-  // ✅ Zone ticker à droite ≈ 3/4
-  const tickerLeftPct = 26; // commence à ~26% => ticker ≈ 74%
-  const tickerWidthPct = 100 - tickerLeftPct;
-
-  // ✅ fade SUR LA GAUCHE DU TICKER (bord du tickerViewport)
-  const tickerLeftFade =
-    "linear-gradient(90deg, rgba(0,0,0,0.95) 0%, rgba(0,0,0,0.65) 40%, rgba(0,0,0,0.18) 70%, rgba(0,0,0,0.00) 100%)";
-
-  // ✅ mini fade droite (pour InfoDot lisible)
+  // ✅ fondu gauche (style Games Darts/Pétanque) : laisse le titre parfaitement lisible
+  const leftFade =
+    "linear-gradient(90deg, rgba(0,0,0,0.96) 0%, rgba(0,0,0,0.86) 38%, rgba(0,0,0,0.55) 66%, rgba(0,0,0,0.10) 88%, rgba(0,0,0,0.00) 100%)";
+  // ✅ fondu droite : contraste pour InfoDot / bords du ticker
   const rightFade =
-    "linear-gradient(270deg, rgba(0,0,0,0.86) 0%, rgba(0,0,0,0.45) 55%, rgba(0,0,0,0.00) 100%)";
+    "linear-gradient(270deg, rgba(0,0,0,0.88) 0%, rgba(0,0,0,0.55) 55%, rgba(0,0,0,0.00) 100%)";
 
   return (
     <div
@@ -238,7 +238,7 @@ export default function BabyFootMenuMatch({ onBack, go }: Props) {
         color: theme.text,
       }}
     >
-      {/* HEADER */}
+      {/* HEADER TICKER */}
       <div style={{ position: "relative", width: "100%", marginBottom: 10 }}>
         <img
           src={getTicker("babyfoot_match") || logoBabyFoot}
@@ -253,6 +253,8 @@ export default function BabyFootMenuMatch({ onBack, go }: Props) {
           }}
           draggable={false}
         />
+
+        {/* BackDot à droite */}
         <div
           style={{
             position: "absolute",
@@ -309,50 +311,38 @@ export default function BabyFootMenuMatch({ onBack, go }: Props) {
               }}
             >
               <div style={{ position: "relative", width: "100%", height: cardHeight }}>
-                {/* ✅ Viewport ticker à droite (≈ 3/4) */}
-                <div
+                {/* ✅ ticker: on limite le zoom + on décale vers la GAUCHE pour voir le contenu
+                    (sinon on ne voit que le bord droit du ticker). */}
+                <img
+                  src={src}
+                  alt={title}
                   style={{
                     position: "absolute",
-                    top: 0,
-                    bottom: 0,
-                    left: `${tickerLeftPct}%`,
-                    width: `${tickerWidthPct}%`,
-                    overflow: "hidden",
+                    inset: 0,
+                    width: "112%",
+                    height: "100%",
+                    objectFit: "cover",
+                    objectPosition: `50% ${y}%`,
+                    transform: "translateX(-10%) translateZ(0)", // ✅ plus à gauche
                   }}
-                >
-                  {/* image ticker (non coupée) */}
-                  <img
-                    src={src}
-                    alt={title}
-                    style={{
-                      position: "absolute",
-                      inset: 0,
-                      width: "100%",
-                      height: "100%",
-                      objectFit: "contain", // ✅ ne coupe pas le texte du ticker
-                      objectPosition: `50% ${y}%`,
-                      transform: "translateZ(0)",
-                      filter: "contrast(1.02) saturate(1.02)",
-                    }}
-                    draggable={false}
-                  />
+                  draggable={false}
+                />
 
-                  {/* ✅ dégradé SUR LA GAUCHE DU TICKER */}
-                  <div
-                    aria-hidden
-                    style={{
-                      position: "absolute",
-                      left: 0,
-                      top: 0,
-                      height: "100%",
-                      width: "34%", // intensité du fade dans le ticker
-                      background: tickerLeftFade,
-                      pointerEvents: "none",
-                    }}
-                  />
-                </div>
+                {/* ✅ fondu gauche (fort) : titre lisible */}
+                <div
+                  aria-hidden
+                  style={{
+                    position: "absolute",
+                    left: 0,
+                    top: 0,
+                    height: "100%",
+                    width: "74%",
+                    background: leftFade,
+                    pointerEvents: "none",
+                  }}
+                />
 
-                {/* ✅ léger dégradé à droite pour InfoDot */}
+                {/* ✅ fondu droite : bords / InfoDot */}
                 <div
                   aria-hidden
                   style={{
@@ -360,15 +350,28 @@ export default function BabyFootMenuMatch({ onBack, go }: Props) {
                     right: 0,
                     top: 0,
                     height: "100%",
-                    width: "30%",
+                    width: "28%",
                     background: rightFade,
                     pointerEvents: "none",
                     opacity: 0.95,
                   }}
                 />
+
+                {/* légère vignette pour homogénéiser */}
+                <div
+                  aria-hidden
+                  style={{
+                    position: "absolute",
+                    inset: 0,
+                    background:
+                      "linear-gradient(90deg, rgba(0,0,0,0.20) 0%, rgba(0,0,0,0.00) 35%, rgba(0,0,0,0.00) 65%, rgba(0,0,0,0.20) 100%)",
+                    opacity: 0.55,
+                    pointerEvents: "none",
+                  }}
+                />
               </div>
 
-              {/* TITRE à gauche */}
+              {/* Titre à gauche (couleur thème) — sans annotation visible */}
               <div
                 style={{
                   position: "absolute",
@@ -376,7 +379,7 @@ export default function BabyFootMenuMatch({ onBack, go }: Props) {
                   top: "50%",
                   transform: "translateY(-50%)",
                   zIndex: 2,
-                  maxWidth: `${tickerLeftPct - 6}%`,
+                  maxWidth: "62%",
                   pointerEvents: "none",
                 }}
               >
@@ -398,7 +401,7 @@ export default function BabyFootMenuMatch({ onBack, go }: Props) {
                 </div>
               </div>
 
-              {/* InfoDot */}
+              {/* Détail intégré (InfoDot) */}
               <div
                 style={{
                   position: "absolute",
@@ -420,7 +423,7 @@ export default function BabyFootMenuMatch({ onBack, go }: Props) {
                 />
               </div>
 
-              {/* accessibilité */}
+              {/* Texte invisible (accessibilité) */}
               <span style={{ position: "absolute", left: -9999, top: -9999 }}>
                 {title} — {subtitle}
               </span>
@@ -429,7 +432,7 @@ export default function BabyFootMenuMatch({ onBack, go }: Props) {
         })}
       </div>
 
-      {/* MODAL */}
+      {/* MODAL — infos/règles */}
       {infoMode && (
         <div
           onClick={() => setInfoMode(null)}
@@ -482,6 +485,19 @@ export default function BabyFootMenuMatch({ onBack, go }: Props) {
               >
                 OK
               </button>
+            </div>
+
+            {/* subtitle uniquement dans la modal */}
+            <div
+              style={{
+                marginTop: 10,
+                fontSize: 13,
+                lineHeight: 1.45,
+                color: theme.textSoft,
+                fontWeight: 800,
+              }}
+            >
+              {t(infoMode.subtitleKey, infoMode.subtitleDefault)}
             </div>
 
             <div
