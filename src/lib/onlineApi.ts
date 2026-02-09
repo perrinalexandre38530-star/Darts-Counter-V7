@@ -17,6 +17,9 @@ import { EventBuffer } from "./sync/EventBuffer";
 import { importHistoryFromCloud } from "./sync/CloudHistoryImport";
 import type { UserAuth, OnlineProfile, OnlineMatch } from "./onlineTypes";
 
+export const CLOUD_STORE_KEY = "main";
+
+
 // ============================================================
 // ✅ PGRST204 column-missing fallback (schema cache / tables legacy)
 // - Si une table existe mais n'a pas une colonne (ex: profiles_online sans nickname),
@@ -404,35 +407,59 @@ async function getOrCreateProfile(userId: string, fallbackNickname: string): Pro
   if (profileRow) return mapProfile(profileRow as any);
 
   // CREATE (upsert safe + column fallback)
-  const payload = {
-    id: userId,
-    user_id: userId, // ✅ required by Supabase schema (NOT NULL)
-    nickname: fallbackNickname,
-    display_name: fallbackNickname,
-    country: null,
-    avatar_url: null,
-    updated_at: new Date().toISOString(),
+  // ⚠️ On a déjà eu des collisions (nickname unique) : on auto-suffixe pour garantir la création.
+  const baseNick = String(fallbackNickname || "")
+    .trim()
+    .replace(/^mailto:/i, "")
+    .replace(/@.*$/, "")
+    .replace(/\s+/g, "-")
+    .replace(/[^a-zA-Z0-9._-]/g, "")
+    .slice(0, 24) || "Player";
+
+  const isUniqueViolation = (err: any) => {
+    const code = err?.code ?? err?.details ?? err?.message;
+    return String(code || "").includes("23505") || String(code || "").toLowerCase().includes("duplicate");
   };
 
-  const res = await writeWithColumnFallback<any>(
-    async (obj) => {
-      const { data, error } = await supabase
-        .from(PROFILES_TABLE)
-        .upsert(obj as any, { onConflict: "id" })
-        .select()
-        .single();
-      return { data, error };
-    },
-    payload,
-    { debugLabel: `profiles upsert (${PROFILES_TABLE})` }
-  );
+  for (let attempt = 0; attempt < 6; attempt++) {
+    const nick = attempt === 0 ? baseNick : `${baseNick}-${Math.floor(Math.random() * 900 + 100)}`;
+    const payload = {
+      id: userId,
+      user_id: userId, // ✅ required by Supabase schema (NOT NULL)
+      nickname: nick,
+      display_name: nick,
+      country: null,
+      avatar_url: null,
+      updated_at: new Date().toISOString(),
+    };
 
-  if (res.error) {
+    const res = await writeWithColumnFallback<any>(
+      async (obj) => {
+        const { data, error } = await supabase
+          .from(PROFILES_TABLE)
+          .upsert(obj as any, { onConflict: "id" })
+          .select()
+          .single();
+        return { data, error };
+      },
+      payload,
+      { debugLabel: `profiles upsert (${PROFILES_TABLE})` }
+    );
+
+    if (!res.error) return mapProfile(res.data as any);
+
+    // Si conflit de pseudo, on retente avec suffix.
+    if (isUniqueViolation(res.error)) {
+      console.warn("[onlineApi] profiles upsert nickname collision — retry", { nick });
+      continue;
+    }
+
     console.warn("[onlineApi] profiles upsert error", res.error);
     return null;
   }
 
-  return mapProfile(res.data as any);
+  console.warn("[onlineApi] profiles upsert error: too many nickname collisions");
+  return null;
 }
 
 async function buildAuthSessionFromSupabase(): Promise<AuthSession | null> {
@@ -815,11 +842,32 @@ async function pullStoreSnapshot(): Promise<{
     let error: any = null;
 
     // A) user_id
-    {
-      const r = await supabase.from("user_store").select(selectCols).eq("user_id", user.id).maybeSingle();
-      data = r.data as any;
-      error = r.error as any;
-    }
+{
+  // 1) Tentative avec store '{CLOUD_STORE_KEY}' (modèle actuel)
+  const r1 = await supabase
+    .from("user_store")
+    .select(selectCols)
+    .eq("user_id", user.id)
+    .eq("store", CLOUD_STORE_KEY)
+    .order("updated_at", { ascending: false })
+    .limit(1);
+
+  data = (r1.data as any)?.[0] ?? null;
+  error = r1.error as any;
+
+  // 2) Fallback: si rien trouvé, on retente sans filtre store (anciens schémas / anciennes clés)
+  // ⚠️ On prend la plus récente, puis le prochain PUSH réécrira `store=CLOUD_STORE_KEY`.
+  if (!error && !data) {
+    const r2 = await supabase
+      .from("user_store")
+      .select(selectCols)
+      .eq("user_id", user.id)
+      .order("updated_at", { ascending: false })
+      .limit(1);
+    data = (r2.data as any)?.[0] ?? null;
+    error = r2.error as any;
+  }
+}
 
     // B) fallback owner_user_id si colonne absente / schéma legacy
     if (error) {
@@ -864,7 +912,7 @@ async function pushStoreSnapshot(payload: any, version = 8): Promise<void> {
     updated_at: new Date().toISOString(),
     payload,
     data: payload,
-    store: payload,
+    store: CLOUD_STORE_KEY,
   };
 
   // 1) Essai upsert sur user_id

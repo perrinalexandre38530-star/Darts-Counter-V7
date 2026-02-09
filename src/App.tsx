@@ -289,6 +289,9 @@ import DepartementsConfig from "./pages/DepartementsConfig";
 import DepartementsPlay from "./pages/DepartementsPlay";
 import EnculetteConfig from "./pages/EnculetteConfig";
 import EnculettePlay from "./pages/EnculettePlay";
+import CastJoinPage from "./pages/cast/CastJoinPage";
+import CastHostPage from "./pages/cast/CastHostPage";
+import CastScreen from "./pages/cast/CastScreen";
 
 if (import.meta.env.DEV) installHistoryProbe();
 
@@ -503,6 +506,9 @@ type Tab =
   | "home"
   | "gameSelect"
   | "games"
+  | "cast_join"
+  | "cast_host"
+  | "cast_room"
   | "mode_not_ready"
   // ✅ NEW (OBLIGATOIRE): Tabs Pétanque (snake_case)
   | "petanque_menu"
@@ -2160,6 +2166,18 @@ function App() {
           ) : (
             <Games setTab={(t: any, p?: any) => go(t, p)} />
           );
+        break;
+
+      case "cast_join":
+        page = <CastJoinPage go={go} />;
+        break;
+
+      case "cast_host":
+        page = <CastHostPage go={go} />;
+        break;
+
+      case "cast_room":
+        page = <CastScreen go={go} roomId={(routeParams as any)?.roomId} />;
         break;
 
       // ✅ NEW (OBLIGATOIRE): Pétanque menu/config/play (snake_case)

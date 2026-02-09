@@ -185,12 +185,36 @@ export default function StatsTerritories(props: any) {
     const topObjective = Object.entries(objectives).sort((a, b) => b[1] - a[1])[0]?.[0];
     const topVictory = Object.entries(victoryTypes).sort((a, b) => b[1] - a[1])[0]?.[0];
 
-    return {
+    
+    // --- Mini-graph helpers (recent trends + scaling) ---
+    const itemsSorted = [...items].sort(
+      (a, b) => Number((b as any)?.ts ?? 0) - Number((a as any)?.ts ?? 0)
+    );
+    const lastN = itemsSorted.slice(0, 12);
+
+    const lastCaptures = lastN.map((it) => Number((it as any)?.captures ?? 0));
+    const lastDom = lastN.map((it) =>
+      Number((it as any)?.domWinner ?? (it as any)?.domination ?? 0)
+    );
+    const lastRounds = lastN.map((it) => Number((it as any)?.rounds ?? 0));
+
+    const maxLastCaptures = Math.max(1, ...lastCaptures);
+    const maxLastDom = Math.max(1, ...lastDom);
+    const maxLastRounds = Math.max(1, ...lastRounds);
+return {
       solo,
       teams,
       totalDarts,
       totalSteals,
       totalLost,
+      totalDurationMs,
+      durationCount,
+      lastCaptures,
+      lastDom,
+      lastRounds,
+      maxLastCaptures,
+      maxLastDom,
+      maxLastRounds,
       avgDarts,
       avgSteals,
       avgLost,
@@ -201,6 +225,17 @@ export default function StatsTerritories(props: any) {
       victoryTypes,
     };
   }, [items]);
+
+  // ------------------------------------------------------------
+  // Derived ratios used by mini-graphs (must always be defined)
+  // ------------------------------------------------------------
+  const avgDarts = n(breakdown.avgDarts);
+  const avgDurationMin = n(breakdown.avgDurationMin);
+  const capturesPerDart = avgDarts > 0 ? n(avgCapturesPerRound) / avgDarts : 0;
+  const dartsPerCapture = n(avgCapturesPerRound) > 0 ? avgDarts / n(avgCapturesPerRound) : 0;
+  const capturesPerMin = avgDurationMin > 0 ? n(avgCapturesPerRound) / avgDurationMin : 0;
+  const stealsPerMin = avgDurationMin > 0 ? n(avgStealsPerRound) / avgDurationMin : 0;
+  const lostPerMin = avgDurationMin > 0 ? n(avgLostPerRound) / avgDurationMin : 0;
 
   const last7 = React.useMemo(() => {
     const now = Date.now();
@@ -605,9 +640,9 @@ export default function StatsTerritories(props: any) {
             }}
           >
             <div style={kpiLabel}>{t("territories.dartsAvg", "Darts (moy.)")}</div>
-            <div style={{ ...kpiValueMain, color: T.text }}>{avgDarts}</div>
+            <div style={{ ...kpiValueMain, color: T.text }}>{breakdown.avgDarts}</div>
             <div style={{ fontSize: 11, color: T.text70 }}>
-              {t("territories.totalDarts", "Total")}: {totalDarts}
+              {t("territories.totalDarts", "Total")}: {breakdown.totalDarts}
             </div>
           </div>
 
@@ -619,9 +654,9 @@ export default function StatsTerritories(props: any) {
             }}
           >
             <div style={kpiLabel}>{t("territories.stealsAvg", "Steals (moy.)")}</div>
-            <div style={{ ...kpiValueMain, color: T.gold }}>{avgSteals}</div>
+            <div style={{ ...kpiValueMain, color: T.gold }}>{breakdown.avgSteals}</div>
             <div style={{ fontSize: 11, color: T.text70 }}>
-              {t("territories.totalSteals", "Total")}: {totalSteals}
+              {t("territories.totalSteals", "Total")}: {breakdown.totalSteals}
             </div>
           </div>
 
@@ -633,9 +668,9 @@ export default function StatsTerritories(props: any) {
             }}
           >
             <div style={kpiLabel}>{t("territories.lostAvg", "Lost (moy.)")}</div>
-            <div style={{ ...kpiValueMain, color: "#FF5A5A" }}>{avgLost}</div>
+            <div style={{ ...kpiValueMain, color: "#FF5A5A" }}>{breakdown.avgLost}</div>
             <div style={{ fontSize: 11, color: T.text70 }}>
-              {t("territories.totalLost", "Total")}: {totalLost}
+              {t("territories.totalLost", "Total")}: {breakdown.totalLost}
             </div>
           </div>
 
@@ -647,10 +682,84 @@ export default function StatsTerritories(props: any) {
             }}
           >
             <div style={kpiLabel}>{t("territories.durationAvg", "Durée (moy.)")}</div>
-            <div style={{ ...kpiValueMain, color: "#B4AAFF" }}>{avgDurationMin}m</div>
+            <div style={{ ...kpiValueMain, color: "#B4AAFF" }}>{breakdown.avgDurationMin}m</div>
             <div style={{ fontSize: 11, color: T.text70 }}>
-              {t("territories.roundsPerMin", "Tours/min")}: {avgRoundsPerMin}
+              {t("territories.roundsPerMin", "Tours/min")}: {breakdown.avgDurationMin > 0 ? Math.round((avgRounds / breakdown.avgDurationMin) * 10) / 10 : 0}
             </div>
+          </div>
+        </div>
+
+
+        {/* MINI-GRAPHES */}
+        <div style={{ ...card, marginBottom: 14 }}>
+          <div style={{ ...goldNeon, fontSize: 13, marginBottom: 10 }}>
+            {t("territories.minigraphs", "Mini-graphes")}
+          </div>
+
+          <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 10 }}>
+            <SparkBars
+              title={t("territories.trendCaptures", "Captures (12 derniers)")}
+              values={breakdown.lastCaptures}
+              maxValue={breakdown.maxLastCaptures}
+              theme={T}
+            />
+            <SparkBars
+              title={t("territories.trendDom", "Domination winner (12 derniers)")}
+              values={breakdown.lastDom}
+              maxValue={breakdown.maxLastDom}
+              theme={T}
+            />
+            <SparkBars
+              title={t("territories.trendRounds", "Tours (12 derniers)")}
+              values={breakdown.lastRounds}
+              maxValue={breakdown.maxLastRounds}
+              theme={T}
+            />
+          </div>
+
+          <div style={{ height: 10 }} />
+
+          <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 8 }}>
+            <MiniBar
+              label={t("territories.captPerDart", "Captures / dart")}
+              value={capturesPerDart}
+              valueLabel={String(capturesPerDart)}
+              max={1}
+              theme={T}
+              accent="#6AE3FF"
+            />
+            <MiniBar
+              label={t("territories.dartsPerCapt", "Darts / capture")}
+              value={dartsPerCapture}
+              valueLabel={`${dartsPerCapture}`}
+              max={Math.max(1, dartsPerCapture * 2)}
+              theme={T}
+              accent="#FFD36A"
+            />
+            <MiniBar
+              label={t("territories.captPerMin", "Captures / min")}
+              value={capturesPerMin}
+              valueLabel={`${capturesPerMin}`}
+              max={Math.max(1, capturesPerMin * 2)}
+              theme={T}
+              accent="#44FF88"
+            />
+            <MiniBar
+              label={t("territories.stealsPerMin", "Steals / min")}
+              value={stealsPerMin}
+              valueLabel={`${stealsPerMin}`}
+              max={Math.max(1, stealsPerMin * 2)}
+              theme={T}
+              accent="#B4AAFF"
+            />
+            <MiniBar
+              label={t("territories.lostPerMin", "Lost / min")}
+              value={lostPerMin}
+              valueLabel={`${lostPerMin}`}
+              max={Math.max(1, lostPerMin * 2)}
+              theme={T}
+              accent="#FF6A6A"
+            />
           </div>
         </div>
 
@@ -849,6 +958,130 @@ export default function StatsTerritories(props: any) {
             </div>
           )}
         </div>
+      </div>
+    </div>
+  );
+}
+
+
+function MiniBar({
+  label,
+  value,
+  valueLabel,
+  max,
+  theme,
+  accent,
+}: {
+  label: string;
+  value: number;
+  valueLabel: string;
+  max: number;
+  theme: any;
+  accent: string;
+}) {
+  const pct =
+    max > 0 ? Math.max(0, Math.min(1, Number(value ?? 0) / Number(max))) : 0;
+
+  return (
+    <div
+      style={{
+        borderRadius: 14,
+        padding: "10px 12px",
+        border: "1px solid rgba(255,255,255,0.08)",
+        background: "rgba(255,255,255,0.04)",
+      }}
+    >
+      <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
+        <div style={{ fontSize: 12, color: theme.text70, fontWeight: 900 }}>
+          {label}
+        </div>
+        <div style={{ fontSize: 12, color: accent, fontWeight: 900 }}>
+          {valueLabel}
+        </div>
+      </div>
+
+      <div
+        style={{
+          marginTop: 8,
+          height: 10,
+          borderRadius: 999,
+          background: "rgba(0,0,0,0.35)",
+          border: "1px solid rgba(255,255,255,0.10)",
+          overflow: "hidden",
+        }}
+      >
+        <div
+          style={{
+            width: `${Math.round(pct * 100)}%`,
+            height: "100%",
+            background: `linear-gradient(90deg, ${accent}55, ${accent})`,
+          }}
+        />
+      </div>
+    </div>
+  );
+}
+
+function SparkBars({
+  title,
+  values,
+  maxValue,
+  theme,
+}: {
+  title: string;
+  values: number[];
+  maxValue: number;
+  theme: any;
+}) {
+  const v = Array.isArray(values) ? values : [];
+  const max = Math.max(1, Number(maxValue ?? 1));
+
+  return (
+    <div
+      style={{
+        borderRadius: 14,
+        padding: "10px 12px",
+        border: "1px solid rgba(255,255,255,0.08)",
+        background: "rgba(255,255,255,0.04)",
+      }}
+    >
+      <div style={{ fontSize: 12, color: theme.text70, fontWeight: 900 }}>
+        {title}
+      </div>
+
+      <div
+        style={{
+          marginTop: 8,
+          display: "flex",
+          gap: 4,
+          alignItems: "flex-end",
+          height: 42,
+        }}
+      >
+        {v.length ? (
+          v
+            .slice()
+            .reverse()
+            .map((n, idx) => {
+              const h = Math.max(2, Math.round((Number(n ?? 0) / max) * 40));
+              return (
+                <div
+                  key={idx}
+                  title={String(n ?? 0)}
+                  style={{
+                    width: 10,
+                    height: h,
+                    borderRadius: 8,
+                    background: "rgba(255,215,0,0.35)",
+                    border: "1px solid rgba(255,215,0,0.35)",
+                    boxShadow: "0 0 10px rgba(255,215,0,0.12)",
+                  }}
+                />
+              );
+            })
+        ) : (
+          <div style={{ fontSize: 12, color: theme.text60 }}>—</div>
+        )}
       </div>
     </div>
   );

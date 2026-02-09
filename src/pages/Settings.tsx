@@ -1999,6 +1999,13 @@ export default function Settings({ go }: Props) {
               theme={theme}
               onClick={() => setTab("sport")}
             />
+
+            <SettingsMenuCard
+              title={t("settings.menu.cast", "Caster sur un écran")}
+              subtitle={t("settings.menu.cast.sub", "Diffuser un scoreboard sur TV / PC / tablette (code de room).")}
+              theme={theme}
+              onClick={() => go("cast_host" as any)}
+            />
             <SettingsMenuCard
               title={t("settings.menu.general", "Réinitialiser")}
               subtitle={t("settings.menu.general.sub", "Effacer les données locales (hard reset + reload).")}

@@ -16,6 +16,53 @@ import { onlineApi } from "../lib/onlineApi";
 import { ensureLocalProfileForOnlineUser } from "../lib/accountBridge";
 import type { OnlineProfile } from "../lib/onlineTypes";
 
+
+async function ensureOnlineProfileRow(user: User): Promise<void> {
+  try {
+    const base =
+      (user.user_metadata as any)?.nickname ||
+      (user.email ? user.email.split("@")[0] : "Player");
+    const safeBase = String(base || "Player").trim().slice(0, 16) || "Player";
+    const suffix = user.id.slice(0, 6);
+    // Nick unique & stable: base + suffix
+    const nickname = `${safeBase}_${suffix}`.replace(/[^a-zA-Z0-9_\-]/g, "_");
+    const displayName = safeBase;
+
+    // profiles.id n'a parfois pas de DEFAULT -> on met explicitement user.id
+    // OnConflict sur id (PK) => pas besoin d'un index unique sur user_id
+    const { error } = await supabase.from("profiles").upsert(
+      {
+        id: user.id,
+        user_id: user.id,
+        nickname,
+        display_name: displayName,
+        created_at: new Date().toISOString(),
+      } as any,
+      { onConflict: "id" }
+    );
+
+    // Si conflit de nickname (unique), on retente avec un suffixe plus long
+    if (error && (error as any).code === "23505") {
+      const nickname2 = `${safeBase}_${user.id.slice(0, 10)}`.replace(
+        /[^a-zA-Z0-9_\-]/g,
+        "_"
+      );
+      await supabase.from("profiles").upsert(
+        {
+          id: user.id,
+          user_id: user.id,
+          nickname: nickname2,
+          display_name: displayName,
+          created_at: new Date().toISOString(),
+        } as any,
+        { onConflict: "id" }
+      );
+    }
+  } catch {
+    // best-effort: on ne bloque jamais l'UI
+  }
+}
+
 type AuthStatus = "checking" | "signed_out" | "signed_in";
 
 type AuthState = {
