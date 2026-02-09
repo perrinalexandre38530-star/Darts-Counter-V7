@@ -10,6 +10,15 @@ type Props = {
   go: (t: any, p?: any) => void;
 };
 
+function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
+  return Promise.race([
+    p,
+    new Promise<T>((_, reject) =>
+      setTimeout(() => reject(new Error(`${label} (timeout ${ms}ms)`)), ms)
+    ),
+  ]);
+}
+
 export default function AuthV7Login({ go }: Props) {
   const [email, setEmail] = React.useState("");
   const [password, setPassword] = React.useState("");
@@ -20,14 +29,18 @@ export default function AuthV7Login({ go }: Props) {
   // Ping simple pour distinguer "mauvais mot de passe" vs "Supabase injoignable"
   const pingSupabase = async () => {
     if (!__SUPABASE_ENV__.url) return false;
+    const ac = new AbortController();
+    const t = setTimeout(() => ac.abort(), 2500);
     try {
-      // Endpoint public/cheap (ne nécessite pas d'auth)
       const res = await fetch(`${__SUPABASE_ENV__.url}/auth/v1/health`, {
         headers: { apikey: (import.meta.env.VITE_SUPABASE_ANON_KEY as string) || "" },
+        signal: ac.signal,
       });
       return res.ok;
     } catch {
       return false;
+    } finally {
+      clearTimeout(t);
     }
   };
 
@@ -38,6 +51,11 @@ export default function AuthV7Login({ go }: Props) {
       return;
     }
     setLoading(true);
+    const hardStop = setTimeout(() => {
+      // fail-safe: évite un spinner infini si une promesse réseau ne répond jamais
+      setLoading(false);
+      setError((prev) => prev || "Connexion bloquée (timeout). Réessaie ou vérifie ton réseau.");
+    }, 12000);
     try {
       const emailRedirectTo = `${window.location.origin}${window.location.pathname}#/auth/callback`;
       const { error: err } = await supabase.auth.resend({
@@ -54,6 +72,7 @@ export default function AuthV7Login({ go }: Props) {
     } catch (e: any) {
       setError(e?.message || "Impossible de renvoyer l’email.");
     } finally {
+      clearTimeout(hardStop);
       setLoading(false);
     }
   }
@@ -76,6 +95,11 @@ export default function AuthV7Login({ go }: Props) {
     }
 
     setLoading(true);
+    const hardStop = setTimeout(() => {
+      // fail-safe: évite un spinner infini si une promesse réseau ne répond jamais
+      setLoading(false);
+      setError((prev) => prev || "Connexion bloquée (timeout). Réessaie ou vérifie ton réseau.");
+    }, 12000);
     try {
       // ✅ si Supabase est injoignable => message clair au lieu de "Failed to fetch"
       const ok = await pingSupabase();
@@ -86,7 +110,11 @@ export default function AuthV7Login({ go }: Props) {
         return;
       }
 
-      const { error: err } = await supabase.auth.signInWithPassword({ email: e, password });
+      const { error: err } = await withTimeout(
+        supabase.auth.signInWithPassword({ email: e, password }),
+        6000,
+        "Connexion Supabase"
+      );
       if (err) {
         const msg = err.message || "Connexion impossible.";
         setError(msg);
@@ -95,10 +123,17 @@ export default function AuthV7Login({ go }: Props) {
         return;
       }
       // ✅ Anti-perte : fusion cloud+local, puis push du merge
+      // ⚠️ IMPORTANT: ne JAMAIS bloquer l'UI de connexion si la sync cloud est lente.
+      // On lance un merge best-effort avec timeout, puis on entre dans l'app.
       try {
         const { data } = await supabase.auth.getSession();
         const uid = data?.session?.user?.id;
-        if (uid) await mergeNow(uid, { conflict: "newest" });
+        if (uid) {
+          await Promise.race([
+            mergeNow(uid, { conflict: "newest" }),
+            new Promise((resolve) => setTimeout(resolve, 3500)),
+          ]);
+        }
       } catch {
         // non bloquant : on laisse l'UI entrer (sync manuel possible)
       }
@@ -106,6 +141,7 @@ export default function AuthV7Login({ go }: Props) {
     } catch (e: any) {
       setError(e?.message || "Connexion impossible.");
     } finally {
+      clearTimeout(hardStop);
       setLoading(false);
     }
   };

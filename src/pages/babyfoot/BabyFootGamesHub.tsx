@@ -199,20 +199,32 @@ export default function BabyFootGamesHub({ onBack, onSelect }: Props) {
         color: theme.text,
       }}
     >
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "48px 1fr 48px",
-          alignItems: "center",
-          gap: 10,
-          marginBottom: 12,
-        }}
-      >
-        <BackDot onClick={onBack} />
-        <div style={{ textAlign: "center", fontWeight: 950, letterSpacing: 1, opacity: 0.95 }}>
-          BABY-FOOT — GAMES
+      {/* Header ticker (Baby-Foot only) */}
+      <div style={{ position: "relative", width: "100%", marginBottom: 12 }}>
+        <img
+          src={getTicker("babyfoot_games") || logoBabyFoot}
+          alt="Baby-Foot — Games"
+          style={{
+            width: "100%",
+            height: 90,
+            objectFit: "cover",
+            borderRadius: 14,
+            border: `1px solid ${theme.borderSoft ?? "rgba(255,255,255,0.14)"}`,
+            boxShadow: "0 10px 26px rgba(0,0,0,0.35)",
+          }}
+        />
+
+        <div style={{ position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)", zIndex: 2 }}>
+          <BackDot onClick={onBack} />
         </div>
-        <InfoDot title="Baby-foot" body="Sport autonome. Menus dédiés. Local only." glow={theme.primary + "88"} />
+
+        <div style={{ position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)", zIndex: 2 }}>
+          <InfoDot
+            title="Baby-foot"
+            body="Sport autonome. Menus dédiés. Local only."
+            glow={theme.primary + "88"}
+          />
+        </div>
       </div>
 
       <div

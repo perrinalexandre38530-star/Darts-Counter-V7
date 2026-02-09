@@ -8,6 +8,7 @@
 // ============================================
 
 import React from "react";
+import { SaveToast } from "../components/ui/SaveToast";
 import ProfileAvatar from "../components/ProfileAvatar";
 import ProfileStarRing from "../components/ProfileStarRing";
 import type { Store, Profile } from "../lib/types";
@@ -18,6 +19,7 @@ import { useLang, type Lang } from "../contexts/LangContext";
 import { useAuthOnline } from "../hooks/useAuthOnline";
 import { onlineApi } from "../lib/onlineApi";
 import { supabase } from "../lib/supabaseClient";
+import { syncProfile, fetchCloudProfile } from "../lib/sync/profileSync";
 import type { ThemeId } from "../theme/themePresets";
 
 import { sha256 } from "../lib/crypto";
@@ -498,6 +500,9 @@ export default function Profiles({
   params?: any;
 }) {
   console.log("[PROFILES PATCH CHECK v4] v2026-01-07");
+
+  const [toast, setToast] = React.useState<null | { type: "success" | "error"; message: string }>(null);
+
   // 🔥 injection du CSS shimmer une seule fois
   useInjectStatsNameCss();
 
@@ -837,7 +842,8 @@ export default function Profiles({
             }
           : p
       );
-      await flushCloud("profiles_avatar", { ...(store as any), profiles: nextProfilesSeed });
+        // ⚠️ Disabled: heavy snapshots kill Supabase IO
+        if (false) await flushCloud("profiles_avatar", { ...(store as any), profiles: nextProfilesSeed });
     } catch {
       await flushCloud("profiles_avatar");
     }
@@ -1369,6 +1375,16 @@ React.useEffect(() => {
           phone: patch.phone?.trim() || undefined,
         });
 
+        // ✅ LIGHT CLOUD SYNC (profiles only) — no stats / no snapshots
+        await syncProfile({
+          display_name: patch.nickname?.trim() || active.name || undefined,
+          avatar_url: (active as any)?.avatarUrl || (active as any)?.avatar_url || undefined,
+          private_info: patch,
+        });
+
+        setToast({ type: "success", message: "Données sauvegardées" });
+
+
         // ✅ force refresh du hook (récupère le profil fraîchement écrit)
         try {
           await (auth as any)?.refresh?.();
@@ -1380,6 +1396,7 @@ React.useEffect(() => {
         await flushCloud("profile_save", { ...(store as any), profiles: nextProfiles });
       } catch (err) {
         console.warn("[profiles] updateProfile online error:", err);
+        setToast({ type: "error", message: "Erreur de sauvegarde" });
       }
     }
   }
@@ -1554,6 +1571,25 @@ React.useEffect(() => {
                     active={active}
                     onPatch={patchActivePrivateInfo}
                     onSave={handlePrivateInfoSave}
+                    onSync={async (full) => {
+                      try {
+                        await handlePrivateInfoSave(full);
+                        setToast({ type: "success", message: "Synchronisation envoyée" });
+                      } catch {
+                        setToast({ type: "error", message: "Erreur de synchronisation" });
+                      }
+                    }}
+                    onPull={async () => {
+                      try {
+                        const cloud = await fetchCloudProfile();
+                        if (cloud?.private_info) {
+                          await handlePrivateInfoSave(cloud.private_info);
+                        }
+                        setToast({ type: "success", message: "Données récupérées" });
+                      } catch {
+                        setToast({ type: "error", message: "Erreur de récupération" });
+                      }
+                    }}
                   />
 
                   {/* 🔥 Préférences joueur (thème + langue / X01 par défaut, etc.) */}
@@ -1598,6 +1634,10 @@ React.useEffect(() => {
           </>
         )}
       </div>
+
+      {toast && (
+        <SaveToast type={toast.type} message={toast.message} onClose={() => setToast(null)} />
+      )}
     </>
   );
 }
@@ -2173,6 +2213,19 @@ function ActiveProfileBlock({
             <button className="btn ok sm" onClick={handleSaveEdit}>
               Enregistrer
             </button>
+            <button
+              className="btn sm"
+              onClick={() => {
+                try {
+                  onSync?.({ ...draft });
+                } catch {}
+              }}
+            >
+              Synchroniser
+            </button>
+            <button className="btn sm" onClick={() => onPull?.()}>
+              Récupérer
+            </button>
           </div>
         )}
       </div>
@@ -2186,10 +2239,14 @@ function PrivateInfoBlock({
   active,
   onPatch,
   onSave,
+  onSync,
+  onPull,
 }: {
   active: Profile | null;
   onPatch: (patch: Partial<PrivateInfo>) => void;
   onSave?: (full: PrivateInfo) => void;
+  onSync?: (full: PrivateInfo) => void;
+  onPull?: () => void;
 }) {
   const { theme } = useTheme();
   const { t } = useLang();
