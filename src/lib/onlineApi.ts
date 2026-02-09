@@ -861,7 +861,7 @@ async function pullStoreSnapshot(): Promise<{
 
     // ✅ Compat schémas: certaines versions utilisent `payload`, d'autres `data`/`store`
     // ✅ Compat clé: certaines versions utilisent `user_id`, d'autres `owner_user_id`
-    const selectCols = "*"; // ✅ SAFE: évite PGRST204 si colonnes legacy (ex: payload absent)
+    const selectCols = "payload,data,store,updated_at,version";
     let data: any = null;
     let error: any = null;
 
@@ -912,7 +912,7 @@ async function pullStoreSnapshot(): Promise<{
     if (!data && !error) return { status: "not_found", payload: null, updatedAt: null, version: null };
     if (error) return { status: "error", error };
 
-    const payload = (data as any)?.payload ?? (data as any)?.data ?? (data as any)?.store ?? (data as any)?.store_json ?? (data as any)?.snapshot_json ?? (data as any)?.state_json ?? (data as any)?.snapshot ?? null;
+    const payload = (data as any)?.payload ?? (data as any)?.data ?? (data as any)?.store ?? null;
     return {
       status: "ok",
       payload,
@@ -927,23 +927,40 @@ async function pullStoreSnapshot(): Promise<{
 async function pushStoreSnapshot(payload: any, version = 8): Promise<void> {
   const { user } = await ensureAuthedUser();
 
-  // ✅ On écrit `payload` (schéma principal) + legacy `data/store` si colonnes existent
-  // ✅ Compat clé: `user_id` OU `owner_user_id` selon ton schéma Supabase
-  const base: any = {
-    user_id: user.id,
-    owner_user_id: user.id,
+  // ✅ On écrit un snapshot COMPLET dans user_store
+  // Objectif: tolérer plusieurs schémas Supabase (colonnes + contraintes différentes)
+  const baseCommon: any = {
     version,
     updated_at: new Date().toISOString(),
-    payload,
-    data: payload,
-    store: CLOUD_STORE_KEY,
   };
 
-  // 1) Essai upsert sur user_id
-  const tryUpsert = async (obj: any, onConflict: "user_id" | "owner_user_id") => {
+  const payloadObjWithStore: any = {
+    ...baseCommon,
+    user_id: user.id,
+    owner_user_id: user.id,
+    store: CLOUD_STORE_KEY,
+    payload,
+    data: payload,
+    store_json: payload,
+    snapshot_json: payload,
+  };
+
+  const payloadObjNoStore: any = {
+    ...baseCommon,
+    user_id: user.id,
+    owner_user_id: user.id,
+    payload,
+    data: payload,
+    store_json: payload,
+    snapshot_json: payload,
+  };
+
+  const attempt = async (obj: any, onConflict: string) => {
     return await writeWithColumnFallback<any>(
       async (cleanObj) => {
-        const { data, error } = await supabase.from("user_store").upsert(cleanObj as any, { onConflict } as any);
+        const { data, error } = await supabase
+          .from("user_store")
+          .upsert(cleanObj as any, { onConflict } as any);
         return { data, error };
       },
       obj,
@@ -951,24 +968,61 @@ async function pushStoreSnapshot(payload: any, version = 8): Promise<void> {
     );
   };
 
-  let res = await tryUpsert(base, "user_id");
-
-  // 2) Si ça échoue parce que user_id n'existe pas, retry owner_user_id
-  if (res.error) {
-    const msg = String((res.error as any)?.message || res.error);
+  const isOnConflictMismatch = (err: any) => {
+    const msg = String(err?.message ?? err);
     const lower = msg.toLowerCase();
-    const looksMissingUserId =
-      lower.includes("could not find the 'user_id' column") ||
-      (lower.includes("column") && lower.includes("user_id") && lower.includes("does not exist")) ||
-      String((res.error as any)?.code || "") === "PGRST204";
+    return lower.includes("on conflict") && lower.includes("no unique") || String(err?.code ?? "") === "42P10";
+  };
 
-    if (looksMissingUserId) {
-      res = await tryUpsert(base, "owner_user_id");
+  const isMissingColumn = (err: any, col: string) => {
+    const msg = String(err?.message ?? err);
+    const lower = msg.toLowerCase();
+    return lower.includes("column") && lower.includes(col.toLowerCase()) && lower.includes("does not exist")
+      || lower.includes(`could not find the '${col.toLowerCase()}' column`);
+  };
+
+  // Stratégie: essayer d'abord le schéma "moderne" (user_id + store), puis fallback.
+  const plans: Array<{ obj: any; onConflict: string; label: string }> = [
+    { obj: payloadObjWithStore, onConflict: "user_id,store", label: "user_id+store" },
+    { obj: payloadObjWithStore, onConflict: "user_id", label: "user_id" },
+    { obj: payloadObjNoStore, onConflict: "user_id", label: "user_id (no store)" },
+    { obj: payloadObjWithStore, onConflict: "owner_user_id,store", label: "owner_user_id+store" },
+    { obj: payloadObjWithStore, onConflict: "owner_user_id", label: "owner_user_id" },
+    { obj: payloadObjNoStore, onConflict: "owner_user_id", label: "owner_user_id (no store)" },
+  ];
+
+  let lastErr: any = null;
+
+  for (const p of plans) {
+    let res = await attempt(p.obj, p.onConflict);
+
+    // Si onConflict fait référence à une colonne stripée (ex: store), Supabase renvoie "column ... does not exist"
+    if (res.error && isMissingColumn(res.error, "store") && p.onConflict.includes("store")) {
+      // retry sans store via plan suivant
+      lastErr = res.error;
+      continue;
     }
+
+    // Si la contrainte ON CONFLICT n'existe pas, on tente la variante suivante
+    if (res.error && isOnConflictMismatch(res.error)) {
+      lastErr = res.error;
+      continue;
+    }
+
+    // Si user_id colonne absente, on saute vers owner_user_id plans
+    if (res.error && isMissingColumn(res.error, "user_id")) {
+      lastErr = res.error;
+      continue;
+    }
+
+    if (!res.error) return; // ✅ success
+    lastErr = res.error;
   }
 
-  if (res.error) throw new Error(res.error.message || String(res.error));
+  throw new Error((lastErr as any)?.message || String(lastErr) || "push_failed");
 }
+
+
 
 // ============================================================
 // ONLINE SERVER PING (safe)
