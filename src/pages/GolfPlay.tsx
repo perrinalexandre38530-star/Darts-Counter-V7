@@ -437,9 +437,10 @@ function GolfPlayersCarousel({
 // ---------------- Header "Joueur actif" (CLONE feel X01PlayV3) ----------------
 
 const miniCard: React.CSSProperties = {
+  boxSizing: "border-box",
   // ✅ Responsive (phone safe): this panel must never overflow the viewport
   width: "clamp(140px, 44vw, 190px)",
-  maxWidth: "48vw",
+  maxWidth: "calc(100vw - 18px)",
   padding: 7,
   borderRadius: 12,
   overflow: "hidden",
@@ -781,7 +782,7 @@ function GolfHeaderBlock(props: {
           </div>
 
           {/* Mini ranking */}
-          <div style={{ ...miniCard, margin: "0 auto", height: "auto", width: "clamp(148px, 44vw, 176px)" }}>
+          <div style={{ ...miniCard, margin: "0 auto", height: "auto", width: "clamp(132px, 42vw, 176px)", maxWidth: "calc(100vw - 18px)" }}>
             <div style={{ fontSize: 11, color: "#d9dbe3", marginBottom: 4, textAlign: "left", paddingLeft: 2, opacity: 0.9 }}>
               Classement
             </div>
@@ -1267,25 +1268,124 @@ const teamIndexByKey = useMemo(() => {
   const playerTotals = useMemo(() => scores.map((row) => sum(row.map((v) => (typeof v === "number" ? v : 0)))), [scores]);
 const teamTotals = useMemo(() => teamScores.map((row) => sum(row.map((v) => (typeof v === "number" ? v : 0)))), [teamScores]);
 
+const HIT_ORDER: Array<"DBULL" | "BULL" | "D" | "T" | "S" | "M"> = ["DBULL", "BULL", "D", "T", "S", "M"];
+
+function bestHitFromStat(s: any): "DBULL" | "BULL" | "D" | "T" | "S" | "M" {
+  const db = Number(s?.db ?? 0);
+  const b = Number(s?.b ?? 0);
+  const d = Number(s?.d ?? 0);
+  const t = Number(s?.t ?? 0);
+  const si = Number(s?.s ?? 0);
+  if (db > 0) return "DBULL";
+  if (b > 0) return "BULL";
+  if (d > 0) return "D";
+  if (t > 0) return "T";
+  if (si > 0) return "S";
+  return "M";
+}
+
+function hitRank(hit: string): number {
+  const idx = HIT_ORDER.indexOf(hit as any);
+  return idx == -1 ? HIT_ORDER.length : idx;
+}
+
+function pct(n: number, d: number): number {
+  if (!d || d <= 0) return 0;
+  return n / d;
+}
+
+function rankCompare(a: any, b: any): number {
+  // 1) plus petit score
+  if (a.total !== b.total) return a.total - b.total;
+
+  // 2) meilleur hit (DBULL > BULL > D > T > S > M)
+  const ha = hitRank(a.bestHit);
+  const hb = hitRank(b.bestHit);
+  if (ha !== hb) return ha - hb;
+
+  // 3) moins de fléchettes jouées
+  if (a.darts !== b.darts) return a.darts - b.darts;
+
+  // 4) %1st / %2nd / %3rd (du meilleur au moins bon)
+  if (a.p1 !== b.p1) return b.p1 - a.p1;
+  if (a.p2 !== b.p2) return b.p2 - a.p2;
+  if (a.p3 !== b.p3) return b.p3 - a.p3;
+
+  return 0;
+}
+
 const ranking = useMemo(() => {
   if (teamsOk) {
     const arr = enabledTeamKeys
       .filter((k) => (teamMembersIdxs[k]?.length ?? 0) > 0)
-      .map((k) => ({
-        idx: teamIndexByKey[k] ?? 0,
-        id: `team_${k}`,
-        name: TEAM_META[k].label,
-        avatar: TEAM_META[k].logo,
-        total: teamTotals[teamIndexByKey[k] ?? 0] ?? 0,
-        color: TEAM_META[k].color,
-      }));
-    arr.sort((a, b) => a.total - b.total);
+      .map((k) => {
+        const idx = teamIndexByKey[k] ?? 0;
+        const members = teamMembersIdxs[k] ?? [];
+
+        // agrégation stats team (somme)
+        const agg = members.reduce(
+          (acc: any, pi: number) => {
+            const s = statsByPlayer[pi] ?? { darts: 0, miss: 0, d: 0, t: 0, s: 0, b: 0, db: 0, turns: 0, hit1: 0, hit2: 0, hit3: 0 };
+            acc.darts += Number(s.darts ?? 0);
+            acc.miss += Number(s.miss ?? 0);
+            acc.d += Number(s.d ?? 0);
+            acc.t += Number(s.t ?? 0);
+            acc.s += Number(s.s ?? 0);
+            acc.b += Number(s.b ?? 0);
+            acc.db += Number(s.db ?? 0);
+            acc.turns += Number(s.turns ?? 0);
+            acc.hit1 += Number(s.hit1 ?? 0);
+            acc.hit2 += Number(s.hit2 ?? 0);
+            acc.hit3 += Number(s.hit3 ?? 0);
+            return acc;
+          },
+          { darts: 0, miss: 0, d: 0, t: 0, s: 0, b: 0, db: 0, turns: 0, hit1: 0, hit2: 0, hit3: 0 }
+        );
+
+        const bestHit = bestHitFromStat(agg);
+        const turns = Number(agg.turns ?? 0);
+
+        return {
+          idx,
+          id: `team_${k}`,
+          name: TEAM_META[k].label,
+          avatar: TEAM_META[k].logo,
+          total: teamTotals[idx] ?? 0,
+          color: TEAM_META[k].color,
+          bestHit,
+          darts: Number(agg.darts ?? 0),
+          p1: pct(Number(agg.hit1 ?? 0), turns),
+          p2: pct(Number(agg.hit2 ?? 0), turns),
+          p3: pct(Number(agg.hit3 ?? 0), turns),
+        };
+      });
+
+    arr.sort(rankCompare);
     return arr;
   }
-  const arr = roster.map((p, idx) => ({ idx, id: p.id, name: p.name, avatar: p.avatar, total: playerTotals[idx] ?? 0 }));
-  arr.sort((a, b) => a.total - b.total);
+
+  const arr = roster.map((p, idx) => {
+    const s = statsByPlayer[idx] ?? { darts: 0, miss: 0, d: 0, t: 0, s: 0, b: 0, db: 0, turns: 0, hit1: 0, hit2: 0, hit3: 0 };
+    const bestHit = bestHitFromStat(s);
+    const turns = Number(s.turns ?? 0);
+
+    return {
+      idx,
+      id: p.id,
+      name: p.name,
+      avatar: p.avatar,
+      total: playerTotals[idx] ?? 0,
+      bestHit,
+      darts: Number(s.darts ?? 0),
+      p1: pct(Number(s.hit1 ?? 0), turns),
+      p2: pct(Number(s.hit2 ?? 0), turns),
+      p3: pct(Number(s.hit3 ?? 0), turns),
+    };
+  });
+
+  arr.sort(rankCompare);
   return arr;
-}, [roster, playerTotals, teamsOk, teamTotals, enabledTeamKeys, teamMembersIdxs, teamIndexByKey]);
+}, [roster, playerTotals, teamsOk, teamTotals, enabledTeamKeys, teamMembersIdxs, teamIndexByKey, statsByPlayer]);
 
   // ✅ TTS classement provisoire : géré via advanceAfterFinalize() (désactivé ici)
 
