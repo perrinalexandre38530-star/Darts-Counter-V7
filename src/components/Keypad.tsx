@@ -59,6 +59,10 @@ const wrapCard: React.CSSProperties = {
   padding: 14, // padding un poil réduit car la barre flèches est supprimée
   boxShadow: "0 10px 30px rgba(0,0,0,.35)",
   userSelect: "none",
+  // Important: allow the keypad to be constrained by its parent without cutting the footer.
+  display: "flex",
+  flexDirection: "column",
+  minHeight: 0,
 };
 
 const btnBase: React.CSSProperties = {
@@ -192,6 +196,7 @@ export default function Keypad({
           gridTemplateColumns: "1fr 1fr 1fr",
           gap: 12,
           marginBottom: 12,
+          flex: "0 0 auto",
         }}
       >
         <button
@@ -237,30 +242,43 @@ export default function Keypad({
         </button>
       </div>
 
-      {/* Grille chiffres */}
-      <div style={{ display: "grid", gap: 10 }}>
-        {rows.map((row, idx) => (
-          <div
-            key={idx}
-            style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(7, 1fr)",
-              gap: 10,
-            }}
-          >
-            {row.map((n) => (
-              <button
-                key={n}
-                type="button"
-                style={cell}
-                onClick={() => onNumber(n)}
-                title={n === 0 ? "MISS" : String(n)}
-              >
-                {n}
-              </button>
-            ))}
-          </div>
-        ))}
+      {/* Zone centrale scrollable si petit écran: la grille se tasse mais le footer reste visible */}
+      <div
+        style={{
+          flex: 1,
+          minHeight: 0,
+          overflow: "auto",
+          paddingRight: 2,
+          display: "flex",
+          flexDirection: "column",
+          gap: 10,
+        }}
+      >
+        {/* Grille chiffres */}
+        <div style={{ display: "grid", gap: 10 }}>
+          {rows.map((row, idx) => (
+            <div
+              key={idx}
+              style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(7, 1fr)",
+                gap: 10,
+              }}
+            >
+              {row.map((n) => (
+                <button
+                  key={n}
+                  type="button"
+                  style={cell}
+                  onClick={() => onNumber(n)}
+                  title={n === 0 ? "MISS" : String(n)}
+                >
+                  {n}
+                </button>
+              ))}
+            </div>
+          ))}
+        </div>
       </div>
 
       {/* BULL + (TOTAL ou SLOT) CENTRÉ + VALIDER */}
@@ -271,6 +289,7 @@ export default function Keypad({
           alignItems: "center",
           gap: 12,
           marginTop: 14,
+          flex: "0 0 auto",
         }}
       >
         {/* Colonne gauche : BULL aligné à gauche */}

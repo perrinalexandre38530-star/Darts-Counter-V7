@@ -266,6 +266,9 @@ export default function GameplayLayout({
     </div>
   );
 
+  // Safe-area bottom (mobile) so the dock never collides with system gestures.
+  const safeBottom = "calc(10px + env(safe-area-inset-bottom))";
+
   const infoEnabled = (showInfo ?? !!onInfo) && !!onInfo;
 
   // ⚠️ Barrières anti-dépassement : le layout gameplay ne doit JAMAIS déborder en largeur/hauteur.
@@ -348,53 +351,72 @@ export default function GameplayLayout({
             style={{
               display: "flex",
               flexDirection: "column",
-              gap: 10,
               flex: 1,
               minHeight: 0,
               overflow: "hidden",
+              gap: 10,
             }}
           >
-            {/* 2) HEADER PROFIL ACTIF */}
-            {activeProfileHeader ? (
-              <div className="card" style={{ padding: "10px 12px" }}>
-                {activeProfileHeader}
-              </div>
-            ) : null}
+            {/*
+              PHONE LAYOUT (IMPORTANT UX):
+              - Le contenu (profil/joueurs/volée) scroll.
+              - Le KEYPAD/CIBLE est docké en bas (sticky), taille "normale".
+              - Pas de double scale (ScoreInputHub gère déjà l'auto-fit interne).
+            */}
 
-            {/* 3) JOUEURS (modal) */}
-            {renderPlayersRow()}
+            {/* Scroll zone (tout sauf la saisie) */}
+            <div
+              style={{
+                flex: 1,
+                minHeight: 0,
+                overflow: "auto",
+                display: "flex",
+                flexDirection: "column",
+                gap: 10,
+                paddingBottom: safeBottom,
+              }}
+            >
+              {/* 2) HEADER PROFIL ACTIF */}
+              {activeProfileHeader ? (
+                <div className="card" style={{ padding: "10px 12px" }}>
+                  {activeProfileHeader}
+                </div>
+              ) : null}
 
-            <RulesModal open={openPlayers} onClose={() => setOpenPlayers(false)} title={playersPanelTitle}>
-              <div style={{ padding: 2 }}>{playersPanel}</div>
-            </RulesModal>
+              {/* 3) JOUEURS (modal) */}
+              {renderPlayersRow()}
 
-            {/* 4) VOLÉE */}
-            {volleyInputDisplay ? (
-              <div className="card" style={{ padding: "10px 12px" }}>
-                {volleyInputDisplay}
-              </div>
-            ) : null}
+              <RulesModal open={openPlayers} onClose={() => setOpenPlayers(false)} title={playersPanelTitle}>
+                <div style={{ padding: 2 }}>{playersPanel}</div>
+              </RulesModal>
 
-            {/* 5) MODES DE SAISIE — doit toujours tenir dans l'écran */}
+              {/* 4) VOLÉE */}
+              {volleyInputDisplay ? (
+                <div className="card" style={{ padding: "10px 12px" }}>
+                  {volleyInputDisplay}
+                </div>
+              ) : null}
+            </div>
+
+            {/* 5) DOCK BAS: MODES DE SAISIE (KEYPAD / CIBLE) */}
             {inputModes ? (
               <div
                 className="card"
                 style={{
                   padding: "10px 12px",
-                  flex: 1,
-                  minHeight: 0,
+                  position: "sticky",
+                  bottom: 0,
+                  zIndex: 30,
                   overflow: "hidden",
-                  display: "flex",
-                  flexDirection: "column",
+                  // Taille "normale" : évite le panneau géant. L'auto-fit interne gère les cas extrêmes.
+                  maxHeight: "min(46dvh, 430px)",
+                  background: "rgba(0,0,0,0.28)",
+                  border: `1px solid ${theme.borderSoft}`,
+                  backdropFilter: "blur(8px)",
+                  paddingBottom: safeBottom,
                 }}
               >
-                {/*
-                  IMPORTANT:
-                  - Le KEYPAD/CIBLE gère déjà son auto-fit (ScoreInputHub fitToParent, etc.).
-                  - Le FitBox global ajoutait une 2ème couche de scale -> rendu "aplati" sur mobile.
-                  Donc on rend directement la zone input en hauteur pleine.
-                */}
-                <div style={{ flex: 1, minHeight: 0, overflow: "hidden" }}>{inputModes}</div>
+                <div style={{ height: "100%", minHeight: 0, overflow: "hidden" }}>{inputModes}</div>
               </div>
             ) : null}
           </div>
