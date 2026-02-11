@@ -229,8 +229,11 @@ import BabyFootHome from "./pages/babyfoot/BabyFootHome";
 import BabyFootMenuGames from "./pages/babyfoot/BabyFootMenuGames";
 import BabyFootConfig from "./pages/babyfoot/BabyFootConfig";
 import BabyFootPlay from "./pages/babyfoot/BabyFootPlay";
+import BabyFootTeams from "./pages/babyfoot/BabyFootTeams";
+import BabyFootTeamEdit from "./pages/babyfoot/BabyFootTeamEdit";
 import BabyFootStatsShell from "./pages/babyfoot/BabyFootStatsShell";
 import BabyFootStatsHistoryPage from "./pages/babyfoot/BabyFootStatsHistoryPage";
+import BabyFootStatsCenterPage from "./pages/babyfoot/BabyFootStatsCenterPage";
 
 // ✅ NEW: Ping-Pong (LOCAL)
 import PingPongHome from "./pages/pingpong/PingPongHome";
@@ -520,6 +523,7 @@ type Tab =
   | "babyfoot_config"
   | "babyfoot_play"
   | "babyfoot_stats_history"
+  | "babyfoot_stats_center"
   // ✅ NEW: Tabs Ping-Pong (LOCAL)
   | "pingpong_menu"
   | "pingpong_config"
@@ -2211,6 +2215,16 @@ useEffect(() => {
         page = <BabyFootPlay go={go} params={routeParams} onFinish={(m: any) => pushBabyFootHistory(m)} />;
         break;
 
+// ✅ NEW: Teams Baby-Foot (CRUD local)
+case "babyfoot_teams":
+  page = <BabyFootTeams go={go} params={routeParams} />;
+  break;
+
+case "babyfoot_team_edit":
+  page = <BabyFootTeamEdit go={go} params={routeParams} />;
+  break;
+
+
       // ✅ NEW: Ping-Pong flow (LOCAL)
       case "pingpong_menu":
         page = <PingPongMenuGames go={go} />;
@@ -2339,6 +2353,11 @@ useEffect(() => {
       // ✅ BABY-FOOT — STATS/HISTORY (LOCAL)
       case "babyfoot_stats_history":
         page = <BabyFootStatsHistoryPage store={store} go={go} params={routeParams} />;
+        break;
+
+      // ✅ BABY-FOOT — CENTRE DE STATISTIQUES (UI type Darts Counter)
+      case "babyfoot_stats_center":
+        page = <BabyFootStatsCenterPage store={store} go={go} params={routeParams} />;
         break;
 
       // ✅ PING-PONG — STATS/HISTORY (LOCAL)

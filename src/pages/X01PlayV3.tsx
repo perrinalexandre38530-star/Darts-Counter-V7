@@ -3173,7 +3173,8 @@ if (isLandscapeTablet) {
   return (
     <div
       className={`x01play-container theme-${theme.id}`}
-      style={{ overflow: "hidden", minHeight: "100vh" }}
+      // 100dvh = évite l'effet "aplati" quand la barre navigateur mobile change la hauteur utile.
+      style={{ overflow: "hidden", minHeight: "100dvh" }}
     >
       {/* ✅ MEP: Layout unifié (Header + Profil Actif + Joueurs modal + Volée + Saisie) */}
       <GameplayLayout

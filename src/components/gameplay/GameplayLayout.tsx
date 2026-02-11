@@ -269,9 +269,10 @@ export default function GameplayLayout({
   const infoEnabled = (showInfo ?? !!onInfo) && !!onInfo;
 
   // ⚠️ Barrières anti-dépassement : le layout gameplay ne doit JAMAIS déborder en largeur/hauteur.
-  // On verrouille le viewport (100svh) et on force les zones internes à shrink (minHeight/minWidth à 0).
+  // Sur mobile, 100vh / 100svh peut "raboter" la zone utile (barres navigateur / UI).
+  // On préfère 100dvh (dynamic viewport height) pour que la zone INPUT puisse aller jusqu'en bas.
   const outerStyle: React.CSSProperties = {
-    height: "100svh",
+    height: "100dvh",
     width: "100%",
     overflow: "hidden",
   };
@@ -282,6 +283,7 @@ export default function GameplayLayout({
     maxWidth: isTablet ? 1180 : 920,
     margin: "0 auto",
     padding: "10px 10px 14px",
+    paddingBottom: "calc(14px + env(safe-area-inset-bottom))",
     display: "flex",
     flexDirection: "column",
     gap: 10,
@@ -382,13 +384,17 @@ export default function GameplayLayout({
                   flex: 1,
                   minHeight: 0,
                   overflow: "hidden",
+                  display: "flex",
+                  flexDirection: "column",
                 }}
               >
-                <div style={{ height: "100%", minHeight: 0 }}>
-                  <FitBox minScale={0.52} maxScale={1}>
-                    {inputModes}
-                  </FitBox>
-                </div>
+                {/*
+                  IMPORTANT:
+                  - Le KEYPAD/CIBLE gère déjà son auto-fit (ScoreInputHub fitToParent, etc.).
+                  - Le FitBox global ajoutait une 2ème couche de scale -> rendu "aplati" sur mobile.
+                  Donc on rend directement la zone input en hauteur pleine.
+                */}
+                <div style={{ flex: 1, minHeight: 0, overflow: "hidden" }}>{inputModes}</div>
               </div>
             ) : null}
           </div>
@@ -485,13 +491,11 @@ export default function GameplayLayout({
                       flex: 1,
                       minHeight: 0,
                       overflow: "hidden",
+                      display: "flex",
+                      flexDirection: "column",
                     }}
                   >
-                    <div style={{ height: "100%", minHeight: 0 }}>
-                      <FitBox minScale={0.58} maxScale={1}>
-                        {inputModes}
-                      </FitBox>
-                    </div>
+                    <div style={{ flex: 1, minHeight: 0, overflow: "hidden" }}>{inputModes}</div>
                   </div>
                 ) : null}
               </div>

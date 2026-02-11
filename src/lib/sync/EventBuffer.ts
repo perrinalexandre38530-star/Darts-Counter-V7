@@ -4,22 +4,31 @@
 // - Stocke en IndexedDB les événements non envoyés
 // - Sync dès que user_id existe et réseau dispo
 // - Tolérant aux variations de schéma (fallback colonnes)
+// - ✅ PATCH SAFE: conserve l'API existante (push/listUnsynced/markSynced/syncNow/installAutoSync)
+// - ✅ Nouveau chemin recommandé: table 'events' (event_id,user_id,device_id,type,payload,created_at)
+// - ✅ Fallback: si la table 'events' n'existe pas, on retombe sur 'stats_events' (ancien mapping)
 // ============================================
 
 import { supabase } from "../supabaseClient";
 import { getDeviceId } from "../device";
 
-export type GameEventSport = "darts" | "petanque" | "babyfoot" | "pingpong" | "territories" | string;
+export type GameEventSport =
+  | "darts"
+  | "petanque"
+  | "babyfoot"
+  | "pingpong"
+  | "territories"
+  | string;
 
 export interface GameEvent {
-  id: string;
-  user_id: string; // auth.users.id
+  id: string;              // client event_id
+  user_id: string;         // auth.users.id (vide si offline / pas connecté)
   device_id: string;
   sport: GameEventSport;
   mode: string;
   event_type: string;
   payload: any;
-  created_at: string; // ISO
+  created_at: string;      // ISO
   synced: boolean;
 }
 
@@ -56,7 +65,10 @@ function openDb(): Promise<IDBDatabase> {
   });
 }
 
-async function withStore<T>(mode: IDBTransactionMode, fn: (st: IDBObjectStore) => Promise<T>): Promise<T> {
+async function withStore<T>(
+  mode: IDBTransactionMode,
+  fn: (st: IDBObjectStore) => Promise<T>
+): Promise<T> {
   const db = await openDb();
   return await new Promise<T>((resolve, reject) => {
     const tx = db.transaction(STORE, mode);
@@ -147,15 +159,6 @@ function isOnline(): boolean {
   return navigator.onLine !== false;
 }
 
-function authUserId(): string {
-  try {
-    const u = (supabase as any)?.auth?.getUser ? null : null;
-  } catch {}
-  // On évite await ici; on lit le cache localStorage du GoTrue via supabase.
-  // Le vrai user_id est récupéré dans syncNow() via getUser().
-  return "";
-}
-
 async function getAuthedUserId(): Promise<string> {
   try {
     const { data, error } = await supabase.auth.getUser();
@@ -173,7 +176,13 @@ type InsertRow = Record<string, any>;
 function looksLikeMissingColumnError(err: any): boolean {
   const msg = String(err?.message || err?.details || "").toLowerCase();
   // PostgREST PGRST204 (column not found) or similar
-  return msg.includes("pgrst204") || msg.includes("column") && msg.includes("does not exist");
+  return (msg.includes("pgrst204") || (msg.includes("column") && msg.includes("does not exist")));
+}
+
+function looksLikeMissingRelationError(err: any): boolean {
+  const msg = String(err?.message || err?.details || "").toLowerCase();
+  // PostgREST may report: relation "xxx" does not exist
+  return msg.includes("relation") && msg.includes("does not exist");
 }
 
 function extractMissingColumn(err: any): string | "" {
@@ -185,13 +194,22 @@ function extractMissingColumn(err: any): string | "" {
   return "";
 }
 
-async function insertWithColumnFallback(rows: InsertRow[], debugLabel: string): Promise<{ ok: boolean; error?: any }>
-{
+async function insertWithColumnFallback(
+  table: string,
+  rows: InsertRow[],
+  debugLabel: string
+): Promise<{ ok: boolean; error?: any; missingRelation?: boolean }> {
   // Tentatives: insert direct -> si colonne manquante, on retire la colonne et on retente (max 6 colonnes)
   let current = rows.map((r) => ({ ...r }));
   for (let attempt = 0; attempt < 7; attempt++) {
-    const { error } = await supabase.from("stats_events").insert(current as any, { returning: "minimal" } as any);
+    const { error } = await supabase.from(table).insert(current as any, { returning: "minimal" } as any);
+
     if (!error) return { ok: true };
+
+    if (looksLikeMissingRelationError(error)) {
+      console.warn(`[EventBuffer] ${debugLabel} relation missing for table '${table}'`, error);
+      return { ok: false, error, missingRelation: true };
+    }
 
     if (!looksLikeMissingColumnError(error)) {
       console.warn(`[EventBuffer] ${debugLabel} insert failed`, error);
@@ -222,10 +240,12 @@ export const EventBuffer = {
    * Push un évènement en buffer local.
    * - Ne jette jamais (failsafe)
    */
-  async push(input: Omit<GameEvent, "id" | "created_at" | "synced" | "device_id" | "user_id"> & {
-    user_id?: string;
-    device_id?: string;
-  }) {
+  async push(
+    input: Omit<GameEvent, "id" | "created_at" | "synced" | "device_id" | "user_id"> & {
+      user_id?: string;
+      device_id?: string;
+    }
+  ) {
     try {
       const id = globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random()}`;
       const device_id = input.device_id || getDeviceId();
@@ -271,7 +291,14 @@ export const EventBuffer = {
   },
 
   /**
-   * Envoie les events non syncés vers Supabase (table stats_events)
+   * Envoie les events non syncés vers Supabase.
+   *
+   * ✅ Nouveau flux recommandé: table 'events'
+   *   columns: event_id, user_id, device_id, type, payload, created_at
+   *
+   * 🔁 Fallback automatique: si la table 'events' n'existe pas (ancien projet),
+   *    on retombe sur la table 'stats_events' avec le mapping legacy.
+   *
    * - tolérant schéma (retire colonnes manquantes et retente)
    */
   async syncNow(opts?: { limit?: number }): Promise<void> {
@@ -284,33 +311,65 @@ export const EventBuffer = {
       const unsynced = await idbListUnsynced(opts?.limit ?? 200);
       if (!unsynced.length) return;
 
-      // On complète user_id/device_id si absents
       const device_id = getDeviceId();
 
-      // ✅ Schéma réel côté Supabase (ton projet) :
-// stats_events: id, owner_user_id, player_profile_id, type, payload, created_at
-// On mappe donc nos events bufferisés vers ces colonnes.
-const rows: InsertRow[] = unsynced.map((e) => ({
-  id: e.id,
-  owner_user_id: (e.user_id || uid),
-  // player_profile_id: optionnel (non utilisé pour l’instant)
-  type: `${e.sport}:${e.event_type}`,
-  payload: {
-    meta: {
-      client_event_id: e.id,
-      sport: e.sport,
-      mode: e.mode,
-      event_type: e.event_type,
-      device_id: e.device_id || device_id,
-      created_at: e.created_at,
-    },
-    data: e.payload ?? null,
-  },
-  created_at: e.created_at,
-}));
+      // -------------------------------
+      // 1) Chemin "events" (canonique)
+      // -------------------------------
+      const rowsEvents: InsertRow[] = unsynced.map((e) => ({
+        event_id: e.id,
+        user_id: (e.user_id || uid),
+        device_id: e.device_id || device_id,
+        type: `${e.sport}:${e.event_type}`,
+        payload: {
+          meta: {
+            client_event_id: e.id,
+            sport: e.sport,
+            mode: e.mode,
+            event_type: e.event_type,
+            device_id: e.device_id || device_id,
+            created_at: e.created_at,
+          },
+          data: e.payload ?? null,
+        },
+        created_at: e.created_at,
+      }));
 
-      const res = await insertWithColumnFallback(rows, "stats_events");
-      if (!res.ok) return;
+      const resEvents = await insertWithColumnFallback("events", rowsEvents, "events");
+      if (resEvents.ok) {
+        await idbMarkSynced(unsynced.map((e) => e.id));
+        try {
+          if (canUseWindow()) window.dispatchEvent(new Event("dc-events-synced"));
+        } catch {}
+        return;
+      }
+
+      // Si la relation "events" n'existe pas, on fallback (ancien schéma)
+      if (!resEvents.missingRelation) return;
+
+      // --------------------------------
+      // 2) Fallback legacy: stats_events
+      // --------------------------------
+      const rowsLegacy: InsertRow[] = unsynced.map((e) => ({
+        id: e.id,
+        owner_user_id: (e.user_id || uid),
+        type: `${e.sport}:${e.event_type}`,
+        payload: {
+          meta: {
+            client_event_id: e.id,
+            sport: e.sport,
+            mode: e.mode,
+            event_type: e.event_type,
+            device_id: e.device_id || device_id,
+            created_at: e.created_at,
+          },
+          data: e.payload ?? null,
+        },
+        created_at: e.created_at,
+      }));
+
+      const resLegacy = await insertWithColumnFallback("stats_events", rowsLegacy, "stats_events");
+      if (!resLegacy.ok) return;
 
       await idbMarkSynced(unsynced.map((e) => e.id));
 
@@ -327,6 +386,57 @@ const rows: InsertRow[] = unsynced.map((e) => ({
    * - retour en ligne
    * - intervalle
    */
+  
+  /**
+   * PULL cloud -> local
+   * Récupère les events depuis Supabase (table events)
+   * et les injecte en local s'ils n'existent pas déjà
+   */
+  async pullNow(): Promise<void> {
+    try {
+      if (!isOnline()) return;
+
+      const uid = await getAuthedUserId();
+      if (!uid) return;
+
+      const { data, error } = await supabase
+        .from("events")
+        .select("*")
+        .eq("user_id", uid)
+        .order("created_at", { ascending: true });
+
+      if (error || !data?.length) return;
+
+      for (const row of data) {
+        try {
+          // si déjà présent localement, on ignore
+          const existing = await withStore("readonly", async (st) => {
+            return await new Promise<any>((resolve) => {
+              const req = st.get(row.id);
+              req.onsuccess = () => resolve(req.result || null);
+              req.onerror = () => resolve(null);
+            });
+          });
+          if (existing) continue;
+
+          await idbPut({
+            id: row.id,
+            user_id: row.user_id,
+            device_id: row.device_id,
+            sport: row.sport,
+            mode: row.mode,
+            event_type: row.event_type,
+            payload: row.payload,
+            created_at: row.created_at,
+            synced: true,
+          });
+        } catch {}
+      }
+    } catch (e) {
+      console.warn("[EventBuffer] pullNow failed", e);
+    }
+  },
+
   installAutoSync(opts?: { intervalMs?: number }) {
     if (!canUseWindow()) return () => {};
 

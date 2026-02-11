@@ -1,12 +1,7 @@
 // =============================================================
 // src/pages/babyfoot/BabyFootGamesHub.tsx
 // HUB Games — Baby-Foot (sport autonome)
-// ✅ UI V3: cartes = tickers FULL WIDTH (sans titres/annotations visibles)
-// ✅ Détails intégrés via InfoDot sur chaque carte (ouvre modal)
-// ✅ Header: ticker + BackDot à droite (InfoDot header retiré)
-// ✅ Texte: "Choisir une catégorie" entre le header et les cartes
-// ✅ Tickers: /src/assets/tickers/ticker_babyfoot_*.png
-// ❌ TOURNOI + STATS exclus du GameHub
+// ❌ ÉQUIPES retiré du GameHub (reste UNIQUEMENT dans PROFILS)
 // =============================================================
 
 import React from "react";
@@ -16,7 +11,6 @@ import InfoDot from "../../components/InfoDot";
 
 import logoBabyFoot from "../../assets/games/logo-babyfoot.png";
 
-// ✅ Tickers images (Vite) — même logique que Games/Pétanque
 const TICKERS = import.meta.glob("../../assets/tickers/*.png", {
   eager: true,
   import: "default",
@@ -46,7 +40,6 @@ function getTicker(id: string | null | undefined) {
   return null;
 }
 
-// ✅ Sections DISPONIBLES dans le GameHub (catégories uniquement)
 type Section = "match" | "fun" | "defis" | "training";
 
 type Props = {
@@ -64,7 +57,6 @@ type CardDef = {
   tickerId?: string | null;
 };
 
-// ✅ GameHub = catégories (PAS de modes 1v1 / 2v2 ici)
 const CARDS: CardDef[] = [
   {
     id: "match",
@@ -110,18 +102,13 @@ export default function BabyFootGamesHub({ onBack, onSelect }: Props) {
   const { theme } = useTheme();
   const [info, setInfo] = React.useState<CardDef | null>(null);
 
-  // ✅ Back doit retourner sur Home (BabyFoot)
-  // (fallback hash pour sécuriser en Stackblitz / HashRouter)
   function goHome() {
     try {
-      // priorité : navigation parent
       onBack?.();
     } catch {}
     try {
-      // fallback hard : Home babyfoot
       if (typeof window !== "undefined") {
         const h = String(window.location.hash || "");
-        // si on est déjà dans babyfoot, on force la racine babyfoot
         if (!h.includes("babyfoot") || !h.endsWith("/babyfoot")) {
           window.location.hash = "#/babyfoot";
         }
@@ -139,7 +126,6 @@ export default function BabyFootGamesHub({ onBack, onSelect }: Props) {
         color: theme.text,
       }}
     >
-      {/* HEADER TICKER (sans InfoDot) */}
       <div style={{ position: "relative", width: "100%", marginBottom: 10 }}>
         <img
           src={getTicker("babyfoot_games") || logoBabyFoot}
@@ -149,15 +135,11 @@ export default function BabyFootGamesHub({ onBack, onSelect }: Props) {
             height: 90,
             objectFit: "cover",
             borderRadius: 14,
-            border: `1px solid ${
-              theme.borderSoft ?? "rgba(255,255,255,0.14)"
-            }`,
+            border: `1px solid ${theme.borderSoft ?? "rgba(255,255,255,0.14)"}`,
             boxShadow: "0 10px 26px rgba(0,0,0,0.35)",
           }}
           draggable={false}
         />
-
-        {/* BackDot à droite (à la place du i du header) */}
         <div
           style={{
             position: "absolute",
@@ -171,7 +153,6 @@ export default function BabyFootGamesHub({ onBack, onSelect }: Props) {
         </div>
       </div>
 
-      {/* TEXTE ENTRE HEADER ET CARTES */}
       <div
         style={{
           margin: "4px 0 12px",
@@ -186,7 +167,6 @@ export default function BabyFootGamesHub({ onBack, onSelect }: Props) {
         Choisir une catégorie
       </div>
 
-      {/* CARTES = TICKERS FULL WIDTH (sans titres/annotations visibles) */}
       <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
         {CARDS.map((c) => {
           const src = getTicker(c.tickerId) || logoBabyFoot;
@@ -200,16 +180,13 @@ export default function BabyFootGamesHub({ onBack, onSelect }: Props) {
                 padding: 0,
                 textAlign: "left",
                 borderRadius: 16,
-                border: `1px solid ${
-                  theme.borderSoft ?? "rgba(255,255,255,0.14)"
-                }`,
+                border: `1px solid ${theme.borderSoft ?? "rgba(255,255,255,0.14)"}`,
                 background: theme.card,
                 cursor: "pointer",
                 boxShadow: "0 10px 24px rgba(0,0,0,0.55)",
                 overflow: "hidden",
               }}
             >
-              {/* ticker full width */}
               <img
                 src={src}
                 alt={c.title}
@@ -222,8 +199,6 @@ export default function BabyFootGamesHub({ onBack, onSelect }: Props) {
                 }}
                 draggable={false}
               />
-
-              {/* Détail intégré dans la carte (InfoDot) */}
               <div
                 style={{
                   position: "absolute",
@@ -249,7 +224,6 @@ export default function BabyFootGamesHub({ onBack, onSelect }: Props) {
         })}
       </div>
 
-      {/* MODAL DÉTAILS */}
       {info && (
         <div
           onClick={() => setInfo(null)}
@@ -270,81 +244,19 @@ export default function BabyFootGamesHub({ onBack, onSelect }: Props) {
               width: "100%",
               maxWidth: 520,
               borderRadius: 18,
-              border: `1px solid ${
-                theme.borderSoft ?? "rgba(255,255,255,0.14)"
-              }`,
+              border: `1px solid ${theme.borderSoft ?? "rgba(255,255,255,0.14)"}`,
               background: theme.card,
               padding: 16,
               boxShadow: "0 18px 60px rgba(0,0,0,0.55)",
               color: theme.text,
             }}
           >
-            <div
-              style={{
-                display: "flex",
-                justifyContent: "space-between",
-                gap: 10,
-                alignItems: "center",
-              }}
-            >
-              <div style={{ fontWeight: 1000, fontSize: 16 }}>
-                {info.infoTitle}
-              </div>
-              <button
-                onClick={() => setInfo(null)}
-                style={{
-                  border: "1px solid rgba(255,255,255,0.14)",
-                  background: "rgba(0,0,0,0.18)",
-                  color: theme.text,
-                  fontWeight: 900,
-                  borderRadius: 12,
-                  padding: "8px 10px",
-                  cursor: "pointer",
-                }}
-              >
-                OK
-              </button>
+            <div style={{ display: "flex", justifyContent: "space-between" }}>
+              <div style={{ fontWeight: 1000, fontSize: 16 }}>{info.infoTitle}</div>
+              <button onClick={() => setInfo(null)}>OK</button>
             </div>
-
-            <div
-              style={{
-                marginTop: 10,
-                fontSize: 13,
-                lineHeight: 1.45,
-                color: theme.textSoft,
-                fontWeight: 800,
-              }}
-            >
-              {info.subtitle}
-            </div>
-
-            <div
-              style={{
-                marginTop: 10,
-                fontSize: 13,
-                lineHeight: 1.45,
-                color: theme.textSoft,
-              }}
-            >
+            <div style={{ marginTop: 10, fontSize: 13, color: theme.textSoft }}>
               {info.infoBody}
-            </div>
-
-            <div
-              style={{
-                marginTop: 14,
-                display: "inline-flex",
-                gap: 8,
-                alignItems: "center",
-                border: "1px solid rgba(255,255,255,0.14)",
-                background: "rgba(0,0,0,0.18)",
-                padding: "6px 10px",
-                borderRadius: 999,
-                fontWeight: 950,
-                letterSpacing: 0.6,
-                fontSize: 11,
-              }}
-            >
-              {info.status}
             </div>
           </div>
         </div>

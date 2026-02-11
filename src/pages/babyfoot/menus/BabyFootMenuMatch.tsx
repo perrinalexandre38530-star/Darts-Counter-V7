@@ -2,16 +2,12 @@
 // src/pages/babyfoot/menus/BabyFootMenuMatch.tsx
 // Menu MATCH — Baby-Foot (sport autonome)
 //
-// ✅ UI V3.4 (ajustée):
-//   - header ticker + BackDot à droite (pas de InfoDot header)
-//   - cartes : zone titre à gauche + ticker “plein cadre” décalé VERS LA GAUCHE
-//     pour mieux voir le contenu du visuel
-//   - dégradés :
-//       * fondu gauche (fort) pour laisser le titre lisible (style Games Darts/Pétanque)
-//       * fondu droite pour lisibilité du bouton InfoDot
-//   - pas d’annotations sous le titre (tout passe dans InfoDot / modal)
-// ✅ IMPORTANT : “centrer en hauteur le texte sur le ticker”
-//   → on recadre verticalement l’image via objectPosition Y (TICKER_Y)
+// ✅ UI V3.4 (style "Games DartsCounter"):
+//   - Header ticker + BackDot à droite (pas de InfoDot header)
+//   - Cartes: fond sombre + ticker en "panneau" à droite (≈ 3/4 de la carte)
+//   - Ticker = hauteur EXACTE de la carte (100%), recadrage vertical réglable
+//   - Dégradé sur le bord GAUCHE du ticker pour laisser le titre (couleur thème) lisible
+//   - AUCUNE annotation visible sous les titres (tout passe dans InfoDot => modal)
 // ✅ Tickers: /src/assets/tickers/ticker_babyfoot_*.png
 // ✅ Modes: 1v1 / 2v2 / 2v1 + TOURNOI + LIGUE
 // =============================================================
@@ -96,8 +92,8 @@ const MODES: ModeDef[] = [
       "• 1 joueur VS 1 joueur (1 profil par équipe).\n" +
       "• Choisis les profils, le score cible et les options de match.\n" +
       "• But = +1 (ou règles du preset si activées).\n" +
-      "• Fin de match : équipe qui atteint le score cible en premier.\n" +
-      "• Historique/Stats : sauvegarde locale du match (si activée).",
+      "• Fin : équipe qui atteint le score cible en premier.\n" +
+      "• Historique/Stats : sauvegarde locale (si activée).",
     enabled: true,
     status: "OK",
     tickerId: "babyfoot_1v1",
@@ -114,10 +110,10 @@ const MODES: ModeDef[] = [
     infoBodyDefault:
       "Règles & setup (2v2)\n" +
       "• 2 joueurs par équipe (4 profils au total).\n" +
-      "• Compositions réelles : Team A / Team B (utile pour stats d’équipes).\n" +
-      "• Choisis score cible, options et éventuellement chrono/preset.\n" +
+      "• Compositions réelles : Team A / Team B (utile stats d’équipes).\n" +
+      "• Choisis score cible, options et éventuellement preset/chrono.\n" +
       "• Fin : première équipe au score cible.\n" +
-      "• Conseillé : activer l’historique pour stats de duels/équipes.",
+      "• Recommandé : activer l’historique (stats duels/équipes).",
     enabled: true,
     status: "OK",
     tickerId: "babyfoot_2v2",
@@ -136,7 +132,6 @@ const MODES: ModeDef[] = [
       "• 2 joueurs dans une équipe contre 1 joueur dans l'autre.\n" +
       "• Idéal pour équilibrer un écart de niveau.\n" +
       "• Configure score cible et profils (2 profils côté équipe, 1 profil côté solo).\n" +
-      "• Option recommandée : handicap/preset si disponible (à venir).\n" +
       "• Fin : équipe au score cible.",
     enabled: true,
     status: "OK",
@@ -173,14 +168,14 @@ const MODES: ModeDef[] = [
       "Ligue (à venir)\n" +
       "• Saisons, clubs, classement, ELO/points, calendrier.\n" +
       "• Stats : buts, séries, victoires/défaites, duels, compositions.\n" +
-      "• Intégration : matchs du module MATCH alimenteront la ligue.",
+      "• Intégration : les matchs du module MATCH alimenteront la ligue.",
     enabled: false,
     status: "WIP",
     tickerId: "babyfoot_ligue",
   },
 ];
 
-// ✅ Recadrage vertical des tickers (pour centrer le texte DANS l'image)
+// ✅ Recadrage vertical du ticker (pour recentrer le texte intégré dans l'image)
 // Valeur = pourcentage Y de object-position (0 = haut, 50 = centre, 100 = bas)
 const TICKER_Y: Partial<Record<ModeId, number>> = {
   match_1v1: 50,
@@ -221,12 +216,12 @@ export default function BabyFootMenuMatch({ onBack, go }: Props) {
 
   const cardHeight = 86;
 
-  // ✅ fondu gauche (style Games Darts/Pétanque) : laisse le titre parfaitement lisible
+  // panneau ticker à droite ≈ 3/4 (style Games)
+  const tickerPanelW = "76%"; // ✅ ~3/4 de la carte
   const leftFade =
-    "linear-gradient(90deg, rgba(0,0,0,0.96) 0%, rgba(0,0,0,0.86) 38%, rgba(0,0,0,0.55) 66%, rgba(0,0,0,0.10) 88%, rgba(0,0,0,0.00) 100%)";
-  // ✅ fondu droite : contraste pour InfoDot / bords du ticker
-  const rightFade =
-    "linear-gradient(270deg, rgba(0,0,0,0.88) 0%, rgba(0,0,0,0.55) 55%, rgba(0,0,0,0.00) 100%)";
+    "linear-gradient(90deg, rgba(10,10,14,0.98) 0%, rgba(10,10,14,0.86) 35%, rgba(10,10,14,0.55) 60%, rgba(10,10,14,0.00) 100%)";
+  const tickerLeftEdgeFade =
+    "linear-gradient(90deg, rgba(10,10,14,0.92) 0%, rgba(10,10,14,0.72) 38%, rgba(10,10,14,0.25) 70%, rgba(10,10,14,0.00) 100%)";
 
   return (
     <div
@@ -306,29 +301,54 @@ export default function BabyFootMenuMatch({ onBack, go }: Props) {
                 background: theme.card,
                 cursor: disabled ? "not-allowed" : "pointer",
                 opacity: disabled ? 0.55 : 1,
-                boxShadow: "0 10px 24px rgba(0,0,0,0.55)",
+                boxShadow: disabled ? "none" : "0 10px 24px rgba(0,0,0,0.55)",
                 overflow: "hidden",
               }}
             >
-              <div style={{ position: "relative", width: "100%", height: cardHeight }}>
-                {/* ✅ ticker: on limite le zoom + on décale vers la GAUCHE pour voir le contenu
-                    (sinon on ne voit que le bord droit du ticker). */}
-                <img
-                  src={src}
-                  alt={title}
+              {/* Hauteur carte */}
+              <div style={{ position: "relative", height: cardHeight, width: "100%" }}>
+                {/* panneau ticker à droite (hauteur = carte) */}
+                <div
                   style={{
                     position: "absolute",
-                    inset: 0,
-                    width: "112%",
+                    right: 0,
+                    top: 0,
                     height: "100%",
-                    objectFit: "cover",
-                    objectPosition: `50% ${y}%`,
-                    transform: "translateX(-10%) translateZ(0)", // ✅ plus à gauche
+                    width: tickerPanelW,
+                    overflow: "hidden",
+                    pointerEvents: "none",
                   }}
-                  draggable={false}
-                />
+                >
+                  <img
+                    src={src}
+                    alt={title}
+                    style={{
+                      position: "absolute",
+                      inset: 0,
+                      width: "100%",
+                      height: "100%",
+                      objectFit: "cover",
+                      objectPosition: `50% ${y}%`,
+                      opacity: 0.95,
+                      transform: "translateZ(0)",
+                    }}
+                    draggable={false}
+                  />
+                  {/* dégradé sur le bord GAUCHE du ticker */}
+                  <div
+                    aria-hidden
+                    style={{
+                      position: "absolute",
+                      left: 0,
+                      top: 0,
+                      height: "100%",
+                      width: "42%",
+                      background: tickerLeftEdgeFade,
+                    }}
+                  />
+                </div>
 
-                {/* ✅ fondu gauche (fort) : titre lisible */}
+                {/* fade global depuis la gauche (style Games) */}
                 <div
                   aria-hidden
                   style={{
@@ -336,97 +356,69 @@ export default function BabyFootMenuMatch({ onBack, go }: Props) {
                     left: 0,
                     top: 0,
                     height: "100%",
-                    width: "74%",
+                    width: "64%",
                     background: leftFade,
                     pointerEvents: "none",
                   }}
                 />
 
-                {/* ✅ fondu droite : bords / InfoDot */}
+                {/* Titre à gauche (couleur thème) */}
                 <div
-                  aria-hidden
                   style={{
                     position: "absolute",
-                    right: 0,
-                    top: 0,
-                    height: "100%",
-                    width: "28%",
-                    background: rightFade,
+                    left: 14,
+                    top: "50%",
+                    transform: "translateY(-50%)",
+                    zIndex: 2,
+                    maxWidth: "44%",
                     pointerEvents: "none",
-                    opacity: 0.95,
-                  }}
-                />
-
-                {/* légère vignette pour homogénéiser */}
-                <div
-                  aria-hidden
-                  style={{
-                    position: "absolute",
-                    inset: 0,
-                    background:
-                      "linear-gradient(90deg, rgba(0,0,0,0.20) 0%, rgba(0,0,0,0.00) 35%, rgba(0,0,0,0.00) 65%, rgba(0,0,0,0.20) 100%)",
-                    opacity: 0.55,
-                    pointerEvents: "none",
-                  }}
-                />
-              </div>
-
-              {/* Titre à gauche (couleur thème) — sans annotation visible */}
-              <div
-                style={{
-                  position: "absolute",
-                  left: 14,
-                  top: "50%",
-                  transform: "translateY(-50%)",
-                  zIndex: 2,
-                  maxWidth: "62%",
-                  pointerEvents: "none",
-                }}
-              >
-                <div
-                  style={{
-                    fontSize: 14,
-                    fontWeight: 1000,
-                    letterSpacing: 0.9,
-                    color: theme.primary,
-                    textTransform: "uppercase",
-                    textShadow: `0 0 12px ${theme.primary}55, 0 8px 24px rgba(0,0,0,0.70)`,
-                    lineHeight: 1.05,
-                    whiteSpace: "nowrap",
-                    overflow: "hidden",
-                    textOverflow: "ellipsis",
                   }}
                 >
-                  {title}
+                  <div
+                    style={{
+                      fontSize: 14,
+                      fontWeight: 1000,
+                      letterSpacing: 0.9,
+                      color: theme.primary,
+                      textTransform: "uppercase",
+                      textShadow: `0 0 12px ${theme.primary}55, 0 8px 24px rgba(0,0,0,0.70)`,
+                      lineHeight: 1.05,
+                      whiteSpace: "nowrap",
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                    }}
+                  >
+                    {title}
+                  </div>
                 </div>
-              </div>
 
-              {/* Détail intégré (InfoDot) */}
-              <div
-                style={{
-                  position: "absolute",
-                  right: 10,
-                  top: "50%",
-                  transform: "translateY(-50%)",
-                  zIndex: 3,
-                }}
-              >
-                <InfoDot
-                  onClick={(e: any) => {
-                    try {
-                      e?.stopPropagation?.();
-                      e?.preventDefault?.();
-                    } catch {}
-                    setInfoMode(m);
+                {/* InfoDot (tout le détail est dedans) */}
+                <div
+                  style={{
+                    position: "absolute",
+                    right: 10,
+                    top: "50%",
+                    transform: "translateY(-50%)",
+                    zIndex: 3,
                   }}
-                  glow={theme.primary + "88"}
-                />
-              </div>
+                >
+                  <InfoDot
+                    onClick={(e: any) => {
+                      try {
+                        e?.stopPropagation?.();
+                        e?.preventDefault?.();
+                      } catch {}
+                      setInfoMode(m);
+                    }}
+                    glow={theme.primary + "88"}
+                  />
+                </div>
 
-              {/* Texte invisible (accessibilité) */}
-              <span style={{ position: "absolute", left: -9999, top: -9999 }}>
-                {title} — {subtitle}
-              </span>
+                {/* Texte invisible (accessibilité) */}
+                <span style={{ position: "absolute", left: -9999, top: -9999 }}>
+                  {title} — {subtitle}
+                </span>
+              </div>
             </button>
           );
         })}

@@ -663,6 +663,7 @@ export default function Profiles({
 
   const sportKey = String(sportResolved ?? "").toLowerCase();
   const isPetanque = sportKey.includes("petanque");
+  const isBabyFoot = sportKey.includes("babyfoot") || sportKey.includes("baby-foot") || sportKey.includes("baby_foot");
   const isDarts = sportKey.includes("darts") || !sportKey;
 
   console.log("[Profiles] sportResolved =", sportResolved);
@@ -1813,6 +1814,7 @@ function ProfilesMenuView({
       {(() => {
         const key = String(sport || "").toLowerCase();
         const isPetanque = key.includes("petanque");
+        const isBabyFoot = key.includes("babyfoot") || key.includes("baby-foot") || key.includes("baby_foot");
         const isDarts = key.includes("darts") || !key;
   
         if (isDarts) {
@@ -1843,6 +1845,20 @@ function ProfilesMenuView({
           );
         }
   
+        if (isBabyFoot) {
+          return (
+            <CardBtn
+              title={t("babyfoot.teams.title", "TEAMS (BABY-FOOT)")}
+              subtitle={t(
+                "babyfoot.teams.subtitle",
+                "Crée et gère tes équipes Baby-Foot (1v1 / 2v2 / 2v1)."
+              )}
+              badge={t("profiles.menu.teams.badge", "NEW")}
+              onClick={() => go?.("babyfoot_teams")}
+            />
+          );
+        }
+
         return null;
       })()}
     </div>

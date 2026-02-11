@@ -1,20 +1,30 @@
+// ============================================
+// src/components/SaveToast.tsx
+// Toast flottant simple (aucune dépendance)
+// - Affiché en haut-centre
+// - Auto-close
+// - Styles inline (stable, pas de CSS global)
+// ============================================
+
 import React, { useEffect } from "react";
 
 export type SaveToastKind = "success" | "error" | "info";
 
-export function SaveToast({
-  open,
-  message,
-  kind = "success",
-  onClose,
-  durationMs = 1800,
-}: {
+export type SaveToastProps = {
   open: boolean;
-  message: string;
+  message?: string;
   kind?: SaveToastKind;
   onClose: () => void;
   durationMs?: number;
-}) {
+};
+
+export default function SaveToast({
+  open,
+  message = "",
+  kind = "success",
+  onClose,
+  durationMs = 1600,
+}: SaveToastProps) {
   useEffect(() => {
     if (!open) return;
     const t = window.setTimeout(() => onClose(), durationMs);
@@ -23,40 +33,45 @@ export function SaveToast({
 
   if (!open) return null;
 
-  // simple floating pill — no dependencies
-  const border =
-    kind === "success" ? "rgba(46, 213, 115, 0.65)" : kind === "error" ? "rgba(255, 71, 87, 0.7)" : "rgba(255, 193, 7, 0.6)";
-  const bg =
-    kind === "success" ? "rgba(15, 40, 24, 0.92)" : kind === "error" ? "rgba(50, 14, 18, 0.92)" : "rgba(45, 35, 10, 0.92)";
+  const { bg, border } =
+    kind === "success"
+      ? { bg: "rgba(40, 160, 90, 0.92)", border: "rgba(40, 160, 90, 0.6)" }
+      : kind === "error"
+        ? { bg: "rgba(200, 60, 60, 0.92)", border: "rgba(200, 60, 60, 0.6)" }
+        : { bg: "rgba(60, 120, 200, 0.92)", border: "rgba(60, 120, 200, 0.6)" };
+
+  const fallback =
+    kind === "success" ? "OK" : kind === "error" ? "Erreur" : "Info";
 
   return (
     <div
       style={{
         position: "fixed",
         left: "50%",
-        bottom: 88,
+        top: 18,
         transform: "translateX(-50%)",
-        zIndex: 9999,
-        maxWidth: "92vw",
+        zIndex: 99999,
         pointerEvents: "none",
       }}
       aria-live="polite"
-      aria-atomic="true"
+      role="status"
     >
       <div
         style={{
           padding: "10px 14px",
           borderRadius: 999,
-          border: `1px solid ${border}`,
           background: bg,
+          border: `1px solid ${border}`,
           color: "white",
-          boxShadow: "0 10px 30px rgba(0,0,0,0.45)",
-          fontSize: 13,
+          fontWeight: 800,
           letterSpacing: 0.2,
-          whiteSpace: "nowrap",
+          boxShadow: "0 10px 24px rgba(0,0,0,0.45)",
+          maxWidth: "92vw",
+          textAlign: "center",
+          lineHeight: 1.15,
         }}
       >
-        {message}
+        {message?.trim() ? message : fallback}
       </div>
     </div>
   );

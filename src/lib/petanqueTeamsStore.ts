@@ -8,7 +8,7 @@
 // ✅ Garde des exports rétro-compatibles pour l'ancien code Pétanque
 // =============================================================
 
-export type TeamSport = "petanque" | "darts" | "generic";
+export type TeamSport = "petanque" | "babyfoot" | "darts" | "generic";
 
 export type TeamEntity = {
   id: string;
@@ -94,7 +94,7 @@ export function makeTeamId(prefix: string = "team") {
 }
 
 function normalizeSport(s: any): TeamSport {
-  if (s === "petanque" || s === "darts" || s === "generic") return s;
+  if (s === "petanque" || s === "babyfoot" || s === "darts" || s === "generic") return s;
   return "generic";
 }
 
@@ -437,4 +437,89 @@ export function deletePetanqueTeam(teamId: string) {
       createdAt: t.createdAt,
       updatedAt: t.updatedAt,
     })) as PetanqueTeam[];
+}
+
+// ---------------------------------------------------------------------
+// Baby-Foot (store unique) — CRUD (même format que Pétanque)
+// ---------------------------------------------------------------------
+export type BabyFootTeam = {
+  id: string;
+  name: string;
+  countryCode?: string;
+  countryName?: string;
+  regionCode?: string;
+  regionName?: string;
+  regionLogoDataUrl?: string | null;
+  slogan?: string;
+  description?: string;
+  playerIds?: string[];
+  logoDataUrl?: string | null;
+  createdAt: number;
+  updatedAt: number;
+};
+
+export function loadBabyFootTeams(): BabyFootTeam[] {
+  const list = loadTeamsBySport("babyfoot");
+  return list.map((t: any) => ({
+    id: t.id,
+    name: t.name,
+    countryCode: t.countryCode ?? "FR",
+    countryName: t.countryName ?? "France",
+    regionCode: t.regionCode ?? "",
+    regionName: t.regionName ?? "",
+    regionLogoDataUrl: t.regionLogoDataUrl ?? null,
+    slogan: t.slogan ?? "",
+    description: t.description ?? "",
+    playerIds: Array.isArray(t.playerIds) ? t.playerIds : [],
+    logoDataUrl: t.logoDataUrl ?? null,
+    createdAt: Number(t.createdAt || now()),
+    updatedAt: Number(t.updatedAt || now()),
+  }));
+}
+
+export function createBabyFootTeam(partial?: Partial<BabyFootTeam>): BabyFootTeam {
+  const ts = now();
+  return {
+    id: partial?.id ?? makeTeamId("babyfoot"),
+    name: (partial?.name ?? "Nouvelle équipe").trim(),
+    countryCode: partial?.countryCode ?? "FR",
+    countryName: partial?.countryName ?? "France",
+    regionCode: partial?.regionCode ?? "FR-IDF",
+    regionName: partial?.regionName ?? "Île-de-France",
+    regionLogoDataUrl: partial?.regionLogoDataUrl ?? null,
+    slogan: (partial?.slogan ?? "").slice(0, 50),
+    description: partial?.description ?? "",
+    playerIds: Array.isArray(partial?.playerIds) ? partial!.playerIds : [],
+    logoDataUrl: partial?.logoDataUrl ?? null,
+    createdAt: Number((partial as any)?.createdAt ?? 0) || ts,
+    updatedAt: Number((partial as any)?.updatedAt ?? 0) || ts,
+  };
+}
+
+export function upsertBabyFootTeam(team: BabyFootTeam) {
+  const ts = now();
+  upsertTeam({
+    id: (team as any).id || makeTeamId("babyfoot"),
+    sport: "babyfoot",
+    name: String((team as any).name ?? "").trim() || "Équipe",
+    logoDataUrl: (team as any).logoDataUrl ?? null,
+
+    countryCode: String((team as any).countryCode ?? "FR").toUpperCase().slice(0, 2),
+    countryName: (team as any).countryName ?? "France",
+    regionCode: (team as any).regionCode ?? "",
+    regionName: (team as any).regionName ?? "",
+    regionLogoDataUrl: (team as any).regionLogoDataUrl ?? null,
+    slogan: typeof (team as any).slogan === "string" ? (team as any).slogan.slice(0, 50) : "",
+    description: typeof (team as any).description === "string" ? (team as any).description : "",
+    playerIds: Array.isArray((team as any).playerIds)
+      ? (team as any).playerIds.filter((x: any) => typeof x === "string")
+      : [],
+
+    updatedAt: ts,
+    createdAt: Number((team as any).createdAt ?? 0) || ts,
+  } as any);
+}
+
+export function deleteBabyFootTeam(id: string) {
+  deleteTeam(String(id || ""));
 }

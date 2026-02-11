@@ -22,4 +22,6 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
-
+# Wrangler (Cloudflare) cache / temp
+.wrangler/tmp/
+.wrangler/state/

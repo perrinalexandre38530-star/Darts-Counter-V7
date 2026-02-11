@@ -425,7 +425,21 @@ async function devUnregisterSW() {
     const container = document.getElementById("root");
     if (!container) throw new Error("❌ Élément #root introuvable dans index.html");
 
-    const mod = await import("./App");
+    let mod: any;
+    try {
+      mod = await import("./App");
+    } catch (e) {
+      // Fallback: cache-bust the module URL once (helps when Vite/WebContainer serves stale ?t=... URLs)
+      if (isDynImportFail(e)) {
+        try {
+          mod = await import(/* @vite-ignore */ `./App?sb=${Date.now()}`);
+        } catch {
+          throw e;
+        }
+      } else {
+        throw e;
+      }
+    }
     const AppRoot = mod.default;
 
     // ✅ IMPORTANT: pas de AuthOnlineProvider ici

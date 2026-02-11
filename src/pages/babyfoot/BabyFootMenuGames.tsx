@@ -8,6 +8,7 @@
 
 import React from "react";
 import BabyFootGamesHub from "./BabyFootGamesHub";
+import BabyFootTeams from "./BabyFootTeams";
 
 import BabyFootMenuMatch from "./menus/BabyFootMenuMatch";
 import BabyFootMenuFun from "./menus/BabyFootMenuFun";
@@ -19,7 +20,7 @@ type Props = {
   go: (tab: any, params?: any) => void;
 };
 
-type Section = "hub" | "match" | "fun" | "defis" | "training" | "tournoi";
+type Section = "hub" | "match" | "fun" | "defis" | "training" | "tournoi" | "teams";
 
 export default function BabyFootMenuGames({ go }: Props) {
   const [section, setSection] = React.useState<Section>("hub");
@@ -46,6 +47,7 @@ export default function BabyFootMenuGames({ go }: Props) {
   if (section === "fun") return <BabyFootMenuFun onBack={backToHub} go={go} />;
   if (section === "defis")
     return <BabyFootMenuDefis onBack={backToHub} go={go} />;
+  if (section === "teams") return <BabyFootTeams go={go} params={{}} />;
   if (section === "tournoi")
     return <BabyFootMenuTournoi onBack={backToHub} go={go} />;
 
@@ -57,6 +59,7 @@ export default function BabyFootMenuGames({ go }: Props) {
         if (s === "training") return setSection("training");
         if (s === "fun") return setSection("fun");
         if (s === "defis") return setSection("defis");
+        if (s === "teams") return setSection("teams");
         if (s === "tournoi") return setSection("tournoi");
       }}
     />

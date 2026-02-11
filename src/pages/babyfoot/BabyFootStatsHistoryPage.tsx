@@ -123,10 +123,38 @@ function pill(theme: any, active?: boolean): React.CSSProperties {
   };
 }
 
-export default function BabyFootStatsHistoryPage({ store, go }: Props) {
+export default function BabyFootStatsHistoryPage({ store, go, params }: Props) {
   const { theme } = useTheme();
   const lang = useLang() as any;
   const t = lang?.t ?? ((_: string, fb: string) => fb);
+
+  const playersRef = React.useRef<HTMLDivElement | null>(null);
+  const rankingsRef = React.useRef<HTMLDivElement | null>(null);
+  const teamsRef = React.useRef<HTMLDivElement | null>(null);
+  const duelsRef = React.useRef<HTMLDivElement | null>(null);
+  const historyRef = React.useRef<HTMLDivElement | null>(null);
+
+  const scrollTo = React.useCallback((key: string) => {
+    const map: Record<string, React.RefObject<HTMLDivElement>> = {
+      players: playersRef,
+      rankings: rankingsRef,
+      teams: teamsRef,
+      duels: duelsRef,
+      history: historyRef,
+    };
+    const ref = map[key];
+    if (ref?.current) {
+      ref.current.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+  }, []);
+
+  React.useEffect(() => {
+    const section = String(params?.section ?? "").trim();
+    if (!section) return;
+    // petite latence pour laisser le layout se poser
+    const id = window.setTimeout(() => scrollTo(section), 60);
+    return () => window.clearTimeout(id);
+  }, [params?.section, scrollTo]);
 
   // ---------------- V4.5 filters
   const [period, setPeriod] = useState<"7" | "30" | "90" | "all">("30");
@@ -482,6 +510,23 @@ if (conv?.shots > 0) {
       .sort((a, b) => (b.points - a.points) || ((b.gf - b.ga) - (a.gf - a.ga)) || (b.gf - a.gf))
       .slice(0, 12);
 
+	    // ✅ V4.8.1 Conversion tirs (best-effort)
+	    // computeShotConversion() n'est alimenté que si le payload contient des events "shot".
+	    // On expose un pourcentage global (0..1) ou null si non mesurable.
+	    const convPct = convShots > 0 ? convGoals / convShots : null;
+
+      // ✅ SAFE (anti-crash): tops "quality" babyfoot.
+      // Même si aucune donnée n'est dispo, ces arrays existent et évitent les ReferenceError.
+      const topDecisive = [...players]
+        .filter((p: any) => (p?.decisiveGoals || 0) > 0)
+        .sort((a: any, b: any) => (b?.decisiveGoals || 0) - (a?.decisiveGoals || 0))
+        .slice(0, 8);
+
+      const topMomentum = [...players]
+        .filter((p: any) => (p?.momentumBursts || 0) > 0)
+        .sort((a: any, b: any) => (b?.momentumBursts || 0) - (a?.momentumBursts || 0))
+        .slice(0, 8);
+
     return {
       matches,
       goals,
@@ -553,6 +598,25 @@ if (conv?.shots > 0) {
         <BackDot onClick={() => go("babyfoot_menu")} />
         <div style={topTitle}>{t("babyfoot.stats.title", "BABY-FOOT — STATS")}</div>
         <div />
+      </div>
+
+      {/* Quick nav (même logique que les onglets...): accès direct sections */}
+      <div
+        style={{
+          display: "flex",
+          gap: 8,
+          overflowX: "auto",
+          padding: "0 2px",
+          marginTop: 6,
+          marginBottom: 10,
+          WebkitOverflowScrolling: "touch",
+        }}
+      >
+        <div style={pill(theme, false)} onClick={() => scrollTo("players")}>Joueurs</div>
+        <div style={pill(theme, false)} onClick={() => scrollTo("rankings")}>Classements</div>
+        <div style={pill(theme, false)} onClick={() => scrollTo("teams")}>Équipes</div>
+        <div style={pill(theme, false)} onClick={() => scrollTo("duels")}>Duels</div>
+        <div style={pill(theme, false)} onClick={() => scrollTo("history")}>Historique</div>
       </div>
 
       {/* Filters */}
@@ -645,7 +709,7 @@ if (conv?.shots > 0) {
 </div>
 
       {/* Players */}
-      <div style={sectionTitle}>Joueurs</div>
+      <div ref={playersRef} style={sectionTitle}>Joueurs</div>
       <div style={grid2}>
         <Board
           theme={theme}
@@ -691,7 +755,7 @@ if (conv?.shots > 0) {
 
 
       {/* Rankings */}
-      <div style={sectionTitle}>Classements</div>
+      <div ref={rankingsRef} style={sectionTitle}>Classements</div>
       <div style={grid2}>
         <Board
           theme={theme}
@@ -733,7 +797,7 @@ if (conv?.shots > 0) {
       </div>
 
       {/* Teams */}
-      <div style={sectionTitle}>Équipes</div>
+      <div ref={teamsRef} style={sectionTitle}>Équipes</div>
       <div style={{ marginTop: 10, ...card(theme) }}>
         <div style={{ fontWeight: 1000, letterSpacing: 0.6 }}>Top équipes (compositions)</div>
         <div style={{ marginTop: 10, display: "grid", gap: 10 }}>
@@ -776,7 +840,7 @@ if (conv?.shots > 0) {
       </div>
 
       {/* Duels */}
-      <div style={sectionTitle}>Duels</div>
+      <div ref={duelsRef} style={sectionTitle}>Duels</div>
       <div style={{ marginTop: 10, ...card(theme) }}>
         <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
           <div style={{ fontWeight: 1000, letterSpacing: 0.6 }}>Joueur vs Joueur</div>
@@ -831,7 +895,7 @@ if (conv?.shots > 0) {
       </div>
 
       {/* History */}
-      <div style={sectionTitle}>Historique</div>
+      <div ref={historyRef} style={sectionTitle}>Historique</div>
       <div style={{ marginTop: 10, display: "grid", gap: 10 }}>
         {filtered.map((h: any) => {
           const payload = getPayload(h);
