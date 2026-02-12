@@ -1285,7 +1285,7 @@ const activeTeam = React.useMemo(() => {
 
 
   const currentScore =
-    (activePlayer && scores[activePlayer.id]) ?? config.startScore;
+    activePlayer ? (scores[activePlayer.id] ?? config.startScore) : config.startScore;
 
   const currentVisit = state.visit;
 
@@ -2303,60 +2303,65 @@ React.useEffect(() => {
   // --- Baselines "per LEG" pour afficher M3D sur la leg en cours uniquement
   // liveStatsByPlayer cumule sur tout le match (dartsThrown/totalScore), donc on stocke un offset
   const legKey = `${(state as any).currentSet ?? 1}-${(state as any).currentLeg ?? 1}`;
-  const legBaselineRef = React.useRef<{ key: string; byPlayer: Record<string, { darts0: number; score0: number }> }>({
-    key: "",
-    byPlayer: {},
-  });
+  const legBaselineRef = React.useRef<{
+  key: string;
+  byPlayer: Record<string, { darts0: number; totalScore0: number }>;
+}>({
+  key: "",
+  byPlayer: {},
+});
 
-  React.useEffect(() => {
-    if (legBaselineRef.current.key === legKey) return;
-    const byPlayer: Record<string, { darts0: number; score0: number }> = {};
-    for (const p of (players as any[])) {
-      const pid = p.id as string;
-      const live = (liveStatsByPlayer as any)?.[pid] || {};
-      byPlayer[pid] = {
-        darts0: Number(live?.dartsThrown ?? 0),
-        // Teams: totalScore est la contribution joueur. Solo/Multi: on garde aussi totalScore au cas où.
-        score0: Number(live?.totalScore ?? 0),
-      };
-    }
-    legBaselineRef.current = { key: legKey, byPlayer };
-  }, [legKey, players, liveStatsByPlayer]);
+React.useEffect(() => {
+  if (legBaselineRef.current.key === legKey) return;
 
-  const avg3ByPlayer: Record<string, number> = React.useMemo(() => {
-    const map: Record<string, number> = {};
-    const base = legBaselineRef.current?.perPlayer || {};
+  const byPlayer: Record<string, { darts0: number; totalScore0: number }> = {};
+  for (const p of players as any[]) {
+    const pid = String((p as any)?.id || "");
+    if (!pid) continue;
+    const live: any = (liveStatsByPlayer as any)?.[pid] || {};
+    byPlayer[pid] = {
+      darts0: Number(live?.dartsThrown ?? 0),
+      totalScore0: Number(live?.totalScore ?? 0),
+    };
+  }
 
-    for (const p of players as any[]) {
-      const pid = p.id as X01PlayerId;
-      const live = liveStatsByPlayer[pid];
+  legBaselineRef.current = { key: legKey, byPlayer };
+}, [legKey, players, liveStatsByPlayer]);
 
-      const dartsTotal = Number(live?.dartsThrown ?? 0);
-      const darts0 = Number(base?.[pid]?.darts0 ?? 0);
-      const dartsLeg = Math.max(0, dartsTotal - darts0);
+const avg3ByPlayer: Record<string, number> = React.useMemo(() => {
+  const map: Record<string, number> = {};
+  const base = legBaselineRef.current?.byPlayer || {};
 
-      if (!dartsLeg) {
-        map[pid] = 0;
-        continue;
-      }
+  for (const p of players as any[]) {
+    const pid = (p as any)?.id as any;
+    const live: any = (liveStatsByPlayer as any)?.[pid] || {};
 
-      // ✅ IMPORTANT:
-      // - Solo: score du leg = startScore - score restant (reset à chaque leg)
-      // - Teams: score restant est partagé => score du leg = delta de contribution individuelle (live.totalScore)
-      const scoredLeg = isTeamsMode
-        ? Math.max(0, Number(live?.totalScore ?? 0) - Number(base?.[pid]?.totalScore0 ?? 0))
-        : Math.max(0, (config.startScore - (scores[pid] ?? config.startScore)));
+    const dartsTotal = Number(live?.dartsThrown ?? 0);
+    const darts0 = Number(base?.[pid]?.darts0 ?? 0);
+    const dartsLeg = Math.max(0, dartsTotal - darts0);
 
-      if (scoredLeg <= 0) {
-        map[pid] = 0;
-        continue;
-      }
-
-      map[pid] = (scoredLeg / dartsLeg) * 3;
+    if (!dartsLeg) {
+      map[pid] = 0;
+      continue;
     }
 
-    return map;
-  }, [players, liveStatsByPlayer, scores, config.startScore, isTeamsMode]);
+    // ✅ IMPORTANT:
+    // - Solo/Multi: score du leg = startScore - score restant (scores reset à chaque leg)
+    // - Teams: score restant est partagé => score du leg = delta de contribution individuelle (live.totalScore)
+    const scoredLeg = isTeamsMode
+      ? Math.max(0, Number(live?.totalScore ?? 0) - Number(base?.[pid]?.totalScore0 ?? 0))
+      : Math.max(0, (config.startScore - (scores[pid] ?? config.startScore)));
+
+    if (scoredLeg <= 0) {
+      map[pid] = 0;
+      continue;
+    }
+
+    map[pid] = (scoredLeg / dartsLeg) * 3;
+  }
+
+  return map;
+}, [players, liveStatsByPlayer, scores, config.startScore, isTeamsMode]);
 
   const miniRanking: MiniRankingRow[] = React.useMemo(() => {
     return players
@@ -2582,8 +2587,19 @@ try {
         .filter(Boolean)
     : liveRankingNames;
 
+  const winnerId: string | null =
+    (state as any)?.summary?.winnerId ||
+    (state as any)?.lastWinnerId ||
+    (state as any)?.lastWinningPlayerId ||
+    null;
+
+  const winnerFromPlayers: string | null = winnerId
+    ? ((players as any[]) || []).find((p: any) => p?.id === winnerId)?.name || null
+    : null;
+
   const winnerName: string =
     (state as any)?.summary?.winnerName ||
+    winnerFromPlayers ||
     rankingNames[0] ||
     liveRankingNames[0] ||
     "Joueur";
@@ -3432,71 +3448,11 @@ if (isLandscapeTablet) {
             )}
           </div>
         }
-        volleyInputDisplay={
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-              gap: 12,
-              flexWrap: "wrap",
-            }}
-          >
-            {/* Total volée (même esprit que le total keypad : doré + glow) */}
-            <div
-              style={{
-                display: "inline-flex",
-                alignItems: "center",
-                justifyContent: "center",
-                minWidth: 44,
-                height: 34,
-                padding: "0 12px",
-                borderRadius: 14,
-                border: "1px solid rgba(245, 200, 76, .55)",
-                background: "rgba(0,0,0,0.28)",
-                color: "#f5c84c",
-                fontWeight: 1000,
-                letterSpacing: 0.4,
-                boxShadow: "0 0 18px rgba(245, 200, 76, .20), 0 0 32px rgba(245, 200, 76, .12)",
-                textShadow: "0 0 14px rgba(245, 200, 76, .35)",
-              }}
-            >
-              {sumThrow(currentThrow)}
-            </div>
-
-            {/* Chips de la volée (sans tiret quand vide) */}
-            <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", flex: 1, justifyContent: "center" }}>
-              {(currentThrow || []).length ? (
-                <span style={{ display: "inline-flex", gap: 6, flexWrap: "wrap", justifyContent: "center" }}>
-                  {(currentThrow || []).map((d: any, i: number) => {
-                    const st = chipStyle(d, false);
-                    return (
-                      <span
-                        key={i}
-                        style={{
-                          minWidth: 36,
-                          padding: "2px 8px",
-                          borderRadius: 10,
-                          fontSize: 11,
-                          fontWeight: 900,
-                          background: st.background as string,
-                          border: st.border as string,
-                          color: st.color as string,
-                        }}
-                      >
-                        {fmt(d)}
-                      </span>
-                    );
-                  })}
-                </span>
-              ) : null}
-            </div>
-          </div>
-        }
+        volleyInputDisplay={null}
         inputModes={
           <div
             ref={keypadWrapRef}
-            style={{ width: "100%", height: "100%", minHeight: 0, display: "flex", flexDirection: "column" }}
+            style={{ width: "100%", height: "100%", minHeight: 0, display: "flex", flexDirection: "column", paddingBottom: "calc(14px + env(safe-area-inset-bottom))" }}
           >
             {isBotTurn ? (
           <div
@@ -4286,19 +4242,7 @@ function TeamHeaderBlock(props: {
             {active?.name ?? "—"}
           </div>
 
-          {(legsWonThisSet > 0 || setsWonTotal > 0) && (
-          <div style={{ fontSize: 11.5, color: "#d9dbe3" }}>
-            {useSets ? (
-              <>
-                Manches : <b>{legsWonThisSet}</b> • Sets : <b>{setsWonTotal}</b>
-              </>
-            ) : (
-              <>
-                Manches : <b>{legsWonThisSet}</b>
-              </>
-            )}
-          </div>
-          )}
+          {null}
 
           <div style={{ ...miniCard, width: 176, height: "auto", padding: 7 }}>
             <div style={miniText}>
@@ -4844,19 +4788,8 @@ function PlayersListOnly(props: {
               >
                 Darts: {dCount} • Moy/3D: {a3d}
               </div>
-              {(legsWonThisSet > 0 || setsWonTotal > 0) && (
-              <div
-                style={{
-                  fontSize: 11.5,
-                  color: "#cfd1d7",
-                  marginTop: 1,
-                }}
-              >
-                {useSets
-                  ? `Manches : ${legsWonThisSet} • Sets : ${setsWonTotal}`
-                  : `Manches : ${legsWonThisSet}`}
-              </div>
-              )}
+              {null}
+
             </div>
 
             {/* Score */}
