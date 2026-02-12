@@ -602,12 +602,54 @@ function goToNextLeg(
     next.currentLeg = nextLeg;
   }
 
-  // on nettoie les infos de gagnant pour ne pas rester figé
-  next.lastLegWinnerId = null;
-  next.lastWinnerId = null;
-  next.lastWinningPlayerId = null;
+  // -------------------------------------------------------------
+  // ✅ SERVICE / ORDRE DE DÉPART (legs)
+  // - En compétition : le joueur qui ENGAGE alterne à chaque leg.
+  // - `serveMode=random` = on randomise le 1er set, puis on alterne.
+  // - `serveMode=alternate` = ordre configuré, puis on alterne.
+  // ⚠️ Sans ça, le gagnant de la leg restait actif → il ré-engageait.
+  // -------------------------------------------------------------
+  try {
+    const rawMode = (config as any).serveMode;
+    const mode = String(rawMode ?? "")
+      .toLowerCase()
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "");
+    const isAlternate =
+      mode === "alternate" || mode === "alterne" || mode.includes("altern");
+    const isRandom =
+      mode === "random" || mode === "aleatoire" || mode.includes("random") || mode.includes("alea");
+    if (isRandom || isAlternate) {
+      // Rotation d'un cran sur l'ordre de tir à CHAQUE leg (incluant les legs d'un set).
+      const order = Array.isArray(prev.throwOrder) ? prev.throwOrder : playerIds;
+      if (order && order.length) {
+        const k = 1 % order.length;
+        next.throwOrder = order.slice(k).concat(order.slice(0, k));
+        next.activePlayer = next.throwOrder[0];
+      } else {
+        next.throwOrder = playerIds as any;
+        next.activePlayer = (playerIds[0] as any) || (prev as any).activePlayer;
+      }
+    } else {
+      // fallback : garde l'ordre existant mais on repart du 1er joueur de l'ordre
+      const order = Array.isArray(prev.throwOrder) ? prev.throwOrder : playerIds;
+      next.throwOrder = order as any;
+      next.activePlayer = (order && order.length ? order[0] : (prev as any).activePlayer) as any;
+    }
+  } catch {
+    // ignore
+  }
 
-  return next as X01MatchStateV3;
+  // Recrée une visite propre (currentScore cohérent avec next.scores)
+  startNewVisitV3(next as any);
+  if ((next as any).visit) {
+    (next as any).visit.checkoutSuggestion = extAdaptCheckoutSuggestion({
+      score: (next as any).visit.currentScore,
+      dartsLeft: (next as any).visit.dartsLeft,
+      outMode: (config as any).outMode,
+    });
+  }
+
 }
 
 // -------------------------------------------------------------
@@ -1110,7 +1152,10 @@ export function useX01EngineV3({
         id: p.id,
         name: p.name,
         avatarDataUrl: p.avatarDataUrl ?? null,
-      }));
+        // ✅ important pour StatsHub (liaison avec profils)
+        profileId: (p as any).profileId ?? null,
+      }) as any);
+
 
       const summary: any = (state as any).summary || {};
       const finished = state.status === "match_end";

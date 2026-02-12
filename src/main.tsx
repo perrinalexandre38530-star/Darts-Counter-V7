@@ -9,6 +9,42 @@ import React from "react";
 import { createRoot } from "react-dom/client";
 import "./index.css";
 
+// ---- PATCH: one-shot recovery for Vite lazy chunk load errors (Cloudflare cache mismatch, etc.) ----
+try {
+  const KEY = "dc:chunk-reload";
+  const shouldReloadOnce = (msg: string) => {
+    const m = (msg || "").toLowerCase();
+    return (
+      m.includes("failed to fetch dynamically imported module") ||
+      m.includes("loading chunk") ||
+      m.includes("chunkloaderror")
+    );
+  };
+
+  window.addEventListener("error", (e: any) => {
+    const message = String(e?.message || e?.error?.message || "");
+    if (!shouldReloadOnce(message)) return;
+    if (sessionStorage.getItem(KEY) === "1") return;
+    sessionStorage.setItem(KEY, "1");
+    // cache-buster
+    const url = new URL(window.location.href);
+    url.searchParams.set("r", String(Date.now()));
+    window.location.replace(url.toString());
+  });
+
+  window.addEventListener("unhandledrejection", (e: any) => {
+    const message = String(e?.reason?.message || e?.reason || "");
+    if (!shouldReloadOnce(message)) return;
+    if (sessionStorage.getItem(KEY) === "1") return;
+    sessionStorage.setItem(KEY, "1");
+    const url = new URL(window.location.href);
+    url.searchParams.set("r", String(Date.now()));
+    window.location.replace(url.toString());
+  });
+} catch {}
+// ---- END PATCH ----
+
+
 // ============================================================
 // Dynamic import recovery (WebContainer/StackBlitz hardening)
 // - If Vite serves stale module URLs (App.tsx?t=...), the dynamic import can fail.

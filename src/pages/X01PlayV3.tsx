@@ -1812,29 +1812,28 @@ const bustSoundTimeoutRef = React.useRef<number | null>(null);
 
   const checkoutText = React.useMemo(() => {
   // on ne propose des checkouts que pendant une partie
-  if (status !== "running") return null;
+  if (status !== "running" && status !== "playing") return null;
 
   // remaining après la saisie en cours (preview)
   const remaining = currentScore - sumThrow(currentThrow);
   const dartsLeft = Math.max(0, 3 - (currentThrow?.length || 0));
 
   // aucun checkout possible si <= 1 (impossible de finir) ou plus de darts
+  if (remaining > 170) return null; // pas de finish standard
   if (remaining <= 1) return null;
   if (dartsLeft <= 0) return null;
 
   // finishMode / outMode (SIMPLE / DOUBLE / MASTER)
-  // ⚠️ dans ce projet, certains écrans utilisent "finishMode"
-  const outMode: X01OutModeV3 =
-    ((config as any).finishMode as any) ||
-    ((config as any).outMode as any) ||
-    (((config as any).doubleOut === true ? "double" : "simple") as any);
+  // ✅ utilise le outMode global ("double" | "single" | "master") et mappe vers X01OutModeV3
+  const checkoutOutMode: X01OutModeV3 =
+    outMode === "master" ? "master" : outMode === "double" ? "double" : "simple";
 
-  const sug = extAdaptCheckoutSuggestion({ score: remaining, dartsLeft, outMode });
+  const sug = extAdaptCheckoutSuggestion({ score: remaining, dartsLeft, outMode: checkoutOutMode });
   if (!sug) return null;
 
   const txt = formatCheckoutFromVisit(sug);
   return txt || null;
-}, [status, currentThrow, currentScore, config]);
+}, [status, currentThrow, currentScore, outMode]);
   // de la saisie locale sur le keypad
 
   const currentThrowFromEngineRef = React.useRef(false);
@@ -2300,32 +2299,62 @@ React.useEffect(() => {
   // STATS LIVE & MINI-RANKING
   // =====================================================
 
+
+  // --- Baselines "per LEG" pour afficher M3D sur la leg en cours uniquement
+  // liveStatsByPlayer cumule sur tout le match (dartsThrown/totalScore), donc on stocke un offset
+  const legKey = `${(state as any).currentSet ?? 1}-${(state as any).currentLeg ?? 1}`;
+  const legBaselineRef = React.useRef<{ key: string; byPlayer: Record<string, { darts0: number; score0: number }> }>({
+    key: "",
+    byPlayer: {},
+  });
+
+  React.useEffect(() => {
+    if (legBaselineRef.current.key === legKey) return;
+    const byPlayer: Record<string, { darts0: number; score0: number }> = {};
+    for (const p of (players as any[])) {
+      const pid = p.id as string;
+      const live = (liveStatsByPlayer as any)?.[pid] || {};
+      byPlayer[pid] = {
+        darts0: Number(live?.dartsThrown ?? 0),
+        // Teams: totalScore est la contribution joueur. Solo/Multi: on garde aussi totalScore au cas où.
+        score0: Number(live?.totalScore ?? 0),
+      };
+    }
+    legBaselineRef.current = { key: legKey, byPlayer };
+  }, [legKey, players, liveStatsByPlayer]);
+
   const avg3ByPlayer: Record<string, number> = React.useMemo(() => {
     const map: Record<string, number> = {};
+    const base = legBaselineRef.current?.perPlayer || {};
+
     for (const p of players as any[]) {
       const pid = p.id as X01PlayerId;
       const live = liveStatsByPlayer[pid];
-      const dartsThrown = live?.dartsThrown ?? 0;
 
-      if (!dartsThrown) {
+      const dartsTotal = Number(live?.dartsThrown ?? 0);
+      const darts0 = Number(base?.[pid]?.darts0 ?? 0);
+      const dartsLeg = Math.max(0, dartsTotal - darts0);
+
+      if (!dartsLeg) {
         map[pid] = 0;
         continue;
       }
 
       // ✅ IMPORTANT:
-      // - Solo: moyenne basée sur la baisse du score du joueur (startScore - scoreNow)
-      // - Teams: score restant est partagé => on base la moyenne sur la contribution individuelle (live.totalScore)
-      const scored = isTeamsMode
-        ? (live?.totalScore ?? 0)
-        : (config.startScore - (scores[pid] ?? config.startScore));
+      // - Solo: score du leg = startScore - score restant (reset à chaque leg)
+      // - Teams: score restant est partagé => score du leg = delta de contribution individuelle (live.totalScore)
+      const scoredLeg = isTeamsMode
+        ? Math.max(0, Number(live?.totalScore ?? 0) - Number(base?.[pid]?.totalScore0 ?? 0))
+        : Math.max(0, (config.startScore - (scores[pid] ?? config.startScore)));
 
-      if (scored <= 0) {
+      if (scoredLeg <= 0) {
         map[pid] = 0;
         continue;
       }
 
-      map[pid] = (scored / dartsThrown) * 3;
+      map[pid] = (scoredLeg / dartsLeg) * 3;
     }
+
     return map;
   }, [players, liveStatsByPlayer, scores, config.startScore, isTeamsMode]);
 
@@ -2344,9 +2373,10 @@ React.useEffect(() => {
         };
       })
       .sort((a, b) => {
-        if (b.setsWon !== a.setsWon) return b.setsWon - a.setsWon;
-        if (b.legsWon !== a.legsWon) return b.legsWon - a.legsWon;
-        return a.score - b.score;
+        // ✅ Classement de la LEG en cours : on trie uniquement sur le reste à faire
+        if (a.score !== b.score) return a.score - b.score;
+        // tie-break (soft) : meilleure moyenne sur la leg
+        return (b.avg3 || 0) - (a.avg3 || 0);
       });
   }, [players, scores, state, config.startScore, avg3ByPlayer]);
 
@@ -2535,11 +2565,28 @@ React.useEffect(() => {
 // 🔊 FIN DE MATCH : victoire + voix classement (langue + voiceId)
 // =====================================================
 try {
-  const rankingNames = (miniRanking || [])
-    .map((r) => r?.name)
-    .filter(Boolean) as string[];
+  // ✅ FIN DE MATCH : on préfère le classement final du moteur (summary.rankings)
+  const summaryRankings = Array.isArray((state as any)?.summary?.rankings)
+    ? ((state as any).summary.rankings as any[])
+    : [];
 
-  const winnerName = rankingNames[0] || "Joueur";
+  // 🔎 Classement "live" (leg en cours) : tri sur le reste à faire (score)
+  // ✅ Utilisé pour le mini-classement header ET comme fallback voix IA
+  const liveRankingNames: string[] = (liveRanking || miniRanking || [])
+    .map((r: any) => r?.name)
+    .filter(Boolean);
+
+  const rankingNames: string[] = summaryRankings.length
+    ? summaryRankings
+        .map((r: any) => r?.name || r?.playerName || r?.displayName)
+        .filter(Boolean)
+    : liveRankingNames;
+
+  const winnerName: string =
+    (state as any)?.summary?.winnerName ||
+    rankingNames[0] ||
+    liveRankingNames[0] ||
+    "Joueur";
 
   // ✅ Son "victory" UNIQUEMENT si "Sons Arcade" activés
   if (arcadeEnabled) {
@@ -3804,16 +3851,11 @@ function HeaderBlock(props: HeaderBlockProps) {
               color: "#d9dbe3",
             }}
           >
-            {useSets ? (
+            {liveRanking?.length ? (
               <>
-                Manches : <b>{legsWonThisSet}</b> • Sets :{" "}
-                <b>{setsWonTotal}</b>
+                Leader : <b>{liveRanking[0]?.name}</b>
               </>
-            ) : (
-              <>
-                Manches : <b>{legsWonThisSet}</b>
-              </>
-            )}
+            ) : null}
           </div>
 
           {/* Mini card stats joueur actif */}
@@ -5597,6 +5639,7 @@ function saveX01V3MatchToHistory({
     players: lightPlayers.map((p) => ({
       id: p.id,
       name: p.name,
+      profileId: (p as any).profileId ?? null,
       avatarDataUrl: p.avatarDataUrl,
       dartSetId: p.dartSetId ?? null,
       dartPresetId: p.dartPresetId ?? null,

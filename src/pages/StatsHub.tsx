@@ -1,16 +1,3 @@
-
-// ---- PATCH: unified game mode resolver ----
-function getGameMode(rec: any): string {
-  if (!rec) return "";
-  if (rec?.game?.mode) return String(rec.game.mode).toLowerCase();
-  if (typeof rec?.game === "string") return rec.game.toLowerCase();
-  if (rec?.mode) return String(rec.mode).toLowerCase();
-  if (rec?.payload?.config?.mode)
-    return String(rec.payload.config.mode).toLowerCase();
-  return "";
-}
-// ---- END PATCH ----
-
 // ============================================
 // src/pages/StatsHub.tsx — Stats + Historique + Training (v2 complet)
 // ============================================
@@ -45,13 +32,41 @@ import { useCurrentProfile } from "../hooks/useCurrentProfile";
 import { computeKillerAggForPlayer } from "../lib/statsKillerAgg";
 
 // ✅ LAZY-LOAD des modules lourds (gros gain bundle + parse)
+
+// ---- PATCH: React.lazy with retry (prod cache / chunk mismatch) ----
+function lazyWithRetry<T extends React.ComponentType<any>>(loader: () => Promise<{ default: T }>) {
+  return React.lazy(() =>
+    loader().catch(async (err) => {
+      // If a chunk failed to load (stale index.html / CDN cache), do a one-shot reload
+      try {
+        const msg = String((err as any)?.message || err || "");
+        const isChunk =
+          msg.includes("Failed to fetch dynamically imported module") ||
+          msg.includes("Importing a module script failed") ||
+          msg.includes("ChunkLoadError") ||
+          msg.includes("dynamically imported module");
+        if (isChunk) {
+          const k = "dc_chunk_reload_once_v1";
+          if (sessionStorage.getItem(k) !== "1") {
+            sessionStorage.setItem(k, "1");
+            const u = new URL(window.location.href);
+            u.searchParams.set("cb", String(Date.now()));
+            window.location.replace(u.toString());
+          }
+        }
+      } catch {}
+      throw err;
+    })
+  );
+}
+// ---- END PATCH ----
+
+
 const TrainingRadar = React.lazy(() => import("../components/TrainingRadar"));
 const StatsCricketDashboard = React.lazy(
   () => import("../components/StatsCricketDashboard")
 );
-const StatsShanghaiDashboard = React.lazy(
-  () => import("../components/stats/StatsShanghaiDashboard")
- );
+const StatsShanghaiDashboard = lazyWithRetry(() => import("../components/stats/StatsShanghaiDashboard"));
 const X01MultiStatsTabFull = React.lazy(
   () => import("../stats/X01MultiStatsTabFull")
 );
@@ -665,7 +680,7 @@ type SessionsByMode = Record<string, number>;
 
 function classifyRecordMode(rec: SavedMatch): string {
   const kind = String(rec.kind ?? "").toLowerCase();
-  const game = getGameMode(rec);
+  const game = String(rec.game ?? "").toLowerCase();
   const mode = String(rec.mode ?? "").toLowerCase();
   const variant = String(rec.variant ?? "").toLowerCase();
 

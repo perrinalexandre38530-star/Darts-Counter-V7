@@ -26,7 +26,6 @@ import {
 import { x01EnsureAudioUnlocked, x01SfxV3Preload } from "../lib/x01SfxV3";
 import { SCORE_INPUT_LS_KEY, type ScoreInputMethod } from "../lib/scoreInput/types";
 
-
 // 🔽 IMPORTS DE TOUS LES AVATARS BOTS PRO
 import avatarGreenMachine from "../assets/avatars/bots-pro/green-machine.png";
 import avatarSnakeKing from "../assets/avatars/bots-pro/snake-king.png";
@@ -95,8 +94,10 @@ type BotLite = {
 // -------------------------------------------------------------
 // PlayerDartBadge
 // - Petit badge "jeu de fléchettes" sous un joueur X01
-// - Affiche le nom du set (et mini visuel si dispo)
-// - Chaque tap passe au set suivant (cycle)
+// - Affiche le set courant (image + nom)
+// - 1 clic = passe au suivant
+// - Inclut "Aucune" dans la boucle
+// - Par défaut : Aucune (PAS de favori implicite)
 // -------------------------------------------------------------
 type PlayerDartBadgeProps = {
   profileId?: string | null;
@@ -122,125 +123,143 @@ const PlayerDartBadge: React.FC<PlayerDartBadgeProps> = ({
       setFavorite(null);
       return;
     }
-    const all = getDartSetsForProfile(profileId);
+    const all = getDartSetsForProfile(profileId) || [];
     setSets(all);
     setFavorite(getFavoriteDartSetForProfile(profileId) || null);
   }, [profileId]);
 
-  if (!profileId || sets.length === 0) return null;
+  if (!profileId) return null;
 
-  // ✅ IMPORTANT:
-  // - Par défaut : RIEN de sélectionné (dartSetId = null)
-  // - Un clic choisit d'abord le "favori" (si dispo) sinon le 1er set
-  // - Ensuite on cycle, et on revient à "Aucun" à la fin
-  const favoriteId = favorite?.id ?? null;
-
-  const ordered = React.useMemo(() => {
-    if (!sets.length) return [];
-    if (favoriteId) {
-      const fav = sets.find((s) => s.id === favoriteId);
-      const rest = sets.filter((s) => s.id !== favoriteId);
-      return fav ? [fav, ...rest] : sets;
-    }
-    return sets;
-  }, [sets, favoriteId]);
-
-  const current: DartSet | null = dartSetId ? ordered.find((s) => s.id === dartSetId) || null : null;
-
-  const handleClick = () => {
-    if (!ordered.length) return;
-
-    // rien sélectionné -> on prend favori / premier
-    if (!dartSetId) {
-      const first = ordered[0];
-      onChange(first?.id ?? null);
-      return;
-    }
-
-    const idx = ordered.findIndex((s) => s.id === dartSetId);
-    const next = idx >= 0 ? ordered[idx + 1] : ordered[0];
-
-    // fin de cycle -> retour à "Aucun"
-    onChange(next?.id ?? null);
-  };
-
+  const noneLabel = lang === "fr" ? "Aucune" : "None";
   const labelBase =
     lang === "fr"
-      ? "Jeu de fléchettes"
+      ? "Fléchettes"
       : lang === "es"
-      ? "Juego de dardos"
+      ? "Dardos"
       : lang === "de"
-      ? "Dart-Set"
-      : "Dart set";
+      ? "Darts"
+      : "Darts";
+
+  // Favori en tête (UI), mais PAS de sélection implicite
+  const orderedSets: DartSet[] = React.useMemo(() => {
+    const favId = favorite?.id || null;
+    const list = (sets || []).slice();
+    if (!favId) return list;
+    const fav = list.find((s) => s.id === favId) || null;
+    const rest = list.filter((s) => s.id !== favId);
+    return fav ? [fav, ...rest] : list;
+  }, [sets, favorite]);
+
+  const items = React.useMemo(
+    () => [{ id: null as any, name: noneLabel, set: null as any }, ...orderedSets.map((s) => ({ id: s.id, name: s.name || "Set", set: s }))],
+    [orderedSets, noneLabel]
+  );
+
+  const getThumb = (s: any): string | null => {
+    if (!s) return null;
+    return (
+      s.thumbImageUrl ||
+      s.thumb ||
+      s.imageUrl ||
+      s.image ||
+      s.previewImageUrl ||
+      s.preview ||
+      null
+    );
+  };
+
+  const currentIdx = Math.max(0, items.findIndex((it) => it.id === (dartSetId ?? null)));
+  const current = items[currentIdx] || items[0];
+  const thumb = getThumb(current.set);
+  const isFav = !!favorite && current?.id && current.id === favorite.id;
+
+  const handleClick = () => {
+    const next = items[(currentIdx + 1) % items.length];
+    onChange((next?.id as any) ?? null);
+  };
+
+  // If no sets at all, still show "Aucune" but keep small
+  const hasAny = (orderedSets || []).length > 0;
 
   return (
     <button
       type="button"
       onClick={handleClick}
+      aria-label={labelBase}
+      title={lang === "fr" ? "Cliquer pour changer" : "Click to change"}
       style={{
         marginTop: 6,
         alignSelf: "center",
-        padding: "4px 10px",
+        padding: "6px 8px",
         borderRadius: 999,
-        border: "1px solid rgba(255,255,255,.18)",
+        border: `1px solid rgba(255,255,255,.14)`,
         background:
           "radial-gradient(circle at 0% 0%, rgba(245,195,91,.22), rgba(8,8,20,.96))",
         display: "flex",
         alignItems: "center",
-        gap: 6,
+        gap: 8,
         color: "#fff",
         fontSize: 10,
-        maxWidth: 180,
-        whiteSpace: "nowrap",
-        overflow: "hidden",
-        textOverflow: "ellipsis",
+        width: 112,          // ✅ anti-overlap
+        maxWidth: 112,       // ✅ anti-overlap
+        overflow: "hidden",  // ✅ anti-overlap
         cursor: "pointer",
+        boxShadow: `0 0 10px rgba(0,0,0,.55)`,
       }}
-      aria-label={labelBase}
-      title={labelBase}
     >
-      {(current as any)?.thumbImageUrl ? (
+      {thumb ? (
         <img
-          src={(current as any).thumbImageUrl}
+          src={thumb}
           alt=""
           style={{
-            width: 20,
-            height: 20,
+            width: 26,
+            height: 26,
             borderRadius: "50%",
             objectFit: "cover",
             boxShadow: "0 0 6px rgba(0,0,0,.9)",
+            border: `1px solid ${primary}55`,
+            flex: "0 0 auto",
           }}
         />
       ) : (
         <div
           style={{
-            width: 20,
-            height: 20,
+            width: 26,
+            height: 26,
             borderRadius: "50%",
-            background: (current as any)?.bgColor || "#050509",
+            background: current?.id ? (current?.set as any)?.bgColor || "#050509" : "rgba(255,255,255,0.08)",
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
-            fontSize: 12,
+            fontSize: 14,
             boxShadow: "0 0 6px rgba(0,0,0,.9)",
-            border: `1px solid ${primary}cc`,
+            border: `1px solid ${primary}55`,
+            flex: "0 0 auto",
           }}
         >
-          🎯
+          {current?.id ? "🎯" : "⛔"}
         </div>
       )}
 
-      <span
-        style={{
-          fontSize: 11,
-          fontWeight: 700,
-          whiteSpace: "nowrap",
-          textOverflow: "ellipsis",
-          overflow: "hidden",
-        }}
-      >
-        {dartSetId ? (current?.name ?? "Set") : (lang === "fr" ? "Aucune" : lang === "es" ? "Ninguna" : lang === "de" ? "Keine" : "None")}
-      </span>
+      <div style={{ minWidth: 0, display: "flex", flexDirection: "column", alignItems: "flex-start", gap: 1 }}>
+        <div style={{ fontSize: 8, fontWeight: 900, letterSpacing: 0.8, textTransform: "uppercase", opacity: 0.75, lineHeight: 1 }}>
+          {labelBase}
+        </div>
+        <div
+          style={{
+            fontSize: 10,
+            fontWeight: 900,
+            whiteSpace: "nowrap",
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            maxWidth: 68,
+            lineHeight: 1.05,
+          }}
+        >
+          {!hasAny ? noneLabel : isFav && current?.id ? "★ " : ""}
+          {!hasAny ? noneLabel : current?.name || noneLabel}
+        </div>
+      </div>
     </button>
   );
 };
@@ -581,14 +600,13 @@ export default function X01ConfigV3({ profiles, onBack, onStart, go }: Props) {
       }
     }
 
-
-// 🔓 Audio: preload + unlock (clic utilisateur) -> permet l'intro & les SFX dès l'entrée en match
-try {
-  x01SfxV3Preload();
-  x01EnsureAudioUnlocked();
-} catch (e) {
-  // ignore
-}
+    // 🔓 Audio: preload + unlock (clic utilisateur) -> permet l'intro & les SFX dès l'entrée en match
+    try {
+      x01SfxV3Preload();
+      x01EnsureAudioUnlocked();
+    } catch (e) {
+      // ignore
+    }
 
     let teams: null | Array<{ id: TeamId; name: string; color: string; players: string[] }> = null;
 
@@ -1359,8 +1377,6 @@ try {
             </div>
           </div>
 
-
-
           {/* ✅ METHODE DE SAISIE (UI) */}
           <div style={{ marginTop: 12, paddingTop: 12, borderTop: "1px solid rgba(255,255,255,0.06)" }}>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 8 }}>
@@ -1834,12 +1850,6 @@ window.dispatchEvent(new CustomEvent("dc:x01v3:visit", {
             </div>
           )}
         </section>
-
-        {/* --------- BLOC FORMAT DU MATCH --------- */}
-        
-
-        {/* --------- BLOC SERVICE + MODE DE MATCH --------- */}
-        
 
         {/* --------- BLOC COMPO ÉQUIPES --------- */}
         {matchMode === "teams" && totalPlayers >= 2 && (
