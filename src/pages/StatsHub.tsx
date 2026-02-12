@@ -1,3 +1,16 @@
+
+// ---- PATCH: unified game mode resolver ----
+function getGameMode(rec: any): string {
+  if (!rec) return "";
+  if (rec?.game?.mode) return String(rec.game.mode).toLowerCase();
+  if (typeof rec?.game === "string") return rec.game.toLowerCase();
+  if (rec?.mode) return String(rec.mode).toLowerCase();
+  if (rec?.payload?.config?.mode)
+    return String(rec.payload.config.mode).toLowerCase();
+  return "";
+}
+// ---- END PATCH ----
+
 // ============================================
 // src/pages/StatsHub.tsx — Stats + Historique + Training (v2 complet)
 // ============================================
@@ -652,7 +665,7 @@ type SessionsByMode = Record<string, number>;
 
 function classifyRecordMode(rec: SavedMatch): string {
   const kind = String(rec.kind ?? "").toLowerCase();
-  const game = String(rec.game ?? "").toLowerCase();
+  const game = getGameMode(rec);
   const mode = String(rec.mode ?? "").toLowerCase();
   const variant = String(rec.variant ?? "").toLowerCase();
 

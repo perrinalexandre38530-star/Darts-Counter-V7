@@ -1837,17 +1837,13 @@ return nextScores;
     const headerTargets = headerCells.map((h) => holeTargets[h - 1] ?? h);
 
     const cellPill = (v: number) => {
-  // On veut des chiffres simples colorés (pas de chip néon)
-  // DBull = -2 (violet) / Bull = -1 (rose) — on garde aussi 0 en fallback si tu l'utilises ailleurs
-  if (v === -2) return { color: "#d8b6ff" };
-  if (v === -1 || v === 0) return { color: "#ff9fe6" };
-
-  // 1 = Double (hole in one), 3 = Triple, 4 = Simple, M = Miss (missStrokesVal)
-  if (v === 1) return { color: "#ffcf57" };
-  if (v === 3) return { color: "#b9ffe9" };
-  if (v === 4) return { color: "rgba(255,255,255,.92)" };
-  return { color: "#ffb2b2" };
-};
+      // Affichage compact: label + couleur (DB/B/D/T/S/M)
+      const isMiss = v === missStrokesVal;
+      const meta = (GOLF_SCORE_DISPLAY as any)[v];
+      const label = isMiss ? "M" : (meta?.label ?? String(v));
+      const color = isMiss ? "#ff4d4d" : (meta?.color ?? "rgba(255,255,255,.92)");
+      return { label, color };
+    };
 
 
     return (
@@ -1996,7 +1992,7 @@ return nextScores;
                           boxShadow: isCurrentCell ? "0 0 18px rgba(120,255,220,0.18)" : "none",
                         }}
                       >
-                        {v}
+                        {st.label}
                       </div>
                     </div>
                   );

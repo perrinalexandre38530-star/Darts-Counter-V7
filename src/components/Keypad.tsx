@@ -57,6 +57,8 @@ const wrapCard: React.CSSProperties = {
   border: "1px solid rgba(255,255,255,.08)",
   borderRadius: 18,
   padding: 14, // padding un poil réduit car la barre flèches est supprimée
+  paddingBottom: "calc(14px + env(safe-area-inset-bottom))",
+  marginBottom: "env(safe-area-inset-bottom)",
   boxShadow: "0 10px 30px rgba(0,0,0,.35)",
   userSelect: "none",
   // Important: allow the keypad to be constrained by its parent without cutting the footer.

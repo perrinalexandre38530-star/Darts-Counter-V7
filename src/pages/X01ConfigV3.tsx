@@ -129,13 +129,38 @@ const PlayerDartBadge: React.FC<PlayerDartBadgeProps> = ({
 
   if (!profileId || sets.length === 0) return null;
 
-  const explicit = dartSetId ? sets.find((s) => s.id === dartSetId) || null : null;
-  const current = explicit || favorite || sets[0];
+  // ✅ IMPORTANT:
+  // - Par défaut : RIEN de sélectionné (dartSetId = null)
+  // - Un clic choisit d'abord le "favori" (si dispo) sinon le 1er set
+  // - Ensuite on cycle, et on revient à "Aucun" à la fin
+  const favoriteId = favorite?.id ?? null;
+
+  const ordered = React.useMemo(() => {
+    if (!sets.length) return [];
+    if (favoriteId) {
+      const fav = sets.find((s) => s.id === favoriteId);
+      const rest = sets.filter((s) => s.id !== favoriteId);
+      return fav ? [fav, ...rest] : sets;
+    }
+    return sets;
+  }, [sets, favoriteId]);
+
+  const current: DartSet | null = dartSetId ? ordered.find((s) => s.id === dartSetId) || null : null;
 
   const handleClick = () => {
-    if (!current) return;
-    const idx = sets.findIndex((s) => s.id === current.id);
-    const next = sets[(idx + 1) % sets.length];
+    if (!ordered.length) return;
+
+    // rien sélectionné -> on prend favori / premier
+    if (!dartSetId) {
+      const first = ordered[0];
+      onChange(first?.id ?? null);
+      return;
+    }
+
+    const idx = ordered.findIndex((s) => s.id === dartSetId);
+    const next = idx >= 0 ? ordered[idx + 1] : ordered[0];
+
+    // fin de cycle -> retour à "Aucun"
     onChange(next?.id ?? null);
   };
 
@@ -214,7 +239,7 @@ const PlayerDartBadge: React.FC<PlayerDartBadgeProps> = ({
           overflow: "hidden",
         }}
       >
-        {current?.name ?? "Set"}
+        {dartSetId ? (current?.name ?? "Set") : (lang === "fr" ? "Aucune" : lang === "es" ? "Ninguna" : lang === "de" ? "Keine" : "None")}
       </span>
     </button>
   );
