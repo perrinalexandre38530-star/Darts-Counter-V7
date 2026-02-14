@@ -191,17 +191,7 @@ function chipStyle(d?: UIDart, red = false): React.CSSProperties {
       border: "1px solid rgba(255,255,255,.08)",
     };
 
-  
-  // ✅ MISS toujours en rouge
-  if (d.v === 0) {
-    return {
-      background: "rgba(200,30,30,.18)",
-      color: "#ff8a8a",
-      border: "1px solid rgba(255,80,80,.35)",
-    };
-  }
-
-if (red)
+  if (red)
     return {
       background: "rgba(200,30,30,.18)",
       color: "#ff8a8a",
@@ -1071,8 +1061,7 @@ const forceSyncFromEngine = React.useCallback(() => {
   setCurrentThrow(raw);
 
   // ✅ CRITIQUE: la liste joueurs lit lastVisitsByPlayer, pas currentThrow
-  // ⚠️ On ne doit PAS écraser la "dernière volée" avec une visite vide (sinon la liste joueurs perd l'affichage).
-  if (activePlayerId && raw.length) {
+  if (activePlayerId) {
     setLastVisitsByPlayer((m) => ({ ...m, [activePlayerId]: raw }));
     setLastVisitIsBustByPlayer((m) => ({ ...m, [activePlayerId]: false }));
   }
@@ -3087,7 +3076,7 @@ if (isLandscapeTablet) {
                     border: "1px solid rgba(255,255,255,0.08)",
                     background: "linear-gradient(180deg, rgba(10,10,12,.9), rgba(6,6,8,.95))",
                     textAlign: "center",
-                    fontSize: isTiny ? 11 : isNarrow ? 12 : 13,
+                    fontSize: 13,
                     color: "#e3e6ff",
                     boxShadow: "0 10px 24px rgba(0,0,0,.5)",
                   }}
@@ -3762,7 +3751,7 @@ function HeaderBlock(props: HeaderBlockProps) {
     showThrowCounter = false,
   } = props;
 
-  // ✅ Responsive sizing only (NEVER switch to stacked layout)
+  // ✅ Responsive safety: évite tout overflow horizontal sur mobile
   const isNarrow = useMediaQueryLocal("(max-width: 420px)");
   const isTiny = useMediaQueryLocal("(max-width: 360px)");
 
@@ -3823,8 +3812,7 @@ function HeaderBlock(props: HeaderBlockProps) {
       {/* SCORE CENTRAL */}
       <div
         style={{
-          // clamp: always shrink instead of forcing wrap/overflow
-          fontSize: "clamp(46px, 6.2vw, 64px)",
+          fontSize: isTiny ? 50 : isNarrow ? 56 : 64,
           fontWeight: 900,
           position: "relative",
           zIndex: 2,
@@ -3840,11 +3828,9 @@ function HeaderBlock(props: HeaderBlockProps) {
       <div
         style={{
           display: "flex",
-          gap: isNarrow ? 4 : 5,
+          gap: 5,
           justifyContent: "center",
-          flexWrap: "nowrap",
-          maxWidth: "100%",
-          overflow: "hidden",
+          flexWrap: "wrap",
           position: "relative",
           zIndex: 2,
         }}
@@ -3868,9 +3854,9 @@ function HeaderBlock(props: HeaderBlockProps) {
                 display: "inline-flex",
                 alignItems: "center",
                 justifyContent: "center",
-                minWidth: isTiny ? 32 : isNarrow ? 34 : 40,
-                height: isTiny ? 24 : isNarrow ? 26 : 28,
-                padding: isTiny ? "0 8px" : isNarrow ? "0 9px" : "0 10px",
+                minWidth: 40,
+                height: 28,
+                padding: "0 10px",
                 borderRadius: 10,
                 border: st.border as string,
                 background: st.background as string,
@@ -3891,19 +3877,17 @@ function HeaderBlock(props: HeaderBlockProps) {
           <div
             style={{
               display: "inline-flex",
-              padding: isNarrow ? 4 : 5,
+              padding: 5,
               borderRadius: 12,
               border: "1px solid rgba(255,255,255,.08)",
               background:
                 "radial-gradient(120% 120% at 50% 0%, rgba(255,195,26,.10), rgba(30,30,34,.95))",
-              // Never force a minimum width (it causes wrap/crop on narrow screens)
-              minWidth: 0,
+              minWidth: 170,
               gap: 6,
               alignItems: "center",
               justifyContent: "center",
               maxWidth: "100%",
               boxSizing: "border-box",
-              overflow: "hidden",
             }}
           >
             <span
@@ -3915,10 +3899,7 @@ function HeaderBlock(props: HeaderBlockProps) {
                 color: "#ffc63a",
                 fontWeight: 900,
                 whiteSpace: "nowrap",
-              fontSize: isNarrow ? 12 : 13,
-              maxWidth: "100%",
-              overflow: "hidden",
-              textOverflow: "ellipsis",
+                fontSize: 13,
               }}
             >
               {checkoutText}
@@ -3931,9 +3912,9 @@ function HeaderBlock(props: HeaderBlockProps) {
       <div
         style={{
           ...miniCard,
-          alignSelf: "stretch",
+          alignSelf: "center",
           width: "100%",
-          maxWidth: "100%",
+          maxWidth: isNarrow ? "100%" : 310,
           height: "auto",
           padding: 6,
           position: "relative",
@@ -3997,123 +3978,125 @@ function HeaderBlock(props: HeaderBlockProps) {
       />
 
       <div style={{ position: "relative", zIndex: 2, minWidth: 0 }}>
+        {/* Header: TOUJOURS côte à côte (profil/stats à gauche, score/classement à droite) */}
         <div
-          style={{
-            display: "grid",
-            // Always side-by-side: left identity/stats + right score/ranking
-            gridTemplateColumns: "minmax(0, 0.92fr) minmax(0, 1.08fr)",
-            gap: isTiny ? 6 : 8,
-            alignItems: "center",
-            minWidth: 0,
-          }}
-        >
-          {/* AVATAR + STATS (shrinkable) */}
-          <div
             style={{
-              display: "flex",
-              flexDirection: "column",
+              display: "grid",
+              gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr)",
+              gap: 8,
               alignItems: "center",
-              gap: isTiny ? 4 : 5,
               minWidth: 0,
+              width: "100%",
+              maxWidth: "100%",
             }}
           >
+            {/* GAUCHE: AVATAR + IDENTITÉ + STATS */}
             <div
               style={{
-                width: "clamp(56px, 18vw, 96px)",
-                height: "clamp(56px, 18vw, 96px)",
-                borderRadius: "50%",
-                overflow: "hidden",
-                background: "linear-gradient(180deg,#1b1b1f,#111114)",
-                boxShadow: "0 6px 22px rgba(0,0,0,.35)",
-                flex: "0 0 auto",
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "center",
+                gap: 5,
+                minWidth: 0,
+                maxWidth: "100%",
               }}
             >
-              {currentAvatar ? (
-                <img
-                  src={currentAvatar}
-                  style={{ width: "100%", height: "100%", objectFit: "cover" }}
-                />
-              ) : (
+              <div
+                style={{
+                  width: "clamp(64px, 18vw, 96px)",
+                  height: "clamp(64px, 18vw, 96px)",
+                  borderRadius: "50%",
+                  overflow: "hidden",
+                  background: "linear-gradient(180deg,#1b1b1f,#111114)",
+                  boxShadow: "0 6px 22px rgba(0,0,0,.35)",
+                  flex: "0 0 auto",
+                }}
+              >
+                {currentAvatar ? (
+                  <img
+                    src={currentAvatar}
+                    style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                  />
+                ) : (
+                  <div
+                    style={{
+                      width: "100%",
+                      height: "100%",
+                      display: "flex",
+                      justifyContent: "center",
+                      alignItems: "center",
+                      color: "#999",
+                      fontWeight: 700,
+                    }}
+                  >
+                    ?
+                  </div>
+                )}
+              </div>
+
+              <div
+                style={{
+                  fontWeight: 900,
+                  fontSize: "clamp(14px, 4.6vw, 17px)",
+                  color: "#ffcf57",
+                  maxWidth: "100%",
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                {currentPlayer?.name ?? "—"}
+              </div>
+
+              {liveRanking?.length ? (
                 <div
                   style={{
-                    width: "100%",
-                    height: "100%",
-                    display: "flex",
-                    justifyContent: "center",
-                    alignItems: "center",
-                    color: "#999",
-                    fontWeight: 700,
+                    fontSize: "clamp(10px, 3.2vw, 11.5px)",
+                    color: "#d9dbe3",
+                    maxWidth: "100%",
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    whiteSpace: "nowrap",
                   }}
                 >
-                  ?
-                </div>
-              )}
-            </div>
-
-            <div
-              style={{
-                fontWeight: 900,
-                fontSize: "clamp(14px, 2.8vw, 17px)",
-                color: "#ffcf57",
-                maxWidth: "100%",
-                overflow: "hidden",
-                textOverflow: "ellipsis",
-                whiteSpace: "nowrap",
-              }}
-            >
-              {currentPlayer?.name ?? "—"}
-            </div>
-
-            <div
-              style={{
-                fontSize: isTiny ? 10.5 : 11.5,
-                color: "#d9dbe3",
-                maxWidth: "100%",
-                overflow: "hidden",
-                textOverflow: "ellipsis",
-                whiteSpace: "nowrap",
-              }}
-            >
-              {liveRanking?.length ? (
-                <>
                   Leader : <b>{liveRanking[0]?.name}</b>
-                </>
+                </div>
               ) : null}
-            </div>
 
-            {/* Mini card stats joueur actif (no fixed width) */}
-            <div
-              style={{
-                ...miniCard,
-                width: "100%",
-                maxWidth: "min(176px, 100%)",
-                height: "auto",
-                padding: isNarrow ? 6 : 7,
-                boxSizing: "border-box",
-              }}
-            >
-              <div style={miniText}>
-                <div>
-                  Meilleure volée : <b>{bestVisit}</b>
-                </div>
-                <div>
-                  Moy/3D : <b>{curM3D}</b>
-                </div>
-                <div>
-                  Darts jouées : <b>{curDarts}</b>
-                </div>
-                {showThrowCounter && currentThrow.length > 0 ? (
+              {/* Mini card stats joueur actif — shrinkable */}
+              <div
+                style={{
+                  ...miniCard,
+                  width: "100%",
+                  maxWidth: "clamp(150px, 42vw, 190px)",
+                  minWidth: 0,
+                  height: "auto",
+                  padding: 7,
+                  boxSizing: "border-box",
+                }}
+              >
+                <div style={miniText}>
                   <div>
-                    Volée : <b>{currentThrow.length}/3</b>
+                    Meilleure volée : <b>{bestVisit}</b>
                   </div>
-                ) : null}
+                  <div>
+                    Moy/3D : <b>{curM3D}</b>
+                  </div>
+                  <div>
+                    Darts jouées : <b>{curDarts}</b>
+                  </div>
+                  {showThrowCounter && currentThrow.length > 0 ? (
+                    <div>
+                      Volée : <b>{currentThrow.length}/3</b>
+                    </div>
+                  ) : null}
+                </div>
               </div>
             </div>
-          </div>
 
-          {/* SCORE + PASTILLES + RANKING */}
-          {ScorePanel}
-        </div>
+            {/* DROITE: SCORE + PASTILLES + RANKING */}
+            <div style={{ minWidth: 0, maxWidth: "100%" }}>{ScorePanel}</div>
+          </div>
       </div>
     </div>
   );

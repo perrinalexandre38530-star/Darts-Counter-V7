@@ -131,6 +131,11 @@ import KillerConfig from "./pages/KillerConfig";
 import KillerPlay from "./pages/KillerPlay";
 import KillerSummaryPage from "./pages/KillerSummaryPage";
 
+// ✅ BATARD (CONFIG + PLAY)
+import BatardConfigPage from "./pages/BatardConfig";
+import BatardPlayPage from "./pages/BatardPlay";
+import BatardSummaryPage from "./pages/BatardSummaryPage";
+
 // ✅ NEW: LES 5 VIES (CONFIG + PLAY)
 import FiveLivesConfig from "./pages/FiveLivesConfig";
 import FiveLivesPlay from "./pages/FiveLivesPlay";

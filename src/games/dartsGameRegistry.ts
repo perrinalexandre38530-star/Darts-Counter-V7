@@ -140,6 +140,17 @@ export const dartsGameRegistry: DartsGameDef[] = [
       "La cible change a chaque manche (souvent 1 puis 2 puis 3... jusqu'a 20). Tu marques uniquement sur la cible du round. Shanghai = faire Simple + Double + Triple de la cible dans la meme volee (3 fleches). Selon config: victoire immediate au Shanghai ou meilleur total a la fin.",
   },
   {
+    id: "batard",
+    label: "Batard",
+    category: "classic",
+    entry: "games",
+    tab: "batard_config",
+    popularity: 15,
+    isReady: true,
+    description: "Mode configurable (presets + règles d’échec) — fun / bar / progressif.",
+  },
+
+  {
     id: "battle_royale",
     label: "Battle Royale",
     category: "classic",
