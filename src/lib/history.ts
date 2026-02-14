@@ -58,6 +58,11 @@ export type SavedMatch = {
   // Payload complet (gros) — compressé en base
   payload?: any;
 
+  // ✅ RESUME payload minimal (anti-corruption / anti-compress)
+  // - Permet de reprendre même si payloadCompressed est vide/corrompu.
+  // - Doit rester petit (config + state + dartsLite)
+  resume?: any;
+
   // champs libres tolérés (meta, state, etc.)
   [k: string]: any;
 };
@@ -1372,6 +1377,34 @@ try {
         }
       }
     } catch {}
+
+
+    // ✅ Résumé minimal pour la reprise (anti-corruption / anti-compress)
+    // On stocke aussi une version "lite" non compressée pour garantir la reprise.
+    try {
+      const basePayload =
+        payloadEffective ||
+        (prevPayloadCompressed ? decodePayloadCompressedBestEffort(prevPayloadCompressed) : null);
+
+      if (basePayload && typeof basePayload === "object") {
+        const cfgLite = (basePayload as any).config ?? null;
+        const stateLite = (basePayload as any).state ?? null;
+        const dartsLite = Array.isArray((basePayload as any).darts)
+          ? (basePayload as any).darts.slice(-90)
+          : null;
+
+        const resume: any = {};
+        if (cfgLite) resume.config = cfgLite;
+        if (stateLite) resume.state = stateLite;
+        if (dartsLite) resume.darts = dartsLite;
+
+        (safe as any).resume = Object.keys(resume).length ? resume : null;
+      } else {
+        (safe as any).resume = null;
+      }
+    } catch {
+      (safe as any).resume = null;
+    }
 
     let payloadCompressed = "";
 

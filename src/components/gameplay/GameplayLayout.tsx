@@ -173,8 +173,6 @@ export default function GameplayLayout({
   const isTablet =
     forceLayout === "tablet" ? true : forceLayout === "phone" ? false : isTabletByMedia;
 
-  const isPhoneLandscape = !isTablet && useMediaQuery("(orientation: landscape) and (max-width: 899px)");
-
   const playersInSidebar = isTablet && canOpenPlayers && playersPanelMode === "sidebar-auto";
   const showPlayersRowAsButton = canOpenPlayers && !playersInSidebar;
 
@@ -278,10 +276,8 @@ export default function GameplayLayout({
   // On préfère 100dvh (dynamic viewport height) pour que la zone INPUT puisse aller jusqu'en bas.
   const outerStyle: React.CSSProperties = {
     height: "100dvh",
-    width: "100vw",
-    maxWidth: "100vw",
+    width: "100%",
     overflow: "hidden",
-    overflowX: "hidden",
   };
 
   const containerStyle: React.CSSProperties = {
@@ -289,9 +285,7 @@ export default function GameplayLayout({
     width: "100%",
     maxWidth: isTablet ? 1180 : 920,
     margin: "0 auto",
-    paddingTop: "10px",
-    paddingRight: "max(10px, env(safe-area-inset-right))",
-    paddingLeft: "max(10px, env(safe-area-inset-left))",
+    padding: "10px 10px 14px",
     paddingBottom: "calc(14px + env(safe-area-inset-bottom))",
     display: "flex",
     flexDirection: "column",
@@ -352,70 +346,7 @@ export default function GameplayLayout({
         </div>
 
         {/* 2+) CONTENU */}
-        {!isTablet ? (isPhoneLandscape ? (
-
-<div
-  style={{
-    display: "grid",
-    gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr)",
-    gap: 10,
-    flex: 1,
-    minHeight: 0,
-    overflow: "hidden",
-  }}
->
-  {/* LEFT: infos (scale down if needed) */}
-  <div style={{ minHeight: 0, minWidth: 0, overflow: "hidden", display: "flex" }}>
-    <FitBox minScale={0.72} maxScale={1}>
-      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-        {activeProfileHeader ? (
-          <div className="card" style={{ padding: "10px 12px" }}>
-            {activeProfileHeader}
-          </div>
-        ) : null}
-
-        {renderPlayersRow()}
-
-        <RulesModal
-          open={openPlayers}
-          onClose={() => setOpenPlayers(false)}
-          title={playersPanelTitle}
-        >
-          <div style={{ padding: 2 }}>{playersPanel}</div>
-        </RulesModal>
-
-        {volleyInputDisplay ? (
-          <div className="card" style={{ padding: "10px 12px" }}>
-            {volleyInputDisplay}
-          </div>
-        ) : null}
-      </div>
-    </FitBox>
-  </div>
-
-  {/* RIGHT: input modes (scale down if needed) */}
-  <div style={{ minHeight: 0, minWidth: 0, overflow: "hidden", display: "flex" }}>
-    {inputModes ? (
-      <div
-        className="card"
-        style={{
-          padding: "10px 12px",
-          flex: 1,
-          minHeight: 0,
-          overflow: "hidden",
-          background: "rgba(0,0,0,0.28)",
-          border: `1px solid ${theme.borderSoft}`,
-          backdropFilter: "blur(8px)",
-        }}
-      >
-        <FitBox minScale={0.75} maxScale={1}>
-          <div style={{ height: "100%", minHeight: 0, overflow: "hidden" }}>{inputModes}</div>
-        </FitBox>
-      </div>
-    ) : null}
-  </div>
-</div>
-        ) : (
+        {!isTablet ? (
           <div
             style={{
               display: "flex",
@@ -433,43 +364,38 @@ export default function GameplayLayout({
               - Pas de double scale (ScoreInputHub gère déjà l'auto-fit interne).
             */}
 
-            {/* Zone HAUTE (sans scroll) : on scale down si nécessaire pour toujours tout faire rentrer */}
+            {/* Scroll zone (tout sauf la saisie) */}
             <div
               style={{
                 flex: 1,
                 minHeight: 0,
-                overflow: "hidden",
+                overflow: "auto",
                 display: "flex",
+                flexDirection: "column",
+                gap: 10,
+                paddingBottom: safeBottom,
               }}
             >
-              <FitBox minScale={0.72} maxScale={1}>
-                <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                  {/* 2) HEADER PROFIL ACTIF */}
-                  {activeProfileHeader ? (
-                    <div className="card" style={{ padding: "10px 12px" }}>
-                      {activeProfileHeader}
-                    </div>
-                  ) : null}
-
-                  {/* 3) JOUEURS (modal) */}
-                  {renderPlayersRow()}
-
-                  <RulesModal
-                    open={openPlayers}
-                    onClose={() => setOpenPlayers(false)}
-                    title={playersPanelTitle}
-                  >
-                    <div style={{ padding: 2 }}>{playersPanel}</div>
-                  </RulesModal>
-
-                  {/* 4) VOLÉE */}
-                  {volleyInputDisplay ? (
-                    <div className="card" style={{ padding: "10px 12px" }}>
-                      {volleyInputDisplay}
-                    </div>
-                  ) : null}
+              {/* 2) HEADER PROFIL ACTIF */}
+              {activeProfileHeader ? (
+                <div className="card" style={{ padding: "10px 12px" }}>
+                  {activeProfileHeader}
                 </div>
-              </FitBox>
+              ) : null}
+
+              {/* 3) JOUEURS (modal) */}
+              {renderPlayersRow()}
+
+              <RulesModal open={openPlayers} onClose={() => setOpenPlayers(false)} title={playersPanelTitle}>
+                <div style={{ padding: 2 }}>{playersPanel}</div>
+              </RulesModal>
+
+              {/* 4) VOLÉE */}
+              {volleyInputDisplay ? (
+                <div className="card" style={{ padding: "10px 12px" }}>
+                  {volleyInputDisplay}
+                </div>
+              ) : null}
             </div>
 
             {/* 5) DOCK BAS: MODES DE SAISIE (KEYPAD / CIBLE) */}
@@ -494,7 +420,7 @@ export default function GameplayLayout({
               </div>
             ) : null}
           </div>
-        )) : (
+        ) : (
           <div style={{ flex: 1, minHeight: 0, overflow: "hidden" }}>
             <div
               style={{

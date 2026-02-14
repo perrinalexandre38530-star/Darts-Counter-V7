@@ -375,35 +375,3 @@ body {
   backdrop-filter: blur(10px);
 }
 
-
-
-
-/* =========================================================
-   MOBILE NORMALIZATION (Android/iOS)
-   - Empêche le texte / UI de "gonfler" vs StackBlitz
-   - Verrouille le viewport réel (évite les débordements/crops)
-   ========================================================= */
-:root{
-  --safe-top: env(safe-area-inset-top, 0px);
-  --safe-right: env(safe-area-inset-right, 0px);
-  --safe-left: env(safe-area-inset-left, 0px);
-}
-
-html, body {
-  width: 100%;
-  max-width: 100%;
-  overflow-x: hidden;
-  -webkit-text-size-adjust: 100%;
-  text-size-adjust: 100%;
-}
-
-#root{
-  width: 100%;
-  max-width: 100%;
-  overflow-x: hidden;
-}
-
-/* Viewport dynamique (Chrome Android) */
-@supports (height: 100dvh){
-  html, body, #root{ height: 100dvh; }
-}
