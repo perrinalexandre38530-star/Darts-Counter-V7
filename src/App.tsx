@@ -2937,10 +2937,10 @@ case "babyfoot_team_edit":
         break;
 
       case "batard_config":
-        page = <BatardConfig store={store} setTab={go} params={routeParams} />;
+        page = <BatardConfig setTab={go} params={routeParams} />;
         break;
       case "batard_play":
-        page = <BatardPlay store={store} setTab={go} params={routeParams} />;
+        page = <BatardPlay setTab={go} params={routeParams} />;
         break;
 
       case "fun_gages_config":
@@ -3153,7 +3153,12 @@ function X01PlayV3Route({
         const rec: any = await History.get(resumeId);
         if (cancelled) return;
 
-        const payload = rec?.payload ?? rec?.payloadDecoded ?? rec?.data ?? null;
+        // ✅ Si payload est encore une string (b64 JSON), on préfère la version décodée.
+        const payload =
+          (typeof rec?.payload === "string" ? rec?.payloadDecoded : rec?.payload) ??
+          rec?.payloadDecoded ??
+          rec?.data ??
+          null;
 
         // ✅ config
         const cfg =

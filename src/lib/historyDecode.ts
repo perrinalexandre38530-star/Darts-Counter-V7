@@ -7,7 +7,10 @@
 // ============================================
 
 export async function decodeHistoryPayload(raw: any): Promise<any | null> {
-  if (!raw || typeof raw !== "string") return null;
+  // ✅ Certains stockages (IDB / migrations) peuvent contenir l'objet déjà décodé.
+  if (!raw) return null;
+  if (typeof raw === "object") return raw;
+  if (typeof raw !== "string") return null;
 
   const tryParse = (s: any) => {
     if (typeof s !== "string") return null;

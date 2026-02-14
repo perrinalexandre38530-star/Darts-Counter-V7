@@ -84,6 +84,7 @@ import { loadStore } from "./storage";
 import { onlineApi } from "./onlineApi";
 import { emitCloudChange } from "./cloudEvents";
 import { EventBuffer } from "./sync/EventBuffer";
+import { decodeHistoryPayload } from "./historyDecode";
 
 // =========================
 // ✅ CLOUD IMPORT GUARD
@@ -726,17 +727,7 @@ function readLegacyRowsSafe(): SavedMatch[] {
   try {
     const raw = localStorage.getItem(LSK);
     const rows = parseHistoryLocalStorage(raw);
-    if (!Array.isArray(rows)) return [];
-
-    // ✅ Compat: anciens enregistrements pouvaient stocker l'état de reprise dans
-    // `payloadLite` / `resumeLite` (sans champ `payload`).
-    // Le routeur de reprise (App.tsx) lit `stored.payload`, donc on remappe ici.
-    return (rows as any[]).map((r) => {
-      if (!r) return r;
-      if (!r.payload && r.payloadLite) return { ...r, payload: r.payloadLite };
-      if (!r.payload && r.resumeLite) return { ...r, payload: r.resumeLite };
-      return r;
-    }) as SavedMatch[];
+    return Array.isArray(rows) ? (rows as SavedMatch[]) : [];
   } catch {
     return [];
   }
@@ -1129,11 +1120,29 @@ export async function get(id: string): Promise<SavedMatch | null> {
         | null;
     }
 
-    const payload = decodePayloadCompressedBestEffort(rec.payloadCompressed, {
+    // ✅ Décompression au GET (full) + fallback sur formats legacy
+    let payload: any | null = decodePayloadCompressedBestEffort(rec.payloadCompressed, {
       id: String(id),
       stage: "get",
     });
-    delete rec.payloadCompressed;
+
+    // Legacy: certains enregistrements stockent directement un payload (b64 JSON) ou un payloadLite
+    if (!payload) {
+      const rawLegacy =
+        (rec as any).payload ??
+        (rec as any).payloadLite ??
+        (rec as any).payload_lite ??
+        (rec as any).payload_lite_b64 ??
+        null;
+
+      if (rawLegacy != null) {
+        payload =
+          (await decodeHistoryPayload(rawLegacy)) ??
+          (typeof rawLegacy === "object" ? rawLegacy : null);
+      }
+    }
+
+    delete (rec as any).payloadCompressed;
 
     const mid = getCanonicalMatchId({ ...rec, payload }) ?? rec.matchId ?? null;
     if (mid) {
