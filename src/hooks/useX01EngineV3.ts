@@ -245,8 +245,13 @@ function recordDartOn(st: X01StatsLiveV3, v: number, m: number) {
   // On conserve le détail pour l'UI (dernières fléchettes, overlay, etc.)
   st.dartsDetail!.push({ v, m });
 
-  // MISS : on ne retouche pas les compteurs "live" (déjà gérés par applyVisitToLiveStatsV3)
-  if (v === 0 || m === 0) return;
+  // MISS : applyVisitToLiveStatsV3 maintient des compteurs legacy (missCount/bustCount).
+  // Mais toute la pipeline "Stats par fléchettes" lit st.miss / st.bust via buildAggregatedStats.
+  // Donc on incrémente st.miss ici pour que les KPIs et le tableau ne restent pas vides.
+  if (v === 0 || m === 0) {
+    st.miss = (st.miss || 0) + 1;
+    return;
+  }
 
   // Compteurs S / D / T (utilisés par finalizeStatsFor)
   if (m === 1) st.hitsSingle!++;
@@ -283,6 +288,11 @@ function recordVisitOn(
 
   // Score de la volée (pour power scoring) : 0 si bust
   const visitScore = wasBust ? 0 : total;
+
+  // Bust KPI (utilisé dans buildAggregatedStats)
+  if (wasBust) {
+    st.bust = (st.bust || 0) + 1;
+  }
 
   if (visitScore >= 180) {
     (st as any).h180 = ((st as any).h180 || 0) + 1;

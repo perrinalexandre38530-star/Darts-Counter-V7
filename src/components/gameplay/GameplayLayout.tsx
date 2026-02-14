@@ -173,6 +173,8 @@ export default function GameplayLayout({
   const isTablet =
     forceLayout === "tablet" ? true : forceLayout === "phone" ? false : isTabletByMedia;
 
+  const isPhoneLandscape = !isTablet && useMediaQuery("(orientation: landscape) and (max-width: 899px)");
+
   const playersInSidebar = isTablet && canOpenPlayers && playersPanelMode === "sidebar-auto";
   const showPlayersRowAsButton = canOpenPlayers && !playersInSidebar;
 
@@ -350,7 +352,70 @@ export default function GameplayLayout({
         </div>
 
         {/* 2+) CONTENU */}
-        {!isTablet ? (
+        {!isTablet ? (isPhoneLandscape ? (
+
+<div
+  style={{
+    display: "grid",
+    gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr)",
+    gap: 10,
+    flex: 1,
+    minHeight: 0,
+    overflow: "hidden",
+  }}
+>
+  {/* LEFT: infos (scale down if needed) */}
+  <div style={{ minHeight: 0, minWidth: 0, overflow: "hidden", display: "flex" }}>
+    <FitBox minScale={0.72} maxScale={1}>
+      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+        {activeProfileHeader ? (
+          <div className="card" style={{ padding: "10px 12px" }}>
+            {activeProfileHeader}
+          </div>
+        ) : null}
+
+        {renderPlayersRow()}
+
+        <RulesModal
+          open={openPlayers}
+          onClose={() => setOpenPlayers(false)}
+          title={playersPanelTitle}
+        >
+          <div style={{ padding: 2 }}>{playersPanel}</div>
+        </RulesModal>
+
+        {volleyInputDisplay ? (
+          <div className="card" style={{ padding: "10px 12px" }}>
+            {volleyInputDisplay}
+          </div>
+        ) : null}
+      </div>
+    </FitBox>
+  </div>
+
+  {/* RIGHT: input modes (scale down if needed) */}
+  <div style={{ minHeight: 0, minWidth: 0, overflow: "hidden", display: "flex" }}>
+    {inputModes ? (
+      <div
+        className="card"
+        style={{
+          padding: "10px 12px",
+          flex: 1,
+          minHeight: 0,
+          overflow: "hidden",
+          background: "rgba(0,0,0,0.28)",
+          border: `1px solid ${theme.borderSoft}`,
+          backdropFilter: "blur(8px)",
+        }}
+      >
+        <FitBox minScale={0.75} maxScale={1}>
+          <div style={{ height: "100%", minHeight: 0, overflow: "hidden" }}>{inputModes}</div>
+        </FitBox>
+      </div>
+    ) : null}
+  </div>
+</div>
+        ) : (
           <div
             style={{
               display: "flex",
@@ -429,7 +494,7 @@ export default function GameplayLayout({
               </div>
             ) : null}
           </div>
-        ) : (
+        )) : (
           <div style={{ flex: 1, minHeight: 0, overflow: "hidden" }}>
             <div
               style={{
