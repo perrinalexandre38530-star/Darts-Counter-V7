@@ -131,11 +131,6 @@ import KillerConfig from "./pages/KillerConfig";
 import KillerPlay from "./pages/KillerPlay";
 import KillerSummaryPage from "./pages/KillerSummaryPage";
 
-// ✅ BATARD (CONFIG + PLAY)
-import BatardConfigPage from "./pages/BatardConfig";
-import BatardPlayPage from "./pages/BatardPlay";
-import BatardSummaryPage from "./pages/BatardSummaryPage";
-
 // ✅ NEW: LES 5 VIES (CONFIG + PLAY)
 import FiveLivesConfig from "./pages/FiveLivesConfig";
 import FiveLivesPlay from "./pages/FiveLivesPlay";
@@ -284,10 +279,10 @@ import Game170Config from "./pages/Game170Config";
 import Game170Play from "./pages/Game170Play";
 import FootballConfig from "./pages/FootballConfig";
 import FootballPlay from "./pages/FootballPlay";
-import BatardConfig from "./pages/BatardConfig";
+import BatardConfig from "./pages/batard/BatardConfig";
 import FunGagesConfig from "./pages/FunGagesConfig";
 import FunGagesPlay from "./pages/FunGagesPlay";
-import BatardPlay from "./pages/BatardPlay";
+import BatardPlay from "./pages/batard/BatardPlay";
 import CapitalConfig from "./pages/CapitalConfig";
 import CapitalPlay from "./pages/CapitalPlay";
 import HappyMilleConfig from "./pages/HappyMilleConfig";
@@ -2942,10 +2937,10 @@ case "babyfoot_team_edit":
         break;
 
       case "batard_config":
-        page = <BatardConfig setTab={go} params={routeParams} />;
+        page = <BatardConfig store={store} setTab={go} params={routeParams} />;
         break;
       case "batard_play":
-        page = <BatardPlay setTab={go} params={routeParams} />;
+        page = <BatardPlay store={store} setTab={go} params={routeParams} />;
         break;
 
       case "fun_gages_config":

@@ -1,10 +1,10 @@
 // @ts-nocheck
 // =============================================================
-// src/pages/BatardSummaryPage.tsx
+// src/pages/batard/BatardSummaryPage.tsx
 // BATARD — Summary (minimal, stable)
 // =============================================================
 import * as React from "react";
-import BackDot from "../components/BackDot";
+import BackDot from "../../components/BackDot";
 
 type Props = {
   store: any;

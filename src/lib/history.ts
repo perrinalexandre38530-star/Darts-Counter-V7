@@ -313,23 +313,6 @@ function safeJsonParse(raw: any, ctx?: { id?: string; stage?: string }) {
   }
 }
 
-// ✅ PATCH: stringify robuste (évite de perdre la sauvegarde si un champ n'est pas sérialisable)
-// - supprime les fonctions
-// - convertit BigInt -> Number
-// - coupe les références circulaires
-function safeJsonStringify(value: any): string {
-  const seen = new WeakSet<object>();
-  return JSON.stringify(value, (_k, v) => {
-    if (typeof v === "function") return undefined;
-    if (typeof v === "bigint") return Number(v);
-    if (v && typeof v === "object") {
-      if (seen.has(v as object)) return undefined;
-      seen.add(v as object);
-    }
-    return v;
-  });
-}
-
 function asArray(v: any): any[] {
   return Array.isArray(v) ? v : [];
 }
@@ -743,7 +726,17 @@ function readLegacyRowsSafe(): SavedMatch[] {
   try {
     const raw = localStorage.getItem(LSK);
     const rows = parseHistoryLocalStorage(raw);
-    return Array.isArray(rows) ? (rows as SavedMatch[]) : [];
+    if (!Array.isArray(rows)) return [];
+
+    // ✅ Compat: anciens enregistrements pouvaient stocker l'état de reprise dans
+    // `payloadLite` / `resumeLite` (sans champ `payload`).
+    // Le routeur de reprise (App.tsx) lit `stored.payload`, donc on remappe ici.
+    return (rows as any[]).map((r) => {
+      if (!r) return r;
+      if (!r.payload && r.payloadLite) return { ...r, payload: r.payloadLite };
+      if (!r.payload && r.resumeLite) return { ...r, payload: r.resumeLite };
+      return r;
+    }) as SavedMatch[];
   } catch {
     return [];
   }
@@ -965,7 +958,7 @@ async function migrateFromLocalStorageOnce() {
     await withStore("readwrite", async (st) => {
       for (const r of rows) {
         const rec: any = { ...r };
-        const payloadStr = rec.payload ? safeJsonStringify(rec.payload) : "";
+        const payloadStr = rec.payload ? JSON.stringify(rec.payload) : "";
         const payloadCompressed = payloadStr
           ? LZString.compressToUTF16(payloadStr)
           : "";
@@ -1395,7 +1388,7 @@ try {
     if (!payloadEffective && prevPayloadCompressed) {
       payloadCompressed = prevPayloadCompressed;
     } else {
-      const payloadStr = payloadEffective ? safeJsonStringify(payloadEffective) : "";
+      const payloadStr = payloadEffective ? JSON.stringify(payloadEffective) : "";
       payloadCompressed = payloadStr ? LZString.compressToUTF16(payloadStr) : "";
     }
 
@@ -1630,7 +1623,7 @@ function _conflictId(baseId: string, suffix: string): string {
 
 function _payloadHashLite(payload: any): string {
   try {
-    const s = safeJsonStringify(payload ?? null);
+    const s = JSON.stringify(payload ?? null);
     let h = 0;
     for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0;
     return String(h);

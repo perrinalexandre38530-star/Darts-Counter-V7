@@ -266,8 +266,10 @@ export default function GameplayLayout({
     </div>
   );
 
-  // Safe-area bottom (mobile) so the dock never collides with system gestures.
+  // Safe-area (mobile) so nothing collides with system UI / rounded corners.
   const safeBottom = "calc(10px + env(safe-area-inset-bottom))";
+  const safeLeft = "calc(10px + env(safe-area-inset-left))";
+  const safeRight = "calc(10px + env(safe-area-inset-right))";
 
   const infoEnabled = (showInfo ?? !!onInfo) && !!onInfo;
 
@@ -276,10 +278,8 @@ export default function GameplayLayout({
   // On préfère 100dvh (dynamic viewport height) pour que la zone INPUT puisse aller jusqu'en bas.
   const outerStyle: React.CSSProperties = {
     height: "100dvh",
-    width: "100vw",
-    maxWidth: "100vw",
+    width: "100%",
     overflow: "hidden",
-    overflowX: "hidden",
   };
 
   const containerStyle: React.CSSProperties = {
@@ -287,10 +287,10 @@ export default function GameplayLayout({
     width: "100%",
     maxWidth: isTablet ? 1180 : 920,
     margin: "0 auto",
-    paddingTop: "10px",
-    paddingRight: "max(10px, env(safe-area-inset-right))",
-    paddingLeft: "max(10px, env(safe-area-inset-left))",
+    paddingTop: 10,
     paddingBottom: "calc(14px + env(safe-area-inset-bottom))",
+    paddingLeft: safeLeft,
+    paddingRight: safeRight,
     display: "flex",
     flexDirection: "column",
     gap: 10,
@@ -317,11 +317,11 @@ export default function GameplayLayout({
               gap: 10,
             }}
           >
-            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}>
               <BackDot onClick={onBack} size={backDotSize} />
             </div>
 
-            <div style={{ flex: 1, display: "flex", justifyContent: "center" }}>
+            <div style={{ flex: 1, minWidth: 0, display: "flex", justifyContent: "center" }}>
               {headerCenter ? (
                 headerCenter
               ) : (
@@ -368,43 +368,38 @@ export default function GameplayLayout({
               - Pas de double scale (ScoreInputHub gère déjà l'auto-fit interne).
             */}
 
-            {/* Zone HAUTE (sans scroll) : on scale down si nécessaire pour toujours tout faire rentrer */}
+            {/* Scroll zone (tout sauf la saisie) */}
             <div
               style={{
                 flex: 1,
                 minHeight: 0,
-                overflow: "hidden",
+                overflow: "auto",
                 display: "flex",
+                flexDirection: "column",
+                gap: 10,
+                paddingBottom: safeBottom,
               }}
             >
-              <FitBox minScale={0.72} maxScale={1}>
-                <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                  {/* 2) HEADER PROFIL ACTIF */}
-                  {activeProfileHeader ? (
-                    <div className="card" style={{ padding: "10px 12px" }}>
-                      {activeProfileHeader}
-                    </div>
-                  ) : null}
-
-                  {/* 3) JOUEURS (modal) */}
-                  {renderPlayersRow()}
-
-                  <RulesModal
-                    open={openPlayers}
-                    onClose={() => setOpenPlayers(false)}
-                    title={playersPanelTitle}
-                  >
-                    <div style={{ padding: 2 }}>{playersPanel}</div>
-                  </RulesModal>
-
-                  {/* 4) VOLÉE */}
-                  {volleyInputDisplay ? (
-                    <div className="card" style={{ padding: "10px 12px" }}>
-                      {volleyInputDisplay}
-                    </div>
-                  ) : null}
+              {/* 2) HEADER PROFIL ACTIF */}
+              {activeProfileHeader ? (
+                <div className="card" style={{ padding: "10px 12px" }}>
+                  {activeProfileHeader}
                 </div>
-              </FitBox>
+              ) : null}
+
+              {/* 3) JOUEURS (modal) */}
+              {renderPlayersRow()}
+
+              <RulesModal open={openPlayers} onClose={() => setOpenPlayers(false)} title={playersPanelTitle}>
+                <div style={{ padding: 2 }}>{playersPanel}</div>
+              </RulesModal>
+
+              {/* 4) VOLÉE */}
+              {volleyInputDisplay ? (
+                <div className="card" style={{ padding: "10px 12px" }}>
+                  {volleyInputDisplay}
+                </div>
+              ) : null}
             </div>
 
             {/* 5) DOCK BAS: MODES DE SAISIE (KEYPAD / CIBLE) */}

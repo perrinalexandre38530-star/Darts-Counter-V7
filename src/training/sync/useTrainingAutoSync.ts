@@ -17,6 +17,7 @@ export function useTrainingAutoSync() {
 
     let alive = true;
 
+    // ✅ Best-effort, mais sans spam Supabase
     trainingSyncQueueEnqueueSoon();
     trainingSyncQueueTry(user.id);
 
@@ -28,10 +29,12 @@ export function useTrainingAutoSync() {
 
     window.addEventListener("focus", onFocus);
 
+    // ⚠️ IMPORTANT: ne pas ping le serveur toutes les 15s.
+    // 2 minutes est largement suffisant (et la queue ne sync que s'il y a des events).
     const t = window.setInterval(() => {
       if (!alive) return;
       trainingSyncQueueTry(user.id);
-    }, 15000);
+    }, 120000);
 
     return () => {
       alive = false;

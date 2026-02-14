@@ -9,14 +9,22 @@ import { onCloudChange } from "./cloudEvents";
 import { onlineApi } from "./onlineApi";
 import { exportCloudSnapshot, saveStore, importAll, getKV, setKV } from "./storage";
 
-const DEBOUNCE_MS = 1200;
-const PULL_INTERVAL_MS = 60_000;
+// ⚠️ IMPORTANT: éviter de saturer Supabase.
+// - push debounced + throttled (1 push max / 15s)
+// - pull périodique désactivé par défaut (piloté côté App)
+const DEBOUNCE_MS = 5000;
+const PULL_INTERVAL_MS = 15 * 60_000;
+const MIN_PUSH_INTERVAL_MS = 15_000;
 
 let running = false;
 let unsub: null | (() => void) = null;
 
 let pushTimer: number | null = null;
 let pullTimer: number | null = null;
+
+let lastPushAt = 0;
+let pushInFlight = false;
+let pushQueued = false;
 
 // ------------------------------------------------------------
 // Merge helpers (anti-perte)
@@ -236,8 +244,45 @@ function schedulePush() {
   if (pushTimer) window.clearTimeout(pushTimer);
   pushTimer = window.setTimeout(() => {
     pushTimer = null;
-    pushNow().catch(() => {});
+    throttledPush().catch(() => {});
   }, DEBOUNCE_MS);
+}
+
+async function throttledPush() {
+  if (!running) return;
+  const now = Date.now();
+
+  // Si un push est déjà en cours → on queue un push derrière
+  if (pushInFlight) {
+    pushQueued = true;
+    return;
+  }
+
+  // Throttle dur : éviter les rafales quand beaucoup d'événements changent
+  const wait = Math.max(0, MIN_PUSH_INTERVAL_MS - (now - lastPushAt));
+  if (wait > 0) {
+    pushQueued = true;
+    window.setTimeout(() => {
+      if (!running) return;
+      if (pushQueued) {
+        pushQueued = false;
+        throttledPush().catch(() => {});
+      }
+    }, wait);
+    return;
+  }
+
+  pushInFlight = true;
+  try {
+    await pushNow();
+    lastPushAt = Date.now();
+  } finally {
+    pushInFlight = false;
+    if (pushQueued) {
+      pushQueued = false;
+      throttledPush().catch(() => {});
+    }
+  }
 }
 
 export function startCloudSync(opts?: { pullOnStart?: boolean; disablePull?: boolean }) {

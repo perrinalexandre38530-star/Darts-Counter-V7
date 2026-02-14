@@ -1061,7 +1061,10 @@ const forceSyncFromEngine = React.useCallback(() => {
   setCurrentThrow(raw);
 
   // ✅ CRITIQUE: la liste joueurs lit lastVisitsByPlayer, pas currentThrow
-  if (activePlayerId) {
+  // ⚠️ IMPORTANT: ne JAMAIS écraser la dernière volée avec "[]".
+  // Le moteur remet souvent state.visit à vide au changement de joueur.
+  // Si on écrase ici, la dernière volée disparaît pour tous les joueurs.
+  if (activePlayerId && raw.length > 0) {
     setLastVisitsByPlayer((m) => ({ ...m, [activePlayerId]: raw }));
     setLastVisitIsBustByPlayer((m) => ({ ...m, [activePlayerId]: false }));
   }
@@ -3751,13 +3754,17 @@ function HeaderBlock(props: HeaderBlockProps) {
     showThrowCounter = false,
   } = props;
 
-  // ✅ Responsive safety: évite tout overflow horizontal sur mobile
-  const isNarrow = useMediaQueryLocal("(max-width: 420px)");
-  const isTiny = useMediaQueryLocal("(max-width: 360px)");
+  const legsWonThisSet =
+    (currentPlayer && legsWon[currentPlayer.id]) ?? 0;
+  const setsWonTotal =
+    (currentPlayer && setsWon[currentPlayer.id]) ?? 0;
 
   const remainingAfterAll = Math.max(
     currentRemaining -
-      currentThrow.reduce((s: number, d: UIDart) => s + dartValue(d), 0),
+      currentThrow.reduce(
+        (s: number, d: UIDart) => s + dartValue(d),
+        0
+      ),
     0
   );
 
@@ -3767,204 +3774,20 @@ function HeaderBlock(props: HeaderBlockProps) {
   // =====================================================
   const bgAvatarUrl = currentAvatar || null;
 
-  const ScorePanel = (
-    <div
-      style={{
-        textAlign: "center",
-        display: "flex",
-        flexDirection: "column",
-        gap: 5,
-        position: "relative",
-        overflow: "visible",
-        minWidth: 0,
-      }}
-    >
-      {/* BG ancré AU SCORE (centre = centre du 501) */}
-      {!!bgAvatarUrl && (
-        <img
-          src={bgAvatarUrl}
-          aria-hidden
-          style={{
-            position: "absolute",
-            top: "40%",
-            left: "60%",
-            transform: "translate(-50%, -50%)",
-            height: "250%",
-            width: "auto",
-            WebkitMaskImage:
-              "linear-gradient(90deg, rgba(0,0,0,0) 0%, rgba(0,0,0,0.2) 25%, rgba(0,0,0,0.85) 52%, rgba(0,0,0,1) 69%, rgba(0,0,0,1) 100%)",
-            maskImage:
-              "linear-gradient(90deg, rgba(0,0,0,0) 0%, rgba(0,0,0,0.2) 25%, rgba(0,0,0,0.85) 52%, rgba(0,0,0,1) 69%, rgba(0,0,0,1) 100%)",
-            WebkitMaskRepeat: "no-repeat",
-            maskRepeat: "no-repeat",
-            WebkitMaskSize: "100% 100%",
-            maskSize: "100% 100%",
-            opacity: 0.22,
-            filter:
-              "saturate(1.35) contrast(1.18) brightness(1.08) drop-shadow(-10px 0 26px rgba(0,0,0,.55))",
-            pointerEvents: "none",
-            userSelect: "none",
-            zIndex: 0,
-          }}
-        />
-      )}
-
-      {/* SCORE CENTRAL */}
-      <div
-        style={{
-          fontSize: isTiny ? 50 : isNarrow ? 56 : 64,
-          fontWeight: 900,
-          position: "relative",
-          zIndex: 2,
-          color: "#ffcf57",
-          textShadow: "0 4px 18px rgba(255,195,26,.25)",
-          lineHeight: 1.02,
-        }}
-      >
-        {remainingAfterAll}
-      </div>
-
-      {/* Pastilles live */}
-      <div
-        style={{
-          display: "flex",
-          gap: 5,
-          justifyContent: "center",
-          flexWrap: "wrap",
-          position: "relative",
-          zIndex: 2,
-        }}
-      >
-        {[0, 1, 2].map((i) => {
-          const d = currentThrow[i];
-
-          const wouldBust =
-            currentRemaining -
-              currentThrow
-                .slice(0, i + 1)
-                .reduce((s: number, x: UIDart) => s + dartValue(x), 0) <
-            0;
-
-          const st = chipStyle(d, wouldBust);
-
-          return (
-            <span
-              key={i}
-              style={{
-                display: "inline-flex",
-                alignItems: "center",
-                justifyContent: "center",
-                minWidth: 40,
-                height: 28,
-                padding: "0 10px",
-                borderRadius: 10,
-                border: st.border as string,
-                background: st.background as string,
-                color: st.color as string,
-                fontWeight: 800,
-                fontSize: 13,
-              }}
-            >
-              {fmt(d)}
-            </span>
-          );
-        })}
-      </div>
-
-      {/* Checkout suggestion (moteur V3) */}
-      {checkoutText ? (
-        <div style={{ marginTop: 3, display: "flex", justifyContent: "center" }}>
-          <div
-            style={{
-              display: "inline-flex",
-              padding: 5,
-              borderRadius: 12,
-              border: "1px solid rgba(255,255,255,.08)",
-              background:
-                "radial-gradient(120% 120% at 50% 0%, rgba(255,195,26,.10), rgba(30,30,34,.95))",
-              minWidth: 170,
-              gap: 6,
-              alignItems: "center",
-              justifyContent: "center",
-              maxWidth: "100%",
-              boxSizing: "border-box",
-            }}
-          >
-            <span
-              style={{
-                padding: "3px 8px",
-                borderRadius: 8,
-                border: "1px solid rgba(255,187,51,.4)",
-                background: "rgba(255,187,51,.12)",
-                color: "#ffc63a",
-                fontWeight: 900,
-                whiteSpace: "nowrap",
-                fontSize: 13,
-              }}
-            >
-              {checkoutText}
-            </span>
-          </div>
-        </div>
-      ) : null}
-
-      {/* Mini ranking */}
-      <div
-        style={{
-          ...miniCard,
-          alignSelf: "center",
-          width: "100%",
-          maxWidth: isNarrow ? "100%" : 310,
-          height: "auto",
-          padding: 6,
-          position: "relative",
-          zIndex: 2,
-          boxSizing: "border-box",
-        }}
-      >
-        <div
-          style={{
-            maxHeight: 3 * 26,
-            overflow: liveRanking.length > 3 ? "auto" : "visible",
-          }}
-        >
-          {liveRanking.map((r, i) => (
-            <div key={r.id} style={miniRankRow}>
-              <div
-                style={{
-                  ...miniRankName,
-                  color: (r as any).color || (miniRankName as any).color,
-                  minWidth: 0,
-                }}
-              >
-                {i + 1}. {r.name}
-              </div>
-              <div style={r.score === 0 ? miniRankScoreFini : miniRankScore}>
-                {r.score === 0 ? "FINI" : r.score}
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
-    </div>
-  );
-
   return (
     <div
       style={{
-        width: "100%",
-        boxSizing: "border-box",
         background:
           "radial-gradient(120% 140% at 0% 0%, rgba(255,195,26,.10), transparent 55%), linear-gradient(180deg, rgba(15,15,18,.9), rgba(10,10,12,.8))",
         border: "1px solid rgba(255,255,255,.08)",
         borderRadius: 18,
-        padding: isNarrow ? 6 : 7,
+        padding: 7,
         boxShadow: "0 8px 26px rgba(0,0,0,.35)",
         position: "relative",
         overflow: "hidden",
       }}
     >
-      {/* Dégradé gauche -> droite pour fondre le logo dans le fond (≈ 3/4 de la carte) */}
+            {/* Dégradé gauche -> droite pour fondre le logo dans le fond (≈ 3/4 de la carte) */}
       <div
         aria-hidden
         style={{
@@ -3977,126 +3800,295 @@ function HeaderBlock(props: HeaderBlockProps) {
         }}
       />
 
-      <div style={{ position: "relative", zIndex: 2, minWidth: 0 }}>
-        {/* Header: TOUJOURS côte à côte (profil/stats à gauche, score/classement à droite) */}
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "auto 1fr",
+          gap: 8,
+          alignItems: "center",
+          position: "relative",
+          zIndex: 2,
+        }}
+      >
+        {/* AVATAR + STATS */}
         <div
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            gap: 5,
+          }}
+        >
+          <div
             style={{
-              display: "grid",
-              gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr)",
-              gap: 8,
-              alignItems: "center",
-              minWidth: 0,
-              width: "100%",
-              maxWidth: "100%",
+              width: 96,
+              height: 96,
+              borderRadius: "50%",
+              overflow: "hidden",
+              background:
+                "linear-gradient(180deg,#1b1b1f,#111114)",
+              boxShadow: "0 6px 22px rgba(0,0,0,.35)",
             }}
           >
-            {/* GAUCHE: AVATAR + IDENTITÉ + STATS */}
+            {currentAvatar ? (
+              <img
+                src={currentAvatar}
+                style={{
+                  width: "100%",
+                  height: "100%",
+                  objectFit: "cover",
+                }}
+              />
+            ) : (
+              <div
+                style={{
+                  width: "100%",
+                  height: "100%",
+                  display: "flex",
+                  justifyContent: "center",
+                  alignItems: "center",
+                  color: "#999",
+                  fontWeight: 700,
+                }}
+              >
+                ?
+              </div>
+            )}
+          </div>
+          <div
+            style={{
+              fontWeight: 900,
+              fontSize: 17,
+              color: "#ffcf57",
+            }}
+          >
+            {currentPlayer?.name ?? "—"}
+          </div>
+          <div
+            style={{
+              fontSize: 11.5,
+              color: "#d9dbe3",
+            }}
+          >
+            {liveRanking?.length ? (
+              <>
+                Leader : <b>{liveRanking[0]?.name}</b>
+              </>
+            ) : null}
+          </div>
+
+          {/* Mini card stats joueur actif */}
+          <div
+            style={{
+              ...miniCard,
+              width: 176,
+              height: "auto",
+              padding: 7,
+            }}
+          >
+            <div style={miniText}>
+              <div>
+                Meilleure volée : <b>{bestVisit}</b>
+              </div>
+              <div>
+                Moy/3D : <b>{curM3D}</b>
+              </div>
+              <div>
+                Darts jouées : <b>{curDarts}</b>
+              </div>
+              {showThrowCounter && currentThrow.length > 0 ? (
+                <div>
+                  Volée : <b>{currentThrow.length}/3</b>
+                </div>
+              ) : null}
+            </div>
+          </div>
+        </div>
+
+        {/* SCORE + PASTILLES + RANKING */}
+        <div
+          style={{
+            textAlign: "center",
+            display: "flex",
+            flexDirection: "column",
+            gap: 5,
+            position: "relative",
+            overflow: "visible",
+          }}
+        >
+          {/* BG ancré AU SCORE (centre = centre du 501) */}
+          {!!bgAvatarUrl && (
+            <img
+              src={bgAvatarUrl}
+              aria-hidden
+              style={{
+                position: "absolute",
+                top: "40%",
+                left: "60%",
+                transform: "translate(-50%, -50%)",
+                height: "250%",
+                width: "auto",
+                WebkitMaskImage:
+                  "linear-gradient(90deg, rgba(0,0,0,0) 0%, rgba(0,0,0,0.2) 25%, rgba(0,0,0,0.85) 52%, rgba(0,0,0,1) 69%, rgba(0,0,0,1) 100%)",
+                maskImage:
+                  "linear-gradient(90deg, rgba(0,0,0,0) 0%, rgba(0,0,0,0.2) 25%, rgba(0,0,0,0.85) 52%, rgba(0,0,0,1) 69%, rgba(0,0,0,1) 100%)",
+                WebkitMaskRepeat: "no-repeat",
+                maskRepeat: "no-repeat",
+                WebkitMaskSize: "100% 100%",
+                maskSize: "100% 100%",
+
+                opacity: 0.22,
+                filter:
+                  "saturate(1.35) contrast(1.18) brightness(1.08) drop-shadow(-10px 0 26px rgba(0,0,0,.55))",
+                pointerEvents: "none",
+                userSelect: "none",
+                zIndex: 0,
+              }}
+            />
+          )}
+
+          {/* SCORE CENTRAL */}
+          <div
+            style={{
+              fontSize: 64,
+              fontWeight: 900,
+              position: "relative",
+              zIndex: 2,
+              color: "#ffcf57",
+              textShadow: "0 4px 18px rgba(255,195,26,.25)",
+              lineHeight: 1.02,
+            }}
+          >
+            {remainingAfterAll}
+          </div>
+
+          {/* Pastilles live */}
+          <div
+            style={{
+              display: "flex",
+              gap: 5,
+              justifyContent: "center",
+              position: "relative",
+              zIndex: 2,
+            }}
+          >
+            {[0, 1, 2].map((i) => {
+              const d = currentThrow[i];
+
+              const wouldBust =
+                currentRemaining -
+                  currentThrow
+                    .slice(0, i + 1)
+                    .reduce(
+                      (s: number, x: UIDart) => s + dartValue(x),
+                      0
+                    ) <
+                0;
+
+              const st = chipStyle(d, wouldBust);
+
+              return (
+                <span
+                  key={i}
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    minWidth: 40,
+                    height: 28,
+                    padding: "0 10px",
+                    borderRadius: 10,
+                    border: st.border as string,
+                    background: st.background as string,
+                    color: st.color as string,
+                    fontWeight: 800,
+                    fontSize: 13,
+                  }}
+                >
+                  {fmt(d)}
+                </span>
+              );
+            })}
+          </div>
+
+          {/* Checkout suggestion (moteur V3) */}
+          {checkoutText ? (
             <div
               style={{
+                marginTop: 3,
                 display: "flex",
-                flexDirection: "column",
-                alignItems: "center",
-                gap: 5,
-                minWidth: 0,
-                maxWidth: "100%",
+                justifyContent: "center",
               }}
             >
               <div
                 style={{
-                  width: "clamp(64px, 18vw, 96px)",
-                  height: "clamp(64px, 18vw, 96px)",
-                  borderRadius: "50%",
-                  overflow: "hidden",
-                  background: "linear-gradient(180deg,#1b1b1f,#111114)",
-                  boxShadow: "0 6px 22px rgba(0,0,0,.35)",
-                  flex: "0 0 auto",
+                  display: "inline-flex",
+                  padding: 5,
+                  borderRadius: 12,
+                  border: "1px solid rgba(255,255,255,.08)",
+                  background:
+                    "radial-gradient(120% 120% at 50% 0%, rgba(255,195,26,.10), rgba(30,30,34,.95))",
+                  minWidth: 170,
+                  gap: 6,
+                  alignItems: "center",
+                  justifyContent: "center",
                 }}
               >
-                {currentAvatar ? (
-                  <img
-                    src={currentAvatar}
-                    style={{ width: "100%", height: "100%", objectFit: "cover" }}
-                  />
-                ) : (
-                  <div
-                    style={{
-                      width: "100%",
-                      height: "100%",
-                      display: "flex",
-                      justifyContent: "center",
-                      alignItems: "center",
-                      color: "#999",
-                      fontWeight: 700,
-                    }}
-                  >
-                    ?
-                  </div>
-                )}
-              </div>
-
-              <div
-                style={{
-                  fontWeight: 900,
-                  fontSize: "clamp(14px, 4.6vw, 17px)",
-                  color: "#ffcf57",
-                  maxWidth: "100%",
-                  overflow: "hidden",
-                  textOverflow: "ellipsis",
-                  whiteSpace: "nowrap",
-                }}
-              >
-                {currentPlayer?.name ?? "—"}
-              </div>
-
-              {liveRanking?.length ? (
-                <div
+                <span
                   style={{
-                    fontSize: "clamp(10px, 3.2vw, 11.5px)",
-                    color: "#d9dbe3",
-                    maxWidth: "100%",
-                    overflow: "hidden",
-                    textOverflow: "ellipsis",
+                    padding: "3px 8px",
+                    borderRadius: 8,
+                    border: "1px solid rgba(255,187,51,.4)",
+                    background: "rgba(255,187,51,.12)",
+                    color: "#ffc63a",
+                    fontWeight: 900,
                     whiteSpace: "nowrap",
+                    fontSize: 13,
                   }}
                 >
-                  Leader : <b>{liveRanking[0]?.name}</b>
-                </div>
-              ) : null}
-
-              {/* Mini card stats joueur actif — shrinkable */}
-              <div
-                style={{
-                  ...miniCard,
-                  width: "100%",
-                  maxWidth: "clamp(150px, 42vw, 190px)",
-                  minWidth: 0,
-                  height: "auto",
-                  padding: 7,
-                  boxSizing: "border-box",
-                }}
-              >
-                <div style={miniText}>
-                  <div>
-                    Meilleure volée : <b>{bestVisit}</b>
-                  </div>
-                  <div>
-                    Moy/3D : <b>{curM3D}</b>
-                  </div>
-                  <div>
-                    Darts jouées : <b>{curDarts}</b>
-                  </div>
-                  {showThrowCounter && currentThrow.length > 0 ? (
-                    <div>
-                      Volée : <b>{currentThrow.length}/3</b>
-                    </div>
-                  ) : null}
-                </div>
+                  {checkoutText}
+                </span>
               </div>
             </div>
+          ) : null}
 
-            {/* DROITE: SCORE + PASTILLES + RANKING */}
-            <div style={{ minWidth: 0, maxWidth: "100%" }}>{ScorePanel}</div>
+          {/* Mini ranking */}
+          <div
+            style={{
+              ...miniCard,
+              alignSelf: "center",
+              width: "min(310px,100%)",
+              height: "auto",
+              padding: 6,
+              position: "relative",
+              zIndex: 2,
+            }}
+          >
+            <div
+              style={{
+                maxHeight: 3 * 26,
+                overflow: liveRanking.length > 3 ? "auto" : "visible",
+              }}
+            >
+              {liveRanking.map((r, i) => (
+                <div key={r.id} style={miniRankRow}>
+                  <div style={{ ...miniRankName, color: (r as any).color || miniRankName.color }}>
+                    {i + 1}. {r.name}
+                  </div>
+                  <div
+                    style={
+                      r.score === 0
+                        ? miniRankScoreFini
+                        : miniRankScore
+                    }
+                  >
+                    {r.score === 0 ? "FINI" : r.score}
+                  </div>
+                </div>
+              ))}
+            </div>
           </div>
+        </div>
       </div>
     </div>
   );

@@ -16,16 +16,14 @@
   --danger:#ff5c66;
   --blue:#3aa6ff;
   --ring: 0 0 0 2px rgba(240,177,42,.35);
-}
-
-
-:root{
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
   --safe-left: env(safe-area-inset-left, 0px);
   --safe-right: env(safe-area-inset-right, 0px);
 }
 
 *{box-sizing:border-box}
 html,body,#root{height:100%}
+html, body { overflow-x: hidden; }
 body{
   margin:0; background:var(--bg-grad); color:var(--text);
   font-family: Inter, system-ui, Segoe UI, Roboto, Arial, sans-serif;
@@ -197,6 +195,11 @@ body,
   height: 100%;
 }
 
+html,
+body {
+  overflow-x: hidden;
+}
+
 body {
   min-height: 100dvh; /* dvh = hauteur écran réelle, utile sur mobile */
   overflow-x: hidden; /* évite les scroll horizontaux parasites */
@@ -358,3 +361,20 @@ body {
     animation: none !important;
   }
 }
+
+/* ====== Bust overlay (neon arcade) ====== */
+.arcadeBustOverlay{
+  font-weight: 1000;
+  font-size: 42px;
+  line-height: 1;
+  padding: 10px 18px;
+  border-radius: 18px;
+  background: linear-gradient(180deg, rgba(255,92,102,.28), rgba(0,0,0,.55));
+  border: 1px solid rgba(255,92,102,.55);
+  box-shadow: 0 14px 40px rgba(0,0,0,.45), 0 0 34px rgba(255,92,102,.28);
+  color: #ffffff;
+  letter-spacing: 1px;
+  text-shadow: 0 6px 18px rgba(0,0,0,.55);
+  backdrop-filter: blur(10px);
+}
+

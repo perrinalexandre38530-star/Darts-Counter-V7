@@ -730,6 +730,79 @@ function extractDartSetsFromSnapshot(snap: any) {
 
 export type CloudSnapshot = any;
 
+
+// ============================================================
+// ✅ Sanitize snapshots before pushing to Supabase
+// - Avoid pushing huge base64 blobs (data:...)
+// - Avoid leaking sensitive local-only fields
+// ============================================================
+function sanitizeStoreForCloud(store: any) {
+  let clone: any;
+  try {
+    clone = JSON.parse(JSON.stringify(store || {}));
+  } catch {
+    clone = { ...(store || {}) };
+  }
+
+  // Profiles: strip avatarDataUrl (base64)
+  if (Array.isArray(clone.profiles)) {
+    clone.profiles = clone.profiles.map((p: any) => {
+      const out = { ...(p || {}) };
+      const v = out.avatarDataUrl;
+      if (typeof v === "string" && v.startsWith("data:")) delete out.avatarDataUrl;
+
+      // never push any stored password
+      try {
+        if (out.privateInfo && typeof out.privateInfo === "object") {
+          const pi: any = { ...(out.privateInfo as any) };
+          if (pi.password) delete pi.password;
+          out.privateInfo = pi;
+        }
+      } catch {}
+
+      return out;
+    });
+  }
+
+  // History: strip embedded avatars in players/payload.players
+  if (Array.isArray(clone.history)) {
+    clone.history = clone.history.map((r: any) => {
+      const rr: any = { ...(r || {}) };
+
+      const stripPlayers = (arr: any[]) =>
+        (arr || []).map((pl: any) => {
+          const pp: any = { ...(pl || {}) };
+          const a = pp.avatarDataUrl ?? pp.avatarUrl;
+          if (typeof a === "string" && a.startsWith("data:")) {
+            if (typeof pp.avatarDataUrl === "string") delete pp.avatarDataUrl;
+            if (typeof pp.avatarUrl === "string") delete pp.avatarUrl;
+          }
+          return pp;
+        });
+
+      if (Array.isArray(rr.players)) rr.players = stripPlayers(rr.players);
+      if (rr.payload && Array.isArray(rr.payload.players)) {
+        rr.payload = { ...(rr.payload || {}) };
+        rr.payload.players = stripPlayers(rr.payload.players);
+      }
+
+      return rr;
+    });
+  }
+
+  // Dart sets: strip photoDataUrl (base64)
+  if (Array.isArray((clone as any).dartSets)) {
+    (clone as any).dartSets = (clone as any).dartSets.map((ds: any) => {
+      const dso: any = { ...(ds || {}) };
+      const p = dso.photoDataUrl;
+      if (typeof p === "string" && p.startsWith("data:")) delete dso.photoDataUrl;
+      return dso;
+    });
+  }
+
+  return clone;
+}
+
 export async function exportCloudSnapshot(): Promise<CloudSnapshot> {
   return await exportAll();
 }

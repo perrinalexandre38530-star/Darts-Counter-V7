@@ -74,12 +74,17 @@ function normalizeToSavedMatch(payload: any): SavedMatch | null {
 }
 
 export async function importHistoryFromCloud(opts?: {
+  // Soft cap for how many events to import.
+  limit?: number;
   pageSize?: number;
   maxPages?: number;
+  // When no checkpoint exists, import only recent events (default 60 days).
+  sinceDays?: number;
 }): Promise<{ imported: number }>
 {
-  const pageSize = Math.min(1000, Math.max(50, opts?.pageSize ?? 300));
-  const maxPages = Math.min(25, Math.max(1, opts?.maxPages ?? 6));
+  const limit = Number(opts?.limit ?? 400);
+  const pageSize = Math.min(300, Math.max(50, opts?.pageSize ?? Math.min(200, limit || 200)));
+  const maxPages = Math.min(10, Math.max(1, opts?.maxPages ?? Math.ceil((limit || pageSize) / pageSize)));
 
   try {
     const { data: userData, error: userErr } = await supabase.auth.getUser();

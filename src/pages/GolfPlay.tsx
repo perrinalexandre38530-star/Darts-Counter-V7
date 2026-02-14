@@ -27,6 +27,7 @@ import teamGreenLogo from "../ui_assets/teams/team_green.png";
 import { playGolfIntro, stopGolfIntro, playGolfTickerSound, playGolfPerfSfx, unlockAudio } from "../lib/sfx";
 import { speak, setVoiceEnabled } from "../lib/voice";
 import { useLang } from "../contexts/LangContext";
+import { History, type SavedMatch } from "../lib/history";
 
 /**
  * GOLF (darts) — Play
@@ -644,6 +645,33 @@ function GolfHeaderBlock(props: {
                 ?
               </div>
             )}
+
+        {/* ✅ Si l'overlay a été fermé, bouton flottant pour le ré-ouvrir */}
+        {isFinished && !showEndFloating && (
+          <button
+            type="button"
+            onClick={() => setShowEndFloating(true)}
+            style={{
+              position: "fixed",
+              right: 14,
+              bottom: 110,
+              zIndex: 9999,
+              height: 44,
+              padding: "0 14px",
+              borderRadius: 999,
+              border: "1px solid rgba(255,195,26,0.32)",
+              background: "linear-gradient(180deg, rgba(255,195,26,0.22), rgba(0,0,0,0.28))",
+              color: "#ffd36a",
+              fontWeight: 1000,
+              letterSpacing: 0.8,
+              textTransform: "uppercase",
+              cursor: "pointer",
+              boxShadow: "0 18px 38px rgba(0,0,0,.55)",
+            }}
+          >
+            Fin
+          </button>
+        )}
           </div>
 
           {/* Mini card stats joueur actif: Darts / Miss / D / T / S */}
@@ -840,6 +868,34 @@ export default function GolfPlay(props: Props) {
   const ttsLang = useMemo(() => langToLocale(lang), [lang]);
   const cfg: GolfConfig = (routeParams?.config ?? {}) as GolfConfig;
 
+  // ✅ Voix IA : final uniquement (pas de "à toi de jouer" pendant le match)
+  const VOICE_FINAL_ONLY = true;
+
+  // =====================================================
+  // HISTORY / RESUME (GOLF)
+  // - 1 match = 1 record (id = matchId)
+  // - status: in_progress | finished
+  // - payload: { mode:"golf", config, state, summary }
+  // =====================================================
+
+  const makeMatchId = () => `golf-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const matchIdRef = useRef<string>(
+    String(
+      routeParams?.resumeId ||
+        routeParams?.matchId ||
+        routeParams?.rec?.matchId ||
+        routeParams?.rec?.id ||
+        makeMatchId()
+    )
+  );
+  const createdAtRef = useRef<number>(
+    Number(routeParams?.rec?.createdAt || routeParams?.rec?.updatedAt || Date.now())
+  );
+  const hasLoadedResumeRef = useRef(false);
+  const saveTimerRef = useRef<number | null>(null);
+
+  const [savedHoleTargets, setSavedHoleTargets] = useState<number[] | null>(null);
+
   // Throws du tour (jusqu'à 3) : on garde uniquement le TYPE, le score final est celui de la DERNIÈRE
   const [turnThrows, setTurnThrows] = useState<ThrowKind[]>([]);
 
@@ -848,7 +904,8 @@ export default function GolfPlay(props: Props) {
   // 🎵 Musique d'intro (à l'entrée du jeu)
   useEffect(() => {
     try {
-      setVoiceEnabled(true);
+      // ✅ Voix IA DÉSACTIVÉE pendant la partie (final uniquement)
+      setVoiceEnabled(false);
       playGolfIntro(0.45);
       return () => {
         try { stopGolfIntro(); } catch {}
@@ -965,6 +1022,11 @@ const teamIndexByKey = useMemo(() => {
 
   // Ordre des cibles (stable) : chronologique ou random
   const holeTargets = useMemo(() => {
+    // ✅ si on reprend une partie, on REPREND l'ordre exact sauvegardé
+    if (Array.isArray(savedHoleTargets) && savedHoleTargets.length === holes) {
+      return savedHoleTargets.slice();
+    }
+
     const base = Array.from({ length: holes }, (_, i) => i + 1);
 
     // Normalisation ultra-defensive: la config peut stocker "aleatoire", "random", boolean, etc.
@@ -1006,7 +1068,7 @@ const teamIndexByKey = useMemo(() => {
     }
 
     return out;
-  }, [holes, cfg]);
+  }, [holes, cfg, savedHoleTargets]);
   // scores[playerIdx][holeIdx] = score final du trou (1/3/4/5) ou null
   const [scores, setScores] = useState<(number | null)[][]>(() => {
     const s: (number | null)[][] = [];
@@ -1102,6 +1164,119 @@ const teamIndexByKey = useMemo(() => {
   const lastTtsVariantRef = useRef<number>(-1);
   const lastHoleIdxRef = useRef<number>(-1);
   const initialTurnSpokenRef = useRef(false);
+
+  // ✅ Overlay flottant fin de partie (comme X01)
+  const [showEndFloating, setShowEndFloating] = useState(false);
+
+  // =====================================================
+  // RESUME LOAD (History.get)
+  // =====================================================
+
+  function normalizeMatrix(mat: any, rows: number, cols: number): (number | null)[][] {
+    const out: (number | null)[][] = [];
+    for (let r = 0; r < rows; r++) {
+      const rowSrc = Array.isArray(mat?.[r]) ? mat[r] : [];
+      const row: (number | null)[] = [];
+      for (let c = 0; c < cols; c++) {
+        const v = rowSrc?.[c];
+        row.push(v === null || typeof v === "number" ? (v as any) : null);
+      }
+      out.push(row);
+    }
+    return out;
+  }
+
+  function applySavedState(payload: any) {
+    try {
+      const st = payload?.state || payload?.golf?.state || payload?.data || payload?.snapshot || null;
+      if (!st) return;
+
+      // ordre cibles
+      if (Array.isArray(st.holeTargets) && st.holeTargets.length) {
+        setSavedHoleTargets(st.holeTargets.map((x: any) => Number(x)).filter((x: any) => Number.isFinite(x)));
+      }
+
+      // matrices
+      setScores((_) => normalizeMatrix(st.scores, playersCount, holes));
+      setTeamScores((_) => normalizeMatrix(st.teamScores, 4, holes));
+
+      // stats
+      if (Array.isArray(st.statsByPlayer) && st.statsByPlayer.length) {
+        const base = Array.from({ length: playersCount }, () => ({ darts: 0, miss: 0, d: 0, t: 0, s: 0, b: 0, db: 0, turns: 0, hit1: 0, hit2: 0, hit3: 0 }));
+        const next = base.map((b, i) => ({ ...b, ...(st.statsByPlayer?.[i] || {}) }));
+        setStatsByPlayer(next as any);
+      }
+
+      // curseurs
+      if (Number.isFinite(st.holeIdx)) setHoleIdx(clamp(Number(st.holeIdx), 0, Math.max(0, holes - 1)));
+      if (Number.isFinite(st.playerIdx)) setPlayerIdx(clamp(Number(st.playerIdx), 0, Math.max(0, playersCount - 1)));
+      if (Number.isFinite(st.startAt)) setStartAt(clamp(Number(st.startAt), 0, Math.max(0, playersCount - 1)));
+      if (Number.isFinite(st.turnPos)) setTurnPos(clamp(Number(st.turnPos), 0, Math.max(0, playersCount - 1)));
+      if (Number.isFinite(st.teamTurnPos)) setTeamTurnPos(clamp(Number(st.teamTurnPos), 0, 3));
+      if (Array.isArray(st.teamCursor) && st.teamCursor.length === 4) {
+        setTeamCursor([
+          clamp(Number(st.teamCursor[0] ?? 0), 0, 999),
+          clamp(Number(st.teamCursor[1] ?? 0), 0, 999),
+          clamp(Number(st.teamCursor[2] ?? 0), 0, 999),
+          clamp(Number(st.teamCursor[3] ?? 0), 0, 999),
+        ] as any);
+      }
+
+      // tour en cours
+      if (Array.isArray(st.turnThrows)) {
+        const tt = st.turnThrows.filter((x: any) => ["DB", "B", "D", "T", "S", "M"].includes(String(x))) as ThrowKind[];
+        setTurnThrows(tt.slice(0, 3));
+      }
+
+      // statut
+      const finished = !!(payload?.summary?.finished || payload?.summary?.winnerId || st.isFinished);
+      setIsFinished(!!finished);
+      setShowEndFloating(!!finished);
+    } catch (e) {
+      console.warn("[GolfPlay] applySavedState failed", e);
+    }
+  }
+
+  useEffect(() => {
+    // ✅ reprise depuis Historique: on recharge le payload complet via History.get(resumeId)
+    if (hasLoadedResumeRef.current) return;
+
+    const resumeId = routeParams?.resumeId || routeParams?.rec?.resumeId || routeParams?.rec?.matchId || routeParams?.rec?.id;
+    if (!resumeId) {
+      hasLoadedResumeRef.current = true;
+      return;
+    }
+
+    // si on a déjà un payload décodé (HistoryPage), on tente direct
+    const fastPayload = routeParams?.rec?.decoded || (typeof routeParams?.rec?.payload === "object" ? routeParams?.rec?.payload : null);
+    if (fastPayload) {
+      hasLoadedResumeRef.current = true;
+      applySavedState(fastPayload);
+      return;
+    }
+
+    (async () => {
+      try {
+        const rec = await History.get(String(resumeId));
+        if (!rec) {
+          hasLoadedResumeRef.current = true;
+          return;
+        }
+        hasLoadedResumeRef.current = true;
+
+        // si on reprend un match existant, on aligne matchId + createdAt
+        matchIdRef.current = String(rec.matchId || rec.id || matchIdRef.current);
+        createdAtRef.current = Number(rec.createdAt || createdAtRef.current);
+
+        if (typeof rec.payload === "object") {
+          applySavedState(rec.payload);
+        }
+      } catch (e) {
+        hasLoadedResumeRef.current = true;
+        console.warn("[GolfPlay] resume load failed", e);
+      }
+    })();
+  }, [routeParams?.resumeId, routeParams?.rec, playersCount, holes]);
 
   // 🔊 Petit "blip" arcade à l'apparition du ticker perf (sans asset)
   function playTickerBlip() {
@@ -1389,15 +1564,170 @@ const ranking = useMemo(() => {
   return arr;
 }, [roster, playerTotals, teamsOk, teamTotals, enabledTeamKeys, teamMembersIdxs, teamIndexByKey, statsByPlayer]);
 
+  // =====================================================
+  // SAVE HISTORY (autosave + end)
+  // =====================================================
+
+  function buildGolfRecord(status: "in_progress" | "finished"): SavedMatch {
+    const now = Date.now();
+    const matchId = matchIdRef.current;
+
+    const playersLite = roster.map((p) => {
+      const prof = profilesById[p.id];
+      return {
+        id: String(p.id),
+        name: String(p.name || ""),
+        avatarDataUrl: (prof?.avatarDataUrl ?? p.avatar ?? null) as any,
+      };
+    });
+
+    const rankings = (ranking || []).map((r: any, i: number) => ({
+      pos: i + 1,
+      id: String(r.id),
+      name: String(r.name || ""),
+      total: Number(r.total || 0),
+      darts: Number(r.darts || 0),
+      bestHit: String(r.bestHit || ""),
+      p1: Number(r.p1 || 0),
+      p2: Number(r.p2 || 0),
+      p3: Number(r.p3 || 0),
+      teamColor: (r as any)?.color ?? null,
+    }));
+
+    const winnerId = rankings.length ? String(rankings[0].id) : null;
+
+    // state compact (resume)
+    const state = {
+      holeTargets: holeTargets.slice(),
+      scores,
+      teamScores,
+      statsByPlayer,
+      holeIdx,
+      playerIdx,
+      startAt,
+      turnPos,
+      teamTurnPos,
+      teamCursor,
+      isFinished: status === "finished",
+      turnThrows,
+    };
+
+    return {
+      id: String(matchId),
+      matchId: String(matchId),
+      kind: "golf",
+      status,
+      players: playersLite as any,
+      winnerId,
+      createdAt: createdAtRef.current,
+      updatedAt: now,
+      game: {
+        mode: "golf",
+        holes,
+        teamsEnabled: teamsOk,
+        scoringMode: roundsMode ? "rounds" : "strokes",
+      },
+      summary: {
+        finished: status === "finished",
+        holes,
+        teamsEnabled: teamsOk,
+        rankings,
+        winnerId,
+      },
+      payload: {
+        mode: "golf",
+        config: cfg,
+        state,
+        summary: {
+          rankings,
+          winnerId,
+          finished: status === "finished",
+        },
+      },
+    } as SavedMatch;
+  }
+
+  async function saveToHistory(status: "in_progress" | "finished") {
+    try {
+      const rec = buildGolfRecord(status);
+      await History.upsert(rec);
+    } catch (e) {
+      console.warn("[GolfPlay] History.upsert failed", e);
+    }
+  }
+
+  function scheduleAutosave() {
+    if (saveTimerRef.current) {
+      try { window.clearTimeout(saveTimerRef.current); } catch {}
+    }
+    saveTimerRef.current = window.setTimeout(() => {
+      saveTimerRef.current = null;
+      // ✅ on ne sauvegarde pas une partie vide
+      if (!hasPlayedAtLeastOneHole && !isFinished) return;
+      saveToHistory(isFinished ? "finished" : "in_progress");
+    }, 450);
+  }
+
+  // autosave quand la partie évolue
+  useEffect(() => {
+    if (hasLoadedResumeRef.current === false) return;
+    scheduleAutosave();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    holes,
+    teamsOk,
+    roundsMode,
+    hasPlayedAtLeastOneHole,
+    isFinished,
+    holeIdx,
+    playerIdx,
+    startAt,
+    turnPos,
+    teamTurnPos,
+    teamCursor,
+    turnThrows,
+    savedHoleTargets,
+    scores,
+    teamScores,
+    statsByPlayer,
+  ]);
+
+  // save final immédiat
+  useEffect(() => {
+    if (!isFinished) return;
+    // ouvre l'overlay fin + sauve
+    setShowEndFloating(true);
+    saveToHistory("finished");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isFinished]);
+
+  // flush autosave à l'unmount
+  useEffect(() => {
+    return () => {
+      try {
+        if (saveTimerRef.current) window.clearTimeout(saveTimerRef.current);
+      } catch {}
+      // ✅ dernier flush si partie en cours
+      try {
+        if (hasPlayedAtLeastOneHole && !isFinished) {
+          // fire-and-forget
+          saveToHistory("in_progress");
+        }
+      } catch {}
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // ✅ TTS classement provisoire : géré via advanceAfterFinalize() (désactivé ici)
 
   // ✅ TTS classement final : géré via advanceAfterFinalize() (désactivé ici)
 
   // ✅ TTS: annonce du premier joueur au début de partie
   useEffect(() => {
+    // ✅ demandé : aucune annonce pendant la partie
+    if (VOICE_FINAL_ONLY) return;
     if (initialTurnSpokenRef.current) return;
     if (playersCount <= 0) return;
-
     try {
       const p = players[activePlayerIdx];
       const name = safeStr(p?.name ?? p?.label ?? p?.pseudo ?? "");
@@ -1407,9 +1737,7 @@ const ranking = useMemo(() => {
         () => speak(lang === "fr" ? `${name}, à toi de jouer.` : `${name}, your turn.`, { lang: ttsLang }),
         700
       );
-    } catch {
-      // ignore
-    }
+    } catch {}
   }, [playersCount, playerIdx, lang, ttsLang]);
 
 
@@ -1456,6 +1784,76 @@ const activeStats =
     if (typeof go === "function") return go("golf_config", payload);
   }
 
+  function goHistoryTab() {
+    // Historique = StatsHub tab="history"
+    const payload = { tab: "history", mode: "golf" };
+    if (typeof setTab === "function") return setTab("statsHub", payload);
+    if (typeof go === "function") return go("statsHub", payload);
+    try {
+      window.history.back();
+    } catch {}
+  }
+
+  async function handleSaveAndQuit() {
+    try {
+      await saveToHistory(isFinished ? "finished" : "in_progress");
+    } catch {}
+    goHistoryTab();
+  }
+
+  function resetMatchSameConfig() {
+    try {
+      // nouveau matchId
+      matchIdRef.current = makeMatchId();
+      createdAtRef.current = Date.now();
+      hasLoadedResumeRef.current = true;
+
+      // reset state
+      setSavedHoleTargets(null);
+      setScores(() => {
+        const s: (number | null)[][] = [];
+        for (let p = 0; p < playersCount; p++) s.push(Array.from({ length: holes }, () => null));
+        return s;
+      });
+      setTeamScores(() => TEAM_KEYS_ALL.map(() => Array.from({ length: holes }, () => null)));
+      setStatsByPlayer(() =>
+        Array.from({ length: playersCount }, () => ({ darts: 0, miss: 0, d: 0, t: 0, s: 0, b: 0, db: 0, turns: 0, hit1: 0, hit2: 0, hit3: 0 }))
+      );
+      setHoleIdx(0);
+      setTurnThrows([]);
+      historyRef.current = [];
+
+      // reset order
+      if (startRandom) {
+        if (teamsOk) {
+          const n = activeTeamKeys.length;
+          setTeamTurnPos(n > 1 ? Math.floor(Math.random() * n) : 0);
+          setTeamCursor([0, 0, 0, 0]);
+        } else {
+          const start = playersCount > 1 ? Math.floor(Math.random() * playersCount) : 0;
+          setStartAt(start);
+          setTurnPos(0);
+          setPlayerIdx(start);
+        }
+      } else {
+        setStartAt(0);
+        setTurnPos(0);
+        setPlayerIdx(0);
+        setTeamTurnPos(0);
+        setTeamCursor([0, 0, 0, 0]);
+      }
+
+      setIsFinished(false);
+      setShowEndFloating(false);
+      setShowEndMatchModal(false);
+
+      // voix off pendant la partie
+      setVoiceEnabled(false);
+    } catch (e) {
+      console.warn("[GolfPlay] resetMatchSameConfig failed", e);
+    }
+  }
+
   function pushHistory(
   prevScores: (number | null)[][],
   prevTeamScores: (number | null)[][],
@@ -1492,22 +1890,7 @@ const activeStats =
       setPlayerIdx(nextPlayerIndex);
       setTurnThrows([]);
 
-      // ✅ TTS: annonce du joueur suivant (toujours) — après SFX/ticker
-      try {
-        if (ttsTimerRef.current) window.clearTimeout(ttsTimerRef.current);
-        const p = players[nextPlayerIndex];
-        const nextName = safeStr(p?.name ?? p?.label ?? p?.pseudo ?? "");
-        if (nextName) {
-          const delay = Math.max(TTS_AFTER_AUDIO_MS, audioBusyUntilRef.current - Date.now() + 80);
-          // après blip + SFX perf
-          ttsTimerRef.current = window.setTimeout(
-            () => speak(lang === "fr" ? `À toi de jouer, ${nextName}.` : `${nextName}, your turn.`, { lang: ttsLang }),
-            delay
-          );
-        }
-      } catch {
-        // ignore
-      }
+      // ✅ pas d'annonce pendant la partie
 
 
       return;
@@ -1521,41 +1904,21 @@ const activeStats =
       setPlayerIdx(nextPlayerIndex);
       setTurnThrows([]);
 
-      // ✅ TTS: annonce du joueur suivant (toujours) — après SFX/ticker (nouveau trou)
-      try {
-        if (ttsTimerRef.current) window.clearTimeout(ttsTimerRef.current);
-        const p = players[nextPlayerIndex];
-        const nextName = safeStr(p?.name ?? p?.label ?? p?.pseudo ?? "");
-        if (nextName) {
-          const delay = Math.max(TTS_AFTER_AUDIO_MS, audioBusyUntilRef.current - Date.now() + 80);
-          ttsTimerRef.current = window.setTimeout(
-            () => speak(lang === "fr" ? `À toi de jouer, ${nextName}.` : `${nextName}, your turn.`, { lang: ttsLang }),
-            delay
-          );
-        }
-      } catch {
-        // ignore
-      }
-
-      // ✅ TTS classement intermédiaire (format strict), après la phrase "à toi de jouer"
-      try {
-        if (ttsRankTimerRef.current) window.clearTimeout(ttsRankTimerRef.current);
-        const msgRank = buildRankingTts("intermediate", ranking);
-        if (msgRank) {
-          ttsRankTimerRef.current = window.setTimeout(() => speak(msgRank, { lang: ttsLang }), 5200);
-        }
-      } catch {
-        // ignore
-      }
+      // ✅ pas d'annonce/classement pendant la partie
     } else {
             setIsFinished(true);
       setTurnThrows([]);
+
+      // ✅ fin : ouvre l'overlay flottant + annonce classement
+      setShowEndFloating(true);
 
       // ✅ TTS classement final (format strict) — après SFX/ticker
       try {
         if (ttsRankTimerRef.current) window.clearTimeout(ttsRankTimerRef.current);
         const msgFinal = buildRankingTts("final", ranking);
         if (msgFinal) {
+          // voix ré-activée uniquement au final
+          setVoiceEnabled(true);
           ttsRankTimerRef.current = window.setTimeout(() => speak(msgFinal, { lang: ttsLang }), Math.max(TTS_AFTER_AUDIO_MS, audioBusyUntilRef.current - Date.now() + 80));
         }
       } catch {
@@ -1583,19 +1946,7 @@ const activeStats =
         return next;
       });
 
-      // ✅ TTS: annonce joueur suivant (même équipe) après SFX/ticker
-      try {
-        if (ttsTimerRef.current) window.clearTimeout(ttsTimerRef.current);
-        const pi = memberIdxs[nextMember];
-        const p = roster[pi];
-        const nextName = safeStr(p?.name ?? p?.label ?? p?.pseudo ?? "");
-        if (nextName) {
-          ttsTimerRef.current = window.setTimeout(
-            () => speak(lang === "fr" ? `À toi de jouer, ${nextName}.` : `${nextName}, your turn.`, { lang: ttsLang }),
-            TTS_AFTER_AUDIO_MS
-          );
-        }
-      } catch {}
+      // ✅ pas d'annonce pendant la partie
       return;
     }
 
@@ -1624,18 +1975,7 @@ const activeStats =
           return next;
         });
 
-        // ✅ TTS: annonce premier joueur de l'équipe suivante
-        const ids2 = teamMembersIdxs[k2] ?? [];
-        const pi2 = ids2[0];
-        const p2 = roster[pi2];
-        const nextName2 = safeStr(p2?.name ?? p2?.label ?? p2?.pseudo ?? "");
-        if (nextName2) {
-          if (ttsTimerRef.current) window.clearTimeout(ttsTimerRef.current);
-          ttsTimerRef.current = window.setTimeout(
-            () => speak(lang === "fr" ? `À toi de jouer, ${nextName2}.` : `${nextName2}, your turn.`, { lang: ttsLang }),
-            TTS_AFTER_AUDIO_MS
-          );
-        }
+        // ✅ pas d'annonce pendant la partie
       }
     } catch {}
 
@@ -1651,31 +1991,17 @@ const activeStats =
   if (nextHole < holes) {
     setHoleIdx(nextHole);
 
-    // ✅ TTS: annonce premier joueur de la première équipe active au nouveau trou
-    try {
-      const k0 = activeTeamKeys[0];
-      if (k0) {
-        const ids0 = teamMembersIdxs[k0] ?? [];
-        const pi0 = ids0[0];
-        const p0 = roster[pi0];
-        const n0 = safeStr(p0?.name ?? p0?.label ?? p0?.pseudo ?? "");
-        if (n0) {
-          if (ttsTimerRef.current) window.clearTimeout(ttsTimerRef.current);
-          ttsTimerRef.current = window.setTimeout(
-            () => speak(lang === "fr" ? `À toi de jouer, ${n0}.` : `${n0}, your turn.`, { lang: ttsLang }),
-            TTS_AFTER_AUDIO_MS
-          );
-        }
-      }
-    } catch {}
+    // ✅ pas d'annonce pendant la partie
   } else {
     setIsFinished(true);
+    setShowEndFloating(true);
 
     // ✅ TTS classement final (format strict) — après SFX/ticker
     try {
       if (ttsRankTimerRef.current) window.clearTimeout(ttsRankTimerRef.current);
       const msgFinal = buildRankingTts("final", ranking);
       if (msgFinal) {
+        setVoiceEnabled(true);
         ttsRankTimerRef.current = window.setTimeout(() => speak(msgFinal, { lang: ttsLang }), Math.max(TTS_AFTER_AUDIO_MS, audioBusyUntilRef.current - Date.now() + 80));
       }
     } catch {
@@ -2702,41 +3028,269 @@ const throwChips = [0, 1, 2].map((i) => {
           </div>
         )}
 
-        {isFinished && (
-          <div style={{ ...cardBase, padding: 14, marginTop: 12 }}>
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
-              <div style={{ fontWeight: 1000, fontSize: 16, color: "#ffd36a" }}>Partie terminée</div>
+        {/* ✅ FIN DE PARTIE : overlay flottant (comme X01) */}
+        {showEndFloating && (
+          <div
+            role="dialog"
+            aria-modal="true"
+            style={{
+              position: "fixed",
+              inset: 0,
+              zIndex: 10000,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              padding: 12,
+            }}
+          >
+            <div
+              onClick={() => setShowEndFloating(false)}
+              style={{
+                position: "absolute",
+                inset: 0,
+                background: "rgba(0,0,0,.70)",
+                backdropFilter: "blur(7px)",
+                WebkitBackdropFilter: "blur(7px)",
+              }}
+            />
 
-              <button
-                type="button"
-                onClick={() => setShowEndMatchModal(true)}
+            <div
+              onClick={(e) => e.stopPropagation()}
+              style={{
+                ...cardBase,
+                width: "min(760px, 100%)",
+                borderRadius: 22,
+                overflow: "hidden",
+                position: "relative",
+                boxShadow: "0 24px 64px rgba(0,0,0,.65)",
+              }}
+            >
+              <div
                 style={{
-                  height: 36,
-                  padding: "0 12px",
-                  borderRadius: 14,
-                  border: "1px solid rgba(120,255,220,0.22)",
-                  background: "linear-gradient(180deg, rgba(120,255,220,0.18), rgba(0,0,0,0.20))",
-                  color: "#b9ffe9",
-                  fontWeight: 1000,
-                  letterSpacing: 0.6,
-                  cursor: "pointer",
-                  boxShadow: "0 10px 22px rgba(0,0,0,.35)",
-                  textTransform: "uppercase",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  padding: "12px 12px",
+                  borderBottom: "1px solid rgba(255,255,255,0.10)",
                 }}
               >
-                Résultats
-              </button>
-            </div>
-
-            <div style={{ marginTop: 8 }}>
-              {ranking[0] ? (
-                <div style={{ fontWeight: 1000, color: "rgba(255,255,255,0.92)" }}>
-                  Vainqueur : {ranking[0].name} — {ranking[0].total}
+                <div style={{ fontWeight: 1000, letterSpacing: 1.0, color: "#ffd36a" }}>
+                  FIN DE PARTIE
                 </div>
-              ) : null}
-            </div>
 
-            {showEndMatchModal && (
+                <button
+                  type="button"
+                  onClick={() => setShowEndFloating(false)}
+                  style={{
+                    height: 34,
+                    padding: "0 12px",
+                    borderRadius: 12,
+                    border: "1px solid rgba(255,255,255,0.14)",
+                    background: "rgba(0,0,0,0.30)",
+                    color: "rgba(255,255,255,0.85)",
+                    fontWeight: 900,
+                    cursor: "pointer",
+                  }}
+                >
+                  FERMER
+                </button>
+              </div>
+
+              <div style={{ padding: 12 }}>
+                {/* Winner */}
+                {ranking?.[0] ? (
+                  <div
+                    style={{
+                      ...cardBase,
+                      padding: 12,
+                      borderRadius: 18,
+                      border: "1px solid rgba(255,195,26,0.22)",
+                      background:
+                        "linear-gradient(180deg, rgba(255,195,26,0.14), rgba(0,0,0,0.18)), radial-gradient(120% 140% at 0% 0%, rgba(120,255,220,.16), transparent 55%)",
+                    }}
+                  >
+                    <div style={{ fontWeight: 1000, color: "rgba(255,255,255,0.92)", marginBottom: 8 }}>
+                      🏆 {ranking[0].name}
+                    </div>
+                    <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                      <span
+                        style={{
+                          padding: "6px 10px",
+                          borderRadius: 999,
+                          border: "1px solid rgba(255,255,255,0.14)",
+                          background: "rgba(0,0,0,0.28)",
+                          fontWeight: 1000,
+                        }}
+                      >
+                        Total : {ranking[0].total}
+                      </span>
+                      <span
+                        style={{
+                          padding: "6px 10px",
+                          borderRadius: 999,
+                          border: "1px solid rgba(255,255,255,0.14)",
+                          background: "rgba(0,0,0,0.28)",
+                          fontWeight: 1000,
+                        }}
+                      >
+                        Fléchettes : {ranking[0].darts}
+                      </span>
+                      <span
+                        style={{
+                          padding: "6px 10px",
+                          borderRadius: 999,
+                          border: "1px solid rgba(255,255,255,0.14)",
+                          background: "rgba(0,0,0,0.28)",
+                          fontWeight: 1000,
+                        }}
+                      >
+                        Best : {ranking[0].bestHit || "—"}
+                      </span>
+                    </div>
+                  </div>
+                ) : null}
+
+                {/* Classement (top) */}
+                <div style={{ marginTop: 12, ...cardBase, padding: 12, borderRadius: 18 }}>
+                  <div style={{ fontWeight: 1000, color: "#b9ffe9", marginBottom: 10, letterSpacing: 0.6 }}>
+                    CLASSEMENT FINAL
+                  </div>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                    {ranking.map((r: any, i: number) => (
+                      <div
+                        key={r.id ?? i}
+                        style={{
+                          display: "grid",
+                          gridTemplateColumns: "28px 1fr auto",
+                          gap: 10,
+                          alignItems: "center",
+                          padding: "10px 10px",
+                          borderRadius: 14,
+                          border:
+                            i === 0
+                              ? "1px solid rgba(255,195,26,0.28)"
+                              : "1px solid rgba(255,255,255,0.10)",
+                          background:
+                            i === 0
+                              ? "linear-gradient(180deg, rgba(255,195,26,0.14), rgba(0,0,0,0.18))"
+                              : "linear-gradient(180deg, rgba(0,0,0,0.22), rgba(0,0,0,0.12))",
+                        }}
+                      >
+                        <div style={{ fontWeight: 1000, color: i === 0 ? "#ffcf57" : "rgba(255,255,255,0.72)" }}>
+                          {i + 1}
+                        </div>
+                        <div style={{ display: "inline-flex", alignItems: "center", minWidth: 0, overflow: "hidden" }}>
+                          <span style={{ ...tinyAvatar, width: 22, height: 22 }}>
+                            {r.avatar ? (
+                              <img
+                                src={r.avatar}
+                                alt=""
+                                style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                              />
+                            ) : null}
+                          </span>
+                          <span
+                            style={{
+                              fontWeight: 1000,
+                              color: typeof r.color === "string" ? r.color : "rgba(255,255,255,0.92)",
+                              overflow: "hidden",
+                              textOverflow: "ellipsis",
+                              whiteSpace: "nowrap",
+                            }}
+                          >
+                            {r.name}
+                          </span>
+                        </div>
+                        <div style={{ fontWeight: 1000, color: "rgba(255,255,255,0.92)" }}>{r.total}</div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Actions */}
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 10, marginTop: 12 }}>
+                  <button
+                    type="button"
+                    onClick={resetMatchSameConfig}
+                    style={{
+                      flex: "1 1 180px",
+                      height: 44,
+                      borderRadius: 14,
+                      border: "1px solid rgba(120,255,220,0.26)",
+                      background: "linear-gradient(180deg, rgba(120,255,220,0.22), rgba(0,0,0,0.20))",
+                      color: "#b9ffe9",
+                      fontWeight: 1000,
+                      letterSpacing: 0.8,
+                      textTransform: "uppercase",
+                      cursor: "pointer",
+                    }}
+                  >
+                    Rejouer
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={goBack}
+                    style={{
+                      flex: "1 1 220px",
+                      height: 44,
+                      borderRadius: 14,
+                      border: "1px solid rgba(255,255,255,0.14)",
+                      background: "rgba(0,0,0,0.28)",
+                      color: "rgba(255,255,255,0.88)",
+                      fontWeight: 1000,
+                      letterSpacing: 0.8,
+                      textTransform: "uppercase",
+                      cursor: "pointer",
+                    }}
+                  >
+                    Retour configuration
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setShowEndMatchModal(true)}
+                    style={{
+                      flex: "1 1 180px",
+                      height: 44,
+                      borderRadius: 14,
+                      border: "1px solid rgba(255,195,26,0.26)",
+                      background: "linear-gradient(180deg, rgba(255,195,26,0.20), rgba(0,0,0,0.20))",
+                      color: "#ffd36a",
+                      fontWeight: 1000,
+                      letterSpacing: 0.8,
+                      textTransform: "uppercase",
+                      cursor: "pointer",
+                    }}
+                  >
+                    Résumé
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleSaveAndQuit}
+                    style={{
+                      flex: "1 1 220px",
+                      height: 44,
+                      borderRadius: 14,
+                      border: "1px solid rgba(255,105,180,0.30)",
+                      background: "linear-gradient(180deg, rgba(255,215,236,0.95), rgba(255,186,221,0.90))",
+                      color: "#b01863",
+                      fontWeight: 1000,
+                      letterSpacing: 0.8,
+                      textTransform: "uppercase",
+                      cursor: "pointer",
+                    }}
+                  >
+                    Sauvegarder & quitter
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {showEndMatchModal && (
               <div
                 role="dialog"
                 aria-modal="true"
@@ -2869,8 +3423,6 @@ const throwChips = [0, 1, 2].map((i) => {
                 </div>
               </div>
             )}
-          </div>
-        )}
       </div>
     </div>
   );

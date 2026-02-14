@@ -388,7 +388,62 @@ export function normalizeMany(recs: Array<SavedMatch | any>): NormalizedMatch[] 
 
 export async function loadNormalizedHistory(): Promise<NormalizedMatch[]> {
   try {
-    const rows = await History.list();
+    let rows: any[] = (await History.list()) as any[];
+
+    // =====================================================
+    // ✅ PATCH (CRITICAL): KPI vides sur mobile
+    // -----------------------------------------------------
+    // Dans certaines versions, History.list() renvoie une version
+    // "lite" (perf) qui ne décode pas le payload X01.
+    // Or la normalisation X01 dépend du payload (visits/darts/hits).
+    // Résultat: normalizeX01() voit visits=[] -> KPI + radar = 0.
+    //
+    // Ici, dans le pipeline STATS uniquement, on hydrate best-effort
+    // le payload via History.get(id) pour X01/Cricket.
+    // Cap + concurrence pour éviter tout freeze.
+    // =====================================================
+    try {
+      const NEED = new Set(["x01", "cricket"]);
+      const candidates = (rows || [])
+        .filter((r: any) => r && NEED.has(String(r.kind || r.mode || "")))
+        .filter((r: any) => r.payload == null);
+
+      const MAX_HYDRATE = 260;
+      const toHydrate = candidates.slice(0, MAX_HYDRATE);
+
+      if (toHydrate.length) {
+        const byId = new Map<string, any>((rows || []).map((r: any) => [String(r?.id ?? ""), r]));
+
+        const CONCURRENCY = 6;
+        let i = 0;
+        const workers = Array.from(
+          { length: Math.min(CONCURRENCY, toHydrate.length) },
+          async () => {
+            while (i < toHydrate.length) {
+              const idx = i++;
+              const r = toHydrate[idx];
+              const id = String(r?.id ?? r?.matchId ?? "");
+              if (!id) continue;
+              try {
+                const full = (await History.get(id).catch(() => null as any)) as any;
+                if (full && full.payload != null) {
+                  const cur = byId.get(id) || r;
+                  byId.set(id, { ...cur, payload: full.payload });
+                }
+              } catch {
+                // ignore
+              }
+            }
+          }
+        );
+
+        await Promise.all(workers);
+        rows = Array.from(byId.values());
+      }
+    } catch {
+      // ignore hydration failures
+    }
+
     return normalizeMany(rows as any[]);
   } catch {
     return [];
