@@ -631,6 +631,62 @@ function resolveSetImage(id: string, mySets: DartSet[]) {
 
 /** ---------- Recalc robuste depuis History ---------- **/
 
+
+function extractStartScoreFromRecord(r: any): number {
+  // try config paths (history shapes vary)
+  return (
+    N(r?.config?.startScore, 0) ||
+    N(r?.payload?.config?.startScore, 0) ||
+    N(r?.payload?.match?.config?.startScore, 0) ||
+    N(r?.payload?.state?.config?.startScore, 0) ||
+    N(r?.summary?.config?.startScore, 0) ||
+    N(r?.payload?.summary?.config?.startScore, 0) ||
+    501
+  );
+}
+
+function extractScorePerVisit(mine: any, r: any): number[] {
+  const arr =
+    pickArr(mine, "scorePerVisit", "scoresPerVisit", "visitScores", "scores", "scoreByVisit") ||
+    pickArr(r?.summary, "scorePerVisit", "scoresPerVisit") ||
+    pickArr(r?.payload?.summary, "scorePerVisit", "scoresPerVisit") ||
+    null;
+
+  if (arr && arr.length) return arr.map((x: any) => N(x, 0)).filter((n: number) => Number.isFinite(n));
+  return [];
+}
+
+function computeFirst9FromScorePerVisit(scores: number[]): number | null {
+  if (!scores || scores.length < 1) return null;
+  const first = scores.slice(0, 3);
+  const m = first.reduce((a, b) => a + N(b, 0), 0) / Math.max(1, first.length);
+  return Number.isFinite(m) ? m : null;
+}
+
+function computeCheckoutPctFromScorePerVisit(startScore: number, scores: number[]): { attempts: number; hits: number; pct: number } | null {
+  if (!scores || scores.length < 1) return null;
+  let remaining = N(startScore, 0) || 501;
+  let attempts = 0;
+  let hits = 0;
+
+  for (const s of scores) {
+    const v = Math.max(0, N(s, 0));
+    if (remaining > 0 && remaining <= 170) attempts += 1;
+
+    const next = remaining - v;
+    if (next === 0) {
+      hits += 1;
+      remaining = 0;
+      break;
+    }
+    // bust / invalid finish often recorded as 0 => remaining unchanged
+    if (next > 0) remaining = next;
+  }
+
+  const pct = attempts > 0 ? (hits / attempts) * 100 : 0;
+  return { attempts, hits, pct };
+}
+
 type AggRow = {
   dartSetId: string;
   matches: number;
@@ -721,19 +777,41 @@ function computeAggFromHistory(allHistory: any[], profileId: string): Record<str
     row.bestCheckout = Math.max(row.bestCheckout, N(pickNum(mine, "bestCheckout", "bestCO", "bestOut"), 0));
 
     const f9 = pickNum(mine, "first9", "first9Avg", "avgFirst9", "firstNine") ?? null;
-    if (f9 !== null) row.first9 += Number(f9);
+    if (f9 !== null) {
+      row.first9 += Number(f9);
+    } else {
+      const spv = extractScorePerVisit(mine, r);
+      const f9c = computeFirst9FromScorePerVisit(spv);
+      if (f9c !== null) row.first9 += Number(f9c);
+    }
 
     const coPct =
       pickNum(mine, "checkoutPct", "coPct", "checkoutPercent", "pctCheckout") ??
       pickNum(mine, "checkout%", "checkoutP") ??
       null;
-    if (coPct !== null) row.checkoutPct += Number(coPct);
+    if (coPct !== null) {
+      row.checkoutPct += Number(coPct);
+    } else {
+      const spv = extractScorePerVisit(mine, r);
+      const startScore = extractStartScoreFromRecord(r);
+      const calc = computeCheckoutPctFromScorePerVisit(startScore, spv);
+      if (calc) row.checkoutPct += Number(calc.pct);
+    }
 
     const dPct =
       pickNum(mine, "doublesPct", "doublePct", "doublesPercent", "pctDoubles") ??
       pickNum(mine, "doubles%", "doublesP") ??
       null;
-    if (dPct !== null) row.doublesPct += Number(dPct);
+    if (dPct !== null) {
+      row.doublesPct += Number(dPct);
+    } else {
+      // fallback: proportion de Doubles parmi les hits (approx utile quand doublesPct n'est pas tracké)
+      const s = N(pickNum(mine, "hitsS", "s", "singles", "single", "S"), 0);
+      const d = N(pickNum(mine, "hitsD", "d", "doubles", "double", "D"), 0);
+      const t = N(pickNum(mine, "hitsT", "t", "triples", "triple", "T"), 0);
+      const denom = Math.max(1, s + d + t);
+      row.doublesPct += (d / denom) * 100;
+    }
 
     row.n180 += N(pickNum(mine, "n180", "count180", "s180", "nb180"), 0);
     row.n140 += N(pickNum(mine, "n140", "count140", "s140", "nb140"), 0);
@@ -855,10 +933,71 @@ export default function StatsDartSetsSection(props: { activeProfileId: string | 
         }
         const all = Array.from(byId.values());
 
-        const recMap = buildRecentMatchesMap(all || [], activeProfileId);
+        // ------------------------------------------------------------
+        // Enrich (lazy) : pour certains records, History.list() ne contient pas payload.
+        // On charge le payload complet seulement si nécessaire (KPIs manquants).
+        // ------------------------------------------------------------
+        const needsEnrich = (rec: any) => {
+          if (!rec?.id) return false;
+          if (rec?.payload) return false;
+          if (!rec?.payloadCompressed) return false;
+          const summary = rec?.summary ?? rec?.payload?.summary ?? null;
+          const pp = pickPerPlayer(summary);
+          // si on n'a pas au moins scorePerVisit, on ne peut pas calculer First9 / Checkout%
+          const mine = pp?.[0] || null;
+          const hasScores =
+            Array.isArray(mine?.scorePerVisit) ||
+            Array.isArray(mine?.scoresPerVisit) ||
+            Array.isArray(mine?.visitScores) ||
+            Array.isArray(mine?.scoreByVisit);
+          // si First9 / Checkout% / Doubles% absent : enrich
+          const missingKpis =
+            !Number.isFinite(Number(mine?.first9)) &&
+            !Number.isFinite(Number(mine?.first9Avg)) &&
+            !Number.isFinite(Number(mine?.checkoutPct)) &&
+            !Number.isFinite(Number(mine?.coPct)) &&
+            !Number.isFinite(Number(mine?.doublesPct)) &&
+            !Number.isFinite(Number(mine?.doublePct));
+          return !hasScores && missingKpis;
+        };
+
+        const sortedForEnrich = (all || []).slice().sort((a: any, b: any) => {
+          const ta = N(a?.endedAt, 0) || N(a?.finishedAt, 0) || N(a?.createdAt, 0) || 0;
+          const tb = N(b?.endedAt, 0) || N(b?.finishedAt, 0) || N(b?.createdAt, 0) || 0;
+          return tb - ta;
+        });
+
+        // max 80 reads pour éviter de geler sur mobile
+        const enrichedMap = new Map<string, any>();
+        let enrichCount = 0;
+
+        for (const rec of sortedForEnrich) {
+          const id = String(rec?.id ?? "");
+          if (!id) continue;
+          if (!needsEnrich(rec)) {
+            enrichedMap.set(id, rec);
+            continue;
+          }
+          if (enrichCount >= 80) {
+            enrichedMap.set(id, rec);
+            continue;
+          }
+          try {
+            const full = await History.get(id);
+            enrichedMap.set(id, full || rec);
+            enrichCount += 1;
+          } catch {
+            enrichedMap.set(id, rec);
+          }
+        }
+
+        const allEnriched = Array.from(enrichedMap.values());
+
+
+        const recMap = buildRecentMatchesMap(allEnriched || [], activeProfileId);
         if (mounted) setRecentBySet(recMap);
 
-        const aggMap = computeAggFromHistory(all || [], activeProfileId);
+        const aggMap = computeAggFromHistory(allEnriched || [], activeProfileId);
 
         const ids = new Set<string>();
         for (const r of rowsA) ids.add(String(r?.dartSetId || r?.dartPresetId || ""));

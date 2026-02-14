@@ -67,6 +67,7 @@ function useMediaQueryLocal(query: string) {
 }
 
 type HeaderBlockProps = {
+  showThrowCounter?: boolean;
   currentPlayer: any;
   currentAvatar: string | null;
   currentRemaining: number;
@@ -152,6 +153,10 @@ type Props = {
   onExit?: () => void; // QUITTER -> Home (via App)
   onShowSummary?: (matchId: string) => void; // RÉSUMÉ -> Historique détaillé
   onReplayNewConfig?: () => void; // REJOUER -> changer paramètres (App)
+  resume?: {
+    resumeId: string;
+    darts: X01DartInputV3[];
+  };
 };
 
 type MiniRankingRow = {
@@ -186,7 +191,17 @@ function chipStyle(d?: UIDart, red = false): React.CSSProperties {
       border: "1px solid rgba(255,255,255,.08)",
     };
 
-  if (red)
+  
+  // ✅ MISS toujours en rouge
+  if (d.v === 0) {
+    return {
+      background: "rgba(200,30,30,.18)",
+      color: "#ff8a8a",
+      border: "1px solid rgba(255,80,80,.35)",
+    };
+  }
+
+if (red)
     return {
       background: "rgba(200,30,30,.18)",
       color: "#ff8a8a",
@@ -353,10 +368,10 @@ type BotStyle = "balanced" | "aggressive" | "safe" | "clutch";
 function computeBotVisit(
   level: BotLevel,
   currentScore: number,
-  outMode: "double" | "single" | "master"
+  outMode: "double" | "simple" | "master"
 ): UIDart[] {
   const doubleOut = outMode === "double";
-  const singleOut = outMode === "single";
+  const singleOut = outMode === "simple";
   const masterOut = outMode === "master";
 
   const darts: UIDart[] = [];
@@ -693,7 +708,7 @@ function computeBotVisit(
 function computeCheckoutText(
   remaining: number,
   dartsLeft: number,
-  outMode: "double" | "single" | "master"
+  outMode: "double" | "simple" | "master"
 ): string | null {
   if (!Number.isFinite(remaining) || remaining <= 0) return null;
   if (dartsLeft <= 0) return null;
@@ -722,7 +737,7 @@ function computeCheckoutText(
   }
 
   // Bulls
-  all.push({ code: "SBULL", score: 25, kind: "B", isFinisher: outMode === "single" });
+  all.push({ code: "SBULL", score: 25, kind: "B", isFinisher: outMode === "simple" });
   const db: Dart = { code: "DBULL", score: 50, kind: "D", isFinisher: true };
   all.push(db);
   doubles.push(db);
@@ -878,6 +893,7 @@ export default function X01PlayV3({
   onExit,
   onShowSummary,
   onReplayNewConfig,
+  resume,
 }: Props) {
   const { isLandscapeTablet } = useViewport();
   const { theme } = useTheme();
@@ -1055,7 +1071,8 @@ const forceSyncFromEngine = React.useCallback(() => {
   setCurrentThrow(raw);
 
   // ✅ CRITIQUE: la liste joueurs lit lastVisitsByPlayer, pas currentThrow
-  if (activePlayerId) {
+  // ⚠️ On ne doit PAS écraser la "dernière volée" avec une visite vide (sinon la liste joueurs perd l'affichage).
+  if (activePlayerId && raw.length) {
     setLastVisitsByPlayer((m) => ({ ...m, [activePlayerId]: raw }));
     setLastVisitIsBustByPlayer((m) => ({ ...m, [activePlayerId]: false }));
   }
@@ -1290,16 +1307,23 @@ const activeTeam = React.useMemo(() => {
   const currentVisit = state.visit;
 
     // out mode ? (double / single / master) — selon config
-  const outMode: "double" | "single" | "master" = React.useMemo(() => {
+  const outMode: "double" | "simple" | "master" = React.useMemo(() => {
     const raw =
       (config as any).outMode ??
       (config as any).finishMode ??
       ((config as any).doubleOut === true ? "double" : null);
 
+    // ✅ Compat: certains anciens écrans utilisent "single" au lieu de "simple"
     if (raw === "master") return "master";
-    if (raw === "single") return "single";
+    if (raw === "simple" || raw === "single") return "simple";
+    if (raw === "double") return "double";
+    // défaut historique = double-out
     return "double";
   }, [config]);
+
+  // Affichage "Volée x/3" (désactivé par défaut) — active seulement si config.showThrowCounter === true
+  const showThrowCounter = (config as any)?.showThrowCounter === true;
+
 
   function isValidFinisher(d: any): boolean {
     if (!d) return false;
@@ -1380,6 +1404,48 @@ const activeTeam = React.useMemo(() => {
       console.warn("[X01PlayV3] persistAutosave failed", e);
     }
   }, [config, state]);
+
+  // =====================================================
+  // Reprise depuis HISTORIQUE (props.resume)
+  // - rejoue les darts pour reconstruire l'état moteur (scores, tour, legs)
+  // - fixe l'id pour continuer autosave/history.upsert sur le même record
+  // =====================================================
+  React.useEffect(() => {
+    if (hasReplayedRef.current) return;
+    if (!resume || !Array.isArray(resume.darts)) return;
+
+    try {
+      hasReplayedRef.current = true;
+      isReplayingRef.current = true;
+
+      // On reprend sur le même record d'historique
+      historyIdRef.current = String(resume.resumeId);
+
+      // On conserve aussi le replay log pour les futures saves
+      replayDartsRef.current = resume.darts.slice();
+
+      // Rejoue les darts de façon séquentielle (évite un batch qui peut être ignoré)
+      const darts = resume.darts.slice();
+      darts.forEach((d, i) => {
+        setTimeout(() => {
+          try {
+            throwDart(d);
+          } catch (e) {
+            console.warn("[X01PlayV3] resume replay dart failed", e);
+          }
+        }, i * 5);
+      });
+
+      // Fin de replay (flag)
+      setTimeout(() => {
+        isReplayingRef.current = false;
+      }, darts.length * 5 + 10);
+    } catch (e) {
+      console.warn("[X01PlayV3] resume(history) failed", e);
+      isReplayingRef.current = false;
+    }
+  }, [resume, throwDart]);
+
 
   // Reprise auto : DÉSACTIVÉE par défaut (évite les "volées fantômes").
 // Pour forcer une reprise (debug), mettre localStorage[AUTOSAVE_KEY + ":resume"] = "1"
@@ -2942,6 +3008,7 @@ if (isLandscapeTablet) {
               teamSetsWon={(state as any).teamSetsWon ?? {}}
               teamId={activeTeam.id}
               checkoutText={checkoutText}
+            showThrowCounter={showThrowCounter}
             />
           ) : (
             <HeaderBlock
@@ -2958,6 +3025,7 @@ if (isLandscapeTablet) {
               setsWon={(state as any).setsWon ?? {}}
               useSets={useSetsUi}
               checkoutText={checkoutText}
+            showThrowCounter={showThrowCounter}
             />
           )}
           </div>
@@ -3019,7 +3087,7 @@ if (isLandscapeTablet) {
                     border: "1px solid rgba(255,255,255,0.08)",
                     background: "linear-gradient(180deg, rgba(10,10,12,.9), rgba(6,6,8,.95))",
                     textAlign: "center",
-                    fontSize: 13,
+                    fontSize: isTiny ? 11 : isNarrow ? 12 : 13,
                     color: "#e3e6ff",
                     boxShadow: "0 10px 24px rgba(0,0,0,.5)",
                   }}
@@ -3364,7 +3432,8 @@ if (isLandscapeTablet) {
                 teamLegsWon={(state as any).teamLegsWon ?? {}}
                 teamSetsWon={(state as any).teamSetsWon ?? {}}
                 checkoutText={checkoutText}
-              />
+              showThrowCounter={showThrowCounter}
+            />
             ) : (
               <HeaderBlock
                 currentPlayer={activePlayer}
@@ -3384,7 +3453,8 @@ if (isLandscapeTablet) {
                 setsWon={(state as any).setsWon ?? {}}
                 useSets={useSetsUi}
                 checkoutText={checkoutText}
-              />
+              showThrowCounter={showThrowCounter}
+            />
             )}
           </div>
         }
@@ -3689,19 +3759,16 @@ function HeaderBlock(props: HeaderBlockProps) {
     legsWon,
     setsWon,
     checkoutText,
+    showThrowCounter = false,
   } = props;
 
-  const legsWonThisSet =
-    (currentPlayer && legsWon[currentPlayer.id]) ?? 0;
-  const setsWonTotal =
-    (currentPlayer && setsWon[currentPlayer.id]) ?? 0;
+  // ✅ Responsive safety: évite tout overflow horizontal sur mobile
+  const isNarrow = useMediaQueryLocal("(max-width: 420px)");
+  const isTiny = useMediaQueryLocal("(max-width: 360px)");
 
   const remainingAfterAll = Math.max(
     currentRemaining -
-      currentThrow.reduce(
-        (s: number, d: UIDart) => s + dartValue(d),
-        0
-      ),
+      currentThrow.reduce((s: number, d: UIDart) => s + dartValue(d), 0),
     0
   );
 
@@ -3711,20 +3778,206 @@ function HeaderBlock(props: HeaderBlockProps) {
   // =====================================================
   const bgAvatarUrl = currentAvatar || null;
 
+  const ScorePanel = (
+    <div
+      style={{
+        textAlign: "center",
+        display: "flex",
+        flexDirection: "column",
+        gap: 5,
+        position: "relative",
+        overflow: "visible",
+        minWidth: 0,
+      }}
+    >
+      {/* BG ancré AU SCORE (centre = centre du 501) */}
+      {!!bgAvatarUrl && (
+        <img
+          src={bgAvatarUrl}
+          aria-hidden
+          style={{
+            position: "absolute",
+            top: "40%",
+            left: "60%",
+            transform: "translate(-50%, -50%)",
+            height: "250%",
+            width: "auto",
+            WebkitMaskImage:
+              "linear-gradient(90deg, rgba(0,0,0,0) 0%, rgba(0,0,0,0.2) 25%, rgba(0,0,0,0.85) 52%, rgba(0,0,0,1) 69%, rgba(0,0,0,1) 100%)",
+            maskImage:
+              "linear-gradient(90deg, rgba(0,0,0,0) 0%, rgba(0,0,0,0.2) 25%, rgba(0,0,0,0.85) 52%, rgba(0,0,0,1) 69%, rgba(0,0,0,1) 100%)",
+            WebkitMaskRepeat: "no-repeat",
+            maskRepeat: "no-repeat",
+            WebkitMaskSize: "100% 100%",
+            maskSize: "100% 100%",
+            opacity: 0.22,
+            filter:
+              "saturate(1.35) contrast(1.18) brightness(1.08) drop-shadow(-10px 0 26px rgba(0,0,0,.55))",
+            pointerEvents: "none",
+            userSelect: "none",
+            zIndex: 0,
+          }}
+        />
+      )}
+
+      {/* SCORE CENTRAL */}
+      <div
+        style={{
+          fontSize: isTiny ? 50 : isNarrow ? 56 : 64,
+          fontWeight: 900,
+          position: "relative",
+          zIndex: 2,
+          color: "#ffcf57",
+          textShadow: "0 4px 18px rgba(255,195,26,.25)",
+          lineHeight: 1.02,
+        }}
+      >
+        {remainingAfterAll}
+      </div>
+
+      {/* Pastilles live */}
+      <div
+        style={{
+          display: "flex",
+          gap: isNarrow ? 4 : 5,
+          justifyContent: "center",
+          flexWrap: "nowrap",
+          maxWidth: "100%",
+          overflow: "hidden",
+          position: "relative",
+          zIndex: 2,
+        }}
+      >
+        {[0, 1, 2].map((i) => {
+          const d = currentThrow[i];
+
+          const wouldBust =
+            currentRemaining -
+              currentThrow
+                .slice(0, i + 1)
+                .reduce((s: number, x: UIDart) => s + dartValue(x), 0) <
+            0;
+
+          const st = chipStyle(d, wouldBust);
+
+          return (
+            <span
+              key={i}
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                justifyContent: "center",
+                minWidth: isTiny ? 32 : isNarrow ? 34 : 40,
+                height: isTiny ? 24 : isNarrow ? 26 : 28,
+                padding: isTiny ? "0 8px" : isNarrow ? "0 9px" : "0 10px",
+                borderRadius: 10,
+                border: st.border as string,
+                background: st.background as string,
+                color: st.color as string,
+                fontWeight: 800,
+                fontSize: 13,
+              }}
+            >
+              {fmt(d)}
+            </span>
+          );
+        })}
+      </div>
+
+      {/* Checkout suggestion (moteur V3) */}
+      {checkoutText ? (
+        <div style={{ marginTop: 3, display: "flex", justifyContent: "center" }}>
+          <div
+            style={{
+              display: "inline-flex",
+              padding: 5,
+              borderRadius: 12,
+              border: "1px solid rgba(255,255,255,.08)",
+              background:
+                "radial-gradient(120% 120% at 50% 0%, rgba(255,195,26,.10), rgba(30,30,34,.95))",
+              minWidth: 170,
+              gap: 6,
+              alignItems: "center",
+              justifyContent: "center",
+              maxWidth: "100%",
+              boxSizing: "border-box",
+            }}
+          >
+            <span
+              style={{
+                padding: "3px 8px",
+                borderRadius: 8,
+                border: "1px solid rgba(255,187,51,.4)",
+                background: "rgba(255,187,51,.12)",
+                color: "#ffc63a",
+                fontWeight: 900,
+                whiteSpace: "nowrap",
+                fontSize: 13,
+              }}
+            >
+              {checkoutText}
+            </span>
+          </div>
+        </div>
+      ) : null}
+
+      {/* Mini ranking */}
+      <div
+        style={{
+          ...miniCard,
+          alignSelf: "center",
+          width: "100%",
+          maxWidth: isNarrow ? "100%" : 310,
+          height: "auto",
+          padding: 6,
+          position: "relative",
+          zIndex: 2,
+          boxSizing: "border-box",
+        }}
+      >
+        <div
+          style={{
+            maxHeight: 3 * 26,
+            overflow: liveRanking.length > 3 ? "auto" : "visible",
+          }}
+        >
+          {liveRanking.map((r, i) => (
+            <div key={r.id} style={miniRankRow}>
+              <div
+                style={{
+                  ...miniRankName,
+                  color: (r as any).color || (miniRankName as any).color,
+                  minWidth: 0,
+                }}
+              >
+                {i + 1}. {r.name}
+              </div>
+              <div style={r.score === 0 ? miniRankScoreFini : miniRankScore}>
+                {r.score === 0 ? "FINI" : r.score}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+
   return (
     <div
       style={{
+        width: "100%",
+        boxSizing: "border-box",
         background:
           "radial-gradient(120% 140% at 0% 0%, rgba(255,195,26,.10), transparent 55%), linear-gradient(180deg, rgba(15,15,18,.9), rgba(10,10,12,.8))",
         border: "1px solid rgba(255,255,255,.08)",
         borderRadius: 18,
-        padding: 7,
+        padding: isNarrow ? 6 : 7,
         boxShadow: "0 8px 26px rgba(0,0,0,.35)",
         position: "relative",
         overflow: "hidden",
       }}
     >
-            {/* Dégradé gauche -> droite pour fondre le logo dans le fond (≈ 3/4 de la carte) */}
+      {/* Dégradé gauche -> droite pour fondre le logo dans le fond (≈ 3/4 de la carte) */}
       <div
         aria-hidden
         style={{
@@ -3737,293 +3990,197 @@ function HeaderBlock(props: HeaderBlockProps) {
         }}
       />
 
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "auto 1fr",
-          gap: 8,
-          alignItems: "center",
-          position: "relative",
-          zIndex: 2,
-        }}
-      >
-        {/* AVATAR + STATS */}
-        <div
-          style={{
-            display: "flex",
-            flexDirection: "column",
-            alignItems: "center",
-            gap: 5,
-          }}
-        >
-          <div
-            style={{
-              width: 96,
-              height: 96,
-              borderRadius: "50%",
-              overflow: "hidden",
-              background:
-                "linear-gradient(180deg,#1b1b1f,#111114)",
-              boxShadow: "0 6px 22px rgba(0,0,0,.35)",
-            }}
-          >
-            {currentAvatar ? (
-              <img
-                src={currentAvatar}
-                style={{
-                  width: "100%",
-                  height: "100%",
-                  objectFit: "cover",
-                }}
-              />
-            ) : (
-              <div
-                style={{
-                  width: "100%",
-                  height: "100%",
-                  display: "flex",
-                  justifyContent: "center",
-                  alignItems: "center",
-                  color: "#999",
-                  fontWeight: 700,
-                }}
-              >
-                ?
-              </div>
-            )}
-          </div>
-          <div
-            style={{
-              fontWeight: 900,
-              fontSize: 17,
-              color: "#ffcf57",
-            }}
-          >
-            {currentPlayer?.name ?? "—"}
-          </div>
-          <div
-            style={{
-              fontSize: 11.5,
-              color: "#d9dbe3",
-            }}
-          >
-            {liveRanking?.length ? (
-              <>
-                Leader : <b>{liveRanking[0]?.name}</b>
-              </>
-            ) : null}
-          </div>
-
-          {/* Mini card stats joueur actif */}
-          <div
-            style={{
-              ...miniCard,
-              width: 176,
-              height: "auto",
-              padding: 7,
-            }}
-          >
-            <div style={miniText}>
-              <div>
-                Meilleure volée : <b>{bestVisit}</b>
-              </div>
-              <div>
-                Moy/3D : <b>{curM3D}</b>
-              </div>
-              <div>
-                Darts jouées : <b>{curDarts}</b>
-              </div>
-              <div>
-                Volée : <b>{currentThrow.length}/3</b>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* SCORE + PASTILLES + RANKING */}
-        <div
-          style={{
-            textAlign: "center",
-            display: "flex",
-            flexDirection: "column",
-            gap: 5,
-            position: "relative",
-            overflow: "visible",
-          }}
-        >
-          {/* BG ancré AU SCORE (centre = centre du 501) */}
-          {!!bgAvatarUrl && (
-            <img
-              src={bgAvatarUrl}
-              aria-hidden
-              style={{
-                position: "absolute",
-                top: "40%",
-                left: "60%",
-                transform: "translate(-50%, -50%)",
-                height: "250%",
-                width: "auto",
-                WebkitMaskImage:
-                  "linear-gradient(90deg, rgba(0,0,0,0) 0%, rgba(0,0,0,0.2) 25%, rgba(0,0,0,0.85) 52%, rgba(0,0,0,1) 69%, rgba(0,0,0,1) 100%)",
-                maskImage:
-                  "linear-gradient(90deg, rgba(0,0,0,0) 0%, rgba(0,0,0,0.2) 25%, rgba(0,0,0,0.85) 52%, rgba(0,0,0,1) 69%, rgba(0,0,0,1) 100%)",
-                WebkitMaskRepeat: "no-repeat",
-                maskRepeat: "no-repeat",
-                WebkitMaskSize: "100% 100%",
-                maskSize: "100% 100%",
-
-                opacity: 0.22,
-                filter:
-                  "saturate(1.35) contrast(1.18) brightness(1.08) drop-shadow(-10px 0 26px rgba(0,0,0,.55))",
-                pointerEvents: "none",
-                userSelect: "none",
-                zIndex: 0,
-              }}
-            />
-          )}
-
-          {/* SCORE CENTRAL */}
-          <div
-            style={{
-              fontSize: 64,
-              fontWeight: 900,
-              position: "relative",
-              zIndex: 2,
-              color: "#ffcf57",
-              textShadow: "0 4px 18px rgba(255,195,26,.25)",
-              lineHeight: 1.02,
-            }}
-          >
-            {remainingAfterAll}
-          </div>
-
-          {/* Pastilles live */}
+      <div style={{ position: "relative", zIndex: 2, minWidth: 0 }}>
+        {isNarrow ? (
           <div
             style={{
               display: "flex",
-              gap: 5,
-              justifyContent: "center",
-              position: "relative",
-              zIndex: 2,
+              flexDirection: "column",
+              gap: 8,
+              minWidth: 0,
             }}
           >
-            {[0, 1, 2].map((i) => {
-              const d = currentThrow[i];
-
-              const wouldBust =
-                currentRemaining -
-                  currentThrow
-                    .slice(0, i + 1)
-                    .reduce(
-                      (s: number, x: UIDart) => s + dartValue(x),
-                      0
-                    ) <
-                0;
-
-              const st = chipStyle(d, wouldBust);
-
-              return (
-                <span
-                  key={i}
-                  style={{
-                    display: "inline-flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    minWidth: 40,
-                    height: 28,
-                    padding: "0 10px",
-                    borderRadius: 10,
-                    border: st.border as string,
-                    background: st.background as string,
-                    color: st.color as string,
-                    fontWeight: 800,
-                    fontSize: 13,
-                  }}
-                >
-                  {fmt(d)}
-                </span>
-              );
-            })}
-          </div>
-
-          {/* Checkout suggestion (moteur V3) */}
-          {checkoutText ? (
+            {/* Ligne avatar + identité */}
             <div
               style={{
-                marginTop: 3,
                 display: "flex",
-                justifyContent: "center",
+                gap: 10,
+                alignItems: "center",
+                minWidth: 0,
               }}
             >
               <div
                 style={{
-                  display: "inline-flex",
-                  padding: 5,
-                  borderRadius: 12,
-                  border: "1px solid rgba(255,255,255,.08)",
-                  background:
-                    "radial-gradient(120% 120% at 50% 0%, rgba(255,195,26,.10), rgba(30,30,34,.95))",
-                  minWidth: 170,
-                  gap: 6,
-                  alignItems: "center",
-                  justifyContent: "center",
+                  width: isTiny ? 66 : 72,
+                  height: isTiny ? 66 : 72,
+                  borderRadius: "50%",
+                  overflow: "hidden",
+                  background: "linear-gradient(180deg,#1b1b1f,#111114)",
+                  boxShadow: "0 6px 22px rgba(0,0,0,.35)",
+                  flex: "0 0 auto",
                 }}
               >
-                <span
+                {currentAvatar ? (
+                  <img
+                    src={currentAvatar}
+                    style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                  />
+                ) : (
+                  <div
+                    style={{
+                      width: "100%",
+                      height: "100%",
+                      display: "flex",
+                      justifyContent: "center",
+                      alignItems: "center",
+                      color: "#999",
+                      fontWeight: 700,
+                    }}
+                  >
+                    ?
+                  </div>
+                )}
+              </div>
+
+              <div style={{ minWidth: 0, flex: "1 1 auto" }}>
+                <div
                   style={{
-                    padding: "3px 8px",
-                    borderRadius: 8,
-                    border: "1px solid rgba(255,187,51,.4)",
-                    background: "rgba(255,187,51,.12)",
-                    color: "#ffc63a",
                     fontWeight: 900,
+                    fontSize: isTiny ? 15 : 16,
+                    color: "#ffcf57",
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
                     whiteSpace: "nowrap",
-                    fontSize: 13,
                   }}
                 >
-                  {checkoutText}
-                </span>
-              </div>
-            </div>
-          ) : null}
+                  {currentPlayer?.name ?? "—"}
+                </div>
 
-          {/* Mini ranking */}
-          <div
-            style={{
-              ...miniCard,
-              alignSelf: "center",
-              width: "min(310px,100%)",
-              height: "auto",
-              padding: 6,
-              position: "relative",
-              zIndex: 2,
-            }}
-          >
-            <div
-              style={{
-                maxHeight: 3 * 26,
-                overflow: liveRanking.length > 3 ? "auto" : "visible",
-              }}
-            >
-              {liveRanking.map((r, i) => (
-                <div key={r.id} style={miniRankRow}>
-                  <div style={{ ...miniRankName, color: (r as any).color || miniRankName.color }}>
-                    {i + 1}. {r.name}
+                {liveRanking?.length ? (
+                  <div style={{ fontSize: 11.5, color: "#d9dbe3" }}>
+                    Leader : <b>{liveRanking[0]?.name}</b>
                   </div>
-                  <div
-                    style={
-                      r.score === 0
-                        ? miniRankScoreFini
-                        : miniRankScore
-                    }
-                  >
-                    {r.score === 0 ? "FINI" : r.score}
+                ) : null}
+
+                <div
+                  style={{
+                    ...miniCard,
+                    width: "100%",
+                    height: "auto",
+                    padding: 7,
+                    marginTop: 6,
+                    boxSizing: "border-box",
+                  }}
+                >
+                  <div style={miniText}>
+                    <div>
+                      Meilleure volée : <b>{bestVisit}</b>
+                    </div>
+                    <div>
+                      Moy/3D : <b>{curM3D}</b>
+                    </div>
+                    <div>
+                      Darts jouées : <b>{curDarts}</b>
+                    </div>
+                    {showThrowCounter && currentThrow.length > 0 ? (
+                      <div>
+                        Volée : <b>{currentThrow.length}/3</b>
+                      </div>
+                    ) : null}
                   </div>
                 </div>
-              ))}
+              </div>
             </div>
+
+            {/* Score + ranking */}
+            {ScorePanel}
           </div>
-        </div>
+        ) : (
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "auto minmax(0, 1fr)",
+              gap: 8,
+              alignItems: "center",
+              minWidth: 0,
+            }}
+          >
+            {/* AVATAR + STATS */}
+            <div
+              style={{
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "center",
+                gap: 5,
+              }}
+            >
+              <div
+                style={{
+                  width: 96,
+                  height: 96,
+                  borderRadius: "50%",
+                  overflow: "hidden",
+                  background: "linear-gradient(180deg,#1b1b1f,#111114)",
+                  boxShadow: "0 6px 22px rgba(0,0,0,.35)",
+                }}
+              >
+                {currentAvatar ? (
+                  <img
+                    src={currentAvatar}
+                    style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                  />
+                ) : (
+                  <div
+                    style={{
+                      width: "100%",
+                      height: "100%",
+                      display: "flex",
+                      justifyContent: "center",
+                      alignItems: "center",
+                      color: "#999",
+                      fontWeight: 700,
+                    }}
+                  >
+                    ?
+                  </div>
+                )}
+              </div>
+              <div style={{ fontWeight: 900, fontSize: 17, color: "#ffcf57" }}>
+                {currentPlayer?.name ?? "—"}
+              </div>
+              <div style={{ fontSize: 11.5, color: "#d9dbe3" }}>
+                {liveRanking?.length ? (
+                  <>
+                    Leader : <b>{liveRanking[0]?.name}</b>
+                  </>
+                ) : null}
+              </div>
+
+              {/* Mini card stats joueur actif */}
+              <div style={{ ...miniCard, width: 176, height: "auto", padding: 7 }}>
+                <div style={miniText}>
+                  <div>
+                    Meilleure volée : <b>{bestVisit}</b>
+                  </div>
+                  <div>
+                    Moy/3D : <b>{curM3D}</b>
+                  </div>
+                  <div>
+                    Darts jouées : <b>{curDarts}</b>
+                  </div>
+                  {showThrowCounter && currentThrow.length > 0 ? (
+                    <div>
+                      Volée : <b>{currentThrow.length}/3</b>
+                    </div>
+                  ) : null}
+                </div>
+              </div>
+            </div>
+
+            {/* SCORE + PASTILLES + RANKING */}
+            {ScorePanel}
+          </div>
+        )}
       </div>
     </div>
   );
@@ -4255,9 +4412,11 @@ function TeamHeaderBlock(props: {
               <div>
                 Darts jouées : <b>{curDarts}</b>
               </div>
-              <div>
-                Volée : <b>{currentThrow.length}/3</b>
-              </div>
+              {showThrowCounter && currentThrow.length > 0 ? (
+                <div>
+                  Volée : <b>{currentThrow.length}/3</b>
+                </div>
+              ) : null}
             </div>
           </div>
         </div>

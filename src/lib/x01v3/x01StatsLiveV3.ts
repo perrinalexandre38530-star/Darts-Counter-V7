@@ -105,6 +105,26 @@ export function applyVisitToLiveStatsV3(
   // On modifie en place et on renvoie (pour chainage)
   stats.visits += 1;
 
+
+  // Track per-visit score series (for sparkline + First9)
+    // Sum of dart points thrown in this visit (independent from bust/remaining score logic below)
+  const visitPoints = visit.darts.reduce((acc, d) => acc + (Number(d?.score) || 0), 0);
+  stats.scorePerVisit.push(visitPoints);
+
+  // First 9 darts average (average of first 3 visits)
+  if (stats.scorePerVisit.length >= 3 && (stats as any).first9Avg === 0) {
+    (stats as any).first9Avg = (stats.scorePerVisit[0] + stats.scorePerVisit[1] + stats.scorePerVisit[2]) / 3;
+  }
+
+  // Checkout attempt heuristic: any visit starting on a finish (<=170)
+  if (visit.startingScore <= 170 && visit.startingScore > 0) {
+    (stats as any).checkoutAttempts = ((stats as any).checkoutAttempts || 0) + 1;
+
+    // doubles attempts: number of double darts thrown during checkout-range visits
+    const dAtt = visit.darts.reduce((acc, d) => acc + (d?.multiplier === 2 && (Number(d?.score) || 0) > 0 ? 1 : 0), 0);
+    (stats as any).doublesAttempts = ((stats as any).doublesAttempts || 0) + dAtt;
+  }
+
   // Score de la volée (0 en cas de bust)
   const visitScoreRaw = visit.startingScore - visit.currentScore;
   const visitScore = wasBust ? 0 : Math.max(visitScoreRaw, 0);
@@ -128,6 +148,13 @@ export function applyVisitToLiveStatsV3(
 
   // Parcours de toutes les fléchettes tirées dans la volée
   for (const dart of visit.darts) {
+    // Keep a detail list for later KPIs
+    stats.dartsDetail.push({
+      segment: dart.segment,
+      multiplier: dart.multiplier,
+      score: dart.score,
+      isMiss: dart.score <= 0,
+    });
     stats.dartsThrown += 1;
 
     // MISS = score 0

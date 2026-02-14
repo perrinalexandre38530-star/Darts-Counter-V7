@@ -718,7 +718,7 @@ export default function HistoryPage({
     return { done: dedupe(fins), running: dedupe(inprog) };
   }, [items]);
 
-  const source = tab === "done" ? done : running;
+  const source = tab === "all" ? items : tab === "done" ? done : running;
   const filtered = source.filter((e) => inRange(e.updatedAt || e.createdAt, sub));
 
   // ✅ DEBUG: ce qui reste après filtres (tab + période + status/dedupe)
@@ -881,7 +881,7 @@ if (isKillerEntry(e)) {
       <div style={S.title}>HISTORIQUE</div>
 
       <div style={S.kpiRow}>
-        <div style={S.kpiCard(false, theme.primary)}>
+        <div style={S.kpiCard(tab === "all", theme.primary)} onClick={() => setTab("all")}>
           <div style={S.kpiLabel}>Sauvegardées</div>
           <div style={S.kpiValue}>{items.length}</div>
         </div>

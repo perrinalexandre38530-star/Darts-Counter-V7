@@ -1161,7 +1161,8 @@ export async function upsert(rec: SavedMatch): Promise<void> {
     id: String(canonicalId),
     matchId: String(canonicalId),
     kind: rec.kind || "x01",
-    status: rec.status || "finished",
+        game: (rec as any).game ?? null,
+status: rec.status || "finished",
     players: rec.players || [],
     winnerId: rec.winnerId ?? null,
     createdAt: rec.createdAt ?? now,
@@ -1169,10 +1170,63 @@ export async function upsert(rec: SavedMatch): Promise<void> {
     summary: rec.summary || null,
   };
 
+  // payload effectif (on le mutera si on ajoute des infos sets)
+  let payloadEffective = rec.payload;
+
+// ✅ DART SETS : injecte dartSetId dans safe.players si présent dans payload/config
+try {
+  const cfgPlayers: any[] =
+    (payloadEffective as any)?.config?.players ??
+    (payloadEffective as any)?.cfg?.players ??
+    (payloadEffective as any)?.players ??
+    (safe.game as any)?.players ??
+    [];
+
+  const map: Record<string, string | null> = {};
+  for (const p of Array.isArray(cfgPlayers) ? cfgPlayers : []) {
+    const key = String((p as any)?.profileId ?? (p as any)?.id ?? "");
+    if (!key) continue;
+    const ds =
+      (p as any)?.dartSetId ??
+      (p as any)?.dartsetId ??
+      (p as any)?.dartSet ??
+      null;
+    if (typeof ds === "string" && ds.trim()) map[key] = ds.trim();
+    else if (ds === null) map[key] = null;
+  }
+
+  if (Array.isArray(safe.players) && safe.players.length > 0) {
+    safe.players = safe.players.map((p: any) => {
+      const pid = String(p?.profileId ?? p?.id ?? "");
+      const ds =
+        p?.dartSetId ??
+        (pid && Object.prototype.hasOwnProperty.call(map, pid) ? map[pid] : null);
+      return { ...p, dartSetId: ds ?? null };
+    });
+  }
+} catch {}
+
+
+
   // ---------------------------------------------
   // 🎯 Cricket : calcul auto legStats
   // ---------------------------------------------
-  let payloadEffective = rec.payload;
+
+  // ✅ Conserver le "mode" de jeu pour StatsHub (multi-modes/fun/variants)
+  // rec.game est généralement un objet { mode, ... } — on le garde tel quel dans la ligne "safe"
+  // Fallback: si rec.game absent, on tente de récupérer un mode depuis payload/config
+  try {
+    if (!safe.game) {
+      const cfg: any = (payloadEffective as any)?.config ?? (payloadEffective as any)?.cfg ?? null;
+      const mode =
+        (payloadEffective as any)?.game?.mode ??
+        (payloadEffective as any)?.mode ??
+        cfg?.mode ??
+        cfg?.gameMode ??
+        null;
+      if (mode) safe.game = { mode };
+    }
+  } catch {}
 
   try {
     if (rec.kind === "cricket" && rec.payload && typeof rec.payload === "object") {
@@ -1266,8 +1320,67 @@ export async function upsert(rec: SavedMatch): Promise<void> {
   }
 
   try {
-    const payloadStr = payloadEffective ? JSON.stringify(payloadEffective) : "";
-    const payloadCompressed = payloadStr ? LZString.compressToUTF16(payloadStr) : "";
+    // ✅ IMPORTANT: ne jamais écraser un payload existant par "" si rec.payload est absent.
+    // Cas réel: certains callers font History.upsert(matchId) avec seulement summary/status,
+    // ce qui wipe config/darts et casse la reprise.
+    let prevPayloadCompressed = "";
+    let prevPayloadObj: any = null;
+
+    // ✅ Merge "reprise" : certains callers font des upserts partiels (ex: payload sans darts / sans config)
+    // et écrasent le payload complet. On conserve alors les champs critiques depuis l'ancien payload.
+    const needsMerge =
+      !!payloadEffective &&
+      (safe.kind === "x01" ||
+        (payloadEffective as any)?.variant === "x01_v3" ||
+        (payloadEffective as any)?.game === "x01") &&
+      (((payloadEffective as any)?.config ?? null) == null ||
+        !Array.isArray((payloadEffective as any)?.darts));
+
+    try {
+      if (!payloadEffective || needsMerge) {
+        prevPayloadCompressed = await withStore("readonly", async (st) => {
+          return await new Promise<string>((resolve) => {
+            const req = st.get(String(safe.id));
+            req.onsuccess = () =>
+              resolve((req.result && (req.result as any).payloadCompressed) || "");
+            req.onerror = () => resolve("");
+          });
+        });
+      }
+
+      if (needsMerge && prevPayloadCompressed) {
+        prevPayloadObj = decodePayloadCompressedBestEffort(
+          prevPayloadCompressed,
+          String(safe.id)
+        );
+
+        if (prevPayloadObj && typeof prevPayloadObj === "object") {
+          const merged: any = { ...prevPayloadObj, ...(payloadEffective as any) };
+
+          if (((payloadEffective as any)?.config ?? null) == null && (prevPayloadObj as any)?.config) {
+            merged.config = (prevPayloadObj as any).config;
+          }
+
+          if (
+            !Array.isArray((payloadEffective as any)?.darts) &&
+            Array.isArray((prevPayloadObj as any)?.darts)
+          ) {
+            merged.darts = (prevPayloadObj as any).darts;
+          }
+
+          payloadEffective = merged;
+        }
+      }
+    } catch {}
+
+    let payloadCompressed = "";
+
+    if (!payloadEffective && prevPayloadCompressed) {
+      payloadCompressed = prevPayloadCompressed;
+    } else {
+      const payloadStr = payloadEffective ? JSON.stringify(payloadEffective) : "";
+      payloadCompressed = payloadStr ? LZString.compressToUTF16(payloadStr) : "";
+    }
 
     await withStore("readwrite", async (st) => {
       // Trim MAX_ROWS
@@ -1389,9 +1502,37 @@ export async function upsert(rec: SavedMatch): Promise<void> {
     console.warn("[history.upsert] fallback localStorage (IDB indispo?):", e);
 
     try {
-      const rows: any[] = readLegacyRowsSafe();
-      const idx = rows.findIndex((r) => (r.id || r.matchId) === safe.id);
-      const trimmed = { ...safe, payload: null };
+      
+const rows: any[] = readLegacyRowsSafe();
+const idx = rows.findIndex((r) => (r.id || r.matchId) === safe.id);
+
+// ✅ IMPORTANT: même en fallback localStorage, on conserve un payload "lite"
+// pour permettre la reprise (config + darts).
+const cfgLite =
+  (payloadEffective as any)?.config ??
+  (payloadEffective as any)?.cfg ??
+  null;
+
+const dartsLiteRaw =
+  (payloadEffective as any)?.darts ??
+  (payloadEffective as any)?.throws ??
+  (payloadEffective as any)?.visits ??
+  (payloadEffective as any)?.events ??
+  null;
+
+const dartsLite = Array.isArray(dartsLiteRaw) ? dartsLiteRaw : null;
+
+const payloadLite =
+  cfgLite || dartsLite
+    ? { config: cfgLite, darts: dartsLite }
+    : null;
+
+// ✅ IMPORTANT: si un upsert arrive sans payload, on conserve l'ancien payload (sinon reprise cassée)
+const payloadLiteFinal =
+  payloadLite ??
+  (idx >= 0 ? (rows[idx] as any)?.payload ?? null : null);
+
+const trimmed = { ...safe, payload: payloadLiteFinal };
       if (idx >= 0) rows.splice(idx, 1);
       rows.unshift(trimmed);
       while (rows.length > 120) rows.pop();

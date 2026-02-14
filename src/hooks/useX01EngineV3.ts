@@ -57,6 +57,44 @@ function safeTeamPlayers(team: any): string[] {
   return [];
 }
 
+// -------------------------------------------------------------
+// Checkout outMode filter (Simple/Double/Master) — SAFE
+// -------------------------------------------------------------
+// -------------------------------------------------------------
+// outMode normalize (legacy: "single" => "simple")
+// -------------------------------------------------------------
+function normalizeOutMode(input: any): "simple" | "double" | "master" {
+  const s = String(input ?? "")
+    .toLowerCase()
+    .trim()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
+  if (s === "single" || s === "simple" || s.includes("simple")) return "simple";
+  if (s === "master" || s.includes("master")) return "master";
+  return "double";
+}
+
+function isOutValid(
+  last: { mult: 1 | 2 | 3 } | null | undefined,
+  outMode: any
+) {
+  const om = normalizeOutMode(outMode);
+  if (!last) return true;
+  if (om === "double") return last.mult === 2;
+  if (om === "master") return last.mult === 2 || last.mult === 3;
+  return true; // simple
+}
+
+function filterCheckoutSuggestions(raw: any, outMode: any) {
+  if (!Array.isArray(raw)) return raw;
+  return raw.filter((combo: any) => {
+    if (!Array.isArray(combo) || combo.length === 0) return true;
+    const last = combo[combo.length - 1];
+    return isOutValid(last, outMode);
+  });
+}
+
+
 function setScoresForPlayerOrTeam(cfg: X01ConfigV3, state: X01MatchStateV3, pid: X01PlayerId, newScore: number) {
   // SOLO/MULTI : score individuel
   if (cfg.gameMode !== "teams" || !Array.isArray((cfg as any).teams) || !(cfg as any).teams.length) {
@@ -150,11 +188,14 @@ const teamSetsWon: Record<string, number> | undefined =
 
   startNewVisitV3(state);
   if (state.visit) {
-    state.visit.checkoutSuggestion = extAdaptCheckoutSuggestion({
-      score: state.visit.currentScore,
+    state.visit.checkoutSuggestion = (() => {
+  const raw = extAdaptCheckoutSuggestion({
+score: state.visit.currentScore,
       dartsLeft: state.visit.dartsLeft,
       outMode: cfg.outMode,
-    });
+  });
+  return filterCheckoutSuggestions(raw, cfg.outMode);
+})()
   }
 
   return state;
@@ -399,11 +440,14 @@ function rebuildMatchFromHistory(
     if (!visitEnded) {
       // checkout adaptatif tant que la visite continue
       if (!result.bust && visit.dartsLeft > 0 && result.scoreAfter > 1) {
-        visit.checkoutSuggestion = extAdaptCheckoutSuggestion({
-          score: visit.currentScore,
+        visit.checkoutSuggestion = (() => {
+  const raw = extAdaptCheckoutSuggestion({
+score: visit.currentScore,
           dartsLeft: visit.dartsLeft,
           outMode: config.outMode,
-        });
+  });
+  return filterCheckoutSuggestions(raw, config.outMode);
+})()
       } else {
         visit.checkoutSuggestion = null;
       }
@@ -533,11 +577,14 @@ function rebuildMatchFromHistory(
 
     startNewVisitV3(m);
     if (m.visit) {
-      m.visit.checkoutSuggestion = extAdaptCheckoutSuggestion({
-        score: m.visit.currentScore,
+      m.visit.checkoutSuggestion = (() => {
+  const raw = extAdaptCheckoutSuggestion({
+score: m.visit.currentScore,
         dartsLeft: m.visit.dartsLeft,
         outMode: config.outMode,
-      });
+  });
+  return filterCheckoutSuggestions(raw, config.outMode);
+})()
     }
   }
 
@@ -604,10 +651,8 @@ function goToNextLeg(
 
   // -------------------------------------------------------------
   // ✅ SERVICE / ORDRE DE DÉPART (legs)
-  // - En compétition : le joueur qui ENGAGE alterne à chaque leg.
-  // - `serveMode=random` = on randomise le 1er set, puis on alterne.
-  // - `serveMode=alternate` = ordre configuré, puis on alterne.
-  // ⚠️ Sans ça, le gagnant de la leg restait actif → il ré-engageait.
+  // Alterné strict: starter dépend UNIQUEMENT de l'index de leg (set/leg),
+  // jamais du vainqueur ni de l'ordre temporaire en cours de visite.
   // -------------------------------------------------------------
   try {
     const rawMode = (config as any).serveMode;
@@ -619,22 +664,34 @@ function goToNextLeg(
       mode === "alternate" || mode === "alterne" || mode.includes("altern");
     const isRandom =
       mode === "random" || mode === "aleatoire" || mode.includes("random") || mode.includes("alea");
-    if (isRandom || isAlternate) {
-      // Rotation d'un cran sur l'ordre de tir à CHAQUE leg (incluant les legs d'un set).
-      const order = Array.isArray(prev.throwOrder) ? prev.throwOrder : playerIds;
-      if (order && order.length) {
-        const k = 1 % order.length;
-        next.throwOrder = order.slice(k).concat(order.slice(0, k));
-        next.activePlayer = next.throwOrder[0];
-      } else {
-        next.throwOrder = playerIds as any;
-        next.activePlayer = (playerIds[0] as any) || (prev as any).activePlayer;
-      }
+
+    const baseOrder: X01PlayerId[] =
+      Array.isArray((prev as any)._baseThrowOrder) && (prev as any)._baseThrowOrder.length
+        ? ((prev as any)._baseThrowOrder as X01PlayerId[])
+        : (Array.isArray(prev.throwOrder) && prev.throwOrder.length
+            ? (prev.throwOrder as X01PlayerId[])
+            : playerIds);
+
+    const n = baseOrder.length || 1;
+
+    // index global du prochain départ (0-based)
+    const nextSetIdx = (next.currentSet ?? 1) - 1;
+    const nextLegIdx = (next.currentLeg ?? 1) - 1;
+    const globalLegIndex = nextSetIdx * legsPerSet + nextLegIdx;
+
+    if (isAlternate || isRandom) {
+      const starterOffset = ((globalLegIndex % n) + n) % n;
+      next.throwOrder = baseOrder
+        .slice(starterOffset)
+        .concat(baseOrder.slice(0, starterOffset));
+      next.activePlayer = next.throwOrder[0];
+      (next as any)._baseThrowOrder = baseOrder;
     } else {
-      // fallback : garde l'ordre existant mais on repart du 1er joueur de l'ordre
+      // fallback: on garde l'ordre existant mais on repart du 1er joueur de l'ordre
       const order = Array.isArray(prev.throwOrder) ? prev.throwOrder : playerIds;
       next.throwOrder = order as any;
       next.activePlayer = (order && order.length ? order[0] : (prev as any).activePlayer) as any;
+      (next as any)._baseThrowOrder = baseOrder;
     }
   } catch {
     // ignore
@@ -643,13 +700,20 @@ function goToNextLeg(
   // Recrée une visite propre (currentScore cohérent avec next.scores)
   startNewVisitV3(next as any);
   if ((next as any).visit) {
-    (next as any).visit.checkoutSuggestion = extAdaptCheckoutSuggestion({
-      score: (next as any).visit.currentScore,
+    (next as any).visit.checkoutSuggestion = (() => {
+  const raw = extAdaptCheckoutSuggestion({
+score: (next as any).visit.currentScore,
       dartsLeft: (next as any).visit.dartsLeft,
       outMode: (config as any).outMode,
-    });
+  });
+  return filterCheckoutSuggestions(raw, (config as any).outMode);
+})()
   }
 
+
+
+  // ✅ FIX CRASH: il manquait le return → setState(undefined)
+  return next as X01MatchStateV3;
 }
 
 // -------------------------------------------------------------
@@ -685,11 +749,14 @@ function applyDartWithFlow(
   if (!visitEnded) {
     // Checkout adaptatif tant que la visite continue
     if (!result.bust && visit.dartsLeft > 0 && result.scoreAfter > 1) {
-      visit.checkoutSuggestion = extAdaptCheckoutSuggestion({
-        score: visit.currentScore,
+      visit.checkoutSuggestion = (() => {
+  const raw = extAdaptCheckoutSuggestion({
+score: visit.currentScore,
         dartsLeft: visit.dartsLeft,
         outMode: config.outMode,
-      });
+  });
+  return filterCheckoutSuggestions(raw, config.outMode);
+})()
     } else {
       visit.checkoutSuggestion = null;
     }
@@ -741,11 +808,14 @@ finalizeStatsFor(st);
     // 3) nouvelle visite propre (évite toute incohérence visit.currentScore vs state.scores)
     startNewVisitV3(m);
     if (m.visit) {
-      m.visit.checkoutSuggestion = extAdaptCheckoutSuggestion({
-        score: m.visit.currentScore,
+      m.visit.checkoutSuggestion = (() => {
+  const raw = extAdaptCheckoutSuggestion({
+score: m.visit.currentScore,
         dartsLeft: m.visit.dartsLeft,
         outMode: config.outMode,
-      });
+  });
+  return filterCheckoutSuggestions(raw, config.outMode);
+})()
     }
 
     m.status = "playing";
@@ -806,11 +876,14 @@ finalizeStatsFor(st);
 
       startNewVisitV3(m);
       if (m.visit) {
-        m.visit.checkoutSuggestion = extAdaptCheckoutSuggestion({
-          score: m.visit.currentScore,
+        m.visit.checkoutSuggestion = (() => {
+  const raw = extAdaptCheckoutSuggestion({
+score: m.visit.currentScore,
           dartsLeft: m.visit.dartsLeft,
           outMode: config.outMode,
-        });
+  });
+  return filterCheckoutSuggestions(raw, config.outMode);
+})()
       }
 
       m.status = "playing";
@@ -961,11 +1034,14 @@ finalizeStatsFor(st);
 
   startNewVisitV3(m);
   if (m.visit) {
-    m.visit.checkoutSuggestion = extAdaptCheckoutSuggestion({
-      score: m.visit.currentScore,
+    m.visit.checkoutSuggestion = (() => {
+  const raw = extAdaptCheckoutSuggestion({
+score: m.visit.currentScore,
       dartsLeft: m.visit.dartsLeft,
       outMode: config.outMode,
-    });
+  });
+  return filterCheckoutSuggestions(raw, config.outMode);
+})()
   }
 
   return { state: m, liveStats: liveMap };
@@ -1038,6 +1114,90 @@ export function useX01EngineV3({
   // Historique interne de tous les darts saisis (pour rebuildFromDarts)
   const dartsHistoryRef = React.useRef<Array<{ v: number; m: number }>>([]);
 
+  // ===========================================================
+  // ✅ AVG3 / mini-stats par LEG uniquement (delta snapshot)
+  // - liveStatsByPlayer = cumul match
+  // - liveLegStatsByPlayer = delta depuis début de la leg courante
+  // ===========================================================
+  const legBaseRef = React.useRef<Record<string, any>>({});
+  const [liveLegStatsByPlayer, setLiveLegStatsByPlayer] =
+    React.useState<Record<X01PlayerId, any>>(structuredClone(initialLive) as any);
+
+  function getTotalDarts(st: any): number {
+    if (!st) return 0;
+    if (typeof st.dartsThrown === "number") return st.dartsThrown;
+    if (typeof st.darts === "number") return st.darts;
+    return (
+      (st.hitsSingle || 0) +
+      (st.hitsDouble || 0) +
+      (st.hitsTriple || 0) +
+      (st.miss || 0)
+    );
+  }
+
+  function getTotalVisits(st: any): number {
+    if (!st) return 0;
+    if (typeof st.visits === "number") return st.visits;
+    if (Array.isArray(st.scorePerVisit)) return st.scorePerVisit.length;
+    return 0;
+  }
+
+  function getTotalScore(st: any): number {
+    if (!st) return 0;
+    return typeof st.totalScore === "number" ? st.totalScore : 0;
+  }
+
+  function snapshotLegBaseFromTotals(totals: Record<string, any>) {
+    legBaseRef.current = Object.fromEntries(
+      Object.entries(totals || {}).map(([pid, t]: any) => [
+        pid,
+        {
+          darts: getTotalDarts(t),
+          visits: getTotalVisits(t),
+          totalScore: getTotalScore(t),
+          spvLen: (t?.scorePerVisit ?? []).length,
+        },
+      ])
+    );
+  }
+
+  function computeLegStats(totals: Record<string, any>) {
+    const out: any = {};
+    for (const pid of Object.keys(totals || {})) {
+      const t = (totals as any)[pid];
+      const b = (legBaseRef.current as any)[pid] || {
+        darts: 0,
+        visits: 0,
+        totalScore: 0,
+        spvLen: 0,
+      };
+
+      const darts = Math.max(0, getTotalDarts(t) - (b.darts ?? 0));
+      const visits = Math.max(0, getTotalVisits(t) - (b.visits ?? 0));
+      const points = Math.max(0, getTotalScore(t) - (b.totalScore ?? 0));
+
+      out[pid] = {
+        ...t,
+        dartsThrown: darts,
+        visits,
+        totalScore: points,
+        avg3: visits > 0 ? points / visits : 0, // par volée
+        bestVisit: Math.max(0, ...(t?.scorePerVisit ?? []).slice(b.spvLen)),
+      };
+    }
+    return out;
+  }
+
+  // Snapshot initial (début match)
+  React.useEffect(() => {
+    snapshotLegBaseFromTotals(liveStatsByPlayerRef.current as any);
+    setLiveLegStatsByPlayer(
+      computeLegStats(liveStatsByPlayerRef.current as any)
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+
   // -----------------------------------------------------------
   // rebuildFromDarts : reconstruit le match depuis une liste
   // de X01DartInputV3 (pour l'UI qui garde son propre historique)
@@ -1062,6 +1222,7 @@ export function useX01EngineV3({
 
       setState(newState);
       setLiveStatsByPlayer(newLiveStats);
+      setLiveLegStatsByPlayer(computeLegStats(newLiveStats as any));
       liveStatsByPlayerRef.current = newLiveStats;
     },
     [config, state.matchId]
@@ -1097,6 +1258,7 @@ export function useX01EngineV3({
 
       // Puis commit React state
       setLiveStatsByPlayer(nextLive);
+      setLiveLegStatsByPlayer(computeLegStats(nextLive as any));
       setState(nextState);
     },
     [config]
@@ -1123,6 +1285,7 @@ export function useX01EngineV3({
     liveStatsByPlayerRef.current = newLiveStats;
 
     setLiveStatsByPlayer(newLiveStats);
+      setLiveLegStatsByPlayer(computeLegStats(newLiveStats as any));
     setState(newState);
   }, [config]);
 
@@ -1131,11 +1294,16 @@ export function useX01EngineV3({
   // -----------------------------------------------------------
 
   const startNextLeg = React.useCallback(() => {
+    // ✅ snapshot début de leg (pour avg/mini-stats leg-only)
+    snapshotLegBaseFromTotals(liveStatsByPlayerRef.current as any);
+
     // nouvelle manche = reset de la manche + reset UNDO / historique
     setState((prev) => goToNextLeg(prev, config));
     setLiveStatsByPlayer((prev) => {
       const clone = structuredClone(prev);
       liveStatsByPlayerRef.current = clone;
+      // ✅ la leg repart à 0 après snapshot
+      setLiveLegStatsByPlayer(computeLegStats(clone as any));
       return clone;
     });
     dartsHistoryRef.current = [];
@@ -1196,6 +1364,7 @@ export function useX01EngineV3({
   return {
     state,
     liveStatsByPlayer,
+    liveLegStatsByPlayer,
     activePlayerId: state.activePlayer,
     scores: state.scores,
     status: state.status,

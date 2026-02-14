@@ -2568,26 +2568,12 @@ case "babyfoot_team_edit":
         break;
 
       case "x01_play_v3": {
-        if (!x01ConfigV3) {
-          page = (
-            <div style={{ padding: 16 }}>
-              <button onClick={() => go("x01_config_v3")}>← Retour</button>
-              <p>Configuration X01 V3 manquante.</p>
-            </div>
-          );
-          break;
-        }
-
-        const freshToken = routeParams?.fresh ?? Date.now();
-        const key = `x01v3-${freshToken}`;
-
         page = (
-          <X01PlayV3
-            key={key}
-            config={x01ConfigV3}
-            onExit={() => go("x01_config_v3")}
-            onReplayNewConfig={() => go("x01_config_v3")}
-            onShowSummary={(matchId: string) => go("statsDetail", { matchId, showEnd: true })}
+          <X01PlayV3Route
+            x01ConfigV3={x01ConfigV3}
+            setX01ConfigV3={setX01ConfigV3}
+            go={go}
+            routeParams={routeParams}
           />
         );
         break;
@@ -3132,6 +3118,171 @@ function AppGate({ go, tab, children }: { go: (t: any, p?: any) => void; tab: an
 }
 
 /* ---------- ROOT PROVIDERS ---------- */
+
+// =====================================================
+// X01 V3 — Route de reprise depuis Historique
+// - Autorise /x01_play_v3 même si x01ConfigV3 absent
+// - Charge History.get(resumeId) => payload.config + payload.darts
+// - Passe resume à X01PlayV3 pour replay et reprise des scores
+// =====================================================
+function X01PlayV3Route({
+  x01ConfigV3,
+  setX01ConfigV3,
+  go,
+  routeParams,
+}: {
+  x01ConfigV3: any;
+  setX01ConfigV3: (cfg: any) => void;
+  go: (name: any, params?: any) => void;
+  routeParams: any;
+}) {
+  const resumeId = routeParams?.resumeId ? String(routeParams.resumeId) : null;
+  const [loading, setLoading] = React.useState<boolean>(!!resumeId);
+  const [resume, setResume] = React.useState<any | null>(null);
+  const [error, setError] = React.useState<string | null>(null);
+
+  React.useEffect(() => {
+    let cancelled = false;
+    if (!resumeId) return;
+
+    (async () => {
+      try {
+        setLoading(true);
+        setError(null);
+
+        const rec: any = await History.get(resumeId);
+        if (cancelled) return;
+
+        const payload = rec?.payload ?? rec?.payloadDecoded ?? rec?.data ?? null;
+
+        // ✅ config
+        const cfg =
+          payload?.config ??
+          payload?.cfg ??
+          payload?.x01ConfigV3 ??
+          payload?.x01Config ??
+          null;
+
+        // ✅ darts replay
+        const darts =
+          payload?.darts ??
+          payload?.replayDarts ??
+          payload?.inputs ??
+          payload?.throws ??
+          null;
+
+        if (!cfg) {
+          setError(
+            "Cette partie a été sauvegardée avec une ancienne version (configuration absente). Impossible de reprendre."
+          );
+          setResume(null);
+          setLoading(false);
+          return;
+        }
+
+        if (!Array.isArray(darts)) {
+          setError(
+            "Cette partie a été sauvegardée avec une ancienne version (données de lancers absentes). Impossible de reprendre."
+          );
+          setResume(null);
+          setLoading(false);
+          return;
+        }
+
+        // Injecte la config dans l'état App (utile pour cohérence globale)
+        setX01ConfigV3(cfg);
+
+        setResume({
+          resumeId,
+          darts,
+        });
+
+        setLoading(false);
+      } catch (e) {
+        console.warn("[X01PlayV3Route] resume load failed", e);
+        if (cancelled) return;
+        setError("Impossible de charger cette partie. (Erreur lecture historique)");
+        setLoading(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [resumeId]);
+
+  // Mode "nouvelle partie" (via config page)
+  if (!resumeId) {
+    if (!x01ConfigV3) {
+      return (
+        <div style={{ padding: 16 }}>
+          <button onClick={() => go("x01_config_v3")}>← Retour</button>
+          <p>Configuration X01 V3 manquante.</p>
+        </div>
+      );
+    }
+
+    const freshToken = routeParams?.fresh ?? Date.now();
+    const key = `x01v3-${freshToken}`;
+
+    return (
+      <X01PlayV3
+        key={key}
+        config={x01ConfigV3}
+        onExit={() => go("x01_config_v3")}
+        onReplayNewConfig={() => go("x01_config_v3")}
+        onShowSummary={(matchId: string) =>
+          go("statsDetail", { matchId, showEnd: true })
+        }
+      />
+    );
+  }
+
+  // Mode reprise
+  if (loading) {
+    return (
+      <div style={{ padding: 16 }}>
+        <button onClick={() => go("history")}>← Retour</button>
+        <p>Chargement de la partie…</p>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div style={{ padding: 16 }}>
+        <button onClick={() => go("history")}>← Retour</button>
+        <p>{error}</p>
+      </div>
+    );
+  }
+
+  const cfgToUse = x01ConfigV3 || (resume as any)?.config;
+  if (!cfgToUse) {
+    return (
+      <div style={{ padding: 16 }}>
+        <button onClick={() => go("history")}>← Retour</button>
+        <p>Configuration X01 V3 manquante.</p>
+      </div>
+    );
+  }
+
+  const key = `x01v3-resume-${resumeId}-${routeParams?.fresh ?? "0"}`;
+
+  return (
+    <X01PlayV3
+      key={key}
+      config={cfgToUse}
+      resume={resume}
+      onExit={() => go("history")}
+      onReplayNewConfig={() => go("x01_config_v3")}
+      onShowSummary={(matchId: string) =>
+        go("statsDetail", { matchId, showEnd: true })
+      }
+    />
+  );
+}
+
 export default function AppRoot() {
   return (
     <ThemeProvider>

@@ -4,6 +4,7 @@
 // (rangée "Flèche 1 / 2 / 3" supprimée pour gagner de la place)
 // ✅ FIX: le "+0pts" (aperçu total) est masqué quand hidePreview=true (Shanghai)
 // ✅ NEW: hideTotal + centerSlot (pour KILLER: masquer total volée / afficher logo au centre)
+// ✅ SAFE-AREA: padding bas pour éviter le keypad coupé en bas sur mobile
 // ============================================
 import React from "react";
 import type { Dart as UIDart } from "../lib/types";
@@ -19,7 +20,7 @@ type Props = {
   onDouble: () => void; // active D
   onTriple: () => void; // active T
   onBackspace?: () => void; // supprime la dernière entrée locale (utilisé sur clic droit ANNULER)
-  onCancel: () => void; // logique "Annuler" déléguée au parent (X01V3 : efface dernier hit ou UNDO global)
+  onCancel: () => void; // logique "Annuler" déléguée au parent
   onNumber: (n: number) => void; // 0..20 (0 = MISS)
   onBull: () => void; // OB/DBULL (25/50)
   onValidate: () => void; // bouton Valider
@@ -27,11 +28,14 @@ type Props = {
   /** Masquer les 3 badges d’aperçu (si affichés ailleurs) */
   hidePreview?: boolean;
 
-  /** ✅ NEW: masquer le total (centre entre BULL & VALIDER) */
+  /** Masquer le total (centre entre BULL & VALIDER) */
   hideTotal?: boolean;
 
-  /** ✅ NEW: remplace le centre (ex: logo Killer). Prioritaire sur hideTotal */
+  /** Remplace le centre (ex: logo Killer). Prioritaire sur hideTotal */
   centerSlot?: React.ReactNode;
+
+  /** Ajoute un padding bas safe-area (par défaut: true) */
+  safeBottomPad?: boolean;
 };
 
 /* ---------- Helpers ---------- */
@@ -56,13 +60,9 @@ const wrapCard: React.CSSProperties = {
     "linear-gradient(180deg, rgba(22,22,23,.85), rgba(12,12,14,.95))",
   border: "1px solid rgba(255,255,255,.08)",
   borderRadius: 18,
-  padding: 14, // padding un poil réduit car la barre flèches est supprimée
+  padding: 14,
   boxShadow: "0 10px 30px rgba(0,0,0,.35)",
   userSelect: "none",
-  // Important: allow the keypad to be constrained by its parent without cutting the footer.
-  display: "flex",
-  flexDirection: "column",
-  minHeight: 0,
 };
 
 const btnBase: React.CSSProperties = {
@@ -75,10 +75,6 @@ const btnBase: React.CSSProperties = {
   cursor: "pointer",
 };
 
-const btnGhost: React.CSSProperties = {
-  ...btnBase,
-  background: "rgba(255,255,255,.06)",
-};
 const btnDouble: React.CSSProperties = {
   ...btnBase,
   background: "rgba(46,150,193,.2)",
@@ -96,7 +92,7 @@ const btnGold: React.CSSProperties = {
   border: "1px solid rgba(255,180,0,.3)",
   boxShadow: "0 10px 22px rgba(255,170,0,.28)",
 };
-const btnCancel: React.CSSProperties = btnGold; // ANNULER en or comme VALIDER
+const btnCancel: React.CSSProperties = btnGold;
 const btnBull: React.CSSProperties = {
   ...btnBase,
   background: "rgba(22,92,66,.35)",
@@ -114,7 +110,6 @@ const chip: React.CSSProperties = {
   border: "1px solid rgba(255,255,255,.08)",
   fontWeight: 800,
   letterSpacing: 0.5,
-  marginRight: 12,
   color: "#e9d7ff",
   boxShadow: "0 0 22px rgba(250,213,75,.25)",
 };
@@ -131,16 +126,6 @@ const totalPill: React.CSSProperties = {
   fontSize: 22,
 };
 
-const ptsHint: React.CSSProperties = {
-  marginTop: 8,
-  textAlign: "center",
-  fontSize: 12,
-  fontWeight: 900,
-  color: "rgba(255,255,255,.55)",
-  letterSpacing: 0.2,
-};
-
-/* ---------- Composant ---------- */
 export default function Keypad({
   currentThrow: _currentThrow,
   multiplier,
@@ -155,9 +140,10 @@ export default function Keypad({
   hidePreview = false,
   hideTotal = false,
   centerSlot = null,
+  safeBottomPad = true,
 }: Props) {
-  // Defensive: some screens may briefly pass undefined during transitions.
   const currentThrow = Array.isArray(_currentThrow) ? _currentThrow : [];
+  const total = throwTotal(currentThrow);
 
   const rows = [
     [0, 1, 2, 3, 4, 5, 6],
@@ -165,11 +151,19 @@ export default function Keypad({
     [14, 15, 16, 17, 18, 19, 20],
   ];
 
-  const total = throwTotal(currentThrow);
-
   return (
-    <div style={wrapCard}>
-      {/* Badges de volée — AU DESSUS du keypad (comme X01/Golf) */}
+    <div
+      style={{
+        ...wrapCard,
+        width: "100%",
+        maxWidth: 980,
+        margin: "0 auto",
+        paddingBottom: safeBottomPad
+          ? "calc(14px + var(--safe-bottom))"
+          : wrapCard.padding,
+      }}
+    >
+      {/* Badges de volée */}
       {!hidePreview && (
         <div
           style={{
@@ -181,13 +175,11 @@ export default function Keypad({
             width: "100%",
           }}
         >
-          <span style={{ ...chip, marginRight: 0, color: "#eec7ff" }}>{fmt(currentThrow[0])}</span>
-          <span style={{ ...chip, marginRight: 0, color: "#cfe6ff" }}>{fmt(currentThrow[1])}</span>
-          <span style={{ ...chip, marginRight: 0, color: "#ffe7c0" }}>{fmt(currentThrow[2])}</span>
+          <span style={{ ...chip, color: "#eec7ff" }}>{fmt(currentThrow[0])}</span>
+          <span style={{ ...chip, color: "#cfe6ff" }}>{fmt(currentThrow[1])}</span>
+          <span style={{ ...chip, color: "#ffe7c0" }}>{fmt(currentThrow[2])}</span>
         </div>
       )}
-
-      {/* (Barre Flèche 1/2/3 supprimée) */}
 
       {/* DOUBLE / TRIPLE / ANNULER */}
       <div
@@ -196,7 +188,6 @@ export default function Keypad({
           gridTemplateColumns: "1fr 1fr 1fr",
           gap: 12,
           marginBottom: 12,
-          flex: "0 0 auto",
         }}
       >
         <button
@@ -234,51 +225,38 @@ export default function Keypad({
           onContextMenu={(e) => {
             e.preventDefault();
             onBackspace?.();
-          }} // clic droit = supprimer la dernière entrée locale
-          title="Annuler (logique gérée par l'écran X01) — clic droit : annuler la dernière entrée"
+          }}
+          title="Annuler (clic droit : supprimer la dernière entrée locale)"
           aria-label="Annuler"
         >
           ANNULER
         </button>
       </div>
 
-      {/* Zone centrale scrollable si petit écran: la grille se tasse mais le footer reste visible */}
-      <div
-        style={{
-          flex: 1,
-          minHeight: 0,
-          overflow: "auto",
-          paddingRight: 2,
-          display: "flex",
-          flexDirection: "column",
-          gap: 10,
-        }}
-      >
-        {/* Grille chiffres */}
-        <div style={{ display: "grid", gap: 10 }}>
-          {rows.map((row, idx) => (
-            <div
-              key={idx}
-              style={{
-                display: "grid",
-                gridTemplateColumns: "repeat(7, 1fr)",
-                gap: 10,
-              }}
-            >
-              {row.map((n) => (
-                <button
-                  key={n}
-                  type="button"
-                  style={cell}
-                  onClick={() => onNumber(n)}
-                  title={n === 0 ? "MISS" : String(n)}
-                >
-                  {n}
-                </button>
-              ))}
-            </div>
-          ))}
-        </div>
+      {/* Grille chiffres (pas de conteneur scrollable => ne peut pas “disparaître”) */}
+      <div style={{ display: "grid", gap: 10 }}>
+        {rows.map((row, idx) => (
+          <div
+            key={idx}
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(7, minmax(0, 1fr))",
+              gap: 10,
+            }}
+          >
+            {row.map((n) => (
+              <button
+                key={n}
+                type="button"
+                style={cell}
+                onClick={() => onNumber(n)}
+                title={n === 0 ? "MISS" : String(n)}
+              >
+                {n}
+              </button>
+            ))}
+          </div>
+        ))}
       </div>
 
       {/* BULL + (TOTAL ou SLOT) CENTRÉ + VALIDER */}
@@ -289,10 +267,8 @@ export default function Keypad({
           alignItems: "center",
           gap: 12,
           marginTop: 14,
-          flex: "0 0 auto",
         }}
       >
-        {/* Colonne gauche : BULL aligné à gauche */}
         <div style={{ display: "flex" }}>
           <button
             type="button"
@@ -303,10 +279,7 @@ export default function Keypad({
           </button>
         </div>
 
-        {/* ✅ Colonne centrale : slot (prioritaire) / sinon total / sinon vide */}
         <div
-          className="keypad-center"
-          data-keypad-center
           style={{
             display: "flex",
             justifyContent: "center",
@@ -320,13 +293,10 @@ export default function Keypad({
               {centerSlot}
             </div>
           ) : hideTotal ? null : (
-            <span className="keypad-total" data-keypad-total style={totalPill}>
-              {total}
-            </span>
+            <span style={totalPill}>{total}</span>
           )}
         </div>
 
-        {/* Colonne droite : VALIDER aligné à droite */}
         <div style={{ display: "flex", justifyContent: "flex-end" }}>
           <button
             type="button"
@@ -337,11 +307,6 @@ export default function Keypad({
           </button>
         </div>
       </div>
-
-      {/* NOTE: le "+0pts" (aperçu total) a été retiré pour un rendu plus clean
-         et éviter la redondance (les jeux gèrent leur UI de volée). */}
-
-      {/* NOTE: le badge volée a été déplacé en haut pour éviter qu'il passe sous le keypad */}
     </div>
   );
 }

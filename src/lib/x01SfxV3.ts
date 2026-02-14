@@ -577,3 +577,13 @@ export function announceEndGame(
     lang: options?.lang,
   });
 }
+
+
+// ✅ Reuse the X01 victory jingle in other games (e.g. Golf)
+export function playX01VictorySfx(volume: number = 0.9) {
+  try {
+    x01PlaySfxV3("victory", volume);
+  } catch {
+    // ignore
+  }
+}

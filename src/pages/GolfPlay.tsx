@@ -1079,15 +1079,6 @@ const teamIndexByKey = useMemo(() => {
   const [showScoresModal, setShowScoresModal] = useState(false);
   // ✅ Fin de match: tableau récapitulatif (modal)
   const [showEndMatchModal, setShowEndMatchModal] = useState(false);
-  const endMatchModalOnceRef = useRef(false);
-
-  // ✅ À la fin du match : ouvrir automatiquement le tableau de fin (comme X01)
-  useEffect(() => {
-    if (!isFinished) return;
-    if (endMatchModalOnceRef.current) return;
-    endMatchModalOnceRef.current = true;
-    setShowEndMatchModal(true);
-  }, [isFinished]);
   const scoreTickerPoolRef = useRef<string[]>([]);
   const [scoreCardTickerSrc, setScoreCardTickerSrc] = useState<string>(() => {
     scoreTickerPoolRef.current = shuffle(GOLF_TICKERS);
@@ -1216,8 +1207,8 @@ const teamIndexByKey = useMemo(() => {
   }
 
   
-  function buildRankingTts(kind: "intermediate" | "final") {
-    const top = ranking.slice(0, 3).map((r) => safeStr(r.name)).filter(Boolean);
+  function buildRankingTts(kind: "intermediate" | "final", rankArr: any[]) {
+    const top = (rankArr || []).slice(0, 3).map((r) => safeStr(r.name)).filter(Boolean);
     if (top.length === 0) return "";
     const a = top[0] ?? "";
     const b = top[1] ?? "";
@@ -1549,7 +1540,7 @@ const activeStats =
       // ✅ TTS classement intermédiaire (format strict), après la phrase "à toi de jouer"
       try {
         if (ttsRankTimerRef.current) window.clearTimeout(ttsRankTimerRef.current);
-        const msgRank = buildRankingTts("intermediate");
+        const msgRank = buildRankingTts("intermediate", ranking);
         if (msgRank) {
           ttsRankTimerRef.current = window.setTimeout(() => speak(msgRank, { lang: ttsLang }), 5200);
         }
@@ -1563,7 +1554,7 @@ const activeStats =
       // ✅ TTS classement final (format strict) — après SFX/ticker
       try {
         if (ttsRankTimerRef.current) window.clearTimeout(ttsRankTimerRef.current);
-        const msgFinal = buildRankingTts("final");
+        const msgFinal = buildRankingTts("final", ranking);
         if (msgFinal) {
           ttsRankTimerRef.current = window.setTimeout(() => speak(msgFinal, { lang: ttsLang }), Math.max(TTS_AFTER_AUDIO_MS, audioBusyUntilRef.current - Date.now() + 80));
         }
@@ -1683,7 +1674,7 @@ const activeStats =
     // ✅ TTS classement final (format strict) — après SFX/ticker
     try {
       if (ttsRankTimerRef.current) window.clearTimeout(ttsRankTimerRef.current);
-      const msgFinal = buildRankingTts("final");
+      const msgFinal = buildRankingTts("final", ranking);
       if (msgFinal) {
         ttsRankTimerRef.current = window.setTimeout(() => speak(msgFinal, { lang: ttsLang }), Math.max(TTS_AFTER_AUDIO_MS, audioBusyUntilRef.current - Date.now() + 80));
       }
@@ -2712,174 +2703,38 @@ const throwChips = [0, 1, 2].map((i) => {
         )}
 
         {isFinished && (
-          <div
-            style={{
-              ...cardBase,
-              padding: 14,
-              marginTop: 12,
-              background:
-                "radial-gradient(120% 140% at 0% 0%, rgba(255,195,26,.10), transparent 55%), linear-gradient(180deg, rgba(0,0,0,0.38), rgba(0,0,0,0.18))",
-            }}
-          >
+          <div style={{ ...cardBase, padding: 14, marginTop: 12 }}>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
-              <div style={{ fontWeight: 1000, fontSize: 16, color: "#ffd36a", letterSpacing: 0.6, textTransform: "uppercase" }}>
-                Résultats du match
-              </div>
+              <div style={{ fontWeight: 1000, fontSize: 16, color: "#ffd36a" }}>Partie terminée</div>
 
-              <div style={{ display: "inline-flex", gap: 10 }}>
-                <button
-                  type="button"
-                  onClick={() => setShowEndMatchModal(true)}
-                  style={{
-                    height: 34,
-                    padding: "0 12px",
-                    borderRadius: 12,
-                    border: "1px solid rgba(120,255,220,.22)",
-                    background: "rgba(0,0,0,0.28)",
-                    color: "#b9ffe9",
-                    fontWeight: 1000,
-                    letterSpacing: 0.6,
-                    cursor: "pointer",
-                    textTransform: "uppercase",
-                  }}
-                >
-                  Résultats
-                </button>
-
-                <button
-                  type="button"
-                  onClick={goBack}
-                  style={{
-                    height: 34,
-                    padding: "0 12px",
-                    borderRadius: 12,
-                    border: "1px solid rgba(255,255,255,0.14)",
-                    background: "rgba(0,0,0,0.22)",
-                    color: "rgba(255,255,255,0.82)",
-                    fontWeight: 1000,
-                    cursor: "pointer",
-                    textTransform: "uppercase",
-                  }}
-                >
-                  Rejouer
-                </button>
-              </div>
+              <button
+                type="button"
+                onClick={() => setShowEndMatchModal(true)}
+                style={{
+                  height: 36,
+                  padding: "0 12px",
+                  borderRadius: 14,
+                  border: "1px solid rgba(120,255,220,0.22)",
+                  background: "linear-gradient(180deg, rgba(120,255,220,0.18), rgba(0,0,0,0.20))",
+                  color: "#b9ffe9",
+                  fontWeight: 1000,
+                  letterSpacing: 0.6,
+                  cursor: "pointer",
+                  boxShadow: "0 10px 22px rgba(0,0,0,.35)",
+                  textTransform: "uppercase",
+                }}
+              >
+                Résultats
+              </button>
             </div>
 
-            <div style={{ marginTop: 10 }}>
+            <div style={{ marginTop: 8 }}>
               {ranking[0] ? (
                 <div style={{ fontWeight: 1000, color: "rgba(255,255,255,0.92)" }}>
                   Vainqueur : {ranking[0].name} — {ranking[0].total}
                 </div>
               ) : null}
             </div>
-
-            {/* Mini classement (top 3) */}
-            <div style={{ marginTop: 10, ...cardBase, padding: 10, borderRadius: 16 }}>
-              <div style={{ fontWeight: 1000, marginBottom: 8, color: "rgba(255,255,255,.92)", letterSpacing: 0.4 }}>
-                CLASSEMENT FINAL
-              </div>
-
-              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                {ranking.slice(0, 3).map((r: any, i: number) => (
-                  <div
-                    key={r.id}
-                    style={{
-                      display: "grid",
-                      gridTemplateColumns: "auto 1fr auto",
-                      alignItems: "center",
-                      gap: 10,
-                      padding: "8px 10px",
-                      borderRadius: 14,
-                      border: i === 0 ? "1px solid rgba(255,195,26,.30)" : "1px solid rgba(255,255,255,0.10)",
-                      background: i === 0 ? "rgba(255,195,26,.10)" : "rgba(0,0,0,0.20)",
-                    }}
-                  >
-                    <div
-                      style={{
-                        width: 22,
-                        height: 22,
-                        borderRadius: 999,
-                        display: "grid",
-                        placeItems: "center",
-                        background: i === 0 ? "rgba(255,195,26,.22)" : "rgba(255,255,255,0.10)",
-                        color: i === 0 ? "#ffd36a" : "rgba(255,255,255,0.75)",
-                        fontWeight: 1000,
-                        fontSize: 12,
-                      }}
-                    >
-                      {i + 1}
-                    </div>
-
-                    <div style={{ display: "inline-flex", alignItems: "center", minWidth: 0, overflow: "hidden", gap: 8 }}>
-                      <span style={{ ...tinyAvatar, width: 20, height: 20 }}>
-                        {r.avatar ? <img src={r.avatar} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : null}
-                      </span>
-                      <span style={{ fontWeight: 1000, opacity: 0.92, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                        {r.name}
-                      </span>
-                    </div>
-
-                    <div
-                      style={{
-                        minWidth: 54,
-                        height: 26,
-                        padding: "0 10px",
-                        display: "inline-flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        borderRadius: 12,
-                        border: "1px solid rgba(255,195,26,.35)",
-                        background: "rgba(255,195,26,.10)",
-                        color: "#ffcf57",
-                        fontWeight: 1000,
-                        letterSpacing: 0.2,
-                      }}
-                    >
-                      {r.total}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* Tableau trous (visible directement à la fin du match, comme X01) */}
-            {holes <= 9 ? (
-              <div style={{ marginTop: 10 }}>
-                <HolesTableBlock start={1} end={holes} title={`Trous 1–${holes}`} />
-              </div>
-            ) : (
-              <div style={{ marginTop: 10 }}>
-                <HolesTableBlock start={1} end={9} title="Trous 1–9" />
-                <HolesTableBlock start={10} end={holes} title={`Trous 10–${holes}`} />
-              </div>
-            )}
-
-            {roundsMode && (
-              <div style={{ marginTop: 10, ...cardBase, padding: 10, borderRadius: 16 }}>
-                <div style={{ fontWeight: 1000, marginBottom: 8, color: "rgba(255,255,255,.92)" }}>
-                  ROUNDS
-                </div>
-                <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                  {roster.map((p, idx) => (
-                    <div key={p.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
-                      <div style={{ display: "inline-flex", alignItems: "center", minWidth: 0, overflow: "hidden" }}>
-                        <span style={{ ...tinyAvatar, width: 20, height: 20 }}>
-                          {p.avatar ? <img src={p.avatar} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : null}
-                        </span>
-                        <span style={{ fontWeight: 900, opacity: 0.92, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                          {p.name}
-                        </span>
-                      </div>
-                      <span style={{ minWidth: 46, textAlign: "center", padding: "4px 10px", borderRadius: 12, border: "1px solid rgba(255,255,255,0.14)", background: "rgba(0,0,0,0.28)", fontWeight: 1000 }}>
-                        {statsByPlayer[idx]?.turns ?? 0}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
 
             {showEndMatchModal && (
               <div

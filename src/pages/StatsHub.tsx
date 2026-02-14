@@ -283,6 +283,7 @@ type PlayerLite = {
   id: string;
   name?: string;
   avatarDataUrl?: string | null;
+  dartSetId?: string | null;
 };
 
 type SavedMatch = {
@@ -346,33 +347,16 @@ function normalizeRecordPlayers(
   rec: SavedMatch,
   storeProfiles: PlayerLite[]
 ): SavedMatch {
-  // On part d’abord des players du record, sinon fallback sur payload.players
-  const basePlayers: PlayerLite[] =
-    (Array.isArray(rec.players) && rec.players.length
-      ? rec.players
-      : toArr<PlayerLite>(rec.payload?.players)) ?? [];
-
-  const withAvatars = basePlayers.map((p) => {
-    const prof = storeProfiles.find((sp) => sp.id === p?.id);
-    return {
-      id: p?.id,
-      name: p?.name ?? prof?.name ?? "",
-      avatarDataUrl: p?.avatarDataUrl ?? prof?.avatarDataUrl ?? null,
-    };
-  });
-
-  // 🔹 PATCH X01 V3 :
-  // si le match vient du moteur V3 (mode/variant = "x01v3"),
-  // on force game = "x01" pour que tous les filtres X01 le récupèrent proprement
-  const isX01V3 =
-    rec.variant === "x01v3" || rec.mode === "x01v3";
-
-  const game: string | undefined =
-    rec.game ?? (isX01V3 ? "x01" : rec.game);
+  // ⚠️ Ne pas muter/écraser rec.game (objet dans le nouveau schéma).
+  // On normalise uniquement les players et on laisse la détection du mode à getGameMode().
+  const players = Array.isArray((rec as any)?.players) ? (rec as any).players : [];
+  const withAvatars = players.map((p: any) => ({
+    ...p,
+    avatar: p.avatar ?? p.avatarDataUrl ?? (p.profile?.avatarDataUrl ?? null),
+  }));
 
   return {
     ...rec,
-    game,
     players: withAvatars,
     payload: {
       ...(rec.payload ?? {}),
@@ -380,6 +364,7 @@ function normalizeRecordPlayers(
     },
   };
 }
+
 
 /* ========== TRAINING X01 : SESSIONS LOCALSTORAGE ========== */
 
@@ -678,9 +663,32 @@ function useStoreHistory(): SavedMatch[] {
 /* ---------- Compte les "sessions" par mode pour un joueur ---------- */
 type SessionsByMode = Record<string, number>;
 
+
+function getGameMode(rec: any): string {
+  // Normalise toutes les sources possibles, sans casser les anciens records
+  try {
+    const g = rec?.game;
+    if (g && typeof g === "object") {
+      const m = g.mode ?? g.gameMode ?? g.variant ?? null;
+      if (typeof m === "string" && m.trim()) return m.trim();
+    }
+    if (typeof rec?.game === "string" && rec.game.trim()) return rec.game.trim();
+    if (typeof rec?.mode === "string" && rec.mode.trim()) return rec.mode.trim();
+    if (typeof rec?.variant === "string" && rec.variant.trim()) return rec.variant.trim();
+
+    const cfg = rec?.payload?.config ?? rec?.payload?.cfg ?? null;
+    const m2 = cfg?.mode ?? cfg?.gameMode ?? rec?.payload?.mode ?? null;
+    if (typeof m2 === "string" && m2.trim()) return m2.trim();
+
+    const isX01V3 = rec?.variant === "x01v3" || rec?.mode === "x01v3";
+    if (isX01V3) return "x01";
+  } catch {}
+  return "";
+}
+
 function classifyRecordMode(rec: SavedMatch): string {
   const kind = String(rec.kind ?? "").toLowerCase();
-  const game = String(rec.game ?? "").toLowerCase();
+  const game = String(getGameMode(rec) ?? "").toLowerCase();
   const mode = String(rec.mode ?? "").toLowerCase();
   const variant = String(rec.variant ?? "").toLowerCase();
 
