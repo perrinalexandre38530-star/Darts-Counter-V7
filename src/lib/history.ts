@@ -58,11 +58,6 @@ export type SavedMatch = {
   // Payload complet (gros) — compressé en base
   payload?: any;
 
-  // ✅ RESUME payload minimal (anti-corruption / anti-compress)
-  // - Permet de reprendre même si payloadCompressed est vide/corrompu.
-  // - Doit rester petit (config + state + dartsLite)
-  resume?: any;
-
   // champs libres tolérés (meta, state, etc.)
   [k: string]: any;
 };
@@ -316,6 +311,23 @@ function safeJsonParse(raw: any, ctx?: { id?: string; stage?: string }) {
       return null;
     }
   }
+}
+
+// ✅ PATCH: stringify robuste (évite de perdre la sauvegarde si un champ n'est pas sérialisable)
+// - supprime les fonctions
+// - convertit BigInt -> Number
+// - coupe les références circulaires
+function safeJsonStringify(value: any): string {
+  const seen = new WeakSet<object>();
+  return JSON.stringify(value, (_k, v) => {
+    if (typeof v === "function") return undefined;
+    if (typeof v === "bigint") return Number(v);
+    if (v && typeof v === "object") {
+      if (seen.has(v as object)) return undefined;
+      seen.add(v as object);
+    }
+    return v;
+  });
 }
 
 function asArray(v: any): any[] {
@@ -953,7 +965,7 @@ async function migrateFromLocalStorageOnce() {
     await withStore("readwrite", async (st) => {
       for (const r of rows) {
         const rec: any = { ...r };
-        const payloadStr = rec.payload ? JSON.stringify(rec.payload) : "";
+        const payloadStr = rec.payload ? safeJsonStringify(rec.payload) : "";
         const payloadCompressed = payloadStr
           ? LZString.compressToUTF16(payloadStr)
           : "";
@@ -1378,40 +1390,12 @@ try {
       }
     } catch {}
 
-
-    // ✅ Résumé minimal pour la reprise (anti-corruption / anti-compress)
-    // On stocke aussi une version "lite" non compressée pour garantir la reprise.
-    try {
-      const basePayload =
-        payloadEffective ||
-        (prevPayloadCompressed ? decodePayloadCompressedBestEffort(prevPayloadCompressed) : null);
-
-      if (basePayload && typeof basePayload === "object") {
-        const cfgLite = (basePayload as any).config ?? null;
-        const stateLite = (basePayload as any).state ?? null;
-        const dartsLite = Array.isArray((basePayload as any).darts)
-          ? (basePayload as any).darts.slice(-90)
-          : null;
-
-        const resume: any = {};
-        if (cfgLite) resume.config = cfgLite;
-        if (stateLite) resume.state = stateLite;
-        if (dartsLite) resume.darts = dartsLite;
-
-        (safe as any).resume = Object.keys(resume).length ? resume : null;
-      } else {
-        (safe as any).resume = null;
-      }
-    } catch {
-      (safe as any).resume = null;
-    }
-
     let payloadCompressed = "";
 
     if (!payloadEffective && prevPayloadCompressed) {
       payloadCompressed = prevPayloadCompressed;
     } else {
-      const payloadStr = payloadEffective ? JSON.stringify(payloadEffective) : "";
+      const payloadStr = payloadEffective ? safeJsonStringify(payloadEffective) : "";
       payloadCompressed = payloadStr ? LZString.compressToUTF16(payloadStr) : "";
     }
 
@@ -1646,7 +1630,7 @@ function _conflictId(baseId: string, suffix: string): string {
 
 function _payloadHashLite(payload: any): string {
   try {
-    const s = JSON.stringify(payload ?? null);
+    const s = safeJsonStringify(payload ?? null);
     let h = 0;
     for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0;
     return String(h);
