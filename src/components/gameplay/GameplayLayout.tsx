@@ -276,8 +276,10 @@ export default function GameplayLayout({
   // On préfère 100dvh (dynamic viewport height) pour que la zone INPUT puisse aller jusqu'en bas.
   const outerStyle: React.CSSProperties = {
     height: "100dvh",
-    width: "100%",
+    width: "100vw",
+    maxWidth: "100vw",
     overflow: "hidden",
+    overflowX: "hidden",
   };
 
   const containerStyle: React.CSSProperties = {
@@ -285,7 +287,9 @@ export default function GameplayLayout({
     width: "100%",
     maxWidth: isTablet ? 1180 : 920,
     margin: "0 auto",
-    padding: "10px 10px 14px",
+    paddingTop: "10px",
+    paddingRight: "max(10px, env(safe-area-inset-right))",
+    paddingLeft: "max(10px, env(safe-area-inset-left))",
     paddingBottom: "calc(14px + env(safe-area-inset-bottom))",
     display: "flex",
     flexDirection: "column",
@@ -364,38 +368,43 @@ export default function GameplayLayout({
               - Pas de double scale (ScoreInputHub gère déjà l'auto-fit interne).
             */}
 
-            {/* Scroll zone (tout sauf la saisie) */}
+            {/* Zone HAUTE (sans scroll) : on scale down si nécessaire pour toujours tout faire rentrer */}
             <div
               style={{
                 flex: 1,
                 minHeight: 0,
-                overflow: "auto",
+                overflow: "hidden",
                 display: "flex",
-                flexDirection: "column",
-                gap: 10,
-                paddingBottom: safeBottom,
               }}
             >
-              {/* 2) HEADER PROFIL ACTIF */}
-              {activeProfileHeader ? (
-                <div className="card" style={{ padding: "10px 12px" }}>
-                  {activeProfileHeader}
+              <FitBox minScale={0.72} maxScale={1}>
+                <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                  {/* 2) HEADER PROFIL ACTIF */}
+                  {activeProfileHeader ? (
+                    <div className="card" style={{ padding: "10px 12px" }}>
+                      {activeProfileHeader}
+                    </div>
+                  ) : null}
+
+                  {/* 3) JOUEURS (modal) */}
+                  {renderPlayersRow()}
+
+                  <RulesModal
+                    open={openPlayers}
+                    onClose={() => setOpenPlayers(false)}
+                    title={playersPanelTitle}
+                  >
+                    <div style={{ padding: 2 }}>{playersPanel}</div>
+                  </RulesModal>
+
+                  {/* 4) VOLÉE */}
+                  {volleyInputDisplay ? (
+                    <div className="card" style={{ padding: "10px 12px" }}>
+                      {volleyInputDisplay}
+                    </div>
+                  ) : null}
                 </div>
-              ) : null}
-
-              {/* 3) JOUEURS (modal) */}
-              {renderPlayersRow()}
-
-              <RulesModal open={openPlayers} onClose={() => setOpenPlayers(false)} title={playersPanelTitle}>
-                <div style={{ padding: 2 }}>{playersPanel}</div>
-              </RulesModal>
-
-              {/* 4) VOLÉE */}
-              {volleyInputDisplay ? (
-                <div className="card" style={{ padding: "10px 12px" }}>
-                  {volleyInputDisplay}
-                </div>
-              ) : null}
+              </FitBox>
             </div>
 
             {/* 5) DOCK BAS: MODES DE SAISIE (KEYPAD / CIBLE) */}
