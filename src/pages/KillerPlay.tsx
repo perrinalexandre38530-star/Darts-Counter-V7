@@ -2194,6 +2194,43 @@ React.useEffect(() => {
     const resumeId = (config as any)?.resumeId || null;
     const perPlayer = (config as any)?.perPlayer || null;
 
+    // ✅ Normalisation "StatsHub": bloc stats unifié (lecture simple côté hub)
+    const unifiedStats: any = {
+      sport: "darts",
+      mode: "killer",
+      createdAt: startedAt,
+      finishedAt,
+      meta: {
+        livesStart: config.lives,
+        becomeRule: config.becomeRule,
+        damageRule: config.damageRule,
+      },
+      players: finalPlayersRaw.map((p) => ({
+        id: p.id,
+        name: p.name,
+        win: p.id === winnerId,
+        eliminated: !!p.eliminated,
+        darts: {
+          thrown: Number(p.totalThrows || 0),
+          hits: Number(p.killerHits || 0),
+        },
+        special: {
+          kills: Number(p.kills || 0),
+          autoKills: Number(p.autoKills || 0),
+          livesTaken: Number(p.livesTaken || 0),
+          livesLost: Number(p.livesLost || 0),
+          uselessHits: Number(p.uselessHits || 0),
+          selfPenaltyHits: Number(p.selfPenaltyHits || 0),
+          livesStolen: Number(p.livesStolen || 0),
+          livesHealed: Number(p.livesHealed || 0),
+        },
+      })),
+      global: {
+        winnerId,
+        eliminatedOrder: elim,
+      },
+    };
+
     const rec: any = {
       id,
       resumeId,
@@ -2223,6 +2260,8 @@ React.useEffect(() => {
         config,
         resumeId,
         summary: { mode: "killer", detailedByPlayer, perPlayer, ranking },
+        // ✅ Bloc unifié pour StatsHub
+        stats: unifiedStats as any,
       },
     };
 
@@ -3406,16 +3445,20 @@ if (thrSafe.target === 25) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [assignActive, assignIndex]);
 
-  // ✅ FULLSCREEN PLAY: cache tabbar + bloque scroll global (html/body)
+  // ✅ FULLSCREEN PLAY: cache tabbar (sans toucher au scroll global)
+// - On NE modifie PAS overflow html/body (plus stable desktop/StackBlitz)
+// - On force un "top" au montage pour éviter l'arrivée à mi-page si on venait d'une page scrollée
 React.useEffect(() => {
   if (typeof document === "undefined") return;
 
-  const prevBodyOverflow = document.body.style.overflow;
-  const prevHtmlOverflow = document.documentElement.style.overflow;
+  try {
+    window.scrollTo({ top: 0, left: 0, behavior: "auto" });
+    // double-safety (certains navigateurs gardent des valeurs séparées)
+    document.documentElement.scrollTop = 0;
+    document.body.scrollTop = 0;
+  } catch {}
 
   document.body.classList.add("dc-fullscreen-play");
-  document.body.style.overflow = "hidden";
-  document.documentElement.style.overflow = "hidden";
 
   const st = document.createElement("style");
   st.setAttribute("data-dc-killer-fullscreen", "1");
@@ -3430,10 +3473,6 @@ React.useEffect(() => {
       display:none !important;
       visibility:hidden !important;
       height:0 !important;
-    }
-    body.dc-fullscreen-play{
-      padding-bottom: 0 !important;
-      overscroll-behavior: none !important;
     }
 
     /* ✅ KILLER: on force la disparition du total volée (toutes variantes possibles) */
@@ -3457,13 +3496,12 @@ React.useEffect(() => {
 
   return () => {
     document.body.classList.remove("dc-fullscreen-play");
-    document.body.style.overflow = prevBodyOverflow || "";
-    document.documentElement.style.overflow = prevHtmlOverflow || "";
     try {
       st.remove();
     } catch {}
   };
 }, []);
+
 
 if (!config || !config.players || config.players.length < 2) {
   return (
@@ -3516,6 +3554,8 @@ const isCurrentKillerActive =
 return (
   <div
     style={{
+      position: "fixed",
+      inset: 0,
       height: "100dvh",
       overflow: "hidden",
       background: pageBg,

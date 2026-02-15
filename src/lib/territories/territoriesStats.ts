@@ -13,6 +13,8 @@
 //   la lecture des vieilles parties.
 // ============================================
 
+import { History } from "../history";
+
 export type TerritoriesPlayerRef = {
   id: string; // profileId
   name?: string;
@@ -175,6 +177,62 @@ export function pushTerritoriesHistory(m: TerritoriesMatch) {
     localStorage.setItem(KEY, JSON.stringify(next));
   } catch {}
 
+
+  // ✅ Mirror dans History (IndexedDB) pour que StatsHub voie Territories comme les autres modes
+  try {
+    const createdAt = Number(m.ts || Date.now());
+    const winnerId = (m as any).winnerTeam != null ? `team-${(m as any).winnerTeam}` : null;
+
+    const rec: any = {
+      id: String(m.id || `territories-${createdAt}-${Math.random().toString(36).slice(2, 8)}`),
+      kind: "territories",
+      status: "finished",
+      createdAt,
+      updatedAt: createdAt,
+      winnerId,
+      players: Array.isArray((m as any).players)
+        ? (m as any).players.map((p: any) => ({
+            id: String(p.id),
+            name: String(p.name || p.id),
+            avatarDataUrl: p.avatarDataUrl ?? null,
+          }))
+        : undefined,
+      summary: {
+        mode: "territories",
+        mapId: (m as any).mapId,
+        teams: (m as any).teams,
+        rounds: (m as any).rounds,
+        winnerTeam: (m as any).winnerTeam,
+      },
+      payload: {
+        kind: "territories",
+        match: m,
+        stats: {
+          sport: "territories",
+          mode: "territories",
+          createdAt,
+          players: Array.isArray((m as any).players)
+            ? (m as any).players.map((p: any) => ({
+                id: String(p.id),
+                name: String(p.name || p.id),
+                teamIndex: p.teamIndex,
+              }))
+            : [],
+          global: {
+            mapId: (m as any).mapId,
+            teams: (m as any).teams,
+            rounds: (m as any).rounds,
+            winnerTeam: (m as any).winnerTeam,
+            captured: (m as any).captured,
+            domination: (m as any).domination,
+            durationMs: (m as any).durationMs,
+          },
+        },
+      },
+    };
+
+    void History.upsert(rec);
+  } catch {}
   emitTerritoriesUpdated();
 }
 

@@ -5601,6 +5601,18 @@ function saveX01V3MatchToHistory({
     players: lightPlayers as any,
   };
 
+  // ✅ DartSets: méta unifiée pour StatsHub / agrégateurs
+  // - dartSetIdsByPlayer: map { playerId -> dartSetId }
+  // - dartSetId: set global si tous identiques (sinon null)
+  const dartSetIdsByPlayer: Record<string, string | null> = {};
+  for (const p of lightPlayers as any[]) {
+    dartSetIdsByPlayer[String(p?.id)] = (p as any)?.dartSetId ?? null;
+  }
+  const uniqueDartSetIds = Array.from(
+    new Set(Object.values(dartSetIdsByPlayer).filter((v) => !!v))
+  ) as string[];
+  const dartSetIdGlobal = uniqueDartSetIds.length === 1 ? uniqueDartSetIds[0] : null;
+
   // Détermine un mode compatible avec les anciens agrégateurs
   const isSolo = players.length === 1;
   const hasTeams =
@@ -5621,6 +5633,13 @@ function saveX01V3MatchToHistory({
     config: lightConfig,
     finalScores: scores,
 
+    // ✅ compat dartsets (lecture simple côté agrégateurs)
+    dartSetId: dartSetIdGlobal,
+    meta: {
+      dartSetId: dartSetIdGlobal,
+      dartSetIdsByPlayer,
+    },
+
     // 🔥 ICI on enregistre les maps "totales" (et plus juste le dernier set)
     legsWon: legsByPlayer,
     setsWon: setsByPlayer,
@@ -5636,6 +5655,8 @@ function saveX01V3MatchToHistory({
     status: "finished",
     createdAt,
     updatedAt: createdAt,
+    // ✅ compat dartsets (lecture simple)
+    dartSetId: dartSetIdGlobal,
     players: lightPlayers.map((p) => ({
       id: p.id,
       name: p.name,

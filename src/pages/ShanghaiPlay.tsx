@@ -675,6 +675,62 @@ export default function ShanghaiPlay(props: Props) {
     isTie: boolean,
     tieIds: string[]
   ) {
+
+    const packedStatsShanghai = safeShanghaiStatsPack({
+      hitsById: hitsByIdRef.current,
+      scoreTimelineById: scoreTimelineByIdRef.current,
+      targetOrder: targetOrderRef.current,
+      maxRounds,
+      winRule,
+    });
+
+    // ✅ Normalisation "StatsHub": bloc stats unifié (lecture simple côté hub)
+    const unifiedStats: any = {
+      sport: "darts",
+      mode: "shanghai",
+      createdAt,
+      meta: {
+        reason,
+        winRule,
+        maxRounds,
+        targetOrderMode,
+        targetOrder: targetOrderRef.current,
+        isTie,
+        tieIds,
+      },
+      players: safePlayers.map((p) => {
+        const score = scores[p.id] ?? 0;
+        const hitMap = (packedStatsShanghai?.hitsCompact?.[p.id] ||
+          packedStatsShanghai?.hitsById?.[p.id] ||
+          {}) as any;
+
+        // hitMap keys are targets; values {S,D,T,MISS,points}
+        let thrown = 0;
+        let hits = 0;
+        for (const k of Object.keys(hitMap || {})) {
+          const hc = hitMap[k] || {};
+          const s = Number(hc.S || 0);
+          const d = Number(hc.D || 0);
+          const t = Number(hc.T || 0);
+          const miss = Number(hc.MISS || 0);
+          hits += s + d + t;
+          thrown += s + d + t + miss;
+        }
+
+        return {
+          id: p.id,
+          name: p.name,
+          win: winnerId ? p.id === winnerId : false,
+          score,
+          darts: { thrown, hits, misses: Math.max(0, thrown - hits) },
+          rates: { hitRate: thrown ? hits / thrown : 0 },
+        };
+      }),
+      global: {
+        isTie,
+        winnerId,
+      },
+    };
     const summary = {
       kind: "shanghai",
       mode: "shanghai",
@@ -694,13 +750,7 @@ export default function ShanghaiPlay(props: Props) {
       })),
     
       // ✅ AJOUT CRITIQUE: stats dispo même si payload est tronqué/normalisé
-      statsShanghai: safeShanghaiStatsPack({
-        hitsById: hitsByIdRef.current,
-        scoreTimelineById: scoreTimelineByIdRef.current,
-        targetOrder: targetOrderRef.current,
-        maxRounds,
-        winRule,
-      }),
+      statsShanghai: packedStatsShanghai,
     };
 
     return {
@@ -738,6 +788,9 @@ export default function ShanghaiPlay(props: Props) {
           maxRounds,
           winRule,
         },
+
+        // ✅ Bloc unifié pour StatsHub
+        stats: unifiedStats as any,
       },
     };
   }

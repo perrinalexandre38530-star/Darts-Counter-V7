@@ -5,8 +5,7 @@
 // - 2 carrousels : PROFILS humains (actif + locaux) + BOTS PRO (toggle)
 // - KPIs en tête (joueurs, règles, séquence)
 // - Séquence compacte (chips) + éditeur round sélectionné
-// - InfoMini “style Territories” : bouton i + panneau full-width sous la ligne
-// - InfoDot global (header)
+// - InfoMini “Territories-like” (dépliable SOUS l’option) + InfoDot global (header)
 // =============================================================
 
 import React from "react";
@@ -19,6 +18,7 @@ import OptionRow from "../../components/OptionRow";
 import OptionToggle from "../../components/OptionToggle";
 import OptionSelect from "../../components/OptionSelect";
 import ProfileAvatar from "../../components/ProfileAvatar";
+import InfoMini from "../../components/InfoMini";
 
 import { useLang } from "../../contexts/LangContext";
 import { useTheme } from "../../contexts/ThemeContext";
@@ -92,214 +92,18 @@ export type BatardConfigPayload = {
 };
 
 // -------------------------------------------------------------
-// Info texts — version précise
+// Textes (global + précis)
 // -------------------------------------------------------------
 const INFO_TEXT = `BÂTARD — règles (clair & concret)
 
-1) Ce que tu configures ici
-- Tu choisis une LISTE DE ROUNDS (la “séquence”).
-- Chaque round définit QUELLES FLÈCHES comptent comme “valides”.
-- Selon le mode de victoire, la partie se termine différemment.
+• Une partie = une SÉQUENCE de rounds (défis).
+• Chaque round définit quelles flèches sont “valides”.
+• Si tu fais 0 flèche valide sur un round → on applique la règle “Échec (0 valide)”.
+• La fin de partie dépend de “Condition de victoire”.`;
 
-2) Comment se joue un round
-- Une flèche est “valide” si elle respecte :
-  A) le multiplier (ANY / SINGLE / DOUBLE / TRIPLE)
-  B) et éventuellement la target (1..20) ou Bull-only.
-- Si tu fais 0 flèche valide sur tout le round → on applique “Échec (0 valide)”.
-
-3) Preset vs Custom
-- Preset : séquence + règles prédéfinies (verrouillées).
-- Custom : tu peux éditer (ajout / suppression / déplacement / duplication).
-
-4) Victoire
-- Score max : on joue toute la séquence → meilleur total gagne.
-- Course (finish) : le 1er qui termine la séquence gagne.
-
-5) Échec (0 valide)
-- Aucun : rien.
-- Malus : -X points.
-- Recul : -Y rounds.
-- Freeze : rejouer le round.`;
-
-const TXT_PRESET = `Preset = configuration “packagée”.
-
-Classic (Bar)
-- Séquence courte & simple.
-- Idéal pour jouer au bar en Score max.
-
-Progressif
-- Séquence pensée “progression”.
-- Marche très bien en Course (finish).
-
-Punition
-- Plus punitif (échec plus impactant selon preset).
-
-Custom
-- Tu règles tout à la main : séquence + options.`;
-
-const TXT_CUSTOM = `Mode Custom = déverrouillage.
-
-OFF
-- Tu peux LIRE la séquence, mais pas la modifier.
-
-ON
-- Tu peux : ajouter / supprimer / déplacer / dupliquer des rounds.
-- Tu peux éditer : label / multiplier / target / bull-only.`;
-
-const TXT_WIN = `Condition de victoire = fin de partie.
-
-Score max
-- On joue TOUS les rounds.
-- Le meilleur total gagne.
-
-Course (finish)
-- Objectif : terminer la séquence.
-- Le 1er qui atteint le dernier round gagne.`;
-
-const TXT_FAIL = `Échec (0 valide) = règle appliquée si tu fais ZÉRO flèche valide sur le round.
-
-Aucun
-- Rien ne se passe.
-
-Malus (-X)
-- Tu perds X points.
-
-Recul (-Y rounds)
-- Tu recules de Y rounds dans la séquence.
-
-Freeze (rejouer)
-- Tu restes sur le même round (tu le rejoues).`;
-
-const TXT_FAIL_VALUE = `Valeur = le X ou le Y.
-
-Si “Malus (-X)”
-- X = nombre de points retirés.
-
-Si “Recul (-Y rounds)”
-- Y = nombre de rounds de retour.`;
-
-const TXT_SEQUENCE = `Séquence = liste ORDONNÉE de rounds.
-
-Chips (résumé)
-- S20 / D20 / T20 = simple/double/triple 20
-- BULL = bull (25/50)
-- ANY = libre
-- D(any) = n’importe quelle double
-- T(any) = n’importe quelle triple
-
-Éditeur (round sélectionné)
-- Label : nom (visuel seulement)
-- Multiplier : contrainte S/D/T/ANY
-- Target : vide = libre (1..20), sinon numéro imposé
-- Bull only : uniquement Bull (25/50)
-
-Verrouillage
-- En preset (Custom OFF) → séquence verrouillée.
-- Active Mode Custom pour modifier.`;
-
-const TXT_R_LABEL = `Label = nom du round.
-
-Impact : VISUEL uniquement.
-Exemples : “Double 20”, “Bull”, “Any triple”…`;
-
-const TXT_R_MULT = `Multiplier = contrainte sur le multiplicateur.
-
-ANY : simple/double/triple acceptés
-SINGLE : uniquement simples
-DOUBLE : uniquement doubles
-TRIPLE : uniquement triples`;
-
-const TXT_R_TARGET = `Target = numéro imposé.
-
-Vide : n’importe quel numéro (1..20)
-20 : seulement le 20 (avec la contrainte Multiplier)
-
-Exemples
-- DOUBLE + 20 = D20 uniquement
-- DOUBLE + (vide) = n’importe quelle double`;
-
-const TXT_R_BULL = `Bull only
-
-ON : seules les touches Bull (25/50) valident ce round.
-Usage : round “BULL” pur (souvent en fin de séquence).`;
-
-// -------------------------------------------------------------
-// InfoMini “style Territories” (bouton + panneau sous la ligne)
-// -------------------------------------------------------------
-function InfoMiniBtn({
-  active,
-  onClick,
-  title,
-}: {
-  active: boolean;
-  onClick: () => void;
-  title?: string;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      title={title ?? "Info"}
-      aria-label={title ?? "Info"}
-      style={{
-        width: 26,
-        height: 26,
-        borderRadius: 10,
-        border: active
-          ? "1px solid rgba(255,210,110,0.8)"
-          : "1px solid rgba(255,255,255,0.14)",
-        background: active
-          ? "radial-gradient(circle at 30% 20%, rgba(255,230,170,0.34), rgba(0,0,0,0.18))"
-          : "rgba(0,0,0,0.20)",
-        color: active ? "#ffe4a8" : "rgba(255,255,255,0.78)",
-        fontWeight: 950,
-        fontSize: 12,
-        lineHeight: "26px",
-        display: "inline-flex",
-        alignItems: "center",
-        justifyContent: "center",
-        boxShadow: active
-          ? "0 0 14px rgba(255,185,70,0.35)"
-          : "inset 0 1px 0 rgba(255,255,255,0.06)",
-        cursor: "pointer",
-        flexShrink: 0,
-      }}
-    >
-      i
-    </button>
-  );
-}
-
-function InfoMiniPanel({ open, text }: { open: boolean; text: string }) {
-  return (
-    <div
-      style={{
-        maxHeight: open ? 260 : 0,
-        opacity: open ? 1 : 0,
-        overflow: "hidden",
-        transition: "max-height .20s ease, opacity .16s ease",
-      }}
-    >
-      <div
-        style={{
-          marginTop: 8,
-          padding: "10px 12px",
-          borderRadius: 14,
-          border: "1px solid rgba(255,255,255,0.10)",
-          background:
-            "linear-gradient(180deg, rgba(0,0,0,0.18), rgba(0,0,0,0.36))",
-          boxShadow: "inset 0 1px 0 rgba(255,255,255,0.05)",
-          fontSize: 12,
-          lineHeight: 1.25,
-          color: "rgba(255,255,255,0.84)",
-          whiteSpace: "pre-wrap",
-        }}
-      >
-        {text}
-      </div>
-    </div>
-  );
-}
+const modalText = (s: string) => (
+  <div style={{ whiteSpace: "pre-line", lineHeight: 1.25 }}>{s}</div>
+);
 
 export default function BatardConfig(props: any) {
   const { t } = useLang();
@@ -315,15 +119,9 @@ export default function BatardConfig(props: any) {
 
   const primary = (theme as any)?.primary ?? "#7dffca";
   const bg = (theme as any)?.bg ?? "#0b0d14";
+
   const cardBg =
     "radial-gradient(120% 160% at 0% 0%, rgba(125,255,202,0.14), transparent 55%), linear-gradient(180deg, rgba(255,255,255,0.08), rgba(0,0,0,0.34))";
-
-  // -----------------------------------------------------------
-  // InfoMini open state (one at a time)
-  // -----------------------------------------------------------
-  const [openInfoId, setOpenInfoId] = React.useState<string | null>(null);
-  const toggleInfo = (id: string) =>
-    setOpenInfoId((cur) => (cur === id ? null : id));
 
   // -----------------------------------------------------------
   // Preset / Rules state
@@ -339,6 +137,7 @@ export default function BatardConfig(props: any) {
   }, [presetId]);
 
   const [customEnabled, setCustomEnabled] = React.useState(false);
+
   const [winMode, setWinMode] = React.useState<BatardWinMode>(presetCfg.winMode);
   const [failPolicy, setFailPolicy] = React.useState<BatardFailPolicy>(
     presetCfg.failPolicy
@@ -385,7 +184,7 @@ export default function BatardConfig(props: any) {
       if (!out.includes(id)) out.push(id);
     }
     if (out.length) setSelectedHumanIds(out);
-  }, [humanProfiles.length, activeProfileId]);
+  }, [humanProfiles.length, activeProfileId]); // eslint-disable-line
 
   function toggleHuman(id: string) {
     setSelectedHumanIds((prev) => {
@@ -422,11 +221,7 @@ export default function BatardConfig(props: any) {
   function addRound() {
     setRounds((prev) => [
       ...prev,
-      {
-        id: uid(),
-        label: "Round",
-        multiplierRule: "ANY",
-      } as any,
+      { id: uid(), label: "Round", multiplierRule: "ANY" } as any,
     ]);
     setSelectedRoundIndex(rounds.length);
   }
@@ -515,7 +310,11 @@ export default function BatardConfig(props: any) {
   }
 
   // -----------------------------------------------------------
-  // Render helpers
+  // InfoMini open state (one open at a time)
+  // -----------------------------------------------------------
+
+  // -----------------------------------------------------------
+  // Render helpers (KPI)
   // -----------------------------------------------------------
   const kpiStyle = {
     display: "grid",
@@ -534,34 +333,99 @@ export default function BatardConfig(props: any) {
 
   const selectedRound = rounds[selectedRoundIndex];
 
-  const chipBase = {
-    flexShrink: 0,
-    minWidth: 66,
-    height: 46,
-    padding: "0 12px",
-    borderRadius: 16,
-    display: "flex",
-    flexDirection: "column",
-    justifyContent: "center",
-    alignItems: "center",
-    cursor: "pointer",
-    userSelect: "none",
-    border: "1px solid rgba(255,255,255,0.12)",
-    background: "rgba(0,0,0,0.18)",
-  } as const;
+  // -----------------------------------------------------------
+  // UI helper — boutons néon (séquence)
+  // -----------------------------------------------------------
+  const neonBtn = (tone: "primary" | "warn" | "danger" | "ok" = "primary") => {
+    const base =
+      tone === "danger"
+        ? "255,80,80"
+        : tone === "warn"
+          ? "255,190,60"
+          : tone === "ok"
+            ? "140,255,170"
+            : "125,255,202";
+    return {
+      height: 34,
+      padding: "0 10px",
+      borderRadius: 12,
+      border: `1px solid rgba(${base},0.55)`,
+      background: `linear-gradient(180deg, rgba(${base},0.16), rgba(0,0,0,0.28))`,
+      color: "rgba(255,255,255,0.92)",
+      fontWeight: 950,
+      letterSpacing: 0.2,
+      boxShadow: `0 0 16px rgba(${base},0.25)`,
+      cursor: "pointer",
+    } as const;
+  };
 
-  const chipActive = {
-    border: `1px solid ${primary}cc`,
-    background: `radial-gradient(120% 150% at 30% 20%, rgba(125,255,202,0.22), rgba(0,0,0,0.28))`,
-    boxShadow: `0 0 18px ${primary}55, inset 0 1px 0 rgba(255,255,255,0.06)`,
-  } as const;
+  // -----------------------------------------------------------
+  // Textes InfoMini (catégories demandées)
+  // -----------------------------------------------------------
+  const TXT_PRESET = `Le preset charge une configuration complète (règles + séquence).
+
+• Classic (Bar)
+  - Format “bar” simple / fun.
+  - Souvent utilisé avec “Score max”.
+
+• Progressif
+  - Difficulté / contraintes plus “progression”.
+  - Souvent mieux avec “Course (finish)”.
+
+• Punition
+  - Plus punitif sur l’échec (selon preset).
+  - Partie plus “hard”.
+
+• Custom
+  - Tu règles tout : séquence + règles (victoire/échec).`;
+
+  const TXT_CUSTOM = `Mode Custom = autorise la modification de la séquence.
+
+OFF :
+- Séquence verrouillée (tu peux lire, pas éditer).
+
+ON :
+- Tu peux ajouter / supprimer / déplacer / dupliquer des rounds,
+- Et modifier Label / Multiplier / Target / Bull-only.`;
+
+  const TXT_WIN = `Choisit comment la partie se termine :
+
+• Score max
+- On joue TOUS les rounds.
+- Le meilleur total gagne.
+
+• Course (finish)
+- Objectif : terminer la séquence.
+- Le 1er joueur qui arrive au bout gagne.`;
+
+  const TXT_FAIL = `Échec (0 valide) = si tu fais 0 flèche valide sur le round.
+
+• Aucun : rien ne se passe.
+• Malus (-X) : tu perds X points.
+• Recul (-Y rounds) : tu recules de Y rounds dans la séquence.
+• Freeze (rejouer) : tu restes sur le même round (tu le rejoues).`;
+
+  const TXT_SEQUENCE = `SÉQUENCE = la liste des rounds (défis), dans l’ordre.
+
+Chips :
+- S20 / D20 / T20 = simple/double/triple sur 20
+- BULL = bull (25/50)
+- ANY = tout segment
+- D(any) / T(any) = n’importe quelle double / triple
+
+Éditeur round :
+- Label : nom (visuel)
+- Multiplier : ANY / SINGLE / DOUBLE / TRIPLE
+- Target : vide = libre, 1..20 = imposé
+- Bull-only : seules touches Bull valident`;
 
   return (
     <div style={{ minHeight: "100vh", background: bg }}>
       <PageHeader
-        title={""}
-        subtitle={""}
+        title=""
+        subtitle=""
         left={
+          // ✅ retour menu games (Darts)
           <BackDot onClick={() => (props?.setTab ? props.setTab("games") : null)} />
         }
         right={<InfoDot title="BÂTARD — règles" content={INFO_TEXT} />}
@@ -570,7 +434,8 @@ export default function BatardConfig(props: any) {
         tickerHeight={92}
       />
 
-      <div style={{ padding: "10px 12px 92px" }}>
+      {/* padding bas généreux pour éviter que la bottom-bar masque les derniers blocs */}
+      <div style={{ padding: "10px 12px 170px" }}>
         {/* KPIs */}
         <div style={kpiStyle}>
           <div style={kpiCard}>
@@ -596,24 +461,54 @@ export default function BatardConfig(props: any) {
 
         {/* JOUEURS */}
         <Section title={t("players") || "JOUEURS"}>
-          <div style={{ borderRadius: 18, padding: 12, background: cardBg, border: "1px solid rgba(255,255,255,0.12)" }}>
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 8 }}>
+          <div
+            style={{
+              borderRadius: 18,
+              padding: 12,
+              background: cardBg,
+              border: "1px solid rgba(255,255,255,0.12)",
+            }}
+          >
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                gap: 10,
+                marginBottom: 8,
+              }}
+            >
               <div style={{ fontSize: 12, opacity: 0.85, fontWeight: 950 }}>
                 Sélection : {playersCount}/8 — min 2
               </div>
-              <InfoMiniBtn active={openInfoId === "players"} onClick={() => toggleInfo("players")} title="Aide sélection" />
-            </div>
-            <InfoMiniPanel
-              open={openInfoId === "players"}
-              text={`Sélection joueurs\n\n- Tape un médaillon pour ajouter/retirer\n- Max 8 joueurs (humains + bots)\n- Badge ACTIF = profil actif de l'app (repère visuel)`}
-            />
+              <InfoMini
+                title="Sélection joueurs"
+                content={
+                  modalText(`Tape un médaillon pour ajouter/retirer.
 
+• Minimum 2 joueurs.
+• Maximum 8 joueurs (humains + bots).
+• Badge ACTIF = profil actif de l'app (repère visuel).`)
+                }
+              />
+            </div>
+
+            {/* Humans carousel */}
             {humanProfiles.length > 0 ? (
-              <div className="dc-scroll-thin" style={{ display: "flex", gap: 18, overflowX: "auto", paddingBottom: 10, paddingTop: 6 }}>
+              <div
+                className="dc-scroll-thin"
+                style={{
+                  display: "flex",
+                  gap: 18,
+                  overflowX: "auto",
+                  paddingBottom: 10,
+                }}
+              >
                 {humanProfiles.map((p) => {
                   const id = String(p.id);
                   const active = selectedHumanIds.includes(id);
-                  const isActiveProfile = activeProfileId != null && String(activeProfileId) === id;
+                  const isActiveProfile =
+                    activeProfileId != null && String(activeProfileId) === id;
 
                   return (
                     <button
@@ -641,8 +536,12 @@ export default function BatardConfig(props: any) {
                           height: 78,
                           borderRadius: "50%",
                           overflow: "hidden",
-                          boxShadow: active ? `0 0 28px ${primary}aa` : "0 0 14px rgba(0,0,0,0.65)",
-                          background: active ? `radial-gradient(circle at 30% 20%, #fff8d0, ${primary})` : "#111320",
+                          boxShadow: active
+                            ? `0 0 28px ${primary}aa`
+                            : "0 0 14px rgba(0,0,0,0.65)",
+                          background: active
+                            ? `radial-gradient(circle at 30% 20%, #fff8d0, ${primary})`
+                            : "#111320",
                           display: "flex",
                           alignItems: "center",
                           justifyContent: "center",
@@ -657,7 +556,9 @@ export default function BatardConfig(props: any) {
                             height: "100%",
                             borderRadius: "50%",
                             overflow: "hidden",
-                            filter: active ? "none" : "grayscale(100%) brightness(0.55)",
+                            filter: active
+                              ? "none"
+                              : "grayscale(100%) brightness(0.55)",
                             opacity: active ? 1 : 0.6,
                             transition: "filter .2s ease, opacity .2s ease",
                           }}
@@ -690,7 +591,8 @@ export default function BatardConfig(props: any) {
                             fontWeight: 900,
                             letterSpacing: 0.7,
                             textTransform: "uppercase",
-                            background: "radial-gradient(circle at 30% 0, #ffe7a8, #ffb000)",
+                            background:
+                              "radial-gradient(circle at 30% 0, #ffe7a8, #ffb000)",
                             color: "#1a1205",
                             boxShadow: "0 0 10px rgba(255,176,0,0.45)",
                             border: "1px solid rgba(255,230,170,0.9)",
@@ -706,14 +608,27 @@ export default function BatardConfig(props: any) {
               </div>
             ) : (
               <div style={{ padding: "8px 2px", fontSize: 12, opacity: 0.8 }}>
-                Aucun profil local trouvé. Va dans <b>Profils</b> pour en créer (ou connecte-toi pour avoir le profil actif).
+                Aucun profil local trouvé. Va dans <b>Profils</b> pour en créer
+                (ou connecte-toi pour avoir le profil actif).
               </div>
             )}
 
+            {/* Bots */}
             <OptionRow
               label="Bots IA"
               hint="Ajoute des bots PRO (prédéfinis)."
-              right={<InfoMiniBtn active={openInfoId === "bots"} onClick={() => toggleInfo("bots")} title="Aide bots" />}
+              right={
+                <InfoMini
+                  title="Bots IA"
+                  content={
+                    modalText(`Active pour afficher le carrousel des bots PRO.
+
+• Tu peux mixer humains + bots.
+• Limite totale : 8 joueurs.
+• Si tu désactives : les bots sélectionnés sont retirés.`)
+                  }
+                />
+              }
             >
               <OptionToggle
                 value={botsEnabled}
@@ -723,17 +638,23 @@ export default function BatardConfig(props: any) {
                 }}
               />
             </OptionRow>
-            <InfoMiniPanel
-              open={openInfoId === "bots"}
-              text={`Bots IA\n\n- Active pour afficher le carrousel de bots PRO\n- Tu peux mixer humains + bots\n- Limite globale : 8 joueurs\n- Si tu désactives Bots IA : les bots sélectionnés sont retirés`}
-            />
 
             {botsEnabled && (
               <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 10 }}>
                 <OptionRow
                   label="Niveau bot"
                   hint="Difficulté globale des bots."
-                  right={<InfoMiniBtn active={openInfoId === "botLevel"} onClick={() => toggleInfo("botLevel")} title="Aide niveau" />}
+                  right={
+                    <InfoMini
+                      title="Niveau bot"
+                      content={
+                        modalText(`Réglage global de difficulté.
+
+• Les bots PRO restent les mêmes profils.
+• Ce niveau agit comme un modificateur de réussite.`)
+                      }
+                    />
+                  }
                 >
                   <OptionSelect
                     value={botLevel}
@@ -745,12 +666,18 @@ export default function BatardConfig(props: any) {
                     ]}
                   />
                 </OptionRow>
-                <InfoMiniPanel
-                  open={openInfoId === "botLevel"}
-                  text={`Niveau bot\n\n- Réglage global de difficulté\n- Sert de modificateur (si l'engine l'utilise)`}
-                />
 
-                <div className="dc-scroll-thin" style={{ display: "flex", gap: 14, overflowX: "auto", overflowY: "visible", paddingBottom: 10, paddingTop: 6 }}>
+                <div
+                  className="dc-scroll-thin"
+                  style={{
+                    display: "flex",
+                    gap: 14,
+                    overflowX: "auto",
+                    overflowY: "visible",
+                    paddingBottom: 10,
+                    paddingTop: 10,
+                  }}
+                >
                   {PRO_BOTS.map((b: any) => {
                     const id = String(b.id);
                     const active = selectedBotIds.includes(id);
@@ -782,22 +709,56 @@ export default function BatardConfig(props: any) {
                             height: 78,
                             borderRadius: "50%",
                             overflow: "hidden",
-                            boxShadow: active ? "0 0 26px rgba(255,192,0,0.65)" : "0 0 14px rgba(0,0,0,0.65)",
+                            boxShadow: active
+                              ? `0 0 26px rgba(255,192,0,0.65)`
+                              : "0 0 14px rgba(0,0,0,0.65)",
                             background: active
                               ? "radial-gradient(circle at 30% 20%, #fff7cc, #ffb000)"
                               : "radial-gradient(circle at 30% 20%, rgba(255,255,255,0.16), rgba(0,0,0,0.55))",
-                            border: active ? "2px solid rgba(255,215,120,0.95)" : "1px solid rgba(255,255,255,0.10)",
+                            border: active
+                              ? "2px solid rgba(255,215,120,0.95)"
+                              : "1px solid rgba(255,255,255,0.10)",
                             display: "flex",
                             alignItems: "center",
                             justifyContent: "center",
                           }}
                         >
-                          <div style={{ width: "100%", height: "100%", borderRadius: "50%", overflow: "hidden", filter: active ? "none" : "grayscale(60%) brightness(0.75)", opacity: active ? 1 : 0.85 }}>
-                            <ProfileAvatar profile={{ id: b.id, name: b.displayName ?? b.name ?? "Bot", avatarUrl: avatar }} size={78} showStars={false} />
+                          <div
+                            style={{
+                              width: "100%",
+                              height: "100%",
+                              borderRadius: "50%",
+                              overflow: "hidden",
+                              filter: active ? "none" : "grayscale(60%) brightness(0.75)",
+                              opacity: active ? 1 : 0.85,
+                            }}
+                          >
+                            <ProfileAvatar
+                              profile={{
+                                id: b.id,
+                                name: b.displayName ?? b.name ?? "Bot",
+                                // ✅ double fallback (certaines vues utilisent avatar, d'autres avatarUrl)
+                                avatar: avatar,
+                                avatarUrl: avatar,
+                              }}
+                              size={78}
+                              showStars={false}
+                            />
                           </div>
                         </div>
 
-                        <div style={{ fontSize: 11, fontWeight: 700, textAlign: "center", color: active ? "#f6f2e9" : "#7e8299", maxWidth: "100%", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                        <div
+                          style={{
+                            fontSize: 11,
+                            fontWeight: 700,
+                            textAlign: "center",
+                            color: active ? "#f6f2e9" : "#7e8299",
+                            maxWidth: "100%",
+                            overflow: "hidden",
+                            textOverflow: "ellipsis",
+                            whiteSpace: "nowrap",
+                          }}
+                        >
                           {b.displayName ?? b.name ?? "Bot"}
                         </div>
 
@@ -809,7 +770,8 @@ export default function BatardConfig(props: any) {
                             fontWeight: 900,
                             letterSpacing: 0.7,
                             textTransform: "uppercase",
-                            background: "radial-gradient(circle at 30% 0, #ffe7a8, #ffb000)",
+                            background:
+                              "radial-gradient(circle at 30% 0, #ffe7a8, #ffb000)",
                             color: "#1a1205",
                             boxShadow: "0 0 10px rgba(255,176,0,0.45)",
                             border: "1px solid rgba(255,230,170,0.9)",
@@ -828,9 +790,20 @@ export default function BatardConfig(props: any) {
         </Section>
 
         {/* RÈGLES */}
-        <Section title={"RÈGLES"}>
-          <div style={{ borderRadius: 18, padding: 12, background: cardBg, border: "1px solid rgba(255,255,255,0.12)" }}>
-            <OptionRow label={"Preset"} hint={"Choisis une base."} right={<InfoMiniBtn active={openInfoId === "preset"} onClick={() => toggleInfo("preset")} title="Aide preset" />}>
+        <Section title="RÈGLES">
+          <div
+            style={{
+              borderRadius: 18,
+              padding: 12,
+              background: cardBg,
+              border: "1px solid rgba(255,255,255,0.12)",
+            }}
+          >
+            <OptionRow
+              label="Preset"
+              hint="Choisis une base, puis passe en Custom pour modifier."
+              right={<InfoMini title="Preset" content={modalText(TXT_PRESET)} />}
+            >
               <OptionSelect
                 value={presetId}
                 onChange={(v) => setPresetId(v)}
@@ -842,14 +815,23 @@ export default function BatardConfig(props: any) {
                 ]}
               />
             </OptionRow>
-            <InfoMiniPanel open={openInfoId === "preset"} text={TXT_PRESET} />
 
-            <OptionRow label={"Mode Custom"} hint={"Déverrouille l’édition (séquence + options)."} right={<InfoMiniBtn active={openInfoId === "custom"} onClick={() => toggleInfo("custom")} title="Aide custom" />}>
-              <OptionToggle value={customEnabled || presetId === "custom"} onChange={(v) => setCustomEnabled(v)} />
+            <OptionRow
+              label="Mode Custom"
+              hint="Déverrouille l’édition (séquence + options)."
+              right={<InfoMini title="Mode Custom" content={modalText(TXT_CUSTOM)} />}
+            >
+              <OptionToggle
+                value={customEnabled || presetId === "custom"}
+                onChange={(v) => setCustomEnabled(v)}
+              />
             </OptionRow>
-            <InfoMiniPanel open={openInfoId === "custom"} text={TXT_CUSTOM} />
 
-            <OptionRow label={"Condition de victoire"} hint={"Score max ou course au finish."} right={<InfoMiniBtn active={openInfoId === "win"} onClick={() => toggleInfo("win")} title="Aide victoire" />}>
+            <OptionRow
+              label="Condition de victoire"
+              hint="Score max ou course au finish."
+              right={<InfoMini title="Condition de victoire" content={modalText(TXT_WIN)} />}
+            >
               <OptionSelect
                 value={winMode}
                 onChange={(v) => setWinMode(v)}
@@ -859,9 +841,12 @@ export default function BatardConfig(props: any) {
                 ]}
               />
             </OptionRow>
-            <InfoMiniPanel open={openInfoId === "win"} text={TXT_WIN} />
 
-            <OptionRow label={"Échec (0 valide)"} hint={"Règle si aucune flèche ne valide le round."} right={<InfoMiniBtn active={openInfoId === "fail"} onClick={() => toggleInfo("fail")} title="Aide échec" />}>
+            <OptionRow
+              label="Échec (0 valide)"
+              hint="Que faire si aucune flèche ne valide le round."
+              right={<InfoMini title="Échec (0 valide)" content={modalText(TXT_FAIL)} />}
+            >
               <OptionSelect
                 value={failPolicy}
                 onChange={(v) => setFailPolicy(v)}
@@ -873,85 +858,193 @@ export default function BatardConfig(props: any) {
                 ]}
               />
             </OptionRow>
-            <InfoMiniPanel open={openInfoId === "fail"} text={TXT_FAIL} />
 
             {(failPolicy === "MINUS_POINTS" || failPolicy === "BACK_ROUND") && (
-              <>
-                <OptionRow
-                  label={failPolicy === "MINUS_POINTS" ? "Valeur malus (X)" : "Recul rounds (Y)"}
-                  hint={"Ajuste la valeur."}
-                  right={<InfoMiniBtn active={openInfoId === "failValue"} onClick={() => toggleInfo("failValue")} title="Aide valeur" />}
-                >
-                  <input
-                    type="number"
-                    value={failValue}
-                    onChange={(e) => setFailValue(Math.max(0, Number(e.target.value || 0)))}
-                    style={{
-                      width: 120,
-                      height: 44,
-                      borderRadius: 14,
-                      padding: "0 12px",
-                      border: "1px solid rgba(255,255,255,0.14)",
-                      background: "rgba(0,0,0,0.22)",
-                      color: "rgba(255,255,255,0.92)",
-                      outline: "none",
-                    }}
+              <OptionRow
+                label={failPolicy === "MINUS_POINTS" ? "Valeur malus" : "Recul rounds"}
+                hint="Ajuste la valeur (X ou Y)."
+                right={
+                  <InfoMini
+                    title="Valeur"
+                    content={
+                      modalText(
+                      failPolicy === "MINUS_POINTS"
+                        ? `X = points retirés quand tu fais 0 valide sur le round.`
+                        : `Y = nombre de rounds que tu recules quand tu fais 0 valide sur le round.`
+                      )
+                    }
                   />
-                </OptionRow>
-                <InfoMiniPanel open={openInfoId === "failValue"} text={TXT_FAIL_VALUE} />
-              </>
+                }
+              >
+                <input
+                  type="number"
+                  value={failValue}
+                  onChange={(e) => setFailValue(Math.max(0, Number(e.target.value || 0)))}
+                  style={{
+                    width: 120,
+                    height: 44,
+                    borderRadius: 14,
+                    padding: "0 12px",
+                    border: "1px solid rgba(255,255,255,0.14)",
+                    background: "rgba(0,0,0,0.22)",
+                    color: "rgba(255,255,255,0.92)",
+                    outline: "none",
+                  }}
+                />
+              </OptionRow>
             )}
           </div>
         </Section>
 
         {/* SÉQUENCE */}
-        <Section title={"SÉQUENCE (ROUNDS)"} right={<InfoMiniBtn active={openInfoId === "sequence"} onClick={() => toggleInfo("sequence")} title="Aide séquence" />}>
-          <div style={{ borderRadius: 18, padding: 12, background: cardBg, border: "1px solid rgba(255,255,255,0.12)" }}>
-            <InfoMiniPanel open={openInfoId === "sequence"} text={TXT_SEQUENCE} />
-
-            <div style={{ fontSize: 12, opacity: 0.82, marginTop: openInfoId === "sequence" ? 10 : 0, marginBottom: 10 }}>
-              {editingEnabled ? "Sélectionne un chip pour éditer le round." : "Séquence verrouillée → active Mode Custom pour modifier."}
+        <Section
+          title="SÉQUENCE (ROUNDS)"
+          right={<InfoMini title="Séquence" content={modalText(TXT_SEQUENCE)} />}
+        >
+          <div
+            style={{
+              borderRadius: 18,
+              padding: 12,
+              background: cardBg,
+              border: "1px solid rgba(255,255,255,0.12)",
+            }}
+          >
+            {/* KPIs (lecture rapide) */}
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(3, 1fr)",
+                gap: 10,
+                marginBottom: 10,
+              }}
+            >
+              <div style={{ ...kpiCard, padding: "10px 10px" }}>
+                <div style={{ fontSize: 11, opacity: 0.78, fontWeight: 900 }}>ROUNDS</div>
+                <div style={{ fontSize: 16, fontWeight: 950 }}>{rounds.length}</div>
+              </div>
+              <div style={{ ...kpiCard, padding: "10px 10px" }}>
+                <div style={{ fontSize: 11, opacity: 0.78, fontWeight: 900 }}>MODE</div>
+                <div style={{ fontSize: 13, fontWeight: 950 }}>{editingEnabled ? "Custom" : "Preset"}</div>
+                <div style={{ fontSize: 11, opacity: 0.7 }}>{editingEnabled ? "éditable" : "verrouillé"}</div>
+              </div>
+              <div style={{ ...kpiCard, padding: "10px 10px" }}>
+                <div style={{ fontSize: 11, opacity: 0.78, fontWeight: 900 }}>SÉLECTION</div>
+                <div style={{ fontSize: 13, fontWeight: 950 }}>{selectedRound ? roundShort(selectedRound) : "-"}</div>
+                <div style={{ fontSize: 11, opacity: 0.7 }}>Round {selectedRoundIndex + 1}</div>
+              </div>
             </div>
 
-            <div className="dc-scroll-thin" style={{ display: "flex", gap: 10, overflowX: "auto", paddingBottom: 8 }}>
+            {/* Texte épuré */}
+            <div style={{ fontSize: 12, opacity: 0.82, marginBottom: 10 }}>
+              {!editingEnabled ? (
+                <>Séquence verrouillée. Active <b>Mode Custom</b> pour modifier.</>
+              ) : (
+                <>Tape un chip pour éditer le round.</>
+              )}
+            </div>
+
+            {/* Chips (plus joli / neon) */}
+            <div
+              className="dc-scroll-thin"
+              style={{ display: "flex", gap: 10, overflowX: "auto", paddingBottom: 8 }}
+            >
               {rounds.map((r, i) => {
                 const active = i === selectedRoundIndex;
                 const short = roundShort(r);
+
+                const glow = active ? primary : "rgba(255,255,255,0.12)";
+                const bgChip = active
+                  ? `radial-gradient(120% 160% at 30% 20%, ${primary}33, rgba(0,0,0,0.55)),
+                     linear-gradient(180deg, rgba(255,255,255,0.10), rgba(0,0,0,0.40))`
+                  : "rgba(0,0,0,0.18)";
+
                 return (
                   <div
                     key={(r as any).id || i}
-                    role={"button"}
+                    role="button"
                     onClick={() => setSelectedRoundIndex(i)}
                     style={{
-                      ...chipBase,
-                      ...(active ? chipActive : null),
-                      transform: active ? "scale(1.03)" : "scale(1)",
-                      transition: "transform .14s ease, box-shadow .14s ease, border-color .14s ease",
+                      flexShrink: 0,
+                      minWidth: 66,
+                      height: 46,
+                      padding: "0 12px",
+                      borderRadius: 16,
+                      border: active ? `1px solid ${primary}aa` : "1px solid rgba(255,255,255,0.12)",
+                      background: bgChip,
+                      boxShadow: active
+                        ? `0 0 22px ${primary}55, inset 0 1px 0 rgba(255,255,255,0.14)`
+                        : "inset 0 1px 0 rgba(255,255,255,0.06)",
+                      display: "flex",
+                      flexDirection: "column",
+                      justifyContent: "center",
+                      alignItems: "center",
+                      cursor: "pointer",
+                      userSelect: "none",
+                      position: "relative",
                     }}
                     title={(r as any).label || ""}
                   >
-                    <div style={{ fontSize: 11, opacity: 0.72, fontWeight: 900 }}>#{i + 1}</div>
-                    <div style={{ fontSize: 12, fontWeight: 950, letterSpacing: 0.4 }}>{short}</div>
+                    <div style={{ fontSize: 10.5, opacity: 0.75, fontWeight: 900 }}>R{i + 1}</div>
+                    <div style={{ fontSize: 12.5, fontWeight: 950, letterSpacing: 0.4 }}>
+                      {short}
+                    </div>
+
+                    {active && (
+                      <div
+                        style={{
+                          position: "absolute",
+                          inset: -2,
+                          borderRadius: 18,
+                          pointerEvents: "none",
+                          boxShadow: `0 0 18px ${glow}55`,
+                          opacity: 0.9,
+                        }}
+                      />
+                    )}
                   </div>
                 );
               })}
             </div>
 
+            {/* Round editor */}
             {selectedRound && (
-              <div style={{ marginTop: 10, borderRadius: 16, padding: 12, background: "rgba(0,0,0,0.22)", border: "1px solid rgba(255,255,255,0.12)" }}>
+              <div
+                style={{
+                  marginTop: 10,
+                  borderRadius: 16,
+                  padding: 12,
+                  background: "rgba(0,0,0,0.22)",
+                  border: "1px solid rgba(255,255,255,0.12)",
+                }}
+              >
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
-                  <div style={{ fontWeight: 950, fontSize: 13 }}>Round #{selectedRoundIndex + 1}</div>
+                  <div style={{ fontWeight: 950, fontSize: 13 }}>
+                    Round #{selectedRoundIndex + 1} — {(selectedRound as any).label || "Round"}
+                  </div>
+
                   <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
-                    <button className="dc-btn" onClick={() => moveRound(selectedRoundIndex, -1)} disabled={!editingEnabled || selectedRoundIndex === 0}>
+                    <button
+                      style={neonBtn("primary")}
+                      onClick={() => moveRound(selectedRoundIndex, -1)}
+                      disabled={!editingEnabled || selectedRoundIndex === 0}
+                    >
                       ↑
                     </button>
-                    <button className="dc-btn" onClick={() => moveRound(selectedRoundIndex, +1)} disabled={!editingEnabled || selectedRoundIndex >= rounds.length - 1}>
+                    <button
+                      style={neonBtn("primary")}
+                      onClick={() => moveRound(selectedRoundIndex, +1)}
+                      disabled={!editingEnabled || selectedRoundIndex >= rounds.length - 1}
+                    >
                       ↓
                     </button>
-                    <button className="dc-btn" onClick={() => dupRound(selectedRoundIndex)} disabled={!editingEnabled}>
+                    <button style={neonBtn("warn")} onClick={() => dupRound(selectedRoundIndex)} disabled={!editingEnabled}>
                       Dupliquer
                     </button>
-                    <button className="dc-btn-danger" onClick={() => removeRound(selectedRoundIndex)} disabled={!editingEnabled || rounds.length <= 1}>
+                    <button
+                      style={neonBtn("danger")}
+                      onClick={() => removeRound(selectedRoundIndex)}
+                      disabled={!editingEnabled || rounds.length <= 1}
+                    >
                       Supprimer
                     </button>
                   </div>
@@ -959,9 +1052,8 @@ export default function BatardConfig(props: any) {
 
                 <div style={{ marginTop: 10, display: "grid", gridTemplateColumns: "1fr 140px", gap: 10 }}>
                   <div>
-                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 6 }}>
-                      <div style={{ fontSize: 11, opacity: 0.75, fontWeight: 850 }}>Label</div>
-                      <InfoMiniBtn active={openInfoId === "rLabel"} onClick={() => toggleInfo("rLabel")} title="Aide label" />
+                    <div style={{ fontSize: 11, opacity: 0.75, fontWeight: 850, marginBottom: 6 }}>
+                      Label
                     </div>
                     <input
                       value={(selectedRound as any).label || ""}
@@ -979,13 +1071,11 @@ export default function BatardConfig(props: any) {
                       placeholder="Ex: Double 20"
                       disabled={!editingEnabled}
                     />
-                    <InfoMiniPanel open={openInfoId === "rLabel"} text={TXT_R_LABEL} />
                   </div>
 
                   <div>
-                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 6 }}>
-                      <div style={{ fontSize: 11, opacity: 0.75, fontWeight: 850 }}>Multiplier</div>
-                      <InfoMiniBtn active={openInfoId === "rMult"} onClick={() => toggleInfo("rMult")} title="Aide multiplier" />
+                    <div style={{ fontSize: 11, opacity: 0.75, fontWeight: 850, marginBottom: 6 }}>
+                      Multiplier
                     </div>
                     <select
                       value={((selectedRound as any).multiplierRule || "ANY") as BatardMultiplierRule}
@@ -1007,18 +1097,18 @@ export default function BatardConfig(props: any) {
                       <option value="DOUBLE">DOUBLE</option>
                       <option value="TRIPLE">TRIPLE</option>
                     </select>
-                    <InfoMiniPanel open={openInfoId === "rMult"} text={TXT_R_MULT} />
                   </div>
 
                   <div>
-                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 6 }}>
-                      <div style={{ fontSize: 11, opacity: 0.75, fontWeight: 850 }}>Target</div>
-                      <InfoMiniBtn active={openInfoId === "rTarget"} onClick={() => toggleInfo("rTarget")} title="Aide target" />
+                    <div style={{ fontSize: 11, opacity: 0.75, fontWeight: 850, marginBottom: 6 }}>
+                      Target
                     </div>
                     <select
                       value={String((selectedRound as any).target ?? "")}
                       onChange={(e) =>
-                        updateRound(selectedRoundIndex, { target: e.target.value ? Number(e.target.value) : undefined } as any)
+                        updateRound(selectedRoundIndex, {
+                          target: e.target.value ? Number(e.target.value) : undefined,
+                        } as any)
                       }
                       style={{
                         width: "100%",
@@ -1039,14 +1129,24 @@ export default function BatardConfig(props: any) {
                         </option>
                       ))}
                     </select>
-                    <InfoMiniPanel open={openInfoId === "rTarget"} text={TXT_R_TARGET} />
                   </div>
 
                   <div style={{ display: "flex", flexDirection: "column", justifyContent: "center" }}>
                     <OptionRow
                       label="Bull only"
-                      hint="25/50 uniquement"
-                      right={<InfoMiniBtn active={openInfoId === "rBull"} onClick={() => toggleInfo("rBull")} title="Aide bull" />}
+                      hint="Cible bull uniquement (25/50)."
+                      right={
+                        <InfoMini
+                          title="Bull only"
+                          content={
+                            modalText(`Active = seules les touches Bull (25/50) valident ce round.
+
+Idéal pour :
+• Round “BULL” pur
+• Fin de séquence sur un défi Bull`)
+                          }
+                        />
+                      }
                     >
                       <OptionToggle
                         value={Boolean((selectedRound as any).bullOnly)}
@@ -1054,12 +1154,11 @@ export default function BatardConfig(props: any) {
                         disabled={!editingEnabled}
                       />
                     </OptionRow>
-                    <InfoMiniPanel open={openInfoId === "rBull"} text={TXT_R_BULL} />
                   </div>
                 </div>
 
                 <div style={{ marginTop: 10 }}>
-                  <button className="dc-btn" onClick={addRound} disabled={!editingEnabled}>
+                  <button style={neonBtn("ok")} onClick={addRound} disabled={!editingEnabled}>
                     + Ajouter un round
                   </button>
                 </div>
@@ -1074,7 +1173,8 @@ export default function BatardConfig(props: any) {
             position: "fixed",
             left: 0,
             right: 0,
-            bottom: 0,
+            // ✅ au-dessus de la bottom-nav (comme Killer/Golf)
+            bottom: 88,
             padding: "10px 12px",
             background:
               "linear-gradient(180deg, rgba(11,13,20,0), rgba(11,13,20,0.92) 35%, rgba(11,13,20,0.98))",
@@ -1097,9 +1197,10 @@ export default function BatardConfig(props: any) {
               letterSpacing: 0.4,
               boxShadow: playersCount < 2 ? "none" : `0 10px 28px ${primary}30`,
               cursor: playersCount < 2 ? "not-allowed" : "pointer",
+              textTransform: "uppercase",
             }}
           >
-            Lancer la partie
+            LANCER LA PARTIE
           </button>
         </div>
       </div>

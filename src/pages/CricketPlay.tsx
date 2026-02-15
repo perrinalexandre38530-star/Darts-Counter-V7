@@ -426,6 +426,9 @@ export default function CricketPlay({ profiles, params, onFinish }: Props) {
   const [teamMode, setTeamMode] = React.useState<boolean>(false);
   const [fillWithBots, setFillWithBots] = React.useState<boolean>(true);
 
+  // ✅ DartSet (v1) — utile pour StatsHub / Stats par fléchettes
+  const dartSetId = String(params?.dartSetId ?? params?.config?.dartSetId ?? "").trim() || null;
+
   // Preset depuis la route générique (darts_mode → cricket)
   React.useEffect(() => {
     const preset = String(params?.presetVariantId || "").toLowerCase();
@@ -1415,6 +1418,8 @@ function buildHistoryRecord(): SavedMatch | null {
     },
     payload: {
       mode: "cricket",
+      dartSetId,
+      meta: { ...(params?.meta || {}), dartSetId },
       variantId,
       scoringVariant,
       withPoints: scoreMode === "points",

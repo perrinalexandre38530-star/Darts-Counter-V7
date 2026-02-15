@@ -17,7 +17,20 @@ import type { SavedMatch } from "./history";
    Types NORMALISÉS
 ========================= */
 
-export type NormalizedMode = "x01" | "cricket" | "killer" | "training" | "unknown";
+export type NormalizedMode =
+  | "x01"
+  | "cricket"
+  | "killer"
+  | "shanghai"
+  | "territories"
+  | "golf"
+  | "batard"
+  | "babyfoot"
+  | "pingpong"
+  | "petanque"
+  | "clock"
+  | "training"
+  | "unknown";
 
 export type NormalizedPlayer = {
   playerId: string;
@@ -116,12 +129,28 @@ export function detectNormalizedMode(rec: any): NormalizedMode {
   if (k.includes("x01") || rawMode.includes("x01")) return "x01";
   if (k.includes("cricket") || rawMode.includes("cricket")) return "cricket";
   if (k.includes("killer") || rawMode.includes("killer")) return "killer";
+  if (k.includes("shanghai") || rawMode.includes("shanghai")) return "shanghai";
+  if (k.includes("territ") || rawMode.includes("territ")) return "territories";
+  if (k.includes("golf") || rawMode.includes("golf")) return "golf";
+  if (k.includes("batard") || rawMode.includes("batard")) return "batard";
+  if (k.includes("baby") || rawMode.includes("baby")) return "babyfoot";
+  if (k.includes("ping") || rawMode.includes("ping")) return "pingpong";
+  if (k.includes("petanque") || rawMode.includes("petanque")) return "petanque";
+  if (k.includes("clock") || rawMode.includes("horloge") || rawMode.includes("clock")) return "clock";
   if (k.includes("training") || rawMode.includes("training")) return "training";
 
   // fallback : certains anciens records ont kind "x01" sans mode
   if (k === "x01") return "x01";
   if (k === "cricket") return "cricket";
   if (k === "killer") return "killer";
+  if (k === "shanghai") return "shanghai";
+  if (k === "territories") return "territories";
+  if (k === "golf") return "golf";
+  if (k === "batard") return "batard";
+  if (k === "babyfoot") return "babyfoot";
+  if (k === "pingpong") return "pingpong";
+  if (k === "petanque") return "petanque";
+  if (k === "clock") return "clock";
 
   return "unknown";
 }
@@ -302,6 +331,42 @@ function normalizeKiller(rec: any, base: Omit<NormalizedMatch, "visits" | "darts
   };
 }
 
+
+function normalizeGeneric(rec: any, base: any): NormalizedMatch | null {
+  try {
+    const stats = rec?.payload?.stats || rec?.summary?.stats || rec?.payload?.summary?.stats || null;
+
+    const players: NormalizedPlayer[] = (rec?.players || []).map((p: any) => ({
+      playerId: String(p?.id ?? p?.playerId ?? p?.profileId ?? ""),
+      profileId: String(p?.id ?? p?.profileId ?? ""),
+      name: String(p?.name ?? "—"),
+      isBot: !!p?.isBot,
+      botLevel: p?.botLevel,
+      dartSetId: p?.dartSetId ?? p?.dartPresetId ?? null,
+      avatarDataUrl: p?.avatarDataUrl ?? null,
+    })).filter((p: any) => p.playerId);
+
+    const winnerIds: string[] = [];
+    const wid = rec?.winnerId ?? stats?.global?.winnerId ?? stats?.winnerId ?? null;
+    if (wid) winnerIds.push(String(wid));
+
+    return {
+      ...base,
+      players,
+      visits: [],
+      darts: [],
+      winnerIds,
+      meta: {
+        ...base.meta,
+        raw: rec,
+        stats,
+      },
+    } as NormalizedMatch;
+  } catch {
+    return null;
+  }
+}
+
 function normalizeUnknown(rec: any, base: Omit<NormalizedMatch, "visits" | "darts">): NormalizedMatch {
   return {
     ...base,
@@ -366,7 +431,8 @@ export function normalizeOne(rec: SavedMatch | any): NormalizedMatch | null {
     if (mode === "killer") return normalizeKiller(rec, base);
     if (mode === "training") return normalizeUnknown(rec, base);
 
-    return normalizeUnknown(rec, base);
+    // autres modes : normalisation minimale + stats unifiées si dispo
+    return normalizeGeneric(rec, base) || normalizeUnknown(rec, base);
   } catch {
     return null;
   }
@@ -403,7 +469,7 @@ export async function loadNormalizedHistory(): Promise<NormalizedMatch[]> {
     // Cap + concurrence pour éviter tout freeze.
     // =====================================================
     try {
-      const NEED = new Set(["x01", "cricket"]);
+      const NEED = new Set(["x01", "cricket", "killer", "shanghai", "territories", "golf", "batard", "babyfoot", "pingpong", "petanque", "clock", "training"]);
       const candidates = (rows || [])
         .filter((r: any) => r && NEED.has(String(r.kind || r.mode || "")))
         .filter((r: any) => r.payload == null);

@@ -50,7 +50,7 @@ function makeMatchId(prefix: string) {
   return `${prefix}-${ts}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
-type LightPlayer = { id: string; name?: string; avatarDataUrl?: string | null };
+type LightPlayer = { id: string; name?: string; avatarDataUrl?: string | null; dartSetId?: string | null }
 
 // -------------------------------------------------------------
 // BatardPlay
@@ -122,6 +122,7 @@ export default function BatardPlay(props: any) {
           id,
           name: bot.displayName || id,
           avatarDataUrl: getProBotAvatar(bot.avatarKey || bot.id) || null,
+          dartSetId: null,
         };
       }
 
@@ -130,6 +131,7 @@ export default function BatardPlay(props: any) {
         id: String(id),
         name: prof?.name || prof?.displayName || String(id),
         avatarDataUrl: prof?.avatarDataUrl ?? null,
+        dartSetId: (prof as any)?.dartSetId ?? (prof as any)?.activeDartSetId ?? null,
       };
     });
   }, [runtimeCfg.selectedHumanIds, runtimeCfg.selectedBotIds, runtimeCfg.botsEnabled, runtimeCfg.players, storeProfiles]);
@@ -284,6 +286,31 @@ export default function BatardPlay(props: any) {
     const updatedAt = Date.now();
 
     const summary = buildSummaryFromStates(states as any);
+    // ✅ DartSet (best-effort) — utile pour Stats par fléchettes
+    const dartSetId = (() => {
+      try {
+        const ids = (lightPlayers as any[]).map((p) => (p as any)?.dartSetId).filter((x) => typeof x === "string" && String(x).trim());
+        if (!ids.length) return null;
+        const uniq = Array.from(new Set(ids.map((x) => String(x).trim())));
+        return uniq.length === 1 ? uniq[0] : null;
+      } catch {
+        return null;
+      }
+    })();
+    const dartSetIdsByPlayer = (() => {
+      try {
+        const out: Record<string, string | null> = {};
+        (lightPlayers as any[]).forEach((p) => {
+          const pid = String((p as any)?.id ?? "");
+          if (!pid) return;
+          const v = (p as any)?.dartSetId;
+          out[pid] = typeof v === "string" && v.trim() ? v.trim() : null;
+        });
+        return out;
+      } catch {
+        return {};
+      }
+    })();
 
     const payload = {
       matchId,
@@ -291,6 +318,9 @@ export default function BatardPlay(props: any) {
       status,
       createdAt,
       updatedAt,
+
+      dartSetId,
+      meta: { dartSetId, dartSetIdsByPlayer },
 
       // store light config only (safe + stable)
       config: {
