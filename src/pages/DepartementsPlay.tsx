@@ -65,6 +65,12 @@ const tickerGlob = import.meta.glob("../assets/tickers/ticker_territories_*.png"
   import: "default",
 }) as Record<string, string>;
 
+// Country flags (used as subtle watermark in "CARTE" button)
+const flagGlob = import.meta.glob("../assets/flags/*.png", {
+  eager: true,
+  import: "default",
+}) as Record<string, string>;
+
 // France regions icons (used in values modal)
 const regionsFrGlob = import.meta.glob("../assets/regions_fr/FR-*.png", {
   eager: true,
@@ -103,6 +109,25 @@ function findTerritoriesTicker(mapId: string): string | null {
   const suffix = `/ticker_territories_${id}.png`;
   for (const k of Object.keys(tickerGlob)) {
     if (k.toLowerCase().endsWith(suffix)) return tickerGlob[k];
+  }
+  return null;
+}
+
+function findFlagByCountry(country: string): string | null {
+  const c = String(country || "").toUpperCase().trim();
+  if (!c) return null;
+  // IMPORTANT: keys from import.meta.glob are file paths; case can vary across toolchains.
+  // We compare uppercased strings on BOTH sides so '/FR.png' matches even if the key ends with '/FR.PNG'.
+  const suffix = `/${c}.png`.toUpperCase();
+  for (const k of Object.keys(flagGlob)) {
+    if (k.toUpperCase().endsWith(suffix)) return flagGlob[k];
+  }
+  // Some assets use GB for UK
+  if (c === "UK") {
+    const gb = `/GB.png`.toUpperCase();
+    for (const k of Object.keys(flagGlob)) {
+      if (k.toUpperCase().endsWith(gb)) return flagGlob[k];
+    }
   }
   return null;
 }
@@ -228,6 +253,9 @@ export default function DepartementsPlay(props: any) {
   useFullscreenPlay();
   const { theme } = useTheme();
 
+  // Map is heavy vertically on mobile -> open it in a dedicated modal via a compact card.
+  const [showMapModal, setShowMapModal] = React.useState(false);
+
   // Profiles store (names + avatars)
   const store = (props as any)?.store ?? (props as any)?.params?.store ?? null;
   const storeProfiles: any[] = ((store as any)?.profiles || []) as any[];
@@ -291,6 +319,7 @@ export default function DepartementsPlay(props: any) {
   const timeLimitMin = Math.max(1, Number(effectiveCfg.timeLimitMin || 20));
 
   const tickerSrc = findTerritoriesTicker(mapId) || findTerritoriesTicker(country) || undefined;
+  const flagSrc = React.useMemo(() => findFlagByCountry(country), [country]);
 
   // Players/teams + owner colors
   const { players, teams, ownerColors } = React.useMemo(() => {
@@ -914,7 +943,8 @@ export default function DepartementsPlay(props: any) {
           {/* Left: big avatar + name underneath */}
           <div
             style={{
-              width: 164,
+              // Responsive to avoid any horizontal overflow on mobile
+              width: "clamp(112px, 34vw, 154px)",
               flex: "0 0 auto",
               zIndex: 1,
               display: "flex",
@@ -926,10 +956,11 @@ export default function DepartementsPlay(props: any) {
           >
             <div
               style={{
-                width: 86,
-                height: 86,
+                width: 82,
+                height: 82,
                 borderRadius: 999,
-                overflow: "hidden",
+                display: "grid",
+                placeItems: "center",
                 boxShadow: `0 0 24px ${activeColor}aa`,
                 outline: `2px solid ${activeColor}66`,
                 outlineOffset: 2,
@@ -937,7 +968,7 @@ export default function DepartementsPlay(props: any) {
             >
               <ProfileAvatar
                 profile={profileById[game.turn.activePlayerId] ?? { id: game.turn.activePlayerId, name: activePlayer?.name }}
-                size={86}
+                size={82}
                 ringColor={activeColor}
                 textColor="#fff"
                 showStars={false}
@@ -971,7 +1002,7 @@ export default function DepartementsPlay(props: any) {
             <div
               style={{
                 // Hard guard against overflow on small screens
-                width: "clamp(150px, 44vw, 220px)",
+                width: "clamp(142px, 40vw, 210px)",
                 minWidth: 0,
                 padding: "12px 14px 12px 14px",
                 borderRadius: 16,
@@ -1001,28 +1032,46 @@ export default function DepartementsPlay(props: any) {
 
       {/* KPI: OBJECTIF + TERRITOIRE (single row, neon) */}
       <div style={{ padding: "0 12px 10px", display: "flex", gap: 12 }}>
-        <KpiCard title="OBJECTIF" value={objectiveValueLabel} valueColor={activeColor} borderColor={`${activeColor}55`} glowColor={`${activeColor}22`} />
-        <KpiCard title="TERRITOIRE" value={territoryNameLabel} valueColor="#fff" borderColor="rgba(255,255,255,0.12)" glowColor="rgba(0,0,0,0.0)" />
+        <KpiCard
+          title="OBJECTIF"
+          titleColor={activeColor}
+          titleGlowColor={`${activeColor}AA`}
+          value={objectiveValueLabel}
+          valueColor={activeColor}
+          borderColor={`${activeColor}55`}
+          glowColor={`${activeColor}22`}
+        />
+        <KpiCard
+          title="TERRITOIRE"
+          titleColor={activeColor}
+          titleGlowColor={`${activeColor}AA`}
+          value={territoryNameLabel}
+          valueColor="#fff"
+          borderColor="rgba(255,255,255,0.12)"
+          glowColor="rgba(0,0,0,0.0)"
+          valueFontSize={14}
+          allowWrap
+        />
+        <KpiCard
+          title="CARTE"
+          titleColor={activeColor}
+          titleGlowColor={`${activeColor}AA`}
+          value=""
+          valueColor={activeColor}
+          borderColor={`${activeColor}55`}
+          glowColor={`${activeColor}18`}
+          onClick={() => setShowMapModal(true)}
+          watermarkSrc={flagSrc || undefined}
+        />
       </div>
 
-      {/* MAP (uniform frame) */}
-      <div style={{ flex: 1, padding: 12, paddingTop: 2 }}>
-        <div
-          style={{
-            width: "100%",
-            height: "clamp(260px, 40vh, 460px)",
-            position: "relative",
-            borderRadius: 18,
-            background: "rgba(12, 14, 26, 0.65)",
-            border: "1px solid rgba(255,255,255,0.08)",
-            overflow: "hidden",
-          }}
+      {/* MAP MODAL (keeps base UI compact + prevents cutting the active player stats) */}
+      {showMapModal && (
+        <TerritoriesMapModal
+          title={country === "FR" ? "CARTE — France" : "CARTE"}
+          onClose={() => setShowMapModal(false)}
+          valuesModalContent={valuesModalContent}
         >
-          {/* i button */}
-          <div style={{ position: "absolute", left: 12, top: 12, zIndex: 20, pointerEvents: "auto" }}>
-            <InfoDot title="Valeurs des territoires" content={valuesModalContent} />
-          </div>
-
           <TerritoriesMapView
             country={country}
             map={game.map}
@@ -1030,12 +1079,11 @@ export default function DepartementsPlay(props: any) {
             selectedTerritoryId={game.turn.selectedTerritoryId}
             activeColor={activeColor}
             themeColor={themeColor}
-            // ✅ restore click selection (free + by_score). imposed remains non-interactive.
             interactive={game.status === "playing" && game.config.targetSelectionMode !== "imposed"}
             onSelectTerritory={handleMapSelect}
           />
-        </div>
-      </div>
+        </TerritoriesMapModal>
+      )}
 
       {/* KEYPAD (volée X01-like via ScoreInputHub) */}
       <div style={{ paddingBottom: 10 }}>
@@ -1061,6 +1109,10 @@ export default function DepartementsPlay(props: any) {
             setMultiplier(1);
           }}
           onValidate={validateThrow}
+          // Territories: UI must stay compact; method tabs waste vertical space.
+          // We keep "keypad" as the single visible method.
+          switcherMode="hidden"
+          showPlaceholders={false}
         />
       </div>
     </div>
@@ -1069,10 +1121,16 @@ export default function DepartementsPlay(props: any) {
 
 function KpiCard(props: {
   title: string;
+  titleColor?: string;
+  titleGlowColor?: string;
   value: string;
   valueColor: string;
   borderColor: string;
   glowColor: string;
+  onClick?: () => void;
+  valueFontSize?: number;
+  allowWrap?: boolean;
+  watermarkSrc?: string;
 }) {
   return (
     <div
@@ -1084,21 +1142,187 @@ function KpiCard(props: {
         background: "rgba(0,0,0,0.22)",
         border: `1px solid ${props.borderColor}`,
         boxShadow: `0 0 18px ${props.glowColor}`,
+        cursor: props.onClick ? "pointer" : "default",
+        userSelect: "none",
+        position: "relative",
+        overflow: "hidden",
+      }}
+      role={props.onClick ? "button" : undefined}
+      tabIndex={props.onClick ? 0 : undefined}
+      onClick={props.onClick}
+      onKeyDown={(e) => {
+        if (!props.onClick) return;
+        if (e.key === "Enter" || e.key === " ") props.onClick();
       }}
     >
-      <div style={{ fontSize: 11, letterSpacing: 1.2, opacity: 0.78, fontWeight: 950 }}>{props.title}</div>
+      {props.watermarkSrc ? (
+        <div
+          aria-hidden
+          style={{
+            position: "absolute",
+            inset: 0,
+            pointerEvents: "none",
+            // Watermark: subtle but visible.
+            opacity: 0.32,
+          }}
+        >
+          <img
+            src={props.watermarkSrc}
+            alt=""
+            style={{
+              position: "absolute",
+              left: "50%",
+              top: "50%",
+              transform: "translate(-50%, -50%)",
+              width: "135%",
+              height: "135%",
+              objectFit: "contain",
+              filter: "saturate(1.15) contrast(1.05) drop-shadow(0 0 12px rgba(0,0,0,0.35))",
+              mixBlendMode: "normal",
+            }}
+            draggable={false}
+          />
+          <div
+            style={{
+              position: "absolute",
+              inset: 0,
+              // Keep readability while letting the flag be seen.
+              background:
+                "linear-gradient(180deg, rgba(0,0,0,0.26) 0%, rgba(0,0,0,0.10) 55%, rgba(0,0,0,0.26) 100%)",
+            }}
+          />
+        </div>
+      ) : null}
+
       <div
         style={{
-          marginTop: 4,
-          fontSize: 20,
+          fontSize: 11,
+          letterSpacing: 1.2,
           fontWeight: 950,
-          color: props.valueColor,
-          whiteSpace: "nowrap",
-          overflow: "hidden",
-          textOverflow: "ellipsis",
+          color: props.titleColor || "rgba(255,255,255,0.78)",
+          textShadow: props.titleColor
+            ? `0 0 10px ${props.titleGlowColor || props.titleColor}, 0 0 18px ${props.titleGlowColor || props.titleColor}`
+            : undefined,
+          opacity: props.titleColor ? 1 : 0.78,
         }}
       >
-        {props.value}
+        {props.title}
+      </div>
+      {props.value ? (
+        <div
+          style={{
+            position: "relative",
+            zIndex: 1,
+            marginTop: 4,
+            fontSize: props.valueFontSize ?? 20,
+            fontWeight: 950,
+            color: props.valueColor,
+            whiteSpace: props.allowWrap ? "normal" : "nowrap",
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            display: props.allowWrap ? "-webkit-box" : "block",
+            WebkitLineClamp: props.allowWrap ? 3 : undefined,
+            WebkitBoxOrient: props.allowWrap ? ("vertical" as any) : undefined,
+            lineHeight: props.allowWrap ? 1.12 : undefined,
+          }}
+        >
+          {props.value}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function TerritoriesMapModal(props: {
+  title: string;
+  onClose: () => void;
+  valuesModalContent: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div
+      style={{
+        position: "fixed",
+        inset: 0,
+        zIndex: 9999,
+        background: "rgba(0,0,0,0.68)",
+        backdropFilter: "blur(6px)",
+        display: "grid",
+        placeItems: "center",
+        padding:
+          "calc(12px + env(safe-area-inset-top)) calc(12px + env(safe-area-inset-right)) calc(12px + env(safe-area-inset-bottom)) calc(12px + env(safe-area-inset-left))",
+      }}
+      onMouseDown={(e) => {
+        // click outside closes
+        if (e.target === e.currentTarget) props.onClose();
+      }}
+    >
+      <div
+        style={{
+          width: "min(980px, 100%)",
+          maxHeight: "calc(100vh - 24px - env(safe-area-inset-top) - env(safe-area-inset-bottom))",
+          borderRadius: 20,
+          overflow: "hidden",
+          background: "rgba(12, 14, 26, 0.92)",
+          border: "1px solid rgba(255,255,255,0.10)",
+          boxShadow: "0 18px 60px rgba(0,0,0,0.55)",
+          display: "flex",
+          flexDirection: "column",
+        }}
+      >
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: 10,
+            padding: "10px 12px",
+            borderBottom: "1px solid rgba(255,255,255,0.08)",
+          }}
+        >
+          <div style={{ fontWeight: 950, letterSpacing: 0.8, fontSize: 12, opacity: 0.9 }}>{props.title}</div>
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <InfoDot title="Valeurs des territoires" content={props.valuesModalContent} />
+            <button
+              onClick={props.onClose}
+              style={{
+                height: 34,
+                padding: "0 12px",
+                borderRadius: 12,
+                border: "1px solid rgba(255,255,255,0.14)",
+                background: "rgba(0,0,0,0.30)",
+                color: "#fff",
+                fontWeight: 900,
+                cursor: "pointer",
+              }}
+            >
+              Fermer
+            </button>
+          </div>
+        </div>
+
+        <div
+          style={{
+            position: "relative",
+            flex: 1,
+            minHeight: 260,
+            padding: 12,
+          }}
+        >
+          <div
+            style={{
+              width: "100%",
+              height: "min(72vh, 560px)",
+              position: "relative",
+              borderRadius: 18,
+              background: "rgba(12, 14, 26, 0.65)",
+              border: "1px solid rgba(255,255,255,0.08)",
+              overflow: "hidden",
+            }}
+          >
+            {props.children}
+          </div>
+        </div>
       </div>
     </div>
   );

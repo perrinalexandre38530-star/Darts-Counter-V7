@@ -576,6 +576,21 @@ function chipStyleMini(d?: UIDart): React.CSSProperties {
   };
 }
 
+function chipStyleVisit(d?: UIDart) {
+  const base = chipStyleMini(d);
+  return {
+    ...base,
+    flex: 1,
+    minWidth: 0,
+    height: 28,
+    padding: "6px 8px",
+    fontSize: 13,
+    borderRadius: 12,
+    lineHeight: "16px",
+  } as React.CSSProperties;
+}
+
+
 function rulesText(config: KillerConfig) {
   const lives = clampInt((config as any)?.lives, 1, 9, 3);
 
@@ -3499,6 +3514,14 @@ React.useEffect(() => {
       height:0 !important;
     }
 
+    /* ✅ Force hide ScoreInputHub tabs (KEYPAD / CIBLE / PRESETS / VOICE) */
+    body.dc-fullscreen-play [role="tablist"],
+    body.dc-fullscreen-play [role="tab"] {
+      display:none !important;
+      visibility:hidden !important;
+      height:0 !important;
+    }
+
     /* ✅ KILLER: on force la disparition du total volée (toutes variantes possibles) */
     .dc-killer-keypad .keypad-total,
     .dc-killer-keypad .Keypad-total,
@@ -3515,7 +3538,28 @@ React.useEffect(() => {
       visibility:hidden !important;
       opacity:0 !important;
     }
-  `;
+  
+/* ✅ KILLER: masquer les onglets / tabs du ScoreInputHub (S/D/T etc) */
+.dc-killer-keypad .tabs,
+.dc-killer-keypad .Tabs,
+.dc-killer-keypad .tab,
+.dc-killer-keypad .Tab,
+.dc-killer-keypad .mult-tabs,
+.dc-killer-keypad .multTabs,
+.dc-killer-keypad .multiplier-tabs,
+.dc-killer-keypad .multiplierTabs,
+.dc-killer-keypad [data-tabs],
+.dc-killer-keypad [data-multipliers],
+.dc-killer-keypad [data-multiplier-tabs],
+.dc-killer-keypad [data-mult-tabs],
+.dc-killer-keypad [role="tablist"],
+.dc-killer-keypad [role="tab"]{
+
+  display:none !important;
+  visibility:hidden !important;
+  height:0 !important;
+}
+`;
   document.head.appendChild(st);
 
   return () => {
@@ -4004,27 +4048,8 @@ return (
         <InfoDot onClick={() => setShowRules(true)} size={42} color={gold} glow={`${gold}AA`} />
       </div>
 
-      {/* ✅ Log à droite + BackDot à droite */}
+      {/* ✅ BackDot à droite */}
       <div style={{ display: "flex", alignItems: "center", gap: 10, pointerEvents: "auto" }}>
-        <button
-          type="button"
-          onClick={() => setShowLog(true)}
-          style={{
-            height: 34,
-            padding: "0 12px",
-            borderRadius: 999,
-            border: "1px solid rgba(255,255,255,.16)",
-            background: "rgba(0,0,0,.28)",
-            color: "#fff",
-            fontWeight: 900,
-            cursor: "pointer",
-            boxShadow: "0 10px 22px rgba(0,0,0,.35)",
-          }}
-          title="Log"
-        >
-          Log
-        </button>
-
         <BackDot
           onClick={() => go("killer_config")}
           title="Retour"
@@ -4127,6 +4152,28 @@ return (
               <HeartKpi value={current?.lives ?? 0} />
               <SurvivorKpi value={aliveCount} />
             </div>
+
+
+<div
+  style={{
+    display: "flex",
+    alignItems: "flex-end",
+    justifyContent: "space-between",
+    gap: 6,
+    marginTop: 4,
+    width: 112,
+    }}
+>
+  <span style={chipStyleVisit(currentThrow[0])}>
+    {fmtChip(currentThrow[0])}
+  </span>
+  <span style={chipStyleVisit(currentThrow[1])}>
+    {fmtChip(currentThrow[1])}
+  </span>
+  <span style={chipStyleVisit(currentThrow[2])}>
+    {fmtChip(currentThrow[2])}
+  </span>
+</div>
           </div>
         </div>
 
@@ -4173,6 +4220,8 @@ return (
           cursor: "pointer",
           textAlign: "left",
           backgroundImage: `url(${tickerKiller2})`,
+          backgroundBlendMode: "screen",
+          backgroundColor: "rgba(0,0,0,.18)",
           backgroundSize: "cover",
           backgroundPosition: "center",
           boxShadow: "0 14px 34px rgba(0,0,0,.45)",
@@ -4187,7 +4236,7 @@ return (
             justifyContent: "space-between",
             gap: 10,
             background:
-              "linear-gradient(90deg, rgba(0,0,0,.60), rgba(0,0,0,.22) 55%, rgba(0,0,0,.50))",
+              "linear-gradient(90deg, rgba(0,0,0,.45), rgba(0,0,0,.14) 55%, rgba(0,0,0,.35))",
             borderBottom: "1px solid rgba(255,255,255,.10)",
           }}
         >
@@ -4228,7 +4277,7 @@ return (
         </div>
 
 	        {/* mini preview compact: avatars only, in play order */}
-	        <div style={{ padding: 10, background: "rgba(0,0,0,.52)" }}>
+	        <div style={{ padding: 10, background: "rgba(0,0,0,.32)", backdropFilter: "blur(2px)" }}>
 	          <div
 	            style={{
 	              display: "flex",
@@ -4490,19 +4539,16 @@ return (
         "linear-gradient(180deg, rgba(0,0,0,0), rgba(0,0,0,.25) 30%, rgba(0,0,0,.45))",
     }}
   >
-    <div style={{ display: "flex", justifyContent: "center", gap: 10 }}>
-      <span style={chipStyleBig(currentThrow[0])}>
-        {fmtChip(currentThrow[0])}
-      </span>
-      <span style={chipStyleBig(currentThrow[1])}>
-        {fmtChip(currentThrow[1])}
-      </span>
-      <span style={chipStyleBig(currentThrow[2])}>
-        {fmtChip(currentThrow[2])}
-      </span>
-    </div>
+    
 
-    <div style={{ marginTop: 10 }} className="dc-killer-keypad">
+    <div
+      style={{
+        marginTop: 8,
+        transform: "scale(.92)",
+        transformOrigin: "bottom center",
+      }}
+      className="dc-killer-keypad"
+    >
       <ScoreInputHub
         currentThrow={currentThrow}
         multiplier={multiplier}
@@ -4520,6 +4566,8 @@ return (
         onDirectDart={(d) => applyThrow({ target: d.v, mult: d.mult as any })}
         hidePreview={true}
         hideTotal={true}
+        hideTabs={true}
+        compact={true}
         centerSlot={
           isCurrentKillerActive ? (
             <div

@@ -1,4 +1,5 @@
 // ============================================
+// @ts-nocheck
 // src/pages/BattleRoyalePlay.tsx
 // BATTLE ROYALE — PLAY (MVP jouable)
 // ✅ UI raccord Shanghai/Killer (header sticky + cards + keypad fixe)
@@ -8,6 +9,7 @@
 //   - zero_points: 0 point sur la cible => éliminé direct
 //   - miss_x: chaque dart non sur la cible => +1 miss ; >= missLimit => éliminé
 // ✅ SFX + Voice (best-effort)
+// ✅ FIX: tickers importés depuis src/assets/tickers (comme KillerPlay)
 // ============================================
 
 import React from "react";
@@ -20,6 +22,9 @@ import BackDot from "../components/BackDot";
 import ScoreInputHub from "../components/ScoreInputHub";
 import type { Dart as UIDart } from "../lib/types";
 import { DartIconColorizable } from "../components/MaskIcon";
+
+import tickerBattleRoyale from "../assets/tickers/ticker_battle_royale.png";
+import tickerBattleRoyale2 from "../assets/tickers/ticker_battle_royale_2.png";
 
 import { playImpactFromDart, playSfx, playUiConfirm, playUiClickSoft } from "../lib/sfx";
 import { announceTurn, speak } from "../lib/voice";
@@ -112,15 +117,15 @@ function HeartKpi({ value }: { value: any }) {
   return (
     <div
       style={{
-        width: 56,
-        height: 48,
+        width: "clamp(44px, 12vw, 56px)",
+        height: "clamp(38px, 10vw, 48px)",
         position: "relative",
         display: "grid",
         placeItems: "center",
         filter: "drop-shadow(0 10px 18px rgba(255,121,214,.22))",
       }}
     >
-      <svg width="56" height="48" viewBox="0 0 48 42" style={{ position: "absolute", inset: 0 }}>
+      <svg width="100%" height="100%" viewBox="0 0 48 42" preserveAspectRatio="xMidYMid meet" style={{ position: "absolute", inset: 0 }}>
         <defs>
           <linearGradient id="brHeartPinkG" x1="0" y1="0" x2="0" y2="1">
             <stop offset="0" stopColor="rgba(255,121,214,.36)" />
@@ -143,7 +148,7 @@ function HeartKpi({ value }: { value: any }) {
           position: "relative",
           textAlign: "center",
           lineHeight: 1,
-          fontSize: 18,
+          fontSize: "clamp(14px, 3.8vw, 18px)",
           fontWeight: 1000,
           color: "#fff",
           transform: "translateY(2px)",
@@ -161,15 +166,15 @@ function SurvivorKpi({ value }: { value: any }) {
   return (
     <div
       style={{
-        width: 56,
-        height: 48,
+        width: "clamp(44px, 12vw, 56px)",
+        height: "clamp(38px, 10vw, 48px)",
         position: "relative",
         display: "grid",
         placeItems: "center",
         filter: "drop-shadow(0 0 4px rgba(255, 55, 170, .16))",
       }}
     >
-      <svg width="56" height="48" viewBox="0 0 56 48" style={{ position: "absolute", inset: 0 }}>
+      <svg width="100%" height="100%" viewBox="0 0 56 48" preserveAspectRatio="xMidYMid meet" style={{ position: "absolute", inset: 0 }}>
         <path
           d="M28 25c6 0 11-5 11-11S34 3 28 3 17 8 17 14s5 11 11 11z"
           fill="#ffffff"
@@ -189,7 +194,7 @@ function SurvivorKpi({ value }: { value: any }) {
           position: "relative",
           textAlign: "center",
           lineHeight: 1,
-          fontSize: 18,
+          fontSize: "clamp(14px, 3.8vw, 18px)",
           fontWeight: 1000,
           color: textPinkDark,
           transform: "translateY(2px)",
@@ -206,16 +211,18 @@ function SurvivorKpi({ value }: { value: any }) {
 function DartsIcons({ total, used }: { total: number; used: number }) {
   // ✅ même affichage que CricketPlay (DartIconColorizable)
   const { theme } = useTheme();
-  useViewport({ tabletMinWidth: 900 });
   const n = Math.max(1, Math.min(3, Number(total) || 3));
   const u = Math.max(0, Math.min(n, Number(used) || 0));
   return (
-    <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+    <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: "clamp(4px, 1.4vw, 6px)", flexWrap: "wrap", minWidth: 0, maxWidth: "100%" }}>
       {Array.from({ length: n }).map((_, i) => {
         const active = i < u;
         return (
-          <div key={i} style={{ width: 32, height: 32, display: "flex", alignItems: "center", justifyContent: "center" }}>
-            <DartIconColorizable color={theme.primary} active={active} size={30} />
+          <div
+            key={i}
+            style={{ width: "clamp(22px, 6.5vw, 30px)", height: "clamp(22px, 6.5vw, 30px)", display: "flex", alignItems: "center", justifyContent: "center", flex: "0 0 auto" }}
+          >
+            <DartIconColorizable color={theme.primary} active={active} size={26} />
           </div>
         );
       })}
@@ -244,17 +251,21 @@ function ThrowBlocks({ total, darts }: { total: number; darts: UIDart[] }) {
           <div
             key={i}
             style={{
-              height: 34,
-              borderRadius: 12,
-              border: `1px solid ${has ? theme.primary + "55" : theme.borderSoft}`,
-              background: has ? theme.primary + "1a" : "rgba(0,0,0,0.18)",
+              height: 40,
+              borderRadius: 14,
+              border: `1px solid ${has ? theme.primary + "66" : theme.borderSoft}`,
+              background: has
+                ? `linear-gradient(180deg, ${theme.primary}2a, rgba(0,0,0,0.28))`
+                : "linear-gradient(180deg, rgba(0,0,0,0.22), rgba(0,0,0,0.34))",
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
               fontWeight: 1000,
               color: has ? "#fff" : theme.textSoft,
-              boxShadow: has ? `0 0 14px ${theme.primary}22` : "none",
-              textShadow: has ? "0 2px 10px rgba(0,0,0,.55)" : "none",
+              boxShadow: has
+                ? `0 0 18px ${theme.primary}2a, inset 0 0 0 1px ${theme.primary}22`
+                : "inset 0 0 0 1px rgba(255,255,255,0.04)",
+              textShadow: has ? `0 0 12px ${theme.primary}44, 0 2px 10px rgba(0,0,0,.55)` : "none",
             }}
           >
             {has ? label : "—"}
@@ -326,6 +337,7 @@ function buildBattleRoyaleSummary(opts: {
   const ranking = computeFinalRanking(opts.players);
   const winner = ranking[0] || null;
 
+  // Stats simples et fiables (Step 2 utilisera ça pour l’overlay)
   const perPlayer = ranking.map((p) => ({
     id: p.id,
     name: p.name,
@@ -352,9 +364,7 @@ function buildBattleRoyaleSummary(opts: {
 }
 
 export default function BattleRoyalePlay({ go, config, onFinish }: Props) {
-  // ✅ Fullscreen bien appliqué (même hook que X01/Killer V3)
   useFullscreenPlay();
-
   const { theme } = useTheme();
   const { t } = useLang();
 
@@ -362,7 +372,8 @@ export default function BattleRoyalePlay({ go, config, onFinish }: Props) {
 
   const dartsPerTurn = clampInt(cfg?.dartsPerTurn, 1, 3, 3);
   const baseLives = clampInt(cfg?.lives, 1, 9, 3);
-  const eliminationRule: "zero_points" | "miss_x" | "life_system" = cfg?.eliminationRule || "life_system";
+  const eliminationRule: "zero_points" | "miss_x" | "life_system" =
+    cfg?.eliminationRule || "life_system";
   const missLimit = clampInt(cfg?.missLimit, 1, 30, 6);
 
   const playersInit = React.useMemo<BRPlayerState[]>(() => {
@@ -430,6 +441,7 @@ export default function BattleRoyalePlay({ go, config, onFinish }: Props) {
     if (lastAnnouncedRef.current === key) return;
     lastAnnouncedRef.current = key;
 
+    // N’annonce pas si la voix n’est pas activée côté cfg (optionnelle)
     if (cfg?.voiceEnabled === false) return;
 
     try {
@@ -437,15 +449,50 @@ export default function BattleRoyalePlay({ go, config, onFinish }: Props) {
     } catch {
       // ignore
     }
-  }, [activePlayer?.id, roundIndex, ended]);
+  }, [activePlayer?.id, roundIndex, ended]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // -------- Keypad handlers --------
+  
+  // ✅ UI: masquer les onglets au-dessus du keypad (KEYPAD / CIBLE / PRESETS / VOICE / AUTO)
+  React.useEffect(() => {
+    if (typeof document === "undefined") return;
+
+    const LABELS = ["KEYPAD", "CIBLE", "PRESETS", "VOICE", "AUTO"];
+
+    const hideTabs = () => {
+      try {
+        const nodes = Array.from(document.querySelectorAll("button,div,span"));
+        const hit = nodes.find((n) => LABELS.includes((n.textContent || "").trim().toUpperCase()));
+        if (!hit) return;
+
+        // On remonte pour cibler la "barre" qui contient les onglets.
+        let el: HTMLElement | null = hit as any;
+        for (let i = 0; i < 6 && el; i++) {
+          const s = window.getComputedStyle(el);
+          const isRow = s.display.includes("flex") && (el.scrollWidth > 200 || el.clientWidth > 200);
+          if (isRow) {
+            (el as HTMLElement).style.display = "none";
+            return;
+          }
+          el = el.parentElement;
+        }
+      } catch {
+        // ignore
+      }
+    };
+
+    hideTabs();
+    const id = window.setInterval(hideTabs, 400);
+    return () => window.clearInterval(id);
+  }, []);
+
+// -------- Keypad handlers --------
   function pushDart(d: UIDart) {
     setCurrentThrow((prev) => {
       if ((prev?.length || 0) >= dartsPerTurn) return prev;
       return [...prev, d];
     });
 
+    // SFX impact si activé
     if (cfg?.sfxEnabled === false) return;
     try {
       playImpactFromDart(d);
@@ -463,6 +510,7 @@ export default function BattleRoyalePlay({ go, config, onFinish }: Props) {
   }
 
   function onCancel() {
+    // Annuler = efface la volée en cours (MVP)
     setCurrentThrow([]);
     setMultiplier(1);
     if (cfg?.sfxEnabled === false) return;
@@ -521,6 +569,7 @@ export default function BattleRoyalePlay({ go, config, onFinish }: Props) {
       return next;
     });
 
+    // SFX/Voice élimination (best-effort)
     if (eliminatedNow) {
       if (cfg?.sfxEnabled !== false) {
         try {
@@ -534,16 +583,22 @@ export default function BattleRoyalePlay({ go, config, onFinish }: Props) {
       }
     }
 
+    // Nettoyage volée + multiplicateur
     setCurrentThrow([]);
     setMultiplier(1);
 
+    // Avance pointeur
     const nextPtr = (activeIndex + 1) % (players.length || 1);
+
+    // Si on revient au début du cycle (tous les vivants ont joué), on incrémente le round
     const looped = nextPtr <= activeIndex;
     setTurnPtr(nextPtr);
 
     if (looped) setRoundIndex((r) => r + 1);
 
+    // Fin de partie ?
     setTimeout(() => {
+      // recalcul propre après setPlayers
       setPlayers((prev) => {
         const alive = prev.filter((p) => p.alive);
         if (alive.length <= 1 && prev.length >= 2) {
@@ -599,13 +654,13 @@ export default function BattleRoyalePlay({ go, config, onFinish }: Props) {
       console.warn("[BattleRoyale] onFinish summary error:", e);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ended]);
+  }, [ended]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const pageBg = theme.bg;
   const cardBg = theme.card;
 
   const cardShell: React.CSSProperties = {
-    borderRadius: 18,
+    borderRadius: 0,
     border: `1px solid ${theme.borderSoft}`,
     background: cardBg,
     boxShadow: `0 10px 24px rgba(0,0,0,0.55)`,
@@ -631,14 +686,12 @@ export default function BattleRoyalePlay({ go, config, onFinish }: Props) {
         color: theme.text,
         display: "flex",
         flexDirection: "column",
-        // ✅ SAFE-AREA + anti débordement (les blocs ne doivent jamais sortir)
-        paddingTop: "calc(12px + env(safe-area-inset-top))",
+        padding: 12,
+        boxSizing: "border-box",
         paddingLeft: "calc(12px + env(safe-area-inset-left))",
         paddingRight: "calc(12px + env(safe-area-inset-right))",
-        paddingBottom: "calc(12px + env(safe-area-inset-bottom))",
         gap: 10,
         overscrollBehavior: "none",
-        boxSizing: "border-box",
       }}
     >
       {/* Header sticky */}
@@ -649,41 +702,43 @@ export default function BattleRoyalePlay({ go, config, onFinish }: Props) {
           zIndex: 10,
           background: pageBg,
           paddingBottom: 6,
+          /* Full-bleed ticker */
+          marginLeft: "calc(-12px - env(safe-area-inset-left))",
+          marginRight: "calc(-12px - env(safe-area-inset-right))",
+          paddingLeft: "calc(12px + env(safe-area-inset-left))",
+          paddingRight: "calc(12px + env(safe-area-inset-right))",
         }}
       >
-        <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
+        {/* Ticker full width, height = header */}
+        <div
+          style={{
+            height: 56,
+            borderRadius: 0,
+            border: `1px solid ${theme.borderSoft}`,
+            backgroundImage: `linear-gradient(180deg, rgba(0,0,0,.20), rgba(0,0,0,.55)), url(${tickerBattleRoyale})`,
+            backgroundRepeat: "no-repeat",
+            backgroundPosition: "center",
+            /* important: match header height */
+            backgroundSize: "100% 100%",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            padding: "8px 10px",
+            boxShadow: `0 10px 24px rgba(0,0,0,0.55)`,
+          }}
+        >
+          {/* Back à gauche */}
           <BackDot
             onClick={() => go("battle_royale")}
             glow={theme.primary + "88"}
             title={t("common.back", "Retour")}
           />
-
-          <div style={{ flex: 1, minWidth: 0, textAlign: "center" }}>
-            <div
-              style={{
-                fontSize: 16,
-                fontWeight: 1000,
-                letterSpacing: 1,
-                color: theme.primary,
-                textShadow: `0 0 12px ${theme.primary}66`,
-                textTransform: "uppercase",
-                overflow: "hidden",
-                textOverflow: "ellipsis",
-                whiteSpace: "nowrap",
-              }}
-            >
-              BATTLE ROYALE
-            </div>
-            <div style={{ fontSize: 12, color: theme.textSoft, fontWeight: 900, marginTop: 2 }}>
-              {t("common.round", "Round")} {roundIndex + 1} • {t("common.target", "Cible")} {fmtTarget(target)}
-            </div>
-          </div>
-
+                  {/* Info à droite */}
           <InfoDot onClick={() => setInfoOpen(true)} glow={theme.primary + "88"} />
         </div>
       </div>
 
-      {/* Content (scroll) */}
+      {/* Content (scroll) — 1 colonne pour éviter tout débordement */}
       <div
         style={{
           flex: 1,
@@ -694,28 +749,18 @@ export default function BattleRoyalePlay({ go, config, onFinish }: Props) {
           paddingBottom: 8,
         }}
       >
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "1fr",
-            gap: 10,
-            maxWidth: 860,
-            margin: "0 auto",
-            width: "100%",
-            boxSizing: "border-box",
-          }}
-        >
+        <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 10, maxWidth: 860, margin: "0 auto" }}>
           <div style={{ ...cardShell, width: "100%" }}>
             <div
               style={{
                 padding: 8,
                 display: "grid",
-                gridTemplateColumns: "1fr 1fr",
+                gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr)",
                 gap: 8,
                 alignItems: "stretch",
-              }}
+                }}
             >
-              {/* gauche */}
+              {/* gauche (reprend ShanghaiPlay) */}
               <div
                 style={{
                   borderRadius: 16,
@@ -727,11 +772,11 @@ export default function BattleRoyalePlay({ go, config, onFinish }: Props) {
                   minWidth: 0,
                 }}
               >
-                <div style={{ display: "flex", gap: 8, minWidth: 0 }}>
+                <div style={{ display: "flex", gap: 8 }}>
                   <div
                     style={{
                       flex: 1,
-                      borderRadius: 14,
+                      borderRadius: 0,
                       border: `1px solid ${theme.primary}44`,
                       background: "linear-gradient(180deg, rgba(0,0,0,.22), rgba(0,0,0,.34))",
                       boxShadow: `0 0 18px ${theme.primary}22`,
@@ -739,7 +784,6 @@ export default function BattleRoyalePlay({ go, config, onFinish }: Props) {
                       display: "grid",
                       placeItems: "center",
                       minHeight: 36,
-                      minWidth: 0,
                     }}
                   >
                     <div style={{ fontSize: 10.2, letterSpacing: 0.9, opacity: 0.85, textTransform: "uppercase" }}>
@@ -747,7 +791,7 @@ export default function BattleRoyalePlay({ go, config, onFinish }: Props) {
                     </div>
                     <div
                       style={{
-                        fontSize: 16,
+                        fontSize: "clamp(14px, 4.2vw, 16px)",
                         fontWeight: 1000,
                         color: theme.primary,
                         textShadow: `0 0 10px ${theme.primary}55`,
@@ -762,7 +806,7 @@ export default function BattleRoyalePlay({ go, config, onFinish }: Props) {
                   <div
                     style={{
                       flex: 1,
-                      borderRadius: 14,
+                      borderRadius: 0,
                       border: `1px solid ${theme.primary}44`,
                       background: "linear-gradient(180deg, rgba(0,0,0,.22), rgba(0,0,0,.34))",
                       boxShadow: `0 0 18px ${theme.primary}22`,
@@ -770,7 +814,6 @@ export default function BattleRoyalePlay({ go, config, onFinish }: Props) {
                       display: "grid",
                       placeItems: "center",
                       minHeight: 36,
-                      minWidth: 0,
                     }}
                   >
                     <div style={{ fontSize: 10.2, letterSpacing: 0.9, opacity: 0.85, textTransform: "uppercase" }}>
@@ -778,7 +821,7 @@ export default function BattleRoyalePlay({ go, config, onFinish }: Props) {
                     </div>
                     <div
                       style={{
-                        fontSize: 16,
+                        fontSize: "clamp(14px, 4.2vw, 16px)",
                         fontWeight: 1000,
                         color: theme.primary,
                         textShadow: `0 0 10px ${theme.primary}55`,
@@ -829,11 +872,12 @@ export default function BattleRoyalePlay({ go, config, onFinish }: Props) {
                   </div>
                 </div>
 
+                {/* ✅ Nom sous médaillon */}
                 <div
                   style={{
                     textAlign: "center",
                     fontWeight: 1100,
-                    fontSize: 14,
+                    fontSize: "clamp(13px, 4vw, 14px)",
                     color: theme.primary,
                     textShadow: `0 0 10px ${theme.primary}55`,
                     overflow: "hidden",
@@ -857,15 +901,7 @@ export default function BattleRoyalePlay({ go, config, onFinish }: Props) {
                   minWidth: 0,
                 }}
               >
-                <div
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "flex-end",
-                    gap: 10,
-                    flexWrap: "wrap",
-                  }}
-                >
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "clamp(6px, 2vw, 10px)", flexWrap: "wrap", width: "100%", maxWidth: "100%", minWidth: 0 }}>
                   {eliminationRule === "life_system" ? (
                     <HeartKpi value={activePlayer?.lives ?? 0} />
                   ) : (
@@ -881,18 +917,21 @@ export default function BattleRoyalePlay({ go, config, onFinish }: Props) {
                     display: "flex",
                     alignItems: "center",
                     justifyContent: "space-between",
-                    gap: 10,
-                    borderRadius: 14,
+                    gap: "clamp(8px, 2.5vw, 10px)",
+                    flexWrap: "wrap",
+                    minWidth: 0,
+                    borderRadius: 0,
                     border: `1px solid ${theme.borderSoft}`,
                     background: "rgba(0,0,0,0.14)",
                     padding: "8px 10px",
-                    minWidth: 0,
                   }}
                 >
-                  <div style={{ fontSize: 12, fontWeight: 900, color: theme.textSoft }}>
-                    {t("common.darts", "Fléchettes")}
-                  </div>
-                  <DartsIcons total={dartsPerTurn} used={currentThrow.length} />
+<DartsIcons total={dartsPerTurn} used={currentThrow.length} />
+                </div>
+
+                {/* ✅ Saisie de volée (déplacée ici) */}
+                <div style={{ marginTop: 6 }}>
+                  <ThrowBlocks total={dartsPerTurn} darts={currentThrow} />
                 </div>
 
                 {ended && (
@@ -917,7 +956,7 @@ export default function BattleRoyalePlay({ go, config, onFinish }: Props) {
             </div>
           </div>
 
-          {/* ✅ Carte Joueurs (ticker2 en fond transparent) */}
+          {/* ✅ Carte Joueurs : ticker2 en fond (transparence) */}
           <div
             role="button"
             tabIndex={0}
@@ -930,42 +969,14 @@ export default function BattleRoyalePlay({ go, config, onFinish }: Props) {
               padding: 0,
               cursor: "pointer",
               overflow: "hidden",
-              position: "relative",
+              backgroundImage: `linear-gradient(180deg, rgba(0,0,0,0.58), rgba(0,0,0,0.58)), url(${tickerBattleRoyale2})`,
+              backgroundSize: "cover",
+              backgroundPosition: "62% center",
             }}
           >
-            {/* 🔥 Ticker2 BG (transparence) */}
-            <img
-              src="/img/tickers/ticker_battle_royale_2.png"
-              alt=""
-              draggable={false}
-              style={{
-                position: "absolute",
-                inset: -8,
-                width: "calc(100% + 16px)",
-                height: "calc(100% + 16px)",
-                objectFit: "cover",
-                opacity: 0.22,
-                filter: "saturate(1.05) contrast(1.05)",
-                pointerEvents: "none",
-                zIndex: 0,
-              }}
-            />
-            <div
-              style={{
-                position: "absolute",
-                inset: 0,
-                background:
-                  "linear-gradient(90deg, rgba(0,0,0,.55), rgba(0,0,0,.25), rgba(0,0,0,.55))",
-                pointerEvents: "none",
-                zIndex: 1,
-              }}
-            />
-
             {/* Ticker header */}
             <div
               style={{
-                position: "relative",
-                zIndex: 2,
                 padding: "10px 12px",
                 borderBottom: `1px solid ${theme.borderSoft}`,
                 background: `linear-gradient(90deg, ${theme.primary}22, rgba(0,0,0,0.10), ${theme.primary}18)`,
@@ -973,42 +984,46 @@ export default function BattleRoyalePlay({ go, config, onFinish }: Props) {
                 alignItems: "center",
                 justifyContent: "space-between",
                 gap: 10,
+                flexWrap: "wrap",
+                alignItems: "center",
               }}
             >
-              <div style={{ fontWeight: 1100, letterSpacing: 0.4 }}>{t("common.players", "Joueurs")}</div>
-              <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
+              <div style={{ fontWeight: 1100, letterSpacing: 0.4 }}>
+                {t("common.players", "Joueurs")}
+              </div>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                 <span style={miniBadge}>
                   {aliveCount}/{players.length}
                 </span>
                 {!ended && (
-                  <span
-                    style={{
-                      ...miniBadge,
-                      borderColor: theme.primary + "66",
-                      color: theme.text,
-                      background: theme.primary + "1a",
-                    }}
-                  >
-                    {t("common.turn", "Tour")}
-                  </span>
-                )}
+                <span
+                  style={{
+                    ...miniBadge,
+                    borderColor: theme.primary + "66",
+                    color: theme.text,
+                    background: theme.primary + "1a",
+                  }}
+                >
+                  {t("common.round", "Round")} {roundIndex + 1}/{TARGETS.length}
+                </span>
+              )}
               </div>
             </div>
 
             {/* Aperçu avatars */}
             <div
               style={{
-                position: "relative",
-                zIndex: 2,
                 padding: 10,
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "space-between",
                 gap: 10,
+                flexWrap: "wrap",
+                alignItems: "center",
                 background: "rgba(0,0,0,0.10)",
               }}
             >
-              <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0, flexWrap: "wrap" }}>
                 {players.slice(0, 6).map((p) => (
                   <div
                     key={p.id}
@@ -1041,7 +1056,6 @@ export default function BattleRoyalePlay({ go, config, onFinish }: Props) {
               </div>
 
               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                <div style={{ fontSize: 12, fontWeight: 1000, color: theme.textSoft }}>{t("common.open", "Ouvrir")}</div>
                 <div
                   style={{
                     width: 30,
@@ -1082,7 +1096,7 @@ export default function BattleRoyalePlay({ go, config, onFinish }: Props) {
                   maxHeight: "86vh",
                   overflowY: "auto",
                   WebkitOverflowScrolling: "touch",
-                  borderRadius: 18,
+                  borderRadius: 0,
                   border: `1px solid ${theme.borderSoft}`,
                   background: theme.card,
                   boxShadow: "0 16px 44px rgba(0,0,0,.6)",
@@ -1122,7 +1136,7 @@ export default function BattleRoyalePlay({ go, config, onFinish }: Props) {
                           alignItems: "center",
                           gap: 10,
                           padding: "10px 10px",
-                          borderRadius: 14,
+                          borderRadius: 0,
                           border: `1px solid ${isActive ? theme.primary + "66" : theme.borderSoft}`,
                           background: dead
                             ? "rgba(0,0,0,0.25)"
@@ -1204,7 +1218,6 @@ export default function BattleRoyalePlay({ go, config, onFinish }: Props) {
                               fontWeight: 1000,
                               fontSize: 12,
                               color: theme.text,
-                              whiteSpace: "nowrap",
                             }}
                           >
                             {t("common.turn", "Tour")}
@@ -1217,58 +1230,62 @@ export default function BattleRoyalePlay({ go, config, onFinish }: Props) {
               </div>
             </div>
           )}
-
-          {/* 🔧 NOTE: bouton relancer retiré (ne pas polluer l'UI en jeu) */}
         </div>
       </div>
 
       {/* Keypad fixed (BottomNav masquée pendant la partie) */}
-      <div style={{ marginTop: "auto", flexShrink: 0 }}>
-        <div
-          style={{
-            ...cardShell,
-            padding: 10,
-            margin: "0 auto 10px",
-            maxWidth: 860,
-            background: theme.card,
-          }}
-        >
-          <ThrowBlocks total={dartsPerTurn} darts={currentThrow} />
+      <div style={{ marginTop: "auto" }}>
+        {/* ✅ ScoreInputHub compact
+            - On supprime la preview de volée et les onglets (KEYPAD/CIBLE/...) pour gagner en hauteur.
+            - La volée est affichée dans le Profil actif (ThrowBlocks) avec un style néon.
+        */}
+        <div id="br-scorehub" style={{ width: "100%" }}>
+          <style>{`
+            /* Masquage robuste des onglets si ScoreInputHub utilise des Tabs (aria role) */
+            #br-scorehub [role="tablist"]{display:none!important;}
+            #br-scorehub [role="tab"]{display:none!important;}
+            /* Best-effort classes (au cas où) */
+            #br-scorehub .tabs{display:none!important;}
+            #br-scorehub .modeTabs{display:none!important;}
+            #br-scorehub .scoreTabs{display:none!important;}
+          `}</style>
+          <ScoreInputHub
+            currentThrow={currentThrow}
+            multiplier={multiplier}
+            onSimple={() => setMultiplier(1)}
+            onDouble={() => setMultiplier(2)}
+            onTriple={() => setMultiplier(3)}
+            onBackspace={onBackspace}
+            onCancel={onCancel}
+            onNumber={onNumber}
+            onBull={onBull}
+            onValidate={finishTurn}
+            onDirectDart={(d) => pushDart(d)}
+            hidePreview={true}
+            hideTotal={true}
+            hideTabs={true}
+            hideModeTabs={true}
+            hideModes={true}
+            centerSlot={
+              <div style={{ textAlign: "center" }}>
+                <div style={{ fontWeight: 1000, fontSize: 12, color: "rgba(255,255,255,.7)" }}>
+                  {t("common.target", "Cible")}
+                </div>
+                <div
+                  style={{
+                    fontWeight: 1200,
+                    fontSize: 22,
+                    color: theme.primary,
+                    textShadow: `0 0 16px ${theme.primary}88, 0 0 6px ${theme.primary}55`,
+                    letterSpacing: 0.4,
+                  }}
+                >
+                  {fmtTarget(target)}
+                </div>
+              </div>
+            }
+          />
         </div>
-
-        <ScoreInputHub
-          currentThrow={currentThrow}
-          multiplier={multiplier}
-          onSimple={() => setMultiplier(1)}
-          onDouble={() => setMultiplier(2)}
-          onTriple={() => setMultiplier(3)}
-          onBackspace={onBackspace}
-          onCancel={onCancel}
-          onNumber={onNumber}
-          onBull={onBull}
-          onValidate={finishTurn}
-          onDirectDart={(d) => pushDart(d)}
-          hidePreview={true}
-          hideTotal={false}
-          centerSlot={
-            <div style={{ textAlign: "center" }}>
-              <div style={{ fontWeight: 1000, fontSize: 12, color: "rgba(255,255,255,.7)" }}>
-                {t("common.target", "Cible")}
-              </div>
-              <div
-                style={{
-                  fontWeight: 1200,
-                  fontSize: 22,
-                  color: theme.primary,
-                  textShadow: `0 0 16px ${theme.primary}88, 0 0 6px ${theme.primary}55`,
-                  letterSpacing: 0.4,
-                }}
-              >
-                {fmtTarget(target)}
-              </div>
-            </div>
-          }
-        />
       </div>
 
       {/* Overlay Info (règles + déroulé) */}
@@ -1293,7 +1310,7 @@ export default function BattleRoyalePlay({ go, config, onFinish }: Props) {
               maxHeight: "86vh",
               overflowY: "auto",
               WebkitOverflowScrolling: "touch",
-              borderRadius: 18,
+              borderRadius: 0,
               border: `1px solid ${theme.borderSoft}`,
               background: theme.card,
               boxShadow: "0 16px 44px rgba(0,0,0,.6)",
@@ -1301,7 +1318,9 @@ export default function BattleRoyalePlay({ go, config, onFinish }: Props) {
             }}
           >
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
-              <div style={{ fontWeight: 1100, letterSpacing: 0.6, color: theme.primary }}>Battle Royale — Infos</div>
+              <div style={{ fontWeight: 1100, letterSpacing: 0.6, color: theme.primary }}>
+                Battle Royale — Infos
+              </div>
               <button
                 onClick={() => setInfoOpen(false)}
                 style={{
@@ -1319,15 +1338,21 @@ export default function BattleRoyalePlay({ go, config, onFinish }: Props) {
             </div>
 
             <div style={{ marginTop: 12, color: theme.textSoft, fontWeight: 900, lineHeight: 1.35 }}>
-              <div style={{ ...cardShell, padding: 12, marginBottom: 10 }}>
+              <div style={{ ...cardShell, padding: 12,
+        boxSizing: "border-box",
+        paddingLeft: "calc(12px + env(safe-area-inset-left))",
+        paddingRight: "calc(12px + env(safe-area-inset-right))", marginBottom: 10 }}>
                 <div style={{ fontWeight: 1100, marginBottom: 6 }}>Principe</div>
                 <div>
-                  Chaque round impose une <b>cible</b>. À ton tour, tu joues {dartsPerTurn} fléchettes. Selon la règle,
-                  tu dois toucher la cible pour survivre.
+                  Chaque round impose une <b>cible</b>. À ton tour, tu joues {dartsPerTurn} fléchettes.
+                  Selon la règle, tu dois toucher la cible pour survivre.
                 </div>
               </div>
 
-              <div style={{ ...cardShell, padding: 12, marginBottom: 10 }}>
+              <div style={{ ...cardShell, padding: 12,
+        boxSizing: "border-box",
+        paddingLeft: "calc(12px + env(safe-area-inset-left))",
+        paddingRight: "calc(12px + env(safe-area-inset-right))", marginBottom: 10 }}>
                 <div style={{ fontWeight: 1100, marginBottom: 6 }}>Déroulé d’une partie</div>
                 <ol style={{ margin: 0, paddingLeft: 18 }}>
                   <li>Round = une cible commune (20→…→1→BULL).</li>
@@ -1340,9 +1365,15 @@ export default function BattleRoyalePlay({ go, config, onFinish }: Props) {
               <div style={{ ...cardShell, padding: 12 }}>
                 <div style={{ fontWeight: 1100, marginBottom: 6 }}>Règle active</div>
                 <div>
-                  {eliminationRule === "life_system" && <>Système de vies : 0 hit sur la cible = -1 vie. À 0 vie, élimination.</>}
-                  {eliminationRule === "zero_points" && <>0 point sur la cible pendant la volée = élimination immédiate.</>}
-                  {eliminationRule === "miss_x" && <>X ratés : chaque fléchette hors cible = +1 raté. À {missLimit}, élimination.</>}
+                  {eliminationRule === "life_system" && (
+                    <>Système de vies : 0 hit sur la cible = -1 vie. À 0 vie, élimination.</>
+                  )}
+                  {eliminationRule === "zero_points" && (
+                    <>0 point sur la cible pendant la volée = élimination immédiate.</>
+                  )}
+                  {eliminationRule === "miss_x" && (
+                    <>X ratés : chaque fléchette hors cible = +1 raté. À {missLimit}, élimination.</>
+                  )}
                 </div>
               </div>
             </div>

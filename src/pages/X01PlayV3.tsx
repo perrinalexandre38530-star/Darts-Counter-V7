@@ -2877,7 +2877,7 @@ try {
 if (isLandscapeTablet) {
   return (
     <div
-      className={`x01play-container theme-${theme.id}`}
+      className={`x01play-container theme-${theme.id} w-full flex flex-col`}
       style={{
         height: "100svh",
         minHeight: "100dvh",
@@ -3327,7 +3327,13 @@ if (isLandscapeTablet) {
     <div
       className={`x01play-container theme-${theme.id}`}
       // 100dvh = évite l'effet "aplati" quand la barre navigateur mobile change la hauteur utile.
-      style={{ overflow: "hidden", minHeight: "100dvh" }}
+      style={{
+        height: "100svh",
+        minHeight: "100svh",
+        overflow: "hidden",
+        paddingTop: "env(safe-area-inset-top)",
+        paddingBottom: "calc(env(safe-area-inset-bottom) + 10px)",
+      }}
     >
       {/* ✅ MEP: Layout unifié (Header + Profil Actif + Joueurs modal + Volée + Saisie) */}
       <GameplayLayout
