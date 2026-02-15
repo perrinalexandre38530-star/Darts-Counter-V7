@@ -154,10 +154,6 @@ export function getBaseSvgForCountry(country: TerritoriesCountry): string {
       return svgSouthAmerica;
     case "UN":
       return svgUNRegions;
-    case "EN":
-      return svgUKCounties;
-    case "UK":
-      return svgUKCounties;
 
     case "WORLD":
       return svgWorld;
