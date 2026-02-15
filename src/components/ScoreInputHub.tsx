@@ -120,7 +120,10 @@ export default function ScoreInputHub({
   centerSlot,
   disabled = false,
   showPlaceholders = true,
-  switcherMode = "drawer",
+  // ✅ IMPORTANT : par défaut, on masque les onglets (KEYPAD / CIBLE / PRESETS / VOICE…)
+  // La méthode de saisie doit être décidée via les menus de configuration (props),
+  // pas via un switch visible pendant la partie.
+  switcherMode = "hidden",
   lockContentHeight = false,
   fitToParent = false,
   switcherOverlay = false,
