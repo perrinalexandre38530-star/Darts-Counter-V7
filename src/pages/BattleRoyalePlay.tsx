@@ -238,38 +238,55 @@ function dartLabel(d?: UIDart | null) {
 }
 
 function ThrowBlocks({ total, darts }: { total: number; darts: UIDart[] }) {
-  const { theme } = useTheme();
+  // ✅ Reprend EXACTEMENT le rendu "chips" du Keypad (mêmes couleurs/effets)
   const n = Math.max(1, Math.min(3, Number(total) || 3));
   const list = Array.isArray(darts) ? darts : [];
+
+  const chipBase: React.CSSProperties = {
+    minWidth: 34,
+    height: 30,
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: 11,
+    padding: "0 8px",
+    fontWeight: 1000,
+    letterSpacing: 0.2,
+    lineHeight: 1,
+    boxShadow: "0 6px 14px rgba(0,0,0,.35)",
+    border: "1px solid rgba(255,255,255,.18)",
+    background: "rgba(0,0,0,.18)",
+    color: "rgba(255,255,255,.70)",
+    whiteSpace: "nowrap",
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+  };
+
+  function chipStyle(d?: UIDart) {
+    if (!d) return chipBase;
+    const mult = d.mult || 1;
+
+    // même mapping que src/components/Keypad.tsx (preview chips)
+    const c = mult === 3 ? "#eec7ff" : mult === 2 ? "#ffe7c0" : "#cfe6ff";
+    return {
+      ...chipBase,
+      border: `1px solid ${c}55`,
+      color: c,
+      background: "rgba(0,0,0,.22)",
+      boxShadow: `0 0 14px ${c}33, 0 10px 22px rgba(0,0,0,.35)`,
+      textShadow: "0 2px 10px rgba(0,0,0,.55)",
+    } as React.CSSProperties;
+  }
+
   return (
-    <div style={{ display: "grid", gridTemplateColumns: `repeat(${n}, 1fr)`, gap: 8 }}>
+    <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 8, flexWrap: "nowrap" }}>
       {Array.from({ length: n }).map((_, i) => {
         const d = list[i];
-        const has = !!d;
         const label = dartLabel(d);
         return (
-          <div
-            key={i}
-            style={{
-              height: 40,
-              borderRadius: 14,
-              border: `1px solid ${has ? theme.primary + "66" : theme.borderSoft}`,
-              background: has
-                ? `linear-gradient(180deg, ${theme.primary}2a, rgba(0,0,0,0.28))`
-                : "linear-gradient(180deg, rgba(0,0,0,0.22), rgba(0,0,0,0.34))",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              fontWeight: 1000,
-              color: has ? "#fff" : theme.textSoft,
-              boxShadow: has
-                ? `0 0 18px ${theme.primary}2a, inset 0 0 0 1px ${theme.primary}22`
-                : "inset 0 0 0 1px rgba(255,255,255,0.04)",
-              textShadow: has ? `0 0 12px ${theme.primary}44, 0 2px 10px rgba(0,0,0,.55)` : "none",
-            }}
-          >
-            {has ? label : "—"}
-          </div>
+          <span key={i} style={chipStyle(d)}>
+            {d ? label : "—"}
+          </span>
         );
       })}
     </div>
@@ -1240,16 +1257,7 @@ export default function BattleRoyalePlay({ go, config, onFinish }: Props) {
             - La volée est affichée dans le Profil actif (ThrowBlocks) avec un style néon.
         */}
         <div id="br-scorehub" style={{ width: "100%" }}>
-          <style>{`
-            /* Masquage robuste des onglets si ScoreInputHub utilise des Tabs (aria role) */
-            #br-scorehub [role="tablist"]{display:none!important;}
-            #br-scorehub [role="tab"]{display:none!important;}
-            /* Best-effort classes (au cas où) */
-            #br-scorehub .tabs{display:none!important;}
-            #br-scorehub .modeTabs{display:none!important;}
-            #br-scorehub .scoreTabs{display:none!important;}
-          `}</style>
-          <ScoreInputHub
+<ScoreInputHub
             currentThrow={currentThrow}
             multiplier={multiplier}
             onSimple={() => setMultiplier(1)}
@@ -1263,9 +1271,7 @@ export default function BattleRoyalePlay({ go, config, onFinish }: Props) {
             onDirectDart={(d) => pushDart(d)}
             hidePreview={true}
             hideTotal={true}
-            hideTabs={true}
-            hideModeTabs={true}
-            hideModes={true}
+            switcherMode="hidden"
             centerSlot={
               <div style={{ textAlign: "center" }}>
                 <div style={{ fontWeight: 1000, fontSize: 12, color: "rgba(255,255,255,.7)" }}>

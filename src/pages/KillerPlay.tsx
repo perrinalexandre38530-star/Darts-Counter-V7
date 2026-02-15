@@ -3612,6 +3612,8 @@ const theme = gold;
 
   const { isLandscapeTablet } = useViewport({ tabletMinWidth: 900 });
 
+  const tickerHeight = isLandscapeTablet ? 74 : 104;
+
 // ✅ BLIND KILLER: on masque les numéros pour tous les joueurs pendant la partie.
 // (On révèle à la fin uniquement.)
 const blindMask = !!blindKillerOn && !showEnd && !finished && !w;
@@ -4028,7 +4030,33 @@ return (
       src={tickerKiller as any}
       alt="Killer"
       draggable={false}
-      style={{ width: "100%", height: 82, objectFit: "cover", display: "block" }}
+      style={{ width: "100%", height: tickerHeight, objectFit: "cover", display: "block" }}
+    />
+
+    {/* ✅ side fades (si le ticker ne remplit pas parfaitement la largeur) */}
+    <div
+      data-killer-ticker-fade="left"
+      style={{
+        position: "absolute",
+        top: 0,
+        bottom: 0,
+        left: 0,
+        width: 40,
+        pointerEvents: "none",
+        background: "linear-gradient(90deg, rgba(5,5,7,.95), rgba(5,5,7,0))",
+      }}
+    />
+    <div
+      data-killer-ticker-fade="right"
+      style={{
+        position: "absolute",
+        top: 0,
+        bottom: 0,
+        right: 0,
+        width: 40,
+        pointerEvents: "none",
+        background: "linear-gradient(270deg, rgba(5,5,7,.95), rgba(5,5,7,0))",
+      }}
     />
 
     {/* overlay controls */}
@@ -4043,12 +4071,7 @@ return (
         pointerEvents: "none",
       }}
     >
-      {/* ✅ inversé: InfoDot à gauche */}
-      <div style={{ display: "flex", alignItems: "center", gap: 8, pointerEvents: "auto" }}>
-        <InfoDot onClick={() => setShowRules(true)} size={38} color={gold} glow={`${gold}AA`} />
-      </div>
-
-      {/* ✅ BackDot à droite */}
+      {/* ✅ BackDot à gauche (comme en config) */}
       <div style={{ display: "flex", alignItems: "center", gap: 10, pointerEvents: "auto" }}>
         <BackDot
           onClick={() => go("killer_config")}
@@ -4057,6 +4080,11 @@ return (
           color={gold}
           glow={`${gold}AA`}
         />
+      </div>
+
+      {/* ✅ InfoDot à droite (comme en config) */}
+      <div style={{ display: "flex", alignItems: "center", gap: 8, pointerEvents: "auto" }}>
+        <InfoDot onClick={() => setShowRules(true)} size={38} color={gold} glow={`${gold}AA`} />
       </div>
     </div>
   </div>
