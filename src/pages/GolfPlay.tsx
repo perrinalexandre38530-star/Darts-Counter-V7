@@ -860,6 +860,7 @@ function GolfHeaderBlock(props: {
 }
 
 export default function GolfPlay(props: Props) {
+  useFullscreenPlay();
   const { setTab, go, tabParams, params, store } = props;
 
   // Compat routing : certains écrans passent via params, d'autres via tabParams

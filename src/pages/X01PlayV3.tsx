@@ -8,6 +8,7 @@
 
 import React, { useEffect } from "react";
 import { useViewport } from "../hooks/useViewport";
+import { useFullscreenPlay } from "../hooks/useFullscreenPlay";
 
 import { getTeamAvatarUrl } from "../assets/teamAvatars";
 import type {
@@ -885,6 +886,8 @@ export default function X01PlayV3({
   onReplayNewConfig,
   resume,
 }: Props) {
+  // Fullscreen gameplay (mobile) — hide tabbar + lock global scroll
+  useFullscreenPlay();
   const { isLandscapeTablet } = useViewport();
   const { theme } = useTheme();
   

@@ -71,7 +71,7 @@ export type DartsGameDef = {
   infoBody: string;
 };
 
-export const dartsGameRegistry: DartsGameDef[] = [
+const rawDartsGameRegistry: DartsGameDef[] = [
   // ===========================================================
   // CLASSIQUES (routes existantes)
   // ===========================================================
@@ -1079,6 +1079,29 @@ export const dartsGameRegistry: DartsGameDef[] = [
       "Drill centre. Series de fleches, points Bull/DBull, objectifs progressifs. A implementer.",
   },
 ];
+
+// ✅ Only expose the modes that are currently stable/functional.
+// Everything else is shown as "À venir" (disabled) in the Games menu.
+const READY_IDS = new Set<string>([
+  "x01",
+  "training_x01",
+  "tour_horloge",
+  "cricket",
+  "killer",
+  "shanghai",
+  "golf",
+  "departements",
+  "batard",
+  "battle_royale",
+  "warfare",
+  "five_lives",
+  "scram",
+]);
+
+export const dartsGameRegistry: DartsGameDef[] = rawDartsGameRegistry.map((g) => ({
+  ...g,
+  ready: READY_IDS.has(g.id),
+}));
 
 export default dartsGameRegistry;
 export const DARTS_GAMES = dartsGameRegistry;

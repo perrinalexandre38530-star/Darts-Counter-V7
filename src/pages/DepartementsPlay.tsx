@@ -9,6 +9,7 @@
 // ============================================
 
 import React from "react";
+import { useFullscreenPlay } from "../hooks/useFullscreenPlay";
 
 import PageHeader from "../components/PageHeader";
 import BackDot from "../components/BackDot";
@@ -224,6 +225,7 @@ const RULES_TEXT = (cfg: {
 };
 
 export default function DepartementsPlay(props: any) {
+  useFullscreenPlay();
   const { theme } = useTheme();
 
   // Profiles store (names + avatars)

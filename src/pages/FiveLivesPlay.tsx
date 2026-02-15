@@ -9,6 +9,7 @@
 // ============================================
 
 import React from "react";
+import { useFullscreenPlay } from "../hooks/useFullscreenPlay";
 import type { Dart } from "../lib/types";
 import { useTheme } from "../contexts/ThemeContext";
 import { useLang } from "../contexts/LangContext";
@@ -146,6 +147,7 @@ function MiniHeart({ value, active }: { value: any; active?: boolean }) {
 }
 
 export default function FiveLivesPlay({ store, go, config, onFinish }: Props) {
+  useFullscreenPlay();
   const { theme } = useTheme();
   const { t } = useLang();
 

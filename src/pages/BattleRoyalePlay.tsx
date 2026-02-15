@@ -11,6 +11,7 @@
 // ============================================
 
 import React from "react";
+import { useFullscreenPlay } from "../hooks/useFullscreenPlay";
 import { useViewport } from "../hooks/useViewport";
 import { useTheme } from "../contexts/ThemeContext";
 import { useLang } from "../contexts/LangContext";
@@ -356,6 +357,7 @@ function buildBattleRoyaleSummary(opts: {
 }
 
 export default function BattleRoyalePlay({ go, config, onFinish }: Props) {
+  useFullscreenPlay();
   const { theme } = useTheme();
   const { t } = useLang();
 

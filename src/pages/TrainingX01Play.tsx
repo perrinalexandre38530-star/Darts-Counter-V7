@@ -8,6 +8,7 @@ import Keypad from "../components/Keypad";
 import BackDot from "../components/BackDot";
 import InfoDot from "../components/InfoDot";
 import { useTheme } from "../contexts/ThemeContext";
+import { useFullscreenPlay } from "../hooks/useFullscreenPlay";
 import type { Dart as UIDart, Profile } from "../lib/types";
 import { playSound } from "../lib/sound";
 import { useCurrentProfile } from "../hooks/useCurrentProfile";
@@ -995,6 +996,7 @@ export default function TrainingX01Play({
   go?: (tab: any, p?: any) => void;
   params?: any;
 }) {
+  useFullscreenPlay();
   const { theme } = useTheme();
   // --------------------------------------------------
   // PROFIL COURANT + AVATAR

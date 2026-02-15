@@ -365,19 +365,20 @@ export default function BatardConfig(props: any) {
   const TXT_PRESET = `Le preset charge une configuration complète (règles + séquence).
 
 • Classic (Bar)
-  - Format “bar” simple / fun.
-  - Souvent utilisé avec “Score max”.
+  - Format “bar” simple / fun : des rounds lisibles, peu de contraintes.
+  - Idéal pour découvrir le mode, souvent utilisé avec “Score max”.
 
 • Progressif
-  - Difficulté / contraintes plus “progression”.
-  - Souvent mieux avec “Course (finish)”.
+  - Difficulté / contraintes qui montent au fil de la séquence.
+  - Très adapté à “Course (finish)” (on sent la progression).
 
 • Punition
-  - Plus punitif sur l’échec (selon preset).
-  - Partie plus “hard”.
+  - Plus punitif sur l’échec (selon preset) : ça sanctionne les rounds ratés.
+  - Partie plus “hard”, plus “challenge”.
 
 • Custom
-  - Tu règles tout : séquence + règles (victoire/échec).`;
+  - Tu règles tout : séquence + règles (victoire/échec).
+  - À utiliser si tu veux ton propre “circuit” de rounds.`;
 
   const TXT_CUSTOM = `Mode Custom = autorise la modification de la séquence.
 
@@ -802,7 +803,6 @@ Chips :
             <OptionRow
               label="Preset"
               hint="Choisis une base, puis passe en Custom pour modifier."
-              right={<InfoMini title="Preset" content={modalText(TXT_PRESET)} />}
             >
               <OptionSelect
                 value={presetId}
@@ -816,10 +816,14 @@ Chips :
               />
             </OptionRow>
 
+            {/* ✅ InfoMini SOUS l'option (style Territories) */}
+            <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 6 }}>
+              <InfoMini title="Preset" content={modalText(TXT_PRESET)} />
+            </div>
+
             <OptionRow
               label="Mode Custom"
               hint="Déverrouille l’édition (séquence + options)."
-              right={<InfoMini title="Mode Custom" content={modalText(TXT_CUSTOM)} />}
             >
               <OptionToggle
                 value={customEnabled || presetId === "custom"}
@@ -827,10 +831,14 @@ Chips :
               />
             </OptionRow>
 
+            {/* ✅ InfoMini SOUS l'option (style Territories) */}
+            <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 6 }}>
+              <InfoMini title="Mode Custom" content={modalText(TXT_CUSTOM)} />
+            </div>
+
             <OptionRow
               label="Condition de victoire"
               hint="Score max ou course au finish."
-              right={<InfoMini title="Condition de victoire" content={modalText(TXT_WIN)} />}
             >
               <OptionSelect
                 value={winMode}
@@ -842,10 +850,14 @@ Chips :
               />
             </OptionRow>
 
+            {/* ✅ InfoMini SOUS l'option (style Territories) */}
+            <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 6 }}>
+              <InfoMini title="Condition de victoire" content={modalText(TXT_WIN)} />
+            </div>
+
             <OptionRow
               label="Échec (0 valide)"
               hint="Que faire si aucune flèche ne valide le round."
-              right={<InfoMini title="Échec (0 valide)" content={modalText(TXT_FAIL)} />}
             >
               <OptionSelect
                 value={failPolicy}
@@ -858,6 +870,11 @@ Chips :
                 ]}
               />
             </OptionRow>
+
+            {/* ✅ InfoMini SOUS l'option (style Territories) */}
+            <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 6 }}>
+              <InfoMini title="Échec (0 valide)" content={modalText(TXT_FAIL)} />
+            </div>
 
             {(failPolicy === "MINUS_POINTS" || failPolicy === "BACK_ROUND") && (
               <OptionRow

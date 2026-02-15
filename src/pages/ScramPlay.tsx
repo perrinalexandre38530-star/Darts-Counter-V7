@@ -76,6 +76,7 @@ function marksToIcons(m: number) {
 }
 
 export default function ScramPlay(props: any) {
+  useFullscreenPlay();
   const { theme } = useTheme();
 
   const store = props?.store;

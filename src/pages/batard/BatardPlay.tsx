@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
+import { useFullscreenPlay } from "../../hooks/useFullscreenPlay";
 import BackDot from "../../components/BackDot";
 import InfoDot from "../../components/InfoDot";
 import PageHeader from "../../components/PageHeader";
@@ -56,6 +57,7 @@ type LightPlayer = { id: string; name?: string; avatarDataUrl?: string | null; d
 // BatardPlay
 // -------------------------------------------------------------
 export default function BatardPlay(props: any) {
+  useFullscreenPlay();
   const { t } = useLang();
   useTheme();
 

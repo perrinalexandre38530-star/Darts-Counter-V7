@@ -302,6 +302,7 @@ function round1(n: number) {
 }
 
 export default function ShanghaiPlay(props: Props) {
+  useFullscreenPlay();
   const { isLandscapeTablet } = useViewport({ tabletMinWidth: 900 });
 
   const { theme } = useTheme();

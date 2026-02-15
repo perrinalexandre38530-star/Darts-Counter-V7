@@ -6,6 +6,7 @@
 // ============================================
 
 import React from "react";
+import { useFullscreenPlay } from "../hooks/useFullscreenPlay";
 import {
   applyCricketHit,
   undoLastCricketHit,
@@ -66,6 +67,7 @@ type Props = {
 };
 
 export default function CricketPlayScreen({ state, setState, onQuit, onFinish }: Props) {
+  useFullscreenPlay();
   const [hitMode, setHitMode] = React.useState<HitMode>("S");
 
   const currentPlayer =

@@ -7,6 +7,7 @@
 // ============================================
 
 import React from "react";
+import { useFullscreenPlay } from "../hooks/useFullscreenPlay";
 import { playSound } from "../lib/sound";
 import type { Profile } from "../lib/types";
 import InfoDot from "../components/InfoDot";
@@ -146,6 +147,7 @@ function labelObjective(
 // ============================================
 
 const TrainingClock: React.FC<Props> = (props) => {
+  useFullscreenPlay();
   // Récupération des profils depuis les props OU depuis le store global exposé par App
   const globalStore = (window as any).__appStore || {};
   const profiles: Profile[] = props.profiles ?? globalStore.profiles ?? [];
