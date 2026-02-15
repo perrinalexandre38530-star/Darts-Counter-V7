@@ -2,10 +2,10 @@
 // =============================================================
 // src/pages/batard/BatardConfig.tsx
 // BÂTARD — Config V7 (align GolfConfig / X01ConfigV3)
-// - Header: BackDot (gauche) -> menu Games, InfoDot (droite), ticker plein-largeur
-// - Carrousel profils humains (locals + profil actif si dispo) + carrousel Bots PRO (toggle)
-// - Infomini (InfoDot mini) sur chaque option + InfoDot dédié “Séquence”
-// - Séquence compacte (chips) + KPIs + éditeur du round sélectionné
+// - 2 carrousels : PROFILS humains (actif + locaux) + BOTS PRO (toggle)
+// - KPIs en tête (joueurs, règles, séquence)
+// - Séquence compacte (chips) + éditeur round sélectionné
+// - InfoDot mini sur chaque option + InfoDot global (header)
 // =============================================================
 
 import React from "react";
@@ -31,12 +31,10 @@ import type {
   BatardRound,
   BatardWinMode,
 } from "../../lib/batard/batardTypes";
-
 import {
   classicPreset,
   progressifPreset,
   punitionPreset,
-  BATARD_PRESETS,
 } from "../../lib/batard/batardPresets";
 
 import { PRO_BOTS } from "../../lib/botsPro";
@@ -49,11 +47,12 @@ function uid() {
   return Math.random().toString(16).slice(2) + Date.now().toString(16);
 }
 
-function isBotLike(p: any) {
+function isBotProfile(p: any) {
   if (!p) return false;
-  if (p.isBot || p.bot || p.type === "bot" || p.kind === "bot") return true;
-  if (typeof p.botLevel === "string" && p.botLevel) return true;
-  if (typeof p.level === "string" && p.level) return true;
+  if (p.isBot === true) return true;
+  if (p.kind === "bot" || p.type === "bot") return true;
+  const id = String(p.id ?? "");
+  if (id.startsWith("bot_")) return true;
   return false;
 }
 
@@ -62,7 +61,8 @@ function roundShort(r: BatardRound) {
   if ((r as any).bullOnly || (r as any).type === "TARGET_BULL") return "BULL";
   const trg = (r as any).target;
   const m = (r as any).multiplierRule || "ANY";
-  const mChar = m === "SINGLE" ? "S" : m === "DOUBLE" ? "D" : m === "TRIPLE" ? "T" : "A";
+  const mChar =
+    m === "SINGLE" ? "S" : m === "DOUBLE" ? "D" : m === "TRIPLE" ? "T" : "A";
   if (typeof trg === "number" && trg > 0) return `${mChar}${trg}`;
   return m === "DOUBLE" ? "D(any)" : m === "TRIPLE" ? "T(any)" : "ANY";
 }
@@ -79,106 +79,82 @@ const FAIL_LABEL: Record<BatardFailPolicy, string> = {
   FREEZE: "Freeze",
 };
 
-// -------------------------------------------------------------
-// Payload type (V7)
-// -------------------------------------------------------------
 export type BatardConfigPayload = {
   players: number;
   botsEnabled: boolean;
   botLevel: "easy" | "normal" | "hard";
-  presetId: "classic" | "progressif" | "punition" | "custom";
   batard: BatardRulesConfig;
+  presetId: "classic" | "progressif" | "punition" | "custom";
   selectedHumanIds?: string[];
   selectedBotIds?: string[];
 };
 
-// -------------------------------------------------------------
-// Info texts
-// -------------------------------------------------------------
 const INFO_TEXT = `BÂTARD (mode variantes)
 
 📌 Principe
 - Une partie est une suite de "rounds" (défis) : ex. Simple 20, Double 20, Bull, Any…
-- Chaque round définit ce qui est “valide” (cible + multiplicateur + BullOnly).
-- Les points s’additionnent selon les flèches valides (mode Score max) ou servent à “avancer” (mode Course).
+- Chaque round définit ce qui est "valide" (cible + multiplicateur, ou bull only).
+- Le score / la progression dépend du mode de victoire + des règles d’échec.
 
 ⚙️ Presets
-- Classic (Bar) : suite courte + Score max.
-- Progressif : séquence qui monte (1→20→Bull) en course.
-- Punition : contraintes + sanctions si tu rates.
+- Classic (Bar) : séquence courte + Score max
+- Progressif : progression + course au finish
+- Punition : contraintes + malus
 
 🧩 Custom
-- Déverrouille l’édition : séquence + règles d’échec + condition de victoire.
+- Déverrouille l’édition : séquence + options (victoire / échec).
 
 🏁 Victoire
-- Score max : on joue toute la séquence (N rounds) → meilleur total.
+- Score max : on joue toute la séquence → meilleur total.
 - Course (finish) : premier à terminer la séquence gagne.
 
 💥 Échec (0 valide)
 - Aucun : rien
 - Malus : -X points
-- Recul : -Y rounds (retour en arrière)
-- Freeze : on rejoue le même round
+- Recul : -Y rounds
+- Freeze : rejouer le même round
 `;
 
-const INFO_SEQUENCE = `Séquence (Rounds)
+const INFO_SEQUENCE = `Séquence = liste de rounds (défis)
 
-✅ Les “chips” = la timeline des rounds.
-- #1, #2, #3… : ordre des défis
-- S/D/T = multiplicateur requis (Single/Double/Triple)
-- BULL = BullOnly (25/50 seulement)
-- ANY = tout est accepté
+Chaque round a :
+- Label : nom lisible (ex "Double 20")
+- Multiplier : ANY / SINGLE / DOUBLE / TRIPLE
+- Target : 1..20 ou libre (si vide = "n'importe quel numéro")
+- Bull only : si activé, seules les touches Bull (25/50) valident
 
-✍️ Éditer (Custom)
-1) Active “Mode Custom”
-2) Tape un chip (ex: #3) → tu édites CE round
-3) Multiplier = SINGLE/DOUBLE/TRIPLE/ANY
-4) Target = 1..20 ou “libre” (sans numéro)
-5) BullOnly = cible Bull uniquement (25/50)
+Chips (résumé rapide) :
+- S20 = simple 20
+- D20 = double 20
+- T20 = triple 20
+- BULL = bull (25/50)
+- ANY / D(any) / T(any) = libre + contrainte multiplicateur
 
-💡 Conseil
-- Pour un round “Double 20” : Multiplier=DOUBLE + Target=20
-- Pour “Any 19” : Multiplier=ANY + Target=19
-- Pour “Bull” : BullOnly=ON (Target peut rester vide)
-`;
+En preset : la séquence est verrouillée.
+Passe en Custom pour modifier (ajout, suppression, déplacement, duplication).`;
 
-// =============================================================
-// Component
-// =============================================================
 export default function BatardConfig(props: any) {
   const { t } = useLang();
   const theme = useTheme();
 
   const store = (props as any)?.store ?? (props as any)?.params?.store ?? null;
-  const storeProfiles: any[] = Array.isArray((store as any)?.profiles) ? (store as any).profiles : [];
+  const storeProfiles: any[] = Array.isArray((store as any)?.profiles)
+    ? (store as any).profiles
+    : [];
 
-  // ✅ profil actif (souvent online) – on l’ajoute visuellement si présent
-  const activeProfile =
-    (store as any)?.activeProfile ??
-    (store as any)?.profile ??
-    (store as any)?.userProfile ??
-    null;
-
-  const mergedProfiles = React.useMemo(() => {
-    const map = new Map<string, any>();
-    for (const p of storeProfiles) if (p?.id) map.set(String(p.id), p);
-    if (activeProfile?.id && !map.has(String(activeProfile.id))) {
-      map.set(String(activeProfile.id), { ...activeProfile });
-    }
-    return Array.from(map.values());
-  }, [storeProfiles, activeProfile]);
-
-  const humanProfiles = mergedProfiles.filter((p) => !isBotLike(p));
+  const humanProfiles = storeProfiles.filter((p) => !isBotProfile(p));
+  const activeProfileId = (store as any)?.activeProfileId ?? null;
 
   const primary = (theme as any)?.primary ?? "#7dffca";
-  const bg = (theme as any)?.bg ?? "#0b0d14";
   const cardBg =
     "radial-gradient(120% 160% at 0% 0%, rgba(125,255,202,0.14), transparent 55%), linear-gradient(180deg, rgba(255,255,255,0.08), rgba(0,0,0,0.34))";
 
   // -----------------------------------------------------------
   // Preset / Rules state
   // -----------------------------------------------------------
-  const [presetId, setPresetId] = React.useState<"classic" | "progressif" | "punition" | "custom">("classic");
+  const [presetId, setPresetId] = React.useState<
+    "classic" | "progressif" | "punition" | "custom"
+  >("classic");
 
   const presetCfg = React.useMemo(() => {
     if (presetId === "progressif") return progressifPreset;
@@ -188,12 +164,19 @@ export default function BatardConfig(props: any) {
 
   const [customEnabled, setCustomEnabled] = React.useState(false);
 
-  const [winMode, setWinMode] = React.useState<BatardWinMode>(presetCfg.winMode);
-  const [failPolicy, setFailPolicy] = React.useState<BatardFailPolicy>(presetCfg.failPolicy);
-  const [failValue, setFailValue] = React.useState<number>(presetCfg.failValue ?? 0);
-  const [rounds, setRounds] = React.useState<BatardRound[]>(presetCfg.rounds || []);
+  const [winMode, setWinMode] = React.useState<BatardWinMode>(
+    presetCfg.winMode
+  );
+  const [failPolicy, setFailPolicy] = React.useState<BatardFailPolicy>(
+    presetCfg.failPolicy
+  );
+  const [failValue, setFailValue] = React.useState<number>(
+    presetCfg.failValue ?? 0
+  );
+  const [rounds, setRounds] = React.useState<BatardRound[]>(
+    presetCfg.rounds || []
+  );
 
-  // Sync when preset changes (unless custom)
   React.useEffect(() => {
     if (presetId === "custom") return;
     setCustomEnabled(false);
@@ -203,30 +186,44 @@ export default function BatardConfig(props: any) {
     setRounds(presetCfg.rounds || []);
   }, [presetId, presetCfg]);
 
+  const editingEnabled = presetId === "custom" || customEnabled;
+
   // -----------------------------------------------------------
   // Players / Bots selection
   // -----------------------------------------------------------
   const [botsEnabled, setBotsEnabled] = React.useState(false);
-  const [botLevel, setBotLevel] = React.useState<"easy" | "normal" | "hard">("normal");
+  const [botLevel, setBotLevel] = React.useState<"easy" | "normal" | "hard">(
+    "normal"
+  );
 
-  const [selectedHumanIds, setSelectedHumanIds] = React.useState<string[]>(() => {
-    return humanProfiles.slice(0, 2).map((p) => String(p.id));
-  });
-
-  // seed default when profiles arrive later
-  React.useEffect(() => {
-    if (selectedHumanIds.length > 0) return;
-    const seed = humanProfiles.slice(0, 2).map((p) => String(p.id));
-    if (seed.length) setSelectedHumanIds(seed);
-  }, [humanProfiles.length]); // eslint-disable-line
-
+  const [selectedHumanIds, setSelectedHumanIds] = React.useState<string[]>([]);
   const [selectedBotIds, setSelectedBotIds] = React.useState<string[]>([]);
+
+  // Seed default selection: active profile first, then next humans until 2.
+  React.useEffect(() => {
+    // If already selected, keep.
+    if (selectedHumanIds.length > 0) return;
+
+    const ids = humanProfiles.map((p) => String(p.id));
+    if (ids.length === 0) return;
+
+    const out: string[] = [];
+    if (activeProfileId != null) {
+      const a = String(activeProfileId);
+      if (ids.includes(a)) out.push(a);
+    }
+    for (const id of ids) {
+      if (out.length >= 2) break;
+      if (!out.includes(id)) out.push(id);
+    }
+    if (out.length) setSelectedHumanIds(out);
+  }, [humanProfiles.length, activeProfileId]);
 
   function toggleHuman(id: string) {
     setSelectedHumanIds((prev) => {
       const on = prev.includes(id);
       if (on) return prev.filter((x) => x !== id);
-      if (prev.length + (botsEnabled ? selectedBotIds.length : 0) >= 8) return prev;
+      if (prev.length >= 8) return prev;
       return [...prev, id];
     });
   }
@@ -235,16 +232,11 @@ export default function BatardConfig(props: any) {
     setSelectedBotIds((prev) => {
       const on = prev.includes(id);
       if (on) return prev.filter((x) => x !== id);
+      // global max 8
       if (prev.length + selectedHumanIds.length >= 8) return prev;
       return [...prev, id];
     });
   }
-
-  // if bots disabled -> clear bots selection (UI stays clean)
-  React.useEffect(() => {
-    if (botsEnabled) return;
-    if (selectedBotIds.length) setSelectedBotIds([]);
-  }, [botsEnabled]); // eslint-disable-line
 
   const playersCount = selectedHumanIds.length + (botsEnabled ? selectedBotIds.length : 0);
 
@@ -254,20 +246,21 @@ export default function BatardConfig(props: any) {
   const [selectedRoundIndex, setSelectedRoundIndex] = React.useState(0);
 
   React.useEffect(() => {
-    setSelectedRoundIndex((i) => Math.max(0, Math.min(i, Math.max(0, rounds.length - 1))));
+    setSelectedRoundIndex((i) =>
+      Math.max(0, Math.min(i, Math.max(0, rounds.length - 1)))
+    );
   }, [rounds.length]);
-
-  const isEditable = presetId === "custom" || customEnabled;
 
   function addRound() {
     setRounds((prev) => [
       ...prev,
       {
         id: uid(),
-        label: "Any",
+        label: "Score Max",
         multiplierRule: "ANY",
       } as any,
     ]);
+    // select last
     setSelectedRoundIndex(rounds.length);
   }
 
@@ -275,7 +268,11 @@ export default function BatardConfig(props: any) {
     setRounds((prev) => {
       const r = prev[i];
       if (!r) return prev;
-      const copy: BatardRound = { ...(r as any), id: uid(), label: ((r as any).label || "Round") + " (copy)" } as any;
+      const copy: BatardRound = {
+        ...(r as any),
+        id: uid(),
+        label: ((r as any).label || "Round") + " (copy)",
+      } as any;
       const out = [...prev];
       out.splice(i + 1, 0, copy);
       return out;
@@ -298,14 +295,18 @@ export default function BatardConfig(props: any) {
       out[j] = tmp;
       return out;
     });
-    setSelectedRoundIndex((cur) => Math.max(0, Math.min(rounds.length - 1, cur + dir)));
+    setSelectedRoundIndex((cur) =>
+      Math.max(0, Math.min(rounds.length - 1, cur + dir))
+    );
   }
 
   function updateRound(i: number, patch: Partial<BatardRound>) {
-    setRounds((prev) => prev.map((r, idx) => (idx === i ? ({ ...(r as any), ...(patch as any) } as any) : r)));
+    setRounds((prev) =>
+      prev.map((r, idx) =>
+        idx === i ? ({ ...(r as any), ...(patch as any) } as any) : r
+      )
+    );
   }
-
-  const selectedRound = rounds[selectedRoundIndex];
 
   // -----------------------------------------------------------
   // Payload + Start
@@ -339,9 +340,9 @@ export default function BatardConfig(props: any) {
   }
 
   // -----------------------------------------------------------
-  // Styles
+  // Render helpers (KPI)
   // -----------------------------------------------------------
-  const kpiGrid = {
+  const kpiStyle = {
     display: "grid",
     gridTemplateColumns: "repeat(3, 1fr)",
     gap: 10,
@@ -356,82 +357,82 @@ export default function BatardConfig(props: any) {
     boxShadow: "inset 0 1px 0 rgba(255,255,255,0.06)",
   } as const;
 
-  const pill = (active: boolean) =>
-    ({
-      height: 32,
-      padding: "0 10px",
-      borderRadius: 999,
-      border: active ? `1px solid ${primary}aa` : "1px solid rgba(255,255,255,0.12)",
-      background: active ? "rgba(125,255,202,0.14)" : "rgba(0,0,0,0.16)",
-      color: active ? "#f6f2e9" : "rgba(255,255,255,0.70)",
-      fontWeight: 900,
-      fontSize: 12,
-      display: "inline-flex",
-      alignItems: "center",
-      justifyContent: "center",
-      gap: 6,
-      userSelect: "none",
-    } as const);
+  const selectedRound = rounds[selectedRoundIndex];
 
-  // -----------------------------------------------------------
-  // Render
-  // -----------------------------------------------------------
   return (
-    <div style={{ minHeight: "100vh", background: bg }}>
-      {/* ✅ Header demandé */}
+    <div style={{ minHeight: "100vh", background: (theme as any)?.bg ?? "#0b0d14" }}>
       <PageHeader
+        title=""
+        subtitle=""
+        left={<BackDot onClick={() => (props?.setTab ? props.setTab("games") : null)} />}
+        right={<InfoDot title="Règles BÂTARD" content={INFO_TEXT} />}
         tickerSrc={tickerBatard}
         tickerAlt="BÂTARD"
         tickerHeight={92}
-        left={<BackDot onClick={() => (props?.setTab ? props.setTab("gameSelect") : null)} />}
-        right={<InfoDot title="Règles BÂTARD" text={INFO_TEXT} />}
       />
 
-      <div style={{ padding: "10px 12px 96px" }}>
+      <div style={{ padding: "10px 12px 90px" }}>
         {/* KPIs */}
-        <div style={kpiGrid}>
+        <div style={kpiStyle}>
           <div style={kpiCard}>
-            <div style={{ fontSize: 11, opacity: 0.8, fontWeight: 900 }}>JOUEURS</div>
-            <div style={{ fontSize: 16, fontWeight: 1000 }}>{playersCount}/8</div>
-            <div style={{ fontSize: 11, opacity: 0.75 }}>
+            <div style={{ fontSize: 11, opacity: 0.8, fontWeight: 800 }}>JOUEURS</div>
+            <div style={{ fontSize: 16, fontWeight: 950 }}>{playersCount}/8</div>
+            <div style={{ fontSize: 11, opacity: 0.7 }}>
               {botsEnabled ? `${selectedHumanIds.length} humains + ${selectedBotIds.length} bots` : `${selectedHumanIds.length} humains`}
             </div>
           </div>
           <div style={kpiCard}>
-            <div style={{ fontSize: 11, opacity: 0.8, fontWeight: 900 }}>RÈGLES</div>
-            <div style={{ fontSize: 14, fontWeight: 950 }}>{WIN_LABEL[winMode]}</div>
-            <div style={{ fontSize: 11, opacity: 0.75 }}>Échec: {FAIL_LABEL[failPolicy]}</div>
+            <div style={{ fontSize: 11, opacity: 0.8, fontWeight: 800 }}>RÈGLES</div>
+            <div style={{ fontSize: 14, fontWeight: 900 }}>{WIN_LABEL[winMode]}</div>
+            <div style={{ fontSize: 11, opacity: 0.7 }}>Échec: {FAIL_LABEL[failPolicy]}</div>
           </div>
           <div style={kpiCard}>
-            <div style={{ fontSize: 11, opacity: 0.8, fontWeight: 900 }}>SÉQUENCE</div>
-            <div style={{ fontSize: 16, fontWeight: 1000 }}>{rounds.length}</div>
-            <div style={{ fontSize: 11, opacity: 0.75 }}>{isEditable ? "éditable" : "preset"}</div>
+            <div style={{ fontSize: 11, opacity: 0.8, fontWeight: 800 }}>SÉQUENCE</div>
+            <div style={{ fontSize: 16, fontWeight: 950 }}>{rounds.length}</div>
+            <div style={{ fontSize: 11, opacity: 0.7 }}>{editingEnabled ? "custom" : "preset"}</div>
           </div>
         </div>
 
         {/* JOUEURS */}
         <Section title={t("players") || "JOUEURS"}>
           <div style={{ borderRadius: 18, padding: 12, background: cardBg, border: "1px solid rgba(255,255,255,0.12)" }}>
-            <OptionRow
-              label="Sélection"
-              hint="Choisis 2 à 8 joueurs."
-              right={<InfoDot title="Sélection joueurs" text="Tape un avatar pour (dés)sélectionner. Max 8 joueurs. Min 2." mini />}
-            >
-              <div style={{ fontWeight: 950, opacity: 0.9 }}>{playersCount}/8</div>
-            </OptionRow>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 8 }}>
+              <div style={{ fontSize: 12, opacity: 0.85, fontWeight: 950 }}>
+                Sélection : {playersCount}/8 — min 2
+              </div>
+              <InfoDot
+                title="Sélection joueurs"
+                content="Tape un médaillon pour sélectionner/désélectionner. Max 8 joueurs. Tu peux mixer humains + bots."
+                kind="mini" />
+            </div>
 
-            {/* Humans carousel */}
+            {/* Humans carousel (actif + locaux) */}
             {humanProfiles.length > 0 ? (
               <div className="dc-scroll-thin" style={{ display: "flex", gap: 18, overflowX: "auto", paddingBottom: 10 }}>
                 {humanProfiles.map((p) => {
                   const id = String(p.id);
                   const active = selectedHumanIds.includes(id);
+                  const isActiveProfile = activeProfileId != null && String(activeProfileId) === id;
+
                   return (
-                    <div
+                    <button
                       key={id}
-                      role="button"
+                      type="button"
                       onClick={() => toggleHuman(id)}
-                      style={{ minWidth: 108, maxWidth: 108, display: "flex", flexDirection: "column", alignItems: "center", gap: 7, flexShrink: 0, cursor: "pointer" }}
+                      style={{
+                        minWidth: 96,
+                        maxWidth: 96,
+                        background: "transparent",
+                        border: "none",
+                        padding: 0,
+                        display: "flex",
+                        flexDirection: "column",
+                        alignItems: "center",
+                        gap: 6,
+                        flexShrink: 0,
+                        cursor: "pointer",
+                      }}
+                      title={isActiveProfile ? "Profil actif" : ""}
                     >
                       <div
                         style={{
@@ -444,6 +445,7 @@ export default function BatardConfig(props: any) {
                           display: "flex",
                           alignItems: "center",
                           justifyContent: "center",
+                          border: isActiveProfile ? `2px solid rgba(255,215,120,0.95)` : "1px solid rgba(255,255,255,0.10)",
                         }}
                       >
                         <div
@@ -453,40 +455,73 @@ export default function BatardConfig(props: any) {
                             borderRadius: "50%",
                             overflow: "hidden",
                             filter: active ? "none" : "grayscale(100%) brightness(0.55)",
-                            opacity: active ? 1 : 0.65,
+                            opacity: active ? 1 : 0.6,
                             transition: "filter .2s ease, opacity .2s ease",
                           }}
                         >
                           <ProfileAvatar profile={p} size={78} showStars={false} />
                         </div>
                       </div>
-                      <div style={{ fontSize: 12, fontWeight: 800, textAlign: "center", color: active ? "#f6f2e9" : "#7e8299", maxWidth: "100%", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+
+                      <div
+                        style={{
+                          fontSize: 12,
+                          fontWeight: 700,
+                          textAlign: "center",
+                          color: active ? "#f6f2e9" : "#7e8299",
+                          maxWidth: "100%",
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                          whiteSpace: "nowrap",
+                        }}
+                      >
                         {p.name || "Joueur"}
                       </div>
-                    </div>
+
+                      {isActiveProfile && (
+                        <span
+                          style={{
+                            padding: "2px 8px",
+                            borderRadius: 999,
+                            fontSize: 9,
+                            fontWeight: 900,
+                            letterSpacing: 0.7,
+                            textTransform: "uppercase",
+                            background: "radial-gradient(circle at 30% 0, #ffe7a8, #ffb000)",
+                            color: "#1a1205",
+                            boxShadow: "0 0 10px rgba(255,176,0,0.45)",
+                            border: "1px solid rgba(255,230,170,0.9)",
+                            whiteSpace: "nowrap",
+                          }}
+                        >
+                          ACTIF
+                        </span>
+                      )}
+                    </button>
                   );
                 })}
               </div>
             ) : (
-              <div style={{ padding: "8px 2px", fontSize: 12, opacity: 0.85 }}>
-                Aucun profil local trouvé. Va dans <b>Profils</b> pour en créer (et/ou connecte-toi pour le profil actif).
+              <div style={{ padding: "8px 2px", fontSize: 12, opacity: 0.8 }}>
+                Aucun profil local trouvé. Va dans <b>Profils</b> pour en créer (ou connecte-toi pour avoir le profil actif).
               </div>
             )}
 
+            {/* Bots toggle + carousel (PRO) */}
             <OptionRow
               label="Bots IA"
-              hint="Affiche les bots et autorise leur sélection."
-              right={<InfoDot title="Bots IA" text="Active les bots pour compléter une partie. Tu peux mixer humains + bots (max 8 joueurs)." mini />}
+              hint="Ajoute des bots PRO (prédéfinis)."
+              right={<InfoDot title="Bots IA" content="Active pour afficher le carrousel des bots. Tu peux mixer humains + bots (max 8 joueurs)." kind="mini" />}
             >
-              <OptionToggle value={botsEnabled} onChange={setBotsEnabled} />
+              <OptionToggle value={botsEnabled} onChange={(v) => { setBotsEnabled(v); if (!v) setSelectedBotIds([]); }} />
             </OptionRow>
 
-            {botsEnabled ? (
+            {botsEnabled && (
               <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 10 }}>
                 <OptionRow
                   label="Niveau bot"
                   hint="Difficulté globale des bots."
-                  right={<InfoDot title="Niveau bot" text="Facile / Normal / Difficile. (Le moteur IA pourra affiner par bot plus tard.)" mini />}
+                  right={<InfoDot title="Niveau bot" content="Ce niveau sert à régler la difficulté globale (si l'engine en tient compte). Les bots PRO restent visibles." kind="mini" />}
                 >
                   <OptionSelect
                     value={botLevel}
@@ -499,19 +534,40 @@ export default function BatardConfig(props: any) {
                   />
                 </OptionRow>
 
-                {/* ✅ Bots carousel (comme demandé) */}
-                <div className="dc-scroll-thin" style={{ display: "flex", gap: 18, overflowX: "auto", paddingBottom: 6 }}>
+                <div
+                  style={{
+                    display: "flex",
+                    gap: 14,
+                    overflowX: "auto",
+                    overflowY: "visible",
+                    paddingBottom: 10,
+                    paddingTop: 10,
+                  }}
+                  className="dc-scroll-thin"
+                >
                   {PRO_BOTS.map((b: any) => {
                     const id = String(b.id);
                     const active = selectedBotIds.includes(id);
-                    const avatar = getProBotAvatar(b.avatarKey) ?? null;
-                    const botProfile = { id, name: b.displayName, isBot: true, botLevel: botLevel, avatar: avatar };
+                    const avatar = getProBotAvatar(b.avatarKey);
+
                     return (
-                      <div
+                      <button
                         key={id}
-                        role="button"
+                        type="button"
                         onClick={() => toggleBot(id)}
-                        style={{ minWidth: 108, maxWidth: 108, display: "flex", flexDirection: "column", alignItems: "center", gap: 7, flexShrink: 0, cursor: "pointer" }}
+                        style={{
+                          minWidth: 96,
+                          maxWidth: 96,
+                          background: "transparent",
+                          border: "none",
+                          padding: 0,
+                          display: "flex",
+                          flexDirection: "column",
+                          alignItems: "center",
+                          gap: 6,
+                          flexShrink: 0,
+                          cursor: "pointer",
+                        }}
                       >
                         <div
                           style={{
@@ -519,27 +575,72 @@ export default function BatardConfig(props: any) {
                             height: 78,
                             borderRadius: "50%",
                             overflow: "hidden",
-                            boxShadow: active ? `0 0 28px ${primary}aa` : "0 0 14px rgba(0,0,0,0.65)",
-                            background: active ? `radial-gradient(circle at 30% 20%, #fff8d0, ${primary})` : "#111320",
+                            boxShadow: active ? `0 0 26px rgba(255,192,0,0.65)` : "0 0 14px rgba(0,0,0,0.65)",
+                            background: active
+                              ? "radial-gradient(circle at 30% 20%, #fff7cc, #ffb000)"
+                              : "radial-gradient(circle at 30% 20%, rgba(255,255,255,0.16), rgba(0,0,0,0.55))",
+                            border: active ? "2px solid rgba(255,215,120,0.95)" : "1px solid rgba(255,255,255,0.10)",
                             display: "flex",
                             alignItems: "center",
                             justifyContent: "center",
-                            opacity: active ? 1 : 0.78,
                           }}
                         >
-                          <div style={{ width: "100%", height: "100%", borderRadius: "50%", overflow: "hidden" }}>
-                            <ProfileAvatar profile={botProfile} size={78} showStars={false} />
+                          <div
+                            style={{
+                              width: "100%",
+                              height: "100%",
+                              borderRadius: "50%",
+                              overflow: "hidden",
+                              filter: active ? "none" : "grayscale(60%) brightness(0.75)",
+                              opacity: active ? 1 : 0.85,
+                            }}
+                          >
+                            <ProfileAvatar
+                              profile={{ id: b.id, name: b.name, avatar }}
+                              size={78}
+                              showStars={false}
+                            />
                           </div>
                         </div>
-                        <div style={{ fontSize: 12, fontWeight: 800, textAlign: "center", color: active ? "#f6f2e9" : "#7e8299", maxWidth: "100%", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                          {b.displayName}
+
+                        <div
+                          style={{
+                            fontSize: 11,
+                            fontWeight: 700,
+                            textAlign: "center",
+                            color: active ? "#f6f2e9" : "#7e8299",
+                            maxWidth: "100%",
+                            overflow: "hidden",
+                            textOverflow: "ellipsis",
+                            whiteSpace: "nowrap",
+                          }}
+                        >
+                          {b.name}
                         </div>
-                      </div>
+
+                        <span
+                          style={{
+                            padding: "2px 8px",
+                            borderRadius: 999,
+                            fontSize: 9,
+                            fontWeight: 900,
+                            letterSpacing: 0.7,
+                            textTransform: "uppercase",
+                            background: "radial-gradient(circle at 30% 0, #ffe7a8, #ffb000)",
+                            color: "#1a1205",
+                            boxShadow: "0 0 10px rgba(255,176,0,0.45)",
+                            border: "1px solid rgba(255,230,170,0.9)",
+                            whiteSpace: "nowrap",
+                          }}
+                        >
+                          PRO
+                        </span>
+                      </button>
                     );
                   })}
                 </div>
               </div>
-            ) : null}
+            )}
           </div>
         </Section>
 
@@ -549,7 +650,7 @@ export default function BatardConfig(props: any) {
             <OptionRow
               label="Preset"
               hint="Choisis une base, puis passe en Custom pour modifier."
-              right={<InfoDot title="Preset" text="Classic / Progressif / Punition appliquent une séquence + règles. Custom déverrouille l’édition." mini />}
+              right={<InfoDot title="Preset" content="Classic / Progressif / Punition appliquent une séquence + règles. Custom déverrouille l’édition." kind="mini" />}
             >
               <OptionSelect
                 value={presetId}
@@ -566,15 +667,15 @@ export default function BatardConfig(props: any) {
             <OptionRow
               label="Mode Custom"
               hint="Déverrouille l’édition (séquence + options)."
-              right={<InfoDot title="Custom" text="Active pour éditer la séquence et les options. En preset, la séquence reste verrouillée." mini />}
+              right={<InfoDot title="Custom" content="Active pour éditer la séquence et les options. En preset, la séquence reste verrouillée." kind="mini" />}
             >
-              <OptionToggle value={isEditable} onChange={(v) => setCustomEnabled(v)} />
+              <OptionToggle value={customEnabled || presetId === "custom"} onChange={(v) => setCustomEnabled(v)} />
             </OptionRow>
 
             <OptionRow
               label="Condition de victoire"
               hint="Score max ou course au finish."
-              right={<InfoDot title="Victoire" text="Score max: meilleur total à la fin. Course: premier à terminer la séquence." mini />}
+              right={<InfoDot title="Victoire" content="Score max: meilleur total à la fin. Course: premier à terminer la séquence." kind="mini" />}
             >
               <OptionSelect
                 value={winMode}
@@ -589,7 +690,7 @@ export default function BatardConfig(props: any) {
             <OptionRow
               label="Échec (0 valide)"
               hint="Que faire si aucune flèche ne valide le round."
-              right={<InfoDot title="Échec" text="Aucun: rien. Malus: -X points. Recul: -Y rounds. Freeze: rejouer le round." mini />}
+              right={<InfoDot title="Échec" content="Aucun: rien. Malus: -X points. Recul: -Y rounds. Freeze: rejouer le round." kind="mini" />}
             >
               <OptionSelect
                 value={failPolicy}
@@ -603,16 +704,18 @@ export default function BatardConfig(props: any) {
               />
             </OptionRow>
 
-            {(failPolicy === "MINUS_POINTS" || failPolicy === "BACK_ROUND") ? (
+            {(failPolicy === "MINUS_POINTS" || failPolicy === "BACK_ROUND") && (
               <OptionRow
                 label={failPolicy === "MINUS_POINTS" ? "Valeur malus" : "Recul rounds"}
                 hint="Ajuste la valeur (X ou Y)."
-                right={<InfoDot title="Valeur" text="Malus: points retirés. Recul: nombre de rounds à remonter dans la séquence." mini />}
+                right={<InfoDot title="Valeur" content="Pour Malus: X points retirés. Pour Recul: Y rounds de retour." kind="mini" />}
               >
                 <input
                   type="number"
                   value={failValue}
-                  onChange={(e) => setFailValue(Math.max(0, Number(e.target.value || 0)))}
+                  onChange={(e) =>
+                    setFailValue(Math.max(0, Number(e.target.value || 0)))
+                  }
                   style={{
                     width: 120,
                     height: 44,
@@ -625,31 +728,20 @@ export default function BatardConfig(props: any) {
                   }}
                 />
               </OptionRow>
-            ) : null}
+            )}
           </div>
         </Section>
 
         {/* SÉQUENCE */}
         <Section
           title="SÉQUENCE (ROUNDS)"
-          right={<InfoDot title="Aide — Séquence" text={INFO_SEQUENCE} mini />}
+          right={<InfoDot title="Séquence" content={INFO_SEQUENCE} kind="mini" />}
         >
           <div style={{ borderRadius: 18, padding: 12, background: cardBg, border: "1px solid rgba(255,255,255,0.12)" }}>
-            {/* Mini KPIs sequence */}
-            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 10 }}>
-              <div style={pill(true)}>
-                Rounds <span style={{ opacity: 0.9 }}>{rounds.length}</span>
-              </div>
-              <div style={pill(winMode === "SCORE_MAX")}>Score max</div>
-              <div style={pill(winMode === "RACE_TO_FINISH")}>Course</div>
-              <div style={pill(failPolicy !== "NONE")}>{failPolicy === "NONE" ? "Sans échec" : `Échec: ${FAIL_LABEL[failPolicy]}`}</div>
-              <div style={pill(isEditable)}>{isEditable ? "Édition ON" : "Édition OFF"}</div>
-            </div>
-
             <div style={{ fontSize: 12, opacity: 0.82, marginBottom: 10, lineHeight: 1.25 }}>
-              {!isEditable ? (
+              {!editingEnabled ? (
                 <>
-                  En preset, la séquence est verrouillée. Active <b>Mode Custom</b> pour modifier.
+                  En preset, la séquence est verrouillée. Active <b>Custom</b> pour modifier.
                 </>
               ) : (
                 <>
@@ -658,7 +750,7 @@ export default function BatardConfig(props: any) {
               )}
             </div>
 
-            {/* Chips timeline */}
+            {/* Compact chips */}
             <div className="dc-scroll-thin" style={{ display: "flex", gap: 10, overflowX: "auto", paddingBottom: 8 }}>
               {rounds.map((r, i) => {
                 const active = i === selectedRoundIndex;
@@ -670,12 +762,14 @@ export default function BatardConfig(props: any) {
                     onClick={() => setSelectedRoundIndex(i)}
                     style={{
                       flexShrink: 0,
-                      minWidth: 70,
-                      height: 46,
+                      minWidth: 62,
+                      height: 44,
                       padding: "0 12px",
                       borderRadius: 14,
                       border: active ? `1px solid ${primary}aa` : "1px solid rgba(255,255,255,0.12)",
-                      background: active ? `linear-gradient(180deg, rgba(125,255,202,0.22), rgba(0,0,0,0.28))` : "rgba(0,0,0,0.18)",
+                      background: active
+                        ? `linear-gradient(180deg, rgba(125,255,202,0.22), rgba(0,0,0,0.28))`
+                        : "rgba(0,0,0,0.18)",
                       boxShadow: active ? `0 0 18px ${primary}55` : "none",
                       display: "flex",
                       flexDirection: "column",
@@ -687,31 +781,30 @@ export default function BatardConfig(props: any) {
                     title={(r as any).label || ""}
                   >
                     <div style={{ fontSize: 11, opacity: 0.75, fontWeight: 900 }}>#{i + 1}</div>
-                    <div style={{ fontSize: 12, fontWeight: 1000, letterSpacing: 0.4 }}>{short}</div>
+                    <div style={{ fontSize: 12, fontWeight: 950, letterSpacing: 0.4 }}>{short}</div>
                   </div>
                 );
               })}
             </div>
 
             {/* Round editor */}
-            {selectedRound ? (
+            {selectedRound && (
               <div style={{ marginTop: 10, borderRadius: 16, padding: 12, background: "rgba(0,0,0,0.22)", border: "1px solid rgba(255,255,255,0.12)" }}>
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
-                  <div style={{ fontWeight: 1000, fontSize: 13 }}>
+                  <div style={{ fontWeight: 950, fontSize: 13 }}>
                     Round #{selectedRoundIndex + 1} — {(selectedRound as any).label || "Round"}
                   </div>
-
-                  <div style={{ display: "flex", gap: 8 }}>
-                    <button className="dc-btn" onClick={() => moveRound(selectedRoundIndex, -1)} disabled={!isEditable || selectedRoundIndex === 0}>
+                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
+                    <button className="dc-btn" onClick={() => moveRound(selectedRoundIndex, -1)} disabled={!editingEnabled || selectedRoundIndex === 0}>
                       ↑
                     </button>
-                    <button className="dc-btn" onClick={() => moveRound(selectedRoundIndex, +1)} disabled={!isEditable || selectedRoundIndex >= rounds.length - 1}>
+                    <button className="dc-btn" onClick={() => moveRound(selectedRoundIndex, +1)} disabled={!editingEnabled || selectedRoundIndex >= rounds.length - 1}>
                       ↓
                     </button>
-                    <button className="dc-btn" onClick={() => dupRound(selectedRoundIndex)} disabled={!isEditable}>
+                    <button className="dc-btn" onClick={() => dupRound(selectedRoundIndex)} disabled={!editingEnabled}>
                       Dupliquer
                     </button>
-                    <button className="dc-btn-danger" onClick={() => removeRound(selectedRoundIndex)} disabled={!isEditable || rounds.length <= 1}>
+                    <button className="dc-btn-danger" onClick={() => removeRound(selectedRoundIndex)} disabled={!editingEnabled || rounds.length <= 1}>
                       Supprimer
                     </button>
                   </div>
@@ -719,7 +812,7 @@ export default function BatardConfig(props: any) {
 
                 <div style={{ marginTop: 10, display: "grid", gridTemplateColumns: "1fr 140px", gap: 10 }}>
                   <div>
-                    <div style={{ fontSize: 11, opacity: 0.75, fontWeight: 900, marginBottom: 6 }}>Label</div>
+                    <div style={{ fontSize: 11, opacity: 0.75, fontWeight: 850, marginBottom: 6 }}>Label</div>
                     <input
                       value={(selectedRound as any).label || ""}
                       onChange={(e) => updateRound(selectedRoundIndex, { label: e.target.value } as any)}
@@ -734,12 +827,12 @@ export default function BatardConfig(props: any) {
                         outline: "none",
                       }}
                       placeholder="Ex: Double 20"
-                      disabled={!isEditable}
+                      disabled={!editingEnabled}
                     />
                   </div>
 
                   <div>
-                    <div style={{ fontSize: 11, opacity: 0.75, fontWeight: 900, marginBottom: 6 }}>Multiplier</div>
+                    <div style={{ fontSize: 11, opacity: 0.75, fontWeight: 850, marginBottom: 6 }}>Multiplier</div>
                     <select
                       value={((selectedRound as any).multiplierRule || "ANY") as BatardMultiplierRule}
                       onChange={(e) => updateRound(selectedRoundIndex, { multiplierRule: e.target.value as any } as any)}
@@ -753,7 +846,7 @@ export default function BatardConfig(props: any) {
                         color: "rgba(255,255,255,0.92)",
                         outline: "none",
                       }}
-                      disabled={!isEditable}
+                      disabled={!editingEnabled}
                     >
                       <option value="ANY">ANY</option>
                       <option value="SINGLE">SINGLE</option>
@@ -763,10 +856,14 @@ export default function BatardConfig(props: any) {
                   </div>
 
                   <div>
-                    <div style={{ fontSize: 11, opacity: 0.75, fontWeight: 900, marginBottom: 6 }}>Target</div>
+                    <div style={{ fontSize: 11, opacity: 0.75, fontWeight: 850, marginBottom: 6 }}>Target</div>
                     <select
                       value={String((selectedRound as any).target ?? "")}
-                      onChange={(e) => updateRound(selectedRoundIndex, { target: e.target.value ? Number(e.target.value) : undefined } as any)}
+                      onChange={(e) =>
+                        updateRound(selectedRoundIndex, {
+                          target: e.target.value ? Number(e.target.value) : undefined,
+                        } as any)
+                      }
                       style={{
                         width: "100%",
                         height: 44,
@@ -777,7 +874,7 @@ export default function BatardConfig(props: any) {
                         color: "rgba(255,255,255,0.92)",
                         outline: "none",
                       }}
-                      disabled={!isEditable}
+                      disabled={!editingEnabled}
                     >
                       <option value="">(libre)</option>
                       {Array.from({ length: 20 }, (_, i) => i + 1).map((n) => (
@@ -792,20 +889,24 @@ export default function BatardConfig(props: any) {
                     <OptionRow
                       label="Bull only"
                       hint="Cible bull uniquement (25/50)."
-                      right={<InfoDot title="Bull only" text="Si activé, seules les touches Bull (25/50) valident ce round." mini />}
+                      right={<InfoDot title="Bull only" content="Si activé, seules les touches Bull (25/50) valident ce round." kind="mini" />}
                     >
-                      <OptionToggle value={Boolean((selectedRound as any).bullOnly)} onChange={(v) => updateRound(selectedRoundIndex, { bullOnly: v } as any)} disabled={!isEditable} />
+                      <OptionToggle
+                        value={Boolean((selectedRound as any).bullOnly)}
+                        onChange={(v) => updateRound(selectedRoundIndex, { bullOnly: v } as any)}
+                        disabled={!editingEnabled}
+                      />
                     </OptionRow>
                   </div>
                 </div>
 
                 <div style={{ marginTop: 10 }}>
-                  <button className="dc-btn" onClick={addRound} disabled={!isEditable}>
+                  <button className="dc-btn" onClick={addRound} disabled={!editingEnabled}>
                     + Ajouter un round
                   </button>
                 </div>
               </div>
-            ) : null}
+            )}
           </div>
         </Section>
 
@@ -817,7 +918,8 @@ export default function BatardConfig(props: any) {
             right: 0,
             bottom: 0,
             padding: "10px 12px",
-            background: "linear-gradient(180deg, rgba(11,13,20,0), rgba(11,13,20,0.92) 35%, rgba(11,13,20,0.98))",
+            background:
+              "linear-gradient(180deg, rgba(11,13,20,0), rgba(11,13,20,0.92) 35%, rgba(11,13,20,0.98))",
           }}
         >
           <button
@@ -828,9 +930,12 @@ export default function BatardConfig(props: any) {
               height: 52,
               borderRadius: 18,
               border: "1px solid rgba(255,255,255,0.14)",
-              background: playersCount < 2 ? "rgba(255,255,255,0.06)" : `linear-gradient(90deg, ${primary}aa, rgba(255,255,255,0.10))`,
+              background:
+                playersCount < 2
+                  ? "rgba(255,255,255,0.06)"
+                  : `linear-gradient(90deg, ${primary}aa, rgba(255,255,255,0.10))`,
               color: playersCount < 2 ? "rgba(255,255,255,0.35)" : "#0b0d14",
-              fontWeight: 1000,
+              fontWeight: 950,
               letterSpacing: 0.4,
               boxShadow: playersCount < 2 ? "none" : `0 10px 28px ${primary}30`,
               cursor: playersCount < 2 ? "not-allowed" : "pointer",

@@ -2937,10 +2937,12 @@ case "babyfoot_team_edit":
         break;
 
       case "batard_config":
-        page = <BatardConfig setTab={go} params={routeParams} />;
+        // ✅ pass store like other configs (needed for local profiles + active profile)
+        page = <BatardConfig store={store} go={go} setTab={go} params={routeParams} />;
         break;
       case "batard_play":
-        page = <BatardPlay setTab={go} params={routeParams} />;
+        // ✅ pass store so play screen can resolve profiles/avatars consistently
+        page = <BatardPlay store={store} setTab={go} params={routeParams} />;
         break;
 
       case "fun_gages_config":

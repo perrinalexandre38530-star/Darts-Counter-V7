@@ -1,7 +1,7 @@
 // @ts-nocheck
 // =============================================================
 // src/pages/batard/BatardSummaryPage.tsx
-// BATARD — Summary (minimal, stable)
+// BATARD — Summary (stable)
 // =============================================================
 import * as React from "react";
 import BackDot from "../../components/BackDot";
@@ -16,28 +16,64 @@ export default function BatardSummaryPage(props: Props) {
   const { go, params } = props;
   const match = params?.match;
 
-  const results = (match?.results || []).slice().sort((a: any, b: any) => (b.score||0)-(a.score||0));
+  const results = (match?.results || [])
+    .slice()
+    .sort((a: any, b: any) => (b.score || 0) - (a.score || 0));
 
   return (
     <div style={{ padding: 16 }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
         <BackDot onClick={() => go("games")} />
-        <div style={{ fontWeight: 900 }}>BATARD — Résumé</div>
-        <div style={{ width: 44 }} />
+        <div style={{ fontWeight: 900, fontSize: 18 }}>Résumé — BÂTARD</div>
+        <div style={{ width: 36 }} />
       </div>
 
-      <div style={{ marginTop: 14, padding: 12, borderRadius: 16, background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.12)" }}>
-        <div style={{ opacity: 0.7, fontSize: 12 }}>Vainqueur</div>
-        <div style={{ fontWeight: 900, fontSize: 20 }}>{match?.winnerId || "-"}</div>
+      <div style={{ marginTop: 14, opacity: 0.85, fontSize: 13 }}>
+        {match?.config?.batard?.label ? (
+          <div>
+            Preset: <b>{match.config.batard.label}</b> — winMode: <b>{match.config.batard.winMode}</b>
+          </div>
+        ) : (
+          <div>Preset: (non défini)</div>
+        )}
       </div>
 
-      <div style={{ marginTop: 12 }}>
+      <div style={{ marginTop: 14 }}>
         {results.map((r: any, i: number) => (
-          <div key={r.id} style={{ display: "flex", justifyContent: "space-between", padding: 12, borderRadius: 14, marginTop: 8, background: "rgba(0,0,0,0.22)", border: "1px solid rgba(255,255,255,0.10)" }}>
-            <div style={{ fontWeight: 900 }}>{i + 1}. {r.id}</div>
-            <div style={{ fontWeight: 900 }}>{r.score}</div>
+          <div
+            key={r.id || i}
+            style={{
+              padding: 12,
+              borderRadius: 14,
+              border: "1px solid rgba(255,255,255,0.12)",
+              background: "rgba(0,0,0,0.18)",
+              marginBottom: 10,
+            }}
+          >
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
+              <div style={{ fontWeight: 900, fontSize: 16 }}>
+                #{i + 1} {r.id}
+              </div>
+              <div style={{ fontWeight: 900, fontSize: 18 }}>{r.score} pts</div>
+            </div>
+
+            {r.stats && (
+              <div style={{ marginTop: 8, opacity: 0.9, fontSize: 13, lineHeight: 1.35 }}>
+                <div>Turns: {r.stats.turns} — Darts: {r.stats.dartsThrown}</div>
+                <div>Valid hits: {r.stats.validHits} — Fails: {r.stats.fails} — Advances: {r.stats.advances}</div>
+              </div>
+            )}
           </div>
         ))}
+      </div>
+
+      <div style={{ display: "flex", gap: 12, marginTop: 12 }}>
+        <button className="btn btn-primary" onClick={() => go("games")}>
+          Retour jeux
+        </button>
+        <button className="btn" onClick={() => go("batard_config")}>
+          Reconfigurer
+        </button>
       </div>
     </div>
   );

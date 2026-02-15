@@ -107,6 +107,15 @@ export type ShanghaiProfileStats = {
   lastMatchAt?: number;
 };
 
+// Batard (Fun) — stats profil (basées sur summary maps du match)
+export type BatardProfileStats = BasicProfileStats & {
+  points: number;
+  fails: number;
+  validHits: number;
+  advances: number;
+};
+
+
 /* Global */
 export type GlobalStats = {
   matches: number;
@@ -320,6 +329,7 @@ function detectKindMode(rec: any, decoded: any | null) {
   if (blob.includes("killer")) return { kind: "killer", mode: "killer" };
   if (blob.includes("shanghai")) return { kind: "shanghai", mode: "shanghai" };
   if (blob.includes("x01")) return { kind: "x01", mode: "x01" };
+  if (blob.includes("batard") || blob.includes("bastard")) return { kind: "batard", mode: "batard" };
 
   return { kind, mode };
 }
@@ -1032,6 +1042,86 @@ export async function getShanghaiProfileStats(profileId: string, range: RangeKey
 /* ============================================================
    GLOBAL + LEADERBOARDS
 ============================================================ */
+
+
+
+export async function getBatardProfileStats(profileId: string, range: RangeKey = "all", source: SourceKey = "all"): Promise<BatardProfileStats> {
+  const empty: BatardProfileStats = {
+    games: 0,
+    wins: 0,
+    winRate: 0,
+    darts: 0,
+    avg3: 0,
+    bestVisit: 0,
+    bestCheckout: 0,
+    points: 0,
+    fails: 0,
+    validHits: 0,
+    advances: 0,
+  };
+
+  if (!profileId) return empty;
+
+  const idx = await buildStatsIndex(false);
+  const mine = idx.byProfile[String(profileId)] || [];
+  const rows = applyFilters(mine, range, source).filter((m) => m.kind === "batard" || m.mode === "batard");
+
+  let games = 0;
+  let wins = 0;
+
+  let darts = 0;
+  let points = 0;
+
+  let fails = 0;
+  let validHits = 0;
+  let advances = 0;
+
+  let bestVisit = 0;
+
+  for (const m of rows) {
+    if (m.status !== "finished") continue;
+
+    games += 1;
+    if (m.winnerId && String(m.winnerId) === String(profileId)) wins += 1;
+
+    const sum: any = m.summary || {};
+    const pid = String(profileId);
+
+    const dartsMap = sum.darts || sum.dartsByPlayer || {};
+    const ptsMap = sum.pointsByPlayer || sum.points || {};
+    const failsMap = sum.failsByPlayer || {};
+    const hitsMap = sum.validHitsByPlayer || {};
+    const advMap = sum.advancesByPlayer || {};
+    const bestMap = sum.bestVisitByPlayer || {};
+
+    darts += N(dartsMap?.[pid], 0);
+    points += N(ptsMap?.[pid], 0);
+
+    fails += N(failsMap?.[pid], 0);
+    validHits += N(hitsMap?.[pid], 0);
+    advances += N(advMap?.[pid], 0);
+
+    bestVisit = Math.max(bestVisit, N(bestMap?.[pid], 0));
+  }
+
+  const avg3 = darts > 0 ? (points / darts) * 3 : 0;
+  const winRate = games > 0 ? Math.round((wins / games) * 100) : 0;
+
+  return {
+    ...empty,
+    games,
+    wins,
+    winRate,
+    darts,
+    points,
+    avg3,
+    bestVisit,
+    bestCheckout: 0,
+    fails,
+    validHits,
+    advances,
+  };
+}
 
 export async function getGlobalStats(range: RangeKey = "all", source: SourceKey = "all"): Promise<GlobalStats> {
   const idx = await buildStatsIndex(false);

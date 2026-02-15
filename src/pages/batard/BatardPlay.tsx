@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import BackDot from "../../components/BackDot";
 import InfoDot from "../../components/InfoDot";
 import PageHeader from "../../components/PageHeader";
@@ -9,28 +9,58 @@ import { useTheme } from "../../contexts/ThemeContext";
 import tickerBatard from "../../assets/tickers/ticker_bastard.png";
 
 import type { Dart as UIDart } from "../../lib/types";
-import type { BatardConfig as BatardRulesConfig } from "../../lib/batard/batardTypes";
+import type { BatardConfig as BatardRulesConfig, BatardRound } from "../../lib/batard/batardTypes";
 import { useBatardEngine } from "../../hooks/useBatardEngine";
 import type { BatardConfigPayload } from "./BatardConfig";
 
-const INFO_TEXT = `BÂTARD — mode variantes
-- Chaque "round" impose une contrainte (cible + multiplicateur, bull…)
-- Tu marques uniquement avec les flèches valides (par défaut)
-- Règle d'échec configurable (malus / recul / freeze)
+import { History } from "../../lib/history";
+import { PRO_BOTS } from "../../lib/botsPro";
+import { getProBotAvatar } from "../../lib/botsProAvatars";
+
+const INFO_TEXT = `BÂTARD — basé sur BatardConfig
+- Chaque round impose une contrainte (cible / bull / multiplicateur)
+- scoreOnlyValid: si activé => tu scores uniquement les flèches valides
+- minValidHitsToAdvance: nb minimum de hits valides pour avancer
+- failPolicy: malus / recul rounds / freeze
 `;
 
-function roundTitle(round: any, idx: number) {
+// -------------------------------------------------------------
+// Helpers
+// -------------------------------------------------------------
+function roundLabel(round: BatardRound | null, idx: number) {
   if (!round) return `Round #${idx + 1}`;
-  if (round.bullOnly) return `Round #${idx + 1} — BULL`;
-  const t = typeof round.target === "number" ? round.target : null;
+
+  if (round.type === "TARGET_BULL") {
+    return `Round #${idx + 1} — BULL (${round.multiplierRule || "ANY"})`;
+  }
+
+  if (round.type === "ANY_SCORE") {
+    const m = round.multiplierRule || "ANY";
+    return `Round #${idx + 1} — SCORE LIBRE (${m})`;
+  }
+
+  // TARGET_NUMBER
+  const t = typeof (round as any).target === "number" ? (round as any).target : "?";
   const m = round.multiplierRule || "ANY";
-  if (!t) return `Round #${idx + 1} — SCORE LIBRE`;
   return `Round #${idx + 1} — ${m} ${t}`;
 }
 
+function makeMatchId(prefix: string) {
+  const ts = Date.now();
+  return `${prefix}-${ts}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+type LightPlayer = { id: string; name?: string; avatarDataUrl?: string | null };
+
+// -------------------------------------------------------------
+// BatardPlay
+// -------------------------------------------------------------
 export default function BatardPlay(props: any) {
   const { t } = useLang();
   useTheme();
+
+  const store = (props as any)?.store ?? (props as any)?.params?.store ?? null;
+  const storeProfiles: any[] = Array.isArray((store as any)?.profiles) ? (store as any).profiles : [];
 
   const cfg: BatardConfigPayload =
     (props?.params?.config as BatardConfigPayload) ||
@@ -40,43 +70,195 @@ export default function BatardPlay(props: any) {
       botLevel: "normal",
       presetId: "classic",
       batard: {
+        presetId: "classic_bar",
+        label: "Classic (Bar)",
         winMode: "SCORE_MAX",
         failPolicy: "NONE",
         failValue: 0,
-        rounds: [{ id: "1", label: "Score Max", multiplierRule: "ANY" }],
+        scoreOnlyValid: true,
+        minValidHitsToAdvance: 1,
+        rounds: [{ id: "r9", label: "Score Max", type: "ANY_SCORE", multiplierRule: "ANY" }],
       } as BatardRulesConfig,
     };
 
-  const playerIds = useMemo(
-    () => Array.from({ length: Math.max(2, cfg.players) }, (_, i) => `J${i + 1}`),
-    [cfg.players]
-  );
+  // -----------------------------------------------------------
+  // Players resolution (human profiles + bots) — from BatardConfig
+  // -----------------------------------------------------------
+  const lightPlayers: LightPlayer[] = useMemo(() => {
+    const humans = (cfg.selectedHumanIds || []).filter(Boolean);
+    const bots = cfg.botsEnabled ? (cfg.selectedBotIds || []).filter(Boolean) : [];
 
-  const { states, currentPlayerIndex, currentRound, throwVisit, isFinished } =
+    // If config is empty (edge), fallback to first N store profiles.
+    const fallbackHumans =
+      humans.length > 0
+        ? humans
+        : storeProfiles
+            .filter((p) => p && p.id != null && !(p.isBot === true))
+            .slice(0, Math.max(2, cfg.players))
+            .map((p) => String(p.id));
+
+    const allIds = [...fallbackHumans, ...bots].slice(0, Math.max(2, cfg.players));
+
+    return allIds.map((id) => {
+      // bot pro?
+      const bot = PRO_BOTS.find((b) => b.id === id);
+      if (bot) {
+        return {
+          id,
+          name: bot.displayName || id,
+          avatarDataUrl: getProBotAvatar(bot.avatarKey || bot.id) || null,
+        };
+      }
+
+      const prof = storeProfiles.find((p) => String(p?.id) === String(id));
+      return {
+        id: String(id),
+        name: prof?.name || prof?.displayName || String(id),
+        avatarDataUrl: prof?.avatarDataUrl ?? null,
+      };
+    });
+  }, [cfg.selectedHumanIds, cfg.selectedBotIds, cfg.botsEnabled, cfg.players, storeProfiles]);
+
+  const playerIds = useMemo(() => lightPlayers.map((p) => p.id), [lightPlayers]);
+
+  // -----------------------------------------------------------
+  // Engine
+  // -----------------------------------------------------------
+  const { states, ranking, currentPlayerIndex, currentRound, submitVisit, finished, winnerId, turnCounter } =
     useBatardEngine(playerIds, cfg.batard);
 
+  const active = states[currentPlayerIndex];
+  const activeRoundIdx = active?.roundIndex ?? 0;
+
+  // -----------------------------------------------------------
+  // Persistence (History)
+  // - In progress: upsert after each visit
+  // - Finished: upsert once with summary + payload
+  // -----------------------------------------------------------
+  const matchIdRef = useRef<string>((props?.params?.matchId as string) || makeMatchId("batard"));
+  const createdAtRef = useRef<number>(Date.now());
+  const visitsRef = useRef<any[]>([]);
+  const didSaveFinishedRef = useRef<boolean>(false);
+
+  function buildSummaryFromStates(finalStates: any[]) {
+    const dartsByPlayer: Record<string, number> = {};
+    const pointsByPlayer: Record<string, number> = {};
+    const avg3ByPlayer: Record<string, number> = {};
+    const failsByPlayer: Record<string, number> = {};
+    const validHitsByPlayer: Record<string, number> = {};
+    const advancesByPlayer: Record<string, number> = {};
+    const bestVisitByPlayer: Record<string, number> = {};
+
+    // best visit: from payload.visits if present
+    try {
+      for (const v of visitsRef.current) {
+        const pid = String(v?.p || "");
+        if (!pid) continue;
+        const sc = Number(v?.score || 0);
+        bestVisitByPlayer[pid] = Math.max(Number(bestVisitByPlayer[pid] || 0), sc);
+      }
+    } catch {}
+
+    for (const p of finalStates || []) {
+      const pid = String(p.id);
+      const darts = Number(p?.stats?.dartsThrown || 0);
+      const pts = Number(p?.stats?.pointsAdded || 0);
+      const a3 = darts > 0 ? (pts / darts) * 3 : 0;
+
+      dartsByPlayer[pid] = darts;
+      pointsByPlayer[pid] = pts;
+      avg3ByPlayer[pid] = a3;
+
+      failsByPlayer[pid] = Number(p?.stats?.fails || 0);
+      validHitsByPlayer[pid] = Number(p?.stats?.validHits || 0);
+      advancesByPlayer[pid] = Number(p?.stats?.advances || 0);
+    }
+
+    return {
+      matchId: matchIdRef.current,
+      mode: "batard",
+      presetId: cfg.presetId,
+      batardPresetId: (cfg.batard as any)?.presetId,
+      status: finished ? "finished" : "in_progress",
+
+      // maps (compat deriveHistoryStats + statsBridge)
+      darts: dartsByPlayer,
+      pointsByPlayer,
+      avg3ByPlayer,
+      bestVisitByPlayer,
+
+      // batard specifics
+      failsByPlayer,
+      validHitsByPlayer,
+      advancesByPlayer,
+
+      turns: turnCounter,
+      winMode: cfg.batard.winMode,
+      failPolicy: cfg.batard.failPolicy,
+      failValue: cfg.batard.failValue,
+      scoreOnlyValid: cfg.batard.scoreOnlyValid,
+      minValidHitsToAdvance: cfg.batard.minValidHitsToAdvance,
+    };
+  }
+
+  async function upsertHistory(status: "in_progress" | "finished") {
+    const matchId = matchIdRef.current;
+    const createdAt = createdAtRef.current;
+    const updatedAt = Date.now();
+
+    const summary = buildSummaryFromStates(states as any);
+
+    const payload = {
+      matchId,
+      kind: "batard",
+      status,
+      createdAt,
+      updatedAt,
+
+      // store light config only (safe + stable)
+      config: {
+        ...cfg,
+        players: lightPlayers,
+      },
+
+      // replay-friendly visits
+      visits: visitsRef.current,
+
+      // snapshot final states for summary / debug
+      states: states,
+
+      winnerId: status === "finished" ? winnerId : null,
+    };
+
+    const record: any = {
+      id: matchId,
+      kind: "batard",
+      status,
+      createdAt,
+      updatedAt,
+      players: lightPlayers,
+      winnerId: status === "finished" ? winnerId : null,
+      summary,
+      payload,
+    };
+
+    try {
+      await History.upsert(record);
+    } catch (e) {
+      console.warn("[BatardPlay] History.upsert failed", e);
+    }
+  }
+
+  // -----------------------------------------------------------
+  // UI local state (keypad)
+  // -----------------------------------------------------------
   const [multiplier, setMultiplier] = useState<1 | 2 | 3>(1);
   const [currentThrow, setCurrentThrow] = useState<UIDart[]>([]);
-  const [bustMsg, setBustMsg] = useState<string | null>(null);
-
-  const finished = isFinished();
-
-  const winner = useMemo(() => {
-    if (!finished) return null;
-    // Winner = highest score (or first finisher already marked by engine, but we keep simple)
-    let best = -Infinity;
-    let idx = 0;
-    for (let i = 0; i < states.length; i++) {
-      if (states[i].score > best) {
-        best = states[i].score;
-        idx = i;
-      }
-    }
-    return { idx, score: best };
-  }, [finished, states]);
+  const [infoMsg, setInfoMsg] = useState<string | null>(null);
 
   function goBack() {
-    if (props?.setTab) return props.setTab("batard_config", { config: cfg });
+    // demandé: BackDot doit revenir au menu Games de darts (pas gameselect)
+    if (props?.setTab) return props.setTab("games");
     window.history.back();
   }
 
@@ -84,44 +266,82 @@ export default function BatardPlay(props: any) {
   const onNumber = (v: number) => {
     if (finished) return;
     if (currentThrow.length >= 3) return;
-    setBustMsg(null);
+    setInfoMsg(null);
     setCurrentThrow((prev) => [...prev, { v, mult: multiplier, label: `${multiplier}x${v}` }]);
   };
 
   const onBull = () => {
     if (finished) return;
     if (currentThrow.length >= 3) return;
-    setBustMsg(null);
-    // Bull: keypad in app usually uses 25 as value; double-bull can be via multiplier=2 with 25? Here accept 25 with mult.
-    const v = 25;
-    setCurrentThrow((prev) => [...prev, { v, mult: multiplier, label: multiplier === 2 ? "DBULL" : "BULL" }]);
+    setInfoMsg(null);
+    setCurrentThrow((prev) => [...prev, { v: 25, mult: multiplier, label: multiplier === 2 ? "DBULL" : "BULL" }]);
   };
 
   const onUndo = () => {
     if (finished) return;
-    setBustMsg(null);
+    setInfoMsg(null);
     setCurrentThrow((prev) => prev.slice(0, -1));
   };
 
   const onCancel = () => {
     if (finished) return;
-    setBustMsg(null);
+    setInfoMsg(null);
     setCurrentThrow([]);
     setMultiplier(1);
   };
 
   const onValidate = () => {
     if (finished) return;
-    // pad to 3 darts (engine expects 3 but will validate only those present)
+
     const darts = [...currentThrow];
-    // If user validates with 0 dart => treat as fail (no hit) by sending empty
-    throwVisit(darts.map((d) => ({ value: d.v === 25 && d.mult === 2 ? 50 : d.v, multiplier: d.mult })));
+    const pid = String(active?.id || playerIds[currentPlayerIndex] || "");
+
+    // compute visit score (for bestVisit + replay)
+    const sc = darts.reduce((s, d) => s + Number((d.v || 0) * (d.mult || 1)), 0);
+
+    visitsRef.current.push({
+      p: pid,
+      darts: darts.map((d) => ({ v: d.v, mult: d.mult })),
+      score: sc,
+      ts: Date.now(),
+      roundIndexBefore: active?.roundIndex ?? 0,
+    });
+
+    submitVisit(darts);
+
     setCurrentThrow([]);
     setMultiplier(1);
+    setInfoMsg(null);
   };
 
-  const active = states[currentPlayerIndex];
-  const activeRoundIdx = active?.roundIndex ?? 0;
+  // Autosave: after each turnCounter change, persist in_progress (unless finished)
+  const lastSavedTurnRef = useRef<number>(-1);
+  useEffect(() => {
+    if (finished) return;
+    if (turnCounter === lastSavedTurnRef.current) return;
+    lastSavedTurnRef.current = turnCounter;
+
+    // only save after at least one turn (avoid junk record on open)
+    if (turnCounter <= 0) return;
+
+    upsertHistory("in_progress");
+  }, [turnCounter, finished]);
+
+  // Save finished once
+  useEffect(() => {
+    if (!finished) return;
+    if (didSaveFinishedRef.current) return;
+    didSaveFinishedRef.current = true;
+
+    upsertHistory("finished");
+  }, [finished]);
+
+  // winner memo
+  const winner = useMemo(() => {
+    if (!finished || !winnerId) return null;
+    const w = states.find((p) => p.id === winnerId) || null;
+    return w ? { id: w.id, score: w.score } : null;
+  }, [finished, winnerId, states]);
 
   return (
     <div className="page">
@@ -135,39 +355,71 @@ export default function BatardPlay(props: any) {
       <Section title={t("game.status", "Statut")}>
         <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
           <div style={{ fontWeight: 800, fontSize: 18 }}>
-            Joueur: <span style={{ opacity: 0.9 }}>{active?.id}</span>
+            Joueur: <span style={{ opacity: 0.9 }}>{lightPlayers.find((p) => p.id === active?.id)?.name || active?.id}</span>
           </div>
-          <div style={{ fontWeight: 700, opacity: 0.9 }}>
-            {roundTitle(currentRound, activeRoundIdx)}
+          <div style={{ fontWeight: 700, opacity: 0.9 }}>{roundLabel(currentRound as any, activeRoundIdx)}</div>
+        </div>
+
+        <div style={{ marginTop: 10, opacity: 0.85, fontSize: 12, lineHeight: 1.35 }}>
+          <div>
+            <b>winMode</b>: {cfg.batard.winMode} — <b>failPolicy</b>: {cfg.batard.failPolicy}
+            {cfg.batard.failPolicy !== "NONE" ? ` (${cfg.batard.failValue})` : ""}
+          </div>
+          <div>
+            <b>scoreOnlyValid</b>: {String(cfg.batard.scoreOnlyValid)} — <b>minValidHitsToAdvance</b>: {cfg.batard.minValidHitsToAdvance}
           </div>
         </div>
 
         <div style={{ marginTop: 10, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-          {states.map((p, idx) => (
-            <div
-              key={p.id}
-              style={{
-                padding: 12,
-                borderRadius: 14,
-                border: "1px solid rgba(255,255,255,0.12)",
-                background:
-                  idx === currentPlayerIndex ? "rgba(255,215,0,0.10)" : "rgba(0,0,0,0.18)",
-              }}
-            >
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
-                <div style={{ fontWeight: 800 }}>{p.id}</div>
-                <div style={{ opacity: 0.8, fontSize: 12 }}>
-                  Round {Math.min(p.roundIndex + 1, cfg.batard.rounds.length)}/{cfg.batard.rounds.length}
+          {states.map((p, idx) => {
+            const lp = lightPlayers.find((x) => x.id === p.id);
+            return (
+              <div
+                key={p.id}
+                style={{
+                  padding: 12,
+                  borderRadius: 14,
+                  border: "1px solid rgba(255,255,255,0.12)",
+                  background: idx === currentPlayerIndex ? "rgba(255,215,0,0.10)" : "rgba(0,0,0,0.18)",
+                }}
+              >
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
+                  <div style={{ fontWeight: 800 }}>{lp?.name || p.id}</div>
+                  <div style={{ opacity: 0.8, fontSize: 12 }}>
+                    Round {Math.min(p.roundIndex + 1, cfg.batard.rounds.length)}/{cfg.batard.rounds.length}
+                  </div>
                 </div>
+
+                <div style={{ fontSize: 22, fontWeight: 900, marginTop: 6 }}>{p.score}</div>
+
+                <div style={{ marginTop: 8, display: "flex", gap: 10, flexWrap: "wrap", fontSize: 12, opacity: 0.9 }}>
+                  <span>🎯 hits: {p.stats.validHits}</span>
+                  <span>🧮 tours: {p.stats.turns}</span>
+                  <span>⚠️ fails: {p.stats.fails}</span>
+                </div>
+
+                {p.lastVisit && p.lastVisit.length > 0 && (
+                  <div style={{ marginTop: 8, fontSize: 12, opacity: 0.85 }}>
+                    Dernier tour:{" "}
+                    {p.lastVisit.map((d, i) => (
+                      <span key={i} style={{ marginRight: 8 }}>
+                        {d.mult}×{d.v}
+                      </span>
+                    ))}
+                    <span style={{ marginLeft: 8, fontWeight: 800 }}>
+                      ({p.lastValidHits} hit{p.lastValidHits === 1 ? "" : "s"})
+                    </span>
+                    {p.lastAdvanced ? <span style={{ marginLeft: 8, fontWeight: 800 }}>✅</span> : <span style={{ marginLeft: 8, fontWeight: 800 }}>❌</span>}
+                  </div>
+                )}
               </div>
-              <div style={{ fontSize: 22, fontWeight: 900, marginTop: 6 }}>{p.score}</div>
-            </div>
-          ))}
+            );
+          })}
         </div>
 
-        {bustMsg && (
-          <div style={{ marginTop: 10, padding: 10, borderRadius: 12, background: "rgba(255,0,0,0.12)" }}>
-            {bustMsg}
+        {infoMsg && (
+          <div style={{ marginTop: 10, padding: 10, borderRadius: 12, background: "rgba(255,255,255,0.08)" }}>
+            {infoMsg}
           </div>
         )}
       </Section>
@@ -175,13 +427,25 @@ export default function BatardPlay(props: any) {
       {finished && winner ? (
         <Section title="🏁 Fin de partie">
           <div style={{ fontWeight: 900, fontSize: 22 }}>
-            Gagnant: {states[winner.idx].id} — {winner.score} pts
+            Gagnant: {lightPlayers.find((p) => p.id === winner.id)?.name || winner.id} — {winner.score} pts
           </div>
+
+          <div style={{ marginTop: 12, opacity: 0.9, fontSize: 13 }}>
+            Classement:
+            <ol style={{ marginTop: 8 }}>
+              {ranking.map((p) => (
+                <li key={p.id}>
+                  {(lightPlayers.find((x) => x.id === p.id)?.name || p.id)} — {p.score} pts (fails {p.stats.fails}, turns {p.stats.turns})
+                </li>
+              ))}
+            </ol>
+          </div>
+
           <div style={{ display: "flex", gap: 12, marginTop: 12 }}>
-            <button className="btn btn-primary" onClick={() => props?.setTab?.("games")}>
-              Retour jeux
+            <button className="btn btn-primary" onClick={() => props?.setTab?.("statsHub", { tab: "history" })}>
+              Historique
             </button>
-            <button className="btn" onClick={goBack}>
+            <button className="btn" onClick={() => props?.setTab?.("batard_config")}>
               Rejouer / Reconfigurer
             </button>
           </div>
