@@ -10,6 +10,7 @@ const GOLF_SCORE_DISPLAY: Record<number, { label: string; color: string }> = {
 };
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
+import { useFullscreenPlay } from "../hooks/useFullscreenPlay";
 import BackDot from "../components/BackDot";
 import InfoDot from "../components/InfoDot";
 import PageHeader from "../components/PageHeader";
@@ -442,9 +443,10 @@ const miniCard: React.CSSProperties = {
   // ✅ Responsive (phone safe): this panel must never overflow the viewport
   width: "clamp(140px, 44vw, 190px)",
   maxWidth: "calc(100vw - 18px)",
-  padding: 7,
+  padding: 8,
   borderRadius: 12,
-  overflow: "hidden",
+  // ⚠️ Important: do NOT clip inner content (mini ranking rows can be visually cut on some phones)
+  overflow: "visible",
   background:
     "linear-gradient(180deg,rgba(22,22,26,.96),rgba(14,14,16,.98))",
   border: "1px solid rgba(255,255,255,.10)",
@@ -461,12 +463,12 @@ const miniText: React.CSSProperties = {
 const miniRankRow: React.CSSProperties = {
   // ✅ score column is fixed, name truncates — prevents overflow
   display: "grid",
-  gridTemplateColumns: "1fr auto",
+  gridTemplateColumns: "minmax(0,1fr) max-content",
   alignItems: "center",
   gap: 6,
   minWidth: 0,
   overflow: "hidden",
-  padding: "3px 6px",
+  padding: "4px 6px",
   borderRadius: 6,
   background: "rgba(255,255,255,.04)",
   marginBottom: 3,
@@ -487,22 +489,24 @@ const miniRankName: React.CSSProperties = {
 
 const miniRankScore: React.CSSProperties = {
   flex: "0 0 auto",
-  minWidth: 28,
+  minWidth: 34,
   textAlign: "right",
   fontVariantNumeric: "tabular-nums",
   fontSize: "clamp(9px, 2.3vw, 10px)",
   fontWeight: 900,
   color: "#ffcf57",
+  whiteSpace: "nowrap",
 };
 
 const miniRankScoreFini: React.CSSProperties = {
   flex: "0 0 auto",
-  minWidth: 28,
+  minWidth: 34,
   textAlign: "right",
   fontVariantNumeric: "tabular-nums",
   fontSize: "clamp(9px, 2.3vw, 10px)",
   fontWeight: 900,
   color: "#7fe2a9",
+  whiteSpace: "nowrap",
 };
 
 const avatarMedallion: React.CSSProperties = {
@@ -750,7 +754,8 @@ function GolfHeaderBlock(props: {
             flexDirection: "column",
             gap: 6,
             position: "relative",
-            overflow: "hidden",
+            // ⚠️ Do not clip: the mini ranking panel can be cut on some screen sizes
+            overflow: "visible",
             borderRadius: 14,
             padding: 6,
           }}
@@ -815,14 +820,21 @@ function GolfHeaderBlock(props: {
               Classement
             </div>
 
-            <div style={{ padding: "0 2px 2px 2px", maxHeight: 96, overflowY: "auto", overscrollBehavior: "contain" }}>
+            <div
+              style={{
+                padding: "0 2px 8px 2px",
+                maxHeight: 104,
+                overflowY: "auto",
+                overscrollBehavior: "contain",
+              }}
+            >
               {liveRanking.map((r, i) => (
                 <div
                   key={r.id}
                   style={{
                     ...miniRankRow,
                     display: "grid",
-                    gridTemplateColumns: "1fr auto",
+                    gridTemplateColumns: "minmax(0,1fr) max-content",
                     alignItems: "center",
                     columnGap: 8,
                   }}
@@ -842,7 +854,7 @@ function GolfHeaderBlock(props: {
                     style={{
                       ...(isFinished ? miniRankScoreFini : miniRankScore),
                       justifySelf: "end",
-                      minWidth: 26,
+                      minWidth: 34,
                       textAlign: "right",
                       flexShrink: 0,
                     }}

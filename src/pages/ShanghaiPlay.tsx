@@ -22,6 +22,7 @@ import { useLang } from "../contexts/LangContext";
 import InfoDot from "../components/InfoDot";
 import ScoreInputHub from "../components/ScoreInputHub";
 import type { Dart as UIDart } from "../lib/types";
+import { useFullscreenPlay } from "../hooks/useFullscreenPlay";
 import ShanghaiLogo from "../assets/SHANGHAI.png";
 import TargetBg from "../assets/target_bg.png";
 

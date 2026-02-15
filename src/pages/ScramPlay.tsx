@@ -5,7 +5,7 @@
 //    mais moteur + règles = ScramEngine (phase RACE puis SCRAM).
 // =============================================================
 
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import BackDot from "../components/BackDot";
 import InfoDot from "../components/InfoDot";
 import ProfileAvatar from "../components/ProfileAvatar";
@@ -17,6 +17,44 @@ import { useScramEngine } from "../hooks/useScramEngine";
 import type { ScramConfigPayload } from "../lib/gameEngines/scramEngine";
 
 import tickerScram from "../assets/tickers/ticker_scram.png";
+
+// =============================================================
+// Fullscreen Play helper (UI V3.4)
+// - Active le layout "plein écran" + safe-area
+// - Tente le fullscreen navigateur si possible (sans jamais crasher)
+//   (peut être refusé si pas de "user gesture" -> on catch)
+// =============================================================
+function useFullscreenPlay() {
+  useEffect(() => {
+    const cls = "dc-fullscreen-play";
+    try {
+      document.documentElement.classList.add(cls);
+      document.body.classList.add(cls);
+    } catch {}
+
+    // Best-effort: requestFullscreen (souvent refusé sur desktop / iOS)
+    try {
+      const el: any = document.documentElement as any;
+      const req =
+        el?.requestFullscreen ||
+        el?.webkitRequestFullscreen ||
+        el?.mozRequestFullScreen ||
+        el?.msRequestFullscreen;
+
+      if (typeof req === "function") {
+        const p = req.call(el);
+        if (p && typeof p.catch === "function") p.catch(() => {});
+      }
+    } catch {}
+
+    return () => {
+      try {
+        document.documentElement.classList.remove(cls);
+        document.body.classList.remove(cls);
+      } catch {}
+    };
+  }, []);
+}
 
 // ---------- Styles (copiés de CricketPlay) ----------
 const T = {

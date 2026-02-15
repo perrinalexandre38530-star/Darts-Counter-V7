@@ -2879,10 +2879,13 @@ if (isLandscapeTablet) {
     <div
       className={`x01play-container theme-${theme.id}`}
       style={{
-        height: "100dvh",
+        height: "100svh",
+        minHeight: "100dvh",
         overflow: "hidden",
         display: "flex",
         flexDirection: "column",
+        paddingTop: "env(safe-area-inset-top)",
+        paddingBottom: "env(safe-area-inset-bottom)",
       }}
     >
       {/* HEADER : pleine largeur */}
@@ -2973,18 +2976,34 @@ if (isLandscapeTablet) {
 
       {/* MAIN : 2 colonnes sans scroll global */}
       <div
-        style={{
-          flex: 1,
-          display: "grid",
-          gridTemplateColumns: "1fr 1fr",
-          gap: 12,
-          padding: 12,
-          overflow: "hidden",
-          alignItems: "stretch",
-        }}
+        style={
+          isTabletUi
+            ? {
+                flex: 1,
+                display: "grid",
+                gridTemplateColumns: "1fr 1fr",
+                gap: 12,
+                padding: 12,
+                overflow: "hidden",
+                alignItems: "stretch",
+              }
+            : {
+                flex: 1,
+                display: "flex",
+                flexDirection: "column",
+                gap: 8,
+                padding: 10,
+                overflowY: "auto",
+                WebkitOverflowScrolling: "touch" as any,
+              }
+        }
       >
         {/* GAUCHE : Player+Score + Liste joueurs (scroll interne) */}
-        <div style={{ display: "flex", flexDirection: "column", overflow: "hidden" }}>
+        <div style={
+          isTabletUi
+            ? { display: "flex", flexDirection: "column", overflow: "hidden" }
+            : { display: "flex", flexDirection: "column", gap: 8 }
+        }>
           <div style={{ flex: "0 0 auto" }}>
             {isTeamsMode && activeTeam ? (
             <TeamHeaderBlock
@@ -3062,8 +3081,14 @@ if (isLandscapeTablet) {
         </div>
 
         {/* DROITE : Mode de saisie (inchangé, mais dans le flow) */}
-        <div style={{ overflow: "hidden", display: "flex", flexDirection: "column" }}>
-          <div style={{ flex: 1, overflow: "hidden" }}>
+        <div style={{
+          display: "flex",
+          flexDirection: "column",
+          gap: 8,
+          overflow: "visible",
+          paddingBottom: "calc(env(safe-area-inset-bottom) + 8px)",
+        }}>
+          <div style={{ flex: "0 0 auto", overflow: "visible" }}>
             <div
               ref={keypadWrapRef}
               style={{
@@ -3071,7 +3096,9 @@ if (isLandscapeTablet) {
                 inset: 0,
                 zIndex: 45,
                 width: "100%",
-                height: "100%",
+                minHeight: 0,
+                height: "auto",
+                maxHeight: isTabletUi ? "100%" : "none",
               }}
             >
               {isBotTurn ? (
@@ -3141,7 +3168,7 @@ if (isLandscapeTablet) {
                     background: isBustLocked ? "rgba(120,0,0,.10)" : "transparent",
                     borderRadius: 14,
                     padding: 6,
-                    height: "100%",
+                    height: isTabletUi ? "100%" : "auto",
                     boxSizing: "border-box",
                   }}
                 >

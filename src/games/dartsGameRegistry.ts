@@ -1091,7 +1091,7 @@ const READY_IDS = new Set<string>([
   "shanghai",
   "golf",
   "departements",
-  "batard",
+  "bastard",
   "battle_royale",
   "warfare",
   "five_lives",

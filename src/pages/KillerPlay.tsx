@@ -37,6 +37,29 @@ import type {
 } from "./KillerConfig";
 import ScoreInputHub from "../components/ScoreInputHub";
 import InfoDot from "../components/InfoDot";
+import BackDot from "../components/BackDot";
+import tickerKiller from "../assets/tickers/ticker_killer.png";
+
+// ✅ Ticker 2 (fond carte JOUEURS) — safe fallback (évite crash si nom diff)
+// On scanne les tickers killer existants et on tente de prendre la variante "2".
+const tickerKiller2: any = (() => {
+  try {
+    const mods: any = import.meta.glob("../assets/tickers/ticker_killer*.png", {
+      eager: true,
+      import: "default",
+    });
+    const entries = Object.entries(mods || {});
+    const pick = (re: RegExp) => entries.find(([k]) => re.test(String(k)))?.[1];
+    return (
+      pick(/ticker_killer[_-]?2\.png$/i) ||
+      pick(/ticker_killer.*[_-]2\.png$/i) ||
+      pick(/ticker_killer.*2.*\.png$/i) ||
+      (tickerKiller as any)
+    );
+  } catch {
+    return tickerKiller as any;
+  }
+})();
 
 import killerActiveIcon from "../assets/icons/killer-active.png";
 import killerListIcon from "../assets/icons/killer-list.png";
@@ -1881,6 +1904,7 @@ React.useEffect(() => {
   }
 
   const [showLog, setShowLog] = React.useState(false);
+  const [playersOpen, setPlayersOpen] = React.useState(false);
 
   const initialPlayers: KillerPlayerState[] = React.useMemo(() => {
     const lives = clampInt(config?.lives, 1, 9, 3);
@@ -3944,87 +3968,79 @@ return (
         ✅ TOP FIXED AREA (non scrollable)
        ========================= */}
     <div style={{ flex: "0 0 auto" }}>
-      {/* ✅ HEADER */}
-      <div style={{ ...card, padding: 8 }}>
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "auto 1fr auto",
-            alignItems: "center",
-            gap: 10,
-          }}
-        >
-          <button
-            type="button"
-            onClick={() => go("killer_config")}
-            style={{
-              height: 34,
-              padding: "0 12px",
-              borderRadius: 12,
-              border: "1px solid rgba(255,180,0,.30)",
-              background: `linear-gradient(180deg, ${gold}, ${gold2})`,
-              color: "#1a1a1a",
-              fontWeight: 1000,
-              cursor: "pointer",
-              boxShadow: "0 10px 22px rgba(255,170,0,.18)",
-              whiteSpace: "nowrap",
-            }}
-          >
-            ← Quitter
-          </button>
+{/* ✅ HEADER (ticker like KillerConfig) */}
+<div
+  style={{
+    position: "sticky",
+    top: 0,
+    zIndex: 60,
+    paddingTop: "env(safe-area-inset-top)",
+    marginBottom: 8,
+    flex: "0 0 auto",
+  }}
+>
+  <div style={{ position: "relative", marginLeft: -12, marginRight: -12 }}>
+    <img
+      src={tickerKiller as any}
+      alt="Killer"
+      draggable={false}
+      style={{ width: "100%", height: 92, objectFit: "cover", display: "block" }}
+    />
 
-          <div style={{ textAlign: "center", lineHeight: 1 }}>
-            <span
-              style={{
-                display: "inline-block",
-                color: gold,
-                fontWeight: 1000,
-                textTransform: "uppercase",
-                letterSpacing: 1.6,
-                textShadow: "0 0 14px rgba(255,198,58,.25)",
-              }}
-            >
-              KILLER
-            </span>
-          </div>
-
-          <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
-            <button
-              type="button"
-              onClick={() => setShowLog(true)}
-              style={{
-                height: 30,
-                padding: "0 10px",
-                borderRadius: 12,
-                border: "1px solid rgba(255,255,255,.14)",
-                background: "rgba(255,255,255,.06)",
-                color: "#fff",
-                fontWeight: 950,
-                cursor: "pointer",
-              }}
-              title="Log"
-            >
-              Log
-            </button>
-
-            <InfoDot
-              onClick={() => setShowRules(true)}
-              size={30}
-              color="#FFFFFF"
-            />
-          </div>
-        </div>
-
-        {/* ✅ Carousel */}
-        <TargetsCarousel
-          players={players}
-          activeId={current?.id || null}
-          theme={theme}
-          blindMask={blindKillerOn}
-        />
+    {/* overlay controls */}
+    <div
+      style={{
+        position: "absolute",
+        inset: 0,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "space-between",
+        padding: "0 12px",
+        pointerEvents: "none",
+      }}
+    >
+      {/* ✅ inversé: InfoDot à gauche */}
+      <div style={{ display: "flex", alignItems: "center", gap: 8, pointerEvents: "auto" }}>
+        <InfoDot onClick={() => setShowRules(true)} size={42} color={gold} glow={`${gold}AA`} />
       </div>
 
-      {/* ✅ ACTIVE PLAYER (FIXED) */}
+      {/* ✅ Log à droite + BackDot à droite */}
+      <div style={{ display: "flex", alignItems: "center", gap: 10, pointerEvents: "auto" }}>
+        <button
+          type="button"
+          onClick={() => setShowLog(true)}
+          style={{
+            height: 34,
+            padding: "0 12px",
+            borderRadius: 999,
+            border: "1px solid rgba(255,255,255,.16)",
+            background: "rgba(0,0,0,.28)",
+            color: "#fff",
+            fontWeight: 900,
+            cursor: "pointer",
+            boxShadow: "0 10px 22px rgba(0,0,0,.35)",
+          }}
+          title="Log"
+        >
+          Log
+        </button>
+
+        <BackDot
+          onClick={() => go("killer_config")}
+          title="Retour"
+          size={42}
+          color={gold}
+          glow={`${gold}AA`}
+        />
+      </div>
+    </div>
+  </div>
+
+  {/* ✅ Carousel just under ticker */}
+  <div style={{ ...card, padding: 8, marginTop: 8 }}>
+    <TargetsCarousel players={players} activeId={current?.id || null} theme={theme} blindMask={blindKillerOn} />
+  </div>
+</div>{/* ✅ ACTIVE PLAYER (FIXED) */}
       <div style={{ marginTop: 8, ...card, padding: 12 }}>
         <div
           style={{
@@ -4142,24 +4158,170 @@ return (
           </div>
         )}
       </div>
+
+      {/* ✅ CARTE "LISTE DES JOUEURS" sous le joueur actif (X01PlayV3-like) */}
+      <button
+        type="button"
+        onClick={() => setPlayersOpen(true)}
+        style={{
+          marginTop: 10,
+          width: "100%",
+          borderRadius: 18,
+          border: "1px solid rgba(255,255,255,.10)",
+          padding: 0,
+          overflow: "hidden",
+          cursor: "pointer",
+          textAlign: "left",
+          backgroundImage: `url(${tickerKiller2})`,
+          backgroundSize: "cover",
+          backgroundPosition: "center",
+          boxShadow: "0 14px 34px rgba(0,0,0,.45)",
+        }}
+        title="Liste des joueurs"
+      >
+        <div
+          style={{
+            padding: "10px 12px",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: 10,
+            background:
+              "linear-gradient(90deg, rgba(0,0,0,.60), rgba(0,0,0,.22) 55%, rgba(0,0,0,.50))",
+            borderBottom: "1px solid rgba(255,255,255,.10)",
+          }}
+        >
+          <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
+            <span
+              style={{
+                fontWeight: 1000,
+                letterSpacing: 1.2,
+                color: gold,
+                textTransform: "uppercase",
+                whiteSpace: "nowrap",
+              }}
+            >
+              Joueurs
+            </span>
+
+          </div>
+
+          <span
+            style={{
+              width: 28,
+              height: 28,
+              borderRadius: 999,
+              border: "2px solid rgba(255,198,58,.75)",
+              color: gold,
+              background: "rgba(0,0,0,0.25)",
+              display: "inline-flex",
+              alignItems: "center",
+              justifyContent: "center",
+              fontSize: 12,
+              fontWeight: 1000,
+              boxShadow: "0 0 14px rgba(255,198,58,.35)",
+              flex: "0 0 auto",
+            }}
+          >
+            {players.length}
+          </span>
+        </div>
+
+	        {/* mini preview compact: avatars only, in play order */}
+	        <div style={{ padding: 10, background: "rgba(0,0,0,.52)" }}>
+	          <div
+	            style={{
+	              display: "flex",
+	              alignItems: "center",
+	              gap: 10,
+	              overflowX: "auto",
+	              paddingBottom: 2,
+	            }}
+	          >
+	            {players.map((p) => (
+	              <div key={p.id} style={{ flex: "0 0 auto", opacity: p.eliminated ? 0.45 : 1 }}>
+	                <AvatarMedallion size={48} src={p.avatarDataUrl} name={p.name} />
+	              </div>
+	            ))}
+	          </div>
+	        </div>
+      </button>
     </div>
 
-   {/* =========================
-    ✅ ONLY SCROLLABLE AREA: LISTE JOUEURS
-   ========================= */}
-<div
-  style={{
-    flex: "1 1 auto",
-    minHeight: 0,
-    overflowY: "auto",
-    overflowX: "hidden",
-    WebkitOverflowScrolling: "touch",
-    paddingBottom: 6,
-    marginTop: 8,
-  }}
->
-  <div style={{ display: "grid", gap: 8 }}>
-    {players.map((p, idx) => {
+   
+{/* ✅ zone centrale (non scroll) — la liste est dans le bloc flottant */}
+<div style={{ flex: "1 1 auto", minHeight: 0 }} />
+
+
+{/* ✅ bloc flottant joueurs (X01PlayV3-like) */}
+{playersOpen && (
+  <div
+    style={{
+      position: "fixed",
+      inset: 0,
+      zIndex: 999,
+      background: "rgba(0,0,0,.55)",
+      backdropFilter: "blur(6px)",
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+      padding: "12px",
+      paddingBottom: "max(12px, env(safe-area-inset-bottom))",
+    }}
+    onClick={() => setPlayersOpen(false)}
+  >
+    <div
+      style={{
+        width: "100%",
+        maxWidth: 520,
+        borderRadius: 20,
+        border: "1px solid rgba(255,255,255,.14)",
+        background: "linear-gradient(180deg, rgba(20,20,24,.92), rgba(8,8,10,.98))",
+        boxShadow: "0 24px 80px rgba(0,0,0,.75)",
+        overflow: "hidden",
+      }}
+      onClick={(e) => e.stopPropagation()}
+    >
+      <div
+        style={{
+          padding: "12px 12px 10px",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          borderBottom: "1px solid rgba(255,255,255,.10)",
+        }}
+      >
+        <div style={{ fontSize: 18, fontWeight: 1000, color: "#fff" }}>Joueurs</div>
+        <button
+          type="button"
+          onClick={() => setPlayersOpen(false)}
+          style={{
+            width: 34,
+            height: 34,
+            borderRadius: 999,
+            border: "1px solid rgba(255,255,255,.16)",
+            background: "rgba(0,0,0,.35)",
+            color: "#fff",
+            fontWeight: 1000,
+            cursor: "pointer",
+          }}
+          aria-label="Fermer"
+          title="Fermer"
+        >
+          ×
+        </button>
+      </div>
+
+      <div
+        style={{
+          maxHeight: "min(62vh, 520px)",
+          overflowY: "auto",
+          padding: 12,
+          WebkitOverflowScrolling: "touch",
+        }}
+      >
+        <div style={{ display: "grid", gap: 8 }}>
+          {players.map((p, idx) => {
       const isMe = idx === turnIndex;
       const last = (p.lastVisit || []).slice(0, 3);
       const lastDarts = toKeypadThrow(last as any);
@@ -4288,10 +4450,34 @@ return (
         </div>
       );
     })}
-  </div>
-</div>
+        </div>
+      </div>
 
-{/* ✅ BOTTOM sticky KEYPAD */}
+      <div style={{ padding: "10px 12px 14px", borderTop: "1px solid rgba(255,255,255,.10)" }}>
+        <button
+          type="button"
+          onClick={() => setPlayersOpen(false)}
+          style={{
+            width: "100%",
+            height: 42,
+            borderRadius: 14,
+            border: "1px solid rgba(255,255,255,.14)",
+            background: "rgba(255,255,255,.06)",
+            color: "#fff",
+            fontWeight: 1000,
+            cursor: "pointer",
+          }}
+        >
+          Fermer
+        </button>
+      </div>
+    </div>
+  </div>
+)}
+
+
+      {/* ✅ BOTTOM sticky KEYPAD */}
+
 {!assignActive && !w && !finished && !isBotTurn && !showEnd && (
   <div
     style={{

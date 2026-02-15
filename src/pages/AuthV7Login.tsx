@@ -25,24 +25,31 @@ export default function AuthV7Login({ go }: Props) {
   const [error, setError] = React.useState<string | null>(null);
   const [canResend, setCanResend] = React.useState(false);
 
-  // Ping simple pour distinguer "mauvais mot de passe" vs "Supabase injoignable"
-  const pingSupabase = async () => {
-    if (!__SUPABASE_ENV__.url) return false;
-    const ac = new AbortController();
-    const t = setTimeout(() => ac.abort(), 2500);
-    try {
-      const res = await fetch(`${__SUPABASE_ENV__.url}/auth/v1/health`, {
-        headers: { apikey: (import.meta.env.VITE_SUPABASE_ANON_KEY as string) || "" },
-        signal: ac.signal,
-      });
-      // ✅ Si on reçoit UNE réponse HTTP, Supabase est joignable.
-      // /auth/v1/health peut répondre 401/404 selon config/headers.
-      return true;
-    } catch {
-      return false;
-    } finally {
-      clearTimeout(t);
-    }
+  // Anti-spam: éviter de ré-afficher en boucle le même message réseau
+  // (utile quand Supabase est réellement bloqué par DNS/AdBlock/VPN)
+  const lastNetErrAtRef = React.useRef<number>(0);
+
+  const showSupabaseUnreachable = (details?: string) => {
+    const now = Date.now();
+    // 30s de "cooldown" pour éviter que l'utilisateur se fasse spammer
+    if (now - lastNetErrAtRef.current < 30_000) return;
+    lastNetErrAtRef.current = now;
+    setError(
+      `Impossible de joindre Supabase (réseau / DNS / bloqueur / URL).\nURL: ${
+        __SUPABASE_ENV__.url
+      }${details ? `\n\n${details}` : ""}`
+    );
+  };
+
+  const looksLikeNetworkError = (x: any) => {
+    const msg = String(x?.message || x || "");
+    return (
+      x?.name === "AbortError" ||
+      /Failed to fetch/i.test(msg) ||
+      /NetworkError/i.test(msg) ||
+      (/fetch/i.test(msg) && /failed/i.test(msg)) ||
+      /timeout/i.test(msg)
+    );
   };
 
   async function resendConfirm() {
@@ -71,7 +78,13 @@ export default function AuthV7Login({ go }: Props) {
       setError("Email de confirmation renvoyé ✅ Ouvre le DERNIER email reçu.");
       setCanResend(false);
     } catch (e: any) {
-      setError(e?.message || "Impossible de renvoyer l’email.");
+      if (looksLikeNetworkError(e)) {
+        showSupabaseUnreachable(
+          "Astuce: coupe uBlock/AdGuard/Brave Shields pour stackblitz.com et *.supabase.co, ou teste en navigation privée / 4G."
+        );
+      } else {
+        setError(e?.message || "Impossible de renvoyer l’email.");
+      }
     } finally {
       clearTimeout(hardStop);
       setLoading(false);
@@ -102,22 +115,22 @@ export default function AuthV7Login({ go }: Props) {
       setError((prev) => prev || "Connexion bloquée (timeout). Réessaie ou vérifie ton réseau.");
     }, 12000);
     try {
-      // ✅ si Supabase est injoignable => message clair au lieu de "Failed to fetch"
-      const ok = await pingSupabase();
-      if (!ok) {
-        setError(
-          `Impossible de joindre Supabase (réseau / DNS / bloqueur / URL).\nURL: ${__SUPABASE_ENV__.url}`
-        );
-        return;
-      }
-
       const { error: err } = await withTimeout(
         supabase.auth.signInWithPassword({ email: e, password }),
-        6000,
+        8000,
         "Connexion Supabase"
       );
       if (err) {
         const msg = err.message || "Connexion impossible.";
+        // Certains navigateurs/contexts (StackBlitz + extensions) renvoient des erreurs réseau
+        // sous forme de messages "Failed to fetch". Dans ce cas, on affiche un message clair.
+        if (looksLikeNetworkError(err)) {
+          showSupabaseUnreachable(
+            "Astuce: coupe uBlock/AdGuard/Brave Shields pour stackblitz.com et *.supabase.co, ou teste en navigation privée / 4G."
+          );
+          return;
+        }
+
         setError(msg);
         // Supabase renvoie souvent "Email not confirmed"
         if (/not confirmed/i.test(msg)) setCanResend(true);
@@ -127,7 +140,13 @@ export default function AuthV7Login({ go }: Props) {
       // La sync auto agressive est la cause principale des timeouts Supabase.
       go("home");
     } catch (e: any) {
-      setError(e?.message || "Connexion impossible.");
+      if (looksLikeNetworkError(e)) {
+        showSupabaseUnreachable(
+          "Astuce: coupe uBlock/AdGuard/Brave Shields pour stackblitz.com et *.supabase.co, ou teste en navigation privée / 4G."
+        );
+      } else {
+        setError(e?.message || "Connexion impossible.");
+      }
     } finally {
       clearTimeout(hardStop);
       setLoading(false);

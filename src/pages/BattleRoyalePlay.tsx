@@ -107,10 +107,8 @@ function avatarFallback(name: string) {
   return (a + b).slice(0, 2);
 }
 
-
 // ✅ KPI style (reprise Killer)
 function HeartKpi({ value }: { value: any }) {
-  const pink = "#ff79d6";
   return (
     <div
       style={{
@@ -195,7 +193,8 @@ function SurvivorKpi({ value }: { value: any }) {
           fontWeight: 1000,
           color: textPinkDark,
           transform: "translateY(2px)",
-          textShadow: "-1px -1px 0 #fff, 1px -1px 0 #fff, -1px 1px 0 #fff, 1px 1px 0 #fff, 0 0 6px rgba(255,255,255,.22)",
+          textShadow:
+            "-1px -1px 0 #fff, 1px -1px 0 #fff, -1px 1px 0 #fff, 1px 1px 0 #fff, 0 0 6px rgba(255,255,255,.22)",
         }}
       >
         {value}
@@ -207,7 +206,7 @@ function SurvivorKpi({ value }: { value: any }) {
 function DartsIcons({ total, used }: { total: number; used: number }) {
   // ✅ même affichage que CricketPlay (DartIconColorizable)
   const { theme } = useTheme();
-  const { isLandscapeTablet } = useViewport({ tabletMinWidth: 900 });
+  useViewport({ tabletMinWidth: 900 });
   const n = Math.max(1, Math.min(3, Number(total) || 3));
   const u = Math.max(0, Math.min(n, Number(used) || 0));
   return (
@@ -215,10 +214,7 @@ function DartsIcons({ total, used }: { total: number; used: number }) {
       {Array.from({ length: n }).map((_, i) => {
         const active = i < u;
         return (
-          <div
-            key={i}
-            style={{ width: 32, height: 32, display: "flex", alignItems: "center", justifyContent: "center" }}
-          >
+          <div key={i} style={{ width: 32, height: 32, display: "flex", alignItems: "center", justifyContent: "center" }}>
             <DartIconColorizable color={theme.primary} active={active} size={30} />
           </div>
         );
@@ -330,7 +326,6 @@ function buildBattleRoyaleSummary(opts: {
   const ranking = computeFinalRanking(opts.players);
   const winner = ranking[0] || null;
 
-  // Stats simples et fiables (Step 2 utilisera ça pour l’overlay)
   const perPlayer = ranking.map((p) => ({
     id: p.id,
     name: p.name,
@@ -357,7 +352,9 @@ function buildBattleRoyaleSummary(opts: {
 }
 
 export default function BattleRoyalePlay({ go, config, onFinish }: Props) {
+  // ✅ Fullscreen bien appliqué (même hook que X01/Killer V3)
   useFullscreenPlay();
+
   const { theme } = useTheme();
   const { t } = useLang();
 
@@ -365,8 +362,7 @@ export default function BattleRoyalePlay({ go, config, onFinish }: Props) {
 
   const dartsPerTurn = clampInt(cfg?.dartsPerTurn, 1, 3, 3);
   const baseLives = clampInt(cfg?.lives, 1, 9, 3);
-  const eliminationRule: "zero_points" | "miss_x" | "life_system" =
-    cfg?.eliminationRule || "life_system";
+  const eliminationRule: "zero_points" | "miss_x" | "life_system" = cfg?.eliminationRule || "life_system";
   const missLimit = clampInt(cfg?.missLimit, 1, 30, 6);
 
   const playersInit = React.useMemo<BRPlayerState[]>(() => {
@@ -394,6 +390,8 @@ export default function BattleRoyalePlay({ go, config, onFinish }: Props) {
   }, []);
 
   const [players, setPlayers] = React.useState<BRPlayerState[]>(playersInit);
+  // ✅ UI V3: carte "Joueurs" (ticker intégré) + overlay flottant centré
+  const [playersPanelOpen, setPlayersPanelOpen] = React.useState(false);
   const [roundIndex, setRoundIndex] = React.useState(0);
   const [turnPtr, setTurnPtr] = React.useState(0); // index sur players (ordre fixe)
   const [currentThrow, setCurrentThrow] = React.useState<UIDart[]>([]);
@@ -432,7 +430,6 @@ export default function BattleRoyalePlay({ go, config, onFinish }: Props) {
     if (lastAnnouncedRef.current === key) return;
     lastAnnouncedRef.current = key;
 
-    // N’annonce pas si la voix n’est pas activée côté cfg (optionnelle)
     if (cfg?.voiceEnabled === false) return;
 
     try {
@@ -440,7 +437,7 @@ export default function BattleRoyalePlay({ go, config, onFinish }: Props) {
     } catch {
       // ignore
     }
-  }, [activePlayer?.id, roundIndex, ended]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [activePlayer?.id, roundIndex, ended]);
 
   // -------- Keypad handlers --------
   function pushDart(d: UIDart) {
@@ -449,7 +446,6 @@ export default function BattleRoyalePlay({ go, config, onFinish }: Props) {
       return [...prev, d];
     });
 
-    // SFX impact si activé
     if (cfg?.sfxEnabled === false) return;
     try {
       playImpactFromDart(d);
@@ -467,7 +463,6 @@ export default function BattleRoyalePlay({ go, config, onFinish }: Props) {
   }
 
   function onCancel() {
-    // Annuler = efface la volée en cours (MVP)
     setCurrentThrow([]);
     setMultiplier(1);
     if (cfg?.sfxEnabled === false) return;
@@ -526,7 +521,6 @@ export default function BattleRoyalePlay({ go, config, onFinish }: Props) {
       return next;
     });
 
-    // SFX/Voice élimination (best-effort)
     if (eliminatedNow) {
       if (cfg?.sfxEnabled !== false) {
         try {
@@ -540,22 +534,16 @@ export default function BattleRoyalePlay({ go, config, onFinish }: Props) {
       }
     }
 
-    // Nettoyage volée + multiplicateur
     setCurrentThrow([]);
     setMultiplier(1);
 
-    // Avance pointeur
     const nextPtr = (activeIndex + 1) % (players.length || 1);
-
-    // Si on revient au début du cycle (tous les vivants ont joué), on incrémente le round
     const looped = nextPtr <= activeIndex;
     setTurnPtr(nextPtr);
 
     if (looped) setRoundIndex((r) => r + 1);
 
-    // Fin de partie ?
     setTimeout(() => {
-      // recalcul propre après setPlayers
       setPlayers((prev) => {
         const alive = prev.filter((p) => p.alive);
         if (alive.length <= 1 && prev.length >= 2) {
@@ -643,9 +631,14 @@ export default function BattleRoyalePlay({ go, config, onFinish }: Props) {
         color: theme.text,
         display: "flex",
         flexDirection: "column",
-        padding: 12,
+        // ✅ SAFE-AREA + anti débordement (les blocs ne doivent jamais sortir)
+        paddingTop: "calc(12px + env(safe-area-inset-top))",
+        paddingLeft: "calc(12px + env(safe-area-inset-left))",
+        paddingRight: "calc(12px + env(safe-area-inset-right))",
+        paddingBottom: "calc(12px + env(safe-area-inset-bottom))",
         gap: 10,
         overscrollBehavior: "none",
+        boxSizing: "border-box",
       }}
     >
       {/* Header sticky */}
@@ -658,7 +651,7 @@ export default function BattleRoyalePlay({ go, config, onFinish }: Props) {
           paddingBottom: 6,
         }}
       >
-        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
           <BackDot
             onClick={() => go("battle_royale")}
             glow={theme.primary + "88"}
@@ -690,7 +683,7 @@ export default function BattleRoyalePlay({ go, config, onFinish }: Props) {
         </div>
       </div>
 
-      {/* Content (scroll) — 1 colonne pour éviter tout débordement */}
+      {/* Content (scroll) */}
       <div
         style={{
           flex: 1,
@@ -701,258 +694,335 @@ export default function BattleRoyalePlay({ go, config, onFinish }: Props) {
           paddingBottom: 8,
         }}
       >
-        <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 10, maxWidth: 860, margin: "0 auto" }}>
-
-        <div style={{ ...cardShell, width: "100%" }}>
-          <div
-            style={{
-              padding: 8,
-              display: "grid",
-              gridTemplateColumns: "1fr 1fr",
-              gap: 8,
-              alignItems: "stretch",
-            }}
-          >
-            {/* gauche (reprend ShanghaiPlay) */}
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "1fr",
+            gap: 10,
+            maxWidth: 860,
+            margin: "0 auto",
+            width: "100%",
+            boxSizing: "border-box",
+          }}
+        >
+          <div style={{ ...cardShell, width: "100%" }}>
             <div
               style={{
-                borderRadius: 16,
-                border: `1px solid ${theme.borderSoft}`,
-                background: "rgba(0,0,0,0.18)",
                 padding: 8,
                 display: "grid",
+                gridTemplateColumns: "1fr 1fr",
                 gap: 8,
+                alignItems: "stretch",
               }}
             >
-              <div style={{ display: "flex", gap: 8 }}>
-                <div
-                  style={{
-                    flex: 1,
-                    borderRadius: 14,
-                    border: `1px solid ${theme.primary}44`,
-                    background: "linear-gradient(180deg, rgba(0,0,0,.22), rgba(0,0,0,.34))",
-                    boxShadow: `0 0 18px ${theme.primary}22`,
-                    padding: "5px 10px",
-                    display: "grid",
-                    placeItems: "center",
-                    minHeight: 36,
-                  }}
-                >
-                  <div style={{ fontSize: 10.2, letterSpacing: 0.9, opacity: 0.85, textTransform: "uppercase" }}>
-                    {t("common.round", "Round")}
-                  </div>
-                  <div
-                    style={{
-                      fontSize: 16,
-                      fontWeight: 1000,
-                      color: theme.primary,
-                      textShadow: `0 0 10px ${theme.primary}55`,
-                      lineHeight: 1,
-                      marginTop: 1,
-                    }}
-                  >
-                    {roundIndex + 1}
-                  </div>
-                </div>
-
-                <div
-                  style={{
-                    flex: 1,
-                    borderRadius: 14,
-                    border: `1px solid ${theme.primary}44`,
-                    background: "linear-gradient(180deg, rgba(0,0,0,.22), rgba(0,0,0,.34))",
-                    boxShadow: `0 0 18px ${theme.primary}22`,
-                    padding: "5px 10px",
-                    display: "grid",
-                    placeItems: "center",
-                    minHeight: 36,
-                  }}
-                >
-                  <div style={{ fontSize: 10.2, letterSpacing: 0.9, opacity: 0.85, textTransform: "uppercase" }}>
-                    {t("common.target", "Cible")}
-                  </div>
-                  <div
-                    style={{
-                      fontSize: 16,
-                      fontWeight: 1000,
-                      color: theme.primary,
-                      textShadow: `0 0 10px ${theme.primary}55`,
-                      lineHeight: 1,
-                      marginTop: 1,
-                    }}
-                  >
-                    {fmtTarget(target)}
-                  </div>
-                </div>
-              </div>
-
+              {/* gauche */}
               <div
                 style={{
                   borderRadius: 16,
                   border: `1px solid ${theme.borderSoft}`,
-                  background: "rgba(0,0,0,0.14)",
+                  background: "rgba(0,0,0,0.18)",
                   padding: 8,
                   display: "grid",
-                  placeItems: "center",
+                  gap: 8,
+                  minWidth: 0,
                 }}
               >
+                <div style={{ display: "flex", gap: 8, minWidth: 0 }}>
+                  <div
+                    style={{
+                      flex: 1,
+                      borderRadius: 14,
+                      border: `1px solid ${theme.primary}44`,
+                      background: "linear-gradient(180deg, rgba(0,0,0,.22), rgba(0,0,0,.34))",
+                      boxShadow: `0 0 18px ${theme.primary}22`,
+                      padding: "5px 10px",
+                      display: "grid",
+                      placeItems: "center",
+                      minHeight: 36,
+                      minWidth: 0,
+                    }}
+                  >
+                    <div style={{ fontSize: 10.2, letterSpacing: 0.9, opacity: 0.85, textTransform: "uppercase" }}>
+                      {t("common.round", "Round")}
+                    </div>
+                    <div
+                      style={{
+                        fontSize: 16,
+                        fontWeight: 1000,
+                        color: theme.primary,
+                        textShadow: `0 0 10px ${theme.primary}55`,
+                        lineHeight: 1,
+                        marginTop: 1,
+                      }}
+                    >
+                      {roundIndex + 1}
+                    </div>
+                  </div>
+
+                  <div
+                    style={{
+                      flex: 1,
+                      borderRadius: 14,
+                      border: `1px solid ${theme.primary}44`,
+                      background: "linear-gradient(180deg, rgba(0,0,0,.22), rgba(0,0,0,.34))",
+                      boxShadow: `0 0 18px ${theme.primary}22`,
+                      padding: "5px 10px",
+                      display: "grid",
+                      placeItems: "center",
+                      minHeight: 36,
+                      minWidth: 0,
+                    }}
+                  >
+                    <div style={{ fontSize: 10.2, letterSpacing: 0.9, opacity: 0.85, textTransform: "uppercase" }}>
+                      {t("common.target", "Cible")}
+                    </div>
+                    <div
+                      style={{
+                        fontSize: 16,
+                        fontWeight: 1000,
+                        color: theme.primary,
+                        textShadow: `0 0 10px ${theme.primary}55`,
+                        lineHeight: 1,
+                        marginTop: 1,
+                      }}
+                    >
+                      {fmtTarget(target)}
+                    </div>
+                  </div>
+                </div>
+
                 <div
                   style={{
-                    width: 84,
-                    height: 84,
-                    borderRadius: 999,
-                    overflow: "hidden",
-                    background: "rgba(0,0,0,0.22)",
+                    borderRadius: 16,
                     border: `1px solid ${theme.borderSoft}`,
-                    boxShadow: `0 0 16px rgba(0,0,0,.35)`,
+                    background: "rgba(0,0,0,0.14)",
+                    padding: 8,
                     display: "grid",
                     placeItems: "center",
                   }}
                 >
-                  {activePlayer?.avatarDataUrl ? (
-                    <img
-                      src={activePlayer.avatarDataUrl}
-                      alt=""
-                      draggable={false}
-                      style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
-                    />
-                  ) : (
-                    <span style={{ opacity: 0.75, fontWeight: 950, fontSize: 22 }}>
-                      {avatarFallback(activePlayer?.name || "J")}
-                    </span>
-                  )}
-                </div>
-              </div>
-
-              {/* ✅ Nom sous médaillon (comme demandé) */}
-              <div
-                style={{
-                  textAlign: "center",
-                  fontWeight: 1100,
-                  fontSize: 14,
-                  color: theme.primary,
-                  textShadow: `0 0 10px ${theme.primary}55`,
-                  overflow: "hidden",
-                  textOverflow: "ellipsis",
-                  whiteSpace: "nowrap",
-                }}
-              >
-                {activePlayer?.name || "—"}
-              </div>
-            </div>
-
-            {/* droite */}
-            <div
-              style={{
-                borderRadius: 16,
-                border: `1px solid ${theme.borderSoft}`,
-                background: "rgba(0,0,0,0.18)",
-                padding: 8,
-                display: "grid",
-                gap: 8,
-              }}
-            >
-              {/* ✅ Pas d'intitulé "Joueur actif" ici : le nom est sous le médaillon (colonne gauche) */}
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 10 }}>
-                {eliminationRule === "life_system" ? (
-                  <HeartKpi value={activePlayer?.lives ?? 0} />
-                ) : (
-                  <div style={miniBadge}>
-                    {t("common.misses", "Ratés")}: {activePlayer?.misses ?? 0}/{missLimit}
+                  <div
+                    style={{
+                      width: 84,
+                      height: 84,
+                      borderRadius: 999,
+                      overflow: "hidden",
+                      background: "rgba(0,0,0,0.22)",
+                      border: `1px solid ${theme.borderSoft}`,
+                      boxShadow: `0 0 16px rgba(0,0,0,.35)`,
+                      display: "grid",
+                      placeItems: "center",
+                    }}
+                  >
+                    {activePlayer?.avatarDataUrl ? (
+                      <img
+                        src={activePlayer.avatarDataUrl}
+                        alt=""
+                        draggable={false}
+                        style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
+                      />
+                    ) : (
+                      <span style={{ opacity: 0.75, fontWeight: 950, fontSize: 22 }}>
+                        {avatarFallback(activePlayer?.name || "J")}
+                      </span>
+                    )}
                   </div>
-                )}
-                <SurvivorKpi value={aliveCount} />
-              </div>
-
-              <div
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "space-between",
-                  gap: 10,
-                  borderRadius: 14,
-                  border: `1px solid ${theme.borderSoft}`,
-                  background: "rgba(0,0,0,0.14)",
-                  padding: "8px 10px",
-                }}
-              >
-                <div style={{ fontSize: 12, fontWeight: 900, color: theme.textSoft }}>
-                  {t("common.darts", "Fléchettes")}
                 </div>
-                <DartsIcons total={dartsPerTurn} used={currentThrow.length} />
-              </div>
 
-              {ended && (
                 <div
                   style={{
-                    padding: "10px 12px",
-                    borderRadius: 16,
-                    border: `1px solid ${theme.primary}55`,
-                    background: `${theme.primary}18`,
-                    fontWeight: 1000,
+                    textAlign: "center",
+                    fontWeight: 1100,
+                    fontSize: 14,
+                    color: theme.primary,
+                    textShadow: `0 0 10px ${theme.primary}55`,
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    whiteSpace: "nowrap",
                   }}
                 >
-                  {(() => {
-                    const winner = players.find((p) => p.alive);
-                    return winner
-                      ? `${t("common.winner", "Vainqueur")} : ${winner.name}`
-                      : t("common.finished", "Partie terminée");
-                  })()}
+                  {activePlayer?.name || "—"}
                 </div>
-              )}
-            </div>
-          </div>
-        </div>
+              </div>
 
-        <div style={{ ...cardShell, padding: 12 }}>
-          <div style={{ fontWeight: 1000, marginBottom: 8 }}>
-            {t("common.players", "Joueurs")}
-          </div>
-
-          {/* Liste joueurs: seul conteneur scrollable */}
-          <div
-            style={{
-              maxHeight: "min(32vh, 260px)",
-              overflowY: "auto",
-              WebkitOverflowScrolling: "touch",
-              overscrollBehavior: "contain",
-              paddingRight: 6,
-            }}
-          >
-            {players.map((p, idx) => {
-              const isActive = idx === activeIndex && p.alive && !ended;
-              const dead = !p.alive;
-
-              return (
+              {/* droite */}
+              <div
+                style={{
+                  borderRadius: 16,
+                  border: `1px solid ${theme.borderSoft}`,
+                  background: "rgba(0,0,0,0.18)",
+                  padding: 8,
+                  display: "grid",
+                  gap: 8,
+                  minWidth: 0,
+                }}
+              >
                 <div
-                  key={p.id}
                   style={{
                     display: "flex",
                     alignItems: "center",
+                    justifyContent: "flex-end",
                     gap: 10,
-                    padding: "8px 8px",
-                    borderRadius: 14,
-                    border: `1px solid ${isActive ? theme.primary + "66" : theme.borderSoft}`,
-                    background: dead
-                      ? "rgba(0,0,0,0.25)"
-                      : isActive
-                      ? theme.primary + "1a"
-                      : "rgba(0,0,0,0.12)",
-                    opacity: dead ? 0.55 : 1,
-                    marginBottom: 8,
+                    flexWrap: "wrap",
                   }}
                 >
+                  {eliminationRule === "life_system" ? (
+                    <HeartKpi value={activePlayer?.lives ?? 0} />
+                  ) : (
+                    <div style={miniBadge}>
+                      {t("common.misses", "Ratés")}: {activePlayer?.misses ?? 0}/{missLimit}
+                    </div>
+                  )}
+                  <SurvivorKpi value={aliveCount} />
+                </div>
+
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    gap: 10,
+                    borderRadius: 14,
+                    border: `1px solid ${theme.borderSoft}`,
+                    background: "rgba(0,0,0,0.14)",
+                    padding: "8px 10px",
+                    minWidth: 0,
+                  }}
+                >
+                  <div style={{ fontSize: 12, fontWeight: 900, color: theme.textSoft }}>
+                    {t("common.darts", "Fléchettes")}
+                  </div>
+                  <DartsIcons total={dartsPerTurn} used={currentThrow.length} />
+                </div>
+
+                {ended && (
                   <div
                     style={{
-                      width: 46,
-                      height: 46,
+                      padding: "10px 12px",
+                      borderRadius: 16,
+                      border: `1px solid ${theme.primary}55`,
+                      background: `${theme.primary}18`,
+                      fontWeight: 1000,
+                    }}
+                  >
+                    {(() => {
+                      const winner = players.find((p) => p.alive);
+                      return winner
+                        ? `${t("common.winner", "Vainqueur")} : ${winner.name}`
+                        : t("common.finished", "Partie terminée");
+                    })()}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* ✅ Carte Joueurs (ticker2 en fond transparent) */}
+          <div
+            role="button"
+            tabIndex={0}
+            onClick={() => setPlayersPanelOpen(true)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === " ") setPlayersPanelOpen(true);
+            }}
+            style={{
+              ...cardShell,
+              padding: 0,
+              cursor: "pointer",
+              overflow: "hidden",
+              position: "relative",
+            }}
+          >
+            {/* 🔥 Ticker2 BG (transparence) */}
+            <img
+              src="/img/tickers/ticker_battle_royale_2.png"
+              alt=""
+              draggable={false}
+              style={{
+                position: "absolute",
+                inset: -8,
+                width: "calc(100% + 16px)",
+                height: "calc(100% + 16px)",
+                objectFit: "cover",
+                opacity: 0.22,
+                filter: "saturate(1.05) contrast(1.05)",
+                pointerEvents: "none",
+                zIndex: 0,
+              }}
+            />
+            <div
+              style={{
+                position: "absolute",
+                inset: 0,
+                background:
+                  "linear-gradient(90deg, rgba(0,0,0,.55), rgba(0,0,0,.25), rgba(0,0,0,.55))",
+                pointerEvents: "none",
+                zIndex: 1,
+              }}
+            />
+
+            {/* Ticker header */}
+            <div
+              style={{
+                position: "relative",
+                zIndex: 2,
+                padding: "10px 12px",
+                borderBottom: `1px solid ${theme.borderSoft}`,
+                background: `linear-gradient(90deg, ${theme.primary}22, rgba(0,0,0,0.10), ${theme.primary}18)`,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                gap: 10,
+              }}
+            >
+              <div style={{ fontWeight: 1100, letterSpacing: 0.4 }}>{t("common.players", "Joueurs")}</div>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
+                <span style={miniBadge}>
+                  {aliveCount}/{players.length}
+                </span>
+                {!ended && (
+                  <span
+                    style={{
+                      ...miniBadge,
+                      borderColor: theme.primary + "66",
+                      color: theme.text,
+                      background: theme.primary + "1a",
+                    }}
+                  >
+                    {t("common.turn", "Tour")}
+                  </span>
+                )}
+              </div>
+            </div>
+
+            {/* Aperçu avatars */}
+            <div
+              style={{
+                position: "relative",
+                zIndex: 2,
+                padding: 10,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                gap: 10,
+                background: "rgba(0,0,0,0.10)",
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
+                {players.slice(0, 6).map((p) => (
+                  <div
+                    key={p.id}
+                    title={p.name}
+                    style={{
+                      width: 34,
+                      height: 34,
                       borderRadius: "50%",
                       overflow: "hidden",
-                      border: `1px solid ${theme.borderSoft}`,
+                      border: `1px solid ${p.alive ? theme.borderSoft : "rgba(255,80,80,.35)"}`,
+                      opacity: p.alive ? 1 : 0.5,
                       background: "rgba(0,0,0,0.25)",
                       display: "grid",
                       placeItems: "center",
-                      fontWeight: 1000,
                       flex: "0 0 auto",
                     }}
                   >
@@ -963,106 +1033,197 @@ export default function BattleRoyalePlay({ go, config, onFinish }: Props) {
                         style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
                       />
                     ) : (
-                      <span style={{ fontSize: 12 }}>{avatarFallback(p.name)}</span>
+                      <span style={{ fontSize: 11, fontWeight: 1000 }}>{avatarFallback(p.name)}</span>
                     )}
                   </div>
+                ))}
+                {players.length > 6 && <div style={{ ...miniBadge, padding: "6px 10px" }}>+{players.length - 6}</div>}
+              </div>
 
-                  <div style={{ flex: 1, minWidth: 0, display: "grid", gap: 4 }}>
-                    {eliminationRule === "life_system" && (
-                      <HeartsRow lives={p.lives} maxLives={baseLives} />
-                    )}
-
-                    <div
-                      style={{
-                        fontWeight: 1100,
-                        color: theme.primary,
-                        textShadow: `0 0 10px ${theme.primary}33`,
-                        overflow: "hidden",
-                        textOverflow: "ellipsis",
-                        whiteSpace: "nowrap",
-                        marginLeft: 2, // ✅ aligne légèrement à droite par rapport aux coeurs
-                      }}
-                    >
-                      {p.name}
-                    </div>
-
-                    <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                      {eliminationRule === "miss_x" && (
-                        <span style={miniBadge}>
-                          {t("common.misses", "Ratés")}: {p.misses}/{missLimit}
-                        </span>
-                      )}
-                      {!p.alive && (
-                        <span
-                          style={{
-                            ...miniBadge,
-                            borderColor: "rgba(255,80,80,.35)",
-                            color: "rgba(255,200,200,.9)",
-                          }}
-                        >
-                          {t("common.eliminated", "Éliminé")}
-                        </span>
-                      )}
-                    </div>
-                  </div>
-
-                  {isActive && (
-                    <div
-                      style={{
-                        padding: "6px 10px",
-                        borderRadius: 999,
-                        border: `1px solid ${theme.primary}66`,
-                        background: theme.primary + "22",
-                        fontWeight: 1000,
-                        fontSize: 12,
-                        color: theme.text,
-                      }}
-                    >
-                      {t("common.turn", "Tour")}
-                    </div>
-                  )}
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <div style={{ fontSize: 12, fontWeight: 1000, color: theme.textSoft }}>{t("common.open", "Ouvrir")}</div>
+                <div
+                  style={{
+                    width: 30,
+                    height: 30,
+                    borderRadius: 999,
+                    border: `1px solid ${theme.borderSoft}`,
+                    background: "rgba(0,0,0,0.22)",
+                    display: "grid",
+                    placeItems: "center",
+                    fontWeight: 1100,
+                  }}
+                >
+                  ↗
                 </div>
-              );
-            })}
+              </div>
+            </div>
           </div>
 
-          <button
-            onClick={() => {
-              // Re-start simple (MVP): reset state
-              setPlayers(playersInit);
-              setRoundIndex(0);
-              setTurnPtr(0);
-              setCurrentThrow([]);
-              setMultiplier(1);
-              setEnded(false);
-              finishOnceRef.current = false;
-              setFinalSummary(null);
-              if (cfg?.sfxEnabled !== false) {
-                try { playUiClickSoft(); } catch {}
-              }
-            }}
-            style={{
-              marginTop: 8,
-              width: "100%",
-              padding: "10px 12px",
-              borderRadius: 14,
-              border: `1px solid ${theme.borderSoft}`,
-              background: "rgba(0,0,0,0.22)",
-              color: theme.text,
-              fontWeight: 1000,
-              cursor: "pointer",
-            }}
-            type="button"
-          >
-            {t("common.restart", "Relancer (MVP)")}
-          </button>
-        </div>
+          {/* ✅ Overlay centré : liste complète joueurs (ordre du tour) */}
+          {playersPanelOpen && (
+            <div
+              onClick={() => setPlayersPanelOpen(false)}
+              style={{
+                position: "fixed",
+                inset: 0,
+                background: "rgba(0,0,0,0.72)",
+                zIndex: 9999,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                padding: 14,
+              }}
+            >
+              <div
+                onClick={(e) => e.stopPropagation()}
+                style={{
+                  width: "min(720px, 96vw)",
+                  maxHeight: "86vh",
+                  overflowY: "auto",
+                  WebkitOverflowScrolling: "touch",
+                  borderRadius: 18,
+                  border: `1px solid ${theme.borderSoft}`,
+                  background: theme.card,
+                  boxShadow: "0 16px 44px rgba(0,0,0,.6)",
+                  padding: 14,
+                }}
+              >
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+                  <div style={{ fontWeight: 1100, letterSpacing: 0.6, color: theme.primary }}>
+                    {t("common.players", "Joueurs")} — {t("common.turn_order", "Ordre")}
+                  </div>
+                  <button
+                    onClick={() => setPlayersPanelOpen(false)}
+                    style={{
+                      border: `1px solid ${theme.borderSoft}`,
+                      background: "rgba(0,0,0,0.25)",
+                      color: theme.text,
+                      padding: "8px 12px",
+                      borderRadius: 999,
+                      fontWeight: 1000,
+                      cursor: "pointer",
+                    }}
+                  >
+                    ×
+                  </button>
+                </div>
+
+                <div style={{ marginTop: 12 }}>
+                  {players.map((p, idx) => {
+                    const isActive = idx === activeIndex && p.alive && !ended;
+                    const dead = !p.alive;
+
+                    return (
+                      <div
+                        key={p.id}
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 10,
+                          padding: "10px 10px",
+                          borderRadius: 14,
+                          border: `1px solid ${isActive ? theme.primary + "66" : theme.borderSoft}`,
+                          background: dead
+                            ? "rgba(0,0,0,0.25)"
+                            : isActive
+                            ? theme.primary + "1a"
+                            : "rgba(0,0,0,0.12)",
+                          opacity: dead ? 0.55 : 1,
+                          marginBottom: 10,
+                        }}
+                      >
+                        <div
+                          style={{
+                            width: 46,
+                            height: 46,
+                            borderRadius: "50%",
+                            overflow: "hidden",
+                            border: `1px solid ${theme.borderSoft}`,
+                            background: "rgba(0,0,0,0.25)",
+                            display: "grid",
+                            placeItems: "center",
+                            fontWeight: 1000,
+                            flex: "0 0 auto",
+                          }}
+                        >
+                          {p.avatarDataUrl ? (
+                            <img
+                              src={p.avatarDataUrl}
+                              alt=""
+                              style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
+                            />
+                          ) : (
+                            <span style={{ fontSize: 12 }}>{avatarFallback(p.name)}</span>
+                          )}
+                        </div>
+
+                        <div style={{ flex: 1, minWidth: 0, display: "grid", gap: 6 }}>
+                          {eliminationRule === "life_system" && <HeartsRow lives={p.lives} maxLives={baseLives} />}
+
+                          <div
+                            style={{
+                              fontWeight: 1100,
+                              color: theme.primary,
+                              textShadow: `0 0 10px ${theme.primary}33`,
+                              overflow: "hidden",
+                              textOverflow: "ellipsis",
+                              whiteSpace: "nowrap",
+                            }}
+                          >
+                            {idx + 1}. {p.name}
+                          </div>
+
+                          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                            {eliminationRule === "miss_x" && (
+                              <span style={miniBadge}>
+                                {t("common.misses", "Ratés")}: {p.misses}/{missLimit}
+                              </span>
+                            )}
+                            {!p.alive && (
+                              <span
+                                style={{
+                                  ...miniBadge,
+                                  borderColor: "rgba(255,80,80,.35)",
+                                  color: "rgba(255,200,200,.9)",
+                                }}
+                              >
+                                {t("common.eliminated", "Éliminé")}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+
+                        {isActive && (
+                          <div
+                            style={{
+                              padding: "6px 10px",
+                              borderRadius: 999,
+                              border: `1px solid ${theme.primary}66`,
+                              background: theme.primary + "22",
+                              fontWeight: 1000,
+                              fontSize: 12,
+                              color: theme.text,
+                              whiteSpace: "nowrap",
+                            }}
+                          >
+                            {t("common.turn", "Tour")}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* 🔧 NOTE: bouton relancer retiré (ne pas polluer l'UI en jeu) */}
         </div>
       </div>
 
       {/* Keypad fixed (BottomNav masquée pendant la partie) */}
-      <div style={{ marginTop: "auto" }}>
-        {/* ✅ Volée en cours : blocs colorés JUSTE au-dessus du keypad */}
+      <div style={{ marginTop: "auto", flexShrink: 0 }}>
         <div
           style={{
             ...cardShell,
@@ -1140,9 +1301,7 @@ export default function BattleRoyalePlay({ go, config, onFinish }: Props) {
             }}
           >
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
-              <div style={{ fontWeight: 1100, letterSpacing: 0.6, color: theme.primary }}>
-                Battle Royale — Infos
-              </div>
+              <div style={{ fontWeight: 1100, letterSpacing: 0.6, color: theme.primary }}>Battle Royale — Infos</div>
               <button
                 onClick={() => setInfoOpen(false)}
                 style={{
@@ -1163,8 +1322,8 @@ export default function BattleRoyalePlay({ go, config, onFinish }: Props) {
               <div style={{ ...cardShell, padding: 12, marginBottom: 10 }}>
                 <div style={{ fontWeight: 1100, marginBottom: 6 }}>Principe</div>
                 <div>
-                  Chaque round impose une <b>cible</b>. À ton tour, tu joues {dartsPerTurn} fléchettes.
-                  Selon la règle, tu dois toucher la cible pour survivre.
+                  Chaque round impose une <b>cible</b>. À ton tour, tu joues {dartsPerTurn} fléchettes. Selon la règle,
+                  tu dois toucher la cible pour survivre.
                 </div>
               </div>
 
@@ -1181,15 +1340,9 @@ export default function BattleRoyalePlay({ go, config, onFinish }: Props) {
               <div style={{ ...cardShell, padding: 12 }}>
                 <div style={{ fontWeight: 1100, marginBottom: 6 }}>Règle active</div>
                 <div>
-                  {eliminationRule === "life_system" && (
-                    <>Système de vies : 0 hit sur la cible = -1 vie. À 0 vie, élimination.</>
-                  )}
-                  {eliminationRule === "zero_points" && (
-                    <>0 point sur la cible pendant la volée = élimination immédiate.</>
-                  )}
-                  {eliminationRule === "miss_x" && (
-                    <>X ratés : chaque fléchette hors cible = +1 raté. À {missLimit}, élimination.</>
-                  )}
+                  {eliminationRule === "life_system" && <>Système de vies : 0 hit sur la cible = -1 vie. À 0 vie, élimination.</>}
+                  {eliminationRule === "zero_points" && <>0 point sur la cible pendant la volée = élimination immédiate.</>}
+                  {eliminationRule === "miss_x" && <>X ratés : chaque fléchette hors cible = +1 raté. À {missLimit}, élimination.</>}
                 </div>
               </div>
             </div>

@@ -109,6 +109,24 @@ export default function BatardConfig(props: any) {
   const { t } = useLang();
   const theme = useTheme();
 
+  // =====================================================
+  // InfoMini -> ouvre une mini-modale locale (style Territories)
+  // InfoMini attend un callback `onOpen` (sinon crash).
+  // =====================================================
+  const [infoMiniOpen, setInfoMiniOpen] = React.useState(false);
+  const [infoMiniTitle, setInfoMiniTitle] = React.useState<string>("");
+  const [infoMiniBody, setInfoMiniBody] = React.useState<React.ReactNode>(null);
+
+  const openInfoMini = React.useCallback((title: string, body: React.ReactNode) => {
+    setInfoMiniTitle(title);
+    setInfoMiniBody(body);
+    setInfoMiniOpen(true);
+  }, []);
+
+  const closeInfoMini = React.useCallback(() => {
+    setInfoMiniOpen(false);
+  }, []);
+
   const store = (props as any)?.store ?? (props as any)?.params?.store ?? null;
   const storeProfiles: any[] = Array.isArray((store as any)?.profiles)
     ? (store as any).profiles
@@ -482,16 +500,11 @@ Chips :
               <div style={{ fontSize: 12, opacity: 0.85, fontWeight: 950 }}>
                 Sélection : {playersCount}/8 — min 2
               </div>
-              <InfoMini
-                title="Sélection joueurs"
-                content={
-                  modalText(`Tape un médaillon pour ajouter/retirer.
+              <InfoMini onOpen={() => openInfoMini("Sélection joueurs", modalText(`Tape un médaillon pour ajouter/retirer.
 
 • Minimum 2 joueurs.
 • Maximum 8 joueurs (humains + bots).
-• Badge ACTIF = profil actif de l'app (repère visuel).`)
-                }
-              />
+• Badge ACTIF = profil actif de l'app (repère visuel).`))} />
             </div>
 
             {/* Humans carousel */}
@@ -619,16 +632,11 @@ Chips :
               label="Bots IA"
               hint="Ajoute des bots PRO (prédéfinis)."
               right={
-                <InfoMini
-                  title="Bots IA"
-                  content={
-                    modalText(`Active pour afficher le carrousel des bots PRO.
+                <InfoMini onOpen={() => openInfoMini("Bots IA", modalText(`Active pour afficher le carrousel des bots PRO.
 
 • Tu peux mixer humains + bots.
 • Limite totale : 8 joueurs.
-• Si tu désactives : les bots sélectionnés sont retirés.`)
-                  }
-                />
+• Si tu désactives : les bots sélectionnés sont retirés.`))} />
               }
             >
               <OptionToggle
@@ -646,15 +654,10 @@ Chips :
                   label="Niveau bot"
                   hint="Difficulté globale des bots."
                   right={
-                    <InfoMini
-                      title="Niveau bot"
-                      content={
-                        modalText(`Réglage global de difficulté.
+                    <InfoMini onOpen={() => openInfoMini("Niveau bot", modalText(`Réglage global de difficulté.
 
 • Les bots PRO restent les mêmes profils.
-• Ce niveau agit comme un modificateur de réussite.`)
-                      }
-                    />
+• Ce niveau agit comme un modificateur de réussite.`))} />
                   }
                 >
                   <OptionSelect
@@ -801,8 +804,12 @@ Chips :
             }}
           >
             <OptionRow
-              label="Preset"
-              hint="Choisis une base, puis passe en Custom pour modifier."
+              label={
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <span>Preset</span>
+                  <InfoMini onOpen={() => openInfoMini("Preset", modalText(TXT_PRESET))} />
+                </div>
+              }
             >
               <OptionSelect
                 value={presetId}
@@ -816,14 +823,13 @@ Chips :
               />
             </OptionRow>
 
-            {/* ✅ InfoMini SOUS l'option (style Territories) */}
-            <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 6 }}>
-              <InfoMini title="Preset" content={modalText(TXT_PRESET)} />
-            </div>
-
             <OptionRow
-              label="Mode Custom"
-              hint="Déverrouille l’édition (séquence + options)."
+              label={
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <span>Mode Custom</span>
+                  <InfoMini onOpen={() => openInfoMini("Mode Custom", modalText(TXT_CUSTOM))} />
+                </div>
+              }
             >
               <OptionToggle
                 value={customEnabled || presetId === "custom"}
@@ -831,14 +837,13 @@ Chips :
               />
             </OptionRow>
 
-            {/* ✅ InfoMini SOUS l'option (style Territories) */}
-            <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 6 }}>
-              <InfoMini title="Mode Custom" content={modalText(TXT_CUSTOM)} />
-            </div>
-
             <OptionRow
-              label="Condition de victoire"
-              hint="Score max ou course au finish."
+              label={
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <span>Condition de victoire</span>
+                  <InfoMini onOpen={() => openInfoMini("Condition de victoire", modalText(TXT_WIN))} />
+                </div>
+              }
             >
               <OptionSelect
                 value={winMode}
@@ -850,14 +855,13 @@ Chips :
               />
             </OptionRow>
 
-            {/* ✅ InfoMini SOUS l'option (style Territories) */}
-            <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 6 }}>
-              <InfoMini title="Condition de victoire" content={modalText(TXT_WIN)} />
-            </div>
-
             <OptionRow
-              label="Échec (0 valide)"
-              hint="Que faire si aucune flèche ne valide le round."
+              label={
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <span>Échec (0 valide)</span>
+                  <InfoMini onOpen={() => openInfoMini("Échec (0 valide)", modalText(TXT_FAIL))} />
+                </div>
+              }
             >
               <OptionSelect
                 value={failPolicy}
@@ -871,23 +875,19 @@ Chips :
               />
             </OptionRow>
 
-            {/* ✅ InfoMini SOUS l'option (style Territories) */}
-            <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 6 }}>
-              <InfoMini title="Échec (0 valide)" content={modalText(TXT_FAIL)} />
-            </div>
-
             {(failPolicy === "MINUS_POINTS" || failPolicy === "BACK_ROUND") && (
               <OptionRow
                 label={failPolicy === "MINUS_POINTS" ? "Valeur malus" : "Recul rounds"}
-                hint="Ajuste la valeur (X ou Y)."
                 right={
                   <InfoMini
-                    title="Valeur"
-                    content={
-                      modalText(
-                      failPolicy === "MINUS_POINTS"
-                        ? `X = points retirés quand tu fais 0 valide sur le round.`
-                        : `Y = nombre de rounds que tu recules quand tu fais 0 valide sur le round.`
+                    onOpen={() =>
+                      openInfoMini(
+                        "Valeur",
+                        modalText(
+                          failPolicy === "MINUS_POINTS"
+                            ? `X = points retirés quand tu fais 0 valide sur le round.`
+                            : `Y = nombre de rounds que tu recules quand tu fais 0 valide sur le round.`
+                        ),
                       )
                     }
                   />
@@ -916,7 +916,7 @@ Chips :
         {/* SÉQUENCE */}
         <Section
           title="SÉQUENCE (ROUNDS)"
-          right={<InfoMini title="Séquence" content={modalText(TXT_SEQUENCE)} />}
+          right={<InfoMini onOpen={() => openInfoMini("Séquence", modalText(TXT_SEQUENCE))} />}
         >
           <div
             style={{
@@ -1153,16 +1153,11 @@ Chips :
                       label="Bull only"
                       hint="Cible bull uniquement (25/50)."
                       right={
-                        <InfoMini
-                          title="Bull only"
-                          content={
-                            modalText(`Active = seules les touches Bull (25/50) valident ce round.
+                        <InfoMini onOpen={() => openInfoMini("Bull only", modalText(`Active = seules les touches Bull (25/50) valident ce round.
 
 Idéal pour :
 • Round “BULL” pur
-• Fin de séquence sur un défi Bull`)
-                          }
-                        />
+• Fin de séquence sur un défi Bull`))} />
                       }
                     >
                       <OptionToggle
@@ -1221,6 +1216,67 @@ Idéal pour :
           </button>
         </div>
       </div>
+
+      {/* ===================================================== */}
+      {/* InfoMini Modal (local) */}
+      {/* ===================================================== */}
+      {infoMiniOpen && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          onClick={closeInfoMini}
+          style={{
+            position: "fixed",
+            inset: 0,
+            zIndex: 9999,
+            background: "rgba(0,0,0,0.55)",
+            backdropFilter: "blur(6px)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: "14px 12px",
+          }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              width: "min(560px, 100%)",
+              borderRadius: 18,
+              border: "1px solid rgba(255,255,255,0.14)",
+              background: "rgba(14,16,24,0.92)",
+              boxShadow: "0 18px 55px rgba(0,0,0,0.55)",
+              padding: 14,
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <div style={{ fontWeight: 950, letterSpacing: 0.2, fontSize: 14 }}>
+                {infoMiniTitle}
+              </div>
+              <div style={{ flex: 1 }} />
+              <button
+                onClick={closeInfoMini}
+                style={{
+                  height: 28,
+                  padding: "0 10px",
+                  borderRadius: 999,
+                  border: "1px solid rgba(255,255,255,0.14)",
+                  background: "rgba(255,255,255,0.06)",
+                  color: "rgba(255,255,255,0.86)",
+                  fontWeight: 850,
+                  cursor: "pointer",
+                }}
+              >
+                OK
+              </button>
+            </div>
+
+            <div style={{ marginTop: 10, color: "rgba(255,255,255,0.86)" }}>
+              {infoMiniBody}
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }
