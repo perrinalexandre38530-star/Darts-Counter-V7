@@ -58,6 +58,11 @@ export type SavedMatch = {
   // Payload complet (gros) — compressé en base
   payload?: any;
 
+  // ✅ RESUME payload minimal (anti-corruption / anti-compress)
+  // - Permet de reprendre même si payloadCompressed est vide/corrompu.
+  // - Doit rester petit (config + state + dartsLite)
+  resume?: any;
+
   // champs libres tolérés (meta, state, etc.)
   [k: string]: any;
 };
@@ -76,16 +81,20 @@ import { computeCricketLegStats, type CricketHit } from "./StatsCricket";
 
 /* =========================
    ✅ CLOUD SNAPSHOT PUSH (PATCH CRITICAL)
+   - après un match / remove / clear -> push snapshot cloud (debounce)
+   - évite “tout a disparu après clear site data”
 ========================= */
 import type { Store } from "./types";
 import { loadStore } from "./storage";
 import { onlineApi } from "./onlineApi";
 import { emitCloudChange } from "./cloudEvents";
 import { EventBuffer } from "./sync/EventBuffer";
-import { decodeHistoryPayload } from "./historyDecode";
 
 // =========================
 // ✅ CLOUD IMPORT GUARD
+// - Quand on importe depuis le cloud, on évite:
+//   - de re-push des events (boucle)
+//   - de re-déclencher des syncs opportunistes
 // =========================
 let __historyCloudImportDepth = 0;
 function isCloudImporting(): boolean {
@@ -149,7 +158,6 @@ function _sanitizeStoreForCloudMini(s: any) {
 
 let __cloudPushTimer: number | null = null;
 
-// ⚠️ Désactivé par défaut (garde la mécanique prête)
 const HISTORY_CLOUD_PUSH_ENABLED = false;
 
 function scheduleCloudSnapshotPush(reason: string) {
@@ -164,6 +172,7 @@ function scheduleCloudSnapshotPush(reason: string) {
 
     __cloudPushTimer = window.setTimeout(async () => {
       try {
+        // on vérifie une session réelle
         const sess = await onlineApi.getCurrentSession().catch(() => null);
         const uid = String((sess as any)?.user?.id || "");
         if (!uid) return;
@@ -194,18 +203,22 @@ console.warn("🔥 HISTORY PATCH LOADED v2");
 ========================= */
 const LSK = "dc-history-v1"; // ancien storage (migration + fallback)
 const DB_NAME = "dc-store-v1";
-const DB_VER = 2;
+const DB_VER = 2; // ⬅ bump pour index by_updatedAt
 const STORE = "history";
 const MAX_ROWS = 400;
 
 // =========================
 // ✅ PATCH CRITICAL — JSON parse SAFE (ANTI-FREEZE + JSONC)
+// - ne parse QUE si JSON-like ({ ou [)
+// - JSON strict, puis JSONC (strip // comments + block comments + trailing commas)
+// - log 1 seule fois par (id+stage+snippet) (anti-spam)
 // =========================
 const __historyWarnedPayloads = new Set<string>();
 
 function stripJsonCommentsAndTrailingCommas(input: string): string {
   if (!input) return input;
 
+  // Strip comments safely (ignore "comments" inside strings)
   let out = "";
   let inStr = false;
   let esc = false;
@@ -234,18 +247,24 @@ function stripJsonCommentsAndTrailingCommas(input: string): string {
 
     if (inStr) {
       out += c;
-      if (esc) esc = false;
-      else if (c === "\\") esc = true;
-      else if (c === '"') inStr = false;
+      if (esc) {
+        esc = false;
+      } else if (c === "\\") {
+        esc = true;
+      } else if (c === '"') {
+        inStr = false;
+      }
       continue;
     }
 
+    // not in string
     if (c === '"') {
       inStr = true;
       out += c;
       continue;
     }
 
+    // start comments
     if (c === "/" && n === "/") {
       inLine = true;
       i++;
@@ -260,6 +279,7 @@ function stripJsonCommentsAndTrailingCommas(input: string): string {
     out += c;
   }
 
+  // Remove trailing commas: ",}" and ",]"
   out = out.replace(/,\s*([}\]])/g, "$1");
   return out;
 }
@@ -270,15 +290,20 @@ function safeJsonParse(raw: any, ctx?: { id?: string; stage?: string }) {
   if (typeof raw !== "string") return null;
 
   const s = raw.trim();
+
+  // ✅ ne tente même pas JSON.parse si pas JSON-like
   if (!(s.startsWith("{") || s.startsWith("["))) return null;
 
+  // 1) JSON strict
   try {
     return JSON.parse(s);
   } catch {
+    // 2) JSONC (comments + trailing commas)
     try {
       const cleaned = stripJsonCommentsAndTrailingCommas(s);
       return JSON.parse(cleaned);
     } catch {
+      // ✅ anti-spam + log avec id/stage si dispo
       const key = `${ctx?.id || "?"}::${ctx?.stage || "parse"}::${s.slice(0, 180)}`;
       if (!__historyWarnedPayloads.has(key)) {
         __historyWarnedPayloads.add(key);
@@ -299,6 +324,9 @@ function asArray(v: any): any[] {
 
 /* =========================
    ✅ FIX STATS: decode payloadCompressed (best-effort, no throw)
+   - ne parse QUE si JSON-like
+   - anti-spam logs
+   - ✅ JSONC support + ctx id/stage
 ========================= */
 function decodePayloadCompressedBestEffort(
   payloadCompressed: any,
@@ -313,32 +341,41 @@ function decodePayloadCompressedBestEffort(
     if (typeof txt !== "string") return null;
     const t = txt.trim();
     if (!(t.startsWith("{") || t.startsWith("["))) return null;
-    const obj = safeJsonParse(t, {
-      id: ctx?.id,
-      stage: ctx?.stage ? `${ctx.stage}:${stage}` : stage,
-    });
+    const obj = safeJsonParse(t, { id: ctx?.id, stage: ctx?.stage ? `${ctx.stage}:${stage}` : stage });
     return obj && typeof obj === "object" ? obj : null;
   };
 
+  // 0) ✅ legacy: payloadCompressed peut déjà être du JSON (non compressé)
+  try {
+    const direct = tryParseIfJsonLike(s, "direct");
+    if (direct) return direct;
+  } catch {}
+
+  // 1) UTF16 standard
   try {
     const dec = (LZString as any).decompressFromUTF16?.(s);
     const obj = tryParseIfJsonLike(dec, "lz:utf16");
     if (obj) return obj;
   } catch {}
 
+  // 2) decompress direct (rare legacy)
   try {
     const dec = (LZString as any).decompress?.(s);
     const obj = tryParseIfJsonLike(dec, "lz:raw");
     if (obj) return obj;
   } catch {}
 
+  // 3) base64-ish → bin → (json OR decompress)
   try {
     const isB64 = /^[A-Za-z0-9+/=\r\n\s-]+$/.test(s) && s.length > 16;
     if (isB64) {
       const bin = (LZString as any)._tryDecodeBase64ToString?.(s) || "";
+
+      // 3a) bin déjà JSON
       const obj0 = tryParseIfJsonLike(bin, "b64:bin");
       if (obj0) return obj0;
 
+      // 3b) bin = compress() -> decompress()
       try {
         const dec = (LZString as any).decompress?.(bin);
         const obj = tryParseIfJsonLike(dec, "b64->lz");
@@ -409,6 +446,7 @@ const LZString = (function () {
     }
     return LZ.decompress(output);
   };
+  // ✅ Optionnel "best-effort": certains legacy étaient base64-ish
   LZ._tryDecodeBase64ToString = function (b64: string) {
     try {
       const bin = atob(b64.replace(/[\r\n\s]/g, ""));
@@ -639,17 +677,20 @@ const LZString = (function () {
 
 /* =========================
    ✅ FIX: lecture robuste localStorage (JSON OU LZString)
+   ✅ PATCH: safeJsonParse partout (0 throw)
 ========================= */
 function parseHistoryLocalStorage(raw: string | null): any[] {
   if (!raw) return [];
   const s = String(raw);
   const trimmed = s.trim();
 
+  // 1) JSON direct
   if (trimmed.startsWith("[") || trimmed.startsWith("{")) {
     const v = safeJsonParse(trimmed, { id: "localStorage", stage: "legacy:json" });
     return asArray(v);
   }
 
+  // 2) LZString UTF16
   try {
     const dec = (LZString as any).decompressFromUTF16?.(s);
     if (typeof dec === "string" && dec.trim().length) {
@@ -658,14 +699,17 @@ function parseHistoryLocalStorage(raw: string | null): any[] {
     }
   } catch {}
 
+  // 3) Base64-ish best effort
   try {
     const isB64 = /^[A-Za-z0-9+/=\r\n\s-]+$/.test(s) && s.length > 16;
     if (isB64) {
       const bin = (LZString as any)._tryDecodeBase64ToString?.(s) || "";
       if (bin) {
+        // 3a) bin déjà JSON
         const v0 = safeJsonParse(bin, { id: "localStorage", stage: "legacy:b64:bin" });
         if (Array.isArray(v0)) return v0;
 
+        // 3b) bin = compress() -> decompress()
         try {
           const dec = (LZString as any).decompress?.(bin);
           if (typeof dec === "string" && dec.trim().length) {
@@ -677,6 +721,7 @@ function parseHistoryLocalStorage(raw: string | null): any[] {
     }
   } catch {}
 
+  // 4) decompress direct (rare)
   try {
     const dec = (LZString as any).decompress?.(s);
     if (typeof dec === "string" && dec.trim().length) {
@@ -748,23 +793,22 @@ function getCanonicalMatchId(rec: any): string | null {
 function openDB(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
     let settled = false;
-    let req: IDBOpenDBRequest;
 
     const fail = (err: any) => {
       if (settled) return;
       settled = true;
       try {
-        // @ts-ignore
         req?.result?.close?.();
       } catch {}
       reject(err);
     };
 
+    // ✅ Timeout anti-freeze (sinon intro bloquée à vie)
     const t = window.setTimeout(() => {
       fail(new Error("[history] openDB timeout (IndexedDB blocked?)"));
     }, 1500);
 
-    req = indexedDB.open(DB_NAME, DB_VER);
+    const req = indexedDB.open(DB_NAME, DB_VER);
 
     req.onupgradeneeded = () => {
       try {
@@ -799,10 +843,12 @@ function openDB(): Promise<IDBDatabase> {
           } catch {}
         }
       } catch (e) {
+        // si upgrade foire, on laissera openDB échouer
         console.warn("[history] onupgradeneeded error:", e);
       }
     };
 
+    // ✅ IMPORTANT: si un autre onglet bloque l'upgrade, sinon promesse jamais résolue
     req.onblocked = () => {
       window.clearTimeout(t);
       fail(new Error("[history] IndexedDB blocked (close other tabs/windows using the app)"));
@@ -815,6 +861,7 @@ function openDB(): Promise<IDBDatabase> {
 
       const db = req.result;
 
+      // ✅ si une future upgrade arrive, on ferme pour éviter deadlock
       try {
         db.onversionchange = () => {
           try {
@@ -858,10 +905,12 @@ async function withStore<T>(
       reject(err);
     };
 
+    // ✅ handlers AVANT d'exécuter fn (évite race => promise qui ne résout jamais)
     tx.oncomplete = () => finishResolve();
     tx.onerror = () => finishReject(tx.error || new Error("IndexedDB tx error"));
     tx.onabort = () => finishReject(tx.error || new Error("IndexedDB tx aborted"));
 
+    // ✅ safety timeout (évite boot bloqué à vie)
     const to = window.setTimeout(() => {
       finishReject(new Error("IndexedDB tx timeout"));
       try {
@@ -875,6 +924,7 @@ async function withStore<T>(
       .then(() => fn(st))
       .then((v) => {
         result = v as T;
+        // on attend oncomplete (déjà hooké) pour resolve
       })
       .catch((e) => {
         clearTo();
@@ -986,6 +1036,8 @@ export async function list(): Promise<SavedMatch[]> {
       }
     });
 
+    // ✅ DEDUPE: 1 match réel = 1 entrée
+    // ✅ PERF/FIX: on décode payloadCompressed UNIQUEMENT pour CRICKET (sinon boot freeze)
     const byMatch = new Map<string, any>();
 
     for (const r0 of rows || []) {
@@ -1009,8 +1061,8 @@ export async function list(): Promise<SavedMatch[]> {
       const tNew = (r as any)?.updatedAt ?? (r as any)?.createdAt ?? 0;
 
       const out = { ...r, id: key, matchId: key } as any;
-      if (payload) out.payload = payload;
-      delete out.payloadCompressed;
+      if (payload) out.payload = payload; // ✅ payload seulement pour Cricket
+      delete out.payloadCompressed; // ✅ alléger le retour (important)
 
       if (!existing) {
         byMatch.set(key, out);
@@ -1032,6 +1084,7 @@ export async function get(id: string): Promise<SavedMatch | null> {
 
   try {
     const rec: any = await withStore("readonly", async (st) => {
+      // 1) lookup direct par id
       const byId = await new Promise<any>((resolve) => {
         const req = st.get(id);
         req.onsuccess = () => resolve(req.result || null);
@@ -1039,6 +1092,7 @@ export async function get(id: string): Promise<SavedMatch | null> {
       });
       if (byId) return byId;
 
+      // 2) ✅ lookup par matchId (indispensable si list() renvoie id canonique)
       try {
         // @ts-ignore
         const hasIx = st.indexNames && st.indexNames.contains("by_matchId");
@@ -1053,6 +1107,7 @@ export async function get(id: string): Promise<SavedMatch | null> {
         }
       } catch {}
 
+      // 3) fallback scan (dernier recours)
       const scan = await new Promise<any>((resolve) => {
         const req = st.openCursor();
         req.onsuccess = () => {
@@ -1070,7 +1125,9 @@ export async function get(id: string): Promise<SavedMatch | null> {
 
     if (!rec) {
       const rows = readLegacyRowsSafe();
-      return (rows.find((r) => r.id === id || r.matchId === id) || null) as SavedMatch | null;
+      return (rows.find((r) => r.id === id || r.matchId === id) || null) as
+        | SavedMatch
+        | null;
     }
 
     let payload: any | null = decodePayloadCompressedBestEffort(rec.payloadCompressed, {
@@ -1078,31 +1135,32 @@ export async function get(id: string): Promise<SavedMatch | null> {
       stage: "get",
     });
 
-    if (!payload) {
-      const rawLegacy =
-        (rec as any).payload ??
-        (rec as any).payloadLite ??
-        (rec as any).payload_lite ??
-        (rec as any).payload_lite_b64 ??
-        null;
-
-      if (rawLegacy != null) {
-        payload =
-          (await decodeHistoryPayload(rawLegacy)) ??
-          (typeof rawLegacy === "object" ? rawLegacy : null);
+    // ✅ fallback: certains legacy stockaient déjà du JSON dans payloadCompressed
+    if (!payload && typeof (rec as any).payloadCompressed === "string") {
+      const t = String((rec as any).payloadCompressed || "").trim();
+      if (t.startsWith("{") || t.startsWith("[")) {
+        payload = safeJsonParse(t, {
+          id: String(id),
+          stage: "get:payloadCompressed:direct",
+        });
       }
     }
-
-    delete (rec as any).payloadCompressed;
+    delete rec.payloadCompressed;
 
     const mid = getCanonicalMatchId({ ...rec, payload }) ?? rec.matchId ?? null;
-    if (mid) rec.matchId = String(mid);
+    if (mid) {
+      rec.matchId = String(mid);
+      // ⚠️ on NE force PAS rec.id ici : get(id) doit rester stable.
+      // L’UI peut utiliser matchId pour navigation.
+    }
 
     return { ...(rec as any), payload } as SavedMatch;
   } catch (e) {
     console.warn("[history.get] fallback localStorage:", e);
     const rows = readLegacyRowsSafe();
-    return (rows.find((r) => r.id === id || r.matchId === id) || null) as SavedMatch | null;
+    return (rows.find((r) => r.id === id || r.matchId === id) || null) as
+      | SavedMatch
+      | null;
   }
 }
 
@@ -1114,6 +1172,7 @@ export async function upsert(rec: SavedMatch): Promise<void> {
 
   const now = Date.now();
 
+  // ✅ id canonique
   const canonicalId =
     getCanonicalMatchId(rec) ??
     rec.matchId ??
@@ -1124,8 +1183,8 @@ export async function upsert(rec: SavedMatch): Promise<void> {
     id: String(canonicalId),
     matchId: String(canonicalId),
     kind: rec.kind || "x01",
-    game: (rec as any).game ?? null,
-    status: rec.status || "finished",
+        game: (rec as any).game ?? null,
+status: rec.status || "finished",
     players: rec.players || [],
     winnerId: rec.winnerId ?? null,
     createdAt: rec.createdAt ?? now,
@@ -1133,42 +1192,51 @@ export async function upsert(rec: SavedMatch): Promise<void> {
     summary: rec.summary || null,
   };
 
+  // payload effectif (on le mutera si on ajoute des infos sets)
   let payloadEffective = rec.payload;
 
-  // ✅ DART SETS : injecte dartSetId dans safe.players si présent dans payload/config
-  try {
-    const cfgPlayers: any[] =
-      (payloadEffective as any)?.config?.players ??
-      (payloadEffective as any)?.cfg?.players ??
-      (payloadEffective as any)?.players ??
-      (safe.game as any)?.players ??
-      [];
+// ✅ DART SETS : injecte dartSetId dans safe.players si présent dans payload/config
+try {
+  const cfgPlayers: any[] =
+    (payloadEffective as any)?.config?.players ??
+    (payloadEffective as any)?.cfg?.players ??
+    (payloadEffective as any)?.players ??
+    (safe.game as any)?.players ??
+    [];
 
-    const map: Record<string, string | null> = {};
-    for (const p of Array.isArray(cfgPlayers) ? cfgPlayers : []) {
-      const key = String((p as any)?.profileId ?? (p as any)?.id ?? "");
-      if (!key) continue;
+  const map: Record<string, string | null> = {};
+  for (const p of Array.isArray(cfgPlayers) ? cfgPlayers : []) {
+    const key = String((p as any)?.profileId ?? (p as any)?.id ?? "");
+    if (!key) continue;
+    const ds =
+      (p as any)?.dartSetId ??
+      (p as any)?.dartsetId ??
+      (p as any)?.dartSet ??
+      null;
+    if (typeof ds === "string" && ds.trim()) map[key] = ds.trim();
+    else if (ds === null) map[key] = null;
+  }
+
+  if (Array.isArray(safe.players) && safe.players.length > 0) {
+    safe.players = safe.players.map((p: any) => {
+      const pid = String(p?.profileId ?? p?.id ?? "");
       const ds =
-        (p as any)?.dartSetId ??
-        (p as any)?.dartsetId ??
-        (p as any)?.dartSet ??
-        null;
-      if (typeof ds === "string" && ds.trim()) map[key] = ds.trim();
-      else if (ds === null) map[key] = null;
-    }
+        p?.dartSetId ??
+        (pid && Object.prototype.hasOwnProperty.call(map, pid) ? map[pid] : null);
+      return { ...p, dartSetId: ds ?? null };
+    });
+  }
+} catch {}
 
-    if (Array.isArray(safe.players) && safe.players.length > 0) {
-      safe.players = safe.players.map((p: any) => {
-        const pid = String(p?.profileId ?? p?.id ?? "");
-        const ds =
-          p?.dartSetId ??
-          (pid && Object.prototype.hasOwnProperty.call(map, pid) ? map[pid] : null);
-        return { ...p, dartSetId: ds ?? null };
-      });
-    }
-  } catch {}
 
-  // keep game.mode if missing
+
+  // ---------------------------------------------
+  // 🎯 Cricket : calcul auto legStats
+  // ---------------------------------------------
+
+  // ✅ Conserver le "mode" de jeu pour StatsHub (multi-modes/fun/variants)
+  // rec.game est généralement un objet { mode, ... } — on le garde tel quel dans la ligne "safe"
+  // Fallback: si rec.game absent, on tente de récupérer un mode depuis payload/config
   try {
     if (!safe.game) {
       const cfg: any = (payloadEffective as any)?.config ?? (payloadEffective as any)?.cfg ?? null;
@@ -1182,7 +1250,6 @@ export async function upsert(rec: SavedMatch): Promise<void> {
     }
   } catch {}
 
-  // Cricket enrich
   try {
     if (rec.kind === "cricket" && rec.payload && typeof rec.payload === "object") {
       const base = rec.payload as any;
@@ -1202,6 +1269,7 @@ export async function upsert(rec: SavedMatch): Promise<void> {
         players: playersWithStats,
       };
 
+      // matchId léger si dispo
       const mid =
         getCanonicalMatchId({ ...rec, payload: payloadEffective }) ??
         base?.matchId ??
@@ -1215,7 +1283,9 @@ export async function upsert(rec: SavedMatch): Promise<void> {
     console.warn("[history.upsert] cricket enrichment error:", e);
   }
 
-  // X01 enrich startScore + summary merge
+  // ---------------------------------------------
+  // 🎯 X01 : expose startScore pour l'UI
+  // ---------------------------------------------
   try {
     if (rec.kind === "x01" && payloadEffective && typeof payloadEffective === "object") {
       const base = payloadEffective as any;
@@ -1272,9 +1342,14 @@ export async function upsert(rec: SavedMatch): Promise<void> {
   }
 
   try {
+    // ✅ IMPORTANT: ne jamais écraser un payload existant par "" si rec.payload est absent.
+    // Cas réel: certains callers font History.upsert(matchId) avec seulement summary/status,
+    // ce qui wipe config/darts et casse la reprise.
     let prevPayloadCompressed = "";
     let prevPayloadObj: any = null;
 
+    // ✅ Merge "reprise" : certains callers font des upserts partiels (ex: payload sans darts / sans config)
+    // et écrasent le payload complet. On conserve alors les champs critiques depuis l'ancien payload.
     const needsMerge =
       !!payloadEffective &&
       (safe.kind === "x01" ||
@@ -1296,10 +1371,10 @@ export async function upsert(rec: SavedMatch): Promise<void> {
       }
 
       if (needsMerge && prevPayloadCompressed) {
-        prevPayloadObj = decodePayloadCompressedBestEffort(prevPayloadCompressed, {
-          id: String(safe.id),
-          stage: "upsert:merge_prev",
-        });
+        prevPayloadObj = decodePayloadCompressedBestEffort(
+          prevPayloadCompressed,
+          String(safe.id)
+        );
 
         if (prevPayloadObj && typeof prevPayloadObj === "object") {
           const merged: any = { ...prevPayloadObj, ...(payloadEffective as any) };
@@ -1319,6 +1394,34 @@ export async function upsert(rec: SavedMatch): Promise<void> {
         }
       }
     } catch {}
+
+
+    // ✅ Résumé minimal pour la reprise (anti-corruption / anti-compress)
+    // On stocke aussi une version "lite" non compressée pour garantir la reprise.
+    try {
+      const basePayload =
+        payloadEffective ||
+        (prevPayloadCompressed ? decodePayloadCompressedBestEffort(prevPayloadCompressed) : null);
+
+      if (basePayload && typeof basePayload === "object") {
+        const cfgLite = (basePayload as any).config ?? null;
+        const stateLite = (basePayload as any).state ?? null;
+        const dartsLite = Array.isArray((basePayload as any).darts)
+          ? (basePayload as any).darts.slice(-90)
+          : null;
+
+        const resume: any = {};
+        if (cfgLite) resume.config = cfgLite;
+        if (stateLite) resume.state = stateLite;
+        if (dartsLite) resume.darts = dartsLite;
+
+        (safe as any).resume = Object.keys(resume).length ? resume : null;
+      } else {
+        (safe as any).resume = null;
+      }
+    } catch {
+      (safe as any).resume = null;
+    }
 
     let payloadCompressed = "";
 
@@ -1391,13 +1494,25 @@ export async function upsert(rec: SavedMatch): Promise<void> {
       });
     });
 
+    // ================================
+    // 🔔 NOTIFY UI/STATS (history changed)
+    // ================================
     try {
-      if (typeof window !== "undefined") window.dispatchEvent(new Event("dc-history-updated"));
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new Event("dc-history-updated"));
+      }
     } catch {}
 
+    // ================================
+    // ✅ PUSH SNAPSHOT TO CLOUD (debounced)
+    // ================================
     scheduleCloudSnapshotPush("history:upsert");
     try { emitCloudChange("history:upsert"); } catch {}
 
+    // ================================
+    // ✅ EVENT BUFFER (multi-device sync)
+    // - IMPORTANT: ne jamais re-push quand on importe depuis le cloud (anti-boucle)
+    // ================================
     if (!isCloudImporting()) {
       try {
         const kind = String(rec.kind || safe.kind || "");
@@ -1411,6 +1526,7 @@ export async function upsert(rec: SavedMatch): Promise<void> {
           ? "territories"
           : "darts";
 
+        // On push un payload compact (pas la partie complète)
         EventBuffer.push({
           sport,
           mode: kind || sport,
@@ -1427,6 +1543,8 @@ export async function upsert(rec: SavedMatch): Promise<void> {
             summary: safe.summary ?? null,
           },
         }).catch(() => {});
+
+        // tentative de sync opportuniste (non bloquante)
         EventBuffer.syncNow().catch(() => {});
       } catch {}
     }
@@ -1434,43 +1552,61 @@ export async function upsert(rec: SavedMatch): Promise<void> {
     console.warn("[history.upsert] fallback localStorage (IDB indispo?):", e);
 
     try {
-      const rows: any[] = readLegacyRowsSafe();
-      const idx = rows.findIndex((r) => (r.id || r.matchId) === safe.id);
+      
+const rows: any[] = readLegacyRowsSafe();
+const idx = rows.findIndex((r) => (r.id || r.matchId) === safe.id);
 
-      const cfgLite =
-        (payloadEffective as any)?.config ??
-        (payloadEffective as any)?.cfg ??
-        null;
+// ✅ IMPORTANT: même en fallback localStorage, on conserve un payload "lite"
+// pour permettre la reprise (config + darts).
+const cfgLite =
+  (payloadEffective as any)?.config ??
+  (payloadEffective as any)?.cfg ??
+  null;
 
-      const dartsLiteRaw =
-        (payloadEffective as any)?.darts ??
-        (payloadEffective as any)?.throws ??
-        (payloadEffective as any)?.visits ??
-        (payloadEffective as any)?.events ??
-        null;
+const dartsLiteRaw =
+  (payloadEffective as any)?.darts ??
+  (payloadEffective as any)?.throws ??
+  (payloadEffective as any)?.visits ??
+  (payloadEffective as any)?.events ??
+  null;
 
-      const dartsLite = Array.isArray(dartsLiteRaw) ? dartsLiteRaw : null;
+const dartsLite = Array.isArray(dartsLiteRaw) ? dartsLiteRaw : null;
 
-      const payloadLite =
-        cfgLite || dartsLite ? { config: cfgLite, darts: dartsLite } : null;
+const payloadLite =
+  cfgLite || dartsLite
+    ? { config: cfgLite, darts: dartsLite }
+    : null;
 
-      const payloadLiteFinal =
-        payloadLite ??
-        (idx >= 0 ? (rows[idx] as any)?.payload ?? null : null);
+// ✅ IMPORTANT: si un upsert arrive sans payload, on conserve l'ancien payload (sinon reprise cassée)
+const payloadLiteFinal =
+  payloadLite ??
+  (idx >= 0 ? (rows[idx] as any)?.payload ?? null : null);
 
-      const trimmed = { ...safe, payload: payloadLiteFinal };
+const trimmed = { ...safe, payload: payloadLiteFinal };
       if (idx >= 0) rows.splice(idx, 1);
       rows.unshift(trimmed);
       while (rows.length > 120) rows.pop();
       localStorage.setItem(LSK, JSON.stringify(rows));
 
+      // ================================
+      // 🔔 NOTIFY UI/STATS (history changed)
+      // ================================
       try {
-        if (typeof window !== "undefined") window.dispatchEvent(new Event("dc-history-updated"));
+        if (typeof window !== "undefined") {
+          window.dispatchEvent(new Event("dc-history-updated"));
+        }
       } catch {}
 
+      // ================================
+      // ✅ PUSH SNAPSHOT TO CLOUD (debounced)
+      // ================================
       scheduleCloudSnapshotPush("history:upsert:ls_fallback");
-      try { emitCloudChange("history:upsert:ls_fallback"); } catch {}
+    try { emitCloudChange("history:upsert:ls_fallback"); } catch {}
 
+      // ================================
+      // ✅ EVENT BUFFER (multi-device sync)
+      // - IMPORTANT: ne jamais re-push quand on importe depuis le cloud (anti-boucle)
+      // ================================
       if (!isCloudImporting()) {
         try {
           const kind = String(rec.kind || safe.kind || "");
@@ -1509,7 +1645,10 @@ export async function upsert(rec: SavedMatch): Promise<void> {
 
 // ============================================
 // ✅ CLOUD IMPORT (multi-device)
+// - Upsert depuis le cloud avec anti-boucle
+// - Détecte divergence et conserve une copie "conflict" si besoin
 // ============================================
+
 function _stableBaseId(rec: any): string {
   const id = String(rec?.id || "").trim();
   const matchId = String(rec?.matchId || "").trim();
@@ -1551,15 +1690,10 @@ export async function upsertFromCloud(
     const localHash = _payloadHashLite((local as any)?.payload);
     const cloudHash = _payloadHashLite((rec as any)?.payload);
 
+    // Si local existe et est plus récent -> on garde local, mais on garde la version cloud en "conflict" si elle diffère
     if (local && localUpdated && cloudUpdated && localUpdated > cloudUpdated) {
       if (localHash !== cloudHash) {
-        const cid = _conflictId(
-          baseId,
-          meta?.cloudEventId ||
-            (rec as any).createdAt?.toString?.() ||
-            (rec as any).updatedAt?.toString?.() ||
-            Date.now().toString()
-        );
+        const cid = _conflictId(baseId, meta?.cloudEventId || rec.createdAt?.toString?.() || rec.updatedAt?.toString?.() || Date.now().toString());
         const conflict = {
           ...(rec as any),
           id: cid,
@@ -1575,6 +1709,7 @@ export async function upsertFromCloud(
       return { applied: "local", baseId, reason: "local_newer_same_payload" };
     }
 
+    // Si divergence sans info temporelle fiable: on conserve cloud en conflict (et on garde local)
     if (local && localHash && cloudHash && localHash !== cloudHash && !(cloudUpdated > localUpdated)) {
       const cid = _conflictId(baseId, meta?.cloudEventId || Date.now().toString());
       const conflict = {
@@ -1590,6 +1725,7 @@ export async function upsertFromCloud(
       return { applied: "conflict_only", baseId, conflictId: cid, reason: "divergent_payload" };
     }
 
+    // Sinon: la version cloud est acceptée (plus récente ou pas de conflit)
     const normalized = { ...(rec as any), id: baseId, matchId: baseId } as SavedMatch;
     await upsert(normalized);
     return { applied: "cloud", baseId };
@@ -1622,20 +1758,36 @@ export async function remove(id: string): Promise<void> {
       });
     });
 
-    try { if (typeof window !== "undefined") window.dispatchEvent(new Event("dc-history-updated")); } catch {}
+    // ================================
+    // 🔔 NOTIFY UI/STATS (history changed)
+    // ================================
+    try {
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new Event("dc-history-updated"));
+      }
+    } catch {}
 
+    // ✅ CLOUD
     scheduleCloudSnapshotPush("history:remove");
     try { emitCloudChange("history:remove"); } catch {}
   } catch {
     try {
       const rows = readLegacyRowsSafe() as any[];
-      const out = rows.filter((r) => r.id !== id && (r as any).matchId !== id);
+      const out = rows.filter((r) => r.id !== id && r.matchId !== id);
       localStorage.setItem(LSK, JSON.stringify(out));
 
-      try { if (typeof window !== "undefined") window.dispatchEvent(new Event("dc-history-updated")); } catch {}
+      // ================================
+      // 🔔 NOTIFY UI/STATS (history changed)
+      // ================================
+      try {
+        if (typeof window !== "undefined") {
+          window.dispatchEvent(new Event("dc-history-updated"));
+        }
+      } catch {}
 
+      // ✅ CLOUD
       scheduleCloudSnapshotPush("history:remove:ls_fallback");
-      try { emitCloudChange("history:remove:ls_fallback"); } catch {}
+    try { emitCloudChange("history:remove:ls_fallback"); } catch {}
     } catch {}
   }
 }
@@ -1652,18 +1804,34 @@ export async function clear(): Promise<void> {
       });
     });
 
-    try { if (typeof window !== "undefined") window.dispatchEvent(new Event("dc-history-updated")); } catch {}
+    // ================================
+    // 🔔 NOTIFY UI/STATS (history changed)
+    // ================================
+    try {
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new Event("dc-history-updated"));
+      }
+    } catch {}
 
+    // ✅ CLOUD
     scheduleCloudSnapshotPush("history:clear");
     try { emitCloudChange("history:clear"); } catch {}
   } catch {
     try {
       localStorage.removeItem(LSK);
 
-      try { if (typeof window !== "undefined") window.dispatchEvent(new Event("dc-history-updated")); } catch {}
+      // ================================
+      // 🔔 NOTIFY UI/STATS (history changed)
+      // ================================
+      try {
+        if (typeof window !== "undefined") {
+          window.dispatchEvent(new Event("dc-history-updated"));
+        }
+      } catch {}
 
+      // ✅ CLOUD
       scheduleCloudSnapshotPush("history:clear:ls_fallback");
-      try { emitCloudChange("history:clear:ls_fallback"); } catch {}
+    try { emitCloudChange("history:clear:ls_fallback"); } catch {}
     } catch {}
   }
 }
@@ -1766,8 +1934,10 @@ export const History = {
     await upsert(rec);
     _applyUpsertToCache(rec);
   },
+  // ✅ import cloud (anti-boucle + conflits)
   async upsertFromCloud(rec: SavedMatch, meta?: { cloudEventId?: string; cloudCreatedAt?: string }) {
     const res = await upsertFromCloud(rec, meta);
+    // update cache only if base record changed
     if (res.applied === "cloud") {
       _applyUpsertToCache({ ...(rec as any), id: res.baseId, matchId: res.baseId } as any);
     } else if (res.conflictId) {
@@ -1786,11 +1956,13 @@ export const History = {
     _clearCache();
   },
 
+  // sélecteurs utilitaires
   listByStatus,
   listInProgress,
   listFinished,
   getX01,
 
+  // synchrone (legacy UI)
   readAll: readAllSync,
 };
 

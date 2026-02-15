@@ -31,6 +31,7 @@ import type {
   BatardRound,
   BatardWinMode,
 } from "../../lib/batard/batardTypes";
+
 import {
   classicPreset,
   progressifPreset,
@@ -39,6 +40,20 @@ import {
 
 import { PRO_BOTS } from "../../lib/botsPro";
 import { getProBotAvatar } from "../../lib/botsProAvatars";
+
+// -------------------------------------------------------------
+// Mini InfoDot (same component, smaller)
+// -------------------------------------------------------------
+function MiniInfoDot(props: { title: string; content: string; align?: any }) {
+  return (
+    <InfoDot
+      title={props.title}
+      content={props.content}
+      size={28}
+      align={props.align ?? "right"}
+    />
+  );
+}
 
 // -------------------------------------------------------------
 // Utils
@@ -89,49 +104,86 @@ export type BatardConfigPayload = {
   selectedBotIds?: string[];
 };
 
-const INFO_TEXT = `BÂTARD (mode variantes)
+// -------------------------------------------------------------
+// Info texts — version plus précise (pas “bla-bla”)
+// -------------------------------------------------------------
+const INFO_TEXT = `BÂTARD — règles (clair & concret)
 
-📌 Principe
-- Une partie est une suite de "rounds" (défis) : ex. Simple 20, Double 20, Bull, Any…
-- Chaque round définit ce qui est "valide" (cible + multiplicateur, ou bull only).
-- Le score / la progression dépend du mode de victoire + des règles d’échec.
+1) Ce que tu configures ici
+- Tu choisis une LISTE DE ROUNDS (la “séquence”).
+- Chaque round définit QUELLES FLÈCHES comptent comme “valides”.
+- Selon le mode de victoire, la partie se termine différemment.
 
-⚙️ Presets
-- Classic (Bar) : séquence courte + Score max
-- Progressif : progression + course au finish
-- Punition : contraintes + malus
+2) Comment se joue un round
+Sur un round donné :
+- Tu lances tes flèches.
+- Une flèche est “valide” si elle respecte :
+  A) le multiplier (ANY / SINGLE / DOUBLE / TRIPLE)
+  B) et éventuellement la target (1..20) ou Bull-only.
+- Si tu fais 0 flèche valide sur tout le round → on applique la règle “Échec (0 valide)”.
 
-🧩 Custom
-- Déverrouille l’édition : séquence + options (victoire / échec).
+3) Preset vs Custom
+- Preset (Classic/Progressif/Punition) :
+  - La séquence et certaines règles sont PRÉDÉFINIES.
+  - Tu peux voir la séquence mais pas la modifier.
+- Custom :
+  - Tu peux modifier la séquence : ajouter / supprimer / déplacer / dupliquer.
+  - Tu peux ajuster victoire + échec.
 
-🏁 Victoire
-- Score max : on joue toute la séquence → meilleur total.
-- Course (finish) : premier à terminer la séquence gagne.
+4) Victoire (très simple)
+- Score max :
+  - On joue toute la séquence (tous les rounds).
+  - Le meilleur total gagne.
+- Course (finish) :
+  - Objectif = “terminer la séquence”.
+  - Le premier joueur qui finit la liste de rounds gagne.
 
-💥 Échec (0 valide)
-- Aucun : rien
-- Malus : -X points
-- Recul : -Y rounds
-- Freeze : rejouer le même round
-`;
+5) Échec (0 valide)
+- Aucun : rien ne se passe.
+- Malus : tu perds X points.
+- Recul : tu recules de Y rounds dans la séquence.
+- Freeze : tu restes sur le même round (tu le rejoues).
 
-const INFO_SEQUENCE = `Séquence = liste de rounds (défis)
+Astuce :
+- Si tu veux une partie “fun bar” → Classic + Score max.
+- Si tu veux un mode “challenge progression” → Progressif + Course (finish).`;
 
-Chaque round a :
-- Label : nom lisible (ex "Double 20")
-- Multiplier : ANY / SINGLE / DOUBLE / TRIPLE
-- Target : 1..20 ou libre (si vide = "n'importe quel numéro")
-- Bull only : si activé, seules les touches Bull (25/50) valident
+const INFO_SEQUENCE = `SÉQUENCE = liste ordonnée de rounds (défis)
 
-Chips (résumé rapide) :
-- S20 = simple 20
-- D20 = double 20
-- T20 = triple 20
-- BULL = bull (25/50)
-- ANY / D(any) / T(any) = libre + contrainte multiplicateur
+A) À quoi sert chaque champ (dans l’éditeur)
+1) Label
+- Juste un NOM lisible pour toi (ex: "Double 20").
+- Ne change pas la logique, c’est un repère visuel.
 
-En preset : la séquence est verrouillée.
-Passe en Custom pour modifier (ajout, suppression, déplacement, duplication).`;
+2) Multiplier
+- ANY : simple/double/triple acceptés (selon la cible).
+- SINGLE : seules les simples comptent (S).
+- DOUBLE : seules les doubles comptent (D).
+- TRIPLE : seules les triples comptent (T).
+
+3) Target
+- Vide = “n’importe quel numéro” (1..20).
+- 1..20 = tu imposes le numéro (ex: 20).
+Exemples :
+- Multiplier DOUBLE + Target 20 → seules les doubles 20 valident.
+- Multiplier DOUBLE + Target vide → n’importe quelle double valide.
+
+4) Bull only
+- Si activé : seules les touches Bull (25/50) valident ce round.
+- Dans ce cas, Target/Multiplier deviennent secondaires (le round est orienté Bull).
+
+B) Lecture des chips (résumé ultra rapide)
+- S20 = Simple 20
+- D20 = Double 20
+- T20 = Triple 20
+- BULL = Bull (25/50)
+- ANY = libre (n’importe quel segment)
+- D(any) = n’importe quelle DOUBLE
+- T(any) = n’importe quelle TRIPLE
+
+C) “Preset verrouillé”
+- Si tu es en Preset (et Custom OFF), la séquence est verrouillée.
+- Pour modifier : passe en Preset=Custom OU active “Mode Custom”.`;
 
 export default function BatardConfig(props: any) {
   const { t } = useLang();
@@ -164,18 +216,12 @@ export default function BatardConfig(props: any) {
 
   const [customEnabled, setCustomEnabled] = React.useState(false);
 
-  const [winMode, setWinMode] = React.useState<BatardWinMode>(
-    presetCfg.winMode
-  );
+  const [winMode, setWinMode] = React.useState<BatardWinMode>(presetCfg.winMode);
   const [failPolicy, setFailPolicy] = React.useState<BatardFailPolicy>(
     presetCfg.failPolicy
   );
-  const [failValue, setFailValue] = React.useState<number>(
-    presetCfg.failValue ?? 0
-  );
-  const [rounds, setRounds] = React.useState<BatardRound[]>(
-    presetCfg.rounds || []
-  );
+  const [failValue, setFailValue] = React.useState<number>(presetCfg.failValue ?? 0);
+  const [rounds, setRounds] = React.useState<BatardRound[]>(presetCfg.rounds || []);
 
   React.useEffect(() => {
     if (presetId === "custom") return;
@@ -201,7 +247,6 @@ export default function BatardConfig(props: any) {
 
   // Seed default selection: active profile first, then next humans until 2.
   React.useEffect(() => {
-    // If already selected, keep.
     if (selectedHumanIds.length > 0) return;
 
     const ids = humanProfiles.map((p) => String(p.id));
@@ -217,7 +262,7 @@ export default function BatardConfig(props: any) {
       if (!out.includes(id)) out.push(id);
     }
     if (out.length) setSelectedHumanIds(out);
-  }, [humanProfiles.length, activeProfileId]);
+  }, [humanProfiles.length, activeProfileId]); // eslint-disable-line
 
   function toggleHuman(id: string) {
     setSelectedHumanIds((prev) => {
@@ -232,13 +277,13 @@ export default function BatardConfig(props: any) {
     setSelectedBotIds((prev) => {
       const on = prev.includes(id);
       if (on) return prev.filter((x) => x !== id);
-      // global max 8
       if (prev.length + selectedHumanIds.length >= 8) return prev;
       return [...prev, id];
     });
   }
 
-  const playersCount = selectedHumanIds.length + (botsEnabled ? selectedBotIds.length : 0);
+  const playersCount =
+    selectedHumanIds.length + (botsEnabled ? selectedBotIds.length : 0);
 
   // -----------------------------------------------------------
   // Sequence UI helpers
@@ -260,7 +305,6 @@ export default function BatardConfig(props: any) {
         multiplierRule: "ANY",
       } as any,
     ]);
-    // select last
     setSelectedRoundIndex(rounds.length);
   }
 
@@ -332,7 +376,15 @@ export default function BatardConfig(props: any) {
       selectedHumanIds,
       selectedBotIds: botsEnabled ? selectedBotIds : [],
     };
-  }, [playersCount, botsEnabled, botLevel, presetId, rulesCfg, selectedHumanIds, selectedBotIds]);
+  }, [
+    playersCount,
+    botsEnabled,
+    botLevel,
+    presetId,
+    rulesCfg,
+    selectedHumanIds,
+    selectedBotIds,
+  ]);
 
   function start() {
     if (playersCount < 2) return;
@@ -364,8 +416,11 @@ export default function BatardConfig(props: any) {
       <PageHeader
         title=""
         subtitle=""
-        left={<BackDot onClick={() => (props?.setTab ? props.setTab("games") : null)} />}
-        right={<InfoDot title="Règles BÂTARD" content={INFO_TEXT} />}
+        left={
+          // ✅ retour menu games (Darts) — pas gameselect
+          <BackDot onClick={() => (props?.setTab ? props.setTab("games") : null)} />
+        }
+        right={<InfoDot title="BÂTARD — règles" content={INFO_TEXT} />}
         tickerSrc={tickerBatard}
         tickerAlt="BÂTARD"
         tickerHeight={92}
@@ -378,7 +433,9 @@ export default function BatardConfig(props: any) {
             <div style={{ fontSize: 11, opacity: 0.8, fontWeight: 800 }}>JOUEURS</div>
             <div style={{ fontSize: 16, fontWeight: 950 }}>{playersCount}/8</div>
             <div style={{ fontSize: 11, opacity: 0.7 }}>
-              {botsEnabled ? `${selectedHumanIds.length} humains + ${selectedBotIds.length} bots` : `${selectedHumanIds.length} humains`}
+              {botsEnabled
+                ? `${selectedHumanIds.length} humains + ${selectedBotIds.length} bots`
+                : `${selectedHumanIds.length} humains`}
             </div>
           </div>
           <div style={kpiCard}>
@@ -395,24 +452,52 @@ export default function BatardConfig(props: any) {
 
         {/* JOUEURS */}
         <Section title={t("players") || "JOUEURS"}>
-          <div style={{ borderRadius: 18, padding: 12, background: cardBg, border: "1px solid rgba(255,255,255,0.12)" }}>
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 8 }}>
+          <div
+            style={{
+              borderRadius: 18,
+              padding: 12,
+              background: cardBg,
+              border: "1px solid rgba(255,255,255,0.12)",
+            }}
+          >
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                gap: 10,
+                marginBottom: 8,
+              }}
+            >
               <div style={{ fontSize: 12, opacity: 0.85, fontWeight: 950 }}>
                 Sélection : {playersCount}/8 — min 2
               </div>
-              <InfoDot
+              <MiniInfoDot
                 title="Sélection joueurs"
-                content="Tape un médaillon pour sélectionner/désélectionner. Max 8 joueurs. Tu peux mixer humains + bots."
-                kind="mini" />
+                content={`Tu dois sélectionner AU MOINS 2 joueurs.
+
+- Tape un médaillon pour ajouter/retirer.
+- Max 8 joueurs (humains + bots).
+- Le badge ACTIF = profil actuellement sélectionné comme profil actif de l'app (repère visuel).`}
+              />
             </div>
 
             {/* Humans carousel (actif + locaux) */}
             {humanProfiles.length > 0 ? (
-              <div className="dc-scroll-thin" style={{ display: "flex", gap: 18, overflowX: "auto", paddingBottom: 10 }}>
+              <div
+                className="dc-scroll-thin"
+                style={{
+                  display: "flex",
+                  gap: 18,
+                  overflowX: "auto",
+                  paddingBottom: 10,
+                }}
+              >
                 {humanProfiles.map((p) => {
                   const id = String(p.id);
                   const active = selectedHumanIds.includes(id);
-                  const isActiveProfile = activeProfileId != null && String(activeProfileId) === id;
+                  const isActiveProfile =
+                    activeProfileId != null && String(activeProfileId) === id;
 
                   return (
                     <button
@@ -440,12 +525,18 @@ export default function BatardConfig(props: any) {
                           height: 78,
                           borderRadius: "50%",
                           overflow: "hidden",
-                          boxShadow: active ? `0 0 28px ${primary}aa` : "0 0 14px rgba(0,0,0,0.65)",
-                          background: active ? `radial-gradient(circle at 30% 20%, #fff8d0, ${primary})` : "#111320",
+                          boxShadow: active
+                            ? `0 0 28px ${primary}aa`
+                            : "0 0 14px rgba(0,0,0,0.65)",
+                          background: active
+                            ? `radial-gradient(circle at 30% 20%, #fff8d0, ${primary})`
+                            : "#111320",
                           display: "flex",
                           alignItems: "center",
                           justifyContent: "center",
-                          border: isActiveProfile ? `2px solid rgba(255,215,120,0.95)` : "1px solid rgba(255,255,255,0.10)",
+                          border: isActiveProfile
+                            ? `2px solid rgba(255,215,120,0.95)`
+                            : "1px solid rgba(255,255,255,0.10)",
                         }}
                       >
                         <div
@@ -454,7 +545,9 @@ export default function BatardConfig(props: any) {
                             height: "100%",
                             borderRadius: "50%",
                             overflow: "hidden",
-                            filter: active ? "none" : "grayscale(100%) brightness(0.55)",
+                            filter: active
+                              ? "none"
+                              : "grayscale(100%) brightness(0.55)",
                             opacity: active ? 1 : 0.6,
                             transition: "filter .2s ease, opacity .2s ease",
                           }}
@@ -487,7 +580,8 @@ export default function BatardConfig(props: any) {
                             fontWeight: 900,
                             letterSpacing: 0.7,
                             textTransform: "uppercase",
-                            background: "radial-gradient(circle at 30% 0, #ffe7a8, #ffb000)",
+                            background:
+                              "radial-gradient(circle at 30% 0, #ffe7a8, #ffb000)",
                             color: "#1a1205",
                             boxShadow: "0 0 10px rgba(255,176,0,0.45)",
                             border: "1px solid rgba(255,230,170,0.9)",
@@ -503,7 +597,8 @@ export default function BatardConfig(props: any) {
               </div>
             ) : (
               <div style={{ padding: "8px 2px", fontSize: 12, opacity: 0.8 }}>
-                Aucun profil local trouvé. Va dans <b>Profils</b> pour en créer (ou connecte-toi pour avoir le profil actif).
+                Aucun profil local trouvé. Va dans <b>Profils</b> pour en créer
+                (ou connecte-toi pour avoir le profil actif).
               </div>
             )}
 
@@ -511,9 +606,24 @@ export default function BatardConfig(props: any) {
             <OptionRow
               label="Bots IA"
               hint="Ajoute des bots PRO (prédéfinis)."
-              right={<InfoDot title="Bots IA" content="Active pour afficher le carrousel des bots. Tu peux mixer humains + bots (max 8 joueurs)." kind="mini" />}
+              right={
+                <MiniInfoDot
+                  title="Bots IA"
+                  content={`Active pour afficher le carrousel des bots PRO.
+
+- Tu peux mixer humains + bots.
+- Limite globale : 8 joueurs.
+- Si tu désactives Bots IA : les bots sélectionnés sont retirés automatiquement.`}
+                />
+              }
             >
-              <OptionToggle value={botsEnabled} onChange={(v) => { setBotsEnabled(v); if (!v) setSelectedBotIds([]); }} />
+              <OptionToggle
+                value={botsEnabled}
+                onChange={(v) => {
+                  setBotsEnabled(v);
+                  if (!v) setSelectedBotIds([]);
+                }}
+              />
             </OptionRow>
 
             {botsEnabled && (
@@ -521,7 +631,16 @@ export default function BatardConfig(props: any) {
                 <OptionRow
                   label="Niveau bot"
                   hint="Difficulté globale des bots."
-                  right={<InfoDot title="Niveau bot" content="Ce niveau sert à régler la difficulté globale (si l'engine en tient compte). Les bots PRO restent visibles." kind="mini" />}
+                  right={
+                    <MiniInfoDot
+                      title="Niveau bot"
+                      content={`Réglage global de difficulté.
+
+Important :
+- Certains moteurs utilisent ce réglage pour ajuster la réussite.
+- Les bots PRO restent les mêmes profils (c’est un “modificateur” de difficulté).`}
+                    />
+                  }
                 >
                   <OptionSelect
                     value={botLevel}
@@ -535,6 +654,7 @@ export default function BatardConfig(props: any) {
                 </OptionRow>
 
                 <div
+                  className="dc-scroll-thin"
                   style={{
                     display: "flex",
                     gap: 14,
@@ -543,7 +663,6 @@ export default function BatardConfig(props: any) {
                     paddingBottom: 10,
                     paddingTop: 10,
                   }}
-                  className="dc-scroll-thin"
                 >
                   {PRO_BOTS.map((b: any) => {
                     const id = String(b.id);
@@ -568,6 +687,7 @@ export default function BatardConfig(props: any) {
                           flexShrink: 0,
                           cursor: "pointer",
                         }}
+                        title="Tape pour ajouter/retirer"
                       >
                         <div
                           style={{
@@ -575,11 +695,15 @@ export default function BatardConfig(props: any) {
                             height: 78,
                             borderRadius: "50%",
                             overflow: "hidden",
-                            boxShadow: active ? `0 0 26px rgba(255,192,0,0.65)` : "0 0 14px rgba(0,0,0,0.65)",
+                            boxShadow: active
+                              ? `0 0 26px rgba(255,192,0,0.65)`
+                              : "0 0 14px rgba(0,0,0,0.65)",
                             background: active
                               ? "radial-gradient(circle at 30% 20%, #fff7cc, #ffb000)"
                               : "radial-gradient(circle at 30% 20%, rgba(255,255,255,0.16), rgba(0,0,0,0.55))",
-                            border: active ? "2px solid rgba(255,215,120,0.95)" : "1px solid rgba(255,255,255,0.10)",
+                            border: active
+                              ? "2px solid rgba(255,215,120,0.95)"
+                              : "1px solid rgba(255,255,255,0.10)",
                             display: "flex",
                             alignItems: "center",
                             justifyContent: "center",
@@ -596,7 +720,11 @@ export default function BatardConfig(props: any) {
                             }}
                           >
                             <ProfileAvatar
-                              profile={{ id: b.id, name: b.name, avatar }}
+                              profile={{
+                                id: b.id,
+                                name: b.displayName ?? b.name ?? "Bot",
+                                avatarUrl: avatar,
+                              }}
                               size={78}
                               showStars={false}
                             />
@@ -615,7 +743,7 @@ export default function BatardConfig(props: any) {
                             whiteSpace: "nowrap",
                           }}
                         >
-                          {b.name}
+                          {b.displayName ?? b.name ?? "Bot"}
                         </div>
 
                         <span
@@ -626,7 +754,8 @@ export default function BatardConfig(props: any) {
                             fontWeight: 900,
                             letterSpacing: 0.7,
                             textTransform: "uppercase",
-                            background: "radial-gradient(circle at 30% 0, #ffe7a8, #ffb000)",
+                            background:
+                              "radial-gradient(circle at 30% 0, #ffe7a8, #ffb000)",
                             color: "#1a1205",
                             boxShadow: "0 0 10px rgba(255,176,0,0.45)",
                             border: "1px solid rgba(255,230,170,0.9)",
@@ -646,11 +775,28 @@ export default function BatardConfig(props: any) {
 
         {/* RÈGLES */}
         <Section title="RÈGLES">
-          <div style={{ borderRadius: 18, padding: 12, background: cardBg, border: "1px solid rgba(255,255,255,0.12)" }}>
+          <div
+            style={{
+              borderRadius: 18,
+              padding: 12,
+              background: cardBg,
+              border: "1px solid rgba(255,255,255,0.12)",
+            }}
+          >
             <OptionRow
               label="Preset"
               hint="Choisis une base, puis passe en Custom pour modifier."
-              right={<InfoDot title="Preset" content="Classic / Progressif / Punition appliquent une séquence + règles. Custom déverrouille l’édition." kind="mini" />}
+              right={
+                <MiniInfoDot
+                  title="Preset"
+                  content={`Le preset charge une configuration complète (séquence + règles).
+
+- Classic (Bar) : rapide, parfait en mode “score max”.
+- Progressif : logique de progression (souvent mieux en “course”).
+- Punition : ajoute une logique plus punitive (échec plus impactant).
+- Custom : tu veux tout régler à la main.`}
+                />
+              }
             >
               <OptionSelect
                 value={presetId}
@@ -667,15 +813,35 @@ export default function BatardConfig(props: any) {
             <OptionRow
               label="Mode Custom"
               hint="Déverrouille l’édition (séquence + options)."
-              right={<InfoDot title="Custom" content="Active pour éditer la séquence et les options. En preset, la séquence reste verrouillée." kind="mini" />}
+              right={
+                <MiniInfoDot
+                  title="Mode Custom"
+                  content={`Déverrouille l’édition.
+
+Concrètement :
+- OFF : tu peux lire la séquence, mais pas la modifier.
+- ON : tu peux ajouter/supprimer/déplacer/dupliquer des rounds + éditer leurs champs.`}
+                />
+              }
             >
-              <OptionToggle value={customEnabled || presetId === "custom"} onChange={(v) => setCustomEnabled(v)} />
+              <OptionToggle
+                value={customEnabled || presetId === "custom"}
+                onChange={(v) => setCustomEnabled(v)}
+              />
             </OptionRow>
 
             <OptionRow
               label="Condition de victoire"
               hint="Score max ou course au finish."
-              right={<InfoDot title="Victoire" content="Score max: meilleur total à la fin. Course: premier à terminer la séquence." kind="mini" />}
+              right={
+                <MiniInfoDot
+                  title="Condition de victoire"
+                  content={`Choisit comment la partie se termine.
+
+- Score max : on joue TOUS les rounds → meilleur total gagne.
+- Course (finish) : le 1er qui “termine la séquence” gagne (logique de course).`}
+                />
+              }
             >
               <OptionSelect
                 value={winMode}
@@ -690,7 +856,17 @@ export default function BatardConfig(props: any) {
             <OptionRow
               label="Échec (0 valide)"
               hint="Que faire si aucune flèche ne valide le round."
-              right={<InfoDot title="Échec" content="Aucun: rien. Malus: -X points. Recul: -Y rounds. Freeze: rejouer le round." kind="mini" />}
+              right={
+                <MiniInfoDot
+                  title="Échec (0 valide)"
+                  content={`S’applique si tu fais ZÉRO flèche valide sur le round.
+
+- Aucun : rien.
+- Malus : -X points (X = Valeur).
+- Recul : -Y rounds (Y = Valeur) → tu recules dans la séquence.
+- Freeze : tu rejoues le même round (tu n’avances pas).`}
+                />
+              }
             >
               <OptionSelect
                 value={failPolicy}
@@ -708,14 +884,21 @@ export default function BatardConfig(props: any) {
               <OptionRow
                 label={failPolicy === "MINUS_POINTS" ? "Valeur malus" : "Recul rounds"}
                 hint="Ajuste la valeur (X ou Y)."
-                right={<InfoDot title="Valeur" content="Pour Malus: X points retirés. Pour Recul: Y rounds de retour." kind="mini" />}
+                right={
+                  <MiniInfoDot
+                    title="Valeur"
+                    content={
+                      failPolicy === "MINUS_POINTS"
+                        ? `X = nombre de points retirés quand tu fais 0 valide sur le round.`
+                        : `Y = nombre de rounds de retour quand tu fais 0 valide sur le round.`
+                    }
+                  />
+                }
               >
                 <input
                   type="number"
                   value={failValue}
-                  onChange={(e) =>
-                    setFailValue(Math.max(0, Number(e.target.value || 0)))
-                  }
+                  onChange={(e) => setFailValue(Math.max(0, Number(e.target.value || 0)))}
                   style={{
                     width: 120,
                     height: 44,
@@ -735,9 +918,16 @@ export default function BatardConfig(props: any) {
         {/* SÉQUENCE */}
         <Section
           title="SÉQUENCE (ROUNDS)"
-          right={<InfoDot title="Séquence" content={INFO_SEQUENCE} kind="mini" />}
+          right={<MiniInfoDot title="Séquence" content={INFO_SEQUENCE} />}
         >
-          <div style={{ borderRadius: 18, padding: 12, background: cardBg, border: "1px solid rgba(255,255,255,0.12)" }}>
+          <div
+            style={{
+              borderRadius: 18,
+              padding: 12,
+              background: cardBg,
+              border: "1px solid rgba(255,255,255,0.12)",
+            }}
+          >
             <div style={{ fontSize: 12, opacity: 0.82, marginBottom: 10, lineHeight: 1.25 }}>
               {!editingEnabled ? (
                 <>
@@ -751,7 +941,10 @@ export default function BatardConfig(props: any) {
             </div>
 
             {/* Compact chips */}
-            <div className="dc-scroll-thin" style={{ display: "flex", gap: 10, overflowX: "auto", paddingBottom: 8 }}>
+            <div
+              className="dc-scroll-thin"
+              style={{ display: "flex", gap: 10, overflowX: "auto", paddingBottom: 8 }}
+            >
               {rounds.map((r, i) => {
                 const active = i === selectedRoundIndex;
                 const short = roundShort(r);
@@ -766,7 +959,9 @@ export default function BatardConfig(props: any) {
                       height: 44,
                       padding: "0 12px",
                       borderRadius: 14,
-                      border: active ? `1px solid ${primary}aa` : "1px solid rgba(255,255,255,0.12)",
+                      border: active
+                        ? `1px solid ${primary}aa`
+                        : "1px solid rgba(255,255,255,0.12)",
                       background: active
                         ? `linear-gradient(180deg, rgba(125,255,202,0.22), rgba(0,0,0,0.28))`
                         : "rgba(0,0,0,0.18)",
@@ -789,22 +984,42 @@ export default function BatardConfig(props: any) {
 
             {/* Round editor */}
             {selectedRound && (
-              <div style={{ marginTop: 10, borderRadius: 16, padding: 12, background: "rgba(0,0,0,0.22)", border: "1px solid rgba(255,255,255,0.12)" }}>
+              <div
+                style={{
+                  marginTop: 10,
+                  borderRadius: 16,
+                  padding: 12,
+                  background: "rgba(0,0,0,0.22)",
+                  border: "1px solid rgba(255,255,255,0.12)",
+                }}
+              >
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
                   <div style={{ fontWeight: 950, fontSize: 13 }}>
                     Round #{selectedRoundIndex + 1} — {(selectedRound as any).label || "Round"}
                   </div>
                   <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
-                    <button className="dc-btn" onClick={() => moveRound(selectedRoundIndex, -1)} disabled={!editingEnabled || selectedRoundIndex === 0}>
+                    <button
+                      className="dc-btn"
+                      onClick={() => moveRound(selectedRoundIndex, -1)}
+                      disabled={!editingEnabled || selectedRoundIndex === 0}
+                    >
                       ↑
                     </button>
-                    <button className="dc-btn" onClick={() => moveRound(selectedRoundIndex, +1)} disabled={!editingEnabled || selectedRoundIndex >= rounds.length - 1}>
+                    <button
+                      className="dc-btn"
+                      onClick={() => moveRound(selectedRoundIndex, +1)}
+                      disabled={!editingEnabled || selectedRoundIndex >= rounds.length - 1}
+                    >
                       ↓
                     </button>
                     <button className="dc-btn" onClick={() => dupRound(selectedRoundIndex)} disabled={!editingEnabled}>
                       Dupliquer
                     </button>
-                    <button className="dc-btn-danger" onClick={() => removeRound(selectedRoundIndex)} disabled={!editingEnabled || rounds.length <= 1}>
+                    <button
+                      className="dc-btn-danger"
+                      onClick={() => removeRound(selectedRoundIndex)}
+                      disabled={!editingEnabled || rounds.length <= 1}
+                    >
                       Supprimer
                     </button>
                   </div>
@@ -812,7 +1027,9 @@ export default function BatardConfig(props: any) {
 
                 <div style={{ marginTop: 10, display: "grid", gridTemplateColumns: "1fr 140px", gap: 10 }}>
                   <div>
-                    <div style={{ fontSize: 11, opacity: 0.75, fontWeight: 850, marginBottom: 6 }}>Label</div>
+                    <div style={{ fontSize: 11, opacity: 0.75, fontWeight: 850, marginBottom: 6 }}>
+                      Label
+                    </div>
                     <input
                       value={(selectedRound as any).label || ""}
                       onChange={(e) => updateRound(selectedRoundIndex, { label: e.target.value } as any)}
@@ -832,7 +1049,9 @@ export default function BatardConfig(props: any) {
                   </div>
 
                   <div>
-                    <div style={{ fontSize: 11, opacity: 0.75, fontWeight: 850, marginBottom: 6 }}>Multiplier</div>
+                    <div style={{ fontSize: 11, opacity: 0.75, fontWeight: 850, marginBottom: 6 }}>
+                      Multiplier
+                    </div>
                     <select
                       value={((selectedRound as any).multiplierRule || "ANY") as BatardMultiplierRule}
                       onChange={(e) => updateRound(selectedRoundIndex, { multiplierRule: e.target.value as any } as any)}
@@ -856,7 +1075,9 @@ export default function BatardConfig(props: any) {
                   </div>
 
                   <div>
-                    <div style={{ fontSize: 11, opacity: 0.75, fontWeight: 850, marginBottom: 6 }}>Target</div>
+                    <div style={{ fontSize: 11, opacity: 0.75, fontWeight: 850, marginBottom: 6 }}>
+                      Target
+                    </div>
                     <select
                       value={String((selectedRound as any).target ?? "")}
                       onChange={(e) =>
@@ -889,7 +1110,16 @@ export default function BatardConfig(props: any) {
                     <OptionRow
                       label="Bull only"
                       hint="Cible bull uniquement (25/50)."
-                      right={<InfoDot title="Bull only" content="Si activé, seules les touches Bull (25/50) valident ce round." kind="mini" />}
+                      right={
+                        <MiniInfoDot
+                          title="Bull only"
+                          content={`Active = seules les touches Bull valent (25/50).
+
+Usage :
+- Round “BULL” pur.
+- Idéal pour finir une séquence sur un défi Bull.`}
+                        />
+                      }
                     >
                       <OptionToggle
                         value={Boolean((selectedRound as any).bullOnly)}
