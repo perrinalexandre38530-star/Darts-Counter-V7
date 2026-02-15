@@ -4028,7 +4028,7 @@ return (
       src={tickerKiller as any}
       alt="Killer"
       draggable={false}
-      style={{ width: "100%", height: 92, objectFit: "cover", display: "block" }}
+      style={{ width: "100%", height: 82, objectFit: "cover", display: "block" }}
     />
 
     {/* overlay controls */}
@@ -4039,13 +4039,13 @@ return (
         display: "flex",
         alignItems: "center",
         justifyContent: "space-between",
-        padding: "0 12px",
+        padding: "0 10px",
         pointerEvents: "none",
       }}
     >
       {/* ✅ inversé: InfoDot à gauche */}
       <div style={{ display: "flex", alignItems: "center", gap: 8, pointerEvents: "auto" }}>
-        <InfoDot onClick={() => setShowRules(true)} size={42} color={gold} glow={`${gold}AA`} />
+        <InfoDot onClick={() => setShowRules(true)} size={38} color={gold} glow={`${gold}AA`} />
       </div>
 
       {/* ✅ BackDot à droite */}
@@ -4053,7 +4053,7 @@ return (
         <BackDot
           onClick={() => go("killer_config")}
           title="Retour"
-          size={42}
+          size={38}
           color={gold}
           glow={`${gold}AA`}
         />
@@ -4062,33 +4062,33 @@ return (
   </div>
 
   {/* ✅ Carousel just under ticker */}
-  <div style={{ ...card, padding: 8, marginTop: 8 }}>
+  <div style={{ ...card, padding: 6, marginTop: 6 }}>
     <TargetsCarousel players={players} activeId={current?.id || null} theme={theme} blindMask={blindKillerOn} />
   </div>
 </div>{/* ✅ ACTIVE PLAYER (FIXED) */}
-      <div style={{ marginTop: 8, ...card, padding: 12 }}>
+      <div style={{ marginTop: 6, ...card, padding: 10 }}>
         <div
           style={{
             display: "grid",
-            gridTemplateColumns: "92px 1fr 112px",
+            gridTemplateColumns: "86px 1fr 104px",
             gap: 10,
             alignItems: "center",
           }}
         >
-          <div style={{ display: "grid", justifyItems: "center", gap: 8 }}>
+          <div style={{ display: "grid", justifyItems: "center", gap: 6 }}>
             <AvatarMedallion
-              size={84}
+              size={76}
               src={current?.avatarDataUrl}
               name={current?.name}
             />
             <div
               style={{
-                fontSize: 13,
+                fontSize: 12,
                 fontWeight: 1000,
                 color: gold,
                 textTransform: "uppercase",
                 textAlign: "center",
-                width: 92,
+                width: 86,
                 whiteSpace: "nowrap",
                 overflow: "hidden",
                 textOverflow: "ellipsis",
@@ -4104,9 +4104,9 @@ return (
               borderRadius: 16,
               border: "1px solid rgba(255,255,255,.08)",
               background: "rgba(0,0,0,.28)",
-              padding: 10,
+              padding: 8,
               display: "grid",
-              gap: 8,
+              gap: 6,
             }}
           >
             <StatRow label="Darts" value={dartsLeft} />
@@ -4119,10 +4119,10 @@ return (
             {/* ✅ numéro GROS sans # */}
             <div
               style={{
-                width: 108,
+                width: 104,
                 textAlign: "center",
                 fontWeight: 1000,
-                fontSize: 26,
+                fontSize: 24,
                 color: gold,
                 letterSpacing: 0.8,
                 lineHeight: 1,
@@ -4143,9 +4143,9 @@ return (
             <div
               style={{
                 display: "grid",
-                gridTemplateColumns: "56px 56px",
-                gap: 8,
-                width: 112,
+                gridTemplateColumns: "52px 52px",
+                gap: 6,
+                width: 104,
                 justifyContent: "end",
               }}
             >

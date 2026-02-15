@@ -25,14 +25,14 @@ export const DuelHeaderCompact: React.FC<Props> = ({
 }) => {
   // Style “triple” pour les petits ronds de sets
   const setPillStyle: React.CSSProperties = {
-    minWidth: 18,
-    height: 18,
-    padding: "0 4px",
+    minWidth: 16,
+    height: 16,
+    padding: "0 3px",
     borderRadius: 999,
     border: "1px solid rgba(255, 105, 180, 0.9)", // contour rose
     background: "rgba(255, 105, 180, 0.18)", // fond léger rose
     color: "#ff79c6", // texte rose
-    fontSize: 10,
+    fontSize: 9,
     fontWeight: 700,
     display: "flex",
     alignItems: "center",
@@ -42,13 +42,13 @@ export const DuelHeaderCompact: React.FC<Props> = ({
   };
 
   const legPillStyle: React.CSSProperties = {
-    minWidth: 22,
-    height: 20,
-    padding: "0 6px",
+    minWidth: 20,
+    height: 18,
+    padding: "0 5px",
     borderRadius: 999,
     background: "rgba(246,194,86,0.25)",
     color: "#ffffff",
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: 700,
     display: "flex",
     alignItems: "center",
@@ -62,8 +62,8 @@ export const DuelHeaderCompact: React.FC<Props> = ({
       style={{
         display: "flex",
         alignItems: "center",
-        gap: 6, // resserré
-        padding: "2px 8px",
+        gap: 4, // resserré
+        padding: "1px 6px",
         borderRadius: 999,
         background:
           "linear-gradient(135deg, rgba(255,255,255,0.06), rgba(0,0,0,0.45))",
@@ -73,8 +73,8 @@ export const DuelHeaderCompact: React.FC<Props> = ({
       {/* Avatar gauche */}
       <div
         style={{
-          width: 26,
-          height: 26,
+          width: 24,
+          height: 24,
           borderRadius: "999px",
           overflow: "hidden",
           boxShadow: "0 0 0 2px rgba(246,194,86,0.55)",
@@ -158,8 +158,8 @@ export const DuelHeaderCompact: React.FC<Props> = ({
       {/* Avatar droite */}
       <div
         style={{
-          width: 26,
-          height: 26,
+          width: 24,
+          height: 24,
           borderRadius: "999px",
           overflow: "hidden",
           boxShadow: "0 0 0 2px rgba(246,194,86,0.55)",
