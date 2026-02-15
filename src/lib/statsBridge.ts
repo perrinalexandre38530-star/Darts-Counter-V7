@@ -132,9 +132,13 @@ export type LeaderboardMetric =
   | "bestVisit"
   | "bestCheckout"
   | "h180"
-  | "precision"; // cricket
+  | "precision"
+  | "failsRate"
+  | "validHitsRate"
+  | "advancesPerGame"
+  | "pointsPerTurn"; // cricket
 
-export type LeaderboardMode = "x01" | "cricket" | "killer" | "shanghai";
+export type LeaderboardMode = "x01" | "cricket" | "killer" | "shanghai" | "batard";
 
 /* ============================================================
    QUICK STATS legacy (cache localStorage)
@@ -1215,6 +1219,30 @@ export async function getLeaderboards(args: {
         metric === "winRate" ? s.winRate :
         metric === "wins" ? s.wins :
         metric === "games" ? s.matches :
+        0;
+
+      rows.push({ playerId: pid, value, stats: s });
+    }
+
+    if (mode === "batard") {
+      const s = await getBatardProfileStats(pid, range, source);
+      if ((s.games || 0) < minGames) continue;
+
+      const failsRate = (s.games > 0) ? (N(s.fails,0) / s.games) : 0;
+      const validHitsRate = (s.darts > 0) ? (N(s.validHits,0) / s.darts) : 0;
+      const advancesPerGame = (s.games > 0) ? (N(s.advances,0) / s.games) : 0;
+      const pointsPerTurn = (s.games > 0) ? (N(s.points,0) / (N(s.darts,0) / 3 || 1)) : 0;
+
+      const value =
+        metric === "avg3" ? s.avg3 :
+        metric === "winRate" ? s.winRate :
+        metric === "wins" ? s.wins :
+        metric === "games" ? s.games :
+        metric === "bestVisit" ? s.bestVisit :
+        metric === "failsRate" ? failsRate :
+        metric === "validHitsRate" ? validHitsRate :
+        metric === "advancesPerGame" ? advancesPerGame :
+        metric === "pointsPerTurn" ? pointsPerTurn :
         0;
 
       rows.push({ playerId: pid, value, stats: s });

@@ -10,7 +10,7 @@ import tickerBatard from "../../assets/tickers/ticker_bastard.png";
 
 import type { Dart as UIDart } from "../../lib/types";
 import type { BatardConfig as BatardRulesConfig, BatardRound } from "../../lib/batard/batardTypes";
-import { useBatardEngine } from "../../hooks/useBatardEngine";
+import { computeBatardReplaySnapshot, useBatardEngine } from "../../hooks/useBatardEngine";
 import type { BatardConfigPayload } from "./BatardConfig";
 
 import { History } from "../../lib/history";
@@ -81,12 +81,27 @@ export default function BatardPlay(props: any) {
       } as BatardRulesConfig,
     };
 
+
+  // -----------------------------------------------------------
+  // Resume (History) — rebuild from visits[] + saved config
+  // -----------------------------------------------------------
+  const resumeId: string | null =
+    (props?.params?.resumeId as string) ||
+    (props?.params?.matchId as string) ||
+    (props?.resumeId as string) ||
+    null;
+
+  const [resumeLoaded, setResumeLoaded] = useState<boolean>(false);
+  const [runtimeCfg, setRuntimeCfg] = useState<BatardConfigPayload>(cfg);
+  const [engineResetKey, setEngineResetKey] = useState<number>(0);
+  const [engineInit, setEngineInit] = useState<any | null>(null);
+
   // -----------------------------------------------------------
   // Players resolution (human profiles + bots) — from BatardConfig
   // -----------------------------------------------------------
   const lightPlayers: LightPlayer[] = useMemo(() => {
-    const humans = (cfg.selectedHumanIds || []).filter(Boolean);
-    const bots = cfg.botsEnabled ? (cfg.selectedBotIds || []).filter(Boolean) : [];
+    const humans = (runtimeCfg.selectedHumanIds || []).filter(Boolean);
+    const bots = runtimeCfg.botsEnabled ? (runtimeCfg.selectedBotIds || []).filter(Boolean) : [];
 
     // If config is empty (edge), fallback to first N store profiles.
     const fallbackHumans =
@@ -94,10 +109,10 @@ export default function BatardPlay(props: any) {
         ? humans
         : storeProfiles
             .filter((p) => p && p.id != null && !(p.isBot === true))
-            .slice(0, Math.max(2, cfg.players))
+            .slice(0, Math.max(2, runtimeCfg.players))
             .map((p) => String(p.id));
 
-    const allIds = [...fallbackHumans, ...bots].slice(0, Math.max(2, cfg.players));
+    const allIds = [...fallbackHumans, ...bots].slice(0, Math.max(2, runtimeCfg.players));
 
     return allIds.map((id) => {
       // bot pro?
@@ -117,15 +132,16 @@ export default function BatardPlay(props: any) {
         avatarDataUrl: prof?.avatarDataUrl ?? null,
       };
     });
-  }, [cfg.selectedHumanIds, cfg.selectedBotIds, cfg.botsEnabled, cfg.players, storeProfiles]);
+  }, [runtimeCfg.selectedHumanIds, runtimeCfg.selectedBotIds, runtimeCfg.botsEnabled, runtimeCfg.players, storeProfiles]);
 
   const playerIds = useMemo(() => lightPlayers.map((p) => p.id), [lightPlayers]);
+
 
   // -----------------------------------------------------------
   // Engine
   // -----------------------------------------------------------
   const { states, ranking, currentPlayerIndex, currentRound, submitVisit, finished, winnerId, turnCounter } =
-    useBatardEngine(playerIds, cfg.batard);
+    useBatardEngine(playerIds, runtimeCfg.batard, { resetKey: engineResetKey, initialSnapshot: engineInit });
 
   const active = states[currentPlayerIndex];
   const activeRoundIdx = active?.roundIndex ?? 0;
@@ -140,9 +156,66 @@ export default function BatardPlay(props: any) {
   const visitsRef = useRef<any[]>([]);
   const didSaveFinishedRef = useRef<boolean>(false);
 
+
+  // Load resume match from History (if provided)
+  useEffect(() => {
+    let cancelled = false;
+    if (!resumeId || resumeLoaded) return;
+    (async () => {
+      try {
+        const rec: any = await History.get(resumeId);
+        if (!rec || cancelled) {
+          setResumeLoaded(true);
+          return;
+        }
+
+        const payload = (rec as any).payload || (rec as any).decoded || null;
+        const savedCfg = payload?.config || null;
+        const savedVisits = Array.isArray(payload?.visits) ? payload.visits : [];
+
+        // restore match id + createdAt
+        if (rec?.id) matchIdRef.current = String(rec.id);
+        if (payload?.createdAt) createdAtRef.current = Number(payload.createdAt) || createdAtRef.current;
+
+        // restore visits for bestVisit/summary consistency
+        visitsRef.current = savedVisits;
+
+        // apply config from saved match (prefer saved players list)
+        if (savedCfg) {
+          // savedCfg.players may already be LightPlayer[]
+          const maybePlayers = Array.isArray(savedCfg.players) ? savedCfg.players : null;
+          if (maybePlayers && maybePlayers.length) {
+            // keep same shape as BatardConfigPayload expects (players count etc.)
+            setRuntimeCfg((prev) => ({ ...(prev as any), ...(savedCfg as any), players: maybePlayers.length }));
+          } else {
+            setRuntimeCfg((prev) => ({ ...(prev as any), ...(savedCfg as any) }));
+          }
+        }
+
+        // build engine init snapshot
+        const ids: string[] = Array.isArray(savedCfg?.players)
+          ? savedCfg.players.map((p: any) => String(p.id))
+          : lightPlayers.map((p) => p.id);
+
+        const snap = computeBatardReplaySnapshot(ids, (savedCfg?.batard || runtimeCfg.batard) as any, savedVisits);
+        setEngineInit(snap);
+        setEngineResetKey((k) => k + 1);
+      } catch (e) {
+        console.warn("[BatardPlay] resume load failed", e);
+      } finally {
+        if (!cancelled) setResumeLoaded(true);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [resumeId]);
+
   function buildSummaryFromStates(finalStates: any[]) {
     const dartsByPlayer: Record<string, number> = {};
     const pointsByPlayer: Record<string, number> = {};
+    const turnsByPlayer: Record<string, number> = {};
     const avg3ByPlayer: Record<string, number> = {};
     const failsByPlayer: Record<string, number> = {};
     const validHitsByPlayer: Record<string, number> = {};
@@ -163,10 +236,12 @@ export default function BatardPlay(props: any) {
       const pid = String(p.id);
       const darts = Number(p?.stats?.dartsThrown || 0);
       const pts = Number(p?.stats?.pointsAdded || 0);
+      const turns = Number(p?.stats?.turns || 0);
       const a3 = darts > 0 ? (pts / darts) * 3 : 0;
 
       dartsByPlayer[pid] = darts;
       pointsByPlayer[pid] = pts;
+      turnsByPlayer[pid] = turns;
       avg3ByPlayer[pid] = a3;
 
       failsByPlayer[pid] = Number(p?.stats?.fails || 0);
@@ -177,13 +252,15 @@ export default function BatardPlay(props: any) {
     return {
       matchId: matchIdRef.current,
       mode: "batard",
-      presetId: cfg.presetId,
-      batardPresetId: (cfg.batard as any)?.presetId,
+      presetId: runtimeCfg.presetId,
+      batardPresetId: (runtimeCfg.batard as any)?.presetId,
       status: finished ? "finished" : "in_progress",
 
       // maps (compat deriveHistoryStats + statsBridge)
       darts: dartsByPlayer,
       pointsByPlayer,
+      dartsByPlayer,
+      turnsByPlayer,
       avg3ByPlayer,
       bestVisitByPlayer,
 
@@ -193,11 +270,11 @@ export default function BatardPlay(props: any) {
       advancesByPlayer,
 
       turns: turnCounter,
-      winMode: cfg.batard.winMode,
-      failPolicy: cfg.batard.failPolicy,
-      failValue: cfg.batard.failValue,
-      scoreOnlyValid: cfg.batard.scoreOnlyValid,
-      minValidHitsToAdvance: cfg.batard.minValidHitsToAdvance,
+      winMode: runtimeCfg.batard.winMode,
+      failPolicy: runtimeCfg.batard.failPolicy,
+      failValue: runtimeCfg.batard.failValue,
+      scoreOnlyValid: runtimeCfg.batard.scoreOnlyValid,
+      minValidHitsToAdvance: runtimeCfg.batard.minValidHitsToAdvance,
     };
   }
 
@@ -217,7 +294,7 @@ export default function BatardPlay(props: any) {
 
       // store light config only (safe + stable)
       config: {
-        ...cfg,
+        ...runtimeCfg,
         players: lightPlayers,
       },
 
@@ -362,11 +439,11 @@ export default function BatardPlay(props: any) {
 
         <div style={{ marginTop: 10, opacity: 0.85, fontSize: 12, lineHeight: 1.35 }}>
           <div>
-            <b>winMode</b>: {cfg.batard.winMode} — <b>failPolicy</b>: {cfg.batard.failPolicy}
-            {cfg.batard.failPolicy !== "NONE" ? ` (${cfg.batard.failValue})` : ""}
+            <b>winMode</b>: {runtimeCfg.batard.winMode} — <b>failPolicy</b>: {runtimeCfg.batard.failPolicy}
+            {runtimeCfg.batard.failPolicy !== "NONE" ? ` (${runtimeCfg.batard.failValue})` : ""}
           </div>
           <div>
-            <b>scoreOnlyValid</b>: {String(cfg.batard.scoreOnlyValid)} — <b>minValidHitsToAdvance</b>: {cfg.batard.minValidHitsToAdvance}
+            <b>scoreOnlyValid</b>: {String(runtimeCfg.batard.scoreOnlyValid)} — <b>minValidHitsToAdvance</b>: {runtimeCfg.batard.minValidHitsToAdvance}
           </div>
         </div>
 
@@ -386,7 +463,7 @@ export default function BatardPlay(props: any) {
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
                   <div style={{ fontWeight: 800 }}>{lp?.name || p.id}</div>
                   <div style={{ opacity: 0.8, fontSize: 12 }}>
-                    Round {Math.min(p.roundIndex + 1, cfg.batard.rounds.length)}/{cfg.batard.rounds.length}
+                    Round {Math.min(p.roundIndex + 1, runtimeCfg.batard.rounds.length)}/{runtimeCfg.batard.rounds.length}
                   </div>
                 </div>
 

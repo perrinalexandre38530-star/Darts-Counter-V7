@@ -18,7 +18,9 @@ import type { Dart as UIDart } from "../lib/types";
 import {
   getCricketProfileStats,
   getX01MultiLegsSetsForProfile,
+  getBatardProfileStats,
   type X01MultiLegsSets,
+  type BatardProfileStats,
 } from "../lib/statsBridge";
 import type { CricketProfileStats } from "../lib/cricketStats";
 
@@ -3744,6 +3746,7 @@ const modeDefs = React.useMemo(
     { key: "shanghai", label: "Shanghai" }, // ✅ NEW
     { key: "killer", label: "Killer" },
     { key: "golf", label: "Golf" },
+    { key: "batard", label: "BÂTARD" },
     { key: "territories", label: "Territories" },
     { key: "leaderboards", label: "Classements" },
     { key: "history", label: "Historique" },
@@ -4410,10 +4413,14 @@ const [cricketStats, setCricketStats] =
 const [x01MultiLegsSets, setX01MultiLegsSets] =
   React.useState<X01MultiLegsSets | null>(null);
 
+const [batardStats, setBatardStats] =
+  React.useState<BatardProfileStats | null>(null);
+
 React.useEffect(() => {
   if (!selectedPlayer?.id) {
     setCricketStats(null);
     setX01MultiLegsSets(null);
+    setBatardStats(null);
     return;
   }
 
@@ -4421,14 +4428,16 @@ React.useEffect(() => {
 
   (async () => {
     try {
-      const [cri, x01multi] = await Promise.all([
+      const [cri, x01multi, bat] = await Promise.all([
         getCricketProfileStats(selectedPlayer.id),
         getX01MultiLegsSetsForProfile(selectedPlayer.id),
+        getBatardProfileStats(selectedPlayer.id),
       ]);
 
       if (!cancelled) {
         setCricketStats(cri);
         setX01MultiLegsSets(x01multi);
+        setBatardStats(bat);
       }
     } catch (err) {
       // eslint-disable-next-line no-console
@@ -4436,6 +4445,7 @@ React.useEffect(() => {
       if (!cancelled) {
         setCricketStats(null);
         setX01MultiLegsSets(null);
+        setBatardStats(null);
       }
     }
   })();
@@ -5446,6 +5456,110 @@ return (
               </>
             );
           })()}
+                </div>
+              </div>
+            )}
+
+
+            {currentMode === "batard" && (
+              <div style={card}>
+                <div style={{ padding: 18 }}>
+                  <div style={{ fontWeight: 1000, letterSpacing: 1, color: "#ffd56a", marginBottom: 10 }}>
+                    BÂTARD — Stats
+                  </div>
+
+                  {!selectedPlayer ? (
+                    <div style={{ color: T.text70, fontSize: 13 }}>
+                      Sélectionne un joueur pour afficher les stats BÂTARD.
+                    </div>
+                  ) : !batardStats ? (
+                    <div style={{ color: T.text70, fontSize: 13 }}>
+                      Chargement des stats…
+                    </div>
+                  ) : (
+                    (() => {
+                      const s: any = batardStats;
+                      const box = { ...softCard, padding: 14 } as React.CSSProperties;
+                      const label = { opacity: 0.85, fontSize: 12 } as React.CSSProperties;
+                      const value = { fontSize: 20, fontWeight: 1000 } as React.CSSProperties;
+
+                      const games = N(s.games);
+                      const wins = N(s.wins);
+                      const winRate = N(s.winRate);
+                      const darts = N(s.darts);
+                      const avg3 = N(s.avg3);
+                      const points = N((s as any).points);
+                      const bestVisit = N(s.bestVisit);
+
+                      const fails = N((s as any).fails);
+                      const validHits = N((s as any).validHits);
+                      const advances = N((s as any).advances);
+
+                      const failsPerGame = games ? fails / games : 0;
+                      const hitsPerDart = darts ? validHits / darts : 0;
+
+                      return (
+                        <>
+                          <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 10 }}>
+                            <div style={box}>
+                              <div style={label}>Parties</div>
+                              <div style={value}>{games}</div>
+                            </div>
+                            <div style={box}>
+                              <div style={label}>Victoires</div>
+                              <div style={value}>{wins}</div>
+                            </div>
+
+                            <div style={box}>
+                              <div style={label}>WinRate</div>
+                              <div style={value}>{games ? `${Math.round(winRate * 100)}%` : "—"}</div>
+                            </div>
+                            <div style={box}>
+                              <div style={label}>Avg 3</div>
+                              <div style={value}>{avg3 ? Math.round(avg3 * 10) / 10 : "—"}</div>
+                            </div>
+
+                            <div style={box}>
+                              <div style={label}>Darts</div>
+                              <div style={value}>{darts}</div>
+                            </div>
+                            <div style={box}>
+                              <div style={label}>Points</div>
+                              <div style={value}>{points}</div>
+                            </div>
+
+                            <div style={box}>
+                              <div style={label}>Best Visit</div>
+                              <div style={value}>{bestVisit || "—"}</div>
+                            </div>
+                            <div style={box}>
+                              <div style={label}>Valid hits</div>
+                              <div style={value}>{validHits}</div>
+                              <div style={{ opacity: 0.75, fontSize: 11 }}>
+                                {darts ? `${Math.round(hitsPerDart * 100)}% / dart` : "—"}
+                              </div>
+                            </div>
+
+                            <div style={box}>
+                              <div style={label}>Fails</div>
+                              <div style={value}>{fails}</div>
+                              <div style={{ opacity: 0.75, fontSize: 11 }}>
+                                {games ? `${Math.round(failsPerGame * 10) / 10} / match` : "—"}
+                              </div>
+                            </div>
+                            <div style={box}>
+                              <div style={label}>Advances</div>
+                              <div style={value}>{advances}</div>
+                            </div>
+                          </div>
+
+                          <div style={{ marginTop: 10, color: T.text70, fontSize: 12, lineHeight: 1.35 }}>
+                            Basé sur <b>BatardConfig</b> : progression via <b>valid hits</b> et pénalités via <b>failPolicy</b>.
+                          </div>
+                        </>
+                      );
+                    })()
+                  )}
                 </div>
               </div>
             )}

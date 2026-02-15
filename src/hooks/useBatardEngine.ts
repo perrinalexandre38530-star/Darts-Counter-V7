@@ -37,6 +37,125 @@ export type BatardPlayerState = {
   lastFailed?: boolean;
 };
 
+
+function makeInitialStates(players: string[]): BatardPlayerState[] {
+  return players.map((id) => ({
+    id,
+    score: 0,
+    roundIndex: 0,
+    finished: false,
+    stats: {
+      turns: 0,
+      dartsThrown: 0,
+      validDarts: 0,
+      validHits: 0,
+      pointsAdded: 0,
+      fails: 0,
+      advances: 0,
+      maxRoundReached: 0,
+      finishedAtTurn: null,
+    },
+  }));
+}
+
+export type BatardEngineSnapshot = {
+  states: BatardPlayerState[];
+  currentPlayerIndex: number;
+  turnCounter: number;
+};
+
+export function computeBatardReplaySnapshot(
+  players: string[],
+  config: BatardConfig,
+  visits: Array<{ darts?: Array<{ v: number; mult?: 1 | 2 | 3 }> } | Array<{ v: number; mult?: 1 | 2 | 3 }>>
+): BatardEngineSnapshot {
+  const states = makeInitialStates(players);
+  let currentPlayerIndex = 0;
+  let turnCounter = 0;
+
+  const minHits = Math.max(1, clampInt((config as any).minValidHitsToAdvance, 1));
+  const failValue = Math.max(0, clampInt((config as any).failValue, 0));
+
+  const applyFail = (player: BatardPlayerState) => {
+    switch ((config as any).failPolicy) {
+      case "MINUS_POINTS":
+        player.score -= failValue;
+        break;
+      case "BACK_ROUND":
+        player.roundIndex = Math.max(0, player.roundIndex - failValue);
+        break;
+      case "FREEZE":
+      case "NONE":
+      default:
+        break;
+    }
+  };
+
+  const applyAdvance = (player: BatardPlayerState) => {
+    player.roundIndex += 1;
+    player.stats.advances += 1;
+    player.stats.maxRoundReached = Math.max(player.stats.maxRoundReached, player.roundIndex);
+    if (player.roundIndex >= (config as any).rounds.length) {
+      player.finished = true;
+      if (player.stats.finishedAtTurn == null) player.stats.finishedAtTurn = turnCounter + 1;
+    }
+  };
+
+  for (const rawVisit of visits || []) {
+    const visit =
+      Array.isArray(rawVisit) ? rawVisit : Array.isArray((rawVisit as any)?.darts) ? (rawVisit as any).darts : [];
+    const darts = (visit || []).map((d: any) => ({ v: Number(d.v || 0), mult: (d.mult || 1) as 1 | 2 | 3 }));
+
+    const p = states[currentPlayerIndex];
+    if (!p) break;
+
+    const round = (config as any).rounds[p.roundIndex] || null;
+    let validHits = 0;
+    let visitScore = 0;
+
+    for (const d of darts) {
+      const ok = round ? isDartValid(d as any, round) : false;
+      if (ok) validHits += 1;
+      const pts = (d.v || 0) * (d.mult || 1);
+      if ((config as any).scoreOnlyValid) {
+        if (ok) visitScore += pts;
+      } else {
+        visitScore += pts;
+      }
+    }
+
+    const advanced = validHits >= minHits;
+
+    p.stats.turns += 1;
+    p.stats.dartsThrown += darts.length;
+    p.stats.validDarts += validHits;
+    p.stats.validHits += validHits;
+
+    if (advanced) {
+      p.score += visitScore;
+      p.stats.pointsAdded += visitScore;
+      applyAdvance(p);
+    } else {
+      if (!(config as any).scoreOnlyValid) {
+        p.score += visitScore;
+        p.stats.pointsAdded += visitScore;
+      }
+      p.stats.fails += 1;
+      applyFail(p);
+    }
+
+    (p as any).lastVisit = darts as any;
+    (p as any).lastValidHits = validHits;
+    (p as any).lastAdvanced = advanced;
+    (p as any).lastFailed = !advanced;
+
+    turnCounter += 1;
+    currentPlayerIndex = (currentPlayerIndex + 1) % players.length;
+  }
+
+  return { states, currentPlayerIndex, turnCounter };
+}
+
 function isBull(v: number, mult: 1 | 2 | 3) {
   // Convention projet: bull button ajoute v=25 ; DBull = 25x2 = 50
   const score = v * mult;
@@ -69,29 +188,29 @@ function clampInt(n: any, def = 0) {
   return Math.trunc(x);
 }
 
-export function useBatardEngine(players: string[], config: BatardConfig) {
-  const [currentPlayerIndex, setCurrentPlayerIndex] = React.useState(0);
-  const [turnCounter, setTurnCounter] = React.useState(0);
-
-  const [states, setStates] = React.useState<BatardPlayerState[]>(() =>
-    players.map((id) => ({
-      id,
-      score: 0,
-      roundIndex: 0,
-      finished: false,
-      stats: {
-        turns: 0,
-        dartsThrown: 0,
-        validDarts: 0,
-        validHits: 0,
-        pointsAdded: 0,
-        fails: 0,
-        advances: 0,
-        maxRoundReached: 0,
-        finishedAtTurn: null,
-      },
-    }))
+export function useBatardEngine(players: string[], config: BatardConfig, init?: { resetKey?: any; initialSnapshot?: BatardEngineSnapshot | null }) {
+  const [currentPlayerIndex, setCurrentPlayerIndex] = React.useState(
+    init?.initialSnapshot?.currentPlayerIndex ?? 0
   );
+  const [turnCounter, setTurnCounter] = React.useState(init?.initialSnapshot?.turnCounter ?? 0);
+
+  const [states, setStates] = React.useState<BatardPlayerState[]>(() => {
+    return init?.initialSnapshot?.states ?? makeInitialStates(players);
+  });
+
+  // Reset engine snapshot on demand (resume / replay)
+  React.useEffect(() => {
+    if (init?.initialSnapshot) {
+      setStates(init.initialSnapshot.states);
+      setCurrentPlayerIndex(init.initialSnapshot.currentPlayerIndex ?? 0);
+      setTurnCounter(init.initialSnapshot.turnCounter ?? 0);
+      return;
+    }
+    setStates(makeInitialStates(players));
+    setCurrentPlayerIndex(0);
+    setTurnCounter(0);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [init?.resetKey]);
 
   const currentRound =
     config.rounds[states[currentPlayerIndex]?.roundIndex] || null;

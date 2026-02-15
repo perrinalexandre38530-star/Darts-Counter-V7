@@ -117,6 +117,23 @@ function isShanghaiEntry(e: SavedEntry) {
     s2.toLowerCase().includes("shanghai") ||
     s3.toLowerCase().includes("shanghai")
   );
+
+function isBatardEntry(e: SavedEntry) {
+  const m = baseMode(e);
+  const s1 = String((e as any)?.summary?.mode || "");
+  const s2 = String((e as any)?.payload?.mode || "");
+  const s3 = String((e as any)?.decoded?.config?.mode || "");
+  const k = String((e as any)?.kind || (e as any)?.payload?.kind || "");
+  return (
+    m.includes("batard") ||
+    m.includes("bastard") ||
+    k.toLowerCase().includes("batard") ||
+    s1.toLowerCase().includes("batard") ||
+    s2.toLowerCase().includes("batard") ||
+    s3.toLowerCase().includes("batard")
+  );
+}
+
 }
 
 function statusOf(e: SavedEntry): "finished" | "in_progress" {
@@ -313,6 +330,7 @@ const modeColor: Record<string, string> = {
   training: "#71c9ff",
   killer: "#ff6a3c",
   shanghai: "#ffb000",
+  batard: "#9b5cff",
   default: "#888",
 };
 
@@ -799,7 +817,18 @@ if (isKillerEntry(e)) {
         mode: "shanghai",
       });
       if (!ok) {
-        go("x01_play_v3", {
+    
+    if (isBatardEntry(e)) {
+      safeGo(["batard_play", "batard"], {
+        resumeId,
+        from: preview ? "history_preview" : "history",
+        preview: !!preview,
+        mode: "batard",
+      });
+      return;
+    }
+
+    go("x01_play_v3", {
           resumeId,
           from: preview ? "history_preview" : "history",
           mode: baseMode(e),
@@ -821,6 +850,29 @@ if (isKillerEntry(e)) {
     const resumeId = e.resumeId || matchLink(e) || e.id;
 
     const m = baseMode(e);
+
+    // ✅ BATARD
+    if (isBatardEntry(e)) {
+      const wid =
+        (e.summary && ((e.summary as any).winnerId || (e.summary as any)?.result?.winnerId)) || (e as any)?.winnerId || null;
+      const firstPlayerId = wid || (e.players && e.players.length ? getId(e.players[0]) : null) || null;
+      try {
+        go("statsHub", {
+          tab: "batard",
+          initialStatsSubTab: "batard",
+          initialPlayerId: firstPlayerId,
+          playerId: firstPlayerId,
+          matchId: e.id,
+          resumeId,
+          from: "history",
+        });
+        return;
+      } catch {}
+      try {
+        go("stats", { tab: "batard", profileId: firstPlayerId });
+      } catch {}
+      return;
+    }
 
     // ✅ CRICKET : route correcte => App.tsx = "statsHub" (et non "stats_hub")
     if (m === "cricket") {

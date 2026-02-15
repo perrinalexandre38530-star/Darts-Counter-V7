@@ -2,12 +2,13 @@
 // src/pages/babyfoot/menus/BabyFootMenuTraining.tsx
 // Menu TRAINING — Baby-Foot (sport autonome)
 //
-// ✅ UI (Games-style cards):
-//   - header ticker + BackDot à droite
-//   - cartes : ticker occupe ~3/4 à droite + dégradé à gauche pour laisser le titre lisible
-//   - le texte intégré dans le ticker reste lisible (image à hauteur de carte)
-//   - infos/règles maximales via InfoDot (modal)
-// ✅ Tickers: /src/assets/tickers/ticker_babyfoot_training_*.png
+// ✅ Clone strict du rendu BabyFootMenuMatch (style "Games DartsCounter"):
+//   - Header ticker + BackDot à droite
+//   - Cartes: fond sombre + ticker en "panneau" à droite (≈ 3/4 de la carte)
+//   - Ticker = hauteur EXACTE de la carte (100%)
+//   - Dégradé sur le bord GAUCHE du ticker pour laisser le titre lisible
+//   - AUCUN texte visible sous les titres (tout passe dans InfoDot => modal)
+// ✅ Tickers: /src/assets/tickers/ticker_babyfoot_*.png
 // =============================================================
 
 import React from "react";
@@ -53,116 +54,111 @@ type Props = {
   go: (t: any, p?: any) => void;
 };
 
-type PresetId = "speed5" | "teamquick7" | "challenge2v1";
+type TrainingId = "speed5" | "team_quick7" | "challenge_2v1";
 
-type PresetDef = {
-  id: PresetId;
+type TrainingDef = {
+  id: TrainingId;
   titleKey: string;
   titleDefault: string;
   subtitleKey: string;
   subtitleDefault: string;
-  target: number;
-  tickerId: string;
   infoTitleKey: string;
   infoTitleDefault: string;
   infoBodyKey: string;
   infoBodyDefault: string;
+  enabled: boolean;
+  status: "OK" | "BETA" | "WIP";
+  tickerId?: string | null;
 };
 
-const PRESETS: PresetDef[] = [
+const TRAININGS: TrainingDef[] = [
   {
     id: "speed5",
     titleKey: "babyfoot.training.speed5.title",
     titleDefault: "SPEED 5",
     subtitleKey: "babyfoot.training.speed5.subtitle",
-    subtitleDefault: "1v1 — premier à 5",
-    target: 5,
-    tickerId: "babyfoot_training_speed5",
+    subtitleDefault: "Entraînement • vitesse • 5 cibles",
     infoTitleKey: "babyfoot.training.speed5.infoTitle",
     infoTitleDefault: "Speed 5",
     infoBodyKey: "babyfoot.training.speed5.infoBody",
     infoBodyDefault:
-      "Objectif\n" +
-      "• Match rapide : premier à 5 buts.\n\n" +
-      "Règles\n" +
-      "• 1v1 (1 profil par équipe).\n" +
-      "• But = +1.\n" +
-      "• Fin immédiate à 5.\n\n" +
-      "Conseils\n" +
-      "• Idéal pour échauffement / séries courtes.\n" +
-      "• Active l'historique si tu veux suivre tes perfs.",
+      "Training (Speed 5)\n" +
+      "• Objectif: marquer sur 5 cibles / zones\n" +
+      "• Focus: vitesse + précision\n" +
+      "• Format court, idéal échauffement.",
+    enabled: true,
+    status: "OK",
+    tickerId: "babyfoot_training_speed5",
   },
   {
-    id: "teamquick7",
+    id: "team_quick7",
     titleKey: "babyfoot.training.teamquick7.title",
     titleDefault: "TEAM QUICK 7",
     subtitleKey: "babyfoot.training.teamquick7.subtitle",
-    subtitleDefault: "2v2 — premier à 7",
-    target: 7,
-    tickerId: "babyfoot_training_teamquick7",
+    subtitleDefault: "Coop • rapidité • 7 cibles",
     infoTitleKey: "babyfoot.training.teamquick7.infoTitle",
     infoTitleDefault: "Team Quick 7",
     infoBodyKey: "babyfoot.training.teamquick7.infoBody",
     infoBodyDefault:
-      "Objectif\n" +
-      "• Match rapide en équipes : premier à 7 buts.\n\n" +
-      "Règles\n" +
-      "• 2v2 (4 profils).\n" +
-      "• But = +1.\n" +
-      "• Fin immédiate à 7.\n\n" +
-      "Conseils\n" +
-      "• Parfait pour enchaîner des manches courtes.\n" +
-      "• Active l'historique pour stats d'équipes/duels.",
+      "Training (Team Quick 7)\n" +
+      "• Coop (équipe)\n" +
+      "• Objectif: 7 cibles / objectifs\n" +
+      "• Focus: enchaînements rapides + coordination.",
+    enabled: true,
+    status: "OK",
+    tickerId: "babyfoot_training_teamquick7",
   },
   {
-    id: "challenge2v1",
+    id: "challenge_2v1",
     titleKey: "babyfoot.training.challenge2v1.title",
     titleDefault: "CHALLENGE 2V1",
     subtitleKey: "babyfoot.training.challenge2v1.subtitle",
-    subtitleDefault: "2v1 — premier à 6",
-    target: 6,
-    tickerId: "babyfoot_training_challenge2v1",
+    subtitleDefault: "Défi • 2v1 • objectif 6",
     infoTitleKey: "babyfoot.training.challenge2v1.infoTitle",
     infoTitleDefault: "Challenge 2v1",
     infoBodyKey: "babyfoot.training.challenge2v1.infoBody",
     infoBodyDefault:
-      "Objectif\n" +
-      "• Défi asymétrique : une équipe de 2 contre 1 joueur.\n\n" +
-      "Règles\n" +
-      "• 2v1 (2 profils vs 1 profil).\n" +
-      "• But = +1.\n" +
-      "• Fin à 6 buts.\n\n" +
-      "Conseils\n" +
-      "• Idéal pour équilibrer un écart de niveau.\n" +
-      "• Le solo peut viser la précision; le duo la construction.",
+      "Training (Challenge 2v1)\n" +
+      "• Mode: 2v1\n" +
+      "• Objectif: 6 (cible / score selon preset)\n" +
+      "• Format challenge pour progresser en situation asymétrique.",
+    enabled: true,
+    status: "BETA",
+    tickerId: "babyfoot_training_challenge2v1",
   },
 ];
+
+const TICKER_Y: Partial<Record<TrainingId, number>> = {
+  speed5: 50,
+  team_quick7: 50,
+  challenge_2v1: 50,
+};
 
 export default function BabyFootMenuTraining({ onBack, go }: Props) {
   const { theme } = useTheme();
   const lang = useLang() as any;
   const t = lang?.t ?? ((_: string, fallback: string) => fallback);
 
-  const [infoPreset, setInfoPreset] = React.useState<PresetDef | null>(null);
+  const [infoTraining, setInfoTraining] = React.useState<TrainingDef | null>(null);
 
-  function startPreset(preset: PresetDef) {
-    // 🔧 On reste compatible avec tes pages existantes :
-    // tu pourras rerouter plus tard vers un vrai "training_play".
-    // Pour l'instant on passe par babyfoot_config avec un preset simple.
-    go("babyfoot_config", {
-      mode: preset.id,
-      meta: { kind: "training", target: preset.target, preset: preset.id },
-    });
+  function navigate(id: TrainingId) {
+    // ⚠️ Les presets exacts peuvent être rebranchés plus tard.
+    // Ici on conserve un payload simple et stable.
+    if (id === "speed5") {
+      return go("babyfoot_config", { presetTraining: "speed5", presetMode: "1v1" });
+    }
+    if (id === "team_quick7") {
+      return go("babyfoot_config", { presetTraining: "teamquick7", presetMode: "2v2" });
+    }
+    return go("babyfoot_config", { presetTraining: "challenge2v1", presetMode: "2v1" });
   }
 
   const cardHeight = 86;
-
-  // Dégradé gauche : laisse le titre thème lisible (comme Games darts/pétanque)
+  const tickerPanelW = "76%";
   const leftFade =
-    "linear-gradient(90deg, rgba(0,0,0,0.92) 0%, rgba(0,0,0,0.78) 40%, rgba(0,0,0,0.40) 70%, rgba(0,0,0,0.00) 100%)";
-  // Dégradé droite : contraste pour la zone InfoDot / pill
-  const rightFade =
-    "linear-gradient(270deg, rgba(0,0,0,0.80) 0%, rgba(0,0,0,0.40) 55%, rgba(0,0,0,0.00) 100%)";
+    "linear-gradient(90deg, rgba(10,10,14,0.98) 0%, rgba(10,10,14,0.86) 35%, rgba(10,10,14,0.55) 60%, rgba(10,10,14,0.00) 100%)";
+  const tickerLeftEdgeFade =
+    "linear-gradient(90deg, rgba(10,10,14,0.92) 0%, rgba(10,10,14,0.72) 38%, rgba(10,10,14,0.25) 70%, rgba(10,10,14,0.00) 100%)";
 
   return (
     <div
@@ -174,7 +170,6 @@ export default function BabyFootMenuTraining({ onBack, go }: Props) {
         color: theme.text,
       }}
     >
-      {/* HEADER TICKER */}
       <div style={{ position: "relative", width: "100%", marginBottom: 10 }}>
         <img
           src={getTicker("babyfoot_training") || logoBabyFoot}
@@ -189,8 +184,6 @@ export default function BabyFootMenuTraining({ onBack, go }: Props) {
           }}
           draggable={false}
         />
-
-        {/* BackDot à droite */}
         <div
           style={{
             position: "absolute",
@@ -204,7 +197,6 @@ export default function BabyFootMenuTraining({ onBack, go }: Props) {
         </div>
       </div>
 
-      {/* TEXTE */}
       <div
         style={{
           margin: "4px 0 12px",
@@ -219,17 +211,18 @@ export default function BabyFootMenuTraining({ onBack, go }: Props) {
         {t("babyfoot.training.subtitle", "Choisis un entraînement")}
       </div>
 
-      {/* CARTES — rendu Games-style : ticker à droite sur ~3/4 */}
       <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-        {PRESETS.map((p) => {
-          const title = t(p.titleKey, p.titleDefault);
-          const subtitle = t(p.subtitleKey, p.subtitleDefault);
-          const src = getTicker(p.tickerId) || logoBabyFoot;
+        {TRAININGS.map((m) => {
+          const title = t(m.titleKey, m.titleDefault);
+          const subtitle = t(m.subtitleKey, m.subtitleDefault);
+          const disabled = !m.enabled;
+          const src = getTicker(m.tickerId) || logoBabyFoot;
+          const y = TICKER_Y[m.id] ?? 50;
 
           return (
             <button
-              key={p.id}
-              onClick={() => startPreset(p)}
+              key={m.id}
+              onClick={() => !disabled && navigate(m.id)}
               style={{
                 position: "relative",
                 width: "100%",
@@ -238,33 +231,52 @@ export default function BabyFootMenuTraining({ onBack, go }: Props) {
                 borderRadius: 16,
                 border: `1px solid ${theme.borderSoft ?? "rgba(255,255,255,0.14)"}`,
                 background: theme.card,
-                cursor: "pointer",
-                boxShadow: "0 10px 24px rgba(0,0,0,0.55)",
+                cursor: disabled ? "not-allowed" : "pointer",
+                opacity: disabled ? 0.55 : 1,
+                boxShadow: disabled ? "none" : "0 10px 24px rgba(0,0,0,0.55)",
                 overflow: "hidden",
               }}
             >
-              {/* ticker (hauteur = carte) + placement ~3/4 à droite */}
-              <div style={{ position: "relative", width: "100%", height: cardHeight }}>
-                <img
-                  src={src}
-                  alt={title}
+              <div style={{ position: "relative", height: cardHeight, width: "100%" }}>
+                <div
                   style={{
                     position: "absolute",
-                    // ✅ rendu identique aux cartes "Games" :
-                    // - le ticker occupe ~3/4 de la carte (décalage 1/4 à droite)
-                    // - hauteur strictement = hauteur de la carte
-                    // - on évite le sur-crop vertical
-                    inset: 0,
-                    width: "128%",
+                    right: 0,
+                    top: 0,
                     height: "100%",
-                    objectFit: "cover",
-                    objectPosition: "50% 50%",
-                    transform: "translateZ(0)",
+                    width: tickerPanelW,
+                    overflow: "hidden",
+                    pointerEvents: "none",
                   }}
-                  draggable={false}
-                />
+                >
+                  <img
+                    src={src}
+                    alt={title}
+                    style={{
+                      position: "absolute",
+                      inset: 0,
+                      width: "100%",
+                      height: "100%",
+                      objectFit: "cover",
+                      objectPosition: `50% ${y}%`,
+                      opacity: 0.95,
+                      transform: "translateZ(0)",
+                    }}
+                    draggable={false}
+                  />
+                  <div
+                    aria-hidden
+                    style={{
+                      position: "absolute",
+                      left: 0,
+                      top: 0,
+                      height: "100%",
+                      width: "42%",
+                      background: tickerLeftEdgeFade,
+                    }}
+                  />
+                </div>
 
-                {/* dégradé gauche (titre lisible) */}
                 <div
                   aria-hidden
                   style={{
@@ -272,115 +284,74 @@ export default function BabyFootMenuTraining({ onBack, go }: Props) {
                     left: 0,
                     top: 0,
                     height: "100%",
-                    width: "72%",
+                    width: "64%",
                     background: leftFade,
                     pointerEvents: "none",
                   }}
                 />
-                {/* dégradé droite (zone actions) */}
+
                 <div
-                  aria-hidden
                   style={{
                     position: "absolute",
-                    right: 0,
-                    top: 0,
-                    height: "100%",
-                    width: "38%",
-                    background: rightFade,
+                    left: 14,
+                    top: "50%",
+                    transform: "translateY(-50%)",
+                    zIndex: 2,
+                    maxWidth: "44%",
                     pointerEvents: "none",
-                    opacity: 0.95,
-                  }}
-                />
-              </div>
-
-              {/* Titre à gauche (couleur thème) */}
-              <div
-                style={{
-                  position: "absolute",
-                  left: 14,
-                  top: "50%",
-                  transform: "translateY(-50%)",
-                  zIndex: 2,
-                  maxWidth: "56%",
-                  pointerEvents: "none",
-                }}
-              >
-                <div
-                  style={{
-                    fontSize: 14,
-                    fontWeight: 1000,
-                    letterSpacing: 0.9,
-                    color: theme.primary,
-                    textTransform: "uppercase",
-                    textShadow: `0 0 12px ${theme.primary}55, 0 8px 24px rgba(0,0,0,0.70)`,
-                    lineHeight: 1.05,
-                    whiteSpace: "nowrap",
-                    overflow: "hidden",
-                    textOverflow: "ellipsis",
                   }}
                 >
-                  {title}
+                  <div
+                    style={{
+                      fontSize: 14,
+                      fontWeight: 1000,
+                      letterSpacing: 0.9,
+                      color: theme.primary,
+                      textTransform: "uppercase",
+                      textShadow: `0 0 12px ${theme.primary}55, 0 8px 24px rgba(0,0,0,0.70)`,
+                      lineHeight: 1.05,
+                      whiteSpace: "nowrap",
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                    }}
+                  >
+                    {title}
+                  </div>
                 </div>
-              </div>
 
-              {/* Pill TARGET (comme Training darts) */}
-              <div
-                style={{
-                  position: "absolute",
-                  right: 46,
-                  top: "50%",
-                  transform: "translateY(-50%)",
-                  zIndex: 3,
-                  padding: "6px 10px",
-                  borderRadius: 999,
-                  fontWeight: 950,
-                  fontSize: 11,
-                  letterSpacing: 0.6,
-                  color: theme.text,
-                  background: "rgba(0,0,0,0.45)",
-                  border: "1px solid rgba(255,255,255,0.14)",
-                  boxShadow: "0 10px 24px rgba(0,0,0,0.45)",
-                  pointerEvents: "none",
-                }}
-              >
-                {t("babyfoot.training.target", "TARGET")} {p.target}
-              </div>
-
-              {/* InfoDot */}
-              <div
-                style={{
-                  position: "absolute",
-                  right: 10,
-                  top: "50%",
-                  transform: "translateY(-50%)",
-                  zIndex: 4,
-                }}
-              >
-                <InfoDot
-                  onClick={(e: any) => {
-                    try {
-                      e?.stopPropagation?.();
-                      e?.preventDefault?.();
-                    } catch {}
-                    setInfoPreset(p);
+                <div
+                  style={{
+                    position: "absolute",
+                    right: 10,
+                    top: "50%",
+                    transform: "translateY(-50%)",
+                    zIndex: 3,
                   }}
-                  glow={theme.primary + "88"}
-                />
-              </div>
+                >
+                  <InfoDot
+                    onClick={(e: any) => {
+                      try {
+                        e?.stopPropagation?.();
+                        e?.preventDefault?.();
+                      } catch {}
+                      setInfoTraining(m);
+                    }}
+                    glow={theme.primary + "88"}
+                  />
+                </div>
 
-              {/* Texte invisible (accessibilité) */}
-              <span style={{ position: "absolute", left: -9999, top: -9999 }}>
-                {title} — {subtitle}
-              </span>
+                <span style={{ position: "absolute", left: -9999, top: -9999 }}>
+                  {title} — {subtitle}
+                </span>
+              </div>
             </button>
           );
         })}
       </div>
 
-      {/* MODAL — infos/règles */}
-      {infoPreset && (
+      {infoTraining && (
         <div
-          onClick={() => setInfoPreset(null)}
+          onClick={() => setInfoTraining(null)}
           style={{
             position: "fixed",
             inset: 0,
@@ -405,19 +376,12 @@ export default function BabyFootMenuTraining({ onBack, go }: Props) {
               color: theme.text,
             }}
           >
-            <div
-              style={{
-                display: "flex",
-                justifyContent: "space-between",
-                gap: 10,
-                alignItems: "center",
-              }}
-            >
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center" }}>
               <div style={{ fontWeight: 1000, fontSize: 16 }}>
-                {t(infoPreset.infoTitleKey, infoPreset.infoTitleDefault)}
+                {t(infoTraining.infoTitleKey, infoTraining.infoTitleDefault)}
               </div>
               <button
-                onClick={() => setInfoPreset(null)}
+                onClick={() => setInfoTraining(null)}
                 style={{
                   border: "1px solid rgba(255,255,255,0.14)",
                   background: "rgba(0,0,0,0.18)",
@@ -432,16 +396,8 @@ export default function BabyFootMenuTraining({ onBack, go }: Props) {
               </button>
             </div>
 
-            <div
-              style={{
-                marginTop: 10,
-                fontSize: 13,
-                lineHeight: 1.45,
-                color: theme.textSoft,
-                fontWeight: 800,
-              }}
-            >
-              {t(infoPreset.subtitleKey, infoPreset.subtitleDefault)}
+            <div style={{ marginTop: 10, fontSize: 13, lineHeight: 1.45, color: theme.textSoft, fontWeight: 800 }}>
+              {t(infoTraining.subtitleKey, infoTraining.subtitleDefault)}
             </div>
 
             <div
@@ -453,7 +409,25 @@ export default function BabyFootMenuTraining({ onBack, go }: Props) {
                 whiteSpace: "pre-line",
               }}
             >
-              {t(infoPreset.infoBodyKey, infoPreset.infoBodyDefault)}
+              {t(infoTraining.infoBodyKey, infoTraining.infoBodyDefault)}
+            </div>
+
+            <div
+              style={{
+                marginTop: 14,
+                display: "inline-flex",
+                gap: 8,
+                alignItems: "center",
+                border: "1px solid rgba(255,255,255,0.14)",
+                background: "rgba(0,0,0,0.18)",
+                padding: "6px 10px",
+                borderRadius: 999,
+                fontWeight: 950,
+                letterSpacing: 0.6,
+                fontSize: 11,
+              }}
+            >
+              {infoTraining.status}
             </div>
           </div>
         </div>

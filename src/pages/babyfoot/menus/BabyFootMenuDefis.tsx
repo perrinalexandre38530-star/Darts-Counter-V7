@@ -1,10 +1,15 @@
 // =============================================================
 // src/pages/babyfoot/menus/BabyFootMenuDefis.tsx
-// DÉFIS Baby-Foot — rendu MATCH-STYLE (cards + ticker + fade)
-// - Même rendu visuel que BabyFootMenuMatch
-// - Tickers: src/assets/tickers (inclut Clutch 3 + Endurance)
-// - Bouton i (info) DANS chaque carte (à droite)
-// - Pas de "note" en bas
+// Menu DÉFIS — Baby-Foot (sport autonome)
+//
+// ✅ Clone strict du rendu BabyFootMenuMatch (style "Games DartsCounter"):
+//   - Header ticker + BackDot à droite
+//   - Cartes: fond sombre + ticker en "panneau" à droite (≈ 3/4 de la carte)
+//   - Ticker = hauteur EXACTE de la carte (100%)
+//   - Dégradé sur le bord GAUCHE du ticker pour laisser le titre lisible
+//   - AUCUN texte visible sous les titres (tout passe dans InfoDot => modal)
+// ✅ Tickers: /src/assets/tickers/ticker_babyfoot_*.png
+//   - IMPORTANT: "GLUTCH" (pas "CLUTCH")
 // =============================================================
 
 import React from "react";
@@ -13,429 +18,432 @@ import { useLang } from "../../../contexts/LangContext";
 import BackDot from "../../../components/BackDot";
 import InfoDot from "../../../components/InfoDot";
 
+import logoBabyFoot from "../../../assets/games/logo-babyfoot.png";
+
+// ✅ Tickers images (Vite)
+const TICKERS = import.meta.glob("../../../assets/tickers/*.png", {
+  eager: true,
+  import: "default",
+}) as Record<string, string>;
+
+function getTicker(id: string | null | undefined) {
+  if (!id) return null;
+  const norm = String(id).trim().toLowerCase();
+  const candidates = Array.from(
+    new Set([
+      norm,
+      norm.replace(/\s+/g, "_"),
+      norm.replace(/\s+/g, "-"),
+      norm.replace(/-/g, "_"),
+      norm.replace(/_/g, "-"),
+      norm.replace(/[^a-z0-9_\-]/g, ""),
+    ])
+  ).filter(Boolean);
+
+  for (const c of candidates) {
+    const suffixA = `/ticker_${c}.png`;
+    const suffixB = `/ticker-${c}.png`;
+    for (const k of Object.keys(TICKERS)) {
+      if (k.endsWith(suffixA) || k.endsWith(suffixB)) return TICKERS[k];
+    }
+  }
+  return null;
+}
+
 type Props = {
   onBack: () => void;
   go: (t: any, p?: any) => void;
 };
 
-// ✅ Tickers locaux (Vite glob)
-const tickerImages = import.meta.glob("../../../assets/tickers/*.{png,jpg,jpeg,webp}", {
-  eager: true,
-  as: "url",
-}) as Record<string, string>;
+type DefiId = "classic9" | "glutch3" | "endurance";
 
-function getTicker(fileName: string): string {
-  const key = Object.keys(tickerImages).find((p) => p.endsWith("/" + fileName));
-  return key ? tickerImages[key] : "";
-}
+type DefiDef = {
+  id: DefiId;
+  titleKey: string;
+  titleDefault: string;
+  subtitleKey: string;
+  subtitleDefault: string;
+  infoTitleKey: string;
+  infoTitleDefault: string;
+  infoBodyKey: string;
+  infoBodyDefault: string;
+  enabled: boolean;
+  status: "OK" | "BETA" | "WIP";
+  tickerId?: string | null;
+};
+
+const DEFIS: DefiDef[] = [
+  {
+    id: "classic9",
+    titleKey: "babyfoot.defis.classic9.title",
+    titleDefault: "CLASSIC 9",
+    subtitleKey: "babyfoot.defis.classic9.subtitle",
+    subtitleDefault: "Preset jouable • 1v1 • premier à 9",
+    infoTitleKey: "babyfoot.defis.classic9.infoTitle",
+    infoTitleDefault: "Classic 9 (Défi)",
+    infoBodyKey: "babyfoot.defis.classic9.infoBody",
+    infoBodyDefault:
+      "Défi (Classic 9)\n" +
+      "• Mode: 1v1\n" +
+      "• Objectif: 9 buts\n" +
+      "• Variante défi: à relier à des scores/records (à venir).",
+    enabled: true,
+    status: "OK",
+    tickerId: "babyfoot_fun_classic9", // réutilise le même visuel
+  },
+  {
+    id: "glutch3",
+    titleKey: "babyfoot.defis.glutch3.title",
+    titleDefault: "GLUTCH 3",
+    subtitleKey: "babyfoot.defis.glutch3.subtitle",
+    subtitleDefault: "1v1 • premier à 3 • 90 sec",
+    infoTitleKey: "babyfoot.defis.glutch3.infoTitle",
+    infoTitleDefault: "Glutch 3",
+    infoBodyKey: "babyfoot.defis.glutch3.infoBody",
+    infoBodyDefault:
+      "Défi (Glutch 3)\n" +
+      "• Mode: 1v1\n" +
+      "• Objectif: 3 buts\n" +
+      "• Chrono: 90 secondes\n" +
+      "• Pression maximale: tu dois conclure vite.",
+    enabled: true,
+    status: "OK",
+    tickerId: "babyfoot_defis_glutch3",
+  },
+  {
+    id: "endurance",
+    titleKey: "babyfoot.defis.endurance.title",
+    titleDefault: "ENDURANCE",
+    subtitleKey: "babyfoot.defis.endurance.subtitle",
+    subtitleDefault: "2v2 • BO5 • 3 buts/set",
+    infoTitleKey: "babyfoot.defis.endurance.infoTitle",
+    infoTitleDefault: "Endurance",
+    infoBodyKey: "babyfoot.defis.endurance.infoBody",
+    infoBodyDefault:
+      "Défi (Endurance)\n" +
+      "• Mode: 2v2\n" +
+      "• Best of: 5 sets (BO5)\n" +
+      "• Score par set: 3 buts\n" +
+      "• Objectif: tenir la distance + régularité.",
+    enabled: true,
+    status: "OK",
+    tickerId: "babyfoot_defis_endurance",
+  },
+];
+
+const TICKER_Y: Partial<Record<DefiId, number>> = {
+  classic9: 50,
+  glutch3: 50,
+  endurance: 50,
+};
 
 export default function BabyFootMenuDefis({ onBack, go }: Props) {
   const { theme } = useTheme();
-  const { t } = useLang();
+  const lang = useLang() as any;
+  const t = lang?.t ?? ((_: string, fallback: string) => fallback);
 
-  const [infoOpen, setInfoOpen] = React.useState(false);
-  const [infoPreset, setInfoPreset] = React.useState<InfoPreset>(INFO_SCREEN);
+  const [infoDefi, setInfoDefi] = React.useState<DefiDef | null>(null);
 
-  const presets: Preset[] = [
-    {
-      id: "classic9",
-      leftTitleKey: "babyfoot.defis.classic9.title",
-      leftTitleDefault: "CLASSIC 9",
-      leftSubKey: "babyfoot.defis.classic9.sub",
-      leftSubDefault: "Preset jouable • 1v1 • premier à 9",
-      // ✅ On réutilise le ticker classic9 (déjà validé)
-      tickerId: "ticker_babyfoot_fun_classic9.png",
-      info: {
-        titleKey: "babyfoot.defis.classic9.info.title",
-        titleDefault: "Classic 9",
-        bodyKey: "babyfoot.defis.classic9.info.body",
-        bodyDefault: "Défi de base : score objectif 9, idéal pour warm-up / comparatif rapide.",
-      },
-      onClick: () => go("babyfoot_config", { presetMode: "1v1", presetTarget: 9 }),
-    },
-    {
-      id: "clutch3",
-      leftTitleKey: "babyfoot.defis.clutch3.title",
-      leftTitleDefault: "CLUTCH 3",
-      leftSubKey: "babyfoot.defis.clutch3.sub",
-      leftSubDefault: "1v1 • premier à 3 • 90 sec",
-      tickerId: "ticker_babyfoot_defis_clutch3.png",
-      info: {
-        titleKey: "babyfoot.defis.clutch3.info.title",
-        titleDefault: "Clutch 3",
-        bodyKey: "babyfoot.defis.clutch3.info.body",
-        bodyDefault:
-          "Défi chrono : 90 secondes pour atteindre 3 buts. Si égalité à la fin, mort subite.",
-      },
-      onClick: () =>
-        go("babyfoot_config", {
-          presetMode: "1v1",
-          presetTarget: 3,
-          presetTimeLimitSec: 90,
-        }),
-    },
-    {
-      id: "endurance",
-      leftTitleKey: "babyfoot.defis.endurance.title",
-      leftTitleDefault: "ENDURANCE",
-      leftSubKey: "babyfoot.defis.endurance.sub",
-      leftSubDefault: "2v2 • BO5 • 3 buts/set",
-      tickerId: "ticker_babyfoot_defis_endurance.png",
-      info: {
-        titleKey: "babyfoot.defis.endurance.info.title",
-        titleDefault: "Endurance",
-        bodyKey: "babyfoot.defis.endurance.info.body",
-        bodyDefault:
-          "Défi long : meilleur des 5 sets (BO5). Chaque set se gagne à 3 buts. Idéal pour tester la constance.",
-      },
-      onClick: () =>
-        go("babyfoot_config", {
-          presetMode: "2v2",
-          presetBestOf: 5,
-          presetSetTarget: 3,
-        }),
-    },
-  ];
+  function navigate(id: DefiId) {
+    if (id === "classic9") {
+      return go("babyfoot_config", { presetMode: "1v1", presetTarget: 9, presetCategory: "defis" });
+    }
+    if (id === "glutch3") {
+      return go("babyfoot_config", {
+        presetMode: "1v1",
+        presetTarget: 3,
+        presetTimerSec: 90,
+        presetCategory: "defis",
+      });
+    }
+    // endurance
+    return go("babyfoot_config", {
+      presetMode: "2v2",
+      presetBestOf: 5,
+      presetSetTarget: 3,
+      presetCategory: "defis",
+    });
+  }
+
+  const cardHeight = 86;
+  const tickerPanelW = "76%";
+  const leftFade =
+    "linear-gradient(90deg, rgba(10,10,14,0.98) 0%, rgba(10,10,14,0.86) 35%, rgba(10,10,14,0.55) 60%, rgba(10,10,14,0.00) 100%)";
+  const tickerLeftEdgeFade =
+    "linear-gradient(90deg, rgba(10,10,14,0.92) 0%, rgba(10,10,14,0.72) 38%, rgba(10,10,14,0.25) 70%, rgba(10,10,14,0.00) 100%)";
 
   return (
-    <div style={wrap(theme)}>
-      <div style={topRow}>
-        <BackDot onClick={onBack} />
-        <div style={topCenter}>
-          <img
-            src={getTicker("ticker_babyfoot_defis.png")}
-            alt="DÉFIS"
-            style={headerTickerImg}
-            draggable={false}
-          />
-          <div style={headerSubtitle}>{t("babyfoot.defis.pick", "Choisis un défi")}</div>
+    <div
+      style={{
+        minHeight: "100vh",
+        padding: 16,
+        paddingBottom: 90,
+        background: theme.bg,
+        color: theme.text,
+      }}
+    >
+      <div style={{ position: "relative", width: "100%", marginBottom: 10 }}>
+        <img
+          src={getTicker("babyfoot_defis") || logoBabyFoot}
+          alt="Baby-Foot — Défis"
+          style={{
+            width: "100%",
+            height: 90,
+            objectFit: "cover",
+            borderRadius: 14,
+            border: `1px solid ${theme.borderSoft ?? "rgba(255,255,255,0.14)"}`,
+            boxShadow: "0 10px 26px rgba(0,0,0,0.35)",
+          }}
+          draggable={false}
+        />
+        <div
+          style={{
+            position: "absolute",
+            right: 10,
+            top: "50%",
+            transform: "translateY(-50%)",
+            zIndex: 2,
+          }}
+        >
+          <BackDot onClick={onBack} />
         </div>
-        <InfoDot title={t(INFO_SCREEN.titleKey, INFO_SCREEN.titleDefault)} body={t(INFO_SCREEN.bodyKey, INFO_SCREEN.bodyDefault)} />
       </div>
 
-      <div style={grid}>
-        {presets.map((p) => (
-          <div
-            key={p.id}
-            style={cardShell(theme)}
-            onClick={p.onClick}
-            role="button"
-            tabIndex={0}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" || e.key === " ") p.onClick();
-            }}
-          >
-            <div style={leftLabelCol}>
-              <div style={leftTitle(theme)}>{t(p.leftTitleKey, p.leftTitleDefault)}</div>
-              <div style={leftSub(theme)}>{t(p.leftSubKey, p.leftSubDefault)}</div>
-            </div>
+      <div
+        style={{
+          margin: "4px 0 12px",
+          textAlign: "center",
+          fontWeight: 950,
+          letterSpacing: 0.8,
+          color: theme.textSoft,
+          textShadow: "0 6px 18px rgba(0,0,0,0.45)",
+          opacity: 0.95,
+        }}
+      >
+        {t("babyfoot.defis.subtitle", "Choisis un défi")}
+      </div>
 
-            <div style={tickerLayer}>
-              <div style={tickerGlow(theme)} />
-              <div style={tickerPanel(theme)}>
-                <img src={getTicker(p.tickerId)} alt={p.leftTitleDefault} style={tickerImg} draggable={false} />
-                <div style={leftFade} />
-                <div style={rightFade} />
-                <div style={tickerGloss} />
-              </div>
-            </div>
+      <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+        {DEFIS.map((m) => {
+          const title = t(m.titleKey, m.titleDefault);
+          const subtitle = t(m.subtitleKey, m.subtitleDefault);
+          const disabled = !m.enabled;
+          const src = getTicker(m.tickerId) || logoBabyFoot;
+          const y = TICKER_Y[m.id] ?? 50;
 
+          return (
             <button
-              type="button"
-              style={infoBtn(theme)}
-              onClick={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                setInfoPreset({
-                  titleKey: p.info.titleKey,
-                  titleDefault: p.info.titleDefault,
-                  bodyKey: p.info.bodyKey,
-                  bodyDefault: p.info.bodyDefault,
-                });
-                setInfoOpen(true);
+              key={m.id}
+              onClick={() => !disabled && navigate(m.id)}
+              style={{
+                position: "relative",
+                width: "100%",
+                padding: 0,
+                textAlign: "left",
+                borderRadius: 16,
+                border: `1px solid ${theme.borderSoft ?? "rgba(255,255,255,0.14)"}`,
+                background: theme.card,
+                cursor: disabled ? "not-allowed" : "pointer",
+                opacity: disabled ? 0.55 : 1,
+                boxShadow: disabled ? "none" : "0 10px 24px rgba(0,0,0,0.55)",
+                overflow: "hidden",
               }}
-              aria-label="info"
-              title={t(p.info.titleKey, p.info.titleDefault)}
             >
-              i
+              <div style={{ position: "relative", height: cardHeight, width: "100%" }}>
+                <div
+                  style={{
+                    position: "absolute",
+                    right: 0,
+                    top: 0,
+                    height: "100%",
+                    width: tickerPanelW,
+                    overflow: "hidden",
+                    pointerEvents: "none",
+                  }}
+                >
+                  <img
+                    src={src}
+                    alt={title}
+                    style={{
+                      position: "absolute",
+                      inset: 0,
+                      width: "100%",
+                      height: "100%",
+                      objectFit: "cover",
+                      objectPosition: `50% ${y}%`,
+                      opacity: 0.95,
+                      transform: "translateZ(0)",
+                    }}
+                    draggable={false}
+                  />
+                  <div
+                    aria-hidden
+                    style={{
+                      position: "absolute",
+                      left: 0,
+                      top: 0,
+                      height: "100%",
+                      width: "42%",
+                      background: tickerLeftEdgeFade,
+                    }}
+                  />
+                </div>
+
+                <div
+                  aria-hidden
+                  style={{
+                    position: "absolute",
+                    left: 0,
+                    top: 0,
+                    height: "100%",
+                    width: "64%",
+                    background: leftFade,
+                    pointerEvents: "none",
+                  }}
+                />
+
+                <div
+                  style={{
+                    position: "absolute",
+                    left: 14,
+                    top: "50%",
+                    transform: "translateY(-50%)",
+                    zIndex: 2,
+                    maxWidth: "44%",
+                    pointerEvents: "none",
+                  }}
+                >
+                  <div
+                    style={{
+                      fontSize: 14,
+                      fontWeight: 1000,
+                      letterSpacing: 0.9,
+                      color: theme.primary,
+                      textTransform: "uppercase",
+                      textShadow: `0 0 12px ${theme.primary}55, 0 8px 24px rgba(0,0,0,0.70)`,
+                      lineHeight: 1.05,
+                      whiteSpace: "nowrap",
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                    }}
+                  >
+                    {title}
+                  </div>
+                </div>
+
+                <div
+                  style={{
+                    position: "absolute",
+                    right: 10,
+                    top: "50%",
+                    transform: "translateY(-50%)",
+                    zIndex: 3,
+                  }}
+                >
+                  <InfoDot
+                    onClick={(e: any) => {
+                      try {
+                        e?.stopPropagation?.();
+                        e?.preventDefault?.();
+                      } catch {}
+                      setInfoDefi(m);
+                    }}
+                    glow={theme.primary + "88"}
+                  />
+                </div>
+
+                <span style={{ position: "absolute", left: -9999, top: -9999 }}>
+                  {title} — {subtitle}
+                </span>
+              </div>
             </button>
-          </div>
-        ))}
+          );
+        })}
       </div>
 
-      {infoOpen && (
-        <div style={infoOverlay} onClick={() => setInfoOpen(false)} role="presentation">
+      {infoDefi && (
+        <div
+          onClick={() => setInfoDefi(null)}
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(0,0,0,0.55)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: 16,
+            zIndex: 9999,
+          }}
+        >
           <div
-            style={infoModal(theme)}
-            onClick={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              width: "100%",
+              maxWidth: 560,
+              borderRadius: 18,
+              border: `1px solid ${theme.borderSoft ?? "rgba(255,255,255,0.14)"}`,
+              background: theme.card,
+              padding: 16,
+              boxShadow: "0 18px 60px rgba(0,0,0,0.55)",
+              color: theme.text,
             }}
-            role="dialog"
-            aria-modal="true"
           >
-            <div style={infoTitle(theme)}>{t(infoPreset.titleKey, infoPreset.titleDefault)}</div>
-            <div style={infoBody(theme)}>{t(infoPreset.bodyKey, infoPreset.bodyDefault)}</div>
-            <button style={infoOk(theme)} onClick={() => setInfoOpen(false)}>
-              OK
-            </button>
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center" }}>
+              <div style={{ fontWeight: 1000, fontSize: 16 }}>
+                {t(infoDefi.infoTitleKey, infoDefi.infoTitleDefault)}
+              </div>
+              <button
+                onClick={() => setInfoDefi(null)}
+                style={{
+                  border: "1px solid rgba(255,255,255,0.14)",
+                  background: "rgba(0,0,0,0.18)",
+                  color: theme.text,
+                  fontWeight: 900,
+                  borderRadius: 12,
+                  padding: "8px 10px",
+                  cursor: "pointer",
+                }}
+              >
+                OK
+              </button>
+            </div>
+
+            <div style={{ marginTop: 10, fontSize: 13, lineHeight: 1.45, color: theme.textSoft, fontWeight: 800 }}>
+              {t(infoDefi.subtitleKey, infoDefi.subtitleDefault)}
+            </div>
+
+            <div
+              style={{
+                marginTop: 10,
+                fontSize: 13,
+                lineHeight: 1.5,
+                color: theme.textSoft,
+                whiteSpace: "pre-line",
+              }}
+            >
+              {t(infoDefi.infoBodyKey, infoDefi.infoBodyDefault)}
+            </div>
+
+            <div
+              style={{
+                marginTop: 14,
+                display: "inline-flex",
+                gap: 8,
+                alignItems: "center",
+                border: "1px solid rgba(255,255,255,0.14)",
+                background: "rgba(0,0,0,0.18)",
+                padding: "6px 10px",
+                borderRadius: 999,
+                fontWeight: 950,
+                letterSpacing: 0.6,
+                fontSize: 11,
+              }}
+            >
+              {infoDefi.status}
+            </div>
           </div>
         </div>
       )}
     </div>
   );
 }
-
-// ----------------------------
-// Types
-// ----------------------------
-
-type InfoPreset = {
-  titleKey: string;
-  titleDefault: string;
-  bodyKey: string;
-  bodyDefault: string;
-};
-
-type Preset = {
-  id: string;
-  leftTitleKey: string;
-  leftTitleDefault: string;
-  leftSubKey: string;
-  leftSubDefault: string;
-  tickerId: string;
-  info: { titleKey: string; titleDefault: string; bodyKey: string; bodyDefault: string };
-  onClick: () => void;
-};
-
-const INFO_SCREEN: InfoPreset = {
-  titleKey: "babyfoot.defis.info.title",
-  titleDefault: "DÉFIS",
-  bodyKey: "babyfoot.defis.info.body",
-  bodyDefault: "Défis baby-foot (chrono, endurance, formats spéciaux).",
-};
-
-// ----------------------------
-// Styles (MATCH-STYLE)
-// ----------------------------
-
-const cardH = 92;
-const tickerW = 76; // %
-const leftW = 100 - tickerW;
-
-const wrap = (theme: any) => ({
-  minHeight: "100vh",
-  padding: 14,
-  background: theme?.colors?.bg ?? "#05060a",
-  color: theme?.colors?.text ?? "#fff",
-});
-
-const topRow: any = {
-  display: "grid",
-  gridTemplateColumns: "52px 1fr 52px",
-  alignItems: "center",
-  gap: 10,
-  marginBottom: 12,
-};
-
-const topCenter: any = {
-  display: "grid",
-  alignItems: "center",
-  justifyItems: "center",
-  gap: 6,
-};
-
-const headerTickerImg: any = {
-  width: "100%",
-  maxWidth: 520,
-  height: 70,
-  objectFit: "cover",
-  borderRadius: 16,
-  boxShadow: "0 10px 26px rgba(0,0,0,0.45)",
-  border: "1px solid rgba(255,255,255,0.10)",
-};
-
-const headerSubtitle: any = {
-  fontWeight: 900,
-  opacity: 0.9,
-  letterSpacing: 0.6,
-  textShadow: "0 2px 10px rgba(0,0,0,0.45)",
-};
-
-const grid: any = { display: "grid", gap: 10 };
-
-const cardShell = (_theme: any) => ({
-  position: "relative",
-  height: cardH,
-  borderRadius: 18,
-  border: "1px solid rgba(255,255,255,0.10)",
-  background: "rgba(255,255,255,0.06)",
-  overflow: "hidden",
-  cursor: "pointer",
-  boxShadow: "0 12px 28px rgba(0,0,0,0.35)",
-  textAlign: "left",
-  padding: 0,
-});
-
-const leftLabelCol: any = {
-  position: "absolute",
-  left: 12,
-  top: 0,
-  bottom: 0,
-  width: `calc(${leftW}% - 18px)`,
-  display: "grid",
-  alignContent: "center",
-  gap: 4,
-  zIndex: 3,
-};
-
-const leftTitle = (theme: any) => ({
-  fontWeight: 950,
-  letterSpacing: 0.9,
-  fontSize: 12,
-  color: theme?.colors?.accent ?? "#f7d36a",
-  textTransform: "uppercase",
-  textShadow: "0 2px 10px rgba(0,0,0,0.45)",
-});
-
-const leftSub = (_theme: any) => ({
-  fontWeight: 850,
-  fontSize: 11,
-  opacity: 0.75,
-  lineHeight: 1.15,
-  textShadow: "0 2px 10px rgba(0,0,0,0.45)",
-});
-
-const tickerLayer: any = {
-  position: "absolute",
-  left: `${leftW}%`,
-  top: 0,
-  bottom: 0,
-  width: `${tickerW}%`,
-  zIndex: 1,
-};
-
-const tickerGlow = (theme: any) => ({
-  position: "absolute",
-  inset: -40,
-  background: `radial-gradient(circle at 45% 40%, ${theme?.colors?.accent ?? "#f7d36a"}22 0%, rgba(0,0,0,0) 60%)`,
-  filter: "blur(18px)",
-  opacity: 0.65,
-});
-
-const tickerPanel = (_theme: any) => ({
-  position: "absolute",
-  inset: 0,
-  borderLeft: "1px solid rgba(255,255,255,0.10)",
-  overflow: "hidden",
-  background: "rgba(0,0,0,0.22)",
-});
-
-const tickerImg: any = {
-  position: "absolute",
-  left: 0,
-  right: 0,
-  top: 0,
-  bottom: 0,
-  width: "100%",
-  height: "100%",
-  objectFit: "cover",
-  objectPosition: "50% 50%",
-  transform: "scale(1.02)",
-};
-
-const leftFade: any = {
-  position: "absolute",
-  left: 0,
-  top: 0,
-  bottom: 0,
-  width: "72%",
-  background:
-    "linear-gradient(90deg, rgba(0,0,0,0.92) 0%, rgba(0,0,0,0.25) 55%, rgba(0,0,0,0) 100%)",
-  pointerEvents: "none",
-};
-
-const rightFade: any = {
-  position: "absolute",
-  right: 0,
-  top: 0,
-  bottom: 0,
-  width: "18%",
-  background:
-    "linear-gradient(270deg, rgba(0,0,0,0.70) 0%, rgba(0,0,0,0.20) 55%, rgba(0,0,0,0) 100%)",
-  pointerEvents: "none",
-};
-
-const tickerGloss: any = {
-  position: "absolute",
-  inset: 0,
-  background:
-    "linear-gradient(180deg, rgba(255,255,255,0.10) 0%, rgba(255,255,255,0.04) 28%, rgba(0,0,0,0.08) 100%)",
-  pointerEvents: "none",
-};
-
-const infoBtn = (theme: any) => ({
-  position: "absolute",
-  right: 10,
-  top: "50%",
-  transform: "translateY(-50%)",
-  width: 34,
-  height: 34,
-  borderRadius: 999,
-  border: "1px solid rgba(255,255,255,0.14)",
-  background: "rgba(0,0,0,0.25)",
-  color: theme?.colors?.accent ?? "#f7d36a",
-  fontWeight: 1000,
-  letterSpacing: 0.5,
-  boxShadow: "0 10px 20px rgba(0,0,0,0.35)",
-  cursor: "pointer",
-  zIndex: 5,
-});
-
-// Modal
-const infoOverlay: any = {
-  position: "fixed",
-  inset: 0,
-  background: "rgba(0,0,0,0.62)",
-  display: "grid",
-  placeItems: "center",
-  padding: 18,
-  zIndex: 9999,
-};
-
-const infoModal = (theme: any) => ({
-  width: "min(520px, 92vw)",
-  borderRadius: 18,
-  border: "1px solid rgba(255,255,255,0.12)",
-  background: theme?.colors?.panel ?? "rgba(18,20,28,0.92)",
-  boxShadow: "0 24px 60px rgba(0,0,0,0.55)",
-  padding: 14,
-});
-
-const infoTitle = (theme: any) => ({
-  fontWeight: 1000,
-  letterSpacing: 0.8,
-  marginBottom: 8,
-  color: theme?.colors?.accent ?? "#f7d36a",
-  textTransform: "uppercase",
-});
-
-const infoBody = (theme: any) => ({
-  opacity: 0.9,
-  fontWeight: 750,
-  lineHeight: 1.35,
-  color: theme?.colors?.text ?? "#fff",
-});
-
-const infoOk = (theme: any) => ({
-  marginTop: 12,
-  width: "100%",
-  height: 40,
-  borderRadius: 14,
-  border: "1px solid rgba(255,255,255,0.14)",
-  background: "rgba(0,0,0,0.30)",
-  color: theme?.colors?.text ?? "#fff",
-  fontWeight: 950,
-  letterSpacing: 1,
-  cursor: "pointer",
-});

@@ -87,6 +87,14 @@ type Row = {
   favSegment: string; // "S20" / "T8" / "DB" ...
   favSegmentHits: number;
   totalHits: number;
+
+  // ✅ BATARD sums
+  batardPoints: number;
+  batardDarts: number;
+  batardTurns: number;
+  batardFails: number;
+  batardValidHits: number;
+  batardAdvances: number;
 };
 
 const MODE_DEFS: {
@@ -340,6 +348,39 @@ function extractPerPlayerSummary(summary: any): Record<string, any> {
     summary.coByPlayer ||
     null;
 
+
+  const pointsMap =
+    summary.pointsByPlayer ||
+    summary.points_by_player ||
+    summary.points ||
+    null;
+
+  const dartsMap =
+    summary.dartsByPlayer ||
+    summary.darts_by_player ||
+    summary.darts ||
+    null;
+
+  const turnsMap =
+    summary.turnsByPlayer ||
+    summary.turns_by_player ||
+    null;
+
+  const failsMap =
+    summary.failsByPlayer ||
+    summary.fails_by_player ||
+    null;
+
+  const validHitsMap =
+    summary.validHitsByPlayer ||
+    summary.validHits_by_player ||
+    null;
+
+  const advancesMap =
+    summary.advancesByPlayer ||
+    summary.advances_by_player ||
+    null;
+
   const hitsBySegMap =
     summary.hitsBySegmentByPlayer ||
     summary.hits_by_segment_by_player ||
@@ -357,6 +398,12 @@ function extractPerPlayerSummary(summary: any): Record<string, any> {
   collectKeys(avg3Map);
   collectKeys(bestVisitMap);
   collectKeys(bestCheckoutMap);
+  collectKeys(pointsMap);
+  collectKeys(dartsMap);
+  collectKeys(turnsMap);
+  collectKeys(failsMap);
+  collectKeys(validHitsMap);
+  collectKeys(advancesMap);
   collectKeys(nameMap);
   collectKeys(avatarMap);
   collectKeys(hitsBySegMap);
@@ -457,6 +504,14 @@ type Agg = {
   kills: number;
   hitsBySegmentAgg: Record<string, number>;
   totalHits: number;
+
+  // ✅ BATARD sums
+  batardPoints: number;
+  batardDarts: number;
+  batardTurns: number;
+  batardFails: number;
+  batardValidHits: number;
+  batardAdvances: number;
 };
 
 type ExtraInfo = {
@@ -493,6 +548,12 @@ function computeRowsFromHistory(
       kills: 0,
       hitsBySegmentAgg: {},
       totalHits: 0,
+      batardPoints: 0,
+      batardDarts: 0,
+      batardTurns: 0,
+      batardFails: 0,
+      batardValidHits: 0,
+      batardAdvances: 0,
     };
     infoByPlayer[p.id] = {
       name: p.name,
@@ -534,6 +595,12 @@ function computeRowsFromHistory(
             kills: 0,
             hitsBySegmentAgg: {},
             totalHits: 0,
+      batardPoints: 0,
+      batardDarts: 0,
+      batardTurns: 0,
+      batardFails: 0,
+      batardValidHits: 0,
+      batardAdvances: 0,
           };
         }
         if (!infoByPlayer[pid]) infoByPlayer[pid] = {};
@@ -566,6 +633,20 @@ function computeRowsFromHistory(
 
         const coCandidate = numOr0(det.bestCheckout, det.bestCo, det.coBest, det.co, det.best_co);
         if (coCandidate > 0) agg.bestCheckout = Math.max(agg.bestCheckout, coCandidate);
+
+        // ✅ BATARD sums (if present in summary maps)
+        const ptsCandidate = numOr0(det.points, det.pointsAdded, det.points_by_player);
+        const dartsCandidate = numOr0(det.darts, det.dartsThrown, det.darts_by_player);
+        const turnsCandidate = numOr0(det.turns, det.turnsByPlayer, det.turns_by_player);
+        const failsCandidate = numOr0(det.fails, det.fail, det.failsByPlayer);
+        const vhCandidate = numOr0(det.validHits, det.valid_hits, det.validHitsByPlayer);
+        const advCandidate = numOr0(det.advances, det.advance, det.advancesByPlayer);
+        if (ptsCandidate) agg.batardPoints += ptsCandidate;
+        if (dartsCandidate) agg.batardDarts += dartsCandidate;
+        if (turnsCandidate) agg.batardTurns += turnsCandidate;
+        if (failsCandidate) agg.batardFails += failsCandidate;
+        if (vhCandidate) agg.batardValidHits += vhCandidate;
+        if (advCandidate) agg.batardAdvances += advCandidate;
 
         if (mode === "killer") {
           // kills: prefer summary.players
@@ -626,6 +707,12 @@ function computeRowsFromHistory(
           kills: 0,
           hitsBySegmentAgg: {},
           totalHits: 0,
+      batardPoints: 0,
+      batardDarts: 0,
+      batardTurns: 0,
+      batardFails: 0,
+      batardValidHits: 0,
+      batardAdvances: 0,
         };
       }
 
@@ -654,6 +741,14 @@ function computeRowsFromHistory(
       const coCandidate = numOr0(pl.bestCheckout, pl.bestCo, pl.coBest);
       if (coCandidate > 0) agg.bestCheckout = Math.max(agg.bestCheckout, coCandidate);
 
+      // ✅ BATARD fallback fields
+      agg.batardPoints += numOr0(pl.points, pl.pointsAdded);
+      agg.batardDarts += numOr0(pl.darts, pl.dartsThrown);
+      agg.batardTurns += numOr0(pl.turns);
+      agg.batardFails += numOr0(pl.fails);
+      agg.batardValidHits += numOr0(pl.validHits);
+      agg.batardAdvances += numOr0(pl.advances);
+
       if (mode === "killer") {
         const k = numOr0(pl.kills, pl.killCount, pl.k);
         if (k > 0) agg.kills += k;
@@ -678,6 +773,10 @@ function computeRowsFromHistory(
 
     const botFallbackAvatar = includeBots ? botsMap0?.[pid]?.avatarDataUrl || null : null;
     const botFallbackName = includeBots ? botsMap0?.[pid]?.name || undefined : undefined;
+
+    const failsPerMatch = matches > 0 ? agg.batardFails / matches : 0;
+    const validHitsPerDart = agg.batardDarts > 0 ? agg.batardValidHits / agg.batardDarts : 0;
+    const ptsPerTurn = agg.batardTurns > 0 ? agg.batardPoints / agg.batardTurns : 0;
 
     return {
       id: pid,
@@ -802,6 +901,12 @@ function computeRowsFromTerritories(
       favNumberHits: 0,
       favSegmentHits: 0,
       totalHits: 0,
+      batardPoints: 0,
+      batardDarts: 0,
+      batardTurns: 0,
+      batardFails: 0,
+      batardValidHits: 0,
+      batardAdvances: 0,
     };
   });
 
@@ -839,6 +944,14 @@ function metricLabel(m: MetricKey) {
       return "Tours (moy.)";
     case "capPerRound":
       return "Captures / tour";
+    case "failsPerMatch":
+      return "Fails / match";
+    case "validHitsPerDart":
+      return "Valid hits / dart";
+    case "advances":
+      return "Avancées";
+    case "ptsPerTurn":
+      return "Pts / tour";
     default:
       return "Stat";
   }
@@ -905,6 +1018,35 @@ export default function StatsLeaderboardsPage({ store }: Props) {
 
   // ✅ NEW: toggle bots (par défaut ON)
   const [includeBots, setIncludeBots] = React.useState<boolean>(true);
+
+  // ✅ BATARD filters (derived from History payload.config)
+  const [batardPreset, setBatardPreset] = React.useState<string>("all");
+  const [batardWinMode, setBatardWinMode] = React.useState<string>("all");
+  const [batardFailPolicy, setBatardFailPolicy] = React.useState<string>("all");
+  const [batardScoreOnlyValid, setBatardScoreOnlyValid] = React.useState<string>("all"); // all|true|false
+
+  const batardFilterOptions = React.useMemo(() => {
+    const presets = new Set<string>();
+    const winModes = new Set<string>();
+    const failPolicies = new Set<string>();
+    const scoreOnlyVals = new Set<string>();
+    for (const r of historySource || []) {
+      const kind = String(r?.kind || r?.payload?.kind || r?.summary?.mode || r?.payload?.mode || "").toLowerCase();
+      if (!(kind.includes("batard") || kind.includes("bastard"))) continue;
+      const c = r?.payload?.config || r?.decoded?.config || r?.config || null;
+      const b = c?.batard || c?.rules || null;
+      if (b?.presetId) presets.add(String(b.presetId));
+      if (b?.winMode) winModes.add(String(b.winMode));
+      if (b?.failPolicy) failPolicies.add(String(b.failPolicy));
+      if (typeof b?.scoreOnlyValid === "boolean") scoreOnlyVals.add(String(b.scoreOnlyValid));
+    }
+    return {
+      presets: Array.from(presets).sort(),
+      winModes: Array.from(winModes).sort(),
+      failPolicies: Array.from(failPolicies).sort(),
+      scoreOnlyVals: Array.from(scoreOnlyVals).sort(),
+    };
+  }, [historySource]);
 
   const [historySource, setHistorySource] = React.useState<any[]>(
     (((store as any)?.history as any[]) || []) as any[]
@@ -999,6 +1141,14 @@ export default function StatsLeaderboardsPage({ store }: Props) {
           return numOr0(r?.avgRounds);
         case "capPerRound":
           return numOr0(r?.capPerRound);
+        case "failsPerMatch":
+          return numOr0(r?.failsPerMatch);
+        case "validHitsPerDart":
+          return numOr0(r?.validHitsPerDart);
+        case "advances":
+          return numOr0(r?.advances);
+        case "ptsPerTurn":
+          return numOr0(r?.ptsPerTurn);
         default:
           return 0;
       }
@@ -1023,6 +1173,21 @@ export default function StatsLeaderboardsPage({ store }: Props) {
       return filtered;
     };
 
+
+    // ✅ BATARD filters
+    const historyFiltered =
+      mode !== "batard"
+        ? historySource
+        : (historySource || []).filter((r: any) => {
+            const c = r?.payload?.config || r?.decoded?.config || r?.config || null;
+            const b = c?.batard || null;
+            if (!b) return true;
+            if (batardPreset !== "all" && String(b.presetId || "") !== batardPreset) return false;
+            if (batardWinMode !== "all" && String(b.winMode || "") !== batardWinMode) return false;
+            if (batardFailPolicy !== "all" && String(b.failPolicy || "") !== batardFailPolicy) return false;
+            if (batardScoreOnlyValid !== "all" && String(!!b.scoreOnlyValid) !== batardScoreOnlyValid) return false;
+            return true;
+          });
     // ✅ TERRITORIES : hors History (localStorage)
     if (mode === "territories") {
       const base = computeRowsFromTerritories(profiles || [], metric);
@@ -1050,9 +1215,9 @@ export default function StatsLeaderboardsPage({ store }: Props) {
     }
 
     // ✅ autres modes
-    const baseRows = computeRowsFromHistory(historySource, profiles, mode, scope, period, { includeBots });
+    const baseRows = computeRowsFromHistory(historyFiltered, profiles, mode, scope, period, { includeBots });
     return sortRows(sanitizeAndFilter(baseRows));
-  }, [historySource, profiles, mode, scope, metric, period, includeBots, profileIds]);
+  }, [historySource, profiles, mode, scope, metric, period, includeBots, profileIds, batardPreset, batardWinMode, batardFailPolicy, batardScoreOnlyValid]);
 
   const hasData = rows.length > 0;
   const currentMetricLabel = metricLabel(metric) || t("stats.leaderboards.metric", "Stat");
@@ -1275,6 +1440,49 @@ export default function StatsLeaderboardsPage({ store }: Props) {
             })}
           </div>
         </div>
+
+
+        {/* ✅ BATARD filters */}
+        {mode === "batard" ? (
+          <div style={{ marginTop: 10, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+            <select value={batardPreset} onChange={(e) => setBatardPreset(e.target.value)} style={S.select(theme)}>
+              <option value="all">Preset: Tous</option>
+              {batardFilterOptions.presets.map((x) => (
+                <option key={x} value={x}>
+                  Preset: {x}
+                </option>
+              ))}
+            </select>
+
+            <select value={batardWinMode} onChange={(e) => setBatardWinMode(e.target.value)} style={S.select(theme)}>
+              <option value="all">WinMode: Tous</option>
+              {batardFilterOptions.winModes.map((x) => (
+                <option key={x} value={x}>
+                  {x}
+                </option>
+              ))}
+            </select>
+
+            <select value={batardFailPolicy} onChange={(e) => setBatardFailPolicy(e.target.value)} style={S.select(theme)}>
+              <option value="all">FailPolicy: Tous</option>
+              {batardFilterOptions.failPolicies.map((x) => (
+                <option key={x} value={x}>
+                  {x}
+                </option>
+              ))}
+            </select>
+
+            <select
+              value={batardScoreOnlyValid}
+              onChange={(e) => setBatardScoreOnlyValid(e.target.value)}
+              style={S.select(theme)}
+            >
+              <option value="all">ScoreOnlyValid: Tous</option>
+              <option value="true">true</option>
+              <option value="false">false</option>
+            </select>
+          </div>
+        ) : null}
 
         {/* Tri */}
         <div
