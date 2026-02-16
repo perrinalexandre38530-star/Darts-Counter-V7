@@ -15,6 +15,7 @@
 // ============================================
 
 import React from "react";
+import { History } from "../lib/history";
 import BackDot from "../components/BackDot";
 import { useViewport } from "../hooks/useViewport";
 import { useTheme } from "../contexts/ThemeContext";
@@ -303,6 +304,12 @@ function round1(n: number) {
 }
 
 export default function ShanghaiPlay(props: Props) {
+  const matchIdRef = React.useRef<string>(
+    ((props as any)?.params as any)?.matchId ?? `shanghai-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+  );
+  const matchStartAtRef = React.useRef<number>(
+    Number((props as any)?.params?.createdAt) || Date.now()
+  );
   useFullscreenPlay();
   const { isLandscapeTablet } = useViewport({ tabletMinWidth: 900 });
 
@@ -370,6 +377,20 @@ export default function ShanghaiPlay(props: Props) {
 
   const [showInfo, setShowInfo] = React.useState(false);
   const [endData, setEndData] = React.useState<EndData | null>(null);
+
+  React.useEffect(() => {
+    // ✅ AUTOSAVE in_progress pour reprise (toutes les 8s)
+    if (endData) return;
+    const t = window.setInterval(() => {
+      try {
+        const createdAt = matchStartAtRef.current;
+        const match = buildMatchPayload(null, "points", createdAt, false, [], "in_progress");
+        void History.upsert(match as any);
+      } catch {}
+    }, 8000);
+    return () => window.clearInterval(t);
+  }, [endData, round, turn, scores, lastThrowsById, currentThrow, multiplier]);
+
 
   const target = targetOrderRef.current?.[round - 1] ?? round;
   const active = safePlayers[turn] || safePlayers[0];
@@ -475,6 +496,12 @@ export default function ShanghaiPlay(props: Props) {
   const goShanghaiConfig = React.useCallback(() => {
     // ✅ Navigation robuste: on privilégie le "go" passé directement par App.tsx
     const go = (props as any)?.go ?? (props as any)?.params?.go;
+    try {
+      const createdAt = matchStartAtRef.current;
+      const match = buildMatchPayload(null, "points", createdAt, false, [], "in_progress");
+      void History.upsert(match as any);
+    } catch {}
+
     if (typeof go === "function") {
       try {
         // Route officielle dans App.tsx
@@ -675,7 +702,8 @@ export default function ShanghaiPlay(props: Props) {
     reason: "shanghai" | "points",
     createdAt: number,
     isTie: boolean,
-    tieIds: string[]
+    tieIds: string[],
+    status: "in_progress" | "finished" = "finished"
   ) {
 
     const packedStatsShanghai = safeShanghaiStatsPack({
@@ -685,6 +713,20 @@ export default function ShanghaiPlay(props: Props) {
       maxRounds,
       winRule,
     });
+
+    // ✅ DartSet meta (best-effort)
+    const dartSetIdsByPlayer: Record<string, string | null> = Object.fromEntries(
+      (safePlayers || []).map((p: any) => {
+        const pid = String(p?.id ?? "");
+        const ds = p?.dartSetId ?? p?.favoriteDartSetId ?? null;
+        return [pid, ds ? String(ds) : null];
+      })
+    );
+    const uniqueDartSets = Array.from(
+      new Set(Object.values(dartSetIdsByPlayer).filter(Boolean) as string[])
+    );
+    const dartSetId = uniqueDartSets.length === 1 ? uniqueDartSets[0] : null;
+
 
     // ✅ Normalisation "StatsHub": bloc stats unifié (lecture simple côté hub)
     const unifiedStats: any = {
@@ -756,9 +798,9 @@ export default function ShanghaiPlay(props: Props) {
     };
 
     return {
-      id: `shanghai-${createdAt}-${Math.random().toString(36).slice(2, 8)}`,
+      id: matchIdRef.current,
       kind: "shanghai",
-      status: "finished",
+      status,
       createdAt,
       updatedAt: createdAt,
 
@@ -773,6 +815,7 @@ export default function ShanghaiPlay(props: Props) {
       summary,
 
       payload: {
+        meta: { dartSetId, dartSetIdsByPlayer },
         config: {
           ...(cfg as any),
           targetOrderMode,
@@ -1723,13 +1766,7 @@ export default function ShanghaiPlay(props: Props) {
                   const isTie = !!endData.isTie;
                   const tieIds = endData.tieIds || [];
 
-                  const match = buildMatchPayload(
-                    endData.winnerId,
-                    endData.reason,
-                    endData.createdAt,
-                    isTie,
-                    tieIds
-                  );
+                  const match = buildMatchPayload(endData.winnerId, endData.reason, endData.createdAt, isTie, tieIds, "finished");
 
                   setEndData(null);
                   props.onFinish?.(match);

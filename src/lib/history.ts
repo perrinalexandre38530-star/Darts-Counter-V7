@@ -90,6 +90,34 @@ import { onlineApi } from "./onlineApi";
 import { emitCloudChange } from "./cloudEvents";
 import { EventBuffer } from "./sync/EventBuffer";
 
+// ✅ Resume index (localStorage) — permet "Reprendre partie" multi-modes
+// Évite la dépendance circulaire avec src/lib/resume.ts (qui importe History)
+const RESUME_INDEX_KEY = "dc-v5-resume-index";
+function _resumeIndexRead(): string[] {
+  try {
+    const raw = localStorage.getItem(RESUME_INDEX_KEY);
+    const arr = raw ? JSON.parse(raw) : [];
+    return Array.isArray(arr) ? arr.filter(Boolean).map(String) : [];
+  } catch {
+    return [];
+  }
+}
+function _resumeIndexWrite(ids: string[]) {
+  try {
+    const uniq = [...new Set((ids || []).filter(Boolean).map(String))];
+    localStorage.setItem(RESUME_INDEX_KEY, JSON.stringify(uniq));
+  } catch {}
+}
+function _resumeIndexAdd(id: string) {
+  const ids = _resumeIndexRead();
+  _resumeIndexWrite([id, ...ids.filter((x) => x !== id)]);
+}
+function _resumeIndexRemove(id: string) {
+  const ids = _resumeIndexRead();
+  _resumeIndexWrite(ids.filter((x) => x !== id));
+}
+
+
 // =========================
 // ✅ CLOUD IMPORT GUARD
 // - Quand on importe depuis le cloud, on évite:
@@ -1191,6 +1219,13 @@ status: rec.status || "finished",
     updatedAt: now,
     summary: rec.summary || null,
   };
+
+// ✅ MAJ index de reprise (multi-sport)
+try {
+  const st = String((safe as any).status || "");
+  if (st === "in_progress") _resumeIndexAdd(String((safe as any).id));
+  else _resumeIndexRemove(String((safe as any).id));
+} catch {}
 
   // payload effectif (on le mutera si on ajoute des infos sets)
   let payloadEffective = rec.payload;

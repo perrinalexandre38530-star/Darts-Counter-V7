@@ -25,35 +25,9 @@ import tickerScram from "../assets/tickers/ticker_scram.png";
 //   (peut être refusé si pas de "user gesture" -> on catch)
 // =============================================================
 function useFullscreenPlay() {
-  useEffect(() => {
-    const cls = "dc-fullscreen-play";
-    try {
-      document.documentElement.classList.add(cls);
-      document.body.classList.add(cls);
-    } catch {}
-
-    // Best-effort: requestFullscreen (souvent refusé sur desktop / iOS)
-    try {
-      const el: any = document.documentElement as any;
-      const req =
-        el?.requestFullscreen ||
-        el?.webkitRequestFullscreen ||
-        el?.mozRequestFullScreen ||
-        el?.msRequestFullscreen;
-
-      if (typeof req === "function") {
-        const p = req.call(el);
-        if (p && typeof p.catch === "function") p.catch(() => {});
-      }
-    } catch {}
-
-    return () => {
-      try {
-        document.documentElement.classList.remove(cls);
-        document.body.classList.remove(cls);
-      } catch {}
-    };
-  }, []);
+  // ❌ Désactivé: l'ancien mode fullscreen (classes globales + requestFullscreen)
+  // provoquait des régressions d'affichage sur d'autres modes.
+  // Si besoin, on réactivera plus tard via src/hooks/useFullscreenPlay (opt-in).
 }
 
 // ---------- Styles (copiés de CricketPlay) ----------

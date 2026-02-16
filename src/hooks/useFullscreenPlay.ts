@@ -17,6 +17,8 @@ import * as React from "react";
 // ============================================
 
 export type FullscreenPlayOptions = {
+  /** Active/désactive le helper. Par défaut: false (opt-in) */
+  enabled?: boolean;
   /** Ajoute une classe sur <html>. Par défaut: "dc-fullscreen-play" */
   className?: string;
   /** Met à jour la variable CSS --vh. Par défaut: true */
@@ -27,12 +29,17 @@ export type FullscreenPlayOptions = {
 
 export function useFullscreenPlay(options: FullscreenPlayOptions = {}) {
   const {
+    enabled = false,
     className = "dc-fullscreen-play",
     setVhVar = true,
     lockBodyScroll = true,
   } = options;
 
   React.useEffect(() => {
+    // ✅ IMPORTANT (stabilité V7): ce hook a des effets globaux (html/body).
+    // On le laisse en opt-in pour éviter de "casser" les layouts desktop/preview.
+    if (!enabled) return;
+
     const html = document.documentElement;
     const body = document.body;
 

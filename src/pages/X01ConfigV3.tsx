@@ -399,6 +399,26 @@ export default function X01ConfigV3({ profiles, onBack, onStart, go }: Props) {
     return [...PRO_BOTS, ...userBots];
   }, [userBots]);
 
+  // Profils disponibles pour l'assignation d'équipes = profils humains du store + bots PRO/user
+  // (sinon les PRO_BOTS ne sont pas trouvés dans `profiles.find(...)` dans TeamsSection)
+  const teamProfiles: Profile[] = React.useMemo(() => {
+    const m = new Map<string, any>();
+    for (const p of allProfiles || []) m.set(p.id, p);
+    for (const b of botProfiles || []) {
+      if (!m.has(b.id)) {
+        m.set(b.id, {
+          id: b.id,
+          name: b.name || "BOT",
+          // components/ProfileAvatar gère avatarDataUrl
+          avatarDataUrl: b.avatarDataUrl ?? null,
+          isBot: true,
+          botLevel: b.botLevel || "",
+        });
+      }
+    }
+    return Array.from(m.values()) as Profile[];
+  }, [allProfiles, botProfiles]);
+
   // ---- état local des paramètres ----
   const [startScore, setStartScore] = React.useState<301 | 501 | 701 | 901>(501);
   const [inMode, setInMode] = React.useState<InModeV3>("simple");
@@ -1854,7 +1874,7 @@ window.dispatchEvent(new CustomEvent("dc:x01v3:visit", {
         {/* --------- BLOC COMPO ÉQUIPES --------- */}
         {matchMode === "teams" && totalPlayers >= 2 && (
           <TeamsSection
-            profiles={allProfiles}
+            profiles={teamProfiles}
             selectedIds={selectedIds}
             teamAssignments={teamAssignments}
             setPlayerTeam={setPlayerTeam}

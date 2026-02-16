@@ -31,6 +31,7 @@ import { playSound } from "../lib/sound";
 import { useCricketStatsRecorder } from "../hooks/useCricketStatsRecorder";
 import type { Profile } from "../lib/types";
 import type { SavedMatch } from "../lib/history";
+import { History } from "../lib/history";
 import { SCORE_INPUT_LS_KEY } from "../lib/scoreInput/types";
 import { DartIconColorizable, CricketMarkIcon } from "../components/MaskIcon";
 
@@ -403,6 +404,9 @@ type CricketVariantId = "classic" | "enculette";
 
 export default function CricketPlay({ profiles, params, onFinish }: Props) {
   const allProfiles = profiles ?? [];
+  const matchIdRef = React.useRef<string>(
+    (params as any)?.matchId ?? `cricket-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+  );
 
   // ✅ BackDot + InfoDot (règles)
   const [infoOpen, setInfoOpen] = React.useState(false);
@@ -495,6 +499,19 @@ const isFinished = !!state?.winnerId;
 React.useEffect(() => {
   if (isFinished) setShowEnd(true);
 }, [isFinished]);
+
+React.useEffect(() => {
+  // ✅ AUTOSAVE in_progress pour reprise (toutes les 8s)
+  if (!state) return;
+  if (isFinished) return;
+  const t = window.setInterval(() => {
+    try {
+      const rec = buildHistoryRecord();
+      if (rec) void History.upsert(rec as any);
+    } catch {}
+  }, 8000);
+  return () => window.clearInterval(t);
+}, [state, isFinished]);
 
 // --------------------------------------------------
 // ✅ BOTS IA (stable, sans casser la syntaxe)
@@ -1380,16 +1397,22 @@ function buildHistoryRecord(): SavedMatch | null {
 
   const playersLite = state.players.map((p) => {
     const prof = profileById.get(p.id);
+    const pDartSetId =
+      (prof as any)?.dartSetId ?? (prof as any)?.favoriteDartSetId ?? dartSetId ?? null;
     return {
       id: p.id,
       name: p.name,
       avatarDataUrl: prof?.avatarDataUrl ?? null,
+      dartSetId: pDartSetId,
     };
   });
 
-  const playersPayload = state.players.map((p: any) => {
+const playersPayload = state.players.map((p: any) => {
     const pid = String(p.id);
     const hits = extractHitsForPlayerFromState(state, pid);
+    const prof = profileById.get(pid);
+    const pDartSetId =
+      (prof as any)?.dartSetId ?? (prof as any)?.favoriteDartSetId ?? dartSetId ?? null;
 
     return {
       profileId: pid,
@@ -1399,15 +1422,20 @@ function buildHistoryRecord(): SavedMatch | null {
       marks: p.marks,
       hits,
       legStats: computeLegStatsForPlayer(p),
+      dartSetId: pDartSetId,
     };
   });
 
-  const totalDarts = playersPayload.reduce((a, p) => a + p.hits.length, 0);
+const totalDarts = playersPayload.reduce((a, p) => a + p.hits.length, 0);
 
-  return {
-    id: `cricket${variantId === "enculette" ? "-enculette" : ""}-${createdAt}-${Math.random().toString(36).slice(2, 8)}`,
+    const dartSetIdsByPlayer: Record<string, string | null> = Object.fromEntries(
+    (playersPayload || []).map((p: any) => [String(p.id ?? p.profileId ?? ""), (p as any)?.dartSetId ?? null])
+  );
+
+return {
+    id: matchIdRef.current,
     kind: "cricket",
-    status: finishedFlag ? "finished" : "aborted",
+    status: finishedFlag ? "finished" : "in_progress",
     players: playersLite,
     winnerId: state.winnerId ?? null,
     createdAt,
@@ -1419,7 +1447,36 @@ function buildHistoryRecord(): SavedMatch | null {
     payload: {
       mode: "cricket",
       dartSetId,
-      meta: { ...(params?.meta || {}), dartSetId },
+      dartSetIdsByPlayer,
+      meta: { ...(params?.meta || {}), dartSetId, dartSetIdsByPlayer },
+	      // ✅ Stats unifiées (léger) — utilisées par StatsHub si présent
+	      stats: {
+	        sport: "cricket",
+	        mode: "cricket",
+	        players: (playersPayload || []).map((p: any) => {
+	          const hitsArr = Array.isArray(p?.hits) ? p.hits : [];
+	          const marksObj = p?.marks && typeof p.marks === "object" ? p.marks : null;
+	          const marksTotal = marksObj ? Object.values(marksObj).reduce((a: any, b: any) => (Number(a) || 0) + (Number(b) || 0), 0) : 0;
+	          return {
+	            id: String(p?.id ?? p?.profileId ?? ""),
+	            name: String(p?.name ?? ""),
+	            win: state?.winnerId ? String(p?.id ?? p?.profileId) === String(state.winnerId) : false,
+	            score: Number(p?.score ?? 0) || 0,
+	            darts: {
+	              thrown: hitsArr.length,
+	              hits: hitsArr.length,
+	              misses: 0,
+	            },
+	            special: {
+	              marksTotal: Number(marksTotal) || 0,
+	            },
+	          };
+	        }),
+	        global: {
+	          duration: Math.max(0, now - Number(createdAt || now)),
+	          legs: 1,
+	        },
+	      },
       variantId,
       scoringVariant,
       withPoints: scoreMode === "points",

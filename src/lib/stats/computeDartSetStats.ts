@@ -19,83 +19,71 @@ export type DartSetAgg = {
   updatedAt: number;
 };
 
-function toId(v: any): string | null {
-  if (v == null) return null;
-  const s = String(v).trim();
-  return s ? s : null;
-}
+function getDartSetIdsByPlayer(rec: any): Record<string, string> {
+  const out: Record<string, string> = {};
 
-function pickFirstNonEmpty(arr: any[]): string | null {
-  for (const v of arr) {
-    const id = toId(v);
-    if (id) return id;
-  }
-  return null;
-}
-
-function getDartSetId(rec: any, profileId?: string | null): string | null {
-  // ✅ Priorité aux champs unifiés (Patch 4)
-  const meta = rec?.payload?.meta ?? rec?.meta ?? null;
-  const byPlayer = meta?.dartSetIdsByPlayer ?? rec?.dartSetIdsByPlayer ?? null;
-  if (byPlayer && profileId) {
-    const v = (byPlayer as any)[String(profileId)];
-    const id = toId(v);
-    if (id) return id;
+  const metaMap = rec?.payload?.meta?.dartSetIdsByPlayer ?? rec?.meta?.dartSetIdsByPlayer;
+  if (metaMap && typeof metaMap === "object") {
+    for (const [k, v] of Object.entries(metaMap)) {
+      const ds = v ? String(v) : "";
+      if (k && ds) out[String(k)] = ds;
+    }
   }
 
-  // ✅ Global si unique
-  const direct = pickFirstNonEmpty([
-    rec?.dartSetId,
-    rec?.payload?.dartSetId,
-    meta?.dartSetId,
-    rec?.payload?.summary?.dartSetId,
-    rec?.summary?.dartSetId,
-    rec?.payload?.config?.dartSetId,
-  ]);
-  if (direct) return direct;
+  const statsPlayers = rec?.payload?.stats?.players;
+  if (Array.isArray(statsPlayers)) {
+    for (const p of statsPlayers) {
+      const pid = p?.id ?? p?.profileId;
+      const ds = p?.dartSetId ?? p?.favoriteDartSetId;
+      if (pid && ds) out[String(pid)] = String(ds);
+    }
+  }
 
-  // ✅ X01 V3: summary.perPlayer contient dartSetId
-  const s = rec?.summary ?? rec?.payload?.summary ?? null;
   const perPlayer =
-    (Array.isArray(s?.perPlayer) && s.perPlayer) ||
-    (Array.isArray(s?.players) && s.players) ||
+    rec?.summary?.perPlayer ??
+    rec?.payload?.summary?.perPlayer ??
+    rec?.payload?.summary?.stats?.perPlayer ??
     null;
-  if (Array.isArray(perPlayer) && perPlayer.length) {
-    if (profileId) {
-      const row = perPlayer.find(
-        (pp: any) => String(pp?.playerId ?? pp?.profileId ?? pp?.id ?? "") === String(profileId)
-      );
-      const pid = pickFirstNonEmpty([row?.dartSetId, row?.dartPresetId]);
-      if (pid) return pid;
+  if (Array.isArray(perPlayer)) {
+    for (const p of perPlayer) {
+      const pid = p?.id ?? p?.profileId;
+      const ds = p?.dartSetId ?? p?.favoriteDartSetId;
+      if (pid && ds) out[String(pid)] = String(ds);
     }
-    const anyId = pickFirstNonEmpty(
-      perPlayer
-        .map((pp: any) => pp?.dartSetId ?? pp?.dartPresetId ?? null)
-        .filter(Boolean)
-    );
-    if (anyId) return anyId;
   }
 
-  // ✅ players[] (record ou payload.config)
-  const players =
-    (Array.isArray(rec?.players) && rec.players) ||
-    (Array.isArray(rec?.payload?.players) && rec.payload.players) ||
-    (Array.isArray(rec?.payload?.config?.players) && rec.payload.config.players) ||
-    null;
-  if (Array.isArray(players) && players.length) {
-    if (profileId) {
-      const row = players.find((p: any) => String(p?.id ?? "") === String(profileId));
-      const pid = pickFirstNonEmpty([row?.dartSetId, row?.dartPresetId]);
-      if (pid) return pid;
+  const players = (rec?.players || rec?.payload?.players || rec?.payload?.config?.players || []) as any[];
+  if (Array.isArray(players)) {
+    for (const p of players) {
+      const pid = p?.id ?? p?.profileId;
+      const ds = p?.dartSetId ?? p?.favoriteDartSetId;
+      if (pid && ds) out[String(pid)] = String(ds);
     }
-    const anyId = pickFirstNonEmpty(
-      players
-        .map((p: any) => p?.dartSetId ?? p?.dartPresetId ?? null)
-        .filter(Boolean)
-    );
-    if (anyId) return anyId;
   }
 
+  const g =
+    rec?.dartSetId ??
+    rec?.payload?.dartSetId ??
+    rec?.payload?.meta?.dartSetId ??
+    rec?.meta?.dartSetId ??
+    rec?.payload?.summary?.dartSetId ??
+    rec?.summary?.dartSetId ??
+    rec?.payload?.config?.dartSetId ??
+    null;
+
+  if (g) {
+    const ds = String(g);
+    if (!Object.keys(out).length) out["*"] = ds;
+  }
+
+  return out;
+}
+
+function getDartSetIdForMatch(rec: any): string | null {
+  const m = getDartSetIdsByPlayer(rec);
+  const vals = Object.values(m).filter(Boolean);
+  const uniq = Array.from(new Set(vals));
+  if (uniq.length === 1) return uniq[0];
   return null;
 }
 
@@ -115,7 +103,9 @@ export async function computeDartSetStats(profileId?: string | null): Promise<Da
       if (!has) continue;
     }
 
-    const dsid = getDartSetId(r0, pid || null);
+    const dsMap = getDartSetIdsByPlayer(r0);
+
+    const dsid = pid ? (dsMap[pid] || null) : getDartSetIdForMatch(r0);
     if (!dsid) continue;
 
     if (!by[dsid]) by[dsid] = { matches: 0, legs: 0, avg3: 0, updatedAt: 0 };
@@ -123,8 +113,7 @@ export async function computeDartSetStats(profileId?: string | null): Promise<Da
     by[dsid].matches += 1;
 
     const s = r0?.summary ?? r0?.payload?.summary ?? null;
-    // legs: si absent, fallback = 1 match
-    by[dsid].legs += Number(s?.legs ?? s?.legsPlayed ?? 0) || 1;
+    by[dsid].legs += Number(s?.legs ?? 0) || 0;
 
     // avg3 approx : moyenne de avg3ByPlayer
     const avg3ByPlayer = s?.avg3ByPlayer;

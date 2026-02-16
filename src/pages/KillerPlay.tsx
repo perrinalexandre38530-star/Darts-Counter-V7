@@ -30,6 +30,7 @@
 import React from "react";
 import { useViewport } from "../hooks/useViewport";
 import type { Store, MatchRecord, Dart as UIDart } from "../lib/types";
+import { History } from "../lib/history";
 import type {
   KillerConfig,
   KillerDamageRule,
@@ -1813,6 +1814,9 @@ function truthy(v: any) {
 
 export default function KillerPlay({ store, go, config, onFinish }: Props) {
   const startedAt = React.useMemo(() => Date.now(), []);
+  const matchIdRef = React.useRef<string>(
+    (config as any)?.matchId ?? `killer-${startedAt}-${Math.random().toString(36).slice(2, 8)}`
+  );
   const finishedRef = React.useRef(false);
   const elimOrderRef = React.useRef<string[]>([]);
   const introPlayedRef = React.useRef(false);
@@ -1999,6 +2003,64 @@ React.useEffect(() => {
     return me?.killerPhase === "SELECT" ? 1 : 3;
   });
 
+  const saveInProgress = React.useCallback(() => {
+    try {
+      if (finishedRef.current) return;
+      const updatedAt = Date.now();
+      const dartSetIdsByPlayer = (config as any)?.dartSetIdsByPlayer ?? null;
+      const dartSetId = (() => {
+        try {
+          const map = dartSetIdsByPlayer || {};
+          const vals = Object.values(map).filter(Boolean) as string[];
+          const uniq = Array.from(new Set(vals));
+          return uniq.length === 1 ? String(uniq[0]) : null;
+        } catch {
+          return null;
+        }
+      })();
+      const rec: any = {
+        id: matchIdRef.current,
+        kind: "killer",
+        status: "in_progress",
+        createdAt: startedAt,
+        updatedAt,
+        winnerId: null,
+        players: (players || []).map((p: any) => ({
+          id: p.id,
+          name: p.name,
+          avatarDataUrl: p.avatarDataUrl ?? null,
+          isBot: !!p.isBot,
+          botLevel: p.botLevel ?? "",
+        })),
+        summary: { mode: "killer" },
+        payload: {
+          mode: "killer",
+          config,
+          resumeId: (config as any)?.resumeId ?? null,
+          meta: { dartSetId, dartSetIdsByPlayer },
+          state: {
+            players,
+            turnIndex,
+            dartsLeft,
+            assignDone,
+            assignIndex,
+            events,
+          },
+        },
+      };
+      void History.upsert(rec as any);
+    } catch {}
+  }, [players, turnIndex, dartsLeft, assignDone, assignIndex, events, config, startedAt]);
+
+  React.useEffect(() => {
+    // ✅ AUTOSAVE in_progress pour reprise (toutes les 8s)
+    if (finishedRef.current) return;
+    const t = window.setInterval(() => {
+      saveInProgress();
+    }, 8000);
+    return () => window.clearInterval(t);
+  }, [saveInProgress]);
+
   const [visit, setVisit] = React.useState<ThrowInput[]>([]);
   const [finished, setFinished] = React.useState<boolean>(false);
   const [multiplier, setMultiplier] = React.useState<Mult>(1);
@@ -2182,9 +2244,23 @@ React.useEffect(() => {
     elim: string[]
   ) {
     const finishedAt = Date.now();
-    const id = makeMatchId("killer", finishedAt);
+    const id = matchIdRef.current;
 
     const ordered = getOrderedFinalPlayers(finalPlayersRaw, elim);
+
+    const dartSetIdsByPlayer: Record<string, string | null> = Object.fromEntries(
+      (ordered || []).map((p: any) => [p.id, null])
+    );
+    const dartSetId = (() => {
+      try {
+        const vals = Object.values(dartSetIdsByPlayer).filter(Boolean) as string[];
+        const uniq = Array.from(new Set(vals));
+        return uniq.length === 1 ? String(uniq[0]) : null;
+      } catch {
+        return null;
+      }
+    })();
+
 
     const detailedByPlayer: Record<string, any> = {};
     for (const p of finalPlayersRaw) {
@@ -2296,6 +2372,7 @@ React.useEffect(() => {
       },
       payload: {
         mode: "killer",
+        meta: { dartSetId, dartSetIdsByPlayer },
         config,
         resumeId,
         summary: { mode: "killer", detailedByPlayer, perPlayer, ranking },
@@ -2926,6 +3003,17 @@ if (me.killerPhase === "ACTIVE") {
       }
 
       if (!rec) {
+        const dartSetIdsByPlayer = (config as any)?.dartSetIdsByPlayer ?? null;
+        const dartSetId = (() => {
+          try {
+            const map = dartSetIdsByPlayer || {};
+            const vals = Object.values(map).filter(Boolean) as string[];
+            const uniq = Array.from(new Set(vals));
+            return uniq.length === 1 ? String(uniq[0]) : null;
+          } catch {
+            return null;
+          }
+        })();
         rec = {
           id: `killer-${Date.now()}`,
           kind: "killer",
@@ -2939,7 +3027,7 @@ if (me.killerPhase === "ACTIVE") {
             avatarDataUrl: p.avatarDataUrl ?? null,
           })),
           summary: { mode: "killer", ranking: [] },
-          payload: { mode: "killer", config },
+          payload: { mode: "killer", config, meta: { dartSetId, dartSetIdsByPlayer } },
         };
       }
 
@@ -3574,7 +3662,7 @@ React.useEffect(() => {
 if (!config || !config.players || config.players.length < 2) {
   return (
     <div style={{ padding: 16, color: "#fff" }}>
-      <button onClick={() => go("killer_config")}>← Retour</button>
+      <button onClick={() => { saveInProgress(); go("killer_config"); }}>← Retour</button>
       <p>Configuration KILLER invalide.</p>
     </div>
   );
@@ -4074,7 +4162,7 @@ return (
       {/* ✅ BackDot à gauche (comme en config) */}
       <div style={{ display: "flex", alignItems: "center", gap: 10, pointerEvents: "auto" }}>
         <BackDot
-          onClick={() => go("killer_config")}
+          onClick={() => { saveInProgress(); go("killer_config"); }}
           title="Retour"
           size={38}
           color={gold}

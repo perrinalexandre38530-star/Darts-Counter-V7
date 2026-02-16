@@ -165,6 +165,27 @@ function extractPlayers(rec: any): NormalizedPlayer[] {
   const fromSummary = A<any>(rec?.summary?.players || rec?.summary?.perPlayer);
   const fromAny = fromTop.length ? fromTop : fromPayload.length ? fromPayload : fromSummary;
 
+  // ✅ DartSet — priorités :
+  // 1) payload.meta.dartSetIdsByPlayer / rec.meta.dartSetIdsByPlayer
+  // 2) champs sur le joueur (dartSetId / favoriteDartSetId / dartPresetId)
+  // 3) dartSetId global (payload/meta/top)
+  const dartSetIdsByPlayer =
+    (rec?.payload?.meta?.dartSetIdsByPlayer ??
+      rec?.meta?.dartSetIdsByPlayer ??
+      rec?.payload?.dartSetIdsByPlayer ??
+      rec?.dartSetIdsByPlayer ??
+      null) as any;
+
+  const globalDartSetId =
+    (rec?.payload?.meta?.dartSetId ??
+      rec?.meta?.dartSetId ??
+      rec?.payload?.dartSetId ??
+      rec?.dartSetId ??
+      rec?.payload?.summary?.dartSetId ??
+      rec?.summary?.dartSetId ??
+      rec?.payload?.config?.dartSetId ??
+      null) as any;
+
   const out: NormalizedPlayer[] = [];
 
   for (const p of A<any>(fromAny)) {
@@ -179,7 +200,16 @@ function extractPlayers(rec: any): NormalizedPlayer[] {
       name: S(p?.name || "Joueur"),
       isBot: !!(p?.isBot || p?.bot),
       botLevel: S(p?.botLevel || p?.level || ""),
-      dartSetId: (p?.dartSetId ?? p?.dartPresetId ?? null) as any,
+      dartSetId: (
+        (dartSetIdsByPlayer && typeof dartSetIdsByPlayer === "object"
+          ? (dartSetIdsByPlayer[String(id)] ?? dartSetIdsByPlayer[String(p?.profileId)] ?? null)
+          : null) ??
+        p?.dartSetId ??
+        p?.favoriteDartSetId ??
+        p?.dartPresetId ??
+        globalDartSetId ??
+        null
+      ) as any,
       avatarDataUrl: (p?.avatarDataUrl ?? p?.avatar ?? null) as any,
     });
   }
@@ -410,6 +440,27 @@ export function normalizeOne(rec: SavedMatch | any): NormalizedMatch | null {
 
     const winnerId = S(rec?.winnerId || rec?.summary?.winnerId || rec?.payload?.winnerId || "");
     const winners = winnerIds.length ? winnerIds : winnerId ? [winnerId] : [];
+
+// ✅ Fallback winners depuis payload.stats unifié (players[].win)
+if (!winners.length) {
+  try {
+    const uPlayers =
+      rec?.payload?.stats?.players ||
+      rec?.payload?.payload?.stats?.players ||
+      rec?.payload?.summary?.stats?.players ||
+      rec?.stats?.players ||
+      null;
+    if (Array.isArray(uPlayers)) {
+      const w2 = uPlayers
+        .filter((p: any) => !!p?.win)
+        .map((p: any) => String(p?.id ?? p?.profileId ?? "").trim())
+        .filter(Boolean);
+      if (w2.length) {
+        (winners as any).push(...Array.from(new Set(w2)));
+      }
+    }
+  } catch {}
+}
 
     const base: Omit<NormalizedMatch, "visits" | "darts"> = {
       id,

@@ -1593,6 +1593,21 @@ const ranking = useMemo(() => {
         avatarDataUrl: (prof?.avatarDataUrl ?? p.avatar ?? null) as any,
       };
     });
+    // ✅ DartSet meta (best-effort depuis profils)
+    const dartSetIdsByPlayer: Record<string, string | null> = Object.fromEntries(
+      (roster || []).map((p: any) => {
+        const pid = String(p?.id ?? "");
+        const prof: any = (profilesById as any)?.[pid];
+        const ds: string | null =
+          (prof?.dartSetId ?? prof?.favoriteDartSetId ?? null) ? String(prof?.dartSetId ?? prof?.favoriteDartSetId) : null;
+        return [pid, ds];
+      })
+    );
+    const uniqueDartSets = Array.from(
+      new Set(Object.values(dartSetIdsByPlayer).filter(Boolean) as string[])
+    );
+    const dartSetId: string | null = uniqueDartSets.length === 1 ? uniqueDartSets[0] : null;
+
 
     const rankings = (ranking || []).map((r: any, i: number) => ({
       pos: i + 1,
@@ -1649,8 +1664,33 @@ const ranking = useMemo(() => {
       },
       payload: {
         mode: "golf",
+        dartSetId,
+        dartSetIdsByPlayer,
+        meta: { ...(cfg as any)?.meta, dartSetId, dartSetIdsByPlayer },
         config: cfg,
         state,
+        // ✅ Stats unifiées (léger) — utilisées par StatsHub si présent
+        stats: {
+          sport: "golf",
+          mode: "golf",
+          players: (rankings || []).map((r: any) => ({
+            id: String(r?.id ?? ""),
+            name: String(r?.name ?? ""),
+            win: winnerId ? String(r?.id) === String(winnerId) : false,
+            score: Number(r?.total ?? 0) || 0,
+            darts: { thrown: Number(r?.darts ?? 0) || 0 },
+            special: {
+              // Best-effort (numérique) — utile pour filtre/tri éventuel
+              p1: Number(r?.p1 ?? 0) || 0,
+              p2: Number(r?.p2 ?? 0) || 0,
+              p3: Number(r?.p3 ?? 0) || 0,
+            },
+          })),
+          global: {
+            duration: Math.max(0, now - Number(createdAtRef.current || now)),
+            holes: Number(holes ?? 0) || 0,
+          },
+        },
         summary: {
           rankings,
           winnerId,

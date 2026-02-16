@@ -2007,6 +2007,37 @@ useEffect(() => {
 
     const summary = (m as any)?.summary ?? (m as any)?.payload?.summary ?? null;
 
+
+// ✅ Unified lightweight stats for StatsHub aggregation
+const unifiedStats = (() => {
+  try {
+    const s: any = summary || {};
+    const scoreA = Number(s?.scoreA ?? s?.teamA?.score ?? 0) || 0;
+    const scoreB = Number(s?.scoreB ?? s?.teamB?.score ?? 0) || 0;
+    const setsA = Number(s?.setsA ?? s?.teamA?.sets ?? 0) || 0;
+    const setsB = Number(s?.setsB ?? s?.teamB?.sets ?? 0) || 0;
+    const winnerTeam = s?.winnerTeam ?? (scoreA === scoreB ? null : scoreA > scoreB ? 0 : 1);
+    const duration = Number(s?.durationMs ?? s?.duration ?? 0) || 0;
+
+    return {
+      sport: "babyfoot",
+      mode: "babyfoot",
+      players: Array.isArray(players)
+        ? players.map((p: any) => ({
+            id: String(p?.id ?? ""),
+            name: String(p?.name ?? ""),
+            win: winnerTeam != null ? (Number(p?.teamIndex ?? -1) === Number(winnerTeam)) : undefined,
+            score: Number(p?.teamIndex ?? -1) === 0 ? scoreA : scoreB,
+          }))
+        : [],
+      global: { scoreA, scoreB, setsA, setsB, winnerTeam, duration },
+    };
+  } catch {
+    return { sport: "babyfoot", mode: "babyfoot", players: [], global: {} };
+  }
+})();
+
+
     const saved: any = {
       id,
       kind: (m as any)?.kind || "babyfoot",
@@ -2017,8 +2048,15 @@ useEffect(() => {
       createdAt: (m as any)?.createdAt || now,
       updatedAt: now,
       summary,
-      payload: { ...(m as any), players, summary, kind: (m as any)?.kind || "babyfoot", sport: "babyfoot" },
+      payload: { ...(m as any), players, summary, kind: (m as any)?.kind || "babyfoot", sport: "babyfoot", stats: unifiedStats },
     };
+
+
+// ✅ Mirror to IndexedDB history so StatsHub sees it like other modes
+try {
+  void History.upsert(saved);
+} catch {}
+
 
     setStore((s) => {
       const list = [...((s as any).history ?? [])];
@@ -2058,6 +2096,33 @@ useEffect(() => {
 
     const summary = (m as any)?.summary ?? (m as any)?.payload?.summary ?? null;
 
+
+// ✅ Unified lightweight stats for StatsHub aggregation
+const unifiedStats = (() => {
+  try {
+    const s: any = summary || {};
+    const setsA = Number(s?.setsA ?? s?.sideA?.sets ?? 0) || 0;
+    const setsB = Number(s?.setsB ?? s?.sideB?.sets ?? 0) || 0;
+    const pointsA = Number(s?.pointsA ?? s?.sideA?.points ?? 0) || 0;
+    const pointsB = Number(s?.pointsB ?? s?.sideB?.points ?? 0) || 0;
+    const winnerSide = s?.winnerSideId ?? (setsA === setsB ? null : setsA > setsB ? "A" : "B");
+    const duration = Number(s?.durationMs ?? s?.duration ?? 0) || 0;
+
+    return {
+      sport: "pingpong",
+      mode: "pingpong",
+      players: [
+        { id: "side-A", name: "Side A", win: winnerSide === "A", score: setsA, special: { points: pointsA } },
+        { id: "side-B", name: "Side B", win: winnerSide === "B", score: setsB, special: { points: pointsB } },
+      ],
+      global: { setsA, setsB, pointsA, pointsB, winnerSide, duration },
+    };
+  } catch {
+    return { sport: "pingpong", mode: "pingpong", players: [], global: {} };
+  }
+})();
+
+
     const saved: any = {
       id,
       kind: (m as any)?.kind || "pingpong",
@@ -2068,8 +2133,15 @@ useEffect(() => {
       createdAt: (m as any)?.createdAt || now,
       updatedAt: now,
       summary,
-      payload: { ...(m as any), players, summary, kind: (m as any)?.kind || "pingpong", sport: "pingpong" },
+      payload: { ...(m as any), players, summary, kind: (m as any)?.kind || "pingpong", sport: "pingpong", stats: unifiedStats },
     };
+
+
+// ✅ Mirror to IndexedDB history so StatsHub sees it like other modes
+try {
+  void History.upsert(saved);
+} catch {}
+
 
     setStore((s) => {
       const list = [...((s as any).history ?? [])];
