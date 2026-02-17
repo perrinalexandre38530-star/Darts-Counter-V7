@@ -1024,6 +1024,10 @@ export default function StatsLeaderboardsPage({ store }: Props) {
   const [batardWinMode, setBatardWinMode] = React.useState<string>("all");
   const [batardFailPolicy, setBatardFailPolicy] = React.useState<string>("all");
   const [batardScoreOnlyValid, setBatardScoreOnlyValid] = React.useState<string>("all"); // all|true|false
+  const [historySource, setHistorySource] = React.useState<any[]>(
+    (((store as any)?.history as any[]) || []) as any[]
+  );
+
 
   const batardFilterOptions = React.useMemo(() => {
     const presets = new Set<string>();
@@ -1047,10 +1051,6 @@ export default function StatsLeaderboardsPage({ store }: Props) {
       scoreOnlyVals: Array.from(scoreOnlyVals).sort(),
     };
   }, [historySource]);
-
-  const [historySource, setHistorySource] = React.useState<any[]>(
-    (((store as any)?.history as any[]) || []) as any[]
-  );
 
   React.useEffect(() => {
     setHistorySource((((store as any)?.history as any[]) || []) as any[]);
