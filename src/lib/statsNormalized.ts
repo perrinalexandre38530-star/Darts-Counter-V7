@@ -113,14 +113,24 @@ function safeId(rec: any) {
 ========================= */
 
 export function detectNormalizedMode(rec: any): NormalizedMode {
-  const rawKind = S(rec?.kind || rec?.summary?.kind || rec?.payload?.kind || "");
+  const rawKind = S(
+    rec?.kind ||
+      rec?.resume?.kind ||
+      rec?.resume?.summary?.kind ||
+      rec?.summary?.kind ||
+      rec?.payload?.kind ||
+      ""
+  );
   const rawMode =
     S(
       rec?.game?.mode ||
+        rec?.resume?.game?.mode ||
         rec?.mode ||
+        rec?.resume?.mode ||
         rec?.summary?.mode ||
         rec?.payload?.mode ||
         rec?.payload?.summary?.mode ||
+        rec?.resume?.summary?.mode ||
         ""
     ).toLowerCase();
 
@@ -162,8 +172,18 @@ export function detectNormalizedMode(rec: any): NormalizedMode {
 function extractPlayers(rec: any): NormalizedPlayer[] {
   const fromTop = A<any>(rec?.players);
   const fromPayload = A<any>(rec?.payload?.players);
+  const fromResume = A<any>(rec?.resume?.players);
+  const fromResumeCfg = A<any>(rec?.resume?.config?.players);
   const fromSummary = A<any>(rec?.summary?.players || rec?.summary?.perPlayer);
-  const fromAny = fromTop.length ? fromTop : fromPayload.length ? fromPayload : fromSummary;
+  const fromAny = fromTop.length
+    ? fromTop
+    : fromPayload.length
+    ? fromPayload
+    : fromResume.length
+    ? fromResume
+    : fromResumeCfg.length
+    ? fromResumeCfg
+    : fromSummary;
 
   // ✅ DartSet — priorités :
   // 1) payload.meta.dartSetIdsByPlayer / rec.meta.dartSetIdsByPlayer
@@ -171,6 +191,7 @@ function extractPlayers(rec: any): NormalizedPlayer[] {
   // 3) dartSetId global (payload/meta/top)
   const dartSetIdsByPlayer =
     (rec?.payload?.meta?.dartSetIdsByPlayer ??
+      rec?.resume?.meta?.dartSetIdsByPlayer ??
       rec?.meta?.dartSetIdsByPlayer ??
       rec?.payload?.dartSetIdsByPlayer ??
       rec?.dartSetIdsByPlayer ??
@@ -178,12 +199,15 @@ function extractPlayers(rec: any): NormalizedPlayer[] {
 
   const globalDartSetId =
     (rec?.payload?.meta?.dartSetId ??
+      rec?.resume?.meta?.dartSetId ??
       rec?.meta?.dartSetId ??
       rec?.payload?.dartSetId ??
       rec?.dartSetId ??
       rec?.payload?.summary?.dartSetId ??
       rec?.summary?.dartSetId ??
+      rec?.resume?.summary?.dartSetId ??
       rec?.payload?.config?.dartSetId ??
+      rec?.resume?.config?.dartSetId ??
       null) as any;
 
   const out: NormalizedPlayer[] = [];
@@ -520,9 +544,25 @@ export async function loadNormalizedHistory(): Promise<NormalizedMatch[]> {
     // Cap + concurrence pour éviter tout freeze.
     // =====================================================
     try {
-      const NEED = new Set(["x01", "cricket", "killer", "shanghai", "territories", "golf", "batard", "babyfoot", "pingpong", "petanque", "clock", "training"]);
+      const NEED = new Set<NormalizedMode>([
+        "x01",
+        "cricket",
+        "killer",
+        "shanghai",
+        "territories",
+        "golf",
+        "batard",
+        "babyfoot",
+        "pingpong",
+        "petanque",
+        "clock",
+        "training",
+      ]);
+
+      // ⚠️ IMPORTANT: certains records récents stockent l'info de mode/kind dans `resume`.
+      // On s'appuie donc sur detectNormalizedMode() plutôt que r.kind/r.mode bruts.
       const candidates = (rows || [])
-        .filter((r: any) => r && NEED.has(String(r.kind || r.mode || "")))
+        .filter((r: any) => r && NEED.has(detectNormalizedMode(r)))
         .filter((r: any) => r.payload == null);
 
       const MAX_HYDRATE = 260;

@@ -7,6 +7,47 @@
 
 import type { NormalizedMatch } from "./statsNormalized";
 
+
+// =============================================================
+// Unified stats helpers (payload.stats)
+// - Allows dashboards to use the new lightweight payload.stats block
+//   for non-X01 modes (Golf/Cricket/Killer/Shanghai/Batard/etc.)
+// =============================================================
+function getUnifiedStatsPlayers(raw: any): any[] {
+  const ps = raw?.payload?.stats?.players;
+  return Array.isArray(ps) ? ps : [];
+}
+
+function findUnifiedPlayer(raw: any, playerId: string): any | null {
+  const pid = String(playerId || "");
+  if (!pid) return null;
+  const ps = getUnifiedStatsPlayers(raw);
+  for (const p of ps) {
+    const id = String(p?.id ?? p?.profileId ?? "");
+    if (id && id === pid) return p;
+  }
+  // fallback: sometimes NormalizedPlayer.playerId != profileId; try matching by profileId
+  for (const p of ps) {
+    const id = String(p?.profileId ?? "");
+    if (id && id === pid) return p;
+  }
+  return null;
+}
+
+function readUnifiedAvg3(raw: any, playerId: string): number {
+  const p = findUnifiedPlayer(raw, playerId);
+  const a = p?.averages?.avg3d ?? p?.avg3d ?? null;
+  const n = Number(a);
+  return Number.isFinite(n) && n > 0 ? n : 0;
+}
+
+function readUnifiedBestVisit(raw: any, playerId: string): number {
+  const p = findUnifiedPlayer(raw, playerId);
+  const v = p?.special?.bestVisit ?? p?.bestVisit ?? null;
+  const n = Number(v);
+  return Number.isFinite(n) && n > 0 ? n : 0;
+}
+
 type VisitBucket = "0-59" | "60-99" | "100+" | "140+" | "180";
 type PlayerDistribution = Record<VisitBucket, number>;
 
@@ -108,6 +149,11 @@ export function buildDashboardFromNormalized(
   let totalX01VisitScore = 0; // somme des scores de visits (ou avg3 * visits)
   let totalX01Visits = 0;
 
+
+// Non-X01 (unified payload.stats) — avg3d per match (simple mean)
+let totalUnifiedAvg3 = 0;
+let totalUnifiedMatchesWithAvg3 = 0;
+
   let bestVisit = 0;
   let bestCheckout = 0;
 
@@ -175,10 +221,21 @@ export function buildDashboardFromNormalized(
           evolution.push({ date: safeDate(m.date || Date.now()), avg3: fmt1(matchAvg3) });
         }
       }
+    } else {
+      // Non-X01 modes: use unified payload.stats if present (lightweight block)
+      const raw = (m as any)?.raw;
+      const ua3 = readUnifiedAvg3(raw, playerId);
+      if (ua3 > 0) {
+        totalUnifiedAvg3 += ua3;
+        totalUnifiedMatchesWithAvg3 += 1;
+        evolution.push({ date: safeDate(m.date || Date.now()), avg3: fmt1(ua3) });
+      }
+      const ubv = readUnifiedBestVisit(raw, playerId);
+      if (ubv > bestVisit) bestVisit = ubv;
     }
   }
 
-  const avg3Overall = totalX01Visits ? totalX01VisitScore / totalX01Visits : 0;
+  const avg3Overall = totalX01Visits ? totalX01VisitScore / totalX01Visits : totalUnifiedMatchesWithAvg3 ? totalUnifiedAvg3 / totalUnifiedMatchesWithAvg3 : 0;
   const winRatePct = matchesPlayed ? (wins / matchesPlayed) * 100 : 0;
 
   const evoSorted = evolution
