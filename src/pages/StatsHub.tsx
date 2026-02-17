@@ -4,6 +4,7 @@
 import React from "react";
 import { History } from "../lib/history";
 import { loadStore } from "../lib/storage";
+import { rebuildStatsToStore } from "../lib/stats/rebuildStatsToStore";
 import StatsPlayerDashboard, {
   type PlayerDashboardStats,
   GoldPill,
@@ -3651,6 +3652,13 @@ export default function StatsHub({
 }: Props) {
   // CSS shimmer
   useInjectStatsNameCss();
+
+  // ✅ Reconnecte pipeline History -> Store -> StatsHub (source de vérité = History)
+  React.useEffect(() => {
+    rebuildStatsToStore().catch((e) => {
+      console.warn("[rebuildStatsToStore] failed", e);
+    });
+  }, []);
 
 // ============================================================
 // 🔎 DEBUG TEMPORAIRE — vérifier IndexedDB (History)
