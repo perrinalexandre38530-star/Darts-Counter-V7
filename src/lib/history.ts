@@ -1090,7 +1090,11 @@ export async function list(): Promise<SavedMatch[]> {
 
       const out = { ...r, id: key, matchId: key } as any;
       if (payload) out.payload = payload; // ✅ payload seulement pour Cricket
-      delete out.payloadCompressed; // ✅ alléger le retour (important)
+      // NOTE:
+      // On *garde* payloadCompressed dans le retour de list().
+      // Plusieurs pages (StatsHub / statsNormalized) hydratent les records à partir de
+      // payloadCompressed (fallback si payload n'est pas inclus).
+      // Supprimer payloadCompressed rend la normalisation impossible -> stats à 0.
 
       if (!existing) {
         byMatch.set(key, out);

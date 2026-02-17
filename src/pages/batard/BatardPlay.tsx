@@ -579,7 +579,7 @@ function HeaderBlock(props: HeaderBlockProps) {
       <div
         style={{
           display: "grid",
-          gridTemplateColumns: "auto 1fr",
+          gridTemplateColumns: "auto minmax(0,1fr)",
           gap: 8,
           alignItems: "center",
           position: "relative",
@@ -627,7 +627,7 @@ function HeaderBlock(props: HeaderBlockProps) {
           </div>
 
           {/* Mini card stats joueur actif (Batard) */}
-          <div style={{ ...miniCard, width: 176, height: "auto", padding: 7 }}>
+          <div style={{ ...miniCard, width: "clamp(118px, 24vw, 150px)", height: "auto", padding: 6 }}>
             <div style={miniText}>
               <div>
                 Hits : <b>{curHits}</b>
@@ -643,7 +643,7 @@ function HeaderBlock(props: HeaderBlockProps) {
         </div>
 
         {/* SCORE + PASTILLES + RANKING */}
-        <div style={{ textAlign: "center", display: "flex", flexDirection: "column", gap: 5, position: "relative", overflow: "visible" }}>
+        <div style={{ textAlign: "center", display: "flex", flexDirection: "column", gap: 5, position: "relative", overflow: "hidden", minWidth: 0 }}>
           {!!bgAvatarUrl && (
             <img
               src={bgAvatarUrl}
@@ -698,9 +698,9 @@ function HeaderBlock(props: HeaderBlockProps) {
                 return (
                   <div
                     style={{
-                      minWidth: 74,
-                      maxWidth: 86,
-                      padding: "6px 8px",
+                      minWidth: 64,
+                      maxWidth: 74,
+                      padding: "5px 6px",
                       borderRadius: 12,
                       background: st.bg,
                       border: st.border,
@@ -728,8 +728,8 @@ function HeaderBlock(props: HeaderBlockProps) {
                     type="button"
                     onClick={onOpenInfo}
                     style={{
-                      width: 34,
-                      height: 34,
+                      width: 32,
+                      height: 32,
                       borderRadius: 12,
                       border: "1px solid rgba(255,255,255,.12)",
                       background: "rgba(0,0,0,.20)",
@@ -749,7 +749,7 @@ function HeaderBlock(props: HeaderBlockProps) {
 
           <div
             style={{
-              fontSize: 64,
+              fontSize: "clamp(44px, 13vw, 64px)",
               fontWeight: 900,
               position: "relative",
               zIndex: 2,
@@ -1167,6 +1167,7 @@ export default function BatardPlay(props: any) {
     if (currentThrow.length >= 3) return;
     setInfoMsg(null);
     setCurrentThrow((prev) => [...prev, { v, mult: multiplier, label: `${multiplier}x${v}` }]);
+    setMultiplier(1);
   };
 
   const onBull = () => {
@@ -1174,6 +1175,7 @@ export default function BatardPlay(props: any) {
     if (currentThrow.length >= 3) return;
     setInfoMsg(null);
     setCurrentThrow((prev) => [...prev, { v: 25, mult: multiplier, label: multiplier === 2 ? "DBULL" : "BULL" }]);
+    setMultiplier(1);
   };
 
   const onUndo = () => {
@@ -1412,8 +1414,8 @@ export default function BatardPlay(props: any) {
 
               <div
                 style={{
-                  width: 34,
-                  height: 34,
+                  width: 32,
+                      height: 32,
                   borderRadius: 999,
                   display: "flex",
                   alignItems: "center",

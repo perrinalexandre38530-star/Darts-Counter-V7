@@ -89,6 +89,7 @@ import {
   type NormalizedMatch,
 } from "../lib/statsNormalized";
 import { buildDashboardFromNormalized } from "../lib/statsUnifiedAgg";
+import { computeX01MultiAgg } from "../lib/x01MultiAgg";
 
 // Effet "shimmer" à l'intérieur des lettres du nom du joueur
 const statsNameCss = `
@@ -4202,6 +4203,104 @@ const { cachedDashboard } = useFastDashboardCache(effectiveProfileId || null);
 const [liveDashboard, setLiveDashboard] =
   React.useState<PlayerDashboardStats | null>(null);
 
+
+  // ---- X01 hydration + dashboard bridge (dashboard uses same payload-level source as X01 Multi)
+  const [x01HydratedRows, setX01HydratedRows] = React.useState<any[] | null>(null);
+
+  React.useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const isX01Row = (r: any) =>
+          String(r?.kind ?? r?.mode ?? r?.game ?? "").toLowerCase().includes("x01");
+
+        const ids = (combinedHistory || [])
+          .filter(isX01Row)
+          .map((r: any) => r?.id)
+          .filter(Boolean);
+
+        const uniq: string[] = [];
+        const seen = new Set<string>();
+        for (const id of ids) {
+          const s = String(id);
+          if (!seen.has(s)) {
+            seen.add(s);
+            uniq.push(s);
+          }
+        }
+
+        // Hydrate payloads via History.get (decodes payloadCompressed)
+        const full = await Promise.all(uniq.slice(0, 600).map((id) => History.get(id).catch(() => null)));
+        const rows = full.filter(Boolean) as any[];
+        if (!cancelled) setX01HydratedRows(rows);
+      } catch {
+        if (!cancelled) setX01HydratedRows(null);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [combinedHistory]);
+
+  const applyX01AggToDashboard = React.useCallback(
+    (dash: any, pid: string, pname?: string) => {
+      try {
+        const hydrated = x01HydratedRows || [];
+        const rows = hydrated.length
+          ? hydrated
+          : (combinedHistory || []).filter((r: any) =>
+              String(r?.kind ?? r?.mode ?? r?.game ?? "").toLowerCase().includes("x01")
+            );
+
+        if (!rows.length) return dash;
+
+        let agg: any = computeX01MultiAgg(rows as any[], pid);
+
+        // If playerId mismatch, try resolve by player name from payload
+        if ((agg?.sessions ?? 0) == 0 && pname) {
+          const target = String(pname).toLowerCase().trim();
+          let candidateId: string | null = null;
+          for (const r of rows as any[]) {
+            const session = r?.payload?.session || r?.payload || r;
+            const players = session?.players || session?.session?.players || [];
+            const found = (players || []).find(
+              (pl: any) => String(pl?.name ?? pl?.public_name ?? "").toLowerCase().trim() === target
+            );
+            if (found?.id) {
+              candidateId = String(found.id);
+              break;
+            }
+          }
+          if (candidateId) {
+            const alt = computeX01MultiAgg(rows as any[], candidateId);
+            if ((alt?.sessions ?? 0) > 0) agg = alt;
+          }
+        }
+
+        const sessions = agg?.sessions ?? 0;
+        if (sessions > 0) {
+          dash.sessions = sessions;
+          if (agg?.sumAvg3D) dash.avg3Overall = agg.sumAvg3D / sessions;
+          dash.bestVisit = agg?.bestVisit ?? dash.bestVisit;
+          dash.bestCheckout = agg?.bestCheckout ?? dash.bestCheckout;
+          dash.totalDarts = agg?.darts ?? dash.totalDarts;
+          dash.distribution = {
+            S: agg?.hitsSingle ?? 0,
+            D: agg?.hitsDouble ?? 0,
+            T: agg?.hitsTriple ?? 0,
+            Bull: agg?.hitsBull ?? 0,
+            DBull: agg?.hitsDBull ?? 0,
+            Miss: agg?.miss ?? 0,
+          };
+        }
+      } catch {
+        // no-op
+      }
+      return dash;
+    },
+    [x01HydratedRows, combinedHistory]
+  );
+
 React.useEffect(() => {
   let cancelled = false;
 
@@ -4215,7 +4314,8 @@ React.useEffect(() => {
 
   const compute = () => {
     try {
-      const dash = buildDashboardFromNormalized(pid, pname, nmEffective);
+      const baseDash = buildDashboardFromNormalized(pid, pname, nmEffective);
+      const dash = applyX01AggToDashboard(baseDash, pid, pname);
       if (!cancelled) setLiveDashboard(dash as any);
     } catch {
       if (!cancelled) setLiveDashboard(null);
@@ -4241,21 +4341,21 @@ React.useEffect(() => {
     }
     if (toId != null) window.clearTimeout(toId);
   };
-}, [selectedPlayer?.id, selectedPlayer?.name, nmEffective.length]);
+}, [selectedPlayer?.id, selectedPlayer?.name, nmEffective.length, applyX01AggToDashboard]);
 
 // ✅ Dashboard calculé "memo" (léger) — NE DOIT PAS être bloqué par le cache
 const computedDashboard = React.useMemo(() => {
   if (!selectedPlayer) return null;
   try {
-    return buildDashboardFromNormalized(
+    return applyX01AggToDashboard(buildDashboardFromNormalized(
       String(selectedPlayer.id),
       String(selectedPlayer.name || "Joueur"),
       nmEffective
-    );
+    ));
   } catch {
     return null;
   }
-}, [selectedPlayer?.id, selectedPlayer?.name, nmEffective.length]);
+}, [selectedPlayer?.id, selectedPlayer?.name, nmEffective.length, applyX01AggToDashboard]);
 
 // ✅ Dashboard final à passer au composant (priorité: cache instant -> live recalcul -> memo)
 const dashboardToShow = (cachedDashboard ?? liveDashboard ?? computedDashboard) as

@@ -3082,7 +3082,7 @@ const throwChips = [0, 1, 2].map((i) => {
         )}
 
         {/* ✅ FIN DE PARTIE : overlay flottant (comme X01) */}
-        {showEndFloating && (
+        {showEndFloating && !showEndMatchModal && (
           <div
             role="dialog"
             aria-modal="true"
@@ -3302,7 +3302,10 @@ const throwChips = [0, 1, 2].map((i) => {
 
                   <button
                     type="button"
-                    onClick={() => setShowEndMatchModal(true)}
+                    onClick={() => {
+                      setShowEndMatchModal(true);
+                      setShowEndFloating(false);
+                    }}
                     style={{
                       flex: "1 1 180px",
                       height: 44,
@@ -3347,7 +3350,10 @@ const throwChips = [0, 1, 2].map((i) => {
               <div
                 role="dialog"
                 aria-modal="true"
-                onClick={() => setShowEndMatchModal(false)}
+                onClick={() => {
+                setShowEndMatchModal(false);
+                if (isFinished) setShowEndFloating(true);
+              }}
                 style={{
                   position: "fixed",
                   inset: 0,
@@ -3386,7 +3392,10 @@ const throwChips = [0, 1, 2].map((i) => {
                     </div>
                     <button
                       type="button"
-                      onClick={() => setShowEndMatchModal(false)}
+                      onClick={() => {
+                setShowEndMatchModal(false);
+                if (isFinished) setShowEndFloating(true);
+              }}
                       style={{
                         height: 34,
                         padding: "0 12px",
