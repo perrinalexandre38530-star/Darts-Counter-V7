@@ -1,3 +1,4 @@
+// src/pages/batard/BatardPlay.tsx
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useFullscreenPlay } from "../../hooks/useFullscreenPlay";
 import BackDot from "../../components/BackDot";
@@ -29,7 +30,6 @@ const INFO_TEXT = `BÂTARD — basé sur BatardConfig
 const CONTENT_MAX = 520;
 
 const miniCard: React.CSSProperties = {
-  // ✅ Must never overflow outside the active-player block (phone safe)
   width: "clamp(150px, 42vw, 190px)",
   maxWidth: "100%",
   padding: 6,
@@ -76,27 +76,43 @@ const miniRankScore: React.CSSProperties = {
   whiteSpace: "nowrap",
 };
 
+const kpiChip: React.CSSProperties = {
+  padding: "6px 10px",
+  borderRadius: 12,
+  fontWeight: 900,
+  letterSpacing: 0.2,
+  fontSize: 12,
+  border: "1px solid rgba(255,255,255,.12)",
+  background: "linear-gradient(180deg, rgba(255,195,26,.18), rgba(0,0,0,.14))",
+  boxShadow: "0 10px 22px rgba(0,0,0,.35)",
+  color: "#ffcf57",
+};
+
+const kpiChipBlue: React.CSSProperties = {
+  ...kpiChip,
+  background: "linear-gradient(180deg, rgba(46,150,193,.22), rgba(0,0,0,.14))",
+  color: "#cfeaff",
+  border: "1px solid rgba(46,150,193,.35)",
+};
+
+const kpiInfoBtn: React.CSSProperties = {
+  width: 30,
+  height: 30,
+  borderRadius: 999,
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  fontWeight: 900,
+  fontSize: 12,
+  color: "#d9dbe3",
+  background: "rgba(255,255,255,.06)",
+  border: "1px solid rgba(255,255,255,.10)",
+  cursor: "pointer",
+};
+
 // -------------------------------------------------------------
 // Helpers
 // -------------------------------------------------------------
-function roundLabel(round: BatardRound | null, idx: number) {
-  if (!round) return `Round #${idx + 1}`;
-
-  if (round.type === "TARGET_BULL") {
-    return `Round #${idx + 1} — BULL (${round.multiplierRule || "ANY"})`;
-  }
-
-  if (round.type === "ANY_SCORE") {
-    const m = round.multiplierRule || "ANY";
-    return `Round #${idx + 1} — SCORE LIBRE (${m})`;
-  }
-
-  // TARGET_NUMBER
-  const t = typeof (round as any).target === "number" ? (round as any).target : "?";
-  const m = round.multiplierRule || "ANY";
-  return `Round #${idx + 1} — ${m} ${t}`;
-}
-
 function makeMatchId(prefix: string) {
   const ts = Date.now();
   return `${prefix}-${ts}-${Math.random().toString(36).slice(2, 8)}`;
@@ -170,7 +186,78 @@ function sumThrow(throwDarts: UIDart[] | undefined | null): number {
   return throwDarts.reduce((s, d) => s + dartValue(d), 0);
 }
 
+function roundMini(round: BatardRound | null, idx: number): string {
+  if (!round) return `Round ${idx + 1}`;
+  if (round.type === "TARGET_BULL") {
+    const m = round.multiplierRule || "ANY";
+    return m === "ANY" ? "BULL" : `${m} BULL`;
+  }
+  if (round.type === "ANY_SCORE") {
+    const m = round.multiplierRule || "ANY";
+    return m === "ANY" ? "SCORE" : `${m}`;
+  }
+  const t = typeof (round as any).target === "number" ? (round as any).target : "?";
+  const m = round.multiplierRule || "ANY";
+  if (m === "ANY") return `${t}`;
+  return `${m} ${t}`;
+}
+
 type LightPlayer = { id: string; name?: string; avatarDataUrl?: string | null; dartSetId?: string | null };
+
+// -------------------------------------------------------------
+// Modal simple (centré hauteur)
+// -------------------------------------------------------------
+function CenterModal(props: { open: boolean; title: string; onClose: () => void; children: React.ReactNode }) {
+  if (!props.open) return null;
+  return (
+    <div
+      style={{
+        position: "fixed",
+        inset: 0,
+        zIndex: 9999,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        padding: 14,
+        background: "rgba(0,0,0,.62)",
+        backdropFilter: "blur(6px)",
+      }}
+      onClick={props.onClose}
+    >
+      <div
+        style={{
+          width: "min(560px, 94vw)",
+          maxHeight: "78vh",
+          overflow: "auto",
+          borderRadius: 18,
+          border: "1px solid rgba(255,255,255,.10)",
+          background: "linear-gradient(180deg,rgba(18,18,22,.98),rgba(10,10,12,.98))",
+          boxShadow: "0 18px 50px rgba(0,0,0,.6)",
+          padding: 14,
+        }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+          <div style={{ fontWeight: 900, fontSize: 16, color: "#ffcf57" }}>{props.title}</div>
+          <button
+            className="btn"
+            style={{
+              padding: "6px 10px",
+              borderRadius: 12,
+              background: "rgba(255,255,255,.06)",
+              border: "1px solid rgba(255,255,255,.10)",
+              color: "#d9dbe3",
+            }}
+            onClick={props.onClose}
+          >
+            OK
+          </button>
+        </div>
+        <div style={{ marginTop: 10 }}>{props.children}</div>
+      </div>
+    </div>
+  );
+}
 
 // -------------------------------------------------------------
 // HeaderBlock — copie visuelle X01PlayV3 (adapté score croissant)
@@ -181,18 +268,32 @@ type HeaderBlockProps = {
   currentScore: number;
   currentThrow: UIDart[];
   liveRanking: Array<{ id: string; name: string; score: number }>;
-  curDarts: number;
-  curM3D: string;
-  bestVisit: number;
+  totalRounds: number;
+  roundIndex: number;
+  roundName: string;
+  hits: number;
+  fails: number;
+  advances: number;
+  onOpenRules: () => void;
 };
 
 function HeaderBlock(props: HeaderBlockProps) {
-  const { currentPlayer, currentAvatar, currentScore, currentThrow, liveRanking, curDarts, curM3D, bestVisit } = props;
+  const {
+    currentPlayer,
+    currentAvatar,
+    currentScore,
+    currentThrow,
+    liveRanking,
+    totalRounds,
+    roundIndex,
+    roundName,
+    hits,
+    fails,
+    advances,
+    onOpenRules,
+  } = props;
 
-  // Batard = score qui augmente : preview = score + volée en cours
   const scoreAfterAll = Math.max((currentScore ?? 0) + sumThrow(currentThrow), 0);
-
-  // avatar en fond derrière le score
   const bgAvatarUrl = currentAvatar || null;
 
   return (
@@ -208,7 +309,6 @@ function HeaderBlock(props: HeaderBlockProps) {
         overflow: "hidden",
       }}
     >
-      {/* Dégradé gauche -> droite pour fondre l'avatar dans le fond */}
       <div
         aria-hidden
         style={{
@@ -232,14 +332,7 @@ function HeaderBlock(props: HeaderBlockProps) {
         }}
       >
         {/* AVATAR + STATS */}
-        <div
-          style={{
-            display: "flex",
-            flexDirection: "column",
-            alignItems: "center",
-            gap: 5,
-          }}
-        >
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 6 }}>
           <div
             style={{
               width: 96,
@@ -251,14 +344,7 @@ function HeaderBlock(props: HeaderBlockProps) {
             }}
           >
             {currentAvatar ? (
-              <img
-                src={currentAvatar}
-                style={{
-                  width: "100%",
-                  height: "100%",
-                  objectFit: "cover",
-                }}
-              />
+              <img src={currentAvatar} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
             ) : (
               <div
                 style={{
@@ -277,54 +363,32 @@ function HeaderBlock(props: HeaderBlockProps) {
           </div>
 
           <div style={{ fontWeight: 900, fontSize: 17, color: "#ffcf57" }}>{currentPlayer?.name ?? "—"}</div>
-          <div style={{ fontSize: 11.5, color: "#d9dbe3" }}>
-            {liveRanking?.length ? (
-              <>
-                Leader : <b>{liveRanking[0]?.name}</b>
-              </>
-            ) : null}
-          </div>
 
-          {/* Mini card stats joueur actif */}
+          {/* Mini card stats joueur actif (Batard) */}
           <div style={{ ...miniCard, width: 176, height: "auto", padding: 7 }}>
             <div style={miniText}>
               <div>
-                Meilleure volée : <b>{bestVisit}</b>
+                Hits : <b>{hits}</b>
               </div>
               <div>
-                Moy/3D : <b>{curM3D}</b>
+                Fails : <b>{fails}</b>
               </div>
               <div>
-                Darts jouées : <b>{curDarts}</b>
+                Advances : <b>{advances}</b>
               </div>
-              {currentThrow.length > 0 ? (
-                <div>
-                  Volée : <b>{currentThrow.length}/3</b>
-                </div>
-              ) : null}
             </div>
           </div>
         </div>
 
         {/* SCORE + PASTILLES + RANKING */}
-        <div
-          style={{
-            textAlign: "center",
-            display: "flex",
-            flexDirection: "column",
-            gap: 5,
-            position: "relative",
-            overflow: "visible",
-          }}
-        >
-          {/* BG ancré AU SCORE */}
+        <div style={{ textAlign: "center", display: "flex", flexDirection: "column", gap: 6, position: "relative" }}>
           {!!bgAvatarUrl && (
             <img
               src={bgAvatarUrl}
               aria-hidden
               style={{
                 position: "absolute",
-                top: "40%",
+                top: "44%",
                 left: "60%",
                 transform: "translate(-50%, -50%)",
                 height: "250%",
@@ -346,6 +410,17 @@ function HeaderBlock(props: HeaderBlockProps) {
             />
           )}
 
+          {/* KPI ROUNDS + ROUND + INFO */}
+          <div style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: 8, zIndex: 2 }}>
+            <div style={kpiChip}>
+              ROUND {Math.min(roundIndex + 1, Math.max(1, totalRounds))}/{Math.max(1, totalRounds)}
+            </div>
+            <div style={kpiChipBlue}>{roundName}</div>
+            <button style={kpiInfoBtn} onClick={onOpenRules} title="Paramètres / Règles">
+              i
+            </button>
+          </div>
+
           {/* SCORE CENTRAL */}
           <div
             style={{
@@ -362,19 +437,10 @@ function HeaderBlock(props: HeaderBlockProps) {
           </div>
 
           {/* Pastilles live */}
-          <div
-            style={{
-              display: "flex",
-              gap: 5,
-              justifyContent: "center",
-              position: "relative",
-              zIndex: 2,
-            }}
-          >
+          <div style={{ display: "flex", gap: 5, justifyContent: "center", position: "relative", zIndex: 2 }}>
             {[0, 1, 2].map((i) => {
               const d = currentThrow[i];
               const st = chipStyle(d, false);
-
               return (
                 <span
                   key={i}
@@ -399,24 +465,9 @@ function HeaderBlock(props: HeaderBlockProps) {
             })}
           </div>
 
-          {/* Mini ranking */}
-          <div
-            style={{
-              ...miniCard,
-              alignSelf: "center",
-              width: "min(310px,100%)",
-              height: "auto",
-              padding: 6,
-              position: "relative",
-              zIndex: 2,
-            }}
-          >
-            <div
-              style={{
-                maxHeight: 3 * 26,
-                overflow: liveRanking.length > 3 ? "auto" : "visible",
-              }}
-            >
+          {/* Mini ranking (sans menu / action) */}
+          <div style={{ ...miniCard, alignSelf: "center", width: "min(310px,100%)", height: "auto", padding: 6, zIndex: 2 }}>
+            <div style={{ maxHeight: 3 * 26, overflow: liveRanking.length > 3 ? "auto" : "visible" }}>
               {liveRanking.map((r, i) => (
                 <div key={r.id} style={miniRankRow}>
                   <div style={miniRankName}>
@@ -463,9 +514,6 @@ export default function BatardPlay(props: any) {
       } as BatardRulesConfig,
     };
 
-  // -----------------------------------------------------------
-  // Resume (History) — rebuild from visits[] + saved config
-  // -----------------------------------------------------------
   const resumeId: string | null =
     (props?.params?.resumeId as string) ||
     (props?.params?.matchId as string) ||
@@ -477,14 +525,10 @@ export default function BatardPlay(props: any) {
   const [engineResetKey, setEngineResetKey] = useState<number>(0);
   const [engineInit, setEngineInit] = useState<any | null>(null);
 
-  // -----------------------------------------------------------
-  // Players resolution (human profiles + bots) — from BatardConfig
-  // -----------------------------------------------------------
   const lightPlayers: LightPlayer[] = useMemo(() => {
     const humans = (runtimeCfg.selectedHumanIds || []).filter(Boolean);
     const bots = runtimeCfg.botsEnabled ? (runtimeCfg.selectedBotIds || []).filter(Boolean) : [];
 
-    // If config is empty (edge), fallback to first N store profiles.
     const fallbackHumans =
       humans.length > 0
         ? humans
@@ -496,7 +540,6 @@ export default function BatardPlay(props: any) {
     const allIds = [...fallbackHumans, ...bots].slice(0, Math.max(2, runtimeCfg.players));
 
     return allIds.map((id) => {
-      // bot pro?
       const bot = PRO_BOTS.find((b) => b.id === id);
       if (bot) {
         return {
@@ -519,26 +562,14 @@ export default function BatardPlay(props: any) {
 
   const playerIds = useMemo(() => lightPlayers.map((p) => p.id), [lightPlayers]);
 
-  // -----------------------------------------------------------
-  // Engine
-  // -----------------------------------------------------------
   const { states, ranking, currentPlayerIndex, currentRound, submitVisit, finished, winnerId, turnCounter } =
     useBatardEngine(playerIds, runtimeCfg.batard, { resetKey: engineResetKey, initialSnapshot: engineInit });
 
-  const active = states[currentPlayerIndex];
-  const activeRoundIdx = active?.roundIndex ?? 0;
-
-  // -----------------------------------------------------------
-  // Persistence (History)
-  // - In progress: upsert after each visit
-  // - Finished: upsert once with summary + payload
-  // -----------------------------------------------------------
   const matchIdRef = useRef<string>((props?.params?.matchId as string) || makeMatchId("batard"));
   const createdAtRef = useRef<number>(Date.now());
   const visitsRef = useRef<any[]>([]);
   const didSaveFinishedRef = useRef<boolean>(false);
 
-  // Load resume match from History (if provided)
   useEffect(() => {
     let cancelled = false;
     if (!resumeId || resumeLoaded) return;
@@ -554,26 +585,20 @@ export default function BatardPlay(props: any) {
         const savedCfg = payload?.config || null;
         const savedVisits = Array.isArray(payload?.visits) ? payload.visits : [];
 
-        // restore match id + createdAt
         if (rec?.id) matchIdRef.current = String(rec.id);
         if (payload?.createdAt) createdAtRef.current = Number(payload.createdAt) || createdAtRef.current;
 
-        // restore visits for bestVisit/summary consistency
         visitsRef.current = savedVisits;
 
-        // apply config from saved match (prefer saved players list)
         if (savedCfg) {
-          // savedCfg.players may already be LightPlayer[]
           const maybePlayers = Array.isArray(savedCfg.players) ? savedCfg.players : null;
           if (maybePlayers && maybePlayers.length) {
-            // keep same shape as BatardConfigPayload expects (players count etc.)
             setRuntimeCfg((prev) => ({ ...(prev as any), ...(savedCfg as any), players: maybePlayers.length }));
           } else {
             setRuntimeCfg((prev) => ({ ...(prev as any), ...(savedCfg as any) }));
           }
         }
 
-        // build engine init snapshot
         const ids: string[] = Array.isArray(savedCfg?.players)
           ? savedCfg.players.map((p: any) => String(p.id))
           : lightPlayers.map((p) => p.id);
@@ -603,7 +628,6 @@ export default function BatardPlay(props: any) {
     const advancesByPlayer: Record<string, number> = {};
     const bestVisitByPlayer: Record<string, number> = {};
 
-    // best visit: from payload.visits if present
     try {
       for (const v of visitsRef.current) {
         const pid = String(v?.p || "");
@@ -637,7 +661,6 @@ export default function BatardPlay(props: any) {
       batardPresetId: (runtimeCfg.batard as any)?.presetId,
       status: finished ? "finished" : "in_progress",
 
-      // maps (compat deriveHistoryStats + statsBridge)
       darts: dartsByPlayer,
       pointsByPlayer,
       dartsByPlayer,
@@ -645,7 +668,6 @@ export default function BatardPlay(props: any) {
       avg3ByPlayer,
       bestVisitByPlayer,
 
-      // batard specifics
       failsByPlayer,
       validHitsByPlayer,
       advancesByPlayer,
@@ -665,10 +687,12 @@ export default function BatardPlay(props: any) {
     const updatedAt = Date.now();
 
     const summary = buildSummaryFromStates(states as any);
-    // ✅ DartSet (best-effort) — utile pour Stats par fléchettes
+
     const dartSetId = (() => {
       try {
-        const ids = (lightPlayers as any[]).map((p) => (p as any)?.dartSetId).filter((x) => typeof x === "string" && String(x).trim());
+        const ids = (lightPlayers as any[])
+          .map((p) => (p as any)?.dartSetId)
+          .filter((x) => typeof x === "string" && String(x).trim());
         if (!ids.length) return null;
         const uniq = Array.from(new Set(ids.map((x) => String(x).trim())));
         return uniq.length === 1 ? uniq[0] : null;
@@ -676,6 +700,7 @@ export default function BatardPlay(props: any) {
         return null;
       }
     })();
+
     const dartSetIdsByPlayer = (() => {
       try {
         const out: Record<string, string | null> = {};
@@ -691,7 +716,6 @@ export default function BatardPlay(props: any) {
       }
     })();
 
-    // ✅ Unified lightweight stats block for StatsHub aggregation
     const unifiedStats = (() => {
       try {
         const pointsByPlayer = (summary as any)?.pointsByPlayer || {};
@@ -713,12 +737,8 @@ export default function BatardPlay(props: any) {
               name: String((p as any)?.name ?? (p as any)?.label ?? ""),
               win: status === "finished" ? pid === String(winnerId || "") : undefined,
               score: Number(pointsByPlayer?.[pid] ?? 0) || 0,
-              darts: {
-                thrown: Number(dartsByPlayer?.[pid] ?? 0) || 0,
-              },
-              averages: {
-                avg3d: Number(avg3ByPlayer?.[pid] ?? 0) || 0,
-              },
+              darts: { thrown: Number(dartsByPlayer?.[pid] ?? 0) || 0 },
+              averages: { avg3d: Number(avg3ByPlayer?.[pid] ?? 0) || 0 },
               special: {
                 turns: Number(turnsByPlayer?.[pid] ?? 0) || 0,
                 fails: Number(failsByPlayer?.[pid] ?? 0) || 0,
@@ -728,10 +748,7 @@ export default function BatardPlay(props: any) {
               },
             };
           }),
-          global: {
-            duration: Number(updatedAt - createdAt) || 0,
-            turns: Number(turnCounter || 0) || 0,
-          },
+          global: { duration: Number(updatedAt - createdAt) || 0, turns: Number(turnCounter || 0) || 0 },
         };
       } catch {
         return { sport: "batard", mode: "batard", players: [], global: {} };
@@ -750,16 +767,8 @@ export default function BatardPlay(props: any) {
 
       stats: unifiedStats,
 
-      // store light config only (safe + stable)
-      config: {
-        ...runtimeCfg,
-        players: lightPlayers,
-      },
-
-      // replay-friendly visits
+      config: { ...runtimeCfg, players: lightPlayers },
       visits: visitsRef.current,
-
-      // snapshot final states for summary / debug
       states: states,
 
       winnerId: status === "finished" ? winnerId : null,
@@ -784,20 +793,18 @@ export default function BatardPlay(props: any) {
     }
   }
 
-  // -----------------------------------------------------------
-  // UI local state (keypad)
-  // -----------------------------------------------------------
   const [multiplier, setMultiplier] = useState<1 | 2 | 3>(1);
   const [currentThrow, setCurrentThrow] = useState<UIDart[]>([]);
   const [infoMsg, setInfoMsg] = useState<string | null>(null);
 
+  const [playersOpen, setPlayersOpen] = useState(false);
+  const [rulesOpen, setRulesOpen] = useState(false);
+
   function goBack() {
-    // demandé: BackDot doit revenir au menu Games de darts (pas gameselect)
     if (props?.setTab) return props.setTab("games");
     window.history.back();
   }
 
-  // Keypad handlers
   const onNumber = (v: number) => {
     if (finished) return;
     if (currentThrow.length >= 3) return;
@@ -831,7 +838,6 @@ export default function BatardPlay(props: any) {
     const darts = [...currentThrow];
     const pid = String((states[currentPlayerIndex] as any)?.id || playerIds[currentPlayerIndex] || "");
 
-    // compute visit score (for bestVisit + replay)
     const sc = darts.reduce((s, d) => s + Number((d.v || 0) * (d.mult || 1)), 0);
 
     visitsRef.current.push({
@@ -849,58 +855,41 @@ export default function BatardPlay(props: any) {
     setInfoMsg(null);
   };
 
-  // Autosave: after each turnCounter change, persist in_progress (unless finished)
   const lastSavedTurnRef = useRef<number>(-1);
   useEffect(() => {
     if (finished) return;
     if (turnCounter === lastSavedTurnRef.current) return;
     lastSavedTurnRef.current = turnCounter;
-
-    // only save after at least one turn (avoid junk record on open)
     if (turnCounter <= 0) return;
-
     upsertHistory("in_progress");
   }, [turnCounter, finished]);
 
-  // Save finished once
   useEffect(() => {
     if (!finished) return;
     if (didSaveFinishedRef.current) return;
     didSaveFinishedRef.current = true;
-
     upsertHistory("finished");
   }, [finished]);
 
-  // winner memo
   const winner = useMemo(() => {
     if (!finished || !winnerId) return null;
     const w = states.find((p) => p.id === winnerId) || null;
     return w ? { id: (w as any).id, score: (w as any).score } : null;
   }, [finished, winnerId, states]);
 
-  // -----------------------------------------------------------
-  // X01-like header derived values
-  // -----------------------------------------------------------
   const activeId = String((states[currentPlayerIndex] as any)?.id || playerIds[currentPlayerIndex] || "");
   const activeLP = lightPlayers.find((p) => String(p.id) === activeId) || null;
   const activeName = String(activeLP?.name || activeId || "—");
   const activeAvatar = (activeLP?.avatarDataUrl as any) || null;
   const activeScore = Number((states[currentPlayerIndex] as any)?.score ?? 0) || 0;
-  const activeDarts = Number((states[currentPlayerIndex] as any)?.stats?.dartsThrown ?? 0) || 0;
-  const activeM3D = activeDarts > 0 ? ((activeScore / activeDarts) * 3).toFixed(1) : "0.0";
-  const activeBestVisit = (() => {
-    try {
-      let best = 0;
-      for (const v of visitsRef.current || []) {
-        if (String(v?.p || "") !== activeId) continue;
-        const sc = Number(v?.score || 0);
-        if (sc > best) best = sc;
-      }
-      return best;
-    } catch {
-      return 0;
-    }
-  })();
+
+  const activeHits = Number((states[currentPlayerIndex] as any)?.stats?.validHits ?? 0) || 0;
+  const activeFails = Number((states[currentPlayerIndex] as any)?.stats?.fails ?? 0) || 0;
+  const activeAdvances = Number((states[currentPlayerIndex] as any)?.stats?.advances ?? 0) || 0;
+
+  const totalRounds = Math.max(1, Number(runtimeCfg?.batard?.rounds?.length || 0) || 0);
+  const roundIndex = Number((states[currentPlayerIndex] as any)?.roundIndex ?? 0) || 0;
+  const roundName = roundMini(currentRound as any, roundIndex);
 
   const liveRanking = useMemo(() => {
     const src: any[] = Array.isArray(ranking) && ranking.length ? ranking : Array.isArray(states) ? states : [];
@@ -908,16 +897,30 @@ export default function BatardPlay(props: any) {
       .map((p: any) => {
         const pid = String(p?.id ?? "");
         const lp = lightPlayers.find((x) => String(x.id) === pid);
-        return {
-          id: pid,
-          name: String(lp?.name || pid || "—"),
-          score: Number(p?.score ?? 0) || 0,
-        };
+        return { id: pid, name: String(lp?.name || pid || "—"), score: Number(p?.score ?? 0) || 0 };
       })
       .filter((x) => x.id);
     arr.sort((a, b) => (b.score || 0) - (a.score || 0));
     return arr;
   }, [ranking, states, lightPlayers]);
+
+  const playersTurnOrder = useMemo(() => {
+    return (playerIds || []).map((pid, i) => {
+      const st: any = states.find((p: any) => String(p?.id) === String(pid)) || {};
+      const lp = lightPlayers.find((p) => String(p.id) === String(pid));
+      return {
+        id: String(pid),
+        order: i + 1,
+        name: String(lp?.name || pid),
+        avatar: (lp?.avatarDataUrl as any) || null,
+        score: Number(st?.score ?? 0) || 0,
+        round: Number(st?.roundIndex ?? 0) || 0,
+        hits: Number(st?.stats?.validHits ?? 0) || 0,
+        fails: Number(st?.stats?.fails ?? 0) || 0,
+        advances: Number(st?.stats?.advances ?? 0) || 0,
+      };
+    });
+  }, [playerIds, states, lightPlayers]);
 
   return (
     <div className="page">
@@ -928,7 +931,8 @@ export default function BatardPlay(props: any) {
         right={<InfoDot title="BÂTARD" content={INFO_TEXT} />}
       />
 
-      <Section title={t("game.status", "Statut")}>
+      {/* ⛔️ Pas de titre "STATUT" ici */}
+      <Section title="">
         <div style={{ maxWidth: CONTENT_MAX, margin: "0 auto" }}>
           <HeaderBlock
             currentPlayer={{ id: activeId, name: activeName }}
@@ -936,83 +940,139 @@ export default function BatardPlay(props: any) {
             currentScore={activeScore}
             currentThrow={currentThrow}
             liveRanking={liveRanking}
-            curDarts={activeDarts}
-            curM3D={activeM3D}
-            bestVisit={activeBestVisit}
+            totalRounds={totalRounds}
+            roundIndex={roundIndex}
+            roundName={roundName}
+            hits={activeHits}
+            fails={activeFails}
+            advances={activeAdvances}
+            onOpenRules={() => setRulesOpen(true)}
           />
 
-          <div style={{ marginTop: 10, opacity: 0.85, fontSize: 12, lineHeight: 1.35 }}>
-            <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
-              <div style={{ fontWeight: 800 }}>{roundLabel(currentRound as any, activeRoundIdx)}</div>
-              <div>
-                <b>winMode</b>: {runtimeCfg.batard.winMode} — <b>fail</b>: {runtimeCfg.batard.failPolicy}
-                {runtimeCfg.batard.failPolicy !== "NONE" ? ` (${runtimeCfg.batard.failValue})` : ""}
+          {/* Carte JOUEURS (comme X01 / BR / Killer) */}
+          <div
+            style={{
+              marginTop: 10,
+              padding: 12,
+              borderRadius: 16,
+              border: "1px solid rgba(255,255,255,.10)",
+              background: "linear-gradient(180deg,rgba(22,22,26,.75),rgba(12,12,14,.85))",
+              boxShadow: "0 10px 22px rgba(0,0,0,.35)",
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              gap: 10,
+              cursor: "pointer",
+              userSelect: "none",
+            }}
+            onClick={() => setPlayersOpen(true)}
+          >
+            <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+              <div style={{ fontWeight: 900, letterSpacing: 0.4 }}>JOUEURS</div>
+              <div style={{ fontSize: 12, opacity: 0.85 }}>
+                {playersTurnOrder.length} joueur{playersTurnOrder.length === 1 ? "" : "s"} — ordre de jeu
               </div>
             </div>
-            <div style={{ marginTop: 4 }}>
-              <b>scoreOnlyValid</b>: {String(runtimeCfg.batard.scoreOnlyValid)} — <b>minValidHitsToAdvance</b>:{" "}
-              {runtimeCfg.batard.minValidHitsToAdvance}
+
+            <div
+              style={{
+                padding: "6px 10px",
+                borderRadius: 12,
+                border: "1px solid rgba(255,255,255,.10)",
+                background: "rgba(255,255,255,.06)",
+                color: "#d9dbe3",
+                fontWeight: 900,
+              }}
+            >
+              Ouvrir
             </div>
           </div>
-        </div>
 
-        <div style={{ marginTop: 10, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-          {states.map((p, idx) => {
-            const lp = lightPlayers.find((x) => x.id === (p as any).id);
+          {infoMsg && (
+            <div style={{ marginTop: 10, padding: 10, borderRadius: 12, background: "rgba(255,255,255,0.08)" }}>
+              {infoMsg}
+            </div>
+          )}
+        </div>
+      </Section>
+
+      {/* Modal JOUEURS */}
+      <CenterModal open={playersOpen} title="JOUEURS — ordre de jeu" onClose={() => setPlayersOpen(false)}>
+        <div style={{ display: "grid", gap: 10 }}>
+          {playersTurnOrder.map((p) => {
+            const isActive = String(p.id) === String(activeId);
             return (
               <div
-                key={(p as any).id}
+                key={p.id}
                 style={{
-                  padding: 12,
+                  display: "grid",
+                  gridTemplateColumns: "auto 1fr auto",
+                  gap: 10,
+                  alignItems: "center",
+                  padding: 10,
                   borderRadius: 14,
-                  border: "1px solid rgba(255,255,255,0.12)",
-                  background: idx === currentPlayerIndex ? "rgba(255,215,0,0.10)" : "rgba(0,0,0,0.18)",
+                  border: "1px solid rgba(255,255,255,.10)",
+                  background: isActive ? "rgba(255,195,26,.10)" : "rgba(0,0,0,.20)",
                 }}
               >
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
-                  <div style={{ fontWeight: 800 }}>{lp?.name || (p as any).id}</div>
-                  <div style={{ opacity: 0.8, fontSize: 12 }}>
-                    Round {Math.min((p as any).roundIndex + 1, runtimeCfg.batard.rounds.length)}/{runtimeCfg.batard.rounds.length}
+                <div style={{ width: 44, height: 44, borderRadius: 999, overflow: "hidden", background: "rgba(255,255,255,.06)" }}>
+                  {p.avatar ? <img src={p.avatar} style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : null}
+                </div>
+
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ display: "flex", gap: 8, alignItems: "baseline", minWidth: 0 }}>
+                    <div style={{ fontWeight: 900, color: "#ffcf57" }}>{p.order}.</div>
+                    <div style={{ fontWeight: 900, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.name}</div>
+                    {isActive ? <span style={{ marginLeft: 6, fontWeight: 900, fontSize: 11, color: "#ffcf57" }}>ACTIF</span> : null}
+                  </div>
+                  <div style={{ marginTop: 4, fontSize: 12, opacity: 0.9, display: "flex", flexWrap: "wrap", gap: 10 }}>
+                    <span>Hits: <b>{p.hits}</b></span>
+                    <span>Fails: <b>{p.fails}</b></span>
+                    <span>Advances: <b>{p.advances}</b></span>
+                    <span>Round: <b>{Math.min(p.round + 1, totalRounds)}/{totalRounds}</b></span>
                   </div>
                 </div>
 
-                <div style={{ fontSize: 22, fontWeight: 900, marginTop: 6 }}>{(p as any).score}</div>
-
-                <div style={{ marginTop: 8, display: "flex", gap: 10, flexWrap: "wrap", fontSize: 12, opacity: 0.9 }}>
-                  <span>🎯 hits: {(p as any).stats?.validHits}</span>
-                  <span>🧮 tours: {(p as any).stats?.turns}</span>
-                  <span>⚠️ fails: {(p as any).stats?.fails}</span>
+                <div style={{ textAlign: "right" }}>
+                  <div style={{ fontWeight: 900, fontSize: 18, color: "#ffcf57" }}>{p.score}</div>
                 </div>
-
-                {(p as any).lastVisit && (p as any).lastVisit.length > 0 && (
-                  <div style={{ marginTop: 8, fontSize: 12, opacity: 0.85 }}>
-                    Dernier tour:{" "}
-                    {(p as any).lastVisit.map((d: any, i: number) => (
-                      <span key={i} style={{ marginRight: 8 }}>
-                        {d.mult}×{d.v}
-                      </span>
-                    ))}
-                    <span style={{ marginLeft: 8, fontWeight: 800 }}>
-                      ({(p as any).lastValidHits} hit{(p as any).lastValidHits === 1 ? "" : "s"})
-                    </span>
-                    {(p as any).lastAdvanced ? (
-                      <span style={{ marginLeft: 8, fontWeight: 800 }}>✅</span>
-                    ) : (
-                      <span style={{ marginLeft: 8, fontWeight: 800 }}>❌</span>
-                    )}
-                  </div>
-                )}
               </div>
             );
           })}
         </div>
+      </CenterModal>
 
-        {infoMsg && (
-          <div style={{ marginTop: 10, padding: 10, borderRadius: 12, background: "rgba(255,255,255,0.08)" }}>
-            {infoMsg}
+      {/* Modal RÈGLES */}
+      <CenterModal open={rulesOpen} title="Paramètres — BÂTARD" onClose={() => setRulesOpen(false)}>
+        <div style={{ fontSize: 13, lineHeight: 1.35, color: "#d9dbe3" }}>
+          <div style={{ opacity: 0.9 }}>
+            <b>Victoire</b> : {String(runtimeCfg?.batard?.winMode || "—")}
           </div>
-        )}
-      </Section>
+          <div style={{ marginTop: 6, opacity: 0.9 }}>
+            <b>Échec</b> : {String(runtimeCfg?.batard?.failPolicy || "—")}
+            {String(runtimeCfg?.batard?.failPolicy || "NONE") !== "NONE" ? ` (${Number(runtimeCfg?.batard?.failValue || 0)})` : ""}
+          </div>
+          <div style={{ marginTop: 6, opacity: 0.9 }}>
+            <b>scoreOnlyValid</b> : {String(!!runtimeCfg?.batard?.scoreOnlyValid)}
+          </div>
+          <div style={{ marginTop: 6, opacity: 0.9 }}>
+            <b>minValidHitsToAdvance</b> : {Number(runtimeCfg?.batard?.minValidHitsToAdvance ?? 0)}
+          </div>
+
+          <div style={{ marginTop: 12, padding: 10, borderRadius: 14, border: "1px solid rgba(255,255,255,.10)", background: "rgba(255,255,255,.04)" }}>
+            <div style={{ fontWeight: 900, color: "#ffcf57", marginBottom: 6 }}>À quoi correspondent les stats ?</div>
+            <div style={{ marginBottom: 6 }}>
+              <b>Hits</b> = nombre total de flèches <b>valides</b> (qui respectent la contrainte du round).
+            </div>
+            <div style={{ marginBottom: 6 }}>
+              <b>Fails</b> = nombre de tours où le joueur n'a pas atteint le minimum de hits valides (selon <b>minValidHitsToAdvance</b>), donc la <b>failPolicy</b> s'applique (malus / recul / freeze…).
+            </div>
+            <div>
+              <b>Advances</b> = nombre de fois où le joueur a réussi le round (minimum de hits valides atteint) et a donc <b>avancé</b> au round suivant.
+            </div>
+          </div>
+        </div>
+      </CenterModal>
 
       {finished && winner ? (
         <Section title="🏁 Fin de partie">
@@ -1023,15 +1083,15 @@ export default function BatardPlay(props: any) {
           <div style={{ marginTop: 12, opacity: 0.9, fontSize: 13 }}>
             Classement:
             <ol style={{ marginTop: 8 }}>
-              {ranking.map((p: any) => (
+              {liveRanking.map((p) => (
                 <li key={p.id}>
-                  {lightPlayers.find((x) => x.id === p.id)?.name || p.id} — {p.score} pts (fails {p.stats.fails}, turns {p.stats.turns})
+                  {p.name} — {p.score} pts
                 </li>
               ))}
             </ol>
           </div>
 
-          <div style={{ display: "flex", gap: 12, marginTop: 12 }}>
+          <div style={{ display: "flex", gap: 12, marginTop: 12, flexWrap: "wrap" }}>
             <button className="btn btn-primary" onClick={() => props?.setTab?.("statsHub", { tab: "history" })}>
               Historique
             </button>

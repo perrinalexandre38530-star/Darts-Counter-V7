@@ -21,7 +21,7 @@ export type X01Agg = {
 };
 
 function isX01(rec: any) {
-  const k = String(rec?.kind ?? rec?.game?.mode ?? rec?.payload?.mode ?? "").toLowerCase();
+  const k = String(rec?.kind ?? rec?.game?.mode ?? rec?.resume?.game?.mode ?? rec?.resume?.mode ?? rec?.payload?.mode ?? rec?.payload?.gameMode ?? "").toLowerCase();
   return k === "x01" || k.includes("x01");
 }
 
@@ -58,7 +58,7 @@ export async function computeX01Stats(profileId?: string | null): Promise<X01Agg
 
     // filtre profil si fourni (si le match contient ce joueur)
     if (pid) {
-      const players = (r0.players || r0.payload?.players || []) as any[];
+      const players = (r0.players || r0.resume?.players || r0.payload?.players || r0.payload?.config?.players || []) as any[];
       const has = Array.isArray(players) && players.some((p) => String(p?.id) === pid);
       if (!has) continue;
     }

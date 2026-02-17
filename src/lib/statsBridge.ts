@@ -315,8 +315,8 @@ function detectSource(rec: any): SourceKey {
 }
 
 function detectKindMode(rec: any, decoded: any | null) {
-  const k = safeLower(rec?.kind || rec?.variant || rec?.game || rec?.mode || "");
-  const sMode = safeLower(rec?.summary?.mode || rec?.summary?.gameMode || rec?.payload?.mode || rec?.payload?.gameMode || "");
+  const k = safeLower(rec?.kind || rec?.variant || rec?.game || rec?.mode || rec?.resume?.kind || rec?.resume?.game || rec?.resume?.mode || "");
+  const sMode = safeLower(rec?.summary?.mode || rec?.summary?.gameMode || rec?.resume?.summary?.mode || rec?.resume?.summary?.gameMode || rec?.payload?.mode || rec?.payload?.gameMode || "");
   const dMode = safeLower(decoded?.config?.mode || decoded?.game?.mode || decoded?.mode || decoded?.gameMode || "");
 
   // ordre de priorité : kind/variant connus, puis summary/payload, puis decoded
@@ -380,6 +380,8 @@ function extractPlayers(rec: any, decoded: any | null): PlayerLite[] {
     (decoded?.config?.players && Array.isArray(decoded.config.players) ? decoded.config.players : null) ||
     (decoded?.players && Array.isArray(decoded.players) ? decoded.players : null) ||
     (rec?.players && Array.isArray(rec.players) ? rec.players : null) ||
+    (rec?.resume?.players && Array.isArray(rec.resume.players) ? rec.resume.players : null) ||
+    (rec?.resume?.config?.players && Array.isArray(rec.resume.config.players) ? rec.resume.config.players : null) ||
     (rec?.summary?.players && Array.isArray(rec.summary.players) ? rec.summary.players : null) ||
     (rec?.payload?.players && Array.isArray(rec.payload.players) ? rec.payload.players : null) ||
     [];

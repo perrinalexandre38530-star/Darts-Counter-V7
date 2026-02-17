@@ -22,7 +22,7 @@ export type DartSetAgg = {
 function getDartSetIdsByPlayer(rec: any): Record<string, string> {
   const out: Record<string, string> = {};
 
-  const metaMap = rec?.payload?.meta?.dartSetIdsByPlayer ?? rec?.meta?.dartSetIdsByPlayer;
+  const metaMap = rec?.payload?.meta?.dartSetIdsByPlayer ?? rec?.resume?.meta?.dartSetIdsByPlayer ?? rec?.meta?.dartSetIdsByPlayer;
   if (metaMap && typeof metaMap === "object") {
     for (const [k, v] of Object.entries(metaMap)) {
       const ds = v ? String(v) : "";
@@ -52,7 +52,7 @@ function getDartSetIdsByPlayer(rec: any): Record<string, string> {
     }
   }
 
-  const players = (rec?.players || rec?.payload?.players || rec?.payload?.config?.players || []) as any[];
+  const players = (rec?.players || rec?.resume?.players || rec?.resume?.config?.players || rec?.payload?.players || rec?.payload?.config?.players || []) as any[];
   if (Array.isArray(players)) {
     for (const p of players) {
       const pid = p?.id ?? p?.profileId;
