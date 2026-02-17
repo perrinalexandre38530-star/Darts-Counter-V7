@@ -87,6 +87,12 @@ export async function rebuildStatsToStore() {
 
   await saveStore(store);
 
+
+  try {
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(new Event("dc-history-updated"));
+    }
+  } catch {}
   return {
     players: Object.keys(statsByPlayer).length,
     modes: Object.keys(statsByMode).length,

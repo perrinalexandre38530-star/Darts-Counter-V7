@@ -506,7 +506,8 @@ export async function buildStatsIndex(force = false): Promise<StatsIndex> {
       (byMode[modeKey] ||= []).push(m);
 
       for (const p of m.players) {
-        (byProfile[p.id] ||= []).push(m);
+        const pid = String((p as any).profileId || (p as any).id || (p as any).playerId || "");
+        if (pid) (byProfile[pid] ||= []).push(m);
       }
     }
 

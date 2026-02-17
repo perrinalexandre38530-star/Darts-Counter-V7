@@ -614,11 +614,76 @@ function useHistoryAPI(): SavedMatch[] {
 
     let mounted = true;
 
+    // Hydrate payloads for modes that need deep stats (X01, etc.).
+    // History.list() is intentionally "light" (no payload) for most games; the dashboard
+    // needs the full payload for X01 KPIs.
+    const hydrateMissingPayloads = async (list: any[]): Promise<SavedMatch[]> => {
+      const arr = toArr<SavedMatch>(list);
+
+      // Keep fast: only hydrate records likely used by the dashboard.
+      const NEED = new Set(["x01", "cricket", "killer", "golf", "shanghai", "training", "batard", "scram", "warfare", "tour"]);
+
+      const toHydrate: string[] = [];
+      for (const r of arr) {
+        const hasPayload = !!(r as any)?.payload;
+        if (hasPayload) continue;
+
+        const mode = classifyRecordMode(r);
+        if (!NEED.has(mode)) continue;
+
+        const id = (r as any)?.id;
+        if (typeof id === "string" && id) toHydrate.push(id);
+        // Safety cap: dashboard doesn’t need thousands of full payloads
+        if (toHydrate.length >= 300) break;
+      }
+
+      if (!toHydrate.length) return arr;
+
+      const byId = new Map<string, SavedMatch>();
+      arr.forEach((r: any) => {
+        if (r?.id) byId.set(String(r.id), r);
+      });
+
+      // Chunk to avoid hammering IDB / blocking UI
+      const CHUNK = 25;
+      for (let i = 0; i < toHydrate.length; i += CHUNK) {
+        const slice = toHydrate.slice(i, i + CHUNK);
+        const got = await Promise.all(
+          slice.map(async (id) => {
+            try {
+              return (await History.get(id)) as any;
+            } catch {
+              return null;
+            }
+          })
+        );
+
+        for (const full of got) {
+          if (!full?.id) continue;
+          byId.set(String(full.id), full as any);
+        }
+      }
+
+      // Preserve original order
+      return arr.map((r: any) => byId.get(String(r?.id ?? "")) ?? r);
+    };
+
     const load = async () => {
       try {
         const list = await History.list();
         if (!mounted) return;
-        setRows(toArr<SavedMatch>(list));
+        const base = toArr<SavedMatch>(list);
+        setRows(base);
+
+        // Then hydrate in background and refresh once.
+        // If hydration fails, we keep the light list.
+        try {
+          const hydrated = await hydrateMissingPayloads(base as any);
+          if (!mounted) return;
+          setRows(hydrated);
+        } catch {
+          // ignore
+        }
       } catch {
         if (!mounted) return;
         setRows([]);
@@ -690,10 +755,14 @@ function getGameMode(rec: any): string {
 }
 
 function classifyRecordMode(rec: SavedMatch): string {
-  const kind = String(rec.kind ?? "").toLowerCase();
-  const game = String(getGameMode(rec) ?? "").toLowerCase();
-  const mode = String(rec.mode ?? "").toLowerCase();
-  const variant = String(rec.variant ?? "").toLowerCase();
+  // ⚠️ IMPORTANT: selon les générations de matches, `kind/mode/variant` peuvent être
+  // sur l'enveloppe OU dans le payload (ex: X01 v3/multi). On agrège tout pour classifier.
+  const payload: any = (rec as any)?.payload;
+
+  const kind = String((rec as any).kind ?? payload?.kind ?? payload?.mode ?? "").toLowerCase();
+  const game = String(getGameMode(rec) ?? payload?.game ?? payload?.gameMode ?? "").toLowerCase();
+  const mode = String((rec as any).mode ?? payload?.mode ?? payload?.config?.mode ?? "").toLowerCase();
+  const variant = String((rec as any).variant ?? payload?.variant ?? payload?.config?.variant ?? "").toLowerCase();
 
   const tag = `${kind}|${game}|${mode}|${variant}`;
 
@@ -720,6 +789,44 @@ function classifyRecordMode(rec: SavedMatch): string {
   if (tag.includes("battle") || tag.includes("royale")) return "battle_royale";
 
   return "other";
+}
+
+// Dashboard: certains records n'ont pas `players` au niveau racine (ils sont dans payload).
+// Si on ne détecte pas le joueur, tout le dashboard tombe à 0/UNKNOWN.
+function recordHasPlayer(r: any, pid: string): boolean {
+  if (!r || !pid) return false;
+
+  const direct = toArrLoc<any>(r?.players);
+  const payloadPlayers = toArrLoc<any>(r?.payload?.players) || toArrLoc<any>(r?.payload?.config?.players);
+  const all = [...direct, ...payloadPlayers];
+
+  const hasInList = all.some((p) => {
+    if (!p) return false;
+    if (typeof p === "string") return p === pid;
+    return String(p.id ?? p.playerId ?? "") === pid;
+  });
+  if (hasInList) return true;
+
+  // Teams / rosters
+  const teams = toArrLoc<any>(r?.teams) || toArrLoc<any>(r?.payload?.teams);
+  for (const t of teams) {
+    const members =
+      toArrLoc<any>(t?.players) ||
+      toArrLoc<any>(t?.members) ||
+      toArrLoc<any>(t?.roster) ||
+      toArrLoc<any>(t?.teamPlayers);
+    if (
+      members.some((m) => {
+        if (!m) return false;
+        if (typeof m === "string") return m === pid;
+        return String(m.id ?? m.playerId ?? "") === pid;
+      })
+    ) {
+      return true;
+    }
+  }
+
+  return false;
 }
 
 /* ---------- Adaptateur → PlayerDashboardStats ---------- */
@@ -818,7 +925,7 @@ function buildDashboardForPlayer(
 
   // --------- Loop records
   for (const r of records || []) {
-    const inMatch = toArrLoc<PlayerLite>((r as any)?.players).some((p) => p?.id === pid);
+    const inMatch = recordHasPlayer(r as any, pid);
     if (!inMatch) continue;
 
     fbMatches++;
@@ -3882,7 +3989,10 @@ const normalizedMatchesClean = React.useMemo(() => {
       const sp = byId.get(pid);
       return {
         ...pp,
+        // ✅ IMPORTANT: les agrégateurs unifiés attendent `playerId`
+        // (le centre de stats utilise `selectedPlayer.id` comme identifiant)
         id: pid,
+        playerId: String(pp?.playerId ?? pid),
         name: pp?.name ?? (sp as any)?.name ?? "",
         avatarDataUrl: pp?.avatarDataUrl ?? (sp as any)?.avatarDataUrl ?? null,
       };
@@ -3909,6 +4019,7 @@ function recordToNormalizedFallback(r: any): any | null {
   const players = Array.isArray(r.players)
     ? r.players.map((p: any) => ({
         id: String(p?.id ?? ""),
+        playerId: String(p?.playerId ?? p?.id ?? ""),
         name: p?.name ?? "",
         avatarDataUrl: p?.avatarDataUrl ?? null,
       }))
@@ -4234,7 +4345,7 @@ const killerAgg = React.useMemo<KillerAgg | null>(() => {
     const modeKey = classifyRecordMode(r);
     if (modeKey !== "killer") continue;
 
-    const inMatch = toArrLoc<PlayerLite>((r as any)?.players).some((p) => p?.id === pid);
+    const inMatch = recordHasPlayer(r as any, pid);
     if (!inMatch) continue;
 
     matches++;
@@ -4363,7 +4474,7 @@ function buildShanghaiStatsFromRecords(
     if (!tag.includes("shanghai")) continue;
 
     // joueur dans le match
-    const inMatch = toArrLoc<PlayerLite>((r as any)?.players).some((p) => String(p?.id ?? "") === pid);
+    const inMatch = recordHasPlayer(r as any, pid);
     if (!inMatch) continue;
 
     matches++;

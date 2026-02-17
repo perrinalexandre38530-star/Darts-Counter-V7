@@ -66,6 +66,12 @@ export type UnifiedPlayerDashboardStats = {
 const N = (x: any, d = 0) => (Number.isFinite(Number(x)) ? Number(x) : d);
 const fmt1 = (x: number) => Math.round(x * 10) / 10;
 
+function isX01Mode(mode: string): boolean {
+  const m = String(mode || '').toLowerCase();
+  return m === 'x01' || m.startsWith('x01') || m.includes('x01');
+}
+
+
 function bucketForVisit(score: number): VisitBucket {
   if (score >= 180) return "180";
   if (score >= 140) return "140+";
@@ -96,7 +102,7 @@ function safeDate(ts: number) {
  */
 function readX01SummaryFallback(m: NormalizedMatch, playerId: string) {
   const rec: any = (m as any)?.raw || {};
-  const sum: any = rec?.summary || {};
+  const sum: any = rec?.summary || rec?.payload?.summary || rec?.payload?.stats?.summary || {};
 
   const pid = String(playerId);
 
@@ -106,22 +112,32 @@ function readX01SummaryFallback(m: NormalizedMatch, playerId: string) {
   const avg3 =
     N(sp?.avg3, NaN) ||
     N(sum?.avg3ByPlayer?.[pid], NaN) ||
-    N(sum?.perPlayer?.find?.((x: any) => String(x?.playerId) === pid)?.avg3, NaN);
+    N(sum?.perPlayer?.find?.((x: any) => String(x?.playerId) === pid)?.avg3, NaN) ||
+    N(sum?.avg3dByPlayer?.[pid], NaN) ||
+    N(sum?.avg3d_by_player?.[pid], NaN) ||
+    N(sum?.playersAvg3?.[pid], NaN) ||
+    N(rec?.payload?.stats?.players?.find?.((x: any) => String(x?.id ?? x?.profileId) === pid)?.averages?.avg3d, NaN);
 
   const visits =
     N(sp?.visits, NaN) ||
     N(sum?.legacy?.visits?.[pid], NaN) ||
-    N(sum?.legacy?.visits?.[String(pid)], NaN);
+    N(sum?.legacy?.visits?.[String(pid)], NaN) ||
+    N(rec?.payload?.stats?.players?.find?.((x: any) => String(x?.id ?? x?.profileId) === pid)?.special?.visits, NaN) ||
+    N(rec?.payload?.stats?.players?.find?.((x: any) => String(x?.id ?? x?.profileId) === pid)?.visits, NaN);
 
   const bestVisit =
     N(sp?.bestVisit, NaN) ||
     N(sum?.bestVisitByPlayer?.[pid], NaN) ||
-    N(sum?.perPlayer?.find?.((x: any) => String(x?.playerId) === pid)?.bestVisit, NaN);
+    N(sum?.perPlayer?.find?.((x: any) => String(x?.playerId) === pid)?.bestVisit, NaN) ||
+    N(rec?.payload?.stats?.players?.find?.((x: any) => String(x?.id ?? x?.profileId) === pid)?.special?.bestVisit, NaN) ||
+    N(rec?.payload?.stats?.players?.find?.((x: any) => String(x?.id ?? x?.profileId) === pid)?.bestVisit, NaN);
 
   const bestCheckout =
     N(sp?.bestCheckout, NaN) ||
     N(sum?.bestCheckoutByPlayer?.[pid], NaN) ||
-    N(sum?.perPlayer?.find?.((x: any) => String(x?.playerId) === pid)?.bestCheckout, NaN);
+    N(sum?.perPlayer?.find?.((x: any) => String(x?.playerId) === pid)?.bestCheckout, NaN) ||
+    N(rec?.payload?.stats?.players?.find?.((x: any) => String(x?.id ?? x?.profileId) === pid)?.special?.bestCheckout, NaN) ||
+    N(rec?.payload?.stats?.players?.find?.((x: any) => String(x?.id ?? x?.profileId) === pid)?.bestCheckout, NaN);
 
   return {
     has: Number.isFinite(avg3) || Number.isFinite(bestVisit) || Number.isFinite(bestCheckout),
@@ -174,7 +190,7 @@ let totalUnifiedMatchesWithAvg3 = 0;
     }
 
     // X01 : visits OU fallback summary
-    if (m.mode === "x01") {
+    if (isX01Mode(m.mode)) {
       const myVisits = (m.visits || []).filter((v) => String(v.playerId) === String(playerId));
 
       if (myVisits.length) {

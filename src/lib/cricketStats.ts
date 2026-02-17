@@ -377,6 +377,7 @@ export function aggregateCricketProfileStats(
   // Nouveaux accumulateurs globaux
   let totalPointsFor = 0;
   let totalPointsAgainst = 0;
+  let totalInflictedPoints = 0; // points infligés (cut-throat)
 
   let totalDarts = 0;
   let totalMarks = 0;

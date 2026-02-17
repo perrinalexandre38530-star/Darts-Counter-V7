@@ -1,7 +1,9 @@
 import { useEffect, useState } from "react";
 import { useAuthOnline } from "./useAuthOnline";
 import { fetchTrainingProfileSummaryModes } from "../training/sync/trainingProfileApi";
-import { awardTrainingBadgesFromModesSummary } from "../training/profile/trainingBadgeAwarder";
+// NOTE: keep this hook resilient.
+// Badge awarding is best-effort and must never crash the app if the Training module
+// is temporarily unavailable or a file got out of sync in a patch.
 
 export function useTrainingProfileSummaryModes() {
   const { user, online } = useAuthOnline();
@@ -20,7 +22,9 @@ export function useTrainingProfileSummaryModes() {
         if (!alive) return;
         setSummary(s);
         // best-effort badge awarding (idempotent)
-        awardTrainingBadgesFromModesSummary(s).catch(() => void 0);
+        import("../training/profile/trainingBadgeAwarder")
+          .then((m) => m.awardTrainingBadgesFromModesSummary?.(s))
+          .catch(() => void 0);
       } catch (e) {
         if (!alive) return;
         setError(e);

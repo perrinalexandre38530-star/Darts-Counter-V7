@@ -322,12 +322,32 @@ function PlayersModal(props: {
                     ) : null}
                   </div>
 
-                  <div style={{ marginTop: 6, display: "flex", gap: 8, flexWrap: "wrap", fontSize: 12, opacity: 0.95, color: "#d9dbe3" }}>
-                    <span>Score: <b style={{ color: "#ffcf57" }}>{r.score}</b></span>
-                    <span>Hits: <b>{r.hits}</b></span>
-                    <span>Tours: <b>{r.turns}</b></span>
-                    <span>Fails: <b>{r.fails}</b></span>
-                    <span>Adv: <b>{r.advances}</b></span>
+                  <div
+                    style={{
+                      marginTop: 6,
+                      display: "flex",
+                      gap: 8,
+                      flexWrap: "wrap",
+                      fontSize: 12,
+                      opacity: 0.95,
+                      color: "#d9dbe3",
+                    }}
+                  >
+                    <span>
+                      Score: <b style={{ color: "#ffcf57" }}>{r.score}</b>
+                    </span>
+                    <span>
+                      Hits: <b>{r.hits}</b>
+                    </span>
+                    <span>
+                      Tours: <b>{r.turns}</b>
+                    </span>
+                    <span>
+                      Fails: <b>{r.fails}</b>
+                    </span>
+                    <span>
+                      Adv: <b>{r.advances}</b>
+                    </span>
                   </div>
                 </div>
 
@@ -373,6 +393,9 @@ function PlayersModal(props: {
   );
 }
 
+// -------------------------------------------------------------
+// GameInfoModal — ✅ CENTRÉ verticalement/horizontalement
+// -------------------------------------------------------------
 function GameInfoModal({
   open,
   onClose,
@@ -393,28 +416,32 @@ function GameInfoModal({
 
   return (
     <div
+      role="dialog"
+      aria-modal="true"
+      onClick={onClose}
       style={{
         position: "fixed",
         inset: 0,
         zIndex: 9999,
         background: "rgba(0,0,0,.55)",
+        backdropFilter: "blur(6px)",
         display: "flex",
-        alignItems: "flex-end",
-        justifyContent: "center",
-        padding: 12,
+        alignItems: "center", // ✅ center Y
+        justifyContent: "center", // ✅ center X
+        padding: 14,
       }}
-      onClick={onClose}
     >
       <div
         onClick={(e) => e.stopPropagation()}
         style={{
-          width: "min(520px, 100%)",
+          width: "min(520px, 96vw)",
+          maxHeight: "min(78vh, 680px)",
+          overflow: "auto",
           borderRadius: 18,
           border: "1px solid rgba(255,255,255,.10)",
           background: "linear-gradient(180deg, rgba(18,18,22,.98), rgba(10,10,12,.98))",
           boxShadow: "0 18px 38px rgba(0,0,0,.55)",
           padding: 12,
-          overflow: "hidden",
         }}
       >
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
@@ -734,16 +761,17 @@ function HeaderBlock(props: HeaderBlockProps) {
             {scoreAfterAll}
           </div>
 
-          {/* Volée (même rendu que Keypad preview) */}
+          {/* Volée — ✅ couleurs EXACTES du Keypad via chipStyle */}
           <div style={{ display: "flex", justifyContent: "center", gap: 8, position: "relative", zIndex: 2 }}>
             {[0, 1, 2].map((i) => {
               const d = currentThrow[i];
+              const st = chipStyle(d, false);
               return (
                 <div
                   key={i}
                   style={{
-                    background: "rgba(255,255,255,0.06)",
-                    border: "1px solid rgba(255,255,255,0.12)",
+                    background: st.background as string,
+                    border: st.border as string,
                     borderRadius: 999,
                     padding: "10px 14px",
                     display: "flex",
@@ -752,7 +780,8 @@ function HeaderBlock(props: HeaderBlockProps) {
                     minWidth: 56,
                     fontSize: 18,
                     fontWeight: 900,
-                    color: d?.mult === 3 ? "#eec7ff" : d?.mult === 2 ? "#cfe6ff" : "#ffe7c0",
+                    color: st.color as string,
+                    boxShadow: "0 10px 22px rgba(0,0,0,.30)",
                   }}
                 >
                   {d ? fmt(d) : "—"}
@@ -1402,8 +1431,6 @@ export default function BatardPlay(props: any) {
           </button>
         </div>
 
-        {/* ✅ SUPPRIMÉ : les 2 cartes joueurs en bas du header (remplacées par la carte "Classement" + modal) */}
-
         {infoMsg && (
           <div style={{ marginTop: 10, padding: 10, borderRadius: 12, background: "rgba(255,255,255,0.08)" }}>
             {infoMsg}
@@ -1411,12 +1438,7 @@ export default function BatardPlay(props: any) {
         )}
       </Section>
 
-      <PlayersModal
-        open={playersOpen}
-        onClose={() => setPlayersOpen(false)}
-        title="Joueurs (ordre de jeu)"
-        rows={orderedRowsForModal}
-      />
+      <PlayersModal open={playersOpen} onClose={() => setPlayersOpen(false)} title="Joueurs (ordre de jeu)" rows={orderedRowsForModal} />
 
       <GameInfoModal
         open={infoOpen}

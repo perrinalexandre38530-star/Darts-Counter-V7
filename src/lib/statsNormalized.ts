@@ -154,6 +154,18 @@ export function detectNormalizedMode(rec: any): NormalizedMode {
   if (k === "pingpong") return "pingpong";
   if (k === "petanque") return "petanque";
   if (k === "clock") return "clock";
+  // Heuristics when legacy records missed kind/mode fields
+  const g: any = rec?.game || {};
+  const pld: any = rec?.payload || {};
+  // X01 family often carries a startScore / remaining / legs/sets / checkout info
+  if (g?.startScore != null || pld?.startScore != null || pld?.remaining != null || pld?.checkout != null || pld?.checkoutSuggested != null) {
+    return "x01";
+  }
+  // X01 summaries sometimes stored under summary.avg3ByPlayer / bestCheckout
+  const sum: any = rec?.summary || pld?.summary || pld?.stats;
+  if (sum && (sum.avg3ByPlayer || sum.bestCheckout || sum.checkouts || sum.dartsThrown || sum.totalDarts)) {
+    return "x01";
+  }
 
   return "unknown";
 }
@@ -535,13 +547,37 @@ export async function loadNormalizedHistory(): Promise<NormalizedMatch[]> {
     // Cap + concurrence pour éviter tout freeze.
     // =====================================================
     try {
-      const NEED = new Set(["x01", "cricket", "killer", "shanghai", "territories", "golf", "batard", "babyfoot", "pingpong", "petanque", "clock", "training"]);
-      const candidates = (rows || [])
-        .filter((r: any) => r && NEED.has(String(r.kind || r.mode || "")))
-        .filter((r: any) => r.payload == null);
+      // ✅ Hydrate "lite" records (CRITICAL)
+      // - Certaines versions renvoient des rows "lite" (sans payload) MAIS aussi
+      //   parfois sans kind/mode/summary/resume.
+      // - Si on ne merge que payload, le mode reste indétectable => 'unknown' dans dashboard.
+      // => On hydrate best-effort via History.get(id) et on MERGE LE RECORD COMPLET.
+      const candidates = (rows || []).filter((r: any) => {
+        if (!r) return false;
+        const missingPayload = r.payload == null;
+        const missingKind = r.kind == null && r?.summary?.kind == null && r?.resume?.kind == null;
+        const missingMode =
+          r.mode == null &&
+          r?.summary?.mode == null &&
+          r?.resume?.mode == null &&
+          r?.resume?.game?.mode == null;
+        const missingResume = r.summary == null && r.resume == null;
+        return missingPayload || missingKind || missingMode || missingResume;
+      });
 
       const MAX_HYDRATE = 260;
       const toHydrate = candidates.slice(0, MAX_HYDRATE);
+
+const debug = (() => {
+  try { return localStorage.getItem("dc_debug_stats") === "1"; } catch { return false; }
+})();
+if (debug) {
+  console.log("[statsNormalized] hydrate candidates", {
+    totalRows: (rows || []).length,
+    candidates: candidates.length,
+    toHydrate: toHydrate.length,
+  });
+}
 
       if (toHydrate.length) {
         const byId = new Map<string, any>((rows || []).map((r: any) => [String(r?.id ?? ""), r]));
@@ -558,9 +594,19 @@ export async function loadNormalizedHistory(): Promise<NormalizedMatch[]> {
               if (!id) continue;
               try {
                 const full = (await History.get(id).catch(() => null as any)) as any;
-                if (full && full.payload != null) {
+                if (full) {
                   const cur = byId.get(id) || r;
-                  byId.set(id, { ...cur, payload: full.payload });
+                  // Merge complet : kind/mode/summary/resume + payload.
+                  // On garde cur en fallback si full est incomplet.
+                  byId.set(id, {
+                    ...cur,
+                    ...full,
+                    payload: full.payload ?? cur.payload,
+                    summary: full.summary ?? cur.summary,
+                    resume: (full as any).resume ?? (cur as any).resume,
+                    mode: full.mode ?? cur.mode,
+                    kind: full.kind ?? cur.kind,
+                  });
                 }
               } catch {
                 // ignore
@@ -570,7 +616,14 @@ export async function loadNormalizedHistory(): Promise<NormalizedMatch[]> {
         );
 
         await Promise.all(workers);
-        rows = Array.from(byId.values());
+        if (debug) {
+  const missingPayloadAfter = Array.from(byId.values()).filter((r: any) => r && r.payload == null).length;
+  console.log("[statsNormalized] hydrate done", {
+    rows: byId.size,
+    missingPayloadAfter,
+  });
+}
+rows = Array.from(byId.values());
       }
     } catch {
       // ignore hydration failures
