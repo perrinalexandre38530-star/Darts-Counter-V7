@@ -25,6 +25,30 @@ import {
 } from "../lib/statsBridge";
 import type { CricketProfileStats } from "../lib/cricketStats";
 
+// ---- Utils ----
+// toArrLoc: normalise unknown "players/teams" shapes to array (prevents TDZ crash in hooks)
+function toArrLoc<T,>(v: any): T[] {
+  if (Array.isArray(v)) return v as T[];
+  // Support object maps (id -> value)
+  if (v && typeof v === "object") {
+    try {
+      return Object.values(v) as T[];
+    } catch {
+      return [];
+    }
+  }
+  // Support JSON-encoded arrays (defensive for legacy/local storage)
+  if (typeof v === "string") {
+    try {
+      const parsed = JSON.parse(v);
+      return Array.isArray(parsed) ? (parsed as T[]) : [];
+    } catch {
+      return [];
+    }
+  }
+  return [];
+}
+
 // ✅ KEEP en import normal (léger / utilisé souvent)
 import StatsX01Compare from "./StatsX01Compare";
 import StatsTrainingSummary from "../components/stats/StatsTrainingSummary";
@@ -861,7 +885,6 @@ function buildDashboardForPlayer(
   const sessionsByMode: Record<string, number> = {};
 
   // --------- Helpers
-  const toArrLoc = <T,>(v: any): T[] => (Array.isArray(v) ? v : []);
   const Nloc = (x: any) => (Number.isFinite(Number(x)) ? Number(x) : 0);
 
   // ✅ Normalisation buckets (tolère variantes de clés / formats)
@@ -4439,8 +4462,6 @@ const killerAgg = React.useMemo<KillerAgg | null>(() => {
   const hitsByNumber: Record<string, number> = {};
 
   const Nn = (x: any, d = 0) => (Number.isFinite(Number(x)) ? Number(x) : d);
-  const toArrLoc = <T,>(v: any): T[] => (Array.isArray(v) ? v : []);
-
   for (const r of records || []) {
     const modeKey = classifyRecordMode(r);
     if (modeKey !== "killer") continue;
@@ -4561,8 +4582,6 @@ function buildShanghaiStatsFromRecords(
   const byTarget: Record<string, number> = {};
 
   const Nn = (x: any, d = 0) => (Number.isFinite(Number(x)) ? Number(x) : d);
-  const toArrLoc = <T,>(v: any): T[] => (Array.isArray(v) ? v : []);
-
   for (const r of list) {
     const t = Nn((r as any)?.updatedAt ?? (r as any)?.createdAt, 0);
     if (t < minTs) continue;
