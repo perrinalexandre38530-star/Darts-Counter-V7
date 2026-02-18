@@ -13,6 +13,7 @@ import type { Store } from "../lib/types";
 import { useTheme } from "../contexts/ThemeContext";
 import { useLang } from "../contexts/LangContext";
 import { loadStore, saveStore } from "../lib/storage";
+import { supabase } from "../lib/supabaseClient";
 import { EventBuffer } from "../lib/sync/EventBuffer";
 import SyncStatusChip from "../components/sync/SyncStatusChip";
 
@@ -85,7 +86,19 @@ export default function SyncCenter({ store, go, profileId }: Props) {
       parsed.profile
     ) {
       const incoming = parsed.profile;
-      const current = (await loadStore()) || store;
+      const current = (await loadStore());
+      if (!current) throw new Error("No local store");
+
+      // ✅ Cloud snapshot = données légères (profils/dartsets/settings)
+      // ❌ PAS d'historique / stats (trop volumineux)
+      const cloudStore: any = {
+        profiles: current.profiles ?? [],
+        activeProfileId: current.activeProfileId ?? null,
+        saved: current.saved ?? {},
+        settings: current.settings ?? {},
+        // friends peut être utile pour ONLINE, garde-le si présent
+        friends: current.friends ?? null,
+      };
       const list = current.profiles ?? [];
       const idx = list.findIndex((p: any) => p.id === incoming.id);
       let newProfiles;
@@ -118,12 +131,24 @@ export default function SyncCenter({ store, go, profileId }: Props) {
   // =====================================================
   async function handleExportFullStore() {
     try {
-      const current = (await loadStore()) || store;
+      const current = (await loadStore());
+      if (!current) throw new Error("No local store");
+
+      // ✅ Cloud snapshot = données légères (profils/dartsets/settings)
+      // ❌ PAS d'historique / stats (trop volumineux)
+      const cloudStore: any = {
+        profiles: current.profiles ?? [],
+        activeProfileId: current.activeProfileId ?? null,
+        saved: current.saved ?? {},
+        settings: current.settings ?? {},
+        // friends peut être utile pour ONLINE, garde-le si présent
+        friends: current.friends ?? null,
+      };
       const payload = {
         kind: "dc_store_snapshot_v1",
         createdAt: new Date().toISOString(),
         app: "darts-counter-v5",
-        store: current,
+        store: cloudStore,
       };
       const json = safeStringify(payload);
       setExportJson(json);
@@ -373,83 +398,116 @@ export default function SyncCenter({ store, go, profileId }: Props) {
   }
 
   // =====================================================
-  // 3) CLOUD SYNC (backend CF Workers / KV)
-  // =====================================================
-  async function handleCloudUpload() {
-    setCloudStatus(
-      t("syncCenter.cloud.uploading", "Envoi du snapshot vers le cloud…")
-    );
-    try {
-      const current = (await loadStore()) || store;
-      const payload = {
-        kind: "dc_cloud_snapshot_v1",
-        createdAt: new Date().toISOString(),
-        app: "darts-counter-v5",
-        store: current,
-      };
+// 3) CLOUD SYNC (Supabase Storage, bucket "backups")
+//
+// Object path: cloud/<user_id>/<TOKEN>.json
+// ✅ Le code (TOKEN) suffit pour retrouver le snapshot sur un autre appareil
+//    tant que l'utilisateur est connecté au même compte Supabase.
+// =====================================================
+function makeCloudToken() {
+  const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; // sans 0/O/1/I
+  const group = (n: number) =>
+    Array.from({ length: n }, () => alphabet[Math.floor(Math.random() * alphabet.length)]).join("");
+  return `${group(4)}-${group(4)}-${group(4)}`;
+}
 
-      // ⛓️ Backend à implémenter côté Cloudflare Workers
-      // Endpoint suggéré : POST /api/sync/upload → { token: string }
-      const res = await fetch("/api/sync/upload", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(payload),
+async function getUserIdOrThrow() {
+  const { data, error } = await supabase.auth.getUser();
+  if (error) throw error;
+  const uid = data?.user?.id;
+  if (!uid) throw new Error("Not authenticated");
+  return uid;
+}
+
+async function handleCloudUpload() {
+  setCloudStatus(
+    t("syncCenter.cloud.uploading", "Envoi du snapshot vers le cloud…")
+  );
+
+  try {
+    const uid = await getUserIdOrThrow();
+    const current = (await loadStore()) || store;
+
+    const payload = {
+      kind: "dc_cloud_snapshot_v1",
+      createdAt: new Date().toISOString(),
+      app: "darts-counter-v5",
+      store: current,
+    };
+
+    const token = makeCloudToken();
+    const path = `cloud/${uid}/${token}.json`;
+
+    const blob = new Blob([JSON.stringify(payload)], { type: "application/json" });
+
+    const { error: upErr } = await supabase.storage
+      .from("backups")
+      .upload(path, blob, {
+        contentType: "application/json",
+        upsert: true,
       });
 
-      if (!res.ok) {
-        throw new Error("Upload failed");
-      }
+    if (upErr) throw upErr;
 
-      const data = await res.json();
-      if (!data.token) {
-        throw new Error("No token returned");
-      }
-      setCloudToken(data.token);
-      setCloudStatus(
-        t(
-          "syncCenter.cloud.uploadOk",
-          "Snapshot envoyé ! Utilise ce code sur un autre appareil pour récupérer tes stats."
-        )
-      );
-    } catch (e) {
-      console.error(e);
-      setCloudStatus(
-        t(
-          "syncCenter.cloud.uploadError",
-          "Erreur pendant l'envoi vers le cloud. Réessaie plus tard."
-        )
-      );
-    }
+    setCloudToken(token);
+    setCloudStatus(
+      t(
+        "syncCenter.cloud.uploadOk",
+        "Snapshot envoyé ! Utilise ce code sur un autre appareil (même compte) pour récupérer tes stats."
+      )
+    );
+  } catch (e) {
+    console.error(e);
+    const msg =
+      (e as any)?.message === "Not authenticated"
+        ? t(
+            "syncCenter.cloud.authRequired",
+            "Tu dois être connecté au compte Supabase pour utiliser le cloud."
+          )
+        : t(
+            "syncCenter.cloud.uploadError",
+            "Erreur pendant l'envoi vers le cloud. Réessaie plus tard."
+          );
+    setCloudStatus(msg);
+  }
+}
+
+async function handleCloudDownload() {
+  if (!cloudToken.trim()) {
+    setCloudStatus(
+      t(
+        "syncCenter.cloud.tokenMissing",
+        "Rentre d'abord un code de synchronisation."
+      )
+    );
+    return;
   }
 
-  async function handleCloudDownload() {
-    if (!cloudToken.trim()) {
-      setCloudStatus(
-        t(
-          "syncCenter.cloud.tokenMissing",
-          "Rentre d'abord un code de synchronisation."
-        )
-      );
-      return;
-    }
+  setCloudStatus(
+    t("syncCenter.cloud.downloading", "Récupération du snapshot…")
+  );
 
-    setCloudStatus(
-      t("syncCenter.cloud.downloading", "Récupération du snapshot…")
-    );
-    try {
-      // Endpoint suggéré : GET /api/sync/download?token=XYZ
-      const res = await fetch(`/api/sync/download?token=${cloudToken.trim()}`);
-      if (!res.ok) {
-        throw new Error("Download failed");
-      }
-      const data = await res.json();
-      if (!data || !data.store) {
-        throw new Error("Invalid payload");
-      }
+  try {
+    const uid = await getUserIdOrThrow();
+    const token = cloudToken.trim().toUpperCase();
+    const path = `cloud/${uid}/${token}.json`;
 
-      const nextStore: Store = data.store;
+    const { data, error: dlErr } = await supabase.storage
+      .from("backups")
+      .download(path);
+
+    if (dlErr) throw dlErr;
+    if (!data) throw new Error("No file");
+
+    const text = await data.text();
+    const parsed = JSON.parse(text);
+
+    // On accepte le payload cloud officiel OU un store snapshot standard.
+    if (
+      (parsed?.kind === "dc_cloud_snapshot_v1" || parsed?.kind === "dc_store_snapshot_v1") &&
+      parsed?.store
+    ) {
+      const nextStore: Store = parsed.store;
       await saveStore(nextStore);
 
       setCloudStatus(
@@ -458,16 +516,26 @@ export default function SyncCenter({ store, go, profileId }: Props) {
           "Synchronisation effectuée ! Relance l'app pour tout recharger proprement."
         )
       );
-    } catch (e) {
-      console.error(e);
-      setCloudStatus(
-        t(
-          "syncCenter.cloud.downloadError",
-          "Erreur pendant la récupération du snapshot. Vérifie le code et réessaie."
-        )
-      );
+      return;
     }
+
+    throw new Error("Invalid payload");
+  } catch (e) {
+    console.error(e);
+    const msg =
+      (e as any)?.message === "Not authenticated"
+        ? t(
+            "syncCenter.cloud.authRequired",
+            "Tu dois être connecté au compte Supabase pour utiliser le cloud."
+          )
+        : t(
+            "syncCenter.cloud.downloadError",
+            "Erreur pendant la récupération du snapshot. Vérifie le code et réessaie."
+          );
+    setCloudStatus(msg);
   }
+}
+
 
   return (
     <div
@@ -1843,7 +1911,7 @@ function CloudPanel({
       >
         {t(
           "syncCenter.cloud.todo",
-          "TODO technique : implémenter /api/sync/upload & /api/sync/download dans un Worker Cloudflare avec stockage KV."
+          "Stockage Cloud via Supabase Storage (bucket "backups"). Le code fonctionne entre appareils connectés au même compte."
         )}
       </div>
     </div>

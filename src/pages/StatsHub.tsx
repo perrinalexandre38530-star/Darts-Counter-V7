@@ -5843,3 +5843,6 @@ return (
 }
 
 export default StatsHub;
+
+
+export { StatsHub };
