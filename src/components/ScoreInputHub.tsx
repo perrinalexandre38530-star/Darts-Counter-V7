@@ -124,7 +124,8 @@ export default function ScoreInputHub({
   // La méthode de saisie doit être décidée via les menus de configuration (props),
   // pas via un switch visible pendant la partie.
   switcherMode = "hidden",
-  lockContentHeight = false,
+  hideSwitcher = true,
+    lockContentHeight = false,
   fitToParent = false,
   switcherOverlay = false,
 }: Props) {
@@ -290,7 +291,7 @@ export default function ScoreInputHub({
 
   return (
     <div style={{ position: "relative" }}>
-      {switcherMode !== "hidden" && (
+      {!hideSwitcher && switcherMode !== "hidden" && (
         <div style={{ marginBottom: 8 }}>
           <MethodBar
             method={method}

@@ -156,7 +156,7 @@ export default function Keypad({
       style={{
         ...wrapCard,
         width: "100%",
-        maxWidth: 980,
+        maxWidth: '100%',
         margin: "0 auto",
         paddingBottom: safeBottomPad
           ? "calc(14px + var(--safe-bottom))"

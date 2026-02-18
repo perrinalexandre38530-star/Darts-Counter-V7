@@ -3089,7 +3089,7 @@ const throwChips = [0, 1, 2].map((i) => {
             style={{
               position: "fixed",
               inset: 0,
-              zIndex: 10000,
+              zIndex: 11000,
               display: "flex",
               alignItems: "center",
               justifyContent: "center",

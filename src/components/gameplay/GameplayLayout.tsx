@@ -405,22 +405,25 @@ export default function GameplayLayout({
             {/* 5) DOCK BAS: MODES DE SAISIE (KEYPAD / CIBLE) */}
             {inputModes ? (
               <div
-                className="card"
                 style={{
-                  padding: "10px 12px",
                   position: "sticky",
                   bottom: 0,
                   zIndex: 30,
-                  overflow: "hidden",
-                  // Taille "normale" : évite le panneau géant. L'auto-fit interne gère les cas extrêmes.
-                  maxHeight: "min(46dvh, 430px)",
-                  background: "rgba(0,0,0,0.28)",
-                  border: `1px solid ${theme.borderSoft}`,
-                  backdropFilter: "blur(8px)",
+                  width: "100%",
+                  margin: 0,
+                  padding: 0,
                   paddingBottom: safeBottom,
                 }}
               >
-                <div style={{ height: "100%", minHeight: 0, overflow: "hidden" }}>{inputModes}</div>
+                <div
+                  style={{
+                    width: "100%",
+                    maxHeight: "min(46dvh, 430px)",
+                    overflow: "hidden",
+                  }}
+                >
+                  {inputModes}
+                </div>
               </div>
             ) : null}
           </div>

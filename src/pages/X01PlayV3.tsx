@@ -2877,7 +2877,7 @@ try {
 if (isLandscapeTablet) {
   return (
     <div
-      className={`x01play-container theme-${theme.id} w-full flex flex-col`}
+      className={`x01play-container theme-${theme.id}`}
       style={{
         height: "100svh",
         minHeight: "100dvh",
@@ -3327,13 +3327,7 @@ if (isLandscapeTablet) {
     <div
       className={`x01play-container theme-${theme.id}`}
       // 100dvh = évite l'effet "aplati" quand la barre navigateur mobile change la hauteur utile.
-      style={{
-        height: "100svh",
-        minHeight: "100svh",
-        overflow: "hidden",
-        paddingTop: "env(safe-area-inset-top)",
-        paddingBottom: "calc(env(safe-area-inset-bottom) + 10px)",
-      }}
+      style={{ overflow: "hidden", minHeight: "100dvh" }}
     >
       {/* ✅ MEP: Layout unifié (Header + Profil Actif + Joueurs modal + Volée + Saisie) */}
       <GameplayLayout
@@ -3844,6 +3838,10 @@ function HeaderBlock(props: HeaderBlockProps) {
           alignItems: "center",
           position: "relative",
           zIndex: 2,
+          maxWidth: "100%",
+          minWidth: 0,
+          overflow: "hidden",
+          boxSizing: "border-box",
         }}
       >
         {/* AVATAR + STATS */}
@@ -3949,7 +3947,10 @@ function HeaderBlock(props: HeaderBlockProps) {
             flexDirection: "column",
             gap: 5,
             position: "relative",
-            overflow: "visible",
+            maxWidth: "100%",
+            minWidth: 0,
+            overflow: "hidden",
+            boxSizing: "border-box",
           }}
         >
           {/* BG ancré AU SCORE (centre = centre du 501) */}
@@ -4054,6 +4055,9 @@ function HeaderBlock(props: HeaderBlockProps) {
                 marginTop: 3,
                 display: "flex",
                 justifyContent: "center",
+                maxWidth: "100%",
+                minWidth: 0,
+                overflow: "hidden",
               }}
             >
               <div
@@ -4061,6 +4065,9 @@ function HeaderBlock(props: HeaderBlockProps) {
                   display: "inline-flex",
                   padding: 5,
                   borderRadius: 12,
+                  maxWidth: "100%",
+                  minWidth: 0,
+                  overflow: "hidden",
                   border: "1px solid rgba(255,255,255,.08)",
                   background:
                     "radial-gradient(120% 120% at 50% 0%, rgba(255,195,26,.10), rgba(30,30,34,.95))",
@@ -4147,7 +4154,6 @@ function TeamHeaderBlock(props: {
   teamLegsWon: Record<string, number>;
   teamSetsWon: Record<string, number>;
   checkoutText: string | null;
-  showThrowCounter?: boolean;
 }) {
   // =====================================================
   // Team logo (fond) — derrière le score (TEAMS only)
@@ -4185,7 +4191,6 @@ function TeamHeaderBlock(props: {
     teamLegsWon,
     teamSetsWon,
     checkoutText,
-    showThrowCounter = false,
   } = props;
 
   const color = teamColor || "#ffcf57";

@@ -9,6 +9,7 @@ import Keypad from "../../components/Keypad";
 import { useLang } from "../../contexts/LangContext";
 import { useTheme } from "../../contexts/ThemeContext";
 import tickerBatard from "../../assets/tickers/ticker_bastard.png";
+import tickerBatardPlayers from "../../assets/tickers/ticker_batard_players.png";
 
 import type { Dart as UIDart } from "../../lib/types";
 import type { BatardConfig as BatardRulesConfig, BatardRound } from "../../lib/batard/batardTypes";
@@ -117,7 +118,8 @@ function chipStyle(d?: UIDart, red = false): React.CSSProperties {
       border: "1px solid rgba(255,255,255,.08)",
     };
 
-  if (red)
+  // ✅ MISS en rouge
+  if (d.v === 0 || red)
     return {
       background: "rgba(200,30,30,.18)",
       color: "#ff8a8a",
@@ -167,6 +169,53 @@ function dartValue(d: UIDart) {
 function sumThrow(throwDarts: UIDart[] | undefined | null): number {
   if (!throwDarts || !Array.isArray(throwDarts)) return 0;
   return throwDarts.reduce((s, d) => s + dartValue(d), 0);
+}
+
+
+
+function keypadTone(d?: UIDart): { bg: string; border: string; fg: string } {
+  // Même palette que Keypad (S/D/T/BULL + MISS)
+  if (!d)
+    return { bg: "rgba(255,255,255,.06)", border: "1px solid rgba(255,255,255,.10)", fg: "#d9dbe3" };
+
+  if (d.v === 0)
+    return { bg: "rgba(200,30,30,.18)", border: "1px solid rgba(255,80,80,.35)", fg: "#ff8a8a" };
+
+  if (d.v === 25 && d.mult === 2)
+    return { bg: "rgba(13,160,98,.18)", border: "1px solid rgba(13,160,98,.35)", fg: "#8ee6bf" };
+
+  if (d.v === 25)
+    return { bg: "rgba(13,160,98,.12)", border: "1px solid rgba(13,160,98,.30)", fg: "#7bd6b0" };
+
+  if (d.mult === 3)
+    return { bg: "rgba(179,68,151,.18)", border: "1px solid rgba(179,68,151,.35)", fg: "#ffd0ff" };
+
+  if (d.mult === 2)
+    return { bg: "rgba(46,150,193,.18)", border: "1px solid rgba(46,150,193,.35)", fg: "#cfeaff" };
+
+  return { bg: "rgba(255,187,51,.12)", border: "1px solid rgba(255,187,51,.40)", fg: "#ffc63a" };
+}
+
+function toneChip(label: string, tone: { bg: string; border: string; fg: string }) {
+  return (
+    <span
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        justifyContent: "center",
+        padding: "2px 8px",
+        borderRadius: 999,
+        fontWeight: 900,
+        fontSize: 11,
+        border: tone.border,
+        background: tone.bg,
+        color: tone.fg,
+        whiteSpace: "nowrap",
+      }}
+    >
+      {label}
+    </span>
+  );
 }
 
 type LightPlayer = { id: string; name?: string; avatarDataUrl?: string | null; dartSetId?: string | null };
@@ -322,32 +371,12 @@ function PlayersModal(props: {
                     ) : null}
                   </div>
 
-                  <div
-                    style={{
-                      marginTop: 6,
-                      display: "flex",
-                      gap: 8,
-                      flexWrap: "wrap",
-                      fontSize: 12,
-                      opacity: 0.95,
-                      color: "#d9dbe3",
-                    }}
-                  >
-                    <span>
-                      Score: <b style={{ color: "#ffcf57" }}>{r.score}</b>
-                    </span>
-                    <span>
-                      Hits: <b>{r.hits}</b>
-                    </span>
-                    <span>
-                      Tours: <b>{r.turns}</b>
-                    </span>
-                    <span>
-                      Fails: <b>{r.fails}</b>
-                    </span>
-                    <span>
-                      Adv: <b>{r.advances}</b>
-                    </span>
+                  <div style={{ marginTop: 6, display: "flex", gap: 8, flexWrap: "wrap", fontSize: 12, opacity: 0.95, color: "#d9dbe3" }}>
+                    <span>Score: <b style={{ color: "#ffcf57" }}>{r.score}</b></span>
+                    <span>Hits: <b>{r.hits}</b></span>
+                    <span>Tours: <b>{r.turns}</b></span>
+                    <span>Fails: <b>{r.fails}</b></span>
+                    <span>Adv: <b>{r.advances}</b></span>
                   </div>
                 </div>
 
@@ -393,9 +422,6 @@ function PlayersModal(props: {
   );
 }
 
-// -------------------------------------------------------------
-// GameInfoModal — ✅ CENTRÉ verticalement/horizontalement
-// -------------------------------------------------------------
 function GameInfoModal({
   open,
   onClose,
@@ -416,32 +442,28 @@ function GameInfoModal({
 
   return (
     <div
-      role="dialog"
-      aria-modal="true"
-      onClick={onClose}
       style={{
         position: "fixed",
         inset: 0,
         zIndex: 9999,
         background: "rgba(0,0,0,.55)",
-        backdropFilter: "blur(6px)",
         display: "flex",
-        alignItems: "center", // ✅ center Y
-        justifyContent: "center", // ✅ center X
-        padding: 14,
+        alignItems: "flex-end",
+        justifyContent: "center",
+        padding: 12,
       }}
+      onClick={onClose}
     >
       <div
         onClick={(e) => e.stopPropagation()}
         style={{
-          width: "min(520px, 96vw)",
-          maxHeight: "min(78vh, 680px)",
-          overflow: "auto",
+          width: "min(520px, 100%)",
           borderRadius: 18,
           border: "1px solid rgba(255,255,255,.10)",
           background: "linear-gradient(180deg, rgba(18,18,22,.98), rgba(10,10,12,.98))",
           boxShadow: "0 18px 38px rgba(0,0,0,.55)",
           padding: 12,
+          overflow: "hidden",
         }}
       >
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
@@ -548,7 +570,8 @@ function HeaderBlock(props: HeaderBlockProps) {
     onOpenInfo,
   } = props;
 
-  const scoreAfterAll = Math.max((currentScore ?? 0) + sumThrow(currentThrow), 0);
+  // ✅ Score "points de jeu" uniquement (comme mini-classement) — PAS le cumul volée
+  const gameScore = Math.max((currentScore ?? 0), 0);
   const bgAvatarUrl = currentAvatar || null;
 
   return (
@@ -560,6 +583,9 @@ function HeaderBlock(props: HeaderBlockProps) {
         borderRadius: 18,
         padding: 7,
         boxShadow: "0 8px 26px rgba(0,0,0,.35)",
+        width: "100%",
+        maxWidth: "100%",
+        boxSizing: "border-box",
         position: "relative",
         overflow: "hidden",
       }}
@@ -579,10 +605,11 @@ function HeaderBlock(props: HeaderBlockProps) {
       <div
         style={{
           display: "grid",
-          gridTemplateColumns: "auto minmax(0,1fr)",
+          gridTemplateColumns: "110px minmax(0, 1fr)",
           gap: 8,
           alignItems: "center",
           position: "relative",
+          minWidth: 0,
           zIndex: 2,
         }}
       >
@@ -627,7 +654,7 @@ function HeaderBlock(props: HeaderBlockProps) {
           </div>
 
           {/* Mini card stats joueur actif (Batard) */}
-          <div style={{ ...miniCard, width: "clamp(118px, 24vw, 150px)", height: "auto", padding: 6 }}>
+          <div style={{ ...miniCard, width: 176, height: "auto", padding: 7 }}>
             <div style={miniText}>
               <div>
                 Hits : <b>{curHits}</b>
@@ -643,7 +670,7 @@ function HeaderBlock(props: HeaderBlockProps) {
         </div>
 
         {/* SCORE + PASTILLES + RANKING */}
-        <div style={{ textAlign: "center", display: "flex", flexDirection: "column", gap: 5, position: "relative", overflow: "hidden", minWidth: 0 }}>
+        <div style={{ textAlign: "center", display: "flex", flexDirection: "column", gap: 5, position: "relative", overflow: "visible" }}>
           {!!bgAvatarUrl && (
             <img
               src={bgAvatarUrl}
@@ -679,7 +706,7 @@ function HeaderBlock(props: HeaderBlockProps) {
               justifyContent: "flex-end",
               gap: 6,
               alignItems: "center",
-              flexWrap: "nowrap",
+              flexWrap: "wrap",
               marginBottom: 2,
               position: "relative",
               zIndex: 2,
@@ -698,9 +725,9 @@ function HeaderBlock(props: HeaderBlockProps) {
                 return (
                   <div
                     style={{
-                      minWidth: 64,
-                      maxWidth: 74,
-                      padding: "5px 6px",
+                      minWidth: 74,
+                      maxWidth: 86,
+                      padding: "6px 8px",
                       borderRadius: 12,
                       background: st.bg,
                       border: st.border,
@@ -728,8 +755,8 @@ function HeaderBlock(props: HeaderBlockProps) {
                     type="button"
                     onClick={onOpenInfo}
                     style={{
-                      width: 32,
-                      height: 32,
+                      width: 34,
+                      height: 34,
                       borderRadius: 12,
                       border: "1px solid rgba(255,255,255,.12)",
                       background: "rgba(0,0,0,.20)",
@@ -758,37 +785,50 @@ function HeaderBlock(props: HeaderBlockProps) {
               lineHeight: 1.02,
             }}
           >
-            {scoreAfterAll}
+            {gameScore}
           </div>
 
-          {/* Volée — ✅ couleurs EXACTES du Keypad via chipStyle */}
-          <div style={{ display: "flex", justifyContent: "center", gap: 8, position: "relative", zIndex: 2 }}>
-            {[0, 1, 2].map((i) => {
-              const d = currentThrow[i];
-              const st = chipStyle(d, false);
-              return (
-                <div
-                  key={i}
-                  style={{
-                    background: st.background as string,
-                    border: st.border as string,
-                    borderRadius: 999,
-                    padding: "10px 14px",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    minWidth: 56,
-                    fontSize: 18,
-                    fontWeight: 900,
-                    color: st.color as string,
-                    boxShadow: "0 10px 22px rgba(0,0,0,.30)",
-                  }}
-                >
-                  {d ? fmt(d) : "—"}
-                </div>
-              );
-            })}
-          </div>
+          {/* Volée (compacte, 1 ligne) */}
+<div
+  style={{
+    display: "flex",
+    justifyContent: "center",
+    gap: 6,
+    position: "relative",
+    zIndex: 2,
+    flexWrap: "nowrap",          // ✅ force 1 ligne
+    overflow: "hidden",
+    maxWidth: "100%",
+  }}
+>
+  {[0, 1, 2].map((i) => {
+    const d = currentThrow[i];
+    const tone = keypadTone(d);
+    return (
+      <div
+        key={i}
+        style={{
+          background: tone.bg,
+          border: tone.border,
+          borderRadius: 999,
+          padding: "8px 10px",    // ✅ réduit
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          minWidth: 46,           // ✅ réduit
+          fontSize: 16,           // ✅ réduit
+          fontWeight: 900,
+          color: tone.fg,
+          boxSizing: "border-box",
+          whiteSpace: "nowrap",   // ✅ évite les retours ligne dans la chip
+          flex: "0 0 auto",
+        }}
+      >
+        {d ? fmt(d) : "—"}
+      </div>
+    );
+  })}
+</div>
 
           {/* Mini classement (statique) */}
           <div
@@ -804,10 +844,7 @@ function HeaderBlock(props: HeaderBlockProps) {
           >
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 6 }}>
               <div style={{ fontWeight: 900, color: "#ffcf57" }}>Classement</div>
-              <div style={{ fontSize: 11, opacity: 0.85, color: "#d9dbe3" }}>
-                {liveRanking.length} joueur{liveRanking.length === 1 ? "" : "s"}
-              </div>
-            </div>
+</div>
 
             <div style={{ maxHeight: 3 * 26, overflow: liveRanking.length > 3 ? "auto" : "visible" }}>
               {liveRanking.map((r, i) => (
@@ -821,6 +858,140 @@ function HeaderBlock(props: HeaderBlockProps) {
             </div>
           </div>
         </div>
+      </div>
+    </div>
+  );
+}
+
+
+function buildBatardInfoNode(b: any, primary: string) {
+  const winMode = String(b?.winMode || "—");
+  const failPolicy = String(b?.failPolicy || "NONE");
+  const failValue = Number(b?.failValue || 0) || 0;
+  const scoreOnlyValid = Boolean(b?.scoreOnlyValid);
+  const minHits = Number(b?.minValidHitsToAdvance || 0) || 0;
+  const rounds: any[] = Array.isArray(b?.rounds) ? b.rounds : [];
+
+  const titleStyle: React.CSSProperties = { fontWeight: 1000, fontSize: 13, letterSpacing: 0.6, color: primary };
+  const boxStyle: React.CSSProperties = {
+    borderRadius: 14,
+    border: "1px solid rgba(255,255,255,.10)",
+    background: "rgba(255,255,255,.04)",
+    padding: 10,
+  };
+
+  const chipS = toneChip("SINGLE", keypadTone({ v: 20, mult: 1, label: "S20" } as any));
+  const chipD = toneChip("DOUBLE", keypadTone({ v: 20, mult: 2, label: "D20" } as any));
+  const chipT = toneChip("TRIPLE", keypadTone({ v: 20, mult: 3, label: "T20" } as any));
+  const chipB = toneChip("BULL", keypadTone({ v: 25, mult: 1, label: "BULL" } as any));
+  const chipDB = toneChip("DBULL", keypadTone({ v: 25, mult: 2, label: "DBULL" } as any));
+
+  const winDesc =
+    winMode === "COURSE_FINISH"
+      ? "Course Finish : la partie se gagne en atteignant l’objectif de progression (fin de séquence / dernière manche selon ta config)."
+      : winMode === "SCORE_MAX"
+        ? "Score Max : la partie se gagne en atteignant le score cible (si configuré) ou en terminant avec le meilleur score selon ton preset."
+        : "Condition personnalisée (custom) : dépend du preset / paramètres choisis.";
+
+  const failDesc =
+    failPolicy === "NONE"
+      ? "Aucun : pas de pénalité en cas d’échec."
+      : failPolicy === "MALUS"
+        ? `Malus : tu prends un malus de −${Math.abs(failValue || 0)} points (ou valeur configurée).`
+        : failPolicy === "REWIND_ROUNDS"
+          ? `Recul : tu recules de ${Math.abs(failValue || 0)} manche(s) en cas d’échec.`
+          : failPolicy === "FREEZE"
+            ? "Freeze : tu rejoues / tu restes bloqué (selon engine) en cas d’échec."
+            : `${failPolicy}${failValue ? ` (${failValue})` : ""}`;
+
+  const scoreRule = scoreOnlyValid
+    ? "Score uniquement sur flèches valides : seuls les hits qui respectent la contrainte du round ajoutent des points."
+    : "Score sur toutes les flèches : tu marques tes points, mais seuls les hits valides comptent pour avancer.";
+
+  return (
+    <div style={{ color: "#d9dbe3", fontSize: 12, lineHeight: 1.35 }}>
+      <div style={{ ...titleStyle, fontSize: 15 }}>Règles — Mode BÂTARD</div>
+      <div style={{ marginTop: 6, opacity: 0.9 }}>
+        Basé sur ta configuration BatardConfig : presets, séquences de rounds, règles d’échec et condition de victoire.
+      </div>
+
+      <div style={{ marginTop: 10, display: "grid", gap: 10 }}>
+        <div style={boxStyle}>
+          <div style={titleStyle}>Principe</div>
+          <div style={{ marginTop: 6 }}>
+            Chaque <b style={{ color: primary }}>round</b> impose une contrainte de tir (cible / bull / multiplicateur). Pour avancer, tu dois faire un
+            minimum de <b style={{ color: primary }}>{minHits}</b> hit(s) valide(s).
+          </div>
+          <div style={{ marginTop: 8, display: "flex", gap: 6, flexWrap: "wrap" }}>
+            {chipS} {chipD} {chipT} {chipB} {chipDB}
+          </div>
+        </div>
+
+        <div style={boxStyle}>
+          <div style={titleStyle}>Règles de score</div>
+          <div style={{ marginTop: 6 }}>{scoreRule}</div>
+          <div style={{ marginTop: 6, opacity: 0.9 }}>
+            Un hit valide = respecte la contrainte du round (ex: {chipD} sur D20, ou {chipDB} si round bull en double).
+          </div>
+        </div>
+
+        <div style={boxStyle}>
+          <div style={titleStyle}>Échec</div>
+          <div style={{ marginTop: 6 }}>{failDesc}</div>
+          <div style={{ marginTop: 6, opacity: 0.9 }}>
+            Déclenché quand tu ne remplis pas la condition d’avancement du round (hits valides insuffisants).
+          </div>
+        </div>
+
+        <div style={boxStyle}>
+          <div style={titleStyle}>Condition de victoire</div>
+          <div style={{ marginTop: 6 }}>{winDesc}</div>
+          <div style={{ marginTop: 6 }}>
+            winMode: <b style={{ color: primary }}>{winMode}</b>
+          </div>
+        </div>
+
+        <div style={boxStyle}>
+          <div style={titleStyle}>Séquence des rounds</div>
+          {rounds.length ? (
+            <div style={{ marginTop: 6, display: "grid", gap: 6 }}>
+              {rounds.map((r, idx) => {
+                const label = roundLabel(r as any, idx);
+                const m = String((r as any)?.multiplierRule || "ANY");
+                const isBull = String((r as any)?.type) === "TARGET_BULL";
+                const isAny = String((r as any)?.type) === "ANY_SCORE";
+                const target = typeof (r as any)?.target === "number" ? Number((r as any).target) : null;
+
+                const constraint =
+                  isBull
+                    ? `Cible : ${m === "DOUBLE" ? "DBULL (50)" : "BULL (25)"}`
+                    : isAny
+                      ? `Score libre${m !== "ANY" ? ` (${m})` : ""}`
+                      : target != null
+                        ? `Cible : ${m === "SINGLE" ? "S" : m === "DOUBLE" ? "D" : m === "TRIPLE" ? "T" : ""}${target} ${m !== "ANY" ? "" : "(ANY mult)"}`
+                        : "Cible : —";
+
+                return (
+                  <div key={(r as any)?.id || idx} style={{ padding: "8px 10px", borderRadius: 12, background: "rgba(255,255,255,.03)", border: "1px solid rgba(255,255,255,.08)" }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
+                      <div style={{ fontWeight: 900, color: primary, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                        {idx + 1}. {String((r as any)?.label || label)}
+                      </div>
+                      <div style={{ fontWeight: 900, opacity: 0.95 }}>{String(m || "ANY")}</div>
+                    </div>
+                    <div style={{ marginTop: 4, opacity: 0.92 }}>{constraint}</div>
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <div style={{ marginTop: 6, opacity: 0.9 }}>Aucun round défini.</div>
+          )}
+        </div>
+      </div>
+
+      <div style={{ marginTop: 10, opacity: 0.8, fontSize: 11 }}>
+        Astuce : le score affiché au centre est <b>live</b> (score actuel + volée en cours) avant validation.
       </div>
     </div>
   );
@@ -1165,17 +1336,34 @@ export default function BatardPlay(props: any) {
   const onNumber = (v: number) => {
     if (finished) return;
     if (currentThrow.length >= 3) return;
+  
     setInfoMsg(null);
-    setCurrentThrow((prev) => [...prev, { v, mult: multiplier, label: `${multiplier}x${v}` }]);
-    setMultiplier(1);
+  
+    // on capture le mult du tir en cours
+    const m = multiplier;
+  
+    // push dart
+    setCurrentThrow((prev) => [...prev, { v, mult: m, label: `${m}x${v}` }]);
+  
+    // ✅ auto-reset multiplicateur après chaque flèche
+    if (m !== 1) setMultiplier(1);
   };
-
+  
   const onBull = () => {
     if (finished) return;
     if (currentThrow.length >= 3) return;
+  
     setInfoMsg(null);
-    setCurrentThrow((prev) => [...prev, { v: 25, mult: multiplier, label: multiplier === 2 ? "DBULL" : "BULL" }]);
-    setMultiplier(1);
+  
+    const m = multiplier;
+  
+    setCurrentThrow((prev) => [
+      ...prev,
+      { v: 25, mult: m, label: m === 2 ? "DBULL" : "BULL" },
+    ]);
+  
+    // ✅ auto-reset multiplicateur après chaque flèche
+    if (m !== 1) setMultiplier(1);
   };
 
   const onUndo = () => {
@@ -1340,7 +1528,7 @@ export default function BatardPlay(props: any) {
         title="BÂTARD"
         tickerSrc={tickerBatard}
         left={<BackDot onClick={goBack} />}
-        right={<InfoDot title="BÂTARD" content={INFO_TEXT} />}
+        right={<InfoDot title="BÂTARD" content={buildBatardInfoNode((runtimeCfg as any)?.batard, theme?.primary || "#ffcf57")} />}
       />
 
       {/* ✅ plus de titre "STATUT" */}
@@ -1390,10 +1578,10 @@ export default function BatardPlay(props: any) {
               style={{
                 position: "absolute",
                 inset: 0,
-                backgroundImage: `url(${tickerBatard})`,
+                backgroundImage: `url(${tickerBatardPlayers})`,
                 backgroundSize: "cover",
                 backgroundPosition: "center",
-                opacity: 0.22,
+                opacity: 0.70,
                 filter: "saturate(1.2) contrast(1.1)",
               }}
             />
@@ -1414,8 +1602,8 @@ export default function BatardPlay(props: any) {
 
               <div
                 style={{
-                  width: 32,
-                      height: 32,
+                  width: 34,
+                  height: 34,
                   borderRadius: 999,
                   display: "flex",
                   alignItems: "center",
@@ -1440,7 +1628,12 @@ export default function BatardPlay(props: any) {
         )}
       </Section>
 
-      <PlayersModal open={playersOpen} onClose={() => setPlayersOpen(false)} title="Joueurs (ordre de jeu)" rows={orderedRowsForModal} />
+      <PlayersModal
+        open={playersOpen}
+        onClose={() => setPlayersOpen(false)}
+        title="Joueurs (ordre de jeu)"
+        rows={orderedRowsForModal}
+      />
 
       <GameInfoModal
         open={infoOpen}
