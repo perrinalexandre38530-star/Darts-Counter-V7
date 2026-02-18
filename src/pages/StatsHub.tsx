@@ -3772,7 +3772,7 @@ function TrainingHitsBySegment({ sessions }: TrainingHitsBySegmentProps) {
   );
 }
 
-export default function StatsHub({
+function StatsHub({
   go,
   tab, // "stats" | "training" | "history"
   memHistory,
@@ -4182,8 +4182,16 @@ const [trainingSubView, setTrainingSubView] = React.useState<"stats" | "leaderbo
 
 // Si le parent change initialPlayerId / playerId → on suit
 React.useEffect(() => {
-  if (activePlayerId) setSelectedPlayerId(String(activePlayerId));
-}, [activePlayerId]);
+  if (!activePlayerId) return;
+  // IMPORTANT (mobile/offline): ne pas forcer le changement de joueur sélectionné
+  // à chaque bascule de l'ID actif (ex: profile online) sinon dashboard => 0.
+  setSelectedPlayerId((prev) => {
+    const next = String(activePlayerId);
+    if (!prev) return next;
+    const exists = filteredPlayers?.some((p) => String(p?.id) === String(prev));
+    return exists ? prev : next;
+  });
+}, [activePlayerId, filteredPlayers]);
 
 // Si rien de sélectionné OU joueur filtré → 1er dispo
 React.useEffect(() => {
@@ -5833,3 +5841,5 @@ return (
   </div>
 );
 }
+
+export default StatsHub;
