@@ -64,7 +64,8 @@ function extractVisits(rec: SavedMatch, pid: string) {
  */
 export function computeX01MultiAgg(
   records: SavedMatch[],
-  playerId: string
+  playerId: string,
+  playerName?: string
 ) {
   const out = {
     sessions: 0,
@@ -98,10 +99,17 @@ export function computeX01MultiAgg(
     if (rec.id) set.add(rec.id);
 
     const players = (rec.players || []) as PlayerLite[];
-    if (!players.some((p) => p?.id === playerId)) continue;
+
+    const pname = (playerName || "").trim().toLowerCase();
+    const matched =
+      players.find((p) => p?.id === playerId) ||
+      (pname ? players.find((p) => (p?.name || "").trim().toLowerCase() === pname) : undefined);
+
+    if (!matched?.id) continue;
+    const effectivePlayerId = matched.id;
 
     // ----- visites -----
-    const visits = extractVisits(rec, playerId);
+    const visits = extractVisits(rec, effectivePlayerId);
 
     if (!visits.length) continue;
 

@@ -3829,6 +3829,34 @@ function HeaderBlock(props: HeaderBlockProps) {
           zIndex: 1,
         }}
       />
+      {bgAvatarUrl && (
+        <img
+        src={bgAvatarUrl}
+              aria-hidden
+              style={{
+                position: "absolute",
+                top: "45%",
+                left: "75%",
+                transform: "translate(-50%, -50%)",
+                height: "220%",
+                width: "auto",
+                WebkitMaskImage:
+                  "linear-gradient(90deg, rgba(0,0,0,0) 0%, rgba(0,0,0,0.2) 25%, rgba(0,0,0,0.85) 52%, rgba(0,0,0,1) 69%, rgba(0,0,0,1) 100%)",
+                maskImage:
+                  "linear-gradient(90deg, rgba(0,0,0,0) 0%, rgba(0,0,0,0.2) 25%, rgba(0,0,0,0.85) 52%, rgba(0,0,0,1) 69%, rgba(0,0,0,1) 100%)",
+                WebkitMaskRepeat: "no-repeat",
+                maskRepeat: "no-repeat",
+                WebkitMaskSize: "100% 100%",
+                maskSize: "100% 100%",
+                opacity: 0.22,
+                filter: "saturate(1.35) contrast(1.18) brightness(1.08) drop-shadow(-10px 0 26px rgba(0,0,0,.55))",
+                pointerEvents: "none",
+                userSelect: "none",
+                zIndex: 0,
+          }}
+        />
+      )}
+
 
       <div
         style={{
@@ -3954,35 +3982,7 @@ function HeaderBlock(props: HeaderBlockProps) {
           }}
         >
           {/* BG ancré AU SCORE (centre = centre du 501) */}
-          {!!bgAvatarUrl && (
-            <img
-              src={bgAvatarUrl}
-              aria-hidden
-              style={{
-                position: "absolute",
-                top: "40%",
-                left: "60%",
-                transform: "translate(-50%, -50%)",
-                height: "250%",
-                width: "auto",
-                WebkitMaskImage:
-                  "linear-gradient(90deg, rgba(0,0,0,0) 0%, rgba(0,0,0,0.2) 25%, rgba(0,0,0,0.85) 52%, rgba(0,0,0,1) 69%, rgba(0,0,0,1) 100%)",
-                maskImage:
-                  "linear-gradient(90deg, rgba(0,0,0,0) 0%, rgba(0,0,0,0.2) 25%, rgba(0,0,0,0.85) 52%, rgba(0,0,0,1) 69%, rgba(0,0,0,1) 100%)",
-                WebkitMaskRepeat: "no-repeat",
-                maskRepeat: "no-repeat",
-                WebkitMaskSize: "100% 100%",
-                maskSize: "100% 100%",
-
-                opacity: 0.22,
-                filter:
-                  "saturate(1.35) contrast(1.18) brightness(1.08) drop-shadow(-10px 0 26px rgba(0,0,0,.55))",
-                pointerEvents: "none",
-                userSelect: "none",
-                zIndex: 0,
-              }}
-            />
-          )}
+          
 
           {/* SCORE CENTRAL */}
           <div
@@ -4251,6 +4251,8 @@ function TeamHeaderBlock(props: {
             zIndex: 0,
           }}
         />
+            
+
       )}
 
             {/* Dégradé côté gauche (fondre le logo sur ~3/4) */}

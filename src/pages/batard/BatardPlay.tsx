@@ -677,10 +677,10 @@ function HeaderBlock(props: HeaderBlockProps) {
               aria-hidden
               style={{
                 position: "absolute",
-                top: "40%",
+                top: "50%",
                 left: "60%",
                 transform: "translate(-50%, -50%)",
-                height: "250%",
+                height: "180%",
                 width: "auto",
                 WebkitMaskImage:
                   "linear-gradient(90deg, rgba(0,0,0,0) 0%, rgba(0,0,0,0.2) 25%, rgba(0,0,0,0.85) 52%, rgba(0,0,0,1) 69%, rgba(0,0,0,1) 100%)",
