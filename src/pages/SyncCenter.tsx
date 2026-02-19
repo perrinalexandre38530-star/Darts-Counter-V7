@@ -51,14 +51,6 @@ export default function SyncCenter({ store, go, profileId }: Props) {
   // --- CLOUD SYNC ---
   const [cloudToken, setCloudToken] = React.useState<string>("");
   const [cloudStatus, setCloudStatus] = React.useState<string>("");
-  const [cloudBusy, setCloudBusy] = React.useState<boolean>(false);
-
-  // Diagnostics / auto-test (to avoid "patches à l'aveugle")
-  const [diagBusy, setDiagBusy] = React.useState(false);
-  const [diagLog, setDiagLog] = React.useState<string[]>([]);
-  const pushDiag = React.useCallback((line: string) => {
-    setDiagLog((p) => [...p, `[${new Date().toISOString()}] ${line}`]);
-  }, []);
 
   // --- PEER / DEVICE-À-DEVICE (préparation) ---
   const [peerPayload, setPeerPayload] = React.useState<string>("");
@@ -406,7 +398,7 @@ export default function SyncCenter({ store, go, profileId }: Props) {
   }
 
   // =====================================================
-// 3) CLOUD SYNC (Supabase Storage, bucket "backups")
+// 3) CLOUD SYNC (Supabase Storage, bucket: backups)
 //
 // Object path: cloud/<user_id>/<TOKEN>.json
 // ✅ Le code (TOKEN) suffit pour retrouver le snapshot sur un autre appareil
@@ -427,8 +419,48 @@ async function getUserIdOrThrow() {
   return uid;
 }
 
+function formatCloudError(e: any) {
+  if (!e) return "Unknown error";
+  // Supabase Storage errors often expose: message, statusCode, error, details, hint
+  const parts: string[] = [];
+  if (e.name) parts.push(String(e.name));
+  if (e.status || e.statusCode) parts.push(`status=${e.status ?? e.statusCode}`);
+  if (e.error) parts.push(String(e.error));
+  if (e.message) parts.push(String(e.message));
+  if (e.details) parts.push(String(e.details));
+  if (e.hint) parts.push(String(e.hint));
+  return parts.filter(Boolean).join(" | ") || String(e);
+}
+
+async function maybeGzipJson(json: string): Promise<{ blob: Blob; pathSuffix: string; contentType: string }> {
+  // Prefer native CompressionStream when available (Chrome/Edge/Safari recent).
+  const cs: any = (window as any).CompressionStream;
+  if (cs) {
+    try {
+      const stream = new Blob([json], { type: "application/json" })
+        .stream()
+        .pipeThrough(new cs("gzip"));
+      const gzBlob = await new Response(stream).blob();
+      return { blob: gzBlob, pathSuffix: ".json.gz", contentType: "application/gzip" };
+    } catch (err) {
+      console.warn("gzip failed, falling back to JSON", err);
+    }
+  }
+  return { blob: new Blob([json], { type: "application/json" }), pathSuffix: ".json", contentType: "application/json" };
+}
+
+async function maybeGunzipToText(blob: Blob): Promise<string> {
+  const ds: any = (window as any).DecompressionStream;
+  if (ds) {
+    const stream = blob.stream().pipeThrough(new ds("gzip"));
+    return await new Response(stream).text();
+  }
+  // If no DecompressionStream, try reading as plain text (may fail if gz)
+  return await blob.text();
+}
+
+
 async function handleCloudUpload() {
-  setCloudBusy(true);
   setCloudStatus(
     t("syncCenter.cloud.uploading", "Envoi du snapshot vers le cloud…")
   );
@@ -445,28 +477,17 @@ async function handleCloudUpload() {
     };
 
     const token = makeCloudToken();
-    // Build snapshot payload
-    const jsonStr = JSON.stringify(payload);
-    const rawBytes = approxBytesOfString(jsonStr);
 
-    // Prefer gzip to stay under Storage limits (your bucket is 10MB).
-    const gzBlob = await gzipStringToBlob(jsonStr);
+    const json = JSON.stringify(payload);
+    const { blob, pathSuffix, contentType } = await maybeGzipJson(json);
 
-    const ext = gzBlob ? "json.gz" : "json";
-    const contentType = gzBlob ? "application/gzip" : "application/json";
-    const blob = gzBlob ?? new Blob([jsonStr], { type: "application/json" });
+    const path = `cloud/${uid}/${token}${pathSuffix}`;
 
-    log(`Snapshot bytes (raw): ${rawBytes}`);
-    if (gzBlob) log(`Snapshot bytes (gzip): ${gzBlob.size}`);
-
-    const path = `cloud/${uid}/${token}.${ext}`;
-const { error: upErr } = await supabase.storage
+    const { error: upErr } = await supabase.storage
       .from("backups")
       .upload(path, blob, {
-        contentType: contentType,
-        // Each snapshot uses a unique token -> no need to upsert.
-        // Keeping upsert=false also avoids requiring UPDATE policies.
-        upsert: false,
+        contentType,
+        upsert: true,
       });
 
     if (upErr) throw upErr;
@@ -476,11 +497,10 @@ const { error: upErr } = await supabase.storage
       t(
         "syncCenter.cloud.uploadOk",
         "Snapshot envoyé ! Utilise ce code sur un autre appareil (même compte) pour récupérer tes stats."
-      )
+      ) + `\n(${Math.round(blob.size / 1024)} KB, ${pathSuffix === ".json.gz" ? "gzip" : "json"})`
     );
   } catch (e) {
     console.error(e);
-    const rawMsg = String((e as any)?.message ?? e ?? "");
     const msg =
       (e as any)?.message === "Not authenticated"
         ? t(
@@ -489,16 +509,9 @@ const { error: upErr } = await supabase.storage
           )
         : t(
             "syncCenter.cloud.uploadError",
-            "Erreur pendant l'envoi vers le cloud. Réessaie plus tard."
-          );
+            "Erreur pendant l'envoi vers le cloud."
+          ) + `\n${formatCloudError(e)}`;
     setCloudStatus(msg);
-
-    // Auto-launch diagnostics when we see a typical RLS failure.
-    if (rawMsg.toLowerCase().includes("row-level security") || rawMsg.toLowerCase().includes("rls")) {
-      runCloudDiagnostics().catch(() => {});
-    }
-  } finally {
-    setCloudBusy(false);
   }
 }
 
@@ -520,25 +533,37 @@ async function handleCloudDownload() {
   try {
     const uid = await getUserIdOrThrow();
     const token = cloudToken.trim().toUpperCase();
-    const path = `cloud/${uid}/${token}.json`;
+    const pathGz = `cloud/${uid}/${token}.json.gz`;
+    const pathJson = `cloud/${uid}/${token}.json`;
 
-    const { data, error: dlErr } = await supabase.storage
-      .from("backups")
-      .download(path);
+    
+// Try gz first, then plain json (for backward compatibility)
+let data: Blob | null = null;
+let dlErr: any = null;
 
-    if (dlErr) throw dlErr;
-    if (!data) throw new Error("No file");
-
-    let text: string | null = null;
-
-    if (path.endsWith(".gz")) {
-      text = await ungzipBlobToString(data);
-      if (!text) throw new Error("Gzip not supported on this browser (DecompressionStream missing).");
+{
+  const r1 = await supabase.storage.from("backups").download(pathGz);
+  if (!r1.error && r1.data) {
+    data = r1.data as any;
+  } else {
+    dlErr = r1.error;
+    const r2 = await supabase.storage.from("backups").download(pathJson);
+    if (!r2.error && r2.data) {
+      data = r2.data as any;
+      dlErr = null;
     } else {
-      text = await data.text();
+      dlErr = r2.error || dlErr;
     }
+  }
+}
 
-    const parsed = JSON.parse(text);
+if (dlErr) throw dlErr;
+if (!data) throw new Error("No file");
+
+// If gz, decompress; otherwise read as text
+const isGz = (data as any)?.type === "application/gzip" || String((data as any)?.type || "").includes("gzip");
+const text = isGz ? await maybeGunzipToText(data) : await data.text();
+const parsed = JSON.parse(text);
 
     // On accepte le payload cloud officiel OU un store snapshot standard.
     if (
@@ -574,68 +599,57 @@ async function handleCloudDownload() {
   }
 }
 
-// =====================================================
-// AUTO-TEST CLOUD (diagnostic)
-// =====================================================
-async function runCloudDiagnostics() {
-  if (diagBusy) return;
-  setDiagBusy(true);
-  setDiagLog([]);
+
+async function handleCloudAutoTest() {
+  const logs: string[] = [];
+  const ts = () => new Date().toISOString().slice(0, 19).replace("T", " ");
+  const log = (s: string) => logs.push(`[${ts()}] ${s}`);
+
+  setCloudStatus(t("syncCenter.cloud.testing", "Test cloud…"));
+
   try {
-    pushDiag("=== Cloud diagnostic ===");
-    pushDiag("Bucket: backups");
+    log("=== Cloud diagnostic ===");
+    log("Bucket: backups");
+    const uid = await getUserIdOrThrow();
+    log(`User id: ${uid}`);
 
-    const { data: sess } = await supabase.auth.getSession();
-    pushDiag(`Session: ${sess?.session ? "OK" : "NULL"}`);
-    if (sess?.session?.user?.id) pushDiag(`Session user.id: ${sess.session.user.id}`);
-
-    const { data: userData, error: userErr } = await supabase.auth.getUser();
-    if (userErr) pushDiag(`auth.getUser ERROR: ${userErr.message}`);
-    const uid = userData?.user?.id;
-    pushDiag(`User id: ${uid ?? "NULL"}`);
-    pushDiag(`User email: ${userData?.user?.email ?? "(none)"}`);
-    if (!uid) {
-      pushDiag("STOP: No user id -> request is unauthenticated -> RLS will fail.");
-      return;
-    }
-
-    // 1) LIST (requires SELECT policy)
-    pushDiag(`LIST: cloud/${uid}`);
-    const listRes = await supabase.storage
+    const prefix = `cloud/${uid}`;
+    log(`LIST: ${prefix}`);
+    const { data: list, error: listErr } = await supabase.storage
       .from("backups")
-      .list(`cloud/${uid}`, { limit: 10, sortBy: { column: "created_at", order: "desc" } as any });
-    if (listRes.error) pushDiag(`LIST ERROR: ${listRes.error.message}`);
-    else pushDiag(`LIST OK: ${listRes.data?.length ?? 0} item(s)`);
+      .list(prefix, { limit: 50, offset: 0 });
 
-    // 2) UPLOAD a tiny file (requires INSERT policy)
-    const pingCode = `PING-${Math.random().toString(36).slice(2, 8).toUpperCase()}`;
-    const pingPath = `cloud/${uid}/_ping_${pingCode}.txt`;
-    pushDiag(`UPLOAD test: ${pingPath}`);
-    const pingBlob = new Blob([`ping ${new Date().toISOString()}`], { type: "application/json" });
-    const up = await supabase.storage
+    if (listErr) throw listErr;
+    log(`LIST OK: ${(list || []).length} item(s)`);
+
+    const pingName = `_ping_${makeCloudToken().replace(/-/g, "")}.txt`;
+    const pingPath = `${prefix}/${pingName}`;
+    log(`UPLOAD test: ${pingPath}`);
+
+    const pingBlob = new Blob([JSON.stringify({ ok: true, at: new Date().toISOString() })], {
+      type: "application/json",
+    });
+
+    const { error: upErr } = await supabase.storage
       .from("backups")
-      .upload(pingPath, pingBlob, { upsert: false, contentType: "text/plain" });
-    if (up.error) {
-      pushDiag(`UPLOAD ERROR: ${up.error.message}`);
-      pushDiag(
-        "If this is an RLS error: ensure INSERT policy on storage.objects uses WITH CHECK and matches: bucket_id='backups' AND (storage.foldername(name))[1]='cloud' AND (storage.foldername(name))[2]=auth.uid()::text."
-      );
-      pushDiag(
-        "If you ever set upsert:true, you also need an UPDATE policy with the same checks."
-      );
-    } else {
-      pushDiag("UPLOAD OK (test)");
-    }
+      .upload(pingPath, pingBlob, { upsert: true, contentType: "application/json" });
 
-    // 3) Signed URL (requires SELECT policy)
-    pushDiag("SIGNED URL (60s) for test file");
-    const signed = await supabase.storage.from("backups").createSignedUrl(pingPath, 60);
-    if (signed.error) pushDiag(`SIGNED URL ERROR: ${signed.error.message}`);
-    else pushDiag("SIGNED URL OK");
-  } catch (e: any) {
-    pushDiag(`DIAG FATAL: ${e?.message ?? e}`);
-  } finally {
-    setDiagBusy(false);
+    if (upErr) throw upErr;
+    log("UPLOAD OK (test)");
+
+    log("SIGNED URL (60s) for test file");
+    const { data: signed, error: signErr } = await supabase.storage
+      .from("backups")
+      .createSignedUrl(pingPath, 60);
+
+    if (signErr) throw signErr;
+    log("SIGNED URL OK");
+
+    setCloudStatus(logs.join("\n"));
+  } catch (e) {
+    console.error(e);
+    log(`ERROR: ${formatCloudError(e)}`);
+    setCloudStatus(logs.join("\n"));
   }
 }
 
@@ -926,13 +940,10 @@ async function runCloudDiagnostics() {
             t={t}
             token={cloudToken}
             status={cloudStatus}
-            busy={cloudBusy}
-            diagBusy={diagBusy}
-            diagLog={diagLog}
-            onDiag={runCloudDiagnostics}
             onTokenChange={setCloudToken}
             onUpload={handleCloudUpload}
             onDownload={handleCloudDownload}
+            onAutoTest={handleCloudAutoTest}
           />
         )}
       </div>
@@ -1415,6 +1426,8 @@ function LocalPanel({
             marginTop: 8,
             fontSize: 11,
             color: theme.textSoft,
+            whiteSpace: "pre-wrap",
+            fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace",
           }}
         >
           {message}
@@ -1887,25 +1900,19 @@ function CloudPanel({
   t,
   token,
   status,
-  busy,
-  diagBusy,
-  diagLog,
-  onDiag,
   onTokenChange,
   onUpload,
   onDownload,
+  onAutoTest,
 }: {
   theme: any;
   t: (k: string, f: string) => string;
   token: string;
   status: string;
-  busy: boolean;
-  diagBusy: boolean;
-  diagLog: string[];
-  onDiag: () => void;
   onTokenChange: (v: string) => void;
   onUpload: () => void;
   onDownload: () => void;
+  onAutoTest?: () => void;
 }) {
   return (
     <div
@@ -1951,17 +1958,12 @@ function CloudPanel({
           gap: 6,
           marginBottom: 8,
         }}
-	      >
-	        <button
-	          onClick={onUpload}
-	          disabled={busy || diagBusy}
-	          style={{
-	            ...buttonSmall(theme),
-	            opacity: busy || diagBusy ? 0.6 : 1,
-	            cursor: busy || diagBusy ? "not-allowed" : "pointer",
-	          }}
-	        >
+      >
+        <button onClick={onUpload} style={buttonSmall(theme)}>
           {t("syncCenter.cloud.btnUpload", "Envoyer snapshot")}
+        </button>
+        <button onClick={onAutoTest} style={buttonSmall(theme)}>
+          {t("syncCenter.cloud.btnAutoTest", "Lancer auto-test cloud")}
         </button>
       </div>
 
@@ -2006,16 +2008,8 @@ function CloudPanel({
           gap: 6,
           marginBottom: 8,
         }}
-	      >
-	        <button
-	          onClick={onDownload}
-	          disabled={busy || diagBusy}
-	          style={{
-	            ...buttonSmall(theme),
-	            opacity: busy || diagBusy ? 0.6 : 1,
-	            cursor: busy || diagBusy ? "not-allowed" : "pointer",
-	          }}
-	        >
+      >
+        <button onClick={onDownload} style={buttonSmall(theme)}>
           {t("syncCenter.cloud.btnDownload", "Récupérer avec ce code")}
         </button>
       </div>
@@ -2031,48 +2025,6 @@ function CloudPanel({
           {status}
         </div>
       )}
-
-	      {/* Auto-test / diagnostics */}
-	      <div style={{ marginTop: 10 }}>
-	        <div style={{ fontSize: 12, fontWeight: 800, marginBottom: 6 }}>
-	          {t("syncCenter.cloud.diagTitle", "AUTO-TEST (diagnostic)")}
-	        </div>
-	        <button
-	          onClick={onDiag}
-	          disabled={diagBusy}
-	          style={{
-	            ...buttonSmall(theme),
-	            width: "100%",
-	            opacity: diagBusy ? 0.6 : 1,
-	            cursor: diagBusy ? "not-allowed" : "pointer",
-	          }}
-	        >
-	          {diagBusy
-	            ? t("syncCenter.cloud.diagRunning", "Test en cours…")
-	            : t("syncCenter.cloud.diagBtn", "Lancer auto-test cloud")}
-	        </button>
-	        {diagLog.length > 0 && (
-	          <div
-	            style={{
-	              marginTop: 8,
-	              background: "rgba(0,0,0,0.35)",
-	              border: "1px solid rgba(255,255,255,0.12)",
-	              borderRadius: 12,
-	              padding: 10,
-	              maxHeight: 180,
-	              overflow: "auto",
-	              fontFamily:
-	                "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace",
-	              fontSize: 11,
-	              lineHeight: 1.35,
-	              whiteSpace: "pre-wrap",
-	              color: theme.text,
-	            }}
-	          >
-	            {diagLog.join("\n")}
-	          </div>
-	        )}
-	      </div>
 
       <div
         style={{
@@ -2113,38 +2065,3 @@ function buttonSmall(theme: any): React.CSSProperties {
     whiteSpace: "nowrap",
   };
 }
-// ---- Cloud gzip helpers (native browser API) ----
-async function gzipStringToBlob(str: string): Promise<Blob | null> {
-  try {
-    // @ts-ignore
-    if (typeof CompressionStream === "undefined") return null;
-    // @ts-ignore
-    const cs = new CompressionStream("gzip");
-    const bytes = new TextEncoder().encode(str);
-    const stream = new Blob([bytes]).stream().pipeThrough(cs);
-    return await new Response(stream).blob();
-  } catch {
-    return null;
-  }
-}
-
-async function ungzipBlobToString(blob: Blob): Promise<string | null> {
-  try {
-    // @ts-ignore
-    if (typeof DecompressionStream === "undefined") return null;
-    // @ts-ignore
-    const ds = new DecompressionStream("gzip");
-    const stream = blob.stream().pipeThrough(ds);
-    const ab = await new Response(stream).arrayBuffer();
-    return new TextDecoder().decode(new Uint8Array(ab));
-  } catch {
-    return null;
-  }
-}
-
-function approxBytesOfString(str: string): number {
-  // UTF-8 bytes approximation (exact for ASCII, close enough for telemetry)
-  return new TextEncoder().encode(str).byteLength;
-}
-
-

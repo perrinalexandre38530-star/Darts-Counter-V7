@@ -115,6 +115,64 @@ import {
 import { buildDashboardFromNormalized } from "../lib/statsUnifiedAgg";
 import { computeX01MultiAgg } from "../lib/x01MultiAgg";
 
+
+// ------------------------------------------------------------
+// ✅ Resolve "profile id" to an id that actually exists in History normalized matches.
+// Mobile can have profile ids (online uuid) that don't match stored history playerId.
+// Strategy:
+// 1) Try match by id (playerId / id).
+// 2) Fallback by name (case-insensitive) picking the most frequent playerId found.
+// ------------------------------------------------------------
+function resolveProfileForHistory(selectedPlayer: any, normalizedMatches: any[]) {
+  const pid = String(selectedPlayer?.id ?? "");
+  const pname = String(selectedPlayer?.name ?? "Joueur");
+  const nm = Array.isArray(normalizedMatches) ? normalizedMatches : [];
+
+  if (!pid && !pname) return { pid: "", pname: "Joueur" };
+
+  // 1) Direct id match
+  if (pid) {
+    const hasAny = nm.some((m: any) => {
+      const ps = Array.isArray(m?.players) ? m.players : [];
+      return ps.some((p: any) => {
+        const ppid = String(p?.playerId ?? p?.id ?? "");
+        const pid2 = String(p?.id ?? "");
+        return ppid === pid || pid2 === pid;
+      });
+    });
+    if (hasAny) return { pid, pname };
+  }
+
+  // 2) Name fallback
+  const target = (pname || "").trim().toLowerCase();
+  if (!target) return { pid, pname };
+
+  const counts = new Map<string, number>();
+  const nameBy = new Map<string, string>();
+
+  for (const m of nm) {
+    const ps = Array.isArray(m?.players) ? m.players : [];
+    for (const p of ps) {
+      const n = String(p?.name ?? "").trim().toLowerCase();
+      if (!n || n !== target) continue;
+      const cand = String(p?.playerId ?? p?.id ?? "");
+      if (!cand) continue;
+      counts.set(cand, (counts.get(cand) ?? 0) + 1);
+      if (!nameBy.has(cand)) nameBy.set(cand, String(p?.name ?? pname));
+    }
+  }
+
+  let best = "";
+  let bestC = 0;
+  for (const [k, c] of counts.entries()) {
+    if (c > bestC) { best = k; bestC = c; }
+  }
+  if (best) return { pid: best, pname: nameBy.get(best) ?? pname };
+
+  return { pid, pname };
+}
+
+
 // Effet "shimmer" à l'intérieur des lettres du nom du joueur
 const statsNameCss = `
 .dc-stats-name-wrapper {
@@ -4140,31 +4198,14 @@ React.useEffect(() => {
 const playersForMode = React.useMemo(() => {
   if (!allPlayers.length) return [];
 
-  // ✅ Mode "active" = STRICTEMENT le profil actif (même si aucune stat dans l'historique)
-  // IMPORTANT : ne JAMAIS fallback vers un profil local arbitraire, sinon tu vois "Antoine" alors que l'actif est un autre.
+  // ✅ FIX: si activePlayerId n’est pas trouvé dans l’historique,
+  // on fallback sur allPlayers (sinon "Aucun joueur trouvé.")
   if (mode === "active") {
-    if (!activePlayerId) return allPlayers;
-
-    const found = allPlayers.find((p) => p.id === String(activePlayerId));
-    if (found) return [found];
-
-    // Si l'id actif n'existe pas dans l'historique normalisé, on fabrique un profil virtuel depuis le store/profil.
-    const fromStore =
-      (Array.isArray(storeProfiles)
-        ? storeProfiles.find((p: any) => String(p?.id ?? "") === String(activePlayerId))
-        : null) ?? null;
-
-    const fallback = {
-      id: String(activePlayerId),
-      name:
-        (fromStore as any)?.name ??
-        (profile as any)?.name ??
-        (profile as any)?.displayName ??
-        "Joueur",
-      avatarDataUrl: (fromStore as any)?.avatarDataUrl ?? (profile as any)?.avatarDataUrl ?? null,
-    };
-
-    return [fallback];
+    if (activePlayerId) {
+      const found = allPlayers.find((p) => p.id === String(activePlayerId));
+      return found ? [found] : allPlayers; // ✅ fallback
+    }
+    return allPlayers; // ✅ pas d’id -> fallback
   }
 
   if (mode === "locals" && activePlayerId) {
@@ -4172,7 +4213,7 @@ const playersForMode = React.useMemo(() => {
   }
 
   return allPlayers;
-}, [allPlayers, mode, activePlayerId, storeProfiles, profile]);
+}, [allPlayers, mode, activePlayerId]);
 
 // Toggle "Inclure les BOTS"
 const [showBots, setShowBots] = React.useState(false);
@@ -4231,15 +4272,14 @@ const selectedPlayer = React.useMemo(
 
 // ✅ FAST: dashboard instantané depuis cache (localStorage)
 // (le cache est optionnel : on affiche, mais on recalc derrière quoi qu’il arrive)
-const effectiveProfileId = String(
-  selectedPlayer?.id ??
-    activePlayerId ??
-    playerId ??
-    initialPlayerId ??
-    (profile as any)?.id ??
-    ""
-);
+const _historyProfile = React.useMemo(() => {
+  // In "active" mode we want the active profile UI, but stats must use a History-compatible playerId.
+  // selectedPlayer is the UI selection (can be online uuid on mobile).
+  const sp = selectedPlayer ?? { id: activePlayerId ?? playerId ?? initialPlayerId ?? (profile as any)?.id ?? "", name: (profile as any)?.name ?? "Joueur" };
+  return resolveProfileForHistory(sp, normalizedMatches);
+}, [selectedPlayer, activePlayerId, playerId, initialPlayerId, profile, normalizedMatches]);
 
+const effectiveProfileId = String(_historyProfile.pid || "");
 const { cachedDashboard } = useFastDashboardCache(effectiveProfileId || null);
 
 // ============================================================
