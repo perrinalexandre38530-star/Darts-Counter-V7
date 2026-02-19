@@ -30,6 +30,12 @@ export type CapitalContractID =
 
 export type CapitalConfigPayload = {
   players: number;
+
+  /** Participants (optionnels) */
+  activeProfileId?: string | null;
+  selectedProfileIds?: string[];
+  selectedBotIds?: string[];
+
   botsEnabled: boolean;
   botLevel: BotLevel;
 
@@ -39,6 +45,10 @@ export type CapitalConfigPayload = {
   customContracts?: CapitalContractID[];
   /** Forcer "capital" en premier (recommandé) */
   includeCapital?: boolean;
+
+  /** Options de partie */
+  startOrder?: "random" | "fixed";
+  scoreInputMethod?: import("../lib/scoreInput/types").ScoreInputMethod;
 };
 
 type Dart = { v: number; mult: 1 | 2 | 3 };
@@ -60,6 +70,12 @@ const OFFICIAL_CONTRACTS: CapitalContractID[] = [
   "n14",
   "center",
 ];
+
+function clampInt(v: number, min: number, max: number, fallback: number) {
+  const n = Number.isFinite(v) ? Math.trunc(v) : fallback;
+  return Math.max(min, Math.min(max, n));
+}
+
 
 const INFO_TEXT = `RÈGLE OFFICIELLE — CAPITAL (15 contrats)
 
@@ -250,7 +266,69 @@ export default function CapitalPlay(props: any) {
       customContracts: OFFICIAL_CONTRACTS,
     };
 
-  const contracts = useMemo<CapitalContractID[]>(() => {
+  
+  // ===========================================================
+  // PARTICIPANTS (Profils + Bots) — fallback robuste
+  // ===========================================================
+  const store = props?.store as any;
+  const profiles: any[] = (store?.profiles || []) as any[];
+
+  const profileById = useMemo(() => {
+    const m = new Map<string, any>();
+    for (const p of profiles) {
+      if (p?.id) m.set(String(p.id), p);
+    }
+    return m;
+  }, [profiles]);
+
+  const BOT_NAME_MAP: Record<string, string> = {
+    bot_pro_green_machine: "Green Machine",
+    bot_pro_snake_king: "Snake King",
+    bot_pro_wonder_kid: "Wonder Kid",
+    bot_pro_ice_man: "Ice Man",
+    bot_pro_the_power: "The Power",
+    bot_pro_hollywood: "Hollywood",
+  };
+
+  const resolvedPlayerNames = useMemo(() => {
+    const want = clampInt(cfg.players, 1, 8, 2);
+    const out: string[] = [];
+
+    const profileIds = (cfg.selectedProfileIds || []).map(String);
+    for (const id of profileIds) {
+      const p = profileById.get(id);
+      out.push(String(p?.name || `Joueur ${out.length + 1}`));
+      if (out.length >= want) return out.slice(0, want);
+    }
+
+    const botIds = (cfg.selectedBotIds || []).map(String);
+    for (const id of botIds) {
+      out.push(BOT_NAME_MAP[id] || "Bot");
+      if (out.length >= want) return out.slice(0, want);
+    }
+
+    while (out.length < want) out.push(`Joueur ${out.length + 1}`);
+    return out.slice(0, want);
+  }, [cfg.players, cfg.selectedProfileIds, cfg.selectedBotIds, profileById]);
+
+  function shuffle<T>(arr: T[]) {
+    const a = [...arr];
+    for (let i = a.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      const tmp = a[i];
+      a[i] = a[j];
+      a[j] = tmp;
+    }
+    return a;
+  }
+
+  const playerNames = useMemo(() => {
+    if (cfg.startOrder === "random") return shuffle(resolvedPlayerNames);
+    return resolvedPlayerNames;
+  }, [cfg.startOrder, resolvedPlayerNames]);
+
+  const playerCount = playerNames.length;
+const contracts = useMemo<CapitalContractID[]>(() => {
     if (cfg.mode === "official") return OFFICIAL_CONTRACTS;
 
     const base = Array.isArray(cfg.customContracts) ? cfg.customContracts.filter(Boolean) : [];
@@ -277,7 +355,7 @@ export default function CapitalPlay(props: any) {
   const [roundIdx, setRoundIdx] = useState(0);
   const [playerIdx, setPlayerIdx] = useState(0);
 
-  const [scores, setScores] = useState<number[]>(() => Array.from({ length: cfg.players }, () => 0));
+  const [scores, setScores] = useState<number[]>(() => Array.from({ length: playerCount }, () => 0));
 
   const [currentThrow, setCurrentThrow] = useState<Dart[]>([]);
   const [multiplier, setMultiplier] = useState<1 | 2 | 3>(1);
@@ -327,7 +405,7 @@ export default function CapitalPlay(props: any) {
     });
 
     // next
-    const nextP = (playerIdx + 1) % cfg.players;
+    const nextP = (playerIdx + 1) % playerCount;
     const nextR = nextP === 0 ? roundIdx + 1 : roundIdx;
 
     setPlayerIdx(nextP);
@@ -398,7 +476,7 @@ export default function CapitalPlay(props: any) {
                 {t("generic.player", "JOUEUR")}
               </div>
               <div style={{ fontSize: 18, fontWeight: 1000, marginTop: 6 }}>
-                {isFinished ? "—" : `${playerIdx + 1}/${cfg.players}`}
+                {isFinished ? "—" : `${playerIdx + 1}/${playerCount}`}
               </div>
             </div>
           </div>
