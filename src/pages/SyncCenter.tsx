@@ -469,11 +469,23 @@ async function handleCloudUpload() {
     const uid = await getUserIdOrThrow();
     const current = (await loadStore()) || store;
 
+    // ✅ IMPORTANT: cloud snapshot = données LÉGÈRES.
+    // On évite d'envoyer l'historique / stats agrégées (trop gros + inutile).
+    // On rebuild au restore.
+    const cloudStore: any = {
+      profiles: current?.profiles ?? [],
+      activeProfileId: current?.activeProfileId ?? null,
+      saved: (current as any)?.saved ?? {},
+      settings: (current as any)?.settings ?? {},
+      friends: (current as any)?.friends ?? null,
+    };
+
     const payload = {
-      kind: "dc_cloud_snapshot_v1",
+      // on réutilise le même format que l'export local (plus simple / robuste)
+      kind: "dc_store_snapshot_v1",
       createdAt: new Date().toISOString(),
       app: "darts-counter-v5",
-      store: current,
+      store: cloudStore,
     };
 
     const token = makeCloudToken();
@@ -579,6 +591,13 @@ const parsed = JSON.parse(text);
           "Synchronisation effectuée ! Relance l'app pour tout recharger proprement."
         )
       );
+
+      // Recharge auto (évite les états intermédiaires / caches de modules)
+      try {
+        setTimeout(() => window.location.reload(), 300);
+      } catch {
+        // noop
+      }
       return;
     }
 
@@ -594,7 +613,7 @@ const parsed = JSON.parse(text);
         : t(
             "syncCenter.cloud.downloadError",
             "Erreur pendant la récupération du snapshot. Vérifie le code et réessaie."
-          );
+          ) + `\n${formatCloudError(e)}`;
     setCloudStatus(msg);
   }
 }
