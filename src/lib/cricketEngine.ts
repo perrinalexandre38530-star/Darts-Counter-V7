@@ -11,6 +11,8 @@
 export type CricketTarget = 15 | 16 | 17 | 18 | 19 | 20 | 25;
 export type Multiplier = 1 | 2 | 3;
 
+export type CricketVariant = "classic" | "enculette";
+
 // à l'exécution on autorise aussi 0..14 pour gérer les MISS
 export type RawTarget = CricketTarget | number;
 
@@ -31,10 +33,16 @@ export type CricketHistoryEntry = {
   prevRemainingDarts: number;
   prevWinnerId: string | null;
   prevRoundNumber: number; // ✅ NEW
+  prevTurnPoints: number; // ✅ NEW (enculette)
 };
 
 export type CricketState = {
   players: CricketPlayerState[];
+  variant: CricketVariant;
+  /** 0 => pas d'objectif (fin aux rounds). Utilisé par variante enculette. */
+  objective: number;
+  /** Points accumulés sur la volée en cours (variante enculette). */
+  turnPoints: number;
   currentPlayerIndex: number;
   remainingDarts: number;
   winnerId: string | null;
@@ -80,6 +88,8 @@ export type CreateCricketMatchOptions = {
   withPoints?: boolean;
   maxRounds?: number;
   cutThroat?: boolean;
+  variant?: CricketVariant;
+  objective?: number;
 };
 
 export function createCricketMatch(
@@ -109,6 +119,9 @@ export function createCricketMatch(
 
   return {
     players: playerStates,
+    variant: opts.variant ?? "classic",
+    objective: Math.max(0, Number(opts.objective ?? 0) || 0),
+    turnPoints: 0,
     currentPlayerIndex: 0,
     remainingDarts: 3,
     winnerId: null,
@@ -208,6 +221,81 @@ export function applyCricketHit(
 
   const beforeMarks = cricketTarget ? player.marks[cricketTarget] ?? 0 : 0;
   const beforeScore = player.score;
+  const beforeTurnPoints = next.turnPoints ?? 0;
+
+  // ==================================================
+  // VARIANTE ENCULETTE / VACHE
+  // - Les marks ne comptent pas
+  // - Chaque fléchette marque sa valeur (S/D/T) sur 15..20 + Bull(25/50)
+  // - MISS (0..14) = 0
+  // - Fin de volée: si total volée = 0 => -50, sinon +total
+  // - Objectif optionnel: premier à l'atteindre gagne
+  // - Fin maxRounds: meilleur score gagne
+  // ==================================================
+  if (next.variant === "enculette") {
+    let dartPts = 0;
+    if (cricketTarget) {
+      const base = cricketTarget === 25 ? 25 : (cricketTarget as number);
+      dartPts = base * mult;
+    }
+
+    next.history.push({
+      playerIndex,
+      target,
+      mult,
+      prevMarks: beforeMarks,
+      prevScore: beforeScore,
+      prevCurrentPlayerIndex: state.currentPlayerIndex,
+      prevRemainingDarts: state.remainingDarts,
+      prevWinnerId: state.winnerId,
+      prevRoundNumber: state.roundNumber,
+      prevTurnPoints: beforeTurnPoints,
+    });
+
+    next.turnPoints = beforeTurnPoints + dartPts;
+    next.remainingDarts -= 1;
+
+    const endOfTurn = next.remainingDarts <= 0;
+    if (endOfTurn && !next.winnerId) {
+      const visitTotal = next.turnPoints;
+      const delta = visitTotal === 0 ? -50 : visitTotal;
+      player.score += delta;
+      next.turnPoints = 0;
+
+      if (next.objective > 0 && player.score >= next.objective) {
+        next.winnerId = player.id;
+        next.remainingDarts = 0;
+        return next;
+      }
+
+      const wasLastPlayer = next.currentPlayerIndex === next.players.length - 1;
+      const wasLastRound = next.roundNumber >= next.maxRounds;
+
+      next.currentPlayerIndex = (next.currentPlayerIndex + 1) % next.players.length;
+      next.remainingDarts = 3;
+
+      if (wasLastPlayer) {
+        next.roundNumber = Math.min(next.roundNumber + 1, next.maxRounds);
+      }
+
+      if (wasLastPlayer && wasLastRound) {
+        let best = -Infinity;
+        let wid: string | null = null;
+        for (const p of next.players) {
+          if (p.score > best) {
+            best = p.score;
+            wid = p.id;
+          }
+        }
+        next.winnerId = wid;
+        next.remainingDarts = 0;
+        return next;
+      }
+    }
+
+    return next;
+  }
+
 
   // --- Marks + points seulement si cible Cricket (15..20 / Bull) ---
   if (cricketTarget) {
@@ -257,6 +345,7 @@ export function applyCricketHit(
     prevRemainingDarts: state.remainingDarts,
     prevWinnerId: state.winnerId,
     prevRoundNumber: state.roundNumber, // ✅ NEW
+    prevTurnPoints: beforeTurnPoints,
   });
 
   // --- Consommation fléchette + passage joueur / round ---
@@ -319,6 +408,7 @@ export function undoLastCricketHit(state: CricketState): CricketState {
   next.remainingDarts = entry.prevRemainingDarts;
   next.winnerId = entry.prevWinnerId;
   next.roundNumber = entry.prevRoundNumber; // ✅ NEW
+  next.turnPoints = entry.prevTurnPoints ?? 0;
 
   return next;
 }

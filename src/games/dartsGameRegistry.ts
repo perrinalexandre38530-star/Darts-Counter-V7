@@ -232,13 +232,15 @@ const rawDartsGameRegistry: DartsGameDef[] = [
     label: "Enculette / Vache",
     category: "variant",
     entry: "games",
-    tab: "enculette_config",
+    tab: "cricket",
+    baseGame: "cricket",
+    variantId: "enculette",
     popularityRank: 20,
     ready: true,
     maxPlayers: 4,
     supportsTeams: false,
     supportsBots: true,
-    statsKey: "game:enculette",
+    statsKey: "game:cricket:enculette",
     infoTitle: "Enculette / Vache",
     infoBody:
       "Mode score sur X rounds. Chaque volée ajoute ses points. Si tu fais 0 : pénalité -50. Objectif optionnel : premier à l'atteindre gagne. Si objectif = 0 : meilleur total en fin de rounds.",
@@ -1096,6 +1098,9 @@ const READY_IDS = new Set<string>([
   "warfare",
   "five_lives",
   "scram",
+
+  // ✅ UNGRAY CAPITAL (Games > Defis)
+  "capital",
 ]);
 
 export const dartsGameRegistry: DartsGameDef[] = rawDartsGameRegistry.map((g) => ({

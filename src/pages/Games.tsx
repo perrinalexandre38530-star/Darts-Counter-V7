@@ -983,7 +983,8 @@ export default function Games({ setTab }: Props) {
               </div>
 
               {(groups[k] || []).map((g) => {
-                const ready = !!g?.ready;
+                const forcedReady = (g?.id === "enculette" || g?.id === "cricket_cut_throat");
+                const ready = forcedReady ? true : !!g?.ready;
                 const visuallyDisabled = devVisuallyDisabled(ready);
                 const clickable = devClickable(ready, !!dev?.enabled);
                 const comingSoon = visuallyDisabled ? t("games.status.comingSoon", "Bientôt disponible") : null;

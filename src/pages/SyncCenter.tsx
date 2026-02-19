@@ -51,6 +51,14 @@ export default function SyncCenter({ store, go, profileId }: Props) {
   // --- CLOUD SYNC ---
   const [cloudToken, setCloudToken] = React.useState<string>("");
   const [cloudStatus, setCloudStatus] = React.useState<string>("");
+  const [cloudBusy, setCloudBusy] = React.useState<boolean>(false);
+
+  // Diagnostics / auto-test (to avoid "patches à l'aveugle")
+  const [diagBusy, setDiagBusy] = React.useState(false);
+  const [diagLog, setDiagLog] = React.useState<string[]>([]);
+  const pushDiag = React.useCallback((line: string) => {
+    setDiagLog((p) => [...p, `[${new Date().toISOString()}] ${line}`]);
+  }, []);
 
   // --- PEER / DEVICE-À-DEVICE (préparation) ---
   const [peerPayload, setPeerPayload] = React.useState<string>("");
@@ -420,6 +428,7 @@ async function getUserIdOrThrow() {
 }
 
 async function handleCloudUpload() {
+  setCloudBusy(true);
   setCloudStatus(
     t("syncCenter.cloud.uploading", "Envoi du snapshot vers le cloud…")
   );
@@ -444,7 +453,9 @@ async function handleCloudUpload() {
       .from("backups")
       .upload(path, blob, {
         contentType: "application/json",
-        upsert: true,
+        // Each snapshot uses a unique token -> no need to upsert.
+        // Keeping upsert=false also avoids requiring UPDATE policies.
+        upsert: false,
       });
 
     if (upErr) throw upErr;
@@ -458,6 +469,7 @@ async function handleCloudUpload() {
     );
   } catch (e) {
     console.error(e);
+    const rawMsg = String((e as any)?.message ?? e ?? "");
     const msg =
       (e as any)?.message === "Not authenticated"
         ? t(
@@ -469,6 +481,13 @@ async function handleCloudUpload() {
             "Erreur pendant l'envoi vers le cloud. Réessaie plus tard."
           );
     setCloudStatus(msg);
+
+    // Auto-launch diagnostics when we see a typical RLS failure.
+    if (rawMsg.toLowerCase().includes("row-level security") || rawMsg.toLowerCase().includes("rls")) {
+      runCloudDiagnostics().catch(() => {});
+    }
+  } finally {
+    setCloudBusy(false);
   }
 }
 
@@ -533,6 +552,71 @@ async function handleCloudDownload() {
             "Erreur pendant la récupération du snapshot. Vérifie le code et réessaie."
           );
     setCloudStatus(msg);
+  }
+}
+
+// =====================================================
+// AUTO-TEST CLOUD (diagnostic)
+// =====================================================
+async function runCloudDiagnostics() {
+  if (diagBusy) return;
+  setDiagBusy(true);
+  setDiagLog([]);
+  try {
+    pushDiag("=== Cloud diagnostic ===");
+    pushDiag("Bucket: backups");
+
+    const { data: sess } = await supabase.auth.getSession();
+    pushDiag(`Session: ${sess?.session ? "OK" : "NULL"}`);
+    if (sess?.session?.user?.id) pushDiag(`Session user.id: ${sess.session.user.id}`);
+
+    const { data: userData, error: userErr } = await supabase.auth.getUser();
+    if (userErr) pushDiag(`auth.getUser ERROR: ${userErr.message}`);
+    const uid = userData?.user?.id;
+    pushDiag(`User id: ${uid ?? "NULL"}`);
+    pushDiag(`User email: ${userData?.user?.email ?? "(none)"}`);
+    if (!uid) {
+      pushDiag("STOP: No user id -> request is unauthenticated -> RLS will fail.");
+      return;
+    }
+
+    // 1) LIST (requires SELECT policy)
+    pushDiag(`LIST: cloud/${uid}`);
+    const listRes = await supabase.storage
+      .from("backups")
+      .list(`cloud/${uid}`, { limit: 10, sortBy: { column: "created_at", order: "desc" } as any });
+    if (listRes.error) pushDiag(`LIST ERROR: ${listRes.error.message}`);
+    else pushDiag(`LIST OK: ${listRes.data?.length ?? 0} item(s)`);
+
+    // 2) UPLOAD a tiny file (requires INSERT policy)
+    const pingCode = `PING-${Math.random().toString(36).slice(2, 8).toUpperCase()}`;
+    const pingPath = `cloud/${uid}/_ping_${pingCode}.txt`;
+    pushDiag(`UPLOAD test: ${pingPath}`);
+    const pingBlob = new Blob([`ping ${new Date().toISOString()}`], { type: "text/plain" });
+    const up = await supabase.storage
+      .from("backups")
+      .upload(pingPath, pingBlob, { upsert: false, contentType: "text/plain" });
+    if (up.error) {
+      pushDiag(`UPLOAD ERROR: ${up.error.message}`);
+      pushDiag(
+        "If this is an RLS error: ensure INSERT policy on storage.objects uses WITH CHECK and matches: bucket_id='backups' AND (storage.foldername(name))[1]='cloud' AND (storage.foldername(name))[2]=auth.uid()::text."
+      );
+      pushDiag(
+        "If you ever set upsert:true, you also need an UPDATE policy with the same checks."
+      );
+    } else {
+      pushDiag("UPLOAD OK (test)");
+    }
+
+    // 3) Signed URL (requires SELECT policy)
+    pushDiag("SIGNED URL (60s) for test file");
+    const signed = await supabase.storage.from("backups").createSignedUrl(pingPath, 60);
+    if (signed.error) pushDiag(`SIGNED URL ERROR: ${signed.error.message}`);
+    else pushDiag("SIGNED URL OK");
+  } catch (e: any) {
+    pushDiag(`DIAG FATAL: ${e?.message ?? e}`);
+  } finally {
+    setDiagBusy(false);
   }
 }
 
@@ -823,6 +907,10 @@ async function handleCloudDownload() {
             t={t}
             token={cloudToken}
             status={cloudStatus}
+            busy={cloudBusy}
+            diagBusy={diagBusy}
+            diagLog={diagLog}
+            onDiag={runCloudDiagnostics}
             onTokenChange={setCloudToken}
             onUpload={handleCloudUpload}
             onDownload={handleCloudDownload}
@@ -1780,6 +1868,10 @@ function CloudPanel({
   t,
   token,
   status,
+  busy,
+  diagBusy,
+  diagLog,
+  onDiag,
   onTokenChange,
   onUpload,
   onDownload,
@@ -1788,6 +1880,10 @@ function CloudPanel({
   t: (k: string, f: string) => string;
   token: string;
   status: string;
+  busy: boolean;
+  diagBusy: boolean;
+  diagLog: string[];
+  onDiag: () => void;
   onTokenChange: (v: string) => void;
   onUpload: () => void;
   onDownload: () => void;
@@ -1836,8 +1932,16 @@ function CloudPanel({
           gap: 6,
           marginBottom: 8,
         }}
-      >
-        <button onClick={onUpload} style={buttonSmall(theme)}>
+	      >
+	        <button
+	          onClick={onUpload}
+	          disabled={busy || diagBusy}
+	          style={{
+	            ...buttonSmall(theme),
+	            opacity: busy || diagBusy ? 0.6 : 1,
+	            cursor: busy || diagBusy ? "not-allowed" : "pointer",
+	          }}
+	        >
           {t("syncCenter.cloud.btnUpload", "Envoyer snapshot")}
         </button>
       </div>
@@ -1883,8 +1987,16 @@ function CloudPanel({
           gap: 6,
           marginBottom: 8,
         }}
-      >
-        <button onClick={onDownload} style={buttonSmall(theme)}>
+	      >
+	        <button
+	          onClick={onDownload}
+	          disabled={busy || diagBusy}
+	          style={{
+	            ...buttonSmall(theme),
+	            opacity: busy || diagBusy ? 0.6 : 1,
+	            cursor: busy || diagBusy ? "not-allowed" : "pointer",
+	          }}
+	        >
           {t("syncCenter.cloud.btnDownload", "Récupérer avec ce code")}
         </button>
       </div>
@@ -1901,6 +2013,48 @@ function CloudPanel({
         </div>
       )}
 
+	      {/* Auto-test / diagnostics */}
+	      <div style={{ marginTop: 10 }}>
+	        <div style={{ fontSize: 12, fontWeight: 800, marginBottom: 6 }}>
+	          {t("syncCenter.cloud.diagTitle", "AUTO-TEST (diagnostic)")}
+	        </div>
+	        <button
+	          onClick={onDiag}
+	          disabled={diagBusy}
+	          style={{
+	            ...buttonSmall(theme),
+	            width: "100%",
+	            opacity: diagBusy ? 0.6 : 1,
+	            cursor: diagBusy ? "not-allowed" : "pointer",
+	          }}
+	        >
+	          {diagBusy
+	            ? t("syncCenter.cloud.diagRunning", "Test en cours…")
+	            : t("syncCenter.cloud.diagBtn", "Lancer auto-test cloud")}
+	        </button>
+	        {diagLog.length > 0 && (
+	          <div
+	            style={{
+	              marginTop: 8,
+	              background: "rgba(0,0,0,0.35)",
+	              border: "1px solid rgba(255,255,255,0.12)",
+	              borderRadius: 12,
+	              padding: 10,
+	              maxHeight: 180,
+	              overflow: "auto",
+	              fontFamily:
+	                "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace",
+	              fontSize: 11,
+	              lineHeight: 1.35,
+	              whiteSpace: "pre-wrap",
+	              color: theme.text,
+	            }}
+	          >
+	            {diagLog.join("\n")}
+	          </div>
+	        )}
+	      </div>
+
       <div
         style={{
           marginTop: 8,
@@ -1911,7 +2065,7 @@ function CloudPanel({
       >
         {t(
           "syncCenter.cloud.todo",
-          "Stockage Cloud via Supabase Storage (bucket "backups"). Le code fonctionne entre appareils connectés au même compte."
+          "Stockage Cloud via Supabase Storage (bucket: backups). Le code fonctionne entre appareils connectés au même compte."
         )}
       </div>
     </div>

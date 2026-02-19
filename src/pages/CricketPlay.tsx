@@ -1878,12 +1878,22 @@ return {
         >
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 12 }}>
             <div style={{ fontSize: 13, color: T.textSoft }}>Variante</div>
-            <div style={{ display: "flex", gap: 8 }}>
+            <div
+              style={{
+                display: "flex",
+                flexDirection: "column",
+                gap: 8,
+                alignItems: "flex-end",
+              }}
+            >
               <Pill tone="gold" active={variantId === "classic"} onClick={() => setVariantId("classic")}>
                 Cricket
               </Pill>
               <Pill tone="gold" active={variantId === "enculette"} onClick={() => setVariantId("enculette")}>
                 Enculette / Vache
+              </Pill>
+              <Pill tone="gold" active={variantId === "cut_throat"} onClick={() => setVariantId("cut_throat")}>
+                Cut-Throat
               </Pill>
             </div>
           </div>
