@@ -459,6 +459,17 @@ async function maybeGunzipToText(blob: Blob): Promise<string> {
   return await blob.text();
 }
 
+async function looksLikeGzip(blob: Blob): Promise<boolean> {
+  try {
+    const ab = await blob.slice(0, 2).arrayBuffer();
+    const u = new Uint8Array(ab);
+    return u.length >= 2 && u[0] === 0x1f && u[1] === 0x8b;
+  } catch {
+    return false;
+  }
+}
+
+
 
 async function handleCloudUpload() {
   setCloudStatus(
@@ -491,25 +502,41 @@ async function handleCloudUpload() {
     const token = makeCloudToken();
 
     const json = JSON.stringify(payload);
-    const { blob, pathSuffix, contentType } = await maybeGzipJson(json);
 
-    const path = `cloud/${uid}/${token}${pathSuffix}`;
-
-    const { error: upErr } = await supabase.storage
+    // ✅ Compat maximale: on écrit TOUJOURS une version .json (non compressée)
+    // (évite les soucis de décompression sur certains navigateurs / webviews)
+    const pathJson = `cloud/${uid}/${token}.json`;
+    const { error: upJsonErr } = await supabase.storage
       .from("backups")
-      .upload(path, blob, {
-        contentType,
+      .upload(pathJson, new Blob([json], { type: "application/json" }), {
+        contentType: "application/json",
         upsert: true,
       });
+    if (upJsonErr) throw upJsonErr;
 
-    if (upErr) throw upErr;
+    // Optionnel: on ajoute une version .json.gz si possible (gain de taille)
+    let extraInfo = "json";
+    try {
+      const { blob: gzBlob, pathSuffix, contentType } = await maybeGzipJson(json);
+      if (pathSuffix === ".json.gz") {
+        const pathGz = `cloud/${uid}/${token}.json.gz`;
+        const { error: upGzErr } = await supabase.storage
+          .from("backups")
+          .upload(pathGz, gzBlob, { contentType, upsert: true });
+        if (!upGzErr) {
+          extraInfo = `json + gzip (${Math.round(gzBlob.size / 1024)} KB)`;
+        }
+      }
+    } catch {
+      // ignore gzip failure, .json est déjà uploadé
+    }
 
-    setCloudToken(token);
+setCloudToken(token);
     setCloudStatus(
       t(
         "syncCenter.cloud.uploadOk",
         "Snapshot envoyé ! Utilise ce code sur un autre appareil (même compte) pour récupérer tes stats."
-      ) + `\n(${Math.round(blob.size / 1024)} KB, ${pathSuffix === ".json.gz" ? "gzip" : "json"})`
+      ) + `\n(${extraInfo})`
     );
   } catch (e) {
     console.error(e);
@@ -549,17 +576,17 @@ async function handleCloudDownload() {
     const pathJson = `cloud/${uid}/${token}.json`;
 
     
-// Try gz first, then plain json (for backward compatibility)
+// ✅ On préfère .json (compat) puis .json.gz
 let data: Blob | null = null;
 let dlErr: any = null;
 
 {
-  const r1 = await supabase.storage.from("backups").download(pathGz);
+  const r1 = await supabase.storage.from("backups").download(pathJson);
   if (!r1.error && r1.data) {
     data = r1.data as any;
   } else {
     dlErr = r1.error;
-    const r2 = await supabase.storage.from("backups").download(pathJson);
+    const r2 = await supabase.storage.from("backups").download(pathGz);
     if (!r2.error && r2.data) {
       data = r2.data as any;
       dlErr = null;
@@ -572,9 +599,21 @@ let dlErr: any = null;
 if (dlErr) throw dlErr;
 if (!data) throw new Error("No file");
 
-// If gz, decompress; otherwise read as text
-const isGz = (data as any)?.type === "application/gzip" || String((data as any)?.type || "").includes("gzip");
-const text = isGz ? await maybeGunzipToText(data) : await data.text();
+// If gz, decompress; otherwise read as text.
+// ⚠️ Supabase retourne souvent Blob.type="" ou "application/octet-stream" → on détecte aussi via magic bytes.
+const typeIsGz = (data as any)?.type === "application/gzip" || String((data as any)?.type || "").includes("gzip");
+const magicIsGz = await looksLikeGzip(data);
+const isGz = typeIsGz || magicIsGz;
+
+let text = "";
+if (isGz) {
+  const ds: any = (window as any).DecompressionStream;
+  if (!ds) throw new Error("GZIP_SNAPSHOT_NO_DECOMPRESS");
+  text = await maybeGunzipToText(data);
+} else {
+  text = await data.text();
+}
+
 const parsed = JSON.parse(text);
 
     // On accepte le payload cloud officiel OU un store snapshot standard.
@@ -604,6 +643,15 @@ const parsed = JSON.parse(text);
     throw new Error("Invalid payload");
   } catch (e) {
     console.error(e);
+    if ((e as any)?.message === "GZIP_SNAPSHOT_NO_DECOMPRESS") {
+      setCloudStatus(
+        t(
+          "syncCenter.cloud.gzipNoSupport",
+          "Ce snapshot est compressé (gzip) mais ce navigateur ne sait pas le décompresser.\n\n➡️ Solution: sur l'appareil SOURCE, appuie sur « Envoyer snapshot » (version compat JSON), puis réessaie la récupération avec le même code."
+        )
+      );
+      return;
+    }
     const msg =
       (e as any)?.message === "Not authenticated"
         ? t(
