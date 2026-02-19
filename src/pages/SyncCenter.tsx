@@ -600,7 +600,7 @@ const parsed = JSON.parse(text);
 }
 
 
-async function handleCloudAutoTest() {
+async function handleCloudAutoTestA() {
   const logs: string[] = [];
   const ts = () => new Date().toISOString().slice(0, 19).replace("T", " ");
   const log = (s: string) => logs.push(`[${ts()}] ${s}`);
@@ -608,10 +608,11 @@ async function handleCloudAutoTest() {
   setCloudStatus(t("syncCenter.cloud.testing", "Test cloud…"));
 
   try {
-    log("=== Cloud diagnostic ===");
+    log("=== Cloud diagnostic A (SDK download roundtrip) ===");
     log("Bucket: backups");
     const uid = await getUserIdOrThrow();
     log(`User id: ${uid}`);
+    log(`Origin: ${window.location.origin}`);
 
     const prefix = `cloud/${uid}`;
     log(`LIST: ${prefix}`);
@@ -622,13 +623,69 @@ async function handleCloudAutoTest() {
     if (listErr) throw listErr;
     log(`LIST OK: ${(list || []).length} item(s)`);
 
-    const pingName = `_ping_${makeCloudToken().replace(/-/g, "")}.txt`;
+    const pingId = makeCloudToken().replace(/-/g, "");
+    const pingName = `_roundtrip_${pingId}.json`;
     const pingPath = `${prefix}/${pingName}`;
     log(`UPLOAD test: ${pingPath}`);
 
-    const pingBlob = new Blob([JSON.stringify({ ok: true, at: new Date().toISOString() })], {
-      type: "application/json",
-    });
+    const pingPayload = { ok: true, at: new Date().toISOString(), from: window.location.origin };
+    const pingBlob = new Blob([JSON.stringify(pingPayload)], { type: "application/json" });
+
+    const { error: upErr } = await supabase.storage
+      .from("backups")
+      .upload(pingPath, pingBlob, { upsert: true, contentType: "application/json" });
+
+    if (upErr) throw upErr;
+    log("UPLOAD OK (test)");
+
+    log(`DOWNLOAD test (SDK): ${pingPath}`);
+    const { data: dl, error: dlErr } = await supabase.storage
+      .from("backups")
+      .download(pingPath);
+
+    if (dlErr) throw dlErr;
+    if (!dl) throw new Error("No data from download()");
+
+    const txt = await (dl as any).text();
+    log(`DOWNLOAD OK (${txt.length} chars)`);
+
+    try {
+      const parsed = JSON.parse(txt);
+      log(`PARSE OK: ok=${parsed?.ok} from=${parsed?.from ?? "?"}`);
+    } catch {
+      log("PARSE FAILED (downloaded content not valid JSON)");
+    }
+
+    setCloudStatus(logs.join("\n"));
+  } catch (e) {
+    console.error(e);
+    log(`ERROR: ${formatCloudError(e)}`);
+    setCloudStatus(logs.join("\n"));
+  }
+}
+
+async function handleCloudAutoTestB() {
+  const logs: string[] = [];
+  const ts = () => new Date().toISOString().slice(0, 19).replace("T", " ");
+  const log = (s: string) => logs.push(`[${ts()}] ${s}`);
+
+  setCloudStatus(t("syncCenter.cloud.testing", "Test cloud…"));
+
+  try {
+    log("=== Cloud diagnostic B (Signed URL fetch) ===");
+    log("Bucket: backups");
+    const uid = await getUserIdOrThrow();
+    log(`User id: ${uid}`);
+    log(`Origin: ${window.location.origin}`);
+
+    const prefix = `cloud/${uid}`;
+    const pingId = makeCloudToken().replace(/-/g, "");
+    const pingName = `_signed_${pingId}.json`;
+    const pingPath = `${prefix}/${pingName}`;
+    log(`UPLOAD test: ${pingPath}`);
+
+    const pingPayload = { ok: true, at: new Date().toISOString(), from: window.location.origin };
+    const pingBlob = new Blob([JSON.stringify(pingPayload)], { type: "application/json" });
 
     const { error: upErr } = await supabase.storage
       .from("backups")
@@ -643,7 +700,22 @@ async function handleCloudAutoTest() {
       .createSignedUrl(pingPath, 60);
 
     if (signErr) throw signErr;
+    const url = signed?.signedUrl;
+    if (!url) throw new Error("No signedUrl returned");
     log("SIGNED URL OK");
+
+    log("FETCH signed URL");
+    const res = await fetch(url, { method: "GET" });
+    log(`FETCH status=${res.status}`);
+    const txt = await res.text();
+    log(`FETCH OK (${txt.length} chars)`);
+
+    try {
+      const parsed = JSON.parse(txt);
+      log(`PARSE OK: ok=${parsed?.ok} from=${parsed?.from ?? "?"}`);
+    } catch {
+      log("PARSE FAILED (fetched content not valid JSON)");
+    }
 
     setCloudStatus(logs.join("\n"));
   } catch (e) {
@@ -651,160 +723,20 @@ async function handleCloudAutoTest() {
     log(`ERROR: ${formatCloudError(e)}`);
     setCloudStatus(logs.join("\n"));
   }
-
-// =====================================================
-// OPTION A — Diagnostic d'un code (LIST + existence + download)
-// =====================================================
-async function handleCloudDiagCode() {
-  const logs: string[] = [];
-  const stamp = () => new Date().toISOString().slice(0, 19).replace("T", " ");
-  const push = (line: string) => logs.push(`[${stamp()}] ${line}`);
-
-  const raw = cloudToken.trim();
-  if (!raw) {
-    setCloudStatus(t("syncCenter.cloud.tokenMissing", "Rentre d'abord un code de synchronisation."));
-    return;
-  }
-
-  try {
-    const uid = await getUserIdOrThrow();
-    const token = raw.toUpperCase();
-    const folder = `cloud/${uid}`;
-
-    push("=== Option A : diagnostic code ===");
-    push(`Bucket: backups`);
-    push(`User id: ${uid}`);
-    push(`Token: ${token}`);
-    push(`Folder: ${folder}`);
-
-    const { data: items, error: listErr } = await supabase.storage
-      .from("backups")
-      .list(folder, { limit: 100 });
-
-    if (listErr) {
-      push(`LIST ERROR: ${(listErr as any)?.message || String(listErr)}`);
-      setCloudStatus(logs.join("\n"));
-      return;
-    }
-
-    const names = (items || []).map((it: any) => it.name).filter(Boolean);
-    push(`LIST OK: ${names.length} item(s)`);
-
-    const exactName = `${token}.json`;
-    const exists = names.includes(exactName);
-    push(exists ? `FOUND: ${exactName}` : `NOT FOUND: ${exactName}`);
-
-    const sug = names
-      .filter((n) => n.toUpperCase().includes(token.replace(/-/g, "")) || n.toUpperCase().includes(token))
-      .slice(0, 8);
-    if (!exists) push(`SUGGEST: ${sug.length ? sug.join(", ") : "(none)"}`);
-
-    const path = `${folder}/${exactName}`;
-    push(`DOWNLOAD: ${path}`);
-    const { data: blob, error: dlErr } = await supabase.storage.from("backups").download(path);
-
-    if (dlErr || !blob) {
-      push(`DOWNLOAD ERROR: ${(dlErr as any)?.message || String(dlErr)}`);
-      // @ts-ignore extra fields
-      if (dlErr && (dlErr as any).statusCode) push(`DOWNLOAD statusCode: ${(dlErr as any).statusCode}`);
-      setCloudStatus(logs.join("\n"));
-      return;
-    }
-
-    const text = await blob.text();
-    push(`DOWNLOAD OK: ${text.length.toLocaleString()} chars`);
-    try {
-      const parsed = JSON.parse(text);
-      push(`PARSE OK: kind=${parsed?.kind || "?"}`);
-    } catch {
-      push("PARSE ERROR: JSON invalide");
-    }
-
-    setCloudStatus(logs.join("\n"));
-  } catch (e) {
-    console.error(e);
-    const msg =
-      (e as any)?.message === "Not authenticated"
-        ? t("syncCenter.cloud.authRequired", "Tu dois être connecté au compte Supabase pour utiliser le cloud.")
-        : t("syncCenter.cloud.downloadError", "Erreur pendant la récupération du snapshot. Vérifie le code et réessaie.");
-    setCloudStatus(logs.join("\n") + (logs.length ? "\n" : "") + msg);
-  }
 }
 
-// =====================================================
-// OPTION B — Roundtrip (upload + download) sans toucher au store
-// =====================================================
-async function handleCloudRoundTrip() {
-  const logs: string[] = [];
-  const stamp = () => new Date().toISOString().slice(0, 19).replace("T", " ");
-  const push = (line: string) => logs.push(`[${stamp()}] ${line}`);
+// Legacy button: run A then B
+async function handleCloudAutoTest() {
+  await handleCloudAutoTestA();
+  // Add a separator in the log without losing A output
+  setCloudStatus((prev) => (prev ? `${prev}
 
-  try {
-    const uid = await getUserIdOrThrow();
-    const token = makeCloudToken();
-    const folder = `cloud/${uid}`;
-    const path = `${folder}/${token}.json`;
+---
 
-    push("=== Option B : roundtrip upload+download ===");
-    push(`Bucket: backups`);
-    push(`User id: ${uid}`);
-    push(`Token: ${token}`);
-    push(`UPLOAD: ${path}`);
-
-    const payload = {
-      kind: "dc_cloud_roundtrip_v1",
-      createdAt: new Date().toISOString(),
-      app: "darts-counter-v5",
-      ping: true,
-      ts: Date.now(),
-    };
-
-    const blobUp = new Blob([JSON.stringify(payload)], { type: "application/json" });
-
-    const { error: upErr } = await supabase.storage.from("backups").upload(path, blobUp, {
-      contentType: "application/json",
-      upsert: true,
-    });
-    if (upErr) {
-      push(`UPLOAD ERROR: ${(upErr as any)?.message || String(upErr)}`);
-      setCloudStatus(logs.join("\n"));
-      return;
-    }
-
-    push("UPLOAD OK");
-    push("DOWNLOAD…");
-
-    const { data: blobDl, error: dlErr } = await supabase.storage.from("backups").download(path);
-    if (dlErr || !blobDl) {
-      push(`DOWNLOAD ERROR: ${(dlErr as any)?.message || String(dlErr)}`);
-      // @ts-ignore extra fields
-      if (dlErr && (dlErr as any).statusCode) push(`DOWNLOAD statusCode: ${(dlErr as any).statusCode}`);
-      setCloudStatus(logs.join("\n"));
-      return;
-    }
-
-    const text = await blobDl.text();
-    push(`DOWNLOAD OK: ${text.length.toLocaleString()} chars`);
-    try {
-      const parsed = JSON.parse(text);
-      push(`PARSE OK: kind=${parsed?.kind || "?"}`);
-      push("ROUNDTRIP OK ✅");
-    } catch {
-      push("PARSE ERROR: JSON invalide");
-    }
-
-    setCloudToken(token);
-    setCloudStatus(logs.join("\n"));
-  } catch (e) {
-    console.error(e);
-    const msg =
-      (e as any)?.message === "Not authenticated"
-        ? t("syncCenter.cloud.authRequired", "Tu dois être connecté au compte Supabase pour utiliser le cloud.")
-        : t("syncCenter.cloud.uploadError", "Erreur pendant l'envoi vers le cloud. Réessaie plus tard.");
-    setCloudStatus(logs.join("\n") + (logs.length ? "\n" : "") + msg);
-  }
+` : ""));
+  await handleCloudAutoTestB();
 }
-}
+
 
 
   return (
@@ -1096,9 +1028,8 @@ async function handleCloudRoundTrip() {
             onTokenChange={setCloudToken}
             onUpload={handleCloudUpload}
             onDownload={handleCloudDownload}
-            onAutoTest={handleCloudAutoTest}
-            onDiagCode={handleCloudDiagCode}
-            onRoundTrip={handleCloudRoundTrip}
+            onAutoTestA={handleCloudAutoTestA}
+            onAutoTestB={handleCloudAutoTestB}
           />
         )}
       </div>
@@ -2058,9 +1989,8 @@ function CloudPanel({
   onTokenChange,
   onUpload,
   onDownload,
-  onAutoTest,
-  onDiagCode,
-  onRoundTrip,
+  onAutoTestA,
+  onAutoTestB,
 }: {
   theme: any;
   t: (k: string, f: string) => string;
@@ -2069,7 +1999,8 @@ function CloudPanel({
   onTokenChange: (v: string) => void;
   onUpload: () => void;
   onDownload: () => void;
-  onAutoTest?: () => void;
+  onAutoTestA?: () => void;
+  onAutoTestB?: () => void;
 }) {
   return (
     <div
@@ -2119,14 +2050,11 @@ function CloudPanel({
         <button onClick={onUpload} style={buttonSmall(theme)}>
           {t("syncCenter.cloud.btnUpload", "Envoyer snapshot")}
         </button>
-        <button onClick={onAutoTest} style={buttonSmall(theme)}>
-          {t("syncCenter.cloud.btnAutoTest", "Lancer auto-test cloud")}
+        <button onClick={onAutoTestA} style={buttonSmall(theme)}>
+          {t("syncCenter.cloud.btnAutoTestA", "Auto-test A (SDK download)")}
         </button>
-        <button onClick={onDiagCode} style={buttonSmall(theme)}>
-          {t("syncCenter.cloud.btnDiagCode", "Option A : tester ce code")}
-        </button>
-        <button onClick={onRoundTrip} style={buttonSmall(theme)}>
-          {t("syncCenter.cloud.btnRoundTrip", "Option B : roundtrip")}
+        <button onClick={onAutoTestB} style={buttonSmall(theme)}>
+          {t("syncCenter.cloud.btnAutoTestB", "Auto-test B (Signed URL)")}
         </button>
       </div>
 

@@ -3025,10 +3025,10 @@ case "babyfoot_team_edit":
         break;
 
       case "capital_config":
-        page = <CapitalConfig setTab={go} params={routeParams} />;
+        page = <CapitalConfig setTab={go} go={go} store={store} params={routeParams} />;
         break;
       case "capital_play":
-        page = <CapitalPlay setTab={go} params={routeParams} />;
+        page = <CapitalPlay setTab={go} go={go} store={store} params={routeParams} />;
         break;
 
       case "happy_mille_config":

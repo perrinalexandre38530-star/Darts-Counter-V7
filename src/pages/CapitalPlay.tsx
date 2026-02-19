@@ -6,6 +6,7 @@ import ScoreInputHub from "../components/ScoreInputHub";
 import { useLang } from "../contexts/LangContext";
 import { useTheme } from "../contexts/ThemeContext";
 import tickerCapital from "../assets/tickers/ticker_capital.png";
+import { PRO_BOTS, proBotToProfile } from "../lib/botsPro";
 
 type BotLevel = "easy" | "normal" | "hard";
 
@@ -28,27 +29,25 @@ export type CapitalContractID =
   | "n14"
   | "center";
 
+export type CapitalStartOrderMode = "random" | "fixed";
+
 export type CapitalConfigPayload = {
-  players: number;
+  // ✅ Participants
+  players: number;           // total (humains + bots)
+  selectedIds?: string[];    // ids profils/bots (si fourni, il prime)
+  startOrderMode?: CapitalStartOrderMode;
 
-  /** Participants (optionnels) */
-  activeProfileId?: string | null;
-  selectedProfileIds?: string[];
-  selectedBotIds?: string[];
-
+  // Bots
   botsEnabled: boolean;
   botLevel: BotLevel;
 
+  // Mode / Contrats
   mode: CapitalModeKind;
-
-  /** Custom sequence (si mode="custom") */
   customContracts?: CapitalContractID[];
-  /** Forcer "capital" en premier (recommandé) */
   includeCapital?: boolean;
 
-  /** Options de partie */
-  startOrder?: "random" | "fixed";
-  scoreInputMethod?: import("../lib/scoreInput/types").ScoreInputMethod;
+  // Saisie
+  inputMethod?: "keypad" | "dartboard" | "presets";
 };
 
 type Dart = { v: number; mult: 1 | 2 | 3 };
@@ -71,12 +70,6 @@ const OFFICIAL_CONTRACTS: CapitalContractID[] = [
   "center",
 ];
 
-function clampInt(v: number, min: number, max: number, fallback: number) {
-  const n = Number.isFinite(v) ? Math.trunc(v) : fallback;
-  return Math.max(min, Math.min(max, n));
-}
-
-
 const INFO_TEXT = `RÈGLE OFFICIELLE — CAPITAL (15 contrats)
 
 Avant les contrats, chaque joueur lance 3 fléchettes pour se constituer son CAPITAL (score de départ).
@@ -86,6 +79,46 @@ Ensuite, chaque contrat se joue en 1 volée de 3 fléchettes :
 - ❌ Contrat raté → le score est DIVISÉ PAR 2 (arrondi à l’entier inférieur)
 
 Contrats: Capital, 20, Triple, 19, Double, 18, Side (côte à côte), 17, Suite, 16, Couleur, 15, 57, 14, Centre.`;
+
+const LS_BOTS_KEY = "dc_bots_v1";
+
+function safeStoreProfiles(store: any): any[] {
+  const profiles =
+    store?.profiles ??
+    store?.profilesStore?.profiles ??
+    store?.profileStore?.profiles ??
+    store?.profiles_v7 ??
+    [];
+  return Array.isArray(profiles) ? profiles : [];
+}
+
+function safeCustomBotsProfiles(): any[] {
+  try {
+    const raw = localStorage.getItem(LS_BOTS_KEY);
+    if (!raw) return [];
+    const arr = JSON.parse(raw);
+    if (!Array.isArray(arr)) return [];
+    return arr
+      .filter((b: any) => b?.id)
+      .map((b: any) => ({
+        id: String(b.id),
+        name: String(b?.name || "BOT"),
+        avatarDataUrl: b?.avatarDataUrl || b?.avatar || null,
+        isBot: true,
+      }));
+  } catch {
+    return [];
+  }
+}
+
+function shuffleCopy<T>(arr: T[]): T[] {
+  const a = [...arr];
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    const t = a[i]; a[i] = a[j]; a[j] = t;
+  }
+  return a;
+}
 
 const BOARD_ORDER = [20, 1, 18, 4, 13, 6, 10, 15, 2, 17, 3, 19, 7, 16, 8, 11, 14, 9, 12, 5];
 
@@ -267,67 +300,37 @@ export default function CapitalPlay(props: any) {
     };
 
   
-  // ===========================================================
-  // PARTICIPANTS (Profils + Bots) — fallback robuste
-  // ===========================================================
-  const store = props?.store as any;
-  const profiles: any[] = (store?.profiles || []) as any[];
+  const store = props?.store;
 
-  const profileById = useMemo(() => {
+  const profiles = useMemo(() => safeStoreProfiles(store), [store]);
+  const proBots = useMemo(() => PRO_BOTS.map((b) => proBotToProfile(b) as any), []);
+  const customBots = useMemo(() => safeCustomBotsProfiles(), []);
+  const allEntities = useMemo(() => {
     const m = new Map<string, any>();
-    for (const p of profiles) {
-      if (p?.id) m.set(String(p.id), p);
-    }
+    for (const p of profiles) if (p?.id) m.set(String(p.id), p);
+    for (const b of [...proBots, ...customBots]) if (b?.id) m.set(String(b.id), b);
     return m;
-  }, [profiles]);
+  }, [profiles, proBots, customBots]);
 
-  const BOT_NAME_MAP: Record<string, string> = {
-    bot_pro_green_machine: "Green Machine",
-    bot_pro_snake_king: "Snake King",
-    bot_pro_wonder_kid: "Wonder Kid",
-    bot_pro_ice_man: "Ice Man",
-    bot_pro_the_power: "The Power",
-    bot_pro_hollywood: "Hollywood",
-  };
-
-  const resolvedPlayerNames = useMemo(() => {
-    const want = clampInt(cfg.players, 1, 8, 2);
-    const out: string[] = [];
-
-    const profileIds = (cfg.selectedProfileIds || []).map(String);
-    for (const id of profileIds) {
-      const p = profileById.get(id);
-      out.push(String(p?.name || `Joueur ${out.length + 1}`));
-      if (out.length >= want) return out.slice(0, want);
+  const participants = useMemo(() => {
+    const ids = Array.isArray(cfg?.selectedIds) && cfg.selectedIds.length
+      ? cfg.selectedIds.map((x) => String(x)).filter(Boolean)
+      : [];
+    let resolved: any[] = [];
+    if (ids.length) {
+      resolved = ids.map((id) => allEntities.get(id) || ({ id, name: id, isBot: false }));
+    } else {
+      // fallback legacy: N joueurs génériques
+      resolved = Array.from({ length: Math.max(1, cfg.players || 2) }, (_, i) => ({ id: String(i+1), name: `Joueur ${i+1}` }));
     }
-
-    const botIds = (cfg.selectedBotIds || []).map(String);
-    for (const id of botIds) {
-      out.push(BOT_NAME_MAP[id] || "Bot");
-      if (out.length >= want) return out.slice(0, want);
+    if (cfg?.startOrderMode === "random" && ids.length) {
+      resolved = shuffleCopy(resolved);
     }
+    return resolved;
+  }, [cfg, allEntities]);
 
-    while (out.length < want) out.push(`Joueur ${out.length + 1}`);
-    return out.slice(0, want);
-  }, [cfg.players, cfg.selectedProfileIds, cfg.selectedBotIds, profileById]);
+  const playerCount = participants.length || Math.max(1, cfg.players || 2);
 
-  function shuffle<T>(arr: T[]) {
-    const a = [...arr];
-    for (let i = a.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
-      const tmp = a[i];
-      a[i] = a[j];
-      a[j] = tmp;
-    }
-    return a;
-  }
-
-  const playerNames = useMemo(() => {
-    if (cfg.startOrder === "random") return shuffle(resolvedPlayerNames);
-    return resolvedPlayerNames;
-  }, [cfg.startOrder, resolvedPlayerNames]);
-
-  const playerCount = playerNames.length;
 const contracts = useMemo<CapitalContractID[]>(() => {
     if (cfg.mode === "official") return OFFICIAL_CONTRACTS;
 
