@@ -308,10 +308,7 @@ const goldNeon = {
 
 /* ---------- Types ---------- */
 type PlayerLite = {
-  // Canonical id used by unified aggregators (NormalizedMatch.players[].playerId)
   id: string;
-  // Legacy/local id (ex: profiles store id) to keep selection stable across mobile/online flips
-  legacyId?: string;
   name?: string;
   avatarDataUrl?: string | null;
   dartSetId?: string | null;
@@ -4086,13 +4083,11 @@ const allPlayers = React.useMemo(() => {
   for (const m of nm) {
     const players = Array.isArray((m as any)?.players) ? (m as any).players : [];
     for (const p of players) {
-      const pid = String((p as any)?.playerId ?? (p as any)?.id ?? "");
-      const legacyId = String((p as any)?.id ?? "");
+      const pid = String((p as any)?.id ?? "");
       if (!pid) continue;
       if (!map.has(pid)) {
         map.set(pid, {
           id: pid,
-          legacyId: legacyId && legacyId !== pid ? legacyId : undefined,
           name: (p as any)?.name ?? "",
           avatarDataUrl: (p as any)?.avatarDataUrl ?? null,
         });
@@ -4104,13 +4099,11 @@ const allPlayers = React.useMemo(() => {
   if (map.size === 0) {
     const sp = Array.isArray(storeProfiles) ? storeProfiles : [];
     for (const p of sp) {
-      const pid = String((p as any)?.playerId ?? (p as any)?.id ?? "");
-      const legacyId = String((p as any)?.id ?? "");
+      const pid = String((p as any)?.id ?? "");
       if (!pid) continue;
       if (!map.has(pid)) {
         map.set(pid, {
           id: pid,
-          legacyId: legacyId && legacyId !== pid ? legacyId : undefined,
           name: (p as any)?.name ?? "",
           avatarDataUrl: (p as any)?.avatarDataUrl ?? null,
         });
@@ -4147,24 +4140,39 @@ React.useEffect(() => {
 const playersForMode = React.useMemo(() => {
   if (!allPlayers.length) return [];
 
-  // ✅ FIX: si activePlayerId n’est pas trouvé dans l’historique,
-  // on fallback sur allPlayers (sinon "Aucun joueur trouvé.")
+  // ✅ Mode "active" = STRICTEMENT le profil actif (même si aucune stat dans l'historique)
+  // IMPORTANT : ne JAMAIS fallback vers un profil local arbitraire, sinon tu vois "Antoine" alors que l'actif est un autre.
   if (mode === "active") {
-    if (activePlayerId) {
-      const ap = String(activePlayerId);
-      const found = allPlayers.find((p) => p.id === ap || String((p as any)?.legacyId ?? "") === ap);
-      return found ? [found] : allPlayers; // ✅ fallback
-    }
-    return allPlayers; // ✅ pas d’id -> fallback
+    if (!activePlayerId) return allPlayers;
+
+    const found = allPlayers.find((p) => p.id === String(activePlayerId));
+    if (found) return [found];
+
+    // Si l'id actif n'existe pas dans l'historique normalisé, on fabrique un profil virtuel depuis le store/profil.
+    const fromStore =
+      (Array.isArray(storeProfiles)
+        ? storeProfiles.find((p: any) => String(p?.id ?? "") === String(activePlayerId))
+        : null) ?? null;
+
+    const fallback = {
+      id: String(activePlayerId),
+      name:
+        (fromStore as any)?.name ??
+        (profile as any)?.name ??
+        (profile as any)?.displayName ??
+        "Joueur",
+      avatarDataUrl: (fromStore as any)?.avatarDataUrl ?? (profile as any)?.avatarDataUrl ?? null,
+    };
+
+    return [fallback];
   }
 
   if (mode === "locals" && activePlayerId) {
-    const ap = String(activePlayerId);
-    return allPlayers.filter((p) => !(p.id === ap || String((p as any)?.legacyId ?? "") === ap));
+    return allPlayers.filter((p) => p.id !== String(activePlayerId));
   }
 
   return allPlayers;
-}, [allPlayers, mode, activePlayerId]);
+}, [allPlayers, mode, activePlayerId, storeProfiles, profile]);
 
 // Toggle "Inclure les BOTS"
 const [showBots, setShowBots] = React.useState(false);
@@ -4197,7 +4205,7 @@ React.useEffect(() => {
   setSelectedPlayerId((prev) => {
     const next = String(activePlayerId);
     if (!prev) return next;
-    const exists = filteredPlayers?.some((p) => String(p?.id) === String(prev) || String((p as any)?.legacyId ?? "") === String(prev));
+    const exists = filteredPlayers?.some((p) => String(p?.id) === String(prev));
     return exists ? prev : next;
   });
 }, [activePlayerId, filteredPlayers]);
@@ -4212,15 +4220,12 @@ React.useEffect(() => {
     setSelectedPlayerId(filteredPlayers[0].id);
     return;
   }
-  const exists = filteredPlayers.some((p) => p.id === selectedPlayerId || String((p as any)?.legacyId ?? "") === String(selectedPlayerId));
+  const exists = filteredPlayers.some((p) => p.id === selectedPlayerId);
   if (!exists) setSelectedPlayerId(filteredPlayers[0].id);
 }, [filteredPlayers, selectedPlayerId]);
 
 const selectedPlayer = React.useMemo(
-  () =>
-    filteredPlayers.find(
-      (p) => p.id === selectedPlayerId || String((p as any)?.legacyId ?? "") === String(selectedPlayerId)
-    ) ?? null,
+  () => filteredPlayers.find((p) => p.id === selectedPlayerId) ?? null,
   [filteredPlayers, selectedPlayerId]
 );
 
@@ -4407,9 +4412,7 @@ const dashboardToShow = (cachedDashboard ?? liveDashboard ?? computedDashboard) 
 
 const currentPlayerIndex = React.useMemo(() => {
   if (!selectedPlayer) return -1;
-  return filteredPlayers.findIndex(
-    (p) => p.id === selectedPlayer.id || String((p as any)?.legacyId ?? "") === String(selectedPlayer.id)
-  );
+  return filteredPlayers.findIndex((p) => p.id === selectedPlayer.id);
 }, [filteredPlayers, selectedPlayer]);
 
 // 👉 IMPORTANT : en mode "active", on coupe le slide !

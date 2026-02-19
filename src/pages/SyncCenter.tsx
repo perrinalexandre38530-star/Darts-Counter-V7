@@ -445,14 +445,25 @@ async function handleCloudUpload() {
     };
 
     const token = makeCloudToken();
-    const path = `cloud/${uid}/${token}.json`;
+    // Build snapshot payload
+    const jsonStr = JSON.stringify(payload);
+    const rawBytes = approxBytesOfString(jsonStr);
 
-    const blob = new Blob([JSON.stringify(payload)], { type: "application/json" });
+    // Prefer gzip to stay under Storage limits (your bucket is 10MB).
+    const gzBlob = await gzipStringToBlob(jsonStr);
 
-    const { error: upErr } = await supabase.storage
+    const ext = gzBlob ? "json.gz" : "json";
+    const contentType = gzBlob ? "application/gzip" : "application/json";
+    const blob = gzBlob ?? new Blob([jsonStr], { type: "application/json" });
+
+    log(`Snapshot bytes (raw): ${rawBytes}`);
+    if (gzBlob) log(`Snapshot bytes (gzip): ${gzBlob.size}`);
+
+    const path = `cloud/${uid}/${token}.${ext}`;
+const { error: upErr } = await supabase.storage
       .from("backups")
       .upload(path, blob, {
-        contentType: "application/json",
+        contentType: contentType,
         // Each snapshot uses a unique token -> no need to upsert.
         // Keeping upsert=false also avoids requiring UPDATE policies.
         upsert: false,
@@ -518,7 +529,15 @@ async function handleCloudDownload() {
     if (dlErr) throw dlErr;
     if (!data) throw new Error("No file");
 
-    const text = await data.text();
+    let text: string | null = null;
+
+    if (path.endsWith(".gz")) {
+      text = await ungzipBlobToString(data);
+      if (!text) throw new Error("Gzip not supported on this browser (DecompressionStream missing).");
+    } else {
+      text = await data.text();
+    }
+
     const parsed = JSON.parse(text);
 
     // On accepte le payload cloud officiel OU un store snapshot standard.
@@ -592,7 +611,7 @@ async function runCloudDiagnostics() {
     const pingCode = `PING-${Math.random().toString(36).slice(2, 8).toUpperCase()}`;
     const pingPath = `cloud/${uid}/_ping_${pingCode}.txt`;
     pushDiag(`UPLOAD test: ${pingPath}`);
-    const pingBlob = new Blob([`ping ${new Date().toISOString()}`], { type: "text/plain" });
+    const pingBlob = new Blob([`ping ${new Date().toISOString()}`], { type: "application/json" });
     const up = await supabase.storage
       .from("backups")
       .upload(pingPath, pingBlob, { upsert: false, contentType: "text/plain" });
@@ -2094,3 +2113,38 @@ function buttonSmall(theme: any): React.CSSProperties {
     whiteSpace: "nowrap",
   };
 }
+// ---- Cloud gzip helpers (native browser API) ----
+async function gzipStringToBlob(str: string): Promise<Blob | null> {
+  try {
+    // @ts-ignore
+    if (typeof CompressionStream === "undefined") return null;
+    // @ts-ignore
+    const cs = new CompressionStream("gzip");
+    const bytes = new TextEncoder().encode(str);
+    const stream = new Blob([bytes]).stream().pipeThrough(cs);
+    return await new Response(stream).blob();
+  } catch {
+    return null;
+  }
+}
+
+async function ungzipBlobToString(blob: Blob): Promise<string | null> {
+  try {
+    // @ts-ignore
+    if (typeof DecompressionStream === "undefined") return null;
+    // @ts-ignore
+    const ds = new DecompressionStream("gzip");
+    const stream = blob.stream().pipeThrough(ds);
+    const ab = await new Response(stream).arrayBuffer();
+    return new TextDecoder().decode(new Uint8Array(ab));
+  } catch {
+    return null;
+  }
+}
+
+function approxBytesOfString(str: string): number {
+  // UTF-8 bytes approximation (exact for ASCII, close enough for telemetry)
+  return new TextEncoder().encode(str).byteLength;
+}
+
+
