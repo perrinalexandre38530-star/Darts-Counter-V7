@@ -867,16 +867,27 @@ function classifyRecordMode(rec: SavedMatch): string {
 function recordHasPlayer(r: any, pid: string): boolean {
   if (!r || !pid) return false;
 
+  const norm = (v: any) => String(v ?? "").replace(/^online:/, "");
+  const target = norm(pid);
+
+  const matchAny = (p: any) => {
+    if (!p) return false;
+
+    // Snapshot variants sometimes store ids as plain strings
+    if (typeof p === "string") return norm(p) === target;
+
+    const candidates = [p?.id, p?.playerId, p?.profileId, p?.uid, p?.userId]
+      .filter((x: any) => x !== undefined && x !== null && String(x).length > 0)
+      .map(norm);
+
+    return candidates.includes(target);
+  };
+
   const direct = toArrLoc<any>(r?.players);
   const payloadPlayers = toArrLoc<any>(r?.payload?.players) || toArrLoc<any>(r?.payload?.config?.players);
   const all = [...direct, ...payloadPlayers];
 
-  const hasInList = all.some((p) => {
-    if (!p) return false;
-    if (typeof p === "string") return p === pid;
-    return String(p.id ?? p.playerId ?? "") === pid;
-  });
-  if (hasInList) return true;
+  if (all.some(matchAny)) return true;
 
   // Teams / rosters
   const teams = toArrLoc<any>(r?.teams) || toArrLoc<any>(r?.payload?.teams);
@@ -886,15 +897,8 @@ function recordHasPlayer(r: any, pid: string): boolean {
       toArrLoc<any>(t?.members) ||
       toArrLoc<any>(t?.roster) ||
       toArrLoc<any>(t?.teamPlayers);
-    if (
-      members.some((m) => {
-        if (!m) return false;
-        if (typeof m === "string") return m === pid;
-        return String(m.id ?? m.playerId ?? "") === pid;
-      })
-    ) {
-      return true;
-    }
+
+    if (members.some(matchAny)) return true;
   }
 
   return false;

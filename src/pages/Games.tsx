@@ -399,9 +399,33 @@ export default function Games({ setTab }: Props) {
     const border = opts.tint.border;
     const titleColor = opts.tint.title;
 
+    const handleClick = () => {
+      if (!clickable) {
+        setTab("mode_not_ready");
+        return;
+      }
+
+      // Training : cible spéciale (tab + params)
+      if (opts.kind === "training") {
+        setTab(goTab, params);
+        return;
+      }
+
+      // Tous les autres (classic/variant/challenge/fun) :
+      // on passe par le routeur "configPath" pour supporter les presets/variantes (ex: Cricket -> Enculette/Cut-Throat)
+      if (g) {
+        const path = configPathForGame(g);
+        navSmart(path);
+        return;
+      }
+
+      // Fallback
+      setTab(opts.fallbackTab);
+    };
+
     return (
       <button
-        onClick={() => setTab(clickable ? goTab : "mode_not_ready", params)}
+        onClick={handleClick}
         style={{
           position: "relative",
           width: "100%",
