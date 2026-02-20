@@ -1,3 +1,11 @@
+// src/pages/CapitalConfig.tsx
+// CAPITAL — Config écran (cohérent avec les autres menus config)
+// - Sélection profils locaux (carousel)
+// - Sélection bots IA (carousel + avatars)
+// - Ordre de départ (aléatoire / défini + réordonnancement)
+// - Mode (Officiel / Custom contrats)
+// - Mode de saisie (keypad / dartboard / presets)
+
 import React, { useMemo, useState } from "react";
 import BackDot from "../components/BackDot";
 import InfoDot from "../components/InfoDot";
@@ -36,8 +44,8 @@ export type CapitalContractID =
 
 export type CapitalConfigPayload = {
   // ✅ Participants (profils + bots)
-  players: number;                 // total slots (humains + bots)
-  selectedIds: string[];           // ordre = ordre de jeu (si fixed) ; sinon ordre initial
+  players: number; // total slots (humains + bots)
+  selectedIds: string[]; // ordre = ordre de jeu (si fixed) ; sinon ordre initial
   startOrderMode: CapitalStartOrderMode;
 
   // Bots
@@ -98,22 +106,38 @@ Liste officielle des contrats :
 
 function labelOf(id: CapitalContractID): string {
   switch (id) {
-    case "capital": return "Capital";
-    case "n20": return "20 (au moins un 20)";
-    case "triple_any": return "Triple (au moins un triple)";
-    case "n19": return "19 (au moins un 19)";
-    case "double_any": return "Double (au moins un double)";
-    case "n18": return "18 (au moins un 18)";
-    case "side": return "Side (3 secteurs côte à côte)";
-    case "n17": return "17 (au moins un 17)";
-    case "suite": return "Suite (3 numéros consécutifs)";
-    case "n16": return "16 (au moins un 16)";
-    case "colors_3": return "Couleur (3 couleurs différentes)";
-    case "n15": return "15 (au moins un 15)";
-    case "exact_57": return "57 (total exact)";
-    case "n14": return "14 (au moins un 14)";
-    case "center": return "Centre (25 ou 50)";
-    default: return String(id);
+    case "capital":
+      return "Capital";
+    case "n20":
+      return "20 (au moins un 20)";
+    case "triple_any":
+      return "Triple (au moins un triple)";
+    case "n19":
+      return "19 (au moins un 19)";
+    case "double_any":
+      return "Double (au moins un double)";
+    case "n18":
+      return "18 (au moins un 18)";
+    case "side":
+      return "Side (3 secteurs côte à côte)";
+    case "n17":
+      return "17 (au moins un 17)";
+    case "suite":
+      return "Suite (3 numéros consécutifs)";
+    case "n16":
+      return "16 (au moins un 16)";
+    case "colors_3":
+      return "Couleur (3 couleurs différentes)";
+    case "n15":
+      return "15 (au moins un 15)";
+    case "exact_57":
+      return "57 (total exact)";
+    case "n14":
+      return "14 (au moins un 14)";
+    case "center":
+      return "Centre (25 ou 50)";
+    default:
+      return String(id);
   }
 }
 
@@ -150,8 +174,10 @@ function safeCustomBotsProfiles(): any[] {
       .map((b: any) => ({
         id: String(b.id),
         name: String(b?.name || "BOT"),
+        nickname: String(b?.name || "BOT"),
         avatarDataUrl: b?.avatarDataUrl || b?.avatar || null,
         isBot: true,
+        botKind: "custom",
         botLevel: b?.botLevel ?? undefined,
       }));
   } catch {
@@ -179,7 +205,9 @@ function shuffleCopy<T>(arr: T[]): T[] {
   const a = [...arr];
   for (let i = a.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));
-    const t = a[i]; a[i] = a[j]; a[j] = t;
+    const t = a[i];
+    a[i] = a[j];
+    a[j] = t;
   }
   return a;
 }
@@ -191,9 +219,15 @@ export default function CapitalConfig(props: any) {
   const store = props?.store;
   const go = props?.go || props?.setTab;
 
-  const locals = useMemo(() => safeStoreProfiles(store).filter((p: any) => !p?.isBot), [store]);
+  const locals = useMemo(
+    () => safeStoreProfiles(store).filter((p: any) => !p?.isBot),
+    [store]
+  );
   const activeProfileId = useMemo(() => safeActiveProfileId(store), [store]);
-  const activeProfile = useMemo(() => locals.find((p: any) => p.id === activeProfileId) || locals[0] || null, [locals, activeProfileId]);
+  const activeProfile = useMemo(
+    () => locals.find((p: any) => p.id === activeProfileId) || locals[0] || null,
+    [locals, activeProfileId]
+  );
 
   // Bots pool = PRO_BOTS + bots custom (dc_bots_v1)
   const proBots = useMemo(() => PRO_BOTS.map((b) => proBotToProfile(b) as any), []);
@@ -215,6 +249,7 @@ export default function CapitalConfig(props: any) {
   const [botLevel, setBotLevel] = useState<BotLevel>("normal");
 
   const [startOrderMode, setStartOrderMode] = useState<CapitalStartOrderMode>("random");
+
   const [inputMethod, setInputMethod] = useState<ScoreInputMethod>(() => {
     try {
       const v = (localStorage.getItem(SCORE_INPUT_LS_KEY) || "keypad") as any;
@@ -230,16 +265,14 @@ export default function CapitalConfig(props: any) {
     if (locals?.[0]?.id) return [String(locals[0].id)];
     return [];
   });
-
   const [selectedBotIds, setSelectedBotIds] = useState<string[]>([]);
 
-  // total selected ids (order-preserving): humans first, then bots.
   const selectedIds = useMemo(() => {
     const base = [...selectedHumanIds, ...(botsEnabled ? selectedBotIds : [])];
     return uniqIds(base).slice(0, clamp(players, 1, 12));
   }, [selectedHumanIds, selectedBotIds, botsEnabled, players]);
 
-  // Keep "players" consistent with selection (never below 1, never below current selection)
+  // Keep "players" consistent with selection
   React.useEffect(() => {
     const min = Math.max(1, selectedIds.length || 1);
     if (players < min) setPlayers(min);
@@ -248,16 +281,19 @@ export default function CapitalConfig(props: any) {
   // When players changes, trim bots/humans if needed
   React.useEffect(() => {
     const max = clamp(players, 1, 12);
-    // trim bots first, then humans (but keep at least 1 human if possible)
     const total = uniqIds([...selectedHumanIds, ...(botsEnabled ? selectedBotIds : [])]);
     if (total.length <= max) return;
 
-    const keepHumans = selectedHumanIds.slice(0, Math.max(1, Math.min(selectedHumanIds.length, max)));
+    const keepHumans = selectedHumanIds.slice(
+      0,
+      Math.max(1, Math.min(selectedHumanIds.length, max))
+    );
     const roomForBots = Math.max(0, max - keepHumans.length);
     const keepBots = (botsEnabled ? selectedBotIds : []).slice(0, roomForBots);
+
     setSelectedHumanIds(keepHumans);
     setSelectedBotIds(keepBots);
-  }, [players, botsEnabled]);
+  }, [players, botsEnabled, selectedHumanIds, selectedBotIds]);
 
   // ------------------ Mode / Contrats ------------------
   const [mode, setMode] = useState<CapitalModeKind>("official");
@@ -303,7 +339,17 @@ export default function CapitalConfig(props: any) {
       customContracts: mode === "official" ? OFFICIAL_CONTRACTS : customList,
       inputMethod,
     };
-  }, [players, selectedIds, startOrderMode, botsEnabled, botLevel, mode, includeCapital, customContracts, customList, inputMethod]);
+  }, [
+    players,
+    selectedIds,
+    startOrderMode,
+    botsEnabled,
+    botLevel,
+    mode,
+    includeCapital,
+    customList,
+    inputMethod,
+  ]);
 
   // ------------------ UI helpers ------------------
   function goBack() {
@@ -313,7 +359,9 @@ export default function CapitalConfig(props: any) {
   }
 
   function start() {
-    try { localStorage.setItem(SCORE_INPUT_LS_KEY, inputMethod); } catch {}
+    try {
+      localStorage.setItem(SCORE_INPUT_LS_KEY, inputMethod);
+    } catch {}
     const cfg = { ...payload };
     if (cfg.startOrderMode === "random") {
       cfg.selectedIds = shuffleCopy(cfg.selectedIds);
@@ -322,10 +370,7 @@ export default function CapitalConfig(props: any) {
     if (go) return go("capital_play", { config: cfg });
   }
 
-  // draggable participant order (only in fixed mode)
-  const [dragIndex, setDragIndex] = useState<number | null>(null);
-
-  // available humans to add
+  // available humans/bots to add
   const availableHumans = useMemo(() => {
     const used = new Set(selectedHumanIds);
     return (locals || []).filter((p: any) => p?.id && !used.has(String(p.id)));
@@ -336,16 +381,20 @@ export default function CapitalConfig(props: any) {
     return (allBots || []).filter((b: any) => b?.id && !used.has(String(b.id)));
   }, [allBots, selectedBotIds]);
 
-  const [addHumanPick, setAddHumanPick] = useState<string>(() => String(availableHumans?.[0]?.id || ""));
-  const [addBotPick, setAddBotPick] = useState<string>(() => String(availableBots?.[0]?.id || ""));
+  const [addHumanPick, setAddHumanPick] = useState<string>(() =>
+    String(availableHumans?.[0]?.id || "")
+  );
+  const [addBotPick, setAddBotPick] = useState<string>(() =>
+    String(availableBots?.[0]?.id || "")
+  );
 
   React.useEffect(() => {
     if (!addHumanPick && availableHumans?.[0]?.id) setAddHumanPick(String(availableHumans[0].id));
-  }, [availableHumans]);
+  }, [availableHumans, addHumanPick]);
 
   React.useEffect(() => {
     if (!addBotPick && availableBots?.[0]?.id) setAddBotPick(String(availableBots[0].id));
-  }, [availableBots]);
+  }, [availableBots, addBotPick]);
 
   // Resolve id -> profile/bot object for display
   const idToEntity = useMemo(() => {
@@ -355,6 +404,7 @@ export default function CapitalConfig(props: any) {
     return m;
   }, [locals, allBots]);
 
+  // ------- contracts add pool -------
   const availableToAdd = useMemo(() => {
     const used = new Set(customList);
     const pool: CapitalContractID[] = [
@@ -381,9 +431,14 @@ export default function CapitalConfig(props: any) {
   React.useEffect(() => {
     if (availableToAdd.length === 0) return;
     if (!availableToAdd.includes(addPick)) setAddPick(availableToAdd[0]);
-  }, [availableToAdd]);
+  }, [availableToAdd, addPick]);
 
-return (
+  // --------- styles helpers ----------
+  const ring = theme?.primary || "rgba(255,198,58,0.55)";
+  const cardBorder = "1px solid rgba(255,255,255,0.10)";
+  const cardBg = "rgba(255,255,255,0.04)";
+
+  return (
     <div className="page">
       <PageHeader
         title="CAPITAL"
@@ -393,14 +448,20 @@ return (
       />
 
       {/* ============================= */}
-      {/* PROFILS / PARTICIPANTS */}
+      {/* PARTICIPANTS */}
       {/* ============================= */}
       <Section title="Participants">
-        <OptionRow label={t("config.playerCount", "Nombre de joueurs (total)")} hint="Humains + bots">
-          <OptionSelect value={players} options={[1,2,3,4,5,6,7,8,9,10,11,12]} onChange={setPlayers} />
+        <OptionRow
+          label={t("config.playerCount", "Nombre de joueurs (total)")}
+          hint="Humains + bots"
+        >
+          <OptionSelect
+            value={players}
+            options={[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]}
+            onChange={setPlayers}
+          />
         </OptionRow>
 
-        {/* Carousel humains */}
         <div style={{ marginTop: 10, fontSize: 12, fontWeight: 900, opacity: 0.85 }}>
           Profils locaux
         </div>
@@ -434,8 +495,11 @@ return (
                       if (locked) return prev; // actif verrouillé
                       return prev.filter((x) => x !== id);
                     }
-                    // add
-                    if (uniqIds([...prev, ...(botsEnabled ? selectedBotIds : [])]).length >= players) return prev;
+                    if (
+                      uniqIds([...prev, ...(botsEnabled ? selectedBotIds : [])]).length >=
+                      players
+                    )
+                      return prev;
                     return [...prev, id];
                   });
                 }}
@@ -448,8 +512,15 @@ return (
                   width: 86,
                 }}
               >
-                <div style={{ width: 78, height: 78, borderRadius: "50%", position: "relative", margin: "0 auto" }}>
-                  {/* aura */}
+                <div
+                  style={{
+                    width: 78,
+                    height: 78,
+                    borderRadius: "50%",
+                    position: "relative",
+                    margin: "0 auto",
+                  }}
+                >
                   {selected && (
                     <div
                       style={{
@@ -468,7 +539,7 @@ return (
                       height: "100%",
                       borderRadius: "50%",
                       overflow: "hidden",
-                      border: selected ? `1px solid ${theme?.primary || "rgba(255,198,58,0.55)"}` : "1px solid rgba(255,255,255,0.12)",
+                      border: selected ? `1px solid ${ring}` : "1px solid rgba(255,255,255,0.12)",
                       background: "#111320",
                       display: "flex",
                       alignItems: "center",
@@ -481,17 +552,19 @@ return (
                     <ProfileAvatar profile={p} size={78} showStars={false} />
                   </div>
                 </div>
-                <div style={{
-                  marginTop: 6,
-                  fontSize: 12,
-                  fontWeight: 900,
-                  textAlign: "center",
-                  color: selected ? "#f6f2e9" : "#7e8299",
-                  maxWidth: "100%",
-                  overflow: "hidden",
-                  textOverflow: "ellipsis",
-                  whiteSpace: "nowrap",
-                }}>
+                <div
+                  style={{
+                    marginTop: 6,
+                    fontSize: 12,
+                    fontWeight: 900,
+                    textAlign: "center",
+                    color: selected ? "#f6f2e9" : "#7e8299",
+                    maxWidth: "100%",
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    whiteSpace: "nowrap",
+                  }}
+                >
                   {p?.nickname || p?.name || "Joueur"}
                   {locked ? <span style={{ marginLeft: 6, opacity: 0.75 }}>★</span> : null}
                 </div>
@@ -500,13 +573,15 @@ return (
           })}
         </div>
 
-        {/* Add human quick */}
         {availableHumans.length > 0 && (
           <div style={{ marginTop: 10, display: "flex", gap: 8, alignItems: "center" }}>
             <div style={{ flex: 1 }}>
               <OptionSelect
                 value={addHumanPick}
-                options={availableHumans.map((p: any) => ({ value: String(p.id), label: p.nickname ?? p.name ?? "Joueur" }))}
+                options={availableHumans.map((p: any) => ({
+                  value: String(p.id),
+                  label: p.nickname ?? p.name ?? "Joueur",
+                }))}
                 onChange={(v) => setAddHumanPick(String(v))}
               />
             </div>
@@ -515,7 +590,11 @@ return (
                 if (!addHumanPick) return;
                 setSelectedHumanIds((prev) => {
                   if (prev.includes(addHumanPick)) return prev;
-                  if (uniqIds([...prev, addHumanPick, ...(botsEnabled ? selectedBotIds : [])]).length > players) return prev;
+                  if (
+                    uniqIds([...prev, addHumanPick, ...(botsEnabled ? selectedBotIds : [])])
+                      .length > players
+                  )
+                    return prev;
                   return [...prev, addHumanPick];
                 });
               }}
@@ -531,7 +610,12 @@ return (
             </button>
           </div>
         )}
+      </Section>
 
+      {/* ============================= */}
+      {/* BOTS */}
+      {/* ============================= */}
+      <Section title="Bots IA">
         <OptionRow label={t("config.bots", "Bots IA")}>
           <OptionToggle value={botsEnabled} onChange={setBotsEnabled} />
         </OptionRow>
@@ -591,7 +675,15 @@ return (
                       width: 86,
                     }}
                   >
-                    <div style={{ width: 78, height: 78, borderRadius: "50%", position: "relative", margin: "0 auto" }}>
+                    <div
+                      style={{
+                        width: 78,
+                        height: 78,
+                        borderRadius: "50%",
+                        position: "relative",
+                        margin: "0 auto",
+                      }}
+                    >
                       {selected && (
                         <div
                           style={{
@@ -610,7 +702,7 @@ return (
                           height: "100%",
                           borderRadius: "50%",
                           overflow: "hidden",
-                          border: selected ? `1px solid ${theme?.primary || "rgba(255,198,58,0.55)"}` : "1px solid rgba(255,255,255,0.12)",
+                          border: selected ? `1px solid ${ring}` : "1px solid rgba(255,255,255,0.12)",
                           background: "#111320",
                           display: "flex",
                           alignItems: "center",
@@ -623,190 +715,224 @@ return (
                         <ProfileAvatar profile={b} size={78} showStars={false} />
                       </div>
                     </div>
-                    <div style={{
-                      marginTop: 6,
-                      fontSize: 12,
-                      fontWeight: 900,
-                      textAlign: "center",
-                      color: selected ? "#f6f2e9" : "#7e8299",
-                      maxWidth: "100%",
-                      overflow: "hidden",
-                      textOverflow: "ellipsis",
-                      whiteSpace: "nowrap",
-                    }}>
-                      {b?.name || "BOT"}
+                    <div
+                      style={{
+                        marginTop: 6,
+                        fontSize: 12,
+                        fontWeight: 900,
+                        textAlign: "center",
+                        color: selected ? "#f6f2e9" : "#7e8299",
+                        maxWidth: "100%",
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      {b?.nickname || b?.name || "BOT"}
                     </div>
                   </button>
                 );
               })}
             </div>
+
+            {availableBots.length > 0 && (
+              <div style={{ marginTop: 10, display: "flex", gap: 8, alignItems: "center" }}>
+                <div style={{ flex: 1 }}>
+                  <OptionSelect
+                    value={addBotPick}
+                    options={availableBots.map((b: any) => ({
+                      value: String(b.id),
+                      label: b.nickname ?? b.name ?? "BOT",
+                    }))}
+                    onChange={(v) => setAddBotPick(String(v))}
+                  />
+                </div>
+                <button
+                  onClick={() => {
+                    if (!addBotPick) return;
+                    setSelectedBotIds((prev) => {
+                      if (prev.includes(addBotPick)) return prev;
+                      if (uniqIds([...selectedHumanIds, ...prev, addBotPick]).length > players) return prev;
+                      return [...prev, addBotPick];
+                    });
+                  }}
+                  style={{
+                    padding: "10px 12px",
+                    borderRadius: 12,
+                    border: "1px solid rgba(255,255,255,0.14)",
+                    background: "rgba(255,255,255,0.08)",
+                    fontWeight: 1000,
+                  }}
+                >
+                  + Ajouter
+                </button>
+              </div>
+            )}
           </>
         )}
+      </Section>
 
-        {/* Order mode + reorder */}
-        <Section title="Départ">
-          <OptionRow label="Ordre de départ">
-            <OptionSelect
-              value={startOrderMode}
-              options={[
-                { value: "random", label: "Aléatoire" },
-                { value: "fixed", label: "Ordre défini" },
-              ]}
-              onChange={(v) => setStartOrderMode(v)}
-            />
-          </OptionRow>
+      {/* ============================= */}
+      {/* DÉPART */}
+      {/* ============================= */}
+      <Section title="Départ">
+        <OptionRow label="Ordre de départ">
+          <OptionSelect
+            value={startOrderMode}
+            options={[
+              { value: "random", label: "Aléatoire" },
+              { value: "fixed", label: "Ordre défini" },
+            ]}
+            onChange={(v) => setStartOrderMode(v)}
+          />
+        </OptionRow>
 
-          {startOrderMode === "fixed" && (
-            <>
-              <div style={{ marginTop: 8, fontSize: 12, opacity: 0.8 }}>
-                Réorganise l’ordre (drag & drop ou ↑ ↓). {selectedIds.length} participant(s).
-              </div>
+        {startOrderMode === "fixed" && (
+          <>
+            <div style={{ marginTop: 8, fontSize: 12, opacity: 0.8 }}>
+              Réorganise l’ordre (glisser-déposer ou ↑ ↓). {selectedIds.length} participant(s).
+            </div>
 
-              <div style={{ marginTop: 10, display: "grid", gap: 8 }}>
-                {selectedIds.map((id, idx) => {
-                  const ent = idToEntity.get(String(id));
-                  const name = ent?.nickname ?? ent?.name ?? "Joueur";
-                  const isLocked = String(id) === String(activeProfile?.id || "");
-                  return (
-                    <div
-                      key={`${id}-${idx}`}
-                      draggable
-                      onDragStart={() => setDragIndex(idx)}
-                      onDragOver={(e) => e.preventDefault()}
-                      onDrop={() => {
-                        if (dragIndex === null || dragIndex === idx) return;
-                        const a = [...selectedIds];
-                        const [moved] = a.splice(dragIndex, 1);
-                        a.splice(idx, 0, moved);
-                        // split back into humans/bots preserving order (humans first rule is removed in fixed order)
-                        const humans: string[] = [];
-                        const bots: string[] = [];
-                        for (const pid of a) {
-                          const ent2 = idToEntity.get(String(pid));
-                          if (ent2?.isBot) bots.push(String(pid));
-                          else humans.push(String(pid));
-                        }
-                        // keep active profile inside humans and locked
-                        const lockedId = String(activeProfile?.id || "");
-                        if (lockedId && humans.includes(lockedId) === false && selectedHumanIds.includes(lockedId)) {
-                          humans.unshift(lockedId);
-                        }
-                        setSelectedHumanIds(humans.length ? humans : selectedHumanIds);
-                        setSelectedBotIds(bots);
-                        setDragIndex(null);
-                      }}
-                      style={{
-                        borderRadius: 14,
-                        padding: "10px 10px",
-                        border: "1px solid rgba(255,255,255,0.10)",
-                        background: "rgba(255,255,255,0.04)",
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "space-between",
-                        gap: 10,
-                      }}
-                    >
-                      <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
-                        <div style={{ width: 38, height: 38, borderRadius: 12, overflow: "hidden", border: "1px solid rgba(255,255,255,0.12)" }}>
-                          <ProfileAvatar profile={ent} size={38} showStars={false} />
-                        </div>
-                        <div style={{ minWidth: 0 }}>
-                          <div style={{ fontSize: 12, opacity: 0.7, fontWeight: 900 }}>
-                            #{idx + 1} {isLocked ? "• Actif" : ""}
-                          </div>
-                          <div style={{ fontSize: 13, fontWeight: 1000, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                            {name}
-                          </div>
-                        </div>
+            <div style={{ marginTop: 10, display: "grid", gap: 8 }}>
+              {selectedIds.map((id, idx) => {
+                const ent = idToEntity.get(String(id));
+                const name = ent?.nickname ?? ent?.name ?? "Joueur";
+                const isLocked = String(id) === String(activeProfile?.id || "");
+                return (
+                  <div
+                    key={`${id}-${idx}`}
+                    style={{
+                      borderRadius: 14,
+                      padding: "10px 10px",
+                      border: cardBorder,
+                      background: cardBg,
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      gap: 10,
+                    }}
+                  >
+                    <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
+                      <div
+                        style={{
+                          width: 38,
+                          height: 38,
+                          borderRadius: 12,
+                          overflow: "hidden",
+                          border: "1px solid rgba(255,255,255,0.12)",
+                        }}
+                      >
+                        <ProfileAvatar profile={ent} size={38} showStars={false} />
                       </div>
-
-                      <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
-                        <button
-                          disabled={idx === 0 || isLocked}
-                          onClick={() => {
-                            const a = [...selectedIds];
-                            if (idx <= 0) return;
-                            const tmp = a[idx - 1];
-                            a[idx - 1] = a[idx];
-                            a[idx] = tmp;
-                            // same split logic
-                            const humans: string[] = [];
-                            const bots: string[] = [];
-                            for (const pid of a) {
-                              const ent2 = idToEntity.get(String(pid));
-                              if (ent2?.isBot) bots.push(String(pid));
-                              else humans.push(String(pid));
-                            }
-                            setSelectedHumanIds(humans.length ? humans : selectedHumanIds);
-                            setSelectedBotIds(bots);
-                          }}
+                      <div style={{ minWidth: 0 }}>
+                        <div style={{ fontSize: 12, opacity: 0.7, fontWeight: 900 }}>
+                          #{idx + 1} {isLocked ? "• Actif" : ""}
+                        </div>
+                        <div
                           style={{
-                            padding: "6px 10px",
-                            borderRadius: 10,
-                            border: "1px solid rgba(255,255,255,0.12)",
-                            background: "rgba(0,0,0,0.25)",
-                            opacity: idx === 0 || isLocked ? 0.4 : 1,
-                            fontWeight: 900,
+                            fontSize: 13,
+                            fontWeight: 1000,
+                            whiteSpace: "nowrap",
+                            overflow: "hidden",
+                            textOverflow: "ellipsis",
                           }}
                         >
-                          ↑
-                        </button>
-                        <button
-                          disabled={idx === selectedIds.length - 1 || isLocked}
-                          onClick={() => {
-                            const a = [...selectedIds];
-                            if (idx >= a.length - 1) return;
-                            const tmp = a[idx + 1];
-                            a[idx + 1] = a[idx];
-                            a[idx] = tmp;
-                            const humans: string[] = [];
-                            const bots: string[] = [];
-                            for (const pid of a) {
-                              const ent2 = idToEntity.get(String(pid));
-                              if (ent2?.isBot) bots.push(String(pid));
-                              else humans.push(String(pid));
-                            }
-                            setSelectedHumanIds(humans.length ? humans : selectedHumanIds);
-                            setSelectedBotIds(bots);
-                          }}
-                          style={{
-                            padding: "6px 10px",
-                            borderRadius: 10,
-                            border: "1px solid rgba(255,255,255,0.12)",
-                            background: "rgba(0,0,0,0.25)",
-                            opacity: idx === selectedIds.length - 1 || isLocked ? 0.4 : 1,
-                            fontWeight: 900,
-                          }}
-                        >
-                          ↓
-                        </button>
-                        <button
-                          disabled={isLocked}
-                          onClick={() => {
-                            if (isLocked) return;
-                            const ent2 = idToEntity.get(String(id));
-                            if (ent2?.isBot) setSelectedBotIds((prev) => prev.filter((x) => x !== String(id)));
-                            else setSelectedHumanIds((prev) => (prev.length <= 1 ? prev : prev.filter((x) => x !== String(id))));
-                          }}
-                          style={{
-                            padding: "6px 10px",
-                            borderRadius: 10,
-                            border: "1px solid rgba(255,80,120,0.25)",
-                            background: "rgba(255,80,120,0.10)",
-                            opacity: isLocked ? 0.4 : 1,
-                            fontWeight: 900,
-                          }}
-                        >
-                          ✕
-                        </button>
+                          {name}
+                        </div>
                       </div>
                     </div>
-                  );
-                })}
-              </div>
-            </>
-          )}
-        </Section>
+
+                    <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
+                      <button
+                        disabled={idx === 0 || isLocked}
+                        onClick={() => {
+                          const a = [...selectedIds];
+                          if (idx <= 0) return;
+                          const tmp = a[idx - 1];
+                          a[idx - 1] = a[idx];
+                          a[idx] = tmp;
+
+                          const humans: string[] = [];
+                          const bots: string[] = [];
+                          for (const pid of a) {
+                            const ent2 = idToEntity.get(String(pid));
+                            if (ent2?.isBot) bots.push(String(pid));
+                            else humans.push(String(pid));
+                          }
+                          setSelectedHumanIds(humans.length ? humans : selectedHumanIds);
+                          setSelectedBotIds(bots);
+                        }}
+                        style={{
+                          padding: "6px 10px",
+                          borderRadius: 10,
+                          border: "1px solid rgba(255,255,255,0.12)",
+                          background: "rgba(0,0,0,0.25)",
+                          opacity: idx === 0 || isLocked ? 0.4 : 1,
+                          fontWeight: 900,
+                        }}
+                      >
+                        ↑
+                      </button>
+                      <button
+                        disabled={idx === selectedIds.length - 1 || isLocked}
+                        onClick={() => {
+                          const a = [...selectedIds];
+                          if (idx >= a.length - 1) return;
+                          const tmp = a[idx + 1];
+                          a[idx + 1] = a[idx];
+                          a[idx] = tmp;
+
+                          const humans: string[] = [];
+                          const bots: string[] = [];
+                          for (const pid of a) {
+                            const ent2 = idToEntity.get(String(pid));
+                            if (ent2?.isBot) bots.push(String(pid));
+                            else humans.push(String(pid));
+                          }
+                          setSelectedHumanIds(humans.length ? humans : selectedHumanIds);
+                          setSelectedBotIds(bots);
+                        }}
+                        style={{
+                          padding: "6px 10px",
+                          borderRadius: 10,
+                          border: "1px solid rgba(255,255,255,0.12)",
+                          background: "rgba(0,0,0,0.25)",
+                          opacity: idx === selectedIds.length - 1 || isLocked ? 0.4 : 1,
+                          fontWeight: 900,
+                        }}
+                      >
+                        ↓
+                      </button>
+                      <button
+                        disabled={isLocked}
+                        onClick={() => {
+                          if (isLocked) return;
+                          const ent2 = idToEntity.get(String(id));
+                          if (ent2?.isBot)
+                            setSelectedBotIds((prev) => prev.filter((x) => x !== String(id)));
+                          else
+                            setSelectedHumanIds((prev) =>
+                              prev.length <= 1 ? prev : prev.filter((x) => x !== String(id))
+                            );
+                        }}
+                        style={{
+                          padding: "6px 10px",
+                          borderRadius: 10,
+                          border: "1px solid rgba(255,80,120,0.25)",
+                          background: "rgba(255,80,120,0.10)",
+                          opacity: isLocked ? 0.4 : 1,
+                          fontWeight: 900,
+                        }}
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </>
+        )}
       </Section>
 
       {/* ============================= */}
@@ -824,14 +950,15 @@ return (
           />
         </OptionRow>
 
-        {/* ✅ Aperçu Officiel (évite l’effet “vide”) */}
         {mode === "official" && (
           <div style={{ marginTop: 10, fontSize: 12, opacity: 0.8, lineHeight: 1.3 }}>
             Séquence officielle :
             <div style={{ marginTop: 8, display: "grid", gap: 6 }}>
               {OFFICIAL_CONTRACTS.map((c, i) => (
                 <div key={c} style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                  <div style={{ width: 26, textAlign: "right", opacity: 0.7, fontWeight: 900 }}>#{i + 1}</div>
+                  <div style={{ width: 26, textAlign: "right", opacity: 0.7, fontWeight: 900 }}>
+                    #{i + 1}
+                  </div>
                   <div style={{ fontWeight: 900 }}>{labelOf(c)}</div>
                 </div>
               ))}
@@ -846,9 +973,10 @@ return (
             </OptionRow>
 
             <div style={{ marginTop: 8, opacity: 0.85, fontSize: 12 }}>
-              Ordre actuel ({customList.length} contrats) :
+              Ordre actuel ({customList.length} contrats)
             </div>
 
+            {/* ✅ Compact : 1 ligne = label + controls */}
             <div style={{ marginTop: 8, display: "grid", gap: 8 }}>
               {customList.map((id, idx) => {
                 const locked = id === "capital" && includeCapital;
@@ -858,8 +986,8 @@ return (
                     style={{
                       borderRadius: 14,
                       padding: "10px 10px",
-                      border: "1px solid rgba(255,255,255,0.10)",
-                      background: "rgba(255,255,255,0.04)",
+                      border: cardBorder,
+                      background: cardBg,
                       display: "flex",
                       alignItems: "center",
                       justifyContent: "space-between",
@@ -867,10 +995,16 @@ return (
                     }}
                   >
                     <div style={{ minWidth: 0 }}>
-                      <div style={{ fontSize: 12, opacity: 0.75, fontWeight: 900 }}>
-                        #{idx + 1}
-                      </div>
-                      <div style={{ fontSize: 13, fontWeight: 900, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                      <div style={{ fontSize: 11, opacity: 0.70, fontWeight: 900 }}>#{idx + 1}</div>
+                      <div
+                        style={{
+                          fontSize: 13,
+                          fontWeight: 1000,
+                          whiteSpace: "nowrap",
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                        }}
+                      >
                         {labelOf(id)}
                       </div>
                     </div>
@@ -984,6 +1118,7 @@ return (
                 + Ajouter
               </button>
             </div>
+
             <div style={{ marginTop: 10, fontSize: 12, opacity: 0.75 }}>
               Astuce : garde “Capital” en 1er, sinon tout le monde démarre à 0 (et le /2 ne sert à rien).
             </div>
