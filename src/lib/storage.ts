@@ -592,6 +592,7 @@ async function listKVKeys(): Promise<string[]> {
 
 /* ============================================================
    Export / Import ALL (IDB + localStorage dc_* & dc-*)
+   ✅ FIX : importAll supporte _v:2 (exportAll actuel) + restore history
 ============================================================ */
 export async function exportAll(): Promise<any> {
   const idbDump: Record<string, any> = {};
@@ -616,31 +617,37 @@ export async function exportAll(): Promise<any> {
 export async function importAll(dump: any): Promise<void> {
   if (!dump) return;
 
-  if (dump._v === 1 && dump.idb) {
+  // ✅ Support snapshots structurés (v1 et v2)
+  // - v2 = format produit par exportAll() dans ce fichier
+  if ((dump._v === 1 || dump._v === 2) && dump.idb) {
     const idbDump = dump.idb || {};
     const lsDump = dump.localStorage || {};
 
+    // 1) restore KV (IDB kv)
     for (const [k, v] of Object.entries(idbDump)) {
       try {
-        await setKV(k, v);
+        await setKV(String(k), v);
       } catch {}
     }
 
+    // 2) restore localStorage (dc_* + dc-*)
     importLocalStorageDc(lsDump);
 
-// ✅ NEW (_v:2): import History IDB dump if present
-try {
-  if (dump.history && dump.history._v === 1) {
-    await importHistoryDump(dump.history, { replace: true });
-  }
-} catch {}
+    // 3) ✅ CRITIQUE : restore DB historique (historyCloud)
+    try {
+      if (dump.history && dump.history._v === 1) {
+        await importHistoryDump(dump.history, { replace: true });
+      }
+    } catch {}
+
     return;
   }
 
+  // fallback legacy (imports très anciens clé->valeur)
   if (typeof dump === "object") {
     for (const [k, v] of Object.entries(dump)) {
       try {
-        await setKV(k, v);
+        await setKV(String(k), v);
       } catch {}
     }
   }
@@ -651,18 +658,9 @@ try {
    Objectif : restaurer les dartSets EXACTEMENT là où l’UI lit
 ============================================================ */
 
-const LS_DARTSETS_KEYS = [
-  "dc-dartsets-v1",
-  "dc-dartSets-v1",
-  "dc_lite_dartsets_v1",
-  "dc-lite-dartsets-v1",
-];
+const LS_DARTSETS_KEYS = ["dc-dartsets-v1", "dc-dartSets-v1", "dc_lite_dartsets_v1", "dc-lite-dartsets-v1"];
 
-const LS_ACTIVE_DARTSET_KEYS = [
-  "dc-active-dartset-id",
-  "dc-active-dartSet-id",
-  "dc_dartset_active",
-];
+const LS_ACTIVE_DARTSET_KEYS = ["dc-active-dartset-id", "dc-active-dartSet-id", "dc_dartset_active"];
 
 function isRecord(x: any): x is Record<string, any> {
   return x && typeof x === "object" && !Array.isArray(x);
@@ -703,14 +701,7 @@ function extractDartSetsFromSnapshot(snap: any) {
   const data = isRecord(snap.data) ? snap.data : null;
 
   const dartSets =
-    pickFirst(
-      store?.dartSets,
-      store?.dartsets,
-      data?.dartSets,
-      data?.dartsets,
-      snap.dartSets,
-      snap.dartsets
-    ) ?? null;
+    pickFirst(store?.dartSets, store?.dartsets, data?.dartSets, data?.dartsets, snap.dartSets, snap.dartsets) ?? null;
 
   const activeId =
     pickFirst(
@@ -729,7 +720,6 @@ function extractDartSetsFromSnapshot(snap: any) {
 ============================================================ */
 
 export type CloudSnapshot = any;
-
 
 // ============================================================
 // ✅ Sanitize snapshots before pushing to Supabase
@@ -807,10 +797,7 @@ export async function exportCloudSnapshot(): Promise<CloudSnapshot> {
   return await exportAll();
 }
 
-export async function importCloudSnapshot(
-  dump: CloudSnapshot,
-  opts?: { mode?: "replace" | "merge" }
-): Promise<void> {
+export async function importCloudSnapshot(dump: CloudSnapshot, opts?: { mode?: "replace" | "merge" }): Promise<void> {
   const mode = opts?.mode ?? "replace";
 
   if (mode === "replace") {
@@ -841,16 +828,7 @@ export async function importCloudSnapshot(
 
 function scoreProfileCompleteness(p: any): number {
   let s = 0;
-  const keys = [
-    "name",
-    "country",
-    "avatarUrl",
-    "surname",
-    "firstName",
-    "birthDate",
-    "city",
-    "phone",
-  ];
+  const keys = ["name", "country", "avatarUrl", "surname", "firstName", "birthDate", "city", "phone"];
   for (const k of keys) if (p?.[k]) s += 1;
   return s;
 }
@@ -895,11 +873,7 @@ async function normalizeLocalProfilesInStore(): Promise<void> {
   // 3) dédoublonne "souple" par signature (name+country+avatarUrl)
   const bySig = new Map<string, any>();
   for (const p of byId.values()) {
-    const sig = [
-      String(p?.name ?? "").trim().toLowerCase(),
-      String(p?.country ?? "").trim().toLowerCase(),
-      String(p?.avatarUrl ?? "").trim(),
-    ].join("|");
+    const sig = [String(p?.name ?? "").trim().toLowerCase(), String(p?.country ?? "").trim().toLowerCase(), String(p?.avatarUrl ?? "").trim()].join("|");
 
     const prev = bySig.get(sig);
     if (!prev) {
