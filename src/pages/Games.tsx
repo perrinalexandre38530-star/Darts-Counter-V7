@@ -182,7 +182,19 @@ export default function Games({ setTab }: Props) {
     const p = String(path);
 
     if (p.startsWith("tab:")) {
-      navigate(p.replace("tab:", ""));
+      const target = p.replace("tab:", "");
+      const [tab, qs] = target.split("?");
+      const params: Record<string, string> = {};
+      if (qs) {
+        for (const part of qs.split("&")) {
+          if (!part) continue;
+          const [k, v] = part.split("=");
+          if (!k) continue;
+          params[decodeURIComponent(k)] = decodeURIComponent(v || "");
+        }
+      }
+      if (Object.keys(params).length) navigate(tab, params);
+      else navigate(tab);
       return;
     }
 
@@ -203,14 +215,26 @@ export default function Games({ setTab }: Props) {
     const raw = String(g?.configTab || g?.configPath || "");
     if (raw) return raw.startsWith("tab:") ? raw : `tab:${raw}`;
 
+    // ✅ Variantes Cricket : ouvre l'onglet Cricket avec pré-sélection
+    const baseGame = String(g?.baseGame || "");
+    const variantId = String(g?.variantId || "");
+    if ((baseGame || g?.tab) === "cricket" && variantId) {
+      return `tab:cricket?variantId=${encodeURIComponent(variantId)}`;
+    }
+
     const tab = String(g?.tab || "");
     if (tab) {
       if (/config/i.test(tab)) return `tab:${tab}`;
       if (/_play$/i.test(tab)) return `tab:${tab.replace(/_play$/i, "_config")}`;
       if (/Play$/i.test(tab)) return `tab:${tab.replace(/Play$/i, "Config")}`;
       if (/Play/i.test(tab)) return `tab:${tab.replace(/Play/gi, "Config")}`;
+
+      // ✅ si un jeu a un baseGame, on utilise cet onglet
+      if (baseGame) return `tab:${baseGame}`;
+
       return `tab:${g.id}_config`;
     }
+    if (baseGame) return `tab:${baseGame}`;
     return `tab:${g.id}_config`;
   }
 

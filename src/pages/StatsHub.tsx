@@ -115,6 +115,14 @@ import {
 import { buildDashboardFromNormalized } from "../lib/statsUnifiedAgg";
 import { computeX01MultiAgg } from "../lib/x01MultiAgg";
 
+// ============================================================
+// 🧪 DEBUG RUNTIME (téléphone)
+// Active un overlay dans StatsHub pour voir EXACTEMENT ce qui est chargé.
+// Mets false une fois le diagnostic terminé.
+// ============================================================
+const STATS_DEBUG = true;
+
+
 
 // ------------------------------------------------------------
 // Helper: check if a pid exists in normalized matches players list.
@@ -4267,6 +4275,61 @@ const effectiveProfileId = String(
 const { cachedDashboard } = useFastDashboardCache(effectiveProfileId || null);
 
 // ============================================================
+// 🧪 RUNTIME DEBUG (visible sur téléphone)
+// - Montre quel profileId StatsHub utilise réellement
+// - Montre si le cache existe pour ce profileId
+// - Montre si les matches normalisés portent id vs playerId vs profileId
+// - Montre combien de matches matchent l'id sélectionné selon chaque mapping
+// ============================================================
+const dbg = React.useMemo(() => {
+  if (!STATS_DEBUG) return null;
+
+  const selectedId = String(effectiveProfileId || "");
+  const keysAll = typeof window !== "undefined" ? STATS_CACHE_KEYS(selectedId) : [];
+  const keysFound: string[] = [];
+  try {
+    for (const k of keysAll) {
+      if (localStorage.getItem(k) != null) keysFound.push(k);
+    }
+  } catch {}
+
+  const cache = selectedId ? readStatsCache(selectedId) : null;
+  const updatedAt = (cache as any)?.updatedAt ?? (cache as any)?.meta?.updatedAt ?? null;
+
+  const nm = Array.isArray(nmEffective) ? (nmEffective as any[]) : [];
+  const sampleMatches = nm.slice(0, 30);
+  const samplePlayers = sampleMatches
+    .flatMap((m: any) => (Array.isArray(m?.players) ? m.players : []))
+    .slice(0, 80);
+
+  const fieldCounts = {
+    id: samplePlayers.filter((p: any) => !!p?.id).length,
+    playerId: samplePlayers.filter((p: any) => !!p?.playerId).length,
+    profileId: samplePlayers.filter((p: any) => !!p?.profileId).length,
+  };
+
+  const matchCount = {
+    by_id: nm.filter((m: any) => (m?.players ?? []).some((p: any) => String(p?.id ?? "") === selectedId)).length,
+    by_playerId: nm.filter((m: any) => (m?.players ?? []).some((p: any) => String(p?.playerId ?? "") === selectedId)).length,
+    by_profileId: nm.filter((m: any) => (m?.players ?? []).some((p: any) => String(p?.profileId ?? "") === selectedId)).length,
+  };
+
+  return {
+    selectedPlayerId: String(selectedPlayerId ?? ""),
+    activePlayerId: String(activePlayerId ?? ""),
+    effectiveProfileId: selectedId,
+    cacheOk: !!cache,
+    cacheUpdatedAt: updatedAt,
+    keysFound,
+    nmCount: nm.length,
+    samplePlayersCount: samplePlayers.length,
+    fieldCounts,
+    matchCount,
+  };
+}, [effectiveProfileId, selectedPlayerId, activePlayerId, nmEffective]);
+
+
+// ============================================================
 // ✅ PATCH: Dashboard "cache immédiat" + "recalc derrière"
 // - On affiche cachedDashboard instantanément
 // - Puis on calcule un dashboard live (nmEffective) en idle pour remplacer
@@ -5879,6 +5942,65 @@ return (
         </div>
       </div>
     </div>
+{STATS_DEBUG && dbg && (
+  <div
+    style={{
+      position: "fixed",
+      left: 10,
+      right: 10,
+      bottom: 10,
+      zIndex: 9999,
+      background: "rgba(0,0,0,0.88)",
+      border: `1px solid rgba(255,255,255,0.22)`,
+      borderRadius: 14,
+      padding: 10,
+      fontSize: 12,
+      color: "#fff",
+      boxShadow: "0 10px 30px rgba(0,0,0,0.6)",
+    }}
+  >
+    <div style={{ fontWeight: 900, marginBottom: 6 }}>🧪 StatsHub Runtime Debug</div>
+    <div style={{ opacity: 0.9 }}>
+      selectedPlayerId: <b>{dbg.selectedPlayerId || "EMPTY"}</b>
+    </div>
+    <div style={{ opacity: 0.9 }}>
+      activePlayerId: <b>{dbg.activePlayerId || "EMPTY"}</b>
+    </div>
+    <div style={{ marginTop: 4 }}>
+      effectiveProfileId: <b style={{ color: "#FFD36A" }}>{dbg.effectiveProfileId || "EMPTY"}</b>
+    </div>
+    <div style={{ marginTop: 4, opacity: 0.95 }}>
+      cache:{" "}
+      <b style={{ color: dbg.cacheOk ? "#7CFF7C" : "#FF6B6B" }}>{dbg.cacheOk ? "OK" : "NULL"}</b>
+      {dbg.cacheUpdatedAt ? (
+        <>
+          {" "}
+          • updatedAt <b>{new Date(dbg.cacheUpdatedAt).toLocaleString()}</b>
+        </>
+      ) : null}
+    </div>
+    <div style={{ marginTop: 4, opacity: 0.9 }}>
+      nmEffective: <b>{dbg.nmCount}</b> matches • samplePlayers <b>{dbg.samplePlayersCount}</b>
+    </div>
+    <div style={{ marginTop: 4, opacity: 0.9 }}>
+      player fields (sample): id=<b>{dbg.fieldCounts.id}</b> • playerId=<b>{dbg.fieldCounts.playerId}</b> • profileId=<b>{dbg.fieldCounts.profileId}</b>
+    </div>
+    <div style={{ marginTop: 4, opacity: 0.9 }}>
+      matches for effectiveProfileId: by_id=<b>{dbg.matchCount.by_id}</b> • by_playerId=<b>{dbg.matchCount.by_playerId}</b> • by_profileId=<b>{dbg.matchCount.by_profileId}</b>
+    </div>
+
+    {dbg.keysFound?.length ? (
+      <div style={{ marginTop: 6, opacity: 0.75, fontSize: 11, wordBreak: "break-word" }}>
+        keys: {dbg.keysFound.join(", ")}
+      </div>
+    ) : null}
+
+    <div style={{ marginTop: 8, opacity: 0.75, fontSize: 11 }}>
+      Astuce: si by_id=0 mais by_playerId&gt;0 (ou by_profileId&gt;0), StatsHub mappe le mauvais champ → stats à 0.
+    </div>
+  </div>
+)}
+
   </div>
 );
 }
