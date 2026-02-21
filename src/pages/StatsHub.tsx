@@ -56,6 +56,7 @@ import StatsTrainingModesLocal from "../components/stats/StatsTrainingModesLocal
 import StatsTrainingLeaderboards from "../components/stats/StatsTrainingLeaderboards";
 import TrainingProfileCard from "../components/profile/TrainingProfileCard";
 import { useCurrentProfile } from "../hooks/useCurrentProfile";
+import { useDevMode } from "../contexts/DevModeContext";
 import { computeKillerAggForPlayer } from "../lib/statsKillerAgg";
 
 // ✅ LAZY-LOAD des modules lourds (gros gain bundle + parse)
@@ -117,10 +118,9 @@ import { computeX01MultiAgg } from "../lib/x01MultiAgg";
 
 // ============================================================
 // 🧪 DEBUG RUNTIME (téléphone)
-// Active un overlay dans StatsHub pour voir EXACTEMENT ce qui est chargé.
-// Mets false une fois le diagnostic terminé.
+// NOTE: le flag d'activation est calculé *dans* le composant (car il dépend
+// de hooks/state). Aucune variable top-level ne doit référencer devMode/état.
 // ============================================================
-const STATS_DEBUG = true;
 
 
 
@@ -864,11 +864,13 @@ function classifyRecordMode(rec: SavedMatch): string {
 
 // Dashboard: certains records n'ont pas `players` au niveau racine (ils sont dans payload).
 // Si on ne détecte pas le joueur, tout le dashboard tombe à 0/UNKNOWN.
-function recordHasPlayer(r: any, pid: string): boolean {
+function recordHasPlayer(r: any, pid: string, pname?: string | null): boolean {
   if (!r || !pid) return false;
 
   const norm = (v: any) => String(v ?? "").replace(/^online:/, "");
+  const normName = (v: any) => String(v ?? "").trim().toLowerCase();
   const target = norm(pid);
+  const targetName = pname ? normName(pname) : "";
 
   const matchAny = (p: any) => {
     if (!p) return false;
@@ -880,7 +882,25 @@ function recordHasPlayer(r: any, pid: string): boolean {
       .filter((x: any) => x !== undefined && x !== null && String(x).length > 0)
       .map(norm);
 
-    return candidates.includes(target);
+    if (candidates.includes(target)) return true;
+
+    // Fallback: certains historiques legacy/import n'ont pas des IDs cohérents
+    // (ou ne reflètent pas le profil actif). Dans ce cas, on accepte un match sur le nom.
+    if (targetName) {
+      const nameCandidates = [
+        p?.name,
+        p?.displayName,
+        p?.nickname,
+        p?.label,
+        p?.profile?.name,
+        p?.profile?.displayName,
+      ]
+        .filter((x: any) => x !== undefined && x !== null && String(x).trim().length > 0)
+        .map(normName);
+      if (nameCandidates.includes(targetName)) return true;
+    }
+
+    return false;
   };
 
   const direct = toArrLoc<any>(r?.players);
@@ -1050,7 +1070,7 @@ function buildDashboardForPlayer(
 
   // --------- Loop records
   for (const r of records || []) {
-    const inMatch = recordHasPlayer(r as any, pid);
+    const inMatch = recordHasPlayer(r as any, pid, (player as any)?.name);
     if (!inMatch) continue;
 
     fbMatches++;
@@ -3885,6 +3905,13 @@ export default function StatsHub({
   // CSS shimmer
   useInjectStatsNameCss();
 
+  const { enabled: devModeEnabled } = useDevMode();
+  const [showRuntimeDebug, setShowRuntimeDebug] = React.useState(false);
+
+  // ✅ Active l'overlay uniquement si DevMode ON + toggle ON
+  const statsDebugEnabled = devModeEnabled && showRuntimeDebug;
+
+
   // ✅ Reconnecte pipeline History -> Store -> StatsHub (source de vérité = History)
   React.useEffect(() => {
     rebuildStatsToStore().catch((e) => {
@@ -4352,7 +4379,7 @@ const { cachedDashboard } = useFastDashboardCache(effectiveProfileId || null);
 // - Montre combien de matches matchent l'id sélectionné selon chaque mapping
 // ============================================================
 const dbg = React.useMemo(() => {
-  if (!STATS_DEBUG) return null;
+  if (!statsDebugEnabled) return null;
 
   const selectedId = String(effectiveProfileId || "");
   const keysAll = typeof window !== "undefined" ? STATS_CACHE_KEYS(selectedId) : [];
@@ -4396,7 +4423,7 @@ const dbg = React.useMemo(() => {
     fieldCounts,
     matchCount,
   };
-}, [effectiveProfileId, selectedPlayerId, activePlayerId, nmEffective]);
+}, [statsDebugEnabled, effectiveProfileId, selectedPlayerId, activePlayerId, nmEffective]);
 
 
 // ============================================================
@@ -4648,7 +4675,7 @@ const killerAgg = React.useMemo<KillerAgg | null>(() => {
     const modeKey = classifyRecordMode(r);
     if (modeKey !== "killer") continue;
 
-    const inMatch = recordHasPlayer(r as any, pid);
+    const inMatch = recordHasPlayer(r as any, pid, (player as any)?.name);
     if (!inMatch) continue;
 
     matches++;
@@ -6012,7 +6039,7 @@ return (
         </div>
       </div>
     </div>
-{STATS_DEBUG && dbg && (
+      {statsDebugEnabled && dbg && (
   <div
     style={{
       position: "fixed",
