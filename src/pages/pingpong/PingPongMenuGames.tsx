@@ -175,6 +175,15 @@ export default function PingPongMenuGames({ go }: Props) {
               // On ancre à droite pour voir le libellé du mode (1V1/2V2/etc) dans le ticker.
               objectPosition: "right center",
               display: "block",
+              // ✅ fondu latéral pour intégrer le ticker dans la carte
+              WebkitMaskImage:
+                "linear-gradient(90deg, rgba(0,0,0,0) 0%, rgba(0,0,0,1) 8%, rgba(0,0,0,1) 92%, rgba(0,0,0,0) 100%)",
+              maskImage:
+                "linear-gradient(90deg, rgba(0,0,0,0) 0%, rgba(0,0,0,1) 8%, rgba(0,0,0,1) 92%, rgba(0,0,0,0) 100%)",
+              WebkitMaskSize: "100% 100%",
+              maskSize: "100% 100%",
+              WebkitMaskRepeat: "no-repeat",
+              maskRepeat: "no-repeat",
               transform: "translateZ(0)",
             }}
             draggable={false}
@@ -259,6 +268,15 @@ export default function PingPongMenuGames({ go }: Props) {
               // Pas de crop : afficher le ticker en entier
               objectFit: "contain",
               objectPosition: "center center",
+              // ✅ fondu latéral (même rendu “fondu dans la carte”)
+              WebkitMaskImage:
+                "linear-gradient(90deg, rgba(0,0,0,0) 0%, rgba(0,0,0,1) 10%, rgba(0,0,0,1) 90%, rgba(0,0,0,0) 100%)",
+              maskImage:
+                "linear-gradient(90deg, rgba(0,0,0,0) 0%, rgba(0,0,0,1) 10%, rgba(0,0,0,1) 90%, rgba(0,0,0,0) 100%)",
+              WebkitMaskSize: "100% 100%",
+              maskSize: "100% 100%",
+              WebkitMaskRepeat: "no-repeat",
+              maskRepeat: "no-repeat",
             }}
             draggable={false}
           />

@@ -118,8 +118,8 @@ import { computeX01MultiAgg } from "../lib/x01MultiAgg";
 
 // ============================================================
 // 🧪 DEBUG RUNTIME (téléphone)
-// NOTE: le flag d'activation est calculé *dans* le composant (car il dépend
-// de hooks/state). Aucune variable top-level ne doit référencer devMode/état.
+// Active un overlay dans StatsHub pour voir EXACTEMENT ce qui est chargé.
+// Mets false une fois le diagnostic terminé.
 // ============================================================
 
 
@@ -194,7 +194,7 @@ const statsNameCss = `
 // ============================================================
 
 const STATS_CACHE_KEYS = (profileId: string) => [
-  `dc_stats_cache_v1:${profileId}`,
+  `dc_stats_cache_v2:${profileId}`,
   `dc_stats_cache:${profileId}`,
   `dc-stats-cache:${profileId}`,
 ];
@@ -864,13 +864,11 @@ function classifyRecordMode(rec: SavedMatch): string {
 
 // Dashboard: certains records n'ont pas `players` au niveau racine (ils sont dans payload).
 // Si on ne détecte pas le joueur, tout le dashboard tombe à 0/UNKNOWN.
-function recordHasPlayer(r: any, pid: string, pname?: string | null): boolean {
+function recordHasPlayer(r: any, pid: string): boolean {
   if (!r || !pid) return false;
 
   const norm = (v: any) => String(v ?? "").replace(/^online:/, "");
-  const normName = (v: any) => String(v ?? "").trim().toLowerCase();
   const target = norm(pid);
-  const targetName = pname ? normName(pname) : "";
 
   const matchAny = (p: any) => {
     if (!p) return false;
@@ -882,25 +880,7 @@ function recordHasPlayer(r: any, pid: string, pname?: string | null): boolean {
       .filter((x: any) => x !== undefined && x !== null && String(x).length > 0)
       .map(norm);
 
-    if (candidates.includes(target)) return true;
-
-    // Fallback: certains historiques legacy/import n'ont pas des IDs cohérents
-    // (ou ne reflètent pas le profil actif). Dans ce cas, on accepte un match sur le nom.
-    if (targetName) {
-      const nameCandidates = [
-        p?.name,
-        p?.displayName,
-        p?.nickname,
-        p?.label,
-        p?.profile?.name,
-        p?.profile?.displayName,
-      ]
-        .filter((x: any) => x !== undefined && x !== null && String(x).trim().length > 0)
-        .map(normName);
-      if (nameCandidates.includes(targetName)) return true;
-    }
-
-    return false;
+    return candidates.includes(target);
   };
 
   const direct = toArrLoc<any>(r?.players);
@@ -1070,7 +1050,7 @@ function buildDashboardForPlayer(
 
   // --------- Loop records
   for (const r of records || []) {
-    const inMatch = recordHasPlayer(r as any, pid, (player as any)?.name);
+    const inMatch = recordHasPlayer(r as any, pid);
     if (!inMatch) continue;
 
     fbMatches++;
@@ -3907,9 +3887,19 @@ export default function StatsHub({
 
   const { enabled: devModeEnabled } = useDevMode();
   const [showRuntimeDebug, setShowRuntimeDebug] = React.useState(false);
+  const STATS_DEBUG = devModeEnabled && showRuntimeDebug;
 
-  // ✅ Active l'overlay uniquement si DevMode ON + toggle ON
-  const statsDebugEnabled = devModeEnabled && showRuntimeDebug;
+  React.useEffect(() => {
+    if (!devModeEnabled) {
+      setShowRuntimeDebug(false);
+      return;
+    }
+    try {
+      const v = localStorage.getItem("dc_stats_runtime_debug");
+      if (v === "1") setShowRuntimeDebug(true);
+    } catch {}
+  }, [devModeEnabled]);
+
 
 
   // ✅ Reconnecte pipeline History -> Store -> StatsHub (source de vérité = History)
@@ -4327,17 +4317,18 @@ const [selectedPlayerId, setSelectedPlayerId] = React.useState<string | null>(
 const [trainingSubView, setTrainingSubView] = React.useState<"stats" | "leaderboards">("stats");
 
 // Si le parent change initialPlayerId / playerId → on suit
-React.useEffect(() => {
-  if (!activePlayerId) return;
-  // IMPORTANT (mobile/offline): ne pas forcer le changement de joueur sélectionné
-  // à chaque bascule de l'ID actif (ex: profile online) sinon dashboard => 0.
-  setSelectedPlayerId((prev) => {
-    const next = String(activePlayerId);
-    if (!prev) return next;
-    const exists = filteredPlayers?.some((p) => String(p?.id) === String(prev));
-    return exists ? prev : next;
-  });
-}, [activePlayerId, filteredPlayers]);
+  React.useEffect(() => {
+    // Mode "profil actif" : on colle STRICTEMENT au profil actif (pas de fallback sur l'ancien choix).
+    if (mode === "active") {
+      setSelectedPlayerId(activePlayerId ? String(activePlayerId) : null);
+      return;
+    }
+
+    // Autres modes : on conserve la sélection si elle existe encore dans la liste filtrée.
+    const prev = selectedPlayerId;
+    if (prev && filteredPlayers.some((p) => p.id === prev)) return;
+    setSelectedPlayerId(activePlayerId ? String(activePlayerId) : null);
+  }, [mode, activePlayerId, selectedPlayerId, filteredPlayers]);
 
 // Si rien de sélectionné OU joueur filtré → 1er dispo
 React.useEffect(() => {
@@ -4379,7 +4370,7 @@ const { cachedDashboard } = useFastDashboardCache(effectiveProfileId || null);
 // - Montre combien de matches matchent l'id sélectionné selon chaque mapping
 // ============================================================
 const dbg = React.useMemo(() => {
-  if (!statsDebugEnabled) return null;
+  if (!STATS_DEBUG) return null;
 
   const selectedId = String(effectiveProfileId || "");
   const keysAll = typeof window !== "undefined" ? STATS_CACHE_KEYS(selectedId) : [];
@@ -4423,7 +4414,7 @@ const dbg = React.useMemo(() => {
     fieldCounts,
     matchCount,
   };
-}, [statsDebugEnabled, effectiveProfileId, selectedPlayerId, activePlayerId, nmEffective]);
+}, [effectiveProfileId, selectedPlayerId, activePlayerId, nmEffective]);
 
 
 // ============================================================
@@ -4675,7 +4666,7 @@ const killerAgg = React.useMemo<KillerAgg | null>(() => {
     const modeKey = classifyRecordMode(r);
     if (modeKey !== "killer") continue;
 
-    const inMatch = recordHasPlayer(r as any, pid, (player as any)?.name);
+    const inMatch = recordHasPlayer(r as any, pid);
     if (!inMatch) continue;
 
     matches++;
@@ -6039,7 +6030,36 @@ return (
         </div>
       </div>
     </div>
-      {statsDebugEnabled && dbg && (
+      {devModeEnabled && (
+        <button
+          type="button"
+          onClick={() => {
+            const next = !showRuntimeDebug;
+            setShowRuntimeDebug(next);
+            try { localStorage.setItem("dc_stats_runtime_debug", next ? "1" : "0"); } catch {}
+          }}
+          style={{
+            position: "fixed",
+            right: 14,
+            bottom: 84,
+            zIndex: 9999,
+            padding: "10px 12px",
+            borderRadius: 999,
+            border: "1px solid rgba(255,255,255,0.18)",
+            background: showRuntimeDebug ? "rgba(255,215,0,0.22)" : "rgba(0,0,0,0.32)",
+            color: "#fff",
+            backdropFilter: "blur(8px)",
+            WebkitBackdropFilter: "blur(8px)",
+            boxShadow: "0 8px 24px rgba(0,0,0,0.35)",
+          }}
+          aria-label={showRuntimeDebug ? "Masquer le debug" : "Afficher le debug"}
+          title={showRuntimeDebug ? "Masquer le debug" : "Afficher le debug"}
+        >
+          🧪
+        </button>
+      )}
+
+{STATS_DEBUG && dbg && (
   <div
     style={{
       position: "fixed",

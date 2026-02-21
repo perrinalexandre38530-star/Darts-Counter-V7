@@ -425,6 +425,8 @@ export default function CricketPlay({ profiles, params, onFinish }: Props) {
 
   // ---- Variante (2A): Cricket classique / Enculette-Vache ----
   const [variantId, setVariantId] = React.useState<CricketVariantId>("classic");
+  // ✅ ENCULETTE : objectif optionnel (0 => pas d'objectif)
+  const [encObjective, setEncObjective] = React.useState<number>(0);
 
   const [randomStart, setRandomStart] = React.useState<boolean>(false);
   const [teamMode, setTeamMode] = React.useState<boolean>(false);
@@ -433,21 +435,23 @@ export default function CricketPlay({ profiles, params, onFinish }: Props) {
   // ✅ DartSet (v1) — utile pour StatsHub / Stats par fléchettes
   const dartSetId = String(params?.dartSetId ?? params?.config?.dartSetId ?? "").trim() || null;
 
-  // Preset depuis la route (Games / registry / liens)
-  // - presetVariantId : ancienne clé utilisée par certaines cartes
-  // - variantId       : clé standard (ex: enculette, cut_throat)
+    // Preset depuis la route (registry / darts_mode)
   React.useEffect(() => {
-    const preset = String((params as any)?.presetVariantId ?? (params as any)?.variantId ?? "").toLowerCase();
-    if (preset === "enculette") setVariantId("enculette");
-    else if (preset && preset !== "cut_throat" && preset !== "cut-throat") setVariantId("classic");
-  }, [params?.presetVariantId, (params as any)?.variantId]);
+    const raw = (params as any)?.variantId ?? (params as any)?.presetVariantId ?? "";
+    const v = String(raw).toLowerCase();
 
-  // Preset Cut-Throat (route / registry)
-  const isCutThroatRoute = (() => {
-    const v = String((params as any)?.variantId ?? (params as any)?.presetVariantId ?? "").toLowerCase();
-    return v === "cut_throat" || v === "cut-throat";
-  })();
-  React.useEffect(() => {
+    if (v === "enculette") setVariantId("enculette");
+    else if (v === "cut_throat" || v === "cut-throat") setVariantId("cut_throat");
+    else if (v === "classic") setVariantId("classic");
+    else if (v) setVariantId("classic");
+  }, [params?.variantId, params?.presetVariantId]);// Preset Cut-Throat depuis le registry (Cricket Cut-Throat)
+  const isCutThroatRoute = String(params?.variantId || '').toLowerCase() === 'cut_throat';
+    React.useEffect(() => {
+    if (variantId !== "enculette") setEncObjective(0);
+    if (variantId === "enculette") setScoreMode("points");
+  }, [variantId]);
+
+React.useEffect(() => {
     if (isCutThroatRoute) {
       setScoreMode('points'); // Cut-throat = points obligatoires
       // On garde variantId UI (classic/enculette) mais le moteur bascule en cut-throat via option.
@@ -1010,7 +1014,9 @@ function renderAvatarCircle(
     }
 
     const match = createCricketMatch(players, {
-      withPoints: (scoreMode === "points") || isCutThroatRoute,
+      variant: variantId === "enculette" ? "enculette" : "classic",
+      objective: variantId === "enculette" ? encObjective : 0,
+      withPoints: (variantId === "enculette") ? true : ((scoreMode === "points") || isCutThroatRoute),
       cutThroat: isCutThroatRoute,
       maxRounds,
     });
@@ -1453,7 +1459,7 @@ return {
       mode: "cricket",
       dartSetId,
       dartSetIdsByPlayer,
-      meta: { ...(params?.meta || {}), dartSetId, dartSetIdsByPlayer },
+      meta: { ...(params?.meta || {}), dartSetId, dartSetIdsByPlayer, variantId: (isCutThroatRoute ? "cut_throat" : variantId), scoringVariant },
 	      // ✅ Stats unifiées (léger) — utilisées par StatsHub si présent
 	      stats: {
 	        sport: "cricket",
@@ -1883,22 +1889,12 @@ return {
         >
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 12 }}>
             <div style={{ fontSize: 13, color: T.textSoft }}>Variante</div>
-            <div
-              style={{
-                display: "flex",
-                flexDirection: "column",
-                gap: 8,
-                alignItems: "flex-end",
-              }}
-            >
+            <div style={{ display: "flex", gap: 8 }}>
               <Pill tone="gold" active={variantId === "classic"} onClick={() => setVariantId("classic")}>
                 Cricket
               </Pill>
               <Pill tone="gold" active={variantId === "enculette"} onClick={() => setVariantId("enculette")}>
                 Enculette / Vache
-              </Pill>
-              <Pill tone="gold" active={variantId === "cut_throat"} onClick={() => setVariantId("cut_throat")}>
-                Cut-Throat
               </Pill>
             </div>
           </div>
@@ -1906,10 +1902,22 @@ return {
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
             <div style={{ fontSize: 13, color: T.textSoft }}>Mode de score</div>
             <div style={{ display: "flex", gap: 8 }}>
-              <Pill tone="green" active={scoreMode === "points"} onClick={() => setScoreMode("points")}>
+              <Pill
+                tone="green"
+                active={scoreMode === "points" || isCutThroatRoute || variantId === "enculette"}
+                onClick={() => setScoreMode("points")}
+              >
                 Points
               </Pill>
-              <Pill tone="gray" active={scoreMode === "no-points"} onClick={() => setScoreMode("no-points")}>
+              <Pill
+                tone="gray"
+                active={!isCutThroatRoute && variantId !== "enculette" && scoreMode === "no-points"}
+                onClick={() => {
+                  if (isCutThroatRoute || variantId === "enculette") return;
+                  setScoreMode("no-points");
+                }}
+                disabled={isCutThroatRoute || variantId === "enculette"}
+              >
                 Sans points
               </Pill>
             </div>
@@ -1933,6 +1941,24 @@ return {
               ))}
             </div>
           </div>
+
+          {variantId === "enculette" && (
+            <div style={{ marginTop: 12, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+              <div style={{ fontSize: 13, color: T.textSoft, lineHeight: 1.2 }}>
+                Objectif{" "}
+                <span style={{ opacity: 0.7, fontSize: 12 }}>
+                  (0 = pas d&apos;objectif)
+                </span>
+              </div>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
+                {[0, 100, 200, 300, 500, 1000].map((n) => (
+                  <Pill key={n} tone={n === 0 ? "gray" : "gold"} active={encObjective === n} onClick={() => setEncObjective(n)}>
+                    {n === 0 ? "OFF" : n}
+                  </Pill>
+                ))}
+              </div>
+            </div>
+          )}
         </SectionCard>
 
         {/* OPTIONS AVANCÉES */}
