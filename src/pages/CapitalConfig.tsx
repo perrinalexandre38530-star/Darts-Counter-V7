@@ -19,6 +19,7 @@ import ProfileAvatar from "../components/ProfileAvatar";
 import { useLang } from "../contexts/LangContext";
 import { useTheme } from "../contexts/ThemeContext";
 import { PRO_BOTS, proBotToProfile } from "../lib/botsPro";
+import { getProBotAvatar } from "../lib/botsProAvatars";
 import { SCORE_INPUT_LS_KEY, type ScoreInputMethod } from "../lib/scoreInput/types";
 
 type BotLevel = "easy" | "normal" | "hard";
@@ -59,6 +60,15 @@ export type CapitalConfigPayload = {
 
   // Saisie
   inputMethod: ScoreInputMethod;
+
+  // ✅ Victoire / tie-break
+  victoryMode?: "best_after_contracts" | "first_to_target";
+  targetScore?: number;
+  tieBreaker?: "none" | "last_contract_total";
+
+  // ✅ Règles
+  failDivideBy2?: boolean; // true=officiel (/2), false=pas de /2
+  startingCapital?: number; // si includeCapital=false, score initial
 };
 
 const OFFICIAL_CONTRACTS: CapitalContractID[] = [
@@ -230,7 +240,17 @@ export default function CapitalConfig(props: any) {
   );
 
   // Bots pool = PRO_BOTS + bots custom (dc_bots_v1)
-  const proBots = useMemo(() => PRO_BOTS.map((b) => proBotToProfile(b) as any), []);
+  const proBots = useMemo(() =>
+    PRO_BOTS.map((b) => {
+      const p: any = proBotToProfile(b) as any;
+      // Inject avatarDataUrl pour que ProfileAvatar affiche l'image (comme les autres menus)
+      p.avatarDataUrl = getProBotAvatar((b as any).avatarKey);
+      // compat: certains écrans utilisent id "bot_*"
+      p.legacyId = `bot_${String((b as any).id)}`;
+      return p;
+    }),
+    []
+  );
   const customBots = useMemo(() => safeCustomBotsProfiles(), []);
   const allBots = useMemo(() => {
     const all = [...proBots, ...customBots];
@@ -299,6 +319,13 @@ export default function CapitalConfig(props: any) {
   const [mode, setMode] = useState<CapitalModeKind>("official");
   const [includeCapital, setIncludeCapital] = useState<boolean>(true);
 
+  // ------------------ Victoire / règles ------------------
+  const [victoryMode, setVictoryMode] = useState<"best_after_contracts" | "first_to_target">("best_after_contracts");
+  const [targetScore, setTargetScore] = useState<number>(700);
+  const [tieBreaker, setTieBreaker] = useState<"none" | "last_contract_total">("last_contract_total");
+  const [failDivideBy2, setFailDivideBy2] = useState<boolean>(true);
+  const [startingCapital, setStartingCapital] = useState<number>(301);
+
   const [customContracts, setCustomContracts] = useState<CapitalContractID[]>([
     "n20",
     "triple_any",
@@ -338,6 +365,16 @@ export default function CapitalConfig(props: any) {
       includeCapital,
       customContracts: mode === "official" ? OFFICIAL_CONTRACTS : customList,
       inputMethod,
+    victoryMode,
+    targetScore,
+    tieBreaker,
+    failDivideBy2,
+    startingCapital,
+      victoryMode,
+      targetScore: victoryMode === "first_to_target" ? clamp(targetScore, 50, 5000) : undefined,
+      tieBreaker,
+      failDivideBy2,
+      startingCapital: includeCapital ? undefined : clamp(startingCapital, 0, 5000),
     };
   }, [
     players,
@@ -349,6 +386,11 @@ export default function CapitalConfig(props: any) {
     includeCapital,
     customList,
     inputMethod,
+    victoryMode,
+    targetScore,
+    tieBreaker,
+    failDivideBy2,
+    startingCapital,
   ]);
 
   // ------------------ UI helpers ------------------
@@ -1125,6 +1167,87 @@ export default function CapitalConfig(props: any) {
           </>
         )}
       </Section>
+
+      {/* ============================= */}
+      {/* VICTOIRE / RÈGLES */}
+      {/* ============================= */}
+      <Section title="Victoire / Règles">
+        <OptionRow label="Condition de victoire">
+          <OptionSelect
+            value={victoryMode}
+            options={[
+              { value: "best_after_contracts", label: "Meilleur score après contrats (officiel)" },
+              { value: "first_to_target", label: "Premier à atteindre un score cible" },
+            ]}
+            onChange={(v: any) => setVictoryMode(v)}
+          />
+        </OptionRow>
+
+        {victoryMode === "first_to_target" && (
+          <OptionRow label="Score cible">
+            <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+              <input
+                value={String(targetScore)}
+                onChange={(e) => setTargetScore(Number(e.target.value || 0))}
+                type="number"
+                min={50}
+                max={5000}
+                style={{
+                  width: 120,
+                  padding: "10px 12px",
+                  borderRadius: 12,
+                  border: "1px solid rgba(255,255,255,0.18)",
+                  background: "rgba(0,0,0,0.25)",
+                  color: "#f6f2e9",
+                  fontWeight: 900,
+                }}
+              />
+              <div style={{ fontSize: 12, opacity: 0.75 }}>ex: 500 / 700 / 1000</div>
+            </div>
+          </OptionRow>
+        )}
+
+        <OptionRow label="Tie-break (si égalité)">
+          <OptionSelect
+            value={tieBreaker}
+            options={[
+              { value: "last_contract_total", label: "Meilleur total sur le dernier contrat" },
+              { value: "none", label: "Aucun (égalité)" },
+            ]}
+            onChange={(v: any) => setTieBreaker(v)}
+          />
+        </OptionRow>
+
+        <OptionRow label="Règle /2 en cas d'échec">
+          <OptionToggle value={failDivideBy2} onChange={setFailDivideBy2} />
+        </OptionRow>
+
+        {!includeCapital && (
+          <OptionRow label="Capital de départ (si Capital OFF)">
+            <input
+              value={String(startingCapital)}
+              onChange={(e) => setStartingCapital(Number(e.target.value || 0))}
+              type="number"
+              min={0}
+              max={5000}
+              style={{
+                width: 140,
+                padding: "10px 12px",
+                borderRadius: 12,
+                border: "1px solid rgba(255,255,255,0.18)",
+                background: "rgba(0,0,0,0.25)",
+                color: "#f6f2e9",
+                fontWeight: 900,
+              }}
+            />
+          </OptionRow>
+        )}
+
+        <div style={{ marginTop: 10, fontSize: 12, opacity: 0.75, lineHeight: 1.35 }}>
+          ✅ Officiel : Capital ON + /2 ON + Meilleur score après contrats.
+        </div>
+      </Section>
+
 
       {/* ============================= */}
       {/* SAISIE */}

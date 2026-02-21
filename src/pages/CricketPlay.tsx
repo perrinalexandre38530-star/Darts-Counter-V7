@@ -433,15 +433,20 @@ export default function CricketPlay({ profiles, params, onFinish }: Props) {
   // ✅ DartSet (v1) — utile pour StatsHub / Stats par fléchettes
   const dartSetId = String(params?.dartSetId ?? params?.config?.dartSetId ?? "").trim() || null;
 
-  // Preset depuis la route générique (darts_mode → cricket)
+  // Preset depuis la route (Games / registry / liens)
+  // - presetVariantId : ancienne clé utilisée par certaines cartes
+  // - variantId       : clé standard (ex: enculette, cut_throat)
   React.useEffect(() => {
-    const preset = String(params?.presetVariantId || "").toLowerCase();
+    const preset = String((params as any)?.presetVariantId ?? (params as any)?.variantId ?? "").toLowerCase();
     if (preset === "enculette") setVariantId("enculette");
-    else if (preset) setVariantId("classic");
-  }, [params?.presetVariantId]);
+    else if (preset && preset !== "cut_throat" && preset !== "cut-throat") setVariantId("classic");
+  }, [params?.presetVariantId, (params as any)?.variantId]);
 
-  // Preset Cut-Throat depuis le registry (Cricket Cut-Throat)
-  const isCutThroatRoute = String(params?.variantId || '').toLowerCase() === 'cut_throat';
+  // Preset Cut-Throat (route / registry)
+  const isCutThroatRoute = (() => {
+    const v = String((params as any)?.variantId ?? (params as any)?.presetVariantId ?? "").toLowerCase();
+    return v === "cut_throat" || v === "cut-throat";
+  })();
   React.useEffect(() => {
     if (isCutThroatRoute) {
       setScoreMode('points'); // Cut-throat = points obligatoires

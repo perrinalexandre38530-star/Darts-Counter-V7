@@ -904,6 +904,57 @@ function recordHasPlayer(r: any, pid: string): boolean {
   return false;
 }
 
+/* ---------- Resolve active profile playerId (local-only) ---------- */
+function resolveActivePlayerIdLocalOnly(opts: {
+  activeId: string | null | undefined;
+  activeName: string | null | undefined;
+  allPlayers: PlayerLite[];
+  records: any[];
+}): string {
+  const activeId = (opts.activeId ?? "").toString();
+  const activeName = (opts.activeName ?? "").toString().trim();
+  const allPlayers = opts.allPlayers ?? [];
+  const records = opts.records ?? [];
+
+  if (!activeId && !activeName) return activeId;
+
+  // 1) If activeId already exists in detected players, keep it.
+  if (activeId && allPlayers.some((p) => String(p?.id) === String(activeId))) return activeId;
+
+  // 2) Try exact name match (common when history uses numeric ids).
+  const nameLc = activeName.toLowerCase();
+  const byName = nameLc
+    ? allPlayers.filter((p) => (p?.name ?? "").toLowerCase() === nameLc)
+    : [];
+
+  if (byName.length === 1) return String(byName[0].id);
+
+  // 3) If multiple (or none), choose the id that appears most in history.
+  const candidates = (byName.length > 0 ? byName : allPlayers)
+    .map((p) => String(p?.id))
+    .filter((id) => id.length > 0);
+
+  if (candidates.length === 0) return activeId;
+
+  const counts = new Map<string, number>();
+  for (const r of records) {
+    for (const cid of candidates) {
+      if (recordHasPlayer(r, cid)) counts.set(cid, (counts.get(cid) ?? 0) + 1);
+    }
+  }
+
+  let bestId = "";
+  let best = 0;
+  for (const [cid, c] of counts.entries()) {
+    if (c > best) {
+      best = c;
+      bestId = cid;
+    }
+  }
+
+  return bestId || activeId;
+}
+
 /* ---------- Adaptateur → PlayerDashboardStats ---------- */
 function buildDashboardForPlayer(
   player: PlayerLite,
@@ -4176,11 +4227,26 @@ const allPlayers = React.useMemo(() => {
 // ---------- 4) Sélection joueur + option BOTS / mode actif vs locaux ----------
 
 // Id du joueur actif transmis par StatsShell
-const activePlayerId = (playerId ?? initialPlayerId ?? (profile as any)?.id ?? null) as
+const activePlayerIdRaw = (playerId ?? initialPlayerId ?? (profile as any)?.id ?? null) as
   | string
   | null;
-  // ID clé "profil actif" (priorité au profil online quand dispo)
-  const activeKeyId = String((profile as any)?.id ?? activePlayerId ?? "");
+
+const activeProfileName =
+  ((profile as any)?.displayName ?? (profile as any)?.name ?? (profile as any)?.nickname ?? "") as string;
+
+// Local-only resolution: if the active profile id is not present in history (typical when history uses legacy numeric ids),
+// we fallback to the player id that matches by name / most frequent in history.
+const activePlayerId = React.useMemo(() => {
+  return resolveActivePlayerIdLocalOnly({
+    activeId: activePlayerIdRaw,
+    activeName: activeProfileName,
+    allPlayers,
+    records: normalizedMatchesClean,
+  });
+}, [activePlayerIdRaw, activeProfileName, allPlayers, normalizedMatchesClean]);
+
+// Key id used for UI/cache (keeps the actual active profile id)
+const activeKeyId = String((profile as any)?.id ?? activePlayerIdRaw ?? "");
 
 
   // ✅ DEBUG (à coller ICI, juste après activePlayerId)

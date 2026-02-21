@@ -48,6 +48,60 @@ export default function SyncCenter({ store, go, profileId }: Props) {
   const [importJson, setImportJson] = React.useState<string>("");
   const [localMessage, setLocalMessage] = React.useState<string>("");
 
+  // --- IMPORT REPORT (debug / vérification) ---
+  const [importReport, setImportReport] = React.useState<string>("");
+  const [importReportAt, setImportReportAt] = React.useState<string>("");
+
+  function summarizeStore(s: any) {
+    const profiles = Array.isArray(s?.profiles) ? s.profiles.length : 0;
+    const savedKeys = s?.saved && typeof s.saved === "object" ? Object.keys(s.saved).length : 0;
+    const settingsKeys = s?.settings && typeof s.settings === "object" ? Object.keys(s.settings).length : 0;
+    const hasFriends = !!s?.friends;
+    const activeProfileId = s?.activeProfileId ?? null;
+
+    const names = (Array.isArray(s?.profiles) ? s.profiles : [])
+      .map((p: any) => p?.name || p?.pseudo || p?.displayName || p?.email || p?.id)
+      .filter(Boolean)
+      .slice(0, 6);
+
+    return { profiles, savedKeys, settingsKeys, hasFriends, activeProfileId, sampleProfiles: names };
+  }
+
+  function buildImportReport(meta: {
+    kind: string;
+    source: string;
+    token?: string;
+    note?: string;
+  }, before: any, after: any) {
+    try {
+      const b = summarizeStore(before);
+      const a = summarizeStore(after);
+      const lines: string[] = [];
+      const ts = new Date().toISOString().slice(0, 19).replace("T", " ");
+      lines.push(`[${ts}] === Import report ===`);
+      lines.push(`kind: ${meta.kind}`);
+      lines.push(`source: ${meta.source}`);
+      if (meta.token) lines.push(`token: ${meta.token}`);
+      if (meta.note) lines.push(`note: ${meta.note}`);
+      lines.push(`origin: ${window.location.origin}`);
+      lines.push("--- before ---");
+      lines.push(`profiles=${b.profiles} | savedKeys=${b.savedKeys} | settingsKeys=${b.settingsKeys} | friends=${b.hasFriends ? "yes" : "no"} | activeProfileId=${b.activeProfileId ?? "(null)"}`);
+      if (b.sampleProfiles?.length) lines.push(`profiles(sample): ${b.sampleProfiles.join(", ")}`);
+      lines.push("--- after ---");
+      lines.push(`profiles=${a.profiles} | savedKeys=${a.savedKeys} | settingsKeys=${a.settingsKeys} | friends=${a.hasFriends ? "yes" : "no"} | activeProfileId=${a.activeProfileId ?? "(null)"}`);
+      if (a.sampleProfiles?.length) lines.push(`profiles(sample): ${a.sampleProfiles.join(", ")}`);
+      lines.push("--- delta ---");
+      lines.push(`profiles: ${b.profiles} → ${a.profiles} (${a.profiles - b.profiles >= 0 ? "+" : ""}${a.profiles - b.profiles})`);
+      lines.push(`savedKeys: ${b.savedKeys} → ${a.savedKeys} (${a.savedKeys - b.savedKeys >= 0 ? "+" : ""}${a.savedKeys - b.savedKeys})`);
+      lines.push(`settingsKeys: ${b.settingsKeys} → ${a.settingsKeys} (${a.settingsKeys - b.settingsKeys >= 0 ? "+" : ""}${a.settingsKeys - b.settingsKeys})`);
+
+      setImportReport(lines.join("\n"));
+      setImportReportAt(ts);
+    } catch (e) {
+      console.warn("buildImportReport failed", e);
+    }
+  }
+
   // --- CLOUD SYNC ---
   const [cloudToken, setCloudToken] = React.useState<string>("");
   const [cloudStatus, setCloudStatus] = React.useState<string>("");
@@ -74,8 +128,11 @@ export default function SyncCenter({ store, go, profileId }: Props) {
   async function importParsedPayload(parsed: any) {
     // Store complet
     if (parsed.kind === "dc_store_snapshot_v1" && parsed.store) {
+      const before = (await loadStore()) || store;
       const nextStore: Store = parsed.store;
       await saveStore(nextStore);
+      buildImportReport({ kind: parsed.kind, source: "cloud/download", token }, before, nextStore);
+      buildImportReport({ kind: parsed.kind, source: "local/importParsedPayload" }, before, nextStore);
       return;
     }
 
@@ -113,13 +170,16 @@ export default function SyncCenter({ store, go, profileId }: Props) {
         profiles: newProfiles,
       };
       await saveStore(nextStore);
+      buildImportReport({ kind: parsed.kind, source: "local/profileImport", note: incoming?.id ? `profileId=${incoming.id}` : undefined }, current, nextStore);
       return;
     }
 
     // Payload peer ancien (snapshot complet)
     if (parsed.kind === "dc_peer_sync_v1" && parsed.store) {
+      const before = (await loadStore()) || store;
       const incomingStore: Store = parsed.store;
       await saveStore(incomingStore);
+      buildImportReport({ kind: parsed.kind, source: "peer/legacy", note: "dc_peer_sync_v1 full store" }, before, incomingStore);
       return;
     }
 
@@ -1063,6 +1123,9 @@ async function handleCloudAutoTest() {
             exportJson={exportJson}
             importJson={importJson}
             message={localMessage}
+            importReport={importReport}
+            importReportAt={importReportAt}
+            onClearImportReport={() => { setImportReport(""); setImportReportAt(""); }}
             onChangeImport={setImportJson}
             onExportStore={handleExportFullStore}
             onExportActiveProfile={handleExportActiveProfile}
@@ -1092,6 +1155,9 @@ async function handleCloudAutoTest() {
             t={t}
             token={cloudToken}
             status={cloudStatus}
+            importReport={importReport}
+            importReportAt={importReportAt}
+            onClearImportReport={() => { setImportReport(""); setImportReportAt(""); }}
             onTokenChange={setCloudToken}
             onUpload={handleCloudUpload}
             onDownload={handleCloudDownload}
@@ -1404,6 +1470,9 @@ function LocalPanel({
   exportJson,
   importJson,
   message,
+  importReport,
+  importReportAt,
+  onClearImportReport,
   onChangeImport,
   onExportStore,
   onExportActiveProfile,
@@ -1417,6 +1486,9 @@ function LocalPanel({
   exportJson: string;
   importJson: string;
   message: string;
+  importReport: string;
+  importReportAt: string;
+  onClearImportReport: () => void;
   onChangeImport: (v: string) => void;
   onExportStore: () => void;
   onExportActiveProfile: () => void;
@@ -1584,6 +1656,57 @@ function LocalPanel({
           }}
         >
           {message}
+        </div>
+      )}
+      {importReport && (
+        <div
+          style={{
+            marginTop: 10,
+            paddingTop: 10,
+            borderTop: `1px dashed ${theme.borderSoft}`,
+          }}
+        >
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: 8,
+              marginBottom: 6,
+            }}
+          >
+            <div
+              style={{
+                fontSize: 11,
+                fontWeight: 800,
+                letterSpacing: 0.4,
+                textTransform: "uppercase",
+                color: theme.text,
+              }}
+            >
+              {t("syncCenter.importReport.title", "Dernier import (rapport)")}
+              {importReportAt ? ` — ${importReportAt}` : ""}
+            </div>
+            <button onClick={onClearImportReport} style={buttonSmall(theme)}>
+              {t("syncCenter.importReport.clear", "Effacer")}
+            </button>
+          </div>
+
+          <div
+            style={{
+              fontSize: 11,
+              color: theme.textSoft,
+              whiteSpace: "pre-wrap",
+              fontFamily:
+                "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace",
+              background: "rgba(0,0,0,0.55)",
+              border: `1px solid ${theme.borderSoft}`,
+              borderRadius: 12,
+              padding: 10,
+            }}
+          >
+            {importReport}
+          </div>
         </div>
       )}
     </div>
@@ -1775,9 +1898,62 @@ function PeerPanel({
             marginTop: 6,
             fontSize: 11,
             color: theme.textSoft,
+            whiteSpace: "pre-wrap",
           }}
         >
           {status}
+        </div>
+      )}
+
+      {importReport && (
+        <div
+          style={{
+            marginTop: 10,
+            paddingTop: 10,
+            borderTop: `1px dashed ${theme.borderSoft}`,
+          }}
+        >
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: 8,
+              marginBottom: 6,
+            }}
+          >
+            <div
+              style={{
+                fontSize: 11,
+                fontWeight: 800,
+                letterSpacing: 0.4,
+                textTransform: "uppercase",
+                color: theme.text,
+              }}
+            >
+              {t("syncCenter.importReport.title", "Dernier import (rapport)")}
+              {importReportAt ? ` — ${importReportAt}` : ""}
+            </div>
+            <button onClick={onClearImportReport} style={buttonSmall(theme)}>
+              {t("syncCenter.importReport.clear", "Effacer")}
+            </button>
+          </div>
+
+          <div
+            style={{
+              fontSize: 11,
+              color: theme.textSoft,
+              whiteSpace: "pre-wrap",
+              fontFamily:
+                "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace",
+              background: "rgba(0,0,0,0.55)",
+              border: `1px solid ${theme.borderSoft}`,
+              borderRadius: 12,
+              padding: 10,
+            }}
+          >
+            {importReport}
+          </div>
         </div>
       )}
 
@@ -2053,6 +2229,9 @@ function CloudPanel({
   t,
   token,
   status,
+  importReport,
+  importReportAt,
+  onClearImportReport,
   onTokenChange,
   onUpload,
   onDownload,
@@ -2063,6 +2242,9 @@ function CloudPanel({
   t: (k: string, f: string) => string;
   token: string;
   status: string;
+  importReport: string;
+  importReportAt: string;
+  onClearImportReport: () => void;
   onTokenChange: (v: string) => void;
   onUpload: () => void;
   onDownload: () => void;

@@ -7,6 +7,7 @@ import { useLang } from "../contexts/LangContext";
 import { useTheme } from "../contexts/ThemeContext";
 import tickerCapital from "../assets/tickers/ticker_capital.png";
 import { PRO_BOTS, proBotToProfile } from "../lib/botsPro";
+import { getProBotAvatar } from "../lib/botsProAvatars";
 
 type BotLevel = "easy" | "normal" | "hard";
 
@@ -297,18 +298,38 @@ export default function CapitalPlay(props: any) {
       mode: "official",
       includeCapital: true,
       customContracts: OFFICIAL_CONTRACTS,
+      victoryMode: "best_after_contracts",
+      targetScore: 700,
+      tieBreaker: "last_contract_total",
+      failDivideBy2: true,
+      startingCapital: 301,
     };
 
   
   const store = props?.store;
 
   const profiles = useMemo(() => safeStoreProfiles(store), [store]);
-  const proBots = useMemo(() => PRO_BOTS.map((b) => proBotToProfile(b) as any), []);
+  const proBots = useMemo(() =>
+    PRO_BOTS.map((b) => {
+      const p: any = proBotToProfile(b) as any;
+      p.avatarDataUrl = getProBotAvatar((b as any).avatarKey);
+      p.legacyId = `bot_${String((b as any).id)}`;
+      return p;
+    }),
+    []
+  );
   const customBots = useMemo(() => safeCustomBotsProfiles(), []);
   const allEntities = useMemo(() => {
     const m = new Map<string, any>();
     for (const p of profiles) if (p?.id) m.set(String(p.id), p);
-    for (const b of [...proBots, ...customBots]) if (b?.id) m.set(String(b.id), b);
+    for (const b of [...proBots, ...customBots]) {
+      if (b?.id) m.set(String(b.id), b);
+      // compat anciens ids capital (bot_*)
+      const legacy = (b as any)?.legacyId;
+      if (legacy) m.set(String(legacy), b);
+      const also = String(b?.id || "");
+      if (also && also.startsWith("bot_")) m.set(also.slice(4), b);
+    }
     return m;
   }, [profiles, proBots, customBots]);
 
@@ -358,13 +379,18 @@ const contracts = useMemo<CapitalContractID[]>(() => {
   const [roundIdx, setRoundIdx] = useState(0);
   const [playerIdx, setPlayerIdx] = useState(0);
 
-  const [scores, setScores] = useState<number[]>(() => Array.from({ length: playerCount }, () => 0));
+  const [finishedEarly, setFinishedEarly] = useState<boolean>(false);
+  const [lastVisit, setLastVisit] = useState<number[]>(() => Array.from({ length: playerCount }, () => 0));
+
+  const [scores, setScores] = useState<number[]>(() =>
+    Array.from({ length: playerCount }, () => (cfg?.includeCapital === false ? Number(cfg?.startingCapital || 0) : 0))
+  );
 
   const [currentThrow, setCurrentThrow] = useState<Dart[]>([]);
   const [multiplier, setMultiplier] = useState<1 | 2 | 3>(1);
 
   const currentContract = contracts[Math.min(roundIdx, rounds - 1)];
-  const isFinished = roundIdx >= rounds;
+  const isFinished = finishedEarly || roundIdx >= rounds;
 
   function goBack() {
     if (props?.setTab) return props.setTab("capital_config");
@@ -394,20 +420,39 @@ const contracts = useMemo<CapitalContractID[]>(() => {
     const ok = contractSuccess(currentContract, th);
     const visit = scoreThrow(th);
 
+    const prevScoreNow = scores[playerIdx] ?? 0;
+    let nextScoreNow = prevScoreNow;
+
+    if (currentContract === "capital") {
+      // score de départ = total des 3 fléchettes (officiel)
+      nextScoreNow = visit;
+    } else {
+      if (ok) nextScoreNow = prevScoreNow + visit;
+      else nextScoreNow = cfg?.failDivideBy2 === false ? prevScoreNow : Math.floor(prevScoreNow / 2);
+    }
+
     setScores((prev) => {
       const out = [...prev];
-      const prevScore = out[playerIdx] ?? 0;
-
-      if (currentContract === "capital") {
-        // score de départ = total des 3 fléchettes
-        out[playerIdx] = visit;
-      } else {
-        out[playerIdx] = ok ? prevScore + visit : Math.floor(prevScore / 2);
-      }
+      out[playerIdx] = nextScoreNow;
       return out;
     });
 
-    // next
+    setLastVisit((prev) => {
+      const out = [...prev];
+      out[playerIdx] = visit;
+      return out;
+    });
+
+    // victoire: premier à atteindre un score cible (optionnel)
+    if (cfg?.victoryMode === "first_to_target") {
+      const tgt = Number(cfg?.targetScore || 0);
+      if (tgt > 0 && nextScoreNow >= tgt) {
+        setFinishedEarly(true);
+        cancelTurn();
+        return;
+      }
+    }
+// next
     const nextP = (playerIdx + 1) % playerCount;
     const nextR = nextP === 0 ? roundIdx + 1 : roundIdx;
 
@@ -419,17 +464,34 @@ const contracts = useMemo<CapitalContractID[]>(() => {
 
   const leaderIdx = useMemo(() => {
     let best = -Infinity;
-    let bestIdx = 0;
+    let bestIdxs: number[] = [];
     scores.forEach((s, i) => {
       if (s > best) {
         best = s;
-        bestIdx = i;
+        bestIdxs = [i];
+      } else if (s === best) {
+        bestIdxs.push(i);
       }
     });
-    return bestIdx;
-  }, [scores]);
 
-  const successNow = useMemo(() => {
+    // tie-break optionnel (au finish)
+    if (bestIdxs.length > 1 && isFinished && cfg?.tieBreaker === "last_contract_total") {
+      let bestVisit = -Infinity;
+      let pick = bestIdxs[0] ?? 0;
+      bestIdxs.forEach((i) => {
+        const v = lastVisit[i] ?? 0;
+        if (v > bestVisit) {
+          bestVisit = v;
+          pick = i;
+        }
+      });
+      return pick;
+    }
+
+    return bestIdxs[0] ?? 0;
+  }, [scores, lastVisit, isFinished, cfg?.tieBreaker]);
+
+const successNow = useMemo(() => {
     if (isFinished) return false;
     if (currentThrow.length === 0) return false;
     const th = [...currentThrow];
