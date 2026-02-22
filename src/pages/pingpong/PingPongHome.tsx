@@ -6,6 +6,7 @@
 // - ActiveProfileCard + ArcadeTicker
 // - Bloc "Vue globale" = KPIs Ping-Pong
 // - ✅ Remplacement du bloc/boutons d'accès rapide par un 2e ticker d'infos Ping-Pong
+// - ✅ Ajout des fonds ticker (images) par catégorie comme Darts/Pétanque
 // =============================================================
 
 import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
@@ -136,6 +137,131 @@ function useAutoFitTitle(deps: any[] = []) {
   return { wrapRef, textRef, scale };
 }
 
+// -------------------------------------------------------------
+// ✅ TICKER BACKGROUNDS (assets) — à adapter si noms différents
+// -------------------------------------------------------------
+type PingPongTickerCategory =
+  | "match"
+  | "tip"
+  | "news"
+  | "new"
+  | "tips"
+  | "events"
+  | "results";
+
+type TickerVariant = "a" | "b"; // 2 variantes (si tu veux plus tard)
+
+/**
+ * ✅ IMPORTANT
+ * On utilise des chemins RELATIFS + new URL(..., import.meta.url) pour être compatible Vite/StackBlitz.
+ * Donc PAS de "/src/assets/..." ici.
+ */
+const PP_TICKER_IMAGES: Record<PingPongTickerCategory, Record<TickerVariant, string[]>> = {
+  // Ticker #1
+  match: {
+    a: [
+      "../../assets/tickers/ticker_pingpong_match_1.png",
+      "../../assets/tickers/ticker_pingpong_match_2.png",
+    ],
+    b: [
+      "../../assets/tickers/ticker_pingpong_match_3.png",
+      "../../assets/tickers/ticker_pingpong_match_4.png",
+    ],
+  },
+  tip: {
+    a: [
+      "../../assets/tickers/ticker_pingpong_tip_1.png",
+      "../../assets/tickers/ticker_pingpong_tip_2.png",
+    ],
+    b: [
+      "../../assets/tickers/ticker_pingpong_tip_3.png",
+      "../../assets/tickers/ticker_pingpong_tip_4.png",
+    ],
+  },
+
+  // Ticker #2 (infos)
+  news: {
+    a: [
+      "../../assets/tickers/ticker_pingpong_news_1.png",
+      "../../assets/tickers/ticker_pingpong_news_2.png",
+    ],
+    b: [
+      "../../assets/tickers/ticker_pingpong_news_3.png",
+      "../../assets/tickers/ticker_pingpong_news_4.png",
+    ],
+  },
+  new: {
+    a: [
+      "../../assets/tickers/ticker_pingpong_new_1.png",
+      "../../assets/tickers/ticker_pingpong_new_2.png",
+    ],
+    b: [
+      "../../assets/tickers/ticker_pingpong_new_3.png",
+      "../../assets/tickers/ticker_pingpong_new_4.png",
+    ],
+  },
+  tips: {
+    a: [
+      "../../assets/tickers/ticker_pingpong_tips_1.png",
+      "../../assets/tickers/ticker_pingpong_tips_2.png",
+    ],
+    b: [
+      "../../assets/tickers/ticker_pingpong_tips_3.png",
+      "../../assets/tickers/ticker_pingpong_tips_4.png",
+    ],
+  },
+  events: {
+    a: [
+      "../../assets/tickers/ticker_pingpong_events_1.png",
+      "../../assets/tickers/ticker_pingpong_events_2.png",
+    ],
+    b: [
+      "../../assets/tickers/ticker_pingpong_events_3.png",
+      "../../assets/tickers/ticker_pingpong_events_4.png",
+    ],
+  },
+  results: {
+    a: [
+      "../../assets/tickers/ticker_pingpong_results_1.png",
+      "../../assets/tickers/ticker_pingpong_results_2.png",
+    ],
+    b: [
+      "../../assets/tickers/ticker_pingpong_results_3.png",
+      "../../assets/tickers/ticker_pingpong_results_4.png",
+    ],
+  },
+};
+
+// hash stable (seed -> int)
+function hashSeed(str: string): number {
+  let h = 2166136261;
+  for (let i = 0; i < str.length; i++) {
+    h ^= str.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return h >>> 0;
+}
+
+/**
+ * ✅ Convertit "../../assets/..." en URL finale exploitable par <img> / background-image.
+ * (Compatible Vite + StackBlitz)
+ */
+function toAssetUrl(relPathFromThisFile: string): string {
+  try {
+    return new URL(relPathFromThisFile, import.meta.url).href;
+  } catch {
+    return relPathFromThisFile;
+  }
+}
+
+function pickTickerImage(category: PingPongTickerCategory, seed: string, variant: TickerVariant = "a") {
+  const list = PP_TICKER_IMAGES?.[category]?.[variant] ?? [];
+  if (!list.length) return "";
+  const h = hashSeed(`${seed}|${category}|${variant}`);
+  const picked = list[h % list.length] ?? "";
+  return picked ? toAssetUrl(picked) : "";
+}
+
 export default function PingPongHome({ store, go }: Props) {
   const { theme } = useTheme();
   const { t } = useLang();
@@ -183,7 +309,7 @@ export default function PingPongHome({ store, go }: Props) {
 
       const scores = h?.scores && typeof h.scores === "object" ? h.scores : null;
       if (scores) {
-        const my = profId ? Number(scores[profId] ?? 0) : 0;
+        const my = profId ? Number((scores as any)[profId] ?? 0) : 0;
         pointsFor += Number.isFinite(my) ? my : 0;
 
         // opponents = somme des autres scores
@@ -244,7 +370,7 @@ export default function PingPongHome({ store, go }: Props) {
   }, [resume]);
 
   // -------------------------------------------------------------
-  // ✅ TICKER #1 (conservé)
+  // ✅ TICKER #1 (conservé) + fonds image
   // -------------------------------------------------------------
   const tickerItems: ArcadeTickerItem[] = useMemo(() => {
     const st = resume;
@@ -264,7 +390,7 @@ export default function PingPongHome({ store, go }: Props) {
         title: t("pingpong.home.ticker.resume.title", "Ping-Pong — Match"),
         text,
         detail: `${st?.sideA ?? "A"} vs ${st?.sideB ?? "B"}`,
-        backgroundImage: "",
+        backgroundImage: pickTickerImage("match", seed, "a"),
         accentColor: theme.primary ?? "#F6C256",
       },
       {
@@ -272,7 +398,7 @@ export default function PingPongHome({ store, go }: Props) {
         title: t("pingpong.home.ticker.tip.title", "Astuce"),
         text: t("pingpong.home.ticker.tip.text", "Annonce clairement le set et le score avant de reprendre."),
         detail: t("pingpong.home.ticker.tip.detail", "Rythme · Clarté"),
-        backgroundImage: "",
+        backgroundImage: pickTickerImage("tip", seed, "a"),
         accentColor: "#FFFFFF",
       },
     ];
@@ -293,8 +419,7 @@ export default function PingPongHome({ store, go }: Props) {
   }, [activeProfile?.id]);
 
   // -------------------------------------------------------------
-  // ✅ TICKER #2 (nouveau) : infos Ping-Pong (actualité / nouveautés / astuces / évènements / résultats)
-  // Remplace l'ancien bloc avec boutons "Accès rapide"
+  // ✅ TICKER #2 (nouveau) : infos Ping-Pong + fonds image par catégorie
   // -------------------------------------------------------------
   const infoItems: ArcadeTickerItem[] = useMemo(
     () => [
@@ -303,7 +428,7 @@ export default function PingPongHome({ store, go }: Props) {
         title: t("pingpong.home.info.news.title", "Actualité"),
         text: t("pingpong.home.info.news.text", "Nouvelle page Ping-Pong : vue globale dédiée + tickers d'infos."),
         detail: t("pingpong.home.info.news.detail", "Mise à jour"),
-        backgroundImage: "",
+        backgroundImage: pickTickerImage("news", seed, "a"),
         accentColor: theme.primary ?? "#F6C256",
       },
       {
@@ -311,7 +436,7 @@ export default function PingPongHome({ store, go }: Props) {
         title: t("pingpong.home.info.new.title", "Nouveauté"),
         text: t("pingpong.home.info.new.text", "Ajoute tes matchs : ton winrate et tes points se mettent à jour automatiquement."),
         detail: t("pingpong.home.info.new.detail", "Local only"),
-        backgroundImage: "",
+        backgroundImage: pickTickerImage("new", seed, "a"),
         accentColor: "#00E5A8",
       },
       {
@@ -319,7 +444,7 @@ export default function PingPongHome({ store, go }: Props) {
         title: t("pingpong.home.info.tips.title", "Infos & astuces"),
         text: t("pingpong.home.info.tips.text", "Service court, remise tendue : varie les rythmes, pas seulement la vitesse."),
         detail: t("pingpong.home.info.tips.detail", "Technique"),
-        backgroundImage: "",
+        backgroundImage: pickTickerImage("tips", seed, "a"),
         accentColor: "#FFFFFF",
       },
       {
@@ -327,7 +452,7 @@ export default function PingPongHome({ store, go }: Props) {
         title: t("pingpong.home.info.events.title", "Évènements"),
         text: t("pingpong.home.info.events.text", "Crée un mini-tournoi maison : enregistre les résultats pour suivre tes séries."),
         detail: t("pingpong.home.info.events.detail", "Organisation"),
-        backgroundImage: "",
+        backgroundImage: pickTickerImage("events", seed, "a"),
         accentColor: "#B26BFF",
       },
       {
@@ -335,11 +460,11 @@ export default function PingPongHome({ store, go }: Props) {
         title: t("pingpong.home.info.results.title", "Résultats"),
         text: t("pingpong.home.info.results.text", "Consulte ton historique Ping-Pong pour revoir tes scores et ta progression."),
         detail: t("pingpong.home.info.results.detail", "Historique"),
-        backgroundImage: "",
+        backgroundImage: pickTickerImage("results", seed, "a"),
         accentColor: "#FFB24A",
       },
     ],
-    [t, theme.primary]
+    [t, theme.primary, seed]
   );
 
   const [infoIndex, setInfoIndex] = useState(0);
@@ -472,8 +597,7 @@ export default function PingPongHome({ store, go }: Props) {
           <ArcadeTicker items={infoItems} activeIndex={infoIndex} onChangeIndex={setInfoIndex} />
         </div>
 
-        {/* CTA minimal (sans boutons dans le "ticker") : on garde un accès logique via le menu global.
-            Si tu veux remettre 1 seul bouton discret, dis-moi où tu préfères (en header, ou sous les tickers). */}
+        {/* CTA minimal (sans boutons dans le "ticker") */}
         {canResume && (
           <div style={{ display: "flex", justifyContent: "center", marginTop: 6 }}>
             <button

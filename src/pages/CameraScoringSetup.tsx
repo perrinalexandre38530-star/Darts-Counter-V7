@@ -104,9 +104,7 @@ export default function CameraScoringSetup({ go, params }: Props) {
           </div>
           <div style={{ marginTop: 6, fontSize: 12, color: "rgba(245,245,255,0.70)" }}>
             {cal
-              ? t("cameraScoring.calUpdated", "Dernière mise à jour") +
-                " : " +
-                new Date(cal.updatedAt).toLocaleString()
+              ? t("cameraScoring.calUpdated", "Dernière mise à jour") + " : " + new Date(cal.updatedAt).toLocaleString()
               : t("cameraScoring.calNeeded", "Calibre une fois pour ce téléphone (distance/angle).")}
           </div>
         </div>

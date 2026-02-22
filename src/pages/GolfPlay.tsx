@@ -539,10 +539,12 @@ function GolfHeaderBlock(props: {
   currentStats: PlayerStat;
   liveRanking: { id: string; name: string; score: number; avatar: string | null }[];
   isFinished: boolean;
-  teamBadge?: { label: string; color: string } | null;
+    showEndFloating: boolean;
+  setShowEndFloating: (v: boolean) => void;
+teamBadge?: { label: string; color: string } | null;
   perfOverlay?: PerfKey | null;
 }) {
-  const { currentPlayer, currentAvatar, currentTotal, currentStats, liveRanking, isFinished, teamBadge, perfOverlay } = props;
+  const { currentPlayer, currentAvatar, currentTotal, currentStats, liveRanking, isFinished, showEndFloating, setShowEndFloating, teamBadge, perfOverlay } = props;
 
   // ✅ Défilement auto mini-stats : S/D/T/M puis B/DB/T/M (toutes ~6.5s)
   const [showBullStats, setShowBullStats] = useState(false);
@@ -2637,6 +2639,8 @@ const throwChips = [0, 1, 2].map((i) => {
   currentStats={activeStats}
   liveRanking={ranking.map((r: any) => ({ id: r.id, name: r.name, score: r.total, avatar: r.avatar ?? null }))}
   isFinished={isFinished}
+  showEndFloating={showEndFloating}
+  setShowEndFloating={setShowEndFloating}
   teamBadge={teamsOk && activeTeamKey ? { label: TEAM_META[activeTeamKey].label, color: TEAM_META[activeTeamKey].color } : null}
 
   perfOverlay={perfOverlay}

@@ -1250,8 +1250,11 @@ function formatMs(ms: number) {
 	React.useEffect(() => {
 	  if (!matchStartedAt) return;
 	  const t = window.setInterval(() => forceTimerTick((x) => x + 1), 250);
-	  return () => window.clearInterval(t);
+
+return () => window.clearInterval(t);
 	}, [matchStartedAt]);
+
+
 
 	const startMatch = React.useCallback(() => {
 	  if (matchStartedAt) return;
@@ -1566,6 +1569,42 @@ const [playerStats, setPlayerStats] = React.useState<Record<string, PlayerStats>
     {}
   )
 );
+
+
+  // ------------------------------------------------------
+  // STATS — topByStat (Top 3 per stat) — FFA/Teams safe
+  // ------------------------------------------------------
+  const topByStat = React.useMemo(() => {
+    // Roster: teams if present, otherwise fallback to any players list in state
+    const teamRoster = [
+      ...(stSafe.teams?.A?.players ?? []),
+      ...(stSafe.teams?.B?.players ?? []),
+    ];
+    const roster = teamRoster.length
+      ? teamRoster
+      : (stSafe.players ?? stSafe.roster ?? stSafe.freeForAllPlayers ?? []);
+
+    const top: Record<string, Array<{ id: string; name: string; value: number }>> = {};
+    const keys = Object.keys(STAT_UI ?? {});
+    for (const k of keys) {
+      top[k] = (Array.isArray(roster) ? roster : [])
+        .map((p: any) => {
+          const ps = playerStats?.[p.id] ?? EMPTY_STATS;
+          const raw = (ps as any)?.[k];
+          const value = typeof raw === "number" ? raw : Number(raw ?? 0);
+          return {
+            id: String(p.id),
+            name: String(p.name ?? ""),
+            value: Number.isFinite(value) ? value : 0,
+          };
+        })
+        .filter((r) => r.value > 0)
+        .sort((a, b) => b.value - a.value)
+        .slice(0, 3);
+    }
+    return top;
+  }, [stSafe, playerStats]);
+
 
 React.useEffect(() => {
   try {

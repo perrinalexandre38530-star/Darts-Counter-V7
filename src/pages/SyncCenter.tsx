@@ -131,7 +131,7 @@ export default function SyncCenter({ store, go, profileId }: Props) {
       const before = (await loadStore()) || store;
       const nextStore: Store = parsed.store;
       await saveStore(nextStore);
-      buildImportReport({ kind: parsed.kind, source: "cloud/download", token }, before, nextStore);
+      buildImportReport({ kind: parsed.kind, source: "cloud/download", token: cloudToken || undefined }, before, nextStore);
       buildImportReport({ kind: parsed.kind, source: "local/importParsedPayload" }, before, nextStore);
       return;
     }

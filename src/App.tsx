@@ -191,6 +191,8 @@ import X01PlayV3 from "./pages/X01PlayV3";
 
 // 🌟 Nouveau : SYNC / Partage stats locales
 import SyncCenter from "./pages/SyncCenter";
+import CameraScoringSetup from "./pages/CameraScoringSetup";
+import CameraScoringCalibration from "./pages/CameraScoringCalibration";
 
 // Contexts
 import { ThemeProvider } from "./contexts/ThemeContext";
@@ -593,6 +595,8 @@ type Tab =
   | "x01_config_v3"
   | "x01_play_v3"
   | "sync_center"
+  | "camera_scoring_setup"
+  | "camera_scoring_calibration"
   | "auth_callback"
   | "darts_mode_config"
   | "darts_mode_play"
@@ -1179,6 +1183,13 @@ function SWUpdateBanner() {
                 APP
 -------------------------------------------- */
 function App() {
+  // ============================================
+  // CLOUD SYNC SAFETY FLAG
+  // - OFF par défaut pour éviter l’explosion Supabase
+  // - activer uniquement via un toggle/settings quand tu seras prêt
+  // ============================================
+  const CLOUD_STATS_ENABLED = false;
+
 useEffect(() => {
   rehydrateSupabaseSession();
 }, []);
@@ -1189,6 +1200,7 @@ useEffect(() => {
 
   // ✅ Multi-device: auto-sync des événements vers Supabase (best-effort)
   useEffect(() => {
+    if (!CLOUD_STATS_ENABLED) return;
     const uninstall = EventBuffer.installAutoSync({ intervalMs: 45_000 });
     EventBuffer.syncNow().catch(() => {});
 
@@ -1202,7 +1214,7 @@ useEffect(() => {
   }, []);
 
   // LOT20: auto-sync training events (best-effort)
-  useTrainingAutoSync();
+  useTrainingAutoSync(CLOUD_STATS_ENABLED);
 
   // ============================================================
   // ✅ CLOUD SNAPSHOT SYNC (source unique Supabase)
@@ -2473,6 +2485,14 @@ case "babyfoot_team_edit":
 
       case "sync_center":
         page = <SyncCenter store={store} go={go} profileId={routeParams?.profileId ?? null} />;
+        break;
+
+      case "camera_scoring_setup":
+        page = <CameraScoringSetup go={go} params={routeParams} />;
+        break;
+
+      case "camera_scoring_calibration":
+        page = <CameraScoringCalibration go={go} params={routeParams} />;
         break;
 
         case "tournaments": {

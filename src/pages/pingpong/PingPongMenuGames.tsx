@@ -147,7 +147,9 @@ export default function PingPongMenuGames({ go }: Props) {
     // On affiche le ticker EN ENTIER (texte dans le ticker), mais on le réduit/décale
     // pour (1) laisser une marge à gauche/droite et (2) réserver une zone à droite pour le bouton InfoDot.
     const rightGutter = 74; // réserve pour le cercle + marge
-    const sideInset = 10;
+    // IMPORTANT: pour un rendu "fondu" sans coupure visible, le ticker doit
+    // toucher le bord de la carte et être masqué (fade transparent) sur les côtés.
+    const sideInset = 0;
     const vertInset = 6;
 
     return (
@@ -175,38 +177,29 @@ export default function PingPongMenuGames({ go }: Props) {
               // On ancre à droite pour voir le libellé du mode (1V1/2V2/etc) dans le ticker.
               objectPosition: "right center",
               display: "block",
-              // ✅ fondu latéral pour intégrer le ticker dans la carte
-              WebkitMaskImage:
-                "linear-gradient(90deg, rgba(0,0,0,0) 0%, rgba(0,0,0,1) 8%, rgba(0,0,0,1) 92%, rgba(0,0,0,0) 100%)",
-              maskImage:
-                "linear-gradient(90deg, rgba(0,0,0,0) 0%, rgba(0,0,0,1) 8%, rgba(0,0,0,1) 92%, rgba(0,0,0,0) 100%)",
-              WebkitMaskSize: "100% 100%",
-              maskSize: "100% 100%",
-              WebkitMaskRepeat: "no-repeat",
-              maskRepeat: "no-repeat",
               transform: "translateZ(0)",
+
+              // ✅ Fondu transparent (G + D) : doit se fondre dans la carte.
+              // (WebkitMask pour iOS/Chrome, maskImage pour Firefox)
+              WebkitMaskImage:
+                "linear-gradient(90deg, rgba(0,0,0,0) 0%, rgba(0,0,0,1) 16%, rgba(0,0,0,1) 92%, rgba(0,0,0,0) 100%)",
+              WebkitMaskSize: "100% 100%",
+              WebkitMaskRepeat: "no-repeat",
+              maskImage:
+                "linear-gradient(90deg, rgba(0,0,0,0) 0%, rgba(0,0,0,1) 16%, rgba(0,0,0,1) 92%, rgba(0,0,0,0) 100%)",
+              maskSize: "100% 100%",
+              maskRepeat: "no-repeat",
             }}
             draggable={false}
           />
 
-          {/* Dégradé gauche (marge + vignette) */}
+          {/* Micro-vignette (sans casser le fondu) */}
           <div
             style={{
               position: "absolute",
               inset: 0,
               background:
-                "linear-gradient(90deg, rgba(0,0,0,0.85) 0%, rgba(0,0,0,0.45) 10%, rgba(0,0,0,0.00) 22%)",
-              pointerEvents: "none",
-            }}
-          />
-
-          {/* Dégradé droite pour transition vers la zone Info */}
-          <div
-            style={{
-              position: "absolute",
-              inset: 0,
-              background:
-                "linear-gradient(90deg, rgba(0,0,0,0.00) 0%, rgba(0,0,0,0.00) 58%, rgba(0,0,0,0.45) 82%, rgba(0,0,0,0.90) 100%)",
+                "linear-gradient(180deg, rgba(0,0,0,0.18) 0%, rgba(0,0,0,0.00) 26%, rgba(0,0,0,0.00) 74%, rgba(0,0,0,0.22) 100%)",
               pointerEvents: "none",
             }}
           />
@@ -268,14 +261,15 @@ export default function PingPongMenuGames({ go }: Props) {
               // Pas de crop : afficher le ticker en entier
               objectFit: "contain",
               objectPosition: "center center",
-              // ✅ fondu latéral (même rendu “fondu dans la carte”)
+
+              // Fondu latéral (évite la coupure visible sur les bords)
               WebkitMaskImage:
-                "linear-gradient(90deg, rgba(0,0,0,0) 0%, rgba(0,0,0,1) 10%, rgba(0,0,0,1) 90%, rgba(0,0,0,0) 100%)",
-              maskImage:
-                "linear-gradient(90deg, rgba(0,0,0,0) 0%, rgba(0,0,0,1) 10%, rgba(0,0,0,1) 90%, rgba(0,0,0,0) 100%)",
+                "linear-gradient(90deg, rgba(0,0,0,0) 0%, rgba(0,0,0,1) 14%, rgba(0,0,0,1) 92%, rgba(0,0,0,0) 100%)",
               WebkitMaskSize: "100% 100%",
-              maskSize: "100% 100%",
               WebkitMaskRepeat: "no-repeat",
+              maskImage:
+                "linear-gradient(90deg, rgba(0,0,0,0) 0%, rgba(0,0,0,1) 14%, rgba(0,0,0,1) 92%, rgba(0,0,0,0) 100%)",
+              maskSize: "100% 100%",
               maskRepeat: "no-repeat",
             }}
             draggable={false}

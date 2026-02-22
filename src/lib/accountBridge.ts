@@ -2,10 +2,11 @@
 // src/lib/accountBridge.ts
 // Pont COMPTE ONLINE ↔ PROFIL LOCAL ACTIF
 //
-// ✅ V7 FINAL — COMPTE UNIQUE
+// ✅ V7 FINAL — COMPTE UNIQUE (FIX DUPLICATE UID PROFILE)
 // - ❌ SUPPRIME le concept de "mirror profile" online:<uid>
 // - ✅ Un seul profil local actif, lié à Supabase via privateInfo.onlineUserId / onlineEmail
-// - ✅ Migration douce: si un ancien profil "online:<uid>" existe, on le fusionne dans le profil actif
+// - ✅ Anti-duplication: si un profil id==uid existe déjà mais qu'un profil actif/local
+//   est plus riche, on LIE le profil actif au uid et on SUPPRIME le profil id==uid.
 // ============================================
 
 import type { Profile } from "./types";
@@ -17,7 +18,7 @@ type PrivateInfoRaw = {
   onlineUserId?: string;
   onlineEmail?: string;
   onlineKey?: string; // legacy (email hash)
-  password?: string;  // legacy (doit rester vide)
+  password?: string; // legacy (doit rester vide)
   [k: string]: any;
 };
 
@@ -31,6 +32,17 @@ function writePrivateInfo(p: any, pi: PrivateInfoRaw): any {
 
 function safeLower(s: any): string {
   return String(s || "").toLowerCase();
+}
+
+function scoreProfileCompleteness(p: any): number {
+  let s = 0;
+  const keys = ["name", "country", "avatarUrl", "avatarDataUrl", "surname", "firstName", "birthDate", "city", "phone"];
+  for (const k of keys) if (p?.[k]) s += 1;
+
+  const pi = readPrivateInfo(p);
+  const pik = ["nickname", "firstName", "lastName", "birthDate", "city", "phone", "country"];
+  for (const k of pik) if ((pi as any)?.[k]) s += 1;
+  return s;
 }
 
 /**
@@ -111,19 +123,8 @@ export function ensureOnlineMirrorProfile(store: any, user: any, onlineProfile?:
 }
 
 // ============================================================
-// ✅ NEW: Auto-create / link a local profile for a signed-in user
-//
-// Problème réel constaté (mobile / nouvel utilisateur):
-// - Session Supabase persistée OK
-// - MAIS aucun profil local n'existe => l'app repasse par "Compte" et
-//   l'utilisateur a l'impression de devoir se reconnecter à chaque démarrage.
-//
-// Stratégie:
-// - Si un profil local est déjà lié au uid => on le rend actif.
-// - Sinon, si aucun profil local n'existe => on crée un profil minimal id=uid.
-// - Sinon, on lie le profil actif existant au uid (migration douce).
-//
-// Important: on ne crée PAS de mirror "online:<uid>".
+// ✅ Auto-link a local profile for a signed-in user (NO DUPLICATE)
+// ============================================================
 export function ensureLocalProfileForOnlineUser(store: any, user: any, onlineProfile?: any) {
   if (!store || !user?.id) return store;
 
@@ -132,25 +133,55 @@ export function ensureLocalProfileForOnlineUser(store: any, user: any, onlinePro
 
   const profiles: any[] = Array.isArray(store.profiles) ? store.profiles : [];
 
-  // 1) Déjà lié ? (par privateInfo.onlineUserId ou par id==uid)
-  const linked = profiles.find((p) => {
-    const id = String(p?.id || "");
-    if (id === uid) return true;
-    const pi = readPrivateInfo(p);
-    return String(pi?.onlineUserId || "") === uid;
-  });
+  const activeId = String(store.activeProfileId || profiles[0]?.id || "");
+  const active = profiles.find((p) => String(p?.id || "") === activeId) || profiles[0] || null;
 
-  if (linked) {
-    // S'assure que le privateInfo est bien rempli
-    const pi = readPrivateInfo(linked);
-    const next = writePrivateInfo(
+  const byPI = profiles.find((p) => String(readPrivateInfo(p)?.onlineUserId || "") === uid) || null;
+  const byId = profiles.find((p) => String(p?.id || "") === uid) || null;
+
+  // If we already have BOTH (dup), keep most complete, drop the other.
+  if (byPI && byId && String(byPI.id) !== String(byId.id)) {
+    const keep = scoreProfileCompleteness(byPI) >= scoreProfileCompleteness(byId) ? byPI : byId;
+    const drop = keep === byPI ? byId : byPI;
+
+    const piKeep = readPrivateInfo(keep);
+    const keepLinked = writePrivateInfo(
       {
-        ...linked,
+        ...keep,
         ...(onlineProfile
           ? {
-              name: onlineProfile?.nickname || linked?.name,
-              avatarUrl: onlineProfile?.avatarUrl || linked?.avatarUrl,
-              country: onlineProfile?.country || linked?.country,
+              name: onlineProfile?.nickname || keep?.name,
+              avatarUrl: onlineProfile?.avatarUrl || keep?.avatarUrl,
+              country: onlineProfile?.country || keep?.country,
+            }
+          : null),
+      },
+      {
+        ...piKeep,
+        onlineUserId: uid,
+        onlineEmail: email || piKeep.onlineEmail || "",
+        password: "",
+      }
+    );
+
+    const nextProfiles = profiles
+      .filter((p) => String(p?.id || "") !== String(drop?.id || ""))
+      .map((p) => (String(p?.id || "") === String(keep?.id || "") ? keepLinked : p));
+
+    return { ...store, profiles: nextProfiles, activeProfileId: String(keepLinked?.id || activeId) };
+  }
+
+  // Prefer profile linked via privateInfo
+  if (byPI) {
+    const pi = readPrivateInfo(byPI);
+    const next = writePrivateInfo(
+      {
+        ...byPI,
+        ...(onlineProfile
+          ? {
+              name: onlineProfile?.nickname || byPI?.name,
+              avatarUrl: onlineProfile?.avatarUrl || byPI?.avatarUrl,
+              country: onlineProfile?.country || byPI?.country,
             }
           : null),
       },
@@ -159,27 +190,43 @@ export function ensureLocalProfileForOnlineUser(store: any, user: any, onlinePro
         onlineUserId: uid,
         onlineEmail: email || pi.onlineEmail || "",
         password: "",
-        // Hydrate aussi les champs "Infos perso" depuis le cloud (si dispo)
-        ...(onlineProfile
-          ? {
-              nickname: onlineProfile?.nickname ?? pi.nickname,
-              firstName: onlineProfile?.firstName ?? pi.firstName,
-              lastName: (onlineProfile?.lastName ?? onlineProfile?.surname ?? pi.lastName) as any,
-              birthDate: onlineProfile?.birthDate ?? pi.birthDate,
-              city: onlineProfile?.city ?? pi.city,
-              email: (onlineProfile?.email ?? (email || pi.email)) as any,
-              phone: onlineProfile?.phone ?? pi.phone,
-              country: onlineProfile?.country ?? pi.country,
-            }
-          : null),
       }
     );
 
-    const nextProfiles = profiles.map((p) => (String(p?.id || "") === String(linked?.id || "") ? next : p));
-    return { ...store, profiles: nextProfiles, activeProfileId: String(linked?.id || uid) };
+    const nextProfiles = profiles.map((p) => (String(p?.id || "") === String(byPI?.id || "") ? next : p));
+    return { ...store, profiles: nextProfiles, activeProfileId: String(next?.id || activeId) };
   }
 
-  // 2) Aucun profil local => on crée un profil minimal id=uid
+  // If only id==uid exists but active is different -> link active and remove uid-profile
+  if (byId && active && String(active?.id || "") !== uid) {
+    const piA = readPrivateInfo(active);
+    const activeLinked = writePrivateInfo(
+      {
+        ...active,
+        ...(onlineProfile
+          ? {
+              name: onlineProfile?.nickname || active?.name,
+              avatarUrl: onlineProfile?.avatarUrl || active?.avatarUrl,
+              country: onlineProfile?.country || active?.country,
+            }
+          : null),
+      },
+      {
+        ...piA,
+        onlineUserId: uid,
+        onlineEmail: email || piA.onlineEmail || "",
+        password: "",
+      }
+    );
+
+    const nextProfiles = profiles
+      .filter((p) => String(p?.id || "") !== uid)
+      .map((p) => (String(p?.id || "") === String(active?.id || "") ? activeLinked : p));
+
+    return { ...store, profiles: nextProfiles, activeProfileId: String(activeLinked?.id || activeId) };
+  }
+
+  // No profiles at all: create minimal uid profile
   if (profiles.length === 0) {
     const nickname = String(onlineProfile?.nickname || "").trim();
     const fallbackName = nickname || (email ? email.split("@")[0] : "Joueur");
@@ -191,11 +238,11 @@ export function ensureLocalProfileForOnlineUser(store: any, user: any, onlinePro
       country: onlineProfile?.country || "FR",
       createdAt: Date.now(),
       updatedAt: Date.now(),
-    };
-    newProfile.privateInfo = {
-      onlineUserId: uid,
-      onlineEmail: email || "",
-      password: "",
+      privateInfo: {
+        onlineUserId: uid,
+        onlineEmail: email || "",
+        password: "",
+      },
     };
 
     return {
@@ -205,43 +252,31 @@ export function ensureLocalProfileForOnlineUser(store: any, user: any, onlinePro
     };
   }
 
-  // 3) Profils existants mais aucun lié: on lie le profil actif actuel
-  // ✅ IMPORTANT: pour avoir un compte "portable" (multi-appareils),
-  // on crée TOUJOURS un profil local dédié à l'UID (id = uid) si aucun n'est lié.
-  // Ça évite :
-  // - un appareil A lié au profil local #1, appareil B lié au profil local #2
-  // - donc des infos/avatars différents et impression de "rien se synchronise".
-  const nickname = String(onlineProfile?.nickname || onlineProfile?.displayName || "").trim();
-  const fallbackName = nickname || (email ? email.split("@")[0] : "Joueur");
+  // Default: link the ACTIVE profile (no creation)
+  if (active) {
+    const piA = readPrivateInfo(active);
+    const activeLinked = writePrivateInfo(
+      {
+        ...active,
+        ...(onlineProfile
+          ? {
+              name: onlineProfile?.nickname || active?.name,
+              avatarUrl: onlineProfile?.avatarUrl || active?.avatarUrl,
+              country: onlineProfile?.country || active?.country,
+            }
+          : null),
+      },
+      {
+        ...piA,
+        onlineUserId: uid,
+        onlineEmail: email || piA.onlineEmail || "",
+        password: "",
+      }
+    );
 
-  const newProfile: any = {
-    id: uid,
-    name: fallbackName,
-    avatarDataUrl: onlineProfile?.avatarUrl || undefined,
-    avatarUrl: onlineProfile?.avatarUrl || undefined,
-    country: onlineProfile?.country || "FR",
-    createdAt: Date.now(),
-    updatedAt: Date.now(),
-    privateInfo: {
-      onlineUserId: uid,
-      onlineEmail: email || "",
-      password: "",
-      // Hydrate aussi les champs "Infos perso" (pour l'UI Profiles)
-      nickname: onlineProfile?.nickname || undefined,
-      firstName: onlineProfile?.firstName || undefined,
-      lastName: onlineProfile?.lastName || onlineProfile?.surname || undefined,
-      birthDate: onlineProfile?.birthDate || undefined,
-      city: onlineProfile?.city || undefined,
-      email: onlineProfile?.email || (email || undefined),
-      phone: onlineProfile?.phone || undefined,
-      country: onlineProfile?.country || undefined,
-    },
-  };
+    const nextProfiles = profiles.map((p) => (String(p?.id || "") === String(active?.id || "") ? activeLinked : p));
+    return { ...store, profiles: nextProfiles, activeProfileId: String(activeLinked?.id || activeId) };
+  }
 
-  // On conserve les profils existants (bots / locaux), mais le compte ONLINE pointe sur celui-ci.
-  return {
-    ...store,
-    profiles: [...profiles, newProfile],
-    activeProfileId: uid,
-  };
+  return store;
 }

@@ -10,6 +10,14 @@ export type PingPongSideId = "A" | "B";
 
 export type PingPongMode = "simple" | "sets" | "tournante";
 
+export type PingPongRulesPreset = "official" | "fun" | "custom";
+
+export type PingPongServeStart =
+  | "A" // A sert en premier
+  | "B" // B sert en premier
+  | "manual" // choix manuel au lancement (dans l'écran match)
+  | "toss_first_point"; // lancer de balle manuel -> le 1er point marqué détermine le serveur
+
 export type PingPongState = {
   matchId: string;
   createdAt: number;
@@ -25,6 +33,18 @@ export type PingPongState = {
   pointsPerSet: number; // 11 par défaut
   setsToWin: number; // 3 => best-of-5
   winByTwo: boolean; // true par défaut
+
+  // règles avancées (V2)
+  // ⚠️ Ces champs sont stockés mais pas encore tous exploités par PingPongPlay.
+  // Objectif : permettre une config libre "officiel / fun / custom" sans casser l'existant.
+  uiMode?: string; // match_1v1/match_2v2/match_2v1/tournante/training (UI)
+  rulesPreset: PingPongRulesPreset;
+  serveStart: PingPongServeStart;
+  serviceEvery: number; // nombre de points avant changement de service (ex: 2)
+  deuceServiceEvery: number; // en fin de set (deuce), changement tous les X points (ex: 1)
+  switchEndsEachSet: boolean;
+  switchEndsAtFinal: boolean;
+  switchEndsAtFinalPoints: number; // ex: 5 (à 11) / 10 (à 21)
 
   // tournante
   tournantePlayers: string[]; // tous les joueurs inscrits (optionnel / legacy)
@@ -107,6 +127,15 @@ export function newPingPongState(partial?: Partial<PingPongState>): PingPongStat
     setsToWin: 3,
     winByTwo: true,
 
+    uiMode: (partial as any)?.uiMode ?? undefined,
+    rulesPreset: (partial as any)?.rulesPreset ?? "official",
+    serveStart: (partial as any)?.serveStart ?? "manual",
+    serviceEvery: clampInt((partial as any)?.serviceEvery, 1, 20, 2),
+    deuceServiceEvery: clampInt((partial as any)?.deuceServiceEvery, 1, 10, 1),
+    switchEndsEachSet: (partial as any)?.switchEndsEachSet !== false,
+    switchEndsAtFinal: (partial as any)?.switchEndsAtFinal !== false,
+    switchEndsAtFinalPoints: clampInt((partial as any)?.switchEndsAtFinalPoints, 1, 50, 5),
+
     tournantePlayers: [],
     tournanteQueue: [],
     tournanteActiveA: null,
@@ -149,6 +178,23 @@ export function loadPingPongState(): PingPongState {
       pointsPerSet: clampInt(parsed?.pointsPerSet, 5, 99, 11),
       setsToWin: clampInt(parsed?.setsToWin, 1, 9, 3),
       winByTwo: parsed?.winByTwo !== false,
+
+      uiMode: typeof parsed?.uiMode === "string" ? parsed.uiMode : undefined,
+      rulesPreset:
+        parsed?.rulesPreset === "fun" ? "fun" : parsed?.rulesPreset === "custom" ? "custom" : "official",
+      serveStart:
+        parsed?.serveStart === "A"
+          ? "A"
+          : parsed?.serveStart === "B"
+          ? "B"
+          : parsed?.serveStart === "toss_first_point"
+          ? "toss_first_point"
+          : "manual",
+      serviceEvery: clampInt(parsed?.serviceEvery, 1, 20, 2),
+      deuceServiceEvery: clampInt(parsed?.deuceServiceEvery, 1, 10, 1),
+      switchEndsEachSet: parsed?.switchEndsEachSet !== false,
+      switchEndsAtFinal: parsed?.switchEndsAtFinal !== false,
+      switchEndsAtFinalPoints: clampInt(parsed?.switchEndsAtFinalPoints, 1, 50, 5),
 
       tournantePlayers,
       tournanteQueue,
@@ -195,6 +241,20 @@ export function resetPingPong(prev?: PingPongState) {
     setsToWin: clampInt(prev?.setsToWin, 1, 9, 3),
     winByTwo: prev?.winByTwo !== false,
 
+    uiMode: (prev as any)?.uiMode ?? undefined,
+    rulesPreset: (prev as any)?.rulesPreset ?? "official",
+    serveStart: (prev as any)?.serveStart ?? "manual",
+    serviceEvery: clampInt((prev as any)?.serviceEvery, 1, 20, 2),
+    deuceServiceEvery: clampInt((prev as any)?.deuceServiceEvery, 1, 10, 1),
+    switchEndsEachSet: (prev as any)?.switchEndsEachSet !== false,
+    switchEndsAtFinal: (prev as any)?.switchEndsAtFinal !== false,
+    switchEndsAtFinalPoints: clampInt(
+      (prev as any)?.switchEndsAtFinalPoints,
+      1,
+      50,
+      (clampInt(prev?.pointsPerSet, 5, 99, 11) === 21 ? 10 : 5)
+    ),
+
     tournantePlayers: Array.isArray(prev?.tournantePlayers) ? prev!.tournantePlayers : [],
     tournanteQueue: Array.isArray(prev?.tournanteQueue) ? prev!.tournanteQueue : [],
     tournanteActiveA: prev?.tournanteActiveA ?? null,
@@ -215,7 +275,20 @@ export function setConfig(
   pointsPerSet: number,
   setsToWin: number,
   winByTwo: boolean,
-  tournantePlayers?: string[]
+  tournantePlayers?: string[],
+  advanced?: Partial<
+    Pick<
+      PingPongState,
+      | "uiMode"
+      | "rulesPreset"
+      | "serveStart"
+      | "serviceEvery"
+      | "deuceServiceEvery"
+      | "switchEndsEachSet"
+      | "switchEndsAtFinal"
+      | "switchEndsAtFinalPoints"
+    >
+  >
 ) {
   const nextBase: PingPongState = {
     ...st,
@@ -225,6 +298,43 @@ export function setConfig(
     pointsPerSet: clampInt(pointsPerSet, 5, 99, 11),
     setsToWin: clampInt(setsToWin, 1, 9, 3),
     winByTwo: winByTwo !== false,
+
+    // advanced (soft) — clamp + defaults
+    uiMode: typeof (advanced as any)?.uiMode === "string" ? (advanced as any).uiMode : st.uiMode,
+    rulesPreset:
+      (advanced as any)?.rulesPreset === "fun"
+        ? "fun"
+        : (advanced as any)?.rulesPreset === "custom"
+        ? "custom"
+        : (advanced as any)?.rulesPreset === "official"
+        ? "official"
+        : st.rulesPreset ?? "official",
+    serveStart:
+      (advanced as any)?.serveStart === "A"
+        ? "A"
+        : (advanced as any)?.serveStart === "B"
+        ? "B"
+        : (advanced as any)?.serveStart === "toss_first_point"
+        ? "toss_first_point"
+        : (advanced as any)?.serveStart === "manual"
+        ? "manual"
+        : st.serveStart ?? "manual",
+    serviceEvery: clampInt((advanced as any)?.serviceEvery, 1, 20, st.serviceEvery ?? 2),
+    deuceServiceEvery: clampInt((advanced as any)?.deuceServiceEvery, 1, 10, st.deuceServiceEvery ?? 1),
+    switchEndsEachSet:
+      (advanced as any)?.switchEndsEachSet === undefined
+        ? st.switchEndsEachSet !== false
+        : !!(advanced as any).switchEndsEachSet,
+    switchEndsAtFinal:
+      (advanced as any)?.switchEndsAtFinal === undefined
+        ? st.switchEndsAtFinal !== false
+        : !!(advanced as any).switchEndsAtFinal,
+    switchEndsAtFinalPoints: clampInt(
+      (advanced as any)?.switchEndsAtFinalPoints,
+      1,
+      50,
+      st.switchEndsAtFinalPoints ?? (clampInt(pointsPerSet, 5, 99, 11) === 21 ? 10 : 5)
+    ),
     updatedAt: now(),
   };
 

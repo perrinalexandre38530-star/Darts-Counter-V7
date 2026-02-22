@@ -56,7 +56,7 @@ import avatarTheFerret from "../assets/avatars/bots-pro/the-ferret.png";
 
 import tickerCricket from "../assets/tickers/ticker_cricket.png";
 import tickerEnculette from "../assets/tickers/ticker_enculette.png";
-
+import tickerCutThroat from "../assets/tickers/ticker_cricket_cut_throat.png";
 
 const T = {
   bg: "#050712",
@@ -400,7 +400,7 @@ function pickCricketBotThrow(state: any, player: any, withPoints: boolean, quali
   return { target: Number(target), mult };
 }
 
-type CricketVariantId = "classic" | "enculette";
+type CricketVariantId = "classic" | "enculette" | "cut_throat";
 
 export default function CricketPlay({ profiles, params, onFinish }: Props) {
   const allProfiles = profiles ?? [];
@@ -425,8 +425,6 @@ export default function CricketPlay({ profiles, params, onFinish }: Props) {
 
   // ---- Variante (2A): Cricket classique / Enculette-Vache ----
   const [variantId, setVariantId] = React.useState<CricketVariantId>("classic");
-  // ✅ ENCULETTE : objectif optionnel (0 => pas d'objectif)
-  const [encObjective, setEncObjective] = React.useState<number>(0);
 
   const [randomStart, setRandomStart] = React.useState<boolean>(false);
   const [teamMode, setTeamMode] = React.useState<boolean>(false);
@@ -435,23 +433,41 @@ export default function CricketPlay({ profiles, params, onFinish }: Props) {
   // ✅ DartSet (v1) — utile pour StatsHub / Stats par fléchettes
   const dartSetId = String(params?.dartSetId ?? params?.config?.dartSetId ?? "").trim() || null;
 
-    // Preset depuis la route (registry / darts_mode)
+  // Preset depuis la route (Games / registry / liens)
+  // - presetVariantId : ancienne clé utilisée par certaines cartes
+  // - variantId       : clé standard (ex: enculette, cut_throat)
   React.useEffect(() => {
-    const raw = (params as any)?.variantId ?? (params as any)?.presetVariantId ?? "";
-    const v = String(raw).toLowerCase();
+    const raw = String((params as any)?.presetVariantId ?? (params as any)?.variantId ?? "")
+      .trim()
+      .toLowerCase();
+  
+    const normalize = (v: string): CricketVariantId | null => {
+      if (!v) return null;
+  
+      // Cut-Throat (toutes formes possibles)
+      if (v === "cut_throat" || v === "cut-throat" || v === "cutthroat") return "cut_throat";
+  
+      // Enculette / Vache (tolérance)
+      if (v === "enculette" || v === "enculette_vache" || v === "enculette-vache") return "enculette";
+  
+      // Classic
+      if (v === "classic" || v === "cricket") return "classic";
+  
+      return null;
+    };
+  
+    const preset = normalize(raw);
+    if (preset && preset !== variantId) {
+      setVariantId(preset);
+    }
+  }, [params, variantId]);
 
-    if (v === "enculette") setVariantId("enculette");
-    else if (v === "cut_throat" || v === "cut-throat") setVariantId("cut_throat");
-    else if (v === "classic") setVariantId("classic");
-    else if (v) setVariantId("classic");
-  }, [params?.variantId, params?.presetVariantId]);// Preset Cut-Throat depuis le registry (Cricket Cut-Throat)
-  const isCutThroatRoute = String(params?.variantId || '').toLowerCase() === 'cut_throat';
-    React.useEffect(() => {
-    if (variantId !== "enculette") setEncObjective(0);
-    if (variantId === "enculette") setScoreMode("points");
-  }, [variantId]);
-
-React.useEffect(() => {
+  // Preset Cut-Throat (route / registry)
+  const isCutThroatRoute = (() => {
+    const v = String((params as any)?.variantId ?? (params as any)?.presetVariantId ?? "").toLowerCase();
+    return v === "cut_throat" || v === "cut-throat";
+  })();
+  React.useEffect(() => {
     if (isCutThroatRoute) {
       setScoreMode('points'); // Cut-throat = points obligatoires
       // On garde variantId UI (classic/enculette) mais le moteur bascule en cut-throat via option.
@@ -1014,9 +1030,7 @@ function renderAvatarCircle(
     }
 
     const match = createCricketMatch(players, {
-      variant: variantId === "enculette" ? "enculette" : "classic",
-      objective: variantId === "enculette" ? encObjective : 0,
-      withPoints: (variantId === "enculette") ? true : ((scoreMode === "points") || isCutThroatRoute),
+      withPoints: (scoreMode === "points") || isCutThroatRoute,
       cutThroat: isCutThroatRoute,
       maxRounds,
     });
@@ -1459,7 +1473,7 @@ return {
       mode: "cricket",
       dartSetId,
       dartSetIdsByPlayer,
-      meta: { ...(params?.meta || {}), dartSetId, dartSetIdsByPlayer, variantId: (isCutThroatRoute ? "cut_throat" : variantId), scoringVariant },
+      meta: { ...(params?.meta || {}), dartSetId, dartSetIdsByPlayer },
 	      // ✅ Stats unifiées (léger) — utilisées par StatsHub si présent
 	      stats: {
 	        sport: "cricket",
@@ -1521,6 +1535,16 @@ return {
     }
     handleNewLegInternal();
   }
+
+  // ✅ Ticker: descendre légèrement + ajuster le cadrage selon variante
+ const TICKER_Y_OFFSET_PX = 8; // ← monte/descend le header (8 = descend un peu)
+
+ const tickerObjectPosition =
+  variantId === "cut_throat"
+    ? "center 20%" // ajuste si besoin
+    : variantId === "enculette"
+    ? "center 58%"
+    : "center 55%";
 
   // --------------------------------------------------
   // PHASE SETUP RENDER
@@ -1600,79 +1624,92 @@ return {
 
 	    	{/* HEADER TICKER full-width (remplace titre + annotation) */}
         <div
-          style={{
-            position: "sticky",
-            top: 0,
-            zIndex: 60,
-            paddingTop: "env(safe-area-inset-top)",
-            marginBottom: 16,
+  style={{
+    position: "sticky",
+    top: 0,
+    zIndex: 60,
+    // ✅ descend le ticker (safe-area + offset)
+    paddingTop: `calc(env(safe-area-inset-top) + ${TICKER_Y_OFFSET_PX}px)`,
+    marginBottom: 16,
+  }}
+>
+  <div
+    style={{
+      position: "relative",
+      // full-bleed (annule le padding horizontal de la page)
+      marginLeft: -12,
+      marginRight: -12,
+    }}
+  >
+    <img
+      src={
+        variantId === "enculette"
+          ? tickerEnculette
+          : variantId === "cut_throat"
+          ? tickerCutThroat
+          : tickerCricket
+      }
+      alt={
+        variantId === "enculette"
+          ? "Cricket — Enculette"
+          : variantId === "cut_throat"
+          ? "Cricket — Cut-Throat"
+          : "Cricket"
+      }
+      draggable={false}
+      style={{
+        width: "100%",
+        height: 92,
+        objectFit: "cover",
+        // ✅ si le titre du ticker est “coupé”, ajuste ce % (plus grand = montre plus bas)
+        objectPosition: tickerObjectPosition,
+        display: "block",
+      }}
+    />
+
+    {/* Overlay boutons */}
+    <div
+      style={{
+        position: "absolute",
+        inset: 0,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "space-between",
+        padding: "0 12px",
+        pointerEvents: "none",
+      }}
+    >
+      <div style={{ pointerEvents: "auto" }}>
+        <BackDot
+          onClick={() => {
+            try {
+              const go = (window as any)?.__appGo || (window as any)?.__appStore?.go;
+              if (typeof go === "function") {
+                go("games");
+                return;
+              }
+            } catch {}
+            try {
+              window.location.hash = "#/";
+            } catch {}
           }}
-        >
-          <div
-            style={{
-              position: "relative",
-              // full-bleed (annule le padding horizontal de la page)
-              marginLeft: -12,
-              marginRight: -12,
-            }}
-          >
-            <img
-              src={variantId === "enculette" ? tickerEnculette : tickerCricket}
-              alt={variantId === "enculette" ? "Cricket — Enculette" : "Cricket"}
-              draggable={false}
-              style={{
-                width: "100%",
-                height: 92,
-                objectFit: "cover",
-                display: "block",
-              }}
-            />
+          color={T.gold}
+          glow={"rgba(246,194,86,0.55)"}
+          title="Retour"
+        />
+      </div>
 
-            {/* Overlay boutons */}
-            <div
-              style={{
-                position: "absolute",
-                inset: 0,
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "space-between",
-                padding: "0 12px",
-                pointerEvents: "none",
-              }}
-            >
-              <div style={{ pointerEvents: "auto" }}>
-                <BackDot
-                  onClick={() => {
-                    try {
-                      // ✅ Retour vers le menu "Games" (sport-aware) via le routeur central (App.tsx)
-                      const go = (window as any)?.__appGo || (window as any)?.__appStore?.go;
-                      if (typeof go === "function") {
-                        go("games");
-                        return;
-                      }
-                    } catch {}
-                    // Fallback (si go indispo)
-                    try {
-                      window.location.hash = "#/";
-                    } catch {}
-                  }}
-                  color={T.gold}
-                  glow={"rgba(246,194,86,0.55)"}
-                  title="Retour"
-                />
-              </div>
-
-              <div style={{ pointerEvents: "auto" }}>
-                <InfoDot
-                  onClick={() => setInfoOpen(true)}
-                  color={T.gold}
-                  glow={"rgba(246,194,86,0.55)"}
-                  title="Règles"
-                />
-              </div>
-            </div>
-          </div>
-        </div>
+      <div style={{ pointerEvents: "auto" }}>
+        <InfoDot
+          onClick={() => setInfoOpen(true)}
+          color={T.gold}
+          glow={"rgba(246,194,86,0.55)"}
+          title="Règles"
+        />
+      </div>
+    </div>
+  </div>
+</div>
 
         {/* JOUEURS (HUMAINS) */}
         <div
@@ -1889,12 +1926,22 @@ return {
         >
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 12 }}>
             <div style={{ fontSize: 13, color: T.textSoft }}>Variante</div>
-            <div style={{ display: "flex", gap: 8 }}>
+            <div
+              style={{
+                display: "flex",
+                flexDirection: "column",
+                gap: 8,
+                alignItems: "flex-end",
+              }}
+            >
               <Pill tone="gold" active={variantId === "classic"} onClick={() => setVariantId("classic")}>
                 Cricket
               </Pill>
               <Pill tone="gold" active={variantId === "enculette"} onClick={() => setVariantId("enculette")}>
                 Enculette / Vache
+              </Pill>
+              <Pill tone="gold" active={variantId === "cut_throat"} onClick={() => setVariantId("cut_throat")}>
+                Cut-Throat
               </Pill>
             </div>
           </div>
@@ -1902,22 +1949,10 @@ return {
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
             <div style={{ fontSize: 13, color: T.textSoft }}>Mode de score</div>
             <div style={{ display: "flex", gap: 8 }}>
-              <Pill
-                tone="green"
-                active={scoreMode === "points" || isCutThroatRoute || variantId === "enculette"}
-                onClick={() => setScoreMode("points")}
-              >
+              <Pill tone="green" active={scoreMode === "points"} onClick={() => setScoreMode("points")}>
                 Points
               </Pill>
-              <Pill
-                tone="gray"
-                active={!isCutThroatRoute && variantId !== "enculette" && scoreMode === "no-points"}
-                onClick={() => {
-                  if (isCutThroatRoute || variantId === "enculette") return;
-                  setScoreMode("no-points");
-                }}
-                disabled={isCutThroatRoute || variantId === "enculette"}
-              >
+              <Pill tone="gray" active={scoreMode === "no-points"} onClick={() => setScoreMode("no-points")}>
                 Sans points
               </Pill>
             </div>
@@ -1941,24 +1976,6 @@ return {
               ))}
             </div>
           </div>
-
-          {variantId === "enculette" && (
-            <div style={{ marginTop: 12, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
-              <div style={{ fontSize: 13, color: T.textSoft, lineHeight: 1.2 }}>
-                Objectif{" "}
-                <span style={{ opacity: 0.7, fontSize: 12 }}>
-                  (0 = pas d&apos;objectif)
-                </span>
-              </div>
-              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
-                {[0, 100, 200, 300, 500, 1000].map((n) => (
-                  <Pill key={n} tone={n === 0 ? "gray" : "gold"} active={encObjective === n} onClick={() => setEncObjective(n)}>
-                    {n === 0 ? "OFF" : n}
-                  </Pill>
-                ))}
-              </div>
-            </div>
-          )}
         </SectionCard>
 
         {/* OPTIONS AVANCÉES */}

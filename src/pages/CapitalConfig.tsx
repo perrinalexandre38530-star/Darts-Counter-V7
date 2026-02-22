@@ -5,6 +5,11 @@
 // - Ordre de départ (aléatoire / défini + réordonnancement)
 // - Mode (Officiel / Custom contrats)
 // - Mode de saisie (keypad / dartboard / presets)
+//
+// PATCH (ajouts SANS rien casser) :
+// - Victoire / tie-break / règle /2 : conservé + nettoyé (suppression du doublon dans payload)
+// - Timers (tour) + comportements bots (vitesse/auto-play/risk) + limite nb contrats custom (configurable)
+// - Presets de règles (Officiel / Fun) qui remplissent les options rapidement (sans empêcher l’édition)
 
 import React, { useMemo, useState } from "react";
 import BackDot from "../components/BackDot";
@@ -23,6 +28,9 @@ import { getProBotAvatar } from "../lib/botsProAvatars";
 import { SCORE_INPUT_LS_KEY, type ScoreInputMethod } from "../lib/scoreInput/types";
 
 type BotLevel = "easy" | "normal" | "hard";
+type BotRisk = "safe" | "normal" | "aggressive";
+type RulesPreset = "official" | "fun";
+
 export type CapitalModeKind = "official" | "custom";
 export type CapitalStartOrderMode = "random" | "fixed";
 
@@ -53,10 +61,18 @@ export type CapitalConfigPayload = {
   botsEnabled: boolean;
   botLevel: BotLevel;
 
+  // ✅ Bots - comportement (ajout)
+  botsAutoPlay?: boolean;
+  botTurnDelayMs?: number; // délai avant action bot (visuel)
+  botRisk?: BotRisk; // prise de risque / agressivité
+
   // Mode / Contrats
   mode: CapitalModeKind;
   customContracts?: CapitalContractID[];
   includeCapital?: boolean;
+
+  // ✅ Custom - limite nombre de contrats (ajout)
+  maxCustomContracts?: number;
 
   // Saisie
   inputMethod: ScoreInputMethod;
@@ -69,6 +85,9 @@ export type CapitalConfigPayload = {
   // ✅ Règles
   failDivideBy2?: boolean; // true=officiel (/2), false=pas de /2
   startingCapital?: number; // si includeCapital=false, score initial
+
+  // ✅ Timer (ajout)
+  turnTimerSec?: number; // 0 = off
 };
 
 const OFFICIAL_CONTRACTS: CapitalContractID[] = [
@@ -240,15 +259,16 @@ export default function CapitalConfig(props: any) {
   );
 
   // Bots pool = PRO_BOTS + bots custom (dc_bots_v1)
-  const proBots = useMemo(() =>
-    PRO_BOTS.map((b) => {
-      const p: any = proBotToProfile(b) as any;
-      // Inject avatarDataUrl pour que ProfileAvatar affiche l'image (comme les autres menus)
-      p.avatarDataUrl = getProBotAvatar((b as any).avatarKey);
-      // compat: certains écrans utilisent id "bot_*"
-      p.legacyId = `bot_${String((b as any).id)}`;
-      return p;
-    }),
+  const proBots = useMemo(
+    () =>
+      PRO_BOTS.map((b) => {
+        const p: any = proBotToProfile(b) as any;
+        // Inject avatarDataUrl pour que ProfileAvatar affiche l'image (comme les autres menus)
+        p.avatarDataUrl = getProBotAvatar((b as any).avatarKey);
+        // compat: certains écrans utilisent id "bot_*"
+        p.legacyId = `bot_${String((b as any).id)}`;
+        return p;
+      }),
     []
   );
   const customBots = useMemo(() => safeCustomBotsProfiles(), []);
@@ -268,7 +288,19 @@ export default function CapitalConfig(props: any) {
   const [botsEnabled, setBotsEnabled] = useState<boolean>(false);
   const [botLevel, setBotLevel] = useState<BotLevel>("normal");
 
-  const [startOrderMode, setStartOrderMode] = useState<CapitalStartOrderMode>("random");
+  // ✅ Ajout : presets de règles (remplit automatiquement les toggles)
+  const [rulesPreset, setRulesPreset] = useState<RulesPreset>("official");
+
+  // ✅ Ajout : bots comportement
+  const [botsAutoPlay, setBotsAutoPlay] = useState<boolean>(true);
+  const [botTurnDelayMs, setBotTurnDelayMs] = useState<number>(650);
+  const [botRisk, setBotRisk] = useState<BotRisk>("normal");
+
+  const [startOrderMode, setStartOrderMode] =
+    useState<CapitalStartOrderMode>("random");
+
+  // ✅ Ajout : timer par tour
+  const [turnTimerSec, setTurnTimerSec] = useState<number>(0);
 
   const [inputMethod, setInputMethod] = useState<ScoreInputMethod>(() => {
     try {
@@ -319,10 +351,17 @@ export default function CapitalConfig(props: any) {
   const [mode, setMode] = useState<CapitalModeKind>("official");
   const [includeCapital, setIncludeCapital] = useState<boolean>(true);
 
+  // ✅ Ajout : limite du nombre de contrats (custom)
+  const [maxCustomContracts, setMaxCustomContracts] = useState<number>(15);
+
   // ------------------ Victoire / règles ------------------
-  const [victoryMode, setVictoryMode] = useState<"best_after_contracts" | "first_to_target">("best_after_contracts");
+  const [victoryMode, setVictoryMode] = useState<
+    "best_after_contracts" | "first_to_target"
+  >("best_after_contracts");
   const [targetScore, setTargetScore] = useState<number>(700);
-  const [tieBreaker, setTieBreaker] = useState<"none" | "last_contract_total">("last_contract_total");
+  const [tieBreaker, setTieBreaker] = useState<"none" | "last_contract_total">(
+    "last_contract_total"
+  );
   const [failDivideBy2, setFailDivideBy2] = useState<boolean>(true);
   const [startingCapital, setStartingCapital] = useState<number>(301);
 
@@ -343,8 +382,25 @@ export default function CapitalConfig(props: any) {
     "center",
   ]);
 
+  // ✅ Presets : applique des defaults sans empêcher l'édition
+  React.useEffect(() => {
+    if (rulesPreset === "official") {
+      setVictoryMode("best_after_contracts");
+      setTieBreaker("last_contract_total");
+      setFailDivideBy2(true);
+      setIncludeCapital(true);
+      // timer OFF par défaut en officiel
+    } else if (rulesPreset === "fun") {
+      setVictoryMode("first_to_target");
+      setTargetScore((v) => (v ? v : 700));
+      setTieBreaker("none");
+      setFailDivideBy2(false);
+      // laisse includeCapital tel quel, fun = liberté
+    }
+  }, [rulesPreset]);
+
   const customList = useMemo<CapitalContractID[]>(() => {
-    let out = [...customContracts].slice(0, 30);
+    let out = [...customContracts].slice(0, clamp(maxCustomContracts, 1, 30));
     if (includeCapital) {
       out = out.filter((x) => x !== "capital");
       out.unshift("capital");
@@ -352,38 +408,52 @@ export default function CapitalConfig(props: any) {
       out = out.filter((x) => x !== "capital");
     }
     return out;
-  }, [customContracts, includeCapital]);
+  }, [customContracts, includeCapital, maxCustomContracts]);
 
   const payload: CapitalConfigPayload = useMemo(() => {
-    return {
-      players: clamp(players, 1, 12),
+    const cappedPlayers = clamp(players, 1, 12);
+    const cfg: CapitalConfigPayload = {
+      players: cappedPlayers,
       selectedIds,
       startOrderMode,
       botsEnabled,
       botLevel,
+
+      botsAutoPlay: botsEnabled ? botsAutoPlay : undefined,
+      botTurnDelayMs: botsEnabled ? clamp(botTurnDelayMs, 0, 6000) : undefined,
+      botRisk: botsEnabled ? botRisk : undefined,
+
       mode,
       includeCapital,
+      maxCustomContracts: mode === "custom" ? clamp(maxCustomContracts, 1, 30) : undefined,
       customContracts: mode === "official" ? OFFICIAL_CONTRACTS : customList,
+
       inputMethod,
-    victoryMode,
-    targetScore,
-    tieBreaker,
-    failDivideBy2,
-    startingCapital,
+
       victoryMode,
-      targetScore: victoryMode === "first_to_target" ? clamp(targetScore, 50, 5000) : undefined,
+      targetScore:
+        victoryMode === "first_to_target" ? clamp(targetScore, 50, 5000) : undefined,
       tieBreaker,
+
       failDivideBy2,
       startingCapital: includeCapital ? undefined : clamp(startingCapital, 0, 5000),
+
+      turnTimerSec: clamp(turnTimerSec, 0, 120),
     };
+
+    return cfg;
   }, [
     players,
     selectedIds,
     startOrderMode,
     botsEnabled,
     botLevel,
+    botsAutoPlay,
+    botTurnDelayMs,
+    botRisk,
     mode,
     includeCapital,
+    maxCustomContracts,
     customList,
     inputMethod,
     victoryMode,
@@ -391,6 +461,7 @@ export default function CapitalConfig(props: any) {
     tieBreaker,
     failDivideBy2,
     startingCapital,
+    turnTimerSec,
   ]);
 
   // ------------------ UI helpers ------------------
@@ -404,7 +475,7 @@ export default function CapitalConfig(props: any) {
     try {
       localStorage.setItem(SCORE_INPUT_LS_KEY, inputMethod);
     } catch {}
-    const cfg = { ...payload };
+    const cfg: any = { ...payload };
     if (cfg.startOrderMode === "random") {
       cfg.selectedIds = shuffleCopy(cfg.selectedIds);
     }
@@ -673,6 +744,37 @@ export default function CapitalConfig(props: any) {
                   { value: "hard", label: "Hard" },
                 ]}
                 onChange={setBotLevel}
+              />
+            </OptionRow>
+
+            {/* ✅ Ajout : comportement bots */}
+            <OptionRow label="Bots auto-play (jouent tout seuls)">
+              <OptionToggle value={botsAutoPlay} onChange={setBotsAutoPlay} />
+            </OptionRow>
+
+            <OptionRow label="Vitesse bots">
+              <OptionSelect
+                value={botTurnDelayMs}
+                options={[
+                  { value: 250, label: "Très rapide" },
+                  { value: 450, label: "Rapide" },
+                  { value: 650, label: "Normal" },
+                  { value: 900, label: "Lent" },
+                  { value: 1300, label: "Très lent" },
+                ]}
+                onChange={(v: any) => setBotTurnDelayMs(Number(v))}
+              />
+            </OptionRow>
+
+            <OptionRow label="Prise de risque bots">
+              <OptionSelect
+                value={botRisk}
+                options={[
+                  { value: "safe", label: "Safe" },
+                  { value: "normal", label: "Normal" },
+                  { value: "aggressive", label: "Aggressive" },
+                ]}
+                onChange={(v: any) => setBotRisk(v)}
               />
             </OptionRow>
 
@@ -1014,6 +1116,25 @@ export default function CapitalConfig(props: any) {
               <OptionToggle value={includeCapital} onChange={setIncludeCapital} />
             </OptionRow>
 
+            {/* ✅ Ajout : limite nb contrats */}
+            <OptionRow label="Limite nb contrats (custom)">
+              <OptionSelect
+                value={maxCustomContracts}
+                options={[
+                  { value: 5, label: "5" },
+                  { value: 8, label: "8" },
+                  { value: 10, label: "10" },
+                  { value: 12, label: "12" },
+                  { value: 15, label: "15" },
+                  { value: 18, label: "18" },
+                  { value: 20, label: "20" },
+                  { value: 25, label: "25" },
+                  { value: 30, label: "30 (max)" },
+                ]}
+                onChange={(v: any) => setMaxCustomContracts(Number(v))}
+              />
+            </OptionRow>
+
             <div style={{ marginTop: 8, opacity: 0.85, fontSize: 12 }}>
               Ordre actuel ({customList.length} contrats)
             </div>
@@ -1172,6 +1293,18 @@ export default function CapitalConfig(props: any) {
       {/* VICTOIRE / RÈGLES */}
       {/* ============================= */}
       <Section title="Victoire / Règles">
+        {/* ✅ Ajout : preset règles */}
+        <OptionRow label="Preset règles">
+          <OptionSelect
+            value={rulesPreset}
+            options={[
+              { value: "official", label: "Officiel" },
+              { value: "fun", label: "Fun (libre)" },
+            ]}
+            onChange={(v: any) => setRulesPreset(v)}
+          />
+        </OptionRow>
+
         <OptionRow label="Condition de victoire">
           <OptionSelect
             value={victoryMode}
@@ -1243,11 +1376,26 @@ export default function CapitalConfig(props: any) {
           </OptionRow>
         )}
 
+        {/* ✅ Ajout : timer */}
+        <OptionRow label="Timer par tour">
+          <OptionSelect
+            value={turnTimerSec}
+            options={[
+              { value: 0, label: "Off" },
+              { value: 15, label: "15 s" },
+              { value: 20, label: "20 s" },
+              { value: 30, label: "30 s" },
+              { value: 45, label: "45 s" },
+              { value: 60, label: "60 s" },
+            ]}
+            onChange={(v: any) => setTurnTimerSec(Number(v))}
+          />
+        </OptionRow>
+
         <div style={{ marginTop: 10, fontSize: 12, opacity: 0.75, lineHeight: 1.35 }}>
-          ✅ Officiel : Capital ON + /2 ON + Meilleur score après contrats.
+          ✅ Officiel : Capital ON + /2 ON + Meilleur score après contrats. (Timer OFF)
         </div>
       </Section>
-
 
       {/* ============================= */}
       {/* SAISIE */}
