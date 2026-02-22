@@ -2,17 +2,19 @@ import { useEffect } from "react";
 import { useAuthOnline } from "../../hooks/useAuthOnline";
 import { trainingSyncQueueTry, trainingSyncQueueEnqueueSoon } from "./trainingSyncQueue";
 
-export function useTrainingAutoSync() {
+export function useTrainingAutoSync(enabled: boolean = true) {
   const { user, online } = useAuthOnline();
 
   useEffect(() => {
+    if (!enabled) return;
     if (!user) return;
     try {
       localStorage.setItem("dc_user_id", user.id);
     } catch {}
-  }, [user]);
+  }, [user, enabled]);
 
   useEffect(() => {
+    if (!enabled) return;
     if (!user || !online) return;
 
     let alive = true;
@@ -41,5 +43,5 @@ export function useTrainingAutoSync() {
       window.removeEventListener("focus", onFocus);
       window.clearInterval(t);
     };
-  }, [user, online]);
+  }, [user, online, enabled]);
 }

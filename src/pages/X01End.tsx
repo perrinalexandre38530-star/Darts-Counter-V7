@@ -7,12 +7,15 @@
 // + NOUVEAU : Radar "TrainingX01-like" + Historique des volées
 // ============================================
 import React from "react";
+import { createAutoBackup } from "../lib/backup/autoBackupService";
 import { History } from "../lib/history";
 import EndOfLegOverlay from "../components/EndOfLegOverlay";
 import {
   buildLegStatsFromX01V3Summary,
   type LegStats,
 } from "../lib/stats";
+import { exportSharedMatchPack } from "../lib/backup/sharedMatch";
+import { shareOrDownload } from "../lib/backup/fileExport";
 
 /* ================================
    Types basiques
@@ -128,7 +131,15 @@ export default function X01End({ go, params }: Props) {
         if (mounted) setErr("Erreur de chargement.");
       }
     })();
-    return () => {
+    
+  useEffect(() => {
+    const enabled = localStorage.getItem("dc_auto_backup_enabled") === "true";
+    if (enabled) {
+      createAutoBackup().catch(() => {});
+    }
+  }, []);
+
+  return () => {
       mounted = false;
     };
   }, [params?.matchId, params?.rec]);
@@ -384,6 +395,18 @@ export default function X01End({ go, params }: Props) {
     fontSize: D.fsBody,
   };
 
+  const shareMatchId = (params?.matchId || (rec as any)?.id || (rec as any)?.matchId) as string | undefined;
+
+  async function handleShareMatch() {
+    if (!shareMatchId) return;
+    try {
+      const pack = await exportSharedMatchPack(shareMatchId);
+      await shareOrDownload(pack, "dc_match_share.json", "Partie Darts Counter");
+    } catch (e) {
+      console.warn("share match failed", e);
+    }
+  }
+
   return (
     <Shell
       go={go}
@@ -419,20 +442,41 @@ export default function X01End({ go, params }: Props) {
             Joueurs :{" "}
             {players.map((p) => p?.name || "—").join(" · ") || "—"}
           </div>
-          {winnerName ? (
-            <div
-              style={{
-                display: "inline-flex",
-                alignItems: "center",
-                gap: 8,
-                color: "#ffcf57",
-                fontWeight: 900,
-              }}
-            >
-              <Trophy />
-              <span>{winnerName}</span>
-            </div>
-          ) : null}
+          <div style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+            {shareMatchId ? (
+              <button
+                onClick={handleShareMatch}
+                style={{
+                  padding: "6px 10px",
+                  borderRadius: 12,
+                  border: "1px solid rgba(255,255,255,0.18)",
+                  background: "rgba(255,255,255,0.06)",
+                  color: "#fff",
+                  cursor: "pointer",
+                  fontWeight: 900,
+                  fontSize: 12,
+                }}
+                title="Partager cette partie (fichier)"
+              >
+                Partager
+              </button>
+            ) : null}
+
+            {winnerName ? (
+              <div
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 8,
+                  color: "#ffcf57",
+                  fontWeight: 900,
+                }}
+              >
+                <Trophy />
+                <span>{winnerName}</span>
+              </div>
+            ) : null}
+          </div>
         </div>
       </Panel>
 

@@ -79,6 +79,7 @@ export type CloudImportResult = {
 ========================= */
 import { computeCricketLegStats, type CricketHit } from "./StatsCricket";
 
+import { triggerAutoBackupIfEnabled } from "./backup/triggerAutoBackup";
 /* =========================
    ✅ CLOUD SNAPSHOT PUSH (PATCH CRITICAL)
    - après un match / remove / clear -> push snapshot cloud (debounce)
@@ -1680,6 +1681,9 @@ const trimmed = { ...safe, payload: payloadLiteFinal };
       }
     } catch {}
   }
+
+  // Auto-backup (centralized) after persisting history
+  triggerAutoBackupIfEnabled();
 }
 
 // ============================================

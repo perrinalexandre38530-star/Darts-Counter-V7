@@ -7,12 +7,20 @@
 // - UI full thème + textes via LangContext
 // ============================================
 import React from "react";
-import QRCode from "qrcode"; // ✅ QR local (génération)
+import QRCode from "qrcode"; import { buildBackupEnvelope, unpackBackupEnvelope } from "../lib/backup/envelope";
+import { uploadBackupJsonToSupabase } from "../lib/backup/cloudUpload";
+import { importSharedMatchPack } from "../lib/backup/sharedMatchImport";
+import { importAll } from "../lib/storage";
+import { restoreCloudBackupFromJson } from "../lib/cloudBackup/restoreBackup";
+// ✅ QR local (génération)
 import jsQR from "jsqr"; // ✅ Scan QR (caméra)
 import type { Store } from "../lib/types";
 import { useTheme } from "../contexts/ThemeContext";
 import { useLang } from "../contexts/LangContext";
-import { loadStore, saveStore } from "../lib/storage";
+import { loadStore, saveStore, exportAll } from "../lib/storage";
+import { exportCloudBackupAsJson } from "../lib/cloudBackup/exportBackup";
+import { shareOrDownload } from "../lib/backup/fileExport";
+import { createAutoBackup, getAutoBackups, clearAutoBackups } from "../lib/backup/autoBackupService";
 import { supabase } from "../lib/supabaseClient";
 import { EventBuffer } from "../lib/sync/EventBuffer";
 import SyncStatusChip from "../components/sync/SyncStatusChip";
@@ -31,6 +39,70 @@ export default function SyncCenter({ store, go, profileId }: Props) {
   const { t } = useLang();
 
   const [mode, setMode] = React.useState<PanelMode>("local");
+
+  // 🔒 Cloud stats (events + training) — OFF par défaut.
+  // Activable via un toggle (stocké dans localStorage) pour éviter l'explosion Supabase.
+  const [cloudStatsEnabled, setCloudStatsEnabled] = React.useState<boolean>(() => {
+    try {
+      return localStorage.getItem("cloudStatsEnabled") === "1";
+    } catch {
+      return false;
+    }
+  });
+
+  const setCloudStatsEnabledPersist = (v: boolean) => {
+    setCloudStatsEnabled(v);
+    try {
+      localStorage.setItem("cloudStatsEnabled", v ? "1" : "0");
+    } catch {}
+    try {
+      window.dispatchEvent(new Event("cloudStatsEnabledChanged"));
+    } catch {}
+  };
+
+  // ✅ Auto-backup (Recovery) — OFF par défaut
+  const [autoBackupEnabled, setAutoBackupEnabled] = React.useState<boolean>(() => {
+    try {
+      return localStorage.getItem("dc_auto_backup_enabled") === "1";
+    } catch {
+      return false;
+    }
+  });
+
+  
+  // ✅ Export sécurisé (SHA-256 + option gzip + option AES + option cloud)
+  const [secureExportEnabled, setSecureExportEnabled] = React.useState<boolean>(true);
+  const [secureCompressEnabled, setSecureCompressEnabled] = React.useState<boolean>(true);
+  const [secureEncryptEnabled, setSecureEncryptEnabled] = React.useState<boolean>(false);
+  const [securePassword, setSecurePassword] = React.useState<string>("");
+  const [secureCloudUploadEnabled, setSecureCloudUploadEnabled] = React.useState<boolean>(false);
+  const [secureCloudBucket, setSecureCloudBucket] = React.useState<string>("backups");
+const setAutoBackupEnabledPersist = (v: boolean) => {
+    setAutoBackupEnabled(v);
+    try {
+      localStorage.setItem("dc_auto_backup_enabled", v ? "1" : "0");
+    } catch {}
+    try {
+      window.dispatchEvent(new Event("dcAutoBackupEnabledChanged"));
+    } catch {}
+  };
+
+  const [autoBackupsCount, setAutoBackupsCount] = React.useState<number>(() => {
+    try {
+      return getAutoBackups().length;
+    } catch {
+      return 0;
+    }
+  });
+
+  const refreshAutoBackupsCount = () => {
+    try {
+      setAutoBackupsCount(getAutoBackups().length);
+    } catch {
+      setAutoBackupsCount(0);
+    }
+  };
+
 
   async function handleForceSupabaseSync() {
     try {
@@ -125,13 +197,47 @@ export default function SyncCenter({ store, go, profileId }: Props) {
   // =====================================================
   // IMPORT GÉNÉRIQUE — store complet / profil / peer
   // =====================================================
-  async function importParsedPayload(parsed: any) {
+  async function importParsedPayload(parsed: any) {    // ✅ Envelope sécurisé (gzip/hash/aes)
+    if (parsed?.kind === "dc_backup_envelope_v1") {
+      const pwd = secureEncryptEnabled ? securePassword : securePassword; // use current input
+      const { payloadKind, payloadObj } = await unpackBackupEnvelope(parsed, {
+        decryptPassword: pwd,
+      });
+      await importParsedPayload(payloadObj);
+      return;
+    }
+
+    // ✅ CloudBackup (Recovery)
+    if (parsed?.version && parsed?.history && parsed?.localProfiles && parsed?.dartsets) {
+      const res = await restoreCloudBackupFromJson({
+        json: JSON.stringify(parsed),
+        mode: "merge",
+        rebuild: true,
+      });
+      if (!(res as any).ok) throw new Error((res as any).error ?? "Restore CloudBackup failed");
+      return;
+    }
+
+    // ✅ Full snapshot (exportAll/importAll)
+    if (parsed?._v && parsed?.idb && parsed?.localStorage) {
+      await importAll(parsed);
+      return;
+    }
+
+    // ✅ SharedMatchPack (match + profiles + dartsets)
+    if (parsed?.version === 1 && parsed?.match) {
+      const res = await importSharedMatchPack({ pack: parsed });
+      if (!res.ok) throw new Error(res.error);
+      return;
+    }
+
+
     // Store complet
     if (parsed.kind === "dc_store_snapshot_v1" && parsed.store) {
       const before = (await loadStore()) || store;
       const nextStore: Store = parsed.store;
       await saveStore(nextStore);
-      buildImportReport({ kind: parsed.kind, source: "cloud/download", token: cloudToken || undefined }, before, nextStore);
+      buildImportReport({ kind: parsed.kind, source: "cloud/download", token: cloudToken ?? undefined }, before, nextStore);
       buildImportReport({ kind: parsed.kind, source: "local/importParsedPayload" }, before, nextStore);
       return;
     }
@@ -264,6 +370,121 @@ export default function SyncCenter({ store, go, profileId }: Props) {
         "Export du profil sélectionné généré ci-dessous."
       )
     );
+  }
+
+  // =====================================================
+  // 1.b) BACKUP RECOVERY (History + profils + dartsets)
+  // =====================================================
+  async function handleExportRecoveryBackup() {
+    try {
+      setLocalMessage(t("syncCenter.backup.exporting", "Export sauvegarde recovery…"));
+
+      // Laisse respirer l'UI avant les opérations lourdes (envelope/gzip/aes).
+      await new Promise((r) => setTimeout(r, 0));
+
+      const { backupObj } = await exportCloudBackupAsJson();
+
+      // ✅ Export sécurisé (envelope) ou legacy JSON
+      const exportObj = secureExportEnabled
+        ? await buildBackupEnvelope("recovery", backupObj, {
+            compress: secureCompressEnabled,
+            encryptPassword: secureEncryptEnabled ? securePassword : "",
+          })
+        : backupObj;
+
+      await shareOrDownload(exportObj, "dc_recovery_backup.json", "Sauvegarde Darts Counter");
+
+      // ✅ Upload cloud en "non-bloquant" pour éviter de figer l'UI
+      if (secureExportEnabled && secureCloudUploadEnabled) {
+        setLocalMessage(
+          t("syncCenter.backup.exportOk", "Sauvegarde recovery exportée.")
+            + "\n"
+            + t("syncCenter.backup.cloudUploading", "Upload cloud en cours…")
+        );
+
+        void (async () => {
+          try {
+            await uploadBackupJsonToSupabase({
+              bucket: secureCloudBucket,
+              filename: "dc_recovery_backup.json",
+              jsonObject: exportObj,
+            });
+            setLocalMessage(
+              t("syncCenter.backup.exportOk", "Sauvegarde recovery exportée.")
+                + "\n"
+                + t("syncCenter.backup.cloudOk", "Upload cloud : OK.")
+            );
+          } catch (e) {
+            console.error(e);
+            setLocalMessage(
+              t("syncCenter.backup.exportOk", "Sauvegarde recovery exportée.")
+                + "\n"
+                + t("syncCenter.backup.cloudErr", "Upload cloud : erreur.")
+            );
+          }
+        })();
+
+        return;
+      }
+
+      setLocalMessage(t("syncCenter.backup.exportOk", "Sauvegarde recovery exportée."));
+    } catch (e) {
+      console.error(e);
+      setLocalMessage(t("syncCenter.backup.exportError", "Erreur export sauvegarde recovery."));
+    }
+  }
+
+  // =====================================================
+  // 1.c) SNAPSHOT FULL (exportAll)
+  // =====================================================
+  async function handleExportFullSnapshot() {
+    try {
+      setLocalMessage(t("syncCenter.snapshot.exporting", "Export snapshot complet…"));
+      const data = await exportAll();
+      await shareOrDownload(data, "dc_full_snapshot.json", "Snapshot complet Darts Counter");
+      setLocalMessage(t("syncCenter.snapshot.exportOk", "Snapshot complet exporté."));
+    } catch (e) {
+      console.error(e);
+      setLocalMessage(t("syncCenter.snapshot.exportError", "Erreur export snapshot complet."));
+    }
+  }
+
+  async function handleRunAutoBackupNow() {
+    try {
+      setLocalMessage(t("syncCenter.autobackup.running", "Auto-backup…"));
+      await createAutoBackup();
+      refreshAutoBackupsCount();
+      setLocalMessage(t("syncCenter.autobackup.ok", "Auto-backup OK."));
+    } catch (e) {
+      console.error(e);
+      setLocalMessage(t("syncCenter.autobackup.err", "Auto-backup impossible."));
+    }
+  }
+
+  async function handleExportLatestAutoBackup() {
+    try {
+      const list = getAutoBackups();
+      const latest = list?.[0];
+      if (!latest?.backup) {
+        setLocalMessage(t("syncCenter.autobackup.none", "Aucune sauvegarde auto disponible."));
+        return;
+      }
+      await shareOrDownload(latest.backup, "dc_recovery_autobackup_latest.json", "Auto-backup Darts Counter");
+      setLocalMessage(t("syncCenter.autobackup.exported", "Dernier auto-backup exporté."));
+    } catch (e) {
+      console.error(e);
+      setLocalMessage(t("syncCenter.autobackup.exportErr", "Erreur export auto-backup."));
+    }
+  }
+
+  function handleClearAutoBackups() {
+    try {
+      clearAutoBackups();
+      refreshAutoBackupsCount();
+      setLocalMessage(t("syncCenter.autobackup.cleared", "Auto-backups supprimés."));
+    } catch (e) {
+      console.error(e);
+    }
   }
 
   // Download fichier .dcstats.json
@@ -1129,6 +1350,26 @@ async function handleCloudAutoTest() {
             onChangeImport={setImportJson}
             onExportStore={handleExportFullStore}
             onExportActiveProfile={handleExportActiveProfile}
+            onExportRecoveryBackup={handleExportRecoveryBackup}
+            onExportFullSnapshot={handleExportFullSnapshot}
+            secureExportEnabled={secureExportEnabled}
+            secureCompressEnabled={secureCompressEnabled}
+            secureEncryptEnabled={secureEncryptEnabled}
+            securePassword={securePassword}
+            secureCloudUploadEnabled={secureCloudUploadEnabled}
+            secureCloudBucket={secureCloudBucket}
+            onSecureExportEnabledChange={setSecureExportEnabled}
+            onSecureCompressEnabledChange={setSecureCompressEnabled}
+            onSecureEncryptEnabledChange={setSecureEncryptEnabled}
+            onSecurePasswordChange={setSecurePassword}
+            onSecureCloudUploadEnabledChange={setSecureCloudUploadEnabled}
+            onSecureCloudBucketChange={setSecureCloudBucket}
+            autoBackupEnabled={autoBackupEnabled}
+            autoBackupsCount={autoBackupsCount}
+            onAutoBackupEnabledChange={setAutoBackupEnabledPersist}
+            onRunAutoBackupNow={handleRunAutoBackupNow}
+            onExportLatestAutoBackup={handleExportLatestAutoBackup}
+            onClearAutoBackups={handleClearAutoBackups}
             onDownload={handleDownloadJson}
             onImport={handleImportFromTextarea}
             onImportFile={handleImportFromFile}
@@ -1157,6 +1398,8 @@ async function handleCloudAutoTest() {
             status={cloudStatus}
             importReport={importReport}
             importReportAt={importReportAt}
+            cloudStatsEnabled={cloudStatsEnabled}
+            onCloudStatsEnabledChange={setCloudStatsEnabledPersist}
             onClearImportReport={() => { setImportReport(""); setImportReportAt(""); }}
             onTokenChange={setCloudToken}
             onUpload={handleCloudUpload}
@@ -1476,9 +1719,37 @@ function LocalPanel({
   onChangeImport,
   onExportStore,
   onExportActiveProfile,
+  onExportRecoveryBackup,
+  onExportFullSnapshot,
+
+  // ✅ Export sécurisé
+  secureExportEnabled,
+  secureCompressEnabled,
+  secureEncryptEnabled,
+  securePassword,
+  secureCloudUploadEnabled,
+  secureCloudBucket,
+  onSecureExportEnabledChange,
+  onSecureCompressEnabledChange,
+  onSecureEncryptEnabledChange,
+  onSecurePasswordChange,
+  onSecureCloudUploadEnabledChange,
+  onSecureCloudBucketChange,
+
+  // ✅ Auto-backup
+  autoBackupEnabled,
+  autoBackupsCount,
+  onAutoBackupEnabledChange,
+  onRunAutoBackupNow,
+  onExportLatestAutoBackup,
+  onClearAutoBackups,
+
+  // ✅ Import / export local
   onDownload,
   onImport,
   onImportFile,
+
+  // ✅ Cloud sync
   onForceSupabaseSync,
 }: {
   theme: any;
@@ -1490,11 +1761,36 @@ function LocalPanel({
   importReportAt: string;
   onClearImportReport: () => void;
   onChangeImport: (v: string) => void;
+
   onExportStore: () => void;
   onExportActiveProfile: () => void;
+  onExportRecoveryBackup: () => void;
+  onExportFullSnapshot: () => void;
+
+  secureExportEnabled: boolean;
+  secureCompressEnabled: boolean;
+  secureEncryptEnabled: boolean;
+  securePassword: string;
+  secureCloudUploadEnabled: boolean;
+  secureCloudBucket: string;
+  onSecureExportEnabledChange: (v: boolean) => void;
+  onSecureCompressEnabledChange: (v: boolean) => void;
+  onSecureEncryptEnabledChange: (v: boolean) => void;
+  onSecurePasswordChange: (v: string) => void;
+  onSecureCloudUploadEnabledChange: (v: boolean) => void;
+  onSecureCloudBucketChange: (v: string) => void;
+
+  autoBackupEnabled: boolean;
+  autoBackupsCount: number;
+  onAutoBackupEnabledChange: (v: boolean) => void;
+  onRunAutoBackupNow: () => void;
+  onExportLatestAutoBackup: () => void;
+  onClearAutoBackups: () => void;
+
   onDownload: () => void;
   onImport: () => void;
   onImportFile: (e: React.ChangeEvent<HTMLInputElement>) => void;
+
   onForceSupabaseSync: () => void;
 }) {
   return (
@@ -1553,6 +1849,100 @@ function LocalPanel({
         )}
       </div>
 
+
+      {/* --- Options export sécurisé (Envelope) --- */}
+      <div
+        style={{
+          marginTop: 10,
+          marginBottom: 10,
+          padding: 10,
+          borderRadius: 12,
+          border: `1px solid ${theme.borderSoft}`,
+          background: "rgba(0,0,0,0.14)",
+        }}
+      >
+        <div style={{ fontWeight: 800, marginBottom: 8 }}>
+          {t("syncCenter.secure.title", "Export sécurisé")}
+        </div>
+
+        <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+          <label style={{ display: "flex", gap: 6, alignItems: "center" }}>
+            <input
+              type="checkbox"
+              checked={secureExportEnabled}
+              onChange={(e) => onSecureExportEnabledChange(e.target.checked)}
+            />
+            <span>{t("syncCenter.secure.enable", "Activer envelope")}</span>
+          </label>
+
+          <label style={{ display: "flex", gap: 6, alignItems: "center" }}>
+            <input
+              type="checkbox"
+              checked={secureCompressEnabled}
+              onChange={(e) => onSecureCompressEnabledChange(e.target.checked)}
+              disabled={!secureExportEnabled}
+            />
+            <span>{t("syncCenter.secure.gzip", "GZIP")}</span>
+          </label>
+
+          <label style={{ display: "flex", gap: 6, alignItems: "center" }}>
+            <input
+              type="checkbox"
+              checked={secureEncryptEnabled}
+              onChange={(e) => onSecureEncryptEnabledChange(e.target.checked)}
+              disabled={!secureExportEnabled}
+            />
+            <span>{t("syncCenter.secure.aes", "Chiffrer (AES)")}</span>
+          </label>
+
+          <input
+            value={securePassword}
+            onChange={(e) => onSecurePasswordChange(e.target.value)}
+            placeholder={t("syncCenter.secure.password", "Mot de passe (si chiffrement)")}
+            style={{
+              flex: "1 1 220px",
+              minWidth: 220,
+              padding: "8px 10px",
+              borderRadius: 10,
+              border: `1px solid ${theme.borderSoft}`,
+              background: "rgba(0,0,0,0.2)",
+              color: "inherit",
+            }}
+          />
+        </div>
+
+        <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 8, alignItems: "center" }}>
+          <label style={{ display: "flex", gap: 6, alignItems: "center" }}>
+            <input
+              type="checkbox"
+              checked={secureCloudUploadEnabled}
+              onChange={(e) => onSecureCloudUploadEnabledChange(e.target.checked)}
+              disabled={!secureExportEnabled}
+            />
+            <span>{t("syncCenter.secure.cloud", "Uploader cloud (Supabase Storage)")}</span>
+          </label>
+
+          <input
+            value={secureCloudBucket}
+            onChange={(e) => onSecureCloudBucketChange(e.target.value)}
+            placeholder={t("syncCenter.secure.bucket", "Bucket (défaut: backups)")}
+            style={{
+              flex: "0 1 220px",
+              minWidth: 180,
+              padding: "8px 10px",
+              borderRadius: 10,
+              border: `1px solid ${theme.borderSoft}`,
+              background: "rgba(0,0,0,0.2)",
+              color: "inherit",
+            }}
+            disabled={!secureExportEnabled || !secureCloudUploadEnabled}
+          />
+        </div>
+
+        <div style={{ opacity: 0.75, marginTop: 6, fontSize: 12 }}>
+          {t("syncCenter.secure.note", "Le même mot de passe sera requis à l'import si chiffrement activé.")}
+        </div>
+      </div>
       {/* Actions export */}
       <div
         style={{
@@ -1568,6 +1958,12 @@ function LocalPanel({
         <button onClick={onExportActiveProfile} style={buttonSmall(theme)}>
           {t("syncCenter.local.btnExportProfile", "Exporter profil actif")}
         </button>
+        <button onClick={onExportRecoveryBackup} style={buttonSmall(theme)}>
+          {t("syncCenter.backup.btnRecovery", "Exporter sauvegarde (Recovery)")}
+        </button>
+        <button onClick={onExportFullSnapshot} style={buttonSmall(theme)}>
+          {t("syncCenter.backup.btnSnapshot", "Exporter snapshot complet")}
+        </button>
         <button
           onClick={onDownload}
           style={buttonSmall(theme)}
@@ -1578,6 +1974,53 @@ function LocalPanel({
             "Télécharger (.dcstats.json)"
           )}
         </button>
+      </div>
+
+      {/* Auto-backup */}
+      <div
+        style={{
+          padding: 10,
+          borderRadius: 14,
+          border: `1px solid ${theme.borderSoft}`,
+          background: "rgba(255,255,255,0.03)",
+          marginBottom: 10,
+        }}
+      >
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
+          <div style={{ fontWeight: 900, fontSize: 12, color: theme.text }}>
+            {t("syncCenter.autobackup.title", "Auto-backup (Recovery)")}
+          </div>
+          <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}>
+            <input
+              type="checkbox"
+              checked={!!autoBackupEnabled}
+              onChange={(e) => onAutoBackupEnabledChange(!!e.target.checked)}
+            />
+            <span style={{ fontSize: 12, fontWeight: 900, color: autoBackupEnabled ? theme.primary : theme.textSoft }}>
+              {autoBackupEnabled ? "ON" : "OFF"}
+            </span>
+          </label>
+        </div>
+        <div style={{ marginTop: 6, fontSize: 11.5, color: theme.textSoft, lineHeight: 1.35 }}>
+          {t(
+            "syncCenter.autobackup.desc",
+            "Quand activé, l'app crée automatiquement une sauvegarde recovery quand elle passe en arrière-plan (et tu peux en déclencher une manuellement)."
+          )}
+        </div>
+        <div style={{ marginTop: 8, display: "flex", flexWrap: "wrap", gap: 6, alignItems: "center" }}>
+          <div style={{ fontSize: 11.5, color: theme.textSoft, marginRight: 6 }}>
+            {t("syncCenter.autobackup.count", "Backups:")} <b style={{ color: theme.text }}>{autoBackupsCount}</b>
+          </div>
+          <button onClick={onRunAutoBackupNow} style={buttonSmall(theme)}>
+            {t("syncCenter.autobackup.run", "Lancer maintenant")}
+          </button>
+          <button onClick={onExportLatestAutoBackup} style={buttonSmall(theme)} disabled={!autoBackupsCount}>
+            {t("syncCenter.autobackup.exportLatest", "Exporter le dernier")}
+          </button>
+          <button onClick={onClearAutoBackups} style={buttonSmall(theme)} disabled={!autoBackupsCount}>
+            {t("syncCenter.autobackup.clear", "Vider")}
+          </button>
+        </div>
       </div>
 
       {/* Zone JSON export (readonly) */}
@@ -2231,6 +2674,8 @@ function CloudPanel({
   status,
   importReport,
   importReportAt,
+  cloudStatsEnabled,
+  onCloudStatsEnabledChange,
   onClearImportReport,
   onTokenChange,
   onUpload,
@@ -2244,6 +2689,8 @@ function CloudPanel({
   status: string;
   importReport: string;
   importReportAt: string;
+  cloudStatsEnabled: boolean;
+  onCloudStatsEnabledChange: (v: boolean) => void;
   onClearImportReport: () => void;
   onTokenChange: (v: string) => void;
   onUpload: () => void;
@@ -2273,6 +2720,45 @@ function CloudPanel({
       >
         {t("syncCenter.cloud.titlePanel", "Sync Cloud (code)")}
       </div>
+
+      {/* Toggle — Sync stats (events + training) */}
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: 12,
+          padding: "10px 10px",
+          borderRadius: 12,
+          background: theme.bg,
+          border: `1px solid ${theme.borderSoft}`,
+          marginBottom: 12,
+        }}
+      >
+        <div style={{ lineHeight: 1.15 }}>
+          <div style={{ fontSize: 13, fontWeight: 900 }}>
+            {t("syncCenter.cloud.statsToggleTitle", "Sync stats (beta)")}
+          </div>
+          <div style={{ fontSize: 12, opacity: 0.85 }}>
+            {t(
+              "syncCenter.cloud.statsToggleHint",
+              "Active la synchro des événements et trainings (peut augmenter l’usage Supabase)."
+            )}
+          </div>
+        </div>
+
+        <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}>
+          <input
+            type="checkbox"
+            checked={!!cloudStatsEnabled}
+            onChange={(e) => onCloudStatsEnabledChange((e.target as any).checked)}
+          />
+          <span style={{ fontSize: 12, fontWeight: 900, color: cloudStatsEnabled ? theme.primary : theme.text }}>
+            {cloudStatsEnabled ? "ON" : "OFF"}
+          </span>
+        </label>
+      </div>
+
 
       <div
         style={{

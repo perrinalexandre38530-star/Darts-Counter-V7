@@ -147,6 +147,7 @@ import TrainingX01Play from "./pages/TrainingX01Play";
 import TrainingClock from "./pages/TrainingClock";
 import TrainingModePage from "./pages/TrainingModePage";
 import { useTrainingAutoSync } from "./training/sync/useTrainingAutoSync";
+import { useAutoBackup } from "./hooks/useAutoBackup";
 
 import ShanghaiConfigPage from "./pages/ShanghaiConfig";
 import ShanghaiEnd from "./pages/ShanghaiEnd";
@@ -191,8 +192,6 @@ import X01PlayV3 from "./pages/X01PlayV3";
 
 // 🌟 Nouveau : SYNC / Partage stats locales
 import SyncCenter from "./pages/SyncCenter";
-import CameraScoringSetup from "./pages/CameraScoringSetup";
-import CameraScoringCalibration from "./pages/CameraScoringCalibration";
 
 // Contexts
 import { ThemeProvider } from "./contexts/ThemeContext";
@@ -595,8 +594,6 @@ type Tab =
   | "x01_config_v3"
   | "x01_play_v3"
   | "sync_center"
-  | "camera_scoring_setup"
-  | "camera_scoring_calibration"
   | "auth_callback"
   | "darts_mode_config"
   | "darts_mode_play"
@@ -1183,16 +1180,66 @@ function SWUpdateBanner() {
                 APP
 -------------------------------------------- */
 function App() {
-  // ============================================
-  // CLOUD SYNC SAFETY FLAG
-  // - OFF par défaut pour éviter l’explosion Supabase
-  // - activer uniquement via un toggle/settings quand tu seras prêt
-  // ============================================
-  const CLOUD_STATS_ENABLED = false;
-
 useEffect(() => {
   rehydrateSupabaseSession();
 }, []);
+
+// 🔒 Cloud stats (events + training) — OFF par défaut pour éviter l'explosion Supabase.
+// Activable via SyncCenter (toggle stocké dans localStorage: "cloudStatsEnabled" = "1").
+const [cloudStatsEnabled, setCloudStatsEnabled] = useState(() => {
+  try {
+    return localStorage.getItem("cloudStatsEnabled") === "1";
+  } catch {
+    return false;
+  }
+});
+
+// ✅ Auto-backup (Recovery) — OFF par défaut
+// Toggle stocké dans localStorage: "dc_auto_backup_enabled" = "1"
+const [autoBackupEnabled, setAutoBackupEnabled] = useState(() => {
+  try {
+    return localStorage.getItem("dc_auto_backup_enabled") === "1";
+  } catch {
+    return false;
+  }
+});
+
+useEffect(() => {
+  const onStorage = (e) => {
+    if (!e || e.key !== "cloudStatsEnabled") return;
+    setCloudStatsEnabled(e.newValue === "1");
+  };
+  const onCustom = () => {
+    try {
+      setCloudStatsEnabled(localStorage.getItem("cloudStatsEnabled") === "1");
+    } catch {}
+  };
+  window.addEventListener("storage", onStorage);
+  window.addEventListener("cloudStatsEnabledChanged", onCustom);
+  return () => {
+    window.removeEventListener("storage", onStorage);
+    window.removeEventListener("cloudStatsEnabledChanged", onCustom);
+  };
+}, []);
+
+useEffect(() => {
+  const onStorage = (e) => {
+    if (!e || e.key !== "dc_auto_backup_enabled") return;
+    setAutoBackupEnabled(e.newValue === "1");
+  };
+  const onCustom = () => {
+    try {
+      setAutoBackupEnabled(localStorage.getItem("dc_auto_backup_enabled") === "1");
+    } catch {}
+  };
+  window.addEventListener("storage", onStorage);
+  window.addEventListener("dcAutoBackupEnabledChanged", onCustom);
+  return () => {
+    window.removeEventListener("storage", onStorage);
+    window.removeEventListener("dcAutoBackupEnabledChanged", onCustom);
+  };
+}, []);
+
 
   useEffect(() => {
     migrateLocalStorageToIndexedDB();
@@ -1200,7 +1247,8 @@ useEffect(() => {
 
   // ✅ Multi-device: auto-sync des événements vers Supabase (best-effort)
   useEffect(() => {
-    if (!CLOUD_STATS_ENABLED) return;
+    if (!cloudStatsEnabled) return;
+
     const uninstall = EventBuffer.installAutoSync({ intervalMs: 45_000 });
     EventBuffer.syncNow().catch(() => {});
 
@@ -1211,10 +1259,14 @@ useEffect(() => {
         uninstall();
       } catch {}
     };
-  }, []);
+  }, [cloudStatsEnabled]);
+
 
   // LOT20: auto-sync training events (best-effort)
-  useTrainingAutoSync(CLOUD_STATS_ENABLED);
+  useTrainingAutoSync(!!cloudStatsEnabled);
+
+  // ✅ Auto-backup léger (Recovery) — déclenché quand l'app passe en background
+  useAutoBackup(!!autoBackupEnabled);
 
   // ============================================================
   // ✅ CLOUD SNAPSHOT SYNC (source unique Supabase)
@@ -2485,14 +2537,6 @@ case "babyfoot_team_edit":
 
       case "sync_center":
         page = <SyncCenter store={store} go={go} profileId={routeParams?.profileId ?? null} />;
-        break;
-
-      case "camera_scoring_setup":
-        page = <CameraScoringSetup go={go} params={routeParams} />;
-        break;
-
-      case "camera_scoring_calibration":
-        page = <CameraScoringCalibration go={go} params={routeParams} />;
         break;
 
         case "tournaments": {

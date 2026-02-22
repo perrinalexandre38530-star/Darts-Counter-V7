@@ -13,7 +13,6 @@ import React, { useEffect, useMemo, useState } from "react";
 import { useTheme } from "../contexts/ThemeContext";
 import { useLang } from "../contexts/LangContext";
 import { History } from "../lib/history";
-
 type Props = {
   store?: any;
   go?: (to: string, params?: any) => void;
@@ -98,7 +97,11 @@ export default function ShanghaiEnd(props: Props) {
       }
     })();
 
-    return () => {
+    
+  useEffect(() => {
+  }, []);
+
+  return () => {
       alive = false;
     };
   }, [id, recIn]);

@@ -18,6 +18,7 @@ import ProfileMedallionCarousel from "../../components/ProfileMedallionCarousel"
 import type { Store, Profile } from "../../lib/types";
 import {
   loadPingPongState,
+  savePingPongState,
   resetPingPong,
   setConfig,
   type PingPongMode,
@@ -266,6 +267,8 @@ export default function PingPongConfig({ go, params, store }: Props) {
     (next as any).teamBProfileIds = profiles.length ? selB.slice(0, capB) : [];
 
     setSt(next);
+    // ✅ persiste immédiatement pour que PingPongPlay retrouve les profils sélectionnés
+    try { savePingPongState(next as any); } catch {}
     go("pingpong_play", { matchId: (next as any).matchId });
   };
 

@@ -159,23 +159,25 @@ type TickerVariant = "a" | "b"; // 2 variantes (si tu veux plus tard)
 const PP_TICKER_IMAGES: Record<PingPongTickerCategory, Record<TickerVariant, string[]>> = {
   // Ticker #1
   match: {
+    // ✅ Pas d’assets "match_*" dans le pack actuel : on réutilise des fonds existants.
     a: [
-      "../../assets/tickers/ticker_pingpong_match_1.png",
-      "../../assets/tickers/ticker_pingpong_match_2.png",
+      "../../assets/tickers/ticker_pingpong_tips_1.png",
+      "../../assets/tickers/ticker_pingpong_tips_2.png",
     ],
     b: [
-      "../../assets/tickers/ticker_pingpong_match_3.png",
-      "../../assets/tickers/ticker_pingpong_match_4.png",
+      "../../assets/tickers/ticker_pingpong_news_1.png",
+      "../../assets/tickers/ticker_pingpong_news_2.png",
     ],
   },
   tip: {
+    // ✅ Réutilise les fonds "tips_*" (assets existants)
     a: [
-      "../../assets/tickers/ticker_pingpong_tip_1.png",
-      "../../assets/tickers/ticker_pingpong_tip_2.png",
+      "../../assets/tickers/ticker_pingpong_tips_1.png",
+      "../../assets/tickers/ticker_pingpong_tips_2.png",
     ],
     b: [
-      "../../assets/tickers/ticker_pingpong_tip_3.png",
-      "../../assets/tickers/ticker_pingpong_tip_4.png",
+      "../../assets/tickers/ticker_pingpong_tips_1.png",
+      "../../assets/tickers/ticker_pingpong_tips_2.png",
     ],
   },
 
@@ -255,9 +257,12 @@ function toAssetUrl(relPathFromThisFile: string): string {
 }
 
 function pickTickerImage(category: PingPongTickerCategory, seed: string, variant: TickerVariant = "a") {
-  const list = PP_TICKER_IMAGES?.[category]?.[variant] ?? [];
+  // ✅ FIX: "tip" (singulier) réutilise les fonds "tips" (pluriel)
+  const cat: PingPongTickerCategory = category === "tip" ? "tips" : category;
+
+  const list = PP_TICKER_IMAGES?.[cat]?.[variant] ?? [];
   if (!list.length) return "";
-  const h = hashSeed(`${seed}|${category}|${variant}`);
+  const h = hashSeed(`${seed}|${cat}|${variant}`);
   const picked = list[h % list.length] ?? "";
   return picked ? toAssetUrl(picked) : "";
 }

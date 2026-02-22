@@ -33,8 +33,8 @@ export type CapitalStartOrderMode = "random" | "fixed";
 
 export type CapitalConfigPayload = {
   // ✅ Participants
-  players: number;           // total (humains + bots)
-  selectedIds?: string[];    // ids profils/bots (si fourni, il prime)
+  players: number; // total (humains + bots)
+  selectedIds?: string[]; // ids profils/bots (si fourni, il prime)
   startOrderMode?: CapitalStartOrderMode;
 
   // Bots
@@ -49,22 +49,22 @@ export type CapitalConfigPayload = {
   // Saisie
   inputMethod?: "keypad" | "dartboard" | "presets";
 
-// ✅ Victoire / tie-break (optionnel, depuis CapitalConfig)
-victoryMode?: "best_after_contracts" | "first_to_target";
-targetScore?: number;
-tieBreaker?: "none" | "last_contract_total";
+  // ✅ Victoire / tie-break (optionnel, depuis CapitalConfig)
+  victoryMode?: "best_after_contracts" | "first_to_target";
+  targetScore?: number;
+  tieBreaker?: "none" | "last_contract_total";
 
-// ✅ Règles
-failDivideBy2?: boolean;
-startingCapital?: number;
+  // ✅ Règles
+  failDivideBy2?: boolean;
+  startingCapital?: number;
 
-// ✅ Timer
-turnTimerSec?: number;          // 0 = off
+  // ✅ Timer
+  turnTimerSec?: number; // 0 = off
 
-// ✅ Bots (comportement)
-botsAutoPlay?: boolean;         // true = bot joue tout seul
-botTurnDelayMs?: number;        // délai avant action bot (ms)
-botRisk?: "safe" | "normal" | "aggressive";
+  // ✅ Bots (comportement)
+  botsAutoPlay?: boolean; // true = bot joue tout seul
+  botTurnDelayMs?: number; // délai avant action bot (ms)
+  botRisk?: "safe" | "normal" | "aggressive";
 };
 
 type Dart = { v: number; mult: 1 | 2 | 3 };
@@ -96,6 +96,20 @@ Ensuite, chaque contrat se joue en 1 volée de 3 fléchettes :
 - ❌ Contrat raté → le score est DIVISÉ PAR 2 (arrondi à l’entier inférieur)
 
 Contrats: Capital, 20, Triple, 19, Double, 18, Side (côte à côte), 17, Suite, 16, Couleur, 15, 57, 14, Centre.`;
+
+/* ================================
+   Densité / responsive (style X01End)
+================================ */
+const D = {
+  fsBody: 12,
+  fsHead: 12,
+  padCellV: 6,
+  padCellH: 10,
+  radius: 16,
+  border: "1px solid rgba(255,255,255,0.12)",
+  bg: "rgba(255,255,255,0.04)",
+  headBg: "rgba(255,255,255,0.06)",
+};
 
 const LS_BOTS_KEY = "dc_bots_v1";
 
@@ -132,7 +146,9 @@ function shuffleCopy<T>(arr: T[]): T[] {
   const a = [...arr];
   for (let i = a.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));
-    const t = a[i]; a[i] = a[j]; a[j] = t;
+    const t = a[i];
+    a[i] = a[j];
+    a[j] = t;
   }
   return a;
 }
@@ -165,22 +181,38 @@ function isValidNumber(v: number): boolean {
 
 function contractLabel(id: CapitalContractID): string {
   switch (id) {
-    case "capital": return "Capital";
-    case "n20": return "20";
-    case "triple_any": return "Triple";
-    case "n19": return "19";
-    case "double_any": return "Double";
-    case "n18": return "18";
-    case "side": return "Side";
-    case "n17": return "17";
-    case "suite": return "Suite";
-    case "n16": return "16";
-    case "colors_3": return "Couleur";
-    case "n15": return "15";
-    case "exact_57": return "57";
-    case "n14": return "14";
-    case "center": return "Centre";
-    default: return String(id);
+    case "capital":
+      return "Capital";
+    case "n20":
+      return "20";
+    case "triple_any":
+      return "Triple";
+    case "n19":
+      return "19";
+    case "double_any":
+      return "Double";
+    case "n18":
+      return "18";
+    case "side":
+      return "Side";
+    case "n17":
+      return "17";
+    case "suite":
+      return "Suite";
+    case "n16":
+      return "16";
+    case "colors_3":
+      return "Couleur";
+    case "n15":
+      return "15";
+    case "exact_57":
+      return "57";
+    case "n14":
+      return "14";
+    case "center":
+      return "Centre";
+    default:
+      return String(id);
   }
 }
 
@@ -211,7 +243,7 @@ function isTripleAny(th: Dart[]): boolean {
 }
 
 function isDoubleAny(th: Dart[]): boolean {
-  return (th || []).some((d) => (d?.mult === 2 && (isValidNumber(d?.v ?? 0) || d?.v === 25)));
+  return (th || []).some((d) => d?.mult === 2 && (isValidNumber(d?.v ?? 0) || d?.v === 25));
 }
 
 function hasNumber(th: Dart[], n: number): boolean {
@@ -223,9 +255,7 @@ function isCenter(th: Dart[]): boolean {
 }
 
 function isSuite(th: Dart[]): boolean {
-  const nums = (th || [])
-    .map((d) => d?.v ?? 0)
-    .filter((v) => isValidNumber(v));
+  const nums = (th || []).map((d) => d?.v ?? 0).filter((v) => isValidNumber(v));
   if (nums.length !== 3) return false;
   const set = Array.from(new Set(nums));
   if (set.length !== 3) return false;
@@ -235,9 +265,7 @@ function isSuite(th: Dart[]): boolean {
 
 function isSide(th: Dart[]): boolean {
   // 3 secteurs côte à côte sur la cible (ordre circulaire), bull interdit
-  const nums = (th || [])
-    .map((d) => d?.v ?? 0)
-    .filter((v) => isValidNumber(v));
+  const nums = (th || []).map((d) => d?.v ?? 0).filter((v) => isValidNumber(v));
   if (nums.length !== 3) return false;
   const setNums = Array.from(new Set(nums));
   if (setNums.length !== 3) return false;
@@ -245,7 +273,7 @@ function isSide(th: Dart[]): boolean {
   const idxs = setNums.map((n) => BOARD_ORDER.indexOf(n)).filter((i) => i >= 0);
   if (idxs.length !== 3) return false;
 
-  // Check contiguous triplet on circular ring
+  // contiguous triplet on circular ring
   for (let start = 0; start < 20; start++) {
     const needed = new Set([start, (start + 1) % 20, (start + 2) % 20]);
     if (idxs.every((i) => needed.has(i))) return true;
@@ -300,14 +328,76 @@ function contractSuccess(contract: CapitalContractID, th: Dart[]): boolean {
   }
 }
 
+function rand(p: number) {
+  return Math.random() < p;
+}
+
+function botMakeThrow(contract: CapitalContractID, level: any, risk: any): Dart[] {
+  // heuristique simple et stable (pas “parfait”, mais jouable)
+  const lvl = level || "normal";
+  const rsk = risk || "normal";
+
+  const baseAcc = lvl === "easy" ? 0.45 : lvl === "hard" ? 0.78 : 0.62;
+  const riskBoost = rsk === "aggressive" ? 0.1 : rsk === "safe" ? -0.08 : 0;
+
+  const acc = Math.max(0.15, Math.min(0.92, baseAcc + riskBoost));
+
+  const miss = () => ({ v: 0, mult: 1 } as Dart);
+  const pick = (v: number, mult: 1 | 2 | 3): Dart => ({ v, mult });
+  const N = (n: number) => (rand(acc) ? pick(n, 1) : miss());
+
+  if (contract === "capital") {
+    return [
+      rand(acc) ? pick(20, rand(acc * 0.55) ? 3 : 1) : miss(),
+      rand(acc) ? pick(19, rand(acc * 0.4) ? 3 : 1) : miss(),
+      rand(acc) ? pick(18, rand(acc * 0.35) ? 3 : 1) : miss(),
+    ];
+  }
+
+  if (contract === "n20") return [N(20), miss(), miss()];
+  if (contract === "n19") return [N(19), miss(), miss()];
+  if (contract === "n18") return [N(18), miss(), miss()];
+  if (contract === "n17") return [N(17), miss(), miss()];
+  if (contract === "n16") return [N(16), miss(), miss()];
+  if (contract === "n15") return [N(15), miss(), miss()];
+  if (contract === "n14") return [N(14), miss(), miss()];
+
+  if (contract === "double_any") return [rand(acc) ? pick(20, 2) : miss(), miss(), miss()];
+  if (contract === "triple_any") return [rand(acc) ? pick(20, 3) : miss(), miss(), miss()];
+
+  if (contract === "center") {
+    return [rand(acc) ? pick(rand(acc * 0.55) ? 50 : 25, 1) : miss(), miss(), miss()];
+  }
+
+  if (contract === "exact_57") {
+    if (rand(acc * 0.8)) return [pick(19, 3), miss(), miss()];
+    return [pick(20, 1), pick(19, 1), pick(18, 1)];
+  }
+
+  if (contract === "suite") {
+    if (rand(acc)) return [pick(20, 1), pick(19, 1), pick(18, 1)];
+    return [pick(12, 1), pick(13, 1), pick(14, 1)];
+  }
+
+  if (contract === "side") {
+    if (rand(acc)) return [pick(18, 1), pick(19, 1), pick(20, 1)];
+    return [pick(9, 1), pick(10, 1), pick(11, 1)];
+  }
+
+  if (contract === "colors_3") {
+    return [rand(acc) ? pick(25, 1) : miss(), rand(acc) ? pick(20, 2) : miss(), rand(acc) ? pick(19, 3) : miss()];
+  }
+
+  return [miss(), miss(), miss()];
+}
+
 export default function CapitalPlay(props: any) {
   const { t } = useLang();
   useTheme();
 
   const cfg: CapitalConfigPayload =
     (props?.params?.config as CapitalConfigPayload) ||
-    (props?.config as CapitalConfigPayload) ||
-    {
+    (props?.config as CapitalConfigPayload) || {
       players: 2,
       botsEnabled: false,
       botLevel: "normal",
@@ -316,7 +406,6 @@ export default function CapitalPlay(props: any) {
       customContracts: OFFICIAL_CONTRACTS,
     };
 
-  
   const store = props?.store;
 
   const profiles = useMemo(() => safeStoreProfiles(store), [store]);
@@ -330,42 +419,34 @@ export default function CapitalPlay(props: any) {
   }, [profiles, proBots, customBots]);
 
   const participants = useMemo(() => {
-    const ids = Array.isArray(cfg?.selectedIds) && cfg.selectedIds.length
-      ? cfg.selectedIds.map((x) => String(x)).filter(Boolean)
-      : [];
+    const ids =
+      Array.isArray(cfg?.selectedIds) && cfg.selectedIds.length ? cfg.selectedIds.map((x) => String(x)).filter(Boolean) : [];
     let resolved: any[] = [];
     if (ids.length) {
-      resolved = ids.map((id) => allEntities.get(id) || ({ id, name: id, isBot: false }));
+      resolved = ids.map((id) => allEntities.get(id) || { id, name: id, isBot: false });
     } else {
-      // fallback legacy: N joueurs génériques
-      resolved = Array.from({ length: Math.max(1, cfg.players || 2) }, (_, i) => ({ id: String(i+1), name: `Joueur ${i+1}` }));
+      resolved = Array.from({ length: Math.max(1, cfg.players || 2) }, (_, i) => ({
+        id: String(i + 1),
+        name: `Joueur ${i + 1}`,
+      }));
     }
-    if (cfg?.startOrderMode === "random" && ids.length) {
-      resolved = shuffleCopy(resolved);
-    }
+    if (cfg?.startOrderMode === "random" && ids.length) resolved = shuffleCopy(resolved);
     return resolved;
   }, [cfg, allEntities]);
 
   const playerCount = participants.length || Math.max(1, cfg.players || 2);
 
-const contracts = useMemo<CapitalContractID[]>(() => {
+  const contracts = useMemo<CapitalContractID[]>(() => {
     if (cfg.mode === "official") return OFFICIAL_CONTRACTS;
 
     const base = Array.isArray(cfg.customContracts) ? cfg.customContracts.filter(Boolean) : [];
     const includeCapital = cfg.includeCapital !== false;
 
-    // sécurise : pas plus de 30 contrats custom
     let out = base.slice(0, 30);
-
     if (includeCapital) {
       out = out.filter((x) => x !== "capital");
       out.unshift("capital");
-    } else {
-      // si capital supprimé, on ne peut pas démarrer à score=0 sinon ça n’a pas de sens
-      // → on injecte quand même un capital “virtuel” via 3 fléchettes, mais en mode custom on laisse le choix
     }
-
-    // fallback si liste vide
     if (out.length === 0) out = OFFICIAL_CONTRACTS;
     return out;
   }, [cfg.mode, cfg.customContracts, cfg.includeCapital]);
@@ -382,18 +463,16 @@ const contracts = useMemo<CapitalContractID[]>(() => {
   const [currentThrow, setCurrentThrow] = useState<Dart[]>([]);
   const [multiplier, setMultiplier] = useState<1 | 2 | 3>(1);
 
-// ✅ Timer state (affichage)
-const [timeLeft, setTimeLeft] = useState<number>(0);
+  // ✅ Timer state (affichage)
+  const [timeLeft, setTimeLeft] = useState<number>(0);
 
-// ✅ Fin de partie: overlay résumé (tableau)
-const [endModalOpen, setEndModalOpen] = useState<boolean>(false);
+  // ✅ Fin de partie: overlay résumé (tableau)
+  const [endModalOpen, setEndModalOpen] = useState<boolean>(false);
 
-// ✅ Patch: tie-break + victoire + bots + timer
-const [winnerIdx, setWinnerIdx] = useState<number | null>(null);
-const [lastContractTotals, setLastContractTotals] = useState<number[]>(() =>
-  Array.from({ length: playerCount }, () => 0)
-);
-const botActingRef = useRef(false);
+  // ✅ Patch: tie-break + victoire + bots
+  const [winnerIdx, setWinnerIdx] = useState<number | null>(null);
+  const [lastContractTotals, setLastContractTotals] = useState<number[]>(() => Array.from({ length: playerCount }, () => 0));
+  const botActingRef = useRef(false);
 
   const currentContract = contracts[Math.min(roundIdx, rounds - 1)];
   const isFinished = roundIdx >= rounds;
@@ -415,67 +494,55 @@ const botActingRef = useRef(false);
     setMultiplier(1);
   }
 
-  
-function validateTurn(force: boolean = false, forcedThrow?: Dart[]) {
-  if (isFinished) return;
-  if (!force && currentThrow.length === 0) return;
+  function validateTurn(force: boolean = false, forcedThrow?: Dart[]) {
+    if (isFinished) return;
+    if (!force && currentThrow.length === 0) return;
 
-  // si moins de 3 fléchettes saisies, on complète avec des misses (0)
-  const th: Dart[] = forcedThrow ? [...forcedThrow] : [...currentThrow];
-  while (th.length < 3) th.push({ v: 0, mult: 1 });
+    const th: Dart[] = forcedThrow ? [...forcedThrow] : [...currentThrow];
+    while (th.length < 3) th.push({ v: 0, mult: 1 });
 
-  const ok = contractSuccess(currentContract, th);
-  const visit = scoreThrow(th);
+    const ok = contractSuccess(currentContract, th);
+    const visit = scoreThrow(th);
 
-  setScores((prev) => {
-    const out = [...prev];
-    const prevScore = out[playerIdx] ?? 0;
-
-    let nextScore = prevScore;
-
-    if (currentContract === "capital") {
-      // score de départ = total des 3 fléchettes
-      nextScore = visit;
-    } else {
-      if (ok) nextScore = prevScore + visit;
-      else nextScore = cfg?.failDivideBy2 === false ? prevScore : Math.floor(prevScore / 2);
-    }
-
-    out[playerIdx] = nextScore;
-
-    // Victory: score cible
-    if (
-      cfg?.victoryMode === "first_to_target" &&
-      typeof cfg?.targetScore === "number" &&
-      cfg.targetScore > 0 &&
-      nextScore >= cfg.targetScore
-    ) {
-      setWinnerIdx(playerIdx);
-      // termine immédiatement
-      setRoundIdx(rounds);
-    }
-
-    return out;
-  });
-
-  // Tie-break helper: total sur dernier contrat
-  if (roundIdx === rounds - 1) {
-    setLastContractTotals((prev) => {
+    setScores((prev) => {
       const out = [...prev];
-      out[playerIdx] = visit;
+      const prevScore = out[playerIdx] ?? 0;
+
+      let nextScore = prevScore;
+
+      if (currentContract === "capital") {
+        nextScore = visit;
+      } else {
+        if (ok) nextScore = prevScore + visit;
+        else nextScore = cfg?.failDivideBy2 === false ? prevScore : Math.floor(prevScore / 2);
+      }
+
+      out[playerIdx] = nextScore;
+
+      if (cfg?.victoryMode === "first_to_target" && typeof cfg?.targetScore === "number" && cfg.targetScore > 0 && nextScore >= cfg.targetScore) {
+        setWinnerIdx(playerIdx);
+        setRoundIdx(rounds);
+      }
+
       return out;
     });
+
+    if (roundIdx === rounds - 1) {
+      setLastContractTotals((prev) => {
+        const out = [...prev];
+        out[playerIdx] = visit;
+        return out;
+      });
+    }
+
+    const nextP = (playerIdx + 1) % playerCount;
+    const nextR = nextP === 0 ? roundIdx + 1 : roundIdx;
+
+    setPlayerIdx(nextP);
+    setRoundIdx(nextR);
+
+    cancelTurn();
   }
-
-  // next (si pas fini par score cible)
-  const nextP = (playerIdx + 1) % playerCount;
-  const nextR = nextP === 0 ? roundIdx + 1 : roundIdx;
-
-  setPlayerIdx(nextP);
-  setRoundIdx(nextR);
-
-  cancelTurn();
-}
 
   const leaderIdx = useMemo(() => {
     let best = -Infinity;
@@ -489,40 +556,37 @@ function validateTurn(force: boolean = false, forcedThrow?: Dart[]) {
     return bestIdx;
   }, [scores]);
 
-const finalWinnerIdx = useMemo(() => {
-  if (winnerIdx !== null) return winnerIdx;
-  if (!isFinished) return null;
+  const finalWinnerIdx = useMemo(() => {
+    if (winnerIdx !== null) return winnerIdx;
+    if (!isFinished) return null;
 
-  // best score
-  const best = Math.max(...scores);
-  const tied = scores
-    .map((s, i) => ({ s, i }))
-    .filter((x) => x.s === best)
-    .map((x) => x.i);
+    const best = Math.max(...scores);
+    const tied = scores
+      .map((s, i) => ({ s, i }))
+      .filter((x) => x.s === best)
+      .map((x) => x.i);
 
-  if (tied.length <= 1) return tied[0] ?? 0;
+    if (tied.length <= 1) return tied[0] ?? 0;
 
-  if (cfg?.tieBreaker === "last_contract_total") {
-    let bestLC = -Infinity;
-    let bestIdx = tied[0];
-    for (const i of tied) {
-      const v = lastContractTotals[i] ?? 0;
-      if (v > bestLC) {
-        bestLC = v;
-        bestIdx = i;
+    if (cfg?.tieBreaker === "last_contract_total") {
+      let bestLC = -Infinity;
+      let bestIdx = tied[0];
+      for (const i of tied) {
+        const v = lastContractTotals[i] ?? 0;
+        if (v > bestLC) {
+          bestLC = v;
+          bestIdx = i;
+        }
       }
+      return bestIdx;
     }
-    return bestIdx;
-  }
 
-  // tie = premier de la liste
-  return tied[0];
-}, [winnerIdx, isFinished, scores, cfg?.tieBreaker, lastContractTotals]);
+    return tied[0];
+  }, [winnerIdx, isFinished, scores, cfg?.tieBreaker, lastContractTotals]);
 
-useEffect(() => {
-  if (isFinished) setEndModalOpen(true);
-}, [isFinished]);
-
+  useEffect(() => {
+    if (isFinished) setEndModalOpen(true);
+  }, [isFinished]);
 
   const successNow = useMemo(() => {
     if (isFinished) return false;
@@ -532,170 +596,294 @@ useEffect(() => {
     return contractSuccess(currentContract, th);
   }, [isFinished, currentThrow, currentContract]);
 
-// ✅ Timer par tour: affichage + timeout => volée = 3 misses (0) puis validation
-useEffect(() => {
-  const sec = Number(cfg?.turnTimerSec || 0);
-  if (!sec || sec <= 0) { setTimeLeft(0); return; }
-  if (isFinished) { setTimeLeft(0); return; }
+  // ✅ Timer par tour: affichage + timeout => volée = 3 misses (0) puis validation
+  useEffect(() => {
+    const sec = Number(cfg?.turnTimerSec || 0);
+    if (!sec || sec <= 0) {
+      setTimeLeft(0);
+      return;
+    }
+    if (isFinished) {
+      setTimeLeft(0);
+      return;
+    }
 
-  // si bot auto-play, on laisse le bot jouer (pas de timer côté humain)
-  const currentEnt = participants[playerIdx];
-  const isBot = !!(currentEnt?.isBot);
-  if (isBot && cfg?.botsEnabled && cfg?.botsAutoPlay) { setTimeLeft(0); return; }
+    const currentEnt = participants[playerIdx];
+    const isBot = !!currentEnt?.isBot;
+    if (isBot && cfg?.botsEnabled && cfg?.botsAutoPlay) {
+      setTimeLeft(0);
+      return;
+    }
 
-  setTimeLeft(sec);
+    setTimeLeft(sec);
 
-  const tickId = window.setInterval(() => {
-    setTimeLeft((v) => (v > 0 ? v - 1 : 0));
-  }, 1000);
+    const tickId = window.setInterval(() => {
+      setTimeLeft((v) => (v > 0 ? v - 1 : 0));
+    }, 1000);
 
-  const timeoutId = window.setTimeout(() => {
-    // force validation même si aucune fléchette entrée
-    validateTurn(true, [{ v: 0, mult: 1 }, { v: 0, mult: 1 }, { v: 0, mult: 1 }]);
-  }, sec * 1000);
+    const timeoutId = window.setTimeout(() => {
+      validateTurn(true, [
+        { v: 0, mult: 1 },
+        { v: 0, mult: 1 },
+        { v: 0, mult: 1 },
+      ]);
+    }, sec * 1000);
 
-  return () => {
-    window.clearInterval(tickId);
-    window.clearTimeout(timeoutId);
-  };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-}, [playerIdx, roundIdx, isFinished, cfg?.turnTimerSec, cfg?.botsEnabled, cfg?.botsAutoPlay]);
+    return () => {
+      window.clearInterval(tickId);
+      window.clearTimeout(timeoutId);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [playerIdx, roundIdx, isFinished, cfg?.turnTimerSec, cfg?.botsEnabled, cfg?.botsAutoPlay]);
 
+  // ✅ Bot auto-play: génère une volée puis valide
+  useEffect(() => {
+    if (isFinished) return;
+    if (!cfg?.botsEnabled) return;
+    if (!cfg?.botsAutoPlay) return;
 
-// ✅ Timer par tour: si expiré => volée = 3 misses (0) puis validation
-useEffect(() => {
-  const sec = Number(cfg?.turnTimerSec || 0);
-  if (!sec || sec <= 0) return;
-  if (isFinished) return;
+    const ent = participants[playerIdx];
+    if (!ent?.isBot) return;
 
-  // si bot auto-play, on laisse le bot jouer
-  const currentEnt = participants[playerIdx];
-  const isBot = !!(currentEnt?.isBot);
-  if (isBot && cfg?.botsEnabled && cfg?.botsAutoPlay) return;
+    if (botActingRef.current) return;
+    botActingRef.current = true;
 
-  const id = window.setTimeout(() => {
-    // force validation même si aucune fléchette entrée
-    validateTurn(true, [{ v: 0, mult: 1 }, { v: 0, mult: 1 }, { v: 0, mult: 1 }]);
-  }, sec * 1000);
+    const delay = Number(cfg?.botTurnDelayMs ?? 650);
+    const level = cfg?.botLevel ?? "normal";
+    const risk = cfg?.botRisk ?? "normal";
 
-  return () => window.clearTimeout(id);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-}, [playerIdx, roundIdx, isFinished, cfg?.turnTimerSec]);
+    const id = window.setTimeout(() => {
+      const th = botMakeThrow(currentContract, level, risk);
+      setCurrentThrow(th);
+      window.setTimeout(() => {
+        validateTurn(true, th);
+        botActingRef.current = false;
+      }, 120);
+    }, Math.max(0, delay));
 
-function rand(p: number) {
-  return Math.random() < p;
-}
-
-function botMakeThrow(contract: CapitalContractID, level: any, risk: any): Dart[] {
-  // heuristique simple et stable (pas “parfait”, mais jouable)
-  const lvl = level || "normal";
-  const rsk = risk || "normal";
-
-  const baseAcc = lvl === "easy" ? 0.45 : lvl === "hard" ? 0.78 : 0.62;
-  const riskBoost = rsk === "aggressive" ? 0.10 : rsk === "safe" ? -0.08 : 0;
-
-  const acc = Math.max(0.15, Math.min(0.92, baseAcc + riskBoost));
-
-  const miss = () => ({ v: 0, mult: 1 } as Dart);
-
-  const pick = (v: number, mult: 1 | 2 | 3): Dart => ({ v, mult });
-
-  // helper numbers
-  const N = (n: number) => (rand(acc) ? pick(n, 1) : miss());
-
-  if (contract === "capital") {
-    // capital = 3 fléchettes “normales”
-    return [
-      rand(acc) ? pick(20, rand(acc * 0.55) ? 3 : 1) : miss(),
-      rand(acc) ? pick(19, rand(acc * 0.40) ? 3 : 1) : miss(),
-      rand(acc) ? pick(18, rand(acc * 0.35) ? 3 : 1) : miss(),
-    ];
-  }
-
-  if (contract === "n20") return [N(20), miss(), miss()];
-  if (contract === "n19") return [N(19), miss(), miss()];
-  if (contract === "n18") return [N(18), miss(), miss()];
-  if (contract === "n17") return [N(17), miss(), miss()];
-  if (contract === "n16") return [N(16), miss(), miss()];
-  if (contract === "n15") return [N(15), miss(), miss()];
-  if (contract === "n14") return [N(14), miss(), miss()];
-
-  if (contract === "double_any") {
-    return [rand(acc) ? pick(20, 2) : miss(), miss(), miss()];
-  }
-  if (contract === "triple_any") {
-    return [rand(acc) ? pick(20, 3) : miss(), miss(), miss()];
-  }
-  if (contract === "center") {
-    // 25 / 50
-    return [
-      rand(acc) ? pick(rand(acc * 0.55) ? 50 : 25, 1) : miss(),
-      miss(),
-      miss(),
-    ];
-  }
-  if (contract === "exact_57") {
-    // 57 = 19*3 ou 20+19+18 (approx)
-    if (rand(acc * 0.8)) return [pick(19, 3), miss(), miss()];
-    return [pick(20, 1), pick(19, 1), pick(18, 1)];
-  }
-  if (contract === "suite") {
-    // 3 numéros consécutifs
-    if (rand(acc)) return [pick(20, 1), pick(19, 1), pick(18, 1)];
-    return [pick(12, 1), pick(13, 1), pick(14, 1)];
-  }
-  if (contract === "side") {
-    // 3 secteurs côte à côte (ex 18-19-20)
-    if (rand(acc)) return [pick(18, 1), pick(19, 1), pick(20, 1)];
-    return [pick(9, 1), pick(10, 1), pick(11, 1)];
-  }
-  if (contract === "colors_3") {
-    // 3 couleurs différentes (simple: 25, double, triple)
-    return [
-      rand(acc) ? pick(25, 1) : miss(),
-      rand(acc) ? pick(20, 2) : miss(),
-      rand(acc) ? pick(19, 3) : miss(),
-    ];
-  }
-
-  // fallback
-  return [miss(), miss(), miss()];
-}
-
-// ✅ Bot auto-play: génère une volée puis valide
-useEffect(() => {
-  if (isFinished) return;
-  if (!cfg?.botsEnabled) return;
-  if (!cfg?.botsAutoPlay) return;
-
-  const ent = participants[playerIdx];
-  if (!ent?.isBot) return;
-
-  if (botActingRef.current) return;
-  botActingRef.current = true;
-
-  const delay = Number(cfg?.botTurnDelayMs ?? 650);
-  const level = cfg?.botLevel ?? "normal";
-  const risk = cfg?.botRisk ?? "normal";
-
-  const id = window.setTimeout(() => {
-    const th = botMakeThrow(currentContract, level, risk);
-    // pousse la volée d'un coup pour éviter des rerenders/bugs d'UI
-    setCurrentThrow(th);
-    // petite latence puis validation
-    window.setTimeout(() => {
-      validateTurn(true, th);
+    return () => {
+      window.clearTimeout(id);
       botActingRef.current = false;
-    }, 120);
-  }, Math.max(0, delay));
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    playerIdx,
+    roundIdx,
+    isFinished,
+    cfg?.botsEnabled,
+    cfg?.botsAutoPlay,
+    cfg?.botTurnDelayMs,
+    cfg?.botLevel,
+    cfg?.botRisk,
+    currentContract,
+  ]);
 
-  return () => {
-    window.clearTimeout(id);
-    botActingRef.current = false;
+  const winnerI = finalWinnerIdx ?? leaderIdx;
+
+  const EndModal = () => {
+    if (!isFinished || !endModalOpen) return null;
+
+    const cols = participants.map((p, i) => ({
+      i,
+      name: p?.nickname ?? p?.name ?? `Joueur ${i + 1}`,
+      isBot: !!p?.isBot,
+      score: Number(scores[i] ?? 0),
+      last: Number(lastContractTotals[i] ?? 0),
+    }));
+
+    const ranked = [...cols].sort((a, b) => {
+      if (b.score !== a.score) return b.score - a.score;
+      if (cfg?.tieBreaker === "last_contract_total") return b.last - a.last;
+      return a.i - b.i;
+    });
+
+    const rankOf = new Map<number, number>();
+    ranked.forEach((r, idx) => rankOf.set(r.i, idx + 1));
+
+    const headerCell = (children: any) => (
+      <div
+        style={{
+          fontSize: D.fsHead,
+          fontWeight: 950,
+          opacity: 0.9,
+          padding: `${D.padCellV}px ${D.padCellH}px`,
+          background: D.headBg,
+          borderBottom: "1px solid rgba(255,255,255,0.10)",
+          whiteSpace: "nowrap",
+        }}
+      >
+        {children}
+      </div>
+    );
+
+    const rowLabelCell = (label: string) => (
+      <div
+        style={{
+          fontSize: D.fsBody,
+          fontWeight: 950,
+          opacity: 0.85,
+          padding: `${D.padCellV}px ${D.padCellH}px`,
+          borderBottom: "1px solid rgba(255,255,255,0.08)",
+          background: "rgba(0,0,0,0.20)",
+          position: "sticky",
+          left: 0,
+          zIndex: 1,
+        }}
+      >
+        {label}
+      </div>
+    );
+
+    const cell = (val: any, highlight?: boolean) => (
+      <div
+        style={{
+          fontSize: D.fsBody,
+          padding: `${D.padCellV}px ${D.padCellH}px`,
+          borderBottom: "1px solid rgba(255,255,255,0.08)",
+          textAlign: "center",
+          background: highlight ? "rgba(255,230,120,0.06)" : "transparent",
+          fontWeight: highlight ? 1000 : 900,
+        }}
+      >
+        {val}
+      </div>
+    );
+
+    const gridCols = `220px repeat(${cols.length}, minmax(140px, 1fr))`;
+
+    return (
+      <div
+        onClick={() => setEndModalOpen(false)}
+        style={{
+          position: "fixed",
+          inset: 0,
+          zIndex: 60,
+          background: "rgba(0,0,0,0.70)",
+          backdropFilter: "blur(8px)",
+          display: "flex",
+          alignItems: "flex-end",
+          justifyContent: "center",
+          padding: 12,
+        }}
+      >
+        <div
+          onClick={(e) => e.stopPropagation()}
+          style={{
+            width: "100%",
+            maxWidth: 980,
+            borderRadius: D.radius,
+            border: D.border,
+            background: "rgba(18,20,34,0.96)",
+            boxShadow: "0 24px 70px rgba(0,0,0,0.55)",
+            overflow: "hidden",
+          }}
+        >
+          {/* Header */}
+          <div
+            style={{
+              padding: 14,
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              gap: 10,
+              borderBottom: "1px solid rgba(255,255,255,0.10)",
+              background: "rgba(255,255,255,0.04)",
+            }}
+          >
+            <div>
+              <div style={{ fontSize: 12, opacity: 0.75, fontWeight: 950, letterSpacing: 1 }}>FIN DE PARTIE — CAPITAL</div>
+              <div style={{ marginTop: 6, fontSize: 16, fontWeight: 1000 }}>
+                🏆 Vainqueur :{" "}
+                <span style={{ color: "rgba(255,230,120,0.95)" }}>
+                  {participants[winnerI]?.name ?? `Joueur ${winnerI + 1}`}
+                </span>
+              </div>
+            </div>
+
+            <div style={{ display: "flex", gap: 8 }}>
+              <button
+                onClick={() => setEndModalOpen(false)}
+                style={{
+                  padding: "10px 12px",
+                  borderRadius: 12,
+                  border: "1px solid rgba(255,255,255,0.14)",
+                  background: "rgba(255,255,255,0.08)",
+                  fontWeight: 1000,
+                }}
+              >
+                Fermer
+              </button>
+              <button
+                onClick={goBack}
+                style={{
+                  padding: "10px 12px",
+                  borderRadius: 12,
+                  border: "1px solid rgba(255,255,255,0.14)",
+                  background: "rgba(255,255,255,0.10)",
+                  fontWeight: 1000,
+                }}
+              >
+                Rejouer / config
+              </button>
+            </div>
+          </div>
+
+          {/* Table */}
+          <div style={{ padding: 14 }}>
+            <div
+              style={{
+                borderRadius: D.radius,
+                border: D.border,
+                background: D.bg,
+                overflow: "auto",
+                maxHeight: "70vh",
+              }}
+            >
+              <div style={{ display: "grid", gridTemplateColumns: gridCols }}>
+                {headerCell("STAT")}
+                {cols.map((p) =>
+                  headerCell(
+                    <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                      <div style={{ fontWeight: 1000, overflow: "hidden", textOverflow: "ellipsis" }}>
+                        {p.name} {p.isBot ? <span style={{ opacity: 0.7 }}>(BOT)</span> : null}
+                      </div>
+                      <div style={{ fontSize: 11, opacity: 0.75, fontWeight: 900 }}>Rang #{rankOf.get(p.i) ?? "—"}</div>
+                    </div>
+                  )
+                )}
+              </div>
+
+              <div style={{ display: "grid", gridTemplateColumns: gridCols }}>
+                {rowLabelCell("Score final")}
+                {cols.map((p) => cell(p.score, p.i === winnerI))}
+
+                {rowLabelCell("Dernier contrat (tie-break)")}
+                {cols.map((p) => cell(p.last, p.i === winnerI))}
+
+                {rowLabelCell("Contrats joués")}
+                {cols.map((p) => cell(rounds, p.i === winnerI))}
+
+                {rowLabelCell("Mode")}
+                {cols.map((p) => cell(cfg?.mode ?? "official", p.i === winnerI))}
+
+                {rowLabelCell("Victoire")}
+                {cols.map((p) =>
+                  cell(cfg?.victoryMode === "first_to_target" ? `Score cible ${cfg?.targetScore ?? "?"}` : "Après contrats", p.i === winnerI)
+                )}
+
+                {rowLabelCell("/2 si échec")}
+                {cols.map((p) => cell(cfg?.failDivideBy2 === false ? "OFF" : "ON", p.i === winnerI))}
+              </div>
+            </div>
+
+            <div style={{ marginTop: 10, fontSize: 12, opacity: 0.75, lineHeight: 1.35 }}>
+              Astuce: clique en dehors du panneau pour fermer.
+            </div>
+          </div>
+        </div>
+      </div>
+    );
   };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-}, [playerIdx, roundIdx, isFinished, cfg?.botsEnabled, cfg?.botsAutoPlay, cfg?.botTurnDelayMs, cfg?.botLevel, cfg?.botRisk, currentContract]);
-
 
   return (
     <div className="page">
@@ -723,28 +911,18 @@ useEffect(() => {
               </div>
               <div style={{ fontSize: 18, fontWeight: 1000, marginTop: 6 }}>
                 Contrat :{" "}
-                <span style={{ color: "rgba(255,230,120,0.95)" }}>
-                  {isFinished ? "—" : contractLabel(currentContract)}
-                </span>
+                <span style={{ color: "rgba(255,230,120,0.95)" }}>{isFinished ? "—" : contractLabel(currentContract)}</span>
               </div>
               {!isFinished && (
-                <div style={{ fontSize: 12, opacity: 0.75, marginTop: 6 }}>
-                  {successNow ? "✅ Contrat validé (si tu valides la volée)" : "—"}
-                </div>
+                <div style={{ fontSize: 12, opacity: 0.75, marginTop: 6 }}>{successNow ? "✅ Contrat validé (si tu valides la volée)" : "—"}</div>
               )}
             </div>
 
             <div style={{ textAlign: "right" }}>
-              <div style={{ fontSize: 12, opacity: 0.8, fontWeight: 900, letterSpacing: 1 }}>
-                {t("generic.player", "JOUEUR")}
-              </div>
-              <div style={{ fontSize: 18, fontWeight: 1000, marginTop: 6 }}>
-                {isFinished ? "—" : `${playerIdx + 1}/${playerCount}`}
-              </div>
+              <div style={{ fontSize: 12, opacity: 0.8, fontWeight: 900, letterSpacing: 1 }}>{t("generic.player", "JOUEUR")}</div>
+              <div style={{ fontSize: 18, fontWeight: 1000, marginTop: 6 }}>{isFinished ? "—" : `${playerIdx + 1}/${playerCount}`}</div>
               {timeLeft > 0 && !isFinished && (
-                <div style={{ marginTop: 8, fontSize: 12, opacity: 0.9, fontWeight: 950 }}>
-                  ⏱ {timeLeft}s
-                </div>
+                <div style={{ marginTop: 8, fontSize: 12, opacity: 0.9, fontWeight: 950 }}>⏱ {timeLeft}s</div>
               )}
             </div>
           </div>
@@ -753,7 +931,7 @@ useEffect(() => {
         <div style={{ marginTop: 12, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
           {scores.map((s, i) => {
             const active = !isFinished && i === playerIdx;
-            const leader = isFinished ? i === (finalWinnerIdx ?? leaderIdx) : false;
+            const leader = isFinished ? i === winnerI : false;
             return (
               <div
                 key={i}
@@ -783,9 +961,7 @@ useEffect(() => {
 
         {isFinished ? (
           <div style={{ marginTop: 14, opacity: 0.9 }}>
-            <div style={{ fontSize: 14, fontWeight: 900 }}>
-              Fin de partie — vainqueur : Joueur {(finalWinnerIdx ?? leaderIdx) + 1}
-            </div>
+            <div style={{ fontSize: 14, fontWeight: 900 }}>Fin de partie — vainqueur : Joueur {winnerI + 1}</div>
             <div style={{ marginTop: 10, display: "flex", gap: 10 }}>
               <button
                 onClick={() => setEndModalOpen(true)}
@@ -812,9 +988,7 @@ useEffect(() => {
                 Rejouer / config
               </button>
             </div>
-            <div style={{ fontSize: 12, opacity: 0.75, marginTop: 6 }}>
-              Appuie sur retour pour rejouer / reconfigurer.
-            </div>
+            <div style={{ fontSize: 12, opacity: 0.75, marginTop: 6 }}>Appuie sur retour pour rejouer / reconfigurer.</div>
           </div>
         ) : (
           <div style={{ marginTop: 14 }}>
@@ -842,7 +1016,7 @@ useEffect(() => {
                   pushDart({ v: 25, mult });
                   setMultiplier(1);
                 }}
-                onValidate={validateTurn}
+                onValidate={validateTurn as any}
                 onDirectDart={(d: any) => {
                   pushDart({ v: Number(d?.v ?? 0), mult: Number(d?.mult ?? 1) as any });
                   setMultiplier(1);
@@ -859,167 +1033,14 @@ useEffect(() => {
                 Total volée : <b>{scoreThrow(currentThrow)}</b>
               </div>
               <div style={{ fontSize: 12, opacity: 0.75 }}>
-                {currentContract === "capital"
-                  ? "⚑ Le total devient ton score de départ"
-                  : successNow
-                    ? "✅ Validé → + total"
-                    : "❌ Raté → score /2"}
+                {currentContract === "capital" ? "⚑ Le total devient ton score de départ" : successNow ? "✅ Validé → + total" : "❌ Raté → score /2"}
               </div>
             </div>
           </div>
         )}
       </div>
 
-{/* ============================= */}
-{/* CAPITAL END — RÉSUMÉ (tableau) */}
-{/* ============================= */}
-{isFinished && endModalOpen && (
-  <div
-    onClick={() => setEndModalOpen(false)}
-    style={{
-      position: "fixed",
-      inset: 0,
-      zIndex: 60,
-      background: "rgba(0,0,0,0.70)",
-      backdropFilter: "blur(8px)",
-      display: "flex",
-      alignItems: "flex-end",
-      justifyContent: "center",
-      padding: 12,
-    }}
-  >
-    <div
-      onClick={(e) => e.stopPropagation()}
-      style={{
-        width: "100%",
-        maxWidth: 820,
-        borderRadius: 18,
-        border: "1px solid rgba(255,255,255,0.14)",
-        background: "rgba(18,20,34,0.96)",
-        boxShadow: "0 24px 70px rgba(0,0,0,0.55)",
-        overflow: "hidden",
-      }}
-    >
-      <div style={{ padding: 14, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
-        <div>
-          <div style={{ fontSize: 12, opacity: 0.75, fontWeight: 950, letterSpacing: 1 }}>
-            RÉSUMÉ — FIN DE PARTIE
-          </div>
-          <div style={{ marginTop: 6, fontSize: 16, fontWeight: 1000 }}>
-            🏆 Vainqueur :{" "}
-            <span style={{ color: "rgba(255,230,120,0.95)" }}>
-              {participants[(finalWinnerIdx ?? leaderIdx)]?.name ?? `Joueur ${(finalWinnerIdx ?? leaderIdx) + 1}`}
-            </span>
-          </div>
-        </div>
-        <div style={{ display: "flex", gap: 8 }}>
-          <button
-            onClick={() => setEndModalOpen(false)}
-            style={{
-              padding: "10px 12px",
-              borderRadius: 12,
-              border: "1px solid rgba(255,255,255,0.14)",
-              background: "rgba(255,255,255,0.08)",
-              fontWeight: 1000,
-            }}
-          >
-            Fermer
-          </button>
-          <button
-            onClick={goBack}
-            style={{
-              padding: "10px 12px",
-              borderRadius: 12,
-              border: "1px solid rgba(255,255,255,0.14)",
-              background: "rgba(255,255,255,0.10)",
-              fontWeight: 1000,
-            }}
-          >
-            Reconfigurer
-          </button>
-        </div>
-      </div>
-
-      <div style={{ padding: 14, paddingTop: 0 }}>
-        <div style={{ borderRadius: 16, overflow: "hidden", border: "1px solid rgba(255,255,255,0.10)" }}>
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "60px 1.4fr 1fr 1fr",
-              gap: 0,
-              background: "rgba(255,255,255,0.06)",
-              padding: "10px 12px",
-              fontSize: 12,
-              fontWeight: 950,
-              letterSpacing: 0.7,
-              opacity: 0.9,
-            }}
-          >
-            <div>#</div>
-            <div>Joueur</div>
-            <div style={{ textAlign: "right" }}>Score final</div>
-            <div style={{ textAlign: "right" }}>Dernier contrat</div>
-          </div>
-
-          {(() => {
-            const rows = scores
-              .map((s, i) => ({ i, score: Number(s ?? 0), last: Number(lastContractTotals[i] ?? 0) }))
-              .sort((a, b) => {
-                if (b.score !== a.score) return b.score - a.score;
-                if (cfg?.tieBreaker === "last_contract_total") return b.last - a.last;
-                return a.i - b.i;
-              });
-
-            return rows.map((r, rank) => {
-              const p = participants[r.i];
-              const isW = (finalWinnerIdx ?? leaderIdx) === r.i;
-              return (
-                <div
-                  key={r.i}
-                  style={{
-                    display: "grid",
-                    gridTemplateColumns: "60px 1.4fr 1fr 1fr",
-                    padding: "10px 12px",
-                    borderTop: "1px solid rgba(255,255,255,0.08)",
-                    background: isW ? "rgba(255,230,120,0.08)" : "transparent",
-                    fontSize: 13,
-                    alignItems: "center",
-                  }}
-                >
-                  <div style={{ fontWeight: 1000, opacity: 0.9 }}>
-                    {rank + 1} {isW ? "🏆" : ""}
-                  </div>
-                  <div style={{ minWidth: 0, fontWeight: 950, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                    {p?.name ?? `Joueur ${r.i + 1}`}
-                    {p?.isBot ? <span style={{ marginLeft: 8, fontSize: 11, opacity: 0.7 }}>(BOT)</span> : null}
-                  </div>
-                  <div style={{ textAlign: "right", fontWeight: 1000 }}>{r.score}</div>
-                  <div style={{ textAlign: "right", opacity: 0.9 }}>{r.last}</div>
-                </div>
-              );
-            });
-          })()}
-        </div>
-
-        <div style={{ marginTop: 12, display: "flex", flexWrap: "wrap", gap: 10, fontSize: 12, opacity: 0.8 }}>
-          <div style={{ padding: "8px 10px", borderRadius: 12, border: "1px solid rgba(255,255,255,0.10)", background: "rgba(255,255,255,0.04)" }}>
-            Mode: <b>{cfg?.mode ?? "official"}</b>
-          </div>
-          <div style={{ padding: "8px 10px", borderRadius: 12, border: "1px solid rgba(255,255,255,0.10)", background: "rgba(255,255,255,0.04)" }}>
-            Victoire:{" "}
-            <b>{cfg?.victoryMode === "first_to_target" ? `Score cible (${cfg?.targetScore ?? "?"})` : "Après contrats"}</b>
-          </div>
-          <div style={{ padding: "8px 10px", borderRadius: 12, border: "1px solid rgba(255,255,255,0.10)", background: "rgba(255,255,255,0.04)" }}>
-            Tie-break: <b>{cfg?.tieBreaker === "last_contract_total" ? "Dernier contrat" : "Aucun"}</b>
-          </div>
-          <div style={{ padding: "8px 10px", borderRadius: 12, border: "1px solid rgba(255,255,255,0.10)", background: "rgba(255,255,255,0.04)" }}>
-            /2 échec: <b>{cfg?.failDivideBy2 === false ? "OFF" : "ON"}</b>
-          </div>
-        </div>
-      </div>
-    </div>
-  </div>
-)}
+      <EndModal />
     </div>
   );
 }
