@@ -209,12 +209,22 @@ const setAutoBackupEnabledPersist = (v: boolean) => {
 
     // ✅ CloudBackup (Recovery)
     if (parsed?.version && parsed?.history && parsed?.localProfiles && parsed?.dartsets) {
+      // ⚠️ IMPORTANT
+      // restoreCloudBackupFromJson écrit dans IndexedDB (store + history). L'app tourne avec un store en mémoire
+      // (props.store) qui ne se met pas à jour tout seul. On force donc un reload après restauration,
+      // sinon l'utilisateur voit "import OK" mais l'UI reste vide jusqu'à redémarrage.
       const res = await restoreCloudBackupFromJson({
         json: JSON.stringify(parsed),
         mode: "merge",
         rebuild: true,
       });
       if (!(res as any).ok) throw new Error((res as any).error ?? "Restore CloudBackup failed");
+
+      try {
+        setTimeout(() => window.location.reload(), 300);
+      } catch {
+        // noop
+      }
       return;
     }
 

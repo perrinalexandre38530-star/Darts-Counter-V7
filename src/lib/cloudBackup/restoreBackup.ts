@@ -81,9 +81,13 @@ export async function restoreCloudBackupFromJson(args: {
     setAllDartSets(nextDartSets as any);
   } catch {}
 
+  // ⚠️ Ne pas masquer les erreurs de persistance.
+  // Sinon l'UI peut afficher "import OK" alors que rien n'a été écrit.
   try {
     await saveStore(nextStore as Store);
-  } catch {}
+  } catch (e: any) {
+    return { ok: false, error: `saveStore failed: ${String(e?.message ?? e)}` };
+  }
 
   // ----------------------------
   // 2) History (IndexedDB)

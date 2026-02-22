@@ -622,7 +622,8 @@ export default function Profiles({
     (store as any)?.prefs?.sport ||
     (params as any)?.sport ||
     (typeof localStorage !== "undefined"
-      ? localStorage.getItem("dc-sport") ||
+      ? localStorage.getItem("dc-start-game") ||
+        localStorage.getItem("dc-sport") ||
         localStorage.getItem("barSports-sport") ||
         localStorage.getItem("bar-sports-sport")
       : null) ||
@@ -664,7 +665,7 @@ export default function Profiles({
   const sportKey = String(sportResolved ?? "").toLowerCase();
   const isPetanque = sportKey.includes("petanque");
   const isBabyFoot = sportKey.includes("babyfoot") || sportKey.includes("baby-foot") || sportKey.includes("baby_foot");
-  const isDarts = sportKey.includes("darts") || !sportKey;
+  const isDarts = sportKey.includes("darts");
 
   console.log("[Profiles] sportResolved =", sportResolved);
 
@@ -1555,7 +1556,7 @@ React.useEffect(() => {
 </Card>
 
                 {/* 🔥 Panneau sets de fléchettes du profil actif */}
-                {active && (
+                {isDarts && active && (
                   <div style={{ marginTop: 8, marginBottom: 8 }}>
                     <DartSetsPanel profile={(meProfileForDarts as any) || active} />
                   </div>
@@ -1661,6 +1662,11 @@ function ProfilesMenuView({
   onSelectFriends: () => void;
 }) {
   const { theme } = useTheme();
+
+  // ✅ FIX build: évite le conflit "Identifier 'sport' has already been declared"
+  // (prop `sport` + hook `useSport()`)
+  const { sport: sportCtx } = useSport();
+  const sportResolved = (sportCtx as any) || sport;
   const { t } = useLang();
   const primary = theme.primary;
 
@@ -1812,10 +1818,10 @@ function ProfilesMenuView({
   
       {/* ✅ Remplacement BOTS -> condition sport (robuste) */}
       {(() => {
-        const key = String(sport || "").toLowerCase();
+        const key = String(sportResolved || "").toLowerCase();
         const isPetanque = key.includes("petanque");
         const isBabyFoot = key.includes("babyfoot") || key.includes("baby-foot") || key.includes("baby_foot");
-        const isDarts = key.includes("darts") || !key;
+        const isDarts = key.includes("darts");
   
         if (isDarts) {
           return (
@@ -1877,6 +1883,9 @@ function Card({
   children: React.ReactNode;
 }) {
   const { theme } = useTheme();
+
+  const { sport } = useSport();
+  const sportResolved = sport;
   return (
     <section
       className="card"
@@ -1927,6 +1936,9 @@ function ActiveProfileBlock({
   onResetStats?: () => void;
 }) {
   const { theme } = useTheme();
+
+  const { sport } = useSport();
+  const sportResolved = sport;
   const { t } = useLang();
   const primary = theme.primary;
 
@@ -2265,6 +2277,9 @@ function PrivateInfoBlock({
   onPull?: () => void;
 }) {
   const { theme } = useTheme();
+
+  const { sport } = useSport();
+  const sportResolved = sport;
   const { t } = useLang();
 
   // ✅ initial stable : dépend de l'id + des champs sources (évite reset à chaque render)
@@ -2537,6 +2552,9 @@ function PrivateField({
   type?: string;
 }) {
   const { theme } = useTheme();
+
+  const { sport } = useSport();
+  const sportResolved = sport;
   return (
     <label
       style={{
@@ -2562,6 +2580,9 @@ function PrivateField({
 
 function FriendsMergedBlock({ friends }: { friends: FriendLike[] }) {
   const { theme } = useTheme();
+
+  const { sport } = useSport();
+  const sportResolved = sport;
   const { t } = useLang();
 
   const [open, setOpen] = React.useState(true);
@@ -3454,6 +3475,10 @@ function LocalProfilesRefonte({
   onOpenAvatarCreator?: () => void;
 }) {
   const { theme } = useTheme();
+
+  const { sport } = useSport();
+  const sportResolved = sport;
+  const isDarts = sportResolved === "darts";
   const { t } = useLang();
   const primary = theme.primary;
 
@@ -3854,10 +3879,12 @@ function LocalProfilesRefonte({
                 />
               </div>
 
-              {/* 🔥 NOUVEAU : Mes jeux de fléchettes pour ce profil local */}
-              <div style={{ marginTop: 4, marginBottom: 10 }}>
-                <DartSetsPanel profile={current} />
-              </div>
+              {/* 🔥 NOUVEAU : Mes jeux de fléchettes pour ce profil local (DARTS ONLY) */}
+              {isDarts && (
+                <div style={{ marginTop: 4, marginBottom: 10 }}>
+                  <DartSetsPanel profile={current} />
+                </div>
+              )}
 
               {/* Boutons actions : EDITER / AVATAR / ACTIONS */}
               <div
@@ -4090,6 +4117,9 @@ function AddLocalProfile({
   const [preview, setPreview] = React.useState<string | null>(null);
 
   const { theme } = useTheme();
+
+  const { sport } = useSport();
+  const sportResolved = sport;
   const { t } = useLang();
   const primary = theme.primary;
 
@@ -4287,6 +4317,9 @@ function EditInline({
 
   const { t } = useLang();
   const { theme } = useTheme();
+
+  const { sport } = useSport();
+  const sportResolved = sport;
   const primary = theme.primary;
 
   React.useEffect(() => {
@@ -4400,6 +4433,9 @@ function EditInline({
 function GoldMiniStats({ profileId }: { profileId: string }) {
   const bs = useBasicStats(profileId);
   const { theme } = useTheme();
+
+  const { sport } = useSport();
+  const sportResolved = sport;
   const { t } = useLang();
 
   const primary = theme.primary;
@@ -4465,6 +4501,9 @@ function GoldMiniStats({ profileId }: { profileId: string }) {
 
 function GoldSep() {
   const { theme } = useTheme();
+
+  const { sport } = useSport();
+  const sportResolved = sport;
   const primary = theme.primary;
   return (
     <div
@@ -4498,6 +4537,9 @@ function GoldStatItem({
   width: string;
 }) {
   const { theme } = useTheme();
+
+  const { sport } = useSport();
+  const sportResolved = sport;
   const primary = theme.primary;
 
   return (
@@ -4543,6 +4585,9 @@ function GoldStatItem({
 
 function KpiPill({ label, value }: { label: string; value: string }) {
   const { theme } = useTheme();
+
+  const { sport } = useSport();
+  const sportResolved = sport;
   const primary = theme.primary;
   return (
     <div

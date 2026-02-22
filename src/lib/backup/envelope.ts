@@ -26,10 +26,20 @@ export type BuildEnvelopeOptions = {
 };
 
 export async function buildBackupEnvelope(payloadKind: BackupKind, payloadObj: any, opts: BuildEnvelopeOptions = {}): Promise<BackupEnvelopeV1> {
-  const payloadJson = JSON.stringify(payloadObj);
+  const payloadJson = typeof payloadObj === "string" ? payloadObj : JSON.stringify(payloadObj);
   const integritySha256 = await sha256Hex(payloadJson);
 
-  const compress = !!opts.compress;
+  // In embedded contexts (StackBlitz/WebContainer iframe), CompressionStream can behave poorly
+  // on large payloads and appear to "freeze". We disable gzip there.
+  const isIframed = (() => {
+    try {
+      return typeof window !== "undefined" && window.top !== window.self;
+    } catch {
+      return true;
+    }
+  })();
+
+  const compress = !!opts.compress && !isIframed;
   const encryptPassword = (opts.encryptPassword ?? "").trim();
   const encrypted = encryptPassword.length > 0;
 
