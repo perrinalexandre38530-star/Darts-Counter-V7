@@ -33,6 +33,35 @@ export async function exportCloudBackupAsJson(): Promise<{
     } catch {}
   };
 
+  const stringifyInWorker = async (obj: any): Promise<string> => {
+    return await new Promise<string>((resolve, reject) => {
+      try {
+        const workerCode = `self.onmessage = (e) => {\n  try {\n    const json = JSON.stringify(e.data);\n    self.postMessage({ ok: true, json });\n  } catch (err) {\n    const msg = (err && err.message) ? err.message : String(err);\n    self.postMessage({ ok: false, error: msg });\n  }\n};`;
+        const blob = new Blob([workerCode], { type: "application/javascript" });
+        const url = URL.createObjectURL(blob);
+        const w = new Worker(url);
+        const cleanup = () => {
+          try { w.terminate(); } catch {}
+          try { URL.revokeObjectURL(url); } catch {}
+        };
+        w.onmessage = (ev) => {
+          const d: any = (ev as any)?.data;
+          cleanup();
+          if (d?.ok && typeof d.json === "string") resolve(d.json);
+          else reject(new Error(d?.error || "Stringify failed"));
+        };
+        w.onerror = (err) => {
+          cleanup();
+          reject(err instanceof Error ? err : new Error("Worker error"));
+        };
+        w.postMessage(obj);
+      } catch (e) {
+        reject(e as any);
+      }
+    });
+  };
+
+
   const maybeStripHugeDataUrl = (v: unknown) => {
     if (typeof v !== "string") return v;
     // Keep small images; strip only very large base64 payloads.
@@ -92,6 +121,7 @@ export async function exportCloudBackupAsJson(): Promise<{
 
   // Give the UI a chance to paint before the heavy stringify.
   await yieldToUi();
-  const backupJson = JSON.stringify(backup);
+  const needsWorkerStringify = (backup as any)?.history?.length > 1500;
+  const backupJson = needsWorkerStringify ? await stringifyInWorker(backup) : JSON.stringify(backup);
   return { backupJson, backupObj: backup };
 }

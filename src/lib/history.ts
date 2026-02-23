@@ -1028,11 +1028,14 @@ export async function list(): Promise<SavedMatch[]> {
             const ix = st.index("by_updatedAt");
             const req = ix.openCursor(undefined, "prev");
             const out: any[] = [];
-            req.onsuccess = () => {
+            let n = 0;
+          req.onsuccess = () => {
               const cur = req.result as IDBCursorWithValue | null;
               if (cur) {
                 out.push({ ...cur.value });
-                cur.continue();
+                n++;
+                if (n % 200 === 0) setTimeout(() => cur.continue(), 0);
+                else cur.continue();
               } else resolve(out);
             };
             req.onerror = () => reject(req.error);
@@ -1045,11 +1048,14 @@ export async function list(): Promise<SavedMatch[]> {
         await new Promise<any[]>((resolve, reject) => {
           const req = st.openCursor();
           const out: any[] = [];
+          let n2 = 0;
           req.onsuccess = () => {
             const cur = req.result as IDBCursorWithValue | null;
             if (cur) {
               out.push({ ...cur.value });
-              cur.continue();
+              n2++;
+              if (n2 % 200 === 0) setTimeout(() => cur.continue(), 0);
+              else cur.continue();
             } else {
               out.sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
               resolve(out);

@@ -15,11 +15,20 @@
 // ✅ FIX BUILD: aucune dépendance npm "lz-string" (fallback via window.LZString si présent)
 // ============================================
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import type { Store } from "../lib/types";
 import { useTheme } from "../contexts/ThemeContext";
 import { useLang } from "../contexts/LangContext";
 import { History, type SavedMatch } from "../lib/history";
+
+import { buildMatchSharePacket, isMatchSharePacketV1, shareOneMatch, type MatchSharePacketV1 } from "../lib/matchShare";
+import { inboxAddLocal, inboxListLocal, inboxRemoveLocal, type InboxItemLocal } from "../lib/matchInboxLocal";
+import { listInboxCloud, sendMatchToEmail, setInboxStatusCloud, type InboxRowCloud, ensureDirectoryEntry } from "../lib/matchInboxCloud";
+import logoDarts from "../assets/games/logo-darts.png";
+import logoPingPong from "../assets/games/logo-pingpong.png";
+import logoPetanque from "../assets/games/logo-petanque.png";
+import logoBabyfoot from "../assets/games/logo-babyfoot.png";
+
 
 /* ---------- Icônes ---------- */
 
@@ -51,6 +60,40 @@ const Icon = {
         fill="currentColor"
         d="M9 3h6l1 2h5v2H3V5h5l1-2Zm-3 6h12l-1 11a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2L6 9Z"
       />
+    </svg>
+  ),
+
+  Share: (p: any) => (
+    <svg viewBox="0 0 24 24" width={18} height={18} {...p}>
+      <path
+        fill="currentColor"
+        d="M18 16a3 3 0 0 0-2.4 1.2L8.9 13.7a3.2 3.2 0 0 0 0-3.4l6.6-3.5A3 3 0 1 0 15 5a3 3 0 0 0 .1.7L8.5 9.2A3 3 0 1 0 9 15l6.1 3.2A3 3 0 1 0 18 16Z"
+      />
+    </svg>
+  ),
+  Send: (p: any) => (
+    <svg viewBox="0 0 24 24" width={18} height={18} {...p}>
+      <path fill="currentColor" d="M2 21 23 12 2 3v7l15 2-15 2v7Z" />
+    </svg>
+  ),
+  Upload: (p: any) => (
+    <svg viewBox="0 0 24 24" width={18} height={18} {...p}>
+      <path fill="currentColor" d="M5 20h14v-2H5v2Zm7-18 5 5h-3v6h-4V7H7l5-5Z" />
+    </svg>
+  ),
+  Inbox: (p: any) => (
+    <svg viewBox="0 0 24 24" width={18} height={18} {...p}>
+      <path fill="currentColor" d="M19 3H5a2 2 0 0 0-2 2v14l4-4h12a2 2 0 0 0 2-2V5a2 2 0 0 0-2-2Zm-2 8h-3l-2 2h-2l-2-2H5V5h14v6Z" />
+    </svg>
+  ),
+  Check: (p: any) => (
+    <svg viewBox="0 0 24 24" width={18} height={18} {...p}>
+      <path fill="currentColor" d="M9 16.2 4.8 12 3.4 13.4 9 19 21 7 19.6 5.6 9 16.2Z" />
+    </svg>
+  ),
+  X: (p: any) => (
+    <svg viewBox="0 0 24 24" width={18} height={18} {...p}>
+      <path fill="currentColor" d="M18.3 5.7 12 12l6.3 6.3-1.4 1.4L10.6 13.4 4.3 19.7 2.9 18.3 9.2 12 2.9 5.7 4.3 4.3l6.3 6.3 6.3-6.3 1.4 1.4Z" />
     </svg>
   ),
 };
@@ -532,14 +575,18 @@ function makeStyles(theme: any) {
     kpiRow: {
       marginTop: 20,
       display: "flex",
-      gap: 12,
-      padding: "0 12px",
+      flexWrap: "nowrap",
+      gap: "calc(10px * var(--u, 1))",
+      padding: "0 calc(10px * var(--u, 1))",
+      width: "100%",
+      maxWidth: "100%",
+      boxSizing: "border-box",
     },
 
     kpiCard: (active: boolean, borderColor: string) => ({
       flex: 1,
-      padding: "12px 6px",
-      borderRadius: 16,
+      padding: "calc(10px * var(--u, 1)) calc(6px * var(--u, 1))",
+      borderRadius: "calc(14px * var(--u, 1))",
       cursor: "pointer",
       textAlign: "center",
       background: "linear-gradient(180deg,#15171B,#0F0F11)",
@@ -548,13 +595,16 @@ function makeStyles(theme: any) {
     }),
 
     kpiLabel: {
-      fontSize: 11,
-      opacity: 0.7,
+      fontSize: "calc(11px * var(--u, 1))",
+      opacity: 0.72,
+      letterSpacing: 0.2,
+      whiteSpace: "nowrap",
     },
     kpiValue: {
-      marginTop: 4,
-      fontSize: 20,
+      marginTop: "calc(4px * var(--u, 1))",
+      fontSize: "calc(20px * var(--u, 1))",
       fontWeight: 900,
+      lineHeight: 1,
     },
 
     reloadBtn: {
@@ -600,9 +650,27 @@ function makeStyles(theme: any) {
       background: theme.card,
       borderRadius: 18,
       padding: 14,
+      position: "relative",
+      overflow: "hidden",
+      width: "100%",
+      maxWidth: "100%",
+      boxSizing: "border-box",
       border: `1px solid ${edge}`,
       boxShadow: "0 12px 28px rgba(0,0,0,.4)",
     },
+    watermarkLogo: {
+      position: "absolute",
+      left: -74,
+      top: 6,
+      width: 220,
+      height: 220,
+      objectFit: "contain",
+      opacity: 0.13,
+      filter: "grayscale(1) contrast(1.08) brightness(1.15)",
+      transform: "rotate(-8deg)",
+      pointerEvents: "none",
+    },
+
 
     rowBetween: {
       display: "flex",
@@ -637,7 +705,7 @@ function makeStyles(theme: any) {
     },
     pill: {
       flex: 1,
-      padding: "8px 10px",
+      padding: "8px 8px",
       textAlign: "center",
       borderRadius: 999,
       fontWeight: 900,
@@ -656,7 +724,139 @@ function makeStyles(theme: any) {
       border: `1px solid ${theme.danger}`,
       background: "rgba(255,0,0,.15)",
     },
+
+    // Actions V3 (plus épuré que 4 gros boutons)
+    actionRow: {
+      marginTop: 12,
+      display: "flex",
+      gap: 8,
+      alignItems: "center",
+      width: "100%",
+      maxWidth: "100%",
+      flexWrap: "nowrap",
+    },
+    primaryAction: {
+      flex: "0 0 auto",
+      padding: "8px 8px",
+      minWidth: 44,
+      maxWidth: 92,
+      borderRadius: 12,
+      fontWeight: 950,
+      fontSize: 11,
+      cursor: "pointer",
+      border: `1px solid ${theme.primary}`,
+      background: "rgba(0,0,0,.45)",
+      color: theme.primary,
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+      gap: 8,
+      boxShadow: `0 0 14px ${theme.primary}55`,
+      userSelect: "none",
+    },
+    iconRow: {
+      display: "flex",
+      gap: 8,
+      alignItems: "center",
+      marginLeft: "auto",
+      flexWrap: "nowrap",
+      justifyContent: "flex-end",
+      maxWidth: "100%",
+    },
+    iconBtn: {
+      width: 38,
+      height: 38,
+      borderRadius: 12,
+      display: "grid",
+      placeItems: "center",
+      cursor: "pointer",
+      border: `1px solid ${edge}`,
+      background: "rgba(255,255,255,.06)",
+      userSelect: "none",
+    },
+    iconDanger: {
+      border: `1px solid ${theme.danger}`,
+      background: "rgba(255,0,0,.12)",
+      color: theme.danger,
+      boxShadow: `0 0 10px ${theme.danger}44`,
+    },
   };
+}
+
+
+
+function ScaledKpiRow({
+  children,
+  baseStyle,
+}: {
+  children: React.ReactNode;
+  baseStyle: React.CSSProperties;
+}) {
+  const ref = React.useRef<HTMLDivElement | null>(null);
+  const [u, setU] = React.useState(1);
+
+  React.useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const clamp = (x: number, a: number, b: number) => Math.max(a, Math.min(b, x));
+    const ro = new ResizeObserver((entries) => {
+      const w = entries[0]?.contentRect?.width ?? 360;
+      setU(clamp(w / 360, 0.78, 1.05));
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
+  return (
+    <div ref={ref} style={{ ...(baseStyle || {}), ["--u" as any]: u }}>
+      {children}
+    </div>
+  );
+}
+
+
+function ScaledCard({
+  children,
+  baseStyle,
+}: {
+  children: any;
+  baseStyle: React.CSSProperties;
+}) {
+  const ref = React.useRef<HTMLDivElement | null>(null);
+  const [u, setU] = React.useState(1);
+
+  React.useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+
+    const clamp = (v: number, a: number, b: number) => Math.max(a, Math.min(b, v));
+
+    const ro = new ResizeObserver((entries) => {
+      const w = entries[0]?.contentRect?.width ?? 360;
+      // u proportionnel à la carte (base = 360px)
+      const next = clamp(w / 360, 0.75, 1.05);
+      setU(next);
+    });
+
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
+  return (
+    <div
+      ref={ref}
+      style={{
+        ...baseStyle,
+        ["--u" as any]: u,
+        width: "100%",
+        maxWidth: "100%",
+        boxSizing: "border-box",
+        overflow: "hidden",
+      }}
+    >
+      {children}
+    </div>
+  );
 }
 
 /* ---------- Component ---------- */
@@ -672,10 +872,22 @@ export default function HistoryPage({
   const { t } = useLang();
   const S = useMemo(() => makeStyles(theme), [theme]);
 
-  const [tab, setTab] = useState<"done" | "running">("done");
+  const [tab, setTab] = useState<"all" | "done" | "running" | "inbox">("done");
+  const [isNarrow, setIsNarrow] = useState(() => (typeof window !== "undefined" ? window.innerWidth < 360 : false));
+  useEffect(() => {
+    const onR = () => setIsNarrow(window.innerWidth < 360);
+    window.addEventListener("resize", onR);
+    return () => window.removeEventListener("resize", onR);
+  }, []);
+
   const [sub, setSub] = useState<RangeKey>("today");
   const [items, setItems] = useState<SavedEntry[]>([]);
   const [loading, setLoading] = useState(false);
+
+  const fileRef = useRef<HTMLInputElement>(null);
+  const [inboxLocal, setInboxLocal] = useState<InboxItemLocal[]>([]);
+  const [inboxCloud, setInboxCloud] = useState<InboxRowCloud[]>([]);
+  const [inboxLoading, setInboxLoading] = useState(false);
 
   // ============================================================
   // 🔎 DEBUG HISTORYPAGE — voir RAW vs filtré (pour "Aucune partie ici")
@@ -730,13 +942,140 @@ export default function HistoryPage({
     loadHistory();
   }, [store]);
 
+
+  // ============================================================
+  // 📥 Inbox (reçues) = Local (import fichier) + Cloud (Supabase)
+  // ============================================================
+  async function loadInbox() {
+    setInboxLoading(true);
+    try {
+      setInboxLocal(inboxListLocal());
+      const cloud = await listInboxCloud("pending");
+      setInboxCloud(cloud.ok ? cloud.rows : []);
+    } finally {
+      setInboxLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    // refresh inbox quand on l'ouvre
+    if (tab === "inbox") loadInbox();
+  }, [tab]);
+
+  async function handleImportClick() {
+    fileRef.current?.click();
+  }
+
+  async function handleImportFile(file: File) {
+    try {
+      const text = await file.text();
+      const json = JSON.parse(text);
+      if (!isMatchSharePacketV1(json)) {
+        window.alert("Format invalide : ce fichier n'est pas une partie partageable.");
+        return;
+      }
+      inboxAddLocal(json as MatchSharePacketV1);
+      setInboxLocal(inboxListLocal());
+      window.alert("Partie reçue ✅ (en attente d'acceptation)");
+    } catch (e) {
+      window.alert("Import impossible : fichier illisible.");
+    }
+  }
+
+  async function acceptPacket(packet: MatchSharePacketV1) {
+    // transforme packet -> SavedMatch (History.upsert compresse si besoin)
+    const rec: any = {
+      id: packet.matchId,
+      kind: packet.kind,
+      status: packet.summary?.status === "in_progress" ? "in_progress" : "finished",
+      createdAt: packet.exportedAt,
+      updatedAt: new Date().toISOString(),
+      finishedAt: packet.summary?.finishedAt || null,
+      payload: packet.payload,
+    };
+    await History.upsert(rec as any);
+    await loadHistory();
+  }
+
+  async function acceptLocal(item: InboxItemLocal) {
+    await acceptPacket(item.packet);
+    inboxRemoveLocal(item.id);
+    setInboxLocal(inboxListLocal());
+  }
+
+  async function refuseLocal(item: InboxItemLocal) {
+    inboxRemoveLocal(item.id);
+    setInboxLocal(inboxListLocal());
+  }
+
+  async function acceptCloud(row: InboxRowCloud) {
+    await acceptPacket(row.packet);
+    await setInboxStatusCloud(row.id, "accepted");
+    await loadInbox();
+  }
+
+  async function refuseCloud(row: InboxRowCloud) {
+    await setInboxStatusCloud(row.id, "refused");
+    await loadInbox();
+  }
+
+  async function handleShare(entry: SavedEntry) {
+    // 1) tente Web Share (Android / PWA)
+    const res = await shareOneMatch(entry);
+
+    // 2) fallback robuste : téléchargement du JSON (fonctionne dans StackBlitz / navigateur desktop)
+    if (!res || res.ok === false) {
+      try {
+        const packet = buildMatchSharePacket(entry);
+        const json = JSON.stringify(packet, null, 2);
+        const blob = new Blob([json], { type: "application/json" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `match-${packet.kind || "game"}-${packet.matchId || entry.id}.json`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 2000);
+        window.alert("Partage via fichier JSON ✅ (téléchargé).");
+      } catch {
+        window.alert("Partage impossible.");
+      }
+    }
+  }
+
+  async function handleSendToFriend(entry: SavedEntry) {
+    const email = window.prompt("Envoyer à quel email (compte ami) ?");
+    if (!email) return;
+
+
+    // Auto opt-in: ensure YOU are discoverable in user_directory (email_norm)
+    await ensureDirectoryEntry();
+    const packet = buildMatchSharePacket(entry);
+    const res = await sendMatchToEmail(email, packet);
+    if (res.ok) {
+      window.alert("Envoyé ✅ (en attente d'acceptation côté ami)");
+    } else if (res.error === "not-found") {
+      window.alert(
+        "Ami introuvable. Il doit ouvrir l'app, se connecter ONLINE puis activer l'annuaire (user_directory).\n\nAstuce: utilise \"Partager\" pour lui envoyer le fichier JSON en attendant."
+      );
+    } else if (res.error === "no-user") {
+      window.alert("Tu dois être connecté (ONLINE) pour envoyer à un ami.");
+    } else {
+      window.alert("Erreur envoi: " + (res.message || "db"));
+    }
+  }
+
+
   const { done, running } = useMemo(() => {
     const fins = items.filter((e) => statusOf(e) === "finished");
     const inprog = items.filter((e) => statusOf(e) !== "finished");
     return { done: dedupe(fins), running: dedupe(inprog) };
   }, [items]);
 
-  const source = tab === "all" ? items : tab === "done" ? done : running;
+  const inboxCount = (inboxLocal?.length || 0) + (inboxCloud?.length || 0);
+
+  const source = tab === "all" ? items : tab === "inbox" ? [] : running;
   const filtered = source.filter((e) => inRange(e.updatedAt || e.createdAt, sub));
 
   // ✅ DEBUG: ce qui reste après filtres (tab + période + status/dedupe)
@@ -928,31 +1267,100 @@ if (isKillerEntry(e)) {
     go("x01_end", { rec: e, resumeId, showEnd: true, from: "history" });
   }
 
+
+
+  // Fond "tôle inox brossée" + teinte sport
+  function metalBackground(color: string) {
+    const c = color || theme.primary;
+    // Petit bruit (SVG turbulence) pour casser le côté "trop propre"
+    const noiseSvg =
+      `<svg xmlns="http://www.w3.org/2000/svg" width="180" height="180">` +
+      `<filter id="n">` +
+      `<feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="2" stitchTiles="stitch"/>` +
+      `<feColorMatrix type="saturate" values="0"/>` +
+      `</filter>` +
+      `<rect width="180" height="180" filter="url(#n)" opacity="0.18"/>` +
+      `</svg>`;
+    const noiseUri = `url("data:image/svg+xml,${encodeURIComponent(noiseSvg)}")`;
+
+    // Base acier "brossé" sans rayures apparentes + reflets + teinte sport
+    return (
+      `radial-gradient(120% 90% at 10% 10%, rgba(255,255,255,0.22), rgba(255,255,255,0) 60%),` +
+      `radial-gradient(90% 70% at 85% 0%, rgba(255,255,255,0.18), rgba(255,255,255,0) 55%),` +
+      `linear-gradient(180deg, rgba(255,255,255,0.12), rgba(0,0,0,0) 38%, rgba(0,0,0,0.28)),` +
+      // teinte sport (subtile)
+      `linear-gradient(160deg, ${c}14, rgba(0,0,0,0.80) 62%, ${c}10),` +
+      noiseUri
+    );
+  }
+
+  function sportLogoForKind(kind: string) {
+    const k = String(kind || "").toLowerCase();
+    if (k.includes("ping")) return logoPingPong;
+    if (k.includes("petanque")) return logoPetanque;
+    if (k.includes("babyfoot")) return logoBabyfoot;
+    // darts family
+    if (k.includes("x01") || k.includes("cricket") || k.includes("killer") || k.includes("shanghai") || k.includes("darts")) return logoDarts;
+    return logoDarts;
+  }
+
+  function sportCardStyle(color: string) {
+    const c = color || theme.primary;
+    return {
+      ...S.card,
+      background: metalBackground(c),
+      border: `1px solid ${c}55`,
+      boxShadow: `0 14px 30px rgba(0,0,0,.45), 0 0 18px ${c}22`,
+    } as any;
+  }
+
   return (
     <div style={S.page}>
       <div style={S.title}>HISTORIQUE</div>
 
-      <div style={S.kpiRow}>
+      <ScaledKpiRow baseStyle={S.kpiRow}>
         <div style={S.kpiCard(tab === "all", theme.primary)} onClick={() => setTab("all")}>
-          <div style={S.kpiLabel}>Sauvegardées</div>
+          <div style={S.kpiLabel}>ALL</div>
           <div style={S.kpiValue}>{items.length}</div>
-        </div>
-
-        <div style={S.kpiCard(tab === "done", theme.primary)} onClick={() => setTab("done")}>
-          <div style={S.kpiLabel}>Terminées</div>
-          <div style={S.kpiValue}>{done.length}</div>
         </div>
 
         <div style={S.kpiCard(tab === "running", theme.danger)} onClick={() => setTab("running")}>
           <div style={S.kpiLabel}>En cours</div>
           <div style={{ ...S.kpiValue, color: theme.danger }}>{running.length}</div>
         </div>
+
+        <div style={S.kpiCard(tab === "inbox", theme.primary)} onClick={() => setTab("inbox")}>
+          <div style={S.kpiLabel}>Reçues</div>
+          <div style={S.kpiValue}>{inboxCount}</div>
+        </div>
+      </ScaledKpiRow>
+
+      <div style={{ display: "flex", gap: 10, justifyContent: "center", alignItems: "center", marginTop: 10 }}>
+        <button style={{ ...S.reloadBtn, opacity: loading ? 0.5 : 1 }} onClick={() => loadHistory()}>
+          {loading ? "Chargement..." : "Recharger"}
+        </button>
+
+        <button style={{ ...S.reloadBtn, opacity: 1 }} onClick={handleImportClick} title="Importer une partie (.json)">
+          <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+            <Icon.Upload /> Importer
+          </span>
+        </button>
+
+        <input
+          ref={fileRef}
+          type="file"
+          accept="application/json,.json"
+          style={{ display: "none" }}
+          onChange={async (e: any) => {
+            const f = e?.target?.files?.[0];
+            e.target.value = "";
+            if (!f) return;
+            await handleImportFile(f);
+          }}
+        />
       </div>
 
-      <button style={{ ...S.reloadBtn, opacity: loading ? 0.5 : 1 }} onClick={() => loadHistory()}>
-        {loading ? "Chargement..." : "Recharger"}
-      </button>
-
+      {tab !== "inbox" && (
       <div style={S.filtersRow}>
         {(
           [
@@ -968,17 +1376,109 @@ if (isKillerEntry(e)) {
           </div>
         ))}
       </div>
+      )}
 
       <div style={S.list}>
-        {filtered.length === 0 ? (
-          <div style={{ opacity: 0.7, textAlign: "center", marginTop: 20 }}>Aucune partie ici.</div>
-        ) : (
-          filtered.map((e) => {
+        {tab === "inbox" ? (
+          <div>
+            {inboxLoading ? (
+              <div style={{ opacity: 0.7, textAlign: "center", marginTop: 20 }}>Chargement...</div>
+            ) : inboxCount === 0 ? (
+              <div style={{ opacity: 0.7, textAlign: "center", marginTop: 20 }}>
+                Aucune partie reçue.
+              </div>
+            ) : (
+              <>
+                {inboxCloud.length > 0 && (
+                  <div style={{ marginBottom: 10, opacity: 0.85, display: "flex", alignItems: "center", gap: 8 }}>
+                    <Icon.Inbox /> Reçues (ONLINE)
+                  </div>
+                )}
+                {inboxCloud.map((row) => {
+                  const c = getModeColor({ kind: row.packet?.kind || row.kind, game: { mode: row.packet?.kind || row.kind } } as any);
+                  return (
+                    <div key={row.id} style={sportCardStyle(c)}>
+                      <img src={sportLogoForKind(row.packet?.kind || row.kind)} style={S.watermarkLogo} />
+                      <div style={S.rowBetween}>
+                        <div style={{ display: "flex", gap: 8 }}>
+                          <span style={{ padding: "4px 10px", borderRadius: 999, fontSize: 11, fontWeight: 800, background: c + "22", border: `1px solid ${c}99`, color: c }}>
+                            {(row.packet?.summary?.title || row.kind || "MATCH").toUpperCase()}
+                          </span>
+                          <span style={{ padding: "4px 10px", borderRadius: 999, fontSize: 11, fontWeight: 800, background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.18)", color: theme.primary }}>
+                            Reçue
+                          </span>
+                        </div>
+                        <span style={{ fontSize: 11, color: theme.primary }}>{fmtDate(row.created_at)}</span>
+                      </div>
+
+                      <div style={{ marginTop: 8, fontSize: 12, color: "rgba(255,255,255,0.9)" }}>
+                        {row.packet?.summary?.scoreLine || "—"}
+                      </div>
+
+                      <div style={S.pillRow}>
+                        <div style={{ ...S.pill, ...S.pillGold }} onClick={() => acceptCloud(row)}>
+                          <Icon.Check /> Accepter
+                        </div>
+                        <div style={{ ...S.pill, ...S.pillDanger }} onClick={() => refuseCloud(row)}>
+                          <Icon.X /> Refuser
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+
+                {inboxLocal.length > 0 && (
+                  <div style={{ margin: "14px 0 10px", opacity: 0.85, display: "flex", alignItems: "center", gap: 8 }}>
+                    <Icon.Inbox /> Reçues (LOCAL)
+                  </div>
+                )}
+                {inboxLocal.map((it) => {
+                  const kind = it.packet?.kind || "match";
+                  const c = getModeColor({ kind, game: { mode: kind } } as any);
+                  return (
+                    <div key={it.id} style={sportCardStyle(c)}>
+                      <img src={sportLogoForKind(it.packet?.kind || it.packet?.summary?.title || "match")} style={S.watermarkLogo} />
+                      <div style={S.rowBetween}>
+                        <div style={{ display: "flex", gap: 8 }}>
+                          <span style={{ padding: "4px 10px", borderRadius: 999, fontSize: 11, fontWeight: 800, background: c + "22", border: `1px solid ${c}99`, color: c }}>
+                            {(it.packet?.summary?.title || kind).toUpperCase()}
+                          </span>
+                          <span style={{ padding: "4px 10px", borderRadius: 999, fontSize: 11, fontWeight: 800, background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.18)", color: theme.primary }}>
+                            Importée
+                          </span>
+                        </div>
+                        <span style={{ fontSize: 11, color: theme.primary }}>{fmtDate(it.receivedAt)}</span>
+                      </div>
+
+                      <div style={{ marginTop: 8, fontSize: 12, color: "rgba(255,255,255,0.9)" }}>
+                        {it.packet?.summary?.scoreLine || "—"}
+                      </div>
+
+                      <div style={S.pillRow}>
+                        <div style={{ ...S.pill, ...S.pillGold }} onClick={() => acceptLocal(it)}>
+                          <Icon.Check /> Accepter
+                        </div>
+                        <div style={{ ...S.pill, ...S.pillDanger }} onClick={() => refuseLocal(it)}>
+                          <Icon.X /> Refuser
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </>
+            )}
+          </div>
+	        ) : (
+	          filtered.length === 0 ? (
+	            <div style={{ opacity: 0.7, textAlign: "center", marginTop: 20 }}>Aucune partie ici.</div>
+	          ) : (
+	            filtered.map((e) => {
             const inProg = statusOf(e) === "in_progress";
             const key = matchLink(e) || e.id;
 
             return (
-              <div key={key} style={S.card}>
+              <ScaledCard key={key} baseStyle={sportCardStyle(getModeColor(e))}>
+                <img src={sportLogoForKind(baseMode(e) || e.kind)} style={S.watermarkLogo} />
                 <div style={S.rowBetween}>
                   <div style={{ display: "flex", gap: 8 }}>
                     <span
@@ -1039,39 +1539,48 @@ if (isKillerEntry(e)) {
                     })}
                   </div>
 
-                  {inProg ? (
-                    <div style={{ opacity: 0.7 }}>À reprendre</div>
-                  ) : e.winnerName ? (
+                  {(!inProg && e.winnerName) ? (
                     <div style={{ display: "flex", alignItems: "center", gap: 6, color: theme.primary }}>
                       <Icon.Trophy /> {e.winnerName}
                     </div>
                   ) : null}
                 </div>
 
-                <div style={S.pillRow}>
+                <div style={S.actionRow}>
                   {inProg ? (
-                    <>
-                      <div style={{ ...S.pill, ...S.pillGold }} onClick={() => goResume(e, false)}>
-                        <Icon.Play /> Reprendre
-                      </div>
-
-                      <div style={S.pill} onClick={() => goResume(e, true)}>
-                        <Icon.Eye /> Voir
-                      </div>
-                    </>
+                    <div style={S.primaryAction} onClick={() => goResume(e, false)}>
+                      <Icon.Play />
+                    </div>
                   ) : (
-                    <div style={{ ...S.pill, ...S.pillGold }} onClick={() => goStats(e)}>
+                    <div style={S.primaryAction} onClick={() => goStats(e)}>
                       <Icon.Eye /> Voir stats
                     </div>
                   )}
 
-                  <div style={{ ...S.pill, ...S.pillDanger }} onClick={() => handleDelete(e)}>
-                    <Icon.Trash /> Supprimer
+                  <div style={S.iconRow}>
+                    {inProg && (
+                      <div style={S.iconBtn} onClick={() => goResume(e, true)} title="Voir (sans reprendre)">
+                        <Icon.Eye />
+                      </div>
+                    )}
+
+                    <div style={S.iconBtn} onClick={() => handleShare(e)} title="Partager (fichier .json / feuille Android)">
+                      <Icon.Share />
+                    </div>
+
+                    <div style={S.iconBtn} onClick={() => handleSendToFriend(e)} title="Envoyer directement à un ami (email)">
+                      <Icon.Send />
+                    </div>
+
+                    <div style={{ ...S.iconBtn, ...S.iconDanger }} onClick={() => handleDelete(e)} title="Supprimer">
+                      <Icon.Trash />
+                    </div>
                   </div>
                 </div>
-              </div>
+              </ScaledCard>
             );
-          })
+	            })
+	          )
         )}
       </div>
     </div>

@@ -66,6 +66,9 @@ export type PingPongState = {
 
   // runtime (match)
   matchStarted: boolean;
+  matchStartedAt: number | null;
+  setStartedAt: number | null;
+  setDurationsMs: number[];
   // choix serveur (si serveStart==='manual')
   manualStart: PingPongSideId | null;
   // 1er point gagnant (si serveStart==='toss_first_point')
@@ -159,6 +162,9 @@ export function newPingPongState(partial?: Partial<PingPongState>): PingPongStat
     tournanteWinner: null,
 
     matchStarted: false,
+    matchStartedAt: null,
+    setStartedAt: null,
+    setDurationsMs: [],
     manualStart: null,
     firstPointSide: null,
     pointLog: [],
@@ -474,6 +480,15 @@ function isSetWon(pointsA: number, pointsB: number, pointsPerSet: number, winByT
 }
 
 
+
+// -------------------------------------------------------------
+// Helpers
+// -------------------------------------------------------------
+export function getCurrentServerSide(st: PingPongState) {
+  const totalPts = Number(st.pointsA ?? 0) + Number(st.pointsB ?? 0);
+  return computeServerSide(st, totalPts, st.firstPointSide ?? null);
+}
+
 function computeServerSide(
   st: PingPongState,
   totalPtsBefore: number,
@@ -525,7 +540,14 @@ function pushUndo(st: PingPongState): PingPongState["undo"][number] {
 function tournanteAddPoint(st: PingPongState, side: PingPongSideId, delta: 1 | -1) {
   const snapshot = pushUndo(st);
 
+  // timers (best-effort)
+  let matchStartedAt: number | null = (st as any).matchStartedAt ?? null;
+  let setStartedAt: number | null = (st as any).setStartedAt ?? null;
+  let setDurationsMs: number[] = Array.isArray((st as any).setDurationsMs) ? [...((st as any).setDurationsMs as any)] : [];
+
   const totalPtsBefore = Number(st.pointsA ?? 0) + Number(st.pointsB ?? 0);
+  if (delta > 0 && !matchStartedAt) matchStartedAt = now();
+  if (delta > 0 && !setStartedAt) setStartedAt = now();
   let firstPointSide: PingPongSideId | null = st.firstPointSide;
   if (delta > 0 && st.serveStart === "toss_first_point" && !firstPointSide && totalPtsBefore === 0) {
     firstPointSide = side;
@@ -610,7 +632,14 @@ export function addPoint(st: PingPongState, side: PingPongSideId, delta: 1 | -1)
 
   const snapshot = pushUndo(st);
 
+  // timers (best-effort)
+  let matchStartedAt: number | null = (st as any).matchStartedAt ?? null;
+  let setStartedAt: number | null = (st as any).setStartedAt ?? null;
+  let setDurationsMs: number[] = Array.isArray((st as any).setDurationsMs) ? [...((st as any).setDurationsMs as any)] : [];
+
   const totalPtsBefore = Number(st.pointsA ?? 0) + Number(st.pointsB ?? 0);
+  if (delta > 0 && !matchStartedAt) matchStartedAt = now();
+  if (delta > 0 && !setStartedAt) setStartedAt = now();
   let firstPointSide: PingPongSideId | null = st.firstPointSide;
 
   // Si option "toss_first_point": le 1er point marque le serveur (et donc le départ)
@@ -654,10 +683,25 @@ export function addPoint(st: PingPongState, side: PingPongSideId, delta: 1 | -1)
       if (pointWinner === "A") setsA += 1;
       else setsB += 1;
 
+      // durée du set terminé (best-effort)
+      if (setStartedAt) {
+        const dur = Math.max(0, now() - setStartedAt);
+        // setIndex courant correspond au set qui vient de finir
+        const idx = Math.max(0, Number(st.setIndex ?? 1) - 1);
+        // on remplace si déjà présent
+        if (setDurationsMs.length <= idx) {
+          while (setDurationsMs.length < idx) setDurationsMs.push(0);
+          setDurationsMs.push(dur);
+        } else {
+          setDurationsMs[idx] = dur;
+        }
+      }
+
       // set suivant
       pointsA = 0;
       pointsB = 0;
       setIndex += 1;
+      setStartedAt = now();
 
       if (setsA >= st.setsToWin || setsB >= st.setsToWin) {
         finished = true;

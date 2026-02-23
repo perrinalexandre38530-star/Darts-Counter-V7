@@ -12,6 +12,8 @@ import { useTheme } from "../contexts/ThemeContext";
 import { useLang } from "../contexts/LangContext";
 import { useAuthOnline } from "../hooks/useAuthOnline";
 import { onlineApi } from "../lib/onlineApi";
+import { supabase } from "../lib/supabaseClient";
+import { ensureDirectoryEntry } from "../lib/matchInboxCloud";
 import type { Store } from "../lib/types";
 
 type Props = {
@@ -42,6 +44,55 @@ export default function SettingsAccount({ store, update }: Props) {
   const [resetEmail, setResetEmail] = React.useState(email);
   const [newEmail, setNewEmail] = React.useState("");
   const [busy, setBusy] = React.useState(false);
+
+  // Annuaire (user_directory) : permet l'envoi direct vers un ami par email/handle (opt-in)
+  const [dirStatus, setDirStatus] = React.useState<"unknown" | "enabled" | "disabled">("unknown");
+  const [dirBusy, setDirBusy] = React.useState(false);
+  const [dirHandle, setDirHandle] = React.useState("");
+  const [dirPhone, setDirPhone] = React.useState("");
+
+  async function refreshDirectoryStatus() {
+    try {
+      if (!auth.session?.user?.id) {
+        setDirStatus("disabled");
+        return;
+      }
+      const { data, error } = await supabase
+        .from("user_directory")
+        .select("user_id")
+        .eq("user_id", auth.session.user.id)
+        .maybeSingle();
+      if (error) {
+        // table absente / RLS / offline : on reste neutre
+        setDirStatus("unknown");
+        return;
+      }
+      setDirStatus(data?.user_id ? "enabled" : "disabled");
+    } catch {
+      setDirStatus("unknown");
+    }
+  }
+
+  React.useEffect(() => {
+    refreshDirectoryStatus();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [auth.session?.user?.id]);
+
+  async function handleEnableDirectory() {
+    try {
+      setDirBusy(true);
+      await ensureDirectoryEntry({
+        handle: dirHandle || undefined,
+        phone: dirPhone || undefined,
+      });
+      await refreshDirectoryStatus();
+      alert("✅ Annuaire activé. Tu peux maintenant recevoir/envoyer des parties par email.");
+    } catch (e: any) {
+      alert("❌ Impossible d'activer l'annuaire. Vérifie la connexion ONLINE et réessaye.");
+    } finally {
+      setDirBusy(false);
+    }
+  }
   const [message, setMessage] = React.useState<string | null>(null);
   const [error, setError] = React.useState<string | null>(null);
 
@@ -260,7 +311,89 @@ export default function SettingsAccount({ store, update }: Props) {
         </div>
       </section>
 
-      {/* Changement d'email */}
+      {
+      {/* Annuaire / Partage direct */}
+      <section style={{ ...S.card, marginTop: 14 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <div style={{ fontWeight: 900, letterSpacing: 0.3 }}>
+            Annuaire (envoi direct)
+          </div>
+          <div
+            style={{
+              marginLeft: "auto",
+              fontSize: 12,
+              opacity: 0.75,
+              padding: "4px 8px",
+              borderRadius: 999,
+              border: "1px solid rgba(255,255,255,0.12)",
+              background: "rgba(0,0,0,0.25)",
+            }}
+          >
+            {dirStatus === "enabled"
+              ? "Activé"
+              : dirStatus === "disabled"
+              ? "Désactivé"
+              : "Inconnu"}
+          </div>
+        </div>
+
+        <div style={{ marginTop: 8, opacity: 0.85, lineHeight: 1.25 }}>
+          Pour que tes amis puissent te trouver par <b>email</b> (ou handle), tu dois
+          activer l'annuaire. C'est <b>opt-in</b> : rien n'est public hors de l'app.
+        </div>
+
+        <div style={{ marginTop: 10, display: "grid", gap: 8 }}>
+          <label style={{ display: "grid", gap: 6 }}>
+            <div style={{ fontSize: 12, opacity: 0.75 }}>Handle (optionnel)</div>
+            <input
+              value={dirHandle}
+              onChange={(e) => setDirHandle(e.target.value)}
+              placeholder="ex: alex38"
+              style={S.input}
+            />
+          </label>
+
+          <label style={{ display: "grid", gap: 6 }}>
+            <div style={{ fontSize: 12, opacity: 0.75 }}>Téléphone (optionnel)</div>
+            <input
+              value={dirPhone}
+              onChange={(e) => setDirPhone(e.target.value)}
+              placeholder="+33 6 …"
+              style={S.input}
+            />
+          </label>
+
+          <button
+            onClick={handleEnableDirectory}
+            disabled={!auth.session?.user?.id || dirBusy}
+            style={{
+              ...S.btnPrimary,
+              opacity: !auth.session?.user?.id || dirBusy ? 0.6 : 1,
+            }}
+          >
+            {dirBusy ? "Activation…" : "Activer l’annuaire"}
+          </button>
+
+          <button
+            onClick={refreshDirectoryStatus}
+            disabled={dirBusy}
+            style={{
+              ...S.btn,
+              opacity: dirBusy ? 0.6 : 1,
+            }}
+          >
+            Vérifier l’état
+          </button>
+
+          {!auth.session?.user?.id && (
+            <div style={{ marginTop: 6, fontSize: 12, opacity: 0.75 }}>
+              Connecte-toi <b>ONLINE</b> pour activer l'annuaire.
+            </div>
+          )}
+        </div>
+      </section>
+
+/* Changement d'email */}
       <section
         style={{
           padding: 16,
