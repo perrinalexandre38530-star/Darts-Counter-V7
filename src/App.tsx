@@ -3188,6 +3188,9 @@ case "babyfoot_team_edit":
 
     // Tournois: match en cours (plein écran)
     "tournament_match_play",
+
+    // ✅ Ping-Pong (play) — plein écran
+    "pingpong_play",
   ]);
 
   return (

@@ -23,6 +23,9 @@ export type PingPongState = {
   createdAt: number;
   updatedAt: number;
 
+  // état UI (match)
+  matchStarted: boolean;
+
   sideA: string;
   sideB: string;
 
@@ -120,6 +123,7 @@ export function newPingPongState(partial?: Partial<PingPongState>): PingPongStat
     matchId: id,
     createdAt: t,
     updatedAt: t,
+    matchStarted: false,
     sideA: "Joueur A",
     sideB: "Joueur B",
     mode: "sets",
@@ -174,6 +178,7 @@ export function loadPingPongState(): PingPongState {
 
     const st = newPingPongState({
       ...(parsed || {}),
+      matchStarted: !!parsed?.matchStarted,
       mode,
       pointsPerSet: clampInt(parsed?.pointsPerSet, 5, 99, 11),
       setsToWin: clampInt(parsed?.setsToWin, 1, 9, 3),
@@ -234,6 +239,7 @@ export function savePingPongState(st: PingPongState) {
 
 export function resetPingPong(prev?: PingPongState) {
   const next = newPingPongState({
+    matchStarted: false,
     sideA: prev?.sideA ?? "Joueur A",
     sideB: prev?.sideB ?? "Joueur B",
     mode: prev?.mode ?? "sets",
