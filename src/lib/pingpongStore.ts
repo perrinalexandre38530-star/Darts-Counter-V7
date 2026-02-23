@@ -23,9 +23,6 @@ export type PingPongState = {
   createdAt: number;
   updatedAt: number;
 
-  // état UI (match)
-  matchStarted: boolean;
-
   sideA: string;
   sideB: string;
 
@@ -67,6 +64,16 @@ export type PingPongState = {
   finished: boolean;
   winner: PingPongSideId | null;
 
+  // runtime (match)
+  matchStarted: boolean;
+  // choix serveur (si serveStart==='manual')
+  manualStart: PingPongSideId | null;
+  // 1er point gagnant (si serveStart==='toss_first_point')
+  firstPointSide: PingPongSideId | null;
+
+  // télémétrie points (pour stats live / fin de partie)
+  pointLog: Array<{ setIndex: number; winner: PingPongSideId; server: PingPongSideId; ts: number }>;
+
   // undo (pile de snapshots) — inclut aussi la tournante
   undo: Array<Pick<
     PingPongState,
@@ -78,6 +85,10 @@ export type PingPongState = {
     | "setsB"
     | "finished"
     | "winner"
+    | "matchStarted"
+    | "manualStart"
+    | "firstPointSide"
+    | "pointLog"
     | "tournanteQueue"
     | "tournanteActiveA"
     | "tournanteActiveB"
@@ -123,7 +134,6 @@ export function newPingPongState(partial?: Partial<PingPongState>): PingPongStat
     matchId: id,
     createdAt: t,
     updatedAt: t,
-    matchStarted: false,
     sideA: "Joueur A",
     sideB: "Joueur B",
     mode: "sets",
@@ -147,6 +157,11 @@ export function newPingPongState(partial?: Partial<PingPongState>): PingPongStat
     tournanteEliminated: [],
     tournanteFinished: false,
     tournanteWinner: null,
+
+    matchStarted: false,
+    manualStart: null,
+    firstPointSide: null,
+    pointLog: [],
 
     setIndex: 1,
     pointsA: 0,
@@ -178,7 +193,6 @@ export function loadPingPongState(): PingPongState {
 
     const st = newPingPongState({
       ...(parsed || {}),
-      matchStarted: !!parsed?.matchStarted,
       mode,
       pointsPerSet: clampInt(parsed?.pointsPerSet, 5, 99, 11),
       setsToWin: clampInt(parsed?.setsToWin, 1, 9, 3),
@@ -200,6 +214,21 @@ export function loadPingPongState(): PingPongState {
       switchEndsEachSet: parsed?.switchEndsEachSet !== false,
       switchEndsAtFinal: parsed?.switchEndsAtFinal !== false,
       switchEndsAtFinalPoints: clampInt(parsed?.switchEndsAtFinalPoints, 1, 50, 5),
+
+      matchStarted: !!parsed?.matchStarted,
+      manualStart: parsed?.manualStart === "A" ? "A" : parsed?.manualStart === "B" ? "B" : null,
+      firstPointSide: parsed?.firstPointSide === "A" ? "A" : parsed?.firstPointSide === "B" ? "B" : null,
+      pointLog: Array.isArray(parsed?.pointLog)
+        ? (parsed.pointLog
+            .map((p: any) => ({
+              setIndex: Number(p?.setIndex ?? 1),
+              winner: p?.winner === "B" ? "B" : "A",
+              server: p?.server === "B" ? "B" : "A",
+              ts: Number(p?.ts ?? 0),
+            }))
+            .filter((p: any) => Number.isFinite(p.ts))
+          ).slice(0, 5000)
+        : [],
 
       tournantePlayers,
       tournanteQueue,
@@ -239,7 +268,6 @@ export function savePingPongState(st: PingPongState) {
 
 export function resetPingPong(prev?: PingPongState) {
   const next = newPingPongState({
-    matchStarted: false,
     sideA: prev?.sideA ?? "Joueur A",
     sideB: prev?.sideB ?? "Joueur B",
     mode: prev?.mode ?? "sets",
@@ -445,6 +473,32 @@ function isSetWon(pointsA: number, pointsB: number, pointsPerSet: number, winByT
   return pointsA > pointsB ? "A" : pointsB > pointsA ? "B" : null;
 }
 
+
+function computeServerSide(
+  st: PingPongState,
+  totalPtsBefore: number,
+  overrideStart?: PingPongSideId | null
+): PingPongSideId {
+  const ptsA = Number(st.pointsA ?? 0);
+  const ptsB = Number(st.pointsB ?? 0);
+  const pps = Number(st.pointsPerSet ?? 11);
+  const winByTwo = st.winByTwo !== false;
+
+  const inDeuce = winByTwo && ptsA >= pps - 1 && ptsB >= pps - 1;
+  const interval = Math.max(1, Number(inDeuce ? st.deuceServiceEvery : st.serviceEvery) || (inDeuce ? 1 : 2));
+
+  let start: PingPongSideId = "A";
+  if (overrideStart === "A" || overrideStart === "B") start = overrideStart;
+  else if (st.serveStart === "A" || st.serveStart === "B") start = st.serveStart;
+  else if (st.serveStart === "manual" && (st.manualStart === "A" || st.manualStart === "B")) start = st.manualStart;
+  else if (st.serveStart === "toss_first_point" && (st.firstPointSide === "A" || st.firstPointSide === "B"))
+    start = st.firstPointSide;
+
+  const turn = Math.floor(totalPtsBefore / interval) % 2;
+  return turn === 0 ? start : start === "A" ? "B" : "A";
+}
+
+
 function pushUndo(st: PingPongState): PingPongState["undo"][number] {
   return {
     updatedAt: st.updatedAt,
@@ -455,6 +509,10 @@ function pushUndo(st: PingPongState): PingPongState["undo"][number] {
     setsB: st.setsB,
     finished: st.finished,
     winner: st.winner,
+    matchStarted: st.matchStarted,
+    manualStart: st.manualStart,
+    firstPointSide: st.firstPointSide,
+    pointLog: st.pointLog,
     tournanteQueue: st.tournanteQueue,
     tournanteActiveA: st.tournanteActiveA,
     tournanteActiveB: st.tournanteActiveB,
@@ -466,6 +524,20 @@ function pushUndo(st: PingPongState): PingPongState["undo"][number] {
 
 function tournanteAddPoint(st: PingPongState, side: PingPongSideId, delta: 1 | -1) {
   const snapshot = pushUndo(st);
+
+  const totalPtsBefore = Number(st.pointsA ?? 0) + Number(st.pointsB ?? 0);
+  let firstPointSide: PingPongSideId | null = st.firstPointSide;
+  if (delta > 0 && st.serveStart === "toss_first_point" && !firstPointSide && totalPtsBefore === 0) {
+    firstPointSide = side;
+  }
+  let pointLog = Array.isArray(st.pointLog) ? [...st.pointLog] : [];
+  if (delta > 0) {
+    const server = computeServerSide(st, totalPtsBefore, firstPointSide);
+    pointLog.push({ setIndex: Number(st.setIndex ?? 1), winner: side, server, ts: now() });
+    pointLog = pointLog.slice(-5000);
+  } else if (delta < 0) {
+    pointLog.pop();
+  }
 
   let pointsA = st.pointsA;
   let pointsB = st.pointsB;
@@ -538,6 +610,23 @@ export function addPoint(st: PingPongState, side: PingPongSideId, delta: 1 | -1)
 
   const snapshot = pushUndo(st);
 
+  const totalPtsBefore = Number(st.pointsA ?? 0) + Number(st.pointsB ?? 0);
+  let firstPointSide: PingPongSideId | null = st.firstPointSide;
+
+  // Si option "toss_first_point": le 1er point marque le serveur (et donc le départ)
+  if (delta > 0 && st.serveStart === "toss_first_point" && !firstPointSide && totalPtsBefore === 0) {
+    firstPointSide = side;
+  }
+
+  let pointLog = Array.isArray(st.pointLog) ? [...st.pointLog] : [];
+  if (delta > 0) {
+    const server = computeServerSide(st, totalPtsBefore, firstPointSide);
+    pointLog.push({ setIndex: Number(st.setIndex ?? 1), winner: side, server, ts: now() });
+    pointLog = pointLog.slice(-5000);
+  } else if (delta < 0) {
+    pointLog.pop();
+  }
+
   let pointsA = st.pointsA;
   let pointsB = st.pointsB;
   if (side === "A") pointsA = Math.max(0, pointsA + delta);
@@ -607,6 +696,10 @@ export function undo(st: PingPongState) {
     setsB: u.setsB,
     finished: u.finished,
     winner: u.winner,
+    matchStarted: (u as any).matchStarted ?? st.matchStarted,
+    manualStart: (u as any).manualStart ?? st.manualStart,
+    firstPointSide: (u as any).firstPointSide ?? st.firstPointSide,
+    pointLog: (u as any).pointLog ?? st.pointLog,
     tournanteQueue: u.tournanteQueue ?? st.tournanteQueue,
     tournanteActiveA: u.tournanteActiveA ?? st.tournanteActiveA,
     tournanteActiveB: u.tournanteActiveB ?? st.tournanteActiveB,

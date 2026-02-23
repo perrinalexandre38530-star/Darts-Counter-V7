@@ -19,6 +19,7 @@ import {
   addPoint,
   undo,
 } from "../../lib/pingpongStore";
+import { pushPingPongHistory } from "../../lib/pingpongHistory";
 
 import type { Profile } from "../../lib/types";
 
@@ -746,8 +747,129 @@ export default function PingPongPlay({ go, onFinish }: Props) {
     } catch {}
   }, [(st as any).finished, onFinish, uiMode, nameA, nameB, ptsA, ptsB, setsA, setsB, pointsPerSet, setsToWin, winByTwo]);
 
+  // ✅ Save historique Ping-Pong (une seule fois) quand le match se termine
+  const savedFinishRef = React.useRef<string | null>(null);
+
+  React.useEffect(() => {
+    const finished = Boolean((st as any).finished);
+    if (!finished) return;
+    const matchId = String((st as any).matchId || "");
+    if (!matchId) return;
+    if (savedFinishRef.current === matchId) return;
+    savedFinishRef.current = matchId;
+
+    try {
+      const players = [
+        { id: String((profileA as any)?.id || (profileA as any)?.profileId || "A"), name: nameA },
+        { id: String((profileB as any)?.id || (profileB as any)?.profileId || "B"), name: nameB },
+      ];
+      const winnerSide: "A" | "B" | null = (st as any).winner ?? null;
+      const winnerId =
+        winnerSide === "A" ? players[0].id : winnerSide === "B" ? players[1].id : undefined;
+
+      pushPingPongHistory({
+        mode: ((st as any).mode as any) || "match_1v1",
+        players,
+        winnerId,
+        scores: { [players[0].id]: Number(setsA), [players[1].id]: Number(setsB) },
+        sets: [Number(setsA), Number(setsB)],
+        durationMs: undefined,
+      });
+    } catch {}
+  }, [(st as any).finished, (st as any).matchId, nameA, nameB, setsA, setsB, profileA, profileB]);
+
   const canPlay = !(st as any).finished;
   const canScore = canPlay && matchStarted;
+
+  // ✅ Stats live avancées (calculées depuis pointLog)
+  const pointLog = React.useMemo(() => (Array.isArray((st as any).pointLog) ? (st as any).pointLog : []), [st]);
+
+  const adv = React.useMemo(() => {
+    const logs: Array<{ setIndex: number; winner: "A" | "B"; server: "A" | "B"; ts: number }> =
+      (pointLog as any) || [];
+
+    const totals = { A: 0, B: 0 };
+    const ownServe = { A: 0, B: 0 };
+    const oppServe = { A: 0, B: 0 };
+    let streakA = 0,
+      streakB = 0,
+      curA = 0,
+      curB = 0;
+
+    // set points stats
+    let setPointsA = 0,
+      setPointsB = 0,
+      setPointsWonA = 0,
+      setPointsWonB = 0;
+
+    // simulate per-set score to detect set points before each rally
+    const bySet: Record<number, Array<{ winner: "A" | "B"; server: "A" | "B" }>> = {};
+    for (const e of logs) {
+      const si = Number((e as any).setIndex ?? 1);
+      (bySet[si] ||= []).push({ winner: e.winner, server: e.server });
+      totals[e.winner] += 1;
+      if (e.winner === e.server) ownServe[e.winner] += 1;
+      else oppServe[e.winner] += 1;
+
+      if (e.winner === "A") {
+        curA += 1;
+        curB = 0;
+      } else {
+        curB += 1;
+        curA = 0;
+      }
+      streakA = Math.max(streakA, curA);
+      streakB = Math.max(streakB, curB);
+    }
+
+    const isSetPoint = (p: number, o: number) => {
+      if (!winByTwo) return p >= pointsPerSet - 1;
+      return p >= pointsPerSet - 1 && p - o >= 1;
+    };
+
+    for (const siStr of Object.keys(bySet)) {
+      const si = Number(siStr);
+      let a = 0,
+        b = 0;
+      const arr = bySet[si] || [];
+      for (const e of arr) {
+        // BEFORE point: if A has set point opportunity
+        if (isSetPoint(a, b) && !(a >= pointsPerSet && (!winByTwo || a - b >= 2))) setPointsA += 1;
+        if (isSetPoint(b, a) && !(b >= pointsPerSet && (!winByTwo || b - a >= 2))) setPointsB += 1;
+
+        // apply point
+        if (e.winner === "A") a += 1;
+        else b += 1;
+
+        // AFTER point: if the point actually won the set for that side, count as converted set point (best-effort)
+        const aWon = a >= pointsPerSet && (!winByTwo || a - b >= 2);
+        const bWon = b >= pointsPerSet && (!winByTwo || b - a >= 2);
+        if (aWon && e.winner === "A") setPointsWonA += 1;
+        if (bWon && e.winner === "B") setPointsWonB += 1;
+        if (aWon || bWon) break;
+      }
+    }
+
+    const setsPlayed = Math.max(1, Number(setsA) + Number(setsB) + (Boolean((st as any).finished) ? 0 : 1));
+    const avgA = totals.A / setsPlayed;
+    const avgB = totals.B / setsPlayed;
+
+    return {
+      totals,
+      ownServe,
+      oppServe,
+      streakA,
+      streakB,
+      avgA,
+      avgB,
+      setPointsA,
+      setPointsB,
+      setPointsWonA,
+      setPointsWonB,
+      setPointPctA: setPointsA ? Math.round((setPointsWonA / setPointsA) * 100) : 0,
+      setPointPctB: setPointsB ? Math.round((setPointsWonB / setPointsB) * 100) : 0,
+    };
+  }, [pointLog, pointsPerSet, winByTwo, setsA, setsB, st]);
 
 
 const infoDotContent = (
@@ -787,6 +909,95 @@ const infoDotContent = (
 
   return (
     <div className="container" style={wrap(theme)}>
+      {/* ✅ FIN DE PARTIE */}
+      {finished && (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            zIndex: 9999,
+            background: "rgba(0,0,0,0.78)",
+            display: "grid",
+            placeItems: "center",
+            padding: 14,
+          }}
+        >
+          <div style={{ width: "min(720px, 100%)" }}>
+            <div style={card(theme)}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <div style={{ fontWeight: 1300 as any, fontSize: 18 }}>FIN DE PARTIE</div>
+                <div style={{ opacity: 0.85, fontSize: 12 }}>Ping-Pong</div>
+              </div>
+
+              <div style={{ marginTop: 12, display: "grid", gap: 10 }}>
+                <div
+                  style={{
+                    borderRadius: 18,
+                    border: `1px solid ${cssVarOr("rgba(255,255,255,0.12)", "--stroke")}`,
+                    background: cssVarOr("rgba(15,18,28,0.55)", "--glassSoft"),
+                    padding: "12px 12px",
+                    display: "grid",
+                    gridTemplateColumns: "1fr auto 1fr",
+                    alignItems: "center",
+                    gap: 10,
+                  }}
+                >
+                  <div style={{ fontWeight: 1400 as any, fontSize: 20 }}>{nameA}</div>
+                  <div style={{ fontWeight: 1400 as any, fontSize: 22, opacity: 0.9 }}>
+                    {setsA} – {setsB}
+                  </div>
+                  <div style={{ fontWeight: 1400 as any, fontSize: 20, textAlign: "right" }}>{nameB}</div>
+                </div>
+
+                <div style={{ display: "grid", gap: 8 }}>
+                  {[
+                    { label: "Points totaux", a: adv.totals.A, b: adv.totals.B },
+                    { label: "Points sur service", a: adv.ownServe.A, b: adv.ownServe.B },
+                    { label: "Points sur service adverse", a: adv.oppServe.A, b: adv.oppServe.B },
+                    { label: "Streak max", a: adv.streakA, b: adv.streakB },
+                    { label: "% balles de set", a: `${adv.setPointPctA}%`, b: `${adv.setPointPctB}%` },
+                  ].map((r, i) => (
+                    <div
+                      key={i}
+                      style={{
+                        borderRadius: 16,
+                        border: `1px solid ${cssVarOr("rgba(255,255,255,0.12)", "--stroke")}`,
+                        background: cssVarOr("rgba(15,18,28,0.45)", "--glassSoft"),
+                        padding: "10px 12px",
+                        display: "grid",
+                        gridTemplateColumns: "1fr 1.2fr 1fr",
+                        alignItems: "center",
+                        gap: 10,
+                      }}
+                    >
+                      <div style={{ fontWeight: 1200 as any, fontSize: 18 }}>{r.a}</div>
+                      <div style={{ textAlign: "center", fontWeight: 1100 as any, opacity: 0.92 }}>{r.label}</div>
+                      <div style={{ fontWeight: 1200 as any, fontSize: 18, textAlign: "right" }}>{r.b}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div style={{ marginTop: 14, display: "flex", gap: 10, justifyContent: "center", flexWrap: "wrap" }}>
+                <button style={ghost(theme)} onClick={() => go("pingpong_config")}>Retour (config)</button>
+                <button
+                  style={primary(theme)}
+                  onClick={() => {
+                    const next = resetPingPong(st as any);
+                    setManualStart(null);
+                    setTossWinner(null);
+                    setSt(next as any);
+                  }}
+                >
+                  Relancer
+                </button>
+                <button style={ghost(theme)} onClick={() => go("pingpong_home")}>Quitter</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       <style>
         {`@keyframes ppPulse { 0%{filter:drop-shadow(0 0 0 rgba(0,0,0,0));} 50%{filter:drop-shadow(0 0 16px rgba(255,255,255,0.10));} 100%{filter:drop-shadow(0 0 0 rgba(0,0,0,0));} }
            @keyframes ppNeon { 0%{opacity:.85} 50%{opacity:1} 100%{opacity:.85} }`}
@@ -1100,10 +1311,15 @@ const infoDotContent = (
   <div style={{ marginTop: 12, display: "grid", gap: 10 }}>
     {[
       { label: "Sets remportés", a: setsA, b: setsB, hint: `${setsToWin} pour gagner` },
-      { label: "Points (set en cours)", a: ptsA, b: ptsB, hint: `${pointsPerSet} / set` },
-      { label: "Serveur", a: serverLabel === "A" ? "●" : "○", b: serverLabel === "B" ? "●" : "○", hint: serverLabel },
+      { label: "Points totaux", a: adv.totals.A, b: adv.totals.B, hint: "match" },
+      { label: "Points sur SON service", a: adv.ownServe.A, b: adv.ownServe.B, hint: "serve" },
+      { label: "Points sur service adverse", a: adv.oppServe.A, b: adv.oppServe.B, hint: "contre" },
+      { label: "Streak max", a: adv.streakA, b: adv.streakB, hint: "suite" },
+      { label: "Pts / set (moy.)", a: adv.avgA.toFixed(1), b: adv.avgB.toFixed(1), hint: "moyenne" },
+      { label: "Balles de set", a: adv.setPointsA, b: adv.setPointsB, hint: "opportunités" },
+      { label: "% balles de set", a: `${adv.setPointPctA}%`, b: `${adv.setPointPctB}%`, hint: "conversion" },
+      { label: "Serveur (actuel)", a: serverLabel === "A" ? "●" : "○", b: serverLabel === "B" ? "●" : "○", hint: serverLabel },
       { label: "Deuce", a: inDeuce ? "OUI" : "NON", b: inDeuce ? "OUI" : "NON", hint: `écart: ${diff}` },
-      { label: "Points joués", a: played, b: played, hint: "total set" },
     ].map((r, idx) => (
       <div
         key={idx}
