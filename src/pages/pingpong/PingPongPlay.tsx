@@ -18,6 +18,7 @@ import {
   resetPingPong,
   addPoint,
   undo,
+  getCurrentServerSide,
 } from "../../lib/pingpongStore";
 
 import type { Profile } from "../../lib/types";
@@ -379,10 +380,25 @@ function kpi(): React.CSSProperties {
   };
 }
 
-function scoreBig(theme: any, side: "A" | "B"): React.CSSProperties {
+function scoreBig(
+  theme: any,
+  side: "A" | "B",
+  value: number | string
+): React.CSSProperties {
   const c = side === "A" ? primaryColor(theme) : secondaryColor(theme);
+  const digits = String(value ?? "").replace(/[^0-9]/g, "").length || String(value ?? "0").length;
+
+  // Max font-size descendante selon le nb de chiffres (anti-débordement)
+  const maxPx =
+    digits <= 2 ? 48 :
+    digits === 3 ? 44 :
+    digits === 4 ? 40 :
+    digits === 5 ? 36 :
+    32;
+
   return {
-    fontSize: 56,
+    // plus petit pour éviter tout risque de chevauchement sur petits écrans
+    fontSize: `clamp(22px, 7.2vw, ${maxPx}px)`,
     fontWeight: 1400 as any,
     lineHeight: 0.95,
     letterSpacing: -1,
@@ -395,6 +411,10 @@ function scoreBig(theme: any, side: "A" | "B"): React.CSSProperties {
        0 0 18px ${hexToRgba(c, 0.35)},
        0 0 34px ${hexToRgba(c, 0.22)}`,
     filter: "saturate(1.15)",
+    fontVariantNumeric: "tabular-nums" as any,
+    whiteSpace: "nowrap" as any,
+    maxWidth: "100%",
+    overflow: "hidden" as any,
   };
 }
 
@@ -589,6 +609,16 @@ type Props = {
 export default function PingPongPlay({ go, onFinish }: Props) {
   const { theme } = useTheme();
   const [st, setSt] = React.useState(() => loadPingPongState());
+  // server indicator (A/B)
+  // ⚠️ Ne pas lire un champ "serverSide" inexistant dans le store (sinon ça reste bloqué sur A).
+  // On dérive du state via l'helper store + fallback sur la séquence UI.
+  const serverSideFromStore = React.useMemo(() => {
+    try {
+      return (getCurrentServerSide(st as any) as any) || "A";
+    } catch {
+      return "A" as any;
+    }
+  }, [st]);
 
   // ✅ persistance
   React.useEffect(() => {
@@ -665,8 +695,13 @@ export default function PingPongPlay({ go, onFinish }: Props) {
   const currentSetElapsedMs = matchStarted && setStartedAt ? Math.max(0, nowTick - setStartedAt) : 0;
     const setsA = Number((st as any).setsA ?? 0);
   const setsB = Number((st as any).setsB ?? 0);
+  const winner: "A" | "B" | null =
+    setsA > setsB ? "A" : setsB > setsA ? "B" : ptsA > ptsB ? "A" : ptsB > ptsA ? "B" : null;
+
 
   const pointsPerSet = Number((st as any).pointsPerSet ?? 11);
+  const ptsToWin = pointsPerSet;
+
   const setsToWin = Number((st as any).setsToWin ?? 1);
   const winByTwo = Boolean((st as any).winByTwo ?? true);
 
@@ -772,6 +807,10 @@ export default function PingPongPlay({ go, onFinish }: Props) {
     const turn = Math.floor(totalPts / interval) % rotated.length;
     return rotated[turn] ?? null;
   }, [startSide, serveSequence, totalPts, interval]);
+
+  // ✅ Serveur affiché : priorité à la logique UI (currentServe) si dispo,
+  // sinon fallback sur le store (utile si serveStart=A/B ou après reload).
+  const serverSide: "A" | "B" = (currentServe?.side || serverSideFromStore || "A") as any;
 
   const sideAPlayers = React.useMemo(() => splitNames(nameA), [nameA]);
   const sideBPlayers = React.useMemo(() => splitNames(nameB), [nameB]);
@@ -908,6 +947,57 @@ export default function PingPongPlay({ go, onFinish }: Props) {
       setPointsPct: { A: pctA, B: pctB },
     };
   }, [st]);
+
+  
+  // =========================
+  // Aliases robustes (anti-crash)
+  // - Certains blocs UI utilisent des variables "plates" (totalPtsA, ptsOnServeA…).
+  // - On les définit ici APRÈS advStats pour éviter les erreurs TDZ.
+  // =========================
+  const totalPtsA = Number((advStats as any)?.totalPts?.A ?? 0);
+  const totalPtsB = Number((advStats as any)?.totalPts?.B ?? 0);
+
+  const ptsOnServeA = Number((advStats as any)?.ptsOnServe?.A ?? 0);
+  const ptsOnServeB = Number((advStats as any)?.ptsOnServe?.B ?? 0);
+
+  const ptsOnReturnA = Number((advStats as any)?.ptsOnReturn?.A ?? 0);
+  const ptsOnReturnB = Number((advStats as any)?.ptsOnReturn?.B ?? 0);
+
+  const streakMaxA = Number((advStats as any)?.streakMax?.A ?? 0);
+  const streakMaxB = Number((advStats as any)?.streakMax?.B ?? 0);
+
+  const avgPtsPerSetA = Number((advStats as any)?.ptsPerSetAvg?.A ?? 0);
+  const avgPtsPerSetB = Number((advStats as any)?.ptsPerSetAvg?.B ?? 0);
+
+  const setPointsA = Number((advStats as any)?.setPoints?.A ?? 0);
+  const setPointsB = Number((advStats as any)?.setPoints?.B ?? 0);
+
+  const setPointsPctA = Number((advStats as any)?.setPointsPct?.A ?? 0);
+  const setPointsPctB = Number((advStats as any)?.setPointsPct?.B ?? 0);
+
+  // ✅ Alias UI (les lignes stats utilisent "Balles de set" / "% balles de set")
+  const setBallsA = setPointsA;
+  const setBallsB = setPointsB;
+  const pctSetBallsA = setPointsPctA;
+  const pctSetBallsB = setPointsPctB;
+
+  const setsPlayed =
+    Array.isArray((st as any)?.setDurationsMs)
+      ? Number(((st as any).setDurationsMs as any[]).length ?? 0)
+      : Math.max(0, Number((st as any)?.setIndex ?? 1) - 1);
+
+  // ptsToWin + winner sont déjà calculés plus haut (même scope du composant).
+  // Ici, on calcule uniquement des alias UI à partir de advStats / state.
+
+// ---------------------------------------------------------------------------
+  // ✅ ALIASES “no-crash”
+  //
+  // Plusieurs blocs UI (finish overlay / stats rows) référencent des variables
+  // “plates” (totalPtsA, ptsOnServeA, avgPtsPerSetA, …). Si une modif UI les
+  // utilise sans les déclarer → ReferenceError (TDZ).
+  //
+  // On centralise donc ici des valeurs dérivées *toujours définies*.
+  // ---------------------------------------------------------------------------
   const handleUndo = React.useCallback(() => {
     setSt((prev: any) => undo(prev));
     // best-effort : si on revient à 0–0, reset le toss
@@ -1025,7 +1115,7 @@ const infoDotContent = (
                 "linear-gradient(90deg, rgba(0,0,0,1) 0%, rgba(0,0,0,0.15) 78%, rgba(0,0,0,0) 100%)",
             }}
           >
-            <div style={{ transform: "scale(1.55)", transformOrigin: "0% 50%", filter: "blur(0.2px)" }}>
+            <div style={{ transform: "scale(1.55) translateX(-28%)", transformOrigin: "0% 50%", filter: "blur(0.2px)", clipPath: "inset(0 50% 0 0)" }}>
               {profileA ? (
                 <ProfileAvatar profile={profileA as any} label={nameA} size={220} showStars={false} />
               ) : null}
@@ -1041,7 +1131,7 @@ const infoDotContent = (
                 "linear-gradient(270deg, rgba(0,0,0,1) 0%, rgba(0,0,0,0.15) 78%, rgba(0,0,0,0) 100%)",
             }}
           >
-            <div style={{ transform: "scale(1.55)", transformOrigin: "100% 50%", filter: "blur(0.2px)" }}>
+            <div style={{ transform: "scale(1.55) translateX(28%)", transformOrigin: "100% 50%", filter: "blur(0.2px)", clipPath: "inset(0 0 0 50%)" }}>
               {profileB ? (
                 <ProfileAvatar profile={profileB as any} label={nameB} size={220} showStars={false} />
               ) : null}
@@ -1052,12 +1142,21 @@ const infoDotContent = (
         <div
           style={{
             display: "grid",
-            gridTemplateColumns: "1fr auto 1fr",
+            gridTemplateColumns: "minmax(92px, 1fr) auto minmax(92px, 1fr)",
             alignItems: "center",
             gap: 6,
           }}
         >
-          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 8 }}>
+          {/* Joueur A */}
+          <div
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              gap: 6,
+              minWidth: 0,
+            }}
+          >
             <div
               style={{
                 width: 62,
@@ -1084,15 +1183,49 @@ const infoDotContent = (
                 </div>
               )}
             </div>
-            <div style={{ fontSize: 12, fontWeight: 1100 as any, opacity: 0.96, textAlign: "center" }}>
-              {nameA}
+
+            {/* + / - sous l'avatar (anti-chevauchement) */}
+            <div style={{ display: "flex", gap: 8 }}>
+              <button
+                style={{ ...pmBtn(theme), width: 34, height: 26 }}
+                onClick={() => handleAddPoint("A", +1)}
+                disabled={!canScore}
+                aria-label="Ajouter point A"
+              >
+                +
+              </button>
+              <button
+                style={{ ...pmBtn(theme), width: 34, height: 26 }}
+                onClick={() => handleAddPoint("A", -1)}
+                disabled={!canScore}
+                aria-label="Retirer point A"
+              >
+                –
+              </button>
             </div>
-            <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-              <span style={{ ...sub(theme) }}>Sets</span>
-              <span style={{ fontWeight: 1200 as any }}>{setsA}</span>
+
+            <div
+              style={{
+                fontSize: 12,
+                fontWeight: 1100 as any,
+                opacity: 0.96,
+                textAlign: "center",
+                maxWidth: "100%",
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
+              }}
+              title={nameA}
+            >
+              <span>{nameA}</span>
+              {serverSide === "A" ? (
+                <span style={{ marginLeft: 6, fontSize: 12, opacity: 0.95 }} title="Service">🏓</span>
+              ) : null}
             </div>
           </div>
-          <div style={{ textAlign: "center" }}>
+
+          {/* SCORE centre */}
+          <div style={{ textAlign: "center", minWidth: 0 }}>
             <div
               style={{
                 ...sub(theme),
@@ -1109,75 +1242,120 @@ const infoDotContent = (
               SCORE
             </div>
 
-            <div style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: 8 }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                  <button
-                    style={pmBtn(theme)}
-                    onClick={() => handleAddPoint("A", +1)}
-                    disabled={!canScore}
-                    aria-label="Ajouter point A"
-                  >
-                    +
-                  </button>
-                  <button
-                    style={pmBtn(theme)}
-                    onClick={() => handleAddPoint("A", -1)}
-                    disabled={!canScore}
-                    aria-label="Retirer point A"
-                  >
-                    –
-                  </button>
-                </div>
+            {/* Ligne score uniquement (comme avant), jamais de wrap, jamais de chevauchement */}
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "center",
+                alignItems: "center",
+                gap: 10,
+                flexWrap: "nowrap",
+                minWidth: 0,
+                maxWidth: "100%",
+                overflow: "hidden",
+              }}
+            >
+              <div style={{ display: "inline-flex", alignItems: "center", gap: 6, minWidth: 0 }}>
+                <div style={scoreBig(theme, "A", ptsA)}>{ptsA}</div>
+              </div>
 
-                <div style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-                  <div style={scoreBig(theme, "A")}>{ptsA}</div>
-                  </div>
-                </div>
+              <div
+                style={{
+                  fontSize: 20,
+                  opacity: 0.55,
+                  fontWeight: 1200 as any,
+                  lineHeight: 1,
+                  flexShrink: 0,
+                }}
+              >
+                –
+              </div>
 
-              <div style={{ fontSize: 20, opacity: 0.55, fontWeight: 1200 as any, lineHeight: 1 }}>–</div>
-
-              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                <div style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-                  <div style={scoreBig(theme, "B")}>{ptsB}</div>
-                  </div>
-                <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                  <button
-                    style={pmBtn(theme)}
-                    onClick={() => handleAddPoint("B", +1)}
-                    disabled={!canScore}
-                    aria-label="Ajouter point B"
-                  >
-                    +
-                  </button>
-                  <button
-                    style={pmBtn(theme)}
-                    onClick={() => handleAddPoint("B", -1)}
-                    disabled={!canScore}
-                    aria-label="Retirer point B"
-                  >
-                    –
-                  </button>
-                </div>
+              <div style={{ display: "inline-flex", alignItems: "center", gap: 6, minWidth: 0 }}>
+                <div style={scoreBig(theme, "B", ptsB)}>{ptsB}</div>
               </div>
             </div>
+          </div>
 
-            <div style={{ marginTop: 10, display: "inline-flex", alignItems: "center", gap: 8 }}>
-              <div style={setPillMini(theme)}>
-                SET <b style={{ fontWeight: 1200 as any }}>{(st as any).setIndex ?? 1}</b>
-              </div>
+          {/* Joueur B */}
+          <div
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              gap: 6,
+              minWidth: 0,
+            }}
+          >
+            <div
+              style={{
+                width: 62,
+                height: 62,
+                borderRadius: 999,
+                overflow: "hidden",
+                border: "1px solid rgba(255,255,255,0.18)",
+              }}
+            >
+              {profileB ? (
+                <ProfileAvatar profile={profileB as any} label={nameB} size={62} showStars={false} />
+              ) : (
+                <div
+                  style={{
+                    width: 62,
+                    height: 62,
+                    display: "grid",
+                    placeItems: "center",
+                    fontWeight: 1100,
+                    opacity: 0.92,
+                  }}
+                >
+                  {initials(nameB)}
+                </div>
+              )}
+            </div>
+
+            {/* + / - sous l'avatar */}
+            <div style={{ display: "flex", gap: 8 }}>
               <button
-                style={infoMiniBtn(theme)}
-                onClick={() => setShowRules((v) => !v)}
-                aria-label="Détails réglages"
-                title="Détails réglages"
+                style={{ ...pmBtn(theme), width: 34, height: 26 }}
+                onClick={() => handleAddPoint("B", +1)}
+                disabled={!canScore}
+                aria-label="Ajouter point B"
               >
-                i
+                +
+              </button>
+              <button
+                style={{ ...pmBtn(theme), width: 34, height: 26 }}
+                onClick={() => handleAddPoint("B", -1)}
+                disabled={!canScore}
+                aria-label="Retirer point B"
+              >
+                –
               </button>
             </div>
 
-            
+            <div
+              style={{
+                fontSize: 12,
+                fontWeight: 1100 as any,
+                opacity: 0.96,
+                textAlign: "center",
+                maxWidth: "100%",
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
+              }}
+              title={nameB}
+            >
+              <span>{nameB}</span>
+              {serverSide === "B" ? (
+                <span style={{ marginLeft: 6, fontSize: 12, opacity: 0.95 }} title="Service">🏓</span>
+              ) : null}
+            </div>
+          </div>
+        </div>
 {showRules && (
+
   <div style={miniWrap} onClick={() => setShowRules(false)}>
     <div style={miniCard(theme)} onClick={(e) => e.stopPropagation()}>
       <div style={{ fontWeight: 1200 as any, marginBottom: 10 }}>Infos match</div>
@@ -1206,45 +1384,6 @@ const infoDotContent = (
     </div>
   </div>
 )}
-          </div>
-
-          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 8 }}>
-
-            <div
-              style={{
-                width: 62,
-                height: 62,
-                borderRadius: 999,
-                overflow: "hidden",
-                border: "1px solid rgba(255,255,255,0.18)",
-              }}
-            >
-              {profileB ? (
-                <ProfileAvatar profile={profileB as any} label={nameB} size={62} showStars={false} />
-              ) : (
-                <div
-                  style={{
-                    width: 62,
-                    height: 62,
-                    display: "grid",
-                    placeItems: "center",
-                    fontWeight: 1100,
-                    opacity: 0.92,
-                  }}
-                >
-                  {initials(nameB)}
-                </div>
-              )}
-            </div>
-            <div style={{ fontSize: 12, fontWeight: 1100 as any, opacity: 0.96, textAlign: "center" }}>
-              {nameB}
-            </div>
-            <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-              <span style={{ ...sub(theme) }}>Sets</span>
-              <span style={{ fontWeight: 1200 as any }}>{setsB}</span>
-            </div>
-          </div>
-        </div>
 
         {/* actions header */}
         <div style={row}>
@@ -1277,22 +1416,22 @@ const infoDotContent = (
             }}
             disabled={matchStarted || (serveStart === "manual" && !manualStart && !isTournante)}
           >
-            {matchStarted ? "EN COURS" : "DÉMARRER"}
+            {matchStarted ? `Set ${(st as any).setIndex ?? 1} : ⏱ ${formatMs(currentSetElapsedMs)}  ·  Total ${formatMs(matchElapsedMs)}` : "DÉMARRER"}
           </button>
-          {matchStarted && (
-            <div style={{ marginTop: 6, fontSize: 12, opacity: 0.85, fontWeight: 900 as any }}>
-              ⏱ {formatMs(matchElapsedMs)}
-              <span style={{ opacity: 0.7, fontWeight: 800 as any }}> · Set {formatMs(currentSetElapsedMs)}</span>
-            </div>
-          )}
           {!isTournante && (serveStart === "manual" || serveStart === "toss_first_point") && (
             <button
               style={ghost(theme)}
               onClick={() => {
                 // override manuel AVANT start (sinon ça perturbe la rotation)
                 if (matchStarted) return;
-                if (serveStart === "manual") setManualStart(null);
-                if (serveStart === "toss_first_point") setFirstPointSide(null);
+                if (serveStart === "manual") {
+                  setManualStart(null);
+                  setSt((prev: any) => ({ ...prev, manualStart: null, updatedAt: Date.now() }));
+                }
+                if (serveStart === "toss_first_point") {
+                  setFirstPointSide(null);
+                  setSt((prev: any) => ({ ...prev, firstPointSide: null, updatedAt: Date.now() }));
+                }
               }}
               disabled={!canPlay || matchStarted}
             >
@@ -1306,17 +1445,31 @@ const infoDotContent = (
       <div style={card(theme)}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <div style={{ fontWeight: 1100 as any }}>Statistiques</div>
-          <div style={{ opacity: 0.8, fontSize: 12 }}>Ping-Pong</div>
+          <div style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+            <div style={setPillMini(theme)}>
+              SET <b style={{ fontWeight: 1200 as any }}>{(st as any).setIndex ?? 1}</b>
+            </div>
+            <button
+              style={infoMiniBtn(theme)}
+              onClick={() => setShowRules((v) => !v)}
+              aria-label="Infos match"
+            >
+              i
+            </button>
+          </div>
         </div>
   <div style={{ marginTop: 10, display: "grid", gap: 6 }}>
     {[
     { label: "Sets remportés", a: setsA, b: setsB, hint: `${setsToWin} pour gagner` },
-    { label: "Points (set)", a: ptsA, b: ptsB, hint: `${pointsPerSet} / set` },
-    { label: "Points totaux", a: advStats.totalPts.A, b: advStats.totalPts.B, hint: "tous sets confondus" },
-    { label: "Pts sur service", a: advStats.ptsOnServe.A, b: advStats.ptsOnServe.B, hint: "quand tu sers" },
-    { label: "Pts en retour", a: advStats.ptsOnReturn.A, b: advStats.ptsOnReturn.B, hint: "service adverse" },
-    { label: "Streak max", a: advStats.streakMax.A, b: advStats.streakMax.B, hint: "série de points" },
-    ].map((r, idx) => (
+    { label: "Points (set)", a: ptsA, b: ptsB, hint: `${ptsToWin} / set` },
+    { label: "Points totaux", a: totalPtsA, b: totalPtsB, hint: "tous sets confondus" },
+    { label: "Pts sur SON service", a: ptsOnServeA, b: ptsOnServeB, hint: "points gagnés quand tu sers" },
+    { label: "Pts en retour", a: ptsOnReturnA, b: ptsOnReturnB, hint: "service adverse" },
+    { label: "Streak max", a: streakMaxA, b: streakMaxB, hint: "série de points" },
+    { label: "Pts / set (moy.)", a: avgPtsPerSetA, b: avgPtsPerSetB, hint: `${setsPlayed} set(s) joués` },
+    { label: "Balles de set", a: setBallsA, b: setBallsB, hint: "opportunités" },
+    { label: "% balles de set", a: pctSetBallsA, b: pctSetBallsB, hint: "converties / obtenues" },
+  ].map((r, idx) => (
       <div
         key={idx}
         style={{
@@ -1358,8 +1511,8 @@ const infoDotContent = (
     onClick={() => {
       const next = resetPingPong(st as any);
       setManualStart(null);
-      setTossWinner(null);
-      setSt(next as any);
+      // (toss) reset handled via firstPointSide/manualStart
+setSt(next as any);
     }}
   >
     Relancer
@@ -1457,8 +1610,8 @@ const infoDotContent = (
                 onClick={() => {
                   const next = resetPingPong(st as any);
                   setManualStart(null);
-                  setTossWinner(null);
-                  setSt(next as any);
+      // (toss) reset handled via firstPointSide/manualStart
+setSt(next as any);
                 }}
               >
                 Relancer
@@ -1478,10 +1631,22 @@ const infoDotContent = (
               Choisis qui sert en premier pour ce set.
             </div>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-              <button style={primary(theme)} onClick={() => setManualStart("A")}>
+              <button
+                style={primary(theme)}
+                onClick={() => {
+                  setManualStart("A");
+                  setSt((prev: any) => ({ ...prev, manualStart: "A", updatedAt: Date.now() }));
+                }}
+              >
                 {nameA} sert
               </button>
-              <button style={primary(theme)} onClick={() => setManualStart("B")}>
+              <button
+                style={primary(theme)}
+                onClick={() => {
+                  setManualStart("B");
+                  setSt((prev: any) => ({ ...prev, manualStart: "B", updatedAt: Date.now() }));
+                }}
+              >
                 {nameB} sert
               </button>
             </div>

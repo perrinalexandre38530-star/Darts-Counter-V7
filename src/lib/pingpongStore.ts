@@ -608,6 +608,12 @@ function tournanteAddPoint(st: PingPongState, side: PingPongSideId, delta: 1 | -
 
   const next: PingPongState = {
     ...st,
+    // ✅ Persist runtime fields (sinon stats/service restent à 0)
+    matchStartedAt,
+    setStartedAt,
+    setDurationsMs,
+    firstPointSide,
+    pointLog,
     pointsA,
     pointsB,
     setIndex,
@@ -712,6 +718,12 @@ export function addPoint(st: PingPongState, side: PingPongSideId, delta: 1 | -1)
 
   const next: PingPongState = {
     ...st,
+    // ✅ Persist runtime fields (sinon stats/service restent à 0)
+    matchStartedAt,
+    setStartedAt,
+    setDurationsMs,
+    firstPointSide,
+    pointLog,
     pointsA,
     pointsB,
     setsA,

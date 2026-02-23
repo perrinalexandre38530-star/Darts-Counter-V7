@@ -18,6 +18,7 @@ import { loadStore } from "../../lib/storage";
 import { exportHistoryDump } from "../../lib/historyCloud";
 import { getCachedStatsSync, rebuildStatsForProfile } from "../../lib/stats/rebuildStats";
 import { mergeNow } from "../../lib/cloudSync";
+import { ensureDirectoryEntry } from "../../lib/matchInboxCloud";
 
 type Props = {
   go?: (tab: any, params?: any) => void;
@@ -176,6 +177,15 @@ export function AccountToolsPanel({ go }: Props) {
   const [diag, setDiag] = React.useState<DiagState | null>(null);
   const [log, setLog] = React.useState<string[]>([]);
   const [compareResult, setCompareResult] = React.useState<string | null>(null);
+
+  // --- Annuaire (user_directory) ---
+  const DIR_FLAG_KEY = "dc_user_directory_enabled";
+  const [dirEnabled, setDirEnabled] = React.useState<boolean>(() => {
+    try { return localStorage.getItem(DIR_FLAG_KEY) === "1"; } catch { return false; }
+  });
+  const [dirBusy, setDirBusy] = React.useState(false);
+  const [dirMsg, setDirMsg] = React.useState<string | null>(null);
+
 const [autoBusy, setAutoBusy] = React.useState(false);
   const [autoReport, setAutoReport] = React.useState<AutoTestReport | null>(null);
 
@@ -553,6 +563,32 @@ const [autoBusy, setAutoBusy] = React.useState(false);
     }
   }
 
+
+  async function doEnableDirectory() {
+    try {
+      setDirMsg(null);
+      addLog("DIRECTORY: enable -> start");
+      setBusy(true);
+
+      const res = await ensureDirectoryEntry();
+      if (!res?.ok) {
+        addLog(`DIRECTORY: error (${res?.error ?? "unknown"}) ${res?.message ?? ""}`.trim());
+        alert(res?.message || "Impossible d’activer l’annuaire.");
+        return;
+      }
+
+      setDirEnabled(true);
+      try { localStorage.setItem(DIR_FLAG_KEY, "1"); } catch {}
+      setDirMsg("Annuaire activé ✅");
+      addLog("DIRECTORY: enabled");
+    } catch (e: any) {
+      addLog(`DIRECTORY: crash ${String(e?.message || e)}`);
+      alert("Erreur lors de l’activation de l’annuaire.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function doPurgeLocal() {
     const ok = window.confirm(
       "⚠️ Purger les données locales sur CET appareil ?\n\n" +
@@ -682,6 +718,17 @@ const [autoBusy, setAutoBusy] = React.useState(false);
             <button type="button" onClick={doRefreshSession} disabled={busy} style={btnBase}>
               {t("settings.account.tools.refreshSession", "Refresh session")}
             </button>
+
+            <button
+              type="button"
+              onClick={doEnableDirectory}
+              disabled={busy || dirEnabled}
+              style={{ ...btnBase, borderColor: `${theme.primary}66`, color: theme.primary }}
+              title="Publie ton email dans l’annuaire (opt-in) pour activer l’envoi direct par mail."
+            >
+              {dirEnabled ? "Annuaire activé ✅" : "Activer l’annuaire (mail)"}
+            </button>
+
 
             <button
               type="button"
