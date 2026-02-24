@@ -1685,6 +1685,7 @@ export default function Settings({ go }: Props) {
       { id: "petanque", label: "Pétanque", logo: logoPetanque },
       { id: "pingpong", label: "Ping-Pong", logo: logoPingPong },
       { id: "babyfoot", label: "Babyfoot", logo: logoBabyFoot },
+      { id: "molkky", label: "Mölkky", logo: logoMolkky },
 
       // ⏳ SOON
       { id: "archery", label: "Tir à l'arc", logo: logoArchery },
@@ -1696,7 +1697,7 @@ export default function Settings({ go }: Props) {
       { id: "dicegame", label: "Dice Game", logo: logoDiceGame },
       { id: "foot", label: "Foot", logo: logoFoot },
       { id: "frisbee", label: "Frisbee", logo: logoFrisbee },
-      { id: "molkky", label: "Mölkky", logo: logoMolkky },
+      // (molkky est désormais activé)
       { id: "padel", label: "Padel", logo: logoPadel },
       { id: "pickleball", label: "Pickleball", logo: logoPickleball },
       { id: "rugby", label: "Rugby", logo: logoRugby },
@@ -1713,7 +1714,7 @@ export default function Settings({ go }: Props) {
 
       // ⏳ SOON
       archery: false,
-      molkky: false,
+      molkky: true,
       padel: false,
       pickleball: false,
       frisbee: false,

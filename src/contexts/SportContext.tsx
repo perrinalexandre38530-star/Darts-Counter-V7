@@ -7,7 +7,8 @@
 
 import React from "react";
 
-export type SportId = "darts" | "petanque" | "pingpong" | "babyfoot";
+// ✅ Ajout MÖLKKY (sport local, sans bots)
+export type SportId = "darts" | "petanque" | "pingpong" | "babyfoot" | "molkky";
 
 const LS_KEY = "dc-start-game"; // on réutilise ta clé existante
 
@@ -16,6 +17,7 @@ function normalizeSport(x: any): SportId {
   if (s === "petanque") return "petanque";
   if (s === "pingpong") return "pingpong";
   if (s === "babyfoot") return "babyfoot";
+  if (s === "molkky") return "molkky";
   return "darts";
 }
 

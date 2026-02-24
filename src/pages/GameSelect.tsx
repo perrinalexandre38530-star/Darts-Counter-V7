@@ -143,8 +143,11 @@ export default function GameSelect({ go }: Props) {
       id: "molkky",
       label: "Mölkky",
       logo: logoMolkky,
-      enabled: false,
-      onClick: () => {},
+      enabled: true,
+      onClick: () => {
+        setSport("molkky");
+        go(GAMES_ROUTE);
+      },
     },
     {
       id: "padel",

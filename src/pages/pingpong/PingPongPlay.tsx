@@ -19,6 +19,7 @@ import {
   addPoint,
   undo,
   getCurrentServerSide,
+  getCurrentServerSlot,
 } from "../../lib/pingpongStore";
 
 import type { Profile } from "../../lib/types";
@@ -612,13 +613,15 @@ export default function PingPongPlay({ go, onFinish }: Props) {
   // server indicator (A/B)
   // ⚠️ Ne pas lire un champ "serverSide" inexistant dans le store (sinon ça reste bloqué sur A).
   // On dérive du state via l'helper store + fallback sur la séquence UI.
-  const serverSideFromStore = React.useMemo(() => {
+  const serverSlotFromStore = React.useMemo(() => {
     try {
-      return (getCurrentServerSide(st as any) as any) || "A";
+      return (getCurrentServerSlot(st as any) as any) || { side: "A", idx: 0 };
     } catch {
-      return "A" as any;
+      return { side: "A", idx: 0 } as any;
     }
   }, [st]);
+
+  const serverSideFromStore = (serverSlotFromStore?.side || "A") as any;
 
   // ✅ persistance
   React.useEffect(() => {
@@ -650,28 +653,35 @@ export default function PingPongPlay({ go, onFinish }: Props) {
     () => resolveProfile(profilesList, teamBIds?.[0], (st as any).sideB),
     [profilesList, teamBIds?.[0], (st as any).sideB]
   );
-  const nameA = React.useMemo(
-    () =>
-      safeName(
-        (profileA as any)?.nickname ||
-          (profileA as any)?.displayName ||
-          (profileA as any)?.name ||
-          (st as any).sideA,
-        "—"
-      ),
-    [profileA, (st as any).sideA]
-  );
-  const nameB = React.useMemo(
-    () =>
-      safeName(
-        (profileB as any)?.nickname ||
-          (profileB as any)?.displayName ||
-          (profileB as any)?.name ||
-          (st as any).sideB,
-        "—"
-      ),
-    [profileB, (st as any).sideB]
-  );
+  const nameA = React.useMemo(() => {
+    const ui = String((st as any).uiMode ?? (st as any).mode ?? "");
+    const tA = (st as any).tournanteActiveA;
+    if (ui.includes("tournante") || (st as any).mode === "tournante") {
+      if (typeof tA === "string" && tA.trim()) return safeName(tA, "—");
+    }
+    return safeName(
+      (profileA as any)?.nickname ||
+        (profileA as any)?.displayName ||
+        (profileA as any)?.name ||
+        (st as any).sideA,
+      "—"
+    );
+  }, [profileA, (st as any).sideA, (st as any).tournanteActiveA, (st as any).uiMode, (st as any).mode]);
+
+  const nameB = React.useMemo(() => {
+    const ui = String((st as any).uiMode ?? (st as any).mode ?? "");
+    const tB = (st as any).tournanteActiveB;
+    if (ui.includes("tournante") || (st as any).mode === "tournante") {
+      if (typeof tB === "string" && tB.trim()) return safeName(tB, "—");
+    }
+    return safeName(
+      (profileB as any)?.nickname ||
+        (profileB as any)?.displayName ||
+        (profileB as any)?.name ||
+        (st as any).sideB,
+      "—"
+    );
+  }, [profileB, (st as any).sideB, (st as any).tournanteActiveB, (st as any).uiMode, (st as any).mode]);
 
   const ptsA = Number((st as any).pointsA ?? 0);
 
@@ -742,6 +752,7 @@ export default function PingPongPlay({ go, onFinish }: Props) {
 
   // Config service (vient du Config)
   const serveStart = String((st as any).serveStart ?? "manual");
+  const serveRule = String((st as any).serveRule ?? "everyN");
   const serviceEvery = Math.max(1, Number((st as any).serviceEvery ?? 2));
   const deuceServiceEvery = Math.max(1, Number((st as any).deuceServiceEvery ?? 1));
 
@@ -793,24 +804,22 @@ export default function PingPongPlay({ go, onFinish }: Props) {
   }, [is2v2, is2v1]);
 
   const currentServe: ServeSlot | null = React.useMemo(() => {
-    if (!startSide) return null;
-    const seq = serveSequence;
-    if (!seq.length) return null;
-
-    // Décale la séquence si on commence par B
-    let rotated = seq.slice();
-    if (startSide === "B") {
-      const firstB = rotated.findIndex((s) => s.side === "B");
-      if (firstB > 0) rotated = rotated.slice(firstB).concat(rotated.slice(0, firstB));
+    // En "manual" : tant que le joueur n'a pas choisi, on n'affiche pas de serveur
+    if (serveStart === "manual") {
+      const chosen = (manualStart || (st as any).manualStart) as any;
+      if (!chosen && totalPts === 0 && !matchStarted) return null;
     }
-
-    const turn = Math.floor(totalPts / interval) % rotated.length;
-    return rotated[turn] ?? null;
-  }, [startSide, serveSequence, totalPts, interval]);
+    // Source de vérité: store (gère officiel + winnerServes + doubles)
+    const slot: any = (serverSlotFromStore as any) || null;
+    if (!slot) return null;
+    const side: "A" | "B" = slot.side === "B" ? "B" : "A";
+    const idx = Number.isFinite(Number(slot.idx)) ? Number(slot.idx) : 0;
+    return { side, idx: idx as any };
+  }, [serveStart, manualStart, st, totalPts, matchStarted, serverSlotFromStore]);
 
   // ✅ Serveur affiché : priorité à la logique UI (currentServe) si dispo,
   // sinon fallback sur le store (utile si serveStart=A/B ou après reload).
-  const serverSide: "A" | "B" = (currentServe?.side || serverSideFromStore || "A") as any;
+  const serverSide: "A" | "B" = ((serveRule === "winnerServes" ? serverSideFromStore : (currentServe?.side || serverSideFromStore)) || "A") as any;
 
   const sideAPlayers = React.useMemo(() => splitNames(nameA), [nameA]);
   const sideBPlayers = React.useMemo(() => splitNames(nameB), [nameB]);
@@ -1460,16 +1469,15 @@ const infoDotContent = (
         </div>
   <div style={{ marginTop: 10, display: "grid", gap: 6 }}>
     {[
-    { label: "Sets remportés", a: setsA, b: setsB, hint: `${setsToWin} pour gagner` },
-    { label: "Points (set)", a: ptsA, b: ptsB, hint: `${ptsToWin} / set` },
-    { label: "Points totaux", a: totalPtsA, b: totalPtsB, hint: "tous sets confondus" },
-    { label: "Pts sur SON service", a: ptsOnServeA, b: ptsOnServeB, hint: "points gagnés quand tu sers" },
-    { label: "Pts en retour", a: ptsOnReturnA, b: ptsOnReturnB, hint: "service adverse" },
-    { label: "Streak max", a: streakMaxA, b: streakMaxB, hint: "série de points" },
-    { label: "Pts / set (moy.)", a: avgPtsPerSetA, b: avgPtsPerSetB, hint: `${setsPlayed} set(s) joués` },
-    { label: "Balles de set", a: setBallsA, b: setBallsB, hint: "opportunités" },
-    { label: "% balles de set", a: pctSetBallsA, b: pctSetBallsB, hint: "converties / obtenues" },
-  ].map((r, idx) => (
+                { label: "Sets remportés", a: (st as any).setsA ?? 0, b: (st as any).setsB ?? 0, hint: "pour gagner" },
+                { label: "Points totaux", a: totalPtsA, b: totalPtsB, hint: "tous sets confondus" },
+                { label: "Pts sur SON service", a: ptsOnServeA, b: ptsOnServeB, hint: "points gagnés au service" },
+                { label: "Pts sur service adverse", a: ptsOnReturnA, b: ptsOnReturnB, hint: "points gagnés en retour" },
+                { label: "Streak max", a: streakMaxA, b: streakMaxB, hint: "série de points" },
+                { label: "Pts / set (moy.)", a: Math.round((avgPtsPerSetA + Number.EPSILON) * 10) / 10, b: Math.round((avgPtsPerSetB + Number.EPSILON) * 10) / 10, hint: "moyenne par set" },
+                { label: "Balles de set", a: setBallsA, b: setBallsB, hint: "opportunités détectées" },
+                { label: "% balles de set", a: `${pctSetBallsA}%`, b: `${pctSetBallsB}%`, hint: "converties / obtenues" },
+              ].map((r, idx) => (
       <div
         key={idx}
         style={{
@@ -1555,13 +1563,13 @@ setSt(next as any);
             <div style={{ display: "grid", gap: 10 }}>
               {[
                 { label: "Sets remportés", a: (st as any).setsA ?? 0, b: (st as any).setsB ?? 0, hint: "pour gagner" },
-                { label: "Points totaux", a: advStats.pts.A, b: advStats.pts.B, hint: "tous sets confondus" },
-                { label: "Pts sur SON service", a: advStats.ptsOnServe.A, b: advStats.ptsOnServe.B, hint: "points gagnés au service" },
-                { label: "Pts sur service adverse", a: advStats.ptsOnReturn.A, b: advStats.ptsOnReturn.B, hint: "points gagnés en retour" },
-                { label: "Streak max", a: advStats.streakMax.A, b: advStats.streakMax.B, hint: "série de points" },
-                { label: "Pts / set (moy.)", a: Math.round((advStats.avgPerSet.A + Number.EPSILON) * 10) / 10, b: Math.round((advStats.avgPerSet.B + Number.EPSILON) * 10) / 10, hint: "moyenne par set" },
-                { label: "Balles de set", a: advStats.setPoints.A, b: advStats.setPoints.B, hint: "opportunités détectées" },
-                { label: "% balles de set", a: `${advStats.setPointsPct.A}%`, b: `${advStats.setPointsPct.B}%`, hint: "converties / obtenues" },
+                { label: "Points totaux", a: totalPtsA, b: totalPtsB, hint: "tous sets confondus" },
+                { label: "Pts sur SON service", a: ptsOnServeA, b: ptsOnServeB, hint: "points gagnés au service" },
+                { label: "Pts sur service adverse", a: ptsOnReturnA, b: ptsOnReturnB, hint: "points gagnés en retour" },
+                { label: "Streak max", a: streakMaxA, b: streakMaxB, hint: "série de points" },
+                { label: "Pts / set (moy.)", a: Math.round((avgPtsPerSetA + Number.EPSILON) * 10) / 10, b: Math.round((avgPtsPerSetB + Number.EPSILON) * 10) / 10, hint: "moyenne par set" },
+                { label: "Balles de set", a: setBallsA, b: setBallsB, hint: "opportunités détectées" },
+                { label: "% balles de set", a: `${pctSetBallsA}%`, b: `${pctSetBallsB}%`, hint: "converties / obtenues" },
               ].map((r, idx) => (
                 <div
                   key={idx}

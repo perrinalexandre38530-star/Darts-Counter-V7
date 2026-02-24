@@ -246,6 +246,15 @@ import PingPongStatsShell from "./pages/pingpong/PingPongStatsShell";
 import PingPongStatsHistoryPage from "./pages/pingpong/PingPongStatsHistoryPage";
 import PingPongMatchDetail from "./pages/pingpong/PingPongMatchDetail";
 
+// ✅ NEW: Mölkky (LOCAL — sans bots)
+import MolkkyHome from "./pages/molkky/MolkkyHome";
+import MolkkyMenuGames from "./pages/molkky/MolkkyMenuGames";
+import MolkkyConfig from "./pages/molkky/MolkkyConfig";
+import MolkkyPlay from "./pages/molkky/MolkkyPlay";
+import MolkkyStatsShell from "./pages/molkky/MolkkyStatsShell";
+import MolkkyStatsHistoryPage from "./pages/molkky/MolkkyStatsHistoryPage";
+import MolkkyStatsLeaderboardsPage from "./pages/molkky/MolkkyStatsLeaderboardsPage";
+
 // Dev helper
 import { installHistoryProbe } from "./dev/devHistoryProbe";
 import DartsModeConfig from "./pages/modes/DartsModeConfig";
@@ -2224,6 +2233,94 @@ try {
     go("pingpong_stats_history", { focusMatchId: id });
   }
 
+  /* --------------------------------------------
+      pushMolkkyHistory (FIN DE MATCH MÖLKKY)
+      - écrit dans store.history + History (IDB)
+      - redirige vers historique Mölkky
+  -------------------------------------------- */
+  function pushMolkkyHistory(m: any) {
+    const now = Date.now();
+    const id = (m as any)?.id || (m as any)?.matchId || `molkky-${now}-${Math.random().toString(36).slice(2, 8)}`;
+
+    const rawPlayers = (m as any)?.players ?? (m as any)?.payload?.players ?? [];
+    const players = rawPlayers.map((p: any) => {
+      const prof = (store.profiles || []).find((pr) => pr.id === p?.id);
+      return {
+        id: p?.id,
+        name: p?.name ?? prof?.name ?? "",
+        avatarDataUrl: p?.avatarDataUrl ?? prof?.avatarDataUrl ?? null,
+      };
+    });
+
+    const summary = (m as any)?.summary ?? (m as any)?.payload?.summary ?? null;
+    const cfg = (m as any)?.payload?.config ?? (m as any)?.payload?.state?.config ?? (m as any)?.config ?? null;
+    const durationMs = Number((m as any)?.finishedAt ?? 0) && Number((m as any)?.createdAt ?? 0) ? Number((m as any)?.finishedAt) - Number((m as any)?.createdAt) : Number((summary as any)?.durationMs ?? 0) || 0;
+
+    // ✅ Unified lightweight stats for StatsHub aggregation
+    const unifiedStats = (() => {
+      try {
+        const targetScore = Number(cfg?.targetScore ?? 50) || 50;
+        const winnerId = (m as any)?.winnerId || (m as any)?.payload?.winnerId || null;
+        return {
+          sport: "molkky",
+          mode: "molkky",
+          players: (players || []).map((pp: any) => ({
+            id: pp.id,
+            name: pp.name,
+            win: winnerId ? pp.id === winnerId : false,
+            score: Number(rawPlayers?.find((x: any) => x?.id === pp.id)?.score ?? 0) || 0,
+            special: {
+              throws: Number(rawPlayers?.find((x: any) => x?.id === pp.id)?.throws ?? 0) || 0,
+              misses: Number(rawPlayers?.find((x: any) => x?.id === pp.id)?.consecutiveMisses ?? 0) || 0,
+            },
+          })),
+          global: {
+            targetScore,
+            duration: durationMs,
+            bounceBackTo25: !!cfg?.bounceBackTo25,
+            eliminationOnThreeMiss: !!cfg?.eliminationOnThreeMiss,
+          },
+        };
+      } catch {
+        return { sport: "molkky", mode: "molkky", players: [], global: {} };
+      }
+    })();
+
+    const saved: any = {
+      id,
+      kind: (m as any)?.kind || "molkky",
+      sport: "molkky",
+      status: "finished",
+      players,
+      winnerId: (m as any)?.winnerId || (m as any)?.payload?.winnerId || null,
+      createdAt: (m as any)?.createdAt || now,
+      updatedAt: now,
+      summary,
+      payload: { ...(m as any), players, summary, kind: (m as any)?.kind || "molkky", sport: "molkky", stats: unifiedStats },
+    };
+
+    // ✅ Mirror to IndexedDB history so StatsHub sees it like other modes
+    try {
+      void History.upsert(saved);
+    } catch {}
+
+    setStore((s) => {
+      const list = [...((s as any).history ?? [])];
+      const i = list.findIndex((r: any) => r.id === saved.id);
+      if (i >= 0) list[i] = saved;
+      else list.unshift(saved);
+      const next = { ...(s as any), history: list } as any;
+      queueMicrotask(() => saveStore(next));
+      return next;
+    });
+
+    try {
+      (History as any)?.upsert?.(saved);
+    } catch {}
+
+    go("molkky_stats_history", { focusMatchId: id });
+  }
+
   const historyForUI = React.useMemo(
     () => (store.history || []).map((r: any) => withAvatars(r, store.profiles || [])),
     [store.history, store.profiles]
@@ -2290,6 +2387,8 @@ try {
         page =
           activeSport === "petanque" ? (
             <PetanqueHome store={store} update={update} go={go} />
+          ) : activeSport === "molkky" ? (
+            <MolkkyHome store={store} update={update} go={go} />
           ) : activeSport === "babyfoot" ? (
             <BabyFootHome store={store} update={update} go={go} />
           ) : activeSport === "pingpong" ? (
@@ -2304,6 +2403,8 @@ try {
         page =
           activeSport === "petanque" ? (
             <PetanqueMenuGames go={go} />
+          ) : activeSport === "molkky" ? (
+            <MolkkyMenuGames go={go} />
           ) : activeSport === "babyfoot" ? (
             <BabyFootMenuGames go={go} />
           ) : activeSport === "pingpong" ? (
@@ -2376,6 +2477,32 @@ case "babyfoot_team_edit":
 
       case "pingpong_training":
         page = <PingPongTraining go={go} params={routeParams} />;
+        break;
+
+      // ✅ NEW: MÖLKKY flow (LOCAL)
+      case "molkky_menu":
+        page = <MolkkyMenuGames go={go} />;
+        break;
+
+      case "molkky_config":
+        page = <MolkkyConfig go={go} params={routeParams} store={store} />;
+        break;
+
+      case "molkky_play":
+        page = <MolkkyPlay go={go} params={routeParams} onFinish={(m: any) => pushMolkkyHistory(m)} />;
+        break;
+
+      // ✅ MÖLKKY — STATS ROUTES
+      case "molkky_stats":
+        page = <MolkkyStatsShell store={store} go={go} />;
+        break;
+
+      case "molkky_stats_history":
+        page = <MolkkyStatsHistoryPage store={store} go={go} params={routeParams} />;
+        break;
+
+      case "molkky_stats_leaderboards":
+        page = <MolkkyStatsLeaderboardsPage store={store} go={go} params={routeParams} />;
         break;
 
       // ✅ NEW: Teams Pétanque (CRUD local)
@@ -2456,6 +2583,8 @@ case "babyfoot_team_edit":
         page =
           activeSport === "petanque" ? (
             <PetanqueStatsShell store={store} go={go} />
+          ) : activeSport === "molkky" ? (
+            <MolkkyStatsShell store={store} go={go} />
           ) : activeSport === "babyfoot" ? (
             <BabyFootStatsShell store={store} go={go} />
           ) : activeSport === "pingpong" ? (
