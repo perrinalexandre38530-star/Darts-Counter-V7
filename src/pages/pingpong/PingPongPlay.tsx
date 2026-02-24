@@ -613,15 +613,13 @@ export default function PingPongPlay({ go, onFinish }: Props) {
   // server indicator (A/B)
   // ⚠️ Ne pas lire un champ "serverSide" inexistant dans le store (sinon ça reste bloqué sur A).
   // On dérive du state via l'helper store + fallback sur la séquence UI.
-  const serverSlotFromStore = React.useMemo(() => {
+  const serverSideFromStore = React.useMemo(() => {
     try {
-      return (getCurrentServerSlot(st as any) as any) || { side: "A", idx: 0 };
+      return (getCurrentServerSide(st as any) as any) || "A";
     } catch {
-      return { side: "A", idx: 0 } as any;
+      return "A" as any;
     }
   }, [st]);
-
-  const serverSideFromStore = (serverSlotFromStore?.side || "A") as any;
 
   // ✅ persistance
   React.useEffect(() => {
@@ -653,12 +651,14 @@ export default function PingPongPlay({ go, onFinish }: Props) {
     () => resolveProfile(profilesList, teamBIds?.[0], (st as any).sideB),
     [profilesList, teamBIds?.[0], (st as any).sideB]
   );
+  const uiMode = String((st as any).uiMode ?? (st as any).mode ?? "match_1v1");
+  const is2v2 = uiMode.includes("2v2");
+  const is2v1 = uiMode.includes("2v1");
+  const isTournante = uiMode.includes("tournante") || String((st as any).mode) === "tournante";
+
   const nameA = React.useMemo(() => {
-    const ui = String((st as any).uiMode ?? (st as any).mode ?? "");
-    const tA = (st as any).tournanteActiveA;
-    if (ui.includes("tournante") || (st as any).mode === "tournante") {
-      if (typeof tA === "string" && tA.trim()) return safeName(tA, "—");
-    }
+    const tournA = isTournante ? String((st as any).tournanteActiveA ?? "").trim() : "";
+    if (tournA) return safeName(tournA, "—");
     return safeName(
       (profileA as any)?.nickname ||
         (profileA as any)?.displayName ||
@@ -666,14 +666,10 @@ export default function PingPongPlay({ go, onFinish }: Props) {
         (st as any).sideA,
       "—"
     );
-  }, [profileA, (st as any).sideA, (st as any).tournanteActiveA, (st as any).uiMode, (st as any).mode]);
-
+  }, [isTournante, st, profileA]);
   const nameB = React.useMemo(() => {
-    const ui = String((st as any).uiMode ?? (st as any).mode ?? "");
-    const tB = (st as any).tournanteActiveB;
-    if (ui.includes("tournante") || (st as any).mode === "tournante") {
-      if (typeof tB === "string" && tB.trim()) return safeName(tB, "—");
-    }
+    const tournB = isTournante ? String((st as any).tournanteActiveB ?? "").trim() : "";
+    if (tournB) return safeName(tournB, "—");
     return safeName(
       (profileB as any)?.nickname ||
         (profileB as any)?.displayName ||
@@ -681,7 +677,7 @@ export default function PingPongPlay({ go, onFinish }: Props) {
         (st as any).sideB,
       "—"
     );
-  }, [profileB, (st as any).sideB, (st as any).tournanteActiveB, (st as any).uiMode, (st as any).mode]);
+  }, [isTournante, st, profileB]);
 
   const ptsA = Number((st as any).pointsA ?? 0);
 
@@ -715,7 +711,6 @@ export default function PingPongPlay({ go, onFinish }: Props) {
   const setsToWin = Number((st as any).setsToWin ?? 1);
   const winByTwo = Boolean((st as any).winByTwo ?? true);
 
-  const uiMode = String((st as any).uiMode ?? (st as any).mode ?? "match_1v1");
   const [showRules, setShowRules] = React.useState(false);
 
 
@@ -728,9 +723,7 @@ export default function PingPongPlay({ go, onFinish }: Props) {
   React.useEffect(() => {
     setShowRules(false);
   }, [uiMode, (st as any).setIndex]);
-  const is2v2 = uiMode.includes("2v2");
-  const is2v1 = uiMode.includes("2v1");
-  const isTournante = uiMode.includes("tournante") || String((st as any).mode) === "tournante";
+  // (is2v2/is2v1/isTournante déjà dérivés plus haut)
 
   const inDeuce = ptsA >= pointsPerSet - 1 && ptsB >= pointsPerSet - 1;
   const played = ptsA + ptsB;
@@ -747,12 +740,14 @@ export default function PingPongPlay({ go, onFinish }: Props) {
   }, [uiMode]);
 
   // =========================
-  // SERVICE (officiel)
+  // SERVICE — SOURCE DE VÉRITÉ = STORE
+  // - everyN (officiel) + deuce
+  // - winnerServes (maison)
+  // - 1v1 / 2v2 / 2v1 / tournante
   // =========================
 
   // Config service (vient du Config)
   const serveStart = String((st as any).serveStart ?? "manual");
-  const serveRule = String((st as any).serveRule ?? "everyN");
   const serviceEvery = Math.max(1, Number((st as any).serviceEvery ?? 2));
   const deuceServiceEvery = Math.max(1, Number((st as any).deuceServiceEvery ?? 1));
 
@@ -780,46 +775,15 @@ export default function PingPongPlay({ go, onFinish }: Props) {
       ? firstPointSide
       : "A";
 
-  type ServeSlot = { side: "A" | "B"; idx: 0 | 1 };
-
-  const serveSequence: ServeSlot[] = React.useMemo(() => {
-    if (is2v2)
-      return [
-        { side: "A", idx: 0 },
-        { side: "B", idx: 0 },
-        { side: "A", idx: 1 },
-        { side: "B", idx: 1 },
-      ];
-    if (is2v1)
-      return [
-        { side: "A", idx: 0 },
-        { side: "B", idx: 0 },
-        { side: "A", idx: 1 },
-        { side: "B", idx: 0 },
-      ];
-    return [
-      { side: "A", idx: 0 },
-      { side: "B", idx: 0 },
-    ];
-  }, [is2v2, is2v1]);
-
-  const currentServe: ServeSlot | null = React.useMemo(() => {
-    // En "manual" : tant que le joueur n'a pas choisi, on n'affiche pas de serveur
-    if (serveStart === "manual") {
-      const chosen = (manualStart || (st as any).manualStart) as any;
-      if (!chosen && totalPts === 0 && !matchStarted) return null;
+  const currentServe = React.useMemo(() => {
+    try {
+      return (getCurrentServerSlot(st as any) as any) || null;
+    } catch {
+      return null;
     }
-    // Source de vérité: store (gère officiel + winnerServes + doubles)
-    const slot: any = (serverSlotFromStore as any) || null;
-    if (!slot) return null;
-    const side: "A" | "B" = slot.side === "B" ? "B" : "A";
-    const idx = Number.isFinite(Number(slot.idx)) ? Number(slot.idx) : 0;
-    return { side, idx: idx as any };
-  }, [serveStart, manualStart, st, totalPts, matchStarted, serverSlotFromStore]);
+  }, [st]);
 
-  // ✅ Serveur affiché : priorité à la logique UI (currentServe) si dispo,
-  // sinon fallback sur le store (utile si serveStart=A/B ou après reload).
-  const serverSide: "A" | "B" = ((serveRule === "winnerServes" ? serverSideFromStore : (currentServe?.side || serverSideFromStore)) || "A") as any;
+  const serverSide: "A" | "B" = (currentServe?.side || serverSideFromStore || "A") as any;
 
   const sideAPlayers = React.useMemo(() => splitNames(nameA), [nameA]);
   const sideBPlayers = React.useMemo(() => splitNames(nameB), [nameB]);
@@ -827,7 +791,6 @@ export default function PingPongPlay({ go, onFinish }: Props) {
   const serverLabel = React.useMemo(() => {
     if (!currentServe) return "—";
     if (!is2v2 && !is2v1) return currentServe.side === "A" ? nameA : nameB;
-
     const arr = currentServe.side === "A" ? sideAPlayers : sideBPlayers;
     const fallback = currentServe.side === "A" ? nameA : nameB;
     const who = arr[currentServe.idx] || fallback;
@@ -1103,50 +1066,89 @@ const infoDotContent = (
 
       {/* SCORE / TEAMS (structure carte identique) */}
       <div style={card(theme)}>
-        {/* Avatars de fond (zoom + dégradé) — style X01/Battle */}
-        <div
-          style={{
-            position: "absolute",
-            inset: 0,
-            pointerEvents: "none",
-            opacity: 0.12,
-            display: "grid",
-            gridTemplateColumns: "1fr 1fr",
-          }}
-        >
-          <div
-            style={{
-              position: "relative",
-              overflow: "hidden",
-              WebkitMaskImage:
-                "linear-gradient(90deg, rgba(0,0,0,1) 0%, rgba(0,0,0,0.15) 78%, rgba(0,0,0,0) 100%)",
-              maskImage:
-                "linear-gradient(90deg, rgba(0,0,0,1) 0%, rgba(0,0,0,0.15) 78%, rgba(0,0,0,0) 100%)",
-            }}
-          >
-            <div style={{ transform: "scale(1.55) translateX(-28%)", transformOrigin: "0% 50%", filter: "blur(0.2px)", clipPath: "inset(0 50% 0 0)" }}>
-              {profileA ? (
-                <ProfileAvatar profile={profileA as any} label={nameA} size={220} showStars={false} />
-              ) : null}
-            </div>
-          </div>
-          <div
-            style={{
-              position: "relative",
-              overflow: "hidden",
-              WebkitMaskImage:
-                "linear-gradient(270deg, rgba(0,0,0,1) 0%, rgba(0,0,0,0.15) 78%, rgba(0,0,0,0) 100%)",
-              maskImage:
-                "linear-gradient(270deg, rgba(0,0,0,1) 0%, rgba(0,0,0,0.15) 78%, rgba(0,0,0,0) 100%)",
-            }}
-          >
-            <div style={{ transform: "scale(1.55) translateX(28%)", transformOrigin: "100% 50%", filter: "blur(0.2px)", clipPath: "inset(0 0 0 50%)" }}>
-              {profileB ? (
-                <ProfileAvatar profile={profileB as any} label={nameB} size={220} showStars={false} />
-              ) : null}
-            </div>
-          </div>
-        </div>
+        {/* Avatars de fond (zoom simple – sans découpe ni dégradé) */}
+<div
+  style={{
+    position: "absolute",
+    inset: 0,
+    pointerEvents: "none",
+    opacity: 0.10,
+    display: "grid",
+    gridTemplateColumns: "1fr 1fr",
+  }}
+>
+  {/* GAUCHE */}
+  <div
+    style={{
+      position: "relative",
+      overflow: "hidden",
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "flex-start",
+      WebkitMaskImage:
+        "linear-gradient(to right, rgba(0,0,0,1) 0%, rgba(0,0,0,1) 62%, rgba(0,0,0,0) 100%)",
+      maskImage:
+        "linear-gradient(to right, rgba(0,0,0,1) 0%, rgba(0,0,0,1) 62%, rgba(0,0,0,0) 100%)",
+      WebkitMaskRepeat: "no-repeat",
+      maskRepeat: "no-repeat",
+      WebkitMaskSize: "100% 100%",
+      maskSize: "100% 100%",
+    }}
+  >
+    <div
+      style={{
+        transform: "scale(1.55) translateX(-28%)",
+        transformOrigin: "0% 50%",
+        filter: "blur(0.3px)",
+      }}
+    >
+      {profileA ? (
+        <ProfileAvatar
+          profile={profileA as any}
+          label={nameA}
+          size={240}
+          showStars={false}
+        />
+      ) : null}
+    </div>
+  </div>
+
+  {/* DROITE */}
+  <div
+    style={{
+      position: "relative",
+      overflow: "hidden",
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "flex-end",
+      WebkitMaskImage:
+        "linear-gradient(to right, rgba(0,0,0,0) 0%, rgba(0,0,0,1) 38%, rgba(0,0,0,1) 100%)",
+      maskImage:
+        "linear-gradient(to right, rgba(0,0,0,0) 0%, rgba(0,0,0,1) 38%, rgba(0,0,0,1) 100%)",
+      WebkitMaskRepeat: "no-repeat",
+      maskRepeat: "no-repeat",
+      WebkitMaskSize: "100% 100%",
+      maskSize: "100% 100%",
+    }}
+  >
+    <div
+      style={{
+        transform: "scale(1.55) translateX(28%)",
+        transformOrigin: "100% 50%",
+        filter: "blur(0.3px)",
+      }}
+    >
+      {profileB ? (
+        <ProfileAvatar
+          profile={profileB as any}
+          label={nameB}
+          size={240}
+          showStars={false}
+        />
+      ) : null}
+    </div>
+  </div>
+</div>
 
         <div
           style={{
@@ -1231,6 +1233,19 @@ const infoDotContent = (
                 <span style={{ marginLeft: 6, fontSize: 12, opacity: 0.95 }} title="Service">🏓</span>
               ) : null}
             </div>
+
+            {(is2v2 || is2v1) && (
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap", justifyContent: "center" }}>
+                {sideAPlayers.slice(0, is2v2 || is2v1 ? 2 : 1).map((n, i) => {
+                  const active = currentServe?.side === "A" && currentServe?.idx === i;
+                  return (
+                    <div key={i} style={servicePill(theme, !!active)} title={n}>
+                      A{i + 1}: {n} {active ? "🏓" : ""}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
 
           {/* SCORE centre */}
@@ -1361,6 +1376,19 @@ const infoDotContent = (
                 <span style={{ marginLeft: 6, fontSize: 12, opacity: 0.95 }} title="Service">🏓</span>
               ) : null}
             </div>
+
+            {(is2v2 || is2v1) && (
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap", justifyContent: "center" }}>
+                {sideBPlayers.slice(0, is2v2 ? 2 : 1).map((n, i) => {
+                  const active = currentServe?.side === "B" && currentServe?.idx === i;
+                  return (
+                    <div key={i} style={servicePill(theme, !!active)} title={n}>
+                      B{i + 1}: {n} {active ? "🏓" : ""}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
         </div>
 {showRules && (
@@ -1469,15 +1497,16 @@ const infoDotContent = (
         </div>
   <div style={{ marginTop: 10, display: "grid", gap: 6 }}>
     {[
-                { label: "Sets remportés", a: (st as any).setsA ?? 0, b: (st as any).setsB ?? 0, hint: "pour gagner" },
-                { label: "Points totaux", a: totalPtsA, b: totalPtsB, hint: "tous sets confondus" },
-                { label: "Pts sur SON service", a: ptsOnServeA, b: ptsOnServeB, hint: "points gagnés au service" },
-                { label: "Pts sur service adverse", a: ptsOnReturnA, b: ptsOnReturnB, hint: "points gagnés en retour" },
-                { label: "Streak max", a: streakMaxA, b: streakMaxB, hint: "série de points" },
-                { label: "Pts / set (moy.)", a: Math.round((avgPtsPerSetA + Number.EPSILON) * 10) / 10, b: Math.round((avgPtsPerSetB + Number.EPSILON) * 10) / 10, hint: "moyenne par set" },
-                { label: "Balles de set", a: setBallsA, b: setBallsB, hint: "opportunités détectées" },
-                { label: "% balles de set", a: `${pctSetBallsA}%`, b: `${pctSetBallsB}%`, hint: "converties / obtenues" },
-              ].map((r, idx) => (
+    { label: "Sets remportés", a: setsA, b: setsB, hint: `${setsToWin} pour gagner` },
+    { label: "Points (set)", a: ptsA, b: ptsB, hint: `${ptsToWin} / set` },
+    { label: "Points totaux", a: totalPtsA, b: totalPtsB, hint: "tous sets confondus" },
+    { label: "Pts sur SON service", a: ptsOnServeA, b: ptsOnServeB, hint: "points gagnés quand tu sers" },
+    { label: "Pts en retour", a: ptsOnReturnA, b: ptsOnReturnB, hint: "service adverse" },
+    { label: "Streak max", a: streakMaxA, b: streakMaxB, hint: "série de points" },
+    { label: "Pts / set (moy.)", a: avgPtsPerSetA, b: avgPtsPerSetB, hint: `${setsPlayed} set(s) joués` },
+    { label: "Balles de set", a: setBallsA, b: setBallsB, hint: "opportunités" },
+    { label: "% balles de set", a: pctSetBallsA, b: pctSetBallsB, hint: "converties / obtenues" },
+  ].map((r, idx) => (
       <div
         key={idx}
         style={{
@@ -1563,13 +1592,13 @@ setSt(next as any);
             <div style={{ display: "grid", gap: 10 }}>
               {[
                 { label: "Sets remportés", a: (st as any).setsA ?? 0, b: (st as any).setsB ?? 0, hint: "pour gagner" },
-                { label: "Points totaux", a: totalPtsA, b: totalPtsB, hint: "tous sets confondus" },
-                { label: "Pts sur SON service", a: ptsOnServeA, b: ptsOnServeB, hint: "points gagnés au service" },
-                { label: "Pts sur service adverse", a: ptsOnReturnA, b: ptsOnReturnB, hint: "points gagnés en retour" },
-                { label: "Streak max", a: streakMaxA, b: streakMaxB, hint: "série de points" },
-                { label: "Pts / set (moy.)", a: Math.round((avgPtsPerSetA + Number.EPSILON) * 10) / 10, b: Math.round((avgPtsPerSetB + Number.EPSILON) * 10) / 10, hint: "moyenne par set" },
-                { label: "Balles de set", a: setBallsA, b: setBallsB, hint: "opportunités détectées" },
-                { label: "% balles de set", a: `${pctSetBallsA}%`, b: `${pctSetBallsB}%`, hint: "converties / obtenues" },
+                { label: "Points totaux", a: Number((advStats as any)?.totalPts?.A ?? 0), b: Number((advStats as any)?.totalPts?.B ?? 0), hint: "tous sets confondus" },
+                { label: "Pts sur SON service", a: Number((advStats as any)?.ptsOnServe?.A ?? 0), b: Number((advStats as any)?.ptsOnServe?.B ?? 0), hint: "points gagnés au service" },
+                { label: "Pts sur service adverse", a: Number((advStats as any)?.ptsOnReturn?.A ?? 0), b: Number((advStats as any)?.ptsOnReturn?.B ?? 0), hint: "points gagnés en retour" },
+                { label: "Streak max", a: advStats.streakMax.A, b: advStats.streakMax.B, hint: "série de points" },
+                { label: "Pts / set (moy.)", a: Math.round((Number((advStats as any)?.ptsPerSetAvg?.A ?? 0) + Number.EPSILON) * 10) / 10, b: Math.round((Number((advStats as any)?.ptsPerSetAvg?.B ?? 0) + Number.EPSILON) * 10) / 10, hint: "moyenne par set" },
+                { label: "Balles de set", a: advStats.setPoints.A, b: advStats.setPoints.B, hint: "opportunités détectées" },
+                { label: "% balles de set", a: `${advStats.setPointsPct.A}%`, b: `${advStats.setPointsPct.B}%`, hint: "converties / obtenues" },
               ].map((r, idx) => (
                 <div
                   key={idx}

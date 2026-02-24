@@ -1,15 +1,16 @@
+// @ts-nocheck
 // =============================================================
 // src/pages/molkky/MolkkyConfig.tsx
-// Config MÖLKKY (LOCAL ONLY) — Premium
-// - Sélection 2 à 6 profils locaux (pas de bots)
-// - Options règles officielles
-// - Lance MolkkyPlay via go("molkky_play", params)
+// Config MÖLKKY — UI calquée sur X01ConfigV3 (Darts)
+// - Header ticker plein écran (dots overlay) + modal règles
+// - Sections en "cards" + chips/toggles style X01
+// - 2 à 6 profils locaux (pas de bots)
+// - Lance MolkkyPlay via go("molkky_play", { players, config })
 // =============================================================
 
 import React from "react";
 import { useTheme } from "../../contexts/ThemeContext";
 import { useLang } from "../../contexts/LangContext";
-
 import BackDot from "../../components/BackDot";
 import InfoDot from "../../components/InfoDot";
 import ProfileMedallionCarousel from "../../components/ProfileMedallionCarousel";
@@ -17,259 +18,509 @@ import ProfileMedallionCarousel from "../../components/ProfileMedallionCarousel"
 import type { Store, Profile } from "../../lib/types";
 import type { MolkkyConfig as MolkkyEngineConfig } from "./engine/molkkyEngine";
 
+// Auto-resolve tickers
+const TICKERS = import.meta.glob("../../assets/tickers/*.png", {
+  eager: true,
+  import: "default",
+}) as Record<string, string>;
+
+function getTicker(id: string | null | undefined) {
+  if (!id) return null;
+  const norm = String(id)
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, "_")
+    .replace(/-/g, "_");
+
+  const target = `/ticker_${norm}.png`;
+  const k = Object.keys(TICKERS).find((x) => x.toLowerCase().endsWith(target));
+  return k ? TICKERS[k] : null;
+}
+
 type Props = {
   go: (t: any, p?: any) => void;
   params?: any;
   store?: Store | any;
 };
 
-function clampInt(v: any, min: number, max: number, fallback: number) {
-  const n = Number(v);
-  if (!Number.isFinite(n)) return fallback;
-  return Math.max(min, Math.min(max, Math.round(n)));
-}
-
-export default function MolkkyConfig({ go, store }: Props) {
+export default function MolkkyConfig({ go, store, params }: Props) {
   const { theme } = useTheme() as any;
   const { t } = useLang() as any;
 
+  const primary = theme?.colors?.accent ?? theme?.primary ?? "#6dff7c";
+  const textMain = theme?.colors?.text ?? "#fff";
+  const textSoft = theme?.colors?.textSoft ?? "rgba(255,255,255,0.75)";
+
+  const preset = String(params?.preset ?? "classic");
+
+  const headerTicker =
+    (preset === "fast" ? getTicker("molkky_rapide") : null) ||
+    (preset === "custom" ? getTicker("molkky_custom") : null) ||
+    getTicker("molkky_classic") ||
+    getTicker("molkky_games") ||
+    null;
+
   const profiles: Profile[] = Array.isArray(store?.profiles) ? (store.profiles as any) : [];
 
-  const medallions = React.useMemo(
+    const medallions = React.useMemo(
     () =>
-      profiles.map((p: any) => ({
-        id: p.id,
-        name: p.nickname || p.displayName || p.name || "Profil",
-        avatarDataUrl: p.avatarDataUrl || null,
-        stars: p.stars || 0,
-        countryCode: p.countryCode || null,
-      })),
+      (profiles || [])
+        .filter((p: any) => !(p as any)?.isBot) // pas de bots sur Mölkkky
+        .map((p: any) => ({
+          id: p.id,
+          name: p.nickname || p.displayName || p.name || "Profil",
+          profile: p, // REQUIRED by <ProfileAvatar />
+        })),
     [profiles]
   );
 
-  const [playerCount, setPlayerCount] = React.useState<number>(2);
-  const [selectedIds, setSelectedIds] = React.useState<string[]>(() => profiles.slice(0, 2).map((p: any) => p.id));
+  const defaultTarget =
+    preset === "fast" ? 30 : 50;
 
-  const [targetScore, setTargetScore] = React.useState<number>(50);
-  const [bounceBackTo25, setBounceBackTo25] = React.useState<boolean>(true);
-  const [eliminationOnThreeMiss, setEliminationOnThreeMiss] = React.useState<boolean>(true);
+  const [selectedIds, setSelectedIds] = React.useState<string[]>(
+    Array.isArray(params?.selectedIds) && params.selectedIds.length ? params.selectedIds : []
+  );
 
-  // Ajuste sélection si playerCount change
+  const [targetScore, setTargetScore] = React.useState<number>(
+    Number(params?.config?.targetScore ?? defaultTarget) || defaultTarget
+  );
+  const [bounceBackTo25, setBounceBackTo25] = React.useState<boolean>(
+    Boolean(params?.config?.bounceBackTo25 ?? true)
+  );
+  const [eliminationOnThreeMiss, setEliminationOnThreeMiss] = React.useState<boolean>(
+    Boolean(params?.config?.eliminationOnThreeMiss ?? true)
+  );
+
+  const [rulesOpen, setRulesOpen] = React.useState(false);
+
+  // Presets (appliquent valeurs par défaut sans toucher aux joueurs)
   React.useEffect(() => {
-    setSelectedIds((prev) => {
-      const uniq = Array.from(new Set(prev)).filter(Boolean);
-      if (uniq.length === playerCount) return uniq;
-      if (uniq.length > playerCount) return uniq.slice(0, playerCount);
+    if (preset === "fast") {
+      setTargetScore((v) => (v ? v : 30));
+    }
+    if (preset === "classic") {
+      setTargetScore((v) => (v ? v : 50));
+    }
+  }, [preset]);
 
-      // compléter avec profils dispo
-      const missing = playerCount - uniq.length;
-      const pool = profiles.map((p: any) => p.id).filter((id: any) => id && !uniq.includes(id));
-      return uniq.concat(pool.slice(0, missing));
-    });
-  }, [playerCount, profiles]);
+  const players = React.useMemo(() => {
+    const set = new Set(selectedIds);
+    return medallions.filter((m) => set.has(m.id));
+  }, [selectedIds, medallions]);
 
-  const toggle = React.useCallback(
-    (id: string) => {
-      setSelectedIds((prev) => {
-        const has = prev.includes(id);
-        if (has) return prev.filter((x) => x !== id);
-        if (prev.length >= playerCount) return prev; // max
-        return [...prev, id];
-      });
-    },
-    [playerCount]
+  const canStart = players.length >= 2 && players.length <= 6;
+
+  const cfg: MolkkyEngineConfig = React.useMemo(
+    () => ({
+      targetScore: Number(targetScore || 50),
+      bounceBackTo25: !!bounceBackTo25,
+      eliminationOnThreeMiss: !!eliminationOnThreeMiss,
+    }),
+    [targetScore, bounceBackTo25, eliminationOnThreeMiss]
   );
 
-  const canStart = selectedIds.length === playerCount && playerCount >= 2;
-
-  const onStart = React.useCallback(() => {
+  const start = () => {
     if (!canStart) return;
-
-    const selectedProfiles = selectedIds
-      .map((id) => profiles.find((p: any) => p.id === id))
-      .filter(Boolean)
-      .map((p: any) => ({
-        id: p.id,
-        name: p.nickname || p.displayName || p.name || "Joueur",
-        avatarDataUrl: p.avatarDataUrl || null,
-      }));
-
-    const config: MolkkyEngineConfig = {
-      targetScore: clampInt(targetScore, 10, 200, 50),
-      bounceBackTo25: Boolean(bounceBackTo25),
-      eliminationOnThreeMiss: Boolean(eliminationOnThreeMiss),
-    };
-
     go("molkky_play", {
-      players: selectedProfiles,
-      config,
+      players: players.map((p) => ({ id: p.id, name: p.name, avatarDataUrl: p.avatarDataUrl ?? null })),
+      config: cfg,
     });
-  }, [canStart, selectedIds, profiles, targetScore, bounceBackTo25, eliminationOnThreeMiss, go]);
-
-  const info = (
-    <div style={{ display: "grid", gap: 8 }}>
-      <div style={{ fontWeight: 1000 }}>Règles officielles (résumé)</div>
-      <div style={{ opacity: 0.9, lineHeight: 1.35 }}>
-        • 1 quille tombée ⇒ points = numéro (1..12).<br />
-        • Plusieurs quilles ⇒ points = nombre de quilles.<br />
-        • Objectif ⇒ <b>{targetScore}</b> points (50 officiel).<br />
-        • Dépassement ⇒ retour à 25 {bounceBackTo25 ? "(activé)" : "(désactivé)"}.<br />
-        • 3 MISS consécutifs ⇒ élimination {eliminationOnThreeMiss ? "(activé)" : "(désactivé)"}.
-      </div>
-    </div>
-  );
+  };
 
   return (
-    <div style={wrap(theme)}>
-      <div style={topRow}>
-        <BackDot onClick={() => go("molkky_menu")} />
-        <div style={topTitle}>MÖLKKY — CONFIG</div>
-        <InfoDot content={info as any} />
-      </div>
+    <div
+      className="screen molkky-config-screen"
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        minHeight: "100vh",
+        padding: "12px 12px 92px",
+        background: "radial-gradient(circle at top, #15192c 0, #05060c 50%, #020308 100%)",
+        color: textMain,
+      }}
+    >
+      {/* HEADER (calque X01) */}
+      <header style={{ marginBottom: 10, marginLeft: -12, marginRight: -12 }}>
+        {(() => {
+          const DOT_SIZE = 36;
+          const DOT_GLOW = `${primary}88`;
+          return (
+            <div
+              style={{
+                position: "relative",
+                width: "100%",
+                paddingTop: "max(6px, env(safe-area-inset-top))",
+              }}
+            >
+              {headerTicker ? (
+                <img
+                  src={headerTicker}
+                  alt="Mölkky"
+                  style={{
+                    width: "100%",
+                    height: "auto",
+                    display: "block",
+                    userSelect: "none",
+                    pointerEvents: "none",
+                  }}
+                  draggable={false}
+                />
+              ) : (
+                <div
+                  style={{
+                    width: "100%",
+                    height: 92,
+                    background: "linear-gradient(180deg, rgba(255,255,255,0.10), rgba(0,0,0,0.35))",
+                    borderBottom: "1px solid rgba(255,255,255,0.08)",
+                  }}
+                />
+              )}
 
+              <div style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)" }}>
+                <BackDot
+                  onClick={() => go("molkky_menu")}
+                  title={t?.("common.back", "Retour") ?? "Retour"}
+                  size={DOT_SIZE}
+                  color={primary}
+                  glow={DOT_GLOW}
+                />
+              </div>
+
+              <div style={{ position: "absolute", right: 12, top: "50%", transform: "translateY(-50%)" }}>
+                <InfoDot
+                  onClick={() => setRulesOpen(true)}
+                  title={t?.("common.rules", "Règles") ?? "Règles"}
+                  size={DOT_SIZE}
+                  color={primary}
+                  glow={DOT_GLOW}
+                />
+              </div>
+            </div>
+          );
+        })()}
+      </header>
+
+      {/* SECTION: Joueurs */}
       <div style={card(theme)}>
-        <div style={sectionTitle}>JOUEURS</div>
-        <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
-          <div style={{ ...label, minWidth: 140 }}>Nombre de joueurs</div>
-          <input
-            type="range"
-            min={2}
-            max={6}
-            value={playerCount}
-            onChange={(e) => setPlayerCount(parseInt(e.target.value || "2", 10))}
-            style={{ flex: 1 }}
-          />
-          <div style={{ fontWeight: 1000, width: 32, textAlign: "right" }}>{playerCount}</div>
-        </div>
-        <div style={smallHint}>Sélectionne {playerCount} profil(s) local(aux).</div>
-        <div style={{ marginTop: 10 }}>
-          <ProfileMedallionCarousel items={medallions} selectedIds={selectedIds} onToggle={toggle} theme={theme} maxSelected={playerCount} />
-        </div>
-      </div>
-
-      <div style={card(theme)}>
-        <div style={sectionTitle}>RÈGLES</div>
-
-        <div style={{ display: "grid", gap: 10 }}>
-          <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
-            <div style={{ ...label, width: 140 }}>Score cible</div>
-            <input
-              value={String(targetScore)}
-              onChange={(e) => setTargetScore(parseInt(e.target.value || "50", 10))}
-              style={{ ...input(theme), width: 110 }}
-              inputMode="numeric"
-            />
-            <div style={{ fontSize: 12, opacity: 0.75, fontWeight: 800 }}>50 officiel</div>
+        <div style={cardTitleRow}>
+          <div style={cardTitle(primary)}>{t?.("common.players", "Joueurs") ?? "JOUEURS"}</div>
+          <div style={{ color: textSoft, fontWeight: 800, fontSize: 12 }}>
+            {players.length}/6
           </div>
+        </div>
 
-          <label style={checkRow}>
-            <input type="checkbox" checked={bounceBackTo25} onChange={(e) => setBounceBackTo25(!!e.target.checked)} />
-            Retour à 25 si dépassement
-          </label>
+        <div style={{ marginTop: 10 }}>
+          <ProfileMedallionCarousel
+            items={medallions as any}
+            selectedIds={selectedIds}
+            onToggle={(id: string) => {
+              setSelectedIds((prev) => {
+                const set = new Set(prev);
+                if (set.has(id)) set.delete(id);
+                else {
+                  if (set.size >= 6) return prev; // hard cap
+                  set.add(id);
+                }
+                return Array.from(set);
+              });
+            }}          />
+        </div>
 
-          <label style={checkRow}>
-            <input
-              type="checkbox"
-              checked={eliminationOnThreeMiss}
-              onChange={(e) => setEliminationOnThreeMiss(!!e.target.checked)}
-            />
-            Élimination après 3 MISS consécutifs
-          </label>
+        <div style={{ marginTop: 10, fontSize: 12, color: textSoft, fontWeight: 750 }}>
+          {t?.("molkky.config.playersHint", "Sélectionne 2 à 6 joueurs (pas de bots).") ??
+            "Sélectionne 2 à 6 joueurs (pas de bots)."}
         </div>
       </div>
 
-      <button style={cta(theme, canStart)} onClick={onStart} disabled={!canStart}>
-        {t?.("Lancer la partie") ?? "LANCER LA PARTIE"}
-      </button>
+      {/* SECTION: Objectif */}
+      <div style={card(theme)}>
+        <div style={cardTitleRow}>
+          <div style={cardTitle(primary)}>{t?.("molkky.config.goal", "Objectif") ?? "OBJECTIF"}</div>
+        </div>
 
-      {!profiles.length && (
-        <div style={{ marginTop: 12, opacity: 0.8, fontSize: 12 }}>
-          Aucun profil local détecté. Va dans <b>Profils</b> pour créer des joueurs.
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 10 }}>
+          {[30, 40, 50, 60, 70].map((v) => (
+            <ChipButton
+              key={v}
+              label={`${v}`}
+              active={targetScore === v}
+              onClick={() => setTargetScore(v)}
+              color={primary}
+            />
+          ))}
+          <div style={{ flex: "1 1 120px", minWidth: 120 }} />
+          <input
+            type="number"
+            value={targetScore}
+            onChange={(e) => setTargetScore(Number(e.target.value || 0))}
+            style={numInput(theme)}
+            min={10}
+            max={200}
+          />
+        </div>
+
+        <div style={{ marginTop: 10, fontSize: 12, color: textSoft, fontWeight: 750 }}>
+          {t?.(
+            "molkky.config.goalHint",
+            "Le score doit être atteint EXACTEMENT. Si tu dépasses, option retour à 25."
+          ) ??
+            "Le score doit être atteint EXACTEMENT. Si tu dépasses, option retour à 25."}
+        </div>
+      </div>
+
+      {/* SECTION: Options */}
+      <div style={card(theme)}>
+        <div style={cardTitleRow}>
+          <div style={cardTitle(primary)}>{t?.("common.options", "Options") ?? "OPTIONS"}</div>
+        </div>
+
+        <div style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 10 }}>
+          <ToggleRow
+            label={t?.("molkky.config.bounceBack", "Dépassement → retour à 25") ?? "Dépassement → retour à 25"}
+            value={bounceBackTo25}
+            onChange={setBounceBackTo25}
+            color={primary}
+          />
+          <ToggleRow
+            label={t?.("molkky.config.elim3miss", "Élimination après 3 MISS") ?? "Élimination après 3 MISS"}
+            value={eliminationOnThreeMiss}
+            onChange={setEliminationOnThreeMiss}
+            color={primary}
+          />
+        </div>
+      </div>
+
+      {/* CTA sticky bottom (calque X01) */}
+      <div
+        style={{
+          position: "fixed",
+          left: 0,
+          right: 0,
+          bottom: 62, // au-dessus de la bottom bar
+          padding: "10px 12px",
+          zIndex: 50,
+          pointerEvents: "none",
+        }}
+      >
+        <div
+          style={{
+            pointerEvents: "auto",
+            borderRadius: 18,
+            border: "1px solid rgba(255,255,255,0.14)",
+            background: "rgba(8,10,16,0.72)",
+            backdropFilter: "blur(10px)",
+            boxShadow: "0 18px 50px rgba(0,0,0,0.55)",
+            padding: 10,
+          }}
+        >
+          <button
+            type="button"
+            onClick={start}
+            disabled={!canStart}
+            style={cta(primary, canStart)}
+          >
+            {t?.("common.start", "Lancer la partie") ?? "LANCER LA PARTIE"}
+          </button>
+        </div>
+      </div>
+
+      {/* MODAL RÈGLES (style X01: overlay) */}
+      {rulesOpen && (
+        <div
+          onClick={() => setRulesOpen(false)}
+          style={{
+            position: "fixed",
+            inset: 0,
+            zIndex: 9999,
+            background: "rgba(0,0,0,0.65)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: 16,
+          }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              width: "100%",
+              maxWidth: 560,
+              borderRadius: 18,
+              border: "1px solid rgba(255,255,255,0.14)",
+              background: "rgba(14,16,26,0.92)",
+              boxShadow: "0 22px 70px rgba(0,0,0,0.7)",
+              padding: 16,
+              color: textMain,
+            }}
+          >
+            <div style={{ fontWeight: 950, fontSize: 18, letterSpacing: 1, marginBottom: 10 }}>
+              MÖLKKY — RÈGLES
+            </div>
+
+            <div style={{ whiteSpace: "pre-wrap", color: textSoft, fontWeight: 750, lineHeight: 1.35, fontSize: 13 }}>
+              {[
+                "• 1 quille tombée : points = numéro de la quille",
+                "• Plusieurs quilles : points = nombre de quilles",
+                "• Objectif : atteindre la cible EXACTEMENT",
+                "• Si dépassement : retour à 25 (option)",
+                "• 3 MISS consécutifs : élimination (option)",
+              ].join("\n")}
+            </div>
+
+            <div style={{ height: 12 }} />
+
+            <button
+              type="button"
+              onClick={() => setRulesOpen(false)}
+              style={{
+                width: "100%",
+                borderRadius: 14,
+                padding: "12px 12px",
+                border: "1px solid rgba(255,255,255,0.14)",
+                background: "rgba(255,255,255,0.06)",
+                color: textMain,
+                fontWeight: 950,
+                letterSpacing: 1,
+                cursor: "pointer",
+              }}
+            >
+              OK
+            </button>
+          </div>
         </div>
       )}
     </div>
   );
 }
 
-const wrap = (theme: any) => ({
-  minHeight: "100vh",
-  padding: 14,
-  background: theme?.colors?.bg ?? "#05060a",
-  color: theme?.colors?.text ?? "#fff",
-});
+/* ---------- UI helpers (style X01) ---------- */
 
-const topRow: any = {
-  display: "grid",
-  gridTemplateColumns: "48px 1fr 48px",
-  alignItems: "center",
-  gap: 10,
-  marginBottom: 12,
-};
+function ChipButton({
+  label,
+  active,
+  onClick,
+  color,
+}: {
+  label: string;
+  active?: boolean;
+  onClick?: () => void;
+  color: string;
+}) {
+  const border = active ? `1px solid ${color}` : "1px solid rgba(255,255,255,0.12)";
+  const bg = active ? `${color}22` : "rgba(40,42,60,0.55)";
+  const text = active ? color : "rgba(255,255,255,0.85)";
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      style={{
+        borderRadius: 999,
+        padding: "8px 12px",
+        border,
+        background: bg,
+        color: text,
+        fontSize: 12,
+        fontWeight: active ? 900 : 800,
+        letterSpacing: 0.5,
+        cursor: "pointer",
+      }}
+    >
+      {label}
+    </button>
+  );
+}
 
-const topTitle: any = {
-  textAlign: "center",
-  fontWeight: 1000,
-  letterSpacing: 1,
-  opacity: 0.95,
-};
+function ToggleRow({
+  label,
+  value,
+  onChange,
+  color,
+}: {
+  label: string;
+  value: boolean;
+  onChange: (v: boolean) => void;
+  color: string;
+}) {
+  return (
+    <div
+      style={{
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "space-between",
+        gap: 10,
+        padding: "10px 10px",
+        borderRadius: 14,
+        border: "1px solid rgba(255,255,255,0.10)",
+        background: "rgba(0,0,0,0.22)",
+      }}
+    >
+      <div style={{ fontWeight: 900, fontSize: 13, color: "rgba(255,255,255,0.88)" }}>{label}</div>
+
+      <button
+        type="button"
+        onClick={() => onChange(!value)}
+        style={{
+          borderRadius: 999,
+          padding: "8px 12px",
+          minWidth: 78,
+          border: value ? `1px solid ${color}` : "1px solid rgba(255,255,255,0.12)",
+          background: value ? `${color}22` : "rgba(40,42,60,0.55)",
+          color: value ? color : "rgba(255,255,255,0.78)",
+          fontWeight: 950,
+          letterSpacing: 0.5,
+          cursor: "pointer",
+        }}
+      >
+        {value ? "ON" : "OFF"}
+      </button>
+    </div>
+  );
+}
 
 const card = (theme: any) => ({
-  background: "rgba(255,255,255,0.06)",
-  border: "1px solid rgba(255,255,255,0.10)",
-  borderRadius: 16,
+  borderRadius: 18,
+  border: "1px solid rgba(255,255,255,0.12)",
+  background: "rgba(10,12,18,0.72)",
+  boxShadow: "0 18px 50px rgba(0,0,0,0.45)",
   padding: 12,
   marginBottom: 12,
-  boxShadow: "0 12px 28px rgba(0,0,0,0.35)",
 });
 
-const sectionTitle: any = {
-  fontWeight: 1000,
-  letterSpacing: 1,
-  opacity: 0.9,
-  marginBottom: 10,
+const cardTitleRow: any = {
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "space-between",
+  gap: 10,
 };
 
-const label: any = {
-  fontSize: 12,
-  fontWeight: 900,
-  opacity: 0.8,
-};
+const cardTitle = (primary: string) => ({
+  fontWeight: 1100,
+  letterSpacing: 1.2,
+  fontSize: 13,
+  color: primary,
+  textTransform: "uppercase",
+});
 
-const smallHint: any = {
-  marginTop: 6,
-  fontSize: 12,
-  opacity: 0.7,
-  fontWeight: 800,
-};
-
-const input = (theme: any) => ({
-  height: 42,
+const numInput = (theme: any) => ({
+  height: 38,
   padding: "0 10px",
   borderRadius: 12,
   border: "1px solid rgba(255,255,255,0.16)",
   background: "rgba(0,0,0,0.28)",
   color: theme?.colors?.text ?? "#fff",
   outline: "none",
+  fontWeight: 900,
+  width: 92,
 });
 
-const checkRow: any = {
-  display: "flex",
-  gap: 10,
-  alignItems: "center",
-  fontSize: 13,
-  fontWeight: 850,
-  opacity: 0.9,
-};
-
-const cta = (theme: any, enabled: boolean) => ({
+const cta = (primary: string, enabled: boolean) => ({
   width: "100%",
   borderRadius: 16,
   padding: "14px 12px",
   border: "1px solid rgba(255,255,255,0.14)",
-  background: enabled ? (theme?.colors?.accent ?? "#6cff7a") : "rgba(255,255,255,0.08)",
-  color: enabled ? "#06100a" : (theme?.colors?.text ?? "#fff"),
+  background: enabled ? primary : "rgba(255,255,255,0.08)",
+  color: enabled ? "#06100a" : "rgba(255,255,255,0.85)",
   fontWeight: 1100,
   letterSpacing: 1,
   cursor: enabled ? "pointer" : "not-allowed",
-  boxShadow: enabled ? "0 18px 50px rgba(0,0,0,0.45)" : "none",
+  boxShadow: enabled ? `0 0 18px ${primary}33, 0 18px 50px rgba(0,0,0,0.45)` : "none",
 });

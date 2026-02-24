@@ -12,9 +12,10 @@ export type PingPongMode = "simple" | "sets" | "tournante";
 
 export type PingPongRulesPreset = "official" | "fun" | "custom";
 
-export type PingPongServeRule =
-  | "everyN" // alternance classique (tous les N points, puis deuce)
-  | "winnerServes"; // règle maison: le gagnant du point sert (changement si le serveur perd)
+// ✅ Règle de service
+// - everyN      : alternance officielle (ex: 2 points, puis deuce)
+// - winnerServes: règle maison (le gagnant du point sert le point suivant)
+export type PingPongServeRule = "everyN" | "winnerServes";
 
 export type PingPongServeStart =
   | "A" // A sert en premier
@@ -43,7 +44,7 @@ export type PingPongState = {
   // Objectif : permettre une config libre "officiel / fun / custom" sans casser l'existant.
   uiMode?: string; // match_1v1/match_2v2/match_2v1/tournante/training (UI)
   rulesPreset: PingPongRulesPreset;
-  serveRule: PingPongServeRule;
+  serveRule?: PingPongServeRule; // NEW (default: everyN)
   serveStart: PingPongServeStart;
   serviceEvery: number; // nombre de points avant changement de service (ex: 2)
   deuceServiceEvery: number; // en fin de set (deuce), changement tous les X points (ex: 1)
@@ -80,7 +81,8 @@ export type PingPongState = {
   firstPointSide: PingPongSideId | null;
 
   // télémétrie points (pour stats live / fin de partie)
-  pointLog: Array<{ setIndex: number; winner: PingPongSideId; server: PingPongSideId; serverIdx: number; ts: number }>;
+  // serverIdx: index du serveur dans l'équipe (0 ou 1). En 1v1: toujours 0.
+  pointLog: Array<{ setIndex: number; winner: PingPongSideId; server: PingPongSideId; serverIdx?: 0 | 1; ts: number }>;
 
   // undo (pile de snapshots) — inclut aussi la tournante
   undo: Array<Pick<
@@ -237,7 +239,6 @@ export function loadPingPongState(): PingPongState {
               setIndex: Number(p?.setIndex ?? 1),
               winner: p?.winner === "B" ? "B" : "A",
               server: p?.server === "B" ? "B" : "A",
-              serverIdx: Number.isFinite(Number(p?.serverIdx)) ? Number(p.serverIdx) : 0,
               ts: Number(p?.ts ?? 0),
             }))
             .filter((p: any) => Number.isFinite(p.ts))
@@ -291,7 +292,6 @@ export function resetPingPong(prev?: PingPongState) {
 
     uiMode: (prev as any)?.uiMode ?? undefined,
     rulesPreset: (prev as any)?.rulesPreset ?? "official",
-    serveRule: (prev as any)?.serveRule === "winnerServes" ? "winnerServes" : "everyN",
     serveStart: (prev as any)?.serveStart ?? "manual",
     serviceEvery: clampInt((prev as any)?.serviceEvery, 1, 20, 2),
     deuceServiceEvery: clampInt((prev as any)?.deuceServiceEvery, 1, 10, 1),
@@ -359,7 +359,14 @@ export function setConfig(
         : (advanced as any)?.rulesPreset === "official"
         ? "official"
         : st.rulesPreset ?? "official",
-    serveRule: (advanced as any)?.serveRule === "winnerServes" ? "winnerServes" : (advanced as any)?.serveRule === "everyN" ? "everyN" : (st as any).serveRule ?? "everyN",
+    serveRule:
+      (advanced as any)?.serveRule === "winnerServes"
+        ? "winnerServes"
+        : (advanced as any)?.serveRule === "everyN"
+        ? "everyN"
+        : st.serveRule === "winnerServes"
+        ? "winnerServes"
+        : "everyN",
     serveStart:
       (advanced as any)?.serveStart === "A"
         ? "A"
@@ -495,140 +502,149 @@ function isSetWon(pointsA: number, pointsB: number, pointsPerSet: number, winByT
 // -------------------------------------------------------------
 // Helpers
 // -------------------------------------------------------------
-export function getCurrentServerSlot(st: PingPongState) {
-  const totalPts = Number(st.pointsA ?? 0) + Number(st.pointsB ?? 0);
-  return computeServerSlot(st, totalPts, st.firstPointSide ?? null);
+export type PingPongServeSlot = { side: PingPongSideId; idx: 0 | 1 };
+
+function otherSide(s: PingPongSideId): PingPongSideId {
+  return s === "A" ? "B" : "A";
 }
 
-export function getCurrentServerSide(st: PingPongState) {
-  return getCurrentServerSlot(st).side;
+function teamSizeForSide(st: PingPongState, side: PingPongSideId): 1 | 2 {
+  const ui = String((st as any).uiMode ?? "match_1v1");
+  if (ui.includes("2v2")) return 2;
+  if (ui.includes("2v1")) return side === "A" ? 2 : 1;
+  return 1;
 }
 
-type ServeSlot = { side: PingPongSideId; idx: number };
-
-function getTeamSizes(st: PingPongState): { A: number; B: number } {
-  const ui = String((st as any).uiMode ?? "");
-  if (ui.includes("2v2")) return { A: 2, B: 2 };
-  if (ui.includes("2v1")) return { A: 2, B: 1 };
-  // tournante / 1v1 / training
-  return { A: 1, B: 1 };
-}
-
-function getServeSequence(st: PingPongState): ServeSlot[] {
-  const ui = String((st as any).uiMode ?? "");
-  if (ui.includes("2v2"))
-    return [
-      { side: "A", idx: 0 },
-      { side: "B", idx: 0 },
-      { side: "A", idx: 1 },
-      { side: "B", idx: 1 },
-    ];
-  if (ui.includes("2v1"))
-    return [
-      { side: "A", idx: 0 },
-      { side: "B", idx: 0 },
-      { side: "A", idx: 1 },
-      { side: "B", idx: 0 },
-    ];
+function serveSequenceForUi(st: PingPongState): PingPongServeSlot[] {
+  const ui = String((st as any).uiMode ?? "match_1v1");
+  if (ui.includes("2v2")) return [
+    { side: "A", idx: 0 },
+    { side: "B", idx: 0 },
+    { side: "A", idx: 1 },
+    { side: "B", idx: 1 },
+  ];
+  if (ui.includes("2v1")) return [
+    { side: "A", idx: 0 },
+    { side: "B", idx: 0 },
+    { side: "A", idx: 1 },
+    { side: "B", idx: 0 },
+  ];
+  // 1v1 / tournante (1v1)
   return [
     { side: "A", idx: 0 },
     { side: "B", idx: 0 },
   ];
 }
 
-function resolveStartSide(st: PingPongState, overrideStart?: PingPongSideId | null): PingPongSideId {
+function getStartSide(st: PingPongState, overrideStart?: PingPongSideId | null): PingPongSideId {
   let start: PingPongSideId = "A";
   if (overrideStart === "A" || overrideStart === "B") start = overrideStart;
   else if (st.serveStart === "A" || st.serveStart === "B") start = st.serveStart;
   else if (st.serveStart === "manual" && (st.manualStart === "A" || st.manualStart === "B")) start = st.manualStart;
-  else if (st.serveStart === "toss_first_point" && (st.firstPointSide === "A" || st.firstPointSide === "B"))
-    start = st.firstPointSide;
+  else if (st.serveStart === "toss_first_point" && (st.firstPointSide === "A" || st.firstPointSide === "B")) start = st.firstPointSide;
   return start;
 }
 
-function isInDeuce(st: PingPongState): boolean {
+function rotateSequenceToStart(seq: PingPongServeSlot[], startSide: PingPongSideId): PingPongServeSlot[] {
+  if (startSide === "A") return seq;
+  const i = seq.findIndex((s) => s.side === "B");
+  if (i <= 0) return seq;
+  return seq.slice(i).concat(seq.slice(0, i));
+}
+
+function computeServerSlotEveryN(
+  st: PingPongState,
+  totalPtsBefore: number,
+  overrideStart?: PingPongSideId | null
+): PingPongServeSlot {
   const ptsA = Number(st.pointsA ?? 0);
   const ptsB = Number(st.pointsB ?? 0);
   const pps = Number(st.pointsPerSet ?? 11);
   const winByTwo = st.winByTwo !== false;
-  return winByTwo && ptsA >= pps - 1 && ptsB >= pps - 1;
+
+  const inDeuce = winByTwo && ptsA >= pps - 1 && ptsB >= pps - 1;
+  const interval = Math.max(1, Number(inDeuce ? st.deuceServiceEvery : st.serviceEvery) || (inDeuce ? 1 : 2));
+
+  const startSide = getStartSide(st, overrideStart);
+  const rotated = rotateSequenceToStart(serveSequenceForUi(st), startSide);
+  const turn = Math.floor(totalPtsBefore / interval) % rotated.length;
+  return rotated[turn] ?? { side: startSide, idx: 0 };
 }
 
-function computeServerSlot(
+function lastServerIdxForSide(log: PingPongState["pointLog"], setIndex: number, side: PingPongSideId): 0 | 1 {
+  for (let i = log.length - 1; i >= 0; i--) {
+    const e = log[i];
+    if (Number(e?.setIndex ?? 1) !== setIndex) continue;
+    if ((e?.server === side) && (e as any)?.serverIdx !== undefined) return (e as any).serverIdx as 0 | 1;
+    if (e?.server === side) return 0;
+  }
+  return 0;
+}
+
+function computeServerSlotWinnerServes(
   st: PingPongState,
   totalPtsBefore: number,
   overrideStart?: PingPongSideId | null
-): ServeSlot {
-  const startSide = resolveStartSide(st, overrideStart);
-  const seq = getServeSequence(st);
-  const sizes = getTeamSizes(st);
+): PingPongServeSlot {
+  const setIdx = Number(st.setIndex ?? 1);
+  const log = Array.isArray(st.pointLog) ? st.pointLog : [];
+  const startSide = getStartSide(st, overrideStart);
 
-  const startSlot: ServeSlot = startSide === "B"
-    ? seq.find((s) => s.side === "B") ?? { side: "B", idx: 0 }
-    : seq.find((s) => s.side === "A") ?? { side: "A", idx: 0 };
+  // aucun point -> serveur de départ (idx 0)
+  if (totalPtsBefore <= 0 || log.length === 0) return { side: startSide, idx: 0 };
 
-  // ✅ Règle maison: winnerServes
-  // - si le serveur gagne le point → il conserve (même joueur)
-  // - si le serveur perd → service au gagnant ; en double, on alterne le serveur dans l'équipe gagnante
-  if ((st as any).serveRule === "winnerServes") {
-    const setIdx = Number(st.setIndex ?? 1);
-    const log = Array.isArray((st as any).pointLog) ? ((st as any).pointLog as any[]) : [];
-
-    let last: any = null;
-    for (let i = log.length - 1; i >= 0; i--) {
-      const e = log[i];
-      if (Number(e?.setIndex ?? 1) !== setIdx) continue;
+  // dernier point du set courant (sinon fallback dernier global)
+  let last = null as any;
+  for (let i = log.length - 1; i >= 0; i--) {
+    const e = log[i];
+    if (Number(e?.setIndex ?? setIdx) === setIdx) {
       last = e;
       break;
     }
-    if (!last) return startSlot;
-
-    const lastWinner: PingPongSideId = last?.winner === "B" ? "B" : "A";
-    const lastServer: PingPongSideId = last?.server === "B" ? "B" : "A";
-    const lastServerIdx = Number.isFinite(Number(last?.serverIdx)) ? Number(last.serverIdx) : 0;
-
-    if (lastWinner === lastServer) return { side: lastServer, idx: lastServerIdx };
-
-    const teamSize = lastWinner === "A" ? sizes.A : sizes.B;
-    if (teamSize <= 1) return { side: lastWinner, idx: 0 };
-
-    let lastIdxForSide: number | null = null;
-    for (let i = log.length - 1; i >= 0; i--) {
-      const e = log[i];
-      if (Number(e?.setIndex ?? 1) !== setIdx) continue;
-      const s: PingPongSideId = e?.server === "B" ? "B" : "A";
-      if (s !== lastWinner) continue;
-      const idx = Number.isFinite(Number(e?.serverIdx)) ? Number(e.serverIdx) : 0;
-      lastIdxForSide = idx;
-      break;
-    }
-
-    const nextIdx = lastIdxForSide == null ? 0 : (lastIdxForSide + 1) % teamSize;
-    return { side: lastWinner, idx: nextIdx };
   }
+  if (!last) last = log[log.length - 1];
 
-  // ✅ Officiel: everyN (+ deuce)
-  const inDeuce = isInDeuce(st);
-  const interval = Math.max(1, Number(inDeuce ? st.deuceServiceEvery : st.serviceEvery) || (inDeuce ? 1 : 2));
+  const prevServer: PingPongSideId = last?.server === "B" ? "B" : "A";
+  const prevIdx: 0 | 1 = (last?.serverIdx === 1 ? 1 : 0);
+  const winner: PingPongSideId = last?.winner === "B" ? "B" : "A";
 
-  let rotated = seq.slice();
-  if (startSide === "B") {
-    const firstB = rotated.findIndex((s) => s.side === "B");
-    if (firstB > 0) rotated = rotated.slice(firstB).concat(rotated.slice(0, firstB));
-  }
+  // si le serveur gagne, il garde (même idx)
+  if (winner === prevServer) return { side: prevServer, idx: prevIdx };
 
-  const turn = Math.floor(totalPtsBefore / interval) % rotated.length;
-  return rotated[turn] ?? startSlot;
+  // sinon, service passe au gagnant.
+  // En double: alterne l'idx quand une équipe récupère le service.
+  const size = teamSizeForSide(st, winner);
+  if (size === 1) return { side: winner, idx: 0 };
+
+  // toggle par rapport au dernier idx utilisé par cette équipe (dans le set)
+  const lastIdx = lastServerIdxForSide(log, setIdx, winner);
+  const nextIdx = (lastIdx === 0 ? 1 : 0) as 0 | 1;
+  return { side: winner, idx: nextIdx };
 }
 
+export function getCurrentServerSlot(st: PingPongState): PingPongServeSlot {
+  const totalPts = Number(st.pointsA ?? 0) + Number(st.pointsB ?? 0);
+  const rule: PingPongServeRule = (st as any).serveRule === "winnerServes" ? "winnerServes" : "everyN";
+  if (rule === "winnerServes") return computeServerSlotWinnerServes(st, totalPts, st.firstPointSide ?? null);
+  return computeServerSlotEveryN(st, totalPts, st.firstPointSide ?? null);
+}
+
+export function getCurrentServerSide(st: PingPongState) {
+  return getCurrentServerSlot(st).side;
+}
+
+// Legacy computeServerSide conservé pour compat, redirige vers slot officiel.
 function computeServerSide(
   st: PingPongState,
   totalPtsBefore: number,
   overrideStart?: PingPongSideId | null
 ): PingPongSideId {
-  return computeServerSlot(st, totalPtsBefore, overrideStart).side;
+  const rule: PingPongServeRule = (st as any).serveRule === "winnerServes" ? "winnerServes" : "everyN";
+  const slot = rule === "winnerServes"
+    ? computeServerSlotWinnerServes(st, totalPtsBefore, overrideStart ?? null)
+    : computeServerSlotEveryN(st, totalPtsBefore, overrideStart ?? null);
+  return slot.side;
 }
-
 
 
 function pushUndo(st: PingPongState): PingPongState["undo"][number] {
@@ -671,7 +687,10 @@ function tournanteAddPoint(st: PingPongState, side: PingPongSideId, delta: 1 | -
   }
   let pointLog = Array.isArray(st.pointLog) ? [...st.pointLog] : [];
   if (delta > 0) {
-    const slot = computeServerSlot(st, totalPtsBefore, firstPointSide);
+    const rule: PingPongServeRule = (st as any).serveRule === "winnerServes" ? "winnerServes" : "everyN";
+    const slot = rule === "winnerServes"
+      ? computeServerSlotWinnerServes(st, totalPtsBefore, firstPointSide)
+      : computeServerSlotEveryN(st, totalPtsBefore, firstPointSide);
     pointLog.push({ setIndex: Number(st.setIndex ?? 1), winner: side, server: slot.side, serverIdx: slot.idx, ts: now() });
     pointLog = pointLog.slice(-5000);
   } else if (delta < 0) {
@@ -772,7 +791,10 @@ export function addPoint(st: PingPongState, side: PingPongSideId, delta: 1 | -1)
 
   let pointLog = Array.isArray(st.pointLog) ? [...st.pointLog] : [];
   if (delta > 0) {
-    const slot = computeServerSlot(st, totalPtsBefore, firstPointSide);
+    const rule: PingPongServeRule = (st as any).serveRule === "winnerServes" ? "winnerServes" : "everyN";
+    const slot = rule === "winnerServes"
+      ? computeServerSlotWinnerServes(st, totalPtsBefore, firstPointSide)
+      : computeServerSlotEveryN(st, totalPtsBefore, firstPointSide);
     pointLog.push({ setIndex: Number(st.setIndex ?? 1), winner: side, server: slot.side, serverIdx: slot.idx, ts: now() });
     pointLog = pointLog.slice(-5000);
   } else if (delta < 0) {

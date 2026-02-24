@@ -23,8 +23,7 @@ import {
   setConfig,
   type PingPongMode,
   type PingPongRulesPreset,
-   type PingPongServeStart,
-  type PingPongServeRule,
+  type PingPongServeStart,
 } from "../../lib/pingpongStore";
 
 type Props = {
@@ -144,12 +143,14 @@ export default function PingPongConfig({ go, params, store }: Props) {
 
   // Règles / format
   const [rulesPreset, setRulesPreset] = React.useState<PingPongRulesPreset>((st as any).rulesPreset ?? "official");
+  const [serveRule, setServeRule] = React.useState<"everyN" | "winnerServes">(
+    (st as any).serveRule === "winnerServes" ? "winnerServes" : "everyN"
+  );
   const [pointsPerSet, setPointsPerSet] = React.useState<number>(Number(st.pointsPerSet || 11));
   const defaultSetsToWin = uiMode === "match_1v1" ? 1 : Number(st.setsToWin || 3);
   const [setsToWin, setSetsToWin] = React.useState<number>(defaultSetsToWin);
   const [winByTwo, setWinByTwo] = React.useState<boolean>(st.winByTwo !== false);
   const [serveStart, setServeStart] = React.useState<PingPongServeStart>((st as any).serveStart ?? "manual");
-  const [serveRule, setServeRule] = React.useState<PingPongServeRule>(((st as any).serveRule === "winnerServes" ? "winnerServes" : "everyN") as any);
   const [serviceEvery, setServiceEvery] = React.useState<number>(clampInt((st as any).serviceEvery, 1, 20, 2));
   const [deuceServiceEvery, setDeuceServiceEvery] = React.useState<number>(clampInt((st as any).deuceServiceEvery, 1, 10, 1));
   const [switchEndsEachSet, setSwitchEndsEachSet] = React.useState<boolean>((st as any).switchEndsEachSet !== false);
@@ -167,11 +168,11 @@ export default function PingPongConfig({ go, params, store }: Props) {
   // Presets rapides
   React.useEffect(() => {
     if (rulesPreset === "official") {
+      setServeRule("everyN");
       setPointsPerSet((prev) => (Number.isFinite(prev) ? prev : 11));
       setWinByTwo(true);
       setServiceEvery(2);
       setDeuceServiceEvery(1);
-      setServeRule("everyN" as any);
       setSwitchEndsEachSet(true);
       setSwitchEndsAtFinal(true);
       setSwitchEndsAtFinalPoints((p) => (pointsPerSet === 21 ? 10 : 5));
@@ -183,7 +184,6 @@ export default function PingPongConfig({ go, params, store }: Props) {
       setWinByTwo(false);
       setServiceEvery(5);
       setDeuceServiceEvery(2);
-      setServeRule("everyN" as any);
       setSwitchEndsEachSet(true);
       setSwitchEndsAtFinal(false);
       setSwitchEndsAtFinalPoints((p) => (pointsPerSet === 21 ? 10 : 5));
@@ -511,21 +511,25 @@ export default function PingPongConfig({ go, params, store }: Props) {
                 <span style={{ fontWeight: 900, opacity: 0.9 }}>Écart de 2 (règle standard)</span>
               </label>
 
-              <div>
-                <div style={label}>Règle de service</div>
-                <select value={serveRule} onChange={(e) => setServeRule(e.target.value as any)} style={select(theme)}>
-                  <option value="everyN">Officiel : alternance (tous les N points)</option>
-                  <option value="winnerServes">Maison : le gagnant du point sert (switch si le serveur perd)</option>
-                </select>
-                <div style={hint}>
-                  "Maison" = le service passe au joueur qui vient de gagner le point. Les réglages "tous les N" sont ignorés.
-                </div>
-              </div>
-
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                <div style={{ gridColumn: "1 / -1" }}>
+                  <div style={label}>Règle de service</div>
+                  <select value={serveRule} onChange={(e) => setServeRule(e.target.value as any)} style={select(theme)}>
+                    <option value="everyN">Officiel (changement tous les N points)</option>
+                    <option value="winnerServes">Maison : le gagnant du point sert</option>
+                  </select>
+                  <div style={hint}>
+                    En double, la règle maison alterne automatiquement le serveur dans l'équipe quand elle récupère le service.
+                  </div>
+                </div>
                 <div>
                   <div style={label}>Service : tous les</div>
-                  <select value={String(serviceEvery)} onChange={(e) => setServiceEvery(clampInt(e.target.value, 1, 20, 2))} disabled={serveRule === "winnerServes"} style={{ ...select(theme), opacity: serveRule === "winnerServes" ? 0.5 : 1 }}>
+                  <select
+                    value={String(serviceEvery)}
+                    onChange={(e) => setServiceEvery(clampInt(e.target.value, 1, 20, 2))}
+                    style={select(theme)}
+                    disabled={serveRule === "winnerServes"}
+                  >
                     <option value="1">1 point</option>
                     <option value="2">2 points</option>
                     <option value="5">5 points</option>
@@ -536,8 +540,8 @@ export default function PingPongConfig({ go, params, store }: Props) {
                   <select
                     value={String(deuceServiceEvery)}
                     onChange={(e) => setDeuceServiceEvery(clampInt(e.target.value, 1, 10, 1))}
+                    style={select(theme)}
                     disabled={serveRule === "winnerServes"}
-                    style={{ ...select(theme), opacity: serveRule === "winnerServes" ? 0.5 : 1 }}
                   >
                     <option value="1">Service alterné (1 point)</option>
                     <option value="2">Tous les 2 points</option>

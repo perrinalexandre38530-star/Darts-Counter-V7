@@ -21,11 +21,15 @@ import BabyFootMenuGames from "./babyfoot/BabyFootMenuGames";
 import PingPongHome from "./pingpong/PingPongHome";
 import PingPongMenuGames from "./pingpong/PingPongMenuGames";
 
+import MolkkyHome from "./molkky/MolkkyHome";
+import MolkkyMenuGames from "./molkky/MolkkyMenuGames";
+
 export function SportHome(props: any) {
   const { sport } = useSport();
   if (sport === "petanque") return <PetanqueHome {...props} />;
   if (sport === "babyfoot") return <BabyFootHome {...props} />;
   if (sport === "pingpong") return <PingPongHome {...props} />;
+  if (sport === "molkky") return <MolkkyHome {...props} />;
   return <Home {...props} />;
 }
 
@@ -35,6 +39,7 @@ export function SportGames(props: any) {
   if (sport === "petanque") return <PetanqueMenuGames {...props} />;
   if (sport === "babyfoot") return <BabyFootMenuGames {...props} />;
   if (sport === "pingpong") return <PingPongMenuGames {...props} />;
+  if (sport === "molkky") return <MolkkyMenuGames {...props} />;
   return <Games {...props} />;
 }
 
