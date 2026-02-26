@@ -211,6 +211,8 @@ export default function MolkkyPlay({ go, params, onFinish }: Props) {
           padding: "0 10px",
           display: "flex",
           flexDirection: "column",
+          // NOTE: gap fixed here (no dynamic scaling at page level)
+          // Scaling is handled inside the header blocks to prevent overflow.
           gap: 10,
           minHeight: 0,
         }}
@@ -440,6 +442,51 @@ function MolkkyHeaderBlock({ theme, primary, player, players, turns, turnIndex, 
     theme?.fontFamily ||
     "inherit";
 
+  // ✅ Auto-scale interne (sans transform: scale) : on réduit proportionnellement toutes les tailles
+  // pour que le header (dont le MiniClassement) ne puisse jamais déborder, même sur petits écrans.
+  const boxRef = React.useRef<any>(null);
+  const [k, setK] = React.useState(1);
+
+  React.useLayoutEffect(() => {
+    const el = boxRef.current;
+    if (!el || typeof (window as any) === "undefined") return;
+
+    const base = 380; // largeur "design" de référence pour ce header
+    const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
+
+    const compute = (w: number) => {
+      const kk = clamp(w / base, 0.78, 1);
+      setK(kk);
+    };
+
+    // 1er calcul
+    try {
+      const r = el.getBoundingClientRect();
+      compute(r.width || base);
+    } catch {}
+
+    // ResizeObserver si dispo
+    const RO = (window as any).ResizeObserver;
+    if (typeof RO !== "function") return;
+
+    const ro = new RO((entries: any[]) => {
+      const w = entries?.[0]?.contentRect?.width;
+      if (typeof w === "number" && w > 0) compute(w);
+    });
+
+    ro.observe(el);
+    return () => {
+      try { ro.disconnect(); } catch {}
+    };
+  }, []);
+
+  const AV = Math.max(56, Math.round(78 * k));
+  const MINI = Math.max(132, Math.round(176 * k));
+  const GAP = Math.max(8, Math.round(12 * k));
+  const scoreLabel = Math.max(10, Math.round(12 * k));
+  const scoreValue = Math.max(30, Math.round(44 * k));
+  const nameSize = Math.max(14, Math.round(18 * k));
+
   // ✅ EXACT behavior: if profile is "lite" (id/name only), ProfileAvatar auto-resolves it from store.
   // For the watermark, we must do the same resolution, otherwise bg stays empty.
   const [wmProfile, setWmProfile] = React.useState<any | null>(null);
@@ -501,6 +548,7 @@ function MolkkyHeaderBlock({ theme, primary, player, players, turns, turnIndex, 
 
   return (
     <div
+      ref={boxRef}
       style={{
         background:
           "radial-gradient(120% 140% at 0% 0%, rgba(255,195,26,.10), transparent 55%), linear-gradient(180deg, rgba(15,15,18,.9), rgba(10,10,12,.8))",
@@ -558,7 +606,7 @@ function MolkkyHeaderBlock({ theme, primary, player, players, turns, turnIndex, 
         style={{
           display: "grid",
           gridTemplateColumns: "auto 1fr",
-          gap: 12,
+          gap: GAP,
           alignItems: "start",
           position: "relative",
           zIndex: 2,
@@ -572,27 +620,27 @@ function MolkkyHeaderBlock({ theme, primary, player, players, turns, turnIndex, 
         <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 8, flexShrink: 0 }}>
           <div
             style={{
-              width: 78,
-              height: 78,
+              width: AV,
+              height: AV,
               borderRadius: "50%",
               overflow: "hidden",
               background: "linear-gradient(180deg,#1b1b1f,#111114)",
               boxShadow: "0 6px 22px rgba(0,0,0,.35)",
             }}
           >
-            <ProfileAvatar size={78} profile={player} />
+            <ProfileAvatar size={AV} profile={player} />
           </div>
 
           {/* ✅ Mini stats Mölkky — blocs néon */}
-          <div style={{ ...miniCard, width: 176, maxWidth: 176, boxSizing: "border-box", padding: 8 }}>
+          <div style={{ ...miniCard, width: MINI, maxWidth: MINI, boxSizing: "border-box", padding: 8 }}>
             {/* ✅ Plus compact: 3 par ligne (2 lignes) */}
             <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 6 }}>
-              <NeonStat label="Lancers" value={st.throws} tone="cyan" />
-              <NeonStat label="MISS" value={st.miss} tone="red" />
-              <NeonStat label="Hits" value={st.hits} tone="green" />
-              <NeonStat label="Moy." value={st.avg} tone="amber" />
-              <NeonStat label="Best" value={st.best} tone="purple" />
-              <NeonStat label="Reste" value={st.remaining} tone={st.remaining === 0 ? "green" : "blue"} />
+              <NeonStat label="Lancers" value={st.throws} tone="cyan" k={k} />
+              <NeonStat label="MISS" value={st.miss} tone="red" k={k} />
+              <NeonStat label="Hits" value={st.hits} tone="green" k={k} />
+              <NeonStat label="Moy." value={st.avg} tone="amber" k={k} />
+              <NeonStat label="Best" value={st.best} tone="purple" k={k} />
+              <NeonStat label="Reste" value={st.remaining} tone={st.remaining === 0 ? "green" : "blue"} k={k} />
             </div>
           </div>
         </div>
@@ -609,11 +657,11 @@ function MolkkyHeaderBlock({ theme, primary, player, players, turns, turnIndex, 
                 style={{
                   fontFamily: scoreFontFamily,
                   fontWeight: 1100,
-                  fontSize: 44,
+                  fontSize: scoreValue,
                   lineHeight: 0.95,
                   color: primary,
                   textShadow: `0 0 16px ${primary}88, 0 0 40px ${primary}33`,
-                  marginTop: 4,
+                  marginTop: Math.round(4 * k),
                 }}
               >
                 {score}
@@ -621,9 +669,9 @@ function MolkkyHeaderBlock({ theme, primary, player, players, turns, turnIndex, 
               <div
                 style={{
                   fontFamily: scoreFontFamily,
-                  marginTop: 6,
+                  marginTop: Math.round(6 * k),
                   fontWeight: 1100,
-                  fontSize: 18,
+                  fontSize: nameSize,
                   lineHeight: 1.05,
                   color: primary,
                   textShadow: `0 0 14px ${primary}55`,
@@ -637,8 +685,8 @@ function MolkkyHeaderBlock({ theme, primary, player, players, turns, turnIndex, 
             </div>
 
             {/* Mini classement (largeur équivalente au mini stats) */}
-            <div style={{ ...miniCard, width: 176, maxWidth: 176, boxSizing: "border-box", marginLeft: "auto" }}>
-              <MiniClassement primary={primary} players={players} currentId={pid} />
+            <div style={{ ...miniCard, width: MINI, maxWidth: MINI, boxSizing: "border-box", marginLeft: "auto" }}>
+              <MiniClassement primary={primary} players={players} currentId={pid} k={k} />
             </div>
 
             {/* ✅ Meta supprimée (Tour/Cible/Lancers/Miss) — affiché uniquement dans la modal Joueurs */}
@@ -649,7 +697,7 @@ function MolkkyHeaderBlock({ theme, primary, player, players, turns, turnIndex, 
               style={{
                 marginTop: 8,
                 padding: "6px 10px",
-                borderRadius: 12,
+                borderRadius: rowRadius,
                 background: "rgba(255,70,70,0.10)",
                 border: "1px solid rgba(255,70,70,0.25)",
                 color: "rgba(255,200,200,0.95)",
@@ -667,7 +715,7 @@ function MolkkyHeaderBlock({ theme, primary, player, players, turns, turnIndex, 
   );
 }
 
-function NeonStat({ label, value, tone }: any) {
+function NeonStat({ label, value, tone, k = 1 }: any) {
   const map: Record<string, any> = {
     cyan: { b: "rgba(120,255,220,0.35)", bg: "rgba(40,120,90,0.22)", c: "#b9ffe9", sh: "rgba(120,255,220,0.16)" },
     green: { b: "rgba(70,255,120,0.35)", bg: "rgba(40,120,50,0.22)", c: "#b6ffc8", sh: "rgba(70,255,120,0.14)" },
@@ -677,11 +725,15 @@ function NeonStat({ label, value, tone }: any) {
     purple: { b: "rgba(170,120,255,0.35)", bg: "rgba(120,70,185,0.18)", c: "#e1ccff", sh: "rgba(170,120,255,0.14)" },
   };
   const t = map[tone] || map.blue;
+  const padY = Math.max(4, Math.round(5 * k));
+  const labelSize = Math.max(9, Math.round(10 * k));
+  const valueSize = Math.max(11, Math.round(13 * k));
+
   return (
     <div
       style={{
         borderRadius: 10,
-        padding: "5px 0",
+        padding: `${padY}px 0`,
         textAlign: "center",
         border: `1px solid ${t.b}`,
         background: t.bg,
@@ -689,16 +741,22 @@ function NeonStat({ label, value, tone }: any) {
         fontWeight: 1000,
       }}
     >
-      <div style={{ fontSize: 10, opacity: 0.92, color: t.c, lineHeight: 1.05 }}>{label}</div>
-      <div style={{ fontSize: 13, color: t.c, lineHeight: 1.05 }}>{String(value ?? "—")}</div>
+      <div style={{ fontSize: labelSize, opacity: 0.92, color: t.c, lineHeight: 1.05 }}>{label}</div>
+      <div style={{ fontSize: valueSize, color: t.c, lineHeight: 1.05 }}>{String(value ?? "—")}</div>
     </div>
   );
 }
 
-function MiniClassement({ primary, players, currentId }: any) {
+function MiniClassement({ primary, players, currentId, k = 1 }: any) {
   const list = Array.isArray(players) ? players.slice() : [];
   list.sort((a: any, b: any) => Number(b?.score ?? 0) - Number(a?.score ?? 0));
   const top = list.slice(0, 3);
+  const rowPadY = Math.max(4, Math.round(6 * k));
+  const rowPadX = Math.max(6, Math.round(8 * k));
+  const rowRadius = Math.max(10, Math.round(12 * k));
+  const nameFont = Math.max(11, Math.round(13 * k));
+  const scoreFont = Math.max(11, Math.round(13 * k));
+
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
       {top.map((p: any, i: number) => {
@@ -711,7 +769,7 @@ function MiniClassement({ primary, players, currentId }: any) {
               alignItems: "center",
               justifyContent: "space-between",
               gap: 10,
-              padding: "6px 8px",
+              padding: `${rowPadY}px ${rowPadX}px`,
               borderRadius: 12,
               border: isMe ? `1px solid ${primary}66` : "1px solid rgba(255,255,255,0.08)",
               background: isMe ? "rgba(0,0,0,0.22)" : "rgba(0,0,0,0.12)",
@@ -722,6 +780,7 @@ function MiniClassement({ primary, players, currentId }: any) {
             <div
               style={{
                 fontWeight: 1000,
+                fontSize: nameFont,
                 color: isMe ? primary : "rgba(255,255,255,0.92)",
                 whiteSpace: "nowrap",
                 overflow: "hidden",
@@ -731,7 +790,7 @@ function MiniClassement({ primary, players, currentId }: any) {
             >
               {`${i + 1}. ${p?.name ?? "—"}`}
             </div>
-            <div style={{ fontWeight: 1100, color: primary, textShadow: `0 0 14px ${primary}55` }}>
+            <div style={{ fontWeight: 1100, fontSize: scoreFont, color: primary, textShadow: `0 0 14px ${primary}55` }}>
               {Number(p?.score ?? 0)}
             </div>
           </div>
