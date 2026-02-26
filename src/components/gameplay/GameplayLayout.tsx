@@ -129,6 +129,8 @@ type Props = {
   playersPanel?: React.ReactNode;
   playersRowRight?: React.ReactNode;
   playersRowLabel?: string;
+  /** Affiche la petite flèche ▾ à droite du bandeau joueurs */
+  playersRowChevron?: boolean;
   playersPanelMode?: "modal" | "sidebar-auto";
   /** Image de fond (ticker) du bandeau JOUEURS (ex: ticker_x01.png). */
   playersBannerImage?: string;
@@ -157,6 +159,7 @@ export default function GameplayLayout({
   playersPanel,
   playersRowRight,
   playersRowLabel = "JOUEURS",
+  playersRowChevron = true,
   playersPanelMode = "sidebar-auto",
   playersBannerImage,
   playersBannerOpacity = 0.55,
@@ -186,7 +189,7 @@ export default function GameplayLayout({
       className="card"
       role={showPlayersRowAsButton ? "button" : undefined}
       tabIndex={showPlayersRowAsButton ? 0 : -1}
-      onClick={showPlayersRowAsButton ? () => setOpenPlayers(true) : undefined}
+      onClick={showPlayersRowAsButton && playersRowChevron ? () => setOpenPlayers(true) : undefined}
       onKeyDown={
         showPlayersRowAsButton
           ? (e) => {
@@ -249,7 +252,7 @@ export default function GameplayLayout({
 
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           {playersRowRight}
-          {showPlayersRowAsButton ? (
+          {showPlayersRowAsButton && playersRowChevron ? (
             <span
               style={{
                 opacity: 0.8,

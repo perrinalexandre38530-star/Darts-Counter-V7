@@ -122,6 +122,7 @@ export default function MolkkyConfig({ go, store, params }: Props) {
   const start = () => {
     if (!canStart) return;
     go("molkky_play", {
+      preset,
       players: players.map((p) => ({ id: p.id, name: p.name, avatarDataUrl: p.avatarDataUrl ?? null })),
       config: cfg,
     });

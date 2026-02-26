@@ -3320,6 +3320,9 @@ case "babyfoot_team_edit":
 
     // ✅ Ping-Pong (play) — plein écran
     "pingpong_play",
+
+    // ✅ Mölkky (play) — plein écran
+    "molkky_play",
   ]);
 
   return (
