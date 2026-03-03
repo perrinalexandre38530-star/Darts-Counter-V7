@@ -17,7 +17,7 @@ export type BabyFootEvent =
   | { t: "set_win"; at: number; team: BabyFootTeamId; setIndex: number }
   | { t: "phase"; at: number; phase: BabyFootPhase }
   | { t: "undo"; at: number }
-  | { t: "finish"; at: number; winner: BabyFootTeamId; reason: "target" | "golden" | "time" | "sets" | "penalties" };
+  | { t: "finish"; at: number; winner: BabyFootTeamId | null; reason: "target" | "golden" | "time" | "sets" | "penalties" | "draw" };
 
 export type PenaltiesState = {
   // total shots taken
@@ -75,6 +75,8 @@ export type BabyFootState = {
   overtimeGoldenGoal: boolean;           // first goal ends match during overtime
   handicapA: number;                     // starting bonus goals for team A
   handicapB: number;                     // starting bonus goals for team B
+  allowDrawOnTimeEnd?: boolean;          // if draw at end of regulation time, finish as draw (no OT/penalties)
+  requireTwoGoalLead?: boolean;          // when no chrono: require 2-goal margin to win by target/sets
 
   // sets
   setsEnabled: boolean;
@@ -156,6 +158,8 @@ export function defaultBabyFootState(partial?: Partial<BabyFootState>): BabyFoot
     overtimeGoldenGoal: true,
     handicapA: 0,
     handicapB: 0,
+    allowDrawOnTimeEnd: false,
+    requireTwoGoalLead: false,
 
     setsEnabled: false,
     setsBestOf: 3,
@@ -323,7 +327,7 @@ export function startIfNeeded() {
   return next;
 }
 
-function finishMatch(winner: BabyFootTeamId, reason: BabyFootEvent["t"] extends any ? any : any) {
+function finishMatch(winner: BabyFootTeamId | null, reason: BabyFootEvent extends any ? any : any) {
   const s = loadBabyFootState();
   if (s.finished) return s;
   const now = Date.now();
@@ -344,8 +348,9 @@ function maybeWinSet(s: BabyFootState) {
   if (!s.setsEnabled) return s;
 
   const target = Math.max(1, s.setTarget || 5);
-  const aWon = s.scoreA >= target && s.scoreA >= s.scoreB + 2;
-  const bWon = s.scoreB >= target && s.scoreB >= s.scoreA + 2;
+  const require2 = !!s.requireTwoGoalLead && !Number.isFinite(s.matchDurationSec as any);
+  const aWon = require2 ? (s.scoreA >= target && s.scoreA >= s.scoreB + 2) : (s.scoreA >= target);
+  const bWon = require2 ? (s.scoreB >= target && s.scoreB >= s.scoreA + 2) : (s.scoreB >= target);
 
   if (!aWon && !bWon) return s;
 
@@ -443,7 +448,14 @@ export function addGoal(team: BabyFootTeamId, scorerId?: string | null) {
   if (!next.setsEnabled) {
     const target = Math.max(1, next.target || 10);
     if (next.scoreA >= target || next.scoreB >= target) {
-      const winner: BabyFootTeamId = next.scoreA >= target ? "A" : "B";
+      const require2 = !!next.requireTwoGoalLead && !Number.isFinite(next.matchDurationSec as any);
+      const aOk = require2 ? (next.scoreA >= target && next.scoreA >= next.scoreB + 2) : (next.scoreA >= target);
+      const bOk = require2 ? (next.scoreB >= target && next.scoreB >= next.scoreA + 2) : (next.scoreB >= target);
+      if (!aOk && !bOk) {
+        saveBabyFootState(next);
+        return next;
+      }
+      const winner: BabyFootTeamId = aOk ? "A" : "B";
       next = {
         ...next,
         finished: true,
@@ -649,6 +661,8 @@ export function setAdvancedOptions(partial: Partial<Pick<
   | "setTarget"
   | "handicapA"
   | "handicapB"
+  | "allowDrawOnTimeEnd"
+  | "requireTwoGoalLead"
 >>) {
   const s = loadBabyFootState();
   const next: BabyFootState = {
@@ -716,6 +730,11 @@ export function finishByTime() {
   if (s.scoreA !== s.scoreB) {
     const winner: BabyFootTeamId = s.scoreA > s.scoreB ? "A" : "B";
     return finishMatch(winner, "time");
+  }
+
+  // Draw cases
+  if (s.allowDrawOnTimeEnd) {
+    return finishMatch(null, "draw");
   }
 
   // Draw: go overtime if configured and not already in overtime

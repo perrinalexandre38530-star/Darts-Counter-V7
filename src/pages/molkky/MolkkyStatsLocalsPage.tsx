@@ -20,9 +20,9 @@ import { aggregatePlayers, safeNum, formatDuration } from "../../lib/molkkyStats
 
 import type { Profile } from "../../lib/types";
 
-type Props = { go?: any };
+type Props = { go?: any; store?: any; embedded?: boolean };
 
-export default function MolkkyStatsLocalsPage({ go }: Props) {
+export default function MolkkyStatsLocalsPage({ go, embedded }: Props) {
   const { theme } = useTheme();
   const { t } = useLang();
 
@@ -236,21 +236,20 @@ export default function MolkkyStatsLocalsPage({ go }: Props) {
 
   return (
     <div style={pageWrap}>
-      <div style={topRow}>
-        <BackDot onClick={() => (go ? go("molkky_stats") : window.history.back())} />
-        <div style={title}>{tr("molkky.locals","molkky.locals") || "MÖLKKY — PROFILS LOCAUX"}</div>
-        <InfoDot
-          onClick={() =>
-            alert(
-              "Profils locaux (Mölkky)\n\n- Carousel uniquement sur les profils locaux\n- Profil actif exclu de la liste"
-            )
-          }
-        />
-      </div>
+      {!embedded && (
+        <>
+          <div style={topRow}>
+            <BackDot onClick={() => (go ? go("molkky_stats") : window.history.back())} />
+            <div style={title}>{t("molkky.localProfiles", "MÖLKKY — PROFILS LOCAUX")}</div>
+            <InfoDot onClick={() => alert("Profils locaux Mölkky")}
+            />
+          </div>
 
-      <div style={pill}>
-        <div style={pillLabel}>{t("stats.dashboard","DASHBOARD GLOBAL")}</div>
-      </div>
+          <div style={pill}>
+            <div style={pillLabel}>{t("stats.dashboard", "DASHBOARD GLOBAL")}</div>
+          </div>
+        </>
+      )}
 
       <div style={playerCard}>
         <button

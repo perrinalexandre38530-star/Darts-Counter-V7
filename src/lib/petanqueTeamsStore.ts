@@ -8,6 +8,8 @@
 // ✅ Garde des exports rétro-compatibles pour l'ancien code Pétanque
 // =============================================================
 
+import { getTeamAvatarUrl } from "../assets/teamAvatars";
+
 export type TeamSport = "petanque" | "babyfoot" | "darts" | "generic";
 
 export type TeamEntity = {
@@ -458,7 +460,47 @@ export type BabyFootTeam = {
   updatedAt: number;
 };
 
+
+// ---------------------------------------------------------------------
+// Baby-Foot — seeds "teams par défaut" (TEAM GOLD / PINK / GREEN / BLUE)
+// - Ajoutés uniquement si absents (ne remplace rien)
+// - Logos résolus via src/assets/teamAvatars.ts (assets locaux si dispo, sinon SVG fallback)
+// ---------------------------------------------------------------------
+const DEFAULT_BABYFOOT_TEAMS: Array<{ id: string; name: string; skin: "gold" | "pink" | "green" | "blue" }> = [
+  { id: "bf-team-gold", name: "TEAM GOLD", skin: "gold" },
+  { id: "bf-team-pink", name: "TEAM PINK", skin: "pink" },
+  { id: "bf-team-green", name: "TEAM GREEN", skin: "green" },
+  { id: "bf-team-blue", name: "TEAM BLUE", skin: "blue" },
+];
+
+function ensureDefaultBabyFootTeams(): void {
+  const existing = loadTeamsBySport("babyfoot");
+  const existingIds = new Set(existing.map((t) => t.id));
+
+  let changed = false;
+  const list = loadTeams();
+
+  for (const def of DEFAULT_BABYFOOT_TEAMS) {
+    if (existingIds.has(def.id)) continue;
+
+    const ts = now();
+    list.push({
+      id: def.id,
+      sport: "babyfoot",
+      name: def.name,
+      logoDataUrl: getTeamAvatarUrl(def.skin),
+      createdAt: ts,
+      updatedAt: ts,
+    });
+
+    changed = true;
+  }
+
+  if (changed) saveTeams(list);
+}
+
 export function loadBabyFootTeams(): BabyFootTeam[] {
+  ensureDefaultBabyFootTeams();
   const list = loadTeamsBySport("babyfoot");
   return list.map((t: any) => ({
     id: t.id,

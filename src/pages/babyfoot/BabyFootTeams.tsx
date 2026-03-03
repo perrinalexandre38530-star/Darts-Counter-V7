@@ -76,6 +76,16 @@ export default function BabyFootTeams({ go }: Props) {
     loadBabyFootTeams()
   );
 
+  const DEFAULT_TEAM_IDS = new Set<string>([
+    "bf-team-gold",
+    "bf-team-pink",
+    "bf-team-green",
+    "bf-team-blue",
+  ]);
+  const isDefaultTeam = (id: string) => DEFAULT_TEAM_IDS.has(String(id || ""));
+  const defaultTeams = React.useMemo(() => teams.filter((t) => isDefaultTeam(t.id)), [teams]);
+  const customTeams = React.useMemo(() => teams.filter((t) => !isDefaultTeam(t.id)), [teams]);
+
   const [showInfo, setShowInfo] = React.useState(false);
 
   React.useEffect(() => {
@@ -97,6 +107,7 @@ export default function BabyFootTeams({ go }: Props) {
   }
 
   function handleDelete(teamId: string) {
+    if (isDefaultTeam(teamId)) return;
     if (!confirm(t("teams.delete.confirm", "Supprimer cette équipe ?"))) return;
     deleteBabyFootTeam(teamId);
     refresh();
@@ -117,6 +128,185 @@ export default function BabyFootTeams({ go }: Props) {
     getTicker("babyfoot_ligue") ||
     getTicker("babyfoot_games") ||
     null;
+
+  const renderTeamCard = (tm: any, canDelete: boolean) => {
+    const country = safeUpper2(tm.countryCode || "FR");
+    const isFR = country === "FR";
+    const flagSrc = getCountryFlagSrc(country);
+    const regionSrc = isFR ? getFRRegionLogoSrc(tm.regionCode) : null;
+
+    const ids = Array.isArray(tm.playerIds) ? tm.playerIds : [];
+    const picked = ids
+      .map((id: string) => profilesById[String(id)])
+      .filter(Boolean)
+      .slice(0, 6);
+    const moreCount = Math.max(0, ids.length - picked.length);
+
+    return (
+      <div key={tm.id} style={cardWrap(theme)}>
+        <div style={cardGlow(theme)} />
+
+        <div
+          style={{
+            display: "flex",
+            gap: 12,
+            alignItems: "center",
+            position: "relative",
+          }}
+        >
+          {/* Logo */}
+          <div
+            style={{
+              position: "relative",
+              width: 56,
+              height: 56,
+              flex: "0 0 auto",
+            }}
+          >
+            <div style={logoRing(theme)} />
+            <div style={logoBox(theme)}>
+              {tm.logoDataUrl ? (
+                <img
+                  src={tm.logoDataUrl}
+                  alt=""
+                  style={{
+                    width: "100%",
+                    height: "100%",
+                    objectFit: "cover",
+                    display: "block",
+                  }}
+                />
+              ) : (
+                <span
+                  style={{
+                    fontWeight: 1000,
+                    color: theme.primary,
+                    letterSpacing: 1,
+                  }}
+                >
+                  {(tm.name || "TEAM").slice(0, 2).toUpperCase()}
+                </span>
+              )}
+            </div>
+          </div>
+
+          {/* Main content (clickable => edit) */}
+          <button
+            onClick={() => go("babyfoot_team_edit" as any, { teamId: tm.id })}
+            style={cardMainBtn(theme)}
+            title={t("common.edit", "Éditer")}
+          >
+            {/* name row */}
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 8,
+                minWidth: 0,
+              }}
+            >
+              <div style={teamName(theme)}>{tm.name || "Équipe"}</div>
+
+              {/* small flags inline */}
+              <span
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 6,
+                  flex: "0 0 auto",
+                }}
+              >
+                <FlagIcon theme={theme} src={flagSrc} label={country} />
+                {isFR ? (
+                  <FlagIcon
+                    theme={theme}
+                    src={regionSrc}
+                    label={(tm.regionCode || "FR").split("-").pop() || "R"}
+                  />
+                ) : null}
+              </span>
+            </div>
+
+            {/* Avatars stack under name */}
+            <div
+              style={{
+                marginTop: 6,
+                display: "flex",
+                alignItems: "center",
+                minHeight: 22,
+              }}
+            >
+              {picked.length > 0 ? (
+                <div style={{ display: "flex", alignItems: "center" }}>
+                  {picked.map((p: any, idx: number) => {
+                    const src = resolveAvatar(p);
+                    const letter = (p?.name || "?").slice(0, 1).toUpperCase();
+                    return (
+                      <div
+                        key={String(p?.id)}
+                        title={p?.name || ""}
+                        style={avatarDot(theme, idx)}
+                      >
+                        {src ? (
+                          <img
+                            src={src}
+                            alt=""
+                            style={{
+                              width: "100%",
+                              height: "100%",
+                              objectFit: "cover",
+                              display: "block",
+                            }}
+                          />
+                        ) : (
+                          <span style={{ fontSize: 11, fontWeight: 900 }}>
+                            {letter}
+                          </span>
+                        )}
+                      </div>
+                    );
+                  })}
+
+                  {moreCount > 0 ? (
+                    <div style={morePill(theme)}>+{moreCount}</div>
+                  ) : null}
+                </div>
+              ) : (
+                <div style={{ opacity: 0.55, fontSize: 12 }}>
+                  {t("teams.no_players", "Aucun joueur")}
+                </div>
+              )}
+            </div>
+          </button>
+
+          {/* Right rail (players + trash) */}
+          <div
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              gap: 8,
+              flex: "0 0 auto",
+            }}
+          >
+            <div style={playersPill(theme)} title={t("teams.players", "Joueurs")}>
+              {ids.length} {t("common.players", "joueurs")}
+            </div>
+
+            {canDelete ? (
+              <button
+                onClick={() => handleDelete(tm.id)}
+                title={t("common.delete", "Supprimer")}
+                style={trashBtn(theme)}
+              >
+                🗑
+              </button>
+            ) : null}
+          </div>
+        </div>
+      </div>
+    );
+  };
+
 
   return (
     <div
@@ -228,194 +418,37 @@ export default function BabyFootTeams({ go }: Props) {
           gap: 10,
         }}
       >
-        {teams.length === 0 ? (
+        {customTeams.length === 0 ? (
           <div style={{ opacity: 0.75, fontSize: 13 }}>
             {t("teams.empty", "Aucune équipe. Clique sur “Créer”.")}
           </div>
         ) : null}
 
-        {teams.map((tm) => {
-          const country = safeUpper2(tm.countryCode || "FR");
-          const isFR = country === "FR";
-          const flagSrc = getCountryFlagSrc(country);
-          const regionSrc = isFR ? getFRRegionLogoSrc(tm.regionCode) : null;
-
-          const ids = Array.isArray(tm.playerIds) ? tm.playerIds : [];
-          const picked = ids
-            .map((id: string) => profilesById[String(id)])
-            .filter(Boolean)
-            .slice(0, 6);
-          const moreCount = Math.max(0, ids.length - picked.length);
-
-          return (
-            <div key={tm.id} style={cardWrap(theme)}>
-              <div style={cardGlow(theme)} />
-
-              <div
-                style={{
-                  display: "flex",
-                  gap: 12,
-                  alignItems: "center",
-                  position: "relative",
-                }}
-              >
-                {/* Logo */}
-                <div
-                  style={{
-                    position: "relative",
-                    width: 56,
-                    height: 56,
-                    flex: "0 0 auto",
-                  }}
-                >
-                  <div style={logoRing(theme)} />
-                  <div style={logoBox(theme)}>
-                    {tm.logoDataUrl ? (
-                      <img
-                        src={tm.logoDataUrl}
-                        alt=""
-                        style={{
-                          width: "100%",
-                          height: "100%",
-                          objectFit: "cover",
-                          display: "block",
-                        }}
-                      />
-                    ) : (
-                      <span
-                        style={{
-                          fontWeight: 1000,
-                          color: theme.primary,
-                          letterSpacing: 1,
-                        }}
-                      >
-                        {(tm.name || "TEAM").slice(0, 2).toUpperCase()}
-                      </span>
-                    )}
-                  </div>
-                </div>
-
-                {/* Main content (clickable => edit) */}
-                <button
-                  onClick={() =>
-                    go("babyfoot_team_edit" as any, { teamId: tm.id })
-                  }
-                  style={cardMainBtn(theme)}
-                  title={t("common.edit", "Éditer")}
-                >
-                  {/* name row */}
-                  <div
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: 8,
-                      minWidth: 0,
-                    }}
-                  >
-                    <div style={teamName(theme)}>{tm.name || "Équipe"}</div>
-
-                    {/* small flags inline */}
-                    <span
-                      style={{
-                        display: "inline-flex",
-                        alignItems: "center",
-                        gap: 6,
-                        flex: "0 0 auto",
-                      }}
-                    >
-                      <FlagIcon theme={theme} src={flagSrc} label={country} />
-                      {isFR ? (
-                        <FlagIcon
-                          theme={theme}
-                          src={regionSrc}
-                          label={(tm.regionCode || "FR").split("-").pop() || "R"}
-                        />
-                      ) : null}
-                    </span>
-                  </div>
-
-                  {/* Avatars stack under name */}
-                  <div
-                    style={{
-                      marginTop: 6,
-                      display: "flex",
-                      alignItems: "center",
-                      minHeight: 22,
-                    }}
-                  >
-                    {picked.length > 0 ? (
-                      <div style={{ display: "flex", alignItems: "center" }}>
-                        {picked.map((p: any, idx: number) => {
-                          const src = resolveAvatar(p);
-                          const letter = (p?.name || "?")
-                            .slice(0, 1)
-                            .toUpperCase();
-                          return (
-                            <div
-                              key={String(p?.id)}
-                              title={p?.name || ""}
-                              style={avatarDot(theme, idx)}
-                            >
-                              {src ? (
-                                <img
-                                  src={src}
-                                  alt=""
-                                  style={{
-                                    width: "100%",
-                                    height: "100%",
-                                    objectFit: "cover",
-                                    display: "block",
-                                  }}
-                                />
-                              ) : (
-                                <span style={{ fontSize: 11, fontWeight: 900 }}>
-                                  {letter}
-                                </span>
-                              )}
-                            </div>
-                          );
-                        })}
-                        {moreCount > 0 ? (
-                          <div style={morePill(theme)}>+{moreCount}</div>
-                        ) : null}
-                      </div>
-                    ) : (
-                      <div style={{ opacity: 0.55, fontSize: 12 }}>
-                        {t("teams.no_players", "Aucun joueur")}
-                      </div>
-                    )}
-                  </div>
-                </button>
-
-                {/* Right rail (players + trash) */}
-                <div
-                  style={{
-                    display: "flex",
-                    flexDirection: "column",
-                    gap: 8,
-                    flex: "0 0 auto",
-                  }}
-                >
-                  <div
-                    style={playersPill(theme)}
-                    title={t("teams.players", "Joueurs")}
-                  >
-                    {ids.length} {t("common.players", "joueurs")}
-                  </div>
-
-                  <button
-                    onClick={() => handleDelete(tm.id)}
-                    title={t("common.delete", "Supprimer")}
-                    style={trashBtn(theme)}
-                  >
-                    🗑
-                  </button>
-                </div>
-              </div>
+        
+        {defaultTeams.length > 0 ? (
+          <div
+            style={{
+              ...card(theme),
+              borderColor: "rgba(255,255,255,0.10)",
+              marginBottom: 12,
+            }}
+          >
+            <div
+              style={{
+                fontWeight: 1000,
+                letterSpacing: 0.8,
+                marginBottom: 10,
+              }}
+            >
+              {t("teams.defaults", "Équipes par défaut")}
             </div>
-          );
-        })}
-      </div>
+
+            {defaultTeams.map((tm) => renderTeamCard(tm, false))}
+          </div>
+        ) : null}
+
+        {customTeams.map((tm) => renderTeamCard(tm, true))}
+</div>
 
       {/* MODAL INFO */}
       {showInfo && (

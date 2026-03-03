@@ -38,3 +38,51 @@ export type StatsSnapshot = {
 
   updatedAt: number;
 };
+
+// ============================================
+// StatsHub Provider types — used by the unified Stats Center
+// (compatible with all sports)
+// ============================================
+
+export type StatsPeriod = "J" | "S" | "M" | "A" | "ALL" | "TOUT";
+
+export type GlobalStats = {
+  matches: number;
+  winRate: number; // 0..1
+  avgScore: number;
+  bestScore: number;
+  favoriteMode?: string;
+  avgDurationMs?: number;
+  avgTurns?: number;
+};
+
+export type PlayerStats = {
+  matches: number;
+  winRate: number; // 0..1
+  avgScore: number;
+  bestScore: number;
+  avgDurationMs?: number;
+  avgTurns?: number;
+};
+
+export type RankingEntry = {
+  playerId: string;
+  playerName: string;
+  value: number;
+};
+
+export type MatchHistoryEntry = {
+  id: string;
+  date: number;
+  players: string[];
+  winner?: string;
+  mode?: string;
+  status?: "finished" | "in_progress";
+};
+
+export type StatsProvider = {
+  getGlobalStats: () => GlobalStats;
+  getPlayerStats: (playerId: string) => PlayerStats;
+  getRankings: (period: StatsPeriod, sortBy: string) => RankingEntry[];
+  getHistory: (period: StatsPeriod) => MatchHistoryEntry[];
+};

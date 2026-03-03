@@ -268,9 +268,6 @@ import DiceFarkleConfig from "./pages/dice/DiceFarkleConfig";
 import Dice421Config from "./pages/dice/Dice421Config";
 import DicePokerConfig from "./pages/dice/DicePokerConfig";
 import DiceSoonPlay from "./pages/dice/DiceSoonPlay";
-import DiceFarklePlay from "./pages/dice/DiceFarklePlay";
-import Dice421Play from "./pages/dice/Dice421Play";
-import DicePokerPlay from "./pages/dice/DicePokerPlay";
 
 // Dev helper
 import { installHistoryProbe } from "./dev/devHistoryProbe";
@@ -2335,7 +2332,7 @@ try {
       (History as any)?.upsert?.(saved);
     } catch {}
 
-    go("molkky_stats_history", { focusMatchId: id });
+    go("statsHub", { tab: "history" });
   }
 
   /* --------------------------------------------
@@ -2748,7 +2745,9 @@ case "babyfoot_team_edit":
           activeSport === "petanque" ? (
             <PetanqueStatsShell store={store} go={go} />
           ) : activeSport === "molkky" ? (
-            <MolkkyStatsShell store={store} go={go} />
+            // ✅ IMPORTANT: même structure que DartsCounter (StatsShell -> StatsHub)
+            // Le contenu s'adapte dans StatsHub selon le sport actif.
+            <StatsShell store={store} go={go} />
           ) : activeSport === "babyfoot" ? (
             <BabyFootStatsShell store={store} go={go} />
           ) : activeSport === "pingpong" ? (

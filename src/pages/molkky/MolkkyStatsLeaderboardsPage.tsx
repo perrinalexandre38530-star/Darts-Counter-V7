@@ -311,17 +311,17 @@ export default function MolkkyStatsLeaderboardsPage({ store, go }: Props) {
 
   return (
     <div style={pageWrap}>
-      <div style={topRow}>
-        <BackDot onClick={() => go("molkky_stats")} />
-        <div style={title}>{t("leaderboards.title", "CLASSEMENTS")}</div>
-        <InfoDot
-          onClick={() =>
-            alert(
-              "Classements Mölkky (local)\n\nVisuel calqué sur Darts. Filtres période + tri par métrique."
-            )
-          }
-        />
-      </div>
+      {!embedded && (
+        <div style={topRow}>
+          <BackDot onClick={() => go("molkky_stats")} />
+          <div style={title}>{t("leaderboards.title", "CLASSEMENTS")}</div>
+          <InfoDot
+            onClick={() => alert(`Classements Mölkky (local)
+
+Visuel calqué sur Darts. Filtres période + tri par métrique.`)}
+          />
+        </div>
+      )}
 
       <div style={{ ...card, padding: 12, marginBottom: 10 }}>
         <div style={pillRow}>

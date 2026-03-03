@@ -13,6 +13,12 @@ import StatsPlayerDashboard, {
 } from "../components/StatsPlayerDashboard";
 import { useQuickStats } from "../hooks/useQuickStats";
 import HistoryPage from "./HistoryPage";
+
+// ✅ NEW: sport-specific embeds (keep StatsHub shell identical across sports)
+import MolkkyStatsPlayersPage from "./molkky/MolkkyStatsPlayersPage";
+import MolkkyStatsLocalsPage from "./molkky/MolkkyStatsLocalsPage";
+import MolkkyStatsLeaderboardsPage from "./molkky/MolkkyStatsLeaderboardsPage";
+
 import SparklinePro from "../components/SparklinePro";
 import ProfileAvatar from "../components/ProfileAvatar";
 import ProfileStarRing from "../components/ProfileStarRing";
@@ -3947,9 +3953,47 @@ go,
   // CSS shimmer
   useInjectStatsNameCss();
 
+  // ============================================================
+  // ✅ store snapshot (required by some sport-specific pages)
+  // StatsHub est historiquement appelé sans prop `store`, mais certaines pages
+  // (ex: Mölkky stats pages) attendent {profiles, activeProfileId, history}.
+  // On hydrate donc ici un snapshot léger depuis IDB.
+  // ============================================================
+  const [store, setStore] = React.useState<any>(() => ({ profiles: [], activeProfileId: null, history: [] }));
+
+  React.useEffect(() => {
+    let alive = true;
+
+    const refresh = async () => {
+      try {
+        const s: any = await loadStore<any>();
+        if (!alive) return;
+        if (s && typeof s === "object") {
+          setStore({
+            ...(s || {}),
+            profiles: Array.isArray((s as any).profiles) ? (s as any).profiles : [],
+            activeProfileId: (s as any).activeProfileId ?? null,
+            history: Array.isArray((s as any).history) ? (s as any).history : [],
+          });
+        }
+      } catch {
+        // keep fallback
+      }
+    };
+
+    refresh();
+    const onUpd = () => refresh();
+    window.addEventListener("dc-store-updated", onUpd as any);
+    return () => {
+      alive = false;
+      window.removeEventListener("dc-store-updated", onUpd as any);
+    };
+  }, []);
+
   
   const { sport } = useSport();
   const isDiceSport = String(sport || "").toLowerCase().includes("dice");
+  const isMolkkySport = String(sport || "").toLowerCase() === "molkky";
 const { enabled: devModeEnabled } = useDevMode();
   const [showRuntimeDebug, setShowRuntimeDebug] = React.useState(false);
   const STATS_DEBUG = devModeEnabled && showRuntimeDebug;
@@ -4062,22 +4106,29 @@ const modeDefs = React.useMemo(
   () =>
     isDiceSport
       ? [{ key: "dashboard", label: "Dashboard global" }]
-      : [
-{ key: "dashboard", label: "Dashboard global" },
-    { key: "dartsets", label: "Mes fléchettes" },
-    { key: "x01_multi", label: "X01 multi" },
-    { key: "x01_compare", label: "Comparateur X01" },
-    { key: "cricket", label: "Cricket" },
-    { key: "shanghai", label: "Shanghai" }, // ✅ NEW
-    { key: "killer", label: "Killer" },
-    { key: "golf", label: "Golf" },
-    { key: "batard", label: "BÂTARD" },
-    { key: "territories", label: "Territories" },
-    { key: "leaderboards", label: "Classements" },
-    { key: "history", label: "Historique" },
-  
-        ],
-  [isDiceSport]
+      : isMolkkySport
+        ? [
+            { key: "dashboard", label: "Dashboard global" },
+            { key: "players", label: "Joueur actif" },
+            { key: "locals", label: "Profils locaux" },
+            { key: "leaderboards", label: "Classements" },
+            { key: "history", label: "Historique" },
+          ]
+        : [
+            { key: "dashboard", label: "Dashboard global" },
+            { key: "dartsets", label: "Mes fléchettes" },
+            { key: "x01_multi", label: "X01 multi" },
+            { key: "x01_compare", label: "Comparateur X01" },
+            { key: "cricket", label: "Cricket" },
+            { key: "shanghai", label: "Shanghai" },
+            { key: "killer", label: "Killer" },
+            { key: "golf", label: "Golf" },
+            { key: "batard", label: "BÂTARD" },
+            { key: "territories", label: "Territories" },
+            { key: "leaderboards", label: "Classements" },
+            { key: "history", label: "Historique" },
+          ],
+  [isDiceSport, isMolkkySport]
 );
 
 const totalModes = modeDefs.length;
@@ -5465,7 +5516,21 @@ return (
 
           {/* ========= CONTENU PILOTÉ PAR LE CARROUSEL DE MODES ========= */}
 <React.Suspense fallback={<LazyFallback label="Chargement…" />}>
-  {currentMode === "dashboard" && (
+            {/* ✅ MÖLKKY: on garde EXACTEMENT la structure StatsHub, seul le contenu change */}
+            {isMolkkySport && currentMode === "dashboard" && (
+              <MolkkyStatsPlayersPage store={store} go={go} embedded />
+            )}
+            {isMolkkySport && currentMode === "players" && (
+              <MolkkyStatsPlayersPage store={store} go={go} embedded />
+            )}
+            {isMolkkySport && currentMode === "locals" && (
+              <MolkkyStatsLocalsPage store={store} go={go} embedded />
+            )}
+            {isMolkkySport && currentMode === "leaderboards" && (
+              <MolkkyStatsLeaderboardsPage store={store} go={go} embedded />
+            )}
+
+  {!isMolkkySport && currentMode === "dashboard" && (
     <>
       <div style={row}>
         {selectedPlayer ? (
@@ -6099,7 +6164,7 @@ return (
               </div>
             )}
 
-            {currentMode === "leaderboards" && (
+            {!isMolkkySport && currentMode === "leaderboards" && (
               <div style={card}>
                 <React.Suspense fallback={<LazyFallback label="Chargement Classements…" />}>
                   <StatsLeaderboardsTab
