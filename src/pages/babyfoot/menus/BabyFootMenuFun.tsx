@@ -166,12 +166,16 @@ export default function BabyFootMenuFun({ onBack, go }: Props) {
   function navigate(mode: ModeId) {
     if (mode === "classic9") {
       return go("babyfoot_config", {
+        presetCategory: "fun",
+        presetVariantId: "classic9",
         presetMode: "1v1",
         presetTarget: 9,
       });
     }
     if (mode === "golden_goal") {
       return go("babyfoot_config", {
+        presetCategory: "fun",
+        presetVariantId: "golden_goal",
         presetMode: "1v1",
         presetGoldenGoal: true,
         presetTarget: 1,
@@ -179,6 +183,8 @@ export default function BabyFootMenuFun({ onBack, go }: Props) {
     }
     if (mode === "handicap_2v1") {
       return go("babyfoot_config", {
+        presetCategory: "fun",
+        presetVariantId: "handicap_2v1",
         presetMode: "2v1",
         presetTarget: 10,
         presetHandicapA: 0,
@@ -187,6 +193,8 @@ export default function BabyFootMenuFun({ onBack, go }: Props) {
     }
     // sets_bo3
     return go("babyfoot_config", {
+      presetCategory: "fun",
+      presetVariantId: "sets_bo3",
       presetMode: "2v2",
       presetBestOf: 3,
       presetSetTarget: 5,

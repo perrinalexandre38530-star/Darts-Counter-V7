@@ -202,8 +202,11 @@ export default function GameSelect({ go }: Props) {
       id: "dicegame",
       label: "Dice Game",
       logo: logoDiceGame,
-      enabled: false,
-      onClick: () => {},
+      enabled: true,
+      onClick: () => {
+        setSport("dicegame" as any);
+        go(GAMES_ROUTE);
+      },
     },
     {
       id: "foot",

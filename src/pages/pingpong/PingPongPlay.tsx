@@ -176,6 +176,52 @@ function splitNames(s: string): string[] {
     .slice(0, 4);
 }
 
+type TeamKey = "gold" | "pink" | "blue" | "green" | "unknown";
+
+function teamKeyFromLabel(label: string): TeamKey {
+  const s = String(label || "").toLowerCase();
+  if (s.includes("gold")) return "gold";
+  if (s.includes("pink")) return "pink";
+  if (s.includes("blue")) return "blue";
+  if (s.includes("green")) return "green";
+  return "unknown";
+}
+
+function teamColor(key: TeamKey) {
+  if (key === "gold") return "#f7c85c";
+  if (key === "pink") return "#ff4fa2";
+  if (key === "blue") return "#4fc3ff";
+  if (key === "green") return "#6dff7c";
+  return "#9aa3b2";
+}
+
+function teamGlyph(key: TeamKey) {
+  if (key === "gold") return "G";
+  if (key === "pink") return "P";
+  if (key === "blue") return "B";
+  if (key === "green") return "G";
+  return "T";
+}
+
+function teamLogoCircleStyle(key: TeamKey, sizePx: number): React.CSSProperties {
+  const c = teamColor(key);
+  return {
+    width: sizePx,
+    height: sizePx,
+    borderRadius: 999,
+    display: "grid",
+    placeItems: "center",
+    fontWeight: 1400 as any,
+    letterSpacing: 1,
+    color: "rgba(255,255,255,0.92)",
+    background: `radial-gradient(circle at 30% 25%, rgba(255,255,255,0.35), rgba(255,255,255,0.06) 42%, rgba(0,0,0,0.10) 70%),
+                 radial-gradient(circle at 60% 70%, ${hexToRgba(c, 0.28)}, rgba(0,0,0,0) 60%)`,
+    border: `2px solid ${hexToRgba(c, 0.65)}`,
+    boxShadow: `0 12px 28px rgba(0,0,0,0.40), 0 0 22px ${hexToRgba(c, 0.28)}`,
+    textShadow: "0 2px 10px rgba(0,0,0,0.55)",
+    userSelect: "none",
+  };
+}
 function cssVarOr(fallback: string, varName: string) {
   return `var(${varName}, ${fallback})`;
 }
@@ -653,6 +699,7 @@ export default function PingPongPlay({ go, onFinish }: Props) {
   );
   const uiMode = String((st as any).uiMode ?? (st as any).mode ?? "match_1v1");
   const is2v2 = uiMode.includes("2v2");
+  const isTeams = is2v2;
   const is2v1 = uiMode.includes("2v1");
   const isTournante = uiMode.includes("tournante") || String((st as any).mode) === "tournante";
 
@@ -678,6 +725,10 @@ export default function PingPongPlay({ go, onFinish }: Props) {
       "—"
     );
   }, [isTournante, st, profileB]);
+
+  // Team key (pour logos Team Gold/Pink en modes équipes)
+  const teamKeyA = React.useMemo(() => teamKeyFromLabel(nameA), [nameA]);
+  const teamKeyB = React.useMemo(() => teamKeyFromLabel(nameB), [nameB]);
 
   const ptsA = Number((st as any).pointsA ?? 0);
 
@@ -787,6 +838,24 @@ export default function PingPongPlay({ go, onFinish }: Props) {
 
   const sideAPlayers = React.useMemo(() => splitNames(nameA), [nameA]);
   const sideBPlayers = React.useMemo(() => splitNames(nameB), [nameB]);
+
+  const serverProfileA = React.useMemo(() => {
+    if (!isTeams) return null;
+    if (!currentServe) return null;
+    if (currentServe.side !== "A") return null;
+    const idx = Number(currentServe.idx ?? 0);
+    const id = teamAIds?.[idx];
+    return resolveProfile(profilesList, id, sideAPlayers?.[idx] || String((st as any).sideA ?? ""));
+  }, [isTeams, currentServe, teamAIds, profilesList, sideAPlayers, st]);
+
+  const serverProfileB = React.useMemo(() => {
+    if (!isTeams) return null;
+    if (!currentServe) return null;
+    if (currentServe.side !== "B") return null;
+    const idx = Number(currentServe.idx ?? 0);
+    const id = teamBIds?.[idx];
+    return resolveProfile(profilesList, id, sideBPlayers?.[idx] || String((st as any).sideB ?? ""));
+  }, [isTeams, currentServe, teamBIds, profilesList, sideBPlayers, st]);
 
   const serverLabel = React.useMemo(() => {
     if (!currentServe) return "—";
@@ -1102,7 +1171,9 @@ const infoDotContent = (
         filter: "blur(0.3px)",
       }}
     >
-      {profileA ? (
+      {isTeams ? (
+        <div style={teamLogoCircleStyle(teamKeyA as any, 240)}>{teamGlyph(teamKeyA as any)}</div>
+      ) : profileA ? (
         <ProfileAvatar
           profile={profileA as any}
           label={nameA}
@@ -1138,7 +1209,9 @@ const infoDotContent = (
         filter: "blur(0.3px)",
       }}
     >
-      {profileB ? (
+      {isTeams ? (
+        <div style={teamLogoCircleStyle(teamKeyB as any, 240)}>{teamGlyph(teamKeyB as any)}</div>
+      ) : profileB ? (
         <ProfileAvatar
           profile={profileB as any}
           label={nameB}
@@ -1177,7 +1250,9 @@ const infoDotContent = (
                 border: "1px solid rgba(255,255,255,0.18)",
               }}
             >
-              {profileA ? (
+              {isTeams ? (
+                <div style={teamLogoCircleStyle(teamKeyA as any, 62)}>{teamGlyph(teamKeyA as any)}</div>
+              ) : profileA ? (
                 <ProfileAvatar profile={profileA as any} label={nameA} size={62} showStars={false} />
               ) : (
                 <div
@@ -1230,7 +1305,14 @@ const infoDotContent = (
             >
               <span>{nameA}</span>
               {serverSide === "A" ? (
-                <span style={{ marginLeft: 6, fontSize: 12, opacity: 0.95 }} title="Service">🏓</span>
+                <span style={{ marginLeft: 6, display: "inline-flex", alignItems: "center", gap: 6 }} title="Service">
+                  <span style={{ fontSize: 12, opacity: 0.95 }}>🏓</span>
+                  {isTeams && serverProfileA ? (
+                    <span style={{ width: 18, height: 18, borderRadius: 999, overflow: "hidden", border: "1px solid rgba(255,255,255,0.18)" }}>
+                      <ProfileAvatar profile={serverProfileA as any} label={nameA} size={18} showStars={false} />
+                    </span>
+                  ) : null}
+                </span>
               ) : null}
             </div>
 
@@ -1320,7 +1402,9 @@ const infoDotContent = (
                 border: "1px solid rgba(255,255,255,0.18)",
               }}
             >
-              {profileB ? (
+              {isTeams ? (
+                <div style={teamLogoCircleStyle(teamKeyB as any, 62)}>{teamGlyph(teamKeyB as any)}</div>
+              ) : profileB ? (
                 <ProfileAvatar profile={profileB as any} label={nameB} size={62} showStars={false} />
               ) : (
                 <div
@@ -1373,7 +1457,14 @@ const infoDotContent = (
             >
               <span>{nameB}</span>
               {serverSide === "B" ? (
-                <span style={{ marginLeft: 6, fontSize: 12, opacity: 0.95 }} title="Service">🏓</span>
+                <span style={{ marginLeft: 6, display: "inline-flex", alignItems: "center", gap: 6 }} title="Service">
+                  <span style={{ fontSize: 12, opacity: 0.95 }}>🏓</span>
+                  {isTeams && serverProfileB ? (
+                    <span style={{ width: 18, height: 18, borderRadius: 999, overflow: "hidden", border: "1px solid rgba(255,255,255,0.18)" }}>
+                      <ProfileAvatar profile={serverProfileB as any} label={nameB} size={18} showStars={false} />
+                    </span>
+                  ) : null}
+                </span>
               ) : null}
             </div>
 

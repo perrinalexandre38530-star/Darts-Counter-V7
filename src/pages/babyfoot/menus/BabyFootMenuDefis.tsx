@@ -146,22 +146,29 @@ export default function BabyFootMenuDefis({ onBack, go }: Props) {
 
   function navigate(id: DefiId) {
     if (id === "classic9") {
-      return go("babyfoot_config", { presetMode: "1v1", presetTarget: 9, presetCategory: "defis" });
+      return go("babyfoot_config", {
+        presetCategory: "defis",
+        presetVariantId: "classic9",
+        presetMode: "1v1",
+        presetTarget: 9,
+      });
     }
     if (id === "glutch3") {
       return go("babyfoot_config", {
+        presetCategory: "defis",
+        presetVariantId: "glutch3",
         presetMode: "1v1",
         presetTarget: 3,
         presetTimerSec: 90,
-        presetCategory: "defis",
       });
     }
     // endurance
     return go("babyfoot_config", {
+      presetCategory: "defis",
+      presetVariantId: "endurance",
       presetMode: "2v2",
       presetBestOf: 5,
       presetSetTarget: 3,
-      presetCategory: "defis",
     });
   }
 

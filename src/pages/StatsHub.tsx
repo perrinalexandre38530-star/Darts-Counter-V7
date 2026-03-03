@@ -2,6 +2,7 @@
 // src/pages/StatsHub.tsx — Stats + Historique + Training (v2 complet)
 // ============================================
 import React from "react";
+import { useSport } from "../contexts/SportContext";
 import { History } from "../lib/history";
 import { loadStore } from "../lib/storage";
 import { rebuildStatsToStore } from "../lib/stats/rebuildStatsToStore";
@@ -49,6 +50,66 @@ function toArrLoc<T,>(v: any): T[] {
   return [];
 }
 
+
+// ---- Sport adapters (minimal) ----
+type DiceUnified = {
+  sport?: string;
+  mode?: string;
+  players?: Array<{ id: string; name: string; win?: boolean; score?: number }>;
+  global?: { diceCount?: number; targetScore?: number };
+};
+
+function buildDiceDashboardForPlayer(playerId: string, playerName: string, rows: any[]): PlayerDashboardStats {
+  const mine = (rows || []).filter((r: any) =>
+    (r?.payload?.stats?.players || []).some((p: any) => p?.id === playerId)
+  );
+
+  const sessions = mine.length || 0;
+  const wins = mine.filter((r: any) => (r?.payload?.stats?.players || []).some((p: any) => p?.id === playerId && p?.win)).length;
+  const winRatePct = sessions ? Math.round((wins / sessions) * 100) : 0;
+
+  const scores = mine.map((r: any) => {
+    const p = (r?.payload?.stats?.players || []).find((x: any) => x?.id === playerId);
+    return Number(p?.score ?? 0) || 0;
+  });
+
+  const bestVisit = scores.length ? Math.max(...scores) : 0;
+  const avgScore = scores.length ? scores.reduce((a: number, b: number) => a + b, 0) / scores.length : 0;
+
+  // On mappe "avg3Overall" vers une moyenne lisible (score moyen), on conserve le champ pour l'UI identique.
+  const avg3Overall = Number.isFinite(avgScore) ? Math.round(avgScore * 10) / 10 : 0;
+
+  const evolution = mine
+    .slice(0, 30)
+    .reverse()
+    .map((r: any) => {
+      const date = new Date(r?.createdAt || r?.updatedAt || Date.now());
+      return { date: date.toISOString().slice(0, 10), avg3: avg3Overall };
+    });
+
+  // Distribution: on utilise avgScore pour ranger dans des buckets "darts-like" sans crasher l'UI.
+  const dist: any = { "0-59": 0, "60-99": 0, "100+": 0, "140+": 0, "180": 0 };
+  mine.forEach((r: any) => {
+    const p = (r?.payload?.stats?.players || []).find((x: any) => x?.id === playerId);
+    const sc = Number(p?.score ?? 0) || 0;
+    if (sc >= 180) dist["180"]++;
+    else if (sc >= 140) dist["140+"]++;
+    else if (sc >= 100) dist["100+"]++;
+    else if (sc >= 60) dist["60-99"]++;
+    else dist["0-59"]++;
+  });
+
+  return {
+    playerId,
+    playerName,
+    avg3Overall,
+    bestVisit,
+    winRatePct,
+    evolution,
+    distribution: dist,
+    sessionsByMode: { "Dice Duel": sessions },
+  };
+}
 // ✅ KEEP en import normal (léger / utilisé souvent)
 import StatsX01Compare from "./StatsX01Compare";
 import StatsTrainingSummary from "../components/stats/StatsTrainingSummary";
@@ -3874,7 +3935,8 @@ function TrainingHitsBySegment({ sessions }: TrainingHitsBySegmentProps) {
 }
 
 export default function StatsHub({
-  go,
+
+go,
   tab, // "stats" | "training" | "history"
   memHistory,
   initialPlayerId,
@@ -3885,7 +3947,10 @@ export default function StatsHub({
   // CSS shimmer
   useInjectStatsNameCss();
 
-  const { enabled: devModeEnabled } = useDevMode();
+  
+  const { sport } = useSport();
+  const isDiceSport = String(sport || "").toLowerCase().includes("dice");
+const { enabled: devModeEnabled } = useDevMode();
   const [showRuntimeDebug, setShowRuntimeDebug] = React.useState(false);
   const STATS_DEBUG = devModeEnabled && showRuntimeDebug;
 
@@ -3994,8 +4059,11 @@ const profile = cp?.profile ?? null;
 
 // -- 1) Carrousel des modes --
 const modeDefs = React.useMemo(
-  () => [
-    { key: "dashboard", label: "Dashboard global" },
+  () =>
+    isDiceSport
+      ? [{ key: "dashboard", label: "Dashboard global" }]
+      : [
+{ key: "dashboard", label: "Dashboard global" },
     { key: "dartsets", label: "Mes fléchettes" },
     { key: "x01_multi", label: "X01 multi" },
     { key: "x01_compare", label: "Comparateur X01" },
@@ -4007,8 +4075,9 @@ const modeDefs = React.useMemo(
     { key: "territories", label: "Territories" },
     { key: "leaderboards", label: "Classements" },
     { key: "history", label: "Historique" },
-  ],
-  []
+  
+        ],
+  [isDiceSport]
 );
 
 const totalModes = modeDefs.length;
@@ -4179,6 +4248,17 @@ function recordToNormalizedFallback(r: any): any | null {
     updatedAt: r.updatedAt ?? 0,
   };
 }
+
+
+// ---- Dice rows (for DiceGame sport) ----
+const diceRows = React.useMemo(() => {
+  const arr = Array.isArray(records) ? records : [];
+  return arr.filter((r: any) => {
+    const k = String(r?.kind ?? r?.payload?.kind ?? r?.summary?.kind ?? "").toLowerCase();
+    const sp = String(r?.sport ?? r?.payload?.sport ?? "").toLowerCase();
+    return k.includes("dice") || sp.includes("dice");
+  });
+}, [records?.length]);
 
 const nmFromRecordsFallback = React.useMemo(() => {
   const arr = Array.isArray(records) ? records : [];
@@ -4537,6 +4617,13 @@ React.useEffect(() => {
 
   const compute = () => {
     try {
+      // ✅ Sport DiceGame: on garde EXACTEMENT la même UI StatsHub, mais on mappe les métriques.
+      if (isDiceSport) {
+        const dashDice = buildDiceDashboardForPlayer(pid, pname, diceRows);
+        if (!cancelled) setLiveDashboard(dashDice as any);
+        return;
+      }
+
       const baseDash = buildDashboardFromNormalized(pid, pname, nmEffective);
       const dash = applyX01AggToDashboard(baseDash, pid, pname);
       if (!cancelled) setLiveDashboard(dash as any);
@@ -4581,7 +4668,9 @@ const computedDashboard = React.useMemo(() => {
 }, [selectedPlayer?.id, selectedPlayer?.name, nmEffective.length, applyX01AggToDashboard]);
 
 // ✅ Dashboard final à passer au composant (priorité: cache instant -> live recalcul -> memo)
-const dashboardToShow = (cachedDashboard ?? liveDashboard ?? computedDashboard) as
+const dashboardToShow = (isDiceSport
+  ? (liveDashboard ?? computedDashboard)
+  : (cachedDashboard ?? liveDashboard ?? computedDashboard)) as
   | PlayerDashboardStats
   | null;
 

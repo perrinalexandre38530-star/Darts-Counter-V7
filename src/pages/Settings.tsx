@@ -1722,7 +1722,7 @@ export default function Settings({ go }: Props) {
       badminton: false,
       basket: false,
       cornhole: false,
-      dicegame: false,
+      dicegame: true,
       foot: false,
       rugby: false,
       volley: false,

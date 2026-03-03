@@ -39,6 +39,12 @@ export type BabyFootState = {
   teamA: string;
   teamB: string;
 
+  // ✅ optional: link to Teams catalog (Profils > Teams)
+  teamARefId?: string | null;
+  teamBRefId?: string | null;
+  teamALogoDataUrl?: string | null;
+  teamBLogoDataUrl?: string | null;
+
   // match format
   mode: BabyFootMode;
   teamAPlayers: number;
@@ -123,6 +129,11 @@ export function defaultBabyFootState(partial?: Partial<BabyFootState>): BabyFoot
     teamA: "TEAM A",
     teamB: "TEAM B",
 
+    teamARefId: null,
+    teamBRefId: null,
+    teamALogoDataUrl: null,
+    teamBLogoDataUrl: null,
+
     mode: "1v1",
     teamAPlayers: 1,
     teamBPlayers: 1,
@@ -183,6 +194,11 @@ function migrate(raw: any): BabyFootState {
 
     teamA: raw.teamA ?? "TEAM A",
     teamB: raw.teamB ?? "TEAM B",
+
+    teamARefId: raw.teamARefId ?? null,
+    teamBRefId: raw.teamBRefId ?? null,
+    teamALogoDataUrl: raw.teamALogoDataUrl ?? null,
+    teamBLogoDataUrl: raw.teamBLogoDataUrl ?? null,
 
     mode: raw.mode ?? "1v1",
     teamAPlayers:
@@ -577,9 +593,27 @@ export function setMode(mode: BabyFootMode) {
   return next;
 }
 
-export function setTeams(teamA: string, teamB: string) {
+export function setTeams(
+  teamA: string,
+  teamB: string,
+  opt?: {
+    teamARefId?: string | null;
+    teamBRefId?: string | null;
+    teamALogoDataUrl?: string | null;
+    teamBLogoDataUrl?: string | null;
+  }
+) {
   const s = loadBabyFootState();
-  const next: BabyFootState = { ...s, teamA, teamB, updatedAt: Date.now() };
+  const next: BabyFootState = {
+    ...s,
+    teamA,
+    teamB,
+    teamARefId: opt?.teamARefId ?? (s as any).teamARefId ?? null,
+    teamBRefId: opt?.teamBRefId ?? (s as any).teamBRefId ?? null,
+    teamALogoDataUrl: opt?.teamALogoDataUrl ?? (s as any).teamALogoDataUrl ?? null,
+    teamBLogoDataUrl: opt?.teamBLogoDataUrl ?? (s as any).teamBLogoDataUrl ?? null,
+    updatedAt: Date.now(),
+  };
   saveBabyFootState(next);
   return next;
 }

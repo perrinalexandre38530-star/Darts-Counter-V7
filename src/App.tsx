@@ -254,6 +254,23 @@ import MolkkyPlay from "./pages/molkky/MolkkyPlay";
 import MolkkyStatsShell from "./pages/molkky/MolkkyStatsShell";
 import MolkkyStatsHistoryPage from "./pages/molkky/MolkkyStatsHistoryPage";
 import MolkkyStatsLeaderboardsPage from "./pages/molkky/MolkkyStatsLeaderboardsPage";
+import MolkkyStatsPlayersPage from "./pages/molkky/MolkkyStatsPlayersPage";
+import MolkkyStatsLocalsPage from "./pages/molkky/MolkkyStatsLocalsPage";
+
+// ✅ NEW: DICE GAME flow (LOCAL)
+import DiceHome from "./pages/dice/DiceHome";
+import DiceMenuGames from "./pages/dice/DiceMenuGames";
+import DiceConfig from "./pages/dice/DiceConfig";
+import DicePlay from "./pages/dice/DicePlay";
+import DiceYamsConfig from "./pages/dice/DiceYamsConfig";
+import DiceYamsPlay from "./pages/dice/DiceYamsPlay";
+import DiceFarkleConfig from "./pages/dice/DiceFarkleConfig";
+import Dice421Config from "./pages/dice/Dice421Config";
+import DicePokerConfig from "./pages/dice/DicePokerConfig";
+import DiceSoonPlay from "./pages/dice/DiceSoonPlay";
+import DiceFarklePlay from "./pages/dice/DiceFarklePlay";
+import Dice421Play from "./pages/dice/Dice421Play";
+import DicePokerPlay from "./pages/dice/DicePokerPlay";
 
 // Dev helper
 import { installHistoryProbe } from "./dev/devHistoryProbe";
@@ -313,7 +330,7 @@ if (import.meta.env.DEV) installHistoryProbe();
 // ✅ START GAME / SPORT (persisted) + runtime switch
 // =============================================================
 const START_GAME_KEY = "dc-start-game";
-type StartGameId = "darts" | "petanque" | "pingpong" | "babyfoot";
+type StartGameId = "darts" | "petanque" | "pingpong" | "babyfoot" | "molkky" | "dicegame";
 
 // =============================================================
 // ✅ SAFE MERGE — profils (évite crash au boot)
@@ -2321,6 +2338,104 @@ try {
     go("molkky_stats_history", { focusMatchId: id });
   }
 
+  /* --------------------------------------------
+      pushDiceHistory (FIN DE MATCH DICE)
+      - écrit dans store.history + History (IDB)
+      - redirige vers l'historique global (à défaut de stats dédiées)
+  -------------------------------------------- */
+  function pushDiceHistory(m: any) {
+    const now = Date.now();
+    const id = (m as any)?.id || (m as any)?.matchId || `dice-${now}-${Math.random().toString(36).slice(2, 8)}`;
+
+    const rawPlayers = (m as any)?.players ?? (m as any)?.payload?.players ?? [];
+    const players = rawPlayers.map((p: any) => {
+      const prof = (store.profiles || []).find((pr) => pr.id === p?.id);
+      return {
+        id: p?.id,
+        name: p?.name ?? prof?.name ?? "",
+        avatarDataUrl: p?.avatarDataUrl ?? prof?.avatarDataUrl ?? null,
+      };
+    });
+
+    const cfg = (m as any)?.payload?.config ?? (m as any)?.config ?? null;
+    const summary = (m as any)?.summary ?? (m as any)?.payload?.summary ?? null;
+    const durationMs = Number((m as any)?.finishedAt ?? 0) && Number((m as any)?.createdAt ?? 0)
+      ? Number((m as any)?.finishedAt) - Number((m as any)?.createdAt)
+      : Number((summary as any)?.durationMs ?? 0) || 0;
+
+    const unifiedStats = (() => {
+      try {
+        const targetScore = Number(cfg?.targetScore ?? 100) || 100;
+        const diceCount = Number(cfg?.diceCount ?? 2) || 2;
+        const setsToWin = Number(cfg?.sets ?? 1) || 1;
+        const winnerId = (m as any)?.winnerId || (m as any)?.payload?.winnerId || null;
+
+        return {
+          sport: "dicegame",
+          mode: "dicegame",
+          players: (players || []).map((pp: any) => {
+            const rp = rawPlayers?.find((x: any) => x?.id === pp.id) ?? {};
+            return {
+              id: pp.id,
+              name: pp.name,
+              win: winnerId ? pp.id === winnerId : false,
+              score: Number(rp?.score ?? 0) || 0,
+              special: {
+                setsWon: Number(rp?.setsWon ?? 0) || 0,
+              },
+            };
+          }),
+          global: {
+            targetScore,
+            diceCount,
+            setsToWin,
+            duration: durationMs,
+          },
+        };
+      } catch {
+        return { sport: "dicegame", mode: "dicegame", players: [], global: {} };
+      }
+    })();
+
+    const saved: any = {
+      id,
+      kind: (m as any)?.kind || "dicegame",
+      sport: "dicegame",
+      status: "finished",
+      players,
+      winnerId: (m as any)?.winnerId || (m as any)?.payload?.winnerId || null,
+      createdAt: (m as any)?.createdAt || now,
+      updatedAt: now,
+      summary,
+      payload: { ...(m as any), players, summary, kind: (m as any)?.kind || "dicegame", sport: "dicegame", stats: unifiedStats },
+    };
+
+    try {
+      void History.upsert(saved);
+    } catch {}
+
+    setStore((s) => {
+      const list = [...((s as any).history ?? [])];
+      const i = list.findIndex((r: any) => r.id === saved.id);
+      if (i >= 0) list[i] = saved;
+      else list.unshift(saved);
+      const next = { ...(s as any), history: list } as any;
+      queueMicrotask(() => saveStore(next));
+      return next;
+    });
+
+    try {
+      (History as any)?.upsert?.(saved);
+    } catch {}
+
+    // Pas encore de stats dédiées Dice → on ouvre l'historique global (ou Games)
+    try {
+      go("history");
+    } catch {
+      go("games");
+    }
+  }
+
   const historyForUI = React.useMemo(
     () => (store.history || []).map((r: any) => withAvatars(r, store.profiles || [])),
     [store.history, store.profiles]
@@ -2389,6 +2504,8 @@ try {
             <PetanqueHome store={store} update={update} go={go} />
           ) : activeSport === "molkky" ? (
             <MolkkyHome store={store} update={update} go={go} />
+          ) : activeSport === "dicegame" ? (
+            <DiceHome store={store} update={update} go={go} />
           ) : activeSport === "babyfoot" ? (
             <BabyFootHome store={store} update={update} go={go} />
           ) : activeSport === "pingpong" ? (
@@ -2405,6 +2522,8 @@ try {
             <PetanqueMenuGames go={go} />
           ) : activeSport === "molkky" ? (
             <MolkkyMenuGames go={go} />
+          ) : activeSport === "dicegame" ? (
+            <DiceMenuGames go={go} />
           ) : activeSport === "babyfoot" ? (
             <BabyFootMenuGames go={go} />
           ) : activeSport === "pingpong" ? (
@@ -2492,6 +2611,43 @@ case "babyfoot_team_edit":
         page = <MolkkyPlay go={go} params={routeParams} onFinish={(m: any) => pushMolkkyHistory(m)} />;
         break;
 
+      // ✅ NEW: DICE flow (LOCAL)
+      case "dice_menu":
+        page = <DiceMenuGames go={go} />;
+        break;
+
+      case "dice_config":
+        page = <DiceConfig go={go} params={routeParams} store={store} />;
+        break;
+
+      case "dice_play":
+        page = <DicePlay go={go} params={routeParams} onFinish={(m: any) => pushDiceHistory(m)} />;
+        break;
+
+      case "dice_yams_config":
+        page = <DiceYamsConfig go={go} params={routeParams} store={store} />;
+        break;
+
+      case "dice_yams_play":
+        page = <DiceYamsPlay go={go} params={routeParams} onFinish={(m: any) => pushDiceHistory(m)} />;
+        break;
+
+      case "dice_farkle_config":
+        page = <DiceFarkleConfig go={go} params={routeParams} store={store} />;
+        break;
+
+      case "dice_421_config":
+        page = <Dice421Config go={go} params={routeParams} store={store} />;
+        break;
+
+      case "dice_poker_config":
+        page = <DicePokerConfig go={go} params={routeParams} store={store} />;
+        break;
+
+      case "dice_soon_play":
+        page = <DiceSoonPlay go={go} params={routeParams} />;
+        break;
+
       // ✅ MÖLKKY — STATS ROUTES
       case "molkky_stats":
         page = <MolkkyStatsShell store={store} go={go} />;
@@ -2503,6 +2659,14 @@ case "babyfoot_team_edit":
 
       case "molkky_stats_leaderboards":
         page = <MolkkyStatsLeaderboardsPage store={store} go={go} params={routeParams} />;
+        break;
+
+      case "molkky_stats_players":
+        page = <MolkkyStatsPlayersPage store={store} go={go} params={routeParams} />;
+        break;
+
+      case "molkky_stats_locals":
+        page = <MolkkyStatsLocalsPage store={store} go={go} params={routeParams} />;
         break;
 
       // ✅ NEW: Teams Pétanque (CRUD local)

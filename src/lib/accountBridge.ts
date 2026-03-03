@@ -79,10 +79,12 @@ export function ensureOnlineMirrorProfile(store: any, user: any, onlineProfile?:
   const merged: any = { ...active };
 
   // fusion "Mon profil" depuis onlineProfile
+  // ✅ IMPORTANT: ne JAMAIS écraser un profil local déjà renseigné.
+  // Sinon, au reboot on se retrouve avec le dernier avatar online partout.
   if (onlineProfile) {
-    merged.name = onlineProfile?.nickname || merged.name;
-    merged.avatarUrl = onlineProfile?.avatarUrl || merged.avatarUrl;
-    merged.country = onlineProfile?.country || merged.country;
+    merged.name = merged.name || onlineProfile?.nickname || merged.name;
+    merged.avatarUrl = merged.avatarUrl || onlineProfile?.avatarUrl || merged.avatarUrl;
+    merged.country = merged.country || onlineProfile?.country || merged.country;
   }
 
   // fusion depuis oldMirror (si existait)
@@ -150,9 +152,10 @@ export function ensureLocalProfileForOnlineUser(store: any, user: any, onlinePro
         ...keep,
         ...(onlineProfile
           ? {
-              name: onlineProfile?.nickname || keep?.name,
-              avatarUrl: onlineProfile?.avatarUrl || keep?.avatarUrl,
-              country: onlineProfile?.country || keep?.country,
+              // ✅ keep local first
+              name: keep?.name || onlineProfile?.nickname || keep?.name,
+              avatarUrl: keep?.avatarUrl || onlineProfile?.avatarUrl || keep?.avatarUrl,
+              country: keep?.country || onlineProfile?.country || keep?.country,
             }
           : null),
       },
@@ -179,9 +182,10 @@ export function ensureLocalProfileForOnlineUser(store: any, user: any, onlinePro
         ...byPI,
         ...(onlineProfile
           ? {
-              name: onlineProfile?.nickname || byPI?.name,
-              avatarUrl: onlineProfile?.avatarUrl || byPI?.avatarUrl,
-              country: onlineProfile?.country || byPI?.country,
+              // ✅ keep local first
+              name: byPI?.name || onlineProfile?.nickname || byPI?.name,
+              avatarUrl: byPI?.avatarUrl || onlineProfile?.avatarUrl || byPI?.avatarUrl,
+              country: byPI?.country || onlineProfile?.country || byPI?.country,
             }
           : null),
       },
@@ -205,9 +209,10 @@ export function ensureLocalProfileForOnlineUser(store: any, user: any, onlinePro
         ...active,
         ...(onlineProfile
           ? {
-              name: onlineProfile?.nickname || active?.name,
-              avatarUrl: onlineProfile?.avatarUrl || active?.avatarUrl,
-              country: onlineProfile?.country || active?.country,
+              // ✅ keep local first
+              name: active?.name || onlineProfile?.nickname || active?.name,
+              avatarUrl: active?.avatarUrl || onlineProfile?.avatarUrl || active?.avatarUrl,
+              country: active?.country || onlineProfile?.country || active?.country,
             }
           : null),
       },

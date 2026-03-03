@@ -1,13 +1,11 @@
 // ============================================
-// src/pages/StatsShell.tsx
+// src/pages/dice/DiceStatsShell.tsx
 // Menu Stats — style identique à Games / Training / Profils
-// - Carte 1 : Stats joueur actif (vue complète : Général / Local / Online / Training / Cricket)
-// - Carte 2 : Stats profils locaux (multi-joueurs)
-// - Carte 3 : CLASSEMENTS globaux
-// - Carte 4 : Training (stats sessions d’entraînement)
-// - Carte 5 : Online
-// - Carte 6 : Historique
-// - Carte 7 : Sync & Partage (exports / imports / cloud / device-à-device)
+// - Carte 1 : Stats joueur actif (DICE)
+// - Carte 2 : Stats profils locaux (DICE)
+// - Carte 3 : CLASSEMENTS globaux (DICE)
+// - Carte 4 : Historique (DICE)
+// - Carte 5 : Sync & Partage (exports / imports / cloud / device-à-device)
 // - Bouton "i" : popin d'aide (légère aura animée comme Games)
 // ============================================
 import React from "react";
@@ -16,6 +14,7 @@ import { useTheme } from "../../contexts/ThemeContext";
 import { useLang } from "../../contexts/LangContext";
 import ProfileAvatar from "../../components/ProfileAvatar";
 import ProfileStarRing from "../../components/ProfileStarRing";
+import { computeDiceSummary } from "../../lib/diceStats";
 
 type Props = {
   store: Store;
@@ -26,13 +25,11 @@ type InfoMode =
   | "active"
   | "locals"
   | "leaderboards"
-  | "training"
-  | "online"
   | "history"
   | "sync"
   | null;
 
-export default function StatsShell({ store, go }: Props) {
+export default function DiceStatsShell({ store, go }: Props) {
   const { theme } = useTheme();
   const { t } = useLang();
 
@@ -41,9 +38,15 @@ export default function StatsShell({ store, go }: Props) {
   const active =
     profiles.find((p) => p.id === activeProfileId) ?? profiles[0] ?? null;
 
+  // summary (si tu l'utilises pour badges futurs) — on le conserve
+  const dice = React.useMemo(
+    () => computeDiceSummary((store as any)?.history || []),
+    [(store as any)?.history]
+  );
+
   const playerLabel = active
-    ? t("statsShell.players.titleActivePrefix", "STATS ") + active.name
-    : t("statsShell.players.titleDefault", "STATS JOUEURS");
+    ? t("statsShell.players.titleActivePrefix", "DICE — STATS ") + active.name
+    : t("statsShell.players.titleDefault", "DICE — STATS");
 
   const [infoMode, setInfoMode] = React.useState<InfoMode>(null);
 
@@ -214,7 +217,7 @@ export default function StatsShell({ store, go }: Props) {
             >
               {t(
                 "statsShell.subtitle",
-                "Analyse tes performances, ton training, ton historique et synchronise tes stats."
+                "Analyse tes performances, ton historique et synchronise tes stats."
               )}
             </div>
           </div>
@@ -260,12 +263,9 @@ export default function StatsShell({ store, go }: Props) {
           theme={theme}
           onClick={() => {
             if (!active) return;
-            go("statsHub", {
-              tab: "stats",
-              mode: "active",
-              initialPlayerId: active.id,
+            go("dice_stats_players", {
               playerId: active.id,
-              initialStatsSubTab: "dashboard",
+              initialPlayerId: active.id,
             });
           }}
           onInfo={() => setInfoMode("active")}
@@ -279,53 +279,29 @@ export default function StatsShell({ store, go }: Props) {
           )}
           theme={theme}
           onClick={() => {
-            go("statsHub", {
-              tab: "stats",
-              mode: "locals",
-              initialPlayerId: null,
-            });
+            go("dice_stats_locals");
           }}
           onInfo={() => setInfoMode("locals")}
         />
 
         <StatsShellCard
           title="CLASSEMENTS"
-          subtitle="Classements globaux par mode de jeu (X01 multi, Cricket, Killer, etc.)."
+          subtitle="Classements globaux Dice (records, victoires, moyennes, etc.)."
           theme={theme}
-          onClick={() => go("stats_leaderboards")}
+          onClick={() => go("dice_stats_leaderboards")}
           onInfo={() => setInfoMode("leaderboards")}
         />
 
-        <StatsShellCard
-          title={t("statsShell.training.title", "TRAINING")}
-          subtitle={t(
-            "statsShell.training.subtitle",
-            "Stats complètes de tes sessions Training X01 et Tour de l’horloge."
-          )}
-          theme={theme}
-          onClick={() => go("statsHub", { tab: "training" })}
-          onInfo={() => setInfoMode("training")}
-        />
-
-        <StatsShellCard
-          title={t("statsShell.online.title", "ONLINE")}
-          subtitle={t(
-            "statsShell.online.subtitle",
-            'Stats de tes parties Online (quand tu joues en mode "Online").'
-          )}
-          theme={theme}
-          onClick={() => go("stats_online")}
-          onInfo={() => setInfoMode("online")}
-        />
+        {/* ✅ ONLINE/TRAINING cachés pour Dice */}
 
         <StatsShellCard
           title={t("statsShell.history.title", "HISTORIQUE")}
           subtitle={t(
             "statsShell.history.subtitle",
-            "Toutes tes parties et reprise des parties en cours."
+            "Toutes tes parties Dice et reprise des parties en cours."
           )}
           theme={theme}
-          onClick={() => go("statsHub", { tab: "history" })}
+          onClick={() => go("dice_stats_history")}
           onInfo={() => setInfoMode("history")}
         />
 
@@ -447,6 +423,7 @@ function StatsPlayerAvatar({
   const PAD = 6;
   const STAR = 10;
 
+  // On garde l'anneau étoilé legacy tel quel (même rendu global)
   const legacy = (profile as any)?.stats || {};
   const avg3n =
     typeof legacy.avg3 === "number" && !Number.isNaN(legacy.avg3)
@@ -625,45 +602,31 @@ function InfoOverlay({
 
   switch (mode) {
     case "active":
-      title = t("statsShell.info.active.title", "STATS — Joueur actif");
+      title = t("statsShell.info.active.title", "STATS — Joueur actif (Dice)");
       body = t(
         "statsShell.info.active.body",
-        "Accède aux statistiques complètes du joueur sélectionné : vue générale, stats locales, online et training pour tous les modes (X01, Cricket, etc.)."
+        "Accède aux statistiques Dice du joueur actif : records, moyennes, victoires, historique."
       );
       break;
     case "locals":
-      title = t("statsShell.info.locals.title", "STATS — Profils locaux");
+      title = t("statsShell.info.locals.title", "STATS — Profils locaux (Dice)");
       body = t(
         "statsShell.info.locals.body",
-        "Retrouve les mêmes vues de statistiques pour tous les profils enregistrés sur cet appareil et compare leurs performances."
+        "Retrouve les mêmes vues de statistiques Dice pour tous les profils locaux et compare leurs performances."
       );
       break;
     case "leaderboards":
-      title = t("statsShell.info.leaderboards.title", "CLASSEMENTS");
+      title = t("statsShell.info.leaderboards.title", "CLASSEMENTS (Dice)");
       body = t(
         "statsShell.info.leaderboards.body",
-        "Vue dédiée aux classements globaux : tous les profils sont comparés pour chaque mode de jeu (X01 multi, Cricket, Killer, etc.)."
-      );
-      break;
-    case "training":
-      title = t("statsShell.info.training.title", "TRAINING");
-      body = t(
-        "statsShell.info.training.body",
-        "Analyse détaillée de tes séances d'entraînement : Training X01, Tour de l’horloge, progression globale et par segment."
-      );
-      break;
-    case "online":
-      title = t("statsShell.info.online.title", "ONLINE");
-      body = t(
-        "statsShell.info.online.body",
-        "Analyse complète de tes matchs joués en mode Online : sessions, moyennes, gros scores, classement et progression."
+        "Classements globaux Dice : records, top vainqueurs, top moyennes, winrate, etc."
       );
       break;
     case "history":
-      title = t("statsShell.info.history.title", "HISTORIQUE");
+      title = t("statsShell.info.history.title", "HISTORIQUE (Dice)");
       body = t(
         "statsShell.info.history.body",
-        "Liste complète de l'historique de tes parties locales avec reprise des parties en cours et accès au détail de chaque match."
+        "Liste complète de l'historique des parties Dice avec accès au détail de chaque match."
       );
       break;
     case "sync":

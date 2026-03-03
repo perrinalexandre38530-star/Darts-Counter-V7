@@ -17,6 +17,7 @@ import RulesModal from "../../components/RulesModal";
 
 import ProfileAvatar from "../../components/ProfileAvatar";
 import { loadStore } from "../../lib/storage";
+import { getMolkkyHistoryEntry, saveMolkkyHistoryEntry } from "../../lib/molkkyStatsStore";
 
 import molkkySetupImg from "../../assets/molkky/pic-01.jpg";
 
@@ -111,6 +112,55 @@ export default function MolkkyPlay({ go, params, onFinish }: Props) {
   const [state, setState] = React.useState<MolkkyState>(() =>
     createMolkkyState({ players: (playersParam || []).map(toMolkkyEnginePlayer), config: configParam } as any)
   );
+  const [historyId, setHistoryId] = React.useState<string>(() => {
+    // default: engine state id
+    try {
+      return String((state as any)?.id || "");
+    } catch {
+      return "";
+    }
+  });
+  const createdAtRef = React.useRef<number>(Date.now());
+  const bootSavedRef = React.useRef<boolean>(false);
+
+  // ✅ Resume from history (full state)
+  React.useEffect(() => {
+    const resumeId = params?.resumeId || params?.resume || params?.id || null;
+    if (!resumeId) return;
+    try {
+      const entry: any = getMolkkyHistoryEntry(String(resumeId));
+      const st = entry?.state;
+      if (st && typeof st === "object") {
+        setState(st);
+        setHistoryId(String(entry?.id || st?.id || resumeId));
+        createdAtRef.current = Number(entry?.createdAt || st?.startedAt || Date.now()) || Date.now();
+        bootSavedRef.current = true; // already exists in history
+      }
+    } catch {}
+  }, [params]);
+
+  // ✅ Ensure an initial "in progress" row exists (so it appears immediately in History)
+  React.useEffect(() => {
+    if (bootSavedRef.current) return;
+    try {
+      const now = Date.now();
+      createdAtRef.current = Number((state as any)?.startedAt || now) || now;
+      const id = String((state as any)?.id || historyId || `molkky-${now}`);
+      setHistoryId(id);
+      saveMolkkyHistoryEntry({
+        id,
+        sport: "molkky",
+        mode: preset,
+        createdAt: createdAtRef.current,
+        updatedAt: now,
+        finished: false,
+        inProgress: true,
+        state,
+        summary: buildSummary(state),
+      } as any);
+      bootSavedRef.current = true;
+    } catch {}
+  }, []);
   const [rulesOpen, setRulesOpen] = React.useState(false);
   const [playersOpen, setPlayersOpen] = React.useState(false);
 
@@ -122,12 +172,32 @@ export default function MolkkyPlay({ go, params, onFinish }: Props) {
     const next = applyTurn(state, value);
     setState(next);
 
+    // ✅ Persist FULL STATE at each throw (autosave)
+    try {
+      const now = Date.now();
+      const finished = isFinished(next);
+      const id = String(historyId || (next as any)?.id || `molkky-${now}`);
+      if (!historyId) setHistoryId(id);
+
+      saveMolkkyHistoryEntry({
+        id,
+        sport: "molkky",
+        mode: preset,
+        createdAt: createdAtRef.current || Number((next as any)?.startedAt || now) || now,
+        updatedAt: now,
+        finished,
+        inProgress: !finished,
+        state: next,
+        summary: buildSummary(next),
+      } as any);
+    } catch {}
+
     if (isFinished(next)) {
       const summary = buildSummary(next);
       try {
         onFinish?.(summary);
       } catch {}
-      // fallback navigation
+      // fallback navigation (if route exists in your branch)
       try {
         go("molkky_finish", { summary });
       } catch {}
@@ -136,7 +206,24 @@ export default function MolkkyPlay({ go, params, onFinish }: Props) {
 
   const doUndo = () => {
     if (!canUndo) return;
-    setState(undo(state));
+    const next = undo(state);
+    setState(next);
+    try {
+      const now = Date.now();
+      const finished = isFinished(next);
+      const id = String(historyId || (next as any)?.id || `molkky-${now}`);
+      saveMolkkyHistoryEntry({
+        id,
+        sport: "molkky",
+        mode: preset,
+        createdAt: createdAtRef.current || Number((next as any)?.startedAt || now) || now,
+        updatedAt: now,
+        finished,
+        inProgress: !finished,
+        state: next,
+        summary: buildSummary(next),
+      } as any);
+    } catch {}
   };
 
   const onBack = () => {

@@ -760,50 +760,6 @@ export default function Profiles({
       )
     );
   
-    // 2) si connecté online : upload Supabase Storage -> URL publique
-    if (auth.status === "signed_in") {
-      const uid = auth.user?.id; // ✅ auth.uid()
-      if (!uid) return;
-
-      try {
-        const { publicUrl } = await onlineApi.uploadAvatarImage({ dataUrl, folder: uid });
-  
-        const avatarPath = (() => {
-          if (!publicUrl || typeof publicUrl !== "string") return undefined;
-          const marker = "/storage/v1/object/public/avatars/";
-          const i = publicUrl.indexOf(marker);
-          if (i === -1) return undefined;
-          return publicUrl.slice(i + marker.length);
-        })();
-  
-        console.log("[profiles] avatar uploaded:", { id, publicUrl, avatarPath });
-  
-        // ✅ 0bis) Cache dédié ANTI-OVERWRITE
-        writeAvatarCache(id, {
-          avatarUrl: publicUrl,
-          avatarPath,
-          avatarUpdatedAt: Date.now(),
-        });
-  
-        // ✅ IMPORTANT : on N'ECRASE PAS avatarDataUrl (base64)
-        setProfilesSafe((arr) =>
-          arr.map((p) =>
-            p.id === id
-              ? {
-                  ...p,
-                  avatarUrl: publicUrl,
-                  avatarPath,
-                  avatarUpdatedAt: Date.now(), // ✅ NEW
-                }
-              : p
-          )
-        );
-      } catch (err) {
-        console.warn("[profiles] uploadAvatarImage error:", err);
-        // on garde le dataUrl local si l’upload échoue
-      }
-    }
-
     // 2) Si connecté -> upload dans Supabase Storage et on garde une URL publique (persistante cloud)
     try {
       const user = (await supabase.auth.getUser()).data.user;

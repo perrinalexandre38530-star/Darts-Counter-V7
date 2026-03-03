@@ -19,6 +19,17 @@ import type { OnlineProfile } from "../lib/onlineTypes";
 
 async function ensureOnlineProfileRow(user: User): Promise<void> {
   try {
+    // ✅ IMPORTANT:
+    // Ne pas "upsert" à chaque boot/login.
+    // Sinon on écrase le display_name choisi par l'utilisateur (et parfois l'avatar_url).
+    // On ne crée la ligne QUE si elle n'existe pas.
+    const existing = await supabase
+      .from("profiles")
+      .select("id")
+      .eq("id", user.id)
+      .maybeSingle();
+    if (!existing.error && existing.data?.id) return;
+
     const base =
       (user.user_metadata as any)?.nickname ||
       (user.email ? user.email.split("@")[0] : "Player");
@@ -30,7 +41,8 @@ async function ensureOnlineProfileRow(user: User): Promise<void> {
 
     // profiles.id n'a parfois pas de DEFAULT -> on met explicitement user.id
     // OnConflict sur id (PK) => pas besoin d'un index unique sur user_id
-    const { error } = await supabase.from("profiles").upsert(
+    // ✅ Insert only (no overwrite)
+    const { error } = await supabase.from("profiles").insert(
       {
         id: user.id,
         user_id: user.id,
@@ -38,7 +50,6 @@ async function ensureOnlineProfileRow(user: User): Promise<void> {
         display_name: displayName,
         created_at: new Date().toISOString(),
       } as any,
-      { onConflict: "id" }
     );
 
     // Si conflit de nickname (unique), on retente avec un suffixe plus long
@@ -47,7 +58,7 @@ async function ensureOnlineProfileRow(user: User): Promise<void> {
         /[^a-zA-Z0-9_\-]/g,
         "_"
       );
-      await supabase.from("profiles").upsert(
+      await supabase.from("profiles").insert(
         {
           id: user.id,
           user_id: user.id,
@@ -55,7 +66,6 @@ async function ensureOnlineProfileRow(user: User): Promise<void> {
           display_name: displayName,
           created_at: new Date().toISOString(),
         } as any,
-        { onConflict: "id" }
       );
     }
   } catch {

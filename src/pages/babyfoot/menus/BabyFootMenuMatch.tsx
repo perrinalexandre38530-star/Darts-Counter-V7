@@ -211,7 +211,18 @@ export default function BabyFootMenuMatch({ onBack, go }: Props) {
         ? { kind: "teams", teams: 2, teamSizeA: 2, teamSizeB: 2 }
         : { kind: "teams", teams: 2, teamSizeA: 2, teamSizeB: 1 };
 
-    go("babyfoot_config", { mode, meta });
+    // ✅ IMPORTANT: config spécifique par mode.
+    // On envoie aussi des presets normalisés (comme FUN/TRAINING/DÉFIS)
+    // pour permettre à BabyFootConfig de verrouiller le bon format et le bon visuel.
+    const presetMode =
+      mode === "match_2v2" ? ("2v2" as const) : mode === "match_2v1" ? ("2v1" as const) : ("1v1" as const);
+    go("babyfoot_config", {
+      mode,
+      meta,
+      presetCategory: "match",
+      presetVariantId: mode,
+      presetMode,
+    });
   }
 
   const cardHeight = 86;

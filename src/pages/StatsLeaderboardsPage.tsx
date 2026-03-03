@@ -18,6 +18,7 @@ import * as React from "react";
 import type { Store, Profile } from "../lib/types";
 import { useTheme } from "../contexts/ThemeContext";
 import { useLang } from "../contexts/LangContext";
+import { useSport } from "../contexts/SportContext";
 import ProfileAvatar from "../components/ProfileAvatar";
 import { History } from "../lib/history";
 import { loadTerritoriesHistory, type TerritoriesMatch } from "../lib/territories/territoriesStats";
@@ -38,7 +39,8 @@ type LeaderboardMode =
   | "shanghai"
   | "battle_royale"
   | "clock"
-  | "territories";
+  | "territories"
+  | "dice_duel";
 
 type PeriodKey = "D" | "W" | "M" | "Y" | "ALL" | "TOUT";
 
@@ -272,6 +274,14 @@ function isRecordMatchingMode(rec: any, mode: LeaderboardMode, scope: Scope): bo
   const topVariant = rec?.variant;
   const payloadMode = rec?.payload?.mode;
   const payloadVariant = rec?.payload?.variant;
+
+  if (mode === "dice_duel") {
+    const k = safeStr(kind).toLowerCase();
+    const sp = safeStr(rec?.sport ?? rec?.payload?.sport).toLowerCase();
+    const v = safeStr(topVariant ?? payloadVariant).toLowerCase();
+    // On accepte tout ce qui est Dice + (optionnel) duel
+    return (k.includes("dice") || sp.includes("dice")) && (!v || v.includes("duel") || true);
+  }
   const game =
     rec?.game ??
     rec?.payload?.game ??
@@ -574,13 +584,75 @@ function computeRowsFromHistory(
       null;
 
     const summary = rec.summary || rec.payload?.summary || null;
+
+    // 🎲 DICE DUEL: pas de summary darts -> on lit payload.stats.players
+    if (mode === "dice_duel") {
+      const ps: any[] =
+        rec?.payload?.stats?.players || rec?.payload?.stats?.playersStats || rec?.payload?.players || [];
+      const playersArr = Array.isArray(ps) ? ps : [];
+      const winner =
+        winnerId ||
+        playersArr.slice().sort((a, b) => (b?.score ?? 0) - (a?.score ?? 0))[0]?.id ||
+        null;
+
+      for (const p of playersArr) {
+        const pid = String(p?.id || "");
+        if (!pid) continue;
+        if (!aggByPlayer[pid]) {
+          aggByPlayer[pid] = {
+            wins: 0,
+            matches: 0,
+            avg3Sum: 0,
+            avg3Count: 0,
+            bestVisit: 0,
+            bestCheckout: 0,
+            kills: 0,
+            hitsBySegmentAgg: {},
+            totalHits: 0,
+            batardPoints: 0,
+            batardDarts: 0,
+            batardTurns: 0,
+            batardFails: 0,
+            batardValidHits: 0,
+            batardAdvances: 0,
+          };
+          infoByPlayer[pid] = { name: safeStr(p?.name || ""), avatarDataUrl: null };
+        }
+
+        const score = Number(p?.score ?? 0) || 0;
+        aggByPlayer[pid].matches += 1;
+        if (winner && pid === String(winner)) aggByPlayer[pid].wins += 1;
+        aggByPlayer[pid].avg3Sum += score;
+        aggByPlayer[pid].avg3Count += 1;
+        if (score > aggByPlayer[pid].bestVisit) aggByPlayer[pid].bestVisit = score;
+      }
+
+      continue;
+    }
+
     const per = extractPerPlayerSummary(summary);
+    // dice_per_fallback
+    const per2: any = per && Object.keys(per).length ? per : (() => {
+      try {
+        const playersArr: any[] = Array.isArray(rec?.payload?.stats?.players) ? rec.payload.stats.players : [];
+        const out: any = {};
+        for (const p of playersArr) {
+          const pid = String(p?.id || "");
+          if (!pid) continue;
+          // on mappe score -> avg3/bestVisit pour conserver l'UI identique
+          out[pid] = { id: pid, name: p?.name, avg3: Number(p?.score ?? 0) || 0, bestVisit: Number(p?.score ?? 0) || 0 };
+        }
+        return out;
+      } catch {
+        return {};
+      }
+    })();
     const summaryPlayersArr: any[] = Array.isArray(summary?.players) ? summary.players : [];
 
     // 1) per-player
     if (per && Object.keys(per).length > 0) {
-      for (const key of Object.keys(per)) {
-        const det: any = per[key] || {};
+      for (const key of Object.keys(per2)) {
+        const det: any = per2[key] || {};
         const pid: string = String(pickId(det) || key || "");
         if (!pid) continue;
 
@@ -914,7 +986,7 @@ function computeRowsFromTerritories(
   return rows;
 }
 
-function metricLabel(m: MetricKey) {
+function metricLabel(m: MetricKey, sport?: string) {
   switch (m) {
     case "wins":
       return "Victoires";
@@ -923,7 +995,7 @@ function metricLabel(m: MetricKey) {
     case "matches":
       return "Matchs joués";
     case "avg3":
-      return "Moy. 3 darts";
+      return sport === "dicegame" ? "Moy. score" : "Moy. 3 darts";
     case "bestVisit":
       return "Best visit";
     case "bestCheckout":
@@ -993,6 +1065,9 @@ function isBotRow(row: any, botsMap: Record<string, any>, profileIds: Set<string
 // =============================================================
 
 export default function StatsLeaderboardsPage({ store }: Props) {
+  const { sport } = useSport();
+  const isDiceSport = String(sport || "").toLowerCase().includes("dice");
+
   const { theme } = useTheme();
   const langAny: any = useLang();
 
@@ -1013,11 +1088,25 @@ export default function StatsLeaderboardsPage({ store }: Props) {
   );
 
   const [scope, setScope] = React.useState<Scope>("local");
-  const [mode, setMode] = React.useState<LeaderboardMode>("x01_multi");
+  const [mode, setMode] = React.useState<LeaderboardMode>(isDiceSport ? "dice_duel" : "x01_multi");
   const [period, setPeriod] = React.useState<PeriodKey>("ALL");
 
   // ✅ NEW: toggle bots (par défaut ON)
   const [includeBots, setIncludeBots] = React.useState<boolean>(true);
+
+  const modeDefs = React.useMemo(
+    () =>
+      isDiceSport
+        ? ([
+            {
+              id: "dice_duel",
+              label: "DICE DUEL",
+              metrics: ["avg3", "wins", "winRate", "matches", "bestVisit"],
+            },
+          ] as any)
+        : modeDefs,
+    [isDiceSport]
+  );
 
   // ✅ BATARD filters (derived from History payload.config)
   const [batardPreset, setBatardPreset] = React.useState<string>("all");
@@ -1079,25 +1168,25 @@ export default function StatsLeaderboardsPage({ store }: Props) {
     };
   }, []);
 
-  const currentModeDef = MODE_DEFS.find((m) => m.id === mode);
+  const currentModeDef = modeDefs.find((m) => m.id === mode);
   const metricList = currentModeDef?.metrics ?? [];
   const [metric, setMetric] = React.useState<MetricKey>(metricList[0] ?? "wins");
 
   React.useEffect(() => {
-    const def = MODE_DEFS.find((m) => m.id === mode);
+    const def = modeDefs.find((m) => m.id === mode);
     if (!def) return;
     if (!def.metrics.includes(metric)) setMetric(def.metrics[0]);
   }, [mode]); // eslint-disable-line
 
-  const currentModeIndex = MODE_DEFS.findIndex((m) => m.id === mode);
+  const currentModeIndex = modeDefs.findIndex((m) => m.id === mode);
   const currentMetricIndex = Math.max(0, metricList.findIndex((m) => m === metric));
 
   const cycleMode = (dir: "prev" | "next") => {
-    if (!MODE_DEFS.length) return;
+    if (!modeDefs.length) return;
     let idx = currentModeIndex < 0 ? 0 : currentModeIndex;
-    const len = MODE_DEFS.length;
+    const len = modeDefs.length;
     const newIndex = dir === "prev" ? (idx - 1 + len) % len : (idx + 1) % len;
-    setMode(MODE_DEFS[newIndex].id);
+    setMode(modeDefs[newIndex].id);
   };
 
   const cycleMetric = (dir: "prev" | "next") => {
@@ -1220,7 +1309,7 @@ export default function StatsLeaderboardsPage({ store }: Props) {
   }, [historySource, profiles, mode, scope, metric, period, includeBots, profileIds, batardPreset, batardWinMode, batardFailPolicy, batardScoreOnlyValid]);
 
   const hasData = rows.length > 0;
-  const currentMetricLabel = metricLabel(metric) || t("stats.leaderboards.metric", "Stat");
+  const currentMetricLabel = metricLabel(metric, sport) || t("stats.leaderboards.metric", "Stat");
 
   return (
     <div

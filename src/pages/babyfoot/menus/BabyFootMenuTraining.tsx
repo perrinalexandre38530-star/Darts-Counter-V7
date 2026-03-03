@@ -145,12 +145,27 @@ export default function BabyFootMenuTraining({ onBack, go }: Props) {
     // ⚠️ Les presets exacts peuvent être rebranchés plus tard.
     // Ici on conserve un payload simple et stable.
     if (id === "speed5") {
-      return go("babyfoot_config", { presetTraining: "speed5", presetMode: "1v1" });
+      return go("babyfoot_config", {
+        presetCategory: "training",
+        presetVariantId: "speed5",
+        presetTraining: "speed5",
+        presetMode: "1v1",
+      });
     }
     if (id === "team_quick7") {
-      return go("babyfoot_config", { presetTraining: "teamquick7", presetMode: "2v2" });
+      return go("babyfoot_config", {
+        presetCategory: "training",
+        presetVariantId: "teamquick7",
+        presetTraining: "teamquick7",
+        presetMode: "2v2",
+      });
     }
-    return go("babyfoot_config", { presetTraining: "challenge2v1", presetMode: "2v1" });
+    return go("babyfoot_config", {
+      presetCategory: "training",
+      presetVariantId: "challenge2v1",
+      presetTraining: "challenge2v1",
+      presetMode: "2v1",
+    });
   }
 
   const cardHeight = 86;

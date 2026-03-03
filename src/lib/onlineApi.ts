@@ -817,11 +817,20 @@ async function updateProfile(patch: UpdateProfilePayload): Promise<OnlineProfile
 // ============================================================
 // Avatar Storage (bucket: avatars public)
 // ============================================================
-async function uploadAvatarImage(opts: { dataUrl: string; folder?: string }): Promise<{ publicUrl: string; path: string }> {
+// NOTE:
+// - Historically this helper also updated the ONLINE profile avatarUrl.
+// - This is correct for "Mon profil" (account avatar), but NOT for uploading
+//   avatars of local profiles.
+// - To avoid side-effects, callers can opt-out via `updateProfile`.
+async function uploadAvatarImage(opts: {
+  dataUrl: string;
+  folder?: string;
+  updateProfile?: boolean;
+}): Promise<{ publicUrl: string; path: string }> {
   const { dataUrl } = opts;
   const { user } = await ensureAuthedUser();
 
-  const folder = user.id;
+  const folder = (opts.folder && String(opts.folder).trim()) || user.id;
 
   const blob = dataUrlToBlob(dataUrl);
   const mime = (blob as any).type || "image/png";
@@ -841,7 +850,11 @@ async function uploadAvatarImage(opts: { dataUrl: string; folder?: string }): Pr
   const publicUrl = data?.publicUrl;
   if (!publicUrl) throw new Error("Impossible de récupérer l’URL publique de l’avatar.");
 
-  await updateProfile({ avatarUrl: publicUrl });
+  // ✅ Default behavior: update online profile avatar.
+  // ✅ Local profiles must call with updateProfile=false.
+  if (opts.updateProfile !== false) {
+    await updateProfile({ avatarUrl: publicUrl });
+  }
 
   return { publicUrl, path };
 }
