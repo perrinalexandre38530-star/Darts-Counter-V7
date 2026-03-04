@@ -16,7 +16,7 @@ import { useTheme } from "../contexts/ThemeContext";
 import { useScramEngine } from "../hooks/useScramEngine";
 import type { ScramConfigPayload } from "../lib/gameEngines/scramEngine";
 
-import tickerScram from "../assets/tickers/ticker_scram.png";
+import tickerScram from "../assets-webp/tickers/ticker_scram.webp";
 
 // ---------- Styles (copiés de CricketPlay) ----------
 const T = {

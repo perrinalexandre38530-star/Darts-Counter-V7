@@ -23,8 +23,8 @@ import ScoreInputHub from "../components/ScoreInputHub";
 import type { Dart as UIDart } from "../lib/types";
 import { DartIconColorizable } from "../components/MaskIcon";
 
-import tickerBattleRoyale from "../assets/tickers/ticker_battle_royale.png";
-import tickerBattleRoyale2 from "../assets/tickers/ticker_battle_royale_2.png";
+import tickerBattleRoyale from "../assets-webp/tickers/ticker_battle_royale.webp";
+import tickerBattleRoyale2 from "../assets-webp/tickers/ticker_battle_royale_2.webp";
 
 import { playImpactFromDart, playSfx, playUiConfirm, playUiClickSoft } from "../lib/sfx";
 import { announceTurn, speak } from "../lib/voice";

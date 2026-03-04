@@ -2,7 +2,7 @@ import React, { useMemo, useState } from "react";
 import BackDot from "../components/BackDot";
 import InfoDot from "../components/InfoDot";
 import PageHeader from "../components/PageHeader";
-import tickerBaseball from "../assets/tickers/ticker_baseball.png";
+import tickerBaseball from "../assets-webp/tickers/ticker_baseball.webp";
 import { useLang } from "../contexts/LangContext";
 import { useTheme } from "../contexts/ThemeContext";
 

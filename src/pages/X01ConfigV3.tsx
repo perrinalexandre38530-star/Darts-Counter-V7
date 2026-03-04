@@ -17,7 +17,7 @@ import ProfileAvatar from "../components/ProfileAvatar";
 import ProfileStarRing from "../components/ProfileStarRing";
 import BackDot from "../components/BackDot";
 import InfoDot from "../components/InfoDot";
-import tickerX01 from "../assets/tickers/ticker_x01.png";
+import tickerX01 from "../assets-webp/tickers/ticker_x01.webp";
 import {
   getDartSetsForProfile,
   getFavoriteDartSetForProfile,
@@ -27,17 +27,17 @@ import { x01EnsureAudioUnlocked, x01SfxV3Preload } from "../lib/x01SfxV3";
 import { SCORE_INPUT_LS_KEY, type ScoreInputMethod } from "../lib/scoreInput/types";
 
 // 🔽 IMPORTS DE TOUS LES AVATARS BOTS PRO
-import avatarGreenMachine from "../assets/avatars/bots-pro/green-machine.png";
-import avatarSnakeKing from "../assets/avatars/bots-pro/snake-king.png";
-import avatarWonderKid from "../assets/avatars/bots-pro/wonder-kid.png";
-import avatarIceMan from "../assets/avatars/bots-pro/ice-man.png";
-import avatarFlyingScotsman from "../assets/avatars/bots-pro/flying-scotsman.png";
-import avatarCoolHand from "../assets/avatars/bots-pro/cool-hand.png";
-import avatarThePower from "../assets/avatars/bots-pro/the-power.png";
-import avatarBullyBoy from "../assets/avatars/bots-pro/bully-boy.png";
-import avatarTheAsp from "../assets/avatars/bots-pro/the-asp.png";
-import avatarHollywood from "../assets/avatars/bots-pro/hollywood.png";
-import avatarTheFerret from "../assets/avatars/bots-pro/the-ferret.png";
+import avatarGreenMachine from "../assets-webp/avatars/bots-pro/green-machine.webp";
+import avatarSnakeKing from "../assets-webp/avatars/bots-pro/snake-king.webp";
+import avatarWonderKid from "../assets-webp/avatars/bots-pro/wonder-kid.webp";
+import avatarIceMan from "../assets-webp/avatars/bots-pro/ice-man.webp";
+import avatarFlyingScotsman from "../assets-webp/avatars/bots-pro/flying-scotsman.webp";
+import avatarCoolHand from "../assets-webp/avatars/bots-pro/cool-hand.webp";
+import avatarThePower from "../assets-webp/avatars/bots-pro/the-power.webp";
+import avatarBullyBoy from "../assets-webp/avatars/bots-pro/bully-boy.webp";
+import avatarTheAsp from "../assets-webp/avatars/bots-pro/the-asp.webp";
+import avatarHollywood from "../assets-webp/avatars/bots-pro/hollywood.webp";
+import avatarTheFerret from "../assets-webp/avatars/bots-pro/the-ferret.webp";
 
 // UI-only: "multi" = plusieurs joueurs en mode classique (pas teams)
 type MatchModeV3 = "solo" | "multi" | "teams";

@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import BackDot from "../components/BackDot";
 import InfoDot from "../components/InfoDot";
 import PageHeader from "../components/PageHeader";
-import tickerFunGages from "../assets/tickers/ticker_fun_gages.png";
+import tickerFunGages from "../assets-webp/tickers/ticker_fun_gages.webp";
 import Section from "../components/Section";
 import OptionRow from "../components/OptionRow";
 import OptionSelect from "../components/OptionSelect";

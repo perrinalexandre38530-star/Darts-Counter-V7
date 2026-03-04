@@ -13,7 +13,7 @@ import { useCurrentProfile } from "../hooks/useCurrentProfile";
 import BackDot from "../components/BackDot";
 import InfoDot from "../components/InfoDot";
 
-import tickerX01 from "../assets/tickers/ticker_x01.png";
+import tickerX01 from "../assets-webp/tickers/ticker_x01.webp";
 
 type Tab = "training" | "training_x01_play";
 

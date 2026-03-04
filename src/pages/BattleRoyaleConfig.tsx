@@ -13,8 +13,8 @@ import { useLang } from "../contexts/LangContext";
 import InfoDot from "../components/InfoDot";
 import BackDot from "../components/BackDot";
 
-import tickerBattleRoyale from "../assets/tickers/ticker_battle_royale.png";
-import tickerImg from "../assets/tickers/ticker_battle_royale.png";
+import tickerBattleRoyale from "../assets-webp/tickers/ticker_battle_royale.webp";
+import tickerImg from "../assets-webp/tickers/ticker_battle_royale.webp";
 import { setSfxEnabled } from "../lib/sfx";
 import { setVoiceEnabled } from "../lib/voice";
 

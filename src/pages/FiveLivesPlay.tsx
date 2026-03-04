@@ -15,8 +15,8 @@ import { useTheme } from "../contexts/ThemeContext";
 import { useLang } from "../contexts/LangContext";
 import Keypad from "../components/Keypad";
 
-import deadActiveIcon from "../assets/icons/dead-active.png";
-import deadListIcon from "../assets/icons/dead-list.png";
+import deadActiveIcon from "../assets-webp/icons/dead-active.webp";
+import deadListIcon from "../assets-webp/icons/dead-list.webp";
 
 import type { FiveLivesConfig, FiveLivesPlayerLite } from "./FiveLivesConfig";
 

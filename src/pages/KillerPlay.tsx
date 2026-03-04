@@ -39,7 +39,7 @@ import type {
 import ScoreInputHub from "../components/ScoreInputHub";
 import InfoDot from "../components/InfoDot";
 import BackDot from "../components/BackDot";
-import tickerKiller from "../assets/tickers/ticker_killer.png";
+import tickerKiller from "../assets-webp/tickers/ticker_killer.webp";
 
 // ✅ Ticker 2 (fond carte JOUEURS) — safe fallback (évite crash si nom diff)
 // On scanne les tickers killer existants et on tente de prendre la variante "2".
@@ -62,10 +62,10 @@ const tickerKiller2: any = (() => {
   }
 })();
 
-import killerActiveIcon from "../assets/icons/killer-active.png";
-import killerListIcon from "../assets/icons/killer-list.png";
-import deadActiveIcon from "../assets/icons/dead-active.png";
-import deadListIcon from "../assets/icons/dead-list.png";
+import killerActiveIcon from "../assets-webp/icons/killer-active.webp";
+import killerListIcon from "../assets-webp/icons/killer-list.webp";
+import deadActiveIcon from "../assets-webp/icons/dead-active.webp";
+import deadListIcon from "../assets-webp/icons/dead-list.webp";
 
 type Props = {
   store: Store;

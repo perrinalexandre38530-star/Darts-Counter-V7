@@ -19,7 +19,7 @@ import ProfileAvatar from "../../components/ProfileAvatar";
 import { loadStore } from "../../lib/storage";
 import { getMolkkyHistoryEntry, saveMolkkyHistoryEntry } from "../../lib/molkkyStatsStore";
 
-import molkkySetupImg from "../../assets/molkky/pic-01.jpg";
+import molkkySetupImg from "../../assets-webp/molkky/pic-01.webp";
 
 import {
   applyTurn,

@@ -38,7 +38,7 @@ import { buildLegStatsFromV3LiveForOverlay } from "../lib/x01v3/x01V3LegStatsAda
 
 // ✅ Layout unifié (MEP)
 import GameplayLayout from "../components/gameplay/GameplayLayout";
-import tickerX01 from "../assets/tickers/ticker_x01.png";
+import tickerX01 from "../assets-webp/tickers/ticker_x01.webp";
 
 import { StatsBridge } from "../lib/statsBridge";
 import { loadBots } from "./ProfilesBots";

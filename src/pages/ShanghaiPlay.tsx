@@ -24,8 +24,8 @@ import InfoDot from "../components/InfoDot";
 import ScoreInputHub from "../components/ScoreInputHub";
 import type { Dart as UIDart } from "../lib/types";
 import { useFullscreenPlay } from "../hooks/useFullscreenPlay";
-import ShanghaiLogo from "../assets/SHANGHAI.png";
-import TargetBg from "../assets/target_bg.png";
+import ShanghaiLogo from "../assets-webp/SHANGHAI.webp";
+import TargetBg from "../assets-webp/target_bg.webp";
 
 // ✅ SFX + Voice
 import {

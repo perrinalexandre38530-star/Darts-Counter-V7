@@ -2,7 +2,7 @@ import React, { useMemo, useState } from "react";
 import BackDot from "../components/BackDot";
 import InfoDot from "../components/InfoDot";
 import PageHeader from "../components/PageHeader";
-import tickerRugby from "../assets/tickers/ticker_rugby.png";
+import tickerRugby from "../assets-webp/tickers/ticker_rugby.webp";
 import Section from "../components/Section";
 import OptionRow from "../components/OptionRow";
 import OptionToggle from "../components/OptionToggle";

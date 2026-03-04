@@ -9,7 +9,7 @@ import { useTheme } from "../../contexts/ThemeContext";
 import BackDot from "../../components/BackDot";
 import InfoDot from "../../components/InfoDot";
 
-import logoBabyFoot from "../../assets/games/logo-babyfoot.png";
+import logoBabyFoot from "../../assets-webp/games/logo-babyfoot.webp";
 
 const TICKERS = import.meta.glob("../../assets/tickers/*.png", {
   eager: true,

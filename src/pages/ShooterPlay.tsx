@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import BackDot from "../components/BackDot";
 import InfoDot from "../components/InfoDot";
 import PageHeader from "../components/PageHeader";
-import tickerShooter from "../assets/tickers/ticker_shooter.png";
+import tickerShooter from "../assets-webp/tickers/ticker_shooter.webp";
 import { useLang } from "../contexts/LangContext";
 import { useTheme } from "../contexts/ThemeContext";
 

@@ -25,7 +25,7 @@ import ProfileAvatar from "../components/ProfileAvatar";
 import BackDot from "../components/BackDot";
 import InfoDot from "../components/InfoDot";
 
-import tickerGolf from "../assets/tickers/ticker_golf.png";
+import tickerGolf from "../assets-webp/tickers/ticker_golf.webp";
 
 // ✅ Logos teams (déjà présents dans le projet)
 import teamGoldLogo from "../ui_assets/teams/team_gold.png";
@@ -34,10 +34,10 @@ import teamBlueLogo from "../ui_assets/teams/team_blue.png";
 import teamGreenLogo from "../ui_assets/teams/team_green.png";
 
 // ✅ Avatars PRO bots (assets locaux)
-import avatarGreenMachine from "../assets/avatars/bots-pro/green-machine.png";
-import avatarSnakeKing from "../assets/avatars/bots-pro/snake-king.png";
-import avatarWonderKid from "../assets/avatars/bots-pro/wonder-kid.png";
-import avatarIceMan from "../assets/avatars/bots-pro/ice-man.png";
+import avatarGreenMachine from "../assets-webp/avatars/bots-pro/green-machine.webp";
+import avatarSnakeKing from "../assets-webp/avatars/bots-pro/snake-king.webp";
+import avatarWonderKid from "../assets-webp/avatars/bots-pro/wonder-kid.webp";
+import avatarIceMan from "../assets-webp/avatars/bots-pro/ice-man.webp";
 
 type BotLevel = "easy" | "normal" | "hard";
 type HoleOrderMode = "chronological" | "random";

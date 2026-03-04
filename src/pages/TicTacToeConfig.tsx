@@ -2,7 +2,7 @@ import React, { useMemo, useState } from "react";
 import BackDot from "../components/BackDot";
 import InfoDot from "../components/InfoDot";
 import PageHeader from "../components/PageHeader";
-import tickerTicTacToe from "../assets/tickers/ticker_tic_tac_toe.png";
+import tickerTicTacToe from "../assets-webp/tickers/ticker_tic_tac_toe.webp";
 import Section from "../components/Section";
 import OptionRow from "../components/OptionRow";
 import OptionToggle from "../components/OptionToggle";

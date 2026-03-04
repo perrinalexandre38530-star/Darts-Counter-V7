@@ -19,7 +19,7 @@ import InfoDot from "../components/InfoDot";
 import BackDot from "../components/BackDot";
 
 // ✅ TICKER
-import tickerShanghai from "../assets/tickers/ticker_shanghai.png";
+import tickerShanghai from "../assets-webp/tickers/ticker_shanghai.webp";
 
 // ✅ NEW
 import { setSfxEnabled } from "../lib/sfx";
