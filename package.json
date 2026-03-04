@@ -15,7 +15,7 @@
     "test:ci": "pnpm -s typecheck && pnpm -s build && pnpm -s test:auth && pnpm -s test:sync",
     "test:sync": "node ./tools/test-cloud-sync.mjs",
 
-    "compress-images": "node ./tools/compress-images.mjs"
+    "compress-images": "node ./tools/compress-images.js"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.48.0",
