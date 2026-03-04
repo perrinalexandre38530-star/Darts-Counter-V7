@@ -446,8 +446,9 @@ export default function BabyFootConfig({ go, store, params }: Props) {
   const [selB, setSelB] = useState<string[]>(Array.isArray(saved.teamBProfileIds) ? saved.teamBProfileIds : []);
 
   // When a side is "locked", we hide the carousel and display only the selected players.
-  const [lockPlayersA, setLockPlayersA] = useState(false);
-  const [lockPlayersB, setLockPlayersB] = useState(false);
+  // When a side is "confirmed", we hide the carousel and show only the selected players (with edit).
+  const [confirmA, setConfirmA] = useState(false);
+  const [confirmB, setConfirmB] = useState(false);
 
   const capA = mode === "2v2" || mode === "2v1" ? 2 : 1;
   const capB = mode === "2v2" ? 2 : 1;
@@ -507,15 +508,25 @@ export default function BabyFootConfig({ go, store, params }: Props) {
   useEffect(() => {
     setSelA((prev) => prev.slice(0, capA));
     setSelB((prev) => prev.slice(0, capB));
-    setLockPlayersA(false);
-    setLockPlayersB(false);
+    setConfirmA(false);
+    setConfirmB(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mode]);
 
-  // Auto-lock when quota reached
+  
+  // Auto-confirm when quota is reached; auto-unconfirm if quota becomes invalid.
   useEffect(() => {
-    if (selA.length === capA && capA > 0) setLockPlayersA(true);
-    if (selB.length === capB && capB > 0) setLockPlayersB(true);
+    if (selA.length === capA) setConfirmA(true);
+    else setConfirmA(false);
+    if (selB.length === capB) setConfirmB(true);
+    else setConfirmB(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selA.length, selB.length, capA, capB]);
+
+// Auto-lock when quota reached
+  useEffect(() => {
+    if (selA.length === capA && capA > 0) setConfirmA(true);
+    if (selB.length === capB && capB > 0) setConfirmB(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selA.length, selB.length, capA, capB]);
 
@@ -527,6 +538,8 @@ export default function BabyFootConfig({ go, store, params }: Props) {
   }, [setsEnabled]);
 
   const togglePlayer = (team: "A" | "B", id: string) => {
+    if (team === "A" && confirmA) return;
+    if (team === "B" && confirmB) return;
     if (team === "A") {
       setSelA((prev) => {
         const has = prev.includes(id);
