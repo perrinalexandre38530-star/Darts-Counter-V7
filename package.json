@@ -3,27 +3,20 @@
   "private": true,
   "version": "5.3.0",
   "type": "module",
-
   "scripts": {
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-
     "lint": "eslint .",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-
     "deploy:online": "wrangler deploy",
-
     "test:auth": "node ./src/tools/test-auth-spine.mjs",
     "test:x01v3": "node --experimental-strip-types ./tools/test-x01v3-regression.ts",
     "test:sync": "node ./tools/test-cloud-sync.mjs",
-
     "test:ci": "npm run typecheck && npm run build && npm run test:auth && npm run test:sync",
-
     "compress-images": "node ./src/tools/compress-images.js",
-    "switch-to-webp": "node ./tools/replace-imports-to-webp.mjs"
+    "switch-to-webp": "node ./src/tools/replace-imports-to-webp.mjs"
   },
-
   "dependencies": {
     "@supabase/supabase-js": "^2.48.0",
     "jsqr": "^1.4.0",
@@ -36,7 +29,6 @@
     "recharts": "^3.3.0",
     "zustand": "^5.0.9"
   },
-
   "devDependencies": {
     "@eslint/js": "^9.38.0",
     "@types/node": "^24.8.1",
@@ -51,7 +43,6 @@
     "typescript-eslint": "^8.46.1",
     "vite": "^7.1.10",
     "wrangler": "^4.50.0",
-
     "glob": "^11.0.3",
     "sharp": "^0.33.5"
   }
