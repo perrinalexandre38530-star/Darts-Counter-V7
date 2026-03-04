@@ -262,7 +262,7 @@ export default function DiceMenuGames({ go }: Props) {
                 style={{
                   position: "absolute",
                   inset: 0,
-                  backgroundImage: `url(${getTicker(g.tickerKey || "") || headerTicker || ""})`,
+                  backgroundImage: (getTicker(g.tickerKey || "") || headerTicker) ? `url(${getTicker(g.tickerKey || "") || headerTicker})` : undefined,
                   backgroundSize: "cover",
                   backgroundPosition: "center",
                   filter: "saturate(1.08) contrast(1.05)",
@@ -335,10 +335,10 @@ export default function DiceMenuGames({ go }: Props) {
               style={{
                 position: "absolute",
                 inset: 0,
-                backgroundImage: `url(${getTicker(g.tickerKey || "") || ""})`,
+                backgroundImage: (getTicker(g.tickerKey || "") || headerTicker) ? `url(${getTicker(g.tickerKey || "") || headerTicker})` : undefined,
                 backgroundSize: "cover",
                 backgroundPosition: "center",
-                opacity: 0.55,
+                opacity: 0.78,
                 filter: "saturate(1.1) contrast(1.05)",
               }}
             />

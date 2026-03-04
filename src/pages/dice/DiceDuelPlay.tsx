@@ -9,6 +9,8 @@
 import React from "react";
 import { useTheme } from "../../contexts/ThemeContext";
 import BackDot from "../../components/BackDot";
+import ConfigTickerHeader from "../../components/ConfigTickerHeader";
+import { getTicker } from "../../lib/tickers";
 import InfoDot from "../../components/InfoDot";
 import ProfileAvatar from "../../components/ProfileAvatar";
 
@@ -27,6 +29,9 @@ function clamp(n: any, a: number, b: number) {
 
 export default function DicePlay({ go, params, onFinish }: Props) {
   const { theme } = useTheme() as any;
+
+  const headerSrc = getTicker("dice_duel") || getTicker("dice_games") || "";
+
 
   const config = params?.config || { mode: "duel", targetScore: 100, diceCount: 2, sets: 1 };
   const players = Array.isArray(params?.players) ? params.players : [];

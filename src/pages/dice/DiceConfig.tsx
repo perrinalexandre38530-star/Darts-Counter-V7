@@ -12,6 +12,8 @@ import { useTheme } from "../../contexts/ThemeContext";
 import { useLang } from "../../contexts/LangContext";
 import BackDot from "../../components/BackDot";
 import InfoDot from "../../components/InfoDot";
+import ConfigTickerHeader from "../../components/ConfigTickerHeader";
+import { getTicker } from "../../lib/tickers";
 import ProfileAvatar from "../../components/ProfileAvatar";
 
 import { saveDiceState, clearDiceState } from "../../lib/diceStore";
@@ -31,6 +33,9 @@ const clamp = (v: any, a: number, b: number, def: number) => {
 
 export default function DiceConfig({ go, store, params }: Props) {
   const { theme } = useTheme() as any;
+
+  const headerSrc = getTicker("dice_games") || getTicker("dice_games") || "";
+
   const { t } = useLang() as any;
 
   const primary = theme?.colors?.accent ?? theme?.primary ?? "#7cff6d";

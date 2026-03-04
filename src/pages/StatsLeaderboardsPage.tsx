@@ -1104,7 +1104,7 @@ export default function StatsLeaderboardsPage({ store }: Props) {
               metrics: ["avg3", "wins", "winRate", "matches", "bestVisit"],
             },
           ] as any)
-        : modeDefs,
+        : MODE_DEFS,
     [isDiceSport]
   );
 

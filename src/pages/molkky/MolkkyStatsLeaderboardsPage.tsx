@@ -316,9 +316,9 @@ export default function MolkkyStatsLeaderboardsPage({ store, go }: Props) {
           <BackDot onClick={() => go("molkky_stats")} />
           <div style={title}>{t("leaderboards.title", "CLASSEMENTS")}</div>
           <InfoDot
-            onClick={() => alert(`Classements Mölkky (local)
-
-Visuel calqué sur Darts. Filtres période + tri par métrique.`)}
+            onClick={() =>
+              alert("Classements Mölkky (local)\n\nVisuel calqué sur Darts. Filtres période + tri par métrique.")
+            }
           />
         </div>
       )}

@@ -10,6 +10,8 @@
 import React from "react";
 import { useTheme } from "../../contexts/ThemeContext";
 import BackDot from "../../components/BackDot";
+import ConfigTickerHeader from "../../components/ConfigTickerHeader";
+import { getTicker } from "../../lib/tickers";
 import InfoDot from "../../components/InfoDot";
 import ProfileAvatar from "../../components/ProfileAvatar";
 
@@ -26,6 +28,9 @@ const pad2 = (n: number) => String(n).padStart(2, "0");
 
 export default function DicePlay({ go, params, onFinish }: Props) {
   const { theme } = useTheme() as any;
+
+  const headerSrc = getTicker("dice_games") || getTicker("dice_games") || "";
+
 
   const primary = theme?.colors?.accent ?? theme?.primary ?? "#7cff6d";
   const textMain = theme?.colors?.text ?? "#fff";

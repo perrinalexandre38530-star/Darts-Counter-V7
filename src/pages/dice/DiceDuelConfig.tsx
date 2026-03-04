@@ -12,6 +12,8 @@ import { useTheme } from "../../contexts/ThemeContext";
 import { useLang } from "../../contexts/LangContext";
 import BackDot from "../../components/BackDot";
 import InfoDot from "../../components/InfoDot";
+import ConfigTickerHeader from "../../components/ConfigTickerHeader";
+import { getTicker } from "../../lib/tickers";
 import ProfileMedallionCarousel from "../../components/ProfileMedallionCarousel";
 
 import type { Store, Profile } from "../../lib/types";
@@ -85,6 +87,9 @@ type Props = {
 
 export default function DiceConfig({ go, store, params }: Props) {
   const { theme } = useTheme() as any;
+
+  const headerSrc = getTicker("dice_duel") || getTicker("dice_games") || "";
+
   const { t } = useLang() as any;
 
   const primary = theme?.colors?.accent ?? theme?.primary ?? "#8b5cf6";

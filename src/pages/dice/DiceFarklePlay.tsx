@@ -12,6 +12,8 @@
 import React from "react";
 import { useTheme } from "../../contexts/ThemeContext";
 import BackDot from "../../components/BackDot";
+import ConfigTickerHeader from "../../components/ConfigTickerHeader";
+import { getTicker } from "../../lib/tickers";
 import InfoDot from "../../components/InfoDot";
 import ProfileAvatar from "../../components/ProfileAvatar";
 
@@ -61,6 +63,9 @@ function scoreFarkle(d:number[]){
 
 export default function DiceFarklePlay({ go, params, onFinish }: Props){
   const { theme } = useTheme() as any;
+
+  const headerSrc = getTicker("dice_farkle") || getTicker("dice_games") || "";
+
   const config = params?.config || { mode:"farkle", targetScore: 10000, diceCount: 6, sets: 1 };
   const players = Array.isArray(params?.players) ? params.players : [];
   const A = players?.[0] || { id:"A", name:"A" };

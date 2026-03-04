@@ -457,6 +457,29 @@ export default function BabyFootConfig({ go, store, params }: Props) {
   const teamAObj = teamARefId ? findTeam(teamARefId) : null;
   const teamBObj = teamBRefId ? findTeam(teamBRefId) : null;
 
+  // Empêche qu'une équipe sélectionnée apparaisse de l'autre côté (2v2).
+  // 2v1: pick uniquement côté A (côté "2 joueurs") -> pas de sélection d'équipe côté B.
+  const teamsForA = useMemo(() => {
+    if (!Array.isArray(teamsCatalog)) return [] as BabyFootTeam[];
+    if (mode !== "2v2" || !teamBRefId) return teamsCatalog;
+    return teamsCatalog.filter((t) => t?.id && t.id !== teamBRefId);
+  }, [teamsCatalog, mode, teamBRefId]);
+
+  const teamsForB = useMemo(() => {
+    if (!Array.isArray(teamsCatalog)) return [] as BabyFootTeam[];
+    if (mode !== "2v2" || !teamARefId) return teamsCatalog;
+    return teamsCatalog.filter((t) => t?.id && t.id !== teamARefId);
+  }, [teamsCatalog, mode, teamARefId]);
+
+  // Si état invalide (mêmes équipes), force B sur la prochaine dispo.
+  useEffect(() => {
+    if (mode !== "2v2") return;
+    if (!teamARefId || !teamBRefId) return;
+    if (teamARefId !== teamBRefId) return;
+    const fallback = teamsCatalog.find((t) => t?.id && t.id !== teamARefId)?.id;
+    if (fallback) setTeamBRefId(String(fallback));
+  }, [mode, teamARefId, teamBRefId, teamsCatalog]);
+
   // En 2v1, on ne garde pas de "team B" (c'est un joueur solo)
   useEffect(() => {
     if (mode === "2v1" && teamBRefId) setTeamBRefId("");
@@ -526,34 +549,17 @@ export default function BabyFootConfig({ go, store, params }: Props) {
     el.scrollBy({ left: dx, behavior: "smooth" });
   };
 
-  // Teams carousel with exclusion of the opposite selection
+  // Teams carousel: listes filtrées (2v2) => une équipe sélectionnée ne peut jamais être parcourue de l'autre côté
   const cycleTeam = (side: "A" | "B", dir: "left" | "right") => {
-    if (!teamsCatalog.length) return;
-
-    const ids = teamsCatalog.map((t) => t.id);
+    const list = side === "A" ? teamsForA : teamsForB;
+    if (!list.length) return;
+    const ids = list.map((t) => t.id);
     const curId = side === "A" ? teamARefId : teamBRefId;
-    const otherId = side === "A" ? teamBRefId : teamARefId;
-
     const startIdx = curId ? ids.indexOf(curId) : -1;
     const step = dir === "left" ? -1 : 1;
-
-    // if only one team, just set it
-    if (ids.length === 1) {
-      if (side === "A") setTeamARefId(ids[0]);
-      else setTeamBRefId(ids[0]);
-      return;
-    }
-
-    let idx = startIdx < 0 ? 0 : (startIdx + step + ids.length) % ids.length;
-    let guard = 0;
-    while (guard < ids.length && ids[idx] === otherId) {
-      idx = (idx + step + ids.length) % ids.length;
-      guard++;
-    }
-
+    const idx = startIdx < 0 ? 0 : (startIdx + step + ids.length) % ids.length;
     const nextId = ids[idx];
     if (!nextId) return;
-
     if (side === "A") setTeamARefId(nextId);
     else setTeamBRefId(nextId);
   };

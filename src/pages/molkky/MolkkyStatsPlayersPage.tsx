@@ -245,10 +245,9 @@ export default function MolkkyStatsPlayersPage({ go, embedded }: Props) {
             <BackDot onClick={() => (go ? go("molkky_stats") : window.history.back())} />
             <div style={title}>{t("stats.center", "CENTRE DE STATISTIQUES")}</div>
             <InfoDot
-              onClick={() => alert(`Stats Mölkky — Dashboard
-
-- Carousel pour naviguer entre les profils
-- Les données sont calculées via l'historique local`)}
+              onClick={() =>
+                alert("Stats Mölkky — Dashboard\n\n- Carousel pour naviguer entre les profils\n- Les données sont calculées via l\x27historique local")
+              }
             />
           </div>
 
