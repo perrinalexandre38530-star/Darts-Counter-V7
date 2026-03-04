@@ -8,11 +8,16 @@ import React from "react";
 import { useTheme } from "../../contexts/ThemeContext";
 import { useLang } from "../../contexts/LangContext";
 import BackDot from "../../components/BackDot";
+import ConfigTickerHeader from "../../components/ConfigTickerHeader";
+import { getTicker } from "../../lib/tickers";
 
 type Props = { go: (t: any, p?: any) => void; params?: any };
 
 export default function DiceSoonPlay({ go, params }: Props) {
   const { theme } = useTheme() as any;
+
+  const headerSrc = getTicker("dice_games") || getTicker("dice_games") || "";
+
   const { t } = useLang() as any;
   const primary = theme?.colors?.accent ?? theme?.primary ?? "#7cff6d";
 
@@ -21,9 +26,14 @@ export default function DiceSoonPlay({ go, params }: Props) {
 
   return (
     <div style={{ padding: 18 }}>
-      <div style={{ position: "fixed", left: 14, top: 14, zIndex: 10 }}>
-        <BackDot onClick={() => go("dice_menu")} />
-      </div>
+      <ConfigTickerHeader
+        src={headerSrc}
+        height={78}
+        left={<BackDot onClick={() => go("dice_menu")} />}
+        sticky={false}
+      />
+
+      
 
       <div
         style={{

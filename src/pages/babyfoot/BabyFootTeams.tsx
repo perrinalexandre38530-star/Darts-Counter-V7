@@ -428,7 +428,7 @@ export default function BabyFootTeams({ go }: Props) {
         {defaultTeams.length > 0 ? (
           <div
             style={{
-              ...card(theme),
+              ...cardWrap(theme),
               borderColor: "rgba(255,255,255,0.10)",
               marginBottom: 12,
             }}

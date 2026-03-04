@@ -434,11 +434,20 @@ export default function BabyFootConfig({ go, store, params }: Props) {
   const [handicapA, setHandicapA] = useState<number>(clamp(Number(presetHandicapA ?? (saved as any).handicapA ?? 0), 0, 99));
   const [handicapB, setHandicapB] = useState<number>(clamp(Number(presetHandicapB ?? (saved as any).handicapB ?? 0), 0, 99));
 
-  const [allowDrawOnTimeUp, setAllowDrawOnTimeUp] = useState<boolean>(!!(saved as any).allowDrawOnTimeUp);
-  const [winByTwo, setWinByTwo] = useState<boolean>(!!(saved as any).winByTwo);
+  // Align with babyfootStore fields
+  const [allowDrawOnTimeEnd, setAllowDrawOnTimeEnd] = useState<boolean>(
+    (saved as any).allowDrawOnTimeEnd !== undefined ? !!(saved as any).allowDrawOnTimeEnd : true
+  );
+  const [requireTwoGoalLead, setRequireTwoGoalLead] = useState<boolean>(
+    (saved as any).requireTwoGoalLead !== undefined ? !!(saved as any).requireTwoGoalLead : false
+  );
 
   const [selA, setSelA] = useState<string[]>(Array.isArray(saved.teamAProfileIds) ? saved.teamAProfileIds : []);
   const [selB, setSelB] = useState<string[]>(Array.isArray(saved.teamBProfileIds) ? saved.teamBProfileIds : []);
+
+  // When a side is "locked", we hide the carousel and display only the selected players.
+  const [lockPlayersA, setLockPlayersA] = useState(false);
+  const [lockPlayersB, setLockPlayersB] = useState(false);
 
   const capA = mode === "2v2" || mode === "2v1" ? 2 : 1;
   const capB = mode === "2v2" ? 2 : 1;
@@ -456,29 +465,6 @@ export default function BabyFootConfig({ go, store, params }: Props) {
   const findTeam = (id: string) => teamsCatalog.find((x) => x.id === id) ?? null;
   const teamAObj = teamARefId ? findTeam(teamARefId) : null;
   const teamBObj = teamBRefId ? findTeam(teamBRefId) : null;
-
-  // Empêche qu'une équipe sélectionnée apparaisse de l'autre côté (2v2).
-  // 2v1: pick uniquement côté A (côté "2 joueurs") -> pas de sélection d'équipe côté B.
-  const teamsForA = useMemo(() => {
-    if (!Array.isArray(teamsCatalog)) return [] as BabyFootTeam[];
-    if (mode !== "2v2" || !teamBRefId) return teamsCatalog;
-    return teamsCatalog.filter((t) => t?.id && t.id !== teamBRefId);
-  }, [teamsCatalog, mode, teamBRefId]);
-
-  const teamsForB = useMemo(() => {
-    if (!Array.isArray(teamsCatalog)) return [] as BabyFootTeam[];
-    if (mode !== "2v2" || !teamARefId) return teamsCatalog;
-    return teamsCatalog.filter((t) => t?.id && t.id !== teamARefId);
-  }, [teamsCatalog, mode, teamARefId]);
-
-  // Si état invalide (mêmes équipes), force B sur la prochaine dispo.
-  useEffect(() => {
-    if (mode !== "2v2") return;
-    if (!teamARefId || !teamBRefId) return;
-    if (teamARefId !== teamBRefId) return;
-    const fallback = teamsCatalog.find((t) => t?.id && t.id !== teamARefId)?.id;
-    if (fallback) setTeamBRefId(String(fallback));
-  }, [mode, teamARefId, teamBRefId, teamsCatalog]);
 
   // En 2v1, on ne garde pas de "team B" (c'est un joueur solo)
   useEffect(() => {
@@ -505,14 +491,33 @@ export default function BabyFootConfig({ go, store, params }: Props) {
     if (mode === "2v2" && !teamBRefId && defB) setTeamBRefId(String(defB));
   }, [showTeamsPicker, teamsCatalog, teamARefId, teamBRefId, mode]);
 
+  // En 2v2: l'équipe sélectionnée côté A ne doit jamais être proposée / sélectionnée côté B (et inversement)
+  useEffect(() => {
+    if (!showTeamsPicker) return;
+    if (mode !== "2v2") return;
+    if (!teamARefId || !teamBRefId) return;
+    if (teamARefId !== teamBRefId) return;
+    const nextB = teamsCatalog.find((t) => t?.id && t.id !== teamARefId);
+    if (nextB?.id) setTeamBRefId(String(nextB.id));
+  }, [showTeamsPicker, mode, teamARefId, teamBRefId, teamsCatalog]);
+
   const canStart = selA.length === capA && selB.length === capB;
 
   // Keep selections within quota if mode changes
   useEffect(() => {
     setSelA((prev) => prev.slice(0, capA));
     setSelB((prev) => prev.slice(0, capB));
+    setLockPlayersA(false);
+    setLockPlayersB(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mode]);
+
+  // Auto-lock when quota reached
+  useEffect(() => {
+    if (selA.length === capA && capA > 0) setLockPlayersA(true);
+    if (selB.length === capB && capB > 0) setLockPlayersB(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selA.length, selB.length, capA, capB]);
 
   // When user enables sets, keep score dropdown coherent (5/10 only)
   useEffect(() => {
@@ -527,6 +532,8 @@ export default function BabyFootConfig({ go, store, params }: Props) {
         const has = prev.includes(id);
         if (has) return prev.filter((x) => x !== id);
         if (prev.length >= capA) return prev;
+        // Prevent selecting a player already chosen on the other side
+        if (selB.includes(id)) return prev;
         return [...prev, id];
       });
     } else {
@@ -534,10 +541,84 @@ export default function BabyFootConfig({ go, store, params }: Props) {
         const has = prev.includes(id);
         if (has) return prev.filter((x) => x !== id);
         if (prev.length >= capB) return prev;
+        // Prevent selecting a player already chosen on the other side
+        if (selA.includes(id)) return prev;
         return [...prev, id];
       });
     }
   };
+
+  const getProfileById = (id: string) => profiles.find((p: any) => String((p as any)?.id) === String(id)) as any;
+
+  function SelectedPlayersStrip({ ids, onEdit }: { ids: string[]; onEdit: () => void }) {
+    return (
+      <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+        {ids.map((id) => {
+          const p: any = getProfileById(id);
+          const avatar = p?.avatarDataUrl || p?.avatarData || null;
+          const name = p?.name || "—";
+          return (
+            <div
+              key={id}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 10,
+                padding: "10px 10px",
+                borderRadius: 16,
+                background: "rgba(255,255,255,0.06)",
+                border: `1px solid ${primary}1f`,
+                boxShadow: "0 12px 28px rgba(0,0,0,0.35)",
+              }}
+            >
+              <div
+                style={{
+                  width: 44,
+                  height: 44,
+                  borderRadius: 999,
+                  overflow: "hidden",
+                  border: `1px solid ${primary}33`,
+                  background: "rgba(0,0,0,0.22)",
+                  display: "grid",
+                  placeItems: "center",
+                }}
+              >
+                {avatar ? (
+                  <img src={avatar} alt={name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                ) : (
+                  <div style={{ fontWeight: 1000, opacity: 0.9 }}>{String(name).slice(0, 1).toUpperCase()}</div>
+                )}
+              </div>
+              <div
+                style={{
+                  fontWeight: 950,
+                  opacity: 0.92,
+                  maxWidth: 160,
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                {name}
+              </div>
+            </div>
+          );
+        })}
+
+        <div style={{ marginLeft: "auto" }}>
+          <div
+            onClick={onEdit}
+            style={{ ...iconBtnStyle(), width: 34, height: 34 }}
+            role="button"
+            aria-label={t("edit", "Modifier")}
+            title={t("edit", "Modifier")}
+          >
+            ✓
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   // Carousels refs
   const aPlayersRef = useRef<HTMLDivElement | null>(null);
@@ -549,17 +630,34 @@ export default function BabyFootConfig({ go, store, params }: Props) {
     el.scrollBy({ left: dx, behavior: "smooth" });
   };
 
-  // Teams carousel: listes filtrées (2v2) => une équipe sélectionnée ne peut jamais être parcourue de l'autre côté
+  // Teams carousel with exclusion of the opposite selection
   const cycleTeam = (side: "A" | "B", dir: "left" | "right") => {
-    const list = side === "A" ? teamsForA : teamsForB;
-    if (!list.length) return;
-    const ids = list.map((t) => t.id);
+    if (!teamsCatalog.length) return;
+
+    const ids = teamsCatalog.map((t) => t.id);
     const curId = side === "A" ? teamARefId : teamBRefId;
+    const otherId = side === "A" ? teamBRefId : teamARefId;
+
     const startIdx = curId ? ids.indexOf(curId) : -1;
     const step = dir === "left" ? -1 : 1;
-    const idx = startIdx < 0 ? 0 : (startIdx + step + ids.length) % ids.length;
+
+    // if only one team, just set it
+    if (ids.length === 1) {
+      if (side === "A") setTeamARefId(ids[0]);
+      else setTeamBRefId(ids[0]);
+      return;
+    }
+
+    let idx = startIdx < 0 ? 0 : (startIdx + step + ids.length) % ids.length;
+    let guard = 0;
+    while (guard < ids.length && ids[idx] === otherId) {
+      idx = (idx + step + ids.length) % ids.length;
+      guard++;
+    }
+
     const nextId = ids[idx];
     if (!nextId) return;
+
     if (side === "A") setTeamARefId(nextId);
     else setTeamBRefId(nextId);
   };
@@ -662,11 +760,12 @@ export default function BabyFootConfig({ go, store, params }: Props) {
       setsEnabled,
       setsBestOf,
       setTarget: setsEnabled ? (setTarget === 5 || setTarget === 10 ? setTarget : 5) : setTarget,
-      allowDrawOnTimeUp: useTimer ? !!allowDrawOnTimeUp : false,
-      winByTwo: !!winByTwo,
+	      allowDrawOnTimeEnd: useTimer ? !!allowDrawOnTimeEnd : false,
+	      requireTwoGoalLead: !!requireTwoGoalLead,
     });
 
-    resetBabyFoot({ keepTeams: true, keepProfiles: true, keepOptions: true });
+    // Start match without nuking selections/options
+    // (startMatch() initializes runtime fields)
     startMatch();
 
     go("babyfoot_play", {
@@ -676,7 +775,7 @@ export default function BabyFootConfig({ go, store, params }: Props) {
   };
 
   const resetConfig = () => {
-    resetBabyFoot({ keepTeams: false, keepProfiles: false, keepOptions: false });
+    resetBabyFoot();
     const s = loadBabyFootState();
     setModeUI(s.mode);
     setTeamARefId((s as any).teamARefId ? String((s as any).teamARefId) : "");
@@ -692,8 +791,8 @@ export default function BabyFootConfig({ go, store, params }: Props) {
     setSetTarget(Number((s as any).setTarget ?? 5));
     setHandicapA(Number((s as any).handicapA ?? 0));
     setHandicapB(Number((s as any).handicapB ?? 0));
-    setAllowDrawOnTimeUp(!!(s as any).allowDrawOnTimeUp);
-    setWinByTwo(!!(s as any).winByTwo);
+	    setAllowDrawOnTimeEnd((s as any).allowDrawOnTimeEnd !== undefined ? !!(s as any).allowDrawOnTimeEnd : true);
+	    setRequireTwoGoalLead(!!(s as any).requireTwoGoalLead);
     setSelA(Array.isArray(s.teamAProfileIds) ? s.teamAProfileIds : []);
     setSelB(Array.isArray(s.teamBProfileIds) ? s.teamBProfileIds : []);
   };
@@ -761,7 +860,7 @@ export default function BabyFootConfig({ go, store, params }: Props) {
         </div>
       </div>
 
-      <div ref={contentRef} style={{ padding: "12px 12px 120px" }}>
+      <div ref={contentRef} style={{ padding: "12px 12px 200px" }}>
         {!lockFormat ? (
           <div style={{ ...cardStyle(cardBg), marginBottom: 12 }}>
             {sectionTitle(t("bf_format", "FORMAT"), primary)}
@@ -842,75 +941,83 @@ export default function BabyFootConfig({ go, store, params }: Props) {
 
           {/* Camp A */}
           <div style={{ fontSize: 12, opacity: 0.82, fontWeight: 1000, letterSpacing: 1.1, marginBottom: 8 }}>
-            {campALabel}
+            {campAName}
           </div>
 
-          <div style={{ position: "relative", marginBottom: 14 }}>
-            <div
-              ref={aPlayersRef}
-              style={{
-                display: "flex",
-                gap: 10,
-                overflowX: "auto",
-                padding: "6px 44px",
-                scrollSnapType: "x mandatory",
-                WebkitOverflowScrolling: "touch",
-              }}
-            >
-              {profiles.map((p) => {
-                const id = (p as any).id;
-                const selected = selA.includes(id);
-                return (
-                  <div key={id} style={{ scrollSnapAlign: "center" }} onClick={() => togglePlayer("A", id)}>
-                    <ProfileAvatarCard p={p} selected={selected} primary={primary} />
-                  </div>
-                );
-              })}
-            </div>
+          {confirmA ? (
+            <SelectedPlayersStrip ids={selA} onEdit={() => setConfirmA(false)} />
+          ) : (
+            <div style={{ position: "relative", marginBottom: 14 }}>
+              <div
+                ref={aPlayersRef}
+                style={{
+                  display: "flex",
+                  gap: 10,
+                  overflowX: "auto",
+                  padding: "6px 44px",
+                  scrollSnapType: "x mandatory",
+                  WebkitOverflowScrolling: "touch",
+                }}
+              >
+                {profilesForA.map((p) => {
+                  const id = String((p as any).id);
+                  const selected = selA.includes(id);
+                  return (
+                    <div key={id} style={{ scrollSnapAlign: "center" }} onClick={() => togglePlayer("A", id)}>
+                      <ProfileAvatarCard p={p} selected={selected} primary={primary} />
+                    </div>
+                  );
+                })}
+              </div>
 
-            <div style={{ position: "absolute", left: 6, top: "50%", transform: "translateY(-50%)" }}>
-              <ArrowBtn dir="left" onClick={() => scrollByCard(aPlayersRef.current, "left")} />
+              <div style={{ position: "absolute", left: 6, top: "50%", transform: "translateY(-50%)" }}>
+                <ArrowBtn dir="left" onClick={() => scrollByCard(aPlayersRef.current, "left")} />
+              </div>
+              <div style={{ position: "absolute", right: 6, top: "50%", transform: "translateY(-50%)" }}>
+                <ArrowBtn dir="right" onClick={() => scrollByCard(aPlayersRef.current, "right")} />
+              </div>
             </div>
-            <div style={{ position: "absolute", right: 6, top: "50%", transform: "translateY(-50%)" }}>
-              <ArrowBtn dir="right" onClick={() => scrollByCard(aPlayersRef.current, "right")} />
-            </div>
-          </div>
+          )}
 
           {/* Camp B */}
           <div style={{ fontSize: 12, opacity: 0.82, fontWeight: 1000, letterSpacing: 1.1, marginBottom: 8 }}>
-            {campBLabel}
+            {campBName}
           </div>
 
-          <div style={{ position: "relative" }}>
-            <div
-              ref={bPlayersRef}
-              style={{
-                display: "flex",
-                gap: 10,
-                overflowX: "auto",
-                padding: "6px 44px",
-                scrollSnapType: "x mandatory",
-                WebkitOverflowScrolling: "touch",
-              }}
-            >
-              {profiles.map((p) => {
-                const id = (p as any).id;
-                const selected = selB.includes(id);
-                return (
-                  <div key={id} style={{ scrollSnapAlign: "center" }} onClick={() => togglePlayer("B", id)}>
-                    <ProfileAvatarCard p={p} selected={selected} primary={primary} />
-                  </div>
-                );
-              })}
-            </div>
+          {confirmB ? (
+            <SelectedPlayersStrip ids={selB} onEdit={() => setConfirmB(false)} />
+          ) : (
+            <div style={{ position: "relative" }}>
+              <div
+                ref={bPlayersRef}
+                style={{
+                  display: "flex",
+                  gap: 10,
+                  overflowX: "auto",
+                  padding: "6px 44px",
+                  scrollSnapType: "x mandatory",
+                  WebkitOverflowScrolling: "touch",
+                }}
+              >
+                {profilesForB.map((p) => {
+                  const id = String((p as any).id);
+                  const selected = selB.includes(id);
+                  return (
+                    <div key={id} style={{ scrollSnapAlign: "center" }} onClick={() => togglePlayer("B", id)}>
+                      <ProfileAvatarCard p={p} selected={selected} primary={primary} />
+                    </div>
+                  );
+                })}
+              </div>
 
-            <div style={{ position: "absolute", left: 6, top: "50%", transform: "translateY(-50%)" }}>
-              <ArrowBtn dir="left" onClick={() => scrollByCard(bPlayersRef.current, "left")} />
+              <div style={{ position: "absolute", left: 6, top: "50%", transform: "translateY(-50%)" }}>
+                <ArrowBtn dir="left" onClick={() => scrollByCard(bPlayersRef.current, "left")} />
+              </div>
+              <div style={{ position: "absolute", right: 6, top: "50%", transform: "translateY(-50%)" }}>
+                <ArrowBtn dir="right" onClick={() => scrollByCard(bPlayersRef.current, "right")} />
+              </div>
             </div>
-            <div style={{ position: "absolute", right: 6, top: "50%", transform: "translateY(-50%)" }}>
-              <ArrowBtn dir="right" onClick={() => scrollByCard(bPlayersRef.current, "right")} />
-            </div>
-          </div>
+          )}
         </div>
 
         {/* RÈGLES */}
@@ -987,16 +1094,24 @@ export default function BabyFootConfig({ go, store, params }: Props) {
             ) : null}
 
             {/* Options */}
-            <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
-              <div style={pillStyle(winByTwo, primary, primarySoft)} onClick={() => setWinByTwo((v) => !v)} title={t("bf_win_by_two_tip", "Exige 2 buts d'écart pour gagner (hors contrainte temps)")}>
-                {t("bf_win_by_two", "2 buts d'écart")}
-              </div>
-              {useTimer ? (
-                <div style={pillStyle(allowDrawOnTimeUp, primary, primarySoft)} onClick={() => setAllowDrawOnTimeUp((v) => !v)} title={t("bf_allow_draw_tip", "Autorise le match nul si égalité à la fin du temps")}>
-                  {t("bf_allow_draw", "Match nul")}
-                </div>
-              ) : null}
-            </div>
+	            <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+	              <div
+	                style={pillStyle(requireTwoGoalLead, primary, primarySoft)}
+	                onClick={() => setRequireTwoGoalLead((v) => !v)}
+	                title={t("bf_win_by_two_tip", "Exige 2 buts d'écart pour gagner (hors contrainte temps)")}
+	              >
+	                {t("bf_win_by_two", "2 buts d'écart")}
+	              </div>
+	              {useTimer ? (
+	                <div
+	                  style={pillStyle(allowDrawOnTimeEnd, primary, primarySoft)}
+	                  onClick={() => setAllowDrawOnTimeEnd((v) => !v)}
+	                  title={t("bf_allow_draw_tip", "Autorise le match nul si égalité à la fin du temps")}
+	                >
+	                  {t("bf_allow_draw", "Match nul")}
+	                </div>
+	              ) : null}
+	            </div>
           </div>
         </div>
 
@@ -1162,13 +1277,14 @@ export default function BabyFootConfig({ go, store, params }: Props) {
           position: "fixed",
           left: 0,
           right: 0,
-          bottom: 0,
-          padding: "10px 12px calc(10px + env(safe-area-inset-bottom))",
+          // Keep above the bottom tabbar
+          bottom: "calc(64px + env(safe-area-inset-bottom))",
+          padding: "10px 12px 10px",
           background: "linear-gradient(180deg, rgba(6,7,12,0) 0%, rgba(6,7,12,0.75) 20%, rgba(6,7,12,0.96) 100%)",
           backdropFilter: "blur(10px)",
           WebkitBackdropFilter: "blur(10px)",
           borderTop: "1px solid rgba(255,255,255,0.06)",
-          zIndex: 50,
+          zIndex: 999,
         }}
       >
         <div style={{ display: "flex", gap: 10 }}>

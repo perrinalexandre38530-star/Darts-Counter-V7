@@ -12,6 +12,8 @@ import { useTheme } from "../../contexts/ThemeContext";
 import { useLang } from "../../contexts/LangContext";
 import BackDot from "../../components/BackDot";
 import InfoDot from "../../components/InfoDot";
+import ConfigTickerHeader from "../../components/ConfigTickerHeader";
+import { getTicker } from "../../lib/tickers";
 import ProfileAvatar from "../../components/ProfileAvatar";
 
 import type { DiceConfig as DiceCfg, DicePlayer } from "../../lib/diceTypes";
@@ -30,6 +32,9 @@ const clamp = (v: any, a: number, b: number, def: number) => {
 
 export default function DiceYamsConfig({ go, store }: Props) {
   const { theme } = useTheme() as any;
+
+  const headerSrc = getTicker("dice_yams") || getTicker("dice_games") || "";
+
   const { t } = useLang() as any;
 
   const profiles = Array.isArray(store?.profiles) ? store.profiles : [];
@@ -76,6 +81,15 @@ export default function DiceYamsConfig({ go, store }: Props) {
 
   return (
     <div style={{ padding: 18 }}>
+      <ConfigTickerHeader
+        src={headerSrc}
+        height={92}
+        left={<BackDot onClick={() => go("dice_menu")} />}
+        right={<InfoDot title="Yam's — Config"
+        desc={`Yam's / Yahtzee (5 dés)\n\n• 13 catégories\n• 3 lancers max (2 relances)\n• Bonus haut: 63 → +35\n\nChoisis 2 joueurs puis lance.`} />}
+        sticky={false}
+      />
+
       <BackDot onClick={() => go("dice_games")} />
       <InfoDot
         title="Yam's — Config"

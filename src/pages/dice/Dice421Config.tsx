@@ -9,6 +9,8 @@ import { useTheme } from "../../contexts/ThemeContext";
 import { useLang } from "../../contexts/LangContext";
 import BackDot from "../../components/BackDot";
 import InfoDot from "../../components/InfoDot";
+import ConfigTickerHeader from "../../components/ConfigTickerHeader";
+import { getTicker } from "../../lib/tickers";
 import ProfileAvatar from "../../components/ProfileAvatar";
 
 import { saveDiceState, clearDiceState } from "../../lib/diceStore";
@@ -132,6 +134,9 @@ function Toggle({ label, checked, onChange, theme }: any) {
 
 export default function Dice421Config({ go, store }: Props) {
   const { theme } = useTheme() as any;
+
+  const headerSrc = getTicker("dice_421") || getTicker("dice_games") || "";
+
   const { t } = useLang() as any;
 
   const primary = theme?.colors?.accent ?? theme?.primary ?? "#7cff6d";
@@ -184,17 +189,19 @@ export default function Dice421Config({ go, store }: Props) {
 
   return (
     <div style={{ padding: 18 }}>
-      <div style={{ position: "fixed", left: 14, top: 14, zIndex: 10 }}>
-        <BackDot onClick={() => go("dice_menu")} />
-      </div>
-      <div style={{ position: "fixed", right: 14, top: 14, zIndex: 10 }}>
-        <InfoDot
-          title="421 — Config"
+      <ConfigTickerHeader
+        src={headerSrc}
+        height={92}
+        left={<BackDot onClick={() => go("dice_menu")} />}
+        right={<InfoDot title="421 — Config"
           desc={
             "421 (FR) — config de base.\n\n• 3 dés\n• Combinaisons + annonces\n• Points par manche\n\nPLAY/scoring à venir."
-          }
-        />
-      </div>
+          } />}
+        sticky={false}
+      />
+
+      
+      
 
       <div
         style={{
