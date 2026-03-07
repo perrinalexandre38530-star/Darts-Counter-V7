@@ -170,8 +170,8 @@ export default function BabyFootPlay({ go, onFinish, params }: Props) {
   useEffect(() => {
     if (!state.finished) return;
 
-    const winnerTeam: BabyFootTeamId | null = (state.winner as any) ?? (state.scoreA === state.scoreB ? null : (state.scoreA > state.scoreB ? "A" : "B"));
-    const winnerId = winnerTeam === "A" ? (teamAIds[0] || null) : winnerTeam === "B" ? (teamBIds[0] || null) : null;
+    const winnerTeam: BabyFootTeamId = (state.winner as any) || (state.scoreA >= state.scoreB ? "A" : "B");
+    const winnerId = winnerTeam === "A" ? (teamAIds[0] || null) : (teamBIds[0] || null);
 
     const payload = {
       kind: "babyfoot",
@@ -201,7 +201,6 @@ export default function BabyFootPlay({ go, onFinish, params }: Props) {
         handicapB: state.handicapB ?? 0,
       },
       events: state.events || [],
-      result: winnerTeam ? "win" : "draw",
     };
 
     // Tournament integration (best effort): persist result marker to avoid replay in bracket
@@ -615,11 +614,7 @@ export default function BabyFootPlay({ go, onFinish, params }: Props) {
           <div style={{ ...card, marginTop: 12 }}>
             <div style={{ fontWeight: 1100, letterSpacing: 0.8 }}>MATCH TERMINÉ</div>
             <div style={{ marginTop: 10, fontSize: 14, fontWeight: 950, opacity: 0.92 }}>
-              {state.winner ? (
-                <>Gagnant: {state.winner === "A" ? state.teamA : state.teamB}</>
-              ) : (
-                <>"Match nul"</>
-              )}
+              Gagnant: {state.winner === "A" ? state.teamA : state.teamB}
             </div>
             <div style={{ marginTop: 8, fontSize: 12, opacity: 0.78, fontWeight: 850 }}>
               Durée: {fmt(durationMs)}

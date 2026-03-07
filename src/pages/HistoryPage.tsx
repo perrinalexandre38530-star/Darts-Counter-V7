@@ -24,10 +24,10 @@ import { History, type SavedMatch } from "../lib/history";
 import { buildMatchSharePacket, isMatchSharePacketV1, shareOneMatch, type MatchSharePacketV1 } from "../lib/matchShare";
 import { inboxAddLocal, inboxListLocal, inboxRemoveLocal, type InboxItemLocal } from "../lib/matchInboxLocal";
 import { listInboxCloud, sendMatchToEmail, setInboxStatusCloud, type InboxRowCloud, ensureDirectoryEntry } from "../lib/matchInboxCloud";
-import logoDarts from "../assets-webp/games/logo-darts.webp";
-import logoPingPong from "../assets-webp/games/logo-pingpong.webp";
-import logoPetanque from "../assets-webp/games/logo-petanque.webp";
-import logoBabyfoot from "../assets-webp/games/logo-babyfoot.webp";
+import logoDarts from "../assets/games/logo-darts.png";
+import logoPingPong from "../assets/games/logo-pingpong.png";
+import logoPetanque from "../assets/games/logo-petanque.png";
+import logoBabyfoot from "../assets/games/logo-babyfoot.png";
 
 
 /* ---------- Icônes ---------- */

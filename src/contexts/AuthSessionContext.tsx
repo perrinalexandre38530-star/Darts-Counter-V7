@@ -1,7 +1,14 @@
+// ============================================
 // src/contexts/AuthSessionContext.tsx
+// Compat bridge vers le système V7 unique (useAuthOnline)
+// - NE recrée PAS de listener Supabase ici
+// - NE crée PAS de client Supabase secondaire
+// - Garde l'ancienne API pour les fichiers legacy
+// ============================================
+
 import React from "react";
 import type { Session, User } from "@supabase/supabase-js";
-import { supabase } from "../lib/supabase";
+import { useAuthOnline } from "../hooks/useAuthOnline";
 
 type Status = "checking" | "signed_in" | "signed_out";
 
@@ -15,67 +22,25 @@ type Ctx = {
 
 const AuthSessionContext = React.createContext<Ctx | null>(null);
 
-export function AuthSessionProvider({ children }: { children: React.ReactNode }) {
-  const [status, setStatus] = React.useState<Status>("checking");
-  const [session, setSession] = React.useState<Session | null>(null);
+function AuthSessionBridge({ children }: { children: React.ReactNode }) {
+  const online = useAuthOnline();
 
-  const refresh = React.useCallback(async () => {
-    setStatus("checking");
-    const { data, error } = await supabase.auth.getSession();
-    if (error) {
-      console.warn("[AuthSession] getSession error:", error);
-      setSession(null);
-      setStatus("signed_out");
-      return;
-    }
-    const s = data?.session ?? null;
-    setSession(s);
-    setStatus(s ? "signed_in" : "signed_out");
-  }, []);
-
-  React.useEffect(() => {
-    let alive = true;
-
-    // 1) boot session
-    refresh().catch(() => {});
-
-    // 2) live updates
-    const { data: sub } = supabase.auth.onAuthStateChange((_evt, s) => {
-      if (!alive) return;
-      setSession(s ?? null);
-      setStatus(s ? "signed_in" : "signed_out");
-    });
-
-    return () => {
-      alive = false;
-      sub.subscription.unsubscribe();
-    };
-  }, [refresh]);
-
-  const signOut = React.useCallback(async () => {
-    try {
-      await supabase.auth.signOut();
-    } catch (e) {
-      console.warn("[AuthSession] signOut:", e);
-    } finally {
-      setSession(null);
-      setStatus("signed_out");
-    }
-  }, []);
-
-  const value: Ctx = {
-    status,
-    session,
-    user: session?.user ?? null,
-    signOut,
-    refresh,
-  };
-
-  return (
-    <AuthSessionContext.Provider value={value}>
-      {children}
-    </AuthSessionContext.Provider>
+  const value = React.useMemo<Ctx>(
+    () => ({
+      status: online.status as Status,
+      session: online.session ?? null,
+      user: online.user ?? null,
+      signOut: online.logout,
+      refresh: online.refresh,
+    }),
+    [online.status, online.session, online.user, online.logout, online.refresh]
   );
+
+  return <AuthSessionContext.Provider value={value}>{children}</AuthSessionContext.Provider>;
+}
+
+export function AuthSessionProvider({ children }: { children: React.ReactNode }) {
+  return <AuthSessionBridge>{children}</AuthSessionBridge>;
 }
 
 export function useAuthSession() {

@@ -23,7 +23,7 @@ import InfoMini from "../../components/InfoMini";
 import { useLang } from "../../contexts/LangContext";
 import { useTheme } from "../../contexts/ThemeContext";
 
-import tickerBatard from "../../assets-webp/tickers/ticker_bastard.webp";
+import tickerBatard from "../../assets/tickers/ticker_bastard.png";
 
 import type {
   BatardConfig as BatardRulesConfig,

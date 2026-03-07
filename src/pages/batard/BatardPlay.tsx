@@ -8,8 +8,8 @@ import Section from "../../components/Section";
 import Keypad from "../../components/Keypad";
 import { useLang } from "../../contexts/LangContext";
 import { useTheme } from "../../contexts/ThemeContext";
-import tickerBatard from "../../assets-webp/tickers/ticker_bastard.webp";
-import tickerBatardPlayers from "../../assets-webp/tickers/ticker_batard_players.webp";
+import tickerBatard from "../../assets/tickers/ticker_bastard.png";
+import tickerBatardPlayers from "../../assets/tickers/ticker_batard_players.png";
 
 import type { Dart as UIDart } from "../../lib/types";
 import type { BatardConfig as BatardRulesConfig, BatardRound } from "../../lib/batard/batardTypes";

@@ -1,33 +1,20 @@
-import React, { useEffect, useState } from "react";
-import { Session } from "@supabase/supabase-js";
-import { getSupabase } from "@/lib/supabaseSingleton";
+// ============================================
+// src/auth/AuthProvider.tsx
+// Legacy shim
+// - Ancien provider conservé pour compat d'import uniquement
+// - Ne crée plus aucun état/session séparé
+// ============================================
 
-export const AuthContext = React.createContext<Session | null>(null);
+import React from "react";
+import { useAuthOnline } from "../hooks/useAuthOnline";
+
+export const AuthContext = React.createContext<any>(null);
+
+function AuthLegacyBridge({ children }: { children: React.ReactNode }) {
+  const online = useAuthOnline();
+  return <AuthContext.Provider value={online}>{children}</AuthContext.Provider>;
+}
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const [session, setSession] = useState<Session | null>(null);
-
-  useEffect(() => {
-    const supabase = getSupabase();
-    let mounted = true;
-
-    supabase.auth.getSession().then(({ data }) => {
-      if (mounted) setSession(data.session);
-    });
-
-    const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
-      setSession(session);
-    });
-
-    return () => {
-      mounted = false;
-      sub.subscription.unsubscribe();
-    };
-  }, []);
-
-  return (
-    <AuthContext.Provider value={session}>
-      {children}
-    </AuthContext.Provider>
-  );
+  return <AuthLegacyBridge>{children}</AuthLegacyBridge>;
 }

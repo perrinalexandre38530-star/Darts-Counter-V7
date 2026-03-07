@@ -19,25 +19,25 @@ import { loadBabyFootState } from "../../lib/babyfootStore";
 import { computeShotConversion } from "../../lib/babyfootQualityStats";
 
 // ✅ Home ticker backgrounds (catégories)
-import tickerBabyfootActu1 from "../../assets-webp/tickers/ticker_babyfoot_actu_1.webp";
-import tickerBabyfootActu2 from "../../assets-webp/tickers/ticker_babyfoot_actu_2.webp";
-import tickerBabyfootActu3 from "../../assets-webp/tickers/ticker_babyfoot_actu_3.webp";
+import tickerBabyfootActu1 from "../../assets/tickers/ticker_babyfoot_actu_1.png";
+import tickerBabyfootActu2 from "../../assets/tickers/ticker_babyfoot_actu_2.png";
+import tickerBabyfootActu3 from "../../assets/tickers/ticker_babyfoot_actu_3.png";
 
-import tickerBabyfootNew1 from "../../assets-webp/tickers/ticker_babyfoot_new_1.webp";
-import tickerBabyfootNew2 from "../../assets-webp/tickers/ticker_babyfoot_new_2.webp";
-import tickerBabyfootNew3 from "../../assets-webp/tickers/ticker_babyfoot_new_3.webp";
+import tickerBabyfootNew1 from "../../assets/tickers/ticker_babyfoot_new_1.png";
+import tickerBabyfootNew2 from "../../assets/tickers/ticker_babyfoot_new_2.png";
+import tickerBabyfootNew3 from "../../assets/tickers/ticker_babyfoot_new_3.png";
 
-import tickerBabyfootResults1 from "../../assets-webp/tickers/ticker_babyfoot_results_1.webp";
-import tickerBabyfootResults2 from "../../assets-webp/tickers/ticker_babyfoot_results_2.webp";
-import tickerBabyfootResults3 from "../../assets-webp/tickers/ticker_babyfoot_results_3.webp";
+import tickerBabyfootResults1 from "../../assets/tickers/ticker_babyfoot_results_1.png";
+import tickerBabyfootResults2 from "../../assets/tickers/ticker_babyfoot_results_2.png";
+import tickerBabyfootResults3 from "../../assets/tickers/ticker_babyfoot_results_3.png";
 
-import tickerBabyfootEvents1 from "../../assets-webp/tickers/ticker_babyfoot_events_1.webp";
-import tickerBabyfootEvents2 from "../../assets-webp/tickers/ticker_babyfoot_events_2.webp";
-import tickerBabyfootEvents3 from "../../assets-webp/tickers/ticker_babyfoot_events_3.webp";
+import tickerBabyfootEvents1 from "../../assets/tickers/ticker_babyfoot_events_1.png";
+import tickerBabyfootEvents2 from "../../assets/tickers/ticker_babyfoot_events_2.png";
+import tickerBabyfootEvents3 from "../../assets/tickers/ticker_babyfoot_events_3.png";
 
-import tickerBabyfootTips1 from "../../assets-webp/tickers/ticker_babyfoot_tips_1.webp";
-import tickerBabyfootTips2 from "../../assets-webp/tickers/ticker_babyfoot_tips_2.webp";
-import tickerBabyfootTips3 from "../../assets-webp/tickers/ticker_babyfoot_tips_3.webp";
+import tickerBabyfootTips1 from "../../assets/tickers/ticker_babyfoot_tips_1.png";
+import tickerBabyfootTips2 from "../../assets/tickers/ticker_babyfoot_tips_2.png";
+import tickerBabyfootTips3 from "../../assets/tickers/ticker_babyfoot_tips_3.png";
 
 type Props = {
   store: Store;

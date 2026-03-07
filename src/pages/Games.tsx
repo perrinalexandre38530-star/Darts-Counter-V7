@@ -48,8 +48,8 @@ import { devClickable, devVisuallyDisabled } from "../lib/devGate";
 
 // ✅ NEW ticker component (haut seulement)
 import NewModesTicker, { type NewModeTickerItem } from "../components/NewModesTicker";
-import newGameBadge from "../assets-webp/new_game.webp";
-import playBadge from "../assets-webp/play.webp";
+import newGameBadge from "../assets/new_game.png";
+import playBadge from "../assets/play.png";
 
 // ✅ Tickers images (Vite): /src/assets/tickers/ticker_<gameId>.png
 const TICKERS = import.meta.glob("../assets/tickers/*.png", {

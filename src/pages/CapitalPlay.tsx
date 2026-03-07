@@ -5,7 +5,7 @@ import PageHeader from "../components/PageHeader";
 import ScoreInputHub from "../components/ScoreInputHub";
 import { useLang } from "../contexts/LangContext";
 import { useTheme } from "../contexts/ThemeContext";
-import tickerCapital from "../assets-webp/tickers/ticker_capital.webp";
+import tickerCapital from "../assets/tickers/ticker_capital.png";
 import { PRO_BOTS, proBotToProfile } from "../lib/botsPro";
 
 type BotLevel = "easy" | "normal" | "hard";

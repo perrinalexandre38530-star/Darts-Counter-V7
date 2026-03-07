@@ -29,7 +29,7 @@ import { useLang } from "../contexts/LangContext";
 import { useDevMode } from "../contexts/DevModeContext";
 import InfoDot from "../components/InfoDot";
 import BackDot from "../components/BackDot";
-import tickerTraining from "../assets-webp/tickers/ticker_training.webp";
+import tickerTraining from "../assets/tickers/ticker_training.png";
 import { dartsGameRegistry } from "../games/dartsGameRegistry";
 import { devClickable, devVisuallyDisabled } from "../lib/devGate";
 

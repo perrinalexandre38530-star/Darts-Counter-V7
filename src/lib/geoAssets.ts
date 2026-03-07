@@ -4,34 +4,34 @@
 // Assets locaux (flags pays + logos régions FR) pour un rendu fiable sur tous navigateurs.
 // =============================================================
 
-import flagFR from "../assets-webp/flags/FR.webp";
-import flagBE from "../assets-webp/flags/BE.webp";
-import flagCH from "../assets-webp/flags/CH.webp";
-import flagES from "../assets-webp/flags/ES.webp";
-import flagIT from "../assets-webp/flags/IT.webp";
-import flagDE from "../assets-webp/flags/DE.webp";
-import flagPT from "../assets-webp/flags/PT.webp";
-import flagGB from "../assets-webp/flags/GB.webp";
-import flagUS from "../assets-webp/flags/US.webp";
+import flagFR from "../assets/flags/FR.png";
+import flagBE from "../assets/flags/BE.png";
+import flagCH from "../assets/flags/CH.png";
+import flagES from "../assets/flags/ES.png";
+import flagIT from "../assets/flags/IT.png";
+import flagDE from "../assets/flags/DE.png";
+import flagPT from "../assets/flags/PT.png";
+import flagGB from "../assets/flags/GB.png";
+import flagUS from "../assets/flags/US.png";
 
-import regARA from "../assets-webp/regions_fr/FR-ARA.webp";
-import regBFC from "../assets-webp/regions_fr/FR-BFC.webp";
-import regBRE from "../assets-webp/regions_fr/FR-BRE.webp";
-import regCVL from "../assets-webp/regions_fr/FR-CVL.webp";
-import regCOR from "../assets-webp/regions_fr/FR-COR.webp";
-import regGES from "../assets-webp/regions_fr/FR-GES.webp";
-import regHDF from "../assets-webp/regions_fr/FR-HDF.webp";
-import regIDF from "../assets-webp/regions_fr/FR-IDF.webp";
-import regNOR from "../assets-webp/regions_fr/FR-NOR.webp";
-import regNAQ from "../assets-webp/regions_fr/FR-NAQ.webp";
-import regOCC from "../assets-webp/regions_fr/FR-OCC.webp";
-import regPDL from "../assets-webp/regions_fr/FR-PDL.webp";
-import regPAC from "../assets-webp/regions_fr/FR-PAC.webp";
-import regGP from "../assets-webp/regions_fr/FR-GP.webp";
-import regMQ from "../assets-webp/regions_fr/FR-MQ.webp";
-import regGF from "../assets-webp/regions_fr/FR-GF.webp";
-import regRE from "../assets-webp/regions_fr/FR-RE.webp";
-import regYT from "../assets-webp/regions_fr/FR-YT.webp";
+import regARA from "../assets/regions_fr/FR-ARA.png";
+import regBFC from "../assets/regions_fr/FR-BFC.png";
+import regBRE from "../assets/regions_fr/FR-BRE.png";
+import regCVL from "../assets/regions_fr/FR-CVL.png";
+import regCOR from "../assets/regions_fr/FR-COR.png";
+import regGES from "../assets/regions_fr/FR-GES.png";
+import regHDF from "../assets/regions_fr/FR-HDF.png";
+import regIDF from "../assets/regions_fr/FR-IDF.png";
+import regNOR from "../assets/regions_fr/FR-NOR.png";
+import regNAQ from "../assets/regions_fr/FR-NAQ.png";
+import regOCC from "../assets/regions_fr/FR-OCC.png";
+import regPDL from "../assets/regions_fr/FR-PDL.png";
+import regPAC from "../assets/regions_fr/FR-PAC.png";
+import regGP from "../assets/regions_fr/FR-GP.png";
+import regMQ from "../assets/regions_fr/FR-MQ.png";
+import regGF from "../assets/regions_fr/FR-GF.png";
+import regRE from "../assets/regions_fr/FR-RE.png";
+import regYT from "../assets/regions_fr/FR-YT.png";
 
 const COUNTRY_FLAGS: Record<string, string> = {
   FR: flagFR,

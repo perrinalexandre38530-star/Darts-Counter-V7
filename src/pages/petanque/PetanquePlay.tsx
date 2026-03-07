@@ -45,22 +45,22 @@ import PetanqueMeneWizard, {
 } from "../../components/PetanqueMeneWizard";
 
 
-import tickerP1v1 from "../../assets-webp/tickers/ticker_petanque_1v1.webp";
-import tickerP2v2 from "../../assets-webp/tickers/ticker_petanque_2v2.webp";
-import tickerP3v3 from "../../assets-webp/tickers/ticker_petanque_3v3.webp";
-import tickerP4v4 from "../../assets-webp/tickers/ticker_petanque_4v4.webp";
-import icoPointage from "../../assets-webp/petanque_icons/Pointage.webp";
-import icoTir from "../../assets-webp/petanque_icons/Tir.webp";
-import icoCarreau from "../../assets-webp/petanque_icons/Carreau.webp";
-import icoBEC from "../../assets-webp/petanque_icons/BEC.webp";
-import icoTrou from "../../assets-webp/petanque_icons/Trou.webp";
-import icoBouclier from "../../assets-webp/petanque_icons/Bouclier.webp";
-import icoBut from "../../assets-webp/petanque_icons/But.webp";
-import icoReprise from "../../assets-webp/petanque_icons/Reprise.webp";
-import icoAssist from "../../assets-webp/petanque_icons/Assist.webp";
+import tickerP1v1 from "../../assets/tickers/ticker_petanque_1v1.png";
+import tickerP2v2 from "../../assets/tickers/ticker_petanque_2v2.png";
+import tickerP3v3 from "../../assets/tickers/ticker_petanque_3v3.png";
+import tickerP4v4 from "../../assets/tickers/ticker_petanque_4v4.png";
+import icoPointage from "../../assets/petanque_icons/Pointage.png";
+import icoTir from "../../assets/petanque_icons/Tir.png";
+import icoCarreau from "../../assets/petanque_icons/Carreau.png";
+import icoBEC from "../../assets/petanque_icons/BEC.png";
+import icoTrou from "../../assets/petanque_icons/Trou.png";
+import icoBouclier from "../../assets/petanque_icons/Bouclier.png";
+import icoBut from "../../assets/petanque_icons/But.png";
+import icoReprise from "../../assets/petanque_icons/Reprise.png";
+import icoAssist from "../../assets/petanque_icons/Assist.png";
 // NOTE: certains builds (Windows/StackBlitz) peuvent casser sur la casse du nom de fichier.
 // On standardise sur "concede.png" (alias ajouté dans src/assets/petanque_icons).
-import icoConcede from "../../assets-webp/petanque_icons/concede.webp";
+import icoConcede from "../../assets/petanque_icons/concede.png";
 
 
 type Props = {

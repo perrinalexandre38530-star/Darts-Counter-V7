@@ -12,7 +12,7 @@ import { playSound } from "../lib/sound";
 import type { Profile } from "../lib/types";
 import InfoDot from "../components/InfoDot";
 import BackDot from "../components/BackDot";
-import tickerTourHorloge from "../assets-webp/tickers/ticker_tour_horloge.webp";
+import tickerTourHorloge from "../assets/tickers/ticker_tour_horloge.png";
 
 type ClockMode = "classic" | "doubles" | "triples" | "sdt";
 

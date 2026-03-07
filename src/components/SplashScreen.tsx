@@ -9,7 +9,7 @@
 import React from "react";
 
 // ⚠️ Depuis src/components -> ../assets
-import AppLogo from "../assets-webp/LOGO.webp";
+import AppLogo from "../assets/LOGO.png";
 
 type Props = {
   onFinish: () => void;

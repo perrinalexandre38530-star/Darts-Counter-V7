@@ -1620,37 +1620,6 @@ useEffect(() => {
   }, []);
 
   // ============================================================
-  // ✅ AUTH — handler Supabase (conservé)
-  // ============================================================
-  const wipeAllLocalData = React.useCallback(async () => {
-    setRouteParams(null);
-    setTab("account_start");
-  }, []);
-
-  React.useEffect(() => {
-    const { data } = supabase.auth.onAuthStateChange(async (event, session) => {
-      try {
-        if (event === "SIGNED_IN") {
-          const user = session?.user || (await supabase.auth.getUser())?.data?.user || null;
-          if (user?.id) cloudHydratedUserRef.current = String(user.id);
-        }
-        if (event === "SIGNED_OUT") {
-          // PROFILES V7: on ne wipe PAS les données locales au logout.
-        }
-      } catch (e) {
-        console.warn("[auth] onAuthStateChange handler error", e);
-      }
-    });
-
-    return () => {
-      try {
-        data?.subscription?.unsubscribe();
-      } catch {}
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [wipeAllLocalData]);
-
-  // ============================================================
   // ✅ LocalStorage DC hook (emitCloudChange sur dc_* / dc-*)
   // ============================================================
   React.useEffect(() => {

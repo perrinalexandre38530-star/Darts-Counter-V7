@@ -19,12 +19,12 @@ import ProfileAvatar from "../components/ProfileAvatar";
 import { useLang } from "../contexts/LangContext";
 import { useTheme } from "../contexts/ThemeContext";
 
-import tickerScram from "../assets-webp/tickers/ticker_scram.webp";
+import tickerScram from "../assets/tickers/ticker_scram.png";
 
-import avatarGreenMachine from "../assets-webp/avatars/bots-pro/green-machine.webp";
-import avatarSnakeKing from "../assets-webp/avatars/bots-pro/snake-king.webp";
-import avatarWonderKid from "../assets-webp/avatars/bots-pro/wonder-kid.webp";
-import avatarIceMan from "../assets-webp/avatars/bots-pro/ice-man.webp";
+import avatarGreenMachine from "../assets/avatars/bots-pro/green-machine.png";
+import avatarSnakeKing from "../assets/avatars/bots-pro/snake-king.png";
+import avatarWonderKid from "../assets/avatars/bots-pro/wonder-kid.png";
+import avatarIceMan from "../assets/avatars/bots-pro/ice-man.png";
 
 type BotLevel = "easy" | "normal" | "hard";
 

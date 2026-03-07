@@ -10,7 +10,7 @@ import BackDot from "../BackDot";
 import InfoDot from "../InfoDot";
 import RulesModal from "../RulesModal";
 import { useTheme } from "../../contexts/ThemeContext";
-import tickerX01 from "../../assets-webp/tickers/ticker_x01.webp";
+import tickerX01 from "../../assets/tickers/ticker_x01.png";
 
 // Scale children down (never up) to fit the available box.
 function FitBox({

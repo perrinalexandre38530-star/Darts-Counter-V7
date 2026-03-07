@@ -14,7 +14,7 @@ import { useTheme } from "../contexts/ThemeContext";
 import { useLang } from "../contexts/LangContext";
 import InfoDot from "../components/InfoDot";
 import BackDot from "../components/BackDot";
-import tickerWarfare from "../assets-webp/tickers/ticker_warfare.webp";
+import tickerWarfare from "../assets/tickers/ticker_warfare.png";
 import ProfileAvatar from "../components/ProfileAvatar";
 
 type Props = {

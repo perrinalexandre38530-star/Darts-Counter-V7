@@ -1,14 +1,15 @@
 // ============================================
 // src/contexts/AuthContext.tsx
-// Auth + Profile (V7 propre)
-// - Ne bloque jamais la navigation
-// - Charge le profil "profiles" si connecté
+// Compat bridge vers le système V7 unique (useAuthOnline)
+// - Ne dépend plus du legacy AuthSessionProvider interne
+// - Ne recharge plus un profil séparé via getProfile()
+// - Reprend le profile best-effort déjà géré par useAuthOnline
 // ============================================
 
 import React from "react";
 import type { User } from "@supabase/supabase-js";
-import { useAuthSession } from "./AuthSessionContext";
-import { getProfile, type Profile } from "../lib/accountApi";
+import { useAuthOnline } from "../hooks/useAuthOnline";
+import type { OnlineProfile as Profile } from "../lib/onlineTypes";
 
 type AuthCtx = {
   user: User | null;
@@ -19,48 +20,24 @@ type AuthCtx = {
 
 const AuthContext = React.createContext<AuthCtx | null>(null);
 
-export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const { status, user } = useAuthSession();
-  const [profile, setProfile] = React.useState<Profile | null>(null);
-  const [loadingProfile, setLoadingProfile] = React.useState(false);
+function AuthBridge({ children }: { children: React.ReactNode }) {
+  const online = useAuthOnline();
 
-  const refreshProfile = React.useCallback(async () => {
-    if (!user?.id) {
-      setProfile(null);
-      return;
-    }
-    setLoadingProfile(true);
-    try {
-      const p = await getProfile(user.id);
-      setProfile(p);
-    } catch (e) {
-      // ✅ NON BLOQUANT : ne casse jamais l'app
-      console.warn("[Auth] getProfile non bloquant:", e);
-      setProfile(null);
-    } finally {
-      setLoadingProfile(false);
-    }
-  }, [user?.id]);
-
-  // Charge profil quand session OK
-  React.useEffect(() => {
-    if (status === "signed_in") {
-      refreshProfile().catch(() => {});
-    } else {
-      setProfile(null);
-    }
-  }, [status, refreshProfile]);
-
-  const loading = status === "checking" || loadingProfile;
-
-  const value: AuthCtx = {
-    user,
-    profile,
-    loading,
-    refreshProfile,
-  };
+  const value = React.useMemo<AuthCtx>(
+    () => ({
+      user: online.user ?? null,
+      profile: online.profile ?? null,
+      loading: !online.ready || online.loading || online.status === "checking",
+      refreshProfile: online.refresh,
+    }),
+    [online.user, online.profile, online.ready, online.loading, online.status, online.refresh]
+  );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
+}
+
+export function AuthProvider({ children }: { children: React.ReactNode }) {
+  return <AuthBridge>{children}</AuthBridge>;
 }
 
 export function useAuth() {

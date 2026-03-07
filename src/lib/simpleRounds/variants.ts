@@ -3,11 +3,11 @@
 // Registry des 5 variantes (darts) basées sur rounds simples.
 // ============================================
 
-import tickerCountUp from "../../assets-webp/tickers/ticker_count_up.webp";
-import tickerSuperBull from "../../assets-webp/tickers/ticker_super_bull.webp";
-import tickerHappyMille from "../../assets-webp/tickers/ticker_happy_mille.webp";
-import tickerEnculette from "../../assets-webp/tickers/ticker_enculette.webp";
-import ticker170 from "../../assets-webp/tickers/ticker_v170.webp";
+import tickerCountUp from "../../assets/tickers/ticker_count_up.png";
+import tickerSuperBull from "../../assets/tickers/ticker_super_bull.png";
+import tickerHappyMille from "../../assets/tickers/ticker_happy_mille.png";
+import tickerEnculette from "../../assets/tickers/ticker_enculette.png";
+import ticker170 from "../../assets/tickers/ticker_v170.png";
 
 import type { VariantSpec } from "./types";
 

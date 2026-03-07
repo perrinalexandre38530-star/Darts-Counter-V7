@@ -38,27 +38,27 @@ import { mergeNow } from "../lib/cloudSync";
 import { useDevMode } from "../contexts/DevModeContext";
 
 // IMPORTANT: ajuste les chemins si tes assets sont ailleurs
-import logoDarts from "../assets-webp/games/logo-darts.webp";
-import logoPetanque from "../assets-webp/games/logo-petanque.webp";
-import logoPingPong from "../assets-webp/games/logo-pingpong.webp";
-import logoBabyFoot from "../assets-webp/games/logo-babyfoot.webp";
+import logoDarts from "../assets/games/logo-darts.png";
+import logoPetanque from "../assets/games/logo-petanque.png";
+import logoPingPong from "../assets/games/logo-pingpong.png";
+import logoBabyFoot from "../assets/games/logo-babyfoot.png";
 
 // ✅ Sports à venir (SOON)
-import logoArchery from "../assets-webp/games/logo-archery.webp";
-import logoMolkky from "../assets-webp/games/logo-molkky.webp";
-import logoPadel from "../assets-webp/games/logo-padel.webp";
-import logoPickleball from "../assets-webp/games/logo-pickleball.webp";
-import logoFrisbee from "../assets-webp/games/logo-frisbee.webp";
-import logoBillard from "../assets-webp/games/logo-billard.webp";
-import logoBadminton from "../assets-webp/games/logo-badminton.webp";
-import logoBasket from "../assets-webp/games/logo-basket.webp";
-import logoCornhole from "../assets-webp/games/logo-cornhole.webp";
-import logoDiceGame from "../assets-webp/games/logo-dicegame.webp";
-import logoFoot from "../assets-webp/games/logo-foot.webp";
-import logoRugby from "../assets-webp/games/logo-rugby.webp";
-import logoVolley from "../assets-webp/games/logo-volley.webp";
-import logoTennis from "../assets-webp/games/logo-tennis.webp";
-import logoChess from "../assets-webp/games/logo-chess.webp";
+import logoArchery from "../assets/games/logo-archery.png";
+import logoMolkky from "../assets/games/logo-molkky.png";
+import logoPadel from "../assets/games/logo-padel.png";
+import logoPickleball from "../assets/games/logo-pickleball.png";
+import logoFrisbee from "../assets/games/logo-frisbee.png";
+import logoBillard from "../assets/games/logo-billard.png";
+import logoBadminton from "../assets/games/logo-badminton.png";
+import logoBasket from "../assets/games/logo-basket.png";
+import logoCornhole from "../assets/games/logo-cornhole.png";
+import logoDiceGame from "../assets/games/logo-dicegame.png";
+import logoFoot from "../assets/games/logo-foot.png";
+import logoRugby from "../assets/games/logo-rugby.png";
+import logoVolley from "../assets/games/logo-volley.png";
+import logoTennis from "../assets/games/logo-tennis.png";
+import logoChess from "../assets/games/logo-chess.png";
 
 type Props = { go?: (tab: any, params?: any) => void };
 

@@ -349,15 +349,13 @@ export function AuthOnlineProvider({ children }: { children: React.ReactNode }) 
       try {
         const ok = await (onlineApi as any).signup?.(payload);
         const success = typeof ok === "boolean" ? ok : !ok?.error;
-        await refresh();
         return success;
       } catch (e) {
         console.warn("[useAuthOnline] signup error:", e);
-        await refresh();
         return false;
       }
     },
-    [refresh]
+    []
   );
 
   const login = React.useCallback(
@@ -365,15 +363,13 @@ export function AuthOnlineProvider({ children }: { children: React.ReactNode }) 
       try {
         const ok = await (onlineApi as any).login?.(payload);
         const success = typeof ok === "boolean" ? ok : !ok?.error;
-        await refresh();
         return success;
       } catch (e) {
         console.warn("[useAuthOnline] login error:", e);
-        await refresh();
         return false;
       }
     },
-    [refresh]
+    []
   );
 
   const logout = React.useCallback(async () => {

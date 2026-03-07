@@ -15,25 +15,25 @@ import ArcadeTicker, { type ArcadeTickerItem } from "../../components/home/Arcad
 import { loadPetanqueState } from "../../lib/petanqueStore";
 import { getPetanqueMatches } from "../../lib/petanqueStats";
 
-import tickerPetanqueActu1 from "../../assets-webp/tickers/ticker_petanque_actu.webp";
-import tickerPetanqueActu2 from "../../assets-webp/tickers/ticker_petanque_actu_2.webp";
-import tickerPetanqueActu3 from "../../assets-webp/tickers/ticker_petanque_actu_3.webp";
+import tickerPetanqueActu1 from "../../assets/tickers/ticker_petanque_actu.png";
+import tickerPetanqueActu2 from "../../assets/tickers/ticker_petanque_actu_2.png";
+import tickerPetanqueActu3 from "../../assets/tickers/ticker_petanque_actu_3.png";
 
-import tickerPetanqueNouveaute1 from "../../assets-webp/tickers/ticker_petanque_nouveaute.webp";
-import tickerPetanqueNouveaute2 from "../../assets-webp/tickers/ticker_petanque_nouveaute_2.webp";
-import tickerPetanqueNouveaute3 from "../../assets-webp/tickers/ticker_petanque_nouveaute_3.webp";
+import tickerPetanqueNouveaute1 from "../../assets/tickers/ticker_petanque_nouveaute.png";
+import tickerPetanqueNouveaute2 from "../../assets/tickers/ticker_petanque_nouveaute_2.png";
+import tickerPetanqueNouveaute3 from "../../assets/tickers/ticker_petanque_nouveaute_3.png";
 
-import tickerPetanqueResultats1 from "../../assets-webp/tickers/ticker_petanque_resultats.webp";
-import tickerPetanqueResultats2 from "../../assets-webp/tickers/ticker_petanque_resultats_2.webp";
-import tickerPetanqueResultats3 from "../../assets-webp/tickers/ticker_petanque_resultats_3.webp";
+import tickerPetanqueResultats1 from "../../assets/tickers/ticker_petanque_resultats.png";
+import tickerPetanqueResultats2 from "../../assets/tickers/ticker_petanque_resultats_2.png";
+import tickerPetanqueResultats3 from "../../assets/tickers/ticker_petanque_resultats_3.png";
 
-import tickerPetanqueEvenements1 from "../../assets-webp/tickers/ticker_petanque_evenements.webp";
-import tickerPetanqueEvenements2 from "../../assets-webp/tickers/ticker_petanque_evenements_2.webp";
-import tickerPetanqueEvenements3 from "../../assets-webp/tickers/ticker_petanque_evenements_3.webp";
+import tickerPetanqueEvenements1 from "../../assets/tickers/ticker_petanque_evenements.png";
+import tickerPetanqueEvenements2 from "../../assets/tickers/ticker_petanque_evenements_2.png";
+import tickerPetanqueEvenements3 from "../../assets/tickers/ticker_petanque_evenements_3.png";
 
-import tickerPetanqueAstuce1 from "../../assets-webp/tickers/ticker_petanque_astuce.webp";
-import tickerPetanqueAstuce2 from "../../assets-webp/tickers/ticker_petanque_astuce_2.webp";
-import tickerPetanqueAstuce3 from "../../assets-webp/tickers/ticker_petanque_astuce_3.webp";
+import tickerPetanqueAstuce1 from "../../assets/tickers/ticker_petanque_astuce.png";
+import tickerPetanqueAstuce2 from "../../assets/tickers/ticker_petanque_astuce_2.png";
+import tickerPetanqueAstuce3 from "../../assets/tickers/ticker_petanque_astuce_3.png";
 type Props = {
   store: Store;
   go: (tab: any, params?: any) => void;
