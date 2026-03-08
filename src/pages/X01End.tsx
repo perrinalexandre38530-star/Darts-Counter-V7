@@ -131,18 +131,19 @@ export default function X01End({ go, params }: Props) {
         if (mounted) setErr("Erreur de chargement.");
       }
     })();
-    
-  useEffect(() => {
-    const enabled = localStorage.getItem("dc_auto_backup_enabled") === "true";
+
+    return () => {
+      mounted = false;
+    };
+  }, [params?.matchId, params?.rec]);
+
+  React.useEffect(() => {
+    const enabled =
+      localStorage.getItem("dc_auto_backup_enabled") === "true";
     if (enabled) {
       createAutoBackup().catch(() => {});
     }
   }, []);
-
-  return () => {
-      mounted = false;
-    };
-  }, [params?.matchId, params?.rec]);
 
   // données dérivées — protégées quand rec est null
   const finished = normalizeStatus(rec ?? {}) === "finished";
@@ -177,15 +178,10 @@ export default function X01End({ go, params }: Props) {
   // Match summary :
   // - X01 v1/v2 => kind === "x01"
   // - X01 v3 léger => kind/variant/engine === "x01_v3"
-  const matchSummary =
-    rec?.summary &&
-    typeof rec.summary === "object" &&
-    (rec.summary.kind === "x01" ||
-      rec.summary.kind === "x01_v3" ||
-      rec.summary.variant === "x01_v3" ||
-      rec.summary.engine === "x01_v3")
-      ? rec.summary
-      : null;
+  const matchSummary = React.useMemo(
+    () => normalizeX01Summary(rec?.summary, players),
+    [rec?.summary, players]
+  );
 
   const legSummary = !matchSummary ? buildSummaryFromLeg(rec) : null;
 
@@ -897,6 +893,109 @@ export default function X01End({ go, params }: Props) {
   );
 }
 
+function normalizeX01Summary(
+  rawSummary: any,
+  players: PlayerLite[]
+) {
+  if (!rawSummary || typeof rawSummary !== "object") return null;
+
+  const kind = String(
+    rawSummary.kind ||
+      rawSummary.variant ||
+      rawSummary.engine ||
+      rawSummary.game ||
+      ""
+  );
+
+  const isNativeX01 =
+    rawSummary.kind === "x01" ||
+    rawSummary.kind === "x01_v3" ||
+    rawSummary.variant === "x01_v3" ||
+    rawSummary.engine === "x01_v3";
+
+  if (isNativeX01) return rawSummary;
+  if (kind !== "training_x01") return null;
+
+  const arr = Array.isArray(rawSummary.perPlayer)
+    ? rawSummary.perPlayer
+    : [];
+  const byPid = Object.fromEntries(
+    arr
+      .map((row: any) => {
+        const pid = String(
+          row?.profileId || row?.playerId || row?.id || ""
+        );
+        return pid ? [pid, row] : null;
+      })
+      .filter(Boolean)
+  );
+
+  const mappedPlayers: any = {};
+  const detailedByPlayer: any = {};
+
+  for (const p of players) {
+    const row = byPid[p.id] || {};
+    const darts = n(row.darts ?? row.dartsThrown ?? row.totalDarts, 0);
+    const avg3 = n(
+      row.avg3,
+      rawSummary?.avg3ByPlayer?.[p.id]
+    );
+    const points = n(
+      row.pointsScored ?? row.points,
+      darts ? (avg3 / 3) * darts : 0
+    );
+
+    mappedPlayers[p.id] = {
+      id: p.id,
+      name: p.name || row.name || "—",
+      avg3,
+      bestVisit: n(row.bestVisit, rawSummary.bestVisit),
+      bestCheckout: sanitizeCO(
+        row.bestCheckout ?? row.bestCheckoutScore ?? rawSummary.bestCheckout
+      ),
+      darts,
+      buckets: row.buckets || undefined,
+      updatedAt: rawSummary.updatedAt || Date.now(),
+      matches: 1,
+      legs: 1,
+      _sumPoints: points,
+      _sumDarts: darts,
+      _sumVisits: darts ? Math.ceil(darts / 3) : 0,
+    };
+
+    detailedByPlayer[p.id] = {
+      ...row,
+      playerId: p.id,
+      profileId: p.id,
+      dartsThrown: darts,
+      pointsScored: points,
+      bestCheckoutScore: sanitizeCO(
+        row.bestCheckout ?? row.bestCheckoutScore ?? rawSummary.bestCheckout
+      ),
+      best9Score: n(row.best9Score, rawSummary.best9Score),
+      hitsSingle: n(row.singles, row.hitsSingle),
+      hitsDouble: n(row.doubles, row.hitsDouble),
+      hitsTriple: n(row.triples, row.hitsTriple),
+      hitsBull: n(row.bull25 ?? row.bulls, row.hitsBull),
+      hitsDBull: n(row.bull50 ?? row.dbulls, row.hitsDBull),
+      misses: n(row.miss, row.misses),
+      busts: n(row.bust, row.busts),
+      coAttempts: n(row.coAttempts, rawSummary.coAttempts),
+      coSuccess: n(row.coSuccess, rawSummary.coSuccess),
+      checkoutAttempts: n(row.coAttempts, rawSummary.coAttempts),
+      checkoutHits: n(row.coSuccess, rawSummary.coSuccess),
+    };
+  }
+
+  return {
+    ...rawSummary,
+    kind: "x01",
+    isTraining: true,
+    players: mappedPlayers,
+    detailedByPlayer,
+  };
+}
+
 /* ================================
    Fallback LEG -> summary-like
 ================================ */
@@ -1108,11 +1207,29 @@ function buildPerPlayerMetrics(
     rec?.__legStats ||
     {};
   const perFromRich = (rich as any).perPlayer || {};
-  const perFromSummary = summary?.detailedByPlayer || {};
+
+  const summaryDetailed =
+    summary?.detailedByPlayer && typeof summary.detailedByPlayer === "object"
+      ? summary.detailedByPlayer
+      : {};
+
+  const summaryPerPlayerArray = Array.isArray(summary?.perPlayer)
+    ? Object.fromEntries(
+        summary.perPlayer
+          .map((row: any) => {
+            const pid = String(
+              row?.profileId || row?.playerId || row?.id || ""
+            );
+            return pid ? [pid, row] : null;
+          })
+          .filter(Boolean)
+      )
+    : {};
 
   // on merge : ce qui vient de __legStats écrase au besoin ce qui vient de detailedByPlayer
   const per: Record<string, any> = {
-    ...perFromSummary,
+    ...summaryPerPlayerArray,
+    ...summaryDetailed,
     ...perFromRich,
   };
 
@@ -1121,6 +1238,98 @@ function buildPerPlayerMetrics(
     rec?.summary?.legacy?.hitsBySector ||
     rec?.payload?.legacy?.hitsBySector ||
     {};
+
+  const derivedVisits = buildVisitHistory(
+    rec,
+    players,
+    legStats || rec?.payload?.__legStats || rec?.__legStats || null
+  );
+
+  const derivedByPid = derivedVisits.reduce((acc: any, v) => {
+    const pid = String(v.playerId || "");
+    if (!pid) return acc;
+    const row =
+      acc[pid] ||
+      (acc[pid] = {
+        darts: 0,
+        visits: 0,
+        points: 0,
+        bestVisit: 0,
+        bestCO: 0,
+        t60: 0,
+        t100: 0,
+        t140: 0,
+        t180: 0,
+        singles: 0,
+        doubles: 0,
+        triples: 0,
+        bulls: 0,
+        dbulls: 0,
+        misses: 0,
+        busts: 0,
+        byNumber: {},
+      });
+
+    row.visits += 1;
+    row.darts += Array.isArray(v.darts) ? v.darts.length : 0;
+
+    let visitPoints = 0;
+    for (const d of v.darts || []) {
+      const seg = Number(d?.v ?? 0) || 0;
+      const mult = Number(d?.mult ?? 1) || 1;
+      const score = seg === 25 && mult === 2 ? 50 : seg * mult;
+      visitPoints += score;
+
+      if (seg === 0) {
+        row.misses += 1;
+        row.byNumber.miss = (row.byNumber.miss ?? 0) + 1;
+        continue;
+      }
+      if (seg === 25 && mult === 2) {
+        row.dbulls += 1;
+        row.byNumber.dbull = (row.byNumber.dbull ?? 0) + 1;
+        continue;
+      }
+      if (seg === 25) {
+        row.bulls += 1;
+        row.byNumber.bull = (row.byNumber.bull ?? 0) + 1;
+        continue;
+      }
+
+      const key = String(seg);
+      const slot = row.byNumber[key] || {};
+      if (mult === 3) {
+        row.triples += 1;
+        slot.triple = (slot.triple ?? 0) + 1;
+      } else if (mult === 2) {
+        row.doubles += 1;
+        slot.double = (slot.double ?? 0) + 1;
+      } else {
+        row.singles += 1;
+        slot.inner = (slot.inner ?? 0) + 1;
+      }
+      row.byNumber[key] = slot;
+    }
+
+    if (v.bust) {
+      row.busts += 1;
+      visitPoints = 0;
+    }
+
+    row.points += visitPoints;
+    row.bestVisit = Math.max(row.bestVisit, visitPoints);
+
+    if (visitPoints >= 180) row.t180 += 1;
+    else if (visitPoints >= 140) row.t140 += 1;
+    else if (visitPoints >= 100) row.t100 += 1;
+    else if (visitPoints >= 60) row.t60 += 1;
+
+    if (v.finish) {
+      row.bestCO = Math.max(row.bestCO, visitPoints);
+    }
+
+    return acc;
+  }, {} as Record<string, any>);
 
   for (const pl of players) {
     const pid = pl.id;
@@ -1388,6 +1597,34 @@ function buildPerPlayerMetrics(
         pick(legacy, [`checkoutAttempts.${pid}`]),
         m.coAtt
       );
+
+    // ===== 3b) fallback reconstruit depuis resume.darts / replay =====
+    const dv = derivedByPid[pid];
+    if (dv) {
+      if (!m.darts) m.darts = n(dv.darts, 0);
+      if (!m.visits) m.visits = n(dv.visits, 0);
+      if (!m.points) m.points = n(dv.points, 0);
+      if (!m.avg3 && n(dv.darts, 0) > 0) {
+        m.avg3 = (n(dv.points, 0) / n(dv.darts, 0)) * 3;
+      }
+      if (!m.avg1 && m.avg3) m.avg1 = m.avg3 / 3;
+      if (!m.bestVisit) m.bestVisit = n(dv.bestVisit, 0);
+      if (!m.bestCO) m.bestCO = sanitizeCO(dv.bestCO);
+
+      if (!m.t60) m.t60 = n(dv.t60, 0);
+      if (!m.t100) m.t100 = n(dv.t100, 0);
+      if (!m.t140) m.t140 = n(dv.t140, 0);
+      if (!m.t180) m.t180 = n(dv.t180, 0);
+
+      if (m.singles == null) m.singles = n(dv.singles, 0);
+      if (m.misses == null) m.misses = n(dv.misses, 0);
+      if (m.busts == null) m.busts = n(dv.busts, 0);
+      if (!m.doubles) m.doubles = n(dv.doubles, 0);
+      if (!m.triples) m.triples = n(dv.triples, 0);
+      if (!m.bulls) m.bulls = n(dv.bulls, 0);
+      if (!m.dbulls) m.dbulls = n(dv.dbulls, 0);
+      if (!m.byNumber && dv.byNumber) m.byNumber = dv.byNumber;
+    }
 
     // ===== 4) dérivés & % =====
     if (!m.points && m.avg3 && m.darts) {
@@ -2417,6 +2654,8 @@ function buildVisitHistory(
 
   // 2) Fallback : on reconstruit depuis une liste linéaire de darts
   const rawDarts: any[] =
+    rec?.resume?.darts ||
+    rec?.resume?.throws ||
     rec?.payload?.allDarts ||
     rec?.payload?.darts ||
     rec?.payload?.replayDarts ||

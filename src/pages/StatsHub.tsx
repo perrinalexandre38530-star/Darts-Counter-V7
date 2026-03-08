@@ -580,6 +580,7 @@ export type TrainingX01Session = {
   avg1D: number;
   bestVisit: number;
   bestCheckout: number | null;
+  best9Score?: number | null;
   hitsS: number;
   hitsD: number;
   hitsT: number;
@@ -587,6 +588,8 @@ export type TrainingX01Session = {
   bull: number;
   dBull: number;
   bust: number;
+  coAttempts?: number;
+  coSuccess?: number;
 
   // ancien format global
   bySegment?: Record<string, number>;
@@ -611,65 +614,56 @@ const SEGMENTS: number[] = [
 function loadTrainingSessions(): TrainingX01Session[] {
   if (typeof window === "undefined") return [];
   try {
-    const raw = window.localStorage.getItem(TRAINING_X01_STATS_KEY);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw);
-    if (!Array.isArray(parsed)) return [];
+    const sources = [
+      "dc_training_x01_full_v1",
+      TRAINING_X01_STATS_KEY,
+    ];
 
-    return parsed.map((row: any, idx: number) => {
-      const darts = Number(row.darts) || 0;
-      const avg3D = Number(row.avg3D) || 0;
+    const normalize = (row: any, idx: number): TrainingX01Session => {
+      const darts = Number(row?.darts) || 0;
+      const avg3D = Number(row?.avg3D) || 0;
 
       const avg1DExplicit =
-        row.avg1D !== undefined && row.avg1D !== null
+        row?.avg1D !== undefined && row?.avg1D !== null
           ? Number(row.avg1D) || 0
           : null;
       const avg1D =
-        avg1DExplicit !== null
-          ? avg1DExplicit
-          : darts > 0
-          ? avg3D / 3
-          : 0;
+        avg1DExplicit !== null ? avg1DExplicit : darts > 0 ? avg3D / 3 : 0;
 
       const bestCheckoutRaw =
-        row.bestCheckout !== undefined && row.bestCheckout !== null
+        row?.bestCheckout !== undefined && row?.bestCheckout !== null
           ? row.bestCheckout
-          : row.checkout;
+          : row?.checkout;
       const bestCheckout =
         bestCheckoutRaw === null || bestCheckoutRaw === undefined
           ? null
           : Number(bestCheckoutRaw) || 0;
 
       const bySegmentRaw =
-        row.bySegment && typeof row.bySegment === "object"
+        row?.bySegment && typeof row.bySegment === "object"
           ? (row.bySegment as Record<string, any>)
           : undefined;
 
       const bySegmentSRaw =
-        row.bySegmentS && typeof row.bySegmentS === "object"
+        row?.bySegmentS && typeof row.bySegmentS === "object"
           ? (row.bySegmentS as Record<string, any>)
           : undefined;
 
       const bySegmentDRaw =
-        row.bySegmentD && typeof row.bySegmentD === "object"
+        row?.bySegmentD && typeof row.bySegmentD === "object"
           ? (row.bySegmentD as Record<string, any>)
           : undefined;
 
       const bySegmentTRaw =
-        row.bySegmentT && typeof row.bySegmentT === "object"
+        row?.bySegmentT && typeof row.bySegmentT === "object"
           ? (row.bySegmentT as Record<string, any>)
           : undefined;
 
-      // --------------------------------------------------
-      // Reconstruit dartsDetail si manquant
-      // --------------------------------------------------
       let dartsDetail: UIDart[] | undefined = undefined;
 
-      if (Array.isArray(row.dartsDetail)) {
-        // Nouveau format déjà avec détail
+      if (Array.isArray(row?.dartsDetail)) {
         dartsDetail = row.dartsDetail;
       } else if (bySegmentSRaw || bySegmentDRaw || bySegmentTRaw) {
-        // ✅ Format TrainingX01Play actuel : S/D/T séparés
         const tmp: UIDart[] = [];
         const keys = new Set<string>([
           ...Object.keys(bySegmentSRaw || {}),
@@ -677,8 +671,7 @@ function loadTrainingSessions(): TrainingX01Session[] {
           ...Object.keys(bySegmentTRaw || {}),
         ]);
 
-        const cap = (n: number) =>
-          Math.min(200, Math.max(0, Math.round(n)));
+        const cap = (n: number) => Math.min(200, Math.max(0, Math.round(n)));
 
         for (const segStr of keys) {
           const seg = Number(segStr);
@@ -688,35 +681,22 @@ function loadTrainingSessions(): TrainingX01Session[] {
           const dCount = cap(Number(bySegmentDRaw?.[segStr] || 0));
           const tCount = cap(Number(bySegmentTRaw?.[segStr] || 0));
 
-          for (let i = 0; i < sCount; i++) {
-            tmp.push({ v: seg, mult: 1 } as UIDart);
-          }
-          for (let i = 0; i < dCount; i++) {
-            tmp.push({ v: seg, mult: 2 } as UIDart);
-          }
-          for (let i = 0; i < tCount; i++) {
-            tmp.push({ v: seg, mult: 3 } as UIDart);
-          }
+          for (let i = 0; i < sCount; i++) tmp.push({ v: seg, mult: 1 } as UIDart);
+          for (let i = 0; i < dCount; i++) tmp.push({ v: seg, mult: 2 } as UIDart);
+          for (let i = 0; i < tCount; i++) tmp.push({ v: seg, mult: 3 } as UIDart);
         }
 
         dartsDetail = tmp;
       } else if (bySegmentRaw) {
-        // ⚠️ Ancien format : tout mélangé, ou éventuellement objet {S,D,T}
         const tmp: UIDart[] = [];
-
-        const cap = (n: number) =>
-          Math.min(200, Math.max(0, Math.round(n)));
+        const cap = (n: number) => Math.min(200, Math.max(0, Math.round(n)));
 
         for (const [segStr, entry] of Object.entries(bySegmentRaw)) {
           const seg = Number(segStr);
           if (!Number.isFinite(seg) || seg <= 0) continue;
 
-          let sCount = 0,
-            dCount = 0,
-            tCount = 0;
-
+          let sCount = 0, dCount = 0, tCount = 0;
           if (typeof entry === "number") {
-            // Vieux de vieux : tout en simple
             sCount = cap(entry);
           } else if (entry && typeof entry === "object") {
             sCount = cap(Number((entry as any).S || 0));
@@ -724,43 +704,55 @@ function loadTrainingSessions(): TrainingX01Session[] {
             tCount = cap(Number((entry as any).T || 0));
           }
 
-          for (let i = 0; i < sCount; i++) {
-            tmp.push({ v: seg, mult: 1 } as UIDart);
-          }
-          for (let i = 0; i < dCount; i++) {
-            tmp.push({ v: seg, mult: 2 } as UIDart);
-          }
-          for (let i = 0; i < tCount; i++) {
-            tmp.push({ v: seg, mult: 3 } as UIDart);
-          }
+          for (let i = 0; i < sCount; i++) tmp.push({ v: seg, mult: 1 } as UIDart);
+          for (let i = 0; i < dCount; i++) tmp.push({ v: seg, mult: 2 } as UIDart);
+          for (let i = 0; i < tCount; i++) tmp.push({ v: seg, mult: 3 } as UIDart);
         }
 
         dartsDetail = tmp;
       }
 
       return {
-        id: row.id ?? String(idx),
-        date: Number(row.date) || Date.now(),
-        profileId: String(row.profileId ?? "unknown"),
+        id: row?.id ?? String(idx),
+        date: Number(row?.date) || Date.now(),
+        profileId: String(row?.profileId ?? "unknown"),
         darts,
         avg3D,
         avg1D,
-        bestVisit: Number(row.bestVisit) || 0,
+        bestVisit: Number(row?.bestVisit) || 0,
         bestCheckout,
-        hitsS: Number(row.hitsS) || 0,
-        hitsD: Number(row.hitsD) || 0,
-        hitsT: Number(row.hitsT) || 0,
-        miss: Number(row.miss) || 0,
-        bull: Number(row.bull) || 0,
-        dBull: Number(row.dBull) || 0,
-        bust: Number(row.bust) || 0,
+        best9Score: Number(row?.best9Score) || 0,
+        hitsS: Number(row?.hitsS) || 0,
+        hitsD: Number(row?.hitsD) || 0,
+        hitsT: Number(row?.hitsT) || 0,
+        miss: Number(row?.miss) || 0,
+        bull: Number(row?.bull) || 0,
+        dBull: Number(row?.dBull) || 0,
+        bust: Number(row?.bust) || 0,
+        coAttempts: Number(row?.coAttempts) || 0,
+        coSuccess: Number(row?.coSuccess) || 0,
         bySegment: bySegmentRaw,
         bySegmentS: bySegmentSRaw,
         bySegmentD: bySegmentDRaw,
         bySegmentT: bySegmentTRaw,
         dartsDetail,
       } as TrainingX01Session;
-    });
+    };
+
+    const dedup = new Map<string, TrainingX01Session>();
+    for (const key of sources) {
+      const raw = window.localStorage.getItem(key);
+      if (!raw) continue;
+      const parsed = JSON.parse(raw);
+      if (!Array.isArray(parsed)) continue;
+      parsed.forEach((row: any, idx: number) => {
+        const normalized = normalize(row, idx);
+        const dedupKey = String(normalized.id || `${normalized.profileId}-${normalized.date}-${normalized.darts}`);
+        if (!dedup.has(dedupKey)) dedup.set(dedupKey, normalized);
+      });
+    }
+
+    return Array.from(dedup.values()).sort((a, b) => b.date - a.date);
   } catch (e) {
     console.warn("[StatsHub] loadTrainingSessions failed", e);
     return [];

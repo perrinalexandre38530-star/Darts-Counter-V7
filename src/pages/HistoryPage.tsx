@@ -187,6 +187,7 @@ function isShanghaiEntry(e: SavedEntry) {
     s2.toLowerCase().includes("shanghai") ||
     s3.toLowerCase().includes("shanghai")
   );
+}
 
 function isBatardEntry(e: SavedEntry) {
   const m = baseMode(e);
@@ -202,8 +203,6 @@ function isBatardEntry(e: SavedEntry) {
     s2.toLowerCase().includes("batard") ||
     s3.toLowerCase().includes("batard")
   );
-}
-
 }
 
 function statusOf(e: SavedEntry): "finished" | "in_progress" {

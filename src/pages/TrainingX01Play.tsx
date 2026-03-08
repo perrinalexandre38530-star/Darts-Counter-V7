@@ -31,9 +31,12 @@ function loadTrainingStatsFromStorage(): TrainingFinishStats[] {
     if (!raw) return [];
     const parsed = JSON.parse(raw);
     if (!Array.isArray(parsed)) return [];
-    return parsed.map((x) => ({
-      id: String(x.id ?? `legacy_${Math.random()}`),
-      profileId: String(x.profileId ?? "unknown"),
+    return parsed.map((x, idx) => ({
+      id: typeof x?.id === "string" && x.id ? x.id : `${Number(x?.date) || Date.now()}-${idx}`,
+      profileId:
+        x?.profileId !== undefined && x?.profileId !== null && String(x.profileId).trim() !== ""
+          ? String(x.profileId)
+          : undefined,
       date: Number(x.date) || Date.now(),
       darts: Number(x.darts) || 0,
       avg3D: Number(x.avg3D) || 0,
@@ -42,15 +45,7 @@ function loadTrainingStatsFromStorage(): TrainingFinishStats[] {
       pctT: Number(x.pctT) || 0,
       bestVisit: Number(x.bestVisit) || 0,
       checkout: Number(x.checkout) || 0,
-      hitsTotal: Number(x.hitsTotal) || 0,
-      hits60: Number(x.hits60) || 0,
-      hits80: Number(x.hits80) || 0,
-      hits100: Number(x.hits100) || 0,
-      hits120: Number(x.hits120) || 0,
-      hits140: Number(x.hits140) || 0,
-      hits180: Number(x.hits180) || 0,
-      coAttempts: Number(x.coAttempts) || 0,
-      coSuccess: Number(x.coSuccess) || 0,
+      best9Score: Number(x.best9Score) || 0,
       // nouveaux champs (fallback 0 si absents dans les anciennes sessions)
       hitsS: Number(x.hitsS) || 0,
       hitsD: Number(x.hitsD) || 0,
@@ -59,6 +54,8 @@ function loadTrainingStatsFromStorage(): TrainingFinishStats[] {
       bull: Number(x.bull) || 0,
       dBull: Number(x.dBull) || 0,
       bust: Number(x.bust) || 0,
+      coAttempts: Number(x.coAttempts) || 0,
+      coSuccess: Number(x.coSuccess) || 0,
       // 🔥 NEW : heatmap radar agrégée par segment
       bySegment: x.bySegment ? x.bySegment : {},
       bySegmentS: x.bySegmentS ? x.bySegmentS : {},
@@ -73,10 +70,53 @@ function loadTrainingStatsFromStorage(): TrainingFinishStats[] {
 function saveTrainingStatsToStorage(list: TrainingFinishStats[]) {
   if (typeof window === "undefined") return;
   try {
-    window.localStorage.setItem(
-      TRAINING_X01_STATS_KEY,
-      JSON.stringify(list)
-    );
+    const sorted = [...list].sort((a, b) => Number(a.date || 0) - Number(b.date || 0));
+    let current = sorted;
+
+    for (let attempt = 0; attempt < 8; attempt++) {
+      try {
+        window.localStorage.setItem(TRAINING_X01_STATS_KEY, JSON.stringify(current));
+        return;
+      } catch (err: any) {
+        const name = String(err?.name || "");
+        const msg = String(err?.message || "");
+        const isQuota =
+          name === "QuotaExceededError" ||
+          name === "NS_ERROR_DOM_QUOTA_REACHED" ||
+          /quota/i.test(name) ||
+          /quota/i.test(msg);
+
+        if (!isQuota) throw err;
+
+        if (current.length > 120) {
+          current = current.slice(current.length - 120);
+          continue;
+        }
+
+        current = current.map((row, idx) => {
+          if (idx < current.length - 30) {
+            return {
+              ...row,
+              bySegment: {},
+              bySegmentS: {},
+              bySegmentD: {},
+              bySegmentT: {},
+            };
+          }
+          return row;
+        });
+
+        if (current.length > 60) {
+          current = current.slice(current.length - 60);
+          continue;
+        }
+
+        if (current.length > 0) {
+          current = current.slice(Math.max(0, current.length - 30));
+          continue;
+        }
+      }
+    }
   } catch (err) {
     console.warn("saveTrainingStatsToStorage failed", err);
   }
@@ -108,15 +148,7 @@ export type TrainingFinishStats = {
   pctT: number;
   bestVisit: number;
   checkout: number;
-  hitsTotal?: number;
-  hits60?: number;
-  hits80?: number;
-  hits100?: number;
-  hits120?: number;
-  hits140?: number;
-  hits180?: number;
-  coAttempts?: number;
-  coSuccess?: number;
+  best9Score?: number;
 
   // ✅ champs supplémentaires pour StatsHub / stats détaillées
   hitsS: number;
@@ -126,6 +158,8 @@ export type TrainingFinishStats = {
   bull: number;
   dBull: number;
   bust: number;
+  coAttempts?: number;
+  coSuccess?: number;
 
   // 🔥 NEW : heatmap radar, somme pondérée par segment ("20", "5", "25"...)
   bySegment: Record<string, number>;
@@ -199,27 +233,78 @@ export function throwTotal(throwDarts: UIDart[]) {
   return (throwDarts || []).reduce((acc, d) => acc + dartValue(d), 0);
 }
 
-function buildVisitThresholdBuckets(darts: UIDart[]) {
-  const out = {
-    hits60: 0,
-    hits80: 0,
-    hits100: 0,
-    hits120: 0,
-    hits140: 0,
-    hits180: 0,
-  };
+const CHECKOUT_DARTS: UIDart[] = (() => {
+  const out: UIDart[] = [{ v: 0, mult: 1 }];
+  for (let v = 1; v <= 20; v++) {
+    out.push({ v, mult: 1 }, { v, mult: 2 }, { v, mult: 3 });
+  }
+  out.push({ v: 25, mult: 1 }, { v: 25, mult: 2 });
+  return out;
+})();
 
-  for (let i = 0; i < (darts || []).length; i += 3) {
-    const total = throwTotal((darts || []).slice(i, i + 3));
-    if (total >= 60) out.hits60 += 1;
-    if (total >= 80) out.hits80 += 1;
-    if (total >= 100) out.hits100 += 1;
-    if (total >= 120) out.hits120 += 1;
-    if (total >= 140) out.hits140 += 1;
-    if (total >= 180) out.hits180 += 1;
+const checkoutMemo = new Map<string, boolean>();
+
+function canCheckoutIn(score: number, dartsLeft: number, outMode: "simple" | "double" | "master"): boolean {
+  if (!Number.isFinite(score) || score <= 1 || dartsLeft <= 0) return false;
+  const key = `${score}|${dartsLeft}|${outMode}`;
+  const cached = checkoutMemo.get(key);
+  if (cached !== undefined) return cached;
+
+  let ok = false;
+  for (const dart of CHECKOUT_DARTS) {
+    const value = dartValue(dart);
+    const after = score - value;
+    const impossibleDoubleScore =
+      (outMode === "double" || outMode === "master") && after === 1;
+
+    if (after < 0 || impossibleDoubleScore) continue;
+
+    if (after === 0) {
+      if (isValidOut(dart, outMode)) {
+        ok = true;
+        break;
+      }
+      continue;
+    }
+
+    if (dartsLeft > 1 && canCheckoutIn(after, dartsLeft - 1, outMode)) {
+      ok = true;
+      break;
+    }
   }
 
-  return out;
+  checkoutMemo.set(key, ok);
+  return ok;
+}
+
+function countCheckoutAttemptsForThrow(
+  remaining: number,
+  currentThrow: UIDart[],
+  outMode: "simple" | "double" | "master",
+): number {
+  let attempts = 0;
+  let rem = remaining;
+
+  for (let i = 0; i < currentThrow.length; i++) {
+    const dart = currentThrow[i];
+    const dartsLeft = 3 - i;
+
+    if (canCheckoutIn(rem, dartsLeft, outMode)) {
+      attempts += 1;
+    }
+
+    const value = dartValue(dart);
+    const after = rem - value;
+    const impossibleDoubleScore =
+      (outMode === "double" || outMode === "master") && after === 1;
+
+    if (after < 0 || impossibleDoubleScore) break;
+    if (after === 0) break;
+
+    rem = after;
+  }
+
+  return attempts;
 }
 
 // --------------------------------------------------
@@ -1137,6 +1222,7 @@ export default function TrainingX01Play({
 
   const [showInfo, setShowInfo] = React.useState(false);
   const [showProgress, setShowProgress] = React.useState(false);
+  const [checkoutAttempts, setCheckoutAttempts] = React.useState(0);
 
   // partie commencée ou non
   const [started, setStarted] = React.useState(false);
@@ -1190,6 +1276,7 @@ export default function TrainingX01Play({
     visitCountRef.current = 0;
     setStarted(false);
     setShowEndModal(false);
+    setCheckoutAttempts(0);
     setBustLocked(false);
 
     allDartsRef.current = []; // 🔁 on vide le buffer de fléchettes
@@ -1332,6 +1419,11 @@ export default function TrainingX01Play({
     }
 
     const didCheckout = !isBust && after === 0;
+    const checkoutAttemptsThisThrow = countCheckoutAttemptsForThrow(
+      remaining,
+      currentThrow,
+      outMode,
+    );
 
     const hitsPayload = currentThrow.map((d) => ({
       profileId: currentProfile?.id ?? null,
@@ -1355,6 +1447,7 @@ export default function TrainingX01Play({
 
     const missCount = currentThrow.filter((d) => d.v === 0).length;
     setMissHits((n) => n + missCount);
+    setCheckoutAttempts((n) => n + checkoutAttemptsThisThrow);
 
     if (isBust) {
       setBustCount((n) => n + 1);
@@ -1428,18 +1521,21 @@ export default function TrainingX01Play({
         const newS = singleHits + addS;
         const newD = doubleHits + addD;
         const newT = tripleHits + addT;
-        const finalDartsDetail = [...allDartsRef.current];
-        const visitBuckets = buildVisitThresholdBuckets(finalDartsDetail);
 
         // ✅ compteurs finaux pour la session
         const finalMiss = missHits + missCount;
         const finalBull = bullHits + addB;
         const finalDBull = dBullHits + addDB;
         const finalBust = bustCount; // pas de bust sur la volée de checkout
+        const finalCheckoutAttempts = checkoutAttempts + checkoutAttemptsThisThrow;
+        const finalAllDarts = [...allDartsRef.current];
+        const best9Score = finalAllDarts
+          .slice(0, 9)
+          .reduce((sum, dart) => sum + dartValue(dart), 0);
 
         // ✅ Stats "simples" pour l’overlay TrainingX01 (sparkline locale)
         const stat: TrainingFinishStats = {
-          id: sessionIdRef.current ?? String(Date.now()),
+          id: sessionIdRef.current!,
           profileId: currentProfile?.id ?? "local",
           date: Date.now(),
           darts: finalDarts,
@@ -1449,15 +1545,7 @@ export default function TrainingX01Play({
           pctT: newTotalHits > 0 ? (newT / newTotalHits) * 100 : 0,
           bestVisit: Math.max(bestVisit, volleyTotal),
           checkout: dartValue(currentThrow[currentThrow.length - 1]),
-          hitsTotal: newTotalHits,
-          hits60: visitBuckets.hits60,
-          hits80: visitBuckets.hits80,
-          hits100: visitBuckets.hits100,
-          hits120: visitBuckets.hits120,
-          hits140: visitBuckets.hits140,
-          hits180: visitBuckets.hits180,
-          coAttempts: 1,
-          coSuccess: 1,
+          best9Score,
           hitsS: newS,
           hitsD: newD,
           hitsT: newT,
@@ -1465,6 +1553,8 @@ export default function TrainingX01Play({
           bull: finalBull,
           dBull: finalDBull,
           bust: finalBust,
+          coAttempts: finalCheckoutAttempts,
+          coSuccess: didCheckout ? 1 : 0,
           // 🔥 NEW : on sauve toute la heatmap de la session
           bySegment: nextHitMap,
           bySegmentS: nextS,
@@ -1474,7 +1564,14 @@ export default function TrainingX01Play({
 
         // 1) Sauvegarde locale pour l’overlay "Progression" du Training X01
         setFinishedSessions((arr) => {
-          const next = [...arr, stat];
+          const persisted = loadTrainingStatsFromStorage();
+          const merged = [...persisted, ...arr, stat];
+          const dedup = new Map<string, TrainingFinishStats>();
+          for (const item of merged) {
+            const key = String(item.id || `${item.profileId || "legacy"}-${item.date}-${item.darts}`);
+            dedup.set(key, item);
+          }
+          const next = Array.from(dedup.values()).sort((a, b) => a.date - b.date);
           saveTrainingStatsToStorage(next);
           return next;
         });
@@ -1490,6 +1587,7 @@ export default function TrainingX01Play({
             avg1D: avgPerDartFinal,
             bestVisit: stat.bestVisit,
             bestCheckout: stat.checkout || null,
+            best9Score: stat.best9Score || 0,
             hitsS: stat.hitsS,
             hitsD: stat.hitsD,
             hitsT: stat.hitsT,
@@ -1497,115 +1595,93 @@ export default function TrainingX01Play({
             bull: stat.bull,
             dBull: stat.dBull,
             bust: stat.bust,
+            coAttempts: stat.coAttempts || 0,
+            coSuccess: stat.coSuccess || 0,
             bySegment: stat.bySegment,
             bySegmentS: stat.bySegmentS,
             bySegmentD: stat.bySegmentD,
             bySegmentT: stat.bySegmentT,
-            dartsDetail: finalDartsDetail,
+            dartsDetail: allDartsRef.current,
           };
-          TrainingStore.saveX01Session({
-            ...x01Session,
-            hitsTotal: stat.hitsTotal,
-            hits60: stat.hits60,
-            hits80: stat.hits80,
-            hits100: stat.hits100,
-            hits120: stat.hits120,
-            hits140: stat.hits140,
-            hits180: stat.hits180,
-            coAttempts: stat.coAttempts,
-            coSuccess: stat.coSuccess,
-          } as any);
+          TrainingStore.saveX01Session(x01Session);
         } catch (err) {
           console.warn("TrainingX01Play saveX01Session failed", err);
         }
 
-        // 2bis) Historique local Training X01 (sessions terminées)
+        // 3) Historique local dédié Training X01
         try {
-          const historyId = `training_x01_${sessionIdRef.current ?? stat.date}`;
           void History.upsert({
-            id: historyId,
+            id: sessionIdRef.current!,
+            matchId: sessionIdRef.current!,
             kind: "training_x01",
             status: "finished",
             createdAt: stat.date,
             updatedAt: Date.now(),
             players: currentProfile
-              ? [{ id: currentProfile.id, name: currentProfile.name, avatarDataUrl: currentProfile.avatarDataUrl ?? null }]
+              ? [{
+                  id: String((currentProfile as any).id || "local"),
+                  name: currentProfile.name,
+                  avatarDataUrl: (currentProfile as any).avatarDataUrl ?? null,
+                }]
               : [],
             winnerId: currentProfile?.id ?? null,
             game: {
               mode: "training_x01",
               startScore,
               outMode,
+              isTraining: true,
             },
             summary: {
+              kind: "training_x01",
               mode: "training_x01",
               finished: true,
-              startedAt: stat.date,
-              endedAt: Date.now(),
-              profileId: currentProfile?.id ?? "local",
-              profileName: currentProfile?.name ?? "Training",
-              avg3: stat.avg3D,
-              darts: stat.darts,
+              isTraining: true,
+              darts: finalDarts,
               bestVisit: stat.bestVisit,
-              bestCheckout: stat.checkout,
-              hitsTotal: stat.hitsTotal,
-              hits60: stat.hits60,
-              hits80: stat.hits80,
-              hits100: stat.hits100,
-              hits120: stat.hits120,
-              hits140: stat.hits140,
-              hits180: stat.hits180,
-              miss: stat.miss,
-              singleHits: stat.hitsS,
-              doubleHits: stat.hitsD,
-              tripleHits: stat.hitsT,
-              bull25: stat.bull,
-              bull50: stat.dBull,
-              bust: stat.bust,
-              coAttempts: stat.coAttempts,
-              coSuccess: stat.coSuccess,
-              perPlayer: [
-                {
-                  playerId: currentProfile?.id ?? "local",
-                  name: currentProfile?.name ?? "Training",
-                  avg3: stat.avg3D,
-                  darts: stat.darts,
-                  bestVisit: stat.bestVisit,
-                  bestCheckout: stat.checkout,
-                  hitsTotal: stat.hitsTotal,
-                  hits60: stat.hits60,
-                  hits80: stat.hits80,
-                  hits100: stat.hits100,
-                  hits120: stat.hits120,
-                  hits140: stat.hits140,
-                  hits180: stat.hits180,
-                  miss: stat.miss,
-                  singleHits: stat.hitsS,
-                  doubleHits: stat.hitsD,
-                  tripleHits: stat.hitsT,
-                  bull25: stat.bull,
-                  bull50: stat.dBull,
-                  bust: stat.bust,
-                  coAttempts: stat.coAttempts,
-                  coSuccess: stat.coSuccess,
-                },
-              ],
+              bestCheckout: stat.checkout || null,
+              best9Score: stat.best9Score || 0,
+              coAttempts: stat.coAttempts || 0,
+              coSuccess: stat.coSuccess || 0,
+              avg3ByPlayer: currentProfile?.id ? { [String(currentProfile.id)]: stat.avg3D } : {},
+              perPlayer: currentProfile?.id
+                ? [{
+                    playerId: String(currentProfile.id),
+                    profileId: String(currentProfile.id),
+                    name: currentProfile.name,
+                    avg3: stat.avg3D,
+                    darts: finalDarts,
+                    bestVisit: stat.bestVisit,
+                    bestCheckout: stat.checkout || null,
+                    best9Score: stat.best9Score || 0,
+                    totalHits: stat.hitsS + stat.hitsD + stat.hitsT + stat.bull + stat.dBull,
+                    hitsTotal: stat.hitsS + stat.hitsD + stat.hitsT + stat.bull + stat.dBull,
+                    miss: stat.miss,
+                    singles: stat.hitsS,
+                    doubles: stat.hitsD,
+                    triples: stat.hitsT,
+                    bull25: stat.bull,
+                    bull50: stat.dBull,
+                    bust: stat.bust,
+                    coAttempts: stat.coAttempts || 0,
+                    coSuccess: stat.coSuccess || 0,
+                  }]
+                : [],
             },
             payload: {
               kind: "training_x01",
-              profileId: currentProfile?.id ?? "local",
-              profileName: currentProfile?.name ?? "Training",
-              startScore,
-              outMode,
+              config: {
+                startScore,
+                outMode,
+              },
               stats: stat,
-              darts: finalDartsDetail,
+              darts: allDartsRef.current,
             },
-          } as any);
+          });
         } catch (err) {
-          console.warn("TrainingX01Play History.upsert failed", err);
+          console.warn("TrainingX01Play history upsert failed", err);
         }
 
-        // 3) Upload online (mock ou backend réel)
+        // 4) Upload online (mock ou backend réel)
         uploadTrainingX01Online({
           profile: currentProfile,
           stats: stat,

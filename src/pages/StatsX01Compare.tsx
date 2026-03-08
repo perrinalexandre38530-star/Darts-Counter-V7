@@ -13,7 +13,7 @@ import type { Store, Profile } from "../lib/types";
 import { useTheme } from "../contexts/ThemeContext";
 import { useLang } from "../contexts/LangContext";
 import { History } from "../lib/history";
-import { TrainingStore } from "../lib/TrainingStore";
+import { TrainingStore, type TrainingX01Session } from "../lib/TrainingStore";
 
 import {
   ResponsiveContainer,
@@ -40,6 +40,7 @@ type X01Sample = {
   avg3?: number;
   bestVisit?: number;
   bestCheckout?: number;
+  best9Score?: number;
   dartsThrown?: number;
   legsWon?: number;
   legsLost?: number;
@@ -73,6 +74,7 @@ type AggregatedStats = {
   avg3: number | null;
   bestVisit: number | null;
   bestCheckout: number | null;
+  best9Score: number | null;
   darts: number;
   legsPlayed: number;
   legsWon: number;
@@ -115,266 +117,122 @@ const TRAINING_X01_STATS_KEY = "dc_training_x01_stats_v1";
 type TrainingX01SessionLite = {
   id: string;
   date: number;
-  profileId: string;
+  profileId?: string;
   darts: number;
   avg3D: number;
   bestVisit: number;
   bestCheckout: number | null;
-  hitsTotal?: number;
-  hits60?: number;
-  hits80?: number;
-  hits100?: number;
-  hits120?: number;
-  hits140?: number;
-  hits180?: number;
+  best9Score?: number | null;
+  hitsS?: number;
+  hitsD?: number;
+  hitsT?: number;
   miss?: number;
-  singleHits?: number;
-  doubleHits?: number;
-  tripleHits?: number;
-  bull25?: number;
-  bull50?: number;
+  bull?: number;
+  dBull?: number;
   bust?: number;
   coAttempts?: number;
   coSuccess?: number;
+  bySegmentS?: Record<string, number>;
+  bySegmentD?: Record<string, number>;
+  bySegmentT?: Record<string, number>;
+  dartsDetail?: any[];
 };
 
-function normalizeTrainingProfileId(row: any): string {
-  return String(
-    row?.profileId ??
-      row?.playerId ??
-      row?.idPlayer ??
-      row?.ownerId ??
-      "unknown"
-  );
-}
-
-function buildVisitThresholds(dartsDetail: any[] | undefined) {
-  const out = {
-    hits60: 0,
-    hits80: 0,
-    hits100: 0,
-    hits120: 0,
-    hits140: 0,
-    hits180: 0,
+function normalizeLegacyTrainingSession(row: any, idx: number): TrainingX01SessionLite {
+  return {
+    id: row?.id ?? `legacy-${Number(row?.date) || Date.now()}-${idx}`,
+    date: Number(row?.date) || Date.now(),
+    profileId:
+      row?.profileId !== undefined && row?.profileId !== null && String(row.profileId).trim() !== ""
+        ? String(row.profileId)
+        : undefined,
+    darts: Number(row?.darts) || 0,
+    avg3D: Number(row?.avg3D) || 0,
+    bestVisit: Number(row?.bestVisit) || 0,
+    bestCheckout:
+      row?.bestCheckout === null || row?.bestCheckout === undefined
+        ? row?.checkout === null || row?.checkout === undefined
+          ? null
+          : Number(row.checkout) || 0
+        : Number(row.bestCheckout) || 0,
+    best9Score: Number(row?.best9Score) || 0,
+    hitsS: Number(row?.hitsS) || 0,
+    hitsD: Number(row?.hitsD) || 0,
+    hitsT: Number(row?.hitsT) || 0,
+    miss: Number(row?.miss) || 0,
+    bull: Number(row?.bull) || 0,
+    dBull: Number(row?.dBull) || 0,
+    bust: Number(row?.bust) || 0,
+    coAttempts: Number(row?.coAttempts) || 0,
+    coSuccess: Number(row?.coSuccess) || 0,
+    bySegmentS: row?.bySegmentS && typeof row.bySegmentS === "object" ? row.bySegmentS : undefined,
+    bySegmentD: row?.bySegmentD && typeof row.bySegmentD === "object" ? row.bySegmentD : undefined,
+    bySegmentT: row?.bySegmentT && typeof row.bySegmentT === "object" ? row.bySegmentT : undefined,
+    dartsDetail: Array.isArray(row?.dartsDetail) ? row.dartsDetail : undefined,
   };
-  if (!Array.isArray(dartsDetail) || !dartsDetail.length) return out;
-
-  const dartScore = (d: any) => {
-    const v = Number(d?.v ?? d?.value ?? 0);
-    const mult = Number(d?.mult ?? d?.multiplier ?? 1);
-    if (!v) return 0;
-    if (v === 25) return mult === 2 ? 50 : 25;
-    return v * mult;
-  };
-
-  for (let i = 0; i < dartsDetail.length; i += 3) {
-    const visit = dartsDetail.slice(i, i + 3);
-    const total = visit.reduce((sum, d) => sum + dartScore(d), 0);
-    if (total >= 60) out.hits60 += 1;
-    if (total >= 80) out.hits80 += 1;
-    if (total >= 100) out.hits100 += 1;
-    if (total >= 120) out.hits120 += 1;
-    if (total >= 140) out.hits140 += 1;
-    if (total >= 180) out.hits180 += 1;
-  }
-
-  return out;
 }
 
 function loadTrainingSessionsForProfile(
   profileId: string | null
 ): TrainingX01SessionLite[] {
   if (typeof window === "undefined" || !profileId) return [];
-
-  const fullRows = (() => {
-    try {
-      return TrainingStore.getX01SessionsForProfile(profileId);
-    } catch (e) {
-      console.warn("[StatsX01Compare] TrainingStore.getX01SessionsForProfile failed", e);
-      return [];
-    }
-  })();
-
-  const fullMapped = (fullRows || []).map((row: any, idx: number) => {
-    const singleHits = Number(row?.hitsS) || 0;
-    const doubleHits = Number(row?.hitsD) || 0;
-    const tripleHits = Number(row?.hitsT) || 0;
-    const bull25 = Number(row?.bull) || 0;
-    const bull50 = Number(row?.dBull) || 0;
-    const miss = Number(row?.miss) || 0;
-    const bust = Number(row?.bust) || 0;
-    const hitsTotal =
-      Number(row?.hitsTotal) ||
-      singleHits + doubleHits + tripleHits + bull25 + bull50;
-    const thresholds = buildVisitThresholds(row?.dartsDetail);
-
-    return {
-      id: String(row?.id ?? `full_${idx}`),
-      date: Number(row?.date) || Date.now(),
-      profileId: normalizeTrainingProfileId(row),
-      darts: Number(row?.darts) || 0,
-      avg3D: Number(row?.avg3D) || 0,
-      bestVisit: Number(row?.bestVisit) || 0,
-      bestCheckout:
-        row?.bestCheckout === null || row?.bestCheckout === undefined
-          ? null
-          : Number(row?.bestCheckout) || 0,
-      hitsTotal,
-      hits60: Number(row?.hits60) || thresholds.hits60,
-      hits80: Number(row?.hits80) || thresholds.hits80,
-      hits100: Number(row?.hits100) || thresholds.hits100,
-      hits120: Number(row?.hits120) || thresholds.hits120,
-      hits140: Number(row?.hits140) || thresholds.hits140,
-      hits180: Number(row?.hits180) || thresholds.hits180,
-      miss,
-      singleHits,
-      doubleHits,
-      tripleHits,
-      bull25,
-      bull50,
-      bust,
-      coAttempts:
-        Number(row?.coAttempts) ||
-        (Number(row?.bestCheckout) > 0 ? 1 : 0),
-      coSuccess:
-        Number(row?.coSuccess) ||
-        (Number(row?.bestCheckout) > 0 ? 1 : 0),
-    };
-  });
-
   try {
+    const exact: TrainingX01SessionLite[] = [];
+    const legacyFallback: TrainingX01SessionLite[] = [];
+
+    const fullSessions = (TrainingStore.getAllX01Sessions?.() || []) as TrainingX01Session[];
+    for (const row of fullSessions) {
+      const normalized = normalizeLegacyTrainingSession(row, exact.length);
+      if (normalized.profileId === profileId) exact.push(normalized);
+    }
+
     const raw = window.localStorage.getItem(TRAINING_X01_STATS_KEY);
-    if (!raw) return fullMapped;
-    const parsed = JSON.parse(raw);
-    if (!Array.isArray(parsed)) return fullMapped;
+    const parsed = raw ? JSON.parse(raw) : [];
+    if (Array.isArray(parsed)) {
+      parsed.forEach((row: any, idx: number) => {
+        const normalized = normalizeLegacyTrainingSession(row, idx);
+        const pid = normalized.profileId;
+        if (pid === profileId) exact.push(normalized);
+        else if (!pid || pid === "local" || pid === "unknown") legacyFallback.push(normalized);
+      });
+    }
 
-    const exactLegacy = parsed
-      .map((row: any, idx: number) => {
-        const singleHits = Number(row?.hitsS) || 0;
-        const doubleHits = Number(row?.hitsD) || 0;
-        const tripleHits = Number(row?.hitsT) || 0;
-        const bull25 = Number(row?.bull) || 0;
-        const bull50 = Number(row?.dBull) || 0;
-        const miss = Number(row?.miss) || 0;
-        const bust = Number(row?.bust) || 0;
-        const hitsTotal =
-          Number(row?.hitsTotal) ||
-          singleHits + doubleHits + tripleHits + bull25 + bull50;
-        const legacyProfileId = normalizeTrainingProfileId(row);
+    const dedup = new Map<string, TrainingX01SessionLite>();
+    for (const item of exact) {
+      dedup.set(String(item.id || `${item.date}-${item.darts}`), item);
+    }
 
-        return {
-          id: String(row?.id ?? `legacy_${idx}`),
-          date: Number(row?.date) || Date.now(),
-          profileId: legacyProfileId,
-          darts: Number(row?.darts) || 0,
-          avg3D: Number(row?.avg3D) || 0,
-          bestVisit: Number(row?.bestVisit) || 0,
-          bestCheckout:
-            row?.bestCheckout === null || row?.bestCheckout === undefined
-              ? row?.checkout === null || row?.checkout === undefined
-                ? null
-                : Number(row?.checkout) || 0
-              : Number(row?.bestCheckout) || 0,
-          hitsTotal,
-          hits60: Number(row?.hits60) || 0,
-          hits80: Number(row?.hits80) || 0,
-          hits100: Number(row?.hits100) || 0,
-          hits120: Number(row?.hits120) || 0,
-          hits140: Number(row?.hits140) || 0,
-          hits180: Number(row?.hits180) || 0,
-          miss,
-          singleHits,
-          doubleHits,
-          tripleHits,
-          bull25,
-          bull50,
-          bust,
-          coAttempts:
-            Number(row?.coAttempts) ||
-            ((row?.bestCheckout ?? row?.checkout) ? 1 : 0),
-          coSuccess:
-            Number(row?.coSuccess) ||
-            ((row?.bestCheckout ?? row?.checkout) ? 1 : 0),
-        };
-      })
-      .filter((s) => s.profileId === profileId);
-
-    const legacyFallback =
-      exactLegacy.length > 0
-        ? []
-        : parsed
-            .map((row: any, idx: number) => {
-              const singleHits = Number(row?.hitsS) || 0;
-              const doubleHits = Number(row?.hitsD) || 0;
-              const tripleHits = Number(row?.hitsT) || 0;
-              const bull25 = Number(row?.bull) || 0;
-              const bull50 = Number(row?.dBull) || 0;
-              const miss = Number(row?.miss) || 0;
-              const bust = Number(row?.bust) || 0;
-              const hitsTotal =
-                Number(row?.hitsTotal) ||
-                singleHits + doubleHits + tripleHits + bull25 + bull50;
-              const rawPid = normalizeTrainingProfileId(row);
-              const canFallback =
-                !rawPid ||
-                rawPid === "unknown" ||
-                rawPid === "local" ||
-                rawPid === "null" ||
-                rawPid === "undefined";
-
-              if (!canFallback) return null;
-
-              return {
-                id: String(row?.id ?? `legacy_fb_${idx}`),
-                date: Number(row?.date) || Date.now(),
-                profileId,
-                darts: Number(row?.darts) || 0,
-                avg3D: Number(row?.avg3D) || 0,
-                bestVisit: Number(row?.bestVisit) || 0,
-                bestCheckout:
-                  row?.bestCheckout === null || row?.bestCheckout === undefined
-                    ? row?.checkout === null || row?.checkout === undefined
-                      ? null
-                      : Number(row?.checkout) || 0
-                    : Number(row?.bestCheckout) || 0,
-                hitsTotal,
-                hits60: Number(row?.hits60) || 0,
-                hits80: Number(row?.hits80) || 0,
-                hits100: Number(row?.hits100) || 0,
-                hits120: Number(row?.hits120) || 0,
-                hits140: Number(row?.hits140) || 0,
-                hits180: Number(row?.hits180) || 0,
-                miss,
-                singleHits,
-                doubleHits,
-                tripleHits,
-                bull25,
-                bull50,
-                bust,
-                coAttempts:
-                  Number(row?.coAttempts) ||
-                  ((row?.bestCheckout ?? row?.checkout) ? 1 : 0),
-                coSuccess:
-                  Number(row?.coSuccess) ||
-                  ((row?.bestCheckout ?? row?.checkout) ? 1 : 0),
-              };
-            })
-            .filter(Boolean);
-
-    const merged = [...fullMapped, ...exactLegacy, ...legacyFallback];
-    const seen = new Set<string>();
-    return merged.filter((s) => {
-      const key = `${s.id}__${s.date}__${s.darts}__${s.avg3D}`;
-      if (seen.has(key)) return false;
-      seen.add(key);
-      return true;
-    });
+    const base = dedup.size > 0 ? Array.from(dedup.values()) : legacyFallback;
+    return base.sort((a, b) => a.date - b.date);
   } catch (e) {
     console.warn("[StatsX01Compare] loadTrainingSessions failed", e);
-    return fullMapped;
+    return [];
   }
 }
 
+function countThresholdHitsFromSession(
+  s: Pick<TrainingX01SessionLite, "dartsDetail" | "darts" | "bestVisit">,
+  threshold: number,
+): number {
+  if (Array.isArray(s.dartsDetail) && s.dartsDetail.length > 0) {
+    let count = 0;
+    for (let i = 0; i < s.dartsDetail.length; i += 3) {
+      const visit = s.dartsDetail.slice(i, i + 3);
+      const total = visit.reduce((sum, d: any) => {
+        const v = Number(d?.v) || 0;
+        const mult = Number(d?.mult) || 1;
+        if (v === 25 && mult === 2) return sum + 50;
+        if (v === 25) return sum + 25;
+        return sum + v * mult;
+      }, 0);
+      if (total >= threshold) count += 1;
+    }
+    return count;
+  }
+  if (threshold <= 0 && s.bestVisit) return 1;
+  if (threshold > 0 && Number(s.bestVisit || 0) >= threshold) return 1;
+  return 0;
+}
 // ----------------- Helpers génériques -----------------
 
 const N = (x: any, d = 0) =>
@@ -444,6 +302,7 @@ function aggregateSamples(samples: X01Sample[]): AggregatedStats {
       avg3: null,
       bestVisit: null,
       bestCheckout: null,
+      best9Score: null,
       darts: 0,
       legsPlayed: 0,
       legsWon: 0,
@@ -477,6 +336,7 @@ function aggregateSamples(samples: X01Sample[]): AggregatedStats {
   let countAvg3 = 0;
   let bestVisit: number | null = null;
   let bestCheckout: number | null = null;
+  let best9Score: number | null = null;
 
   let darts = 0;
   let legsWon = 0;
@@ -519,6 +379,10 @@ function aggregateSamples(samples: X01Sample[]): AggregatedStats {
           ? s.bestCheckout
           : Math.max(bestCheckout, s.bestCheckout);
     }
+    if (typeof s.best9Score === "number") {
+      best9Score =
+        best9Score == null ? s.best9Score : Math.max(best9Score, s.best9Score);
+    }
 
     if (typeof s.dartsThrown === "number") darts += s.dartsThrown;
     if (typeof s.legsWon === "number") legsWon += s.legsWon;
@@ -554,6 +418,7 @@ function aggregateSamples(samples: X01Sample[]): AggregatedStats {
     avg3: countAvg3 ? sumAvg3 / countAvg3 : null,
     bestVisit,
     bestCheckout,
+    best9Score,
     darts,
     legsPlayed,
     legsWon,
@@ -702,7 +567,7 @@ const ROWS: RowDef[] = [
     section: "RECORDS",
     label: "Best 9 darts",
     kind: "int",
-    get: () => 0, // TODO: à câbler proprement
+    get: (s) => s.best9Score,
   },
   {
     section: "RECORDS",
@@ -1246,6 +1111,13 @@ const StatsX01Compare: React.FC<Props> = ({ store, profileId, compact }) => {
 
         const trainingSessions = loadTrainingSessionsForProfile(pid);
         for (const s of trainingSessions) {
+          const hitsTotal =
+            Number(s.hitsS || 0) +
+            Number(s.hitsD || 0) +
+            Number(s.hitsT || 0) +
+            Number(s.bull || 0) +
+            Number(s.dBull || 0);
+
           result.push({
             createdAt: s.date,
             mode: "training_x01",
@@ -1253,27 +1125,28 @@ const StatsX01Compare: React.FC<Props> = ({ store, profileId, compact }) => {
             avg3: s.avg3D || undefined,
             bestVisit: s.bestVisit || undefined,
             bestCheckout: s.bestCheckout ?? undefined,
+            best9Score: s.best9Score ?? undefined,
             dartsThrown: s.darts || undefined,
             legsWon: undefined,
             legsLost: undefined,
             matchesPlayed: 0,
             matchesWon: 0,
-            hitsTotal: s.hitsTotal,
-            hits60: s.hits60,
-            hits80: s.hits80,
-            hits100: s.hits100,
-            hits120: s.hits120,
-            hits140: s.hits140,
-            hits180: s.hits180,
-            miss: s.miss,
-            singleHits: s.singleHits,
-            doubleHits: s.doubleHits,
-            tripleHits: s.tripleHits,
-            bull25: s.bull25,
-            bull50: s.bull50,
-            bust: s.bust,
-            coAttempts: s.coAttempts,
-            coSuccess: s.coSuccess,
+            hitsTotal: hitsTotal || undefined,
+            hits60: countThresholdHitsFromSession(s, 60) || undefined,
+            hits80: countThresholdHitsFromSession(s, 80) || undefined,
+            hits100: countThresholdHitsFromSession(s, 100) || undefined,
+            hits120: countThresholdHitsFromSession(s, 120) || undefined,
+            hits140: countThresholdHitsFromSession(s, 140) || undefined,
+            hits180: countThresholdHitsFromSession(s, 180) || undefined,
+            miss: Number(s.miss || 0) || undefined,
+            singleHits: (Number(s.hitsS || 0) + Number(s.bull || 0)) || undefined,
+            doubleHits: (Number(s.hitsD || 0) + Number(s.dBull || 0)) || undefined,
+            tripleHits: Number(s.hitsT || 0) || undefined,
+            bull25: Number(s.bull || 0) || undefined,
+            bull50: Number(s.dBull || 0) || undefined,
+            bust: Number(s.bust || 0) || undefined,
+            coAttempts: Number(s.coAttempts || 0) || undefined,
+            coSuccess: Number(s.coSuccess || 0) || undefined,
           });
         }
 
@@ -1399,18 +1272,7 @@ const StatsX01Compare: React.FC<Props> = ({ store, profileId, compact }) => {
     );
   }
 
-  const renderValue = (
-    row: RowDef,
-    stats: AggregatedStats,
-    mode: "training" | "local" | "online"
-  ) => {
-    const trainingNAInRecords = new Set(["Victoires", "Win %"]);
-
-    if (mode === "training") {
-      if (row.section === "MATCHES") return "—";
-      if (row.section === "RECORDS" && trainingNAInRecords.has(row.label)) return "—";
-    }
-
+  const renderValue = (row: RowDef, stats: AggregatedStats) => {
     const raw = row.get(stats);
     if (raw == null || Number.isNaN(raw)) return "—";
     switch (row.kind) {
@@ -1421,10 +1283,17 @@ const StatsX01Compare: React.FC<Props> = ({ store, profileId, compact }) => {
       case "num2":
         return fmtNum(raw, 2);
       case "pct":
-        return fmtNum(raw, 1);
+        return fmtNum(raw, 1); // déjà en %
       default:
         return "—";
     }
+  };
+
+  const renderTrainingValue = (row: RowDef, stats: AggregatedStats) => {
+    if (row.label === "Victoires" || row.label === "Win %" || row.label === "Ratio legs W %") {
+      return "—";
+    }
+    return renderValue(row, stats);
   };
 
   const sectionsMain: ("RECORDS" | "HITS")[] = ["RECORDS", "HITS"];
@@ -1625,7 +1494,7 @@ const StatsX01Compare: React.FC<Props> = ({ store, profileId, compact }) => {
                     fontWeight: 700,
                   }}
                 >
-                  {renderValue(row, aggTraining, "training")}
+                  {renderTrainingValue(row, aggTraining)}
                 </div>
                 <div
                   style={{
@@ -1634,7 +1503,7 @@ const StatsX01Compare: React.FC<Props> = ({ store, profileId, compact }) => {
                     fontWeight: 700,
                   }}
                 >
-                  {renderValue(row, aggLocal, "local")}
+                  {renderValue(row, aggLocal)}
                 </div>
                 <div
                   style={{
@@ -1643,7 +1512,7 @@ const StatsX01Compare: React.FC<Props> = ({ store, profileId, compact }) => {
                     fontWeight: 700,
                   }}
                 >
-                  {renderValue(row, aggOnline, "online")}
+                  {renderValue(row, aggOnline)}
                 </div>
               </div>
             ))}
@@ -1912,7 +1781,7 @@ const StatsX01Compare: React.FC<Props> = ({ store, profileId, compact }) => {
                   fontWeight: 700,
                 }}
               >
-                {renderValue(row, aggLocal, "local")}
+                {renderValue(row, aggLocal)}
               </div>
               <div
                 style={{
@@ -1921,7 +1790,7 @@ const StatsX01Compare: React.FC<Props> = ({ store, profileId, compact }) => {
                   fontWeight: 700,
                 }}
               >
-                {renderValue(row, aggOnline, "online")}
+                {renderValue(row, aggOnline)}
               </div>
             </div>
           ))}

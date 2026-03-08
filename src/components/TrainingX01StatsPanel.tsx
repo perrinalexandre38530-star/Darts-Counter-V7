@@ -22,6 +22,7 @@ import {
 import type { TrainingFinishStats } from "../pages/TrainingX01Play";
 
 const TRAINING_X01_STATS_KEY = "dc_training_x01_stats_v1";
+const TRAINING_X01_FULL_KEY = "dc_training_x01_full_v1";
 
 const T = {
   bg: "#111318",
@@ -46,11 +47,42 @@ const T = {
 function loadTrainingStats(): TrainingFinishStats[] {
   if (typeof window === "undefined") return [];
   try {
-    const raw = window.localStorage.getItem(TRAINING_X01_STATS_KEY);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw);
-    if (!Array.isArray(parsed)) return [];
-    return parsed as TrainingFinishStats[];
+    const dedup = new Map<string, TrainingFinishStats>();
+
+    const normalize = (row: any, idx: number): TrainingFinishStats => ({
+      ...(row as TrainingFinishStats),
+      id: row?.id ?? `${Number(row?.date) || Date.now()}-${idx}`,
+      date: Number(row?.date) || Date.now(),
+      darts: Number(row?.darts) || 0,
+      avg3D: Number(row?.avg3D ?? row?.avg3 ?? 0) || 0,
+      bestVisit: Number(row?.bestVisit) || 0,
+      checkout: Number(row?.bestCheckout ?? row?.checkout ?? 0) || 0,
+      hitsS: Number(row?.hitsS) || 0,
+      hitsD: Number(row?.hitsD) || 0,
+      hitsT: Number(row?.hitsT) || 0,
+      miss: Number(row?.miss) || 0,
+      bull: Number(row?.bull) || 0,
+      dBull: Number(row?.dBull) || 0,
+      bust: Number(row?.bust) || 0,
+      bySegment: row?.bySegment ?? {},
+      bySegmentS: row?.bySegmentS ?? {},
+      bySegmentD: row?.bySegmentD ?? {},
+      bySegmentT: row?.bySegmentT ?? {},
+    });
+
+    for (const key of [TRAINING_X01_FULL_KEY, TRAINING_X01_STATS_KEY]) {
+      const raw = window.localStorage.getItem(key);
+      if (!raw) continue;
+      const parsed = JSON.parse(raw);
+      if (!Array.isArray(parsed)) continue;
+      parsed.forEach((row: any, idx: number) => {
+        const item = normalize(row, idx);
+        const dedupKey = String((item as any).id || `${item.date}-${item.darts}`);
+        if (!dedup.has(dedupKey)) dedup.set(dedupKey, item);
+      });
+    }
+
+    return Array.from(dedup.values()).sort((a, b) => b.date - a.date);
   } catch {
     return [];
   }

@@ -92,6 +92,7 @@ export type TrainingX01Session = {
   avg1D: number;
   bestVisit: number;
   bestCheckout: number | null;
+  best9Score?: number | null;
 
   // compteurs S / D / T / Miss / Bull / DBull / Bust
   hitsS: number;
@@ -102,14 +103,7 @@ export type TrainingX01Session = {
   dBull: number;
   bust: number;
 
-  // métriques détaillées additionnelles (comparateur X01)
-  hitsTotal?: number;
-  hits60?: number;
-  hits80?: number;
-  hits100?: number;
-  hits120?: number;
-  hits140?: number;
-  hits180?: number;
+  // tentatives de checkout
   coAttempts?: number;
   coSuccess?: number;
 
