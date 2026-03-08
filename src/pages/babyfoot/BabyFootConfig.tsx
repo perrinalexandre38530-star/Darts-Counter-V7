@@ -5,18 +5,9 @@
 // ✅ Presets depuis menus (MATCH / FUN / TRAINING / DÉFIS) -> config spécifique par carte
 // ✅ Sélection ÉQUIPES via catalogue (Profils > Teams) en carrousel (flèches)
 // ✅ Sélection JOUEURS par camp en carrousel (flèches) + quota strict (1v1/2v2/2v1)
-// ✅ Règles épurées:
-//    - Sets ON/OFF au-dessus
-//    - Score cible via dropdown (5 ou 10)
-//    - BO1/BO3/BO5 sur une seule ligne (si Sets ON)
-// ✅ Chrono épuré:
-//    - Durée dropdown (3/5/7/10 min)
-//    - Prolongation dropdown (Aucune / 30 / 60 / 90 sec)
-// ✅ Golden Goal + OT Golden Goal avec bouton info (modal)
-// ✅ Options chrono:
-//    - Match nul à la fin du temps réglementaire (si chrono ON)
-//    - Victoire par 2 buts d'écart (hors contrainte temps)
-// ✅ Handicap toujours dispo (même en chrono)
+// ✅ Règles épurées
+// ✅ FIX: profilesForA / profilesForB déclarés
+// ✅ FIX: alias storeSetTarget pour éviter le conflit avec le state local
 // =============================================================
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
@@ -33,11 +24,12 @@ import {
   upsertBabyFootTeam,
   type BabyFootTeam,
 } from "../../lib/petanqueTeamsStore";
+
 import {
   loadBabyFootState,
   resetBabyFoot,
   setMode,
-  setTarget,
+  setTarget as storeSetTarget,
   setTeams,
   setTeamsProfiles,
   setAdvancedOptions,
@@ -96,7 +88,9 @@ function pillStyle(
     fontSize: 12,
     letterSpacing: 0.35,
     cursor: "pointer",
-    boxShadow: active ? `0 10px 22px rgba(0,0,0,0.30), 0 0 0 2px ${primary}22` : "none",
+    boxShadow: active
+      ? `0 10px 22px rgba(0,0,0,0.30), 0 0 0 2px ${primary}22`
+      : "none",
     whiteSpace: "nowrap",
     userSelect: "none",
   };
@@ -160,7 +154,9 @@ function ArrowBtn({
       aria-label={dir === "left" ? "Précédent" : "Suivant"}
       title={dir === "left" ? "Précédent" : "Suivant"}
     >
-      <div style={{ fontSize: 18, opacity: 0.95 }}>{dir === "left" ? "‹" : "›"}</div>
+      <div style={{ fontSize: 18, opacity: 0.95 }}>
+        {dir === "left" ? "‹" : "›"}
+      </div>
     </div>
   );
 }
@@ -204,19 +200,30 @@ function Modal({
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
           <div style={{ fontWeight: 1000, letterSpacing: 0.4 }}>{title}</div>
           <div style={{ marginLeft: "auto" }}>
-            <div onClick={onClose} style={{ ...iconBtnStyle(), width: 32, height: 32 }}>
+            <div
+              onClick={onClose}
+              style={{ ...iconBtnStyle(), width: 32, height: 32 }}
+            >
               ✕
             </div>
           </div>
         </div>
         <div style={{ height: 10 }} />
-        <div style={{ fontSize: 13, lineHeight: 1.45, opacity: 0.92 }}>{children}</div>
+        <div style={{ fontSize: 13, lineHeight: 1.45, opacity: 0.92 }}>
+          {children}
+        </div>
       </div>
     </div>
   );
 }
 
-function TeamAvatar({ team, primary }: { team: BabyFootTeam | null; primary: string }) {
+function TeamAvatar({
+  team,
+  primary,
+}: {
+  team: BabyFootTeam | null;
+  primary: string;
+}) {
   const logo = team?.logoDataUrl || team?.regionLogoDataUrl || null;
   const name = team?.name || "Nommer plus tard";
   const initials = name
@@ -242,9 +249,15 @@ function TeamAvatar({ team, primary }: { team: BabyFootTeam | null; primary: str
         }}
       >
         {logo ? (
-          <img src={logo} alt={name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+          <img
+            src={logo}
+            alt={name}
+            style={{ width: "100%", height: "100%", objectFit: "cover" }}
+          />
         ) : (
-          <div style={{ fontWeight: 1000, opacity: 0.92, letterSpacing: 1 }}>{initials || "—"}</div>
+          <div style={{ fontWeight: 1000, opacity: 0.92, letterSpacing: 1 }}>
+            {initials || "—"}
+          </div>
         )}
       </div>
       <div
@@ -278,14 +291,25 @@ function ProfileAvatarCard({
   const avatar = (p as any)?.avatarDataUrl || (p as any)?.avatarData || null;
   const name = (p as any)?.name || "—";
   return (
-    <div style={{ width: 92, display: "grid", justifyItems: "center", gap: 8, cursor: "pointer", userSelect: "none" }}>
+    <div
+      style={{
+        width: 92,
+        display: "grid",
+        justifyItems: "center",
+        gap: 8,
+        cursor: "pointer",
+        userSelect: "none",
+      }}
+    >
       <div
         style={{
           width: 68,
           height: 68,
           borderRadius: 999,
           overflow: "hidden",
-          border: selected ? `2px solid ${primary}aa` : "1px solid rgba(255,255,255,0.12)",
+          border: selected
+            ? `2px solid ${primary}aa`
+            : "1px solid rgba(255,255,255,0.12)",
           boxShadow: selected
             ? `0 12px 30px rgba(0,0,0,0.40), 0 0 0 3px ${primary}22`
             : "0 12px 28px rgba(0,0,0,0.35)",
@@ -295,9 +319,15 @@ function ProfileAvatarCard({
         }}
       >
         {avatar ? (
-          <img src={avatar} alt={name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+          <img
+            src={avatar}
+            alt={name}
+            style={{ width: "100%", height: "100%", objectFit: "cover" }}
+          />
         ) : (
-          <div style={{ fontWeight: 1000, opacity: 0.9 }}>{String(name).slice(0, 1).toUpperCase()}</div>
+          <div style={{ fontWeight: 1000, opacity: 0.9 }}>
+            {String(name).slice(0, 1).toUpperCase()}
+          </div>
         )}
       </div>
       <div
@@ -341,21 +371,21 @@ export default function BabyFootConfig({ go, store, params }: Props) {
 
   const saved = useMemo(() => loadBabyFootState(), []);
 
-  // Teams catalog (Profils > Teams)
-  const [teamsCatalog, setTeamsCatalog] = useState<BabyFootTeam[]>(() => loadBabyFootTeams());
+  const [teamsCatalog, setTeamsCatalog] = useState<BabyFootTeam[]>(() =>
+    loadBabyFootTeams()
+  );
+
   useEffect(() => {
     const onVis = () => {
-      if (document.visibilityState === "visible") setTeamsCatalog(loadBabyFootTeams());
+      if (document.visibilityState === "visible") {
+        setTeamsCatalog(loadBabyFootTeams());
+      }
     };
     document.addEventListener("visibilitychange", onVis);
     return () => document.removeEventListener("visibilitychange", onVis);
   }, []);
 
-  // -------------------------
-  // Presets / routing hints
-  // -------------------------
   const routeModeId = (params as any)?.mode as string | undefined;
-
   const presetMode = (params as any)?.presetMode as BabyFootMode | undefined;
   const presetTarget = (params as any)?.presetTarget as number | undefined;
   const presetVariantId = (params as any)?.presetVariantId as string | undefined;
@@ -368,12 +398,13 @@ export default function BabyFootConfig({ go, store, params }: Props) {
 
   const presetCategory = (params as any)?.presetCategory as string | undefined;
   const presetTraining = (params as any)?.presetTraining as string | undefined;
-
   const presetGoldenGoal = (params as any)?.presetGoldenGoal as boolean | undefined;
 
   const routeCategory: "match" | "fun" | "training" | "defis" | undefined =
     (presetCategory as any) ??
-    (typeof routeModeId === "string" && routeModeId.startsWith("match_") ? "match" : undefined) ??
+    (typeof routeModeId === "string" && routeModeId.startsWith("match_")
+      ? "match"
+      : undefined) ??
     (presetTraining ? "training" : undefined);
 
   const routeModeFromId: BabyFootMode | undefined =
@@ -396,57 +427,93 @@ export default function BabyFootConfig({ go, store, params }: Props) {
     (params as any)?.presetSetsEnabled ??
     ((params as any)?.presetBestOf ? true : undefined) ??
     ((params as any)?.presetSetTarget ? true : undefined);
+
   const presetBestOf = (params as any)?.presetBestOf as (1 | 3 | 5) | undefined;
   const presetSetTarget = (params as any)?.presetSetTarget as number | undefined;
-
   const presetHandicapA = (params as any)?.presetHandicapA as number | undefined;
   const presetHandicapB = (params as any)?.presetHandicapB as number | undefined;
 
-  // -------------------------
-  // UI state
-  // -------------------------
-  const [mode, setModeUI] = useState<BabyFootMode>(presetMode || routeModeFromId || saved.mode || "1v1");
+  const [mode, setModeUI] = useState<BabyFootMode>(
+    presetMode || routeModeFromId || saved.mode || "1v1"
+  );
 
-  const [teamARefId, setTeamARefId] = useState<string>((saved as any)?.teamARefId ? String((saved as any).teamARefId) : "");
-  const [teamBRefId, setTeamBRefId] = useState<string>((saved as any)?.teamBRefId ? String((saved as any).teamBRefId) : "");
+  const [teamARefId, setTeamARefId] = useState<string>(
+    (saved as any)?.teamARefId ? String((saved as any).teamARefId) : ""
+  );
+  const [teamBRefId, setTeamBRefId] = useState<string>(
+    (saved as any)?.teamBRefId ? String((saved as any).teamBRefId) : ""
+  );
 
   const [target, setTargetUI] = useState<number>(presetTarget ?? saved.target ?? 10);
 
   const [useTimer, setUseTimer] = useState<boolean>(
     (Number.isFinite(Number(presetTimerSec)) && Number(presetTimerSec) > 0) ||
-      (Number.isFinite((saved as any).matchDurationSec) && (saved as any).matchDurationSec > 0)
+      (Number.isFinite((saved as any).matchDurationSec) &&
+        (saved as any).matchDurationSec > 0)
   );
+
   const [durationSec, setDurationSec] = useState<number>(
     clamp(Number(presetTimerSec ?? (saved as any).matchDurationSec ?? 180), 15, 60 * 30)
   );
 
-  const [overtimeSec, setOvertimeSec] = useState<number>(clamp(Number((saved as any).overtimeSec ?? 60), 0, 60 * 10));
+  const [overtimeSec, setOvertimeSec] = useState<number>(
+    clamp(Number((saved as any).overtimeSec ?? 60), 0, 60 * 10)
+  );
 
-  const [goldenGoal, setGoldenGoal] = useState<boolean>(presetGoldenGoal !== undefined ? !!presetGoldenGoal : !!(saved as any).goldenGoal);
-  const [overtimeGoldenGoal, setOvertimeGoldenGoal] = useState<boolean>((saved as any).overtimeGoldenGoal === undefined ? true : !!(saved as any).overtimeGoldenGoal);
+  const [goldenGoal, setGoldenGoal] = useState<boolean>(
+    presetGoldenGoal !== undefined
+      ? !!presetGoldenGoal
+      : !!(saved as any).goldenGoal
+  );
 
-  const [setsEnabled, setSetsEnabled] = useState<boolean>(!!(presetSetsEnabled ?? (saved as any).setsEnabled));
+  const [overtimeGoldenGoal, setOvertimeGoldenGoal] = useState<boolean>(
+    (saved as any).overtimeGoldenGoal === undefined
+      ? true
+      : !!(saved as any).overtimeGoldenGoal
+  );
+
+  const [setsEnabled, setSetsEnabled] = useState<boolean>(
+    !!(presetSetsEnabled ?? (saved as any).setsEnabled)
+  );
+
   const [setsBestOf, setSetsBestOf] = useState<1 | 3 | 5>(
-    (((presetBestOf ?? (saved as any).setsBestOf ?? 3) === 5 ? 5 : (presetBestOf ?? (saved as any).setsBestOf ?? 3) === 1 ? 1 : 3) as any) as 1 | 3 | 5
+    (((presetBestOf ?? (saved as any).setsBestOf ?? 3) === 5
+      ? 5
+      : (presetBestOf ?? (saved as any).setsBestOf ?? 3) === 1
+      ? 1
+      : 3) as any) as 1 | 3 | 5
   );
-  const [setTarget, setSetTarget] = useState<number>(clamp(Number(presetSetTarget ?? (saved as any).setTarget ?? 5), 1, 30));
 
-  const [handicapA, setHandicapA] = useState<number>(clamp(Number(presetHandicapA ?? (saved as any).handicapA ?? 0), 0, 99));
-  const [handicapB, setHandicapB] = useState<number>(clamp(Number(presetHandicapB ?? (saved as any).handicapB ?? 0), 0, 99));
+  const [setTargetValue, setSetTargetValue] = useState<number>(
+    clamp(Number(presetSetTarget ?? (saved as any).setTarget ?? 5), 1, 30)
+  );
 
-  // Align with babyfootStore fields
+  const [handicapA, setHandicapA] = useState<number>(
+    clamp(Number(presetHandicapA ?? (saved as any).handicapA ?? 0), 0, 99)
+  );
+  const [handicapB, setHandicapB] = useState<number>(
+    clamp(Number(presetHandicapB ?? (saved as any).handicapB ?? 0), 0, 99)
+  );
+
   const [allowDrawOnTimeEnd, setAllowDrawOnTimeEnd] = useState<boolean>(
-    (saved as any).allowDrawOnTimeEnd !== undefined ? !!(saved as any).allowDrawOnTimeEnd : true
+    (saved as any).allowDrawOnTimeEnd !== undefined
+      ? !!(saved as any).allowDrawOnTimeEnd
+      : true
   );
+
   const [requireTwoGoalLead, setRequireTwoGoalLead] = useState<boolean>(
-    (saved as any).requireTwoGoalLead !== undefined ? !!(saved as any).requireTwoGoalLead : false
+    (saved as any).requireTwoGoalLead !== undefined
+      ? !!(saved as any).requireTwoGoalLead
+      : false
   );
 
-  const [selA, setSelA] = useState<string[]>(Array.isArray(saved.teamAProfileIds) ? saved.teamAProfileIds : []);
-  const [selB, setSelB] = useState<string[]>(Array.isArray(saved.teamBProfileIds) ? saved.teamBProfileIds : []);
+  const [selA, setSelA] = useState<string[]>(
+    Array.isArray(saved.teamAProfileIds) ? saved.teamAProfileIds : []
+  );
+  const [selB, setSelB] = useState<string[]>(
+    Array.isArray(saved.teamBProfileIds) ? saved.teamBProfileIds : []
+  );
 
-  // When a side is "locked", we hide the carousel and display only the selected players.
-  // When a side is "confirmed", we hide the carousel and show only the selected players (with edit).
   const [confirmA, setConfirmA] = useState(false);
   const [confirmB, setConfirmB] = useState(false);
 
@@ -454,45 +521,71 @@ export default function BabyFootConfig({ go, store, params }: Props) {
   const capB = mode === "2v2" ? 2 : 1;
 
   const showTeamsPicker = mode === "2v2" || mode === "2v1";
-  const showTeamsPickerB = mode === "2v2"; // 2v1: équipe uniquement côté A (côté "2 joueurs")
+  const showTeamsPickerB = mode === "2v2";
 
   const profiles: Profile[] = ((store as any)?.profiles || []) as Profile[];
 
-  // Header ticker
-  const headerTickerId = routeVariant || (routeCategory ? `${routeCategory}_${mode}` : null) || `babyfoot_${mode}`;
+  const selectedASet = new Set(selA.map(String));
+  const selectedBSet = new Set(selB.map(String));
+
+  const profilesForA: Profile[] = profiles.filter((p: any) => {
+    const id = String(p?.id || "");
+    if (!id) return false;
+    if (selectedASet.has(id)) return true;
+    if (selectedBSet.has(id)) return false;
+    return true;
+  });
+
+  const profilesForB: Profile[] = profiles.filter((p: any) => {
+    const id = String(p?.id || "");
+    if (!id) return false;
+    if (selectedBSet.has(id)) return true;
+    if (selectedASet.has(id)) return false;
+    return true;
+  });
+
+  const headerTickerId =
+    routeVariant || (routeCategory ? `${routeCategory}_${mode}` : null) || `babyfoot_${mode}`;
   const headerTicker = pickTicker(headerTickerId) || pickTicker(`babyfoot_${mode}`) || null;
 
-  // Teams helpers
   const findTeam = (id: string) => teamsCatalog.find((x) => x.id === id) ?? null;
   const teamAObj = teamARefId ? findTeam(teamARefId) : null;
   const teamBObj = teamBRefId ? findTeam(teamBRefId) : null;
 
-  // En 2v1, on ne garde pas de "team B" (c'est un joueur solo)
   useEffect(() => {
     if (mode === "2v1" && teamBRefId) setTeamBRefId("");
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mode]);
+  }, [mode, teamBRefId]);
 
-  // Default teams for team modes: GOLD vs PINK (avoid placeholder)
   useEffect(() => {
     if (!showTeamsPicker) return;
     if (!Array.isArray(teamsCatalog) || teamsCatalog.length === 0) return;
 
     const byName = (needle: string) =>
-      teamsCatalog.find((t) => String(t?.name || "").trim().toLowerCase() === needle) ||
-      teamsCatalog.find((t) => String(t?.name || "").trim().toLowerCase().includes(needle));
+      teamsCatalog.find(
+        (t) => String(t?.name || "").trim().toLowerCase() === needle
+      ) ||
+      teamsCatalog.find((t) =>
+        String(t?.name || "").trim().toLowerCase().includes(needle)
+      );
 
-    const gold = byName("team gold") || teamsCatalog.find((t) => String(t?.id || "") === "bf-team-gold");
-    const pink = byName("team pink") || teamsCatalog.find((t) => String(t?.id || "") === "bf-team-pink");
+    const gold =
+      byName("team gold") ||
+      teamsCatalog.find((t) => String(t?.id || "") === "bf-team-gold");
+    const pink =
+      byName("team pink") ||
+      teamsCatalog.find((t) => String(t?.id || "") === "bf-team-pink");
 
     const defA = gold?.id || teamsCatalog[0]?.id || "";
-    const defB = pink?.id || teamsCatalog.find((t) => t?.id && t.id !== defA)?.id || defA || "";
+    const defB =
+      pink?.id ||
+      teamsCatalog.find((t) => t?.id && t.id !== defA)?.id ||
+      defA ||
+      "";
 
     if (!teamARefId && defA) setTeamARefId(String(defA));
     if (mode === "2v2" && !teamBRefId && defB) setTeamBRefId(String(defB));
   }, [showTeamsPicker, teamsCatalog, teamARefId, teamBRefId, mode]);
 
-  // En 2v2: l'équipe sélectionnée côté A ne doit jamais être proposée / sélectionnée côté B (et inversement)
   useEffect(() => {
     if (!showTeamsPicker) return;
     if (mode !== "2v2") return;
@@ -502,50 +595,38 @@ export default function BabyFootConfig({ go, store, params }: Props) {
     if (nextB?.id) setTeamBRefId(String(nextB.id));
   }, [showTeamsPicker, mode, teamARefId, teamBRefId, teamsCatalog]);
 
-  const canStart = selA.length === capA && selB.length === capB;
+  const canStart = selA.length === capA && selB.length === capB && confirmA && confirmB;
 
-  // Keep selections within quota if mode changes
   useEffect(() => {
     setSelA((prev) => prev.slice(0, capA));
     setSelB((prev) => prev.slice(0, capB));
     setConfirmA(false);
     setConfirmB(false);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mode]);
+  }, [mode, capA, capB]);
 
-  
-  // Auto-confirm when quota is reached; auto-unconfirm if quota becomes invalid.
   useEffect(() => {
-    if (selA.length === capA) setConfirmA(true);
-    else setConfirmA(false);
-    if (selB.length === capB) setConfirmB(true);
-    else setConfirmB(false);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    setConfirmA(selA.length === capA);
+    setConfirmB(selB.length === capB);
   }, [selA.length, selB.length, capA, capB]);
 
-// Auto-lock when quota reached
-  useEffect(() => {
-    if (selA.length === capA && capA > 0) setConfirmA(true);
-    if (selB.length === capB && capB > 0) setConfirmB(true);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selA.length, selB.length, capA, capB]);
-
-  // When user enables sets, keep score dropdown coherent (5/10 only)
   useEffect(() => {
     const to510 = (v: number) => (v <= 7 ? 5 : 10);
-    if (setsEnabled) setSetTarget((v) => (v === 5 || v === 10 ? v : to510(v)));
-    else setTargetUI((v) => (v === 5 || v === 10 ? v : to510(v)));
+    if (setsEnabled) {
+      setSetTargetValue((v) => (v === 5 || v === 10 ? v : to510(v)));
+    } else {
+      setTargetUI((v) => (v === 5 || v === 10 ? v : to510(v)));
+    }
   }, [setsEnabled]);
 
   const togglePlayer = (team: "A" | "B", id: string) => {
     if (team === "A" && confirmA) return;
     if (team === "B" && confirmB) return;
+
     if (team === "A") {
       setSelA((prev) => {
         const has = prev.includes(id);
         if (has) return prev.filter((x) => x !== id);
         if (prev.length >= capA) return prev;
-        // Prevent selecting a player already chosen on the other side
         if (selB.includes(id)) return prev;
         return [...prev, id];
       });
@@ -554,16 +635,22 @@ export default function BabyFootConfig({ go, store, params }: Props) {
         const has = prev.includes(id);
         if (has) return prev.filter((x) => x !== id);
         if (prev.length >= capB) return prev;
-        // Prevent selecting a player already chosen on the other side
         if (selA.includes(id)) return prev;
         return [...prev, id];
       });
     }
   };
 
-  const getProfileById = (id: string) => profiles.find((p: any) => String((p as any)?.id) === String(id)) as any;
+  const getProfileById = (id: string) =>
+    profiles.find((p: any) => String((p as any)?.id) === String(id)) as any;
 
-  function SelectedPlayersStrip({ ids, onEdit }: { ids: string[]; onEdit: () => void }) {
+  function SelectedPlayersStrip({
+    ids,
+    onEdit,
+  }: {
+    ids: string[];
+    onEdit: () => void;
+  }) {
     return (
       <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
         {ids.map((id) => {
@@ -597,9 +684,15 @@ export default function BabyFootConfig({ go, store, params }: Props) {
                 }}
               >
                 {avatar ? (
-                  <img src={avatar} alt={name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                  <img
+                    src={avatar}
+                    alt={name}
+                    style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                  />
                 ) : (
-                  <div style={{ fontWeight: 1000, opacity: 0.9 }}>{String(name).slice(0, 1).toUpperCase()}</div>
+                  <div style={{ fontWeight: 1000, opacity: 0.9 }}>
+                    {String(name).slice(0, 1).toUpperCase()}
+                  </div>
                 )}
               </div>
               <div
@@ -633,7 +726,6 @@ export default function BabyFootConfig({ go, store, params }: Props) {
     );
   }
 
-  // Carousels refs
   const aPlayersRef = useRef<HTMLDivElement | null>(null);
   const bPlayersRef = useRef<HTMLDivElement | null>(null);
 
@@ -643,7 +735,6 @@ export default function BabyFootConfig({ go, store, params }: Props) {
     el.scrollBy({ left: dx, behavior: "smooth" });
   };
 
-  // Teams carousel with exclusion of the opposite selection
   const cycleTeam = (side: "A" | "B", dir: "left" | "right") => {
     if (!teamsCatalog.length) return;
 
@@ -654,7 +745,6 @@ export default function BabyFootConfig({ go, store, params }: Props) {
     const startIdx = curId ? ids.indexOf(curId) : -1;
     const step = dir === "left" ? -1 : 1;
 
-    // if only one team, just set it
     if (ids.length === 1) {
       if (side === "A") setTeamARefId(ids[0]);
       else setTeamBRefId(ids[0]);
@@ -675,7 +765,6 @@ export default function BabyFootConfig({ go, store, params }: Props) {
     else setTeamBRefId(nextId);
   };
 
-  // Dropdown options
   const scoreOptions = [
     { value: 5, label: t("bf_score5", "Premier à 5") },
     { value: 10, label: t("bf_score10", "Premier à 10") },
@@ -697,7 +786,6 @@ export default function BabyFootConfig({ go, store, params }: Props) {
 
   const [infoOpen, setInfoOpen] = useState(false);
 
-  // Quick-create team modal (no navigation)
   const [createTeamOpen, setCreateTeamOpen] = useState(false);
   const [createTeamSide, setCreateTeamSide] = useState<"A" | "B">("A");
   const [createTeamName, setCreateTeamName] = useState("");
@@ -726,20 +814,21 @@ export default function BabyFootConfig({ go, store, params }: Props) {
     setCreateTeamOpen(false);
   };
 
-  // Apply preset mode once on mount
   useEffect(() => {
     const m = presetMode || routeModeFromId;
     if (m && (m === "1v1" || m === "2v2" || m === "2v1")) setModeUI(m);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [presetMode, routeModeFromId]);
 
   const applyAndStart = () => {
     setMode(mode);
 
-    const playerA = profiles.find((p) => String((p as any)?.id) === String(selA[0] || "")) as any;
-    const playerB = profiles.find((p) => String((p as any)?.id) === String(selB[0] || "")) as any;
+    const playerA = profiles.find(
+      (p) => String((p as any)?.id) === String(selA[0] || "")
+    ) as any;
+    const playerB = profiles.find(
+      (p) => String((p as any)?.id) === String(selB[0] || "")
+    ) as any;
 
-    // Teams: names/logos
     const nameA =
       mode === "1v1"
         ? String(playerA?.name || "JOUEUR A")
@@ -754,14 +843,17 @@ export default function BabyFootConfig({ go, store, params }: Props) {
 
     setTeams(nameA, nameB, {
       teamARefId: teamAObj?.id ?? null,
-      teamBRefId: mode === "2v2" ? (teamBObj?.id ?? null) : null,
-      teamALogoDataUrl: teamAObj?.logoDataUrl ?? teamAObj?.regionLogoDataUrl ?? null,
-      teamBLogoDataUrl: mode === "2v2" ? (teamBObj?.logoDataUrl ?? teamBObj?.regionLogoDataUrl ?? null) : null,
+      teamBRefId: mode === "2v2" ? teamBObj?.id ?? null : null,
+      teamALogoDataUrl:
+        teamAObj?.logoDataUrl ?? teamAObj?.regionLogoDataUrl ?? null,
+      teamBLogoDataUrl:
+        mode === "2v2"
+          ? teamBObj?.logoDataUrl ?? teamBObj?.regionLogoDataUrl ?? null
+          : null,
     });
 
     setTeamsProfiles(selA, selB);
-
-    setTarget(target);
+    storeSetTarget(target);
 
     (setAdvancedOptions as any)({
       matchDurationSec: useTimer ? durationSec : null,
@@ -772,13 +864,16 @@ export default function BabyFootConfig({ go, store, params }: Props) {
       handicapB,
       setsEnabled,
       setsBestOf,
-      setTarget: setsEnabled ? (setTarget === 5 || setTarget === 10 ? setTarget : 5) : setTarget,
-	      allowDrawOnTimeEnd: useTimer ? !!allowDrawOnTimeEnd : false,
-	      requireTwoGoalLead: !!requireTwoGoalLead,
+      setTarget:
+        setsEnabled
+          ? setTargetValue === 5 || setTargetValue === 10
+            ? setTargetValue
+            : 5
+          : setTargetValue,
+      allowDrawOnTimeEnd: useTimer ? !!allowDrawOnTimeEnd : false,
+      requireTwoGoalLead: !!requireTwoGoalLead,
     });
 
-    // Start match without nuking selections/options
-    // (startMatch() initializes runtime fields)
     startMatch();
 
     go("babyfoot_play", {
@@ -798,16 +893,32 @@ export default function BabyFootConfig({ go, store, params }: Props) {
     setDurationSec(Number((s as any).matchDurationSec ?? 180));
     setOvertimeSec(Number((s as any).overtimeSec ?? 60));
     setGoldenGoal(!!(s as any).goldenGoal);
-    setOvertimeGoldenGoal((s as any).overtimeGoldenGoal === undefined ? true : !!(s as any).overtimeGoldenGoal);
+    setOvertimeGoldenGoal(
+      (s as any).overtimeGoldenGoal === undefined
+        ? true
+        : !!(s as any).overtimeGoldenGoal
+    );
     setSetsEnabled(!!(s as any).setsEnabled);
-    setSetsBestOf(((s as any).setsBestOf ?? 3) === 5 ? 5 : ((s as any).setsBestOf ?? 3) === 1 ? 1 : 3);
-    setSetTarget(Number((s as any).setTarget ?? 5));
+    setSetsBestOf(
+      ((s as any).setsBestOf ?? 3) === 5
+        ? 5
+        : ((s as any).setsBestOf ?? 3) === 1
+        ? 1
+        : 3
+    );
+    setSetTargetValue(Number((s as any).setTarget ?? 5));
     setHandicapA(Number((s as any).handicapA ?? 0));
     setHandicapB(Number((s as any).handicapB ?? 0));
-	    setAllowDrawOnTimeEnd((s as any).allowDrawOnTimeEnd !== undefined ? !!(s as any).allowDrawOnTimeEnd : true);
-	    setRequireTwoGoalLead(!!(s as any).requireTwoGoalLead);
+    setAllowDrawOnTimeEnd(
+      (s as any).allowDrawOnTimeEnd !== undefined
+        ? !!(s as any).allowDrawOnTimeEnd
+        : true
+    );
+    setRequireTwoGoalLead(!!(s as any).requireTwoGoalLead);
     setSelA(Array.isArray(s.teamAProfileIds) ? s.teamAProfileIds : []);
     setSelB(Array.isArray(s.teamBProfileIds) ? s.teamBProfileIds : []);
+    setConfirmA(false);
+    setConfirmB(false);
   };
 
   const backTo = (params as any)?.backTo || (params as any)?.from || "babyfoot_games";
@@ -815,27 +926,40 @@ export default function BabyFootConfig({ go, store, params }: Props) {
   const screenBg =
     "radial-gradient(1200px 600px at 50% -10%, rgba(120,140,255,0.22), transparent 55%), radial-gradient(900px 500px at 10% 10%, rgba(247,200,92,0.16), transparent 55%), radial-gradient(900px 500px at 90% 15%, rgba(255,90,140,0.10), transparent 60%), linear-gradient(180deg, rgba(8,9,16,1) 0%, rgba(6,7,12,1) 60%, rgba(6,7,12,1) 100%)";
 
-  // labels
   const campALabel =
-    mode === "1v1" ? t("bf_player_a", "Joueur A") : mode === "2v1" ? t("bf_team", "Équipe") : t("bf_team_a", "Équipe A");
+    mode === "1v1"
+      ? t("bf_player_a", "Joueur A")
+      : mode === "2v1"
+      ? t("bf_team", "Équipe")
+      : t("bf_team_a", "Équipe A");
+
   const campBLabel =
-    mode === "1v1" ? t("bf_player_b", "Joueur B") : mode === "2v1" ? t("bf_player", "Joueur") : t("bf_team_b", "Équipe B");
+    mode === "1v1"
+      ? t("bf_player_b", "Joueur B")
+      : mode === "2v1"
+      ? t("bf_player", "Joueur")
+      : t("bf_team_b", "Équipe B");
 
   const campAName =
     mode === "1v1"
-      ? (profiles.find((p) => String((p as any)?.id) === String(selA[0] || "")) as any)?.name || campALabel
+      ? (profiles.find(
+          (p) => String((p as any)?.id) === String(selA[0] || "")
+        ) as any)?.name || campALabel
       : teamAObj?.name || campALabel;
 
   const campBName =
     mode === "1v1"
-      ? (profiles.find((p) => String((p as any)?.id) === String(selB[0] || "")) as any)?.name || campBLabel
+      ? (profiles.find(
+          (p) => String((p as any)?.id) === String(selB[0] || "")
+        ) as any)?.name || campBLabel
       : mode === "2v1"
-      ? (profiles.find((p) => String((p as any)?.id) === String(selB[0] || "")) as any)?.name || campBLabel
+      ? (profiles.find(
+          (p) => String((p as any)?.id) === String(selB[0] || "")
+        ) as any)?.name || campBLabel
       : teamBObj?.name || campBLabel;
 
   return (
     <div style={{ minHeight: "100vh", background: screenBg, color: "rgba(255,255,255,0.94)" }}>
-      {/* Header ticker */}
       <div style={{ padding: "10px 12px 0" }}>
         <div style={{ position: "relative", marginLeft: -12, marginRight: -12 }}>
           {headerTicker ? (
@@ -879,7 +1003,11 @@ export default function BabyFootConfig({ go, store, params }: Props) {
             {sectionTitle(t("bf_format", "FORMAT"), primary)}
             <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
               {(["1v1", "2v2", "2v1"] as BabyFootMode[]).map((m) => (
-                <div key={m} style={pillStyle(mode === m, primary, primarySoft)} onClick={() => setModeUI(m)}>
+                <div
+                  key={m}
+                  style={pillStyle(mode === m, primary, primarySoft)}
+                  onClick={() => setModeUI(m)}
+                >
                   {m.toUpperCase()}
                 </div>
               ))}
@@ -887,7 +1015,6 @@ export default function BabyFootConfig({ go, store, params }: Props) {
           </div>
         ) : null}
 
-        {/* ÉQUIPES (uniquement en 2v2/2v1) */}
         {showTeamsPicker ? (
           <div style={{ ...cardStyle(cardBg), marginBottom: 12 }}>
             {sectionTitle(t("bf_teams", "ÉQUIPES"), primary)}
@@ -897,14 +1024,16 @@ export default function BabyFootConfig({ go, store, params }: Props) {
                 {t("bf_select_teams", "Sélectionner les équipes")}
               </div>
               <div style={{ marginLeft: "auto" }}>
-                <div style={pillStyle(false, primary, primarySoft)} onClick={() => go("babyfoot_teams")}>
+                <div
+                  style={pillStyle(false, primary, primarySoft)}
+                  onClick={() => go("babyfoot_teams")}
+                >
                   {t("manage", "Gérer")}
                 </div>
               </div>
             </div>
 
             <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 14 }}>
-              {/* Team A chooser */}
               <div style={{ display: "grid", justifyItems: "center" }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                   <ArrowBtn dir="left" onClick={() => cycleTeam("A", "left")} />
@@ -913,15 +1042,18 @@ export default function BabyFootConfig({ go, store, params }: Props) {
                 </div>
                 <div style={{ height: 8 }} />
                 <div style={{ fontSize: 12, opacity: 0.72, fontWeight: 900, letterSpacing: 1.2 }}>
-                  {mode === "2v1" ? t("bf_team_2players", "Équipe (2 joueurs)") : t("bf_team_a", "Équipe A")}
+                  {mode === "2v1"
+                    ? t("bf_team_2players", "Équipe (2 joueurs)")
+                    : t("bf_team_a", "Équipe A")}
                 </div>
               </div>
 
               {showTeamsPickerB ? (
                 <>
-                  <div style={{ display: "grid", placeItems: "center", opacity: 0.65, fontWeight: 900 }}>VS</div>
+                  <div style={{ display: "grid", placeItems: "center", opacity: 0.65, fontWeight: 900 }}>
+                    VS
+                  </div>
 
-                  {/* Team B chooser */}
                   <div style={{ display: "grid", justifyItems: "center" }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                       <ArrowBtn dir="left" onClick={() => cycleTeam("B", "left")} />
@@ -937,7 +1069,10 @@ export default function BabyFootConfig({ go, store, params }: Props) {
               ) : null}
 
               <div style={{ display: "flex", justifyContent: "center", gap: 10 }}>
-                <div style={pillStyle(false, primary, primarySoft)} onClick={() => openCreateTeam("A")}>
+                <div
+                  style={pillStyle(false, primary, primarySoft)}
+                  onClick={() => openCreateTeam("A")}
+                >
                   {t("bf_create_team", "+ Créer une équipe")}
                 </div>
               </div>
@@ -945,14 +1080,12 @@ export default function BabyFootConfig({ go, store, params }: Props) {
           </div>
         ) : null}
 
-        {/* JOUEURS */}
         <div style={{ ...cardStyle(cardBg), marginBottom: 12 }}>
           {sectionTitle(t("bf_players", "JOUEURS"), primary)}
           <div style={{ fontSize: 12, opacity: 0.72, fontWeight: 800, marginBottom: 10 }}>
             {t("bf_pick_exact", "Sélectionne exactement")} {capA} vs {capB}
           </div>
 
-          {/* Camp A */}
           <div style={{ fontSize: 12, opacity: 0.82, fontWeight: 1000, letterSpacing: 1.1, marginBottom: 8 }}>
             {campAName}
           </div>
@@ -976,7 +1109,11 @@ export default function BabyFootConfig({ go, store, params }: Props) {
                   const id = String((p as any).id);
                   const selected = selA.includes(id);
                   return (
-                    <div key={id} style={{ scrollSnapAlign: "center" }} onClick={() => togglePlayer("A", id)}>
+                    <div
+                      key={id}
+                      style={{ scrollSnapAlign: "center" }}
+                      onClick={() => togglePlayer("A", id)}
+                    >
                       <ProfileAvatarCard p={p} selected={selected} primary={primary} />
                     </div>
                   );
@@ -992,7 +1129,6 @@ export default function BabyFootConfig({ go, store, params }: Props) {
             </div>
           )}
 
-          {/* Camp B */}
           <div style={{ fontSize: 12, opacity: 0.82, fontWeight: 1000, letterSpacing: 1.1, marginBottom: 8 }}>
             {campBName}
           </div>
@@ -1016,7 +1152,11 @@ export default function BabyFootConfig({ go, store, params }: Props) {
                   const id = String((p as any).id);
                   const selected = selB.includes(id);
                   return (
-                    <div key={id} style={{ scrollSnapAlign: "center" }} onClick={() => togglePlayer("B", id)}>
+                    <div
+                      key={id}
+                      style={{ scrollSnapAlign: "center" }}
+                      onClick={() => togglePlayer("B", id)}
+                    >
                       <ProfileAvatarCard p={p} selected={selected} primary={primary} />
                     </div>
                   );
@@ -1033,7 +1173,6 @@ export default function BabyFootConfig({ go, store, params }: Props) {
           )}
         </div>
 
-        {/* RÈGLES */}
         <div style={{ ...cardStyle(cardBg), marginBottom: 12 }}>
           {sectionTitle(t("bf_rules", "RÈGLES"), primary)}
 
@@ -1060,8 +1199,8 @@ export default function BabyFootConfig({ go, store, params }: Props) {
               <select
                 value={
                   setsEnabled
-                    ? setTarget === 5 || setTarget === 10
-                      ? setTarget
+                    ? setTargetValue === 5 || setTargetValue === 10
+                      ? setTargetValue
                       : 5
                     : target === 5 || target === 10
                     ? target
@@ -1069,7 +1208,7 @@ export default function BabyFootConfig({ go, store, params }: Props) {
                 }
                 onChange={(e) => {
                   const v = Number(e.target.value);
-                  if (setsEnabled) setSetTarget(v);
+                  if (setsEnabled) setSetTargetValue(v);
                   else setTargetUI(v);
                 }}
                 style={{
@@ -1098,7 +1237,11 @@ export default function BabyFootConfig({ go, store, params }: Props) {
                 </div>
                 <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
                   {[1, 3, 5].map((bo) => (
-                    <div key={bo} style={pillStyle(setsBestOf === bo, primary, primarySoft)} onClick={() => setSetsBestOf(bo as any)}>
+                    <div
+                      key={bo}
+                      style={pillStyle(setsBestOf === bo, primary, primarySoft)}
+                      onClick={() => setSetsBestOf(bo as any)}
+                    >
                       BO{bo}
                     </div>
                   ))}
@@ -1106,32 +1249,40 @@ export default function BabyFootConfig({ go, store, params }: Props) {
               </div>
             ) : null}
 
-            {/* Options */}
-	            <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
-	              <div
-	                style={pillStyle(requireTwoGoalLead, primary, primarySoft)}
-	                onClick={() => setRequireTwoGoalLead((v) => !v)}
-	                title={t("bf_win_by_two_tip", "Exige 2 buts d'écart pour gagner (hors contrainte temps)")}
-	              >
-	                {t("bf_win_by_two", "2 buts d'écart")}
-	              </div>
-	              {useTimer ? (
-	                <div
-	                  style={pillStyle(allowDrawOnTimeEnd, primary, primarySoft)}
-	                  onClick={() => setAllowDrawOnTimeEnd((v) => !v)}
-	                  title={t("bf_allow_draw_tip", "Autorise le match nul si égalité à la fin du temps")}
-	                >
-	                  {t("bf_allow_draw", "Match nul")}
-	                </div>
-	              ) : null}
-	            </div>
+            <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+              <div
+                style={pillStyle(requireTwoGoalLead, primary, primarySoft)}
+                onClick={() => setRequireTwoGoalLead((v) => !v)}
+                title={t("bf_win_by_two_tip", "Exige 2 buts d'écart pour gagner (hors contrainte temps)")}
+              >
+                {t("bf_win_by_two", "2 buts d'écart")}
+              </div>
+
+              {useTimer ? (
+                <div
+                  style={pillStyle(allowDrawOnTimeEnd, primary, primarySoft)}
+                  onClick={() => setAllowDrawOnTimeEnd((v) => !v)}
+                  title={t("bf_allow_draw_tip", "Autorise le match nul si égalité à la fin du temps")}
+                >
+                  {t("bf_allow_draw", "Match nul")}
+                </div>
+              ) : null}
+            </div>
           </div>
         </div>
 
-        {/* CHRONO */}
         <div style={{ ...cardStyle(cardBg), marginBottom: 12 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
-            <div style={{ fontSize: 12, opacity: 0.92, fontWeight: 1000, letterSpacing: 1.2, textTransform: "uppercase", color: primary }}>
+            <div
+              style={{
+                fontSize: 12,
+                opacity: 0.92,
+                fontWeight: 1000,
+                letterSpacing: 1.2,
+                textTransform: "uppercase",
+                color: primary,
+              }}
+            >
               {t("bf_timer", "CHRONO")}
             </div>
 
@@ -1231,7 +1382,6 @@ export default function BabyFootConfig({ go, store, params }: Props) {
           )}
         </div>
 
-        {/* HANDICAP */}
         <div style={{ ...cardStyle(cardBg), marginBottom: 12 }}>
           {sectionTitle(t("bf_handicap", "HANDICAP"), primary)}
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
@@ -1259,7 +1409,11 @@ export default function BabyFootConfig({ go, store, params }: Props) {
             </div>
             <div>
               <div style={{ fontSize: 12, opacity: 0.78, fontWeight: 900, marginBottom: 6 }}>
-                {mode === "1v1" ? t("bf_player_b", "Joueur B") : mode === "2v1" ? t("bf_player", "Joueur") : t("bf_team_b", "Équipe B")}
+                {mode === "1v1"
+                  ? t("bf_player_b", "Joueur B")
+                  : mode === "2v1"
+                  ? t("bf_player", "Joueur")
+                  : t("bf_team_b", "Équipe B")}
               </div>
               <input
                 type="number"
@@ -1280,20 +1434,21 @@ export default function BabyFootConfig({ go, store, params }: Props) {
               />
             </div>
           </div>
-          <div style={{ marginTop: 10, fontSize: 12, opacity: 0.70 }}>{t("bf_handicap_hint", "Handicap = buts ajoutés au départ.")}</div>
+          <div style={{ marginTop: 10, fontSize: 12, opacity: 0.70 }}>
+            {t("bf_handicap_hint", "Handicap = buts ajoutés au départ.")}
+          </div>
         </div>
       </div>
 
-      {/* Sticky bottom actions */}
       <div
         style={{
           position: "fixed",
           left: 0,
           right: 0,
-          // Keep above the bottom tabbar
           bottom: "calc(64px + env(safe-area-inset-bottom))",
           padding: "10px 12px 10px",
-          background: "linear-gradient(180deg, rgba(6,7,12,0) 0%, rgba(6,7,12,0.75) 20%, rgba(6,7,12,0.96) 100%)",
+          background:
+            "linear-gradient(180deg, rgba(6,7,12,0) 0%, rgba(6,7,12,0.75) 20%, rgba(6,7,12,0.96) 100%)",
           backdropFilter: "blur(10px)",
           WebkitBackdropFilter: "blur(10px)",
           borderTop: "1px solid rgba(255,255,255,0.06)",
@@ -1325,12 +1480,18 @@ export default function BabyFootConfig({ go, store, params }: Props) {
               flex: 1,
               borderRadius: 14,
               padding: "12px 14px",
-              background: !canStart ? "rgba(255,255,255,0.08)" : `linear-gradient(180deg, ${primary} 0%, ${primary}cc 100%)`,
-              border: !canStart ? "1px solid rgba(255,255,255,0.10)" : `1px solid ${primary}aa`,
+              background: !canStart
+                ? "rgba(255,255,255,0.08)"
+                : `linear-gradient(180deg, ${primary} 0%, ${primary}cc 100%)`,
+              border: !canStart
+                ? "1px solid rgba(255,255,255,0.10)"
+                : `1px solid ${primary}aa`,
               color: !canStart ? "rgba(255,255,255,0.55)" : "#081018",
               fontWeight: 1000,
               letterSpacing: 0.4,
-              boxShadow: !canStart ? "none" : `0 16px 40px rgba(0,0,0,0.45), 0 0 0 3px ${primary}18`,
+              boxShadow: !canStart
+                ? "none"
+                : `0 16px 40px rgba(0,0,0,0.45), 0 0 0 3px ${primary}18`,
               cursor: !canStart ? "not-allowed" : "pointer",
             }}
             title={!canStart ? t("bf_need_players", "Sélectionne les joueurs requis") : ""}
@@ -1340,32 +1501,42 @@ export default function BabyFootConfig({ go, store, params }: Props) {
         </div>
       </div>
 
-      {/* Info modal */}
-      <Modal open={infoOpen} title={t("bf_rules_info", "Golden Goal — explications")} onClose={() => setInfoOpen(false)}>
+      <Modal
+        open={infoOpen}
+        title={t("bf_rules_info", "Golden Goal — explications")}
+        onClose={() => setInfoOpen(false)}
+      >
         <div style={{ display: "grid", gap: 10 }}>
           <div>
             <div style={{ fontWeight: 1000, marginBottom: 4 }}>Golden Goal</div>
             <div style={{ opacity: 0.9 }}>
-              À la fin du temps réglementaire, si le score est à égalité, <b>le prochain but gagné termine le match</b>.
+              À la fin du temps réglementaire, si le score est à égalité,{" "}
+              <b>le prochain but gagné termine le match</b>.
             </div>
           </div>
           <div>
             <div style={{ fontWeight: 1000, marginBottom: 4 }}>OT Golden Goal</div>
             <div style={{ opacity: 0.9 }}>
-              Si le match est à égalité, on joue d’abord la <b>prolongation</b>. Pendant la prolongation,
-              <b> le prochain but peut terminer le match</b> (si activé).
+              Si le match est à égalité, on joue d’abord la <b>prolongation</b>. Pendant
+              la prolongation, <b> le prochain but peut terminer le match</b> (si activé).
             </div>
           </div>
           <div style={{ opacity: 0.78, fontSize: 12 }}>
-            Astuce : si tu actives <b>Match nul</b>, le Golden Goal ne s’applique pas à la fin du temps réglementaire.
+            Astuce : si tu actives <b>Match nul</b>, le Golden Goal ne s’applique pas à la
+            fin du temps réglementaire.
           </div>
         </div>
       </Modal>
 
-      {/* Quick create team modal */}
-      <Modal open={createTeamOpen} title={t("bf_quick_create_team", "Créer une équipe")} onClose={() => setCreateTeamOpen(false)}>
+      <Modal
+        open={createTeamOpen}
+        title={t("bf_quick_create_team", "Créer une équipe")}
+        onClose={() => setCreateTeamOpen(false)}
+      >
         <div style={{ display: "grid", gap: 10 }}>
-          <div style={{ fontSize: 12, opacity: 0.82, fontWeight: 900 }}>{t("bf_team_name", "Nom de l’équipe")}</div>
+          <div style={{ fontSize: 12, opacity: 0.82, fontWeight: 900 }}>
+            {t("bf_team_name", "Nom de l’équipe")}
+          </div>
           <input
             value={createTeamName}
             onChange={(e) => setCreateTeamName(e.target.value)}
@@ -1381,7 +1552,9 @@ export default function BabyFootConfig({ go, store, params }: Props) {
               fontWeight: 900,
             }}
           />
-          <div style={{ fontSize: 12, opacity: 0.82, fontWeight: 900 }}>{t("bf_team_logo", "Logo (optionnel)")}</div>
+          <div style={{ fontSize: 12, opacity: 0.82, fontWeight: 900 }}>
+            {t("bf_team_logo", "Logo (optionnel)")}
+          </div>
           <input
             type="file"
             accept="image/*"

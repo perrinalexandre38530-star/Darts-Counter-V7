@@ -1,7 +1,8 @@
 // @ts-nocheck
 // =============================================================
 // src/pages/dice/DicePokerConfig.ts
-// ✅ Version SANS JSX (pour éviter erreur TS 'Unexpected token' si fichier en .ts)
+// Basé sur le fichier de référence fourni par l'utilisateur.
+// Header ticker + BackDot superposé + InfoDot à droite.
 // =============================================================
 
 import React from "react";
@@ -150,11 +151,9 @@ function Toggle({ label, checked, onChange, theme }: any) {
 
 export default function DicePokerConfig({ go, store, params }: Props) {
   const { theme } = useTheme() as any;
-
-  const headerSrc = getTicker("dice_poker") || getTicker("dice_games") || "";
-
   const { t } = useLang() as any;
 
+  const headerSrc = getTicker("dice_poker") || getTicker("dice_games") || "";
   const primary = theme?.colors?.accent ?? theme?.primary ?? "#7cff6d";
   const stroke = theme?.colors?.stroke ?? "rgba(255,255,255,.10)";
 
@@ -199,33 +198,37 @@ export default function DicePokerConfig({ go, store, params }: Props) {
       saveDiceState(rt);
     } catch {}
 
-    go("dice_poker_play", { players, config, title: "POKER DICE", subtitle: "Combinaisons poker • manche rapide" });
+    go("dice_poker_play", {
+      players,
+      config,
+      title: "POKER DICE",
+      subtitle: "Combinaisons poker • manche rapide",
+    });
   };
 
   return React.createElement(
     "div",
     { style: { padding: 18 } },
-    React.createElement(
-      "div",
-      { style: { position: "fixed", left: 14, top: 14, zIndex: 10 } },
-      React.createElement(BackDot as any, { onClick: () => go("dice_menu") })
-    ),
-    React.createElement(
-      "div",
-      { style: { position: "fixed", right: 14, top: 14, zIndex: 10 } },
-      React.createElement(InfoDot as any, {
-        title: "POKER DICE — Config",
+
+    React.createElement(ConfigTickerHeader as any, {
+      src: headerSrc,
+      height: 92,
+      left: React.createElement(BackDot as any, { onClick: () => go("dice_menu") }),
+      right: React.createElement(InfoDot as any, {
+        title: "POKER DICE",
         desc:
-          "Poker Dice — config de base.\n\n• 5 dés\n• 2 relances\n• Combinaisons poker (paire, brelan, full, carré, quinte, etc.)\n\nPLAY/scoring à venir.",
-      })
-    ),
+          "Poker Dice\n\n• 5 dés\n• Jusqu'à 2 relances\n• Combinaisons poker : paire, double paire, brelan, full, carré, quinte, poker…\n• Le scoring détaillé sera câblé dans la page Play dédiée.",
+        sticky: false,
+      }),
+    }),
+
     React.createElement(
       "div",
       {
         style: {
           maxWidth: 720,
           marginInline: "auto",
-          marginTop: 52,
+          marginTop: 14,
           borderRadius: 18,
           padding: 18,
           border: `1px solid ${stroke}`,
@@ -262,9 +265,30 @@ export default function DicePokerConfig({ go, store, params }: Props) {
       React.createElement(
         "div",
         { style: { display: "flex", gap: 12, marginTop: 14, flexWrap: "wrap" } },
-        React.createElement(Field as any, { label: "Manches", value: rounds, onChange: setRounds, theme, min: 1, max: 20 }),
-        React.createElement(Field as any, { label: "Relances", value: rerolls, onChange: setRerolls, theme, min: 0, max: 3 }),
-        React.createElement(Field as any, { label: "Sets", value: sets, onChange: setSets, theme, min: 1, max: 9 })
+        React.createElement(Field as any, {
+          label: "Manches",
+          value: rounds,
+          onChange: setRounds,
+          theme,
+          min: 1,
+          max: 20,
+        }),
+        React.createElement(Field as any, {
+          label: "Relances",
+          value: rerolls,
+          onChange: setRerolls,
+          theme,
+          min: 0,
+          max: 3,
+        }),
+        React.createElement(Field as any, {
+          label: "Sets",
+          value: sets,
+          onChange: setSets,
+          theme,
+          min: 1,
+          max: 9,
+        })
       ),
 
       React.createElement(

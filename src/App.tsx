@@ -90,6 +90,7 @@ import MobileErrorOverlay from "./components/MobileErrorOverlay";
 
 // Persistance (IndexedDB via storage.ts)
 import { loadStore, saveStore, exportCloudSnapshot, installLocalStorageDcHook } from "./lib/storage";
+import { setCrashContext } from "./lib/crashReporter";
 // OPFS / StorageManager — demande la persistance une fois au boot
 import { ensurePersisted } from "./lib/deviceStore";
 // 🔒 Garde-fou localStorage (purge legacy si trop plein)
@@ -326,6 +327,18 @@ if (import.meta.env.DEV) installHistoryProbe();
 // =============================================================
 // ✅ START GAME / SPORT (persisted) + runtime switch
 // =============================================================
+
+function safeRouteParamsForCrash(input: any) {
+  try {
+    if (input == null) return null;
+    const txt = JSON.stringify(input);
+    if (txt.length <= 1200) return JSON.parse(txt);
+    return { __truncated: true, preview: txt.slice(0, 1200) };
+  } catch {
+    return { __unserializable: true };
+  }
+}
+
 const START_GAME_KEY = "dc-start-game";
 type StartGameId = "darts" | "petanque" | "pingpong" | "babyfoot" | "molkky" | "dicegame";
 
@@ -1371,6 +1384,20 @@ useEffect(() => {
       return sportFromCtx || "darts";
     }
   });
+
+  React.useEffect(() => {
+    try {
+      setCrashContext({
+        route: String(tab ?? ""),
+        sport: String(activeSport ?? sportFromCtx ?? ""),
+        routeParams:
+          routeParams == null
+            ? null
+            : safeRouteParamsForCrash(routeParams),
+        activeProfileId: (store as any)?.activeProfileId ?? null,
+      });
+    } catch {}
+  }, [tab, activeSport, sportFromCtx, routeParams, (store as any)?.activeProfileId]);
 
   // Sync: si SportContext change (GameSelect / autre), on reflète
   React.useEffect(() => {
@@ -2616,23 +2643,40 @@ case "babyfoot_team_edit":
 
       // ✅ MÖLKKY — STATS ROUTES
       case "molkky_stats":
-        page = <MolkkyStatsShell store={store} go={go} />;
+        page = <StatsShell store={store} go={go} sportOverride={activeSport} />;
         break;
 
       case "molkky_stats_history":
-        page = <MolkkyStatsHistoryPage store={store} go={go} params={routeParams} />;
+        page = (
+          <StatsHub go={go} tab="stats" memHistory={historyForUI} mode="locals" initialStatsSubTab="history" sportOverride={activeSport} />
+        );
         break;
 
       case "molkky_stats_leaderboards":
-        page = <MolkkyStatsLeaderboardsPage store={store} go={go} params={routeParams} />;
+        page = (
+          <StatsHub go={go} tab="stats" memHistory={historyForUI} mode="locals" initialStatsSubTab="leaderboards" sportOverride={activeSport} />
+        );
         break;
 
       case "molkky_stats_players":
-        page = <MolkkyStatsPlayersPage store={store} go={go} params={routeParams} />;
+        page = (
+          <StatsHub
+            go={go}
+            sportOverride={activeSport}
+            tab="stats"
+            memHistory={historyForUI}
+            mode="active"
+            initialPlayerId={routeParams?.initialPlayerId ?? store.activeProfileId ?? null}
+            playerId={routeParams?.playerId ?? store.activeProfileId ?? null}
+            initialStatsSubTab="dashboard"
+          />
+        );
         break;
 
       case "molkky_stats_locals":
-        page = <MolkkyStatsLocalsPage store={store} go={go} params={routeParams} />;
+        page = (
+          <StatsHub go={go} tab="stats" memHistory={historyForUI} mode="locals" initialStatsSubTab="dashboard" />
+        );
         break;
 
       // ✅ NEW: Teams Pétanque (CRUD local)
@@ -2716,13 +2760,13 @@ case "babyfoot_team_edit":
           ) : activeSport === "molkky" ? (
             // ✅ IMPORTANT: même structure que DartsCounter (StatsShell -> StatsHub)
             // Le contenu s'adapte dans StatsHub selon le sport actif.
-            <StatsShell store={store} go={go} />
+            <StatsShell store={store} go={go} sportOverride={activeSport} />
           ) : activeSport === "babyfoot" ? (
             <BabyFootStatsShell store={store} go={go} />
           ) : activeSport === "pingpong" ? (
             <PingPongStatsShell store={store} go={go} />
           ) : (
-            <StatsShell store={store} go={go} />
+            <StatsShell store={store} go={go} sportOverride={activeSport} />
           );
         break;
 
@@ -2770,6 +2814,7 @@ case "babyfoot_team_edit":
         page = (
           <StatsHub
             go={go}
+            sportOverride={activeSport}
             tab={(routeParams?.tab as any) ?? "stats"}
             memHistory={historyForUI}
             mode={routeParams?.mode}

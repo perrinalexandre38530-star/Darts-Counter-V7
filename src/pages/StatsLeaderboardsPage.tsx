@@ -1094,19 +1094,54 @@ export default function StatsLeaderboardsPage({ store }: Props) {
   // ✅ NEW: toggle bots (par défaut ON)
   const [includeBots, setIncludeBots] = React.useState<boolean>(true);
 
-  const modeDefs = React.useMemo(
-    () =>
-      isDiceSport
-        ? ([
-            {
-              id: "dice_duel",
-              label: "DICE DUEL",
-              metrics: ["avg3", "wins", "winRate", "matches", "bestVisit"],
-            },
-          ] as any)
-        : MODE_DEFS,
-    [isDiceSport]
-  );
+  const modeDefs = React.useMemo(() => {
+    if (!isDiceSport) return MODE_DEFS as any;
+
+    return [
+      ...((MODE_DEFS as any) || []),
+      {
+        id: "dice_duel",
+        label: "DICE DUEL",
+        metrics: ["avg3", "wins", "winRate", "matches", "bestVisit"],
+      },
+      {
+        id: "dice_games",
+        label: "DICE GAMES",
+        metrics: ["avg3", "wins", "winRate", "matches", "bestVisit"],
+      },
+      {
+        id: "dice_race",
+        label: "DICE RACE",
+        metrics: ["avg3", "wins", "winRate", "matches", "bestVisit"],
+      },
+      {
+        id: "dice_10000",
+        label: "10000",
+        metrics: ["avg3", "wins", "winRate", "matches", "bestVisit"],
+      },
+      {
+        id: "dice_yams",
+        label: "YAM'S",
+        metrics: ["avg3", "wins", "winRate", "matches", "bestVisit"],
+      },
+      {
+        id: "dice_farkle",
+        label: "FARKLE",
+        metrics: ["avg3", "wins", "winRate", "matches", "bestVisit"],
+      },
+      {
+        id: "dice_421",
+        label: "421",
+        metrics: ["avg3", "wins", "winRate", "matches", "bestVisit"],
+      },
+      {
+        id: "dice_poker",
+        label: "POKER DICE",
+        metrics: ["avg3", "wins", "winRate", "matches", "bestVisit"],
+      },
+    ] as any;
+  }, [isDiceSport]);
+
 
   // ✅ BATARD filters (derived from History payload.config)
   const [batardPreset, setBatardPreset] = React.useState<string>("all");

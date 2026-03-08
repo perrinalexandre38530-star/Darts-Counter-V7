@@ -4,10 +4,53 @@
 // ✅ NEW: ONE-SHOT PURGE (même sans crash) pour virer SW/caches foireux
 // ✅ FIX: ne plus purger automatiquement (freeze Stackblitz "Open in new tab")
 // ✅ FIX: purge=1 NE BOUCLE PLUS (retire ?purge=1 avant reload)
+// ✅ NEW: AsyncGuard + BootGuard + MemoryWatchdog
 // ============================================
 import React from "react";
 import { createRoot } from "react-dom/client";
 import "./index.css";
+import ErrorBoundary from "./components/ErrorBoundary";
+import AsyncGuard from "./components/AsyncGuard";
+import BootGuard from "./components/BootGuard";
+import { startMemoryWatchdog } from "./utils/memoryWatchdog";
+import { captureCrash, formatCrashReportText, isDynamicImportCrash, setCrashContext } from "./lib/crashReporter";
+
+// ✅ démarre le watchdog mémoire Android/WebView
+startMemoryWatchdog();
+
+setCrashContext({
+  route: "boot",
+  build: String((import.meta as any)?.env?.MODE || "unknown"),
+});
+
+// One-shot startup cleanup for stale SW/cache states after deploy.
+// Triggered only when URL has ?purge=1 or localStorage flag dc_force_purge_sw=1.
+async function startupHardResetIfRequested() {
+  try {
+    const url = new URL(window.location.href);
+    const byQuery = url.searchParams.get("purge") === "1";
+    const byFlag = localStorage.getItem("dc_force_purge_sw") === "1";
+    if (!byQuery && !byFlag) return false;
+
+    if ("serviceWorker" in navigator) {
+      const regs = await navigator.serviceWorker.getRegistrations();
+      await Promise.all(regs.map((reg) => reg.unregister().catch(() => {})));
+    }
+
+    if (typeof caches !== "undefined" && (caches as any).keys) {
+      const keys = await (caches as any).keys();
+      await Promise.all(keys.map((key: string) => caches.delete(key)));
+    }
+
+    localStorage.removeItem("dc_force_purge_sw");
+    url.searchParams.delete("purge");
+    url.searchParams.set("r", String(Date.now()));
+    window.location.replace(url.toString());
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 // ---- PATCH: one-shot recovery for Vite lazy chunk load errors (Cloudflare cache mismatch, etc.) ----
 try {
@@ -53,13 +96,7 @@ try {
 const DC_DYN_IMPORT_RECOVER_KEY = "dc_dyn_import_recover_once_v1";
 
 function isDynImportFail(x: any) {
-  const msg = String(x?.message || x?.reason?.message || x || "");
-  return (
-    msg.includes("Failed to fetch dynamically imported module") ||
-    msg.includes("Importing a module script failed") ||
-    msg.includes("dynamically imported module") ||
-    msg.includes("ChunkLoadError")
-  );
+  return isDynamicImportCrash(x);
 }
 
 async function recoverDynamicImportOnce() {
@@ -113,15 +150,7 @@ async function recoverDynamicImportOnce() {
   const SB_RECOVER_KEY = "dc_sb_recover_once_v1";
 
   // Reuse global helper
-  const _isDynImportFail = (x: any) => {
-    const msg = String(x?.message || x?.reason?.message || x || "");
-    return (
-      msg.includes("Failed to fetch dynamically imported module") ||
-      msg.includes("Importing a module script failed") ||
-      msg.includes("dynamically imported module") ||
-      msg.includes("ChunkLoadError")
-    );
-  };
+  const _isDynImportFail = (x: any) => isDynamicImportCrash(x);
 
   const recoverOnce = async () => {
     try {
@@ -153,16 +182,13 @@ async function recoverDynamicImportOnce() {
     } catch {}
   };
 
-  const show = (title: string, err: any) => {
+  const show = (title: string, err: any, source?: string) => {
     try {
+      const report = captureCrash(title, err, { source });
       const el = document.createElement("pre");
       el.style.cssText =
         "position:fixed;inset:0;z-index:999999;background:#0b0b0f;color:#fff;padding:12px;white-space:pre-wrap;overflow:auto;font:12px/1.35 ui-monospace,Menlo,Consolas;";
-      el.textContent =
-        `[${title}]\n` +
-        (err?.stack || err?.message || String(err)) +
-        "\n\nURL:\n" +
-        String(location.href);
+      el.textContent = formatCrashReportText(report);
       document.body.appendChild(el);
     } catch {}
   };
@@ -170,7 +196,8 @@ async function recoverDynamicImportOnce() {
   window.addEventListener("error", (e: any) => {
     const payload = e?.error || e?.message || e;
     if (_isDynImportFail(payload)) recoverOnce();
-    show("window.error", payload);
+    const source = e?.filename ? `${e.filename}:${e.lineno || 0}:${e.colno || 0}` : undefined;
+    show("window.error", payload, source);
   });
   window.addEventListener("unhandledrejection", (e: any) => {
     const payload = e?.reason || e;
@@ -270,19 +297,8 @@ function bootScreen(title: string, msg: string) {
 }
 
 function bootCrashScreen(payload: any) {
-  const format = (e: any) => {
-    try {
-      if (!e) return "Erreur inconnue";
-      if (typeof e === "string") return e;
-      if (e?.stack) return String(e.stack);
-      if (e?.message) return String(e.message);
-      return JSON.stringify(e, null, 2);
-    } catch {
-      return String(e);
-    }
-  };
-
-  const msg = format(payload);
+  const report = captureCrash("boot-crash", payload);
+  const msg = formatCrashReportText(report);
 
   // ✅ on force SAFE MODE au prochain boot
   setSafeMode(true);
@@ -305,7 +321,7 @@ function bootCrashScreen(payload: any) {
       <div style="font-size:18px;font-weight:900;margin-bottom:10px;">💥 CRASH CAPTURÉ (BOOT)</div>
       <div style="opacity:.85;font-size:13px;margin-bottom:10px;">
         Safe mode sera activé au prochain démarrage pour couper le Service Worker / caches.
-        Fais une capture de cet écran.
+        Fais une capture de cet écran ou copie le rapport.
       </div>
       <pre style="
         white-space:pre-wrap;
@@ -314,15 +330,24 @@ function bootCrashScreen(payload: any) {
         padding:12px;
         border-radius:12px;
         border:1px solid rgba(255,255,255,.12);">${msg}</pre>
-      <button onclick="location.reload()" style="
-        margin-top:10px;
-        border-radius:999px;
-        padding:10px 12px;
-        border:none;
-        font-weight:900;
-        background:linear-gradient(180deg,#ffc63a,#ffaf00);
-        color:#1b1508;
-        cursor:pointer;">Recharger</button>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;">
+        <button onclick="navigator.clipboard&&navigator.clipboard.writeText(document.querySelector('pre')?.innerText||'')" style="
+          border-radius:999px;
+          padding:10px 12px;
+          border:1px solid rgba(255,255,255,.2);
+          font-weight:900;
+          background:rgba(255,255,255,.08);
+          color:#fff;
+          cursor:pointer;">Copier le rapport</button>
+        <button onclick="location.reload()" style="
+          border-radius:999px;
+          padding:10px 12px;
+          border:none;
+          font-weight:900;
+          background:linear-gradient(180deg,#ffc63a,#ffaf00);
+          color:#1b1508;
+          cursor:pointer;">Recharger</button>
+      </div>
     </div>
   `;
 }
@@ -405,6 +430,8 @@ async function devUnregisterSW() {
 ============================================================ */
 (async () => {
   try {
+    if (await startupHardResetIfRequested()) return;
+
     // ✅ FIX: NE PLUS purger automatiquement au boot
     // (Stackblitz "Open in new tab" change d'origine → purge+reload → écran blanc/perçu comme gel)
     //
@@ -481,7 +508,13 @@ async function devUnregisterSW() {
     // ✅ IMPORTANT: pas de AuthOnlineProvider ici
     createRoot(container).render(
       <React.StrictMode>
-        <AppRoot />
+        <BootGuard>
+          <AsyncGuard>
+            <ErrorBoundary>
+              <AppRoot />
+            </ErrorBoundary>
+          </AsyncGuard>
+        </BootGuard>
       </React.StrictMode>
     );
 

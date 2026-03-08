@@ -137,6 +137,7 @@ export type PlayerDashboardStats = {
 type StatsPlayerDashboardProps = {
   data: PlayerDashboardStats | null | undefined;
   x01MultiLegsSets?: X01MultiLegsSets | null;
+  sport?: string | null;
 };
 
 /* ---------- Thème ---------- */
@@ -676,7 +677,7 @@ function normalizeModeLabel(k: string) {
   return s.toUpperCase();
 }
 
-function getModeStats(data: PlayerDashboardStats, x01MultiLegsSets?: X01MultiLegsSets | null): ModeStat[] {
+function getModeStats(data: PlayerDashboardStats, x01MultiLegsSets?: X01MultiLegsSets | null, sport?: string | null): ModeStat[] {
   const sbm = data.sessionsByMode;
   if (sbm && typeof sbm === "object") {
     const entries = Object.entries(sbm)
@@ -699,6 +700,9 @@ function getModeStats(data: PlayerDashboardStats, x01MultiLegsSets?: X01MultiLeg
   if (multiM > 0) stats.push({ label: "X01 MULTI", n: multiM });
 
   stats.sort((a, b) => b.n - a.n);
+  if (!stats.length && String(sport || "").toLowerCase() === "molkky") {
+    return [{ label: "MÖLKKY", n: Array.isArray(data.evolution) ? data.evolution.length : 0 }];
+  }
   return stats;
 }
 
@@ -767,7 +771,7 @@ function ModeRankingStack({
 }
 
 /* ---------- Composant principal ---------- */
-export default function StatsPlayerDashboard({ data, x01MultiLegsSets }: StatsPlayerDashboardProps) {
+export default function StatsPlayerDashboard({ data, x01MultiLegsSets, sport }: StatsPlayerDashboardProps) {
   useInjectStatsNameCss();
 
   const { theme } = useTheme();
@@ -804,12 +808,29 @@ export default function StatsPlayerDashboard({ data, x01MultiLegsSets }: StatsPl
         .map((p) => ({ date: String((p as any).date ?? ""), avg3: Number((p as any).avg3) }))
     : [];
 
-  const modeStats = useMemo(() => getModeStats(data, x01MultiLegsSets), [data, x01MultiLegsSets]);
+  const effectiveSport = String(sport || "").toLowerCase();
+  const isMolkkySport = effectiveSport === "molkky";
+
+  const modeStats = useMemo(() => getModeStats(data, x01MultiLegsSets, sport), [data, x01MultiLegsSets, sport]);
   const favoriteMode = useMemo(() => computeFavoriteModeLabel(modeStats), [modeStats]);
   const favoriteModeCount = useMemo(() => computeFavoriteModeCount(modeStats), [modeStats]);
 
   const [refL, wL] = useContainerWidth<HTMLDivElement>(320);
   const [refB, wB] = useContainerWidth<HTMLDivElement>(320);
+
+  const dashboardSubtitle = isMolkkySport
+    ? "Analyse des performances par joueur — Mölkky"
+    : "Analyse des performances par joueur — X01, Cricket & entraînements";
+  const favoriteLabel = isMolkkySport ? "Mode de jeu préféré" : "Mode de jeu préféré";
+  const topModesLabel = isMolkkySport ? "Top modes" : "Top modes";
+  const avgLabel = isMolkkySport ? "Moyenne / lancer" : "Moyenne / 3 flèches";
+  const avgSub = isMolkkySport ? "Points moyens" : "Visites moyennes";
+  const bestLabel = isMolkkySport ? "Meilleur score" : "Meilleure volée";
+  const bestSub = isMolkkySport ? "Record personnel" : "Record personnel";
+  const winSub = isMolkkySport ? "Toutes parties" : "Toutes manches";
+  const fourthLabel = isMolkkySport ? "Mode favori" : "Plus haut checkout";
+  const fourthValue = isMolkkySport ? favoriteMode : (bestCheckout != null ? `${bestCheckout}` : "—");
+  const fourthSub = isMolkkySport ? "Mölkky" : "X01";
 
   return (
     <div style={pageWrap}>
@@ -833,7 +854,7 @@ export default function StatsPlayerDashboard({ data, x01MultiLegsSets }: StatsPl
             </div>
             <div style={{ minWidth: 0 }}>
               <H1>Statistiques</H1>
-              <Sub>Analyse des performances par joueur — X01, Cricket & entraînements</Sub>
+              <Sub>{dashboardSubtitle}</Sub>
             </div>
           </div>
 
@@ -875,7 +896,7 @@ export default function StatsPlayerDashboard({ data, x01MultiLegsSets }: StatsPl
           {/* Mode préféré + Top */}
           <div style={{ marginTop: 12 }}>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
-              <BlockTitle text="Mode de jeu préféré" accent={accent} accentSoft={accentSoft} style={{ fontSize: 11 }} />
+              <BlockTitle text={favoriteLabel} accent={accent} accentSoft={accentSoft} style={{ fontSize: 11 }} />
               <div
                 style={{
                   padding: "8px 10px",
@@ -905,7 +926,7 @@ export default function StatsPlayerDashboard({ data, x01MultiLegsSets }: StatsPl
             </div>
 
             <div style={{ marginTop: 10 }}>
-              <BlockTitle text="Top modes" accent={accent} accentSoft={accentSoft} style={{ fontSize: 11, marginBottom: 8 }} />
+              <BlockTitle text={topModesLabel} accent={accent} accentSoft={accentSoft} style={{ fontSize: 11, marginBottom: 8 }} />
               <ModeRankingStack stats={modeStats} accent={accent} accentSoft={accentSoft} />
             </div>
           </div>
@@ -914,10 +935,10 @@ export default function StatsPlayerDashboard({ data, x01MultiLegsSets }: StatsPl
         {/* KPIs */}
         <div style={{ ...fullW, display: "grid", gap: 12 }}>
           <div style={{ display: "grid", gap: 12, gridTemplateColumns: "repeat(1, minmax(0,1fr))" }} className="sm:grid-cols-2 xl:grid-cols-4">
-            <Tile label="Moyenne / 3 flèches" value={`${avg3.toFixed(1)} pts`} sub="Visites moyennes" icon={<IconBars color={T.gold} />} accent={accent} accentSoft={accentSoft} />
-            <Tile label="Meilleure volée" value={`${bestVisit} pts`} sub="Record personnel" icon={<IconTarget color={T.gold} />} accent={accent} accentSoft={accentSoft} />
-            <Tile label="Taux de victoire" value={`${winRate.toFixed(0)} %`} sub="Toutes manches" icon={<IconPercent color={T.gold} />} accent={accent} accentSoft={accentSoft} />
-            <Tile label="Plus haut checkout" value={bestCheckout != null ? `${bestCheckout}` : "—"} sub="X01" icon={<IconHourglass color={T.gold} />} accent={accent} accentSoft={accentSoft} />
+            <Tile label={avgLabel} value={`${avg3.toFixed(1)} pts`} sub={avgSub} icon={<IconBars color={T.gold} />} accent={accent} accentSoft={accentSoft} />
+            <Tile label={bestLabel} value={`${bestVisit} pts`} sub={bestSub} icon={<IconTarget color={T.gold} />} accent={accent} accentSoft={accentSoft} />
+            <Tile label="Taux de victoire" value={`${winRate.toFixed(0)} %`} sub={winSub} icon={<IconPercent color={T.gold} />} accent={accent} accentSoft={accentSoft} />
+            <Tile label={fourthLabel} value={fourthValue} sub={fourthSub} icon={<IconHourglass color={T.gold} />} accent={accent} accentSoft={accentSoft} />
           </div>
         </div>
 

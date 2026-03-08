@@ -11,6 +11,25 @@ import type { Store, Profile } from "./types";
 import { emitCloudChange } from "./cloudEvents";
 import { exportHistoryDump, importHistoryDump } from "./historyCloud";
 
+/* ---------- SAFE JSON ---------- */
+function safeJsonParse<T = any>(value: any, fallback: T): T {
+  try {
+    if (value === null || value === undefined) return fallback;
+    if (typeof value !== "string") return value as T;
+    return JSON.parse(value) as T;
+  } catch {
+    return fallback;
+  }
+}
+
+function safeJsonStringify(value: any, fallback = "{}"): string {
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return fallback;
+  }
+}
+
 /* ---------- Constantes ---------- */
 const DB_NAME = "darts-counter-v5";
 const STORE_NAME = "kv";
@@ -467,13 +486,15 @@ export async function loadStore<T extends Store>(): Promise<T | null> {
 
     if (raw != null) {
       const json = await decompressGzip(raw as any);
-      const parsed = JSON.parse(json) as T;
+      const parsed = safeJsonParse<T | null>(json, null);
+
+      if (!parsed) return null;
 
       const norm = await normalizeStoreAll(parsed);
 
       if (norm.changed) {
         try {
-          const payload = await compressGzip(JSON.stringify(norm.store));
+          const payload = await compressGzip(safeJsonStringify(norm.store));
           await idbSet(STORE_KEY, payload);
         } catch {}
       }
@@ -483,7 +504,8 @@ export async function loadStore<T extends Store>(): Promise<T | null> {
 
     const legacy = localStorage.getItem(LEGACY_LS_KEY);
     if (legacy) {
-      const parsed = JSON.parse(legacy) as T;
+      const parsed = safeJsonParse<T | null>(legacy, null);
+      if (!parsed) return null;
 
       const norm = await normalizeStoreAll(parsed);
 
@@ -515,7 +537,7 @@ export async function saveStore<T extends Store>(store: T, opts?: SaveOpts): Pro
         ? { store: compat.store as T, changed: compat.changed }
         : await normalizeStoreAll(compat.store as T);
 
-    const json = JSON.stringify(final.store);
+    const json = safeJsonStringify(final.store);
     const payload = await compressGzip(json);
 
     const est = await storageEstimate();
@@ -530,7 +552,7 @@ export async function saveStore<T extends Store>(store: T, opts?: SaveOpts): Pro
   } catch (err) {
     console.error("[storage] saveStore error:", err);
     try {
-      localStorage.setItem(LEGACY_LS_KEY, JSON.stringify(store));
+      localStorage.setItem(LEGACY_LS_KEY, safeJsonStringify(store));
     } catch {}
   }
 }
@@ -550,7 +572,7 @@ export async function getKV<T = unknown>(key: string): Promise<T | null> {
     const raw = await idbGet<ArrayBuffer | Uint8Array | string>(key);
     if (raw == null) return null;
     const json = await decompressGzip(raw as any);
-    return JSON.parse(json) as T;
+    return safeJsonParse<T | null>(json, null);
   } catch (err) {
     console.warn("[storage] getKV error:", key, err);
     return null;
@@ -560,7 +582,7 @@ export async function getKV<T = unknown>(key: string): Promise<T | null> {
 /** Enregistre une valeur JSON (gzip si dispo). */
 export async function setKV(key: string, value: any): Promise<void> {
   try {
-    const json = JSON.stringify(value);
+    const json = safeJsonStringify(value);
     const payload = await compressGzip(json);
 
     await idbSet(key, payload);
@@ -673,7 +695,7 @@ function pickFirst<T>(...vals: Array<T | undefined | null>): T | undefined {
 
 function writeDartSetsToLocalStorage(dartSets: any) {
   try {
-    const s = JSON.stringify(dartSets ?? {});
+    const s = safeJsonStringify(dartSets ?? {});
     for (const k of LS_DARTSETS_KEYS) localStorage.setItem(k, s);
   } catch (e) {
     console.warn("[dartsets] write localStorage failed", e);
@@ -729,7 +751,7 @@ export type CloudSnapshot = any;
 function sanitizeStoreForCloud(store: any) {
   let clone: any;
   try {
-    clone = JSON.parse(JSON.stringify(store || {}));
+    clone = safeJsonParse(safeJsonStringify(store || {}), {});
   } catch {
     clone = { ...(store || {}) };
   }
@@ -848,7 +870,8 @@ async function normalizeLocalProfilesInStore(): Promise<void> {
   if (raw == null) return;
 
   const txt = await decompressGzip(raw as any);
-  const store = JSON.parse(txt) as any;
+  const store = safeJsonParse<any | null>(txt, null);
+  if (!store) return;
 
   const arr = Array.isArray(store?.profiles) ? [...store.profiles] : [];
 
@@ -894,7 +917,7 @@ async function normalizeLocalProfilesInStore(): Promise<void> {
 
   store.profiles = cleaned;
 
-  const outTxt = JSON.stringify(store);
+  const outTxt = safeJsonStringify(store);
   const outRaw = await compressGzip(outTxt);
   await idbSet(STORE_KEY, outRaw);
 }
@@ -939,8 +962,12 @@ export async function migrateFromLocalStorage(keys: string[]) {
     if (raw == null) continue;
 
     try {
-      const parsed = JSON.parse(raw);
-      await setKV(k, parsed);
+      const parsed = safeJsonParse(raw, null);
+      if (parsed !== null) {
+        await setKV(k, parsed);
+      } else {
+        await idbSet(k, raw);
+      }
     } catch {
       try {
         await idbSet(k, raw);
@@ -963,11 +990,11 @@ export async function nukeAllKeepActiveProfile(): Promise<void> {
     const raw = await idbGet<ArrayBuffer | Uint8Array | string>(STORE_KEY);
     if (raw != null) {
       const txt = await decompressGzip(raw as any);
-      const parsed = JSON.parse(txt) as Store;
+      const parsed = safeJsonParse<Store | null>(txt, null);
 
-      const activeId = (parsed as any).activeProfileId ?? null;
+      const activeId = (parsed as any)?.activeProfileId ?? null;
       if (activeId) {
-        const prof = parsed.profiles?.find((p) => p.id === activeId) || null;
+        const prof = parsed?.profiles?.find((p) => p.id === activeId) || null;
         activeProfile = prof ? { ...prof } : null;
       }
     }
@@ -995,7 +1022,7 @@ export async function nukeAllKeepActiveProfile(): Promise<void> {
     } as Store;
 
     try {
-      const payload = await compressGzip(JSON.stringify(newStore));
+      const payload = await compressGzip(safeJsonStringify(newStore));
       await idbSet(STORE_KEY, payload);
     } catch (err) {
       console.warn("[storage] unable to write minimal store after reset", err);

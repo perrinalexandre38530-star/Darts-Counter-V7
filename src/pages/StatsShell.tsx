@@ -14,12 +14,14 @@ import React from "react";
 import type { Store, Profile } from "../lib/types";
 import { useTheme } from "../contexts/ThemeContext";
 import { useLang } from "../contexts/LangContext";
+import { useSport } from "../contexts/SportContext";
 import ProfileAvatar from "../components/ProfileAvatar";
 import ProfileStarRing from "../components/ProfileStarRing";
 
 type Props = {
   store: Store;
   go: (tab: any, params?: any) => void;
+  sportOverride?: string | null;
 };
 
 type InfoMode =
@@ -32,9 +34,40 @@ type InfoMode =
   | "sync"
   | null;
 
-export default function StatsShell({ store, go }: Props) {
+export default function StatsShell({ store, go, sportOverride }: Props) {
   const { theme } = useTheme();
   const { t } = useLang();
+  const { sport } = useSport();
+  const effectiveSport = String(sportOverride || sport || "").toLowerCase();
+  const isMolkkySport = effectiveSport === "molkky";
+  const shellTitle = isMolkkySport ? "STATS MÖLKKY" : t("statsShell.title", "STATS");
+  const shellSubtitle = isMolkkySport
+    ? "Centre de statistiques Mölkky : joueur actif, profils locaux, classements et historique."
+    : t(
+        "statsShell.subtitle",
+        "Analyse tes performances, ton training, ton historique et synchronise tes stats."
+      );
+  const localsSubtitle = isMolkkySport
+    ? "Accède aux mêmes vues de stats pour tous les profils locaux Mölkky."
+    : t(
+        "statsShell.locals.subtitle",
+        "Accède aux mêmes vues de stats pour tous les profils locaux."
+      );
+  const leaderboardsSubtitle = isMolkkySport
+    ? "Classements Mölkky locaux par matchs joués, victoires et performances."
+    : "Classements globaux par mode de jeu (X01 multi, Cricket, Killer, etc.).";
+  const trainingSubtitle = isMolkkySport
+    ? "Statistiques d'entraînement indisponibles pour Mölkky."
+    : t(
+        "statsShell.training.subtitle",
+        "Stats complètes de tes sessions Training X01 et Tour de l’horloge."
+      );
+  const onlineSubtitle = isMolkkySport
+    ? "Statistiques online indisponibles pour Mölkky."
+    : t(
+        "statsShell.online.subtitle",
+        'Stats de tes parties Online (quand tu joues en mode "Online").'
+      );
 
   const profiles = store?.profiles ?? [];
   const activeProfileId = store?.activeProfileId ?? null;
@@ -202,7 +235,7 @@ export default function StatsShell({ store, go }: Props) {
                 marginBottom: 4,
               }}
             >
-              {t("statsShell.title", "STATS")}
+              {shellTitle}
             </div>
             <div
               style={{
@@ -212,10 +245,7 @@ export default function StatsShell({ store, go }: Props) {
                 maxWidth: 260,
               }}
             >
-              {t(
-                "statsShell.subtitle",
-                "Analyse tes performances, ton training, ton historique et synchronise tes stats."
-              )}
+              {shellSubtitle}
             </div>
           </div>
 
@@ -256,7 +286,7 @@ export default function StatsShell({ store, go }: Props) {
       >
         <StatsShellPlayerCard
           profile={active}
-          label={playerLabel}
+          label={isMolkkySport ? `STATS MÖLKKY ${active ? active.name.toUpperCase() : ""}`.trim() : playerLabel}
           theme={theme}
           onClick={() => {
             if (!active) return;
@@ -273,10 +303,7 @@ export default function StatsShell({ store, go }: Props) {
 
         <StatsShellCard
           title={t("statsShell.locals.title", "PROFILS LOCAUX")}
-          subtitle={t(
-            "statsShell.locals.subtitle",
-            "Accède aux mêmes vues de stats pour tous les profils locaux."
-          )}
+          subtitle={localsSubtitle}
           theme={theme}
           onClick={() => {
             go("statsHub", {
@@ -290,18 +317,21 @@ export default function StatsShell({ store, go }: Props) {
 
         <StatsShellCard
           title="CLASSEMENTS"
-          subtitle="Classements globaux par mode de jeu (X01 multi, Cricket, Killer, etc.)."
+          subtitle={leaderboardsSubtitle}
           theme={theme}
-          onClick={() => go("stats_leaderboards")}
+          onClick={() => {
+            if (isMolkkySport) {
+              go("statsHub", { tab: "stats", mode: "locals", initialStatsSubTab: "leaderboards" });
+              return;
+            }
+            go("stats_leaderboards");
+          }}
           onInfo={() => setInfoMode("leaderboards")}
         />
 
         <StatsShellCard
           title={t("statsShell.training.title", "TRAINING")}
-          subtitle={t(
-            "statsShell.training.subtitle",
-            "Stats complètes de tes sessions Training X01 et Tour de l’horloge."
-          )}
+          subtitle={trainingSubtitle}
           theme={theme}
           onClick={() => go("statsHub", { tab: "training" })}
           onInfo={() => setInfoMode("training")}
@@ -309,10 +339,7 @@ export default function StatsShell({ store, go }: Props) {
 
         <StatsShellCard
           title={t("statsShell.online.title", "ONLINE")}
-          subtitle={t(
-            "statsShell.online.subtitle",
-            'Stats de tes parties Online (quand tu joues en mode "Online").'
-          )}
+          subtitle={onlineSubtitle}
           theme={theme}
           onClick={() => go("stats_online")}
           onInfo={() => setInfoMode("online")}

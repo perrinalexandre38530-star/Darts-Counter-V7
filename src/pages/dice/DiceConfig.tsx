@@ -58,7 +58,7 @@ export default function DiceConfig({ go, store, params }: Props) {
     const p = String(preset || "duel").toLowerCase();
     if (p === "race") return { mode: "race", targetScore: 200, diceCount: 3, sets: 1 };
     if (p === "tenk" || p === "10k" || p === "10000") return { mode: "tenk", targetScore: 10000, diceCount: 6, sets: 1 };
-    return { mode: presetDefaults.mode, targetScore: 100, diceCount: 2, sets: 1 };
+    return { mode: p, targetScore: 100, diceCount: 2, sets: 1 };
   }, [preset]);
 
   const [targetScore, setTargetScore] = React.useState(presetDefaults.targetScore);
@@ -100,7 +100,7 @@ export default function DiceConfig({ go, store, params }: Props) {
     if (!canStart) return;
 
     const cfg: DiceCfg = {
-      mode: presetDefaults.mode,
+      mode: preset,
       targetScore: clamp(targetScore, 10, 10000, 100),
       diceCount: clamp(diceCount, 1, 10, 2),
       sets: clamp(sets, 1, 25, 1),

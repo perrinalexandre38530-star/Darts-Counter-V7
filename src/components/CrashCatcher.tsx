@@ -1,51 +1,51 @@
 import React from "react";
+import {
+  captureCrash,
+  copyCrashReport,
+  formatCrashReportText,
+  getLastCrashReport,
+  type CrashReport,
+} from "../lib/crashReporter";
 
-type CrashState = { error?: any; info?: any };
+type CrashState = { report: CrashReport | null; copied: boolean };
 
-function formatErr(e: any) {
+function activateSafeModeAndReload() {
   try {
-    if (!e) return "Erreur inconnue";
-    if (typeof e === "string") return e;
-    if (e?.stack) return String(e.stack);
-    if (e?.message) return String(e.message);
-    return JSON.stringify(e, null, 2);
-  } catch {
-    return String(e);
-  }
+    localStorage.setItem("dc_safe_mode_v1", "1");
+  } catch {}
+  window.location.reload();
 }
 
 export default class CrashCatcher extends React.Component<
   { children: React.ReactNode },
   CrashState
 > {
-  state: CrashState = {};
+  state: CrashState = { report: null, copied: false };
+
+  componentDidMount() {
+    try {
+      const last = getLastCrashReport();
+      if (last && Date.now() - last.ts < 15_000) {
+        this.setState({ report: last });
+      }
+    } catch {}
+  }
 
   componentDidCatch(error: any, info: any) {
-    try {
-      console.error("[CRASH CAPTURED]", error, info);
-      // Persist pour le relire après reload si besoin
-      localStorage.setItem(
-        "dc_last_crash_v1",
-        JSON.stringify(
-          {
-            at: Date.now(),
-            error: formatErr(error),
-            info: info?.componentStack ? String(info.componentStack) : "",
-          },
-          null,
-          2
-        )
-      );
-    } catch {}
-    this.setState({ error, info });
+    console.error("[CRASH CAPTURED]", error, info);
+    const report = captureCrash("react-render", error, {
+      stack:
+        [error?.stack || "", info?.componentStack || ""].filter(Boolean).join("\n\n") || undefined,
+      raw: info?.componentStack ? String(info.componentStack) : undefined,
+    });
+    this.setState({ report, copied: false });
   }
 
   render() {
-    const { error, info } = this.state;
-    if (!error) return this.props.children;
+    const report = this.state.report;
+    if (!report) return this.props.children;
 
-    const errTxt = formatErr(error);
-    const stack = info?.componentStack ? String(info.componentStack) : "";
+    const txt = formatCrashReportText(report);
 
     return (
       <div
@@ -63,56 +63,64 @@ export default class CrashCatcher extends React.Component<
         </div>
 
         <div style={{ opacity: 0.85, fontSize: 13, marginBottom: 10 }}>
-          Fais une capture de cet écran et envoie-la.
+          Fais une capture de cet écran et envoie-la. Le bouton <b>Copier le rapport</b> copie aussi la raison du plantage.
         </div>
 
-        <div style={{ display: "grid", gap: 10 }}>
-          <pre
-            style={{
-              whiteSpace: "pre-wrap",
-              wordBreak: "break-word",
-              background: "rgba(255,255,255,.06)",
-              padding: 12,
-              borderRadius: 12,
-              border: "1px solid rgba(255,255,255,.12)",
-            }}
-          >
-{errTxt}
-          </pre>
+        <pre
+          style={{
+            whiteSpace: "pre-wrap",
+            wordBreak: "break-word",
+            background: "rgba(255,255,255,.06)",
+            padding: 12,
+            borderRadius: 12,
+            border: "1px solid rgba(255,255,255,.12)",
+            maxHeight: "62dvh",
+            overflow: "auto",
+          }}
+        >
+          {txt}
+        </pre>
 
-          {stack ? (
-            <pre
-              style={{
-                whiteSpace: "pre-wrap",
-                wordBreak: "break-word",
-                background: "rgba(255,255,255,.04)",
-                padding: 12,
-                borderRadius: 12,
-                border: "1px solid rgba(255,255,255,.10)",
-                opacity: 0.9,
-              }}
-            >
-{stack}
-            </pre>
-          ) : null}
-
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 12 }}>
           <button
-            onClick={() => window.location.reload()}
-            style={{
-              borderRadius: 999,
-              padding: "10px 12px",
-              border: "none",
-              fontWeight: 900,
-              background: "linear-gradient(180deg,#ffc63a,#ffaf00)",
-              color: "#1b1508",
-              cursor: "pointer",
-              width: "fit-content",
+            onClick={async () => {
+              const ok = await copyCrashReport(report);
+              this.setState({ copied: !!ok });
             }}
+            style={btnStyle()}
           >
-            Recharger
+            {this.state.copied ? "✅ Rapport copié" : "📋 Copier le rapport"}
+          </button>
+
+          <button onClick={() => window.location.reload()} style={btnStyle("amber")}>
+            🔄 Recharger
+          </button>
+
+          <button onClick={activateSafeModeAndReload} style={btnStyle("danger")}>
+            🧯 Safe mode
           </button>
         </div>
       </div>
     );
   }
+}
+
+function btnStyle(kind: "normal" | "amber" | "danger" = "normal"): React.CSSProperties {
+  const background =
+    kind === "danger"
+      ? "linear-gradient(180deg,#ff8d8d,#ff5252)"
+      : kind === "amber"
+      ? "linear-gradient(180deg,#ffc63a,#ffaf00)"
+      : "rgba(255,255,255,.08)";
+  const color = kind === "normal" ? "#fff" : "#1b1508";
+  const border = kind === "normal" ? "1px solid rgba(255,255,255,.2)" : "none";
+  return {
+    borderRadius: 999,
+    padding: "10px 12px",
+    border,
+    fontWeight: 900,
+    background,
+    color,
+    cursor: "pointer",
+  };
 }

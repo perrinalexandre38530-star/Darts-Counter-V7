@@ -85,16 +85,21 @@ export default function DiceYamsConfig({ go, store }: Props) {
         src={headerSrc}
         height={92}
         left={<BackDot onClick={() => go("dice_menu")} />}
-        right={<InfoDot title="Yam's — Config"
-        desc={`Yam's / Yahtzee (5 dés)\n\n• 13 catégories\n• 3 lancers max (2 relances)\n• Bonus haut: 63 → +35\n\nChoisis 2 joueurs puis lance.`} />}
-        sticky={false}
+        right={
+          <InfoDot
+            title="YAM'S — Règles"
+            desc={`Yam's / Yahtzee (5 dés)
+
+• 13 catégories
+• 3 lancers max (2 relances)
+• Bonus haut: 63 → +35
+
+Choisis 2 joueurs puis lance.`}
+            sticky={false}
+          />
+        }
       />
 
-      <BackDot onClick={() => go("dice_games")} />
-      <InfoDot
-        title="Yam's — Config"
-        desc={`Yam's / Yahtzee (5 dés)\n\n• 13 catégories\n• 3 lancers max (2 relances)\n• Bonus haut: 63 → +35\n\nChoisis 2 joueurs puis lance.`}
-      />
 
       <div
         style={{

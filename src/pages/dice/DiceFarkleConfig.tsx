@@ -9,6 +9,8 @@ import { useTheme } from "../../contexts/ThemeContext";
 import { useLang } from "../../contexts/LangContext";
 import BackDot from "../../components/BackDot";
 import InfoDot from "../../components/InfoDot";
+import ConfigTickerHeader from "../../components/ConfigTickerHeader";
+import { getTicker } from "../../lib/tickers";
 import ProfileAvatar from "../../components/ProfileAvatar";
 
 import { saveDiceState, clearDiceState } from "../../lib/diceStore";
@@ -132,6 +134,9 @@ function Toggle({ label, checked, onChange, theme }: any) {
 
 export default function DiceFarkleConfig({ go, store }: Props) {
   const { theme } = useTheme() as any;
+
+  const headerSrc = getTicker("dice_farkle") || getTicker("dice_games") || "";
+
   const { t } = useLang() as any;
 
   const primary = theme?.colors?.accent ?? theme?.primary ?? "#7cff6d";
@@ -186,17 +191,24 @@ export default function DiceFarkleConfig({ go, store }: Props) {
 
   return (
     <div style={{ padding: 18 }}>
-      <div style={{ position: "fixed", left: 14, top: 14, zIndex: 10 }}>
-        <BackDot onClick={() => go("dice_menu")} />
-      </div>
-      <div style={{ position: "fixed", right: 14, top: 14, zIndex: 10 }}>
-        <InfoDot
-          title="FARKLE — Config"
-          desc={
-            "Farkle / 10 000 (push-your-luck) — config de base.\n\n• 6 dés\n• Combinaisons => points (à implémenter dans PLAY)\n• Bank / Bust\n\nIci on prépare le mode + l’historique."
-          }
-        />
-      </div>
+      <ConfigTickerHeader
+        src={headerSrc}
+        height={92}
+        left={<BackDot onClick={() => go("dice_menu")} />}
+        right={
+          <InfoDot
+            title="FARKLE — Règles"
+            desc={`Farkle / 10 000 (push-your-luck) — config de base.
+
+• 6 dés
+• Combinaisons (placeholder)
+• Bank/Bust (placeholder)`}
+            sticky={false}
+          />
+        }
+      />
+      
+      
 
       <div
         style={{

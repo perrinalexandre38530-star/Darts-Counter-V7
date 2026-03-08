@@ -14,11 +14,6 @@ import StatsPlayerDashboard, {
 import { useQuickStats } from "../hooks/useQuickStats";
 import HistoryPage from "./HistoryPage";
 
-// ✅ NEW: sport-specific embeds (keep StatsHub shell identical across sports)
-import MolkkyStatsPlayersPage from "./molkky/MolkkyStatsPlayersPage";
-import MolkkyStatsLocalsPage from "./molkky/MolkkyStatsLocalsPage";
-import MolkkyStatsLeaderboardsPage from "./molkky/MolkkyStatsLeaderboardsPage";
-
 import SparklinePro from "../components/SparklinePro";
 import ProfileAvatar from "../components/ProfileAvatar";
 import ProfileStarRing from "../components/ProfileStarRing";
@@ -116,6 +111,92 @@ function buildDiceDashboardForPlayer(playerId: string, playerName: string, rows:
     sessionsByMode: { "Dice Duel": sessions },
   };
 }
+
+
+function isMolkkyRecord(r: any) {
+  const sport = String(r?.sport ?? r?.payload?.stats?.sport ?? r?.payload?.sport ?? r?.kind ?? r?.summary?.sport ?? "").toLowerCase();
+  const mode = String(r?.payload?.stats?.mode ?? r?.payload?.mode ?? r?.summary?.mode ?? "").toLowerCase();
+  return sport === "molkky" || mode === "molkky";
+}
+
+function molkkyPlayerInRecord(r: any, playerId: string, playerName: string) {
+  const pid = String(playerId || "").trim();
+  const pname = String(playerName || "").trim().toLowerCase();
+  const pools = [
+    ...(Array.isArray(r?.players) ? r.players : []),
+    ...(Array.isArray(r?.payload?.stats?.players) ? r.payload.stats.players : []),
+    ...(Array.isArray(r?.summary?.players) ? r.summary.players : []),
+  ];
+  return pools.some((p: any) => {
+    const id = String(p?.id ?? p?.playerId ?? p?.profileId ?? "").trim();
+    const name = String(p?.name ?? p?.playerName ?? p?.label ?? "").trim().toLowerCase();
+    return (pid && id === pid) || (pname && name === pname);
+  });
+}
+
+function molkkyPlayerScore(r: any, playerId: string, playerName: string) {
+  const pid = String(playerId || "").trim();
+  const pname = String(playerName || "").trim().toLowerCase();
+  const pools = [
+    ...(Array.isArray(r?.payload?.stats?.players) ? r.payload.stats.players : []),
+    ...(Array.isArray(r?.players) ? r.players : []),
+    ...(Array.isArray(r?.summary?.players) ? r.summary.players : []),
+  ];
+  const hit = pools.find((p: any) => {
+    const id = String(p?.id ?? p?.playerId ?? p?.profileId ?? "").trim();
+    const name = String(p?.name ?? p?.playerName ?? p?.label ?? "").trim().toLowerCase();
+    return (pid && id === pid) || (pname && name === pname);
+  });
+  return Number(hit?.score ?? hit?.points ?? hit?.total ?? 0) || 0;
+}
+
+function buildMolkkyDashboardForPlayer(playerId: string, playerName: string, rows: any[]): PlayerDashboardStats {
+  const molkkyRows = (rows || []).filter((r: any) => isMolkkyRecord(r));
+  const mine = molkkyRows.filter((r: any) => molkkyPlayerInRecord(r, playerId, playerName));
+  const agg = aggregateMolkkyPlayers(mine as any).find(
+    (x: any) => String(x?.name ?? "").trim().toLowerCase() === String(playerName || "").trim().toLowerCase()
+  );
+
+  const sessions = mine.length || 0;
+  const wins = Number(agg?.wins ?? 0) || 0;
+  const winRatePct = sessions ? Math.round((wins / sessions) * 100) : 0;
+  const avgPts = Number(agg?.avgPtsPerThrow ?? 0) || 0;
+  const bestTurns = Number(agg?.bestTurns ?? 0) || 0;
+  const avgTurns = Number(agg?.avgTurns ?? 0) || 0;
+  const scores = mine.map((r: any) => molkkyPlayerScore(r, playerId, playerName)).filter((n: number) => Number.isFinite(n));
+  const bestScore = scores.length ? Math.max(...scores) : 0;
+
+  const evolution = mine
+    .slice()
+    .sort((a: any, b: any) => Number(a?.createdAt ?? a?.updatedAt ?? 0) - Number(b?.createdAt ?? b?.updatedAt ?? 0))
+    .slice(-30)
+    .map((r: any) => ({
+      date: new Date(Number(r?.createdAt ?? r?.updatedAt ?? Date.now()) || Date.now()).toISOString().slice(0, 10),
+      avg3: Number(molkkyPlayerScore(r, playerId, playerName) || avgPts || 0),
+    }));
+
+  const dist: any = { "0-59": 0, "60-99": 0, "100+": 0, "140+": 0, "180": 0 };
+  mine.forEach((r: any) => {
+    const turns = Number(r?.summary?.turns ?? r?.summary?.rounds ?? 0) || 0;
+    if (turns > 0 && turns <= 8) dist["180"]++;
+    else if (turns > 0 && turns <= 12) dist["140+"]++;
+    else if (turns > 0 && turns <= 16) dist["100+"]++;
+    else if (turns > 0 && turns <= 22) dist["60-99"]++;
+    else dist["0-59"]++;
+  });
+
+  return {
+    playerId,
+    playerName,
+    avg3Overall: Number.isFinite(avgPts) ? Math.round(avgPts * 10) / 10 : 0,
+    bestVisit: bestTurns > 0 ? bestTurns : bestScore,
+    bestCheckout: avgTurns > 0 ? Math.round(avgTurns * 10) / 10 : undefined,
+    winRatePct,
+    evolution,
+    distribution: dist,
+    sessionsByMode: { "Mölkky Classic": sessions },
+  };
+}
 // ✅ KEEP en import normal (léger / utilisé souvent)
 import StatsX01Compare from "./StatsX01Compare";
 import StatsTrainingSummary from "../components/stats/StatsTrainingSummary";
@@ -182,6 +263,7 @@ import {
 } from "../lib/statsNormalized";
 import { buildDashboardFromNormalized } from "../lib/statsUnifiedAgg";
 import { computeX01MultiAgg } from "../lib/x01MultiAgg";
+import { aggregatePlayers as aggregateMolkkyPlayers } from "../lib/molkkyStats";
 
 // ============================================================
 // 🧪 DEBUG RUNTIME (téléphone)
@@ -449,6 +531,7 @@ type Props = {
   // Nouveau : mode d’ouverture
   mode?: StatsMode; // "active" = joueur actif / "locals" = profils locaux
   playerId?: string | null; // compat : StatsShell envoie playerId pour le joueur actif
+  sportOverride?: string | null;
 };
 
 /* ---------- Helpers génériques ---------- */
@@ -3949,6 +4032,7 @@ go,
   initialStatsSubTab,
   mode = "active", // "active" = joueur actif, "locals" = profils locaux + bots
   playerId,
+  sportOverride,
 }: Props) {
   // CSS shimmer
   useInjectStatsNameCss();
@@ -3992,8 +4076,9 @@ go,
 
   
   const { sport } = useSport();
-  const isDiceSport = String(sport || "").toLowerCase().includes("dice");
-  const isMolkkySport = String(sport || "").toLowerCase() === "molkky";
+  const effectiveSport = String(sportOverride || sport || "").toLowerCase();
+  const isDiceSport = effectiveSport.includes("dice");
+  const isMolkkySport = effectiveSport === "molkky";
 const { enabled: devModeEnabled } = useDevMode();
   const [showRuntimeDebug, setShowRuntimeDebug] = React.useState(false);
   const STATS_DEBUG = devModeEnabled && showRuntimeDebug;
@@ -4109,8 +4194,6 @@ const modeDefs = React.useMemo(
       : isMolkkySport
         ? [
             { key: "dashboard", label: "Dashboard global" },
-            { key: "players", label: "Joueur actif" },
-            { key: "locals", label: "Profils locaux" },
             { key: "leaderboards", label: "Classements" },
             { key: "history", label: "Historique" },
           ]
@@ -4675,6 +4758,13 @@ React.useEffect(() => {
         return;
       }
 
+      // ✅ Sport Mölkky : même structure visuelle que DartsCounter, données adaptées.
+      if (isMolkkySport) {
+        const dashMolkky = buildMolkkyDashboardForPlayer(pid, pname, records as any);
+        if (!cancelled) setLiveDashboard(dashMolkky as any);
+        return;
+      }
+
       const baseDash = buildDashboardFromNormalized(pid, pname, nmEffective);
       const dash = applyX01AggToDashboard(baseDash, pid, pname);
       if (!cancelled) setLiveDashboard(dash as any);
@@ -4702,12 +4792,19 @@ React.useEffect(() => {
     }
     if (toId != null) window.clearTimeout(toId);
   };
-}, [selectedPlayer?.id, selectedPlayer?.name, nmEffective.length, applyX01AggToDashboard]);
+}, [selectedPlayer?.id, selectedPlayer?.name, nmEffective.length, applyX01AggToDashboard, isMolkkySport, records]);
 
 // ✅ Dashboard calculé "memo" (léger) — NE DOIT PAS être bloqué par le cache
 const computedDashboard = React.useMemo(() => {
   if (!selectedPlayer) return null;
   try {
+    if (isMolkkySport) {
+      return buildMolkkyDashboardForPlayer(
+        String(selectedPlayer.id),
+        String(selectedPlayer.name || "Joueur"),
+        records as any
+      ) as any;
+    }
     return applyX01AggToDashboard(buildDashboardFromNormalized(
       String(selectedPlayer.id),
       String(selectedPlayer.name || "Joueur"),
@@ -4716,10 +4813,10 @@ const computedDashboard = React.useMemo(() => {
   } catch {
     return null;
   }
-}, [selectedPlayer?.id, selectedPlayer?.name, nmEffective.length, applyX01AggToDashboard]);
+}, [selectedPlayer?.id, selectedPlayer?.name, nmEffective.length, applyX01AggToDashboard, isMolkkySport, records]);
 
 // ✅ Dashboard final à passer au composant (priorité: cache instant -> live recalcul -> memo)
-const dashboardToShow = (isDiceSport
+const dashboardToShow = ((isDiceSport || isMolkkySport)
   ? (liveDashboard ?? computedDashboard)
   : (cachedDashboard ?? liveDashboard ?? computedDashboard)) as
   | PlayerDashboardStats
@@ -5517,20 +5614,8 @@ return (
           {/* ========= CONTENU PILOTÉ PAR LE CARROUSEL DE MODES ========= */}
 <React.Suspense fallback={<LazyFallback label="Chargement…" />}>
             {/* ✅ MÖLKKY: on garde EXACTEMENT la structure StatsHub, seul le contenu change */}
-            {isMolkkySport && currentMode === "dashboard" && (
-              <MolkkyStatsPlayersPage store={store} go={go} embedded />
-            )}
-            {isMolkkySport && currentMode === "players" && (
-              <MolkkyStatsPlayersPage store={store} go={go} embedded />
-            )}
-            {isMolkkySport && currentMode === "locals" && (
-              <MolkkyStatsLocalsPage store={store} go={go} embedded />
-            )}
-            {isMolkkySport && currentMode === "leaderboards" && (
-              <MolkkyStatsLeaderboardsPage store={store} go={go} embedded />
-            )}
 
-  {!isMolkkySport && currentMode === "dashboard" && (
+            {currentMode === "dashboard" && (
     <>
       <div style={row}>
         {selectedPlayer ? (
@@ -5538,6 +5623,7 @@ return (
             // ✅ IMPORTANT: on affiche le cache instantané, puis live recalcul, puis fallback memo
             data={selectedPlayer ? dashboardToShow : null}
             x01MultiLegsSets={x01MultiLegsSets}
+            sport={effectiveSport}
           />
         ) : (
           <div style={{ color: T.text70, fontSize: 13 }}>
@@ -6164,11 +6250,11 @@ return (
               </div>
             )}
 
-            {!isMolkkySport && currentMode === "leaderboards" && (
+            {currentMode === "leaderboards" && (
               <div style={card}>
                 <React.Suspense fallback={<LazyFallback label="Chargement Classements…" />}>
                   <StatsLeaderboardsTab
-                    records={records as any}
+                    records={(isMolkkySport ? records.filter((r: any) => isMolkkyRecord(r)) : records) as any}
                     profiles={storeProfiles as any}
                   />
                 </React.Suspense>

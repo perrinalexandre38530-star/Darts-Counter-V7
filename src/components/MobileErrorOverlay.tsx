@@ -1,78 +1,52 @@
 // src/components/MobileErrorOverlay.tsx
 import React from "react";
-
-type ErrState = {
-  message: string;
-  stack?: string;
-  source?: string;
-};
-
-function formatAnyError(e: any): ErrState {
-  if (!e) return { message: "Erreur inconnue (null/undefined)" };
-
-  // Erreur classique
-  if (e instanceof Error) {
-    return { message: e.message || String(e), stack: e.stack || "" };
-  }
-
-  // UnhandledRejection souvent: { reason }
-  if (typeof e === "object" && (e as any).reason) {
-    return formatAnyError((e as any).reason);
-  }
-
-  // Objet avec message/stack
-  if (typeof e === "object") {
-    const msg = (e as any).message || JSON.stringify(e);
-    const stack = (e as any).stack || "";
-    return { message: String(msg), stack: String(stack) };
-  }
-
-  return { message: String(e) };
-}
+import {
+  captureCrash,
+  copyCrashReport,
+  formatCrashReportText,
+  type CrashReport,
+} from "../lib/crashReporter";
 
 export default function MobileErrorOverlay() {
-  const [err, setErr] = React.useState<ErrState | null>(null);
+  const [report, setReport] = React.useState<CrashReport | null>(null);
   const [open, setOpen] = React.useState(true);
+  const [copied, setCopied] = React.useState(false);
 
   React.useEffect(() => {
-    // Si on veut le couper facilement: localStorage.setItem("dc-debug-overlay","0")
     try {
       if (localStorage.getItem("dc-debug-overlay") === "0") return;
     } catch {}
 
     const onError = (ev: ErrorEvent) => {
       try {
-        const st = formatAnyError(ev.error || ev.message);
-        setErr({
-          message: st.message || "Erreur JS",
-          stack: st.stack || "",
+        const next = captureCrash("window.error", ev.error || ev.message || ev, {
           source: ev.filename ? `${ev.filename}:${ev.lineno || 0}:${ev.colno || 0}` : undefined,
         });
+        setReport(next);
+        setOpen(true);
+        setCopied(false);
       } catch (e) {
-        setErr({ message: "Erreur JS (handler failed)", stack: String(e) });
+        const fallback = captureCrash("window.error-handler", e);
+        setReport(fallback);
+        setOpen(true);
       }
     };
 
     const onRej = (ev: PromiseRejectionEvent) => {
       try {
-        const st = formatAnyError(ev.reason);
-        setErr({
-          message: "Unhandled promise rejection: " + (st.message || String(ev.reason)),
-          stack: st.stack || "",
-        });
+        const next = captureCrash("unhandledrejection", ev.reason);
+        setReport(next);
+        setOpen(true);
+        setCopied(false);
       } catch (e) {
-        setErr({ message: "Unhandled rejection (handler failed)", stack: String(e) });
+        const fallback = captureCrash("unhandledrejection-handler", e);
+        setReport(fallback);
+        setOpen(true);
       }
     };
 
     window.addEventListener("error", onError);
     window.addEventListener("unhandledrejection", onRej);
-
-    // Petit ping au boot pour vérifier que le composant est monté
-    // (utile si tu vois “Aïe aïe aïe” sans rien)
-    try {
-      console.log("[MobileErrorOverlay] mounted");
-    } catch {}
 
     return () => {
       window.removeEventListener("error", onError);
@@ -80,7 +54,7 @@ export default function MobileErrorOverlay() {
     };
   }, []);
 
-  if (!err || !open) return null;
+  if (!report || !open) return null;
 
   return (
     <div
@@ -88,7 +62,7 @@ export default function MobileErrorOverlay() {
         position: "fixed",
         inset: 0,
         zIndex: 999999,
-        background: "rgba(0,0,0,.88)",
+        background: "rgba(0,0,0,.92)",
         color: "#fff",
         padding: 14,
         overflow: "auto",
@@ -97,66 +71,52 @@ export default function MobileErrorOverlay() {
       }}
     >
       <div style={{ display: "flex", gap: 10, alignItems: "center", marginBottom: 10 }}>
-        <div style={{ fontWeight: 900, fontSize: 14 }}>💥 ERREUR JS (Mobile)</div>
+        <div style={{ fontWeight: 900, fontSize: 14 }}>💥 ERREUR JS / PWA CAPTURÉE</div>
         <div style={{ flex: 1 }} />
-        <button
-          onClick={() => setOpen(false)}
-          style={{
-            border: "1px solid rgba(255,255,255,.25)",
-            background: "rgba(255,255,255,.08)",
-            color: "#fff",
-            borderRadius: 10,
-            padding: "6px 10px",
-            fontWeight: 800,
-            cursor: "pointer",
-          }}
-        >
+        <button onClick={() => setOpen(false)} style={btnStyle()}>
           Fermer
+        </button>
+        <button
+          onClick={async () => {
+            const ok = await copyCrashReport(report);
+            setCopied(!!ok);
+          }}
+          style={btnStyle()}
+        >
+          {copied ? "✅ Copié" : "Copier"}
         </button>
         <button
           onClick={() => {
             try {
-              navigator.clipboard?.writeText(
-                `MESSAGE:\n${err.message}\n\nSOURCE:\n${err.source || ""}\n\nSTACK:\n${err.stack || ""}`
-              );
+              localStorage.setItem("dc_safe_mode_v1", "1");
             } catch {}
+            window.location.reload();
           }}
-          style={{
-            border: "1px solid rgba(255,255,255,.25)",
-            background: "rgba(255,255,255,.08)",
-            color: "#fff",
-            borderRadius: 10,
-            padding: "6px 10px",
-            fontWeight: 800,
-            cursor: "pointer",
-          }}
+          style={btnStyle("danger")}
         >
-          Copier
+          Safe mode
         </button>
       </div>
 
-      <div style={{ fontSize: 13, whiteSpace: "pre-wrap", lineHeight: 1.35 }}>
-        <div style={{ fontWeight: 900, marginBottom: 6 }}>Message</div>
-        <div style={{ opacity: 0.95 }}>{err.message}</div>
-
-        {err.source ? (
-          <>
-            <div style={{ fontWeight: 900, marginTop: 12, marginBottom: 6 }}>Source</div>
-            <div style={{ opacity: 0.9 }}>{err.source}</div>
-          </>
-        ) : null}
-
-        {err.stack ? (
-          <>
-            <div style={{ fontWeight: 900, marginTop: 12, marginBottom: 6 }}>Stack</div>
-            <div style={{ opacity: 0.85, whiteSpace: "pre-wrap" }}>{err.stack}</div>
-          </>
-        ) : null}
-      </div>
+      <pre style={{ fontSize: 13, whiteSpace: "pre-wrap", lineHeight: 1.35 }}>
+        {formatCrashReportText(report)}
+      </pre>
 
       <div style={{ opacity: 0.7, fontSize: 12, marginTop: 14 }}>
         Astuce: pour désactiver l’overlay → mets <b>dc-debug-overlay</b> à "0" dans localStorage.
       </div>
     </div>
   );
+}
+
+function btnStyle(kind: "plain" | "danger" = "plain"): React.CSSProperties {
+  return {
+    border: kind === "plain" ? "1px solid rgba(255,255,255,.25)" : "none",
+    background: kind === "plain" ? "rgba(255,255,255,.08)" : "linear-gradient(180deg,#ff8d8d,#ff5252)",
+    color: kind === "plain" ? "#fff" : "#2a0e0e",
+    borderRadius: 10,
+    padding: "6px 10px",
+    fontWeight: 800,
+    cursor: "pointer",
+  };
 }
