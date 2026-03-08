@@ -30,6 +30,49 @@ function safeJsonStringify(value: any, fallback = "{}"): string {
   }
 }
 
+
+function estimateObjectSizeBytes(obj: any): number {
+  try {
+    return safeJsonStringify(obj, "").length;
+  } catch {
+    return 0;
+  }
+}
+
+function guardStoreSizeForMobile<T>(store: T): T {
+  try {
+    const bytes = estimateObjectSizeBytes(store);
+    const mb = Math.round((bytes / 1024 / 1024) * 100) / 100;
+
+    try {
+      localStorage.setItem(
+        "dc_last_store_size_v1",
+        safeJsonStringify({
+          at: Date.now(),
+          bytes,
+          mb,
+        })
+      );
+    } catch {}
+
+    if (bytes > 8 * 1024 * 1024) {
+      console.warn("[storage] STORE TOO BIG FOR MOBILE:", mb, "MB");
+      try {
+        localStorage.setItem(
+          "dc_store_size_warning",
+          safeJsonStringify({
+            at: Date.now(),
+            bytes,
+            mb,
+            reason: "store_too_big_for_mobile",
+          })
+        );
+      } catch {}
+    }
+  } catch {}
+  return store;
+}
+
 /* ---------- Constantes ---------- */
 const DB_NAME = "darts-counter-v5";
 const STORE_NAME = "kv";
@@ -537,7 +580,8 @@ export async function saveStore<T extends Store>(store: T, opts?: SaveOpts): Pro
         ? { store: compat.store as T, changed: compat.changed }
         : await normalizeStoreAll(compat.store as T);
 
-    const json = safeJsonStringify(final.store);
+    const guardedStore = guardStoreSizeForMobile(final.store);
+    const json = safeJsonStringify(guardedStore);
     const payload = await compressGzip(json);
 
     const est = await storageEstimate();

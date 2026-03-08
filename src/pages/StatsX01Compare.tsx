@@ -131,20 +131,41 @@ function loadTrainingSessionsForProfile(
     const parsed = JSON.parse(raw);
     if (!Array.isArray(parsed)) return [];
 
-    return parsed
-      .map((row: any, idx: number) => ({
-        id: row.id ?? String(idx),
-        date: Number(row.date) || Date.now(),
-        profileId: String(row.profileId ?? "unknown"),
-        darts: Number(row.darts) || 0,
-        avg3D: Number(row.avg3D) || 0,
-        bestVisit: Number(row.bestVisit) || 0,
+    const normalized = parsed.map((row: any, idx: number) => {
+      const rawProfileId = row?.profileId;
+      const normalizedProfileId =
+        rawProfileId === null || rawProfileId === undefined
+          ? ""
+          : String(rawProfileId).trim();
+
+      const bestCheckoutRaw =
+        row?.bestCheckout !== undefined && row?.bestCheckout !== null
+          ? row.bestCheckout
+          : row?.checkout;
+
+      return {
+        id: row?.id ?? String(idx),
+        date: Number(row?.date ?? row?.createdAt) || Date.now(),
+        profileId: normalizedProfileId,
+        darts: Number(row?.darts) || 0,
+        avg3D: Number(row?.avg3D ?? row?.avg3 ?? 0) || 0,
+        bestVisit: Number(row?.bestVisit) || 0,
         bestCheckout:
-          row.bestCheckout === null || row.bestCheckout === undefined
+          bestCheckoutRaw === null || bestCheckoutRaw === undefined
             ? null
-            : Number(row.bestCheckout) || 0,
-      }))
-      .filter((s) => s.profileId === profileId);
+            : Number(bestCheckoutRaw) || 0,
+      } as TrainingX01SessionLite;
+    });
+
+    const exact = normalized.filter((s) => s.profileId === profileId);
+    if (exact.length) return exact;
+
+    const legacyFallback = normalized.filter((s) => {
+      const pid = (s.profileId || "").toLowerCase();
+      return pid === "" || pid === "unknown" || pid === "local" || pid === "null" || pid === "undefined";
+    });
+
+    return legacyFallback;
   } catch (e) {
     console.warn("[StatsX01Compare] loadTrainingSessions failed", e);
     return [];
