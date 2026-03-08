@@ -13,6 +13,7 @@ import type { Store, Profile } from "../lib/types";
 import { useTheme } from "../contexts/ThemeContext";
 import { useLang } from "../contexts/LangContext";
 import { History } from "../lib/history";
+import { TrainingStore } from "../lib/TrainingStore";
 
 import {
   ResponsiveContainer,
@@ -119,56 +120,258 @@ type TrainingX01SessionLite = {
   avg3D: number;
   bestVisit: number;
   bestCheckout: number | null;
+  hitsTotal?: number;
+  hits60?: number;
+  hits80?: number;
+  hits100?: number;
+  hits120?: number;
+  hits140?: number;
+  hits180?: number;
+  miss?: number;
+  singleHits?: number;
+  doubleHits?: number;
+  tripleHits?: number;
+  bull25?: number;
+  bull50?: number;
+  bust?: number;
+  coAttempts?: number;
+  coSuccess?: number;
 };
+
+function normalizeTrainingProfileId(row: any): string {
+  return String(
+    row?.profileId ??
+      row?.playerId ??
+      row?.idPlayer ??
+      row?.ownerId ??
+      "unknown"
+  );
+}
+
+function buildVisitThresholds(dartsDetail: any[] | undefined) {
+  const out = {
+    hits60: 0,
+    hits80: 0,
+    hits100: 0,
+    hits120: 0,
+    hits140: 0,
+    hits180: 0,
+  };
+  if (!Array.isArray(dartsDetail) || !dartsDetail.length) return out;
+
+  const dartScore = (d: any) => {
+    const v = Number(d?.v ?? d?.value ?? 0);
+    const mult = Number(d?.mult ?? d?.multiplier ?? 1);
+    if (!v) return 0;
+    if (v === 25) return mult === 2 ? 50 : 25;
+    return v * mult;
+  };
+
+  for (let i = 0; i < dartsDetail.length; i += 3) {
+    const visit = dartsDetail.slice(i, i + 3);
+    const total = visit.reduce((sum, d) => sum + dartScore(d), 0);
+    if (total >= 60) out.hits60 += 1;
+    if (total >= 80) out.hits80 += 1;
+    if (total >= 100) out.hits100 += 1;
+    if (total >= 120) out.hits120 += 1;
+    if (total >= 140) out.hits140 += 1;
+    if (total >= 180) out.hits180 += 1;
+  }
+
+  return out;
+}
 
 function loadTrainingSessionsForProfile(
   profileId: string | null
 ): TrainingX01SessionLite[] {
   if (typeof window === "undefined" || !profileId) return [];
+
+  const fullRows = (() => {
+    try {
+      return TrainingStore.getX01SessionsForProfile(profileId);
+    } catch (e) {
+      console.warn("[StatsX01Compare] TrainingStore.getX01SessionsForProfile failed", e);
+      return [];
+    }
+  })();
+
+  const fullMapped = (fullRows || []).map((row: any, idx: number) => {
+    const singleHits = Number(row?.hitsS) || 0;
+    const doubleHits = Number(row?.hitsD) || 0;
+    const tripleHits = Number(row?.hitsT) || 0;
+    const bull25 = Number(row?.bull) || 0;
+    const bull50 = Number(row?.dBull) || 0;
+    const miss = Number(row?.miss) || 0;
+    const bust = Number(row?.bust) || 0;
+    const hitsTotal =
+      Number(row?.hitsTotal) ||
+      singleHits + doubleHits + tripleHits + bull25 + bull50;
+    const thresholds = buildVisitThresholds(row?.dartsDetail);
+
+    return {
+      id: String(row?.id ?? `full_${idx}`),
+      date: Number(row?.date) || Date.now(),
+      profileId: normalizeTrainingProfileId(row),
+      darts: Number(row?.darts) || 0,
+      avg3D: Number(row?.avg3D) || 0,
+      bestVisit: Number(row?.bestVisit) || 0,
+      bestCheckout:
+        row?.bestCheckout === null || row?.bestCheckout === undefined
+          ? null
+          : Number(row?.bestCheckout) || 0,
+      hitsTotal,
+      hits60: Number(row?.hits60) || thresholds.hits60,
+      hits80: Number(row?.hits80) || thresholds.hits80,
+      hits100: Number(row?.hits100) || thresholds.hits100,
+      hits120: Number(row?.hits120) || thresholds.hits120,
+      hits140: Number(row?.hits140) || thresholds.hits140,
+      hits180: Number(row?.hits180) || thresholds.hits180,
+      miss,
+      singleHits,
+      doubleHits,
+      tripleHits,
+      bull25,
+      bull50,
+      bust,
+      coAttempts:
+        Number(row?.coAttempts) ||
+        (Number(row?.bestCheckout) > 0 ? 1 : 0),
+      coSuccess:
+        Number(row?.coSuccess) ||
+        (Number(row?.bestCheckout) > 0 ? 1 : 0),
+    };
+  });
+
   try {
     const raw = window.localStorage.getItem(TRAINING_X01_STATS_KEY);
-    if (!raw) return [];
+    if (!raw) return fullMapped;
     const parsed = JSON.parse(raw);
-    if (!Array.isArray(parsed)) return [];
+    if (!Array.isArray(parsed)) return fullMapped;
 
-    const normalized = parsed.map((row: any, idx: number) => {
-      const rawProfileId = row?.profileId;
-      const normalizedProfileId =
-        rawProfileId === null || rawProfileId === undefined
-          ? ""
-          : String(rawProfileId).trim();
+    const exactLegacy = parsed
+      .map((row: any, idx: number) => {
+        const singleHits = Number(row?.hitsS) || 0;
+        const doubleHits = Number(row?.hitsD) || 0;
+        const tripleHits = Number(row?.hitsT) || 0;
+        const bull25 = Number(row?.bull) || 0;
+        const bull50 = Number(row?.dBull) || 0;
+        const miss = Number(row?.miss) || 0;
+        const bust = Number(row?.bust) || 0;
+        const hitsTotal =
+          Number(row?.hitsTotal) ||
+          singleHits + doubleHits + tripleHits + bull25 + bull50;
+        const legacyProfileId = normalizeTrainingProfileId(row);
 
-      const bestCheckoutRaw =
-        row?.bestCheckout !== undefined && row?.bestCheckout !== null
-          ? row.bestCheckout
-          : row?.checkout;
+        return {
+          id: String(row?.id ?? `legacy_${idx}`),
+          date: Number(row?.date) || Date.now(),
+          profileId: legacyProfileId,
+          darts: Number(row?.darts) || 0,
+          avg3D: Number(row?.avg3D) || 0,
+          bestVisit: Number(row?.bestVisit) || 0,
+          bestCheckout:
+            row?.bestCheckout === null || row?.bestCheckout === undefined
+              ? row?.checkout === null || row?.checkout === undefined
+                ? null
+                : Number(row?.checkout) || 0
+              : Number(row?.bestCheckout) || 0,
+          hitsTotal,
+          hits60: Number(row?.hits60) || 0,
+          hits80: Number(row?.hits80) || 0,
+          hits100: Number(row?.hits100) || 0,
+          hits120: Number(row?.hits120) || 0,
+          hits140: Number(row?.hits140) || 0,
+          hits180: Number(row?.hits180) || 0,
+          miss,
+          singleHits,
+          doubleHits,
+          tripleHits,
+          bull25,
+          bull50,
+          bust,
+          coAttempts:
+            Number(row?.coAttempts) ||
+            ((row?.bestCheckout ?? row?.checkout) ? 1 : 0),
+          coSuccess:
+            Number(row?.coSuccess) ||
+            ((row?.bestCheckout ?? row?.checkout) ? 1 : 0),
+        };
+      })
+      .filter((s) => s.profileId === profileId);
 
-      return {
-        id: row?.id ?? String(idx),
-        date: Number(row?.date ?? row?.createdAt) || Date.now(),
-        profileId: normalizedProfileId,
-        darts: Number(row?.darts) || 0,
-        avg3D: Number(row?.avg3D ?? row?.avg3 ?? 0) || 0,
-        bestVisit: Number(row?.bestVisit) || 0,
-        bestCheckout:
-          bestCheckoutRaw === null || bestCheckoutRaw === undefined
-            ? null
-            : Number(bestCheckoutRaw) || 0,
-      } as TrainingX01SessionLite;
+    const legacyFallback =
+      exactLegacy.length > 0
+        ? []
+        : parsed
+            .map((row: any, idx: number) => {
+              const singleHits = Number(row?.hitsS) || 0;
+              const doubleHits = Number(row?.hitsD) || 0;
+              const tripleHits = Number(row?.hitsT) || 0;
+              const bull25 = Number(row?.bull) || 0;
+              const bull50 = Number(row?.dBull) || 0;
+              const miss = Number(row?.miss) || 0;
+              const bust = Number(row?.bust) || 0;
+              const hitsTotal =
+                Number(row?.hitsTotal) ||
+                singleHits + doubleHits + tripleHits + bull25 + bull50;
+              const rawPid = normalizeTrainingProfileId(row);
+              const canFallback =
+                !rawPid ||
+                rawPid === "unknown" ||
+                rawPid === "local" ||
+                rawPid === "null" ||
+                rawPid === "undefined";
+
+              if (!canFallback) return null;
+
+              return {
+                id: String(row?.id ?? `legacy_fb_${idx}`),
+                date: Number(row?.date) || Date.now(),
+                profileId,
+                darts: Number(row?.darts) || 0,
+                avg3D: Number(row?.avg3D) || 0,
+                bestVisit: Number(row?.bestVisit) || 0,
+                bestCheckout:
+                  row?.bestCheckout === null || row?.bestCheckout === undefined
+                    ? row?.checkout === null || row?.checkout === undefined
+                      ? null
+                      : Number(row?.checkout) || 0
+                    : Number(row?.bestCheckout) || 0,
+                hitsTotal,
+                hits60: Number(row?.hits60) || 0,
+                hits80: Number(row?.hits80) || 0,
+                hits100: Number(row?.hits100) || 0,
+                hits120: Number(row?.hits120) || 0,
+                hits140: Number(row?.hits140) || 0,
+                hits180: Number(row?.hits180) || 0,
+                miss,
+                singleHits,
+                doubleHits,
+                tripleHits,
+                bull25,
+                bull50,
+                bust,
+                coAttempts:
+                  Number(row?.coAttempts) ||
+                  ((row?.bestCheckout ?? row?.checkout) ? 1 : 0),
+                coSuccess:
+                  Number(row?.coSuccess) ||
+                  ((row?.bestCheckout ?? row?.checkout) ? 1 : 0),
+              };
+            })
+            .filter(Boolean);
+
+    const merged = [...fullMapped, ...exactLegacy, ...legacyFallback];
+    const seen = new Set<string>();
+    return merged.filter((s) => {
+      const key = `${s.id}__${s.date}__${s.darts}__${s.avg3D}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
     });
-
-    const exact = normalized.filter((s) => s.profileId === profileId);
-    if (exact.length) return exact;
-
-    const legacyFallback = normalized.filter((s) => {
-      const pid = (s.profileId || "").toLowerCase();
-      return pid === "" || pid === "unknown" || pid === "local" || pid === "null" || pid === "undefined";
-    });
-
-    return legacyFallback;
   } catch (e) {
     console.warn("[StatsX01Compare] loadTrainingSessions failed", e);
-    return [];
+    return fullMapped;
   }
 }
 
@@ -1053,8 +1256,24 @@ const StatsX01Compare: React.FC<Props> = ({ store, profileId, compact }) => {
             dartsThrown: s.darts || undefined,
             legsWon: undefined,
             legsLost: undefined,
-            matchesPlayed: 1,
+            matchesPlayed: 0,
             matchesWon: 0,
+            hitsTotal: s.hitsTotal,
+            hits60: s.hits60,
+            hits80: s.hits80,
+            hits100: s.hits100,
+            hits120: s.hits120,
+            hits140: s.hits140,
+            hits180: s.hits180,
+            miss: s.miss,
+            singleHits: s.singleHits,
+            doubleHits: s.doubleHits,
+            tripleHits: s.tripleHits,
+            bull25: s.bull25,
+            bull50: s.bull50,
+            bust: s.bust,
+            coAttempts: s.coAttempts,
+            coSuccess: s.coSuccess,
           });
         }
 
@@ -1180,7 +1399,18 @@ const StatsX01Compare: React.FC<Props> = ({ store, profileId, compact }) => {
     );
   }
 
-  const renderValue = (row: RowDef, stats: AggregatedStats) => {
+  const renderValue = (
+    row: RowDef,
+    stats: AggregatedStats,
+    mode: "training" | "local" | "online"
+  ) => {
+    const trainingNAInRecords = new Set(["Victoires", "Win %"]);
+
+    if (mode === "training") {
+      if (row.section === "MATCHES") return "—";
+      if (row.section === "RECORDS" && trainingNAInRecords.has(row.label)) return "—";
+    }
+
     const raw = row.get(stats);
     if (raw == null || Number.isNaN(raw)) return "—";
     switch (row.kind) {
@@ -1191,7 +1421,7 @@ const StatsX01Compare: React.FC<Props> = ({ store, profileId, compact }) => {
       case "num2":
         return fmtNum(raw, 2);
       case "pct":
-        return fmtNum(raw, 1); // déjà en %
+        return fmtNum(raw, 1);
       default:
         return "—";
     }
@@ -1395,7 +1625,7 @@ const StatsX01Compare: React.FC<Props> = ({ store, profileId, compact }) => {
                     fontWeight: 700,
                   }}
                 >
-                  {renderValue(row, aggTraining)}
+                  {renderValue(row, aggTraining, "training")}
                 </div>
                 <div
                   style={{
@@ -1404,7 +1634,7 @@ const StatsX01Compare: React.FC<Props> = ({ store, profileId, compact }) => {
                     fontWeight: 700,
                   }}
                 >
-                  {renderValue(row, aggLocal)}
+                  {renderValue(row, aggLocal, "local")}
                 </div>
                 <div
                   style={{
@@ -1413,7 +1643,7 @@ const StatsX01Compare: React.FC<Props> = ({ store, profileId, compact }) => {
                     fontWeight: 700,
                   }}
                 >
-                  {renderValue(row, aggOnline)}
+                  {renderValue(row, aggOnline, "online")}
                 </div>
               </div>
             ))}
@@ -1682,7 +1912,7 @@ const StatsX01Compare: React.FC<Props> = ({ store, profileId, compact }) => {
                   fontWeight: 700,
                 }}
               >
-                {renderValue(row, aggLocal)}
+                {renderValue(row, aggLocal, "local")}
               </div>
               <div
                 style={{
@@ -1691,7 +1921,7 @@ const StatsX01Compare: React.FC<Props> = ({ store, profileId, compact }) => {
                   fontWeight: 700,
                 }}
               >
-                {renderValue(row, aggOnline)}
+                {renderValue(row, aggOnline, "online")}
               </div>
             </div>
           ))}

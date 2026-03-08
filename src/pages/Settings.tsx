@@ -324,6 +324,26 @@ const DEFAULT_PREFS: AccountPrefs = {
   inAppNotifs: true,
 };
 
+function safeReadJson<T = any>(key: string): T | null {
+  try {
+    const raw = localStorage.getItem(key);
+    if (!raw) return null;
+    return JSON.parse(raw) as T;
+  } catch {
+    return null;
+  }
+}
+
+function fmtDateTime(v: any): string {
+  try {
+    const n = Number(v);
+    if (!Number.isFinite(n) || n <= 0) return "—";
+    return new Date(n).toLocaleString();
+  } catch {
+    return "—";
+  }
+}
+
 // ---------------- Petit composant ligne toggle ----------------
 
 function ToggleRow({
@@ -875,7 +895,7 @@ function DevModeBlock() {
 
 // ---------------- Composant principal ----------------
 
-type SettingsTab = "menu" | "account" | "theme" | "lang" | "general" | "sport";
+type SettingsTab = "menu" | "account" | "theme" | "lang" | "general" | "sport" | "diagnostics";
 
 // ---------------- Account pages (NEW simple & clean) ----------------
 
@@ -1657,6 +1677,169 @@ export default function Settings({ go }: Props) {
     );
   }
 
+  function DiagnosticsSection() {
+    const [tick, setTick] = React.useState(0);
+
+    React.useEffect(() => {
+      const id = window.setInterval(() => setTick((v) => v + 1), 2000);
+      return () => window.clearInterval(id);
+    }, []);
+
+    const memoryDiag = safeReadJson<any>("dc_memory_diag_v1");
+    const storeDiag = safeReadJson<any>("dc_last_store_size_v1");
+    const storeWarn = safeReadJson<any>("dc_store_size_warning");
+    const memWarn = safeReadJson<any>("dc_last_memory_warning_v1");
+    const runtimeErr = safeReadJson<any>("dc_last_runtime_error_v1");
+    const chunkErr = safeReadJson<any>("dc_last_chunk_error_v1");
+
+    const rowStyle: React.CSSProperties = {
+      display: "grid",
+      gridTemplateColumns: "140px 1fr",
+      gap: 8,
+      alignItems: "start",
+      padding: "8px 0",
+      borderBottom: `1px solid ${theme.borderSoft}`,
+    };
+
+    const monoBox: React.CSSProperties = {
+      marginTop: 8,
+      padding: 10,
+      borderRadius: 12,
+      border: `1px solid ${theme.borderSoft}`,
+      background: "rgba(0,0,0,0.28)",
+      fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
+      fontSize: 11,
+      lineHeight: 1.4,
+      whiteSpace: "pre-wrap",
+      wordBreak: "break-word",
+      color: theme.textSoft,
+    };
+
+    const report = {
+      memoryDiag,
+      storeDiag,
+      storeWarn,
+      memWarn,
+      runtimeErr,
+      chunkErr,
+      href: (() => {
+        try { return location.href; } catch { return ""; }
+      })(),
+      tick,
+    };
+
+    const copyReport = async () => {
+      const txt = JSON.stringify(report, null, 2);
+      try {
+        await navigator.clipboard.writeText(txt);
+        safeAlert("Diagnostic copié.");
+      } catch {
+        safeAlert(txt);
+      }
+    };
+
+    const clearDiag = () => {
+      const keys = [
+        "dc_memory_diag_v1",
+        "dc_last_store_size_v1",
+        "dc_store_size_warning",
+        "dc_last_memory_warning_v1",
+        "dc_last_runtime_error_v1",
+        "dc_last_chunk_error_v1",
+      ];
+      for (const k of keys) {
+        try { localStorage.removeItem(k); } catch {}
+      }
+      setTick((v) => v + 1);
+    };
+
+    return (
+      <section
+        style={{
+          background: CARD_BG,
+          borderRadius: 18,
+          border: `1px solid ${theme.borderSoft}`,
+          padding: 16,
+          marginBottom: 24,
+        }}
+      >
+        <h2
+          style={{
+            margin: 0,
+            marginBottom: 8,
+            fontSize: 16,
+            color: theme.primary,
+            textTransform: "uppercase",
+            letterSpacing: 1,
+          }}
+        >
+          {t("settings.diagnostics.title", "Diagnostic mémoire / crash")}
+        </h2>
+
+        <div style={{ fontSize: 12, color: theme.textSoft, lineHeight: 1.45, marginBottom: 10 }}>
+          {t(
+            "settings.diagnostics.help",
+            "Ces informations servent à identifier les crashs PWA / mémoire sur mobile et les erreurs de chargement."
+          )}
+        </div>
+
+        <div style={rowStyle}>
+          <div style={{ color: theme.textSoft, fontWeight: 800 }}>MEM</div>
+          <div style={{ color: theme.text }}>{memoryDiag ? `${memoryDiag.usedMB ?? "?"} / ${memoryDiag.limitMB ?? "?"} MB` : "—"}</div>
+        </div>
+
+        <div style={rowStyle}>
+          <div style={{ color: theme.textSoft, fontWeight: 800 }}>STORE</div>
+          <div style={{ color: theme.text }}>{storeDiag?.mb != null ? `${storeDiag.mb} MB` : "—"}</div>
+        </div>
+
+        <div style={rowStyle}>
+          <div style={{ color: theme.textSoft, fontWeight: 800 }}>Route</div>
+          <div style={{ color: theme.text }}>{memoryDiag?.route || "—"}</div>
+        </div>
+
+        <div style={rowStyle}>
+          <div style={{ color: theme.textSoft, fontWeight: 800 }}>Dernier relevé</div>
+          <div style={{ color: theme.text }}>{fmtDateTime(memoryDiag?.at)}</div>
+        </div>
+
+        <div style={{ marginTop: 12, display: "flex", flexWrap: "wrap", gap: 10 }}>
+          <button type="button" onClick={() => setTick((v) => v + 1)} style={{ borderRadius: 12, border: `1px solid ${theme.borderSoft}`, padding: "8px 12px", background: "rgba(255,255,255,0.04)", color: theme.text, fontWeight: 800, cursor: "pointer" }}>
+            {t("settings.diagnostics.refresh", "Rafraîchir")}
+          </button>
+          <button type="button" onClick={copyReport} style={{ borderRadius: 12, border: `1px solid ${theme.primary}`, padding: "8px 12px", background: "rgba(0,0,0,0.35)", color: theme.primary, fontWeight: 900, cursor: "pointer", boxShadow: `0 0 10px ${theme.primary}22` }}>
+            {t("settings.diagnostics.copy", "Copier le diagnostic")}
+          </button>
+          <button type="button" onClick={clearDiag} style={{ borderRadius: 12, border: `1px solid rgba(255,120,120,0.45)`, padding: "8px 12px", background: "rgba(90,0,0,0.22)", color: "#ffb7b7", fontWeight: 800, cursor: "pointer" }}>
+            {t("settings.diagnostics.clear", "Vider les logs")}
+          </button>
+        </div>
+
+        <div style={monoBox}>
+          <div><strong>Warning mémoire</strong>: {memWarn ? fmtDateTime(memWarn.at) : "—"}</div>
+          <div>{memWarn ? `used=${memWarn.usedMB} MB / limit=${memWarn.limitMB} MB / route=${memWarn.route || "—"}` : "Aucun"}</div>
+        </div>
+
+        <div style={monoBox}>
+          <div><strong>Warning store</strong>: {storeWarn ? fmtDateTime(storeWarn.at) : "—"}</div>
+          <div>{storeWarn ? `size=${storeWarn.mb} MB / reason=${storeWarn.reason || "—"}` : "Aucun"}</div>
+        </div>
+
+        <div style={monoBox}>
+          <div><strong>Dernière erreur runtime</strong>: {runtimeErr ? fmtDateTime(runtimeErr.at) : "—"}</div>
+          <div>{runtimeErr ? `${runtimeErr.type || "error"} — ${runtimeErr.message || ""}` : "Aucune"}</div>
+          {runtimeErr?.href ? <div>URL: {runtimeErr.href}</div> : null}
+        </div>
+
+        <div style={monoBox}>
+          <div><strong>Dernière erreur chunk</strong>: {chunkErr ? fmtDateTime(chunkErr.at) : "—"}</div>
+          <div>{chunkErr ? `${chunkErr.message || ""}` : "Aucune"}</div>
+          {chunkErr?.href ? <div>URL: {chunkErr.href}</div> : null}
+        </div>
+      </section>
+    );
+  }
+
   function SportSection() {
     type GameId =
       | "darts"
@@ -1882,6 +2065,8 @@ export default function Settings({ go }: Props) {
       ? t("settings.menu.lang", "Langues")
       : tab === "general"
       ? t("settings.menu.general", "Réglages")
+      : tab === "diagnostics"
+      ? t("settings.menu.diagnostics", "Diagnostic")
       : t("settings.menu.sport", "Choix de sport");
 
   const headerSubtitle =
@@ -1895,6 +2080,8 @@ export default function Settings({ go }: Props) {
       ? t("settings.lang.subtitle", "Choisis la langue de l’interface.")
       : tab === "sport"
       ? t("settings.sport.subtitle", "Contrôle le sport/jeu au démarrage.")
+      : tab === "diagnostics"
+      ? t("settings.diagnostics.subtitle", "Mémoire, taille du store et derniers incidents capturés.")
       : t("settings.reset.subtitle", "Efface les données locales de l’application sur cet appareil.");
 
   return (
@@ -2002,6 +2189,13 @@ export default function Settings({ go }: Props) {
             />
 
             <SettingsMenuCard
+              title={t("settings.menu.diagnostics", "Diagnostic")}
+              subtitle={t("settings.menu.diagnostics.sub", "Mémoire, store, route active, derniers warnings et erreurs capturées.")}
+              theme={theme}
+              onClick={() => setTab("diagnostics")}
+            />
+
+            <SettingsMenuCard
               title={t("settings.menu.cast", "Caster sur un écran")}
               subtitle={t("settings.menu.cast.sub", "Diffuser un scoreboard sur TV / PC / tablette (code de room).")}
               theme={theme}
@@ -2026,6 +2220,7 @@ export default function Settings({ go }: Props) {
         {tab === "theme" && <ThemeSection />}
         {tab === "lang" && <LangSection />}
         {tab === "sport" && <SportSection />}
+        {tab === "diagnostics" && <DiagnosticsSection />}
         {tab === "general" && <GeneralSection />}
       </div>
     </div>

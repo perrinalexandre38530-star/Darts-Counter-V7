@@ -102,6 +102,17 @@ export type TrainingX01Session = {
   dBull: number;
   bust: number;
 
+  // métriques détaillées additionnelles (comparateur X01)
+  hitsTotal?: number;
+  hits60?: number;
+  hits80?: number;
+  hits100?: number;
+  hits120?: number;
+  hits140?: number;
+  hits180?: number;
+  coAttempts?: number;
+  coSuccess?: number;
+
   // anciens agrégats
   bySegment?: Record<string, number>;
 

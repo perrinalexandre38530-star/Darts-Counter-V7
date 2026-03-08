@@ -17,48 +17,21 @@ import { startMemoryWatchdog } from "./utils/memoryWatchdog";
 // ✅ démarre le watchdog mémoire Android/WebView
 startMemoryWatchdog();
 
+// retire explicitement les anciens HUD flottants injectés par d’anciens patchs
+try {
+  document.getElementById("dc-memory-hud")?.remove();
+  document.getElementById("dc-mobile-memory-hud")?.remove();
+} catch {}
+
 
 function formatMb(bytes: number | null | undefined) {
   if (!bytes || !Number.isFinite(bytes)) return "?";
   return String(Math.round((bytes / 1024 / 1024) * 10) / 10);
 }
 
-function startInlineMobileMemoryHud() {
-  if (typeof window === "undefined" || typeof document === "undefined") return;
 
-  let el = document.getElementById("dc-mobile-memory-hud") as HTMLDivElement | null;
-  if (!el) {
-    el = document.createElement("div");
-    el.id = "dc-mobile-memory-hud";
-    el.style.position = "fixed";
-    el.style.right = "8px";
-    el.style.bottom = "8px";
-    el.style.zIndex = "999999";
-    el.style.padding = "6px 8px";
-    el.style.borderRadius = "10px";
-    el.style.background = "rgba(8,10,14,.78)";
-    el.style.backdropFilter = "blur(6px)";
-    el.style.color = "#d7ffe0";
-    el.style.font = "11px/1.25 ui-monospace, SFMono-Regular, Menlo, monospace";
-    el.style.border = "1px solid rgba(255,255,255,.12)";
-    el.style.pointerEvents = "none";
-    el.style.maxWidth = "70vw";
-    el.textContent = "MEM …";
-
-    const mount = () => {
-      try {
-        if (el && document.body && !document.body.contains(el)) {
-          document.body.appendChild(el);
-        }
-      } catch {}
-    };
-
-    if (document.readyState === "loading") {
-      document.addEventListener("DOMContentLoaded", mount, { once: true });
-    } else {
-      mount();
-    }
-  }
+function startMemoryDiagnosticsSampler() {
+  if (typeof window === "undefined") return;
 
   const update = () => {
     try {
@@ -84,26 +57,38 @@ function startInlineMobileMemoryHud() {
         }
       })();
 
-      const txt = `MEM ${formatMb(used)}/${formatMb(limit)} MB | STORE ${storeMb} MB | ${route}`;
-      if (el) el.textContent = txt;
+      const usedMb = formatMb(used);
+      const limitMb = formatMb(limit);
 
-      const limitMb = Number(formatMb(limit));
-      const usedMb = Number(formatMb(used));
-      if (el && Number.isFinite(limitMb) && Number.isFinite(usedMb) && limitMb > 0 && usedMb > limitMb * 0.85) {
-        el.style.color = "#ff8f8f";
+      try {
+        localStorage.setItem(
+          "dc_memory_diag_v1",
+          JSON.stringify({
+            at: Date.now(),
+            usedBytes: used,
+            limitBytes: limit,
+            usedMB: usedMb,
+            limitMB: limitMb,
+            storeMB: storeMb,
+            route,
+          })
+        );
+      } catch {}
+
+      const limitNum = Number(limitMb);
+      const usedNum = Number(usedMb);
+      if (Number.isFinite(limitNum) && Number.isFinite(usedNum) && limitNum > 0 && usedNum > limitNum * 0.85) {
         try {
           localStorage.setItem(
             "dc_last_memory_warning_v1",
             JSON.stringify({
               at: Date.now(),
-              usedMB: usedMb,
-              limitMB: limitMb,
+              usedMB: usedNum,
+              limitMB: limitNum,
               route,
             })
           );
         } catch {}
-      } else if (el) {
-        el.style.color = "#d7ffe0";
       }
     } catch {}
   };
@@ -112,7 +97,8 @@ function startInlineMobileMemoryHud() {
   window.setInterval(update, 2000);
 }
 
-startInlineMobileMemoryHud();
+startMemoryDiagnosticsSampler();
+
 
 // One-shot startup cleanup for stale SW/cache states after deploy.
 // Triggered only when URL has ?purge=1 or localStorage flag dc_force_purge_sw=1.
