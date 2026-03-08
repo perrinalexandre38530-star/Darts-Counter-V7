@@ -920,6 +920,26 @@ export default function Profiles({
   
   const active = profiles.find((p) => p.id === activeProfileId) || null;
 
+  const linkedOnlineProfile = React.useMemo(() => {
+    if (auth.status !== "signed_in") return null;
+    const uid = String(auth.user?.id || "");
+    const emailNorm = String(auth.user?.email || "").trim().toLowerCase();
+    if (!uid && !emailNorm) return null;
+
+    return (
+      profiles.find((p: any) => {
+        const pi = ((p as any)?.privateInfo || {}) as PrivateInfo;
+        const onlineUserId = String((pi as any)?.onlineUserId || "");
+        const onlineEmail = String((pi as any)?.onlineEmail || "").trim().toLowerCase();
+        const localEmail = String((pi as any)?.email || "").trim().toLowerCase();
+        return !!(
+          (uid && onlineUserId === uid) ||
+          (emailNorm && (onlineEmail === emailNorm || localEmail === emailNorm))
+        );
+      }) || null
+    );
+  }, [profiles, auth.status, auth.user?.id, auth.user?.email]);
+
   // ------------------------------------------------------------
   // Online "Me" helpers (ne touche pas activeProfileId)
   // - Permet d'afficher DartSets/Avatar ONLINE dans "Mon profil"
@@ -944,6 +964,7 @@ export default function Profiles({
     // ✅ UNIQUE ACCOUNT: pas de profil "mirror" online:<uid>
     // On réutilise le profil local lié à ce user_id (ou à défaut le profil actif).
     const owner =
+      linkedOnlineProfile ||
       (store?.profiles || []).find((p: any) => {
         const pi = (p as any)?.privateInfo || {};
         const legacyUserId = String((pi as any)?.userId || "");
@@ -968,16 +989,26 @@ export default function Profiles({
 
   // Dans "Mon profil", on veut afficher l'avatar ONLINE même si le profil actif local n'en a pas.
   const activeForMeUi = React.useMemo(() => {
-    if (!active) return null;
-    if (auth.status !== "signed_in") return active;
+    const base = linkedOnlineProfile || active;
+    if (!base) return null;
+    if (auth.status !== "signed_in") return base;
     const op: any = (auth as any).profile || (auth as any).onlineProfile || null;
     const onlineAvatarUrl =
       op?.avatar_url || op?.avatarUrl || op?.avatar || op?.photo_url || "";
+    const cached = getAvatarCacheLib(String((base as any)?.id || ""));
     return {
-      ...active,
-      avatarUrl: onlineAvatarUrl || (active as any)?.avatarUrl,
+      ...(base as any),
+      avatarUrl:
+        onlineAvatarUrl ||
+        (base as any)?.avatarUrl ||
+        cached?.avatarUrl ||
+        undefined,
+      avatarDataUrl:
+        onlineAvatarUrl
+          ? undefined
+          : (base as any)?.avatarDataUrl || cached?.avatarDataUrl || undefined,
     } as any;
-  }, [active, auth.status, (auth as any)?.profile, (auth as any)?.onlineProfile]);
+  }, [linkedOnlineProfile, active, auth.status, (auth as any)?.profile, (auth as any)?.onlineProfile]);
 
   // Anti-reupload (session) pour les avatars locaux envoyés online
   const avatarUploadDoneRef = React.useRef<Set<string>>(new Set());
@@ -2961,30 +2992,26 @@ function UnifiedAuthBlock({
         }) || null;
     }
 
-    // 5) Aucun profil local -> on réutilise le premier, ou on en crée un
+    // 5) Aucun profil local lié -> on crée un profil dédié à ce compte.
     if (!match) {
-      if (profiles.length > 0) {
-        match = profiles[0] as any;
-      } else {
-        let displayName = (emailNorm ? emailNorm.split("@")[0] : "Joueur");
-        try {
-          const session = await onlineApi.getCurrentSession();
-          displayName = session?.user.user_metadata?.full_name || session?.user.user_metadata?.name || session?.user.user_metadata?.nickname || session?.user.nickname || (session?.user.email ? String(session.user.email).split("@")[0] : "Joueur");
-        } catch (err) {
-          console.warn("[profiles] getCurrentSession after login error:", err);
-        }
-
-        const privateInfo: Partial<PrivateInfo> = {
-          email: emailNorm,
-          // ⚠️ on ne stocke PAS le mot de passe en local (sécurité)
-          password: "",
-          onlineUserId: uid,
-          onlineEmail: emailNorm,
-        };
-
-        onCreate(displayName, null, privateInfo);
-        return;
+      let displayName = (emailNorm ? emailNorm.split("@")[0] : "Joueur");
+      try {
+        const session = await onlineApi.getCurrentSession();
+        displayName = session?.user.user_metadata?.full_name || session?.user.user_metadata?.name || session?.user.user_metadata?.nickname || session?.user.nickname || (session?.user.email ? String(session.user.email).split("@")[0] : "Joueur");
+      } catch (err) {
+        console.warn("[profiles] getCurrentSession after login error:", err);
       }
+
+      const privateInfo: Partial<PrivateInfo> = {
+        email: emailNorm,
+        // ⚠️ on ne stocke PAS le mot de passe en local (sécurité)
+        password: "",
+        onlineUserId: uid,
+        onlineEmail: emailNorm,
+      };
+
+      onCreate(displayName, null, privateInfo);
+      return;
     }
 
     // 6) Patch liaison UID (et on nettoie le mot de passe local)

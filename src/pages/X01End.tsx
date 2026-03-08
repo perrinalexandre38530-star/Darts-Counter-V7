@@ -1467,6 +1467,7 @@ function buildPerPlayerMetrics(
         r.co_success ??
         r.hitsCheckout ??
         r.hitsCO ??
+        r.coSuccess ??
         imp.coHits,
       m.coHits
     );

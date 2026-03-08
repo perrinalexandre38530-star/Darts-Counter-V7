@@ -257,31 +257,28 @@ export function ensureLocalProfileForOnlineUser(store: any, user: any, onlinePro
     };
   }
 
-  // Default: link the ACTIVE profile (no creation)
-  if (active) {
-    const piA = readPrivateInfo(active);
-    const activeLinked = writePrivateInfo(
-      {
-        ...active,
-        ...(onlineProfile
-          ? {
-              name: onlineProfile?.nickname || active?.name,
-              avatarUrl: onlineProfile?.avatarUrl || active?.avatarUrl,
-              country: onlineProfile?.country || active?.country,
-            }
-          : null),
-      },
-      {
-        ...piA,
-        onlineUserId: uid,
-        onlineEmail: email || piA.onlineEmail || "",
-        password: "",
-      }
-    );
+  // Default: do NOT hijack the current active local profile.
+  // Create a dedicated local profile bound to this online account.
+  const nickname = String(onlineProfile?.nickname || onlineProfile?.displayName || "").trim();
+  const fallbackName = nickname || (email ? email.split("@")[0] : "Joueur");
+  const dedicatedProfile: any = {
+    id: uid,
+    name: fallbackName,
+    avatarDataUrl: onlineProfile?.avatarUrl || undefined,
+    avatarUrl: onlineProfile?.avatarUrl || undefined,
+    country: onlineProfile?.country || active?.country || "FR",
+    createdAt: Date.now(),
+    updatedAt: Date.now(),
+    privateInfo: {
+      onlineUserId: uid,
+      onlineEmail: email || "",
+      password: "",
+    },
+  };
 
-    const nextProfiles = profiles.map((p) => (String(p?.id || "") === String(active?.id || "") ? activeLinked : p));
-    return { ...store, profiles: nextProfiles, activeProfileId: String(activeLinked?.id || activeId) };
-  }
-
-  return store;
+  return {
+    ...store,
+    profiles: [...profiles, dedicatedProfile],
+    activeProfileId: uid,
+  };
 }
