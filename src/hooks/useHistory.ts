@@ -3,6 +3,18 @@
 // Hook pour charger l'historique (IDB) + refresh simple
 // ============================================
 import { useEffect, useState } from "react";
+
+function safeArray<T = any>(v: any): T[] {
+  return Array.isArray(v) ? (v as T[]) : [];
+}
+
+function isUsableSavedMatch(v: any): boolean {
+  try {
+    return !!String(v?.id ?? v?.matchId ?? "").trim();
+  } catch {
+    return false;
+  }
+}
 import { History, type SavedMatch } from "../lib/history";
 
 export function useHistory() {
@@ -13,7 +25,7 @@ export function useHistory() {
     setLoading(true);
     try {
       const out = await History.list();
-      setRows(out);
+      setRows(safeArray<SavedMatch>(out).filter(isUsableSavedMatch));
     } finally {
       setLoading(false);
     }
@@ -27,8 +39,13 @@ export function useHistory() {
     const onStorage = (e: StorageEvent) => {
       if (e.key === KEY) refresh();
     };
+    const onUpd = () => refresh();
     window.addEventListener("storage", onStorage);
-    return () => window.removeEventListener("storage", onStorage);
+    window.addEventListener("dc-history-updated" as any, onUpd);
+    return () => {
+      window.removeEventListener("storage", onStorage);
+      window.removeEventListener("dc-history-updated" as any, onUpd);
+    };
   }, []);
 
   // exposer un moyen manuel de refresh après upsert/remove

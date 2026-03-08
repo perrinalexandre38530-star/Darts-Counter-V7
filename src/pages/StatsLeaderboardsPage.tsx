@@ -28,6 +28,7 @@ import { computeKillerAgg } from "../lib/statsKillerAgg";
 type Props = {
   store: Store;
   go: (tab: any, params?: any) => void;
+  sportOverride?: string | null;
 };
 
 type Scope = "local" | "online";
@@ -40,7 +41,8 @@ type LeaderboardMode =
   | "battle_royale"
   | "clock"
   | "territories"
-  | "dice_duel";
+  | "dice_duel"
+  | "molkky";
 
 type PeriodKey = "D" | "W" | "M" | "Y" | "ALL" | "TOUT";
 
@@ -275,6 +277,18 @@ function isRecordMatchingMode(rec: any, mode: LeaderboardMode, scope: Scope): bo
   const payloadMode = rec?.payload?.mode;
   const payloadVariant = rec?.payload?.variant;
 
+  const game =
+    rec?.game ??
+    rec?.payload?.game ??
+    rec?.summary?.game?.mode ??
+    rec?.summary?.game?.game;
+
+  if (mode === "molkky") {
+    const k = safeStr(kind).toLowerCase();
+    const sp = safeStr(rec?.sport ?? rec?.payload?.sport).toLowerCase();
+    const gm = safeStr(game ?? payloadMode ?? topMode).toLowerCase();
+    return k.includes("molkky") || sp.includes("molkky") || gm.includes("molkky");
+  }
   if (mode === "dice_duel") {
     const k = safeStr(kind).toLowerCase();
     const sp = safeStr(rec?.sport ?? rec?.payload?.sport).toLowerCase();
@@ -282,12 +296,6 @@ function isRecordMatchingMode(rec: any, mode: LeaderboardMode, scope: Scope): bo
     // On accepte tout ce qui est Dice + (optionnel) duel
     return (k.includes("dice") || sp.includes("dice")) && (!v || v.includes("duel") || true);
   }
-  const game =
-    rec?.game ??
-    rec?.payload?.game ??
-    rec?.summary?.game?.mode ??
-    rec?.summary?.game?.game;
-
   const isX01 =
     kind === "x01" ||
     game === "x01" ||
@@ -586,7 +594,19 @@ function computeRowsFromHistory(
     const summary = rec.summary || rec.payload?.summary || null;
 
     // 🎲 DICE DUEL: pas de summary darts -> on lit payload.stats.players
-    if (mode === "dice_duel") {
+    const game =
+    rec?.game ??
+    rec?.payload?.game ??
+    rec?.summary?.game?.mode ??
+    rec?.summary?.game?.game;
+
+  if (mode === "molkky") {
+    const k = safeStr(kind).toLowerCase();
+    const sp = safeStr(rec?.sport ?? rec?.payload?.sport).toLowerCase();
+    const gm = safeStr(game ?? payloadMode ?? topMode).toLowerCase();
+    return k.includes("molkky") || sp.includes("molkky") || gm.includes("molkky");
+  }
+  if (mode === "dice_duel") {
       const ps: any[] =
         rec?.payload?.stats?.players || rec?.payload?.stats?.playersStats || rec?.payload?.players || [];
       const playersArr = Array.isArray(ps) ? ps : [];
@@ -995,11 +1015,11 @@ function metricLabel(m: MetricKey, sport?: string) {
     case "matches":
       return "Matchs joués";
     case "avg3":
-      return sport === "dicegame" ? "Moy. score" : "Moy. 3 darts";
+      return sport === "molkky" ? "Moy. score" : sport === "dicegame" ? "Moy. score" : "Moy. 3 darts";
     case "bestVisit":
-      return "Best visit";
+      return sport === "molkky" ? "Meilleur score" : "Best visit";
     case "bestCheckout":
-      return "Best CO";
+      return sport === "molkky" ? "Meilleur score" : "Best CO";
     case "kills":
       return "Kills";
     case "favNumberHits":
@@ -1064,9 +1084,28 @@ function isBotRow(row: any, botsMap: Record<string, any>, profileIds: Set<string
 
 // =============================================================
 
-export default function StatsLeaderboardsPage({ store }: Props) {
+export default function StatsLeaderboardsPage({ store, sportOverride }: Props) {
   const { sport } = useSport();
-  const isDiceSport = String(sport || "").toLowerCase().includes("dice");
+
+  const inferredHistorySport = React.useMemo(() => {
+    const rows = Array.isArray((store as any)?.history) ? ((store as any).history as any[]) : [];
+    if (!rows.length) return "";
+    const counts = { molkky: 0, dicegame: 0, darts: 0 };
+    for (const r of rows) {
+      const sp = String(r?.sport ?? r?.payload?.sport ?? "").toLowerCase();
+      const kind = String(r?.kind ?? r?.payload?.kind ?? r?.mode ?? "").toLowerCase();
+      if (sp.includes("molkky") || kind.includes("molkky")) counts.molkky += 1;
+      else if (sp.includes("dice") || kind.includes("dice")) counts.dicegame += 1;
+      else counts.darts += 1;
+    }
+    if (counts.molkky > 0 && counts.molkky >= counts.darts && counts.molkky >= counts.dicegame) return "molkky";
+    if (counts.dicegame > 0 && counts.dicegame >= counts.darts) return "dicegame";
+    return "";
+  }, [store]);
+
+  const effectiveSport = String(sportOverride || inferredHistorySport || sport || "").toLowerCase();
+  const isDiceSport = effectiveSport.includes("dice");
+  const isMolkkySport = effectiveSport === "molkky";
 
   const { theme } = useTheme();
   const langAny: any = useLang();
@@ -1088,13 +1127,20 @@ export default function StatsLeaderboardsPage({ store }: Props) {
   );
 
   const [scope, setScope] = React.useState<Scope>("local");
-  const [mode, setMode] = React.useState<LeaderboardMode>(isDiceSport ? "dice_duel" : "x01_multi");
+  const [mode, setMode] = React.useState<LeaderboardMode>(isMolkkySport ? "molkky" : isDiceSport ? "dice_duel" : "x01_multi");
   const [period, setPeriod] = React.useState<PeriodKey>("ALL");
 
   // ✅ NEW: toggle bots (par défaut ON)
   const [includeBots, setIncludeBots] = React.useState<boolean>(true);
+  React.useEffect(() => {
+    setMode(isMolkkySport ? "molkky" : isDiceSport ? "dice_duel" : "x01_multi");
+  }, [isMolkkySport, isDiceSport]);
+
 
   const modeDefs = React.useMemo(() => {
+    if (isMolkkySport) {
+      return [{ id: "molkky", label: "MÖLKKY", metrics: ["matches", "wins", "winRate", "avg3", "bestVisit"] }] as any;
+    }
     if (!isDiceSport) return MODE_DEFS as any;
 
     return [
@@ -1140,7 +1186,7 @@ export default function StatsLeaderboardsPage({ store }: Props) {
         metrics: ["avg3", "wins", "winRate", "matches", "bestVisit"],
       },
     ] as any;
-  }, [isDiceSport]);
+  }, [isDiceSport, isMolkkySport]);
 
 
   // ✅ BATARD filters (derived from History payload.config)

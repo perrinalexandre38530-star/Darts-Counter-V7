@@ -91,6 +91,9 @@ import MobileErrorOverlay from "./components/MobileErrorOverlay";
 // Persistance (IndexedDB via storage.ts)
 import { loadStore, saveStore, exportCloudSnapshot, installLocalStorageDcHook } from "./lib/storage";
 import { setCrashContext } from "./lib/crashReporter";
+import { safeJsonParse, safeJsonStringify } from "./lib/safeJson";
+import { safeArray } from "./utils/safeArray";
+import { filterValidHistory } from "./lib/historyGuard";
 // OPFS / StorageManager — demande la persistance une fois au boot
 import { ensurePersisted } from "./lib/deviceStore";
 // 🔒 Garde-fou localStorage (purge legacy si trop plein)
@@ -331,8 +334,9 @@ if (import.meta.env.DEV) installHistoryProbe();
 function safeRouteParamsForCrash(input: any) {
   try {
     if (input == null) return null;
-    const txt = JSON.stringify(input);
-    if (txt.length <= 1200) return JSON.parse(txt);
+    const txt = safeJsonStringify(input, "{}");
+    const parsed = safeJsonParse(txt, null);
+    if (txt.length <= 1200 && parsed != null) return parsed;
     return { __truncated: true, preview: txt.slice(0, 1200) };
   } catch {
     return { __unserializable: true };
@@ -465,7 +469,7 @@ function buildChangelogSlides(t: (k: string, d?: string) => string, entries: any
 function sanitizeStoreForCloud(s: any) {
   let clone: any;
   try {
-    clone = JSON.parse(JSON.stringify(s || {}));
+    clone = safeJsonParse(safeJsonStringify(s || {}, "{}"), { ...(s || {}) });
   } catch {
     clone = { ...(s || {}) };
   }
@@ -994,10 +998,10 @@ function AuthResetRoute({ go }: { go: (t: Tab, p?: any) => void }) {
 function StatsDetailRoute({ store, go, params }: any) {
   const [rec, setRec] = React.useState<any>(() => {
     if (params?.rec) {
-      return withAvatars(params.rec, store.profiles || []);
+      return withAvatars(params.rec, safeArray(store?.profiles));
     }
-    const fromMem = (store.history || []).find((r: any) => r.id === params?.matchId);
-    return fromMem ? withAvatars(fromMem, store.profiles || []) : null;
+    const fromMem = filterValidHistory(safeArray(store?.history)).find((r: any) => r.id === params?.matchId);
+    return fromMem ? withAvatars(fromMem, safeArray(store?.profiles)) : null;
   });
 
   const matchId: string | undefined = params?.matchId;
@@ -1008,7 +1012,7 @@ function StatsDetailRoute({ store, go, params }: any) {
       if (!matchId) return;
       try {
         const byId = await (History as any)?.get?.(matchId);
-        if (alive && byId) setRec(withAvatars(byId, store.profiles || []));
+        if (alive && byId) setRec(withAvatars(byId, safeArray(store?.profiles)));
       } catch {}
     })();
     return () => {
@@ -1112,7 +1116,7 @@ type BotLS = {
 function loadBotsLS(): BotLS[] {
   try {
     const raw = localStorage.getItem(LS_BOTS_KEY);
-    return raw ? (JSON.parse(raw) as BotLS[]) : [];
+    return raw ? safeJsonParse<BotLS[]>(raw, []) : [];
   } catch {
     return [];
   }
@@ -1120,7 +1124,7 @@ function loadBotsLS(): BotLS[] {
 
 function saveBotsLS(list: BotLS[]) {
   try {
-    localStorage.setItem(LS_BOTS_KEY, JSON.stringify(list));
+    localStorage.setItem(LS_BOTS_KEY, safeJsonStringify(list, "[]"));
   } catch {}
 }
 
@@ -1936,7 +1940,7 @@ useEffect(() => {
 
     const rawPlayers = (m as any)?.players ?? (m as any)?.payload?.players ?? [];
     const players = rawPlayers.map((p: any) => {
-      const prof = (store.profiles || []).find((pr) => pr.id === p?.id);
+      const prof = safeArray(store?.profiles).find((pr) => pr.id === p?.id);
       return {
         id: p?.id,
         name: p?.name ?? prof?.name ?? "",
@@ -1979,7 +1983,7 @@ useEffect(() => {
 
     try {
       const raw = localStorage.getItem(LS_ONLINE_MATCHES_KEY);
-      const list = raw ? JSON.parse(raw) : [];
+      const list = raw ? safeJsonParse<any[]>(raw, []) : [];
       list.unshift({
         id: saved.id,
         mode: saved.kind,
@@ -1990,7 +1994,7 @@ useEffect(() => {
         summary: saved.summary ?? null,
         stats: (saved.payload as any)?.stats ?? null,
       });
-      localStorage.setItem(LS_ONLINE_MATCHES_KEY, JSON.stringify(list.slice(0, 200)));
+      localStorage.setItem(LS_ONLINE_MATCHES_KEY, safeJsonStringify(list.slice(0, 200), "[]"));
     } catch {}
 
     try {
@@ -2028,7 +2032,7 @@ useEffect(() => {
 
     const rawPlayers = (m as any)?.players ?? (m as any)?.payload?.players ?? [];
     const players = rawPlayers.map((p: any) => {
-      const prof = (store.profiles || []).find((pr) => pr.id === p?.id);
+      const prof = safeArray(store?.profiles).find((pr) => pr.id === p?.id);
       return {
         id: p?.id,
         name: p?.name ?? prof?.name ?? "",
@@ -2080,7 +2084,7 @@ useEffect(() => {
 
     const rawPlayers = (m as any)?.players ?? (m as any)?.payload?.players ?? [];
     const players = rawPlayers.map((p: any) => {
-      const prof = (store.profiles || []).find((pr) => pr.id === p?.id);
+      const prof = safeArray(store?.profiles).find((pr) => pr.id === p?.id);
       return {
         id: p?.id,
         name: p?.name ?? prof?.name ?? "",
@@ -2169,7 +2173,7 @@ try {
 
     const rawPlayers = (m as any)?.players ?? (m as any)?.payload?.players ?? [];
     const players = rawPlayers.map((p: any) => {
-      const prof = (store.profiles || []).find((pr) => pr.id === p?.id);
+      const prof = safeArray(store?.profiles).find((pr) => pr.id === p?.id);
       return {
         id: p?.id,
         name: p?.name ?? prof?.name ?? "",
@@ -2254,7 +2258,7 @@ try {
 
     const rawPlayers = (m as any)?.players ?? (m as any)?.payload?.players ?? [];
     const players = rawPlayers.map((p: any) => {
-      const prof = (store.profiles || []).find((pr) => pr.id === p?.id);
+      const prof = safeArray(store?.profiles).find((pr) => pr.id === p?.id);
       return {
         id: p?.id,
         name: p?.name ?? prof?.name ?? "",
@@ -2342,7 +2346,7 @@ try {
 
     const rawPlayers = (m as any)?.players ?? (m as any)?.payload?.players ?? [];
     const players = rawPlayers.map((p: any) => {
-      const prof = (store.profiles || []).find((pr) => pr.id === p?.id);
+      const prof = safeArray(store?.profiles).find((pr) => pr.id === p?.id);
       return {
         id: p?.id,
         name: p?.name ?? prof?.name ?? "",
@@ -2430,8 +2434,8 @@ try {
   }
 
   const historyForUI = React.useMemo(
-    () => (store.history || []).map((r: any) => withAvatars(r, store.profiles || [])),
-    [store.history, store.profiles]
+    () => filterValidHistory(safeArray(store?.history)).map((r: any) => withAvatars(r, safeArray(store?.profiles))),
+    [store?.history, store?.profiles]
   );
 
   if (showSplash) {

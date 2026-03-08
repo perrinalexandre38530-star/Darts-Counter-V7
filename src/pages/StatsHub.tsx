@@ -13,6 +13,7 @@ import StatsPlayerDashboard, {
 } from "../components/StatsPlayerDashboard";
 import { useQuickStats } from "../hooks/useQuickStats";
 import HistoryPage from "./HistoryPage";
+import MolkkyStatsHistoryPage from "./molkky/MolkkyStatsHistoryPage";
 
 import SparklinePro from "../components/SparklinePro";
 import ProfileAvatar from "../components/ProfileAvatar";
@@ -348,7 +349,7 @@ const STATS_CACHE_KEYS = (profileId: string) => [
   `dc-stats-cache:${profileId}`,
 ];
 
-function safeJsonParse<T = any>(raw: any): T | null {
+function safeJsonParseStatsHub<T = any>(raw: any): T | null {
   try {
     if (!raw) return null;
     if (typeof raw === "object") return raw as T;
@@ -375,7 +376,7 @@ function readStatsCache(profileId: string): any | null {
   try {
     for (const k of STATS_CACHE_KEYS(profileId)) {
       const raw = localStorage.getItem(k);
-      const parsed = safeJsonParse(raw);
+      const parsed = safeJsonParseStatsHub(raw);
       if (parsed) return parsed;
     }
   } catch {}
@@ -5204,7 +5205,11 @@ if (tab === "history") {
   return (
     <div style={{ padding: 16, paddingBottom: 80 }}>
       <div style={card}>
-        <HistoryPage go={go} />
+        {isMolkkySport ? (
+          <MolkkyStatsHistoryPage store={store as any} go={go} />
+        ) : (
+          <HistoryPage go={go} />
+        )}
       </div>
     </div>
   );
@@ -5632,13 +5637,13 @@ return (
         )}
       </div>
 
-                {selectedPlayer && (
+                {selectedPlayer && !isMolkkySport && (
                   <div style={{ ...card, marginTop: 8 }}>
                     <StatsTrainingSummary profileId={selectedPlayer.id} />
                   </div>
                 )}
 
-                {selectedPlayer && killerAgg && killerAgg.matches > 0 && (
+                {selectedPlayer && !isMolkkySport && killerAgg && killerAgg.matches > 0 && (
                   <div style={{ ...card, marginTop: 8 }}>
                     <div
                       style={{
@@ -5767,7 +5772,7 @@ return (
                   </div>
                 )}
 
-                {selectedPlayer && cricketStats && (
+                {selectedPlayer && !isMolkkySport && cricketStats && (
                   <div style={{ ...card, marginTop: 8 }}>
                     <React.Suspense fallback={<LazyFallback label="Chargement Cricket…" />}>
                       <StatsCricketDashboard stats={cricketStats} />
@@ -6256,6 +6261,7 @@ return (
                   <StatsLeaderboardsTab
                     records={(isMolkkySport ? records.filter((r: any) => isMolkkyRecord(r)) : records) as any}
                     profiles={storeProfiles as any}
+                    sportOverride={effectiveSport}
                   />
                 </React.Suspense>
               </div>
@@ -6263,7 +6269,11 @@ return (
 
             {currentMode === "history" && (
               <div style={card}>
-                <HistoryPage go={go} />
+                {isMolkkySport ? (
+                  <MolkkyStatsHistoryPage store={store as any} go={go} />
+                ) : (
+                  <HistoryPage go={go} />
+                )}
               </div>
             )}
           </React.Suspense>

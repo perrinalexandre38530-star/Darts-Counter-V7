@@ -40,34 +40,6 @@ export default function StatsShell({ store, go, sportOverride }: Props) {
   const { sport } = useSport();
   const effectiveSport = String(sportOverride || sport || "").toLowerCase();
   const isMolkkySport = effectiveSport === "molkky";
-  const shellTitle = isMolkkySport ? "STATS MÖLKKY" : t("statsShell.title", "STATS");
-  const shellSubtitle = isMolkkySport
-    ? "Centre de statistiques Mölkky : joueur actif, profils locaux, classements et historique."
-    : t(
-        "statsShell.subtitle",
-        "Analyse tes performances, ton training, ton historique et synchronise tes stats."
-      );
-  const localsSubtitle = isMolkkySport
-    ? "Accède aux mêmes vues de stats pour tous les profils locaux Mölkky."
-    : t(
-        "statsShell.locals.subtitle",
-        "Accède aux mêmes vues de stats pour tous les profils locaux."
-      );
-  const leaderboardsSubtitle = isMolkkySport
-    ? "Classements Mölkky locaux par matchs joués, victoires et performances."
-    : "Classements globaux par mode de jeu (X01 multi, Cricket, Killer, etc.).";
-  const trainingSubtitle = isMolkkySport
-    ? "Statistiques d'entraînement indisponibles pour Mölkky."
-    : t(
-        "statsShell.training.subtitle",
-        "Stats complètes de tes sessions Training X01 et Tour de l’horloge."
-      );
-  const onlineSubtitle = isMolkkySport
-    ? "Statistiques online indisponibles pour Mölkky."
-    : t(
-        "statsShell.online.subtitle",
-        'Stats de tes parties Online (quand tu joues en mode "Online").'
-      );
 
   const profiles = store?.profiles ?? [];
   const activeProfileId = store?.activeProfileId ?? null;
@@ -235,7 +207,7 @@ export default function StatsShell({ store, go, sportOverride }: Props) {
                 marginBottom: 4,
               }}
             >
-              {shellTitle}
+              {t("statsShell.title", "STATS")}
             </div>
             <div
               style={{
@@ -245,7 +217,12 @@ export default function StatsShell({ store, go, sportOverride }: Props) {
                 maxWidth: 260,
               }}
             >
-              {shellSubtitle}
+              {isMolkkySport
+                ? "Centre de statistiques Mölkky : joueur actif, profils locaux, classements et historique."
+                : t(
+                    "statsShell.subtitle",
+                    "Analyse tes performances, ton training, ton historique et synchronise tes stats."
+                  )}
             </div>
           </div>
 
@@ -286,7 +263,7 @@ export default function StatsShell({ store, go, sportOverride }: Props) {
       >
         <StatsShellPlayerCard
           profile={active}
-          label={isMolkkySport ? `STATS MÖLKKY ${active ? active.name.toUpperCase() : ""}`.trim() : playerLabel}
+          label={playerLabel}
           theme={theme}
           onClick={() => {
             if (!active) return;
@@ -303,7 +280,10 @@ export default function StatsShell({ store, go, sportOverride }: Props) {
 
         <StatsShellCard
           title={t("statsShell.locals.title", "PROFILS LOCAUX")}
-          subtitle={localsSubtitle}
+          subtitle={t(
+            "statsShell.locals.subtitle",
+            "Accède aux mêmes vues de stats pour tous les profils locaux."
+          )}
           theme={theme}
           onClick={() => {
             go("statsHub", {
@@ -317,7 +297,7 @@ export default function StatsShell({ store, go, sportOverride }: Props) {
 
         <StatsShellCard
           title="CLASSEMENTS"
-          subtitle={leaderboardsSubtitle}
+          subtitle="Classements globaux par mode de jeu (X01 multi, Cricket, Killer, etc.)."
           theme={theme}
           onClick={() => {
             if (isMolkkySport) {
@@ -329,30 +309,51 @@ export default function StatsShell({ store, go, sportOverride }: Props) {
           onInfo={() => setInfoMode("leaderboards")}
         />
 
-        <StatsShellCard
-          title={t("statsShell.training.title", "TRAINING")}
-          subtitle={trainingSubtitle}
-          theme={theme}
-          onClick={() => go("statsHub", { tab: "training" })}
-          onInfo={() => setInfoMode("training")}
-        />
+        {!isMolkkySport && (
+          <>
+            <StatsShellCard
+              title={t("statsShell.training.title", "TRAINING")}
+              subtitle={t(
+                "statsShell.training.subtitle",
+                "Stats complètes de tes sessions Training X01 et Tour de l’horloge."
+              )}
+              theme={theme}
+              onClick={() => go("statsHub", { tab: "training" })}
+              onInfo={() => setInfoMode("training")}
+            />
 
-        <StatsShellCard
-          title={t("statsShell.online.title", "ONLINE")}
-          subtitle={onlineSubtitle}
-          theme={theme}
-          onClick={() => go("stats_online")}
-          onInfo={() => setInfoMode("online")}
-        />
+            <StatsShellCard
+              title={t("statsShell.online.title", "ONLINE")}
+              subtitle={t(
+                "statsShell.online.subtitle",
+                'Stats de tes parties Online (quand tu joues en mode "Online").'
+              )}
+              theme={theme}
+              onClick={() => go("stats_online")}
+              onInfo={() => setInfoMode("online")}
+            />
+          </>
+        )}
 
         <StatsShellCard
           title={t("statsShell.history.title", "HISTORIQUE")}
-          subtitle={t(
-            "statsShell.history.subtitle",
-            "Toutes tes parties et reprise des parties en cours."
-          )}
+          subtitle={isMolkkySport
+            ? "Historique des parties Mölkky locales et reprises en cours."
+            : t(
+                "statsShell.history.subtitle",
+                "Toutes tes parties et reprise des parties en cours."
+              )}
           theme={theme}
-          onClick={() => go("statsHub", { tab: "history" })}
+          onClick={() =>
+            isMolkkySport
+              ? go("statsHub", {
+                  tab: "stats",
+                  mode: "locals",
+                  initialPlayerId: null,
+                  initialStatsSubTab: "history",
+                })
+              : go("statsHub", { tab: "history" })
+          }
           onInfo={() => setInfoMode("history")}
         />
 

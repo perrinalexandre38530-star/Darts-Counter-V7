@@ -108,6 +108,33 @@ export type SavedEntry = SavedMatch & {
   decoded?: any; // payload décodé
 };
 
+function safeArray<T = any>(v: any): T[] {
+  return Array.isArray(v) ? (v as T[]) : [];
+}
+
+function isUsableSavedEntry(v: any): boolean {
+  try {
+    const id = String(v?.id ?? v?.matchId ?? v?.resumeId ?? "").trim();
+    if (!id) return false;
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function normalizeSavedEntry(v: any): SavedEntry {
+  const out: any = { ...(v || {}) };
+  const id = String(out?.id ?? out?.matchId ?? out?.resumeId ?? "").trim();
+  if (id) {
+    out.id = id;
+    if (!out.matchId) out.matchId = id;
+  }
+  out.players = safeArray(out.players);
+  out.summary = out.summary && typeof out.summary === "object" ? out.summary : {};
+  out.game = out.game && typeof out.game === "object" ? out.game : {};
+  return out as SavedEntry;
+}
+
 /* ---------- Helpers players / avatars ---------- */
 
 function getId(v: any): string {
@@ -488,10 +515,11 @@ function getStartScore(e: SavedEntry): number {
 const HistoryAPI = {
   async list(store: Store): Promise<SavedEntry[]> {
     try {
-      const rows = (await History.list()) as SavedEntry[];
+      const rows = safeArray<SavedEntry>(await History.list()).filter(isUsableSavedEntry).map((r) => normalizeSavedEntry(r));
 
       const enhanced = await Promise.all(
         rows.map(async (row) => {
+          try {
           const r: any = row;
           if (!r.summary) r.summary = {};
           if (!r.game) r.game = {};
@@ -526,14 +554,17 @@ const HistoryAPI = {
             }
           }
 
-          return r as SavedEntry;
+          return normalizeSavedEntry(r as SavedEntry);
+          } catch {
+            return normalizeSavedEntry(row as SavedEntry);
+          }
         })
       );
 
-      return enhanced;
+      return safeArray<SavedEntry>(enhanced).filter(isUsableSavedEntry).map((r) => normalizeSavedEntry(r));
     } catch {
       const anyStore = store as any;
-      return anyStore.history ?? [];
+      return safeArray<SavedEntry>(anyStore.history).filter(isUsableSavedEntry).map((r) => normalizeSavedEntry(r));
     }
   },
   async remove(id: string) {
@@ -932,7 +963,7 @@ export default function HistoryPage({
     setLoading(true);
     try {
       const rows = await HistoryAPI.list(store);
-      setItems(rows);
+      setItems(safeArray<SavedEntry>(rows).filter(isUsableSavedEntry).map((r) => normalizeSavedEntry(r)));
     } finally {
       setLoading(false);
     }
@@ -940,6 +971,21 @@ export default function HistoryPage({
 
   useEffect(() => {
     loadHistory();
+  }, [store]);
+
+  useEffect(() => {
+    const onUpd = () => {
+      loadHistory().catch(() => {});
+    };
+    const onStorage = (e: StorageEvent) => {
+      if (e.key === "dc-history-refresh") loadHistory().catch(() => {});
+    };
+    window.addEventListener("dc-history-updated" as any, onUpd);
+    window.addEventListener("storage", onStorage);
+    return () => {
+      window.removeEventListener("dc-history-updated" as any, onUpd);
+      window.removeEventListener("storage", onStorage);
+    };
   }, [store]);
 
 

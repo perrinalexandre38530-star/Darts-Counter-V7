@@ -119,6 +119,57 @@ function _resumeIndexRemove(id: string) {
 }
 
 
+function inferHistoryStatus(rec: any): "in_progress" | "finished" {
+  try {
+    const raw = String(rec?.status || "").toLowerCase();
+    if (raw === "finished") return "finished";
+    if (raw === "in_progress" || raw === "inprogress") return "in_progress";
+
+    const summary: any = rec?.summary || {};
+    if (summary?.finished === true) return "finished";
+    if (summary?.result?.finished === true) return "finished";
+    if (summary?.winnerId) return "finished";
+    if (Array.isArray(summary?.rankings) && summary.rankings.length > 0) return "finished";
+
+    if (rec?.winnerId) return "finished";
+
+    const resume: any = rec?.resume || {};
+    if (resume?.state || resume?.config || (Array.isArray(resume?.darts) && resume.darts.length > 0)) {
+      return "in_progress";
+    }
+
+    const payload: any = rec?.payload || {};
+    if (payload?.result || payload?.summary || payload?.stats) return "finished";
+
+    return "finished";
+  } catch {
+    return "finished";
+  }
+}
+
+function isHistoryRowUsable(rec: any): boolean {
+  try {
+    const id = String(rec?.id ?? rec?.matchId ?? "").trim();
+    if (!id) return false;
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function normalizeHistoryRow<T extends Record<string, any>>(rec: T): T {
+  const out: any = { ...(rec || {}) };
+  const id = String(out?.matchId ?? out?.id ?? "").trim();
+  if (id) {
+    out.id = id;
+    out.matchId = id;
+  }
+  out.status = inferHistoryStatus(out);
+  if (!Array.isArray(out.players)) out.players = [];
+  return out as T;
+}
+
+
 // =========================
 // ✅ CLOUD IMPORT GUARD
 // - Quand on importe depuis le cloud, on évite:
@@ -1095,7 +1146,7 @@ export async function list(): Promise<SavedMatch[]> {
       const existing = byMatch.get(key);
       const tNew = (r as any)?.updatedAt ?? (r as any)?.createdAt ?? 0;
 
-      const out = { ...r, id: key, matchId: key } as any;
+      const out = normalizeHistoryRow({ ...r, id: key, matchId: key } as any);
       if (payload) out.payload = payload; // ✅ payload seulement pour Cricket
       // NOTE:
       // On *garde* payloadCompressed dans le retour de list().
@@ -1112,7 +1163,7 @@ export async function list(): Promise<SavedMatch[]> {
       }
     }
 
-    return Array.from(byMatch.values()) as SavedMatch[];
+    return Array.from(byMatch.values()).filter(isHistoryRowUsable).map((r: any) => normalizeHistoryRow(r)) as SavedMatch[];
   } catch {
     return readLegacyRowsSafe();
   }
@@ -1193,13 +1244,12 @@ export async function get(id: string): Promise<SavedMatch | null> {
       // L’UI peut utiliser matchId pour navigation.
     }
 
-    return { ...(rec as any), payload } as SavedMatch;
+    return normalizeHistoryRow({ ...(rec as any), payload } as any) as SavedMatch;
   } catch (e) {
     console.warn("[history.get] fallback localStorage:", e);
     const rows = readLegacyRowsSafe();
-    return (rows.find((r) => r.id === id || r.matchId === id) || null) as
-      | SavedMatch
-      | null;
+    const hit = rows.find((r) => r.id === id || r.matchId === id) || null;
+    return hit ? (normalizeHistoryRow(hit as any) as SavedMatch) : null;
   }
 }
 
@@ -1218,18 +1268,18 @@ export async function upsert(rec: SavedMatch): Promise<void> {
     rec.id ??
     (crypto.randomUUID?.() ?? String(now));
 
-  const safe: any = {
+  const safe: any = normalizeHistoryRow({
     id: String(canonicalId),
     matchId: String(canonicalId),
     kind: rec.kind || "x01",
         game: (rec as any).game ?? null,
-status: rec.status || "finished",
-    players: rec.players || [],
+status: inferHistoryStatus(rec),
+    players: Array.isArray(rec.players) ? rec.players : [],
     winnerId: rec.winnerId ?? null,
     createdAt: rec.createdAt ?? now,
     updatedAt: now,
     summary: rec.summary || null,
-  };
+  });
 
 // ✅ MAJ index de reprise (multi-sport)
 try {
@@ -1819,6 +1869,7 @@ export async function remove(id: string): Promise<void> {
     // ✅ CLOUD
     scheduleCloudSnapshotPush("history:remove");
     try { emitCloudChange("history:remove"); } catch {}
+    try { _resumeIndexRemove(String(id)); } catch {}
   } catch {
     try {
       const rows = readLegacyRowsSafe() as any[];
@@ -1837,6 +1888,7 @@ export async function remove(id: string): Promise<void> {
       // ✅ CLOUD
       scheduleCloudSnapshotPush("history:remove:ls_fallback");
     try { emitCloudChange("history:remove:ls_fallback"); } catch {}
+    try { _resumeIndexRemove(String(id)); } catch {}
     } catch {}
   }
 }
@@ -1865,6 +1917,7 @@ export async function clear(): Promise<void> {
     // ✅ CLOUD
     scheduleCloudSnapshotPush("history:clear");
     try { emitCloudChange("history:clear"); } catch {}
+    try { _resumeIndexWrite([]); } catch {}
   } catch {
     try {
       localStorage.removeItem(LSK);
@@ -1881,6 +1934,7 @@ export async function clear(): Promise<void> {
       // ✅ CLOUD
       scheduleCloudSnapshotPush("history:clear:ls_fallback");
     try { emitCloudChange("history:clear:ls_fallback"); } catch {}
+    try { _resumeIndexWrite([]); } catch {}
     } catch {}
   }
 }
@@ -1913,7 +1967,7 @@ async function _hydrateCacheFromList() {
     const rows = await list();
     __cache = rows.map((r: any) => {
       const { payload, ...lite } = r || {};
-      return lite;
+      return normalizeHistoryRow(lite as any);
     });
     _saveCache();
   } catch {}
@@ -1922,7 +1976,7 @@ async function _hydrateCacheFromList() {
 function _applyUpsertToCache(rec: SavedMatch) {
   const cid = getCanonicalMatchId(rec) ?? (rec as any)?.matchId ?? rec.id;
   const { payload, ...lite0 } = (rec as any) || {};
-  const lite = { ...lite0, id: String(cid), matchId: String(cid) } as _LightRow;
+  const lite = normalizeHistoryRow({ ...lite0, id: String(cid), matchId: String(cid) } as any) as _LightRow;
   __cache = [lite, ...__cache.filter((r) => r.id !== lite.id)];
   if (__cache.length > MAX_ROWS) __cache.length = MAX_ROWS;
   _saveCache();
@@ -1949,7 +2003,10 @@ export async function listByStatus(
   status: "in_progress" | "finished"
 ): Promise<SavedMatch[]> {
   const rows = await list();
-  return rows.filter((r) => r.status === status);
+  return rows
+    .filter((r) => isHistoryRowUsable(r))
+    .map((r: any) => normalizeHistoryRow(r))
+    .filter((r: any) => String(r?.status || "") === status);
 }
 
 export async function listInProgress(): Promise<SavedMatch[]> {

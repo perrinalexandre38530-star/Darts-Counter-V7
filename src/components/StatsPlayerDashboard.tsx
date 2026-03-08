@@ -828,9 +828,9 @@ export default function StatsPlayerDashboard({ data, x01MultiLegsSets, sport }: 
   const bestLabel = isMolkkySport ? "Meilleur score" : "Meilleure volée";
   const bestSub = isMolkkySport ? "Record personnel" : "Record personnel";
   const winSub = isMolkkySport ? "Toutes parties" : "Toutes manches";
-  const fourthLabel = isMolkkySport ? "Mode favori" : "Plus haut checkout";
-  const fourthValue = isMolkkySport ? favoriteMode : (bestCheckout != null ? `${bestCheckout}` : "—");
-  const fourthSub = isMolkkySport ? "Mölkky" : "X01";
+  const fourthLabel = isMolkkySport ? "Tours moyens" : "Plus haut checkout";
+  const fourthValue = isMolkkySport ? (bestCheckout != null ? `${bestCheckout.toFixed(1)}` : "—") : (bestCheckout != null ? `${bestCheckout}` : "—");
+  const fourthSub = isMolkkySport ? "Par partie" : "X01";
 
   return (
     <div style={pageWrap}>
@@ -943,13 +943,15 @@ export default function StatsPlayerDashboard({ data, x01MultiLegsSets, sport }: 
         </div>
 
         {/* Graphs */}
-        <div style={{ ...fullW, display: "grid", gap: 12, marginTop: 16 }} className="lg:grid-cols-2">
+        <div style={{ ...fullW, display: "grid", gap: 12, marginTop: 16 }} className={isMolkkySport ? undefined : "lg:grid-cols-2"}>
           <div ref={refL} style={{ width: "100%" }}>
             <LineChart points={evolution} width={wL} accent={accent} accentSoft={accentSoft} />
           </div>
-          <div ref={refB} style={{ width: "100%" }}>
-            <BarChart data={distribution} width={wB} accent={accent} accentSoft={accentSoft} />
-          </div>
+          {!isMolkkySport && (
+            <div ref={refB} style={{ width: "100%" }}>
+              <BarChart data={distribution} width={wB} accent={accent} accentSoft={accentSoft} />
+            </div>
+          )}
         </div>
       </section>
     </div>

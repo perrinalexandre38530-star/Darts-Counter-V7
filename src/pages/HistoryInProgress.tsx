@@ -2,6 +2,18 @@
 // src/pages/HistoryInProgress.tsx — onglet "En cours"
 // ============================================
 import React from "react";
+
+function safeArray<T = any>(v: any): T[] {
+  return Array.isArray(v) ? (v as T[]) : [];
+}
+
+function isUsableSavedMatch(v: any): boolean {
+  try {
+    return !!String(v?.id ?? v?.matchId ?? "").trim();
+  } catch {
+    return false;
+  }
+}
 import { getPartiesEnCours, supprimerPartieEnCours } from "../lib/resume";
 import { History, type SavedMatch } from "../lib/history";
 
@@ -18,7 +30,7 @@ export default function HistoryInProgress({
     setLoading(true);
     try {
       const list = await getPartiesEnCours();
-      setItems(list);
+      setItems(safeArray<SavedMatch>(list).filter(isUsableSavedMatch));
     } finally {
       setLoading(false);
     }
@@ -26,6 +38,18 @@ export default function HistoryInProgress({
 
   React.useEffect(() => {
     refresh();
+
+    const onUpd = () => refresh();
+    const onStorage = (e: StorageEvent) => {
+      if (e.key === "dc-history-refresh") refresh();
+    };
+
+    window.addEventListener("dc-history-updated" as any, onUpd);
+    window.addEventListener("storage", onStorage);
+    return () => {
+      window.removeEventListener("dc-history-updated" as any, onUpd);
+      window.removeEventListener("storage", onStorage);
+    };
   }, [refresh]);
 
   async function handleDelete(id: string) {
@@ -53,7 +77,7 @@ export default function HistoryInProgress({
           ? created.toLocaleDateString() + " " + created.toLocaleTimeString()
           : "—";
 
-        const players = (rec.players || []).map((p) => p.name || "—").join(" · ");
+        const players = safeArray<any>(rec.players).map((p) => p?.name || "—").join(" · ");
 
         return (
           <div
@@ -80,7 +104,7 @@ export default function HistoryInProgress({
 
             <div style={{ display: "flex", gap: 8 }}>
               <button
-                onClick={() => onResume(rec.id)}
+                onClick={() => { if (rec?.id) onResume(rec.id); }}
                 style={{
                   borderRadius: 10,
                   border: "1px solid rgba(255,180,0,.3)",

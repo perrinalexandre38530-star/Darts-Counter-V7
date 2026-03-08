@@ -9,6 +9,7 @@ import type { Store } from "../../lib/types";
 import StatsLeaderboardsPage from "../../pages/StatsLeaderboardsPage";
 
 type Props = {
+  sportOverride?: string | null;
   // ✅ Compat historique : utilisé depuis StatsShell/StatsHub (ancienne API)
   store?: Store;
   go?: (tab: any, params?: any) => void;
@@ -19,7 +20,7 @@ type Props = {
   profiles?: any[];
 };
 
-export default function StatsLeaderboardsTab({ store, go, records, profiles }: Props) {
+export default function StatsLeaderboardsTab({ store, go, records, profiles, sportOverride }: Props) {
   // Si le caller a fourni records/profiles, on construit un pseudo-store minimal.
   // StatsLeaderboardsPage sait déjà agréger store.history + IDB History ;
   // ici on lui donne juste assez pour qu'il puisse afficher sans crash.
@@ -33,5 +34,5 @@ export default function StatsLeaderboardsTab({ store, go, records, profiles }: P
 
   const noop = React.useCallback(() => {}, []);
 
-  return <StatsLeaderboardsPage store={pseudoStore as any} go={(go as any) ?? noop} />;
+  return <StatsLeaderboardsPage store={pseudoStore as any} go={(go as any) ?? noop} sportOverride={sportOverride as any} />;
 }

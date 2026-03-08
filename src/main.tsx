@@ -13,15 +13,9 @@ import ErrorBoundary from "./components/ErrorBoundary";
 import AsyncGuard from "./components/AsyncGuard";
 import BootGuard from "./components/BootGuard";
 import { startMemoryWatchdog } from "./utils/memoryWatchdog";
-import { captureCrash, formatCrashReportText, isDynamicImportCrash, setCrashContext } from "./lib/crashReporter";
 
 // ✅ démarre le watchdog mémoire Android/WebView
 startMemoryWatchdog();
-
-setCrashContext({
-  route: "boot",
-  build: String((import.meta as any)?.env?.MODE || "unknown"),
-});
 
 // One-shot startup cleanup for stale SW/cache states after deploy.
 // Triggered only when URL has ?purge=1 or localStorage flag dc_force_purge_sw=1.
@@ -60,13 +54,15 @@ try {
     return (
       m.includes("failed to fetch dynamically imported module") ||
       m.includes("loading chunk") ||
-      m.includes("chunkloaderror")
+      m.includes("chunkloaderror") ||
+      m.includes("importing a module script failed")
     );
   };
 
   window.addEventListener("error", (e: any) => {
     const message = String(e?.message || e?.error?.message || "");
     if (!shouldReloadOnce(message)) return;
+    rememberChunkFailure(message);
     if (sessionStorage.getItem(KEY) === "1") return;
     sessionStorage.setItem(KEY, "1");
     // cache-buster
@@ -78,6 +74,7 @@ try {
   window.addEventListener("unhandledrejection", (e: any) => {
     const message = String(e?.reason?.message || e?.reason || "");
     if (!shouldReloadOnce(message)) return;
+    rememberChunkFailure(message);
     if (sessionStorage.getItem(KEY) === "1") return;
     sessionStorage.setItem(KEY, "1");
     const url = new URL(window.location.href);
@@ -95,32 +92,75 @@ try {
 // ============================================================
 const DC_DYN_IMPORT_RECOVER_KEY = "dc_dyn_import_recover_once_v1";
 
-function isDynImportFail(x: any) {
-  return isDynamicImportCrash(x);
+const DC_DYN_IMPORT_FAIL_COUNT_KEY = "dc_dyn_import_fail_count_v1";
+const DC_LAST_CHUNK_ERROR_KEY = "dc_last_chunk_error_v1";
+
+function getDynImportFailCount() {
+  try {
+    return Number(sessionStorage.getItem(DC_DYN_IMPORT_FAIL_COUNT_KEY) || "0") || 0;
+  } catch {
+    return 0;
+  }
 }
+
+function setDynImportFailCount(v: number) {
+  try {
+    sessionStorage.setItem(DC_DYN_IMPORT_FAIL_COUNT_KEY, String(v));
+  } catch {}
+}
+
+function rememberChunkFailure(err: any) {
+  try {
+    const msg = String(err?.message || err?.reason?.message || err || "");
+    localStorage.setItem(
+      DC_LAST_CHUNK_ERROR_KEY,
+      JSON.stringify({
+        at: Date.now(),
+        href: location.href,
+        ua: navigator.userAgent,
+        message: msg,
+      })
+    );
+  } catch {}
+}
+
+function isDynImportFail(x: any) {
+  const msg = String(x?.message || x?.reason?.message || x || "");
+  return (
+    msg.includes("Failed to fetch dynamically imported module") ||
+    msg.includes("Importing a module script failed") ||
+    msg.includes("dynamically imported module") ||
+    msg.includes("ChunkLoadError")
+  );
+}
+
 
 async function recoverDynamicImportOnce() {
   try {
-    if (sessionStorage.getItem(DC_DYN_IMPORT_RECOVER_KEY) === "1") return false;
-    sessionStorage.setItem(DC_DYN_IMPORT_RECOVER_KEY, "1");
+    const failCount = getDynImportFailCount() + 1;
+    setDynImportFailCount(failCount);
 
-    // Purge best-effort: unregister SW + clear CacheStorage
-    try {
-      if ("serviceWorker" in navigator) {
-        const regs = await navigator.serviceWorker.getRegistrations();
-        await Promise.all(regs.map((r) => r.unregister().catch(() => {})));
+    // 1er échec : reload avec cache-buster
+    if (failCount === 1) {
+      if (sessionStorage.getItem(DC_DYN_IMPORT_RECOVER_KEY) === "1") return false;
+      sessionStorage.setItem(DC_DYN_IMPORT_RECOVER_KEY, "1");
+      try {
+        const u = new URL(window.location.href);
+        u.searchParams.set("sb", String(Date.now()));
+        window.location.replace(u.toString());
+      } catch {
+        window.location.reload();
       }
-    } catch {}
-    try {
-      if (typeof caches !== "undefined" && (caches as any).keys) {
-        const keys = await (caches as any).keys();
-        await Promise.all(keys.map((k: string) => caches.delete(k)));
-      }
-    } catch {}
+      return true;
+    }
 
-    // Reload with cache-buster
+    // 2e échec : force purge SW/caches
+    try {
+      localStorage.setItem("dc_force_purge_sw", "1");
+    } catch {}
     try {
       const u = new URL(window.location.href);
+      u.searchParams.set("purge", "1");
       u.searchParams.set("sb", String(Date.now()));
       window.location.replace(u.toString());
     } catch {
@@ -150,7 +190,15 @@ async function recoverDynamicImportOnce() {
   const SB_RECOVER_KEY = "dc_sb_recover_once_v1";
 
   // Reuse global helper
-  const _isDynImportFail = (x: any) => isDynamicImportCrash(x);
+  const _isDynImportFail = (x: any) => {
+    const msg = String(x?.message || x?.reason?.message || x || "");
+    return (
+      msg.includes("Failed to fetch dynamically imported module") ||
+      msg.includes("Importing a module script failed") ||
+      msg.includes("dynamically imported module") ||
+      msg.includes("ChunkLoadError")
+    );
+  };
 
   const recoverOnce = async () => {
     try {
@@ -182,26 +230,34 @@ async function recoverDynamicImportOnce() {
     } catch {}
   };
 
-  const show = (title: string, err: any, source?: string) => {
+  const show = (title: string, err: any) => {
     try {
-      const report = captureCrash(title, err, { source });
       const el = document.createElement("pre");
       el.style.cssText =
         "position:fixed;inset:0;z-index:999999;background:#0b0b0f;color:#fff;padding:12px;white-space:pre-wrap;overflow:auto;font:12px/1.35 ui-monospace,Menlo,Consolas;";
-      el.textContent = formatCrashReportText(report);
+      el.textContent =
+        `[${title}]\n` +
+        (err?.stack || err?.message || String(err)) +
+        "\n\nURL:\n" +
+        String(location.href);
       document.body.appendChild(el);
     } catch {}
   };
 
   window.addEventListener("error", (e: any) => {
     const payload = e?.error || e?.message || e;
-    if (_isDynImportFail(payload)) recoverOnce();
-    const source = e?.filename ? `${e.filename}:${e.lineno || 0}:${e.colno || 0}` : undefined;
-    show("window.error", payload, source);
+    if (_isDynImportFail(payload)) {
+      rememberChunkFailure(payload);
+      recoverOnce();
+    }
+    show("window.error", payload);
   });
   window.addEventListener("unhandledrejection", (e: any) => {
     const payload = e?.reason || e;
-    if (_isDynImportFail(payload)) recoverOnce();
+    if (_isDynImportFail(payload)) {
+      rememberChunkFailure(payload);
+      recoverOnce();
+    }
     show("unhandledrejection", payload);
   });
 })();
@@ -297,8 +353,19 @@ function bootScreen(title: string, msg: string) {
 }
 
 function bootCrashScreen(payload: any) {
-  const report = captureCrash("boot-crash", payload);
-  const msg = formatCrashReportText(report);
+  const format = (e: any) => {
+    try {
+      if (!e) return "Erreur inconnue";
+      if (typeof e === "string") return e;
+      if (e?.stack) return String(e.stack);
+      if (e?.message) return String(e.message);
+      return JSON.stringify(e, null, 2);
+    } catch {
+      return String(e);
+    }
+  };
+
+  const msg = format(payload);
 
   // ✅ on force SAFE MODE au prochain boot
   setSafeMode(true);
@@ -321,7 +388,7 @@ function bootCrashScreen(payload: any) {
       <div style="font-size:18px;font-weight:900;margin-bottom:10px;">💥 CRASH CAPTURÉ (BOOT)</div>
       <div style="opacity:.85;font-size:13px;margin-bottom:10px;">
         Safe mode sera activé au prochain démarrage pour couper le Service Worker / caches.
-        Fais une capture de cet écran ou copie le rapport.
+        Fais une capture de cet écran.
       </div>
       <pre style="
         white-space:pre-wrap;
@@ -330,24 +397,15 @@ function bootCrashScreen(payload: any) {
         padding:12px;
         border-radius:12px;
         border:1px solid rgba(255,255,255,.12);">${msg}</pre>
-      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;">
-        <button onclick="navigator.clipboard&&navigator.clipboard.writeText(document.querySelector('pre')?.innerText||'')" style="
-          border-radius:999px;
-          padding:10px 12px;
-          border:1px solid rgba(255,255,255,.2);
-          font-weight:900;
-          background:rgba(255,255,255,.08);
-          color:#fff;
-          cursor:pointer;">Copier le rapport</button>
-        <button onclick="location.reload()" style="
-          border-radius:999px;
-          padding:10px 12px;
-          border:none;
-          font-weight:900;
-          background:linear-gradient(180deg,#ffc63a,#ffaf00);
-          color:#1b1508;
-          cursor:pointer;">Recharger</button>
-      </div>
+      <button onclick="location.reload()" style="
+        margin-top:10px;
+        border-radius:999px;
+        padding:10px 12px;
+        border:none;
+        font-weight:900;
+        background:linear-gradient(180deg,#ffc63a,#ffaf00);
+        color:#1b1508;
+        cursor:pointer;">Recharger</button>
     </div>
   `;
 }
@@ -518,13 +576,18 @@ async function devUnregisterSW() {
       </React.StrictMode>
     );
 
-    // ✅ si ça render, on peut enlever safe mode
+    // ✅ si ça render, on peut enlever safe mode + reset compteurs recovery
     setSafeMode(false);
+    setDynImportFailCount(0);
+    try {
+      sessionStorage.removeItem(DC_DYN_IMPORT_RECOVER_KEY);
+    } catch {}
   } catch (e) {
     console.error("[BOOT CRASH]", e);
 
     // ✅ If the crash is a stale Vite chunk / dynamic import failure, try an automatic one-shot recovery.
     if (isDynImportFail(e)) {
+      rememberChunkFailure(e);
       const recovered = await recoverDynamicImportOnce();
       if (recovered) return;
     }
