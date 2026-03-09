@@ -362,6 +362,18 @@ export default function X01End({ go, params }: Props) {
     [rec, players, legStats]
   );
 
+  const shareMatchId = (params?.matchId || (rec as any)?.id || (rec as any)?.matchId) as string | undefined;
+
+  async function handleShareMatch() {
+    if (!shareMatchId) return;
+    try {
+      const pack = await exportSharedMatchPack(shareMatchId);
+      await shareOrDownload(pack, "dc_match_share.json", "Partie Darts Counter");
+    } catch (e) {
+      console.warn("share match failed", e);
+    }
+  }
+
   // --- Rendus (aucun hook après ceci) ---
   if (err)
     return (
@@ -381,6 +393,147 @@ export default function X01End({ go, params }: Props) {
     ? M[chartPlayer.id] || emptyMetrics(chartPlayer)
     : null;
 
+  const rankedPlayers = [...players].sort((a, b) => {
+    if (winnerId && a.id === winnerId && b.id !== winnerId) return -1;
+    if (winnerId && b.id === winnerId && a.id !== winnerId) return 1;
+    return n(M[b.id]?.avg3, 0) - n(M[a.id]?.avg3, 0);
+  });
+
+  const customHeader = (
+    <div
+      style={{
+        position: "relative",
+        padding: "4px 0 6px",
+      }}
+    >
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "44px 1fr auto",
+          alignItems: "start",
+          gap: 8,
+        }}
+      >
+        <button
+          onClick={() => go("stats", { tab: "history" })}
+          aria-label="Retour"
+          style={{
+            width: 34,
+            height: 34,
+            borderRadius: 999,
+            border: "1px solid rgba(255,207,87,.28)",
+            background:
+              "radial-gradient(circle at 30% 30%, rgba(255,207,87,.22), rgba(255,207,87,.06) 45%, rgba(255,255,255,.02) 100%)",
+            color: "#ffcf57",
+            display: "grid",
+            placeItems: "center",
+            cursor: "pointer",
+            boxShadow: "0 0 14px rgba(255,207,87,.18), inset 0 0 10px rgba(255,207,87,.06)",
+            marginTop: 2,
+          }}
+        >
+          <ArrowLeftIcon />
+        </button>
+
+        <div style={{ textAlign: "center", minWidth: 0 }}>
+          <div
+            style={{
+              fontSize: 19,
+              fontWeight: 1000,
+              lineHeight: 1.05,
+              color: "#ffcf57",
+              textTransform: "uppercase",
+              letterSpacing: 0.5,
+              textShadow: "0 0 10px rgba(255,207,87,.30), 0 0 24px rgba(255,207,87,.18)",
+            }}
+          >
+            {modeTitleFromRec(rec)}
+          </div>
+
+          <div
+            style={{
+              marginTop: 3,
+              fontSize: 11,
+              color: "#d7d7de",
+              fontWeight: 700,
+            }}
+          >
+            {dateStr}
+          </div>
+
+          <div
+            style={{
+              marginTop: 8,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: 8,
+              flexWrap: "wrap",
+            }}
+          >
+            {rankedPlayers.map((player, index) => (
+              <div
+                key={player.id}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 5,
+                }}
+              >
+                {index === 0 ? (
+                  <div
+                    style={{
+                      width: 18,
+                      height: 18,
+                      borderRadius: 999,
+                      display: "grid",
+                      placeItems: "center",
+                      background: "linear-gradient(180deg,#ffe58a,#ffb300)",
+                      color: "#17130a",
+                      boxShadow: "0 0 10px rgba(255,207,87,.32)",
+                      border: "1px solid rgba(0,0,0,.25)",
+                      flex: "0 0 auto",
+                    }}
+                  >
+                    <Trophy width={10} height={10} />
+                  </div>
+                ) : null}
+                <AvatarBubble
+                  player={player}
+                  crowned={player.id === winnerId}
+                />
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div style={{ display: "flex", justifyContent: "flex-end" }}>
+          {shareMatchId ? (
+            <button
+              onClick={handleShareMatch}
+              style={{
+                padding: "6px 10px",
+                borderRadius: 12,
+                border: "1px solid rgba(255,255,255,0.18)",
+                background: "rgba(255,255,255,0.06)",
+                color: "#fff",
+                cursor: "pointer",
+                fontWeight: 900,
+                fontSize: 12,
+                marginTop: 2,
+              }}
+              title="Partager cette partie (fichier)"
+            >
+              Partager
+            </button>
+          ) : (
+            <div style={{ width: 72 }} />
+          )}
+        </div>
+      </div>
+    </div>
+  );
+
   /* ========= Tableaux COL-MAJOR (colonnes = joueurs) ========= */
   const cols = players.map((p) => ({ key: p.id, title: p.name || "—" }));
 
@@ -390,18 +543,6 @@ export default function X01End({ go, params }: Props) {
     borderSpacing: 0,
     fontSize: D.fsBody,
   };
-
-  const shareMatchId = (params?.matchId || (rec as any)?.id || (rec as any)?.matchId) as string | undefined;
-
-  async function handleShareMatch() {
-    if (!shareMatchId) return;
-    try {
-      const pack = await exportSharedMatchPack(shareMatchId);
-      await shareOrDownload(pack, "dc_match_share.json", "Partie Darts Counter");
-    } catch (e) {
-      console.warn("share match failed", e);
-    }
-  }
 
   return (
     <Shell
@@ -415,66 +556,9 @@ export default function X01End({ go, params }: Props) {
       }
       canResume={!!resumeId && !finished}
       resumeId={resumeId}
+      header={customHeader}
     >
       <style dangerouslySetInnerHTML={{ __html: mobileDenseCss }} />
-
-      {/* === Bandeau joueurs + vainqueur === */}
-      <Panel>
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "center",
-            gap: 10,
-          }}
-        >
-          <div
-            style={{
-              fontWeight: 800,
-              color: "#e8e8ec",
-              fontSize: 12,
-            }}
-          >
-            Joueurs :{" "}
-            {players.map((p) => p?.name || "—").join(" · ") || "—"}
-          </div>
-          <div style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
-            {shareMatchId ? (
-              <button
-                onClick={handleShareMatch}
-                style={{
-                  padding: "6px 10px",
-                  borderRadius: 12,
-                  border: "1px solid rgba(255,255,255,0.18)",
-                  background: "rgba(255,255,255,0.06)",
-                  color: "#fff",
-                  cursor: "pointer",
-                  fontWeight: 900,
-                  fontSize: 12,
-                }}
-                title="Partager cette partie (fichier)"
-              >
-                Partager
-              </button>
-            ) : null}
-
-            {winnerName ? (
-              <div
-                style={{
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: 8,
-                  color: "#ffcf57",
-                  fontWeight: 900,
-                }}
-              >
-                <Trophy />
-                <span>{winnerName}</span>
-              </div>
-            ) : null}
-          </div>
-        </div>
-      </Panel>
 
       {!matchSummary && legSummary ? (
         <InfoCard>
@@ -1884,24 +1968,32 @@ function Shell({
   children,
   canResume,
   resumeId,
+  header,
 }: {
   go: (t: string, p?: any) => void;
   title?: string;
   children?: React.ReactNode;
   canResume?: boolean;
   resumeId?: string | null;
+  header?: React.ReactNode;
 }) {
   return (
     <div
       className="x-end"
       style={{ padding: 12, maxWidth: 640, margin: "0 auto" }}
     >
-      <button onClick={() => go("stats", { tab: "history" })} style={btn()}>
-        ← Retour
-      </button>
-      <h2 style={{ margin: "10px 0 8px", letterSpacing: 0.3 }}>
-        {title || "Fin de partie"}
-      </h2>
+      {header ? (
+        <div style={{ marginBottom: 10 }}>{header}</div>
+      ) : (
+        <>
+          <button onClick={() => go("stats", { tab: "history" })} style={btn()}>
+            ← Retour
+          </button>
+          <h2 style={{ margin: "10px 0 8px", letterSpacing: 0.3 }}>
+            {title || "Fin de partie"}
+          </h2>
+        </>
+      )}
       {children}
       <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
         <button
@@ -1989,6 +2081,81 @@ function Trophy(props: any) {
         d="M6 2h12v2h3a1 1 0 0 1 1 1v1a5 5 0 0 1-5 5h-1.1A6 6 0 0 1 13 13.9V16h3v2H8v-2h3v-2.1A6 6 0 0 1 8.1 11H7A5 5 0 0 1 2 6V5a1 1 0 0 1 1-1h3V2Z"
       />
     </svg>
+  );
+}
+
+function ArrowLeftIcon(props: any) {
+  return (
+    <svg viewBox="0 0 24 24" width={16} height={16} {...props}>
+      <path
+        fill="currentColor"
+        d="M14.7 5.3a1 1 0 0 1 0 1.4L10.41 11H20a1 1 0 1 1 0 2h-9.59l4.3 4.3a1 1 0 1 1-1.42 1.4l-6-6a1 1 0 0 1 0-1.4l6-6a1 1 0 0 1 1.41 0Z"
+      />
+    </svg>
+  );
+}
+
+function modeTitleFromRec(rec: any) {
+  const raw =
+    rec?.summary?.mode ||
+    rec?.game?.mode ||
+    rec?.summary?.kind ||
+    rec?.kind ||
+    "Fin de partie";
+  const value = String(raw || "Fin de partie").replace(/_/g, " ").trim();
+  if (!value) return "Fin de partie";
+  return value.toUpperCase();
+}
+
+function avatarInitials(name?: string) {
+  const s = String(name || "?").trim();
+  if (!s) return "?";
+  const parts = s.split(/\s+/).filter(Boolean);
+  if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase();
+  return s.slice(0, 2).toUpperCase();
+}
+
+function AvatarBubble({
+  player,
+  crowned,
+}: {
+  player: PlayerLite;
+  crowned?: boolean;
+}) {
+  return (
+    <div
+      style={{
+        position: "relative",
+        width: 34,
+        height: 34,
+        borderRadius: 999,
+        border: crowned
+          ? "2px solid rgba(255,207,87,.88)"
+          : "2px solid rgba(255,255,255,.18)",
+        boxShadow: crowned
+          ? "0 0 16px rgba(255,207,87,.28)"
+          : "0 6px 14px rgba(0,0,0,.22)",
+        overflow: "hidden",
+        background: "linear-gradient(180deg,#2a2a31,#121218)",
+        display: "grid",
+        placeItems: "center",
+        color: "#fff",
+        fontSize: 11,
+        fontWeight: 900,
+        flex: "0 0 auto",
+      }}
+      title={player?.name || "Joueur"}
+    >
+      {player?.avatarDataUrl ? (
+        <img
+          src={player.avatarDataUrl}
+          alt={player.name || "avatar"}
+          style={{ width: "100%", height: "100%", objectFit: "cover" }}
+        />
+      ) : (
+        <span>{avatarInitials(player?.name)}</span>
+      )}
+    </div>
   );
 }
 

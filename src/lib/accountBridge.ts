@@ -62,6 +62,62 @@ function looksLikeFallbackName(name: any, email: string): boolean {
   return !n || n === "joueur" || (!!local && n === local)
 }
 
+function hasAvatarData(p: any): boolean {
+  return !!String(p?.avatarDataUrl || "").trim() || !!String(p?.avatar_data_url || "").trim();
+}
+
+function hasAvatarUrl(p: any): boolean {
+  return !!String(p?.avatarUrl || "").trim() || !!String(p?.avatar_url || "").trim();
+}
+
+function accountCandidateScore(p: any, ctx: { uid: string; email: string; activeId: string }): number {
+  if (!p) return -1e9;
+  const pi = readPrivateInfo(p);
+  const pid = String(p?.id || "");
+  let score = scoreProfileCompleteness(p);
+
+  if (pid && pid === ctx.activeId) score += 120;
+  if (pid && pid === ctx.uid) score += 30;
+  if (String(pi?.onlineUserId || "") === ctx.uid) score += 90;
+  if (ctx.email && String(pi?.onlineEmail || "").toLowerCase() === ctx.email) score += 35;
+  if (hasAvatarData(p)) score += 35;
+  if (hasAvatarUrl(p)) score += 20;
+  if (!looksLikeFallbackName(p?.name, ctx.email)) score += 20;
+  if (looksLikeFallbackName(p?.name, ctx.email) && !hasAvatarData(p) && !hasAvatarUrl(p)) score -= 25;
+
+  return score;
+}
+
+function resolveCanonicalAccountProfile(profiles: any[], activeId: string, user: any) {
+  const uid = String(user?.id || "");
+  const email = safeLower(user?.email);
+  const ctx = { uid, email, activeId: String(activeId || "") };
+
+  const candidates = profiles.filter((p) => {
+    const pi = readPrivateInfo(p);
+    const pid = String(p?.id || "");
+    return (
+      pid === ctx.activeId ||
+      pid === uid ||
+      String(pi?.onlineUserId || "") === uid ||
+      (!!email && String(pi?.onlineEmail || "").toLowerCase() === email)
+    );
+  });
+
+  if (!candidates.length) return null;
+
+  return [...candidates].sort((a, b) => accountCandidateScore(b, ctx) - accountCandidateScore(a, ctx))[0] || null;
+}
+
+function unlinkOnlineIdentity(p: any): any {
+  const pi = readPrivateInfo(p);
+  const nextPi: PrivateInfoRaw = { ...pi };
+  delete nextPi.onlineUserId;
+  delete nextPi.onlineEmail;
+  delete nextPi.onlineKey;
+  return writePrivateInfo(p, nextPi);
+}
+
 function mergeLinkedProfileWithOnline(current: any, user: any, onlineProfile?: any): any {
   const email = safeLower(user?.email);
   const onlineName = onlineDisplayNameOf(onlineProfile, email);
@@ -190,85 +246,59 @@ export function ensureLocalProfileForOnlineUser(store: any, user: any, onlinePro
   const activeId = String(store.activeProfileId || profiles[0]?.id || "");
   const active = profiles.find((p) => String(p?.id || "") === activeId) || profiles[0] || null;
 
-  const byPI = profiles.find((p) => String(readPrivateInfo(p)?.onlineUserId || "") === uid) || null;
-  const byId = profiles.find((p) => String(p?.id || "") === uid) || null;
+  const canonical = resolveCanonicalAccountProfile(profiles, activeId, user);
 
-  // If we already have BOTH (dup), keep most complete, drop the other.
-  if (byPI && byId && String(byPI.id) !== String(byId.id)) {
-    const keep = scoreProfileCompleteness(byPI) >= scoreProfileCompleteness(byId) ? byPI : byId;
-    const drop = keep === byPI ? byId : byPI;
+  if (canonical) {
+    const related = profiles.filter((p) => {
+      const pi = readPrivateInfo(p);
+      const pid = String(p?.id || "");
+      return (
+        pid === String(canonical?.id || "") ||
+        pid === uid ||
+        String(pi?.onlineUserId || "") === uid ||
+        (!!email && String(pi?.onlineEmail || "").toLowerCase() === email)
+      );
+    });
 
-    const piKeep = readPrivateInfo(keep);
-    const keepLinked = writePrivateInfo(
-mergeLinkedProfileWithOnline(
-        {
-          ...keep,
-        },
-        user,
-        onlineProfile
-      ),
+    let mergedBase: any = { ...canonical };
+    for (const other of related) {
+      if (!other || String(other?.id || "") === String(canonical?.id || "")) continue;
+      if (!mergedBase?.name && other?.name) mergedBase.name = other.name;
+      if (!mergedBase?.country && other?.country) mergedBase.country = other.country;
+      if (!mergedBase?.avatarDataUrl && other?.avatarDataUrl) mergedBase.avatarDataUrl = other.avatarDataUrl;
+      if (!mergedBase?.avatarUrl && other?.avatarUrl) mergedBase.avatarUrl = other.avatarUrl;
+      const piBase = readPrivateInfo(mergedBase);
+      const piOther = readPrivateInfo(other);
+      mergedBase.privateInfo = { ...piOther, ...piBase };
+    }
+
+    const canonicalLinked = writePrivateInfo(
+      mergeLinkedProfileWithOnline(mergedBase, user, onlineProfile),
       {
-        ...piKeep,
+        ...readPrivateInfo(mergedBase),
         onlineUserId: uid,
-        onlineEmail: email || piKeep.onlineEmail || "",
+        onlineEmail: email || readPrivateInfo(mergedBase).onlineEmail || "",
         password: "",
       }
     );
 
     const nextProfiles = profiles
-      .filter((p) => String(p?.id || "") !== String(drop?.id || ""))
-      .map((p) => (String(p?.id || "") === String(keep?.id || "") ? keepLinked : p));
+      .filter((p) => !(String(p?.id || "") === uid && String(canonicalLinked?.id || "") !== uid && looksLikeFallbackName(p?.name, email) && !hasAvatarData(p) && !hasAvatarUrl(p)))
+      .map((p) => {
+        const pid = String(p?.id || "");
+        if (pid === String(canonicalLinked?.id || "")) return canonicalLinked;
 
-    return { ...store, profiles: nextProfiles, activeProfileId: String(keepLinked?.id || activeId) };
-  }
+        const pi = readPrivateInfo(p);
+        const isRelated =
+          pid === uid ||
+          String(pi?.onlineUserId || "") === uid ||
+          (!!email && String(pi?.onlineEmail || "").toLowerCase() === email);
 
-  // Prefer profile linked via privateInfo
-  if (byPI) {
-    const pi = readPrivateInfo(byPI);
-    const next = writePrivateInfo(
-mergeLinkedProfileWithOnline(
-        {
-          ...byPI,
-        },
-        user,
-        onlineProfile
-      ),
-      {
-        ...pi,
-        onlineUserId: uid,
-        onlineEmail: email || pi.onlineEmail || "",
-        password: "",
-      }
-    );
+        if (!isRelated) return p;
+        return unlinkOnlineIdentity(p);
+      });
 
-    const nextProfiles = profiles.map((p) => (String(p?.id || "") === String(byPI?.id || "") ? next : p));
-    return { ...store, profiles: nextProfiles, activeProfileId: String(next?.id || activeId) };
-  }
-
-  // If only id==uid exists but active is different -> link active and remove uid-profile
-  if (byId && active && String(active?.id || "") !== uid) {
-    const piA = readPrivateInfo(active);
-    const activeLinked = writePrivateInfo(
-mergeLinkedProfileWithOnline(
-        {
-          ...active,
-        },
-        user,
-        onlineProfile
-      ),
-      {
-        ...piA,
-        onlineUserId: uid,
-        onlineEmail: email || piA.onlineEmail || "",
-        password: "",
-      }
-    );
-
-    const nextProfiles = profiles
-      .filter((p) => String(p?.id || "") !== uid)
-      .map((p) => (String(p?.id || "") === String(active?.id || "") ? activeLinked : p));
-
-    return { ...store, profiles: nextProfiles, activeProfileId: String(activeLinked?.id || activeId) };
+    return { ...store, profiles: nextProfiles, activeProfileId: String(canonicalLinked?.id || activeId) };
   }
 
   // No profiles at all: create minimal uid profile

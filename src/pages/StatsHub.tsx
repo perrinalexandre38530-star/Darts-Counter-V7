@@ -29,6 +29,16 @@ import {
 import type { CricketProfileStats } from "../lib/cricketStats";
 
 // ---- Utils ----
+const STATSHUB_HISTORY_LIGHT_CAP = 300;
+const STATSHUB_HISTORY_HYDRATE_CAP = 120;
+const STATSHUB_STORE_HISTORY_CAP = 200;
+
+function takeRecent<T>(arr: T[], cap: number): T[] {
+  if (!Array.isArray(arr)) return [];
+  if (!Number.isFinite(cap) || cap <= 0) return arr.slice();
+  return arr.length > cap ? arr.slice(-cap) : arr.slice();
+}
+
 // toArrLoc: normalise unknown "players/teams" shapes to array (prevents TDZ crash in hooks)
 function toArrLoc<T,>(v: any): T[] {
   if (Array.isArray(v)) return v as T[];
@@ -848,7 +858,7 @@ function useHistoryAPI(): SavedMatch[] {
         const id = (r as any)?.id;
         if (typeof id === "string" && id) toHydrate.push(id);
         // Safety cap: dashboard doesn’t need thousands of full payloads
-        if (toHydrate.length >= 300) break;
+        if (toHydrate.length >= STATSHUB_HISTORY_HYDRATE_CAP) break;
       }
 
       if (!toHydrate.length) return arr;
@@ -886,7 +896,7 @@ function useHistoryAPI(): SavedMatch[] {
       try {
         const list = await History.list();
         if (!mounted) return;
-        const base = toArr<SavedMatch>(list);
+        const base = takeRecent(toArr<SavedMatch>(list), STATSHUB_HISTORY_LIGHT_CAP);
         setRows(base);
 
         // Then hydrate in background and refresh once.
@@ -928,7 +938,7 @@ function useStoreHistory(): SavedMatch[] {
       try {
         const store: any = await loadStore<any>();
         if (!mounted) return;
-        setRows(toArr<SavedMatch>(store?.history));
+        setRows(takeRecent(toArr<SavedMatch>(store?.history), STATSHUB_STORE_HISTORY_CAP));
       } catch {
         setRows([]);
       }
@@ -4091,30 +4101,51 @@ const { enabled: devModeEnabled } = useDevMode();
 
   // ✅ Reconnecte pipeline History -> Store -> StatsHub (source de vérité = History)
   React.useEffect(() => {
-    rebuildStatsToStore().catch((e) => {
-      console.warn("[rebuildStatsToStore] failed", e);
-    });
+    let cancelled = false;
+    const run = () => {
+      rebuildStatsToStore().catch((e) => {
+        if (!cancelled) console.warn("[rebuildStatsToStore] failed", e);
+      });
+    };
+
+    const ric = (window as any)?.requestIdleCallback as undefined | ((cb: () => void, opts?: any) => any);
+    const id = ric ? ric(run, { timeout: 1200 }) : window.setTimeout(run, 250);
+
+    return () => {
+      cancelled = true;
+      try {
+        if (ric && (window as any)?.cancelIdleCallback) {
+          (window as any).cancelIdleCallback(id);
+        } else {
+          clearTimeout(id);
+        }
+      } catch {}
+    };
   }, []);
 
 // ============================================================
 // 🔎 DEBUG TEMPORAIRE — vérifier IndexedDB (History)
+// Désactivé par défaut sur mobile pour éviter de charger/logguer trop.
+// Activer via localStorage.setItem("dc_stats_debug_probe","1")
 // ============================================================
 React.useEffect(() => {
-  // 1) Liste les DB visibles par le navigateur (Chrome)
+  let enabled = false;
+  try {
+    enabled = localStorage.getItem("dc_stats_debug_probe") === "1";
+  } catch {}
+  if (!enabled) return;
+
   try {
     const anyIDB: any = indexedDB as any;
     if (typeof anyIDB !== "undefined" && typeof anyIDB.databases === "function") {
       anyIDB.databases().then((dbs: any[]) => {
         console.log("[IDB] databases =", dbs);
       });
-    } else {
-      console.log("[IDB] indexedDB.databases() non supporté ici");
     }
   } catch (e) {
     console.warn("[IDB] databases() failed", e);
   }
 
-  // 2) Vérifie ce que History.list() retourne réellement
   History.list()
     .then((rows: any[]) => {
       console.log("[DEBUG] History.list count =", rows?.length || 0);
@@ -4140,7 +4171,7 @@ React.useEffect(() => {
     try {
       const nm = await loadNormalizedHistory();
       if (!mounted) return;
-      setNormalizedMatches(Array.isArray(nm) ? nm : []);
+      setNormalizedMatches(takeRecent(Array.isArray(nm) ? nm : [], STATSHUB_HISTORY_LIGHT_CAP));
     } catch {
       if (!mounted) return;
       setNormalizedMatches([]);
