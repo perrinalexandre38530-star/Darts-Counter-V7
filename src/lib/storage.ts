@@ -1073,3 +1073,45 @@ export async function nukeAllKeepActiveProfile(): Promise<void> {
     }
   }
 }
+
+
+// ===== ULTIMATE MEMORY PATCH =====
+// Remove heavy duplicated data before saving store
+function sanitizeStoreForMemory(store:any){
+  try{
+
+    // 1️⃣ remove avatarDataUrl everywhere except profiles
+    if(Array.isArray(store?.history)){
+      store.history = store.history.map((m:any)=>{
+        if(m?.players){
+          m.players = m.players.map((p:any)=>{
+            const {avatarDataUrl, avatarUrl, ...rest}=p||{}
+            return rest
+          })
+        }
+        return m
+      })
+    }
+
+    // 2️⃣ limit resume payload
+    if(store?.resume){
+      try{
+        const r = store.resume
+        store.resume = {
+          matchId:r?.matchId,
+          sport:r?.sport,
+          players:r?.players,
+          score:r?.score,
+          updated:r?.updated
+        }
+      }catch{}
+    }
+
+    // 3️⃣ remove heavy stats cache
+    if(store?.statsCache){
+      delete store.statsCache
+    }
+
+  }catch{}
+  return store
+}

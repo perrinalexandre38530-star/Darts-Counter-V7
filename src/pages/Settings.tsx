@@ -920,7 +920,7 @@ function AccountPages({
 
   const [page, setPage] = React.useState<AccountPage>("account_menu");
 
-  const [displayName, setDisplayName] = React.useState(profile?.displayName || (user as any)?.nickname || "");
+  const [displayName, setDisplayName] = React.useState(profile?.displayName || profile?.nickname || ((user as any)?.email ? String((user as any).email).split("@")[0] : ""));
   const [country, setCountry] = React.useState(profile?.country || "");
 
   const [savingProfile, setSavingProfile] = React.useState(false);
@@ -935,9 +935,9 @@ function AccountPages({
   const [prefs, setPrefs] = React.useState<AccountPrefs>(DEFAULT_PREFS);
 
   React.useEffect(() => {
-    setDisplayName(profile?.displayName || (user as any)?.nickname || "");
+    setDisplayName(profile?.displayName || profile?.nickname || ((user as any)?.email ? String((user as any).email).split("@")[0] : ""));
     setCountry(profile?.country || "");
-  }, [profile?.displayName, profile?.country, (user as any)?.nickname]);
+  }, [profile?.displayName, profile?.nickname, profile?.country, (user as any)?.email]);
 
   React.useEffect(() => {
     if (typeof window === "undefined") return;
@@ -1163,27 +1163,50 @@ function AccountPages({
                 </div>
               )}
 
-              <button
-                type="button"
-                onClick={handleSaveProfile}
-                disabled={savingProfile || loading || deleting}
-                style={{
-                  width: "100%",
-                  borderRadius: 999,
-                  padding: "10px 12px",
-                  border: "none",
-                  background: `linear-gradient(180deg, ${theme.primary}, ${theme.primary}AA)`,
-                  color: "#000",
-                  fontWeight: 900,
-                  cursor: "pointer",
-                  opacity: savingProfile || loading || deleting ? 0.65 : 1,
-                  boxShadow: `0 0 18px ${theme.primary}44`,
-                }}
-              >
-                {savingProfile
-                  ? t("settings.account.save.loading", "Enregistrement…")
-                  : t("settings.account.save.btn", "Enregistrer")}
-              </button>
+              <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                <button
+                  type="button"
+                  onClick={handleSaveProfile}
+                  disabled={savingProfile || loading || deleting}
+                  style={{
+                    flex: "1 1 220px",
+                    minHeight: 44,
+                    borderRadius: 999,
+                    padding: "10px 12px",
+                    border: "none",
+                    background: `linear-gradient(180deg, ${theme.primary}, ${theme.primary}AA)`,
+                    color: "#000",
+                    fontWeight: 900,
+                    cursor: "pointer",
+                    opacity: savingProfile || loading || deleting ? 0.65 : 1,
+                    boxShadow: `0 0 18px ${theme.primary}44`,
+                  }}
+                >
+                  {savingProfile
+                    ? t("settings.account.save.loading", "Enregistrement…")
+                    : t("settings.account.save.btn", "Enregistrer")}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => logout?.()}
+                  disabled={loading || deleting || savingProfile}
+                  style={{
+                    flex: "1 1 220px",
+                    minHeight: 44,
+                    borderRadius: 999,
+                    padding: "10px 12px",
+                    border: `1px solid ${theme.borderSoft}`,
+                    background: "rgba(255,255,255,0.05)",
+                    color: "#fff",
+                    fontWeight: 900,
+                    cursor: loading || deleting || savingProfile ? "default" : "pointer",
+                    opacity: loading || deleting || savingProfile ? 0.65 : 1,
+                  }}
+                >
+                  {t("settings.account.btn.logout", "Se déconnecter")}
+                </button>
+              </div>
             </>
           )}
         </section>

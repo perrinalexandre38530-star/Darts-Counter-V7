@@ -34,6 +34,58 @@ function safeLower(s: any): string {
   return String(s || "").toLowerCase();
 }
 
+
+function onlineDisplayNameOf(onlineProfile: any, email: string): string {
+  return String(
+    onlineProfile?.displayName ||
+      onlineProfile?.display_name ||
+      onlineProfile?.nickname ||
+      onlineProfile?.username ||
+      (email ? email.split("@")[0] : "") ||
+      "Joueur"
+  ).trim();
+}
+
+function onlineAvatarOf(onlineProfile: any): string {
+  return String(
+    onlineProfile?.avatarUrl ||
+      onlineProfile?.avatar_url ||
+      onlineProfile?.avatar ||
+      onlineProfile?.photo_url ||
+      ""
+  ).trim();
+}
+
+function looksLikeFallbackName(name: any, email: string): boolean {
+  const n = String(name || "").trim().toLowerCase();
+  const local = String(email || "").trim().toLowerCase().split("@")[0] || "";
+  return !n || n === "joueur" || (!!local && n === local)
+}
+
+function mergeLinkedProfileWithOnline(current: any, user: any, onlineProfile?: any): any {
+  const email = safeLower(user?.email);
+  const onlineName = onlineDisplayNameOf(onlineProfile, email);
+  const onlineAvatar = onlineAvatarOf(onlineProfile);
+  const next: any = { ...(current || {}) };
+
+  if (looksLikeFallbackName(next?.name, email) && onlineName) {
+    next.name = onlineName;
+  }
+
+  if (onlineAvatar) {
+    next.avatarUrl = onlineAvatar;
+    if (!String(next?.avatarDataUrl || "").startsWith("data:")) {
+      next.avatarDataUrl = undefined;
+    }
+  }
+
+  if (!next?.country && onlineProfile?.country) {
+    next.country = onlineProfile.country;
+  }
+
+  return next;
+}
+
 function scoreProfileCompleteness(p: any): number {
   let s = 0;
   const keys = ["name", "country", "avatarUrl", "avatarDataUrl", "surname", "firstName", "birthDate", "city", "phone"];
@@ -148,17 +200,13 @@ export function ensureLocalProfileForOnlineUser(store: any, user: any, onlinePro
 
     const piKeep = readPrivateInfo(keep);
     const keepLinked = writePrivateInfo(
-      {
-        ...keep,
-        ...(onlineProfile
-          ? {
-              // ✅ keep local first
-              name: keep?.name || onlineProfile?.nickname || keep?.name,
-              avatarUrl: keep?.avatarUrl || onlineProfile?.avatarUrl || keep?.avatarUrl,
-              country: keep?.country || onlineProfile?.country || keep?.country,
-            }
-          : null),
-      },
+mergeLinkedProfileWithOnline(
+        {
+          ...keep,
+        },
+        user,
+        onlineProfile
+      ),
       {
         ...piKeep,
         onlineUserId: uid,
@@ -178,17 +226,13 @@ export function ensureLocalProfileForOnlineUser(store: any, user: any, onlinePro
   if (byPI) {
     const pi = readPrivateInfo(byPI);
     const next = writePrivateInfo(
-      {
-        ...byPI,
-        ...(onlineProfile
-          ? {
-              // ✅ keep local first
-              name: byPI?.name || onlineProfile?.nickname || byPI?.name,
-              avatarUrl: byPI?.avatarUrl || onlineProfile?.avatarUrl || byPI?.avatarUrl,
-              country: byPI?.country || onlineProfile?.country || byPI?.country,
-            }
-          : null),
-      },
+mergeLinkedProfileWithOnline(
+        {
+          ...byPI,
+        },
+        user,
+        onlineProfile
+      ),
       {
         ...pi,
         onlineUserId: uid,
@@ -205,17 +249,13 @@ export function ensureLocalProfileForOnlineUser(store: any, user: any, onlinePro
   if (byId && active && String(active?.id || "") !== uid) {
     const piA = readPrivateInfo(active);
     const activeLinked = writePrivateInfo(
-      {
-        ...active,
-        ...(onlineProfile
-          ? {
-              // ✅ keep local first
-              name: active?.name || onlineProfile?.nickname || active?.name,
-              avatarUrl: active?.avatarUrl || onlineProfile?.avatarUrl || active?.avatarUrl,
-              country: active?.country || onlineProfile?.country || active?.country,
-            }
-          : null),
-      },
+mergeLinkedProfileWithOnline(
+        {
+          ...active,
+        },
+        user,
+        onlineProfile
+      ),
       {
         ...piA,
         onlineUserId: uid,
@@ -259,13 +299,13 @@ export function ensureLocalProfileForOnlineUser(store: any, user: any, onlinePro
 
   // Default: do NOT hijack the current active local profile.
   // Create a dedicated local profile bound to this online account.
-  const nickname = String(onlineProfile?.nickname || onlineProfile?.displayName || "").trim();
-  const fallbackName = nickname || (email ? email.split("@")[0] : "Joueur");
+  const onlineName = onlineDisplayNameOf(onlineProfile, email);
+  const onlineAvatar = onlineAvatarOf(onlineProfile);
   const dedicatedProfile: any = {
     id: uid,
-    name: fallbackName,
-    avatarDataUrl: onlineProfile?.avatarUrl || undefined,
-    avatarUrl: onlineProfile?.avatarUrl || undefined,
+    name: onlineName,
+    avatarDataUrl: onlineAvatar || undefined,
+    avatarUrl: onlineAvatar || undefined,
     country: onlineProfile?.country || active?.country || "FR",
     createdAt: Date.now(),
     updatedAt: Date.now(),

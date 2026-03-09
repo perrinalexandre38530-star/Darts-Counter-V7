@@ -227,6 +227,26 @@ function writeProfilesCache(profiles: Profile[]) {
 // ============================================
 const AVATAR_CACHE_KEY = "dc-avatar-cache-v1";
 
+function isGenericAccountName(name: any, email?: any) {
+  const n = String(name || "").trim().toLowerCase();
+  const local = String(email || "").trim().toLowerCase().split("@")[0] || "";
+  return !n || n === "joueur" || (!!local && n === local);
+}
+
+function onlineProfileName(auth: any): string {
+  const op: any = auth?.profile || auth?.onlineProfile || null;
+  const email = String(auth?.user?.email || "").trim().toLowerCase();
+  return String(
+    op?.display_name || op?.displayName || op?.nickname || op?.username || (email ? email.split("@")[0] : "") || "Moi"
+  ).trim();
+}
+
+function onlineProfileAvatar(auth: any): string {
+  const op: any = auth?.profile || auth?.onlineProfile || null;
+  return String(op?.avatar_url || op?.avatarUrl || op?.avatar || op?.photo_url || "").trim();
+}
+
+
 type AvatarCacheEntry = {
   avatarDataUrl?: string | null;
   avatarUrl?: string | null;
@@ -950,19 +970,10 @@ export default function Profiles({
     const uid = auth.user?.id;
     if (!uid) return null;
 
-    const op: any = (auth as any).profile || (auth as any).onlineProfile || null;
-    const onlineName =
-      op?.display_name ||
-      op?.displayName ||
-      op?.nickname ||
-      op?.username ||
-      "Moi";
+    const onlineName = onlineProfileName(auth);
+    const onlineAvatarUrl = onlineProfileAvatar(auth);
+    const emailNorm = String(auth.user?.email || "").trim().toLowerCase();
 
-    const onlineAvatarUrl =
-      op?.avatar_url || op?.avatarUrl || op?.avatar || op?.photo_url || "";
-
-    // ✅ UNIQUE ACCOUNT: pas de profil "mirror" online:<uid>
-    // On réutilise le profil local lié à ce user_id (ou à défaut le profil actif).
     const owner =
       linkedOnlineProfile ||
       (store?.profiles || []).find((p: any) => {
@@ -975,40 +986,36 @@ export default function Profiles({
       null;
 
     if (!owner) return null;
+    const cached = getAvatarCacheLib(String((owner as any)?.id || ""));
+    const localName = String((owner as any)?.name || "").trim();
 
     return {
       ...(owner as any),
-      // garde le nom local en priorité (modifiable offline), sinon fallback online
-      name: (owner as any)?.name || onlineName,
-      // dans l'UI "Mon profil", on privilégie l'avatar online si dispo
-      avatarUrl: onlineAvatarUrl || (owner as any)?.avatarUrl || (getAvatarCacheLib(String((owner as any)?.id || ""))?.avatarUrl || getAvatarCacheLib(String((owner as any)?.id || ""))?.avatarDataUrl || ""),
+      name: isGenericAccountName(localName, emailNorm) ? onlineName || localName || "Moi" : localName,
+      avatarUrl: onlineAvatarUrl || (owner as any)?.avatarUrl || cached?.avatarUrl || cached?.avatarDataUrl || "",
+      avatarDataUrl: onlineAvatarUrl ? undefined : (owner as any)?.avatarDataUrl || cached?.avatarDataUrl || undefined,
       source: "online",
       isOnlineMirror: false,
     } as any;
-  }, [store?.profiles, auth.status, auth.user?.id, (auth as any)?.profile, (auth as any)?.onlineProfile, active?.id, active?.name]);
+  }, [store?.profiles, auth.status, auth.user?.id, auth.user?.email, (auth as any)?.profile, (auth as any)?.onlineProfile, linkedOnlineProfile, active]);
 
   // Dans "Mon profil", on veut afficher l'avatar ONLINE même si le profil actif local n'en a pas.
   const activeForMeUi = React.useMemo(() => {
     const base = linkedOnlineProfile || active;
     if (!base) return null;
     if (auth.status !== "signed_in") return base;
-    const op: any = (auth as any).profile || (auth as any).onlineProfile || null;
-    const onlineAvatarUrl =
-      op?.avatar_url || op?.avatarUrl || op?.avatar || op?.photo_url || "";
+    const onlineAvatarUrl = onlineProfileAvatar(auth);
+    const onlineName = onlineProfileName(auth);
+    const emailNorm = String(auth.user?.email || "").trim().toLowerCase();
     const cached = getAvatarCacheLib(String((base as any)?.id || ""));
+    const localName = String((base as any)?.name || "").trim();
     return {
       ...(base as any),
-      avatarUrl:
-        onlineAvatarUrl ||
-        (base as any)?.avatarUrl ||
-        cached?.avatarUrl ||
-        undefined,
-      avatarDataUrl:
-        onlineAvatarUrl
-          ? undefined
-          : (base as any)?.avatarDataUrl || cached?.avatarDataUrl || undefined,
+      name: isGenericAccountName(localName, emailNorm) ? onlineName || localName || "Moi" : localName,
+      avatarUrl: onlineAvatarUrl || (base as any)?.avatarUrl || cached?.avatarUrl || undefined,
+      avatarDataUrl: onlineAvatarUrl ? undefined : (base as any)?.avatarDataUrl || cached?.avatarDataUrl || undefined,
     } as any;
-  }, [linkedOnlineProfile, active, auth.status, (auth as any)?.profile, (auth as any)?.onlineProfile]);
+  }, [linkedOnlineProfile, active, auth.status, auth.user?.email, (auth as any)?.profile, (auth as any)?.onlineProfile]);
 
   // Anti-reupload (session) pour les avatars locaux envoyés online
   const avatarUploadDoneRef = React.useRef<Set<string>>(new Set());

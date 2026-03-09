@@ -1467,7 +1467,6 @@ function buildPerPlayerMetrics(
         r.co_success ??
         r.hitsCheckout ??
         r.hitsCO ??
-        r.coSuccess ??
         imp.coHits,
       m.coHits
     );
@@ -1610,7 +1609,10 @@ function buildPerPlayerMetrics(
       }
       if (!m.avg1 && m.avg3) m.avg1 = m.avg3 / 3;
       if (!m.bestVisit) m.bestVisit = n(dv.bestVisit, 0);
-      if (!m.bestCO) m.bestCO = sanitizeCO(dv.bestCO);
+      m.bestCO = Math.max(
+        sanitizeCO(m.bestCO),
+        sanitizeCO(dv.bestCO)
+      );
 
       if (!m.t60) m.t60 = n(dv.t60, 0);
       if (!m.t100) m.t100 = n(dv.t100, 0);
@@ -2674,7 +2676,10 @@ function buildVisitHistory(
   if (!order.length) return [];
 
   const startScore =
+    rec?.resume?.config?.startScore ??
+    rec?.resume?.startScore ??
     rec?.summary?.game?.startScore ??
+    rec?.summary?.startScore ??
     rec?.payload?.startScore ??
     rec?.payload?.config?.startScore ??
     rec?.payload?.game?.startScore ??
@@ -2699,11 +2704,12 @@ function buildVisitHistory(
     let bust = false;
     let finish = false;
 
-    for (let j = 0; j < 3 && i < rawDarts.length; j++, i++) {
+    let consumed = 0;
+
+    for (; consumed < 3 && i < rawDarts.length; consumed += 1, i += 1) {
       const r = rawDarts[i] || {};
       const seg = Number(r.segment ?? r.v ?? r.value ?? r.num ?? 0) || 0;
-      const mult = (Number(r.multiplier ?? r.mult ?? r.m ?? r.multi ?? 1) ||
-        1) as 1 | 2 | 3;
+      const mult = (Number(r.multiplier ?? r.mult ?? r.m ?? r.multi ?? 1) || 1) as 1 | 2 | 3;
 
       darts.push({ v: seg, mult });
 
@@ -2711,16 +2717,22 @@ function buildVisitHistory(
       const tentative = scoreAfter - value;
 
       if (tentative < 0 || tentative === 1) {
-        // Bust : score revient à l'état initial de la volée
         bust = true;
         scoreAfter = scoreBefore;
-        break;
-      } else {
-        scoreAfter = tentative;
-        if (scoreAfter === 0) {
-          finish = true;
-          break;
+
+        // on consomme le reste de la volée pour éviter un doublon parasite
+        const remainingInVisit = 2 - consumed;
+        if (remainingInVisit > 0) {
+          i += remainingInVisit;
         }
+        break;
+      }
+
+      scoreAfter = tentative;
+
+      if (scoreAfter === 0) {
+        finish = true;
+        break;
       }
     }
 
@@ -2738,11 +2750,7 @@ function buildVisitHistory(
     scores[pid] = scoreAfter;
 
     if (finish) {
-      // Nouveau leg : reset des scores
-      legNo += 1;
-      order.forEach((id) => {
-        scores[id] = startScore;
-      });
+      break;
     }
 
     throwerIndex += 1;
@@ -2761,66 +2769,188 @@ function VisitsList({
   if (!visits.length) return null;
 
   return (
-    <div style={{ maxHeight: 260, overflowY: "auto", marginTop: 2 }}>
+    <div style={{ maxHeight: 320, overflowY: "auto", marginTop: 4 }}>
       {visits.map((v) => {
         const p = playersById[v.playerId];
         const name = p?.name || "—";
-        const dartsLabel = v.darts.map((d) => dartToString(d.v, d.mult)).join(" · ");
+        const visitTotal = v.bust ? 0 : Math.max(0, v.scoreBefore - v.scoreAfter);
 
         return (
           <div
             key={v.idx}
             style={{
-              display: "flex",
+              display: "grid",
+              gridTemplateColumns: "64px 1fr auto",
+              gap: 8,
               alignItems: "center",
-              justifyContent: "space-between",
-              padding: "4px 6px",
-              borderRadius: 8,
-              background: "rgba(255,255,255,.02)",
-              marginBottom: 3,
-              fontSize: 11.5,
+              padding: "8px 8px",
+              borderRadius: 14,
+              border: "1px solid rgba(255,255,255,.08)",
+              background:
+                "linear-gradient(180deg, rgba(255,255,255,.04), rgba(255,255,255,.02))",
+              boxShadow: "0 10px 24px rgba(0,0,0,.22)",
+              marginBottom: 6,
             }}
           >
-            <div style={{ minWidth: 70 }}>
-              <b>#{v.idx}</b> · Leg {v.legNo}
-            </div>
             <div
               style={{
-                flex: 1,
+                display: "flex",
+                flexDirection: "column",
+                gap: 4,
                 minWidth: 0,
-                marginInline: 8,
-                whiteSpace: "nowrap",
-                overflow: "hidden",
-                textOverflow: "ellipsis",
               }}
             >
-              {name}
-              {v.bust && (
-                <span style={{ marginLeft: 4, color: "#ff9090", fontWeight: 700 }}>
-                  (BUST)
-                </span>
-              )}
-              {v.finish && !v.bust && (
-                <span style={{ marginLeft: 4, color: "#7fe2a9", fontWeight: 700 }}>
-                  (FINISH)
-                </span>
-              )}
+              <div
+                style={{
+                  fontSize: 11,
+                  fontWeight: 900,
+                  color: "#ffcf57",
+                  letterSpacing: 0.2,
+                }}
+              >
+                #{v.idx}
+              </div>
+              <div
+                style={{
+                  fontSize: 10,
+                  color: "#a9a9b2",
+                  fontWeight: 700,
+                }}
+              >
+                Leg {v.legNo}
+              </div>
             </div>
+
             <div
               style={{
-                flex: 2,
                 minWidth: 0,
-                fontFamily: "monospace",
-                fontSize: 11,
-                whiteSpace: "nowrap",
-                overflow: "hidden",
-                textOverflow: "ellipsis",
+                display: "flex",
+                flexDirection: "column",
+                gap: 6,
               }}
             >
-              {dartsLabel || "—"}
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 8,
+                  flexWrap: "wrap",
+                }}
+              >
+                <div
+                  style={{
+                    fontSize: 12,
+                    fontWeight: 900,
+                    color: "#f3f3f7",
+                  }}
+                >
+                  {name}
+                </div>
+
+                {v.finish && !v.bust ? (
+                  <span
+                    style={{
+                      padding: "2px 8px",
+                      borderRadius: 999,
+                      fontSize: 10,
+                      fontWeight: 900,
+                      color: "#0f1411",
+                      background:
+                        "linear-gradient(180deg,#86efac,#22c55e)",
+                      boxShadow: "0 0 12px rgba(34,197,94,.35)",
+                    }}
+                  >
+                    FINISH
+                  </span>
+                ) : null}
+
+                {v.bust ? (
+                  <span
+                    style={{
+                      padding: "2px 8px",
+                      borderRadius: 999,
+                      fontSize: 10,
+                      fontWeight: 900,
+                      color: "#190f10",
+                      background:
+                        "linear-gradient(180deg,#fca5a5,#ef4444)",
+                      boxShadow: "0 0 12px rgba(239,68,68,.35)",
+                    }}
+                  >
+                    BUST
+                  </span>
+                ) : null}
+              </div>
+
+              <div
+                style={{
+                  display: "flex",
+                  gap: 6,
+                  flexWrap: "wrap",
+                }}
+              >
+                {v.darts?.length ? (
+                  v.darts.map((d, i) => (
+                    <div
+                      key={`${v.idx}-${i}`}
+                      style={dartBadgeStyle(d.v, d.mult)}
+                    >
+                      {dartToString(d.v, d.mult)}
+                    </div>
+                  ))
+                ) : (
+                  <div
+                    style={{
+                      padding: "7px 10px",
+                      borderRadius: 12,
+                      border: "1px solid rgba(255,255,255,.10)",
+                      color: "#9a9aa3",
+                      fontSize: 11,
+                    }}
+                  >
+                    —
+                  </div>
+                )}
+
+                <div
+                  style={{
+                    marginLeft: 2,
+                    padding: "7px 10px",
+                    borderRadius: 12,
+                    border: "1px solid rgba(255,207,87,.18)",
+                    background:
+                      "linear-gradient(180deg, rgba(255,207,87,.16), rgba(255,207,87,.06))",
+                    color: "#ffcf57",
+                    fontSize: 11,
+                    fontWeight: 900,
+                    boxShadow: "0 0 10px rgba(255,207,87,.14)",
+                  }}
+                >
+                  {v.bust ? "BUST" : `+${visitTotal}`}
+                </div>
+              </div>
             </div>
-            <div style={{ minWidth: 80, textAlign: "right" }}>
-              {v.scoreBefore} → <b>{v.scoreAfter}</b>
+
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 6,
+                justifyContent: "flex-end",
+                minWidth: 112,
+              }}
+            >
+              <div style={scoreBoxStyle(false)}>{v.scoreBefore}</div>
+              <div
+                style={{
+                  color: "#8f8f99",
+                  fontWeight: 900,
+                  fontSize: 12,
+                }}
+              >
+                →
+              </div>
+              <div style={scoreBoxStyle(true)}>{v.scoreAfter}</div>
             </div>
           </div>
         );
@@ -2828,6 +2958,120 @@ function VisitsList({
     </div>
   );
 }
+
+function dartBadgeStyle(v: number, mult: 1 | 2 | 3): React.CSSProperties {
+  const label = dartToString(v, mult);
+
+  if (label === "MISS") {
+    return {
+      padding: "7px 10px",
+      minWidth: 52,
+      textAlign: "center",
+      borderRadius: 12,
+      border: "1px solid rgba(248,113,113,.30)",
+      background: "linear-gradient(180deg, rgba(248,113,113,.24), rgba(127,29,29,.18))",
+      color: "#ffd4d4",
+      fontSize: 11,
+      fontWeight: 900,
+      boxShadow: "0 0 12px rgba(248,113,113,.18)",
+    };
+  }
+
+  if (label === "BULL") {
+    return {
+      padding: "7px 10px",
+      minWidth: 52,
+      textAlign: "center",
+      borderRadius: 12,
+      border: "1px solid rgba(96,165,250,.34)",
+      background: "linear-gradient(180deg, rgba(96,165,250,.24), rgba(29,78,216,.18))",
+      color: "#d9ecff",
+      fontSize: 11,
+      fontWeight: 900,
+      boxShadow: "0 0 12px rgba(96,165,250,.18)",
+    };
+  }
+
+  if (label === "DBULL") {
+    return {
+      padding: "7px 10px",
+      minWidth: 52,
+      textAlign: "center",
+      borderRadius: 12,
+      border: "1px solid rgba(74,222,128,.34)",
+      background: "linear-gradient(180deg, rgba(74,222,128,.24), rgba(21,128,61,.18))",
+      color: "#dcffe8",
+      fontSize: 11,
+      fontWeight: 900,
+      boxShadow: "0 0 12px rgba(74,222,128,.18)",
+    };
+  }
+
+  if (mult === 3) {
+    return {
+      padding: "7px 10px",
+      minWidth: 52,
+      textAlign: "center",
+      borderRadius: 12,
+      border: "1px solid rgba(244,114,182,.34)",
+      background: "linear-gradient(180deg, rgba(244,114,182,.22), rgba(157,23,77,.18))",
+      color: "#ffd9ef",
+      fontSize: 11,
+      fontWeight: 900,
+      boxShadow: "0 0 12px rgba(244,114,182,.18)",
+    };
+  }
+
+  if (mult === 2) {
+    return {
+      padding: "7px 10px",
+      minWidth: 52,
+      textAlign: "center",
+      borderRadius: 12,
+      border: "1px solid rgba(74,222,128,.34)",
+      background: "linear-gradient(180deg, rgba(74,222,128,.22), rgba(21,128,61,.18))",
+      color: "#dcffe8",
+      fontSize: 11,
+      fontWeight: 900,
+      boxShadow: "0 0 12px rgba(74,222,128,.18)",
+    };
+  }
+
+  return {
+    padding: "7px 10px",
+    minWidth: 52,
+    textAlign: "center",
+    borderRadius: 12,
+    border: "1px solid rgba(96,165,250,.28)",
+    background: "linear-gradient(180deg, rgba(96,165,250,.18), rgba(30,41,59,.22))",
+    color: "#e4f1ff",
+    fontSize: 11,
+    fontWeight: 900,
+    boxShadow: "0 0 12px rgba(96,165,250,.12)",
+  };
+}
+
+function scoreBoxStyle(isAfter: boolean): React.CSSProperties {
+  return {
+    minWidth: 42,
+    textAlign: "center",
+    padding: "7px 8px",
+    borderRadius: 12,
+    border: isAfter
+      ? "1px solid rgba(255,207,87,.24)"
+      : "1px solid rgba(255,255,255,.10)",
+    background: isAfter
+      ? "linear-gradient(180deg, rgba(255,207,87,.16), rgba(255,207,87,.06))"
+      : "linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.03))",
+    color: isAfter ? "#ffcf57" : "#f3f3f7",
+    fontWeight: 900,
+    fontSize: 12,
+    boxShadow: isAfter
+      ? "0 0 10px rgba(255,207,87,.12)"
+      : "none",
+  };
+}
+
 
 /* ================================
    Utils
