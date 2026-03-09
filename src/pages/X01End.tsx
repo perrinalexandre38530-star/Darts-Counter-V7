@@ -7,7 +7,6 @@
 // + NOUVEAU : Radar "TrainingX01-like" + Historique des volées
 // ============================================
 import React from "react";
-import { createAutoBackup } from "../lib/backup/autoBackupService";
 import { History } from "../lib/history";
 import EndOfLegOverlay from "../components/EndOfLegOverlay";
 import {
@@ -136,14 +135,6 @@ export default function X01End({ go, params }: Props) {
       mounted = false;
     };
   }, [params?.matchId, params?.rec]);
-
-  React.useEffect(() => {
-    const enabled =
-      localStorage.getItem("dc_auto_backup_enabled") === "true";
-    if (enabled) {
-      createAutoBackup().catch(() => {});
-    }
-  }, []);
 
   // données dérivées — protégées quand rec est null
   const finished = normalizeStatus(rec ?? {}) === "finished";

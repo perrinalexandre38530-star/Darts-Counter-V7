@@ -102,6 +102,11 @@ const LS_EXCLUDE = new Set<string>([
   // divers flags techniques (optionnel)
   "dc_sw_purge_once",
   "dc_last_crash",
+  "dc_last_chunk_error_v1",
+  "dc_last_runtime_error_v1",
+  "dc_last_memory_warning_v1",
+  "dc_memory_diag_v1",
+  "dc_auto_backups",
 ]);
 
 /**

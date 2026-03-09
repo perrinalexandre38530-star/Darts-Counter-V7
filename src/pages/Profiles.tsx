@@ -246,6 +246,18 @@ function onlineProfileAvatar(auth: any): string {
   return String(op?.avatar_url || op?.avatarUrl || op?.avatar || op?.photo_url || "").trim();
 }
 
+function isPollutedOnlineAvatarUrl(url: any, uid: any): boolean {
+  const u = String(url || "").trim();
+  const id = String(uid || "").trim();
+  if (!u || !id) return false;
+  return (
+    u.includes(`/storage/v1/object/public/avatars/${id}/locals/`) ||
+    u.includes(`/storage/v1/object/public/avatars/local/${id}/`) ||
+    u.includes(`/avatars/${id}/locals/`) ||
+    u.includes(`/avatars/local/${id}/`)
+  );
+}
+
 function profileOnlineLinks(p: any) {
   const pi = ((p as any)?.privateInfo || {}) as any;
   return {
@@ -965,20 +977,18 @@ export default function Profiles({
     const emailNorm = String(auth.user?.email || "").trim().toLowerCase();
     if (!uid && !emailNorm) return null;
 
-    // ✅ IMPORTANT:
-    // Pour l'écran "Mon profil", on ne doit PAS laisser un ancien profil local
-    // pollué reprendre la main juste parce qu'il porte encore le même email.
-    // On privilégie d'abord le profil actif s'il est déjà lié au compte.
-    const activeIsLinked = active && isProfileLinkedToSignedUser(active, auth);
-    if (activeIsLinked) return active;
-
-    // Ensuite uniquement un match strict sur onlineUserId.
     const exactUid =
       profiles.find((p: any) => profileOnlineLinks(p).onlineUserId === uid) || null;
     if (exactUid) return exactUid;
 
-    // ✅ On NE retombe PLUS sur un simple match d'email ici.
-    // Trop risqué si plusieurs profils locaux ont été contaminés par d'anciens patchs.
+    const exactOnlineEmailMatches = profiles.filter(
+      (p: any) => !!emailNorm && profileOnlineLinks(p).onlineEmail === emailNorm
+    );
+    if (exactOnlineEmailMatches.length === 1) return exactOnlineEmailMatches[0] || null;
+
+    const activeIsLinked = active && isProfileLinkedToSignedUser(active, auth);
+    if (activeIsLinked) return active;
+
     return null;
   }, [profiles, active, auth.status, auth.user?.id, auth.user?.email]);
 
@@ -993,13 +1003,21 @@ export default function Profiles({
     if (!uid) return null;
 
     const onlineName = onlineProfileName(auth);
-    const onlineAvatarUrl = onlineProfileAvatar(auth);
+    const rawOnlineAvatarUrl = onlineProfileAvatar(auth);
+    const onlineAvatarUrl = isPollutedOnlineAvatarUrl(rawOnlineAvatarUrl, uid) ? "" : rawOnlineAvatarUrl;
     const emailNorm = String(auth.user?.email || "").trim().toLowerCase();
 
-    // ✅ Source canonique pour l'UI "Mon profil" :
-    // le profil actif d'abord, puis seulement le profil lié par UID.
-    // On ne va plus piocher dans un autre profil local arbitraire.
-    const owner = active || linkedOnlineProfile || null;
+    const owner =
+      (active && isProfileLinkedToSignedUser(active, auth) ? active : null) ||
+      linkedOnlineProfile ||
+      (store?.profiles || []).find((p: any) => {
+        const pi = (p as any)?.privateInfo || {};
+        const legacyUserId = String((pi as any)?.userId || "");
+        const onlineUserId = String((pi as any)?.onlineUserId || "");
+        return (onlineUserId && onlineUserId === String(uid)) || (legacyUserId && legacyUserId === String(uid));
+      }) ||
+      active ||
+      null;
 
     if (!owner) return null;
     const cached = getAvatarCacheLib(String((owner as any)?.id || ""));
@@ -1008,44 +1026,33 @@ export default function Profiles({
     return {
       ...(owner as any),
       name: isGenericAccountName(localName, emailNorm) ? onlineName || localName || "Moi" : localName,
-      avatarUrl: (owner as any)?.avatarUrl || cached?.avatarUrl || onlineAvatarUrl || cached?.avatarDataUrl || "",
-      avatarDataUrl:
-        (owner as any)?.avatarUrl || cached?.avatarUrl || onlineAvatarUrl
-          ? undefined
-          : (owner as any)?.avatarDataUrl || cached?.avatarDataUrl || undefined,
+      avatarUrl: onlineAvatarUrl || (owner as any)?.avatarUrl || cached?.avatarUrl || cached?.avatarDataUrl || "",
+      avatarDataUrl: onlineAvatarUrl ? undefined : (owner as any)?.avatarDataUrl || cached?.avatarDataUrl || undefined,
       source: "online",
       isOnlineMirror: false,
     } as any;
-  }, [auth.status, auth.user?.id, auth.user?.email, (auth as any)?.profile, (auth as any)?.onlineProfile, linkedOnlineProfile, active]);
+  }, [store?.profiles, auth.status, auth.user?.id, auth.user?.email, (auth as any)?.profile, (auth as any)?.onlineProfile, linkedOnlineProfile, active]);
 
   // Dans "Mon profil", on veut afficher l'avatar ONLINE même si le profil actif local n'en a pas.
   const activeForMeUi = React.useMemo(() => {
-    // ✅ "Mon profil" doit refléter le PROFIL ACTIF affiché partout ailleurs.
-    // On n'autorise un fallback vers un autre profil que si aucun actif n'existe.
-    const base = active || linkedOnlineProfile || null;
+    const base =
+      (active && isProfileLinkedToSignedUser(active, auth) ? active : null) ||
+      linkedOnlineProfile ||
+      active;
     if (!base) return null;
     if (auth.status !== "signed_in") return base;
-    const onlineAvatarUrl = onlineProfileAvatar(auth);
+    const uid = String(auth.user?.id || "").trim();
+    const rawOnlineAvatarUrl = onlineProfileAvatar(auth);
+    const onlineAvatarUrl = isPollutedOnlineAvatarUrl(rawOnlineAvatarUrl, uid) ? "" : rawOnlineAvatarUrl;
     const onlineName = onlineProfileName(auth);
     const emailNorm = String(auth.user?.email || "").trim().toLowerCase();
     const cached = getAvatarCacheLib(String((base as any)?.id || ""));
     const localName = String((base as any)?.name || "").trim();
-    const preferredAvatarUrl =
-      String((base as any)?.avatarUrl || "").trim() ||
-      String(cached?.avatarUrl || "").trim() ||
-      String(onlineAvatarUrl || "").trim() ||
-      undefined;
-    const preferredAvatarDataUrl =
-      preferredAvatarUrl
-        ? undefined
-        : String((base as any)?.avatarDataUrl || "").trim() ||
-          String(cached?.avatarDataUrl || "").trim() ||
-          undefined;
     return {
       ...(base as any),
       name: isGenericAccountName(localName, emailNorm) ? onlineName || localName || "Moi" : localName,
-      avatarUrl: preferredAvatarUrl,
-      avatarDataUrl: preferredAvatarDataUrl,
+      avatarUrl: onlineAvatarUrl || (base as any)?.avatarUrl || cached?.avatarUrl || undefined,
+      avatarDataUrl: onlineAvatarUrl ? undefined : (base as any)?.avatarDataUrl || cached?.avatarDataUrl || undefined,
     } as any;
   }, [linkedOnlineProfile, active, auth.status, auth.user?.email, (auth as any)?.profile, (auth as any)?.onlineProfile]);
 
@@ -1094,6 +1101,7 @@ React.useEffect(() => {
         const { publicUrl } = await onlineApi.uploadAvatarImage({
           dataUrl,
           folder: `${uid}/locals`,
+          updateProfile: false,
         });
 
         if (!publicUrl) {
@@ -1239,7 +1247,10 @@ React.useEffect(() => {
     React.useEffect(() => {
       if (auth.status !== "signed_in") return;
 
-      const target = active || linkedOnlineProfile || null;
+      const target =
+        (active && isProfileLinkedToSignedUser(active, auth) ? active : null) ||
+        linkedOnlineProfile ||
+        null;
       if (!target) return;
 
       const pi = (((target as any)?.privateInfo) || {}) as PrivateInfo;
@@ -1285,51 +1296,7 @@ React.useEffect(() => {
       auth.profile,
       auth.user?.id,
       auth.user?.email,
-    ]);
-
-    // ✅ Dépollution ciblée : si plusieurs profils locaux portent le même onlineUserId,
-    // on garde le profil actif comme source de vérité pour "Mon profil" et on nettoie les autres.
-    React.useEffect(() => {
-      if (auth.status !== "signed_in") return;
-      if (!active?.id) return;
-      const uid = String(auth.user?.id || "").trim();
-      if (!uid) return;
-
-      const duplicates = (profiles || []).filter((p: any) => {
-        const pid = String(p?.id || "").trim();
-        if (!pid || pid === String(active.id)) return false;
-        const pi = (((p as any)?.privateInfo) || {}) as any;
-        return String(pi?.onlineUserId || "").trim() === uid;
-      });
-      if (!duplicates.length) return;
-
-      setProfilesSafe((arr) =>
-        arr.map((p: any) => {
-          const pid = String(p?.id || "").trim();
-          if (!pid) return p;
-          if (pid === String(active.id)) {
-            return {
-              ...p,
-              privateInfo: {
-                ...((p as any)?.privateInfo || {}),
-                onlineUserId: uid,
-                onlineEmail: String(auth.user?.email || "").trim().toLowerCase(),
-              },
-            };
-          }
-          const pi = (((p as any)?.privateInfo) || {}) as any;
-          if (String(pi?.onlineUserId || "").trim() !== uid) return p;
-          const nextPi = { ...pi };
-          delete nextPi.onlineUserId;
-          // on conserve l'email local perso éventuel, mais on évite qu'il serve de lien parasite
-          delete nextPi.onlineEmail;
-          return {
-            ...p,
-            privateInfo: nextPi,
-          };
-        })
-      );
-    }, [profiles, active?.id, auth.status, auth.user?.id, auth.user?.email, setProfilesSafe]);
+    ]);  
 
   // NEW : au chargement de la page, si un profil actif a des prefs app, on les applique
   React.useEffect(() => {
