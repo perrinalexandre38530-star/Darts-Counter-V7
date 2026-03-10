@@ -14,6 +14,7 @@
 import React from "react";
 import { useTheme } from "../contexts/ThemeContext";
 import { useLang } from "../contexts/LangContext";
+import { fileToSafeAvatarDataUrl, enforceSafeAvatarDataUrl } from "../lib/avatarSafe";
 
 type Props = {
   size?: number; // taille du médaillon en px
@@ -95,17 +96,25 @@ export default function AvatarCreator({
     }
     setError(null);
 
-    const reader = new FileReader();
-    reader.onload = () => {
-      setPhotoUrl(String(reader.result));
-      setStatus(
-        t(
-          "avatar.status.photoLoaded",
-          "Image importée, ajuste le zoom puis enregistre ton médaillon."
-        )
-      );
-    };
-    reader.readAsDataURL(f);
+    (async () => {
+      try {
+        const safe = await fileToSafeAvatarDataUrl(f);
+        setPhotoUrl(safe);
+        setStatus(
+          t(
+            "avatar.status.photoLoaded",
+            "Image importée, ajuste le zoom puis enregistre ton médaillon."
+          )
+        );
+      } catch {
+        setError(
+          t(
+            "avatar.error.tooBig",
+            `L’image est trop lourde (max ${maxMb} Mo).`
+          )
+        );
+      }
+    })();
   }
 
   // ---------------- Export SVG -> PNG ----------------
@@ -157,8 +166,10 @@ export default function AvatarCreator({
         img.src = url;
       });
 
+      const safePngDataUrl = (await enforceSafeAvatarDataUrl(pngDataUrl)) || pngDataUrl;
+
       if (onSave) {
-        onSave({ pngDataUrl, name: name || "PLAYER" });
+        onSave({ pngDataUrl: safePngDataUrl, name: name || "PLAYER" });
         setStatus(
           t(
             "avatar.status.savedToProfile",
@@ -167,7 +178,7 @@ export default function AvatarCreator({
         );
       } else {
         const a = document.createElement("a");
-        a.href = pngDataUrl;
+        a.href = safePngDataUrl;
         a.download = `avatar-darts-counter-${name || "player"}.png`;
         a.click();
         setStatus(

@@ -10,6 +10,7 @@
 import type { Store, Profile } from "./types";
 import { emitCloudChange } from "./cloudEvents";
 import { exportHistoryDump, importHistoryDump } from "./historyCloud";
+import { sanitizeAvatarDataUrl, MAX_AVATAR_DATA_URL_CHARS } from "./avatarSafe";
 
 /* ---------- SAFE JSON ---------- */
 function safeJsonParse<T = any>(value: any, fallback: T): T {
@@ -102,11 +103,6 @@ const LS_EXCLUDE = new Set<string>([
   // divers flags techniques (optionnel)
   "dc_sw_purge_once",
   "dc_last_crash",
-  "dc_last_chunk_error_v1",
-  "dc_last_runtime_error_v1",
-  "dc_last_memory_warning_v1",
-  "dc_memory_diag_v1",
-  "dc_auto_backups",
 ]);
 
 /**
@@ -385,15 +381,19 @@ function normalizeStoreAvatarsCompatSync<T extends any>(store: T): { store: T; c
 
       const avatarUrl = typeof p.avatarUrl === "string" ? p.avatarUrl.trim() : "";
       const avatarPath = typeof p.avatarPath === "string" ? p.avatarPath.trim() : "";
-      const avatarDataUrl = typeof p.avatarDataUrl === "string" ? p.avatarDataUrl.trim() : "";
+      const avatarDataUrl = sanitizeAvatarFieldSync(p.avatarDataUrl);
 
       // ✅ legacy champs rencontrés dans d'anciennes versions
       const legacyAvatar =
-        (typeof p.avatar === "string" ? String(p.avatar).trim() : "") ||
-        (typeof p.photoDataUrl === "string" ? String(p.photoDataUrl).trim() : "") ||
+        sanitizeAvatarFieldSync(p.avatar) ||
+        sanitizeAvatarFieldSync(p.photoDataUrl) ||
         (typeof p.photoUrl === "string" ? String(p.photoUrl).trim() : "");
 
       if (!avatarDataUrl) {
+        if (typeof p?.avatarDataUrl === "string" && p.avatarDataUrl.length > MAX_AVATAR_DATA_URL_CHARS) {
+          changed = true;
+          return { ...p, avatarDataUrl: undefined };
+        }
         if (avatarUrl) {
           changed = true;
           return { ...p, avatarDataUrl: avatarUrl };
@@ -441,6 +441,15 @@ function normalizeStoreAvatarsCompatSync<T extends any>(store: T): { store: T; c
 ============================================================ */
 function isHugeImageDataUrl(s: any, minLen = 200_000): s is string {
   return typeof s === "string" && s.startsWith("data:image/") && s.length > minLen;
+}
+
+
+function sanitizeAvatarFieldSync(v: any): string {
+  try {
+    return sanitizeAvatarDataUrl(v, MAX_AVATAR_DATA_URL_CHARS) || "";
+  } catch {
+    return "";
+  }
 }
 
 async function downscaleImageDataUrl(dataUrl: string, maxSize = 256, quality = 0.82): Promise<string> {
@@ -495,7 +504,12 @@ async function normalizeStoreAvatarsPerf<T extends Store>(store: T): Promise<{ s
         const hasAvatarUrl = typeof p.avatarUrl === "string" && p.avatarUrl.trim().length > 0;
         if (hasAvatarUrl) return p;
 
-        const raw = p.avatarDataUrl;
+        const raw = sanitizeAvatarFieldSync(p.avatarDataUrl) || p.avatarDataUrl;
+
+        if (typeof raw === "string" && raw.startsWith("data:image/") && raw.length > MAX_AVATAR_DATA_URL_CHARS) {
+          changed = true;
+          return { ...p, avatarDataUrl: undefined };
+        }
 
         if (isHugeImageDataUrl(raw)) {
           const slim = await downscaleImageDataUrl(raw, 256, 0.82);
@@ -1077,46 +1091,4 @@ export async function nukeAllKeepActiveProfile(): Promise<void> {
       console.warn("[storage] unable to write minimal store after reset", err);
     }
   }
-}
-
-
-// ===== ULTIMATE MEMORY PATCH =====
-// Remove heavy duplicated data before saving store
-function sanitizeStoreForMemory(store:any){
-  try{
-
-    // 1️⃣ remove avatarDataUrl everywhere except profiles
-    if(Array.isArray(store?.history)){
-      store.history = store.history.map((m:any)=>{
-        if(m?.players){
-          m.players = m.players.map((p:any)=>{
-            const {avatarDataUrl, avatarUrl, ...rest}=p||{}
-            return rest
-          })
-        }
-        return m
-      })
-    }
-
-    // 2️⃣ limit resume payload
-    if(store?.resume){
-      try{
-        const r = store.resume
-        store.resume = {
-          matchId:r?.matchId,
-          sport:r?.sport,
-          players:r?.players,
-          score:r?.score,
-          updated:r?.updated
-        }
-      }catch{}
-    }
-
-    // 3️⃣ remove heavy stats cache
-    if(store?.statsCache){
-      delete store.statsCache
-    }
-
-  }catch{}
-  return store
 }

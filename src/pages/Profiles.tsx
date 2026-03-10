@@ -25,6 +25,7 @@ import type { ThemeId } from "../theme/themePresets";
 import { sha256 } from "../lib/crypto";
 import DartSetsPanel from "../components/DartSetsPanel";
 import { saveStore } from "../lib/storage";
+import { fileToSafeAvatarDataUrl, sanitizeAvatarDataUrl } from "../lib/avatarSafe";
 
 // 🔥 nouveau : bloc préférences joueur
 import PlayerPrefsBlock from "../components/profile/PlayerPrefsBlock";
@@ -227,57 +228,6 @@ function writeProfilesCache(profiles: Profile[]) {
 // ============================================
 const AVATAR_CACHE_KEY = "dc-avatar-cache-v1";
 
-function isGenericAccountName(name: any, email?: any) {
-  const n = String(name || "").trim().toLowerCase();
-  const local = String(email || "").trim().toLowerCase().split("@")[0] || "";
-  return !n || n === "joueur" || (!!local && n === local);
-}
-
-function onlineProfileName(auth: any): string {
-  const op: any = auth?.profile || auth?.onlineProfile || null;
-  const email = String(auth?.user?.email || "").trim().toLowerCase();
-  return String(
-    op?.display_name || op?.displayName || op?.nickname || op?.username || (email ? email.split("@")[0] : "") || "Moi"
-  ).trim();
-}
-
-function onlineProfileAvatar(auth: any): string {
-  const op: any = auth?.profile || auth?.onlineProfile || null;
-  return String(op?.avatar_url || op?.avatarUrl || op?.avatar || op?.photo_url || "").trim();
-}
-
-function isPollutedOnlineAvatarUrl(url: any, uid: any): boolean {
-  const u = String(url || "").trim();
-  const id = String(uid || "").trim();
-  if (!u || !id) return false;
-  return (
-    u.includes(`/storage/v1/object/public/avatars/${id}/locals/`) ||
-    u.includes(`/storage/v1/object/public/avatars/local/${id}/`) ||
-    u.includes(`/avatars/${id}/locals/`) ||
-    u.includes(`/avatars/local/${id}/`)
-  );
-}
-
-function profileOnlineLinks(p: any) {
-  const pi = ((p as any)?.privateInfo || {}) as any;
-  return {
-    onlineUserId: String(pi?.onlineUserId || "").trim(),
-    onlineEmail: String(pi?.onlineEmail || "").trim().toLowerCase(),
-    localEmail: String(pi?.email || "").trim().toLowerCase(),
-  };
-}
-
-function isProfileLinkedToSignedUser(p: any, auth: any) {
-  if (!p || auth?.status !== "signed_in") return false;
-  const uid = String(auth?.user?.id || "").trim();
-  const email = String(auth?.user?.email || "").trim().toLowerCase();
-  const links = profileOnlineLinks(p);
-
-  if (uid && links.onlineUserId === uid) return true;
-  if (email && links.onlineEmail === email) return true;
-  return false;
-}
-
 type AvatarCacheEntry = {
   avatarDataUrl?: string | null;
   avatarUrl?: string | null;
@@ -340,10 +290,18 @@ function mergeProfilesSafe(
       ...old,
       ...p,
       // 🔒 champs protégés (jamais écrasés par undefined / null)
-      avatarUrl: (p as any).avatarUrl ?? (old as any).avatarUrl,
-      avatarDataUrl: (p as any).avatarDataUrl ?? (old as any).avatarDataUrl,
-      avatarPath: (p as any).avatarPath ?? (old as any).avatarPath,
-      avatarUpdatedAt: (p as any).avatarUpdatedAt ?? (old as any).avatarUpdatedAt,
+      avatarUrl: Object.prototype.hasOwnProperty.call((p as any), "avatarUrl")
+        ? (p as any).avatarUrl
+        : (old as any).avatarUrl,
+      avatarDataUrl: Object.prototype.hasOwnProperty.call((p as any), "avatarDataUrl")
+        ? (p as any).avatarDataUrl
+        : (old as any).avatarDataUrl,
+      avatarPath: Object.prototype.hasOwnProperty.call((p as any), "avatarPath")
+        ? (p as any).avatarPath
+        : (old as any).avatarPath,
+      avatarUpdatedAt: Object.prototype.hasOwnProperty.call((p as any), "avatarUpdatedAt")
+        ? (p as any).avatarUpdatedAt
+        : (old as any).avatarUpdatedAt,
     };
   });
 
@@ -387,7 +345,7 @@ function mergeProfilesSafe(
 
 // ============================================
 // ✅ Helper : construit un src d'avatar fiable
-// priorité : preview > avatarUrl > avatarDataUrl
+// priorité : preview > avatarDataUrl > avatarUrl
 // + cache-bust si URL http(s) et avatarUpdatedAt connu
 // ============================================
 function buildAvatarSrc(opts: {
@@ -399,10 +357,16 @@ function buildAvatarSrc(opts: {
   const cacheBust =
     typeof opts.avatarUpdatedAt === "number" ? opts.avatarUpdatedAt : 0;
 
+  const safePreview =
+    typeof opts.preview === "string" && opts.preview.startsWith("data:image/")
+      ? sanitizeAvatarDataUrl(opts.preview)
+      : opts.preview && opts.preview.trim();
+  const safeDataUrl = sanitizeAvatarDataUrl(opts.avatarDataUrl);
+
   const baseSrc =
-    (opts.preview && opts.preview.trim()) ||
+    safePreview ||
+    safeDataUrl ||
     (opts.avatarUrl && String(opts.avatarUrl).trim()) ||
-    (opts.avatarDataUrl && String(opts.avatarDataUrl).trim()) ||
     "";
 
   if (!baseSrc) return "";
@@ -794,6 +758,8 @@ export default function Profiles({
   
     // ✅ 0) Cache dédié ANTI-OVERWRITE
     writeAvatarCache(id, {
+      avatarUrl: undefined,
+      avatarPath: undefined,
       avatarDataUrl: dataUrl,
       avatarUpdatedAt: now,
     });
@@ -804,6 +770,8 @@ export default function Profiles({
         p.id === id
           ? {
               ...p,
+              avatarUrl: undefined,
+              avatarPath: undefined,
               avatarDataUrl: dataUrl,
               avatarUpdatedAt: now, // ✅ NEW
             }
@@ -971,27 +939,6 @@ export default function Profiles({
   
   const active = profiles.find((p) => p.id === activeProfileId) || null;
 
-  const linkedOnlineProfile = React.useMemo(() => {
-    if (auth.status !== "signed_in") return null;
-    const uid = String(auth.user?.id || "").trim();
-    const emailNorm = String(auth.user?.email || "").trim().toLowerCase();
-    if (!uid && !emailNorm) return null;
-
-    const exactUid =
-      profiles.find((p: any) => profileOnlineLinks(p).onlineUserId === uid) || null;
-    if (exactUid) return exactUid;
-
-    const exactOnlineEmailMatches = profiles.filter(
-      (p: any) => !!emailNorm && profileOnlineLinks(p).onlineEmail === emailNorm
-    );
-    if (exactOnlineEmailMatches.length === 1) return exactOnlineEmailMatches[0] || null;
-
-    const activeIsLinked = active && isProfileLinkedToSignedUser(active, auth);
-    if (activeIsLinked) return active;
-
-    return null;
-  }, [profiles, active, auth.status, auth.user?.id, auth.user?.email]);
-
   // ------------------------------------------------------------
   // Online "Me" helpers (ne touche pas activeProfileId)
   // - Permet d'afficher DartSets/Avatar ONLINE dans "Mon profil"
@@ -1002,14 +949,20 @@ export default function Profiles({
     const uid = auth.user?.id;
     if (!uid) return null;
 
-    const onlineName = onlineProfileName(auth);
-    const rawOnlineAvatarUrl = onlineProfileAvatar(auth);
-    const onlineAvatarUrl = isPollutedOnlineAvatarUrl(rawOnlineAvatarUrl, uid) ? "" : rawOnlineAvatarUrl;
-    const emailNorm = String(auth.user?.email || "").trim().toLowerCase();
+    const op: any = (auth as any).profile || (auth as any).onlineProfile || null;
+    const onlineName =
+      op?.display_name ||
+      op?.displayName ||
+      op?.nickname ||
+      op?.username ||
+      "Moi";
 
+    const onlineAvatarUrl =
+      op?.avatar_url || op?.avatarUrl || op?.avatar || op?.photo_url || "";
+
+    // ✅ UNIQUE ACCOUNT: pas de profil "mirror" online:<uid>
+    // On réutilise le profil local lié à ce user_id (ou à défaut le profil actif).
     const owner =
-      (active && isProfileLinkedToSignedUser(active, auth) ? active : null) ||
-      linkedOnlineProfile ||
       (store?.profiles || []).find((p: any) => {
         const pi = (p as any)?.privateInfo || {};
         const legacyUserId = String((pi as any)?.userId || "");
@@ -1020,41 +973,20 @@ export default function Profiles({
       null;
 
     if (!owner) return null;
-    const cached = getAvatarCacheLib(String((owner as any)?.id || ""));
-    const localName = String((owner as any)?.name || "").trim();
 
     return {
       ...(owner as any),
-      name: isGenericAccountName(localName, emailNorm) ? onlineName || localName || "Moi" : localName,
-      avatarUrl: onlineAvatarUrl || (owner as any)?.avatarUrl || cached?.avatarUrl || cached?.avatarDataUrl || "",
-      avatarDataUrl: onlineAvatarUrl ? undefined : (owner as any)?.avatarDataUrl || cached?.avatarDataUrl || undefined,
+      // garde le nom local en priorité (modifiable offline), sinon fallback online
+      name: (owner as any)?.name || onlineName,
+      // dans l'UI "Mon profil", on privilégie l'avatar online si dispo
+      avatarUrl: onlineAvatarUrl || (owner as any)?.avatarUrl || (getAvatarCacheLib(String((owner as any)?.id || ""))?.avatarUrl || getAvatarCacheLib(String((owner as any)?.id || ""))?.avatarDataUrl || ""),
       source: "online",
       isOnlineMirror: false,
     } as any;
-  }, [store?.profiles, auth.status, auth.user?.id, auth.user?.email, (auth as any)?.profile, (auth as any)?.onlineProfile, linkedOnlineProfile, active]);
+  }, [store?.profiles, auth.status, auth.user?.id, (auth as any)?.profile, (auth as any)?.onlineProfile, active?.id, active?.name]);
 
-  // Dans "Mon profil", on veut afficher l'avatar ONLINE même si le profil actif local n'en a pas.
-  const activeForMeUi = React.useMemo(() => {
-    const base =
-      (active && isProfileLinkedToSignedUser(active, auth) ? active : null) ||
-      linkedOnlineProfile ||
-      active;
-    if (!base) return null;
-    if (auth.status !== "signed_in") return base;
-    const uid = String(auth.user?.id || "").trim();
-    const rawOnlineAvatarUrl = onlineProfileAvatar(auth);
-    const onlineAvatarUrl = isPollutedOnlineAvatarUrl(rawOnlineAvatarUrl, uid) ? "" : rawOnlineAvatarUrl;
-    const onlineName = onlineProfileName(auth);
-    const emailNorm = String(auth.user?.email || "").trim().toLowerCase();
-    const cached = getAvatarCacheLib(String((base as any)?.id || ""));
-    const localName = String((base as any)?.name || "").trim();
-    return {
-      ...(base as any),
-      name: isGenericAccountName(localName, emailNorm) ? onlineName || localName || "Moi" : localName,
-      avatarUrl: onlineAvatarUrl || (base as any)?.avatarUrl || cached?.avatarUrl || undefined,
-      avatarDataUrl: onlineAvatarUrl ? undefined : (base as any)?.avatarDataUrl || cached?.avatarDataUrl || undefined,
-    } as any;
-  }, [linkedOnlineProfile, active, auth.status, auth.user?.email, (auth as any)?.profile, (auth as any)?.onlineProfile]);
+  // Dans "Mon profil", on affiche STRICTEMENT le profil actif local.
+  const activeForMeUi = React.useMemo(() => active || null, [active]);
 
   // Anti-reupload (session) pour les avatars locaux envoyés online
   const avatarUploadDoneRef = React.useRef<Set<string>>(new Set());
@@ -1240,44 +1172,34 @@ React.useEffect(() => {
     alert("Statistiques locales de ce profil réinitialisées.");
   }
 
-    // 🔁 Hydrate les infos privées du profil réellement lié au compte online.
-    // ✅ IMPORTANT:
-    // on ne doit JAMAIS injecter l'email/pseudo/pays du compte connecté
-    // dans un profil local arbitraire simplement parce qu'il est actif.
+    // 🔁 Hydrate les infos privées (email / pays / surnom) depuis le compte online
     React.useEffect(() => {
+      if (!active) return;
       if (auth.status !== "signed_in") return;
-
-      const target =
-        (active && isProfileLinkedToSignedUser(active, auth) ? active : null) ||
-        linkedOnlineProfile ||
-        null;
-      if (!target) return;
-
-      const pi = (((target as any)?.privateInfo) || {}) as PrivateInfo;
+  
+      const pi = ((active as any).privateInfo || {}) as PrivateInfo;
       const patch: Partial<PrivateInfo> = {};
-
+  
+      // Email online → privateInfo.email (si différent)
       const emailOnline = auth.user?.email?.trim().toLowerCase();
       if (emailOnline) {
-        const onlineEmailLocal = String((pi as any).onlineEmail || "").trim().toLowerCase();
-        if (onlineEmailLocal !== emailOnline) {
-          patch.onlineEmail = emailOnline;
-        }
-
-        const onlineUserIdLocal = String((pi as any).onlineUserId || "").trim();
-        const authUid = String(auth.user?.id || "").trim();
-        if (authUid && onlineUserIdLocal !== authUid) {
-          patch.onlineUserId = authUid;
+        const emailLocal = (pi.email || "").trim().toLowerCase();
+        if (emailLocal !== emailOnline) {
+          patch.email = emailOnline;
         }
       }
-
-      const nicknameOnline = auth.profile?.displayName || auth.user?.nickname || "";
+  
+      // Pseudo online → privateInfo.nickname (si différent)
+      const nicknameOnline =
+        auth.profile?.displayName || auth.user?.nickname || "";
       if (nicknameOnline) {
-        const nicknameLocal = pi.nickname || (target as any)?.name || "";
+        const nicknameLocal = pi.nickname || active.name || "";
         if (nicknameLocal !== nicknameOnline) {
           patch.nickname = nicknameOnline;
         }
       }
-
+  
+      // Pays online → privateInfo.country (si différent)
       const countryOnline = auth.profile?.country || "";
       if (countryOnline) {
         const countryLocal = pi.country || "";
@@ -1285,18 +1207,11 @@ React.useEffect(() => {
           patch.country = countryOnline;
         }
       }
-
+  
       if (Object.keys(patch).length > 0) {
-        patchProfilePrivateInfo(String((target as any)?.id || ""), patch);
+        patchActivePrivateInfo(patch);
       }
-    }, [
-      active?.id,
-      linkedOnlineProfile?.id,
-      auth.status,
-      auth.profile,
-      auth.user?.id,
-      auth.user?.email,
-    ]);  
+    }, [active?.id, auth.status, auth.profile, auth.user]);  
 
   // NEW : au chargement de la page, si un profil actif a des prefs app, on les applique
   React.useEffect(() => {
@@ -1559,7 +1474,7 @@ React.useEffect(() => {
   {active && !forceAuth ? (
     <ActiveProfileBlock
       selfStatus={onlineStatusForUi}
-      active={(activeForMeUi as any) || active}
+      active={active}
       activeAvg3D={activeAvg3D}
       onToggleAway={() => {
         if (auth.status !== "signed_in") return;
@@ -2049,13 +1964,28 @@ function ActiveProfileBlock({
   }, [active?.id]);
 
   React.useEffect(() => {
-    if (!editFile) {
-      setEditPreview(null);
-      return;
-    }
-    const r = new FileReader();
-    r.onload = () => setEditPreview(String(r.result));
-    r.readAsDataURL(editFile);
+    let alive = true;
+    (async () => {
+      if (!editFile) {
+        setEditPreview(null);
+        return;
+      }
+      try {
+        const safe = await fileToSafeAvatarDataUrl(editFile);
+        if (alive) setEditPreview(safe);
+      } catch (e) {
+        console.warn("[Profiles] avatar preview rejected, fallback to raw preview", e);
+        try {
+          const fallback = await read(editFile);
+          if (alive) setEditPreview(fallback);
+        } catch {
+          if (alive) setEditPreview(null);
+        }
+      }
+    })();
+    return () => {
+      alive = false;
+    };
   }, [editFile]);
 
   function handleAvatarClick() {
@@ -2080,7 +2010,7 @@ function ActiveProfileBlock({
 
   // =========================
   // ✅ SOURCE UNIQUE AVATAR (via helper)
-  // priorité : preview > avatarUrl > avatarDataUrl
+  // priorité : preview > avatarDataUrl > avatarUrl
   // + cache-bust anti Supabase / SW / navigateur
   // =========================
   const avatarSrc = buildAvatarSrc({
@@ -2095,8 +2025,10 @@ function ActiveProfileBlock({
     console.log("[ActiveProfileBlock] id =", active?.id);
     console.log("[ActiveProfileBlock] avatarUrl =", (active as any)?.avatarUrl);
     console.log(
-      "[ActiveProfileBlock] avatarDataUrl =",
-      (active as any)?.avatarDataUrl
+      "[ActiveProfileBlock] avatarDataUrl length =",
+      typeof (active as any)?.avatarDataUrl === "string"
+        ? String((active as any)?.avatarDataUrl).length
+        : 0
     );
     console.log(
       "[ActiveProfileBlock] avatarUpdatedAt =",
@@ -3056,26 +2988,30 @@ function UnifiedAuthBlock({
         }) || null;
     }
 
-    // 5) Aucun profil local lié -> on crée un profil dédié à ce compte.
+    // 5) Aucun profil local -> on réutilise le premier, ou on en crée un
     if (!match) {
-      let displayName = (emailNorm ? emailNorm.split("@")[0] : "Joueur");
-      try {
-        const session = await onlineApi.getCurrentSession();
-        displayName = session?.user.user_metadata?.full_name || session?.user.user_metadata?.name || session?.user.user_metadata?.nickname || session?.user.nickname || (session?.user.email ? String(session.user.email).split("@")[0] : "Joueur");
-      } catch (err) {
-        console.warn("[profiles] getCurrentSession after login error:", err);
+      if (profiles.length > 0) {
+        match = profiles[0] as any;
+      } else {
+        let displayName = (emailNorm ? emailNorm.split("@")[0] : "Joueur");
+        try {
+          const session = await onlineApi.getCurrentSession();
+          displayName = session?.user.user_metadata?.full_name || session?.user.user_metadata?.name || session?.user.user_metadata?.nickname || session?.user.nickname || (session?.user.email ? String(session.user.email).split("@")[0] : "Joueur");
+        } catch (err) {
+          console.warn("[profiles] getCurrentSession after login error:", err);
+        }
+
+        const privateInfo: Partial<PrivateInfo> = {
+          email: emailNorm,
+          // ⚠️ on ne stocke PAS le mot de passe en local (sécurité)
+          password: "",
+          onlineUserId: uid,
+          onlineEmail: emailNorm,
+        };
+
+        onCreate(displayName, null, privateInfo);
+        return;
       }
-
-      const privateInfo: Partial<PrivateInfo> = {
-        email: emailNorm,
-        // ⚠️ on ne stocke PAS le mot de passe en local (sécurité)
-        password: "",
-        onlineUserId: uid,
-        onlineEmail: emailNorm,
-      };
-
-      onCreate(displayName, null, privateInfo);
-      return;
     }
 
     // 6) Patch liaison UID (et on nettoie le mot de passe local)
@@ -3584,13 +3520,28 @@ function LocalProfilesRefonte({
   }, [current?.id]);
 
   React.useEffect(() => {
-    if (!editFile) {
-      setEditPreview(null);
-      return;
-    }
-    const r = new FileReader();
-    r.onload = () => setEditPreview(String(r.result));
-    r.readAsDataURL(editFile);
+    let alive = true;
+    (async () => {
+      if (!editFile) {
+        setEditPreview(null);
+        return;
+      }
+      try {
+        const safe = await fileToSafeAvatarDataUrl(editFile);
+        if (alive) setEditPreview(safe);
+      } catch (e) {
+        console.warn("[Profiles] avatar preview rejected, fallback to raw preview", e);
+        try {
+          const fallback = await read(editFile);
+          if (alive) setEditPreview(fallback);
+        } catch {
+          if (alive) setEditPreview(null);
+        }
+      }
+    })();
+    return () => {
+      alive = false;
+    };
   }, [editFile]);
 
   async function handleSaveEdit() {
@@ -4703,12 +4654,8 @@ function StatusDot({ kind }: { kind: "online" | "away" | "offline" }) {
 /* ================================
    Utils
 ================================ */
-function read(f: File) {
-  return new Promise<string>((res) => {
-    const r = new FileReader();
-    r.onload = () => res(String(r.result));
-    r.readAsDataURL(f);
-  });
+async function read(f: File) {
+  return await fileToSafeAvatarDataUrl(f);
 }
 
 function getCountryFlag(countryRaw?: string): string | null {

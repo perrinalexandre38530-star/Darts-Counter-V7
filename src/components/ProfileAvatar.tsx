@@ -4,7 +4,7 @@
 // - Accepte EITHER {dataUrl,label,size,avg3D,showStars[,ringColor,textColor]}
 //   OR      {profile,size,avg3D,showStars[,ringColor,textColor]}
 // - NEW : overlay fléchette (set préféré ou set imposé via dartSetId)
-// ✅ FIX PRIORITY : Supabase avatarUrl > legacy avatarDataUrl (base64)
+// ✅ FIX PRIORITY : avatarDataUrl local récent > avatarUrl Supabase ancien
 // ✅ FIX PERF : ignore base64 énorme (évite RAM + latence)
 // ✅ CLEAN : suppression logs/DEBUG + pas de cercle rouge
 // ✅ NEW GLOBAL FIX : si profile "lite" (id/name) => auto-resolve via loadStore() (sans modifier tous les setups)
@@ -24,6 +24,7 @@ import {
   getDartSetsForProfile,
 } from "../lib/dartSetsStore";
 import { loadStore } from "../lib/storage";
+import { sanitizeAvatarDataUrl, MAX_AVATAR_DATA_URL_CHARS } from "../lib/avatarSafe";
 
 type ProfileLike = {
   id?: string;
@@ -99,7 +100,9 @@ function normalizeSrc(raw: any): string | null {
   const s = normalizeImport(raw);
   if (!s) return null;
 
-  if (s.startsWith("data:") || s.startsWith("blob:")) return s;
+  if (s.startsWith("data:image/")) return sanitizeAvatarDataUrl(s, MAX_AVATAR_DATA_URL_CHARS);
+  if (s.startsWith("data:")) return null;
+  if (s.startsWith("blob:")) return s;
 
   if (s.startsWith("http://") || s.startsWith("https://"))
     return s.replace(/ /g, "%20");
@@ -116,42 +119,29 @@ function normalizeSrc(raw: any): string | null {
 /* ============================================================
    ✅ GLOBAL PROFILE RESOLVER
 ============================================================ */
-let _storePromise: Promise<any | null> | null = null;
-let _profilesCache: Map<string, ProfileLike> | null = null;
-
 async function getProfileByIdFromStore(
   profileId: string
 ): Promise<ProfileLike | null> {
   try {
-    if (_profilesCache?.has(profileId))
-      return _profilesCache.get(profileId) || null;
-
-    if (!_storePromise) _storePromise = loadStore<any>();
-    const store = await _storePromise;
+    const store = await loadStore<any>();
     if (!store) return null;
 
     const arr: any[] = Array.isArray(store.profiles) ? store.profiles : [];
-    const map = new Map<string, ProfileLike>();
+    const pr = arr.find((x) => String(x?.id || "") === String(profileId));
+    if (!pr) return null;
 
-    for (const pr of arr) {
-      const id = pr?.id;
-      if (!id) continue;
-      map.set(String(id), {
-        id: String(id),
-        name: pr?.name,
-        avatarUrl: pr?.avatarUrl ?? null,
-        avatarDataUrl: pr?.avatarDataUrl ?? null,
-        avatarPath: pr?.avatarPath ?? null,
-        avatar: (pr as any)?.avatar ?? null,
-        photoDataUrl: (pr as any)?.photoDataUrl ?? null,
-        photoUrl: (pr as any)?.photoUrl ?? null,
-        avatarUpdatedAt: (pr as any)?.avatarUpdatedAt ?? null,
-        stats: pr?.stats ?? null,
-      });
-    }
-
-    _profilesCache = map;
-    return map.get(profileId) || null;
+    return {
+      id: String(pr.id),
+      name: pr?.name,
+      avatarUrl: pr?.avatarUrl ?? null,
+      avatarDataUrl: pr?.avatarDataUrl ?? null,
+      avatarPath: pr?.avatarPath ?? null,
+      avatar: pr?.avatar ?? null,
+      photoDataUrl: pr?.photoDataUrl ?? null,
+      photoUrl: pr?.photoUrl ?? null,
+      avatarUpdatedAt: pr?.avatarUpdatedAt ?? null,
+      stats: pr?.stats ?? null,
+    };
   } catch {
     return null;
   }
@@ -226,6 +216,7 @@ export default function ProfileAvatar(props: Props) {
     inputProfile?.avatarUrl,
     inputProfile?.avatarPath,
     inputProfile?.avatarDataUrl,
+    inputProfile?.avatarUpdatedAt,
   ]);
 
   const p: ProfileLike | null = resolvedProfile ?? inputProfile;
@@ -268,12 +259,12 @@ export default function ProfileAvatar(props: Props) {
 
   const rawImg = React.useMemo(() => {
     if (propDataUrl) return propDataUrl;
-    if (avatarUrl) return avatarUrl; // ✅ Supabase gagne
-    if (avatarPath) return avatarPath;
-    if (avatarDataUrl) return avatarDataUrl;
+    if (avatarDataUrl) return avatarDataUrl; // ✅ la photo locale fraîche gagne
     if (legacyAvatar) return legacyAvatar;
+    if (avatarUrl) return avatarUrl;
+    if (avatarPath) return avatarPath;
     return null;
-  }, [propDataUrl, avatarUrl, avatarPath, avatarDataUrl, legacyAvatar]);
+  }, [propDataUrl, avatarDataUrl, legacyAvatar, avatarUrl, avatarPath]);
 
   const [imgBroken, setImgBroken] = React.useState(false);
   React.useEffect(() => setImgBroken(false), [rawImg]);

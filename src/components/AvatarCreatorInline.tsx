@@ -3,6 +3,7 @@
 // Stub minimal (compile OK) — remplace-le plus tard par la version complète
 // ============================================
 import React from "react";
+import { fileToSafeAvatarDataUrl } from "../lib/avatarSafe";
 
 export default function AvatarCreatorInline({
   size = 512,
@@ -21,9 +22,15 @@ export default function AvatarCreatorInline({
 
   function handleFiles(files: FileList | null) {
     if (!files || !files[0]) return;
-    const r = new FileReader();
-    r.onload = () => setPreview(String(r.result));
-    r.readAsDataURL(files[0]);
+    (async () => {
+      try {
+        const safe = await fileToSafeAvatarDataUrl(files[0]);
+        setPreview(safe);
+      } catch (e) {
+        console.warn("[AvatarCreatorInline] avatar rejected", e);
+        setPreview(null);
+      }
+    })();
   }
 
   return (
