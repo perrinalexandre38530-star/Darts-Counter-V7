@@ -1,7 +1,10 @@
+const DEFAULT_API =
+  "https://sustainability-accordingly-steven-investments.trycloudflare.com";
+
 const API_URL =
   localStorage.getItem("dc_api_url") ||
   import.meta.env.VITE_API_URL ||
-  "http://192.168.1.36:3000";
+  DEFAULT_API;
 
 async function parseJsonSafe(res: Response) {
   const text = await res.text();
