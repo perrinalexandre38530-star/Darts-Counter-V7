@@ -33,6 +33,8 @@ import { useAuthOnline } from "../hooks/useAuthOnline";
 import { AccountToolsPanel } from "../components/account/AccountToolsPanel";
 import { supabase } from "../lib/supabaseClient";
 import { mergeNow } from "../lib/cloudSync";
+import { pushFullBackupToNas, restoreLatestBackupFromNas } from "../lib/syncService";
+import { getApiUrl } from "../lib/apiClient";
 
 // ✅ DEV MODE (assure-toi d’avoir DevModeProvider au root)
 import { useDevMode } from "../contexts/DevModeContext";
@@ -1700,6 +1702,176 @@ export default function Settings({ go }: Props) {
     );
   }
 
+  function NasBackupSection() {
+    const [busy, setBusy] = React.useState<null | "backup" | "restore">(null);
+    const [status, setStatus] = React.useState<string>("");
+    const [lastInfo, setLastInfo] = React.useState<any>(null);
+
+    const btnBase: React.CSSProperties = {
+      borderRadius: 12,
+      padding: "10px 12px",
+      fontSize: 12,
+      fontWeight: 900,
+      cursor: "pointer",
+      textTransform: "uppercase",
+      letterSpacing: 0.4,
+    };
+
+    async function handleBackup() {
+      setBusy("backup");
+      setStatus("");
+      try {
+        const res = await pushFullBackupToNas();
+        setLastInfo(res ?? null);
+        setStatus("✅ Backup NAS envoyé avec succès.");
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        setStatus(`❌ Backup NAS impossible : ${msg}`);
+      } finally {
+        setBusy(null);
+      }
+    }
+
+    async function handleRestore() {
+      const ok = window.confirm(
+        "Restaurer le dernier backup NAS sur cet appareil ?\n\n" +
+          "Les données importées seront fusionnées via importAll().\n" +
+          "Si tu veux repartir totalement propre, fais d'abord une réinitialisation locale."
+      );
+      if (!ok) return;
+
+      setBusy("restore");
+      setStatus("");
+      try {
+        const res = await restoreLatestBackupFromNas();
+        setLastInfo(res ?? null);
+        setStatus("✅ Restauration NAS terminée. Recharge l'application pour relire tout le store.");
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        setStatus(`❌ Restauration NAS impossible : ${msg}`);
+      } finally {
+        setBusy(null);
+      }
+    }
+
+    return (
+      <section
+        style={{
+          background: CARD_BG,
+          borderRadius: 18,
+          border: `1px solid ${theme.borderSoft}`,
+          padding: 16,
+          marginBottom: 16,
+        }}
+      >
+        <h2
+          style={{
+            margin: 0,
+            marginBottom: 6,
+            fontSize: 16,
+            color: theme.primary,
+            textTransform: "uppercase",
+            letterSpacing: 1,
+          }}
+        >
+          {t("settings.nas.title", "Sauvegarde NAS")}
+        </h2>
+
+        <p style={{ fontSize: 11, color: theme.textSoft, marginBottom: 10, lineHeight: 1.45 }}>
+          {t(
+            "settings.nas.subtitle",
+            "Envoie un snapshot complet du store local vers ton NAS et permet de restaurer le dernier backup enregistré."
+          )}
+        </p>
+
+        <div
+          style={{
+            padding: 10,
+            borderRadius: 12,
+            border: `1px solid ${theme.borderSoft}`,
+            background: "rgba(0,0,0,0.22)",
+            marginBottom: 12,
+            fontSize: 11,
+            color: theme.textSoft,
+            wordBreak: "break-all",
+          }}
+        >
+          <div style={{ fontWeight: 800, color: theme.text, marginBottom: 4 }}>API NAS</div>
+          <div>{getApiUrl()}</div>
+        </div>
+
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+          <button
+            type="button"
+            onClick={handleBackup}
+            disabled={busy !== null}
+            style={{
+              ...btnBase,
+              border: `1px solid ${theme.primary}`,
+              background: "rgba(0,0,0,0.35)",
+              color: theme.primary,
+              boxShadow: `0 0 10px ${theme.primary}22`,
+              opacity: busy ? 0.7 : 1,
+            }}
+          >
+            {busy === "backup" ? "Sauvegarde..." : "Sauvegarder sur NAS"}
+          </button>
+
+          <button
+            type="button"
+            onClick={handleRestore}
+            disabled={busy !== null}
+            style={{
+              ...btnBase,
+              border: `1px solid ${theme.borderSoft}`,
+              background: "rgba(255,255,255,0.04)",
+              color: theme.text,
+              opacity: busy ? 0.7 : 1,
+            }}
+          >
+            {busy === "restore" ? "Restauration..." : "Restaurer depuis NAS"}
+          </button>
+        </div>
+
+        {status ? (
+          <div
+            style={{
+              marginTop: 12,
+              padding: 10,
+              borderRadius: 12,
+              border: `1px solid ${theme.borderSoft}`,
+              background: "rgba(255,255,255,0.03)",
+              color: theme.text,
+              fontSize: 12,
+              lineHeight: 1.45,
+            }}
+          >
+            {status}
+          </div>
+        ) : null}
+
+        {lastInfo ? (
+          <div
+            style={{
+              marginTop: 12,
+              padding: 10,
+              borderRadius: 12,
+              border: `1px solid ${theme.borderSoft}`,
+              background: "rgba(0,0,0,0.22)",
+              color: theme.textSoft,
+              fontSize: 11,
+              lineHeight: 1.45,
+              wordBreak: "break-word",
+            }}
+          >
+            <div><strong>Réponse API :</strong></div>
+            <div>{JSON.stringify(lastInfo)}</div>
+          </div>
+        ) : null}
+      </section>
+    );
+  }
+
   function DiagnosticsSection() {
     const [tick, setTick] = React.useState(0);
 
@@ -2244,7 +2416,10 @@ export default function Settings({ go }: Props) {
         {tab === "lang" && <LangSection />}
         {tab === "sport" && <SportSection />}
         {tab === "diagnostics" && <DiagnosticsSection />}
-        {tab === "general" && <GeneralSection />}
+        {tab === "general" && (<>
+          <NasBackupSection />
+          <GeneralSection />
+        </>)}
       </div>
     </div>
   );

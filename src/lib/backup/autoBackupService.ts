@@ -1,4 +1,5 @@
 import { exportAll } from "../storage";
+import { pushStoreToNas } from "../nasAutoSync";
 
 const STORE_KEY = "__dc_auto_backups_v2";
 const LEGACY_KEY = "dc_auto_backups";
@@ -63,6 +64,21 @@ export async function createAutoBackup(): Promise<void> {
   try {
     localStorage.removeItem(LEGACY_KEY);
   } catch {}
+
+  // ✅ NEW: push opportuniste vers le NAS si l'API est dispo
+  try {
+    await pushStoreToNas();
+  } catch (err) {
+    try {
+      localStorage.setItem(
+        "dc_nas_sync_last_error",
+        JSON.stringify({
+          at: new Date().toISOString(),
+          message: err instanceof Error ? err.message : String(err),
+        })
+      );
+    } catch {}
+  }
 }
 
 /** Read all stored auto-backups (newest first). */
