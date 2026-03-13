@@ -35,6 +35,8 @@ import { supabase } from "../lib/supabaseClient";
 import { mergeNow } from "../lib/cloudSync";
 import { pushFullBackupToNas, restoreLatestBackupFromNas } from "../lib/syncService";
 import { getApiUrl } from "../lib/apiClient";
+import { generateDiagnostic, exportDiagnostic } from "../lib/diagnosticPro";
+import { getCrashLog, getLastCrashReport } from "../lib/crashReporter";
 
 // ✅ DEV MODE (assure-toi d’avoir DevModeProvider au root)
 import { useDevMode } from "../contexts/DevModeContext";
@@ -1874,6 +1876,7 @@ export default function Settings({ go }: Props) {
 
   function DiagnosticsSection() {
     const [tick, setTick] = React.useState(0);
+    const [report, setReport] = React.useState<any>(null);
 
     React.useEffect(() => {
       const id = window.setInterval(() => setTick((v) => v + 1), 2000);
@@ -1886,6 +1889,8 @@ export default function Settings({ go }: Props) {
     const memWarn = safeReadJson<any>("dc_last_memory_warning_v1");
     const runtimeErr = safeReadJson<any>("dc_last_runtime_error_v1");
     const chunkErr = safeReadJson<any>("dc_last_chunk_error_v1");
+    const lastCrash = getLastCrashReport();
+    const crashLog = getCrashLog();
 
     const rowStyle: React.CSSProperties = {
       display: "grid",
@@ -1910,21 +1915,32 @@ export default function Settings({ go }: Props) {
       color: theme.textSoft,
     };
 
-    const report = {
+    const snapshotReport = {
       memoryDiag,
       storeDiag,
       storeWarn,
       memWarn,
       runtimeErr,
       chunkErr,
+      lastCrash,
+      crashLog,
       href: (() => {
         try { return location.href; } catch { return ""; }
       })(),
       tick,
     };
 
+    async function runDiagnostic() {
+      try {
+        const r = await generateDiagnostic();
+        setReport(r);
+      } catch (e: any) {
+        safeAlert(`Diagnostic impossible: ${e?.message || e || "erreur inconnue"}`);
+      }
+    }
+
     const copyReport = async () => {
-      const txt = JSON.stringify(report, null, 2);
+      const txt = JSON.stringify({ snapshot: snapshotReport, pro: report }, null, 2);
       try {
         await navigator.clipboard.writeText(txt);
         safeAlert("Diagnostic copié.");
@@ -1941,6 +1957,16 @@ export default function Settings({ go }: Props) {
         "dc_last_memory_warning_v1",
         "dc_last_runtime_error_v1",
         "dc_last_chunk_error_v1",
+        "dc_last_promise_error_v1",
+        "dc_diag_routes_v2",
+        "dc_diag_render_v2",
+        "dc_diag_memory_samples_v2",
+        "dc_diag_events_v2",
+        "dc_diag_session_v2",
+        "dc_diag_last_snapshot_v2",
+        "dc_diag_longtasks_v2",
+        "dc_last_crash_report_v2",
+        "dc_crash_log_v2",
       ];
       for (const k of keys) {
         try { localStorage.removeItem(k); } catch {}
@@ -2002,13 +2028,28 @@ export default function Settings({ go }: Props) {
           <button type="button" onClick={() => setTick((v) => v + 1)} style={{ borderRadius: 12, border: `1px solid ${theme.borderSoft}`, padding: "8px 12px", background: "rgba(255,255,255,0.04)", color: theme.text, fontWeight: 800, cursor: "pointer" }}>
             {t("settings.diagnostics.refresh", "Rafraîchir")}
           </button>
-          <button type="button" onClick={copyReport} style={{ borderRadius: 12, border: `1px solid ${theme.primary}`, padding: "8px 12px", background: "rgba(0,0,0,0.35)", color: theme.primary, fontWeight: 900, cursor: "pointer", boxShadow: `0 0 10px ${theme.primary}22` }}>
+          <button type="button" onClick={runDiagnostic} style={{ borderRadius: 12, border: `1px solid ${theme.primary}`, padding: "8px 12px", background: "rgba(0,0,0,0.35)", color: theme.primary, fontWeight: 900, cursor: "pointer", boxShadow: `0 0 10px ${theme.primary}22` }}>
+            Analyser
+          </button>
+          <button type="button" onClick={() => exportDiagnostic(report)} disabled={!report} style={{ borderRadius: 12, border: `1px solid ${theme.primary}`, padding: "8px 12px", background: report ? "rgba(0,0,0,0.35)" : "rgba(255,255,255,0.04)", color: report ? theme.primary : theme.textSoft, fontWeight: 900, cursor: report ? "pointer" : "not-allowed", boxShadow: report ? `0 0 10px ${theme.primary}22` : "none", opacity: report ? 1 : 0.7 }}>
+            Exporter rapport
+          </button>
+          <button type="button" onClick={copyReport} style={{ borderRadius: 12, border: `1px solid ${theme.borderSoft}`, padding: "8px 12px", background: "rgba(255,255,255,0.04)", color: theme.text, fontWeight: 800, cursor: "pointer" }}>
             {t("settings.diagnostics.copy", "Copier le diagnostic")}
           </button>
           <button type="button" onClick={clearDiag} style={{ borderRadius: 12, border: `1px solid rgba(255,120,120,0.45)`, padding: "8px 12px", background: "rgba(90,0,0,0.22)", color: "#ffb7b7", fontWeight: 800, cursor: "pointer" }}>
             {t("settings.diagnostics.clear", "Vider les logs")}
           </button>
         </div>
+
+        {report ? (
+          <div style={monoBox}>
+            <div><strong>Rapport diagnostic pro</strong></div>
+            <div>Cause probable: {report?.probableCause || "—"}</div>
+            <div>Render count: {report?.app?.renderCount ?? "—"}</div>
+            <div>Routes suivies: {Array.isArray(report?.routes) ? report.routes.join(" | ") : "—"}</div>
+          </div>
+        ) : null}
 
         <div style={monoBox}>
           <div><strong>Warning mémoire</strong>: {memWarn ? fmtDateTime(memWarn.at) : "—"}</div>
@@ -2030,6 +2071,26 @@ export default function Settings({ go }: Props) {
           <div><strong>Dernière erreur chunk</strong>: {chunkErr ? fmtDateTime(chunkErr.at) : "—"}</div>
           <div>{chunkErr ? `${chunkErr.message || ""}` : "Aucune"}</div>
           {chunkErr?.href ? <div>URL: {chunkErr.href}</div> : null}
+        </div>
+
+        <div style={monoBox}>
+          <div><strong>Dernier crash capturé</strong>: {lastCrash ? fmtDateTime(lastCrash.at) : "—"}</div>
+          <div>{lastCrash ? `${lastCrash.kind || "crash"} — ${lastCrash.message || ""}` : "Aucun"}</div>
+          {lastCrash?.context?.route ? <div>Route: {lastCrash.context.route}</div> : null}
+        </div>
+
+        <div style={monoBox}>
+          <div><strong>Historique des crashs</strong>: {Array.isArray(crashLog) ? crashLog.length : 0}</div>
+          <div>Les derniers crashs restent en mémoire après redémarrage.</div>
+          {Array.isArray(crashLog) && crashLog.length ? (
+            <div style={{ marginTop: 8 }}>
+              {crashLog.slice(0, 5).map((c: any, i: number) => (
+                <div key={c?.id || i} style={{ padding: "4px 0", borderBottom: `1px solid ${theme.borderSoft}` }}>
+                  <strong>{fmtDateTime(c?.at)}</strong> — {c?.kind || "crash"} — {c?.message || ""}
+                </div>
+              ))}
+            </div>
+          ) : null}
         </div>
       </section>
     );

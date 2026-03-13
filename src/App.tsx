@@ -324,6 +324,7 @@ import EnculettePlay from "./pages/EnculettePlay";
 import CastJoinPage from "./pages/cast/CastJoinPage";
 import CastHostPage from "./pages/cast/CastHostPage";
 import CastScreen from "./pages/cast/CastScreen";
+import { trackRender, trackRoute } from "./lib/diagnosticPro";
 
 if (import.meta.env.DEV) installHistoryProbe();
 
@@ -1331,6 +1332,11 @@ useEffect(() => {
   // ✅ IMPORTANT: GameSelect doit toujours s'afficher (après intro)
   const [tab, setTab] = React.useState<Tab>("gameSelect");
 
+  React.useEffect(() => {
+    trackRender("App");
+  }, []);
+
+
   const [routeParams, setRouteParams] = React.useState<any>(null);
   const [loading, setLoading] = React.useState(true);
 
@@ -1471,6 +1477,7 @@ useEffect(() => {
   React.useEffect(() => {
     const applyHashRoute = () => {
       const h = String(window.location.hash || "");
+      trackRoute(h || "#/");
 
       if (h.startsWith("#/auth/callback")) {
         setShowSplash(false);
@@ -1533,6 +1540,7 @@ useEffect(() => {
   /* Navigation */
   function go(next: Tab, params?: any) {
     setRouteParams(params ?? null);
+    trackRoute(String(window.location.hash || `#/go:${next}`));
     setTab(next);
 
     if (
