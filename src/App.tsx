@@ -1332,7 +1332,7 @@ useEffect(() => {
   // ✅ IMPORTANT: GameSelect doit toujours s'afficher (après intro)
   const [tab, setTab] = React.useState<Tab>("gameSelect");
 
-  React.useEffect(() => {
+  useEffect(() => {
     trackRender("App");
   }, []);
 

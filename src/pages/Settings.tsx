@@ -2044,9 +2044,15 @@ export default function Settings({ go }: Props) {
 
         {report ? (
           <div style={monoBox}>
-            <div><strong>Rapport diagnostic pro</strong></div>
-            <div>Cause probable: {report?.probableCause || "—"}</div>
-            <div>Render count: {report?.app?.renderCount ?? "—"}</div>
+            <div><strong>Rapport diagnostic ultra</strong></div>
+            <div>Cause probable: {Array.isArray(report?.probableCause) ? report.probableCause.join(" / ") : report?.probableCause || "—"}</div>
+            <div>Render count: {report?.app?.renderCount ?? "—"} — rate: {report?.app?.renderRatePerMin ?? "—"}/min</div>
+            <div>Mémoire: {report?.memory?.jsHeap?.usedMB ?? "—"} / {report?.memory?.jsHeap?.limitMB ?? "—"} MB</div>
+            <div>Timers: timeouts={report?.timers?.activeTimeouts ?? "—"} / intervals={report?.timers?.activeIntervals ?? "—"}</div>
+            <div>Listeners actifs: {report?.listeners?.totalActive ?? "—"}</div>
+            <div>Réseau: slow={report?.network?.slowCount ?? "—"} / failed={report?.network?.failedCount ?? "—"}</div>
+            <div>Images lourdes: {report?.images?.heavyCount ?? "—"}</div>
+            <div>Top renders: {Array.isArray(report?.react?.byComponent) ? report.react.byComponent.slice(0,3).map((x:any)=>`${x.component}:${x.count}`).join(" | ") : "—"}</div>
             <div>Routes suivies: {Array.isArray(report?.routes) ? report.routes.join(" | ") : "—"}</div>
           </div>
         ) : null}
