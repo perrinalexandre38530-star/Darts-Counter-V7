@@ -4,6 +4,8 @@
 // ============================================
 import React from "react";
 import { supabase } from "../lib/supabaseClient";
+import { onlineApi } from "../lib/onlineApi";
+import { isNasProviderEnabled } from "../lib/serverConfig";
 
 type Props = {
   go: (t: any, p?: any) => void;
@@ -27,6 +29,17 @@ export default function AuthV7Signup({ go }: Props) {
 
     setLoading(true);
     try {
+      if (isNasProviderEnabled()) {
+        await onlineApi.signup({
+          email: e,
+          password,
+          nickname: e.split("@")[0] || "Player",
+        });
+        setInfo("Compte créé et connecté via le backend NAS ✅");
+        go("home");
+        return;
+      }
+
       const emailRedirectTo = `${window.location.origin}${window.location.pathname}#/auth/callback`;
 
       const { data, error: err } = await supabase.auth.signUp({
@@ -40,17 +53,14 @@ export default function AuthV7Signup({ go }: Props) {
         setError(err.message);
         return;
       }
-      // Selon la config Supabase, il peut y avoir une confirmation email.
-// ✅ Si session fournie => connecté immédiatement.
-// ✅ Sinon => l'utilisateur doit confirmer l'email; on reste sur cet écran avec un message clair.
-if (data?.session) {
-  setInfo("Compte créé et connecté ✅");
-  go("home");
-} else {
-  setInfo(
-    "Compte créé ✅ Ouvre le DERNIER email reçu pour confirmer ton compte, puis reviens sur l’app."
-  );
-}
+      if (data?.session) {
+        setInfo("Compte créé et connecté ✅");
+        go("home");
+      } else {
+        setInfo(
+          "Compte créé ✅ Ouvre le DERNIER email reçu pour confirmer ton compte, puis reviens sur l’app."
+        );
+      }
     } catch (e: any) {
       setError(e?.message || "Création de compte impossible.");
     } finally {

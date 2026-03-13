@@ -13,12 +13,14 @@ import * as React from "react";
 import type { Session, User } from "@supabase/supabase-js";
 import { supabase } from "../lib/supabaseClient";
 import { onlineApi } from "../lib/onlineApi";
+import { isNasProviderEnabled } from "../lib/serverConfig";
 import { ensureLocalProfileForOnlineUser } from "../lib/accountBridge";
 import type { OnlineProfile } from "../lib/onlineTypes";
 
 
 async function ensureOnlineProfileRow(user: User): Promise<void> {
   try {
+    if (isNasProviderEnabled()) return;
     // ✅ IMPORTANT:
     // Ne pas "upsert" à chaque boot/login.
     // Sinon on écrase le display_name choisi par l'utilisateur (et parfois l'avatar_url).
@@ -109,6 +111,25 @@ const AuthOnlineContext = React.createContext<Ctx | null>(null);
 
 async function safeGetSession(): Promise<Session | null> {
   try {
+    if (isNasProviderEnabled()) {
+      const s: any = await onlineApi.getCurrentSession();
+      const user = s?.user?.id
+        ? ({
+            id: s.user.id,
+            email: s.user.email,
+            user_metadata: { nickname: s.user.nickname || s.profile?.displayName || "Player" },
+          } as any)
+        : null;
+
+      if (!user) return null;
+
+      return {
+        access_token: s?.token || "",
+        refresh_token: s?.refreshToken || "",
+        user,
+      } as any;
+    }
+
     const { data, error } = await supabase.auth.getSession();
     if (error) throw error;
     return data?.session ?? null;
@@ -238,10 +259,10 @@ export function AuthOnlineProvider({ children }: { children: React.ReactNode }) 
       if (user) {
         const profile = await safeLoadProfileBestEffort(user);
         setState((s) => {
-          // si on s’est déconnecté entre temps, on ne force pas le profile
           if (!s.user || s.user.id !== user.id) return s;
           return { ...s, profile };
         });
+        tryBridgeLocalProfile(user, profile);
       }
     } catch (e: any) {
       console.warn("[useAuthOnline] refresh fatal:", e);
@@ -286,26 +307,51 @@ export function AuthOnlineProvider({ children }: { children: React.ReactNode }) 
           });
         }
 
+        if (isNasProviderEnabled()) {
+          const onNasAuthChanged = async () => {
+            try {
+              if (!alive) return;
+              const nextSession = await safeEnsureSession();
+              applyAuthFromSession(setState, nextSession);
+              const nextUser = nextSession?.user ?? null;
+              if (nextUser) {
+                tryBridgeLocalProfile(nextUser, null);
+                safeLoadProfileBestEffort(nextUser).then((profile) => {
+                  if (!alive) return;
+                  setState((s) => {
+                    if (!s.user || s.user.id !== nextUser.id) return s;
+                    return { ...s, profile };
+                  });
+                  tryBridgeLocalProfile(nextUser, profile);
+                });
+              }
+            } catch (e) {
+              console.warn("[useAuthOnline] NAS auth change handler error:", e);
+              setState((s) => ({ ...s, loading: false, ready: true }));
+            }
+          };
+
+          window.addEventListener("dc-auth-changed", onNasAuthChanged as EventListener);
+          return () => {
+            try {
+              window.removeEventListener("dc-auth-changed", onNasAuthChanged as EventListener);
+            } catch {}
+          };
+        }
+
         // subscribe auth changes
         const { data } = supabase.auth.onAuthStateChange((event, nextSession) => {
           try {
             if (!alive) return;
 
-            // ✅ Auth = session/user only (peu importe profile)
             if (event === "SIGNED_OUT" || !nextSession?.user) {
               applyAuthFromSession(setState, null);
-
-              // ✅ COMPTE UNIQUE: NE PAS recréer de session anonyme.
-              // On reste signed_out tant qu'un vrai login n'est pas fait.
               return;
             }
 
             applyAuthFromSession(setState, nextSession);
 
-            // ✅ BONUS profile (best-effort) après changement auth
             const nextUser = nextSession.user;
-
-            // ✅ Bridge local profile ASAP
             tryBridgeLocalProfile(nextUser, null);
 
             safeLoadProfileBestEffort(nextUser).then((profile) => {
@@ -319,7 +365,6 @@ export function AuthOnlineProvider({ children }: { children: React.ReactNode }) 
             });
           } catch (e) {
             console.warn("[useAuthOnline] onAuthStateChange handler error:", e);
-            // IMPORTANT: ne jamais bloquer ready
             setState((s) => ({ ...s, loading: false, ready: true }));
           }
         });
@@ -374,7 +419,7 @@ export function AuthOnlineProvider({ children }: { children: React.ReactNode }) 
 
   const logout = React.useCallback(async () => {
     try {
-      await supabase.auth.signOut();
+      await (onlineApi as any).logout?.();
     } catch (e) {
       console.warn("[useAuthOnline] signOut error:", e);
     } finally {

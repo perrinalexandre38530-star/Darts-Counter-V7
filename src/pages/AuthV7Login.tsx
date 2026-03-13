@@ -4,6 +4,8 @@
 // ============================================
 import React from "react";
 import { supabase, __SUPABASE_ENV__ } from "../lib/supabaseClient";
+import { onlineApi } from "../lib/onlineApi";
+import { isNasProviderEnabled } from "../lib/serverConfig";
 
 type Props = {
   go: (t: any, p?: any) => void;
@@ -98,8 +100,7 @@ export default function AuthV7Login({ go }: Props) {
     if (!e || !e.includes("@")) return setError("Entre une adresse email valide.");
     if (!password) return setError("Entre ton mot de passe.");
 
-    // ✅ Guard : si env Supabase non injectés, on affiche une erreur explicite
-    if (!__SUPABASE_ENV__.hasEnv) {
+    if (!isNasProviderEnabled() && !__SUPABASE_ENV__.hasEnv) {
       setError(
         `Supabase non configuré (VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY manquants).\nURL actuelle: ${
           __SUPABASE_ENV__.url || "(vide)"
@@ -115,26 +116,27 @@ export default function AuthV7Login({ go }: Props) {
       setError((prev) => prev || "Connexion bloquée (timeout). Réessaie ou vérifie ton réseau.");
     }, 12000);
     try {
-      const { error: err } = await withTimeout(
-        supabase.auth.signInWithPassword({ email: e, password }),
-        8000,
-        "Connexion Supabase"
-      );
-      if (err) {
-        const msg = err.message || "Connexion impossible.";
-        // Certains navigateurs/contexts (StackBlitz + extensions) renvoient des erreurs réseau
-        // sous forme de messages "Failed to fetch". Dans ce cas, on affiche un message clair.
-        if (looksLikeNetworkError(err)) {
-          showSupabaseUnreachable(
-            "Astuce: coupe uBlock/AdGuard/Brave Shields pour stackblitz.com et *.supabase.co, ou teste en navigation privée / 4G."
-          );
+      if (isNasProviderEnabled()) {
+        await withTimeout(onlineApi.login({ email: e, password }), 8000, "Connexion NAS");
+      } else {
+        const { error: err } = await withTimeout(
+          supabase.auth.signInWithPassword({ email: e, password }),
+          8000,
+          "Connexion Supabase"
+        );
+        if (err) {
+          const msg = err.message || "Connexion impossible.";
+          if (looksLikeNetworkError(err)) {
+            showSupabaseUnreachable(
+              "Astuce: coupe uBlock/AdGuard/Brave Shields pour stackblitz.com et *.supabase.co, ou teste en navigation privée / 4G."
+            );
+            return;
+          }
+
+          setError(msg);
+          if (/not confirmed/i.test(msg)) setCanResend(true);
           return;
         }
-
-        setError(msg);
-        // Supabase renvoie souvent "Email not confirmed"
-        if (/not confirmed/i.test(msg)) setCanResend(true);
-        return;
       }
       // ✅ IMPORTANT: Ne JAMAIS déclencher de sync/merge au moment du login.
       // La sync auto agressive est la cause principale des timeouts Supabase.
