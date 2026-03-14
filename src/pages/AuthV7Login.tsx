@@ -116,27 +116,23 @@ export default function AuthV7Login({ go }: Props) {
       setError((prev) => prev || "Connexion bloquée (timeout). Réessaie ou vérifie ton réseau.");
     }, 12000);
     try {
-      if (isNasProviderEnabled()) {
-        await withTimeout(onlineApi.login({ email: e, password }), 8000, "Connexion NAS");
-      } else {
-        const { error: err } = await withTimeout(
-          supabase.auth.signInWithPassword({ email: e, password }),
-          8000,
-          "Connexion Supabase"
+      try {
+        await withTimeout(
+          onlineApi.login({ email: e, password }),
+          isNasProviderEnabled() ? 8000 : 12000,
+          isNasProviderEnabled() ? "Connexion NAS" : "Connexion"
         );
-        if (err) {
-          const msg = err.message || "Connexion impossible.";
-          if (looksLikeNetworkError(err)) {
-            showSupabaseUnreachable(
-              "Astuce: coupe uBlock/AdGuard/Brave Shields pour stackblitz.com et *.supabase.co, ou teste en navigation privée / 4G."
-            );
-            return;
-          }
-
-          setError(msg);
-          if (/not confirmed/i.test(msg)) setCanResend(true);
+      } catch (err: any) {
+        const msg = String(err?.message || err || "Connexion impossible.");
+        if (!isNasProviderEnabled() && looksLikeNetworkError(err)) {
+          showSupabaseUnreachable(
+            "Astuce: coupe uBlock/AdGuard/Brave Shields pour stackblitz.com et *.supabase.co, ou teste en navigation privée / 4G."
+          );
           return;
         }
+        setError(msg);
+        if (/not confirmed/i.test(msg)) setCanResend(true);
+        return;
       }
       // ✅ IMPORTANT: Ne JAMAIS déclencher de sync/merge au moment du login.
       // La sync auto agressive est la cause principale des timeouts Supabase.

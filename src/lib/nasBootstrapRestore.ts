@@ -12,6 +12,8 @@ function makeStamp(snapshot: any): string {
 
 export async function bootstrapNasRestore(): Promise<{ restored: boolean; reason?: string }> {
   if (!isNasSyncEnabled()) return { restored: false, reason: "disabled" };
+  const hasNasToken = !!localStorage.getItem("dc_nas_access_token_v1");
+  if (!hasNasToken) return { restored: false, reason: "no_token" };
 
   try {
     const snapshot = await nasApi.pullStoreSnapshot();

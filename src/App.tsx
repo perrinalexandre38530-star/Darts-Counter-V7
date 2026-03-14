@@ -1228,8 +1228,29 @@ useEffect(() => {
 }, []);
 
 useEffect(() => {
-  bootstrapNasRestore().catch(() => {});
-  startNasBackgroundSync();
+  let cancelled = false;
+
+  const run = async () => {
+    try {
+      const hasNasToken = !!localStorage.getItem("dc_nas_access_token_v1");
+      const hasCachedAuth = !!localStorage.getItem("dc_online_auth_supabase_v1");
+
+      // IMPORTANT:
+      // - ne tente PAS de restore/sync NAS avant qu'une session existe déjà
+      // - sinon on parasite l'écran de login et on provoque de faux diagnostics réseau
+      if (!hasNasToken && !hasCachedAuth) return;
+
+      await bootstrapNasRestore().catch(() => {});
+      if (!cancelled) startNasBackgroundSync();
+    } catch {
+      // no-op
+    }
+  };
+
+  run();
+  return () => {
+    cancelled = true;
+  };
 }, []);
 
 // 🔒 Cloud stats (events + training) — OFF par défaut pour éviter l'explosion Supabase.
