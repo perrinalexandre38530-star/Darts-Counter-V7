@@ -1,3 +1,4 @@
+import { supabase } from './supabaseClient';
 import { importAll } from "./storage";
 import { isNasSyncEnabled, nasApi } from "./nasApi";
 

@@ -117,11 +117,14 @@ export default function AuthV7Login({ go }: Props) {
     }, 12000);
     try {
       try {
-        await withTimeout(
-          onlineApi.login({ email: e, password }),
-          isNasProviderEnabled() ? 8000 : 12000,
-          isNasProviderEnabled() ? "Connexion NAS" : "Connexion"
-        );
+        const { error: authErr } = await supabase.auth.signInWithPassword({
+        email: e,
+        password
+      });
+      if (authErr) {
+        setError(authErr.message);
+        return;
+      }
       } catch (err: any) {
         const msg = String(err?.message || err || "Connexion impossible.");
         if (!isNasProviderEnabled() && looksLikeNetworkError(err)) {
