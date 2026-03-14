@@ -2459,7 +2459,7 @@ export default function Settings({ go }: Props) {
 
             <SettingsMenuCard
               title={t("settings.menu.cast", "Caster sur un écran")}
-              subtitle={t("settings.menu.cast.sub", "Diffusion simple sur TV / PC / tablette avec lien, QR code et page écran dédiée.")}
+              subtitle={t("settings.menu.cast.sub", "Configurer le vrai Google Cast avec receiver App ID et diffusion directe vers Chromecast / TV compatible.")}
               theme={theme}
               onClick={() => go("cast_host" as any)}
             />

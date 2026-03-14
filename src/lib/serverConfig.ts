@@ -5,9 +5,18 @@
 // - Sauvegarde / restauration des données = NAS si URL présente
 // ============================================================
 
-const rawNasApiUrl = String((import.meta as any)?.env?.VITE_NAS_API_URL || "").trim().replace(/\/+$/, "");
+const LEGACY_BAD_HOSTS = [
+  "sustainability-accordingly-steven-investments.trycloudflare.com",
+];
 
-export const NAS_API_URL = rawNasApiUrl;
+function sanitizeUrl(raw: unknown): string {
+  const value = String(raw || "").trim().replace(/\/+$/, "");
+  if (!value) return "";
+  if (LEGACY_BAD_HOSTS.some((host) => value.includes(host))) return "";
+  return value;
+}
+
+export const NAS_API_URL = sanitizeUrl((import.meta as any)?.env?.VITE_NAS_API_URL) || "http://api.multisports-api.fr:3000";
 
 /**
  * Compat legacy :
@@ -22,6 +31,10 @@ export function isNasProviderEnabled(): boolean {
  */
 export function isNasDataSyncEnabled(): boolean {
   return !!NAS_API_URL;
+}
+
+export function getNasApiUrl(): string {
+  return NAS_API_URL;
 }
 
 export function getOnlineProviderLabel(): string {

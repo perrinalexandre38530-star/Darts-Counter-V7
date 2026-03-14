@@ -138,8 +138,8 @@ function normalizeProfile(raw: any, user: UserAuth): OnlineProfile | null {
   return {
     id: String(raw?.id || user.id || ""),
     userId: String(raw?.userId || raw?.user_id || user.id || ""),
-    displayName: String(raw?.displayName || raw?.display_name || user.nickname || "Player"),
-    avatarUrl: raw?.avatarUrl || raw?.avatar_url || undefined,
+    displayName: String(raw?.displayName || raw?.display_name || raw?.name || user.nickname || "Player"),
+    avatarUrl: raw?.avatarDataUrl || raw?.avatar_data_url || raw?.avatar || raw?.avatarUrl || raw?.avatar_url || undefined,
     country: raw?.country || null,
     countryCode: raw?.countryCode || raw?.country_code || null,
     bio: raw?.bio || undefined,
@@ -300,7 +300,7 @@ export async function nasPullStoreSnapshot(): Promise<{
 }> {
   try {
     const json = await apiFetch("/sync/pull", { method: "GET" });
-    const payload = json?.payload ?? json?.store ?? json?.data ?? null;
+    const payload = json?.payload ?? json?.storeSnapshot ?? json?.store ?? json?.data ?? null;
     if (payload == null) {
       return { status: "not_found", payload: null, updatedAt: null, version: null };
     }

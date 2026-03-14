@@ -42,6 +42,7 @@ import tickerX01 from "../assets/tickers/ticker_x01.png";
 
 import { StatsBridge } from "../lib/statsBridge";
 import { loadBots } from "./ProfilesBots";
+import { sendCastSnapshot } from "../cast/googleCast";
 
 
 
@@ -1300,6 +1301,37 @@ const activeTeam = React.useMemo(() => {
     activePlayer ? (scores[activePlayer.id] ?? config.startScore) : config.startScore;
 
   const currentVisit = state.visit;
+
+  React.useEffect(() => {
+    try {
+      const castPlayers = isTeamsMode && Array.isArray(teamsView) && teamsView.length
+        ? (teamsView as any[]).map((team: any) => ({
+            id: String(team.id || team.name || Math.random()),
+            name: String(team.name || "Équipe"),
+            score: Number(team.score ?? 0),
+            active: !!activeTeam && String(activeTeam.id) === String(team.id),
+          }))
+        : (players as any[]).map((p: any) => ({
+            id: String(p.id),
+            name: String(p.name || "Joueur"),
+            score: Number((scores as any)?.[p.id] ?? config.startScore ?? 0),
+            active: String(activePlayerId || "") === String(p.id),
+          }));
+
+      sendCastSnapshot({
+        game: "x01",
+        title: isTeamsMode ? "X01 Teams" : "X01",
+        status: status === "finished" ? "finished" : "live",
+        players: castPlayers,
+        meta: {
+          set: Number((state as any)?.currentSet ?? 1),
+          leg: Number((state as any)?.currentLeg ?? 1),
+          outMode,
+        },
+        updatedAt: Date.now(),
+      });
+    } catch {}
+  }, [isTeamsMode, teamsView, activeTeam, players, scores, config.startScore, activePlayerId, state, outMode, status]);
 
     // out mode ? (double / single / master) — selon config
   const outMode: "double" | "simple" | "master" = React.useMemo(() => {

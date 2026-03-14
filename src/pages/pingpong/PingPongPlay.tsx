@@ -23,6 +23,7 @@ import {
 } from "../../lib/pingpongStore";
 
 import type { Profile } from "../../lib/types";
+import { sendCastSnapshot } from "../../cast/googleCast";
 
 // ✅ Tickers (comme les menus)
 const TICKERS = import.meta.glob("../../assets/tickers/*.png", {
@@ -865,6 +866,27 @@ export default function PingPongPlay({ go, onFinish }: Props) {
     const who = arr[currentServe.idx] || fallback;
     return `${who} (${currentServe.side}${currentServe.idx + 1})`;
   }, [currentServe, is2v2, is2v1, nameA, nameB, sideAPlayers, sideBPlayers]);
+
+  React.useEffect(() => {
+    try {
+      sendCastSnapshot({
+        game: "pingpong",
+        title: "Ping-Pong",
+        status: finished ? "finished" : "live",
+        players: [
+          { id: "A", name: String(nameA || "Équipe A"), score: ptsA, active: serverSide === "A" },
+          { id: "B", name: String(nameB || "Équipe B"), score: ptsB, active: serverSide === "B" },
+        ],
+        meta: {
+          set: Number((st as any).setIndex ?? 1),
+          setsA,
+          setsB,
+          server: serverLabel,
+        },
+        updatedAt: Date.now(),
+      });
+    } catch {}
+  }, [finished, nameA, nameB, ptsA, ptsB, serverSide, serverLabel, setsA, setsB, st]);
 
   const handleAddPoint = React.useCallback(
     (side: "A" | "B", delta: number) => {

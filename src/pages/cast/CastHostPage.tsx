@@ -1,454 +1,137 @@
-import * as React from "react";
-import QRCode from "qrcode";
-import { useTheme } from "../../contexts/ThemeContext";
-import { useCastHost } from "../../cast/useCastHost";
-import type { CastSnapshot } from "../../cast/castTypes";
+import React from "react";
+import {
+  endGoogleCastSession,
+  ensureGoogleCastReady,
+  getGoogleCastAppId,
+  getGoogleCastState,
+  GOOGLE_CAST_NAMESPACE,
+  isGoogleCastSupported,
+  requestGoogleCastSession,
+  setGoogleCastAppId,
+  subscribeGoogleCastStatus,
+} from "../../cast/googleCast";
 
-type Props = { go: (tab: any, params?: any) => void };
-
-type DemoState = {
-  title: string;
-  leftName: string;
-  rightName: string;
-  leftScore: number;
-  rightScore: number;
-  active: 1 | 2;
+type Props = {
+  go: (tab: any, params?: any) => void;
 };
 
-const LAST_CAST_KEY = "dc_cast_last_room_v2";
-
-const DEMO_INIT: DemoState = {
-  title: "Multisports Scoring",
-  leftName: "Joueur 1",
-  rightName: "Joueur 2",
-  leftScore: 0,
-  rightScore: 0,
-  active: 1,
-};
-
-function SmallButton({
-  label,
-  onClick,
-  disabled,
-  primary,
-}: {
-  label: string;
-  onClick: () => void;
-  disabled?: boolean;
-  primary?: boolean;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      disabled={disabled}
-      style={{
-        borderRadius: 14,
-        padding: "12px 14px",
-        border: primary ? "1px solid rgba(255,213,106,.30)" : "1px solid rgba(255,255,255,.14)",
-        background: primary
-          ? "linear-gradient(180deg, rgba(255,213,106,.95), rgba(242,169,42,.92))"
-          : "linear-gradient(180deg, rgba(255,255,255,.07), rgba(0,0,0,.30))",
-        color: primary ? "#1a1202" : "#f5f5f7",
-        fontWeight: 1000,
-        cursor: disabled ? "default" : "pointer",
-        opacity: disabled ? 0.55 : 1,
-        boxShadow: primary ? "0 12px 24px rgba(0,0,0,.32)" : "none",
-        whiteSpace: "nowrap",
-      }}
-    >
-      {label}
-    </button>
-  );
-}
-
-function ActionCard({
-  title,
-  sub,
-  children,
-}: {
-  title: string;
-  sub: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <div
-      style={{
-        borderRadius: 18,
-        border: "1px solid rgba(255,255,255,.10)",
-        background: "linear-gradient(180deg, rgba(255,255,255,.045), rgba(0,0,0,.24))",
-        padding: 14,
-        display: "grid",
-        gap: 12,
-      }}
-    >
-      <div style={{ display: "grid", gap: 4 }}>
-        <div style={{ fontSize: 16, fontWeight: 1000 }}>{title}</div>
-        <div style={{ fontSize: 12.5, opacity: 0.82 }}>{sub}</div>
-      </div>
-      {children}
-    </div>
-  );
-}
-
-function ScoreStepper({
-  value,
-  onChange,
-}: {
-  value: number;
-  onChange: (next: number) => void;
-}) {
-  return (
-    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-      <SmallButton label="-1" onClick={() => onChange(Math.max(0, Number(value || 0) - 1))} />
-      <div
-        style={{
-          minWidth: 58,
-          textAlign: "center",
-          fontSize: 24,
-          fontWeight: 1100,
-          letterSpacing: 0.3,
-        }}
-      >
-        {Number(value || 0)}
-      </div>
-      <SmallButton label="+1" onClick={() => onChange(Number(value || 0) + 1)} primary />
-    </div>
-  );
-}
-
-function buildSnapshot(demo: DemoState): CastSnapshot {
+function cardStyle(): React.CSSProperties {
   return {
-    game: "unknown",
-    title: demo.title || "Multisports Scoring",
-    status: "live",
-    players: [
-      { id: "left", name: demo.leftName || "Joueur 1", score: Number(demo.leftScore) || 0, active: demo.active === 1 },
-      { id: "right", name: demo.rightName || "Joueur 2", score: Number(demo.rightScore) || 0, active: demo.active === 2 },
-    ],
-    meta: { source: "cast_simple_host" },
-    updatedAt: Date.now(),
+    background: "linear-gradient(180deg, rgba(20,24,31,.96), rgba(10,12,17,.96))",
+    border: "1px solid rgba(255,255,255,.08)",
+    borderRadius: 20,
+    padding: 18,
+    boxShadow: "0 18px 50px rgba(0,0,0,.32)",
+  };
+}
+
+function pill(ok: boolean): React.CSSProperties {
+  return {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 8,
+    borderRadius: 999,
+    padding: "8px 12px",
+    fontSize: 13,
+    fontWeight: 800,
+    border: `1px solid ${ok ? "rgba(16,185,129,.35)" : "rgba(245,158,11,.35)"}`,
+    background: ok ? "rgba(16,185,129,.14)" : "rgba(245,158,11,.14)",
+    color: ok ? "#a7f3d0" : "#fde68a",
   };
 }
 
 export default function CastHostPage({ go }: Props) {
-  const theme = useTheme() as any;
-  const host = useCastHost();
-
-  const [demo, setDemo] = React.useState<DemoState>(DEMO_INIT);
-  const [qrUrl, setQrUrl] = React.useState<string>("");
-  const [showQr, setShowQr] = React.useState(false);
-  const [infoMsg, setInfoMsg] = React.useState<string | null>(null);
-  const [busyAction, setBusyAction] = React.useState<string | null>(null);
-
-  const joinUrl = host.room ? `${window.location.origin}${window.location.pathname}#/cast/${host.room.id}` : "";
+  const [appId, setAppId] = React.useState(getGoogleCastAppId());
+  const [message, setMessage] = React.useState("");
+  const [, force] = React.useReducer((x) => x + 1, 0);
 
   React.useEffect(() => {
-    if (!joinUrl || !showQr) {
-      setQrUrl("");
-      return;
-    }
-    let cancelled = false;
-    QRCode.toDataURL(joinUrl, {
-      margin: 1,
-      width: 260,
-      errorCorrectionLevel: "M",
-    })
-      .then((dataUrl) => {
-        if (!cancelled) setQrUrl(dataUrl);
-      })
-      .catch(() => {
-        if (!cancelled) setQrUrl("");
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [joinUrl, showQr]);
+    ensureGoogleCastReady().catch(() => undefined);
+    return subscribeGoogleCastStatus(() => force());
+  }, []);
 
-  React.useEffect(() => {
-    if (!host.room) return;
-    try {
-      localStorage.setItem(LAST_CAST_KEY, JSON.stringify({ id: host.room.id, code: host.room.code, at: Date.now() }));
-    } catch {}
-  }, [host.room]);
+  const state = getGoogleCastState();
+  const configured = !!appId;
+  const canStart = configured && state.sdkLoaded;
 
-  React.useEffect(() => {
-    if (!host.room) return;
-    const t = window.setTimeout(() => {
-      host.pushState(host.room!.id, buildSnapshot(demo)).catch(() => {});
-    }, 180);
-    return () => window.clearTimeout(t);
-  }, [demo, host, host.room]);
-
-  async function ensureRoom() {
-    if (host.room) return host.room;
-    const res = await host.createRoom({ codeLen: 6 });
-    return res.room;
+  async function saveAppId() {
+    setGoogleCastAppId(appId);
+    const ok = await ensureGoogleCastReady();
+    setMessage(ok ? "App ID Cast enregistré." : "App ID enregistré. Le SDK Cast sera prêt dans Chrome/Android.");
+    force();
   }
 
-  async function withAction(name: string, fn: () => Promise<void>) {
-    setInfoMsg(null);
-    setBusyAction(name);
-    try {
-      await fn();
-    } catch (e: any) {
-      setInfoMsg(String(e?.message || e || "Erreur"));
-    } finally {
-      setBusyAction(null);
-    }
-  }
-
-  async function startCast() {
-    await withAction("start", async () => {
-      const room = await ensureRoom();
-      await host.pushState(room.id, buildSnapshot(demo));
-      setInfoMsg(`Cast prêt. Code ${room.code}.`);
-    });
-  }
-
-  async function openReceiver() {
-    await withAction("receiver", async () => {
-      const room = await ensureRoom();
-      await host.pushState(room.id, buildSnapshot(demo));
-      const url = `${window.location.origin}${window.location.pathname}#/cast/${room.id}`;
-      window.open(url, "_blank", "noopener,noreferrer");
-      setInfoMsg("Écran TV ouvert dans un nouvel onglet.");
-    });
-  }
-
-  async function shareLink() {
-    await withAction("share", async () => {
-      const room = await ensureRoom();
-      await host.pushState(room.id, buildSnapshot(demo));
-      const url = `${window.location.origin}${window.location.pathname}#/cast/${room.id}`;
-      const shareData = { title: demo.title || "Multisports Scoring", text: `Ouvre cet écran pour suivre le score : ${room.code}`, url };
-      if (navigator.share) {
-        await navigator.share(shareData);
-        setInfoMsg("Lien de cast partagé.");
-        return;
-      }
-      await navigator.clipboard.writeText(url);
-      setInfoMsg("Lien copié dans le presse-papiers.");
-    });
-  }
-
-  async function copyCode() {
-    if (!host.room?.code) return;
-    try {
-      await navigator.clipboard.writeText(host.room.code);
-      setInfoMsg("Code de cast copié.");
-    } catch {
-      setInfoMsg("Impossible de copier le code.");
-    }
+  async function connectCast() {
+    const res = await requestGoogleCastSession();
+    if (res.ok) setMessage("Cast connecté. Ouvre maintenant une partie et le score partira automatiquement vers la TV.");
+    else if (res.reason === "missing_app_id") setMessage("Renseigne d’abord l’App ID de ton receiver Google Cast.");
+    else setMessage(`Impossible d’ouvrir le dialogue Cast (${res.reason}).`);
+    force();
   }
 
   async function stopCast() {
-    if (!host.room?.id) return;
-    await withAction("stop", async () => {
-      await host.closeRoom(host.room!.id);
-      try {
-        localStorage.removeItem(LAST_CAST_KEY);
-      } catch {}
-      setShowQr(false);
-      setInfoMsg("Diffusion arrêtée.");
-    });
+    await endGoogleCastSession();
+    setMessage("Session Cast arrêtée.");
+    force();
   }
 
-  const roomCode = host.room?.code || "------";
-
   return (
-    <div className="container" style={{ padding: 16, paddingBottom: 96, color: theme.text || "#f5f5f7" }}>
-      <div
-        style={{
-          borderRadius: 22,
-          padding: 16,
-          border: "1px solid rgba(255,255,255,.10)",
-          background:
-            "radial-gradient(120% 160% at 0% 0%, rgba(255,195,26,.09), transparent 55%), radial-gradient(90% 90% at 100% 0%, rgba(79,180,255,.08), transparent 50%), linear-gradient(180deg, rgba(22,22,28,.98), rgba(10,10,14,.99))",
-          boxShadow: "0 14px 34px rgba(0,0,0,.55)",
-          display: "grid",
-          gap: 16,
-        }}
-      >
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
-          <div style={{ display: "grid", gap: 6, maxWidth: 760 }}>
-            <div style={{ fontSize: 24, fontWeight: 1100, color: theme.primary || "#ffd56a" }}>CAST</div>
-            <div style={{ fontSize: 13.5, opacity: 0.9 }}>
-              Un seul bouton logique : tu démarres, tu ouvres l’écran TV, puis tu partages le lien ou le QR code.
-            </div>
-          </div>
-          <SmallButton label="← Réglages" onClick={() => go("settings")} />
+    <div style={{ minHeight: "100dvh", background: "radial-gradient(circle at top, #18202d 0%, #090b10 58%, #050608 100%)", color: "#f8fafc" }}>
+      <div style={{ maxWidth: 980, margin: "0 auto", padding: "22px 16px 120px" }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginBottom: 18 }}>
+          <button onClick={() => go("settings")} style={{ borderRadius: 999, padding: "10px 14px", border: "1px solid rgba(255,255,255,.12)", background: "rgba(255,255,255,.06)", color: "#fff", fontWeight: 800, cursor: "pointer" }}>← Retour</button>
+          <div style={{ fontSize: 28, fontWeight: 900, letterSpacing: .4 }}>Google Cast</div>
+          <div style={{ width: 88 }} />
         </div>
 
-        {(host.error || infoMsg) ? (
-          <div
-            style={{
-              borderRadius: 14,
-              padding: "10px 12px",
-              border: `1px solid ${host.error ? "rgba(255,120,120,.26)" : "rgba(255,255,255,.12)"}`,
-              background: host.error ? "rgba(120,18,18,.18)" : "rgba(255,255,255,.04)",
-              color: host.error ? "#ff9d9d" : theme.text || "#f5f5f7",
-              fontWeight: 800,
-              fontSize: 13,
-            }}
-          >
-            {host.error || infoMsg}
-          </div>
-        ) : null}
+        <div style={{ display: "grid", gap: 16 }}>
+          <section style={cardStyle()}>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 10, marginBottom: 14 }}>
+              <span style={pill(isGoogleCastSupported())}>{isGoogleCastSupported() ? "Navigateur compatible" : "Chrome / Android recommandé"}</span>
+              <span style={pill(configured)}>{configured ? "Receiver App ID configuré" : "App ID manquant"}</span>
+              <span style={pill(state.isCasting)}>{state.isCasting ? `TV connectée : ${state.deviceName || "appareil Cast"}` : "Aucune session Cast active"}</span>
+            </div>
 
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 12 }}>
-          <ActionCard title="1. Démarrer" sub="Prépare une room simple pour diffuser le score.">
-            <SmallButton
-              label={host.creating || busyAction === "start" ? "Démarrage…" : host.room ? "Cast actif" : "Démarrer le cast"}
-              onClick={startCast}
-              disabled={host.creating || busyAction === "start"}
-              primary
-            />
-            <div style={{ fontSize: 12, opacity: 0.82 }}>Code : <b style={{ letterSpacing: 2 }}>{roomCode}</b></div>
-          </ActionCard>
+            <div style={{ fontSize: 15, lineHeight: 1.5, color: "#cbd5e1", marginBottom: 14 }}>
+              Ici, on ne passe plus par les rooms ni les QR codes. Cette page sert uniquement à brancher le <strong>vrai Google Cast</strong> avec ton receiver personnalisé.
+            </div>
 
-          <ActionCard title="2. Ouvrir l’écran" sub="Ouvre directement l’écran distant pour la TV, le PC ou la tablette.">
+            <label style={{ display: "block", fontSize: 13, fontWeight: 800, color: "#e5e7eb", marginBottom: 8 }}>Receiver Application ID</label>
             <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-              <SmallButton
-                label={busyAction === "receiver" ? "Ouverture…" : "Ouvrir l’écran TV"}
-                onClick={openReceiver}
-                disabled={busyAction === "receiver"}
-                primary
-              />
-              <SmallButton label="Page de saisie code" onClick={() => go("cast_join")} />
-            </div>
-          </ActionCard>
-
-          <ActionCard title="3. Partager" sub="Partage le lien ou affiche le QR code pour ouvrir l’écran sur l’autre appareil.">
-            <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-              <SmallButton label={busyAction === "share" ? "Partage…" : "Partager le lien"} onClick={shareLink} disabled={busyAction === "share"} />
-              <SmallButton label={showQr ? "Masquer QR" : "Afficher QR"} onClick={() => setShowQr((v) => !v)} disabled={!host.room} />
-              <SmallButton label="Copier le code" onClick={copyCode} disabled={!host.room} />
-            </div>
-          </ActionCard>
-        </div>
-
-        {showQr && host.room ? (
-          <div
-            style={{
-              borderRadius: 18,
-              border: "1px solid rgba(255,255,255,.10)",
-              background: "rgba(0,0,0,.24)",
-              padding: 16,
-              display: "grid",
-              gap: 12,
-              justifyItems: "center",
-            }}
-          >
-            <div style={{ fontSize: 16, fontWeight: 1000 }}>Scanner pour ouvrir l’écran de score</div>
-            {qrUrl ? (
-              <img src={qrUrl} alt="QR Cast" style={{ width: 260, height: 260, borderRadius: 16, background: "#fff", padding: 10 }} />
-            ) : (
-              <div style={{ padding: 28, opacity: 0.8 }}>Génération du QR…</div>
-            )}
-            <div style={{ fontSize: 12, opacity: 0.85, wordBreak: "break-all", textAlign: "center" }}>{joinUrl}</div>
-          </div>
-        ) : null}
-
-        <div
-          style={{
-            borderRadius: 18,
-            border: "1px solid rgba(255,255,255,.10)",
-            background: "rgba(0,0,0,.22)",
-            padding: 14,
-            display: "grid",
-            gap: 14,
-          }}
-        >
-          <div style={{ display: "grid", gap: 4 }}>
-            <div style={{ fontSize: 16, fontWeight: 1000 }}>Aperçu rapide</div>
-            <div style={{ fontSize: 12.5, opacity: 0.82 }}>
-              Ce panneau sert à tester immédiatement le cast. Les changements sont envoyés automatiquement à l’écran distant.
-            </div>
-          </div>
-
-          <div style={{ display: "grid", gap: 8 }}>
-            <div style={{ fontSize: 11.5, fontWeight: 1000, opacity: 0.82 }}>Titre</div>
-            <input
-              value={demo.title}
-              onChange={(e) => setDemo((s) => ({ ...s, title: e.target.value }))}
-              style={{
-                width: "100%",
-                borderRadius: 12,
-                border: "1px solid rgba(255,255,255,.16)",
-                background: "rgba(5,5,8,.96)",
-                color: theme.text || "#f5f5f7",
-                padding: "12px 12px",
-                fontSize: 13,
-                outline: "none",
-              }}
-            />
-          </div>
-
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: 12 }}>
-            <div
-              style={{
-                borderRadius: 16,
-                border: demo.active === 1 ? "1px solid rgba(255,213,106,.40)" : "1px solid rgba(255,255,255,.10)",
-                padding: 12,
-                display: "grid",
-                gap: 12,
-                background: demo.active === 1 ? "rgba(255,213,106,.08)" : "rgba(255,255,255,.03)",
-              }}
-            >
               <input
-                value={demo.leftName}
-                onChange={(e) => setDemo((s) => ({ ...s, leftName: e.target.value }))}
-                placeholder="Joueur 1"
-                style={{
-                  width: "100%",
-                  borderRadius: 12,
-                  border: "1px solid rgba(255,255,255,.16)",
-                  background: "rgba(5,5,8,.96)",
-                  color: theme.text || "#f5f5f7",
-                  padding: "12px 12px",
-                  fontSize: 13,
-                  outline: "none",
-                }}
+                value={appId}
+                onChange={(e) => setAppId(String(e.target.value || "").trim().toUpperCase())}
+                placeholder="Ex: 12AB34CD"
+                spellCheck={false}
+                style={{ flex: "1 1 260px", minWidth: 240, borderRadius: 14, padding: "14px 16px", border: "1px solid rgba(255,255,255,.14)", background: "rgba(255,255,255,.06)", color: "#fff", fontSize: 16, fontWeight: 800, letterSpacing: 1.2 }}
               />
-              <ScoreStepper value={demo.leftScore} onChange={(next) => setDemo((s) => ({ ...s, leftScore: next }))} />
-              <SmallButton label={demo.active === 1 ? "Joueur actif" : "Mettre actif"} onClick={() => setDemo((s) => ({ ...s, active: 1 }))} />
+              <button onClick={saveAppId} style={{ borderRadius: 14, padding: "14px 18px", border: 0, background: "#2563eb", color: "#fff", fontWeight: 900, cursor: "pointer" }}>Enregistrer</button>
             </div>
 
-            <div
-              style={{
-                borderRadius: 16,
-                border: demo.active === 2 ? "1px solid rgba(255,213,106,.40)" : "1px solid rgba(255,255,255,.10)",
-                padding: 12,
-                display: "grid",
-                gap: 12,
-                background: demo.active === 2 ? "rgba(255,213,106,.08)" : "rgba(255,255,255,.03)",
-              }}
-            >
-              <input
-                value={demo.rightName}
-                onChange={(e) => setDemo((s) => ({ ...s, rightName: e.target.value }))}
-                placeholder="Joueur 2"
-                style={{
-                  width: "100%",
-                  borderRadius: 12,
-                  border: "1px solid rgba(255,255,255,.16)",
-                  background: "rgba(5,5,8,.96)",
-                  color: theme.text || "#f5f5f7",
-                  padding: "12px 12px",
-                  fontSize: 13,
-                  outline: "none",
-                }}
-              />
-              <ScoreStepper value={demo.rightScore} onChange={(next) => setDemo((s) => ({ ...s, rightScore: next }))} />
-              <SmallButton label={demo.active === 2 ? "Joueur actif" : "Mettre actif"} onClick={() => setDemo((s) => ({ ...s, active: 2 }))} />
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 10, marginTop: 14 }}>
+              <button onClick={connectCast} disabled={!canStart} style={{ borderRadius: 14, padding: "14px 18px", border: 0, background: canStart ? "#10b981" : "#334155", color: "#fff", fontWeight: 900, cursor: canStart ? "pointer" : "not-allowed" }}>Lancer le Cast</button>
+              <button onClick={stopCast} disabled={!state.isCasting} style={{ borderRadius: 14, padding: "14px 18px", border: "1px solid rgba(255,255,255,.14)", background: "rgba(255,255,255,.06)", color: "#fff", fontWeight: 900, cursor: state.isCasting ? "pointer" : "not-allowed" }}>Arrêter</button>
             </div>
-          </div>
 
-          <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-            <SmallButton label="Remettre à zéro" onClick={() => setDemo(DEMO_INIT)} />
-            <SmallButton label={busyAction === "stop" ? "Arrêt…" : "Arrêter le cast"} onClick={stopCast} disabled={!host.room || busyAction === "stop"} />
-          </div>
+            {message ? <div style={{ marginTop: 14, fontSize: 14, color: "#93c5fd", fontWeight: 700 }}>{message}</div> : null}
+          </section>
+
+          <section style={cardStyle()}>
+            <div style={{ fontSize: 18, fontWeight: 900, marginBottom: 12 }}>Branchement dans ton projet</div>
+            <div style={{ display: "grid", gap: 10, color: "#cbd5e1", fontSize: 14, lineHeight: 1.5 }}>
+              <div>1. Héberge le dossier <strong>receiver/</strong> inclus dans ce patch.</div>
+              <div>2. Enregistre ce receiver dans Google Cast pour obtenir ton <strong>App ID</strong>.</div>
+              <div>3. Colle cet App ID ici.</div>
+              <div>4. Lance le Cast puis ouvre une partie. Les pages de jeu X01 / Ping-Pong / Pétanque / Baby-Foot poussent déjà les snapshots en live.</div>
+            </div>
+          </section>
+
+          <section style={cardStyle()}>
+            <div style={{ fontSize: 18, fontWeight: 900, marginBottom: 12 }}>Namespace data</div>
+            <div style={{ fontFamily: "ui-monospace, SFMono-Regular, monospace", fontSize: 14, color: "#e2e8f0", padding: 12, borderRadius: 14, background: "rgba(2,6,23,.55)", border: "1px solid rgba(255,255,255,.08)" }}>
+              {GOOGLE_CAST_NAMESPACE}
+            </div>
+          </section>
         </div>
       </div>
     </div>

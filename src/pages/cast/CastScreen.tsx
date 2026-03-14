@@ -22,6 +22,27 @@ function BigCard({ children }: { children: React.ReactNode }) {
   );
 }
 
+function MetaStrip({ snap }: { snap: CastSnapshot | null }) {
+  if (!snap?.meta) return null;
+  const chips = [
+    snap.meta?.set != null ? `Set ${snap.meta.set}` : null,
+    snap.meta?.leg != null ? `Leg ${snap.meta.leg}` : null,
+    snap.meta?.end != null ? `Mène ${snap.meta.end}` : null,
+    snap.meta?.server ? `Service ${snap.meta.server}` : null,
+    snap.meta?.phase ? String(snap.meta.phase) : null,
+  ].filter(Boolean);
+  if (!chips.length) return null;
+  return (
+    <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 14 }}>
+      {chips.map((chip) => (
+        <div key={chip as string} style={{ borderRadius: 999, padding: "8px 12px", border: "1px solid rgba(255,255,255,.12)", background: "rgba(255,255,255,.06)", fontSize: 13, fontWeight: 900 }}>
+          {chip}
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function PlayerRow({ p, highlight }: { p: any; highlight: boolean }) {
   return (
     <div
@@ -49,11 +70,11 @@ function PlayerRow({ p, highlight }: { p: any; highlight: boolean }) {
             flexShrink: 0,
           }}
         />
-        <div style={{ fontSize: 18, fontWeight: 1000, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+        <div style={{ fontSize: 28, fontWeight: 1000, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
           {p?.name || "—"}
         </div>
       </div>
-      <div style={{ fontSize: 26, fontWeight: 1100, letterSpacing: 0.5 }}>{Number(p?.score ?? 0)}</div>
+      <div style={{ fontSize: 72, lineHeight: 1, fontWeight: 1100, letterSpacing: 0.5 }}>{Number(p?.score ?? 0)}</div>
     </div>
   );
 }
@@ -118,6 +139,8 @@ Saisir un code
 
           {client.error ? <div style={{ marginTop: 10, color: "#ff8a8a", fontWeight: 950 }}>{client.error}</div> : null}
 
+          <MetaStrip snap={snap} />
+
           <div style={{ marginTop: 16, display: "grid", gap: 12 }}>
             {snap?.players?.length ? (
               snap.players.map((p: any) => <PlayerRow key={p.id || p.name} p={p} highlight={!!p.active} />)
@@ -126,9 +149,6 @@ Saisir un code
             )}
           </div>
 
-          {snap?.meta && Object.keys(snap.meta).length ? (
-            <div style={{ marginTop: 14, fontSize: 12, opacity: 0.85 }}>Meta: {JSON.stringify(snap.meta)}</div>
-          ) : null}
         </BigCard>
       </div>
     </div>

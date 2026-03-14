@@ -16,6 +16,7 @@ import InfoDot from "../../components/InfoDot";
 import PageHeader from "../../components/PageHeader";
 import ProfileAvatar from "../../components/ProfileAvatar";
 
+import { sendCastSnapshot } from "../../cast/googleCast";
 import {
   addGoal,
   addPenaltyShot,
@@ -146,6 +147,26 @@ export default function BabyFootPlay({ go, onFinish, params }: Props) {
   const otRemain = otLimitMs != null ? Math.max(0, otLimitMs - otElapsed) : null;
 
   const neededSets = Math.floor((state.setsBestOf || 3) / 2) + 1;
+
+  useEffect(() => {
+    try {
+      sendCastSnapshot({
+        game: "babyfoot",
+        title: "Baby-Foot",
+        status: state.finished ? "finished" : "live",
+        players: [
+          { id: "A", name: String(state.teamA || "Équipe A"), score: Number(state.scoreA || 0), active: false },
+          { id: "B", name: String(state.teamB || "Équipe B"), score: Number(state.scoreB || 0), active: false },
+        ],
+        meta: {
+          phase: state.phase,
+          setsA: Number(state.setsA || 0),
+          setsB: Number(state.setsB || 0),
+        },
+        updatedAt: Date.now(),
+      });
+    } catch {}
+  }, [state]);
 
   // Auto-advance by time
   useEffect(() => {

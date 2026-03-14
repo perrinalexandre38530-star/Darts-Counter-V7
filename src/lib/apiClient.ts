@@ -1,10 +1,23 @@
-const DEFAULT_API =
-  "https://sustainability-accordingly-steven-investments.trycloudflare.com";
+import { getNasApiUrl } from "./serverConfig";
 
-const API_URL =
-  localStorage.getItem("dc_api_url") ||
-  import.meta.env.VITE_API_URL ||
-  DEFAULT_API;
+const LEGACY_BAD_HOSTS = [
+  "sustainability-accordingly-steven-investments.trycloudflare.com",
+];
+
+function sanitizeApiUrl(raw: string | null | undefined): string {
+  const value = String(raw || "").trim().replace(/\/+$/, "");
+  if (!value) return "";
+  if (LEGACY_BAD_HOSTS.some((host) => value.includes(host))) return "";
+  return value;
+}
+
+const envUrl = sanitizeApiUrl(getNasApiUrl());
+const localOverride = sanitizeApiUrl(
+  typeof window !== "undefined" ? localStorage.getItem("dc_api_url") : ""
+);
+
+// ✅ PRIORITÉ : domaine Cloudflare final > éventuel override local legacy
+const API_URL = envUrl || localOverride || "http://api.multisports-api.fr:3000";
 
 async function parseJsonSafe(res: Response) {
   const text = await res.text();
@@ -15,38 +28,35 @@ async function parseJsonSafe(res: Response) {
   }
 }
 
-export async function apiGet(path: string) {
-  const res = await fetch(`${API_URL}${path}`);
+async function doFetch(path: string, init?: RequestInit) {
+  const normalizedPath = path.startsWith("/") ? path : `/${path}`;
+  const res = await fetch(`${API_URL}${normalizedPath}`, init);
+
   if (!res.ok) {
-    throw new Error(`GET ${path} failed (${res.status})`);
+    throw new Error(`${init?.method || "GET"} ${normalizedPath} failed (${res.status})`);
   }
+
   return parseJsonSafe(res);
 }
 
+export async function apiGet(path: string) {
+  return doFetch(path);
+}
+
 export async function apiPost(path: string, body: unknown) {
-  const res = await fetch(`${API_URL}${path}`, {
+  return doFetch(path, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
-
-  if (!res.ok) {
-    throw new Error(`POST ${path} failed (${res.status})`);
-  }
-  return parseJsonSafe(res);
 }
 
 export async function apiPut(path: string, body: unknown) {
-  const res = await fetch(`${API_URL}${path}`, {
+  return doFetch(path, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
-
-  if (!res.ok) {
-    throw new Error(`PUT ${path} failed (${res.status})`);
-  }
-  return parseJsonSafe(res);
 }
 
 export function getApiUrl() {

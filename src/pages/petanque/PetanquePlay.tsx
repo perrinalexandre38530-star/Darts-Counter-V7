@@ -61,6 +61,7 @@ import icoAssist from "../../assets/petanque_icons/Assist.png";
 // NOTE: certains builds (Windows/StackBlitz) peuvent casser sur la casse du nom de fichier.
 // On standardise sur "concede.png" (alias ajouté dans src/assets/petanque_icons).
 import icoConcede from "../../assets/petanque_icons/concede.png";
+import { sendCastSnapshot } from "../../cast/googleCast";
 
 
 type Props = {
@@ -1265,6 +1266,7 @@ return () => window.clearInterval(t);
 	}, [matchStartedAt]);
 
 const ends = stSafe.ends;
+
 const measurements = stSafe.measurements;
 
 const allPlayers = React.useMemo(() => {
@@ -1343,6 +1345,42 @@ const ffaWinnerIdx = React.useMemo(() => {
   const idx = ffaScores.findIndex((s) => s >= 13);
   return idx >= 0 ? idx : null;
 }, [ffaScores]);
+
+const castTeams = React.useMemo(() => resolveTeams(matchCfg, stSafe, store), [matchCfg, stSafe, store]);
+
+React.useEffect(() => {
+  try {
+    if (isFfa3) {
+      sendCastSnapshot({
+        game: "petanque",
+        title: "Pétanque FFA",
+        status: ffaWinnerIdx != null ? "finished" : "live",
+        players: ffaScores.map((score, idx) => ({
+          id: `ffa-${idx}`,
+          name: String((ffaPlayers as any[])[idx] || `Joueur ${idx + 1}`),
+          score: Number(score || 0),
+          active: false,
+        })),
+        meta: { target: 13, end: Number((ffaEnds as any[]).length || 0) + 1 },
+        updatedAt: Date.now(),
+      });
+      return;
+    }
+
+    sendCastSnapshot({
+      game: "petanque",
+      title: "Pétanque",
+      status: Math.max(Number((stSafe as any).scoreA || 0), Number((stSafe as any).scoreB || 0)) >= Number((stSafe as any).targetScore || 13) ? "finished" : "live",
+      players: [
+        { id: String(castTeams.A.id || "A"), name: String(castTeams.A.name || "Équipe A"), score: Number((stSafe as any).scoreA || 0), active: false },
+        { id: String(castTeams.B.id || "B"), name: String(castTeams.B.name || "Équipe B"), score: Number((stSafe as any).scoreB || 0), active: false },
+      ],
+      meta: { end: Number((stSafe as any).ends?.length || 0) + 1, target: Number((stSafe as any).targetScore || 13) },
+      updatedAt: Date.now(),
+    });
+  } catch {}
+}, [castTeams, stSafe, isFfa3, ffaWinnerIdx, ffaScores, ffaPlayers, ffaEnds]);
+
 
 const addFfaEnd = (playerIdx: number, points: number) => {
   if (ffaWinnerIdx != null) return;
