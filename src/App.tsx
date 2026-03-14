@@ -70,6 +70,8 @@ import * as React from "react";
 const { useEffect, useMemo, useState, useRef, useCallback } = React;
 import { migrateLocalStorageToIndexedDB } from "./lib/storageMigration";
 import { rehydrateSupabaseSession } from "./lib/onlineSessionFix";
+import { startNasBackgroundSync } from "./lib/nasStartupSync";
+import { bootstrapNasRestore } from "./lib/nasBootstrapRestore";
 import BottomNav from "./components/BottomNav";
 
 import AuthStart from "./pages/AuthStart";
@@ -1223,6 +1225,11 @@ function SWUpdateBanner() {
 function App() {
 useEffect(() => {
   rehydrateSupabaseSession();
+}, []);
+
+useEffect(() => {
+  bootstrapNasRestore().catch(() => {});
+  startNasBackgroundSync();
 }, []);
 
 // 🔒 Cloud stats (events + training) — OFF par défaut pour éviter l'explosion Supabase.

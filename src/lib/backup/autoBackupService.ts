@@ -1,5 +1,6 @@
 import { exportAll } from "../storage";
 import { pushStoreToNas } from "../nasAutoSync";
+import { isNasSyncEnabled, nasApi } from "../nasApi";
 
 const STORE_KEY = "__dc_auto_backups_v2";
 const LEGACY_KEY = "dc_auto_backups";
@@ -50,6 +51,23 @@ function readBackups(): AutoBackupItem[] {
  */
 export async function createAutoBackup(): Promise<void> {
   const payload = await exportAll();
+
+  // ✅ NEW: snapshot complet vers le NAS pour restauration fidèle multi-appareils
+  try {
+    if (isNasSyncEnabled()) {
+      await nasApi.pushStoreSnapshot(payload, 8);
+    }
+  } catch (err) {
+    try {
+      localStorage.setItem(
+        "dc_nas_snapshot_last_error",
+        JSON.stringify({
+          at: new Date().toISOString(),
+          message: err instanceof Error ? err.message : String(err),
+        })
+      );
+    } catch {}
+  }
 
   const backups = readBackups();
   backups.unshift({
