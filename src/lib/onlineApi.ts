@@ -13,8 +13,8 @@
 // ============================================================
 
 import { supabase } from "./supabaseClient";
-import { isNasProviderEnabled } from "./serverConfig";
-import { nasGetProfile, nasLogin, nasLogout, nasPullStoreSnapshot, nasPushStoreSnapshot, nasRestoreSession, nasSignup, nasUpdateProfile } from "./nasApi";
+import { isNasDataSyncEnabled } from "./serverConfig";
+import { nasPullStoreSnapshot, nasPushStoreSnapshot } from "./nasApi";
 import { EventBuffer } from "./sync/EventBuffer";
 import { importHistoryFromCloud } from "./sync/CloudHistoryImport";
 import type { UserAuth, OnlineProfile, OnlineMatch } from "./onlineTypes";
@@ -551,11 +551,6 @@ function normalizeAuthErrorMessage(msg: string) {
 // Public AUTH
 // ============================================================
 async function signup(payload: SignupPayload): Promise<AuthSession> {
-  if (isNasProviderEnabled()) {
-    const session = await nasSignup(payload);
-    saveAuthToLS(session);
-    return session;
-  }
 
   const email = payload.email?.trim();
   const password = payload.password?.trim();
@@ -598,11 +593,6 @@ async function signup(payload: SignupPayload): Promise<AuthSession> {
 }
 
 async function login(payload: LoginPayload): Promise<AuthSession> {
-  if (isNasProviderEnabled()) {
-    const session = await nasLogin(payload);
-    saveAuthToLS(session);
-    return session;
-  }
 
   const email = payload.email?.trim();
   const password = payload.password?.trim();
@@ -672,17 +662,6 @@ async function maybeConsumeAuthRedirectFromHash(): Promise<void> {
 
 // ✅ V7 : restoreSession = RESTORE UNIQUEMENT (pas de création d'utilisateur)
 async function restoreSession(): Promise<AuthSession | null> {
-  if (isNasProviderEnabled()) {
-    try {
-      const session = await nasRestoreSession();
-      saveAuthToLS(session);
-      return session;
-    } catch (e) {
-      console.warn("[onlineApi] NAS restoreSession error", e);
-      saveAuthToLS(null);
-      return null;
-    }
-  }
 
   try {
     // 0) Hash-router auth callback parsing (best-effort)
@@ -731,11 +710,6 @@ async function restoreSession(): Promise<AuthSession | null> {
 }
 
 async function logout(): Promise<void> {
-  if (isNasProviderEnabled()) {
-    await nasLogout();
-    saveAuthToLS(null);
-    return;
-  }
 
   const { error } = await supabase.auth.signOut();
   if (error) console.warn("[onlineApi] logout error", error);
@@ -747,14 +721,6 @@ async function getCurrentSession(): Promise<AuthSession | null> {
 }
 
 async function getProfile(): Promise<OnlineProfile | null> {
-  if (isNasProviderEnabled()) {
-    const profile = await nasGetProfile();
-    const current = loadAuthFromLS();
-    if (current) {
-      saveAuthToLS({ ...current, profile });
-    }
-    return profile;
-  }
 
   const s = await restoreSession();
   return s?.profile ?? null;
@@ -810,12 +776,6 @@ async function deleteAccount(): Promise<void> {
 // Profil
 // ============================================================
 async function updateProfile(patch: UpdateProfilePayload): Promise<OnlineProfile> {
-  if (isNasProviderEnabled()) {
-    const profile = await nasUpdateProfile(patch);
-    const current = loadAuthFromLS();
-    if (current) saveAuthToLS({ ...current, profile });
-    return profile;
-  }
 
   const { user } = await ensureAuthedUser();
   const userId = user.id;
@@ -921,7 +881,7 @@ async function pullStoreSnapshot(): Promise<{
   version?: number | null;
   error?: any;
 }> {
-  if (isNasProviderEnabled()) {
+  if (isNasDataSyncEnabled()) {
     return await nasPullStoreSnapshot();
   }
 
@@ -994,7 +954,7 @@ async function pullStoreSnapshot(): Promise<{
 }
 
 async function pushStoreSnapshot(payload: any, version = 8): Promise<void> {
-  if (isNasProviderEnabled()) {
+  if (isNasDataSyncEnabled()) {
     await nasPushStoreSnapshot(payload, version);
     return;
   }

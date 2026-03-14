@@ -2459,7 +2459,7 @@ export default function Settings({ go }: Props) {
 
             <SettingsMenuCard
               title={t("settings.menu.cast", "Caster sur un écran")}
-              subtitle={t("settings.menu.cast.sub", "Diffuser un scoreboard sur TV / PC / tablette (code de room).")}
+              subtitle={t("settings.menu.cast.sub", "Diffusion simple sur TV / PC / tablette avec lien, QR code et page écran dédiée.")}
               theme={theme}
               onClick={() => go("cast_host" as any)}
             />

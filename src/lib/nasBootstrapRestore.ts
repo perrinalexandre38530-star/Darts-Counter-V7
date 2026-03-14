@@ -1,6 +1,7 @@
-import { supabase } from './supabaseClient';
 import { importAll } from "./storage";
-import { isNasSyncEnabled, nasApi } from "./nasApi";
+import { onlineApi } from "./onlineApi";
+import { isNasDataSyncEnabled } from "./serverConfig";
+import { supabase } from "./supabaseClient";
 
 const APPLIED_KEY = "dc_nas_restore_last_applied_v1";
 const RELOADED_KEY = "dc_nas_restore_last_reloaded_v1";
@@ -12,12 +13,12 @@ function makeStamp(snapshot: any): string {
 }
 
 export async function bootstrapNasRestore(): Promise<{ restored: boolean; reason?: string }> {
-  if (!isNasSyncEnabled()) return { restored: false, reason: "disabled" };
-  const hasNasToken = !!localStorage.getItem("dc_nas_access_token_v1");
-  if (!hasNasToken) return { restored: false, reason: "no_token" };
+  if (!isNasDataSyncEnabled()) return { restored: false, reason: "disabled" };
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session) return { restored: false, reason: "no_session" };
 
   try {
-    const snapshot = await nasApi.pullStoreSnapshot();
+    const snapshot = await onlineApi.pullStoreSnapshot();
     if (!snapshot || snapshot.status !== "ok" || !snapshot.payload) {
       return { restored: false, reason: "empty" };
     }

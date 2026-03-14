@@ -5,7 +5,6 @@
 import React from "react";
 import { supabase } from "../lib/supabaseClient";
 import { onlineApi } from "../lib/onlineApi";
-import { isNasProviderEnabled } from "../lib/serverConfig";
 
 type Props = {
   go: (t: any, p?: any) => void;
@@ -29,17 +28,6 @@ export default function AuthV7Signup({ go }: Props) {
 
     setLoading(true);
     try {
-      if (isNasProviderEnabled()) {
-        await onlineApi.signup({
-          email: e,
-          password,
-          nickname: e.split("@")[0] || "Player",
-        });
-        setInfo("Compte créé et connecté via le backend NAS ✅");
-        go("home");
-        return;
-      }
-
       const emailRedirectTo = `${window.location.origin}${window.location.pathname}#/auth/callback`;
 
       const { data, error: err } = await supabase.auth.signUp({

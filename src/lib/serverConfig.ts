@@ -1,26 +1,29 @@
 // ============================================================
 // src/lib/serverConfig.ts
-// NAS / backend provider selection
-// - ONLINE_PROVIDER=nas | supabase | auto
-// - VITE_NAS_API_URL=http://api.multisports-api.fr:3000
+// Architecture cible stable
+// - Auth compte utilisateur = Supabase
+// - Sauvegarde / restauration des données = NAS si URL présente
 // ============================================================
 
-const rawProvider = String((import.meta as any)?.env?.VITE_ONLINE_PROVIDER || "auto").trim().toLowerCase();
 const rawNasApiUrl = String((import.meta as any)?.env?.VITE_NAS_API_URL || "").trim().replace(/\/+$/, "");
-
-export const ONLINE_PROVIDER = (["nas", "supabase", "auto"].includes(rawProvider) ? rawProvider : "auto") as
-  | "nas"
-  | "supabase"
-  | "auto";
 
 export const NAS_API_URL = rawNasApiUrl;
 
+/**
+ * Compat legacy :
+ * l'auth ne doit plus jamais basculer sur le NAS.
+ */
 export function isNasProviderEnabled(): boolean {
-  if (ONLINE_PROVIDER === "nas") return !!NAS_API_URL;
-  if (ONLINE_PROVIDER === "supabase") return false;
+  return false;
+}
+
+/**
+ * NAS actif uniquement pour la sync data (snapshot / backup / restore).
+ */
+export function isNasDataSyncEnabled(): boolean {
   return !!NAS_API_URL;
 }
 
 export function getOnlineProviderLabel(): string {
-  return isNasProviderEnabled() ? "nas" : "supabase";
+  return isNasDataSyncEnabled() ? "supabase+nas" : "supabase";
 }

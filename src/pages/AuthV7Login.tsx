@@ -3,9 +3,8 @@
 // PROFILES V7 — Connexion email + mot de passe (simple, pro)
 // ============================================
 import React from "react";
-import { supabase, __SUPABASE_ENV__ } from "../lib/supabaseClient";
+import { __SUPABASE_ENV__ } from "../lib/supabaseClient";
 import { onlineApi } from "../lib/onlineApi";
-import { isNasProviderEnabled } from "../lib/serverConfig";
 
 type Props = {
   go: (t: any, p?: any) => void;
@@ -100,7 +99,7 @@ export default function AuthV7Login({ go }: Props) {
     if (!e || !e.includes("@")) return setError("Entre une adresse email valide.");
     if (!password) return setError("Entre ton mot de passe.");
 
-    if (!isNasProviderEnabled() && !__SUPABASE_ENV__.hasEnv) {
+    if (!__SUPABASE_ENV__.hasEnv) {
       setError(
         `Supabase non configuré (VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY manquants).\nURL actuelle: ${
           __SUPABASE_ENV__.url || "(vide)"
@@ -117,17 +116,14 @@ export default function AuthV7Login({ go }: Props) {
     }, 12000);
     try {
       try {
-        const { error: authErr } = await supabase.auth.signInWithPassword({
-        email: e,
-        password
-      });
-      if (authErr) {
-        setError(authErr.message);
-        return;
-      }
+        await withTimeout(
+          onlineApi.login({ email: e, password }),
+          12000,
+          "Connexion"
+        );
       } catch (err: any) {
         const msg = String(err?.message || err || "Connexion impossible.");
-        if (!isNasProviderEnabled() && looksLikeNetworkError(err)) {
+        if (looksLikeNetworkError(err)) {
           showSupabaseUnreachable(
             "Astuce: coupe uBlock/AdGuard/Brave Shields pour stackblitz.com et *.supabase.co, ou teste en navigation privée / 4G."
           );
@@ -139,7 +135,7 @@ export default function AuthV7Login({ go }: Props) {
       }
       // ✅ IMPORTANT: Ne JAMAIS déclencher de sync/merge au moment du login.
       // La sync auto agressive est la cause principale des timeouts Supabase.
-      go("home");
+      go("gameSelect");
     } catch (e: any) {
       if (looksLikeNetworkError(e)) {
         showSupabaseUnreachable(

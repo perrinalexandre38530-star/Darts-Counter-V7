@@ -89,12 +89,13 @@ export default function CastScreen({ go, roomId }: Props) {
         background: "radial-gradient(1200px 600px at 20% 0%, rgba(79,180,255,.08), transparent 55%), radial-gradient(900px 520px at 80% 40%, rgba(255,213,106,.06), transparent 60%), #07070b",
       }}
     >
-      <div style={{ maxWidth: 820, margin: "0 auto" }}>
+      <div style={{ maxWidth: 1100, margin: "0 auto" }}>
         <BigCard>
+          <div style={{ marginBottom: 10, fontSize: 12, opacity: 0.76 }}>Astuce : mets cette page en plein écran sur la TV pour un affichage propre.</div>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, flexWrap: "wrap" }}>
             <div style={{ display: "grid", gap: 6, minWidth: 0 }}>
               <div style={{ fontSize: 28, fontWeight: 1100, color: theme.primary || "#4fb4ff" }}>{snap?.title || "CAST"}</div>
-              <div style={{ fontSize: 13, opacity: 0.86 }}>Room: {roomId || client.roomId || "—"}</div>
+              <div style={{ fontSize: 13, opacity: 0.86 }}>Room: {roomId || client.roomId || "—"} · Mise à jour live</div>
             </div>
             <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
               <button
@@ -110,7 +111,7 @@ export default function CastScreen({ go, roomId }: Props) {
                   cursor: "pointer",
                 }}
               >
-                Changer de room
+Changer d'écran
               </button>
             </div>
           </div>
