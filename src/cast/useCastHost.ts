@@ -2,6 +2,7 @@ import * as React from "react";
 import { supabase } from "../lib/supabaseClient";
 import { makeRoomCode } from "./castUtils";
 import type { CastRoom, CastSnapshot } from "./castTypes";
+import { clearCastSnapshot, pushCastSnapshot, removeLocalCastRoom, upsertLocalCastRoom } from "./castSync";
 
 type CreateRoomResult = {
   room: CastRoom;
@@ -9,8 +10,18 @@ type CreateRoomResult = {
 };
 
 function buildJoinUrl(roomId: string) {
-  // Hash routing dans App.tsx
   return `${window.location.origin}${window.location.pathname}#/cast/${roomId}`;
+}
+
+function createLocalRoom(codeLen = 6): CastRoom {
+  const code = makeRoomCode(codeLen);
+  return {
+    id: `local-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    code,
+    host_user_id: "local-host",
+    status: "open",
+    created_at: new Date().toISOString(),
+  };
 }
 
 export function useCastHost() {
@@ -22,11 +33,16 @@ export function useCastHost() {
     setCreating(true);
     setError(null);
     try {
-      const { data: session } = await supabase.auth.getSession();
+      const { data: session } = await supabase.auth.getSession().catch(() => ({ data: { session: null } } as any));
       const uid = session?.session?.user?.id;
-      if (!uid) throw new Error("Connexion requise (host)");
 
-      // Génère un code (avec retry collision)
+      if (!uid) {
+        const localRoom = createLocalRoom(opts?.codeLen ?? 6);
+        upsertLocalCastRoom({ id: localRoom.id, code: localRoom.code });
+        setRoom(localRoom);
+        return { room: localRoom, joinUrl: buildJoinUrl(localRoom.id) } as CreateRoomResult;
+      }
+
       let code = makeRoomCode(opts?.codeLen ?? 6);
       let lastErr: any = null;
       for (let i = 0; i < 4; i++) {
@@ -38,8 +54,6 @@ export function useCastHost() {
 
         if (!ins.error && ins.data) {
           const r = ins.data as CastRoom;
-
-          // Init snapshot (vide)
           const initSnap: CastSnapshot = {
             game: "unknown",
             title: "Multisports Scoring",
@@ -48,6 +62,8 @@ export function useCastHost() {
             meta: {},
             updatedAt: Date.now(),
           };
+
+          pushCastSnapshot(initSnap, r.id);
 
           const up = await supabase.from("cast_room_state").upsert(
             {
@@ -60,9 +76,9 @@ export function useCastHost() {
           );
           if (up.error) throw up.error;
 
+          upsertLocalCastRoom({ id: r.id, code: r.code });
           setRoom(r);
-          const joinUrl = buildJoinUrl(r.id);
-          return { room: r, joinUrl } as CreateRoomResult;
+          return { room: r, joinUrl: buildJoinUrl(r.id) } as CreateRoomResult;
         }
 
         lastErr = ins.error;
@@ -80,8 +96,10 @@ export function useCastHost() {
   const pushState = React.useCallback(async (roomId: string, snap: CastSnapshot) => {
     setError(null);
     const payload = { ...snap, updatedAt: Date.now() };
+    pushCastSnapshot(payload, roomId);
 
-    // Atomic-ish bump rev
+    if (String(roomId || "").startsWith("local-")) return;
+
     const upd = await supabase
       .from("cast_room_state")
       .update({ payload, updated_at: new Date().toISOString() })
@@ -90,19 +108,23 @@ export function useCastHost() {
       setError(String(upd.error.message || upd.error));
       throw upd.error;
     }
-
-    // Note: on ne dépend pas de rev en CAST-01 (la realtime est pilotée par updated_at + payload)
   }, []);
 
   const closeRoom = React.useCallback(async (roomId: string) => {
     setError(null);
-    const res = await supabase.from("cast_rooms").update({ status: "closed" }).eq("id", roomId);
-    if (res.error) {
-      setError(String(res.error.message || res.error));
-      throw res.error;
+    clearCastSnapshot(roomId);
+    removeLocalCastRoom(room?.code, roomId);
+
+    if (!String(roomId || "").startsWith("local-")) {
+      const res = await supabase.from("cast_rooms").update({ status: "closed" }).eq("id", roomId);
+      if (res.error) {
+        setError(String(res.error.message || res.error));
+        throw res.error;
+      }
     }
+
     setRoom(null);
-  }, []);
+  }, [room?.code]);
 
   return {
     creating,

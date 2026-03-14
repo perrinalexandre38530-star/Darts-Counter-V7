@@ -91,7 +91,7 @@ export default function CastScreen({ go, roomId }: Props) {
     >
       <div style={{ maxWidth: 1100, margin: "0 auto" }}>
         <BigCard>
-          <div style={{ marginBottom: 10, fontSize: 12, opacity: 0.76 }}>Astuce : mets cette page en plein écran sur la TV pour un affichage propre.</div>
+          <div style={{ marginBottom: 10, fontSize: 12, opacity: 0.76 }}>Astuce : ouvre cette page sur la TV puis passe-la en plein écran pour un affichage propre.</div>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, flexWrap: "wrap" }}>
             <div style={{ display: "grid", gap: 6, minWidth: 0 }}>
               <div style={{ fontSize: 28, fontWeight: 1100, color: theme.primary || "#4fb4ff" }}>{snap?.title || "CAST"}</div>
@@ -111,7 +111,7 @@ export default function CastScreen({ go, roomId }: Props) {
                   cursor: "pointer",
                 }}
               >
-Changer d'écran
+Saisir un code
               </button>
             </div>
           </div>

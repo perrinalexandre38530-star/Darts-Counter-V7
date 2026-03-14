@@ -333,3 +333,32 @@ export const nasApi = {
   pullStoreSnapshot: nasPullStoreSnapshot,
   pushStoreSnapshot: nasPushStoreSnapshot,
 };
+
+
+
+/* ===== MULTISPORTS FIX : NORMALIZE PROFILE (NAME + AVATAR) ===== */
+export function normalizeNasProfile(raw:any){
+  if(!raw) return raw
+  const avatarDataUrl =
+      raw.avatarDataUrl ||
+      raw.avatar_data_url ||
+      raw.avatar ||
+      raw.avatarUrl ||
+      raw.avatar_url ||
+      null
+
+  const name =
+      raw.name ||
+      raw.displayName ||
+      raw.display_name ||
+      raw.nickname ||
+      raw.username ||
+      null
+
+  return {
+    ...raw,
+    name,
+    displayName:name,
+    avatarDataUrl
+  }
+}

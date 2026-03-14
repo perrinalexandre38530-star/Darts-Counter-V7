@@ -1,7 +1,6 @@
 import * as React from "react";
 import QRCode from "qrcode";
 import { useTheme } from "../../contexts/ThemeContext";
-import { useAuthOnline } from "../../hooks/useAuthOnline";
 import { useCastHost } from "../../cast/useCastHost";
 import type { CastSnapshot } from "../../cast/castTypes";
 
@@ -134,8 +133,6 @@ function buildSnapshot(demo: DemoState): CastSnapshot {
 
 export default function CastHostPage({ go }: Props) {
   const theme = useTheme() as any;
-  const auth = useAuthOnline() as any;
-  const isSignedIn = auth?.status === "signed_in" || !!auth?.user?.id;
   const host = useCastHost();
 
   const [demo, setDemo] = React.useState<DemoState>(DEMO_INIT);
@@ -185,7 +182,6 @@ export default function CastHostPage({ go }: Props) {
 
   async function ensureRoom() {
     if (host.room) return host.room;
-    if (!isSignedIn) throw new Error("Connexion requise pour démarrer le cast.");
     const res = await host.createRoom({ codeLen: 6 });
     return res.room;
   }
@@ -278,17 +274,11 @@ export default function CastHostPage({ go }: Props) {
           <div style={{ display: "grid", gap: 6, maxWidth: 760 }}>
             <div style={{ fontSize: 24, fontWeight: 1100, color: theme.primary || "#ffd56a" }}>CAST</div>
             <div style={{ fontSize: 13.5, opacity: 0.9 }}>
-              Un seul écran de contrôle. Tu démarres le cast, tu ouvres l’écran TV, puis tu partages le lien ou le QR code.
+              Un seul bouton logique : tu démarres, tu ouvres l’écran TV, puis tu partages le lien ou le QR code.
             </div>
           </div>
           <SmallButton label="← Réglages" onClick={() => go("settings")} />
         </div>
-
-        {!isSignedIn ? (
-          <div style={{ color: "#ff9d9d", fontWeight: 900, fontSize: 13.5 }}>
-            Connecte-toi d’abord dans « Mon profil » pour créer une room de diffusion.
-          </div>
-        ) : null}
 
         {(host.error || infoMsg) ? (
           <div
@@ -307,32 +297,32 @@ export default function CastHostPage({ go }: Props) {
         ) : null}
 
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 12 }}>
-          <ActionCard title="1. Démarrer" sub="Crée la room de diffusion et prépare le score.">
+          <ActionCard title="1. Démarrer" sub="Prépare une room simple pour diffuser le score.">
             <SmallButton
               label={host.creating || busyAction === "start" ? "Démarrage…" : host.room ? "Cast actif" : "Démarrer le cast"}
               onClick={startCast}
-              disabled={!isSignedIn || host.creating || busyAction === "start"}
+              disabled={host.creating || busyAction === "start"}
               primary
             />
-            <div style={{ fontSize: 12, opacity: 0.82 }}>Code room : <b style={{ letterSpacing: 2 }}>{roomCode}</b></div>
+            <div style={{ fontSize: 12, opacity: 0.82 }}>Code : <b style={{ letterSpacing: 2 }}>{roomCode}</b></div>
           </ActionCard>
 
-          <ActionCard title="2. Ouvrir l’écran" sub="Ouvre la page TV dans un nouvel onglet ou sur un deuxième appareil.">
+          <ActionCard title="2. Ouvrir l’écran" sub="Ouvre directement l’écran distant pour la TV, le PC ou la tablette.">
             <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
               <SmallButton
                 label={busyAction === "receiver" ? "Ouverture…" : "Ouvrir l’écran TV"}
                 onClick={openReceiver}
-                disabled={!isSignedIn || busyAction === "receiver"}
+                disabled={busyAction === "receiver"}
                 primary
               />
               <SmallButton label="Page de saisie code" onClick={() => go("cast_join")} />
             </div>
           </ActionCard>
 
-          <ActionCard title="3. Partager" sub="Envoie le lien ou montre le QR code à l’appareil qui doit afficher le score.">
+          <ActionCard title="3. Partager" sub="Partage le lien ou affiche le QR code pour ouvrir l’écran sur l’autre appareil.">
             <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-              <SmallButton label={busyAction === "share" ? "Partage…" : "Partager le lien"} onClick={shareLink} disabled={!isSignedIn || busyAction === "share"} />
-              <SmallButton label={showQr ? "Masquer QR" : "Afficher QR"} onClick={() => setShowQr((v) => !v)} disabled={!isSignedIn} />
+              <SmallButton label={busyAction === "share" ? "Partage…" : "Partager le lien"} onClick={shareLink} disabled={busyAction === "share"} />
+              <SmallButton label={showQr ? "Masquer QR" : "Afficher QR"} onClick={() => setShowQr((v) => !v)} disabled={!host.room} />
               <SmallButton label="Copier le code" onClick={copyCode} disabled={!host.room} />
             </div>
           </ActionCard>

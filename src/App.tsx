@@ -1535,6 +1535,22 @@ useEffect(() => {
         setTab("spectator");
         return;
       }
+      if (h === "#/cast" || h === "#/cast/") {
+        setRouteParams(null);
+        setTab("cast_host");
+        return;
+      }
+      if (h.startsWith("#/cast/join")) {
+        setRouteParams(null);
+        setTab("cast_join");
+        return;
+      }
+      if (h.startsWith("#/cast/")) {
+        const roomId = h.replace(/^#\/cast\//, "").split(/[?#]/)[0] || null;
+        setRouteParams(roomId ? { roomId } : null);
+        setTab(roomId ? "cast_room" : "cast_host");
+        return;
+      }
       if (h.startsWith("#/auth/login")) {
         setShowSplash(false);
         setRouteParams(null);
@@ -1589,12 +1605,16 @@ useEffect(() => {
       else if (next === "auth_v7_signup") window.location.hash = "#/auth/signup";
       else if (next === "online") window.location.hash = "#/online";
       else if (next === "spectator") window.location.hash = "#/spectator";
+      else if (next === "cast_host") window.location.hash = "#/cast";
+      else if (next === "cast_join") window.location.hash = "#/cast/join";
+      else if (next === "cast_room") window.location.hash = `#/cast/${params?.roomId || routeParams?.roomId || ""}`;
       else {
         const h = String(window.location.hash || "");
         if (
           h.startsWith("#/auth/") ||
           h.startsWith("#/online") ||
-          h.startsWith("#/spectator")
+          h.startsWith("#/spectator") ||
+          h.startsWith("#/cast")
         )
           window.location.hash = "#/";
       }

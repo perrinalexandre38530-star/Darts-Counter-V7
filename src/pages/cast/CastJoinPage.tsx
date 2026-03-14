@@ -35,7 +35,7 @@ export default function CastJoinPage({ go }: Props) {
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
           <div style={{ display: "grid", gap: 6 }}>
             <div style={{ fontSize: 22, fontWeight: 1000, color: theme.primary || "#ffd56a" }}>CAST</div>
-            <div style={{ fontSize: 13, opacity: 0.9 }}>Rejoins un écran distant via un code.</div>
+            <div style={{ fontSize: 13, opacity: 0.9 }}>Entre simplement le code affiché sur l'écran CAST pour rejoindre la diffusion.</div>
           </div>
           <button
             type="button"
@@ -50,7 +50,7 @@ export default function CastJoinPage({ go }: Props) {
               cursor: "pointer",
             }}
           >
-            ← Retour
+            ← CAST
           </button>
         </div>
 
