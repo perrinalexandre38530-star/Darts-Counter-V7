@@ -50,5 +50,15 @@
     <script async src="https://docs.opencv.org/4.x/opencv.js"></script>
 
     <script type="module" src="/src/main.tsx"></script>
-  </body>
+  
+<script>
+window.__onGCastApiAvailable = function(isAvailable) {
+  if (isAvailable) {
+    console.log("Google Cast API ready");
+  }
+};
+</script>
+<script src="https://www.gstatic.com/cv/js/sender/v1/cast_sender.js?loadCastFramework=1"></script>
+
+</body>
 </html>

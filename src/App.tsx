@@ -1,3 +1,4 @@
+import { initCast } from './cast/initCast';
 // @ts-nocheck
 // ============================================
 // src/App.tsx — Navigation + wiring propre (v5 sécurisé)
