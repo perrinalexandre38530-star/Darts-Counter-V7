@@ -5994,9 +5994,29 @@ return (
                   </div>
 
                   {(() => {
-            const golfMatches = records.filter((r) => classifyRecordMode(r) === "golf");
-            const finished = golfMatches.filter((m) => Boolean(m.finished_at));
-            const inprog = golfMatches.filter((m) => !m.finished_at);
+            const golfMatchesRaw = records.filter((r) => classifyRecordMode(r) === "golf");
+            const golfMatches = Array.from(
+              new Map(
+                golfMatchesRaw.map((m: any) => {
+                  const key = String(
+                    m?.matchId ||
+                      m?.id ||
+                      m?.payload?.matchId ||
+                      m?.payload?.state?.matchId ||
+                      m?.summary?.matchId ||
+                      `${m?.created_at || m?.createdAt || "golf"}`
+                  );
+                  return [key, m];
+                })
+              ).values()
+            );
+            const isGolfFinished = (m: any) => {
+              const status = String(m?.status || m?.payload?.status || m?.payload?.state?.status || "").toLowerCase();
+              if (status === "finished" || status === "done" || status === "completed") return true;
+              return Boolean(m?.finished_at || m?.finishedAt || m?.payload?.finishedAt || m?.payload?.state?.finishedAt);
+            };
+            const finished = golfMatches.filter((m) => isGolfFinished(m));
+            const inprog = golfMatches.filter((m) => !isGolfFinished(m));
 
             const box = { ...softCard, padding: 14 } as React.CSSProperties;
             const label = { opacity: 0.85, fontSize: 12 } as React.CSSProperties;
@@ -6054,11 +6074,13 @@ return (
             };
 
             const extractPlayerGolfStats = (m: any): GolfAgg => {
-              const pid = activeProfileId;
+              const pid = String(activeProfileId ?? "");
               const s = m?.summary ?? {};
               const p = m?.payload ?? {};
+              const state = p?.state ?? {};
 
               const byPlayer =
+                (state?.statsByPlayer && (state.statsByPlayer[pid] || state.statsByPlayer[String(pid)])) ||
                 (s?.playerStats && (s.playerStats[pid] || s.playerStats[String(pid)])) ||
                 (s?.perPlayer && (s.perPlayer[pid] || s.perPlayer[String(pid)])) ||
                 (p?.playerStats && (p.playerStats[pid] || p.playerStats[String(pid)])) ||
@@ -6066,7 +6088,7 @@ return (
                 (p?.statsByPlayer && (p.statsByPlayer[pid] || p.statsByPlayer[String(pid)])) ||
                 null;
 
-              const src = byPlayer || s?.stats || p?.stats || s || p;
+              const src = byPlayer || state?.stats || s?.stats || p?.stats || state || s || p;
 
               return {
                 s: pick(src, ["s", "simple", "singles", "par"]),
@@ -6097,12 +6119,20 @@ return (
             const totalNums = finished
               .map((m: any) => {
                 const s = m?.summary ?? {};
+                const p = m?.payload ?? {};
+                const state = p?.state ?? {};
+                const pid = String(activeProfileId ?? "");
                 const t =
-                  s?.totals?.[activeProfileId] ??
-                  s?.totals?.[String(activeProfileId)] ??
+                  state?.totalsByPlayer?.[pid] ??
+                  state?.statsByPlayer?.[pid]?.total ??
+                  s?.totals?.[pid] ??
+                  s?.totals?.[String(pid)] ??
                   s?.total ??
+                  (Array.isArray(s?.rankings)
+                    ? s.rankings.find((pp: any) => String(pp?.id ?? pp?.playerId ?? "") === pid)?.total
+                    : undefined) ??
                   (Array.isArray(s?.players)
-                    ? s.players.find((pp: any) => pp?.id === activeProfileId || pp?.id === String(activeProfileId))?.total
+                    ? s.players.find((pp: any) => String(pp?.id ?? pp?.playerId ?? "") === pid)?.total
                     : 0);
                 return readNum(t);
               })

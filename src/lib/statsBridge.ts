@@ -717,8 +717,108 @@ function collectCricketLegsFromMatch(m: NormalizedMatch, profileId: string): Cri
   const pid = String(profileId);
   const out: CricketLegStats[] = [];
 
-  // (A) legacy : r.cricketLegs / r.summary.cricketLegs
   const raw: any = m.raw as any;
+  const payloadObj = raw?.payload && typeof raw.payload === "object" ? raw.payload : null;
+  const decoded = m.payloadObj && typeof m.payloadObj === "object" ? m.payloadObj : null;
+
+  const pickPlayers = (...sources: any[]) => {
+    for (const src of sources) {
+      if (Array.isArray(src) && src.length) return src;
+    }
+    return [] as any[];
+  };
+
+  const byPid = (p: any) => {
+    const ids = [p?.id, p?.playerId, p?.profileId].map((v) => String(v ?? "")).filter(Boolean);
+    return ids.includes(pid);
+  };
+
+  const makeEmptySegments = () => ({
+    15: { segment: 15, marks: 0, closes: 0, pointsScored: 0 },
+    16: { segment: 16, marks: 0, closes: 0, pointsScored: 0 },
+    17: { segment: 17, marks: 0, closes: 0, pointsScored: 0 },
+    18: { segment: 18, marks: 0, closes: 0, pointsScored: 0 },
+    19: { segment: 19, marks: 0, closes: 0, pointsScored: 0 },
+    20: { segment: 20, marks: 0, closes: 0, pointsScored: 0 },
+    25: { segment: 25, marks: 0, closes: 0, pointsScored: 0 },
+  }) as any;
+
+  const buildSyntheticLeg = (player: any, index: number, fallbackStats?: any): CricketLegStats | null => {
+    const leg: any = player?.legStats ?? player?.legsStats ?? player?.cricketLegStats ?? null;
+    if (leg && typeof leg === "object" && !Array.isArray(leg)) return leg as CricketLegStats;
+
+    const hits = Array.isArray(player?.hits) ? player.hits : [];
+    const marksObj = player?.marks && typeof player.marks === "object" ? player.marks : null;
+    const marksFromObj = marksObj ? Object.values(marksObj).reduce((a: any, b: any) => (Number(a) || 0) + (Number(b) || 0), 0) : 0;
+    const dartsThrown =
+      N(player?.dartsThrown, 0) ||
+      N(player?.darts, 0) ||
+      N(player?.stats?.dartsThrown, 0) ||
+      N(player?.stats?.darts, 0) ||
+      (hits.length || 0) ||
+      N(fallbackStats?.darts?.thrown, 0);
+    const marksTotal =
+      N(player?.marksTotal, 0) ||
+      N(player?.totalMarks, 0) ||
+      N(player?.stats?.marksTotal, 0) ||
+      N(player?.special?.marksTotal, 0) ||
+      marksFromObj;
+    const totalPoints = N(player?.score, 0) || N(player?.points, 0) || N(fallbackStats?.score, 0);
+    const hitCount =
+      N(player?.hitCount, 0) ||
+      N(player?.hitsCount, 0) ||
+      N(player?.stats?.hitCount, 0) ||
+      N(player?.darts?.hits, 0) ||
+      hits.filter((h: any) => h && h.ring !== "MISS" && h.segment !== "MISS").length ||
+      N(fallbackStats?.darts?.hits, 0);
+    const visits = Math.max(1, Math.ceil((dartsThrown || 0) / 3));
+    const scoringVariant =
+      decoded?.scoringVariant ??
+      payloadObj?.scoringVariant ??
+      (payloadObj?.withPoints === false || decoded?.withPoints === false ? "no-points" : (decoded?.cutThroat || payloadObj?.cutThroat ? "cut-throat" : "points"));
+    const won = String(raw?.winnerId ?? decoded?.winnerId ?? payloadObj?.winnerId ?? "") === pid || !!player?.win || !!fallbackStats?.win;
+    const perSegment = makeEmptySegments();
+    if (marksObj) {
+      for (const [seg, val] of Object.entries(marksObj)) {
+        const sid = Number(seg);
+        if (!Number.isFinite(sid) || !perSegment[sid]) continue;
+        const mv = N(val, 0);
+        perSegment[sid].marks = mv;
+        perSegment[sid].closes = mv >= 3 ? 1 : 0;
+      }
+    }
+    return {
+      matchId: String(m.id || raw?.matchId || raw?.id || "") || undefined,
+      legId: `${String(m.id || raw?.matchId || raw?.id || "cricket")}:${pid}:${index}`,
+      playerId: pid,
+      mode: decoded?.teamMode || payloadObj?.teamMode ? "teams" : "solo",
+      scoringVariant,
+      variantId: decoded?.variantId ?? payloadObj?.variantId ?? raw?.variantId ?? undefined,
+      cutThroat: decoded?.cutThroat ?? payloadObj?.cutThroat ?? undefined,
+      darts: dartsThrown,
+      visits,
+      totalMarks: marksTotal,
+      totalPoints,
+      totalInflictedPoints: N(player?.inflictedPoints, 0) || N(fallbackStats?.special?.inflictedPoints, 0),
+      mpr: visits > 0 ? marksTotal / visits : 0,
+      hitRate: dartsThrown > 0 ? hitCount / dartsThrown : 0,
+      scoringRate: dartsThrown > 0 ? hitCount / dartsThrown : 0,
+      won,
+      winningDartIndex: won ? Math.max(0, dartsThrown - 1) : -1,
+      winningVisitIndex: won ? Math.max(0, visits - 1) : -1,
+      opponentTotalPoints: 0,
+      opponentLabel: undefined,
+      perSegment,
+      bestVisitMarks: Math.min(3, marksTotal),
+      avgMarksWhenScoring: hitCount > 0 ? marksTotal / hitCount : 0,
+      closeOrder: Object.keys(perSegment).map((k) => Number(k)).filter((k) => perSegment[k].closes),
+      startedAt: m.createdAt || nowTs(),
+      endedAt: m.updatedAt || m.createdAt || nowTs(),
+      durationMs: Math.max(0, (m.updatedAt || m.createdAt || nowTs()) - (m.createdAt || nowTs())),
+    } as CricketLegStats;
+  };
+
+  // (A) legacy : r.cricketLegs / r.summary.cricketLegs
   const legsRawA = raw?.cricketLegs ?? raw?.summary?.cricketLegs ?? raw?.payload?.summary?.cricketLegs;
   if (Array.isArray(legsRawA)) {
     for (const leg of legsRawA) {
@@ -726,38 +826,32 @@ function collectCricketLegsFromMatch(m: NormalizedMatch, profileId: string): Cri
     }
   }
 
-  // (B) new : payload.players[].legStats (objet ou array) — payload peut être objet ou decoded
-  const payloadObj = raw?.payload && typeof raw.payload === "object" ? raw.payload : null;
-  const decoded = m.payloadObj && typeof m.payloadObj === "object" ? m.payloadObj : null;
+  const playersArr = pickPlayers(
+    payloadObj?.players,
+    payloadObj?.payload?.players,
+    decoded?.players,
+    decoded?.payload?.players,
+    decoded?.payload?.payload?.players,
+    decoded?.config?.players,
+    raw?.players,
+    raw?.summary?.players,
+  );
 
-  const playersArr =
-    (payloadObj?.players && Array.isArray(payloadObj.players) ? payloadObj.players : null) ||
-    (decoded?.players && Array.isArray(decoded.players) ? decoded.players : null) ||
-    (decoded?.payload?.players && Array.isArray(decoded.payload.players) ? decoded.payload.players : null) ||
-    (decoded?.config?.players && Array.isArray(decoded.config.players) ? decoded.config.players : null) ||
-    (raw?.players && Array.isArray(raw.players) ? raw.players : null) ||
-    (raw?.summary?.players && Array.isArray(raw.summary.players) ? raw.summary.players : null) ||
-    [];
+  const statsPlayers = pickPlayers(
+    payloadObj?.stats?.players,
+    payloadObj?.payload?.stats?.players,
+    decoded?.stats?.players,
+    decoded?.payload?.stats?.players,
+    decoded?.payload?.payload?.stats?.players,
+    raw?.summary?.stats?.players,
+  );
 
-  if (!playersArr.length) return out;
+  if (!playersArr.length && !statsPlayers.length) return out;
 
-  const me =
-    playersArr.find((p: any) => String(p?.id || p?.playerId) === pid) ||
-    playersArr.find((p: any) => String(p?.profileId) === pid) ||
-    null;
+  const playerCandidates = playersArr.filter(byPid);
+  const statsCandidate = statsPlayers.find(byPid) || null;
 
-  if (!me) return out;
-
-  const lsRaw = me.legStats ?? me.legsStats ?? me.cricketLegStats ?? null;
-  const legsFromPayload: any[] = Array.isArray(lsRaw) ? lsRaw : lsRaw ? [lsRaw] : [];
-
-  if (!legsFromPayload.length) return out;
-
-  const matchId = String(m.id || raw?.matchId || "");
-  const startedAt = m.createdAt || nowTs();
-  const endedAt = m.updatedAt || startedAt;
-
-  const others = playersArr.filter((p: any) => String(p?.id || p?.playerId || "") && String(p?.id || p?.playerId || "") !== pid);
+  const others = [...playersArr, ...statsPlayers].filter((p: any) => !byPid(p) && String(p?.id || p?.playerId || p?.profileId || ""));
   const opponentLabelFallback =
     others.length === 1
       ? String(others[0]?.name ?? others[0]?.label ?? "Opponent")
@@ -765,29 +859,46 @@ function collectCricketLegsFromMatch(m: NormalizedMatch, profileId: string): Cri
       ? others.map((p: any) => String(p?.name ?? p?.label ?? "Opponent")).filter(Boolean).join(" / ")
       : "Opponent";
 
-  for (let i = 0; i < legsFromPayload.length; i++) {
-    const leg = legsFromPayload[i];
-    if (!leg) continue;
+  let foundRichLeg = false;
+  playerCandidates.forEach((me: any, idx: number) => {
+    const lsRaw = me?.legStats ?? me?.legsStats ?? me?.cricketLegStats ?? null;
+    const legsFromPayload: any[] = Array.isArray(lsRaw) ? lsRaw : lsRaw ? [lsRaw] : [];
+    if (legsFromPayload.length) {
+      foundRichLeg = true;
+      const matchId = String(m.id || raw?.matchId || "");
+      const startedAt = m.createdAt || nowTs();
+      const endedAt = m.updatedAt || startedAt;
+      for (let i = 0; i < legsFromPayload.length; i++) {
+        const leg = legsFromPayload[i];
+        if (!leg) continue;
+        const fixed: CricketLegStats = {
+          ...(leg as any),
+          matchId: (leg as any).matchId ?? matchId ?? undefined,
+          playerId: (leg as any).playerId ?? pid,
+          legId: (leg as any).legId ?? `${matchId || "cricket"}:${pid}:${i}`,
+          startedAt: N((leg as any).startedAt, startedAt) || startedAt,
+          endedAt: N((leg as any).endedAt, endedAt) || endedAt,
+          opponentLabel: (leg as any).opponentLabel ?? (me as any).opponentLabel ?? opponentLabelFallback,
+          variantId: (leg as any).variantId ?? decoded?.variantId ?? payloadObj?.variantId ?? raw?.variantId ?? decoded?.config?.variantId ?? undefined,
+          cutThroat: (leg as any).cutThroat ?? decoded?.cutThroat ?? payloadObj?.cutThroat ?? decoded?.config?.cutThroat ?? (payloadObj?.withPoints === false ? false : undefined),
+          scoringVariant:
+            (leg as any).scoringVariant ??
+            (((leg as any).cutThroat || decoded?.cutThroat || payloadObj?.cutThroat || decoded?.config?.cutThroat) ? "cut-throat" : undefined) ??
+            ((payloadObj?.withPoints === false || decoded?.withPoints === false || decoded?.config?.withPoints === false) ? "no-points" : "points"),
+        };
+        if (String(fixed.playerId) === pid) out.push(fixed);
+      }
+    }
+  });
 
-    const fixed: CricketLegStats = {
-      ...(leg as any),
-      matchId: (leg as any).matchId ?? matchId ?? undefined,
-      playerId: (leg as any).playerId ?? pid,
-      legId: (leg as any).legId ?? `${matchId || "cricket"}:${pid}:${i}`,
-      startedAt: N((leg as any).startedAt, startedAt) || startedAt,
-      endedAt: N((leg as any).endedAt, endedAt) || endedAt,
-      opponentLabel: (leg as any).opponentLabel ?? (me as any).opponentLabel ?? opponentLabelFallback,
-
-      // Variantes (best-effort)
-      variantId: (leg as any).variantId ?? decoded?.variantId ?? payloadObj?.variantId ?? raw?.variantId ?? decoded?.config?.variantId ?? undefined,
-      cutThroat: (leg as any).cutThroat ?? decoded?.cutThroat ?? payloadObj?.cutThroat ?? decoded?.config?.cutThroat ?? payloadObj?.withPoints === false ? false : undefined,
-      scoringVariant:
-        (leg as any).scoringVariant ??
-        ((leg as any).cutThroat || decoded?.cutThroat || payloadObj?.cutThroat || decoded?.config?.cutThroat ? "cut-throat" : undefined) ??
-        ((payloadObj?.withPoints === false || decoded?.withPoints === false || decoded?.config?.withPoints === false) ? "no-points" : "points"),
-    };
-
-    if (String(fixed.playerId) === pid) out.push(fixed);
+  if (!foundRichLeg) {
+    const sourcePlayers = playerCandidates.length ? playerCandidates : [statsCandidate].filter(Boolean);
+    sourcePlayers.forEach((me: any, idx: number) => {
+      const synthetic = buildSyntheticLeg(me, idx, statsCandidate);
+      if (!synthetic) return;
+      synthetic.opponentLabel = synthetic.opponentLabel ?? opponentLabelFallback;
+      out.push(synthetic);
+    });
   }
 
   return out;

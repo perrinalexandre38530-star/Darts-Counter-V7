@@ -38,6 +38,19 @@ function n(v: any): number {
   return Number.isFinite(x) ? x : 0;
 }
 
+function sumNumsLike(v: any): number {
+  if (Array.isArray(v)) return v.reduce((acc, it) => acc + n(it), 0);
+  if (v && typeof v === "object") return Object.values(v).reduce((acc, it) => acc + n(it), 0);
+  return n(v);
+}
+
+function winnerMetric(it: any, key: "captured" | "domination" | "darts" | "steals" | "lost"): number {
+  const winner = n(it?.winnerTeam);
+  const src = it?.[key];
+  if (Array.isArray(src)) return n(src[winner] ?? 0);
+  return n(src);
+}
+
 function clamp01(v: number) {
   return Math.max(0, Math.min(1, v));
 }
@@ -145,6 +158,8 @@ export default function StatsTerritories(props: any) {
   const breakdown = React.useMemo(() => {
     let solo = 0;
     let teams = 0;
+    let totalRounds = 0;
+    let totalCaptures = 0;
     let totalDarts = 0;
     let totalSteals = 0;
     let totalLost = 0;
@@ -158,9 +173,11 @@ export default function StatsTerritories(props: any) {
       if (mode === "teams") teams++;
       else solo++;
 
-      totalDarts += n((it as any).darts);
-      totalSteals += n((it as any).steals);
-      totalLost += n((it as any).lost);
+      totalRounds += n((it as any).rounds);
+      totalCaptures += sumNumsLike((it as any).captured);
+      totalDarts += sumNumsLike((it as any).darts);
+      totalSteals += sumNumsLike((it as any).steals);
+      totalLost += sumNumsLike((it as any).lost);
 
       const dur = n((it as any).durationMs);
       if (dur > 0) {
@@ -171,7 +188,7 @@ export default function StatsTerritories(props: any) {
       const obj = String((it as any).objective ?? "");
       if (obj) objectives[obj] = (objectives[obj] ?? 0) + 1;
 
-      const v = String((it as any).victoryType ?? "");
+      const v = String((it as any).victory ?? (it as any).victoryType ?? "");
       if (v) victoryTypes[v] = (victoryTypes[v] ?? 0) + 1;
     }
 
@@ -192,10 +209,8 @@ export default function StatsTerritories(props: any) {
     );
     const lastN = itemsSorted.slice(0, 12);
 
-    const lastCaptures = lastN.map((it) => Number((it as any)?.captures ?? 0));
-    const lastDom = lastN.map((it) =>
-      Number((it as any)?.domWinner ?? (it as any)?.domination ?? 0)
-    );
+    const lastCaptures = lastN.map((it) => sumNumsLike((it as any)?.captured ?? (it as any)?.captures ?? 0));
+    const lastDom = lastN.map((it) => winnerMetric(it, "domination"));
     const lastRounds = lastN.map((it) => Number((it as any)?.rounds ?? 0));
 
     const maxLastCaptures = Math.max(1, ...lastCaptures);
@@ -204,6 +219,8 @@ export default function StatsTerritories(props: any) {
 return {
       solo,
       teams,
+      totalRounds,
+      totalCaptures,
       totalDarts,
       totalSteals,
       totalLost,
@@ -300,13 +317,13 @@ return {
         bestCaptures = it;
       }
 
-      const steals = n((it as any).steals);
+      const steals = sumNumsLike((it as any).steals);
       if (steals > bestStealsVal) {
         bestStealsVal = steals;
         bestSteals = it;
       }
 
-      const darts = n((it as any).darts);
+      const darts = sumNumsLike((it as any).darts);
       const capTotal = Array.isArray(it.captured) ? it.captured.map(n).reduce((a, b) => a + b, 0) : 0;
       const eff = darts > 0 ? capTotal / darts : 0;
       if (eff > bestEfficiencyVal) {
