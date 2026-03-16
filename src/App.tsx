@@ -328,6 +328,7 @@ import CastJoinPage from "./pages/cast/CastJoinPage";
 import CastHostPage from "./pages/cast/CastHostPage";
 import CastScreen from "./pages/cast/CastScreen";
 import { trackRender, trackRoute } from "./lib/diagnosticPro";
+import { startCrashGuard, crashGuardTrackRender, crashGuardTrackRoute } from "./lib/crashGuard";
 
 if (import.meta.env.DEV) installHistoryProbe();
 
@@ -1363,6 +1364,21 @@ useEffect(() => {
 
   useEffect(() => {
     trackRender("App");
+    crashGuardTrackRender();
+  }, []);
+
+  useEffect(() => {
+    startCrashGuard({
+      memorySoftLimitMB: 700,
+      memoryHardLimitMB: 900,
+      maxHistoryEntries: 250,
+      maxRenderPerMinute: 500,
+      avatarMaxSide: 512,
+      avatarJpegQuality: 0.72,
+      enableAutoTrimHistory: true,
+      enableAutoCompressAvatars: true,
+      enableEmergencyCleanup: true,
+    });
   }, []);
 
 
@@ -1507,6 +1523,7 @@ useEffect(() => {
     const applyHashRoute = () => {
       const h = String(window.location.hash || "");
       trackRoute(h || "#/");
+      crashGuardTrackRoute(h || "#/");
 
       if (h.startsWith("#/auth/callback")) {
         setShowSplash(false);
@@ -1585,7 +1602,9 @@ useEffect(() => {
   /* Navigation */
   function go(next: Tab, params?: any) {
     setRouteParams(params ?? null);
-    trackRoute(String(window.location.hash || `#/go:${next}`));
+    const nextRoute = String(window.location.hash || `#/go:${next}`);
+    trackRoute(nextRoute);
+    crashGuardTrackRoute(nextRoute);
     setTab(next);
 
     if (

@@ -11,6 +11,7 @@
 
 import { loadStore } from "./storage";
 import { captureCrash, getCrashLog, getLastCrashReport } from "./crashReporter";
+import { getCrashGuardState, getCrashGuardRouteHistory } from "./crashGuard";
 
 export interface DiagnosticReport {
   generatedAt: string;
@@ -24,6 +25,7 @@ export interface DiagnosticReport {
   images: any;
   timers: any;
   listeners: any;
+  crashGuard?: any;
   routes: string[];
   breadcrumbs: any[];
   lastCrash: any;
@@ -801,8 +803,26 @@ export async function generateDiagnostic(): Promise<DiagnosticReport> {
     history,
   };
 
+  const crashGuard = getCrashGuardState();
+  const crashGuardRoutes = getCrashGuardRouteHistory();
+
   const probableCause = buildProbableCauses({ memory, avatars, history, store: storeSize, runtime, react, timers, listeners, network, resources, images });
   const recommendations = buildRecommendations({ memory, avatars, history, runtime, react, timers, listeners, network, resources, images });
+
+  if (crashGuard?.routeLoopDetected) {
+    probableCause.unshift("CrashGuard: boucle de navigation détectée");
+  }
+  if (Number(crashGuard?.renderCountMinute || 0) >= 500) {
+    probableCause.unshift(`CrashGuard: tempête de renders (${crashGuard.renderCountMinute}/min)`);
+  }
+  if (Number(crashGuard?.memoryUsedMB || 0) >= 900) {
+    probableCause.unshift(`CrashGuard: mémoire critique (${crashGuard.memoryUsedMB} MB)`);
+  }
+  if (Array.isArray(crashGuard?.actions) && crashGuard.actions.length) {
+    recommendations.unshift(`CrashGuard actif — dernière action: ${String(crashGuard.actions[0])}`);
+  } else {
+    recommendations.unshift("CrashGuard actif — surveillance mémoire / avatars / historique / renders.");
+  }
 
   return {
     generatedAt: nowIso(),
@@ -834,6 +854,10 @@ export async function generateDiagnostic(): Promise<DiagnosticReport> {
     images,
     timers,
     listeners,
+    crashGuard: {
+      ...crashGuard,
+      trackedRoutes: crashGuardRoutes,
+    },
     routes: [...routeHistory],
     breadcrumbs: [...eventLog],
     lastCrash,
