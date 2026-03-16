@@ -1,3 +1,31 @@
+
+// ---- MULTISPORTS PATCH FALLBACK PLAYERS EXTRACTION ----
+function __ms_getPlayers(record:any){
+  return (
+    record?.players ||
+    record?.payload?.players ||
+    record?.payload?.payload?.players ||
+    record?.summary?.players ||
+    record?.stats?.players ||
+    record?.payload?.stats?.players ||
+    []
+  );
+}
+
+function __ms_get(obj:any,...paths:string[]){
+  for(const p of paths){
+    const parts=p.split(".");
+    let v=obj;
+    for(const k of parts){
+      if(v==null) break;
+      v=v[k];
+    }
+    if(v!=null) return v;
+  }
+  return undefined;
+}
+// ---- END PATCH ----
+
 // @ts-nocheck
 // ============================================
 // src/lib/statsBridge.ts

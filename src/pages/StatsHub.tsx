@@ -1027,9 +1027,9 @@ function recordHasPlayer(r: any, pid: string): boolean {
     if (!p) return false;
 
     // Snapshot variants sometimes store ids as plain strings
-    if (typeof p === "string") return norm(p) === target;
+    if (typeof p === "string" || typeof p === "number") return norm(p) === target;
 
-    const candidates = [p?.id, p?.playerId, p?.profileId, p?.uid, p?.userId]
+    const candidates = [p?.id, p?.playerId, p?.profileId, p?.uid, p?.userId, p?.pid, p?.key]
       .filter((x: any) => x !== undefined && x !== null && String(x).length > 0)
       .map(norm);
 
@@ -1037,19 +1037,47 @@ function recordHasPlayer(r: any, pid: string): boolean {
   };
 
   const direct = toArrLoc<any>(r?.players);
-  const payloadPlayers = toArrLoc<any>(r?.payload?.players) || toArrLoc<any>(r?.payload?.config?.players);
+  const payloadPlayers = [
+    ...toArrLoc<any>(r?.payload?.players),
+    ...toArrLoc<any>(r?.payload?.config?.players),
+    ...toArrLoc<any>(r?.payload?.stats?.players),
+    ...toArrLoc<any>(r?.summary?.players),
+    ...toArrLoc<any>(r?.summary?.rankings),
+    ...toArrLoc<any>(r?.payload?.summary?.players),
+    ...toArrLoc<any>(r?.payload?.summary?.rankings),
+  ];
   const all = [...direct, ...payloadPlayers];
 
   if (all.some(matchAny)) return true;
 
+  const keyedMaps = [
+    r?.payload?.state?.statsByPlayer,
+    r?.payload?.state?.totalsByPlayer,
+    r?.summary?.playerStats,
+    r?.summary?.perPlayer,
+    r?.summary?.totals,
+    r?.payload?.playerStats,
+    r?.payload?.perPlayer,
+    r?.payload?.statsByPlayer,
+    r?.payload?.summary?.totals,
+  ];
+
+  for (const map of keyedMaps) {
+    if (map && typeof map === "object") {
+      const keys = Object.keys(map).map(norm);
+      if (keys.includes(target)) return true;
+    }
+  }
+
   // Teams / rosters
-  const teams = toArrLoc<any>(r?.teams) || toArrLoc<any>(r?.payload?.teams);
+  const teams = [...toArrLoc<any>(r?.teams), ...toArrLoc<any>(r?.payload?.teams), ...toArrLoc<any>(r?.payload?.config?.teams)];
   for (const t of teams) {
-    const members =
-      toArrLoc<any>(t?.players) ||
-      toArrLoc<any>(t?.members) ||
-      toArrLoc<any>(t?.roster) ||
-      toArrLoc<any>(t?.teamPlayers);
+    const members = [
+      ...toArrLoc<any>(t?.players),
+      ...toArrLoc<any>(t?.members),
+      ...toArrLoc<any>(t?.roster),
+      ...toArrLoc<any>(t?.teamPlayers),
+    ];
 
     if (members.some(matchAny)) return true;
   }
@@ -6010,9 +6038,21 @@ return (
                 })
               ).values()
             );
+            const normId = (v: any) => String(v ?? "").replace(/^online:/, "");
+            const currentPid = normId(effectiveProfileId ?? "");
             const isGolfFinished = (m: any) => {
-              const status = String(m?.status || m?.payload?.status || m?.payload?.state?.status || "").toLowerCase();
-              if (status === "finished" || status === "done" || status === "completed") return true;
+              const statuses = [
+                m?.status,
+                m?.payload?.status,
+                m?.payload?.state?.status,
+                m?.summary?.status,
+                m?.payload?.summary?.status,
+              ]
+                .map((v) => String(v ?? "").toLowerCase())
+                .filter(Boolean);
+
+              if (statuses.some((v) => ["finished", "done", "completed", "complete", "ended"].includes(v))) return true;
+              if (Boolean(m?.summary?.finished ?? m?.payload?.summary?.finished ?? m?.payload?.state?.isFinished)) return true;
               return Boolean(m?.finished_at || m?.finishedAt || m?.payload?.finishedAt || m?.payload?.state?.finishedAt);
             };
             const finished = golfMatches.filter((m) => isGolfFinished(m));
@@ -6026,7 +6066,7 @@ return (
             const readNum = (v: any) => {
               if (typeof v === "number" && Number.isFinite(v)) return v;
               if (typeof v === "string") {
-                const n = Number(v);
+                const n = Number(String(v).replace(",", "."));
                 return Number.isFinite(n) ? n : 0;
               }
               return 0;
@@ -6037,6 +6077,25 @@ return (
                 if (obj && obj[k] != null) return readNum(obj[k]);
               }
               return 0;
+            };
+
+            const getByPid = (obj: any, pid: string) => {
+              if (!obj || typeof obj !== "object" || !pid) return null;
+              if (obj[pid] != null) return obj[pid];
+              const foundKey = Object.keys(obj).find((k) => normId(k) === pid);
+              return foundKey ? obj[foundKey] : null;
+            };
+
+            const findPlayerInArray = (arr: any, pid: string) => {
+              const list = Array.isArray(arr) ? arr : [];
+              return (
+                list.find((pp: any) => {
+                  const ids = [pp?.id, pp?.playerId, pp?.profileId, pp?.uid, pp?.userId, pp?.pid]
+                    .filter((x: any) => x !== undefined && x !== null && String(x).length > 0)
+                    .map(normId);
+                  return ids.includes(pid);
+                }) || null
+              );
             };
 
             type GolfAgg = {
@@ -6054,6 +6113,8 @@ return (
               holes2nd: number;
               holes3rd: number;
               holesPlayed: number;
+              darts: number;
+              total: number;
             };
 
             const zero: GolfAgg = {
@@ -6071,24 +6132,43 @@ return (
               holes2nd: 0,
               holes3rd: 0,
               holesPlayed: 0,
+              darts: 0,
+              total: 0,
             };
 
             const extractPlayerGolfStats = (m: any): GolfAgg => {
-              const pid = String(activeProfileId ?? "");
               const s = m?.summary ?? {};
               const p = m?.payload ?? {};
               const state = p?.state ?? {};
+              const payloadSummary = p?.summary ?? {};
 
               const byPlayer =
-                (state?.statsByPlayer && (state.statsByPlayer[pid] || state.statsByPlayer[String(pid)])) ||
-                (s?.playerStats && (s.playerStats[pid] || s.playerStats[String(pid)])) ||
-                (s?.perPlayer && (s.perPlayer[pid] || s.perPlayer[String(pid)])) ||
-                (p?.playerStats && (p.playerStats[pid] || p.playerStats[String(pid)])) ||
-                (p?.perPlayer && (p.perPlayer[pid] || p.perPlayer[String(pid)])) ||
-                (p?.statsByPlayer && (p.statsByPlayer[pid] || p.statsByPlayer[String(pid)])) ||
-                null;
+                getByPid(state?.statsByPlayer, currentPid) ||
+                getByPid(s?.playerStats, currentPid) ||
+                getByPid(s?.perPlayer, currentPid) ||
+                getByPid(p?.playerStats, currentPid) ||
+                getByPid(p?.perPlayer, currentPid) ||
+                getByPid(p?.statsByPlayer, currentPid);
 
-              const src = byPlayer || state?.stats || s?.stats || p?.stats || state || s || p;
+              const rankingPlayer =
+                findPlayerInArray(s?.rankings, currentPid) ||
+                findPlayerInArray(payloadSummary?.rankings, currentPid) ||
+                findPlayerInArray(s?.players, currentPid) ||
+                findPlayerInArray(payloadSummary?.players, currentPid) ||
+                findPlayerInArray(p?.stats?.players, currentPid);
+
+              const src = byPlayer || rankingPlayer || state?.stats || s?.stats || p?.stats || payloadSummary?.stats || state || s || p || {};
+
+              const total =
+                pick(src, ["total", "score", "strokes", "points"]) ||
+                pick(rankingPlayer, ["total", "score", "strokes", "points"]) ||
+                readNum(getByPid(state?.totalsByPlayer, currentPid)) ||
+                readNum(getByPid(s?.totals, currentPid)) ||
+                readNum(getByPid(payloadSummary?.totals, currentPid));
+
+              const darts =
+                pick(src, ["darts", "thrown", "throws"]) ||
+                pick(rankingPlayer, ["darts", "thrown", "throws"]);
 
               return {
                 s: pick(src, ["s", "simple", "singles", "par"]),
@@ -6098,13 +6178,15 @@ return (
                 bull: pick(src, ["bull", "b"]),
                 dbull: pick(src, ["dbull", "dBull", "doubleBull", "db"]),
                 turns: pick(src, ["turns", "tours"]),
-                hit1: pick(src, ["hit1", "hits1", "firstHits"]),
-                hit2: pick(src, ["hit2", "hits2", "secondHits"]),
-                hit3: pick(src, ["hit3", "hits3", "thirdHits"]),
+                hit1: pick(src, ["hit1", "hits1", "firstHits", "p1"]),
+                hit2: pick(src, ["hit2", "hits2", "secondHits", "p2"]),
+                hit3: pick(src, ["hit3", "hits3", "thirdHits", "p3"]),
                 holesWon: pick(src, ["holesWon", "holes1st", "firsts", "p1"]),
                 holes2nd: pick(src, ["holes2nd", "second", "p2"]),
                 holes3rd: pick(src, ["holes3rd", "third", "p3"]),
                 holesPlayed: pick(src, ["holesPlayed", "holes", "trous"]),
+                darts,
+                total,
               };
             };
 
@@ -6117,33 +6199,15 @@ return (
             }, { ...zero });
 
             const totalNums = finished
-              .map((m: any) => {
-                const s = m?.summary ?? {};
-                const p = m?.payload ?? {};
-                const state = p?.state ?? {};
-                const pid = String(activeProfileId ?? "");
-                const t =
-                  state?.totalsByPlayer?.[pid] ??
-                  state?.statsByPlayer?.[pid]?.total ??
-                  s?.totals?.[pid] ??
-                  s?.totals?.[String(pid)] ??
-                  s?.total ??
-                  (Array.isArray(s?.rankings)
-                    ? s.rankings.find((pp: any) => String(pp?.id ?? pp?.playerId ?? "") === pid)?.total
-                    : undefined) ??
-                  (Array.isArray(s?.players)
-                    ? s.players.find((pp: any) => String(pp?.id ?? pp?.playerId ?? "") === pid)?.total
-                    : 0);
-                return readNum(t);
-              })
-              .filter((n: number) => Number.isFinite(n) && n !== 0);
+              .map((m: any) => extractPlayerGolfStats(m).total)
+              .filter((n: number) => Number.isFinite(n) && n > 0);
 
             const bestTotal = totalNums.length ? Math.min(...totalNums) : null;
             const totalAvg = totalNums.length ? Math.round((totalNums.reduce((a, b) => a + b, 0) / totalNums.length) * 10) / 10 : null;
 
             const hitsTotal = agg.s + agg.d + agg.t + agg.bull + agg.dbull + agg.miss;
+            const hitOnlyTotal = agg.s + agg.d + agg.t + agg.bull + agg.dbull;
             const pct = (n: number, d: number) => (d > 0 ? Math.round((n / d) * 100) : 0);
-
             return (
               <>
                 <div
