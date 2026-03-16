@@ -4626,6 +4626,11 @@ const effectiveProfileId = String(
     ""
 );
 
+// Compat sécurité: plusieurs blocs historiques du StatsHub utilisent encore
+// le nom `activeProfileId`. On aligne explicitement cet alias sur la source
+// canonique pour éviter tout ReferenceError pendant le render.
+const activeProfileId = effectiveProfileId || null;
+
 const { cachedDashboard } = useFastDashboardCache(effectiveProfileId || null);
 
 // ============================================================
@@ -5926,7 +5931,7 @@ return (
                 {selectedPlayer ? (
                   <React.Suspense fallback={<LazyFallback label="Chargement des fléchettes…" />}>
                     <StatsDartSetsSection
-                      activeProfileId={selectedPlayer?.id ?? null}
+                      activeProfileId={activeProfileId}
                       title="MES FLÉCHETTES"
                     />
                   </React.Suspense>
