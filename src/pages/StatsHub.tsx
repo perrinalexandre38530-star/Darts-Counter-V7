@@ -1006,6 +1006,9 @@ function classifyRecordMode(rec: SavedMatch): string {
   // Killer
   if (tag.includes("killer")) return "killer";
 
+  // Shanghai
+  if (tag.includes("shanghai")) return "shanghai";
+
   // Golf
   if (tag.includes("golf")) return "golf";
 

@@ -36,16 +36,70 @@ function findUnifiedPlayer(raw: any, playerId: string): any | null {
 
 function readUnifiedAvg3(raw: any, playerId: string): number {
   const p = findUnifiedPlayer(raw, playerId);
-  const a = p?.averages?.avg3d ?? p?.avg3d ?? null;
-  const n = Number(a);
-  return Number.isFinite(n) && n > 0 ? n : 0;
+  if (!p) return 0;
+
+  // 1) X01-like direct averages when present
+  const direct = Number(p?.averages?.avg3d ?? p?.avg3d ?? null);
+  if (Number.isFinite(direct) && direct > 0) return direct;
+
+  const mode = String(raw?.payload?.stats?.mode ?? raw?.payload?.mode ?? raw?.summary?.mode ?? raw?.kind ?? "").toLowerCase();
+  const thrown = Number(p?.darts?.thrown ?? 0);
+  const hits = Number(p?.darts?.hits ?? 0);
+  const score = Number(p?.score ?? 0);
+
+  // 2) Cricket: expose marks per round (3 darts) in the generic dashboard
+  // marksTotal is the most stable field stored by CricketPlay unified stats.
+  if (mode.includes("cricket")) {
+    const marksTotal = Number(p?.special?.marksTotal ?? 0);
+    if (marksTotal > 0 && thrown > 0) return (marksTotal / thrown) * 3;
+    if (score > 0 && thrown > 0) return (score / thrown) * 3;
+  }
+
+  // 3) Shanghai: average points per turn mapped to the generic avg box
+  if (mode.includes("shanghai")) {
+    if (score > 0 && thrown > 0) return (score / thrown) * 3;
+  }
+
+  // 4) Killer: average hits per turn mapped to the generic avg box
+  if (mode.includes("killer")) {
+    if (hits > 0 && thrown > 0) return (hits / thrown) * 3;
+  }
+
+  return 0;
 }
 
 function readUnifiedBestVisit(raw: any, playerId: string): number {
   const p = findUnifiedPlayer(raw, playerId);
-  const v = p?.special?.bestVisit ?? p?.bestVisit ?? null;
-  const n = Number(v);
-  return Number.isFinite(n) && n > 0 ? n : 0;
+  if (!p) return 0;
+
+  const direct = Number(p?.special?.bestVisit ?? p?.bestVisit ?? null);
+  if (Number.isFinite(direct) && direct > 0) return direct;
+
+  const mode = String(raw?.payload?.stats?.mode ?? raw?.payload?.mode ?? raw?.summary?.mode ?? raw?.kind ?? "").toLowerCase();
+
+  // Cricket does not store a classic "best visit", so use the best score reached in the leg.
+  if (mode.includes("cricket")) {
+    const score = Number(p?.score ?? 0);
+    if (Number.isFinite(score) && score > 0) return score;
+    const marks = Number(p?.special?.marksTotal ?? 0);
+    if (Number.isFinite(marks) && marks > 0) return marks;
+  }
+
+  // Shanghai naturally exposes a total score; use it as the generic best box.
+  if (mode.includes("shanghai")) {
+    const score = Number(p?.score ?? 0);
+    if (Number.isFinite(score) && score > 0) return score;
+  }
+
+  // Killer: use total kills first, then total hits as a fallback.
+  if (mode.includes("killer")) {
+    const kills = Number(p?.special?.kills ?? 0);
+    if (Number.isFinite(kills) && kills > 0) return kills;
+    const hits = Number(p?.darts?.hits ?? 0);
+    if (Number.isFinite(hits) && hits > 0) return hits;
+  }
+
+  return 0;
 }
 
 type VisitBucket = "0-59" | "60-99" | "100+" | "140+" | "180";
