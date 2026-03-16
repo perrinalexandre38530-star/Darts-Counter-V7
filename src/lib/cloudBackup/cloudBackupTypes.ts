@@ -1,8 +1,9 @@
 // src/lib/cloudBackup/cloudBackupTypes.ts
 
-// ✅ Backup "cloud" minimal :
+// ✅ Backup cloud léger mais complet côté gameplay :
 // - source de vérité = History + profils locaux + dartsets
-// - ⚠️ PAS de stats agrégées (on rebuild au restore)
+// - + storeLite = réglages / bots / flags / amis / activeProfileId / autres champs légers
+// - ⚠️ PAS de stats agrégées ni gros historiques dupliqués (rebuild au restore)
 
 import type { SavedMatch as HistoryEntry } from "../history";
 import type { Profile as LocalProfile } from "../types";
@@ -10,20 +11,22 @@ import type { DartSet } from "../dartSetsStore";
 
 export type CloudBackup = {
   version: number;
-  exportedAt: string;   // ISO string
-  appVersion: string;   // ta version app (package.json / env)
+  exportedAt: string;
+  appVersion: string;
   history: HistoryEntry[];
   localProfiles: LocalProfile[];
   dartsets: DartSet[];
+  storeLite?: Record<string, any>;
 };
 
-export const CLOUD_BACKUP_VERSION = 1;
+export const CLOUD_BACKUP_VERSION = 2;
 
 export function makeCloudBackup(params: {
   appVersion: string;
   history: HistoryEntry[];
   localProfiles: LocalProfile[];
   dartsets: DartSet[];
+  storeLite?: Record<string, any>;
 }): CloudBackup {
   return {
     version: CLOUD_BACKUP_VERSION,
@@ -32,6 +35,7 @@ export function makeCloudBackup(params: {
     history: params.history,
     localProfiles: params.localProfiles,
     dartsets: params.dartsets,
+    storeLite: params.storeLite || {},
   };
 }
 

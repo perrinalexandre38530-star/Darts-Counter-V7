@@ -2,6 +2,7 @@
 // ============================================
 // Restore d'un CloudBackup (JSON)
 // - remplace (par défaut) : history + profiles + dartsets
+// - restaure aussi storeLite (settings / bots / flags / amis / activeProfileId / etc.)
 // - rebuild stats après import (⚠️ pas de stats dans le backup)
 // ============================================
 
@@ -34,14 +35,10 @@ export async function restoreCloudBackupFromJson(args: {
   }
 
   const backup: CloudBackup = parsed;
-
-  // ----------------------------
-  // 1) Profiles + dartsets (Store + dartSetsStore)
-  // ----------------------------
   const storeAny = (await loadStore<any>().catch(() => null)) || {};
-
   const incomingProfiles = Array.isArray(backup.localProfiles) ? backup.localProfiles : [];
   const incomingDartSets = Array.isArray(backup.dartsets) ? backup.dartsets : [];
+  const incomingStoreLite = backup.storeLite && typeof backup.storeLite === "object" ? backup.storeLite : {};
 
   let nextProfiles: any[];
   let nextDartSets: any[];
@@ -63,8 +60,7 @@ export async function restoreCloudBackupFromJson(args: {
     nextDartSets = incomingDartSets;
   }
 
-  // activeProfileId best effort
-  let nextActive = storeAny.activeProfileId ?? null;
+  let nextActive = incomingStoreLite.activeProfileId ?? storeAny.activeProfileId ?? null;
   if (nextActive && !nextProfiles.find((p) => String(p?.id) === String(nextActive))) {
     nextActive = null;
   }
@@ -72,26 +68,28 @@ export async function restoreCloudBackupFromJson(args: {
 
   const nextStore: any = {
     ...storeAny,
+    ...(mode === "replace" ? incomingStoreLite : { ...storeAny, ...incomingStoreLite }),
     profiles: nextProfiles,
     activeProfileId: nextActive,
     dartSets: nextDartSets,
   };
 
+  // Les stats seront reconstruites depuis l'historique, on évite d'importer d'anciens agrégats.
+  delete nextStore.stats;
+  delete nextStore.profileStats;
+  delete nextStore.statsByMode;
+  delete nextStore.statsByPlayer;
+
   try {
     setAllDartSets(nextDartSets as any);
   } catch {}
 
-  // ⚠️ Ne pas masquer les erreurs de persistance.
-  // Sinon l'UI peut afficher "import OK" alors que rien n'a été écrit.
   try {
     await saveStore(nextStore as Store);
   } catch (e: any) {
     return { ok: false, error: `saveStore failed: ${String(e?.message ?? e)}` };
   }
 
-  // ----------------------------
-  // 2) History (IndexedDB)
-  // ----------------------------
   try {
     if (mode === "replace") {
       await History.clear?.();
@@ -101,16 +99,10 @@ export async function restoreCloudBackupFromJson(args: {
   const rows = Array.isArray(backup.history) ? backup.history : [];
   for (const rec of rows) {
     try {
-      // upsert = id stable / dedupe
       await History.upsert?.(rec as any);
-    } catch {
-      // jamais casser le restore
-    }
+    } catch {}
   }
 
-  // ----------------------------
-  // 3) Rebuild stats (pas dans le backup)
-  // ----------------------------
   if (rebuild) {
     try {
       await rebuildStatsFromHistory({ includeNonFinished: true, persist: true });

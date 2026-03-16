@@ -8,25 +8,36 @@ import type { Store } from "../types";
 import { getAllDartSets, setAllDartSets } from "../dartSetsStore";
 
 function getAppVersion(): string {
-  // Option A (Vite): define import.meta.env.VITE_APP_VERSION
   const v = (import.meta as any)?.env?.VITE_APP_VERSION;
   if (typeof v === "string" && v.trim()) return v;
-
-  // Option B: fallback
   return "unknown";
+}
+
+function sanitizeStoreLite(storeAny: any): Record<string, any> {
+  if (!storeAny || typeof storeAny !== "object") return {};
+
+  const lite: Record<string, any> = { ...storeAny };
+
+  // Gros blocs / doublons à exclure du backup léger
+  delete lite.history;
+  delete lite.saved;
+  delete lite.matches;
+  delete lite.recentMatches;
+  delete lite.stats;
+  delete lite.profileStats;
+  delete lite.statsByMode;
+  delete lite.statsByPlayer;
+  delete lite.dartSets;
+  delete lite.profiles;
+  delete lite.put;
+
+  return lite;
 }
 
 export async function exportCloudBackupAsJson(): Promise<{
   backupJson: string;
   backupObj: any;
 }> {
-  // This export can become *very* large, especially if profiles/dartsets embed
-  // base64 images (avatarDataUrl, photoDataUrl, etc.). Large JSON.stringify()
-  // can block the UI thread and look like a freeze.
-  //
-  // Strategy:
-  // - Yield once to allow UI to paint any "Export…" message.
-  // - Strip only *huge* embedded data URLs to keep exports reliable.
   const yieldToUi = async () => {
     try {
       await new Promise<void>((r) => setTimeout(r, 0));
@@ -61,11 +72,8 @@ export async function exportCloudBackupAsJson(): Promise<{
     });
   };
 
-
   const maybeStripHugeDataUrl = (v: unknown) => {
     if (typeof v !== "string") return v;
-    // Keep small images; strip only very large base64 payloads.
-    // 120k chars ~ 90KB base64 (enough for a usable avatar).
     return v.length > 120_000 ? "" : v;
   };
 
@@ -88,11 +96,6 @@ export async function exportCloudBackupAsJson(): Promise<{
     return d;
   };
 
-  // ✅ Source de vérité :
-  // - History (IndexedDB)
-  // - Store (profils)
-  // - dartSetsStore (localStorage) + mirror store.dartSets
-
   const [history, storeAny] = await Promise.all([
     History.list?.() ?? [],
     loadStore<any>().catch(() => null),
@@ -100,8 +103,8 @@ export async function exportCloudBackupAsJson(): Promise<{
 
   const localProfiles = ((storeAny?.profiles ?? []) as any[]).map(slimProfile);
   const dartsets = (((storeAny as any)?.dartSets ?? getAllDartSets()) as any[]).map(slimDartset);
+  const storeLite = sanitizeStoreLite(storeAny);
 
-  // ✅ Best-effort: remet dartSetsStore en phase si store.dartSets est la source actuelle
   try {
     if (Array.isArray((storeAny as any)?.dartSets)) setAllDartSets((storeAny as any).dartSets);
   } catch {}
@@ -117,11 +120,11 @@ export async function exportCloudBackupAsJson(): Promise<{
     history: Array.isArray(history) ? history : [],
     localProfiles: Array.isArray(localProfiles) ? localProfiles : [],
     dartsets: Array.isArray(dartsets) ? dartsets : [],
+    storeLite,
   });
 
-  // Give the UI a chance to paint before the heavy stringify.
   await yieldToUi();
-  const needsWorkerStringify = (backup as any)?.history?.length > 1500;
+  const needsWorkerStringify = (backup as any)?.history?.length > 500;
   const backupJson = needsWorkerStringify ? await stringifyInWorker(backup) : JSON.stringify(backup);
   return { backupJson, backupObj: backup };
 }

@@ -4,6 +4,9 @@ import { apiGet, apiPost } from "./apiClient";
 import { exportAll, loadStore, importAll, saveStore } from "./storage";
 import { rebuildStatsToStore } from "./stats/rebuildStatsToStore";
 import { importHistoryDump } from "./historyCloud";
+import { exportCloudBackupAsJson } from "./cloudBackup/exportBackup";
+import { restoreCloudBackupFromJson } from "./cloudBackup/restoreBackup";
+import { isCloudBackup } from "./cloudBackup/cloudBackupTypes";
 
 type CompressedBackupPayload = {
   _format: "lz-string+store-v1" | "gzip+store-v2";
@@ -72,8 +75,6 @@ function stripHeavyAvatarFields(value: any, keepAvatars = false): any {
 function buildSlimBackupStore(store: any) {
   const base = JSON.parse(safeJsonStringify(store, "{}"));
 
-  // Conserve les avatars principaux mais supprime les doublons lourds
-  // dans l'historique / matches pour compatibilité anciens backups.
   if (Array.isArray(base?.history)) {
     base.history = stripHeavyAvatarFields(base.history, false);
   }
@@ -115,8 +116,6 @@ function base64ToUint8(base64: string) {
 
 function compressBackupPayload(payload: any): CompressedBackupPayload {
   const json = safeJsonStringify(payload, "{}");
-
-  // Nouveau format rapide : gzip via fflate
   const gz = gzipSync(strToU8(json));
   const base64 = uint8ToBase64(gz);
 
@@ -138,7 +137,6 @@ function decompressBackupPayload(payload: any): any {
     return payload;
   }
 
-  // Nouveau format NAS rapide
   if (
     payload._format === "gzip+store-v2" &&
     payload.compressed &&
@@ -149,7 +147,6 @@ function decompressBackupPayload(payload: any): any {
     return JSON.parse(json);
   }
 
-  // Compatibilité anciens backups NAS
   if (
     payload._format !== "lz-string+store-v1" ||
     !payload.compressed ||
@@ -163,7 +160,6 @@ function decompressBackupPayload(payload: any): any {
   if (payload.encoding === "base64") {
     json = LZString.decompressFromBase64(payload.data);
   } else if (payload.encoding === "utf16") {
-    // Compatibilité anciens backups NAS.
     json = LZString.decompressFromUTF16(payload.data);
   } else {
     throw new Error(
@@ -201,10 +197,25 @@ function isStructuredSnapshot(payload: any) {
 }
 
 export async function pushFullBackupToNas() {
-  // NOUVEAU FLUX :
-  // on sauvegarde le snapshot complet exportAll()
-  // pour conserver 100% des données :
-  // profils, avatars, bots, dartSets, historique, stats, réglages, etc.
+  // ✅ Nouveau chemin prioritaire : backup cloud léger existant dans le projet.
+  // Il est beaucoup plus rapide que exportAll() tout en gardant profils / dartsets / historique
+  // + storeLite (settings / bots / flags / amis / activeProfileId / etc.).
+  try {
+    const cloud = await exportCloudBackupAsJson();
+    const compressedPayload = compressBackupPayload(cloud.backupObj);
+
+    const payload = {
+      id: crypto.randomUUID(),
+      deviceId: getOrCreateDeviceId(),
+      payload: compressedPayload,
+    };
+
+    return await apiPost("/backup/full", payload);
+  } catch (e) {
+    console.warn("exportCloudBackupAsJson() a échoué, fallback exportAll", e);
+  }
+
+  // Fallback sécurité : ancien snapshot complet.
   let snapshot: any = null;
 
   try {
@@ -214,13 +225,10 @@ export async function pushFullBackupToNas() {
   }
 
   if (!snapshot) {
-    // Fallback sécurité si exportAll casse pour une raison quelconque.
     const store = await loadStore();
-
     if (!store) {
       throw new Error("Aucune donnée locale à sauvegarder");
     }
-
     snapshot = buildSlimBackupStore(store);
   }
 
@@ -244,8 +252,18 @@ export async function restoreLatestBackupFromNas() {
 
   const payload = decompressBackupPayload(data.payload);
 
-  if (isStructuredSnapshot(payload)) {
-    // NOUVEAU FLUX : restauration complète
+  // ✅ Nouveau format cloud léger : restore dédié
+  if (isCloudBackup(payload)) {
+    const res = await restoreCloudBackupFromJson({
+      json: safeJsonStringify(payload, "{}"),
+      mode: "replace",
+      rebuild: true,
+    });
+
+    if (!res.ok) {
+      throw new Error(res.error || "Restore CloudBackup impossible");
+    }
+  } else if (isStructuredSnapshot(payload)) {
     await importAll(payload);
 
     try {
@@ -254,7 +272,6 @@ export async function restoreLatestBackupFromNas() {
       console.warn("Rebuild stats après importAll échoué", e);
     }
   } else {
-    // Compatibilité avec anciens backups NAS "slim"
     const currentStore = await loadStore();
     const merged = { ...(currentStore || {}), ...(payload || {}) };
 
@@ -263,7 +280,6 @@ export async function restoreLatestBackupFromNas() {
     try {
       const historyDump = buildHistoryDumpFromRawStore(payload);
       if (Object.keys(historyDump.rows).length > 0) {
-        // on n'écrase plus l'historique existant
         await importHistoryDump(historyDump, { replace: false });
       }
     } catch (e) {
