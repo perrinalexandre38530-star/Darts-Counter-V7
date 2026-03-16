@@ -68,7 +68,7 @@ function stripHeavyAvatarFields(value: any, keepAvatars = false): any {
 function buildSlimBackupStore(store: any) {
   const base = JSON.parse(safeJsonStringify(store, "{}"));
 
-  // Keep main profile avatars at top-level, but strip duplicated avatars from history/matches payloads.
+  // strip duplicated avatars from heavy arrays
   if (Array.isArray(base?.history)) {
     base.history = stripHeavyAvatarFields(base.history, false);
   }
@@ -82,7 +82,6 @@ function buildSlimBackupStore(store: any) {
     base.recentMatches = stripHeavyAvatarFields(base.recentMatches, false);
   }
 
-  // Keep top-level profiles/friends as-is so avatars still restore correctly.
   return base;
 }
 
@@ -113,7 +112,7 @@ function decompressBackupPayload(payload: any): any {
   if (payload.encoding === "base64") {
     json = LZString.decompressFromBase64(payload.data);
   } else if (payload.encoding === "utf16") {
-    // Compatibilité avec d'anciens backups déjà stockés avant le patch.
+    // compatibilité anciens backups
     json = LZString.decompressFromUTF16(payload.data);
   } else {
     throw new Error(`Encodage de backup NAS non supporté: ${String(payload.encoding || "unknown")}`);
@@ -133,6 +132,7 @@ function buildHistoryDumpFromRawStore(payload: any) {
   for (const row of list) {
     const id = String(row?.id || row?.matchId || row?.header?.id || "").trim();
     if (!id) continue;
+
     rows[id] = {
       ...(row || {}),
       id,
@@ -144,8 +144,6 @@ function buildHistoryDumpFromRawStore(payload: any) {
 }
 
 export async function pushFullBackupToNas() {
-  // exportAll() is too heavy for this project with avatars/history blobs.
-  // Save a slimmed store and compress it before upload.
   const store = await loadStore();
 
   if (!store) {
@@ -173,17 +171,21 @@ export async function restoreLatestBackupFromNas() {
 
   const payload = decompressBackupPayload(data.payload);
 
-  // Structured snapshots from exportAll()
+  // snapshot complet exportAll()
   if ((payload?._v === 1 || payload?._v === 2) && payload?.idb) {
     await importAll(payload);
   } else {
-    // Legacy or slim raw store
-    await saveStore(payload);
+    // restore store slim
+    const currentStore = await loadStore();
+    const merged = { ...(currentStore || {}), ...(payload || {}) };
+
+    await saveStore(merged);
 
     try {
       const historyDump = buildHistoryDumpFromRawStore(payload);
+
       if (Object.keys(historyDump.rows).length > 0) {
-        await importHistoryDump(historyDump, { replace: true });
+        await importHistoryDump(historyDump, { replace: false });
       }
     } catch (e) {
       console.warn("Import history dump échoué", e);
@@ -196,7 +198,6 @@ export async function restoreLatestBackupFromNas() {
     }
   }
 
-  // Leave time for success UI before refreshing
   window.setTimeout(() => {
     window.location.reload();
   }, 1200);
