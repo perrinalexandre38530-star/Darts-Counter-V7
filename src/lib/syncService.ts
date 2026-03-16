@@ -17,38 +17,6 @@ type CompressedBackupPayload = {
   };
 };
 
-const LAST_BACKUP_HASH_KEY = "dc_last_nas_backup_hash_v2";
-const LAST_BACKUP_META_KEY = "dc_last_nas_backup_meta_v2";
-
-async function sha256Hex(input: string): Promise<string> {
-  const data = new TextEncoder().encode(input);
-  const digest = await crypto.subtle.digest("SHA-256", data);
-  const bytes = Array.from(new Uint8Array(digest));
-  return bytes.map((b) => b.toString(16).padStart(2, "0")).join("");
-}
-
-function readLastBackupHash(): string | null {
-  try {
-    return localStorage.getItem(LAST_BACKUP_HASH_KEY);
-  } catch {
-    return null;
-  }
-}
-
-function writeLastBackupHash(hash: string, meta?: any) {
-  try {
-    localStorage.setItem(LAST_BACKUP_HASH_KEY, hash);
-    localStorage.setItem(
-      LAST_BACKUP_META_KEY,
-      JSON.stringify({
-        hash,
-        at: Date.now(),
-        ...(meta || {}),
-      })
-    );
-  } catch {}
-}
-
 function getOrCreateDeviceId() {
   const existing = localStorage.getItem("dc_device_id");
   if (existing) return existing;
@@ -233,8 +201,10 @@ function isStructuredSnapshot(payload: any) {
 }
 
 export async function pushFullBackupToNas() {
-  const t0 = performance.now();
-
+  // NOUVEAU FLUX :
+  // on sauvegarde le snapshot complet exportAll()
+  // pour conserver 100% des données :
+  // profils, avatars, bots, dartSets, historique, stats, réglages, etc.
   let snapshot: any = null;
 
   try {
@@ -243,9 +213,8 @@ export async function pushFullBackupToNas() {
     console.warn("exportAll() a échoué, fallback store slim", e);
   }
 
-  const t1 = performance.now();
-
   if (!snapshot) {
+    // Fallback sécurité si exportAll casse pour une raison quelconque.
     const store = await loadStore();
 
     if (!store) {
@@ -255,57 +224,15 @@ export async function pushFullBackupToNas() {
     snapshot = buildSlimBackupStore(store);
   }
 
-  const json = JSON.stringify(snapshot);
-  const hash = await sha256Hex(json);
-  const previousHash = readLastBackupHash();
-
-  const t2 = performance.now();
-
-  if (previousHash && previousHash === hash) {
-    console.log("[NAS backup] skipped (unchanged)", {
-      totalMs: Math.round(performance.now() - t0),
-      exportMs: Math.round(t1 - t0),
-      hashMs: Math.round(t2 - t1),
-      bytes: json.length,
-    });
-
-    return { skipped: true };
-  }
-
   const compressedPayload = compressBackupPayload(snapshot);
-
-  const t3 = performance.now();
 
   const payload = {
     id: crypto.randomUUID(),
     deviceId: getOrCreateDeviceId(),
     payload: compressedPayload,
-    meta: {
-      snapshotHash: hash,
-      rawBytes: json.length,
-      createdAt: Date.now(),
-    },
   };
 
-  const result = await apiPost("/backup/full", payload);
-
-  const t4 = performance.now();
-
-  writeLastBackupHash(hash, {
-    rawBytes: json.length,
-    uploadedAt: Date.now(),
-  });
-
-  console.log("[NAS backup] uploaded", {
-    rawBytes: json.length,
-    exportMs: Math.round(t1 - t0),
-    hashMs: Math.round(t2 - t1),
-    compressMs: Math.round(t3 - t2),
-    uploadMs: Math.round(t4 - t3),
-    totalMs: Math.round(t4 - t0),
-  });
-
-  return result;
+  return apiPost("/backup/full", payload);
 }
 
 export async function restoreLatestBackupFromNas() {
