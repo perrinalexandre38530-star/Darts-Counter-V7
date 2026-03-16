@@ -1,11 +1,12 @@
 import LZString from "lz-string";
+import { gzipSync, gunzipSync, strToU8, strFromU8 } from "fflate";
 import { apiGet, apiPost } from "./apiClient";
 import { exportAll, loadStore, importAll, saveStore } from "./storage";
 import { rebuildStatsToStore } from "./stats/rebuildStatsToStore";
 import { importHistoryDump } from "./historyCloud";
 
 type CompressedBackupPayload = {
-  _format: "lz-string+store-v1";
+  _format: "lz-string+store-v1" | "gzip+store-v2";
   compressed: true;
   encoding: "base64" | "utf16";
   data: string;
@@ -89,26 +90,67 @@ function buildSlimBackupStore(store: any) {
   return base;
 }
 
+function uint8ToBase64(bytes: Uint8Array) {
+  let binary = "";
+  const chunkSize = 0x8000;
+
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    const chunk = bytes.subarray(i, i + chunkSize);
+    binary += String.fromCharCode(...chunk);
+  }
+
+  return btoa(binary);
+}
+
+function base64ToUint8(base64: string) {
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+
+  for (let i = 0; i < binary.length; i++) {
+    bytes[i] = binary.charCodeAt(i);
+  }
+
+  return bytes;
+}
+
 function compressBackupPayload(payload: any): CompressedBackupPayload {
   const json = safeJsonStringify(payload, "{}");
-  const compressed = LZString.compressToBase64(json);
+
+  // Nouveau format rapide : gzip via fflate
+  const gz = gzipSync(strToU8(json));
+  const base64 = uint8ToBase64(gz);
 
   return {
-    _format: "lz-string+store-v1",
+    _format: "gzip+store-v2",
     compressed: true,
     encoding: "base64",
-    data: compressed,
+    data: base64,
     meta: {
       rawBytes: json.length,
-      compressedChars: compressed.length,
+      compressedChars: base64.length,
       createdAt: Date.now(),
     },
   };
 }
 
 function decompressBackupPayload(payload: any): any {
+  if (!payload || typeof payload !== "object") {
+    return payload;
+  }
+
+  // Nouveau format NAS rapide
   if (
-    !payload ||
+    payload._format === "gzip+store-v2" &&
+    payload.compressed &&
+    typeof payload.data === "string"
+  ) {
+    const bytes = base64ToUint8(payload.data);
+    const json = strFromU8(gunzipSync(bytes));
+    return JSON.parse(json);
+  }
+
+  // Compatibilité anciens backups NAS
+  if (
     payload._format !== "lz-string+store-v1" ||
     !payload.compressed ||
     typeof payload.data !== "string"
