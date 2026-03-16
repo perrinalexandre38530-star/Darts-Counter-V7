@@ -1,13 +1,13 @@
 import LZString from "lz-string";
 import { apiGet, apiPost } from "./apiClient";
-import { loadStore, importAll, saveStore, exportAll } from "./storage";
+import { loadStore, importAll, saveStore } from "./storage";
 import { rebuildStatsToStore } from "./stats/rebuildStatsToStore";
 import { importHistoryDump } from "./historyCloud";
 
 type CompressedBackupPayload = {
   _format: "lz-string+store-v1";
   compressed: true;
-  encoding: "utf16";
+  encoding: "base64" | "utf16";
   data: string;
   meta?: {
     rawBytes?: number;
@@ -88,12 +88,12 @@ function buildSlimBackupStore(store: any) {
 
 function compressBackupPayload(payload: any): CompressedBackupPayload {
   const json = safeJsonStringify(payload, "{}");
-  const compressed = LZString.compressToUTF16(json);
+  const compressed = LZString.compressToBase64(json);
 
   return {
     _format: "lz-string+store-v1",
     compressed: true,
-    encoding: "utf16",
+    encoding: "base64",
     data: compressed,
     meta: {
       rawBytes: json.length,
@@ -108,7 +108,17 @@ function decompressBackupPayload(payload: any): any {
     return payload;
   }
 
-  const json = LZString.decompressToUTF16(payload.data);
+  let json: string | null = null;
+
+  if (payload.encoding === "base64") {
+    json = LZString.decompressFromBase64(payload.data);
+  } else if (payload.encoding === "utf16") {
+    // Compatibilité avec d'anciens backups déjà stockés avant le patch.
+    json = LZString.decompressFromUTF16(payload.data);
+  } else {
+    throw new Error(`Encodage de backup NAS non supporté: ${String(payload.encoding || "unknown")}`);
+  }
+
   if (!json) {
     throw new Error("Impossible de décompresser le backup NAS");
   }
