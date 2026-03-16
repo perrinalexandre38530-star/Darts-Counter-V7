@@ -5011,15 +5011,25 @@ function buildShanghaiStatsFromRecords(
     return {
       matches: 0,
       wins: 0,
+      ties: 0,
+      winRate: 0,
       winRatePct: 0,
       bestScore: 0,
+      worstScore: 0,
       avgScore: 0,
       totalScore: 0,
+      hits: 0,
+      miss: 0,
+      pointsCibles: 0,
+      dartsTotal: 0,
+      accuracy: 0,
+      sessions: 0,
       byTarget: {},
+      rows: [],
+      topTargets: [],
     };
   }
 
-  // filtre période
   const now = Date.now();
   const ONE_DAY = 24 * 60 * 60 * 1000;
   const delta =
@@ -5036,97 +5046,147 @@ function buildShanghaiStatsFromRecords(
 
   let matches = 0;
   let wins = 0;
+  let ties = 0;
   let totalScore = 0;
   let bestScore = 0;
+  let worstScore = Infinity;
+  let hits = 0;
+  let miss = 0;
+  let pointsCibles = 0;
+  let dartsTotal = 0;
 
-  // (optionnel) distrib hits par cible si dispo dans summary
   const byTarget: Record<string, number> = {};
+  const byTargetDetail: Record<string, { points: number; hitsS: number; hitsD: number; hitsT: number; miss: number; totalHits: number }> = {};
 
   const Nn = (x: any, d = 0) => (Number.isFinite(Number(x)) ? Number(x) : d);
+  const ensureTarget = (key: string) => {
+    if (!byTargetDetail[key]) {
+      byTargetDetail[key] = { points: 0, hitsS: 0, hitsD: 0, hitsT: 0, miss: 0, totalHits: 0 };
+    }
+    return byTargetDetail[key];
+  };
+
   for (const r of list) {
     const t = Nn((r as any)?.updatedAt ?? (r as any)?.createdAt, 0);
     if (t < minTs) continue;
 
-    // identifie Shanghai
     const tag = `${String(r.kind ?? "").toLowerCase()}|${String(r.game ?? "").toLowerCase()}|${String(
       r.mode ?? ""
     ).toLowerCase()}|${String(r.variant ?? "").toLowerCase()}`;
     if (!tag.includes("shanghai")) continue;
+    if (!recordHasPlayer(r as any, pid)) continue;
 
-    // joueur dans le match
-    const inMatch = recordHasPlayer(r as any, pid);
-    if (!inMatch) continue;
+    const ss: any = (r as any)?.summary ?? (r as any)?.payload?.summary ?? {};
+    const payloadRoot: any = (r as any)?.payload ?? {};
+    const payloadNested: any = payloadRoot?.payload ?? {};
+    const packedStats: any =
+      ss?.statsShanghai ??
+      payloadRoot?.statsShanghai ??
+      payloadNested?.statsShanghai ??
+      null;
+    const unified: any =
+      payloadRoot?.stats ??
+      payloadNested?.stats ??
+      null;
+
+    const scoresArr: any[] = Array.isArray(ss?.scores) ? ss.scores : [];
+    const scoreEntry = scoresArr.find((x: any) => String(x?.id ?? x?.playerId ?? "") === pid) ?? null;
+    const unifiedPlayers: any[] = Array.isArray(unified?.players) ? unified.players : [];
+    const unifiedPlayer = unifiedPlayers.find((x: any) => String(x?.id ?? x?.playerId ?? "") === pid) ?? null;
+
+    const score =
+      Nn(scoreEntry?.score) ||
+      Nn(unifiedPlayer?.score) ||
+      0;
 
     matches++;
     if (String((r as any)?.winnerId ?? "") === pid) wins++;
-
-    // score par joueur (on tolère plusieurs formats)
-    const payloadAny: any = (r as any)?.payload ?? {};
-    const nestedPayload: any = payloadAny?.payload ?? {};
-    const ss: any = (r as any)?.summary ?? payloadAny?.summary ?? nestedPayload?.summary ?? {};
-    const unifiedPlayers: any[] =
-      (Array.isArray(payloadAny?.stats?.players) ? payloadAny.stats.players : null) ||
-      (Array.isArray(nestedPayload?.stats?.players) ? nestedPayload.stats.players : null) ||
-      [];
-    const per: any[] =
-      (Array.isArray(ss?.perPlayer) ? ss.perPlayer : null) ||
-      (Array.isArray(ss?.players) ? ss.players : null) ||
-      (Array.isArray(payloadAny?.summary?.perPlayer) ? payloadAny.summary.perPlayer : null) ||
-      [];
-
-    const pstat =
-      per.find((x) => String(x?.playerId ?? x?.id ?? "") === pid) ??
-      unifiedPlayers.find((x) => String(x?.id ?? x?.profileId ?? "") === pid) ??
-      ss?.[pid] ??
-      ss?.players?.[pid] ??
-      ss?.perPlayer?.[pid] ??
-      {};
-
-    const scoreFromSummaryScores = Array.isArray(ss?.scores)
-      ? ss.scores.find((x: any) => String(x?.id ?? x?.playerId ?? "") === pid)
-      : null;
-
-    const score =
-      Nn(pstat.totalScore) ||
-      Nn(pstat.score) ||
-      Nn(pstat.points) ||
-      Nn(scoreFromSummaryScores?.score) ||
-      0;
+    if (ss?.isTie === true || payloadRoot?.summary?.isTie === true || payloadNested?.summary?.isTie === true) ties++;
 
     totalScore += score;
     bestScore = Math.max(bestScore, score);
+    worstScore = Math.min(worstScore, score);
 
-    const ht =
-      pstat.byTarget ??
-      pstat.hitsByTarget ??
-      ss?.statsShanghai?.hitsById?.[pid] ??
-      payloadAny?.statsShanghai?.hitsById?.[pid] ??
-      nestedPayload?.statsShanghai?.hitsById?.[pid] ??
+    const hitMap =
+      packedStats?.hitsCompact?.[pid] ??
+      packedStats?.hitsById?.[pid] ??
       null;
-    if (ht && typeof ht === "object") {
-      for (const [k, v] of Object.entries(ht)) {
-        const vv: any = v;
-        if (vv && typeof vv === "object") {
-          const pts = Nn(vv.points) || Nn(vv.score) || Nn(vv.totalPoints) || (Nn(vv.s) + 2 * Nn(vv.d) + 3 * Nn(vv.t));
-          byTarget[String(k)] = (byTarget[String(k)] || 0) + pts;
-        } else {
-          byTarget[String(k)] = (byTarget[String(k)] || 0) + Nn(v, 0);
-        }
+
+    if (hitMap && typeof hitMap === 'object') {
+      for (const [k, raw] of Object.entries(hitMap)) {
+        const hc: any = raw || {};
+        const key = String(k);
+        const stat = ensureTarget(key);
+        const s = Nn(hc?.S);
+        const d = Nn(hc?.D);
+        const tr = Nn(hc?.T);
+        const m = Nn(hc?.MISS);
+        const pts = Nn(hc?.points);
+        stat.hitsS += s;
+        stat.hitsD += d;
+        stat.hitsT += tr;
+        stat.miss += m;
+        stat.points += pts;
+        stat.totalHits += s + d + tr;
+        byTarget[key] = (byTarget[key] || 0) + pts;
+        hits += s + d + tr;
+        miss += m;
+        pointsCibles += pts;
+        dartsTotal += s + d + tr + m;
       }
+    } else {
+      const uThrown = Nn(unifiedPlayer?.darts?.thrown);
+      const uHits = Nn(unifiedPlayer?.darts?.hits);
+      const uMiss = Nn(unifiedPlayer?.darts?.misses, Math.max(0, uThrown - uHits));
+      hits += uHits;
+      miss += uMiss;
+      dartsTotal += uThrown || uHits + uMiss;
+      pointsCibles += score;
     }
   }
 
   const avgScore = matches > 0 ? totalScore / matches : 0;
   const winRatePct = matches > 0 ? Math.round((wins / matches) * 1000) / 10 : 0;
+  const accuracy = dartsTotal > 0 ? Math.round((hits / dartsTotal) * 1000) / 10 : 0;
+  const topTargets = Object.entries(byTargetDetail)
+    .map(([k, v]) => ({
+      n: Number(k),
+      points: v.points,
+      hitsS: v.hitsS,
+      hitsD: v.hitsD,
+      hitsT: v.hitsT,
+      miss: v.miss,
+      totalHits: v.totalHits,
+    }))
+    .filter((x) => Number.isFinite(x.n) && x.n > 0)
+    .sort((a, b) => (b.points || 0) - (a.points || 0) || (b.totalHits || 0) - (a.totalHits || 0))
+    .slice(0, 8);
 
   return {
     matches,
     wins,
+    ties,
+    winRate: winRatePct,
     winRatePct,
     bestScore,
+    worstScore: matches > 0 && Number.isFinite(worstScore) ? worstScore : 0,
     avgScore,
     totalScore,
+    hits,
+    miss,
+    pointsCibles,
+    dartsTotal,
+    accuracy,
+    sessions: matches,
     byTarget,
+    rows: [
+      { key: 'darts', label: 'Darts', min: 0, max: 0, total: dartsTotal, pct: undefined },
+      { key: 'hits', label: 'Hits', min: 0, max: 0, total: hits, pct: accuracy },
+      { key: 'miss', label: 'Miss', min: 0, max: 0, total: miss, pct: dartsTotal > 0 ? Math.round((miss / dartsTotal) * 1000) / 10 : undefined },
+      { key: 'points', label: 'Points cibles', min: 0, max: bestScore, total: pointsCibles, pct: undefined },
+      { key: 'winrate', label: 'WinRate', min: 0, max: 100, total: winRatePct, pct: winRatePct },
+    ],
+    topTargets,
   };
 }
 

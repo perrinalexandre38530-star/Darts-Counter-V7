@@ -732,7 +732,6 @@ function collectCricketLegsFromMatch(m: NormalizedMatch, profileId: string): Cri
 
   const playersArr =
     (payloadObj?.players && Array.isArray(payloadObj.players) ? payloadObj.players : null) ||
-    (payloadObj?.payload?.players && Array.isArray(payloadObj.payload.players) ? payloadObj.payload.players : null) ||
     (decoded?.players && Array.isArray(decoded.players) ? decoded.players : null) ||
     (decoded?.payload?.players && Array.isArray(decoded.payload.players) ? decoded.payload.players : null) ||
     (decoded?.config?.players && Array.isArray(decoded.config.players) ? decoded.config.players : null) ||
@@ -988,7 +987,7 @@ export async function getKillerProfileStats(
 
     // payloadObj éventuel (payload string décodé)
     const d = m.payloadObj || null;
-    if (d) readFromSummary(d?.summary || d?.result || d?.stats || null);
+    if (d) readFromSummary(d?.summary || d?.payload?.summary || d?.result || d?.stats || d?.payload?.stats || null);
 
     // payload objet direct (si présent)
     const rawPayload = (m.raw as any)?.payload;
@@ -1039,8 +1038,12 @@ export async function getShanghaiProfileStats(profileId: string, range: RangeKey
 
     const d = m.payloadObj || null;
     if (d) {
-      bestScore = Math.max(bestScore, N(d?.summary?.bestScoreByPlayer?.[pid] ?? 0, 0));
-      hitsTotal += N(d?.summary?.hitsByPlayer?.[pid] ?? 0, 0);
+      const ds = d?.summary || d?.payload?.summary || d?.stats || d?.payload?.stats || null;
+      bestScore = Math.max(
+        bestScore,
+        N(ds?.bestScoreByPlayer?.[pid] ?? ds?.scoreByPlayer?.[pid] ?? ds?.scores?.[pid] ?? 0, 0)
+      );
+      hitsTotal += N(ds?.hitsByPlayer?.[pid] ?? ds?.hitsTotalByPlayer?.[pid] ?? 0, 0);
     }
   }
 
