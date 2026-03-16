@@ -1006,9 +1006,6 @@ function classifyRecordMode(rec: SavedMatch): string {
   // Killer
   if (tag.includes("killer")) return "killer";
 
-  // Shanghai
-  if (tag.includes("shanghai")) return "shanghai";
-
   // Golf
   if (tag.includes("golf")) return "golf";
 
@@ -5064,29 +5061,57 @@ function buildShanghaiStatsFromRecords(
     if (String((r as any)?.winnerId ?? "") === pid) wins++;
 
     // score par joueur (on tolère plusieurs formats)
-    const ss: any = (r as any)?.summary ?? (r as any)?.payload?.summary ?? {};
-    const per: any[] = ss?.perPlayer ?? ss?.players ?? (r as any)?.payload?.summary?.perPlayer ?? [];
+    const payloadAny: any = (r as any)?.payload ?? {};
+    const nestedPayload: any = payloadAny?.payload ?? {};
+    const ss: any = (r as any)?.summary ?? payloadAny?.summary ?? nestedPayload?.summary ?? {};
+    const unifiedPlayers: any[] =
+      (Array.isArray(payloadAny?.stats?.players) ? payloadAny.stats.players : null) ||
+      (Array.isArray(nestedPayload?.stats?.players) ? nestedPayload.stats.players : null) ||
+      [];
+    const per: any[] =
+      (Array.isArray(ss?.perPlayer) ? ss.perPlayer : null) ||
+      (Array.isArray(ss?.players) ? ss.players : null) ||
+      (Array.isArray(payloadAny?.summary?.perPlayer) ? payloadAny.summary.perPlayer : null) ||
+      [];
 
     const pstat =
       per.find((x) => String(x?.playerId ?? x?.id ?? "") === pid) ??
+      unifiedPlayers.find((x) => String(x?.id ?? x?.profileId ?? "") === pid) ??
       ss?.[pid] ??
       ss?.players?.[pid] ??
       ss?.perPlayer?.[pid] ??
       {};
 
+    const scoreFromSummaryScores = Array.isArray(ss?.scores)
+      ? ss.scores.find((x: any) => String(x?.id ?? x?.playerId ?? "") === pid)
+      : null;
+
     const score =
       Nn(pstat.totalScore) ||
       Nn(pstat.score) ||
       Nn(pstat.points) ||
+      Nn(scoreFromSummaryScores?.score) ||
       0;
 
     totalScore += score;
     bestScore = Math.max(bestScore, score);
 
-    const ht = pstat.byTarget ?? pstat.hitsByTarget ?? null;
+    const ht =
+      pstat.byTarget ??
+      pstat.hitsByTarget ??
+      ss?.statsShanghai?.hitsById?.[pid] ??
+      payloadAny?.statsShanghai?.hitsById?.[pid] ??
+      nestedPayload?.statsShanghai?.hitsById?.[pid] ??
+      null;
     if (ht && typeof ht === "object") {
       for (const [k, v] of Object.entries(ht)) {
-        byTarget[String(k)] = (byTarget[String(k)] || 0) + Nn(v, 0);
+        const vv: any = v;
+        if (vv && typeof vv === "object") {
+          const pts = Nn(vv.points) || Nn(vv.score) || Nn(vv.totalPoints) || (Nn(vv.s) + 2 * Nn(vv.d) + 3 * Nn(vv.t));
+          byTarget[String(k)] = (byTarget[String(k)] || 0) + pts;
+        } else {
+          byTarget[String(k)] = (byTarget[String(k)] || 0) + Nn(v, 0);
+        }
       }
     }
   }

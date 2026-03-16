@@ -732,7 +732,9 @@ function collectCricketLegsFromMatch(m: NormalizedMatch, profileId: string): Cri
 
   const playersArr =
     (payloadObj?.players && Array.isArray(payloadObj.players) ? payloadObj.players : null) ||
+    (payloadObj?.payload?.players && Array.isArray(payloadObj.payload.players) ? payloadObj.payload.players : null) ||
     (decoded?.players && Array.isArray(decoded.players) ? decoded.players : null) ||
+    (decoded?.payload?.players && Array.isArray(decoded.payload.players) ? decoded.payload.players : null) ||
     (decoded?.config?.players && Array.isArray(decoded.config.players) ? decoded.config.players : null) ||
     (raw?.players && Array.isArray(raw.players) ? raw.players : null) ||
     (raw?.summary?.players && Array.isArray(raw.summary.players) ? raw.summary.players : null) ||

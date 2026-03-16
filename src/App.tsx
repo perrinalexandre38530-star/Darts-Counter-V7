@@ -2006,6 +2006,13 @@ useEffect(() => {
     });
 
     const summary = (m as any)?.summary ?? (m as any)?.payload?.summary ?? null;
+    const originalPayload =
+      (m as any)?.payload && typeof (m as any)?.payload === "object"
+        ? ({ ...((m as any).payload as any) } as any)
+        : {};
+    const richPlayers = Array.isArray(originalPayload?.players) && originalPayload.players.length
+      ? originalPayload.players
+      : rawPlayers;
 
     const saved: any = {
       id,
@@ -2016,7 +2023,13 @@ useEffect(() => {
       createdAt: (m as any)?.createdAt || now,
       updatedAt: now,
       summary,
-      payload: { ...(m as any), players },
+      payload: {
+        ...originalPayload,
+        players: richPlayers,
+        summary: originalPayload?.summary ?? summary ?? null,
+        kind: originalPayload?.kind ?? (m as any)?.kind ?? "x01",
+        mode: originalPayload?.mode ?? (m as any)?.kind ?? "x01",
+      },
     };
 
     setStore((s) => {

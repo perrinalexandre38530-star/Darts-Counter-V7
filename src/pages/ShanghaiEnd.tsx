@@ -72,17 +72,17 @@ export default function ShanghaiEnd(props: Props) {
   // 🔥 Recharge record complet si payload absent
   useEffect(() => {
     const rec = recIn;
-    const missingPayload = rec && !rec.payload && !!rec.payloadCompressed; // souvent le cas quand vient de History.list()
-    const shouldFetch = (!!id && (!rec || missingPayload));
-
+    const missingPayload = rec && !rec.payload && !!rec.payloadCompressed;
+    const shouldFetch = !!id && (!rec || missingPayload);
+  
     if (!shouldFetch) {
       setRecFull(rec);
       return;
     }
-
+  
     let alive = true;
     setLoading(true);
-
+  
     (async () => {
       try {
         const full = await History.get(id);
@@ -96,12 +96,8 @@ export default function ShanghaiEnd(props: Props) {
         setLoading(false);
       }
     })();
-
-    
-  useEffect(() => {
-  }, []);
-
-  return () => {
+  
+    return () => {
       alive = false;
     };
   }, [id, recIn]);

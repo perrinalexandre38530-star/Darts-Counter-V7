@@ -218,14 +218,28 @@ function applyAuthFromSession(setState: React.Dispatch<React.SetStateAction<Auth
 }
 
 function tryBridgeLocalProfile(user: User, onlineProfile?: OnlineProfile | null) {
-  // ⚠️ Sur un nouvel appareil, l'utilisateur peut être connecté (session persistée)
-  // mais ne pas avoir de profil local => l'app le renvoie vers "Profils" et
-  // donne l'impression qu'il doit se reconnecter à chaque fois.
   try {
     const w: any = window as any;
     const appStore = w.__appStore;
+
     if (!appStore || typeof appStore.update !== "function") return;
-    appStore.update((store: any) => ensureLocalProfileForOnlineUser(store, user, onlineProfile || undefined));
+
+    appStore.update((store: any) => {
+      // 🔴 FIX : ne pas créer un nouveau profil si un profil existe déjà
+      const profiles = store?.profiles || [];
+      const activeId = store?.activeProfileId;
+
+      if (activeId && profiles.find((p: any) => p.id === activeId)) {
+        // profil déjà présent → on ne touche à rien
+        return store;
+      }
+
+      return ensureLocalProfileForOnlineUser(
+        store,
+        user,
+        onlineProfile || undefined
+      );
+    });
   } catch (e) {
     console.warn("[useAuthOnline] tryBridgeLocalProfile failed", e);
   }

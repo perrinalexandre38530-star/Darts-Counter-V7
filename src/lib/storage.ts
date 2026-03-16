@@ -681,11 +681,40 @@ async function listKVKeys(): Promise<string[]> {
 ============================================================ */
 export async function exportAll(): Promise<any> {
   const idbDump: Record<string, any> = {};
-  const keys = await listKVKeys();
-  for (const k of keys) {
-    try {
-      idbDump[k] = await getKV(k);
-    } catch {}
+
+  try {
+    const db = await openDB();
+
+    const tx = db.transaction(STORE_NAME, "readonly");
+    const store = tx.objectStore(STORE_NAME);
+
+    const req = store.getAllKeys();
+
+    const keys: IDBValidKey[] = await new Promise((resolve, reject) => {
+      req.onsuccess = () => resolve(req.result || []);
+      req.onerror = () => reject(req.error);
+    });
+
+    const valuesReq = store.getAll();
+
+    const values: any[] = await new Promise((resolve, reject) => {
+      valuesReq.onsuccess = () => resolve(valuesReq.result || []);
+      valuesReq.onerror = () => reject(valuesReq.error);
+    });
+
+    for (let i = 0; i < keys.length; i++) {
+      try {
+        const raw = values[i];
+
+        if (raw == null) continue;
+
+        const json = await decompressGzip(raw);
+
+        idbDump[String(keys[i])] = safeJsonParse(json, null);
+      } catch {}
+    }
+  } catch (err) {
+    console.warn("[storage] exportAll optimized read failed:", err);
   }
 
   const lsDump = exportLocalStorageDc();

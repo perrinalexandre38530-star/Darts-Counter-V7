@@ -16,6 +16,7 @@
 // ✅ ANTI-FREEZE: ne parse/log QUE si JSON-like + anti-spam logs + decode payload seulement pour Cricket
 // ✅ JSONC PATCH: support // /* */ + trailing commas (sinon JSON.parse casse sur '/')
 // ✅ PATCH CLOUD (CRITICAL): push snapshot cloud après upsert/remove/clear
+// ✅ PATCH AVATAR: supprime avatarDataUrl des players/history/payload avant persistance
 // ============================================
 
 /* =========================
@@ -118,7 +119,6 @@ function _resumeIndexRemove(id: string) {
   _resumeIndexWrite(ids.filter((x) => x !== id));
 }
 
-
 function inferHistoryStatus(rec: any): "in_progress" | "finished" {
   try {
     const raw = String(rec?.status || "").toLowerCase();
@@ -169,6 +169,65 @@ function normalizeHistoryRow<T extends Record<string, any>>(rec: T): T {
   return out as T;
 }
 
+// ============================================
+// 🔒 PATCH AVATAR HELPERS
+// - supprime les avatars base64 dans history/payload
+// - évite crash React / Android / historique énorme
+// ============================================
+function stripAvatarFieldFromPlayer(p: any) {
+  if (!p) return p;
+  const out = { ...p };
+  if (typeof out.avatarDataUrl === "string" && out.avatarDataUrl.startsWith("data:image")) {
+    delete out.avatarDataUrl;
+  }
+  return out;
+}
+
+function stripAvatarDataFromPlayers(players: any[] | null | undefined) {
+  if (!Array.isArray(players)) return players;
+  return players.map(stripAvatarFieldFromPlayer);
+}
+
+function stripAvatarDataFromPayload(payload: any) {
+  if (!payload || typeof payload !== "object") return payload;
+
+  let out: any;
+  try {
+    out = Array.isArray(payload)
+      ? payload.map((x: any) => (typeof x === "object" && x ? { ...x } : x))
+      : { ...payload };
+  } catch {
+    return payload;
+  }
+
+  try {
+    if (Array.isArray(out.players)) {
+      out.players = stripAvatarDataFromPlayers(out.players);
+    }
+
+    if (out.config && Array.isArray(out.config.players)) {
+      out.config = { ...out.config, players: stripAvatarDataFromPlayers(out.config.players) };
+    }
+
+    if (out.cfg && Array.isArray(out.cfg.players)) {
+      out.cfg = { ...out.cfg, players: stripAvatarDataFromPlayers(out.cfg.players) };
+    }
+
+    if (out.summary && Array.isArray(out.summary.players)) {
+      out.summary = { ...out.summary, players: stripAvatarDataFromPlayers(out.summary.players) };
+    }
+
+    if (out.state && Array.isArray(out.state.players)) {
+      out.state = { ...out.state, players: stripAvatarDataFromPlayers(out.state.players) };
+    }
+
+    if (out.engineState && Array.isArray(out.engineState.players)) {
+      out.engineState = { ...out.engineState, players: stripAvatarDataFromPlayers(out.engineState.players) };
+    }
+  } catch {}
+
+  return out;
+}
 
 // =========================
 // ✅ CLOUD IMPORT GUARD
@@ -1039,12 +1098,15 @@ async function migrateFromLocalStorageOnce() {
     await withStore("readwrite", async (st) => {
       for (const r of rows) {
         const rec: any = { ...r };
-        const payloadStr = rec.payload ? JSON.stringify(rec.payload) : "";
+        const payloadStr = rec.payload ? JSON.stringify(stripAvatarDataFromPayload(rec.payload)) : "";
         const payloadCompressed = payloadStr
           ? LZString.compressToUTF16(payloadStr)
           : "";
         delete rec.payload;
         rec.payloadCompressed = payloadCompressed;
+        if (Array.isArray(rec.players)) {
+          rec.players = stripAvatarDataFromPlayers(rec.players);
+        }
 
         await new Promise<void>((res, rej) => {
           const req = st.put(rec);
@@ -1080,7 +1142,7 @@ export async function list(): Promise<SavedMatch[]> {
             const req = ix.openCursor(undefined, "prev");
             const out: any[] = [];
             let n = 0;
-          req.onsuccess = () => {
+            req.onsuccess = () => {
               const cur = req.result as IDBCursorWithValue | null;
               if (cur) {
                 out.push({ ...cur.value });
@@ -1147,12 +1209,8 @@ export async function list(): Promise<SavedMatch[]> {
       const tNew = (r as any)?.updatedAt ?? (r as any)?.createdAt ?? 0;
 
       const out = normalizeHistoryRow({ ...r, id: key, matchId: key } as any);
-      if (payload) out.payload = payload; // ✅ payload seulement pour Cricket
-      // NOTE:
-      // On *garde* payloadCompressed dans le retour de list().
-      // Plusieurs pages (StatsHub / statsNormalized) hydratent les records à partir de
-      // payloadCompressed (fallback si payload n'est pas inclus).
-      // Supprimer payloadCompressed rend la normalisation impossible -> stats à 0.
+      if (payload) out.payload = stripAvatarDataFromPayload(payload); // ✅ payload seulement pour Cricket
+      if (Array.isArray(out.players)) out.players = stripAvatarDataFromPlayers(out.players) || [];
 
       if (!existing) {
         byMatch.set(key, out);
@@ -1244,7 +1302,14 @@ export async function get(id: string): Promise<SavedMatch | null> {
       // L’UI peut utiliser matchId pour navigation.
     }
 
-    return normalizeHistoryRow({ ...(rec as any), payload } as any) as SavedMatch;
+    if (Array.isArray((rec as any).players)) {
+      (rec as any).players = stripAvatarDataFromPlayers((rec as any).players);
+    }
+
+    return normalizeHistoryRow({
+      ...(rec as any),
+      payload: stripAvatarDataFromPayload(payload),
+    } as any) as SavedMatch;
   } catch (e) {
     console.warn("[history.get] fallback localStorage:", e);
     const rows = readLegacyRowsSafe();
@@ -1272,8 +1337,8 @@ export async function upsert(rec: SavedMatch): Promise<void> {
     id: String(canonicalId),
     matchId: String(canonicalId),
     kind: rec.kind || "x01",
-        game: (rec as any).game ?? null,
-status: inferHistoryStatus(rec),
+    game: (rec as any).game ?? null,
+    status: inferHistoryStatus(rec),
     players: Array.isArray(rec.players) ? rec.players : [],
     winnerId: rec.winnerId ?? null,
     createdAt: rec.createdAt ?? now,
@@ -1281,50 +1346,60 @@ status: inferHistoryStatus(rec),
     summary: rec.summary || null,
   });
 
-// ✅ MAJ index de reprise (multi-sport)
-try {
-  const st = String((safe as any).status || "");
-  if (st === "in_progress") _resumeIndexAdd(String((safe as any).id));
-  else _resumeIndexRemove(String((safe as any).id));
-} catch {}
+  // ============================================
+  // 🔒 PATCH CRITICAL — SUPPRESSION AVATAR BASE64
+  // évite crash React / Android / historique énorme
+  // ============================================
+  try {
+    if (Array.isArray(safe.players)) {
+      safe.players = stripAvatarDataFromPlayers(safe.players) || [];
+    }
+  } catch (e) {
+    console.warn("[history] avatar strip failed (safe.players):", e);
+  }
+
+  // ✅ MAJ index de reprise (multi-sport)
+  try {
+    const st = String((safe as any).status || "");
+    if (st === "in_progress") _resumeIndexAdd(String((safe as any).id));
+    else _resumeIndexRemove(String((safe as any).id));
+  } catch {}
 
   // payload effectif (on le mutera si on ajoute des infos sets)
-  let payloadEffective = rec.payload;
+  let payloadEffective = stripAvatarDataFromPayload(rec.payload);
 
-// ✅ DART SETS : injecte dartSetId dans safe.players si présent dans payload/config
-try {
-  const cfgPlayers: any[] =
-    (payloadEffective as any)?.config?.players ??
-    (payloadEffective as any)?.cfg?.players ??
-    (payloadEffective as any)?.players ??
-    (safe.game as any)?.players ??
-    [];
+  // ✅ DART SETS : injecte dartSetId dans safe.players si présent dans payload/config
+  try {
+    const cfgPlayers: any[] =
+      (payloadEffective as any)?.config?.players ??
+      (payloadEffective as any)?.cfg?.players ??
+      (payloadEffective as any)?.players ??
+      (safe.game as any)?.players ??
+      [];
 
-  const map: Record<string, string | null> = {};
-  for (const p of Array.isArray(cfgPlayers) ? cfgPlayers : []) {
-    const key = String((p as any)?.profileId ?? (p as any)?.id ?? "");
-    if (!key) continue;
-    const ds =
-      (p as any)?.dartSetId ??
-      (p as any)?.dartsetId ??
-      (p as any)?.dartSet ??
-      null;
-    if (typeof ds === "string" && ds.trim()) map[key] = ds.trim();
-    else if (ds === null) map[key] = null;
-  }
-
-  if (Array.isArray(safe.players) && safe.players.length > 0) {
-    safe.players = safe.players.map((p: any) => {
-      const pid = String(p?.profileId ?? p?.id ?? "");
+    const map: Record<string, string | null> = {};
+    for (const p of Array.isArray(cfgPlayers) ? cfgPlayers : []) {
+      const key = String((p as any)?.profileId ?? (p as any)?.id ?? "");
+      if (!key) continue;
       const ds =
-        p?.dartSetId ??
-        (pid && Object.prototype.hasOwnProperty.call(map, pid) ? map[pid] : null);
-      return { ...p, dartSetId: ds ?? null };
-    });
-  }
-} catch {}
+        (p as any)?.dartSetId ??
+        (p as any)?.dartsetId ??
+        (p as any)?.dartSet ??
+        null;
+      if (typeof ds === "string" && ds.trim()) map[key] = ds.trim();
+      else if (ds === null) map[key] = null;
+    }
 
-
+    if (Array.isArray(safe.players) && safe.players.length > 0) {
+      safe.players = safe.players.map((p: any) => {
+        const pid = String(p?.profileId ?? p?.id ?? "");
+        const ds =
+          p?.dartSetId ??
+          (pid && Object.prototype.hasOwnProperty.call(map, pid) ? map[pid] : null);
+        return { ...p, dartSetId: ds ?? null };
+      });
+    }
+  } catch {}
 
   // ---------------------------------------------
   // 🎯 Cricket : calcul auto legStats
@@ -1347,16 +1422,17 @@ try {
   } catch {}
 
   try {
-    if (rec.kind === "cricket" && rec.payload && typeof rec.payload === "object") {
-      const base = rec.payload as any;
+    if (rec.kind === "cricket" && payloadEffective && typeof payloadEffective === "object") {
+      const base = stripAvatarDataFromPayload(payloadEffective) as any;
       const players = Array.isArray(base.players) ? base.players : [];
       const playersWithStats = players.map((p: any) => {
-        const hits: CricketHit[] = Array.isArray(p.hits) ? p.hits : [];
+        const cleanPlayer = stripAvatarFieldFromPlayer(p);
+        const hits: CricketHit[] = Array.isArray(cleanPlayer?.hits) ? cleanPlayer.hits : [];
         const legStats =
-          p.legStats && typeof p.legStats === "object"
-            ? p.legStats
+          cleanPlayer?.legStats && typeof cleanPlayer.legStats === "object"
+            ? cleanPlayer.legStats
             : computeCricketLegStats(hits);
-        return { ...p, hits, legStats };
+        return { ...cleanPlayer, hits, legStats };
       });
 
       payloadEffective = {
@@ -1384,7 +1460,7 @@ try {
   // ---------------------------------------------
   try {
     if (rec.kind === "x01" && payloadEffective && typeof payloadEffective === "object") {
-      const base = payloadEffective as any;
+      const base = stripAvatarDataFromPayload(payloadEffective) as any;
       const cfg =
         base.config ||
         base.game?.config ||
@@ -1469,11 +1545,14 @@ try {
       if (needsMerge && prevPayloadCompressed) {
         prevPayloadObj = decodePayloadCompressedBestEffort(
           prevPayloadCompressed,
-          String(safe.id)
+          { id: String(safe.id), stage: "upsert:merge_prev" }
         );
 
         if (prevPayloadObj && typeof prevPayloadObj === "object") {
-          const merged: any = { ...prevPayloadObj, ...(payloadEffective as any) };
+          const merged: any = {
+            ...stripAvatarDataFromPayload(prevPayloadObj),
+            ...(payloadEffective as any),
+          };
 
           if (((payloadEffective as any)?.config ?? null) == null && (prevPayloadObj as any)?.config) {
             merged.config = (prevPayloadObj as any).config;
@@ -1486,18 +1565,24 @@ try {
             merged.darts = (prevPayloadObj as any).darts;
           }
 
-          payloadEffective = merged;
+          payloadEffective = stripAvatarDataFromPayload(merged);
         }
       }
     } catch {}
-
 
     // ✅ Résumé minimal pour la reprise (anti-corruption / anti-compress)
     // On stocke aussi une version "lite" non compressée pour garantir la reprise.
     try {
       const basePayload =
         payloadEffective ||
-        (prevPayloadCompressed ? decodePayloadCompressedBestEffort(prevPayloadCompressed) : null);
+        (prevPayloadCompressed
+          ? stripAvatarDataFromPayload(
+              decodePayloadCompressedBestEffort(prevPayloadCompressed, {
+                id: String(safe.id),
+                stage: "upsert:resume_prev",
+              })
+            )
+          : null);
 
       if (basePayload && typeof basePayload === "object") {
         const cfgLite = (basePayload as any).config ?? null;
@@ -1524,7 +1609,7 @@ try {
     if (!payloadEffective && prevPayloadCompressed) {
       payloadCompressed = prevPayloadCompressed;
     } else {
-      const payloadStr = payloadEffective ? JSON.stringify(payloadEffective) : "";
+      const payloadStr = payloadEffective ? JSON.stringify(stripAvatarDataFromPayload(payloadEffective)) : "";
       payloadCompressed = payloadStr ? LZString.compressToUTF16(payloadStr) : "";
     }
 
@@ -1583,7 +1668,11 @@ try {
         }
       });
 
-      const putReq = st.put({ ...safe, payloadCompressed });
+      const putReq = st.put({
+        ...safe,
+        players: stripAvatarDataFromPlayers(safe.players) || [],
+        payloadCompressed,
+      });
       await new Promise<void>((resolve, reject) => {
         putReq.onsuccess = () => resolve();
         putReq.onerror = () => reject(putReq.error);
@@ -1633,7 +1722,7 @@ try {
             kind: safe.kind,
             status: safe.status,
             winnerId: safe.winnerId,
-            players: safe.players,
+            players: stripAvatarDataFromPlayers(safe.players) || [],
             createdAt: safe.createdAt,
             updatedAt: safe.updatedAt,
             summary: safe.summary ?? null,
@@ -1648,37 +1737,40 @@ try {
     console.warn("[history.upsert] fallback localStorage (IDB indispo?):", e);
 
     try {
-      
-const rows: any[] = readLegacyRowsSafe();
-const idx = rows.findIndex((r) => (r.id || r.matchId) === safe.id);
+      const rows: any[] = readLegacyRowsSafe();
+      const idx = rows.findIndex((r) => (r.id || r.matchId) === safe.id);
 
-// ✅ IMPORTANT: même en fallback localStorage, on conserve un payload "lite"
-// pour permettre la reprise (config + darts).
-const cfgLite =
-  (payloadEffective as any)?.config ??
-  (payloadEffective as any)?.cfg ??
-  null;
+      // ✅ IMPORTANT: même en fallback localStorage, on conserve un payload "lite"
+      // pour permettre la reprise (config + darts).
+      const cfgLite =
+        (payloadEffective as any)?.config ??
+        (payloadEffective as any)?.cfg ??
+        null;
 
-const dartsLiteRaw =
-  (payloadEffective as any)?.darts ??
-  (payloadEffective as any)?.throws ??
-  (payloadEffective as any)?.visits ??
-  (payloadEffective as any)?.events ??
-  null;
+      const dartsLiteRaw =
+        (payloadEffective as any)?.darts ??
+        (payloadEffective as any)?.throws ??
+        (payloadEffective as any)?.visits ??
+        (payloadEffective as any)?.events ??
+        null;
 
-const dartsLite = Array.isArray(dartsLiteRaw) ? dartsLiteRaw : null;
+      const dartsLite = Array.isArray(dartsLiteRaw) ? dartsLiteRaw : null;
 
-const payloadLite =
-  cfgLite || dartsLite
-    ? { config: cfgLite, darts: dartsLite }
-    : null;
+      const payloadLite =
+        cfgLite || dartsLite
+          ? { config: cfgLite, darts: dartsLite }
+          : null;
 
-// ✅ IMPORTANT: si un upsert arrive sans payload, on conserve l'ancien payload (sinon reprise cassée)
-const payloadLiteFinal =
-  payloadLite ??
-  (idx >= 0 ? (rows[idx] as any)?.payload ?? null : null);
+      // ✅ IMPORTANT: si un upsert arrive sans payload, on conserve l'ancien payload (sinon reprise cassée)
+      const payloadLiteFinal =
+        payloadLite ??
+        (idx >= 0 ? stripAvatarDataFromPayload((rows[idx] as any)?.payload ?? null) : null);
 
-const trimmed = { ...safe, payload: payloadLiteFinal };
+      const trimmed = {
+        ...safe,
+        players: stripAvatarDataFromPlayers(safe.players) || [],
+        payload: stripAvatarDataFromPayload(payloadLiteFinal),
+      };
       if (idx >= 0) rows.splice(idx, 1);
       rows.unshift(trimmed);
       while (rows.length > 120) rows.pop();
@@ -1697,7 +1789,7 @@ const trimmed = { ...safe, payload: payloadLiteFinal };
       // ✅ PUSH SNAPSHOT TO CLOUD (debounced)
       // ================================
       scheduleCloudSnapshotPush("history:upsert:ls_fallback");
-    try { emitCloudChange("history:upsert:ls_fallback"); } catch {}
+      try { emitCloudChange("history:upsert:ls_fallback"); } catch {}
 
       // ================================
       // ✅ EVENT BUFFER (multi-device sync)
@@ -1726,7 +1818,7 @@ const trimmed = { ...safe, payload: payloadLiteFinal };
               kind: safe.kind,
               status: safe.status,
               winnerId: safe.winnerId,
-              players: safe.players,
+              players: stripAvatarDataFromPlayers(safe.players) || [],
               createdAt: safe.createdAt,
               updatedAt: safe.updatedAt,
               summary: safe.summary ?? null,
@@ -1887,8 +1979,8 @@ export async function remove(id: string): Promise<void> {
 
       // ✅ CLOUD
       scheduleCloudSnapshotPush("history:remove:ls_fallback");
-    try { emitCloudChange("history:remove:ls_fallback"); } catch {}
-    try { _resumeIndexRemove(String(id)); } catch {}
+      try { emitCloudChange("history:remove:ls_fallback"); } catch {}
+      try { _resumeIndexRemove(String(id)); } catch {}
     } catch {}
   }
 }
@@ -1933,8 +2025,8 @@ export async function clear(): Promise<void> {
 
       // ✅ CLOUD
       scheduleCloudSnapshotPush("history:clear:ls_fallback");
-    try { emitCloudChange("history:clear:ls_fallback"); } catch {}
-    try { _resumeIndexWrite([]); } catch {}
+      try { emitCloudChange("history:clear:ls_fallback"); } catch {}
+      try { _resumeIndexWrite([]); } catch {}
     } catch {}
   }
 }
