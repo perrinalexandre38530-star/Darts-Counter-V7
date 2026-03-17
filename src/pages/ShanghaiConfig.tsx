@@ -17,7 +17,6 @@ import { useTheme } from "../contexts/ThemeContext";
 import { useLang } from "../contexts/LangContext";
 import InfoDot from "../components/InfoDot";
 import BackDot from "../components/BackDot";
-import { loadBotsAsPlayers } from "../lib/bots";
 
 // ✅ TICKER
 import tickerShanghai from "../assets/tickers/ticker_shanghai.png";
@@ -53,8 +52,25 @@ export type ShanghaiConfig = {
   targetOrder?: number[];
 };
 
+const LS_BOTS_KEY = "dc_bots_v1";
+
 function safeBots(): PlayerLite[] {
-  return loadBotsAsPlayers().map((b: any) => ({ ...b }));
+  try {
+    const raw = localStorage.getItem(LS_BOTS_KEY);
+    if (!raw) return [];
+    const arr = JSON.parse(raw);
+    if (!Array.isArray(arr)) return [];
+    return arr
+      .filter((b: any) => b?.id)
+      .map((b: any) => ({
+        id: String(b.id),
+        name: String(b?.name || "BOT"),
+        avatarDataUrl: b?.avatarDataUrl || b?.avatar || null,
+        isBot: true,
+      }));
+  } catch {
+    return [];
+  }
 }
 
 function dedupe(list: PlayerLite[]) {
@@ -106,12 +122,14 @@ export default function ShanghaiConfigPage({ store, go }: Props) {
   const CARD_BG = theme.card;
 
   const locals: PlayerLite[] = React.useMemo(() => {
-    return (store?.profiles ?? []).map((p: any) => ({
-      id: String(p.id),
-      name: p?.name || p?.displayName || "Joueur",
-      avatarDataUrl: p?.avatarDataUrl || p?.avatar || null,
-      isBot: false,
-    }));
+    return (store?.profiles ?? [])
+      .filter((p: any) => !p?.isBot)
+      .map((p: any) => ({
+        id: String(p.id),
+        name: p?.name || p?.displayName || "Joueur",
+        avatarDataUrl: p?.avatarDataUrl || p?.avatar || null,
+        isBot: false,
+      }));
   }, [store?.profiles]);
 
   const bots: PlayerLite[] = React.useMemo(() => safeBots(), []);
@@ -381,7 +399,7 @@ export default function ShanghaiConfigPage({ store, go }: Props) {
               WebkitOverflowScrolling: "touch",
             }}
           >
-            {allPlayers.map((p) => {
+            {locals.map((p) => {
               const sel = selectedIds.includes(p.id);
               return (
                 <div key={p.id} onClick={() => toggle(p.id)} style={medalWrap(sel)}>
