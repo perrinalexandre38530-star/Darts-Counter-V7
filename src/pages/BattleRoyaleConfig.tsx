@@ -83,25 +83,24 @@ export default function BattleRoyaleConfigPage({ store, go }: Props) {
   const CARD_BG = theme.card;
 
   const locals: PlayerLite[] = React.useMemo(() => {
-    return (store?.profiles ?? []).map((p: any) => ({
-      id: String(p.id),
-      name: p?.name || p?.displayName || "Joueur",
-      avatarDataUrl: p?.avatarDataUrl || p?.avatar || null,
-      isBot: false,
-    }));
+    return (store?.profiles ?? [])
+      .filter((p: any) => !p?.isBot)
+      .map((p: any) => ({
+        id: String(p.id),
+        name: p?.name || p?.displayName || "Joueur",
+        avatarDataUrl: p?.avatarDataUrl || p?.avatar || null,
+        isBot: false,
+      }));
   }, [store?.profiles]);
 
   const bots: PlayerLite[] = React.useMemo(() => safeBots(), []);
-  const allPlayers = React.useMemo(
-    () => dedupe([...(locals || []), ...(bots || [])]),
-    [locals, bots]
-  );
+  const humanPlayers = React.useMemo(() => dedupe([...(locals || [])]), [locals]);
 
   // ✅ Pré-sélection: 2 premiers locaux si possible
   const [selectedIds, setSelectedIds] = React.useState<string[]>(() => {
     const base = (locals || []).slice(0, 2).map((p) => p.id);
     if (base.length >= 2) return base;
-    return (allPlayers || []).slice(0, 2).map((p) => p.id);
+    return (humanPlayers || []).slice(0, 2).map((p) => p.id);
   });
 
   // Règles (placeholder, mais déjà câblées UI)
@@ -245,7 +244,7 @@ export default function BattleRoyaleConfigPage({ store, go }: Props) {
             WebkitOverflowScrolling: "touch",
           }}
         >
-          {allPlayers.map((p) => {
+          {humanPlayers.map((p) => {
             const sel = selectedIds.includes(p.id);
             const size = 56;
             return (
@@ -328,6 +327,98 @@ export default function BattleRoyaleConfigPage({ store, go }: Props) {
             {t("battle.config.needTwo", "Sélectionne au moins 2 joueurs.")}
           </div>
         )}
+      </div>
+
+      {/* Bots IA */}
+      <div style={{ ...cardShell, padding: 12, marginTop: 10, marginBottom: 10 }}>
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            marginBottom: 10,
+          }}
+        >
+          <div style={{ fontWeight: 1000, letterSpacing: 0.6 }}>
+            {t("common.bots", "Bots IA")}
+          </div>
+          <div style={{ fontSize: 12, color: theme.textSoft }}>
+            {t("battle.config.botsHint", "Ajoute des bots CPU")}
+          </div>
+        </div>
+
+        <div
+          style={{
+            display: "flex",
+            gap: 10,
+            overflowX: "auto",
+            paddingBottom: 6,
+            WebkitOverflowScrolling: "touch",
+          }}
+        >
+          {bots.length === 0 ? (
+            <div style={{ color: theme.textSoft, fontSize: 12.5 }}>
+              {t("common.noBots", "Aucun bot créé.")}
+            </div>
+          ) : (
+            bots.map((p) => {
+              const sel = selectedIds.includes(p.id);
+              const size = 56;
+              return (
+                <button
+                  key={p.id}
+                  onClick={() => toggle(p.id)}
+                  style={{
+                    border: "none",
+                    background: "transparent",
+                    borderRadius: 12,
+                    padding: 0,
+                    minWidth: 72,
+                    cursor: "pointer",
+                    opacity: sel ? 1 : 0.45,
+                    filter: sel ? "none" : "grayscale(1)",
+                    textAlign: "center",
+                  }}
+                >
+                  <div
+                    style={{
+                      width: size,
+                      height: size,
+                      margin: "0 auto",
+                      borderRadius: 999,
+                      overflow: "hidden",
+                      border: `1px solid ${sel ? theme.primary + "99" : theme.borderSoft}`,
+                      boxShadow: sel ? `0 0 18px ${theme.primary}33` : "none",
+                      background: "rgba(255,255,255,0.06)",
+                    }}
+                  >
+                    {p.avatarDataUrl ? (
+                      <img src={p.avatarDataUrl} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                    ) : (
+                      <div style={{ width: "100%", height: "100%", display: "grid", placeItems: "center", fontWeight: 900 }}>
+                        🤖
+                      </div>
+                    )}
+                  </div>
+                  <div
+                    style={{
+                      marginTop: 8,
+                      fontSize: 12,
+                      fontWeight: 900,
+                      color: theme.text,
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      whiteSpace: "nowrap",
+                    }}
+                    title={p.name}
+                  >
+                    {p.name}
+                  </div>
+                </button>
+              );
+            })
+          )}
+        </div>
       </div>
 
       {/* Rules */}
@@ -466,7 +557,7 @@ export default function BattleRoyaleConfigPage({ store, go }: Props) {
             onClick={() => {
               if (!canEnter || !canStart) return;
 
-              const byId = new Map(allPlayers.map((p) => [p.id, p] as const));
+              const byId = new Map(dedupe([...(humanPlayers || []), ...(bots || [])]).map((p) => [p.id, p] as const));
               const players = selectedIds
                 .map((id) => byId.get(id))
                 .filter(Boolean) as PlayerLite[];

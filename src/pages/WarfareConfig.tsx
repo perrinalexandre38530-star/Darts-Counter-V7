@@ -115,16 +115,18 @@ export default function WarfareConfigPage({ store, go }: Props) {
   }, []);
 
   const locals: PlayerLite[] = React.useMemo(() => {
-    return (store?.profiles ?? []).map((p: any) => ({
-      id: String(p.id),
-      name: p?.name || p?.displayName || "Joueur",
-      avatarDataUrl: p?.avatarDataUrl || p?.avatar || null,
-      isBot: false,
-    }));
+    return (store?.profiles ?? [])
+      .filter((p: any) => !p?.isBot)
+      .map((p: any) => ({
+        id: String(p.id),
+        name: p?.name || p?.displayName || "Joueur",
+        avatarDataUrl: p?.avatarDataUrl || p?.avatar || null,
+        isBot: false,
+      }));
   }, [store?.profiles]);
 
   const bots: PlayerLite[] = React.useMemo(() => safeBots(), []);
-  const allPlayers = React.useMemo(() => dedupe([...(locals || []), ...(bots || [])]), [locals, bots]);
+  const allPlayers = React.useMemo(() => dedupe([...(locals || [])]), [locals]);
 
   // Selection (par armée)
   const [teams, setTeams] = React.useState<WarfareTeams>(() => {
@@ -210,6 +212,7 @@ export default function WarfareConfigPage({ store, go }: Props) {
     // - les joueurs déjà pris par l'autre armée
     // - ET ceux déjà sélectionnés dans CETTE armée (sinon doublon visuel)
     const candidates = allPlayers.filter((p) => !otherIds.has(p.id) && !currentIds.has(p.id));
+    const botCandidates = bots.filter((p) => !otherIds.has(p.id) && !currentIds.has(p.id));
 
     const Medallion = ({ p, active }: { p: PlayerLite; active: boolean }) => (
       <div
@@ -387,6 +390,80 @@ export default function WarfareConfigPage({ store, go }: Props) {
               </div>
             );
           })}
+        </div>
+
+        <div style={{ marginTop: 12, fontSize: 12, color: theme.textSoft }}>
+          {t("common.bots", "Bots IA")}
+        </div>
+
+        <div
+          className="dc-scroll-thin"
+          style={{
+            marginTop: 10,
+            display: "flex",
+            gap: 18,
+            overflowX: "auto",
+            paddingBottom: 10,
+            paddingLeft: 6,
+            paddingRight: 6,
+          }}
+        >
+          {botCandidates.length === 0 ? (
+            <div style={{ color: theme.textSoft, fontSize: 13, paddingBottom: 2 }}>
+              {t("common.noBots", "Aucun bot créé.")}
+            </div>
+          ) : (
+            botCandidates.map((p) => {
+              const inThis = current.some((x) => x.id === p.id);
+              const full = !inThis && current.length >= MAX_PER_TEAM;
+              const disabled = full;
+
+              return (
+                <div
+                  key={p.id}
+                  role="button"
+                  onClick={() => {
+                    if (disabled) return;
+                    if (inThis) removeFrom(teamKey, p.id);
+                    else addTo(teamKey, p);
+                  }}
+                  title={disabled ? t("warfare.team.full", "Armée complète") : p.name}
+                  style={{
+                    minWidth: 122,
+                    maxWidth: 122,
+                    background: "transparent",
+                    border: "none",
+                    padding: 0,
+                    display: "flex",
+                    flexDirection: "column",
+                    alignItems: "center",
+                    gap: 7,
+                    flexShrink: 0,
+                    cursor: disabled ? "default" : "pointer",
+                    userSelect: "none",
+                    opacity: disabled ? 0.45 : 1,
+                  }}
+                >
+                  <Medallion p={p} active={inThis} />
+                  <div
+                    style={{
+                      fontSize: 12,
+                      fontWeight: 800,
+                      textAlign: "center",
+                      color: inThis ? theme.primary : theme.text,
+                      maxWidth: "100%",
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      whiteSpace: "nowrap",
+                    }}
+                    title={p.name}
+                  >
+                    {p.name}
+                  </div>
+                </div>
+              );
+            })
+          )}
         </div>
 
         <div style={{ marginTop: 6, fontSize: 12, color: theme.textSoft }}>

@@ -328,6 +328,7 @@ import CastJoinPage from "./pages/cast/CastJoinPage";
 import CastHostPage from "./pages/cast/CastHostPage";
 import CastScreen from "./pages/cast/CastScreen";
 import { trackRender, trackRoute } from "./lib/diagnosticPro";
+import { loadBots as loadStoredBots, saveBots as saveStoredBots } from "./lib/bots";
 import { startCrashGuard, crashGuardTrackRender, crashGuardTrackRoute } from "./lib/crashGuard";
 
 if (import.meta.env.DEV) installHistoryProbe();
@@ -1116,8 +1117,7 @@ type BotLS = {
 
 function loadBotsLS(): BotLS[] {
   try {
-    const raw = localStorage.getItem(LS_BOTS_KEY);
-    return raw ? safeJsonParse<BotLS[]>(raw, []) : [];
+    return (loadStoredBots() as any[]) as BotLS[];
   } catch {
     return [];
   }
@@ -1125,7 +1125,7 @@ function loadBotsLS(): BotLS[] {
 
 function saveBotsLS(list: BotLS[]) {
   try {
-    localStorage.setItem(LS_BOTS_KEY, safeJsonStringify(list, "[]"));
+    saveStoredBots(Array.isArray(list) ? list : []);
   } catch {}
 }
 

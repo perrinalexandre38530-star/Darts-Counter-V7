@@ -46,6 +46,32 @@ function zoneAllowed(mult: 1 | 2 | 3, rule: WarfareZoneRule) {
   return mult === 2; // DOUBLE_ONLY
 }
 
+
+function normalizeBotSkill(raw?: string | null) {
+  const v = String(raw || "").trim().toLowerCase();
+  if (v.includes("legend")) return 0.8;
+  if (v.includes("pro")) return 0.68;
+  if (v.includes("strong") || v.includes("fort") || v.includes("hard")) return 0.58;
+  if (v.includes("medium") || v.includes("standard") || v.includes("normal")) return 0.44;
+  return 0.3;
+}
+
+function makeWarfareBotVolley(opts: { activeRule: WarfareZoneRule; enemyTargets: number[]; selfTargets: number[]; friendlyFire: boolean; skill: number }): Dart[] {
+  const { activeRule, enemyTargets, selfTargets, friendlyFire, skill } = opts;
+  const multChoices: Array<1 | 2 | 3> = activeRule === "DOUBLE_ONLY" ? [2] : activeRule === "SINGLE_DOUBLE" ? [1,2] : [1,2,3];
+  const out: Dart[] = [];
+  for (let i = 0; i < 3; i++) {
+    const attack = enemyTargets[Math.floor(Math.random() * Math.max(1, enemyTargets.length))];
+    const self = selfTargets[Math.floor(Math.random() * Math.max(1, selfTargets.length))];
+    const shouldHitEnemy = Math.random() < skill;
+    const shouldFriendly = !shouldHitEnemy && friendlyFire && Math.random() < 0.12;
+    const v = shouldHitEnemy ? attack : shouldFriendly ? self : 0;
+    const mult = multChoices[Math.floor(Math.random() * multChoices.length)] || 1;
+    out.push(v ? ({ v, mult } as Dart) : ({ v: 0, mult: 1 } as Dart));
+  }
+  return out;
+}
+
 function fmtDart(d: Dart) {
   if (d.v === 0) return "MISS";
   if (d.v === 25) return d.mult === 2 ? "DBULL" : "BULL";
@@ -135,6 +161,25 @@ export default function WarfarePlay({ go, config }: Props) {
   const activeCursor = activeArmy === "TOP" ? cursorTop : cursorBottom;
   const activeTeam = teams[activeArmy];
   const activePlayer = activeTeam.length ? activeTeam[activeCursor % activeTeam.length] : null;
+  const botAutoKeyRef = React.useRef("");
+
+  React.useEffect(() => {
+    if (winnerArmy !== null) return;
+    if (!activePlayer?.isBot) return;
+    if (currentThrow.length > 0) return;
+    const key = `${activeArmy}:${activeCursor}:${activePlayer.id}:${aliveTop.join("-")}:${aliveBottom.join("-")}`;
+    if (botAutoKeyRef.current === key) return;
+    botAutoKeyRef.current = key;
+    const enemyTargets = activeArmy === "TOP" ? aliveBottom : aliveTop;
+    const selfTargets = activeArmy === "TOP" ? aliveTop : aliveBottom;
+    const skill = normalizeBotSkill((activePlayer as any).botLevel);
+    const timer = window.setTimeout(() => {
+      const volley = makeWarfareBotVolley({ activeRule, enemyTargets, selfTargets, friendlyFire: normalized.friendlyFire, skill });
+      setCurrentThrow(volley);
+      window.setTimeout(() => applyTurn(volley), 420);
+    }, 560);
+    return () => window.clearTimeout(timer);
+  }, [activePlayer?.id, activePlayer?.isBot, activeArmy, activeCursor, activeRule, normalized.friendlyFire, winnerArmy, currentThrow.length, aliveTop.join("-"), aliveBottom.join("-")]);
 
   const getStats = React.useCallback(
     (id?: string | null): PlayerStats => {

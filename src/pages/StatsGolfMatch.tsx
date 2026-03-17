@@ -652,18 +652,33 @@ export default function StatsGolfMatch({
 }) {
   const vm = buildGolfViewModel(record);
   const isInProgress = (record.status || "").toLowerCase().includes("progress");
-  const totalHits = vm.totals.simple + vm.totals.double + vm.totals.triple + vm.totals.bull + vm.totals.dbull;
+  const totalHits =
+    vm.totals.simple +
+    vm.totals.double +
+    vm.totals.triple +
+    vm.totals.bull +
+    vm.totals.dbull;
 
   return (
     <div style={page}>
       <div style={header}>
         <div style={{ padding: 12, display: "flex", gap: 8, alignItems: "center" }}>
           <button
-            onClick={() => go("history")}
+            onClick={() => {
+              try {
+                if (typeof window !== "undefined" && window.history.length > 1) {
+                  window.history.back();
+                  return;
+                }
+              } catch {}
+
+              go("statsHub", { tab: "history" });
+            }}
             style={{ ...pill, background: T.gold, color: "#141517", fontWeight: 800 }}
           >
             ← Retour
           </button>
+
           <div style={{ marginLeft: "auto", opacity: 0.86, fontSize: 12 }}>
             GOLF — {fmtDate(record.updatedAt ?? record.createdAt)}
           </div>
@@ -681,7 +696,16 @@ export default function StatsGolfMatch({
         }}
       >
         <section style={row}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10, gap: 10, flexWrap: "wrap" }}>
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              marginBottom: 10,
+              gap: 10,
+              flexWrap: "wrap",
+            }}
+          >
             <div style={sectionTitle}>Vue générale</div>
             <div style={{ color: T.text70, fontSize: 12 }}>
               {isInProgress ? "Partie en cours" : "Partie terminée"}
@@ -714,7 +738,16 @@ export default function StatsGolfMatch({
         </section>
 
         <section style={row}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8, gap: 10, flexWrap: "wrap" }}>
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              marginBottom: 8,
+              gap: 10,
+              flexWrap: "wrap",
+            }}
+          >
             <div style={sectionTitle}>Classement Golf</div>
             <div style={{ color: T.text70, fontSize: 12 }}>{vm.rows.length} joueur(s)</div>
           </div>
@@ -749,12 +782,34 @@ export default function StatsGolfMatch({
                   {r.rank}
                 </div>
 
-                <AvatarBadge player={{ name: r.name, avatarDataUrl: r.avatarDataUrl, color: r.color }} size={44} />
+                <AvatarBadge
+                  player={{ name: r.name, avatarDataUrl: r.avatarDataUrl, color: r.color }}
+                  size={44}
+                />
 
                 <div style={{ minWidth: 0 }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
-                    <div style={{ fontWeight: 900, minWidth: 0, wordBreak: "break-word" }}>{r.name}</div>
-                    <div style={{ fontWeight: 900, color: T.gold, fontSize: 22, lineHeight: 1, flexShrink: 0 }}>{r.total}</div>
+                  <div
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                      gap: 10,
+                    }}
+                  >
+                    <div style={{ fontWeight: 900, minWidth: 0, wordBreak: "break-word" }}>
+                      {r.name}
+                    </div>
+                    <div
+                      style={{
+                        fontWeight: 900,
+                        color: T.gold,
+                        fontSize: 22,
+                        lineHeight: 1,
+                        flexShrink: 0,
+                      }}
+                    >
+                      {r.total}
+                    </div>
                   </div>
                   <div style={{ color: T.text70, fontSize: 12, marginTop: 4, wordBreak: "break-word" }}>
                     {r.turns} tours · {fmt1(r.hitRate)}% de réussite
@@ -789,7 +844,10 @@ export default function StatsGolfMatch({
                 }}
               >
                 <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
-                  <AvatarBadge player={{ name: r.name, avatarDataUrl: r.avatarDataUrl, color: r.color }} size={40} />
+                  <AvatarBadge
+                    player={{ name: r.name, avatarDataUrl: r.avatarDataUrl, color: r.color }}
+                    size={40}
+                  />
                   <div style={{ minWidth: 0 }}>
                     <div style={{ fontWeight: 900, wordBreak: "break-word" }}>{r.name}</div>
                     <div style={{ color: T.text70, fontSize: 12 }}>Rang #{r.rank}</div>

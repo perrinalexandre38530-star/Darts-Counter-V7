@@ -17,6 +17,7 @@ import { useTheme } from "../contexts/ThemeContext";
 import { useLang } from "../contexts/LangContext";
 import InfoDot from "../components/InfoDot";
 import BackDot from "../components/BackDot";
+import { loadBotsAsPlayers } from "../lib/bots";
 
 // ✅ TICKER
 import tickerShanghai from "../assets/tickers/ticker_shanghai.png";
@@ -52,25 +53,8 @@ export type ShanghaiConfig = {
   targetOrder?: number[];
 };
 
-const LS_BOTS_KEY = "dc_bots_v1";
-
 function safeBots(): PlayerLite[] {
-  try {
-    const raw = localStorage.getItem(LS_BOTS_KEY);
-    if (!raw) return [];
-    const arr = JSON.parse(raw);
-    if (!Array.isArray(arr)) return [];
-    return arr
-      .filter((b: any) => b?.id)
-      .map((b: any) => ({
-        id: String(b.id),
-        name: String(b?.name || "BOT"),
-        avatarDataUrl: b?.avatarDataUrl || b?.avatar || null,
-        isBot: true,
-      }));
-  } catch {
-    return [];
-  }
+  return loadBotsAsPlayers().map((b: any) => ({ ...b }));
 }
 
 function dedupe(list: PlayerLite[]) {

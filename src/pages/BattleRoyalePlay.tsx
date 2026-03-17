@@ -104,6 +104,33 @@ function pointsOnTarget(target: number, d: UIDart) {
   return target * (d.mult || 1);
 }
 
+
+function normalizeBotSkill(raw?: string | null) {
+  const v = String(raw || "").trim().toLowerCase();
+  if (v.includes("legend")) return 0.76;
+  if (v.includes("pro")) return 0.66;
+  if (v.includes("strong") || v.includes("fort") || v.includes("hard")) return 0.56;
+  if (v.includes("medium") || v.includes("standard") || v.includes("normal")) return 0.42;
+  return 0.28;
+}
+
+function makeBattleRoyaleBotVolley(target: number, skill: number, dartsPerTurn: number): UIDart[] {
+  const out: UIDart[] = [];
+  const count = Math.max(1, Math.min(3, dartsPerTurn || 3));
+  for (let i = 0; i < count; i++) {
+    const hit = Math.random() < skill;
+    if (hit) {
+      const mult = target === 25 ? (Math.random() < skill * 0.4 ? 2 : 1) : (Math.random() < skill * 0.28 ? 3 : Math.random() < skill * 0.55 ? 2 : 1);
+      out.push({ v: target, mult: mult as 1 | 2 | 3 });
+    } else {
+      const missPool = [0, target === 25 ? 20 : 25, Math.max(1, Number(target) - 1), Math.min(20, Number(target) + 1)];
+      const v = missPool[Math.floor(Math.random() * missPool.length)] || 0;
+      out.push(v === 0 ? { v: 0, mult: 1 } : { v, mult: 1 });
+    }
+  }
+  return out;
+}
+
 function avatarFallback(name: string) {
   const n = String(name || "J");
   const parts = n.trim().split(/\s+/);
@@ -449,6 +476,22 @@ export default function BattleRoyalePlay({ go, config, onFinish }: Props) {
   }, [players, turnPtr]);
 
   const activePlayer = players[activeIndex];
+  const botAutoKeyRef = React.useRef("");
+
+  React.useEffect(() => {
+    if (!activePlayer || ended) return;
+    if (!activePlayer.isBot) return;
+    if ((currentThrow?.length || 0) > 0) return;
+    const key = `${roundIndex}:${activePlayer.id}:${target}`;
+    if (botAutoKeyRef.current === key) return;
+    botAutoKeyRef.current = key;
+    const skill = normalizeBotSkill((activePlayer as any).botLevel);
+    const timer = window.setTimeout(() => {
+      setCurrentThrow(makeBattleRoyaleBotVolley(target, skill, dartsPerTurn));
+      window.setTimeout(() => finishTurn(), 420);
+    }, 560);
+    return () => window.clearTimeout(timer);
+  }, [activePlayer?.id, activePlayer?.isBot, roundIndex, target, ended, currentThrow?.length, dartsPerTurn]);
 
   // Voice turn (best-effort)
   const lastAnnouncedRef = React.useRef<string>("");

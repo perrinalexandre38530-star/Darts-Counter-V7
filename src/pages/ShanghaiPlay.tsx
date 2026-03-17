@@ -298,6 +298,32 @@ function pct(n: number) {
   return `${v}%`;
 }
 
+
+function normalizeBotSkill(raw?: string | null) {
+  const v = String(raw || "").trim().toLowerCase();
+  if (v.includes("legend")) return 0.78;
+  if (v.includes("pro")) return 0.68;
+  if (v.includes("strong") || v.includes("fort") || v.includes("hard")) return 0.58;
+  if (v.includes("medium") || v.includes("standard") || v.includes("normal")) return 0.44;
+  return 0.3;
+}
+
+function makeShanghaiBotVolley(target: number, skill: number): UIDart[] {
+  const out: UIDart[] = [];
+  for (let i = 0; i < 3; i++) {
+    const hit = Math.random() < skill;
+    if (hit) {
+      const mult = Math.random() < skill * 0.35 ? 3 : Math.random() < skill * 0.55 ? 2 : 1;
+      out.push({ v: target, mult: mult as 1 | 2 | 3 });
+    } else {
+      const missPool = [0, Math.max(1, target - 1), Math.min(20, target + 1), 25];
+      const v = missPool[Math.floor(Math.random() * missPool.length)] || 0;
+      out.push(v === 0 ? { v: 0, mult: 1 } : { v, mult: 1 });
+    }
+  }
+  return out;
+}
+
 function round1(n: number) {
   const v = Math.round(Number(n || 0) * 10) / 10;
   return `${v}`;
@@ -394,6 +420,22 @@ export default function ShanghaiPlay(props: Props) {
 
   const target = targetOrderRef.current?.[round - 1] ?? round;
   const active = safePlayers[turn] || safePlayers[0];
+  const botAutoKeyRef = React.useRef("");
+
+  React.useEffect(() => {
+    if (endData) return;
+    if (!active || !active.isBot) return;
+    if (currentThrow.length > 0) return;
+    const key = `${round}:${turn}:${active.id}:${target}`;
+    if (botAutoKeyRef.current === key) return;
+    botAutoKeyRef.current = key;
+    const skill = normalizeBotSkill((active as any).botLevel);
+    const timer = window.setTimeout(() => {
+      setCurrentThrow(makeShanghaiBotVolley(target, skill));
+      window.setTimeout(() => validateTurn(), 420);
+    }, 520);
+    return () => window.clearTimeout(timer);
+  }, [active?.id, active?.isBot, round, turn, target, endData, currentThrow.length]);
 
   // 🔧 Init stats Shanghai (1 seule fois)
   React.useEffect(() => {

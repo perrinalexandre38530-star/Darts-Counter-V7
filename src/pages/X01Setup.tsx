@@ -8,6 +8,7 @@ import React from "react";
 import type { Profile } from "../lib/types";
 import ProfileStarRing from "../components/ProfileStarRing";
 import { getBasicProfileStats, type BasicProfileStats } from "../lib/statsBridge";
+import { loadBotPlayers } from "../lib/bots";
 
 type SetupProps = {
   profiles: Profile[];
@@ -76,37 +77,32 @@ function saveSettings(s: SavedSettings) {
 
 // ================= BOTS (dc_bots_v1) =================
 
-type BotLevel = "easy" | "medium" | "strong" | "pro" | "legend";
-
-type Bot = {
-  id: string;
-  name: string;
-  level: BotLevel;
-  avatarSeed: string;
-  createdAt: string;
-  updatedAt: string;
-};
-
-const LS_BOTS_KEY = "dc_bots_v1";
-
-function loadBots(): Bot[] {
-  try {
-    const raw = localStorage.getItem(LS_BOTS_KEY);
-    return raw ? (JSON.parse(raw) as Bot[]) : [];
-  } catch {
-    return [];
-  }
+function loadBots() {
+  return loadBotPlayers().map((bot) => ({
+    id: String(bot.id),
+    name: String(bot.name || "BOT"),
+    avatarDataUrl: bot.avatarDataUrl ?? null,
+    isBot: true,
+    bot: true,
+    cpu: true,
+    type: "bot" as const,
+    kind: "bot" as const,
+    botLevel: (bot as any).botLevel ?? (bot as any).level ?? null,
+  } as any));
 }
 
-// On fabrique un "Profile" minimal pour X01 (id + name + avatarDataUrl)
-function botToProfile(bot: Bot): Profile {
-  const fake: Profile = {
+function botToProfile(bot: any): Profile {
+  return {
     id: bot.id,
     name: bot.name,
-    // pas d’avatarDataUrl pour l’instant → fallback "?" visuel
-    avatarDataUrl: null,
+    avatarDataUrl: bot.avatarDataUrl ?? null,
+    isBot: true,
+    bot: true,
+    cpu: true,
+    type: "bot",
+    kind: "bot",
+    botLevel: bot.botLevel ?? null,
   } as any;
-  return fake;
 }
 
 // ====================================================
