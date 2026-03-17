@@ -1,4 +1,5 @@
 import React from "react";
+import ProfileAvatar from "../components/ProfileAvatar";
 
 const T = {
   gold: "#F6C256",
