@@ -6103,6 +6103,29 @@ return (
               );
             };
 
+            const getPlayerIndexInMatch = (m: any, pid: string) => {
+              const arrays = [m?.players, m?.payload?.players, m?.summary?.players, m?.payload?.summary?.players];
+              for (const arr of arrays) {
+                if (!Array.isArray(arr)) continue;
+                const idx = arr.findIndex((pp: any) => {
+                  const ids = [pp?.id, pp?.playerId, pp?.profileId, pp?.uid, pp?.userId, pp?.pid]
+                    .filter((x: any) => x !== undefined && x !== null && String(x).length > 0)
+                    .map(normId);
+                  return ids.includes(pid);
+                });
+                if (idx >= 0) return idx;
+              }
+              return -1;
+            };
+
+            const getByPidOrIndex = (obj: any, pid: string, idxHint: number) => {
+              if (Array.isArray(obj)) {
+                if (idxHint >= 0 && idxHint < obj.length) return obj[idxHint] || null;
+                return findPlayerInArray(obj, pid);
+              }
+              return getByPid(obj, pid);
+            };
+
             type GolfAgg = {
               s: number;
               d: number;
@@ -6147,13 +6170,15 @@ return (
               const state = p?.state ?? {};
               const payloadSummary = p?.summary ?? {};
 
+              const playerIdxInMatch = getPlayerIndexInMatch(m, currentPid);
+
               const byPlayer =
-                getByPid(state?.statsByPlayer, currentPid) ||
-                getByPid(s?.playerStats, currentPid) ||
-                getByPid(s?.perPlayer, currentPid) ||
-                getByPid(p?.playerStats, currentPid) ||
-                getByPid(p?.perPlayer, currentPid) ||
-                getByPid(p?.statsByPlayer, currentPid);
+                getByPidOrIndex(state?.statsByPlayer, currentPid, playerIdxInMatch) ||
+                getByPidOrIndex(s?.playerStats, currentPid, playerIdxInMatch) ||
+                getByPidOrIndex(s?.perPlayer, currentPid, playerIdxInMatch) ||
+                getByPidOrIndex(p?.playerStats, currentPid, playerIdxInMatch) ||
+                getByPidOrIndex(p?.perPlayer, currentPid, playerIdxInMatch) ||
+                getByPidOrIndex(p?.statsByPlayer, currentPid, playerIdxInMatch);
 
               const rankingPlayer =
                 findPlayerInArray(s?.rankings, currentPid) ||
@@ -6175,6 +6200,24 @@ return (
                 pick(src, ["darts", "thrown", "throws"]) ||
                 pick(rankingPlayer, ["darts", "thrown", "throws"]);
 
+              const rank =
+                readNum(rankingPlayer?.rank) ||
+                readNum(rankingPlayer?.place) ||
+                readNum(rankingPlayer?.position) ||
+                readNum(src?.rank) ||
+                readNum(src?.place) ||
+                readNum(src?.position);
+
+              const holesWonRaw = pick(src, ["holesWon", "holes1st", "firsts", "p1"]);
+              const holes2ndRaw = pick(src, ["holes2nd", "second", "p2"]);
+              const holes3rdRaw = pick(src, ["holes3rd", "third", "p3"]);
+              const holesPlayedRaw = pick(src, ["holesPlayed", "holes", "trous"]);
+
+              const holesPlayedFinal = holesPlayedRaw || (rankingPlayer ? 1 : 0);
+              const holesWonFinal = holesWonRaw || (rank === 1 ? 1 : 0);
+              const holes2ndFinal = holes2ndRaw || (rank === 2 ? 1 : 0);
+              const holes3rdFinal = holes3rdRaw || (rank === 3 ? 1 : 0);
+
               return {
                 s: pick(src, ["s", "simple", "singles", "par"]),
                 d: pick(src, ["d", "double", "doubles", "bogey"]),
@@ -6186,10 +6229,10 @@ return (
                 hit1: pick(src, ["hit1", "hits1", "firstHits", "p1"]),
                 hit2: pick(src, ["hit2", "hits2", "secondHits", "p2"]),
                 hit3: pick(src, ["hit3", "hits3", "thirdHits", "p3"]),
-                holesWon: pick(src, ["holesWon", "holes1st", "firsts", "p1"]),
-                holes2nd: pick(src, ["holes2nd", "second", "p2"]),
-                holes3rd: pick(src, ["holes3rd", "third", "p3"]),
-                holesPlayed: pick(src, ["holesPlayed", "holes", "trous"]),
+                holesWon: holesWonFinal,
+                holes2nd: holes2ndFinal,
+                holes3rd: holes3rdFinal,
+                holesPlayed: holesPlayedFinal,
                 darts,
                 total,
               };

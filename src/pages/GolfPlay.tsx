@@ -1624,6 +1624,25 @@ const ranking = useMemo(() => {
       teamColor: (r as any)?.color ?? null,
     }));
 
+    const playerStatsById: Record<string, any> = {};
+    roster.forEach((p: any, idx: number) => {
+      const s = statsByPlayer[idx] ?? { darts: 0, miss: 0, d: 0, t: 0, s: 0, b: 0, db: 0, turns: 0, hit1: 0, hit2: 0, hit3: 0 };
+      playerStatsById[String(p.id)] = {
+        darts: Number(s.darts ?? 0),
+        miss: Number(s.miss ?? 0),
+        d: Number(s.d ?? 0),
+        t: Number(s.t ?? 0),
+        s: Number(s.s ?? 0),
+        b: Number(s.b ?? 0),
+        db: Number(s.db ?? 0),
+        turns: Number(s.turns ?? 0),
+        hit1: Number(s.hit1 ?? 0),
+        hit2: Number(s.hit2 ?? 0),
+        hit3: Number(s.hit3 ?? 0),
+        total: Number(playerTotals[idx] ?? 0),
+      };
+    });
+
     const winnerId = rankings.length ? String(rankings[0].id) : null;
 
     // state compact (resume)
@@ -1662,6 +1681,7 @@ const ranking = useMemo(() => {
         holes,
         teamsEnabled: teamsOk,
         rankings,
+        playerStats: playerStatsById,
         winnerId,
       },
       payload: {
@@ -1670,7 +1690,8 @@ const ranking = useMemo(() => {
         dartSetIdsByPlayer,
         meta: { ...(cfg as any)?.meta, dartSetId, dartSetIdsByPlayer },
         config: cfg,
-        state,
+        state: { ...state, statsByPlayerById: playerStatsById },
+        playerStats: playerStatsById,
         // ✅ Stats unifiées (léger) — utilisées par StatsHub si présent
         stats: {
           sport: "golf",

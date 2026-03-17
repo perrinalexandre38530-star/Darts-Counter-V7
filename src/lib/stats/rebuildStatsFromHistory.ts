@@ -197,6 +197,7 @@ type Extractor = (args: {
 
 const extractors: Partial<Record<GameKey, Extractor>> = {
   x01: ({ payload, ts, idx }) => {
+    // On cherche une structure de joueurs tolérante
     const players =
       payload?.players ||
       payload?.state?.players ||
@@ -210,28 +211,28 @@ const extractors: Partial<Record<GameKey, Extractor>> = {
       payload?.result?.winnerId ||
       payload?.winner?.id;
 
+    // Darts/points : selon formats, on tente plusieurs champs
     for (const pl of Array.isArray(players) ? players : []) {
       const pid = (pl?.id || pl?.playerId || pl?.uid || pl?.profileId || "").toString();
       if (!pid) continue;
 
       const name = pl?.name || pl?.displayName;
 
+      // darts thrown (visits*3 ou dartsTotal)
       const dartsThrown =
         pl?.dartsThrown ??
         pl?.darts ??
         pl?.stats?.dartsThrown ??
         pl?.stats?.dartsTotal ??
-        0;
+        undefined;
 
+      // points scored
       const pointsScored =
         pl?.pointsScored ??
         pl?.scored ??
         pl?.stats?.pointsScored ??
         pl?.stats?.points ??
-        0;
-
-      const legsWon = pl?.legsWon ?? pl?.stats?.legsWon ?? 0;
-      const legsLost = pl?.legsLost ?? pl?.stats?.legsLost ?? 0;
+        undefined;
 
       const isWinner = winnerId && pid === String(winnerId);
 
@@ -241,13 +242,51 @@ const extractors: Partial<Record<GameKey, Extractor>> = {
         {
           name,
           matches: 1,
-          wins: legsWon || (isWinner ? 1 : 0),
-          losses: legsLost || (winnerId ? (isWinner ? 0 : 1) : 0),
-          dartsThrown,
-          pointsScored,
+          wins: isWinner ? 1 : 0,
+          losses: winnerId ? (isWinner ? 0 : 1) : 0,
+          dartsThrown: typeof dartsThrown === "number" ? dartsThrown : 0,
+          pointsScored: typeof pointsScored === "number" ? pointsScored : 0,
         },
         ts
       );
+    }
+  },
+
+  // pour l’instant on indexe juste matches / players présents
+  killer: ({ payload, ts, idx }) => {
+    const players =
+      payload?.players ||
+      payload?.state?.players ||
+      payload?.summary?.players ||
+      [];
+    const winnerId =
+      payload?.winnerId ||
+      payload?.state?.winnerId ||
+      payload?.result?.winnerId ||
+      payload?.summary?.winnerId ||
+      null;
+
+    for (const pl of Array.isArray(players) ? players : []) {
+      const pid = (pl?.id || pl?.playerId || pl?.uid || "").toString();
+      if (!pid) continue;
+      const kills =
+        Number(pl?.kills ?? pl?.stats?.kills ?? pl?.special?.kills ?? 0) || 0;
+
+      bumpPlayer(
+        idx,
+        pid,
+        {
+          name: pl?.name,
+          matches: 1,
+          wins: winnerId && String(winnerId) === pid ? 1 : 0,
+          losses: winnerId && String(winnerId) !== pid ? 1 : 0,
+        },
+        ts
+      );
+
+      (idx.byPlayer[pid] as any).killer = {
+        kills: Number(((idx.byPlayer[pid] as any).killer?.kills || 0) + kills) || 0,
+      };
     }
   },
 
@@ -256,70 +295,144 @@ const extractors: Partial<Record<GameKey, Extractor>> = {
       payload?.players ||
       payload?.state?.players ||
       payload?.summary?.players ||
+      payload?.stats?.players ||
       [];
 
+    const winnerId =
+      payload?.winnerId ||
+      payload?.state?.winnerId ||
+      payload?.result?.winnerId ||
+      payload?.summary?.winnerId ||
+      null;
+
     for (const pl of Array.isArray(players) ? players : []) {
-      const pid = (pl?.id || pl?.playerId || pl?.uid || "").toString();
+      const pid = (pl?.id || pl?.playerId || pl?.uid || pl?.profileId || "").toString();
       if (!pid) continue;
 
-      const marks = pl?.marks ?? pl?.stats?.marks ?? 0;
-      const hits = pl?.hits ?? pl?.stats?.hits ?? 0;
-      const darts = pl?.darts ?? pl?.stats?.darts ?? 0;
+      const marksObj = pl?.marks && typeof pl.marks === "object" ? pl.marks : null;
+      const marksTotal =
+        Number(pl?.marksTotal ?? pl?.stats?.marksTotal ?? pl?.special?.marksTotal ?? 0) ||
+        (marksObj
+          ? Object.values(marksObj).reduce((a: any, b: any) => (Number(a) || 0) + (Number(b) || 0), 0)
+          : 0);
 
-      bumpPlayer(idx, pid, { name: pl?.name, matches: 1, dartsThrown: darts, pointsScored: marks }, ts);
+      const hitsArr = Array.isArray(pl?.hits) ? pl.hits : [];
+      const hits =
+        Number(pl?.hitCount ?? pl?.hitsCount ?? pl?.stats?.hitCount ?? 0) ||
+        hitsArr.filter((h: any) => h && h.ring !== "MISS" && h.segment !== "MISS").length ||
+        hitsArr.length;
 
-      (idx.byPlayer[pid] as any).cricket = {
-        marks: ((idx.byPlayer[pid] as any).cricket?.marks || 0) + marks,
-        hits: ((idx.byPlayer[pid] as any).cricket?.hits || 0) + hits,
-        darts: ((idx.byPlayer[pid] as any).cricket?.darts || 0) + darts,
+      const dartsThrown =
+        Number(pl?.darts ?? pl?.dartsThrown ?? pl?.stats?.darts ?? pl?.stats?.dartsThrown ?? 0) ||
+        hitsArr.length ||
+        Number(pl?.legStats?.darts ?? 0) ||
+        0;
+
+      const pointsScored =
+        Number(pl?.score ?? pl?.points ?? pl?.stats?.score ?? 0) || 0;
+
+      bumpPlayer(
+        idx,
+        pid,
+        {
+          name: pl?.name,
+          matches: 1,
+          wins: winnerId && String(winnerId) === pid ? 1 : 0,
+          losses: winnerId && String(winnerId) !== pid ? 1 : 0,
+          dartsThrown,
+          pointsScored,
+        },
+        ts
+      );
+
+      const cur: any = (idx.byPlayer[pid] as any).cricket || {
+        marks: 0,
+        hits: 0,
+        darts: 0,
+        score: 0,
       };
+
+      cur.marks += marksTotal;
+      cur.hits += hits;
+      cur.darts += dartsThrown;
+      cur.score += pointsScored;
+      (idx.byPlayer[pid] as any).cricket = cur;
     }
   },
 
-  killer: ({ payload, ts, idx }) => {
+  golf: ({ rec, payload, ts, idx }) => {
     const players =
       payload?.players ||
-      payload?.state?.players ||
+      rec?.players ||
       payload?.summary?.players ||
       [];
 
-    for (const pl of Array.isArray(players) ? players : []) {
-      const pid = (pl?.id || pl?.playerId || pl?.uid || "").toString();
+    const pidOrder = (Array.isArray(players) ? players : [])
+      .map((p: any) => String(p?.id || p?.playerId || p?.profileId || ""))
+      .filter(Boolean);
+
+    const statsArray = Array.isArray(payload?.state?.statsByPlayer)
+      ? payload.state.statsByPlayer
+      : Array.isArray(payload?.statsByPlayer)
+      ? payload.statsByPlayer
+      : null;
+
+    const statsObj =
+      (!Array.isArray(payload?.state?.statsByPlayer) && payload?.state?.statsByPlayer && typeof payload.state.statsByPlayer === "object"
+        ? payload.state.statsByPlayer
+        : null) ||
+      (payload?.statsByPlayer && typeof payload.statsByPlayer === "object" && !Array.isArray(payload.statsByPlayer)
+        ? payload.statsByPlayer
+        : null) ||
+      (payload?.playerStats && typeof payload.playerStats === "object" && !Array.isArray(payload.playerStats)
+        ? payload.playerStats
+        : null) ||
+      (payload?.summary?.playerStats && typeof payload.summary.playerStats === "object" && !Array.isArray(payload.summary.playerStats)
+        ? payload.summary.playerStats
+        : null) ||
+      null;
+
+    for (let i = 0; i < pidOrder.length; i++) {
+      const pid = pidOrder[i];
       if (!pid) continue;
+      const p = (statsArray ? statsArray[i] : null) || (statsObj ? statsObj[pid] : null) || {};
+      const total =
+        Number(p?.total ?? p?.score ?? 0) ||
+        Number(payload?.summary?.rankings?.find?.((r: any) => String(r?.id) === pid)?.total ?? 0) ||
+        0;
 
-      const kills = pl?.kills ?? pl?.stats?.kills ?? payload?.summary?.kills ?? 0;
+      const dartsThrown = Number(p?.darts ?? 0) || 0;
 
-      bumpPlayer(idx, pid, { name: pl?.name, matches: 1 }, ts);
+      bumpPlayer(idx, pid, { matches: 1, dartsThrown, pointsScored: total }, ts);
 
-      (idx.byPlayer[pid] as any).killer = {
-        kills: ((idx.byPlayer[pid] as any).killer?.kills || 0) + kills,
+      const cur: any = (idx.byPlayer[pid] as any).golf || {
+        total: 0,
+        single: 0,
+        double: 0,
+        triple: 0,
+        bull: 0,
+        dbull: 0,
+        miss: 0,
+        turns: 0,
+        hit1: 0,
+        hit2: 0,
+        hit3: 0,
       };
+
+      cur.total += total;
+      cur.single += Number(p?.s ?? p?.single ?? 0) || 0;
+      cur.double += Number(p?.d ?? p?.double ?? 0) || 0;
+      cur.triple += Number(p?.t ?? p?.triple ?? 0) || 0;
+      cur.bull += Number(p?.b ?? p?.bull ?? 0) || 0;
+      cur.dbull += Number(p?.db ?? p?.dbull ?? 0) || 0;
+      cur.miss += Number(p?.miss ?? 0) || 0;
+      cur.turns += Number(p?.turns ?? 0) || 0;
+      cur.hit1 += Number(p?.hit1 ?? 0) || 0;
+      cur.hit2 += Number(p?.hit2 ?? 0) || 0;
+      cur.hit3 += Number(p?.hit3 ?? 0) || 0;
+
+      (idx.byPlayer[pid] as any).golf = cur;
     }
-  },
-
-  golf: ({ payload, ts, idx }) => {
-    const stats =
-      payload?.state?.statsByPlayer ||
-      payload?.statsByPlayer ||
-      payload?.playerStats ||
-      payload?.summary?.playerStats ||
-      {};
-
-    Object.entries(stats).forEach(([pid, p]: any) => {
-      if (!pid) return;
-
-      bumpPlayer(idx, pid, { matches: 1 }, ts);
-
-      (idx.byPlayer[pid] as any).golf = {
-        total: ((idx.byPlayer[pid] as any).golf?.total || 0) + (p?.total || 0),
-        single: ((idx.byPlayer[pid] as any).golf?.single || 0) + (p?.single || 0),
-        double: ((idx.byPlayer[pid] as any).golf?.double || 0) + (p?.double || 0),
-        triple: ((idx.byPlayer[pid] as any).golf?.triple || 0) + (p?.triple || 0),
-        bull: ((idx.byPlayer[pid] as any).golf?.bull || 0) + (p?.bull || 0),
-        dbull: ((idx.byPlayer[pid] as any).golf?.dbull || 0) + (p?.dbull || 0),
-        miss: ((idx.byPlayer[pid] as any).golf?.miss || 0) + (p?.miss || 0),
-      };
-    });
   },
 
   shanghai: ({ payload, ts, idx }) => {
@@ -330,48 +443,46 @@ const extractors: Partial<Record<GameKey, Extractor>> = {
       {};
 
     const rounds = stats?.rounds || payload?.rounds || [];
-
-    for (const r of rounds) {
-      const pid = r?.playerId;
+    for (const r of Array.isArray(rounds) ? rounds : []) {
+      const pid = String(r?.playerId || r?.id || "");
       if (!pid) continue;
-
-      const score = r?.score || 0;
-
+      const score = Number(r?.score || 0) || 0;
       bumpPlayer(idx, pid, { matches: 1 }, ts);
-
-      (idx.byPlayer[pid] as any).shanghai = {
-        total: ((idx.byPlayer[pid] as any).shanghai?.total || 0) + score,
-        min: Math.min((idx.byPlayer[pid] as any).shanghai?.min ?? float('inf'), score),
-        max: Math.max((idx.byPlayer[pid] as any).shanghai?.max ?? 0, score),
-      };
+      const cur: any = (idx.byPlayer[pid] as any).shanghai || { total: 0, min: undefined, max: 0 };
+      cur.total += score;
+      cur.min = cur.min == null ? score : Math.min(cur.min, score);
+      cur.max = Math.max(cur.max || 0, score);
+      (idx.byPlayer[pid] as any).shanghai = cur;
     }
   },
 
   territories: ({ payload, ts, idx }) => {
     const data = payload || {};
-    const sum = (arr) => (arr || []).reduce((a, b) => a + b, 0);
+    const sum = (arr: any[]) => (Array.isArray(arr) ? arr.reduce((a: number, b: any) => a + (Number(b) || 0), 0) : 0);
 
     const players =
       payload?.players ||
       payload?.state?.players ||
+      payload?.summary?.players ||
       [];
 
-    for (const pl of players) {
-      const pid = pl?.id || pl?.playerId;
+    for (const pl of Array.isArray(players) ? players : []) {
+      const pid = String(pl?.id || pl?.playerId || pl?.profileId || "");
       if (!pid) continue;
 
-      bumpPlayer(idx, pid, { matches: 1 }, ts);
+      bumpPlayer(idx, pid, { name: pl?.name, matches: 1 }, ts);
 
-      (idx.byPlayer[pid] as any).territories = {
-        captured: ((idx.byPlayer[pid] as any).territories?.captured || 0) + sum(data.captured),
-        darts: ((idx.byPlayer[pid] as any).territories?.darts || 0) + sum(data.darts),
-        steals: ((idx.byPlayer[pid] as any).territories?.steals || 0) + sum(data.steals),
-        lost: ((idx.byPlayer[pid] as any).territories?.lost || 0) + sum(data.lost),
+      const cur: any = (idx.byPlayer[pid] as any).territories || {
+        captured: 0, darts: 0, steals: 0, lost: 0
       };
+      cur.captured += sum(data?.captured ?? pl?.captured);
+      cur.darts += sum(data?.darts ?? pl?.darts);
+      cur.steals += sum(data?.steals ?? pl?.steals);
+      cur.lost += sum(data?.lost ?? pl?.lost);
+      (idx.byPlayer[pid] as any).territories = cur;
     }
   },
 };
-
 
 // ----------------------------
 // Rebuild principal

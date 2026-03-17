@@ -8,6 +8,7 @@
 import React from "react";
 import type { Store } from "../lib/types";
 import ProfileAvatar from "../components/ProfileAvatar";
+import StatsGolfMatch from "./StatsGolfMatch";
 
 // ---------- Thème local ----------
 const T = {
@@ -54,6 +55,84 @@ function getPlayer(players: PlayerLite[], id?: string | null) {
 
 // ---------- Extraction souple depuis summary ----------
 // On accepte plusieurs variantes de structure pour rester compatible.
+function buildGolfViewModel(rec: SavedMatch) {
+  const players = toArr<PlayerLite>(rec.players);
+  const S = toObj<any>(rec.summary);
+  const P = toObj<any>(rec.payload);
+  const payloadSummary = toObj<any>(P?.summary);
+  const rankingsRaw =
+    toArr<any>(S?.rankings).length ? toArr<any>(S?.rankings) :
+    toArr<any>(payloadSummary?.rankings).length ? toArr<any>(payloadSummary?.rankings) :
+    toArr<any>(P?.rankings);
+
+  const normId = (v: any) => String(v ?? "");
+  const findByPid = (obj: any, pid: string) => {
+    if (!obj) return null;
+    if (Array.isArray(obj)) {
+      return obj.find((x: any) => [x?.id, x?.playerId, x?.profileId].map(normId).includes(pid)) || null;
+    }
+    if (typeof obj === "object") {
+      if (obj[pid] != null) return obj[pid];
+      const key = Object.keys(obj).find((k) => normId(k) === pid);
+      return key ? obj[key] : null;
+    }
+    return null;
+  };
+  const readNum = (v: any) => {
+    const n = Number(v);
+    return Number.isFinite(n) ? n : 0;
+  };
+  const pick = (obj: any, keys: string[]) => {
+    for (const k of keys) {
+      if (obj && obj[k] != null) return readNum(obj[k]);
+    }
+    return 0;
+  };
+
+  const order = rankingsRaw.length
+    ? rankingsRaw.map((it: any, idx: number) => ({
+        playerId: String(it?.playerId ?? it?.id ?? it?.profileId ?? ""),
+        rank: readNum(it?.rank ?? it?.place ?? it?.position) || idx + 1,
+        score: readNum(it?.total ?? it?.score ?? it?.strokes ?? it?.points),
+      }))
+    : players.map((p, idx) => ({ playerId: p.id, rank: idx + 1, score: 0 }));
+
+  const rows = order.map((o) => {
+    const pid = o.playerId;
+    const p = getPlayer(players, pid) || { id: pid, name: "Joueur" };
+    const per =
+      findByPid(P?.state?.statsByPlayer, pid) ||
+      findByPid(S?.playerStats, pid) ||
+      findByPid(S?.perPlayer, pid) ||
+      findByPid(P?.playerStats, pid) ||
+      findByPid(P?.statsByPlayer, pid) ||
+      findByPid(payloadSummary?.playerStats, pid) ||
+      findByPid(S?.players, pid) ||
+      findByPid(payloadSummary?.players, pid) ||
+      {};
+
+    const ranking = rankingsRaw.find((x: any) => [x?.id, x?.playerId, x?.profileId].map(normId).includes(pid)) || {};
+    const src = per && Object.keys(per).length ? per : ranking;
+
+    return {
+      playerId: pid,
+      name: p.name || "Joueur",
+      avatar: p.avatarDataUrl || null,
+      rank: o.rank,
+      total: o.score || pick(src, ["total", "score", "strokes", "points"]),
+      simple: pick(src, ["s", "simple", "singles", "par"]),
+      double: pick(src, ["d", "double", "doubles", "bogey"]),
+      triple: pick(src, ["t", "triple", "triples", "doubleBogey"]),
+      miss: pick(src, ["miss", "m", "misses"]),
+      bull: pick(src, ["bull", "b"]),
+      dbull: pick(src, ["dbull", "dBull", "doubleBull", "db"]),
+      turns: pick(src, ["turns", "tours"]),
+    };
+  });
+
+  return { players, rows };
+}
+
 function buildViewModel(rec: SavedMatch) {
   const players = toArr<PlayerLite>(rec.players);
   const S = toObj<any>(rec.summary);
@@ -241,15 +320,22 @@ const IconTrophy = () => (
 export default function StatsDetail({
   store,
   matchId,
+  initialRecord,
   go,
 }: {
   store: Store;
   matchId: string;
+  initialRecord?: SavedMatch | null;
   go: (to: string, params?: any) => void;
 }) {
-  const [record, setRecord] = React.useState<SavedMatch | null>(null);
+  const [record, setRecord] = React.useState<SavedMatch | null>(initialRecord ?? null);
 
   React.useEffect(() => {
+    if (initialRecord && (initialRecord as any).id === matchId) {
+      setRecord(initialRecord as SavedMatch);
+      return;
+    }
+
     (async () => {
       // 1) History API si dispo
       try {
@@ -270,7 +356,7 @@ export default function StatsDetail({
       } catch {}
       setRecord(null);
     })();
-  }, [store, matchId]);
+  }, [store, matchId, initialRecord]);
 
   if (!record) {
     return (
@@ -294,8 +380,14 @@ export default function StatsDetail({
     );
   }
 
-  const vm = buildViewModel(record);
+  const isGolf = String(record.kind || "").toLowerCase() === "golf";
   const isInProgress = (record.status || "").toLowerCase().includes("progress");
+
+  if (isGolf) {
+    return <StatsGolfMatch record={record as any} go={go} />;
+  }
+
+  const vm = buildViewModel(record);
 
   return (
     <div style={page}>

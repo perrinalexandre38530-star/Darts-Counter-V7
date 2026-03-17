@@ -399,6 +399,7 @@ const modeColor: Record<string, string> = {
   training: "#71c9ff",
   killer: "#ff6a3c",
   shanghai: "#ffb000",
+  golf: "#f6c256",
   batard: "#9b5cff",
   default: "#888",
 };
@@ -1120,7 +1121,7 @@ export default function HistoryPage({
 
   const inboxCount = (inboxLocal?.length || 0) + (inboxCloud?.length || 0);
 
-  const source = tab === "all" ? items : tab === "inbox" ? [] : running;
+  const source = tab === "all" ? items : tab === "inbox" ? [] : tab === "done" ? done : running;
   const filtered = source.filter((e) => inRange(e.updatedAt || e.createdAt, sub));
 
   // ✅ DEBUG: ce qui reste après filtres (tab + période + status/dedupe)
@@ -1183,7 +1184,8 @@ export default function HistoryPage({
       }
       return;
     }
-if (isKillerEntry(e)) {
+
+    if (isKillerEntry(e)) {
       safeGo(["killer_play", "killer"], {
         resumeId,
         from: preview ? "history_preview" : "history",
@@ -1201,7 +1203,16 @@ if (isKillerEntry(e)) {
         mode: "shanghai",
       });
       if (!ok) {
-    
+        go("x01_play_v3", {
+          resumeId,
+          from: preview ? "history_preview" : "history",
+          mode: baseMode(e),
+          preview: !!preview,
+        });
+      }
+      return;
+    }
+
     if (isBatardEntry(e)) {
       safeGo(["batard_play", "batard"], {
         resumeId,
@@ -1209,16 +1220,6 @@ if (isKillerEntry(e)) {
         preview: !!preview,
         mode: "batard",
       });
-      return;
-    }
-
-    go("x01_play_v3", {
-          resumeId,
-          from: preview ? "history_preview" : "history",
-          mode: baseMode(e),
-          preview: !!preview,
-        });
-      }
       return;
     }
 
@@ -1258,14 +1259,13 @@ if (isKillerEntry(e)) {
       return;
     }
 
-    // ✅ CRICKET : route correcte => App.tsx = "statsHub" (et non "stats_hub")
+    // ✅ CRICKET
     if (m === "cricket") {
       const wid =
         (e.summary && (e.summary.winnerId || e.summary?.result?.winnerId)) || (e as any)?.winnerId || null;
 
       const firstPlayerId = wid || (e.players && e.players.length ? getId(e.players[0]) : null) || null;
 
-      // 1) StatsHub direct (ton App.tsx: case "statsHub")
       try {
         go("statsHub", {
           tab: "cricket",
@@ -1279,24 +1279,24 @@ if (isKillerEntry(e)) {
         return;
       } catch {}
 
-      // 2) fallback page dédiée si le hub ne gère pas cricket correctement
       try {
         go("cricket_stats", { profileId: firstPlayerId, from: "history" });
         return;
       } catch {}
 
-      // 3) fallback menu stats
       try {
         go("stats", { tab: "cricket", profileId: firstPlayerId });
       } catch {}
       return;
     }
 
+    // ✅ KILLER
     if (isKillerEntry(e)) {
       go("killer_summary", { rec: e, resumeId, from: "history" });
       return;
     }
 
+    // ✅ SHANGHAI
     if (isShanghaiEntry(e)) {
       const ok = safeGo(["shanghai_end", "shanghai_summary", "stats_shanghai_match"], {
         rec: e,
@@ -1309,9 +1309,36 @@ if (isKillerEntry(e)) {
       return;
     }
 
+    // ✅ GOLF
+    if (m === "golf") {
+      try {
+        go("statsDetail", {
+          store,
+          rec: e,
+          matchId: e.id,
+          from: "history",
+        });
+        return;
+      } catch {}
+
+      try {
+        go("golfMatchStats", {
+          record: e,
+          matchId: e.id,
+          from: "history",
+        });
+        return;
+      } catch {}
+
+      try {
+        go("stats", { tab: "golf" });
+      } catch {}
+      return;
+    }
+
+    // ✅ FALLBACK X01
     go("x01_end", { rec: e, resumeId, showEnd: true, from: "history" });
   }
-
 
 
   // Fond "tôle inox brossée" + teinte sport
@@ -1345,7 +1372,7 @@ if (isKillerEntry(e)) {
     if (k.includes("petanque")) return logoPetanque;
     if (k.includes("babyfoot")) return logoBabyfoot;
     // darts family
-    if (k.includes("x01") || k.includes("cricket") || k.includes("killer") || k.includes("shanghai") || k.includes("darts")) return logoDarts;
+    if (k.includes("x01") || k.includes("cricket") || k.includes("killer") || k.includes("shanghai") || k.includes("golf") || k.includes("darts")) return logoDarts;
     return logoDarts;
   }
 
@@ -1367,6 +1394,11 @@ if (isKillerEntry(e)) {
         <div style={S.kpiCard(tab === "all", theme.primary)} onClick={() => setTab("all")}>
           <div style={S.kpiLabel}>ALL</div>
           <div style={S.kpiValue}>{items.length}</div>
+        </div>
+
+        <div style={S.kpiCard(tab === "done", theme.primary)} onClick={() => setTab("done")}>
+          <div style={S.kpiLabel}>Terminées</div>
+          <div style={S.kpiValue}>{done.length}</div>
         </div>
 
         <div style={S.kpiCard(tab === "running", theme.danger)} onClick={() => setTab("running")}>

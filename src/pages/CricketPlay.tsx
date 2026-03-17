@@ -1439,14 +1439,23 @@ const playersPayload = state.players.map((p: any) => {
     const pDartSetId =
       (prof as any)?.dartSetId ?? (prof as any)?.favoriteDartSetId ?? dartSetId ?? null;
 
+    const legStats = computeLegStatsForPlayer(p);
+    const marksObj = p.marks && typeof p.marks === "object" ? p.marks : null;
+    const marksTotal = marksObj
+      ? Object.values(marksObj).reduce((a: any, b: any) => (Number(a) || 0) + (Number(b) || 0), 0)
+      : 0;
+
     return {
       profileId: pid,
       id: pid,
       name: p.name,
       score: p.score,
       marks: p.marks,
+      marksTotal,
       hits,
-      legStats: computeLegStatsForPlayer(p),
+      darts: Array.isArray(hits) ? hits.length : 0,
+      hitCount: Array.isArray(hits) ? hits.filter((h: any) => h && h.ring !== "MISS" && h.segment !== "MISS").length : 0,
+      legStats,
       dartSetId: pDartSetId,
     };
   });
