@@ -184,6 +184,7 @@ import StatsHub from "./pages/StatsHub";
 import StatsOnline from "./pages/StatsOnline";
 import StatsCricket from "./pages/StatsCricket";
 import StatsLeaderboardsPage from "./pages/StatsLeaderboardsPage"; // ⭐ CLASSEMENTS
+import StatsDetail from "./pages/StatsDetail";
 
 // TOURNOI
 import TournamentCreate from "./pages/TournamentCreate";
@@ -1008,7 +1009,7 @@ function StatsDetailRoute({ store, go, params }: any) {
     return fromMem ? withAvatars(fromMem, safeArray(store?.profiles)) : null;
   });
 
-  const matchId: string | undefined = params?.matchId;
+  const matchId: string | undefined = params?.matchId ?? params?.rec?.id;
 
   React.useEffect(() => {
     let alive = true;
@@ -1037,26 +1038,22 @@ function StatsDetailRoute({ store, go, params }: any) {
     );
   }
 
-  if (rec) {
-    const when = Number(rec.updatedAt ?? rec.createdAt ?? Date.now());
-    const dateStr = new Date(when).toLocaleString();
-    const players = Array.isArray(rec.players) ? rec.players : [];
+  if (!matchId && !rec) {
     return (
       <div style={{ padding: 16 }}>
         <button onClick={() => go("statsHub", { tab: "history" })}>← Retour</button>
-        <h2>
-          {(rec.kind || "MATCH").toUpperCase()} — {dateStr}
-        </h2>
-        <div style={{ opacity: 0.85 }}>Joueurs : {players.map((p) => p.name).join(" · ")}</div>
+        {"Aucune donnée"}
       </div>
     );
   }
 
   return (
-    <div style={{ padding: 16 }}>
-      <button onClick={() => go("statsHub", { tab: "history" })}>← Retour</button>
-      {matchId ? "Chargement..." : "Aucune donnée"}
-    </div>
+    <StatsDetail
+      store={store}
+      matchId={matchId || rec?.id}
+      initialRecord={rec ?? null}
+      go={go}
+    />
   );
 }
 
