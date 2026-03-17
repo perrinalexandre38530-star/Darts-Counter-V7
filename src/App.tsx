@@ -1,4 +1,3 @@
-import { initCast } from './cast/initCast';
 // @ts-nocheck
 // ============================================
 // src/App.tsx — Navigation + wiring propre (v5 sécurisé)
@@ -185,7 +184,6 @@ import StatsHub from "./pages/StatsHub";
 import StatsOnline from "./pages/StatsOnline";
 import StatsCricket from "./pages/StatsCricket";
 import StatsLeaderboardsPage from "./pages/StatsLeaderboardsPage"; // ⭐ CLASSEMENTS
-import StatsDetail from "./pages/StatsDetail";
 
 // TOURNOI
 import TournamentCreate from "./pages/TournamentCreate";
@@ -1002,37 +1000,63 @@ function AuthResetRoute({ go }: { go: (t: Tab, p?: any) => void }) {
 }
 
 function StatsDetailRoute({ store, go, params }: any) {
-  const matchId: string | undefined = params?.matchId ?? params?.rec?.id;
+  const [rec, setRec] = React.useState<any>(() => {
+    if (params?.rec) {
+      return withAvatars(params.rec, safeArray(store?.profiles));
+    }
+    const fromMem = filterValidHistory(safeArray(store?.history)).find((r: any) => r.id === params?.matchId);
+    return fromMem ? withAvatars(fromMem, safeArray(store?.profiles)) : null;
+  });
 
-  if (!matchId) {
-    return (
-      <div style={{ padding: 16 }}>
-        <button onClick={() => go("statsHub", { tab: "history" })}>← Retour</button>
-        {"Aucune donnée"}
-      </div>
-    );
-  }
+  const matchId: string | undefined = params?.matchId;
 
-  if (params?.showEnd && params?.rec) {
+  React.useEffect(() => {
+    let alive = true;
+    (async () => {
+      if (!matchId) return;
+      try {
+        const byId = await (History as any)?.get?.(matchId);
+        if (alive && byId) setRec(withAvatars(byId, safeArray(store?.profiles)));
+      } catch {}
+    })();
+    return () => {
+      alive = false;
+    };
+  }, [matchId, store.profiles]);
+
+  if (params?.showEnd && rec) {
     return (
       <X01End
         go={go}
         params={{
-          matchId: params.rec.id,
-          resumeId: params.rec.resumeId ?? params.rec.payload?.resumeId,
+          matchId: rec.id,
+          resumeId: rec.resumeId ?? rec.payload?.resumeId,
           showEnd: true,
         }}
       />
     );
   }
 
+  if (rec) {
+    const when = Number(rec.updatedAt ?? rec.createdAt ?? Date.now());
+    const dateStr = new Date(when).toLocaleString();
+    const players = Array.isArray(rec.players) ? rec.players : [];
+    return (
+      <div style={{ padding: 16 }}>
+        <button onClick={() => go("statsHub", { tab: "history" })}>← Retour</button>
+        <h2>
+          {(rec.kind || "MATCH").toUpperCase()} — {dateStr}
+        </h2>
+        <div style={{ opacity: 0.85 }}>Joueurs : {players.map((p) => p.name).join(" · ")}</div>
+      </div>
+    );
+  }
+
   return (
-    <StatsDetail
-      store={store}
-      matchId={matchId}
-      initialRecord={params?.rec ?? null}
-      go={go}
-    />
+    <div style={{ padding: 16 }}>
+      <button onClick={() => go("statsHub", { tab: "history" })}>← Retour</button>
+      {matchId ? "Chargement..." : "Aucune donnée"}
+    </div>
   );
 }
 
