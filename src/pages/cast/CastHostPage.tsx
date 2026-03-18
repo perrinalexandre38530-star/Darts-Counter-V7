@@ -47,12 +47,11 @@ export default function CastHostPage({ go }: Props) {
   const [state, setState] = React.useState(getGoogleCastState());
   const [appId, setAppIdState] = React.useState(getGoogleCastAppId());
   const [message, setMessage] = React.useState(
-    "Appuie sur “Lancer le Cast” pour ouvrir la liste des appareils, puis démarre une partie X01."
+    "Appuie sur “Lancer le Cast” pour ouvrir la liste des appareils."
   );
   const [loading, setLoading] = React.useState(false);
 
   React.useEffect(() => {
-    ensureGoogleCastReady().finally(() => setState(getGoogleCastState()));
     const refresh = () => {
       setState(getGoogleCastState());
       setAppIdState(getGoogleCastAppId());
@@ -63,26 +62,16 @@ export default function CastHostPage({ go }: Props) {
 
   async function saveAppId() {
     setGoogleCastAppId(appId || DEFAULT_GOOGLE_CAST_APP_ID);
-    const ok = await ensureGoogleCastReady();
+    setMessage(`Receiver App ID enregistré : ${getGoogleCastAppId()}`);
     setState(getGoogleCastState());
-    setMessage(
-      ok
-        ? `Receiver App ID enregistré : ${getGoogleCastAppId()}`
-        : "Impossible d’initialiser Google Cast avec cet App ID."
-    );
   }
 
   async function restoreDefault() {
     resetGoogleCastAppId();
     const next = getGoogleCastAppId();
     setAppIdState(next);
-    const ok = await ensureGoogleCastReady();
+    setMessage(`App ID par défaut restauré : ${next}`);
     setState(getGoogleCastState());
-    setMessage(
-      ok
-        ? `App ID par défaut restauré : ${next}`
-        : "Impossible de restaurer l’App ID par défaut."
-    );
   }
 
   async function start() {
@@ -94,13 +83,17 @@ export default function CastHostPage({ go }: Props) {
     if (res.ok) {
       setMessage(
         next.deviceName
-          ? `Google Cast connecté : ${next.deviceName}`
-          : "Session Cast démarrée."
+          ? `Connecté à ${next.deviceName}. Lance une partie X01 pour envoyer le score.`
+          : "Session Google Cast ouverte."
       );
     } else {
-      setMessage(`Impossible d’ouvrir la liste des appareils (${res.reason}).`);
+      let reason = "Impossible d’ouvrir le dialogue Cast.";
+      if (res.reason === "sdk_unavailable") reason = "Google Cast indisponible sur cet appareil / navigateur.";
+      else if (String(res.reason || "").includes("cancel")) reason = "Connexion Cast annulée.";
+      else if (String(res.reason || "").includes("timeout")) reason = "Aucun appareil Cast détecté.";
+      else if (String(res.reason || "").includes("request")) reason = "Impossible d’ouvrir le dialogue Cast.";
+      setMessage(reason);
     }
-
     setLoading(false);
   }
 
@@ -108,171 +101,148 @@ export default function CastHostPage({ go }: Props) {
     setLoading(true);
     await endGoogleCastSession();
     setState(getGoogleCastState());
-    setMessage("Session Cast arrêtée.");
+    setMessage("Session Google Cast arrêtée.");
     setLoading(false);
   }
 
+  const container: React.CSSProperties = {
+    minHeight: "100%",
+    padding: 18,
+    background:
+      "radial-gradient(1200px 420px at 50% -10%, rgba(255,209,102,.12), transparent 55%), linear-gradient(180deg, #0f1218, #0a0d12)",
+    color: "#f3f4f6",
+  };
+
+  const page: React.CSSProperties = {
+    maxWidth: 940,
+    margin: "0 auto",
+    display: "grid",
+    gap: 16,
+  };
+
+  const button: React.CSSProperties = {
+    border: "1px solid rgba(255,255,255,.12)",
+    background: "linear-gradient(180deg, rgba(255,255,255,.08), rgba(255,255,255,.04))",
+    color: "#f9fafb",
+    borderRadius: 14,
+    padding: "12px 16px",
+    fontWeight: 900,
+    cursor: "pointer",
+  };
+
+  const primary: React.CSSProperties = {
+    ...button,
+    background: "linear-gradient(180deg, #f6c453, #e9aa12)",
+    color: "#19150c",
+    border: "1px solid rgba(233,170,18,.42)",
+  };
+
+  const input: React.CSSProperties = {
+    width: "100%",
+    borderRadius: 14,
+    padding: "14px 16px",
+    background: "rgba(255,255,255,.06)",
+    color: "#f9fafb",
+    border: "1px solid rgba(255,255,255,.10)",
+    outline: "none",
+    fontSize: 16,
+    fontWeight: 800,
+    letterSpacing: ".06em",
+  };
+
   return (
-    <div
-      style={{
-        minHeight: "100dvh",
-        background: "radial-gradient(circle at top, #18202d 0%, #090b10 58%, #050608 100%)",
-        color: "#f8fafc",
-      }}
-    >
-      <div style={{ maxWidth: 980, margin: "0 auto", padding: "22px 16px 120px" }}>
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            gap: 12,
-            marginBottom: 18,
-          }}
-        >
-          <button
-            onClick={() => go("settings")}
-            style={{
-              borderRadius: 999,
-              padding: "10px 14px",
-              border: "1px solid rgba(255,255,255,.12)",
-              background: "rgba(255,255,255,.06)",
-              color: "#fff",
-              fontWeight: 800,
-              cursor: "pointer",
-            }}
-          >
+    <div style={container}>
+      <div style={page}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+          <button onClick={() => go("settings")} style={button}>
             ← Retour
           </button>
-          <div style={{ fontSize: 28, fontWeight: 900, letterSpacing: 0.4 }}>Google Cast</div>
-          <div style={{ width: 88 }} />
+          <div style={{ fontSize: 34, fontWeight: 1000, letterSpacing: "-.03em", marginLeft: "auto" }}>
+            Google Cast
+          </div>
         </div>
 
-        <div style={{ display: "grid", gap: 16 }}>
-          <div style={cardStyle()}>
-            <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 14 }}>
-              <div style={badge(state.supported, "ok")}>
-                {state.supported ? "Navigateur compatible" : "Navigateur non compatible"}
+        <div style={cardStyle()}>
+          <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 14 }}>
+            <span style={badge(state.supported && state.sdkLoaded, "ok")}>
+              {state.supported ? "Navigateur compatible" : "Navigateur non compatible"}
+            </span>
+            <span style={badge(!!state.appId, state.appId === DEFAULT_GOOGLE_CAST_APP_ID ? "warn" : "ok")}>
+              {state.appId === DEFAULT_GOOGLE_CAST_APP_ID ? "App ID par défaut" : "Receiver App ID configuré"}
+            </span>
+            <span style={badge(state.isCasting, state.isCasting ? "ok" : "warn")}>
+              {state.isCasting ? "Session Cast active" : "Aucune session Cast active"}
+            </span>
+          </div>
+
+          <p style={{ margin: 0, opacity: 0.88, lineHeight: 1.55 }}>
+            Branche ici ton receiver Google Cast personnalisé. Tant que tu utilises l’App ID de test, tu verras la
+            liste des appareils, mais pas ton receiver custom.
+          </p>
+
+          <div style={{ marginTop: 16, display: "grid", gap: 12 }}>
+            <div>
+              <div style={{ fontSize: 13, fontWeight: 900, marginBottom: 8, opacity: 0.9 }}>
+                Receiver Application ID
               </div>
-              <div style={badge(!!appId, !!appId ? "ok" : "warn")}>
-                {appId ? `Receiver App ID : ${appId}` : "App ID manquant"}
+              <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                <input
+                  value={appId}
+                  onChange={(e) => setAppIdState(String(e.target.value || "").toUpperCase())}
+                  placeholder="Ex : 12AB34CD"
+                  style={input}
+                />
+                <button onClick={saveAppId} style={primary}>
+                  Enregistrer
+                </button>
+                <button onClick={restoreDefault} style={button}>
+                  App ID par défaut
+                </button>
               </div>
-              <div style={badge(state.isCasting, state.isCasting ? "ok" : "warn")}>
-                {state.isCasting
-                  ? `Session active${state.deviceName ? ` • ${state.deviceName}` : ""}`
-                  : "Aucune session Cast active"}
-              </div>
             </div>
 
-            <div style={{ marginBottom: 12, color: "#d1d5db", lineHeight: 1.5 }}>
-              Cette page pilote ton vrai receiver Google Cast. Une fois connecté, ouvre une
-              partie X01 : les scores sont envoyés automatiquement vers la TV.
-            </div>
-
-            <div style={{ fontSize: 13, color: "#9ca3af", marginBottom: 8 }}>
-              Receiver Application ID
-            </div>
-
-            <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 14 }}>
-              <input
-                value={appId}
-                onChange={(e) => setAppIdState(e.target.value.toUpperCase())}
-                placeholder="Ex: 3534BC6A"
-                style={{
-                  flex: "1 1 320px",
-                  minWidth: 240,
-                  borderRadius: 14,
-                  border: "1px solid rgba(255,255,255,.12)",
-                  background: "rgba(255,255,255,.06)",
-                  color: "#fff",
-                  padding: "14px 16px",
-                  fontSize: 16,
-                  fontWeight: 800,
-                  letterSpacing: 1,
-                }}
-              />
-
-              <button
-                onClick={saveAppId}
-                style={{
-                  borderRadius: 14,
-                  padding: "14px 18px",
-                  border: "none",
-                  background: "#2563eb",
-                  color: "#fff",
-                  fontWeight: 900,
-                  cursor: "pointer",
-                }}
-              >
-                Enregistrer
+            <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+              <button onClick={start} style={primary} disabled={loading}>
+                {loading ? "Connexion..." : "Lancer le Cast"}
               </button>
-
-              <button
-                onClick={restoreDefault}
-                style={{
-                  borderRadius: 14,
-                  padding: "14px 18px",
-                  border: "1px solid rgba(255,255,255,.12)",
-                  background: "rgba(255,255,255,.06)",
-                  color: "#fff",
-                  fontWeight: 900,
-                  cursor: "pointer",
-                }}
-              >
-                App ID par défaut
-              </button>
-            </div>
-
-            <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 12 }}>
-              <button
-                onClick={start}
-                disabled={loading}
-                style={{
-                  borderRadius: 14,
-                  padding: "14px 18px",
-                  border: "none",
-                  background: "#10b981",
-                  color: "#04130d",
-                  fontWeight: 900,
-                  cursor: loading ? "wait" : "pointer",
-                }}
-              >
-                {loading ? "Connexion…" : "Lancer le Cast"}
-              </button>
-
-              <button
-                onClick={stop}
-                disabled={loading || !state.isCasting}
-                style={{
-                  borderRadius: 14,
-                  padding: "14px 18px",
-                  border: "1px solid rgba(255,255,255,.12)",
-                  background: "rgba(255,255,255,.06)",
-                  color: "#fff",
-                  fontWeight: 900,
-                  cursor: loading ? "wait" : "pointer",
-                  opacity: loading || !state.isCasting ? 0.5 : 1,
-                }}
-              >
+              <button onClick={stop} style={button} disabled={loading}>
                 Arrêter
               </button>
             </div>
 
-            <div style={{ color: "#d1d5db", fontWeight: 700 }}>{message}</div>
+            <div style={{ fontSize: 14, opacity: 0.86 }}>
+              {message}
+            </div>
           </div>
+        </div>
 
-          <div style={cardStyle()}>
-            <div style={{ fontSize: 22, fontWeight: 900, marginBottom: 10 }}>
-              Comment tester proprement
+        <div style={cardStyle()}>
+          <div style={{ fontSize: 28, fontWeight: 1000, marginBottom: 8 }}>État actuel</div>
+          <div style={{ display: "grid", gap: 10, fontSize: 15 }}>
+            <div>
+              <b>App ID :</b> {state.appId || "—"}
             </div>
-            <div style={{ color: "#d1d5db", lineHeight: 1.7 }}>
-              1. Vérifie que la TV / box et le téléphone sont sur le même Wi‑Fi. <br />
-              2. Clique sur “Lancer le Cast”, puis choisis la Freebox Player POP ou la Mi Box. <br />
-              3. La TV doit afficher <strong>Multisports Scoring</strong>. <br />
-              4. Lance ensuite une partie <strong>X01</strong> dans l’application. <br />
-              5. Les scores doivent se mettre à jour automatiquement sur la TV.
+            <div>
+              <b>Cast state :</b> {state.castState || "—"}
+            </div>
+            <div>
+              <b>Appareil :</b> {state.deviceName || "—"}
+            </div>
+            <div>
+              <b>Session active :</b> {state.isCasting ? "oui" : "non"}
             </div>
           </div>
+        </div>
+
+        <div style={cardStyle()}>
+          <div style={{ fontSize: 26, fontWeight: 1000, marginBottom: 8 }}>Étapes</div>
+          <ol style={{ margin: 0, paddingLeft: 18, lineHeight: 1.7, opacity: 0.92 }}>
+            <li>Vérifie que ton receiver public répond sur <b>/cast/</b>.</li>
+            <li>Crée / colle ton App ID Google Cast ici.</li>
+            <li>Appuie sur <b>Lancer le Cast</b>.</li>
+            <li>Choisis ta TV / box.</li>
+            <li>Lance une partie X01 pour envoyer les snapshots.</li>
+          </ol>
         </div>
       </div>
     </div>

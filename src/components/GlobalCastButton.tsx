@@ -1,7 +1,6 @@
 import React from "react";
 import {
   endGoogleCastSession,
-  ensureGoogleCastReady,
   getGoogleCastState,
   requestGoogleCastSession,
   subscribeGoogleCastStatus,
@@ -35,14 +34,13 @@ export default function GlobalCastButton({ accent, textMain, textSoft }: Props) 
     const refresh = () => {
       if (!active) return;
       const state = getGoogleCastState();
-      setReady(!!state?.sdkLoaded);
+      setReady(!!state?.supported);
       setIsCasting(!!state?.isCasting);
     };
 
-    ensureGoogleCastReady().finally(refresh);
     refresh();
-
     const off = subscribeGoogleCastStatus(refresh);
+
     return () => {
       active = false;
       try {
