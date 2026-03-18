@@ -43,6 +43,7 @@ import tickerX01 from "../assets/tickers/ticker_x01.png";
 import { StatsBridge } from "../lib/statsBridge";
 import { loadBots } from "./ProfilesBots";
 import { sendCastSnapshot } from "../cast/googleCast";
+import { sendDirectCastSnapshot } from "../cast/directCast";
 
 
 
@@ -1333,7 +1334,7 @@ const activeTeam = React.useMemo(() => {
             active: String(activePlayerId || "") === String(p.id),
           }));
 
-      sendCastSnapshot({
+      const snapshot = {
         game: "x01",
         title: isTeamsMode ? "X01 Teams" : "X01",
         status: status === "finished" ? "finished" : "live",
@@ -1344,7 +1345,9 @@ const activeTeam = React.useMemo(() => {
           outMode,
         },
         updatedAt: Date.now(),
-      });
+      };
+      sendCastSnapshot(snapshot).catch?.(() => undefined);
+      sendDirectCastSnapshot(snapshot).catch?.(() => undefined);
     } catch {}
   }, [isTeamsMode, teamsView, activeTeam, players, scores, config.startScore, activePlayerId, state, outMode, status]);
 
