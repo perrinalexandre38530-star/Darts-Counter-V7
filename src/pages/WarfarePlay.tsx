@@ -161,6 +161,11 @@ export default function WarfarePlay({ go, config }: Props) {
   const activeCursor = activeArmy === "TOP" ? cursorTop : cursorBottom;
   const activeTeam = teams[activeArmy];
   const activePlayer = activeTeam.length ? activeTeam[activeCursor % activeTeam.length] : null;
+
+  // Handicap: si activé, l'armée TOP (ou GAUCHE) joue en DOUBLE_ONLY
+  const activeRule: WarfareZoneRule =
+    normalized.handicapP1Harder && activeArmy === "TOP" ? "DOUBLE_ONLY" : normalized.zoneRule;
+
   const botAutoKeyRef = React.useRef("");
 
   React.useEffect(() => {
@@ -190,10 +195,6 @@ export default function WarfarePlay({ go, config }: Props) {
     },
     [statsByPlayerId]
   );
-
-  // Handicap: si activé, l'armée TOP (ou GAUCHE) joue en DOUBLE_ONLY
-  const activeRule: WarfareZoneRule =
-    normalized.handicapP1Harder && activeArmy === "TOP" ? "DOUBLE_ONLY" : normalized.zoneRule;
 
   const PAGE_BG = theme.bg;
   const CARD_BG = theme.card;

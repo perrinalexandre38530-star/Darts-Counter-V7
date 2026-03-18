@@ -15,12 +15,26 @@ function renderMeta(meta) {
   $meta.innerHTML = entries.map(([k, v]) => `<div class="pill">${String(k)} : ${String(v)}</div>`).join('');
 }
 
+function renderWaiting() {
+  $title.textContent = 'Multisports Scoring';
+  $status.textContent = 'Choisis ton mode de jeu depuis le téléphone.';
+  $meta.innerHTML = '';
+  $board.innerHTML = `
+    <div class="empty">
+      <div class="empty-card">
+        <div class="empty-badge">● Chromecast prêt</div>
+        <div class="empty-logo">Multisports Scoring</div>
+        <div class="empty-subtitle">Receiver connecté et en attente de données</div>
+        <div class="empty-choice">Choisis ton mode de jeu</div>
+        <div class="empty-help">Lance une partie sur le téléphone, puis le score s’affichera ici automatiquement.</div>
+      </div>
+    </div>
+  `;
+}
+
 function render(snapshot) {
   if (!snapshot || !asArray(snapshot.players).length) {
-    $title.textContent = 'Multisports Scoring';
-    $status.textContent = 'En attente de données…';
-    $meta.innerHTML = '';
-    $board.innerHTML = '<div class="empty">En attente d’un score envoyé depuis le téléphone…</div>';
+    renderWaiting();
     return;
   }
 
@@ -45,4 +59,4 @@ context.addCustomMessageListener(NAMESPACE, (event) => {
 });
 
 context.start(options);
-render(null);
+renderWaiting();

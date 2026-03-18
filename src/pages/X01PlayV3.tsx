@@ -1302,6 +1302,21 @@ const activeTeam = React.useMemo(() => {
 
   const currentVisit = state.visit;
 
+  // out mode ? (double / single / master) — selon config
+  const outMode: "double" | "simple" | "master" = React.useMemo(() => {
+    const raw =
+      (config as any).outMode ??
+      (config as any).finishMode ??
+      ((config as any).doubleOut === true ? "double" : null);
+
+    // ✅ Compat: certains anciens écrans utilisent "single" au lieu de "simple"
+    if (raw === "master") return "master";
+    if (raw === "simple" || raw === "single") return "simple";
+    if (raw === "double") return "double";
+    // défaut historique = double-out
+    return "double";
+  }, [config]);
+
   React.useEffect(() => {
     try {
       const castPlayers = isTeamsMode && Array.isArray(teamsView) && teamsView.length
@@ -1332,21 +1347,6 @@ const activeTeam = React.useMemo(() => {
       });
     } catch {}
   }, [isTeamsMode, teamsView, activeTeam, players, scores, config.startScore, activePlayerId, state, outMode, status]);
-
-    // out mode ? (double / single / master) — selon config
-  const outMode: "double" | "simple" | "master" = React.useMemo(() => {
-    const raw =
-      (config as any).outMode ??
-      (config as any).finishMode ??
-      ((config as any).doubleOut === true ? "double" : null);
-
-    // ✅ Compat: certains anciens écrans utilisent "single" au lieu de "simple"
-    if (raw === "master") return "master";
-    if (raw === "simple" || raw === "single") return "simple";
-    if (raw === "double") return "double";
-    // défaut historique = double-out
-    return "double";
-  }, [config]);
 
   // Affichage "Volée x/3" (désactivé par défaut) — active seulement si config.showThrowCounter === true
   const showThrowCounter = (config as any)?.showThrowCounter === true;

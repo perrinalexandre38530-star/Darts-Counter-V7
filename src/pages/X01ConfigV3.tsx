@@ -128,8 +128,7 @@ const PlayerDartBadge: React.FC<PlayerDartBadgeProps> = ({
     setFavorite(getFavoriteDartSetForProfile(profileId) || null);
   }, [profileId]);
 
-  if (!profileId) return null;
-
+  const hasProfile = !!profileId;
   const noneLabel = lang === "fr" ? "Aucune" : "None";
   const labelBase =
     lang === "fr"
@@ -180,6 +179,8 @@ const PlayerDartBadge: React.FC<PlayerDartBadgeProps> = ({
 
   // If no sets at all, still show "Aucune" but keep small
   const hasAny = (orderedSets || []).length > 0;
+
+  if (!hasProfile) return null;
 
   return (
     <button

@@ -31,25 +31,34 @@ export type PlayerLite = {
 
 export type WarfareZoneRule = "ANY" | "SINGLE_DOUBLE" | "DOUBLE_ONLY";
 export type WarfareLayout = "TOP_BOTTOM" | "LEFT_RIGHT";
-
-// Variantes BULL / DBULL
 export type WarfareBullRule = "NONE" | "BOMB" | "HEAL" | "CHOICE";
 
 export type WarfareTeams = {
-  TOP: PlayerLite[]; // armée "A"
-  BOTTOM: PlayerLite[]; // armée "B"
+  TOP: PlayerLite[];
+  BOTTOM: PlayerLite[];
 };
 
 export type WarfareConfig = {
   teams: WarfareTeams;
   zoneRule: WarfareZoneRule;
   friendlyFire: boolean;
-
-  // Handicap: si true, l'armée TOP joue en DOUBLE_ONLY, l'armée BOTTOM joue selon zoneRule
   handicapTopHarder?: boolean;
-
   layout: WarfareLayout;
   bullRule: WarfareBullRule;
+};
+
+type TeamBlockProps = {
+  teamKey: keyof WarfareTeams;
+  teams: WarfareTeams;
+  allPlayers: PlayerLite[];
+  bots: PlayerLite[];
+  labels: Record<keyof WarfareTeams, string>;
+  maxPerTeam: number;
+  cardBg: string;
+  theme: any;
+  t: (key: string, fallback?: string) => string;
+  addTo: (teamKey: keyof WarfareTeams, p: PlayerLite) => void;
+  removeFrom: (teamKey: keyof WarfareTeams, id: string) => void;
 };
 
 const LS_BOTS_KEY = "dc_bots_v1";
@@ -100,249 +109,226 @@ function pillStyle(active: boolean, theme: any): React.CSSProperties {
   };
 }
 
-// NOTE: avatars rendus via ProfileAvatar (médaillon), comme dans les autres configs.
-
-export default function WarfareConfigPage({ store, go }: Props) {
-  const { theme } = useTheme();
-  const { t } = useLang();
-
-  React.useLayoutEffect(() => {
-    try {
-      window.scrollTo(0, 0);
-      document.documentElement.scrollTop = 0;
-      document.body.scrollTop = 0;
-    } catch {}
-  }, []);
-
-  const locals: PlayerLite[] = React.useMemo(() => {
-    return (store?.profiles ?? [])
-      .filter((p: any) => !p?.isBot)
-      .map((p: any) => ({
-        id: String(p.id),
-        name: p?.name || p?.displayName || "Joueur",
-        avatarDataUrl: p?.avatarDataUrl || p?.avatar || null,
-        isBot: false,
-      }));
-  }, [store?.profiles]);
-
-  const bots: PlayerLite[] = React.useMemo(() => safeBots(), []);
-  const allPlayers = React.useMemo(() => dedupe([...(locals || [])]), [locals]);
-
-  // Selection (par armée)
-  const [teams, setTeams] = React.useState<WarfareTeams>(() => {
-    const base = (locals || []).slice(0, 2);
-    const p1 = base[0] || allPlayers[0];
-    const p2 = base[1] || allPlayers[1];
-    return {
-      TOP: p1 ? [p1] : [],
-      BOTTOM: p2 ? [p2] : [],
-    };
-  });
-
-  const [layout, setLayout] = React.useState<WarfareLayout>("TOP_BOTTOM");
-  const [zoneRule, setZoneRule] = React.useState<WarfareZoneRule>("ANY");
-  const [friendlyFire, setFriendlyFire] = React.useState(true);
-  const [handicapTopHarder, setHandicapTopHarder] = React.useState(false);
-
-  // Variantes BULL/DBULL
-  const [bullBomb, setBullBomb] = React.useState(false);
-  const [bullHeal, setBullHeal] = React.useState(false);
-
-  const bullRule: WarfareBullRule = React.useMemo(() => {
-    if (bullBomb && bullHeal) return "CHOICE";
-    if (bullBomb) return "BOMB";
-    if (bullHeal) return "HEAL";
-    return "NONE";
-  }, [bullBomb, bullHeal]);
-
-  const [infoOpen, setInfoOpen] = React.useState(false);
-
-  const countTop = teams.TOP.length;
-  const countBottom = teams.BOTTOM.length;
-  const total = countTop + countBottom;
-
-  const canStart = countTop >= 1 && countBottom >= 1 && countTop <= MAX_PER_TEAM && countBottom <= MAX_PER_TEAM;
-
-  function addTo(teamKey: keyof WarfareTeams, p: PlayerLite) {
-    setTeams((prev) => {
-      const alreadyInTop = prev.TOP.some((x) => x.id === p.id);
-      const alreadyInBottom = prev.BOTTOM.some((x) => x.id === p.id);
-      if (alreadyInTop || alreadyInBottom) return prev; // un joueur ne peut appartenir qu'à une armée
-
-      const next = { ...prev, [teamKey]: [...prev[teamKey]] } as WarfareTeams;
-      if (next[teamKey].length >= MAX_PER_TEAM) return prev;
-      next[teamKey].push(p);
-      return next;
-    });
-  }
-
-  function removeFrom(teamKey: keyof WarfareTeams, id: string) {
-    setTeams((prev) => ({ ...prev, [teamKey]: prev[teamKey].filter((x) => x.id !== id) }));
-  }
-
-  function start() {
-    if (!canStart) return;
-    const cfg: WarfareConfig = {
-      teams,
-      zoneRule,
-      friendlyFire,
-      handicapTopHarder,
-      layout,
-      bullRule,
-    };
-    go("warfare_play", { config: cfg });
-  }
-
-  const labels = React.useMemo(() => {
-    if (layout === "LEFT_RIGHT") {
-      return { TOP: t("warfare.army.left", "Armée GAUCHE"), BOTTOM: t("warfare.army.right", "Armée DROITE") };
-    }
-    return { TOP: t("warfare.army.top", "Armée SUPÉRIEURE"), BOTTOM: t("warfare.army.bottom", "Armée INFÉRIEURE") };
-  }, [layout, t]);
-
-  const CARD_BG = theme.card;
-  const PAGE_BG = theme.bg;
-
-  function TeamBlock({ teamKey }: { teamKey: keyof WarfareTeams }) {
-    const current = teams[teamKey];
-    const otherKey: keyof WarfareTeams = teamKey === "TOP" ? "BOTTOM" : "TOP";
-    const otherIds = new Set(teams[otherKey].map((p) => p.id));
-    const currentIds = new Set(current.map((p) => p.id));
-    // Dans le carrousel de sélection, on masque :
-    // - les joueurs déjà pris par l'autre armée
-    // - ET ceux déjà sélectionnés dans CETTE armée (sinon doublon visuel)
-    const candidates = allPlayers.filter((p) => !otherIds.has(p.id) && !currentIds.has(p.id));
-    const botCandidates = bots.filter((p) => !otherIds.has(p.id) && !currentIds.has(p.id));
-
-    const Medallion = ({ p, active }: { p: PlayerLite; active: boolean }) => (
+function Medallion({ p, active, theme }: { p: PlayerLite; active: boolean; theme: any }) {
+  return (
+    <div
+      style={{
+        width: 78,
+        height: 78,
+        borderRadius: "50%",
+        overflow: "hidden",
+        boxShadow: active ? `0 0 28px ${theme.primary}aa` : "0 0 14px rgba(0,0,0,0.65)",
+        background: active ? `radial-gradient(circle at 30% 20%, #fff8d0, ${theme.primary})` : "#111320",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+      }}
+    >
       <div
         style={{
-          width: 78,
-          height: 78,
+          width: "100%",
+          height: "100%",
           borderRadius: "50%",
           overflow: "hidden",
-          boxShadow: active ? `0 0 28px ${theme.primary}aa` : "0 0 14px rgba(0,0,0,0.65)",
-          background: active
-            ? `radial-gradient(circle at 30% 20%, #fff8d0, ${theme.primary})`
-            : "#111320",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
+          filter: active ? "none" : "grayscale(100%) brightness(0.55)",
+          opacity: active ? 1 : 0.6,
+          transition: "filter .2s ease, opacity .2s ease",
         }}
       >
-        <div
-          style={{
-            width: "100%",
-            height: "100%",
-            borderRadius: "50%",
-            overflow: "hidden",
-            filter: active ? "none" : "grayscale(100%) brightness(0.55)",
-            opacity: active ? 1 : 0.6,
-            transition: "filter .2s ease, opacity .2s ease",
-          }}
-        >
-          <ProfileAvatar profile={p as any} size={78} />
+        <ProfileAvatar profile={p as any} size={78} />
+      </div>
+    </div>
+  );
+}
+
+function TeamBlock({
+  teamKey,
+  teams,
+  allPlayers,
+  bots,
+  labels,
+  maxPerTeam,
+  cardBg,
+  theme,
+  t,
+  addTo,
+  removeFrom,
+}: TeamBlockProps) {
+  const current = teams[teamKey] || [];
+  const otherKey: keyof WarfareTeams = teamKey === "TOP" ? "BOTTOM" : "TOP";
+  const otherIds = new Set((teams[otherKey] || []).map((p) => p.id));
+  const currentIds = new Set(current.map((p) => p.id));
+
+  const candidates = allPlayers.filter((p) => !otherIds.has(p.id) && !currentIds.has(p.id));
+  const botCandidates = bots.filter((p) => !otherIds.has(p.id) && !currentIds.has(p.id));
+
+  return (
+    <div
+      style={{
+        padding: 14,
+        borderRadius: 18,
+        border: `1px solid ${theme.borderSoft}`,
+        background: cardBg,
+        boxShadow: "0 10px 24px rgba(0,0,0,0.55)",
+      }}
+    >
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+        <div style={{ fontWeight: 900, letterSpacing: 0.7, textTransform: "uppercase", color: theme.primary }}>
+          {labels[teamKey]}
+        </div>
+        <div style={{ fontSize: 12, color: theme.textSoft }}>
+          {current.length}/{maxPerTeam}
         </div>
       </div>
-    );
 
-    return (
       <div
+        className="dc-scroll-thin"
         style={{
-          padding: 14,
-          borderRadius: 18,
-          border: `1px solid ${theme.borderSoft}`,
-          background: CARD_BG,
-          boxShadow: "0 10px 24px rgba(0,0,0,0.55)",
+          marginTop: 12,
+          display: "flex",
+          gap: 18,
+          overflowX: "auto",
+          paddingBottom: 10,
+          paddingLeft: 6,
+          paddingRight: 6,
         }}
       >
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-          <div style={{ fontWeight: 900, letterSpacing: 0.7, textTransform: "uppercase", color: theme.primary }}>
-            {labels[teamKey]}
+        {current.length === 0 ? (
+          <div style={{ color: theme.textSoft, fontSize: 13, paddingBottom: 2 }}>
+            {t("warfare.team.empty", "Ajoute au moins 1 joueur")}
           </div>
-          <div style={{ fontSize: 12, color: theme.textSoft }}>{current.length}/{MAX_PER_TEAM}</div>
-        </div>
-
-        {/* Sélection actuelle (médaillons) */}
-        <div
-          className="dc-scroll-thin"
-          style={{
-            marginTop: 12,
-            display: "flex",
-            gap: 18,
-            overflowX: "auto",
-            paddingBottom: 10,
-            paddingLeft: 6,
-            paddingRight: 6,
-          }}
-        >
-          {current.length === 0 ? (
-            <div style={{ color: theme.textSoft, fontSize: 13, paddingBottom: 2 }}>
-              {t("warfare.team.empty", "Ajoute au moins 1 joueur")}
-            </div>
-          ) : (
-            current.map((p) => (
+        ) : (
+          current.map((p) => (
+            <div
+              key={p.id}
+              role="button"
+              onClick={() => removeFrom(teamKey, p.id)}
+              title={t("common.remove", "Retirer")}
+              style={{
+                minWidth: 122,
+                maxWidth: 122,
+                background: "transparent",
+                border: "none",
+                padding: 0,
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "center",
+                gap: 7,
+                flexShrink: 0,
+                cursor: "pointer",
+                userSelect: "none",
+              }}
+            >
+              <Medallion p={p} active={true} theme={theme} />
               <div
-                key={p.id}
-                role="button"
-                onClick={() => removeFrom(teamKey, p.id)}
-                title={t("common.remove", "Retirer")}
                 style={{
-                  minWidth: 122,
-                  maxWidth: 122,
-                  background: "transparent",
-                  border: "none",
-                  padding: 0,
-                  display: "flex",
-                  flexDirection: "column",
-                  alignItems: "center",
-                  gap: 7,
-                  flexShrink: 0,
-                  cursor: "pointer",
-                  userSelect: "none",
+                  fontSize: 12,
+                  fontWeight: 800,
+                  textAlign: "center",
+                  color: "#f6f2e9",
+                  maxWidth: "100%",
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  whiteSpace: "nowrap",
                 }}
+                title={p.name}
               >
-                <Medallion p={p} active={true} />
-                <div
-                  style={{
-                    fontSize: 12,
-                    fontWeight: 800,
-                    textAlign: "center",
-                    color: "#f6f2e9",
-                    maxWidth: "100%",
-                    overflow: "hidden",
-                    textOverflow: "ellipsis",
-                    whiteSpace: "nowrap",
-                  }}
-                  title={p.name}
-                >
-                  {p.name}
-                </div>
+                {p.name}
               </div>
-            ))
-          )}
-        </div>
+            </div>
+          ))
+        )}
+      </div>
 
-        {/* Carrousel de sélection */}
-        <div style={{ marginTop: 6, fontSize: 12, color: theme.textSoft }}>
-          {t("warfare.team.pick", "Sélectionner des joueurs")}
-        </div>
+      <div style={{ marginTop: 6, fontSize: 12, color: theme.textSoft }}>
+        {t("warfare.team.pick", "Sélectionner des joueurs")}
+      </div>
 
-        <div
-          className="dc-scroll-thin"
-          style={{
-            marginTop: 10,
-            display: "flex",
-            gap: 18,
-            overflowX: "auto",
-            paddingBottom: 10,
-            paddingLeft: 6,
-            paddingRight: 6,
-          }}
-        >
-          {candidates.map((p) => {
-            const inThis = current.some((x) => x.id === p.id);
-            const full = !inThis && current.length >= MAX_PER_TEAM;
+      <div
+        className="dc-scroll-thin"
+        style={{
+          marginTop: 10,
+          display: "flex",
+          gap: 18,
+          overflowX: "auto",
+          paddingBottom: 10,
+          paddingLeft: 6,
+          paddingRight: 6,
+        }}
+      >
+        {candidates.map((p) => {
+          const full = current.length >= maxPerTeam;
+          const disabled = full;
+
+          return (
+            <div
+              key={p.id}
+              role="button"
+              onClick={() => {
+                if (disabled) return;
+                addTo(teamKey, p);
+              }}
+              title={disabled ? t("warfare.team.full", "Armée complète") : p.name}
+              style={{
+                minWidth: 122,
+                maxWidth: 122,
+                background: "transparent",
+                border: "none",
+                padding: 0,
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "center",
+                gap: 7,
+                flexShrink: 0,
+                cursor: disabled ? "default" : "pointer",
+                userSelect: "none",
+                opacity: disabled ? 0.45 : 1,
+              }}
+            >
+              <Medallion p={p} active={false} theme={theme} />
+              <div
+                style={{
+                  fontSize: 12,
+                  fontWeight: 800,
+                  textAlign: "center",
+                  color: theme.text,
+                  maxWidth: "100%",
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  whiteSpace: "nowrap",
+                }}
+                title={p.name}
+              >
+                {p.name}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      <div style={{ marginTop: 12, fontSize: 12, color: theme.textSoft }}>
+        {t("common.bots", "Bots IA")}
+      </div>
+
+      <div
+        className="dc-scroll-thin"
+        style={{
+          marginTop: 10,
+          display: "flex",
+          gap: 18,
+          overflowX: "auto",
+          paddingBottom: 10,
+          paddingLeft: 6,
+          paddingRight: 6,
+        }}
+      >
+        {botCandidates.length === 0 ? (
+          <div style={{ color: theme.textSoft, fontSize: 13, paddingBottom: 2 }}>
+            {t("common.noBots", "Aucun bot créé.")}
+          </div>
+        ) : (
+          botCandidates.map((p) => {
+            const full = current.length >= maxPerTeam;
             const disabled = full;
 
             return (
@@ -351,8 +337,7 @@ export default function WarfareConfigPage({ store, go }: Props) {
                 role="button"
                 onClick={() => {
                   if (disabled) return;
-                  if (inThis) removeFrom(teamKey, p.id);
-                  else addTo(teamKey, p);
+                  addTo(teamKey, p);
                 }}
                 title={disabled ? t("warfare.team.full", "Armée complète") : p.name}
                 style={{
@@ -371,13 +356,13 @@ export default function WarfareConfigPage({ store, go }: Props) {
                   opacity: disabled ? 0.45 : 1,
                 }}
               >
-                <Medallion p={p} active={inThis} />
+                <Medallion p={p} active={false} theme={theme} />
                 <div
                   style={{
                     fontSize: 12,
                     fontWeight: 800,
                     textAlign: "center",
-                    color: inThis ? theme.primary : theme.text,
+                    color: theme.text,
                     maxWidth: "100%",
                     overflow: "hidden",
                     textOverflow: "ellipsis",
@@ -389,88 +374,120 @@ export default function WarfareConfigPage({ store, go }: Props) {
                 </div>
               </div>
             );
-          })}
-        </div>
-
-        <div style={{ marginTop: 12, fontSize: 12, color: theme.textSoft }}>
-          {t("common.bots", "Bots IA")}
-        </div>
-
-        <div
-          className="dc-scroll-thin"
-          style={{
-            marginTop: 10,
-            display: "flex",
-            gap: 18,
-            overflowX: "auto",
-            paddingBottom: 10,
-            paddingLeft: 6,
-            paddingRight: 6,
-          }}
-        >
-          {botCandidates.length === 0 ? (
-            <div style={{ color: theme.textSoft, fontSize: 13, paddingBottom: 2 }}>
-              {t("common.noBots", "Aucun bot créé.")}
-            </div>
-          ) : (
-            botCandidates.map((p) => {
-              const inThis = current.some((x) => x.id === p.id);
-              const full = !inThis && current.length >= MAX_PER_TEAM;
-              const disabled = full;
-
-              return (
-                <div
-                  key={p.id}
-                  role="button"
-                  onClick={() => {
-                    if (disabled) return;
-                    if (inThis) removeFrom(teamKey, p.id);
-                    else addTo(teamKey, p);
-                  }}
-                  title={disabled ? t("warfare.team.full", "Armée complète") : p.name}
-                  style={{
-                    minWidth: 122,
-                    maxWidth: 122,
-                    background: "transparent",
-                    border: "none",
-                    padding: 0,
-                    display: "flex",
-                    flexDirection: "column",
-                    alignItems: "center",
-                    gap: 7,
-                    flexShrink: 0,
-                    cursor: disabled ? "default" : "pointer",
-                    userSelect: "none",
-                    opacity: disabled ? 0.45 : 1,
-                  }}
-                >
-                  <Medallion p={p} active={inThis} />
-                  <div
-                    style={{
-                      fontSize: 12,
-                      fontWeight: 800,
-                      textAlign: "center",
-                      color: inThis ? theme.primary : theme.text,
-                      maxWidth: "100%",
-                      overflow: "hidden",
-                      textOverflow: "ellipsis",
-                      whiteSpace: "nowrap",
-                    }}
-                    title={p.name}
-                  >
-                    {p.name}
-                  </div>
-                </div>
-              );
-            })
-          )}
-        </div>
-
-        <div style={{ marginTop: 6, fontSize: 12, color: theme.textSoft }}>
-          {t("warfare.team.hint", "Un joueur choisi dans une armée disparaît de l’autre carrousel.")}
-        </div>
+          })
+        )}
       </div>
-    );
+
+      <div style={{ marginTop: 6, fontSize: 12, color: theme.textSoft }}>
+        {t("warfare.team.hint", "Un joueur choisi dans une armée disparaît de l’autre carrousel.")}
+      </div>
+    </div>
+  );
+}
+
+export default function WarfareConfigPage({ store, go }: Props) {
+  const { theme } = useTheme();
+  const { t } = useLang();
+
+  React.useLayoutEffect(() => {
+    try {
+      window.scrollTo(0, 0);
+      document.documentElement.scrollTop = 0;
+      document.body.scrollTop = 0;
+    } catch {}
+  }, []);
+
+  const locals = React.useMemo<PlayerLite[]>(() => {
+    return (store?.profiles ?? [])
+      .filter((p: any) => !p?.isBot)
+      .map((p: any) => ({
+        id: String(p.id),
+        name: p?.name || p?.displayName || "Joueur",
+        avatarDataUrl: p?.avatarDataUrl || p?.avatar || null,
+        isBot: false,
+      }));
+  }, [store?.profiles]);
+
+  const bots = React.useMemo<PlayerLite[]>(() => safeBots(), []);
+  const allPlayers = React.useMemo<PlayerLite[]>(() => dedupe([...(locals || [])]), [locals]);
+
+  const [teams, setTeams] = React.useState<WarfareTeams>(() => {
+    const base = (locals || []).slice(0, 2);
+    return {
+      TOP: base[0] ? [base[0]] : [],
+      BOTTOM: base[1] ? [base[1]] : [],
+    };
+  });
+
+  const [layout, setLayout] = React.useState<WarfareLayout>("TOP_BOTTOM");
+  const [zoneRule, setZoneRule] = React.useState<WarfareZoneRule>("ANY");
+  const [friendlyFire, setFriendlyFire] = React.useState(true);
+  const [handicapTopHarder, setHandicapTopHarder] = React.useState(false);
+  const [bullBomb, setBullBomb] = React.useState(false);
+  const [bullHeal, setBullHeal] = React.useState(false);
+  const [infoOpen, setInfoOpen] = React.useState(false);
+
+  const bullRule = React.useMemo<WarfareBullRule>(() => {
+    if (bullBomb && bullHeal) return "CHOICE";
+    if (bullBomb) return "BOMB";
+    if (bullHeal) return "HEAL";
+    return "NONE";
+  }, [bullBomb, bullHeal]);
+
+  const labels = React.useMemo<Record<keyof WarfareTeams, string>>(() => {
+    if (layout === "LEFT_RIGHT") {
+      return {
+        TOP: t("warfare.army.left", "Armée GAUCHE"),
+        BOTTOM: t("warfare.army.right", "Armée DROITE"),
+      };
+    }
+    return {
+      TOP: t("warfare.army.top", "Armée SUPÉRIEURE"),
+      BOTTOM: t("warfare.army.bottom", "Armée INFÉRIEURE"),
+    };
+  }, [layout, t]);
+
+  const cardBg = theme.card;
+  const pageBg = theme.bg;
+  const countTop = teams.TOP.length;
+  const countBottom = teams.BOTTOM.length;
+  const total = countTop + countBottom;
+  const canStart = countTop >= 1 && countBottom >= 1 && countTop <= MAX_PER_TEAM && countBottom <= MAX_PER_TEAM;
+
+  const addTo = React.useCallback((teamKey: keyof WarfareTeams, p: PlayerLite) => {
+    setTeams((prev) => {
+      const alreadyInTop = prev.TOP.some((x) => x.id === p.id);
+      const alreadyInBottom = prev.BOTTOM.some((x) => x.id === p.id);
+      if (alreadyInTop || alreadyInBottom) return prev;
+
+      const next: WarfareTeams = {
+        TOP: [...prev.TOP],
+        BOTTOM: [...prev.BOTTOM],
+      };
+      if (next[teamKey].length >= MAX_PER_TEAM) return prev;
+      next[teamKey].push(p);
+      return next;
+    });
+  }, []);
+
+  const removeFrom = React.useCallback((teamKey: keyof WarfareTeams, id: string) => {
+    setTeams((prev) => ({
+      ...prev,
+      [teamKey]: prev[teamKey].filter((x) => x.id !== id),
+    }));
+  }, []);
+
+  function start() {
+    if (!canStart) return;
+    const cfg: WarfareConfig = {
+      teams,
+      zoneRule,
+      friendlyFire,
+      handicapTopHarder,
+      layout,
+      bullRule,
+    };
+    go("warfare_play", { config: cfg });
   }
 
   return (
@@ -478,65 +495,84 @@ export default function WarfareConfigPage({ store, go }: Props) {
       style={{
         minHeight: "100vh",
         padding: 16,
-        // IMPORTANT: plus grand paddingBottom pour ne rien cacher sous CTA + BottomNav
         paddingBottom: 190,
-        background: PAGE_BG,
+        background: pageBg,
         color: theme.text,
       }}
     >
-      
-{/* Header ticker */}
-<div
-  style={{
-    position: "sticky",
-    top: 0,
-    zIndex: 60,
-    paddingTop: "env(safe-area-inset-top)",
-    marginBottom: 14,
-  }}
->
-  <div style={{ position: "relative", marginLeft: -16, marginRight: -16 }}>
-    <img
-      src={tickerWarfare as any}
-      alt="Warfare"
-      draggable={false}
-      style={{ width: "100%", height: 92, objectFit: "cover", display: "block" }}
-    />
-    <div
-      style={{
-        position: "absolute",
-        inset: 0,
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "space-between",
-        padding: "0 16px",
-        pointerEvents: "none",
-      }}
-    >
-      <div style={{ pointerEvents: "auto" }}>
-        <BackDot onClick={() => go("games")} glow={theme.primary + "88"} title={t("common.back", "Retour")} />
+      <div
+        style={{
+          position: "sticky",
+          top: 0,
+          zIndex: 60,
+          paddingTop: "env(safe-area-inset-top)",
+          marginBottom: 14,
+        }}
+      >
+        <div style={{ position: "relative", marginLeft: -16, marginRight: -16 }}>
+          <img
+            src={tickerWarfare as any}
+            alt="Warfare"
+            draggable={false}
+            style={{ width: "100%", height: 92, objectFit: "cover", display: "block" }}
+          />
+          <div
+            style={{
+              position: "absolute",
+              inset: 0,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              padding: "0 16px",
+              pointerEvents: "none",
+            }}
+          >
+            <div style={{ pointerEvents: "auto" }}>
+              <BackDot onClick={() => go("games")} glow={theme.primary + "88"} title={t("common.back", "Retour")} />
+            </div>
+            <div style={{ pointerEvents: "auto" }}>
+              <InfoDot onClick={() => setInfoOpen(true)} glow={theme.primary + "88"} />
+            </div>
+          </div>
+        </div>
       </div>
-      <div style={{ pointerEvents: "auto" }}>
-        <InfoDot onClick={() => setInfoOpen(true)} glow={theme.primary + "88"} />
-      </div>
-    </div>
-  </div>
-</div>
 
-      {/* Teams */}
       <div style={{ marginTop: 16, display: "flex", flexDirection: "column", gap: 12 }}>
-        <TeamBlock teamKey="TOP" />
-        <TeamBlock teamKey="BOTTOM" />
+        <TeamBlock
+          teamKey="TOP"
+          teams={teams}
+          allPlayers={allPlayers}
+          bots={bots}
+          labels={labels}
+          maxPerTeam={MAX_PER_TEAM}
+          cardBg={cardBg}
+          theme={theme}
+          t={t}
+          addTo={addTo}
+          removeFrom={removeFrom}
+        />
+        <TeamBlock
+          teamKey="BOTTOM"
+          teams={teams}
+          allPlayers={allPlayers}
+          bots={bots}
+          labels={labels}
+          maxPerTeam={MAX_PER_TEAM}
+          cardBg={cardBg}
+          theme={theme}
+          t={t}
+          addTo={addTo}
+          removeFrom={removeFrom}
+        />
       </div>
 
-      {/* Options */}
       <div
         style={{
           marginTop: 14,
           padding: 14,
           borderRadius: 18,
           border: `1px solid ${theme.borderSoft}`,
-          background: CARD_BG,
+          background: cardBg,
           boxShadow: "0 10px 24px rgba(0,0,0,0.55)",
         }}
       >
@@ -544,7 +580,6 @@ export default function WarfareConfigPage({ store, go }: Props) {
           {t("warfare.options", "Options")}
         </div>
 
-        {/* Disposition */}
         <div style={{ marginTop: 12, fontSize: 12, color: theme.textSoft }}>
           {t("warfare.layout", "Disposition des camps")}
         </div>
@@ -557,7 +592,6 @@ export default function WarfareConfigPage({ store, go }: Props) {
           </button>
         </div>
 
-        {/* Zones valides */}
         <div style={{ marginTop: 14, fontSize: 12, color: theme.textSoft }}>
           {t("warfare.zones", "Zones valides")}
         </div>
@@ -573,7 +607,6 @@ export default function WarfareConfigPage({ store, go }: Props) {
           </button>
         </div>
 
-        {/* Friendly fire + handicap */}
         <div style={{ marginTop: 14, display: "flex", flexDirection: "column", gap: 10 }}>
           <label style={{ display: "flex", gap: 10, alignItems: "center", cursor: "pointer" }}>
             <input type="checkbox" checked={friendlyFire} onChange={(e) => setFriendlyFire(e.target.checked)} />
@@ -596,7 +629,6 @@ export default function WarfareConfigPage({ store, go }: Props) {
           </label>
         </div>
 
-        {/* Variantes Bull/DBull */}
         <div style={{ marginTop: 14, fontSize: 12, color: theme.textSoft }}>
           {t("warfare.bullVariants", "Variantes Bull / DBull")}
         </div>
@@ -626,7 +658,6 @@ export default function WarfareConfigPage({ store, go }: Props) {
           </div>
         </div>
 
-        {/* Validation */}
         <div style={{ marginTop: 14, fontSize: 12, color: canStart ? theme.textSoft : "#ff8a8a" }}>
           {canStart
             ? t("warfare.valid", `OK — ${countTop} vs ${countBottom} (total ${total}/12)`)
@@ -634,7 +665,6 @@ export default function WarfareConfigPage({ store, go }: Props) {
         </div>
       </div>
 
-      {/* Info overlay (simple) */}
       {infoOpen && (
         <div
           onClick={() => setInfoOpen(false)}
@@ -760,23 +790,19 @@ export default function WarfareConfigPage({ store, go }: Props) {
                 {t("warfare.rules.win.title", "Victoire")}
               </div>
               <div>
-                {t(
-                  "warfare.rules.win.body",
-                  "Tu gagnes dès que les 10 soldats de l’armée adverse sont éliminés."
-                )}
+                {t("warfare.rules.win.body", "Tu gagnes dès que les 10 soldats de l’armée adverse sont éliminés.")}
               </div>
             </div>
           </div>
         </div>
       )}
 
-      {/* CTA sticky (au-dessus du BottomNav) */}
       <div
         style={{
           position: "fixed",
           left: 0,
           right: 0,
-          bottom: 78, // hauteur BottomNav ~ 64 + marge
+          bottom: 78,
           padding: 14,
           background: "linear-gradient(180deg, rgba(0,0,0,0), rgba(0,0,0,.85))",
           zIndex: 9999,
