@@ -29,7 +29,7 @@ export default function GlobalCastButton({ accent, textMain, textSoft }: Props) 
   const handleClick = async () => {
     if (busy) return;
     if (!isGoogleCastSupported()) {
-      alert("Google Cast indisponible sur cet appareil ou navigateur.");
+      alert("Google Cast indisponible sur cet appareil / navigateur.");
       return;
     }
 
@@ -40,7 +40,7 @@ export default function GlobalCastButton({ accent, textMain, textSoft }: Props) 
       } else {
         const res = await requestGoogleCastSession();
         if (!res.ok && res.reason !== "cancel") {
-          alert(`Impossible d'ouvrir Cast (${res.reason}).`);
+          alert(`Cast indisponible: ${res.reason}`);
         }
       }
     } finally {
@@ -52,8 +52,8 @@ export default function GlobalCastButton({ accent, textMain, textSoft }: Props) 
     <button
       type="button"
       onClick={handleClick}
-      className="tab pill"
       title={isCasting ? "Arrêter le cast" : "Caster sur un appareil"}
+      className="tab pill"
       style={{
         background: "transparent",
         border: 0,

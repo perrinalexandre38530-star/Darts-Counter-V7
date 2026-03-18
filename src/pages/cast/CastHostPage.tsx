@@ -2,7 +2,6 @@ import React from "react";
 import {
   DEFAULT_GOOGLE_CAST_APP_ID,
   endGoogleCastSession,
-  ensureGoogleCastReady,
   getGoogleCastAppId,
   getGoogleCastState,
   requestGoogleCastSession,
@@ -11,14 +10,12 @@ import {
   subscribeGoogleCastStatus,
 } from "../../cast/googleCast";
 
-type Props = {
-  go: (tab: any, params?: any) => void;
-};
+type Props = { go: (to: string, params?: any) => void };
 
 function cardStyle(): React.CSSProperties {
   return {
-    background: "linear-gradient(180deg, rgba(20,24,31,.96), rgba(10,12,17,.96))",
     border: "1px solid rgba(255,255,255,.08)",
+    background: "linear-gradient(180deg, rgba(20,24,31,.96), rgba(10,12,17,.96))",
     borderRadius: 20,
     padding: 18,
     boxShadow: "0 18px 50px rgba(0,0,0,.32)",
@@ -60,27 +57,17 @@ export default function CastHostPage({ go }: Props) {
     return subscribeGoogleCastStatus(refresh);
   }, []);
 
-  async function saveAppId() {
+  function saveAppId() {
     setGoogleCastAppId(appId || DEFAULT_GOOGLE_CAST_APP_ID);
-    const ok = await ensureGoogleCastReady();
     setState(getGoogleCastState());
-    setMessage(
-      ok
-        ? `Receiver App ID enregistré : ${getGoogleCastAppId()}`
-        : "Impossible d’initialiser Google Cast avec cet App ID."
-    );
+    setMessage(`Receiver App ID enregistré : ${getGoogleCastAppId()}`);
   }
 
-  async function restoreDefault() {
+  function restoreDefault() {
     resetGoogleCastAppId();
     setAppIdState(getGoogleCastAppId());
-    const ok = await ensureGoogleCastReady();
     setState(getGoogleCastState());
-    setMessage(
-      ok
-        ? `App ID par défaut restauré : ${getGoogleCastAppId()}`
-        : "Impossible de restaurer l’App ID par défaut."
-    );
+    setMessage(`App ID par défaut restauré : ${getGoogleCastAppId()}`);
   }
 
   async function start() {
@@ -89,11 +76,7 @@ export default function CastHostPage({ go }: Props) {
     if (res.ok) {
       const next = getGoogleCastState();
       setState(next);
-      setMessage(
-        next.deviceName
-          ? `Chromecast connecté : ${next.deviceName}`
-          : "Session Cast démarrée."
-      );
+      setMessage(next.deviceName ? `Chromecast connecté : ${next.deviceName}` : "Session Cast démarrée.");
     } else {
       setMessage(`Impossible d’ouvrir le dialogue Cast (${res.reason}).`);
     }
@@ -166,49 +149,15 @@ export default function CastHostPage({ go }: Props) {
             </div>
 
             <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-              <button
-                onClick={start}
-                disabled={loading}
-                style={{
-                  borderRadius: 14,
-                  padding: "14px 18px",
-                  border: 0,
-                  background: "linear-gradient(180deg,#10b981,#059669)",
-                  color: "#04130d",
-                  fontWeight: 1000,
-                  cursor: "pointer",
-                }}
-              >
+              <button onClick={start} disabled={loading} style={{ borderRadius: 14, padding: "14px 18px", border: 0, background: "linear-gradient(180deg,#10b981,#059669)", color: "#04130d", fontWeight: 1000, cursor: "pointer" }}>
                 Lancer le Cast
               </button>
-              <button
-                onClick={stop}
-                disabled={loading}
-                style={{
-                  borderRadius: 14,
-                  padding: "14px 18px",
-                  border: "1px solid rgba(255,255,255,.12)",
-                  background: "rgba(255,255,255,.06)",
-                  color: "#fff",
-                  fontWeight: 900,
-                  cursor: "pointer",
-                }}
-              >
+              <button onClick={stop} disabled={loading} style={{ borderRadius: 14, padding: "14px 18px", border: "1px solid rgba(255,255,255,.12)", background: "rgba(255,255,255,.06)", color: "#fff", fontWeight: 900, cursor: "pointer" }}>
                 Arrêter
               </button>
             </div>
 
             <div style={{ marginTop: 14, fontSize: 14, color: "#cbd5e1" }}>{message}</div>
-          </div>
-
-          <div style={cardStyle()}>
-            <div style={{ fontSize: 20, fontWeight: 900, marginBottom: 10 }}>Ordre de test</div>
-            <ol style={{ margin: 0, paddingLeft: 18, lineHeight: 1.65, color: "#d1d5db" }}>
-              <li>Ouvre le receiver sur <strong>/cast/</strong> pour vérifier qu’il répond.</li>
-              <li>Depuis l’app, clique sur le bouton Cast ou sur “Lancer le Cast”.</li>
-              <li>Sélectionne ta Freebox Player POP ou ta Mi Box.</li>
-              <li>Lance ensuite une partie X01 : les snapshots partent automatiquement vers la TV.</li>
-            </ol>
           </div>
         </div>
       </div>
