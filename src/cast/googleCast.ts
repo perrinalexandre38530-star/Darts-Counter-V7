@@ -5,6 +5,7 @@ export const GOOGLE_CAST_APP_ID_KEY = "multisports_google_cast_app_id";
 export const GOOGLE_CAST_NAMESPACE = "urn:x-cast:com.multisports.scoreboard";
 export const GOOGLE_CAST_SDK_URL =
   "https://www.gstatic.com/cv/js/sender/v1/cast_sender.js?loadCastFramework=1";
+const GOOGLE_CAST_DIAG_KEY = "multisports_google_cast_diag";
 
 let sdkPromise: Promise<boolean> | null = null;
 let initializedAppId: string | null = null;
@@ -12,6 +13,17 @@ let initializedAppId: string | null = null;
 function emitStatus() {
   try {
     window.dispatchEvent(new CustomEvent("multisports-google-cast-status"));
+  } catch {}
+}
+
+function pushDiag(entry: string, extra?: any) {
+  try {
+    const now = new Date().toISOString();
+    const prev = JSON.parse(window.localStorage.getItem(GOOGLE_CAST_DIAG_KEY) || "[]");
+    const next = Array.isArray(prev) ? prev : [];
+    next.push({ now, entry, extra: extra == null ? null : extra });
+    while (next.length > 50) next.shift();
+    window.localStorage.setItem(GOOGLE_CAST_DIAG_KEY, JSON.stringify(next));
   } catch {}
 }
 
@@ -31,14 +43,25 @@ function getCastContext() {
   }
 }
 
+function safeString(value: any) {
+  if (value == null) return "";
+  if (typeof value === "string") return value;
+  if (typeof value === "number" || typeof value === "boolean") return String(value);
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return String(value);
+  }
+}
+
 function sanitizeSnapshot(snapshot: CastSnapshot) {
   try {
     return JSON.parse(
       JSON.stringify({
-        game: snapshot.game || "",
-        title: snapshot.title || "",
-        status: snapshot.status || "live",
-        players: Array.isArray(snapshot.players)
+        game: snapshot?.game || "",
+        title: snapshot?.title || "",
+        status: snapshot?.status || "live",
+        players: Array.isArray(snapshot?.players)
           ? snapshot.players.map((p: any) => ({
               id: String(p?.id ?? ""),
               name: String(p?.name ?? "Joueur"),
@@ -47,15 +70,16 @@ function sanitizeSnapshot(snapshot: CastSnapshot) {
             }))
           : [],
         meta:
-          snapshot.meta && typeof snapshot.meta === "object"
+          snapshot?.meta && typeof snapshot.meta === "object"
             ? Object.fromEntries(
-                Object.entries(snapshot.meta).map(([k, v]) => [String(k), v == null ? "" : String(v)])
+                Object.entries(snapshot.meta).map(([k, v]) => [String(k), safeString(v)])
               )
             : {},
-        updatedAt: Number((snapshot as any).updatedAt || Date.now()),
+        updatedAt: Number((snapshot as any)?.updatedAt || Date.now()),
       })
     );
-  } catch {
+  } catch (err) {
+    pushDiag("sanitize_snapshot_failed", String(err));
     return {
       game: "unknown",
       title: "Multisports Scoring",
@@ -81,6 +105,7 @@ export function setGoogleCastAppId(appId: string) {
     const next = normalizeAppId(appId) || DEFAULT_GOOGLE_CAST_APP_ID;
     window.localStorage.setItem(GOOGLE_CAST_APP_ID_KEY, next);
     initializedAppId = null;
+    pushDiag("set_app_id", next);
   } catch {}
   emitStatus();
 }
@@ -89,8 +114,23 @@ export function resetGoogleCastAppId() {
   try {
     window.localStorage.removeItem(GOOGLE_CAST_APP_ID_KEY);
     initializedAppId = null;
+    pushDiag("reset_app_id");
   } catch {}
   emitStatus();
+}
+
+export function getGoogleCastDiagLog() {
+  try {
+    return JSON.parse(window.localStorage.getItem(GOOGLE_CAST_DIAG_KEY) || "[]");
+  } catch {
+    return [];
+  }
+}
+
+export function clearGoogleCastDiagLog() {
+  try {
+    window.localStorage.removeItem(GOOGLE_CAST_DIAG_KEY);
+  } catch {}
 }
 
 export function isGoogleCastConfigured() {
@@ -110,6 +150,7 @@ export async function loadGoogleCastSdk(): Promise<boolean> {
 
   sdkPromise = new Promise<boolean>((resolve) => {
     const finish = (ok: boolean) => {
+      pushDiag("sdk_finish", ok);
       emitStatus();
       resolve(ok);
     };
@@ -132,7 +173,7 @@ export async function loadGoogleCastSdk(): Promise<boolean> {
         return;
       }
       existing.addEventListener("error", () => finish(false), { once: true });
-      window.setTimeout(() => finish(hasSdkLoaded()), 2000);
+      window.setTimeout(() => finish(hasSdkLoaded()), 2500);
       return;
     }
 
@@ -141,6 +182,7 @@ export async function loadGoogleCastSdk(): Promise<boolean> {
     script.async = true;
     script.onerror = () => finish(false);
     document.head.appendChild(script);
+    pushDiag("sdk_injected");
   });
 
   return sdkPromise;
@@ -162,12 +204,15 @@ export async function ensureGoogleCastReady(): Promise<boolean> {
     cast.framework.CastContext.getInstance().setOptions({
       receiverApplicationId: appId,
       autoJoinPolicy: chrome.cast.AutoJoinPolicy.ORIGIN_SCOPED,
+      resumeSavedSession: true,
     });
     initializedAppId = appId;
+    pushDiag("cast_set_options", appId);
     emitStatus();
     return true;
   } catch (err) {
     console.error("[googleCast] setOptions failed", err);
+    pushDiag("cast_set_options_failed", String(err));
     return false;
   }
 }
@@ -193,6 +238,7 @@ export function getGoogleCastState() {
 export async function requestGoogleCastSession() {
   const ready = await ensureGoogleCastReady();
   if (!ready) {
+    pushDiag("request_session_sdk_unavailable");
     return { ok: false as const, reason: "sdk_unavailable" as const };
   }
 
@@ -200,10 +246,12 @@ export async function requestGoogleCastSession() {
     const ctx = getCastContext();
     if (!ctx) return { ok: false as const, reason: "context_unavailable" as const };
     await ctx.requestSession();
+    pushDiag("request_session_ok");
     emitStatus();
     return { ok: true as const };
   } catch (err: any) {
     const code = String(err?.code || err?.message || "request_failed");
+    pushDiag("request_session_failed", code);
     return { ok: false as const, reason: code };
   }
 }
@@ -212,8 +260,11 @@ export async function endGoogleCastSession() {
   try {
     const state = getGoogleCastState();
     if (state.session?.endSession) state.session.endSession(true);
+    pushDiag("session_end");
     emitStatus();
-  } catch {}
+  } catch (err) {
+    pushDiag("session_end_failed", String(err));
+  }
 }
 
 export async function sendCastSnapshot(snapshot: CastSnapshot | null): Promise<boolean> {
@@ -222,13 +273,22 @@ export async function sendCastSnapshot(snapshot: CastSnapshot | null): Promise<b
   try {
     const state = getGoogleCastState();
     const raw = state.session?.getSessionObj?.();
-    if (!raw?.sendMessage) return false;
+    if (!raw?.sendMessage) {
+      pushDiag("send_snapshot_no_session");
+      return false;
+    }
 
     const payload = sanitizeSnapshot(snapshot);
     await raw.sendMessage(GOOGLE_CAST_NAMESPACE, payload);
+    pushDiag("send_snapshot_ok", {
+      game: payload.game,
+      title: payload.title,
+      players: Array.isArray(payload.players) ? payload.players.length : 0,
+    });
     return true;
   } catch (err) {
     console.warn("[googleCast] send snapshot failed", err);
+    pushDiag("send_snapshot_failed", String(err));
     return false;
   }
 }

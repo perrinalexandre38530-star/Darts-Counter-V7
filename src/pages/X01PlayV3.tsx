@@ -1318,6 +1318,8 @@ const activeTeam = React.useMemo(() => {
   }, [config]);
 
   React.useEffect(() => {
+    let cancelled = false;
+
     try {
       const castPlayers = isTeamsMode && Array.isArray(teamsView) && teamsView.length
         ? (teamsView as any[]).map((team: any) => ({
@@ -1345,8 +1347,19 @@ const activeTeam = React.useMemo(() => {
         },
         updatedAt: Date.now(),
       };
-      sendCastSnapshot(snapshot).catch?.(() => undefined);
-    } catch {}
+
+      const timer = window.setTimeout(() => {
+        if (cancelled) return;
+        Promise.resolve(sendCastSnapshot(snapshot)).catch(() => undefined);
+      }, 0);
+
+      return () => {
+        cancelled = true;
+        window.clearTimeout(timer);
+      };
+    } catch {
+      return;
+    }
   }, [isTeamsMode, teamsView, activeTeam, players, scores, config.startScore, activePlayerId, state, outMode, status]);
 
   // Affichage "Volée x/3" (désactivé par défaut) — active seulement si config.showThrowCounter === true
