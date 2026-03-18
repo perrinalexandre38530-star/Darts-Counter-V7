@@ -1,4 +1,3 @@
-
 import type { CastSnapshot } from "./castTypes";
 
 export const DEFAULT_GOOGLE_CAST_APP_ID = "3534BC6A";
@@ -16,22 +15,62 @@ function emitStatus() {
   } catch {}
 }
 
-function setLastCastError(message: string) {
-  try {
-    (window as any).__msLastCastError = message;
-    console.warn("[googleCast]", message);
-  } catch {}
-}
-
 function normalizeAppId(value: any): string {
   return String(value || "").trim().toUpperCase();
+}
+
+function hasSdkLoaded() {
+  return !!((window as any).cast?.framework && (window as any).chrome?.cast);
+}
+
+function getCastContext() {
+  try {
+    return (window as any).cast?.framework?.CastContext?.getInstance?.();
+  } catch {
+    return null;
+  }
+}
+
+function sanitizeSnapshot(snapshot: CastSnapshot) {
+  try {
+    return JSON.parse(
+      JSON.stringify({
+        game: snapshot.game || "",
+        title: snapshot.title || "",
+        status: snapshot.status || "live",
+        players: Array.isArray(snapshot.players)
+          ? snapshot.players.map((p: any) => ({
+              id: String(p?.id ?? ""),
+              name: String(p?.name ?? "Joueur"),
+              score: Number(p?.score ?? 0),
+              active: !!p?.active,
+            }))
+          : [],
+        meta:
+          snapshot.meta && typeof snapshot.meta === "object"
+            ? Object.fromEntries(
+                Object.entries(snapshot.meta).map(([k, v]) => [String(k), v == null ? "" : String(v)])
+              )
+            : {},
+        updatedAt: Number((snapshot as any).updatedAt || Date.now()),
+      })
+    );
+  } catch {
+    return {
+      game: "unknown",
+      title: "Multisports Scoring",
+      status: "live",
+      players: [],
+      meta: {},
+      updatedAt: Date.now(),
+    };
+  }
 }
 
 export function getGoogleCastAppId(): string {
   try {
     const stored = normalizeAppId(window.localStorage.getItem(GOOGLE_CAST_APP_ID_KEY));
-    if (!stored || stored === "CC1AD845") return DEFAULT_GOOGLE_CAST_APP_ID;
-    return stored;
+    return stored || DEFAULT_GOOGLE_CAST_APP_ID;
   } catch {
     return DEFAULT_GOOGLE_CAST_APP_ID;
   }
@@ -41,16 +80,16 @@ export function setGoogleCastAppId(appId: string) {
   try {
     const next = normalizeAppId(appId) || DEFAULT_GOOGLE_CAST_APP_ID;
     window.localStorage.setItem(GOOGLE_CAST_APP_ID_KEY, next);
+    initializedAppId = null;
   } catch {}
-  initializedAppId = null;
   emitStatus();
 }
 
 export function resetGoogleCastAppId() {
   try {
     window.localStorage.removeItem(GOOGLE_CAST_APP_ID_KEY);
+    initializedAppId = null;
   } catch {}
-  initializedAppId = null;
   emitStatus();
 }
 
@@ -61,16 +100,12 @@ export function isGoogleCastConfigured() {
 export function isGoogleCastSupported() {
   if (typeof window === "undefined") return false;
   const ua = navigator.userAgent || "";
-  return /Chrome|CriOS|Android|Edg/i.test(ua);
-}
-
-export function hasGoogleCastSdkLoaded() {
-  return !!((window as any).cast?.framework && (window as any).chrome?.cast);
+  return /Chrome|CriOS|Edg|Android/i.test(ua);
 }
 
 export async function loadGoogleCastSdk(): Promise<boolean> {
   if (typeof window === "undefined") return false;
-  if (hasGoogleCastSdkLoaded()) return true;
+  if (hasSdkLoaded()) return true;
   if (sdkPromise) return sdkPromise;
 
   sdkPromise = new Promise<boolean>((resolve) => {
@@ -79,17 +114,25 @@ export async function loadGoogleCastSdk(): Promise<boolean> {
       resolve(ok);
     };
 
-    const current = (window as any).__onGCastApiAvailable;
+    const existingCb = (window as any).__onGCastApiAvailable;
     (window as any).__onGCastApiAvailable = (available: boolean) => {
       try {
-        if (typeof current === "function") current(available);
+        if (typeof existingCb === "function") existingCb(available);
       } catch {}
       finish(!!available);
     };
 
-    const existing = document.querySelector(`script[src="${GOOGLE_CAST_SDK_URL}"]`) as HTMLScriptElement | null;
+    const existing = document.querySelector(
+      `script[src="${GOOGLE_CAST_SDK_URL}"]`
+    ) as HTMLScriptElement | null;
+
     if (existing) {
-      window.setTimeout(() => finish(hasGoogleCastSdkLoaded()), 1600);
+      if (hasSdkLoaded()) {
+        finish(true);
+        return;
+      }
+      existing.addEventListener("error", () => finish(false), { once: true });
+      window.setTimeout(() => finish(hasSdkLoaded()), 2000);
       return;
     }
 
@@ -105,25 +148,15 @@ export async function loadGoogleCastSdk(): Promise<boolean> {
 
 export async function ensureGoogleCastReady(): Promise<boolean> {
   const ok = await loadGoogleCastSdk();
-  if (!ok) {
-    setLastCastError("sdk_unavailable");
-    return false;
-  }
+  if (!ok) return false;
+
+  const appId = getGoogleCastAppId();
+  if (!appId) return false;
+  if (initializedAppId === appId) return true;
 
   const cast = (window as any).cast;
   const chrome = (window as any).chrome;
-  if (!cast?.framework || !chrome?.cast) {
-    setLastCastError("framework_unavailable");
-    return false;
-  }
-
-  const appId = getGoogleCastAppId();
-  if (!appId) {
-    setLastCastError("app_id_missing");
-    return false;
-  }
-
-  if (initializedAppId === appId) return true;
+  if (!cast?.framework || !chrome?.cast) return false;
 
   try {
     cast.framework.CastContext.getInstance().setOptions({
@@ -133,43 +166,44 @@ export async function ensureGoogleCastReady(): Promise<boolean> {
     initializedAppId = appId;
     emitStatus();
     return true;
-  } catch (err: any) {
-    setLastCastError(String(err?.message || err?.code || "setOptions_failed"));
+  } catch (err) {
+    console.error("[googleCast] setOptions failed", err);
     return false;
   }
 }
 
 export function getGoogleCastState() {
-  const cast = (window as any).cast;
-  const ctx = cast?.framework?.CastContext?.getInstance?.();
+  const ctx = getCastContext();
   const session = ctx?.getCurrentSession?.() || null;
   const castState = ctx?.getCastState?.() || "NO_DEVICES_AVAILABLE";
   const deviceName = session?.getCastDevice?.()?.friendlyName || "";
+
   return {
     supported: isGoogleCastSupported(),
     configured: isGoogleCastConfigured(),
     appId: getGoogleCastAppId(),
-    sdkLoaded: hasGoogleCastSdkLoaded(),
+    sdkLoaded: hasSdkLoaded(),
     castState,
     session,
     deviceName,
     isCasting: !!session,
-    lastError: (window as any).__msLastCastError || "",
   };
 }
 
 export async function requestGoogleCastSession() {
   const ready = await ensureGoogleCastReady();
-  if (!ready) return { ok: false as const, reason: "sdk_unavailable" as const };
+  if (!ready) {
+    return { ok: false as const, reason: "sdk_unavailable" as const };
+  }
 
   try {
-    const ctx = (window as any).cast.framework.CastContext.getInstance();
+    const ctx = getCastContext();
+    if (!ctx) return { ok: false as const, reason: "context_unavailable" as const };
     await ctx.requestSession();
     emitStatus();
     return { ok: true as const };
   } catch (err: any) {
     const code = String(err?.code || err?.message || "request_failed");
-    setLastCastError(code);
     return { ok: false as const, reason: code };
   }
 }
@@ -178,28 +212,8 @@ export async function endGoogleCastSession() {
   try {
     const state = getGoogleCastState();
     if (state.session?.endSession) state.session.endSession(true);
+    emitStatus();
   } catch {}
-  emitStatus();
-}
-
-function sanitizeSnapshot(snapshot: CastSnapshot) {
-  return JSON.parse(
-    JSON.stringify({
-      game: snapshot.game || "unknown",
-      title: String(snapshot.title || "Multisports Scoring"),
-      status: snapshot.status === "finished" ? "finished" : "live",
-      players: Array.isArray(snapshot.players)
-        ? snapshot.players.map((p: any) => ({
-            id: String(p?.id ?? ""),
-            name: String(p?.name ?? "Joueur"),
-            score: Number(p?.score ?? 0),
-            active: !!p?.active,
-          }))
-        : [],
-      meta: snapshot.meta || {},
-      updatedAt: Number(snapshot.updatedAt || Date.now()),
-    }),
-  );
 }
 
 export async function sendCastSnapshot(snapshot: CastSnapshot | null): Promise<boolean> {
@@ -210,45 +224,36 @@ export async function sendCastSnapshot(snapshot: CastSnapshot | null): Promise<b
     const raw = state.session?.getSessionObj?.();
     if (!raw?.sendMessage) return false;
 
-    await raw.sendMessage(GOOGLE_CAST_NAMESPACE, sanitizeSnapshot(snapshot));
+    const payload = sanitizeSnapshot(snapshot);
+    await raw.sendMessage(GOOGLE_CAST_NAMESPACE, payload);
     return true;
-  } catch (err: any) {
-    setLastCastError(String(err?.message || err?.code || "send_failed"));
+  } catch (err) {
+    console.warn("[googleCast] send snapshot failed", err);
     return false;
   }
 }
 
 export function subscribeGoogleCastStatus(cb: () => void) {
   const refresh = () => cb();
-  const cast = (window as any).cast;
   window.addEventListener("multisports-google-cast-status", refresh);
 
+  const cast = (window as any).cast;
+  const ctx = getCastContext();
+
   try {
-    cast?.framework?.CastContext?.getInstance?.()?.addEventListener?.(
-      cast.framework.CastContextEventType.CAST_STATE_CHANGED,
-      refresh,
-    );
+    ctx?.addEventListener?.(cast.framework.CastContextEventType.CAST_STATE_CHANGED, refresh);
   } catch {}
   try {
-    cast?.framework?.CastContext?.getInstance?.()?.addEventListener?.(
-      cast.framework.CastContextEventType.SESSION_STATE_CHANGED,
-      refresh,
-    );
+    ctx?.addEventListener?.(cast.framework.CastContextEventType.SESSION_STATE_CHANGED, refresh);
   } catch {}
 
   return () => {
     window.removeEventListener("multisports-google-cast-status", refresh);
     try {
-      cast?.framework?.CastContext?.getInstance?.()?.removeEventListener?.(
-        cast.framework.CastContextEventType.CAST_STATE_CHANGED,
-        refresh,
-      );
+      ctx?.removeEventListener?.(cast.framework.CastContextEventType.CAST_STATE_CHANGED, refresh);
     } catch {}
     try {
-      cast?.framework?.CastContext?.getInstance?.()?.removeEventListener?.(
-        cast.framework.CastContextEventType.SESSION_STATE_CHANGED,
-        refresh,
-      );
+      ctx?.removeEventListener?.(cast.framework.CastContextEventType.SESSION_STATE_CHANGED, refresh);
     } catch {}
   };
 }

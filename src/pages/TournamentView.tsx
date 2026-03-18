@@ -841,6 +841,7 @@ function getMatchScore(m: any) {
     (typeof m?.scoreA === "number" ? m.scoreA : null) ??
     (typeof m?.aScore === "number" ? m.aScore : null) ??
     (typeof m?.legsA === "number" ? m.legsA : null) ??
+    (typeof m?.setsA === "number" ? m.setsA : null) ??
     (typeof m?.result?.a === "number" ? m.result.a : null) ??
     (typeof m?.score?.a === "number" ? m.score.a : null) ??
     null;
@@ -849,24 +850,12 @@ function getMatchScore(m: any) {
     (typeof m?.scoreB === "number" ? m.scoreB : null) ??
     (typeof m?.bScore === "number" ? m.bScore : null) ??
     (typeof m?.legsB === "number" ? m.legsB : null) ??
+    (typeof m?.setsB === "number" ? m.setsB : null) ??
     (typeof m?.result?.b === "number" ? m.result.b : null) ??
     (typeof m?.score?.b === "number" ? m.score.b : null) ??
     null;
 
   if (a != null && b != null) return { a, b };
-
-  const status = String(m?.status || "");
-  const done = status === "done";
-  if (done) {
-    const w = String(m?.winnerId || "");
-    const A = String(m?.aPlayerId || "");
-    const B = String(m?.bPlayerId || "");
-    if (w && A && B) {
-      if (w === A) return { a: 1, b: 0 };
-      if (w === B) return { a: 0, b: 1 };
-    }
-  }
-
   return null;
 }
 
@@ -1023,7 +1012,7 @@ function resolvePlayerForSide(allMatches: any[], m: any, side: "a" | "b", player
   return { kind: "feeder" as const, feederA: pa, feederB: pb };
 }
 
-function WorldCupBracketViewPure({ koMatches, playersById, allMatches }: any) {
+function WorldCupBracketViewPure({ koMatches, playersById, allMatches, onOpenMatch }: any) {
   if (!koMatches?.length) return <div style={{ fontSize: 12, opacity: 0.78 }}>Aucun match KO à afficher.</div>;
 
   const COL_W = 86;
@@ -1117,6 +1106,10 @@ function WorldCupBracketViewPure({ koMatches, playersById, allMatches }: any) {
                 return (
                   <div
                     key={m.id}
+                    onClick={onOpenMatch ? () => onOpenMatch(m) : undefined}
+                    role={onOpenMatch ? "button" : undefined}
+                    tabIndex={onOpenMatch ? 0 : undefined}
+                    onKeyDown={onOpenMatch ? (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onOpenMatch(m); } } : undefined}
                     style={{
                       position: "absolute",
                       left: 0,
@@ -1126,6 +1119,7 @@ function WorldCupBracketViewPure({ koMatches, playersById, allMatches }: any) {
                       display: "grid",
                       placeItems: "center",
                       gap: 10,
+                      cursor: onOpenMatch ? "pointer" : "default",
                     }}
                   >
                     {renderSide(a)}
@@ -1667,7 +1661,7 @@ export default function TournamentView({ store, go, id }: Props) {
     return `${sc.a} - ${sc.b}`;
   }
 
-  function renderMatchCard(m: any, accent: string, opts?: { clickable?: boolean; hideActions?: boolean }) {
+  function renderMatchCard(m: any, accent: string, opts?: { hideActions?: boolean }) {
     const status = String(m?.status || "pending");
     const playable = isRealPlayable(m);
     const running = status === "running" || status === "playing";
@@ -1676,21 +1670,20 @@ export default function TournamentView({ store, go, id }: Props) {
     const topColor = done ? "#7fe2a9" : running ? "#4fb4ff" : playable ? "#ffcf57" : "rgba(255,255,255,0.55)";
 
     const phaseLabel = matchPhaseLabel(m, viewKind, koRoundsCount);
-    const clickable = !!opts?.clickable;
     const hideActions = !!opts?.hideActions;
 
     return (
       <div
         key={m.id}
-        onClick={clickable ? () => onOpenMatchDetails(m) : undefined}
-        role={clickable ? "button" : undefined}
-        tabIndex={clickable ? 0 : undefined}
-        onKeyDown={clickable ? (e) => {
+        onClick={() => onOpenMatchDetails(m)}
+        role="button"
+        tabIndex={0}
+        onKeyDown={(e) => {
           if (e.key === "Enter" || e.key === " ") {
             e.preventDefault();
             onOpenMatchDetails(m);
           }
-        } : undefined}
+        }}
         style={{
           borderRadius: 16,
           border: "1px solid rgba(255,255,255,0.10)",
@@ -1700,7 +1693,7 @@ export default function TournamentView({ store, go, id }: Props) {
           width: "100%",
           maxWidth: "100%",
           overflow: "hidden",
-          cursor: clickable ? "pointer" : "default",
+          cursor: "pointer",
           transition: "transform 140ms ease, box-shadow 140ms ease, border-color 140ms ease",
           outline: "none",
         }}
@@ -2099,7 +2092,7 @@ export default function TournamentView({ store, go, id }: Props) {
                         return (
                           <WorldCupKoDetailsColumns
                             koMatches={detailsKo}
-                            renderMatchCard={(m: any) => renderMatchCard(m, TAB_COLORS.bracket, { clickable: true, hideActions: true })}
+                            renderMatchCard={(m: any) => renderMatchCard(m, TAB_COLORS.bracket)}
                             getScore={getScoreForAnyMatch}
                           />
                         );
@@ -2250,7 +2243,6 @@ export default function TournamentView({ store, go, id }: Props) {
           ) : null}
         </>
       )}
-
 
       {selectedMatch ? (
         <MatchDetailCard
