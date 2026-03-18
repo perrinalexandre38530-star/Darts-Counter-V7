@@ -1,10 +1,10 @@
 import React from "react";
 import {
-  getGoogleCastState,
-  requestGoogleCastSession,
   endGoogleCastSession,
-  subscribeGoogleCastStatus,
+  getGoogleCastState,
   isGoogleCastSupported,
+  requestGoogleCastSession,
+  subscribeGoogleCastStatus,
 } from "../cast/googleCast";
 
 type Props = {
@@ -13,20 +13,71 @@ type Props = {
   textSoft: string;
 };
 
+function CastGlyph({ size = 22 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden="true">
+      <path
+        d="M3 18a3 3 0 0 1 3 3"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+      />
+      <path
+        d="M3 13a8 8 0 0 1 8 8"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+      />
+      <path
+        d="M3 8a13 13 0 0 1 13 13"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+      />
+      <path
+        d="M5 5h14v10"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
 export default function GlobalCastButton({ accent, textMain, textSoft }: Props) {
-  const [state, setState] = React.useState(getGoogleCastState());
+  const [isCasting, setIsCasting] = React.useState(false);
   const [busy, setBusy] = React.useState(false);
+  const [supported, setSupported] = React.useState(false);
 
   React.useEffect(() => {
-    const refresh = () => setState(getGoogleCastState());
+    let active = true;
+
+    const refresh = () => {
+      if (!active) return;
+      const state = getGoogleCastState();
+      setSupported(!!state?.supported);
+      setIsCasting(!!state?.isCasting);
+    };
+
     refresh();
-    return subscribeGoogleCastStatus(refresh);
+    const off = subscribeGoogleCastStatus(refresh);
+    return () => {
+      active = false;
+      try {
+        off && off();
+      } catch {}
+    };
   }, []);
 
-  const ready = !!state.supported;
-  const isCasting = !!state.isCasting;
+  const active = isCasting;
+  const halo = active ? accent : "transparent";
 
-  const handleClick = async () => {
+  async function onTap() {
     if (busy) return;
     if (!isGoogleCastSupported()) {
       alert("Google Cast indisponible sur cet appareil / navigateur.");
@@ -40,77 +91,51 @@ export default function GlobalCastButton({ accent, textMain, textSoft }: Props) 
       } else {
         const res = await requestGoogleCastSession();
         if (!res.ok && res.reason !== "cancel") {
-          alert(`Cast indisponible: ${res.reason}`);
+          alert(`Impossible d’ouvrir Cast : ${res.reason}`);
         }
       }
     } finally {
       setBusy(false);
     }
-  };
+  }
 
   return (
     <button
       type="button"
-      onClick={handleClick}
-      title={isCasting ? "Arrêter le cast" : "Caster sur un appareil"}
-      className="tab pill"
+      className={`tab pill ${active ? "is-active" : ""}`}
+      onClick={onTap}
+      title={isCasting ? "Arrêter la diffusion" : "Caster sur un appareil"}
       style={{
+        color: active ? accent : textSoft,
+        opacity: busy ? 0.75 : supported ? 1 : 0.95,
         background: "transparent",
         border: 0,
         padding: 0,
-        color: ready ? accent : textSoft,
-        opacity: busy ? 0.7 : 1,
-        touchAction: "manipulation",
-        WebkitTapHighlightColor: "transparent",
       }}
     >
       <span
         className="pill-inner"
         style={{
-          borderColor: ready ? `${accent}66` : "transparent",
-          boxShadow: isCasting
-            ? `0 0 0 1px ${accent}55, 0 0 12px ${accent}CC`
-            : ready
-            ? `0 0 0 1px ${accent}33, 0 0 8px ${accent}66`
-            : "none",
-          background: ready ? "rgba(0,0,0,0.22)" : "transparent",
+          borderColor: active ? accent : "transparent",
+          boxShadow: active ? `0 0 0 1px ${accent}55, 0 0 12px ${accent}CC` : "none",
+          background: active ? "rgba(0,0,0,0.22)" : "transparent",
           transition: "box-shadow 0.2s ease, border-color 0.2s ease",
-          minWidth: 58,
-          position: "relative",
         }}
       >
         <span
           className="tab-icon"
           style={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            width: 22,
-            height: 22,
-            position: "relative",
-            filter: ready ? `drop-shadow(0 0 6px ${accent})` : "none",
-            fontSize: 18,
-            lineHeight: 1,
+            filter: active ? `drop-shadow(0 0 6px ${halo})` : "none",
           }}
         >
-          📺
-          {isCasting ? (
-            <span
-              style={{
-                position: "absolute",
-                right: -1,
-                bottom: -1,
-                width: 6,
-                height: 6,
-                borderRadius: 999,
-                background: accent,
-                boxShadow: `0 0 8px ${accent}`,
-              }}
-            />
-          ) : null}
+          <CastGlyph />
         </span>
-
-        <span className="tab-label" style={{ color: ready ? textMain : textSoft }}>
+        <span
+          className="tab-label"
+          style={{
+            color: active ? textMain : textSoft,
+          }}
+        >
           Cast
         </span>
       </span>

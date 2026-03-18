@@ -37,6 +37,7 @@
 // ============================================
 
 import React from "react";
+import MatchDetailCard from "../components/tournament/MatchDetailCard";
 import type { Store } from "../lib/types";
 import type { Tournament, TournamentMatch } from "../lib/tournaments/types";
 
@@ -1225,6 +1226,7 @@ export default function TournamentView({ store, go, id }: Props) {
   const [matches, setMatches] = React.useState<TournamentMatch[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [resultMatch, setResultMatch] = React.useState<TournamentMatch | null>(null);
+  const [selectedMatch, setSelectedMatch] = React.useState<TournamentMatch | null>(null);
 
   // ✅ PÉTANQUE : cache score par historyMatchId
   const [petScoresByHistoryId, setPetScoresByHistoryId] = React.useState<ScoreMap>({});
@@ -1450,6 +1452,7 @@ export default function TournamentView({ store, go, id }: Props) {
   );
 
   const onOpenResult = React.useCallback((m: any) => setResultMatch(m), []);
+  const onOpenMatchDetails = React.useCallback((m: any) => setSelectedMatch(m), []);
 
   const autoQualified = React.useMemo(() => {
     const ids: string[] = [];
@@ -1664,7 +1667,7 @@ export default function TournamentView({ store, go, id }: Props) {
     return `${sc.a} - ${sc.b}`;
   }
 
-  function renderMatchCard(m: any, accent: string) {
+  function renderMatchCard(m: any, accent: string, opts?: { clickable?: boolean; hideActions?: boolean }) {
     const status = String(m?.status || "pending");
     const playable = isRealPlayable(m);
     const running = status === "running" || status === "playing";
@@ -1673,10 +1676,21 @@ export default function TournamentView({ store, go, id }: Props) {
     const topColor = done ? "#7fe2a9" : running ? "#4fb4ff" : playable ? "#ffcf57" : "rgba(255,255,255,0.55)";
 
     const phaseLabel = matchPhaseLabel(m, viewKind, koRoundsCount);
+    const clickable = !!opts?.clickable;
+    const hideActions = !!opts?.hideActions;
 
     return (
       <div
         key={m.id}
+        onClick={clickable ? () => onOpenMatchDetails(m) : undefined}
+        role={clickable ? "button" : undefined}
+        tabIndex={clickable ? 0 : undefined}
+        onKeyDown={clickable ? (e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            onOpenMatchDetails(m);
+          }
+        } : undefined}
         style={{
           borderRadius: 16,
           border: "1px solid rgba(255,255,255,0.10)",
@@ -1686,6 +1700,9 @@ export default function TournamentView({ store, go, id }: Props) {
           width: "100%",
           maxWidth: "100%",
           overflow: "hidden",
+          cursor: clickable ? "pointer" : "default",
+          transition: "transform 140ms ease, box-shadow 140ms ease, border-color 140ms ease",
+          outline: "none",
         }}
       >
         <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", minWidth: 0 }}>
@@ -1701,10 +1718,14 @@ export default function TournamentView({ store, go, id }: Props) {
             </div>
           </div>
 
+          {!hideActions ? (
           <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
             <button
               type="button"
-              onClick={() => simulateMatch(m)}
+              onClick={(e) => {
+                e.stopPropagation();
+                simulateMatch(m);
+              }}
               disabled={!playable}
               title="Simuler"
               style={{
@@ -1724,7 +1745,8 @@ export default function TournamentView({ store, go, id }: Props) {
 
             <button
               type="button"
-              onClick={() => {
+              onClick={(e) => {
+                e.stopPropagation();
                 if (done) onOpenResult(m);
                 else if (running || playable) onStartMatch(m.id);
               }}
@@ -1752,6 +1774,23 @@ export default function TournamentView({ store, go, id }: Props) {
               {done ? "Voir" : running ? "Reprendre" : playable ? "Jouer" : "—"}
             </button>
           </div>
+          ) : (
+          <div
+            style={{
+              borderRadius: 999,
+              padding: "8px 10px",
+              border: "1px solid rgba(255,255,255,0.10)",
+              background: "rgba(255,255,255,0.04)",
+              fontWeight: 900,
+              fontSize: 11.5,
+              color: topColor,
+              whiteSpace: "nowrap",
+              flex: "0 0 auto",
+            }}
+          >
+            Détails
+          </div>
+          )}
         </div>
 
         <div style={{ marginTop: 10, display: "grid", gap: 10, width: "100%", maxWidth: "100%" }}>
@@ -2060,7 +2099,7 @@ export default function TournamentView({ store, go, id }: Props) {
                         return (
                           <WorldCupKoDetailsColumns
                             koMatches={detailsKo}
-                            renderMatchCard={(m: any) => renderMatchCard(m, TAB_COLORS.bracket)}
+                            renderMatchCard={(m: any) => renderMatchCard(m, TAB_COLORS.bracket, { clickable: true, hideActions: true })}
                             getScore={getScoreForAnyMatch}
                           />
                         );
@@ -2211,6 +2250,33 @@ export default function TournamentView({ store, go, id }: Props) {
           ) : null}
         </>
       )}
+
+
+      {selectedMatch ? (
+        <MatchDetailCard
+          match={selectedMatch}
+          playersById={playersById}
+          allMatches={safeMatches as any}
+          score={getScoreForAnyMatch(selectedMatch)}
+          phaseLabel={matchPhaseLabel(selectedMatch, viewKind, koRoundsCount)}
+          onClose={() => setSelectedMatch(null)}
+          onSimulate={() => simulateMatch(selectedMatch)}
+          onPlay={() => {
+            if (!selectedMatch) return;
+            if (String(selectedMatch?.status || "") === "done") {
+              onOpenResult(selectedMatch);
+              return;
+            }
+            if (String(selectedMatch?.status || "") === "running" || String(selectedMatch?.status || "") === "playing" || isRealPlayable(selectedMatch)) {
+              onStartMatch(String(selectedMatch.id));
+            }
+          }}
+          onOpenResult={() => {
+            if (!selectedMatch) return;
+            onOpenResult(selectedMatch);
+          }}
+        />
+      ) : null}
 
       {/* Modal résultat */}
       {resultMatch ? (

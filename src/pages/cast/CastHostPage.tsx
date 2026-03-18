@@ -10,12 +10,14 @@ import {
   subscribeGoogleCastStatus,
 } from "../../cast/googleCast";
 
-type Props = { go: (to: string, params?: any) => void };
+type Props = {
+  go: (tab: any, params?: any) => void;
+};
 
 function cardStyle(): React.CSSProperties {
   return {
-    border: "1px solid rgba(255,255,255,.08)",
     background: "linear-gradient(180deg, rgba(20,24,31,.96), rgba(10,12,17,.96))",
+    border: "1px solid rgba(255,255,255,.08)",
     borderRadius: 20,
     padding: 18,
     boxShadow: "0 18px 50px rgba(0,0,0,.32)",
@@ -76,7 +78,11 @@ export default function CastHostPage({ go }: Props) {
     if (res.ok) {
       const next = getGoogleCastState();
       setState(next);
-      setMessage(next.deviceName ? `Chromecast connecté : ${next.deviceName}` : "Session Cast démarrée.");
+      setMessage(
+        next.deviceName
+          ? `Chromecast connecté : ${next.deviceName}`
+          : "Session Cast démarrée."
+      );
     } else {
       setMessage(`Impossible d’ouvrir le dialogue Cast (${res.reason}).`);
     }
@@ -148,16 +154,26 @@ export default function CastHostPage({ go }: Props) {
               </button>
             </div>
 
-            <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-              <button onClick={start} disabled={loading} style={{ borderRadius: 14, padding: "14px 18px", border: 0, background: "linear-gradient(180deg,#10b981,#059669)", color: "#04130d", fontWeight: 1000, cursor: "pointer" }}>
-                Lancer le Cast
+            <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 12 }}>
+              <button onClick={start} disabled={loading} style={{ borderRadius: 14, padding: "12px 16px", border: 0, background: "#10b981", color: "#04130f", fontWeight: 900, cursor: "pointer" }}>
+                {loading ? "Ouverture..." : "Lancer le Cast"}
               </button>
-              <button onClick={stop} disabled={loading} style={{ borderRadius: 14, padding: "14px 18px", border: "1px solid rgba(255,255,255,.12)", background: "rgba(255,255,255,.06)", color: "#fff", fontWeight: 900, cursor: "pointer" }}>
+              <button onClick={stop} disabled={loading} style={{ borderRadius: 14, padding: "12px 16px", border: "1px solid rgba(255,255,255,.12)", background: "rgba(255,255,255,.06)", color: "#fff", fontWeight: 900, cursor: "pointer" }}>
                 Arrêter
               </button>
             </div>
 
-            <div style={{ marginTop: 14, fontSize: 14, color: "#cbd5e1" }}>{message}</div>
+            <div style={{ fontSize: 14, color: "#cbd5e1" }}>{message}</div>
+          </div>
+
+          <div style={cardStyle()}>
+            <div style={{ fontSize: 20, fontWeight: 900, marginBottom: 10 }}>Comment tester</div>
+            <div style={{ lineHeight: 1.6, color: "#d1d5db" }}>
+              <div>1. Ouvre ton receiver sur <strong>/cast/</strong> pour vérifier l’écran d’attente.</div>
+              <div>2. Clique sur Cast puis choisis ta TV / box.</div>
+              <div>3. Lance une partie X01.</div>
+              <div>4. Le scoreboard doit ensuite s’afficher sur le receiver.</div>
+            </div>
           </div>
         </div>
       </div>
