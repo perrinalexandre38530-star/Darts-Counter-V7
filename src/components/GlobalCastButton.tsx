@@ -1,9 +1,10 @@
 import React from "react";
 import {
-  endGoogleCastSession,
   getGoogleCastState,
   requestGoogleCastSession,
+  endGoogleCastSession,
   subscribeGoogleCastStatus,
+  isGoogleCastSupported,
 } from "../cast/googleCast";
 
 type Props = {
@@ -12,88 +13,69 @@ type Props = {
   textSoft: string;
 };
 
-function CastGlyph({ color }: { color: string }) {
-  return (
-    <svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true">
-      <path
-        d="M3 18a3 3 0 0 1 3 3H3v-3Zm0-5a8 8 0 0 1 8 8H8a5 5 0 0 0-5-5v-3Zm0-5a13 13 0 0 1 13 13h-3A10 10 0 0 0 3 11V8Zm0-5h18v13h-2V5H3V3Z"
-        fill={color}
-      />
-    </svg>
-  );
-}
-
 export default function GlobalCastButton({ accent, textMain, textSoft }: Props) {
-  const [ready, setReady] = React.useState(false);
-  const [isCasting, setIsCasting] = React.useState(false);
+  const [state, setState] = React.useState(getGoogleCastState());
   const [busy, setBusy] = React.useState(false);
 
   React.useEffect(() => {
-    let active = true;
-
-    const refresh = () => {
-      if (!active) return;
-      const state = getGoogleCastState();
-      setReady(!!state?.supported);
-      setIsCasting(!!state?.isCasting);
-    };
-
+    const refresh = () => setState(getGoogleCastState());
     refresh();
-    const off = subscribeGoogleCastStatus(refresh);
-
-    return () => {
-      active = false;
-      try {
-        off && off();
-      } catch {}
-    };
+    return subscribeGoogleCastStatus(refresh);
   }, []);
 
-  async function onPress() {
-    if (busy) return;
-    setBusy(true);
+  const ready = !!state.supported;
+  const isCasting = !!state.isCasting;
 
+  const handleClick = async () => {
+    if (busy) return;
+    if (!isGoogleCastSupported()) {
+      alert("Google Cast indisponible sur cet appareil ou navigateur.");
+      return;
+    }
+
+    setBusy(true);
     try {
-      if (getGoogleCastState().isCasting) {
+      if (isCasting) {
         await endGoogleCastSession();
       } else {
-        await requestGoogleCastSession();
+        const res = await requestGoogleCastSession();
+        if (!res.ok && res.reason !== "cancel") {
+          alert(`Impossible d'ouvrir Cast (${res.reason}).`);
+        }
       }
     } finally {
       setBusy(false);
     }
-  }
-
-  const active = isCasting;
-  const iconColor = active || ready ? accent : textSoft;
+  };
 
   return (
     <button
       type="button"
-      className={`tab pill ${active ? "is-active" : ""}`}
-      onClick={onPress}
-      title={active ? "Arrêter Google Cast" : "Caster sur un appareil"}
-      aria-label={active ? "Arrêter Google Cast" : "Caster sur un appareil"}
+      onClick={handleClick}
+      className="tab pill"
+      title={isCasting ? "Arrêter le cast" : "Caster sur un appareil"}
       style={{
-        color: active || ready ? accent : textSoft,
         background: "transparent",
-        border: "none",
+        border: 0,
         padding: 0,
-        cursor: busy ? "wait" : "pointer",
+        color: ready ? accent : textSoft,
+        opacity: busy ? 0.7 : 1,
+        touchAction: "manipulation",
+        WebkitTapHighlightColor: "transparent",
       }}
     >
       <span
         className="pill-inner"
         style={{
-          borderColor: active ? accent : ready ? `${accent}55` : "transparent",
-          boxShadow: active
+          borderColor: ready ? `${accent}66` : "transparent",
+          boxShadow: isCasting
             ? `0 0 0 1px ${accent}55, 0 0 12px ${accent}CC`
             : ready
-            ? `0 0 0 1px ${accent}22, 0 0 8px ${accent}55`
+            ? `0 0 0 1px ${accent}33, 0 0 8px ${accent}66`
             : "none",
-          background: active ? "rgba(0,0,0,0.22)" : ready ? "rgba(0,0,0,0.16)" : "transparent",
-          transition: "box-shadow 0.2s ease, border-color 0.2s ease, background 0.2s ease",
-          minWidth: 72,
+          background: ready ? "rgba(0,0,0,0.22)" : "transparent",
+          transition: "box-shadow 0.2s ease, border-color 0.2s ease",
+          minWidth: 58,
           position: "relative",
         }}
       >
@@ -103,35 +85,34 @@ export default function GlobalCastButton({ accent, textMain, textSoft }: Props) 
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
-            filter: active || ready ? `drop-shadow(0 0 6px ${accent})` : "none",
+            width: 22,
+            height: 22,
+            position: "relative",
+            filter: ready ? `drop-shadow(0 0 6px ${accent})` : "none",
+            fontSize: 18,
+            lineHeight: 1,
           }}
         >
-          <CastGlyph color={iconColor} />
+          📺
+          {isCasting ? (
+            <span
+              style={{
+                position: "absolute",
+                right: -1,
+                bottom: -1,
+                width: 6,
+                height: 6,
+                borderRadius: 999,
+                background: accent,
+                boxShadow: `0 0 8px ${accent}`,
+              }}
+            />
+          ) : null}
         </span>
 
-        <span
-          className="tab-label"
-          style={{
-            color: active ? textMain : ready ? textMain : textSoft,
-          }}
-        >
+        <span className="tab-label" style={{ color: ready ? textMain : textSoft }}>
           Cast
         </span>
-
-        {active ? (
-          <span
-            style={{
-              position: "absolute",
-              right: 8,
-              top: 8,
-              width: 7,
-              height: 7,
-              borderRadius: 999,
-              background: accent,
-              boxShadow: `0 0 8px ${accent}`,
-            }}
-          />
-        ) : null}
       </span>
     </button>
   );
