@@ -1,6 +1,7 @@
 import { nanoid } from 'nanoid';
 
 export const LS_BOTS_KEY = 'dc_bots_v1';
+export const MAX_BOTS_STORAGE_BYTES = 350 * 1024;
 
 export type BotLevel = 'easy' | 'medium' | 'strong' | 'pro' | 'legend';
 
@@ -37,7 +38,41 @@ export type BotPlayerLite = {
 
 function safeParse<T>(raw: string | null, fallback: T): T {
   if (!raw) return fallback;
-  try { return JSON.parse(raw) as T; } catch { return fallback; }
+  try {
+    return JSON.parse(raw) as T;
+  } catch {
+    return fallback;
+  }
+}
+
+function estimateBytes(value: string): number {
+  try {
+    return new Blob([value]).size;
+  } catch {
+    return value.length * 2;
+  }
+}
+
+function safeGetItem(key: string): string | null {
+  try {
+    return window.localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+}
+
+function safeSetItem(key: string, value: string): boolean {
+  try {
+    window.localStorage.setItem(key, value);
+    return true;
+  } catch (err: any) {
+    if (err?.name === 'QuotaExceededError') {
+      console.error(`[bots] quota exceeded for key=${key}`);
+      return false;
+    }
+    console.error(`[bots] localStorage setItem failed for key=${key}`, err);
+    return false;
+  }
 }
 
 export function normalizeBotLevel(input: any): BotLevel {
@@ -50,17 +85,34 @@ export function normalizeBotLevel(input: any): BotLevel {
   return 'easy';
 }
 
-export function normalizeBotRecord(input: any): BotRecord {
+function sanitizeAvatarDataUrl(input: any): string | null {
+  const value =
+    typeof input?.avatarDataUrl === 'string' && input.avatarDataUrl
+      ? input.avatarDataUrl
+      : typeof input?.avatarUrl === 'string' && input.avatarUrl
+        ? input.avatarUrl
+        : typeof input?.avatar === 'string' && input.avatar
+          ? input.avatar
+          : null;
+
+  if (!value) return null;
+  if (!value.startsWith('data:')) return value;
+
+  // Évite l’explosion du quota localStorage avec des avatars base64 trop lourds.
+  return value.length <= 120_000 ? value : null;
+}
+
+function pruneBotForStorage(input: any): BotRecord {
   const level = normalizeBotLevel(input?.level ?? input?.botLevel);
   const nowIso = new Date().toISOString();
+
   return {
-    ...input,
     id: String(input?.id || nanoid()),
     name: String(input?.name || 'BOT'),
     level,
     botLevel: String(input?.botLevel || level),
     avatarSeed: String(input?.avatarSeed || Math.random().toString(36).slice(2, 10)),
-    avatarDataUrl: typeof input?.avatarDataUrl === 'string' && input.avatarDataUrl ? input.avatarDataUrl : (typeof input?.avatar === 'string' ? input.avatar : null),
+    avatarDataUrl: sanitizeAvatarDataUrl(input),
     createdAt: String(input?.createdAt || nowIso),
     updatedAt: String(input?.updatedAt || nowIso),
     isBot: true,
@@ -69,6 +121,10 @@ export function normalizeBotRecord(input: any): BotRecord {
     bot: true,
     cpu: true,
   };
+}
+
+export function normalizeBotRecord(input: any): BotRecord {
+  return pruneBotForStorage(input);
 }
 
 export function normalizeBotsList(list: any[]): BotRecord[] {
@@ -85,13 +141,35 @@ export function normalizeBotsList(list: any[]): BotRecord[] {
 
 export function loadBots(): BotRecord[] {
   if (typeof window === 'undefined') return [];
-  return normalizeBotsList(safeParse<any[]>(window.localStorage.getItem(LS_BOTS_KEY), []));
+  return normalizeBotsList(safeParse<any[]>(safeGetItem(LS_BOTS_KEY), []));
 }
 
-export function saveBots(list: any[]) {
-  if (typeof window === 'undefined') return;
+function compactBotsForStorage(list: any[]): BotRecord[] {
   const normalized = normalizeBotsList(Array.isArray(list) ? list : []);
-  window.localStorage.setItem(LS_BOTS_KEY, JSON.stringify(normalized));
+  return normalized.map(pruneBotForStorage);
+}
+
+export function saveBots(list: any[]): boolean {
+  if (typeof window === 'undefined') return false;
+
+  const compact = compactBotsForStorage(list);
+  let payload = JSON.stringify(compact);
+
+  if (estimateBytes(payload) <= MAX_BOTS_STORAGE_BYTES) {
+    return safeSetItem(LS_BOTS_KEY, payload);
+  }
+
+  // Deuxième tentative : on supprime tous les avatars base64.
+  const withoutAvatars = compact.map((bot) => ({ ...bot, avatarDataUrl: null }));
+  payload = JSON.stringify(withoutAvatars);
+
+  if (estimateBytes(payload) <= MAX_BOTS_STORAGE_BYTES) {
+    console.warn('[bots] payload too large, avatars removed before save');
+    return safeSetItem(LS_BOTS_KEY, payload);
+  }
+
+  console.error(`[bots] payload too large for localStorage (${estimateBytes(payload)} bytes), save skipped`);
+  return false;
 }
 
 export function toBotPlayerLite(input: any): BotPlayerLite {
@@ -126,7 +204,6 @@ export function isBotLike(input: any): boolean {
     input?.botLevel
   );
 }
-
 
 // Aliases de compat pour les écrans qui utilisent une API plus parlante
 export type StoredBotLevel = BotLevel;

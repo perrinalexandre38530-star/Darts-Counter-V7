@@ -47,7 +47,7 @@ export default function CastHostPage({ go }: Props) {
   const [state, setState] = React.useState(getGoogleCastState());
   const [appId, setAppIdState] = React.useState(getGoogleCastAppId());
   const [message, setMessage] = React.useState(
-    "Appuie sur le bouton Cast ou sur “Lancer le Cast” pour ouvrir la liste des appareils."
+    "Appuie sur “Lancer le Cast” pour ouvrir la liste des appareils, puis démarre une partie X01."
   );
   const [loading, setLoading] = React.useState(false);
 
@@ -74,12 +74,13 @@ export default function CastHostPage({ go }: Props) {
 
   async function restoreDefault() {
     resetGoogleCastAppId();
-    setAppIdState(getGoogleCastAppId());
+    const next = getGoogleCastAppId();
+    setAppIdState(next);
     const ok = await ensureGoogleCastReady();
     setState(getGoogleCastState());
     setMessage(
       ok
-        ? `App ID par défaut restauré : ${getGoogleCastAppId()}`
+        ? `App ID par défaut restauré : ${next}`
         : "Impossible de restaurer l’App ID par défaut."
     );
   }
@@ -87,17 +88,19 @@ export default function CastHostPage({ go }: Props) {
   async function start() {
     setLoading(true);
     const res = await requestGoogleCastSession();
+    const next = getGoogleCastState();
+    setState(next);
+
     if (res.ok) {
-      const next = getGoogleCastState();
-      setState(next);
       setMessage(
         next.deviceName
-          ? `Chromecast connecté : ${next.deviceName}`
+          ? `Google Cast connecté : ${next.deviceName}`
           : "Session Cast démarrée."
       );
     } else {
-      setMessage(`Impossible d’ouvrir le dialogue Cast (${res.reason}).`);
+      setMessage(`Impossible d’ouvrir la liste des appareils (${res.reason}).`);
     }
+
     setLoading(false);
   }
 
@@ -110,11 +113,38 @@ export default function CastHostPage({ go }: Props) {
   }
 
   return (
-    <div style={{ minHeight: "100dvh", background: "radial-gradient(circle at top, #18202d 0%, #090b10 58%, #050608 100%)", color: "#f8fafc" }}>
+    <div
+      style={{
+        minHeight: "100dvh",
+        background: "radial-gradient(circle at top, #18202d 0%, #090b10 58%, #050608 100%)",
+        color: "#f8fafc",
+      }}
+    >
       <div style={{ maxWidth: 980, margin: "0 auto", padding: "22px 16px 120px" }}>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginBottom: 18 }}>
-          <button onClick={() => go("settings")} style={{ borderRadius: 999, padding: "10px 14px", border: "1px solid rgba(255,255,255,.12)", background: "rgba(255,255,255,.06)", color: "#fff", fontWeight: 800, cursor: "pointer" }}>← Retour</button>
-          <div style={{ fontSize: 28, fontWeight: 900, letterSpacing: .4 }}>Google Cast</div>
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: 12,
+            marginBottom: 18,
+          }}
+        >
+          <button
+            onClick={() => go("settings")}
+            style={{
+              borderRadius: 999,
+              padding: "10px 14px",
+              border: "1px solid rgba(255,255,255,.12)",
+              background: "rgba(255,255,255,.06)",
+              color: "#fff",
+              fontWeight: 800,
+              cursor: "pointer",
+            }}
+          >
+            ← Retour
+          </button>
+          <div style={{ fontSize: 28, fontWeight: 900, letterSpacing: 0.4 }}>Google Cast</div>
           <div style={{ width: 88 }} />
         </div>
 
@@ -128,63 +158,57 @@ export default function CastHostPage({ go }: Props) {
                 {appId ? `Receiver App ID : ${appId}` : "App ID manquant"}
               </div>
               <div style={badge(state.isCasting, state.isCasting ? "ok" : "warn")}>
-                {state.isCasting ? `Session active${state.deviceName ? ` • ${state.deviceName}` : ""}` : "Aucune session Cast active"}
+                {state.isCasting
+                  ? `Session active${state.deviceName ? ` • ${state.deviceName}` : ""}`
+                  : "Aucune session Cast active"}
               </div>
             </div>
 
             <div style={{ marginBottom: 12, color: "#d1d5db", lineHeight: 1.5 }}>
-              Cette page pilote le vrai Google Cast avec ton receiver personnalisé. Le bouton Cast global de l’application utilise aussi cet App ID.
+              Cette page pilote ton vrai receiver Google Cast. Une fois connecté, ouvre une
+              partie X01 : les scores sont envoyés automatiquement vers la TV.
             </div>
 
-            <label style={{ display: "block", fontSize: 13, fontWeight: 800, marginBottom: 8 }}>
+            <div style={{ fontSize: 13, color: "#9ca3af", marginBottom: 8 }}>
               Receiver Application ID
-            </label>
+            </div>
 
-            <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 12 }}>
+            <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 14 }}>
               <input
                 value={appId}
-                onChange={(e) => setAppIdState(String(e.target.value || "").trim().toUpperCase())}
-                placeholder={DEFAULT_GOOGLE_CAST_APP_ID}
+                onChange={(e) => setAppIdState(e.target.value.toUpperCase())}
+                placeholder="Ex: 3534BC6A"
                 style={{
                   flex: "1 1 320px",
                   minWidth: 240,
                   borderRadius: 14,
-                  border: "1px solid rgba(255,255,255,.10)",
+                  border: "1px solid rgba(255,255,255,.12)",
                   background: "rgba(255,255,255,.06)",
                   color: "#fff",
-                  padding: "14px 14px",
+                  padding: "14px 16px",
                   fontSize: 16,
                   fontWeight: 800,
                   letterSpacing: 1,
                 }}
               />
-              <button onClick={saveAppId} style={{ borderRadius: 14, padding: "0 16px", border: 0, background: "#2563eb", color: "#fff", fontWeight: 900, cursor: "pointer" }}>
-                Enregistrer
-              </button>
-              <button onClick={restoreDefault} style={{ borderRadius: 14, padding: "0 16px", border: "1px solid rgba(255,255,255,.12)", background: "rgba(255,255,255,.06)", color: "#fff", fontWeight: 900, cursor: "pointer" }}>
-                App ID par défaut
-              </button>
-            </div>
 
-            <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
               <button
-                onClick={start}
-                disabled={loading}
+                onClick={saveAppId}
                 style={{
                   borderRadius: 14,
                   padding: "14px 18px",
-                  border: 0,
-                  background: "linear-gradient(180deg,#10b981,#059669)",
-                  color: "#04130d",
-                  fontWeight: 1000,
+                  border: "none",
+                  background: "#2563eb",
+                  color: "#fff",
+                  fontWeight: 900,
                   cursor: "pointer",
                 }}
               >
-                Lancer le Cast
+                Enregistrer
               </button>
+
               <button
-                onClick={stop}
-                disabled={loading}
+                onClick={restoreDefault}
                 style={{
                   borderRadius: 14,
                   padding: "14px 18px",
@@ -195,21 +219,59 @@ export default function CastHostPage({ go }: Props) {
                   cursor: "pointer",
                 }}
               >
+                App ID par défaut
+              </button>
+            </div>
+
+            <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 12 }}>
+              <button
+                onClick={start}
+                disabled={loading}
+                style={{
+                  borderRadius: 14,
+                  padding: "14px 18px",
+                  border: "none",
+                  background: "#10b981",
+                  color: "#04130d",
+                  fontWeight: 900,
+                  cursor: loading ? "wait" : "pointer",
+                }}
+              >
+                {loading ? "Connexion…" : "Lancer le Cast"}
+              </button>
+
+              <button
+                onClick={stop}
+                disabled={loading || !state.isCasting}
+                style={{
+                  borderRadius: 14,
+                  padding: "14px 18px",
+                  border: "1px solid rgba(255,255,255,.12)",
+                  background: "rgba(255,255,255,.06)",
+                  color: "#fff",
+                  fontWeight: 900,
+                  cursor: loading ? "wait" : "pointer",
+                  opacity: loading || !state.isCasting ? 0.5 : 1,
+                }}
+              >
                 Arrêter
               </button>
             </div>
 
-            <div style={{ marginTop: 14, fontSize: 14, color: "#cbd5e1" }}>{message}</div>
+            <div style={{ color: "#d1d5db", fontWeight: 700 }}>{message}</div>
           </div>
 
           <div style={cardStyle()}>
-            <div style={{ fontSize: 20, fontWeight: 900, marginBottom: 10 }}>Ordre de test</div>
-            <ol style={{ margin: 0, paddingLeft: 18, lineHeight: 1.65, color: "#d1d5db" }}>
-              <li>Ouvre le receiver sur <strong>/cast/</strong> pour vérifier qu’il répond.</li>
-              <li>Depuis l’app, clique sur le bouton Cast ou sur “Lancer le Cast”.</li>
-              <li>Sélectionne ta Freebox Player POP ou ta Mi Box.</li>
-              <li>Lance ensuite une partie X01 : les snapshots partent automatiquement vers la TV.</li>
-            </ol>
+            <div style={{ fontSize: 22, fontWeight: 900, marginBottom: 10 }}>
+              Comment tester proprement
+            </div>
+            <div style={{ color: "#d1d5db", lineHeight: 1.7 }}>
+              1. Vérifie que la TV / box et le téléphone sont sur le même Wi‑Fi. <br />
+              2. Clique sur “Lancer le Cast”, puis choisis la Freebox Player POP ou la Mi Box. <br />
+              3. La TV doit afficher <strong>Multisports Scoring</strong>. <br />
+              4. Lance ensuite une partie <strong>X01</strong> dans l’application. <br />
+              5. Les scores doivent se mettre à jour automatiquement sur la TV.
+            </div>
           </div>
         </div>
       </div>

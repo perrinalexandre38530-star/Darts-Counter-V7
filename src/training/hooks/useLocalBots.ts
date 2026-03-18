@@ -37,7 +37,7 @@ export function useLocalBots() {
               level: (b.level ?? "medium") as BotLevel,
               botLevel: b.botLevel ?? b.level ?? null,
               avatarSeed: b.avatarSeed ?? null,
-              avatarUrl: b.avatarUrl ?? null,
+              avatarUrl: b.avatarUrl ?? b.avatarDataUrl ?? null,
             }))
             .filter((b) => b.id)
         );
