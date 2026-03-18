@@ -9,117 +9,31 @@
       html, body {
         margin: 0;
         min-height: 100%;
-        background:
-          radial-gradient(circle at top, #18202d 0%, #090b10 58%, #050608 100%);
+        background: radial-gradient(circle at top, #18202d 0%, #090b10 58%, #050608 100%);
         color: #f8fafc;
         font-family: Inter, system-ui, sans-serif;
       }
       body { display: flex; min-height: 100vh; }
-      #app {
-        width: 100%;
-        padding: 28px;
-        display: flex;
-        flex-direction: column;
-        gap: 20px;
-        box-sizing: border-box;
-      }
-      .topbar {
-        display:flex;
-        justify-content:space-between;
-        align-items:center;
-        gap:16px;
-      }
-      .title {
-        font-size: 3rem;
-        font-weight: 900;
-        letter-spacing: .03em;
-      }
-      .meta {
-        display:flex;
-        gap:10px;
-        flex-wrap:wrap;
-      }
-      .pill {
-        border:1px solid rgba(255,255,255,.12);
-        background:rgba(255,255,255,.06);
-        border-radius:999px;
-        padding:10px 14px;
-        font-weight:800;
-        font-size:1rem;
-      }
-      .board {
-        flex:1;
-        display:grid;
-        grid-template-columns:repeat(auto-fit,minmax(320px,1fr));
-        gap:18px;
-      }
-      .player {
-        border:1px solid rgba(255,255,255,.08);
-        background:linear-gradient(180deg, rgba(20,24,31,.96), rgba(10,12,17,.96));
-        border-radius:28px;
-        padding:28px;
-        box-shadow:0 22px 60px rgba(0,0,0,.35);
-        display:flex;
-        flex-direction:column;
-        justify-content:space-between;
-        min-height: 360px;
-      }
+      #app { width: 100%; padding: 28px; display: flex; flex-direction: column; gap: 20px; box-sizing: border-box; }
+      .topbar { display:flex; justify-content:space-between; align-items:center; gap:16px; }
+      .title { font-size: 3rem; font-weight: 900; letter-spacing: .03em; }
+      .meta { display:flex; gap:10px; flex-wrap:wrap; }
+      .pill { border:1px solid rgba(255,255,255,.12); background:rgba(255,255,255,.06); border-radius:999px; padding:10px 14px; font-weight:800; font-size:1rem; }
+      .board { flex:1; display:grid; grid-template-columns:repeat(auto-fit,minmax(320px,1fr)); gap:18px; }
+      .player { border:1px solid rgba(255,255,255,.08); background:linear-gradient(180deg, rgba(20,24,31,.96), rgba(10,12,17,.96)); border-radius:28px; padding:28px; box-shadow:0 22px 60px rgba(0,0,0,.35); display:flex; flex-direction:column; justify-content:space-between; min-height: 360px; }
       .player.active { outline: 3px solid rgba(16,185,129,.65); }
       .name { font-size:2.3rem; font-weight:900; }
       .score { font-size:min(10rem, 18vw); line-height:1; font-weight:1000; letter-spacing:-.04em; }
       .sub { color:#cbd5e1; font-size:1.1rem; }
-
-      .empty {
-        display:grid;
-        place-items:center;
-        flex:1;
-        border:1px dashed rgba(255,255,255,.16);
-        border-radius:28px;
-        min-height: 62vh;
-        overflow: hidden;
-      }
-      .empty-card {
-        width: min(1100px, 92%);
-        text-align:center;
-        padding: 48px 28px;
-      }
-      .empty-logo {
-        font-size: clamp(2.8rem, 6vw, 6rem);
-        font-weight: 1000;
-        letter-spacing: .02em;
-        margin-bottom: 10px;
-        text-shadow: 0 0 30px rgba(255,255,255,.08);
-      }
-      .empty-subtitle {
-        color:#cbd5e1;
-        font-size: clamp(1.2rem, 2vw, 2rem);
-        margin-bottom: 42px;
-      }
-      .empty-choice {
-        font-size: clamp(2rem, 4vw, 4.2rem);
-        font-weight: 1000;
-        margin-bottom: 16px;
-      }
-      .empty-help {
-        color:#94a3b8;
-        font-size: clamp(1rem, 1.7vw, 1.5rem);
-      }
-      .empty-badge {
-        display:inline-flex;
-        align-items:center;
-        justify-content:center;
-        gap:10px;
-        border:1px solid rgba(255,255,255,.10);
-        background:rgba(255,255,255,.05);
-        border-radius:999px;
-        padding:10px 18px;
-        margin-bottom:18px;
-        font-weight:900;
-        color:#fbbf24;
-        box-shadow: 0 0 25px rgba(251,191,36,.08);
-      }
+      .empty { display:grid; place-items:center; flex:1; border:1px dashed rgba(255,255,255,.16); border-radius:28px; min-height: 62vh; overflow: hidden; }
+      .empty-card { width: min(1100px, 92%); text-align:center; padding: 48px 28px; }
+      .empty-logo { font-size: clamp(2.8rem, 6vw, 6rem); font-weight: 1000; letter-spacing: .02em; margin-bottom: 10px; text-shadow: 0 0 30px rgba(255,255,255,.08); }
+      .empty-subtitle { color:#cbd5e1; font-size: clamp(1.2rem, 2vw, 2rem); margin-bottom: 42px; }
+      .empty-choice { font-size: clamp(2rem, 4vw, 4.2rem); font-weight: 1000; margin-bottom: 16px; }
+      .empty-help { color:#94a3b8; font-size: clamp(1rem, 1.7vw, 1.5rem); }
+      .empty-badge { display:inline-flex; align-items:center; justify-content:center; gap:10px; border:1px solid rgba(255,255,255,.10); background:rgba(255,255,255,.05); border-radius:999px; padding:10px 18px; margin-bottom:18px; font-weight:900; color:#fbbf24; box-shadow: 0 0 25px rgba(251,191,36,.08); }
     </style>
-    
+    <script src="//www.gstatic.com/cast/sdk/libs/caf_receiver/v3/cast_receiver_framework.js"></script>
   </head>
   <body>
     <div id="app">
@@ -130,17 +44,7 @@
         </div>
         <div id="meta" class="meta"></div>
       </div>
-      <div id="board" class="board">
-        <div class="empty">
-          <div class="empty-card">
-            <div class="empty-badge">● Diffusion TV prête</div>
-            <div class="empty-logo">Multisports Scoring</div>
-            <div class="empty-subtitle">Écran connecté et en attente de données</div>
-            <div class="empty-choice">Choisis ton mode de jeu</div>
-            <div class="empty-help">Active Diffuser sur le téléphone puis lance une partie X01 pour afficher le score ici.</div>
-          </div>
-        </div>
-      </div>
+      <div id="board" class="board"></div>
     </div>
     <script src="./receiver.js"></script>
   </body>
