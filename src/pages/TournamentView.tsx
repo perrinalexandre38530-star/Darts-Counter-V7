@@ -685,7 +685,7 @@ function renderPlayerOrTbd(allMatches: any[], current: any, side: "a" | "b", pla
 
   if (!isTbdId(pid)) {
     const pl = playersById[pid];
-    return <PlayerPill name={pl?.name || "Joueur"} avatarUrl={pl?.avatar} />;
+    return <PlayerPill name={pl?.name || "Joueur"} avatarUrl={pl?.avatarDataUrl || pl?.avatar || pl?.avatarUrl || null} />;
   }
 
   const feeder = resolveSourceMatchForTbdSide(allMatches, current, side);
@@ -704,9 +704,9 @@ function renderPlayerOrTbd(allMatches: any[], current: any, side: "a" | "b", pla
     <WinnerPlaceholder
       label={label}
       leftName={leftName}
-      leftAvatarUrl={pa?.avatar || null}
+      leftAvatarUrl={pa?.avatarDataUrl || pa?.avatar || pa?.avatarUrl || null}
       rightName={rightName}
-      rightAvatarUrl={pb?.avatar || null}
+      rightAvatarUrl={pb?.avatarDataUrl || pb?.avatar || pb?.avatarUrl || null}
     />
   );
 }
@@ -1191,7 +1191,7 @@ function StandingsTable({ rows, playersById, accent = "#7fe2a9" }: { rows: any[]
               >
                 <div style={{ fontWeight: 950, color: idx === 0 ? "#ffcf57" : "rgba(255,255,255,0.70)" }}>{idx + 1}</div>
                 <div style={{ minWidth: 0 }}>
-                  <PlayerPill name={pl?.name || "Joueur"} avatarUrl={pl?.avatar} />
+                  <PlayerPill name={pl?.name || "Joueur"} avatarUrl={pl?.avatarDataUrl || pl?.avatar || pl?.avatarUrl || null} />
                 </div>
                 <div style={{ textAlign: "right", fontWeight: 950, color: accent }}>{r.points ?? 0}</div>
                 <div style={{ textAlign: "right", opacity: 0.9 }}>{played}</div>
@@ -1303,18 +1303,94 @@ export default function TournamentView({ store, go, id }: Props) {
 
   const playersById = React.useMemo(() => {
     const out: Record<string, any> = {};
-    const pls = (tour as any)?.players || [];
-    for (const p of pls) {
-      if (!p?.id) continue;
-      out[String(p.id)] = {
-        id: String(p.id),
-        name: p?.name || "Joueur",
-        avatar: p?.avatar || p?.avatarDataUrl || p?.avatarUrl || null,
-        countryCode: p?.countryCode || null,
+    const sources = [
+      ...((((tour as any)?.players || []) as any[])),
+      ...((((tour as any)?.participants || []) as any[])),
+      ...((((tour as any)?.bots || []) as any[])),
+    ];
+
+    for (const p of sources) {
+      const id = String(p?.id || "");
+      if (!id) continue;
+
+      const prev = out[id] || {};
+      out[id] = {
+        ...prev,
+        ...p,
+        id,
+        name:
+          p?.name ||
+          p?.label ||
+          p?.botName ||
+          prev?.name ||
+          "Joueur",
+        avatar:
+          p?.avatarDataUrl ||
+          p?.avatar ||
+          p?.avatarUrl ||
+          p?.photo ||
+          p?.image ||
+          p?.img ||
+          p?.picture ||
+          prev?.avatar ||
+          null,
+        avatarDataUrl:
+          p?.avatarDataUrl ||
+          p?.avatar ||
+          p?.avatarUrl ||
+          p?.photo ||
+          p?.image ||
+          p?.img ||
+          p?.picture ||
+          prev?.avatarDataUrl ||
+          null,
+        avatarUrl:
+          p?.avatarUrl ||
+          p?.avatarDataUrl ||
+          p?.avatar ||
+          p?.photo ||
+          p?.image ||
+          p?.img ||
+          p?.picture ||
+          prev?.avatarUrl ||
+          null,
+        countryCode: p?.countryCode || prev?.countryCode || null,
+        isBot: !!(p?.isBot || p?.bot || prev?.isBot),
       };
     }
+
     return out;
   }, [tour]);
+
+
+  const tournamentBestOf = React.useMemo(() => {
+    const raw =
+      (tour as any)?.game?.rules?.bestOf ??
+      (tour as any)?.game?.bestOf ??
+      (tour as any)?.rules?.bestOf ??
+      (tour as any)?.bestOf ??
+      1;
+    const n = Math.max(1, Math.floor(Number(raw) || 1));
+    return [1, 3, 5, 7, 9, 11].includes(n) ? n : 1;
+  }, [tour]);
+
+  function buildSyntheticScore(winnerId: string, aId: string, bId: string) {
+    const bestOf = Math.max(1, tournamentBestOf || 1);
+    const winsNeeded = Math.floor(bestOf / 2) + 1;
+    const loserMax = Math.max(0, winsNeeded - 1);
+    const loserWins = loserMax > 0 ? Math.floor(Math.random() * (loserMax + 1)) : 0;
+    const winnerIsA = winnerId === aId;
+    const a = winnerIsA ? winsNeeded : loserWins;
+    const b = winnerIsA ? loserWins : winsNeeded;
+    return {
+      scoreA: a,
+      scoreB: b,
+      setsA: a,
+      setsB: b,
+      legsA: a,
+      legsB: b,
+    };
+  }
 
   // ------------------------------------------------------------
   // LOAD
@@ -1582,7 +1658,8 @@ export default function TournamentView({ store, go, id }: Props) {
       const winnerId = Math.random() < 0.5 ? a : b;
 
       try {
-        const r = submitResult({ tournament: tour as any, matches: safeMatches as any, matchId: String(m.id), winnerId, historyMatchId: null });
+        const synthetic = buildSyntheticScore(winnerId, a, b);
+        const r = submitResult({ tournament: tour as any, matches: safeMatches as any, matchId: String(m.id), winnerId, historyMatchId: null, ...synthetic });
         await persist(r.tournament as any, r.matches as any);
       } catch (e) {
         console.error("[TournamentView] simulateMatch error:", e);
@@ -1610,7 +1687,20 @@ export default function TournamentView({ store, go, id }: Props) {
 
         const winnerId = Math.random() < 0.5 ? a : b;
 
-        const r = submitResult({ tournament: curTour, matches: curMatches, matchId: String(m.id), winnerId, historyMatchId: null });
+        const bestOf = Math.max(1, Math.floor(Number((curTour as any)?.game?.rules?.bestOf ?? (curTour as any)?.game?.bestOf ?? (curTour as any)?.rules?.bestOf ?? (curTour as any)?.bestOf ?? 1) || 1));
+        const winsNeeded = Math.floor(bestOf / 2) + 1;
+        const loserMax = Math.max(0, winsNeeded - 1);
+        const loserWins = loserMax > 0 ? Math.floor(Math.random() * (loserMax + 1)) : 0;
+        const winnerIsA = winnerId === a;
+        const synthetic = {
+          scoreA: winnerIsA ? winsNeeded : loserWins,
+          scoreB: winnerIsA ? loserWins : winsNeeded,
+          setsA: winnerIsA ? winsNeeded : loserWins,
+          setsB: winnerIsA ? loserWins : winsNeeded,
+          legsA: winnerIsA ? winsNeeded : loserWins,
+          legsB: winnerIsA ? loserWins : winsNeeded,
+        };
+        const r = submitResult({ tournament: curTour, matches: curMatches, matchId: String(m.id), winnerId, historyMatchId: null, ...synthetic });
         curTour = r.tournament;
         curMatches = r.matches;
       }
@@ -2248,6 +2338,7 @@ export default function TournamentView({ store, go, id }: Props) {
           allMatches={safeMatches as any}
           score={getScoreForAnyMatch(selectedMatch)}
           phaseLabel={matchPhaseLabel(selectedMatch, viewKind, koRoundsCount)}
+          formatLabel={`BO${tournamentBestOf}`}
           onClose={() => setSelectedMatch(null)}
           onSimulate={() => simulateMatch(selectedMatch)}
           onPlay={() => {

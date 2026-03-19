@@ -1,79 +1,109 @@
 const NAMESPACE = "urn:x-cast:com.multisports.scoreboard";
+const context = cast.framework.CastReceiverContext.getInstance();
+const contentEl = document.getElementById("content");
+const statusEl = document.getElementById("status");
+const diagEl = document.getElementById("diag");
 
-const $title = document.getElementById("title");
-const $status = document.getElementById("status");
-const $meta = document.getElementById("meta");
-const $board = document.getElementById("board");
+const logs = [];
 
-function asArray(v) {
-  return Array.isArray(v) ? v : [];
+function pushDiag(entry, extra) {
+  const row = {
+    at: new Date().toISOString(),
+    entry,
+    extra: extra == null ? null : extra,
+  };
+  logs.push(row);
+  while (logs.length > 18) logs.shift();
+  diagEl.textContent = logs
+    .slice()
+    .reverse()
+    .map((r) => `${r.at}  ${r.entry}${r.extra == null ? "" : "\n" + JSON.stringify(r.extra, null, 2)}`)
+    .join("\n\n");
 }
 
-function renderMeta(meta) {
-  const entries = Object.entries(meta || {}).filter(([, v]) => v !== null && v !== undefined && v !== "");
-  $meta.innerHTML = entries.map(([k, v]) => `<div class="pill">${String(k)} : ${String(v)}</div>`).join("");
+function renderWaiting(msg = "Choisis ton mode de jeu puis lance une partie sur le téléphone.") {
+  statusEl.textContent = msg;
+  contentEl.innerHTML = "";
 }
 
-function renderWaiting(extra = "") {
-  $title.textContent = "Multisports Scoring";
-  $status.textContent = "Choisis ton mode de jeu depuis le téléphone.";
-  $meta.innerHTML = "";
-  $board.innerHTML = `
-    <div class="empty">
-      <div class="empty-card">
-        <div class="empty-badge">● Diffusion TV prête</div>
-        <div class="empty-logo">Multisports Scoring</div>
-        <div class="empty-subtitle">Receiver Chromecast connecté</div>
-        <div class="empty-choice">Choisis ton mode de jeu</div>
-        <div class="empty-help">Lance une partie X01 sur le téléphone, puis le score s’affichera ici automatiquement.</div>
-        ${extra ? `<div class="diag">${extra}</div>` : ""}
-      </div>
-    </div>
-  `;
-}
+function renderSnapshot(payload) {
+  const players = Array.isArray(payload?.players) ? payload.players : [];
+  const meta = payload?.meta && typeof payload.meta === "object" ? payload.meta : {};
+  statusEl.textContent = payload?.title || payload?.game || "Snapshot reçu";
 
-function renderSnapshot(snapshot) {
-  if (!snapshot || !asArray(snapshot.players).length) {
-    renderWaiting();
+  if (!players.length) {
+    contentEl.innerHTML = `<div class="meta">Snapshot reçu, mais aucun joueur n'est présent dans le payload.</div>
+<pre>${JSON.stringify(payload, null, 2)}</pre>`;
     return;
   }
 
-  $title.textContent = snapshot.title || snapshot.game || "Multisports Scoring";
-  $status.textContent = snapshot.status === "finished" ? "Match terminé" : "Diffusion en direct";
-  renderMeta(snapshot.meta || {});
-
-  $board.innerHTML = asArray(snapshot.players).map((player) => `
-    <section class="player ${player.active ? "active" : ""}">
-      <div class="name">${String(player.name || "Joueur")}</div>
-      <div class="score">${String(player.score ?? 0)}</div>
-      <div class="sub">${player.active ? "Joueur / équipe actif" : "En attente du prochain tour"}</div>
-    </section>
-  `).join("");
+  contentEl.innerHTML = `
+    <div class="board">
+      ${players
+        .map(
+          (p) => `
+        <section class="player ${p?.active ? "active" : ""}">
+          <div class="name">${String(p?.name || "Joueur")}</div>
+          <div class="score">${String(p?.score ?? 0)}</div>
+        </section>
+      `
+        )
+        .join("")}
+    </div>
+    <div class="meta">${Object.entries(meta)
+      .map(([k, v]) => `${String(k)} : ${String(v)}`)
+      .join(" · ")}</div>
+    <pre>${JSON.stringify(payload, null, 2)}</pre>
+  `;
 }
 
-(function bootReceiver() {
-  try {
-    if (!window.cast || !window.cast.framework || !window.cast.framework.CastReceiverContext) {
-      renderWaiting("CAF indisponible dans ce navigateur (normal hors Chromecast).");
-      return;
-    }
+try {
+  context.addCustomMessageListener(NAMESPACE, (event) => {
+    pushDiag("custom_message_received", { senderId: event.senderId, dataType: typeof event.data });
 
-    const context = cast.framework.CastReceiverContext.getInstance();
-    const options = new cast.framework.CastReceiverOptions();
-    options.disableIdleTimeout = true;
+    try {
+      const data = event.data || null;
 
-    context.addCustomMessageListener(NAMESPACE, (event) => {
-      try {
-        const payload = event && event.data ? event.data : null;
-        renderSnapshot(payload);
-      } catch (err) {
-        renderWaiting("Erreur receiver : " + String(err));
+      if (data?.type === "PING") {
+        renderWaiting("PING reçu depuis le téléphone.");
+        pushDiag("ping_received", data);
+        return;
       }
-    });
 
-    context.start(options);
-    renderWaiting("En attente d’un snapshot Cast…");
-  } catch (err) {
-    renderWaiting("Boot receiver error: " + String(err));
-  }
-})();
+      if (data?.type === "SNAPSHOT") {
+        renderSnapshot(data.payload || {});
+        pushDiag("snapshot_received", {
+          title: data?.payload?.title || "",
+          game: data?.payload?.game || "",
+          players: Array.isArray(data?.payload?.players) ? data.payload.players.length : 0,
+        });
+        return;
+      }
+
+      if (data && !data.type && data.players) {
+        renderSnapshot(data);
+        pushDiag("legacy_snapshot_received", {
+          title: data?.title || "",
+          game: data?.game || "",
+          players: Array.isArray(data?.players) ? data.players.length : 0,
+        });
+        return;
+      }
+
+      renderWaiting("Message reçu, format inconnu.");
+      pushDiag("unknown_message", data);
+    } catch (err) {
+      renderWaiting("Erreur pendant le parsing du message Cast.");
+      pushDiag("message_parse_failed", String(err));
+    }
+  });
+
+  const opts = new cast.framework.CastReceiverOptions();
+  opts.disableIdleTimeout = true;
+  context.start(opts);
+  renderWaiting("Receiver CAF prêt. En attente d'une connexion Cast…");
+  pushDiag("receiver_started", { namespace: NAMESPACE });
+} catch (err) {
+  renderWaiting("Receiver CAF en erreur au démarrage.");
+  pushDiag("receiver_start_failed", String(err));
+}

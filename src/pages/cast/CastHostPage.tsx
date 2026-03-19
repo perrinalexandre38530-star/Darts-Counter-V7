@@ -1,9 +1,12 @@
 import React from "react";
 import {
   DEFAULT_GOOGLE_CAST_APP_ID,
+  clearGoogleCastDiagLog,
   endGoogleCastSession,
   getGoogleCastAppId,
+  getGoogleCastDiagLog,
   getGoogleCastState,
+  pingGoogleCastReceiver,
   requestGoogleCastSession,
   resetGoogleCastAppId,
   setGoogleCastAppId,
@@ -42,11 +45,24 @@ function badge(active: boolean, tone: "ok" | "warn" = "ok"): React.CSSProperties
   };
 }
 
+function smallButton(tone: "gold" | "ghost" = "ghost"): React.CSSProperties {
+  return {
+    borderRadius: 12,
+    padding: "10px 12px",
+    border: tone === "gold" ? "1px solid rgba(245,158,11,.35)" : "1px solid rgba(255,255,255,.12)",
+    background: tone === "gold" ? "rgba(245,158,11,.14)" : "rgba(255,255,255,.06)",
+    color: "#fff",
+    fontWeight: 800,
+    cursor: "pointer",
+  };
+}
+
 export default function CastHostPage({ go }: Props) {
   const [state, setState] = React.useState(getGoogleCastState());
   const [appId, setAppIdState] = React.useState(getGoogleCastAppId());
+  const [diag, setDiag] = React.useState<any[]>(getGoogleCastDiagLog());
   const [message, setMessage] = React.useState(
-    "Appuie sur le bouton Cast ou sur “Lancer le Cast” pour ouvrir la liste des appareils."
+    "Ouvre la liste des appareils, connecte la TV, puis envoie un PING ou lance X01."
   );
   const [loading, setLoading] = React.useState(false);
 
@@ -54,6 +70,7 @@ export default function CastHostPage({ go }: Props) {
     const refresh = () => {
       setState(getGoogleCastState());
       setAppIdState(getGoogleCastAppId());
+      setDiag(getGoogleCastDiagLog());
     };
     refresh();
     return subscribeGoogleCastStatus(refresh);
@@ -62,6 +79,7 @@ export default function CastHostPage({ go }: Props) {
   function saveAppId() {
     setGoogleCastAppId(appId || DEFAULT_GOOGLE_CAST_APP_ID);
     setState(getGoogleCastState());
+    setDiag(getGoogleCastDiagLog());
     setMessage(`Receiver App ID enregistré : ${getGoogleCastAppId()}`);
   }
 
@@ -69,15 +87,17 @@ export default function CastHostPage({ go }: Props) {
     resetGoogleCastAppId();
     setAppIdState(getGoogleCastAppId());
     setState(getGoogleCastState());
+    setDiag(getGoogleCastDiagLog());
     setMessage(`App ID par défaut restauré : ${getGoogleCastAppId()}`);
   }
 
   async function start() {
     setLoading(true);
     const res = await requestGoogleCastSession();
+    setState(getGoogleCastState());
+    setDiag(getGoogleCastDiagLog());
     if (res.ok) {
       const next = getGoogleCastState();
-      setState(next);
       setMessage(
         next.deviceName
           ? `Chromecast connecté : ${next.deviceName}`
@@ -93,16 +113,57 @@ export default function CastHostPage({ go }: Props) {
     setLoading(true);
     await endGoogleCastSession();
     setState(getGoogleCastState());
+    setDiag(getGoogleCastDiagLog());
     setMessage("Session Cast arrêtée.");
     setLoading(false);
   }
 
+  async function ping() {
+    setLoading(true);
+    const ok = await pingGoogleCastReceiver();
+    setDiag(getGoogleCastDiagLog());
+    setMessage(ok ? "PING envoyé au receiver." : "PING impossible (pas de session active ou erreur).");
+    setLoading(false);
+  }
+
+  function clearDiag() {
+    clearGoogleCastDiagLog();
+    setDiag(getGoogleCastDiagLog());
+  }
+
   return (
-    <div style={{ minHeight: "100dvh", background: "radial-gradient(circle at top, #18202d 0%, #090b10 58%, #050608 100%)", color: "#f8fafc" }}>
+    <div
+      style={{
+        minHeight: "100dvh",
+        background: "radial-gradient(circle at top, #18202d 0%, #090b10 58%, #050608 100%)",
+        color: "#f8fafc",
+      }}
+    >
       <div style={{ maxWidth: 980, margin: "0 auto", padding: "22px 16px 120px" }}>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginBottom: 18 }}>
-          <button onClick={() => go("settings")} style={{ borderRadius: 999, padding: "10px 14px", border: "1px solid rgba(255,255,255,.12)", background: "rgba(255,255,255,.06)", color: "#fff", fontWeight: 800, cursor: "pointer" }}>← Retour</button>
-          <div style={{ fontSize: 28, fontWeight: 900, letterSpacing: .4 }}>Google Cast</div>
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: 12,
+            marginBottom: 18,
+          }}
+        >
+          <button
+            onClick={() => go("settings")}
+            style={{
+              borderRadius: 999,
+              padding: "10px 14px",
+              border: "1px solid rgba(255,255,255,.12)",
+              background: "rgba(255,255,255,.06)",
+              color: "#fff",
+              fontWeight: 800,
+              cursor: "pointer",
+            }}
+          >
+            ← Retour
+          </button>
+          <div style={{ fontSize: 28, fontWeight: 900, letterSpacing: 0.4 }}>Google Cast</div>
           <div style={{ width: 88 }} />
         </div>
 
@@ -112,67 +173,106 @@ export default function CastHostPage({ go }: Props) {
               <div style={badge(state.supported, "ok")}>
                 {state.supported ? "Navigateur compatible" : "Navigateur non compatible"}
               </div>
-              <div style={badge(!!appId, !!appId ? "ok" : "warn")}>
+              <div style={badge(!!appId, "ok")}>
                 {appId ? `Receiver App ID : ${appId}` : "App ID manquant"}
               </div>
               <div style={badge(state.isCasting, state.isCasting ? "ok" : "warn")}>
-                {state.isCasting ? `Session active${state.deviceName ? ` • ${state.deviceName}` : ""}` : "Aucune session Cast active"}
+                {state.isCasting
+                  ? `Session active${state.deviceName ? ` : ${state.deviceName}` : ""}`
+                  : "Aucune session Cast active"}
               </div>
             </div>
 
-            <div style={{ marginBottom: 12, color: "#d1d5db", lineHeight: 1.5 }}>
-              Cette page pilote le vrai Google Cast avec ton receiver personnalisé. Le bouton Cast global de l’application utilise aussi cet App ID.
+            <div style={{ display: "grid", gap: 10 }}>
+              <div>
+                <div style={{ fontSize: 13, opacity: 0.8, marginBottom: 8 }}>Receiver Application ID</div>
+                <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                  <input
+                    value={appId}
+                    onChange={(e) => setAppIdState(e.target.value.toUpperCase())}
+                    placeholder="Ex: 3534BC6A"
+                    style={{
+                      flex: 1,
+                      minWidth: 220,
+                      borderRadius: 12,
+                      border: "1px solid rgba(255,255,255,.12)",
+                      background: "rgba(255,255,255,.06)",
+                      color: "#fff",
+                      padding: "12px 14px",
+                      fontWeight: 700,
+                    }}
+                  />
+                  <button onClick={saveAppId} style={smallButton("gold")}>Enregistrer</button>
+                  <button onClick={restoreDefault} style={smallButton()}>App ID par défaut</button>
+                </div>
+              </div>
+
+              <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                <button onClick={start} disabled={loading} style={smallButton("gold")}>
+                  {loading ? "Ouverture..." : "Lancer le Cast"}
+                </button>
+                <button onClick={ping} disabled={loading} style={smallButton()}>
+                  Envoyer un PING
+                </button>
+                <button onClick={stop} disabled={loading} style={smallButton()}>
+                  Arrêter
+                </button>
+                <button onClick={clearDiag} style={smallButton()}>
+                  Effacer le diagnostic
+                </button>
+              </div>
+
+              <div style={{ fontSize: 14, opacity: 0.9 }}>{message}</div>
             </div>
-
-            <label style={{ display: "block", fontSize: 13, fontWeight: 800, marginBottom: 8 }}>
-              Receiver Application ID
-            </label>
-
-            <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 12 }}>
-              <input
-                value={appId}
-                onChange={(e) => setAppIdState(String(e.target.value || "").trim().toUpperCase())}
-                placeholder={DEFAULT_GOOGLE_CAST_APP_ID}
-                style={{
-                  flex: "1 1 320px",
-                  minWidth: 240,
-                  borderRadius: 14,
-                  border: "1px solid rgba(255,255,255,.10)",
-                  background: "rgba(255,255,255,.06)",
-                  color: "#fff",
-                  padding: "14px 14px",
-                  fontSize: 16,
-                  fontWeight: 800,
-                  letterSpacing: 1,
-                }}
-              />
-              <button onClick={saveAppId} style={{ borderRadius: 14, padding: "0 16px", border: 0, background: "#2563eb", color: "#fff", fontWeight: 900, cursor: "pointer" }}>
-                Enregistrer
-              </button>
-              <button onClick={restoreDefault} style={{ borderRadius: 14, padding: "0 16px", border: "1px solid rgba(255,255,255,.12)", background: "rgba(255,255,255,.06)", color: "#fff", fontWeight: 900, cursor: "pointer" }}>
-                App ID par défaut
-              </button>
-            </div>
-
-            <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 12 }}>
-              <button onClick={start} disabled={loading} style={{ borderRadius: 14, padding: "12px 16px", border: 0, background: "#10b981", color: "#04130f", fontWeight: 900, cursor: "pointer" }}>
-                {loading ? "Ouverture..." : "Lancer le Cast"}
-              </button>
-              <button onClick={stop} disabled={loading} style={{ borderRadius: 14, padding: "12px 16px", border: "1px solid rgba(255,255,255,.12)", background: "rgba(255,255,255,.06)", color: "#fff", fontWeight: 900, cursor: "pointer" }}>
-                Arrêter
-              </button>
-            </div>
-
-            <div style={{ fontSize: 14, color: "#cbd5e1" }}>{message}</div>
           </div>
 
           <div style={cardStyle()}>
-            <div style={{ fontSize: 20, fontWeight: 900, marginBottom: 10 }}>Comment tester</div>
-            <div style={{ lineHeight: 1.6, color: "#d1d5db" }}>
-              <div>1. Ouvre ton receiver sur <strong>/cast/</strong> pour vérifier l’écran d’attente.</div>
-              <div>2. Clique sur Cast puis choisis ta TV / box.</div>
-              <div>3. Lance une partie X01.</div>
-              <div>4. Le scoreboard doit ensuite s’afficher sur le receiver.</div>
+            <div style={{ fontWeight: 900, fontSize: 18, marginBottom: 12 }}>État runtime</div>
+            <div style={{ display: "grid", gap: 8, fontSize: 14 }}>
+              <div>supported : {String(state.supported)}</div>
+              <div>sdkLoaded : {String(state.sdkLoaded)}</div>
+              <div>castState : {String(state.castState)}</div>
+              <div>deviceName : {state.deviceName || "—"}</div>
+              <div>sessionId : {(state as any).sessionId || "—"}</div>
+            </div>
+          </div>
+
+          <div style={cardStyle()}>
+            <div style={{ fontWeight: 900, fontSize: 18, marginBottom: 12 }}>Journal de diagnostic</div>
+            <div
+              style={{
+                maxHeight: 420,
+                overflow: "auto",
+                borderRadius: 14,
+                border: "1px solid rgba(255,255,255,.08)",
+                background: "rgba(0,0,0,.22)",
+              }}
+            >
+              {diag.length ? (
+                diag
+                  .slice()
+                  .reverse()
+                  .map((row, idx) => (
+                    <div
+                      key={idx}
+                      style={{
+                        padding: 12,
+                        borderBottom: "1px solid rgba(255,255,255,.06)",
+                        fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
+                        fontSize: 12,
+                        lineHeight: 1.45,
+                        whiteSpace: "pre-wrap",
+                        wordBreak: "break-word",
+                      }}
+                    >
+                      <div style={{ color: "#fde68a", fontWeight: 900 }}>{row.now}</div>
+                      <div>{row.entry}</div>
+                      <div style={{ opacity: 0.8 }}>{row.extra == null ? "" : JSON.stringify(row.extra, null, 2)}</div>
+                    </div>
+                  ))
+              ) : (
+                <div style={{ padding: 14, opacity: 0.75 }}>Aucune entrée de diagnostic pour le moment.</div>
+              )}
             </div>
           </div>
         </div>

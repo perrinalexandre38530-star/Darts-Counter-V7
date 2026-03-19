@@ -22,9 +22,10 @@ function pushDiag(entry: string, extra?: any) {
     const prev = JSON.parse(window.localStorage.getItem(GOOGLE_CAST_DIAG_KEY) || "[]");
     const next = Array.isArray(prev) ? prev : [];
     next.push({ now, entry, extra: extra == null ? null : extra });
-    while (next.length > 50) next.shift();
+    while (next.length > 150) next.shift();
     window.localStorage.setItem(GOOGLE_CAST_DIAG_KEY, JSON.stringify(next));
   } catch {}
+  emitStatus();
 }
 
 function normalizeAppId(value: any): string {
@@ -107,21 +108,20 @@ export function setGoogleCastAppId(appId: string) {
     initializedAppId = null;
     pushDiag("set_app_id", next);
   } catch {}
-  emitStatus();
 }
 
 export function resetGoogleCastAppId() {
   try {
     window.localStorage.removeItem(GOOGLE_CAST_APP_ID_KEY);
     initializedAppId = null;
-    pushDiag("reset_app_id");
+    pushDiag("reset_app_id", DEFAULT_GOOGLE_CAST_APP_ID);
   } catch {}
-  emitStatus();
 }
 
 export function getGoogleCastDiagLog() {
   try {
-    return JSON.parse(window.localStorage.getItem(GOOGLE_CAST_DIAG_KEY) || "[]");
+    const data = JSON.parse(window.localStorage.getItem(GOOGLE_CAST_DIAG_KEY) || "[]");
+    return Array.isArray(data) ? data : [];
   } catch {
     return [];
   }
@@ -131,6 +131,11 @@ export function clearGoogleCastDiagLog() {
   try {
     window.localStorage.removeItem(GOOGLE_CAST_DIAG_KEY);
   } catch {}
+  emitStatus();
+}
+
+export function appendGoogleCastDiag(entry: string, extra?: any) {
+  pushDiag(entry, extra);
 }
 
 export function isGoogleCastConfigured() {
@@ -148,19 +153,20 @@ export async function loadGoogleCastSdk(): Promise<boolean> {
   if (hasSdkLoaded()) return true;
   if (sdkPromise) return sdkPromise;
 
+  pushDiag("sdk_load_begin");
+
   sdkPromise = new Promise<boolean>((resolve) => {
-    const finish = (ok: boolean) => {
-      pushDiag("sdk_finish", ok);
-      emitStatus();
+    const done = (ok: boolean, why?: string) => {
+      pushDiag(ok ? "sdk_load_ok" : "sdk_load_failed", why || null);
       resolve(ok);
     };
 
-    const existingCb = (window as any).__onGCastApiAvailable;
+    const current = (window as any).__onGCastApiAvailable;
     (window as any).__onGCastApiAvailable = (available: boolean) => {
       try {
-        if (typeof existingCb === "function") existingCb(available);
+        if (typeof current === "function") current(available);
       } catch {}
-      finish(!!available);
+      done(!!available, "callback");
     };
 
     const existing = document.querySelector(
@@ -169,20 +175,21 @@ export async function loadGoogleCastSdk(): Promise<boolean> {
 
     if (existing) {
       if (hasSdkLoaded()) {
-        finish(true);
+        done(true, "already_present");
         return;
       }
-      existing.addEventListener("error", () => finish(false), { once: true });
-      window.setTimeout(() => finish(hasSdkLoaded()), 2500);
+      existing.addEventListener("error", () => done(false, "existing_script_error"), {
+        once: false,
+      });
+      window.setTimeout(() => done(hasSdkLoaded(), "existing_script_timeout"), 2500);
       return;
     }
 
     const script = document.createElement("script");
     script.src = GOOGLE_CAST_SDK_URL;
     script.async = true;
-    script.onerror = () => finish(false);
+    script.onerror = () => done(false, "script_error");
     document.head.appendChild(script);
-    pushDiag("sdk_injected");
   });
 
   return sdkPromise;
@@ -193,26 +200,30 @@ export async function ensureGoogleCastReady(): Promise<boolean> {
   if (!ok) return false;
 
   const appId = getGoogleCastAppId();
-  if (!appId) return false;
+  if (!appId) {
+    pushDiag("ensure_ready_no_app_id");
+    return false;
+  }
   if (initializedAppId === appId) return true;
 
   const cast = (window as any).cast;
   const chrome = (window as any).chrome;
-  if (!cast?.framework || !chrome?.cast) return false;
+  if (!cast?.framework || !chrome?.cast) {
+    pushDiag("ensure_ready_sdk_incomplete");
+    return false;
+  }
 
   try {
     cast.framework.CastContext.getInstance().setOptions({
       receiverApplicationId: appId,
       autoJoinPolicy: chrome.cast.AutoJoinPolicy.ORIGIN_SCOPED,
-      resumeSavedSession: true,
     });
     initializedAppId = appId;
-    pushDiag("cast_set_options", appId);
+    pushDiag("ensure_ready_ok", appId);
     emitStatus();
     return true;
   } catch (err) {
-    console.error("[googleCast] setOptions failed", err);
-    pushDiag("cast_set_options_failed", String(err));
+    pushDiag("ensure_ready_failed", String(err));
     return false;
   }
 }
@@ -222,6 +233,10 @@ export function getGoogleCastState() {
   const session = ctx?.getCurrentSession?.() || null;
   const castState = ctx?.getCastState?.() || "NO_DEVICES_AVAILABLE";
   const deviceName = session?.getCastDevice?.()?.friendlyName || "";
+  let sessionId = "";
+  try {
+    sessionId = session?.getSessionObj?.()?.sessionId || "";
+  } catch {}
 
   return {
     supported: isGoogleCastSupported(),
@@ -230,6 +245,7 @@ export function getGoogleCastState() {
     sdkLoaded: hasSdkLoaded(),
     castState,
     session,
+    sessionId,
     deviceName,
     isCasting: !!session,
   };
@@ -244,9 +260,17 @@ export async function requestGoogleCastSession() {
 
   try {
     const ctx = getCastContext();
-    if (!ctx) return { ok: false as const, reason: "context_unavailable" as const };
+    if (!ctx) {
+      pushDiag("request_session_no_context");
+      return { ok: false as const, reason: "context_unavailable" as const };
+    }
     await ctx.requestSession();
-    pushDiag("request_session_ok");
+    const next = getGoogleCastState();
+    pushDiag("request_session_ok", {
+      device: next.deviceName,
+      sessionId: next.sessionId,
+      appId: next.appId,
+    });
     emitStatus();
     return { ok: true as const };
   } catch (err: any) {
@@ -267,6 +291,24 @@ export async function endGoogleCastSession() {
   }
 }
 
+export async function pingGoogleCastReceiver() {
+  try {
+    const state = getGoogleCastState();
+    const raw = state.session?.getSessionObj?.();
+    if (!raw?.sendMessage) {
+      pushDiag("ping_no_session");
+      return false;
+    }
+    const payload = { type: "PING", at: Date.now(), from: "sender" };
+    await raw.sendMessage(GOOGLE_CAST_NAMESPACE, payload);
+    pushDiag("ping_ok", payload);
+    return true;
+  } catch (err) {
+    pushDiag("ping_failed", String(err));
+    return false;
+  }
+}
+
 export async function sendCastSnapshot(snapshot: CastSnapshot | null): Promise<boolean> {
   if (!snapshot) return false;
 
@@ -279,11 +321,12 @@ export async function sendCastSnapshot(snapshot: CastSnapshot | null): Promise<b
     }
 
     const payload = sanitizeSnapshot(snapshot);
-    await raw.sendMessage(GOOGLE_CAST_NAMESPACE, payload);
+    await raw.sendMessage(GOOGLE_CAST_NAMESPACE, { type: "SNAPSHOT", payload });
     pushDiag("send_snapshot_ok", {
       game: payload.game,
       title: payload.title,
       players: Array.isArray(payload.players) ? payload.players.length : 0,
+      sessionId: state.sessionId,
     });
     return true;
   } catch (err) {

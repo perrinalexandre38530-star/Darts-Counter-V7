@@ -42,7 +42,7 @@ import tickerX01 from "../assets/tickers/ticker_x01.png";
 
 import { StatsBridge } from "../lib/statsBridge";
 import { loadBots } from "./ProfilesBots";
-import { sendCastSnapshot } from "../cast/googleCast";
+import { appendGoogleCastDiag, sendCastSnapshot } from "../cast/googleCast";
 
 
 
@@ -1350,7 +1350,14 @@ const activeTeam = React.useMemo(() => {
 
       const timer = window.setTimeout(() => {
         if (cancelled) return;
-        Promise.resolve(sendCastSnapshot(snapshot)).catch(() => undefined);
+        appendGoogleCastDiag("x01_snapshot_scheduled", {
+          mode: snapshot.game,
+          players: Array.isArray(snapshot.players) ? snapshot.players.length : 0,
+          status: snapshot.status,
+        });
+        Promise.resolve(sendCastSnapshot(snapshot))
+          .then((ok) => appendGoogleCastDiag(ok ? "x01_snapshot_sent" : "x01_snapshot_not_sent"))
+          .catch((err) => appendGoogleCastDiag("x01_snapshot_throw", String(err)));
       }, 0);
 
       return () => {
