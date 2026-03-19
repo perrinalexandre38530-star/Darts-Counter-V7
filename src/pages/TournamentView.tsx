@@ -1224,7 +1224,6 @@ export default function TournamentView({ store, go, id }: Props) {
   const [tour, setTour] = React.useState<Tournament | null>(null);
   const [matches, setMatches] = React.useState<TournamentMatch[]>([]);
   const [loading, setLoading] = React.useState(true);
-  const [resultMatch, setResultMatch] = React.useState<TournamentMatch | null>(null);
   const [selectedMatch, setSelectedMatch] = React.useState<TournamentMatch | null>(null);
 
   // ✅ PÉTANQUE : cache score par historyMatchId
@@ -1526,8 +1525,27 @@ export default function TournamentView({ store, go, id }: Props) {
     [tour, safeMatches, persist, go]
   );
 
-  const onOpenResult = React.useCallback((m: any) => setResultMatch(m), []);
+  const onOpenResultPage = React.useCallback((m: any) => {
+    const historyMatchId = String((m as any)?.historyMatchId || "");
+    if (!historyMatchId) return;
+    go("tournament_match_result", {
+      tournamentId: String((tour as any)?.id || ""),
+      matchId: String((m as any)?.id || ""),
+      historyMatchId,
+    });
+  }, [go, tour]);
   const onOpenMatchDetails = React.useCallback((m: any) => setSelectedMatch(m), []);
+
+  const shortPhaseLabel = React.useCallback((m: any) => {
+    const isGroupLike =
+      String((m as any)?.phase || "") === "groups" ||
+      (typeof (m as any)?.groupIndex === "number" && (m as any).groupIndex >= 0);
+    if (isGroupLike) {
+      const g = typeof (m as any)?.groupIndex === "number" ? (m as any).groupIndex : null;
+      return g != null ? `Poule ${String.fromCharCode(65 + g)}` : "Poule";
+    }
+    return matchPhaseLabel(m, viewKind, koRoundsCount);
+  }, [viewKind, koRoundsCount]);
 
   const autoQualified = React.useMemo(() => {
     const ids: string[] = [];
@@ -2347,14 +2365,14 @@ export default function TournamentView({ store, go, id }: Props) {
           playersById={playersById}
           allMatches={safeMatches as any}
           score={getScoreForAnyMatch(selectedMatch)}
-          phaseLabel={matchPhaseLabel(selectedMatch, viewKind, koRoundsCount)}
+          phaseLabel={shortPhaseLabel(selectedMatch)}
           formatLabel={`BO${tournamentBestOf}`}
           onClose={() => setSelectedMatch(null)}
           onSimulate={() => simulateMatch(selectedMatch)}
           onPlay={() => {
             if (!selectedMatch) return;
             if (String(selectedMatch?.status || "") === "done") {
-              onOpenResult(selectedMatch);
+              onOpenResultPage(selectedMatch);
               return;
             }
             if (String(selectedMatch?.status || "") === "running" || String(selectedMatch?.status || "") === "playing" || isRealPlayable(selectedMatch)) {
@@ -2363,7 +2381,7 @@ export default function TournamentView({ store, go, id }: Props) {
           }}
           onOpenResult={() => {
             if (!selectedMatch) return;
-            onOpenResult(selectedMatch);
+            onOpenResultPage(selectedMatch);
           }}
         />
       ) : null}

@@ -101,7 +101,7 @@ function resolveSide(allMatches: any[], current: any, side: "a" | "b", playersBy
   if (isByeId(pid)) return { label: "BYE", player: null, subtitle: "Exempt", dim: true };
   if (!isTbdId(pid)) {
     const pl = playersById[pid] || null;
-    return { label: pl?.name || "Joueur", player: pl, subtitle: "Joueur qualifié", dim: false };
+    return { label: pl?.name || "Joueur", player: pl, subtitle: "", dim: false };
   }
 
   const feeder = resolveSourceMatchForTbdSide(allMatches, current, side);
@@ -141,9 +141,6 @@ function PlayerCard({ side, score, winner }: any) {
         <div style={{ minWidth: 0, width: "100%" }}>
           <div style={{ fontWeight: 950, fontSize: 13.5, lineHeight: 1.15, whiteSpace: "normal", wordBreak: "break-word", overflowWrap: "anywhere" }}>
             {side?.label || "Joueur"}
-          </div>
-          <div style={{ fontSize: 11, opacity: 0.72, marginTop: 4, whiteSpace: "normal", wordBreak: "break-word", overflowWrap: "anywhere" }}>
-            {side?.subtitle || "—"}
           </div>
         </div>
         <div style={{ fontSize: 30, fontWeight: 1000, color: winner ? "#7fe2a9" : "rgba(255,255,255,0.92)", lineHeight: 1 }}>
@@ -313,20 +310,6 @@ export default function MatchDetailCard({
             <StatTile label="Statut" value={badgeLabel} accent={badgeColor} />
             <StatTile label="Vainqueur" value={done ? (playersById?.[winnerId]?.name || "—") : "À venir"} accent="#7fe2a9" />
           </div>
-
-          {done ? (
-            <div
-              style={{
-                borderRadius: 16,
-                padding: 14,
-                border: "1px solid rgba(127,226,169,0.20)",
-                background: "linear-gradient(180deg, rgba(127,226,169,0.12), rgba(255,255,255,0.03))",
-                fontSize: 13,
-              }}
-            >
-              ✅ Match terminé — vainqueur : <b style={{ color: "#7fe2a9" }}>{playersById?.[winnerId]?.name || "—"}</b>
-            </div>
-          ) : null}
 
           <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
             <button
