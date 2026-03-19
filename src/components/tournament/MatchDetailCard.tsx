@@ -142,6 +142,9 @@ function PlayerCard({ side, score, winner }: any) {
           <div style={{ fontWeight: 950, fontSize: 13.5, lineHeight: 1.15, whiteSpace: "normal", wordBreak: "break-word", overflowWrap: "anywhere" }}>
             {side?.label || "Joueur"}
           </div>
+          <div style={{ fontSize: 11, opacity: 0.72, marginTop: 4, whiteSpace: "normal", wordBreak: "break-word", overflowWrap: "anywhere" }}>
+            {side?.subtitle || "—"}
+          </div>
         </div>
         <div style={{ fontSize: 30, fontWeight: 1000, color: winner ? "#7fe2a9" : "rgba(255,255,255,0.92)", lineHeight: 1 }}>
           {score ?? "–"}
@@ -149,6 +152,16 @@ function PlayerCard({ side, score, winner }: any) {
       </div>
     </div>
   );
+}
+
+function splitPhaseLabel(phaseLabel?: string) {
+  const txt = String(phaseLabel || "").trim();
+  if (!txt) return { main: "—", sub: "" };
+  if (txt.includes("•")) {
+    const [a, b] = txt.split("•").map((s) => s.trim());
+    return { main: a || txt, sub: b || "" };
+  }
+  return { main: txt, sub: "" };
 }
 
 function StatTile({ label, value, accent = "#ffcf57" }: any) {
@@ -203,6 +216,7 @@ export default function MatchDetailCard({
 
   const badgeColor = done ? "#7fe2a9" : running ? "#4fb4ff" : playable ? "#ffcf57" : "rgba(255,255,255,0.65)";
   const badgeLabel = done ? "TERMINÉ" : running ? "EN COURS" : playable ? "À JOUER" : "ATTENTE";
+  const phaseSplit = splitPhaseLabel(phaseLabel);
 
   return (
     <div
@@ -306,7 +320,18 @@ export default function MatchDetailCard({
           </div>
 
           <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0,1fr))", gap: 10 }}>
-            <StatTile label="Phase" value={phaseLabel || "—"} accent="#4fb4ff" />
+            <div
+              style={{
+                borderRadius: 14,
+                padding: 12,
+                border: "1px solid rgba(255,255,255,0.10)",
+                background: "linear-gradient(180deg, rgba(255,255,255,0.06), rgba(255,255,255,0.03))",
+              }}
+            >
+              <div style={{ fontSize: 10.5, opacity: 0.68, marginBottom: 6 }}>Phase</div>
+              <div style={{ fontWeight: 950, color: "#4fb4ff", fontSize: 15 }}>{phaseSplit.main}</div>
+              {phaseSplit.sub ? <div style={{ fontSize: 11, opacity: 0.62, marginTop: 2 }}>{phaseSplit.sub}</div> : null}
+            </div>
             <StatTile label="Statut" value={badgeLabel} accent={badgeColor} />
             <StatTile label="Vainqueur" value={done ? (playersById?.[winnerId]?.name || "—") : "À venir"} accent="#7fe2a9" />
           </div>

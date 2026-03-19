@@ -616,18 +616,6 @@ function matchPhaseLabel(m: any, viewKind: string, koRoundsCount: number) {
   return `Round ${r + 1}`;
 }
 
-function matchPhaseShortLabel(m: any, viewKind: string, koRoundsCount: number) {
-  const isGroupLike =
-    String(m?.phase || "") === "groups" || (typeof m?.groupIndex === "number" && m.groupIndex >= 0);
-
-  if (isGroupLike) {
-    const g = typeof m?.groupIndex === "number" ? m.groupIndex : null;
-    return g != null ? `Poule ${String.fromCharCode(65 + g)}` : "Poule";
-  }
-
-  return matchPhaseLabel(m, viewKind, koRoundsCount);
-}
-
 function pickFirstDefined(obj: any, keys: string[]) {
   for (const k of keys) {
     const v = obj?.[k];
@@ -1538,7 +1526,19 @@ export default function TournamentView({ store, go, id }: Props) {
     [tour, safeMatches, persist, go]
   );
 
-  const onOpenResult = React.useCallback((_m: any) => {}, []);
+  const onOpenResult = React.useCallback(
+    (m: any) => {
+      const historyMatchId = String(m?.historyMatchId || "");
+      if (!historyMatchId) return;
+      go("tournament_match_result", {
+        tournamentId: String((tour as any)?.id || id || ""),
+        matchId: String(m?.id || ""),
+        historyMatchId,
+        phaseLabel: matchPhaseLabel(m, viewKind, koRoundsCount),
+      });
+    },
+    [go, tour, id, viewKind, koRoundsCount]
+  );
   const onOpenMatchDetails = React.useCallback((m: any) => setSelectedMatch(m), []);
 
   const autoQualified = React.useMemo(() => {
@@ -1848,7 +1848,7 @@ export default function TournamentView({ store, go, id }: Props) {
               type="button"
               onClick={(e) => {
                 e.stopPropagation();
-                if (done) onOpenMatchDetails(m);
+                if (done) onOpenResult(m);
                 else if (running || playable) onStartMatch(m.id);
               }}
               disabled={!done && !running && !playable}
@@ -2359,13 +2359,14 @@ export default function TournamentView({ store, go, id }: Props) {
           playersById={playersById}
           allMatches={safeMatches as any}
           score={getScoreForAnyMatch(selectedMatch)}
-          phaseLabel={matchPhaseShortLabel(selectedMatch, viewKind, koRoundsCount)}
+          phaseLabel={matchPhaseLabel(selectedMatch, viewKind, koRoundsCount)}
           formatLabel={`BO${tournamentBestOf}`}
           onClose={() => setSelectedMatch(null)}
           onSimulate={() => simulateMatch(selectedMatch)}
           onPlay={() => {
             if (!selectedMatch) return;
             if (String(selectedMatch?.status || "") === "done") {
+              onOpenResult(selectedMatch);
               return;
             }
             if (String(selectedMatch?.status || "") === "running" || String(selectedMatch?.status || "") === "playing" || isRealPlayable(selectedMatch)) {
@@ -2379,6 +2380,100 @@ export default function TournamentView({ store, go, id }: Props) {
         />
       ) : null}
 
+      {/* Modal résultat */}
+      {resultMatch ? (
+        <div
+          style={{ position: "fixed", inset: 0, zIndex: 9999, background: "rgba(0,0,0,0.62)", display: "grid", placeItems: "end center", padding: 12 }}
+          onMouseDown={() => setResultMatch(null)}
+        >
+          <div
+            style={{
+              width: "min(520px, 96vw)",
+              borderRadius: 22,
+              border: "1px solid rgba(255,255,255,0.12)",
+              background: "linear-gradient(180deg, rgba(24,24,30,0.98), rgba(10,10,14,0.995))",
+              boxShadow: "0 22px 80px rgba(0,0,0,0.7)",
+              overflow: "hidden",
+            }}
+            onMouseDown={(e) => e.stopPropagation()}
+          >
+            <div style={{ padding: "12px 14px", display: "flex", alignItems: "center", justifyContent: "space-between", borderBottom: "1px solid rgba(255,255,255,0.08)" }}>
+              <div style={{ fontWeight: 950, fontSize: 14, color: "#ffcf57" }}>Résultat</div>
+              <button
+                type="button"
+                onClick={() => setResultMatch(null)}
+                style={{ border: "none", background: "transparent", color: "rgba(255,255,255,0.75)", fontSize: 20, cursor: "pointer", lineHeight: 1 }}
+                aria-label="Fermer"
+                title="Fermer"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div style={{ padding: 14 }}>
+              <div style={{ fontSize: 12, opacity: 0.8, marginBottom: 10 }}>Choisis le vainqueur pour enregistrer le résultat.</div>
+
+              <div style={{ display: "grid", gap: 10 }}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!tour) return;
+                    const r = submitResult({
+                      tournament: tour as any,
+                      matches: safeMatches as any,
+                      matchId: (resultMatch as any).id,
+                      winnerId: String((resultMatch as any).aPlayerId),
+                      historyMatchId: null,
+                    });
+                    persist(r.tournament as any, r.matches as any);
+                    setResultMatch(null);
+                  }}
+                  style={{
+                    borderRadius: 16,
+                    padding: "12px 12px",
+                    border: "1px solid rgba(255,255,255,0.10)",
+                    background: "linear-gradient(180deg, rgba(255,207,87,0.18), rgba(255,207,87,0.08))",
+                    color: "rgba(255,255,255,0.92)",
+                    fontWeight: 950,
+                    cursor: "pointer",
+                    textAlign: "left",
+                  }}
+                >
+                  ✅ {playersById[String((resultMatch as any).aPlayerId)]?.name || "Joueur A"}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!tour) return;
+                    const r = submitResult({
+                      tournament: tour as any,
+                      matches: safeMatches as any,
+                      matchId: (resultMatch as any).id,
+                      winnerId: String((resultMatch as any).bPlayerId),
+                      historyMatchId: null,
+                    });
+                    persist(r.tournament as any, r.matches as any);
+                    setResultMatch(null);
+                  }}
+                  style={{
+                    borderRadius: 16,
+                    padding: "12px 12px",
+                    border: "1px solid rgba(255,255,255,0.10)",
+                    background: "linear-gradient(180deg, rgba(79,180,255,0.18), rgba(79,180,255,0.08))",
+                    color: "rgba(255,255,255,0.92)",
+                    fontWeight: 950,
+                    cursor: "pointer",
+                    textAlign: "left",
+                  }}
+                >
+                  ✅ {playersById[String((resultMatch as any).bPlayerId)]?.name || "Joueur B"}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }
