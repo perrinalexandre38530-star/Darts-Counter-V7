@@ -1,4 +1,4 @@
-const BUILD = "CAF-VISUAL-X01-2026-03-19-1";
+const BUILD = "CAF-VISUAL-X01-2026-03-19-2";
 const NAMESPACE = "urn:x-cast:com.multisports.scoreboard";
 
 const contentEl = document.getElementById("content");
@@ -35,7 +35,10 @@ function esc(value) {
 }
 
 function initials(name) {
-  const parts = String(name || "Joueur").trim().split(/\s+/).slice(0, 2);
+  const parts = String(name || "Joueur")
+    .trim()
+    .split(/\s+/)
+    .slice(0, 2);
   return parts.map((p) => p[0] || "").join("").toUpperCase() || "?";
 }
 
@@ -44,23 +47,43 @@ function avatarHtml(player, size = 116) {
   if (src) {
     return `
       <div style="
-        width:${size}px;height:${size}px;border-radius:999px;overflow:hidden;
-        border:2px solid rgba(255,255,255,.14);background:rgba(255,255,255,.05);
-        box-shadow:0 12px 28px rgba(0,0,0,.28), 0 0 0 6px rgba(255,255,255,.03);
+        width:${size}px;
+        height:${size}px;
+        border-radius:999px;
+        overflow:hidden;
+        border:2px solid rgba(255,255,255,.14);
+        background:rgba(255,255,255,.05);
+        box-shadow:
+          0 12px 28px rgba(0,0,0,.28),
+          0 0 0 6px rgba(255,255,255,.03);
+        flex:0 0 auto;
       ">
-        <img src="${esc(src)}" alt="${esc(player?.name || "avatar")}"
-             style="width:100%;height:100%;object-fit:cover;display:block;" />
+        <img
+          src="${esc(src)}"
+          alt="${esc(player?.name || "avatar")}"
+          style="width:100%;height:100%;object-fit:cover;display:block;"
+        />
       </div>
     `;
   }
+
   return `
     <div style="
-      width:${size}px;height:${size}px;border-radius:999px;
-      display:flex;align-items:center;justify-content:center;
+      width:${size}px;
+      height:${size}px;
+      border-radius:999px;
+      display:flex;
+      align-items:center;
+      justify-content:center;
       border:2px solid rgba(255,255,255,.12);
       background:radial-gradient(circle at 30% 25%, rgba(255,255,255,.14), rgba(255,255,255,.03));
-      box-shadow:0 12px 28px rgba(0,0,0,.28), 0 0 0 6px rgba(255,255,255,.03);
-      font-size:${Math.round(size * 0.32)}px;font-weight:1000;color:#fff;
+      box-shadow:
+        0 12px 28px rgba(0,0,0,.28),
+        0 0 0 6px rgba(255,255,255,.03);
+      font-size:${Math.round(size * 0.32)}px;
+      font-weight:1000;
+      color:#fff;
+      flex:0 0 auto;
     ">${esc(initials(player?.name))}</div>
   `;
 }
@@ -98,7 +121,10 @@ function linePath(values, w, h, min, max) {
 
 function graphHtml(players) {
   if (players.length < 3) return "";
-  const series = players.map((p) => historyMap.get(String(p?.id || p?.name)) || { points: [Number(p?.score ?? 0)] });
+
+  const series = players.map(
+    (p) => historyMap.get(String(p?.id || p?.name)) || { points: [Number(p?.score ?? 0)] }
+  );
   const all = series.flatMap((s) => s.points);
   const min = Math.min(...all, 0);
   const max = Math.max(...all, 501);
@@ -106,11 +132,28 @@ function graphHtml(players) {
   const h = 180;
   const colors = ["#34d399", "#fbbf24", "#60a5fa", "#f472b6", "#c084fc", "#fb7185"];
 
+  const defs = colors
+    .map(
+      (color, idx) => `
+        <filter id="glow-${idx}" x="-40%" y="-40%" width="180%" height="180%">
+          <feGaussianBlur stdDeviation="3.5" result="blur"/>
+          <feMerge>
+            <feMergeNode in="blur"/>
+            <feMergeNode in="SourceGraphic"/>
+          </feMerge>
+        </filter>
+      `
+    )
+    .join("");
+
   const lines = series
     .map((s, idx) => {
       const d = linePath(s.points, w, h, min, max);
       const color = colors[idx % colors.length];
-      return `<path d="${d}" fill="none" stroke="${color}" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" opacity="0.95" />`;
+      return `
+        <path d="${d}" fill="none" stroke="${color}" stroke-width="8" stroke-linecap="round" stroke-linejoin="round" opacity="0.18" filter="url(#glow-${idx % colors.length})" />
+        <path d="${d}" fill="none" stroke="${color}" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" opacity="0.98" />
+      `;
     })
     .join("");
 
@@ -130,24 +173,35 @@ function graphHtml(players) {
   return `
     <section style="
       border:1px solid rgba(255,255,255,.08);
-      border-radius:26px;
-      padding:18px;
-      background:linear-gradient(180deg, rgba(20,24,31,.92), rgba(10,12,17,.92));
-      box-shadow:0 18px 44px rgba(0,0,0,.28);
+      border-radius:28px;
+      padding:20px;
+      background:linear-gradient(180deg, rgba(20,24,31,.94), rgba(10,12,17,.94));
+      box-shadow:0 22px 52px rgba(0,0,0,.30);
     ">
-      <div style="display:flex;justify-content:space-between;align-items:center;gap:16px;margin-bottom:10px;">
-        <div style="font-size:28px;font-weight:1000;">Évolution de la partie</div>
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:16px;margin-bottom:12px;">
+        <div style="font-size:30px;font-weight:1000;">Évolution de la partie</div>
         <div style="opacity:.76;font-size:14px;">à partir de 3 joueurs</div>
       </div>
-      <svg viewBox="0 0 ${w} ${h}" style="width:100%;height:auto;display:block;border-radius:16px;background:radial-gradient(circle at top, rgba(255,255,255,.04), rgba(255,255,255,.01));">
+
+      <svg viewBox="0 0 ${w} ${h}" style="
+        width:100%;
+        height:auto;
+        display:block;
+        border-radius:18px;
+        background:radial-gradient(circle at top, rgba(255,255,255,.05), rgba(255,255,255,.01));
+      ">
+        <defs>${defs}</defs>
+
         <g opacity="0.15">
           <line x1="0" y1="${h}" x2="${w}" y2="${h}" stroke="#fff"/>
-          <line x1="0" y1="${h*0.66}" x2="${w}" y2="${h*0.66}" stroke="#fff"/>
-          <line x1="0" y1="${h*0.33}" x2="${w}" y2="${h*0.33}" stroke="#fff"/>
+          <line x1="0" y1="${h * 0.66}" x2="${w}" y2="${h * 0.66}" stroke="#fff"/>
+          <line x1="0" y1="${h * 0.33}" x2="${w}" y2="${h * 0.33}" stroke="#fff"/>
           <line x1="0" y1="0" x2="${w}" y2="0" stroke="#fff"/>
         </g>
+
         ${lines}
       </svg>
+
       <div style="display:flex;flex-wrap:wrap;gap:14px 20px;margin-top:14px;">${legend}</div>
     </section>
   `;
@@ -155,21 +209,48 @@ function graphHtml(players) {
 
 function waitingScreen() {
   statusEl.textContent = "Sélectionne ton mode de jeu et lance ta partie !";
+
   contentEl.innerHTML = `
     <div style="
-      display:flex;flex-direction:column;align-items:center;justify-content:center;
-      min-height:58vh;text-align:center;padding:24px;
+      min-height:58vh;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      padding:32px;
     ">
       <div style="
-        font-size:clamp(58px, 9vw, 112px);
-        font-weight:1000;line-height:.95;letter-spacing:-0.03em;
-        text-shadow:0 10px 30px rgba(0,0,0,.35);
-        margin-bottom:22px;
-      ">Multisports<br/>Scoring</div>
-      <div style="
-        font-size:clamp(20px, 2.6vw, 34px);
-        opacity:.92;max-width:980px;line-height:1.25;
-      ">Sélectionne ton mode de jeu et lance ta partie !</div>
+        width:min(1100px, 100%);
+        display:flex;
+        flex-direction:column;
+        align-items:center;
+        justify-content:center;
+        text-align:center;
+      ">
+        <img
+          src="/assets/LOGO.png"
+          alt="Multisports Scoring"
+          style="
+            width:min(360px, 42vw);
+            max-width:360px;
+            height:auto;
+            display:block;
+            filter:
+              drop-shadow(0 0 18px rgba(255, 214, 90, .10))
+              drop-shadow(0 0 40px rgba(89, 218, 255, .08));
+          "
+        />
+        <div style="
+          margin-top:24px;
+          font-size:clamp(22px, 2.8vw, 38px);
+          font-weight:900;
+          line-height:1.18;
+          max-width:980px;
+          color:#f4e7b3;
+          text-shadow:0 8px 24px rgba(0,0,0,.28);
+        ">
+          Sélectionne ton mode de jeu et lance ta partie !
+        </div>
+      </div>
     </div>
   `;
 }
@@ -178,10 +259,11 @@ function statCell(label, value) {
   return `
     <div style="
       border:1px solid rgba(255,255,255,.08);
-      border-radius:20px;
+      border-radius:22px;
       background:rgba(255,255,255,.04);
       padding:14px 16px;
-      min-width:140px;
+      min-width:150px;
+      box-shadow:inset 0 1px 0 rgba(255,255,255,.03);
     ">
       <div style="opacity:.72;font-size:14px;margin-bottom:6px;">${esc(label)}</div>
       <div style="font-size:32px;font-weight:1000;line-height:1;">${esc(value)}</div>
@@ -191,6 +273,7 @@ function statCell(label, value) {
 
 function renderSnapshot(payload) {
   lastPayload = payload || {};
+
   const players = Array.isArray(payload?.players) ? payload.players : [];
   rememberHistory(players);
 
@@ -211,35 +294,121 @@ function renderSnapshot(payload) {
   statusEl.textContent = payload?.title || payload?.game || "Partie en cours";
 
   contentEl.innerHTML = `
-    <div style="display:grid;grid-template-columns:minmax(0,1fr) 360px;gap:22px;align-items:stretch;">
+    <div style="
+      display:grid;
+      grid-template-columns:minmax(0,1fr) 420px;
+      gap:24px;
+      align-items:start;
+    ">
       <section style="
         border:1px solid rgba(255,255,255,.10);
-        border-radius:30px;
-        padding:26px;
-        background:linear-gradient(180deg, rgba(20,24,31,.96), rgba(10,12,17,.96));
+        border-radius:32px;
+        padding:28px;
+        background:linear-gradient(180deg, rgba(20,24,31,.97), rgba(10,12,17,.97));
         box-shadow:0 24px 60px rgba(0,0,0,.32);
+        min-height:340px;
       ">
-        <div style="display:flex;justify-content:space-between;gap:18px;align-items:flex-start;">
-          <div style="display:flex;gap:18px;align-items:center;min-width:0;">
-            ${avatarHtml(active, 124)}
+        <div style="
+          display:grid;
+          grid-template-columns:minmax(0,1fr) auto;
+          gap:22px;
+          align-items:start;
+        ">
+          <div style="
+            display:flex;
+            gap:20px;
+            align-items:center;
+            min-width:0;
+          ">
+            <div style="
+              position:relative;
+              flex:0 0 auto;
+            ">
+              ${avatarHtml(active, 132)}
+              <div style="
+                position:absolute;
+                top:-10px;
+                right:-10px;
+                display:inline-flex;
+                align-items:center;
+                justify-content:center;
+                width:92px;
+                height:92px;
+                border-radius:999px;
+                background:linear-gradient(180deg, rgba(76,230,255,.92), rgba(37,164,191,.92));
+                border:2px solid rgba(255,255,255,.28);
+                color:#f4f7fb;
+                font-weight:1000;
+                font-size:16px;
+                line-height:1.02;
+                text-align:center;
+                box-shadow:
+                  0 10px 26px rgba(0,0,0,.30),
+                  0 0 18px rgba(76,230,255,.24);
+                padding:10px;
+              ">
+                Joueur<br>actif
+              </div>
+            </div>
+
             <div style="min-width:0;">
-              <div style="display:inline-flex;align-items:center;gap:10px;border-radius:999px;padding:10px 16px;background:rgba(52,211,153,.12);border:1px solid rgba(52,211,153,.34);color:#a7f3d0;font-weight:900;margin-bottom:14px;">● Joueur actif</div>
-              <div style="font-size:clamp(42px, 4.2vw, 68px);font-weight:1000;line-height:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${esc(active?.name || "Joueur")}</div>
-              <div style="margin-top:8px;font-size:22px;opacity:.76;">${esc((payload?.game || "X01").toUpperCase())}</div>
+              <div style="
+                font-size:clamp(42px, 4.4vw, 68px);
+                font-weight:1000;
+                line-height:1;
+                white-space:nowrap;
+                overflow:hidden;
+                text-overflow:ellipsis;
+                text-shadow:0 8px 24px rgba(0,0,0,.28);
+              ">
+                ${esc(active?.name || "Joueur")}
+              </div>
+
+              <div style="
+                margin-top:10px;
+                font-size:22px;
+                opacity:.82;
+                font-weight:800;
+              ">
+                ${esc((payload?.game || "X01").toUpperCase())}
+              </div>
             </div>
           </div>
+
           <div style="
-            min-width:220px;text-align:right;
+            min-width:260px;
+            text-align:right;
             border:1px solid rgba(255,255,255,.08);
-            border-radius:28px;padding:18px 20px;
+            border-radius:30px;
+            padding:18px 22px;
             background:radial-gradient(circle at 30% 25%, rgba(255,255,255,.08), rgba(255,255,255,.02));
+            box-shadow:inset 0 1px 0 rgba(255,255,255,.03);
           ">
-            <div style="opacity:.76;font-size:18px;margin-bottom:8px;">Score restant</div>
-            <div style="font-size:clamp(104px, 12vw, 168px);font-weight:1000;line-height:.9;letter-spacing:-0.04em;">${esc(active?.score ?? 0)}</div>
+            <div style="
+              opacity:.82;
+              font-size:22px;
+              font-weight:900;
+              margin-bottom:8px;
+            ">Score restant</div>
+
+            <div style="
+              font-size:clamp(110px, 12vw, 168px);
+              font-weight:1000;
+              line-height:.9;
+              letter-spacing:-0.05em;
+              text-shadow:0 10px 28px rgba(0,0,0,.30);
+            ">
+              ${esc(active?.score ?? 0)}
+            </div>
           </div>
         </div>
 
-        <div style="display:flex;flex-wrap:wrap;gap:14px;margin-top:22px;">
+        <div style="
+          display:flex;
+          flex-wrap:wrap;
+          gap:14px;
+          margin-top:24px;
+        ">
           ${statCell("Moyenne", avg)}
           ${statCell("Lancers", darts)}
           ${statCell("Meilleure volée", best)}
@@ -249,26 +418,61 @@ function renderSnapshot(payload) {
 
       <section style="
         border:1px solid rgba(255,255,255,.08);
-        border-radius:30px;
+        border-radius:32px;
         padding:22px;
-        background:linear-gradient(180deg, rgba(20,24,31,.92), rgba(10,12,17,.92));
+        background:linear-gradient(180deg, rgba(20,24,31,.94), rgba(10,12,17,.94));
         box-shadow:0 20px 50px rgba(0,0,0,.28);
       ">
-        <div style="font-size:28px;font-weight:1000;margin-bottom:16px;">Joueurs en attente</div>
+        <div style="
+          font-size:30px;
+          font-weight:1000;
+          margin-bottom:16px;
+          text-shadow:0 8px 24px rgba(0,0,0,.24);
+        ">
+          Joueurs en attente
+        </div>
+
         <div style="display:flex;flex-direction:column;gap:14px;">
-          ${waiting.map((p) => `
+          ${
+            waiting
+              .map(
+                (p) => `
             <div style="
-              display:grid;grid-template-columns:56px minmax(0,1fr) auto;gap:14px;align-items:center;
+              display:grid;
+              grid-template-columns:56px minmax(0,1fr) auto;
+              gap:14px;
+              align-items:center;
               border:1px solid rgba(255,255,255,.08);
-              border-radius:22px;padding:14px 16px;background:rgba(255,255,255,.04);
+              border-radius:24px;
+              padding:14px 16px;
+              background:rgba(255,255,255,.04);
+              box-shadow:inset 0 1px 0 rgba(255,255,255,.02);
             ">
               ${avatarHtml(p, 56)}
               <div style="min-width:0;">
-                <div style="font-size:28px;font-weight:900;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${esc(p?.name || "Joueur")}</div>
+                <div style="
+                  font-size:28px;
+                  font-weight:900;
+                  white-space:nowrap;
+                  overflow:hidden;
+                  text-overflow:ellipsis;
+                ">
+                  ${esc(p?.name || "Joueur")}
+                </div>
               </div>
-              <div style="font-size:56px;font-weight:1000;line-height:1;">${esc(p?.score ?? 0)}</div>
+              <div style="
+                font-size:58px;
+                font-weight:1000;
+                line-height:1;
+                letter-spacing:-0.04em;
+              ">
+                ${esc(p?.score ?? 0)}
+              </div>
             </div>
-          `).join("") || `<div style="opacity:.7;">Aucun autre joueur.</div>`}
+          `
+              )
+              .join("") || `<div style="opacity:.7;">Aucun autre joueur.</div>`
+          }
         </div>
       </section>
     </div>
@@ -280,6 +484,7 @@ function renderSnapshot(payload) {
 
 try {
   pushDiag("receiver_script_loaded", { build: BUILD, href: location.href, namespace: NAMESPACE });
+
   const context = cast.framework.CastReceiverContext.getInstance();
 
   context.addEventListener(cast.framework.system.EventType.READY, (event) => {
@@ -305,7 +510,10 @@ try {
   });
 
   context.addCustomMessageListener(NAMESPACE, (event) => {
-    pushDiag("custom_message_received", { senderId: event.senderId, dataType: typeof event.data });
+    pushDiag("custom_message_received", {
+      senderId: event.senderId,
+      dataType: typeof event.data,
+    });
 
     try {
       const data = event.data || null;
@@ -345,6 +553,7 @@ try {
   const opts = new cast.framework.CastReceiverOptions();
   opts.disableIdleTimeout = true;
   context.start(opts);
+
   waitingScreen();
   pushDiag("receiver_start_called", { build: BUILD, namespace: NAMESPACE });
 } catch (err) {
