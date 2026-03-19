@@ -1364,9 +1364,14 @@ const activeTeam = React.useMemo(() => {
           return;
         }
         Promise.resolve(sendCastSnapshot(snapshot))
-          .then((ok) => appendGoogleCastDiag(ok ? "x01_snapshot_sent" : "x01_snapshot_not_sent"))
+          .then((ok) =>
+            appendGoogleCastDiag(ok ? "x01_snapshot_sent" : "x01_snapshot_not_sent", {
+              players: Array.isArray(snapshot.players) ? snapshot.players.length : 0,
+              game: snapshot.game,
+            })
+          )
           .catch((err) => appendGoogleCastDiag("x01_snapshot_throw", String(err)));
-      }, 0);
+      }, 180);
 
       return () => {
         cancelled = true;

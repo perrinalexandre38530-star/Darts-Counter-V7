@@ -1,3 +1,4 @@
+
 import type { CastSnapshot } from "./castTypes";
 
 export const DEFAULT_GOOGLE_CAST_APP_ID = "3534BC6A";
@@ -8,6 +9,7 @@ const GOOGLE_CAST_DIAG_KEY = "multisports_google_cast_diag";
 
 let sdkPromise: Promise<boolean> | null = null;
 let initializedAppId: string | null = null;
+let lastPingAt = 0;
 
 function emitStatus() {
   try {
@@ -21,14 +23,10 @@ function pushDiag(entry: string, extra?: any) {
     const prev = JSON.parse(window.localStorage.getItem(GOOGLE_CAST_DIAG_KEY) || "[]");
     const next = Array.isArray(prev) ? prev : [];
     next.push({ now, entry, extra: extra == null ? null : extra });
-    while (next.length > 150) next.shift();
+    while (next.length > 200) next.shift();
     window.localStorage.setItem(GOOGLE_CAST_DIAG_KEY, JSON.stringify(next));
   } catch {}
   emitStatus();
-}
-
-function normalizeAppId(value: any): string {
-  return String(value || "").trim().toUpperCase();
 }
 
 function hasSdkLoaded() {
@@ -37,7 +35,7 @@ function hasSdkLoaded() {
 
 function getCastContext() {
   try {
-    return (window as any).cast?.framework?.CastContext?.getInstance?.();
+    return (window as any).cast?.framework?.CastContext?.getInstance?.() || null;
   } catch {
     return null;
   }
@@ -91,21 +89,49 @@ function sanitizeSnapshot(snapshot: CastSnapshot) {
   }
 }
 
+function getRawSession() {
+  try {
+    return getCastContext()?.getCurrentSession?.()?.getSessionObj?.() || null;
+  } catch {
+    return null;
+  }
+}
+
+async function sendMessageInternal(message: any, diagKeyOk: string, diagKeyFail: string) {
+  try {
+    const state = getGoogleCastState();
+    const raw = getRawSession();
+    if (!raw?.sendMessage) {
+      pushDiag(`${diagKeyFail}_no_session`, {
+        castState: state.castState,
+        isCasting: state.isCasting,
+        device: state.deviceName,
+      });
+      return false;
+    }
+    await raw.sendMessage(GOOGLE_CAST_NAMESPACE, message);
+    pushDiag(diagKeyOk, {
+      type: message?.type || "",
+      sessionId: state.sessionId,
+      device: state.deviceName,
+    });
+    return true;
+  } catch (err) {
+    pushDiag(diagKeyFail, String(err));
+    return false;
+  }
+}
+
 export function getGoogleCastAppId(): string {
   return DEFAULT_GOOGLE_CAST_APP_ID;
 }
 
-export function setGoogleCastAppId(appId: string) {
-  pushDiag("set_app_id_ignored", {
-    asked: String(appId || ""),
-    forced: DEFAULT_GOOGLE_CAST_APP_ID,
-  });
+export function setGoogleCastAppId(_appId: string) {
+  pushDiag("set_app_id_ignored", { forced: DEFAULT_GOOGLE_CAST_APP_ID });
 }
 
 export function resetGoogleCastAppId() {
-  pushDiag("reset_app_id", {
-    forced: DEFAULT_GOOGLE_CAST_APP_ID,
-  });
+  pushDiag("reset_app_id", { forced: DEFAULT_GOOGLE_CAST_APP_ID });
 }
 
 export function getGoogleCastDiagLog() {
@@ -129,7 +155,7 @@ export function appendGoogleCastDiag(entry: string, extra?: any) {
 }
 
 export function isGoogleCastConfigured() {
-  return !!getGoogleCastAppId();
+  return true;
 }
 
 export function isGoogleCastSupported() {
@@ -169,7 +195,7 @@ export async function loadGoogleCastSdk(): Promise<boolean> {
         return;
       }
       existing.addEventListener("error", () => done(false, "existing_script_error"), {
-        once: false,
+        once: true,
       });
       window.setTimeout(() => done(hasSdkLoaded(), "existing_script_timeout"), 2500);
       return;
@@ -190,10 +216,6 @@ export async function ensureGoogleCastReady(): Promise<boolean> {
   if (!ok) return false;
 
   const appId = DEFAULT_GOOGLE_CAST_APP_ID;
-  if (!appId) {
-    pushDiag("ensure_ready_no_app_id");
-    return false;
-  }
   if (initializedAppId === appId) return true;
 
   const cast = (window as any).cast;
@@ -207,9 +229,10 @@ export async function ensureGoogleCastReady(): Promise<boolean> {
     cast.framework.CastContext.getInstance().setOptions({
       receiverApplicationId: DEFAULT_GOOGLE_CAST_APP_ID,
       autoJoinPolicy: chrome.cast.AutoJoinPolicy.ORIGIN_SCOPED,
+      resumeSavedSession: true,
     });
     initializedAppId = appId;
-    pushDiag("ensure_ready_ok", appId);
+    pushDiag("ensure_ready_ok", { appId: DEFAULT_GOOGLE_CAST_APP_ID });
     emitStatus();
     return true;
   } catch (err) {
@@ -230,8 +253,8 @@ export function getGoogleCastState() {
 
   return {
     supported: isGoogleCastSupported(),
-    configured: isGoogleCastConfigured(),
-    appId: getGoogleCastAppId(),
+    configured: true,
+    appId: DEFAULT_GOOGLE_CAST_APP_ID,
     sdkLoaded: hasSdkLoaded(),
     castState,
     session,
@@ -259,9 +282,10 @@ export async function requestGoogleCastSession() {
     pushDiag("request_session_ok", {
       device: next.deviceName,
       sessionId: next.sessionId,
-      appId: next.appId,
+      appId: DEFAULT_GOOGLE_CAST_APP_ID,
     });
     emitStatus();
+    await pingGoogleCastReceiver(true);
     return { ok: true as const };
   } catch (err: any) {
     const code = String(err?.code || err?.message || "request_failed");
@@ -281,49 +305,27 @@ export async function endGoogleCastSession() {
   }
 }
 
-export async function pingGoogleCastReceiver() {
-  try {
-    const state = getGoogleCastState();
-    const raw = state.session?.getSessionObj?.();
-    if (!raw?.sendMessage) {
-      pushDiag("ping_no_session");
-      return false;
-    }
-    const payload = { type: "PING", at: Date.now(), from: "sender" };
-    await raw.sendMessage(GOOGLE_CAST_NAMESPACE, payload);
-    pushDiag("ping_ok", payload);
+export async function pingGoogleCastReceiver(force = false) {
+  if (!force && Date.now() - lastPingAt < 1500) {
+    pushDiag("ping_skipped_rate_limit");
     return true;
-  } catch (err) {
-    pushDiag("ping_failed", String(err));
-    return false;
   }
+  lastPingAt = Date.now();
+  return sendMessageInternal(
+    { type: "PING", at: Date.now(), from: "sender", build: DEFAULT_GOOGLE_CAST_APP_ID },
+    "ping_ok",
+    "ping_failed"
+  );
 }
 
 export async function sendCastSnapshot(snapshot: CastSnapshot | null): Promise<boolean> {
   if (!snapshot) return false;
-
-  try {
-    const state = getGoogleCastState();
-    const raw = state.session?.getSessionObj?.();
-    if (!raw?.sendMessage) {
-      pushDiag("send_snapshot_no_session");
-      return false;
-    }
-
-    const payload = sanitizeSnapshot(snapshot);
-    await raw.sendMessage(GOOGLE_CAST_NAMESPACE, { type: "SNAPSHOT", payload });
-    pushDiag("send_snapshot_ok", {
-      game: payload.game,
-      title: payload.title,
-      players: Array.isArray(payload.players) ? payload.players.length : 0,
-      sessionId: state.sessionId,
-    });
-    return true;
-  } catch (err) {
-    console.warn("[googleCast] send snapshot failed", err);
-    pushDiag("send_snapshot_failed", String(err));
-    return false;
-  }
+  const payload = sanitizeSnapshot(snapshot);
+  return sendMessageInternal(
+    { type: "SNAPSHOT", payload },
+    "send_snapshot_ok",
+    "send_snapshot_failed"
+  );
 }
 
 export function subscribeGoogleCastStatus(cb: () => void) {
@@ -337,16 +339,22 @@ export function subscribeGoogleCastStatus(cb: () => void) {
     ctx?.addEventListener?.(cast.framework.CastContextEventType.CAST_STATE_CHANGED, refresh);
   } catch {}
   try {
-    ctx?.addEventListener?.(cast.framework.CastContextEventType.SESSION_STATE_CHANGED, refresh);
+    ctx?.addEventListener?.(cast.framework.CastContextEventType.SESSION_STATE_CHANGED, (e: any) => {
+      pushDiag("session_state_changed", {
+        sessionState: e?.sessionState || null,
+        castState: getGoogleCastState().castState,
+      });
+      refresh();
+      try {
+        const ss = (window as any).cast?.framework?.SessionState;
+        if (e?.sessionState === ss?.SESSION_STARTED || e?.sessionState === ss?.SESSION_RESUMED) {
+          void pingGoogleCastReceiver(true);
+        }
+      } catch {}
+    });
   } catch {}
 
   return () => {
     window.removeEventListener("multisports-google-cast-status", refresh);
-    try {
-      ctx?.removeEventListener?.(cast.framework.CastContextEventType.CAST_STATE_CHANGED, refresh);
-    } catch {}
-    try {
-      ctx?.removeEventListener?.(cast.framework.CastContextEventType.SESSION_STATE_CHANGED, refresh);
-    } catch {}
   };
 }
