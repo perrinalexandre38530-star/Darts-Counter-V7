@@ -865,6 +865,12 @@ export function submitResult(opts: {
   matchId: string;
   winnerId: string;
   historyMatchId: string | null;
+  scoreA?: number | null;
+  scoreB?: number | null;
+  legsA?: number | null;
+  legsB?: number | null;
+  setsA?: number | null;
+  setsB?: number | null;
 }) {
   const t = { ...(opts.tournament as any) } as Tournament;
   const ms = (Array.isArray(opts.matches) ? opts.matches.slice() : []) as TournamentMatch[];
@@ -876,6 +882,12 @@ export function submitResult(opts: {
   m.status = "done";
   m.winnerId = w || null;
   (m as any).historyMatchId = opts.historyMatchId ?? null;
+  if (typeof opts.scoreA === "number" && Number.isFinite(opts.scoreA)) (m as any).scoreA = Math.max(0, Math.floor(opts.scoreA));
+  if (typeof opts.scoreB === "number" && Number.isFinite(opts.scoreB)) (m as any).scoreB = Math.max(0, Math.floor(opts.scoreB));
+  if (typeof opts.legsA === "number" && Number.isFinite(opts.legsA)) (m as any).legsA = Math.max(0, Math.floor(opts.legsA));
+  if (typeof opts.legsB === "number" && Number.isFinite(opts.legsB)) (m as any).legsB = Math.max(0, Math.floor(opts.legsB));
+  if (typeof opts.setsA === "number" && Number.isFinite(opts.setsA)) (m as any).setsA = Math.max(0, Math.floor(opts.setsA));
+  if (typeof opts.setsB === "number" && Number.isFinite(opts.setsB)) (m as any).setsB = Math.max(0, Math.floor(opts.setsB));
   m.updatedAt = now();
 
   applyAutoProgress(t, ms);

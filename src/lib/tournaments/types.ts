@@ -4,11 +4,12 @@
 // + viewKind (4 types)
 // + repechage config
 // + countryCode (drapeaux UI)
+// + rôles / scores / feeders bracket
 // ============================================
 
 export type TournamentSource = "local" | "online";
 
-export type TournamentMode = "x01" | "cricket" | "killer" | "clock";
+export type TournamentMode = "x01" | "cricket" | "killer" | "clock" | string;
 
 export type TournamentStatus = "draft" | "running" | "finished";
 
@@ -18,6 +19,8 @@ export type SeedingMode = "random" | "manual" | "by_rating";
 
 export type MatchStatus = "pending" | "playing" | "done";
 
+export type StageRole = "groups" | "ko" | "repechage";
+
 // ✅ 4 types demandés
 export type TournamentViewKind = "single_ko" | "double_ko" | "round_robin" | "groups_ko";
 
@@ -26,6 +29,7 @@ export type TournamentPlayer = {
   name: string;
   avatarDataUrl?: string | null;
   avatarUrl?: string | null;
+  avatar?: string | null;
   isBot?: boolean;
   seed?: number | null; // tête de série (1 = meilleur)
   countryCode?: string | null; // ✅ pour drapeaux UI (FR, GB, etc.)
@@ -38,8 +42,9 @@ export type TournamentGameSettings = {
 
 export type TournamentRepechageConfig = {
   enabled?: boolean; // ✅ si true => onglet Repêchage
-  // plus tard: type, règles losers bracket, etc.
   kind?: "losers_bracket" | "extra_round" | "custom";
+  slotsToKo?: number;
+  afterKoRoundIndex?: number;
 };
 
 export type TournamentStage = {
@@ -55,6 +60,7 @@ export type TournamentStage = {
 
   // meta
   name?: string; // ex: "Poules", "Finale"
+  role?: StageRole;
 };
 
 export type Tournament = {
@@ -90,7 +96,7 @@ export type TournamentMatch = {
   tournamentId: string;
 
   stageIndex: number; // index dans tournament.stages
-  groupIndex: number; // 0..groups-1 (RR), sinon 0
+  groupIndex: number; // 0..groups-1 (RR), KO/repechage => -1
   roundIndex: number; // pour single elim / RR rounds
   orderIndex: number; // tri stable d’affichage
 
@@ -100,6 +106,14 @@ export type TournamentMatch = {
   status: MatchStatus;
 
   winnerId?: string | null;
+
+  // score persistant tournoi (plus de faux fallback 1-0)
+  scoreA?: number | null;
+  scoreB?: number | null;
+  legsA?: number | null;
+  legsB?: number | null;
+  setsA?: number | null;
+  setsB?: number | null;
 
   // "réservation" (multi-match en parallèle)
   sessionId?: string | null;
@@ -112,6 +126,13 @@ export type TournamentMatch = {
   createdAt: number;
   updatedAt: number;
 
+  // structure bracket
+  nextMatchId?: string | null;
+  nextSlot?: "A" | "B" | string | null;
+  aFromMatchId?: string | null;
+  bFromMatchId?: string | null;
+
   // ✅ (optionnel) pour filtrer/afficher
-  phase?: "groups" | "ko" | "repechage";
+  phase?: StageRole;
+  groupId?: string | null;
 };

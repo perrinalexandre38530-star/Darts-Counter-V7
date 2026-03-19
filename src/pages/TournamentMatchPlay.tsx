@@ -166,6 +166,77 @@ function clampInt(n: any, min: number, max: number) {
   return Math.max(min, Math.min(max, v));
 }
 
+function safeNum(v: any, fallback = 0) {
+  const n = Number(v);
+  return Number.isFinite(n) ? n : fallback;
+}
+
+function firstFiniteNumber(...vals: any[]) {
+  for (const v of vals) {
+    const n = Number(v);
+    if (Number.isFinite(n)) return n;
+  }
+  return null;
+}
+
+function readScoreMap(map: any, aId: string, bId: string) {
+  if (!map || typeof map !== "object") return null;
+  const a = firstFiniteNumber(map?.[aId], map?.[String(aId)]);
+  const b = firstFiniteNumber(map?.[bId], map?.[String(bId)]);
+  if (a == null || b == null) return null;
+  return { a: Math.max(0, Math.floor(a)), b: Math.max(0, Math.floor(b)) };
+}
+
+function readPlayersScore(players: any[], aId: string, bId: string, key: string) {
+  if (!Array.isArray(players) || !players.length) return null;
+  const pa = players.find((p: any) => String(p?.id || "") === String(aId));
+  const pb = players.find((p: any) => String(p?.id || "") === String(bId));
+  const a = firstFiniteNumber(pa?.[key]);
+  const b = firstFiniteNumber(pb?.[key]);
+  if (a == null || b == null) return null;
+  return { a: Math.max(0, Math.floor(a)), b: Math.max(0, Math.floor(b)) };
+}
+
+function extractTournamentScore(source: any, aId: string, bId: string) {
+  if (!source) return null;
+
+  const directA = firstFiniteNumber(source?.scoreA, source?.aScore, source?.result?.a, source?.score?.a);
+  const directB = firstFiniteNumber(source?.scoreB, source?.bScore, source?.result?.b, source?.score?.b);
+  if (directA != null && directB != null) {
+    return { a: Math.max(0, Math.floor(directA)), b: Math.max(0, Math.floor(directB)), kind: "score" };
+  }
+
+  const sets =
+    readScoreMap(source?.setsWon, aId, bId) ||
+    readScoreMap(source?.summary?.setsWon, aId, bId) ||
+    readScoreMap(source?.payload?.setsWon, aId, bId) ||
+    readScoreMap(source?.payload?.summary?.setsWon, aId, bId) ||
+    readScoreMap(source?.payload?.state?.setsWon, aId, bId) ||
+    readPlayersScore(source?.players, aId, bId, "setsWon") ||
+    readPlayersScore(source?.payload?.players, aId, bId, "setsWon");
+  if (sets) return { ...sets, kind: "sets" };
+
+  const legs =
+    readScoreMap(source?.legsWon, aId, bId) ||
+    readScoreMap(source?.summary?.legsWon, aId, bId) ||
+    readScoreMap(source?.payload?.legsWon, aId, bId) ||
+    readScoreMap(source?.payload?.summary?.legsWon, aId, bId) ||
+    readScoreMap(source?.payload?.state?.legsWon, aId, bId) ||
+    readPlayersScore(source?.players, aId, bId, "legsWon") ||
+    readPlayersScore(source?.payload?.players, aId, bId, "legsWon");
+  if (legs) return { ...legs, kind: "legs" };
+
+  if (source?.summary) {
+    const nested = extractTournamentScore(source.summary, aId, bId);
+    if (nested) return nested;
+  }
+  if (source?.payload) {
+    const nested = extractTournamentScore(source.payload, aId, bId);
+    if (nested) return nested;
+  }
+  return null;
+}
+
 export default function TournamentMatchPlay({ store, go, params }: any) {
   const { theme } = useTheme();
   const { t } = useLang();
@@ -239,6 +310,8 @@ export default function TournamentMatchPlay({ store, go, params }: any) {
     const winnerId = extractWinnerId(matchPayload) || saved?.winnerId;
     const historyMatchId = historyMatchIdMaybe || saved?.id || null;
 
+    const scoreInfo = extractTournamentScore(matchPayload, aId, bId) || extractTournamentScore(saved, aId, bId);
+
     // 2) submit tournoi
     if (winnerId) {
       try {
@@ -248,6 +321,12 @@ export default function TournamentMatchPlay({ store, go, params }: any) {
           matchId: (tm as any).id,
           winnerId,
           historyMatchId,
+          scoreA: scoreInfo?.a ?? null,
+          scoreB: scoreInfo?.b ?? null,
+          legsA: scoreInfo?.kind === "legs" ? scoreInfo?.a ?? null : null,
+          legsB: scoreInfo?.kind === "legs" ? scoreInfo?.b ?? null : null,
+          setsA: scoreInfo?.kind === "sets" ? scoreInfo?.a ?? null : null,
+          setsB: scoreInfo?.kind === "sets" ? scoreInfo?.b ?? null : null,
         });
         persist(r.tournament as any, r.matches as any);
       } catch (e) {
@@ -865,6 +944,7 @@ export default function TournamentMatchPlay({ store, go, params }: any) {
               } catch {}
 
               const winnerId = rec?.winnerId || rec?.payload?.winnerId || rec?.summary?.winnerId || null;
+              const scoreInfo = extractTournamentScore(rec, aId, bId);
 
               if (winnerId) {
                 const r = submitResult({
@@ -873,6 +953,12 @@ export default function TournamentMatchPlay({ store, go, params }: any) {
                   matchId: (tm as any).id,
                   winnerId,
                   historyMatchId,
+                  scoreA: scoreInfo?.a ?? null,
+                  scoreB: scoreInfo?.b ?? null,
+                  legsA: scoreInfo?.kind === "legs" ? scoreInfo?.a ?? null : null,
+                  legsB: scoreInfo?.kind === "legs" ? scoreInfo?.b ?? null : null,
+                  setsA: scoreInfo?.kind === "sets" ? scoreInfo?.a ?? null : null,
+                  setsB: scoreInfo?.kind === "sets" ? scoreInfo?.b ?? null : null,
                 });
                 persist(r.tournament as any, r.matches as any);
               } else {

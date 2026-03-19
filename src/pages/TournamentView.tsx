@@ -840,6 +840,7 @@ function getMatchScore(m: any) {
   const a =
     (typeof m?.scoreA === "number" ? m.scoreA : null) ??
     (typeof m?.aScore === "number" ? m.aScore : null) ??
+    (typeof m?.setsA === "number" ? m.setsA : null) ??
     (typeof m?.legsA === "number" ? m.legsA : null) ??
     (typeof m?.result?.a === "number" ? m.result.a : null) ??
     (typeof m?.score?.a === "number" ? m.score.a : null) ??
@@ -848,25 +849,13 @@ function getMatchScore(m: any) {
   const b =
     (typeof m?.scoreB === "number" ? m.scoreB : null) ??
     (typeof m?.bScore === "number" ? m.bScore : null) ??
+    (typeof m?.setsB === "number" ? m.setsB : null) ??
     (typeof m?.legsB === "number" ? m.legsB : null) ??
     (typeof m?.result?.b === "number" ? m.result.b : null) ??
     (typeof m?.score?.b === "number" ? m.score.b : null) ??
     null;
 
   if (a != null && b != null) return { a, b };
-
-  const status = String(m?.status || "");
-  const done = status === "done";
-  if (done) {
-    const w = String(m?.winnerId || "");
-    const A = String(m?.aPlayerId || "");
-    const B = String(m?.bPlayerId || "");
-    if (w && A && B) {
-      if (w === A) return { a: 1, b: 0 };
-      if (w === B) return { a: 0, b: 1 };
-    }
-  }
-
   return null;
 }
 
@@ -1676,7 +1665,7 @@ export default function TournamentView({ store, go, id }: Props) {
     const topColor = done ? "#7fe2a9" : running ? "#4fb4ff" : playable ? "#ffcf57" : "rgba(255,255,255,0.55)";
 
     const phaseLabel = matchPhaseLabel(m, viewKind, koRoundsCount);
-    const clickable = !!opts?.clickable;
+    const clickable = opts?.clickable !== false;
     const hideActions = !!opts?.hideActions;
 
     return (
