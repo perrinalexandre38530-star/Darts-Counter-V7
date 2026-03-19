@@ -1199,6 +1199,8 @@ const petanqueTeamsReady = React.useMemo(() => {
   return true;
 }, [isPetanque, isPetanqueTeams, isPetanqueProfiles, teamsInput, totalSelectedIds.join("|"), teamOfPlayer, petanqueTeamSize, teamNames]);
 
+  const canCreate = !!name.trim() && !!mode && minPlayersOk && (!isPetanque || (petanqueMultipleOk && petanqueTeamsReady));
+
   // ---- Format tournoi
   const [format, setFormat] = React.useState<TourFormat>("single_ko");
   const [bestOf, setBestOf] = React.useState<BestOf>(3);
@@ -1236,8 +1238,7 @@ const petanqueTeamsReady = React.useMemo(() => {
   const [x01In, setX01In] = React.useState<"simple" | "double" | "master">("simple");
   const [x01Out, setX01Out] = React.useState<"simple" | "double" | "master">(store?.settings?.doubleOut ? "double" : "simple");
 
-  // ✅ create gate
-  const canCreate = !!name.trim() && !!mode && minPlayersOk && (!isPetanque || (petanqueMultipleOk && petanqueTeamsReady));
+  // ✅ create gate (moved below petanqueTeamsReady to avoid TDZ)
 
   const TYPE_INFO: Record<TourFormat, string> = {
     single_ko: "Tableau KO : une défaite = élimination. Rapide et clair.",
