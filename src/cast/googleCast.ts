@@ -1,7 +1,6 @@
 import type { CastSnapshot } from "./castTypes";
 
 export const DEFAULT_GOOGLE_CAST_APP_ID = "3534BC6A";
-export const GOOGLE_CAST_APP_ID_KEY = "multisports_google_cast_app_id";
 export const GOOGLE_CAST_NAMESPACE = "urn:x-cast:com.multisports.scoreboard";
 export const GOOGLE_CAST_SDK_URL =
   "https://www.gstatic.com/cv/js/sender/v1/cast_sender.js?loadCastFramework=1";
@@ -93,29 +92,20 @@ function sanitizeSnapshot(snapshot: CastSnapshot) {
 }
 
 export function getGoogleCastAppId(): string {
-  try {
-    const stored = normalizeAppId(window.localStorage.getItem(GOOGLE_CAST_APP_ID_KEY));
-    return stored || DEFAULT_GOOGLE_CAST_APP_ID;
-  } catch {
-    return DEFAULT_GOOGLE_CAST_APP_ID;
-  }
+  return DEFAULT_GOOGLE_CAST_APP_ID;
 }
 
 export function setGoogleCastAppId(appId: string) {
-  try {
-    const next = normalizeAppId(appId) || DEFAULT_GOOGLE_CAST_APP_ID;
-    window.localStorage.setItem(GOOGLE_CAST_APP_ID_KEY, next);
-    initializedAppId = null;
-    pushDiag("set_app_id", next);
-  } catch {}
+  pushDiag("set_app_id_ignored", {
+    asked: String(appId || ""),
+    forced: DEFAULT_GOOGLE_CAST_APP_ID,
+  });
 }
 
 export function resetGoogleCastAppId() {
-  try {
-    window.localStorage.removeItem(GOOGLE_CAST_APP_ID_KEY);
-    initializedAppId = null;
-    pushDiag("reset_app_id", DEFAULT_GOOGLE_CAST_APP_ID);
-  } catch {}
+  pushDiag("reset_app_id", {
+    forced: DEFAULT_GOOGLE_CAST_APP_ID,
+  });
 }
 
 export function getGoogleCastDiagLog() {
@@ -199,7 +189,7 @@ export async function ensureGoogleCastReady(): Promise<boolean> {
   const ok = await loadGoogleCastSdk();
   if (!ok) return false;
 
-  const appId = getGoogleCastAppId();
+  const appId = DEFAULT_GOOGLE_CAST_APP_ID;
   if (!appId) {
     pushDiag("ensure_ready_no_app_id");
     return false;
@@ -215,7 +205,7 @@ export async function ensureGoogleCastReady(): Promise<boolean> {
 
   try {
     cast.framework.CastContext.getInstance().setOptions({
-      receiverApplicationId: appId,
+      receiverApplicationId: DEFAULT_GOOGLE_CAST_APP_ID,
       autoJoinPolicy: chrome.cast.AutoJoinPolicy.ORIGIN_SCOPED,
     });
     initializedAppId = appId;

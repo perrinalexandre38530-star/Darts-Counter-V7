@@ -1012,7 +1012,7 @@ function resolvePlayerForSide(allMatches: any[], m: any, side: "a" | "b", player
   return { kind: "feeder" as const, feederA: pa, feederB: pb };
 }
 
-function WorldCupBracketViewPure({ koMatches, playersById, allMatches }: any) {
+function WorldCupBracketViewPure({ koMatches, playersById, allMatches, onOpenMatch }: any) {
   if (!koMatches?.length) return <div style={{ fontSize: 12, opacity: 0.78 }}>Aucun match KO à afficher.</div>;
 
   const COL_W = 86;
@@ -1106,6 +1106,15 @@ function WorldCupBracketViewPure({ koMatches, playersById, allMatches }: any) {
                 return (
                   <div
                     key={m.id}
+                    onClick={onOpenMatch ? () => onOpenMatch(m) : undefined}
+                    role={onOpenMatch ? "button" : undefined}
+                    tabIndex={onOpenMatch ? 0 : undefined}
+                    onKeyDown={onOpenMatch ? (e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        onOpenMatch(m);
+                      }
+                    } : undefined}
                     style={{
                       position: "absolute",
                       left: 0,
@@ -1115,6 +1124,7 @@ function WorldCupBracketViewPure({ koMatches, playersById, allMatches }: any) {
                       display: "grid",
                       placeItems: "center",
                       gap: 10,
+                      cursor: onOpenMatch ? "pointer" : "default",
                     }}
                   >
                     {renderSide(a)}
@@ -2167,7 +2177,7 @@ export default function TournamentView({ store, go, id }: Props) {
 
                   {bracketSub === "view" ? (
                     <div style={{ marginTop: 12 }}>
-                      <WorldCupBracketViewPure koMatches={koMatches} playersById={playersById} allMatches={safeMatches as any} />
+                      <WorldCupBracketViewPure koMatches={koMatches} playersById={playersById} allMatches={safeMatches as any} onOpenMatch={onOpenMatchDetails} />
                     </div>
                   ) : null}
 

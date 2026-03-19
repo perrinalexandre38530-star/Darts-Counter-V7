@@ -136,17 +136,17 @@ function PlayerCard({ side, score, winner }: any) {
         boxShadow: winner ? "0 0 24px rgba(127,226,169,0.16)" : "none",
       }}
     >
-      <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0 }}>
-        <AvatarCircle name={side?.label} avatarUrl={side?.player?.avatar} dim={side?.dim} />
-        <div style={{ minWidth: 0, flex: 1 }}>
-          <div style={{ fontWeight: 950, fontSize: 14, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+      <div style={{ display: "grid", justifyItems: "center", gap: 8, minWidth: 0, textAlign: "center" }}>
+        <AvatarCircle name={side?.label} avatarUrl={side?.player?.avatar || side?.player?.avatarDataUrl || side?.player?.avatarUrl} dim={side?.dim} size={68} />
+        <div style={{ minWidth: 0, width: "100%" }}>
+          <div style={{ fontWeight: 950, fontSize: 13.5, lineHeight: 1.15, whiteSpace: "normal", wordBreak: "break-word", overflowWrap: "anywhere" }}>
             {side?.label || "Joueur"}
           </div>
-          <div style={{ fontSize: 11.5, opacity: 0.72, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+          <div style={{ fontSize: 11, opacity: 0.72, marginTop: 4, whiteSpace: "normal", wordBreak: "break-word", overflowWrap: "anywhere" }}>
             {side?.subtitle || "—"}
           </div>
         </div>
-        <div style={{ fontSize: 28, fontWeight: 1000, color: winner ? "#7fe2a9" : "rgba(255,255,255,0.92)" }}>
+        <div style={{ fontSize: 30, fontWeight: 1000, color: winner ? "#7fe2a9" : "rgba(255,255,255,0.92)", lineHeight: 1 }}>
           {score ?? "–"}
         </div>
       </div>
@@ -308,10 +308,9 @@ export default function MatchDetailCard({
             <PlayerCard side={sideB} score={score?.b} winner={winnerB} />
           </div>
 
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0,1fr))", gap: 10 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0,1fr))", gap: 10 }}>
             <StatTile label="Phase" value={phaseLabel || "—"} accent="#4fb4ff" />
             <StatTile label="Statut" value={badgeLabel} accent={badgeColor} />
-            <StatTile label="Score" value={score ? `${score.a} - ${score.b}` : "—"} accent="#ffcf57" />
             <StatTile label="Vainqueur" value={done ? (playersById?.[winnerId]?.name || "—") : "À venir"} accent="#7fe2a9" />
           </div>
 
