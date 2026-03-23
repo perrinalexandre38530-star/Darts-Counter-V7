@@ -31,11 +31,11 @@ export default function StatsKillerMatch({ store, go, rec }: Props) {
   const winnerProfile =
     (store.profiles || []).find((p: any) => p?.id === winnerId) || null;
 
-  const killerStats = rec?.payload?.stats?.killer || null;
-  const perPlayer: any[] = killerStats?.perPlayer || [];
+  const killerStats = rec?.payload?.stats?.killer || rec?.payload?.stats || null;
+  const perPlayer: any[] = killerStats?.perPlayer || rec?.payload?.summary?.perPlayer || [];
 
-  const maxLives = Number(killerStats?.maxLives ?? rec?.payload?.config?.params?.maxLives ?? 3);
-  const params = killerStats?.params ?? rec?.payload?.config?.params ?? {};
+  const maxLives = Number(killerStats?.meta?.livesStart ?? rec?.payload?.config?.lives ?? 3);
+  const params = killerStats?.meta ?? rec?.payload?.config ?? {};
 
   return (
     <div style={{ padding: 16 }}>
@@ -137,10 +137,14 @@ export default function StatsKillerMatch({ store, go, rec }: Props) {
           Paramètres
         </div>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, fontSize: 12, color: theme.textSoft }}>
-          <div>Max lives: <b style={{ color: theme.text }}>{maxLives}</b></div>
-          <div>Exact: <b style={{ color: theme.text }}>{params.mustReachExactLives ? "Oui" : "Non"}</b></div>
-          <div>Friendly fire: <b style={{ color: theme.text }}>{params.allowFriendlyFire ? "Oui" : "Non"}</b></div>
-          <div>Own hurts (killer): <b style={{ color: theme.text }}>{params.loseLivesOnOwnNumberWhenKiller ? "Oui" : "Non"}</b></div>
+          <div>Vies départ: <b style={{ color: theme.text }}>{maxLives}</b></div>
+          <div>Devenir killer: <b style={{ color: theme.text }}>{params.becomeRule || "—"}</b></div>
+          <div>Règle dégâts: <b style={{ color: theme.text }}>{params.damageRule || "—"}</b></div>
+          <div>DBULL bouclier: <b style={{ color: theme.text }}>{params.shieldOnDBull ? "Oui" : "Non"}</b></div>
+          <div>DBULL désarmement: <b style={{ color: theme.text }}>{params.disarmOnDBull ? "Oui" : "Non"}</b></div>
+          <div>Résurrection: <b style={{ color: theme.text }}>{params.resurrectionMode || "off"}</b></div>
+          <div>BULL splash: <b style={{ color: theme.text }}>{params.bullSplash ? "Oui" : "Non"}</b></div>
+          <div>BULL soin: <b style={{ color: theme.text }}>{params.bullHeal ? "Oui" : "Non"}</b></div>
         </div>
       </div>
 
@@ -203,7 +207,7 @@ export default function StatsKillerMatch({ store, go, rec }: Props) {
                         {p.name || prof?.name || "—"}
                       </div>
                       <div style={{ color: theme.textSoft, fontSize: 12 }}>
-                        🎯 {p.killerNumber} • Lives end: <b style={{ color: theme.text }}>{p.livesEnd}</b> {p.isDead ? " • ☠" : ""}
+                        🎯 {p.killerNumber ?? p.number ?? "—"} • Lives end: <b style={{ color: theme.text }}>{p.livesEnd ?? (p.eliminated ? 0 : "—")}</b> {(p.isDead || p.eliminated) ? " • ☠" : ""}
                       </div>
                     </div>
 
@@ -222,14 +226,17 @@ export default function StatsKillerMatch({ store, go, rec }: Props) {
                       color: theme.textSoft,
                     }}
                   >
-                    <div>Hits own<br /><b style={{ color: theme.text }}>{p.hitsOwn ?? 0}</b></div>
-                    <div>Hits other<br /><b style={{ color: theme.text }}>{p.hitsOther ?? 0}</b></div>
                     <div>Kills<br /><b style={{ color: theme.text }}>{p.kills ?? 0}</b></div>
-                    <div>Deaths<br /><b style={{ color: theme.text }}>{p.deaths ?? 0}</b></div>
+                    <div>Auto kills<br /><b style={{ color: theme.text }}>{p.autoKills ?? 0}</b></div>
+                    <div>Résurrections<br /><b style={{ color: theme.text }}>{p.resurrectionsGiven ?? 0}</b></div>
+                    <div>Désarmements<br /><b style={{ color: theme.text }}>{p.disarmsTriggered ?? 0}</b></div>
                   </div>
 
                   <div style={{ marginTop: 6, fontSize: 12, color: theme.textSoft }}>
-                    Turns to killer: <b style={{ color: theme.text }}>{p.turnsToKiller ?? "—"}</b>
+                    Turns to killer: <b style={{ color: theme.text }}>{p.turnsToKiller ?? p.throwsToBecomeKiller ?? "—"}</b>
+                  </div>
+                  <div style={{ marginTop: 4, fontSize: 12, color: theme.textSoft }}>
+                    Contres bouclier: <b style={{ color: theme.text }}>{p.shieldBreaks ?? 0}</b> cassés • <b style={{ color: theme.text }}>{p.shieldHalfBreaks ?? 0}</b> affaiblis • Résurrections reçues: <b style={{ color: theme.text }}>{p.resurrectionsReceived ?? 0}</b>
                   </div>
                 </div>
               );

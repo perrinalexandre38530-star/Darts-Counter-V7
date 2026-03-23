@@ -193,6 +193,7 @@ import TournamentComposeTeams from "./pages/TournamentComposeTeams";
 import TournamentView from "./pages/TournamentView";
 import TournamentMatchPlay from "./pages/TournamentMatchPlay";
 import TournamentRoadmap from "./pages/TournamentRoadmap";
+import TournamentMatchResult from "./pages/TournamentMatchResult";
 
 // X01 V3
 import X01ConfigV3 from "./pages/X01ConfigV3";
@@ -2980,6 +2981,16 @@ case "babyfoot_team_edit":
         }
 
         page = <TournamentMatchPlay store={store} go={go} params={{ tournamentId, matchId }} />;
+        break;
+      }
+
+      case "tournament_match_result": {
+        const tournamentId = String(routeParams?.tournamentId ?? routeParams?.id ?? routeParams?.tid ?? "");
+        const matchId = String(routeParams?.matchId ?? "");
+        const historyMatchId = String(routeParams?.historyMatchId ?? "");
+        const phaseLabel = String(routeParams?.phaseLabel ?? "");
+
+        page = <TournamentMatchResult go={go} params={{ tournamentId, matchId, historyMatchId, phaseLabel }} />;
         break;
       }
 

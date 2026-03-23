@@ -84,13 +84,16 @@ export type KillerConfig = {
   // ✅ Variantes BULL
   bullSplash: boolean; // SBULL => -1 à tous les adversaires ; DBULL => -2 à tous
   bullHeal: boolean; // toucher BULL permet de regagner des vies (selon implémentation KillerPlay)
+  bullRotate?: boolean; // alterne les fonctions BULL sélectionnées tour après tour
 
   // ✅ Résurrection
   resurrectionMode?: KillerResurrectionMode; // off | one_player_once | all_once | all
   resurrectionLives?: number; // 1..6
 
-  // ✅ Bouclier
+  // ✅ DBULL / Bouclier / Désarmement
   shieldOnDBull?: boolean; // DBULL => bouclier
+  disarmOnDBull?: boolean; // DBULL => désarme tous les autres killers sauf le tireur
+  dbullRotate?: boolean; // alterne les fonctions DBULL sélectionnées tour après tour
   shieldTurns?: number; // durée en nombre de tours du joueur
   selectBonusShield?: boolean; // bonus bouclier pendant l'attribution au lancer
   missAutoHit?: boolean; // MISS => le joueur se retire 1 vie
@@ -322,7 +325,7 @@ function uniqueKillerNumbers(selected: Record<string, number>) {
 
 // ------------------ Variants incompat matrix ------------------
 
-type VariantKey = "selfHitWhileKiller" | "selfHitUsesMultiplier" | "lifeSteal" | "blindKiller" | "bullSplash" | "bullHeal" | "shieldOnDBull" | "selectBonusShield" | "missAutoHit";
+type VariantKey = "selfHitWhileKiller" | "selfHitUsesMultiplier" | "lifeSteal" | "blindKiller" | "bullSplash" | "bullHeal" | "shieldOnDBull" | "disarmOnDBull" | "selectBonusShield" | "missAutoHit";
 
 // ✅ règles validées
 const INCOMPATIBLE: Record<VariantKey, VariantKey[]> = {
@@ -332,16 +335,22 @@ const INCOMPATIBLE: Record<VariantKey, VariantKey[]> = {
   bullSplash: ["bullHeal"],
   bullHeal: ["bullSplash", "lifeSteal"],
   lifeSteal: ["bullHeal"],
-  shieldOnDBull: [],
+  shieldOnDBull: ["disarmOnDBull"],
+  disarmOnDBull: ["shieldOnDBull"],
   selectBonusShield: [],
   missAutoHit: [],
 };
 
-function getConflictReason(k: VariantKey, state: Record<VariantKey, boolean>) {
+function getConflictReason(k: VariantKey, state: Record<VariantKey, boolean> & Record<string, any>) {
   // dépendance
   if (k === "selfHitUsesMultiplier" && !state.selfHitWhileKiller) {
     return "Disponible uniquement si “Auto-pénalité” est activée.";
   }
+
+  const bullRotate = !!state.bullRotate;
+  const dbullRotate = !!state.dbullRotate;
+  if (bullRotate && (k === "bullSplash" || k === "bullHeal")) return "";
+  if (dbullRotate && (k === "shieldOnDBull" || k === "disarmOnDBull")) return "";
 
   // incompatibles ON
   const bad = (INCOMPATIBLE[k] || []).filter((other) => !!state[other]);
@@ -354,6 +363,7 @@ function getConflictReason(k: VariantKey, state: Record<VariantKey, boolean>) {
       bullSplash: "BULL = dégâts à tous",
       bullHeal: "BULL = soins",
       shieldOnDBull: "DBULL = bouclier",
+      disarmOnDBull: "DBULL = désarmement",
       selectBonusShield: "Bonus bouclier au choix du numéro",
       missAutoHit: "MISS = auto-hit",
     };
@@ -363,7 +373,7 @@ function getConflictReason(k: VariantKey, state: Record<VariantKey, boolean>) {
   return "";
 }
 
-function isVariantDisabled(k: VariantKey, state: Record<VariantKey, boolean>) {
+function isVariantDisabled(k: VariantKey, state: Record<VariantKey, boolean> & Record<string, any>) {
   return !!getConflictReason(k, state);
 }
 
@@ -450,9 +460,12 @@ export default function KillerConfigPage(props: Props) {
   // ✅ Bull variants
   const [bullSplash, setBullSplash] = React.useState<boolean>(false);
   const [bullHeal, setBullHeal] = React.useState<boolean>(false);
+  const [bullRotate, setBullRotate] = React.useState<boolean>(false);
 
   // ✅ Bouclier / variantes avancées
   const [shieldOnDBull, setShieldOnDBull] = React.useState<boolean>(false);
+  const [disarmOnDBull, setDisarmOnDBull] = React.useState<boolean>(false);
+  const [dbullRotate, setDbullRotate] = React.useState<boolean>(false);
   const [shieldTurns, setShieldTurns] = React.useState<number>(1);
   const [selectBonusShield, setSelectBonusShield] = React.useState<boolean>(false);
   const [missAutoHit, setMissAutoHit] = React.useState<boolean>(false);
@@ -492,6 +505,9 @@ export default function KillerConfigPage(props: Props) {
     bullSplash,
     bullHeal,
     shieldOnDBull,
+    disarmOnDBull,
+    bullRotate,
+    dbullRotate,
     selectBonusShield,
     missAutoHit,
   };
@@ -510,21 +526,29 @@ export default function KillerConfigPage(props: Props) {
       if (k === "bullSplash") return setBullSplash(false);
       if (k === "bullHeal") return setBullHeal(false);
       if (k === "shieldOnDBull") return setShieldOnDBull(false);
+      if (k === "disarmOnDBull") return setDisarmOnDBull(false);
       if (k === "selectBonusShield") return setSelectBonusShield(false);
       if (k === "missAutoHit") return setMissAutoHit(false);
       return;
     }
 
     // ON : bloque si disabled
-    const reason = getConflictReason(k, variantState);
+    const reason = getConflictReason(k, variantState as any);
     if (reason) return;
 
     // ON : auto-OFF incompatibles
-    const toOff = INCOMPATIBLE[k] || [];
+    let toOff = INCOMPATIBLE[k] || [];
+    if (bullRotate && (k === "bullSplash" || k === "bullHeal")) {
+      toOff = toOff.filter((x) => x !== "bullSplash" && x !== "bullHeal");
+    }
+    if (dbullRotate && (k === "shieldOnDBull" || k === "disarmOnDBull")) {
+      toOff = toOff.filter((x) => x !== "shieldOnDBull" && x !== "disarmOnDBull");
+    }
     if (toOff.includes("bullHeal")) setBullHeal(false);
     if (toOff.includes("bullSplash")) setBullSplash(false);
     if (toOff.includes("lifeSteal")) setLifeSteal(false);
     if (toOff.includes("shieldOnDBull")) setShieldOnDBull(false);
+    if (toOff.includes("disarmOnDBull")) setDisarmOnDBull(false);
     if (toOff.includes("selectBonusShield")) setSelectBonusShield(false);
     if (toOff.includes("missAutoHit")) setMissAutoHit(false);
 
@@ -551,6 +575,7 @@ export default function KillerConfigPage(props: Props) {
     if (k === "bullSplash") return setBullSplash(true);
     if (k === "bullHeal") return setBullHeal(true);
     if (k === "shieldOnDBull") return setShieldOnDBull(true);
+    if (k === "disarmOnDBull") return setDisarmOnDBull(true);
     if (k === "selectBonusShield") return setSelectBonusShield(true);
     if (k === "missAutoHit") return setMissAutoHit(true);
   }
@@ -558,6 +583,14 @@ export default function KillerConfigPage(props: Props) {
   React.useEffect(() => {
     if (!selfHitWhileKiller && selfHitUsesMultiplier) setSelfHitUsesMultiplier(false);
   }, [selfHitWhileKiller]);
+
+  React.useEffect(() => {
+    if (!bullRotate && bullSplash && bullHeal) setBullHeal(false);
+  }, [bullRotate, bullSplash, bullHeal]);
+
+  React.useEffect(() => {
+    if (!dbullRotate && shieldOnDBull && disarmOnDBull) setDisarmOnDBull(false);
+  }, [dbullRotate, shieldOnDBull, disarmOnDBull]);
 
   // ✅ FIX BLIND: si l'utilisateur passe en "1er lancer", on coupe Blind Killer.
   React.useEffect(() => {
@@ -689,8 +722,11 @@ export default function KillerConfigPage(props: Props) {
 
       bullSplash,
       bullHeal,
+      bullRotate,
 
       shieldOnDBull,
+      disarmOnDBull,
+      dbullRotate,
       shieldTurns: clampInt(shieldTurns, 1, 5, 1),
       selectBonusShield,
       missAutoHit,
@@ -1344,71 +1380,146 @@ export default function KillerConfigPage(props: Props) {
                 }
               />
 
-              <VariantRow
-                title="BULL = dégâts à tous (SBULL/DBULL)"
-                desc="Si ON : SBULL enlève 1 vie à chaque adversaire, DBULL enlève 2 vies à chaque adversaire."
-                value={bullSplash}
-                onChange={(v) => setVariant("bullSplash", v)}
-                primary={primary}
-                primarySoft={primarySoft}
-                disabled={isVariantDisabled("bullSplash", variantState) && !bullSplash}
-                disabledReason={getConflictReason("bullSplash", variantState)}
-              />
-
-              <VariantRow
-                title="BULL = soins (récupérer des vies)"
-                desc="Si ON : toucher BULL permet de regagner des vies (selon la règle implémentée en jeu)."
-                value={bullHeal}
-                onChange={(v) => setVariant("bullHeal", v)}
-                primary={primary}
-                primarySoft={primarySoft}
-                disabled={isVariantDisabled("bullHeal", variantState) && !bullHeal}
-                disabledReason={getConflictReason("bullHeal", variantState)}
-              />
-                          <VariantRow
-                title="DBULL = bouclier"
-                desc="Si ON : toucher DBULL donne un bouclier temporaire. SBULL reste disponible pour les autres variantes BULL."
-                value={shieldOnDBull}
-                onChange={(v) => setVariant("shieldOnDBull", v)}
-                primary={primary}
-                primarySoft={primarySoft}
-                disabled={isVariantDisabled("shieldOnDBull", variantState) && !shieldOnDBull}
-                disabledReason={getConflictReason("shieldOnDBull", variantState)}
-              />
-
-              {shieldOnDBull && (
-                <div
-                  style={{
-                    marginTop: -2,
-                    marginLeft: 8,
-                    borderLeft: "2px solid rgba(94,234,212,0.35)",
-                    paddingLeft: 12,
-                    display: "flex",
-                    flexDirection: "column",
-                    gap: 8,
-                  }}
-                >
-                  <div style={{ fontSize: 11, color: "#9fa4c0", fontWeight: 800 }}>
-                    Durée du bouclier (tours du joueur)
-                  </div>
-                  <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                    {[1, 2, 3, 4, 5].map((n) => (
-                      <PillButton
-                        key={`shield-turns-${n}`}
-                        label={`${n} tour${n > 1 ? "s" : ""}`}
-                        active={shieldTurns === n}
-                        onClick={() => setShieldTurns(n)}
-                        primary={primary}
-                        primarySoft={primarySoft}
-                        compact
-                      />
-                    ))}
-                  </div>
-                  <div style={{ fontSize: 10.5, color: "#7c80a0", lineHeight: 1.25 }}>
-                    Pendant le bouclier, le joueur ne subit pas les dégâts des attaques adverses ni du BULL splash.
-                  </div>
+              <div
+                style={{
+                  borderRadius: 14,
+                  border: "1px solid rgba(255,255,255,0.06)",
+                  background: "rgba(0,0,0,0.20)",
+                  padding: 12,
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: 10,
+                }}
+              >
+                <div style={{ fontWeight: 900, color: "#fff" }}>Fonctions BULL</div>
+                <div style={{ opacity: 0.78, fontSize: 12, lineHeight: 1.25 }}>
+                  Toutes les fonctions déjà existantes du BULL sont regroupées ici pour une lecture plus claire. Une seule fonction BULL doit rester active à la fois.
                 </div>
-              )}
+
+                <VariantRow
+                  title="BULL = dégâts à tous (SBULL/DBULL)"
+                  desc="Si ON : SBULL enlève 1 vie à chaque adversaire, DBULL enlève 2 vies à chaque adversaire."
+                  value={bullSplash}
+                  onChange={(v) => setVariant("bullSplash", v)}
+                  primary={primary}
+                  primarySoft={primarySoft}
+                  disabled={isVariantDisabled("bullSplash", variantState) && !bullSplash}
+                  disabledReason={getConflictReason("bullSplash", variantState)}
+                />
+
+                <VariantRow
+                  title="BULL = soins (récupérer des vies)"
+                  desc="Si ON : toucher BULL permet de regagner des vies selon le nombre de vies défini au départ."
+                  value={bullHeal}
+                  onChange={(v) => setVariant("bullHeal", v)}
+                  primary={primary}
+                  primarySoft={primarySoft}
+                  disabled={isVariantDisabled("bullHeal", variantState as any) && !bullHeal}
+                  disabledReason={getConflictReason("bullHeal", variantState as any)}
+                />
+
+                <VariantRow
+                  title="Rotation BULL (1 tour / fonction)"
+                  desc="Si ON : les fonctions BULL activées tournent automatiquement à chaque changement de tour. Si deux fonctions sont ON, elles alternent tour après tour."
+                  value={bullRotate}
+                  onChange={(v) => setBullRotate(v)}
+                  primary={primary}
+                  primarySoft={primarySoft}
+                />
+
+                {bullRotate && (
+                  <div style={{ marginTop: -2, marginLeft: 8, borderLeft: "2px solid rgba(247,200,92,0.35)", paddingLeft: 12, fontSize: 11, color: "#9fa4c0", lineHeight: 1.35 }}>
+                    Fonction active = index du tour courant modulo nombre de fonctions BULL actives.
+Active uniquement parmi les fonctions cochées ci-dessus.
+                  </div>
+                )}
+              </div>
+
+              <div
+                style={{
+                  borderRadius: 14,
+                  border: "1px solid rgba(255,255,255,0.06)",
+                  background: "rgba(0,0,0,0.20)",
+                  padding: 12,
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: 10,
+                }}
+              >
+                <div style={{ fontWeight: 900, color: "#fff" }}>Fonctions DBULL</div>
+                <div style={{ opacity: 0.78, fontSize: 12, lineHeight: 1.25 }}>
+                  Une seule fonction DBULL peut être active en même temps. Le désarmement retire le statut KILLER à tous les autres killers sauf le tireur.
+                </div>
+
+                <VariantRow
+                  title="DBULL = bouclier"
+                  desc="Si ON : toucher DBULL donne un bouclier temporaire. Un DOUBLE adverse sur le chiffre du joueur protégé casse entièrement le bouclier. Un TRIPLE l'affaiblit de moitié. Deux triples l'annulent."
+                  value={shieldOnDBull}
+                  onChange={(v) => setVariant("shieldOnDBull", v)}
+                  primary={primary}
+                  primarySoft={primarySoft}
+                  disabled={isVariantDisabled("shieldOnDBull", variantState) && !shieldOnDBull}
+                  disabledReason={getConflictReason("shieldOnDBull", variantState)}
+                />
+
+                {shieldOnDBull && (
+                  <div
+                    style={{
+                      marginTop: -2,
+                      marginLeft: 8,
+                      borderLeft: "2px solid rgba(94,234,212,0.35)",
+                      paddingLeft: 12,
+                      display: "flex",
+                      flexDirection: "column",
+                      gap: 8,
+                    }}
+                  >
+                    <div style={{ fontSize: 11, color: "#9fa4c0", fontWeight: 800 }}>
+                      Durée du bouclier (tours du joueur)
+                    </div>
+                    <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                      {[1, 2, 3, 4, 5].map((n) => (
+                        <PillButton
+                          key={`shield-turns-${n}`}
+                          label={`${n} tour${n > 1 ? "s" : ""}`}
+                          active={shieldTurns === n}
+                          onClick={() => setShieldTurns(n)}
+                          primary={primary}
+                          primarySoft={primarySoft}
+                          compact
+                        />
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                <VariantRow
+                  title="DBULL = désarmement"
+                  desc="Si ON : toucher DBULL désarme tous les autres killers sauf le tireur. Ils repassent au statut de base et doivent retoucher leur chiffre pour redevenir killer."
+                  value={disarmOnDBull}
+                  onChange={(v) => setVariant("disarmOnDBull", v)}
+                  primary={primary}
+                  primarySoft={primarySoft}
+                  disabled={isVariantDisabled("disarmOnDBull", variantState as any) && !disarmOnDBull}
+                  disabledReason={getConflictReason("disarmOnDBull", variantState as any)}
+                />
+
+                <VariantRow
+                  title="Rotation DBULL (1 tour / fonction)"
+                  desc="Si ON : les fonctions DBULL activées tournent automatiquement à chaque changement de tour. Si bouclier et désarmement sont ON, elles alternent tour après tour."
+                  value={dbullRotate}
+                  onChange={(v) => setDbullRotate(v)}
+                  primary={primary}
+                  primarySoft={primarySoft}
+                />
+
+                {dbullRotate && (
+                  <div style={{ marginTop: -2, marginLeft: 8, borderLeft: "2px solid rgba(247,200,92,0.35)", paddingLeft: 12, fontSize: 11, color: "#9fa4c0", lineHeight: 1.35 }}>
+                    Fonction active = index du tour courant modulo nombre de fonctions DBULL actives.
+Active uniquement parmi les fonctions cochées ci-dessus.
+                  </div>
+                )}
+              </div>
 
               <VariantRow
                 title="Bonus bouclier au choix du numéro"

@@ -29,6 +29,12 @@ export type KillerRow = {
 
   deaths: number;
   deathsAvg: number;
+  resurrectionsGiven?: number;
+  resurrectionsReceived?: number;
+  disarmsTriggered?: number;
+  disarmsReceived?: number;
+  shieldBreaks?: number;
+  shieldHalfBreaks?: number;
 
   favSegment: string | null;
   favNumber: string | null;
@@ -153,7 +159,7 @@ export function computeKillerRows(
     const agg = computeKillerStatsAggForProfile(list, pid);
 
     // on n'affiche que si au moins 1 match (sinon panel affiche "aucune partie")
-    if (!agg || !agg.totalMatches) continue;
+    if (!agg || !(agg.totalMatches || agg.played)) continue;
 
     const botFallback = botsMap?.[pid] || {};
 
@@ -162,23 +168,29 @@ export function computeKillerRows(
       name: p?.name || botFallback?.name || "—",
       avatarDataUrl: pickAvatarFromProfile(p) || botFallback?.avatarDataUrl || null,
 
-      matches: agg.totalMatches,
-      wins: agg.wins,
-      winRate: (agg.winRate || 0) * 100,
+      matches: agg.totalMatches || agg.played || 0,
+      wins: agg.totalWins || agg.wins || 0,
+      winRate: Number(agg.winRate || 0),
 
-      kills: agg.totalKills || 0,
-      killsAvg: agg.avgKills || 0,
+      kills: agg.totalKills || agg.killsTotal || agg.kills || 0,
+      killsAvg: agg.avgKills || agg.killsAvg || 0,
 
-      darts: agg.totalDarts || 0,
-      dartsAvg: agg.avgDarts || 0,
+      darts: agg.totalDarts || agg.dartsTotal || agg.darts || 0,
+      dartsAvg: agg.avgDarts || agg.dartsAvg || 0,
 
-      deaths: agg.deaths || 0,
-      deathsAvg: agg.avgDeaths || 0,
+      deaths: agg.deaths || agg.deathsTotal || 0,
+      deathsAvg: agg.avgDeaths || agg.deathsAvg || 0,
+      resurrectionsGiven: agg.resurrectionsGivenTotal || 0,
+      resurrectionsReceived: agg.resurrectionsReceivedTotal || 0,
+      disarmsTriggered: agg.disarmsTriggeredTotal || 0,
+      disarmsReceived: agg.disarmsReceivedTotal || 0,
+      shieldBreaks: agg.shieldBreaksTotal || 0,
+      shieldHalfBreaks: agg.shieldHalfBreaksTotal || 0,
 
       favSegment: agg.favSegment ?? null,
       favNumber: agg.favNumber ?? null,
 
-      lastPlayedAt: agg.lastPlayedAt ?? null,
+      lastPlayedAt: agg.lastPlayedAt ?? agg.lastAt ?? null,
     });
   }
 
@@ -195,7 +207,7 @@ export function computeKillerRows(
     }
     for (const pid of Object.keys(byId)) {
       const agg = computeKillerStatsAggForProfile(list, pid);
-      if (!agg || !agg.totalMatches) continue;
+      if (!agg || !(agg.totalMatches || agg.played)) continue;
       rows.push({
         id: pid,
         name: byId[pid]?.name || botsMap?.[pid]?.name || "—",
@@ -217,7 +229,7 @@ export function computeKillerRows(
         favSegment: agg.favSegment ?? null,
         favNumber: agg.favNumber ?? null,
 
-        lastPlayedAt: agg.lastPlayedAt ?? null,
+        lastPlayedAt: agg.lastPlayedAt ?? agg.lastAt ?? null,
       });
     }
   }

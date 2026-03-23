@@ -129,8 +129,15 @@ type KillerPlayerState = {
   hitsOnSelf: number;
   shieldTurnsLeft?: number;
   shieldJustGranted?: boolean;
+  shieldStrength?: number;
   resurrected?: boolean;
   resurrectShield?: boolean;
+  disarmsTriggered?: number;
+  disarmsReceived?: number;
+  shieldBreaks?: number;
+  shieldHalfBreaks?: number;
+  resurrectionsGiven?: number;
+  resurrectionsReceived?: number;
   totalThrows: number;
   killerThrows: number;
   offensiveThrows: number;
@@ -169,6 +176,7 @@ type Snapshot = {
   assignIndex: number;
   assignDone: boolean;
   pendingChoiceNumber: PendingChoiceNumber | null;
+  turnCount?: number;
 };
 
 function clampInt(n: any, min: number, max: number, fallback: number) {
@@ -271,6 +279,9 @@ function tryResurrectOnHit(args: {
   dead.resurrectShield = true;
   dead.shieldTurnsLeft = 0;
   dead.shieldJustGranted = false;
+  dead.shieldStrength = 0;
+  dead.resurrectionsReceived = Number(dead.resurrectionsReceived || 0) + 1;
+  actor.resurrectionsGiven = Number(actor.resurrectionsGiven || 0) + 1;
 
   const prevOrder = Array.isArray(elimOrderRef.current) ? elimOrderRef.current : [];
   elimOrderRef.current = prevOrder.filter((id: string) => id !== dead.id);
@@ -319,14 +330,21 @@ function normalizeNumberFromHit(target: number) {
   return null;
 }
 
+function getShieldStrength(p: any) {
+  const v = Number(p?.shieldStrength ?? 1);
+  if (!Number.isFinite(v)) return 0;
+  return Math.max(0, Math.min(1, v));
+}
+
 function playerHasShield(p: any) {
-  return Number(p?.shieldTurnsLeft || 0) > 0;
+  return Number(p?.shieldTurnsLeft || 0) > 0 && getShieldStrength(p) > 0;
 }
 
 function grantShieldTurns(p: any, turns: number) {
   const n = clampInt(turns, 1, 9, 1);
   p.shieldTurnsLeft = Math.max(Number(p?.shieldTurnsLeft || 0), n);
   p.shieldJustGranted = true;
+  p.shieldStrength = 1;
 }
 
 function shieldLabel(turns: number) {
@@ -933,7 +951,7 @@ function ResurrectShieldAura({ compact = false }: { compact?: boolean }) {
           boxShadow:
             "0 0 0 2px rgba(255,255,255,.18) inset, 0 0 16px rgba(255,255,255,.50), 0 0 28px rgba(255,255,255,.28)",
           background:
-            "radial-gradient(circle at 30% 30%, rgba(255,255,255,.18), rgba(255,255,255,.10) 45%, rgba(210,210,210,.05) 68%, transparent 75%)",
+            "radial-gradient(circle at 30% 30%, rgba(255,255,255,.18), rgba(255,255,255,.10) 45%, rgba(200,200,200,.05) 68%, transparent 75%)",
           pointerEvents: "none",
           zIndex: 4,
         }}
@@ -963,8 +981,8 @@ function ResurrectShieldAura({ compact = false }: { compact?: boolean }) {
           <defs>
             <linearGradient id={id} x1="0" y1="0" x2="0" y2="1">
               <stop offset="0" stopColor="rgba(255,255,255,.98)" />
-              <stop offset="0.55" stopColor="rgba(232,232,232,.98)" />
-              <stop offset="1" stopColor="rgba(184,184,184,.98)" />
+              <stop offset="0.55" stopColor="rgba(228,228,228,.98)" />
+              <stop offset="1" stopColor="rgba(176,176,176,.98)" />
             </linearGradient>
           </defs>
           <path
@@ -2620,8 +2638,15 @@ React.useEffect(() => {
         hitsOnSelf: 0,
         shieldTurnsLeft: 0,
         shieldJustGranted: false,
+        shieldStrength: 0,
         resurrected: false,
         resurrectShield: false,
+        disarmsTriggered: 0,
+        disarmsReceived: 0,
+        shieldBreaks: 0,
+        shieldHalfBreaks: 0,
+        resurrectionsGiven: 0,
+        resurrectionsReceived: 0,
         totalThrows: 0,
         killerThrows: 0,
         offensiveThrows: 0,
@@ -2679,8 +2704,15 @@ React.useEffect(() => {
         number: clampInt((rp as any)?.number ?? (base as any)?.number, 0, 20, 0),
         lives: Math.max(0, Number((rp as any)?.lives ?? (base as any)?.lives ?? 0) || 0),
         shieldTurnsLeft: Math.max(0, Number((rp as any)?.shieldTurnsLeft ?? 0) || 0),
+        shieldStrength: Math.max(0, Math.min(1, Number((rp as any)?.shieldStrength ?? ((rp as any)?.shieldTurnsLeft ? 1 : 0)) || 0)),
         resurrected: !!((rp as any)?.resurrected),
         resurrectShield: !!((rp as any)?.resurrectShield),
+        disarmsTriggered: Math.max(0, Number((rp as any)?.disarmsTriggered ?? 0) || 0),
+        disarmsReceived: Math.max(0, Number((rp as any)?.disarmsReceived ?? 0) || 0),
+        shieldBreaks: Math.max(0, Number((rp as any)?.shieldBreaks ?? 0) || 0),
+        shieldHalfBreaks: Math.max(0, Number((rp as any)?.shieldHalfBreaks ?? 0) || 0),
+        resurrectionsGiven: Math.max(0, Number((rp as any)?.resurrectionsGiven ?? 0) || 0),
+        resurrectionsReceived: Math.max(0, Number((rp as any)?.resurrectionsReceived ?? 0) || 0),
         throwsToBecomeKiller: Math.max(0, Number((rp as any)?.throwsToBecomeKiller ?? 0) || 0),
         killerThrows: Math.max(0, Number((rp as any)?.killerThrows ?? 0) || 0),
         offensiveThrows: Math.max(0, Number((rp as any)?.offensiveThrows ?? 0) || 0),
@@ -2706,6 +2738,19 @@ React.useEffect(() => {
     if (Number.isFinite(v) && v >= 0) return v;
     const me = initialPlayers[turnIndex] ?? initialPlayers[0];
     return me?.killerPhase === "SELECT" ? 1 : 3;
+  });
+
+  const [turnCount, setTurnCount] = React.useState<number>(() => {
+    const v = Number((resumeState as any)?.turnCount);
+    return Number.isFinite(v) && v >= 0 ? v : 0;
+  });
+  const [bullRotateStep, setBullRotateStep] = React.useState<number>(() => {
+    const v = Number((resumeState as any)?.bullRotateStep);
+    return Number.isFinite(v) && v >= 0 ? v : 0;
+  });
+  const [dbullRotateStep, setDbullRotateStep] = React.useState<number>(() => {
+    const v = Number((resumeState as any)?.dbullRotateStep);
+    return Number.isFinite(v) && v >= 0 ? v : 0;
   });
 
   // ✅ RÉSURRECTION / SHIELD (declared early because resumeConfig depends on them)
@@ -2802,12 +2847,15 @@ React.useEffect(() => {
             assignIndex,
             pendingChoiceNumber,
             events,
+            turnCount,
+            bullRotateStep,
+            dbullRotateStep,
           },
         },
       };
       void History.upsert(rec as any);
     } catch {}
-  }, [players, turnIndex, dartsLeft, assignDone, assignIndex, pendingChoiceNumber, events, config, startedAt, resumeConfig]);
+  }, [players, turnIndex, dartsLeft, assignDone, assignIndex, pendingChoiceNumber, events, turnCount, bullRotateStep, dbullRotateStep, config, startedAt, resumeConfig]);
 
   React.useEffect(() => {
     // ✅ AUTOSAVE in_progress pour reprise (toutes les 8s)
@@ -2927,6 +2975,9 @@ React.useEffect(() => {
       assignIndex,
       assignDone,
       pendingChoiceNumber: pendingChoiceNumber ? { ...pendingChoiceNumber } : null,
+      turnCount,
+      bullRotateStep,
+      dbullRotateStep,
     };
     undoRef.current = [snap, ...undoRef.current].slice(0, 60);
   }
@@ -2954,6 +3005,9 @@ React.useEffect(() => {
     setAssignIndex(s.assignIndex || 0);
     setAssignDone(!!s.assignDone);
     setPendingChoiceNumber(s.pendingChoiceNumber || null);
+    setTurnCount(Number((s as any).turnCount || 0));
+    setBullRotateStep(Number((s as any).bullRotateStep || 0));
+    setDbullRotateStep(Number((s as any).dbullRotateStep || 0));
   }
 
   function endTurn(nextPlayers?: KillerPlayerState[]) {
@@ -2973,6 +3027,10 @@ React.useEffect(() => {
               : shieldJustGranted
               ? shieldTurnsLeft
               : Math.max(0, shieldTurnsLeft - 1),
+          shieldStrength:
+            shieldTurnsLeft <= 0
+              ? 0
+              : Math.max(0, Math.min(1, Number(p.shieldStrength ?? (shieldTurnsLeft > 0 ? 1 : 0)) || 0)),
           shieldJustGranted: false,
         };
       });
@@ -2987,6 +3045,9 @@ React.useEffect(() => {
       const nextP = base[nextIdx];
       setPlayers((curr) => curr.map((p, i) => (i === nextIdx && p.resurrectShield ? { ...p, resurrectShield: false } : p)));
       setDartsLeft(nextP?.killerPhase === "SELECT" ? 1 : 3);
+      setTurnCount((n) => n + 1);
+      if (bullRotateOn) setBullRotateStep((n) => n + 1);
+      if (dbullRotateOn) setDbullRotateStep((n) => n + 1);
       return nextIdx;
     });
   }
@@ -3020,6 +3081,7 @@ React.useEffect(() => {
       setDartsLeft(3);
       setVisit([]);
       setMultiplier(1);
+      setTurnCount(0);
 
       pushLog("✅ Assignation terminée. La partie commence !");
       pushEvent({ t: Date.now(), type: "ASSIGN_DONE" });
@@ -3106,6 +3168,12 @@ React.useEffect(() => {
         selfPenaltyHits: p.selfPenaltyHits ?? 0,
         livesStolen: p.livesStolen ?? 0,
         livesHealed: p.livesHealed ?? 0,
+        disarmsTriggered: p.disarmsTriggered ?? 0,
+        disarmsReceived: p.disarmsReceived ?? 0,
+        shieldBreaks: p.shieldBreaks ?? 0,
+        shieldHalfBreaks: p.shieldHalfBreaks ?? 0,
+        resurrectionsGiven: p.resurrectionsGiven ?? 0,
+        resurrectionsReceived: p.resurrectionsReceived ?? 0,
         hitsOnSelf: p.hitsOnSelf,
         totalThrows: p.totalThrows,
         killerThrows: p.killerThrows,
@@ -3144,6 +3212,17 @@ React.useEffect(() => {
         livesStart: config.lives,
         becomeRule: config.becomeRule,
         damageRule: config.damageRule,
+        bullSplash: !!bullSplashOn,
+        bullHeal: !!bullHealOn,
+        shieldOnDBull: !!shieldOnDBull,
+        disarmOnDBull: !!disarmOnDBull,
+        shieldTurns: Number(shieldTurns || 0),
+        bullRotate: !!bullRotateOn,
+        dbullRotate: !!dbullRotateOn,
+        bullRotateStep,
+        dbullRotateStep,
+        resurrectionMode,
+        resurrectionLives,
       },
       players: finalPlayersRaw.map((p) => ({
         id: p.id,
@@ -3163,6 +3242,12 @@ React.useEffect(() => {
           selfPenaltyHits: Number(p.selfPenaltyHits || 0),
           livesStolen: Number(p.livesStolen || 0),
           livesHealed: Number(p.livesHealed || 0),
+          disarmsTriggered: Number(p.disarmsTriggered || 0),
+          disarmsReceived: Number(p.disarmsReceived || 0),
+          shieldBreaks: Number(p.shieldBreaks || 0),
+          shieldHalfBreaks: Number(p.shieldHalfBreaks || 0),
+          resurrectionsGiven: Number(p.resurrectionsGiven || 0),
+          resurrectionsReceived: Number(p.resurrectionsReceived || 0),
         },
       })),
       global: {
@@ -3294,6 +3379,14 @@ const shieldTurns = clampInt(
   1
 );
 
+const disarmOnDBull = truthy(
+  (config as any)?.disarmOnDBull ??
+    (config as any)?.disarm_on_dbull ??
+    (config as any)?.variants?.disarmOnDBull ??
+    (config as any)?.options?.disarmOnDBull ??
+    (config as any)?.rules?.disarmOnDBull
+);
+
 const selectBonusShieldOn = truthy(
   (config as any)?.selectBonusShield ??
     (config as any)?.select_bonus_shield ??
@@ -3309,6 +3402,29 @@ const missAutoHitOn = truthy(
     (config as any)?.options?.missAutoHit ??
     (config as any)?.rules?.missAutoHit
 );
+
+const bullRotateOn = truthy(
+  (config as any)?.bullRotate ??
+    (config as any)?.bull_rotate ??
+    (config as any)?.variants?.bullRotate ??
+    (config as any)?.options?.bullRotate ??
+    (config as any)?.rules?.bullRotate
+);
+
+const dbullRotateOn = truthy(
+  (config as any)?.dbullRotate ??
+    (config as any)?.dbull_rotate ??
+    (config as any)?.variants?.dbullRotate ??
+    (config as any)?.options?.dbullRotate ??
+    (config as any)?.rules?.dbullRotate
+);
+
+function pickRotatingFunction(keys: string[], rotationOn: boolean, idx: number): string | null {
+  const active = keys.filter(Boolean);
+  if (!active.length) return null;
+  if (!rotationOn || active.length === 1) return active[0];
+  return active[((idx % active.length) + active.length) % active.length] || active[0];
+}
 
 // Tracking usages
 const resGlobalUsedRef = React.useRef<boolean>(false); // "1 seul ressuscité (1×)"
@@ -3430,18 +3546,14 @@ const resByPidUsedRef = React.useRef<Record<string, boolean>>({}); // "All 1×"
 
           if (me.lives <= 0) {
             me.eliminated = true;
-      me.resurrected = false;
-      me.resurrectShield = false;
-      me.shieldTurnsLeft = 0;
-      me.shieldJustGranted = false;
-        me.resurrected = false;
             me.resurrected = false;
-            me.eliminatedAt = Date.now();
-            me.killerPhase = "ARMING";
-            me.isKiller = false;
             me.resurrectShield = false;
             me.shieldTurnsLeft = 0;
             me.shieldJustGranted = false;
+            me.shieldStrength = 0;
+            me.eliminatedAt = Date.now();
+            me.killerPhase = "ARMING";
+            me.isKiller = false;
             if (!elimOrderRef.current.includes(me.id)) {
               elimOrderRef.current = [...(elimOrderRef.current || []), me.id];
             }
@@ -3484,9 +3596,19 @@ const resByPidUsedRef = React.useRef<Record<string, boolean>>({}); // "All 1×"
     return next;
   }
 
-  const splashEnabled = bullSplashOn && !(shieldOnDBull && isDBull);
-  const healEnabled = bullHealOn && !(shieldOnDBull && isDBull);
-  const shieldEnabled = shieldOnDBull && isDBull;
+  const activeBullFn = pickRotatingFunction([
+    bullSplashOn ? "splash" : "",
+    bullHealOn ? "heal" : "",
+  ], bullRotateOn, bullRotateStep);
+  const activeDBullFn = pickRotatingFunction([
+    shieldOnDBull ? "shield" : "",
+    disarmOnDBull ? "disarm" : "",
+  ], dbullRotateOn, dbullRotateStep);
+
+  const splashEnabled = activeBullFn === "splash" && !(isDBull && !!activeDBullFn);
+  const healEnabled = activeBullFn === "heal" && !(isDBull && !!activeDBullFn);
+  const shieldEnabled = isDBull && activeDBullFn === "shield";
+  const disarmEnabled = isDBull && activeDBullFn === "disarm";
 
   // ✅ DBULL = bouclier : doit fonctionner même si le joueur n'est PAS KILLER
   let didSomething = false;
@@ -3496,6 +3618,21 @@ const resByPidUsedRef = React.useRef<Record<string, boolean>>({}); // "All 1×"
     didSomething = true;
     pushLog(`🛡️ ${me.name} gagne un bouclier pendant ${shieldLabel(shieldTurns)}`);
     pushEvent({ t: Date.now(), type: "SHIELD_GAIN", actorId: me.id, throw: thr, shieldTurns });
+  }
+
+  if (disarmEnabled) {
+    const disarmed = next.filter((p, idx) => idx !== turnIndex && !p.eliminated && isActiveKiller(p));
+    if (disarmed.length > 0) {
+      for (const p of disarmed) {
+        p.isKiller = false;
+        p.killerPhase = "ARMING";
+        p.disarmsReceived = Number(p.disarmsReceived || 0) + 1;
+      }
+      me.disarmsTriggered = Number(me.disarmsTriggered || 0) + disarmed.length;
+      didSomething = true;
+      pushLog(`💫 ${me.name} touche DBULL et désarme ${disarmed.length} killer${disarmed.length > 1 ? "s" : ""}`);
+      pushEvent({ t: Date.now(), type: "DISARM", actorId: me.id, throw: thr, count: disarmed.length, targetIds: disarmed.map((p) => p.id) });
+    }
   }
 
   const killerCanUseBullVariants = isActiveKiller(me);
@@ -3535,6 +3672,7 @@ const resByPidUsedRef = React.useRef<Record<string, boolean>>({}); // "All 1×"
           v.resurrectShield = false;
           v.shieldTurnsLeft = 0;
           v.shieldJustGranted = false;
+          v.shieldStrength = 0;
           v.eliminatedAt = Date.now();
           me.kills += 1;
           anyElim = true;
@@ -3668,17 +3806,14 @@ const resByPidUsedRef = React.useRef<Record<string, boolean>>({}); // "All 1×"
         me.livesLost += Math.max(0, me.lives);
         me.lives = 0;
         me.eliminated = true;
-      me.resurrected = false;
-      me.resurrectShield = false;
-      me.shieldTurnsLeft = 0;
-      me.shieldJustGranted = false;
         me.resurrected = false;
-        me.eliminatedAt = Date.now();
-        me.killerPhase = "ARMING";
-        me.isKiller = false;
         me.resurrectShield = false;
         me.shieldTurnsLeft = 0;
         me.shieldJustGranted = false;
+        me.shieldStrength = 0;
+        me.eliminatedAt = Date.now();
+        me.killerPhase = "ARMING";
+        me.isKiller = false;
   
         if (!elimOrderRef.current.includes(me.id)) {
           elimOrderRef.current = [...(elimOrderRef.current || []), me.id];
@@ -3793,6 +3928,7 @@ if (isActiveKiller(me)) {
       me.resurrectShield = false;
       me.shieldTurnsLeft = 0;
       me.shieldJustGranted = false;
+      me.shieldStrength = 0;
       me.eliminatedAt = Date.now();
       me.killerPhase = "ARMING";
       me.isKiller = false;
@@ -3821,7 +3957,74 @@ if (isActiveKiller(me)) {
     me.offensiveThrows += 1;
 
     if (playerHasShield(victim) || victim.resurrectShield) {
-      pushLog(victim.resurrectShield ? `🤍 ${victim.name} est protégé après sa résurrection` : `🛡️ ${victim.name} bloque l'attaque de ${me.name}`);
+      if (victim.resurrectShield) {
+        pushLog(`🤍 ${victim.name} est protégé après sa résurrection`);
+        pushEvent({
+          t: Date.now(),
+          type: "RESURRECT_SHIELD_BLOCK",
+          actorId: me.id,
+          targetId: victim.id,
+          targetNumber: victim.number,
+          throw: thr,
+        });
+        return next;
+      }
+
+      const beforeStrength = getShieldStrength(victim);
+      if (thr.mult === 2) {
+        victim.shieldTurnsLeft = 0;
+        victim.shieldStrength = 0;
+        victim.shieldJustGranted = false;
+        victim.shieldBreaks = Number(victim.shieldBreaks || 0) + 1;
+        pushLog(`💥 ${me.name} casse totalement le bouclier de ${victim.name} avec ${fmtThrow(thr)}`);
+        pushEvent({
+          t: Date.now(),
+          type: "SHIELD_BREAK",
+          actorId: me.id,
+          targetId: victim.id,
+          targetNumber: victim.number,
+          throw: thr,
+          beforeStrength,
+          afterStrength: 0,
+        });
+        return next;
+      }
+      if (thr.mult === 3) {
+        const afterStrength = beforeStrength > 0.5 ? 0.5 : 0;
+        victim.shieldStrength = afterStrength;
+        if (afterStrength <= 0) {
+          victim.shieldTurnsLeft = 0;
+          victim.shieldJustGranted = false;
+          victim.shieldBreaks = Number(victim.shieldBreaks || 0) + 1;
+          pushLog(`💥 ${me.name} annule le bouclier de ${victim.name} avec ${fmtThrow(thr)}`);
+          pushEvent({
+            t: Date.now(),
+            type: "SHIELD_BREAK",
+            actorId: me.id,
+            targetId: victim.id,
+            targetNumber: victim.number,
+            throw: thr,
+            beforeStrength,
+            afterStrength: 0,
+          });
+        } else {
+          victim.shieldHalfBreaks = Number(victim.shieldHalfBreaks || 0) + 1;
+          pushLog(`⚡ ${me.name} affaiblit le bouclier de ${victim.name} à 50% avec ${fmtThrow(thr)}`);
+          pushEvent({
+            t: Date.now(),
+            type: "SHIELD_WEAKEN",
+            actorId: me.id,
+            targetId: victim.id,
+            targetNumber: victim.number,
+            throw: thr,
+            beforeStrength,
+            afterStrength,
+          });
+        }
+        return next;
+      }
+
+      pushLog(`🛡️ ${victim.name} bloque l'attaque de ${me.name}`);
       pushEvent({
         t: Date.now(),
         type: "SHIELD_BLOCK",
@@ -3871,6 +4074,7 @@ if (isActiveKiller(me)) {
       victim.resurrectShield = false;
       victim.shieldTurnsLeft = 0;
       victim.shieldJustGranted = false;
+      victim.shieldStrength = 0;
       victim.eliminatedAt = Date.now();
       me.kills += 1;
 
@@ -4130,8 +4334,11 @@ React.useEffect(() => {
 
           if (me2.lives <= 0) {
             me2.eliminated = true;
-        me2.resurrected = false;
             me2.resurrected = false;
+            me2.resurrectShield = false;
+            me2.shieldTurnsLeft = 0;
+            me2.shieldJustGranted = false;
+            me2.shieldStrength = 0;
             me2.eliminatedAt = Date.now();
             me2.killerPhase = "ARMING";
             me2.isKiller = false;
@@ -4203,9 +4410,18 @@ React.useEffect(() => {
           return next;
         }
 
-        const splashEnabled = bullSplashOn && !(shieldOnDBull && isDBull);
-        const healEnabled = bullHealOn && !(shieldOnDBull && isDBull);
-        const shieldEnabled = shieldOnDBull && isDBull;
+        const activeBullFn = pickRotatingFunction([
+          bullSplashOn ? "splash" : "",
+          bullHealOn ? "heal" : "",
+        ], bullRotateOn, bullRotateStep);
+        const activeDBullFn = pickRotatingFunction([
+          shieldOnDBull ? "shield" : "",
+          disarmOnDBull ? "disarm" : "",
+        ], dbullRotateOn, dbullRotateStep);
+        const splashEnabled = activeBullFn === "splash" && !(isDBull && !!activeDBullFn);
+        const healEnabled = activeBullFn === "heal" && !(isDBull && !!activeDBullFn);
+        const shieldEnabled = isDBull && activeDBullFn === "shield";
+        const disarmEnabled = isDBull && activeDBullFn === "disarm";
 
         // ✅ DBULL = bouclier BOT : doit fonctionner même sans statut KILLER
         let didSomething = false;
@@ -4512,8 +4728,11 @@ React.useEffect(() => {
       
           if (me2.lives <= 0) {
             me2.eliminated = true;
-        me2.resurrected = false;
             me2.resurrected = false;
+            me2.resurrectShield = false;
+            me2.shieldTurnsLeft = 0;
+            me2.shieldJustGranted = false;
+            me2.shieldStrength = 0;
             me2.eliminatedAt = Date.now();
             me2.killerPhase = "ARMING";
             me2.isKiller = false;
@@ -5345,6 +5564,7 @@ return (
               name={current?.name}
               shieldTurns={Math.max(0, Number(current?.shieldTurnsLeft || 0))}
               resurrected={!!current?.resurrected}
+              resurrectShield={!!current?.resurrectShield}
             />
             <div
               style={{
@@ -5580,6 +5800,7 @@ return (
                   src={p.avatarDataUrl}
                   name={p.name}
                   shieldTurns={Math.max(0, Number(p.shieldTurnsLeft || 0))}
+                  compactShield
                   resurrected={!!p.resurrected}
                   resurrectShield={!!p.resurrectShield}
                 />
@@ -5714,6 +5935,7 @@ return (
             compactShield
             hideShieldBadge
             resurrected={!!p.resurrected}
+            resurrectShield={!!p.resurrectShield}
           />
 
           <div style={{ minWidth: 0 }}>

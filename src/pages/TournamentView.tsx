@@ -1538,7 +1538,6 @@ export default function TournamentView({ store, go, id }: Props) {
     [tour, safeMatches, persist, go]
   );
 
-  const onOpenResult = React.useCallback((_m: any) => {}, []);
   const onOpenMatchDetails = React.useCallback((m: any) => setSelectedMatch(m), []);
 
   const autoQualified = React.useMemo(() => {
@@ -1664,6 +1663,20 @@ export default function TournamentView({ store, go, id }: Props) {
     const max = ko.reduce((acc: number, m: any) => Math.max(acc, Number(m.roundIndex)), 0);
     return max + 1;
   }, [byPhase.ko]);
+
+  const onOpenResult = React.useCallback(
+    (m: any) => {
+      const historyMatchId = String(m?.historyMatchId || "");
+      if (!historyMatchId) return;
+      go("tournament_match_result", {
+        tournamentId: String((tour as any)?.id || id || ""),
+        matchId: String(m?.id || ""),
+        historyMatchId,
+        phaseLabel: matchPhaseLabel(m, viewKind, koRoundsCount),
+      });
+    },
+    [go, tour, id, viewKind, koRoundsCount]
+  );
 
   /* -------------------------
      SIMULATION

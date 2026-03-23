@@ -229,6 +229,95 @@ function stripAvatarDataFromPayload(payload: any) {
   return out;
 }
 
+
+// ============================================
+// 🔒 GLOBAL HISTORY SANITIZER
+// - allège tous les records avant persistance
+// - supprime les champs runtime inutiles / dangereux
+// - protège contre data:image/base64 trop gros
+// - conserve la reprise de partie
+// ============================================
+function _trimHeavyArray(arr: any, keep = 100, hardLimit = 200) {
+  if (!Array.isArray(arr)) return arr;
+  return arr.length > hardLimit ? arr.slice(-keep) : arr;
+}
+
+function _sanitizeDataUrlsDeep(input: any, depth = 0): any {
+  if (depth > 6) return input;
+  if (typeof input === "string") {
+    if (input.startsWith("data:image")) return undefined;
+    return input;
+  }
+  if (!input || typeof input !== "object") return input;
+
+  if (Array.isArray(input)) {
+    return input.map((x) => _sanitizeDataUrlsDeep(x, depth + 1));
+  }
+
+  const out: any = { ...input };
+  for (const k of Object.keys(out)) {
+    const v = out[k];
+    if (typeof v === "string" && v.startsWith("data:image")) {
+      delete out[k];
+      continue;
+    }
+    out[k] = _sanitizeDataUrlsDeep(v, depth + 1);
+    if (out[k] === undefined) delete out[k];
+  }
+  return out;
+}
+
+function sanitizeRecord(record: any) {
+  if (!record || typeof record !== "object") return record;
+
+  const r: any = { ...record };
+
+  try {
+    if (Array.isArray(r.players)) {
+      r.players = stripAvatarDataFromPlayers(r.players) || [];
+    }
+  } catch {}
+
+  if (r.payload && typeof r.payload === "object") {
+    let p: any = stripAvatarDataFromPayload(r.payload);
+    try {
+      p = { ...p };
+
+      delete p.stats;
+      delete p.liveStatsByPlayer;
+      delete p.history;
+      delete p.tempState;
+
+      if (Array.isArray(p.players)) {
+        p.players = p.players.map((pl: any) => {
+          const clean = stripAvatarFieldFromPlayer(pl);
+          if (clean && typeof clean === "object") {
+            delete clean.avatar;
+            delete clean.avatarDataUrl;
+          }
+          return clean;
+        });
+      }
+
+      p.visits = _trimHeavyArray(p.visits, 100, 200);
+      p.turns = _trimHeavyArray(p.turns, 100, 200);
+
+      p = _sanitizeDataUrlsDeep(p);
+    } catch {}
+    r.payload = p;
+  }
+
+  if (r.resume && typeof r.resume === "object") {
+    try {
+      const resume: any = { ...r.resume };
+      resume.darts = _trimHeavyArray(resume.darts, 90, 120);
+      r.resume = _sanitizeDataUrlsDeep(resume);
+    } catch {}
+  }
+
+  return r;
+}
+
 // =========================
 // ✅ CLOUD IMPORT GUARD
 // - Quand on importe depuis le cloud, on évite:
@@ -1472,6 +1561,12 @@ function _computeTrimIds(rows: _TrimRow[], keepIds: string[] = []): string[] {
 ========================= */
 export async function upsert(rec: SavedMatch): Promise<void> {
   await migrateFromLocalStorageOnce();
+
+  try {
+    rec = sanitizeRecord(rec);
+  } catch (e) {
+    console.warn("[history.upsert] sanitizeRecord failed:", e);
+  }
 
   const now = Date.now();
 
