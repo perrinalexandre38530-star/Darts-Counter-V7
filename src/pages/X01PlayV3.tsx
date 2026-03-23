@@ -961,6 +961,10 @@ const themePrimary = (theme as any)?.colors?.primary ?? (theme as any)?.primary 
   const replayDartsRef = React.useRef<X01DartInputV3[]>([]);
   const isReplayingRef = React.useRef(false);
   const hasReplayedRef = React.useRef(false);
+  const autosaveTimerRef = React.useRef<number | null>(null);
+  const autosaveIdleRef = React.useRef<any>(null);
+  const autosaveLastSigRef = React.useRef("");
+  const autosaveLastPersistAtRef = React.useRef(0);
 
  // =====================================================
 // ✅ Bot avatars fallback (si un BOT n'a pas avatarDataUrl dans config)
@@ -1418,53 +1422,111 @@ const activeTeam = React.useMemo(() => {
 
       historyIdRef.current = matchId;
 
-      const snap: X01V3AutosaveSnapshot = {
-        id: matchId,
-        createdAt: Date.now(),
-        config,
-        darts: replayDartsRef.current,
-      };
-      window.localStorage.setItem(AUTOSAVE_KEY, JSON.stringify(snap));
-
-      const lightPlayers = (config.players || []).map((p: any) => ({
-        id: p.id,
-        name: p.name,
-        avatarDataUrl:
-          p.avatarDataUrl ?? p.avatarUrl ?? p.photoUrl ?? null,
-      }));
-
-      const payload = {
-        mode: "x01_multi",
-        variant: "x01_v3",
-        game: "x01",
-        startScore: config.startScore,
+      const darts = Array.isArray(replayDartsRef.current) ? replayDartsRef.current.slice() : [];
+      const lastDart = darts.length ? darts[darts.length - 1] : null;
+      const signature = JSON.stringify({
         matchId,
-        config: { ...config, players: lightPlayers },
-        darts: replayDartsRef.current,
-      };
-
-      const record: any = {
-        id: matchId,
-        kind: "x01",
-        status: "in_progress",
-        createdAt: snap.createdAt,
-        updatedAt: snap.createdAt,
-        players: lightPlayers,
-        winnerId: null,
-        summary: {
-          matchId,
-          status: "in_progress",
-        },
-        payload,
-      };
-
-      History.upsert(record).catch((err) => {
-        console.warn("[X01PlayV3] History.upsert(in_progress) failed", err);
+        startScore: config.startScore,
+        players: (config.players || []).map((p: any) => String(p?.id ?? "")),
+        dartsCount: darts.length,
+        lastDart,
+        currentPlayerIndex: Number((state as any)?.currentPlayerIndex ?? -1),
+        currentScore: Number((state as any)?.players?.[(state as any)?.currentPlayerIndex ?? -1]?.score ?? -1),
       });
+
+      if (signature === autosaveLastSigRef.current && Date.now() - autosaveLastPersistAtRef.current < 1500) {
+        return;
+      }
+
+      if (autosaveTimerRef.current) {
+        window.clearTimeout(autosaveTimerRef.current);
+        autosaveTimerRef.current = null;
+      }
+      const cancelIdle = (window as any)?.cancelIdleCallback;
+      if (autosaveIdleRef.current && typeof cancelIdle === "function") {
+        try { cancelIdle(autosaveIdleRef.current); } catch {}
+        autosaveIdleRef.current = null;
+      }
+
+      const run = () => {
+        try {
+          const now = Date.now();
+          autosaveLastSigRef.current = signature;
+          autosaveLastPersistAtRef.current = now;
+
+          const snap: X01V3AutosaveSnapshot = {
+            id: matchId,
+            createdAt: now,
+            config,
+            darts,
+          };
+          window.localStorage.setItem(AUTOSAVE_KEY, JSON.stringify(snap));
+
+          const lightPlayers = (config.players || []).map((p: any) => ({
+            id: p.id,
+            name: p.name,
+            avatarDataUrl: p.avatarDataUrl ?? p.avatarUrl ?? p.photoUrl ?? null,
+          }));
+
+          const payload = {
+            mode: "x01_multi",
+            variant: "x01_v3",
+            game: "x01",
+            startScore: config.startScore,
+            matchId,
+            config: { ...config, players: lightPlayers },
+            darts,
+          };
+
+          const record: any = {
+            id: matchId,
+            kind: "x01",
+            status: "in_progress",
+            createdAt: now,
+            updatedAt: now,
+            players: lightPlayers,
+            winnerId: null,
+            summary: {
+              matchId,
+              status: "in_progress",
+            },
+            payload,
+          };
+
+          History.upsert(record).catch((err) => {
+            console.warn("[X01PlayV3] History.upsert(in_progress) failed", err);
+          });
+        } catch (err) {
+          console.warn("[X01PlayV3] persistAutosave.flush failed", err);
+        }
+      };
+
+      autosaveTimerRef.current = window.setTimeout(() => {
+        autosaveTimerRef.current = null;
+        const ric = (window as any)?.requestIdleCallback;
+        if (typeof ric === "function") {
+          autosaveIdleRef.current = ric(() => {
+            autosaveIdleRef.current = null;
+            run();
+          }, { timeout: 1200 });
+        } else {
+          run();
+        }
+      }, 900);
     } catch (e) {
       console.warn("[X01PlayV3] persistAutosave failed", e);
     }
   }, [config, state]);
+
+  React.useEffect(() => {
+    return () => {
+      if (autosaveTimerRef.current) window.clearTimeout(autosaveTimerRef.current);
+      const cancelIdle = (window as any)?.cancelIdleCallback;
+      if (autosaveIdleRef.current && typeof cancelIdle === "function") {
+        try { cancelIdle(autosaveIdleRef.current); } catch {}
+      }
+    };
+  }, []);
 
   // =====================================================
   // Reprise depuis HISTORIQUE (props.resume)

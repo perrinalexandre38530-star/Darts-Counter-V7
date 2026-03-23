@@ -1085,6 +1085,18 @@ export default function BatardPlay(props: any) {
   const createdAtRef = useRef<number>(Date.now());
   const visitsRef = useRef<any[]>([]);
   const didSaveFinishedRef = useRef<boolean>(false);
+  const historySaveSigRef = useRef<string>("");
+  const historySaveIdleRef = useRef<any>(null);
+
+  useEffect(() => {
+    return () => {
+      const cancelIdle = (window as any)?.cancelIdleCallback;
+      if (historySaveIdleRef.current && typeof cancelIdle === "function") {
+        try { cancelIdle(historySaveIdleRef.current); } catch {}
+        historySaveIdleRef.current = null;
+      }
+    };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -1311,7 +1323,35 @@ export default function BatardPlay(props: any) {
     };
 
     try {
-      await History.upsert(record);
+      const sig = JSON.stringify({
+        id: matchId,
+        status,
+        winnerId: winnerId ?? null,
+        round: Number(currentRound || 0) || 0,
+        turnCounter: Number(turnCounter || 0) || 0,
+        activePlayer: String((lightPlayers as any[])?.[currentPlayerIndex]?.id ?? ""),
+        visits: Array.isArray(visitsRef.current) ? visitsRef.current.length : 0,
+      });
+      if (status !== "finished" && sig === historySaveSigRef.current) return;
+      historySaveSigRef.current = sig;
+
+      const run = async () => {
+        try {
+          await History.upsert(record);
+        } catch (e) {
+          console.warn("[BatardPlay] History.upsert failed", e);
+        }
+      };
+
+      const ric = (window as any)?.requestIdleCallback;
+      if (status !== "finished" && typeof ric === "function") {
+        historySaveIdleRef.current = ric(() => {
+          historySaveIdleRef.current = null;
+          void run();
+        }, { timeout: 1200 });
+      } else {
+        await run();
+      }
     } catch (e) {
       console.warn("[BatardPlay] History.upsert failed", e);
     }

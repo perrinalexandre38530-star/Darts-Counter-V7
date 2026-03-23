@@ -336,6 +336,8 @@ export default function ShanghaiPlay(props: Props) {
   const matchStartAtRef = React.useRef<number>(
     Number((props as any)?.params?.createdAt) || Date.now()
   );
+  const autosaveLastSigRef = React.useRef("");
+  const autosaveIdleRef = React.useRef<any>(null);
   useFullscreenPlay();
   const { isLandscapeTablet } = useViewport({ tabletMinWidth: 900 });
 
@@ -407,15 +409,44 @@ export default function ShanghaiPlay(props: Props) {
   React.useEffect(() => {
     // ✅ AUTOSAVE in_progress pour reprise (toutes les 8s)
     if (endData) return;
-    const t = window.setInterval(() => {
+    const flush = () => {
       try {
         const createdAt = matchStartAtRef.current;
         const match = buildMatchPayload(null, "points", createdAt, false, [], "in_progress");
+        const sig = JSON.stringify({
+          id: (match as any)?.id,
+          status: (match as any)?.status,
+          round,
+          turn,
+          currentThrow,
+          multiplier,
+          scores: safePlayers.map((p) => ({ id: p.id, score: scores[p.id] ?? 0 })),
+        });
+        if (sig === autosaveLastSigRef.current) return;
+        autosaveLastSigRef.current = sig;
         void History.upsert(match as any);
       } catch {}
+    };
+    const t = window.setInterval(() => {
+      const ric = (window as any)?.requestIdleCallback;
+      if (typeof ric === "function") {
+        autosaveIdleRef.current = ric(() => {
+          autosaveIdleRef.current = null;
+          flush();
+        }, { timeout: 1200 });
+      } else {
+        flush();
+      }
     }, 8000);
-    return () => window.clearInterval(t);
-  }, [endData, round, turn, scores, lastThrowsById, currentThrow, multiplier]);
+    return () => {
+      window.clearInterval(t);
+      const cancelIdle = (window as any)?.cancelIdleCallback;
+      if (autosaveIdleRef.current && typeof cancelIdle === "function") {
+        try { cancelIdle(autosaveIdleRef.current); } catch {}
+        autosaveIdleRef.current = null;
+      }
+    };
+  }, [endData, round, turn, scores, lastThrowsById, currentThrow, multiplier, safePlayers]);
 
 
   const target = targetOrderRef.current?.[round - 1] ?? round;

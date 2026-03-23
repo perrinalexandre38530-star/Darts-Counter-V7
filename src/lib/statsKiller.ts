@@ -176,11 +176,24 @@ function extractUnifiedStatsPlayer(rec: any, playerId: string): any {
     rec?.payload?.stats?.players,
     rec?.payload?.summary?.players,
     rec?.summary?.players,
+    rec?.summary?.perPlayer,
+    rec?.payload?.summary?.perPlayer,
+    rec?.summary?.ranking,
+    rec?.summary?.rankings,
   ];
   for (const players of pools) {
     if (!Array.isArray(players)) continue;
     const found = players.find((p: any) => String(p?.id || p?.playerId || p?.profileId) === String(playerId));
     if (found) return found;
+  }
+  const maps = [
+    rec?.summary?.detailedByPlayer,
+    rec?.summary?.perPlayerMap,
+    rec?.payload?.summary?.detailedByPlayer,
+    rec?.payload?.summary?.perPlayerMap,
+  ];
+  for (const m of maps) {
+    if (m && typeof m === 'object' && m[playerId]) return m[playerId];
   }
   return null;
 }
@@ -276,6 +289,7 @@ export function computeKillerStatsAggForProfile(records: any[], playerId: string
   let disarmsTriggeredTotal = 0, disarmsReceivedTotal = 0, shieldBreaksTotal = 0, shieldHalfBreaksTotal = 0;
   let resurrectionsGivenTotal = 0, resurrectionsReceivedTotal = 0;
   let offensiveThrowsTotal = 0, killerThrowsTotal = 0, uselessHitsTotal = 0, rearmThrowsTotal = 0;
+  let landedHitsTotal = 0, offensiveHitsTotal = 0;
   const hitsBySegmentAgg: Record<string, number> = {};
   const placements: Record<string, number> = {};
   const recentPlacements: Array<{ when: number; rank: number; totalPlayers: number }> = [];
@@ -335,10 +349,22 @@ export function computeKillerStatsAggForProfile(records: any[], playerId: string
     const byPlayerNumMap = summary?.hitsByNumberByPlayer || summary?.hits_by_number_by_player || rec?.payload?.summary?.hitsByNumberByPlayer || null;
     if (byPlayerNumMap?.[playerId]) addHitsByNumberIntoSegments(hitsBySegmentAgg, byPlayerNumMap[playerId]);
 
-    const directHits = numOr0(me?.totalHits, me?.hitsTotal, sp?.totalHits, sp?.hitsTotal, dartsBlock?.hits, statPlayer?.totalHits);
-    if (directHits > 0) hitsBySegmentAgg["TOTAL"] = (hitsBySegmentAgg["TOTAL"] || 0) + directHits;
-    const inferredHits = sumHitsCandidate(me?.hitsBySegment, me?.hits_by_segment, me?.hitsByNumber, me?.hits_by_number, sp?.hitsBySegment, sp?.hits_by_segment, sp?.hitsByNumber, sp?.hits_by_number);
-    if (!inferredHits && numOr0(dartsBlock?.hits) > 0) {
+    const directHits = numOr0(
+      me?.totalHits, me?.hitsTotal, me?.killerHits,
+      sp?.totalHits, sp?.hitsTotal, sp?.killerHits,
+      dartsBlock?.hits, statPlayer?.totalHits, statPlayer?.hitsTotal
+    );
+    const inferredHits = sumHitsCandidate(
+      me?.hitsBySegment, me?.hits_by_segment, me?.hitsByNumber, me?.hits_by_number,
+      sp?.hitsBySegment, sp?.hits_by_segment, sp?.hitsByNumber, sp?.hits_by_number,
+      summary?.hitsBySegmentByPlayer?.[playerId], rec?.payload?.summary?.hitsBySegmentByPlayer?.[playerId],
+      summary?.hitsByNumberByPlayer?.[playerId], rec?.payload?.summary?.hitsByNumberByPlayer?.[playerId]
+    );
+    const landedHits = Math.max(directHits, 0);
+    landedHitsTotal += landedHits;
+    offensiveHitsTotal += Math.max(0, numOr0(me?.killerHits, sp?.killerHits, directHits, dartsBlock?.hits));
+    if (landedHits > 0) hitsBySegmentAgg["TOTAL"] = (hitsBySegmentAgg["TOTAL"] || 0) + landedHits;
+    else if (!inferredHits && numOr0(dartsBlock?.hits) > 0) {
       hitsBySegmentAgg["TOTAL"] = (hitsBySegmentAgg["TOTAL"] || 0) + numOr0(dartsBlock?.hits);
     }
 
@@ -353,9 +379,11 @@ export function computeKillerStatsAggForProfile(records: any[], playerId: string
   const favNum = bestKey(hitsByNumberAgg);
   let totalHits = Object.entries(hitsBySegmentAgg).reduce((s: number, [k, v]: any) => s + (k === "TOTAL" ? 0 : numOr0(v)), 0);
   if (totalHits <= 0) totalHits = Object.values(hitsByNumberAgg).reduce((s: number, v: any) => s + numOr0(v), 0);
-  if (totalHits <= 0) totalHits = killerThrowsTotal || offensiveThrowsTotal || 0;
-  const precisionOffensive = offensiveThrowsTotal > 0 ? (totalHits / offensiveThrowsTotal) * 100 : 0;
-  const precisionKiller = killerThrowsTotal > 0 ? (killsTotal / killerThrowsTotal) * 100 : 0;
+  if (totalHits <= 0) totalHits = landedHitsTotal || killerThrowsTotal || offensiveThrowsTotal || 0;
+  const rawPrecisionOffensive = offensiveThrowsTotal > 0 ? (Math.min(offensiveHitsTotal || totalHits, offensiveThrowsTotal) / offensiveThrowsTotal) * 100 : 0;
+  const rawPrecisionKiller = killerThrowsTotal > 0 ? (Math.min(killsTotal || offensiveHitsTotal, killerThrowsTotal) / killerThrowsTotal) * 100 : 0;
+  const precisionOffensive = Math.max(0, Math.min(100, rawPrecisionOffensive));
+  const precisionKiller = Math.max(0, Math.min(100, rawPrecisionKiller));
   const rearmAvgThrows = played > 0 ? rearmThrowsTotal / played : 0;
   const firsts = numOr0(placements["1"]);
   const seconds = numOr0(placements["2"]);

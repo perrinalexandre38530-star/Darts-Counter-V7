@@ -1435,6 +1435,74 @@ function buildSyntheticLegStats(playerId: string, wonLeg: boolean) {
   return { playerId, avg3, darts, visits, bestVisit, bestCheckout };
 }
 
+function syntheticDartsForTotal(total: number) {
+  const presets = [
+    { total: 180, darts: ["T20", "T20", "T20"] },
+    { total: 140, darts: ["T20", "T20", "20"] },
+    { total: 121, darts: ["T20", "11", "50"] },
+    { total: 120, darts: ["20", "T20", "20"] },
+    { total: 100, darts: ["20", "T20", "20"] },
+    { total: 95, darts: ["T19", "18", "20"] },
+    { total: 81, darts: ["T19", "12", "12"] },
+    { total: 60, darts: ["20", "20", "20"] },
+    { total: 45, darts: ["15", "15", "15"] },
+    { total: 40, darts: ["D20"] },
+    { total: 32, darts: ["D16"] },
+  ];
+  const exact = presets.find((x) => x.total === total);
+  if (exact) return exact.darts.slice();
+  if (total <= 40 && total % 2 === 0) return [`D${Math.max(1, Math.floor(total / 2))}`];
+  let remaining = Math.max(0, Math.floor(total));
+  const darts: string[] = [];
+  while (remaining > 0 && darts.length < 3) {
+    const take = Math.min(60, remaining);
+    if (take >= 57 && darts.length < 2) {
+      darts.push("T20");
+      remaining -= 60;
+    } else if (take >= 40 && remaining % 2 === 0 && darts.length === 2) {
+      darts.push(`D${Math.max(1, Math.floor(remaining / 2))}`);
+      remaining = 0;
+    } else {
+      const s = Math.min(20, remaining);
+      darts.push(String(s));
+      remaining -= s;
+    }
+  }
+  return darts.length ? darts : ["0"];
+}
+
+function buildSyntheticVisits(playerId: string, stats: any, wonLeg: boolean) {
+  const visitsCount = Math.max(3, Number(stats?.visits || 5));
+  let remain = 501;
+  const rows: any[] = [];
+  for (let i = 0; i < visitsCount; i++) {
+    const last = i === visitsCount - 1;
+    let total = 0;
+    let checkout = false;
+    if (wonLeg && last) {
+      total = remain <= 170 ? remain : Math.min(remain, Number(stats?.bestCheckout || 40) || 40);
+      checkout = total > 1 && total === remain;
+    } else {
+      const avgTarget = Math.max(30, Math.min(140, Math.round(Number(stats?.avg3 || 60))));
+      const wiggle = randInt(-18, 18);
+      total = Math.max(18, Math.min(remain - (wonLeg ? 2 : 1), avgTarget + wiggle));
+    }
+    const remainBefore = remain;
+    remain = Math.max(0, remain - total);
+    rows.push({
+      playerId,
+      visitIndex: i,
+      total,
+      darts: syntheticDartsForTotal(total),
+      remainBefore,
+      remainAfter: remain,
+      bust: false,
+      checkout,
+    });
+  }
+  return rows;
+}
+
 async function createSyntheticHistoryForSimulation(args: any) {
   const { tournament, match, winnerId, synthetic } = args || {};
   const aId = String(match?.aPlayerId || "");
@@ -1471,6 +1539,8 @@ async function createSyntheticHistoryForSimulation(args: any) {
 
     const aStats = buildSyntheticLegStats(aId, legWinnerId === aId);
     const bStats = buildSyntheticLegStats(bId, legWinnerId === bId);
+    const aVisitsHistory = buildSyntheticVisits(aId, aStats, legWinnerId === aId);
+    const bVisitsHistory = buildSyntheticVisits(bId, bStats, legWinnerId === bId);
     legs.push({
       id: `${String(match?.id || 'match')}-leg-${i + 1}`,
       label: `Leg ${i + 1}`,
@@ -1487,9 +1557,13 @@ async function createSyntheticHistoryForSimulation(args: any) {
         avg3ByPlayer: { [aId]: aStats.avg3, [bId]: bStats.avg3 },
         bestVisitByPlayer: { [aId]: aStats.bestVisit, [bId]: bStats.bestVisit },
         bestCheckoutByPlayer: { [aId]: aStats.bestCheckout, [bId]: bStats.bestCheckout },
+        visitsHistoryByPlayer: {
+          [aId]: aVisitsHistory,
+          [bId]: bVisitsHistory,
+        },
         perPlayer: {
-          [aId]: { avg3: aStats.avg3, darts: aStats.darts, visits: aStats.visits, bestVisit: aStats.bestVisit, bestCheckout: aStats.bestCheckout },
-          [bId]: { avg3: bStats.avg3, darts: bStats.darts, visits: bStats.visits, bestVisit: bStats.bestVisit, bestCheckout: bStats.bestCheckout },
+          [aId]: { avg3: aStats.avg3, darts: aStats.darts, visits: aStats.visits, bestVisit: aStats.bestVisit, bestCheckout: aStats.bestCheckout, visitsHistory: aVisitsHistory },
+          [bId]: { avg3: bStats.avg3, darts: bStats.darts, visits: bStats.visits, bestVisit: bStats.bestVisit, bestCheckout: bStats.bestCheckout, visitsHistory: bVisitsHistory },
         },
       },
     });
@@ -1510,9 +1584,13 @@ async function createSyntheticHistoryForSimulation(args: any) {
     avg3ByPlayer: { [aId]: avg(perA.map((x) => x.avg3)), [bId]: avg(perB.map((x) => x.avg3)) },
     bestVisitByPlayer: { [aId]: max(perA.map((x) => x.bestVisit)), [bId]: max(perB.map((x) => x.bestVisit)) },
     bestCheckoutByPlayer: { [aId]: max(perA.map((x) => x.bestCheckout)), [bId]: max(perB.map((x) => x.bestCheckout)) },
+    visitsHistoryByPlayer: {
+      [aId]: legs.flatMap((x) => x?.summary?.visitsHistoryByPlayer?.[aId] || []),
+      [bId]: legs.flatMap((x) => x?.summary?.visitsHistoryByPlayer?.[bId] || []),
+    },
     perPlayer: {
-      [aId]: { avg3: avg(perA.map((x) => x.avg3)), darts: perA.reduce((s, x) => s + Number(x.darts || 0), 0), visits: perA.reduce((s, x) => s + Number(x.visits || 0), 0), bestVisit: max(perA.map((x) => x.bestVisit)), bestCheckout: max(perA.map((x) => x.bestCheckout)) },
-      [bId]: { avg3: avg(perB.map((x) => x.avg3)), darts: perB.reduce((s, x) => s + Number(x.darts || 0), 0), visits: perB.reduce((s, x) => s + Number(x.visits || 0), 0), bestVisit: max(perB.map((x) => x.bestVisit)), bestCheckout: max(perB.map((x) => x.bestCheckout)) },
+      [aId]: { avg3: avg(perA.map((x) => x.avg3)), darts: perA.reduce((s, x) => s + Number(x.darts || 0), 0), visits: perA.reduce((s, x) => s + Number(x.visits || 0), 0), bestVisit: max(perA.map((x) => x.bestVisit)), bestCheckout: max(perA.map((x) => x.bestCheckout)), visitsHistory: legs.flatMap((x) => x?.summary?.visitsHistoryByPlayer?.[aId] || []) },
+      [bId]: { avg3: avg(perB.map((x) => x.avg3)), darts: perB.reduce((s, x) => s + Number(x.darts || 0), 0), visits: perB.reduce((s, x) => s + Number(x.visits || 0), 0), bestVisit: max(perB.map((x) => x.bestVisit)), bestCheckout: max(perB.map((x) => x.bestCheckout)), visitsHistory: legs.flatMap((x) => x?.summary?.visitsHistoryByPlayer?.[bId] || []) },
     },
     legs,
     legacy: {

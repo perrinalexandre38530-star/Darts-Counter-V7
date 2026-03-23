@@ -746,74 +746,110 @@ function rulesText(config: KillerConfig) {
     ((config as any)?.numberAssignMode as any) ||
     (((config as any)?.selectNumberByThrow ? "throw" : "none") as any);
 
-  const selectMode =
-    numberAssignMode === "throw" || numberAssignMode === "random";
-  const autoKill = truthy(
-      (config as any)?.autoKill ??
-      (config as any)?.autokill ??
-      (config as any)?.auto_kill ??
-      (config as any)?.autoKillOn ??
-      (config as any)?.autoKillEnabled ??
-      (config as any)?.variants?.autoKill ??
-      (config as any)?.variants?.autokill ??
-      (config as any)?.options?.autoKill ??
-      (config as any)?.rules?.autoKill ??
-      (config as any)?.settings?.autoKill ??
-      (config as any)?.config?.autoKill
-    );
+  const selectMode = numberAssignMode === "throw" || numberAssignMode === "random";
 
   const becomeRuleText =
     config.becomeRule === "double"
-      ? "Tu deviens KILLER uniquement si tu touches TON numéro en DOUBLE (Dxx)."
-      : "Tu deviens KILLER dès que tu touches TON numéro, même en SIMPLE (Sxx).";
+      ? "Pour devenir KILLER, il faut toucher TON numéro en DOUBLE."
+      : "Pour devenir KILLER, il suffit de toucher TON numéro, même en SIMPLE.";
 
   const damageText =
     config.damageRule === "multiplier"
-      ? "Quand tu touches le numéro d’un adversaire, il perd 1/2/3 vies selon S/D/T."
-      : "Quand tu touches le numéro d’un adversaire, il perd toujours 1 vie (S/D/T ne change rien).";
+      ? "Les dégâts suivent S/D/T : simple = 1, double = 2, triple = 3."
+      : "Chaque touche inflige toujours 1 dégât, peu importe S/D/T.";
 
-  const selectText = selectMode
-    ? "Mode sélection: chaque joueur a 1 lancer (une seule fléchette) pour choisir un numéro (#1..#20). Ensuite il doit retoucher SON numéro pour devenir KILLER."
-    : "Numéro déjà assigné: tu dois toucher TON numéro pour devenir KILLER.";
+  const selfHitWhileKiller = truthy((config as any)?.selfHitWhileKiller ?? (config as any)?.rules?.selfHitWhileKiller);
+  const selfHitUsesMultiplier = truthy((config as any)?.selfHitUsesMultiplier ?? (config as any)?.rules?.selfHitUsesMultiplier);
+  const lifeSteal = truthy((config as any)?.lifeSteal ?? (config as any)?.rules?.lifeSteal);
+  const blindKiller = truthy((config as any)?.blindKiller ?? (config as any)?.rules?.blindKiller ?? (config as any)?.rules?.blind_killer);
 
-  const autoKillText = autoKill
-    ? "AutoKill ON: si tu touches TON numéro, tu meurs instant (DEAD)."
-    : "AutoKill OFF.";
+  const bullSplash = truthy((config as any)?.bullSplash ?? (config as any)?.rules?.bullSplash);
+  const bullHeal = truthy((config as any)?.bullHeal ?? (config as any)?.rules?.bullHeal);
+  const bullHealLives = clampInt((config as any)?.bullHealLives ?? (config as any)?.rules?.bullHealLives ?? (config as any)?.bull_heal_lives ?? 1, 1, 3, 1);
+  const bullRotate = truthy((config as any)?.bullRotate ?? (config as any)?.rules?.bullRotate);
 
-  const shieldOnDBull = truthy((config as any)?.shieldOnDBull ?? (config as any)?.shield_on_dbull);
-  const shieldTurns = clampInt((config as any)?.shieldTurns ?? (config as any)?.shield_turns ?? 1, 1, 9, 1);
-  const selectBonusShield = truthy((config as any)?.selectBonusShield ?? (config as any)?.select_bonus_shield);
-  const missAutoHit = truthy((config as any)?.missAutoHit ?? (config as any)?.miss_auto_hit);
+  const shieldOnDBull = truthy((config as any)?.shieldOnDBull ?? (config as any)?.rules?.shieldOnDBull ?? (config as any)?.shield_on_dbull);
+  const disarmOnDBull = truthy((config as any)?.disarmOnDBull ?? (config as any)?.rules?.disarmOnDBull);
+  const dbullRotate = truthy((config as any)?.dbullRotate ?? (config as any)?.rules?.dbullRotate);
+
+  const resurrectionMode = String((config as any)?.resurrectionMode ?? (config as any)?.rules?.resurrectionMode ?? "off");
+  const resurrectionLives = clampInt((config as any)?.resurrectionLives ?? (config as any)?.rules?.resurrectionLives ?? 1, 1, 9, 1);
+
+  const shieldLines: string[] = [];
+  if (shieldOnDBull) {
+    shieldLines.push("Bouclier DBULL : toucher DBULL peut accorder un bouclier bleu qui bloque les dégâts.");
+    shieldLines.push("Contre sur DOUBLE : un double adverse sur le numéro du joueur protégé casse totalement le bouclier.");
+    shieldLines.push("Contre sur TRIPLE : un triple adverse retire 50 % du bouclier. Deux triples annulent donc le bouclier.");
+  }
+
+  const dbullLines: string[] = [];
+  if (shieldOnDBull) dbullLines.push("DBULL = Bouclier.");
+  if (disarmOnDBull) dbullLines.push("DBULL = Désarmement : tous les autres KILLER sont désarmés, sauf le tireur.");
+  if (dbullRotate) dbullLines.push("Rotation DBULL : si plusieurs fonctions DBULL sont actives, la fonction alterne tour après tour.");
+  if (!dbullLines.length) dbullLines.push("DBULL : aucune fonction spéciale active.");
+
+  const bullLines: string[] = [];
+  if (bullSplash) bullLines.push("BULL dégâts à tous : le bull inflige des dégâts à tous les adversaires vivants selon la configuration.");
+  if (bullHeal) bullLines.push(`BULL soin : le bull/DBULL redonne ${bullHealLives} vie(s) au tireur.`);
+  if (bullRotate) bullLines.push("Rotation BULL : si plusieurs fonctions BULL sont actives, la fonction alterne tour après tour.");
+  if (!bullLines.length) bullLines.push("BULL : aucune fonction spéciale active.");
+
+  const resurrectionLines: string[] = [];
+  if (resurrectionMode !== "off") {
+    resurrectionLines.push(`Résurrection active : un joueur DEAD peut revenir en jeu si un joueur vivant touche son numéro. Vies rendues : ${resurrectionLives}.`);
+    resurrectionLines.push("Après résurrection, le joueur gagne une protection blanche temporaire jusqu’à son prochain tour.");
+    resurrectionLines.push("Le contour blanc reste visible pour identifier un joueur ressuscité.");
+  } else {
+    resurrectionLines.push("Résurrection désactivée.");
+  }
 
   return [
     {
-      title: "But",
-      body: "Tu as un numéro (1…20). D’abord tu dois devenir KILLER, puis éliminer les autres en touchant leur numéro.",
+      title: "Objectif",
+      body: "Éliminer tous les adversaires. Le dernier joueur vivant gagne la partie.",
     },
     {
-      title: "Départ",
-      body: `Chaque joueur commence avec ${lives} vie(s). Un joueur est éliminé quand ses vies tombent à 0.`,
-    },
-    { title: "Numéro", body: `${selectText}\n${autoKillText}` },
-    {
-      title: "Devenir KILLER",
-      body: `${becomeRuleText}\nImportant : toucher un autre numéro que le tien ne te rend pas KILLER.`,
-    },
-    {
-      title: "Attaquer (quand tu es KILLER)",
-      body: `${damageText}\nSi tu réduis un joueur à 0 vie → il est DEAD immédiatement.`,
+      title: "Mise en place",
+      body:
+        `Chaque joueur commence avec ${lives} vie(s).\n` +
+        (selectMode
+          ? "Le numéro est choisi au 1er lancer ou attribué dynamiquement selon le mode configuré."
+          : "Chaque joueur reçoit un numéro dès le départ et doit le toucher pour devenir KILLER."),
     },
     {
-      title: "Ce qui ne fait rien",
-      body: "MISS (0) : aucun effet.\nBULL / DBULL : aucun effet.\nToucher un joueur déjà DEAD : aucun effet.",
+      title: "Base du mode",
+      body: `${becomeRuleText}\n${damageText}`,
     },
     {
-      title: "Tour de jeu",
-      body: "À ton tour : 3 fléchettes.\nPuis VALIDER pour passer au joueur suivant.\n(En mode sélection: 1 seule fléchette par joueur au tout début.)",
+      title: "Variantes générales",
+      body:
+        `${selfHitWhileKiller ? "Auto-pénalité active : toucher son propre numéro quand on est KILLER fait perdre des vies." : "Auto-pénalité désactivée."}\n` +
+        `${selfHitUsesMultiplier ? "La pénalité suit le multiplicateur S/D/T." : "La pénalité reste fixe."}\n` +
+        `${lifeSteal ? "Vol de vies actif : les vies perdues par la cible sont transférées au tireur." : "Vol de vies désactivé."}\n` +
+        `${blindKiller ? "Blind Killer actif : les numéros sont masqués pendant la partie." : "Blind Killer désactivé."}`,
     },
     {
-      title: "Fin de partie",
-      body: "La partie se termine quand il ne reste plus qu’un seul joueur vivant : il gagne 🏆",
+      title: "Fonctions BULL",
+      body: bullLines.join("\n"),
+    },
+    {
+      title: "Fonctions DBULL",
+      body: dbullLines.join("\n"),
+    },
+    {
+      title: "Bouclier",
+      body: shieldLines.length ? shieldLines.join("\n") : "Aucun bouclier spécial actif dans cette partie.",
+    },
+    {
+      title: "Résurrection",
+      body: resurrectionLines.join("\n"),
+    },
+    {
+      title: "Lecture visuelle",
+      body:
+        "Petit bouclier bleu : bouclier DBULL actif.\n" +
+        "Petit bouclier blanc : protection temporaire après résurrection.\n" +
+        "Contour blanc : joueur ressuscité identifié visuellement.",
     },
   ];
 }
@@ -3199,8 +3235,11 @@ React.useEffect(() => {
         killerThrows: p.killerThrows,
         offensiveThrows: p.offensiveThrows,
         killerHits: p.killerHits,
-        totalHits: p.killerHits,
-        hitsTotal: p.killerHits,
+        offensiveHits: p.killerHits,
+        successfulHits: p.killerHits,
+        totalHits: Object.values(p.hitsBySegment || {}).reduce((s: number, v: any) => s + (Number(v) || 0), 0),
+        hitsTotal: Object.values(p.hitsBySegment || {}).reduce((s: number, v: any) => s + (Number(v) || 0), 0),
+        segmentHitsTotal: Object.values(p.hitsBySegment || {}).reduce((s: number, v: any) => s + (Number(v) || 0), 0),
         uselessHits: p.uselessHits,
         livesTaken: p.livesTaken,
         livesLost: p.livesLost,
@@ -3284,7 +3323,7 @@ React.useEffect(() => {
         eliminated: !!p.eliminated,
         darts: {
           thrown: Number(p.totalThrows || 0),
-          hits: Number(p.killerHits || 0),
+          hits: Number(Object.values(p.hitsBySegment || {}).reduce((s: number, v: any) => s + (Number(v) || 0), 0) || 0),
         },
         special: {
           kills: Number(p.kills || 0),
@@ -3401,6 +3440,17 @@ const bullHealOn = truthy(
     (config as any)?.variants?.bull_heal ??
     (config as any)?.options?.bullHeal ??
     (config as any)?.rules?.bullHeal
+);
+const bullHealLives = clampInt(
+  (config as any)?.bullHealLives ??
+    (config as any)?.bull_heal_lives ??
+    (config as any)?.variants?.bullHealLives ??
+    (config as any)?.options?.bullHealLives ??
+    (config as any)?.rules?.bullHealLives ??
+    1,
+  1,
+  3,
+  1
 );
 
 // ✅ BLIND KILLER (VRAI): masque les numéros pour TOUS les joueurs pendant la partie.
@@ -3661,11 +3711,13 @@ const resByPidUsedRef = React.useRef<Record<string, boolean>>({}); // "All 1×"
     bullHealOn ? "heal" : "",
   ], bullRotateOn, bullRotateStep);
   const activeDBullFn = pickRotatingFunction([
+    bullSplashOn ? "splash" : "",
+    bullSplashOn ? "splash" : "",
     shieldOnDBull ? "shield" : "",
     disarmOnDBull ? "disarm" : "",
   ], dbullRotateOn, dbullRotateStep);
 
-  const splashEnabled = activeBullFn === "splash" && !(isDBull && !!activeDBullFn);
+  const splashEnabled = (isDBull ? activeDBullFn === "splash" : activeBullFn === "splash");
   const healEnabled = activeBullFn === "heal" && !(isDBull && !!activeDBullFn);
   const shieldEnabled = isDBull && activeDBullFn === "shield";
   const disarmEnabled = isDBull && activeDBullFn === "disarm";
@@ -3767,7 +3819,7 @@ const resByPidUsedRef = React.useRef<Record<string, boolean>>({}); // "All 1×"
 
   // 2) Heal: récupère 1 (BULL) / 2 (DBULL)
   if (killerCanUseBullVariants && healEnabled) {
-    const heal = isDBull ? 2 : 1;
+    const heal = bullHealLives;
     const before = me.lives;
     me.lives = Math.max(0, me.lives + heal);
     const gained = Math.max(0, me.lives - before);
@@ -4475,10 +4527,12 @@ React.useEffect(() => {
           bullHealOn ? "heal" : "",
         ], bullRotateOn, bullRotateStep);
         const activeDBullFn = pickRotatingFunction([
+          bullSplashOn ? "splash" : "",
+          bullSplashOn ? "splash" : "",
           shieldOnDBull ? "shield" : "",
           disarmOnDBull ? "disarm" : "",
         ], dbullRotateOn, dbullRotateStep);
-        const splashEnabled = activeBullFn === "splash" && !(isDBull && !!activeDBullFn);
+        const splashEnabled = (isDBull ? activeDBullFn === "splash" : activeBullFn === "splash");
         const healEnabled = activeBullFn === "heal" && !(isDBull && !!activeDBullFn);
         const shieldEnabled = isDBull && activeDBullFn === "shield";
         const disarmEnabled = isDBull && activeDBullFn === "disarm";
@@ -4574,7 +4628,7 @@ React.useEffect(() => {
 
         // 2) Heal: +1 (BULL) / +2 (DBULL)
         if (killerCanUseBullVariants2 && healEnabled) {
-          const heal = isDBull ? 2 : 1;
+          const heal = bullHealLives;
           const before = me2.lives;
           me2.lives = Math.max(0, me2.lives + heal);
           const gained = Math.max(0, me2.lives - before);

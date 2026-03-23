@@ -867,6 +867,21 @@ export async function generateDiagnostic(): Promise<DiagnosticReport> {
   };
 }
 
+
+export async function generateCompactDiagnostic() {
+  const report = await generateDiagnostic();
+  return {
+    generatedAt: report.generatedAt,
+    route: report?.app?.route || "/",
+    memory: report?.memory || null,
+    storage: report?.storage || null,
+    lastCrash: report?.lastCrash || null,
+    probableCause: Array.isArray(report?.probableCause) ? report.probableCause.slice(0, 6) : [],
+    recommendations: Array.isArray(report?.recommendations) ? report.recommendations.slice(0, 6) : [],
+    crashGuard: report?.crashGuard || null,
+  };
+}
+
 export function exportDiagnostic(report: DiagnosticReport | null | undefined) {
   if (!report) return;
   const blob = new Blob([JSON.stringify(report, null, 2)], { type: "application/json" });

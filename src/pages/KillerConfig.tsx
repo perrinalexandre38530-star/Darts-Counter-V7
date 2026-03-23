@@ -31,6 +31,7 @@ import ProfileStarRing from "../components/ProfileStarRing";
 import BackDot from "../components/BackDot";
 import tickerKiller from "../assets/tickers/ticker_killer.png";
 import InfoDot from "../components/InfoDot";
+import { loadStoredBots, subscribeBotsChange } from "../lib/bots";
 
 // 🔽 AVATARS BOTS PRO (mêmes chemins que X01ConfigV3)
 import avatarGreenMachine from "../assets/avatars/bots-pro/green-machine.png";
@@ -83,7 +84,8 @@ export type KillerConfig = {
 
   // ✅ Variantes BULL
   bullSplash: boolean; // SBULL => -1 à tous les adversaires ; DBULL => -2 à tous
-  bullHeal: boolean; // toucher BULL permet de regagner des vies (selon implémentation KillerPlay)
+  bullHeal: boolean; // toucher BULL/DBULL permet de regagner des vies (selon implémentation KillerPlay)
+  bullHealLives?: number; // 1..3 vies récupérées pour la variante soin
   bullRotate?: boolean; // alterne les fonctions BULL sélectionnées tour après tour
 
   // ✅ Résurrection
@@ -408,30 +410,79 @@ export default function KillerConfigPage(props: Props) {
 
   const [botsFromLS, setBotsFromLS] = React.useState<BotLite[]>([]);
   React.useEffect(() => {
-    try {
-      const raw = localStorage.getItem(LS_BOTS_KEY);
-      if (!raw) return;
-      const parsed = JSON.parse(raw) as any[];
-      const mapped: BotLite[] = (parsed || []).map((b) => ({
-        id: b.id,
-        name: b.name || "BOT",
-        avatarDataUrl: b.avatarDataUrl ?? null,
-        botLevel: b.botLevel ?? b.levelLabel ?? b.levelName ?? b.performanceLevel ?? b.difficulty ?? "",
-      }));
-      setBotsFromLS(mapped);
-    } catch {}
+    const syncBots = () => {
+      try {
+        const loaded = loadStoredBots();
+        const mapped: BotLite[] = (loaded || []).map((b: any) => ({
+          id: b.id,
+          name: b.name || "BOT",
+          avatarDataUrl: b.avatarDataUrl ?? null,
+          botLevel:
+            b.botLevel ??
+            b.level ??
+            b.levelLabel ??
+            b.levelName ??
+            b.performanceLevel ??
+            b.difficulty ??
+            "",
+        }));
+        setBotsFromLS(mapped);
+      } catch {
+        try {
+          const raw = localStorage.getItem(LS_BOTS_KEY);
+          if (!raw) {
+            setBotsFromLS([]);
+            return;
+          }
+          const parsed = JSON.parse(raw) as any[];
+          const mapped: BotLite[] = (parsed || []).map((b) => ({
+            id: b.id,
+            name: b.name || "BOT",
+            avatarDataUrl: b.avatarDataUrl ?? null,
+            botLevel:
+              b.botLevel ??
+              b.level ??
+              b.levelLabel ??
+              b.levelName ??
+              b.performanceLevel ??
+              b.difficulty ??
+              "",
+          }));
+          setBotsFromLS(mapped);
+        } catch {
+          setBotsFromLS([]);
+        }
+      }
+    };
+
+    syncBots();
+    return subscribeBotsChange(syncBots);
   }, []);
 
   const userBots: BotLite[] = React.useMemo(() => {
-    if (storeBots.length > 0) {
-      return storeBots.map((p: any) => ({
-        id: p.id,
-        name: p.name || "BOT",
-        avatarDataUrl: pickAvatar(p),
-        botLevel: p.botLevel ?? p.levelLabel ?? p.levelName ?? p.performanceLevel ?? p.difficulty ?? "",
-      }));
+    const fromStore = (storeBots || []).map((p: any) => ({
+      id: p.id,
+      name: p.name || "BOT",
+      avatarDataUrl: pickAvatar(p),
+      botLevel:
+        p.botLevel ??
+        p.level ??
+        p.levelLabel ??
+        p.levelName ??
+        p.performanceLevel ??
+        p.difficulty ??
+        "",
+    }));
+
+    const merged = [...fromStore];
+    const seen = new Set(merged.map((b) => String(b.id || "")));
+    for (const b of botsFromLS || []) {
+      const bid = String((b as any)?.id || "");
+      if (!bid || seen.has(bid)) continue;
+      merged.push(b);
+      seen.add(bid);
     }
-    return botsFromLS;
+    return merged;
   }, [storeBots, botsFromLS]);
 
   const botProfiles: BotLite[] = React.useMemo(() => {
@@ -460,6 +511,7 @@ export default function KillerConfigPage(props: Props) {
   // ✅ Bull variants
   const [bullSplash, setBullSplash] = React.useState<boolean>(false);
   const [bullHeal, setBullHeal] = React.useState<boolean>(false);
+  const [bullHealLives, setBullHealLives] = React.useState<number>(1);
   const [bullRotate, setBullRotate] = React.useState<boolean>(false);
 
   // ✅ Bouclier / variantes avancées
@@ -722,6 +774,7 @@ export default function KillerConfigPage(props: Props) {
 
       bullSplash,
       bullHeal,
+      bullHealLives: clampInt(bullHealLives, 1, 3, 1),
       bullRotate,
 
       shieldOnDBull,
@@ -1393,7 +1446,7 @@ export default function KillerConfigPage(props: Props) {
               >
                 <div style={{ fontWeight: 900, color: "#fff" }}>Fonctions BULL</div>
                 <div style={{ opacity: 0.78, fontSize: 12, lineHeight: 1.25 }}>
-                  Toutes les fonctions déjà existantes du BULL sont regroupées ici pour une lecture plus claire. Une seule fonction BULL doit rester active à la fois.
+                  Toutes les fonctions déjà existantes du BULL sont regroupées ici pour une lecture plus claire. Une seule fonction BULL doit rester active à la fois, sauf si la rotation est activée.
                 </div>
 
                 <VariantRow
@@ -1409,7 +1462,7 @@ export default function KillerConfigPage(props: Props) {
 
                 <VariantRow
                   title="BULL = soins (récupérer des vies)"
-                  desc="Si ON : toucher BULL permet de regagner des vies selon le nombre de vies défini au départ."
+                  desc="Si ON : toucher BULL ou DBULL rend un nombre de vies configurable entre 1 et 3."
                   value={bullHeal}
                   onChange={(v) => setVariant("bullHeal", v)}
                   primary={primary}
@@ -1417,6 +1470,37 @@ export default function KillerConfigPage(props: Props) {
                   disabled={isVariantDisabled("bullHeal", variantState as any) && !bullHeal}
                   disabledReason={getConflictReason("bullHeal", variantState as any)}
                 />
+
+                {bullHeal && (
+                  <div
+                    style={{
+                      marginTop: -2,
+                      marginLeft: 8,
+                      borderLeft: "2px solid rgba(119,255,155,0.35)",
+                      paddingLeft: 12,
+                      display: "flex",
+                      flexDirection: "column",
+                      gap: 8,
+                    }}
+                  >
+                    <div style={{ fontSize: 11, color: "#9fa4c0", fontWeight: 800 }}>
+                      Nombre de vies rendues
+                    </div>
+                    <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                      {[1, 2, 3].map((n) => (
+                        <PillButton
+                          key={`bull-heal-lives-${n}`}
+                          label={`+${n} vie${n > 1 ? "s" : ""}`}
+                          active={bullHealLives === n}
+                          onClick={() => setBullHealLives(n)}
+                          primary={primary}
+                          primarySoft={primarySoft}
+                          compact
+                        />
+                      ))}
+                    </div>
+                  </div>
+                )}
 
                 <VariantRow
                   title="Rotation BULL (1 tour / fonction)"
@@ -1448,8 +1532,19 @@ Active uniquement parmi les fonctions cochées ci-dessus.
               >
                 <div style={{ fontWeight: 900, color: "#fff" }}>Fonctions DBULL</div>
                 <div style={{ opacity: 0.78, fontSize: 12, lineHeight: 1.25 }}>
-                  Une seule fonction DBULL peut être active en même temps. Le désarmement retire le statut KILLER à tous les autres killers sauf le tireur.
+                  Une seule fonction DBULL peut être active en même temps. Le désarmement retire le statut KILLER à tous les autres killers sauf le tireur. Le DBULL peut aussi conserver la fonction dégâts à tous (−2).
                 </div>
+
+                <VariantRow
+                  title="DBULL = dégâts à tous (-2)"
+                  desc="Si ON : lorsque la fonction dégâts de zone est active, toucher DBULL enlève 2 vies à chaque adversaire vivant. Cette fonction peut aussi entrer dans la rotation DBULL."
+                  value={bullSplash}
+                  onChange={(v) => setVariant("bullSplash", v)}
+                  primary={primary}
+                  primarySoft={primarySoft}
+                  disabled={isVariantDisabled("bullSplash", variantState) && !bullSplash}
+                  disabledReason={getConflictReason("bullSplash", variantState)}
+                />
 
                 <VariantRow
                   title="DBULL = bouclier"
@@ -1506,7 +1601,7 @@ Active uniquement parmi les fonctions cochées ci-dessus.
 
                 <VariantRow
                   title="Rotation DBULL (1 tour / fonction)"
-                  desc="Si ON : les fonctions DBULL activées tournent automatiquement à chaque changement de tour. Si bouclier et désarmement sont ON, elles alternent tour après tour."
+                  desc="Si ON : les fonctions DBULL activées tournent automatiquement à chaque changement de tour. Si dégâts à tous, bouclier et/ou désarmement sont ON, elles alternent tour après tour."
                   value={dbullRotate}
                   onChange={(v) => setDbullRotate(v)}
                   primary={primary}
@@ -1888,7 +1983,7 @@ Active uniquement parmi les fonctions cochées ci-dessus.
                 <div style={{ fontWeight: 900, color: "#fff", marginBottom: 6 }}>Fonctions DBULL</div>
                 <ul style={{ marginTop: 0, marginBottom: 12, paddingLeft: 18 }}>
                   <li>
-                    <b>Dégâts à tous</b> : le DBULL inflige −2 à tous les adversaires vivants.
+                    <b>Dégâts à tous</b> : le DBULL inflige −2 à tous les adversaires vivants quand cette fonction est active.
                   </li>
                   <li>
                     <b>Bouclier</b> : le tireur gagne un bouclier qui bloque les dégâts reçus.

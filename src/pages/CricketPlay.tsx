@@ -407,6 +407,8 @@ export default function CricketPlay({ profiles, params, onFinish }: Props) {
   const matchIdRef = React.useRef<string>(
     (params as any)?.matchId ?? `cricket-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
   );
+  const autosaveLastSigRef = React.useRef("");
+  const autosaveIdleRef = React.useRef<any>(null);
 
   // ✅ BackDot + InfoDot (règles)
   const [infoOpen, setInfoOpen] = React.useState(false);
@@ -529,13 +531,46 @@ React.useEffect(() => {
   // ✅ AUTOSAVE in_progress pour reprise (toutes les 8s)
   if (!state) return;
   if (isFinished) return;
-  const t = window.setInterval(() => {
+  const flush = () => {
     try {
       const rec = buildHistoryRecord();
-      if (rec) void History.upsert(rec as any);
+      if (!rec) return;
+      const payload: any = (rec as any)?.payload || {};
+      const sig = JSON.stringify({
+        id: (rec as any)?.id,
+        status: (rec as any)?.status,
+        winnerId: (rec as any)?.winnerId ?? null,
+        currentPlayerIndex: Number((state as any)?.currentPlayerIndex ?? -1),
+        players: Array.isArray((state as any)?.players)
+          ? (state as any).players.map((p: any) => ({ id: p?.id, score: p?.score, marks: p?.marks }))
+          : [],
+        darts: Number((rec as any)?.summary?.darts ?? 0),
+        visits: Array.isArray(payload?.visits) ? payload.visits.length : 0,
+      });
+      if (sig === autosaveLastSigRef.current) return;
+      autosaveLastSigRef.current = sig;
+      void History.upsert(rec as any);
     } catch {}
+  };
+  const t = window.setInterval(() => {
+    const ric = (window as any)?.requestIdleCallback;
+    if (typeof ric === "function") {
+      autosaveIdleRef.current = ric(() => {
+        autosaveIdleRef.current = null;
+        flush();
+      }, { timeout: 1200 });
+    } else {
+      flush();
+    }
   }, 8000);
-  return () => window.clearInterval(t);
+  return () => {
+    window.clearInterval(t);
+    const cancelIdle = (window as any)?.cancelIdleCallback;
+    if (autosaveIdleRef.current && typeof cancelIdle === "function") {
+      try { cancelIdle(autosaveIdleRef.current); } catch {}
+      autosaveIdleRef.current = null;
+    }
+  };
 }, [state, isFinished]);
 
 // --------------------------------------------------
