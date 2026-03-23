@@ -138,25 +138,51 @@ function extractPlayersArray(rec: any): any[] {
 }
 function extractPerPlayer(summary: any): Record<string, any> {
   if (!summary) return {};
-  if (summary.detailedByPlayer && typeof summary.detailedByPlayer === "object") return summary.detailedByPlayer as any;
   const out: Record<string, any> = {};
-  const arr1 = Array.isArray(summary.perPlayer) ? summary.perPlayer : [];
-  const arr2 = Array.isArray(summary.players) ? summary.players : [];
-  const arr = arr1.length ? arr1 : arr2;
-  for (const p of arr) {
-    const pid = pickId(p);
-    if (!pid) continue;
-    out[pid] = p;
+
+  const directMaps = [
+    summary.detailedByPlayer,
+    summary.perPlayerMap,
+    summary.playersMap,
+    summary.playerMap,
+    summary.perPlayerById,
+  ];
+  for (const m of directMaps) {
+    if (m && typeof m === "object" && !Array.isArray(m)) {
+      for (const [pid, val] of Object.entries(m)) out[String(pid)] = val as any;
+    }
   }
-  if (!Object.keys(out).length && summary.players && typeof summary.players === "object" && !Array.isArray(summary.players)) {
-    for (const [pid, p] of Object.entries(summary.players)) out[String(pid)] = p as any;
+
+  const arrs = [summary.perPlayer, summary.players, summary.rankings, summary.ranking];
+  for (const arr of arrs) {
+    if (!Array.isArray(arr)) continue;
+    for (const p of arr) {
+      const pid = pickId(p);
+      if (!pid) continue;
+      out[pid] = { ...(out[pid] || {}), ...(p as any) };
+    }
   }
+
+  if (summary.detailedByPlayer && typeof summary.detailedByPlayer === "object") {
+    for (const [pid, p] of Object.entries(summary.detailedByPlayer)) {
+      out[String(pid)] = { ...(out[String(pid)] || {}), ...(p as any) };
+    }
+  }
+
   return out;
 }
 function extractUnifiedStatsPlayer(rec: any, playerId: string): any {
-  const players = rec?.payload?.stats?.players;
-  if (!Array.isArray(players)) return null;
-  return players.find((p: any) => String(p?.id || p?.playerId || p?.profileId) === String(playerId)) || null;
+  const pools = [
+    rec?.payload?.stats?.players,
+    rec?.payload?.summary?.players,
+    rec?.summary?.players,
+  ];
+  for (const players of pools) {
+    if (!Array.isArray(players)) continue;
+    const found = players.find((p: any) => String(p?.id || p?.playerId || p?.profileId) === String(playerId));
+    if (found) return found;
+  }
+  return null;
 }
 function parseSegmentKeyToNumber(segKey: string): number {
   const k = safeStr(segKey).toUpperCase().trim();
@@ -259,7 +285,7 @@ export function computeKillerStatsAggForProfile(records: any[], playerId: string
     const per = extractPerPlayer(summary);
     const playersArr = extractPlayersArray(rec);
     const statPlayer = extractUnifiedStatsPlayer(rec, playerId);
-    const contains = playersArr.some((p: any) => String(pickId(p)) === String(playerId)) || !!per?.[playerId] || !!statPlayer;
+    const contains = playersArr.some((p: any) => String(pickId(p)) === String(playerId)) || !!per?.[playerId] || !!statPlayer || !!summary?.detailedByPlayer?.[playerId] || !!summary?.perPlayerMap?.[playerId];
     if (!contains) continue;
 
     const when = getRecTimestamp(rec);
@@ -272,7 +298,7 @@ export function computeKillerStatsAggForProfile(records: any[], playerId: string
     const sp = playersArr.find((p: any) => String(pickId(p)) === String(playerId)) || null;
     const special = statPlayer?.special || null;
     const dartsBlock = statPlayer?.darts || null;
-    const ranking = summary?.ranking || rec?.payload?.summary?.ranking || [];
+    const ranking = summary?.ranking || summary?.rankings || rec?.payload?.summary?.ranking || rec?.payload?.summary?.rankings || [];
     const totalPlayers = playersArr.length || Object.keys(per || {}).length || numOr0(summary?.playerCount, rec?.payload?.stats?.players?.length, 0);
 
     const rank = pickRank(me, sp, winnerId, playerId, totalPlayers, ranking);
@@ -280,7 +306,7 @@ export function computeKillerStatsAggForProfile(records: any[], playerId: string
 
     killsTotal += numOr0(me?.kills, me?.killCount, me?.k, special?.kills, sp?.kills, sp?.killCount, sp?.k);
     deathsTotal += numOr0(me?.deaths, me?.deathCount, sp?.deaths, sp?.deathCount, truthy(me?.eliminated) ? 1 : null, truthy(sp?.eliminated) ? 1 : null, truthy(statPlayer?.eliminated) ? 1 : null);
-    dartsTotal += numOr0(me?.totalThrows, me?.throws, me?.darts, dartsBlock?.thrown, sp?.totalThrows, sp?.throws, sp?.darts, me?.totalDarts, sp?.totalDarts);
+    dartsTotal += numOr0(me?.totalThrows, me?.throws, me?.darts, dartsBlock?.thrown, sp?.totalThrows, sp?.throws, sp?.darts, me?.totalDarts, sp?.totalDarts, me?.dartsThrown, sp?.dartsThrown, statPlayer?.totalThrows, statPlayer?.darts);
 
     livesTakenTotal += numOr0(me?.livesTaken, me?.damageDealt, me?.dmgDealt, special?.livesTaken, sp?.livesTaken, sp?.damageDealt, sp?.dmgDealt);
     livesLostTotal += numOr0(me?.livesLost, me?.damageTaken, me?.dmgTaken, special?.livesLost, sp?.livesLost, sp?.damageTaken, sp?.dmgTaken);
@@ -309,6 +335,8 @@ export function computeKillerStatsAggForProfile(records: any[], playerId: string
     const byPlayerNumMap = summary?.hitsByNumberByPlayer || summary?.hits_by_number_by_player || rec?.payload?.summary?.hitsByNumberByPlayer || null;
     if (byPlayerNumMap?.[playerId]) addHitsByNumberIntoSegments(hitsBySegmentAgg, byPlayerNumMap[playerId]);
 
+    const directHits = numOr0(me?.totalHits, me?.hitsTotal, sp?.totalHits, sp?.hitsTotal, dartsBlock?.hits, statPlayer?.totalHits);
+    if (directHits > 0) hitsBySegmentAgg["TOTAL"] = (hitsBySegmentAgg["TOTAL"] || 0) + directHits;
     const inferredHits = sumHitsCandidate(me?.hitsBySegment, me?.hits_by_segment, me?.hitsByNumber, me?.hits_by_number, sp?.hitsBySegment, sp?.hits_by_segment, sp?.hitsByNumber, sp?.hits_by_number);
     if (!inferredHits && numOr0(dartsBlock?.hits) > 0) {
       hitsBySegmentAgg["TOTAL"] = (hitsBySegmentAgg["TOTAL"] || 0) + numOr0(dartsBlock?.hits);

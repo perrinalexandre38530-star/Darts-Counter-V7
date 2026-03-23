@@ -1396,25 +1396,170 @@ export default function TournamentView({ store, go, id }: Props) {
     return [1, 3, 5, 7, 9, 11].includes(n) ? n : 1;
   }, [tour]);
 
-  function buildSyntheticScore(winnerId: string, aId: string, bId: string) {
-    const bestOf = Math.max(1, tournamentBestOf || 1);
-    const winsNeeded = Math.floor(bestOf / 2) + 1;
-    const loserMax = Math.max(0, winsNeeded - 1);
-    const loserWins = loserMax > 0 ? Math.floor(Math.random() * (loserMax + 1)) : 0;
-    const winnerIsA = winnerId === aId;
-    const a = winnerIsA ? winsNeeded : loserWins;
-    const b = winnerIsA ? loserWins : winsNeeded;
-    return {
-      scoreA: a,
-      scoreB: b,
-      setsA: a,
-      setsB: b,
-      legsA: a,
-      legsB: b,
-    };
+
+function buildSyntheticScore(winnerId: string, aId: string, bId: string) {
+  const bestOf = Math.max(1, tournamentBestOf || 1);
+  const winsNeeded = Math.floor(bestOf / 2) + 1;
+  const loserMax = Math.max(0, winsNeeded - 1);
+  const loserWins = loserMax > 0 ? Math.floor(Math.random() * (loserMax + 1)) : 0;
+  const winnerIsA = winnerId === aId;
+  const a = winnerIsA ? winsNeeded : loserWins;
+  const b = winnerIsA ? loserWins : winsNeeded;
+  return {
+    scoreA: a,
+    scoreB: b,
+    setsA: a,
+    setsB: b,
+    legsA: a,
+    legsB: b,
+  };
+}
+
+function randInt(min: number, max: number) {
+  const lo = Math.ceil(Number(min) || 0);
+  const hi = Math.floor(Number(max) || 0);
+  if (hi <= lo) return lo;
+  return Math.floor(Math.random() * (hi - lo + 1)) + lo;
+}
+
+function round2(n: number) {
+  return Math.round(Number(n || 0) * 100) / 100;
+}
+
+function buildSyntheticLegStats(playerId: string, wonLeg: boolean) {
+  const darts = randInt(wonLeg ? 12 : 15, wonLeg ? 24 : 30);
+  const visits = Math.max(4, Math.ceil(darts / 3));
+  const avg3 = round2((wonLeg ? randInt(58, 92) : randInt(42, 76)) + Math.random());
+  const bestVisit = wonLeg ? [100, 121, 140, 180][randInt(0, 3)] : [81, 95, 100, 121, 140][randInt(0, 4)];
+  const bestCheckout = wonLeg ? [0, 32, 40, 52, 64, 80, 96, 110, 120][randInt(0, 8)] : 0;
+  return { playerId, avg3, darts, visits, bestVisit, bestCheckout };
+}
+
+async function createSyntheticHistoryForSimulation(args: any) {
+  const { tournament, match, winnerId, synthetic } = args || {};
+  const aId = String(match?.aPlayerId || "");
+  const bId = String(match?.bPlayerId || "");
+  if (!aId || !bId) return null;
+
+  const aPlayer = playersById[aId] || { id: aId, name: "Joueur A" };
+  const bPlayer = playersById[bId] || { id: bId, name: "Joueur B" };
+  const totalLegs = Math.max(1, Number(synthetic?.scoreA || 0) + Number(synthetic?.scoreB || 0));
+  let remainingA = Math.max(0, Number(synthetic?.scoreA || 0));
+  let remainingB = Math.max(0, Number(synthetic?.scoreB || 0));
+  const legs: any[] = [];
+  let cumA = 0;
+  let cumB = 0;
+
+  for (let i = 0; i < totalLegs; i++) {
+    let legWinnerId = winnerId;
+    if (remainingA > 0 && remainingB > 0) {
+      if (i === totalLegs - 1) legWinnerId = winnerId;
+      else legWinnerId = Math.random() < 0.5 ? aId : bId;
+    } else if (remainingA > 0) {
+      legWinnerId = aId;
+    } else if (remainingB > 0) {
+      legWinnerId = bId;
+    }
+
+    if (legWinnerId === aId && remainingA > 0) {
+      remainingA -= 1;
+      cumA += 1;
+    } else if (legWinnerId === bId && remainingB > 0) {
+      remainingB -= 1;
+      cumB += 1;
+    }
+
+    const aStats = buildSyntheticLegStats(aId, legWinnerId === aId);
+    const bStats = buildSyntheticLegStats(bId, legWinnerId === bId);
+    legs.push({
+      id: `${String(match?.id || 'match')}-leg-${i + 1}`,
+      label: `Leg ${i + 1}`,
+      scoreA: cumA,
+      scoreB: cumB,
+      winnerId: legWinnerId,
+      summary: {
+        kind: "x01",
+        simulated: true,
+        legIndex: i,
+        winnerId: legWinnerId,
+        scoreA: cumA,
+        scoreB: cumB,
+        avg3ByPlayer: { [aId]: aStats.avg3, [bId]: bStats.avg3 },
+        bestVisitByPlayer: { [aId]: aStats.bestVisit, [bId]: bStats.bestVisit },
+        bestCheckoutByPlayer: { [aId]: aStats.bestCheckout, [bId]: bStats.bestCheckout },
+        perPlayer: {
+          [aId]: { avg3: aStats.avg3, darts: aStats.darts, visits: aStats.visits, bestVisit: aStats.bestVisit, bestCheckout: aStats.bestCheckout },
+          [bId]: { avg3: bStats.avg3, darts: bStats.darts, visits: bStats.visits, bestVisit: bStats.bestVisit, bestCheckout: bStats.bestCheckout },
+        },
+      },
+    });
   }
 
-  // ------------------------------------------------------------
+  const avg = (arr: any[]) => (arr.length ? round2(arr.reduce((s, x) => s + Number(x || 0), 0) / arr.length) : 0);
+  const max = (arr: any[]) => (arr.length ? Math.max(...arr.map((x) => Number(x || 0))) : 0);
+  const perA = legs.map((x) => x?.summary?.perPlayer?.[aId] || {});
+  const perB = legs.map((x) => x?.summary?.perPlayer?.[bId] || {});
+  const summary = {
+    kind: "x01",
+    simulated: true,
+    winnerId,
+    scoreA: Number(synthetic?.scoreA || 0),
+    scoreB: Number(synthetic?.scoreB || 0),
+    legsWon: { [aId]: Number(synthetic?.legsA || synthetic?.scoreA || 0), [bId]: Number(synthetic?.legsB || synthetic?.scoreB || 0) },
+    setsWon: { [aId]: Number(synthetic?.setsA || synthetic?.scoreA || 0), [bId]: Number(synthetic?.setsB || synthetic?.scoreB || 0) },
+    avg3ByPlayer: { [aId]: avg(perA.map((x) => x.avg3)), [bId]: avg(perB.map((x) => x.avg3)) },
+    bestVisitByPlayer: { [aId]: max(perA.map((x) => x.bestVisit)), [bId]: max(perB.map((x) => x.bestVisit)) },
+    bestCheckoutByPlayer: { [aId]: max(perA.map((x) => x.bestCheckout)), [bId]: max(perB.map((x) => x.bestCheckout)) },
+    perPlayer: {
+      [aId]: { avg3: avg(perA.map((x) => x.avg3)), darts: perA.reduce((s, x) => s + Number(x.darts || 0), 0), visits: perA.reduce((s, x) => s + Number(x.visits || 0), 0), bestVisit: max(perA.map((x) => x.bestVisit)), bestCheckout: max(perA.map((x) => x.bestCheckout)) },
+      [bId]: { avg3: avg(perB.map((x) => x.avg3)), darts: perB.reduce((s, x) => s + Number(x.darts || 0), 0), visits: perB.reduce((s, x) => s + Number(x.visits || 0), 0), bestVisit: max(perB.map((x) => x.bestVisit)), bestCheckout: max(perB.map((x) => x.bestCheckout)) },
+    },
+    legs,
+    legacy: {
+      avg3: { [aId]: avg(perA.map((x) => x.avg3)), [bId]: avg(perB.map((x) => x.avg3)) },
+      darts: { [aId]: perA.reduce((s, x) => s + Number(x.darts || 0), 0), [bId]: perB.reduce((s, x) => s + Number(x.darts || 0), 0) },
+      visits: { [aId]: perA.reduce((s, x) => s + Number(x.visits || 0), 0), [bId]: perB.reduce((s, x) => s + Number(x.visits || 0), 0) },
+      bestVisit: { [aId]: max(perA.map((x) => x.bestVisit)), [bId]: max(perB.map((x) => x.bestVisit)) },
+      bestCheckout: { [aId]: max(perA.map((x) => x.bestCheckout)), [bId]: max(perB.map((x) => x.bestCheckout)) },
+    },
+  };
+
+  const now = Date.now();
+  const rec: any = {
+    id: `sim-${String(tournament?.id || 'tour')}-${String(match?.id || 'match')}-${now}`,
+    kind: String(tournament?.game?.mode || tournament?.mode || 'x01'),
+    status: 'finished',
+    winnerId,
+    createdAt: now,
+    updatedAt: now,
+    players: [
+      { id: aId, name: aPlayer?.name || 'Joueur A', avatarDataUrl: aPlayer?.avatarDataUrl || aPlayer?.avatar || aPlayer?.avatarUrl || null },
+      { id: bId, name: bPlayer?.name || 'Joueur B', avatarDataUrl: bPlayer?.avatarDataUrl || bPlayer?.avatar || bPlayer?.avatarUrl || null },
+    ],
+    summary,
+    payload: {
+      kind: 'x01',
+      simulated: true,
+      winnerId,
+      scoreA: Number(synthetic?.scoreA || 0),
+      scoreB: Number(synthetic?.scoreB || 0),
+      legsWon: summary.legsWon,
+      setsWon: summary.setsWon,
+      legs,
+      summary,
+    },
+  };
+
+  try {
+    await (History as any)?.upsert?.(rec);
+  } catch (e) {
+    console.error('[TournamentView] synthetic history upsert error:', e);
+  }
+  return rec;
+}
+
+// ------------------------------------------------------------
+// LOAD  // ------------------------------------------------------------
   // LOAD
   // ------------------------------------------------------------
   React.useEffect(() => {
@@ -1694,7 +1839,8 @@ export default function TournamentView({ store, go, id }: Props) {
 
       try {
         const synthetic = buildSyntheticScore(winnerId, a, b);
-        const r = submitResult({ tournament: tour as any, matches: safeMatches as any, matchId: String(m.id), winnerId, historyMatchId: null, ...synthetic });
+        const saved = await createSyntheticHistoryForSimulation({ tournament: tour as any, match: m, winnerId, synthetic });
+        const r = submitResult({ tournament: tour as any, matches: safeMatches as any, matchId: String(m.id), winnerId, historyMatchId: saved?.id || null, ...synthetic });
         await persist(r.tournament as any, r.matches as any);
       } catch (e) {
         console.error("[TournamentView] simulateMatch error:", e);
@@ -1735,7 +1881,8 @@ export default function TournamentView({ store, go, id }: Props) {
           legsA: winnerIsA ? winsNeeded : loserWins,
           legsB: winnerIsA ? loserWins : winsNeeded,
         };
-        const r = submitResult({ tournament: curTour, matches: curMatches, matchId: String(m.id), winnerId, historyMatchId: null, ...synthetic });
+        const saved = await createSyntheticHistoryForSimulation({ tournament: curTour, match: m, winnerId, synthetic });
+        const r = submitResult({ tournament: curTour, matches: curMatches, matchId: String(m.id), winnerId, historyMatchId: saved?.id || null, ...synthetic });
         curTour = r.tournament;
         curMatches = r.matches;
       }

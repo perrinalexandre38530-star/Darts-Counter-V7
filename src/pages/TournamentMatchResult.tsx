@@ -257,12 +257,12 @@ export default function TournamentMatchResult({ go, params }: any) {
 
   if (loading) return <div style={{ minHeight: "100vh", padding: 16, background: "#05070c", color: "#fff" }}>Chargement…</div>;
 
-  if (!tm || !record) {
+  if (!tm) {
     return (
       <div style={{ minHeight: "100vh", padding: 16, background: "#05070c", color: "#fff" }}>
         <button onClick={() => go("tournament_view", { id: tournamentId })} style={{ borderRadius: 999, padding: "8px 12px", border: "1px solid rgba(255,255,255,0.12)", background: "rgba(255,255,255,0.06)", color: "#fff", cursor: "pointer" }}>← Retour tournoi</button>
-        <div style={{ marginTop: 16, fontWeight: 950 }}>Résultat introuvable</div>
-        <div style={{ marginTop: 8, opacity: 0.78 }}>historyMatchId={historyMatchId || "—"}</div>
+        <div style={{ marginTop: 16, fontWeight: 950 }}>Match introuvable</div>
+        <div style={{ marginTop: 8, opacity: 0.78 }}>matchId={matchId || "—"} • historyMatchId={historyMatchId || "—"}</div>
       </div>
     );
   }
@@ -274,6 +274,7 @@ export default function TournamentMatchResult({ go, params }: any) {
         <div style={{ textAlign: "center" }}>
           <div style={{ fontWeight: 1000, fontSize: 18, color: THEME }}>Détail du match</div>
           <div style={{ fontSize: 12, opacity: 0.76 }}>{fmtDate(record?.updatedAt || tm?.updatedAt)}</div>
+          {!record ? <div style={{ fontSize: 11, opacity: 0.62, marginTop: 4 }}>Historique détaillé indisponible pour ce match — affichage du résumé tournoi.</div> : null}
         </div>
         <div />
       </div>

@@ -66,14 +66,36 @@ function rankOfRecord(rec: any, playerId: string) {
   return 0;
 }
 
+
+const PERIOD_OPTIONS = [
+  { key: "J", label: "J" },
+  { key: "S", label: "S" },
+  { key: "M", label: "M" },
+  { key: "A", label: "A" },
+  { key: "ARV", label: "ARV" },
+] as const;
+
+function inPeriod(ts: number, period: string) {
+  if (!Number.isFinite(Number(ts)) || Number(ts) <= 0) return period === "ARV";
+  const now = Date.now();
+  const t = Number(ts);
+  const day = 24 * 60 * 60 * 1000;
+  if (period === "J") return now - t <= day;
+  if (period === "S") return now - t <= 7 * day;
+  if (period === "M") return now - t <= 31 * day;
+  if (period === "A") return now - t <= 366 * day;
+  return true;
+}
 export default function StatsKiller({ profiles, memHistory, playerId = null, title = "KILLER" }: Props) {
   const { theme } = useTheme();
+  const [period, setPeriod] = React.useState<string>("ARV");
 
   const data = React.useMemo(() => {
     const killer = (Array.isArray(memHistory) ? memHistory : []).filter(isKillerRecord);
+    const scoped = killer.filter((r: any) => inPeriod(recTs(r), period));
     const filtered = playerId
-      ? killer.filter((r) => getPlayers(r).some((p: any) => String(p?.id || p?.playerId || p?.profileId) === String(playerId)) || !!(r?.summary?.detailedByPlayer?.[playerId] || r?.payload?.summary?.detailedByPlayer?.[playerId]))
-      : killer;
+      ? scoped.filter((r) => getPlayers(r).some((p: any) => String(p?.id || p?.playerId || p?.profileId) === String(playerId)) || !!(r?.summary?.detailedByPlayer?.[playerId] || r?.payload?.summary?.detailedByPlayer?.[playerId]))
+      : scoped;
 
     const agg = playerId ? computeKillerStatsAggForProfile(filtered, String(playerId)) : null;
     const items = filtered
@@ -96,7 +118,7 @@ export default function StatsKiller({ profiles, memHistory, playerId = null, tit
       lastAt: agg?.lastAt || items[0]?.when || 0,
       placements: agg?.placements || {},
     };
-  }, [memHistory, playerId, profiles]);
+  }, [memHistory, period, playerId, profiles]);
 
   const agg = data.agg || {};
   const placementRows = Object.keys(data.placements || {})
@@ -142,10 +164,11 @@ export default function StatsKiller({ profiles, memHistory, playerId = null, tit
       <SectionTitle theme={theme} title={title} />
 
       <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-        <GoldPill active style={{ minHeight: 36 }}>Matchs {agg.played || 0}</GoldPill>
-        <GoldPill style={{ minHeight: 36 }}>Podiums {totalPodium}</GoldPill>
-        <GoldPill style={{ minHeight: 36 }}>1er {agg.firsts || 0}</GoldPill>
-        <GoldPill style={{ minHeight: 36 }}>Win {fmtPct(agg.winRate || 0)}</GoldPill>
+        {PERIOD_OPTIONS.map((opt) => (
+          <GoldPill key={opt.key} active={period === opt.key} onClick={() => setPeriod(opt.key)} style={{ minHeight: 36, minWidth: opt.key === "ARV" ? 68 : 44, justifyContent: "center" }}>
+            {opt.label}
+          </GoldPill>
+        ))}
       </div>
 
       <NeonPanel theme={theme} title={`${title} MULTI`}>
@@ -360,24 +383,10 @@ function TablePanel({ theme, title, children }: any) {
 
 function NeonKpi({ label, title, value, sub, color, large = false }: any) {
   return (
-    <div style={{
-      borderRadius: 22,
-      padding: large ? 14 : 12,
-      minHeight: large ? 110 : 95,
-      background: "linear-gradient(180deg, rgba(18,20,28,.95), rgba(12,13,18,.98))",
-      border: `1px solid ${color}`,
-      boxShadow: `0 0 18px ${color}33, inset 0 0 14px ${color}10`
-    }}>
+    <div style={{ borderRadius: 22, padding: large ? 14 : 12, minHeight: large ? 110 : 95, background: "linear-gradient(180deg, rgba(18,20,28,.95), rgba(12,13,18,.98))", border: `1px solid ${color}`, boxShadow: `0 0 18px ${color}33, inset 0 0 14px ${color}10` }}>
       <div style={{ color, fontSize: 10, textTransform: "uppercase", letterSpacing: .6, fontWeight: 900 }}>{label}</div>
       <div style={{ marginTop: 6, color: "#d9d9d9", fontSize: 13, fontWeight: 600 }}>{title}</div>
-      <div style={{
-        marginTop: 6,
-        color: color === "#47B5FF" ? "#6dc7ff" : color === "#FF6FB5" ? "#ffc2e4" : color === "#77FF9B" ? "#cffff0" : "#ffd768",
-        fontSize: large ? 34 : 28,
-        lineHeight: 1,
-        fontWeight: 1000,
-        textShadow: `0 0 10px ${color}55`
-      }}>{String(value ?? "—")}</div>
+      <div style={{ marginTop: 6, color: color === "#47B5FF" ? "#6dc7ff" : color === "#FF6FB5" ? "#ffc2e4" : color === "#77FF9B" ? "#cffff0" : "#ffd768", fontSize: large ? 34 : 28, lineHeight: 1, fontWeight: 1000, textShadow: `0 0 10px ${color}55` }}>{String(value ?? "—")}</div>
       <div style={{ marginTop: 6, color: "rgba(255,255,255,.65)", fontSize: 11 }}>{sub}</div>
     </div>
   );

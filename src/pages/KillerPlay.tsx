@@ -2558,6 +2558,13 @@ React.useEffect(() => {
   }, [config]);
 
   const [events, setEvents] = React.useState<any[]>([]);
+  const eventsRef = React.useRef<any[]>([]);
+  const MAX_SAVED_EVENTS = 60;
+
+  React.useEffect(() => {
+    eventsRef.current = Array.isArray(events) ? events : [];
+  }, [events]);
+
   function pushEvent(e: any) {
     setEvents((prev) => [e, ...prev].slice(0, 800));
   }
@@ -2815,6 +2822,15 @@ React.useEffect(() => {
           return null;
         }
       })();
+      const compactEvents = (eventsRef.current || []).slice(0, MAX_SAVED_EVENTS).map((e: any) => ({
+        kind: e?.kind ?? e?.type ?? null,
+        label: e?.label ?? e?.text ?? null,
+        actorId: e?.actorId ?? e?.playerId ?? e?.by ?? null,
+        targetId: e?.targetId ?? e?.to ?? null,
+        value: Number.isFinite(Number(e?.value)) ? Number(e.value) : null,
+        mult: Number.isFinite(Number(e?.mult)) ? Number(e.mult) : null,
+        at: Number.isFinite(Number(e?.at)) ? Number(e.at) : updatedAt,
+      }));
       const rec: any = {
         id: matchIdRef.current,
         kind: "killer",
@@ -2846,7 +2862,7 @@ React.useEffect(() => {
             assignDone,
             assignIndex,
             pendingChoiceNumber,
-            events,
+            events: compactEvents,
             turnCount,
             bullRotateStep,
             dbullRotateStep,
@@ -2855,15 +2871,15 @@ React.useEffect(() => {
       };
       void History.upsert(rec as any);
     } catch {}
-  }, [players, turnIndex, dartsLeft, assignDone, assignIndex, pendingChoiceNumber, events, turnCount, bullRotateStep, dbullRotateStep, config, startedAt, resumeConfig]);
+  }, [players, turnIndex, dartsLeft, assignDone, assignIndex, pendingChoiceNumber, turnCount, bullRotateStep, dbullRotateStep, config, startedAt, resumeConfig]);
 
   React.useEffect(() => {
-    // ✅ AUTOSAVE in_progress pour reprise (toutes les 8s)
+    // ✅ AUTOSAVE in_progress pour reprise (debounce léger après changement d'état)
     if (finishedRef.current) return;
-    const t = window.setInterval(() => {
+    const t = window.setTimeout(() => {
       saveInProgress();
-    }, 8000);
-    return () => window.clearInterval(t);
+    }, 1200);
+    return () => window.clearTimeout(t);
   }, [saveInProgress]);
 
   React.useEffect(() => {
@@ -3176,31 +3192,68 @@ React.useEffect(() => {
         resurrectionsReceived: p.resurrectionsReceived ?? 0,
         hitsOnSelf: p.hitsOnSelf,
         totalThrows: p.totalThrows,
+        throws: p.totalThrows,
+        darts: p.totalThrows,
+        dartsThrown: p.totalThrows,
+        totalDarts: p.totalThrows,
         killerThrows: p.killerThrows,
         offensiveThrows: p.offensiveThrows,
         killerHits: p.killerHits,
+        totalHits: p.killerHits,
+        hitsTotal: p.killerHits,
         uselessHits: p.uselessHits,
         livesTaken: p.livesTaken,
         livesLost: p.livesLost,
+        deaths: p.eliminated ? 1 : 0,
+        deathCount: p.eliminated ? 1 : 0,
+        win: p.id === winnerId,
+        winner: p.id === winnerId,
+        finalRank: 0,
+        placement: 0,
+        place: 0,
+        position: 0,
         throwsToBecomeKiller: p.becameAtThrow ? p.becameAtThrow : p.throwsToBecomeKiller,
+        rearmThrows: p.becameAtThrow ? p.becameAtThrow : p.throwsToBecomeKiller,
         hitsBySegment: p.hitsBySegment || {},
+        hits_by_segment: p.hitsBySegment || {},
         hitsByNumber: p.hitsByNumber || {},
+        hits_by_number: p.hitsByNumber || {},
       };
     }
 
     const ranking = ordered.map((p, idx) => ({
       playerId: p.id,
+      profileId: p.id,
+      id: p.id,
       rank: idx + 1,
+      finalRank: idx + 1,
+      placement: idx + 1,
+      place: idx + 1,
+      position: idx + 1,
       name: p.name,
       number: p.number,
       eliminated: p.eliminated,
       kills: p.kills,
       autoKills: p.autoKills ?? 0,
       livesTaken: p.livesTaken,
+      win: p.id === winnerId,
+      winner: p.id === winnerId,
     }));
+    for (const row of ranking) {
+      if (!detailedByPlayer[row.playerId]) continue;
+      detailedByPlayer[row.playerId].finalRank = row.rank;
+      detailedByPlayer[row.playerId].rank = row.rank;
+      detailedByPlayer[row.playerId].placement = row.rank;
+      detailedByPlayer[row.playerId].place = row.rank;
+      detailedByPlayer[row.playerId].position = row.rank;
+    }
 
     const resumeId = (config as any)?.resumeId || null;
-    const perPlayer = (config as any)?.perPlayer || null;
+    const perPlayer = (config as any)?.perPlayer || Object.values(detailedByPlayer);
+    const perPlayerMap = detailedByPlayer;
+    const rankings = ranking;
+    const hitsBySegmentByPlayer = Object.fromEntries(finalPlayersRaw.map((p) => [p.id, p.hitsBySegment || {}]));
+    const hitsByNumberByPlayer = Object.fromEntries(finalPlayersRaw.map((p) => [p.id, p.hitsByNumber || {}]));
 
     // ✅ Normalisation "StatsHub": bloc stats unifié (lecture simple côté hub)
     const unifiedStats: any = {
@@ -3273,19 +3326,26 @@ React.useEffect(() => {
       })),
       summary: {
         mode: "killer",
+        winnerId,
         livesStart: config.lives,
         becomeRule: config.becomeRule,
         damageRule: config.damageRule,
+        playerCount: finalPlayersRaw.length,
+        players: finalPlayersRaw.map((p) => ({ id: p.id, playerId: p.id, profileId: p.id, name: p.name, win: p.id === winnerId, eliminated: !!p.eliminated, finalRank: detailedByPlayer[p.id]?.finalRank || 0, placement: detailedByPlayer[p.id]?.placement || 0 })),
         detailedByPlayer,
         perPlayer,
+        perPlayerMap,
         ranking,
+        rankings,
+        hitsBySegmentByPlayer,
+        hitsByNumberByPlayer,
       },
       payload: {
         mode: "killer",
         meta: { dartSetId, dartSetIdsByPlayer },
         config,
         resumeId,
-        summary: { mode: "killer", detailedByPlayer, perPlayer, ranking },
+        summary: { mode: "killer", winnerId, detailedByPlayer, perPlayer, perPlayerMap, ranking, rankings, hitsBySegmentByPlayer, hitsByNumberByPlayer },
         // ✅ Bloc unifié pour StatsHub
         stats: unifiedStats as any,
       },

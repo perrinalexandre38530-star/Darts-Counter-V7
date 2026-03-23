@@ -1856,7 +1856,7 @@ Active uniquement parmi les fonctions cochées ci-dessus.
                   </li>
                 </ul>
 
-                <div style={{ fontWeight: 900, color: "#fff", marginBottom: 6 }}>Variantes</div>
+                <div style={{ fontWeight: 900, color: "#fff", marginBottom: 6 }}>Variantes & fonctions spéciales</div>
                 <ul style={{ marginTop: 0, marginBottom: 12, paddingLeft: 18 }}>
                   <li>
                     <b>Auto‑pénalité</b> : si tu es KILLER et tu touches ton numéro, tu perds des vies.
@@ -1870,17 +1870,82 @@ Active uniquement parmi les fonctions cochées ci-dessus.
                   <li>
                     <b>Blind Killer</b> : masque les numéros à l’écran pendant la partie (incompatible avec « 1er lancer »).
                   </li>
+                </ul>
+
+                <div style={{ fontWeight: 900, color: "#fff", marginBottom: 6 }}>Fonctions BULL</div>
+                <ul style={{ marginTop: 0, marginBottom: 12, paddingLeft: 18 }}>
                   <li>
-                    <b>SBULL/DBULL dégâts à tous</b> : SBULL = −1 à tous les adversaires, DBULL = −2.
+                    <b>Dégâts à tous</b> : le SBULL inflige −1 à tous les adversaires vivants.
                   </li>
                   <li>
-                    <b>SBULL/DBULL récupérer des vies</b> : touche Bull pour regagner des vies (selon configuration).
+                    <b>Soin</b> : le BULL redonne des vies au tireur, selon la valeur de vies de départ / la configuration active.
+                  </li>
+                  <li>
+                    <b>Rotation BULL</b> : si plusieurs fonctions BULL sont cochées avec la rotation activée, la fonction active alterne <b>tour après tour</b>.
+                  </li>
+                </ul>
+
+                <div style={{ fontWeight: 900, color: "#fff", marginBottom: 6 }}>Fonctions DBULL</div>
+                <ul style={{ marginTop: 0, marginBottom: 12, paddingLeft: 18 }}>
+                  <li>
+                    <b>Dégâts à tous</b> : le DBULL inflige −2 à tous les adversaires vivants.
+                  </li>
+                  <li>
+                    <b>Bouclier</b> : le tireur gagne un bouclier qui bloque les dégâts reçus.
+                  </li>
+                  <li>
+                    <b>Désarmement</b> : le tireur garde son statut KILLER et <b>désarme tous les autres killers</b>. Ils repassent à l’état de base et doivent retoucher leur numéro pour redevenir KILLER.
+                  </li>
+                  <li>
+                    <b>Rotation DBULL</b> : si plusieurs fonctions DBULL sont cochées avec la rotation activée, la fonction active alterne <b>tour après tour</b>.
+                  </li>
+                </ul>
+
+                <div style={{ fontWeight: 900, color: "#fff", marginBottom: 6 }}>Bouclier : règles avancées</div>
+                <ul style={{ marginTop: 0, marginBottom: 12, paddingLeft: 18 }}>
+                  <li>
+                    <b>Bouclier plein</b> : protège totalement tant qu’il n’a pas été contré.
+                  </li>
+                  <li>
+                    <b>Contre sur DOUBLE</b> : si un adversaire touche en <b>double</b> le numéro du joueur protégé, le bouclier est <b>cassé immédiatement</b>.
+                  </li>
+                  <li>
+                    <b>Contre sur TRIPLE</b> : si un adversaire touche en <b>triple</b> le numéro du joueur protégé, le bouclier perd <b>50 %</b> de son effet.
+                  </li>
+                  <li>
+                    <b>Deux triples</b> : deux contres en triple annulent complètement le bouclier.
+                  </li>
+                </ul>
+
+                <div style={{ fontWeight: 900, color: "#fff", marginBottom: 6 }}>Résurrection</div>
+                <ul style={{ marginTop: 0, marginBottom: 12, paddingLeft: 18 }}>
+                  <li>
+                    <b>Résurrection d’un joueur éliminé</b> : selon le mode choisi, un joueur mort peut revenir en jeu lorsqu’un adversaire vivant touche son numéro.
+                  </li>
+                  <li>
+                    <b>Retour en jeu</b> : le joueur ressuscité revient avec le nombre de vies prévu par la configuration.
+                  </li>
+                  <li>
+                    <b>Protection blanche temporaire</b> : juste après une résurrection, le joueur est protégé jusqu’à <b>son prochain tour</b>. Le petit bouclier blanc disparaît quand son tour arrive, mais le contour blanc reste pour identifier qu’il a été ressuscité.
+                  </li>
+                </ul>
+
+                <div style={{ fontWeight: 900, color: "#fff", marginBottom: 6 }}>Lecture rapide</div>
+                <ul style={{ marginTop: 0, marginBottom: 12, paddingLeft: 18 }}>
+                  <li>
+                    <b>Contour blanc</b> : joueur ressuscité.
+                  </li>
+                  <li>
+                    <b>Petit bouclier blanc</b> : protection temporaire de résurrection, active jusqu’au tour du joueur.
+                  </li>
+                  <li>
+                    <b>Petit bouclier bleu</b> : bouclier DBULL classique.
                   </li>
                 </ul>
 
                 <div style={{ fontSize: 11, color: "#9aa0c4" }}>
                   Astuce : certaines variantes sont incompatibles entre elles. Quand c’est le cas, l’option se grise avec une
-                  explication.
+                  explication. Les fonctions BULL et DBULL sont regroupées pour une lecture plus claire ; une seule fonction peut être active par case, sauf si la rotation est activée.
                 </div>
               </div>
             </div>

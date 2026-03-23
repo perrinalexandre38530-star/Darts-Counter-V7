@@ -339,7 +339,7 @@ export default function MatchDetailCard({
           <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
             <button
               type="button"
-              onClick={onPlay}
+              onClick={done ? onOpenResult : onPlay}
               style={{
                 borderRadius: 14,
                 padding: "12px 16px",
