@@ -40,6 +40,33 @@ function estimateObjectSizeBytes(obj: any): number {
   }
 }
 
+function guardStoreShape<T extends Store>(store: T | null | undefined): T {
+  const base: any = store && typeof store === "object" ? { ...(store as any) } : {};
+  if (!Array.isArray(base.profiles)) base.profiles = [];
+  if (base.activeProfileId !== undefined && base.activeProfileId !== null) {
+    base.activeProfileId = String(base.activeProfileId);
+  } else {
+    base.activeProfileId = null;
+  }
+  return base as T;
+}
+
+function makeMinimalLegacyFallback<T extends Store>(store: T): Record<string, any> {
+  const guarded = guardStoreShape(store);
+  return {
+    profiles: Array.isArray((guarded as any).profiles)
+      ? (guarded as any).profiles.map((p: any) => ({
+          id: p?.id ?? null,
+          name: typeof p?.name === "string" ? p.name : "",
+          color: typeof p?.color === "string" ? p.color : undefined,
+        }))
+      : [],
+    activeProfileId: (guarded as any).activeProfileId ?? null,
+    updatedAt: Date.now(),
+    fallback: "minimal",
+  };
+}
+
 function guardStoreSizeForMobile<T>(store: T): T {
   try {
     const bytes = estimateObjectSizeBytes(store);
@@ -72,6 +99,92 @@ function guardStoreSizeForMobile<T>(store: T): T {
     }
   } catch {}
   return store;
+}
+
+function trimArrayTail<T>(arr: T[], keep: number): T[] {
+  if (!Array.isArray(arr)) return [];
+  if (keep <= 0) return [];
+  return arr.length > keep ? arr.slice(arr.length - keep) : arr;
+}
+
+function sanitizeStoreForPersistence<T extends Store>(store: T): T {
+  let clone: any;
+  try {
+    clone = safeJsonParse(safeJsonStringify(store || {}), {});
+  } catch {
+    clone = { ...(store || {}) };
+  }
+
+  // 1) Les stats doivent être rebuildées, pas persistées lourdement dans le store principal
+  delete clone.stats;
+  delete clone.statsByPlayer;
+  delete clone.statsByMode;
+  delete clone.profileStats;
+  delete clone.leaderboards;
+
+  // 2) Profiles: ne jamais laisser passer un avatarDataUrl énorme dans le store principal
+  if (Array.isArray(clone.profiles)) {
+    clone.profiles = clone.profiles.map((p: any) => {
+      const out = { ...(p || {}) };
+      const avatarDataUrl = sanitizeAvatarFieldSync(out.avatarDataUrl);
+      if (!avatarDataUrl) {
+        delete out.avatarDataUrl;
+      } else {
+        out.avatarDataUrl = avatarDataUrl;
+      }
+
+      if (typeof out.avatar === "string" && out.avatar.length > MAX_AVATAR_DATA_URL_CHARS) {
+        delete out.avatar;
+      }
+      if (typeof out.photoDataUrl === "string" && out.photoDataUrl.length > MAX_AVATAR_DATA_URL_CHARS) {
+        delete out.photoDataUrl;
+      }
+
+      return out;
+    });
+  }
+
+  // 3) History embarquée dans le store: on coupe tout ce qui est trop lourd
+  if (Array.isArray(clone.history)) {
+    clone.history = trimArrayTail(clone.history, 20).map((r: any) => {
+      const rr: any = { ...(r || {}) };
+
+      const stripPlayers = (arr: any[]) =>
+        (arr || []).map((pl: any) => {
+          const pp: any = { ...(pl || {}) };
+          const dataAvatar = typeof pp.avatarDataUrl === "string" ? pp.avatarDataUrl : "";
+          const urlAvatar = typeof pp.avatarUrl === "string" ? pp.avatarUrl : "";
+          if (dataAvatar.startsWith("data:") || dataAvatar.length > MAX_AVATAR_DATA_URL_CHARS) delete pp.avatarDataUrl;
+          if (urlAvatar.startsWith("data:")) delete pp.avatarUrl;
+          if (typeof pp.avatar === "string" && pp.avatar.length > MAX_AVATAR_DATA_URL_CHARS) delete pp.avatar;
+          return pp;
+        });
+
+      if (Array.isArray(rr.players)) rr.players = stripPlayers(rr.players);
+      if (rr.payload && Array.isArray(rr.payload.players)) {
+        rr.payload = { ...(rr.payload || {}) };
+        rr.payload.players = stripPlayers(rr.payload.players);
+      }
+
+      return rr;
+    });
+  }
+
+  // 4) Bots très volumineux: coupe les avatars inline et garde un historique borné
+  if (Array.isArray(clone.bots)) {
+    clone.bots = clone.bots.map((b: any) => {
+      const out = { ...(b || {}) };
+      if (typeof out.avatarDataUrl === "string" && out.avatarDataUrl.length > MAX_AVATAR_DATA_URL_CHARS) {
+        delete out.avatarDataUrl;
+      }
+      if (typeof out.avatar === "string" && out.avatar.length > MAX_AVATAR_DATA_URL_CHARS) {
+        delete out.avatar;
+      }
+      return out;
+    });
+  }
+
+  return clone as T;
 }
 
 /* ---------- Constantes ---------- */
@@ -552,7 +665,8 @@ export async function loadStore<T extends Store>(): Promise<T | null> {
 
       if (!parsed) return null;
 
-      const norm = await normalizeStoreAll(parsed);
+      const guarded = guardStoreShape(parsed);
+      const norm = await normalizeStoreAll(guarded);
 
       if (norm.changed) {
         try {
@@ -561,7 +675,7 @@ export async function loadStore<T extends Store>(): Promise<T | null> {
         } catch {}
       }
 
-      return norm.store;
+      return guardStoreShape(norm.store);
     }
 
     const legacy = localStorage.getItem(LEGACY_LS_KEY);
@@ -569,14 +683,15 @@ export async function loadStore<T extends Store>(): Promise<T | null> {
       const parsed = safeJsonParse<T | null>(legacy, null);
       if (!parsed) return null;
 
-      const norm = await normalizeStoreAll(parsed);
+      const guarded = guardStoreShape(parsed);
+      const norm = await normalizeStoreAll(guarded);
 
       await saveStore(norm.store);
       try {
         localStorage.removeItem(LEGACY_LS_KEY);
       } catch {}
 
-      return norm.store;
+      return guardStoreShape(norm.store);
     }
 
     return null;
@@ -591,23 +706,66 @@ type SaveOpts = {
 };
 
 export async function saveStore<T extends Store>(store: T, opts?: SaveOpts): Promise<void> {
-  try {
-    const compat = normalizeStoreAvatarsCompatSync(store);
+  const guardedInput = guardStoreShape(store);
 
-    const final =
+  try {
+    const compat = normalizeStoreAvatarsCompatSync(guardedInput);
+
+    const normalized =
       opts?.skipAsyncNormalize === true
         ? { store: compat.store as T, changed: compat.changed }
         : await normalizeStoreAll(compat.store as T);
 
-    const guardedStore = guardStoreSizeForMobile(final.store);
-    const json = safeJsonStringify(guardedStore);
-    const payload = await compressGzip(json);
+    let persistedStore = guardStoreShape(sanitizeStoreForPersistence(normalized.store as T));
+
+    const preTrimBytes = estimateObjectSizeBytes(persistedStore);
+    if (preTrimBytes > 2_000_000) {
+      console.warn("[storage] store trop volumineux, trimming préventif avant écriture.");
+      const trimmed: any = { ...(persistedStore as any) };
+      delete trimmed.stats;
+      delete trimmed.statsByPlayer;
+      delete trimmed.statsByMode;
+      delete trimmed.profileStats;
+      delete trimmed.leaderboards;
+      delete trimmed.history;
+      if (Array.isArray(trimmed.profiles)) {
+        trimmed.profiles = trimmed.profiles.map((p: any) => {
+          const out = { ...(p || {}) };
+          delete out.avatarDataUrl;
+          delete out.avatar;
+          delete out.photoDataUrl;
+          return out;
+        });
+      }
+      persistedStore = guardStoreShape(trimmed as T);
+    }
+
+    persistedStore = guardStoreSizeForMobile(persistedStore);
+
+    let json = safeJsonStringify(persistedStore);
+    let payload = await compressGzip(json);
 
     const est = await storageEstimate();
     if (est.quota != null && est.usage != null && typeof payload !== "string") {
       const projected = est.usage + (payload as Uint8Array).byteLength;
       if (projected > est.quota * 0.98) {
-        console.warn("[storage] quota presque plein, tentative d’écriture quand même.");
+        console.warn("[storage] quota presque plein, réduction agressive du store avant écriture.");
+
+        const emergencyStore: any = sanitizeStoreForPersistence({ ...(persistedStore as any) });
+        if (Array.isArray(emergencyStore.history)) emergencyStore.history = trimArrayTail(emergencyStore.history, 10);
+        if (Array.isArray(emergencyStore.profiles)) {
+          emergencyStore.profiles = emergencyStore.profiles.map((p: any) => {
+            const out = { ...(p || {}) };
+            delete out.avatarDataUrl;
+            delete out.avatar;
+            delete out.photoDataUrl;
+            return out;
+          });
+        }
+
+        persistedStore = guardStoreShape(emergencyStore as T);
+        json = safeJsonStringify(persistedStore);
+        payload = await compressGzip(json);
       }
     }
 
@@ -615,8 +773,11 @@ export async function saveStore<T extends Store>(store: T, opts?: SaveOpts): Pro
   } catch (err) {
     console.error("[storage] saveStore error:", err);
     try {
-      localStorage.setItem(LEGACY_LS_KEY, safeJsonStringify(store));
-    } catch {}
+      const minimalFallback = makeMinimalLegacyFallback(guardedInput);
+      localStorage.setItem(LEGACY_LS_KEY, safeJsonStringify(minimalFallback));
+    } catch {
+      console.warn("[storage] legacy fallback skipped");
+    }
   }
 }
 

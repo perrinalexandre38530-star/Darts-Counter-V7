@@ -93,6 +93,7 @@ type PendingSfx =
   | { kind: "auto_kill"; mult: Mult }
   | { kind: "death" }
   | { kind: "lastDead" }
+  | { kind: "resurrect" }
   | null;
 
 type ThrowInput = {
@@ -126,6 +127,10 @@ type KillerPlayerState = {
   livesStolen?: number;
   livesHealed?: number;
   hitsOnSelf: number;
+  shieldTurnsLeft?: number;
+  shieldJustGranted?: boolean;
+  resurrected?: boolean;
+  resurrectShield?: boolean;
   totalThrows: number;
   killerThrows: number;
   offensiveThrows: number;
@@ -145,6 +150,12 @@ type KillerPlayerState = {
   lastVisit?: ThrowInput[] | null;
 };
 
+type PendingChoiceNumber = {
+  playerId: string;
+  shieldTurns: number;
+  label?: string;
+};
+
 type Snapshot = {
   players: KillerPlayerState[];
   turnIndex: number;
@@ -157,6 +168,7 @@ type Snapshot = {
   events: any[];
   assignIndex: number;
   assignDone: boolean;
+  pendingChoiceNumber: PendingChoiceNumber | null;
 };
 
 function clampInt(n: any, min: number, max: number, fallback: number) {
@@ -192,6 +204,95 @@ function winner(players: KillerPlayerState[]) {
   return alive.length === 1 ? alive[0] : null;
 }
 
+function isActiveKiller(p: any) {
+  return !!p && !p.eliminated && (p.killerPhase === "ACTIVE" || !!p.isKiller);
+}
+
+function playerNumberMatchesTarget(player: any, target: any) {
+  const pn = Number(player?.number ?? 0);
+  const tt = Number(target ?? 0);
+  return Number.isFinite(pn) && Number.isFinite(tt) && pn > 0 && pn === tt;
+}
+
+function tryResurrectOnHit(args: {
+  players: any[];
+  actorIndex: number;
+  actor: any;
+  target: number;
+  resurrectionEnabled: boolean;
+  resurrectionMode: any;
+  resurrectionLives: number;
+  resGlobalUsedRef: any;
+  resByPidUsedRef: any;
+  elimOrderRef: any;
+  pushLog: (msg: string) => void;
+  pushEvent: (ev: any) => void;
+  pendingSfxRef: any;
+}) {
+  const {
+    players,
+    actorIndex,
+    actor,
+    target,
+    resurrectionEnabled,
+    resurrectionMode,
+    resurrectionLives,
+    elimOrderRef,
+    pushLog,
+    pushEvent,
+    pendingSfxRef,
+  } = args;
+
+  if (!actor || actor.eliminated) return false;
+
+  const normalizedMode = String(resurrectionMode ?? "").toLowerCase().trim();
+  const resurrectionOn = !!resurrectionEnabled || normalizedMode !== "off";
+  if (!resurrectionOn) return false;
+
+  const tt = Number(target ?? 0);
+  if (!Number.isFinite(tt) || tt <= 0 || tt > 20) return false;
+
+  const deadIdx = players.findIndex(
+    (p, idx) => idx !== actorIndex && !!p?.eliminated && playerNumberMatchesTarget(p, tt)
+  );
+  if (deadIdx < 0) return false;
+
+  const dead = players[deadIdx];
+  if (!dead || dead.id === actor.id) return false;
+
+  dead.eliminated = false;
+  dead.eliminatedAt = null;
+  dead.lives = clampInt(resurrectionLives, 1, 6, 1);
+  dead.isKiller = false;
+  dead.killerPhase = "ARMING";
+  dead.becameAtThrow = null;
+  dead.lastVisit = null;
+  dead.resurrected = true;
+  dead.resurrectShield = true;
+  dead.shieldTurnsLeft = 0;
+  dead.shieldJustGranted = false;
+
+  const prevOrder = Array.isArray(elimOrderRef.current) ? elimOrderRef.current : [];
+  elimOrderRef.current = prevOrder.filter((id: string) => id !== dead.id);
+
+  pushLog(
+    `🧟‍♂️ ${actor.name} ressuscite ${dead.name} sur le ${tt} (+${dead.lives} vie${dead.lives > 1 ? "s" : ""})`
+  );
+  pushEvent({
+    t: Date.now(),
+    type: "RESURRECT",
+    actorId: actor.id,
+    targetId: dead.id,
+    targetNumber: dead.number,
+    throw: { target: tt, mult: 1 },
+    lives: dead.lives,
+    mode: "simple",
+  });
+
+  pendingSfxRef.current = { kind: "resurrect" };
+  return true;
+}
+
 function fmtThrow(t: ThrowInput) {
   const m = t.mult === 1 ? "S" : t.mult === 2 ? "D" : "T";
   if (t.target === 0) return "MISS";
@@ -216,6 +317,34 @@ function normalizeNumberFromHit(target: number) {
   const n = clampInt(target, 0, 25, 0);
   if (n >= 1 && n <= 20) return n;
   return null;
+}
+
+function playerHasShield(p: any) {
+  return Number(p?.shieldTurnsLeft || 0) > 0;
+}
+
+function grantShieldTurns(p: any, turns: number) {
+  const n = clampInt(turns, 1, 9, 1);
+  p.shieldTurnsLeft = Math.max(Number(p?.shieldTurnsLeft || 0), n);
+  p.shieldJustGranted = true;
+}
+
+function shieldLabel(turns: number) {
+  return `${turns} tour${turns > 1 ? "s" : ""}`;
+}
+
+function firstFreeNumber(players: any[], excludeIndex: number) {
+  const used = new Set<number>();
+  players.forEach((p, idx) => {
+    if (idx === excludeIndex) return;
+    if (p?.eliminated) return;
+    const n = clampInt(p?.number, 0, 20, 0);
+    if (n >= 1 && n <= 20) used.add(n);
+  });
+  for (let n = 1; n <= 20; n++) {
+    if (!used.has(n)) return n;
+  }
+  return 20;
 }
 
 // -----------------------------
@@ -633,6 +762,11 @@ function rulesText(config: KillerConfig) {
     ? "AutoKill ON: si tu touches TON numéro, tu meurs instant (DEAD)."
     : "AutoKill OFF.";
 
+  const shieldOnDBull = truthy((config as any)?.shieldOnDBull ?? (config as any)?.shield_on_dbull);
+  const shieldTurns = clampInt((config as any)?.shieldTurns ?? (config as any)?.shield_turns ?? 1, 1, 9, 1);
+  const selectBonusShield = truthy((config as any)?.selectBonusShield ?? (config as any)?.select_bonus_shield);
+  const missAutoHit = truthy((config as any)?.missAutoHit ?? (config as any)?.miss_auto_hit);
+
   return [
     {
       title: "But",
@@ -666,14 +800,267 @@ function rulesText(config: KillerConfig) {
   ];
 }
 
+
+function ResurrectionAura({
+  compact = false,
+}: {
+  compact?: boolean;
+}) {
+  return (
+    <div
+      style={{
+        position: "absolute",
+        inset: compact ? -2 : -4,
+        borderRadius: "50%",
+        border: "2px solid rgba(255,255,255,.95)",
+        boxShadow:
+          "0 0 0 2px rgba(255,255,255,.18) inset, 0 0 16px rgba(255,255,255,.60), 0 0 30px rgba(255,255,255,.34)",
+        background:
+          "radial-gradient(circle at 30% 30%, rgba(255,255,255,.22), rgba(255,255,255,.10) 45%, rgba(255,255,255,.04) 68%, transparent 75%)",
+        pointerEvents: "none",
+        zIndex: 3,
+      }}
+    />
+  );
+}
+
+function ShieldAura({
+  turns,
+  compact = false,
+  hideBadge = false,
+  showCompactTurns = false,
+}: {
+  turns: number;
+  compact?: boolean;
+  hideBadge?: boolean;
+  showCompactTurns?: boolean;
+}) {
+  if (turns <= 0) return null;
+  const badgeW = compact ? 24 : 30;
+  const badgeH = compact ? 28 : 34;
+  const showTurns = !compact || showCompactTurns;
+  return (
+    <>
+      <div
+        style={{
+          position: "absolute",
+          inset: compact ? -2 : -3,
+          borderRadius: "50%",
+          border: "2px solid rgba(90, 220, 255, .96)",
+          boxShadow:
+            "0 0 0 2px rgba(90,220,255,.18) inset, 0 0 16px rgba(90,220,255,.50), 0 0 28px rgba(90,220,255,.28)",
+          background:
+            "radial-gradient(circle at 30% 30%, rgba(170,245,255,.18), rgba(80,195,255,.10) 45%, rgba(20,110,190,.05) 68%, transparent 75%)",
+          pointerEvents: "none",
+          zIndex: 4,
+        }}
+      />
+      {!hideBadge ? (
+        <div
+          title={`Bouclier actif (${turns} tour${turns > 1 ? "s" : ""})`}
+          style={{
+            position: "absolute",
+            right: compact ? -6 : -4,
+            top: compact ? -8 : -10,
+            width: badgeW,
+            height: badgeH,
+            display: "grid",
+            placeItems: "center",
+            pointerEvents: "none",
+            zIndex: 8,
+            filter: "drop-shadow(0 4px 12px rgba(0,0,0,.45)) drop-shadow(0 0 12px rgba(90,220,255,.42))",
+          }}
+        >
+          <svg
+            width={badgeW}
+            height={badgeH}
+            viewBox="0 0 44 50"
+            style={{ position: "absolute", inset: 0, overflow: "visible" }}
+            aria-hidden="true"
+          >
+            <defs>
+              <linearGradient id={`shieldBadgeGrad-${compact ? "c" : "n"}-${turns}`} x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0" stopColor="rgba(128,245,255,.98)" />
+                <stop offset="0.55" stopColor="rgba(34,170,236,.98)" />
+                <stop offset="1" stopColor="rgba(8,95,176,.98)" />
+              </linearGradient>
+            </defs>
+            <path
+              d="M22 2 L39 8 V21 C39 32 31 41 22 47 C13 41 5 32 5 21 V8 Z"
+              fill={`url(#shieldBadgeGrad-${compact ? "c" : "n"}-${turns})`}
+              stroke="rgba(255,255,255,.9)"
+              strokeWidth="1.8"
+            />
+            <path
+              d="M22 6 L35 10 V21 C35 30 29 37 22 42 C15 37 9 30 9 21 V10 Z"
+              fill="rgba(255,255,255,.10)"
+            />
+          </svg>
+          <div
+            style={{
+              position: "relative",
+              zIndex: 1,
+              display: "grid",
+              placeItems: "center",
+              color: "#f4fdff",
+              fontWeight: 1000,
+              fontSize: compact ? 11 : 13,
+              lineHeight: 1,
+              textShadow: "0 1px 6px rgba(0,0,0,.55)",
+              transform: `translateY(${compact ? 1 : 2}px)`,
+            }}
+          >
+            {showTurns ? turns : null}
+          </div>
+        </div>
+      ) : null}
+    </>
+  );
+}
+
+function ResurrectShieldAura({ compact = false }: { compact?: boolean }) {
+  const badgeW = compact ? 24 : 30;
+  const badgeH = compact ? 28 : 34;
+  const id = `resShieldBadge-${compact ? "c" : "n"}`;
+  return (
+    <>
+      <div
+        style={{
+          position: "absolute",
+          inset: compact ? -2 : -3,
+          borderRadius: "50%",
+          border: "2px solid rgba(255,255,255,.96)",
+          boxShadow:
+            "0 0 0 2px rgba(255,255,255,.18) inset, 0 0 16px rgba(255,255,255,.50), 0 0 28px rgba(255,255,255,.28)",
+          background:
+            "radial-gradient(circle at 30% 30%, rgba(255,255,255,.18), rgba(255,255,255,.10) 45%, rgba(210,210,210,.05) 68%, transparent 75%)",
+          pointerEvents: "none",
+          zIndex: 4,
+        }}
+      />
+      <div
+        title="Protection de résurrection"
+        style={{
+          position: "absolute",
+          right: compact ? -6 : -4,
+          top: compact ? -8 : -10,
+          width: badgeW,
+          height: badgeH,
+          display: "grid",
+          placeItems: "center",
+          pointerEvents: "none",
+          zIndex: 8,
+          filter: "drop-shadow(0 4px 12px rgba(0,0,0,.45)) drop-shadow(0 0 12px rgba(255,255,255,.42))",
+        }}
+      >
+        <svg
+          width={badgeW}
+          height={badgeH}
+          viewBox="0 0 44 50"
+          style={{ position: "absolute", inset: 0, overflow: "visible" }}
+          aria-hidden="true"
+        >
+          <defs>
+            <linearGradient id={id} x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0" stopColor="rgba(255,255,255,.98)" />
+              <stop offset="0.55" stopColor="rgba(232,232,232,.98)" />
+              <stop offset="1" stopColor="rgba(184,184,184,.98)" />
+            </linearGradient>
+          </defs>
+          <path
+            d="M22 2 L39 8 V21 C39 32 31 41 22 47 C13 41 5 32 5 21 V8 Z"
+            fill={`url(#${id})`}
+            stroke="rgba(255,255,255,.9)"
+            strokeWidth="1.8"
+          />
+          <path
+            d="M22 6 L35 10 V21 C35 30 29 37 22 42 C15 37 9 30 9 21 V10 Z"
+            fill="rgba(255,255,255,.10)"
+          />
+        </svg>
+      </div>
+    </>
+  );
+}
+
+function ShieldTurnsChip({ turns }: { turns: number }) {
+  if (turns <= 0) return null;
+  return (
+    <div
+      title={`Bouclier actif (${turns} tour${turns > 1 ? "s" : ""})`}
+      style={{
+        width: 30,
+        height: 36,
+        position: "relative",
+        display: "grid",
+        placeItems: "center",
+        filter: "drop-shadow(0 0 10px rgba(60,210,255,.22))",
+        flex: "0 0 auto",
+      }}
+    >
+      <svg
+        width="30"
+        height="36"
+        viewBox="0 0 44 50"
+        style={{ position: "absolute", inset: 0 }}
+        aria-hidden="true"
+      >
+        <defs>
+          <linearGradient id={`shieldChipGrad-${turns}`} x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0" stopColor="rgba(120,245,255,.30)" />
+            <stop offset="0.6" stopColor="rgba(30,148,220,.28)" />
+            <stop offset="1" stopColor="rgba(8,72,130,.32)" />
+          </linearGradient>
+        </defs>
+        <path
+          d="M22 2 L39 8 V21 C39 32 31 41 22 47 C13 41 5 32 5 21 V8 Z"
+          fill={`url(#shieldChipGrad-${turns})`}
+          stroke="rgba(95,230,255,.82)"
+          strokeWidth="1.8"
+        />
+        <path
+          d="M22 6 L35 10 V21 C35 30 29 37 22 42 C15 37 9 30 9 21 V10 Z"
+          fill="rgba(255,255,255,.06)"
+        />
+      </svg>
+      <div
+        style={{
+          position: "relative",
+          zIndex: 1,
+          color: "rgba(220,250,255,.98)",
+          fontSize: 12,
+          fontWeight: 1000,
+          lineHeight: 1,
+          transform: "translateY(1px)",
+          textShadow: "0 1px 6px rgba(0,0,0,.6)",
+        }}
+      >
+        {turns}
+      </div>
+    </div>
+  );
+}
+
 function AvatarMedallion({
   size,
   src,
   name,
+  shieldTurns = 0,
+  resurrected = false,
+  resurrectShield = false,
+  compactShield = false,
+  hideShieldBadge = false,
+  showCompactShieldTurns = false,
 }: {
   size: number;
   src?: string | null;
   name?: string;
+  shieldTurns?: number;
+  resurrected?: boolean;
+  resurrectShield?: boolean;
+  compactShield?: boolean;
+  hideShieldBadge?: boolean;
+  showCompactShieldTurns?: boolean;
 }) {
   const initials = String(name || "J")
     .trim()
@@ -685,38 +1072,54 @@ function AvatarMedallion({
         width: size,
         height: size,
         borderRadius: "50%",
-        overflow: "hidden",
+        overflow: "visible",
         background: "transparent",
+        position: "relative",
       }}
     >
-      {src ? (
-        <img
-          src={src}
-          alt=""
-          style={{
-            width: "100%",
-            height: "100%",
-            objectFit: "cover",
-            display: "block",
-          }}
-        />
-      ) : (
-        <div
-          style={{
-            width: "100%",
-            height: "100%",
-            display: "grid",
-            placeItems: "center",
-            borderRadius: "50%",
-            background: "rgba(255,255,255,.06)",
-            border: "1px solid rgba(255,255,255,.10)",
-            fontWeight: 1000,
-            color: "#fff",
-          }}
-        >
-          {initials}
-        </div>
-      )}
+      <div
+        style={{
+          width: size,
+          height: size,
+          borderRadius: "50%",
+          overflow: "hidden",
+          background: "transparent",
+          position: "relative",
+          zIndex: 1,
+        }}
+      >
+        {src ? (
+          <img
+            src={src}
+            alt=""
+            style={{
+              width: "100%",
+              height: "100%",
+              objectFit: "cover",
+              display: "block",
+            }}
+          />
+        ) : (
+          <div
+            style={{
+              width: "100%",
+              height: "100%",
+              display: "grid",
+              placeItems: "center",
+              borderRadius: "50%",
+              background: "rgba(255,255,255,.06)",
+              border: "1px solid rgba(255,255,255,.10)",
+              fontWeight: 1000,
+              color: "#fff",
+            }}
+          >
+            {initials}
+          </div>
+        )}
+      </div>
+      {resurrected ? <ResurrectionAura compact={compactShield} /> : null}
+      {resurrectShield ? <ResurrectShieldAura compact={compactShield} /> : null}
+      <ShieldAura turns={Math.max(0, Number(shieldTurns || 0))} compact={compactShield} hideBadge={hideShieldBadge} showCompactTurns={showCompactShieldTurns} />
     </div>
   );
 }
@@ -791,7 +1194,7 @@ function StatRow({ label, value }: { label: string; value: any }) {
 // ✅ Heart KPI (VIES) — label supprimé
 // ✅ coeur rose clair + chiffre BLANC (lisible)
 // -----------------------------
-function HeartKpi({ value }: { value: any }) {
+function HeartKpi({ value, resurrected = false }: { value: any; resurrected?: boolean }) {
   const pink = "#ff79d6"; // coeur rose clair
 
   return (
@@ -802,7 +1205,9 @@ function HeartKpi({ value }: { value: any }) {
         position: "relative",
         display: "grid",
         placeItems: "center",
-        filter: "drop-shadow(0 10px 18px rgba(255,121,214,.22))",
+        filter: resurrected
+          ? "drop-shadow(0 0 8px rgba(255,255,255,.42)) drop-shadow(0 0 18px rgba(255,255,255,.30)) drop-shadow(0 10px 18px rgba(255,121,214,.22))"
+          : "drop-shadow(0 10px 18px rgba(255,121,214,.22))",
       }}
     >
       <svg
@@ -854,8 +1259,10 @@ function HeartKpi({ value }: { value: any }) {
 // ✅ halo blanc léger (toujours)
 // ✅ halo rose léger si actif
 // -----------------------------
-function MiniHeart({ value, active }: { value: any; active?: boolean }) {
-  const filter = active
+function MiniHeart({ value, active, resurrected = false }: { value: any; active?: boolean; resurrected?: boolean }) {
+  const filter = resurrected
+    ? `drop-shadow(0 0 6px rgba(255,255,255,.48)) drop-shadow(0 0 14px rgba(255,255,255,.34))${active ? " drop-shadow(0 0 10px rgba(255,121,214,.26))" : ""}`
+    : active
     ? `drop-shadow(0 0 5px rgba(255,255,255,.30)) drop-shadow(0 0 10px rgba(255,121,214,.38))`
     : `drop-shadow(0 0 5px rgba(255,255,255,.22))`;
 
@@ -876,7 +1283,7 @@ function MiniHeart({ value, active }: { value: any; active?: boolean }) {
         <path
           d="M24 40s-18-10.8-18-24C6 9.6 10.2 5 16 5c3.1 0 6 1.5 8 4.2C26 6.5 28.9 5 32 5c5.8 0 10 4.6 10 11 0 13.2-18 24-18 24z"
           fill="rgba(255,121,214,.36)"
-          stroke="rgba(255,255,255,.55)"   // ✅ halo blanc léger via stroke + drop-shadow
+          stroke={resurrected ? "rgba(255,255,255,.92)" : "rgba(255,255,255,.55)"}   // ✅ halo blanc léger via stroke + drop-shadow
           strokeWidth="1.2"
         />
         <path
@@ -1089,6 +1496,13 @@ function useKillerSfx(enabled: boolean) {
       intro: cand("/sounds/killer-song.mp3"),
       lastDead: cand("/sounds/killer-last-dead.mp3"),
       become: cand("/sounds/killer-become.mp3"),
+      resurrect: Array.from(new Set([
+        ...cand("/sounds/killer-resurrect.mp3"),
+        ...cand("/sounds/Killer-resurrect.mp3"),
+        ...cand("/sounds/killer-resurrection.mp3"),
+        ...cand("/sounds/resusciter.mp3"),
+        ...cand("/sounds/ressusciter.mp3"),
+      ])),
     };
   }, []);
 
@@ -1235,6 +1649,41 @@ function useKillerSfx(enabled: boolean) {
           beep(520, 60, 0.05);
           setTimeout(() => beep(740, 70, 0.05), 70);
           setTimeout(() => beep(980, 90, 0.05), 150);
+        }
+      },
+
+      resurrect: () => {
+        const preferred = Array.from(
+          new Set(
+            (paths.resurrect || []).filter((src) =>
+              /(?:^|\/)(?:Killer-resurrect|killer-resurrection)\.mp3$/i.test(String(src || ""))
+            )
+          )
+        );
+        const pool = preferred.length ? preferred : (paths.resurrect || []).filter(Boolean);
+        const shuffled = pool.length > 1
+          ? pool
+              .map((src) => ({ src, sort: Math.random() }))
+              .sort((a, b) => a.sort - b.sort)
+              .map((x) => x.src)
+          : pool;
+        const ok = playCandidates("resurrect", shuffled, 0.92, true);
+        if (!ok) {
+          beep(860, 70, 0.045);
+          setTimeout(() => beep(1080, 90, 0.05), 80);
+          setTimeout(() => beep(1320, 120, 0.05), 170);
+          try {
+            const synth = (window as any)?.speechSynthesis;
+            if (synth && typeof SpeechSynthesisUtterance !== "undefined") {
+              const u = new SpeechSynthesisUtterance("Ressuscité");
+              u.lang = "fr-FR";
+              u.volume = 0.95;
+              u.rate = 0.98;
+              u.pitch = 1.12;
+              synth.cancel?.();
+              synth.speak(u);
+            }
+          } catch {}
         }
       },
 
@@ -1423,26 +1872,15 @@ function KillerBadgeIcon({ size = 14 }: { size?: number }) {
   return (
     <div
       style={{
-        width: size + 10,
-        height: size + 10,
-        borderRadius: 999,
         display: "grid",
         placeItems: "center",
-        background: "rgba(255,198,58,.18)",
-        border: "1px solid rgba(255,198,58,.35)",
-        boxShadow: "0 0 10px rgba(255,198,58,.12)",
+        minWidth: size + 6,
+        height: size + 8,
       }}
       aria-label="Killer"
       title="Killer"
     >
-      <svg width={size} height={size} viewBox="0 0 24 24" style={{ display: "block" }}>
-        <path
-          d="M12 2c3.9 0 7 3.1 7 7 0 2.9-1.7 5.4-4.2 6.5V19c0 1.1-.9 2-2 2h-1.6c-1.1 0-2-.9-2-2v-3.5C5.7 14.4 4 11.9 4 9c0-3.9 3.1-7 8-7z"
-          fill="#fff"
-          opacity={0.95}
-        />
-        <path d="M9 10.2c.6 0 1 .4 1 1s-.4 1-1 1-1-.4-1-1 .4-1 1-1zm6 0c.6 0 1 .4 1 1s-.4 1-1 1-1-.4-1-1 .4-1 1-1z" fill="#111" />
-      </svg>
+      <KillerIcon size={size + 4} variant="list" />
     </div>
   );
 }
@@ -1477,6 +1915,8 @@ function ZoomAvatarChip({
   eliminated,
   badge,
   theme,
+  shieldTurns = 0,
+  resurrected = false,
 }: {
   src?: string | null;
   name?: string;
@@ -1486,13 +1926,21 @@ function ZoomAvatarChip({
   eliminated: boolean;
   badge?: "K" | "D" | null;
   theme: string;
+  shieldTurns?: number;
+  resurrected?: boolean;
 }) {
   const initials = String(name || "J")
     .trim()
     .slice(0, 1)
     .toUpperCase();
+  const shieldActive = Math.max(0, Number(shieldTurns || 0)) > 0;
+  const resurrectedActive = !!resurrected;
 
-  const neon = isActive
+  const neon = resurrectedActive
+    ? `0 0 0 1px rgba(255,255,255,.42), 0 0 18px rgba(255,255,255,.34), 0 0 38px rgba(255,255,255,.18)`
+    : shieldActive
+    ? `0 0 0 1px rgba(90,220,255,.36), 0 0 14px rgba(90,220,255,.22), 0 0 28px rgba(90,220,255,.12)`
+    : isActive
     ? `0 0 0 1px rgba(255,198,58,.25), 0 0 18px rgba(255,198,58,.18), 0 0 42px rgba(255,198,58,.10)`
     : "none";
 
@@ -1506,8 +1954,16 @@ function ZoomAvatarChip({
         display: "grid",
         gridTemplateColumns: "52px 1fr",
         alignItems: "stretch",
-        border: "1px solid rgba(255,255,255,0.18)",
-        background: "rgba(0,0,0,0.22)",
+        border: resurrectedActive
+          ? "1px solid rgba(255,255,255,.92)"
+          : shieldActive
+          ? "1px solid rgba(95,230,255,.72)"
+          : "1px solid rgba(255,255,255,0.18)",
+        background: resurrectedActive
+          ? "linear-gradient(180deg, rgba(42,42,46,.96), rgba(12,12,16,.92))"
+          : shieldActive
+          ? "linear-gradient(180deg, rgba(14,38,56,.92), rgba(7,22,38,.88))"
+          : "rgba(0,0,0,0.22)",
         opacity: eliminated ? 0.45 : 1,
         boxShadow: neon,
       }}
@@ -1524,7 +1980,11 @@ function ZoomAvatarChip({
               objectFit: "cover",
               transform: "scale(1.35) translateY(2px)",
               transformOrigin: "center",
-              filter: "contrast(1.05) saturate(1.05)",
+              filter: resurrectedActive
+                ? "contrast(1.08) saturate(1.02) brightness(1.06) drop-shadow(0 0 10px rgba(255,255,255,.24))"
+                : shieldActive
+                ? "contrast(1.06) saturate(1.08) drop-shadow(0 0 8px rgba(90,220,255,.12))"
+                : "contrast(1.05) saturate(1.05)",
               display: "block",
             }}
           />
@@ -1535,7 +1995,11 @@ function ZoomAvatarChip({
               height: "100%",
               display: "grid",
               placeItems: "center",
-              background: "rgba(255,255,255,.06)",
+              background: resurrectedActive
+                ? "rgba(255,255,255,.12)"
+                : shieldActive
+                ? "rgba(50,140,180,.14)"
+                : "rgba(255,255,255,.06)",
               borderRight: "1px solid rgba(255,255,255,.08)",
               fontWeight: 1000,
             }}
@@ -1543,7 +2007,6 @@ function ZoomAvatarChip({
             {initials}
           </div>
         )}
-        {/* ❌ plus de badge "K" sur la photo */}
       </div>
 
       {/* ✅ NUM + ICON KILLER/DEAD + COEUR */}
@@ -1571,7 +2034,8 @@ function ZoomAvatarChip({
           {num}
         </div>
 
-        <MiniHeart value={lives} active={isActive} />
+        {shieldActive ? <ShieldTurnsChip turns={Math.max(0, Number(shieldTurns || 0))} /> : null}
+        <MiniHeart value={lives} active={isActive} resurrected={resurrected} />
       </div>
     </div>
   );
@@ -1644,6 +2108,8 @@ function TargetsCarousel({
                 eliminated={!!p.eliminated}
                 badge={badge}
                 theme={theme}
+                shieldTurns={Math.max(0, Number((p as any)?.shieldTurnsLeft || 0))}
+                resurrected={!!(p as any)?.resurrected}
               />
             </div>
           );
@@ -1663,14 +2129,20 @@ function AssignOverlay({
   index,
   total,
   takenNumbers,
-  onPickNumber,
+  selectBonusShieldOn,
+  pendingChoiceNumber,
+  onPickThrow,
+  onPickFreeNumber,
 }: {
   open: boolean;
   player?: KillerPlayerState | null;
   index: number;
   total: number;
   takenNumbers: Set<number>;
-  onPickNumber: (n: number) => void;
+  selectBonusShieldOn: boolean;
+  pendingChoiceNumber: PendingChoiceNumber | null;
+  onPickThrow: (thr: Throw) => void;
+  onPickFreeNumber: (n: number) => void;
 }) {
   if (!open || !player) return null;
 
@@ -1686,6 +2158,24 @@ function AssignOverlay({
     userSelect: "none",
     WebkitTapHighlightColor: "transparent",
   };
+
+  const pickModeBtn = (active: boolean): React.CSSProperties => ({
+    ...btn,
+    height: 34,
+    fontSize: 12,
+    letterSpacing: 0.3,
+    background: active ? "linear-gradient(180deg,#3a2b10,#1b1408)" : "rgba(0,0,0,.42)",
+    border: active ? "1px solid rgba(255,198,58,.55)" : "1px solid rgba(255,255,255,.12)",
+    boxShadow: active ? "0 0 0 1px rgba(255,198,58,.18) inset, 0 10px 24px rgba(0,0,0,.25)" : (btn.boxShadow as any),
+  });
+
+  const [pickMode, setPickMode] = React.useState<"single" | "double" | "triple" | "bull" | "dbull">("single");
+
+  React.useEffect(() => {
+    if (!open) return;
+    if (pendingChoiceNumber?.playerId === player?.id) return;
+    setPickMode("single");
+  }, [open, player?.id, pendingChoiceNumber?.playerId]);
 
   return (
     <div
@@ -1738,6 +2228,9 @@ function AssignOverlay({
               size={64}
               src={player.avatarDataUrl}
               name={player.name}
+              shieldTurns={Math.max(0, Number(player.shieldTurnsLeft || 0))}
+              resurrected={!!player.resurrected}
+              resurrectShield={!!player.resurrectShield}
             />
             <div
               style={{
@@ -1751,50 +2244,182 @@ function AssignOverlay({
           </div>
 
           <div style={{ display: "grid", gap: 8 }}>
-            <div style={{ fontSize: 12, opacity: 0.9, lineHeight: 1.25 }}>
-              <b>Lance une fléchette pour définir ta zone</b>
-            </div>
+            {pendingChoiceNumber?.playerId === player.id ? (
+              <div style={{ display: "grid", gap: 8 }}>
+                <div style={{ fontSize: 12, opacity: 0.92, lineHeight: 1.25 }}>
+                  <b>Choisis maintenant ton numéro libre</b>
+                </div>
+                <div style={{ fontSize: 11, opacity: 0.82, textAlign: "center", color: "rgba(255,214,102,.95)" }}>
+                  {pendingChoiceNumber.shieldTurns > 0
+                    ? `Numéro libre + bouclier ${shieldLabel(pendingChoiceNumber.shieldTurns)}`
+                    : "Numéro libre"}
+                </div>
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "repeat(5, 1fr)",
+                    gap: 8,
+                  }}
+                >
+                  {Array.from({ length: 20 }, (_, i) => i + 1).map((n) => {
+                    const isTaken = takenNumbers?.has(n);
+                    return (
+                      <button
+                        key={n}
+                        type="button"
+                        disabled={isTaken}
+                        onClick={() => {
+                          if (isTaken) return;
+                          onPickFreeNumber(n);
+                        }}
+                        style={{
+                          ...btn,
+                          opacity: isTaken ? 0.35 : 1,
+                          cursor: isTaken ? "not-allowed" : "pointer",
+                          filter: isTaken ? "grayscale(1)" : "none",
+                          border: isTaken
+                            ? "1px solid rgba(255,255,255,.08)"
+                            : "1px solid rgba(255,198,58,.35)",
+                          background: isTaken
+                            ? "rgba(0,0,0,.25)"
+                            : "linear-gradient(180deg,#3a2b10,#1b1408)",
+                          color: isTaken ? "rgba(255,255,255,.45)" : "#fff",
+                          boxShadow: isTaken ? "none" : (btn.boxShadow as any),
+                        }}
+                        title={isTaken ? "Déjà pris" : `Choisir ${n}`}
+                      >
+                        {n}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            ) : (
+              <>
+                <div style={{ fontSize: 12, opacity: 0.9, lineHeight: 1.25 }}>
+                  <b>Sélectionne le résultat réel du lancer</b>
+                </div>
 
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: "repeat(5, 1fr)",
-                gap: 8,
-              }}
-            >
-              {Array.from({ length: 20 }, (_, i) => i + 1).map((n) => {
-                const isTaken = takenNumbers?.has(n);
-                return (
-                  <button
-                    key={n}
-                    type="button"
-                    disabled={isTaken}
-                    onClick={() => {
-                      if (isTaken) return;
-                      onPickNumber(n);
-                    }}
+                <div style={{ display: "grid", gap: 8 }}>
+                  <div
                     style={{
-                      ...btn,
-                      opacity: isTaken ? 0.35 : 1,
-                      cursor: isTaken ? "not-allowed" : "pointer",
-                      filter: isTaken ? "grayscale(1)" : "none",
-                      border: isTaken
-                        ? "1px solid rgba(255,255,255,.08)"
-                        : "1px solid rgba(255,255,255,.12)",
-                      background: isTaken
-                        ? "rgba(0,0,0,.25)"
-                        : "rgba(0,0,0,.42)",
-                      color: isTaken ? "rgba(255,255,255,.45)" : "#fff",
-                      boxShadow: isTaken ? "none" : (btn.boxShadow as any),
+                      display: "grid",
+                      gridTemplateColumns: "repeat(3, 1fr)",
+                      gap: 8,
                     }}
-                    title={isTaken ? "Déjà pris" : `Choisir ${n}`}
                   >
-                    {n}
-                  </button>
-                );
-              })}
-            </div>
+                    <button type="button" onClick={() => setPickMode("single")} style={pickModeBtn(pickMode === "single")}>SIMPLE</button>
+                    <button type="button" onClick={() => setPickMode("double")} style={pickModeBtn(pickMode === "double")}>DOUBLE</button>
+                    <button type="button" onClick={() => setPickMode("triple")} style={pickModeBtn(pickMode === "triple")}>TRIPLE</button>
+                  </div>
+                  <div
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: "repeat(2, 1fr)",
+                      gap: 8,
+                    }}
+                  >
+                    <button type="button" onClick={() => setPickMode("bull")} style={pickModeBtn(pickMode === "bull")}>BULL</button>
+                    <button type="button" onClick={() => setPickMode("dbull")} style={pickModeBtn(pickMode === "dbull")}>DBULL</button>
+                  </div>
+                </div>
 
+                {(pickMode === "double" || pickMode === "triple" || pickMode === "bull" || pickMode === "dbull") && selectBonusShieldOn && (
+                  <div style={{ fontSize: 11, opacity: 0.82, textAlign: "center", color: "rgba(255,214,102,.95)" }}>
+                    {pickMode === "double" && "DOUBLE → numéro choisi + bouclier 2 tours"}
+                    {pickMode === "triple" && "TRIPLE → numéro choisi + bouclier 3 tours"}
+                    {pickMode === "bull" && "BULL → choix libre du numéro + bouclier 2 tours"}
+                    {pickMode === "dbull" && "DBULL → choix libre du numéro + bouclier 3 tours"}
+                  </div>
+                )}
+
+                {(pickMode === "single" || pickMode === "double" || pickMode === "triple") && (
+                  <div
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: "repeat(5, 1fr)",
+                      gap: 8,
+                    }}
+                  >
+                    {Array.from({ length: 20 }, (_, i) => i + 1).map((n) => {
+                      const isTaken = takenNumbers?.has(n);
+                      const mult = pickMode === "triple" ? 3 : pickMode === "double" ? 2 : 1;
+                      return (
+                        <button
+                          key={n}
+                          type="button"
+                          disabled={isTaken}
+                          onClick={() => {
+                            if (isTaken) return;
+                            onPickThrow({ target: n, mult });
+                          }}
+                          style={{
+                            ...btn,
+                            opacity: isTaken ? 0.35 : 1,
+                            cursor: isTaken ? "not-allowed" : "pointer",
+                            filter: isTaken ? "grayscale(1)" : "none",
+                            border: isTaken
+                              ? "1px solid rgba(255,255,255,.08)"
+                              : "1px solid rgba(255,255,255,.12)",
+                            background: isTaken
+                              ? "rgba(0,0,0,.25)"
+                              : "rgba(0,0,0,.42)",
+                            color: isTaken ? "rgba(255,255,255,.45)" : "#fff",
+                            boxShadow: isTaken ? "none" : (btn.boxShadow as any),
+                          }}
+                          title={isTaken ? "Déjà pris" : `Choisir ${n}`}
+                        >
+                          {n}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+
+                {(pickMode === "bull" || pickMode === "dbull") && (
+                  <div
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: "repeat(5, 1fr)",
+                      gap: 8,
+                    }}
+                  >
+                    {Array.from({ length: 20 }, (_, i) => i + 1).map((n) => {
+                      const isTaken = takenNumbers?.has(n);
+                      return (
+                        <button
+                          key={n}
+                          type="button"
+                          disabled={isTaken}
+                          onClick={() => {
+                            if (isTaken) return;
+                            onPickThrow({ target: 25, mult: pickMode === "dbull" ? 2 : 1 });
+                            setTimeout(() => onPickFreeNumber(n), 0);
+                          }}
+                          style={{
+                            ...btn,
+                            opacity: isTaken ? 0.35 : 1,
+                            cursor: isTaken ? "not-allowed" : "pointer",
+                            filter: isTaken ? "grayscale(1)" : "none",
+                            border: isTaken
+                              ? "1px solid rgba(255,255,255,.08)"
+                              : "1px solid rgba(255,198,58,.35)",
+                            background: isTaken
+                              ? "rgba(0,0,0,.25)"
+                              : "linear-gradient(180deg,#3a2b10,#1b1408)",
+                            color: isTaken ? "rgba(255,255,255,.45)" : "#fff",
+                            boxShadow: isTaken ? "none" : (btn.boxShadow as any),
+                          }}
+                          title={isTaken ? "Déjà pris" : `Choisir ${n}`}
+                        >
+                          {n}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </>
+            )}
             <div style={{ fontSize: 11, opacity: 0.75, textAlign: "center" }}>
               Joueur {index + 1}/{total} • ensuite on passe au suivant
             </div>
@@ -1909,13 +2534,32 @@ React.useEffect(() => {
   // eslint-disable-next-line react-hooks/exhaustive-deps
 }, [sfxEnabled]);
 
+  const resumeState = React.useMemo(() => {
+    const s: any = (config as any)?.__resumeState ?? (config as any)?.resumeState ?? null;
+    return s && typeof s === "object" ? s : null;
+  }, [config]);
+
   const [events, setEvents] = React.useState<any[]>([]);
   function pushEvent(e: any) {
     setEvents((prev) => [e, ...prev].slice(0, 800));
   }
 
-  const [assignDone, setAssignDone] = React.useState<boolean>(() => !inNumberAssignRound);
-  const [assignIndex, setAssignIndex] = React.useState<number>(0);
+  const [assignDone, setAssignDone] = React.useState<boolean>(() => {
+    if (typeof resumeState?.assignDone === "boolean") return !!resumeState.assignDone;
+    return !inNumberAssignRound;
+  });
+  const [assignIndex, setAssignIndex] = React.useState<number>(() => {
+    const v = Number(resumeState?.assignIndex ?? 0);
+    return Number.isFinite(v) && v >= 0 ? v : 0;
+  });
+
+  const assignActive =
+    inNumberAssignRound && !assignDone && numberAssignMode === "throw";
+  const assignPlayer = assignActive ? (players[assignIndex] || players[0]) : null;
+
+  const [pendingChoiceNumber, setPendingChoiceNumber] = React.useState<PendingChoiceNumber | null>(() => {
+    return resumeState?.pendingChoiceNumber ?? null;
+  });
 
   const [log, setLog] = React.useState<string[]>([]);
   function pushLog(line: string) {
@@ -1925,6 +2569,33 @@ React.useEffect(() => {
   const [showLog, setShowLog] = React.useState(false);
   const [playersOpen, setPlayersOpen] = React.useState(false);
 
+  const profileAvatarById = React.useMemo(() => {
+    const map = new Map<string, string | null>();
+    const list = Array.isArray((store as any)?.profiles) ? (store as any).profiles : [];
+    for (const prof of list) {
+      const id = String(prof?.id || "").trim();
+      if (!id) continue;
+      const avatar =
+        (typeof prof?.avatarDataUrl === "string" && prof.avatarDataUrl) ||
+        (typeof prof?.avatarUrl === "string" && prof.avatarUrl) ||
+        null;
+      map.set(id, avatar || null);
+    }
+    return map;
+  }, [store]);
+
+  const hydrateAvatarForPlayer = React.useCallback((playerLike: any, fallback: any = null) => {
+    const id = String(playerLike?.id || "").trim();
+    const fromProfiles = id ? profileAvatarById.get(id) : null;
+    return (
+      fromProfiles ||
+      (typeof playerLike?.avatarDataUrl === "string" && playerLike.avatarDataUrl) ||
+      (typeof playerLike?.avatarUrl === "string" && playerLike.avatarUrl) ||
+      fallback ||
+      null
+    );
+  }, [profileAvatarById]);
+
   const initialPlayers: KillerPlayerState[] = React.useMemo(() => {
     const lives = clampInt(config?.lives, 1, 9, 3);
 
@@ -1933,7 +2604,7 @@ React.useEffect(() => {
       return {
         id: p.id,
         name: p.name,
-        avatarDataUrl: p.avatarDataUrl ?? null,
+        avatarDataUrl: hydrateAvatarForPlayer(p, null),
         isBot: !!p.isBot,
         botLevel: p.botLevel ?? "",
         number: inNumberAssignRound ? 0 : clampInt(p.number, 1, 20, 1),
@@ -1947,6 +2618,10 @@ React.useEffect(() => {
         livesStolen: 0,
         livesHealed: 0,
         hitsOnSelf: 0,
+        shieldTurnsLeft: 0,
+        shieldJustGranted: false,
+        resurrected: false,
+        resurrectShield: false,
         totalThrows: 0,
         killerThrows: 0,
         offensiveThrows: 0,
@@ -1989,19 +2664,96 @@ React.useEffect(() => {
     }
 
     return base;
-  }, [config, inNumberAssignRound, numberAssignMode]);
+  }, [config, inNumberAssignRound, numberAssignMode, hydrateAvatarForPlayer]);
 
-  const [players, setPlayers] = React.useState<KillerPlayerState[]>(initialPlayers);
+  const [players, setPlayers] = React.useState<KillerPlayerState[]>(() => {
+    const resumed = resumeState?.players;
+    if (!Array.isArray(resumed) || resumed.length === 0) return initialPlayers;
+    const byId = new Map(initialPlayers.map((p) => [p.id, p] as const));
+    return resumed.map((rp: any) => {
+      const base = byId.get(rp?.id) || initialPlayers.find((p) => p.name === rp?.name) || initialPlayers[0];
+      const merged: any = {
+        ...(base as any),
+        ...(rp || {}),
+        avatarDataUrl: hydrateAvatarForPlayer(rp, base?.avatarDataUrl ?? null),
+        number: clampInt((rp as any)?.number ?? (base as any)?.number, 0, 20, 0),
+        lives: Math.max(0, Number((rp as any)?.lives ?? (base as any)?.lives ?? 0) || 0),
+        shieldTurnsLeft: Math.max(0, Number((rp as any)?.shieldTurnsLeft ?? 0) || 0),
+        resurrected: !!((rp as any)?.resurrected),
+        resurrectShield: !!((rp as any)?.resurrectShield),
+        throwsToBecomeKiller: Math.max(0, Number((rp as any)?.throwsToBecomeKiller ?? 0) || 0),
+        killerThrows: Math.max(0, Number((rp as any)?.killerThrows ?? 0) || 0),
+        offensiveThrows: Math.max(0, Number((rp as any)?.offensiveThrows ?? 0) || 0),
+        totalThrows: Math.max(0, Number((rp as any)?.totalThrows ?? 0) || 0),
+        hitsBySegment: { ...((base as any)?.hitsBySegment || {}), ...((rp as any)?.hitsBySegment || {}) },
+        hitsByNumber: { ...((base as any)?.hitsByNumber || {}), ...((rp as any)?.hitsByNumber || {}) },
+        lastVisit: Array.isArray(rp?.lastVisit) ? rp.lastVisit.map((t: any) => ({ ...(t || {}) })) : ((base as any)?.lastVisit || null),
+      };
+      if (merged.isKiller && merged.killerPhase !== "ACTIVE") merged.killerPhase = "ACTIVE";
+      return merged as KillerPlayerState;
+    });
+  });
 
   const [turnIndex, setTurnIndex] = React.useState<number>(() => {
+    const v = Number(resumeState?.turnIndex);
+    if (Number.isFinite(v) && v >= 0) return v;
     const i = initialPlayers.findIndex((p) => !p.eliminated);
     return i >= 0 ? i : 0;
   });
 
   const [dartsLeft, setDartsLeft] = React.useState<number>(() => {
+    const v = Number(resumeState?.dartsLeft);
+    if (Number.isFinite(v) && v >= 0) return v;
     const me = initialPlayers[turnIndex] ?? initialPlayers[0];
     return me?.killerPhase === "SELECT" ? 1 : 3;
   });
+
+  // ✅ RÉSURRECTION / SHIELD (declared early because resumeConfig depends on them)
+  type ResurrectionMode = "off" | "one_player_once" | "all_once" | "all";
+
+  const resurrectionMode: ResurrectionMode = ((config as any)?.resurrectionMode ??
+    (config as any)?.resurrection_mode ??
+    (config as any)?.variants?.resurrectionMode ??
+    (config as any)?.options?.resurrectionMode ??
+    ((truthy((config as any)?.resurrectionEnabled ?? (config as any)?.resurrection ?? (config as any)?.variants?.resurrection ?? (config as any)?.options?.resurrection)) ? "all" : "off")) as any;
+
+  const resurrectionEnabled = truthy(
+    (config as any)?.resurrectionEnabled ??
+    (config as any)?.resurrection ??
+    (config as any)?.variants?.resurrection ??
+    (config as any)?.options?.resurrection
+  ) || resurrectionMode !== "off";
+
+  const resurrectionLives = clampInt(
+    (config as any)?.resurrectionLives ??
+      (config as any)?.resurrection_lives ??
+      (config as any)?.variants?.resurrectionLives ??
+      (config as any)?.options?.resurrectionLives ??
+      1,
+    1,
+    6,
+    1
+  );
+
+  const resumeConfig = React.useMemo(() => ({
+    lives: clampInt((config as any)?.lives, 1, 9, 3),
+    becomeRule: (config as any)?.becomeRule ?? "single",
+    damageRule: (config as any)?.damageRule ?? "multiplier",
+    numberAssignMode: (config as any)?.numberAssignMode ?? "random",
+    randomStartOrder: !!(config as any)?.randomStartOrder,
+    selfHitWhileKiller: !!(config as any)?.selfHitWhileKiller,
+    selfHitUsesMultiplier: !!(config as any)?.selfHitUsesMultiplier,
+    lifeSteal: !!(config as any)?.lifeSteal,
+    blindKiller: !!(config as any)?.blindKiller,
+    bullSplash: !!(config as any)?.bullSplash,
+    bullHeal: !!(config as any)?.bullHeal,
+    shieldOnDBull: truthy((config as any)?.shieldOnDBull ?? (config as any)?.shield_on_dbull),
+    shieldTurns: clampInt((config as any)?.shieldTurns, 1, 6, 1),
+    selectBonusShield: truthy((config as any)?.selectBonusShield ?? (config as any)?.select_bonus_shield),
+    missAutoHit: truthy((config as any)?.missAutoHit ?? (config as any)?.miss_auto_hit),
+    resurrectionMode,
+    resurrectionLives,
+  }), [config, resurrectionMode, resurrectionLives]);
 
   const saveInProgress = React.useCallback(() => {
     try {
@@ -2028,7 +2780,6 @@ React.useEffect(() => {
         players: (players || []).map((p: any) => ({
           id: p.id,
           name: p.name,
-          avatarDataUrl: p.avatarDataUrl ?? null,
           isBot: !!p.isBot,
           botLevel: p.botLevel ?? "",
         })),
@@ -2036,21 +2787,27 @@ React.useEffect(() => {
         payload: {
           mode: "killer",
           config,
+          resumeConfig,
           resumeId: (config as any)?.resumeId ?? null,
-          meta: { dartSetId, dartSetIdsByPlayer },
+          meta: { dartSetId, dartSetIdsByPlayer, resumeConfig },
           state: {
-            players,
+            resumeConfig,
+            players: (players || []).map((p: any) => ({
+              ...p,
+              avatarDataUrl: undefined,
+            })),
             turnIndex,
             dartsLeft,
             assignDone,
             assignIndex,
+            pendingChoiceNumber,
             events,
           },
         },
       };
       void History.upsert(rec as any);
     } catch {}
-  }, [players, turnIndex, dartsLeft, assignDone, assignIndex, events, config, startedAt]);
+  }, [players, turnIndex, dartsLeft, assignDone, assignIndex, pendingChoiceNumber, events, config, startedAt, resumeConfig]);
 
   React.useEffect(() => {
     // ✅ AUTOSAVE in_progress pour reprise (toutes les 8s)
@@ -2061,10 +2818,65 @@ React.useEffect(() => {
     return () => window.clearInterval(t);
   }, [saveInProgress]);
 
+  React.useEffect(() => {
+    // 🔒 Protection anti-refresh mobile + reload accidentel pendant une partie KILLER
+    let startY = 0;
+
+    const canAllowInnerScroll = (target: EventTarget | null) => {
+      const el = target instanceof Element ? target : null;
+      return !!el?.closest('[data-allow-scroll="true"], .allow-touch-scroll');
+    };
+
+    const onTouchStart = (e: TouchEvent) => {
+      startY = e.touches?.[0]?.clientY ?? 0;
+    };
+
+    const onTouchMove = (e: TouchEvent) => {
+      if (finishedRef.current) return;
+      if (canAllowInnerScroll(e.target)) return;
+      const currentY = e.touches?.[0]?.clientY ?? 0;
+      const pullingDown = currentY > startY + 6;
+      if (window.scrollY <= 0 && pullingDown) {
+        e.preventDefault();
+      }
+    };
+
+    const onBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (finishedRef.current) return;
+      try { saveInProgress(); } catch {}
+      e.preventDefault();
+      e.returnValue = "";
+    };
+
+    const html = document.documentElement;
+    const body = document.body;
+    const prevHtmlOverscroll = html.style.overscrollBehaviorY;
+    const prevBodyOverscroll = body.style.overscrollBehaviorY;
+    html.style.overscrollBehaviorY = "none";
+    body.style.overscrollBehaviorY = "none";
+
+    window.addEventListener("beforeunload", onBeforeUnload);
+    document.addEventListener("touchstart", onTouchStart, { passive: false });
+    document.addEventListener("touchmove", onTouchMove, { passive: false });
+
+    return () => {
+      window.removeEventListener("beforeunload", onBeforeUnload);
+      document.removeEventListener("touchstart", onTouchStart as EventListener);
+      document.removeEventListener("touchmove", onTouchMove as EventListener);
+      html.style.overscrollBehaviorY = prevHtmlOverscroll;
+      body.style.overscrollBehaviorY = prevBodyOverscroll;
+    };
+  }, [saveInProgress]);
+
   const [visit, setVisit] = React.useState<ThrowInput[]>([]);
   const [finished, setFinished] = React.useState<boolean>(false);
   const [multiplier, setMultiplier] = React.useState<Mult>(1);
   const [showRules, setShowRules] = React.useState(false);
+
+  React.useEffect(() => {
+    if (!resumeState || !Array.isArray(resumeState?.events)) return;
+    setEvents(resumeState.events || []);
+  }, [resumeState]);
 
   const [endRec, setEndRec] = React.useState<any>(null);
   const [showEnd, setShowEnd] = React.useState(false);
@@ -2083,10 +2895,6 @@ React.useEffect(() => {
 
   const waitingValidate =
     !inputDisabledBase && !isBotTurn && dartsLeft === 0;
-
-  const assignActive =
-    inNumberAssignRound && !assignDone && numberAssignMode === "throw";
-  const assignPlayer = assignActive ? (players[assignIndex] || players[0]) : null;
 
   const takenNumbers = React.useMemo(() => {
     const s = new Set<number>();
@@ -2118,6 +2926,7 @@ React.useEffect(() => {
       events: events.slice(),
       assignIndex,
       assignDone,
+      pendingChoiceNumber: pendingChoiceNumber ? { ...pendingChoiceNumber } : null,
     };
     undoRef.current = [snap, ...undoRef.current].slice(0, 60);
   }
@@ -2144,6 +2953,7 @@ React.useEffect(() => {
     setEvents(s.events || []);
     setAssignIndex(s.assignIndex || 0);
     setAssignDone(!!s.assignDone);
+    setPendingChoiceNumber(s.pendingChoiceNumber || null);
   }
 
   function endTurn(nextPlayers?: KillerPlayerState[]) {
@@ -2152,9 +2962,18 @@ React.useEffect(() => {
     setPlayers((prev) => {
       const next = prev.map((p, i) => {
         if (i !== turnIndex) return p;
+        const shieldTurnsLeft = Math.max(0, Number(p.shieldTurnsLeft || 0));
+        const shieldJustGranted = !!p.shieldJustGranted;
         return {
           ...p,
           lastVisit: (visit || []).slice(0, 3).map((t) => ({ ...t })),
+          shieldTurnsLeft:
+            shieldTurnsLeft <= 0
+              ? 0
+              : shieldJustGranted
+              ? shieldTurnsLeft
+              : Math.max(0, shieldTurnsLeft - 1),
+          shieldJustGranted: false,
         };
       });
       return next;
@@ -2166,6 +2985,7 @@ React.useEffect(() => {
     setTurnIndex((prev) => {
       const nextIdx = nextAliveIndex(base, prev);
       const nextP = base[nextIdx];
+      setPlayers((curr) => curr.map((p, i) => (i === nextIdx && p.resurrectShield ? { ...p, resurrectShield: false } : p)));
       setDartsLeft(nextP?.killerPhase === "SELECT" ? 1 : 3);
       return nextIdx;
     });
@@ -2188,6 +3008,11 @@ React.useEffect(() => {
       });
 
       setAssignDone(true);
+      setPendingChoiceNumber(null);
+
+      next.forEach((p) => {
+        p.shieldJustGranted = false;
+      });
 
       const firstAlive = next.findIndex((p) => !p.eliminated);
       const idx = firstAlive >= 0 ? firstAlive : 0;
@@ -2448,25 +3273,41 @@ const blindKillerOn = truthy(
     (config as any)?.rules?.blind_killer
 );
 
-// ✅ RÉSURRECTION
-type ResurrectionMode = "off" | "one_player_once" | "all_once" | "all";
+// ✅ RÉSURRECTION (declared earlier)
 
-// lecture robuste (tolère anciennes structures)
-const resurrectionMode: ResurrectionMode = ((config as any)?.resurrectionMode ??
-  (config as any)?.resurrection_mode ??
-  (config as any)?.variants?.resurrectionMode ??
-  (config as any)?.options?.resurrectionMode ??
-  "off") as any;
+const shieldOnDBull = truthy(
+  (config as any)?.shieldOnDBull ??
+    (config as any)?.shield_on_dbull ??
+    (config as any)?.variants?.shieldOnDBull ??
+    (config as any)?.options?.shieldOnDBull ??
+    (config as any)?.rules?.shieldOnDBull
+);
 
-const resurrectionLives = clampInt(
-  (config as any)?.resurrectionLives ??
-    (config as any)?.resurrection_lives ??
-    (config as any)?.variants?.resurrectionLives ??
-    (config as any)?.options?.resurrectionLives ??
+const shieldTurns = clampInt(
+  (config as any)?.shieldTurns ??
+    (config as any)?.shield_turns ??
+    (config as any)?.variants?.shieldTurns ??
+    (config as any)?.options?.shieldTurns ??
     1,
   1,
-  6,
+  9,
   1
+);
+
+const selectBonusShieldOn = truthy(
+  (config as any)?.selectBonusShield ??
+    (config as any)?.select_bonus_shield ??
+    (config as any)?.variants?.selectBonusShield ??
+    (config as any)?.options?.selectBonusShield ??
+    (config as any)?.rules?.selectBonusShield
+);
+
+const missAutoHitOn = truthy(
+  (config as any)?.missAutoHit ??
+    (config as any)?.miss_auto_hit ??
+    (config as any)?.variants?.missAutoHit ??
+    (config as any)?.options?.missAutoHit ??
+    (config as any)?.rules?.missAutoHit
 );
 
 // Tracking usages
@@ -2479,6 +3320,55 @@ const resByPidUsedRef = React.useRef<Record<string, boolean>>({}); // "All 1×"
     if (inputDisabledBase) return;
     if (dartsLeft <= 0) return;
     if (isBotTurn) return;
+
+    if (pendingChoiceNumber && current?.id === pendingChoiceNumber.playerId) {
+      const chosen = normalizeNumberFromHit(t.target);
+      if (!chosen) return;
+      const alreadyTaken = players.some(
+        (p, idx) => idx !== turnIndex && !p.eliminated && p.number === chosen
+      );
+      if (alreadyTaken) {
+        pushLog(`⚠️ ${current?.name || "Joueur"} : le numéro ${chosen} est déjà pris`);
+        return;
+      }
+
+      snapshot();
+      setPlayers((prev) => {
+        const next = prev.map((p) => ({ ...p }));
+        const me = next[turnIndex];
+        if (!me || me.id !== pendingChoiceNumber.playerId) return prev;
+        me.number = chosen;
+        me.killerPhase = "ARMING";
+        me.isKiller = false;
+        if (pendingChoiceNumber.shieldTurns > 0) {
+          grantShieldTurns(me, pendingChoiceNumber.shieldTurns);
+        }
+        pushLog(
+          `🧩 ${me.name} choisit librement le numéro ${chosen}${
+            pendingChoiceNumber.shieldTurns > 0 ? ` + bouclier ${shieldLabel(pendingChoiceNumber.shieldTurns)}` : ""
+          }`
+        );
+        pushEvent({
+          t: Date.now(),
+          type: "SELECT_NUMBER_FREE",
+          actorId: me.id,
+          number: chosen,
+          shieldTurns: pendingChoiceNumber.shieldTurns,
+        });
+        return next;
+      });
+      setPendingChoiceNumber(null);
+
+      setTimeout(() => {
+        const nextIdx = (assignIndex + 1) % players.length;
+        setAssignIndex(nextIdx);
+        setTurnIndex(nextIdx);
+        setDartsLeft(1);
+        setVisit([]);
+        setTimeout(() => finishAssignIfReady(), 0);
+      }, 0);
+      return;
+    }
   
     // unlock audio if not yet
     try {
@@ -2528,6 +3418,38 @@ const resByPidUsedRef = React.useRef<Record<string, boolean>>({}); // "All 1×"
   
       if (thr.target === 0) {
         me.uselessHits += 1;
+
+        if (missAutoHitOn) {
+          const beforeMiss = me.lives;
+          me.lives = Math.max(0, me.lives - 1);
+          const missLoss = Math.max(0, beforeMiss - me.lives);
+          if (missLoss > 0) me.livesLost += missLoss;
+
+          pushLog(`🎯 ${me.name} : MISS → auto-hit (-1 vie)`);
+          pushEvent({ t: Date.now(), type: "MISS_AUTO_HIT", actorId: me.id, throw: thr, loss: missLoss });
+
+          if (me.lives <= 0) {
+            me.eliminated = true;
+      me.resurrected = false;
+      me.resurrectShield = false;
+      me.shieldTurnsLeft = 0;
+      me.shieldJustGranted = false;
+        me.resurrected = false;
+            me.resurrected = false;
+            me.eliminatedAt = Date.now();
+            me.killerPhase = "ARMING";
+            me.isKiller = false;
+            me.resurrectShield = false;
+            me.shieldTurnsLeft = 0;
+            me.shieldJustGranted = false;
+            if (!elimOrderRef.current.includes(me.id)) {
+              elimOrderRef.current = [...(elimOrderRef.current || []), me.id];
+            }
+            pendingDeathAfterRef.current = true;
+          }
+          return next;
+        }
+
         pushLog(`🎯 ${me.name} : MISS`);
         pushEvent({ t: Date.now(), type: "THROW", actorId: me.id, throw: thr });
         return next;
@@ -2537,22 +3459,57 @@ const resByPidUsedRef = React.useRef<Record<string, boolean>>({}); // "All 1×"
       if (thr.target === 25) {
   const isDBull = thr.mult === 2;
 
-  const bullSplashOn = !!(config as any)?.bullSplash; // dmg zone
-  const bullHealOn = !!(config as any)?.bullHeal;     // heal
+  if (assignActive && numberAssignMode === "throw" && me.killerPhase === "SELECT") {
+    if (selectBonusShieldOn && (thr.mult === 1 || thr.mult === 2)) {
+      const freeShield = thr.mult === 2 ? 3 : 2;
+      setPendingChoiceNumber({
+        playerId: me.id,
+        shieldTurns: freeShield,
+        label: thr.mult === 2 ? "DBULL" : "BULL",
+      });
+      pushLog(`🛡️ ${me.name} fait ${fmtThrow(thr)} → choix libre du numéro + bouclier ${shieldLabel(freeShield)}`);
+      pushEvent({
+        t: Date.now(),
+        type: "SELECT_NUMBER_FREE_PENDING",
+        actorId: me.id,
+        throw: thr,
+        shieldTurns: freeShield,
+      });
+      return next;
+    }
 
-  // Si pas killer actif OU pas de variantes -> comportement "inutile" (comme avant)
-  if (me.killerPhase !== "ACTIVE" || (!bullSplashOn && !bullHealOn)) {
     me.uselessHits += 1;
     pushLog(`🎯 ${me.name} : ${fmtThrow(thr)}`);
     pushEvent({ t: Date.now(), type: "THROW", actorId: me.id, throw: thr });
     return next;
   }
 
-  // ✅ KILLER ACTIF + variantes bull
+  const splashEnabled = bullSplashOn && !(shieldOnDBull && isDBull);
+  const healEnabled = bullHealOn && !(shieldOnDBull && isDBull);
+  const shieldEnabled = shieldOnDBull && isDBull;
+
+  // ✅ DBULL = bouclier : doit fonctionner même si le joueur n'est PAS KILLER
   let didSomething = false;
 
+  if (shieldEnabled) {
+    grantShieldTurns(me, shieldTurns);
+    didSomething = true;
+    pushLog(`🛡️ ${me.name} gagne un bouclier pendant ${shieldLabel(shieldTurns)}`);
+    pushEvent({ t: Date.now(), type: "SHIELD_GAIN", actorId: me.id, throw: thr, shieldTurns });
+  }
+
+  const killerCanUseBullVariants = isActiveKiller(me);
+
+  // Si pas killer actif et pas de bouclier DBULL -> comportement "inutile"
+  if (!killerCanUseBullVariants && !didSomething) {
+    me.uselessHits += 1;
+    pushLog(`🎯 ${me.name} : ${fmtThrow(thr)}`);
+    pushEvent({ t: Date.now(), type: "THROW", actorId: me.id, throw: thr });
+    return next;
+  }
+
   // 1) Splash dmg: enlève 1 à tous (BULL) / 2 à tous (DBULL)
-  if (bullSplashOn) {
+  if (killerCanUseBullVariants && splashEnabled) {
     const dmg = isDBull ? 2 : 1;
     const victims = next.filter((p, idx) => idx !== turnIndex && !p.eliminated);
 
@@ -2560,6 +3517,10 @@ const resByPidUsedRef = React.useRef<Record<string, boolean>>({}); // "All 1×"
     let anyElim = false;
 
     for (const v of victims) {
+      if (playerHasShield(v) || v.resurrectShield) {
+        pushLog(v.resurrectShield ? `🤍 ${v.name} est protégé après sa résurrection` : `🛡️ ${v.name} bloque les dégâts de zone`);
+        continue;
+      }
       const before = v.lives;
       v.lives = Math.max(0, v.lives - dmg);
       const loss = Math.max(0, before - v.lives);
@@ -2570,6 +3531,10 @@ const resByPidUsedRef = React.useRef<Record<string, boolean>>({}); // "All 1×"
 
         if (v.lives <= 0) {
           v.eliminated = true;
+          v.resurrected = false;
+          v.resurrectShield = false;
+          v.shieldTurnsLeft = 0;
+          v.shieldJustGranted = false;
           v.eliminatedAt = Date.now();
           me.kills += 1;
           anyElim = true;
@@ -2603,7 +3568,7 @@ const resByPidUsedRef = React.useRef<Record<string, boolean>>({}); // "All 1×"
   }
 
   // 2) Heal: récupère 1 (BULL) / 2 (DBULL)
-  if (bullHealOn) {
+  if (killerCanUseBullVariants && healEnabled) {
     const heal = isDBull ? 2 : 1;
     const before = me.lives;
     me.lives = Math.max(0, me.lives + heal);
@@ -2659,14 +3624,29 @@ const resByPidUsedRef = React.useRef<Record<string, boolean>>({}); // "All 1×"
         me.number = n;
         me.killerPhase = "ARMING";
         me.isKiller = false;
+
+        const selectShieldTurns =
+          selectBonusShieldOn
+            ? thr.mult === 3
+              ? 3
+              : thr.mult === 2
+              ? 2
+              : 0
+            : 0;
+        if (selectShieldTurns > 0) {
+          grantShieldTurns(me, selectShieldTurns);
+        }
   
-        pushLog(`🧩 ${me.name} choisit le numéro ${n}`);
+        pushLog(`🧩 ${me.name} choisit le numéro ${n}${
+          selectShieldTurns > 0 ? ` + bouclier ${shieldLabel(selectShieldTurns)}` : ""
+        }`);
         pushEvent({
           t: Date.now(),
           type: "SELECT_NUMBER",
           actorId: me.id,
           number: n,
           throw: thr,
+          shieldTurns: selectShieldTurns,
         });
   
         setTimeout(() => {
@@ -2688,9 +3668,17 @@ const resByPidUsedRef = React.useRef<Record<string, boolean>>({}); // "All 1×"
         me.livesLost += Math.max(0, me.lives);
         me.lives = 0;
         me.eliminated = true;
+      me.resurrected = false;
+      me.resurrectShield = false;
+      me.shieldTurnsLeft = 0;
+      me.shieldJustGranted = false;
+        me.resurrected = false;
         me.eliminatedAt = Date.now();
         me.killerPhase = "ARMING";
         me.isKiller = false;
+        me.resurrectShield = false;
+        me.shieldTurnsLeft = 0;
+        me.shieldJustGranted = false;
   
         if (!elimOrderRef.current.includes(me.id)) {
           elimOrderRef.current = [...(elimOrderRef.current || []), me.id];
@@ -2713,6 +3701,24 @@ const resByPidUsedRef = React.useRef<Record<string, boolean>>({}); // "All 1×"
         return next;
       }
   
+      if (tryResurrectOnHit({
+        players: next,
+        actorIndex: turnIndex,
+        actor: me,
+        target: thr.target,
+        resurrectionEnabled,
+        resurrectionMode,
+        resurrectionLives,
+        resGlobalUsedRef,
+        resByPidUsedRef,
+        elimOrderRef,
+        pushLog,
+        pushEvent,
+        pendingSfxRef,
+      })) {
+        return next;
+      }
+
       if (!me.number) {
         me.uselessHits += 1;
         pushLog(`🎯 ${me.name} : ${fmtThrow(thr)}`);
@@ -2746,9 +3752,9 @@ const resByPidUsedRef = React.useRef<Record<string, boolean>>({}); // "All 1×"
   
         return next;
       }
-  
+
       // ACTIVE => attaque
-if (me.killerPhase === "ACTIVE") {
+if (isActiveKiller(me)) {
       // ✅ AUTO-PÉNALITÉ (KILLER qui touche SON numéro)
   if (me.number && thr.target === me.number && selfPenaltyOn) {
     me.hitsOnSelf = (me.hitsOnSelf ?? 0) + 1;
@@ -2783,6 +3789,10 @@ if (me.killerPhase === "ACTIVE") {
 
     if (me.lives <= 0) {
       me.eliminated = true;
+      me.resurrected = false;
+      me.resurrectShield = false;
+      me.shieldTurnsLeft = 0;
+      me.shieldJustGranted = false;
       me.eliminatedAt = Date.now();
       me.killerPhase = "ARMING";
       me.isKiller = false;
@@ -2800,67 +3810,28 @@ if (me.killerPhase === "ACTIVE") {
     return next;
   }
 
-  // ✅ 
-
-  // ✅ RÉSURRECTION : toucher le numéro d’un joueur éliminé
-  if (resurrectionMode !== "off" && me.killerPhase === "ACTIVE") {
-    const deadIdx = next.findIndex(
-      (p, idx) => idx !== turnIndex && !!p.eliminated && p.number === thr.target
-    );
-
-    if (deadIdx >= 0) {
-      const dead = next[deadIdx];
-
-      // pas d’auto-résurrection (évite comportements bizarres)
-      if (dead.id !== me.id) {
-        const alreadyUsedGlobal = resGlobalUsedRef.current;
-        const alreadyUsedForTarget = !!resByPidUsedRef.current[dead.id];
-
-        const canRes =
-          resurrectionMode === "all" ||
-          (resurrectionMode === "one_player_once" && !alreadyUsedGlobal) ||
-          (resurrectionMode === "all_once" && !alreadyUsedForTarget);
-
-        if (canRes) {
-          // marquer consommation
-          if (resurrectionMode === "one_player_once") resGlobalUsedRef.current = true;
-          if (resurrectionMode === "all_once") resByPidUsedRef.current[dead.id] = true;
-
-          dead.eliminated = false;
-          dead.eliminatedAt = null;
-          dead.lives = clampInt(resurrectionLives, 1, 6, 1);
-          dead.isKiller = false;
-          dead.killerPhase = "ARMING";
-          dead.becameAtThrow = null;
-
-          me.offensiveThrows += 1;
-
-          pushLog(`🧟‍♂️ ${me.name} ressuscite ${dead.name} (+${dead.lives} vie${dead.lives > 1 ? "s" : ""})`);
-          pushEvent({
-            t: Date.now(),
-            type: "RESURRECT",
-            actorId: me.id,
-            targetId: dead.id,
-            lives: dead.lives,
-            mode: resurrectionMode,
-            throw: thr,
-          });
-
-          pendingSfxRef.current = pendingSfxRef.current || { kind: "hit" };
-          return next; // hit consommé par la résurrection
-        }
-      }
-    }
-  }
 	// HIT VICTIME (numéro d'un adversaire vivant)
   const victimIdx = next.findIndex(
-    (p, idx) => idx !== turnIndex && !p.eliminated && p.number === thr.target
+    (p, idx) => idx !== turnIndex && !p.eliminated && playerNumberMatchesTarget(p, thr.target)
   );
 
   if (victimIdx >= 0) {
     const victim = next[victimIdx];
 
     me.offensiveThrows += 1;
+
+    if (playerHasShield(victim) || victim.resurrectShield) {
+      pushLog(victim.resurrectShield ? `🤍 ${victim.name} est protégé après sa résurrection` : `🛡️ ${victim.name} bloque l'attaque de ${me.name}`);
+      pushEvent({
+        t: Date.now(),
+        type: "SHIELD_BLOCK",
+        actorId: me.id,
+        targetId: victim.id,
+        targetNumber: victim.number,
+        throw: thr,
+      });
+      return next;
+    }
 
     const dmg = dmgFrom(thr.mult, config.damageRule);
     const before = victim.lives;
@@ -2896,6 +3867,10 @@ if (me.killerPhase === "ACTIVE") {
 
     if (victim.lives <= 0) {
       victim.eliminated = true;
+      victim.resurrected = false;
+      victim.resurrectShield = false;
+      victim.shieldTurnsLeft = 0;
+      victim.shieldJustGranted = false;
       victim.eliminatedAt = Date.now();
       me.kills += 1;
 
@@ -2960,6 +3935,8 @@ if (me.killerPhase === "ACTIVE") {
           sfx.death?.();
         } else if (ps.kind === "lastDead") {
           sfx.lastDead?.();
+        } else if (ps.kind === "resurrect") {
+          sfx.resurrect?.();
         }
 
         if (thenDeath) {
@@ -3134,6 +4111,39 @@ React.useEffect(() => {
 
       if (thrSafe.target === 0) {
         me2.uselessHits += 1;
+
+        if (missAutoHitOn) {
+          const beforeMiss = me2.lives;
+          me2.lives = Math.max(0, me2.lives - 1);
+          const missLoss = Math.max(0, beforeMiss - me2.lives);
+          if (missLoss > 0) me2.livesLost += missLoss;
+
+          pushLog(`🎯 ${me2.name} : MISS → auto-hit (-1 vie)`);
+          pushEvent({
+            t: Date.now(),
+            type: "MISS_AUTO_HIT",
+            actorId: me2.id,
+            throw: thrSafe,
+            loss: missLoss,
+            bot: true,
+          });
+
+          if (me2.lives <= 0) {
+            me2.eliminated = true;
+        me2.resurrected = false;
+            me2.resurrected = false;
+            me2.eliminatedAt = Date.now();
+            me2.killerPhase = "ARMING";
+            me2.isKiller = false;
+            if (!elimOrderRef.current.includes(me2.id)) {
+              elimOrderRef.current = [...(elimOrderRef.current || []), me2.id];
+            }
+            pendingDeathAfterRef.current = true;
+          }
+
+          return next;
+        }
+
         pushLog(`🎯 ${me2.name} : MISS`);
         pushEvent({
           t: Date.now(),
@@ -3146,101 +4156,172 @@ React.useEffect(() => {
       }
 
       // BULL / DBULL (25) — variantes possibles si KILLER ACTIF
-if (thrSafe.target === 25) {
-  const isDBull = thrSafe.mult === 2;
+      if (thrSafe.target === 25) {
+        const isDBull = thrSafe.mult === 2;
 
-  // Si pas killer actif OU pas de variantes -> inutile
-  if (me2.killerPhase !== "ACTIVE" || (!bullSplashOn && !bullHealOn)) {
-    me2.uselessHits += 1;
-    pushLog(`🎯 ${me2.name} : ${fmtThrow(thrSafe)}`);
-    pushEvent({
-      t: Date.now(),
-      type: "THROW",
-      actorId: me2.id,
-      throw: thrSafe,
-      bot: true,
-    });
-    return next;
-  }
+        if (assignActive && numberAssignMode === "throw" && me2.killerPhase === "SELECT") {
+          if (selectBonusShieldOn && (thrSafe.mult === 1 || thrSafe.mult === 2)) {
+            const freeChoiceNumber = firstFreeNumber(next, activeTurnIndex);
+            const freeShield = thrSafe.mult === 2 ? 3 : 2;
+            me2.number = freeChoiceNumber;
+            me2.killerPhase = "ARMING";
+            me2.isKiller = false;
+            grantShieldTurns(me2, freeShield);
 
-  let didSomething = false;
+            pushLog(`🛡️ ${me2.name} fait ${fmtThrow(thrSafe)} → numéro ${freeChoiceNumber} + bouclier ${shieldLabel(freeShield)}`);
+            pushEvent({
+              t: Date.now(),
+              type: "SELECT_NUMBER_FREE",
+              actorId: me2.id,
+              number: freeChoiceNumber,
+              throw: thrSafe,
+              shieldTurns: freeShield,
+              bot: true,
+            });
 
-  // 1) Splash dmg: -1 à tous (BULL) / -2 à tous (DBULL)
-  if (bullSplashOn) {
-    const dmg = isDBull ? 2 : 1;
-    const victims = next.filter((p, idx) => idx !== activeTurnIndex && !p.eliminated);
+            setTimeout(() => {
+              const nextIdx = (assignIndex + 1) % players.length;
+              setAssignIndex(nextIdx);
+              setTurnIndex(nextIdx);
+              setDartsLeft(1);
+              setVisit([]);
+              setTimeout(() => finishAssignIfReady(), 0);
+            }, 0);
 
-    let totalLoss = 0;
-
-    for (const v of victims) {
-      const before = v.lives;
-      v.lives = Math.max(0, v.lives - dmg);
-      const loss = Math.max(0, before - v.lives);
-      if (loss > 0) {
-        totalLoss += loss;
-        v.livesLost += loss;
-        didSomething = true;
-
-        if (v.lives <= 0) {
-          v.eliminated = true;
-          v.eliminatedAt = Date.now();
-          me2.kills += 1;
-          if (!elimOrderRef.current.includes(v.id)) {
-            elimOrderRef.current = [...(elimOrderRef.current || []), v.id];
+            return next;
           }
+
+          me2.uselessHits += 1;
+          pushLog(`🎯 ${me2.name} : ${fmtThrow(thrSafe)}`);
+          pushEvent({
+            t: Date.now(),
+            type: "THROW",
+            actorId: me2.id,
+            throw: thrSafe,
+            bot: true,
+          });
+          return next;
         }
+
+        const splashEnabled = bullSplashOn && !(shieldOnDBull && isDBull);
+        const healEnabled = bullHealOn && !(shieldOnDBull && isDBull);
+        const shieldEnabled = shieldOnDBull && isDBull;
+
+        // ✅ DBULL = bouclier BOT : doit fonctionner même sans statut KILLER
+        let didSomething = false;
+
+        if (shieldEnabled) {
+          grantShieldTurns(me2, shieldTurns);
+          didSomething = true;
+          pushLog(`🛡️ ${me2.name} gagne un bouclier pendant ${shieldLabel(shieldTurns)}`);
+          pushEvent({
+            t: Date.now(),
+            type: "SHIELD_GAIN",
+            actorId: me2.id,
+            throw: thrSafe,
+            shieldTurns,
+            bot: true,
+          });
+        }
+
+        const killerCanUseBullVariants2 = isActiveKiller(me2);
+
+        // Si pas killer actif et pas de bouclier DBULL -> inutile
+        if (!killerCanUseBullVariants2 && !didSomething) {
+          me2.uselessHits += 1;
+          pushLog(`🎯 ${me2.name} : ${fmtThrow(thrSafe)}`);
+          pushEvent({
+            t: Date.now(),
+            type: "THROW",
+            actorId: me2.id,
+            throw: thrSafe,
+            bot: true,
+          });
+          return next;
+        }
+
+        // 1) Splash dmg: -1 à tous (BULL) / -2 à tous (DBULL)
+        if (killerCanUseBullVariants2 && splashEnabled) {
+          const dmg = isDBull ? 2 : 1;
+          const victims = next.filter((p, idx) => idx !== activeTurnIndex && !p.eliminated);
+
+          let totalLoss = 0;
+
+          for (const v of victims) {
+            if (playerHasShield(v)) {
+              pushLog(`🛡️ ${v.name} bloque les dégâts de zone`);
+              continue;
+            }
+            const before = v.lives;
+            v.lives = Math.max(0, v.lives - dmg);
+            const loss = Math.max(0, before - v.lives);
+            if (loss > 0) {
+              totalLoss += loss;
+              v.livesLost += loss;
+              didSomething = true;
+
+              if (v.lives <= 0) {
+                v.eliminated = true;
+                v.resurrected = false;
+          v.resurrected = false;
+                v.eliminatedAt = Date.now();
+                me2.kills += 1;
+                if (!elimOrderRef.current.includes(v.id)) {
+                  elimOrderRef.current = [...(elimOrderRef.current || []), v.id];
+                }
+              }
+            }
+          }
+
+          if (totalLoss > 0) {
+            me2.killerHits += 1;
+            me2.livesTaken += totalLoss;
+            pendingSfxRef.current = { kind: "kill", mult: thrSafe.mult };
+          }
+
+          pushLog(
+            didSomething
+              ? `💥 ${me2.name} fait ${fmtThrow(thrSafe)} → dégâts de zone (-${dmg} à tous)`
+              : `🎯 ${me2.name} : ${fmtThrow(thrSafe)}`
+          );
+
+          pushEvent({
+            t: Date.now(),
+            type: "BULL_SPLASH",
+            actorId: me2.id,
+            dmg,
+            totalLoss,
+            throw: thrSafe,
+            bot: true,
+          });
+        }
+
+        // 2) Heal: +1 (BULL) / +2 (DBULL)
+        if (killerCanUseBullVariants2 && healEnabled) {
+          const heal = isDBull ? 2 : 1;
+          const before = me2.lives;
+          me2.lives = Math.max(0, me2.lives + heal);
+          const gained = Math.max(0, me2.lives - before);
+          if (gained > 0) didSomething = true;
+
+          if (gained > 0) {
+            me2.livesHealed = (me2.livesHealed ?? 0) + gained;
+          }
+
+          pushLog(`💚 ${me2.name} fait ${fmtThrow(thrSafe)} → +${gained} vie(s)`);
+          pushEvent({
+            t: Date.now(),
+            type: "BULL_HEAL",
+            actorId: me2.id,
+            heal: gained,
+            throw: thrSafe,
+            bot: true,
+          });
+        }
+
+        if (!didSomething) me2.uselessHits += 1;
+        return next;
       }
-    }
-
-    if (totalLoss > 0) {
-      me2.killerHits += 1;
-      me2.livesTaken += totalLoss;
-      pendingSfxRef.current = { kind: "kill", mult: thrSafe.mult };
-    }
-
-    pushLog(
-      didSomething
-        ? `💥 ${me2.name} fait ${fmtThrow(thrSafe)} → dégâts de zone (-${dmg} à tous)`
-        : `🎯 ${me2.name} : ${fmtThrow(thrSafe)}`
-    );
-
-    pushEvent({
-      t: Date.now(),
-      type: "BULL_SPLASH",
-      actorId: me2.id,
-      dmg,
-      totalLoss,
-      throw: thrSafe,
-      bot: true,
-    });
-  }
-
-  // 2) Heal: +1 (BULL) / +2 (DBULL)
-  if (bullHealOn) {
-    const heal = isDBull ? 2 : 1;
-    const before = me2.lives;
-    me2.lives = Math.max(0, me2.lives + heal);
-    const gained = Math.max(0, me2.lives - before);
-    if (gained > 0) didSomething = true;
-
-    if (gained > 0) {
-      me2.livesHealed = (me2.livesHealed ?? 0) + gained;
-    }
-
-    pushLog(`💚 ${me2.name} fait ${fmtThrow(thrSafe)} → +${gained} vie(s)`);
-    pushEvent({
-      t: Date.now(),
-      type: "BULL_HEAL",
-      actorId: me2.id,
-      heal: gained,
-      throw: thrSafe,
-      bot: true,
-    });
-  }
-
-  if (!didSomething) me2.uselessHits += 1;
-  return next;
-}
 
       if (
         assignActive &&
@@ -3281,13 +4362,30 @@ if (thrSafe.target === 25) {
         me2.killerPhase = "ARMING";
         me2.isKiller = false;
 
-        pushLog(`🧩 ${me2.name} choisit le numéro ${n}`);
+        const selectShieldTurns =
+          selectBonusShieldOn
+            ? thrSafe.mult === 3
+              ? 3
+              : thrSafe.mult === 2
+              ? 2
+              : 0
+            : 0;
+        if (selectShieldTurns > 0) {
+          grantShieldTurns(me2, selectShieldTurns);
+        }
+
+        pushLog(
+          `🧩 ${me2.name} choisit le numéro ${n}${
+            selectShieldTurns > 0 ? ` + bouclier ${shieldLabel(selectShieldTurns)}` : ""
+          }`
+        );
         pushEvent({
           t: Date.now(),
           type: "SELECT_NUMBER",
           actorId: me2.id,
           number: n,
           throw: thrSafe,
+          shieldTurns: selectShieldTurns,
           bot: true,
         });
 
@@ -3303,12 +4401,31 @@ if (thrSafe.target === 25) {
         return next;
       }
 
+      if (tryResurrectOnHit({
+        players: next,
+        actorIndex: activeTurnIndex,
+        actor: me2,
+        target: thrSafe.target,
+        resurrectionEnabled,
+        resurrectionMode,
+        resurrectionLives,
+        resGlobalUsedRef,
+        resByPidUsedRef,
+        elimOrderRef,
+        pushLog,
+        pushEvent,
+        pendingSfxRef,
+      })) {
+        return next;
+      }
+
       if (autoKillOn && me2.number && thrSafe.target === me2.number) {
         me2.hitsOnSelf += 1;
         me2.autoKills = (me2.autoKills ?? 0) + 1;
         me2.livesLost += Math.max(0, me2.lives);
         me2.lives = 0;
         me2.eliminated = true;
+        me2.resurrected = false;
         me2.eliminatedAt = Date.now();
         me2.killerPhase = "ARMING";
         me2.isKiller = false;
@@ -3361,7 +4478,8 @@ if (thrSafe.target === 25) {
         return next;
       }
 
-      if (me2.killerPhase === "ACTIVE") {
+
+      if (isActiveKiller(me2)) {
         // ✅ AUTO-PÉNALITÉ (BOT)
         if (me2.number && thrSafe.target === me2.number && selfPenaltyOn) {
           me2.hitsOnSelf = (me2.hitsOnSelf ?? 0) + 1;
@@ -3394,6 +4512,8 @@ if (thrSafe.target === 25) {
       
           if (me2.lives <= 0) {
             me2.eliminated = true;
+        me2.resurrected = false;
+            me2.resurrected = false;
             me2.eliminatedAt = Date.now();
             me2.killerPhase = "ARMING";
             me2.isKiller = false;
@@ -3412,7 +4532,7 @@ if (thrSafe.target === 25) {
       
         // ✅ HIT VICTIME (BOT)
         const victimIdx = next.findIndex(
-          (p, idx) => idx !== activeTurnIndex && !p.eliminated && p.number === thrSafe.target
+          (p, idx) => idx !== activeTurnIndex && !p.eliminated && playerNumberMatchesTarget(p, thrSafe.target)
         );
       
         if (victimIdx >= 0) {
@@ -3454,6 +4574,8 @@ if (thrSafe.target === 25) {
       
           if (victim.lives <= 0) {
             victim.eliminated = true;
+            victim.resurrected = false;
+      victim.resurrected = false;
             victim.eliminatedAt = Date.now();
             me2.kills += 1;
       
@@ -3525,6 +4647,8 @@ if (thrSafe.target === 25) {
           sfx.death?.();
         } else if (ps.kind === "lastDead") {
           sfx.lastDead?.();
+        } else if (ps.kind === "resurrect") {
+          sfx.resurrect?.();
         }
 
         if (thenDeath) {
@@ -3758,7 +4882,12 @@ return (
       index={assignIndex}
       total={players.length}
       takenNumbers={takenNumbers}
-      onPickNumber={(n) => {
+      selectBonusShieldOn={selectBonusShieldOn}
+      pendingChoiceNumber={pendingChoiceNumber}
+      onPickThrow={(thr) => {
+        applyThrow(thr);
+      }}
+      onPickFreeNumber={(n) => {
         applyThrow({ target: n, mult: 1 });
       }}
     />
@@ -4006,9 +5135,15 @@ return (
                   gap: 10,
                   padding: "8px 10px",
                   borderRadius: 14,
-                  background:
-                    i === 0 ? "rgba(255,198,58,.12)" : "rgba(0,0,0,.25)",
-                  border: "1px solid rgba(255,255,255,.08)",
+                  background: p.resurrected
+                    ? "linear-gradient(180deg, rgba(46,46,50,.94), rgba(12,12,16,.98))"
+                    : i === 0
+                    ? "rgba(255,198,58,.12)"
+                    : "rgba(0,0,0,.25)",
+                  border: p.resurrected
+                    ? "1px solid rgba(255,255,255,.42)"
+                    : "1px solid rgba(255,255,255,.08)",
+                  boxShadow: p.resurrected ? "0 0 0 1px rgba(255,255,255,.16), 0 0 20px rgba(255,255,255,.16)" : "none",
                   opacity: p.eliminated ? 0.85 : 1,
                 }}
               >
@@ -4025,6 +5160,10 @@ return (
                     size={28}
                     src={p.avatarDataUrl}
                     name={p.name}
+                    shieldTurns={Math.max(0, Number(p.shieldTurnsLeft || 0))}
+                    compactShield
+                    resurrected={!!p.resurrected}
+                    resurrectShield={!!p.resurrectShield}
                   />
                   <span style={{ fontWeight: 1000 }}>{p.name}</span>
                   <span style={{ fontSize: 12, opacity: 0.8, color: gold }}>
@@ -4182,7 +5321,15 @@ return (
     <TargetsCarousel players={players} activeId={current?.id || null} theme={theme} blindMask={blindKillerOn} />
   </div>
 </div>{/* ✅ ACTIVE PLAYER (FIXED) */}
-      <div style={{ marginTop: 6, ...card, padding: 10 }}>
+      <div style={{
+        marginTop: 6,
+        ...card,
+        padding: 10,
+        border: !!current?.resurrected ? "1px solid rgba(255,255,255,.42)" : (card.border as any),
+        boxShadow: !!current?.resurrected
+          ? `${String(card.boxShadow || "")}${card.boxShadow ? ", " : ""}0 0 0 1px rgba(255,255,255,.18), 0 0 24px rgba(255,255,255,.16)`
+          : (card.boxShadow as any),
+      }}>
         <div
           style={{
             display: "grid",
@@ -4196,6 +5343,8 @@ return (
               size={76}
               src={current?.avatarDataUrl}
               name={current?.name}
+              shieldTurns={Math.max(0, Number(current?.shieldTurnsLeft || 0))}
+              resurrected={!!current?.resurrected}
             />
             <div
               style={{
@@ -4229,6 +5378,10 @@ return (
             <StatRow label="Lancers" value={current?.totalThrows ?? 0} />
             <StatRow label="Dégâts" value={current?.livesTaken ?? 0} />
             <StatRow label="Kills" value={current?.kills ?? 0} />
+            <StatRow
+              label="Bouclier"
+              value={Math.max(0, Number(current?.shieldTurnsLeft || 0)) > 0 ? `${Math.max(0, Number(current?.shieldTurnsLeft || 0))} tour(s)` : "OFF"}
+            />
           </div>
 
           <div style={{ display: "grid", justifyItems: "end", gap: 8 }}>
@@ -4265,7 +5418,7 @@ return (
                 justifyContent: "end",
               }}
             >
-              <HeartKpi value={current?.lives ?? 0} />
+              <HeartKpi value={current?.lives ?? 0} resurrected={!!current?.resurrected} />
               <SurvivorKpi value={aliveCount} />
             </div>
 
@@ -4393,23 +5546,47 @@ return (
         </div>
 
 	        {/* mini preview compact: avatars only, in play order */}
-	        <div style={{ padding: 10, background: "rgba(0,0,0,.32)", backdropFilter: "blur(2px)" }}>
-	          <div
-	            style={{
-	              display: "flex",
-	              alignItems: "center",
-	              gap: 10,
-	              overflowX: "auto",
-	              paddingBottom: 2,
-	            }}
-	          >
-	            {players.map((p) => (
-	              <div key={p.id} style={{ flex: "0 0 auto", opacity: p.eliminated ? 0.45 : 1 }}>
-	                <AvatarMedallion size={48} src={p.avatarDataUrl} name={p.name} />
-	              </div>
-	            ))}
-	          </div>
-	        </div>
+        <div
+          style={{
+            padding: "8px 10px 10px 10px",
+            background: "rgba(0,0,0,.32)",
+            backdropFilter: "blur(2px)",
+          }}
+        >
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 8,
+              overflowX: "auto",
+              paddingTop: 4,
+              paddingBottom: 4,
+              paddingLeft: 2,
+            }}
+          >
+            {players.map((p) => (
+              <div
+                key={p.id}
+                style={{
+                  flex: "0 0 auto",
+                  opacity: p.eliminated ? 0.45 : 1,
+                  marginTop: 2,
+                  marginBottom: 2,
+                  marginLeft: 2,
+                }}
+              >
+                <AvatarMedallion
+                  size={42}
+                  src={p.avatarDataUrl}
+                  name={p.name}
+                  shieldTurns={Math.max(0, Number(p.shieldTurnsLeft || 0))}
+                  resurrected={!!p.resurrected}
+                  resurrectShield={!!p.resurrectShield}
+                />
+              </div>
+            ))}
+          </div>
+        </div>
       </button>
     </div>
 
@@ -4495,6 +5672,10 @@ return (
         ? "0 0 0 1px rgba(255,198,58,.25), 0 0 16px rgba(255,198,58,.18), 0 0 40px rgba(255,198,58,.10)"
         : "none";
 
+      const shieldTurns = Math.max(0, Number(p.shieldTurnsLeft || 0));
+      const shielded = shieldTurns > 0;
+      const resurrectedGlow = !!p.resurrected;
+
       return (
         <div
           key={p.id}
@@ -4502,10 +5683,22 @@ return (
             ...card,
             padding: "8px 10px",
             opacity: p.eliminated ? 0.92 : 1,
-            border: "1px solid rgba(255,255,255,.08)",
-            boxShadow: neonHalo,
+            border: resurrectedGlow
+              ? "1px solid rgba(255,255,255,.92)"
+              : shielded
+              ? "1px solid rgba(95,230,255,.72)"
+              : "1px solid rgba(255,255,255,.08)",
+            boxShadow: resurrectedGlow
+              ? `${neonHalo === "none" ? "" : neonHalo + ", "}0 0 0 1px rgba(255,255,255,.28), 0 0 20px rgba(255,255,255,.22), 0 0 42px rgba(255,255,255,.12)`
+              : shielded
+              ? `${neonHalo === "none" ? "" : neonHalo + ", "}0 0 0 1px rgba(95,230,255,.18), 0 0 18px rgba(60,210,255,.18)`
+              : neonHalo,
             background: p.eliminated
               ? "linear-gradient(180deg, rgba(70,10,10,.90), rgba(16,8,10,.98))"
+              : resurrectedGlow
+              ? "linear-gradient(180deg, rgba(46,46,50,.94), rgba(12,12,16,.98))"
+              : shielded
+              ? "linear-gradient(180deg, rgba(16,30,38,.90), rgba(8,14,20,.98))"
               : "linear-gradient(180deg, rgba(22,22,23,.78), rgba(12,12,14,.95))",
             display: "grid",
             gridTemplateColumns: "auto 1fr auto",
@@ -4513,7 +5706,15 @@ return (
             gap: 10,
           }}
         >
-          <AvatarMedallion size={40} src={p.avatarDataUrl} name={p.name} />
+          <AvatarMedallion
+            size={40}
+            src={p.avatarDataUrl}
+            name={p.name}
+            shieldTurns={shieldTurns}
+            compactShield
+            hideShieldBadge
+            resurrected={!!p.resurrected}
+          />
 
           <div style={{ minWidth: 0 }}>
             <div
@@ -4595,21 +5796,36 @@ return (
               fontWeight: 1000,
               borderRadius: 14,
               padding: "8px 10px",
-              background: p.eliminated ? "rgba(255,80,80,.12)" : "rgba(0,0,0,.45)",
+              background: p.eliminated
+                ? "rgba(255,80,80,.12)"
+                : resurrectedGlow
+                ? "rgba(255,255,255,.10)"
+                : shielded
+                ? "rgba(10,24,34,.78)"
+                : "rgba(0,0,0,.45)",
               border: p.eliminated
                 ? "1px solid rgba(255,80,80,.35)"
+                : resurrectedGlow
+                ? "1px solid rgba(255,255,255,.42)"
+                : shielded
+                ? "1px solid rgba(95,230,255,.38)"
                 : "1px solid rgba(255,255,255,.08)",
               color: p.eliminated ? "rgba(255,140,140,.95)" : gold,
-              display: "grid",
-              placeItems: "center",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: 8,
             }}
           >
             {p.eliminated ? (
               "DEAD"
             ) : (
-              <div style={{ transform: "scale(1.18)" }}>
-                <MiniHeart value={p.lives ?? 0} active={false} />
-              </div>
+              <>
+                <ShieldTurnsChip turns={shieldTurns} />
+                <div style={{ transform: "scale(1.18)" }}>
+                  <MiniHeart value={p.lives ?? 0} active={false} resurrected={!!p.resurrected} />
+                </div>
+              </>
             )}
           </div>
         </div>

@@ -1,5 +1,6 @@
 import { nanoid } from "nanoid";
 import LZString from "lz-string";
+import { MAX_AVATAR_DATA_URL_CHARS } from "./avatarSafe";
 
 export const LS_BOTS_KEY = "dc_bots_v1";
 export const LS_BOTS_AVATARS_KEY = "dc_bots_avatars_v1";
@@ -112,6 +113,7 @@ function sanitizeAvatarDataUrl(input: any): string | null {
   if (!isNonEmptyString(input)) return null;
   const value = String(input).trim();
   if (!value.startsWith("data:image/")) return null;
+  if (value.length > MAX_AVATAR_DATA_URL_CHARS) return null;
   return value;
 }
 

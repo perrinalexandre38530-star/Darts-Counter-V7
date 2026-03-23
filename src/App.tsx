@@ -72,6 +72,7 @@ import { migrateLocalStorageToIndexedDB } from "./lib/storageMigration";
 import { rehydrateSupabaseSession } from "./lib/onlineSessionFix";
 import { startNasBackgroundSync } from "./lib/nasStartupSync";
 import { bootstrapNasRestore } from "./lib/nasBootstrapRestore";
+import { enforceSafeAvatarDataUrl } from "./lib/avatarSafe";
 import BottomNav from "./components/BottomNav";
 
 import AuthStart from "./pages/AuthStart";
@@ -3130,17 +3131,7 @@ case "babyfoot_team_edit":
         break;
 
       case "killer_play": {
-        const cfg = routeParams?.config;
-        if (!cfg) {
-          page = (
-            <div style={{ padding: 16 }}>
-              <button onClick={() => go("killer_config")}>← Retour</button>
-              <p>Configuration KILLER manquante.</p>
-            </div>
-          );
-          break;
-        }
-        page = <KillerPlay store={store} go={go} config={cfg} onFinish={(m: any) => pushHistory(m)} />;
+        page = <KillerPlayRoute store={store} go={go} routeParams={routeParams} onFinish={(m: any) => pushHistory(m)} />;
         break;
       }
 
@@ -3271,13 +3262,15 @@ case "babyfoot_team_edit":
           async function handleSaveAvatarBot({ pngDataUrl, name }: { pngDataUrl: string; name: string }) {
             if (!targetBot) return go(backTo);
 
+            const safeAvatarDataUrl = await enforceSafeAvatarDataUrl(pngDataUrl).catch(() => null);
+
             const next = bots.slice();
             const idx = next.findIndex((b) => b.id === targetBot.id);
 
             const updated: BotLS = {
               ...targetBot,
               name: name?.trim() || targetBot.name,
-              avatarDataUrl: pngDataUrl,
+              avatarDataUrl: safeAvatarDataUrl ?? targetBot.avatarDataUrl ?? null,
             };
 
             if (idx >= 0) next[idx] = updated;
@@ -3659,6 +3652,138 @@ function AppGate({ go, tab, children }: { go: (t: any, p?: any) => void; tab: an
 /* ---------- ROOT PROVIDERS ---------- */
 
 // =====================================================
+function KillerPlayRoute({
+  store,
+  go,
+  routeParams,
+  onFinish,
+}: {
+  store: any;
+  go: (name: any, params?: any) => void;
+  routeParams: any;
+  onFinish: (m: any) => void;
+}) {
+  const directCfg = routeParams?.config || null;
+  const resumeId = routeParams?.resumeId ? String(routeParams.resumeId) : (directCfg?.resumeId ? String(directCfg.resumeId) : null);
+  const [loading, setLoading] = React.useState<boolean>(!directCfg && !!resumeId);
+  const [cfg, setCfg] = React.useState<any | null>(directCfg || null);
+  const [error, setError] = React.useState<string | null>(null);
+
+  React.useEffect(() => {
+    let cancelled = false;
+    if (directCfg) {
+      setCfg(directCfg);
+      setLoading(false);
+      setError(null);
+      return;
+    }
+    if (!resumeId) {
+      setCfg(null);
+      setLoading(false);
+      setError("Configuration KILLER manquante.");
+      return;
+    }
+    (async () => {
+      try {
+        setLoading(true);
+        const rec: any = await History.get(resumeId);
+        const payload: any = rec?.payload || null;
+        const state: any = payload?.state || rec?.resume?.state || null;
+        const savedResumeCfg: any =
+          payload?.resumeConfig ||
+          payload?.meta?.resumeConfig ||
+          payload?.state?.resumeConfig ||
+          rec?.resume?.resumeConfig ||
+          rec?.resume?.meta?.resumeConfig ||
+          rec?.resume?.state?.resumeConfig ||
+          rec?.meta?.resumeConfig ||
+          rec?.resumeConfig ||
+          null;
+
+        let nextCfg: any =
+          payload?.config ||
+          rec?.resume?.config ||
+          rec?.config ||
+          savedResumeCfg ||
+          null;
+
+        if (!nextCfg && state && Array.isArray(state.players) && state.players.length > 0) {
+          nextCfg = {
+            id: `killer-resume-${resumeId}`,
+            mode: "killer",
+            createdAt: rec?.createdAt || Date.now(),
+            lives: Number(payload?.summary?.livesStart || rec?.summary?.livesStart || state.players?.[0]?.lives || 3) || 3,
+            becomeRule: savedResumeCfg?.becomeRule || payload?.summary?.becomeRule || rec?.summary?.becomeRule || "single",
+            damageRule: savedResumeCfg?.damageRule || payload?.summary?.damageRule || rec?.summary?.damageRule || "multiplier",
+            numberAssignMode: savedResumeCfg?.numberAssignMode || "throw",
+            randomStartOrder: !!savedResumeCfg?.randomStartOrder,
+            selfHitWhileKiller: savedResumeCfg?.selfHitWhileKiller ?? true,
+            selfHitUsesMultiplier: savedResumeCfg?.selfHitUsesMultiplier ?? true,
+            lifeSteal: !!savedResumeCfg?.lifeSteal,
+            blindKiller: !!savedResumeCfg?.blindKiller,
+            bullSplash: !!savedResumeCfg?.bullSplash,
+            bullHeal: !!savedResumeCfg?.bullHeal,
+            shieldOnDBull: !!savedResumeCfg?.shieldOnDBull,
+            shieldTurns: Number(savedResumeCfg?.shieldTurns || 1) || 1,
+            selectBonusShield: !!savedResumeCfg?.selectBonusShield,
+            missAutoHit: !!savedResumeCfg?.missAutoHit,
+            resurrectionMode: savedResumeCfg?.resurrectionMode || "off",
+            resurrectionLives: Number(savedResumeCfg?.resurrectionLives || 1) || 1,
+            players: (state.players || []).map((p: any) => ({
+              id: p.id,
+              name: p.name,
+              avatarDataUrl: p.avatarDataUrl ?? null,
+              isBot: !!p.isBot,
+              botLevel: p.botLevel ?? "",
+              number: Number(p.number || 0) || 0,
+            })),
+          };
+        }
+
+        if (!nextCfg) {
+          throw new Error("killer-config-missing");
+        }
+
+        nextCfg = {
+          ...nextCfg,
+          resumeId,
+          __resumeState: state || null,
+        };
+
+        if (!cancelled) {
+          setCfg(nextCfg);
+          setError(null);
+        }
+      } catch {
+        if (!cancelled) {
+          setCfg(null);
+          setError("Cette partie KILLER a été sauvegardée sans configuration exploitable. Impossible de reprendre.");
+        }
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [directCfg, resumeId]);
+
+  if (loading) {
+    return <div style={{ padding: 16 }}>Chargement de la partie KILLER…</div>;
+  }
+
+  if (!cfg) {
+    return (
+      <div style={{ padding: 16 }}>
+        <button onClick={() => go("killer_config")}>← Retour</button>
+        <p>{error || "Configuration KILLER manquante."}</p>
+      </div>
+    );
+  }
+
+  return <KillerPlay store={store} go={go} config={cfg} onFinish={onFinish} />;
+}
+
 // X01 V3 — Route de reprise depuis Historique
 // - Autorise /x01_play_v3 même si x01ConfigV3 absent
 // - Charge History.get(resumeId) => payload.config + payload.darts

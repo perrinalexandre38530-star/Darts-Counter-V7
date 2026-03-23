@@ -417,6 +417,61 @@ async function purgeSWAndCachesOnce() {
 /* ============================================================
    UI boot screens
 ============================================================ */
+function appRepairInlineScript() {
+  return `(async function(){
+    try { localStorage.setItem("dc_safe_mode_v1","1"); } catch {}
+    try {
+      [
+        "dc-history-v1",
+        "dc_last_store_size_v1",
+        "dc_memory_diag_v1",
+        "dc_last_memory_warning_v1",
+        "dc_last_runtime_error_v1",
+        "dc_last_boot_crash_v1",
+        "dc_last_chunk_error_v1",
+        "dc_force_purge_sw",
+        "dc_sw_purge_once_v1",
+        "dc_dyn_import_fail_count_v1",
+        "dc_dyn_import_recover_once_v1",
+        "dc_last_crash_report_v1",
+        "dc_resume_index_v1",
+        "dc_current_match_v1",
+        "dc_bots_v1",
+        "dc_dart_sets_v1"
+      ].forEach((k) => { try { localStorage.removeItem(k); } catch {} });
+    } catch {}
+    try { sessionStorage.clear(); } catch {}
+    try {
+      await Promise.all([
+        "darts-counter-v5",
+        "dc-store-v1",
+        "dc-events-v1",
+        "dc_kv",
+        "dc-indexeddb",
+        "dc_tournaments_db_v1"
+      ].map((name) => new Promise((resolve) => {
+        try {
+          const req = indexedDB.deleteDatabase(name);
+          req.onsuccess = req.onerror = req.onblocked = () => resolve(true);
+        } catch { resolve(true); }
+      })));
+    } catch {}
+    try {
+      if ("serviceWorker" in navigator) {
+        const regs = await navigator.serviceWorker.getRegistrations();
+        await Promise.all(regs.map((r) => r.unregister().catch(() => {})));
+      }
+    } catch {}
+    try {
+      if (typeof caches !== "undefined" && caches.keys) {
+        const keys = await caches.keys();
+        await Promise.all(keys.map((k) => caches.delete(k)));
+      }
+    } catch {}
+    location.reload();
+  })();`;
+}
+
 function bootScreen(title: string, msg: string) {
   const el = document.getElementById("root") || document.body;
   el.innerHTML = `
@@ -437,6 +492,15 @@ function bootScreen(title: string, msg: string) {
         background:linear-gradient(180deg,#ffc63a,#ffaf00);
         color:#1b1508;
         cursor:pointer;">Recharger (mode normal)</button>
+      <button onclick="${appRepairInlineScript()}" style="
+        margin-top:10px; margin-left:8px;
+        border-radius:999px;
+        padding:10px 12px;
+        border:none;
+        font-weight:900;
+        background:linear-gradient(180deg,#ff8d8d,#ff5252);
+        color:#2a0e0e;
+        cursor:pointer;">Réparer le stockage local</button>
     </div>
   `;
 }
@@ -495,6 +559,24 @@ function bootCrashScreen(payload: any) {
         background:linear-gradient(180deg,#ffc63a,#ffaf00);
         color:#1b1508;
         cursor:pointer;">Recharger</button>
+      <button onclick="localStorage.setItem('dc_safe_mode_v1','1');location.reload()" style="
+        margin-top:10px; margin-left:8px;
+        border-radius:999px;
+        padding:10px 12px;
+        border:none;
+        font-weight:900;
+        background:linear-gradient(180deg,#ff8d8d,#ff5252);
+        color:#2a0e0e;
+        cursor:pointer;">Forcer le safe mode</button>
+      <button onclick="${appRepairInlineScript()}" style="
+        margin-top:10px; margin-left:8px;
+        border-radius:999px;
+        padding:10px 12px;
+        border:none;
+        font-weight:900;
+        background:linear-gradient(180deg,#ff8d8d,#ff5252);
+        color:#2a0e0e;
+        cursor:pointer;">Réparer le stockage local</button>
     </div>
   `;
 }

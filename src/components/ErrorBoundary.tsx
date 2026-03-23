@@ -1,5 +1,6 @@
 import React from "react";
 import { captureCrash, copyCrashReport, formatCrashReportText, type CrashReport } from "../lib/crashReporter";
+import { repairApplication, safeModeReload } from "../lib/appRecovery";
 
 type State = {
   hasError: boolean;
@@ -58,20 +59,33 @@ export default class ErrorBoundary extends React.Component<any, State> {
           <button onClick={() => location.reload()} style={buttonStyle("amber")}>
             Recharger l'application
           </button>
+
+          <button onClick={() => safeModeReload()} style={buttonStyle("danger")}>
+            🧯 Redémarrer en safe mode
+          </button>
+
+          <button onClick={() => { void repairApplication(); }} style={buttonStyle("danger")}>
+            🛠️ Réparer le stockage local
+          </button>
         </div>
       </div>
     );
   }
 }
 
-function buttonStyle(kind: "plain" | "amber"): React.CSSProperties {
+function buttonStyle(kind: "plain" | "amber" | "danger"): React.CSSProperties {
   return {
     marginTop: 10,
     padding: "10px 16px",
     borderRadius: 999,
     border: kind === "plain" ? "1px solid rgba(255,255,255,.2)" : "none",
     fontWeight: 800,
-    background: kind === "plain" ? "rgba(255,255,255,.08)" : "#ffc63a",
+    background:
+      kind === "danger"
+        ? "linear-gradient(180deg,#ff8d8d,#ff5252)"
+        : kind === "plain"
+        ? "rgba(255,255,255,.08)"
+        : "#ffc63a",
     color: kind === "plain" ? "#fff" : "#1b1508",
     cursor: "pointer",
   };

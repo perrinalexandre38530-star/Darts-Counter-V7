@@ -753,7 +753,7 @@ export default function Profiles({
   }
 
   async function changeAvatar(id: string, file: File) {
-    const dataUrl = await read(file);
+    const dataUrl = await fileToSafeAvatarDataUrl(file);
     const now = Date.now();
   
     // ✅ 0) Cache dédié ANTI-OVERWRITE

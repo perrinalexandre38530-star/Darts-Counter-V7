@@ -8,103 +8,113 @@ import type { Store } from "../types";
 import { getAllDartSets, setAllDartSets } from "../dartSetsStore";
 
 function getAppVersion(): string {
-  // Option A (Vite): define import.meta.env.VITE_APP_VERSION
   const v = (import.meta as any)?.env?.VITE_APP_VERSION;
   if (typeof v === "string" && v.trim()) return v;
-
-  // Option B: fallback
   return "unknown";
+}
+
+function maybeStripHugeDataUrl(v: unknown) {
+  if (typeof v !== "string") return v;
+  return v.length > 120_000 ? "" : v;
+}
+
+function slimProfile(p: any) {
+  if (!p || typeof p !== "object") return p;
+  const next = { ...p } as any;
+
+  if (typeof next.avatarDataUrl === "string") {
+    next.avatarDataUrl = maybeStripHugeDataUrl(next.avatarDataUrl);
+  }
+  if (typeof next.avatar === "string") {
+    next.avatar = maybeStripHugeDataUrl(next.avatar);
+  }
+
+  return next;
+}
+
+function slimDartset(d: any) {
+  if (!d || typeof d !== "object") return d;
+  const next = { ...d } as any;
+
+  if (typeof next.imageDataUrl === "string") {
+    next.imageDataUrl = maybeStripHugeDataUrl(next.imageDataUrl);
+  }
+  if (typeof next.photoDataUrl === "string") {
+    next.photoDataUrl = maybeStripHugeDataUrl(next.photoDataUrl);
+  }
+
+  return next;
+}
+
+async function yieldToUi() {
+  try {
+    await new Promise<void>((r) => setTimeout(r, 0));
+  } catch {}
+}
+
+async function stringifyInWorker(obj: any): Promise<string> {
+  return await new Promise<string>((resolve, reject) => {
+    try {
+      const workerCode = `self.onmessage = (e) => {
+  try {
+    const json = JSON.stringify(e.data);
+    self.postMessage({ ok: true, json });
+  } catch (err) {
+    const msg = (err && err.message) ? err.message : String(err);
+    self.postMessage({ ok: false, error: msg });
+  }
+};`;
+      const blob = new Blob([workerCode], { type: "application/javascript" });
+      const url = URL.createObjectURL(blob);
+      const w = new Worker(url);
+
+      const cleanup = () => {
+        try { w.terminate(); } catch {}
+        try { URL.revokeObjectURL(url); } catch {}
+      };
+
+      w.onmessage = (ev) => {
+        const d: any = (ev as any)?.data;
+        cleanup();
+        if (d?.ok && typeof d.json === "string") resolve(d.json);
+        else reject(new Error(d?.error || "Stringify failed"));
+      };
+
+      w.onerror = (err) => {
+        cleanup();
+        reject(err instanceof Error ? err : new Error("Worker error"));
+      };
+
+      w.postMessage(obj);
+    } catch (e) {
+      reject(e as any);
+    }
+  });
 }
 
 export async function exportCloudBackupAsJson(): Promise<{
   backupJson: string;
   backupObj: any;
 }> {
-  // This export can become *very* large, especially if profiles/dartsets embed
-  // base64 images (avatarDataUrl, photoDataUrl, etc.). Large JSON.stringify()
-  // can block the UI thread and look like a freeze.
-  //
-  // Strategy:
-  // - Yield once to allow UI to paint any "Export…" message.
-  // - Strip only *huge* embedded data URLs to keep exports reliable.
-  const yieldToUi = async () => {
-    try {
-      await new Promise<void>((r) => setTimeout(r, 0));
-    } catch {}
-  };
-
-  const stringifyInWorker = async (obj: any): Promise<string> => {
-    return await new Promise<string>((resolve, reject) => {
-      try {
-        const workerCode = `self.onmessage = (e) => {\n  try {\n    const json = JSON.stringify(e.data);\n    self.postMessage({ ok: true, json });\n  } catch (err) {\n    const msg = (err && err.message) ? err.message : String(err);\n    self.postMessage({ ok: false, error: msg });\n  }\n};`;
-        const blob = new Blob([workerCode], { type: "application/javascript" });
-        const url = URL.createObjectURL(blob);
-        const w = new Worker(url);
-        const cleanup = () => {
-          try { w.terminate(); } catch {}
-          try { URL.revokeObjectURL(url); } catch {}
-        };
-        w.onmessage = (ev) => {
-          const d: any = (ev as any)?.data;
-          cleanup();
-          if (d?.ok && typeof d.json === "string") resolve(d.json);
-          else reject(new Error(d?.error || "Stringify failed"));
-        };
-        w.onerror = (err) => {
-          cleanup();
-          reject(err instanceof Error ? err : new Error("Worker error"));
-        };
-        w.postMessage(obj);
-      } catch (e) {
-        reject(e as any);
-      }
-    });
-  };
-
-
-  const maybeStripHugeDataUrl = (v: unknown) => {
-    if (typeof v !== "string") return v;
-    // Keep small images; strip only very large base64 payloads.
-    // 120k chars ~ 90KB base64 (enough for a usable avatar).
-    return v.length > 120_000 ? "" : v;
-  };
-
-  const slimProfile = (p: any) => {
-    if (!p || typeof p !== "object") return p;
-    if (typeof p.avatarDataUrl === "string") {
-      return { ...p, avatarDataUrl: maybeStripHugeDataUrl(p.avatarDataUrl) };
-    }
-    return p;
-  };
-
-  const slimDartset = (d: any) => {
-    if (!d || typeof d !== "object") return d;
-    if (typeof d.imageDataUrl === "string") {
-      return { ...d, imageDataUrl: maybeStripHugeDataUrl(d.imageDataUrl) };
-    }
-    if (typeof d.photoDataUrl === "string") {
-      return { ...d, photoDataUrl: maybeStripHugeDataUrl(d.photoDataUrl) };
-    }
-    return d;
-  };
-
-  // ✅ Source de vérité :
-  // - History (IndexedDB)
-  // - Store (profils)
-  // - dartSetsStore (localStorage) + mirror store.dartSets
-
   const [history, storeAny] = await Promise.all([
     History.list?.() ?? [],
     loadStore<any>().catch(() => null),
   ]);
 
   const localProfiles = ((storeAny?.profiles ?? []) as any[]).map(slimProfile);
-  const dartsets = (((storeAny as any)?.dartSets ?? getAllDartSets()) as any[]).map(slimDartset);
 
-  // ✅ Best-effort: remet dartSetsStore en phase si store.dartSets est la source actuelle
+  const rawDartsets = Array.isArray((storeAny as any)?.dartSets)
+    ? (storeAny as any).dartSets
+    : getAllDartSets();
+
+  const dartsets = (Array.isArray(rawDartsets) ? rawDartsets : []).map(slimDartset);
+
   try {
-    if (Array.isArray((storeAny as any)?.dartSets)) setAllDartSets((storeAny as any).dartSets);
+    if (Array.isArray((storeAny as any)?.dartSets)) {
+      setAllDartSets((storeAny as any).dartSets);
+    }
   } catch {}
+
   try {
     if (storeAny && Array.isArray(dartsets)) {
       const st: any = { ...storeAny, dartSets: dartsets };
@@ -119,9 +129,14 @@ export async function exportCloudBackupAsJson(): Promise<{
     dartsets: Array.isArray(dartsets) ? dartsets : [],
   });
 
-  // Give the UI a chance to paint before the heavy stringify.
   await yieldToUi();
-  const needsWorkerStringify = (backup as any)?.history?.length > 1500;
-  const backupJson = needsWorkerStringify ? await stringifyInWorker(backup) : JSON.stringify(backup);
+
+  const needsWorkerStringify = Array.isArray((backup as any)?.history)
+    && (backup as any).history.length > 1500;
+
+  const backupJson = needsWorkerStringify
+    ? await stringifyInWorker(backup)
+    : JSON.stringify(backup);
+
   return { backupJson, backupObj: backup };
 }

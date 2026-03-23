@@ -89,6 +89,11 @@ export type KillerConfig = {
   resurrectionMode?: KillerResurrectionMode; // off | one_player_once | all_once | all
   resurrectionLives?: number; // 1..6
 
+  // ✅ Bouclier
+  shieldOnDBull?: boolean; // DBULL => bouclier
+  shieldTurns?: number; // durée en nombre de tours du joueur
+  selectBonusShield?: boolean; // bonus bouclier pendant l'attribution au lancer
+  missAutoHit?: boolean; // MISS => le joueur se retire 1 vie
 
   players: KillerConfigPlayer[];
 };
@@ -317,7 +322,7 @@ function uniqueKillerNumbers(selected: Record<string, number>) {
 
 // ------------------ Variants incompat matrix ------------------
 
-type VariantKey = "selfHitWhileKiller" | "selfHitUsesMultiplier" | "lifeSteal" | "blindKiller" | "bullSplash" | "bullHeal";
+type VariantKey = "selfHitWhileKiller" | "selfHitUsesMultiplier" | "lifeSteal" | "blindKiller" | "bullSplash" | "bullHeal" | "shieldOnDBull" | "selectBonusShield" | "missAutoHit";
 
 // ✅ règles validées
 const INCOMPATIBLE: Record<VariantKey, VariantKey[]> = {
@@ -327,6 +332,9 @@ const INCOMPATIBLE: Record<VariantKey, VariantKey[]> = {
   bullSplash: ["bullHeal"],
   bullHeal: ["bullSplash", "lifeSteal"],
   lifeSteal: ["bullHeal"],
+  shieldOnDBull: [],
+  selectBonusShield: [],
+  missAutoHit: [],
 };
 
 function getConflictReason(k: VariantKey, state: Record<VariantKey, boolean>) {
@@ -345,6 +353,9 @@ function getConflictReason(k: VariantKey, state: Record<VariantKey, boolean>) {
       blindKiller: "Blind Killer",
       bullSplash: "BULL = dégâts à tous",
       bullHeal: "BULL = soins",
+      shieldOnDBull: "DBULL = bouclier",
+      selectBonusShield: "Bonus bouclier au choix du numéro",
+      missAutoHit: "MISS = auto-hit",
     };
     return `Incompatible avec : ${bad.map((x) => names[x] || x).join(", ")}.`;
   }
@@ -440,6 +451,11 @@ export default function KillerConfigPage(props: Props) {
   const [bullSplash, setBullSplash] = React.useState<boolean>(false);
   const [bullHeal, setBullHeal] = React.useState<boolean>(false);
 
+  // ✅ Bouclier / variantes avancées
+  const [shieldOnDBull, setShieldOnDBull] = React.useState<boolean>(false);
+  const [shieldTurns, setShieldTurns] = React.useState<number>(1);
+  const [selectBonusShield, setSelectBonusShield] = React.useState<boolean>(false);
+  const [missAutoHit, setMissAutoHit] = React.useState<boolean>(false);
 
   // ✅ Résurrection
   const [resurrectionMode, setResurrectionMode] = React.useState<KillerResurrectionMode>("off");
@@ -475,10 +491,9 @@ export default function KillerConfigPage(props: Props) {
     blindKiller,
     bullSplash,
     bullHeal,
-
-      resurrectionMode,
-      resurrectionLives: clampInt(resurrectionLives, 1, 6, 1),
-
+    shieldOnDBull,
+    selectBonusShield,
+    missAutoHit,
   };
 
   function setVariant(k: VariantKey, v: boolean) {
@@ -494,6 +509,9 @@ export default function KillerConfigPage(props: Props) {
       if (k === "blindKiller") return setBlindKiller(false);
       if (k === "bullSplash") return setBullSplash(false);
       if (k === "bullHeal") return setBullHeal(false);
+      if (k === "shieldOnDBull") return setShieldOnDBull(false);
+      if (k === "selectBonusShield") return setSelectBonusShield(false);
+      if (k === "missAutoHit") return setMissAutoHit(false);
       return;
     }
 
@@ -506,6 +524,9 @@ export default function KillerConfigPage(props: Props) {
     if (toOff.includes("bullHeal")) setBullHeal(false);
     if (toOff.includes("bullSplash")) setBullSplash(false);
     if (toOff.includes("lifeSteal")) setLifeSteal(false);
+    if (toOff.includes("shieldOnDBull")) setShieldOnDBull(false);
+    if (toOff.includes("selectBonusShield")) setSelectBonusShield(false);
+    if (toOff.includes("missAutoHit")) setMissAutoHit(false);
 
     // dépendance : activer multiplier => force auto-pénalité
     if (k === "selfHitUsesMultiplier") {
@@ -529,6 +550,9 @@ export default function KillerConfigPage(props: Props) {
 
     if (k === "bullSplash") return setBullSplash(true);
     if (k === "bullHeal") return setBullHeal(true);
+    if (k === "shieldOnDBull") return setShieldOnDBull(true);
+    if (k === "selectBonusShield") return setSelectBonusShield(true);
+    if (k === "missAutoHit") return setMissAutoHit(true);
   }
 
   React.useEffect(() => {
@@ -665,6 +689,16 @@ export default function KillerConfigPage(props: Props) {
 
       bullSplash,
       bullHeal,
+
+      shieldOnDBull,
+      shieldTurns: clampInt(shieldTurns, 1, 5, 1),
+      selectBonusShield,
+      missAutoHit,
+
+      resurrectionMode,
+      resurrectionEnabled: resurrectionMode !== "off",
+      resurrection: resurrectionMode !== "off",
+      resurrectionLives: clampInt(resurrectionLives, 1, 6, 1),
 
       players: finalPlayers,
     };
@@ -1331,7 +1365,78 @@ export default function KillerConfigPage(props: Props) {
                 disabled={isVariantDisabled("bullHeal", variantState) && !bullHeal}
                 disabledReason={getConflictReason("bullHeal", variantState)}
               />
-            
+                          <VariantRow
+                title="DBULL = bouclier"
+                desc="Si ON : toucher DBULL donne un bouclier temporaire. SBULL reste disponible pour les autres variantes BULL."
+                value={shieldOnDBull}
+                onChange={(v) => setVariant("shieldOnDBull", v)}
+                primary={primary}
+                primarySoft={primarySoft}
+                disabled={isVariantDisabled("shieldOnDBull", variantState) && !shieldOnDBull}
+                disabledReason={getConflictReason("shieldOnDBull", variantState)}
+              />
+
+              {shieldOnDBull && (
+                <div
+                  style={{
+                    marginTop: -2,
+                    marginLeft: 8,
+                    borderLeft: "2px solid rgba(94,234,212,0.35)",
+                    paddingLeft: 12,
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: 8,
+                  }}
+                >
+                  <div style={{ fontSize: 11, color: "#9fa4c0", fontWeight: 800 }}>
+                    Durée du bouclier (tours du joueur)
+                  </div>
+                  <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                    {[1, 2, 3, 4, 5].map((n) => (
+                      <PillButton
+                        key={`shield-turns-${n}`}
+                        label={`${n} tour${n > 1 ? "s" : ""}`}
+                        active={shieldTurns === n}
+                        onClick={() => setShieldTurns(n)}
+                        primary={primary}
+                        primarySoft={primarySoft}
+                        compact
+                      />
+                    ))}
+                  </div>
+                  <div style={{ fontSize: 10.5, color: "#7c80a0", lineHeight: 1.25 }}>
+                    Pendant le bouclier, le joueur ne subit pas les dégâts des attaques adverses ni du BULL splash.
+                  </div>
+                </div>
+              )}
+
+              <VariantRow
+                title="Bonus bouclier au choix du numéro"
+                desc="En mode “1er lancer = choisir son numéro” : D = bouclier 2 tours, T = 3 tours, BULL = choix libre + 2 tours, DBULL = choix libre + 3 tours."
+                value={selectBonusShield}
+                onChange={(v) => setVariant("selectBonusShield", v)}
+                primary={primary}
+                primarySoft={primarySoft}
+                disabled={numberAssignMode !== "throw" || (isVariantDisabled("selectBonusShield", variantState) && !selectBonusShield)}
+                disabledReason={
+                  numberAssignMode !== "throw"
+                    ? "Disponible uniquement avec “1er lancer = choisir son numéro”."
+                    : getConflictReason("selectBonusShield", variantState)
+                }
+              />
+
+              <VariantRow
+                title="MISS = auto-hit"
+                desc="Si ON : toute fléchette hors cible retire automatiquement 1 vie au joueur actif."
+                value={missAutoHit}
+                onChange={(v) => setVariant("missAutoHit", v)}
+                primary={primary}
+                primarySoft={primarySoft}
+                disabled={isVariantDisabled("missAutoHit", variantState) && !missAutoHit}
+                disabledReason={getConflictReason("missAutoHit", variantState)}
+              />
+
+
 
               <div
                 style={{

@@ -1,5 +1,6 @@
 import React from "react";
 import { captureCrash, copyCrashReport, formatCrashReportText, type CrashReport } from "../lib/crashReporter";
+import { repairApplication, safeModeReload } from "../lib/appRecovery";
 
 type Props = {
   children: React.ReactNode;
@@ -92,19 +93,32 @@ export default class AsyncGuard extends React.Component<Props, State> {
           <button onClick={() => window.location.reload()} style={btn("amber")}>
             Recharger
           </button>
+
+          <button onClick={() => safeModeReload()} style={btn("danger")}>
+            🧯 Safe mode
+          </button>
+
+          <button onClick={() => { void repairApplication(); }} style={btn("danger")}>
+            🛠️ Réparer
+          </button>
         </div>
       </div>
     );
   }
 }
 
-function btn(kind: "plain" | "amber"): React.CSSProperties {
+function btn(kind: "plain" | "amber" | "danger"): React.CSSProperties {
   return {
     borderRadius: 999,
     padding: "10px 12px",
     border: kind === "plain" ? "1px solid rgba(255,255,255,.2)" : "none",
     fontWeight: 900,
-    background: kind === "plain" ? "rgba(255,255,255,.08)" : "linear-gradient(180deg,#ffc63a,#ffaf00)",
+    background:
+      kind === "danger"
+        ? "linear-gradient(180deg,#ff8d8d,#ff5252)"
+        : kind === "plain"
+        ? "rgba(255,255,255,.08)"
+        : "linear-gradient(180deg,#ffc63a,#ffaf00)",
     color: kind === "plain" ? "#fff" : "#1b1508",
     cursor: "pointer",
   };

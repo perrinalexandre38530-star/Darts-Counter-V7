@@ -6,15 +6,9 @@ import {
   getLastCrashReport,
   type CrashReport,
 } from "../lib/crashReporter";
+import { repairApplication, safeModeReload } from "../lib/appRecovery";
 
 type CrashState = { report: CrashReport | null; copied: boolean };
-
-function activateSafeModeAndReload() {
-  try {
-    localStorage.setItem("dc_safe_mode_v1", "1");
-  } catch {}
-  window.location.reload();
-}
 
 export default class CrashCatcher extends React.Component<
   { children: React.ReactNode },
@@ -96,8 +90,12 @@ export default class CrashCatcher extends React.Component<
             🔄 Recharger
           </button>
 
-          <button onClick={activateSafeModeAndReload} style={btnStyle("danger")}>
+          <button onClick={() => safeModeReload()} style={btnStyle("danger")}>
             🧯 Safe mode
+          </button>
+
+          <button onClick={() => { void repairApplication(); }} style={btnStyle("danger")}>
+            🛠️ Réparer
           </button>
         </div>
       </div>

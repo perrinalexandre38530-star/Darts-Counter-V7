@@ -345,6 +345,8 @@ const DB_NAME = "dc-store-v1";
 const DB_VER = 2; // ⬅ bump pour index by_updatedAt
 const STORE = "history";
 const MAX_ROWS = 400;
+const MAX_CACHE_ROWS = 200;
+const LIST_PAYLOAD_KINDS = new Set(["cricket"]); // payload décodé seulement si vraiment utile
 
 // =========================
 // ✅ PATCH CRITICAL — JSON parse SAFE (ANTI-FREEZE + JSONC)
@@ -1192,8 +1194,8 @@ export async function list(): Promise<SavedMatch[]> {
       const r: any = r0;
       if (!r) continue;
 
-      const isCricket = String(r?.kind || "") === "cricket";
-      const payload = isCricket
+      const shouldDecodePayload = LIST_PAYLOAD_KINDS.has(String(r?.kind || ""));
+      const payload = shouldDecodePayload
         ? decodePayloadCompressedBestEffort(r.payloadCompressed, {
             id: String(r?.id ?? r?.matchId ?? "?"),
             stage: "list",
@@ -1316,6 +1318,153 @@ export async function get(id: string): Promise<SavedMatch | null> {
     const hit = rows.find((r) => r.id === id || r.matchId === id) || null;
     return hit ? (normalizeHistoryRow(hit as any) as SavedMatch) : null;
   }
+}
+
+
+function _toLightHistoryRow(rec: any): SavedMatch {
+  const out: any = normalizeHistoryRow({ ...(rec || {}) });
+  delete out.payloadCompressed;
+
+  // Pour les listes / cache, on garde un resume minimal sans grosses séquences
+  if (out.resume && typeof out.resume === "object") {
+    const resume = { ...(out.resume || {}) };
+    if (Array.isArray(resume.darts)) {
+      resume.darts = resume.darts.slice(-30);
+    }
+    out.resume = resume;
+  }
+
+  return out as SavedMatch;
+}
+
+async function _readRowsLightFromIdb(): Promise<SavedMatch[]> {
+  await migrateFromLocalStorageOnce();
+
+  const rows: any[] = await withStore("readonly", async (st) => {
+    const readWithIndex = async () =>
+      await new Promise<any[]>((resolve, reject) => {
+        try {
+          // @ts-ignore
+          const hasIndex = st.indexNames && st.indexNames.contains("by_updatedAt");
+          if (!hasIndex) throw new Error("no_index");
+          const ix = st.index("by_updatedAt");
+          const req = ix.openCursor(undefined, "prev");
+          const out: any[] = [];
+          let n = 0;
+          req.onsuccess = () => {
+            const cur = req.result as IDBCursorWithValue | null;
+            if (cur) {
+              const v = cur.value || {};
+              out.push({
+                ...v,
+                payloadCompressed: undefined, // on ne remonte jamais ce champ dans le cache léger
+              });
+              n++;
+              if (n % 200 === 0) setTimeout(() => cur.continue(), 0);
+              else cur.continue();
+            } else resolve(out);
+          };
+          req.onerror = () => reject(req.error);
+        } catch (e) {
+          reject(e);
+        }
+      });
+
+    const readWithoutIndex = async () =>
+      await new Promise<any[]>((resolve, reject) => {
+        const req = st.openCursor();
+        const out: any[] = [];
+        let n = 0;
+        req.onsuccess = () => {
+          const cur = req.result as IDBCursorWithValue | null;
+          if (cur) {
+            const v = cur.value || {};
+            out.push({
+              ...v,
+              payloadCompressed: undefined,
+            });
+            n++;
+            if (n % 200 === 0) setTimeout(() => cur.continue(), 0);
+            else cur.continue();
+          } else {
+            out.sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
+            resolve(out);
+          }
+        };
+        req.onerror = () => reject(req.error);
+      });
+
+    try {
+      return await readWithIndex();
+    } catch {
+      return await readWithoutIndex();
+    }
+  });
+
+  const byMatch = new Map<string, any>();
+  for (const r0 of rows || []) {
+    const r: any = r0;
+    if (!r) continue;
+    let key = getCanonicalMatchId(r) ?? String(r?.matchId ?? "");
+    if (!key) key = String(r?.id ?? "");
+    if (!key) continue;
+
+    const existing = byMatch.get(key);
+    const tNew = Number(r?.updatedAt ?? r?.createdAt ?? 0);
+    const out = _toLightHistoryRow({ ...r, id: key, matchId: key });
+    if (Array.isArray(out.players)) out.players = stripAvatarDataFromPlayers(out.players) || [];
+
+    if (!existing) {
+      byMatch.set(key, out);
+    } else {
+      const tOld = Number(existing?.updatedAt ?? existing?.createdAt ?? 0);
+      if (tNew >= tOld) byMatch.set(key, out);
+    }
+  }
+
+  return Array.from(byMatch.values())
+    .filter(isHistoryRowUsable)
+    .map((r: any) => normalizeHistoryRow(r)) as SavedMatch[];
+}
+
+type _TrimRow = { id: string; updatedAt?: number; createdAt?: number; status?: string; conflictOf?: string | null };
+
+function _computeTrimIds(rows: _TrimRow[], keepIds: string[] = []): string[] {
+  const uniqKeep = new Set((keepIds || []).filter(Boolean).map(String));
+  if (!Array.isArray(rows) || rows.length <= MAX_ROWS) return [];
+
+  const sorted = [...rows].sort((a, b) => Number(b?.updatedAt || b?.createdAt || 0) - Number(a?.updatedAt || a?.createdAt || 0));
+  const overflow = sorted.length - MAX_ROWS;
+  if (overflow <= 0) return [];
+
+  const isProtected = (r: _TrimRow) =>
+    uniqKeep.has(String(r?.id || "")) ||
+    String(r?.status || "") === "in_progress" ||
+    !!r?.conflictOf;
+
+  const deletable = sorted.filter((r) => !isProtected(r)).reverse(); // plus vieux d'abord
+  const picked: string[] = [];
+  for (const r of deletable) {
+    if (picked.length >= overflow) break;
+    if (!r?.id) continue;
+    picked.push(String(r.id));
+  }
+
+  if (picked.length >= overflow) return picked;
+
+  // Dernier recours: si la DB contient trop d'éléments protégés, on complète avec les plus vieux,
+  // mais on n'efface jamais l'élément en cours d'upsert.
+  const fallback = sorted
+    .filter((r) => !uniqKeep.has(String(r?.id || "")) && !picked.includes(String(r?.id || "")))
+    .reverse();
+
+  for (const r of fallback) {
+    if (picked.length >= overflow) break;
+    if (!r?.id) continue;
+    picked.push(String(r.id));
+  }
+
+  return picked;
 }
 
 /* =========================
@@ -1616,21 +1765,24 @@ export async function upsert(rec: SavedMatch): Promise<void> {
     await withStore("readwrite", async (st) => {
       // Trim MAX_ROWS
       await new Promise<void>((resolve, reject) => {
-        const doTrim = (keys: string[]) => {
-          if (keys.length > MAX_ROWS) {
-            const toDelete = keys.slice(MAX_ROWS);
-            let pending = toDelete.length;
-            if (!pending) return resolve();
-            toDelete.forEach((k) => {
-              const del = st.delete(k);
-              del.onsuccess = () => {
-                if (--pending === 0) resolve();
-              };
-              del.onerror = () => {
-                if (--pending === 0) resolve();
-              };
-            });
-          } else resolve();
+        const doTrim = (rows: _TrimRow[]) => {
+          const toDelete = _computeTrimIds(
+            rows,
+            [String(safe.id)]
+          );
+
+          let pending = toDelete.length;
+          if (!pending) return resolve();
+
+          toDelete.forEach((k) => {
+            const del = st.delete(k);
+            del.onsuccess = () => {
+              if (--pending === 0) resolve();
+            };
+            del.onerror = () => {
+              if (--pending === 0) resolve();
+            };
+          });
         };
 
         try {
@@ -1639,26 +1791,55 @@ export async function upsert(rec: SavedMatch): Promise<void> {
           if (hasIndex) {
             const ix = st.index("by_updatedAt");
             const req = ix.openCursor(undefined, "prev");
-            const keys: string[] = [];
+            const rows: _TrimRow[] = [];
             req.onsuccess = () => {
               const cur = req.result as IDBCursorWithValue | null;
               if (cur) {
-                keys.push(cur.primaryKey as string);
+                const v: any = cur.value || {};
+                rows.push({
+                  id: String(v?.id || cur.primaryKey || ""),
+                  updatedAt: v?.updatedAt,
+                  createdAt: v?.createdAt,
+                  status: v?.status,
+                  conflictOf: v?.conflictOf ?? null,
+                });
                 cur.continue();
-              } else doTrim(keys);
+              } else {
+                rows.unshift({
+                  id: String(safe.id),
+                  updatedAt: safe.updatedAt,
+                  createdAt: safe.createdAt,
+                  status: safe.status,
+                  conflictOf: (safe as any)?.conflictOf ?? null,
+                });
+                doTrim(rows);
+              }
             };
             req.onerror = () => reject(req.error);
           } else {
             const req = st.openCursor();
-            const rows: any[] = [];
+            const rows: _TrimRow[] = [];
             req.onsuccess = () => {
               const cur = req.result as IDBCursorWithValue | null;
               if (cur) {
-                rows.push(cur.value);
+                const v: any = cur.value || {};
+                rows.push({
+                  id: String(v?.id || cur.primaryKey || ""),
+                  updatedAt: v?.updatedAt,
+                  createdAt: v?.createdAt,
+                  status: v?.status,
+                  conflictOf: v?.conflictOf ?? null,
+                });
                 cur.continue();
               } else {
-                rows.sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
-                doTrim(rows.map((r) => r.id));
+                rows.unshift({
+                  id: String(safe.id),
+                  updatedAt: safe.updatedAt,
+                  createdAt: safe.createdAt,
+                  status: safe.status,
+                  conflictOf: (safe as any)?.conflictOf ?? null,
+                });
+                doTrim(rows);
               }
             };
             req.onerror = () => reject(req.error);
@@ -2056,13 +2237,26 @@ function _saveCache() {
 
 async function _hydrateCacheFromList() {
   try {
-    const rows = await list();
-    __cache = rows.map((r: any) => {
-      const { payload, ...lite } = r || {};
-      return normalizeHistoryRow(lite as any);
-    });
+    const rows = await _readRowsLightFromIdb();
+    __cache = rows
+      .map((r: any) => {
+        const { payload, ...lite } = r || {};
+        return normalizeHistoryRow(lite as any);
+      })
+      .slice(0, MAX_CACHE_ROWS);
     _saveCache();
-  } catch {}
+  } catch {
+    try {
+      const rows = await list();
+      __cache = rows
+        .map((r: any) => {
+          const { payload, ...lite } = r || {};
+          return normalizeHistoryRow(lite as any);
+        })
+        .slice(0, MAX_CACHE_ROWS);
+      _saveCache();
+    } catch {}
+  }
 }
 
 function _applyUpsertToCache(rec: SavedMatch) {
@@ -2070,7 +2264,7 @@ function _applyUpsertToCache(rec: SavedMatch) {
   const { payload, ...lite0 } = (rec as any) || {};
   const lite = normalizeHistoryRow({ ...lite0, id: String(cid), matchId: String(cid) } as any) as _LightRow;
   __cache = [lite, ...__cache.filter((r) => r.id !== lite.id)];
-  if (__cache.length > MAX_ROWS) __cache.length = MAX_ROWS;
+  if (__cache.length > MAX_CACHE_ROWS) __cache.length = MAX_CACHE_ROWS;
   _saveCache();
 }
 
@@ -2120,10 +2314,12 @@ export async function getX01(id: string): Promise<SavedMatch | null> {
 export const History = {
   async list() {
     const rows = await list();
-    __cache = rows.map((r: any) => {
-      const { payload, ...lite } = r || {};
-      return lite;
-    });
+    __cache = rows
+      .map((r: any) => {
+        const { payload, ...lite } = r || {};
+        return lite;
+      })
+      .slice(0, MAX_CACHE_ROWS);
     _saveCache();
     return rows;
   },

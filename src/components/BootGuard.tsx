@@ -1,5 +1,6 @@
 import React from "react";
 import { captureCrash, copyCrashReport, formatCrashReportText, type CrashReport } from "../lib/crashReporter";
+import { repairApplication, safeModeReload } from "../lib/appRecovery";
 
 export default function BootGuard({ children }: any) {
   const [bootError, setBootError] = React.useState<CrashReport | null>(null);
@@ -36,6 +37,8 @@ export default function BootGuard({ children }: any) {
             {copied ? "✅ Rapport copié" : "📋 Copier le rapport"}
           </button>
           <button onClick={() => window.location.reload()}>Recharger</button>
+          <button onClick={() => safeModeReload()}>🧯 Safe mode</button>
+          <button onClick={() => { void repairApplication(); }}>🛠️ Réparer</button>
         </div>
       </div>
     );

@@ -6,6 +6,7 @@ import {
   formatCrashReportText,
   type CrashReport,
 } from "../lib/crashReporter";
+import { repairApplication, safeModeReload } from "../lib/appRecovery";
 
 export default function MobileErrorOverlay() {
   const [report, setReport] = React.useState<CrashReport | null>(null);
@@ -85,16 +86,11 @@ export default function MobileErrorOverlay() {
         >
           {copied ? "✅ Copié" : "Copier"}
         </button>
-        <button
-          onClick={() => {
-            try {
-              localStorage.setItem("dc_safe_mode_v1", "1");
-            } catch {}
-            window.location.reload();
-          }}
-          style={btnStyle("danger")}
-        >
+        <button onClick={() => safeModeReload()} style={btnStyle("danger")}>
           Safe mode
+        </button>
+        <button onClick={() => { void repairApplication(); }} style={btnStyle("danger")}>
+          Réparer
         </button>
       </div>
 

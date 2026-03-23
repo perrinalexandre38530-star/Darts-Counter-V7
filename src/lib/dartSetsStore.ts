@@ -40,6 +40,38 @@ export interface DartSet {
 
 const STORAGE_KEY = "dc_dart_sets_v1";
 
+const MAX_DARTSET_IMAGE_DATA_URL_CHARS = 350_000;
+
+function sanitizeDartSetImageUrl(value: any): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const v = value.trim();
+  if (!v) return undefined;
+  if (!v.startsWith("data:image/")) return v;
+  if (v.length > MAX_DARTSET_IMAGE_DATA_URL_CHARS) return undefined;
+  return v;
+}
+
+function sanitizeDartSetForStorage(raw: any): any {
+  if (!raw || typeof raw !== "object") return raw;
+
+  const next: any = { ...raw };
+  const main = sanitizeDartSetImageUrl(next.mainImageUrl);
+  const thumb = sanitizeDartSetImageUrl(next.thumbImageUrl);
+
+  if (Object.prototype.hasOwnProperty.call(next, "mainImageUrl")) {
+    next.mainImageUrl = main || "";
+  }
+  if (Object.prototype.hasOwnProperty.call(next, "thumbImageUrl")) {
+    next.thumbImageUrl = thumb;
+  }
+
+  if (next.kind === "photo" && !next.mainImageUrl) {
+    next.kind = next.presetId ? "preset" : "plain";
+  }
+
+  return next;
+}
+
 // -------------------------------------------------------------
 // Helpers internes
 // -------------------------------------------------------------
@@ -63,12 +95,12 @@ function safeParse(json: string | null): DartSet[] {
       const presetId: string | undefined =
         typeof raw.presetId === "string" ? raw.presetId : undefined;
 
-      return {
+      return sanitizeDartSetForStorage({
         ...raw,
         scope,
         kind,
         presetId,
-      } as DartSet;
+      }) as DartSet;
     });
   } catch {
     return [];
@@ -76,10 +108,25 @@ function safeParse(json: string | null): DartSet[] {
 }
 
 function saveAll(list: DartSet[]) {
+  const sanitized = (Array.isArray(list) ? list : []).map((item) => sanitizeDartSetForStorage(item)) as DartSet[];
+
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(list));
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(sanitized));
   } catch (err) {
     console.warn("[dartSetsStore] saveAll error", err);
+
+    try {
+      const stripped = sanitized.map((item: any) => {
+        const next: any = { ...(item || {}) };
+        if (typeof next.mainImageUrl === "string" && next.mainImageUrl.startsWith("data:image/")) next.mainImageUrl = "";
+        if (typeof next.thumbImageUrl === "string" && next.thumbImageUrl.startsWith("data:image/")) next.thumbImageUrl = undefined;
+        if (next.kind === "photo") next.kind = next.presetId ? "preset" : "plain";
+        return next;
+      });
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(stripped));
+    } catch (fallbackErr) {
+      console.warn("[dartSetsStore] fallback saveAll error", fallbackErr);
+    }
   }
 
   // ✅ notify app + listeners
@@ -93,7 +140,7 @@ function saveAll(list: DartSet[]) {
   try {
     const w: any = window as any;
     if (w?.__appStore?.update) {
-      w.__appStore.update((st: any) => ({ ...(st || {}), dartSets: list }));
+      w.__appStore.update((st: any) => ({ ...(st || {}), dartSets: sanitized }));
     }
   } catch {}
 }
