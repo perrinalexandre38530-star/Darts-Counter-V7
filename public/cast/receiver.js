@@ -79,6 +79,10 @@ function getAvatarSrc(player) {
     player?.meta?.avatarUrl,
     player?.user?.avatarDataUrl,
     player?.user?.avatarUrl,
+    player?.avatar_path,
+    player?.photo_data_url,
+    player?.profile?.photoDataUrl,
+    player?.profile?.photo_url,
   ];
 
   for (const src of candidates) {
@@ -319,7 +323,6 @@ function renderSnapshot(payload) {
               <div class="active-left">
                 <div class="active-avatar-wrap">
                   ${avatarHtml(active, 136)}
-                  <div class="active-badge">Joueur<br>actif</div>
                 </div>
 
                 <div class="active-name">${esc(active?.name || "Joueur")}</div>

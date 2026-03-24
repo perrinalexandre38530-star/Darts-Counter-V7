@@ -365,16 +365,21 @@
       display:flex;
       flex-direction:column;
       justify-content:center;
-      align-items:flex-start;
+      align-items:center;
+      text-align:center;
       overflow:hidden;
+      box-shadow:
+        inset 0 1px 0 rgba(255,255,255,.03),
+        0 0 22px rgba(83,231,255,.08);
     }
 
     .score-label{
       font-size:18px;
       font-weight:900;
       opacity:.84;
-      margin-bottom:6px;
+      margin-bottom:10px;
       color:#d8faff;
+      text-shadow:0 0 12px rgba(83,231,255,.12);
     }
 
     .score-value{
@@ -382,12 +387,15 @@
       line-height:.88;
       font-weight:1000;
       letter-spacing:-.06em;
+      color:#fff6c9;
       text-shadow:
         0 10px 28px rgba(0,0,0,.30),
-        0 0 14px rgba(83,231,255,.06);
+        0 0 16px rgba(244,210,108,.16),
+        0 0 8px rgba(83,231,255,.10);
       white-space:nowrap;
       overflow:hidden;
       max-width:100%;
+      text-align:center;
     }
 
     .stats-grid{
