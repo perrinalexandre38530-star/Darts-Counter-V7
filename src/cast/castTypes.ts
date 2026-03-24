@@ -7,6 +7,20 @@ export type CastGameId =
   | "pingpong"
   | "unknown";
 
+export type CastPlayerStats = {
+  avg3d?: string | number;
+  bestVisit?: string | number;
+  hits?: number;
+  miss?: number;
+  simple?: number;
+  double?: number;
+  triple?: number;
+  bull?: number;
+  dbull?: number;
+  bust?: number;
+  totalThrows?: number;
+};
+
 export type CastPlayer = {
   id: string;
   name: string;
@@ -17,6 +31,7 @@ export type CastPlayer = {
   avatar?: string;
   photoUrl?: string;
   imageUrl?: string;
+  stats?: CastPlayerStats;
 };
 
 export type CastSnapshot = {

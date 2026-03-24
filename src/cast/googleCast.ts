@@ -52,6 +52,56 @@ function safeString(value: any) {
   }
 }
 
+
+function sanitizeNumberLike(value: any, fallback = 0) {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : fallback;
+}
+
+function sanitizeAvatarFields(player: any) {
+  const raw =
+    (typeof player?.avatarDataUrl === "string" && player.avatarDataUrl) ||
+    (typeof player?.avatarUrl === "string" && player.avatarUrl) ||
+    (typeof player?.avatar === "string" && player.avatar) ||
+    (typeof player?.photoUrl === "string" && player.photoUrl) ||
+    (typeof player?.imageUrl === "string" && player.imageUrl) ||
+    "";
+
+  const src = String(raw || "").trim();
+  if (!src) return { avatarDataUrl: "", avatarUrl: "" };
+
+  if (/^data:image\//i.test(src)) {
+    // Cast payloads break easily when avatars are duplicated or too large.
+    // Keep only reasonably sized embedded avatars.
+    if (src.length <= 120_000) return { avatarDataUrl: src, avatarUrl: "" };
+    pushDiag("sanitize_avatar_dropped_too_large", { size: src.length });
+    return { avatarDataUrl: "", avatarUrl: "" };
+  }
+
+  if (/^(https?:|blob:|\/)/i.test(src)) {
+    return { avatarDataUrl: "", avatarUrl: src };
+  }
+
+  return { avatarDataUrl: "", avatarUrl: "" };
+}
+
+function sanitizePlayerStats(player: any) {
+  const stats = player?.stats && typeof player.stats === "object" ? player.stats : {};
+  return {
+    avg3d: safeString(stats?.avg3d ?? stats?.avg3 ?? stats?.avg ?? "—"),
+    bestVisit: safeString(stats?.bestVisit ?? stats?.best ?? "—"),
+    hits: sanitizeNumberLike(stats?.hits ?? stats?.hitCount ?? 0),
+    miss: sanitizeNumberLike(stats?.miss ?? stats?.misses ?? 0),
+    simple: sanitizeNumberLike(stats?.simple ?? stats?.singles ?? 0),
+    double: sanitizeNumberLike(stats?.double ?? stats?.doubles ?? 0),
+    triple: sanitizeNumberLike(stats?.triple ?? stats?.triples ?? 0),
+    bull: sanitizeNumberLike(stats?.bull ?? stats?.bulls ?? 0),
+    dbull: sanitizeNumberLike(stats?.dbull ?? stats?.doubleBull ?? stats?.dbulls ?? 0),
+    bust: sanitizeNumberLike(stats?.bust ?? stats?.busts ?? 0),
+    totalThrows: sanitizeNumberLike(stats?.totalThrows ?? stats?.throws ?? stats?.attempts ?? 0),
+  };
+}
+
 function sanitizeSnapshot(snapshot: CastSnapshot) {
   try {
     return JSON.parse(
@@ -60,23 +110,18 @@ function sanitizeSnapshot(snapshot: CastSnapshot) {
         title: snapshot?.title || "",
         status: snapshot?.status || "live",
         players: Array.isArray(snapshot?.players)
-          ? snapshot.players.map((p: any) => ({
-              id: String(p?.id ?? ""),
-              name: String(p?.name ?? "Joueur"),
-              score: Number(p?.score ?? 0),
-              active: !!p?.active,
-              avatarDataUrl: typeof p?.avatarDataUrl === "string" ? p.avatarDataUrl : "",
-              avatarUrl:
-                typeof p?.avatarUrl === "string"
-                  ? p.avatarUrl
-                  : typeof p?.avatar === "string"
-                    ? p.avatar
-                    : typeof p?.photoUrl === "string"
-                      ? p.photoUrl
-                      : typeof p?.imageUrl === "string"
-                        ? p.imageUrl
-                        : "",
-            }))
+          ? snapshot.players.map((p: any) => {
+              const avatar = sanitizeAvatarFields(p);
+              return {
+                id: String(p?.id ?? ""),
+                name: String(p?.name ?? "Joueur"),
+                score: sanitizeNumberLike(p?.score ?? 0),
+                active: !!p?.active,
+                avatarDataUrl: avatar.avatarDataUrl,
+                avatarUrl: avatar.avatarUrl,
+                stats: sanitizePlayerStats(p),
+              };
+            })
           : [],
         meta:
           snapshot?.meta && typeof snapshot.meta === "object"

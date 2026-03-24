@@ -1345,14 +1345,11 @@ const activeTeam = React.useMemo(() => {
         : (players as any[]).map((p: any) => {
             const liveStats = (liveStatsByPlayer as any)?.[p.id] || {};
             const avatarSrc = resolveAvatar(p) || "";
-            return {
+            const castPlayer: any = {
               id: String(p.id),
               name: String(p.name || "Joueur"),
               score: Number((scores as any)?.[p.id] ?? config.startScore ?? 0),
               active: String(activePlayerId || "") === String(p.id),
-              avatarDataUrl: avatarSrc,
-              avatarUrl: avatarSrc,
-              avatar: avatarSrc,
               stats: {
                 avg3d: liveStats?.avg3d ?? liveStats?.avg3 ?? liveStats?.avg ?? "—",
                 bestVisit: liveStats?.bestVisit ?? liveStats?.best ?? "—",
@@ -1371,6 +1368,14 @@ const activeTeam = React.useMemo(() => {
                   ((liveStats?.hits ?? liveStats?.hitCount ?? 0) + (liveStats?.miss ?? liveStats?.misses ?? 0)),
               },
             };
+
+            if (/^data:image\//i.test(avatarSrc)) {
+              castPlayer.avatarDataUrl = avatarSrc;
+            } else if (avatarSrc) {
+              castPlayer.avatarUrl = avatarSrc;
+            }
+
+            return castPlayer;
           });
 
       const snapshot = {
@@ -1386,34 +1391,43 @@ const activeTeam = React.useMemo(() => {
         updatedAt: Date.now(),
       };
 
-      const timer = window.setTimeout(() => {
-        if (cancelled) return;
-        const castState = getGoogleCastState();
-        appendGoogleCastDiag("x01_snapshot_scheduled", {
-          mode: snapshot.game,
-          players: Array.isArray(snapshot.players) ? snapshot.players.length : 0,
-          status: snapshot.status,
-          castState: castState.castState,
-          isCasting: castState.isCasting,
-          device: castState.deviceName || "",
-        });
-        if (!castState.isCasting) {
-          appendGoogleCastDiag("x01_snapshot_skipped_no_session");
-          return;
-        }
-        Promise.resolve(sendCastSnapshot(snapshot))
-          .then((ok) =>
-            appendGoogleCastDiag(ok ? "x01_snapshot_sent" : "x01_snapshot_not_sent", {
-              players: Array.isArray(snapshot.players) ? snapshot.players.length : 0,
-              game: snapshot.game,
-            })
-          )
-          .catch((err) => appendGoogleCastDiag("x01_snapshot_throw", String(err)));
-      }, 180);
+      const timers: number[] = [];
+
+      const scheduleSend = (delay: number, attempt: string) => {
+        const timer = window.setTimeout(() => {
+          if (cancelled) return;
+          const castState = getGoogleCastState();
+          appendGoogleCastDiag("x01_snapshot_scheduled", {
+            attempt,
+            mode: snapshot.game,
+            players: Array.isArray(snapshot.players) ? snapshot.players.length : 0,
+            status: snapshot.status,
+            castState: castState.castState,
+            isCasting: castState.isCasting,
+            device: castState.deviceName || "",
+          });
+
+          Promise.resolve(sendCastSnapshot(snapshot))
+            .then((ok) =>
+              appendGoogleCastDiag(ok ? "x01_snapshot_sent" : "x01_snapshot_not_sent", {
+                attempt,
+                players: Array.isArray(snapshot.players) ? snapshot.players.length : 0,
+                game: snapshot.game,
+              })
+            )
+            .catch((err) => appendGoogleCastDiag("x01_snapshot_throw", { attempt, err: String(err) }));
+        }, delay);
+
+        timers.push(timer);
+      };
+
+      scheduleSend(180, "initial");
+      scheduleSend(650, "retry_1");
+      scheduleSend(1400, "retry_2");
 
       return () => {
         cancelled = true;
-        window.clearTimeout(timer);
+        timers.forEach((timer) => window.clearTimeout(timer));
       };
     } catch {
       return;
