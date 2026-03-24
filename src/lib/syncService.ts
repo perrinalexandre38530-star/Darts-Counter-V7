@@ -17,6 +17,40 @@ type CompressedBackupPayload = {
   };
 };
 
+function safeJsonParse<T = any>(value: any, fallback: T): T {
+  try {
+    if (value == null) return fallback;
+    if (typeof value !== "string") return value as T;
+    return JSON.parse(value) as T;
+  } catch {
+    return fallback;
+  }
+}
+
+async function getCurrentBackupOwnerId(): Promise<string> {
+  try {
+    const raw = localStorage.getItem("dc_online_auth_supabase_v1");
+    const auth = safeJsonParse<any>(raw, null);
+
+    const onlineId =
+      auth?.user?.id ||
+      auth?.session?.user?.id ||
+      auth?.profile?.id ||
+      auth?.id ||
+      null;
+
+    if (onlineId) return String(onlineId);
+  } catch {}
+
+  try {
+    const store = await loadStore();
+    const activeProfileId = (store as any)?.activeProfileId ?? null;
+    if (activeProfileId) return String(activeProfileId);
+  } catch {}
+
+  throw new Error("Impossible de déterminer le propriétaire du backup");
+}
+
 function getOrCreateDeviceId() {
   const existing = localStorage.getItem("dc_device_id");
   if (existing) return existing;
@@ -224,10 +258,12 @@ export async function pushFullBackupToNas() {
     snapshot = buildSlimBackupStore(store);
   }
 
+  const ownerId = await getCurrentBackupOwnerId();
   const compressedPayload = compressBackupPayload(snapshot);
 
   const payload = {
     id: crypto.randomUUID(),
+    ownerId,
     deviceId: getOrCreateDeviceId(),
     payload: compressedPayload,
   };
