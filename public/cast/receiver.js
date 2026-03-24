@@ -79,10 +79,6 @@ function getAvatarSrc(player) {
     player?.meta?.avatarUrl,
     player?.user?.avatarDataUrl,
     player?.user?.avatarUrl,
-    player?.avatar_path,
-    player?.photo_data_url,
-    player?.profile?.photoDataUrl,
-    player?.profile?.photo_url,
   ];
 
   for (const src of candidates) {
