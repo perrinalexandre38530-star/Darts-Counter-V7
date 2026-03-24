@@ -1435,72 +1435,222 @@ function buildSyntheticLegStats(playerId: string, wonLeg: boolean) {
   return { playerId, avg3, darts, visits, bestVisit, bestCheckout };
 }
 
-function syntheticDartsForTotal(total: number) {
+function padSyntheticDarts(darts: string[]) {
+  const out = Array.isArray(darts) ? darts.slice(0, 3) : [];
+  while (out.length < 3) out.push("MISS");
+  return out;
+}
+
+type SyntheticDart = { label: string; value: number; isCheckout: boolean };
+
+const SYNTHETIC_DARTS: SyntheticDart[] = (() => {
+  const base: SyntheticDart[] = [{ label: "MISS", value: 0, isCheckout: false }];
+  for (let n = 1; n <= 20; n++) {
+    base.push({ label: String(n), value: n, isCheckout: false });
+    base.push({ label: `D${n}`, value: n * 2, isCheckout: true });
+    base.push({ label: `T${n}`, value: n * 3, isCheckout: false });
+  }
+  base.push({ label: "BULL", value: 25, isCheckout: false });
+  base.push({ label: "DBULL", value: 50, isCheckout: true });
+
+  return base.sort((a, b) => {
+    if (b.value !== a.value) return b.value - a.value;
+    if (Number(b.isCheckout) !== Number(a.isCheckout)) return Number(b.isCheckout) - Number(a.isCheckout);
+    return a.label.localeCompare(b.label);
+  });
+})();
+
+const SYNTHETIC_FINISHERS = SYNTHETIC_DARTS.filter((d) => d.isCheckout);
+
+function findSyntheticCombo(total: number, requireCheckout: boolean) {
+  const target = Math.max(0, Math.min(180, Math.floor(Number(total) || 0)));
+  if (!target) return ["MISS", "MISS", "MISS"];
+
+  const finishers = requireCheckout ? SYNTHETIC_FINISHERS : SYNTHETIC_DARTS;
+
+  for (const d1 of SYNTHETIC_DARTS) {
+    for (const d2 of SYNTHETIC_DARTS) {
+      for (const d3 of finishers) {
+        if (d1.value + d2.value + d3.value !== target) continue;
+        const seq = [d1.label, d2.label, d3.label];
+        while (seq.length && seq[seq.length - 1] === "MISS") seq.pop();
+        const compact = seq.filter((x) => x !== "MISS");
+        return padSyntheticDarts(compact.length ? compact : ["MISS"]);
+      }
+    }
+  }
+
+  for (const d1 of SYNTHETIC_DARTS) {
+    for (const d2 of finishers) {
+      if (d1.value + d2.value !== target) continue;
+      return padSyntheticDarts([d1.label, d2.label].filter((x) => x !== "MISS"));
+    }
+  }
+
+  for (const d1 of finishers) {
+    if (d1.value === target) return padSyntheticDarts([d1.label]);
+  }
+
+  for (const d1 of SYNTHETIC_DARTS) {
+    for (const d2 of SYNTHETIC_DARTS) {
+      for (const d3 of SYNTHETIC_DARTS) {
+        if (d1.value + d2.value + d3.value !== target) continue;
+        const seq = [d1.label, d2.label, d3.label];
+        while (seq.length && seq[seq.length - 1] === "MISS") seq.pop();
+        const compact = seq.filter((x) => x !== "MISS");
+        return padSyntheticDarts(compact.length ? compact : ["MISS"]);
+      }
+    }
+  }
+
+  return padSyntheticDarts(["T20", "20", String(Math.max(1, Math.min(20, target - 80)))]);
+}
+
+function syntheticDartsForTotal(total: number, options?: { checkout?: boolean }) {
   const presets = [
     { total: 180, darts: ["T20", "T20", "T20"] },
     { total: 140, darts: ["T20", "T20", "20"] },
-    { total: 121, darts: ["T20", "11", "50"] },
+    { total: 121, darts: ["T20", "11", "BULL"] },
     { total: 120, darts: ["20", "T20", "20"] },
     { total: 100, darts: ["20", "T20", "20"] },
     { total: 95, darts: ["T19", "18", "20"] },
     { total: 81, darts: ["T19", "12", "12"] },
     { total: 60, darts: ["20", "20", "20"] },
     { total: 45, darts: ["15", "15", "15"] },
-    { total: 40, darts: ["D20"] },
-    { total: 32, darts: ["D16"] },
+    { total: 40, darts: ["D20", "MISS", "MISS"] },
+    { total: 32, darts: ["D16", "MISS", "MISS"] },
   ];
-  const exact = presets.find((x) => x.total === total);
-  if (exact) return exact.darts.slice();
-  if (total <= 40 && total % 2 === 0) return [`D${Math.max(1, Math.floor(total / 2))}`];
-  let remaining = Math.max(0, Math.floor(total));
-  const darts: string[] = [];
-  while (remaining > 0 && darts.length < 3) {
-    const take = Math.min(60, remaining);
-    if (take >= 57 && darts.length < 2) {
-      darts.push("T20");
-      remaining -= 60;
-    } else if (take >= 40 && remaining % 2 === 0 && darts.length === 2) {
-      darts.push(`D${Math.max(1, Math.floor(remaining / 2))}`);
-      remaining = 0;
-    } else {
-      const s = Math.min(20, remaining);
-      darts.push(String(s));
-      remaining -= s;
-    }
-  }
-  return darts.length ? darts : ["0"];
+  const exact = !options?.checkout ? presets.find((x) => x.total === total) : null;
+  if (exact) return padSyntheticDarts(exact.darts);
+  return findSyntheticCombo(total, !!options?.checkout);
 }
 
-function buildSyntheticVisits(playerId: string, stats: any, wonLeg: boolean) {
-  const visitsCount = Math.max(3, Number(stats?.visits || 5));
+function buildSyntheticVisits(playerId: string, stats: any, opts?: any) {
+  const rounds = Math.max(3, Math.floor(Number(opts?.rounds || stats?.visits || 5)));
+  const wonLeg = !!opts?.wonLeg;
+  const targetAvg = Math.max(36, Math.min(110, Math.round(Number(stats?.avg3 || 60))));
   let remain = 501;
   const rows: any[] = [];
-  for (let i = 0; i < visitsCount; i++) {
-    const last = i === visitsCount - 1;
+
+  for (let i = 0; i < rounds; i++) {
+    const last = i === rounds - 1;
+    const remainBefore = remain;
     let total = 0;
     let checkout = false;
+
     if (wonLeg && last) {
-      total = remain <= 170 ? remain : Math.min(remain, Number(stats?.bestCheckout || 40) || 40);
-      checkout = total > 1 && total === remain;
+      total = remain;
+      if (total > 170 || total <= 1) {
+        total = Math.max(2, Math.min(170, Number(stats?.bestCheckout || 40) || 40));
+        remain = total;
+      }
+      checkout = total === remain;
     } else {
-      const avgTarget = Math.max(30, Math.min(140, Math.round(Number(stats?.avg3 || 60))));
-      const wiggle = randInt(-18, 18);
-      total = Math.max(18, Math.min(remain - (wonLeg ? 2 : 1), avgTarget + wiggle));
+      const roundsLeftAfter = rounds - i - 1;
+      const wiggle = randInt(-16, 16);
+      const desired = Math.max(18, Math.min(140, targetAvg + wiggle));
+      let minKeep = 2;
+      let maxKeep = 500;
+
+      if (wonLeg) {
+        if (roundsLeftAfter <= 1) {
+          minKeep = 2;
+          maxKeep = 170;
+        } else {
+          minKeep = 2 + 18 * (roundsLeftAfter - 1);
+          maxKeep = 170 + 140 * (roundsLeftAfter - 1);
+        }
+      } else {
+        minKeep = 2;
+        maxKeep = 500;
+      }
+
+      const minTotal = Math.max(18, remain - maxKeep);
+      const maxTotal = Math.max(minTotal, Math.min(140, remain - minKeep));
+      total = Math.max(minTotal, Math.min(maxTotal, desired));
+
+      if (!Number.isFinite(total) || total <= 0 || total >= remain) {
+        total = Math.max(18, Math.min(60, remain - minKeep));
+      }
     }
-    const remainBefore = remain;
-    remain = Math.max(0, remain - total);
+
+    const safeTotal = Math.max(0, Math.min(remainBefore, Math.floor(total)));
+    remain = Math.max(0, remainBefore - safeTotal);
+
     rows.push({
       playerId,
       visitIndex: i,
-      total,
-      darts: syntheticDartsForTotal(total),
+      total: safeTotal,
+      darts: syntheticDartsForTotal(safeTotal, { checkout }),
       remainBefore,
       remainAfter: remain,
       bust: false,
       checkout,
     });
   }
+
+  if (wonLeg && rows.length) {
+    const last = rows[rows.length - 1];
+    last.total = last.remainBefore;
+    last.darts = syntheticDartsForTotal(last.total, { checkout: true });
+    last.remainAfter = 0;
+    last.checkout = true;
+    remain = 0;
+  }
+
   return rows;
+}
+
+function summarizeSyntheticVisits(playerId: string, rows: any[]) {
+  const visits = Array.isArray(rows) ? rows.length : 0;
+  const darts = visits * 3;
+  const totals = (rows || []).map((r: any) => Number(r?.total || 0));
+  const totalScored = totals.reduce((s: number, x: number) => s + x, 0);
+  const avg3 = visits ? round2(totalScored / visits) : 0;
+  const bestVisit = totals.length ? Math.max(...totals) : 0;
+  const bestCheckout = (rows || []).reduce((best: number, r: any) => r?.checkout ? Math.max(best, Number(r?.total || 0)) : best, 0);
+  return { playerId, avg3, darts, visits, bestVisit, bestCheckout };
+}
+
+function buildSyntheticLegVisitsPair(args: any) {
+  const { aId, bId, aSeed, bSeed, winnerId } = args || {};
+  const loserStarts = winnerId === aId ? bId : aId;
+  const rounds = Math.max(3, Math.min(10, Math.round((Number(aSeed?.visits || 5) + Number(bSeed?.visits || 5)) / 2)));
+  const aVisits = buildSyntheticVisits(aId, aSeed, { rounds, wonLeg: winnerId === aId, starts: loserStarts === aId });
+  const bVisits = buildSyntheticVisits(bId, bSeed, { rounds, wonLeg: winnerId === bId, starts: loserStarts === bId });
+  return {
+    [aId]: aVisits,
+    [bId]: bVisits,
+    statsA: summarizeSyntheticVisits(aId, aVisits),
+    statsB: summarizeSyntheticVisits(bId, bVisits),
+  };
+}
+
+function buildSyntheticLegWinnerOrder(args: any) {
+  const { aId, bId, winnerId, scoreA, scoreB } = args || {};
+  const winsA = Math.max(0, Math.floor(Number(scoreA || 0)));
+  const winsB = Math.max(0, Math.floor(Number(scoreB || 0)));
+  const finalWinnerId = String(winnerId || "");
+  const loserId = finalWinnerId === aId ? bId : aId;
+  const winnerWins = finalWinnerId === aId ? winsA : winsB;
+  const loserWins = finalWinnerId === aId ? winsB : winsA;
+
+  if (!aId || !bId || !finalWinnerId || winnerWins <= 0) return [];
+
+  const order: string[] = Array.from({ length: loserWins }, () => loserId);
+  for (let i = order.length - 1; i > 0; i--) {
+    const j = (Math.random() * (i + 1)) | 0;
+    [order[i], order[j]] = [order[j], order[i]];
+  }
+
+  const earlyWinnerWins = Math.max(0, winnerWins - 1);
+  for (let i = 0; i < earlyWinnerWins; i++) {
+    const slot = order.length ? ((Math.random() * (order.length + 1)) | 0) : 0;
+    order.splice(slot, 0, finalWinnerId);
+  }
+
+  order.push(finalWinnerId);
+  return order;
 }
 
 async function createSyntheticHistoryForSimulation(args: any) {
@@ -1511,36 +1661,30 @@ async function createSyntheticHistoryForSimulation(args: any) {
 
   const aPlayer = playersById[aId] || { id: aId, name: "Joueur A" };
   const bPlayer = playersById[bId] || { id: bId, name: "Joueur B" };
-  const totalLegs = Math.max(1, Number(synthetic?.scoreA || 0) + Number(synthetic?.scoreB || 0));
-  let remainingA = Math.max(0, Number(synthetic?.scoreA || 0));
-  let remainingB = Math.max(0, Number(synthetic?.scoreB || 0));
+  const targetScoreA = Math.max(0, Math.floor(Number(synthetic?.scoreA || 0)));
+  const targetScoreB = Math.max(0, Math.floor(Number(synthetic?.scoreB || 0)));
+  const legWinnerOrder = buildSyntheticLegWinnerOrder({ aId, bId, winnerId, scoreA: targetScoreA, scoreB: targetScoreB });
+  const totalLegs = Math.max(1, legWinnerOrder.length || (targetScoreA + targetScoreB));
   const legs: any[] = [];
   let cumA = 0;
   let cumB = 0;
 
   for (let i = 0; i < totalLegs; i++) {
-    let legWinnerId = winnerId;
-    if (remainingA > 0 && remainingB > 0) {
-      if (i === totalLegs - 1) legWinnerId = winnerId;
-      else legWinnerId = Math.random() < 0.5 ? aId : bId;
-    } else if (remainingA > 0) {
-      legWinnerId = aId;
-    } else if (remainingB > 0) {
-      legWinnerId = bId;
-    }
+    const legWinnerId = String(legWinnerOrder[i] || winnerId || aId);
 
-    if (legWinnerId === aId && remainingA > 0) {
-      remainingA -= 1;
+    if (legWinnerId === aId) {
       cumA += 1;
-    } else if (legWinnerId === bId && remainingB > 0) {
-      remainingB -= 1;
+    } else if (legWinnerId === bId) {
       cumB += 1;
     }
 
-    const aStats = buildSyntheticLegStats(aId, legWinnerId === aId);
-    const bStats = buildSyntheticLegStats(bId, legWinnerId === bId);
-    const aVisitsHistory = buildSyntheticVisits(aId, aStats, legWinnerId === aId);
-    const bVisitsHistory = buildSyntheticVisits(bId, bStats, legWinnerId === bId);
+    const aSeed = buildSyntheticLegStats(aId, legWinnerId === aId);
+    const bSeed = buildSyntheticLegStats(bId, legWinnerId === bId);
+    const paired = buildSyntheticLegVisitsPair({ aId, bId, aSeed, bSeed, winnerId: legWinnerId });
+    const aStats = paired.statsA;
+    const bStats = paired.statsB;
+    const aVisitsHistory = paired[aId];
+    const bVisitsHistory = paired[bId];
     legs.push({
       id: `${String(match?.id || 'match')}-leg-${i + 1}`,
       label: `Leg ${i + 1}`,

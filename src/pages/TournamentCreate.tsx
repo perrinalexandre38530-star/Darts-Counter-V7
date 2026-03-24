@@ -30,6 +30,7 @@ import { upsertTournamentLocal, upsertMatchesForTournamentLocal } from "../lib/t
 // ✅ Avatar + StarRing (comme X01Config)
 import ProfileAvatar from "../components/ProfileAvatar";
 import ProfileStarRing from "../components/ProfileStarRing";
+import { loadBots as loadStoredBots } from "../lib/bots";
 
 // ✅ AVATARS BOTS PRO (assets existants) — (utilisés hors Pétanque)
 import avatarBullyBoy from "../assets/avatars/bots-pro/bully-boy.png";
@@ -337,18 +338,20 @@ function getBotsFromStore(store: any) {
     if (!p) return;
     if (!forcedBot && !isBotProfile(p)) return;
 
-    const id = String(p?.id || p?.uuid || p?.botId || "");
+    const id = String(p?.id || p?.uuid || p?.botId || "").trim();
     const name = String(p?.name || p?.displayName || p?.pseudo || "Bot").trim();
     const key = id || `bot_${name.toLowerCase()}`;
     if (!key || seen.has(key)) return;
     seen.add(key);
 
     const avg = resolveAvg3D(p) || Number(p?.rating || p?.level || 0) || 0;
+    const avatar = botAvatarFor(p);
 
     out.push({
       id: id || key,
       name,
-      avatar: botAvatarFor(p),
+      avatar,
+      avatarDataUrl: avatar,
       avg3D: Number(avg) || 0,
       isBot: true,
       raw: p,
@@ -364,6 +367,11 @@ function getBotsFromStore(store: any) {
 
   try {
     if (Array.isArray(store?.profiles)) store.profiles.forEach((p: any) => pushBot(p, false));
+  } catch {}
+
+  try {
+    const libBots = loadStoredBots();
+    if (Array.isArray(libBots)) libBots.forEach((b: any) => pushBot(b, true));
   } catch {}
 
   try {

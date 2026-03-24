@@ -199,7 +199,7 @@ function normalizeSets(record: any, aId: string, bId: string) {
 }
 
 function StatTile({ label, value, accent = THEME }: any) {
-  return <div style={{ borderRadius: 14, padding: 12, border: "1px solid rgba(255,255,255,0.10)", background: "linear-gradient(180deg, rgba(255,255,255,0.06), rgba(255,255,255,0.03))" }}><div style={{ fontSize: 10.5, opacity: 0.68, marginBottom: 6 }}>{label}</div><div style={{ fontWeight: 950, color: accent, fontSize: 13.5 }}>{value}</div></div>;
+  return <div style={{ borderRadius: 11, padding: 12, border: "1px solid rgba(255,255,255,0.10)", background: "linear-gradient(180deg, rgba(255,255,255,0.06), rgba(255,255,255,0.03))" }}><div style={{ fontSize: 10.5, opacity: 0.68, marginBottom: 6 }}>{label}</div><div style={{ fontWeight: 950, color: accent, fontSize: 13.5 }}>{value}</div></div>;
 }
 
 function Avatar({ name, avatarUrl, size = 56 }: any) {
@@ -207,7 +207,7 @@ function Avatar({ name, avatarUrl, size = 56 }: any) {
 }
 
 function PlayerHeader({ player, score, winner }: any) {
-  return <div style={{ flex: 1, minWidth: 0, borderRadius: 18, padding: 14, border: winner ? "1px solid rgba(127,226,169,0.45)" : "1px solid rgba(255,255,255,0.10)", background: winner ? "linear-gradient(180deg, rgba(127,226,169,0.18), rgba(255,255,255,0.04))" : "linear-gradient(180deg, rgba(255,255,255,0.07), rgba(255,255,255,0.03))" }}><div style={{ display: "grid", justifyItems: "center", gap: 8, textAlign: "center" }}><Avatar name={player?.name} avatarUrl={player?.avatarDataUrl || player?.avatar || player?.avatarUrl || null} size={68} /><div style={{ fontWeight: 950, fontSize: 14, lineHeight: 1.15 }}>{player?.name || "Joueur"}</div><div style={{ fontSize: 31, fontWeight: 1000, color: winner ? "#7fe2a9" : "#fff" }}>{score ?? "–"}</div></div></div>;
+  return <div style={{ flex: 1, minWidth: 0, borderRadius: 18, padding: 14, border: winner ? "1px solid rgba(127,226,169,0.45)" : "1px solid rgba(255,255,255,0.10)", background: winner ? "linear-gradient(180deg, rgba(127,226,169,0.18), rgba(255,255,255,0.04))" : "linear-gradient(180deg, rgba(255,255,255,0.07), rgba(255,255,255,0.03))" }}><div style={{ display: "grid", justifyItems: "center", gap: 6, textAlign: "center" }}><Avatar name={player?.name} avatarUrl={player?.avatarDataUrl || player?.avatar || player?.avatarUrl || null} size={68} /><div style={{ fontWeight: 950, fontSize: 12, lineHeight: 1.15 }}>{player?.name || "Joueur"}</div><div style={{ fontSize: 31, fontWeight: 1000, color: winner ? "#7fe2a9" : "#fff" }}>{score ?? "–"}</div></div></div>;
 }
 
 function StatsBlock({ title, player, stats }: any) {
@@ -218,34 +218,43 @@ function StatsBlock({ title, player, stats }: any) {
 function hitChipColor(label: string) {
   const txt = String(label || "").toUpperCase().trim();
   if (!txt || txt === "—") return { bg: "rgba(255,255,255,0.06)", bd: "rgba(255,255,255,0.08)", fg: "#fff" };
-  if (txt === "MISS" || txt === "M") return { bg: "rgba(255,255,255,0.06)", bd: "rgba(255,255,255,0.10)", fg: "rgba(255,255,255,0.78)" };
-  if (txt === "BULL" || txt === "25") return { bg: "rgba(127,226,169,0.16)", bd: "rgba(127,226,169,0.30)", fg: "#7fe2a9" };
-  if (txt === "DBULL" || txt === "50") return { bg: "rgba(127,226,169,0.22)", bd: "rgba(127,226,169,0.40)", fg: "#7fe2a9" };
-  if (txt.startsWith("T")) return { bg: "rgba(255,143,43,0.18)", bd: "rgba(255,143,43,0.32)", fg: "#ff9f43" };
-  if (txt.startsWith("D")) return { bg: "rgba(79,180,255,0.16)", bd: "rgba(79,180,255,0.30)", fg: "#63b7ff" };
-  return { bg: "rgba(255,207,87,0.12)", bd: "rgba(255,207,87,0.24)", fg: "#fff" };
+  if (txt === "BUST") return { bg: "rgba(255,140,43,0.20)", bd: "rgba(255,140,43,0.42)", fg: "#ff8f2b" };
+  if (txt === "MISS" || txt === "M") return { bg: "rgba(255,91,91,0.16)", bd: "rgba(255,91,91,0.34)", fg: "#ff5b5b" };
+  if (txt === "DBULL" || txt === "50") return { bg: "rgba(21,122,74,0.26)", bd: "rgba(21,122,74,0.48)", fg: "#157a4a" };
+  if (txt === "BULL" || txt === "25") return { bg: "rgba(52,199,89,0.18)", bd: "rgba(52,199,89,0.38)", fg: "#34c759" };
+  if (txt.startsWith("T")) return { bg: "rgba(155,89,255,0.18)", bd: "rgba(155,89,255,0.38)", fg: "#9b59ff" };
+  if (txt.startsWith("D")) return { bg: "rgba(0,153,255,0.16)", bd: "rgba(0,153,255,0.38)", fg: "#0099ff" };
+  return { bg: "rgba(255,207,87,0.16)", bd: "rgba(255,207,87,0.34)", fg: "#ffcf57" };
 }
 
 function HitChip({ label }: any) {
   const c = hitChipColor(label);
+  const txt = String(label || "—");
+  const len = txt.length;
   return (
     <div
       style={{
-        minWidth: 44,
-        height: 44,
-        padding: "0 10px",
-        borderRadius: 14,
+        minWidth: len >= 5 ? 46 : len >= 4 ? 40 : 36,
+        width: "auto",
+        height: 30,
+        padding: len >= 5 ? "0 7px" : "0 6px",
+        borderRadius: 12,
         display: "grid",
         placeItems: "center",
         background: c.bg,
         border: `1px solid ${c.bd}`,
         color: c.fg,
         fontWeight: 950,
-        fontSize: 17,
+        fontSize: len >= 5 ? 9.5 : len >= 4 ? 10.5 : 11,
+        lineHeight: 1,
         boxShadow: "inset 0 1px 0 rgba(255,255,255,0.05)",
+        whiteSpace: "nowrap",
+        overflow: "hidden",
+        textOverflow: "clip",
+        flex: "0 0 auto",
       }}
     >
-      {String(label || "—")}
+      {txt}
     </div>
   );
 }
@@ -266,27 +275,63 @@ function CompareStatRow({ label, left, right, leftAccent = "#7fe2a9", rightAccen
   );
 }
 
+function buildVolleyRows(aItems: any[], bItems: any[]) {
+  const maxLen = Math.max(Array.isArray(aItems) ? aItems.length : 0, Array.isArray(bItems) ? bItems.length : 0);
+  return Array.from({ length: maxLen }, (_, idx) => ({
+    idx,
+    left: Array.isArray(aItems) ? aItems[idx] || null : null,
+    right: Array.isArray(bItems) ? bItems[idx] || null : null,
+  }));
+}
+
 function VolleyCard({ item, idx }: any) {
+  const darts = Array.isArray(item?.darts) ? item.darts.slice(0, 3) : [];
+  while (darts.length < 3) darts.push("MISS");
+  if (item?.bust && !darts.includes("BUST")) darts[darts.length - 1] = "BUST";
+
   return (
-    <div style={{ borderRadius: 16, border: "1px solid rgba(255,255,255,0.10)", background: "rgba(0,0,0,0.22)", padding: 12, display: "grid", gap: 8 }}>
+    <div
+      style={{
+        borderRadius: 16,
+        border: "1px solid rgba(255,255,255,0.10)",
+        background: "rgba(0,0,0,0.22)",
+        padding: 8,
+        display: "grid",
+        gap: 8,
+      }}
+    >
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
-        <div style={{ fontWeight: 950, fontSize: 13.5 }}>Volée {idx + 1}</div>
-        <div style={{ fontWeight: 1000, fontSize: 14, color: THEME }}>{item?.total ?? 0}</div>
+        <div style={{ fontWeight: 950, fontSize: 11.5, whiteSpace: "nowrap" }}>Volée {idx + 1}</div>
+        <div style={{ fontWeight: 1000, fontSize: 12.5, color: THEME, whiteSpace: "nowrap" }}>{item?.total ?? 0}</div>
       </div>
-      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-        {(item?.darts || []).slice(0,3).map((d: any, i: number) => <HitChip key={i} label={d} />)}
+
+      <div style={{ display: "flex", gap: 5, flexWrap: "nowrap", alignItems: "center", overflow: "hidden" }}>
+        {darts.map((d: any, i: number) => (
+          <HitChip key={i} label={d} />
+        ))}
       </div>
-      <div style={{ fontSize: 11.5, opacity: 0.78, display: "flex", gap: 10, flexWrap: "wrap" }}>
-        {item?.remainBefore != null ? <span>Avant: <b>{item.remainBefore}</b></span> : null}
-        {item?.remainAfter != null ? <span>Après: <b>{item.remainAfter}</b></span> : null}
-        {item?.checkout ? <span style={{ color: "#7fe2a9", fontWeight: 900 }}>Checkout</span> : null}
-        {item?.bust ? <span style={{ color: "#ff7b7b", fontWeight: 900 }}>Bust</span> : null}
+
+      <div style={{ fontSize: 10, opacity: 0.82, display: "flex", justifyContent: "space-between", gap: 8, whiteSpace: "nowrap" }}>
+        <span>Avant: <b>{item?.remainBefore ?? "—"}</b></span>
+        <span>Après: <b>{item?.remainAfter ?? "—"}</b></span>
       </div>
+
+      {item?.checkout || item?.bust ? (
+        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          {item?.checkout ? <span style={{ color: "#7fe2a9", fontWeight: 900, fontSize: 11.5 }}>Checkout</span> : null}
+          {item?.bust ? <span style={{ color: "#ff8f2b", fontWeight: 900, fontSize: 11.5 }}>Bust</span> : null}
+        </div>
+      ) : null}
     </div>
   );
 }
 
 function DetailModal({ open, title, data, playersById, aId, bId, onClose }: any) {
+  const [showStats, setShowStats] = React.useState(true);
+  React.useEffect(() => {
+    if (open) setShowStats(true);
+  }, [open, title]);
+
   if (!open) return null;
   const score = { a: firstFinite(data?.scoreA, data?.summary?.scoreA) ?? "—", b: firstFinite(data?.scoreB, data?.summary?.scoreB) ?? "—" };
   const stats = normalizeLegStats(data, aId, bId);
@@ -297,39 +342,76 @@ function DetailModal({ open, title, data, playersById, aId, bId, onClose }: any)
 
   return (
     <div onMouseDown={onClose} style={{ position: "fixed", inset: 0, zIndex: 10000, background: "rgba(0,0,0,0.72)", display: "grid", placeItems: "center", padding: 16 }}>
-      <div onMouseDown={(e) => e.stopPropagation()} style={{ width: "min(980px, 96vw)", maxHeight: "90vh", overflow: "auto", borderRadius: 22, border: "1px solid rgba(255,255,255,0.12)", background: "linear-gradient(180deg, rgba(24,24,30,0.98), rgba(10,10,14,0.995))", boxShadow: "0 24px 80px rgba(0,0,0,0.7)" }}>
+      <div
+        onMouseDown={(e) => e.stopPropagation()}
+        style={{
+          width: "min(900px, 94vw)",
+          height: "min(84vh, 860px)",
+          borderRadius: 22,
+          border: "1px solid rgba(255,255,255,0.12)",
+          background: "linear-gradient(180deg, rgba(24,24,30,0.98), rgba(10,10,14,0.995))",
+          boxShadow: "0 24px 80px rgba(0,0,0,0.7)",
+          overflow: "hidden",
+          display: "grid",
+          gridTemplateRows: "auto 1fr",
+        }}
+      >
         <div style={{ padding: "14px 16px", borderBottom: "1px solid rgba(255,255,255,0.08)", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
           <div style={{ fontWeight: 1000, color: THEME }}>{title}</div>
           <button onClick={onClose} style={{ width: 36, height: 36, borderRadius: 999, border: "1px solid rgba(255,255,255,0.12)", background: "rgba(255,255,255,0.06)", color: "#fff", cursor: "pointer", fontSize: 18 }}>✕</button>
         </div>
 
-        <div style={{ padding: 16, display: "grid", gap: 14 }}>
+        <div style={{ padding: 16, display: "grid", gap: 14, minHeight: 0, overflow: "hidden", gridTemplateRows: "auto auto auto 1fr" }}>
           <div style={{ display: "grid", gridTemplateColumns: "1fr auto 1fr", gap: 12, alignItems: "center" }}>
             <PlayerHeader player={aPlayer} score={score.a} winner={winnerId === aId} />
             <div style={{ width: 56, height: 56, borderRadius: 999, border: "1px solid rgba(255,255,255,0.12)", background: "rgba(255,255,255,0.05)", display: "grid", placeItems: "center", fontWeight: 1000 }}>VS</div>
             <PlayerHeader player={bPlayer} score={score.b} winner={winnerId === bId} />
           </div>
 
-          <div style={{ borderRadius: 16, border: "1px solid rgba(255,255,255,0.10)", background: "rgba(255,255,255,0.03)", padding: 12 }}>
-            <div style={{ display: "grid", gap: 10 }}>
-              <CompareStatRow label="Moy/3D" left={String(stats[aId]?.avg3 ?? "—")} right={String(stats[bId]?.avg3 ?? "—")} leftAccent="#7fe2a9" rightAccent="#7fe2a9" />
-              <CompareStatRow label="Darts" left={String(stats[aId]?.darts ?? "—")} right={String(stats[bId]?.darts ?? "—")} leftAccent={THEME} rightAccent={THEME} />
-              <CompareStatRow label="Visites" left={String(stats[aId]?.visits ?? "—")} right={String(stats[bId]?.visits ?? "—")} leftAccent="#4fb4ff" rightAccent="#4fb4ff" />
-              <CompareStatRow label="Best Visit" left={String(stats[aId]?.bestVisit ?? "—")} right={String(stats[bId]?.bestVisit ?? "—")} leftAccent="#ff8f2b" rightAccent="#ff8f2b" />
-              <CompareStatRow label="Best CO" left={String(stats[aId]?.bestCheckout ?? "—")} right={String(stats[bId]?.bestCheckout ?? "—")} leftAccent="#ff4fd8" rightAccent="#ff4fd8" />
-            </div>
+          <div style={{ display: "flex", justifyContent: "flex-end" }}>
+            <button
+              onClick={() => setShowStats((v) => !v)}
+              style={{
+                borderRadius: 999,
+                padding: "8px 12px",
+                border: "1px solid rgba(255,255,255,0.12)",
+                background: "rgba(255,255,255,0.06)",
+                color: "#fff",
+                cursor: "pointer",
+                fontWeight: 900,
+                fontSize: 12,
+              }}
+            >
+              {showStats ? "Masquer les stats" : "Afficher les stats"}
+            </button>
           </div>
 
-          {(volleys[aId]?.length || volleys[bId]?.length) ? (
+          {showStats ? (
             <div style={{ borderRadius: 16, border: "1px solid rgba(255,255,255,0.10)", background: "rgba(255,255,255,0.03)", padding: 12 }}>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-                <div style={{ display: "grid", gap: 8 }}>
-                  <div style={{ fontWeight: 950 }}>{aPlayer?.name || "Joueur A"}</div>
-                  {(volleys[aId] || []).map((v: any, idx: number) => <VolleyCard key={v.id || idx} item={v} idx={idx} />)}
-                </div>
-                <div style={{ display: "grid", gap: 8 }}>
-                  <div style={{ fontWeight: 950, textAlign: "right" }}>{bPlayer?.name || "Joueur B"}</div>
-                  {(volleys[bId] || []).map((v: any, idx: number) => <VolleyCard key={v.id || idx} item={v} idx={idx} />)}
+              <div style={{ display: "grid", gap: 10 }}>
+                <CompareStatRow label="Moy/3D" left={String(stats[aId]?.avg3 ?? "—")} right={String(stats[bId]?.avg3 ?? "—")} leftAccent="#7fe2a9" rightAccent="#7fe2a9" />
+                <CompareStatRow label="Darts" left={String(stats[aId]?.darts ?? "—")} right={String(stats[bId]?.darts ?? "—")} leftAccent={THEME} rightAccent={THEME} />
+                <CompareStatRow label="Visites" left={String(stats[aId]?.visits ?? "—")} right={String(stats[bId]?.visits ?? "—")} leftAccent="#4fb4ff" rightAccent="#4fb4ff" />
+                <CompareStatRow label="Best Visit" left={String(stats[aId]?.bestVisit ?? "—")} right={String(stats[bId]?.bestVisit ?? "—")} leftAccent="#ff8f2b" rightAccent="#ff8f2b" />
+                <CompareStatRow label="Best CO" left={String(stats[aId]?.bestCheckout ?? "—")} right={String(stats[bId]?.bestCheckout ?? "—")} leftAccent="#ff4fd8" rightAccent="#ff4fd8" />
+              </div>
+            </div>
+          ) : null}
+
+          {(volleys[aId]?.length || volleys[bId]?.length) ? (
+            <div style={{ borderRadius: 16, border: "1px solid rgba(255,255,255,0.10)", background: "rgba(255,255,255,0.03)", padding: 12, minHeight: 0, overflow: "hidden", display: "grid", gridTemplateRows: "auto 1fr", gap: 8 }}>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, alignItems: "center" }}>
+                <div style={{ fontWeight: 950 }}>{aPlayer?.name || "Joueur A"}</div>
+                <div style={{ fontWeight: 950, textAlign: "right" }}>{bPlayer?.name || "Joueur B"}</div>
+              </div>
+              <div style={{ minHeight: 0, overflowY: "auto", paddingRight: 4 }}>
+                <div style={{ display: "grid", gap: 8, alignItems: "start" }}>
+                  {buildVolleyRows(volleys[aId] || [], volleys[bId] || []).map((row: any) => (
+                    <div key={`row_${row.idx}`} style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, alignItems: "start" }}>
+                      {row.left ? <VolleyCard item={row.left} idx={row.idx} /> : <div />}
+                      {row.right ? <VolleyCard item={row.right} idx={row.idx} /> : <div />}
+                    </div>
+                  ))}
                 </div>
               </div>
             </div>
@@ -340,6 +422,105 @@ function DetailModal({ open, title, data, playersById, aId, bId, onClose }: any)
   );
 }
 
+
+
+function buildLegTimelineItems(sets: any[], looseLegs: any[], opts?: any) {
+  const out: any[] = [];
+  const aId = String(opts?.aId || "");
+  const bId = String(opts?.bId || "");
+  const winnerId = String(opts?.winnerId || "");
+  const finalScoreA = Math.max(0, Math.floor(Number(opts?.finalScoreA || 0)));
+  const finalScoreB = Math.max(0, Math.floor(Number(opts?.finalScoreB || 0)));
+  const bestOf = Math.max(1, Math.floor(Number(opts?.bestOf || 1)));
+  const winsNeeded = Math.max(1, Math.floor(bestOf / 2) + 1);
+  let accA = 0;
+  let accB = 0;
+
+  const pushLeg = (leg: any, fallbackLabel: string, id: string) => {
+    const legWinnerId = String(leg?.winnerId || leg?.stats?.winnerId || leg?.detail?.winnerId || "");
+    const rawA = Number.isFinite(Number(leg?.scoreA)) ? Number(leg.scoreA) : null;
+    const rawB = Number.isFinite(Number(leg?.scoreB)) ? Number(leg.scoreB) : null;
+
+    let nextA = accA;
+    let nextB = accB;
+
+    if (legWinnerId === aId) nextA += 1;
+    else if (legWinnerId === bId) nextB += 1;
+    else if (rawA != null && rawB != null && rawA >= accA && rawB >= accB && rawA + rawB === accA + accB + 1) {
+      nextA = rawA;
+      nextB = rawB;
+    } else if (rawA != null && rawB != null) {
+      nextA = Math.max(accA, rawA);
+      nextB = Math.max(accB, rawB);
+    }
+
+    if (nextA > finalScoreA || nextB > finalScoreB) return;
+    if (out.length && (accA >= winsNeeded || accB >= winsNeeded)) return;
+
+    accA = nextA;
+    accB = nextB;
+
+    out.push({
+      id,
+      label: leg?.label || fallbackLabel,
+      scoreA: accA,
+      scoreB: accB,
+      detail: leg?.stats || leg,
+    });
+  };
+
+  if (Array.isArray(sets) && sets.length) {
+    sets.forEach((s: any, sIdx: number) => {
+      const legs = Array.isArray(s?.legs) ? s.legs : [];
+      legs.forEach((leg: any, lIdx: number) => {
+        pushLeg(leg, `${s?.label || `Set ${sIdx + 1}`} • ${leg?.label || `Leg ${lIdx + 1}`}`, String(leg?.id || `set_${sIdx + 1}_leg_${lIdx + 1}`));
+      });
+    });
+  } else {
+    (Array.isArray(looseLegs) ? looseLegs : []).forEach((leg: any, idx: number) => {
+      pushLeg(leg, leg?.label || `Leg ${idx + 1}`, String(leg?.id || `leg_${idx + 1}`));
+    });
+  }
+
+  if (!out.length && finalScoreA >= 0 && finalScoreB >= 0 && winnerId) {
+    const winnerWins = winnerId === aId ? finalScoreA : finalScoreB;
+    const loserWins = winnerId === aId ? finalScoreB : finalScoreA;
+    const loserId = winnerId === aId ? bId : aId;
+    const earlyWinnerWins = Math.max(0, winnerWins - 1);
+    const sequence = [
+      ...Array.from({ length: loserWins }, () => loserId),
+      ...Array.from({ length: earlyWinnerWins }, () => winnerId),
+      winnerId,
+    ];
+    accA = 0;
+    accB = 0;
+    sequence.forEach((pid, idx) => {
+      if (pid === aId) accA += 1;
+      else if (pid === bId) accB += 1;
+      out.push({
+        id: `fallback_leg_${idx + 1}`,
+        label: `Leg ${idx + 1}`,
+        scoreA: accA,
+        scoreB: accB,
+        detail: null,
+      });
+    });
+  }
+
+  if (out.length) {
+    const last = out[out.length - 1];
+    const looksWrong = last.scoreA !== finalScoreA || last.scoreB !== finalScoreB;
+    if (looksWrong) {
+      while (out.length && (out[out.length - 1].scoreA > finalScoreA || out[out.length - 1].scoreB > finalScoreB)) out.pop();
+      const last2 = out[out.length - 1];
+      if (last2 && (last2.scoreA !== finalScoreA || last2.scoreB !== finalScoreB)) {
+        out[out.length - 1] = { ...last2, scoreA: finalScoreA, scoreB: finalScoreB };
+      }
+    }
+  }
+
+  return out;
+}
 
 export default function TournamentMatchResult({ go, params }: any) {
   const tournamentId = String(params?.tournamentId || params?.id || "");
@@ -418,8 +599,53 @@ export default function TournamentMatchResult({ go, params }: any) {
     });
   }, [record, playersById, aId, bId]);
 
+  const leftGlobal = globalStatsRows[0] || {};
+  const rightGlobal = globalStatsRows[1] || {};
+  const legTimeline = React.useMemo(() => buildLegTimelineItems(sets, looseLegs, { aId, bId, winnerId, finalScoreA: scoreInfo?.a, finalScoreB: scoreInfo?.b, bestOf }), [sets, looseLegs, aId, bId, winnerId, scoreInfo?.a, scoreInfo?.b, bestOf]);
+
+
   if (loading) return <div style={{ minHeight: "100vh", padding: 16, background: "#05070c", color: "#fff" }}>Chargement…</div>;
   if (!tm) return <div style={{ minHeight: "100vh", padding: 16, background: "#05070c", color: "#fff" }}><button onClick={() => go("tournament_view", { id: tournamentId })} style={{ borderRadius: 999, padding: "8px 12px", border: "1px solid rgba(255,255,255,0.12)", background: "rgba(255,255,255,0.06)", color: "#fff", cursor: "pointer" }}>← Retour tournoi</button><div style={{ marginTop: 16, fontWeight: 950 }}>Match introuvable</div></div>;
 
-  return <div style={{ minHeight: "100vh", padding: 16, paddingBottom: 96, background: "radial-gradient(circle at top, rgba(255,207,87,0.10), rgba(5,7,12,0) 42%), linear-gradient(180deg, rgba(10,10,14,0.98), rgba(5,7,12,1))", color: "#fff" }}><div style={{ display: "grid", gridTemplateColumns: "40px 1fr 40px", alignItems: "center", gap: 10 }}><button onClick={() => go("tournament_view", { id: tournamentId })} style={{ width: 40, height: 40, borderRadius: 999, border: "1px solid rgba(255,255,255,0.12)", background: "rgba(255,255,255,0.05)", color: THEME, cursor: "pointer", fontWeight: 950 }}>←</button><div style={{ textAlign: "center" }}><div style={{ fontWeight: 1000, fontSize: 18, color: THEME }}>Détail du match</div><div style={{ fontSize: 12, opacity: 0.76 }}>{fmtDate(record?.updatedAt || tm?.updatedAt)}</div>{!record ? <div style={{ fontSize: 11, opacity: 0.62, marginTop: 4 }}>Historique détaillé indisponible pour ce match — affichage du résumé tournoi.</div> : null}</div><div /></div><div style={{ marginTop: 14, borderRadius: 22, border: "1px solid rgba(255,255,255,0.10)", background: "linear-gradient(180deg, rgba(20,20,26,0.96), rgba(10,10,14,0.98))", padding: 16, boxShadow: "0 20px 46px rgba(0,0,0,0.45)" }}><div style={{ display: "grid", gridTemplateColumns: "1fr auto 1fr", gap: 12, alignItems: "center" }}><PlayerHeader player={playersById[aId]} score={scoreInfo?.a} winner={winnerId === aId} /><div style={{ width: 56, height: 56, borderRadius: 999, border: "1px solid rgba(255,255,255,0.12)", background: "rgba(255,255,255,0.05)", display: "grid", placeItems: "center", fontWeight: 1000 }}>VS</div><PlayerHeader player={playersById[bId]} score={scoreInfo?.b} winner={winnerId === bId} /></div><div style={{ marginTop: 14, display: "grid", gridTemplateColumns: "repeat(4, minmax(0,1fr))", gap: 10 }}><StatTile label="Format" value={`BO${bestOf}`} accent="#4fb4ff" /><StatTile label="Phase" value={phaseLabel || "—"} accent="#4fb4ff" /><StatTile label="Score final" value={scoreInfo ? `${scoreInfo.a} - ${scoreInfo.b}` : "—"} accent={THEME} /><StatTile label="Vainqueur" value={winnerId ? (playersById?.[winnerId]?.name || "—") : "—"} accent="#7fe2a9" /></div></div><div style={{ marginTop: 14, borderRadius: 22, border: "1px solid rgba(255,255,255,0.10)", background: "linear-gradient(180deg, rgba(20,20,26,0.96), rgba(10,10,14,0.98))", padding: 16 }}><div style={{ fontWeight: 1000, color: THEME, marginBottom: 10 }}>Stats globales du match</div><div style={{ display: "grid", gap: 10 }}>{globalStatsRows.map((r: any) => <StatsBlock key={r.pid} player={playersById[r.pid] || { name: r.name }} stats={r} />)}</div></div><div style={{ marginTop: 14, borderRadius: 22, border: "1px solid rgba(255,255,255,0.10)", background: "linear-gradient(180deg, rgba(20,20,26,0.96), rgba(10,10,14,0.98))", padding: 16 }}><div style={{ fontWeight: 1000, color: THEME, marginBottom: 10 }}>{sets.length ? "Sets / Legs" : "Legs"}</div>{sets.length ? <div style={{ display: "grid", gap: 12 }}>{sets.map((s: any) => <div key={s.id} style={{ borderRadius: 16, border: "1px solid rgba(255,255,255,0.10)", background: "rgba(255,255,255,0.03)", padding: 12 }}><button onClick={() => setActiveDetail({ title: s.label, data: s.stats || s })} style={{ width: "100%", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, border: "none", background: "transparent", color: "#fff", cursor: "pointer", padding: 0, textAlign: "left" }}><div style={{ fontWeight: 950 }}>{s.label}</div><div style={{ fontWeight: 1000, color: "#7fe2a9" }}>{s.scoreA ?? "–"} - {s.scoreB ?? "–"}</div></button>{s.legs?.length ? <div style={{ marginTop: 10, display: "grid", gap: 8 }}>{s.legs.map((leg: any) => <button key={leg.id} onClick={() => setActiveDetail({ title: `${s.label} • ${leg.label}`, data: leg.stats || leg })} style={{ borderRadius: 12, border: "1px solid rgba(255,255,255,0.10)", background: "rgba(0,0,0,0.22)", color: "#fff", cursor: "pointer", padding: "10px 12px", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}><span style={{ fontWeight: 900 }}>{leg.label}</span><b style={{ color: THEME }}>{leg.scoreA ?? "–"} - {leg.scoreB ?? "–"}</b></button>)}</div> : null}</div>)}</div> : looseLegs.length ? <div style={{ display: "grid", gap: 8 }}>{looseLegs.map((leg: any) => <button key={leg.id} onClick={() => setActiveDetail({ title: leg.label, data: leg.stats || leg })} style={{ borderRadius: 12, border: "1px solid rgba(255,255,255,0.10)", background: "rgba(0,0,0,0.22)", color: "#fff", cursor: "pointer", padding: "12px 14px", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}><span style={{ fontWeight: 900 }}>{leg.label}</span><b style={{ color: THEME }}>{leg.scoreA ?? "–"} - {leg.scoreB ?? "–"}</b></button>)}</div> : <div style={{ fontSize: 12.5, opacity: 0.76, lineHeight: 1.5 }}>Aucun découpage détaillé sets/legs n’a été trouvé dans l’historique pour ce match. Le score global et les stats finales sont bien reliés à l’historique du match.</div>}</div><DetailModal open={!!activeDetail} title={activeDetail?.title} data={activeDetail?.data} playersById={playersById} aId={aId} bId={bId} onClose={() => setActiveDetail(null)} /></div>;
+  return <div style={{ minHeight: "100vh", padding: 16, paddingBottom: 96, background: "radial-gradient(circle at top, rgba(255,207,87,0.10), rgba(5,7,12,0) 42%), linear-gradient(180deg, rgba(10,10,14,0.98), rgba(5,7,12,1))", color: "#fff" }}><div style={{ display: "grid", gridTemplateColumns: "40px 1fr 40px", alignItems: "center", gap: 10 }}><button onClick={() => go("tournament_view", { id: tournamentId })} style={{ width: 40, height: 40, borderRadius: 999, border: "1px solid rgba(255,255,255,0.12)", background: "rgba(255,255,255,0.05)", color: THEME, cursor: "pointer", fontWeight: 950 }}>←</button><div style={{ textAlign: "center" }}><div style={{ fontWeight: 1000, fontSize: 18, color: THEME }}>Détail du match</div><div style={{ fontSize: 12, opacity: 0.76 }}>{fmtDate(record?.updatedAt || tm?.updatedAt)}</div>{!record ? <div style={{ fontSize: 11, opacity: 0.62, marginTop: 4 }}>Historique détaillé indisponible pour ce match — affichage du résumé tournoi.</div> : null}</div><div /></div><div style={{ marginTop: 14, borderRadius: 22, border: "1px solid rgba(255,255,255,0.10)", background: "linear-gradient(180deg, rgba(20,20,26,0.96), rgba(10,10,14,0.98))", padding: 16, boxShadow: "0 20px 46px rgba(0,0,0,0.45)" }}><div style={{ display: "grid", gridTemplateColumns: "1fr auto 1fr", gap: 12, alignItems: "center" }}><PlayerHeader player={playersById[aId]} score={scoreInfo?.a} winner={winnerId === aId} /><div style={{ width: 56, height: 56, borderRadius: 999, border: "1px solid rgba(255,255,255,0.12)", background: "rgba(255,255,255,0.05)", display: "grid", placeItems: "center", fontWeight: 1000 }}>VS</div><PlayerHeader player={playersById[bId]} score={scoreInfo?.b} winner={winnerId === bId} /></div><div style={{ marginTop: 14, display: "grid", gridTemplateColumns: "repeat(4, minmax(0,1fr))", gap: 10 }}><StatTile label="Format" value={`BO${bestOf}`} accent="#4fb4ff" /><StatTile label="Phase" value={phaseLabel || "—"} accent="#4fb4ff" /><StatTile label="Score final" value={scoreInfo ? `${scoreInfo.a} - ${scoreInfo.b}` : "—"} accent={THEME} /><StatTile label="Vainqueur" value={winnerId ? (playersById?.[winnerId]?.name || "—") : "—"} accent="#7fe2a9" /></div></div><div style={{ marginTop: 14, borderRadius: 22, border: "1px solid rgba(255,255,255,0.10)", background: "linear-gradient(180deg, rgba(20,20,26,0.96), rgba(10,10,14,0.98))", padding: 16 }}>
+        <div style={{ fontWeight: 1000, color: THEME, marginBottom: 10 }}>Stats globales du match</div>
+        <div style={{ borderRadius: 16, border: "1px solid rgba(255,255,255,0.10)", background: "rgba(255,255,255,0.03)", padding: 12, display: "grid", gap: 8 }}>
+          <CompareStatRow label="Moy/3D" left={leftGlobal?.avg3 ?? "—"} right={rightGlobal?.avg3 ?? "—"} leftAccent="#7fe2a9" rightAccent="#7fe2a9" />
+          <CompareStatRow label="Darts" left={leftGlobal?.darts ?? "—"} right={rightGlobal?.darts ?? "—"} leftAccent={THEME} rightAccent={THEME} />
+          <CompareStatRow label="Visites" left={leftGlobal?.visits ?? "—"} right={rightGlobal?.visits ?? "—"} leftAccent="#4fb4ff" rightAccent="#4fb4ff" />
+          <CompareStatRow label="Best Visit" left={leftGlobal?.bestVisit ?? "—"} right={rightGlobal?.bestVisit ?? "—"} leftAccent="#ff8f2b" rightAccent="#ff8f2b" />
+          <CompareStatRow label="Best CO" left={leftGlobal?.bestCheckout ?? "—"} right={rightGlobal?.bestCheckout ?? "—"} leftAccent="#ff4fd8" rightAccent="#ff4fd8" />
+        </div>
+      </div><div style={{ marginTop: 14, borderRadius: 22, border: "1px solid rgba(255,255,255,0.10)", background: "linear-gradient(180deg, rgba(20,20,26,0.96), rgba(10,10,14,0.98))", padding: 16 }}>
+        <div style={{ fontWeight: 1000, color: THEME, marginBottom: 10 }}>Évolution du score</div>
+        {legTimeline.length ? (
+          <div style={{ display: "grid", gap: 8 }}>
+            {legTimeline.map((leg: any) => (
+              <button
+                key={leg.id}
+                onClick={() => setActiveDetail({ title: leg.label, data: leg.detail })}
+                style={{
+                  borderRadius: 12,
+                  border: "1px solid rgba(255,255,255,0.10)",
+                  background: "rgba(0,0,0,0.22)",
+                  color: "#fff",
+                  cursor: "pointer",
+                  padding: "12px 14px",
+                  display: "grid",
+                  gridTemplateColumns: "1fr auto",
+                  gap: 10,
+                  alignItems: "center",
+                }}
+              >
+                <span style={{ fontWeight: 900, textAlign: "left" }}>{leg.label}</span>
+                <b style={{ color: THEME, whiteSpace: "nowrap" }}>{leg.scoreA ?? "–"} - {leg.scoreB ?? "–"}</b>
+              </button>
+            ))}
+          </div>
+        ) : (
+          <div style={{ fontSize: 12.5, opacity: 0.76, lineHeight: 1.5 }}>
+            Aucune évolution de score détaillée n’a été trouvée dans l’historique pour ce match.
+          </div>
+        )}
+      </div><DetailModal open={!!activeDetail} title={activeDetail?.title} data={activeDetail?.data} playersById={playersById} aId={aId} bId={bId} onClose={() => setActiveDetail(null)} /></div>;
 }
