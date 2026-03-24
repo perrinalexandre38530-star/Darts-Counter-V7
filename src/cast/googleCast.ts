@@ -59,21 +59,37 @@ function sanitizeNumberLike(value: any, fallback = 0) {
 }
 
 function sanitizeAvatarFields(player: any) {
-  const raw =
-    (typeof player?.avatarDataUrl === "string" && player.avatarDataUrl) ||
-    (typeof player?.avatarUrl === "string" && player.avatarUrl) ||
-    (typeof player?.avatar === "string" && player.avatar) ||
-    (typeof player?.photoUrl === "string" && player.photoUrl) ||
-    (typeof player?.imageUrl === "string" && player.imageUrl) ||
-    "";
+  const sources = [
+    player?.avatarDataUrl,
+    player?.avatarUrl,
+    player?.avatar,
+    player?.photoUrl,
+    player?.imageUrl,
+    player?.photoDataUrl,
+    player?.avatarPath,
+    player?.avatar_path,
+    player?.profile?.avatarDataUrl,
+    player?.profile?.avatarUrl,
+    player?.profile?.avatar,
+    player?.profile?.photoUrl,
+    player?.profile?.photoDataUrl,
+    player?.meta?.avatarDataUrl,
+    player?.meta?.avatarUrl,
+    player?.meta?.avatar,
+    player?.meta?.photoUrl,
+    player?.user?.avatarDataUrl,
+    player?.user?.avatarUrl,
+    player?.user?.avatar,
+    player?.user?.photoUrl,
+  ];
 
+  const raw = sources.find((value) => typeof value === "string" && value.trim()) || "";
   const src = String(raw || "").trim();
   if (!src) return { avatarDataUrl: "", avatarUrl: "" };
 
   if (/^data:image\//i.test(src)) {
-    // Cast payloads break easily when avatars are duplicated or too large.
-    // Keep only reasonably sized embedded avatars.
-    if (src.length <= 120_000) return { avatarDataUrl: src, avatarUrl: "" };
+    // Keep embedded avatars only when they are reasonably small for Cast payloads.
+    if (src.length <= 140_000) return { avatarDataUrl: src, avatarUrl: "" };
     pushDiag("sanitize_avatar_dropped_too_large", { size: src.length });
     return { avatarDataUrl: "", avatarUrl: "" };
   }
