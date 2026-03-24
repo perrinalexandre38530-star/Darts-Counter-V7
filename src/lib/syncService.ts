@@ -271,17 +271,6 @@ export async function pushFullBackupToNas() {
   return apiPost("/backup/full", payload);
 }
 
-
-export async function listBackupsFromNas() {
-  const ownerId = await getCurrentBackupOwnerId();
-  return apiGet(`/backup/list?ownerId=${encodeURIComponent(ownerId)}`);
-}
-
-export async function deleteAllBackupsFromNas() {
-  const ownerId = await getCurrentBackupOwnerId();
-  return apiPost("/backup/deleteAll", { ownerId });
-}
-
 export async function restoreLatestBackupFromNas() {
   const data = await apiGet("/backup/full/latest");
 

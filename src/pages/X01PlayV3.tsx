@@ -1331,47 +1331,13 @@ const activeTeam = React.useMemo(() => {
             name: String(team.name || "Équipe"),
             score: Number(team.score ?? 0),
             active: !!activeTeam && String(activeTeam.id) === String(team.id),
-            avatarDataUrl:
-              typeof team?.avatarDataUrl === "string" && team.avatarDataUrl
-                ? team.avatarDataUrl
-                : typeof team?.avatarUrl === "string" && team.avatarUrl
-                ? team.avatarUrl
-                : typeof team?.avatar === "string" && team.avatar
-                ? team.avatar
-                : typeof getTeamAvatarUrl === "function"
-                ? getTeamAvatarUrl(String(team.id || team.name || ""))
-                : "",
           }))
-        : (players as any[]).map((p: any) => {
-            const liveStats = (liveStatsByPlayer as any)?.[p.id] || {};
-            const avatarSrc = resolveAvatar(p) || "";
-            return {
-              id: String(p.id),
-              name: String(p.name || "Joueur"),
-              score: Number((scores as any)?.[p.id] ?? config.startScore ?? 0),
-              active: String(activePlayerId || "") === String(p.id),
-              avatarDataUrl: avatarSrc,
-              avatarUrl: avatarSrc,
-              avatar: avatarSrc,
-              stats: {
-                avg3d: liveStats?.avg3d ?? liveStats?.avg3 ?? liveStats?.avg ?? "—",
-                bestVisit: liveStats?.bestVisit ?? liveStats?.best ?? "—",
-                hits: liveStats?.hits ?? liveStats?.hitCount ?? 0,
-                miss: liveStats?.miss ?? liveStats?.misses ?? 0,
-                simple: liveStats?.simple ?? liveStats?.singles ?? 0,
-                double: liveStats?.double ?? liveStats?.doubles ?? 0,
-                triple: liveStats?.triple ?? liveStats?.triples ?? 0,
-                bull: liveStats?.bull ?? liveStats?.bulls ?? 0,
-                dbull: liveStats?.dbull ?? liveStats?.doubleBull ?? liveStats?.dbulls ?? 0,
-                bust: liveStats?.bust ?? liveStats?.busts ?? 0,
-                totalThrows:
-                  liveStats?.totalThrows ??
-                  liveStats?.throws ??
-                  liveStats?.attempts ??
-                  ((liveStats?.hits ?? liveStats?.hitCount ?? 0) + (liveStats?.miss ?? liveStats?.misses ?? 0)),
-              },
-            };
-          });
+        : (players as any[]).map((p: any) => ({
+            id: String(p.id),
+            name: String(p.name || "Joueur"),
+            score: Number((scores as any)?.[p.id] ?? config.startScore ?? 0),
+            active: String(activePlayerId || "") === String(p.id),
+          }));
 
       const snapshot = {
         game: "x01",
