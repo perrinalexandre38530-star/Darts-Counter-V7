@@ -319,6 +319,7 @@ function renderSnapshot(payload) {
               <div class="active-left">
                 <div class="active-avatar-wrap">
                   ${avatarHtml(active, 136)}
+                  <div class="active-badge">Joueur<br>actif</div>
                 </div>
 
                 <div class="active-name">${esc(active?.name || "Joueur")}</div>
