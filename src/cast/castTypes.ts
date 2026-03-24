@@ -12,6 +12,11 @@ export type CastPlayer = {
   name: string;
   score: number;
   active?: boolean;
+  avatarDataUrl?: string;
+  avatarUrl?: string;
+  avatar?: string;
+  photoUrl?: string;
+  imageUrl?: string;
 };
 
 export type CastSnapshot = {

@@ -65,6 +65,17 @@ function sanitizeSnapshot(snapshot: CastSnapshot) {
               name: String(p?.name ?? "Joueur"),
               score: Number(p?.score ?? 0),
               active: !!p?.active,
+              avatarDataUrl: typeof p?.avatarDataUrl === "string" ? p.avatarDataUrl : "",
+              avatarUrl:
+                typeof p?.avatarUrl === "string"
+                  ? p.avatarUrl
+                  : typeof p?.avatar === "string"
+                    ? p.avatar
+                    : typeof p?.photoUrl === "string"
+                      ? p.photoUrl
+                      : typeof p?.imageUrl === "string"
+                        ? p.imageUrl
+                        : "",
             }))
           : [],
         meta:
