@@ -1331,52 +1331,13 @@ const activeTeam = React.useMemo(() => {
             name: String(team.name || "Équipe"),
             score: Number(team.score ?? 0),
             active: !!activeTeam && String(activeTeam.id) === String(team.id),
-            avatarDataUrl:
-              typeof team?.avatarDataUrl === "string" && team.avatarDataUrl
-                ? team.avatarDataUrl
-                : typeof team?.avatarUrl === "string" && team.avatarUrl
-                ? team.avatarUrl
-                : typeof team?.avatar === "string" && team.avatar
-                ? team.avatar
-                : typeof getTeamAvatarUrl === "function"
-                ? getTeamAvatarUrl(String(team.id || team.name || ""))
-                : "",
           }))
-        : (players as any[]).map((p: any) => {
-            const liveStats = (liveStatsByPlayer as any)?.[p.id] || {};
-            const avatarSrc = resolveAvatar(p) || "";
-            const castPlayer: any = {
-              id: String(p.id),
-              name: String(p.name || "Joueur"),
-              score: Number((scores as any)?.[p.id] ?? config.startScore ?? 0),
-              active: String(activePlayerId || "") === String(p.id),
-              stats: {
-                avg3d: liveStats?.avg3d ?? liveStats?.avg3 ?? liveStats?.avg ?? "—",
-                bestVisit: liveStats?.bestVisit ?? liveStats?.best ?? "—",
-                hits: liveStats?.hits ?? liveStats?.hitCount ?? 0,
-                miss: liveStats?.miss ?? liveStats?.misses ?? 0,
-                simple: liveStats?.simple ?? liveStats?.singles ?? 0,
-                double: liveStats?.double ?? liveStats?.doubles ?? 0,
-                triple: liveStats?.triple ?? liveStats?.triples ?? 0,
-                bull: liveStats?.bull ?? liveStats?.bulls ?? 0,
-                dbull: liveStats?.dbull ?? liveStats?.doubleBull ?? liveStats?.dbulls ?? 0,
-                bust: liveStats?.bust ?? liveStats?.busts ?? 0,
-                totalThrows:
-                  liveStats?.totalThrows ??
-                  liveStats?.throws ??
-                  liveStats?.attempts ??
-                  ((liveStats?.hits ?? liveStats?.hitCount ?? 0) + (liveStats?.miss ?? liveStats?.misses ?? 0)),
-              },
-            };
-
-            if (/^data:image\//i.test(avatarSrc)) {
-              castPlayer.avatarDataUrl = avatarSrc;
-            } else if (avatarSrc) {
-              castPlayer.avatarUrl = avatarSrc;
-            }
-
-            return castPlayer;
-          });
+        : (players as any[]).map((p: any) => ({
+            id: String(p.id),
+            name: String(p.name || "Joueur"),
+            score: Number((scores as any)?.[p.id] ?? config.startScore ?? 0),
+            active: String(activePlayerId || "") === String(p.id),
+          }));
 
       const snapshot = {
         game: "x01",
@@ -1391,43 +1352,34 @@ const activeTeam = React.useMemo(() => {
         updatedAt: Date.now(),
       };
 
-      const timers: number[] = [];
-
-      const scheduleSend = (delay: number, attempt: string) => {
-        const timer = window.setTimeout(() => {
-          if (cancelled) return;
-          const castState = getGoogleCastState();
-          appendGoogleCastDiag("x01_snapshot_scheduled", {
-            attempt,
-            mode: snapshot.game,
-            players: Array.isArray(snapshot.players) ? snapshot.players.length : 0,
-            status: snapshot.status,
-            castState: castState.castState,
-            isCasting: castState.isCasting,
-            device: castState.deviceName || "",
-          });
-
-          Promise.resolve(sendCastSnapshot(snapshot))
-            .then((ok) =>
-              appendGoogleCastDiag(ok ? "x01_snapshot_sent" : "x01_snapshot_not_sent", {
-                attempt,
-                players: Array.isArray(snapshot.players) ? snapshot.players.length : 0,
-                game: snapshot.game,
-              })
-            )
-            .catch((err) => appendGoogleCastDiag("x01_snapshot_throw", { attempt, err: String(err) }));
-        }, delay);
-
-        timers.push(timer);
-      };
-
-      scheduleSend(180, "initial");
-      scheduleSend(650, "retry_1");
-      scheduleSend(1400, "retry_2");
+      const timer = window.setTimeout(() => {
+        if (cancelled) return;
+        const castState = getGoogleCastState();
+        appendGoogleCastDiag("x01_snapshot_scheduled", {
+          mode: snapshot.game,
+          players: Array.isArray(snapshot.players) ? snapshot.players.length : 0,
+          status: snapshot.status,
+          castState: castState.castState,
+          isCasting: castState.isCasting,
+          device: castState.deviceName || "",
+        });
+        if (!castState.isCasting) {
+          appendGoogleCastDiag("x01_snapshot_skipped_no_session");
+          return;
+        }
+        Promise.resolve(sendCastSnapshot(snapshot))
+          .then((ok) =>
+            appendGoogleCastDiag(ok ? "x01_snapshot_sent" : "x01_snapshot_not_sent", {
+              players: Array.isArray(snapshot.players) ? snapshot.players.length : 0,
+              game: snapshot.game,
+            })
+          )
+          .catch((err) => appendGoogleCastDiag("x01_snapshot_throw", String(err)));
+      }, 180);
 
       return () => {
         cancelled = true;
-        timers.forEach((timer) => window.clearTimeout(timer));
+        window.clearTimeout(timer);
       };
     } catch {
       return;
