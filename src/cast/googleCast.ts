@@ -122,6 +122,8 @@ function sanitizeSnapshot(snapshot: CastSnapshot) {
   try {
     return JSON.parse(
       JSON.stringify({
+        screen: (snapshot as any)?.screen || "",
+        currentPlayer: safeString((snapshot as any)?.currentPlayer || ""),
         game: snapshot?.game || "",
         title: snapshot?.title || "",
         status: snapshot?.status || "live",
@@ -161,28 +163,76 @@ function sanitizeSnapshot(snapshot: CastSnapshot) {
   }
 }
 
-function getRawSession() {
+function getSessionWrapper() {
   try {
-    return getCastContext()?.getCurrentSession?.()?.getSessionObj?.() || null;
+    return getCastContext()?.getCurrentSession?.() || null;
   } catch {
     return null;
   }
 }
 
+function getRawSession() {
+  try {
+    return getSessionWrapper()?.getSessionObj?.() || null;
+  } catch {
+    return null;
+  }
+}
+
+function wait(ms: number) {
+  return new Promise((resolve) => window.setTimeout(resolve, ms));
+}
+
+async function resolveSendTarget() {
+  const wrapper = getSessionWrapper();
+  const raw = getRawSession();
+
+  if (wrapper?.sendMessage) {
+    return {
+      kind: "wrapper" as const,
+      send: (payload: any) => wrapper.sendMessage(GOOGLE_CAST_NAMESPACE, payload),
+    };
+  }
+
+  if (raw?.sendMessage) {
+    return {
+      kind: "raw" as const,
+      send: (payload: any) => raw.sendMessage(GOOGLE_CAST_NAMESPACE, payload),
+    };
+  }
+
+  return null;
+}
+
 async function sendMessageInternal(message: any, diagKeyOk: string, diagKeyFail: string) {
   try {
+    await ensureGoogleCastReady();
+
+    let target = await resolveSendTarget();
+    if (!target) {
+      await wait(150);
+      target = await resolveSendTarget();
+    }
+    if (!target) {
+      await wait(450);
+      target = await resolveSendTarget();
+    }
+
     const state = getGoogleCastState();
-    const raw = getRawSession();
-    if (!raw?.sendMessage) {
+    if (!target) {
       pushDiag(`${diagKeyFail}_no_session`, {
         castState: state.castState,
         isCasting: state.isCasting,
         device: state.deviceName,
+        hasWrapper: !!getSessionWrapper(),
+        hasRaw: !!getRawSession(),
       });
       return false;
     }
-    await raw.sendMessage(GOOGLE_CAST_NAMESPACE, message);
+
+    await target.send(message);
     pushDiag(diagKeyOk, {
+      via: target.kind,
       type: message?.type || "",
       sessionId: state.sessionId,
       device: state.deviceName,
