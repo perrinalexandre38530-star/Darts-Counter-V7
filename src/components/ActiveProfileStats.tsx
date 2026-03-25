@@ -2,7 +2,7 @@
 // src/components/ActiveProfileStats.tsx — Widget Accueil
 // ============================================
 import { useEffect, useState } from "react";
-import { getBasicProfileStats, type BasicProfileStats } from "../lib/statsBridge";
+import { getBasicProfileStatsAsync, type BasicProfileStats } from "../lib/statsBridge";
 import { loadStore } from "../lib/storage";
 
 export default function ActiveProfileStats() {
@@ -10,12 +10,32 @@ export default function ActiveProfileStats() {
   const [s, setS] = useState<BasicProfileStats | null>(null);
 
   useEffect(() => {
-    (async () => {
+    let cancelled = false;
+
+    const refresh = async () => {
       const store = await loadStore().catch(() => null);
       const id = store?.activeProfileId ?? store?.profiles?.[0]?.id ?? "";
+      if (cancelled) return;
       setPid(id);
-      if (id) setS(await getBasicProfileStats(id));
-    })();
+      if (!id) {
+        setS(null);
+        return;
+      }
+      const next = await getBasicProfileStatsAsync(id).catch(() => null);
+      if (!cancelled) setS(next);
+    };
+
+    void refresh();
+
+    const onStatsUpdated = () => {
+      void refresh();
+    };
+
+    window.addEventListener("dc-stats-index-updated", onStatsUpdated as EventListener);
+    return () => {
+      cancelled = true;
+      window.removeEventListener("dc-stats-index-updated", onStatsUpdated as EventListener);
+    };
   }, []);
 
   if (!pid || !s) return null;

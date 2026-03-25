@@ -8,7 +8,6 @@
 // ============================================
 
 import React from "react";
-import * as StatsLite from "../lib/statsLiteIDB";
 import {
   ResponsiveContainer,
   BarChart,

@@ -1055,6 +1055,17 @@ const castAvatarPayloadFromAny = React.useCallback(
   []
 );
 
+const profileById = React.useMemo(() => {
+  const m: Record<string, { avatarDataUrl: string | null; name: string }> = {};
+  for (const p of players as any[]) {
+    m[p.id] = {
+      avatarDataUrl: resolveAvatar(p),
+      name: p.name,
+    };
+  }
+  return m;
+}, [players, resolveAvatar]);
+
 // Overlay "Résumé de la manche" (EndOfLegOverlay)
 const [summaryOpen, setSummaryOpen] = React.useState(false);
 const [summaryLegStats, setSummaryLegStats] = React.useState<LegStats | null>(
@@ -1276,17 +1287,6 @@ const isBotTurn = React.useMemo(() => {
 
   // ---------------- Avatars (depuis config.players) ----------------
 
-  const profileById = React.useMemo(() => {
-    const m: Record<string, { avatarDataUrl: string | null; name: string }> = {};
-    for (const p of players as any[]) {
-      m[p.id] = {
-        avatarDataUrl: resolveAvatar(p),
-        name: p.name,
-      };
-    }
-    return m;
-  }, [players, resolveAvatar]);
-  
   // Backward-compat: anciens builds stockaient `matchMode`.
   const isTeamsMode =
     ((config as any).gameMode === "teams" || (config as any).matchMode === "teams") &&
@@ -1361,120 +1361,6 @@ const activeTeam = React.useMemo(() => {
     // défaut historique = double-out
     return "double";
   }, [config]);
-
-  const x01CastSnapshot = React.useMemo(() => {
-    try {
-      const castPlayers = isTeamsMode && Array.isArray(teamsView) && teamsView.length
-        ? (teamsView as any[]).map((team: any) => ({
-            id: String(team.id || team.name || Math.random()),
-            name: String(team.name || "Équipe"),
-            score: Number(team.score ?? 0),
-            active: !!activeTeam && String(activeTeam.id) === String(team.id),
-            ...castAvatarPayloadFromAny(team, teamAvatarUrl(team)),
-          }))
-        : (players as any[]).map((p: any) => {
-            const pid = String(p.id || "");
-            const live = (liveStatsByPlayer as any)?.[pid] || {};
-            const detail = extractDetailedStatsFromLive(live);
-            const avg3d = Number(avg3ByPlayer[pid] ?? 0);
-            const totalHits =
-              Number(detail.hitsS ?? 0) +
-              Number(detail.hitsD ?? 0) +
-              Number(detail.hitsT ?? 0) +
-              Number(detail.bull ?? 0) +
-              Number(detail.dBull ?? 0);
-
-            return {
-              id: pid,
-              name: String(p.name || "Joueur"),
-              score: Number((scores as any)?.[p.id] ?? config.startScore ?? 0),
-              active: String(activePlayerId || "") === String(p.id),
-              ...castAvatarPayloadFromAny(p, resolveAvatar(p)),
-              stats: {
-                avg3d: avg3d.toFixed(2),
-                bestVisit: Number(live?.bestVisit ?? 0),
-                hits: totalHits,
-                miss: Number(detail.miss ?? 0),
-                simple: Number(detail.hitsS ?? 0),
-                double: Number(detail.hitsD ?? 0),
-                triple: Number(detail.hitsT ?? 0),
-                bull: Number(detail.bull ?? 0),
-                dbull: Number(detail.dBull ?? 0),
-                bust: Number(detail.bust ?? 0),
-                totalThrows: Number(detail.darts ?? live?.dartsThrown ?? 0),
-              },
-            };
-          });
-
-      return {
-        screen: "game",
-        game: "x01" as const,
-        title: isTeamsMode ? "X01 Teams" : "X01",
-        status: status === "finished" ? "finished" as const : "live" as const,
-        players: castPlayers,
-        currentPlayer: String(activePlayerId || ""),
-        scores: castPlayers.map((p: any) => Number(p?.score ?? 0)),
-        meta: {
-          set: castSetNo,
-          leg: castLegNo,
-          outMode,
-        },
-        updatedAt: Date.now(),
-      };
-    } catch {
-      return null;
-    }
-  }, [
-    isTeamsMode,
-    teamsView,
-    activeTeam,
-    players,
-    scores,
-    config.startScore,
-    activePlayerId,
-    outMode,
-    status,
-    castSetNo,
-    castLegNo,
-    liveStatsByPlayer,
-    avg3ByPlayer,
-    castAvatarPayloadFromAny,
-    resolveAvatar,
-  ]);
-
-  React.useEffect(() => {
-    if (!x01CastSnapshot) return;
-    let cancelled = false;
-    const timer = window.setTimeout(() => {
-      if (cancelled) return;
-      appendGoogleCastDiag("x01_snapshot_send_now", {
-        mode: x01CastSnapshot.game,
-        screen: x01CastSnapshot.screen,
-        players: Array.isArray(x01CastSnapshot.players) ? x01CastSnapshot.players.length : 0,
-        status: x01CastSnapshot.status,
-        currentPlayer: x01CastSnapshot.currentPlayer,
-      });
-
-      Promise.resolve(sendCastSnapshot(x01CastSnapshot))
-        .then((ok) => {
-          if (cancelled) return;
-          appendGoogleCastDiag(ok ? "x01_snapshot_sent" : "x01_snapshot_not_sent", {
-            players: Array.isArray(x01CastSnapshot.players) ? x01CastSnapshot.players.length : 0,
-            game: x01CastSnapshot.game,
-            screen: x01CastSnapshot.screen,
-          });
-        })
-        .catch((err) => {
-          if (cancelled) return;
-          appendGoogleCastDiag("x01_snapshot_throw", String(err));
-        });
-    }, castStatusTick ? 30 : 55);
-
-    return () => {
-      cancelled = true;
-      window.clearTimeout(timer);
-    };
-  }, [x01CastSnapshot, castStatusTick]);
 
   // Affichage "Volée x/3" (désactivé par défaut) — active seulement si config.showThrowCounter === true
   const showThrowCounter = (config as any)?.showThrowCounter === true;
@@ -2641,6 +2527,120 @@ const avg3ByPlayer: Record<string, number> = React.useMemo(() => {
 
   return map;
 }, [players, liveStatsByPlayer, scores, config.startScore, isTeamsMode]);
+
+React.useEffect(() => {
+  let cancelled = false;
+
+  const timer = window.setTimeout(() => {
+    if (cancelled) return;
+
+    try {
+      const castPlayers = isTeamsMode && Array.isArray(teamsView) && teamsView.length
+        ? (teamsView as any[]).map((team: any) => ({
+            id: String(team.id || team.name || Math.random()),
+            name: String(team.name || "Équipe"),
+            score: Number(team.score ?? 0),
+            active: !!activeTeam && String(activeTeam.id) === String(team.id),
+            ...castAvatarPayloadFromAny(team, teamAvatarUrl(team)),
+          }))
+        : (players as any[]).map((p: any) => {
+            const pid = String(p.id || "");
+            const live = (liveStatsByPlayer as any)?.[pid] || {};
+            const detail = extractDetailedStatsFromLive(live);
+            const avg3d = Number(avg3ByPlayer[pid] ?? 0);
+            const totalHits =
+              Number(detail.hitsS ?? 0) +
+              Number(detail.hitsD ?? 0) +
+              Number(detail.hitsT ?? 0) +
+              Number(detail.bull ?? 0) +
+              Number(detail.dBull ?? 0);
+
+            return {
+              id: pid,
+              name: String(p.name || "Joueur"),
+              score: Number((scores as any)?.[p.id] ?? config.startScore ?? 0),
+              active: String(activePlayerId || "") === String(p.id),
+              ...castAvatarPayloadFromAny(p, resolveAvatar(p)),
+              stats: {
+                avg3d: avg3d.toFixed(2),
+                bestVisit: Number(live?.bestVisit ?? 0),
+                hits: totalHits,
+                miss: Number(detail.miss ?? 0),
+                simple: Number(detail.hitsS ?? 0),
+                double: Number(detail.hitsD ?? 0),
+                triple: Number(detail.hitsT ?? 0),
+                bull: Number(detail.bull ?? 0),
+                dbull: Number(detail.dBull ?? 0),
+                bust: Number(detail.bust ?? 0),
+                totalThrows: Number(detail.darts ?? live?.dartsThrown ?? 0),
+              },
+            };
+          });
+
+      const snapshot = {
+        screen: "game",
+        game: "x01" as const,
+        title: isTeamsMode ? "X01 Teams" : "X01",
+        status: status === "finished" ? ("finished" as const) : ("live" as const),
+        players: castPlayers,
+        currentPlayer: String(activePlayerId || ""),
+        scores: castPlayers.map((p: any) => Number(p?.score ?? 0)),
+        meta: {
+          set: castSetNo,
+          leg: castLegNo,
+          outMode,
+        },
+        updatedAt: Date.now(),
+      };
+
+      appendGoogleCastDiag("x01_snapshot_send_now", {
+        mode: snapshot.game,
+        screen: snapshot.screen,
+        players: Array.isArray(snapshot.players) ? snapshot.players.length : 0,
+        status: snapshot.status,
+        currentPlayer: snapshot.currentPlayer,
+      });
+
+      Promise.resolve(sendCastSnapshot(snapshot))
+        .then((ok) => {
+          if (cancelled) return;
+          appendGoogleCastDiag(ok ? "x01_snapshot_sent" : "x01_snapshot_not_sent", {
+            players: Array.isArray(snapshot.players) ? snapshot.players.length : 0,
+            game: snapshot.game,
+            screen: snapshot.screen,
+          });
+        })
+        .catch((err) => {
+          if (cancelled) return;
+          appendGoogleCastDiag("x01_snapshot_throw", String(err));
+        });
+    } catch (err) {
+      appendGoogleCastDiag("x01_snapshot_build_throw", String(err));
+    }
+  }, castStatusTick ? 30 : 55);
+
+  return () => {
+    cancelled = true;
+    window.clearTimeout(timer);
+  };
+}, [
+  isTeamsMode,
+  teamsView,
+  activeTeam,
+  players,
+  scores,
+  config.startScore,
+  activePlayerId,
+  outMode,
+  status,
+  castSetNo,
+  castLegNo,
+  liveStatsByPlayer,
+  avg3ByPlayer,
+  castAvatarPayloadFromAny,
+  resolveAvatar,
+  castStatusTick,
+]);
 
   const miniRanking: MiniRankingRow[] = React.useMemo(() => {
     return players

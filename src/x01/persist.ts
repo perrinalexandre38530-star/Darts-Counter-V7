@@ -1,10 +1,8 @@
 // ============================================
 // src/x01/persist.ts
-// Persistance historique + "glue" StatsBridge
+// Persistance historique + glue stats centralisé
 // ============================================
 import { History } from "../lib/history";
-import { addMatchSummary } from "../lib/statsLiteIDB";
-import { extractAggFromSavedMatch } from "../lib/aggFromHistory";
 import type { MatchRecord } from "../lib/types";
 
 /* ---------- Record "engine-like" minimal pour Historique ---------- */
@@ -52,7 +50,7 @@ export function makeX01RecordFromEngineCompat(args: {
   return rec as MatchRecord;
 }
 
-/* ---------- Upsert sûr + agrégateur LITE ---------- */
+/* ---------- Upsert sûr ---------- */
 export async function safeSaveMatch({
   id, players, winnerId, summary, payload,
 }: {
@@ -65,18 +63,19 @@ export async function safeSaveMatch({
   try {
     const now = Date.now();
     await History.upsert({
-      id, kind: "x01", status: "finished",
-      players, winnerId, createdAt: now, updatedAt: now, summary: summary || null, payload,
+      id,
+      kind: "x01",
+      status: "finished",
+      players,
+      winnerId,
+      createdAt: now,
+      updatedAt: now,
+      summary: summary || null,
+      payload,
     });
 
-    // alimente l’agrégateur profils immédiatement (unique source)
-    const { winnerId: w, perPlayer } = extractAggFromSavedMatch({
-      id, players, winnerId, summary, payload,
-    });
-    if (Object.keys(perPlayer || {}).length) {
-      await addMatchSummary({ winnerId: w, perPlayer });
-    }
-
+    // Le rafraîchissement stats est désormais géré par History.upsert()
+    // via le stats_index central. On évite les doubles écritures legacy.
     await History.list();
     console.info("[HIST:OK]", id);
   } catch (e) {
@@ -96,7 +95,6 @@ export function emitHistoryRecord_X01({
   onFinish: (rec: any) => void;
 }) {
   const now = Date.now();
-  // Ici on peut décider de ne plus "projetter" si EndOfLegOverlay lit direct legStats.
   const rec: any = {
     id: `x01-${now}-${Math.random().toString(36).slice(2, 8)}`,
     kind: "x01",

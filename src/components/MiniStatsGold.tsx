@@ -5,7 +5,7 @@
 // - Si 'seed' est fourni, l'utilise; sinon charge via getBasicProfileStats(profileId)
 // ============================================
 import React from "react";
-import { getBasicProfileStats, type BasicProfileStats } from "../lib/statsBridge";
+import { getBasicProfileStatsAsync, type BasicProfileStats } from "../lib/statsBridge";
 
 type Props = {
   profileId: string;
@@ -20,15 +20,35 @@ export default function MiniStatsGold({ profileId, seed, compact = true }: Props
 
   React.useEffect(() => {
     let stop = false;
-    if (!seed && profileId) {
-      (async () => {
-        try {
-          const s = await getBasicProfileStats(profileId);
-          if (!stop) setStats(s);
-        } catch {/* no-op */}
-      })();
-    }
-    return () => { stop = true; };
+
+    const refresh = async () => {
+      if (seed) {
+        if (!stop) setStats(seed);
+        return;
+      }
+      if (!profileId) {
+        if (!stop) setStats(undefined);
+        return;
+      }
+      try {
+        const s = await getBasicProfileStatsAsync(profileId);
+        if (!stop) setStats(s);
+      } catch {
+        if (!stop) setStats(undefined);
+      }
+    };
+
+    void refresh();
+
+    const onStatsUpdated = () => {
+      void refresh();
+    };
+
+    window.addEventListener("dc-stats-index-updated", onStatsUpdated as EventListener);
+    return () => {
+      stop = true;
+      window.removeEventListener("dc-stats-index-updated", onStatsUpdated as EventListener);
+    };
   }, [profileId, seed]);
 
   const avg3 = fmt(stats?.avg3 ?? 0);

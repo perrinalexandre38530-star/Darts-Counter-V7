@@ -12,8 +12,12 @@ import { SaveToast } from "../components/ui/SaveToast";
 import ProfileAvatar from "../components/ProfileAvatar";
 import ProfileStarRing from "../components/ProfileStarRing";
 import type { Store, Profile } from "../lib/types";
-import { getBasicProfileStats, type BasicProfileStats } from "../lib/statsBridge";
-import { getBasicProfileStatsSync, purgeAllStatsForProfile } from "../lib/statsLiteIDB";
+import {
+  getBasicProfileStats,
+  getBasicProfileStatsAsync,
+  type BasicProfileStats,
+} from "../lib/statsBridge";
+import { purgeAllStatsForProfile } from "../lib/statsLiteIDB";
 import { useTheme } from "../contexts/ThemeContext";
 import { useLang, type Lang } from "../contexts/LangContext";
 import { useAuthOnline } from "../hooks/useAuthOnline";
@@ -131,49 +135,68 @@ function useBasicStats(playerId: string | undefined | null) {
     []
   );
 
-  if (!playerId) return empty;
+  const [stats, setStats] = React.useState(empty);
 
-  // 1) Lecture lite (IDB / localStorage "dc-lite-v1")
-  const lite = getBasicProfileStatsSync(playerId); // avg3, bestVisit, bestCheckout, winPct, coPct, legs
+  React.useEffect(() => {
+    let cancelled = false;
 
-  // 2) Lecture quick-stats (localStorage "dc-quick-stats")
-  const basic = getBasicProfileStats(playerId); // games, darts, avg3, bestVisit, bestCheckout, wins
+    const apply = (basic: any) => {
+      const games = Number((basic && basic.games) ?? 0);
+      const wins = Number((basic && basic.wins) ?? 0);
+      const darts = Number((basic && basic.darts) ?? 0);
+      const avg3 = Number((basic && basic.avg3) ?? 0);
+      const bestVisit = Number((basic && basic.bestVisit) ?? 0);
+      const bestCheckout = Number((basic && basic.bestCheckout) ?? 0);
+      const winRate = games > 0 ? Math.round((wins / games) * 100) : 0;
+      return {
+        avg3,
+        bestVisit,
+        bestCheckout,
+        wins,
+        games,
+        winRate,
+        darts,
+      };
+    };
 
-  const games = Number(
-    (basic && basic.games) ?? (lite && (lite as any).legs) ?? 0
-  );
-  const wins = Number((basic && basic.wins) ?? 0);
-  const darts = Number((basic && basic.darts) ?? 0);
+    const refresh = async () => {
+      if (!playerId) {
+        if (!cancelled) setStats(empty);
+        return;
+      }
 
-  // avg3 : priorité au lite (plus complet), fallback quick-stats
-  const avg3 =
-    Number.isFinite(lite?.avg3) && lite!.avg3 > 0
-      ? Number(lite!.avg3)
-      : Number((basic && basic.avg3) ?? 0);
+      try {
+        const syncStats = getBasicProfileStats(playerId);
+        if (!cancelled) setStats(apply(syncStats));
+      } catch {
+        if (!cancelled) setStats(empty);
+      }
 
-  const bestVisit = Math.max(
-    Number(lite?.bestVisit ?? 0),
-    Number(basic?.bestVisit ?? 0)
-  );
+      try {
+        const asyncStats = await getBasicProfileStatsAsync(playerId);
+        if (!cancelled) setStats(apply(asyncStats));
+      } catch {}
+    };
 
-  const bestCheckout = Math.max(
-    Number(lite?.bestCheckout ?? 0),
-    Number(basic?.bestCheckout ?? 0)
-  );
+    refresh();
 
-  // winRate : si on a games/wins → on recalcule, sinon on prend winPct lite
-  const winRate =
-    games > 0 ? Math.round((wins / games) * 100) : Number(lite?.winPct ?? 0);
+    const onUpdated = () => {
+      refresh();
+    };
 
-  return {
-    avg3,
-    bestVisit,
-    bestCheckout,
-    wins,
-    games,
-    winRate,
-    darts,
-  };
+    if (typeof window !== "undefined") {
+      window.addEventListener("dc-stats-index-updated", onUpdated as EventListener);
+    }
+
+    return () => {
+      cancelled = true;
+      if (typeof window !== "undefined") {
+        window.removeEventListener("dc-stats-index-updated", onUpdated as EventListener);
+      }
+    };
+  }, [playerId, empty]);
+
+  return playerId ? stats : empty;
 }
 
 /* ----------------- Types Friends ----------------- */
@@ -1235,7 +1258,7 @@ React.useEffect(() => {
       const pid = active?.id;
       if (!pid || statsMap[pid]) return;
       try {
-        const s = await getBasicProfileStats(pid);
+        const s = await getBasicProfileStatsAsync(pid);
         if (!cancelled) setStatsMap((m) => ({ ...m, [pid]: s }));
       } catch {}
     })();
@@ -1253,7 +1276,7 @@ React.useEffect(() => {
         if (stopped) break;
         if (statsMap[id]) continue;
         try {
-          const s = await getBasicProfileStats(id);
+          const s = await getBasicProfileStatsAsync(id);
           if (!stopped) setStatsMap((m) => (m[id] ? m : { ...m, [id]: s }));
         } catch {}
       }
@@ -1266,7 +1289,7 @@ React.useEffect(() => {
 
   const activeAvg3D = React.useMemo<number | null>(() => {
     if (!active?.id) return null;
-    const bs = getBasicProfileStatsSync(active.id);
+    const bs = getBasicProfileStats(active.id);
     if (Number.isFinite(bs?.avg3)) return Number(bs.avg3);
     const inMap = statsMap[active.id];
     if (Number.isFinite((inMap as any)?.avg3d)) return Number((inMap as any).avg3d);

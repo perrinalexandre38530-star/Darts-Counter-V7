@@ -2197,18 +2197,25 @@ export default function Home({ store, go, activeSport }: Props) {
   useEffect(() => {
     let cancelled = false;
 
-    if (!activeProfile) {
-      setStats(emptyActiveProfileStats());
-      return;
-    }
-
-    (async () => {
-      const s = await buildStatsForProfile(activeProfile.id);
+    const refresh = async () => {
+      if (!activeProfile) {
+        if (!cancelled) setStats(emptyActiveProfileStats());
+        return;
+      }
+      const s = await buildStatsForProfile(activeProfile.id).catch(() => emptyActiveProfileStats());
       if (!cancelled) setStats(s);
-    })();
+    };
 
+    void refresh();
+
+    const onStatsUpdated = () => {
+      void refresh();
+    };
+
+    window.addEventListener("dc-stats-index-updated", onStatsUpdated as EventListener);
     return () => {
       cancelled = true;
+      window.removeEventListener("dc-stats-index-updated", onStatsUpdated as EventListener);
     };
   }, [activeProfile?.id]);
 

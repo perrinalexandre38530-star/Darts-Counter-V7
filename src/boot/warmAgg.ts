@@ -2,21 +2,23 @@
 // src/boot/warmAgg.ts — Backfill agrégateur depuis History (one-shot)
 // ============================================
 import { History } from "../lib/history";
-import { addMatchSummary } from "../lib/statsLiteIDB";
-import { extractAggFromSavedMatch } from "../lib/aggFromHistory";
+import { scheduleStatsIndexRefresh } from "../lib/stats/rebuildStatsFromHistory";
 
-const FLAG = "dc-statslite-backfill-v1";
+const FLAG = "dc-stats-index-backfill-v2";
 
 export async function warmAggOnce() {
   try {
     if (localStorage.getItem(FLAG)) return;
+
     const rows = await History.list();
-    for (const r of rows || []) {
-      const { winnerId, perPlayer } = extractAggFromSavedMatch(r);
-      if (Object.keys(perPlayer).length) {
-        await addMatchSummary({ winnerId, perPlayer });
-      }
+    if ((rows || []).length > 0) {
+      scheduleStatsIndexRefresh({
+        reason: "warm-backfill",
+        debounceMs: 80,
+        includeNonFinished: false,
+      });
     }
+
     localStorage.setItem(FLAG, "1");
   } catch (e) {
     console.warn("warmAggOnce:", e);

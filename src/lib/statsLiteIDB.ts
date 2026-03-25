@@ -1,3 +1,5 @@
+import { loadStatsIndex, saveStatsIndex, scheduleStatsIndexRefresh } from "./stats/rebuildStatsFromHistory";
+
 // ============================================
 // src/lib/statsLiteIDB.ts
 // Mini-cache profils (localStorage) pour Home/Profils/Stats
@@ -152,6 +154,9 @@ export function commitLiteFromLeg(
   }
 
   save(db);
+  try {
+    scheduleStatsIndexRefresh({ reason: "statslite-add-summary", debounceMs: 120, includeNonFinished: false });
+  } catch {}
 }
 
 /* ============================================================
@@ -223,6 +228,9 @@ export async function addMatchSummary(arg: {
   }
 
   save(db);
+  try {
+    scheduleStatsIndexRefresh({ reason: "statslite-commit-leg", debounceMs: 120, includeNonFinished: false });
+  } catch {}
 }
 
 /* ============================================================
@@ -292,6 +300,36 @@ export function purgeLiteStatsForProfile(profileId: string) {
  */
 export async function purgeAllStatsForProfile(profileId: string) {
   purgeLiteStatsForProfile(profileId);
+
+  try {
+    const idx = await loadStatsIndex();
+    if (idx?.byPlayer && idx.byPlayer[profileId]) {
+      delete idx.byPlayer[profileId];
+      idx.rebuiltAt = Date.now();
+      await saveStatsIndex(idx);
+      try {
+        if (typeof window !== "undefined") {
+          window.dispatchEvent(
+            new CustomEvent("dc-stats-index-updated", {
+              detail: { reason: "purge-profile", profileId, rebuiltAt: idx.rebuiltAt },
+            })
+          );
+        }
+      } catch {}
+    }
+  } catch {}
+
+  try {
+    const QUICK_KEY = "dc-quick-stats";
+    const raw = localStorage.getItem(QUICK_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed === "object") {
+        delete parsed[profileId];
+        localStorage.setItem(QUICK_KEY, JSON.stringify(parsed));
+      }
+    }
+  } catch {}
 }
 
 // ------------------------------------------------------------
