@@ -1016,6 +1016,43 @@ const resolveAvatar = React.useCallback(
   [botsMap]
 );
 
+const castAvatarPayloadFromAny = React.useCallback(
+  (entity: any, preferredSrc?: string | null) => {
+    const candidates = [
+      preferredSrc,
+      entity?.avatarUrl,
+      entity?.photoUrl,
+      entity?.imageUrl,
+      entity?.profile?.avatarUrl,
+      entity?.profile?.photoUrl,
+      entity?.meta?.avatarUrl,
+      entity?.meta?.photoUrl,
+      entity?.avatarDataUrl,
+      entity?.photoDataUrl,
+      entity?.profile?.avatarDataUrl,
+      entity?.profile?.photoDataUrl,
+      entity?.meta?.avatarDataUrl,
+      entity?.avatar,
+    ];
+
+    for (const raw of candidates) {
+      const src = typeof raw === "string" ? raw.trim() : "";
+      if (!src) continue;
+
+      if (/^(https?:|\/)/i.test(src)) {
+        return { avatarUrl: src };
+      }
+
+      if (/^data:image\//i.test(src)) {
+        if (src.length <= 120_000) return { avatarDataUrl: src };
+      }
+    }
+
+    return {};
+  },
+  []
+);
+
 // Overlay "Résumé de la manche" (EndOfLegOverlay)
 const [summaryOpen, setSummaryOpen] = React.useState(false);
 const [summaryLegStats, setSummaryLegStats] = React.useState<LegStats | null>(
@@ -1331,12 +1368,14 @@ const activeTeam = React.useMemo(() => {
             name: String(team.name || "Équipe"),
             score: Number(team.score ?? 0),
             active: !!activeTeam && String(activeTeam.id) === String(team.id),
+            ...castAvatarPayloadFromAny(team, teamAvatarUrl(team)),
           }))
         : (players as any[]).map((p: any) => ({
             id: String(p.id),
             name: String(p.name || "Joueur"),
             score: Number((scores as any)?.[p.id] ?? config.startScore ?? 0),
             active: String(activePlayerId || "") === String(p.id),
+            ...castAvatarPayloadFromAny(p, resolveAvatar(p)),
           }));
 
       const snapshot = {
