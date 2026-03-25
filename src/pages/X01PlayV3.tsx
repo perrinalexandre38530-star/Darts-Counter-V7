@@ -42,7 +42,7 @@ import tickerX01 from "../assets/tickers/ticker_x01.png";
 
 import { StatsBridge } from "../lib/statsBridge";
 import { loadBots } from "./ProfilesBots";
-import { appendGoogleCastDiag, sendCastSnapshot } from "../cast/googleCast";
+import { appendGoogleCastDiag, sendCastSnapshot, subscribeGoogleCastStatus } from "../cast/googleCast";
 
 
 
@@ -887,6 +887,8 @@ export default function X01PlayV3({
   onReplayNewConfig,
   resume,
 }: Props) {
+  const [castStatusTick, setCastStatusTick] = React.useState(0);
+  React.useEffect(() => subscribeGoogleCastStatus(() => setCastStatusTick((n) => n + 1)), []);
   // Fullscreen gameplay (mobile) — hide tabbar + lock global scroll
   useFullscreenPlay();
   const { isLandscapeTablet } = useViewport();
@@ -1420,7 +1422,7 @@ const activeTeam = React.useMemo(() => {
     } catch {
       return;
     }
-  }, [isTeamsMode, teamsView, activeTeam, players, scores, config.startScore, activePlayerId, state, outMode, status]);
+  }, [isTeamsMode, teamsView, activeTeam, players, scores, config.startScore, activePlayerId, state, outMode, status, castStatusTick]);
 
   // Affichage "Volée x/3" (désactivé par défaut) — active seulement si config.showThrowCounter === true
   const showThrowCounter = (config as any)?.showThrowCounter === true;

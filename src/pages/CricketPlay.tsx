@@ -40,7 +40,7 @@ import ProfileStarRing from "../components/ProfileStarRing";
 import BackDot from "../components/BackDot";
 import InfoDot from "../components/InfoDot";
 import DartboardClickable from "../components/DartboardClickable";
-import { appendGoogleCastDiag, sendCastSnapshot } from "../cast/googleCast";
+import { appendGoogleCastDiag, sendCastSnapshot, subscribeGoogleCastStatus } from "../cast/googleCast";
 
 // 🔽 IMPORTS DE TOUS LES AVATARS BOTS PRO
 import avatarGreenMachine from "../assets/avatars/bots-pro/green-machine.png";
@@ -404,6 +404,8 @@ function pickCricketBotThrow(state: any, player: any, withPoints: boolean, quali
 type CricketVariantId = "classic" | "enculette" | "cut_throat";
 
 export default function CricketPlay({ profiles, params, onFinish }: Props) {
+  const [castStatusTick, setCastStatusTick] = React.useState(0);
+  React.useEffect(() => subscribeGoogleCastStatus(() => setCastStatusTick((n) => n + 1)), []);
   const allProfiles = profiles ?? [];
   const matchIdRef = React.useRef<string>(
     (params as any)?.matchId ?? `cricket-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
@@ -586,7 +588,7 @@ React.useEffect(() => {
   } catch (err) {
     appendGoogleCastDiag("cricket_snapshot_build_failed", String(err));
   }
-}, [state, isFinished, variantId, scoreMode, teamMode, scoringVariant, isCutThroatRoute]);
+}, [state, isFinished, variantId, scoreMode, teamMode, scoringVariant, isCutThroatRoute, castStatusTick]);
 
 React.useEffect(() => {
   // ✅ AUTOSAVE in_progress pour reprise (toutes les 8s)

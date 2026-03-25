@@ -29,7 +29,7 @@ import { playGolfIntro, stopGolfIntro, playGolfTickerSound, playGolfPerfSfx, unl
 import { speak, setVoiceEnabled } from "../lib/voice";
 import { useLang } from "../contexts/LangContext";
 import { History, type SavedMatch } from "../lib/history";
-import { appendGoogleCastDiag, sendCastSnapshot } from "../cast/googleCast";
+import { appendGoogleCastDiag, sendCastSnapshot, subscribeGoogleCastStatus } from "../cast/googleCast";
 
 /**
  * GOLF (darts) — Play
@@ -875,6 +875,9 @@ teamBadge?: { label: string; color: string } | null;
 }
 
 export default function GolfPlay(props: Props) {
+
+  const [castStatusTick, setCastStatusTick] = React.useState(0);
+  React.useEffect(() => subscribeGoogleCastStatus(() => setCastStatusTick((n) => n + 1)), []);
   useFullscreenPlay();
   const { setTab, go, tabParams, params, store } = props;
 
@@ -1912,7 +1915,7 @@ React.useEffect(() => {
   } catch (err) {
     appendGoogleCastDiag("golf_snapshot_build_failed", String(err));
   }
-}, [roster, statsByPlayer, teamsOk, teamTotals, playerTotals, activePlayer?.id, holeIdx, holeTargets, holes, isFinished]);
+}, [roster, statsByPlayer, teamsOk, teamTotals, playerTotals, activePlayer?.id, holeIdx, holeTargets, holes, isFinished, castStatusTick]);
 
   const target = holeTargets[holeIdx] ?? (holeIdx + 1);
 

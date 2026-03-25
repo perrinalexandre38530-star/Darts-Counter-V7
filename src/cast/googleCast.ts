@@ -9,6 +9,8 @@ const GOOGLE_CAST_DIAG_KEY = "multisports_google_cast_diag";
 let sdkPromise: Promise<boolean> | null = null;
 let initializedAppId: string | null = null;
 let lastPingAt = 0;
+let lastSnapshotPayload: any = null;
+let lastSnapshotAt = 0;
 
 function emitStatus() {
   try {
@@ -446,6 +448,7 @@ export async function requestGoogleCastSession() {
     });
     emitStatus();
     await pingGoogleCastReceiver(true);
+    await resendLastSnapshot("request_session");
     return { ok: true as const };
   } catch (err: any) {
     const code = String(err?.code || err?.message || "request_failed");
@@ -465,6 +468,24 @@ export async function endGoogleCastSession() {
   }
 }
 
+async function resendLastSnapshot(reason: string) {
+  if (!lastSnapshotPayload) {
+    pushDiag("resend_snapshot_skipped_no_payload", { reason });
+    return false;
+  }
+  pushDiag("resend_snapshot_begin", {
+    reason,
+    ageMs: Math.max(0, Date.now() - lastSnapshotAt),
+    players: Array.isArray(lastSnapshotPayload?.players) ? lastSnapshotPayload.players.length : 0,
+    game: safeString(lastSnapshotPayload?.game || ""),
+  });
+  return sendMessageInternal(
+    { type: "SNAPSHOT", payload: lastSnapshotPayload },
+    "resend_snapshot_ok",
+    "resend_snapshot_failed"
+  );
+}
+
 export async function pingGoogleCastReceiver(force = false) {
   if (!force && Date.now() - lastPingAt < 1500) {
     pushDiag("ping_skipped_rate_limit");
@@ -481,6 +502,8 @@ export async function pingGoogleCastReceiver(force = false) {
 export async function sendCastSnapshot(snapshot: CastSnapshot | null): Promise<boolean> {
   if (!snapshot) return false;
   const payload = sanitizeSnapshot(snapshot);
+  lastSnapshotPayload = payload;
+  lastSnapshotAt = Date.now();
   return sendMessageInternal(
     { type: "SNAPSHOT", payload },
     "send_snapshot_ok",
@@ -509,6 +532,7 @@ export function subscribeGoogleCastStatus(cb: () => void) {
         const ss = (window as any).cast?.framework?.SessionState;
         if (e?.sessionState === ss?.SESSION_STARTED || e?.sessionState === ss?.SESSION_RESUMED) {
           void pingGoogleCastReceiver(true);
+          void resendLastSnapshot("session_state_changed");
         }
       } catch {}
     });

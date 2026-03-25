@@ -24,7 +24,7 @@ import InfoDot from "../components/InfoDot";
 import ScoreInputHub from "../components/ScoreInputHub";
 import type { Dart as UIDart } from "../lib/types";
 import { useFullscreenPlay } from "../hooks/useFullscreenPlay";
-import { appendGoogleCastDiag, sendCastSnapshot } from "../cast/googleCast";
+import { appendGoogleCastDiag, sendCastSnapshot, subscribeGoogleCastStatus } from "../cast/googleCast";
 import ShanghaiLogo from "../assets/SHANGHAI.png";
 import TargetBg from "../assets/target_bg.png";
 
@@ -331,6 +331,9 @@ function round1(n: number) {
 }
 
 export default function ShanghaiPlay(props: Props) {
+
+  const [castStatusTick, setCastStatusTick] = React.useState(0);
+  React.useEffect(() => subscribeGoogleCastStatus(() => setCastStatusTick((n) => n + 1)), []);
   const matchIdRef = React.useRef<string>(
     ((props as any)?.params as any)?.matchId ?? `shanghai-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
   );
@@ -515,7 +518,7 @@ export default function ShanghaiPlay(props: Props) {
     } catch (err) {
       appendGoogleCastDiag("shanghai_snapshot_build_failed", String(err));
     }
-  }, [safePlayers, active?.id, scores, round, target, multiplier, winRule, endData, lastThrowsById]);
+  }, [safePlayers, active?.id, scores, round, target, multiplier, winRule, endData, lastThrowsById, castStatusTick]);
 
   React.useEffect(() => {
     if (endData) return;

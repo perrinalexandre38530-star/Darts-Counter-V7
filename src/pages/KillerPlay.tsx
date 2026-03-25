@@ -66,7 +66,7 @@ import killerActiveIcon from "../assets/icons/killer-active.png";
 import killerListIcon from "../assets/icons/killer-list.png";
 import deadActiveIcon from "../assets/icons/dead-active.png";
 import deadListIcon from "../assets/icons/dead-list.png";
-import { appendGoogleCastDiag, sendCastSnapshot } from "../cast/googleCast";
+import { appendGoogleCastDiag, sendCastSnapshot, subscribeGoogleCastStatus } from "../cast/googleCast";
 
 type Props = {
   store: Store;
@@ -2493,6 +2493,8 @@ function truthy(v: any) {
 }
 
 export default function KillerPlay({ store, go, config, onFinish }: Props) {
+  const [castStatusTick, setCastStatusTick] = React.useState(0);
+  React.useEffect(() => subscribeGoogleCastStatus(() => setCastStatusTick((n) => n + 1)), []);
   const startedAt = React.useMemo(() => Date.now(), []);
   const matchIdRef = React.useRef<string>(
     (config as any)?.matchId ?? `killer-${startedAt}-${Math.random().toString(36).slice(2, 8)}`
@@ -3045,7 +3047,7 @@ React.useEffect(() => {
     } catch (err) {
       appendGoogleCastDiag("killer_snapshot_build_failed", String(err));
     }
-  }, [players, turnIndex, current?.id, aliveCount, dartsLeft, multiplier, assignDone, finished, w]);
+  }, [players, turnIndex, current?.id, aliveCount, dartsLeft, multiplier, assignDone, finished, w, castStatusTick]);
 
   const inputDisabledBase =
     finished || !!w || !current || current.eliminated || showEnd;

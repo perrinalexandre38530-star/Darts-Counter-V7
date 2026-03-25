@@ -431,8 +431,11 @@ console.warn("🔥 HISTORY PATCH LOADED v2");
 ========================= */
 const LSK = "dc-history-v1"; // ancien storage (migration + fallback)
 const DB_NAME = "dc-store-v1";
-const DB_VER = 2; // ⬅ bump pour index by_updatedAt
-const STORE = "history";
+const DB_VER = 3; // ⬅ split header/detail stores
+const STORE_LEGACY = "history";
+const STORE_HEADERS = "history_headers";
+const STORE_DETAILS = "history_details";
+const STORE = STORE_HEADERS;
 const MAX_ROWS = 400;
 const MAX_CACHE_ROWS = 200;
 const LIST_PAYLOAD_KINDS = new Set(["cricket"]); // payload décodé seulement si vraiment utile
@@ -1033,7 +1036,6 @@ function openDB(): Promise<IDBDatabase> {
       reject(err);
     };
 
-    // ✅ Timeout anti-freeze (sinon intro bloquée à vie)
     const t = window.setTimeout(() => {
       fail(new Error("[history] openDB timeout (IndexedDB blocked?)"));
     }, 1500);
@@ -1043,42 +1045,58 @@ function openDB(): Promise<IDBDatabase> {
     req.onupgradeneeded = () => {
       try {
         const db = req.result;
-        let os: IDBObjectStore;
+        let headers: IDBObjectStore;
 
-        if (!db.objectStoreNames.contains(STORE)) {
-          os = db.createObjectStore(STORE, { keyPath: "id" });
+        if (!db.objectStoreNames.contains(STORE_HEADERS)) {
+          headers = db.createObjectStore(STORE_HEADERS, { keyPath: "id" });
         } else {
-          os = req.transaction!.objectStore(STORE);
+          headers = req.transaction!.objectStore(STORE_HEADERS);
         }
 
         try {
           // @ts-ignore
-          if (!os.indexNames || !os.indexNames.contains("by_updatedAt")) {
-            os.createIndex("by_updatedAt", "updatedAt", { unique: false });
+          if (!headers.indexNames || !headers.indexNames.contains("by_updatedAt")) {
+            headers.createIndex("by_updatedAt", "updatedAt", { unique: false });
           }
         } catch {
           try {
-            os.createIndex("by_updatedAt", "updatedAt", { unique: false });
+            headers.createIndex("by_updatedAt", "updatedAt", { unique: false });
           } catch {}
         }
 
         try {
           // @ts-ignore
-          if (!os.indexNames || !os.indexNames.contains("by_matchId")) {
-            os.createIndex("by_matchId", "matchId", { unique: false });
+          if (!headers.indexNames || !headers.indexNames.contains("by_matchId")) {
+            headers.createIndex("by_matchId", "matchId", { unique: false });
           }
         } catch {
           try {
-            os.createIndex("by_matchId", "matchId", { unique: false });
+            headers.createIndex("by_matchId", "matchId", { unique: false });
+          } catch {}
+        }
+
+        let details: IDBObjectStore;
+        if (!db.objectStoreNames.contains(STORE_DETAILS)) {
+          details = db.createObjectStore(STORE_DETAILS, { keyPath: "id" });
+        } else {
+          details = req.transaction!.objectStore(STORE_DETAILS);
+        }
+
+        try {
+          // @ts-ignore
+          if (!details.indexNames || !details.indexNames.contains("by_updatedAt")) {
+            details.createIndex("by_updatedAt", "updatedAt", { unique: false });
+          }
+        } catch {
+          try {
+            details.createIndex("by_updatedAt", "updatedAt", { unique: false });
           } catch {}
         }
       } catch (e) {
-        // si upgrade foire, on laissera openDB échouer
         console.warn("[history] onupgradeneeded error:", e);
       }
     };
 
-    // ✅ IMPORTANT: si un autre onglet bloque l'upgrade, sinon promesse jamais résolue
     req.onblocked = () => {
       window.clearTimeout(t);
       fail(new Error("[history] IndexedDB blocked (close other tabs/windows using the app)"));
@@ -1090,8 +1108,6 @@ function openDB(): Promise<IDBDatabase> {
       window.clearTimeout(t);
 
       const db = req.result;
-
-      // ✅ si une future upgrade arrive, on ferme pour éviter deadlock
       try {
         db.onversionchange = () => {
           try {
@@ -1110,7 +1126,8 @@ function openDB(): Promise<IDBDatabase> {
   });
 }
 
-async function withStore<T>(
+async function withStoreName<T>(
+  storeName: string,
   mode: IDBTransactionMode,
   fn: (store: IDBObjectStore) => Promise<T> | T
 ): Promise<T> {
@@ -1120,8 +1137,8 @@ async function withStore<T>(
     let settled = false;
     let result: T;
 
-    const tx = db.transaction(STORE, mode);
-    const st = tx.objectStore(STORE);
+    const tx = db.transaction(storeName, mode);
+    const st = tx.objectStore(storeName);
 
     const finishResolve = () => {
       if (settled) return;
@@ -1135,12 +1152,10 @@ async function withStore<T>(
       reject(err);
     };
 
-    // ✅ handlers AVANT d'exécuter fn (évite race => promise qui ne résout jamais)
     tx.oncomplete = () => finishResolve();
     tx.onerror = () => finishReject(tx.error || new Error("IndexedDB tx error"));
     tx.onabort = () => finishReject(tx.error || new Error("IndexedDB tx aborted"));
 
-    // ✅ safety timeout (évite boot bloqué à vie)
     const to = window.setTimeout(() => {
       finishReject(new Error("IndexedDB tx timeout"));
       try {
@@ -1154,7 +1169,6 @@ async function withStore<T>(
       .then(() => fn(st))
       .then((v) => {
         result = v as T;
-        // on attend oncomplete (déjà hooké) pour resolve
       })
       .catch((e) => {
         clearTo();
@@ -1170,6 +1184,138 @@ async function withStore<T>(
   });
 }
 
+async function withStores<T>(
+  storeNames: string[],
+  mode: IDBTransactionMode,
+  fn: (stores: Record<string, IDBObjectStore>) => Promise<T> | T
+): Promise<T> {
+  const db = await openDB();
+
+  return new Promise<T>((resolve, reject) => {
+    let settled = false;
+    let result: T;
+
+    const tx = db.transaction(storeNames, mode);
+    const stores = Object.fromEntries(storeNames.map((name) => [name, tx.objectStore(name)])) as Record<string, IDBObjectStore>;
+
+    const finishResolve = () => {
+      if (settled) return;
+      settled = true;
+      resolve(result as T);
+    };
+    const finishReject = (err: any) => {
+      if (settled) return;
+      settled = true;
+      reject(err);
+    };
+
+    tx.oncomplete = () => finishResolve();
+    tx.onerror = () => finishReject(tx.error || new Error("IndexedDB tx error"));
+    tx.onabort = () => finishReject(tx.error || new Error("IndexedDB tx aborted"));
+
+    const to = window.setTimeout(() => {
+      finishReject(new Error("IndexedDB tx timeout"));
+      try {
+        tx.abort();
+      } catch {}
+    }, 8000);
+    const clearTo = () => window.clearTimeout(to);
+
+    Promise.resolve()
+      .then(() => fn(stores))
+      .then((v) => {
+        result = v as T;
+      })
+      .catch((e) => {
+        clearTo();
+        finishReject(e);
+        try {
+          tx.abort();
+        } catch {}
+      });
+
+    tx.addEventListener("complete", clearTo);
+    tx.addEventListener("error", clearTo);
+    tx.addEventListener("abort", clearTo);
+  });
+}
+
+async function withStore<T>(
+  mode: IDBTransactionMode,
+  fn: (store: IDBObjectStore) => Promise<T> | T
+): Promise<T> {
+  return withStoreName(STORE_HEADERS, mode, fn);
+}
+
+function toHeaderRecord(rec: any) {
+  const out: any = normalizeHistoryRow({ ...(rec || {}) });
+  delete out.payload;
+  delete out.payloadCompressed;
+  return out;
+}
+
+function toDetailRecord(id: string, payloadCompressed: string, rec: any) {
+  const updatedAt = Number(rec?.updatedAt || Date.now());
+  return {
+    id: String(id),
+    matchId: String(rec?.matchId ?? id),
+    kind: String(rec?.kind || ""),
+    status: String(rec?.status || ""),
+    createdAt: Number(rec?.createdAt || updatedAt),
+    updatedAt,
+    payloadCompressed: payloadCompressed || "",
+  };
+}
+
+let legacyIdbMigrDone = false;
+async function migrateLegacyIdbOnce() {
+  if (legacyIdbMigrDone) return;
+  legacyIdbMigrDone = true;
+
+  try {
+    const db = await openDB();
+    if (!db.objectStoreNames.contains(STORE_LEGACY)) return;
+
+    const headersCount = await withStoreName(STORE_HEADERS, "readonly", (st) =>
+      new Promise<number>((resolve) => {
+        const req = st.count();
+        req.onsuccess = () => resolve(Number(req.result || 0));
+        req.onerror = () => resolve(0);
+      })
+    ).catch(() => 0);
+
+    if (headersCount > 0) return;
+
+    await new Promise<void>((resolve, reject) => {
+      const tx = db.transaction([STORE_LEGACY, STORE_HEADERS, STORE_DETAILS], "readwrite");
+      const legacy = tx.objectStore(STORE_LEGACY);
+      const headers = tx.objectStore(STORE_HEADERS);
+      const details = tx.objectStore(STORE_DETAILS);
+      const req = legacy.openCursor();
+
+      req.onsuccess = () => {
+        const cur = req.result as IDBCursorWithValue | null;
+        if (!cur) return;
+        const row: any = cur.value || {};
+        const id = String(row?.id ?? row?.matchId ?? "").trim();
+        if (id) {
+          const header = toHeaderRecord({ ...row, id, matchId: String(row?.matchId ?? id) });
+          const detail = toDetailRecord(id, String(row?.payloadCompressed || ""), row);
+          try { headers.put(header); } catch {}
+          try { details.put(detail); } catch {}
+        }
+        cur.continue();
+      };
+      req.onerror = () => reject(req.error || new Error("history legacy cursor error"));
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error || new Error("history legacy migration tx error"));
+      tx.onabort = () => reject(tx.error || new Error("history legacy migration tx aborted"));
+    });
+  } catch (e) {
+    console.warn("[history] legacy IDB migration skipped:", e);
+  }
+}
+
 /* =========================
    Migration depuis localStorage (une seule fois)
 ========================= */
@@ -1179,6 +1325,8 @@ async function migrateFromLocalStorageOnce() {
   if (migrDone) return;
   migrDone = true;
 
+  await migrateLegacyIdbOnce().catch(() => {});
+
   try {
     const raw = localStorage.getItem(LSK);
     if (!raw) return;
@@ -1186,21 +1334,27 @@ async function migrateFromLocalStorageOnce() {
     const rows: SavedMatch[] = readLegacyRowsSafe();
     if (!rows.length) return;
 
-    await withStore("readwrite", async (st) => {
+    await withStores([STORE_HEADERS, STORE_DETAILS], "readwrite", async (stores) => {
+      const headers = stores[STORE_HEADERS];
+      const details = stores[STORE_DETAILS];
       for (const r of rows) {
-        const rec: any = { ...r };
+        const rec: any = normalizeHistoryRow({ ...r });
+        const id = String(rec?.matchId ?? rec?.id ?? "").trim();
+        if (!id) continue;
         const payloadStr = rec.payload ? JSON.stringify(stripAvatarDataFromPayload(rec.payload)) : "";
-        const payloadCompressed = payloadStr
-          ? LZString.compressToUTF16(payloadStr)
-          : "";
+        const payloadCompressed = payloadStr ? LZString.compressToUTF16(payloadStr) : "";
         delete rec.payload;
-        rec.payloadCompressed = payloadCompressed;
-        if (Array.isArray(rec.players)) {
-          rec.players = stripAvatarDataFromPlayers(rec.players);
-        }
+        if (Array.isArray(rec.players)) rec.players = stripAvatarDataFromPlayers(rec.players);
+        const header = toHeaderRecord({ ...rec, id, matchId: id });
+        const detail = toDetailRecord(id, payloadCompressed, rec);
 
         await new Promise<void>((res, rej) => {
-          const req = st.put(rec);
+          const req = headers.put(header);
+          req.onsuccess = () => res();
+          req.onerror = () => rej(req.error);
+        });
+        await new Promise<void>((res, rej) => {
+          const req = details.put(detail);
           req.onsuccess = () => res();
           req.onerror = () => rej(req.error);
         });
@@ -1221,25 +1375,20 @@ export async function list(): Promise<SavedMatch[]> {
   await migrateFromLocalStorageOnce();
 
   try {
-    const rows: any[] = await withStore("readonly", async (st) => {
+    const rows: any[] = await withStoreName(STORE_HEADERS, "readonly", async (st) => {
       const readWithIndex = async () =>
         await new Promise<any[]>((resolve, reject) => {
           try {
             // @ts-ignore
-            const hasIndex =
-              st.indexNames && st.indexNames.contains("by_updatedAt");
+            const hasIndex = st.indexNames && st.indexNames.contains("by_updatedAt");
             if (!hasIndex) throw new Error("no_index");
             const ix = st.index("by_updatedAt");
             const req = ix.openCursor(undefined, "prev");
             const out: any[] = [];
-            let n = 0;
             req.onsuccess = () => {
               const cur = req.result as IDBCursorWithValue | null;
               if (cur) {
                 out.push({ ...cur.value });
-                n++;
-                // ✅ CRITICAL FIX: ne jamais décaler cursor.continue() hors du callback IDB.
-                // Un setTimeout ferme la transaction et provoque TransactionInactiveError.
                 cur.continue();
               } else resolve(out);
             };
@@ -1253,13 +1402,10 @@ export async function list(): Promise<SavedMatch[]> {
         await new Promise<any[]>((resolve, reject) => {
           const req = st.openCursor();
           const out: any[] = [];
-          let n2 = 0;
           req.onsuccess = () => {
             const cur = req.result as IDBCursorWithValue | null;
             if (cur) {
               out.push({ ...cur.value });
-              n2++;
-              // ✅ CRITICAL FIX: ne jamais décaler cursor.continue() hors du callback IDB.
               cur.continue();
             } else {
               out.sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
@@ -1276,39 +1422,22 @@ export async function list(): Promise<SavedMatch[]> {
       }
     });
 
-    // ✅ DEDUPE: 1 match réel = 1 entrée
-    // ✅ PERF/FIX: on décode payloadCompressed UNIQUEMENT pour CRICKET (sinon boot freeze)
     const byMatch = new Map<string, any>();
-
     for (const r0 of rows || []) {
       const r: any = r0;
       if (!r) continue;
-
-      const shouldDecodePayload = LIST_PAYLOAD_KINDS.has(String(r?.kind || ""));
-      const payload = shouldDecodePayload
-        ? decodePayloadCompressedBestEffort(r.payloadCompressed, {
-            id: String(r?.id ?? r?.matchId ?? "?"),
-            stage: "list",
-          })
-        : null;
-
-      let key =
-        getCanonicalMatchId({ ...r, payload }) ?? String(r?.matchId ?? "");
+      let key = getCanonicalMatchId(r) ?? String(r?.matchId ?? "");
       if (!key) key = String(r?.id ?? "");
       if (!key) continue;
 
       const existing = byMatch.get(key);
-      const tNew = (r as any)?.updatedAt ?? (r as any)?.createdAt ?? 0;
-
+      const tNew = Number(r?.updatedAt ?? r?.createdAt ?? 0);
       const out = normalizeHistoryRow({ ...r, id: key, matchId: key } as any);
-      if (payload) out.payload = stripAvatarDataFromPayload(payload); // ✅ payload seulement pour Cricket
       if (Array.isArray(out.players)) out.players = stripAvatarDataFromPlayers(out.players) || [];
 
-      if (!existing) {
-        byMatch.set(key, out);
-      } else {
-        const tOld =
-          (existing as any)?.updatedAt ?? (existing as any)?.createdAt ?? 0;
+      if (!existing) byMatch.set(key, out);
+      else {
+        const tOld = Number(existing?.updatedAt ?? existing?.createdAt ?? 0);
         if (tNew >= tOld) byMatch.set(key, out);
       }
     }
@@ -1323,61 +1452,71 @@ export async function get(id: string): Promise<SavedMatch | null> {
   await migrateFromLocalStorageOnce();
 
   try {
-    const rec: any = await withStore("readonly", async (st) => {
-      // 1) lookup direct par id
-      const byId = await new Promise<any>((resolve) => {
-        const req = st.get(id);
+    const rec: any = await withStores([STORE_HEADERS, STORE_DETAILS], "readonly", async (stores) => {
+      const headers = stores[STORE_HEADERS];
+      const details = stores[STORE_DETAILS];
+
+      const getHeaderDirect = () =>
+        new Promise<any>((resolve) => {
+          const req = headers.get(id);
+          req.onsuccess = () => resolve(req.result || null);
+          req.onerror = () => resolve(null);
+        });
+
+      const getHeaderByMatchId = () =>
+        new Promise<any>((resolve) => {
+          try {
+            // @ts-ignore
+            const hasIx = headers.indexNames && headers.indexNames.contains("by_matchId");
+            if (!hasIx) return resolve(null);
+            const req = headers.index("by_matchId").get(id);
+            req.onsuccess = () => resolve(req.result || null);
+            req.onerror = () => resolve(null);
+          } catch {
+            resolve(null);
+          }
+        });
+
+      const scanHeader = () =>
+        new Promise<any>((resolve) => {
+          const req = headers.openCursor();
+          req.onsuccess = () => {
+            const cur = req.result as IDBCursorWithValue | null;
+            if (!cur) return resolve(null);
+            const v: any = cur.value;
+            if (v?.matchId === id) return resolve(v);
+            cur.continue();
+          };
+          req.onerror = () => resolve(null);
+        });
+
+      const header = (await getHeaderDirect()) || (await getHeaderByMatchId()) || (await scanHeader());
+      if (!header) return null;
+
+      const detail = await new Promise<any>((resolve) => {
+        const req = details.get(String(header?.id ?? id));
         req.onsuccess = () => resolve(req.result || null);
         req.onerror = () => resolve(null);
       });
-      if (byId) return byId;
 
-      // 2) ✅ lookup par matchId (indispensable si list() renvoie id canonique)
-      try {
-        // @ts-ignore
-        const hasIx = st.indexNames && st.indexNames.contains("by_matchId");
-        if (hasIx) {
-          const ix = st.index("by_matchId");
-          const byMatch = await new Promise<any>((resolve) => {
-            const req = ix.get(id);
-            req.onsuccess = () => resolve(req.result || null);
-            req.onerror = () => resolve(null);
-          });
-          if (byMatch) return byMatch;
-        }
-      } catch {}
-
-      // 3) fallback scan (dernier recours)
-      const scan = await new Promise<any>((resolve) => {
-        const req = st.openCursor();
-        req.onsuccess = () => {
-          const cur = req.result as IDBCursorWithValue | null;
-          if (!cur) return resolve(null);
-          const v: any = cur.value;
-          if (v?.matchId === id) return resolve(v);
-          cur.continue();
-        };
-        req.onerror = () => resolve(null);
-      });
-
-      return scan || null;
+      return { header, detail };
     });
 
-    if (!rec) {
+    if (!rec?.header) {
       const rows = readLegacyRowsSafe();
-      return (rows.find((r) => r.id === id || r.matchId === id) || null) as
-        | SavedMatch
-        | null;
+      return (rows.find((r) => r.id === id || r.matchId === id) || null) as SavedMatch | null;
     }
 
-    let payload: any | null = decodePayloadCompressedBestEffort(rec.payloadCompressed, {
+    const header = { ...(rec.header || {}) };
+    const detail = rec.detail || null;
+
+    let payload: any | null = decodePayloadCompressedBestEffort(detail?.payloadCompressed, {
       id: String(id),
       stage: "get",
     });
 
-    // ✅ fallback: certains legacy stockaient déjà du JSON dans payloadCompressed
-    if (!payload && typeof (rec as any).payloadCompressed === "string") {
-      const t = String((rec as any).payloadCompressed || "").trim();
+    if (!payload && typeof detail?.payloadCompressed === "string") {
+      const t = String(detail.payloadCompressed || "").trim();
       if (t.startsWith("{") || t.startsWith("[")) {
         payload = safeJsonParse(t, {
           id: String(id),
@@ -1385,21 +1524,16 @@ export async function get(id: string): Promise<SavedMatch | null> {
         });
       }
     }
-    delete rec.payloadCompressed;
 
-    const mid = getCanonicalMatchId({ ...rec, payload }) ?? rec.matchId ?? null;
-    if (mid) {
-      rec.matchId = String(mid);
-      // ⚠️ on NE force PAS rec.id ici : get(id) doit rester stable.
-      // L’UI peut utiliser matchId pour navigation.
-    }
+    const mid = getCanonicalMatchId({ ...header, payload }) ?? header.matchId ?? null;
+    if (mid) header.matchId = String(mid);
 
-    if (Array.isArray((rec as any).players)) {
-      (rec as any).players = stripAvatarDataFromPlayers((rec as any).players);
+    if (Array.isArray(header.players)) {
+      header.players = stripAvatarDataFromPlayers(header.players);
     }
 
     return normalizeHistoryRow({
-      ...(rec as any),
+      ...header,
       payload: stripAvatarDataFromPayload(payload),
     } as any) as SavedMatch;
   } catch (e) {
@@ -1430,7 +1564,7 @@ function _toLightHistoryRow(rec: any): SavedMatch {
 async function _readRowsLightFromIdb(): Promise<SavedMatch[]> {
   await migrateFromLocalStorageOnce();
 
-  const rows: any[] = await withStore("readonly", async (st) => {
+  const rows: any[] = await withStoreName(STORE_HEADERS, "readonly", async (st) => {
     const readWithIndex = async () =>
       await new Promise<any[]>((resolve, reject) => {
         try {
@@ -1440,17 +1574,10 @@ async function _readRowsLightFromIdb(): Promise<SavedMatch[]> {
           const ix = st.index("by_updatedAt");
           const req = ix.openCursor(undefined, "prev");
           const out: any[] = [];
-          let n = 0;
           req.onsuccess = () => {
             const cur = req.result as IDBCursorWithValue | null;
             if (cur) {
-              const v = cur.value || {};
-              out.push({
-                ...v,
-                payloadCompressed: undefined, // on ne remonte jamais ce champ dans le cache léger
-              });
-              n++;
-              // ✅ CRITICAL FIX: ne jamais décaler cursor.continue() hors du callback IDB.
+              out.push({ ...cur.value });
               cur.continue();
             } else resolve(out);
           };
@@ -1464,17 +1591,10 @@ async function _readRowsLightFromIdb(): Promise<SavedMatch[]> {
       await new Promise<any[]>((resolve, reject) => {
         const req = st.openCursor();
         const out: any[] = [];
-        let n = 0;
         req.onsuccess = () => {
           const cur = req.result as IDBCursorWithValue | null;
           if (cur) {
-            const v = cur.value || {};
-            out.push({
-              ...v,
-              payloadCompressed: undefined,
-            });
-            n++;
-            // ✅ CRITICAL FIX: ne jamais décaler cursor.continue() hors du callback IDB.
+            out.push({ ...cur.value });
             cur.continue();
           } else {
             out.sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
@@ -1517,6 +1637,7 @@ async function _readRowsLightFromIdb(): Promise<SavedMatch[]> {
     .map((r: any) => normalizeHistoryRow(r)) as SavedMatch[];
 }
 
+type _TrimRow = { id: string; updatedAt?: number; createdAt?: number; status?: string; conflictOf?: string | null };
 type _TrimRow = { id: string; updatedAt?: number; createdAt?: number; status?: string; conflictOf?: string | null };
 
 function _computeTrimIds(rows: _TrimRow[], keepIds: string[] = []): string[] {
@@ -1858,24 +1979,24 @@ export async function upsert(rec: SavedMatch): Promise<void> {
       payloadCompressed = payloadStr ? LZString.compressToUTF16(payloadStr) : "";
     }
 
-    await withStore("readwrite", async (st) => {
-      // Trim MAX_ROWS
+    await withStores([STORE_HEADERS, STORE_DETAILS], "readwrite", async (stores) => {
+      const headers = stores[STORE_HEADERS];
+      const details = stores[STORE_DETAILS];
+
       await new Promise<void>((resolve, reject) => {
         const doTrim = (rows: _TrimRow[]) => {
-          const toDelete = _computeTrimIds(
-            rows,
-            [String(safe.id)]
-          );
-
+          const toDelete = _computeTrimIds(rows, [String(safe.id)]);
           let pending = toDelete.length;
           if (!pending) return resolve();
 
           toDelete.forEach((k) => {
-            const del = st.delete(k);
-            del.onsuccess = () => {
+            const delHeader = headers.delete(k);
+            delHeader.onsuccess = () => {
+              try { details.delete(k); } catch {}
               if (--pending === 0) resolve();
             };
-            del.onerror = () => {
+            delHeader.onerror = () => {
+              try { details.delete(k); } catch {}
               if (--pending === 0) resolve();
             };
           });
@@ -1883,9 +2004,9 @@ export async function upsert(rec: SavedMatch): Promise<void> {
 
         try {
           // @ts-ignore
-          const hasIndex = st.indexNames && st.indexNames.contains("by_updatedAt");
+          const hasIndex = headers.indexNames && headers.indexNames.contains("by_updatedAt");
           if (hasIndex) {
-            const ix = st.index("by_updatedAt");
+            const ix = headers.index("by_updatedAt");
             const req = ix.openCursor(undefined, "prev");
             const rows: _TrimRow[] = [];
             req.onsuccess = () => {
@@ -1913,7 +2034,7 @@ export async function upsert(rec: SavedMatch): Promise<void> {
             };
             req.onerror = () => reject(req.error);
           } else {
-            const req = st.openCursor();
+            const req = headers.openCursor();
             const rows: _TrimRow[] = [];
             req.onsuccess = () => {
               const cur = req.result as IDBCursorWithValue | null;
@@ -1945,14 +2066,19 @@ export async function upsert(rec: SavedMatch): Promise<void> {
         }
       });
 
-      const putReq = st.put({
-        ...safe,
+      const headerReq = headers.put({
+        ...toHeaderRecord(safe),
         players: stripAvatarDataFromPlayers(safe.players) || [],
-        payloadCompressed,
       });
       await new Promise<void>((resolve, reject) => {
-        putReq.onsuccess = () => resolve();
-        putReq.onerror = () => reject(putReq.error);
+        headerReq.onsuccess = () => resolve();
+        headerReq.onerror = () => reject(headerReq.error);
+      });
+
+      const detailReq = details.put(toDetailRecord(String(safe.id), payloadCompressed, safe));
+      await new Promise<void>((resolve, reject) => {
+        detailReq.onsuccess = () => resolve();
+        detailReq.onerror = () => reject(detailReq.error);
       });
     });
 
@@ -2218,24 +2344,25 @@ export async function remove(id: string): Promise<void> {
   await migrateFromLocalStorageOnce();
 
   try {
-    await withStore("readwrite", (st) => {
+    await withStores([STORE_HEADERS, STORE_DETAILS], "readwrite", (stores) => {
+      const headers = stores[STORE_HEADERS];
+      const details = stores[STORE_DETAILS];
       return new Promise<void>((resolve, reject) => {
-        const req = st.delete(id);
-        req.onsuccess = () => resolve();
+        const req = headers.delete(id);
+        req.onsuccess = () => {
+          try { details.delete(id); } catch {}
+          resolve();
+        };
         req.onerror = () => reject(req.error);
       });
     });
 
-    // ================================
-    // 🔔 NOTIFY UI/STATS (history changed)
-    // ================================
     try {
       if (typeof window !== "undefined") {
         window.dispatchEvent(new Event("dc-history-updated"));
       }
     } catch {}
 
-    // ✅ CLOUD
     scheduleCloudSnapshotPush("history:remove");
     try { emitCloudChange("history:remove"); } catch {}
     try { _resumeIndexRemove(String(id)); } catch {}
@@ -2245,16 +2372,12 @@ export async function remove(id: string): Promise<void> {
       const out = rows.filter((r) => r.id !== id && r.matchId !== id);
       localStorage.setItem(LSK, JSON.stringify(out));
 
-      // ================================
-      // 🔔 NOTIFY UI/STATS (history changed)
-      // ================================
       try {
         if (typeof window !== "undefined") {
           window.dispatchEvent(new Event("dc-history-updated"));
         }
       } catch {}
 
-      // ✅ CLOUD
       scheduleCloudSnapshotPush("history:remove:ls_fallback");
       try { emitCloudChange("history:remove:ls_fallback"); } catch {}
       try { _resumeIndexRemove(String(id)); } catch {}
@@ -2266,24 +2389,26 @@ export async function clear(): Promise<void> {
   await migrateFromLocalStorageOnce();
 
   try {
-    await withStore("readwrite", (st) => {
+    await withStores([STORE_HEADERS, STORE_DETAILS], "readwrite", (stores) => {
+      const headers = stores[STORE_HEADERS];
+      const details = stores[STORE_DETAILS];
       return new Promise<void>((resolve, reject) => {
-        const req = st.clear();
-        req.onsuccess = () => resolve();
-        req.onerror = () => reject(req.error);
+        const req1 = headers.clear();
+        req1.onsuccess = () => {
+          const req2 = details.clear();
+          req2.onsuccess = () => resolve();
+          req2.onerror = () => reject(req2.error);
+        };
+        req1.onerror = () => reject(req1.error);
       });
     });
 
-    // ================================
-    // 🔔 NOTIFY UI/STATS (history changed)
-    // ================================
     try {
       if (typeof window !== "undefined") {
         window.dispatchEvent(new Event("dc-history-updated"));
       }
     } catch {}
 
-    // ✅ CLOUD
     scheduleCloudSnapshotPush("history:clear");
     try { emitCloudChange("history:clear"); } catch {}
     try { _resumeIndexWrite([]); } catch {}
@@ -2291,16 +2416,12 @@ export async function clear(): Promise<void> {
     try {
       localStorage.removeItem(LSK);
 
-      // ================================
-      // 🔔 NOTIFY UI/STATS (history changed)
-      // ================================
       try {
         if (typeof window !== "undefined") {
           window.dispatchEvent(new Event("dc-history-updated"));
         }
       } catch {}
 
-      // ✅ CLOUD
       scheduleCloudSnapshotPush("history:clear:ls_fallback");
       try { emitCloudChange("history:clear:ls_fallback"); } catch {}
       try { _resumeIndexWrite([]); } catch {}
@@ -2313,22 +2434,10 @@ export async function clear(): Promise<void> {
 ========================= */
 type _LightRow = Omit<SavedMatch, "payload">;
 
-const LSK_CACHE = "dc-history-cache-v1";
-
-let __cache: _LightRow[] = (() => {
-  try {
-    const txt = localStorage.getItem(LSK_CACHE);
-    const v = txt ? safeJsonParse(txt, { id: "cache", stage: "read" }) : null;
-    return Array.isArray(v) ? (v as _LightRow[]) : [];
-  } catch {
-    return [];
-  }
-})();
+let __cache: _LightRow[] = [];
 
 function _saveCache() {
-  try {
-    localStorage.setItem(LSK_CACHE, JSON.stringify(__cache));
-  } catch {}
+  // stage 1: on supprime la persistance locale du cache history
 }
 
 async function _hydrateCacheFromList() {
