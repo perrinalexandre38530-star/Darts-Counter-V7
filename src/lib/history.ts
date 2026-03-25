@@ -1238,8 +1238,9 @@ export async function list(): Promise<SavedMatch[]> {
               if (cur) {
                 out.push({ ...cur.value });
                 n++;
-                if (n % 200 === 0) setTimeout(() => cur.continue(), 0);
-                else cur.continue();
+                // ✅ CRITICAL FIX: ne jamais décaler cursor.continue() hors du callback IDB.
+                // Un setTimeout ferme la transaction et provoque TransactionInactiveError.
+                cur.continue();
               } else resolve(out);
             };
             req.onerror = () => reject(req.error);
@@ -1258,8 +1259,8 @@ export async function list(): Promise<SavedMatch[]> {
             if (cur) {
               out.push({ ...cur.value });
               n2++;
-              if (n2 % 200 === 0) setTimeout(() => cur.continue(), 0);
-              else cur.continue();
+              // ✅ CRITICAL FIX: ne jamais décaler cursor.continue() hors du callback IDB.
+              cur.continue();
             } else {
               out.sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
               resolve(out);
@@ -1449,8 +1450,8 @@ async function _readRowsLightFromIdb(): Promise<SavedMatch[]> {
                 payloadCompressed: undefined, // on ne remonte jamais ce champ dans le cache léger
               });
               n++;
-              if (n % 200 === 0) setTimeout(() => cur.continue(), 0);
-              else cur.continue();
+              // ✅ CRITICAL FIX: ne jamais décaler cursor.continue() hors du callback IDB.
+              cur.continue();
             } else resolve(out);
           };
           req.onerror = () => reject(req.error);
@@ -1473,8 +1474,8 @@ async function _readRowsLightFromIdb(): Promise<SavedMatch[]> {
               payloadCompressed: undefined,
             });
             n++;
-            if (n % 200 === 0) setTimeout(() => cur.continue(), 0);
-            else cur.continue();
+            // ✅ CRITICAL FIX: ne jamais décaler cursor.continue() hors du callback IDB.
+            cur.continue();
           } else {
             out.sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
             resolve(out);

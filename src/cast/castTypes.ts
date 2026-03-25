@@ -2,6 +2,8 @@ export type CastGameId =
   | "golf"
   | "x01"
   | "cricket"
+  | "killer"
+  | "shanghai"
   | "petanque"
   | "babyfoot"
   | "pingpong"
@@ -19,6 +21,7 @@ export type CastPlayerStats = {
   dbull?: number;
   bust?: number;
   totalThrows?: number;
+  [k: string]: any;
 };
 
 export type CastPlayer = {
@@ -32,6 +35,7 @@ export type CastPlayer = {
   photoUrl?: string;
   imageUrl?: string;
   stats?: CastPlayerStats;
+  [k: string]: any;
 };
 
 export type CastSnapshot = {
@@ -39,13 +43,20 @@ export type CastSnapshot = {
   title: string;
   status: "live" | "finished";
   players: CastPlayer[];
+  screen?: string;
+  currentPlayer?: string;
+  scores?: number[];
   meta?: {
     hole?: number;
     leg?: number;
     set?: number;
+    round?: number;
+    target?: number;
+    outMode?: string;
     [k: string]: any;
   };
   updatedAt: number;
+  [k: string]: any;
 };
 
 export type CastRoom = {

@@ -1,4 +1,3 @@
-
 import type { CastSnapshot } from "./castTypes";
 
 export const DEFAULT_GOOGLE_CAST_APP_ID = "3534BC6A";
@@ -52,7 +51,6 @@ function safeString(value: any) {
   }
 }
 
-
 function sanitizeNumberLike(value: any, fallback = 0) {
   const n = Number(value);
   return Number.isFinite(n) ? n : fallback;
@@ -88,7 +86,6 @@ function sanitizeAvatarFields(player: any) {
   if (!src) return { avatarDataUrl: "", avatarUrl: "" };
 
   if (/^data:image\//i.test(src)) {
-    // Keep embedded avatars only when they are reasonably small for Cast payloads.
     if (src.length <= 140_000) return { avatarDataUrl: src, avatarUrl: "" };
     pushDiag("sanitize_avatar_dropped_too_large", { size: src.length });
     return { avatarDataUrl: "", avatarUrl: "" };
@@ -124,7 +121,7 @@ function sanitizeSnapshot(snapshot: CastSnapshot) {
       JSON.stringify({
         screen: (snapshot as any)?.screen || "",
         currentPlayer: safeString((snapshot as any)?.currentPlayer || ""),
-        game: snapshot?.game || "",
+        game: snapshot?.game || "unknown",
         title: snapshot?.title || "",
         status: snapshot?.status || "live",
         players: Array.isArray(snapshot?.players)
@@ -144,7 +141,7 @@ function sanitizeSnapshot(snapshot: CastSnapshot) {
         meta:
           snapshot?.meta && typeof snapshot.meta === "object"
             ? Object.fromEntries(
-                Object.entries(snapshot.meta).map(([k, v]) => [String(k), safeString(v)])
+                Object.entries(snapshot.meta).map(([k, v]) => [String(k), typeof v === "number" ? v : safeString(v)])
               )
             : {},
         updatedAt: Number((snapshot as any)?.updatedAt || Date.now()),
@@ -183,61 +180,97 @@ function wait(ms: number) {
   return new Promise((resolve) => window.setTimeout(resolve, ms));
 }
 
-async function resolveSendTarget() {
-  const wrapper = getSessionWrapper();
-  const raw = getRawSession();
+type SendTarget = {
+  kind: "wrapper" | "raw";
+  send: (payload: any) => Promise<void>;
+};
 
-  if (wrapper?.sendMessage) {
-    return {
-      kind: "wrapper" as const,
-      send: (payload: any) => wrapper.sendMessage(GOOGLE_CAST_NAMESPACE, payload),
-    };
+function makeWrapperTarget(wrapper: any): SendTarget | null {
+  if (!wrapper?.sendMessage) return null;
+  return {
+    kind: "wrapper",
+    send: async (payload: any) => {
+      await wrapper.sendMessage(GOOGLE_CAST_NAMESPACE, payload);
+    },
+  };
+}
+
+function makeRawTarget(raw: any): SendTarget | null {
+  if (!raw?.sendMessage) return null;
+  return {
+    kind: "raw",
+    send: (payload: any) =>
+      new Promise<void>((resolve, reject) => {
+        try {
+          raw.sendMessage(
+            GOOGLE_CAST_NAMESPACE,
+            payload,
+            () => resolve(),
+            (err: any) => reject(err || new Error("raw_send_failed"))
+          );
+        } catch (err) {
+          reject(err);
+        }
+      }),
+  };
+}
+
+function resolveSendTargets(): SendTarget[] {
+  const targets: SendTarget[] = [];
+  const wrapper = makeWrapperTarget(getSessionWrapper());
+  const raw = makeRawTarget(getRawSession());
+  if (wrapper) targets.push(wrapper);
+  if (raw) targets.push(raw);
+  return targets;
+}
+
+async function sendWithTargets(targets: SendTarget[], message: any, diagKeyOk: string) {
+  let lastErr: any = null;
+  for (const target of targets) {
+    try {
+      await target.send(message);
+      const state = getGoogleCastState();
+      pushDiag(diagKeyOk, {
+        via: target.kind,
+        type: message?.type || "",
+        sessionId: state.sessionId,
+        device: state.deviceName,
+      });
+      return true;
+    } catch (err) {
+      lastErr = err;
+      pushDiag(`${diagKeyOk}_attempt_failed`, { via: target.kind, err: safeString(err) });
+    }
   }
-
-  if (raw?.sendMessage) {
-    return {
-      kind: "raw" as const,
-      send: (payload: any) => raw.sendMessage(GOOGLE_CAST_NAMESPACE, payload),
-    };
-  }
-
-  return null;
+  if (lastErr) throw lastErr;
+  return false;
 }
 
 async function sendMessageInternal(message: any, diagKeyOk: string, diagKeyFail: string) {
   try {
-    await ensureGoogleCastReady();
-
-    let target = await resolveSendTarget();
-    if (!target) {
-      await wait(150);
-      target = await resolveSendTarget();
-    }
-    if (!target) {
-      await wait(450);
-      target = await resolveSendTarget();
-    }
-
-    const state = getGoogleCastState();
-    if (!target) {
-      pushDiag(`${diagKeyFail}_no_session`, {
-        castState: state.castState,
-        isCasting: state.isCasting,
-        device: state.deviceName,
-        hasWrapper: !!getSessionWrapper(),
-        hasRaw: !!getRawSession(),
-      });
+    const ready = await ensureGoogleCastReady();
+    if (!ready) {
+      pushDiag(`${diagKeyFail}_sdk_not_ready`);
       return false;
     }
 
-    await target.send(message);
-    pushDiag(diagKeyOk, {
-      via: target.kind,
-      type: message?.type || "",
-      sessionId: state.sessionId,
+    for (const delay of [0, 120, 320, 800]) {
+      if (delay > 0) await wait(delay);
+      const targets = resolveSendTargets();
+      if (!targets.length) continue;
+      const sent = await sendWithTargets(targets, message, diagKeyOk);
+      if (sent) return true;
+    }
+
+    const state = getGoogleCastState();
+    pushDiag(`${diagKeyFail}_no_session`, {
+      castState: state.castState,
+      isCasting: state.isCasting,
       device: state.deviceName,
+      hasWrapper: !!getSessionWrapper(),
+      hasRaw: !!getRawSession(),
     });
-    return true;
+    return false;
   } catch (err) {
     pushDiag(diagKeyFail, String(err));
     return false;
@@ -294,7 +327,10 @@ export async function loadGoogleCastSdk(): Promise<boolean> {
   pushDiag("sdk_load_begin");
 
   sdkPromise = new Promise<boolean>((resolve) => {
+    let settled = false;
     const done = (ok: boolean, why?: string) => {
+      if (settled) return;
+      settled = true;
       pushDiag(ok ? "sdk_load_ok" : "sdk_load_failed", why || null);
       resolve(ok);
     };
@@ -328,6 +364,7 @@ export async function loadGoogleCastSdk(): Promise<boolean> {
     script.async = true;
     script.onerror = () => done(false, "script_error");
     document.head.appendChild(script);
+    window.setTimeout(() => done(hasSdkLoaded(), "script_timeout"), 3500);
   });
 
   return sdkPromise;
@@ -338,8 +375,6 @@ export async function ensureGoogleCastReady(): Promise<boolean> {
   if (!ok) return false;
 
   const appId = DEFAULT_GOOGLE_CAST_APP_ID;
-  if (initializedAppId === appId) return true;
-
   const cast = (window as any).cast;
   const chrome = (window as any).chrome;
   if (!cast?.framework || !chrome?.cast) {
@@ -348,14 +383,17 @@ export async function ensureGoogleCastReady(): Promise<boolean> {
   }
 
   try {
-    cast.framework.CastContext.getInstance().setOptions({
-      receiverApplicationId: DEFAULT_GOOGLE_CAST_APP_ID,
-      autoJoinPolicy: chrome.cast.AutoJoinPolicy.ORIGIN_SCOPED,
-      resumeSavedSession: true,
-    });
-    initializedAppId = appId;
-    pushDiag("ensure_ready_ok", { appId: DEFAULT_GOOGLE_CAST_APP_ID });
-    emitStatus();
+    if (initializedAppId !== appId) {
+      cast.framework.CastContext.getInstance().setOptions({
+        receiverApplicationId: DEFAULT_GOOGLE_CAST_APP_ID,
+        autoJoinPolicy: chrome.cast.AutoJoinPolicy.ORIGIN_SCOPED,
+        resumeSavedSession: true,
+      });
+      initializedAppId = appId;
+      pushDiag("ensure_ready_ok", { appId: DEFAULT_GOOGLE_CAST_APP_ID });
+      emitStatus();
+      await wait(80);
+    }
     return true;
   } catch (err) {
     pushDiag("ensure_ready_failed", String(err));

@@ -29,6 +29,7 @@ import { playGolfIntro, stopGolfIntro, playGolfTickerSound, playGolfPerfSfx, unl
 import { speak, setVoiceEnabled } from "../lib/voice";
 import { useLang } from "../contexts/LangContext";
 import { History, type SavedMatch } from "../lib/history";
+import { appendGoogleCastDiag, sendCastSnapshot } from "../cast/googleCast";
 
 /**
  * GOLF (darts) — Play
@@ -1851,6 +1852,67 @@ const activeStats =
       { darts: 0, miss: 0, d: 0, t: 0, s: 0, b: 0, db: 0, turns: 0, hit1: 0, hit2: 0, hit3: 0 }
     : { darts: 0, miss: 0, d: 0, t: 0, s: 0, b: 0, db: 0, turns: 0, hit1: 0, hit2: 0, hit3: 0 };
 
+React.useEffect(() => {
+  if (!Array.isArray(roster) || !roster.length) return;
+  try {
+    const castPlayers = roster.map((p: any, idx: number) => {
+      const stats = statsByPlayer?.[idx] ?? { darts: 0, miss: 0, d: 0, t: 0, s: 0, b: 0, db: 0 };
+      const score = teamsOk && p?.teamIndex != null
+        ? Number(teamTotals?.[p.teamIndex] ?? 0)
+        : Number(playerTotals?.[idx] ?? 0);
+      return {
+        id: String(p?.id ?? idx),
+        name: String(p?.name || "Joueur"),
+        score,
+        active: String(activePlayer?.id || "") === String(p?.id || ""),
+        avatarDataUrl: p?.avatar ?? p?.avatarDataUrl ?? "",
+        stats: {
+          avg3d: stats?.turns ? Number(score / Math.max(1, stats.turns)).toFixed(2) : "0.00",
+          bestVisit: 0,
+          hits: Number(stats?.d ?? 0) + Number(stats?.t ?? 0) + Number(stats?.s ?? 0) + Number(stats?.b ?? 0) + Number(stats?.db ?? 0),
+          miss: Number(stats?.miss ?? 0),
+          simple: Number(stats?.s ?? 0),
+          double: Number(stats?.d ?? 0),
+          triple: Number(stats?.t ?? 0),
+          bull: Number(stats?.b ?? 0),
+          dbull: Number(stats?.db ?? 0),
+          bust: 0,
+          totalThrows: Number(stats?.darts ?? 0),
+        },
+      };
+    });
+
+    const snapshot = {
+      screen: "game",
+      game: "golf",
+      title: teamsOk ? "Golf Teams" : "Golf",
+      status: isFinished ? "finished" : "live",
+      players: castPlayers,
+      currentPlayer: String(activePlayer?.id || ""),
+      scores: castPlayers.map((p: any) => Number(p?.score ?? 0)),
+      meta: {
+        hole: Number(holeIdx + 1),
+        target: Number(holeTargets?.[holeIdx] ?? holeIdx + 1),
+        holes: Number(holes || 9),
+        teams: teamsOk ? "on" : "off",
+      },
+      updatedAt: Date.now(),
+    };
+
+    appendGoogleCastDiag("golf_snapshot_send_now", {
+      players: castPlayers.length,
+      currentPlayer: snapshot.currentPlayer,
+      hole: snapshot.meta.hole,
+      status: snapshot.status,
+    });
+
+    void Promise.resolve(sendCastSnapshot(snapshot))
+      .then((ok) => appendGoogleCastDiag(ok ? "golf_snapshot_sent" : "golf_snapshot_not_sent", { players: castPlayers.length }))
+      .catch((err) => appendGoogleCastDiag("golf_snapshot_throw", String(err)));
+  } catch (err) {
+    appendGoogleCastDiag("golf_snapshot_build_failed", String(err));
+  }
+}, [roster, statsByPlayer, teamsOk, teamTotals, playerTotals, activePlayer?.id, holeIdx, holeTargets, holes, isFinished]);
 
   const target = holeTargets[holeIdx] ?? (holeIdx + 1);
 

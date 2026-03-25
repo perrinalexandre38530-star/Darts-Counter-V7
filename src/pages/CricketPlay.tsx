@@ -40,6 +40,7 @@ import ProfileStarRing from "../components/ProfileStarRing";
 import BackDot from "../components/BackDot";
 import InfoDot from "../components/InfoDot";
 import DartboardClickable from "../components/DartboardClickable";
+import { appendGoogleCastDiag, sendCastSnapshot } from "../cast/googleCast";
 
 // 🔽 IMPORTS DE TOUS LES AVATARS BOTS PRO
 import avatarGreenMachine from "../assets/avatars/bots-pro/green-machine.png";
@@ -526,6 +527,66 @@ const isFinished = !!state?.winnerId;
 React.useEffect(() => {
   if (isFinished) setShowEnd(true);
 }, [isFinished]);
+
+React.useEffect(() => {
+  if (!state || !Array.isArray(state.players) || !state.players.length) return;
+  try {
+    const castPlayers = state.players.map((p: any, idx: number) => {
+      const leg = computeLegStatsForPlayer(p);
+      const totalThrows = Number(leg?.darts ?? p?.dartsThrown ?? p?.darts ?? 0);
+      const totalMarks = Number(leg?.totalMarks ?? 0);
+      const misses = Math.max(0, totalThrows - totalMarks);
+      return {
+        id: String(p?.id ?? idx),
+        name: String(p?.name || "Joueur"),
+        score: Number(p?.score ?? 0),
+        active: idx === Number(state?.currentPlayerIndex ?? -1),
+        avatarDataUrl: p?.avatarDataUrl ?? p?.avatar ?? "",
+        stats: {
+          avg3d: Number(leg?.mpr ?? 0).toFixed(2),
+          bestVisit: Number(leg?.bestVisitMarks ?? 0),
+          hits: totalMarks,
+          miss: misses,
+          simple: 0,
+          double: 0,
+          triple: 0,
+          bull: Number(leg?.perSegment?.[25]?.marks ?? 0),
+          dbull: 0,
+          bust: 0,
+          totalThrows,
+        },
+      };
+    });
+
+    const snapshot = {
+      screen: "game",
+      game: "cricket",
+      title: "Cricket",
+      status: isFinished ? "finished" : "live",
+      players: castPlayers,
+      currentPlayer: String(state.players?.[state.currentPlayerIndex]?.id ?? ""),
+      scores: castPlayers.map((p: any) => Number(p?.score ?? 0)),
+      meta: {
+        round: Number(state?.round ?? state?.currentRound ?? 1),
+        variant: String(variantId || "classic"),
+        scoreMode: String(scoreMode || "points"),
+      },
+      updatedAt: Date.now(),
+    };
+
+    appendGoogleCastDiag("cricket_snapshot_send_now", {
+      players: castPlayers.length,
+      currentPlayer: snapshot.currentPlayer,
+      status: snapshot.status,
+    });
+
+    void Promise.resolve(sendCastSnapshot(snapshot))
+      .then((ok) => appendGoogleCastDiag(ok ? "cricket_snapshot_sent" : "cricket_snapshot_not_sent", { players: castPlayers.length }))
+      .catch((err) => appendGoogleCastDiag("cricket_snapshot_throw", String(err)));
+  } catch (err) {
+    appendGoogleCastDiag("cricket_snapshot_build_failed", String(err));
+  }
+}, [state, isFinished, variantId, scoreMode, teamMode, scoringVariant, isCutThroatRoute]);
 
 React.useEffect(() => {
   // ✅ AUTOSAVE in_progress pour reprise (toutes les 8s)

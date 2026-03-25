@@ -1,4 +1,4 @@
-const BUILD = "CAF-VISUAL-X01-2026-03-19-5";
+const BUILD = "CAF-VISUAL-MULTI-2026-03-25-1";
 const NAMESPACE = "urn:x-cast:com.multisports.scoreboard";
 
 const contentEl = document.getElementById("content");
@@ -300,10 +300,10 @@ function renderSnapshot(payload) {
     return;
   }
 
-  const active = players.find((p) => p?.active) || players[0];
+  const active = players.find((p) => p?.active) || players.find((p) => String(p?.id || "") === String(payload?.currentPlayer || "")) || players[0];
   const ordered = players.slice();
   const meta = payload?.meta && typeof payload.meta === "object" ? payload.meta : {};
-  const gameTitle = payload?.game || payload?.title || "X01";
+  const gameTitle = payload?.title || payload?.game || "Multisports";
 
   const ps = pickPlayerStats(active, meta);
   const totalRef = ps.totalThrows > 0 ? ps.totalThrows : (ps.hits + ps.miss);
@@ -333,7 +333,7 @@ function renderSnapshot(payload) {
               </div>
 
               <div class="score-card">
-                <div class="score-label">Score</div>
+                <div class="score-label">${esc((payload?.game || "score").toUpperCase())}</div>
                 <div class="score-value">${esc(active?.score ?? 0)}</div>
               </div>
             </div>
@@ -393,7 +393,8 @@ try {
     });
 
     try {
-      const data = event.data || null;
+      const rawData = event.data || null;
+      const data = typeof rawData === "string" ? JSON.parse(rawData) : rawData;
 
       if (data?.type === "PING") {
         if (statusEl) statusEl.textContent = "PING reçu";

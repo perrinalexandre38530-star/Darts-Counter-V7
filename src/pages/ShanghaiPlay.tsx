@@ -24,6 +24,7 @@ import InfoDot from "../components/InfoDot";
 import ScoreInputHub from "../components/ScoreInputHub";
 import type { Dart as UIDart } from "../lib/types";
 import { useFullscreenPlay } from "../hooks/useFullscreenPlay";
+import { appendGoogleCastDiag, sendCastSnapshot } from "../cast/googleCast";
 import ShanghaiLogo from "../assets/SHANGHAI.png";
 import TargetBg from "../assets/target_bg.png";
 
@@ -452,6 +453,69 @@ export default function ShanghaiPlay(props: Props) {
   const target = targetOrderRef.current?.[round - 1] ?? round;
   const active = safePlayers[turn] || safePlayers[0];
   const botAutoKeyRef = React.useRef("");
+
+  React.useEffect(() => {
+    if (!safePlayers.length) return;
+    try {
+      const castPlayers = safePlayers.map((p) => {
+        const derived = computeShanghaiDerivedForPlayer(
+          p.id,
+          hitsByIdRef.current || {},
+          scoreTimelineByIdRef.current || {}
+        );
+        return {
+          id: String(p.id),
+          name: String(p.name || "Joueur"),
+          score: Number(scores?.[p.id] ?? 0),
+          active: String(active?.id || "") === String(p.id),
+          avatarDataUrl: p?.avatarDataUrl ?? "",
+          stats: {
+            avg3d: Number(derived?.avgPerVolley ?? 0).toFixed(2),
+            bestVisit: Number(derived?.bestVolley ?? 0),
+            hits: Number(derived?.hits ?? 0),
+            miss: Number(derived?.MISS ?? 0),
+            simple: Number(derived?.S ?? 0),
+            double: Number(derived?.D ?? 0),
+            triple: Number(derived?.T ?? 0),
+            bull: 0,
+            dbull: 0,
+            bust: 0,
+            totalThrows: Number(derived?.darts ?? 0),
+          },
+        };
+      });
+
+      const snapshot = {
+        screen: "game",
+        game: "shanghai",
+        title: "Shanghai",
+        status: endData ? "finished" : "live",
+        players: castPlayers,
+        currentPlayer: String(active?.id || ""),
+        scores: castPlayers.map((p: any) => Number(p?.score ?? 0)),
+        meta: {
+          round: Number(round || 1),
+          target: Number(target || 0),
+          multiplier: Number(multiplier || 1),
+          winRule: String(winRule || "shanghai_or_points"),
+        },
+        updatedAt: Date.now(),
+      };
+
+      appendGoogleCastDiag("shanghai_snapshot_send_now", {
+        players: castPlayers.length,
+        currentPlayer: snapshot.currentPlayer,
+        round: snapshot.meta.round,
+        target: snapshot.meta.target,
+      });
+
+      void Promise.resolve(sendCastSnapshot(snapshot))
+        .then((ok) => appendGoogleCastDiag(ok ? "shanghai_snapshot_sent" : "shanghai_snapshot_not_sent", { players: castPlayers.length }))
+        .catch((err) => appendGoogleCastDiag("shanghai_snapshot_throw", String(err)));
+    } catch (err) {
+      appendGoogleCastDiag("shanghai_snapshot_build_failed", String(err));
+    }
+  }, [safePlayers, active?.id, scores, round, target, multiplier, winRule, endData, lastThrowsById]);
 
   React.useEffect(() => {
     if (endData) return;

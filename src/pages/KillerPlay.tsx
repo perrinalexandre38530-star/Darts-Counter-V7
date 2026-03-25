@@ -66,6 +66,7 @@ import killerActiveIcon from "../assets/icons/killer-active.png";
 import killerListIcon from "../assets/icons/killer-list.png";
 import deadActiveIcon from "../assets/icons/dead-active.png";
 import deadListIcon from "../assets/icons/dead-list.png";
+import { appendGoogleCastDiag, sendCastSnapshot } from "../cast/googleCast";
 
 type Props = {
   store: Store;
@@ -2989,6 +2990,62 @@ React.useEffect(() => {
   const w = winner(players);
   const aliveCount = players.filter((p) => !p.eliminated).length;
   const isBotTurn = !!current?.isBot;
+
+  React.useEffect(() => {
+    if (!Array.isArray(players) || !players.length) return;
+    try {
+      const castPlayers = players.map((p: any, idx: number) => ({
+        id: String(p?.id ?? idx),
+        name: String(p?.name || "Joueur"),
+        score: Number(p?.lives ?? 0),
+        active: idx === turnIndex,
+        avatarDataUrl: p?.avatarDataUrl ?? "",
+        stats: {
+          avg3d: Number(p?.kills ?? 0),
+          bestVisit: Number(p?.number ?? 0),
+          hits: Number(p?.killerHits ?? 0),
+          miss: Number(p?.uselessHits ?? 0),
+          simple: Number(p?.hitsBySegment?.S ?? 0),
+          double: Number(p?.hitsBySegment?.D ?? 0),
+          triple: Number(p?.hitsBySegment?.T ?? 0),
+          bull: Number(p?.hitsBySegment?.BULL ?? 0),
+          dbull: Number(p?.hitsBySegment?.DBULL ?? 0),
+          bust: Number(p?.livesLost ?? 0),
+          totalThrows: Number(p?.totalThrows ?? 0),
+        },
+      }));
+
+      const snapshot = {
+        screen: "game",
+        game: "killer",
+        title: "Killer",
+        status: finished || !!w ? "finished" : "live",
+        players: castPlayers,
+        currentPlayer: String(current?.id || ""),
+        scores: castPlayers.map((p: any) => Number(p?.score ?? 0)),
+        meta: {
+          aliveCount: Number(aliveCount || 0),
+          dartsLeft: Number(dartsLeft || 0),
+          multiplier: Number(multiplier || 1),
+          assignDone: assignDone ? "yes" : "no",
+        },
+        updatedAt: Date.now(),
+      };
+
+      appendGoogleCastDiag("killer_snapshot_send_now", {
+        players: castPlayers.length,
+        currentPlayer: snapshot.currentPlayer,
+        status: snapshot.status,
+        aliveCount,
+      });
+
+      void Promise.resolve(sendCastSnapshot(snapshot))
+        .then((ok) => appendGoogleCastDiag(ok ? "killer_snapshot_sent" : "killer_snapshot_not_sent", { players: castPlayers.length }))
+        .catch((err) => appendGoogleCastDiag("killer_snapshot_throw", String(err)));
+    } catch (err) {
+      appendGoogleCastDiag("killer_snapshot_build_failed", String(err));
+    }
+  }, [players, turnIndex, current?.id, aliveCount, dartsLeft, multiplier, assignDone, finished, w]);
 
   const inputDisabledBase =
     finished || !!w || !current || current.eliminated || showEnd;
