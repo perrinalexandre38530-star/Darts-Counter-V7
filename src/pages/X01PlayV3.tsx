@@ -1029,24 +1029,16 @@ const castAvatarPayloadFromAny = React.useCallback(
       entity?.profile?.photoUrl,
       entity?.meta?.avatarUrl,
       entity?.meta?.photoUrl,
-      entity?.avatarDataUrl,
-      entity?.photoDataUrl,
-      entity?.profile?.avatarDataUrl,
-      entity?.profile?.photoDataUrl,
-      entity?.meta?.avatarDataUrl,
+      entity?.avatarPath,
+      entity?.avatar_path,
       entity?.avatar,
     ];
 
     for (const raw of candidates) {
       const src = typeof raw === "string" ? raw.trim() : "";
       if (!src) continue;
-
-      if (/^(https?:|\/)/i.test(src)) {
+      if (/^(https?:|blob:|\/)/i.test(src)) {
         return { avatarUrl: src };
-      }
-
-      if (/^data:image\//i.test(src)) {
-        if (src.length <= 120_000) return { avatarDataUrl: src };
       }
     }
 
@@ -1405,6 +1397,8 @@ const activeTeam = React.useMemo(() => {
         status: snapshot.status,
         currentPlayer: snapshot.currentPlayer,
       });
+
+      appendGoogleCastDiag("x01_snapshot_payload_slim", { hasBase64Avatar: castPlayers.some((p: any) => !!p?.avatarDataUrl) });
 
       Promise.resolve(sendCastSnapshot(snapshot))
         .then((ok) =>

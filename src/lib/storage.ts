@@ -107,6 +107,56 @@ function trimArrayTail<T>(arr: T[], keep: number): T[] {
   return arr.length > keep ? arr.slice(arr.length - keep) : arr;
 }
 
+const STORE_HISTORY_KEYS = [
+  "history",
+  "historyCache",
+  "savedMatches",
+  "matchHistory",
+  "matchesHistory",
+  "recentMatches",
+  "historyRows",
+  "historyDump",
+  "matchArchive",
+  "historyState",
+] as const;
+
+const STORE_HEAVY_STATS_KEYS = [
+  "stats",
+  "statsByPlayer",
+  "statsByMode",
+  "profileStats",
+  "leaderboards",
+  "statsCache",
+  "statsCaches",
+  "statsSnapshots",
+  "statsBySport",
+  "matchStatsCache",
+] as const;
+
+function stripStoreHistoryFields(target: any) {
+  if (!target || typeof target !== "object") return target;
+  for (const key of STORE_HISTORY_KEYS) delete target[key];
+  delete target.lastHistorySync;
+  delete target.historyVersion;
+  return target;
+}
+
+function stripStoreHeavyStatsFields(target: any) {
+  if (!target || typeof target !== "object") return target;
+  for (const key of STORE_HEAVY_STATS_KEYS) delete target[key];
+  return target;
+}
+
+function sanitizeBotLikeEntry(input: any) {
+  const out = { ...(input || {}) };
+  const avatarDataUrl = sanitizeAvatarFieldSync(out.avatarDataUrl);
+  if (!avatarDataUrl) delete out.avatarDataUrl;
+  else out.avatarDataUrl = avatarDataUrl;
+  if (typeof out.avatar === "string" && out.avatar.length > MAX_AVATAR_DATA_URL_CHARS) delete out.avatar;
+  if (typeof out.photoDataUrl === "string" && out.photoDataUrl.length > MAX_AVATAR_DATA_URL_CHARS) delete out.photoDataUrl;
+  return out;
+}
+
 function sanitizeStoreForPersistence<T extends Store>(store: T): T {
   let clone: any;
   try {
@@ -115,14 +165,10 @@ function sanitizeStoreForPersistence<T extends Store>(store: T): T {
     clone = { ...(store || {}) };
   }
 
-  // 1) Les stats doivent être rebuildées, pas persistées lourdement dans le store principal
-  delete clone.stats;
-  delete clone.statsByPlayer;
-  delete clone.statsByMode;
-  delete clone.profileStats;
-  delete clone.leaderboards;
+  stripStoreHeavyStatsFields(clone);
+  stripStoreHistoryFields(clone);
 
-  // 2) Profiles: ne jamais laisser passer un avatarDataUrl énorme dans le store principal
+  // Profiles: un seul avatar compressé, aucune variante legacy énorme.
   if (Array.isArray(clone.profiles)) {
     clone.profiles = clone.profiles.map((p: any) => {
       const out = { ...(p || {}) };
@@ -144,45 +190,14 @@ function sanitizeStoreForPersistence<T extends Store>(store: T): T {
     });
   }
 
-  // 3) History embarquée dans le store: on coupe tout ce qui est trop lourd
-  if (Array.isArray(clone.history)) {
-    clone.history = trimArrayTail(clone.history, 20).map((r: any) => {
-      const rr: any = { ...(r || {}) };
-
-      const stripPlayers = (arr: any[]) =>
-        (arr || []).map((pl: any) => {
-          const pp: any = { ...(pl || {}) };
-          const dataAvatar = typeof pp.avatarDataUrl === "string" ? pp.avatarDataUrl : "";
-          const urlAvatar = typeof pp.avatarUrl === "string" ? pp.avatarUrl : "";
-          if (dataAvatar.startsWith("data:") || dataAvatar.length > MAX_AVATAR_DATA_URL_CHARS) delete pp.avatarDataUrl;
-          if (urlAvatar.startsWith("data:")) delete pp.avatarUrl;
-          if (typeof pp.avatar === "string" && pp.avatar.length > MAX_AVATAR_DATA_URL_CHARS) delete pp.avatar;
-          return pp;
-        });
-
-      if (Array.isArray(rr.players)) rr.players = stripPlayers(rr.players);
-      if (rr.payload && Array.isArray(rr.payload.players)) {
-        rr.payload = { ...(rr.payload || {}) };
-        rr.payload.players = stripPlayers(rr.payload.players);
-      }
-
-      return rr;
-    });
-  }
-
-  // 4) Bots très volumineux: coupe les avatars inline et garde un historique borné
+  // Bots: même traitement que les profils, mais jamais de duplication d'history ici.
   if (Array.isArray(clone.bots)) {
-    clone.bots = clone.bots.map((b: any) => {
-      const out = { ...(b || {}) };
-      if (typeof out.avatarDataUrl === "string" && out.avatarDataUrl.length > MAX_AVATAR_DATA_URL_CHARS) {
-        delete out.avatarDataUrl;
-      }
-      if (typeof out.avatar === "string" && out.avatar.length > MAX_AVATAR_DATA_URL_CHARS) {
-        delete out.avatar;
-      }
-      return out;
-    });
+    clone.bots = clone.bots.map((b: any) => sanitizeBotLikeEntry(b));
   }
+
+  // Éventuels caches de reprise ultra lourds conservés par d'anciennes versions.
+  if (Array.isArray(clone.resumes)) clone.resumes = trimArrayTail(clone.resumes, 20);
+  if (Array.isArray(clone.liveMatches)) clone.liveMatches = trimArrayTail(clone.liveMatches, 20);
 
   return clone as T;
 }
@@ -216,6 +231,14 @@ const LS_EXCLUDE = new Set<string>([
   // divers flags techniques (optionnel)
   "dc_sw_purge_once",
   "dc_last_crash",
+
+  // historique / caches legacy désormais gérés hors localStorage
+  "dc-history-v1",
+  "dc-history-cache-v1",
+  "dc_bots_v1",
+  "dc_stats_cache_v1",
+  "dc_stats_cache_v2",
+  "dc_match_stats_cache_v1",
 ]);
 
 /**
@@ -425,6 +448,22 @@ export async function storageEstimate() {
   }
 }
 
+function shouldExportLocalStorageDcKey(key: string, value: string | null): boolean {
+  if (!key || !isDcKey(key) || LS_EXCLUDE.has(key)) return false;
+  const lower = key.toLowerCase();
+  if (
+    lower.includes("history") ||
+    lower.includes("stats") ||
+    lower.includes("bots") ||
+    lower.includes("matchcache") ||
+    lower.includes("historycache")
+  ) {
+    return false;
+  }
+  if (typeof value === "string" && value.length > 250_000) return false;
+  return true;
+}
+
 function exportLocalStorageDc(): Record<string, string> {
   if (typeof window === "undefined") return {};
   const out: Record<string, string> = {};
@@ -433,10 +472,8 @@ function exportLocalStorageDc(): Record<string, string> {
     for (let i = 0; i < ls.length; i++) {
       const k = ls.key(i) || "";
       if (!k) continue;
-      if (!isDcKey(k)) continue;
-      if (LS_EXCLUDE.has(k)) continue;
-
       const v = ls.getItem(k);
+      if (!shouldExportLocalStorageDcKey(k, v)) continue;
       if (v != null) out[k] = v;
     }
   } catch {}
@@ -448,9 +485,7 @@ function importLocalStorageDc(map: Record<string, string>) {
   if (!map || typeof map !== "object") return;
 
   for (const [k, v] of Object.entries(map)) {
-    if (!k) continue;
-    if (!isDcKey(k)) continue;
-    if (LS_EXCLUDE.has(k)) continue;
+    if (!shouldExportLocalStorageDcKey(k, typeof v === "string" ? v : String(v ?? ""))) continue;
     try {
       window.localStorage.setItem(k, String(v ?? ""));
     } catch {}
@@ -465,8 +500,7 @@ function clearLocalStorageDc(): void {
     for (let i = 0; i < window.localStorage.length; i++) {
       const k = window.localStorage.key(i) || "";
       if (!k) continue;
-      if (!isDcKey(k)) continue;
-      if (LS_EXCLUDE.has(k)) continue;
+      if (!shouldExportLocalStorageDcKey(k, window.localStorage.getItem(k))) continue;
       toDelete.push(k);
     }
     for (const k of toDelete) {
@@ -727,7 +761,7 @@ export async function saveStore<T extends Store>(store: T, opts?: SaveOpts): Pro
       delete trimmed.statsByMode;
       delete trimmed.profileStats;
       delete trimmed.leaderboards;
-      delete trimmed.history;
+      stripStoreHistoryFields(trimmed);
       if (Array.isArray(trimmed.profiles)) {
         trimmed.profiles = trimmed.profiles.map((p: any) => {
           const out = { ...(p || {}) };
@@ -752,7 +786,6 @@ export async function saveStore<T extends Store>(store: T, opts?: SaveOpts): Pro
         console.warn("[storage] quota presque plein, réduction agressive du store avant écriture.");
 
         const emergencyStore: any = sanitizeStoreForPersistence({ ...(persistedStore as any) });
-        if (Array.isArray(emergencyStore.history)) emergencyStore.history = trimArrayTail(emergencyStore.history, 10);
         if (Array.isArray(emergencyStore.profiles)) {
           emergencyStore.profiles = emergencyStore.profiles.map((p: any) => {
             const out = { ...(p || {}) };
@@ -870,8 +903,12 @@ export async function exportAll(): Promise<any> {
         if (raw == null) continue;
 
         const json = await decompressGzip(raw);
-
-        idbDump[String(keys[i])] = safeJsonParse(json, null);
+        const parsed = safeJsonParse(json, null);
+        if (String(keys[i]) === STORE_KEY && parsed && typeof parsed === "object") {
+          idbDump[String(keys[i])] = sanitizeStoreForPersistence(parsed as any);
+        } else {
+          idbDump[String(keys[i])] = parsed;
+        }
       } catch {}
     }
   } catch (err) {
@@ -901,7 +938,9 @@ export async function importAll(dump: any): Promise<void> {
     // 1) restore KV (IDB kv)
     for (const [k, v] of Object.entries(idbDump)) {
       try {
-        await setKV(String(k), v);
+        const key = String(k);
+        const value = key === STORE_KEY ? sanitizeStoreForPersistence(v as any) : v;
+        await setKV(key, value);
       } catch {}
     }
 
@@ -1029,31 +1068,9 @@ function sanitizeStoreForCloud(store: any) {
     });
   }
 
-  // History: strip embedded avatars in players/payload.players
-  if (Array.isArray(clone.history)) {
-    clone.history = clone.history.map((r: any) => {
-      const rr: any = { ...(r || {}) };
-
-      const stripPlayers = (arr: any[]) =>
-        (arr || []).map((pl: any) => {
-          const pp: any = { ...(pl || {}) };
-          const a = pp.avatarDataUrl ?? pp.avatarUrl;
-          if (typeof a === "string" && a.startsWith("data:")) {
-            if (typeof pp.avatarDataUrl === "string") delete pp.avatarDataUrl;
-            if (typeof pp.avatarUrl === "string") delete pp.avatarUrl;
-          }
-          return pp;
-        });
-
-      if (Array.isArray(rr.players)) rr.players = stripPlayers(rr.players);
-      if (rr.payload && Array.isArray(rr.payload.players)) {
-        rr.payload = { ...(rr.payload || {}) };
-        rr.payload.players = stripPlayers(rr.payload.players);
-      }
-
-      return rr;
-    });
-  }
+  // History ne doit plus voyager dans le store principal cloud.
+  stripStoreHistoryFields(clone);
+  stripStoreHeavyStatsFields(clone);
 
   // Dart sets: strip photoDataUrl (base64)
   if (Array.isArray((clone as any).dartSets)) {

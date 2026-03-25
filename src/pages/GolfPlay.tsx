@@ -1868,7 +1868,7 @@ React.useEffect(() => {
         name: String(p?.name || "Joueur"),
         score,
         active: String(activePlayer?.id || "") === String(p?.id || ""),
-        avatarDataUrl: p?.avatar ?? p?.avatarDataUrl ?? "",
+        avatarUrl: typeof (p?.avatarUrl ?? p?.photoUrl ?? p?.avatar) === "string" && /^(https?:|blob:|\/)/i.test(String(p?.avatarUrl ?? p?.photoUrl ?? p?.avatar)) ? String(p?.avatarUrl ?? p?.photoUrl ?? p?.avatar) : "",
         stats: {
           avg3d: stats?.turns ? Number(score / Math.max(1, stats.turns)).toFixed(2) : "0.00",
           bestVisit: 0,
@@ -1909,7 +1909,9 @@ React.useEffect(() => {
       status: snapshot.status,
     });
 
-    void Promise.resolve(sendCastSnapshot(snapshot))
+    void appendGoogleCastDiag("golf_snapshot_payload_slim", { hasBase64Avatar: castPlayers.some((p: any) => !!p?.avatarDataUrl) });
+
+    Promise.resolve(sendCastSnapshot(snapshot))
       .then((ok) => appendGoogleCastDiag(ok ? "golf_snapshot_sent" : "golf_snapshot_not_sent", { players: castPlayers.length }))
       .catch((err) => appendGoogleCastDiag("golf_snapshot_throw", String(err)));
   } catch (err) {

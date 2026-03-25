@@ -1,12 +1,13 @@
 // src/lib/stats/rebuildStatsFromHistory.ts
 // ============================================
 // Rebuild STATS depuis l'Historique (source de vérité)
-// - Ne dépend PAS de Supabase
-// - Robuste payload compressé / legacy
-// - Conçu pour être étendu mode par mode via "extractors"
+// - Persistance principale en IndexedDB (KV), plus robuste que localStorage
+// - Fallback legacy localStorage conservé pour migration douce
+// - Prépare un vrai stats_index centralisé pour éviter les stats vides
 // ============================================
 
 import { History } from "../history";
+import { delKV, getKV, setKV } from "../storage";
 
 // ----------------------------
 // Types génériques (safe)
@@ -27,10 +28,10 @@ export type HistoryRec = {
   status?: "in_progress" | "finished" | "saved" | string;
   createdAt?: number | string;
   updatedAt?: number | string;
-  game?: string; // parfois présent
-  mode?: string; // parfois présent
-  payload?: any; // decoded
-  payloadCompressed?: string; // legacy
+  game?: string;
+  mode?: string;
+  payload?: any;
+  payloadCompressed?: string;
 };
 
 export type PlayerAgg = {
@@ -39,12 +40,8 @@ export type PlayerAgg = {
   matches: number;
   wins: number;
   losses: number;
-
-  // X01-like
   dartsThrown?: number;
   pointsScored?: number;
-
-  // Generic
   lastMatchAt?: number;
 };
 
@@ -55,6 +52,13 @@ export type ModeAgg = {
   inProgress: number;
   saved: number;
   lastMatchAt?: number;
+};
+
+export type StatsIndexMeta = {
+  source: "history-rebuild" | "idb-cache" | "localStorage-legacy";
+  rowsScanned: number;
+  includeNonFinished: boolean;
+  historyUpdatedAt?: number;
 };
 
 export type StatsIndex = {
@@ -68,39 +72,156 @@ export type StatsIndex = {
   };
   byMode: Record<GameKey, ModeAgg>;
   byPlayer: Record<string, PlayerAgg>;
-  // brute ids utiles (pour “Mes fléchettes”, “Comparateur”, etc.)
   matchIdsByMode: Record<GameKey, string[]>;
+  meta?: StatsIndexMeta;
 };
 
-// ----------------------------
-// Stockage local des stats
-// ----------------------------
-const STATS_KEY = "dc-stats-index-v1";
-const STATS_VERSION = 1;
+const STATS_KEY = "dc_stats_index_v2";
+const STATS_LEGACY_KEY = "dc-stats-index-v1";
+const STATS_VERSION = 2;
+const STATS_REFRESH_DEBOUNCE_MS = 900;
+let __statsRefreshTimer: ReturnType<typeof setTimeout> | null = null;
+let __statsRefreshPromise: Promise<StatsIndex> | null = null;
 
-export function loadStatsIndex(): StatsIndex | null {
+function dispatchStatsIndexUpdated(detail?: any) {
   try {
-    const raw = localStorage.getItem(STATS_KEY);
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(new CustomEvent("dc-stats-index-updated", { detail: detail ?? null }));
+    }
+  } catch {}
+}
+
+
+function createEmptyStatsIndex(includeNonFinished = false): StatsIndex {
+  return {
+    version: STATS_VERSION,
+    rebuiltAt: Date.now(),
+    totals: { matches: 0, finished: 0, inProgress: 0, saved: 0 },
+    byMode: {
+      x01: { mode: "x01", matches: 0, finished: 0, inProgress: 0, saved: 0 },
+      cricket: { mode: "cricket", matches: 0, finished: 0, inProgress: 0, saved: 0 },
+      killer: { mode: "killer", matches: 0, finished: 0, inProgress: 0, saved: 0 },
+      golf: { mode: "golf", matches: 0, finished: 0, inProgress: 0, saved: 0 },
+      shanghai: { mode: "shanghai", matches: 0, finished: 0, inProgress: 0, saved: 0 },
+      territories: { mode: "territories", matches: 0, finished: 0, inProgress: 0, saved: 0 },
+      scram: { mode: "scram", matches: 0, finished: 0, inProgress: 0, saved: 0 },
+      batard: { mode: "batard", matches: 0, finished: 0, inProgress: 0, saved: 0 },
+      unknown: { mode: "unknown", matches: 0, finished: 0, inProgress: 0, saved: 0 },
+    },
+    byPlayer: {},
+    matchIdsByMode: {
+      x01: [],
+      cricket: [],
+      killer: [],
+      golf: [],
+      shanghai: [],
+      territories: [],
+      scram: [],
+      batard: [],
+      unknown: [],
+    },
+    meta: {
+      source: "history-rebuild",
+      rowsScanned: 0,
+      includeNonFinished,
+      historyUpdatedAt: undefined,
+    },
+  };
+}
+
+function isValidStatsIndex(v: any): v is StatsIndex {
+  return !!v && typeof v === "object" && Number(v.version) === STATS_VERSION && !!v.byMode && !!v.byPlayer && !!v.totals;
+}
+
+function tryLoadLegacyStatsIndex(): StatsIndex | null {
+  try {
+    const raw = localStorage.getItem(STATS_LEGACY_KEY);
     if (!raw) return null;
     const parsed = JSON.parse(raw);
-    if (!parsed || parsed.version !== STATS_VERSION) return null;
-    return parsed as StatsIndex;
+    if (!parsed || typeof parsed !== "object") return null;
+    const migrated: StatsIndex = {
+      ...createEmptyStatsIndex(Boolean(parsed?.meta?.includeNonFinished)),
+      ...parsed,
+      version: STATS_VERSION,
+      rebuiltAt: Number(parsed?.rebuiltAt || Date.now()) || Date.now(),
+      meta: {
+        source: "localStorage-legacy",
+        rowsScanned: Number(parsed?.meta?.rowsScanned || parsed?.totals?.matches || 0) || 0,
+        includeNonFinished: Boolean(parsed?.meta?.includeNonFinished),
+        historyUpdatedAt: Number(parsed?.meta?.historyUpdatedAt || 0) || undefined,
+      },
+    };
+    return migrated;
   } catch {
     return null;
   }
 }
 
-export function saveStatsIndex(idx: StatsIndex) {
+export async function loadStatsIndex(): Promise<StatsIndex | null> {
   try {
-    localStorage.setItem(STATS_KEY, JSON.stringify(idx));
-  } catch {
-    // ignore (private mode / quota)
+    const fromKv = await getKV<StatsIndex>(STATS_KEY);
+    if (isValidStatsIndex(fromKv)) {
+      return {
+        ...fromKv,
+        meta: {
+          source: "idb-cache",
+          rowsScanned: Number(fromKv?.meta?.rowsScanned || 0) || 0,
+          includeNonFinished: Boolean(fromKv?.meta?.includeNonFinished),
+          historyUpdatedAt: Number(fromKv?.meta?.historyUpdatedAt || 0) || undefined,
+        },
+      };
+    }
+  } catch {}
+
+  const legacy = tryLoadLegacyStatsIndex();
+  if (legacy) {
+    await saveStatsIndex(legacy).catch(() => {});
+    try {
+      localStorage.removeItem(STATS_LEGACY_KEY);
+    } catch {}
+    return legacy;
   }
+
+  return null;
 }
 
-// ----------------------------
-// Helpers
-// ----------------------------
+export async function saveStatsIndex(idx: StatsIndex): Promise<void> {
+  const payload: StatsIndex = {
+    ...idx,
+    version: STATS_VERSION,
+    rebuiltAt: Number(idx?.rebuiltAt || Date.now()) || Date.now(),
+    meta: {
+      source: "history-rebuild",
+      rowsScanned: Number(idx?.meta?.rowsScanned || idx?.totals?.matches || 0) || 0,
+      includeNonFinished: Boolean(idx?.meta?.includeNonFinished),
+      historyUpdatedAt: Number(idx?.meta?.historyUpdatedAt || 0) || undefined,
+    },
+  };
+
+  await setKV(STATS_KEY, payload);
+
+  // migration douce : on nettoie l'ancien stockage localStorage
+  try {
+    localStorage.removeItem(STATS_LEGACY_KEY);
+  } catch {}
+}
+
+export async function clearStatsIndex(): Promise<void> {
+  await delKV(STATS_KEY).catch(() => {});
+  try {
+    localStorage.removeItem(STATS_LEGACY_KEY);
+  } catch {}
+}
+
+function computeHistoryUpdatedAt(rows: any[]): number | undefined {
+  let out = 0;
+  for (const rec of Array.isArray(rows) ? rows : []) {
+    const ts = toTs(rec?.updatedAt) ?? toTs(rec?.createdAt) ?? 0;
+    if (ts > out) out = ts;
+  }
+  return out || undefined;
+}
+
 function toTs(v: any): number | undefined {
   if (typeof v === "number") return v;
   if (typeof v === "string") {
@@ -111,9 +232,10 @@ function toTs(v: any): number | undefined {
 }
 
 function normalizeGameKey(rec: any, payload: any): GameKey {
-  const g = (rec?.game || rec?.mode || payload?.game || payload?.mode || payload?.kind || "").toString().toLowerCase();
+  const g = (rec?.game || rec?.mode || rec?.kind || payload?.game || payload?.mode || payload?.kind || "")
+    .toString()
+    .toLowerCase();
 
-  // heuristiques tolérantes
   if (g.includes("x01") || g.includes("301") || g.includes("501")) return "x01";
   if (g.includes("cricket")) return "cricket";
   if (g.includes("killer")) return "killer";
@@ -122,10 +244,7 @@ function normalizeGameKey(rec: any, payload: any): GameKey {
   if (g.includes("territ")) return "territories";
   if (g.includes("scram")) return "scram";
   if (g.includes("batard") || g.includes("bastard")) return "batard";
-
-  // fallback : si payload ressemble à X01
   if (payload?.x01 || payload?.startScore || payload?.legs || payload?.sets) return "x01";
-
   return "unknown";
 }
 
@@ -145,10 +264,7 @@ function bumpMode(idx: StatsIndex, mode: GameKey, status?: string, ts?: number) 
   if (st.includes("finish")) m.finished += 1;
   else if (st.includes("progress") || st.includes("in_progress")) m.inProgress += 1;
   else if (st.includes("save")) m.saved += 1;
-  else {
-    // si pas clair, on range dans finished si payload a winner, sinon inProgress
-    m.inProgress += 1;
-  }
+  else m.inProgress += 1;
 
   if (ts && (!m.lastMatchAt || ts > m.lastMatchAt)) m.lastMatchAt = ts;
 
@@ -167,26 +283,17 @@ function bumpPlayer(idx: StatsIndex, playerId: string, patch: Partial<PlayerAgg>
     lastMatchAt: undefined,
   };
 
-  // incréments safe
   if (patch.name) p.name = patch.name;
-
   if (typeof patch.matches === "number") p.matches += patch.matches;
   if (typeof patch.wins === "number") p.wins += patch.wins;
   if (typeof patch.losses === "number") p.losses += patch.losses;
-
   if (typeof patch.dartsThrown === "number") p.dartsThrown = (p.dartsThrown || 0) + patch.dartsThrown;
   if (typeof patch.pointsScored === "number") p.pointsScored = (p.pointsScored || 0) + patch.pointsScored;
-
   if (ts && (!p.lastMatchAt || ts > p.lastMatchAt)) p.lastMatchAt = ts;
 
   idx.byPlayer[playerId] = p;
 }
 
-// ----------------------------
-// Extractors (mode -> lecture payload)
-// -> ici on met du "best effort" qui ne casse jamais.
-// -> tu pourras raffiner ensuite (best checkout, avg 3 darts, etc.)
-// ----------------------------
 type Extractor = (args: {
   rec: any;
   payload: any;
@@ -197,43 +304,17 @@ type Extractor = (args: {
 
 const extractors: Partial<Record<GameKey, Extractor>> = {
   x01: ({ payload, ts, idx }) => {
-    // On cherche une structure de joueurs tolérante
-    const players =
-      payload?.players ||
-      payload?.state?.players ||
-      payload?.snapshot?.players ||
-      payload?.match?.players ||
-      [];
+    const players = payload?.players || payload?.state?.players || payload?.snapshot?.players || payload?.match?.players || [];
+    const winnerId = payload?.winnerId || payload?.state?.winnerId || payload?.result?.winnerId || payload?.winner?.id;
 
-    const winnerId =
-      payload?.winnerId ||
-      payload?.state?.winnerId ||
-      payload?.result?.winnerId ||
-      payload?.winner?.id;
-
-    // Darts/points : selon formats, on tente plusieurs champs
     for (const pl of Array.isArray(players) ? players : []) {
       const pid = (pl?.id || pl?.playerId || pl?.uid || pl?.profileId || "").toString();
       if (!pid) continue;
-
       const name = pl?.name || pl?.displayName;
-
-      // darts thrown (visits*3 ou dartsTotal)
       const dartsThrown =
-        pl?.dartsThrown ??
-        pl?.darts ??
-        pl?.stats?.dartsThrown ??
-        pl?.stats?.dartsTotal ??
-        undefined;
-
-      // points scored
+        pl?.dartsThrown ?? pl?.darts ?? pl?.stats?.dartsThrown ?? pl?.stats?.dartsTotal ?? undefined;
       const pointsScored =
-        pl?.pointsScored ??
-        pl?.scored ??
-        pl?.stats?.pointsScored ??
-        pl?.stats?.points ??
-        undefined;
-
+        pl?.pointsScored ?? pl?.scored ?? pl?.stats?.pointsScored ?? pl?.stats?.points ?? undefined;
       const isWinner = winnerId && pid === String(winnerId);
 
       bumpPlayer(
@@ -252,25 +333,15 @@ const extractors: Partial<Record<GameKey, Extractor>> = {
     }
   },
 
-  // pour l’instant on indexe juste matches / players présents
   killer: ({ payload, ts, idx }) => {
-    const players =
-      payload?.players ||
-      payload?.state?.players ||
-      payload?.summary?.players ||
-      [];
+    const players = payload?.players || payload?.state?.players || payload?.summary?.players || [];
     const winnerId =
-      payload?.winnerId ||
-      payload?.state?.winnerId ||
-      payload?.result?.winnerId ||
-      payload?.summary?.winnerId ||
-      null;
+      payload?.winnerId || payload?.state?.winnerId || payload?.result?.winnerId || payload?.summary?.winnerId || null;
 
     for (const pl of Array.isArray(players) ? players : []) {
       const pid = (pl?.id || pl?.playerId || pl?.uid || "").toString();
       if (!pid) continue;
-      const kills =
-        Number(pl?.kills ?? pl?.stats?.kills ?? pl?.special?.kills ?? 0) || 0;
+      const kills = Number(pl?.kills ?? pl?.stats?.kills ?? pl?.special?.kills ?? 0) || 0;
 
       bumpPlayer(
         idx,
@@ -291,19 +362,9 @@ const extractors: Partial<Record<GameKey, Extractor>> = {
   },
 
   cricket: ({ payload, ts, idx }) => {
-    const players =
-      payload?.players ||
-      payload?.state?.players ||
-      payload?.summary?.players ||
-      payload?.stats?.players ||
-      [];
-
+    const players = payload?.players || payload?.state?.players || payload?.summary?.players || payload?.stats?.players || [];
     const winnerId =
-      payload?.winnerId ||
-      payload?.state?.winnerId ||
-      payload?.result?.winnerId ||
-      payload?.summary?.winnerId ||
-      null;
+      payload?.winnerId || payload?.state?.winnerId || payload?.result?.winnerId || payload?.summary?.winnerId || null;
 
     for (const pl of Array.isArray(players) ? players : []) {
       const pid = (pl?.id || pl?.playerId || pl?.uid || pl?.profileId || "").toString();
@@ -312,9 +373,7 @@ const extractors: Partial<Record<GameKey, Extractor>> = {
       const marksObj = pl?.marks && typeof pl.marks === "object" ? pl.marks : null;
       const marksTotal =
         Number(pl?.marksTotal ?? pl?.stats?.marksTotal ?? pl?.special?.marksTotal ?? 0) ||
-        (marksObj
-          ? Object.values(marksObj).reduce((a: any, b: any) => (Number(a) || 0) + (Number(b) || 0), 0)
-          : 0);
+        (marksObj ? Object.values(marksObj).reduce((a: any, b: any) => (Number(a) || 0) + (Number(b) || 0), 0) : 0);
 
       const hitsArr = Array.isArray(pl?.hits) ? pl.hits : [];
       const hits =
@@ -328,8 +387,7 @@ const extractors: Partial<Record<GameKey, Extractor>> = {
         Number(pl?.legStats?.darts ?? 0) ||
         0;
 
-      const pointsScored =
-        Number(pl?.score ?? pl?.points ?? pl?.stats?.score ?? 0) || 0;
+      const pointsScored = Number(pl?.score ?? pl?.points ?? pl?.stats?.score ?? 0) || 0;
 
       bumpPlayer(
         idx,
@@ -345,13 +403,7 @@ const extractors: Partial<Record<GameKey, Extractor>> = {
         ts
       );
 
-      const cur: any = (idx.byPlayer[pid] as any).cricket || {
-        marks: 0,
-        hits: 0,
-        darts: 0,
-        score: 0,
-      };
-
+      const cur: any = (idx.byPlayer[pid] as any).cricket || { marks: 0, hits: 0, darts: 0, score: 0 };
       cur.marks += marksTotal;
       cur.hits += hits;
       cur.darts += dartsThrown;
@@ -361,11 +413,7 @@ const extractors: Partial<Record<GameKey, Extractor>> = {
   },
 
   golf: ({ rec, payload, ts, idx }) => {
-    const players =
-      payload?.players ||
-      rec?.players ||
-      payload?.summary?.players ||
-      [];
+    const players = payload?.players || rec?.players || payload?.summary?.players || [];
 
     const pidOrder = (Array.isArray(players) ? players : [])
       .map((p: any) => String(p?.id || p?.playerId || p?.profileId || ""))
@@ -402,7 +450,6 @@ const extractors: Partial<Record<GameKey, Extractor>> = {
         0;
 
       const dartsThrown = Number(p?.darts ?? 0) || 0;
-
       bumpPlayer(idx, pid, { matches: 1, dartsThrown, pointsScored: total }, ts);
 
       const cur: any = (idx.byPlayer[pid] as any).golf || {
@@ -436,12 +483,7 @@ const extractors: Partial<Record<GameKey, Extractor>> = {
   },
 
   shanghai: ({ payload, ts, idx }) => {
-    const stats =
-      payload?.statsShanghai ||
-      payload?.stats ||
-      payload?.summary?.statsShanghai ||
-      {};
-
+    const stats = payload?.statsShanghai || payload?.stats || payload?.summary?.statsShanghai || {};
     const rounds = stats?.rounds || payload?.rounds || [];
     for (const r of Array.isArray(rounds) ? rounds : []) {
       const pid = String(r?.playerId || r?.id || "");
@@ -458,13 +500,10 @@ const extractors: Partial<Record<GameKey, Extractor>> = {
 
   territories: ({ payload, ts, idx }) => {
     const data = payload || {};
-    const sum = (arr: any[]) => (Array.isArray(arr) ? arr.reduce((a: number, b: any) => a + (Number(b) || 0), 0) : 0);
+    const sum = (arr: any[]) =>
+      Array.isArray(arr) ? arr.reduce((a: number, b: any) => a + (Number(b) || 0), 0) : 0;
 
-    const players =
-      payload?.players ||
-      payload?.state?.players ||
-      payload?.summary?.players ||
-      [];
+    const players = payload?.players || payload?.state?.players || payload?.summary?.players || [];
 
     for (const pl of Array.isArray(players) ? players : []) {
       const pid = String(pl?.id || pl?.playerId || pl?.profileId || "");
@@ -472,9 +511,7 @@ const extractors: Partial<Record<GameKey, Extractor>> = {
 
       bumpPlayer(idx, pid, { name: pl?.name, matches: 1 }, ts);
 
-      const cur: any = (idx.byPlayer[pid] as any).territories || {
-        captured: 0, darts: 0, steals: 0, lost: 0
-      };
+      const cur: any = (idx.byPlayer[pid] as any).territories || { captured: 0, darts: 0, steals: 0, lost: 0 };
       cur.captured += sum(data?.captured ?? pl?.captured);
       cur.darts += sum(data?.darts ?? pl?.darts);
       cur.steals += sum(data?.steals ?? pl?.steals);
@@ -484,83 +521,121 @@ const extractors: Partial<Record<GameKey, Extractor>> = {
   },
 };
 
-// ----------------------------
-// Rebuild principal
-// ----------------------------
+export async function refreshStatsIndexFromHistoryNow(options?: {
+  includeNonFinished?: boolean;
+  persist?: boolean;
+  reason?: string;
+}): Promise<StatsIndex> {
+  const idx = await rebuildStatsFromHistory({
+    includeNonFinished: options?.includeNonFinished,
+    persist: options?.persist,
+  });
+
+  dispatchStatsIndexUpdated({
+    reason: options?.reason || "refresh-now",
+    rebuiltAt: idx?.rebuiltAt || Date.now(),
+    totals: idx?.totals || null,
+  });
+
+  return idx;
+}
+
+export function scheduleStatsIndexRefresh(options?: {
+  includeNonFinished?: boolean;
+  persist?: boolean;
+  debounceMs?: number;
+  reason?: string;
+}): Promise<StatsIndex> {
+  const debounceMs = Math.max(80, Number(options?.debounceMs || STATS_REFRESH_DEBOUNCE_MS) || STATS_REFRESH_DEBOUNCE_MS);
+
+  if (__statsRefreshTimer) clearTimeout(__statsRefreshTimer);
+
+  __statsRefreshPromise = new Promise<StatsIndex>((resolve, reject) => {
+    __statsRefreshTimer = setTimeout(() => {
+      __statsRefreshTimer = null;
+      refreshStatsIndexFromHistoryNow({
+        includeNonFinished: options?.includeNonFinished,
+        persist: options?.persist,
+        reason: options?.reason || "scheduled-refresh",
+      })
+        .then(resolve)
+        .catch(reject)
+        .finally(() => {
+          __statsRefreshPromise = null;
+        });
+    }, debounceMs);
+  });
+
+  return __statsRefreshPromise;
+}
+
+export function cancelScheduledStatsIndexRefresh(): void {
+  if (__statsRefreshTimer) {
+    clearTimeout(__statsRefreshTimer);
+    __statsRefreshTimer = null;
+  }
+}
+
+export async function getOrRebuildStatsIndex(options?: {
+  includeNonFinished?: boolean;
+  persist?: boolean;
+  force?: boolean;
+}): Promise<StatsIndex> {
+  if (!options?.force) {
+    const cached = await loadStatsIndex();
+    if (cached) return cached;
+  }
+  return rebuildStatsFromHistory(options);
+}
+
 export async function rebuildStatsFromHistory(options?: {
-  // si true : inclut in_progress/saved, sinon finished only
   includeNonFinished?: boolean;
   persist?: boolean;
 }): Promise<StatsIndex> {
   const includeNonFinished = !!options?.includeNonFinished;
   const persist = options?.persist !== false;
 
-  // ⚠️ Source de vérité : History
   const list = includeNonFinished
-    ? await History.list() // tout
-    : await History.listFinished?.() ?? await History.list(); // fallback si listFinished n'existe pas
+    ? await History.list()
+    : (await History.listFinished?.()) ?? (await History.list());
 
-  const idx: StatsIndex = {
-    version: STATS_VERSION,
-    rebuiltAt: Date.now(),
-    totals: { matches: 0, finished: 0, inProgress: 0, saved: 0 },
-    byMode: {
-      x01: { mode: "x01", matches: 0, finished: 0, inProgress: 0, saved: 0 },
-      cricket: { mode: "cricket", matches: 0, finished: 0, inProgress: 0, saved: 0 },
-      killer: { mode: "killer", matches: 0, finished: 0, inProgress: 0, saved: 0 },
-      golf: { mode: "golf", matches: 0, finished: 0, inProgress: 0, saved: 0 },
-      shanghai: { mode: "shanghai", matches: 0, finished: 0, inProgress: 0, saved: 0 },
-      territories: { mode: "territories", matches: 0, finished: 0, inProgress: 0, saved: 0 },
-      scram: { mode: "scram", matches: 0, finished: 0, inProgress: 0, saved: 0 },
-      batard: { mode: "batard", matches: 0, finished: 0, inProgress: 0, saved: 0 },
-      unknown: { mode: "unknown", matches: 0, finished: 0, inProgress: 0, saved: 0 },
-    },
-    byPlayer: {},
-    matchIdsByMode: {
-      x01: [],
-      cricket: [],
-      killer: [],
-      golf: [],
-      shanghai: [],
-      territories: [],
-      scram: [],
-      batard: [],
-      unknown: [],
-    },
+  const idx = createEmptyStatsIndex(includeNonFinished);
+  idx.rebuiltAt = Date.now();
+  idx.meta = {
+    source: "history-rebuild",
+    rowsScanned: Array.isArray(list) ? list.length : 0,
+    includeNonFinished,
+    historyUpdatedAt: computeHistoryUpdatedAt(Array.isArray(list) ? list : []),
   };
 
   const rows: any[] = Array.isArray(list) ? list : [];
   for (const rec of rows) {
     const ts = toTs(rec?.updatedAt) ?? toTs(rec?.createdAt) ?? undefined;
-    const payload = rec?.payload ?? rec?.snapshot ?? rec?.data ?? null; // robust
+    const payload = rec?.payload ?? rec?.snapshot ?? rec?.data ?? null;
     const status = rec?.status;
-
     const mode = normalizeGameKey(rec, payload);
 
     bumpMode(idx, mode, status, ts);
 
-    // totals
     idx.totals.matches += 1;
     const st = (status || "").toLowerCase();
     if (st.includes("finish")) idx.totals.finished += 1;
     else if (st.includes("save")) idx.totals.saved += 1;
     else idx.totals.inProgress += 1;
 
-    // index match id
     idx.matchIdsByMode[mode] = idx.matchIdsByMode[mode] || [];
     idx.matchIdsByMode[mode].push(String(rec?.id || ""));
 
-    // extractor mode
     const extractor = extractors[mode];
     if (extractor) {
       try {
         extractor({ rec, payload, mode, ts, idx });
       } catch {
-        // jamais casser le rebuild
+        // ne jamais casser le rebuild stats
       }
     }
   }
 
-  if (persist) saveStatsIndex(idx);
+  if (persist) await saveStatsIndex(idx);
   return idx;
 }

@@ -3001,7 +3001,7 @@ React.useEffect(() => {
         name: String(p?.name || "Joueur"),
         score: Number(p?.lives ?? 0),
         active: idx === turnIndex,
-        avatarDataUrl: p?.avatarDataUrl ?? "",
+        avatarUrl: typeof (p?.avatarUrl ?? p?.avatar ?? p?.photoUrl) === "string" && /^(https?:|blob:|\/)/i.test(String(p?.avatarUrl ?? p?.avatar ?? p?.photoUrl)) ? String(p?.avatarUrl ?? p?.avatar ?? p?.photoUrl) : "",
         stats: {
           avg3d: Number(p?.kills ?? 0),
           bestVisit: Number(p?.number ?? 0),
@@ -3041,7 +3041,9 @@ React.useEffect(() => {
         aliveCount,
       });
 
-      void Promise.resolve(sendCastSnapshot(snapshot))
+      void appendGoogleCastDiag("killer_snapshot_payload_slim", { hasBase64Avatar: castPlayers.some((p: any) => !!p?.avatarDataUrl) });
+
+      Promise.resolve(sendCastSnapshot(snapshot))
         .then((ok) => appendGoogleCastDiag(ok ? "killer_snapshot_sent" : "killer_snapshot_not_sent", { players: castPlayers.length }))
         .catch((err) => appendGoogleCastDiag("killer_snapshot_throw", String(err)));
     } catch (err) {

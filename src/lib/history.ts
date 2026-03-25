@@ -81,6 +81,7 @@ export type CloudImportResult = {
 import { computeCricketLegStats, type CricketHit } from "./StatsCricket";
 
 import { triggerAutoBackupIfEnabled } from "./backup/triggerAutoBackup";
+import { scheduleStatsIndexRefresh } from "./stats/rebuildStatsFromHistory";
 /* =========================
    ✅ CLOUD SNAPSHOT PUSH (PATCH CRITICAL)
    - après un match / remove / clear -> push snapshot cloud (debounce)
@@ -2088,6 +2089,17 @@ export async function upsert(rec: SavedMatch): Promise<void> {
     try {
       if (typeof window !== "undefined") {
         window.dispatchEvent(new Event("dc-history-updated"));
+      }
+    } catch {}
+
+    try {
+      const st = String((safe as any)?.status || "").toLowerCase();
+      if (st !== "in_progress") {
+        void scheduleStatsIndexRefresh({
+          includeNonFinished: true,
+          persist: true,
+          reason: `history-upsert:${st || "unknown"}`,
+        });
       }
     } catch {}
 

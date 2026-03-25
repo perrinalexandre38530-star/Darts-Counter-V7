@@ -543,7 +543,7 @@ React.useEffect(() => {
         name: String(p?.name || "Joueur"),
         score: Number(p?.score ?? 0),
         active: idx === Number(state?.currentPlayerIndex ?? -1),
-        avatarDataUrl: p?.avatarDataUrl ?? p?.avatar ?? "",
+        avatarUrl: typeof (p?.avatarUrl ?? p?.photoUrl ?? p?.avatar) === "string" && /^(https?:|blob:|\/)/i.test(String(p?.avatarUrl ?? p?.photoUrl ?? p?.avatar)) ? String(p?.avatarUrl ?? p?.photoUrl ?? p?.avatar) : "",
         stats: {
           avg3d: Number(leg?.mpr ?? 0).toFixed(2),
           bestVisit: Number(leg?.bestVisitMarks ?? 0),
@@ -582,7 +582,9 @@ React.useEffect(() => {
       status: snapshot.status,
     });
 
-    void Promise.resolve(sendCastSnapshot(snapshot))
+    void appendGoogleCastDiag("cricket_snapshot_payload_slim", { hasBase64Avatar: castPlayers.some((p: any) => !!p?.avatarDataUrl) });
+
+      Promise.resolve(sendCastSnapshot(snapshot))
       .then((ok) => appendGoogleCastDiag(ok ? "cricket_snapshot_sent" : "cricket_snapshot_not_sent", { players: castPlayers.length }))
       .catch((err) => appendGoogleCastDiag("cricket_snapshot_throw", String(err)));
   } catch (err) {

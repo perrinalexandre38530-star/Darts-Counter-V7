@@ -59,42 +59,40 @@ function sanitizeNumberLike(value: any, fallback = 0) {
 }
 
 function sanitizeAvatarFields(player: any) {
-  const sources = [
-    player?.avatarDataUrl,
+  const urlSources = [
     player?.avatarUrl,
-    player?.avatar,
     player?.photoUrl,
     player?.imageUrl,
-    player?.photoDataUrl,
     player?.avatarPath,
     player?.avatar_path,
-    player?.profile?.avatarDataUrl,
     player?.profile?.avatarUrl,
-    player?.profile?.avatar,
     player?.profile?.photoUrl,
-    player?.profile?.photoDataUrl,
-    player?.meta?.avatarDataUrl,
     player?.meta?.avatarUrl,
-    player?.meta?.avatar,
     player?.meta?.photoUrl,
-    player?.user?.avatarDataUrl,
     player?.user?.avatarUrl,
-    player?.user?.avatar,
     player?.user?.photoUrl,
+    player?.avatar,
   ];
 
-  const raw = sources.find((value) => typeof value === "string" && value.trim()) || "";
-  const src = String(raw || "").trim();
-  if (!src) return { avatarDataUrl: "", avatarUrl: "" };
-
-  if (/^data:image\//i.test(src)) {
-    if (src.length <= 140_000) return { avatarDataUrl: src, avatarUrl: "" };
-    pushDiag("sanitize_avatar_dropped_too_large", { size: src.length });
-    return { avatarDataUrl: "", avatarUrl: "" };
+  for (const raw of urlSources) {
+    const src = typeof raw === "string" ? raw.trim() : "";
+    if (!src) continue;
+    if (/^(https?:|blob:|\/)/i.test(src)) {
+      return { avatarDataUrl: "", avatarUrl: src };
+    }
   }
 
-  if (/^(https?:|blob:|\/)/i.test(src)) {
-    return { avatarDataUrl: "", avatarUrl: src };
+  const dataUrlSources = [
+    player?.avatarDataUrl,
+    player?.photoDataUrl,
+    player?.profile?.avatarDataUrl,
+    player?.profile?.photoDataUrl,
+    player?.meta?.avatarDataUrl,
+    player?.user?.avatarDataUrl,
+  ];
+  const dataUrl = dataUrlSources.find((value) => typeof value === "string" && value.trim()) || "";
+  if (typeof dataUrl === "string" && dataUrl.trim()) {
+    pushDiag("sanitize_avatar_base64_stripped", { size: dataUrl.length });
   }
 
   return { avatarDataUrl: "", avatarUrl: "" };

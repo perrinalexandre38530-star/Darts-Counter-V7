@@ -471,7 +471,7 @@ export default function ShanghaiPlay(props: Props) {
           name: String(p.name || "Joueur"),
           score: Number(scores?.[p.id] ?? 0),
           active: String(active?.id || "") === String(p.id),
-          avatarDataUrl: p?.avatarDataUrl ?? "",
+          avatarUrl: typeof (p?.avatarUrl ?? p?.avatar ?? p?.photoUrl) === "string" && /^(https?:|blob:|\/)/i.test(String(p?.avatarUrl ?? p?.avatar ?? p?.photoUrl)) ? String(p?.avatarUrl ?? p?.avatar ?? p?.photoUrl) : "",
           stats: {
             avg3d: Number(derived?.avgPerVolley ?? 0).toFixed(2),
             bestVisit: Number(derived?.bestVolley ?? 0),
@@ -512,7 +512,9 @@ export default function ShanghaiPlay(props: Props) {
         target: snapshot.meta.target,
       });
 
-      void Promise.resolve(sendCastSnapshot(snapshot))
+      void appendGoogleCastDiag("shanghai_snapshot_payload_slim", { hasBase64Avatar: castPlayers.some((p: any) => !!p?.avatarDataUrl) });
+
+      Promise.resolve(sendCastSnapshot(snapshot))
         .then((ok) => appendGoogleCastDiag(ok ? "shanghai_snapshot_sent" : "shanghai_snapshot_not_sent", { players: castPlayers.length }))
         .catch((err) => appendGoogleCastDiag("shanghai_snapshot_throw", String(err)));
     } catch (err) {
