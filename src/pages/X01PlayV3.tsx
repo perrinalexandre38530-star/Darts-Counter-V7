@@ -42,7 +42,7 @@ import tickerX01 from "../assets/tickers/ticker_x01.png";
 
 import { StatsBridge } from "../lib/statsBridge";
 import { loadBots } from "./ProfilesBots";
-import { appendGoogleCastDiag, getGoogleCastState, sendCastSnapshot } from "../cast/googleCast";
+import { appendGoogleCastDiag, sendCastSnapshot } from "../cast/googleCast";
 
 
 
@@ -1379,10 +1379,13 @@ const activeTeam = React.useMemo(() => {
           }));
 
       const snapshot = {
+        screen: "game",
         game: "x01",
         title: isTeamsMode ? "X01 Teams" : "X01",
         status: status === "finished" ? "finished" : "live",
         players: castPlayers,
+        currentPlayer: String(activePlayerId || ""),
+        scores: castPlayers.map((p: any) => Number(p?.score ?? 0)),
         meta: {
           set: Number((state as any)?.currentSet ?? 1),
           leg: Number((state as any)?.currentLeg ?? 1),
@@ -1391,34 +1394,28 @@ const activeTeam = React.useMemo(() => {
         updatedAt: Date.now(),
       };
 
-      const timer = window.setTimeout(() => {
-        if (cancelled) return;
-        const castState = getGoogleCastState();
-        appendGoogleCastDiag("x01_snapshot_scheduled", {
-          mode: snapshot.game,
-          players: Array.isArray(snapshot.players) ? snapshot.players.length : 0,
-          status: snapshot.status,
-          castState: castState.castState,
-          isCasting: castState.isCasting,
-          device: castState.deviceName || "",
-        });
-        if (!castState.isCasting) {
-          appendGoogleCastDiag("x01_snapshot_skipped_no_session");
-          return;
-        }
-        Promise.resolve(sendCastSnapshot(snapshot))
-          .then((ok) =>
-            appendGoogleCastDiag(ok ? "x01_snapshot_sent" : "x01_snapshot_not_sent", {
-              players: Array.isArray(snapshot.players) ? snapshot.players.length : 0,
-              game: snapshot.game,
-            })
-          )
-          .catch((err) => appendGoogleCastDiag("x01_snapshot_throw", String(err)));
-      }, 180);
+      if (cancelled) return;
+
+      appendGoogleCastDiag("x01_snapshot_send_now", {
+        mode: snapshot.game,
+        screen: snapshot.screen,
+        players: Array.isArray(snapshot.players) ? snapshot.players.length : 0,
+        status: snapshot.status,
+        currentPlayer: snapshot.currentPlayer,
+      });
+
+      Promise.resolve(sendCastSnapshot(snapshot))
+        .then((ok) =>
+          appendGoogleCastDiag(ok ? "x01_snapshot_sent" : "x01_snapshot_not_sent", {
+            players: Array.isArray(snapshot.players) ? snapshot.players.length : 0,
+            game: snapshot.game,
+            screen: snapshot.screen,
+          })
+        )
+        .catch((err) => appendGoogleCastDiag("x01_snapshot_throw", String(err)));
 
       return () => {
         cancelled = true;
-        window.clearTimeout(timer);
       };
     } catch {
       return;
