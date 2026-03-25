@@ -11,6 +11,9 @@ let initializedAppId: string | null = null;
 let lastPingAt = 0;
 let lastSnapshotPayload: any = null;
 let lastSnapshotAt = 0;
+let lastSnapshotSignature = "";
+const avatarThumbCache = new Map<string, string>();
+const avatarThumbPromiseCache = new Map<string, Promise<string>>();
 
 function emitStatus() {
   try {
@@ -58,41 +61,107 @@ function sanitizeNumberLike(value: any, fallback = 0) {
   return Number.isFinite(n) ? n : fallback;
 }
 
-function sanitizeAvatarFields(player: any) {
-  const urlSources = [
+function loadImageElement(src: string): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    try {
+      const img = new Image();
+      img.decoding = "async";
+      img.loading = "eager" as any;
+      img.onload = () => resolve(img);
+      img.onerror = () => reject(new Error("avatar_image_load_failed"));
+      img.src = src;
+    } catch (err) {
+      reject(err);
+    }
+  });
+}
+
+async function buildTinyAvatarDataUrl(src: string): Promise<string> {
+  const cached = avatarThumbCache.get(src);
+  if (cached !== undefined) return cached;
+  const pending = avatarThumbPromiseCache.get(src);
+  if (pending) return pending;
+
+  const job = (async () => {
+    try {
+      if (typeof document === "undefined") return "";
+      const img = await loadImageElement(src);
+      const size = 64;
+      const canvas = document.createElement("canvas");
+      canvas.width = size;
+      canvas.height = size;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return "";
+      const sw = Number((img as any).naturalWidth || (img as any).width || size);
+      const sh = Number((img as any).naturalHeight || (img as any).height || size);
+      const side = Math.max(1, Math.min(sw, sh));
+      const sx = Math.max(0, Math.floor((sw - side) / 2));
+      const sy = Math.max(0, Math.floor((sh - side) / 2));
+      ctx.clearRect(0, 0, size, size);
+      ctx.drawImage(img, sx, sy, side, side, 0, 0, size, size);
+      let out = "";
+      for (const q of [0.6, 0.48, 0.38]) {
+        out = canvas.toDataURL("image/jpeg", q);
+        if (out.length <= 28_000) break;
+      }
+      if (out.length > 40_000) {
+        pushDiag("sanitize_avatar_thumb_still_large", { size: out.length });
+        out = "";
+      }
+      avatarThumbCache.set(src, out);
+      return out;
+    } catch (err) {
+      pushDiag("sanitize_avatar_thumb_failed", safeString(err));
+      avatarThumbCache.set(src, "");
+      return "";
+    } finally {
+      avatarThumbPromiseCache.delete(src);
+    }
+  })();
+
+  avatarThumbPromiseCache.set(src, job);
+  return job;
+}
+
+async function sanitizeAvatarFields(player: any) {
+  const sources = [
+    player?.avatarDataUrl,
     player?.avatarUrl,
+    player?.avatar,
     player?.photoUrl,
     player?.imageUrl,
+    player?.photoDataUrl,
     player?.avatarPath,
     player?.avatar_path,
-    player?.profile?.avatarUrl,
-    player?.profile?.photoUrl,
-    player?.meta?.avatarUrl,
-    player?.meta?.photoUrl,
-    player?.user?.avatarUrl,
-    player?.user?.photoUrl,
-    player?.avatar,
-  ];
-
-  for (const raw of urlSources) {
-    const src = typeof raw === "string" ? raw.trim() : "";
-    if (!src) continue;
-    if (/^(https?:|blob:|\/)/i.test(src)) {
-      return { avatarDataUrl: "", avatarUrl: src };
-    }
-  }
-
-  const dataUrlSources = [
-    player?.avatarDataUrl,
-    player?.photoDataUrl,
     player?.profile?.avatarDataUrl,
+    player?.profile?.avatarUrl,
+    player?.profile?.avatar,
+    player?.profile?.photoUrl,
     player?.profile?.photoDataUrl,
     player?.meta?.avatarDataUrl,
+    player?.meta?.avatarUrl,
+    player?.meta?.avatar,
+    player?.meta?.photoUrl,
     player?.user?.avatarDataUrl,
+    player?.user?.avatarUrl,
+    player?.user?.avatar,
+    player?.user?.photoUrl,
   ];
-  const dataUrl = dataUrlSources.find((value) => typeof value === "string" && value.trim()) || "";
-  if (typeof dataUrl === "string" && dataUrl.trim()) {
-    pushDiag("sanitize_avatar_base64_stripped", { size: dataUrl.length });
+
+  const raw = sources.find((value) => typeof value === "string" && value.trim()) || "";
+  const src = String(raw || "").trim();
+  if (!src) return { avatarDataUrl: "", avatarUrl: "" };
+
+  if (/^(https?:|blob:|\/)/i.test(src)) {
+    return { avatarDataUrl: "", avatarUrl: src };
+  }
+
+  if (/^data:image\//i.test(src)) {
+    if (src.length <= 28_000) return { avatarDataUrl: src, avatarUrl: "" };
+    const tiny = await buildTinyAvatarDataUrl(src);
+    if (tiny) return { avatarDataUrl: tiny, avatarUrl: "" };
+    pushDiag("sanitize_avatar_dropped_too_large", { size: src.length });
+    return { avatarDataUrl: "", avatarUrl: "" };
   }
 
   return { avatarDataUrl: "", avatarUrl: "" };
@@ -115,8 +184,25 @@ function sanitizePlayerStats(player: any) {
   };
 }
 
-function sanitizeSnapshot(snapshot: CastSnapshot) {
+async function sanitizeSnapshot(snapshot: CastSnapshot) {
   try {
+    const players = Array.isArray(snapshot?.players)
+      ? await Promise.all(
+          snapshot.players.map(async (p: any) => {
+            const avatar = await sanitizeAvatarFields(p);
+            return {
+              id: String(p?.id ?? ""),
+              name: String(p?.name ?? "Joueur"),
+              score: sanitizeNumberLike(p?.score ?? 0),
+              active: !!p?.active,
+              avatarDataUrl: avatar.avatarDataUrl,
+              avatarUrl: avatar.avatarUrl,
+              stats: sanitizePlayerStats(p),
+            };
+          })
+        )
+      : [];
+
     return JSON.parse(
       JSON.stringify({
         screen: (snapshot as any)?.screen || "",
@@ -124,20 +210,7 @@ function sanitizeSnapshot(snapshot: CastSnapshot) {
         game: snapshot?.game || "unknown",
         title: snapshot?.title || "",
         status: snapshot?.status || "live",
-        players: Array.isArray(snapshot?.players)
-          ? snapshot.players.map((p: any) => {
-              const avatar = sanitizeAvatarFields(p);
-              return {
-                id: String(p?.id ?? ""),
-                name: String(p?.name ?? "Joueur"),
-                score: sanitizeNumberLike(p?.score ?? 0),
-                active: !!p?.active,
-                avatarDataUrl: avatar.avatarDataUrl,
-                avatarUrl: avatar.avatarUrl,
-                stats: sanitizePlayerStats(p),
-              };
-            })
-          : [],
+        players,
         meta:
           snapshot?.meta && typeof snapshot.meta === "object"
             ? Object.fromEntries(
@@ -499,9 +572,28 @@ export async function pingGoogleCastReceiver(force = false) {
 
 export async function sendCastSnapshot(snapshot: CastSnapshot | null): Promise<boolean> {
   if (!snapshot) return false;
-  const payload = sanitizeSnapshot(snapshot);
+  const payload = await sanitizeSnapshot(snapshot);
+  const signature = JSON.stringify({
+    game: payload?.game || "",
+    title: payload?.title || "",
+    status: payload?.status || "",
+    currentPlayer: payload?.currentPlayer || "",
+    meta: payload?.meta || {},
+    players: Array.isArray(payload?.players)
+      ? payload.players.map((p: any) => ({
+          id: p?.id || "",
+          score: p?.score ?? 0,
+          active: !!p?.active,
+          avatarUrl: p?.avatarUrl || "",
+          avatarDataUrl: p?.avatarDataUrl || "",
+          stats: p?.stats || {},
+        }))
+      : [],
+  });
   lastSnapshotPayload = payload;
   lastSnapshotAt = Date.now();
+  if (signature === lastSnapshotSignature) return true;
+  lastSnapshotSignature = signature;
   return sendMessageInternal(
     { type: "SNAPSHOT", payload },
     "send_snapshot_ok",

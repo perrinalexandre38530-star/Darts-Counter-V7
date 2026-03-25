@@ -11,6 +11,7 @@ import type { Profile } from "../lib/types";
 import { useTheme } from "../contexts/ThemeContext";
 import { useLang } from "../contexts/LangContext";
 import { History } from "../lib/history";
+import { getOrRebuildStatsIndex } from "../lib/stats/rebuildStatsFromHistory";
 
 type Props = {
   profiles: Profile[];
@@ -248,6 +249,10 @@ export default function StatsCricket({ profiles, activeProfileId }: Props) {
     async function loadCricketStats() {
       setLoading(true);
       try {
+        // 0) Bootstrap du stats_index central une seule fois si absent.
+        // Cela stabilise les autres écrans stats sans forcer de rebuild massif ici.
+        await getOrRebuildStatsIndex({ includeNonFinished: false }).catch(() => null);
+
         // 1) Liste: History.list() (robuste)
         let rows: any[] = [];
         try {

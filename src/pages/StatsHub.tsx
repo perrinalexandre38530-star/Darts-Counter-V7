@@ -5,13 +5,13 @@ import React from "react";
 import { useSport } from "../contexts/SportContext";
 import { History } from "../lib/history";
 import { loadStore } from "../lib/storage";
-import { rebuildStatsToStore } from "../lib/stats/rebuildStatsToStore";
 import StatsPlayerDashboard, {
   type PlayerDashboardStats,
   GoldPill,
   ProfilePill,
 } from "../components/StatsPlayerDashboard";
 import { useQuickStats } from "../hooks/useQuickStats";
+import { getOrRebuildStatsIndex } from "../lib/stats/rebuildStatsFromHistory";
 import HistoryPage from "./HistoryPage";
 import MolkkyStatsHistoryPage from "./molkky/MolkkyStatsHistoryPage";
 
@@ -4127,17 +4127,21 @@ const { enabled: devModeEnabled } = useDevMode();
 
 
 
-  // ✅ Reconnecte pipeline History -> Store -> StatsHub (source de vérité = History)
+  // ✅ Bootstrap stats_index centralisé.
+  // On ne rebuild qu'une seule fois si l'index n'existe pas encore,
+  // au lieu de réinjecter de gros blobs dans le store principal.
   React.useEffect(() => {
     let cancelled = false;
-    const run = () => {
-      rebuildStatsToStore().catch((e) => {
-        if (!cancelled) console.warn("[rebuildStatsToStore] failed", e);
-      });
+    const run = async () => {
+      try {
+        await getOrRebuildStatsIndex({ includeNonFinished: false });
+      } catch (e) {
+        if (!cancelled) console.warn("[stats_index bootstrap] failed", e);
+      }
     };
 
     const ric = (window as any)?.requestIdleCallback as undefined | ((cb: () => void, opts?: any) => any);
-    const id = ric ? ric(run, { timeout: 1200 }) : window.setTimeout(run, 250);
+    const id = ric ? ric(() => { void run(); }, { timeout: 1200 }) : window.setTimeout(() => { void run(); }, 250);
 
     return () => {
       cancelled = true;

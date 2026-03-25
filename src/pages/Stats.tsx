@@ -4,11 +4,7 @@
 
 import React from "react";
 import { History } from "../lib/history";
-import {
-  getBasicProfileStats,
-  getBasicProfileStatsSync,
-  type BasicProfileStats,
-} from "../lib/statsLiteIDB";
+import { getOrRebuildStatsIndex, loadStatsIndex, type StatsIndex } from "../lib/stats/rebuildStatsFromHistory";
 
 /* -------------------- Types -------------------- */
 type Row = {
@@ -30,41 +26,37 @@ type Row = {
 /* -------------------- Page -------------------- */
 export default function StatsPage() {
   const [rows, setRows] = React.useState<Row[] | null>(null);
-  const [byPlayer, setByPlayer] = React.useState<Record<string, BasicProfileStats>>({}); // map playerId -> stats
+  const [byPlayer, setByPlayer] = React.useState<Record<string, any>>({}); // map playerId -> stats_index entry
 
   const load = React.useCallback(async () => {
     try {
       const list = (await History.list()) as Row[];
       setRows(list);
 
-      // Collecter tous les playerIds visibles
-      const ids = Array.from(
-        new Set(
-          list.flatMap((r) => (Array.isArray(r.players) ? r.players.map((p) => p.id) : []))
-        )
+      const idx: StatsIndex = (await loadStatsIndex()) || (await getOrRebuildStatsIndex({ includeNonFinished: false }));
+      const visibleIds = Array.from(
+        new Set(list.flatMap((r) => (Array.isArray(r.players) ? r.players.map((p) => p.id) : [])))
       ).slice(0, 128);
 
-      // Pré-remplir depuis le mini-cache sync (affichage instantané)
-      const seed: Record<string, BasicProfileStats> = {};
-      for (const id of ids) {
-        seed[id] = getBasicProfileStatsSync(id);
+      const merged: Record<string, any> = {};
+      for (const id of visibleIds) {
+        const entry: any = idx?.byPlayer?.[id] || {};
+        const games = Number(entry?.matches || 0) || 0;
+        const wins = Number(entry?.wins || 0) || 0;
+        merged[id] = {
+          games,
+          darts: Number(entry?.dartsThrown || 0) || 0,
+          avg3: Number(entry?.avg3 || 0) || 0,
+          bestVisit: Number(entry?.bestVisit || 0) || 0,
+          bestCheckout: Number(entry?.bestCheckout || 0) || 0,
+          wins,
+          winRate: games > 0 ? (wins / games) * 100 : 0,
+        };
       }
-      setByPlayer(seed);
-
-      // Puis rafraîchir depuis IDB (async, robuste)
-      const refreshed: Record<string, BasicProfileStats> = { ...seed };
-      await Promise.all(
-        ids.map(async (id) => {
-          try {
-            refreshed[id] = await getBasicProfileStats(id);
-          } catch {
-            // no-op
-          }
-        })
-      );
-      setByPlayer(refreshed);
+      setByPlayer(merged);
     } catch {
       setRows([]);
+      setByPlayer({});
     }
   }, []);
 
@@ -72,7 +64,11 @@ export default function StatsPage() {
     load();
     const onUpd = () => load();
     window.addEventListener("dc-history-updated", onUpd);
-    return () => window.removeEventListener("dc-history-updated", onUpd);
+    window.addEventListener("dc-stats-index-updated", onUpd);
+    return () => {
+      window.removeEventListener("dc-history-updated", onUpd);
+      window.removeEventListener("dc-stats-index-updated", onUpd);
+    };
   }, [load]);
 
   if (rows === null) {

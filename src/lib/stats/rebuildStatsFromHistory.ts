@@ -42,6 +42,10 @@ export type PlayerAgg = {
   losses: number;
   dartsThrown?: number;
   pointsScored?: number;
+  avg3?: number;
+  bestVisit?: number;
+  bestCheckout?: number;
+  buckets?: Record<string, number>;
   lastMatchAt?: number;
 };
 
@@ -280,6 +284,10 @@ function bumpPlayer(idx: StatsIndex, playerId: string, patch: Partial<PlayerAgg>
     losses: 0,
     dartsThrown: 0,
     pointsScored: 0,
+    avg3: 0,
+    bestVisit: 0,
+    bestCheckout: 0,
+    buckets: {},
     lastMatchAt: undefined,
   };
 
@@ -289,9 +297,64 @@ function bumpPlayer(idx: StatsIndex, playerId: string, patch: Partial<PlayerAgg>
   if (typeof patch.losses === "number") p.losses += patch.losses;
   if (typeof patch.dartsThrown === "number") p.dartsThrown = (p.dartsThrown || 0) + patch.dartsThrown;
   if (typeof patch.pointsScored === "number") p.pointsScored = (p.pointsScored || 0) + patch.pointsScored;
+  if (typeof patch.bestVisit === "number") p.bestVisit = Math.max(Number(p.bestVisit || 0) || 0, patch.bestVisit);
+  if (typeof patch.bestCheckout === "number") p.bestCheckout = Math.max(Number(p.bestCheckout || 0) || 0, patch.bestCheckout);
+  if (patch.buckets && typeof patch.buckets === "object") {
+    const cur = (p.buckets && typeof p.buckets === "object") ? p.buckets : {};
+    const nxt: Record<string, number> = { ...cur };
+    for (const [k, v] of Object.entries(patch.buckets || {})) {
+      const n = Number(v || 0) || 0;
+      if (!n) continue;
+      nxt[k] = (Number(nxt[k] || 0) || 0) + n;
+    }
+    p.buckets = nxt;
+  }
+  const darts = Number(p.dartsThrown || 0) || 0;
+  const points = Number(p.pointsScored || 0) || 0;
+  p.avg3 = darts > 0 ? (points / darts) * 3 : 0;
   if (ts && (!p.lastMatchAt || ts > p.lastMatchAt)) p.lastMatchAt = ts;
 
   idx.byPlayer[playerId] = p;
+}
+
+function makeVisitBuckets(bestVisit: number): Record<string, number> {
+  const score = Number(bestVisit || 0) || 0;
+  if (score >= 180) return { "180": 1 };
+  if (score >= 140) return { "140+": 1 };
+  if (score >= 100) return { "100+": 1 };
+  if (score >= 60) return { "60-99": 1 };
+  return { "0-59": 1 };
+}
+
+function extractX01QuickMetrics(pl: any): { dartsThrown: number; pointsScored: number; bestVisit: number; bestCheckout: number; buckets: Record<string, number> } {
+  const dartsThrown =
+    Number(pl?.dartsThrown ?? pl?.darts ?? pl?.stats?.dartsThrown ?? pl?.stats?.dartsTotal ?? 0) || 0;
+  let pointsScored =
+    Number(pl?.pointsScored ?? pl?.scored ?? pl?.stats?.pointsScored ?? pl?.stats?.points ?? pl?.score ?? 0) || 0;
+  let bestVisit =
+    Number(pl?.bestVisit ?? pl?.stats?.bestVisit ?? pl?.stats?.best_visit ?? 0) || 0;
+  let bestCheckout =
+    Number(pl?.bestCheckout ?? pl?.stats?.bestCheckout ?? pl?.stats?.bestFinish ?? 0) || 0;
+  let buckets: Record<string, number> = {};
+
+  const visits = Array.isArray(pl?.visits) ? pl.visits : Array.isArray(pl?.stats?.visits) ? pl.stats.visits : [];
+  if (visits.length) {
+    let total = 0;
+    for (const v of visits) {
+      const score = Number(v?.score ?? 0) || 0;
+      total += score;
+      if (!v?.bust) {
+        if (score > bestVisit) bestVisit = score;
+        if (v?.isCheckout && score > bestCheckout) bestCheckout = score;
+      }
+      const b = makeVisitBuckets(score);
+      for (const [k, n] of Object.entries(b)) buckets[k] = (Number(buckets[k] || 0) || 0) + (Number(n || 0) || 0);
+    }
+    if (!pointsScored && total) pointsScored = total;
+  }
+
+  if (!Object.keys(buckets).length) buckets = makeVisitBuckets(bestVisit);
+  return { dartsThrown, pointsScored, bestVisit, bestCheckout, buckets };
 }
 
 type Extractor = (args: {
@@ -311,10 +374,7 @@ const extractors: Partial<Record<GameKey, Extractor>> = {
       const pid = (pl?.id || pl?.playerId || pl?.uid || pl?.profileId || "").toString();
       if (!pid) continue;
       const name = pl?.name || pl?.displayName;
-      const dartsThrown =
-        pl?.dartsThrown ?? pl?.darts ?? pl?.stats?.dartsThrown ?? pl?.stats?.dartsTotal ?? undefined;
-      const pointsScored =
-        pl?.pointsScored ?? pl?.scored ?? pl?.stats?.pointsScored ?? pl?.stats?.points ?? undefined;
+      const { dartsThrown, pointsScored, bestVisit, bestCheckout, buckets } = extractX01QuickMetrics(pl);
       const isWinner = winnerId && pid === String(winnerId);
 
       bumpPlayer(
@@ -325,8 +385,11 @@ const extractors: Partial<Record<GameKey, Extractor>> = {
           matches: 1,
           wins: isWinner ? 1 : 0,
           losses: winnerId ? (isWinner ? 0 : 1) : 0,
-          dartsThrown: typeof dartsThrown === "number" ? dartsThrown : 0,
-          pointsScored: typeof pointsScored === "number" ? pointsScored : 0,
+          dartsThrown,
+          pointsScored,
+          bestVisit,
+          bestCheckout,
+          buckets,
         },
         ts
       );
@@ -342,6 +405,7 @@ const extractors: Partial<Record<GameKey, Extractor>> = {
       const pid = (pl?.id || pl?.playerId || pl?.uid || "").toString();
       if (!pid) continue;
       const kills = Number(pl?.kills ?? pl?.stats?.kills ?? pl?.special?.kills ?? 0) || 0;
+      const hitsTotal = Number(pl?.hitsTotal ?? pl?.stats?.hitsTotal ?? pl?.special?.hitsTotal ?? 0) || 0;
 
       bumpPlayer(
         idx,
@@ -351,6 +415,7 @@ const extractors: Partial<Record<GameKey, Extractor>> = {
           matches: 1,
           wins: winnerId && String(winnerId) === pid ? 1 : 0,
           losses: winnerId && String(winnerId) !== pid ? 1 : 0,
+          bestVisit: hitsTotal,
         },
         ts
       );
@@ -389,6 +454,7 @@ const extractors: Partial<Record<GameKey, Extractor>> = {
 
       const pointsScored = Number(pl?.score ?? pl?.points ?? pl?.stats?.score ?? 0) || 0;
 
+      const mpr = dartsThrown > 0 ? (marksTotal / dartsThrown) * 3 : 0;
       bumpPlayer(
         idx,
         pid,
@@ -399,6 +465,8 @@ const extractors: Partial<Record<GameKey, Extractor>> = {
           losses: winnerId && String(winnerId) !== pid ? 1 : 0,
           dartsThrown,
           pointsScored,
+          bestVisit: Math.max(Number(pl?.bestRoundMarks ?? 0) || 0, marksTotal > 0 ? Math.min(9, marksTotal) : 0),
+          buckets: makeVisitBuckets(Math.round(mpr * 20)),
         },
         ts
       );
@@ -450,7 +518,7 @@ const extractors: Partial<Record<GameKey, Extractor>> = {
         0;
 
       const dartsThrown = Number(p?.darts ?? 0) || 0;
-      bumpPlayer(idx, pid, { matches: 1, dartsThrown, pointsScored: total }, ts);
+      bumpPlayer(idx, pid, { matches: 1, dartsThrown, pointsScored: total, bestVisit: total }, ts);
 
       const cur: any = (idx.byPlayer[pid] as any).golf || {
         total: 0,

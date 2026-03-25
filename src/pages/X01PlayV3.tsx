@@ -1029,16 +1029,24 @@ const castAvatarPayloadFromAny = React.useCallback(
       entity?.profile?.photoUrl,
       entity?.meta?.avatarUrl,
       entity?.meta?.photoUrl,
-      entity?.avatarPath,
-      entity?.avatar_path,
+      entity?.avatarDataUrl,
+      entity?.photoDataUrl,
+      entity?.profile?.avatarDataUrl,
+      entity?.profile?.photoDataUrl,
+      entity?.meta?.avatarDataUrl,
       entity?.avatar,
     ];
 
     for (const raw of candidates) {
       const src = typeof raw === "string" ? raw.trim() : "";
       if (!src) continue;
-      if (/^(https?:|blob:|\/)/i.test(src)) {
+
+      if (/^(https?:|\/)/i.test(src)) {
         return { avatarUrl: src };
+      }
+
+      if (/^data:image\//i.test(src)) {
+        if (src.length <= 120_000) return { avatarDataUrl: src };
       }
     }
 
@@ -1336,6 +1344,8 @@ const activeTeam = React.useMemo(() => {
     activePlayer ? (scores[activePlayer.id] ?? config.startScore) : config.startScore;
 
   const currentVisit = state.visit;
+  const castSetNo = Number((state as any)?.currentSet ?? 1);
+  const castLegNo = Number((state as any)?.currentLeg ?? 1);
 
   // out mode ? (double / single / master) — selon config
   const outMode: "double" | "simple" | "master" = React.useMemo(() => {
@@ -1352,9 +1362,7 @@ const activeTeam = React.useMemo(() => {
     return "double";
   }, [config]);
 
-  React.useEffect(() => {
-    let cancelled = false;
-
+  const x01CastSnapshot = React.useMemo(() => {
     try {
       const castPlayers = isTeamsMode && Array.isArray(teamsView) && teamsView.length
         ? (teamsView as any[]).map((team: any) => ({
@@ -1364,59 +1372,109 @@ const activeTeam = React.useMemo(() => {
             active: !!activeTeam && String(activeTeam.id) === String(team.id),
             ...castAvatarPayloadFromAny(team, teamAvatarUrl(team)),
           }))
-        : (players as any[]).map((p: any) => ({
-            id: String(p.id),
-            name: String(p.name || "Joueur"),
-            score: Number((scores as any)?.[p.id] ?? config.startScore ?? 0),
-            active: String(activePlayerId || "") === String(p.id),
-            ...castAvatarPayloadFromAny(p, resolveAvatar(p)),
-          }));
+        : (players as any[]).map((p: any) => {
+            const pid = String(p.id || "");
+            const live = (liveStatsByPlayer as any)?.[pid] || {};
+            const detail = extractDetailedStatsFromLive(live);
+            const avg3d = Number(avg3ByPlayer[pid] ?? 0);
+            const totalHits =
+              Number(detail.hitsS ?? 0) +
+              Number(detail.hitsD ?? 0) +
+              Number(detail.hitsT ?? 0) +
+              Number(detail.bull ?? 0) +
+              Number(detail.dBull ?? 0);
 
-      const snapshot = {
+            return {
+              id: pid,
+              name: String(p.name || "Joueur"),
+              score: Number((scores as any)?.[p.id] ?? config.startScore ?? 0),
+              active: String(activePlayerId || "") === String(p.id),
+              ...castAvatarPayloadFromAny(p, resolveAvatar(p)),
+              stats: {
+                avg3d: avg3d.toFixed(2),
+                bestVisit: Number(live?.bestVisit ?? 0),
+                hits: totalHits,
+                miss: Number(detail.miss ?? 0),
+                simple: Number(detail.hitsS ?? 0),
+                double: Number(detail.hitsD ?? 0),
+                triple: Number(detail.hitsT ?? 0),
+                bull: Number(detail.bull ?? 0),
+                dbull: Number(detail.dBull ?? 0),
+                bust: Number(detail.bust ?? 0),
+                totalThrows: Number(detail.darts ?? live?.dartsThrown ?? 0),
+              },
+            };
+          });
+
+      return {
         screen: "game",
-        game: "x01",
+        game: "x01" as const,
         title: isTeamsMode ? "X01 Teams" : "X01",
-        status: status === "finished" ? "finished" : "live",
+        status: status === "finished" ? "finished" as const : "live" as const,
         players: castPlayers,
         currentPlayer: String(activePlayerId || ""),
         scores: castPlayers.map((p: any) => Number(p?.score ?? 0)),
         meta: {
-          set: Number((state as any)?.currentSet ?? 1),
-          leg: Number((state as any)?.currentLeg ?? 1),
+          set: castSetNo,
+          leg: castLegNo,
           outMode,
         },
         updatedAt: Date.now(),
       };
+    } catch {
+      return null;
+    }
+  }, [
+    isTeamsMode,
+    teamsView,
+    activeTeam,
+    players,
+    scores,
+    config.startScore,
+    activePlayerId,
+    outMode,
+    status,
+    castSetNo,
+    castLegNo,
+    liveStatsByPlayer,
+    avg3ByPlayer,
+    castAvatarPayloadFromAny,
+    resolveAvatar,
+  ]);
 
+  React.useEffect(() => {
+    if (!x01CastSnapshot) return;
+    let cancelled = false;
+    const timer = window.setTimeout(() => {
       if (cancelled) return;
-
       appendGoogleCastDiag("x01_snapshot_send_now", {
-        mode: snapshot.game,
-        screen: snapshot.screen,
-        players: Array.isArray(snapshot.players) ? snapshot.players.length : 0,
-        status: snapshot.status,
-        currentPlayer: snapshot.currentPlayer,
+        mode: x01CastSnapshot.game,
+        screen: x01CastSnapshot.screen,
+        players: Array.isArray(x01CastSnapshot.players) ? x01CastSnapshot.players.length : 0,
+        status: x01CastSnapshot.status,
+        currentPlayer: x01CastSnapshot.currentPlayer,
       });
 
-      appendGoogleCastDiag("x01_snapshot_payload_slim", { hasBase64Avatar: castPlayers.some((p: any) => !!p?.avatarDataUrl) });
-
-      Promise.resolve(sendCastSnapshot(snapshot))
-        .then((ok) =>
+      Promise.resolve(sendCastSnapshot(x01CastSnapshot))
+        .then((ok) => {
+          if (cancelled) return;
           appendGoogleCastDiag(ok ? "x01_snapshot_sent" : "x01_snapshot_not_sent", {
-            players: Array.isArray(snapshot.players) ? snapshot.players.length : 0,
-            game: snapshot.game,
-            screen: snapshot.screen,
-          })
-        )
-        .catch((err) => appendGoogleCastDiag("x01_snapshot_throw", String(err)));
+            players: Array.isArray(x01CastSnapshot.players) ? x01CastSnapshot.players.length : 0,
+            game: x01CastSnapshot.game,
+            screen: x01CastSnapshot.screen,
+          });
+        })
+        .catch((err) => {
+          if (cancelled) return;
+          appendGoogleCastDiag("x01_snapshot_throw", String(err));
+        });
+    }, castStatusTick ? 30 : 55);
 
-      return () => {
-        cancelled = true;
-      };
-    } catch {
-      return;
-    }
-  }, [isTeamsMode, teamsView, activeTeam, players, scores, config.startScore, activePlayerId, state, outMode, status, castStatusTick]);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [x01CastSnapshot, castStatusTick]);
 
   // Affichage "Volée x/3" (désactivé par défaut) — active seulement si config.showThrowCounter === true
   const showThrowCounter = (config as any)?.showThrowCounter === true;

@@ -60,6 +60,7 @@ import {
   type CricketLegStats,
   type CricketProfileStats,
 } from "./cricketStats";
+import { loadStatsIndex, type StatsIndex as CachedStatsIndex } from "./stats/rebuildStatsFromHistory";
 
 /* ============================================================
    Types publics
@@ -169,15 +170,68 @@ export type LeaderboardMetric =
 export type LeaderboardMode = "x01" | "cricket" | "killer" | "shanghai" | "batard";
 
 /* ============================================================
-   QUICK STATS legacy (cache localStorage)
+   QUICK STATS — cache mémoire alimenté par stats_index centralisé
 ============================================================ */
-
-const QUICK_STATS_KEY = "dc-quick-stats";
 
 type QuickStatsEntry = BasicProfileStats & {
   points?: number;
   totalScore?: number;
+  matches?: number;
+  buckets?: Record<string, number>;
 };
+
+let __quickStatsBag: Record<string, QuickStatsEntry> | null = null;
+let __quickStatsBootPromise: Promise<void> | null = null;
+
+function statsIndexEntryToQuickStats(entry: any): QuickStatsEntry {
+  const games = Number(entry?.matches || 0) || 0;
+  const wins = Number(entry?.wins || 0) || 0;
+  const darts = Number(entry?.dartsThrown || 0) || 0;
+  const totalScore = Number(entry?.pointsScored || 0) || 0;
+  const avg3 = Number(entry?.avg3 || (darts > 0 ? (totalScore / darts) * 3 : 0) || 0) || 0;
+  const winRate = games > 0 ? Math.round((wins / games) * 100) : 0;
+  return {
+    games,
+    matches: games,
+    darts,
+    avg3,
+    bestVisit: Number(entry?.bestVisit || 0) || 0,
+    bestCheckout: Number(entry?.bestCheckout || 0) || 0,
+    wins,
+    winRate,
+    points: totalScore,
+    totalScore,
+    buckets: (entry?.buckets && typeof entry.buckets === "object") ? entry.buckets : {},
+  };
+}
+
+async function hydrateQuickStatsBagFromIndex(force = false): Promise<Record<string, QuickStatsEntry>> {
+  if (__quickStatsBag && !force) return __quickStatsBag;
+  const idx: CachedStatsIndex | null = await loadStatsIndex().catch(() => null);
+  const bag: Record<string, QuickStatsEntry> = {};
+  for (const [pid, entry] of Object.entries(idx?.byPlayer || {})) {
+    bag[pid] = statsIndexEntryToQuickStats(entry);
+  }
+  __quickStatsBag = bag;
+  return bag;
+}
+
+function ensureQuickStatsBoot() {
+  if (!__quickStatsBootPromise) {
+    __quickStatsBootPromise = hydrateQuickStatsBagFromIndex(false).then(() => undefined).catch(() => undefined);
+    try {
+      if (typeof window !== "undefined" && !(window as any).__dcQuickStatsBridgeHooked) {
+        (window as any).__dcQuickStatsBridgeHooked = true;
+        window.addEventListener("dc-stats-index-updated", () => {
+          void hydrateQuickStatsBagFromIndex(true);
+        });
+      }
+    } catch {}
+  }
+  return __quickStatsBootPromise;
+}
+
+void ensureQuickStatsBoot();
 
 /* ============================================================
    Utils
@@ -1516,10 +1570,7 @@ export function bumpBasicProfileStats(update: {
 }) {
   try {
     if (!update.playerId) return;
-
-    // ⚠️ si quota dépassé, on ne force pas (évite spam console)
-    const raw = localStorage.getItem(QUICK_STATS_KEY);
-    const bag: Record<string, QuickStatsEntry> = raw ? JSON.parse(raw) : {};
+    const bag: Record<string, QuickStatsEntry> = { ...(__quickStatsBag || {}) };
 
     const prev: QuickStatsEntry =
       bag[update.playerId] || {
@@ -1535,12 +1586,10 @@ export function bumpBasicProfileStats(update: {
       };
 
     const prevTotal = N(prev.totalScore ?? prev.points ?? 0, 0);
-
     const darts = N(prev.darts, 0) + N(update.darts, 0);
     const totalScore = prevTotal + N(update.totalScore, 0);
     const games = N(prev.games, 0) + N(update.games, 0);
     const wins = N(prev.wins, 0) + N(update.wins, 0);
-
     const avg3 = darts > 0 ? (totalScore * 3) / darts : 0;
     const winRate = games > 0 ? (wins / games) * 100 : 0;
 
@@ -1556,11 +1605,7 @@ export function bumpBasicProfileStats(update: {
       points: totalScore,
     };
 
-    try {
-      localStorage.setItem(QUICK_STATS_KEY, JSON.stringify(bag));
-    } catch {
-      // si quota dépassé : on abandonne silencieusement
-    }
+    __quickStatsBag = bag;
   } catch {
     // silencieux
   }
@@ -1750,8 +1795,7 @@ export const StatsBridge = {
 
   async commitLegAndAccumulate(_leg: any, legacy: LegacyMaps) {
     try {
-      const raw = localStorage.getItem(QUICK_STATS_KEY);
-      const bag: Record<string, QuickStatsEntry> = raw ? JSON.parse(raw) : {};
+      const bag: Record<string, QuickStatsEntry> = { ...(__quickStatsBag || {}) };
 
       const pids = Object.keys(legacy?.darts || {});
       const winnerId = legacy?.winnerId || null;
@@ -1793,11 +1837,7 @@ export const StatsBridge = {
         bag[pid] = s;
       }
 
-      try {
-        localStorage.setItem(QUICK_STATS_KEY, JSON.stringify(bag));
-      } catch {
-        // quota
-      }
+      __quickStatsBag = bag;
     } catch {
       // silence
     }
@@ -1862,24 +1902,7 @@ export const StatsBridge = {
         localStorage.setItem(allKey, JSON.stringify(arr));
       } catch {}
 
-      const bagRaw = localStorage.getItem(QUICK_STATS_KEY);
-      const bag: Record<string, QuickStatsEntry> = bagRaw ? JSON.parse(bagRaw) : {};
-      const pids: string[] = (summary?.perPlayer || []).map((pp: any) => pp.playerId);
-
-      for (const pid of pids) {
-        const s: QuickStatsEntry =
-          bag[pid] ??
-          ({ games: 0, darts: 0, avg3: 0, bestVisit: 0, bestCheckout: 0, wins: 0, winRate: 0, points: 0, totalScore: 0 } as QuickStatsEntry);
-
-        s.games += 1;
-        if (summary?.winnerId && summary.winnerId === pid) s.wins += 1;
-
-        bag[pid] = s;
-      }
-
-      try {
-        localStorage.setItem(QUICK_STATS_KEY, JSON.stringify(bag));
-      } catch {}
+      void hydrateQuickStatsBagFromIndex(true).catch(() => {});
     } catch {
       // silence
     }
@@ -1887,13 +1910,13 @@ export const StatsBridge = {
 
   getBasicProfileStats(profileId: string): BasicProfileStats {
     try {
-      const raw = localStorage.getItem(QUICK_STATS_KEY);
-      const bag: Record<string, QuickStatsEntry> = raw ? JSON.parse(raw) : {};
+      void ensureQuickStatsBoot();
+      const bag = __quickStatsBag || {};
       const s = bag[profileId] || null;
 
       if (!s) return { games: 0, darts: 0, avg3: 0, bestVisit: 0, bestCheckout: 0, wins: 0 };
 
-      const games = N(s.games, 0);
+      const games = N(s.games ?? s.matches, 0);
       const darts = N(s.darts, 0);
       const totalScore = N(s.totalScore ?? s.points ?? 0, 0);
 
