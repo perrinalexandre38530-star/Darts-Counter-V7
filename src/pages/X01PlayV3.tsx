@@ -1326,18 +1326,40 @@ const activeTeam = React.useMemo(() => {
 
     try {
       const castPlayers = isTeamsMode && Array.isArray(teamsView) && teamsView.length
-        ? (teamsView as any[]).map((team: any) => ({
-            id: String(team.id || team.name || Math.random()),
-            name: String(team.name || "Équipe"),
-            score: Number(team.score ?? 0),
-            active: !!activeTeam && String(activeTeam.id) === String(team.id),
-          }))
-        : (players as any[]).map((p: any) => ({
-            id: String(p.id),
-            name: String(p.name || "Joueur"),
-            score: Number((scores as any)?.[p.id] ?? config.startScore ?? 0),
-            active: String(activePlayerId || "") === String(p.id),
-          }));
+        ? (teamsView as any[]).map((team: any) => {
+            const teamAvatar = teamAvatarUrl(team);
+            const avatarPayload =
+              typeof teamAvatar === "string" && teamAvatar.trim()
+                ? (/^data:image\//i.test(teamAvatar)
+                    ? { avatarDataUrl: teamAvatar }
+                    : { avatarUrl: teamAvatar })
+                : {};
+
+            return {
+              id: String(team.id || team.name || Math.random()),
+              name: String(team.name || "Équipe"),
+              score: Number(team.score ?? 0),
+              active: !!activeTeam && String(activeTeam.id) === String(team.id),
+              ...avatarPayload,
+            };
+          })
+        : (players as any[]).map((p: any) => {
+            const avatarSrc = resolveAvatar(p);
+            const avatarPayload =
+              typeof avatarSrc === "string" && avatarSrc.trim()
+                ? (/^data:image\//i.test(avatarSrc)
+                    ? { avatarDataUrl: avatarSrc }
+                    : { avatarUrl: avatarSrc })
+                : {};
+
+            return {
+              id: String(p.id),
+              name: String(p.name || "Joueur"),
+              score: Number((scores as any)?.[p.id] ?? config.startScore ?? 0),
+              active: String(activePlayerId || "") === String(p.id),
+              ...avatarPayload,
+            };
+          });
 
       const snapshot = {
         game: "x01",
