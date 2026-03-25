@@ -9,7 +9,7 @@
 import { History } from "../history";
 import { loadStore, saveStore } from "../storage";
 import type { Store } from "../types";
-import { rebuildStatsFromHistory } from "../stats/rebuildStatsFromHistory";
+import { cancelScheduledStatsIndexRefresh, scheduleStatsIndexRefresh } from "../stats/rebuildStatsFromHistory";
 import { setAllDartSets, getAllDartSets } from "../dartSetsStore";
 import { isCloudBackup, type CloudBackup } from "./cloudBackupTypes";
 
@@ -127,6 +127,12 @@ export async function restoreCloudBackupFromJson(args: {
   }
 
   try {
+    cancelScheduledStatsIndexRefresh();
+  } catch {}
+
+  let importedHistoryRows = 0;
+
+  try {
     if (mode === "replace") {
       await History.clear?.();
     }
@@ -136,14 +142,20 @@ export async function restoreCloudBackupFromJson(args: {
   for (const rec of rows) {
     try {
       await History.upsert?.(rec as any);
+      importedHistoryRows++;
     } catch {
       // ne jamais casser tout le restore pour une seule ligne
     }
   }
 
-  if (rebuild) {
+  if (rebuild && importedHistoryRows > 0) {
     try {
-      await rebuildStatsFromHistory({ includeNonFinished: true, persist: true });
+      await scheduleStatsIndexRefresh({
+        includeNonFinished: true,
+        persist: true,
+        debounceMs: 80,
+        reason: `cloud-backup-restore:${mode}:${importedHistoryRows}`,
+      });
     } catch {}
   }
 

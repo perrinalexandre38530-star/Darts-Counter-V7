@@ -968,6 +968,9 @@ const themePrimary = (theme as any)?.colors?.primary ?? (theme as any)?.primary 
   const autosaveLastSigRef = React.useRef("");
   const autosaveLastPersistAtRef = React.useRef(0);
 
+  // ✅ IMPORTANT: déclarer players avant tout hook/useMemo qui l'utilise
+  const players = (config as any)?.players ?? [];
+
  // =====================================================
 // ✅ Bot avatars fallback (si un BOT n'a pas avatarDataUrl dans config)
 // -> on charge la liste des bots et on résout l'avatar proprement
@@ -1096,7 +1099,6 @@ const {
   startNextLeg,
 } = useX01EngineV3({ config });
 
-const players = (config as any)?.players ?? [];
 const activePlayer = players.find((p) => p.id === activePlayerId) || null;
 
 // ============================================================
@@ -4372,6 +4374,7 @@ function TeamHeaderBlock(props: {
   teamLegsWon: Record<string, number>;
   teamSetsWon: Record<string, number>;
   checkoutText: string | null;
+  showThrowCounter?: boolean;
 }) {
   // =====================================================
   // Team logo (fond) — derrière le score (TEAMS only)
@@ -4409,6 +4412,7 @@ function TeamHeaderBlock(props: {
     teamLegsWon,
     teamSetsWon,
     checkoutText,
+    showThrowCounter = false,
   } = props;
 
   const color = teamColor || "#ffcf57";

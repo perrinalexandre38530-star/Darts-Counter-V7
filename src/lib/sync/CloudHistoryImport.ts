@@ -8,6 +8,7 @@
 
 import { supabase } from "../supabaseClient";
 import { History, type SavedMatch } from "../history";
+import { cancelScheduledStatsIndexRefresh, scheduleStatsIndexRefresh } from "../stats/rebuildStatsFromHistory";
 
 const CHECKPOINT_KEY = "dc_cloud_history_last_pull_iso_v1";
 
@@ -70,6 +71,10 @@ export async function importHistoryFromCloud(opts?: {
   let conflicts = 0;
   let lastSeen = checkpoint;
 
+  try {
+    cancelScheduledStatsIndexRefresh();
+  } catch {}
+
   for (let page = 0; page < maxPages; page++) {
     let q = supabase
       .from("stats_events")
@@ -110,6 +115,17 @@ export async function importHistoryFromCloud(opts?: {
     }
 
     if (rows.length < pageSize) break;
+  }
+
+  if (imported > 0 || conflicts > 0) {
+    try {
+      await scheduleStatsIndexRefresh({
+        includeNonFinished: true,
+        persist: true,
+        debounceMs: 120,
+        reason: `cloud-history-import:${imported}:${conflicts}`,
+      });
+    } catch {}
   }
 
   return { imported, conflicts, last: checkpoint || lastSeen || "" };

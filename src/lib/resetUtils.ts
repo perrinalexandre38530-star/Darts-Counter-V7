@@ -5,6 +5,7 @@
 
 import { delKV } from "./storage";
 import { purgeAllStatsForProfile } from "./statsLiteIDB";
+import { cancelScheduledStatsIndexRefresh, scheduleStatsIndexRefresh } from "./stats/rebuildStatsFromHistory";
 
 // Toutes les clés connues des stats multi-profils
 const STAT_KEYS = [
@@ -51,6 +52,17 @@ export async function resetStatsForProfile(playerId: string): Promise<void> {
       localStorage.setItem(QUICK, JSON.stringify(parsed));
     }
   } catch {}
+
+  try {
+    cancelScheduledStatsIndexRefresh();
+    await scheduleStatsIndexRefresh({
+      reason: "reset-profile-stats",
+      debounceMs: 0,
+      includeNonFinished: true,
+    });
+  } catch (err) {
+    console.warn("[reset] scheduleStatsIndexRefresh error:", err);
+  }
 
   console.log("[reset] Stats réinitialisées pour", playerId);
 }

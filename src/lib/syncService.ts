@@ -2,7 +2,7 @@ import LZString from "lz-string";
 import { gzipSync, gunzipSync, strToU8, strFromU8 } from "fflate";
 import { apiGet, apiPost } from "./apiClient";
 import { exportAll, loadStore, importAll, saveStore } from "./storage";
-import { rebuildStatsToStore } from "./stats/rebuildStatsToStore";
+import { cancelScheduledStatsIndexRefresh, scheduleStatsIndexRefresh } from "./stats/rebuildStatsFromHistory";
 import { importHistoryDump } from "./historyCloud";
 
 type CompressedBackupPayload = {
@@ -296,9 +296,14 @@ export async function restoreLatestBackupFromNas() {
     await importAll(payload);
 
     try {
-      await rebuildStatsToStore();
+      cancelScheduledStatsIndexRefresh();
+      await scheduleStatsIndexRefresh({
+        reason: "nas-restore-importall",
+        debounceMs: 0,
+        includeNonFinished: true,
+      });
     } catch (e) {
-      console.warn("Rebuild stats après importAll échoué", e);
+      console.warn("Refresh stats après importAll échoué", e);
     }
   } else {
     // Compatibilité avec anciens backups NAS "slim"
@@ -318,9 +323,14 @@ export async function restoreLatestBackupFromNas() {
     }
 
     try {
-      await rebuildStatsToStore();
+      cancelScheduledStatsIndexRefresh();
+      await scheduleStatsIndexRefresh({
+        reason: "nas-restore-legacy",
+        debounceMs: 0,
+        includeNonFinished: true,
+      });
     } catch (e) {
-      console.warn("Rebuild stats échoué", e);
+      console.warn("Refresh stats échoué", e);
     }
   }
 
