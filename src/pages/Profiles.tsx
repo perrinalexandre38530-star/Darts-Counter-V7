@@ -730,6 +730,8 @@ export default function Profiles({
     const returnTo =
       (params?.returnTo as { tab?: any; params?: any } | undefined) ?? undefined;
 
+    const nasProfileOnboarding = !!params?.nasProfileOnboarding;
+
   React.useEffect(() => {
     if (params?.view === "create_bot" && go) {
       go("profiles_bots");
@@ -773,6 +775,15 @@ export default function Profiles({
   function renameProfile(id: string, name: string) {
     setProfilesSafe((arr) => arr.map((p) => (p.id === id ? { ...p, name } : p)));
     try { (window as any).__flushCloudNow?.(); } catch {}
+  }
+
+  function clearNasProfileOnboardingFlag(expectedUid?: string | null) {
+    try {
+      const current = String(localStorage.getItem("dc_nas_profile_onboarding_uid") || "").trim();
+      const wanted = String(expectedUid || "").trim();
+      if (!current) return;
+      if (!wanted || current === wanted) localStorage.removeItem("dc_nas_profile_onboarding_uid");
+    } catch {}
   }
 
   async function changeAvatar(id: string, file: File) {
@@ -936,10 +947,11 @@ export default function Profiles({
     update((s: any) => {
       const nextProfiles = Array.isArray(s?.profiles) ? [...s.profiles, p] : [p];
   
+      const shouldMakeActive = !!(privateInfo as any)?.onlineUserId;
       const nextStore = {
         ...s,
         profiles: nextProfiles,
-        activeProfileId: s?.activeProfileId ?? p.id,
+        activeProfileId: shouldMakeActive ? p.id : (s?.activeProfileId ?? p.id),
       };
   
       nextStoreSnapshot = nextStore;
@@ -958,6 +970,13 @@ export default function Profiles({
     });
   
     console.log("[Profiles] ✅ Profil local créé + persisté", p.id);
+
+    if ((privateInfo as any)?.onlineUserId) {
+      clearNasProfileOnboardingFlag(String((privateInfo as any)?.onlineUserId || ""));
+      if (returnTo?.tab && go) {
+        go(returnTo.tab, returnTo.params);
+      }
+    }
   }
   
   const active = profiles.find((p) => p.id === activeProfileId) || null;
@@ -1594,7 +1613,7 @@ React.useEffect(() => {
 
             {view === "locals" && (
               <Card
-                title={`${t(
+                title={nasProfileOnboarding ? t("profiles.locals.onboarding.title", "Créer ton profil actif") : `${t(
                   "profiles.locals.title",
                   "Profils locaux"
                 )} (${profiles.filter((p: any) => p.id !== activeProfileId && !isMirrorProfile(p)).length})`}
@@ -1602,12 +1621,27 @@ React.useEffect(() => {
                 <LocalProfilesRefonte
                   profiles={profiles}
                   activeProfileId={activeProfileId}
-                  onCreate={addProfile}
+                  onCreate={(name, file, privateInfo) => {
+                    const shouldLinkOnline = nasProfileOnboarding && auth.status === "signed_in" && auth.user?.id;
+                    addProfile(
+                      name,
+                      file,
+                      shouldLinkOnline
+                        ? {
+                            ...(privateInfo || {}),
+                            onlineUserId: String(auth.user?.id || ""),
+                            onlineEmail: String(auth.user?.email || ""),
+                          }
+                        : privateInfo
+                    );
+                  }}
                   onRename={renameProfile}
                   onPatchPrivateInfo={patchProfilePrivateInfo}
                   onAvatar={changeAvatar}
                   onDelete={delProfile}
                   onOpenAvatarCreator={openAvatarCreator}
+                  onboardingMode={nasProfileOnboarding}
+                  autoFocusCreate={nasProfileOnboarding || autoCreateFlag}
                 />
               </Card>
             )}
@@ -2855,6 +2889,7 @@ function UnifiedAuthBlock({
   const [country, setCountry] = React.useState("");
   const [file, setFile] = React.useState<File | null>(null);
   const [preview, setPreview] = React.useState<string | null>(null);
+  const nameInputRef = React.useRef<HTMLInputElement | null>(null);
 
   // thème + langue appliqués à l’app
   const [uiTheme, setUiTheme] = React.useState<ThemeId>(
@@ -2867,6 +2902,12 @@ function UnifiedAuthBlock({
   React.useEffect(() => {
     if (autoFocusCreate) createRef.current?.focus();
   }, [autoFocusCreate]);
+
+  React.useEffect(() => {
+    if (autoFocus) {
+      try { nameInputRef.current?.focus(); } catch {}
+    }
+  }, [autoFocus]);
 
   React.useEffect(() => {
     if (!file) {
@@ -3466,6 +3507,8 @@ function LocalProfilesRefonte({
   onAvatar,
   onDelete,
   onOpenAvatarCreator,
+  onboardingMode = false,
+  autoFocusCreate = false,
 }: {
   profiles: Profile[];
   activeProfileId: string | null;
@@ -3479,6 +3522,8 @@ function LocalProfilesRefonte({
   onAvatar: (id: string, file: File) => void;
   onDelete: (id: string) => void;
   onOpenAvatarCreator?: () => void;
+  onboardingMode?: boolean;
+  autoFocusCreate?: boolean;
 }) {
   const { theme } = useTheme();
 
@@ -3493,11 +3538,13 @@ function LocalProfilesRefonte({
   // - on exclut TOUS les mirrors "online:*" (sinon tu te retrouves avec 10 duplicates)
   const locals = React.useMemo(
     () =>
-      profiles.filter(
-        (p: any) =>
-          p.id !== activeProfileId && !isMirrorProfile(p)
-      ),
-    [profiles, activeProfileId]
+      onboardingMode
+        ? []
+        : profiles.filter(
+            (p: any) =>
+              p.id !== activeProfileId && !isMirrorProfile(p)
+          ),
+    [profiles, activeProfileId, onboardingMode]
   );
 
   const [index, setIndex] = React.useState(0);
@@ -3663,7 +3710,7 @@ function LocalProfilesRefonte({
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
       {/* ------- Création PROFIL LOCAL ------- */}
-      <AddLocalProfile onCreate={onCreate} />
+      <AddLocalProfile onCreate={onCreate} autoFocus={autoFocusCreate} onboardingMode={onboardingMode} />
 
       {/* ------- Carrousel + stats + actions ------- */}
       {locals.length === 0 ? (
@@ -3676,10 +3723,15 @@ function LocalProfilesRefonte({
             textAlign: "center",
           }}
         >
-          {t(
-            "profiles.locals.empty",
-            "Aucun profil local pour l’instant. Ajoute un joueur au-dessus."
-          )}
+          {onboardingMode
+            ? t(
+                "profiles.locals.onboarding.subtitle",
+                "Ton compte NAS est créé. Maintenant, crée le profil local actif qui lui sera lié."
+              )
+            : t(
+                "profiles.locals.empty",
+                "Aucun profil local pour l’instant. Ajoute un joueur au-dessus."
+              )}
         </div>
       ) : (
         <div
@@ -4123,6 +4175,8 @@ function LocalProfilesRefonte({
 
 function AddLocalProfile({
   onCreate,
+  autoFocus = false,
+  onboardingMode = false,
 }: {
   onCreate: (
     name: string,
@@ -4131,11 +4185,14 @@ function AddLocalProfile({
       country?: string;
     }>
   ) => void;
+  autoFocus?: boolean;
+  onboardingMode?: boolean;
 }) {
   const [name, setName] = React.useState("");
   const [country, setCountry] = React.useState("");
   const [file, setFile] = React.useState<File | null>(null);
   const [preview, setPreview] = React.useState<string | null>(null);
+  const nameInputRef = React.useRef<HTMLInputElement | null>(null);
 
   const { theme } = useTheme();
 
@@ -4143,6 +4200,12 @@ function AddLocalProfile({
   const sportResolved = sport;
   const { t } = useLang();
   const primary = theme.primary;
+
+  React.useEffect(() => {
+    if (autoFocus) {
+      try { nameInputRef.current?.focus(); } catch {}
+    }
+  }, [autoFocus]);
 
   React.useEffect(() => {
     if (!file) {
@@ -4210,10 +4273,12 @@ function AddLocalProfile({
           letterSpacing: 1,
         }}
       >
-        {t(
-          "profiles.locals.add.title",
-          "Créer un profil local"
-        )}
+        {onboardingMode
+          ? t("profiles.locals.onboarding.formTitle", "Créer ton profil actif")
+          : t(
+              "profiles.locals.add.title",
+              "Créer un profil local"
+            )}
       </div>
 
       <div
@@ -4267,6 +4332,7 @@ function AddLocalProfile({
           }}
         >
           <input
+            ref={nameInputRef}
             className="input"
             placeholder={t(
               "profiles.locals.add.placeholder",

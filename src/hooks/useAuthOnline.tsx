@@ -225,12 +225,24 @@ function tryBridgeLocalProfile(user: User, onlineProfile?: OnlineProfile | null)
     if (!appStore || typeof appStore.update !== "function") return;
 
     appStore.update((store: any) => {
-      // 🔴 FIX : ne pas créer un nouveau profil si un profil existe déjà
-      const profiles = store?.profiles || [];
-      const activeId = store?.activeProfileId;
+      const profiles = Array.isArray(store?.profiles) ? store.profiles : [];
+      const uid = String(user?.id || "");
 
-      if (activeId && profiles.find((p: any) => p.id === activeId)) {
-        // profil déjà présent → on ne touche à rien
+      const alreadyLinked = profiles.find((p: any) => {
+        const pi = (p as any)?.privateInfo || {};
+        return String((pi as any)?.onlineUserId || "") === uid;
+      });
+
+      // ✅ NAS: ne JAMAIS voler le profil local actif existant à un nouveau compte.
+      // Tant qu'aucun profil local n'est explicitement lié à ce compte online,
+      // on laisse le store intact et on déclenche un onboarding dédié côté UI.
+      if (isNasProviderEnabled() && !alreadyLinked) {
+        return store;
+      }
+
+      // 🔴 FIX : ne pas créer un nouveau profil si un profil actif existe déjà
+      const activeId = store?.activeProfileId;
+      if (activeId && profiles.find((p: any) => p.id === activeId) && !alreadyLinked) {
         return store;
       }
 

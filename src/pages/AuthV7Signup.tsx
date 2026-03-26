@@ -12,6 +12,27 @@ type Props = {
   go: (t: any, p?: any) => void;
 };
 
+function hasLinkedLocalProfile(userId?: string | null): boolean {
+  try {
+    const uid = String(userId || "").trim();
+    if (!uid) return false;
+    const store = (window as any)?.__appStore?.store ?? null;
+    const profiles = Array.isArray(store?.profiles) ? store.profiles : [];
+    return profiles.some((p: any) => String((p?.privateInfo || {})?.onlineUserId || "") === uid);
+  } catch {
+    return false;
+  }
+}
+
+function armNasProfileOnboarding(userId?: string | null) {
+  try {
+    const uid = String(userId || "").trim();
+    if (!uid) return;
+    localStorage.setItem("dc_nas_profile_onboarding_uid", uid);
+  } catch {}
+}
+
+
 export default function AuthV7Signup({ go }: Props) {
   const [email, setEmail] = React.useState("");
   const [password, setPassword] = React.useState("");
@@ -37,7 +58,21 @@ export default function AuthV7Signup({ go }: Props) {
       const session = await onlineApi.signup({ email: e, password, nickname });
 
       if (nasMode || session?.token || session?.user?.id) {
+        const uid = String(session?.user?.id || "").trim();
+        const linked = hasLinkedLocalProfile(uid);
         setInfo("Compte créé et connecté ✅");
+
+        if (nasMode && uid && !linked) {
+          armNasProfileOnboarding(uid);
+          go("profiles", {
+            view: "locals",
+            nasProfileOnboarding: true,
+            autoCreate: true,
+            returnTo: { tab: "gameSelect" },
+          });
+          return;
+        }
+
         go("gameSelect");
         return;
       }
