@@ -14,7 +14,7 @@ let lastSnapshotAt = 0;
 let lastSnapshotSignature = "";
 const avatarThumbCache = new Map<string, string>();
 const avatarThumbPromiseCache = new Map<string, Promise<string>>();
-const lastSentAvatarByPlayer = new Map<string, string>();
+const playerAvatarSourceCache = new Map<string, string>();
 
 function emitStatus() {
   try {
@@ -87,7 +87,7 @@ async function buildTinyAvatarDataUrl(src: string): Promise<string> {
     try {
       if (typeof document === "undefined") return "";
       const img = await loadImageElement(src);
-      const size = 96;
+      const size = 160;
       const canvas = document.createElement("canvas");
       canvas.width = size;
       canvas.height = size;
@@ -99,16 +99,22 @@ async function buildTinyAvatarDataUrl(src: string): Promise<string> {
       const sx = Math.max(0, Math.floor((sw - side) / 2));
       const sy = Math.max(0, Math.floor((sh - side) / 2));
       ctx.clearRect(0, 0, size, size);
+      ctx.imageSmoothingEnabled = true;
+      (ctx as any).imageSmoothingQuality = "high";
       ctx.drawImage(img, sx, sy, side, side, 0, 0, size, size);
       let out = "";
-      try {
-        out = canvas.toDataURL("image/webp", 0.72);
-      } catch {}
-      for (const q of [0.78, 0.68, 0.58]) {
-        if (!out || out.length > 70_000) out = canvas.toDataURL("image/jpeg", q);
-        if (out.length <= 65_000) break;
+      if ((canvas as any).toDataURL) {
+        try {
+          out = canvas.toDataURL("image/webp", 0.86);
+        } catch {}
       }
-      if (out.length > 80_000) {
+      if (!out || out.length > 70_000) {
+        for (const q of [0.88, 0.82, 0.76]) {
+          out = canvas.toDataURL("image/jpeg", q);
+          if (out.length <= 70_000) break;
+        }
+      }
+      if (out.length > 85_000) {
         pushDiag("sanitize_avatar_thumb_still_large", { size: out.length });
         out = "";
       }
@@ -194,18 +200,30 @@ async function sanitizeSnapshot(snapshot: CastSnapshot) {
       ? await Promise.all(
           snapshot.players.map(async (p: any) => {
             const avatar = await sanitizeAvatarFields(p);
-            const pid = String(p?.id ?? "");
-            const avatarSig = avatar.avatarUrl || avatar.avatarDataUrl || "";
-            const lastSig = pid ? (lastSentAvatarByPlayer.get(pid) || "") : "";
-            const shouldSendAvatar = !!avatarSig && avatarSig !== lastSig;
-            if (pid && avatarSig) lastSentAvatarByPlayer.set(pid, avatarSig);
+            const playerId = String(p?.id ?? p?.name ?? "");
+            const sourceKey = safeString(
+              p?.avatarDataUrl ||
+              p?.avatarUrl ||
+              p?.avatar ||
+              p?.photoUrl ||
+              p?.photoDataUrl ||
+              p?.imageUrl ||
+              p?.profile?.avatarDataUrl ||
+              p?.profile?.avatarUrl ||
+              p?.meta?.avatarDataUrl ||
+              p?.meta?.avatarUrl ||
+              ""
+            );
+            const prevSourceKey = playerAvatarSourceCache.get(playerId) || "";
+            const includeAvatar = !prevSourceKey || prevSourceKey !== sourceKey;
+            if (sourceKey) playerAvatarSourceCache.set(playerId, sourceKey);
             return {
-              id: pid,
+              id: playerId,
               name: String(p?.name ?? "Joueur"),
               score: sanitizeNumberLike(p?.score ?? 0),
               active: !!p?.active,
-              avatarDataUrl: shouldSendAvatar ? avatar.avatarDataUrl : "",
-              avatarUrl: shouldSendAvatar ? avatar.avatarUrl : "",
+              avatarDataUrl: includeAvatar ? avatar.avatarDataUrl : "",
+              avatarUrl: includeAvatar ? avatar.avatarUrl : "",
               stats: sanitizePlayerStats(p),
             };
           })
