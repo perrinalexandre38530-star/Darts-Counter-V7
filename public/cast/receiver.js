@@ -1,4 +1,4 @@
-const BUILD = "CAF-VISUAL-MULTI-2026-03-25-1";
+const BUILD = "CAF-VISUAL-X01-ANTHRACITE-2026-03-26-1";
 const NAMESPACE = "urn:x-cast:com.multisports.scoreboard";
 
 const contentEl = document.getElementById("content");
@@ -11,6 +11,7 @@ if (buildEl) buildEl.textContent = `Build: ${BUILD}`;
 
 const logs = [];
 const historyMap = new Map();
+const avatarCacheByPlayer = new Map();
 let lastPayload = null;
 
 function pushDiag(entry, extra) {
@@ -95,6 +96,33 @@ function getAvatarSrc(player) {
   return "";
 }
 
+function rememberPlayerAvatars(players) {
+  players.forEach((player) => {
+    const id = String(player?.id || player?.name || "").trim();
+    if (!id) return;
+    const src = getAvatarSrc(player);
+    if (src) avatarCacheByPlayer.set(id, src);
+  });
+}
+
+function withRememberedAvatar(player) {
+  const id = String(player?.id || player?.name || "").trim();
+  const current = getAvatarSrc(player);
+  if (current || !id) return player;
+  const cached = avatarCacheByPlayer.get(id) || "";
+  if (!cached) return player;
+  return { ...player, avatarUrl: cached };
+}
+
+function orderPlayersByTurn(players, active) {
+  const ordered = Array.isArray(players) ? players.slice() : [];
+  if (!ordered.length) return ordered;
+  const activeId = String(active?.id || "");
+  const idx = ordered.findIndex((p) => String(p?.id || "") === activeId);
+  if (idx <= 0) return ordered;
+  return ordered.slice(idx).concat(ordered.slice(0, idx));
+}
+
 function avatarHtml(player, size = 116, smallText = false) {
   const src = getAvatarSrc(player);
   if (src) {
@@ -142,19 +170,26 @@ function linePath(values, w, h, min, max) {
 }
 
 function graphHtml(players) {
-  if (players.length < 3) return "";
+  if (players.length < 2) {
+    return `
+      <div class="evo-empty">
+        <div class="evo-empty-title">Évolution</div>
+        <div class="evo-empty-sub">Le graphique se remplit au fil de la partie.</div>
+      </div>
+    `;
+  }
 
   const series = players.map((p) => historyMap.get(String(p?.id || p?.name)) || { points: [num(p?.score, 0)] });
   const all = series.flatMap((s) => s.points);
   const min = Math.min(...all, 0);
   const max = Math.max(...all, 501);
-  const w = 960;
+  const w = 640;
   const h = 170;
-  const colors = ["#53e7ff", "#ffd55b", "#8aa2ff", "#ff66d1", "#63ff97", "#ff8f5b"];
+  const colors = ["#f0c96b", "#4cd6ff", "#f58bcf", "#8ef5a5", "#ffb26b", "#9ca9ff"];
 
   const defs = colors.map((color, idx) => `
     <filter id="glow-${idx}" x="-50%" y="-50%" width="200%" height="200%">
-      <feGaussianBlur stdDeviation="3.5" result="blur"/>
+      <feGaussianBlur stdDeviation="3" result="blur"/>
       <feMerge>
         <feMergeNode in="blur"/>
         <feMergeNode in="SourceGraphic"/>
@@ -166,8 +201,8 @@ function graphHtml(players) {
     const d = linePath(s.points, w, h, min, max);
     const color = colors[idx % colors.length];
     return `
-      <path d="${d}" fill="none" stroke="${color}" stroke-width="8" stroke-linecap="round" stroke-linejoin="round" opacity="0.15" filter="url(#glow-${idx % colors.length})" />
-      <path d="${d}" fill="none" stroke="${color}" stroke-width="3.8" stroke-linecap="round" stroke-linejoin="round" opacity="0.98" />
+      <path d="${d}" fill="none" stroke="${color}" stroke-width="7" stroke-linecap="round" stroke-linejoin="round" opacity="0.14" filter="url(#glow-${idx % colors.length})" />
+      <path d="${d}" fill="none" stroke="${color}" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round" opacity="0.98" />
     `;
   }).join("");
 
@@ -183,12 +218,12 @@ function graphHtml(players) {
   }).join("");
 
   return `
-    <section class="panel graph-panel">
-      <div class="panel-title-row">
-        <div class="panel-title" style="margin-bottom:0;">Évolution</div>
-        <div class="panel-subtitle">3 joueurs et +</div>
+    <div class="evo-box">
+      <div class="panel-title-row evo-title-row">
+        <div class="panel-title panel-title-tight">Évolution</div>
+        <div class="panel-subtitle">${players.length >= 3 ? "3 joueurs et +" : "partie en cours"}</div>
       </div>
-      <svg viewBox="0 0 ${w} ${h}" class="graph-svg">
+      <svg viewBox="0 0 ${w} ${h}" class="graph-svg compact-graph">
         <defs>${defs}</defs>
         <g opacity="0.12">
           <line x1="0" y1="${h}" x2="${w}" y2="${h}" stroke="#fff"/>
@@ -198,8 +233,8 @@ function graphHtml(players) {
         </g>
         ${lines}
       </svg>
-      <div class="graph-legend">${legend}</div>
-    </section>
+      <div class="graph-legend compact-legend">${legend}</div>
+    </div>
   `;
 }
 
@@ -292,7 +327,9 @@ function pickPlayerStats(active, payloadMeta) {
 function renderSnapshot(payload) {
   lastPayload = payload || {};
 
-  const players = Array.isArray(payload?.players) ? payload.players : [];
+  const rawPlayers = Array.isArray(payload?.players) ? payload.players : [];
+  rememberPlayerAvatars(rawPlayers);
+  const players = rawPlayers.map(withRememberedAvatar);
   rememberHistory(players);
 
   if (!players.length) {
@@ -301,7 +338,7 @@ function renderSnapshot(payload) {
   }
 
   const active = players.find((p) => p?.active) || players.find((p) => String(p?.id || "") === String(payload?.currentPlayer || "")) || players[0];
-  const ordered = players.slice();
+  const ordered = orderPlayersByTurn(players, active);
   const meta = payload?.meta && typeof payload.meta === "object" ? payload.meta : {};
   const gameTitle = payload?.title || payload?.game || "Multisports";
 
@@ -326,7 +363,7 @@ function renderSnapshot(payload) {
             <div class="active-top">
               <div class="active-left">
                 <div class="active-avatar-wrap">
-                  ${avatarHtml(active, 136)}
+                  ${avatarHtml(active, 144)}
                 </div>
 
                 <div class="active-name">${esc(active?.name || "Joueur")}</div>
@@ -338,21 +375,26 @@ function renderSnapshot(payload) {
               </div>
             </div>
 
-            <div class="stats-grid">
-              ${statCell("Avg 3D", ps.avg3d)}
-              ${statCell("Best volée", ps.bestVisit)}
-              ${statCell("Hits", ps.hits)}
-              ${statCell("Miss", `${ps.miss} - ${pct(ps.miss, totalRef)}`)}
-              ${statCell("Simple", formatStatPair(ps.simple, totalRef))}
-              ${statCell("Double", formatStatPair(ps.double_, totalRef))}
-              ${statCell("Triple", formatStatPair(ps.triple, totalRef))}
-              ${statCell("Bull", formatStatPair(ps.bull, totalRef))}
-              ${statCell("DBull", formatStatPair(ps.dbull, totalRef))}
-              ${statCell("Bust", formatStatPair(ps.bust, totalRef))}
+            <div class="active-bottom">
+              <div class="evolution-side">
+                ${graphHtml(players)}
+              </div>
+              <div class="stats-side">
+                <div class="stats-grid compact-stats-grid">
+                  ${statCell("Avg 3D", ps.avg3d)}
+                  ${statCell("Best volée", ps.bestVisit)}
+                  ${statCell("Hits", ps.hits)}
+                  ${statCell("Miss", `${ps.miss} - ${pct(ps.miss, totalRef)}`)}
+                  ${statCell("Simple", formatStatPair(ps.simple, totalRef))}
+                  ${statCell("Double", formatStatPair(ps.double_, totalRef))}
+                  ${statCell("Triple", formatStatPair(ps.triple, totalRef))}
+                  ${statCell("Bull", formatStatPair(ps.bull, totalRef))}
+                  ${statCell("DBull", formatStatPair(ps.dbull, totalRef))}
+                  ${statCell("Bust", formatStatPair(ps.bust, totalRef))}
+                </div>
+              </div>
             </div>
           </section>
-
-          ${graphHtml(players)}
         </main>
       </div>
     </div>
