@@ -13,8 +13,8 @@
 // ============================================================
 
 import { supabase } from "./supabaseClient";
-import { isNasDataSyncEnabled } from "./serverConfig";
-import { nasPullStoreSnapshot, nasPushStoreSnapshot } from "./nasApi";
+import { isNasDataSyncEnabled, isNasProviderEnabled } from "./serverConfig";
+import { nasDeleteAccount, nasGetProfile, nasLogin, nasLogout, nasPullStoreSnapshot, nasPushStoreSnapshot, nasRequestPasswordReset, nasRestoreSession, nasSignup, nasUpdateEmail, nasUpdateProfile, nasUploadAvatarImage } from "./nasApi";
 import { EventBuffer } from "./sync/EventBuffer";
 import { importHistoryFromCloud } from "./sync/CloudHistoryImport";
 import type { UserAuth, OnlineProfile, OnlineMatch } from "./onlineTypes";
@@ -551,6 +551,9 @@ function normalizeAuthErrorMessage(msg: string) {
 // Public AUTH
 // ============================================================
 async function signup(payload: SignupPayload): Promise<AuthSession> {
+  if (isNasProviderEnabled()) {
+    return await nasSignup(payload);
+  }
 
   const email = payload.email?.trim();
   const password = payload.password?.trim();
@@ -593,6 +596,9 @@ async function signup(payload: SignupPayload): Promise<AuthSession> {
 }
 
 async function login(payload: LoginPayload): Promise<AuthSession> {
+  if (isNasProviderEnabled()) {
+    return await nasLogin(payload);
+  }
 
   const email = payload.email?.trim();
   const password = payload.password?.trim();
@@ -662,6 +668,9 @@ async function maybeConsumeAuthRedirectFromHash(): Promise<void> {
 
 // ✅ V7 : restoreSession = RESTORE UNIQUEMENT (pas de création d'utilisateur)
 async function restoreSession(): Promise<AuthSession | null> {
+  if (isNasProviderEnabled()) {
+    return await nasRestoreSession();
+  }
 
   try {
     // 0) Hash-router auth callback parsing (best-effort)
@@ -710,6 +719,11 @@ async function restoreSession(): Promise<AuthSession | null> {
 }
 
 async function logout(): Promise<void> {
+  if (isNasProviderEnabled()) {
+    await nasLogout();
+    saveAuthToLS(null);
+    return;
+  }
 
   const { error } = await supabase.auth.signOut();
   if (error) console.warn("[onlineApi] logout error", error);
@@ -717,10 +731,16 @@ async function logout(): Promise<void> {
 }
 
 async function getCurrentSession(): Promise<AuthSession | null> {
+  if (isNasProviderEnabled()) {
+    return await nasRestoreSession();
+  }
   return await restoreSession();
 }
 
 async function getProfile(): Promise<OnlineProfile | null> {
+  if (isNasProviderEnabled()) {
+    return await nasGetProfile();
+  }
 
   const s = await restoreSession();
   return s?.profile ?? null;
@@ -730,6 +750,12 @@ async function getProfile(): Promise<OnlineProfile | null> {
 async function resendSignupConfirmation(email: string): Promise<void> {
   const e = email.trim();
   if (!e) throw new Error("Email requis.");
+
+  if (isNasProviderEnabled()) {
+    // En mode NAS final, l'inscription crée directement la session.
+    // On conserve une réponse douce pour ne pas casser l'UI existante.
+    return;
+  }
 
   const { error } = await supabase.auth.resend({
     type: "signup",
@@ -744,6 +770,10 @@ async function resendSignupConfirmation(email: string): Promise<void> {
 // Gestion compte
 // ============================================================
 async function requestPasswordReset(email: string): Promise<void> {
+  if (isNasProviderEnabled()) {
+    await nasRequestPasswordReset(email);
+    return;
+  }
   const trimmed = email.trim();
   if (!trimmed) throw new Error("Adresse mail requise pour réinitialiser le mot de passe.");
 
@@ -754,6 +784,10 @@ async function requestPasswordReset(email: string): Promise<void> {
 }
 
 async function updateEmail(newEmail: string): Promise<void> {
+  if (isNasProviderEnabled()) {
+    await nasUpdateEmail(newEmail);
+    return;
+  }
   const trimmed = newEmail.trim();
   if (!trimmed) throw new Error("Nouvelle adresse mail invalide.");
 
@@ -762,6 +796,11 @@ async function updateEmail(newEmail: string): Promise<void> {
 }
 
 async function deleteAccount(): Promise<void> {
+  if (isNasProviderEnabled()) {
+    await nasDeleteAccount();
+    saveAuthToLS(null);
+    return;
+  }
   await ensureAuthedUser();
 
   const { data, error } = await supabase.functions.invoke("delete-account");
@@ -776,6 +815,9 @@ async function deleteAccount(): Promise<void> {
 // Profil
 // ============================================================
 async function updateProfile(patch: UpdateProfilePayload): Promise<OnlineProfile> {
+  if (isNasProviderEnabled()) {
+    return await nasUpdateProfile(patch);
+  }
 
   const { user } = await ensureAuthedUser();
   const userId = user.id;
@@ -839,6 +881,9 @@ async function uploadAvatarImage(opts: {
   folder?: string;
   updateProfile?: boolean;
 }): Promise<{ publicUrl: string; path: string }> {
+  if (isNasProviderEnabled()) {
+    return await nasUploadAvatarImage(opts);
+  }
   const { dataUrl } = opts;
   const { user } = await ensureAuthedUser();
 

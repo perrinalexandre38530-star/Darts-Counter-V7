@@ -1,12 +1,11 @@
 // ============================================================
 // src/lib/nasApi.ts
-// Fondation NAS API
-// - Auth JWT côté backend Node
+// Client NAS final
+// - Auth JWT
 // - Profil utilisateur
-// - Snapshot cloud (push/pull)
-// NOTE:
-// - conçu pour être TOLÉRANT: accepte plusieurs formes de réponses JSON
-// - le backend définitif pourra retourner des champs plus précis sans casser le front
+// - Avatar compte
+// - Snapshot store (push/pull)
+// - Gestion compte
 // ============================================================
 
 import type { AuthSession, LoginPayload, SignupPayload, UpdateProfilePayload } from "./onlineApi";
@@ -95,12 +94,7 @@ async function apiFetch(path: string, init?: RequestInit): Promise<any> {
   const json = readJson<any>(text, {});
 
   if (!res.ok) {
-    throw new Error(
-      json?.error ||
-        json?.message ||
-        text ||
-        `Erreur backend NAS (${res.status})`
-    );
+    throw new Error(json?.error || json?.message || text || `Erreur backend NAS (${res.status})`);
   }
 
   return json;
@@ -133,7 +127,6 @@ function normalizeUser(raw: any, fallbackEmail?: string): UserAuth {
 
 function normalizeProfile(raw: any, user: UserAuth): OnlineProfile | null {
   if (!raw && !user?.id) return null;
-
   const statsRaw = raw?.stats || raw?.summaryStats || raw?.profileStats || {};
   return {
     id: String(raw?.id || user.id || ""),
@@ -212,7 +205,6 @@ export async function nasLogin(payload: LoginPayload): Promise<AuthSession> {
       nickname: payload.nickname,
     }),
   });
-
   const session = buildSessionFromResponse(json, payload.email);
   saveNasTokens(session);
   return session;
@@ -227,7 +219,6 @@ export async function nasSignup(payload: SignupPayload): Promise<AuthSession> {
       nickname: payload.nickname,
     }),
   });
-
   const session = buildSessionFromResponse(json, payload.email);
   saveNasTokens(session);
   return session;
@@ -267,7 +258,6 @@ export async function nasGetProfile(): Promise<OnlineProfile | null> {
     const fallback = await apiFetch("/auth/me", { method: "GET" });
     return fallback;
   });
-
   const session = buildSessionFromResponse(
     {
       ...json,
@@ -289,6 +279,36 @@ export async function nasUpdateProfile(patch: UpdateProfilePayload): Promise<Onl
   const profile = normalizeProfile(json?.profile || json, user);
   if (!profile) throw new Error("Réponse profil NAS invalide.");
   return profile;
+}
+
+export async function nasRequestPasswordReset(email: string): Promise<void> {
+  await apiFetch("/auth/request-password-reset", {
+    method: "POST",
+    body: JSON.stringify({ email }),
+  });
+}
+
+export async function nasUpdateEmail(newEmail: string): Promise<void> {
+  await apiFetch("/auth/email", {
+    method: "PUT",
+    body: JSON.stringify({ email: newEmail }),
+  });
+}
+
+export async function nasDeleteAccount(): Promise<void> {
+  await apiFetch("/auth/account", { method: "DELETE" });
+  saveNasTokens(null);
+}
+
+export async function nasUploadAvatarImage(opts: { dataUrl: string; folder?: string; updateProfile?: boolean }): Promise<{ publicUrl: string; path: string }> {
+  const json = await apiFetch("/profiles/avatar", {
+    method: "POST",
+    body: JSON.stringify({ dataUrl: opts.dataUrl }),
+  });
+  return {
+    publicUrl: String(json?.publicUrl || json?.avatarUrl || json?.avatar_data_url || ""),
+    path: String(json?.path || json?.profile?.id || "avatar-data-url"),
+  };
 }
 
 export async function nasPullStoreSnapshot(): Promise<{
@@ -330,35 +350,22 @@ export const nasApi = {
   logout: nasLogout,
   getProfile: nasGetProfile,
   updateProfile: nasUpdateProfile,
+  requestPasswordReset: nasRequestPasswordReset,
+  updateEmail: nasUpdateEmail,
+  deleteAccount: nasDeleteAccount,
+  uploadAvatarImage: nasUploadAvatarImage,
   pullStoreSnapshot: nasPullStoreSnapshot,
   pushStoreSnapshot: nasPushStoreSnapshot,
 };
 
-
-
-/* ===== MULTISPORTS FIX : NORMALIZE PROFILE (NAME + AVATAR) ===== */
 export function normalizeNasProfile(raw:any){
-  if(!raw) return raw
-  const avatarDataUrl =
-      raw.avatarDataUrl ||
-      raw.avatar_data_url ||
-      raw.avatar ||
-      raw.avatarUrl ||
-      raw.avatar_url ||
-      null
-
-  const name =
-      raw.name ||
-      raw.displayName ||
-      raw.display_name ||
-      raw.nickname ||
-      raw.username ||
-      null
-
+  if(!raw) return raw;
+  const avatarDataUrl = raw.avatarDataUrl || raw.avatar_data_url || raw.avatar || raw.avatarUrl || raw.avatar_url || null;
+  const name = raw.name || raw.displayName || raw.display_name || raw.nickname || raw.username || null;
   return {
     ...raw,
     name,
-    displayName:name,
-    avatarDataUrl
-  }
+    displayName: name,
+    avatarDataUrl,
+  };
 }

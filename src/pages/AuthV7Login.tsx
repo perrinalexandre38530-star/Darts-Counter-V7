@@ -1,10 +1,13 @@
 // ============================================
 // src/pages/AuthV7Login.tsx
-// PROFILES V7 — Connexion email + mot de passe (simple, pro)
+// PROFILES V7 — Connexion email + mot de passe
+// - NAS: auth finale via backend NAS
+// - Supabase: compat legacy si provider encore actif
 // ============================================
 import React from "react";
 import { __SUPABASE_ENV__ } from "../lib/supabaseClient";
 import { onlineApi } from "../lib/onlineApi";
+import { getOnlineProviderLabel, isNasProviderEnabled } from "../lib/serverConfig";
 
 type Props = {
   go: (t: any, p?: any) => void;
@@ -26,19 +29,35 @@ export default function AuthV7Login({ go }: Props) {
   const [error, setError] = React.useState<string | null>(null);
   const [canResend, setCanResend] = React.useState(false);
 
-  // Anti-spam: éviter de ré-afficher en boucle le même message réseau
-  // (utile quand Supabase est réellement bloqué par DNS/AdBlock/VPN)
+  const nasMode = isNasProviderEnabled();
+  const providerLabel = getOnlineProviderLabel().toUpperCase();
+
   const lastNetErrAtRef = React.useRef<number>(0);
 
-  const showSupabaseUnreachable = (details?: string) => {
+  const showBackendUnreachable = (details?: string) => {
     const now = Date.now();
-    // 30s de "cooldown" pour éviter que l'utilisateur se fasse spammer
     if (now - lastNetErrAtRef.current < 30_000) return;
     lastNetErrAtRef.current = now;
+
+    if (nasMode) {
+      setError(
+        `Impossible de joindre le backend NAS (réseau / DNS / proxy / URL).
+URL: ${String(
+          (import.meta as any)?.env?.VITE_NAS_API_URL || ""
+        )}${details ? `
+
+${details}` : ""}`
+      );
+      return;
+    }
+
     setError(
-      `Impossible de joindre Supabase (réseau / DNS / bloqueur / URL).\nURL: ${
+      `Impossible de joindre Supabase (réseau / DNS / bloqueur / URL).
+URL: ${
         __SUPABASE_ENV__.url
-      }${details ? `\n\n${details}` : ""}`
+      }${details ? `
+
+${details}` : ""}`
     );
   };
 
@@ -59,29 +78,29 @@ export default function AuthV7Login({ go }: Props) {
       setError("Entre une adresse email valide pour renvoyer l’email.");
       return;
     }
+
+    if (nasMode) {
+      setError("Le backend NAS ne demande pas d’email de confirmation. Connecte-toi directement avec ton compte.");
+      setCanResend(false);
+      return;
+    }
+
     setLoading(true);
     const hardStop = setTimeout(() => {
-      // fail-safe: évite un spinner infini si une promesse réseau ne répond jamais
       setLoading(false);
       setError((prev) => prev || "Connexion bloquée (timeout). Réessaie ou vérifie ton réseau.");
     }, 12000);
+
     try {
-      const emailRedirectTo = `${window.location.origin}${window.location.pathname}#/auth/callback`;
-      const { error: err } = await supabase.auth.resend({
-        type: "signup",
-        email: e,
-        options: { emailRedirectTo },
-      });
-      if (err) {
-        setError(err.message);
-        return;
-      }
+      await onlineApi.resendSignupConfirmation(e);
       setError("Email de confirmation renvoyé ✅ Ouvre le DERNIER email reçu.");
       setCanResend(false);
     } catch (e: any) {
       if (looksLikeNetworkError(e)) {
-        showSupabaseUnreachable(
-          "Astuce: coupe uBlock/AdGuard/Brave Shields pour stackblitz.com et *.supabase.co, ou teste en navigation privée / 4G."
+        showBackendUnreachable(
+          nasMode
+            ? "Vérifie le reverse proxy, le domaine api.multisports-api.fr et que le backend NAS tourne bien."
+            : "Astuce: coupe uBlock/AdGuard/Brave Shields pour stackblitz.com et *.supabase.co, ou teste en navigation privée / 4G."
         );
       } else {
         setError(e?.message || "Impossible de renvoyer l’email.");
@@ -99,9 +118,10 @@ export default function AuthV7Login({ go }: Props) {
     if (!e || !e.includes("@")) return setError("Entre une adresse email valide.");
     if (!password) return setError("Entre ton mot de passe.");
 
-    if (!__SUPABASE_ENV__.hasEnv) {
+    if (!nasMode && !__SUPABASE_ENV__.hasEnv) {
       setError(
-        `Supabase non configuré (VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY manquants).\nURL actuelle: ${
+        `Supabase non configuré (VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY manquants).
+URL actuelle: ${
           __SUPABASE_ENV__.url || "(vide)"
         }`
       );
@@ -110,40 +130,25 @@ export default function AuthV7Login({ go }: Props) {
 
     setLoading(true);
     const hardStop = setTimeout(() => {
-      // fail-safe: évite un spinner infini si une promesse réseau ne répond jamais
       setLoading(false);
       setError((prev) => prev || "Connexion bloquée (timeout). Réessaie ou vérifie ton réseau.");
     }, 12000);
+
     try {
-      try {
-        await withTimeout(
-          onlineApi.login({ email: e, password }),
-          12000,
-          "Connexion"
+      await withTimeout(onlineApi.login({ email: e, password }), 12000, "Connexion");
+      go("gameSelect");
+    } catch (err: any) {
+      const msg = String(err?.message || err || "Connexion impossible.");
+      if (looksLikeNetworkError(err)) {
+        showBackendUnreachable(
+          nasMode
+            ? "Vérifie le backend NAS, le proxy et l’URL VITE_NAS_API_URL."
+            : "Astuce: coupe uBlock/AdGuard/Brave Shields pour stackblitz.com et *.supabase.co, ou teste en navigation privée / 4G."
         );
-      } catch (err: any) {
-        const msg = String(err?.message || err || "Connexion impossible.");
-        if (looksLikeNetworkError(err)) {
-          showSupabaseUnreachable(
-            "Astuce: coupe uBlock/AdGuard/Brave Shields pour stackblitz.com et *.supabase.co, ou teste en navigation privée / 4G."
-          );
-          return;
-        }
-        setError(msg);
-        if (/not confirmed/i.test(msg)) setCanResend(true);
         return;
       }
-      // ✅ IMPORTANT: Ne JAMAIS déclencher de sync/merge au moment du login.
-      // La sync auto agressive est la cause principale des timeouts Supabase.
-      go("gameSelect");
-    } catch (e: any) {
-      if (looksLikeNetworkError(e)) {
-        showSupabaseUnreachable(
-          "Astuce: coupe uBlock/AdGuard/Brave Shields pour stackblitz.com et *.supabase.co, ou teste en navigation privée / 4G."
-        );
-      } else {
-        setError(e?.message || "Connexion impossible.");
-      }
+      setError(msg);
+      if (!nasMode && /not confirmed|non confirmé/i.test(msg)) setCanResend(true);
     } finally {
       clearTimeout(hardStop);
       setLoading(false);
@@ -169,7 +174,10 @@ export default function AuthV7Login({ go }: Props) {
           boxShadow: "0 22px 70px rgba(0,0,0,.62), 0 0 0 1px rgba(0,0,0,.25) inset",
         }}
       >
-        <div style={{ fontSize: 22, fontWeight: 950, marginBottom: 10 }}>Se connecter</div>
+        <div style={{ fontSize: 22, fontWeight: 950, marginBottom: 6 }}>Se connecter</div>
+        <div style={{ fontSize: 12, opacity: 0.8, marginBottom: 10 }}>
+          Provider online actif : <b>{providerLabel}</b>
+        </div>
 
         <div style={{ display: "grid", gap: 10 }}>
           <input
@@ -203,7 +211,7 @@ export default function AuthV7Login({ go }: Props) {
 
           {error ? (
             <div style={{ display: "grid", gap: 8 }}>
-              <div style={{ fontSize: 13, opacity: 0.95, lineHeight: 1.35 }}>{error}</div>
+              <div style={{ fontSize: 13, opacity: 0.95, lineHeight: 1.35, whiteSpace: "pre-wrap" }}>{error}</div>
               {canResend ? (
                 <button onClick={resendConfirm} disabled={loading} style={secondaryBtnStyle}>
                   Renvoyer l’email de confirmation

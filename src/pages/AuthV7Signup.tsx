@@ -1,10 +1,12 @@
 // ============================================
 // src/pages/AuthV7Signup.tsx
 // PROFILES V7 — Création compte email + mot de passe
+// - NAS: création compte finale via backend NAS
+// - Supabase: compat legacy si provider encore actif
 // ============================================
 import React from "react";
-import { supabase } from "../lib/supabaseClient";
 import { onlineApi } from "../lib/onlineApi";
+import { getOnlineProviderLabel, isNasProviderEnabled } from "../lib/serverConfig";
 
 type Props = {
   go: (t: any, p?: any) => void;
@@ -18,6 +20,9 @@ export default function AuthV7Signup({ go }: Props) {
   const [error, setError] = React.useState<string | null>(null);
   const [info, setInfo] = React.useState<string | null>(null);
 
+  const nasMode = isNasProviderEnabled();
+  const providerLabel = getOnlineProviderLabel().toUpperCase();
+
   const onSubmit = async () => {
     setError(null);
     setInfo(null);
@@ -28,27 +33,18 @@ export default function AuthV7Signup({ go }: Props) {
 
     setLoading(true);
     try {
-      const emailRedirectTo = `${window.location.origin}${window.location.pathname}#/auth/callback`;
+      const nickname = e.split("@")[0] || "Player";
+      const session = await onlineApi.signup({ email: e, password, nickname });
 
-      const { data, error: err } = await supabase.auth.signUp({
-        email: e,
-        password,
-        options: {
-          emailRedirectTo,
-        },
-      });
-      if (err) {
-        setError(err.message);
+      if (nasMode || session?.token || session?.user?.id) {
+        setInfo("Compte créé et connecté ✅");
+        go("gameSelect");
         return;
       }
-      if (data?.session) {
-        setInfo("Compte créé et connecté ✅");
-        go("home");
-      } else {
-        setInfo(
-          "Compte créé ✅ Ouvre le DERNIER email reçu pour confirmer ton compte, puis reviens sur l’app."
-        );
-      }
+
+      setInfo(
+        "Compte créé ✅ Ouvre le DERNIER email reçu pour confirmer ton compte, puis reviens sur l’app."
+      );
     } catch (e: any) {
       setError(e?.message || "Création de compte impossible.");
     } finally {
@@ -75,7 +71,10 @@ export default function AuthV7Signup({ go }: Props) {
           boxShadow: "0 22px 70px rgba(0,0,0,.62), 0 0 0 1px rgba(0,0,0,.25) inset",
         }}
       >
-        <div style={{ fontSize: 22, fontWeight: 950, marginBottom: 10 }}>Créer un compte</div>
+        <div style={{ fontSize: 22, fontWeight: 950, marginBottom: 6 }}>Créer un compte</div>
+        <div style={{ fontSize: 12, opacity: 0.8, marginBottom: 10 }}>
+          Provider online actif : <b>{providerLabel}</b>
+        </div>
 
         <div style={{ display: "grid", gap: 10 }}>
           <input
@@ -116,10 +115,10 @@ export default function AuthV7Signup({ go }: Props) {
           </div>
 
           {error ? (
-            <div style={{ fontSize: 13, opacity: 0.95, lineHeight: 1.35 }}>{error}</div>
+            <div style={{ fontSize: 13, opacity: 0.95, lineHeight: 1.35, whiteSpace: "pre-wrap" }}>{error}</div>
           ) : null}
           {info ? (
-            <div style={{ fontSize: 13, opacity: 0.95, lineHeight: 1.35 }}>{info}</div>
+            <div style={{ fontSize: 13, opacity: 0.95, lineHeight: 1.35, whiteSpace: "pre-wrap" }}>{info}</div>
           ) : null}
 
           <button onClick={() => go("auth_start")} style={secondaryBtnStyle}>
