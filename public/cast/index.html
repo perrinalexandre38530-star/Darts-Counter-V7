@@ -7,16 +7,16 @@
   <script src="//www.gstatic.com/cast/sdk/libs/caf_receiver/v3/cast_receiver_framework.js"></script>
   <style>
     :root{
-      --bg:#000000;
-      --bgGlow1: rgba(0,145,255,.14);
-      --bgGlow2: rgba(255,79,216,.08);
-      --bgGlow3: rgba(66,232,255,.08);
+      --bg:#181818;
+      --bgGlow1: rgba(255,210,90,.08);
+      --bgGlow2: rgba(255,255,255,.04);
+      --bgGlow3: rgba(0,0,0,.18);
       --panel:rgba(255,255,255,.045);
-      --panelBorder:rgba(255,255,255,.10);
+      --panelBorder:rgba(244,210,108,.36);
       --text:#f7f6f3;
       --muted:rgba(255,255,255,.72);
-      --accent:#53e7ff;
-      --accent2:#7cc3ff;
+      --accent:#f4d26c;
+      --accent2:#ffd86b;
       --gold:#f4d26c;
     }
 
@@ -38,7 +38,7 @@
     body::before{
       content:"";
       position:fixed;
-      inset:18px;
+      inset:10px;
       border-radius:28px;
       border:1px solid rgba(255,255,255,.14);
       pointer-events:none;
@@ -51,26 +51,20 @@
     #wrap{
       min-height:100vh;
       width:100%;
-      padding:20px 24px 18px;
+      padding:10px 14px 10px;
       display:flex;
       flex-direction:column;
       overflow:hidden;
-      position:relative;
     }
 
     .topbar{
-      position:absolute;
-      top:20px;
-      left:24px;
-      right:24px;
-      z-index:5;
       display:flex;
       align-items:center;
       justify-content:space-between;
       gap:24px;
-      min-height:58px;
+      margin-bottom:8px;
+      min-height:44px;
       flex:0 0 auto;
-      pointer-events:none;
     }
 
     .brand-block{
@@ -86,7 +80,7 @@
 
     h1{
       margin:0;
-      font-size:clamp(2.2rem,4.4vw,4.6rem);
+      font-size:clamp(2rem,4vw,4rem);
       line-height:.95;
       font-weight:1000;
       letter-spacing:-.04em;
@@ -112,7 +106,6 @@
       flex:1;
       min-height:0;
       overflow:hidden;
-      padding-top:70px;
     }
 
     #diag{
@@ -127,36 +120,30 @@
     }
 
     .home-shell{
-      position:relative;
       align-items:center;
       justify-content:center;
       text-align:center;
     }
 
     .home-center{
-      position:absolute;
-      left:50%;
-      top:50%;
-      transform:translate(-50%, -50%);
       width:min(1100px,100%);
       display:flex;
       flex-direction:column;
       align-items:center;
       justify-content:center;
       text-align:center;
-      gap:22px;
+      gap:16px;
     }
 
     .home-logo{
-      width:min(340px, 34vw);
-      max-width:340px;
-      min-width:220px;
-      height:auto;
+      width:min(220px, 24vw);
+      max-width:220px;
+      height:110px;
       display:block;
       object-fit:contain;
       filter:
-        drop-shadow(0 0 18px rgba(255,214,90,.12))
-        drop-shadow(0 0 34px rgba(83,231,255,.10));
+        drop-shadow(0 0 16px rgba(255,214,90,.10))
+        drop-shadow(0 0 28px rgba(83,231,255,.08));
     }
 
     .home-logo-fallback{
@@ -179,8 +166,8 @@
 
     .receiver-layout{
       display:grid;
-      grid-template-columns:260px minmax(0,1fr);
-      gap:16px;
+      grid-template-columns:238px minmax(0,1fr);
+      gap:12px;
       height:100%;
       min-height:0;
       align-items:stretch;
@@ -210,14 +197,14 @@
     }
 
     .order-panel{
-      padding:14px;
+      padding:12px;
       min-height:0;
       display:flex;
       flex-direction:column;
     }
 
     .panel-title{
-      font-size:18px;
+      font-size:16px;
       font-weight:1000;
       margin-bottom:12px;
       color:#dffcff;
@@ -234,7 +221,7 @@
     }
 
     .panel-subtitle{
-      font-size:12px;
+      font-size:11px;
       opacity:.72;
       font-weight:700;
     }
@@ -242,18 +229,18 @@
     .mini-player-list{
       display:flex;
       flex-direction:column;
-      gap:10px;
+      gap:8px;
       min-height:0;
       overflow:hidden;
     }
 
     .mini-player-card{
       display:grid;
-      grid-template-columns:46px minmax(0,1fr) auto;
-      gap:10px;
+      grid-template-columns:40px minmax(0,1fr) auto;
+      gap:8px;
       align-items:center;
       border-radius:18px;
-      padding:10px 12px;
+      padding:8px 10px;
       border:1px solid rgba(255,255,255,.08);
       background:rgba(255,255,255,.03);
       box-shadow:inset 0 1px 0 rgba(255,255,255,.02);
@@ -269,7 +256,7 @@
     }
 
     .mini-player-name{
-      font-size:14px;
+      font-size:13px;
       font-weight:900;
       white-space:nowrap;
       overflow:hidden;
@@ -277,7 +264,7 @@
     }
 
     .mini-player-score{
-      font-size:16px;
+      font-size:18px;
       font-weight:1000;
       line-height:1;
       letter-spacing:-.04em;
@@ -308,14 +295,14 @@
     }
 
     .active-panel{
-      padding:18px;
+      padding:14px;
       flex:0 0 auto;
     }
 
     .active-top{
       display:grid;
-      grid-template-columns:220px minmax(0,1fr);
-      gap:16px;
+      grid-template-columns:180px minmax(0,1fr);
+      gap:12px;
       align-items:center;
     }
 
@@ -337,8 +324,8 @@
     }
 
     .active-name{
-      margin-top:12px;
-      font-size:28px;
+      margin-top:8px;
+      font-size:22px;
       font-weight:1000;
       line-height:1.06;
       max-width:100%;
@@ -347,7 +334,7 @@
     }
 
     .score-card{
-      min-height:180px;
+      min-height:150px;
       border-radius:24px;
       border:1px solid rgba(255,255,255,.10);
       background:
@@ -357,7 +344,7 @@
       box-shadow:
         inset 0 1px 0 rgba(255,255,255,.04),
         0 0 24px rgba(83,231,255,.08);
-      padding:16px 18px;
+      padding:12px 14px;
       display:flex;
       flex-direction:column;
       justify-content:center;
@@ -367,7 +354,7 @@
     }
 
     .score-label{
-      font-size:18px;
+      font-size:16px;
       font-weight:900;
       opacity:.88;
       margin-bottom:10px;
@@ -376,7 +363,7 @@
     }
 
     .score-value{
-      font-size:clamp(96px, 12vw, 180px);
+      font-size:clamp(82px, 10vw, 150px);
       line-height:.88;
       font-weight:1000;
       letter-spacing:-.06em;
@@ -390,19 +377,28 @@
       max-width:100%;
     }
 
-    .stats-grid{
-      margin-top:14px;
+    .active-bottom{
+      margin-top:12px;
       display:grid;
-      grid-template-columns:repeat(4, minmax(0, 1fr));
-      gap:10px;
+      grid-template-columns:minmax(0,1.05fr) minmax(0,1.25fr);
+      gap:12px;
+      min-height:0;
+      align-items:stretch;
+    }
+
+    .stats-grid{
+      display:grid;
+      grid-template-columns:repeat(2, minmax(0, 1fr));
+      gap:8px;
+      align-content:start;
     }
 
     .stat-cell{
-      min-height:58px;
+      min-height:54px;
       border-radius:14px;
       border:1px solid rgba(255,255,255,.08);
       background:rgba(255,255,255,.035);
-      padding:10px 12px;
+      padding:8px 10px;
       box-shadow:inset 0 1px 0 rgba(255,255,255,.03);
       overflow:hidden;
     }
@@ -416,7 +412,7 @@
     }
 
     .stat-value{
-      font-size:18px;
+      font-size:16px;
       font-weight:1000;
       line-height:1.05;
       white-space:nowrap;
@@ -426,7 +422,7 @@
 
     .graph-panel{
       margin-top:0;
-      padding:14px;
+      padding:12px;
       flex:1 1 auto;
       min-height:0;
     }
@@ -442,8 +438,8 @@
     .graph-legend{
       display:flex;
       flex-wrap:wrap;
-      gap:10px 16px;
-      margin-top:10px;
+      gap:6px 10px;
+      margin-top:8px;
     }
 
     .graph-legend-item{
@@ -465,12 +461,12 @@
       white-space:nowrap;
       overflow:hidden;
       text-overflow:ellipsis;
-      font-size:14px;
+      font-size:12px;
     }
 
     .graph-legend-score{
       opacity:.78;
-      font-size:14px;
+      font-size:12px;
     }
   </style>
 </head>
@@ -490,6 +486,6 @@
     <div id="diag">Initialisation…</div>
   </div>
 
-  <script src="receiver.js?v=CAF-VISUAL-X01-2026-03-19-5"></script>
+  <script src="receiver.js?v=CAF-VISUAL-MULTI-2026-03-26-2"></script>
 </body>
 </html>

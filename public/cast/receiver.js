@@ -11,22 +11,8 @@ if (buildEl) buildEl.textContent = `Build: ${BUILD}`;
 
 const logs = [];
 const historyMap = new Map();
+const avatarCache = new Map();
 let lastPayload = null;
-
-const GRAPH_COLORS = ["#53e7ff", "#ffd55b", "#8aa2ff", "#ff66d1", "#63ff97", "#ff8f5b"];
-
-function rotatePlayersForTurn(players, active) {
-  if (!Array.isArray(players) || !players.length) return [];
-  const idx = Math.max(0, players.findIndex((p) => p === active || String(p?.id||"") === String(active?.id||"")));
-  return players.slice(idx).concat(players.slice(0, idx));
-}
-
-function colorByPlayerId(players) {
-  const ordered = Array.isArray(players) ? players : [];
-  const map = new Map();
-  ordered.forEach((p, idx) => map.set(String(p?.id || p?.name || idx), GRAPH_COLORS[idx % GRAPH_COLORS.length]));
-  return map;
-}
 
 function pushDiag(entry, extra) {
   const row = { at: new Date().toISOString(), entry, extra: extra == null ? null : extra };
@@ -77,6 +63,7 @@ function setGameBadge(value) {
 }
 
 function getAvatarSrc(player) {
+  const pid = String(player?.id || player?.name || "");
   const candidates = [
     player?.avatarDataUrl,
     player?.avatarUrl,
@@ -105,9 +92,13 @@ function getAvatarSrc(player) {
   ];
 
   for (const src of candidates) {
-    if (typeof src === "string" && src.trim()) return src.trim();
+    if (typeof src === "string" && src.trim()) {
+      const clean = src.trim();
+      if (pid) avatarCache.set(pid, clean);
+      return clean;
+    }
   }
-  return "";
+  return pid ? (avatarCache.get(pid) || "") : "";
 }
 
 function avatarHtml(player, size = 116, smallText = false) {
@@ -156,17 +147,18 @@ function linePath(values, w, h, min, max) {
     .join(" ");
 }
 
-function graphHtml(players, startScore = 501) {
+function graphHtml(players) {
   if (players.length < 3) return "";
 
-  const ordered = Array.isArray(players) ? players : [];
+  const series = players.map((p) => historyMap.get(String(p?.id || p?.name)) || { points: [num(p?.score, 0)] });
+  const all = series.flatMap((s) => s.points);
+  const min = Math.min(...all, 0);
+  const max = Math.max(...all, 501);
   const w = 960;
   const h = 170;
-  const topPad = 16;
-  const bottomPad = 16;
-  const bandH = Math.max(18, (h - topPad - bottomPad) / Math.max(1, ordered.length));
+  const colors = ["#53e7ff", "#ffd55b", "#8aa2ff", "#ff66d1", "#63ff97", "#ff8f5b"];
 
-  const defs = GRAPH_COLORS.map((color, idx) => `
+  const defs = colors.map((color, idx) => `
     <filter id="glow-${idx}" x="-50%" y="-50%" width="200%" height="200%">
       <feGaussianBlur stdDeviation="3.5" result="blur"/>
       <feMerge>
@@ -176,20 +168,23 @@ function graphHtml(players, startScore = 501) {
     </filter>
   `).join("");
 
-  const lines = ordered.map((p, idx) => {
-    const id = String(p?.id || p?.name || idx);
-    const entry = historyMap.get(id) || { points: [num(p?.score, 0)] };
-    const values = Array.isArray(entry.points) && entry.points.length ? entry.points : [num(p?.score, 0)];
-    const d = values.map((v, i) => {
-      const progress = 1 - Math.max(0, Math.min(1, num(v, 0) / Math.max(1, startScore)));
-      const x = values.length === 1 ? 0 : (i * w) / (values.length - 1);
-      const y = topPad + idx * bandH + (1 - progress) * Math.max(10, bandH * 0.72);
-      return `${i === 0 ? "M" : "L"}${x.toFixed(1)},${y.toFixed(1)}`;
-    }).join(" ");
-    const color = GRAPH_COLORS[idx % GRAPH_COLORS.length];
+  const lines = series.map((s, idx) => {
+    const d = linePath(s.points, w, h, min, max);
+    const color = colors[idx % colors.length];
     return `
-      <path d="${d}" fill="none" stroke="${color}" stroke-width="8" stroke-linecap="round" stroke-linejoin="round" opacity="0.15" filter="url(#glow-${idx % GRAPH_COLORS.length})" />
+      <path d="${d}" fill="none" stroke="${color}" stroke-width="8" stroke-linecap="round" stroke-linejoin="round" opacity="0.15" filter="url(#glow-${idx % colors.length})" />
       <path d="${d}" fill="none" stroke="${color}" stroke-width="3.8" stroke-linecap="round" stroke-linejoin="round" opacity="0.98" />
+    `;
+  }).join("");
+
+  const legend = players.map((p, idx) => {
+    const color = colors[idx % colors.length];
+    return `
+      <div class="graph-legend-item">
+        <span class="graph-dot" style="background:${color};box-shadow:0 0 12px ${color};"></span>
+        <span class="graph-legend-name">${esc(p?.name || "Joueur")}</span>
+        <span class="graph-legend-score">${esc(p?.score ?? 0)}</span>
+      </div>
     `;
   }).join("");
 
@@ -202,13 +197,14 @@ function graphHtml(players, startScore = 501) {
       <svg viewBox="0 0 ${w} ${h}" class="graph-svg">
         <defs>${defs}</defs>
         <g opacity="0.12">
-          <line x1="0" y1="${topPad}" x2="${w}" y2="${topPad}" stroke="#fff"/>
-          <line x1="0" y1="${topPad + bandH}" x2="${w}" y2="${topPad + bandH}" stroke="#fff"/>
-          <line x1="0" y1="${topPad + bandH*2}" x2="${w}" y2="${topPad + bandH*2}" stroke="#fff"/>
-          <line x1="0" y1="${topPad + bandH*3}" x2="${w}" y2="${topPad + bandH*3}" stroke="#fff"/>
+          <line x1="0" y1="${h}" x2="${w}" y2="${h}" stroke="#fff"/>
+          <line x1="0" y1="${h*0.66}" x2="${w}" y2="${h*0.66}" stroke="#fff"/>
+          <line x1="0" y1="${h*0.33}" x2="${w}" y2="${h*0.33}" stroke="#fff"/>
+          <line x1="0" y1="0" x2="${w}" y2="0" stroke="#fff"/>
         </g>
         ${lines}
       </svg>
+      <div class="graph-legend">${legend}</div>
     </section>
   `;
 }
@@ -238,15 +234,14 @@ function waitingScreen() {
   `;
 }
 
-function miniPlayerCard(player, isActive, color) {
-  const accent = color || "#53e7ff";
+function miniPlayerCard(player, isActive) {
   return `
-    <div class="mini-player-card ${isActive ? "is-active" : ""}" style="border-color:${accent};${isActive ? `box-shadow:0 0 18px ${accent}33, inset 0 1px 0 rgba(255,255,255,.03);` : ""}">
-      ${avatarHtml(player, 42, true)}
+    <div class="mini-player-card ${isActive ? "is-active" : ""}">
+      ${avatarHtml(player, 46, true)}
       <div class="mini-player-info">
-        <div class="mini-player-name" style="color:${accent};">${esc(player?.name || "Joueur")}</div>
+        <div class="mini-player-name">${esc(player?.name || "Joueur")}</div>
       </div>
-      <div class="mini-player-score" style="color:${accent};">${esc(player?.score ?? 0)}</div>
+      <div class="mini-player-score">${esc(player?.score ?? 0)}</div>
     </div>
   `;
 }
@@ -312,8 +307,11 @@ function renderSnapshot(payload) {
   }
 
   const active = players.find((p) => p?.active) || players.find((p) => String(p?.id || "") === String(payload?.currentPlayer || "")) || players[0];
-  const ordered = rotatePlayersForTurn(players, active);
-  const colorMap = colorByPlayerId(ordered);
+  const ordered = (() => {
+    const idx = players.findIndex((p) => p === active || String(p?.id || "") === String(active?.id || ""));
+    if (idx <= 0) return players.slice();
+    return players.slice(idx).concat(players.slice(0, idx));
+  })();
   const meta = payload?.meta && typeof payload.meta === "object" ? payload.meta : {};
   const gameTitle = payload?.title || payload?.game || "Multisports";
 
@@ -329,7 +327,7 @@ function renderSnapshot(payload) {
         <aside class="panel order-panel">
           <div class="panel-title">Ordre de passage</div>
           <div class="mini-player-list">
-            ${ordered.map((p) => miniPlayerCard(p, p === active, colorMap.get(String(p?.id || p?.name || "")))).join("")}
+            ${ordered.map((p) => miniPlayerCard(p, p === active)).join("")}
           </div>
         </aside>
 
@@ -338,7 +336,7 @@ function renderSnapshot(payload) {
             <div class="active-top">
               <div class="active-left">
                 <div class="active-avatar-wrap">
-                  ${avatarHtml(active, 136)}
+                  ${avatarHtml(active, 120)}
                 </div>
 
                 <div class="active-name">${esc(active?.name || "Joueur")}</div>
@@ -350,19 +348,20 @@ function renderSnapshot(payload) {
               </div>
             </div>
 
-            ${graphHtml(ordered, num(meta?.startScore, num(meta?.start, 501)) || 501)}
-
-            <div class="stats-grid">
-              ${statCell("Avg 3D", ps.avg3d)}
-              ${statCell("Best volée", ps.bestVisit)}
-              ${statCell("Hits", ps.hits)}
-              ${statCell("Miss", `${ps.miss} - ${pct(ps.miss, totalRef)}`)}
-              ${statCell("Simple", formatStatPair(ps.simple, totalRef))}
-              ${statCell("Double", formatStatPair(ps.double_, totalRef))}
-              ${statCell("Triple", formatStatPair(ps.triple, totalRef))}
-              ${statCell("Bull", formatStatPair(ps.bull, totalRef))}
-              ${statCell("DBull", formatStatPair(ps.dbull, totalRef))}
-              ${statCell("Bust", formatStatPair(ps.bust, totalRef))}
+            <div class="active-bottom">
+              ${graphHtml(players)}
+              <div class="stats-grid">
+                ${statCell("Avg 3D", ps.avg3d)}
+                ${statCell("Best volée", ps.bestVisit)}
+                ${statCell("Hits", ps.hits)}
+                ${statCell("Miss", `${ps.miss} - ${pct(ps.miss, totalRef)}`)}
+                ${statCell("Simple", formatStatPair(ps.simple, totalRef))}
+                ${statCell("Double", formatStatPair(ps.double_, totalRef))}
+                ${statCell("Triple", formatStatPair(ps.triple, totalRef))}
+                ${statCell("Bull", formatStatPair(ps.bull, totalRef))}
+                ${statCell("DBull", formatStatPair(ps.dbull, totalRef))}
+                ${statCell("Bust", formatStatPair(ps.bust, totalRef))}
+              </div>
             </div>
           </section>
         </main>
