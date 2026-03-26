@@ -14,7 +14,6 @@ let lastSnapshotAt = 0;
 let lastSnapshotSignature = "";
 const avatarThumbCache = new Map<string, string>();
 const avatarThumbPromiseCache = new Map<string, Promise<string>>();
-const playerAvatarSourceCache = new Map<string, string>();
 
 function emitStatus() {
   try {
@@ -87,7 +86,7 @@ async function buildTinyAvatarDataUrl(src: string): Promise<string> {
     try {
       if (typeof document === "undefined") return "";
       const img = await loadImageElement(src);
-      const size = 160;
+      const size = 112;
       const canvas = document.createElement("canvas");
       canvas.width = size;
       canvas.height = size;
@@ -99,22 +98,20 @@ async function buildTinyAvatarDataUrl(src: string): Promise<string> {
       const sx = Math.max(0, Math.floor((sw - side) / 2));
       const sy = Math.max(0, Math.floor((sh - side) / 2));
       ctx.clearRect(0, 0, size, size);
-      ctx.imageSmoothingEnabled = true;
-      (ctx as any).imageSmoothingQuality = "high";
       ctx.drawImage(img, sx, sy, side, side, 0, 0, size, size);
       let out = "";
-      if ((canvas as any).toDataURL) {
-        try {
-          out = canvas.toDataURL("image/webp", 0.86);
-        } catch {}
-      }
-      if (!out || out.length > 70_000) {
-        for (const q of [0.88, 0.82, 0.76]) {
-          out = canvas.toDataURL("image/jpeg", q);
-          if (out.length <= 70_000) break;
+      for (const [fmt, qualities] of [["image/webp", [0.86, 0.78, 0.7]], ["image/jpeg", [0.88, 0.8, 0.72]]]) {
+        for (const q of qualities as any) {
+          try {
+            out = canvas.toDataURL(fmt as string, q as number);
+          } catch {
+            out = canvas.toDataURL("image/jpeg", q as number);
+          }
+          if (out.length <= 52_000) break;
         }
+        if (out && out.length <= 52_000) break;
       }
-      if (out.length > 85_000) {
+      if (out.length > 68_000) {
         pushDiag("sanitize_avatar_thumb_still_large", { size: out.length });
         out = "";
       }
@@ -167,7 +164,7 @@ async function sanitizeAvatarFields(player: any) {
   }
 
   if (/^data:image\//i.test(src)) {
-    if (src.length <= 28_000) return { avatarDataUrl: src, avatarUrl: "" };
+    if (src.length <= 52_000) return { avatarDataUrl: src, avatarUrl: "" };
     const tiny = await buildTinyAvatarDataUrl(src);
     if (tiny) return { avatarDataUrl: tiny, avatarUrl: "" };
     pushDiag("sanitize_avatar_dropped_too_large", { size: src.length });
@@ -200,30 +197,13 @@ async function sanitizeSnapshot(snapshot: CastSnapshot) {
       ? await Promise.all(
           snapshot.players.map(async (p: any) => {
             const avatar = await sanitizeAvatarFields(p);
-            const playerId = String(p?.id ?? p?.name ?? "");
-            const sourceKey = safeString(
-              p?.avatarDataUrl ||
-              p?.avatarUrl ||
-              p?.avatar ||
-              p?.photoUrl ||
-              p?.photoDataUrl ||
-              p?.imageUrl ||
-              p?.profile?.avatarDataUrl ||
-              p?.profile?.avatarUrl ||
-              p?.meta?.avatarDataUrl ||
-              p?.meta?.avatarUrl ||
-              ""
-            );
-            const prevSourceKey = playerAvatarSourceCache.get(playerId) || "";
-            const includeAvatar = !prevSourceKey || prevSourceKey !== sourceKey;
-            if (sourceKey) playerAvatarSourceCache.set(playerId, sourceKey);
             return {
-              id: playerId,
+              id: String(p?.id ?? ""),
               name: String(p?.name ?? "Joueur"),
               score: sanitizeNumberLike(p?.score ?? 0),
               active: !!p?.active,
-              avatarDataUrl: includeAvatar ? avatar.avatarDataUrl : "",
-              avatarUrl: includeAvatar ? avatar.avatarUrl : "",
+              avatarDataUrl: avatar.avatarDataUrl,
+              avatarUrl: avatar.avatarUrl,
               stats: sanitizePlayerStats(p),
             };
           })
@@ -611,6 +591,8 @@ export async function sendCastSnapshot(snapshot: CastSnapshot | null): Promise<b
           id: p?.id || "",
           score: p?.score ?? 0,
           active: !!p?.active,
+          avatarUrl: p?.avatarUrl || "",
+          avatarDataUrl: p?.avatarDataUrl || "",
           stats: p?.stats || {},
         }))
       : [],
