@@ -14,7 +14,7 @@ let lastSnapshotAt = 0;
 let lastSnapshotSignature = "";
 const avatarThumbCache = new Map<string, string>();
 const avatarThumbPromiseCache = new Map<string, Promise<string>>();
-const sentAvatarSourceByPlayer = new Map<string, string>();
+const lastSentAvatarByPlayer = new Map<string, string>();
 
 function emitStatus() {
   try {
@@ -87,7 +87,7 @@ async function buildTinyAvatarDataUrl(src: string): Promise<string> {
     try {
       if (typeof document === "undefined") return "";
       const img = await loadImageElement(src);
-      const size = 112;
+      const size = 96;
       const canvas = document.createElement("canvas");
       canvas.width = size;
       canvas.height = size;
@@ -101,15 +101,14 @@ async function buildTinyAvatarDataUrl(src: string): Promise<string> {
       ctx.clearRect(0, 0, size, size);
       ctx.drawImage(img, sx, sy, side, side, 0, 0, size, size);
       let out = "";
-      for (const [mime, q] of [["image/webp",0.86],["image/webp",0.74],["image/jpeg",0.82],["image/jpeg",0.70],["image/jpeg",0.58]] as const) {
-        try {
-          out = canvas.toDataURL(mime, q);
-        } catch {
-          out = canvas.toDataURL("image/jpeg", 0.72);
-        }
-        if (out.length <= 58_000) break;
+      try {
+        out = canvas.toDataURL("image/webp", 0.72);
+      } catch {}
+      for (const q of [0.78, 0.68, 0.58]) {
+        if (!out || out.length > 70_000) out = canvas.toDataURL("image/jpeg", q);
+        if (out.length <= 65_000) break;
       }
-      if (out.length > 72_000) {
+      if (out.length > 80_000) {
         pushDiag("sanitize_avatar_thumb_still_large", { size: out.length });
         out = "";
       }
@@ -155,21 +154,21 @@ async function sanitizeAvatarFields(player: any) {
 
   const raw = sources.find((value) => typeof value === "string" && value.trim()) || "";
   const src = String(raw || "").trim();
-  if (!src) return { avatarDataUrl: "", avatarUrl: "", sourceKey: "" };
+  if (!src) return { avatarDataUrl: "", avatarUrl: "" };
 
   if (/^(https?:|blob:|\/)/i.test(src)) {
-    return { avatarDataUrl: "", avatarUrl: src, sourceKey: src };
+    return { avatarDataUrl: "", avatarUrl: src };
   }
 
   if (/^data:image\//i.test(src)) {
-    if (src.length <= 58_000) return { avatarDataUrl: src, avatarUrl: "", sourceKey: src };
+    if (src.length <= 28_000) return { avatarDataUrl: src, avatarUrl: "" };
     const tiny = await buildTinyAvatarDataUrl(src);
-    if (tiny) return { avatarDataUrl: tiny, avatarUrl: "", sourceKey: src };
+    if (tiny) return { avatarDataUrl: tiny, avatarUrl: "" };
     pushDiag("sanitize_avatar_dropped_too_large", { size: src.length });
-    return { avatarDataUrl: "", avatarUrl: "", sourceKey: src };
+    return { avatarDataUrl: "", avatarUrl: "" };
   }
 
-  return { avatarDataUrl: "", avatarUrl: "", sourceKey: src };
+  return { avatarDataUrl: "", avatarUrl: "" };
 }
 
 function sanitizePlayerStats(player: any) {
@@ -195,12 +194,13 @@ async function sanitizeSnapshot(snapshot: CastSnapshot) {
       ? await Promise.all(
           snapshot.players.map(async (p: any) => {
             const avatar = await sanitizeAvatarFields(p);
-            const playerId = String(p?.id ?? "");
-            const previousAvatarSource = sentAvatarSourceByPlayer.get(playerId) || "";
-            const shouldSendAvatar = !!avatar.sourceKey && avatar.sourceKey !== previousAvatarSource;
-            if (avatar.sourceKey) sentAvatarSourceByPlayer.set(playerId, avatar.sourceKey);
+            const pid = String(p?.id ?? "");
+            const avatarSig = avatar.avatarUrl || avatar.avatarDataUrl || "";
+            const lastSig = pid ? (lastSentAvatarByPlayer.get(pid) || "") : "";
+            const shouldSendAvatar = !!avatarSig && avatarSig !== lastSig;
+            if (pid && avatarSig) lastSentAvatarByPlayer.set(pid, avatarSig);
             return {
-              id: playerId,
+              id: pid,
               name: String(p?.name ?? "Joueur"),
               score: sanitizeNumberLike(p?.score ?? 0),
               active: !!p?.active,
@@ -593,8 +593,6 @@ export async function sendCastSnapshot(snapshot: CastSnapshot | null): Promise<b
           id: p?.id || "",
           score: p?.score ?? 0,
           active: !!p?.active,
-          avatarUrl: p?.avatarUrl || "",
-          avatarDataUrl: p?.avatarDataUrl || "",
           stats: p?.stats || {},
         }))
       : [],
