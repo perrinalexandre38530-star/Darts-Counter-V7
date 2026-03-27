@@ -1,4 +1,4 @@
-const BUILD = "CAF-VISUAL-X01-STABLE-2026-03-26-3";
+const BUILD = "CAF-VISUAL-X01-LAYOUT-FIX-2026-03-27-1";
 const NAMESPACE = "urn:x-cast:com.multisports.scoreboard";
 
 const contentEl = document.getElementById("content");
@@ -166,7 +166,7 @@ function graphHtml(players, colorById) {
   const min = Math.min(...all, 0);
   const max = Math.max(...all, 100);
   const w = 960;
-  const h = 132;
+  const h = 150;
 
   const defs = players.map((p, idx) => {
     const color = colorById[String(p?.id || p?.name || idx)] || "#53e7ff";
@@ -239,7 +239,7 @@ function waitingScreen() {
 function miniPlayerCard(player, isActive, color) {
   const c = color || "#53e7ff";
   return `
-    <div class="mini-player-card ${isActive ? "is-active" : ""}" style="border-color:${c}66; box-shadow:${isActive ? `0 0 18px ${c}22, inset 0 1px 0 rgba(255,255,255,.03)` : `inset 0 1px 0 rgba(255,255,255,.02)`};">
+    <div class="mini-player-card ${isActive ? "is-active" : ""}" style="border-color:${c}55; box-shadow:${isActive ? `0 0 18px ${c}22, inset 0 1px 0 rgba(255,255,255,.03)` : `inset 0 1px 0 rgba(255,255,255,.02)`};">
       ${avatarHtml(player, 42, true)}
       <div class="mini-player-info">
         <div class="mini-player-name" style="color:${c};">${esc(player?.name || "Joueur")}</div>
@@ -249,12 +249,16 @@ function miniPlayerCard(player, isActive, color) {
   `;
 }
 
-function statCell(label, value) {
+function statsMatrix(entries) {
   return `
-    <div class="stat-cell">
-      <div class="stat-label">${esc(label)}</div>
-      <div class="stat-value">${esc(value)}</div>
-    </div>
+    <section class="stats-matrix">
+      ${entries.map(([label, value]) => `
+        <div class="stats-entry">
+          <div class="stats-entry-label">${esc(label)}</div>
+          <div class="stats-entry-value">${esc(value)}</div>
+        </div>
+      `).join("")}
+    </section>
   `;
 }
 
@@ -341,7 +345,7 @@ function renderSnapshot(payload) {
             <div class="active-top">
               <div class="active-left">
                 <div class="active-avatar-wrap">
-                  ${avatarHtml(active, 126)}
+                  ${avatarHtml(active, 112)}
                 </div>
 
                 <div class="active-name" style="color:${colorById[String(active?.id || active?.name || "")] || '#f4d26c'};">${esc(active?.name || "Joueur")}</div>
@@ -355,18 +359,20 @@ function renderSnapshot(payload) {
 
             <div class="active-bottom">
               ${graphHtml(players, colorById)}
-              <div class="stats-grid">
-                ${statCell("Avg 3D", ps.avg3d)}
-                ${statCell("Best volée", ps.bestVisit)}
-                ${statCell("Hits", ps.hits)}
-                ${statCell("Miss", `${ps.miss} - ${pct(ps.miss, totalRef)}`)}
-                ${statCell("Simple", formatStatPair(ps.simple, totalRef))}
-                ${statCell("Double", formatStatPair(ps.double_, totalRef))}
-                ${statCell("Triple", formatStatPair(ps.triple, totalRef))}
-                ${statCell("Bull", formatStatPair(ps.bull, totalRef))}
-                ${statCell("DBull", formatStatPair(ps.dbull, totalRef))}
-                ${statCell("Bust", formatStatPair(ps.bust, totalRef))}
-              </div>
+              ${statsMatrix([
+                ["Avg 3D", ps.avg3d],
+                ["Best volée", ps.bestVisit],
+                ["Hits", ps.hits],
+                ["Miss", `${ps.miss} - ${pct(ps.miss, totalRef)}`],
+                ["Simple", formatStatPair(ps.simple, totalRef)],
+                ["Double", formatStatPair(ps.double_, totalRef)],
+                ["Triple", formatStatPair(ps.triple, totalRef)],
+                ["Bull", formatStatPair(ps.bull, totalRef)],
+                ["DBull", formatStatPair(ps.dbull, totalRef)],
+                ["Bust", formatStatPair(ps.bust, totalRef)],
+                [" ", ""],
+                [" ", ""]
+              ])}
             </div>
           </section>
         </main>
