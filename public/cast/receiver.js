@@ -1,4 +1,4 @@
-const BUILD = "CAF-VISUAL-MULTI-2026-03-26-2";
+const BUILD = "CAF-VISUAL-X01-STABLE-2026-03-26-3";
 const NAMESPACE = "urn:x-cast:com.multisports.scoreboard";
 
 const contentEl = document.getElementById("content");
@@ -123,12 +123,23 @@ function avatarHtml(player, size = 116, smallText = false) {
 }
 
 function rememberHistory(players) {
-  players.forEach((p) => {
-    const id = String(p?.id || p?.name || Math.random());
+  const ranked = players
+    .slice()
+    .sort((a, b) => num(a?.score, 0) - num(b?.score, 0));
+
+  const rankById = new Map();
+  ranked.forEach((p, idx) => {
+    rankById.set(String(p?.id || p?.name || idx), idx + 1);
+  });
+
+  players.forEach((p, idx) => {
+    const id = String(p?.id || p?.name || idx);
     const score = num(p?.score, 0);
+    const rank = rankById.get(id) || idx + 1;
+    const visual = (players.length - rank + 1) * 100 + Math.max(0, 99 - Math.min(score, 999) / 10);
     const entry = historyMap.get(id) || { id, name: String(p?.name || "Joueur"), points: [] };
     const last = entry.points[entry.points.length - 1];
-    if (last !== score) entry.points.push(score);
+    if (last !== visual) entry.points.push(visual);
     entry.name = String(p?.name || entry.name || "Joueur");
     while (entry.points.length > 24) entry.points.shift();
     historyMap.set(id, entry);
@@ -147,44 +158,36 @@ function linePath(values, w, h, min, max) {
     .join(" ");
 }
 
-function graphHtml(players) {
+function graphHtml(players, colorById) {
   if (players.length < 3) return "";
 
-  const series = players.map((p) => historyMap.get(String(p?.id || p?.name)) || { points: [num(p?.score, 0)] });
+  const series = players.map((p) => historyMap.get(String(p?.id || p?.name)) || { points: [0] });
   const all = series.flatMap((s) => s.points);
   const min = Math.min(...all, 0);
-  const max = Math.max(...all, 501);
+  const max = Math.max(...all, 100);
   const w = 960;
-  const h = 170;
-  const colors = ["#53e7ff", "#ffd55b", "#8aa2ff", "#ff66d1", "#63ff97", "#ff8f5b"];
+  const h = 150;
 
-  const defs = colors.map((color, idx) => `
-    <filter id="glow-${idx}" x="-50%" y="-50%" width="200%" height="200%">
-      <feGaussianBlur stdDeviation="3.5" result="blur"/>
-      <feMerge>
-        <feMergeNode in="blur"/>
-        <feMergeNode in="SourceGraphic"/>
-      </feMerge>
-    </filter>
-  `).join("");
-
-  const lines = series.map((s, idx) => {
-    const d = linePath(s.points, w, h, min, max);
-    const color = colors[idx % colors.length];
+  const defs = players.map((p, idx) => {
+    const color = colorById[String(p?.id || p?.name || idx)] || "#53e7ff";
     return `
-      <path d="${d}" fill="none" stroke="${color}" stroke-width="8" stroke-linecap="round" stroke-linejoin="round" opacity="0.15" filter="url(#glow-${idx % colors.length})" />
-      <path d="${d}" fill="none" stroke="${color}" stroke-width="3.8" stroke-linecap="round" stroke-linejoin="round" opacity="0.98" />
+      <filter id="glow-${idx}" x="-50%" y="-50%" width="200%" height="200%">
+        <feGaussianBlur stdDeviation="3.5" result="blur"/>
+        <feMerge>
+          <feMergeNode in="blur"/>
+          <feMergeNode in="SourceGraphic"/>
+        </feMerge>
+      </filter>
     `;
   }).join("");
 
-  const legend = players.map((p, idx) => {
-    const color = colors[idx % colors.length];
+  const lines = series.map((s, idx) => {
+    const d = linePath(s.points, w, h, min, max);
+    const p = players[idx];
+    const color = colorById[String(p?.id || p?.name || idx)] || "#53e7ff";
     return `
-      <div class="graph-legend-item">
-        <span class="graph-dot" style="background:${color};box-shadow:0 0 12px ${color};"></span>
-        <span class="graph-legend-name">${esc(p?.name || "Joueur")}</span>
-        <span class="graph-legend-score">${esc(p?.score ?? 0)}</span>
-      </div>
+      <path d="${d}" fill="none" stroke="${color}" stroke-width="7" stroke-linecap="round" stroke-linejoin="round" opacity="0.14" filter="url(#glow-${idx})" />
+      <path d="${d}" fill="none" stroke="${color}" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round" opacity="0.98" />
     `;
   }).join("");
 
@@ -194,7 +197,7 @@ function graphHtml(players) {
         <div class="panel-title" style="margin-bottom:0;">Évolution</div>
         <div class="panel-subtitle">3 joueurs et +</div>
       </div>
-      <svg viewBox="0 0 ${w} ${h}" class="graph-svg">
+      <svg viewBox="0 0 ${w} ${h}" class="graph-svg" preserveAspectRatio="none">
         <defs>${defs}</defs>
         <g opacity="0.12">
           <line x1="0" y1="${h}" x2="${w}" y2="${h}" stroke="#fff"/>
@@ -204,7 +207,6 @@ function graphHtml(players) {
         </g>
         ${lines}
       </svg>
-      <div class="graph-legend">${legend}</div>
     </section>
   `;
 }
@@ -234,14 +236,15 @@ function waitingScreen() {
   `;
 }
 
-function miniPlayerCard(player, isActive) {
+function miniPlayerCard(player, isActive, color) {
+  const c = color || "#53e7ff";
   return `
-    <div class="mini-player-card ${isActive ? "is-active" : ""}">
-      ${avatarHtml(player, 46, true)}
+    <div class="mini-player-card ${isActive ? "is-active" : ""}" style="border-color:${c}55; box-shadow:${isActive ? `0 0 18px ${c}22, inset 0 1px 0 rgba(255,255,255,.03)` : `inset 0 1px 0 rgba(255,255,255,.02)`};">
+      ${avatarHtml(player, 42, true)}
       <div class="mini-player-info">
-        <div class="mini-player-name">${esc(player?.name || "Joueur")}</div>
+        <div class="mini-player-name" style="color:${c};">${esc(player?.name || "Joueur")}</div>
       </div>
-      <div class="mini-player-score">${esc(player?.score ?? 0)}</div>
+      <div class="mini-player-score" style="color:${c};">${esc(player?.score ?? 0)}</div>
     </div>
   `;
 }
@@ -312,6 +315,8 @@ function renderSnapshot(payload) {
     if (idx <= 0) return players.slice();
     return players.slice(idx).concat(players.slice(0, idx));
   })();
+  const colors = ["#53e7ff", "#ffd55b", "#8aa2ff", "#ff66d1", "#63ff97", "#ff8f5b"];
+  const colorById = Object.fromEntries(players.map((p, idx) => [String(p?.id || p?.name || idx), colors[idx % colors.length]]));
   const meta = payload?.meta && typeof payload.meta === "object" ? payload.meta : {};
   const gameTitle = payload?.title || payload?.game || "Multisports";
 
@@ -327,7 +332,7 @@ function renderSnapshot(payload) {
         <aside class="panel order-panel">
           <div class="panel-title">Ordre de passage</div>
           <div class="mini-player-list">
-            ${ordered.map((p) => miniPlayerCard(p, p === active)).join("")}
+            ${ordered.map((p) => miniPlayerCard(p, p === active, colorById[String(p?.id || p?.name || "")])).join("")}
           </div>
         </aside>
 
@@ -336,10 +341,10 @@ function renderSnapshot(payload) {
             <div class="active-top">
               <div class="active-left">
                 <div class="active-avatar-wrap">
-                  ${avatarHtml(active, 120)}
+                  ${avatarHtml(active, 126)}
                 </div>
 
-                <div class="active-name">${esc(active?.name || "Joueur")}</div>
+                <div class="active-name" style="color:${colorById[String(active?.id || active?.name || "")] || '#f4d26c'};">${esc(active?.name || "Joueur")}</div>
               </div>
 
               <div class="score-card">
@@ -349,7 +354,7 @@ function renderSnapshot(payload) {
             </div>
 
             <div class="active-bottom">
-              ${graphHtml(players)}
+              ${graphHtml(players, colorById)}
               <div class="stats-grid">
                 ${statCell("Avg 3D", ps.avg3d)}
                 ${statCell("Best volée", ps.bestVisit)}

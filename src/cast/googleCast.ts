@@ -87,7 +87,7 @@ async function buildTinyAvatarDataUrl(src: string): Promise<string> {
     try {
       if (typeof document === "undefined") return "";
       const img = await loadImageElement(src);
-      const size = 96;
+      const size = 128;
       const canvas = document.createElement("canvas");
       canvas.width = size;
       canvas.height = size;
@@ -102,13 +102,13 @@ async function buildTinyAvatarDataUrl(src: string): Promise<string> {
       ctx.drawImage(img, sx, sy, side, side, 0, 0, size, size);
       let out = "";
       try {
-        out = canvas.toDataURL("image/webp", 0.72);
+        out = canvas.toDataURL("image/webp", 0.82);
       } catch {}
-      for (const q of [0.78, 0.68, 0.58]) {
-        if (!out || out.length > 70_000) out = canvas.toDataURL("image/jpeg", q);
-        if (out.length <= 65_000) break;
+      for (const q of [0.84, 0.78, 0.72, 0.66]) {
+        if (!out || out.length > 90_000) out = canvas.toDataURL("image/jpeg", q);
+        if (out.length <= 82_000) break;
       }
-      if (out.length > 80_000) {
+      if (out.length > 92_000) {
         pushDiag("sanitize_avatar_thumb_still_large", { size: out.length });
         out = "";
       }
