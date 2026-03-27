@@ -166,7 +166,7 @@ function graphHtml(players, colorById) {
   const min = Math.min(...all, 0);
   const max = Math.max(...all, 100);
   const w = 960;
-  const h = 150;
+  const h = 132;
 
   const defs = players.map((p, idx) => {
     const color = colorById[String(p?.id || p?.name || idx)] || "#53e7ff";
@@ -239,7 +239,7 @@ function waitingScreen() {
 function miniPlayerCard(player, isActive, color) {
   const c = color || "#53e7ff";
   return `
-    <div class="mini-player-card ${isActive ? "is-active" : ""}" style="border-color:${c}55; box-shadow:${isActive ? `0 0 18px ${c}22, inset 0 1px 0 rgba(255,255,255,.03)` : `inset 0 1px 0 rgba(255,255,255,.02)`};">
+    <div class="mini-player-card ${isActive ? "is-active" : ""}" style="border-color:${c}66; box-shadow:${isActive ? `0 0 18px ${c}22, inset 0 1px 0 rgba(255,255,255,.03)` : `inset 0 1px 0 rgba(255,255,255,.02)`};">
       ${avatarHtml(player, 42, true)}
       <div class="mini-player-info">
         <div class="mini-player-name" style="color:${c};">${esc(player?.name || "Joueur")}</div>
