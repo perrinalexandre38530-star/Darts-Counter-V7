@@ -88,7 +88,7 @@ import { scheduleStatsIndexRefresh } from "./stats/rebuildStatsFromHistory";
    - évite “tout a disparu après clear site data”
 ========================= */
 import type { Store } from "./types";
-import { loadStore } from "./storage";
+import { loadStore, scopedStorageKey } from "./storage";
 import { onlineApi } from "./onlineApi";
 import { emitCloudChange } from "./cloudEvents";
 import { EventBuffer } from "./sync/EventBuffer";
@@ -96,9 +96,10 @@ import { EventBuffer } from "./sync/EventBuffer";
 // ✅ Resume index (localStorage) — permet "Reprendre partie" multi-modes
 // Évite la dépendance circulaire avec src/lib/resume.ts (qui importe History)
 const RESUME_INDEX_KEY = "dc-v5-resume-index";
+const scopedResumeIndexKey = () => scopedStorageKey(RESUME_INDEX_KEY);
 function _resumeIndexRead(): string[] {
   try {
-    const raw = localStorage.getItem(RESUME_INDEX_KEY);
+    const raw = localStorage.getItem(scopedResumeIndexKey());
     const arr = raw ? JSON.parse(raw) : [];
     return Array.isArray(arr) ? arr.filter(Boolean).map(String) : [];
   } catch {
@@ -108,7 +109,7 @@ function _resumeIndexRead(): string[] {
 function _resumeIndexWrite(ids: string[]) {
   try {
     const uniq = [...new Set((ids || []).filter(Boolean).map(String))];
-    localStorage.setItem(RESUME_INDEX_KEY, JSON.stringify(uniq));
+    localStorage.setItem(scopedResumeIndexKey(), JSON.stringify(uniq));
   } catch {}
 }
 function _resumeIndexAdd(id: string) {
@@ -431,6 +432,7 @@ console.warn("🔥 HISTORY PATCH LOADED v2");
    Constantes
 ========================= */
 const LSK = "dc-history-v1"; // ancien storage (migration + fallback)
+const scopedHistoryLsKey = () => scopedStorageKey(LSK);
 const DB_NAME = "dc-store-v1";
 const DB_VER = 3; // ⬅ split header/detail stores
 const STORE_LEGACY = "history";
@@ -969,7 +971,7 @@ function parseHistoryLocalStorage(raw: string | null): any[] {
 
 function readLegacyRowsSafe(): SavedMatch[] {
   try {
-    const raw = localStorage.getItem(LSK);
+    const raw = localStorage.getItem(scopedHistoryLsKey());
     const rows = parseHistoryLocalStorage(raw);
     return Array.isArray(rows) ? (rows as SavedMatch[]) : [];
   } catch {
@@ -1329,7 +1331,7 @@ async function migrateFromLocalStorageOnce() {
   await migrateLegacyIdbOnce().catch(() => {});
 
   try {
-    const raw = localStorage.getItem(LSK);
+    const raw = localStorage.getItem(scopedHistoryLsKey());
     if (!raw) return;
 
     const rows: SavedMatch[] = readLegacyRowsSafe();
@@ -1362,7 +1364,7 @@ async function migrateFromLocalStorageOnce() {
       }
     });
 
-    localStorage.removeItem(LSK);
+    localStorage.removeItem(scopedHistoryLsKey());
     console.info("[history] migration depuis localStorage effectuée");
   } catch (e) {
     console.warn("[history] migration impossible:", e);
@@ -2189,7 +2191,7 @@ export async function upsert(rec: SavedMatch): Promise<void> {
       if (idx >= 0) rows.splice(idx, 1);
       rows.unshift(trimmed);
       while (rows.length > 120) rows.pop();
-      localStorage.setItem(LSK, JSON.stringify(rows));
+      localStorage.setItem(scopedHistoryLsKey(), JSON.stringify(rows));
 
       // ================================
       // 🔔 NOTIFY UI/STATS (history changed)
@@ -2382,7 +2384,7 @@ export async function remove(id: string): Promise<void> {
     try {
       const rows = readLegacyRowsSafe() as any[];
       const out = rows.filter((r) => r.id !== id && r.matchId !== id);
-      localStorage.setItem(LSK, JSON.stringify(out));
+      localStorage.setItem(scopedHistoryLsKey(), JSON.stringify(out));
 
       try {
         if (typeof window !== "undefined") {
@@ -2426,7 +2428,7 @@ export async function clear(): Promise<void> {
     try { _resumeIndexWrite([]); } catch {}
   } catch {
     try {
-      localStorage.removeItem(LSK);
+      localStorage.removeItem(scopedHistoryLsKey());
 
       try {
         if (typeof window !== "undefined") {

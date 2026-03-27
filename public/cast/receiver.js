@@ -1,4 +1,4 @@
-const BUILD = "CAF-VISUAL-X01-LAYOUT-FIX-2026-03-27-1";
+const BUILD = "CAF-VISUAL-X01-STABLE-2026-03-26-3";
 const NAMESPACE = "urn:x-cast:com.multisports.scoreboard";
 
 const contentEl = document.getElementById("content");
@@ -13,6 +13,13 @@ const logs = [];
 const historyMap = new Map();
 const avatarCache = new Map();
 let lastPayload = null;
+
+function setBodyMode(mode) {
+  try {
+    document.body.classList.remove("home-view", "game-view");
+    document.body.classList.add(mode === "game" ? "game-view" : "home-view");
+  } catch {}
+}
 
 function pushDiag(entry, extra) {
   const row = { at: new Date().toISOString(), entry, extra: extra == null ? null : extra };
@@ -224,6 +231,7 @@ function logoHtml() {
 }
 
 function waitingScreen() {
+  setBodyMode("home");
   if (statusEl) statusEl.textContent = "Prêt";
   setGameBadge("");
   contentEl.innerHTML = `
@@ -249,16 +257,12 @@ function miniPlayerCard(player, isActive, color) {
   `;
 }
 
-function statsMatrix(entries) {
+function statCell(label, value) {
   return `
-    <section class="stats-matrix">
-      ${entries.map(([label, value]) => `
-        <div class="stats-entry">
-          <div class="stats-entry-label">${esc(label)}</div>
-          <div class="stats-entry-value">${esc(value)}</div>
-        </div>
-      `).join("")}
-    </section>
+    <div class="stat-cell">
+      <div class="stat-label">${esc(label)}</div>
+      <div class="stat-value">${esc(value)}</div>
+    </div>
   `;
 }
 
@@ -305,6 +309,7 @@ function pickPlayerStats(active, payloadMeta) {
 function renderSnapshot(payload) {
   lastPayload = payload || {};
 
+  setBodyMode("game");
   const players = Array.isArray(payload?.players) ? payload.players : [];
   rememberHistory(players);
 
@@ -345,7 +350,7 @@ function renderSnapshot(payload) {
             <div class="active-top">
               <div class="active-left">
                 <div class="active-avatar-wrap">
-                  ${avatarHtml(active, 112)}
+                  ${avatarHtml(active, 126)}
                 </div>
 
                 <div class="active-name" style="color:${colorById[String(active?.id || active?.name || "")] || '#f4d26c'};">${esc(active?.name || "Joueur")}</div>
@@ -358,21 +363,19 @@ function renderSnapshot(payload) {
             </div>
 
             <div class="active-bottom">
-              ${graphHtml(players, colorById)}
-              ${statsMatrix([
-                ["Avg 3D", ps.avg3d],
-                ["Best volée", ps.bestVisit],
-                ["Hits", ps.hits],
-                ["Miss", `${ps.miss} - ${pct(ps.miss, totalRef)}`],
-                ["Simple", formatStatPair(ps.simple, totalRef)],
-                ["Double", formatStatPair(ps.double_, totalRef)],
-                ["Triple", formatStatPair(ps.triple, totalRef)],
-                ["Bull", formatStatPair(ps.bull, totalRef)],
-                ["DBull", formatStatPair(ps.dbull, totalRef)],
-                ["Bust", formatStatPair(ps.bust, totalRef)],
-                [" ", ""],
-                [" ", ""]
-              ])}
+              ${graphHtml(players, colorById) || ""}
+              <div class="stats-grid">
+                ${statCell("Avg 3D", ps.avg3d)}
+                ${statCell("Best volée", ps.bestVisit)}
+                ${statCell("Hits", ps.hits)}
+                ${statCell("Miss", `${ps.miss} - ${pct(ps.miss, totalRef)}`)}
+                ${statCell("Simple", formatStatPair(ps.simple, totalRef))}
+                ${statCell("Double", formatStatPair(ps.double_, totalRef))}
+                ${statCell("Triple", formatStatPair(ps.triple, totalRef))}
+                ${statCell("Bull", formatStatPair(ps.bull, totalRef))}
+                ${statCell("DBull", formatStatPair(ps.dbull, totalRef))}
+                ${statCell("Bust", formatStatPair(ps.bust, totalRef))}
+              </div>
             </div>
           </section>
         </main>

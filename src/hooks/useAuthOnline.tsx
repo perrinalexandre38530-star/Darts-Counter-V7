@@ -12,6 +12,7 @@
 import * as React from "react";
 import type { Session, User } from "@supabase/supabase-js";
 import { supabase } from "../lib/supabaseClient";
+import { setStorageUser } from "../lib/storage";
 import { onlineApi } from "../lib/onlineApi";
 import { isNasProviderEnabled } from "../lib/serverConfig";
 import { ensureLocalProfileForOnlineUser } from "../lib/accountBridge";
@@ -193,6 +194,7 @@ function applyAuthFromSession(setState: React.Dispatch<React.SetStateAction<Auth
   const user = session?.user ?? null;
 
   if (user) {
+    try { setStorageUser(String(user.id || "")); } catch {}
     setState((s) => ({
       ...s,
       status: "signed_in",
@@ -204,6 +206,7 @@ function applyAuthFromSession(setState: React.Dispatch<React.SetStateAction<Auth
       error: null,
     }));
   } else {
+    try { setStorageUser(null); } catch {}
     setState((s) => ({
       ...s,
       status: "signed_out",
@@ -449,6 +452,7 @@ export function AuthOnlineProvider({ children }: { children: React.ReactNode }) 
     } catch (e) {
       console.warn("[useAuthOnline] signOut error:", e);
     } finally {
+      try { setStorageUser(null); } catch {}
       // ✅ force state clean (auth only)
       setState((s) => ({
         ...s,

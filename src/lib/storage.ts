@@ -209,6 +209,72 @@ const STORE_NAME = "kv";
 export const STORE_KEY = "store";
 const LEGACY_LS_KEY = "darts-counter-store-v3";
 
+const STORAGE_USER_LS_KEY = "dc_storage_user_id_v1";
+const AUTH_SESSION_LS_KEY = "dc_online_auth_supabase_v1";
+let CURRENT_USER_ID: string | null = null;
+
+function normalizeUserId(value: unknown): string | null {
+  const s = typeof value === "string" ? value.trim() : String(value || "").trim();
+  return s ? s : null;
+}
+
+function detectUserIdFromAuthLS(): string | null {
+  if (typeof localStorage === "undefined") return null;
+  try {
+    const raw = localStorage.getItem(STORAGE_USER_LS_KEY) || localStorage.getItem(AUTH_SESSION_LS_KEY);
+    if (!raw) return null;
+    if (raw.startsWith("{") || raw.startsWith("[")) {
+      const parsed = safeJsonParse<any>(raw, null);
+      return normalizeUserId(parsed?.userId || parsed?.user?.id || parsed?.session?.user?.id);
+    }
+    return normalizeUserId(raw);
+  } catch {
+    return null;
+  }
+}
+
+export function getStorageUser(): string | null {
+  if (CURRENT_USER_ID) return CURRENT_USER_ID;
+  CURRENT_USER_ID = detectUserIdFromAuthLS();
+  return CURRENT_USER_ID;
+}
+
+export function setStorageUser(userId: string | null) {
+  CURRENT_USER_ID = normalizeUserId(userId);
+  if (typeof localStorage === "undefined") return;
+  try {
+    if (CURRENT_USER_ID) localStorage.setItem(STORAGE_USER_LS_KEY, CURRENT_USER_ID);
+    else localStorage.removeItem(STORAGE_USER_LS_KEY);
+  } catch {}
+}
+
+export function scopedStorageKey(key: string): string {
+  const uid = getStorageUser();
+  return uid ? `${key}:${uid}` : key;
+}
+
+function scopedLegacyStoreKey(): string {
+  const uid = getStorageUser();
+  return uid ? `${LEGACY_LS_KEY}:${uid}` : LEGACY_LS_KEY;
+}
+
+function scopedCloudChangeReason(reason: string): string {
+  const uid = getStorageUser();
+  return uid ? `${reason}:${uid}` : reason;
+}
+
+async function migrateLegacyStoreIfNeeded() {
+  const uid = getStorageUser();
+  if (!uid || typeof localStorage === "undefined") return;
+  try {
+    const namespacedKey = scopedLegacyStoreKey();
+    if (localStorage.getItem(namespacedKey)) return;
+    const legacy = localStorage.getItem(LEGACY_LS_KEY);
+    if (!legacy) return;
+    localStorage.setItem(namespacedKey, legacy);
+  } catch {}
+}
+
 /* ============================================================
    ✅ CLOUD SNAPSHOT (LOCAL) — inclut IndexedDB + localStorage(dc_* ET dc-*)
 ============================================================ */
@@ -691,7 +757,8 @@ async function normalizeStoreAll<T extends Store>(store: T): Promise<{ store: T;
 
 export async function loadStore<T extends Store>(): Promise<T | null> {
   try {
-    const raw = (await idbGet<ArrayBuffer | Uint8Array | string>(STORE_KEY)) ?? null;
+    await migrateLegacyStoreIfNeeded();
+    const raw = (await idbGet<ArrayBuffer | Uint8Array | string>(scopedStorageKey(STORE_KEY))) ?? null;
 
     if (raw != null) {
       const json = await decompressGzip(raw as any);
@@ -705,7 +772,7 @@ export async function loadStore<T extends Store>(): Promise<T | null> {
       if (norm.changed) {
         try {
           const payload = await compressGzip(safeJsonStringify(norm.store));
-          await idbSet(STORE_KEY, payload);
+          await idbSet(scopedStorageKey(STORE_KEY), payload);
         } catch {}
       }
 
@@ -722,7 +789,7 @@ export async function loadStore<T extends Store>(): Promise<T | null> {
 
       await saveStore(norm.store);
       try {
-        localStorage.removeItem(LEGACY_LS_KEY);
+        localStorage.removeItem(scopedLegacyStoreKey());
       } catch {}
 
       return guardStoreShape(norm.store);
@@ -802,12 +869,12 @@ export async function saveStore<T extends Store>(store: T, opts?: SaveOpts): Pro
       }
     }
 
-    await idbSet(STORE_KEY, payload);
+    await idbSet(scopedStorageKey(STORE_KEY), payload);
   } catch (err) {
     console.error("[storage] saveStore error:", err);
     try {
       const minimalFallback = makeMinimalLegacyFallback(guardedInput);
-      localStorage.setItem(LEGACY_LS_KEY, safeJsonStringify(minimalFallback));
+      localStorage.setItem(scopedLegacyStoreKey(), safeJsonStringify(minimalFallback));
     } catch {
       console.warn("[storage] legacy fallback skipped");
     }
@@ -816,17 +883,17 @@ export async function saveStore<T extends Store>(store: T, opts?: SaveOpts): Pro
 
 export async function clearStore(): Promise<void> {
   try {
-    await idbDel(STORE_KEY);
+    await idbDel(scopedStorageKey(STORE_KEY));
   } catch {}
   try {
-    localStorage.removeItem(LEGACY_LS_KEY);
+    localStorage.removeItem(scopedLegacyStoreKey());
   } catch {}
 }
 
 /* ---------- KV générique ---------- */
 export async function getKV<T = unknown>(key: string): Promise<T | null> {
   try {
-    const raw = await idbGet<ArrayBuffer | Uint8Array | string>(key);
+    const raw = await idbGet<ArrayBuffer | Uint8Array | string>(scopedStorageKey(key));
     if (raw == null) return null;
     const json = await decompressGzip(raw as any);
     return safeJsonParse<T | null>(json, null);
@@ -842,10 +909,10 @@ export async function setKV(key: string, value: any): Promise<void> {
     const json = safeJsonStringify(value);
     const payload = await compressGzip(json);
 
-    await idbSet(key, payload);
+    await idbSet(scopedStorageKey(key), payload);
 
     // ✅ signal cloud après écriture OK
-    emitCloudChange(`idb:set:${key}`);
+    emitCloudChange(scopedCloudChangeReason(`idb:set:${key}`));
   } catch (err) {
     console.error("[storage] setKV error:", key, err);
   }
@@ -854,10 +921,10 @@ export async function setKV(key: string, value: any): Promise<void> {
 /** Supprime une clé. */
 export async function delKV(key: string): Promise<void> {
   try {
-    await idbDel(key);
+    await idbDel(scopedStorageKey(key));
 
     // ✅ signal cloud après suppression OK
-    emitCloudChange(`idb:del:${key}`);
+    emitCloudChange(scopedCloudChangeReason(`idb:del:${key}`));
   } catch (err) {
     console.warn("[storage] delKV error:", key, err);
   }
@@ -904,7 +971,7 @@ export async function exportAll(): Promise<any> {
 
         const json = await decompressGzip(raw);
         const parsed = safeJsonParse(json, null);
-        if (String(keys[i]) === STORE_KEY && parsed && typeof parsed === "object") {
+        if (String(keys[i]) === scopedStorageKey(STORE_KEY) && parsed && typeof parsed === "object") {
           idbDump[String(keys[i])] = sanitizeStoreForPersistence(parsed as any);
         } else {
           idbDump[String(keys[i])] = parsed;
@@ -939,7 +1006,7 @@ export async function importAll(dump: any): Promise<void> {
     for (const [k, v] of Object.entries(idbDump)) {
       try {
         const key = String(k);
-        const value = key === STORE_KEY ? sanitizeStoreForPersistence(v as any) : v;
+        const value = key === scopedStorageKey(STORE_KEY) ? sanitizeStoreForPersistence(v as any) : v;
         await setKV(key, value);
       } catch {}
     }
@@ -1136,7 +1203,7 @@ function isOnlineShadowProfile(p: any): boolean {
 }
 
 async function normalizeLocalProfilesInStore(): Promise<void> {
-  const raw = await idbGet<ArrayBuffer | Uint8Array | string>(STORE_KEY);
+  const raw = await idbGet<ArrayBuffer | Uint8Array | string>(scopedStorageKey(STORE_KEY));
   if (raw == null) return;
 
   const txt = await decompressGzip(raw as any);
@@ -1189,7 +1256,7 @@ async function normalizeLocalProfilesInStore(): Promise<void> {
 
   const outTxt = safeJsonStringify(store);
   const outRaw = await compressGzip(outTxt);
-  await idbSet(STORE_KEY, outRaw);
+  await idbSet(scopedStorageKey(STORE_KEY), outRaw);
 }
 
 export async function nukeAll(): Promise<void> {
@@ -1216,7 +1283,7 @@ export async function wipeAllLocalData(): Promise<void> {
   } catch {}
 
   try {
-    localStorage.removeItem(LEGACY_LS_KEY);
+    localStorage.removeItem(scopedLegacyStoreKey());
   } catch {}
 
   // par sécurité, retire aussi l'auth online éventuelle (si présente)
@@ -1257,7 +1324,7 @@ export async function nukeAllKeepActiveProfile(): Promise<void> {
   let activeProfile: Profile | null = null;
 
   try {
-    const raw = await idbGet<ArrayBuffer | Uint8Array | string>(STORE_KEY);
+    const raw = await idbGet<ArrayBuffer | Uint8Array | string>(scopedStorageKey(STORE_KEY));
     if (raw != null) {
       const txt = await decompressGzip(raw as any);
       const parsed = safeJsonParse<Store | null>(txt, null);
@@ -1279,7 +1346,7 @@ export async function nukeAllKeepActiveProfile(): Promise<void> {
   }
 
   try {
-    localStorage.removeItem(LEGACY_LS_KEY);
+    localStorage.removeItem(scopedLegacyStoreKey());
   } catch {}
 
   if (activeProfile) {
@@ -1293,7 +1360,7 @@ export async function nukeAllKeepActiveProfile(): Promise<void> {
 
     try {
       const payload = await compressGzip(safeJsonStringify(newStore));
-      await idbSet(STORE_KEY, payload);
+      await idbSet(scopedStorageKey(STORE_KEY), payload);
     } catch (err) {
       console.warn("[storage] unable to write minimal store after reset", err);
     }
