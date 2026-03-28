@@ -1,4 +1,4 @@
-const BUILD = "CAF-VISUAL-X01-STABLE-2026-03-26-3";
+const BUILD = "CAF-VISUAL-X01-STABLE-2026-03-27-LAYOUTFIT";
 const NAMESPACE = "urn:x-cast:com.multisports.scoreboard";
 
 const contentEl = document.getElementById("content");
@@ -13,13 +13,6 @@ const logs = [];
 const historyMap = new Map();
 const avatarCache = new Map();
 let lastPayload = null;
-
-function setBodyMode(mode) {
-  try {
-    document.body.classList.remove("home-view", "game-view");
-    document.body.classList.add(mode === "game" ? "game-view" : "home-view");
-  } catch {}
-}
 
 function pushDiag(entry, extra) {
   const row = { at: new Date().toISOString(), entry, extra: extra == null ? null : extra };
@@ -231,7 +224,6 @@ function logoHtml() {
 }
 
 function waitingScreen() {
-  setBodyMode("home");
   if (statusEl) statusEl.textContent = "Prêt";
   setGameBadge("");
   contentEl.innerHTML = `
@@ -248,7 +240,7 @@ function miniPlayerCard(player, isActive, color) {
   const c = color || "#53e7ff";
   return `
     <div class="mini-player-card ${isActive ? "is-active" : ""}" style="border-color:${c}55; box-shadow:${isActive ? `0 0 18px ${c}22, inset 0 1px 0 rgba(255,255,255,.03)` : `inset 0 1px 0 rgba(255,255,255,.02)`};">
-      ${avatarHtml(player, 42, true)}
+      ${avatarHtml(player, 36, true)}
       <div class="mini-player-info">
         <div class="mini-player-name" style="color:${c};">${esc(player?.name || "Joueur")}</div>
       </div>
@@ -309,7 +301,6 @@ function pickPlayerStats(active, payloadMeta) {
 function renderSnapshot(payload) {
   lastPayload = payload || {};
 
-  setBodyMode("game");
   const players = Array.isArray(payload?.players) ? payload.players : [];
   rememberHistory(players);
 
@@ -350,7 +341,7 @@ function renderSnapshot(payload) {
             <div class="active-top">
               <div class="active-left">
                 <div class="active-avatar-wrap">
-                  ${avatarHtml(active, 126)}
+                  ${avatarHtml(active, 108)}
                 </div>
 
                 <div class="active-name" style="color:${colorById[String(active?.id || active?.name || "")] || '#f4d26c'};">${esc(active?.name || "Joueur")}</div>
@@ -363,7 +354,7 @@ function renderSnapshot(payload) {
             </div>
 
             <div class="active-bottom">
-              ${graphHtml(players, colorById) || ""}
+              ${graphHtml(players, colorById)}
               <div class="stats-grid">
                 ${statCell("Avg 3D", ps.avg3d)}
                 ${statCell("Best volée", ps.bestVisit)}

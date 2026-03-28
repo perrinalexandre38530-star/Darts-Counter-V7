@@ -77,7 +77,7 @@ function loadImageElement(src: string): Promise<HTMLImageElement> {
   });
 }
 
-async function buildTinyAvatarDataUrl(src: string): Promise<string> {
+async function buildTinyAvatarDataUrl(src: string, opts?: { size?: number; maxBytes?: number }): Promise<string> {
   const cached = avatarThumbCache.get(src);
   if (cached !== undefined) return cached;
   const pending = avatarThumbPromiseCache.get(src);
@@ -87,7 +87,8 @@ async function buildTinyAvatarDataUrl(src: string): Promise<string> {
     try {
       if (typeof document === "undefined") return "";
       const img = await loadImageElement(src);
-      const size = 128;
+      const size = Math.max(56, Math.min(160, Number(opts?.size || 128)));
+      const maxBytes = Math.max(18000, Math.min(90000, Number(opts?.maxBytes || 82000)));
       const canvas = document.createElement("canvas");
       canvas.width = size;
       canvas.height = size;
@@ -105,10 +106,10 @@ async function buildTinyAvatarDataUrl(src: string): Promise<string> {
         out = canvas.toDataURL("image/webp", 0.82);
       } catch {}
       for (const q of [0.84, 0.78, 0.72, 0.66]) {
-        if (!out || out.length > 90_000) out = canvas.toDataURL("image/jpeg", q);
-        if (out.length <= 82_000) break;
+        if (!out || out.length > maxBytes + 8000) out = canvas.toDataURL("image/jpeg", q);
+        if (out.length <= maxBytes) break;
       }
-      if (out.length > 92_000) {
+      if (out.length > maxBytes + 10000) {
         pushDiag("sanitize_avatar_thumb_still_large", { size: out.length });
         out = "";
       }
@@ -127,7 +128,7 @@ async function buildTinyAvatarDataUrl(src: string): Promise<string> {
   return job;
 }
 
-async function sanitizeAvatarFields(player: any) {
+async function sanitizeAvatarFields(player: any, context?: { playerCount?: number }) {
   const sources = [
     player?.avatarDataUrl,
     player?.avatarUrl,
@@ -161,8 +162,11 @@ async function sanitizeAvatarFields(player: any) {
   }
 
   if (/^data:image\//i.test(src)) {
-    if (src.length <= 28_000) return { avatarDataUrl: src, avatarUrl: "" };
-    const tiny = await buildTinyAvatarDataUrl(src);
+    if (src.length <= 28_000 && (context?.playerCount || 0) <= 4) return { avatarDataUrl: src, avatarUrl: "" };
+    const playerCount = Number(context?.playerCount || 0);
+    const thumbSize = playerCount >= 6 ? 72 : playerCount >= 4 ? 88 : 112;
+    const maxBytes = playerCount >= 6 ? 22000 : playerCount >= 4 ? 30000 : 52000;
+    const tiny = await buildTinyAvatarDataUrl(src, { size: thumbSize, maxBytes });
     if (tiny) return { avatarDataUrl: tiny, avatarUrl: "" };
     pushDiag("sanitize_avatar_dropped_too_large", { size: src.length });
     return { avatarDataUrl: "", avatarUrl: "" };
@@ -193,7 +197,7 @@ async function sanitizeSnapshot(snapshot: CastSnapshot) {
     const players = Array.isArray(snapshot?.players)
       ? await Promise.all(
           snapshot.players.map(async (p: any) => {
-            const avatar = await sanitizeAvatarFields(p);
+            const avatar = await sanitizeAvatarFields(p, { playerCount: Array.isArray(snapshot?.players) ? snapshot.players.length : 0 });
             const pid = String(p?.id ?? "");
             const avatarSig = avatar.avatarUrl || avatar.avatarDataUrl || "";
             const lastSig = pid ? (lastSentAvatarByPlayer.get(pid) || "") : "";
