@@ -224,6 +224,7 @@ function logoHtml() {
 }
 
 function waitingScreen() {
+  try { document.body.classList.add("is-home"); } catch {}
   if (statusEl) statusEl.textContent = "Prêt";
   setGameBadge("");
   contentEl.innerHTML = `
@@ -300,6 +301,7 @@ function pickPlayerStats(active, payloadMeta) {
 
 function renderSnapshot(payload) {
   lastPayload = payload || {};
+  try { document.body.classList.remove("is-home"); } catch {}
 
   const players = Array.isArray(payload?.players) ? payload.players : [];
   rememberHistory(players);
