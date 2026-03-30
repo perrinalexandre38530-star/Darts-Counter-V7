@@ -16,6 +16,20 @@ const avatarThumbCache = new Map<string, string>();
 const avatarThumbPromiseCache = new Map<string, Promise<string>>();
 const lastSentAvatarByPlayer = new Map<string, string>();
 
+let resendLifecycleBound = false;
+function bindResendLifecycle() {
+  if (resendLifecycleBound || typeof window === "undefined") return;
+  resendLifecycleBound = true;
+  const trigger = (reason: string) => {
+    try { void resendLastSnapshot(reason); } catch {}
+    try { window.setTimeout(() => { void resendLastSnapshot(reason + "_retry1"); }, 120); } catch {}
+    try { window.setTimeout(() => { void resendLastSnapshot(reason + "_retry2"); }, 420); } catch {}
+  };
+  window.addEventListener("focus", () => trigger("window_focus"));
+  document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") trigger("visibility_visible"); });
+  window.addEventListener("pageshow", () => trigger("pageshow"));
+}
+
 function emitStatus() {
   try {
     window.dispatchEvent(new CustomEvent("multisports-google-cast-status"));
@@ -570,15 +584,6 @@ async function resendLastSnapshot(reason: string) {
   );
 }
 
-
-function scheduleResumeResend(reason: string) {
-  try {
-    window.setTimeout(() => { void pingGoogleCastReceiver(true); }, 40);
-    window.setTimeout(() => { void resendLastSnapshot(reason); }, 120);
-    window.setTimeout(() => { void resendLastSnapshot(`${reason}_late`); }, 520);
-  } catch {}
-}
-
 export async function pingGoogleCastReceiver(force = false) {
   if (!force && Date.now() - lastPingAt < 1500) {
     pushDiag("ping_skipped_rate_limit");
@@ -621,20 +626,11 @@ export async function sendCastSnapshot(snapshot: CastSnapshot | null): Promise<b
   );
 }
 
+bindResendLifecycle();
+
 export function subscribeGoogleCastStatus(cb: () => void) {
   const refresh = () => cb();
-  const onVisible = () => {
-    refresh();
-    if (typeof document !== "undefined" && document.visibilityState !== "visible") return;
-    scheduleResumeResend("visibility_visible");
-  };
-  const onFocus = () => {
-    refresh();
-    scheduleResumeResend("window_focus");
-  };
   window.addEventListener("multisports-google-cast-status", refresh);
-  window.addEventListener("visibilitychange", onVisible as any);
-  window.addEventListener("focus", onFocus);
 
   const cast = (window as any).cast;
   const ctx = getCastContext();
@@ -652,7 +648,8 @@ export function subscribeGoogleCastStatus(cb: () => void) {
       try {
         const ss = (window as any).cast?.framework?.SessionState;
         if (e?.sessionState === ss?.SESSION_STARTED || e?.sessionState === ss?.SESSION_RESUMED) {
-          scheduleResumeResend("session_state_changed");
+          void pingGoogleCastReceiver(true);
+          void resendLastSnapshot("session_state_changed");
         }
       } catch {}
     });
@@ -660,7 +657,5 @@ export function subscribeGoogleCastStatus(cb: () => void) {
 
   return () => {
     window.removeEventListener("multisports-google-cast-status", refresh);
-    window.removeEventListener("visibilitychange", onVisible as any);
-    window.removeEventListener("focus", onFocus);
   };
 }

@@ -1,4 +1,4 @@
-const BUILD = "CAF-VISUAL-X01-STABLE-2026-03-30-X01FINAL";
+const BUILD = "CAF-VISUAL-X01-STABLE-2026-03-27-LAYOUTFIT";
 const NAMESPACE = "urn:x-cast:com.multisports.scoreboard";
 
 const contentEl = document.getElementById("content");
@@ -13,6 +13,9 @@ const logs = [];
 const historyMap = new Map();
 const avatarCache = new Map();
 let lastPayload = null;
+let lastPlayersKey = "";
+let lastActiveId = "";
+let turnsSinceRoundCommit = 0;
 
 function pushDiag(entry, extra) {
   const row = { at: new Date().toISOString(), entry, extra: extra == null ? null : extra };
@@ -122,26 +125,57 @@ function avatarHtml(player, size = 116, smallText = false) {
   `;
 }
 
-function rememberHistory(players) {
+function rememberHistory(players, activeId) {
+  const ids = players.map((p, idx) => String(p?.id || p?.name || idx));
+  const playersKey = ids.join("|");
+  if (playersKey !== lastPlayersKey) {
+    historyMap.clear();
+    lastPlayersKey = playersKey;
+    lastActiveId = String(activeId || ids[0] || "");
+    turnsSinceRoundCommit = 0;
+    players.forEach((p, idx) => {
+      const id = ids[idx];
+      historyMap.set(id, { id, name: String(p?.name || "Joueur"), points: [] });
+    });
+    return;
+  }
+
+  players.forEach((p, idx) => {
+    const id = ids[idx];
+    const entry = historyMap.get(id) || { id, name: String(p?.name || "Joueur"), points: [] };
+    entry.name = String(p?.name || entry.name || "Joueur");
+    historyMap.set(id, entry);
+  });
+
+  const currentActiveId = String(activeId || ids[0] || "");
+  if (!currentActiveId) return;
+  if (!lastActiveId) {
+    lastActiveId = currentActiveId;
+    return;
+  }
+  if (currentActiveId === lastActiveId) return;
+
+  turnsSinceRoundCommit += 1;
+  lastActiveId = currentActiveId;
+
+  if (turnsSinceRoundCommit < players.length) return;
+  turnsSinceRoundCommit = 0;
+
   const ranked = players
     .slice()
     .sort((a, b) => num(a?.score, 0) - num(b?.score, 0));
-
   const rankById = new Map();
-  ranked.forEach((p, idx) => {
-    rankById.set(String(p?.id || p?.name || idx), idx + 1);
-  });
+  ranked.forEach((p, idx) => rankById.set(String(p?.id || p?.name || idx), idx + 1));
+  const maxRank = Math.max(1, players.length);
 
   players.forEach((p, idx) => {
-    const id = String(p?.id || p?.name || idx);
-    const score = num(p?.score, 0);
+    const id = ids[idx];
     const rank = rankById.get(id) || idx + 1;
-    const visual = (players.length - rank + 1) * 100 + Math.max(0, 99 - Math.min(score, 999) / 10);
+    const visual = (maxRank - rank) * 100;
     const entry = historyMap.get(id) || { id, name: String(p?.name || "Joueur"), points: [] };
     const last = entry.points[entry.points.length - 1];
     if (last !== visual) entry.points.push(visual);
-    entry.name = String(p?.name || entry.name || "Joueur");
-    while (entry.points.length > 24) entry.points.shift();
+    while (entry.points.length > 18) entry.points.shift();
     historyMap.set(id, entry);
   });
 }
@@ -284,14 +318,10 @@ function pickPlayerStats(active, payloadMeta) {
     m.attempts ??
     (num(hits, 0) + num(miss, 0));
 
-  const totalThrowsNum = num(totalThrows, 0);
-  const missNum = num(miss, 0);
-  const computedHits = Math.max(0, totalThrowsNum - missNum);
-
   return {
     avg3d,
     bestVisit,
-    hits: computedHits,
+    hits: Math.max(num(totalThrows, 0), num(hits, 0)),
     miss: num(miss, 0),
     simple: num(simple, 0),
     double_: num(double_, 0),
@@ -308,20 +338,21 @@ function renderSnapshot(payload) {
   try { document.body.classList.remove("is-home"); } catch {}
 
   const players = Array.isArray(payload?.players) ? payload.players : [];
-  rememberHistory(players);
+  const activeIdRaw = String(payload?.currentPlayer || "");
+  rememberHistory(players, activeIdRaw);
 
   if (!players.length) {
     waitingScreen();
     return;
   }
 
-  const active = players.find((p) => p?.active) || players.find((p) => String(p?.id || "") === String(payload?.currentPlayer || "")) || players[0];
+  const active = players.find((p) => String(p?.id || "") === activeIdRaw) || players.find((p) => p?.active) || players[0];
   const ordered = (() => {
     const idx = players.findIndex((p) => p === active || String(p?.id || "") === String(active?.id || ""));
     if (idx <= 0) return players.slice();
     return players.slice(idx).concat(players.slice(0, idx));
   })();
-  const colors = ["#53e7ff", "#ffd55b", "#8aa2ff", "#ff66d1", "#63ff97", "#ff8f5b"];
+  const colors = ["#53e7ff", "#ffd55b", "#ffffff", "#ff66d1", "#63ff97", "#ff8f5b", "#8aa2ff", "#ff4d6d", "#7cf3ff", "#c6ff5b", "#ffb4ff", "#ffddb0"];
   const colorById = Object.fromEntries(players.map((p, idx) => [String(p?.id || p?.name || idx), colors[idx % colors.length]]));
   const meta = payload?.meta && typeof payload.meta === "object" ? payload.meta : {};
   const gameTitle = payload?.title || payload?.game || "Multisports";
@@ -347,7 +378,7 @@ function renderSnapshot(payload) {
             <div class="active-top">
               <div class="active-left">
                 <div class="active-avatar-wrap">
-                  ${avatarHtml(active, 96)}
+                  ${avatarHtml(active, 92)}
                 </div>
 
                 <div class="active-name" style="color:${colorById[String(active?.id || active?.name || "")] || '#f4d26c'};">${esc(active?.name || "Joueur")}</div>
