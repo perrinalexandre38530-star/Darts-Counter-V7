@@ -1,4 +1,4 @@
-const BUILD = "CAF-VISUAL-X01-STABLE-2026-03-27-LAYOUTFIT";
+const BUILD = "CAF-VISUAL-X01-STABLE-2026-03-30-X01FINAL";
 const NAMESPACE = "urn:x-cast:com.multisports.scoreboard";
 
 const contentEl = document.getElementById("content");
@@ -284,10 +284,14 @@ function pickPlayerStats(active, payloadMeta) {
     m.attempts ??
     (num(hits, 0) + num(miss, 0));
 
+  const totalThrowsNum = num(totalThrows, 0);
+  const missNum = num(miss, 0);
+  const computedHits = Math.max(0, totalThrowsNum - missNum);
+
   return {
     avg3d,
     bestVisit,
-    hits: num(hits, 0),
+    hits: computedHits,
     miss: num(miss, 0),
     simple: num(simple, 0),
     double_: num(double_, 0),
@@ -343,7 +347,7 @@ function renderSnapshot(payload) {
             <div class="active-top">
               <div class="active-left">
                 <div class="active-avatar-wrap">
-                  ${avatarHtml(active, 108)}
+                  ${avatarHtml(active, 96)}
                 </div>
 
                 <div class="active-name" style="color:${colorById[String(active?.id || active?.name || "")] || '#f4d26c'};">${esc(active?.name || "Joueur")}</div>

@@ -32,8 +32,6 @@ function armNasProfileOnboarding(userId?: string | null) {
   } catch {}
 }
 
-
-
 async function hasRemoteSnapshot(): Promise<boolean> {
   try {
     const res: any = await onlineApi.pullStoreSnapshot();
@@ -48,6 +46,41 @@ async function hasRemoteSnapshot(): Promise<boolean> {
     const hasActive = !!(cloudStore as any).activeProfileId;
     return !!(hasProfiles || hasHistory || hasFriends || hasDartSets || hasActive);
   } catch {
+    return false;
+  }
+}
+
+async function restoreRemoteSnapshotIntoLocalStore(): Promise<boolean> {
+  try {
+    const res: any = await onlineApi.pullStoreSnapshot();
+    if (res?.status !== "ok") return false;
+
+    const payload = res?.payload ?? null;
+    const cloudStore = payload?.store ?? payload?.idb?.store ?? payload ?? null;
+    if (!cloudStore || typeof cloudStore !== "object") return false;
+
+    const appStore: any = (window as any).__appStore;
+    if (!appStore) return false;
+
+    if (typeof appStore.setState === "function") {
+      appStore.setState(cloudStore);
+    } else if (typeof appStore.update === "function") {
+      appStore.update(() => cloudStore);
+    } else {
+      return false;
+    }
+
+    try {
+      const profiles = Array.isArray((cloudStore as any).profiles) ? (cloudStore as any).profiles : [];
+      const activeProfileId = (cloudStore as any).activeProfileId || "";
+      if (profiles.length > 0 || activeProfileId) {
+        localStorage.setItem("dc_cloud_restore_done", "1");
+      }
+    } catch {}
+
+    return true;
+  } catch (e) {
+    console.warn("[AuthV7Signup] restoreRemoteSnapshotIntoLocalStore failed", e);
     return false;
   }
 }
@@ -78,8 +111,14 @@ export default function AuthV7Signup({ go }: Props) {
 
       if (nasMode || session?.token || session?.user?.id) {
         const uid = String(session?.user?.id || "").trim();
+
+        let restored = false;
+        if (nasMode && uid) {
+          restored = await restoreRemoteSnapshotIntoLocalStore();
+        }
+
         const linked = hasLinkedLocalProfile(uid);
-        const remote = nasMode ? await hasRemoteSnapshot() : false;
+        const remote = nasMode ? (restored || await hasRemoteSnapshot()) : false;
         setInfo("Compte créé et connecté ✅");
 
         if (nasMode && uid && !linked && !remote) {
