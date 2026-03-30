@@ -2805,6 +2805,7 @@ function UnifiedAuthBlock({
   onConnect,
   onCreate,
   onHydrateProfile,
+  autoFocus = false,
   autoFocusCreate = false,
 }: {
   profiles: Profile[];
@@ -2848,6 +2849,7 @@ function UnifiedAuthBlock({
       appTheme?: ThemeId;
     }>
   ) => void;
+  autoFocus?: boolean;
   autoFocusCreate?: boolean;
 }) {
   const { t, setLang, lang } = useLang();

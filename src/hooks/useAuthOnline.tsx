@@ -423,15 +423,17 @@ export function AuthOnlineProvider({ children }: { children: React.ReactNode }) 
       try {
         const ok = await (onlineApi as any).signup?.(payload);
         const success = typeof ok === "boolean" ? ok : !ok?.error;
-        if (success && (onlineApi as any)?.getCurrentSession) {
-  try {
-    const s:any = await (onlineApi as any).getCurrentSession();
-    if (s?.user?.id) {
-      localStorage.setItem("dc_user_id", s.user.id);
-    }
-  } catch {}
-}
-return success;
+        if (success) {
+          try {
+            const s: any = await onlineApi.getCurrentSession?.();
+            const uid = String(s?.user?.id || "").trim();
+            if (uid) {
+              localStorage.setItem("dc_user_id", uid);
+              setStorageUser(uid);
+            }
+          } catch {}
+        }
+        return success;
       } catch (e) {
         console.warn("[useAuthOnline] signup error:", e);
         return false;
@@ -445,15 +447,17 @@ return success;
       try {
         const ok = await (onlineApi as any).login?.(payload);
         const success = typeof ok === "boolean" ? ok : !ok?.error;
-        if (success && (onlineApi as any)?.getCurrentSession) {
-  try {
-    const s:any = await (onlineApi as any).getCurrentSession();
-    if (s?.user?.id) {
-      localStorage.setItem("dc_user_id", s.user.id);
-    }
-  } catch {}
-}
-return success;
+        if (success) {
+          try {
+            const s: any = await onlineApi.getCurrentSession?.();
+            const uid = String(s?.user?.id || "").trim();
+            if (uid) {
+              localStorage.setItem("dc_user_id", uid);
+              setStorageUser(uid);
+            }
+          } catch {}
+        }
+        return success;
       } catch (e) {
         console.warn("[useAuthOnline] login error:", e);
         return false;

@@ -773,6 +773,13 @@ export async function loadStore<T extends Store>(): Promise<T | null> {
         try {
           const payload = await compressGzip(safeJsonStringify(norm.store));
           await idbSet(scopedStorageKey(STORE_KEY), payload);
+
+    try {
+      console.log("🔥 saveStore déclenché");
+      emitCloudChange(scopedCloudChangeReason("idb:set:store"));
+    } catch (e) {
+      console.warn("emitCloudChange failed", e);
+    }
         } catch {}
       }
 
@@ -1365,13 +1372,4 @@ export async function nukeAllKeepActiveProfile(): Promise<void> {
       console.warn("[storage] unable to write minimal store after reset", err);
     }
   }
-}
-
-
-// 🔥 NAS SYNC TRIGGER
-try {
-  console.log("🔥 saveStore déclenché");
-  emitCloudChange(scopedCloudChangeReason("idb:set:store"));
-} catch (e) {
-  console.warn("emitCloudChange failed", e);
 }

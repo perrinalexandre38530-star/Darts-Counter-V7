@@ -1952,8 +1952,8 @@ useEffect(() => {
 
 
     if (cloudSyncOnRef.current) {
-  console.log("⚠️ fallback push autorisé malgré cloudSync actif");
-} // push géré par cloudSync (snapshot complète)
+      console.log("⚠️ fallback push autorisé malgré cloudSync actif");
+    }
 
     if (cloudPushTimerRef.current) {
       window.clearTimeout(cloudPushTimerRef.current);
