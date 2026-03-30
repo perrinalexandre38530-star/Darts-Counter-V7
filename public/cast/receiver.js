@@ -13,8 +13,8 @@ const logs = [];
 const historyMap = new Map();
 const avatarCache = new Map();
 const baseOrderIds = [];
-const roundAccumulator = new Map();
-let lastRoundScores = new Map();
+let roundCounter = 0;
+let lastActiveId = "";
 let lastPayload = null;
 
 function pushDiag(entry, extra) {
@@ -140,54 +140,56 @@ function getRankMap(players) {
   return out;
 }
 
-function commitRound(players, scoreMap) {
+function commitRound(players, scoreMap, roundNo) {
   const shadow = players.map((p, idx) => ({ ...p, score: scoreMap.get(String(p?.id || p?.name || idx)) ?? num(p?.score, 0) }));
   const rankById = getRankMap(shadow);
   players.forEach((p, idx) => {
     const id = String(p?.id || p?.name || idx);
     const rank = rankById.get(id) || idx + 1;
-    const entry = historyMap.get(id) || { id, name: String(p?.name || "Joueur"), points: [{ round: 0, rank: players.length }] };
+    const entry = historyMap.get(id) || { id, name: String(p?.name || "Joueur"), points: [] };
     entry.name = String(p?.name || entry.name || "Joueur");
-    const last = entry.points[entry.points.length - 1];
-    if (!last || last.rank !== rank) entry.points.push({ round: (last?.round || 0) + 1, rank });
-    else entry.points.push({ round: (last?.round || 0) + 1, rank });
-    while (entry.points.length > 20) entry.points.shift();
+    entry.points.push({ round: roundNo, rank });
+    while (entry.points.length > 24) entry.points.shift();
     historyMap.set(id, entry);
   });
 }
 
-function rememberHistory(players) {
+function rememberHistory(players, activeId) {
   syncBaseOrder(players);
   if (!players.length) return;
-  const currentScores = new Map(players.map((p, idx) => [String(p?.id || p?.name || idx), num(p?.score, 0)]));
 
-  if (!lastRoundScores.size) {
+  const currentScores = new Map(players.map((p, idx) => [String(p?.id || p?.name || idx), num(p?.score, 0)]));
+  const currentActiveId = String(activeId || "");
+
+  if (!historyMap.size) {
+    const rankById = getRankMap(players);
     players.forEach((p, idx) => {
       const id = String(p?.id || p?.name || idx);
-      historyMap.set(id, { id, name: String(p?.name || "Joueur"), points: [{ round: 0, rank: idx + 1 }] });
+      historyMap.set(id, {
+        id,
+        name: String(p?.name || "Joueur"),
+        points: [{ round: 0, rank: rankById.get(id) || idx + 1 }],
+      });
     });
-    lastRoundScores = new Map(currentScores);
+    lastActiveId = currentActiveId;
+    roundCounter = 0;
     return;
   }
 
-  currentScores.forEach((score, id) => {
-    const prev = lastRoundScores.get(id);
-    if (prev !== score) roundAccumulator.set(id, score);
-  });
-
-  if (roundAccumulator.size >= players.length) {
-    commitRound(players, currentScores);
-    roundAccumulator.clear();
+  if (currentActiveId && lastActiveId && currentActiveId !== lastActiveId) {
+    roundCounter += 1;
+    commitRound(players, currentScores, roundCounter);
   }
 
-  lastRoundScores = new Map(currentScores);
+  lastActiveId = currentActiveId || lastActiveId;
 }
 
-function linePath(points, w, h, rounds, playerCount) {
+function linePath(points, w, h, minRound, maxRound, playerCount) {
   if (!points.length) return "";
+  const rounds = Math.max(1, maxRound - minRound + 1);
   return points
     .map((pt, i) => {
-      const x = rounds <= 1 ? 24 : 24 + ((pt.round - 1) * (w - 48)) / Math.max(1, rounds - 1);
+      const x = rounds <= 1 ? 24 : 24 + ((pt.round - minRound) * (w - 48)) / Math.max(1, rounds - 1);
       const y = 16 + ((pt.rank - 1) * (h - 32)) / Math.max(1, playerCount - 1);
       return `${i === 0 ? "M" : "L"}${x.toFixed(1)},${y.toFixed(1)}`;
     })
@@ -197,8 +199,12 @@ function linePath(points, w, h, rounds, playerCount) {
 function graphHtml(players, colorById) {
   if (players.length < 3) return "";
 
-  const series = players.map((p) => historyMap.get(String(p?.id || p?.name)) || { points: [{ round: 0, rank: players.length }] });
-  const rounds = Math.max(1, ...series.map((s) => s.points[s.points.length - 1]?.round || 1));
+  const rawSeries = players.map((p) => historyMap.get(String(p?.id || p?.name)) || { points: [{ round: 0, rank: players.length }] });
+  const maxRound = Math.max(0, ...rawSeries.map((s) => s.points[s.points.length - 1]?.round || 0));
+  const windowSize = Math.max(6, Math.min(12, maxRound + 1));
+  const minRound = Math.max(0, maxRound - windowSize + 1);
+  const series = rawSeries.map((s) => ({ ...s, points: s.points.filter((pt) => pt.round >= minRound) }));
+  const rounds = Math.max(1, maxRound - minRound + 1);
   const w = 980;
   const h = 178;
   const defs = players.map((p, idx) => {
@@ -222,16 +228,17 @@ function graphHtml(players, colorById) {
   }).join("");
 
   const labels = Array.from({ length: rounds }, (_, i) => {
+    const roundLabel = Math.max(1, minRound + i);
     const x = rounds <= 1 ? 24 : 24 + (i * (w - 48)) / Math.max(1, rounds - 1);
-    return `<text x="${x}" y="${h - 2}" text-anchor="middle" font-size="13" fill="rgba(255,255,255,.72)" font-weight="800">${i + 1}</text>`;
+    return `<text x="${x}" y="${h - 2}" text-anchor="middle" font-size="13" fill="rgba(255,255,255,.72)" font-weight="800">${roundLabel}</text>`;
   }).join("");
 
   const lines = series.map((s, idx) => {
-    const d = linePath(s.points, w, h - 20, rounds, players.length);
+    const d = linePath(s.points, w, h - 20, minRound, maxRound, players.length);
     const p = players[idx];
     const color = colorById[String(p?.id || p?.name || idx)] || "#53e7ff";
-    const last = s.points[s.points.length - 1];
-    const x = rounds <= 1 ? 24 : 24 + ((last.round - 1) * (w - 48)) / Math.max(1, rounds - 1);
+    const last = s.points[s.points.length - 1] || { round: minRound, rank: players.length };
+    const x = rounds <= 1 ? 24 : 24 + ((last.round - minRound) * (w - 48)) / Math.max(1, rounds - 1);
     const y = 16 + ((last.rank - 1) * ((h - 20) - 32)) / Math.max(1, players.length - 1);
     const avatar = getAvatarSrc(p);
     const end = avatar ? `<image href="${esc(avatar)}" x="${x - 11}" y="${y - 11}" width="22" height="22" clip-path="circle(11px at 11px 11px)" />` : `<circle cx="${x}" cy="${y}" r="10" fill="${color}" />`;
@@ -311,39 +318,32 @@ function pickPlayerStats(active, payloadMeta) {
   const s = active?.stats && typeof active.stats === "object" ? active.stats : {};
   const m = payloadMeta && typeof payloadMeta === "object" ? payloadMeta : {};
 
-  const hits = s.hits ?? s.hitCount ?? m.hits ?? m.hitCount ?? 0;
-  const miss = s.miss ?? s.misses ?? m.miss ?? m.misses ?? 0;
-  const simple = s.simple ?? s.singles ?? m.simple ?? m.singles ?? 0;
-  const double_ = s.double ?? s.doubles ?? m.double ?? m.doubles ?? 0;
-  const triple = s.triple ?? s.triples ?? m.triple ?? m.triples ?? 0;
-  const bull = s.bull ?? s.bulls ?? m.bull ?? m.bulls ?? 0;
-  const dbull = s.dbull ?? s.doubleBull ?? s.dbulls ?? m.dbull ?? m.doubleBull ?? m.dbulls ?? 0;
-  const bust = s.bust ?? s.busts ?? m.bust ?? m.busts ?? 0;
+  const miss = num(s.miss ?? s.misses ?? m.miss ?? m.misses ?? 0, 0);
+  const simple = num(s.simple ?? s.singles ?? m.simple ?? m.singles ?? 0, 0);
+  const double_ = num(s.double ?? s.doubles ?? m.double ?? m.doubles ?? 0, 0);
+  const triple = num(s.triple ?? s.triples ?? m.triple ?? m.triples ?? 0, 0);
+  const bull = num(s.bull ?? s.bulls ?? m.bull ?? m.bulls ?? 0, 0);
+  const dbull = num(s.dbull ?? s.doubleBull ?? s.dbulls ?? m.dbull ?? m.doubleBull ?? m.dbulls ?? 0, 0);
+  const bust = num(s.bust ?? s.busts ?? m.bust ?? m.busts ?? 0, 0);
 
   const avg3d = s.avg3d ?? s.avg3 ?? s.avg ?? m.avg3d ?? m.avg3 ?? m.avg ?? "—";
   const bestVisit = s.bestVisit ?? s.best ?? m.bestVisit ?? m.best ?? "—";
 
-  const totalThrows =
-    s.totalThrows ??
-    s.throws ??
-    s.attempts ??
-    m.totalThrows ??
-    m.throws ??
-    m.attempts ??
-    (num(hits, 0) + num(miss, 0));
+  const hits = simple + double_ + triple + bull + dbull + miss;
+  const totalThrows = hits;
 
   return {
     avg3d,
     bestVisit,
-    hits: num(hits, 0),
-    miss: num(miss, 0),
-    simple: num(simple, 0),
-    double_: num(double_, 0),
-    triple: num(triple, 0),
-    bull: num(bull, 0),
-    dbull: num(dbull, 0),
-    bust: num(bust, 0),
-    totalThrows: num(totalThrows, 0),
+    hits,
+    miss,
+    simple,
+    double_,
+    triple,
+    bull,
+    dbull,
+    bust,
+    totalThrows,
   };
 }
 
@@ -352,7 +352,6 @@ function renderSnapshot(payload) {
   try { document.body.classList.remove("is-home"); } catch {}
 
   const players = Array.isArray(payload?.players) ? payload.players : [];
-  rememberHistory(players);
 
   if (!players.length) {
     waitingScreen();
@@ -360,8 +359,9 @@ function renderSnapshot(payload) {
   }
 
   const active = players.find((p) => p?.active) || players.find((p) => String(p?.id || "") === String(payload?.currentPlayer || "")) || players[0];
+  rememberHistory(players, String(active?.id || active?.name || ""));
   const palette = ["#53e7ff", "#ffd55b", "#ffffff", "#ff66d1", "#63ff97", "#ff8f5b", "#9da7ff", "#8df0ff", "#ff5b7d", "#c5ff5b", "#ffb45b", "#d095ff"];
-  const orderIds = baseOrderIds.length ? baseOrderIds.slice() : players.map((p, idx) => String(p?.id || p?.name || idx));
+  const orderIds = players.map((p, idx) => String(p?.id || p?.name || idx));
   const colorById = Object.fromEntries(orderIds.map((id, idx) => [id, palette[idx % palette.length]]));
   const idx = orderIds.findIndex((id) => id === String(active?.id || active?.name || ""));
   const rotatedIds = idx >= 0 ? orderIds.slice(idx).concat(orderIds.slice(0, idx)) : orderIds.slice();
@@ -371,7 +371,7 @@ function renderSnapshot(payload) {
   const gameTitle = payload?.title || payload?.game || "Multisports";
 
   const ps = pickPlayerStats(active, meta);
-  const totalRef = ps.totalThrows > 0 ? ps.totalThrows : (ps.hits + ps.miss);
+  const totalRef = ps.totalThrows > 0 ? ps.totalThrows : ps.hits;
   const rankMap = getRankMap(players);
   const activeRank = rankMap.get(String(active?.id || active?.name || "")) || 1;
   const activeColor = colorById[String(active?.id || active?.name || "")] || "#53e7ff";
@@ -403,7 +403,7 @@ function renderSnapshot(payload) {
 
               <div class="score-card">
                 <div class="score-rank">#${esc(activeRank)}</div>
-                <div class="score-label" style="color:${activeColor};">${esc((payload?.game || "score").toUpperCase())}</div>
+                <div class="score-label" style="color:${activeColor};">SCORE</div>
                 <div class="score-value" style="color:${activeColor};">${esc(active?.score ?? 0)}</div>
               </div>
             </div>
