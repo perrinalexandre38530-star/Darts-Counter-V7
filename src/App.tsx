@@ -92,7 +92,7 @@ import CrashCatcher from "./components/CrashCatcher";
 import MobileErrorOverlay from "./components/MobileErrorOverlay";
 
 // Persistance (IndexedDB via storage.ts)
-import { loadStore, saveStore, exportCloudSnapshot, installLocalStorageDcHook } from "./lib/storage";
+import { loadStore, saveStore, exportCloudSnapshot, installLocalStorageDcHook, setStorageUser } from "./lib/storage";
 import { setCrashContext } from "./lib/crashReporter";
 import { safeJsonParse, safeJsonStringify } from "./lib/safeJson";
 import { safeArray } from "./utils/safeArray";
@@ -1343,7 +1343,7 @@ useEffect(() => {
   const online = useAuthOnline();
   // PROFILES V7: on désactive l'hydratation automatique du store depuis le cloud
   // (elle écrasait des données locales et créait des états impossibles à déboguer).
-  const [cloudHydrated, setCloudHydrated] = React.useState(true);
+  const [cloudHydrated, setCloudHydrated] = React.useState(false);
 
   // (legacy) Référence conservée pour logs/diagnostic éventuels.
   const cloudHydratedUserRef = React.useRef<string>("");
@@ -1649,6 +1649,53 @@ useEffect(() => {
   }
 
   // ✅ IMPORTANT: expose go globalement + store “vivant”
+
+
+  // ============================================================
+  // ✅ USER-SCOPED LOCAL STORE RELOAD
+  // - Recharger le store namespacé quand le user online change
+  // - Réarmer l'hydratation cloud pour ce user
+  // - Évite mélange entre comptes + permet restore cross-device
+  // ============================================================
+  React.useEffect(() => {
+    let cancelled = false;
+
+    if (!online?.ready) return;
+
+    const uid = String((online as any)?.user?.id || "").trim();
+    if (cloudHydratedUserRef.current === uid) return;
+    cloudHydratedUserRef.current = uid;
+
+    try { setStorageUser(uid || null); } catch {}
+    setCloudHydrated(false);
+
+    (async () => {
+      try {
+        const saved = await loadStore<Store>();
+        if (cancelled) return;
+
+        const next: Store = saved
+          ? {
+              ...initialStore,
+              ...saved,
+              profiles: saved.profiles ?? [],
+              friends: saved.friends ?? [],
+              history: saved.history ?? [],
+              dartSets: (saved as any).dartSets ?? getAllDartSets(),
+            }
+          : { ...initialStore };
+
+        setStore(next);
+      } catch (e) {
+        console.warn("[auth-store] reload failed", e);
+        if (!cancelled) setStore({ ...initialStore });
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [online?.ready, (online as any)?.user?.id]);
   React.useEffect(() => {
     try {
       (window as any).__appGo = go;

@@ -33,6 +33,25 @@ function armNasProfileOnboarding(userId?: string | null) {
 }
 
 
+
+async function hasRemoteSnapshot(): Promise<boolean> {
+  try {
+    const res: any = await onlineApi.pullStoreSnapshot();
+    if (res?.status !== "ok") return false;
+    const payload = res?.payload ?? null;
+    const cloudStore = payload?.store ?? payload?.idb?.store ?? payload ?? null;
+    if (!cloudStore || typeof cloudStore !== "object") return false;
+    const hasProfiles = Array.isArray((cloudStore as any).profiles) && (cloudStore as any).profiles.length > 0;
+    const hasHistory = Array.isArray((cloudStore as any).history) && (cloudStore as any).history.length > 0;
+    const hasFriends = Array.isArray((cloudStore as any).friends) && (cloudStore as any).friends.length > 0;
+    const hasDartSets = Array.isArray((cloudStore as any).dartSets) && (cloudStore as any).dartSets.length > 0;
+    const hasActive = !!(cloudStore as any).activeProfileId;
+    return !!(hasProfiles || hasHistory || hasFriends || hasDartSets || hasActive);
+  } catch {
+    return false;
+  }
+}
+
 export default function AuthV7Signup({ go }: Props) {
   const [email, setEmail] = React.useState("");
   const [password, setPassword] = React.useState("");
@@ -60,9 +79,10 @@ export default function AuthV7Signup({ go }: Props) {
       if (nasMode || session?.token || session?.user?.id) {
         const uid = String(session?.user?.id || "").trim();
         const linked = hasLinkedLocalProfile(uid);
+        const remote = nasMode ? await hasRemoteSnapshot() : false;
         setInfo("Compte créé et connecté ✅");
 
-        if (nasMode && uid && !linked) {
+        if (nasMode && uid && !linked && !remote) {
           armNasProfileOnboarding(uid);
           go("profiles", {
             view: "locals",
