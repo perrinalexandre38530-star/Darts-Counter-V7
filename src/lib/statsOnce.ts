@@ -52,19 +52,5 @@ export function commitLegStatsOnce(opts: {
 // X01Play imports commitX01Leg in some versions.
 // ------------------------------------------------------------
 export function commitX01Leg(..._args: any[]): void {
-  try {
-    // If your module already exposes another commit function, call it here.
-    // Example patterns (adjust if you have something like commitLeg/commitX01):
-    const mod: any = {};
-    if (typeof mod.commitLeg === "function") {
-      mod.commitLeg(..._args);
-      return;
-    }
-    if (typeof mod.commitX01 === "function") {
-      mod.commitX01(..._args);
-      return;
-    }
-  } catch {}
-
-  // No-op fallback: keeps build green.
+  // Compat no-op: les stats X01 passent désormais par history -> stats_index.
 }

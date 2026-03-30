@@ -1366,3 +1366,12 @@ export async function nukeAllKeepActiveProfile(): Promise<void> {
     }
   }
 }
+
+
+// 🔥 NAS SYNC TRIGGER
+try {
+  console.log("🔥 saveStore déclenché");
+  emitCloudChange(scopedCloudChangeReason("idb:set:store"));
+} catch (e) {
+  console.warn("emitCloudChange failed", e);
+}

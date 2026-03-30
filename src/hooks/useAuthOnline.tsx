@@ -423,7 +423,15 @@ export function AuthOnlineProvider({ children }: { children: React.ReactNode }) 
       try {
         const ok = await (onlineApi as any).signup?.(payload);
         const success = typeof ok === "boolean" ? ok : !ok?.error;
-        return success;
+        if (success && (onlineApi as any)?.getCurrentSession) {
+  try {
+    const s:any = await (onlineApi as any).getCurrentSession();
+    if (s?.user?.id) {
+      localStorage.setItem("dc_user_id", s.user.id);
+    }
+  } catch {}
+}
+return success;
       } catch (e) {
         console.warn("[useAuthOnline] signup error:", e);
         return false;
@@ -437,7 +445,15 @@ export function AuthOnlineProvider({ children }: { children: React.ReactNode }) 
       try {
         const ok = await (onlineApi as any).login?.(payload);
         const success = typeof ok === "boolean" ? ok : !ok?.error;
-        return success;
+        if (success && (onlineApi as any)?.getCurrentSession) {
+  try {
+    const s:any = await (onlineApi as any).getCurrentSession();
+    if (s?.user?.id) {
+      localStorage.setItem("dc_user_id", s.user.id);
+    }
+  } catch {}
+}
+return success;
       } catch (e) {
         console.warn("[useAuthOnline] login error:", e);
         return false;

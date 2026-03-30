@@ -237,6 +237,27 @@ export async function addMatchSummary(arg: {
    API 3 — Lecture simplifiée (Home/Profils/Stats)
 ============================================================ */
 export function getBasicProfileStatsSync(playerId: string) {
+  try {
+    const idx = (globalThis as any)?.__stats_index_cache;
+    const entry = idx?.byPlayer?.[String(playerId)];
+    if (entry) {
+      const matches = Number(entry.matches ?? 0) || 0;
+      const wins = Number(entry.wins ?? 0) || 0;
+      const dartsThrown = Number(entry.dartsThrown ?? 0) || 0;
+      const pointsScored = Number(entry.pointsScored ?? 0) || 0;
+      const avg3 = Number(entry.avg3 ?? (dartsThrown > 0 ? (pointsScored / dartsThrown) * 3 : 0)) || 0;
+      const coHits = Number(entry.checkoutHits ?? 0) || 0;
+      const coAtt = Number(entry.checkoutAttempts ?? 0) || 0;
+      return {
+        avg3: Math.round(avg3 * 100) / 100,
+        bestVisit: Number(entry.bestVisit ?? 0) || 0,
+        bestCheckout: Number(entry.bestCheckout ?? 0) || 0,
+        winPct: matches > 0 ? Math.round((wins / matches) * 1000) / 10 : 0,
+        coPct: coAtt > 0 ? Math.round((coHits / coAtt) * 1000) / 10 : 0,
+        legs: matches,
+      };
+    }
+  } catch {}
   const db = load();
   const a = db[playerId];
 
@@ -336,18 +357,8 @@ export async function purgeAllStatsForProfile(profileId: string) {
 // Compat export (legacy imports)
 // Some files import recordLegToLite; keep build compatible.
 // ------------------------------------------------------------
-export async function recordLegToLite(...args: any[]): Promise<void> {
+export async function recordLegToLite(..._args: any[]): Promise<void> {
   try {
-    // If a newer function exists, call it (best effort).
-    const anyMod: any = (globalThis as any);
-    // Try common internal names (depends on your file's existing API)
-    const self: any = (anyMod?.statsLiteIDB ?? null);
-
-    if (typeof (self?.recordLegToLite) === "function") {
-      await self.recordLegToLite(...args);
-      return;
-    }
+    scheduleStatsIndexRefresh({ reason: "record-leg-to-lite-compat", debounceMs: 120, includeNonFinished: false });
   } catch {}
-
-  // No-op fallback (prevents build crash; doesn't break gameplay)
 }

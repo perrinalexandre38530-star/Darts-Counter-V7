@@ -42,17 +42,6 @@ export async function resetStatsForProfile(playerId: string): Promise<void> {
     } catch {}
   }
 
-  // 3) Purger quick-stats localStorage
-  try {
-    const QUICK = "dc-quick-stats";
-    const raw = localStorage.getItem(QUICK);
-    if (raw) {
-      const parsed = JSON.parse(raw);
-      delete parsed[playerId];
-      localStorage.setItem(QUICK, JSON.stringify(parsed));
-    }
-  } catch {}
-
   try {
     cancelScheduledStatsIndexRefresh();
     await scheduleStatsIndexRefresh({

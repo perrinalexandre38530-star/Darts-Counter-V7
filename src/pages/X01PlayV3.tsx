@@ -40,7 +40,6 @@ import { buildLegStatsFromV3LiveForOverlay } from "../lib/x01v3/x01V3LegStatsAda
 import GameplayLayout from "../components/gameplay/GameplayLayout";
 import tickerX01 from "../assets/tickers/ticker_x01.png";
 
-import { StatsBridge } from "../lib/statsBridge";
 import { loadBots } from "./ProfilesBots";
 import { appendGoogleCastDiag, sendCastSnapshot, subscribeGoogleCastStatus } from "../cast/googleCast";
 
@@ -5979,7 +5978,7 @@ function saveX01V3MatchToHistory({
     History.upsert(record);
   } catch (err) {
     console.warn(
-      "[X01PlayV3] History/StatsBridge save failed",
+      "[X01PlayV3] History save failed",
       err
     );
   }
