@@ -26,16 +26,23 @@ function normalizeProvider(raw: unknown): "supabase" | "hybrid" | "nas" {
 }
 
 export const ONLINE_PROVIDER = normalizeProvider((import.meta as any)?.env?.VITE_ONLINE_PROVIDER);
-export const NAS_API_URL = sanitizeUrl((import.meta as any)?.env?.VITE_NAS_API_URL) || "http://api.multisports-api.fr:3000";
+export const NAS_API_URL =
+  sanitizeUrl((import.meta as any)?.env?.VITE_NAS_API_URL) || "http://api.multisports-api.fr:3000";
 
 export function isNasProviderEnabled(): boolean {
   return ONLINE_PROVIDER === "nas";
 }
 
+export function isSupabaseEnabled(): boolean {
+  return ONLINE_PROVIDER === "supabase" || ONLINE_PROVIDER === "hybrid";
+}
+
 export function isNasDataSyncEnabled(): boolean {
   if (!NAS_API_URL) return false;
   if (ONLINE_PROVIDER === "nas" || ONLINE_PROVIDER === "hybrid") return true;
-  const raw = String((import.meta as any)?.env?.VITE_NAS_DATA_SYNC || "").trim().toLowerCase();
+  const raw = String((import.meta as any)?.env?.VITE_NAS_DATA_SYNC || "")
+    .trim()
+    .toLowerCase();
   return raw === "1" || raw === "true" || raw === "yes" || raw === "on";
 }
 

@@ -7,10 +7,10 @@
   <script src="//www.gstatic.com/cast/sdk/libs/caf_receiver/v3/cast_receiver_framework.js"></script>
   <style>
     :root{
-      --bg:#000000;
-      --bgGlow1: rgba(0,145,255,.14);
-      --bgGlow2: rgba(255,79,216,.08);
-      --bgGlow3: rgba(66,232,255,.08);
+      --bg:#15171b;
+      --bgGlow1: rgba(40,44,54,.55);
+      --bgGlow2: rgba(255,79,216,.06);
+      --bgGlow3: rgba(83,231,255,.05);
       --panel:rgba(255,255,255,.045);
       --panelBorder:rgba(255,255,255,.10);
       --text:#f7f6f3;
@@ -28,11 +28,12 @@
       color:var(--text);
       font-family:Inter,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
       background:
-        radial-gradient(1200px 680px at 50% 0%, var(--bgGlow1) 0%, rgba(0,145,255,0) 64%),
+        radial-gradient(1200px 680px at 50% 0%, var(--bgGlow1) 0%, rgba(0,0,0,0) 64%),
         radial-gradient(900px 460px at 84% 22%, var(--bgGlow2), rgba(255,79,216,0) 58%),
         radial-gradient(900px 460px at 18% 80%, var(--bgGlow3), rgba(66,232,255,0) 58%),
         var(--bg);
       overflow:hidden;
+      --theme-accent:#53e7ff;
     }
 
     body::before{
@@ -88,12 +89,12 @@
     .pill, #build, #status{ display:none !important; }
 
     h1{
+      color:var(--theme-accent);
       margin:0;
       font-size:clamp(1.9rem,3.6vw,3.8rem);
       line-height:.95;
       font-weight:1000;
       letter-spacing:-.04em;
-      color:#f8fbff;
       text-shadow:
         0 0 12px rgba(83,231,255,.16),
         0 0 22px rgba(255,79,216,.08),
@@ -105,7 +106,7 @@
       font-size:clamp(1.1rem,2vw,1.9rem);
       line-height:1;
       font-weight:1000;
-      color:var(--gold);
+      color:var(--theme-accent);
       text-shadow:0 0 14px rgba(244,210,108,.18);
       white-space:nowrap;
       margin-left:auto;
@@ -200,14 +201,15 @@
     }
 
     .panel{
-      border:1px solid var(--panelBorder);
+      border:1px solid color-mix(in srgb, var(--theme-accent) 35%, rgba(255,255,255,.10));
       border-radius:20px;
       background:
-        radial-gradient(circle at 20% 20%, rgba(83,231,255,.06), transparent 32%),
-        radial-gradient(circle at 84% 80%, rgba(255,79,216,.05), transparent 28%),
-        linear-gradient(180deg, rgba(255,255,255,.05), rgba(255,255,255,.025));
+        radial-gradient(circle at 20% 20%, color-mix(in srgb, var(--theme-accent) 14%, transparent), transparent 32%),
+        radial-gradient(circle at 84% 80%, rgba(255,79,216,.04), transparent 28%),
+        linear-gradient(180deg, rgba(28,30,36,.96), rgba(19,21,26,.98));
       box-shadow:
-        0 18px 42px rgba(0,0,0,.28),
+        0 0 28px color-mix(in srgb, var(--theme-accent) 18%, transparent),
+        0 18px 42px rgba(0,0,0,.34),
         inset 0 1px 0 rgba(255,255,255,.04);
       backdrop-filter: blur(8px);
       overflow:hidden;
@@ -314,11 +316,12 @@
     .active-panel{
       padding:12px;
       flex:0 0 auto;
+      box-shadow:0 0 34px color-mix(in srgb, var(--theme-accent) 18%, transparent), 0 18px 42px rgba(0,0,0,.34), inset 0 1px 0 rgba(255,255,255,.04);
     }
 
     .active-top{
       display:grid;
-      grid-template-columns:180px minmax(0,1fr);
+      grid-template-columns:170px minmax(0,1fr);
       gap:12px;
       align-items:center;
     }
@@ -351,6 +354,7 @@
     }
 
     .score-card{
+      position:relative;
       min-height:134px;
       border-radius:20px;
       border:1px solid rgba(255,255,255,.10);
@@ -481,7 +485,8 @@
       body::before{inset:12px;border-radius:22px;}
       #wrap{padding:12px 14px 10px;}
       .topbar{top:12px;left:14px;right:14px;min-height:40px;}
-      h1{font-size:clamp(1.6rem,3vw,3rem);}
+      h1{
+      color:var(--theme-accent);font-size:clamp(1.6rem,3vw,3rem);}
       #gameBadge{font-size:clamp(1rem,1.8vw,1.6rem);}
       #content{padding-top:46px;}
       .receiver-layout{grid-template-columns:minmax(190px, 228px) minmax(0,1fr);gap:10px;}
@@ -492,7 +497,8 @@
       .mini-player-score{font-size:14px;}
       .active-top{grid-template-columns:150px minmax(0,1fr);gap:10px;}
       .active-name{font-size:20px;margin-top:8px;}
-      .score-card{min-height:118px;padding:10px 12px;}
+      .score-card{
+      position:relative;min-height:118px;padding:10px 12px;}
       .score-label{font-size:14px;margin-bottom:4px;}
       .score-value{font-size:clamp(64px, 8.4vw, 110px);}
       .graph-svg{height:92px;}
@@ -507,7 +513,8 @@
       .graph-svg{height:80px;}
       .stats-grid{grid-template-columns:repeat(5, minmax(0,1fr));}
       .stat-cell{min-height:38px;}
-      .score-card{min-height:106px;}
+      .score-card{
+      position:relative;min-height:106px;}
     }
 
 
@@ -538,3 +545,5 @@
   <script src="receiver.js?v=CAF-VISUAL-X01-2026-03-19-5"></script>
 </body>
 </html>
+
+<style>.score-rank{position:absolute;right:14px;top:12px;font-size:20px;font-weight:1000;color:var(--theme-accent);text-shadow:0 0 12px color-mix(in srgb, var(--theme-accent) 26%, transparent);} .score-card,.graph-panel,.stat-cell{box-shadow:0 0 22px color-mix(in srgb, var(--theme-accent) 14%, transparent), inset 0 1px 0 rgba(255,255,255,.04);} .score-label,.score-value,.panel-title,.panel-subtitle{color:var(--theme-accent);} .score-value{ text-shadow:0 0 16px color-mix(in srgb, var(--theme-accent) 20%, transparent),0 10px 28px rgba(0,0,0,.30);} .graph-panel{padding:14px 16px;} .graph-svg{padding:0 4px;}</style>

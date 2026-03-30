@@ -12,10 +12,10 @@ if (buildEl) buildEl.textContent = `Build: ${BUILD}`;
 const logs = [];
 const historyMap = new Map();
 const avatarCache = new Map();
+const baseOrderIds = [];
+const roundAccumulator = new Map();
+let lastRoundScores = new Map();
 let lastPayload = null;
-let lastPlayersKey = "";
-let lastActiveId = "";
-let turnsSinceRoundCommit = 0;
 
 function pushDiag(entry, extra) {
   const row = { at: new Date().toISOString(), entry, extra: extra == null ? null : extra };
@@ -125,68 +125,70 @@ function avatarHtml(player, size = 116, smallText = false) {
   `;
 }
 
-function rememberHistory(players, activeId) {
-  const ids = players.map((p, idx) => String(p?.id || p?.name || idx));
-  const playersKey = ids.join("|");
-  if (playersKey !== lastPlayersKey) {
-    historyMap.clear();
-    lastPlayersKey = playersKey;
-    lastActiveId = String(activeId || ids[0] || "");
-    turnsSinceRoundCommit = 0;
-    players.forEach((p, idx) => {
-      const id = ids[idx];
-      historyMap.set(id, { id, name: String(p?.name || "Joueur"), points: [] });
-    });
-    return;
+function syncBaseOrder(players) {
+  const incomingIds = players.map((p, idx) => String(p?.id || p?.name || idx));
+  incomingIds.forEach((id) => { if (!baseOrderIds.includes(id)) baseOrderIds.push(id); });
+  for (let i = baseOrderIds.length - 1; i >= 0; i--) {
+    if (!incomingIds.includes(baseOrderIds[i])) baseOrderIds.splice(i, 1);
   }
+}
 
+function getRankMap(players) {
+  const ranked = players.slice().sort((a, b) => num(a?.score, 0) - num(b?.score, 0));
+  const out = new Map();
+  ranked.forEach((p, idx) => out.set(String(p?.id || p?.name || idx), idx + 1));
+  return out;
+}
+
+function commitRound(players, scoreMap) {
+  const shadow = players.map((p, idx) => ({ ...p, score: scoreMap.get(String(p?.id || p?.name || idx)) ?? num(p?.score, 0) }));
+  const rankById = getRankMap(shadow);
   players.forEach((p, idx) => {
-    const id = ids[idx];
-    const entry = historyMap.get(id) || { id, name: String(p?.name || "Joueur"), points: [] };
-    entry.name = String(p?.name || entry.name || "Joueur");
-    historyMap.set(id, entry);
-  });
-
-  const currentActiveId = String(activeId || ids[0] || "");
-  if (!currentActiveId) return;
-  if (!lastActiveId) {
-    lastActiveId = currentActiveId;
-    return;
-  }
-  if (currentActiveId === lastActiveId) return;
-
-  turnsSinceRoundCommit += 1;
-  lastActiveId = currentActiveId;
-
-  if (turnsSinceRoundCommit < players.length) return;
-  turnsSinceRoundCommit = 0;
-
-  const ranked = players
-    .slice()
-    .sort((a, b) => num(a?.score, 0) - num(b?.score, 0));
-  const rankById = new Map();
-  ranked.forEach((p, idx) => rankById.set(String(p?.id || p?.name || idx), idx + 1));
-  const maxRank = Math.max(1, players.length);
-
-  players.forEach((p, idx) => {
-    const id = ids[idx];
+    const id = String(p?.id || p?.name || idx);
     const rank = rankById.get(id) || idx + 1;
-    const visual = (maxRank - rank) * 100;
-    const entry = historyMap.get(id) || { id, name: String(p?.name || "Joueur"), points: [] };
+    const entry = historyMap.get(id) || { id, name: String(p?.name || "Joueur"), points: [{ round: 0, rank: players.length }] };
+    entry.name = String(p?.name || entry.name || "Joueur");
     const last = entry.points[entry.points.length - 1];
-    if (last !== visual) entry.points.push(visual);
-    while (entry.points.length > 18) entry.points.shift();
+    if (!last || last.rank !== rank) entry.points.push({ round: (last?.round || 0) + 1, rank });
+    else entry.points.push({ round: (last?.round || 0) + 1, rank });
+    while (entry.points.length > 20) entry.points.shift();
     historyMap.set(id, entry);
   });
 }
 
-function linePath(values, w, h, min, max) {
-  if (!values.length) return "";
-  const span = Math.max(1, max - min);
-  return values
-    .map((v, i) => {
-      const x = values.length === 1 ? 0 : (i * w) / (values.length - 1);
-      const y = h - ((v - min) / span) * h;
+function rememberHistory(players) {
+  syncBaseOrder(players);
+  if (!players.length) return;
+  const currentScores = new Map(players.map((p, idx) => [String(p?.id || p?.name || idx), num(p?.score, 0)]));
+
+  if (!lastRoundScores.size) {
+    players.forEach((p, idx) => {
+      const id = String(p?.id || p?.name || idx);
+      historyMap.set(id, { id, name: String(p?.name || "Joueur"), points: [{ round: 0, rank: idx + 1 }] });
+    });
+    lastRoundScores = new Map(currentScores);
+    return;
+  }
+
+  currentScores.forEach((score, id) => {
+    const prev = lastRoundScores.get(id);
+    if (prev !== score) roundAccumulator.set(id, score);
+  });
+
+  if (roundAccumulator.size >= players.length) {
+    commitRound(players, currentScores);
+    roundAccumulator.clear();
+  }
+
+  lastRoundScores = new Map(currentScores);
+}
+
+function linePath(points, w, h, rounds, playerCount) {
+  if (!points.length) return "";
+  return points
+    .map((pt, i) => {
+      const x = rounds <= 1 ? 24 : 24 + ((pt.round - 1) * (w - 48)) / Math.max(1, rounds - 1);
+      const y = 16 + ((pt.rank - 1) * (h - 32)) / Math.max(1, playerCount - 1);
       return `${i === 0 ? "M" : "L"}${x.toFixed(1)},${y.toFixed(1)}`;
     })
     .join(" ");
@@ -195,33 +197,48 @@ function linePath(values, w, h, min, max) {
 function graphHtml(players, colorById) {
   if (players.length < 3) return "";
 
-  const series = players.map((p) => historyMap.get(String(p?.id || p?.name)) || { points: [0] });
-  const all = series.flatMap((s) => s.points);
-  const min = Math.min(...all, 0);
-  const max = Math.max(...all, 100);
-  const w = 960;
-  const h = 150;
-
+  const series = players.map((p) => historyMap.get(String(p?.id || p?.name)) || { points: [{ round: 0, rank: players.length }] });
+  const rounds = Math.max(1, ...series.map((s) => s.points[s.points.length - 1]?.round || 1));
+  const w = 980;
+  const h = 178;
   const defs = players.map((p, idx) => {
     const color = colorById[String(p?.id || p?.name || idx)] || "#53e7ff";
     return `
       <filter id="glow-${idx}" x="-50%" y="-50%" width="200%" height="200%">
-        <feGaussianBlur stdDeviation="3.5" result="blur"/>
-        <feMerge>
-          <feMergeNode in="blur"/>
-          <feMergeNode in="SourceGraphic"/>
-        </feMerge>
+        <feGaussianBlur stdDeviation="3.8" result="blur"/>
+        <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
       </filter>
     `;
   }).join("");
 
+  const gridX = Array.from({ length: rounds }, (_, i) => {
+    const x = rounds <= 1 ? 24 : 24 + (i * (w - 48)) / Math.max(1, rounds - 1);
+    return `<line x1="${x}" y1="16" x2="${x}" y2="${h - 16}" stroke="#fff" opacity="0.08" />`;
+  }).join("");
+
+  const gridY = Array.from({ length: players.length }, (_, i) => {
+    const y = 16 + (i * (h - 32)) / Math.max(1, players.length - 1);
+    return `<line x1="24" y1="${y}" x2="${w - 24}" y2="${y}" stroke="#fff" opacity="0.12" />`;
+  }).join("");
+
+  const labels = Array.from({ length: rounds }, (_, i) => {
+    const x = rounds <= 1 ? 24 : 24 + (i * (w - 48)) / Math.max(1, rounds - 1);
+    return `<text x="${x}" y="${h - 2}" text-anchor="middle" font-size="13" fill="rgba(255,255,255,.72)" font-weight="800">${i + 1}</text>`;
+  }).join("");
+
   const lines = series.map((s, idx) => {
-    const d = linePath(s.points, w, h, min, max);
+    const d = linePath(s.points, w, h - 20, rounds, players.length);
     const p = players[idx];
     const color = colorById[String(p?.id || p?.name || idx)] || "#53e7ff";
+    const last = s.points[s.points.length - 1];
+    const x = rounds <= 1 ? 24 : 24 + ((last.round - 1) * (w - 48)) / Math.max(1, rounds - 1);
+    const y = 16 + ((last.rank - 1) * ((h - 20) - 32)) / Math.max(1, players.length - 1);
+    const avatar = getAvatarSrc(p);
+    const end = avatar ? `<image href="${esc(avatar)}" x="${x - 11}" y="${y - 11}" width="22" height="22" clip-path="circle(11px at 11px 11px)" />` : `<circle cx="${x}" cy="${y}" r="10" fill="${color}" />`;
     return `
-      <path d="${d}" fill="none" stroke="${color}" stroke-width="7" stroke-linecap="round" stroke-linejoin="round" opacity="0.14" filter="url(#glow-${idx})" />
+      <path d="${d}" fill="none" stroke="${color}" stroke-width="8" stroke-linecap="round" stroke-linejoin="round" opacity="0.12" filter="url(#glow-${idx})" />
       <path d="${d}" fill="none" stroke="${color}" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round" opacity="0.98" />
+      ${end}
     `;
   }).join("");
 
@@ -229,17 +246,14 @@ function graphHtml(players, colorById) {
     <section class="panel graph-panel">
       <div class="panel-title-row">
         <div class="panel-title" style="margin-bottom:0;">Évolution</div>
-        <div class="panel-subtitle">3 joueurs et +</div>
+        <div class="panel-subtitle">Tours</div>
       </div>
       <svg viewBox="0 0 ${w} ${h}" class="graph-svg" preserveAspectRatio="none">
         <defs>${defs}</defs>
-        <g opacity="0.12">
-          <line x1="0" y1="${h}" x2="${w}" y2="${h}" stroke="#fff"/>
-          <line x1="0" y1="${h*0.66}" x2="${w}" y2="${h*0.66}" stroke="#fff"/>
-          <line x1="0" y1="${h*0.33}" x2="${w}" y2="${h*0.33}" stroke="#fff"/>
-          <line x1="0" y1="0" x2="${w}" y2="0" stroke="#fff"/>
-        </g>
+        ${gridX}
+        ${gridY}
         ${lines}
+        ${labels}
       </svg>
     </section>
   `;
@@ -284,11 +298,11 @@ function miniPlayerCard(player, isActive, color) {
   `;
 }
 
-function statCell(label, value) {
+function statCell(label, value, color) {
   return `
-    <div class="stat-cell">
-      <div class="stat-label">${esc(label)}</div>
-      <div class="stat-value">${esc(value)}</div>
+    <div class="stat-cell" style="box-shadow:0 0 18px ${color}18, inset 0 1px 0 rgba(255,255,255,.03); border-color:${color}44;">
+      <div class="stat-label" style="color:${color};">${esc(label)}</div>
+      <div class="stat-value" style="color:${color};">${esc(value)}</div>
     </div>
   `;
 }
@@ -321,7 +335,7 @@ function pickPlayerStats(active, payloadMeta) {
   return {
     avg3d,
     bestVisit,
-    hits: Math.max(num(totalThrows, 0), num(hits, 0)),
+    hits: num(hits, 0),
     miss: num(miss, 0),
     simple: num(simple, 0),
     double_: num(double_, 0),
@@ -338,27 +352,30 @@ function renderSnapshot(payload) {
   try { document.body.classList.remove("is-home"); } catch {}
 
   const players = Array.isArray(payload?.players) ? payload.players : [];
-  const activeIdRaw = String(payload?.currentPlayer || "");
-  rememberHistory(players, activeIdRaw);
+  rememberHistory(players);
 
   if (!players.length) {
     waitingScreen();
     return;
   }
 
-  const active = players.find((p) => String(p?.id || "") === activeIdRaw) || players.find((p) => p?.active) || players[0];
-  const ordered = (() => {
-    const idx = players.findIndex((p) => p === active || String(p?.id || "") === String(active?.id || ""));
-    if (idx <= 0) return players.slice();
-    return players.slice(idx).concat(players.slice(0, idx));
-  })();
-  const colors = ["#53e7ff", "#ffd55b", "#ffffff", "#ff66d1", "#63ff97", "#ff8f5b", "#8aa2ff", "#ff4d6d", "#7cf3ff", "#c6ff5b", "#ffb4ff", "#ffddb0"];
-  const colorById = Object.fromEntries(players.map((p, idx) => [String(p?.id || p?.name || idx), colors[idx % colors.length]]));
+  const active = players.find((p) => p?.active) || players.find((p) => String(p?.id || "") === String(payload?.currentPlayer || "")) || players[0];
+  const palette = ["#53e7ff", "#ffd55b", "#ffffff", "#ff66d1", "#63ff97", "#ff8f5b", "#9da7ff", "#8df0ff", "#ff5b7d", "#c5ff5b", "#ffb45b", "#d095ff"];
+  const orderIds = baseOrderIds.length ? baseOrderIds.slice() : players.map((p, idx) => String(p?.id || p?.name || idx));
+  const colorById = Object.fromEntries(orderIds.map((id, idx) => [id, palette[idx % palette.length]]));
+  const idx = orderIds.findIndex((id) => id === String(active?.id || active?.name || ""));
+  const rotatedIds = idx >= 0 ? orderIds.slice(idx).concat(orderIds.slice(0, idx)) : orderIds.slice();
+  const playerMap = new Map(players.map((p, idx) => [String(p?.id || p?.name || idx), p]));
+  const ordered = rotatedIds.map((id) => playerMap.get(id)).filter(Boolean);
   const meta = payload?.meta && typeof payload.meta === "object" ? payload.meta : {};
   const gameTitle = payload?.title || payload?.game || "Multisports";
 
   const ps = pickPlayerStats(active, meta);
   const totalRef = ps.totalThrows > 0 ? ps.totalThrows : (ps.hits + ps.miss);
+  const rankMap = getRankMap(players);
+  const activeRank = rankMap.get(String(active?.id || active?.name || "")) || 1;
+  const activeColor = colorById[String(active?.id || active?.name || "")] || "#53e7ff";
+  try { document.body.style.setProperty("--theme-accent", activeColor); } catch {}
 
   if (statusEl) statusEl.textContent = payload?.title || payload?.game || "Partie en cours";
   setGameBadge(gameTitle);
@@ -378,31 +395,32 @@ function renderSnapshot(payload) {
             <div class="active-top">
               <div class="active-left">
                 <div class="active-avatar-wrap">
-                  ${avatarHtml(active, 92)}
+                  ${avatarHtml(active, 108)}
                 </div>
 
-                <div class="active-name" style="color:${colorById[String(active?.id || active?.name || "")] || '#f4d26c'};">${esc(active?.name || "Joueur")}</div>
+                <div class="active-name" style="color:${activeColor};">${esc(active?.name || "Joueur")}</div>
               </div>
 
               <div class="score-card">
-                <div class="score-label">${esc((payload?.game || "score").toUpperCase())}</div>
-                <div class="score-value">${esc(active?.score ?? 0)}</div>
+                <div class="score-rank">#${esc(activeRank)}</div>
+                <div class="score-label" style="color:${activeColor};">${esc((payload?.game || "score").toUpperCase())}</div>
+                <div class="score-value" style="color:${activeColor};">${esc(active?.score ?? 0)}</div>
               </div>
             </div>
 
             <div class="active-bottom">
               ${graphHtml(players, colorById)}
               <div class="stats-grid">
-                ${statCell("Avg 3D", ps.avg3d)}
-                ${statCell("Best volée", ps.bestVisit)}
-                ${statCell("Hits", ps.hits)}
-                ${statCell("Miss", `${ps.miss} - ${pct(ps.miss, totalRef)}`)}
-                ${statCell("Simple", formatStatPair(ps.simple, totalRef))}
-                ${statCell("Double", formatStatPair(ps.double_, totalRef))}
-                ${statCell("Triple", formatStatPair(ps.triple, totalRef))}
-                ${statCell("Bull", formatStatPair(ps.bull, totalRef))}
-                ${statCell("DBull", formatStatPair(ps.dbull, totalRef))}
-                ${statCell("Bust", formatStatPair(ps.bust, totalRef))}
+                ${statCell("Avg 3D", ps.avg3d, activeColor)}
+                ${statCell("Best volée", ps.bestVisit, activeColor)}
+                ${statCell("Hits", ps.hits, activeColor)}
+                ${statCell("Miss", `${ps.miss} - ${pct(ps.miss, totalRef)}`, activeColor)}
+                ${statCell("Simple", formatStatPair(ps.simple, totalRef), activeColor)}
+                ${statCell("Double", formatStatPair(ps.double_, totalRef), activeColor)}
+                ${statCell("Triple", formatStatPair(ps.triple, totalRef), activeColor)}
+                ${statCell("Bull", formatStatPair(ps.bull, totalRef), activeColor)}
+                ${statCell("DBull", formatStatPair(ps.dbull, totalRef), activeColor)}
+                ${statCell("Bust", formatStatPair(ps.bust, totalRef), activeColor)}
               </div>
             </div>
           </section>

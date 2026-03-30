@@ -2,11 +2,15 @@
 // src/hooks/useAuthOnline.ts
 // Auth ONLINE (Supabase) — robust anti-freeze (FIX CRITIQUE)
 // ✅ RÈGLE: NE JAMAIS bloquer l’UI si profile n’existe pas
-// ✅ L’auth = supabase.auth (session/user) POINT.
+// ✅ L’auth = session/user UNIQUEMENT
 // - init boot: getSession() + onAuthStateChange()
 // - ready=true GARANTI (finally + watchdog) pour éviter blocage AppGate
 // - profile = BONUS (best-effort), n’impacte JAMAIS status/ready
 // - expose: status, ready, loading, session, user, userId, profile, login/signup/logout/refresh
+// ✅ PATCH NAS FINAL:
+// - coupe le résidu Supabase en mode NAS (stopAutoRefresh + signOut local)
+// - évite les refresh_token CORS sur *.supabase.co quand provider=nas
+// - garde le fichier complet et le flux existant
 // ============================================================
 
 import * as React from "react";
@@ -18,14 +22,53 @@ import { isNasProviderEnabled } from "../lib/serverConfig";
 import { ensureLocalProfileForOnlineUser } from "../lib/accountBridge";
 import type { OnlineProfile } from "../lib/onlineTypes";
 
+async function cleanupSupabaseLocalSessionForNas(): Promise<void> {
+  try {
+    if (!isNasProviderEnabled()) return;
+
+    try {
+      const authAny: any = (supabase as any)?.auth;
+      if (typeof authAny?.stopAutoRefresh === "function") {
+        authAny.stopAutoRefresh();
+      }
+    } catch {}
+
+    try {
+      const authAny: any = (supabase as any)?.auth;
+      if (typeof authAny?.signOut === "function") {
+        await authAny.signOut({ scope: "local" });
+      }
+    } catch {}
+
+    try {
+      const keys: string[] = [];
+      for (let i = 0; i < localStorage.length; i += 1) {
+        const k = localStorage.key(i);
+        if (k) keys.push(k);
+      }
+      for (const k of keys) {
+        if (k.startsWith("sb-") || k.includes("supabase.auth.token")) {
+          try {
+            localStorage.removeItem(k);
+          } catch {}
+        }
+      }
+    } catch {}
+
+    try {
+      const authAny: any = (supabase as any)?.auth;
+      if (typeof authAny?.stopAutoRefresh === "function") {
+        authAny.stopAutoRefresh();
+      }
+    } catch {}
+  } catch (e) {
+    console.warn("[useAuthOnline] cleanupSupabaseLocalSessionForNas failed:", e);
+  }
+}
 
 async function ensureOnlineProfileRow(user: User): Promise<void> {
   try {
     if (isNasProviderEnabled()) return;
-    // ✅ IMPORTANT:
-    // Ne pas "upsert" à chaque boot/login.
-    // Sinon on écrase le display_name choisi par l'utilisateur (et parfois l'avatar_url).
-    // On ne crée la ligne QUE si elle n'existe pas.
     const existing = await supabase
       .from("profiles")
       .select("id")
@@ -38,13 +81,9 @@ async function ensureOnlineProfileRow(user: User): Promise<void> {
       (user.email ? user.email.split("@")[0] : "Player");
     const safeBase = String(base || "Player").trim().slice(0, 16) || "Player";
     const suffix = user.id.slice(0, 6);
-    // Nick unique & stable: base + suffix
     const nickname = `${safeBase}_${suffix}`.replace(/[^a-zA-Z0-9_\-]/g, "_");
     const displayName = safeBase;
 
-    // profiles.id n'a parfois pas de DEFAULT -> on met explicitement user.id
-    // OnConflict sur id (PK) => pas besoin d'un index unique sur user_id
-    // ✅ Insert only (no overwrite)
     const { error } = await supabase.from("profiles").insert(
       {
         id: user.id,
@@ -55,7 +94,6 @@ async function ensureOnlineProfileRow(user: User): Promise<void> {
       } as any,
     );
 
-    // Si conflit de nickname (unique), on retente avec un suffixe plus long
     if (error && (error as any).code === "23505") {
       const nickname2 = `${safeBase}_${user.id.slice(0, 10)}`.replace(
         /[^a-zA-Z0-9_\-]/g,
@@ -84,7 +122,7 @@ type AuthState = {
   status: AuthStatus;
   session: Session | null;
   user: User | null;
-  profile: OnlineProfile | null; // ⚠️ BONUS: best-effort uniquement
+  profile: OnlineProfile | null;
   error?: string | null;
 };
 
@@ -99,9 +137,7 @@ const initial: AuthState = {
 };
 
 type Ctx = AuthState & {
-  // ✅ NEW: ID utilisateur unique (source of truth)
   userId: string | null;
-
   signup: (payload: { email?: string; nickname: string; password?: string }) => Promise<boolean>;
   login: (payload: { email?: string; nickname?: string; password?: string }) => Promise<boolean>;
   logout: () => Promise<void>;
@@ -113,6 +149,8 @@ const AuthOnlineContext = React.createContext<Ctx | null>(null);
 async function safeGetSession(): Promise<Session | null> {
   try {
     if (isNasProviderEnabled()) {
+      await cleanupSupabaseLocalSessionForNas();
+
       const s: any = await onlineApi.getCurrentSession();
       const user = s?.user?.id
         ? ({
@@ -143,35 +181,18 @@ async function safeGetSession(): Promise<Session | null> {
 async function safeEnsureSession(): Promise<Session | null> {
   const existing = await safeGetSession();
   if (existing?.user) return existing;
-
-  // ✅ COMPTE UTILISATEUR UNIQUE (V7)
-  // On NE crée JAMAIS de session anonyme en fallback.
-  // Sinon :
-  // - l’app semble "connectée" sans vrai compte
-  // - on peut avoir l’impression de devoir se reconnecter à chaque fois
-  // - et on pollue Supabase avec des users anonymes.
   return null;
 }
 
-/**
- * Profile = BONUS.
- * - Ne doit JAMAIS bloquer ready/status.
- * - Si l’API profile n’existe pas / RLS / table absente => return null tranquille.
- */
 async function safeLoadProfileBestEffort(user: User): Promise<OnlineProfile | null> {
   try {
     const api: any = onlineApi as any;
 
-    // ✅ onlineApi.getProfile(userId) (V7)
     if (typeof api.getProfile === "function") {
-      // ⚠️ FIX: onlineApi.getProfile() (V7) ne prend PAS d'argument.
-      // Le passer provoque une exception -> profile reste toujours null,
-      // donc pas d'hydratation (nickname/avatar/infos perso) sur les nouveaux appareils.
       const res = await api.getProfile();
       return (res?.profile ?? res ?? null) as OnlineProfile | null;
     }
 
-    // Compat très ancien
     if (typeof api.getMyProfile === "function") {
       const res = await api.getMyProfile();
       return (res?.profile ?? res ?? null) as OnlineProfile | null;
@@ -179,34 +200,36 @@ async function safeLoadProfileBestEffort(user: User): Promise<OnlineProfile | nu
 
     return null;
   } catch (e) {
-    // best-effort : on ne casse jamais l'app si table / RLS / schéma KO
     console.warn("[useAuthOnline] safeLoadProfileBestEffort failed:", e);
     return null;
   }
 }
 
-/**
- * ✅ FIX CRITIQUE:
- * status/ready DOIVENT dépendre UNIQUEMENT de session.user.
- * profile ne doit JAMAIS conditionner signed_in / signed_out.
- */
-function applyAuthFromSession(setState: React.Dispatch<React.SetStateAction<AuthState>>, session: Session | null) {
+function applyAuthFromSession(
+  setState: React.Dispatch<React.SetStateAction<AuthState>>,
+  session: Session | null
+) {
   const user = session?.user ?? null;
 
   if (user) {
-    try { setStorageUser(String(user.id || "")); } catch {}
+    try {
+      setStorageUser(String(user.id || ""));
+      localStorage.setItem("dc_user_id", String(user.id || ""));
+    } catch {}
     setState((s) => ({
       ...s,
       status: "signed_in",
       session,
       user,
-      // profile inchangé ici (chargé async en bonus)
       loading: false,
       ready: true,
       error: null,
     }));
   } else {
-    try { setStorageUser(null); } catch {}
+    try {
+      setStorageUser(null);
+      localStorage.removeItem("dc_user_id");
+    } catch {}
     setState((s) => ({
       ...s,
       status: "signed_out",
@@ -236,24 +259,16 @@ function tryBridgeLocalProfile(user: User, onlineProfile?: OnlineProfile | null)
         return String((pi as any)?.onlineUserId || "") === uid;
       });
 
-      // ✅ NAS: ne JAMAIS voler le profil local actif existant à un nouveau compte.
-      // Tant qu'aucun profil local n'est explicitement lié à ce compte online,
-      // on laisse le store intact et on déclenche un onboarding dédié côté UI.
       if (isNasProviderEnabled() && !alreadyLinked) {
         return store;
       }
 
-      // 🔴 FIX : ne pas créer un nouveau profil si un profil actif existe déjà
       const activeId = store?.activeProfileId;
       if (activeId && profiles.find((p: any) => p.id === activeId) && !alreadyLinked) {
         return store;
       }
 
-      return ensureLocalProfileForOnlineUser(
-        store,
-        user,
-        onlineProfile || undefined
-      );
+      return ensureLocalProfileForOnlineUser(store, user, onlineProfile || undefined);
     });
   } catch (e) {
     console.warn("[useAuthOnline] tryBridgeLocalProfile failed", e);
@@ -263,7 +278,6 @@ function tryBridgeLocalProfile(user: User, onlineProfile?: OnlineProfile | null)
 export function AuthOnlineProvider({ children }: { children: React.ReactNode }) {
   const [state, setState] = React.useState<AuthState>(initial);
 
-  // Watchdog anti-freeze (Safari / SW / storage / erreurs réseau)
   React.useEffect(() => {
     const t = window.setTimeout(() => {
       setState((s) => {
@@ -275,15 +289,22 @@ export function AuthOnlineProvider({ children }: { children: React.ReactNode }) 
     return () => window.clearTimeout(t);
   }, []);
 
+  React.useEffect(() => {
+    if (!isNasProviderEnabled()) return;
+    cleanupSupabaseLocalSessionForNas();
+  }, []);
+
   const refresh = React.useCallback(async () => {
     try {
+      if (isNasProviderEnabled()) {
+        await cleanupSupabaseLocalSessionForNas();
+      }
+
       setState((s) => ({ ...s, loading: true, status: "checking" }));
       const session = await safeEnsureSession();
 
-      // ✅ Auth = session/user only
       applyAuthFromSession(setState, session);
 
-      // ✅ BONUS: profile best-effort (n’impacte PAS ready/status)
       const user = session?.user ?? null;
       if (user) {
         const profile = await safeLoadProfileBestEffort(user);
@@ -306,22 +327,22 @@ export function AuthOnlineProvider({ children }: { children: React.ReactNode }) 
 
   React.useEffect(() => {
     let alive = true;
+    let supaSubscription: any = null;
+    let nasHandler: any = null;
 
     (async () => {
       try {
-        // PROFILES V7: aucune logique "restore" custom.
-        // Supabase décide de la session (getSession/onAuthStateChange).
+        if (isNasProviderEnabled()) {
+          await cleanupSupabaseLocalSessionForNas();
+        }
 
         const session = await safeEnsureSession();
         if (!alive) return;
 
-        // ✅ Auth = session/user only
         applyAuthFromSession(setState, session);
 
-        // ✅ BONUS profile async (best-effort)
         const user = session?.user ?? null;
         if (user) {
-          // ✅ Bridge local profile immediately (fallback name from email)
           tryBridgeLocalProfile(user, null);
 
           safeLoadProfileBestEffort(user).then((profile) => {
@@ -330,16 +351,15 @@ export function AuthOnlineProvider({ children }: { children: React.ReactNode }) 
               if (!s.user || s.user.id !== user.id) return s;
               return { ...s, profile };
             });
-
-            // ✅ Bridge local profile with server profile details (name/avatar)
             tryBridgeLocalProfile(user, profile);
           });
         }
 
         if (isNasProviderEnabled()) {
-          const onNasAuthChanged = async () => {
+          nasHandler = async () => {
             try {
               if (!alive) return;
+              await cleanupSupabaseLocalSessionForNas();
               const nextSession = await safeEnsureSession();
               applyAuthFromSession(setState, nextSession);
               const nextUser = nextSession?.user ?? null;
@@ -360,15 +380,10 @@ export function AuthOnlineProvider({ children }: { children: React.ReactNode }) 
             }
           };
 
-          window.addEventListener("dc-auth-changed", onNasAuthChanged as EventListener);
-          return () => {
-            try {
-              window.removeEventListener("dc-auth-changed", onNasAuthChanged as EventListener);
-            } catch {}
-          };
+          window.addEventListener("dc-auth-changed", nasHandler as EventListener);
+          return;
         }
 
-        // subscribe auth changes
         const { data } = supabase.auth.onAuthStateChange((event, nextSession) => {
           try {
             if (!alive) return;
@@ -398,15 +413,10 @@ export function AuthOnlineProvider({ children }: { children: React.ReactNode }) 
           }
         });
 
-        return () => {
-          try {
-            data?.subscription?.unsubscribe();
-          } catch {}
-        };
+        supaSubscription = data?.subscription ?? null;
       } catch (e) {
         console.warn("[useAuthOnline] boot fatal:", e);
       } finally {
-        // ✅ ready garanti quoiqu'il arrive
         if (alive) {
           setState((s) => ({ ...s, loading: false, ready: true }));
         }
@@ -415,12 +425,23 @@ export function AuthOnlineProvider({ children }: { children: React.ReactNode }) 
 
     return () => {
       alive = false;
+      try {
+        if (nasHandler) {
+          window.removeEventListener("dc-auth-changed", nasHandler as EventListener);
+        }
+      } catch {}
+      try {
+        supaSubscription?.unsubscribe?.();
+      } catch {}
     };
   }, []);
 
   const signup = React.useCallback(
     async (payload: { email?: string; nickname: string; password?: string }) => {
       try {
+        if (isNasProviderEnabled()) {
+          await cleanupSupabaseLocalSessionForNas();
+        }
         const ok = await (onlineApi as any).signup?.(payload);
         const success = typeof ok === "boolean" ? ok : !ok?.error;
         if (success) {
@@ -445,6 +466,9 @@ export function AuthOnlineProvider({ children }: { children: React.ReactNode }) 
   const login = React.useCallback(
     async (payload: { email?: string; nickname?: string; password?: string }) => {
       try {
+        if (isNasProviderEnabled()) {
+          await cleanupSupabaseLocalSessionForNas();
+        }
         const ok = await (onlineApi as any).login?.(payload);
         const success = typeof ok === "boolean" ? ok : !ok?.error;
         if (success) {
@@ -472,8 +496,13 @@ export function AuthOnlineProvider({ children }: { children: React.ReactNode }) 
     } catch (e) {
       console.warn("[useAuthOnline] signOut error:", e);
     } finally {
-      try { setStorageUser(null); } catch {}
-      // ✅ force state clean (auth only)
+      try {
+        setStorageUser(null);
+        localStorage.removeItem("dc_user_id");
+      } catch {}
+      if (isNasProviderEnabled()) {
+        await cleanupSupabaseLocalSessionForNas();
+      }
       setState((s) => ({
         ...s,
         status: "signed_out",
@@ -505,7 +534,6 @@ export function AuthOnlineProvider({ children }: { children: React.ReactNode }) 
 export function useAuthOnline() {
   const ctx = React.useContext(AuthOnlineContext);
   if (!ctx) {
-    // fallback: évite crash si provider manquant
     return {
       ...initial,
       userId: null,
