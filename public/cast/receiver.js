@@ -1,4 +1,4 @@
-const BUILD = "CAF-VISUAL-X01-STABLE-2026-03-27-LAYOUTFIT";
+const BUILD = "CAF-VISUAL-X01-STABLE-2026-03-31-ROUNDGRAPH";
 const NAMESPACE = "urn:x-cast:com.multisports.scoreboard";
 
 const contentEl = document.getElementById("content");
@@ -10,11 +10,12 @@ const gameBadgeEl = document.getElementById("gameBadge");
 if (buildEl) buildEl.textContent = `Build: ${BUILD}`;
 
 const logs = [];
-const historyMap = new Map();
 const avatarCache = new Map();
 const baseOrderIds = [];
-let roundCounter = 0;
-let lastActiveId = "";
+const completedRounds = [];
+const pendingRoundScores = new Map();
+const pendingPlayedIds = new Set();
+let lastScoresMap = new Map();
 let lastPayload = null;
 
 function pushDiag(entry, extra) {
@@ -127,6 +128,10 @@ function avatarHtml(player, size = 116, smallText = false) {
 
 function syncBaseOrder(players) {
   const incomingIds = players.map((p, idx) => String(p?.id || p?.name || idx));
+  if (!baseOrderIds.length) {
+    incomingIds.forEach((id) => baseOrderIds.push(id));
+    return;
+  }
   incomingIds.forEach((id) => { if (!baseOrderIds.includes(id)) baseOrderIds.push(id); });
   for (let i = baseOrderIds.length - 1; i >= 0; i--) {
     if (!incomingIds.includes(baseOrderIds[i])) baseOrderIds.splice(i, 1);
@@ -140,114 +145,126 @@ function getRankMap(players) {
   return out;
 }
 
-function commitRound(players, scoreMap, roundNo) {
-  const shadow = players.map((p, idx) => ({ ...p, score: scoreMap.get(String(p?.id || p?.name || idx)) ?? num(p?.score, 0) }));
-  const rankById = getRankMap(shadow);
-  players.forEach((p, idx) => {
-    const id = String(p?.id || p?.name || idx);
-    const rank = rankById.get(id) || idx + 1;
-    const entry = historyMap.get(id) || { id, name: String(p?.name || "Joueur"), points: [] };
-    entry.name = String(p?.name || entry.name || "Joueur");
-    entry.points.push({ round: roundNo, rank });
-    while (entry.points.length > 24) entry.points.shift();
-    historyMap.set(id, entry);
-  });
+function commitCompletedRound(players, scoreMap) {
+  const rankedIds = players
+    .slice()
+    .sort((a, b) => num(scoreMap.get(String(a?.id || a?.name || '')), num(a?.score, 0)) - num(scoreMap.get(String(b?.id || b?.name || '')), num(b?.score, 0)))
+    .map((p, idx) => ({ id: String(p?.id || p?.name || idx), rank: idx + 1 }));
+  const rankById = Object.fromEntries(rankedIds.map((r) => [r.id, r.rank]));
+  completedRounds.push({ round: completedRounds.length + 1, rankById });
+  while (completedRounds.length > 12) completedRounds.shift();
 }
 
-function rememberHistory(players, activeId) {
+function rememberHistory(players) {
   syncBaseOrder(players);
   if (!players.length) return;
 
   const currentScores = new Map(players.map((p, idx) => [String(p?.id || p?.name || idx), num(p?.score, 0)]));
-  const currentActiveId = String(activeId || "");
-
-  if (!historyMap.size) {
-    const rankById = getRankMap(players);
-    players.forEach((p, idx) => {
-      const id = String(p?.id || p?.name || idx);
-      historyMap.set(id, {
-        id,
-        name: String(p?.name || "Joueur"),
-        points: [{ round: 0, rank: rankById.get(id) || idx + 1 }],
-      });
-    });
-    lastActiveId = currentActiveId;
-    roundCounter = 0;
+  if (!lastScoresMap.size) {
+    lastScoresMap = new Map(currentScores);
     return;
   }
 
-  if (currentActiveId && lastActiveId && currentActiveId !== lastActiveId) {
-    roundCounter += 1;
-    commitRound(players, currentScores, roundCounter);
+  currentScores.forEach((score, id) => {
+    if (lastScoresMap.get(id) !== score) {
+      pendingPlayedIds.add(id);
+      pendingRoundScores.set(id, score);
+    }
+  });
+
+  if (pendingPlayedIds.size >= players.length) {
+    commitCompletedRound(players, currentScores);
+    pendingPlayedIds.clear();
+    pendingRoundScores.clear();
   }
 
-  lastActiveId = currentActiveId || lastActiveId;
+  lastScoresMap = new Map(currentScores);
 }
 
-function linePath(points, w, h, minRound, maxRound, playerCount) {
-  if (!points.length) return "";
-  const rounds = Math.max(1, maxRound - minRound + 1);
-  return points
-    .map((pt, i) => {
-      const x = rounds <= 1 ? 24 : 24 + ((pt.round - minRound) * (w - 48)) / Math.max(1, rounds - 1);
-      const y = 16 + ((pt.rank - 1) * (h - 32)) / Math.max(1, playerCount - 1);
-      return `${i === 0 ? "M" : "L"}${x.toFixed(1)},${y.toFixed(1)}`;
-    })
-    .join(" ");
+function getPointXY(colIndex, rank, totalCols, playerCount, w, h, topPad = 18, bottomPad = 30, leftPad = 34, rightPad = 34) {
+  const x = totalCols <= 1
+    ? leftPad + (w - leftPad - rightPad) / 2
+    : leftPad + (colIndex * (w - leftPad - rightPad)) / Math.max(1, totalCols - 1);
+  const y = topPad + ((rank - 1) * (h - topPad - bottomPad)) / Math.max(1, playerCount - 1);
+  return { x, y };
 }
 
 function graphHtml(players, colorById) {
-  if (players.length < 3) return "";
+  if (players.length < 3) return '';
 
-  const rawSeries = players.map((p) => historyMap.get(String(p?.id || p?.name)) || { points: [{ round: 0, rank: players.length }] });
-  const maxRound = Math.max(0, ...rawSeries.map((s) => s.points[s.points.length - 1]?.round || 0));
-  const windowSize = Math.max(6, Math.min(12, maxRound + 1));
-  const minRound = Math.max(0, maxRound - windowSize + 1);
-  const series = rawSeries.map((s) => ({ ...s, points: s.points.filter((pt) => pt.round >= minRound) }));
-  const rounds = Math.max(1, maxRound - minRound + 1);
   const w = 980;
-  const h = 178;
+  const h = 206;
+  const playerCount = players.length;
+  const completedCols = completedRounds.length;
+  const hasPending = pendingPlayedIds.size > 0;
+  const totalCols = Math.max(1, completedCols + (hasPending ? 1 : 0));
+
+  const partialIds = Array.from(pendingPlayedIds);
+  const partialSorted = players
+    .filter((p, idx) => partialIds.includes(String(p?.id || p?.name || idx)))
+    .slice()
+    .sort((a, b) => num(pendingRoundScores.get(String(a?.id || a?.name || '')), num(a?.score, 0)) - num(pendingRoundScores.get(String(b?.id || b?.name || '')), num(b?.score, 0)));
+  const partialRankById = Object.fromEntries(partialSorted.map((p, idx) => [String(p?.id || p?.name || idx), idx + 1]));
+
   const defs = players.map((p, idx) => {
-    const color = colorById[String(p?.id || p?.name || idx)] || "#53e7ff";
+    const color = colorById[String(p?.id || p?.name || idx)] || '#53e7ff';
     return `
       <filter id="glow-${idx}" x="-50%" y="-50%" width="200%" height="200%">
         <feGaussianBlur stdDeviation="3.8" result="blur"/>
         <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
       </filter>
     `;
-  }).join("");
+  }).join('');
 
-  const gridX = Array.from({ length: rounds }, (_, i) => {
-    const x = rounds <= 1 ? 24 : 24 + (i * (w - 48)) / Math.max(1, rounds - 1);
-    return `<line x1="${x}" y1="16" x2="${x}" y2="${h - 16}" stroke="#fff" opacity="0.08" />`;
-  }).join("");
+  const gridX = Array.from({ length: totalCols }, (_, i) => {
+    const { x } = getPointXY(i, 1, totalCols, playerCount, w, h);
+    return `<line x1="${x}" y1="18" x2="${x}" y2="${h - 30}" stroke="#fff" opacity="0.08" />`;
+  }).join('');
 
-  const gridY = Array.from({ length: players.length }, (_, i) => {
-    const y = 16 + (i * (h - 32)) / Math.max(1, players.length - 1);
-    return `<line x1="24" y1="${y}" x2="${w - 24}" y2="${y}" stroke="#fff" opacity="0.12" />`;
-  }).join("");
+  const gridY = Array.from({ length: playerCount }, (_, i) => {
+    const { y } = getPointXY(0, i + 1, totalCols, playerCount, w, h);
+    return `<line x1="34" y1="${y}" x2="${w - 34}" y2="${y}" stroke="#fff" opacity="0.12" />`;
+  }).join('');
 
-  const labels = Array.from({ length: rounds }, (_, i) => {
-    const roundLabel = Math.max(1, minRound + i);
-    const x = rounds <= 1 ? 24 : 24 + (i * (w - 48)) / Math.max(1, rounds - 1);
-    return `<text x="${x}" y="${h - 2}" text-anchor="middle" font-size="13" fill="rgba(255,255,255,.72)" font-weight="800">${roundLabel}</text>`;
-  }).join("");
+  const labels = Array.from({ length: totalCols }, (_, i) => {
+    const { x } = getPointXY(i, 1, totalCols, playerCount, w, h);
+    return `<text x="${x}" y="${h - 6}" text-anchor="middle" font-size="13" fill="rgba(255,255,255,.72)" font-weight="800">${i + 1}</text>`;
+  }).join('');
 
-  const lines = series.map((s, idx) => {
-    const d = linePath(s.points, w, h - 20, minRound, maxRound, players.length);
-    const p = players[idx];
-    const color = colorById[String(p?.id || p?.name || idx)] || "#53e7ff";
-    const last = s.points[s.points.length - 1] || { round: minRound, rank: players.length };
-    const x = rounds <= 1 ? 24 : 24 + ((last.round - minRound) * (w - 48)) / Math.max(1, rounds - 1);
-    const y = 16 + ((last.rank - 1) * ((h - 20) - 32)) / Math.max(1, players.length - 1);
-    const avatar = getAvatarSrc(p);
-    const end = avatar ? `<image href="${esc(avatar)}" x="${x - 11}" y="${y - 11}" width="22" height="22" clip-path="circle(11px at 11px 11px)" />` : `<circle cx="${x}" cy="${y}" r="10" fill="${color}" />`;
+  const lines = players.map((p, idx) => {
+    const id = String(p?.id || p?.name || idx);
+    const color = colorById[id] || '#53e7ff';
+    const points = [];
+    completedRounds.forEach((round, roundIdx) => {
+      const rank = round.rankById[id];
+      if (!rank) return;
+      const pt = getPointXY(roundIdx, rank, totalCols, playerCount, w, h);
+      points.push({ ...pt, roundIdx, rank, kind: 'complete' });
+    });
+    if (hasPending && partialRankById[id]) {
+      const pt = getPointXY(totalCols - 1, partialRankById[id], totalCols, playerCount, w, h);
+      points.push({ ...pt, roundIdx: totalCols - 1, rank: partialRankById[id], kind: 'pending' });
+    }
+    if (!points.length) return '';
+
+    const d = points.map((pt, i) => `${i === 0 ? 'M' : 'L'}${pt.x.toFixed(1)},${pt.y.toFixed(1)}`).join(' ');
+    const pointsHtml = points.map((pt) => {
+      if (pt.kind === 'pending') {
+        const avatar = getAvatarSrc(p);
+        if (avatar) {
+          return `<image href="${esc(avatar)}" x="${pt.x - 11}" y="${pt.y - 11}" width="22" height="22" clip-path="circle(11px at 11px 11px)" />`;
+        }
+        return `<circle cx="${pt.x}" cy="${pt.y}" r="10" fill="${color}" stroke="rgba(255,255,255,.9)" stroke-width="2" />`;
+      }
+      return `<circle cx="${pt.x}" cy="${pt.y}" r="5" fill="${color}" filter="url(#glow-${idx})" />`;
+    }).join('');
+
     return `
-      <path d="${d}" fill="none" stroke="${color}" stroke-width="8" stroke-linecap="round" stroke-linejoin="round" opacity="0.12" filter="url(#glow-${idx})" />
-      <path d="${d}" fill="none" stroke="${color}" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round" opacity="0.98" />
-      ${end}
+      <path d="${d}" fill="none" stroke="${color}" stroke-width="7" stroke-linecap="round" stroke-linejoin="round" opacity="0.10" filter="url(#glow-${idx})" />
+      <path d="${d}" fill="none" stroke="${color}" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round" opacity="0.95" />
+      ${pointsHtml}
     `;
-  }).join("");
+  }).join('');
 
   return `
     <section class="panel graph-panel">
@@ -359,9 +376,9 @@ function renderSnapshot(payload) {
   }
 
   const active = players.find((p) => p?.active) || players.find((p) => String(p?.id || "") === String(payload?.currentPlayer || "")) || players[0];
-  rememberHistory(players, String(active?.id || active?.name || ""));
+  rememberHistory(players);
   const palette = ["#53e7ff", "#ffd55b", "#ffffff", "#ff66d1", "#63ff97", "#ff8f5b", "#9da7ff", "#8df0ff", "#ff5b7d", "#c5ff5b", "#ffb45b", "#d095ff"];
-  const orderIds = players.map((p, idx) => String(p?.id || p?.name || idx));
+  const orderIds = baseOrderIds.length ? baseOrderIds.slice() : players.map((p, idx) => String(p?.id || p?.name || idx));
   const colorById = Object.fromEntries(orderIds.map((id, idx) => [id, palette[idx % palette.length]]));
   const idx = orderIds.findIndex((id) => id === String(active?.id || active?.name || ""));
   const rotatedIds = idx >= 0 ? orderIds.slice(idx).concat(orderIds.slice(0, idx)) : orderIds.slice();
