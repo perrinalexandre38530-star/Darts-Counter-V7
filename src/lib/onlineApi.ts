@@ -389,23 +389,76 @@ function mapLobbyRow(row: SupabaseLobbyRow): OnlineLobby {
 
 // ============================================================
 // ✅ NAS session guard
+// - anti-boucle: cache dernière session valide
+// - anti-rafale: mutualise les restores concurrents
+// - tolère une micro-fenêtre où /auth/me n'est pas encore stabilisé
 // ============================================================
+let __nasEnsureInFlight: Promise<AuthSession> | null = null;
+let __nasLastGoodSession: AuthSession | null = null;
+let __nasLastRestoreAt = 0;
+const NAS_RESTORE_MIN_INTERVAL_MS = 12_000;
+
+function isValidNasSession(session: AuthSession | null | undefined): session is AuthSession {
+  return !!session && !!String(session?.token || "").trim() && !!String(session?.user?.id || session?.userId || "").trim();
+}
+
 async function ensureNasSession(): Promise<AuthSession> {
-  const session = await nasRestoreSession();
-  const token = String(session?.token || "").trim();
-  const userId = String(session?.user?.id || session?.userId || "").trim();
+  if (__nasEnsureInFlight) return __nasEnsureInFlight;
 
-  if (!token || !userId) {
-    console.warn("[onlineApi] NAS session missing", {
-      hasToken: !!token,
-      hasUserId: !!userId,
-      lsAuth: loadAuthFromLS(),
-    });
-    throw new Error("Token NAS manquant. Reconnecte-toi.");
+  __nasEnsureInFlight = (async () => {
+    const cached = loadAuthFromLS();
+    if (isValidNasSession(cached)) {
+      __nasLastGoodSession = cached;
+      const nowTs = Date.now();
+
+      if (nowTs - __nasLastRestoreAt < NAS_RESTORE_MIN_INTERVAL_MS) {
+        return cached;
+      }
+
+      try {
+        __nasLastRestoreAt = nowTs;
+        const refreshed = await nasRestoreSession();
+        if (isValidNasSession(refreshed)) {
+          __nasLastGoodSession = refreshed;
+          saveAuthToLS(refreshed);
+          return refreshed;
+        }
+      } catch (e) {
+        console.warn("[onlineApi] NAS restore soft-failed, keep cached auth", e);
+      }
+
+      return cached;
+    }
+
+    const nowTs = Date.now();
+    if (nowTs - __nasLastRestoreAt < NAS_RESTORE_MIN_INTERVAL_MS && isValidNasSession(__nasLastGoodSession)) {
+      return __nasLastGoodSession!;
+    }
+
+    __nasLastRestoreAt = nowTs;
+    const session = await nasRestoreSession();
+    const token = String(session?.token || "").trim();
+    const userId = String(session?.user?.id || session?.userId || "").trim();
+
+    if (!token || !userId) {
+      console.warn("[onlineApi] NAS session missing", {
+        hasToken: !!token,
+        hasUserId: !!userId,
+        lsAuth: loadAuthFromLS(),
+      });
+      throw new Error("Token NAS manquant. Reconnecte-toi.");
+    }
+
+    __nasLastGoodSession = session;
+    saveAuthToLS(session);
+    return session;
+  })();
+
+  try {
+    return await __nasEnsureInFlight;
+  } finally {
+    __nasEnsureInFlight = null;
   }
-
-  saveAuthToLS(session);
-  return session;
 }
 
 // ============================================================
@@ -737,6 +790,8 @@ async function restoreSession(): Promise<AuthSession | null> {
 async function logout(): Promise<void> {
   if (isNasProviderEnabled()) {
     await nasLogout();
+    __nasLastGoodSession = null;
+    __nasLastRestoreAt = 0;
     saveAuthToLS(null);
     return;
   }

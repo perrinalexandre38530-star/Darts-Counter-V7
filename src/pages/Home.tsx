@@ -7,6 +7,7 @@ import { useTheme } from "../contexts/ThemeContext";
 import { useLang } from "../contexts/LangContext";
 import { useAuthOnline } from "../hooks/useAuthOnline";
 import { useSport, type SportId } from "../contexts/SportContext";
+import { isNasProviderEnabled } from "../lib/serverConfig";
 
 import type { Store, Profile } from "../lib/types";
 import ActiveProfileCard, {
@@ -2139,9 +2140,13 @@ export default function Home({ store, go, activeSport }: Props) {
     anyStore.selfStatus ?? "online";
 
   const onlineStatusForUi: "online" | "away" | "offline" =
-    auth.status === "signed_in"
-      ? (selfStatus === "offline" ? "online" : selfStatus)
-      : "offline";
+    isNasProviderEnabled()
+      ? auth.userId
+        ? "online"
+        : "offline"
+      : auth.status === "signed_in"
+        ? (selfStatus === "offline" ? "online" : selfStatus)
+        : "offline";
 
   const activeProfile = useMemo(() => getActiveProfile(store), [store]);
 

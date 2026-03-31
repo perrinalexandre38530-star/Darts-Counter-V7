@@ -19,6 +19,8 @@ import { supabase } from "../lib/supabaseClient";
 import { setStorageUser } from "../lib/storage";
 import { onlineApi } from "../lib/onlineApi";
 import { isNasProviderEnabled } from "../lib/serverConfig";
+
+const NAS_AUTH_COOLDOWN_MS = 1500;
 import { ensureLocalProfileForOnlineUser } from "../lib/accountBridge";
 import type { OnlineProfile } from "../lib/onlineTypes";
 
@@ -151,22 +153,27 @@ async function safeGetSession(): Promise<Session | null> {
     if (isNasProviderEnabled()) {
       await cleanupSupabaseLocalSessionForNas();
 
-      const s: any = await onlineApi.getCurrentSession();
-      const user = s?.user?.id
-        ? ({
-            id: s.user.id,
-            email: s.user.email,
-            user_metadata: { nickname: s.user.nickname || s.profile?.displayName || "Player" },
-          } as any)
-        : null;
+      try {
+        const s: any = await onlineApi.getCurrentSession();
+        const user = s?.user?.id
+          ? ({
+              id: s.user.id,
+              email: s.user.email,
+              user_metadata: { nickname: s.user.nickname || s.profile?.displayName || "Player" },
+            } as any)
+          : null;
 
-      if (!user) return null;
+        if (!user) return null;
 
-      return {
-        access_token: s?.token || "",
-        refresh_token: s?.refreshToken || "",
-        user,
-      } as any;
+        return {
+          access_token: s?.token || "",
+          refresh_token: s?.refreshToken || "",
+          user,
+        } as any;
+      } catch (e) {
+        console.warn("[useAuthOnline] NAS safeGetSession soft-failed:", e);
+        return null;
+      }
     }
 
     const { data, error } = await supabase.auth.getSession();
@@ -215,6 +222,9 @@ function applyAuthFromSession(
     try {
       setStorageUser(String(user.id || ""));
       localStorage.setItem("dc_user_id", String(user.id || ""));
+    } catch {}
+    try {
+      (window as any).__dc_last_signed_in_user_id = String(user.id || "");
     } catch {}
     setState((s) => ({
       ...s,
@@ -277,6 +287,8 @@ function tryBridgeLocalProfile(user: User, onlineProfile?: OnlineProfile | null)
 
 export function AuthOnlineProvider({ children }: { children: React.ReactNode }) {
   const [state, setState] = React.useState<AuthState>(initial);
+  const lastNasAuthAttemptRef = React.useRef(0);
+  const lastSignedInSessionRef = React.useRef<Session | null>(null);
 
   React.useEffect(() => {
     const t = window.setTimeout(() => {
@@ -302,6 +314,13 @@ export function AuthOnlineProvider({ children }: { children: React.ReactNode }) 
 
       setState((s) => ({ ...s, loading: true, status: "checking" }));
       const session = await safeEnsureSession();
+
+      if (session?.user) {
+        lastSignedInSessionRef.current = session;
+      } else if (isNasProviderEnabled() && lastSignedInSessionRef.current?.user) {
+        setState((s) => ({ ...s, loading: false, ready: true }));
+        return;
+      }
 
       applyAuthFromSession(setState, session);
 
@@ -339,6 +358,10 @@ export function AuthOnlineProvider({ children }: { children: React.ReactNode }) 
         const session = await safeEnsureSession();
         if (!alive) return;
 
+        if (session?.user) {
+          lastSignedInSessionRef.current = session;
+        }
+
         applyAuthFromSession(setState, session);
 
         const user = session?.user ?? null;
@@ -359,9 +382,26 @@ export function AuthOnlineProvider({ children }: { children: React.ReactNode }) 
           nasHandler = async () => {
             try {
               if (!alive) return;
+
+              const nowTs = Date.now();
+              if (nowTs - lastNasAuthAttemptRef.current < NAS_AUTH_COOLDOWN_MS) {
+                return;
+              }
+              lastNasAuthAttemptRef.current = nowTs;
+
               await cleanupSupabaseLocalSessionForNas();
               const nextSession = await safeEnsureSession();
-              applyAuthFromSession(setState, nextSession);
+
+              if (nextSession?.user) {
+                lastSignedInSessionRef.current = nextSession;
+                applyAuthFromSession(setState, nextSession);
+              } else if (lastSignedInSessionRef.current?.user) {
+                setState((s) => ({ ...s, loading: false, ready: true }));
+                return;
+              } else {
+                applyAuthFromSession(setState, nextSession);
+              }
+
               const nextUser = nextSession?.user ?? null;
               if (nextUser) {
                 tryBridgeLocalProfile(nextUser, null);

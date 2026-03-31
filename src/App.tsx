@@ -1910,7 +1910,7 @@ useEffect(() => {
     return () => {
       cancelled = true;
     };
-  }, [loading, online?.ready, online?.status, cloudHydrated, store]);
+  }, [loading, online?.ready, online?.status, cloudHydrated]);
 
   // ============================================================
   // ✅ CLOUD SYNC (push-only via emitCloudChange)
@@ -1929,9 +1929,17 @@ useEffect(() => {
     }
 
     if (!cloudSyncOnRef.current) {
-      startCloudSync({ pullOnStart: true, disablePull: false });
+      const nasMode =
+        !!((import.meta as any)?.env?.VITE_ONLINE_PROVIDER || "")
+          && String((import.meta as any)?.env?.VITE_ONLINE_PROVIDER || "").toLowerCase() === "nas";
+
+      startCloudSync(
+        nasMode
+          ? { pullOnStart: false, disablePull: true }
+          : { pullOnStart: true, disablePull: false }
+      );
       cloudSyncOnRef.current = true;
-      console.log("[cloud] cloudSync started (push+pull)");
+      console.log(nasMode ? "[cloud] cloudSync started (push-only, nas)" : "[cloud] cloudSync started (push+pull)");
     }
 
     return () => {
