@@ -10,28 +10,41 @@
 // ✅ Compat UI: expose ensureAutoSession() (restore only).
 // ✅ A: listActiveLobbies()
 // ✅ B: startMatch / updateMatchState / endMatch + fetchMatchByCode
+//
+// ✅ PATCH NAS AUTH + RESTORE:
+// - force la restauration de session NAS avant pull/push/getProfile
+// - journalise clairement les cas "token manquant"
+// - garde TOUTE la logique existante
 // ============================================================
 
 import { supabase } from "./supabaseClient";
 import { isNasDataSyncEnabled, isNasProviderEnabled } from "./serverConfig";
-import { nasDeleteAccount, nasGetProfile, nasLogin, nasLogout, nasPullStoreSnapshot, nasPushStoreSnapshot, nasRequestPasswordReset, nasRestoreSession, nasSignup, nasUpdateEmail, nasUpdateProfile, nasUploadAvatarImage } from "./nasApi";
+import {
+  nasDeleteAccount,
+  nasGetProfile,
+  nasLogin,
+  nasLogout,
+  nasPullStoreSnapshot,
+  nasPushStoreSnapshot,
+  nasRequestPasswordReset,
+  nasRestoreSession,
+  nasSignup,
+  nasUpdateEmail,
+  nasUpdateProfile,
+  nasUploadAvatarImage,
+} from "./nasApi";
 import { EventBuffer } from "./sync/EventBuffer";
 import { importHistoryFromCloud } from "./sync/CloudHistoryImport";
 import type { UserAuth, OnlineProfile, OnlineMatch } from "./onlineTypes";
 
 export const CLOUD_STORE_KEY = "main";
 
-
 // ============================================================
 // ✅ PGRST204 column-missing fallback (schema cache / tables legacy)
-// - Si une table existe mais n'a pas une colonne (ex: profiles_online sans nickname),
-//   Supabase renvoie PGRST204.
-// - On retire automatiquement la colonne manquante du payload et on retente.
 // ============================================================
 function extractMissingColumn(err: any): string | null {
   try {
     const msg = String(err?.message ?? "");
-    // Ex: "Could not find the 'nickname' column of 'profiles_online' in the schema cache"
     const m = msg.match(/Could not find the '([^']+)' column/i);
     return m?.[1] ?? null;
   } catch {
@@ -84,7 +97,7 @@ async function writeWithColumnFallback<T>(
 // Types publics
 // --------------------------------------------
 export type AuthSession = {
-  token: string; // access_token
+  token: string;
   refreshToken: string;
   expiresAt: number | null;
   userId: string | null;
@@ -108,15 +121,13 @@ export type UpdateProfilePayload = {
   displayName?: string;
   avatarUrl?: string;
   country?: string;
-
   surname?: string;
   firstName?: string;
   lastName?: string;
-  birthDate?: string; // "YYYY-MM-DD"
+  birthDate?: string;
   city?: string;
   email?: string;
   phone?: string;
-
   nickname?: string;
 };
 
@@ -173,8 +184,6 @@ const LS_AUTH_KEY = "dc_online_auth_supabase_v1";
 
 // ============================================================
 // ✅ PROFILES TABLE RESOLUTION (compat)
-// - Certains projets Supabase historiques utilisent "profiles_online".
-// - Ce client privilégie "profiles" mais bascule automatiquement si absent.
 // ============================================================
 const PROFILE_TABLE_PRIMARY = "profiles";
 const PROFILE_TABLE_FALLBACK = "profiles_online";
@@ -188,14 +197,12 @@ async function resolveProfilesTable(): Promise<string> {
 
   __profilesTablePromise = (async () => {
     try {
-      // Probe PRIMARY
       const { error } = await supabase.from(PROFILE_TABLE_PRIMARY).select("id").limit(1);
       if (!error) {
         __profilesTableCached = PROFILE_TABLE_PRIMARY;
         return __profilesTableCached;
       }
 
-      // PGRST205 = table/view missing in schema cache
       const code = (error as any)?.code;
       if (code === "PGRST205") {
         const { error: err2 } = await supabase.from(PROFILE_TABLE_FALLBACK).select("id").limit(1);
@@ -205,7 +212,6 @@ async function resolveProfilesTable(): Promise<string> {
         }
       }
 
-      // Fallback pessimiste
       __profilesTableCached = PROFILE_TABLE_PRIMARY;
       return __profilesTableCached;
     } catch {
@@ -304,7 +310,7 @@ function extFromMime(mime: string) {
 // ============================================================
 type SupabaseProfileRow = {
   id: string;
-  nickname?: string | null; // ✅ optionnel (table legacy peut ne pas avoir la colonne)
+  nickname?: string | null;
   display_name?: string | null;
   avatar_url?: string | null;
   country?: string | null;
@@ -382,6 +388,27 @@ function mapLobbyRow(row: SupabaseLobbyRow): OnlineLobby {
 }
 
 // ============================================================
+// ✅ NAS session guard
+// ============================================================
+async function ensureNasSession(): Promise<AuthSession> {
+  const session = await nasRestoreSession();
+  const token = String(session?.token || "").trim();
+  const userId = String(session?.user?.id || session?.userId || "").trim();
+
+  if (!token || !userId) {
+    console.warn("[onlineApi] NAS session missing", {
+      hasToken: !!token,
+      hasUserId: !!userId,
+      lsAuth: loadAuthFromLS(),
+    });
+    throw new Error("Token NAS manquant. Reconnecte-toi.");
+  }
+
+  saveAuthToLS(session);
+  return session;
+}
+
+// ============================================================
 // Auth helpers
 // ============================================================
 async function ensureAuthedUser() {
@@ -391,7 +418,6 @@ async function ensureAuthedUser() {
   const user = data?.session?.user;
   const session = data?.session;
 
-  // IMPORTANT: pas de session => on throw (pas d'auto-anon).
   if (!user || !session) throw new Error("Non authentifié (reconnecte-toi).");
   return { user, session };
 }
@@ -399,7 +425,6 @@ async function ensureAuthedUser() {
 async function getOrCreateProfile(userId: string, fallbackNickname: string): Promise<OnlineProfile | null> {
   const PROFILES_TABLE = await resolveProfilesTable();
 
-  // SELECT
   const { data: profileRow, error: selErr } = await supabase
     .from(PROFILES_TABLE)
     .select("*")
@@ -409,14 +434,11 @@ async function getOrCreateProfile(userId: string, fallbackNickname: string): Pro
 
   if (selErr) {
     console.warn("[onlineApi] profiles select error", selErr);
-    // Ne casse pas l'UI si table manquante/RLS: on renvoie null
     return null;
   }
 
   if (profileRow) return mapProfile(profileRow as any);
 
-  // CREATE (upsert safe + column fallback)
-  // ⚠️ On a déjà eu des collisions (nickname unique) : on auto-suffixe pour garantir la création.
   const baseNick = String(fallbackNickname || "")
     .trim()
     .replace(/^mailto:/i, "")
@@ -434,7 +456,7 @@ async function getOrCreateProfile(userId: string, fallbackNickname: string): Pro
     const nick = attempt === 0 ? baseNick : `${baseNick}-${Math.floor(Math.random() * 900 + 100)}`;
     const payload = {
       id: userId,
-      user_id: userId, // ✅ required by Supabase schema (NOT NULL)
+      user_id: userId,
       nickname: nick,
       display_name: nick,
       country: null,
@@ -457,7 +479,6 @@ async function getOrCreateProfile(userId: string, fallbackNickname: string): Pro
 
     if (!res.error) return mapProfile(res.data as any);
 
-    // Si conflit de pseudo, on retente avec suffix.
     if (isUniqueViolation(res.error)) {
       console.warn("[onlineApi] profiles upsert nickname collision — retry", { nick });
       continue;
@@ -496,6 +517,9 @@ async function buildAuthSessionFromSupabase(): Promise<AuthSession | null> {
 
   const authSession: AuthSession = {
     token: session?.access_token ?? "",
+    refreshToken: (session as any)?.refresh_token ?? "",
+    expiresAt: (session as any)?.expires_at ?? null,
+    userId: user.id,
     user: userAuth,
     profile,
   };
@@ -505,25 +529,21 @@ async function buildAuthSessionFromSupabase(): Promise<AuthSession | null> {
 }
 
 // ============================================================
-// ✅ COMPTE UTILISATEUR UNIQUE
-// - On NE crée PAS de session anonyme.
-// - Si aucune session: on reste signed_out.
-//
-// NOTE: certaines pages historiques appellent encore ensureAutoSession().
-// On le garde en alias vers buildAuthSessionFromSupabase().
+// Compte utilisateur unique
 // ============================================================
 async function ensureAutoSession(): Promise<AuthSession | null> {
+  if (isNasProviderEnabled()) {
+    try {
+      return await ensureNasSession();
+    } catch {
+      return null;
+    }
+  }
+
   const existing = await buildAuthSessionFromSupabase();
   return existing?.user?.id ? existing : null;
 }
 
-// ============================================================
-// ✅ BACKCOMPAT — ensureAnonymousSession()
-// Certaines anciennes pages utilisaient une "session anonyme".
-// Dans l’architecture "compte utilisateur unique", on ne crée
-// plus de session anonyme côté Supabase : on renvoie simplement
-// la session existante si l’utilisateur est connecté.
-// ============================================================
 async function ensureAnonymousSession(): Promise<AuthSession | null> {
   return await ensureAutoSession();
 }
@@ -552,7 +572,9 @@ function normalizeAuthErrorMessage(msg: string) {
 // ============================================================
 async function signup(payload: SignupPayload): Promise<AuthSession> {
   if (isNasProviderEnabled()) {
-    return await nasSignup(payload);
+    const s = await nasSignup(payload);
+    saveAuthToLS(s);
+    return s;
   }
 
   const email = payload.email?.trim();
@@ -574,10 +596,12 @@ async function signup(payload: SignupPayload): Promise<AuthSession> {
 
   if (error) throw new Error(error.message);
 
-  // Si email confirmation ON : session null au début
   if (!data?.session) {
     const pending: AuthSession = {
       token: "",
+      refreshToken: "",
+      expiresAt: null,
+      userId: data?.user?.id || null,
       user: {
         id: data?.user?.id || "pending",
         email,
@@ -597,7 +621,9 @@ async function signup(payload: SignupPayload): Promise<AuthSession> {
 
 async function login(payload: LoginPayload): Promise<AuthSession> {
   if (isNasProviderEnabled()) {
-    return await nasLogin(payload);
+    const s = await nasLogin(payload);
+    saveAuthToLS(s);
+    return s;
   }
 
   const email = payload.email?.trim();
@@ -616,13 +642,7 @@ async function login(payload: LoginPayload): Promise<AuthSession> {
 }
 
 // ============================================================
-// ✅ HASH-ROUTER AUTH (/#/auth/...) — robust parser
-// - En PKCE, Supabase renvoie souvent `?code=...`.
-// - En implicit (ou selon config), on peut recevoir `#access_token=...`.
-// - Avec un hash-router, ces paramètres peuvent se retrouver DANS window.location.hash.
-//
-// Cette fonction tente de créer la session à partir de l'URL si nécessaire.
-// Elle est idempotente: si aucune info auth n'est présente, elle ne fait rien.
+// HASH-ROUTER AUTH (/#/auth/...)
 // ============================================================
 async function maybeConsumeAuthRedirectFromHash(): Promise<void> {
   if (typeof window === "undefined") return;
@@ -630,7 +650,6 @@ async function maybeConsumeAuthRedirectFromHash(): Promise<void> {
   const rawHash = String(window.location.hash || "");
   if (!rawHash) return;
 
-  // Exemple: "#/auth/callback?code=XXXX"
   const qIndex = rawHash.indexOf("?");
   if (qIndex >= 0) {
     const query = rawHash.slice(qIndex + 1);
@@ -646,8 +665,6 @@ async function maybeConsumeAuthRedirectFromHash(): Promise<void> {
     }
   }
 
-  // Exemple: "#/auth/callback#access_token=...&refresh_token=..."
-  // ou "#access_token=...&refresh_token=..." (rare)
   const lastHash = rawHash.lastIndexOf("#");
   if (lastHash >= 0) {
     const frag = rawHash.slice(lastHash + 1);
@@ -666,28 +683,28 @@ async function maybeConsumeAuthRedirectFromHash(): Promise<void> {
   }
 }
 
-// ✅ V7 : restoreSession = RESTORE UNIQUEMENT (pas de création d'utilisateur)
 async function restoreSession(): Promise<AuthSession | null> {
   if (isNasProviderEnabled()) {
-    return await nasRestoreSession();
+    try {
+      return await ensureNasSession();
+    } catch (e) {
+      console.warn("[onlineApi] restoreSession(NAS) error", e);
+      saveAuthToLS(null);
+      return null;
+    }
   }
 
   try {
-    // 0) Hash-router auth callback parsing (best-effort)
     await maybeConsumeAuthRedirectFromHash();
 
-    // 1) Try live Supabase session
     const live = await buildAuthSessionFromSupabase();
     if (live) {
-      // ✅ opportuniste: pull léger du cloud -> History (multi-device)
-      // (best-effort, paginé, ne casse jamais le boot)
       try {
         importHistoryFromCloud({ maxPages: 2, pageSize: 150 }).catch(() => {});
       } catch {}
       return live;
     }
 
-    // 2) Try rehydrate from localStorage (mobile-safe)
     const cached = loadAuthFromLS();
     if (cached?.token && cached.refreshToken) {
       try {
@@ -710,7 +727,6 @@ async function restoreSession(): Promise<AuthSession | null> {
     return null;
   } catch (e) {
     console.warn("[onlineApi] restoreSession error", e);
-    // si la session est cassée, on nettoie pour éviter des états "fantômes"
     try {
       saveAuthToLS(null);
     } catch {}
@@ -732,13 +748,18 @@ async function logout(): Promise<void> {
 
 async function getCurrentSession(): Promise<AuthSession | null> {
   if (isNasProviderEnabled()) {
-    return await nasRestoreSession();
+    try {
+      return await ensureNasSession();
+    } catch {
+      return null;
+    }
   }
   return await restoreSession();
 }
 
 async function getProfile(): Promise<OnlineProfile | null> {
   if (isNasProviderEnabled()) {
+    await ensureNasSession();
     return await nasGetProfile();
   }
 
@@ -746,14 +767,11 @@ async function getProfile(): Promise<OnlineProfile | null> {
   return s?.profile ?? null;
 }
 
-// ✅ Renvoi email confirmation
 async function resendSignupConfirmation(email: string): Promise<void> {
   const e = email.trim();
   if (!e) throw new Error("Email requis.");
 
   if (isNasProviderEnabled()) {
-    // En mode NAS final, l'inscription crée directement la session.
-    // On conserve une réponse douce pour ne pas casser l'UI existante.
     return;
   }
 
@@ -785,6 +803,7 @@ async function requestPasswordReset(email: string): Promise<void> {
 
 async function updateEmail(newEmail: string): Promise<void> {
   if (isNasProviderEnabled()) {
+    await ensureNasSession();
     await nasUpdateEmail(newEmail);
     return;
   }
@@ -797,6 +816,7 @@ async function updateEmail(newEmail: string): Promise<void> {
 
 async function deleteAccount(): Promise<void> {
   if (isNasProviderEnabled()) {
+    await ensureNasSession();
     await nasDeleteAccount();
     saveAuthToLS(null);
     return;
@@ -816,6 +836,7 @@ async function deleteAccount(): Promise<void> {
 // ============================================================
 async function updateProfile(patch: UpdateProfilePayload): Promise<OnlineProfile> {
   if (isNasProviderEnabled()) {
+    await ensureNasSession();
     return await nasUpdateProfile(patch);
   }
 
@@ -839,8 +860,6 @@ async function updateProfile(patch: UpdateProfilePayload): Promise<OnlineProfile
   if (patch.email !== undefined) dbPatch.email = patch.email;
   if (patch.phone !== undefined) dbPatch.phone = patch.phone;
 
-  // ✅ IMPORTANT: sur certains projets, la ligne profile peut ne pas exister.
-  // update() ne crée pas la ligne -> on fait un upsert (id + user_id).
   const upsertPayload: any = { id: userId, user_id: userId, ...dbPatch };
 
   const res = await writeWithColumnFallback<any>(
@@ -869,19 +888,15 @@ async function updateProfile(patch: UpdateProfilePayload): Promise<OnlineProfile
 }
 
 // ============================================================
-// Avatar Storage (bucket: avatars public)
+// Avatar Storage
 // ============================================================
-// NOTE:
-// - Historically this helper also updated the ONLINE profile avatarUrl.
-// - This is correct for "Mon profil" (account avatar), but NOT for uploading
-//   avatars of local profiles.
-// - To avoid side-effects, callers can opt-out via `updateProfile`.
 async function uploadAvatarImage(opts: {
   dataUrl: string;
   folder?: string;
   updateProfile?: boolean;
 }): Promise<{ publicUrl: string; path: string }> {
   if (isNasProviderEnabled()) {
+    await ensureNasSession();
     return await nasUploadAvatarImage(opts);
   }
   const { dataUrl } = opts;
@@ -907,8 +922,6 @@ async function uploadAvatarImage(opts: {
   const publicUrl = data?.publicUrl;
   if (!publicUrl) throw new Error("Impossible de récupérer l’URL publique de l’avatar.");
 
-  // ✅ Default behavior: update online profile avatar.
-  // ✅ Local profiles must call with updateProfile=false.
   if (opts.updateProfile !== false) {
     await updateProfile({ avatarUrl: publicUrl });
   }
@@ -927,47 +940,46 @@ async function pullStoreSnapshot(): Promise<{
   error?: any;
 }> {
   if (isNasDataSyncEnabled()) {
-    return await nasPullStoreSnapshot();
+    try {
+      await ensureNasSession();
+      return await nasPullStoreSnapshot();
+    } catch (e) {
+      console.warn("[onlineApi] nasPullStoreSnapshot failed", e);
+      return { status: "error", error: e };
+    }
   }
 
   try {
     const { user } = await ensureAuthedUser();
 
-    // ✅ Compat schémas: certaines versions utilisent `payload`, d'autres `data`/`store`
-    // ✅ Compat clé: certaines versions utilisent `user_id`, d'autres `owner_user_id`
     const selectCols = "payload,data,store,updated_at,version";
     let data: any = null;
     let error: any = null;
 
-    // A) user_id
-{
-  // 1) Tentative avec store '{CLOUD_STORE_KEY}' (modèle actuel)
-  const r1 = await supabase
-    .from("user_store")
-    .select(selectCols)
-    .eq("user_id", user.id)
-    .eq("store", CLOUD_STORE_KEY)
-    .order("updated_at", { ascending: false })
-    .limit(1);
+    {
+      const r1 = await supabase
+        .from("user_store")
+        .select(selectCols)
+        .eq("user_id", user.id)
+        .eq("store", CLOUD_STORE_KEY)
+        .order("updated_at", { ascending: false })
+        .limit(1);
 
-  data = (r1.data as any)?.[0] ?? null;
-  error = r1.error as any;
+      data = (r1.data as any)?.[0] ?? null;
+      error = r1.error as any;
 
-  // 2) Fallback: si rien trouvé, on retente sans filtre store (anciens schémas / anciennes clés)
-  // ⚠️ On prend la plus récente, puis le prochain PUSH réécrira `store=CLOUD_STORE_KEY`.
-  if (!error && !data) {
-    const r2 = await supabase
-      .from("user_store")
-      .select(selectCols)
-      .eq("user_id", user.id)
-      .order("updated_at", { ascending: false })
-      .limit(1);
-    data = (r2.data as any)?.[0] ?? null;
-    error = r2.error as any;
-  }
-}
+      if (!error && !data) {
+        const r2 = await supabase
+          .from("user_store")
+          .select(selectCols)
+          .eq("user_id", user.id)
+          .order("updated_at", { ascending: false })
+          .limit(1);
+        data = (r2.data as any)?.[0] ?? null;
+        error = r2.error as any;
+      }
+    }
 
-    // B) fallback owner_user_id si colonne absente / schéma legacy
     if (error) {
       const msg = String((error as any)?.message || error);
       const lower = msg.toLowerCase();
@@ -1000,14 +1012,13 @@ async function pullStoreSnapshot(): Promise<{
 
 async function pushStoreSnapshot(payload: any, version = 8): Promise<void> {
   if (isNasDataSyncEnabled()) {
+    await ensureNasSession();
     await nasPushStoreSnapshot(payload, version);
     return;
   }
 
   const { user } = await ensureAuthedUser();
 
-  // ✅ On écrit un snapshot COMPLET dans user_store
-  // Objectif: tolérer plusieurs schémas Supabase (colonnes + contraintes différentes)
   const baseCommon: any = {
     version,
     updated_at: new Date().toISOString(),
@@ -1050,17 +1061,18 @@ async function pushStoreSnapshot(payload: any, version = 8): Promise<void> {
   const isOnConflictMismatch = (err: any) => {
     const msg = String(err?.message ?? err);
     const lower = msg.toLowerCase();
-    return lower.includes("on conflict") && lower.includes("no unique") || String(err?.code ?? "") === "42P10";
+    return (lower.includes("on conflict") && lower.includes("no unique")) || String(err?.code ?? "") === "42P10";
   };
 
   const isMissingColumn = (err: any, col: string) => {
     const msg = String(err?.message ?? err);
     const lower = msg.toLowerCase();
-    return lower.includes("column") && lower.includes(col.toLowerCase()) && lower.includes("does not exist")
-      || lower.includes(`could not find the '${col.toLowerCase()}' column`);
+    return (
+      (lower.includes("column") && lower.includes(col.toLowerCase()) && lower.includes("does not exist")) ||
+      lower.includes(`could not find the '${col.toLowerCase()}' column`)
+    );
   };
 
-  // Stratégie: essayer d'abord le schéma "moderne" (user_id + store), puis fallback.
   const plans: Array<{ obj: any; onConflict: string; label: string }> = [
     { obj: payloadObjWithStore, onConflict: "user_id,store", label: "user_id+store" },
     { obj: payloadObjWithStore, onConflict: "user_id", label: "user_id" },
@@ -1073,44 +1085,45 @@ async function pushStoreSnapshot(payload: any, version = 8): Promise<void> {
   let lastErr: any = null;
 
   for (const p of plans) {
-    let res = await attempt(p.obj, p.onConflict);
+    const res = await attempt(p.obj, p.onConflict);
 
-    // Si onConflict fait référence à une colonne stripée (ex: store), Supabase renvoie "column ... does not exist"
     if (res.error && isMissingColumn(res.error, "store") && p.onConflict.includes("store")) {
-      // retry sans store via plan suivant
       lastErr = res.error;
       continue;
     }
 
-    // Si la contrainte ON CONFLICT n'existe pas, on tente la variante suivante
     if (res.error && isOnConflictMismatch(res.error)) {
       lastErr = res.error;
       continue;
     }
 
-    // Si user_id colonne absente, on saute vers owner_user_id plans
     if (res.error && isMissingColumn(res.error, "user_id")) {
       lastErr = res.error;
       continue;
     }
 
-    if (!res.error) return; // ✅ success
+    if (!res.error) return;
     lastErr = res.error;
   }
 
   throw new Error((lastErr as any)?.message || String(lastErr) || "push_failed");
 }
 
-
-
 // ============================================================
 // ONLINE SERVER PING (safe)
-// - Vérifie que Supabase + table online_lobbies répondent
-// - "permission denied" => serveur OK mais auth requise
 // ============================================================
 export type PingResult = { ok: true; authRequired?: boolean };
 
 async function ping(): Promise<PingResult> {
+  if (isNasProviderEnabled()) {
+    try {
+      await ensureNasSession();
+      return { ok: true };
+    } catch {
+      return { ok: true, authRequired: true };
+    }
+  }
+
   const { error } = await supabase.from("online_lobbies").select("id").limit(1);
 
   if (error) {
@@ -1199,8 +1212,6 @@ async function listActiveLobbies(limit = 50): Promise<OnlineLobby[]> {
 // ============================================================
 // B) Match live state (online_matches)
 // ============================================================
-
-// Start/upsert a match row for a lobby
 async function startMatch(args: { lobbyCode: string; initialState?: any }): Promise<OnlineMatchRow> {
   const { user } = await ensureAuthedUser();
   const code = safeUpper(args.lobbyCode);
@@ -1214,8 +1225,6 @@ async function startMatch(args: { lobbyCode: string; initialState?: any }): Prom
     updated_at: new Date().toISOString(),
   };
 
-  // onConflict sur lobby_code si tu as un unique index. Si pas unique: ça fera insert multiple.
-  // => On gère en upsert "best effort" : si erreur, on tente update.
   const { data, error } = await supabase
     .from("online_matches")
     .upsert(row as any, { onConflict: "lobby_code" })
@@ -1224,7 +1233,6 @@ async function startMatch(args: { lobbyCode: string; initialState?: any }): Prom
 
   if (!error && data) return data as any;
 
-  // fallback: update existing
   const { data: upd, error: updErr } = await supabase
     .from("online_matches")
     .update({ status: "started", state_json: row.state_json })
@@ -1239,7 +1247,6 @@ async function startMatch(args: { lobbyCode: string; initialState?: any }): Prom
   return upd as any;
 }
 
-// Update live state_json (debounce côté caller si besoin)
 async function updateMatchState(args: { lobbyCode: string; state: any; status?: OnlineMatchStatus }): Promise<void> {
   const code = safeUpper(args.lobbyCode);
   const patch: any = {
@@ -1252,7 +1259,6 @@ async function updateMatchState(args: { lobbyCode: string; state: any; status?: 
   if (error) throw new Error(error.message || "Impossible de mettre à jour le match.");
 }
 
-// End match
 async function endMatch(args: { lobbyCode: string; finalState?: any }): Promise<void> {
   const code = safeUpper(args.lobbyCode);
   const patch: any = {
@@ -1266,7 +1272,6 @@ async function endMatch(args: { lobbyCode: string; finalState?: any }): Promise<
   if (error) throw new Error(error.message || "Impossible de terminer le match.");
 }
 
-// Fetch match row (for spectator)
 async function fetchMatchByCode(lobbyCode: string): Promise<OnlineMatchRow | null> {
   const code = safeUpper(lobbyCode);
   if (!code) return null;
@@ -1284,7 +1289,6 @@ async function fetchMatchByCode(lobbyCode: string): Promise<OnlineMatchRow | nul
 
 // ============================================================
 // Matchs “historique” (compat OnlineMatch de ton app)
-// -> on mappe depuis online_matches si tu veux les afficher dans FriendsPage
 // ============================================================
 function mapOnlineMatchFromRow(row: OnlineMatchRow): OnlineMatch {
   return {
@@ -1306,12 +1310,8 @@ function mapOnlineMatchFromRow(row: OnlineMatchRow): OnlineMatch {
 }
 
 async function uploadMatch(payload: UploadMatchPayload): Promise<OnlineMatch> {
-  // Ici on conserve le “match final” dans online_matches.state_json
-  // et on marque ended.
-  // NOTE: si tu as un flux matchId dédié plus tard, on améliorera.
   const lobbyCode = safeUpper((payload as any)?.payload?.lobbyCode || (payload as any)?.payload?.code || "");
   if (!lobbyCode) {
-    // fallback: ne pas casser si appel sans code
     return {
       id: `no_code_${now()}`,
       userId: "unknown",
@@ -1323,7 +1323,6 @@ async function uploadMatch(payload: UploadMatchPayload): Promise<OnlineMatch> {
     } as any;
   }
 
-  // final state = payload.payload
   await endMatch({ lobbyCode, finalState: payload.payload });
   const row = await fetchMatchByCode(lobbyCode);
   if (!row) throw new Error("Match introuvable après upload.");
@@ -1345,55 +1344,43 @@ async function listMatches(limit = 50): Promise<OnlineMatch[]> {
 // Export
 // ============================================================
 export const onlineApi = {
-  // Auth
   signup,
   login,
   restoreSession,
   ensureAnonymousSession,
-  ensureAutoSession, // ✅ compat UI
+  ensureAutoSession,
   logout,
   getCurrentSession,
 
-  // Signup confirm resend
   resendSignupConfirmation,
 
-  // Profil (helper)
   getProfile,
 
-  // Gestion compte
   requestPasswordReset,
   updateEmail,
   deleteAccount,
 
-  // Profil
   updateProfile,
   uploadAvatarImage,
 
-  // Snapshot cloud
   pullStoreSnapshot,
   pushStoreSnapshot,
 
-  // Ping serveur
   ping,
 
-  // Salons
   createLobby,
   joinLobby,
-  listActiveLobbies, // ✅ A
+  listActiveLobbies,
 
-  // Match live
-  startMatch, // ✅ B
-  updateMatchState, // ✅ B
-  endMatch, // ✅ B
-  fetchMatchByCode, // ✅ B
+  startMatch,
+  updateMatchState,
+  endMatch,
+  fetchMatchByCode,
 
-  // Matchs (list/history)
   uploadMatch,
   listMatches,
 
-  // Info
   USE_MOCK,
 
-  // debug
   loadAuthFromLS,
 };
