@@ -1,4 +1,4 @@
-const BUILD = "CAF-X01-ROUND-COLUMN-FINAL-2026-03-31";
+const BUILD = "CAF-X01-TOP8-SCROLL-2026-04-01";
 const NAMESPACE = "urn:x-cast:com.multisports.scoreboard";
 
 const contentEl = document.getElementById("content");
@@ -224,13 +224,16 @@ function waitingScreen() {
   `;
 }
 
-function miniPlayerCard(player, color) {
+function miniPlayerCard(player, color, opts = {}) {
   const c = color || '#53e7ff';
+  const active = !!opts.active;
+  const compact = !!opts.compact;
+  const size = compact ? 32 : 36;
   return `
-    <div class="mini-player-card" style="border-color:${c}55; box-shadow:0 0 18px ${c}22, inset 0 1px 0 rgba(255,255,255,.03);">
-      ${avatarHtml(player, 36, true)}
-      <div class="mini-player-info"><div class="mini-player-name" style="color:${c};">${esc(player?.name || 'Joueur')}</div></div>
-      <div class="mini-player-score" style="color:${c};">${esc(player?.score ?? 0)}</div>
+    <div class="mini-player-card ${active ? 'is-active' : ''}" style="grid-template-columns:${size}px minmax(0,1fr) auto; padding:${compact ? '6px 8px' : '8px 10px'}; border-color:${active ? c + 'aa' : c + '55'}; background:${active ? 'linear-gradient(180deg, color-mix(in srgb, ' + c + ' 18%, rgba(255,255,255,.04)), rgba(255,255,255,.04))' : 'rgba(255,255,255,.03)'}; box-shadow:${active ? '0 0 26px ' + c + '55, 0 0 10px ' + c + '55, inset 0 1px 0 rgba(255,255,255,.06)' : '0 0 18px ' + c + '22, inset 0 1px 0 rgba(255,255,255,.03)'};">
+      ${avatarHtml(player, size, true)}
+      <div class="mini-player-info"><div class="mini-player-name" style="color:${c}; font-size:${compact ? '12px' : '13px'};">${esc(player?.name || 'Joueur')}</div></div>
+      <div class="mini-player-score" style="color:${c}; font-size:${compact ? '14px' : '15px'};">${esc(player?.score ?? 0)}</div>
     </div>
   `;
 }
@@ -319,96 +322,84 @@ function finalSummaryHtml(players, activeColor, gameTitle) {
 function graphHtml(players, colorById, activeColor) {
   if (players.length < 3) return '';
 
-  const playerCount = players.length;
-  const graphHeight = playerCount <= 5 ? 170 : playerCount <= 8 ? 214 : 250;
+  const rankedNow = players.slice().sort((a, b) => num(a?.score, 0) - num(b?.score, 0));
+  const visiblePlayers = rankedNow.slice(0, Math.min(8, rankedNow.length));
+  const visibleIds = new Set(visiblePlayers.map((p, idx) => String(p?.id || p?.name || idx)));
+  const visibleCount = visiblePlayers.length || 1;
+
+  const completed = gameState.roundHistory.slice(-10)
+    .map((round) => ({
+      round: round.round,
+      ranks: Object.fromEntries(Object.entries(round.ranks || {}).filter(([id]) => visibleIds.has(String(id))))
+    }))
+    .filter((round) => Object.keys(round.ranks).length > 0);
+
+  const currentPlayed = Array.from(gameState.currentRoundRanks.entries()).filter(([id]) => visibleIds.has(String(id)));
+  const columns = completed.map((r) => r.round);
+  if (currentPlayed.length > 0) columns.push(gameState.currentRoundNo);
+
+  const graphHeight = visibleCount <= 5 ? 160 : 186;
   const w = 980;
-  const h = playerCount <= 5 ? 178 : playerCount <= 8 ? 220 : 262;
-  const padX = 40;
-  const padY = 28;
-  const rightPad = 56;
+  const h = visibleCount <= 5 ? 170 : 198;
+  const padLeft = 54;
+  const padRight = 54;
+  const padTop = 24;
+  const padBottom = 22;
+  const innerW = w - padLeft - padRight;
+  const innerH = h - padTop - padBottom;
+  const columnCount = Math.max(1, columns.length || 1);
 
-  const completed = gameState.roundHistory.slice(-8);
-  const currentRoundNo = gameState.currentRoundNo;
-  const completedRounds = completed.map((r) => r.round);
-  const maxRound = completedRounds.length ? Math.max(...completedRounds) : 0;
-  const showCurrent = gameState.currentRoundRanks.size > 0;
-  const columns = [...completedRounds];
-  if (showCurrent) columns.push(currentRoundNo);
-  const columnCount = Math.max(1, columns.length);
+  const xForCol = (colIdx) => padLeft + (columnCount <= 1 ? innerW / 2 : (colIdx * innerW) / Math.max(1, columnCount - 1));
+  const yForRank = (rank) => padTop + ((rank - 1) * innerH) / Math.max(1, visibleCount - 1);
 
-  const xForCol = (colIdx) => (columnCount <= 1 ? padX : padX + (colIdx * (w - padX - rightPad)) / Math.max(1, columnCount - 1));
-  const yForRank = (rank) => padY + ((rank - 1) * (h - padY * 2)) / Math.max(1, playerCount - 1);
-
-  const gridY = Array.from({ length: playerCount }, (_, i) => {
+  const gridY = Array.from({ length: visibleCount }, (_, i) => {
     const y = yForRank(i + 1);
-    return `<line x1="${padX}" y1="${y}" x2="${w - rightPad}" y2="${y}" stroke="#fff" opacity="0.10" />`;
+    return `<line x1="${padLeft}" y1="${y}" x2="${w - padRight}" y2="${y}" stroke="#fff" opacity="0.13" />`;
   }).join('');
-
   const gridX = Array.from({ length: columnCount }, (_, i) => {
     const x = xForCol(i);
-    return `<line x1="${x}" y1="${padY - 8}" x2="${x}" y2="${h - padY + 8}" stroke="#fff" opacity="0.08" />`;
+    return `<line x1="${x}" y1="${padTop - 6}" x2="${x}" y2="${h - padBottom + 6}" stroke="#fff" opacity="0.08" />`;
   }).join('');
+  const labels = columns.length
+    ? columns.map((roundNo, i) => `<text x="${xForCol(i)}" y="${h - 1}" text-anchor="middle" font-size="12" fill="rgba(255,255,255,.74)" font-weight="800">${roundNo}</text>`).join('')
+    : '';
 
-  const labels = columns.map((roundNo, i) => `<text x="${xForCol(i)}" y="${h - 2}" text-anchor="middle" font-size="13" fill="rgba(255,255,255,.78)" font-weight="800">${roundNo}</text>`).join('');
+  const defs = visiblePlayers.map((p, idx) => `<filter id="glow-${idx}" x="-80%" y="-80%" width="260%" height="260%"><feGaussianBlur stdDeviation="2.8" result="blur"/><feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge></filter>`).join('');
 
-  const pointsByPlayer = new Map();
-  players.forEach((p, idx) => {
+  const completedPaths = visiblePlayers.map((p, idx) => {
     const id = String(p?.id || p?.name || idx);
+    const color = colorById[id] || '#53e7ff';
     const pts = [];
     completed.forEach((round, colIdx) => {
       const rank = Number(round.ranks?.[id]);
-      if (Number.isFinite(rank)) pts.push({ x: xForCol(colIdx), y: yForRank(rank), round: round.round, rank });
+      if (Number.isFinite(rank)) pts.push({ x: xForCol(colIdx), y: yForRank(rank) });
     });
-    pointsByPlayer.set(id, pts);
-  });
-
-  const defs = players.map((p, idx) => {
-    const id = String(p?.id || p?.name || idx);
-    const color = colorById[id] || '#53e7ff';
-    return `<filter id="glow-${idx}" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="3.8" result="blur"/><feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge></filter>`;
-  }).join('');
-
-  const lines = players.map((p, idx) => {
-    const id = String(p?.id || p?.name || idx);
-    const color = colorById[id] || '#53e7ff';
-    const pts = pointsByPlayer.get(id) || [];
     if (pts.length < 2) return '';
     const d = pts.map((pt, i) => `${i === 0 ? 'M' : 'L'}${pt.x.toFixed(1)},${pt.y.toFixed(1)}`).join(' ');
-    return `
-      <path d="${d}" fill="none" stroke="${color}" stroke-width="7.5" stroke-linecap="round" stroke-linejoin="round" opacity="0.11" filter="url(#glow-${idx})" />
-      <path d="${d}" fill="none" stroke="${color}" stroke-width="3.0" stroke-linecap="round" stroke-linejoin="round" opacity="0.98" />
-      ${pts.map((pt) => `<circle cx="${pt.x}" cy="${pt.y}" r="4.5" fill="${color}" opacity="0.92" />`).join('')}
-    `;
+    return `<path d="${d}" fill="none" stroke="${color}" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" opacity="0.94" filter="url(#glow-${idx})" />${pts.map((pt)=>`<circle cx="${pt.x}" cy="${pt.y}" r="3.1" fill="${color}" opacity="0.96" />`).join('')}`;
   }).join('');
 
-  const currentColIndex = columns.length - 1;
-  const currentAvatars = showCurrent
-    ? players.map((p, idx) => {
-        const id = String(p?.id || p?.name || idx);
-        const rank = gameState.currentRoundRanks.get(id);
-        if (!Number.isFinite(rank)) return '';
-        const x = xForCol(currentColIndex);
-        const y = yForRank(rank);
-        const src = getAvatarSrc(p);
-        const color = colorById[id] || activeColor || '#53e7ff';
-        return src
-          ? `<image href="${esc(src)}" x="${x - 11}" y="${y - 11}" width="22" height="22" clip-path="circle(11px at 11px 11px)" style="filter:drop-shadow(0 0 6px ${color});" />`
-          : `<circle cx="${x}" cy="${y}" r="10" fill="${color}" stroke="rgba(255,255,255,.85)" stroke-width="2" />`;
-      }).join('')
-    : '';
+  const currentItems = currentPlayed.length > 0 ? visiblePlayers.map((p, idx) => {
+    const id = String(p?.id || p?.name || idx);
+    const rank = gameState.currentRoundRanks.get(id);
+    if (!Number.isFinite(rank)) return '';
+    const x = xForCol(columns.length - 1);
+    const y = yForRank(rank);
+    const src = getAvatarSrc(p);
+    const color = colorById[id] || activeColor || '#53e7ff';
+    return src
+      ? `<g filter="url(#glow-${idx})"><circle cx="${x}" cy="${y}" r="11.8" fill="none" stroke="${color}" stroke-width="2.2" opacity="0.92" /><image href="${esc(src)}" x="${x - 10}" y="${y - 10}" width="20" height="20" clip-path="circle(10px at 10px 10px)" /></g>`
+      : `<circle cx="${x}" cy="${y}" r="8.4" fill="${color}" stroke="rgba(255,255,255,.88)" stroke-width="2" filter="url(#glow-${idx})" />`;
+  }).join('') : '';
 
   return `
-    <section class="panel graph-panel" style="padding:14px 16px 12px; min-height:${graphHeight + 34}px;">
-      <div class="panel-title-row">
-        <div class="panel-title" style="margin-bottom:0; color:${activeColor};">Évolution</div>
-        <div class="panel-subtitle" style="color:${activeColor};">Tours</div>
-      </div>
-      <svg viewBox="0 0 ${w} ${h}" class="graph-svg" preserveAspectRatio="none" style="height:${graphHeight}px; padding:2px 6px 0; overflow:visible;">
+    <section class="panel graph-panel" style="padding:12px 14px 10px; min-height:${graphHeight + 26}px;">
+      <svg viewBox="0 0 ${w} ${h}" class="graph-svg" preserveAspectRatio="none" style="height:${graphHeight}px; padding:2px 8px 0; overflow:visible;">
         <defs>${defs}</defs>
         ${gridY}
         ${gridX}
-        ${lines}
-        ${currentAvatars}
+        ${completedPaths}
+        ${currentItems}
         ${labels}
       </svg>
     </section>
@@ -453,7 +444,7 @@ function renderGame(payload) {
         <aside class="panel order-panel">
           <div class="panel-title">Ordre de passage</div>
           <div class="mini-player-list">
-            ${ordered.map((p) => miniPlayerCard(p, colorById[String(p?.id || p?.name || '')])).join('')}
+            ${ordered.map((p, i) => miniPlayerCard(p, colorById[String(p?.id || p?.name || '')], { active: i === 0, compact: ordered.length >= 8 })).join('')}
           </div>
         </aside>
         <main class="main-column">

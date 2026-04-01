@@ -5,6 +5,7 @@ export const GOOGLE_CAST_NAMESPACE = "urn:x-cast:com.multisports.scoreboard";
 export const GOOGLE_CAST_SDK_URL =
   "https://www.gstatic.com/cv/js/sender/v1/cast_sender.js?loadCastFramework=1";
 const GOOGLE_CAST_DIAG_KEY = "multisports_google_cast_diag";
+const MAX_PLAYERS_WITH_ALL_AVATARS = 8;
 
 let sdkPromise: Promise<boolean> | null = null;
 let initializedAppId: string | null = null;
@@ -215,7 +216,8 @@ async function sanitizeSnapshot(snapshot: CastSnapshot) {
             const pid = String(p?.id ?? "");
             const avatarSig = avatar.avatarUrl || avatar.avatarDataUrl || "";
             const lastSig = pid ? (lastSentAvatarByPlayer.get(pid) || "") : "";
-            const shouldSendAvatar = !!avatarSig && avatarSig !== lastSig;
+            const isActivePlayer = !!p?.active;
+            const shouldSendAvatar = !!avatarSig && avatarSig !== lastSig && ((Array.isArray(snapshot?.players) ? snapshot.players.length : 0) <= MAX_PLAYERS_WITH_ALL_AVATARS || isActivePlayer);
             if (pid && avatarSig) lastSentAvatarByPlayer.set(pid, avatarSig);
             return {
               id: pid,
