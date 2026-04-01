@@ -1,7 +1,6 @@
 import React from "react";
 import { useTheme } from "../contexts/ThemeContext";
 import { useSport } from "../contexts/SportContext";
-import GlobalCastButton from "./GlobalCastButton";
 
 /**
  * BottomNav
@@ -282,7 +281,6 @@ export default function BottomNav({
           </button>
         );
       })}
-      <GlobalCastButton accent={accent} textMain={textMain} textSoft={textSoft} />
       <div className="bn-safe" />
     </nav>
   );

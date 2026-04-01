@@ -6,7 +6,6 @@
 // - Prépare un vrai stats_index centralisé pour éviter les stats vides
 // ============================================
 
-import { History } from "../history";
 import { delKV, getKV, setKV } from "../storage";
 
 // ----------------------------
@@ -662,6 +661,12 @@ export async function rebuildStatsFromHistory(options?: {
 }): Promise<StatsIndex> {
   const includeNonFinished = !!options?.includeNonFinished;
   const persist = options?.persist !== false;
+
+  // ✅ TDZ / cycle break:
+  // rebuildStatsFromHistory <-> history created a runtime import cycle.
+  // We resolve History lazily here so the module graph is fully initialized
+  // before accessing the History object.
+  const { History } = await import("../history");
 
   const list = includeNonFinished
     ? await History.list()

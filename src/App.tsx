@@ -3561,6 +3561,15 @@ case "babyfoot_team_edit":
     // Hub
     "gameSelect",
 
+    // Auth / démarrage (stabilisation anti-crash shell)
+    "account_start",
+    "auth_start",
+    "auth_v7_login",
+    "auth_v7_signup",
+    "auth_forgot",
+    "auth_reset",
+    "auth_callback",
+
     // Darts (play)
     "x01",
     "x01_play_v3",
@@ -3618,7 +3627,8 @@ case "babyfoot_team_edit":
         {/* ✅ BottomNav masquée sur gameSelect + tous les gameplays plein écran */}
         {!HIDE_BOTTOM_NAV_TABS.has(tab) && <BottomNav value={tab as any} onChange={(k: any) => go(k)} />}
 
-        <SWUpdateBanner />
+        {/* SWUpdateBanner temporairement désactivé pour stabiliser le shell global */}
+        {null}
       </>
     </CrashCatcher>
   );
