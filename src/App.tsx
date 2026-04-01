@@ -3632,13 +3632,21 @@ function AppGate({ go, tab, children }: { go: (t: any, p?: any) => void; tab: an
 
   // pendant les flows auth, on ne gate pas
   const isAuthFlow =
-  tab === "auth_reset" ||
-  tab === "auth_callback" ||
-  tab === "auth_forgot" ||
-  tab === "auth_start" ||
-  tab === "account_start" ||
-  tab === "auth_v7_login" ||
-  tab === "auth_v7_signup";
+    tab === "auth_reset" ||
+    tab === "auth_callback" ||
+    tab === "auth_forgot" ||
+    tab === "auth_start" ||
+    tab === "account_start" ||
+    tab === "auth_v7_login" ||
+    tab === "auth_v7_signup";
+
+  const mustRedirectToAuth = ready && !isAuthFlow && needsSession && status !== "signed_in";
+
+  React.useEffect(() => {
+    if (mustRedirectToAuth) {
+      go("auth_start");
+    }
+  }, [mustRedirectToAuth, go]);
 
   if (!ready) {
     return (
@@ -3648,13 +3656,7 @@ function AppGate({ go, tab, children }: { go: (t: any, p?: any) => void; tab: an
     );
   }
 
-  React.useEffect(() => {
-    if (!isAuthFlow && needsSession && status !== "signed_in") {
-      go("auth_start");
-    }
-  }, [isAuthFlow, needsSession, status, go]);
-
-  if (!isAuthFlow && needsSession && status !== "signed_in") {
+  if (mustRedirectToAuth) {
     return (
       <div className="container" style={{ padding: 40, textAlign: "center" }}>
         Redirection vers la connexion…
