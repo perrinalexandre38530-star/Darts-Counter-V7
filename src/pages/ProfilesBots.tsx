@@ -82,6 +82,11 @@ export default function ProfilesBots({ store, go }: Props) {
   function persist(next: Bot[]) {
     setBots(next);
     saveBots(next);
+    try {
+      (window as any).__flushCloudNow?.("bots_save");
+    } catch (e) {
+      console.warn("[bots] immediate cloud flush failed", e);
+    }
   }
 
   function handleRandomSeed() {

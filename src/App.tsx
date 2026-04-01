@@ -370,8 +370,23 @@ function mergeProfilesSafe<T extends { id: string }>(base: T[], incoming: T[]) {
   }
   for (const p of b) {
     if (!p || typeof p.id !== "string") continue;
-    const prev = map.get(p.id);
-    map.set(p.id, prev ? ({ ...prev, ...p } as T) : p);
+    const prev: any = map.get(p.id);
+    if (!prev) {
+      map.set(p.id, p);
+      continue;
+    }
+    const next: any = p;
+    map.set(
+      p.id,
+      {
+        ...prev,
+        ...next,
+        privateInfo: {
+          ...(prev?.privateInfo || {}),
+          ...(next?.privateInfo || {}),
+        },
+      } as T
+    );
   }
 
   return Array.from(map.values());

@@ -42,6 +42,15 @@ function slimDartset(d: any) {
   if (typeof next.photoDataUrl === "string") {
     next.photoDataUrl = maybeStripHugeDataUrl(next.photoDataUrl);
   }
+  if (typeof next.mainImageUrl === "string") {
+    next.mainImageUrl = maybeStripHugeDataUrl(next.mainImageUrl);
+  }
+  if (typeof next.thumbImageUrl === "string") {
+    next.thumbImageUrl = maybeStripHugeDataUrl(next.thumbImageUrl);
+  }
+  if (typeof next.avatarDataUrl === "string") {
+    next.avatarDataUrl = maybeStripHugeDataUrl(next.avatarDataUrl);
+  }
 
   return next;
 }

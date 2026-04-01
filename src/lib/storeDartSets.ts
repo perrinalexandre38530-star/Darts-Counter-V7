@@ -26,6 +26,27 @@ export type DartSet = {
   lastUsedAt?: number;
 };
 
+const MAX_IMAGE_DATA_URL_CHARS = 380_000;
+
+function sanitizeImageUrl(value: any): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const v = value.trim();
+  if (!v) return undefined;
+  if (!v.startsWith("data:image/")) return v;
+  return v.length <= MAX_IMAGE_DATA_URL_CHARS ? v : undefined;
+}
+
+function sanitizeSet(set: DartSet): DartSet {
+  const mainImageUrl = sanitizeImageUrl(set.mainImageUrl) || "";
+  const thumbImageUrl = sanitizeImageUrl(set.thumbImageUrl);
+  return {
+    ...set,
+    mainImageUrl,
+    thumbImageUrl,
+    kind: set.kind === "photo" && !mainImageUrl ? (set.presetId ? "preset" : "plain") : set.kind,
+  };
+}
+
 export function ensureDartSets(store: Store): DartSet[] {
   if (!Array.isArray((store as any).dartSets)) {
     (store as any).dartSets = [];
@@ -39,9 +60,10 @@ export function getDartSetsForProfile(store: Store, profileId: string): DartSet[
 
 export function upsertDartSet(store: Store, set: DartSet) {
   const list = ensureDartSets(store);
-  const idx = list.findIndex((s) => s.id === set.id);
-  if (idx >= 0) list[idx] = set;
-  else list.push(set);
+  const safe = sanitizeSet(set);
+  const idx = list.findIndex((s) => s.id === safe.id);
+  if (idx >= 0) list[idx] = safe;
+  else list.push(safe);
 }
 
 export function deleteDartSet(store: Store, id: string) {

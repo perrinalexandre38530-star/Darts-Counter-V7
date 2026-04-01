@@ -1440,6 +1440,30 @@ React.useEffect(() => {
           birthDate: patch.birthDate?.trim() || undefined,
           email: patch.email?.trim() || undefined,
           phone: patch.phone?.trim() || undefined,
+          preferences: {
+            appLang: patch.appLang,
+            appTheme: patch.appTheme,
+            favX01: patch.favX01,
+            favDoubleOut: patch.favDoubleOut,
+            ttsVoice: patch.ttsVoice,
+            sfxVolume: patch.sfxVolume,
+          },
+          privateInfo: {
+            nickname: patch.nickname?.trim() || undefined,
+            firstName: patch.firstName?.trim() || undefined,
+            lastName: patch.lastName?.trim() || undefined,
+            birthDate: patch.birthDate?.trim() || undefined,
+            country: patch.country?.trim() || undefined,
+            city: patch.city?.trim() || undefined,
+            email: patch.email?.trim() || undefined,
+            phone: patch.phone?.trim() || undefined,
+            appLang: patch.appLang,
+            appTheme: patch.appTheme,
+            favX01: patch.favX01,
+            favDoubleOut: patch.favDoubleOut,
+            ttsVoice: patch.ttsVoice,
+            sfxVolume: patch.sfxVolume,
+          },
         });
 
         if (patch.password && String(patch.password).trim()) {

@@ -129,6 +129,15 @@ export type UpdateProfilePayload = {
   email?: string;
   phone?: string;
   nickname?: string;
+  preferences?: {
+    appLang?: string;
+    appTheme?: string;
+    favX01?: number;
+    favDoubleOut?: boolean;
+    ttsVoice?: string;
+    sfxVolume?: number;
+  };
+  privateInfo?: Record<string, any>;
 };
 
 export type UploadMatchPayload = Omit<

@@ -1,3 +1,5 @@
+import { safeLocalStorageGetJson, safeLocalStorageSetJson } from "./imageStorageCodec";
+
 // =============================================================
 // src/lib/dartSetsStore.ts
 // Gestion des jeux de fléchettes ("Dart Sets")
@@ -79,7 +81,7 @@ function sanitizeDartSetForStorage(raw: any): any {
 function safeParse(json: string | null): DartSet[] {
   if (!json) return [];
   try {
-    const arr = JSON.parse(json);
+    const arr = safeLocalStorageGetJson<any>(STORAGE_KEY, null) ?? JSON.parse(json);
     if (!Array.isArray(arr)) return [];
 
     // Normalisation + compat anciens sets (sans scope / sans kind/presetId)
@@ -111,7 +113,7 @@ function saveAll(list: DartSet[]) {
   const sanitized = (Array.isArray(list) ? list : []).map((item) => sanitizeDartSetForStorage(item)) as DartSet[];
 
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(sanitized));
+    safeLocalStorageSetJson(STORAGE_KEY, sanitized, { sanitizeImages: true, imageMaxChars: MAX_DARTSET_IMAGE_DATA_URL_CHARS, compressAboveChars: 12_000 });
   } catch (err) {
     console.warn("[dartSetsStore] saveAll error", err);
 
@@ -123,7 +125,7 @@ function saveAll(list: DartSet[]) {
         if (next.kind === "photo") next.kind = next.presetId ? "preset" : "plain";
         return next;
       });
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(stripped));
+      safeLocalStorageSetJson(STORAGE_KEY, stripped, { sanitizeImages: true, imageMaxChars: MAX_DARTSET_IMAGE_DATA_URL_CHARS, compressAboveChars: 4_000 });
     } catch (fallbackErr) {
       console.warn("[dartSetsStore] fallback saveAll error", fallbackErr);
     }
@@ -147,7 +149,7 @@ function saveAll(list: DartSet[]) {
 
 function loadAll(): DartSet[] {
   try {
-    return safeParse(localStorage.getItem(STORAGE_KEY));
+    return safeLocalStorageGetJson<DartSet[]>(STORAGE_KEY, []).map((item: any) => sanitizeDartSetForStorage(item) as DartSet);
   } catch (err) {
     console.warn("[dartSetsStore] loadAll error", err);
     return [];
