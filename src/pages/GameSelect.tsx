@@ -1,10 +1,11 @@
 // ============================================
 // src/pages/GameSelect.tsx
 // Hub de sélection de jeu (sans BottomNav)
-// - 1 sport à la fois
-// - swipe horizontal / flèches clavier / boutons desktop
-// - ouverture directe vers Home ou Games selon le sport
-// - version restructurée pour éliminer tout risque de TDZ
+// - ✅ Texte: "Choisis ton sport"
+// - ✅ Affiche 1 sport à la fois (logo plus gros)
+// - ✅ Swipe horizontal (doigt) pour défiler sport par sport
+// - ✅ Clic sur le sport courant => route principale (avec BottomNav)
+// - ✅ FIX: setSport() pour MAJ immédiate (même onglet)
 // ============================================
 
 import React from "react";
@@ -13,11 +14,13 @@ import { useSport } from "../contexts/SportContext";
 import { useDevMode } from "../contexts/DevModeContext";
 import { devClickable, devVisuallyDisabled } from "../lib/devGate";
 
+// IMPORTANT: ajuste les chemins si tu places ailleurs
 import logoDarts from "../assets/games/logo-darts.png";
 import logoPetanque from "../assets/games/logo-petanque.png";
 import logoPingPong from "../assets/games/logo-pingpong.png";
 import logoBabyFoot from "../assets/games/logo-babyfoot.png";
 
+// ✅ Sports à venir (affichés en SOON dans le GameSelect)
 import logoArchery from "../assets/games/logo-archery.png";
 import logoMolkky from "../assets/games/logo-molkky.png";
 import logoPadel from "../assets/games/logo-padel.png";
@@ -59,118 +62,267 @@ type GameId =
   | "tennis"
   | "chess";
 
-type RawItem = {
-  id: GameId;
-  label: string;
-  logo: string;
-  enabled: boolean;
-  sport?: string;
-  route: "home" | "games" | null;
-};
-
-type RenderItem = RawItem & {
-  onClick: () => void;
-};
-
-const RAW_ITEMS: RawItem[] = [
-  { id: "darts", label: "Darts Counter", logo: logoDarts, enabled: true, sport: "darts", route: "home" },
-  { id: "petanque", label: "Pétanque Counter", logo: logoPetanque, enabled: true, sport: "petanque", route: "games" },
-  { id: "pingpong", label: "Ping-Pong Counter", logo: logoPingPong, enabled: true, sport: "pingpong", route: "games" },
-  { id: "babyfoot", label: "Baby-Foot Counter", logo: logoBabyFoot, enabled: true, sport: "babyfoot", route: "games" },
-
-  { id: "archery", label: "Tir à l'arc", logo: logoArchery, enabled: false, route: null },
-  { id: "molkky", label: "Mölkky", logo: logoMolkky, enabled: true, sport: "molkky", route: "games" },
-  { id: "padel", label: "Padel", logo: logoPadel, enabled: false, route: null },
-  { id: "pickleball", label: "Pickleball", logo: logoPickleball, enabled: false, route: null },
-  { id: "frisbee", label: "Frisbee", logo: logoFrisbee, enabled: false, route: null },
-  { id: "billard", label: "Billard", logo: logoBillard, enabled: false, route: null },
-  { id: "badminton", label: "Badminton", logo: logoBadminton, enabled: false, route: null },
-  { id: "basket", label: "Basket", logo: logoBasket, enabled: false, route: null },
-  { id: "cornhole", label: "Cornhole", logo: logoCornhole, enabled: false, route: null },
-  { id: "dicegame", label: "Dice Game", logo: logoDiceGame, enabled: true, sport: "dicegame", route: "games" },
-  { id: "foot", label: "Foot", logo: logoFoot, enabled: false, route: null },
-  { id: "rugby", label: "Rugby", logo: logoRugby, enabled: false, route: null },
-  { id: "volley", label: "Volley", logo: logoVolley, enabled: false, route: null },
-  { id: "tennis", label: "Tennis", logo: logoTennis, enabled: false, route: null },
-  { id: "chess", label: "Échecs", logo: logoChess, enabled: false, route: null },
-];
-
-const DOTS_WRAP: React.CSSProperties = {
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "center",
-  gap: 8,
-  padding: "2px 0 0",
-};
-
-function sortItems(items: RenderItem[]): RenderItem[] {
-  return [...items]
-    .sort((a, b) => a.label.localeCompare(b.label, "fr"))
-    .sort((a, b) => Number(b.enabled) - Number(a.enabled));
-}
-
-function detectDesktop(): boolean {
-  if (typeof window === "undefined") return false;
-  const mq1 = window.matchMedia?.("(hover: hover)");
-  const mq2 = window.matchMedia?.("(pointer: fine)");
-  return Boolean(mq1?.matches && mq2?.matches);
-}
-
-function wrapIndex(i: number, length: number): number {
-  const n = length || 1;
-  return ((i % n) + n) % n;
-}
-
 export default function GameSelect({ go }: Props) {
   const { theme } = useTheme();
   const { setSport } = useSport();
   const dev = useDevMode() as any;
 
-  const isDesktop = React.useMemo(() => detectDesktop(), []);
+  // Desktop détecté (souris / trackpad) => on ajoute des contrôles visibles
+  const isDesktop = React.useMemo(() => {
+    if (typeof window === "undefined") return false;
+    const mq1 = window.matchMedia?.("(hover: hover)");
+    const mq2 = window.matchMedia?.("(pointer: fine)");
+    return Boolean(mq1?.matches && mq2?.matches);
+  }, []);
 
-  const openItem = React.useCallback(
-    (item: RawItem) => {
-      if (!item.enabled) return;
-      if (item.sport) {
-        try {
-          setSport(item.sport as any);
-        } catch {}
-      }
-      if (item.route) {
-        go(item.route);
-      }
+  // ✅ routes d'entrée (BottomNav)
+  // - Darts: on garde le dashboard "Home"
+  // - Sports locaux (Pétanque/Baby-foot/Ping-pong): on ouvre DIRECTEMENT le menu "Games"
+  const HOME_ROUTE = "home";
+  const GAMES_ROUTE = "games";
+
+  const items: Array<{
+    id: GameId;
+    label: string;
+    logo: string;
+    enabled: boolean;
+    onClick: () => void;
+  }> = [
+    {
+      id: "darts",
+      label: "Darts Counter",
+      logo: logoDarts,
+      enabled: true,
+      onClick: () => {
+        setSport("darts");
+        go(HOME_ROUTE);
+      },
     },
-    [go, setSport]
-  );
+    {
+      id: "petanque",
+      label: "Pétanque Counter",
+      logo: logoPetanque,
+      enabled: true,
+      onClick: () => {
+        setSport("petanque");
+        go(GAMES_ROUTE);
+      },
+    },
+    {
+      id: "pingpong",
+      label: "Ping-Pong Counter",
+      logo: logoPingPong,
+      enabled: true,
+      onClick: () => {
+        setSport("pingpong");
+        go(GAMES_ROUTE);
+      },
+    },
+    {
+      id: "babyfoot",
+      label: "Baby-Foot Counter",
+      logo: logoBabyFoot,
+      enabled: true,
+      onClick: () => {
+        setSport("babyfoot");
+        go(GAMES_ROUTE);
+      },
+    },
 
-  const sortedItems = React.useMemo<RenderItem[]>(() => {
-    const built = RAW_ITEMS.map((item) => ({
-      ...item,
-      onClick: () => openItem(item),
-    }));
-    return sortItems(built);
-  }, [openItem]);
+    // ------------------------------
+    // ✅ Sports à venir (SOON)
+    // ------------------------------
+    {
+      id: "archery",
+      label: "Tir à l'arc",
+      logo: logoArchery,
+      enabled: false,
+      onClick: () => {},
+    },
+    {
+      id: "molkky",
+      label: "Mölkky",
+      logo: logoMolkky,
+      enabled: true,
+      onClick: () => {
+        setSport("molkky");
+        go(GAMES_ROUTE);
+      },
+    },
+    {
+      id: "padel",
+      label: "Padel",
+      logo: logoPadel,
+      enabled: false,
+      onClick: () => {},
+    },
+    {
+      id: "pickleball",
+      label: "Pickleball",
+      logo: logoPickleball,
+      enabled: false,
+      onClick: () => {},
+    },
+    {
+      id: "frisbee",
+      label: "Frisbee",
+      logo: logoFrisbee,
+      enabled: false,
+      onClick: () => {},
+    },
+    {
+      id: "billard",
+      label: "Billard",
+      logo: logoBillard,
+      enabled: false,
+      onClick: () => {},
+    },
+    {
+      id: "badminton",
+      label: "Badminton",
+      logo: logoBadminton,
+      enabled: false,
+      onClick: () => {},
+    },
+    {
+      id: "basket",
+      label: "Basket",
+      logo: logoBasket,
+      enabled: false,
+      onClick: () => {},
+    },
+    {
+      id: "cornhole",
+      label: "Cornhole",
+      logo: logoCornhole,
+      enabled: false,
+      onClick: () => {},
+    },
+    {
+      id: "dicegame",
+      label: "Dice Game",
+      logo: logoDiceGame,
+      enabled: true,
+      onClick: () => {
+        setSport("dicegame" as any);
+        go(GAMES_ROUTE);
+      },
+    },
+    {
+      id: "foot",
+      label: "Foot",
+      logo: logoFoot,
+      enabled: false,
+      onClick: () => {},
+    },
+    {
+      id: "rugby",
+      label: "Rugby",
+      logo: logoRugby,
+      enabled: false,
+      onClick: () => {},
+    },
+    {
+      id: "volley",
+      label: "Volley",
+      logo: logoVolley,
+      enabled: false,
+      onClick: () => {},
+    },
+    {
+      id: "tennis",
+      label: "Tennis",
+      logo: logoTennis,
+      enabled: false,
+      onClick: () => {},
+    },
+    {
+      id: "chess",
+      label: "Échecs",
+      logo: logoChess,
+      enabled: false,
+      onClick: () => {},
+    },
+  ];
 
+  // ✅ TRI DEMANDÉ :
+  // 1) sports disponibles d’abord
+  // 2) sports grisés ensuite
+  // 3) ordre alphabétique FR dans chaque groupe
+  const sortedItems = React.useMemo(() => {
+    const copy = [...items];
+    copy.sort((a, b) => a.label.localeCompare(b.label, "fr"));
+    copy.sort((a, b) => Number(b.enabled) - Number(a.enabled));
+    return copy;
+  }, [items]);
+
+  // ------------------------------------------
+  // Swipe (mobile / tablette)
+  // ------------------------------------------
   const [index, setIndex] = React.useState(0);
   const startXRef = React.useRef<number | null>(null);
   const draggingRef = React.useRef(false);
+
+  // Desktop drag (souris)
   const mouseDownRef = React.useRef<number | null>(null);
 
-  const normalizedIndex = React.useMemo(() => wrapIndex(index, sortedItems.length), [index, sortedItems.length]);
-  const currentItem = sortedItems[normalizedIndex] ?? sortedItems[0] ?? null;
+  const wrapIndex = React.useCallback(
+    (i: number) => {
+      const n = sortedItems.length || 1;
+      return ((i % n) + n) % n;
+    },
+    [sortedItems.length]
+  );
 
-  const goPrev = React.useCallback(() => {
-    setIndex((prev) => wrapIndex(prev - 1, sortedItems.length));
-  }, [sortedItems.length]);
+  const goPrev = React.useCallback(() => setIndex((i) => wrapIndex(i - 1)), [wrapIndex]);
+  const goNext = React.useCallback(() => setIndex((i) => wrapIndex(i + 1)), [wrapIndex]);
 
-  const goNext = React.useCallback(() => {
-    setIndex((prev) => wrapIndex(prev + 1, sortedItems.length));
-  }, [sortedItems.length]);
-
+  // ✅ si la taille change, on évite un index hors plage
   React.useEffect(() => {
-    setIndex((prev) => wrapIndex(prev, sortedItems.length));
-  }, [sortedItems.length]);
+    setIndex((i) => wrapIndex(i));
+  }, [wrapIndex]);
 
+  const onTouchStart = (e: React.TouchEvent) => {
+    startXRef.current = e.touches[0]?.clientX ?? null;
+    draggingRef.current = true;
+  };
+
+  const onTouchMove = () => {
+    // On ne fait rien ici: on déclenche seulement au release.
+  };
+
+  const onTouchEnd = (e: React.TouchEvent) => {
+    if (!draggingRef.current) return;
+    draggingRef.current = false;
+
+    const startX = startXRef.current;
+    startXRef.current = null;
+
+    if (startX == null) return;
+    const endX = e.changedTouches[0]?.clientX ?? startX;
+    const delta = endX - startX;
+
+    // seuil volontairement franc pour éviter les faux positifs
+    if (delta > 55) goPrev();
+    else if (delta < -55) goNext();
+  };
+
+  const onMouseDown = (e: React.MouseEvent) => {
+    // clic gauche uniquement
+    if (e.button !== 0) return;
+    mouseDownRef.current = e.clientX;
+  };
+
+  const onMouseUp = (e: React.MouseEvent) => {
+    const startX = mouseDownRef.current;
+    mouseDownRef.current = null;
+    if (startX == null) return;
+    const delta = e.clientX - startX;
+    if (delta > 55) goPrev();
+    else if (delta < -55) goNext();
+  };
+
+  // Desktop: flèches clavier (confort)
   React.useEffect(() => {
     const onKey = (ev: KeyboardEvent) => {
       if (ev.key === "ArrowLeft") goPrev();
@@ -180,105 +332,54 @@ export default function GameSelect({ go }: Props) {
     return () => window.removeEventListener("keydown", onKey);
   }, [goPrev, goNext]);
 
-  const onTouchStart = React.useCallback((e: React.TouchEvent) => {
-    startXRef.current = e.touches[0]?.clientX ?? null;
-    draggingRef.current = true;
-  }, []);
-
-  const onTouchEnd = React.useCallback(
-    (e: React.TouchEvent) => {
-      if (!draggingRef.current) return;
-      draggingRef.current = false;
-
-      const startX = startXRef.current;
-      startXRef.current = null;
-      if (startX == null) return;
-
-      const endX = e.changedTouches[0]?.clientX ?? startX;
-      const delta = endX - startX;
-      if (delta > 55) goPrev();
-      else if (delta < -55) goNext();
-    },
-    [goPrev, goNext]
-  );
-
-  const onMouseDown = React.useCallback((e: React.MouseEvent) => {
-    if (e.button !== 0) return;
-    mouseDownRef.current = e.clientX;
-  }, []);
-
-  const onMouseUp = React.useCallback(
-    (e: React.MouseEvent) => {
-      const startX = mouseDownRef.current;
-      mouseDownRef.current = null;
-      if (startX == null) return;
-      const delta = e.clientX - startX;
-      if (delta > 55) goPrev();
-      else if (delta < -55) goNext();
-    },
-    [goPrev, goNext]
-  );
-
-  if (!currentItem) {
-    return (
-      <div style={wrap()}>
-        <div style={panel()}>
-          <div style={title(theme)}>Choisis ton sport</div>
-          <div style={subtitle()}>Aucun sport disponible</div>
-        </div>
-      </div>
-    );
-  }
-
-  const visuallyDisabled = devVisuallyDisabled(!!currentItem.enabled);
-  const clickable = devClickable(!!currentItem.enabled, !!dev?.enabled);
+  const it = sortedItems[index];
+  const visuallyDisabled = devVisuallyDisabled(!!it.enabled);
+  const clickable = devClickable(!!it.enabled, !!dev?.enabled);
 
   return (
-    <div style={wrap()}>
+    <div style={wrap(theme)}>
       <div
-        style={panel()}
+        style={panel(theme)}
         onTouchStart={onTouchStart}
+        onTouchMove={onTouchMove}
         onTouchEnd={onTouchEnd}
         onMouseDown={onMouseDown}
         onMouseUp={onMouseUp}
       >
         <div style={title(theme)}>Choisis ton sport</div>
-        <div style={subtitle()}>Fais défiler pour choisir</div>
+        <div style={subtitle(theme)}>Fais défiler pour choisir</div>
 
         <button
-          key={currentItem.id}
-          onClick={clickable ? currentItem.onClick : undefined}
+          key={it.id}
+          onClick={clickable ? it.onClick : undefined}
           style={sportTile(theme, !visuallyDisabled)}
           aria-disabled={!clickable}
           title={clickable ? "Ouvrir" : "Bientôt"}
         >
-          <img
-            src={currentItem.logo}
-            alt={currentItem.label}
-            style={sportImg(theme, !visuallyDisabled)}
-            draggable={false}
-          />
-          <div style={sportLabel(theme, !visuallyDisabled)}>{currentItem.label}</div>
+          <img src={it.logo} alt={it.label} style={sportImg(theme, !visuallyDisabled)} draggable={false} />
+          <div style={sportLabel(theme, !visuallyDisabled)}>{it.label}</div>
           {visuallyDisabled && <div style={soonPill(theme)}>SOON</div>}
         </button>
 
-        <div style={DOTS_WRAP}>
-          {sortedItems.map((item, i) => (
-            <span key={item.id} style={dot(theme, i === normalizedIndex)} />
+        <div style={dotsWrap}>
+          {sortedItems.map((_, i) => (
+            <span key={i} style={dot(theme, i === index)} />
           ))}
         </div>
 
+        {/* Contrôles desktop visibles (si souris / trackpad) */}
         {isDesktop && (
           <>
-            <button aria-label="Précédent" onClick={goPrev} style={navBtn("left")}>
+            <button aria-label="Précédent" onClick={goPrev} style={navBtn(theme, "left")}>
               ‹
             </button>
-            <button aria-label="Suivant" onClick={goNext} style={navBtn("right")}>
+            <button aria-label="Suivant" onClick={goNext} style={navBtn(theme, "right")}>
               ›
             </button>
           </>
         )}
 
+        {/* Zones tactiles discrètes (utile tablette) */}
         <button aria-label="Précédent" onClick={goPrev} style={edgeTap("left")} />
         <button aria-label="Suivant" onClick={goNext} style={edgeTap("right")} />
       </div>
@@ -286,7 +387,9 @@ export default function GameSelect({ go }: Props) {
   );
 }
 
-function wrap(): React.CSSProperties {
+// ---------------- styles ----------------
+
+function wrap(theme: any): React.CSSProperties {
   return {
     minHeight: "100vh",
     display: "flex",
@@ -298,7 +401,7 @@ function wrap(): React.CSSProperties {
   };
 }
 
-function panel(): React.CSSProperties {
+function panel(theme: any): React.CSSProperties {
   return {
     width: "100%",
     maxWidth: 680,
@@ -311,23 +414,33 @@ function panel(): React.CSSProperties {
     padding: "18px 12px 10px",
     userSelect: "none",
     WebkitUserSelect: "none",
-    touchAction: "pan-y",
+    touchAction: "pan-y", // autorise le swipe horizontal sans bloquer le scroll vertical global (mais ici pas de scroll)
   };
 }
 
 function title(theme: any): React.CSSProperties {
-  const accent = theme?.accent || theme?.colors?.accent || theme?.colors?.primary || theme?.primary || "#ffd200";
+  // Fond toujours sombre sur cet écran => on force un contraste.
+  const accent =
+    theme?.accent ||
+    theme?.colors?.accent ||
+    theme?.colors?.primary ||
+    theme?.primary ||
+    "#ffd200";
+
+  // ✅ fallback sûr (évite un crash si une variable n'existe pas)
+  const fallback = accent;
+
   return {
     fontSize: 26,
     fontWeight: 800,
     letterSpacing: 0.2,
-    color: theme?.accent1 || theme?.accent2 || accent,
+    color: theme?.accent1 || theme?.accent2 || fallback,
     textAlign: "center",
     padding: "0 6px",
   };
 }
 
-function subtitle(): React.CSSProperties {
+function subtitle(theme: any): React.CSSProperties {
   return {
     marginTop: -6,
     fontSize: 14,
@@ -364,8 +477,9 @@ function sportTile(theme: any, enabled: boolean): React.CSSProperties {
 }
 
 function sportImg(theme: any, enabled: boolean): React.CSSProperties {
-  const size = "min(320px, 72vw)";
+  const size = "min(320px, 72vw)"; // gros logo (1 sport à la fois)
   const glow = enabled ? theme?.accentGlow ?? "0 0 0 rgba(0,0,0,0)" : "none";
+
   return {
     width: size,
     height: size,
@@ -377,19 +491,29 @@ function sportImg(theme: any, enabled: boolean): React.CSSProperties {
 }
 
 function sportLabel(theme: any, enabled: boolean): React.CSSProperties {
-  const accent = theme?.accent || theme?.colors?.accent || theme?.colors?.primary || theme?.primary || "#ffd200";
+  // Fond toujours sombre sur cet écran => texte toujours clair.
+  const accent =
+    theme?.accent ||
+    theme?.colors?.accent ||
+    theme?.colors?.primary ||
+    theme?.primary ||
+    "#ffd200";
+
+  // ✅ fallback sûr (évite un crash si une variable n'existe pas)
+  const fallback = accent;
+
   return {
     fontSize: 18,
     fontWeight: 700,
     opacity: enabled ? 0.9 : 0.7,
-    color: theme?.accent1 || theme?.accent2 || accent,
+    color: theme?.accent1 || theme?.accent2 || fallback,
     textAlign: "center",
     paddingBottom: 4,
     pointerEvents: "none",
   };
 }
 
-function navBtn(side: "left" | "right"): React.CSSProperties {
+function navBtn(theme: any, side: "left" | "right"): React.CSSProperties {
   const base: React.CSSProperties = {
     position: "absolute",
     top: "50%",
@@ -412,6 +536,14 @@ function navBtn(side: "left" | "right"): React.CSSProperties {
   };
   return side === "left" ? { ...base, left: 10 } : { ...base, right: 10 };
 }
+
+const dotsWrap: React.CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  gap: 8,
+  padding: "2px 0 0",
+};
 
 function dot(theme: any, active: boolean): React.CSSProperties {
   const isDark = theme?.id?.includes("dark") || theme?.id === "darkTitanium" || theme?.id === "dark";
@@ -446,6 +578,7 @@ function soonPill(theme: any): React.CSSProperties {
 }
 
 function edgeTap(side: "left" | "right"): React.CSSProperties {
+  // zones invisibles pour faciliter le swipe sur tablette
   const common: React.CSSProperties = {
     position: "absolute",
     top: 0,

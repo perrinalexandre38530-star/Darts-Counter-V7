@@ -6,6 +6,11 @@
 // - Avatar compte
 // - Snapshot store (push/pull)
 // - Gestion compte
+//
+// ✅ PATCH FINAL
+// - persiste AUSSI une session auth complète compatible onlineApi
+// - extraction token beaucoup plus robuste
+// - force la restauration de session avant profils/sync
 // ============================================================
 
 import type { AuthSession, LoginPayload, SignupPayload, UpdateProfilePayload } from "./onlineApi";
@@ -61,40 +66,6 @@ function authToken(): string {
   return readLs(NAS_TOKEN_KEY);
 }
 
-function extractToken(json: any): string {
-  return String(
-    json?.token ||
-      json?.accessToken ||
-      json?.access_token ||
-      json?.jwt ||
-      json?.access ||
-      json?.session?.token ||
-      json?.session?.accessToken ||
-      json?.session?.access_token ||
-      json?.data?.token ||
-      json?.data?.accessToken ||
-      json?.data?.access_token ||
-      json?.data?.session?.token ||
-      json?.data?.session?.accessToken ||
-      json?.data?.session?.access_token ||
-      ""
-  ) || "";
-}
-
-function extractRefreshToken(json: any): string {
-  return String(
-    json?.refreshToken ||
-      json?.refresh_token ||
-      json?.session?.refreshToken ||
-      json?.session?.refresh_token ||
-      json?.data?.refreshToken ||
-      json?.data?.refresh_token ||
-      json?.data?.session?.refreshToken ||
-      json?.data?.session?.refresh_token ||
-      ""
-  ) || "";
-}
-
 function authHeaders(extra?: Record<string, string>): Record<string, string> {
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
@@ -136,13 +107,14 @@ async function apiFetch(path: string, init?: RequestInit): Promise<any> {
 }
 
 function normalizeUser(raw: any, fallbackEmail?: string): UserAuth {
-  const id = String(raw?.id || raw?.userId || raw?.user_id || raw?.uid || "");
+  const id = String(raw?.id || raw?.userId || raw?.user_id || raw?.uid || raw?.sub || "");
   const email = raw?.email || fallbackEmail || undefined;
   const nickname =
     String(
       raw?.nickname ||
         raw?.displayName ||
         raw?.display_name ||
+        raw?.name ||
         (email ? String(email).split("@")[0] : "") ||
         "Player"
     ) || "Player";
@@ -163,10 +135,10 @@ function normalizeUser(raw: any, fallbackEmail?: string): UserAuth {
 function normalizeProfile(raw: any, user: UserAuth): OnlineProfile | null {
   if (!raw && !user?.id) return null;
   const statsRaw = raw?.stats || raw?.summaryStats || raw?.profileStats || {};
-  const profile: any = {
+  return {
     id: String(raw?.id || user.id || ""),
     userId: String(raw?.userId || raw?.user_id || user.id || ""),
-    displayName: String(raw?.displayName || raw?.display_name || raw?.nickname || raw?.name || user.nickname || "Player"),
+    displayName: String(raw?.displayName || raw?.display_name || raw?.name || user.nickname || "Player"),
     avatarUrl: raw?.avatarDataUrl || raw?.avatar_data_url || raw?.avatar || raw?.avatarUrl || raw?.avatar_url || undefined,
     country: raw?.country || null,
     countryCode: raw?.countryCode || raw?.country_code || null,
@@ -184,25 +156,50 @@ function normalizeProfile(raw: any, user: UserAuth): OnlineProfile | null {
         : raw?.updated_at
           ? Date.parse(raw.updated_at)
           : now(),
-
-    // champs NAS enrichis (hors type strict, consommés via any)
-    nickname: raw?.nickname || raw?.displayName || raw?.display_name || raw?.name || user.nickname || "",
-    firstName: raw?.firstName || raw?.first_name || "",
-    lastName: raw?.lastName || raw?.last_name || raw?.surname || "",
-    birthDate: raw?.birthDate || raw?.birth_date || "",
-    city: raw?.city || "",
-    email: raw?.email || user.email || "",
-    phone: raw?.phone || "",
   };
-  return profile as OnlineProfile;
 }
 
 function buildSessionFromResponse(json: any, fallbackEmail?: string): AuthSession {
-  const token = extractToken(json);
-  const refreshToken = extractRefreshToken(json);
+  const token =
+    String(
+      json?.token ||
+        json?.accessToken ||
+        json?.access_token ||
+        json?.jwt ||
+        json?.access ||
+        json?.session?.token ||
+        json?.session?.accessToken ||
+        json?.session?.access_token ||
+        json?.data?.token ||
+        json?.data?.accessToken ||
+        json?.data?.access_token ||
+        json?.data?.session?.token ||
+        json?.data?.session?.accessToken ||
+        json?.data?.session?.access_token ||
+        ""
+    ) || "";
 
-  const user = normalizeUser(json?.user || json?.account || json?.me?.user || json?.data?.user || json?.data || json, fallbackEmail);
-  const profile = normalizeProfile(json?.profile || json?.me?.profile || json?.user?.profile || json?.data?.profile || json?.data || null, user);
+  const refreshToken =
+    String(
+      json?.refreshToken ||
+        json?.refresh_token ||
+        json?.session?.refreshToken ||
+        json?.session?.refresh_token ||
+        json?.data?.refreshToken ||
+        json?.data?.refresh_token ||
+        json?.data?.session?.refreshToken ||
+        json?.data?.session?.refresh_token ||
+        ""
+    ) || "";
+
+  const user = normalizeUser(
+    json?.user || json?.account || json?.me?.user || json?.data?.user || json?.data || json,
+    fallbackEmail
+  );
+  const profile = normalizeProfile(
+    json?.profile || json?.me?.profile || json?.user?.profile || json?.data?.profile || null,
+    user
+  );
 
   return {
     token,
@@ -239,6 +236,7 @@ export async function nasLogin(payload: LoginPayload): Promise<AuthSession> {
   });
   const session = buildSessionFromResponse(json, payload.email);
   if (!session.token) {
+    console.warn("[nasApi] login response without token", json);
     throw new Error("Réponse login NAS invalide : token absent.");
   }
   saveNasTokens(session);
@@ -256,6 +254,7 @@ export async function nasSignup(payload: SignupPayload): Promise<AuthSession> {
   });
   const session = buildSessionFromResponse(json, payload.email);
   if (!session.token) {
+    console.warn("[nasApi] signup response without token", json);
     throw new Error("Réponse inscription NAS invalide : token absent.");
   }
   saveNasTokens(session);
@@ -304,6 +303,7 @@ export async function nasLogout(): Promise<void> {
 export async function nasGetProfile(): Promise<OnlineProfile | null> {
   const session0 = await nasRestoreSession();
   if (!session0?.token) throw new Error("Token NAS manquant. Reconnecte-toi.");
+
   const json = await apiFetch("/profiles/me", { method: "GET" }).catch(async () => {
     const fallback = await apiFetch("/auth/me", { method: "GET" });
     return fallback;
@@ -316,12 +316,14 @@ export async function nasGetProfile(): Promise<OnlineProfile | null> {
     },
     json?.user?.email
   );
+  if (session?.token) saveNasTokens(session);
   return session.profile;
 }
 
 export async function nasUpdateProfile(patch: UpdateProfilePayload): Promise<OnlineProfile> {
   const session0 = await nasRestoreSession();
   if (!session0?.token) throw new Error("Token NAS manquant. Reconnecte-toi.");
+
   const json = await apiFetch("/profiles/me", {
     method: "PUT",
     body: JSON.stringify(patch),
@@ -330,6 +332,12 @@ export async function nasUpdateProfile(patch: UpdateProfilePayload): Promise<Onl
   const user = normalizeUser(json?.user || json, undefined);
   const profile = normalizeProfile(json?.profile || json, user);
   if (!profile) throw new Error("Réponse profil NAS invalide.");
+
+  saveNasTokens({
+    ...session0,
+    profile,
+  });
+
   return profile;
 }
 
@@ -343,6 +351,7 @@ export async function nasRequestPasswordReset(email: string): Promise<void> {
 export async function nasUpdateEmail(newEmail: string): Promise<void> {
   const session0 = await nasRestoreSession();
   if (!session0?.token) throw new Error("Token NAS manquant. Reconnecte-toi.");
+
   await apiFetch("/auth/email", {
     method: "PUT",
     body: JSON.stringify({ email: newEmail }),
@@ -352,6 +361,7 @@ export async function nasUpdateEmail(newEmail: string): Promise<void> {
 export async function nasDeleteAccount(): Promise<void> {
   const session0 = await nasRestoreSession();
   if (!session0?.token) throw new Error("Token NAS manquant. Reconnecte-toi.");
+
   await apiFetch("/auth/account", { method: "DELETE" });
   saveNasTokens(null);
 }
@@ -359,6 +369,7 @@ export async function nasDeleteAccount(): Promise<void> {
 export async function nasUploadAvatarImage(opts: { dataUrl: string; folder?: string; updateProfile?: boolean }): Promise<{ publicUrl: string; path: string }> {
   const session0 = await nasRestoreSession();
   if (!session0?.token) throw new Error("Token NAS manquant. Reconnecte-toi.");
+
   const json = await apiFetch("/profiles/avatar", {
     method: "POST",
     body: JSON.stringify({ dataUrl: opts.dataUrl }),
@@ -379,6 +390,7 @@ export async function nasPullStoreSnapshot(): Promise<{
   try {
     const session0 = await nasRestoreSession();
     if (!session0?.token) throw new Error("Token NAS manquant. Reconnecte-toi.");
+
     const json = await apiFetch("/sync/pull", { method: "GET" });
     const payload = json?.payload ?? json?.storeSnapshot ?? json?.store ?? json?.data ?? null;
     if (payload == null) {
@@ -398,6 +410,7 @@ export async function nasPullStoreSnapshot(): Promise<{
 export async function nasPushStoreSnapshot(payload: any, version = 8): Promise<void> {
   const session0 = await nasRestoreSession();
   if (!session0?.token) throw new Error("Token NAS manquant. Reconnecte-toi.");
+
   await apiFetch("/sync/push", {
     method: "POST",
     body: JSON.stringify({ payload, version }),

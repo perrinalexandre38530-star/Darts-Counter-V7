@@ -45,35 +45,6 @@ function scoreProfileCompleteness(p: any): number {
   return s;
 }
 
-function pickOnlineDisplayName(user: any, onlineProfile?: any): string {
-  const fromProfile = String(onlineProfile?.nickname || onlineProfile?.displayName || onlineProfile?.display_name || onlineProfile?.name || "").trim();
-  if (fromProfile) return fromProfile;
-  const fromUser = String(user?.nickname || user?.user_metadata?.nickname || "").trim();
-  if (fromUser) return fromUser;
-  const email = safeLower(user?.email);
-  return email ? email.split("@")[0] : "Joueur";
-}
-
-function mergePrivateInfoFromOnline(base: any, user: any, onlineProfile?: any): PrivateInfoRaw {
-  const pi = readPrivateInfo(base);
-  const email = safeLower(user?.email);
-  const onlineName = pickOnlineDisplayName(user, onlineProfile);
-  return {
-    ...pi,
-    onlineUserId: String(user?.id || pi.onlineUserId || ""),
-    onlineEmail: email || pi.onlineEmail || "",
-    nickname: pi.nickname || onlineProfile?.nickname || onlineProfile?.displayName || onlineName || "",
-    firstName: pi.firstName || onlineProfile?.firstName || onlineProfile?.first_name || "",
-    lastName: pi.lastName || onlineProfile?.lastName || onlineProfile?.last_name || onlineProfile?.surname || "",
-    birthDate: pi.birthDate || onlineProfile?.birthDate || onlineProfile?.birth_date || "",
-    city: pi.city || onlineProfile?.city || "",
-    phone: pi.phone || onlineProfile?.phone || "",
-    country: pi.country || onlineProfile?.country || "",
-    email: pi.email || onlineProfile?.email || email || "",
-    password: "",
-  };
-}
-
 /**
  * ✅ Assure la liaison COMPTE ONLINE ↔ PROFIL LOCAL (SANS mirror)
  *
@@ -188,7 +159,12 @@ export function ensureLocalProfileForOnlineUser(store: any, user: any, onlinePro
             }
           : null),
       },
-      mergePrivateInfoFromOnline(keepLinked, user, onlineProfile)
+      {
+        ...piKeep,
+        onlineUserId: uid,
+        onlineEmail: email || piKeep.onlineEmail || "",
+        password: "",
+      }
     );
 
     const nextProfiles = profiles
@@ -213,7 +189,12 @@ export function ensureLocalProfileForOnlineUser(store: any, user: any, onlinePro
             }
           : null),
       },
-      mergePrivateInfoFromOnline(next, user, onlineProfile)
+      {
+        ...pi,
+        onlineUserId: uid,
+        onlineEmail: email || pi.onlineEmail || "",
+        password: "",
+      }
     );
 
     const nextProfiles = profiles.map((p) => (String(p?.id || "") === String(byPI?.id || "") ? next : p));
@@ -235,7 +216,12 @@ export function ensureLocalProfileForOnlineUser(store: any, user: any, onlinePro
             }
           : null),
       },
-      mergePrivateInfoFromOnline(activeLinked, user, onlineProfile)
+      {
+        ...piA,
+        onlineUserId: uid,
+        onlineEmail: email || piA.onlineEmail || "",
+        password: "",
+      }
     );
 
     const nextProfiles = profiles
@@ -248,7 +234,7 @@ export function ensureLocalProfileForOnlineUser(store: any, user: any, onlinePro
   // No profiles at all: create minimal uid profile
   if (profiles.length === 0) {
     const nickname = String(onlineProfile?.nickname || "").trim();
-    const fallbackName = nickname || pickOnlineDisplayName(user, onlineProfile);
+    const fallbackName = nickname || (email ? email.split("@")[0] : "Joueur");
     const newProfile: any = {
       id: uid,
       name: fallbackName,
@@ -257,7 +243,11 @@ export function ensureLocalProfileForOnlineUser(store: any, user: any, onlinePro
       country: onlineProfile?.country || "FR",
       createdAt: Date.now(),
       updatedAt: Date.now(),
-      privateInfo: mergePrivateInfoFromOnline(newProfile, user, onlineProfile),
+      privateInfo: {
+        onlineUserId: uid,
+        onlineEmail: email || "",
+        password: "",
+      },
     };
 
     return {
@@ -282,7 +272,12 @@ export function ensureLocalProfileForOnlineUser(store: any, user: any, onlinePro
             }
           : null),
       },
-      mergePrivateInfoFromOnline(activeLinked, user, onlineProfile)
+      {
+        ...piA,
+        onlineUserId: uid,
+        onlineEmail: email || piA.onlineEmail || "",
+        password: "",
+      }
     );
 
     const nextProfiles = profiles.map((p) => (String(p?.id || "") === String(active?.id || "") ? activeLinked : p));

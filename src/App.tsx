@@ -92,7 +92,7 @@ import CrashCatcher from "./components/CrashCatcher";
 import MobileErrorOverlay from "./components/MobileErrorOverlay";
 
 // Persistance (IndexedDB via storage.ts)
-import { loadStore, saveStore, exportCloudSnapshot, installLocalStorageDcHook } from "./lib/storage";
+import { loadStore, saveStore, exportCloudSnapshot, installLocalStorageDcHook, setStorageUser } from "./lib/storage";
 import { setCrashContext } from "./lib/crashReporter";
 import { safeJsonParse, safeJsonStringify } from "./lib/safeJson";
 import { safeArray } from "./utils/safeArray";
@@ -1255,17 +1255,25 @@ useEffect(() => {
 
 // 🔒 Cloud stats (events + training) — OFF par défaut pour éviter l'explosion Supabase.
 // Activable via SyncCenter (toggle stocké dans localStorage: "cloudStatsEnabled" = "1").
-const [cloudStatsEnabled, setCloudStatsEnabled] = useState(false);
+const [cloudStatsEnabled, setCloudStatsEnabled] = useState(() => {
+  try {
+    return localStorage.getItem("cloudStatsEnabled") === "1";
+  } catch {
+    return false;
+  }
+});
 
 // ✅ Auto-backup (Recovery) — OFF par défaut
 // Toggle stocké dans localStorage: "dc_auto_backup_enabled" = "1"
-const [autoBackupEnabled, setAutoBackupEnabled] = useState(false);
+const [autoBackupEnabled, setAutoBackupEnabled] = useState(() => {
+  try {
+    return localStorage.getItem("dc_auto_backup_enabled") === "1";
+  } catch {
+    return false;
+  }
+});
 
 useEffect(() => {
-  try {
-    setCloudStatsEnabled(localStorage.getItem("cloudStatsEnabled") === "1");
-  } catch {}
-
   const onStorage = (e) => {
     if (!e || e.key !== "cloudStatsEnabled") return;
     setCloudStatsEnabled(e.newValue === "1");
@@ -1284,10 +1292,6 @@ useEffect(() => {
 }, []);
 
 useEffect(() => {
-  try {
-    setAutoBackupEnabled(localStorage.getItem("dc_auto_backup_enabled") === "1");
-  } catch {}
-
   const onStorage = (e) => {
     if (!e || e.key !== "dc_auto_backup_enabled") return;
     setAutoBackupEnabled(e.newValue === "1");
@@ -1348,7 +1352,6 @@ useEffect(() => {
   const cloudSyncOnRef = React.useRef(false);
 
   const [store, setStore] = React.useState<Store>(initialStore);
-  const storeRef = React.useRef<Store>(initialStore);
 
   // ============================================================
 
@@ -1426,16 +1429,14 @@ useEffect(() => {
   const setSportCtx: undefined | ((s: StartGameId) => void) = sportApi?.setSport;
 
   // ✅ Runtime sport (sans reload / sans relancer intro)
-  const [activeSport, setActiveSport] = React.useState<StartGameId>(sportFromCtx || "darts");
-
-  React.useEffect(() => {
+  const [activeSport, setActiveSport] = React.useState<StartGameId>(() => {
     try {
       const v = localStorage.getItem(START_GAME_KEY) as StartGameId | null;
-      setActiveSport(v ?? (sportFromCtx || "darts"));
+      return v ?? (sportFromCtx || "darts");
     } catch {
-      setActiveSport(sportFromCtx || "darts");
+      return sportFromCtx || "darts";
     }
-  }, []);
+  });
 
   React.useEffect(() => {
     try {
@@ -1480,22 +1481,16 @@ useEffect(() => {
   }, [setSportCtx]);
 
   // ✅ SPLASH gate (ne s'affiche pas pendant les flows auth)
-  const [showSplash, setShowSplash] = React.useState(false);
-
-  React.useEffect(() => {
-    try {
-      const h = String(window.location.hash || "");
-      const isAuthFlow =
-        h.startsWith("#/auth/callback") ||
-        h.startsWith("#/auth/reset") ||
-        h.startsWith("#/auth/forgot") ||
-        h.startsWith("#/auth/login") ||
-        h.startsWith("#/auth/signup");
-      setShowSplash(!isAuthFlow);
-    } catch {
-      setShowSplash(true);
-    }
-  }, []);
+  const [showSplash, setShowSplash] = React.useState(() => {
+    const h = String(window.location.hash || "");
+    const isAuthFlow =
+    h.startsWith("#/auth/callback") ||
+    h.startsWith("#/auth/reset") ||
+    h.startsWith("#/auth/forgot") ||
+    h.startsWith("#/auth/login") ||
+    h.startsWith("#/auth/signup");
+    return !isAuthFlow;
+  });
 
   // 🛟 SAFETY NET : ne JAMAIS bloquer l'app sur le splash
   React.useEffect(() => {
@@ -1654,12 +1649,58 @@ useEffect(() => {
   }
 
   // ✅ IMPORTANT: expose go globalement + store “vivant”
+
+
+  // ============================================================
+  // ✅ USER-SCOPED LOCAL STORE RELOAD
+  // - Recharger le store namespacé quand le user online change
+  // - Réarmer l'hydratation cloud pour ce user
+  // - Évite mélange entre comptes + permet restore cross-device
+  // ============================================================
+  React.useEffect(() => {
+    let cancelled = false;
+
+    if (!online?.ready) return;
+
+    const uid = String((online as any)?.user?.id || "").trim();
+    if (cloudHydratedUserRef.current === uid) return;
+    cloudHydratedUserRef.current = uid;
+
+    try { setStorageUser(uid || null); } catch {}
+    setCloudHydrated(false);
+
+    (async () => {
+      try {
+        const saved = await loadStore<Store>();
+        if (cancelled) return;
+
+        const next: Store = saved
+          ? {
+              ...initialStore,
+              ...saved,
+              profiles: saved.profiles ?? [],
+              friends: saved.friends ?? [],
+              history: saved.history ?? [],
+              dartSets: (saved as any).dartSets ?? getAllDartSets(),
+            }
+          : { ...initialStore };
+
+        setStore(next);
+      } catch (e) {
+        console.warn("[auth-store] reload failed", e);
+        if (!cancelled) setStore({ ...initialStore });
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [online?.ready, (online as any)?.user?.id]);
   React.useEffect(() => {
     try {
       (window as any).__appGo = go;
       (window as any).__appStore = (window as any).__appStore || {};
       (window as any).__appStore.go = go;
-      storeRef.current = store;
       (window as any).__appStore.store = store;
       (window as any).__appStore.tab = tab;
       (window as any).__appStore.update = update;
@@ -1774,13 +1815,12 @@ useEffect(() => {
             }
           })();
 
-          const localStore = storeRef.current as any;
           const hasLocalData =
-            (localStore?.profiles?.length || 0) > 0 ||
-            !!localStore?.activeProfileId ||
-            (localStore?.friends?.length || 0) > 0 ||
-            (localStore?.history?.length || 0) > 0 ||
-            (localStore?.dartSets?.length || 0) > 0;
+            (store?.profiles?.length || 0) > 0 ||
+            !!(store as any)?.activeProfileId ||
+            (store?.friends?.length || 0) > 0 ||
+            (store?.history?.length || 0) > 0 ||
+            ((store as any)?.dartSets?.length || 0) > 0;
 
           if (isCloudEmpty && hasLocalData) {
             try {
@@ -1844,13 +1884,11 @@ useEffect(() => {
             }
           }
         } else if (res?.status === "not_found") {
-          const localStore = storeRef.current as any;
           const hasLocalData =
-            (localStore?.profiles?.length || 0) > 0 ||
-            !!localStore?.activeProfileId ||
-            (localStore?.friends?.length || 0) > 0 ||
-            (localStore?.history?.length || 0) > 0 ||
-            (localStore?.dartSets?.length || 0) > 0;
+            (store?.profiles?.length || 0) > 0 ||
+            !!(store as any)?.activeProfileId ||
+            (store?.friends?.length || 0) > 0 ||
+            (store?.history?.length || 0) > 0;
 
           if (hasLocalData) {
             const cloudSeed = await exportCloudSnapshot();
@@ -1891,9 +1929,17 @@ useEffect(() => {
     }
 
     if (!cloudSyncOnRef.current) {
-      startCloudSync({ pullOnStart: false, disablePull: true });
+      const nasMode =
+        !!((import.meta as any)?.env?.VITE_ONLINE_PROVIDER || "")
+          && String((import.meta as any)?.env?.VITE_ONLINE_PROVIDER || "").toLowerCase() === "nas";
+
+      startCloudSync(
+        nasMode
+          ? { pullOnStart: false, disablePull: true }
+          : { pullOnStart: true, disablePull: false }
+      );
       cloudSyncOnRef.current = true;
-      console.log("[cloud] cloudSync started (push-only, nas)");
+      console.log(nasMode ? "[cloud] cloudSync started (push-only, nas)" : "[cloud] cloudSync started (push+pull)");
     }
 
     return () => {
@@ -1913,7 +1959,9 @@ useEffect(() => {
     if (!online?.ready || online.status !== "signed_in") return;
 
 
-    if (cloudSyncOnRef.current) return; // push géré par cloudSync (snapshot complète)
+    if (cloudSyncOnRef.current) {
+      console.log("⚠️ fallback push autorisé malgré cloudSync actif");
+    }
 
     if (cloudPushTimerRef.current) {
       window.clearTimeout(cloudPushTimerRef.current);
@@ -3561,15 +3609,6 @@ case "babyfoot_team_edit":
     // Hub
     "gameSelect",
 
-    // Auth / démarrage (stabilisation anti-crash shell)
-    "account_start",
-    "auth_start",
-    "auth_v7_login",
-    "auth_v7_signup",
-    "auth_forgot",
-    "auth_reset",
-    "auth_callback",
-
     // Darts (play)
     "x01",
     "x01_play_v3",
@@ -3627,8 +3666,7 @@ case "babyfoot_team_edit":
         {/* ✅ BottomNav masquée sur gameSelect + tous les gameplays plein écran */}
         {!HIDE_BOTTOM_NAV_TABS.has(tab) && <BottomNav value={tab as any} onChange={(k: any) => go(k)} />}
 
-        {/* SWUpdateBanner temporairement désactivé pour stabiliser le shell global */}
-        {null}
+        <SWUpdateBanner />
       </>
     </CrashCatcher>
   );
@@ -3646,21 +3684,13 @@ function AppGate({ go, tab, children }: { go: (t: any, p?: any) => void; tab: an
 
   // pendant les flows auth, on ne gate pas
   const isAuthFlow =
-    tab === "auth_reset" ||
-    tab === "auth_callback" ||
-    tab === "auth_forgot" ||
-    tab === "auth_start" ||
-    tab === "account_start" ||
-    tab === "auth_v7_login" ||
-    tab === "auth_v7_signup";
-
-  const mustRedirectToAuth = ready && !isAuthFlow && needsSession && status !== "signed_in";
-
-  React.useEffect(() => {
-    if (mustRedirectToAuth) {
-      go("auth_start");
-    }
-  }, [mustRedirectToAuth, go]);
+  tab === "auth_reset" ||
+  tab === "auth_callback" ||
+  tab === "auth_forgot" ||
+  tab === "auth_start" ||
+  tab === "account_start" ||
+  tab === "auth_v7_login" ||
+  tab === "auth_v7_signup";
 
   if (!ready) {
     return (
@@ -3670,7 +3700,13 @@ function AppGate({ go, tab, children }: { go: (t: any, p?: any) => void; tab: an
     );
   }
 
-  if (mustRedirectToAuth) {
+  React.useEffect(() => {
+    if (!isAuthFlow && needsSession && status !== "signed_in") {
+      go("auth_start");
+    }
+  }, [isAuthFlow, needsSession, status, go]);
+
+  if (!isAuthFlow && needsSession && status !== "signed_in") {
     return (
       <div className="container" style={{ padding: 40, textAlign: "center" }}>
         Redirection vers la connexion…

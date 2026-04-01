@@ -34,21 +34,10 @@ import {
   nasUploadAvatarImage,
 } from "./nasApi";
 import { EventBuffer } from "./sync/EventBuffer";
+import { importHistoryFromCloud } from "./sync/CloudHistoryImport";
 import type { UserAuth, OnlineProfile, OnlineMatch } from "./onlineTypes";
 
 export const CLOUD_STORE_KEY = "main";
-
-async function importHistoryFromCloudLazy(opts?: {
-  pageSize?: number;
-  maxPages?: number;
-  hardReset?: boolean;
-}) {
-  // ✅ TDZ / cycle break:
-  // onlineApi -> CloudHistoryImport -> history -> onlineApi
-  // caused a startup runtime cycle in production bundle.
-  const mod = await import("./sync/CloudHistoryImport");
-  return mod.importHistoryFromCloud(opts);
-}
 
 // ============================================================
 // ✅ PGRST204 column-missing fallback (schema cache / tables legacy)
@@ -764,7 +753,7 @@ async function restoreSession(): Promise<AuthSession | null> {
     const live = await buildAuthSessionFromSupabase();
     if (live) {
       try {
-        importHistoryFromCloudLazy({ maxPages: 2, pageSize: 150 }).catch(() => {});
+        importHistoryFromCloud({ maxPages: 2, pageSize: 150 }).catch(() => {});
       } catch {}
       return live;
     }
@@ -779,7 +768,7 @@ async function restoreSession(): Promise<AuthSession | null> {
         const retry = await buildAuthSessionFromSupabase();
         if (retry) {
           try {
-            importHistoryFromCloudLazy({ maxPages: 2, pageSize: 150 }).catch(() => {});
+            importHistoryFromCloud({ maxPages: 2, pageSize: 150 }).catch(() => {});
           } catch {}
           return retry;
         }
