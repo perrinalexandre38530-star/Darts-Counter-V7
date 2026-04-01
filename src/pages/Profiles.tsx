@@ -537,8 +537,6 @@ export default function Profiles({
   go?: (tab: any, params?: any) => void;
   params?: any;
 }) {
-  console.log("[PROFILES PATCH CHECK v4] v2026-01-07");
-
   const [toast, setToast] = React.useState<null | { type: "success" | "error"; message: string }>(null);
 
   // 🔥 injection du CSS shimmer une seule fois
@@ -704,9 +702,6 @@ export default function Profiles({
   const isPetanque = sportKey.includes("petanque");
   const isBabyFoot = sportKey.includes("babyfoot") || sportKey.includes("baby-foot") || sportKey.includes("baby_foot");
   const isDarts = sportKey.includes("darts");
-
-  console.log("[Profiles] sportResolved =", sportResolved);
-
   const [view, setView] = React.useState<View>(
     params?.view === "me"
       ? "me"
@@ -1214,46 +1209,49 @@ React.useEffect(() => {
     alert("Statistiques locales de ce profil réinitialisées.");
   }
 
-    // 🔁 Hydrate les infos privées (email / pays / surnom) depuis le compte online
-    React.useEffect(() => {
-      if (!active) return;
-      if (auth.status !== "signed_in") return;
-  
-      const pi = ((active as any).privateInfo || {}) as PrivateInfo;
-      const patch: Partial<PrivateInfo> = {};
-  
-      // Email online → privateInfo.email (si différent)
-      const emailOnline = auth.user?.email?.trim().toLowerCase();
-      if (emailOnline) {
-        const emailLocal = (pi.email || "").trim().toLowerCase();
-        if (emailLocal !== emailOnline) {
-          patch.email = emailOnline;
-        }
-      }
-  
-      // Pseudo online → privateInfo.nickname (si différent)
-      const nicknameOnline =
-        auth.profile?.displayName || auth.user?.nickname || "";
-      if (nicknameOnline) {
-        const nicknameLocal = pi.nickname || active.name || "";
-        if (nicknameLocal !== nicknameOnline) {
-          patch.nickname = nicknameOnline;
-        }
-      }
-  
-      // Pays online → privateInfo.country (si différent)
-      const countryOnline = auth.profile?.country || "";
-      if (countryOnline) {
-        const countryLocal = pi.country || "";
-        if (countryLocal !== countryOnline) {
-          patch.country = countryOnline;
-        }
-      }
-  
-      if (Object.keys(patch).length > 0) {
-        patchActivePrivateInfo(patch);
-      }
-    }, [active?.id, auth.status, auth.profile, auth.user]);  
+    // 🔁 Hydrate les infos privées depuis le compte online
+  // ✅ IMPORTANT: on remplit les champs vides, on n'écrase pas un profil local déjà renseigné.
+  React.useEffect(() => {
+    if (!active) return;
+    if (auth.status !== "signed_in") return;
+
+    const pi = ((active as any).privateInfo || {}) as PrivateInfo;
+    const patch: Partial<PrivateInfo> = {};
+
+    const emailOnline = String(auth.user?.email || (auth.profile as any)?.email || "").trim().toLowerCase();
+    if (emailOnline && !(pi.email || "").trim()) {
+      patch.email = emailOnline;
+    }
+
+    const nicknameOnline = String((auth.profile as any)?.nickname || auth.profile?.displayName || auth.user?.nickname || "").trim();
+    if (nicknameOnline && !(pi.nickname || "").trim() && !String(active.name || "").trim()) {
+      patch.nickname = nicknameOnline;
+    }
+
+    const countryOnline = String(auth.profile?.country || "").trim();
+    if (countryOnline && !(pi.country || "").trim()) {
+      patch.country = countryOnline;
+    }
+
+    const firstNameOnline = String((auth.profile as any)?.firstName || "").trim();
+    if (firstNameOnline && !(pi.firstName || "").trim()) patch.firstName = firstNameOnline;
+
+    const lastNameOnline = String((auth.profile as any)?.lastName || "").trim();
+    if (lastNameOnline && !(pi.lastName || "").trim()) patch.lastName = lastNameOnline;
+
+    const birthDateOnline = String((auth.profile as any)?.birthDate || "").trim();
+    if (birthDateOnline && !(pi.birthDate || "").trim()) patch.birthDate = birthDateOnline;
+
+    const cityOnline = String((auth.profile as any)?.city || "").trim();
+    if (cityOnline && !(pi.city || "").trim()) patch.city = cityOnline;
+
+    const phoneOnline = String((auth.profile as any)?.phone || "").trim();
+    if (phoneOnline && !(pi.phone || "").trim()) patch.phone = phoneOnline;
+
+    if (Object.keys(patch).length > 0) {
+      patchActivePrivateInfo(patch);
+    }
+  }, [active?.id, auth.status, auth.profile, auth.user]);
 
   // NEW : au chargement de la page, si un profil actif a des prefs app, on les applique
   React.useEffect(() => {
@@ -2077,29 +2075,6 @@ function ActiveProfileBlock({
     avatarUpdatedAt: (active as any)?.avatarUpdatedAt ?? null,
   });
 
-  // LOGS DEBUG (volontairement conservés)
-  React.useEffect(() => {
-    console.log("[ActiveProfileBlock] id =", active?.id);
-    console.log("[ActiveProfileBlock] avatarUrl =", (active as any)?.avatarUrl);
-    console.log(
-      "[ActiveProfileBlock] avatarDataUrl length =",
-      typeof (active as any)?.avatarDataUrl === "string"
-        ? String((active as any)?.avatarDataUrl).length
-        : 0
-    );
-    console.log(
-      "[ActiveProfileBlock] avatarUpdatedAt =",
-      (active as any)?.avatarUpdatedAt
-    );
-    console.log("[ActiveProfileBlock] avatarSrc =", avatarSrc);
-  }, [
-    active?.id,
-    (active as any)?.avatarUrl,
-    (active as any)?.avatarDataUrl,
-    (active as any)?.avatarUpdatedAt,
-    avatarSrc,
-  ]);
-
   // =========================
   // STYLES BOUTONS
   // =========================
@@ -2805,7 +2780,6 @@ function UnifiedAuthBlock({
   onConnect,
   onCreate,
   onHydrateProfile,
-  autoFocus = false,
   autoFocusCreate = false,
 }: {
   profiles: Profile[];
@@ -2849,7 +2823,6 @@ function UnifiedAuthBlock({
       appTheme?: ThemeId;
     }>
   ) => void;
-  autoFocus?: boolean;
   autoFocusCreate?: boolean;
 }) {
   const { t, setLang, lang } = useLang();

@@ -92,7 +92,7 @@ import CrashCatcher from "./components/CrashCatcher";
 import MobileErrorOverlay from "./components/MobileErrorOverlay";
 
 // Persistance (IndexedDB via storage.ts)
-import { loadStore, saveStore, exportCloudSnapshot, installLocalStorageDcHook, setStorageUser } from "./lib/storage";
+import { loadStore, saveStore, exportCloudSnapshot, installLocalStorageDcHook } from "./lib/storage";
 import { setCrashContext } from "./lib/crashReporter";
 import { safeJsonParse, safeJsonStringify } from "./lib/safeJson";
 import { safeArray } from "./utils/safeArray";
@@ -1352,6 +1352,7 @@ useEffect(() => {
   const cloudSyncOnRef = React.useRef(false);
 
   const [store, setStore] = React.useState<Store>(initialStore);
+  const storeRef = React.useRef<Store>(initialStore);
 
   // ============================================================
 
@@ -1649,58 +1650,12 @@ useEffect(() => {
   }
 
   // ✅ IMPORTANT: expose go globalement + store “vivant”
-
-
-  // ============================================================
-  // ✅ USER-SCOPED LOCAL STORE RELOAD
-  // - Recharger le store namespacé quand le user online change
-  // - Réarmer l'hydratation cloud pour ce user
-  // - Évite mélange entre comptes + permet restore cross-device
-  // ============================================================
-  React.useEffect(() => {
-    let cancelled = false;
-
-    if (!online?.ready) return;
-
-    const uid = String((online as any)?.user?.id || "").trim();
-    if (cloudHydratedUserRef.current === uid) return;
-    cloudHydratedUserRef.current = uid;
-
-    try { setStorageUser(uid || null); } catch {}
-    setCloudHydrated(false);
-
-    (async () => {
-      try {
-        const saved = await loadStore<Store>();
-        if (cancelled) return;
-
-        const next: Store = saved
-          ? {
-              ...initialStore,
-              ...saved,
-              profiles: saved.profiles ?? [],
-              friends: saved.friends ?? [],
-              history: saved.history ?? [],
-              dartSets: (saved as any).dartSets ?? getAllDartSets(),
-            }
-          : { ...initialStore };
-
-        setStore(next);
-      } catch (e) {
-        console.warn("[auth-store] reload failed", e);
-        if (!cancelled) setStore({ ...initialStore });
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [online?.ready, (online as any)?.user?.id]);
   React.useEffect(() => {
     try {
       (window as any).__appGo = go;
       (window as any).__appStore = (window as any).__appStore || {};
       (window as any).__appStore.go = go;
+      storeRef.current = store;
       (window as any).__appStore.store = store;
       (window as any).__appStore.tab = tab;
       (window as any).__appStore.update = update;
@@ -1815,12 +1770,13 @@ useEffect(() => {
             }
           })();
 
+          const localStore = storeRef.current as any;
           const hasLocalData =
-            (store?.profiles?.length || 0) > 0 ||
-            !!(store as any)?.activeProfileId ||
-            (store?.friends?.length || 0) > 0 ||
-            (store?.history?.length || 0) > 0 ||
-            ((store as any)?.dartSets?.length || 0) > 0;
+            (localStore?.profiles?.length || 0) > 0 ||
+            !!localStore?.activeProfileId ||
+            (localStore?.friends?.length || 0) > 0 ||
+            (localStore?.history?.length || 0) > 0 ||
+            (localStore?.dartSets?.length || 0) > 0;
 
           if (isCloudEmpty && hasLocalData) {
             try {
@@ -1884,11 +1840,13 @@ useEffect(() => {
             }
           }
         } else if (res?.status === "not_found") {
+          const localStore = storeRef.current as any;
           const hasLocalData =
-            (store?.profiles?.length || 0) > 0 ||
-            !!(store as any)?.activeProfileId ||
-            (store?.friends?.length || 0) > 0 ||
-            (store?.history?.length || 0) > 0;
+            (localStore?.profiles?.length || 0) > 0 ||
+            !!localStore?.activeProfileId ||
+            (localStore?.friends?.length || 0) > 0 ||
+            (localStore?.history?.length || 0) > 0 ||
+            (localStore?.dartSets?.length || 0) > 0;
 
           if (hasLocalData) {
             const cloudSeed = await exportCloudSnapshot();
@@ -1929,17 +1887,9 @@ useEffect(() => {
     }
 
     if (!cloudSyncOnRef.current) {
-      const nasMode =
-        !!((import.meta as any)?.env?.VITE_ONLINE_PROVIDER || "")
-          && String((import.meta as any)?.env?.VITE_ONLINE_PROVIDER || "").toLowerCase() === "nas";
-
-      startCloudSync(
-        nasMode
-          ? { pullOnStart: false, disablePull: true }
-          : { pullOnStart: true, disablePull: false }
-      );
+      startCloudSync({ pullOnStart: false, disablePull: true });
       cloudSyncOnRef.current = true;
-      console.log(nasMode ? "[cloud] cloudSync started (push-only, nas)" : "[cloud] cloudSync started (push+pull)");
+      console.log("[cloud] cloudSync started (push-only, nas)");
     }
 
     return () => {
@@ -1959,9 +1909,7 @@ useEffect(() => {
     if (!online?.ready || online.status !== "signed_in") return;
 
 
-    if (cloudSyncOnRef.current) {
-      console.log("⚠️ fallback push autorisé malgré cloudSync actif");
-    }
+    if (cloudSyncOnRef.current) return; // push géré par cloudSync (snapshot complète)
 
     if (cloudPushTimerRef.current) {
       window.clearTimeout(cloudPushTimerRef.current);
