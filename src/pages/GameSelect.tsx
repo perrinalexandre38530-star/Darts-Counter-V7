@@ -2,9 +2,9 @@
 // src/pages/GameSelect.tsx
 // Hub de sélection de jeu (sans BottomNav)
 // - 1 sport à la fois
-// - swipe horizontal + flèches desktop
-// - ordre: sports disponibles puis sports SOON, ordre alpha FR dans chaque groupe
-// - patch sécurité: plus aucune config locale réévaluée dans un ordre ambigu pendant le render
+// - swipe horizontal / flèches clavier / boutons desktop
+// - ouverture directe vers Home ou Games selon le sport
+// - version restructurée pour éliminer tout risque de TDZ
 // ============================================
 
 import React from "react";
@@ -17,6 +17,7 @@ import logoDarts from "../assets/games/logo-darts.png";
 import logoPetanque from "../assets/games/logo-petanque.png";
 import logoPingPong from "../assets/games/logo-pingpong.png";
 import logoBabyFoot from "../assets/games/logo-babyfoot.png";
+
 import logoArchery from "../assets/games/logo-archery.png";
 import logoMolkky from "../assets/games/logo-molkky.png";
 import logoPadel from "../assets/games/logo-padel.png";
@@ -58,203 +59,234 @@ type GameId =
   | "tennis"
   | "chess";
 
-type Entry = {
+type RawItem = {
   id: GameId;
   label: string;
   logo: string;
   enabled: boolean;
-  targetSport?: string;
-  targetRoute?: "home" | "games";
+  sport?: string;
+  route: "home" | "games" | null;
 };
 
-const HOME_ROUTE = "home" as const;
-const GAMES_ROUTE = "games" as const;
+type RenderItem = RawItem & {
+  onClick: () => void;
+};
 
-const GAME_CATALOG: Entry[] = [
-  { id: "darts", label: "Darts Counter", logo: logoDarts, enabled: true, targetSport: "darts", targetRoute: HOME_ROUTE },
-  { id: "petanque", label: "Pétanque Counter", logo: logoPetanque, enabled: true, targetSport: "petanque", targetRoute: GAMES_ROUTE },
-  { id: "pingpong", label: "Ping-Pong Counter", logo: logoPingPong, enabled: true, targetSport: "pingpong", targetRoute: GAMES_ROUTE },
-  { id: "babyfoot", label: "Baby-Foot Counter", logo: logoBabyFoot, enabled: true, targetSport: "babyfoot", targetRoute: GAMES_ROUTE },
-  { id: "archery", label: "Tir à l'arc", logo: logoArchery, enabled: false },
-  { id: "molkky", label: "Mölkky", logo: logoMolkky, enabled: true, targetSport: "molkky", targetRoute: GAMES_ROUTE },
-  { id: "padel", label: "Padel", logo: logoPadel, enabled: false },
-  { id: "pickleball", label: "Pickleball", logo: logoPickleball, enabled: false },
-  { id: "frisbee", label: "Frisbee", logo: logoFrisbee, enabled: false },
-  { id: "billard", label: "Billard", logo: logoBillard, enabled: false },
-  { id: "badminton", label: "Badminton", logo: logoBadminton, enabled: false },
-  { id: "basket", label: "Basket", logo: logoBasket, enabled: false },
-  { id: "cornhole", label: "Cornhole", logo: logoCornhole, enabled: false },
-  { id: "dicegame", label: "Dice Game", logo: logoDiceGame, enabled: true, targetSport: "dicegame", targetRoute: GAMES_ROUTE },
-  { id: "foot", label: "Foot", logo: logoFoot, enabled: false },
-  { id: "rugby", label: "Rugby", logo: logoRugby, enabled: false },
-  { id: "volley", label: "Volley", logo: logoVolley, enabled: false },
-  { id: "tennis", label: "Tennis", logo: logoTennis, enabled: false },
-  { id: "chess", label: "Échecs", logo: logoChess, enabled: false },
+const RAW_ITEMS: RawItem[] = [
+  { id: "darts", label: "Darts Counter", logo: logoDarts, enabled: true, sport: "darts", route: "home" },
+  { id: "petanque", label: "Pétanque Counter", logo: logoPetanque, enabled: true, sport: "petanque", route: "games" },
+  { id: "pingpong", label: "Ping-Pong Counter", logo: logoPingPong, enabled: true, sport: "pingpong", route: "games" },
+  { id: "babyfoot", label: "Baby-Foot Counter", logo: logoBabyFoot, enabled: true, sport: "babyfoot", route: "games" },
+
+  { id: "archery", label: "Tir à l'arc", logo: logoArchery, enabled: false, route: null },
+  { id: "molkky", label: "Mölkky", logo: logoMolkky, enabled: true, sport: "molkky", route: "games" },
+  { id: "padel", label: "Padel", logo: logoPadel, enabled: false, route: null },
+  { id: "pickleball", label: "Pickleball", logo: logoPickleball, enabled: false, route: null },
+  { id: "frisbee", label: "Frisbee", logo: logoFrisbee, enabled: false, route: null },
+  { id: "billard", label: "Billard", logo: logoBillard, enabled: false, route: null },
+  { id: "badminton", label: "Badminton", logo: logoBadminton, enabled: false, route: null },
+  { id: "basket", label: "Basket", logo: logoBasket, enabled: false, route: null },
+  { id: "cornhole", label: "Cornhole", logo: logoCornhole, enabled: false, route: null },
+  { id: "dicegame", label: "Dice Game", logo: logoDiceGame, enabled: true, sport: "dicegame", route: "games" },
+  { id: "foot", label: "Foot", logo: logoFoot, enabled: false, route: null },
+  { id: "rugby", label: "Rugby", logo: logoRugby, enabled: false, route: null },
+  { id: "volley", label: "Volley", logo: logoVolley, enabled: false, route: null },
+  { id: "tennis", label: "Tennis", logo: logoTennis, enabled: false, route: null },
+  { id: "chess", label: "Échecs", logo: logoChess, enabled: false, route: null },
 ];
 
-const SORTED_GAME_CATALOG = [...GAME_CATALOG].sort((a, b) => {
-  if (a.enabled !== b.enabled) return Number(b.enabled) - Number(a.enabled);
-  return a.label.localeCompare(b.label, "fr");
-});
+const DOTS_WRAP: React.CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  gap: 8,
+  padding: "2px 0 0",
+};
 
-function normalizeIndex(nextIndex: number, total: number): number {
-  const safeTotal = total > 0 ? total : 1;
-  return ((nextIndex % safeTotal) + safeTotal) % safeTotal;
+function sortItems(items: RenderItem[]): RenderItem[] {
+  return [...items]
+    .sort((a, b) => a.label.localeCompare(b.label, "fr"))
+    .sort((a, b) => Number(b.enabled) - Number(a.enabled));
 }
 
-function getThemeAccent(theme: any, fallback: string) {
-  return theme?.accent1 || theme?.accent2 || theme?.accent || theme?.colors?.accent || theme?.colors?.primary || theme?.primary || fallback;
+function detectDesktop(): boolean {
+  if (typeof window === "undefined") return false;
+  const mq1 = window.matchMedia?.("(hover: hover)");
+  const mq2 = window.matchMedia?.("(pointer: fine)");
+  return Boolean(mq1?.matches && mq2?.matches);
+}
+
+function wrapIndex(i: number, length: number): number {
+  const n = length || 1;
+  return ((i % n) + n) % n;
 }
 
 export default function GameSelect({ go }: Props) {
   const { theme } = useTheme();
   const { setSport } = useSport();
-  const dev = useDevMode();
+  const dev = useDevMode() as any;
 
-  const isDesktop = React.useMemo(() => {
-    if (typeof window === "undefined") return false;
-    const canHover = window.matchMedia?.("(hover: hover)")?.matches;
-    const hasFinePointer = window.matchMedia?.("(pointer: fine)")?.matches;
-    return Boolean(canHover && hasFinePointer);
-  }, []);
+  const isDesktop = React.useMemo(() => detectDesktop(), []);
 
-  const items = SORTED_GAME_CATALOG;
-  const itemCount = items.length;
+  const openItem = React.useCallback(
+    (item: RawItem) => {
+      if (!item.enabled) return;
+      if (item.sport) {
+        try {
+          setSport(item.sport as any);
+        } catch {}
+      }
+      if (item.route) {
+        go(item.route);
+      }
+    },
+    [go, setSport]
+  );
+
+  const sortedItems = React.useMemo<RenderItem[]>(() => {
+    const built = RAW_ITEMS.map((item) => ({
+      ...item,
+      onClick: () => openItem(item),
+    }));
+    return sortItems(built);
+  }, [openItem]);
 
   const [index, setIndex] = React.useState(0);
-  const touchStartXRef = React.useRef<number | null>(null);
-  const mouseStartXRef = React.useRef<number | null>(null);
-  const isDraggingRef = React.useRef(false);
+  const startXRef = React.useRef<number | null>(null);
+  const draggingRef = React.useRef(false);
+  const mouseDownRef = React.useRef<number | null>(null);
 
-  const wrapIndex = React.useCallback((nextIndex: number) => normalizeIndex(nextIndex, itemCount), [itemCount]);
-  const goPrev = React.useCallback(() => setIndex((prev) => wrapIndex(prev - 1)), [wrapIndex]);
-  const goNext = React.useCallback(() => setIndex((prev) => wrapIndex(prev + 1)), [wrapIndex]);
+  const normalizedIndex = React.useMemo(() => wrapIndex(index, sortedItems.length), [index, sortedItems.length]);
+  const currentItem = sortedItems[normalizedIndex] ?? sortedItems[0] ?? null;
+
+  const goPrev = React.useCallback(() => {
+    setIndex((prev) => wrapIndex(prev - 1, sortedItems.length));
+  }, [sortedItems.length]);
+
+  const goNext = React.useCallback(() => {
+    setIndex((prev) => wrapIndex(prev + 1, sortedItems.length));
+  }, [sortedItems.length]);
 
   React.useEffect(() => {
-    setIndex((prev) => wrapIndex(prev));
-  }, [wrapIndex]);
+    setIndex((prev) => wrapIndex(prev, sortedItems.length));
+  }, [sortedItems.length]);
 
   React.useEffect(() => {
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "ArrowLeft") goPrev();
-      if (event.key === "ArrowRight") goNext();
+    const onKey = (ev: KeyboardEvent) => {
+      if (ev.key === "ArrowLeft") goPrev();
+      if (ev.key === "ArrowRight") goNext();
     };
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
   }, [goPrev, goNext]);
 
-  const currentItem = items[wrapIndex(index)] ?? items[0];
-  const isCurrentEnabled = !!currentItem?.enabled;
-  const visuallyDisabled = devVisuallyDisabled(isCurrentEnabled);
-  const clickable = devClickable(isCurrentEnabled, !!dev?.enabled);
-
-  const openCurrent = React.useCallback(() => {
-    if (!currentItem) return;
-    if (!devClickable(!!currentItem.enabled, !!dev?.enabled)) return;
-
-    if (currentItem.targetSport) {
-      try {
-        setSport(currentItem.targetSport as any);
-      } catch {}
-    }
-
-    go(currentItem.targetRoute ?? GAMES_ROUTE);
-  }, [currentItem, dev?.enabled, go, setSport]);
-
-  const onTouchStart = React.useCallback((event: React.TouchEvent) => {
-    touchStartXRef.current = event.touches[0]?.clientX ?? null;
-    isDraggingRef.current = true;
+  const onTouchStart = React.useCallback((e: React.TouchEvent) => {
+    startXRef.current = e.touches[0]?.clientX ?? null;
+    draggingRef.current = true;
   }, []);
 
   const onTouchEnd = React.useCallback(
-    (event: React.TouchEvent) => {
-      if (!isDraggingRef.current) return;
-      isDraggingRef.current = false;
+    (e: React.TouchEvent) => {
+      if (!draggingRef.current) return;
+      draggingRef.current = false;
 
-      const startX = touchStartXRef.current;
-      touchStartXRef.current = null;
+      const startX = startXRef.current;
+      startXRef.current = null;
       if (startX == null) return;
 
-      const endX = event.changedTouches[0]?.clientX ?? startX;
-      const deltaX = endX - startX;
-      if (deltaX > 55) goPrev();
-      else if (deltaX < -55) goNext();
+      const endX = e.changedTouches[0]?.clientX ?? startX;
+      const delta = endX - startX;
+      if (delta > 55) goPrev();
+      else if (delta < -55) goNext();
     },
     [goPrev, goNext]
   );
 
-  const onMouseDown = React.useCallback((event: React.MouseEvent) => {
-    if (event.button !== 0) return;
-    mouseStartXRef.current = event.clientX;
+  const onMouseDown = React.useCallback((e: React.MouseEvent) => {
+    if (e.button !== 0) return;
+    mouseDownRef.current = e.clientX;
   }, []);
 
   const onMouseUp = React.useCallback(
-    (event: React.MouseEvent) => {
-      const startX = mouseStartXRef.current;
-      mouseStartXRef.current = null;
+    (e: React.MouseEvent) => {
+      const startX = mouseDownRef.current;
+      mouseDownRef.current = null;
       if (startX == null) return;
-
-      const deltaX = event.clientX - startX;
-      if (deltaX > 55) goPrev();
-      else if (deltaX < -55) goNext();
+      const delta = e.clientX - startX;
+      if (delta > 55) goPrev();
+      else if (delta < -55) goNext();
     },
     [goPrev, goNext]
   );
 
   if (!currentItem) {
-    return <div style={wrapStyle(theme)} />;
+    return (
+      <div style={wrap()}>
+        <div style={panel()}>
+          <div style={title(theme)}>Choisis ton sport</div>
+          <div style={subtitle()}>Aucun sport disponible</div>
+        </div>
+      </div>
+    );
   }
 
+  const visuallyDisabled = devVisuallyDisabled(!!currentItem.enabled);
+  const clickable = devClickable(!!currentItem.enabled, !!dev?.enabled);
+
   return (
-    <div style={wrapStyle(theme)}>
+    <div style={wrap()}>
       <div
-        style={panelStyle(theme)}
+        style={panel()}
         onTouchStart={onTouchStart}
         onTouchEnd={onTouchEnd}
         onMouseDown={onMouseDown}
         onMouseUp={onMouseUp}
       >
-        <div style={titleStyle(theme)}>Choisis ton sport</div>
-        <div style={subtitleStyle(theme)}>Fais défiler pour choisir</div>
+        <div style={title(theme)}>Choisis ton sport</div>
+        <div style={subtitle()}>Fais défiler pour choisir</div>
 
         <button
           key={currentItem.id}
-          onClick={clickable ? openCurrent : undefined}
-          style={sportTileStyle(theme, !visuallyDisabled)}
+          onClick={clickable ? currentItem.onClick : undefined}
+          style={sportTile(theme, !visuallyDisabled)}
           aria-disabled={!clickable}
           title={clickable ? "Ouvrir" : "Bientôt"}
         >
           <img
             src={currentItem.logo}
             alt={currentItem.label}
-            style={sportImageStyle(theme, !visuallyDisabled)}
+            style={sportImg(theme, !visuallyDisabled)}
             draggable={false}
           />
-          <div style={sportLabelStyle(theme, !visuallyDisabled)}>{currentItem.label}</div>
-          {visuallyDisabled ? <div style={soonPillStyle(theme)}>SOON</div> : null}
+          <div style={sportLabel(theme, !visuallyDisabled)}>{currentItem.label}</div>
+          {visuallyDisabled && <div style={soonPill(theme)}>SOON</div>}
         </button>
 
-        <div style={dotsWrapStyle}>
-          {items.map((item, itemIndex) => (
-            <span key={item.id} style={dotStyle(theme, itemIndex === wrapIndex(index))} />
+        <div style={DOTS_WRAP}>
+          {sortedItems.map((item, i) => (
+            <span key={item.id} style={dot(theme, i === normalizedIndex)} />
           ))}
         </div>
 
-        {isDesktop ? (
+        {isDesktop && (
           <>
-            <button aria-label="Précédent" onClick={goPrev} style={navButtonStyle(theme, "left")}>‹</button>
-            <button aria-label="Suivant" onClick={goNext} style={navButtonStyle(theme, "right")}>›</button>
+            <button aria-label="Précédent" onClick={goPrev} style={navBtn("left")}>
+              ‹
+            </button>
+            <button aria-label="Suivant" onClick={goNext} style={navBtn("right")}>
+              ›
+            </button>
           </>
-        ) : null}
+        )}
 
-        <button aria-label="Précédent" onClick={goPrev} style={edgeTapStyle("left")} />
-        <button aria-label="Suivant" onClick={goNext} style={edgeTapStyle("right")} />
+        <button aria-label="Précédent" onClick={goPrev} style={edgeTap("left")} />
+        <button aria-label="Suivant" onClick={goNext} style={edgeTap("right")} />
       </div>
     </div>
   );
 }
 
-function wrapStyle(_theme: any): React.CSSProperties {
+function wrap(): React.CSSProperties {
   return {
     minHeight: "100vh",
     display: "flex",
@@ -266,7 +298,7 @@ function wrapStyle(_theme: any): React.CSSProperties {
   };
 }
 
-function panelStyle(_theme: any): React.CSSProperties {
+function panel(): React.CSSProperties {
   return {
     width: "100%",
     maxWidth: 680,
@@ -283,18 +315,19 @@ function panelStyle(_theme: any): React.CSSProperties {
   };
 }
 
-function titleStyle(theme: any): React.CSSProperties {
+function title(theme: any): React.CSSProperties {
+  const accent = theme?.accent || theme?.colors?.accent || theme?.colors?.primary || theme?.primary || "#ffd200";
   return {
     fontSize: 26,
     fontWeight: 800,
     letterSpacing: 0.2,
-    color: getThemeAccent(theme, "#ffd200"),
+    color: theme?.accent1 || theme?.accent2 || accent,
     textAlign: "center",
     padding: "0 6px",
   };
 }
 
-function subtitleStyle(_theme: any): React.CSSProperties {
+function subtitle(): React.CSSProperties {
   return {
     marginTop: -6,
     fontSize: 14,
@@ -305,7 +338,7 @@ function subtitleStyle(_theme: any): React.CSSProperties {
   };
 }
 
-function sportTileStyle(theme: any, enabled: boolean): React.CSSProperties {
+function sportTile(theme: any, enabled: boolean): React.CSSProperties {
   const isDark = theme?.id?.includes("dark") || theme?.id === "darkTitanium" || theme?.id === "dark";
   const border = isDark ? "rgba(255,255,255,0.14)" : "rgba(0,0,0,0.10)";
   const bg = isDark ? "rgba(255,255,255,0.045)" : "rgba(0,0,0,0.03)";
@@ -330,10 +363,9 @@ function sportTileStyle(theme: any, enabled: boolean): React.CSSProperties {
   };
 }
 
-function sportImageStyle(theme: any, enabled: boolean): React.CSSProperties {
+function sportImg(theme: any, enabled: boolean): React.CSSProperties {
   const size = "min(320px, 72vw)";
   const glow = enabled ? theme?.accentGlow ?? "0 0 0 rgba(0,0,0,0)" : "none";
-
   return {
     width: size,
     height: size,
@@ -344,19 +376,20 @@ function sportImageStyle(theme: any, enabled: boolean): React.CSSProperties {
   };
 }
 
-function sportLabelStyle(theme: any, enabled: boolean): React.CSSProperties {
+function sportLabel(theme: any, enabled: boolean): React.CSSProperties {
+  const accent = theme?.accent || theme?.colors?.accent || theme?.colors?.primary || theme?.primary || "#ffd200";
   return {
     fontSize: 18,
     fontWeight: 700,
     opacity: enabled ? 0.9 : 0.7,
-    color: getThemeAccent(theme, "#ffd200"),
+    color: theme?.accent1 || theme?.accent2 || accent,
     textAlign: "center",
     paddingBottom: 4,
     pointerEvents: "none",
   };
 }
 
-function navButtonStyle(_theme: any, side: "left" | "right"): React.CSSProperties {
+function navBtn(side: "left" | "right"): React.CSSProperties {
   const base: React.CSSProperties = {
     position: "absolute",
     top: "50%",
@@ -364,7 +397,7 @@ function navButtonStyle(_theme: any, side: "left" | "right"): React.CSSPropertie
     width: 52,
     height: 52,
     borderRadius: 999,
-    border: "1px solid rgba(255,255,255,0.16)",
+    border: `1px solid rgba(255,255,255,0.16)`,
     background: "rgba(0,0,0,0.35)",
     color: "rgba(255,255,255,0.92)",
     fontSize: 34,
@@ -377,37 +410,26 @@ function navButtonStyle(_theme: any, side: "left" | "right"): React.CSSPropertie
     boxShadow: "0 10px 30px rgba(0,0,0,0.55)",
     backdropFilter: "blur(6px)",
   };
-
   return side === "left" ? { ...base, left: 10 } : { ...base, right: 10 };
 }
 
-const dotsWrapStyle: React.CSSProperties = {
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "center",
-  gap: 8,
-  padding: "2px 0 0",
-};
-
-function dotStyle(theme: any, active: boolean): React.CSSProperties {
+function dot(theme: any, active: boolean): React.CSSProperties {
   const isDark = theme?.id?.includes("dark") || theme?.id === "darkTitanium" || theme?.id === "dark";
-  const offColor = isDark ? "rgba(255,255,255,0.22)" : "rgba(0,0,0,0.20)";
-  const onColor = theme?.accent ?? (isDark ? "rgba(255,215,0,0.95)" : "rgba(0,0,0,0.70)");
-
+  const base = isDark ? "rgba(255,255,255,0.22)" : "rgba(0,0,0,0.20)";
+  const on = theme?.accent ?? (isDark ? "rgba(255,215,0,0.95)" : "rgba(0,0,0,0.70)");
   return {
     width: active ? 10 : 8,
     height: active ? 10 : 8,
     borderRadius: 999,
-    background: active ? onColor : offColor,
+    background: active ? on : base,
     transition: "all 140ms ease",
   };
 }
 
-function soonPillStyle(theme: any): React.CSSProperties {
+function soonPill(theme: any): React.CSSProperties {
   const isDark = theme?.id?.includes("dark") || theme?.id === "darkTitanium" || theme?.id === "dark";
   const bg = isDark ? "rgba(255,255,255,0.12)" : "rgba(0,0,0,0.10)";
   const fallback = isDark ? "rgba(255,255,255,0.92)" : "rgba(0,0,0,0.78)";
-
   return {
     position: "absolute",
     top: 10,
@@ -418,12 +440,12 @@ function soonPillStyle(theme: any): React.CSSProperties {
     padding: "6px 10px",
     borderRadius: 999,
     background: bg,
-    color: getThemeAccent(theme, fallback),
+    color: theme?.accent1 || theme?.accent2 || fallback,
     border: `1px solid ${isDark ? "rgba(255,255,255,0.14)" : "rgba(0,0,0,0.12)"}`,
   };
 }
 
-function edgeTapStyle(side: "left" | "right"): React.CSSProperties {
+function edgeTap(side: "left" | "right"): React.CSSProperties {
   const common: React.CSSProperties = {
     position: "absolute",
     top: 0,
@@ -435,6 +457,5 @@ function edgeTapStyle(side: "left" | "right"): React.CSSProperties {
     padding: 0,
     cursor: "default",
   };
-
   return side === "left" ? { ...common, left: 0 } : { ...common, right: 0 };
 }
