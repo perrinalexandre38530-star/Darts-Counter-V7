@@ -1255,25 +1255,17 @@ useEffect(() => {
 
 // 🔒 Cloud stats (events + training) — OFF par défaut pour éviter l'explosion Supabase.
 // Activable via SyncCenter (toggle stocké dans localStorage: "cloudStatsEnabled" = "1").
-const [cloudStatsEnabled, setCloudStatsEnabled] = useState(() => {
-  try {
-    return localStorage.getItem("cloudStatsEnabled") === "1";
-  } catch {
-    return false;
-  }
-});
+const [cloudStatsEnabled, setCloudStatsEnabled] = useState(false);
 
 // ✅ Auto-backup (Recovery) — OFF par défaut
 // Toggle stocké dans localStorage: "dc_auto_backup_enabled" = "1"
-const [autoBackupEnabled, setAutoBackupEnabled] = useState(() => {
-  try {
-    return localStorage.getItem("dc_auto_backup_enabled") === "1";
-  } catch {
-    return false;
-  }
-});
+const [autoBackupEnabled, setAutoBackupEnabled] = useState(false);
 
 useEffect(() => {
+  try {
+    setCloudStatsEnabled(localStorage.getItem("cloudStatsEnabled") === "1");
+  } catch {}
+
   const onStorage = (e) => {
     if (!e || e.key !== "cloudStatsEnabled") return;
     setCloudStatsEnabled(e.newValue === "1");
@@ -1292,6 +1284,10 @@ useEffect(() => {
 }, []);
 
 useEffect(() => {
+  try {
+    setAutoBackupEnabled(localStorage.getItem("dc_auto_backup_enabled") === "1");
+  } catch {}
+
   const onStorage = (e) => {
     if (!e || e.key !== "dc_auto_backup_enabled") return;
     setAutoBackupEnabled(e.newValue === "1");
@@ -1430,14 +1426,16 @@ useEffect(() => {
   const setSportCtx: undefined | ((s: StartGameId) => void) = sportApi?.setSport;
 
   // ✅ Runtime sport (sans reload / sans relancer intro)
-  const [activeSport, setActiveSport] = React.useState<StartGameId>(() => {
+  const [activeSport, setActiveSport] = React.useState<StartGameId>(sportFromCtx || "darts");
+
+  React.useEffect(() => {
     try {
       const v = localStorage.getItem(START_GAME_KEY) as StartGameId | null;
-      return v ?? (sportFromCtx || "darts");
+      setActiveSport(v ?? (sportFromCtx || "darts"));
     } catch {
-      return sportFromCtx || "darts";
+      setActiveSport(sportFromCtx || "darts");
     }
-  });
+  }, []);
 
   React.useEffect(() => {
     try {
@@ -1482,16 +1480,22 @@ useEffect(() => {
   }, [setSportCtx]);
 
   // ✅ SPLASH gate (ne s'affiche pas pendant les flows auth)
-  const [showSplash, setShowSplash] = React.useState(() => {
-    const h = String(window.location.hash || "");
-    const isAuthFlow =
-    h.startsWith("#/auth/callback") ||
-    h.startsWith("#/auth/reset") ||
-    h.startsWith("#/auth/forgot") ||
-    h.startsWith("#/auth/login") ||
-    h.startsWith("#/auth/signup");
-    return !isAuthFlow;
-  });
+  const [showSplash, setShowSplash] = React.useState(false);
+
+  React.useEffect(() => {
+    try {
+      const h = String(window.location.hash || "");
+      const isAuthFlow =
+        h.startsWith("#/auth/callback") ||
+        h.startsWith("#/auth/reset") ||
+        h.startsWith("#/auth/forgot") ||
+        h.startsWith("#/auth/login") ||
+        h.startsWith("#/auth/signup");
+      setShowSplash(!isAuthFlow);
+    } catch {
+      setShowSplash(true);
+    }
+  }, []);
 
   // 🛟 SAFETY NET : ne JAMAIS bloquer l'app sur le splash
   React.useEffect(() => {
