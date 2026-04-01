@@ -32,7 +32,7 @@ import { saveStore } from "../lib/storage";
 import { fileToSafeAvatarDataUrl, sanitizeAvatarDataUrl } from "../lib/avatarSafe";
 
 // 🔥 nouveau : bloc préférences joueur
-import PlayerPrefsBlock from "../components/profile/PlayerPrefsBlock";
+import PlayerPrefsBlock, { type PlayerPrefs } from "../components/profile/PlayerPrefsBlock";
 import OnlineProfileForm from "../components/OnlineProfileForm";
 
 import { getAvatarCache as getAvatarCacheLib } from "../lib/avatarCache";
@@ -118,6 +118,10 @@ export type PrivateInfo = {
   // prefs app
   appLang?: Lang;
   appTheme?: ThemeId;
+  favX01?: number;
+  favDoubleOut?: boolean;
+  ttsVoice?: string;
+  sfxVolume?: number;
 };
 
 /* ===== Helper lecture instantanée (mini-cache IDB + quick-stats) ===== */
@@ -984,6 +988,12 @@ export default function Profiles({
   
     console.log("[Profiles] ✅ Profil local créé + persisté", p.id);
 
+    try {
+      await flushCloud("profiles_add", nextStoreSnapshot || undefined);
+    } catch (e) {
+      console.warn("[Profiles] flushCloud after add error", e);
+    }
+
     if ((privateInfo as any)?.onlineUserId) {
       clearNasProfileOnboardingFlag(String((privateInfo as any)?.onlineUserId || ""));
       if (returnTo?.tab && go) {
@@ -1387,6 +1397,11 @@ React.useEffect(() => {
   async function handlePrivateInfoSave(patch: PrivateInfo) {
     if (!active) return;
 
+    const localPatch = {
+      ...(patch as any),
+      password: "",
+    } as PrivateInfo;
+
     // ✅ IMPORTANT: on persiste AUSSI en local
     // + on prépare un seed complet pour le snapshot cloud (évite de flusher un store "ancien")
     const nextProfiles = (profiles || []).map((p: any) =>
@@ -1395,7 +1410,7 @@ React.useEffect(() => {
             ...(p || {}),
             privateInfo: {
               ...((p as any)?.privateInfo || {}),
-              ...(patch as any),
+              ...(localPatch as any),
             },
             // si nickname changé, on aligne aussi name (UI)
             name:
@@ -1406,7 +1421,7 @@ React.useEffect(() => {
         : p
     );
 
-    patchActivePrivateInfo({ ...(patch as any) });
+    patchActivePrivateInfo({ ...(localPatch as any) });
 
     if (patch.nickname && patch.nickname.trim() && patch.nickname !== active.name) {
       renameProfile(active.id, patch.nickname.trim());
@@ -1415,7 +1430,6 @@ React.useEffect(() => {
     if (auth.status === "signed_in") {
       try {
         await onlineApi.updateProfile({
-          // ✅ V7: on pousse TOUTES les infos vers la table `profiles` (source de vérité)
           nickname: patch.nickname?.trim() || undefined,
           displayName: patch.nickname?.trim() || active.name || undefined,
           surname: patch.nickname?.trim() || undefined,
@@ -1428,28 +1442,42 @@ React.useEffect(() => {
           phone: patch.phone?.trim() || undefined,
         });
 
-        // ✅ LIGHT CLOUD SYNC (profiles only) — no stats / no snapshots
+        if (patch.password && String(patch.password).trim()) {
+          await onlineApi.changePassword(String(patch.password));
+        }
+
         await syncProfile({
           display_name: patch.nickname?.trim() || active.name || undefined,
           avatar_url: (active as any)?.avatarUrl || (active as any)?.avatar_url || undefined,
-          private_info: patch,
+          private_info: {
+            ...patch,
+            password: "",
+          },
         });
 
-        setToast({ type: "success", message: "Données sauvegardées" });
+        setToast({
+          type: "success",
+          message: patch.password ? "Données et mot de passe sauvegardés" : "Données sauvegardées",
+        });
 
-
-        // ✅ force refresh du hook (récupère le profil fraîchement écrit)
         try {
           await (auth as any)?.refresh?.();
         } catch {}
 
-        // ✅ flush snapshot cloud (utile avant un Clear Site Data)
-        // IMPORTANT: on force un seed avec les nextProfiles pour ne pas écraser le cloud
-        // avec un store "en retard" (batched state update).
-        await flushCloud("profile_save", { ...(store as any), profiles: nextProfiles });
+        const nextProfilesNoPassword = nextProfiles.map((p: any) => ({
+          ...(p || {}),
+          privateInfo: {
+            ...((p as any)?.privateInfo || {}),
+            ...(p?.id === active.id ? { ...patch, password: "" } : {}),
+          },
+        }));
+        await flushCloud("profile_save", { ...(store as any), profiles: nextProfilesNoPassword });
       } catch (err) {
         console.warn("[profiles] updateProfile online error:", err);
-        setToast({ type: "error", message: "Erreur de sauvegarde" });
+        setToast({
+          type: "error",
+          message: err instanceof Error ? err.message : "Erreur de sauvegarde",
+        });
       }
     }
   }
@@ -1645,11 +1673,6 @@ React.useEffect(() => {
                     }}
                   />
 
-                  {/* 🔥 Préférences joueur (thème + langue / X01 par défaut, etc.) */}
-                  <PlayerPrefsBlock
-                    active={active}
-                    onPatch={patchActivePrivateInfo}
-                  />
                 </Card>
               </>
             )}
@@ -2383,6 +2406,10 @@ function PrivateInfoBlock({
       onlineKey: pi.onlineKey, // 👈 legacy
       appLang: pi.appLang,
       appTheme: pi.appTheme,
+      favX01: (pi as any).favX01,
+      favDoubleOut: (pi as any).favDoubleOut,
+      ttsVoice: (pi as any).ttsVoice,
+      sfxVolume: (pi as any).sfxVolume,
     };
   }, [
     (active as any)?.id,
@@ -2400,10 +2427,13 @@ function PrivateInfoBlock({
     (active as any)?.privateInfo?.onlineKey,
     (active as any)?.privateInfo?.appLang,
     (active as any)?.privateInfo?.appTheme,
+    (active as any)?.privateInfo?.favX01,
+    (active as any)?.privateInfo?.favDoubleOut,
+    (active as any)?.privateInfo?.ttsVoice,
+    (active as any)?.privateInfo?.sfxVolume,
   ]);
 
   const [fields, setFields] = React.useState<PrivateInfo>(initial);
-  const [showPassword, setShowPassword] = React.useState(false);
 
   // sécurité
   const [newPass, setNewPass] = React.useState("");
@@ -2420,7 +2450,6 @@ function PrivateInfoBlock({
     if (lastIdRef.current !== id) {
       lastIdRef.current = id;
       setFields(initial);
-      setShowPassword(false);
       setNewPass("");
       setNewPass2("");
       setPassError(null);
@@ -2433,7 +2462,6 @@ function handleChange<K extends keyof PrivateInfo>(key: K, value: string) {
 
   function handleCancel() {
     setFields(initial);
-    setShowPassword(false);
     setNewPass("");
     setNewPass2("");
     setPassError(null);
@@ -2543,34 +2571,6 @@ function handleChange<K extends keyof PrivateInfo>(key: K, value: string) {
           value={fields.phone || ""}
           onChange={(v) => handleChange("phone", v)}
         />
-
-        {/* mot de passe actuel */}
-        <label
-          style={{ display: "flex", flexDirection: "column", gap: 4 }}
-        >
-          <span style={{ color: theme.textSoft }}>
-            {t("profiles.private.password", "Mot de passe actuel (non affichable)")}
-          </span>
-          <div
-            style={{ display: "flex", gap: 6, alignItems: "center" }}
-          >
-            <input
-              type={showPassword ? "text" : "password"}
-              className="input"
-              value={fields.password || ""}
-              onChange={(e) => handleChange("password", e.target.value)}
-              style={{ flex: 1 }}
-            />
-            <button
-              className="btn sm"
-              onClick={() => setShowPassword((v) => !v)}
-            >
-              {showPassword
-                ? t("common.hide", "Masquer")
-                : t("common.show", "Afficher")}
-            </button>
-          </div>
-        </label>
       </div>
 
       {/* ====== SÉCURITÉ ====== */}
@@ -2609,6 +2609,14 @@ function handleChange<K extends keyof PrivateInfo>(key: K, value: string) {
           <div style={{ fontSize: 11, color: "#ff6666" }}>{passError}</div>
         )}
       </div>
+
+      <PlayerPrefsBlock
+        active={active as any}
+        onPatch={(patch: Partial<PlayerPrefs>) =>
+          setFields((prev) => ({ ...prev, ...(patch as any) }))
+        }
+        compact
+      />
 
       {/* BOUTONS */}
       <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>

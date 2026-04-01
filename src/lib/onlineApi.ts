@@ -856,6 +856,18 @@ async function requestPasswordReset(email: string): Promise<void> {
   if (error) throw new Error(error.message);
 }
 
+async function changePassword(newPassword: string): Promise<void> {
+  if (isNasProviderEnabled()) {
+    await ensureNasSession();
+    await nasChangePassword(newPassword);
+    return;
+  }
+  const pw = newPassword.trim();
+  if (!pw || pw.length < 6) throw new Error("Mot de passe trop court (min. 6 caractères).");
+  const { error } = await supabase.auth.updateUser({ password: pw });
+  if (error) throw new Error(error.message);
+}
+
 async function updateEmail(newEmail: string): Promise<void> {
   if (isNasProviderEnabled()) {
     await ensureNasSession();
@@ -1412,6 +1424,7 @@ export const onlineApi = {
   getProfile,
 
   requestPasswordReset,
+  changePassword,
   updateEmail,
   deleteAccount,
 

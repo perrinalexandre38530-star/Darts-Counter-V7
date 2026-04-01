@@ -27,9 +27,10 @@ export type PlayerPrefs = {
 type Props = {
   active: Profile | null;
   onPatch: (patch: Partial<PlayerPrefs>) => void;
+  compact?: boolean;
 };
 
-export default function PlayerPrefsBlock({ active, onPatch }: Props) {
+export default function PlayerPrefsBlock({ active, onPatch, compact = false }: Props) {
   const { theme } = useTheme();
   const { lang, t } = useLang();
 
@@ -72,7 +73,7 @@ export default function PlayerPrefsBlock({ active, onPatch }: Props) {
   return (
     <section
       style={{
-        marginTop: 18,
+        marginTop: compact ? 6 : 18,
         padding: 14,
         borderRadius: 14,
         background: "rgba(255,255,255,0.03)",

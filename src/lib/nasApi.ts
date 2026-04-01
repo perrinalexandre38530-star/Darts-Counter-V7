@@ -66,6 +66,20 @@ function authToken(): string {
   return readLs(NAS_TOKEN_KEY);
 }
 
+async function apiFetchWithFallback(paths: string[], init?: RequestInit): Promise<any> {
+  let lastError: any = null;
+  for (const path of paths) {
+    try {
+      return await apiFetch(path, init);
+    } catch (err: any) {
+      lastError = err;
+      const msg = String(err?.message || "");
+      if (!/404|not found|introuvable/i.test(msg)) throw err;
+    }
+  }
+  throw lastError || new Error("Endpoint NAS introuvable.");
+}
+
 function authHeaders(extra?: Record<string, string>): Record<string, string> {
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
@@ -387,6 +401,23 @@ export async function nasRequestPasswordReset(email: string): Promise<void> {
   });
 }
 
+export async function nasChangePassword(newPassword: string): Promise<void> {
+  const session0 = await nasRestoreSession();
+  if (!session0?.token) throw new Error("Token NAS manquant. Reconnecte-toi.");
+
+  const pw = String(newPassword || "").trim();
+  if (pw.length < 6) throw new Error("Mot de passe trop court (min. 6 caractères).");
+
+  await apiFetchWithFallback([
+    "/auth/password",
+    "/auth/change-password",
+    "/auth/update-password",
+  ], {
+    method: "PUT",
+    body: JSON.stringify({ password: pw, newPassword: pw }),
+  });
+}
+
 export async function nasUpdateEmail(newEmail: string): Promise<void> {
   const session0 = await nasRestoreSession();
   if (!session0?.token) throw new Error("Token NAS manquant. Reconnecte-toi.");
@@ -465,6 +496,7 @@ export const nasApi = {
   getProfile: nasGetProfile,
   updateProfile: nasUpdateProfile,
   requestPasswordReset: nasRequestPasswordReset,
+  changePassword: nasChangePassword,
   updateEmail: nasUpdateEmail,
   deleteAccount: nasDeleteAccount,
   uploadAvatarImage: nasUploadAvatarImage,
