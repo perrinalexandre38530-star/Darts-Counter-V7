@@ -135,13 +135,40 @@ function normalizeUser(raw: any, fallbackEmail?: string): UserAuth {
 function normalizeProfile(raw: any, user: UserAuth): OnlineProfile | null {
   if (!raw && !user?.id) return null;
   const statsRaw = raw?.stats || raw?.summaryStats || raw?.profileStats || {};
+
+  const displayName = String(
+    raw?.displayName ||
+      raw?.display_name ||
+      raw?.nickname ||
+      raw?.name ||
+      raw?.username ||
+      user.nickname ||
+      "Player"
+  );
+
   return {
     id: String(raw?.id || user.id || ""),
     userId: String(raw?.userId || raw?.user_id || user.id || ""),
-    displayName: String(raw?.displayName || raw?.display_name || raw?.name || user.nickname || "Player"),
-    avatarUrl: raw?.avatarDataUrl || raw?.avatar_data_url || raw?.avatar || raw?.avatarUrl || raw?.avatar_url || undefined,
-    country: raw?.country || null,
+    displayName,
+    nickname: displayName as any,
+    avatarUrl:
+      raw?.avatarDataUrl ||
+      raw?.avatar_data_url ||
+      raw?.avatar ||
+      raw?.avatarUrl ||
+      raw?.avatar_url ||
+      undefined,
+    country: raw?.country || raw?.pays || null,
     countryCode: raw?.countryCode || raw?.country_code || null,
+
+    surname: raw?.surname ?? raw?.prenom ?? "",
+    firstName: raw?.firstName ?? raw?.first_name ?? raw?.prenom ?? "",
+    lastName: raw?.lastName ?? raw?.last_name ?? raw?.nom ?? "",
+    birthDate: raw?.birthDate ?? raw?.birth_date ?? raw?.date_de_naissance ?? null,
+    city: raw?.city ?? raw?.ville ?? "",
+    email: raw?.email ?? user.email ?? "",
+    phone: raw?.phone ?? raw?.telephone ?? "",
+
     bio: raw?.bio || undefined,
     stats: {
       totalMatches: Number(statsRaw?.totalMatches || statsRaw?.total_matches || 0),
@@ -156,7 +183,7 @@ function normalizeProfile(raw: any, user: UserAuth): OnlineProfile | null {
         : raw?.updated_at
           ? Date.parse(raw.updated_at)
           : now(),
-  };
+  } as any;
 }
 
 function buildSessionFromResponse(json: any, fallbackEmail?: string): AuthSession {

@@ -482,6 +482,18 @@ async function uploadLocalProfileAvatarToSupabase(
   dataUrl: string
 ): Promise<string | null> {
   try {
+    const uploaded = await onlineApi.uploadAvatarImage({
+      dataUrl,
+      folder: `local/${userId}`,
+      updateProfile: false,
+    });
+    const publicUrl = String(uploaded?.publicUrl || "").trim();
+    if (publicUrl) return publicUrl;
+  } catch (e) {
+    console.warn("[avatars] onlineApi upload failed, fallback storage", e);
+  }
+
+  try {
     const blob = await dataUrlToBlob(dataUrl);
     const ext =
       blob.type === "image/png"
@@ -815,9 +827,10 @@ export default function Profiles({
   
     // 2) Si connecté -> upload dans Supabase Storage et on garde une URL publique (persistante cloud)
     try {
-      const user = (await supabase.auth.getUser()).data.user;
-      if (user) {
-        const publicUrl = await uploadLocalProfileAvatarToSupabase(user.id, id, dataUrl);
+      const sessionAny = await onlineApi.getCurrentSession();
+      const userId = String(sessionAny?.user?.id || "").trim();
+      if (userId) {
+        const publicUrl = await uploadLocalProfileAvatarToSupabase(userId, id, dataUrl);
         if (publicUrl) {
           // Remplace le base64 par une URL (sinon sanitizeStoreForCloud le supprime)
           setProfilesSafe((arr) =>
@@ -1248,6 +1261,31 @@ React.useEffect(() => {
         if (countryLocal !== countryOnline) {
           patch.country = countryOnline;
         }
+      }
+
+      const firstNameOnline = (auth.profile as any)?.firstName || "";
+      if (firstNameOnline && (pi.firstName || "") !== firstNameOnline) {
+        patch.firstName = firstNameOnline;
+      }
+
+      const lastNameOnline = (auth.profile as any)?.lastName || "";
+      if (lastNameOnline && (pi.lastName || "") !== lastNameOnline) {
+        patch.lastName = lastNameOnline;
+      }
+
+      const birthDateOnline = (auth.profile as any)?.birthDate || "";
+      if (birthDateOnline && (pi.birthDate || "") !== birthDateOnline) {
+        patch.birthDate = birthDateOnline;
+      }
+
+      const cityOnline = (auth.profile as any)?.city || "";
+      if (cityOnline && (pi.city || "") !== cityOnline) {
+        patch.city = cityOnline;
+      }
+
+      const phoneOnline = (auth.profile as any)?.phone || "";
+      if (phoneOnline && (pi.phone || "") !== phoneOnline) {
+        patch.phone = phoneOnline;
       }
   
       if (Object.keys(patch).length > 0) {
@@ -3021,10 +3059,10 @@ function UnifiedAuthBlock({
     // 2) UID Supabase (source de vérité)
     let uid: string | null = null;
     try {
-      const { data } = await supabase.auth.getUser();
-      uid = (data as any)?.user?.id ?? null;
+      const sessionAny = await onlineApi.getCurrentSession();
+      uid = String(sessionAny?.user?.id || "").trim() || null;
     } catch (err) {
-      console.warn("[profiles] getUser after login error:", err);
+      console.warn("[profiles] getCurrentSession after login error:", err);
     }
 
     if (!uid) {
@@ -3147,8 +3185,8 @@ function UnifiedAuthBlock({
     let uid: string | null = null;
     try {
       await onlineSignup({ email: trimmedEmail, nickname: trimmedName, password: trimmedPass });
-      const { data } = await supabase.auth.getUser();
-      uid = (data as any)?.user?.id ?? null;
+      const sessionAny = await onlineApi.getCurrentSession();
+      uid = String(sessionAny?.user?.id || "").trim() || null;
     } catch (err) {
       console.warn("[profiles] online signup error:", err);
       uid = null;
