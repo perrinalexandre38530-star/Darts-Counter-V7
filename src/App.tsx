@@ -92,7 +92,7 @@ import CrashCatcher from "./components/CrashCatcher";
 import MobileErrorOverlay from "./components/MobileErrorOverlay";
 
 // Persistance (IndexedDB via storage.ts)
-import { loadStore, saveStore, exportCloudSnapshot, installLocalStorageDcHook, setStorageUser } from "./lib/storage";
+import { loadStore, saveStore, exportCloudSnapshot, importCloudSnapshot, installLocalStorageDcHook, setStorageUser } from "./lib/storage";
 import { setCrashContext } from "./lib/crashReporter";
 import { safeJsonParse, safeJsonStringify } from "./lib/safeJson";
 import { safeArray } from "./utils/safeArray";
@@ -1795,6 +1795,35 @@ useEffect(() => {
 
         if (res?.status === "ok") {
           const payload = (res as any)?.payload ?? null;
+
+          if (payload && typeof payload === "object" && (payload as any)._v === 2) {
+            try {
+              await importCloudSnapshot(payload as any, { mode: "replace" });
+              const restored = await loadStore<Store>();
+              const next: Store = restored
+                ? {
+                    ...initialStore,
+                    ...restored,
+                    profiles: restored.profiles ?? [],
+                    friends: restored.friends ?? [],
+                    history: restored.history ?? [],
+                    dartSets: (restored as any).dartSets ?? getAllDartSets(),
+                  }
+                : { ...initialStore };
+
+              if (!cancelled) {
+                setStore((prev) => ({
+                  ...next,
+                  profiles: mergeProfilesSafe(prev.profiles ?? [], next.profiles ?? []),
+                  activeProfileId: next.activeProfileId ?? prev.activeProfileId ?? null,
+                }));
+              }
+              return;
+            } catch (e) {
+              console.warn("[cloud] full snapshot import failed", e);
+            }
+          }
+
           const cloudStore = payload?.store ?? payload?.idb?.store ?? payload ?? null;
 
           const isCloudEmpty = (() => {

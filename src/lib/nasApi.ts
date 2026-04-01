@@ -136,10 +136,22 @@ function normalizeProfile(raw: any, user: UserAuth): OnlineProfile | null {
   if (!raw && !user?.id) return null;
   const statsRaw = raw?.stats || raw?.summaryStats || raw?.profileStats || {};
 
+  const nickname = String(
+    raw?.nickname ||
+      raw?.surname ||
+      raw?.displayName ||
+      raw?.display_name ||
+      raw?.name ||
+      raw?.username ||
+      user.nickname ||
+      "Player"
+  );
+
   const displayName = String(
     raw?.displayName ||
       raw?.display_name ||
       raw?.nickname ||
+      raw?.surname ||
       raw?.name ||
       raw?.username ||
       user.nickname ||
@@ -150,7 +162,7 @@ function normalizeProfile(raw: any, user: UserAuth): OnlineProfile | null {
     id: String(raw?.id || user.id || ""),
     userId: String(raw?.userId || raw?.user_id || user.id || ""),
     displayName,
-    nickname: displayName as any,
+    nickname: nickname as any,
     avatarUrl:
       raw?.avatarDataUrl ||
       raw?.avatar_data_url ||
@@ -161,7 +173,7 @@ function normalizeProfile(raw: any, user: UserAuth): OnlineProfile | null {
     country: raw?.country || raw?.pays || null,
     countryCode: raw?.countryCode || raw?.country_code || null,
 
-    surname: raw?.surname ?? raw?.prenom ?? "",
+    surname: raw?.surname ?? raw?.nickname ?? raw?.displayName ?? raw?.display_name ?? "",
     firstName: raw?.firstName ?? raw?.first_name ?? raw?.prenom ?? "",
     lastName: raw?.lastName ?? raw?.last_name ?? raw?.nom ?? "",
     birthDate: raw?.birthDate ?? raw?.birth_date ?? raw?.date_de_naissance ?? null,

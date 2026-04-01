@@ -1246,7 +1246,11 @@ React.useEffect(() => {
   
       // Pseudo online → privateInfo.nickname (si différent)
       const nicknameOnline =
-        auth.profile?.displayName || auth.user?.nickname || "";
+        (auth.profile as any)?.surname ||
+        (auth.profile as any)?.nickname ||
+        auth.profile?.displayName ||
+        auth.user?.nickname ||
+        "";
       if (nicknameOnline) {
         const nicknameLocal = pi.nickname || active.name || "";
         if (nicknameLocal !== nicknameOnline) {
@@ -1414,6 +1418,7 @@ React.useEffect(() => {
           // ✅ V7: on pousse TOUTES les infos vers la table `profiles` (source de vérité)
           nickname: patch.nickname?.trim() || undefined,
           displayName: patch.nickname?.trim() || active.name || undefined,
+          surname: patch.nickname?.trim() || undefined,
           country: patch.country?.trim() || undefined,
           city: patch.city?.trim() || undefined,
           firstName: patch.firstName?.trim() || undefined,
@@ -2490,7 +2495,7 @@ function handleChange<K extends keyof PrivateInfo>(key: K, value: string) {
       >
         {t(
           "profiles.private.hint",
-          "Ces informations restent locales et privées."
+          "Ces informations sont synchronisées avec ton compte. Le mot de passe actuel n'est jamais relu ni affiché."
         )}
       </div>
 
@@ -2544,7 +2549,7 @@ function handleChange<K extends keyof PrivateInfo>(key: K, value: string) {
           style={{ display: "flex", flexDirection: "column", gap: 4 }}
         >
           <span style={{ color: theme.textSoft }}>
-            {t("profiles.private.password", "Mot de passe actuel")}
+            {t("profiles.private.password", "Mot de passe actuel (non affichable)")}
           </span>
           <div
             style={{ display: "flex", gap: 6, alignItems: "center" }}

@@ -16,9 +16,20 @@ export type OnlineProfile = {
   id: string;          // UID du profil
   userId: string;      // lien vers UserAuth.id
   displayName: string; // nom public dans les parties
+  nickname?: string;   // pseudo online / surnom public
   avatarUrl?: string;  // URL de ton médaillon stocké en ligne
   country?: string;    // option : drapeau
   countryCode?: string | null; // pour compat avec onlineApi mock
+
+  // Données perso synchronisées NAS / cloud
+  surname?: string | null;
+  firstName?: string | null;
+  lastName?: string | null;
+  birthDate?: string | null;
+  city?: string | null;
+  email?: string | null;
+  phone?: string | null;
+
   bio?: string;        // option : phrase courte
 
   // Résumé stats globales (utile pour liste d'amis / online hub)
