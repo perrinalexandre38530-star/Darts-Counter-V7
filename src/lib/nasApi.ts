@@ -194,6 +194,8 @@ function normalizeProfile(raw: any, user: UserAuth): OnlineProfile | null {
     city: raw?.city ?? raw?.ville ?? "",
     email: raw?.email ?? user.email ?? "",
     phone: raw?.phone ?? raw?.telephone ?? "",
+    preferences: raw?.preferences ?? raw?.prefs ?? {},
+    privateInfo: raw?.privateInfo ?? raw?.private_info ?? {},
 
     bio: raw?.bio || undefined,
     stats: {

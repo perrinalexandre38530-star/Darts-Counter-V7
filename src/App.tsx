@@ -1794,6 +1794,40 @@ useEffect(() => {
   }, []);
 
   // ============================================================
+  // ✅ FORCE IMMEDIATE CLOUD FLUSH (global hook)
+  // ============================================================
+  React.useEffect(() => {
+    (window as any).__flushCloudNow = async (_reason?: string, seedOverride?: any) => {
+      if (loading) return;
+      if (!cloudHydrated) return;
+      if (!online?.ready || online.status !== "signed_in") return;
+      try {
+        const snapshot = seedOverride ?? (await exportCloudSnapshot());
+        try {
+          await saveStore(store);
+        } catch {}
+        try {
+          const bots = loadStoredBots();
+          if (Array.isArray(bots)) saveStoredBots(bots);
+        } catch {}
+        try {
+          const dartSets = getAllDartSets();
+          if (Array.isArray(dartSets) && dartSets.length) replaceAllDartSets(dartSets);
+        } catch {}
+        await onlineApi.pushStoreSnapshot(snapshot as any, (snapshot as any)?.v ?? 8);
+        console.log("[cloud] __flushCloudNow pushed", _reason || "manual");
+      } catch (e) {
+        console.warn("[cloud] __flushCloudNow failed", e);
+      }
+    };
+    return () => {
+      try {
+        delete (window as any).__flushCloudNow;
+      } catch {}
+    };
+  }, [loading, cloudHydrated, online?.ready, online?.status, store]);
+
+  // ============================================================
   // ✅ CLOUD HYDRATE (source unique)
   // ============================================================
   React.useEffect(() => {

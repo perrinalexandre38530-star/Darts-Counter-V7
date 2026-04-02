@@ -301,7 +301,6 @@ const LS_EXCLUDE = new Set<string>([
   // historique / caches legacy désormais gérés hors localStorage
   "dc-history-v1",
   "dc-history-cache-v1",
-  "dc_bots_v1",
   "dc_stats_cache_v1",
   "dc_stats_cache_v2",
   "dc_match_stats_cache_v1",
