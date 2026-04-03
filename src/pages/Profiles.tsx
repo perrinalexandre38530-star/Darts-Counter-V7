@@ -1301,14 +1301,21 @@ React.useEffect(() => {
       }
 
       const prefsOnline = ((auth.profile as any)?.preferences || {}) as Partial<PrivateInfo>;
-      const piOnline = (((auth.profile as any)?.privateInfo || (auth.profile as any)?.private_info || {}) as Partial<PrivateInfo>);
-      const mergedPrefs = { ...prefsOnline, ...piOnline };
-      if (mergedPrefs.appLang && (pi.appLang || "") !== mergedPrefs.appLang) patch.appLang = mergedPrefs.appLang as any;
-      if (mergedPrefs.appTheme && (pi.appTheme || "") !== mergedPrefs.appTheme) patch.appTheme = mergedPrefs.appTheme as any;
-      if (typeof mergedPrefs.favX01 === "number" && Number(pi.favX01 || 0) !== Number(mergedPrefs.favX01)) patch.favX01 = Number(mergedPrefs.favX01) as any;
-      if (typeof mergedPrefs.favDoubleOut === "boolean" && Boolean(pi.favDoubleOut ?? true) !== Boolean(mergedPrefs.favDoubleOut)) patch.favDoubleOut = Boolean(mergedPrefs.favDoubleOut) as any;
-      if (typeof mergedPrefs.ttsVoice === "string" && (pi.ttsVoice || "") !== mergedPrefs.ttsVoice) patch.ttsVoice = mergedPrefs.ttsVoice as any;
-      if (typeof mergedPrefs.sfxVolume === "number" && Number(pi.sfxVolume ?? 80) !== Number(mergedPrefs.sfxVolume)) patch.sfxVolume = Number(mergedPrefs.sfxVolume) as any;
+      const privateInfoOnline = ((auth.profile as any)?.privateInfo || {}) as Partial<PrivateInfo>;
+      const prefKeys: (keyof PrivateInfo)[] = [
+        "appLang",
+        "appTheme",
+        "favX01",
+        "favDoubleOut",
+        "ttsVoice",
+        "sfxVolume",
+      ];
+      for (const key of prefKeys) {
+        const nextVal = (privateInfoOnline as any)?.[key] ?? (prefsOnline as any)?.[key];
+        if (nextVal !== undefined && (pi as any)?.[key] !== nextVal) {
+          (patch as any)[key] = nextVal;
+        }
+      }
   
       if (Object.keys(patch).length > 0) {
         patchActivePrivateInfo(patch);
@@ -1437,7 +1444,7 @@ React.useEffect(() => {
 
     if (auth.status === "signed_in") {
       try {
-        await onlineApi.updateProfile({
+        const savedProfile = await onlineApi.updateProfile({
           nickname: patch.nickname?.trim() || undefined,
           displayName: patch.nickname?.trim() || active.name || undefined,
           surname: patch.nickname?.trim() || undefined,
@@ -1477,6 +1484,17 @@ React.useEffect(() => {
         if (patch.password && String(patch.password).trim()) {
           await onlineApi.changePassword(String(patch.password));
         }
+
+        try {
+          const prefsSaved = ((savedProfile as any)?.preferences || {}) as Partial<PrivateInfo>;
+          const privateInfoSaved = ((savedProfile as any)?.privateInfo || {}) as Partial<PrivateInfo>;
+          const syncPatch: Partial<PrivateInfo> = {};
+          for (const key of ["appLang","appTheme","favX01","favDoubleOut","ttsVoice","sfxVolume"] as const) {
+            const nextVal = (privateInfoSaved as any)?.[key] ?? (prefsSaved as any)?.[key];
+            if (nextVal !== undefined) (syncPatch as any)[key] = nextVal;
+          }
+          if (Object.keys(syncPatch).length) patchActivePrivateInfo(syncPatch as any);
+        } catch {}
 
         await syncProfile({
           display_name: patch.nickname?.trim() || active.name || undefined,
@@ -2409,7 +2427,6 @@ function PrivateInfoBlock({
   // ✅ initial stable : dépend de l'id + des champs sources (évite reset à chaque render)
   const initial: PrivateInfo = React.useMemo(() => {
     const pi = ((active as any)?.privateInfo || {}) as PrivateInfo;
-    const prefs = (((active as any)?.preferences || {}) as Partial<PrivateInfo>);
     return {
       nickname: String(pi.nickname || ""),
       lastName: String(pi.lastName || ""),
@@ -2423,12 +2440,12 @@ function PrivateInfoBlock({
       onlineUserId: String((pi as any).onlineUserId || ""),
       onlineEmail: String((pi as any).onlineEmail || ""),
       onlineKey: pi.onlineKey, // 👈 legacy
-      appLang: (pi.appLang ?? (prefs as any).appLang) as any,
-      appTheme: (pi.appTheme ?? (prefs as any).appTheme) as any,
-      favX01: ((pi as any).favX01 ?? (prefs as any).favX01) as any,
-      favDoubleOut: ((pi as any).favDoubleOut ?? (prefs as any).favDoubleOut) as any,
-      ttsVoice: ((pi as any).ttsVoice ?? (prefs as any).ttsVoice) as any,
-      sfxVolume: ((pi as any).sfxVolume ?? (prefs as any).sfxVolume) as any,
+      appLang: pi.appLang,
+      appTheme: pi.appTheme,
+      favX01: (pi as any).favX01,
+      favDoubleOut: (pi as any).favDoubleOut,
+      ttsVoice: (pi as any).ttsVoice,
+      sfxVolume: (pi as any).sfxVolume,
     };
   }, [
     (active as any)?.id,

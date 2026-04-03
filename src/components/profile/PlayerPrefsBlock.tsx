@@ -35,50 +35,25 @@ export default function PlayerPrefsBlock({ active, value, onPatch, compact = fal
   const { theme } = useTheme();
   const { lang, t } = useLang();
 
-  // ⚠️ Toujours appeler les hooks avant tout return conditionnel
+  if (!active) return null;
+
   const privateInfo = (((value && Object.keys(value).length ? value : null) ||
     (active && (active as any).privateInfo) ||
     {}) as PlayerPrefs);
-  const profilePrefs = (((active as any)?.preferences || {}) as Partial<PlayerPrefs>);
+  const preferences = (((active as any)?.preferences || {}) as PlayerPrefs);
 
-  const seed = React.useMemo<PlayerPrefs>(() => ({
-    appLang: privateInfo.appLang ?? profilePrefs.appLang ?? lang,
-    appTheme: privateInfo.appTheme ?? profilePrefs.appTheme ?? (THEMES[0]?.id || "gold"),
-    favX01: privateInfo.favX01 ?? profilePrefs.favX01 ?? 501,
-    favDoubleOut: privateInfo.favDoubleOut ?? profilePrefs.favDoubleOut ?? true,
-    ttsVoice: privateInfo.ttsVoice ?? profilePrefs.ttsVoice ?? "default",
-    sfxVolume: privateInfo.sfxVolume ?? profilePrefs.sfxVolume ?? 80,
-  }), [
-    privateInfo.appLang,
-    privateInfo.appTheme,
-    privateInfo.favX01,
-    privateInfo.favDoubleOut,
-    privateInfo.ttsVoice,
-    privateInfo.sfxVolume,
-    profilePrefs.appLang,
-    profilePrefs.appTheme,
-    profilePrefs.favX01,
-    profilePrefs.favDoubleOut,
-    profilePrefs.ttsVoice,
-    profilePrefs.sfxVolume,
-    lang,
-  ]);
+  const current: PlayerPrefs = {
+    appLang: (privateInfo.appLang ?? preferences.appLang ?? lang) as Lang,
+    appTheme: (privateInfo.appTheme ?? preferences.appTheme ?? (THEMES[0]?.id || "gold")) as ThemeId,
+    favX01: Number(privateInfo.favX01 ?? preferences.favX01 ?? 501),
+    favDoubleOut: Boolean(privateInfo.favDoubleOut ?? preferences.favDoubleOut ?? true),
+    ttsVoice: String(privateInfo.ttsVoice ?? preferences.ttsVoice ?? "default"),
+    sfxVolume: Number(privateInfo.sfxVolume ?? preferences.sfxVolume ?? 80),
+  };
 
-  const [local, setLocal] = React.useState<PlayerPrefs>(seed);
-
-  const seedSig = React.useMemo(() => JSON.stringify(seed), [seed]);
-
-  React.useEffect(() => {
-    setLocal(seed);
-  }, [seedSig]);
-
-  function update<K extends keyof PlayerPrefs>(key: K, value: PlayerPrefs[K]) {
-    setLocal((x) => ({ ...x, [key]: value }));
-    onPatch({ [key]: value });
+  function update<K extends keyof PlayerPrefs>(key: K, nextValue: PlayerPrefs[K]) {
+    onPatch({ [key]: nextValue });
   }
-
-  // ✅ Le return conditionnel vient APRÈS les hooks
-  if (!active) return null;
 
   return (
     <section
@@ -101,14 +76,13 @@ export default function PlayerPrefsBlock({ active, value, onPatch, compact = fal
         {t("profiles.prefs.title", "Préférences du joueur")}
       </div>
 
-      {/* Langue perso */}
       <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
         <span style={{ fontSize: 12, color: theme.textSoft }}>
           {t("profiles.prefs.lang", "Langue préférée")}
         </span>
         <select
           className="input"
-          value={local.appLang}
+          value={current.appLang}
           onChange={(e) => update("appLang", e.target.value as Lang)}
         >
           {["fr", "en", "es", "de", "it", "pt", "nl"].map((l) => (
@@ -119,7 +93,6 @@ export default function PlayerPrefsBlock({ active, value, onPatch, compact = fal
         </select>
       </label>
 
-      {/* Thème perso */}
       <label
         style={{
           display: "flex",
@@ -133,7 +106,7 @@ export default function PlayerPrefsBlock({ active, value, onPatch, compact = fal
         </span>
         <select
           className="input"
-          value={local.appTheme}
+          value={current.appTheme}
           onChange={(e) => update("appTheme", e.target.value as ThemeId)}
         >
           {THEMES.map((th) => (
@@ -144,7 +117,6 @@ export default function PlayerPrefsBlock({ active, value, onPatch, compact = fal
         </select>
       </label>
 
-      {/* X01 favori */}
       <label
         style={{
           display: "flex",
@@ -158,7 +130,7 @@ export default function PlayerPrefsBlock({ active, value, onPatch, compact = fal
         </span>
         <select
           className="input"
-          value={local.favX01}
+          value={current.favX01}
           onChange={(e) => update("favX01", Number(e.target.value))}
         >
           {[301, 501, 701, 901].map((v) => (
@@ -169,7 +141,6 @@ export default function PlayerPrefsBlock({ active, value, onPatch, compact = fal
         </select>
       </label>
 
-      {/* Double-out par défaut */}
       <label
         style={{
           display: "flex",
@@ -181,13 +152,12 @@ export default function PlayerPrefsBlock({ active, value, onPatch, compact = fal
       >
         <input
           type="checkbox"
-          checked={!!local.favDoubleOut}
+          checked={!!current.favDoubleOut}
           onChange={(e) => update("favDoubleOut", e.target.checked)}
         />
         {t("profiles.prefs.doubleOut", "Double-out par défaut")}
       </label>
 
-      {/* Volume SFX */}
       <label
         style={{
           display: "flex",
@@ -203,12 +173,11 @@ export default function PlayerPrefsBlock({ active, value, onPatch, compact = fal
           type="range"
           min={0}
           max={100}
-          value={local.sfxVolume ?? 80}
+          value={current.sfxVolume ?? 80}
           onChange={(e) => update("sfxVolume", Number(e.target.value))}
         />
       </label>
 
-      {/* Voix TTS */}
       <label
         style={{
           display: "flex",
@@ -222,7 +191,7 @@ export default function PlayerPrefsBlock({ active, value, onPatch, compact = fal
         </span>
         <select
           className="input"
-          value={local.ttsVoice}
+          value={current.ttsVoice}
           onChange={(e) => update("ttsVoice", e.target.value)}
         >
           <option value="default">
