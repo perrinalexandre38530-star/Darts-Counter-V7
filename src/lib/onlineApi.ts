@@ -353,6 +353,8 @@ function mapProfile(row: SupabaseProfileRow): OnlineProfile {
     city: row.city ?? "",
     email: row.email ?? "",
     phone: row.phone ?? "",
+    preferences: row.preferences ?? {},
+    privateInfo: row.private_info ?? {},
 
     bio: row.bio ?? "",
     stats:

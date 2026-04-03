@@ -1300,13 +1300,15 @@ React.useEffect(() => {
         patch.phone = phoneOnline;
       }
 
-      const prefsOnline = ((auth.profile as any)?.preferences || (auth.profile as any)?.privateInfo || {}) as any;
-      if (prefsOnline.appLang && pi.appLang !== prefsOnline.appLang) patch.appLang = prefsOnline.appLang;
-      if (prefsOnline.appTheme && pi.appTheme !== prefsOnline.appTheme) patch.appTheme = prefsOnline.appTheme;
-      if (prefsOnline.favX01 !== undefined && pi.favX01 !== prefsOnline.favX01) patch.favX01 = Number(prefsOnline.favX01);
-      if (prefsOnline.favDoubleOut !== undefined && pi.favDoubleOut !== prefsOnline.favDoubleOut) patch.favDoubleOut = !!prefsOnline.favDoubleOut;
-      if (prefsOnline.ttsVoice && pi.ttsVoice !== prefsOnline.ttsVoice) patch.ttsVoice = prefsOnline.ttsVoice;
-      if (prefsOnline.sfxVolume !== undefined && pi.sfxVolume !== prefsOnline.sfxVolume) patch.sfxVolume = Number(prefsOnline.sfxVolume);
+      const prefsOnline = ((auth.profile as any)?.preferences || {}) as Partial<PrivateInfo>;
+      const piOnline = (((auth.profile as any)?.privateInfo || (auth.profile as any)?.private_info || {}) as Partial<PrivateInfo>);
+      const mergedPrefs = { ...prefsOnline, ...piOnline };
+      if (mergedPrefs.appLang && (pi.appLang || "") !== mergedPrefs.appLang) patch.appLang = mergedPrefs.appLang as any;
+      if (mergedPrefs.appTheme && (pi.appTheme || "") !== mergedPrefs.appTheme) patch.appTheme = mergedPrefs.appTheme as any;
+      if (typeof mergedPrefs.favX01 === "number" && Number(pi.favX01 || 0) !== Number(mergedPrefs.favX01)) patch.favX01 = Number(mergedPrefs.favX01) as any;
+      if (typeof mergedPrefs.favDoubleOut === "boolean" && Boolean(pi.favDoubleOut ?? true) !== Boolean(mergedPrefs.favDoubleOut)) patch.favDoubleOut = Boolean(mergedPrefs.favDoubleOut) as any;
+      if (typeof mergedPrefs.ttsVoice === "string" && (pi.ttsVoice || "") !== mergedPrefs.ttsVoice) patch.ttsVoice = mergedPrefs.ttsVoice as any;
+      if (typeof mergedPrefs.sfxVolume === "number" && Number(pi.sfxVolume ?? 80) !== Number(mergedPrefs.sfxVolume)) patch.sfxVolume = Number(mergedPrefs.sfxVolume) as any;
   
       if (Object.keys(patch).length > 0) {
         patchActivePrivateInfo(patch);
@@ -1429,13 +1431,6 @@ React.useEffect(() => {
 
     patchActivePrivateInfo({ ...(localPatch as any) });
 
-    if (patch.appLang) {
-      try { setLang(patch.appLang); } catch {}
-    }
-    if (patch.appTheme) {
-      try { setThemeId(patch.appTheme as any); } catch {}
-    }
-
     if (patch.nickname && patch.nickname.trim() && patch.nickname !== active.name) {
       renameProfile(active.id, patch.nickname.trim());
     }
@@ -1500,14 +1495,6 @@ React.useEffect(() => {
         try {
           await (auth as any)?.refresh?.();
         } catch {}
-
-        setProfilesSafe((arr) => arr.map((p: any) => p?.id === active.id ? ({
-          ...(p || {}),
-          privateInfo: {
-            ...((p as any)?.privateInfo || {}),
-            ...(localPatch as any),
-          },
-        }) : p));
 
         const nextProfilesNoPassword = nextProfiles.map((p: any) => ({
           ...(p || {}),
@@ -2422,6 +2409,7 @@ function PrivateInfoBlock({
   // ✅ initial stable : dépend de l'id + des champs sources (évite reset à chaque render)
   const initial: PrivateInfo = React.useMemo(() => {
     const pi = ((active as any)?.privateInfo || {}) as PrivateInfo;
+    const prefs = (((active as any)?.preferences || {}) as Partial<PrivateInfo>);
     return {
       nickname: String(pi.nickname || ""),
       lastName: String(pi.lastName || ""),
@@ -2435,12 +2423,12 @@ function PrivateInfoBlock({
       onlineUserId: String((pi as any).onlineUserId || ""),
       onlineEmail: String((pi as any).onlineEmail || ""),
       onlineKey: pi.onlineKey, // 👈 legacy
-      appLang: pi.appLang,
-      appTheme: pi.appTheme,
-      favX01: (pi as any).favX01,
-      favDoubleOut: (pi as any).favDoubleOut,
-      ttsVoice: (pi as any).ttsVoice,
-      sfxVolume: (pi as any).sfxVolume,
+      appLang: (pi.appLang ?? (prefs as any).appLang) as any,
+      appTheme: (pi.appTheme ?? (prefs as any).appTheme) as any,
+      favX01: ((pi as any).favX01 ?? (prefs as any).favX01) as any,
+      favDoubleOut: ((pi as any).favDoubleOut ?? (prefs as any).favDoubleOut) as any,
+      ttsVoice: ((pi as any).ttsVoice ?? (prefs as any).ttsVoice) as any,
+      sfxVolume: ((pi as any).sfxVolume ?? (prefs as any).sfxVolume) as any,
     };
   }, [
     (active as any)?.id,
