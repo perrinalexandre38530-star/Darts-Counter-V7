@@ -519,6 +519,7 @@ function shouldExportLocalStorageDcKey(key: string, value: string | null): boole
   if (
     lower.includes("history") ||
     lower.includes("stats") ||
+    lower.includes("bots") ||
     lower.includes("matchcache") ||
     lower.includes("historycache")
   ) {
