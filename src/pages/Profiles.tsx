@@ -1299,6 +1299,14 @@ React.useEffect(() => {
       if (phoneOnline && (pi.phone || "") !== phoneOnline) {
         patch.phone = phoneOnline;
       }
+
+      const prefsOnline = ((auth.profile as any)?.preferences || (auth.profile as any)?.privateInfo || {}) as any;
+      if (prefsOnline.appLang && pi.appLang !== prefsOnline.appLang) patch.appLang = prefsOnline.appLang;
+      if (prefsOnline.appTheme && pi.appTheme !== prefsOnline.appTheme) patch.appTheme = prefsOnline.appTheme;
+      if (typeof prefsOnline.favX01 === "number" && pi.favX01 !== prefsOnline.favX01) patch.favX01 = prefsOnline.favX01;
+      if (typeof prefsOnline.favDoubleOut === "boolean" && pi.favDoubleOut !== prefsOnline.favDoubleOut) patch.favDoubleOut = prefsOnline.favDoubleOut;
+      if (typeof prefsOnline.ttsVoice === "string" && pi.ttsVoice !== prefsOnline.ttsVoice) patch.ttsVoice = prefsOnline.ttsVoice;
+      if (typeof prefsOnline.sfxVolume === "number" && pi.sfxVolume !== prefsOnline.sfxVolume) patch.sfxVolume = prefsOnline.sfxVolume;
   
       if (Object.keys(patch).length > 0) {
         patchActivePrivateInfo(patch);
@@ -2628,6 +2636,7 @@ function handleChange<K extends keyof PrivateInfo>(key: K, value: string) {
 
       <PlayerPrefsBlock
         active={active as any}
+        value={fields as any}
         onPatch={(patch: Partial<PlayerPrefs>) =>
           setFields((prev) => ({ ...prev, ...(patch as any) }))
         }

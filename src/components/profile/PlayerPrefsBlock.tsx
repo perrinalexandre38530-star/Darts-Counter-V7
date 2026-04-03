@@ -26,17 +26,32 @@ export type PlayerPrefs = {
 
 type Props = {
   active: Profile | null;
+  value?: Partial<PlayerPrefs> | null;
   onPatch: (patch: Partial<PlayerPrefs>) => void;
   compact?: boolean;
 };
 
-export default function PlayerPrefsBlock({ active, onPatch, compact = false }: Props) {
+export default function PlayerPrefsBlock({ active, value, onPatch, compact = false }: Props) {
   const { theme } = useTheme();
   const { lang, t } = useLang();
 
   // ⚠️ Toujours appeler les hooks avant tout return conditionnel
-  const privateInfo = ((active && (active as any).privateInfo) ||
-    {}) as PlayerPrefs;
+  const privateInfo = React.useMemo(() => ({
+    ...(((active && (active as any).privateInfo) || {}) as PlayerPrefs),
+    ...((value || {}) as PlayerPrefs),
+  }), [active, value]);
+
+  const sourceSig = React.useMemo(
+    () => JSON.stringify({
+      appLang: privateInfo.appLang ?? lang,
+      appTheme: privateInfo.appTheme ?? (THEMES[0]?.id || "gold"),
+      favX01: privateInfo.favX01 ?? 501,
+      favDoubleOut: privateInfo.favDoubleOut ?? true,
+      ttsVoice: privateInfo.ttsVoice ?? "default",
+      sfxVolume: privateInfo.sfxVolume ?? 80,
+    }),
+    [privateInfo, lang]
+  );
 
   const [local, setLocal] = React.useState<PlayerPrefs>({
     appLang: privateInfo.appLang ?? lang,
@@ -48,19 +63,15 @@ export default function PlayerPrefsBlock({ active, onPatch, compact = false }: P
   });
 
   React.useEffect(() => {
-    const pi = ((active && (active as any).privateInfo) ||
-      {}) as PlayerPrefs;
-
-    setLocal((prev) => ({
-      ...prev,
-      appLang: pi.appLang ?? lang,
-      appTheme: pi.appTheme ?? (THEMES[0]?.id || "gold"),
-      favX01: pi.favX01 ?? 501,
-      favDoubleOut: pi.favDoubleOut ?? true,
-      ttsVoice: pi.ttsVoice ?? "default",
-      sfxVolume: pi.sfxVolume ?? 80,
-    }));
-  }, [active, lang]);
+    setLocal({
+      appLang: privateInfo.appLang ?? lang,
+      appTheme: privateInfo.appTheme ?? (THEMES[0]?.id || "gold"),
+      favX01: privateInfo.favX01 ?? 501,
+      favDoubleOut: privateInfo.favDoubleOut ?? true,
+      ttsVoice: privateInfo.ttsVoice ?? "default",
+      sfxVolume: privateInfo.sfxVolume ?? 80,
+    });
+  }, [sourceSig]);
 
   function update<K extends keyof PlayerPrefs>(key: K, value: PlayerPrefs[K]) {
     setLocal((x) => ({ ...x, [key]: value }));
