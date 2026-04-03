@@ -751,7 +751,10 @@ async function restoreSession(): Promise<AuthSession | null> {
       return await ensureNasSession();
     } catch (e) {
       console.warn("[onlineApi] restoreSession(NAS) error", e);
-      saveAuthToLS(null);
+      const cached = loadAuthFromLS();
+      if (cached?.token && (cached?.user?.id || cached?.userId)) {
+        return cached;
+      }
       return null;
     }
   }

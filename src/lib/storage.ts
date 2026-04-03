@@ -84,7 +84,17 @@ function guardStoreSizeForMobile<T>(store: T): T {
     } catch {}
 
     if (bytes > 8 * 1024 * 1024) {
-      warnThrottled("store-too-big", 15000, "[storage] STORE TOO BIG FOR MOBILE:", mb, "MB");
+      if (typeof window !== "undefined") {
+        const k = "dc_last_store_too_big_warn_v1";
+        const now = Date.now();
+        const last = Number(sessionStorage.getItem(k) || 0);
+        if (!last || now - last > 15000) {
+          console.warn("[storage] STORE TOO BIG FOR MOBILE:", mb, "MB");
+          sessionStorage.setItem(k, String(now));
+        }
+      } else {
+        console.warn("[storage] STORE TOO BIG FOR MOBILE:", mb, "MB");
+      }
       try {
         localStorage.setItem(
           "dc_store_size_warning",
@@ -99,16 +109,6 @@ function guardStoreSizeForMobile<T>(store: T): T {
     }
   } catch {}
   return store;
-}
-
-
-const __warnOnceMap = new Map<string, number>();
-function warnThrottled(key: string, ttlMs: number, ...args: any[]) {
-  const now = Date.now();
-  const last = __warnOnceMap.get(key) || 0;
-  if (now - last < ttlMs) return;
-  __warnOnceMap.set(key, now);
-  console.warn(...args);
 }
 
 function trimArrayTail<T>(arr: T[], keep: number): T[] {
@@ -783,7 +783,6 @@ export async function loadStore<T extends Store>(): Promise<T | null> {
           await idbSet(scopedStorageKey(STORE_KEY), payload);
 
     try {
-      console.log("🔥 saveStore déclenché");
       emitCloudChange(scopedCloudChangeReason("idb:set:store"));
     } catch (e) {
       console.warn("emitCloudChange failed", e);
@@ -836,7 +835,7 @@ export async function saveStore<T extends Store>(store: T, opts?: SaveOpts): Pro
 
     const preTrimBytes = estimateObjectSizeBytes(persistedStore);
     if (preTrimBytes > 2_000_000) {
-      warnThrottled("store-pretrim", 15000, "[storage] store trop volumineux, trimming préventif avant écriture.");
+      console.warn("[storage] store trop volumineux, trimming préventif avant écriture.");
       const trimmed: any = { ...(persistedStore as any) };
       delete trimmed.stats;
       delete trimmed.statsByPlayer;
@@ -865,7 +864,7 @@ export async function saveStore<T extends Store>(store: T, opts?: SaveOpts): Pro
     if (est.quota != null && est.usage != null && typeof payload !== "string") {
       const projected = est.usage + (payload as Uint8Array).byteLength;
       if (projected > est.quota * 0.98) {
-        warnThrottled("store-quota", 15000, "[storage] quota presque plein, réduction agressive du store avant écriture.");
+        console.warn("[storage] quota presque plein, réduction agressive du store avant écriture.");
 
         const emergencyStore: any = sanitizeStoreForPersistence({ ...(persistedStore as any) });
         if (Array.isArray(emergencyStore.profiles)) {

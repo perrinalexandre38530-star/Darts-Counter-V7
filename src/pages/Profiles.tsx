@@ -1299,14 +1299,6 @@ React.useEffect(() => {
       if (phoneOnline && (pi.phone || "") !== phoneOnline) {
         patch.phone = phoneOnline;
       }
-
-      const prefsOnline = ((auth.profile as any)?.preferences || (auth.profile as any)?.privateInfo || {}) as any;
-      if (prefsOnline.appLang && pi.appLang !== prefsOnline.appLang) patch.appLang = prefsOnline.appLang;
-      if (prefsOnline.appTheme && pi.appTheme !== prefsOnline.appTheme) patch.appTheme = prefsOnline.appTheme;
-      if (typeof prefsOnline.favX01 === "number" && pi.favX01 !== prefsOnline.favX01) patch.favX01 = prefsOnline.favX01;
-      if (typeof prefsOnline.favDoubleOut === "boolean" && pi.favDoubleOut !== prefsOnline.favDoubleOut) patch.favDoubleOut = prefsOnline.favDoubleOut;
-      if (typeof prefsOnline.ttsVoice === "string" && pi.ttsVoice !== prefsOnline.ttsVoice) patch.ttsVoice = prefsOnline.ttsVoice;
-      if (typeof prefsOnline.sfxVolume === "number" && pi.sfxVolume !== prefsOnline.sfxVolume) patch.sfxVolume = prefsOnline.sfxVolume;
   
       if (Object.keys(patch).length > 0) {
         patchActivePrivateInfo(patch);
@@ -2173,22 +2165,8 @@ function ActiveProfileBlock({
     avatarUpdatedAt: (active as any)?.avatarUpdatedAt ?? null,
   });
 
-  // LOGS DEBUG (volontairement conservés)
-  React.useEffect(() => {
-    console.log("[ActiveProfileBlock] id =", active?.id);
-    console.log("[ActiveProfileBlock] avatarUrl =", (active as any)?.avatarUrl);
-    console.log(
-      "[ActiveProfileBlock] avatarDataUrl length =",
-      typeof (active as any)?.avatarDataUrl === "string"
-        ? String((active as any)?.avatarDataUrl).length
-        : 0
-    );
-    console.log(
-      "[ActiveProfileBlock] avatarUpdatedAt =",
-      (active as any)?.avatarUpdatedAt
-    );
-    console.log("[ActiveProfileBlock] avatarSrc =", avatarSrc);
-  }, [
+  // Logs debug avatar désactivés : les data URLs énormes faisaient exploser la console et la mémoire.
+  React.useEffect(() => {}, [
     active?.id,
     (active as any)?.avatarUrl,
     (active as any)?.avatarDataUrl,

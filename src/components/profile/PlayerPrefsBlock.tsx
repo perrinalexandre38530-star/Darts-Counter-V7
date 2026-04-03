@@ -36,42 +36,34 @@ export default function PlayerPrefsBlock({ active, value, onPatch, compact = fal
   const { lang, t } = useLang();
 
   // ⚠️ Toujours appeler les hooks avant tout return conditionnel
-  const privateInfo = React.useMemo(() => ({
-    ...(((active && (active as any).privateInfo) || {}) as PlayerPrefs),
-    ...((value || {}) as PlayerPrefs),
-  }), [active, value]);
+  const privateInfo = (((value && Object.keys(value).length ? value : null) ||
+    (active && (active as any).privateInfo) ||
+    {}) as PlayerPrefs);
 
-  const sourceSig = React.useMemo(
-    () => JSON.stringify({
-      appLang: privateInfo.appLang ?? lang,
-      appTheme: privateInfo.appTheme ?? (THEMES[0]?.id || "gold"),
-      favX01: privateInfo.favX01 ?? 501,
-      favDoubleOut: privateInfo.favDoubleOut ?? true,
-      ttsVoice: privateInfo.ttsVoice ?? "default",
-      sfxVolume: privateInfo.sfxVolume ?? 80,
-    }),
-    [privateInfo, lang]
-  );
-
-  const [local, setLocal] = React.useState<PlayerPrefs>({
+  const seed = React.useMemo<PlayerPrefs>(() => ({
     appLang: privateInfo.appLang ?? lang,
     appTheme: privateInfo.appTheme ?? (THEMES[0]?.id || "gold"),
     favX01: privateInfo.favX01 ?? 501,
     favDoubleOut: privateInfo.favDoubleOut ?? true,
     ttsVoice: privateInfo.ttsVoice ?? "default",
     sfxVolume: privateInfo.sfxVolume ?? 80,
-  });
+  }), [
+    privateInfo.appLang,
+    privateInfo.appTheme,
+    privateInfo.favX01,
+    privateInfo.favDoubleOut,
+    privateInfo.ttsVoice,
+    privateInfo.sfxVolume,
+    lang,
+  ]);
+
+  const [local, setLocal] = React.useState<PlayerPrefs>(seed);
+
+  const seedSig = React.useMemo(() => JSON.stringify(seed), [seed]);
 
   React.useEffect(() => {
-    setLocal({
-      appLang: privateInfo.appLang ?? lang,
-      appTheme: privateInfo.appTheme ?? (THEMES[0]?.id || "gold"),
-      favX01: privateInfo.favX01 ?? 501,
-      favDoubleOut: privateInfo.favDoubleOut ?? true,
-      ttsVoice: privateInfo.ttsVoice ?? "default",
-      sfxVolume: privateInfo.sfxVolume ?? 80,
-    });
-  }, [sourceSig]);
+    setLocal(seed);
+  }, [seedSig]);
 
   function update<K extends keyof PlayerPrefs>(key: K, value: PlayerPrefs[K]) {
     setLocal((x) => ({ ...x, [key]: value }));
