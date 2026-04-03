@@ -1299,6 +1299,14 @@ React.useEffect(() => {
       if (phoneOnline && (pi.phone || "") !== phoneOnline) {
         patch.phone = phoneOnline;
       }
+
+      const prefsOnline = ((auth.profile as any)?.preferences || (auth.profile as any)?.privateInfo || {}) as any;
+      if (prefsOnline.appLang && pi.appLang !== prefsOnline.appLang) patch.appLang = prefsOnline.appLang;
+      if (prefsOnline.appTheme && pi.appTheme !== prefsOnline.appTheme) patch.appTheme = prefsOnline.appTheme;
+      if (prefsOnline.favX01 !== undefined && pi.favX01 !== prefsOnline.favX01) patch.favX01 = Number(prefsOnline.favX01);
+      if (prefsOnline.favDoubleOut !== undefined && pi.favDoubleOut !== prefsOnline.favDoubleOut) patch.favDoubleOut = !!prefsOnline.favDoubleOut;
+      if (prefsOnline.ttsVoice && pi.ttsVoice !== prefsOnline.ttsVoice) patch.ttsVoice = prefsOnline.ttsVoice;
+      if (prefsOnline.sfxVolume !== undefined && pi.sfxVolume !== prefsOnline.sfxVolume) patch.sfxVolume = Number(prefsOnline.sfxVolume);
   
       if (Object.keys(patch).length > 0) {
         patchActivePrivateInfo(patch);
@@ -1421,6 +1429,13 @@ React.useEffect(() => {
 
     patchActivePrivateInfo({ ...(localPatch as any) });
 
+    if (patch.appLang) {
+      try { setLang(patch.appLang); } catch {}
+    }
+    if (patch.appTheme) {
+      try { setThemeId(patch.appTheme as any); } catch {}
+    }
+
     if (patch.nickname && patch.nickname.trim() && patch.nickname !== active.name) {
       renameProfile(active.id, patch.nickname.trim());
     }
@@ -1485,6 +1500,14 @@ React.useEffect(() => {
         try {
           await (auth as any)?.refresh?.();
         } catch {}
+
+        setProfilesSafe((arr) => arr.map((p: any) => p?.id === active.id ? ({
+          ...(p || {}),
+          privateInfo: {
+            ...((p as any)?.privateInfo || {}),
+            ...(localPatch as any),
+          },
+        }) : p));
 
         const nextProfilesNoPassword = nextProfiles.map((p: any) => ({
           ...(p || {}),

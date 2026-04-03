@@ -35,42 +35,27 @@ export default function PlayerPrefsBlock({ active, value, onPatch, compact = fal
   const { theme } = useTheme();
   const { lang, t } = useLang();
 
-  // ⚠️ Toujours appeler les hooks avant tout return conditionnel
-  const privateInfo = (((value && Object.keys(value).length ? value : null) ||
-    (active && (active as any).privateInfo) ||
-    {}) as PlayerPrefs);
-
-  const seed = React.useMemo<PlayerPrefs>(() => ({
-    appLang: privateInfo.appLang ?? lang,
-    appTheme: privateInfo.appTheme ?? (THEMES[0]?.id || "gold"),
-    favX01: privateInfo.favX01 ?? 501,
-    favDoubleOut: privateInfo.favDoubleOut ?? true,
-    ttsVoice: privateInfo.ttsVoice ?? "default",
-    sfxVolume: privateInfo.sfxVolume ?? 80,
-  }), [
-    privateInfo.appLang,
-    privateInfo.appTheme,
-    privateInfo.favX01,
-    privateInfo.favDoubleOut,
-    privateInfo.ttsVoice,
-    privateInfo.sfxVolume,
+  const merged = React.useMemo<PlayerPrefs>(() => {
+    const base = (((active as any)?.privateInfo || {}) as PlayerPrefs);
+    const incoming = ((value || {}) as PlayerPrefs);
+    return {
+      appLang: incoming.appLang ?? base.appLang ?? lang,
+      appTheme: incoming.appTheme ?? base.appTheme ?? (THEMES[0]?.id || "gold"),
+      favX01: incoming.favX01 ?? base.favX01 ?? 501,
+      favDoubleOut: incoming.favDoubleOut ?? base.favDoubleOut ?? true,
+      ttsVoice: incoming.ttsVoice ?? base.ttsVoice ?? "default",
+      sfxVolume: incoming.sfxVolume ?? base.sfxVolume ?? 80,
+    };
+  }, [
+    active,
+    value,
     lang,
   ]);
 
-  const [local, setLocal] = React.useState<PlayerPrefs>(seed);
-
-  const seedSig = React.useMemo(() => JSON.stringify(seed), [seed]);
-
-  React.useEffect(() => {
-    setLocal(seed);
-  }, [seedSig]);
-
-  function update<K extends keyof PlayerPrefs>(key: K, value: PlayerPrefs[K]) {
-    setLocal((x) => ({ ...x, [key]: value }));
-    onPatch({ [key]: value });
+  function update<K extends keyof PlayerPrefs>(key: K, nextValue: PlayerPrefs[K]) {
+    onPatch({ [key]: nextValue });
   }
 
-  // ✅ Le return conditionnel vient APRÈS les hooks
   if (!active) return null;
 
   return (
@@ -94,14 +79,13 @@ export default function PlayerPrefsBlock({ active, value, onPatch, compact = fal
         {t("profiles.prefs.title", "Préférences du joueur")}
       </div>
 
-      {/* Langue perso */}
       <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
         <span style={{ fontSize: 12, color: theme.textSoft }}>
           {t("profiles.prefs.lang", "Langue préférée")}
         </span>
         <select
           className="input"
-          value={local.appLang}
+          value={merged.appLang || lang}
           onChange={(e) => update("appLang", e.target.value as Lang)}
         >
           {["fr", "en", "es", "de", "it", "pt", "nl"].map((l) => (
@@ -112,21 +96,13 @@ export default function PlayerPrefsBlock({ active, value, onPatch, compact = fal
         </select>
       </label>
 
-      {/* Thème perso */}
-      <label
-        style={{
-          display: "flex",
-          flexDirection: "column",
-          gap: 4,
-          marginTop: 10,
-        }}
-      >
+      <label style={{ display: "flex", flexDirection: "column", gap: 4, marginTop: 10 }}>
         <span style={{ fontSize: 12, color: theme.textSoft }}>
           {t("profiles.prefs.theme", "Thème préféré")}
         </span>
         <select
           className="input"
-          value={local.appTheme}
+          value={merged.appTheme || (THEMES[0]?.id || "gold")}
           onChange={(e) => update("appTheme", e.target.value as ThemeId)}
         >
           {THEMES.map((th) => (
@@ -137,21 +113,13 @@ export default function PlayerPrefsBlock({ active, value, onPatch, compact = fal
         </select>
       </label>
 
-      {/* X01 favori */}
-      <label
-        style={{
-          display: "flex",
-          flexDirection: "column",
-          gap: 4,
-          marginTop: 10,
-        }}
-      >
+      <label style={{ display: "flex", flexDirection: "column", gap: 4, marginTop: 10 }}>
         <span style={{ fontSize: 12, color: theme.textSoft }}>
           {t("profiles.prefs.x01", "Format X01 favori")}
         </span>
         <select
           className="input"
-          value={local.favX01}
+          value={Number(merged.favX01 ?? 501)}
           onChange={(e) => update("favX01", Number(e.target.value))}
         >
           {[301, 501, 701, 901].map((v) => (
@@ -162,33 +130,16 @@ export default function PlayerPrefsBlock({ active, value, onPatch, compact = fal
         </select>
       </label>
 
-      {/* Double-out par défaut */}
-      <label
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: 8,
-          marginTop: 10,
-          fontSize: 12,
-        }}
-      >
+      <label style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 10, fontSize: 12 }}>
         <input
           type="checkbox"
-          checked={!!local.favDoubleOut}
+          checked={!!merged.favDoubleOut}
           onChange={(e) => update("favDoubleOut", e.target.checked)}
         />
         {t("profiles.prefs.doubleOut", "Double-out par défaut")}
       </label>
 
-      {/* Volume SFX */}
-      <label
-        style={{
-          display: "flex",
-          flexDirection: "column",
-          gap: 4,
-          marginTop: 10,
-        }}
-      >
+      <label style={{ display: "flex", flexDirection: "column", gap: 4, marginTop: 10 }}>
         <span style={{ fontSize: 12, color: theme.textSoft }}>
           {t("profiles.prefs.sfx", "Volume effets (SFX)")}
         </span>
@@ -196,42 +147,27 @@ export default function PlayerPrefsBlock({ active, value, onPatch, compact = fal
           type="range"
           min={0}
           max={100}
-          value={local.sfxVolume ?? 80}
+          value={Number(merged.sfxVolume ?? 80)}
           onChange={(e) => update("sfxVolume", Number(e.target.value))}
         />
       </label>
 
-      {/* Voix TTS */}
-      <label
-        style={{
-          display: "flex",
-          flexDirection: "column",
-          gap: 4,
-          marginTop: 10,
-        }}
-      >
+      <label style={{ display: "flex", flexDirection: "column", gap: 4, marginTop: 10 }}>
         <span style={{ fontSize: 12, color: theme.textSoft }}>
           {t("profiles.prefs.tts", "Voix TTS")}
         </span>
         <select
           className="input"
-          value={local.ttsVoice}
+          value={merged.ttsVoice || "default"}
           onChange={(e) => update("ttsVoice", e.target.value)}
         >
-          <option value="default">
-            {t("profiles.prefs.tts.default", "Défaut")}
-          </option>
-          <option value="female">
-            {t("profiles.prefs.tts.female", "Voix féminine")}
-          </option>
-          <option value="male">
-            {t("profiles.prefs.tts.male", "Voix masculine")}
-          </option>
-          <option value="robot">
-            {t("profiles.prefs.tts.robot", "Voix robot")}
-          </option>
+          <option value="default">{t("profiles.prefs.tts.default", "Défaut")}</option>
+          <option value="female">{t("profiles.prefs.tts.female", "Voix féminine")}</option>
+          <option value="male">{t("profiles.prefs.tts.male", "Voix masculine")}</option>
+          <option value="robot">{t("profiles.prefs.tts.robot", "Voix robot")}</option>
         </select>
       </label>
     </section>
   );
 }
+
