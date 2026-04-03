@@ -1406,6 +1406,7 @@ useEffect(() => {
   // ============================================================
   React.useEffect(() => {
     if (loading) return;
+    if (!cloudHydrated) return;
     if (!online?.ready) return;
     if (online.status !== "signed_in") return;
 
@@ -1436,7 +1437,7 @@ useEffect(() => {
       console.warn("[online→local] bridge failed", e);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [loading, online?.ready, online?.status, (online as any)?.user?.id, (online as any)?.profile?.nickname, (online as any)?.profile?.avatarUrl, tab]);
+  }, [loading, cloudHydrated, online?.ready, online?.status, (online as any)?.user?.id, (online as any)?.profile?.nickname, (online as any)?.profile?.avatarUrl, tab]);
 
   // ✅ SPORT-AWARE : utilisé pour Home/Games (runtime-safe)
   const sportApi: any = useSport() as any;

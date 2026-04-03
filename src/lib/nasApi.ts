@@ -317,14 +317,13 @@ export async function nasSignup(payload: SignupPayload): Promise<AuthSession> {
 }
 
 export async function nasRestoreSession(): Promise<AuthSession | null> {
+  const cached = readJson<AuthSession | null>(readLs(NAS_AUTH_SESSION_KEY), null);
+
   let token = authToken();
-  if (!token) {
-    const cached = readJson<AuthSession | null>(readLs(NAS_AUTH_SESSION_KEY), null);
-    if (cached?.token) {
-      writeLs(NAS_TOKEN_KEY, cached.token);
-      writeLs(NAS_REFRESH_KEY, cached.refreshToken || null);
-      token = cached.token;
-    }
+  if (!token && cached?.token) {
+    writeLs(NAS_TOKEN_KEY, cached.token);
+    writeLs(NAS_REFRESH_KEY, cached.refreshToken || null);
+    token = cached.token;
   }
   if (!token) return null;
 
@@ -335,15 +334,29 @@ export async function nasRestoreSession(): Promise<AuthSession | null> {
       {
         ...json,
         token: probe.token || token,
-        refreshToken: probe.refreshToken || readLs(NAS_REFRESH_KEY),
+        refreshToken: probe.refreshToken || readLs(NAS_REFRESH_KEY) || cached?.refreshToken || "",
       },
       json?.user?.email
     );
     if (!session.token) session.token = token;
     saveNasTokens(session);
     return session;
-  } catch {
-    saveNasTokens(null);
+  } catch (e) {
+    if (cached?.token) {
+      const fallback: AuthSession = {
+        ...cached,
+        token,
+        refreshToken: cached.refreshToken || readLs(NAS_REFRESH_KEY) || "",
+        userId: cached.userId || cached.user?.id || null,
+        user: cached.user || null,
+        profile: cached.profile || null,
+      };
+      writeLs(NAS_TOKEN_KEY, fallback.token || null);
+      writeLs(NAS_REFRESH_KEY, fallback.refreshToken || null);
+      writeLs(NAS_AUTH_SESSION_KEY, JSON.stringify(fallback));
+      return fallback;
+    }
+    console.warn("[nasApi] restoreSession failed with no cached session", e);
     return null;
   }
 }

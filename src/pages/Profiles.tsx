@@ -553,7 +553,6 @@ export default function Profiles({
   go?: (tab: any, params?: any) => void;
   params?: any;
 }) {
-  console.log("[PROFILES PATCH CHECK v4] v2026-01-07");
 
   const [toast, setToast] = React.useState<null | { type: "success" | "error"; message: string }>(null);
 
@@ -721,7 +720,6 @@ export default function Profiles({
   const isBabyFoot = sportKey.includes("babyfoot") || sportKey.includes("baby-foot") || sportKey.includes("baby_foot");
   const isDarts = sportKey.includes("darts");
 
-  console.log("[Profiles] sportResolved =", sportResolved);
 
   const [view, setView] = React.useState<View>(
     params?.view === "me"
@@ -2464,22 +2462,16 @@ function PrivateInfoBlock({
   const [newPass2, setNewPass2] = React.useState("");
   const [passError, setPassError] = React.useState<string | null>(null);
 
-  // ✅ reset UNIQUEMENT quand on change de profil actif (id)
-  const lastIdRef = React.useRef<string>("");
+  // ✅ resynchronise le formulaire quand la source active change
+  // (important pour appareil B : les données online arrivent parfois APRES le premier render)
+  const initialSig = React.useMemo(() => JSON.stringify({ ...initial, password: "" }), [initial]);
 
   React.useEffect(() => {
-    const id = String((active as any)?.id || "");
-    if (!id) return;
-
-    if (lastIdRef.current !== id) {
-      lastIdRef.current = id;
-      setFields(initial);
-      setNewPass("");
-      setNewPass2("");
-      setPassError(null);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [(active as any)?.id]); // <-- seulement l'id
+    setFields(initial);
+    setNewPass("");
+    setNewPass2("");
+    setPassError(null);
+  }, [initialSig]);
 function handleChange<K extends keyof PrivateInfo>(key: K, value: string) {
     setFields((f) => ({ ...f, [key]: value }));
   }
@@ -4309,7 +4301,6 @@ function AddLocalProfile({
     });
   
     if (!name.trim()) {
-      console.warn("[AddLocalProfile] blocked: name is empty");
       return;
     }
   
