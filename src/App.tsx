@@ -1098,25 +1098,51 @@ const initialStore: Store = {
 /* --------------------------------------------
    Préférences X01 par profil actif
 -------------------------------------------- */
-function getX01DefaultStart(store: Store): 301 | 501 | 701 | 901 {
+function getActiveProfileX01Prefs(store: Store) {
   const profiles = store.profiles ?? [];
   const active = profiles.find((p) => p.id === store.activeProfileId) ?? null;
+  const settingsStart = (store.settings.defaultX01 as 301 | 501 | 701 | 901) || 501;
+  const settingsDoubleOut = store.settings.doubleOut ?? true;
 
-  const settingsDefault = (store.settings.defaultX01 as 301 | 501 | 701 | 901) || 501;
-  if (!active) return settingsDefault;
+  if (!active) {
+    return {
+      start: settingsStart,
+      doubleOut: settingsDoubleOut,
+    };
+  }
 
-  const pi = ((active as any).privateInfo || {}) as {
-    prefX01StartScore?: number;
-    prefAutoApplyPrefs?: boolean;
+  const prefs = {
+    ...(((active as any).preferences || {}) as Record<string, any>),
+    ...(((active as any).privateInfo || {}) as Record<string, any>),
   };
 
-  if (!pi.prefAutoApplyPrefs) return settingsDefault;
-
-  const pref = Number(pi.prefX01StartScore ?? 0);
   const allowed: (301 | 501 | 701 | 901)[] = [301, 501, 701, 901];
+  const startRaw = Number(
+    prefs.favX01 ?? prefs.prefX01StartScore ?? prefs.defaultX01 ?? prefs.startScore ?? settingsStart
+  );
+  const start = allowed.includes(startRaw as any) ? (startRaw as 301 | 501 | 701 | 901) : settingsStart;
 
-  if (allowed.includes(pref as any)) return pref as 301 | 501 | 701 | 901;
-  return settingsDefault;
+  const doubleOutRaw = prefs.favDoubleOut ?? prefs.doubleOut ?? prefs.outMode;
+  let doubleOut = settingsDoubleOut;
+  if (typeof doubleOutRaw === "boolean") {
+    doubleOut = doubleOutRaw;
+  } else if (typeof doubleOutRaw === "number") {
+    doubleOut = doubleOutRaw !== 0;
+  } else if (typeof doubleOutRaw === "string" && doubleOutRaw.trim()) {
+    const raw = doubleOutRaw.trim().toLowerCase();
+    if (["false", "0", "off", "no", "non", "simple", "simple-out", "single", "single-out"].includes(raw)) doubleOut = false;
+    else if (["true", "1", "on", "yes", "oui", "double", "double-out"].includes(raw)) doubleOut = true;
+  }
+
+  return { start, doubleOut };
+}
+
+function getX01DefaultStart(store: Store): 301 | 501 | 701 | 901 {
+  return getActiveProfileX01Prefs(store).start;
+}
+
+function getX01DefaultDoubleOut(store: Store): boolean {
+  return getActiveProfileX01Prefs(store).doubleOut;
 }
 
 /* BOTS LS */
@@ -3126,7 +3152,7 @@ case "babyfoot_team_edit":
         page = (
           <X01Setup
             profiles={store.profiles}
-            defaults={{ start: getX01DefaultStart(store), doubleOut: store.settings.doubleOut }}
+            defaults={{ start: getX01DefaultStart(store), doubleOut: getX01DefaultDoubleOut(store) }}
             onCancel={() => go("games")}
             onStart={(opts) => {
               const players = store.settings.randomOrder ? opts.playerIds.slice().sort(() => Math.random() - 0.5) : opts.playerIds;

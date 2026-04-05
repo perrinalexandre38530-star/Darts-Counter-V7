@@ -25,6 +25,8 @@ import {
 } from "../lib/dartSetsStore";
 import { x01EnsureAudioUnlocked, x01SfxV3Preload } from "../lib/x01SfxV3";
 import { SCORE_INPUT_LS_KEY, type ScoreInputMethod } from "../lib/scoreInput/types";
+import { loadBots as loadStoredBots, subscribeBotsChange } from "../lib/bots";
+import { useCurrentProfile } from "../contexts/StoreContext";
 
 // 🔽 IMPORTS DE TOUS LES AVATARS BOTS PRO
 import avatarGreenMachine from "../assets/avatars/bots-pro/green-machine.png";
@@ -90,6 +92,101 @@ type BotLite = {
   avatarDataUrl?: string | null;
   botLevel?: string; // libellé ("Easy", "Standard", "Pro", "Légende", etc.)
 };
+
+type ResolvedPlayerPrefs = {
+  favX01: 301 | 501 | 701 | 901;
+  favDoubleOut: boolean;
+  ttsVoice: string;
+  sfxVolume: number;
+};
+
+function normalizeFavX01(input: unknown, fallback: 301 | 501 | 701 | 901 = 501): 301 | 501 | 701 | 901 {
+  const allowed: Array<301 | 501 | 701 | 901> = [301, 501, 701, 901];
+  const n = Number(input);
+  return allowed.includes(n as any) ? (n as 301 | 501 | 701 | 901) : fallback;
+}
+
+function normalizeFavDoubleOut(input: unknown, fallback = true): boolean {
+  if (typeof input === "boolean") return input;
+  if (typeof input === "number") return input !== 0;
+  const raw = String(input ?? "").trim().toLowerCase();
+  if (!raw) return fallback;
+  if (["false", "0", "off", "no", "non", "simple", "simple-out", "single", "single-out"].includes(raw)) return false;
+  if (["true", "1", "on", "yes", "oui", "double", "double-out"].includes(raw)) return true;
+  return fallback;
+}
+
+function normalizeVoiceId(input: unknown, fallback = "default"): string {
+  const raw = String(input ?? "").trim().toLowerCase();
+  if (!raw) return fallback;
+  if (["default", "female", "male", "robot"].includes(raw)) return raw;
+  if (raw.includes("fem")) return "female";
+  if (raw.includes("male") || raw.includes("masc") || raw.includes("homme")) return "male";
+  if (raw.includes("robot")) return "robot";
+  return fallback;
+}
+
+function normalizeSfxVolumePct(input: unknown, fallback = 80): number {
+  const n = Number(input);
+  if (!Number.isFinite(n)) return fallback;
+  if (n <= 0) return 0;
+  if (n >= 100) return 100;
+  return Math.round(n);
+}
+
+function extractProfilePrefs(profile: any): ResolvedPlayerPrefs {
+  const preferences = ((profile as any)?.preferences || {}) as Record<string, any>;
+  const privateInfo = ((profile as any)?.privateInfo || {}) as Record<string, any>;
+  const merged = { ...preferences, ...privateInfo };
+
+  return {
+    favX01: normalizeFavX01(
+      merged.favX01 ?? merged.prefX01StartScore ?? merged.defaultX01 ?? merged.startScore,
+      501
+    ),
+    favDoubleOut: normalizeFavDoubleOut(
+      merged.favDoubleOut ?? merged.doubleOut ?? merged.outMode,
+      true
+    ),
+    ttsVoice: normalizeVoiceId(
+      merged.ttsVoice ?? merged.voiceId ?? merged.voice ?? merged.tts,
+      "default"
+    ),
+    sfxVolume: normalizeSfxVolumePct(merged.sfxVolume ?? merged.volumeSfx ?? merged.sfx ?? merged.volume, 80),
+  };
+}
+
+function buildDefaultSelectedIds(humans: Profile[], activeProfileId: string | null | undefined): string[] {
+  const ordered = Array.isArray(humans) ? humans.slice() : [];
+  if (activeProfileId) {
+    const idx = ordered.findIndex((p) => p.id === activeProfileId);
+    if (idx > 0) {
+      const [active] = ordered.splice(idx, 1);
+      if (active) ordered.unshift(active);
+    }
+  }
+  if (ordered.length >= 2) return [ordered[0].id, ordered[1].id];
+  if (ordered.length === 1) return [ordered[0].id];
+  return [];
+}
+
+function toBotLite(input: any): BotLite {
+  return {
+    id: String(input?.id || ""),
+    name: input?.name || "BOT",
+    avatarDataUrl: input?.avatarDataUrl ?? null,
+    botLevel:
+      input?.botLevel ??
+      input?.levelLabel ??
+      input?.levelName ??
+      input?.performanceLevel ??
+      input?.performance ??
+      input?.skill ??
+      input?.difficulty ??
+      input?.level ??
+      "",
+  };
+}
 
 // -------------------------------------------------------------
 // PlayerDartBadge
@@ -332,41 +429,34 @@ export default function X01ConfigV3({ profiles, onBack, onStart, go }: Props) {
 
 
   const allProfiles: Profile[] = profiles ?? [];
-  const humanProfiles = allProfiles.filter((p) => !(p as any).isBot);
+  const currentProfile = useCurrentProfile<any>();
+  const activeProfileId = String(currentProfile?.id || "") || null;
+  const humanProfiles = React.useMemo(
+    () => allProfiles.filter((p) => !(p as any).isBot),
+    [allProfiles]
+  );
 
-  // ---- BOTS depuis localStorage (fallback si pas dans store.profiles) ----
-  const [botsFromLS, setBotsFromLS] = React.useState<BotLite[]>([]);
+  // ---- BOTS depuis stockage local (avec écoute live) ----
+  const [botsFromLS, setBotsFromLS] = React.useState<BotLite[]>(() => {
+    try {
+      return loadStoredBots().map(toBotLite);
+    } catch {
+      return [];
+    }
+  });
 
   React.useEffect(() => {
-    if (typeof window === "undefined") return;
-    try {
-      const raw = window.localStorage.getItem(LS_BOTS_KEY);
-      if (!raw) return;
-      const parsed = JSON.parse(raw) as any[];
+    const refresh = () => {
+      try {
+        setBotsFromLS(loadStoredBots().map(toBotLite));
+      } catch (e) {
+        console.warn("[X01ConfigV3] load BOTS LS failed:", e);
+        setBotsFromLS([]);
+      }
+    };
 
-      const mapped: BotLite[] = (parsed || []).map((b: any) => {
-        const levelLabel: string =
-          b.botLevel ??
-          b.levelLabel ??
-          b.levelName ??
-          b.performanceLevel ??
-          b.performance ??
-          b.skill ??
-          b.difficulty ??
-          "";
-
-        return {
-          id: String(b.id),
-          name: b.name || "BOT",
-          avatarDataUrl: b.avatarDataUrl ?? null,
-          botLevel: levelLabel,
-        };
-      });
-
-      setBotsFromLS(mapped);
-    } catch (e) {
-      console.warn("[X01ConfigV3] load BOTS LS failed:", e);
-    }
+    refresh();
+    return subscribeBotsChange(refresh);
   }, []);
 
   // Bots créés dans le store (Profils) marqués isBot
@@ -389,10 +479,14 @@ export default function X01ConfigV3({ profiles, onBack, onStart, go }: Props) {
       }));
   }, [allProfiles]);
 
-  // Base user bots = store ou LS
+  // Base user bots = fusion store + LS (évite les pertes si une seule source est à jour)
   const userBots: BotLite[] = React.useMemo(() => {
-    if (userBotsFromStore.length > 0) return userBotsFromStore;
-    return botsFromLS;
+    const merged = new Map<string, BotLite>();
+    for (const bot of botsFromLS || []) merged.set(bot.id, bot);
+    for (const bot of userBotsFromStore || []) {
+      merged.set(bot.id, { ...(merged.get(bot.id) || {}), ...bot });
+    }
+    return Array.from(merged.values());
   }, [userBotsFromStore, botsFromLS]);
 
   // BOTS finaux = PRO + user
@@ -421,6 +515,21 @@ export default function X01ConfigV3({ profiles, onBack, onStart, go }: Props) {
   }, [allProfiles, botProfiles]);
 
   // ---- état local des paramètres ----
+  const preferredHumanProfiles = React.useMemo(() => {
+    const ordered = humanProfiles.slice();
+    if (activeProfileId) {
+      const idx = ordered.findIndex((p) => p.id === activeProfileId);
+      if (idx > 0) {
+        const [active] = ordered.splice(idx, 1);
+        if (active) ordered.unshift(active);
+      }
+    }
+    return ordered;
+  }, [humanProfiles, activeProfileId]);
+
+  const startTouchedRef = React.useRef(false);
+  const outTouchedRef = React.useRef(false);
+
   const [startScore, setStartScore] = React.useState<301 | 501 | 701 | 901>(501);
   const [inMode, setInMode] = React.useState<InModeV3>("simple");
   const [outMode, setOutMode] = React.useState<OutModeV3>("double");
@@ -434,6 +543,7 @@ export default function X01ConfigV3({ profiles, onBack, onStart, go }: Props) {
   const [hitEnabled, setHitEnabled] = React.useState<boolean>(true);
   const [voiceEnabled, setVoiceEnabled] = React.useState<boolean>(true);
   const [voiceId, setVoiceId] = React.useState<string>("default");
+  const [profileSfxVolume, setProfileSfxVolume] = React.useState<number>(0.8);
 
   // ---- NEW : COMPTAGE EXTERNE ----
   const [externalScoringEnabled, setExternalScoringEnabled] = React.useState<boolean>(false);
@@ -479,29 +589,59 @@ export default function X01ConfigV3({ profiles, onBack, onStart, go }: Props) {
   // évite d’écraser le choix manuel si on change de joueur sélectionné
   const voiceTouchedRef = React.useRef(false);
 
-  const [selectedIds, setSelectedIds] = React.useState<string[]>(() => {
-    if (humanProfiles.length >= 2) return [humanProfiles[0].id, humanProfiles[1].id];
-    if (humanProfiles.length === 1) return [humanProfiles[0].id];
-    return [];
-  });
+  const [selectedIds, setSelectedIds] = React.useState<string[]>(() =>
+    buildDefaultSelectedIds(preferredHumanProfiles, activeProfileId)
+  );
 
-  // ⚙️ pré-remplit la voix depuis le 1er profil humain sélectionné (si dispo)
   React.useEffect(() => {
-    if (voiceTouchedRef.current) return;
+    const availableIds = new Set<string>([
+      ...humanProfiles.map((p) => p.id),
+      ...botProfiles.map((b) => b.id),
+    ]);
 
+    setSelectedIds((prev) => {
+      const filtered = (prev || []).filter((id) => availableIds.has(id));
+      if (filtered.length > 0 && filtered.length === (prev || []).length) return filtered;
+      if (filtered.length > 0) return filtered;
+      return buildDefaultSelectedIds(preferredHumanProfiles, activeProfileId);
+    });
+  }, [humanProfiles, botProfiles, preferredHumanProfiles, activeProfileId]);
+
+  const prefProfile = React.useMemo(() => {
     const firstHumanSelectedId =
       selectedIds.find((id) => humanProfiles.some((p) => p.id === id)) ??
+      activeProfileId ??
+      preferredHumanProfiles[0]?.id ??
       humanProfiles[0]?.id ??
       null;
 
-    if (!firstHumanSelectedId) return;
+    if (!firstHumanSelectedId) return null;
+    return humanProfiles.find((x) => x.id === firstHumanSelectedId) ?? null;
+  }, [selectedIds, humanProfiles, activeProfileId, preferredHumanProfiles]);
 
-    const p: any = humanProfiles.find((x) => x.id === firstHumanSelectedId);
-    if (!p) return;
+  const prefProfilePrefs = React.useMemo(
+    () => extractProfilePrefs(prefProfile),
+    [prefProfile]
+  );
 
-    const candidate: string | undefined = p.ttsVoice ?? p.voiceId ?? p.voice ?? p.tts ?? undefined;
-    if (candidate && typeof candidate === "string") setVoiceId(candidate);
-  }, [selectedIds, humanProfiles]);
+  // ⚙️ Pré-remplit les réglages depuis le profil actif / humain sélectionné
+  React.useEffect(() => {
+    if (!prefProfile) return;
+
+    if (!startTouchedRef.current) {
+      setStartScore(prefProfilePrefs.favX01);
+    }
+
+    if (!outTouchedRef.current) {
+      setOutMode(prefProfilePrefs.favDoubleOut ? "double" : "simple");
+    }
+
+    if (!voiceTouchedRef.current) {
+      setVoiceId(prefProfilePrefs.ttsVoice);
+    }
+
+    setProfileSfxVolume(Math.max(0, Math.min(1, prefProfilePrefs.sfxVolume / 100)));
+  }, [prefProfile, prefProfilePrefs]);
 
   // playerId -> teamId
   const [teamAssignments, setTeamAssignments] = React.useState<Record<string, TeamId | null>>({});
@@ -695,7 +835,7 @@ export default function X01ConfigV3({ profiles, onBack, onStart, go }: Props) {
       scoreInputDefaultMethod: scoreInputMethod,
 
       // ✅ audio config consommée par X01PlayV3
-      audio: { arcadeEnabled, hitEnabled, voiceEnabled, voiceId },
+      audio: { arcadeEnabled, hitEnabled, voiceEnabled, voiceId, sfxVolume: profileSfxVolume },
     };
 
     if (matchMode === "teams" && teams) baseCfg.teams = teams;
@@ -1074,7 +1214,7 @@ export default function X01ConfigV3({ profiles, onBack, onStart, go }: Props) {
                   key={s}
                   label={String(s)}
                   active={startScore === s}
-                  onClick={() => setStartScore(s)}
+                  onClick={() => { startTouchedRef.current = true; setStartScore(s); }}
                   primary={primary}
                   primarySoft={primarySoft}
                 />
@@ -1121,21 +1261,21 @@ export default function X01ConfigV3({ profiles, onBack, onStart, go }: Props) {
               <PillButton
                 label={t("x01v3.out.simple", "Simple OUT")}
                 active={outMode === "simple"}
-                onClick={() => setOutMode("simple")}
+                onClick={() => { outTouchedRef.current = true; setOutMode("simple"); }}
                 primary={primary}
                 primarySoft={primarySoft}
               />
               <PillButton
                 label={t("x01v3.out.double", "Double OUT")}
                 active={outMode === "double"}
-                onClick={() => setOutMode("double")}
+                onClick={() => { outTouchedRef.current = true; setOutMode("double"); }}
                 primary={primary}
                 primarySoft={primarySoft}
               />
               <PillButton
                 label={t("x01v3.out.master", "Master OUT")}
                 active={outMode === "master"}
-                onClick={() => setOutMode("master")}
+                onClick={() => { outTouchedRef.current = true; setOutMode("master"); }}
                 primary={primary}
                 primarySoft={primarySoft}
               />
