@@ -87,13 +87,7 @@ export default function ProfilesBots({ store, go }: Props) {
     setBots(next);
     saveBots(next);
     try {
-      window.dispatchEvent(new Event("dc:bots-changed"));
-    } catch {}
-    try {
-      (window as any).__flushCloudNow?.("bots_save", store);
-      setTimeout(() => {
-        try { (window as any).__flushCloudNow?.("bots_save_delayed", store); } catch {}
-      }, 200);
+      (window as any).__flushCloudNow?.("bots_save");
     } catch (e) {
       console.warn("[bots] immediate cloud flush failed", e);
     }
