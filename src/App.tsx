@@ -1855,6 +1855,7 @@ useEffect(() => {
                   profiles: mergeProfilesSafe(prev.profiles ?? [], next.profiles ?? []),
                   activeProfileId: next.activeProfileId ?? prev.activeProfileId ?? null,
                 }));
+                try { window.dispatchEvent(new Event("dc:bots-changed")); } catch {}
               }
               return;
             } catch (e) {

@@ -25,6 +25,7 @@ import {
 } from "../lib/dartSetsStore";
 import { x01EnsureAudioUnlocked, x01SfxV3Preload } from "../lib/x01SfxV3";
 import { SCORE_INPUT_LS_KEY, type ScoreInputMethod } from "../lib/scoreInput/types";
+import { useCurrentProfile } from "../hooks/useCurrentProfile";
 
 // 🔽 IMPORTS DE TOUS LES AVATARS BOTS PRO
 import avatarGreenMachine from "../assets/avatars/bots-pro/green-machine.png";
@@ -85,13 +86,15 @@ function normalizeVoicePref(v: any): string | undefined {
   return undefined;
 }
 
-function extractPlayerPrefs(profile: any): { favX01?: 301|501|701|901; favDoubleOut?: boolean; ttsVoice?: string } {
+function extractPlayerPrefs(profile: any): { favX01?: 301|501|701|901; favDoubleOut?: boolean; ttsVoice?: string; sfxVolume?: number } {
   const prefs = { ...(profile?.preferences || {}), ...(profile?.privateInfo || {}) };
   const rawScore = Number(prefs?.favX01);
   const favX01 = ([301,501,701,901].includes(rawScore) ? rawScore : undefined) as any;
   const favDoubleOut = parseBoolLoose(prefs?.favDoubleOut);
   const ttsVoice = normalizeVoicePref(prefs?.ttsVoice ?? profile?.ttsVoice ?? profile?.voiceId ?? profile?.voice ?? profile?.tts);
-  return { favX01, favDoubleOut, ttsVoice };
+  const rawVol = Number(prefs?.sfxVolume);
+  const sfxVolume = Number.isFinite(rawVol) ? Math.max(0, Math.min(100, rawVol)) : undefined;
+  return { favX01, favDoubleOut, ttsVoice, sfxVolume };
 }
 
 const TEAM_COLORS: Record<TeamId, string> = {
@@ -345,6 +348,7 @@ const PRO_BOTS: BotLite[] = [
 export default function X01ConfigV3({ profiles, onBack, onStart, go }: Props) {
   const { theme } = useTheme() as any;
   const { t } = useLang() as any;
+  const currentProfile = useCurrentProfile() as any;
 
   const [rulesOpen, setRulesOpen] = React.useState(false);
   const contentRef = React.useRef<HTMLDivElement | null>(null);
@@ -464,6 +468,7 @@ export default function X01ConfigV3({ profiles, onBack, onStart, go }: Props) {
   const [hitEnabled, setHitEnabled] = React.useState<boolean>(true);
   const [voiceEnabled, setVoiceEnabled] = React.useState<boolean>(true);
   const [voiceId, setVoiceId] = React.useState<string>("default");
+  const [sfxVolume, setSfxVolume] = React.useState<number>(80);
 
   // ---- NEW : COMPTAGE EXTERNE ----
   const [externalScoringEnabled, setExternalScoringEnabled] = React.useState<boolean>(false);
@@ -510,10 +515,30 @@ export default function X01ConfigV3({ profiles, onBack, onStart, go }: Props) {
   const voiceTouchedRef = React.useRef(false);
 
   const [selectedIds, setSelectedIds] = React.useState<string[]>(() => {
+    const activeId = String((currentProfile as any)?.id || "").trim();
+    const activeHuman = activeId ? humanProfiles.find((p) => p.id === activeId) : null;
+    if (activeHuman && humanProfiles.length >= 2) {
+      const second = humanProfiles.find((p) => p.id !== activeHuman.id);
+      return second ? [activeHuman.id, second.id] : [activeHuman.id];
+    }
+    if (activeHuman) return [activeHuman.id];
     if (humanProfiles.length >= 2) return [humanProfiles[0].id, humanProfiles[1].id];
     if (humanProfiles.length === 1) return [humanProfiles[0].id];
     return [];
   });
+
+  React.useEffect(() => {
+    const activeId = String((currentProfile as any)?.id || "").trim();
+    if (!activeId) return;
+    if (!humanProfiles.some((p) => p.id === activeId)) return;
+    setSelectedIds((prev) => {
+      if (Array.isArray(prev) && prev.length > 0 && prev[0] === activeId) return prev;
+      const rest = (Array.isArray(prev) ? prev : []).filter((id) => id !== activeId && humanProfiles.some((p) => p.id === id));
+      if (rest.length > 0) return [activeId, ...rest];
+      const second = humanProfiles.find((p) => p.id !== activeId);
+      return second ? [activeId, second.id] : [activeId];
+    });
+  }, [currentProfile?.id, humanProfiles]);
 
   // ⚙️ pré-remplit la voix depuis le 1er profil humain sélectionné (si dispo)
   React.useEffect(() => {
@@ -535,8 +560,10 @@ export default function X01ConfigV3({ profiles, onBack, onStart, go }: Props) {
 
   // ⚙️ pré-remplit score de départ / mode de sortie / voix depuis le 1er profil humain sélectionné
   React.useEffect(() => {
+    const preferredId = String((currentProfile as any)?.id || "").trim();
     const firstHumanSelectedId =
       selectedIds.find((id) => humanProfiles.some((p) => p.id === id)) ??
+      (preferredId && humanProfiles.some((p) => p.id === preferredId) ? preferredId : null) ??
       humanProfiles[0]?.id ??
       null;
 
@@ -548,7 +575,8 @@ export default function X01ConfigV3({ profiles, onBack, onStart, go }: Props) {
     if (prefs.favX01) setStartScore(prefs.favX01);
     if (typeof prefs.favDoubleOut === "boolean") setOutMode(prefs.favDoubleOut ? "double" : "simple");
     if (!voiceTouchedRef.current && prefs.ttsVoice) setVoiceId(prefs.ttsVoice);
-  }, [selectedIds, humanProfiles]);
+    if (typeof prefs.sfxVolume === "number") setSfxVolume(prefs.sfxVolume);
+  }, [selectedIds, humanProfiles, currentProfile?.id]);
 
   // playerId -> teamId
   const [teamAssignments, setTeamAssignments] = React.useState<Record<string, TeamId | null>>({});
@@ -742,7 +770,7 @@ export default function X01ConfigV3({ profiles, onBack, onStart, go }: Props) {
       scoreInputDefaultMethod: scoreInputMethod,
 
       // ✅ audio config consommée par X01PlayV3
-      audio: { arcadeEnabled, hitEnabled, voiceEnabled, voiceId },
+      audio: { arcadeEnabled, hitEnabled, voiceEnabled, voiceId, sfxVolume: Math.max(0, Math.min(1, Number(sfxVolume || 0) / 100)) },
     };
 
     if (matchMode === "teams" && teams) baseCfg.teams = teams;
@@ -1440,6 +1468,21 @@ export default function X01ConfigV3({ profiles, onBack, onStart, go }: Props) {
 
                 <div style={{ fontSize: 11, color: "#7c80a0", marginTop: 6 }}>
                   {t("x01v3.audio.voiceHint", "Utilisée pour l'annonce des scores / fin de match.")}
+                </div>
+
+                <div style={{ marginTop: 10 }}>
+                  <div style={{ fontSize: 12, color: "#c8cbe4", marginBottom: 6 }}>
+                    {t("x01v3.audio.sfxVolume", "Volume effets (SFX)")}
+                  </div>
+                  <input
+                    type="range"
+                    min={0}
+                    max={100}
+                    step={1}
+                    value={sfxVolume}
+                    onChange={(e) => setSfxVolume(Number(e.target.value) || 0)}
+                    style={{ width: "100%" }}
+                  />
                 </div>
               </div>
             </div>
