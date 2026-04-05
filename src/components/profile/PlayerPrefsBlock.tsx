@@ -16,12 +16,12 @@ import { THEMES, type ThemeId } from "../../theme/themePresets";
 import type { Profile } from "../../lib/types";
 
 export type PlayerPrefs = {
-  appLang?: Lang;
-  appTheme?: ThemeId;
-  favX01?: number;
-  favDoubleOut?: boolean;
+  appLang?: Lang | string;
+  appTheme?: ThemeId | string;
+  favX01?: number | string;
+  favDoubleOut?: boolean | string | number;
   ttsVoice?: string;
-  sfxVolume?: number; // 0–100
+  sfxVolume?: number | string; // 0–100
 };
 
 type Props = {
@@ -31,24 +31,77 @@ type Props = {
   compact?: boolean;
 };
 
+const LANG_OPTIONS = ["fr", "en", "es", "de", "it", "pt", "nl"] as const;
+const X01_OPTIONS = [301, 501, 701, 901] as const;
+const TTS_OPTIONS = ["default", "female", "male", "robot"] as const;
+
+function normalizeLang(input: unknown, fallback: Lang): Lang {
+  const raw = String(input ?? "").trim().toLowerCase();
+  return (LANG_OPTIONS.includes(raw as (typeof LANG_OPTIONS)[number]) ? raw : fallback) as Lang;
+}
+
+function normalizeTheme(input: unknown): ThemeId {
+  const raw = String(input ?? "").trim();
+  const rawLower = raw.toLowerCase();
+  const ids = THEMES.map((th) => String(th.id));
+  const idMatch = ids.find((id) => id.toLowerCase() === rawLower);
+  if (idMatch) return idMatch as ThemeId;
+
+  const labelMatch = THEMES.find((th) => String(th.label ?? th.id).trim().toLowerCase() === rawLower);
+  if (labelMatch) return labelMatch.id as ThemeId;
+
+  return (THEMES[0]?.id || "gold") as ThemeId;
+}
+
+function normalizeFavX01(input: unknown): number {
+  const n = Number(input);
+  return X01_OPTIONS.includes(n as (typeof X01_OPTIONS)[number]) ? n : 501;
+}
+
+function normalizeDoubleOut(input: unknown): boolean {
+  if (typeof input === "boolean") return input;
+  if (typeof input === "number") return input !== 0;
+  const raw = String(input ?? "").trim().toLowerCase();
+  if (!raw) return true;
+  if (["false", "0", "off", "no", "non"].includes(raw)) return false;
+  if (["true", "1", "on", "yes", "oui"].includes(raw)) return true;
+  return true;
+}
+
+function normalizeTtsVoice(input: unknown): string {
+  const raw = String(input ?? "").trim().toLowerCase();
+  if (TTS_OPTIONS.includes(raw as (typeof TTS_OPTIONS)[number])) return raw;
+  if (raw.includes("fem")) return "female";
+  if (raw.includes("masc") || raw.includes("male") || raw.includes("homme")) return "male";
+  if (raw.includes("robot")) return "robot";
+  return "default";
+}
+
+function normalizeSfxVolume(input: unknown): number {
+  const n = Number(input);
+  if (!Number.isFinite(n)) return 80;
+  if (n < 0) return 0;
+  if (n > 100) return 100;
+  return Math.round(n);
+}
+
 export default function PlayerPrefsBlock({ active, value, onPatch, compact = false }: Props) {
   const { theme } = useTheme();
   const { lang, t } = useLang();
 
   if (!active) return null;
 
-  const privateInfo = (((value && Object.keys(value).length ? value : null) ||
-    (active && (active as any).privateInfo) ||
-    {}) as PlayerPrefs);
+  const overlay = (value && Object.keys(value).length ? value : null) as Partial<PlayerPrefs> | null;
+  const privateInfo = (((active as any)?.privateInfo || {}) as PlayerPrefs);
   const preferences = (((active as any)?.preferences || {}) as PlayerPrefs);
 
-  const current: PlayerPrefs = {
-    appLang: (privateInfo.appLang ?? preferences.appLang ?? lang) as Lang,
-    appTheme: (privateInfo.appTheme ?? preferences.appTheme ?? (THEMES[0]?.id || "gold")) as ThemeId,
-    favX01: Number(privateInfo.favX01 ?? preferences.favX01 ?? 501),
-    favDoubleOut: Boolean(privateInfo.favDoubleOut ?? preferences.favDoubleOut ?? true),
-    ttsVoice: String(privateInfo.ttsVoice ?? preferences.ttsVoice ?? "default"),
-    sfxVolume: Number(privateInfo.sfxVolume ?? preferences.sfxVolume ?? 80),
+  const current: Required<Omit<PlayerPrefs, never>> = {
+    appLang: normalizeLang(overlay?.appLang ?? privateInfo.appLang ?? preferences.appLang, lang),
+    appTheme: normalizeTheme(overlay?.appTheme ?? privateInfo.appTheme ?? preferences.appTheme),
+    favX01: normalizeFavX01(overlay?.favX01 ?? privateInfo.favX01 ?? preferences.favX01),
+    favDoubleOut: normalizeDoubleOut(overlay?.favDoubleOut ?? privateInfo.favDoubleOut ?? preferences.favDoubleOut),
+    ttsVoice: normalizeTtsVoice(overlay?.ttsVoice ?? privateInfo.ttsVoice ?? preferences.ttsVoice),
+    sfxVolume: normalizeSfxVolume(overlay?.sfxVolume ?? privateInfo.sfxVolume ?? preferences.sfxVolume),
   };
 
   function update<K extends keyof PlayerPrefs>(key: K, nextValue: PlayerPrefs[K]) {
@@ -85,7 +138,7 @@ export default function PlayerPrefsBlock({ active, value, onPatch, compact = fal
           value={current.appLang}
           onChange={(e) => update("appLang", e.target.value as Lang)}
         >
-          {["fr", "en", "es", "de", "it", "pt", "nl"].map((l) => (
+          {LANG_OPTIONS.map((l) => (
             <option key={l} value={l}>
               {l.toUpperCase()}
             </option>
@@ -133,7 +186,7 @@ export default function PlayerPrefsBlock({ active, value, onPatch, compact = fal
           value={current.favX01}
           onChange={(e) => update("favX01", Number(e.target.value))}
         >
-          {[301, 501, 701, 901].map((v) => (
+          {X01_OPTIONS.map((v) => (
             <option key={v} value={v}>
               {v}
             </option>
@@ -152,7 +205,7 @@ export default function PlayerPrefsBlock({ active, value, onPatch, compact = fal
       >
         <input
           type="checkbox"
-          checked={!!current.favDoubleOut}
+          checked={current.favDoubleOut}
           onChange={(e) => update("favDoubleOut", e.target.checked)}
         />
         {t("profiles.prefs.doubleOut", "Double-out par défaut")}
@@ -173,7 +226,7 @@ export default function PlayerPrefsBlock({ active, value, onPatch, compact = fal
           type="range"
           min={0}
           max={100}
-          value={current.sfxVolume ?? 80}
+          value={current.sfxVolume}
           onChange={(e) => update("sfxVolume", Number(e.target.value))}
         />
       </label>

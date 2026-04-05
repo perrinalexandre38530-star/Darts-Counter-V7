@@ -1319,6 +1319,7 @@ React.useEffect(() => {
   
       if (Object.keys(patch).length > 0) {
         patchActivePrivateInfo(patch);
+        patchActivePrefs(patch);
       }
     }, [active?.id, auth.status, auth.profile, auth.user]);  
 
@@ -1409,6 +1410,31 @@ React.useEffect(() => {
     patchProfilePrivateInfo(active.id, patch as any);
   }
 
+  function patchActivePrefs(patch: Record<string, any>) {
+    if (!active) return;
+    const prefKeys = ["appLang", "appTheme", "favX01", "favDoubleOut", "ttsVoice", "sfxVolume"] as const;
+    const prefsPatch: Record<string, any> = {};
+    for (const key of prefKeys) {
+      if (Object.prototype.hasOwnProperty.call(patch, key) && (patch as any)[key] !== undefined) {
+        prefsPatch[key] = (patch as any)[key];
+      }
+    }
+    if (!Object.keys(prefsPatch).length) return;
+    setProfilesSafe((arr) =>
+      arr.map((p: any) =>
+        p?.id === active.id
+          ? {
+              ...(p || {}),
+              preferences: {
+                ...((p as any)?.preferences || {}),
+                ...prefsPatch,
+              },
+            }
+          : p
+      )
+    );
+  }
+
   async function handlePrivateInfoSave(patch: PrivateInfo) {
     if (!active) return;
 
@@ -1427,6 +1453,15 @@ React.useEffect(() => {
               ...((p as any)?.privateInfo || {}),
               ...(localPatch as any),
             },
+            preferences: {
+              ...((p as any)?.preferences || {}),
+              appLang: (localPatch as any).appLang ?? (p as any)?.preferences?.appLang,
+              appTheme: (localPatch as any).appTheme ?? (p as any)?.preferences?.appTheme,
+              favX01: (localPatch as any).favX01 ?? (p as any)?.preferences?.favX01,
+              favDoubleOut: (localPatch as any).favDoubleOut ?? (p as any)?.preferences?.favDoubleOut,
+              ttsVoice: (localPatch as any).ttsVoice ?? (p as any)?.preferences?.ttsVoice,
+              sfxVolume: (localPatch as any).sfxVolume ?? (p as any)?.preferences?.sfxVolume,
+            },
             // si nickname changé, on aligne aussi name (UI)
             name:
               patch.nickname && String(patch.nickname).trim()
@@ -1437,6 +1472,7 @@ React.useEffect(() => {
     );
 
     patchActivePrivateInfo({ ...(localPatch as any) });
+    patchActivePrefs({ ...(localPatch as any) });
 
     if (patch.nickname && patch.nickname.trim() && patch.nickname !== active.name) {
       renameProfile(active.id, patch.nickname.trim());
@@ -1493,7 +1529,10 @@ React.useEffect(() => {
             const nextVal = (privateInfoSaved as any)?.[key] ?? (prefsSaved as any)?.[key];
             if (nextVal !== undefined) (syncPatch as any)[key] = nextVal;
           }
-          if (Object.keys(syncPatch).length) patchActivePrivateInfo(syncPatch as any);
+          if (Object.keys(syncPatch).length) {
+            patchActivePrivateInfo(syncPatch as any);
+            patchActivePrefs(syncPatch as any);
+          }
         } catch {}
 
         await syncProfile({
@@ -1519,6 +1558,19 @@ React.useEffect(() => {
           privateInfo: {
             ...((p as any)?.privateInfo || {}),
             ...(p?.id === active.id ? { ...patch, password: "" } : {}),
+          },
+          preferences: {
+            ...((p as any)?.preferences || {}),
+            ...(p?.id === active.id
+              ? {
+                  appLang: patch.appLang,
+                  appTheme: patch.appTheme,
+                  favX01: patch.favX01,
+                  favDoubleOut: patch.favDoubleOut,
+                  ttsVoice: patch.ttsVoice,
+                  sfxVolume: patch.sfxVolume,
+                }
+              : {}),
           },
         }));
         await flushCloud("profile_save", { ...(store as any), profiles: nextProfilesNoPassword });
@@ -2427,6 +2479,7 @@ function PrivateInfoBlock({
   // ✅ initial stable : dépend de l'id + des champs sources (évite reset à chaque render)
   const initial: PrivateInfo = React.useMemo(() => {
     const pi = ((active as any)?.privateInfo || {}) as PrivateInfo;
+    const prefs = (((active as any)?.preferences || {}) as Partial<PrivateInfo>);
     return {
       nickname: String(pi.nickname || ""),
       lastName: String(pi.lastName || ""),
@@ -2440,12 +2493,12 @@ function PrivateInfoBlock({
       onlineUserId: String((pi as any).onlineUserId || ""),
       onlineEmail: String((pi as any).onlineEmail || ""),
       onlineKey: pi.onlineKey, // 👈 legacy
-      appLang: pi.appLang,
-      appTheme: pi.appTheme,
-      favX01: (pi as any).favX01,
-      favDoubleOut: (pi as any).favDoubleOut,
-      ttsVoice: (pi as any).ttsVoice,
-      sfxVolume: (pi as any).sfxVolume,
+      appLang: (pi as any).appLang ?? (prefs as any).appLang,
+      appTheme: (pi as any).appTheme ?? (prefs as any).appTheme,
+      favX01: (pi as any).favX01 ?? (prefs as any).favX01,
+      favDoubleOut: (pi as any).favDoubleOut ?? (prefs as any).favDoubleOut,
+      ttsVoice: (pi as any).ttsVoice ?? (prefs as any).ttsVoice,
+      sfxVolume: (pi as any).sfxVolume ?? (prefs as any).sfxVolume,
     };
   }, [
     (active as any)?.id,
@@ -2467,6 +2520,12 @@ function PrivateInfoBlock({
     (active as any)?.privateInfo?.favDoubleOut,
     (active as any)?.privateInfo?.ttsVoice,
     (active as any)?.privateInfo?.sfxVolume,
+    (active as any)?.preferences?.appLang,
+    (active as any)?.preferences?.appTheme,
+    (active as any)?.preferences?.favX01,
+    (active as any)?.preferences?.favDoubleOut,
+    (active as any)?.preferences?.ttsVoice,
+    (active as any)?.preferences?.sfxVolume,
   ]);
 
   const [fields, setFields] = React.useState<PrivateInfo>(initial);
