@@ -25,6 +25,8 @@ import {
 } from "../lib/dartSetsStore";
 import { x01EnsureAudioUnlocked, x01SfxV3Preload } from "../lib/x01SfxV3";
 import { SCORE_INPUT_LS_KEY, type ScoreInputMethod } from "../lib/scoreInput/types";
+import { loadStoredBots, subscribeBotsChange } from "../lib/bots";
+import { loadStore } from "../lib/storage";
 
 // 🔽 IMPORTS DE TOUS LES AVATARS BOTS PRO
 import avatarGreenMachine from "../assets/avatars/bots-pro/green-machine.png";
@@ -90,6 +92,25 @@ type BotLite = {
   avatarDataUrl?: string | null;
   botLevel?: string; // libellé ("Easy", "Standard", "Pro", "Légende", etc.)
 };
+
+type PlayerPrefsLite = {
+  favX01?: number;
+  favDoubleOut?: boolean;
+  ttsVoice?: string;
+  sfxVolume?: number;
+};
+
+function readPlayerPrefs(profile: any): PlayerPrefsLite {
+  const pi = (profile && typeof profile === "object" ? (profile as any).privateInfo : null) || {};
+  const favX01Raw = Number(pi?.favX01);
+  const sfxRaw = Number(pi?.sfxVolume);
+  return {
+    favX01: [301, 501, 701, 901].includes(favX01Raw) ? favX01Raw : undefined,
+    favDoubleOut: typeof pi?.favDoubleOut === "boolean" ? pi.favDoubleOut : undefined,
+    ttsVoice: typeof pi?.ttsVoice === "string" && pi.ttsVoice.trim() ? pi.ttsVoice.trim() : undefined,
+    sfxVolume: Number.isFinite(sfxRaw) ? Math.max(0, Math.min(100, sfxRaw)) : undefined,
+  };
+}
 
 // -------------------------------------------------------------
 // PlayerDartBadge
@@ -338,35 +359,37 @@ export default function X01ConfigV3({ profiles, onBack, onStart, go }: Props) {
   const [botsFromLS, setBotsFromLS] = React.useState<BotLite[]>([]);
 
   React.useEffect(() => {
-    if (typeof window === "undefined") return;
-    try {
-      const raw = window.localStorage.getItem(LS_BOTS_KEY);
-      if (!raw) return;
-      const parsed = JSON.parse(raw) as any[];
+    const refreshBots = () => {
+      try {
+        const parsed = loadStoredBots();
+        const mapped: BotLite[] = (parsed || []).map((b: any) => {
+          const levelLabel: string =
+            b.botLevel ??
+            b.levelLabel ??
+            b.levelName ??
+            b.performanceLevel ??
+            b.performance ??
+            b.skill ??
+            b.difficulty ??
+            "";
 
-      const mapped: BotLite[] = (parsed || []).map((b: any) => {
-        const levelLabel: string =
-          b.botLevel ??
-          b.levelLabel ??
-          b.levelName ??
-          b.performanceLevel ??
-          b.performance ??
-          b.skill ??
-          b.difficulty ??
-          "";
+          return {
+            id: String(b.id),
+            name: b.name || "BOT",
+            avatarDataUrl: b.avatarDataUrl ?? null,
+            botLevel: levelLabel,
+          };
+        });
 
-        return {
-          id: String(b.id),
-          name: b.name || "BOT",
-          avatarDataUrl: b.avatarDataUrl ?? null,
-          botLevel: levelLabel,
-        };
-      });
+        setBotsFromLS(mapped);
+      } catch (e) {
+        console.warn("[X01ConfigV3] load BOTS LS failed:", e);
+        setBotsFromLS([]);
+      }
+    };
 
-      setBotsFromLS(mapped);
-    } catch (e) {
-      console.warn("[X01ConfigV3] load BOTS LS failed:", e);
-    }
+    refreshBots();
+    return subscribeBotsChange(refreshBots);
   }, []);
 
   // Bots créés dans le store (Profils) marqués isBot
@@ -434,6 +457,7 @@ export default function X01ConfigV3({ profiles, onBack, onStart, go }: Props) {
   const [hitEnabled, setHitEnabled] = React.useState<boolean>(true);
   const [voiceEnabled, setVoiceEnabled] = React.useState<boolean>(true);
   const [voiceId, setVoiceId] = React.useState<string>("default");
+  const [sfxVolume, setSfxVolume] = React.useState<number>(80);
 
   // ---- NEW : COMPTAGE EXTERNE ----
   const [externalScoringEnabled, setExternalScoringEnabled] = React.useState<boolean>(false);
@@ -484,24 +508,72 @@ export default function X01ConfigV3({ profiles, onBack, onStart, go }: Props) {
     if (humanProfiles.length === 1) return [humanProfiles[0].id];
     return [];
   });
+  const [activeLocalProfileId, setActiveLocalProfileId] = React.useState<string | null>(null);
+  const prefsTouchedRef = React.useRef(false);
 
-  // ⚙️ pré-remplit la voix depuis le 1er profil humain sélectionné (si dispo)
   React.useEffect(() => {
-    if (voiceTouchedRef.current) return;
+    let alive = true;
+    (async () => {
+      try {
+        const store: any = await loadStore<any>();
+        if (!alive) return;
+        const id = String(store?.activeProfileId || "").trim();
+        setActiveLocalProfileId(id || null);
+      } catch {
+        if (alive) setActiveLocalProfileId(null);
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+  }, []);
 
-    const firstHumanSelectedId =
+  React.useEffect(() => {
+    if (prefsTouchedRef.current) return;
+
+    const preferredId =
+      (activeLocalProfileId && humanProfiles.some((p) => p.id === activeLocalProfileId) ? activeLocalProfileId : null) ??
       selectedIds.find((id) => humanProfiles.some((p) => p.id === id)) ??
       humanProfiles[0]?.id ??
       null;
 
-    if (!firstHumanSelectedId) return;
+    if (!preferredId) return;
 
-    const p: any = humanProfiles.find((x) => x.id === firstHumanSelectedId);
+    const p: any = humanProfiles.find((x) => x.id === preferredId);
     if (!p) return;
 
-    const candidate: string | undefined = p.ttsVoice ?? p.voiceId ?? p.voice ?? p.tts ?? undefined;
-    if (candidate && typeof candidate === "string") setVoiceId(candidate);
-  }, [selectedIds, humanProfiles]);
+    const prefs = readPlayerPrefs(p);
+
+    if (prefs.favX01 && START_SCORES.includes(prefs.favX01 as any)) {
+      setStartScore(prefs.favX01 as 301 | 501 | 701 | 901);
+    }
+
+    if (typeof prefs.favDoubleOut === "boolean") {
+      setOutMode(prefs.favDoubleOut ? "double" : "simple");
+    }
+
+    if (prefs.ttsVoice) {
+      setVoiceId(prefs.ttsVoice);
+    }
+
+    if (typeof prefs.sfxVolume === "number") {
+      setSfxVolume(prefs.sfxVolume);
+    }
+  }, [activeLocalProfileId, selectedIds, humanProfiles]);
+
+  React.useEffect(() => {
+    setPlayerDartSets((prev) => {
+      let changed = false;
+      const next = { ...(prev || {}) } as Record<string, string | null>;
+      for (const hp of humanProfiles) {
+        if (!hp?.id || Object.prototype.hasOwnProperty.call(next, hp.id)) continue;
+        const fav = getFavoriteDartSetForProfile(hp.id) || null;
+        next[hp.id] = fav?.id ?? null;
+        changed = true;
+      }
+      return changed ? next : prev;
+    });
+  }, [humanProfiles]);
 
   // playerId -> teamId
   const [teamAssignments, setTeamAssignments] = React.useState<Record<string, TeamId | null>>({});
@@ -695,7 +767,7 @@ export default function X01ConfigV3({ profiles, onBack, onStart, go }: Props) {
       scoreInputDefaultMethod: scoreInputMethod,
 
       // ✅ audio config consommée par X01PlayV3
-      audio: { arcadeEnabled, hitEnabled, voiceEnabled, voiceId },
+      audio: { arcadeEnabled, hitEnabled, voiceEnabled, voiceId, sfxVolume: Math.max(0, Math.min(1, sfxVolume / 100)) },
     };
 
     if (matchMode === "teams" && teams) baseCfg.teams = teams;
@@ -1091,21 +1163,21 @@ export default function X01ConfigV3({ profiles, onBack, onStart, go }: Props) {
               <PillButton
                 label={t("x01v3.in.simple", "Simple IN")}
                 active={inMode === "simple"}
-                onClick={() => setInMode("simple")}
+                onClick={() => { prefsTouchedRef.current = true; setInMode("simple"); }}
                 primary={primary}
                 primarySoft={primarySoft}
               />
               <PillButton
                 label={t("x01v3.in.double", "Double IN")}
                 active={inMode === "double"}
-                onClick={() => setInMode("double")}
+                onClick={() => { prefsTouchedRef.current = true; setInMode("double"); }}
                 primary={primary}
                 primarySoft={primarySoft}
               />
               <PillButton
                 label={t("x01v3.in.master", "Master IN")}
                 active={inMode === "master"}
-                onClick={() => setInMode("master")}
+                onClick={() => { prefsTouchedRef.current = true; setInMode("master"); }}
                 primary={primary}
                 primarySoft={primarySoft}
               />
@@ -1121,21 +1193,21 @@ export default function X01ConfigV3({ profiles, onBack, onStart, go }: Props) {
               <PillButton
                 label={t("x01v3.out.simple", "Simple OUT")}
                 active={outMode === "simple"}
-                onClick={() => setOutMode("simple")}
+                onClick={() => { prefsTouchedRef.current = true; setOutMode("simple"); }}
                 primary={primary}
                 primarySoft={primarySoft}
               />
               <PillButton
                 label={t("x01v3.out.double", "Double OUT")}
                 active={outMode === "double"}
-                onClick={() => setOutMode("double")}
+                onClick={() => { prefsTouchedRef.current = true; setOutMode("double"); }}
                 primary={primary}
                 primarySoft={primarySoft}
               />
               <PillButton
                 label={t("x01v3.out.master", "Master OUT")}
                 active={outMode === "master"}
-                onClick={() => setOutMode("master")}
+                onClick={() => { prefsTouchedRef.current = true; setOutMode("master"); }}
                 primary={primary}
                 primarySoft={primarySoft}
               />
@@ -1370,6 +1442,7 @@ export default function X01ConfigV3({ profiles, onBack, onStart, go }: Props) {
                   value={voiceId}
                   onChange={(e) => {
                     voiceTouchedRef.current = true;
+                    prefsTouchedRef.current = true;
                     setVoiceId(e.target.value);
                   }}
                   style={{
@@ -1394,6 +1467,23 @@ export default function X01ConfigV3({ profiles, onBack, onStart, go }: Props) {
                 <div style={{ fontSize: 11, color: "#7c80a0", marginTop: 6 }}>
                   {t("x01v3.audio.voiceHint", "Utilisée pour l'annonce des scores / fin de match.")}
                 </div>
+              </div>
+
+              <div style={{ marginTop: 10 }}>
+                <div style={{ fontSize: 12, color: "#c8cbe4", marginBottom: 6 }}>
+                  {t("x01v3.audio.sfxVolume", "Volume effets (SFX)")}
+                </div>
+                <input
+                  type="range"
+                  min={0}
+                  max={100}
+                  value={sfxVolume}
+                  onChange={(e) => {
+                    prefsTouchedRef.current = true;
+                    setSfxVolume(Number(e.target.value || 0));
+                  }}
+                  style={{ width: "100%" }}
+                />
               </div>
             </div>
           </div>
