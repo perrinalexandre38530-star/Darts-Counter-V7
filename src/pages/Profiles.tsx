@@ -769,17 +769,23 @@ export default function Profiles({
       appLang?: Lang;
       appTheme?: ThemeId;
     };
+    const prefs = (((p as any).preferences || {}) as {
+      appLang?: Lang;
+      appTheme?: ThemeId;
+    });
+    const nextLang = (pi.appLang ?? prefs.appLang) as Lang | undefined;
+    const nextTheme = (pi.appTheme ?? prefs.appTheme) as ThemeId | undefined;
 
-    if (pi.appLang) {
+    if (nextLang) {
       try {
-        setLang(pi.appLang);
+        setLang(nextLang);
       } catch {
         /* ignore */
       }
     }
-    if (pi.appTheme) {
+    if (nextTheme) {
       try {
-        setThemeId(pi.appTheme);
+        setThemeId(nextTheme);
       } catch {
         /* ignore */
       }
@@ -1327,14 +1333,17 @@ React.useEffect(() => {
   React.useEffect(() => {
     if (!active) return;
     const pi = ((active as any).privateInfo || {}) as PrivateInfo;
-    if (pi.appLang && pi.appLang !== lang) {
+    const prefs = (((active as any).preferences || {}) as Partial<PrivateInfo>);
+    const nextLang = (pi.appLang ?? prefs.appLang) as Lang | undefined;
+    const nextTheme = (pi.appTheme ?? prefs.appTheme) as ThemeId | undefined;
+    if (nextLang && nextLang !== lang) {
       try {
-        setLang(pi.appLang);
+        setLang(nextLang);
       } catch {}
     }
-    if (pi.appTheme && pi.appTheme !== themeId) {
+    if (nextTheme && nextTheme !== themeId) {
       try {
-        setThemeId(pi.appTheme);
+        setThemeId(nextTheme);
       } catch {}
     }
   }, [active, lang, themeId, setLang, setThemeId]);
@@ -1477,6 +1486,13 @@ React.useEffect(() => {
     if (patch.nickname && patch.nickname.trim() && patch.nickname !== active.name) {
       renameProfile(active.id, patch.nickname.trim());
     }
+
+    try {
+      if (patch.appLang) setLang(patch.appLang as Lang);
+    } catch {}
+    try {
+      if (patch.appTheme) setThemeId(patch.appTheme as ThemeId);
+    } catch {}
 
     if (auth.status === "signed_in") {
       try {

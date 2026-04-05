@@ -31,6 +31,10 @@ export default function X01OnlineSetup({ store, go, params }: Props) {
     (store.profiles || []).find((p) => p.id === store.activeProfileId) ||
     (store.profiles || [])[0] ||
     null;
+  const activePrefs: any = {
+    ...(((activeProfile as any)?.preferences) || {}),
+    ...(((activeProfile as any)?.privateInfo) || {}),
+  };
 
   // Code salon reçu via params.lobbyCode
   const rawCode = (params?.lobbyCode || "").toString().trim().toUpperCase();
@@ -43,6 +47,7 @@ export default function X01OnlineSetup({ store, go, params }: Props) {
 
   const startRaw: number =
     (params?.start as number | undefined) ??
+    (activePrefs?.favX01 as number | undefined) ??
     (store.settings?.defaultX01 as number | undefined) ??
     501;
 
@@ -52,6 +57,7 @@ export default function X01OnlineSetup({ store, go, params }: Props) {
 
   const defaultDoubleOut: boolean =
     (params?.doubleOut as boolean | undefined) ??
+    (typeof activePrefs?.favDoubleOut === "boolean" ? activePrefs.favDoubleOut : undefined) ??
     (store.settings?.doubleOut ?? true);
 
   // Hook WebSocket temps réel
