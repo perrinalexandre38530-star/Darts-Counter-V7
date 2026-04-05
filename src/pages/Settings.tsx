@@ -420,34 +420,6 @@ function ToggleRow({
   );
 }
 
-const PRESERVED_AUTH_STORAGE_KEYS = [
-  "dc_nas_access_token_v1",
-  "dc_nas_refresh_token_v1",
-  "dc_online_auth_supabase_v1",
-  "supabase.auth.token",
-] as const;
-
-function snapshotPreservedAuthStorage() {
-  const out: Record<string, string> = {};
-  try {
-    for (const key of PRESERVED_AUTH_STORAGE_KEYS) {
-      const value = window.localStorage.getItem(key);
-      if (typeof value === "string" && value.length > 0) out[key] = value;
-    }
-  } catch {}
-  return out;
-}
-
-function restorePreservedAuthStorage(snapshot: Record<string, string>) {
-  try {
-    for (const [key, value] of Object.entries(snapshot || {})) {
-      if (typeof value === "string" && value.length > 0) {
-        window.localStorage.setItem(key, value);
-      }
-    }
-  } catch {}
-}
-
 /* -------------------------------------------------------------
    RESET TOTAL HARDCORE
 ------------------------------------------------------------- */
@@ -456,9 +428,7 @@ async function fullHardReset() {
     if (typeof window === "undefined") return;
 
     try {
-      const preservedAuth = snapshotPreservedAuthStorage();
       window.localStorage.clear();
-      restorePreservedAuthStorage(preservedAuth);
       window.sessionStorage.clear();
     } catch {}
 
@@ -727,11 +697,9 @@ function DevModeBlock() {
     if (!ok) return;
 
     try {
-      const preservedAuth = snapshotPreservedAuthStorage();
       localStorage.clear();
-      restorePreservedAuthStorage(preservedAuth);
       sessionStorage.clear();
-      notify("LocalStorage vidé (session compte conservée). Recharge la page.");
+      notify("LocalStorage vidé. Recharge la page.");
     } catch {
       notify("Erreur reset local.");
     }
