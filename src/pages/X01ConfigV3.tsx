@@ -584,6 +584,25 @@ export default function X01ConfigV3({ profiles, onBack, onStart, go }: Props) {
   // profileId -> dartSetId (ou null)
   const [playerDartSets, setPlayerDartSets] = React.useState<Record<string, string | null>>({});
 
+  React.useEffect(() => {
+    const seed: Record<string, string | null> = {};
+    for (const p of humanProfiles as any[]) {
+      const preferred = (p as any)?.dartSetId ?? (p as any)?.favoriteDartSetId ?? null;
+      if (preferred) seed[String((p as any).id)] = String(preferred);
+    }
+    setPlayerDartSets((prev) => {
+      const next = { ...(prev || {}) };
+      let changed = false;
+      for (const [pid, dartSetId] of Object.entries(seed)) {
+        if (next[pid] == null && dartSetId) {
+          next[pid] = String(dartSetId);
+          changed = true;
+        }
+      }
+      return changed ? next : prev;
+    });
+  }, [humanProfiles]);
+
   const handleChangePlayerDartSet = (profileId: string, dartSetId: string | null) => {
     setPlayerDartSets((prev) => ({ ...prev, [profileId]: dartSetId }));
   };

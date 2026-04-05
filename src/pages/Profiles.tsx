@@ -1493,6 +1493,18 @@ React.useEffect(() => {
     patchActivePrivateInfo({ ...(localPatch as any) });
     patchActivePrefs({ ...(localPatch as any) });
 
+    try {
+      update((s: any) => {
+        const nextSettings = {
+          ...(s?.settings || {}),
+          ...(localPatch.appLang ? { lang: localPatch.appLang } : {}),
+          ...(typeof localPatch.favX01 === "number" ? { defaultX01: localPatch.favX01 } : {}),
+          ...(typeof localPatch.favDoubleOut === "boolean" ? { doubleOut: localPatch.favDoubleOut } : {}),
+        };
+        return { ...(s || {}), settings: nextSettings };
+      });
+    } catch {}
+
     if (patch.nickname && patch.nickname.trim() && patch.nickname !== active.name) {
       renameProfile(active.id, patch.nickname.trim());
     }

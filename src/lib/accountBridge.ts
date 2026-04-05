@@ -116,10 +116,17 @@ function buildDedicatedAccountProfile(user: any, onlineProfile?: any, previous?:
   const nickname = getOnlineNickname(user, onlineProfile);
   const avatar = getOnlineAvatar(onlineProfile);
   const prevPI = readPrivateInfo(previous);
+  const onlinePatch = buildPrivateInfoPatch(user, onlineProfile);
   const nextPI = {
     ...prevPI,
-    ...buildPrivateInfoPatch(user, onlineProfile),
+    ...onlinePatch,
+    password: "",
   };
+
+  const previousAvatarData = typeof previous?.avatarDataUrl === "string" ? previous.avatarDataUrl : "";
+  const previousAvatarUrl = typeof previous?.avatarUrl === "string" ? previous.avatarUrl : "";
+  const safeAvatarData = avatar || previousAvatarData || undefined;
+  const safeAvatarUrl = avatar || previousAvatarUrl || safeAvatarData || undefined;
 
   return writePrivateInfo(
     {
@@ -133,8 +140,17 @@ function buildDedicatedAccountProfile(user: any, onlineProfile?: any, previous?:
       city: onlineProfile?.city ?? previous?.city ?? prevPI?.city ?? "",
       phone: onlineProfile?.phone ?? previous?.phone ?? prevPI?.phone ?? "",
       country: onlineProfile?.country || previous?.country || prevPI?.country || "FR",
-      avatarDataUrl: avatar || previous?.avatarDataUrl || previous?.avatarUrl,
-      avatarUrl: avatar || previous?.avatarUrl || previous?.avatarDataUrl,
+      avatarDataUrl: safeAvatarData,
+      avatarUrl: safeAvatarUrl,
+      preferences: {
+        ...((previous as any)?.preferences || {}),
+        appLang: onlinePatch?.appLang ?? (previous as any)?.preferences?.appLang,
+        appTheme: onlinePatch?.appTheme ?? (previous as any)?.preferences?.appTheme,
+        favX01: onlinePatch?.favX01 ?? (previous as any)?.preferences?.favX01,
+        favDoubleOut: onlinePatch?.favDoubleOut ?? (previous as any)?.preferences?.favDoubleOut,
+        ttsVoice: onlinePatch?.ttsVoice ?? (previous as any)?.preferences?.ttsVoice,
+        sfxVolume: onlinePatch?.sfxVolume ?? (previous as any)?.preferences?.sfxVolume,
+      },
       createdAt: previous?.createdAt || Date.now(),
       updatedAt: Date.now(),
       stats: {
@@ -160,7 +176,7 @@ export function ensureOnlineMirrorProfile(store: any, user: any, onlineProfile?:
   const uid = String(user.id);
   const email = safeLower(user.email);
 
-  const profiles: any[] = Array.isArray(store.profiles) ? store.profiles : [];
+  const profiles: any[] = cleanupForeignOnlineBindings(Array.isArray(store.profiles) ? store.profiles : [], uid);
   if (profiles.length === 0) return store;
 
   const activeId = String(store.activeProfileId || profiles[0]?.id || "");
@@ -225,6 +241,18 @@ export function ensureOnlineMirrorProfile(store: any, user: any, onlineProfile?:
   };
 }
 
+function cleanupForeignOnlineBindings(profiles: any[], uid: string) {
+  return (Array.isArray(profiles) ? profiles : []).map((p) => {
+    const pid = String(p?.id || "");
+    const pi = readPrivateInfo(p);
+    const boundUid = String((pi as any)?.onlineUserId || "");
+    if (!boundUid) return p;
+    if (pid === uid && boundUid === uid) return p;
+    if (boundUid === uid) return stripOnlineBinding(p);
+    return p;
+  });
+}
+
 // ============================================================
 // ✅ Auto-link a local profile for a signed-in user (NO DUPLICATE)
 // ============================================================
@@ -234,7 +262,7 @@ export function ensureLocalProfileForOnlineUser(store: any, user: any, onlinePro
   const uid = String(user.id);
   const email = safeLower(user.email);
 
-  const profiles: any[] = Array.isArray(store.profiles) ? store.profiles : [];
+  const profiles: any[] = cleanupForeignOnlineBindings(Array.isArray(store.profiles) ? store.profiles : [], uid);
 
   const activeId = String(store.activeProfileId || profiles[0]?.id || "");
   const active = profiles.find((p) => String(p?.id || "") === activeId) || profiles[0] || null;
