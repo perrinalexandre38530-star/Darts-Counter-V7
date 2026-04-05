@@ -35,7 +35,7 @@ import { fileToSafeAvatarDataUrl, sanitizeAvatarDataUrl } from "../lib/avatarSaf
 import PlayerPrefsBlock, { type PlayerPrefs } from "../components/profile/PlayerPrefsBlock";
 import OnlineProfileForm from "../components/OnlineProfileForm";
 
-import { getAvatarCache as getAvatarCacheLib } from "../lib/avatarCache";
+import { getAvatarCache as getAvatarCacheLib, setAvatarCache as setAvatarCacheLib } from "../lib/avatarCache";
 
 import { useSport } from "../contexts/SportContext";
 
@@ -279,8 +279,19 @@ function writeAvatarCache(
   try {
     const all = readAvatarCache();
     const prev = all[profileId] || {};
-    all[profileId] = { ...prev, ...patch };
+    const next = { ...prev, ...patch };
+    all[profileId] = next;
     localStorage.setItem(AVATAR_CACHE_KEY, JSON.stringify(all));
+
+    // ✅ synchronise aussi le cache officiel partagé (dc_avatar_cache_v1)
+    try {
+      setAvatarCacheLib({
+        profileId,
+        avatarDataUrl: next.avatarDataUrl ?? null,
+        avatarUrl: next.avatarUrl ?? null,
+        avatarUpdatedAt: Number(next.avatarUpdatedAt || Date.now()),
+      });
+    } catch {}
   } catch {
     // ignore
   }
@@ -289,7 +300,13 @@ function writeAvatarCache(
 function getAvatarCache(profileId: string | null | undefined): AvatarCacheEntry | null {
   if (!profileId) return null;
   const all = readAvatarCache();
-  return all[profileId] || null;
+  const legacy = all[profileId] || null;
+  const shared = getAvatarCacheLib(profileId);
+  if (!legacy && !shared) return null;
+  return {
+    ...(shared || {}),
+    ...(legacy || {}),
+  };
 }
 
 // ============================================
@@ -485,38 +502,15 @@ async function uploadLocalProfileAvatarToSupabase(
   profileId: string,
   dataUrl: string
 ): Promise<string | null> {
-  // IMPORTANT:
-  // - En mode NAS, onlineApi.uploadAvatarImage() passe par /profiles/avatar
-  // - Cet endpoint met à jour l'avatar DU COMPTE et mélange donc avatar compte / avatar profil local
-  // - Pour les profils locaux, on utilise uniquement un upload de stockage public dédié
-  try {
-    const blob = await dataUrlToBlob(dataUrl);
-    const ext =
-      blob.type === "image/png"
-        ? "png"
-        : blob.type === "image/webp"
-        ? "webp"
-        : blob.type === "image/jpeg"
-        ? "jpg"
-        : "png";
-
-    const path = `local/${userId}/${profileId}.${ext}`;
-
-    const { error: upErr } = await supabase.storage
-      .from("avatars")
-      .upload(path, blob, { upsert: true, contentType: blob.type || "image/png" });
-
-    if (upErr) {
-      console.warn("[avatars] local profile storage upload failed", upErr);
-      return null;
-    }
-
-    const { data } = supabase.storage.from("avatars").getPublicUrl(path);
-    return data?.publicUrl || null;
-  } catch (e) {
-    console.warn("[avatars] local profile upload exception", e);
-    return null;
-  }
+  // ✅ PATCH CIBLÉ:
+  // Les profils locaux ne doivent plus dépendre d’un upload Supabase Storage.
+  // - ça spammait la console quand le storage n’était pas joignable
+  // - et ça compliquait la séparation profil local / profil actif
+  // La persistance passe désormais par le snapshot cloud complet + cache avatar local.
+  void userId;
+  void profileId;
+  void dataUrl;
+  return null;
 }
 
 async function flushCloud(reason: string, seedOverride?: any) {
@@ -799,19 +793,30 @@ export default function Profiles({
     } catch {}
   }
 
+  function isLinkedOnlineProfile(profile: any): boolean {
+    const authUid = String(auth?.user?.id || "").trim();
+    if (!profile || !authUid) return false;
+    const pid = String(profile?.id || "").trim();
+    const pi = ((profile as any)?.privateInfo || {}) as any;
+    const linkedUid = String(pi?.onlineUserId || "").trim();
+    return pid === authUid || linkedUid === authUid;
+  }
+
   async function changeAvatar(id: string, file: File) {
     const dataUrl = await fileToSafeAvatarDataUrl(file);
     const now = Date.now();
-  
-    // ✅ 0) Cache dédié ANTI-OVERWRITE
+    const targetProfile = (profiles || []).find((p: any) => String(p?.id || "") === String(id || "")) || null;
+    const isOnlineLinked = isLinkedOnlineProfile(targetProfile);
+
+    // ✅ 0) Cache avatar unifié (anti-retour d’une vieille image)
     writeAvatarCache(id, {
       avatarUrl: undefined,
       avatarPath: undefined,
       avatarDataUrl: dataUrl,
       avatarUpdatedAt: now,
     });
-  
-    // 1) preview local immédiat (UX) => ON GARDE EN BASE64
+
+    // 1) preview locale immédiate
     setProfilesSafe((arr) =>
       arr.map((p) =>
         p.id === id
@@ -820,58 +825,55 @@ export default function Profiles({
               avatarUrl: undefined,
               avatarPath: undefined,
               avatarDataUrl: dataUrl,
-              avatarUpdatedAt: now, // ✅ NEW
+              avatarUpdatedAt: now,
             }
           : p
       )
     );
-  
-    // 2) Si connecté -> upload dans Supabase Storage et on garde une URL publique (persistante cloud)
-    try {
-      const sessionAny = await onlineApi.getCurrentSession();
-      const userId = String(sessionAny?.user?.id || "").trim();
-      if (userId) {
-        const publicUrl = await uploadLocalProfileAvatarToSupabase(userId, id, dataUrl);
+
+    // 2) Profil lié au compte connecté : on met à jour l’avatar DU COMPTE
+    //    (pas le storage “local/…” utilisé auparavant pour les profils locaux)
+    if (isOnlineLinked && auth.status === "signed_in") {
+      try {
+        const uploaded = await onlineApi.uploadAvatarImage({
+          dataUrl,
+          folder: String(auth.user?.id || id),
+          updateProfile: true,
+        });
+
+        const publicUrl = String(uploaded?.publicUrl || "").trim();
         if (publicUrl) {
-          // Remplace le base64 par une URL (sinon sanitizeStoreForCloud le supprime)
           setProfilesSafe((arr) =>
             arr.map((p) =>
               p.id === id
-                ? { ...p, avatarUrl: publicUrl, avatarDataUrl: undefined, avatarUpdatedAt: now }
+                ? {
+                    ...p,
+                    avatarUrl: publicUrl,
+                    avatarPath: String(uploaded?.path || "") || undefined,
+                    avatarDataUrl: undefined,
+                    avatarUpdatedAt: now,
+                  }
                 : p
             )
           );
+
           writeAvatarCache(id, {
             avatarUrl: publicUrl,
             avatarDataUrl: undefined,
+            avatarPath: String(uploaded?.path || "") || undefined,
             avatarUpdatedAt: now,
           });
         }
+
+        try { await (auth as any)?.refresh?.(); } catch {}
+      } catch (e) {
+        console.warn("[avatars] upload active profile failed", e);
       }
-    } catch (e) {
-      console.warn("[avatars] upload local profile failed", e);
     }
 
-    // IMPORTANT: force un seed cohérent pour éviter de flusher un store "ancien"
-    // (setProfilesSafe est batched, et __flushCloudNow lit le store de App.tsx)
-    try {
-      const cached = getAvatarCacheLib(id);
-      const nextProfilesSeed = (profiles || []).map((p: any) =>
-        p?.id === id
-          ? {
-              ...(p || {}),
-              avatarUrl: cached?.avatarUrl ?? (p as any).avatarUrl,
-              avatarDataUrl: cached?.avatarDataUrl ?? (p as any).avatarDataUrl,
-              avatarPath: cached?.avatarPath ?? (p as any).avatarPath,
-              avatarUpdatedAt: cached?.avatarUpdatedAt ?? (p as any).avatarUpdatedAt,
-            }
-          : p
-      );
-        // ⚠️ Disabled: heavy snapshots kill Supabase IO
-        if (false) await flushCloud("profiles_avatar", { ...(store as any), profiles: nextProfilesSeed });
-    } catch {
-      await flushCloud("profiles_avatar");
-    }
+    // 3) Profil local : on garde l’avatar local uniquement.
+    //    Le snapshot cloud complet + le cache avatar gèrent la persistance.
+    await flushCloud("profiles_avatar");
   }
 
   async function delProfile(id: string) {
@@ -1065,14 +1067,10 @@ React.useEffect(() => {
     const uid = auth.user?.id;
     if (!uid) return;
 
-    // Local only (jamais online:*)
-    const locals = (profiles || []).filter((p: any) => {
-      const id = String(p?.id || "");
-      if (id.startsWith("online:")) return false;
-      if (p?.source === "online") return false;
-      if (p?.isOnlineMirror === true) return false;
-      return true;
-    });
+    // ✅ PATCH: on désactive l’auto-upload des profils locaux.
+    // Les avatars locaux restent strictement locaux pour éviter
+    // toute pollution du profil actif / du compte connecté.
+    const locals: any[] = [];
 
     for (const p of locals as any[]) {
       if (cancelled) return;
@@ -1192,6 +1190,51 @@ React.useEffect(() => {
     (active as any)?.avatarUrl,
     (active as any)?.avatarDataUrl,
   ]);  
+
+  // ✅ Réhydratation multi-profils depuis le cache avatar unifié
+  // - utile après reset/reconnexion si le store restauré a perdu des dataUrl
+  React.useEffect(() => {
+    if (!profiles || profiles.length === 0) return;
+
+    const needsRestore = (profiles || []).some((p: any) => {
+      const hasAny =
+        !!String((p as any)?.avatarUrl || "").trim() ||
+        !!String((p as any)?.avatarDataUrl || "").trim();
+      if (hasAny) return false;
+      const cached = getAvatarCache(String((p as any)?.id || "")) || getAvatarCacheLib(String((p as any)?.id || ""));
+      return !!String((cached as any)?.avatarUrl || (cached as any)?.avatarDataUrl || "").trim();
+    });
+
+    if (!needsRestore) return;
+
+    setProfilesSafe((arr) => {
+      let changed = false;
+      const next = (arr || []).map((p: any) => {
+        const hasAny =
+          !!String((p as any)?.avatarUrl || "").trim() ||
+          !!String((p as any)?.avatarDataUrl || "").trim();
+        if (hasAny) return p;
+
+        const cached = getAvatarCache(String((p as any)?.id || "")) || getAvatarCacheLib(String((p as any)?.id || ""));
+        const cUrl = String((cached as any)?.avatarUrl || "").trim();
+        const cData = String((cached as any)?.avatarDataUrl || "").trim();
+        if (!cUrl && !cData) return p;
+
+        changed = true;
+        return {
+          ...(p || {}),
+          avatarUrl: cUrl || undefined,
+          avatarDataUrl: cData || undefined,
+          avatarUpdatedAt:
+            typeof (cached as any)?.avatarUpdatedAt === "number"
+              ? (cached as any).avatarUpdatedAt
+              : Date.now(),
+        };
+      });
+      return changed ? next : arr;
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [profiles]);
 
   async function resetActiveStats() {
     if (!active?.id) return;

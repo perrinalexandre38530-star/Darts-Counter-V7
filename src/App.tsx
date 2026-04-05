@@ -580,6 +580,53 @@ function sanitizeStoreForCloud(s: any) {
 /* --------------------------------------------
    ROUTES
 -------------------------------------------- */
+
+function mergeStoreIntoCloudSnapshot(snapshot: any, seedOverride?: any) {
+  if (!seedOverride) return snapshot;
+
+  const cleanStore = sanitizeStoreForCloud(seedOverride);
+
+  if (!snapshot || typeof snapshot !== "object") {
+    return cleanStore;
+  }
+
+  // ✅ Snapshot exportAll() v2 : on remplace uniquement la partie store
+  // pour conserver bots / dartsets / autres clés localStorage dans le dump complet.
+  if ((snapshot as any)._v === 2) {
+    const next: any = {
+      ...(snapshot as any),
+      idb: { ...(((snapshot as any).idb || {}) as Record<string, any>) },
+    };
+
+    const keys = Object.keys(next.idb || {});
+    const storeKey =
+      keys.find((k) => k === "store" || /(^|[:/])store$/.test(String(k))) ||
+      "store";
+
+    next.idb[storeKey] = cleanStore;
+    return next;
+  }
+
+  if ((snapshot as any).store && typeof (snapshot as any).store === "object") {
+    return {
+      ...(snapshot as any),
+      store: cleanStore,
+    };
+  }
+
+  if ((snapshot as any).idb && typeof (snapshot as any).idb === "object") {
+    return {
+      ...(snapshot as any),
+      idb: {
+        ...((snapshot as any).idb || {}),
+        store: cleanStore,
+      },
+    };
+  }
+
+  return cleanStore;
+}
+
 type Tab =
   | "account_start"
   | "auth_start"
@@ -1406,6 +1453,12 @@ useEffect(() => {
 
   const cloudPushTimerRef = React.useRef<number | null>(null);
   const cloudSyncOnRef = React.useRef(false);
+  const clearCloudFallbackPushTimer = React.useCallback(() => {
+    if (cloudPushTimerRef.current) {
+      window.clearTimeout(cloudPushTimerRef.current);
+      cloudPushTimerRef.current = null;
+    }
+  }, []);
 
   const [store, setStore] = React.useState<Store>(initialStore);
 
@@ -1906,7 +1959,10 @@ useEffect(() => {
         if (loading) return;
         if (!cloudHydrated) return;
         if (!online?.ready || online.status !== "signed_in") return;
-        const snapshot = seedOverride ?? await exportCloudSnapshot();
+
+        const exported = await exportCloudSnapshot();
+        const snapshot = mergeStoreIntoCloudSnapshot(exported, seedOverride);
+
         await onlineApi.pushStoreSnapshot(snapshot as any, (snapshot as any)?.v ?? 8);
         console.log("[cloud] __flushCloudNow pushed", _reason || "manual");
       } catch (e) {
@@ -2091,6 +2147,7 @@ useEffect(() => {
     if (loading) return;
     if (!cloudHydrated) return;
     if (!online?.ready || online.status !== "signed_in") {
+      clearCloudFallbackPushTimer();
       if (cloudSyncOnRef.current) {
         stopCloudSync();
         cloudSyncOnRef.current = false;
@@ -2109,16 +2166,18 @@ useEffect(() => {
           : { pullOnStart: true, disablePull: false }
       );
       cloudSyncOnRef.current = true;
+      clearCloudFallbackPushTimer();
       console.log(nasMode ? "[cloud] cloudSync started (push-only, nas)" : "[cloud] cloudSync started (push+pull)");
     }
 
     return () => {
+      clearCloudFallbackPushTimer();
       if (cloudSyncOnRef.current) {
         stopCloudSync();
         cloudSyncOnRef.current = false;
       }
     };
-  }, [loading, cloudHydrated, online?.ready, online?.status]);
+  }, [loading, cloudHydrated, online?.ready, online?.status, clearCloudFallbackPushTimer]);
 
   // ============================================================
   // ✅ CLOUD PUSH (debounce)
@@ -2131,29 +2190,32 @@ useEffect(() => {
     // En mode normal, cloudSync gère déjà les pushes via emitCloudChange.
     // On évite donc un deuxième push fallback qui duplique les requêtes,
     // spamme la console et peut renvoyer des snapshots plus anciens.
-    if (cloudSyncOnRef.current) return;
-
-    if (cloudPushTimerRef.current) {
-      window.clearTimeout(cloudPushTimerRef.current);
-      cloudPushTimerRef.current = null;
+    if (cloudSyncOnRef.current) {
+      clearCloudFallbackPushTimer();
+      return;
     }
 
+    clearCloudFallbackPushTimer();
+
     cloudPushTimerRef.current = window.setTimeout(async () => {
+      if (cloudSyncOnRef.current) {
+        clearCloudFallbackPushTimer();
+        return;
+      }
       try {
         const cloudSeed = await exportCloudSnapshot();
-              await onlineApi.pushStoreSnapshot(cloudSeed as any, (cloudSeed as any)?.v ?? 8);
+        await onlineApi.pushStoreSnapshot(cloudSeed as any, (cloudSeed as any)?.v ?? 8);
       } catch (e) {
         console.warn("[cloud] push snapshot error", e);
+      } finally {
+        cloudPushTimerRef.current = null;
       }
     }, 250);
 
     return () => {
-      if (cloudPushTimerRef.current) {
-        window.clearTimeout(cloudPushTimerRef.current);
-        cloudPushTimerRef.current = null;
-      }
+      clearCloudFallbackPushTimer();
     };
-  }, [store, loading, cloudHydrated, online?.ready, online?.status]);
+  }, [store, loading, cloudHydrated, online?.ready, online?.status, clearCloudFallbackPushTimer]);
 
   // ============================================================
   // ✅ DartSets bridge: localStorage dartSetsStore -> App store
