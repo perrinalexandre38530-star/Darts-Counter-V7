@@ -84,7 +84,17 @@ function guardStoreSizeForMobile<T>(store: T): T {
     } catch {}
 
     if (bytes > 8 * 1024 * 1024) {
-      console.warn("[storage] STORE TOO BIG FOR MOBILE:", mb, "MB");
+      if (typeof window !== "undefined") {
+        const k = "dc_last_store_too_big_warn_v1";
+        const now = Date.now();
+        const last = Number(sessionStorage.getItem(k) || 0);
+        if (!last || now - last > 15000) {
+          console.warn("[storage] STORE TOO BIG FOR MOBILE:", mb, "MB");
+          sessionStorage.setItem(k, String(now));
+        }
+      } else {
+        console.warn("[storage] STORE TOO BIG FOR MOBILE:", mb, "MB");
+      }
       try {
         localStorage.setItem(
           "dc_store_size_warning",
@@ -519,7 +529,6 @@ function shouldExportLocalStorageDcKey(key: string, value: string | null): boole
   if (
     lower.includes("history") ||
     lower.includes("stats") ||
-    lower.includes("bots") ||
     lower.includes("matchcache") ||
     lower.includes("historycache")
   ) {
@@ -774,7 +783,6 @@ export async function loadStore<T extends Store>(): Promise<T | null> {
           await idbSet(scopedStorageKey(STORE_KEY), payload);
 
     try {
-      console.log("🔥 saveStore déclenché");
       emitCloudChange(scopedCloudChangeReason("idb:set:store"));
     } catch (e) {
       console.warn("emitCloudChange failed", e);

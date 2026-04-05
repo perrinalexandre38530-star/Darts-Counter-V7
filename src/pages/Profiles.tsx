@@ -553,7 +553,6 @@ export default function Profiles({
   go?: (tab: any, params?: any) => void;
   params?: any;
 }) {
-  console.log("[PROFILES PATCH CHECK v4] v2026-01-07");
 
   const [toast, setToast] = React.useState<null | { type: "success" | "error"; message: string }>(null);
 
@@ -721,7 +720,6 @@ export default function Profiles({
   const isBabyFoot = sportKey.includes("babyfoot") || sportKey.includes("baby-foot") || sportKey.includes("baby_foot");
   const isDarts = sportKey.includes("darts");
 
-  console.log("[Profiles] sportResolved =", sportResolved);
 
   const [view, setView] = React.useState<View>(
     params?.view === "me"
@@ -788,9 +786,16 @@ export default function Profiles({
     }
   }
 
-  function renameProfile(id: string, name: string) {
+  async function renameProfile(id: string, name: string) {
+    let nextStoreSnapshot: any = null;
+    update((s: any) => {
+      const nextProfiles = (Array.isArray(s?.profiles) ? s.profiles : []).map((p: any) => (p.id === id ? { ...p, name } : p));
+      nextStoreSnapshot = { ...s, profiles: nextProfiles };
+      return nextStoreSnapshot;
+    });
     setProfilesSafe((arr) => arr.map((p) => (p.id === id ? { ...p, name } : p)));
-    try { (window as any).__flushCloudNow?.(); } catch {}
+    try { if (nextStoreSnapshot) await saveStore(nextStoreSnapshot); } catch {}
+    try { await (window as any).__flushCloudNow?.("profiles_rename", nextStoreSnapshot); } catch {}
   }
 
   function clearNasProfileOnboardingFlag(expectedUid?: string | null) {
@@ -944,7 +949,7 @@ export default function Profiles({
     if (!cleanName) return;
   
     const now = Date.now();
-    const avatarDataUrl = file ? await fileToSafeAvatarDataUrl(file) : null;
+    const avatarDataUrl = file ? await read(file) : null;
   
     const p: Profile = {
       id:
@@ -957,17 +962,6 @@ export default function Profiles({
       privateInfo:
         privateInfo && Object.keys(privateInfo).length ? { ...privateInfo } : undefined,
     };
-
-    if (avatarDataUrl) {
-      try {
-        writeAvatarCache(p.id, {
-          avatarDataUrl,
-          avatarUrl: undefined,
-          avatarPath: undefined,
-          avatarUpdatedAt: now,
-        });
-      } catch {}
-    }
   
     // ✅ 1) Calcule un nextStore depuis la vraie source (s), PAS depuis "store" capturé
     let nextStoreSnapshot: any = null;
@@ -1312,9 +1306,27 @@ React.useEffect(() => {
       if (phoneOnline && (pi.phone || "") !== phoneOnline) {
         patch.phone = phoneOnline;
       }
+
+      const prefsOnline = ((auth.profile as any)?.preferences || {}) as Partial<PrivateInfo>;
+      const privateInfoOnline = ((auth.profile as any)?.privateInfo || {}) as Partial<PrivateInfo>;
+      const prefKeys: (keyof PrivateInfo)[] = [
+        "appLang",
+        "appTheme",
+        "favX01",
+        "favDoubleOut",
+        "ttsVoice",
+        "sfxVolume",
+      ];
+      for (const key of prefKeys) {
+        const nextVal = (privateInfoOnline as any)?.[key] ?? (prefsOnline as any)?.[key];
+        if (nextVal !== undefined && (pi as any)?.[key] !== nextVal) {
+          (patch as any)[key] = nextVal;
+        }
+      }
   
       if (Object.keys(patch).length > 0) {
         patchActivePrivateInfo(patch);
+        patchActivePrefs(patch);
       }
     }, [active?.id, auth.status, auth.profile, auth.user]);  
 
@@ -1384,7 +1396,17 @@ React.useEffect(() => {
   }, [go]);
 
   // ✅ helper générique : patcher privateInfo de n’importe quel profil
-  function patchProfilePrivateInfo(id: string, patch: Partial<PrivateInfo>) {
+  async function patchProfilePrivateInfo(id: string, patch: Partial<PrivateInfo>) {
+    let nextStoreSnapshot: any = null;
+    update((s: any) => {
+      const nextProfiles = (Array.isArray(s?.profiles) ? s.profiles : []).map((p: any) =>
+        p.id === id
+          ? { ...(p || {}), privateInfo: { ...((p as any)?.privateInfo || {}), ...patch } }
+          : p
+      );
+      nextStoreSnapshot = { ...s, profiles: nextProfiles };
+      return nextStoreSnapshot;
+    });
     setProfilesSafe((arr) =>
       arr.map((p) =>
         p.id === id
@@ -1398,11 +1420,38 @@ React.useEffect(() => {
           : p
       )
     );
+    try { if (nextStoreSnapshot) await saveStore(nextStoreSnapshot); } catch {}
+    try { await (window as any).__flushCloudNow?.("profiles_privateInfo", nextStoreSnapshot); } catch {}
   }
 
   function patchActivePrivateInfo(patch: Record<string, any>) {
     if (!active) return;
     patchProfilePrivateInfo(active.id, patch as any);
+  }
+
+  function patchActivePrefs(patch: Record<string, any>) {
+    if (!active) return;
+    const prefKeys = ["appLang", "appTheme", "favX01", "favDoubleOut", "ttsVoice", "sfxVolume"] as const;
+    const prefsPatch: Record<string, any> = {};
+    for (const key of prefKeys) {
+      if (Object.prototype.hasOwnProperty.call(patch, key) && (patch as any)[key] !== undefined) {
+        prefsPatch[key] = (patch as any)[key];
+      }
+    }
+    if (!Object.keys(prefsPatch).length) return;
+    setProfilesSafe((arr) =>
+      arr.map((p: any) =>
+        p?.id === active.id
+          ? {
+              ...(p || {}),
+              preferences: {
+                ...((p as any)?.preferences || {}),
+                ...prefsPatch,
+              },
+            }
+          : p
+      )
+    );
   }
 
   async function handlePrivateInfoSave(patch: PrivateInfo) {
@@ -1423,6 +1472,15 @@ React.useEffect(() => {
               ...((p as any)?.privateInfo || {}),
               ...(localPatch as any),
             },
+            preferences: {
+              ...((p as any)?.preferences || {}),
+              appLang: (localPatch as any).appLang ?? (p as any)?.preferences?.appLang,
+              appTheme: (localPatch as any).appTheme ?? (p as any)?.preferences?.appTheme,
+              favX01: (localPatch as any).favX01 ?? (p as any)?.preferences?.favX01,
+              favDoubleOut: (localPatch as any).favDoubleOut ?? (p as any)?.preferences?.favDoubleOut,
+              ttsVoice: (localPatch as any).ttsVoice ?? (p as any)?.preferences?.ttsVoice,
+              sfxVolume: (localPatch as any).sfxVolume ?? (p as any)?.preferences?.sfxVolume,
+            },
             // si nickname changé, on aligne aussi name (UI)
             name:
               patch.nickname && String(patch.nickname).trim()
@@ -1433,6 +1491,7 @@ React.useEffect(() => {
     );
 
     patchActivePrivateInfo({ ...(localPatch as any) });
+    patchActivePrefs({ ...(localPatch as any) });
 
     if (patch.nickname && patch.nickname.trim() && patch.nickname !== active.name) {
       renameProfile(active.id, patch.nickname.trim());
@@ -1440,7 +1499,7 @@ React.useEffect(() => {
 
     if (auth.status === "signed_in") {
       try {
-        await onlineApi.updateProfile({
+        const savedProfile = await onlineApi.updateProfile({
           nickname: patch.nickname?.trim() || undefined,
           displayName: patch.nickname?.trim() || active.name || undefined,
           surname: patch.nickname?.trim() || undefined,
@@ -1451,11 +1510,49 @@ React.useEffect(() => {
           birthDate: patch.birthDate?.trim() || undefined,
           email: patch.email?.trim() || undefined,
           phone: patch.phone?.trim() || undefined,
+          preferences: {
+            appLang: patch.appLang,
+            appTheme: patch.appTheme,
+            favX01: patch.favX01,
+            favDoubleOut: patch.favDoubleOut,
+            ttsVoice: patch.ttsVoice,
+            sfxVolume: patch.sfxVolume,
+          },
+          privateInfo: {
+            nickname: patch.nickname?.trim() || undefined,
+            firstName: patch.firstName?.trim() || undefined,
+            lastName: patch.lastName?.trim() || undefined,
+            birthDate: patch.birthDate?.trim() || undefined,
+            country: patch.country?.trim() || undefined,
+            city: patch.city?.trim() || undefined,
+            email: patch.email?.trim() || undefined,
+            phone: patch.phone?.trim() || undefined,
+            appLang: patch.appLang,
+            appTheme: patch.appTheme,
+            favX01: patch.favX01,
+            favDoubleOut: patch.favDoubleOut,
+            ttsVoice: patch.ttsVoice,
+            sfxVolume: patch.sfxVolume,
+          },
         });
 
         if (patch.password && String(patch.password).trim()) {
           await onlineApi.changePassword(String(patch.password));
         }
+
+        try {
+          const prefsSaved = ((savedProfile as any)?.preferences || {}) as Partial<PrivateInfo>;
+          const privateInfoSaved = ((savedProfile as any)?.privateInfo || {}) as Partial<PrivateInfo>;
+          const syncPatch: Partial<PrivateInfo> = {};
+          for (const key of ["appLang","appTheme","favX01","favDoubleOut","ttsVoice","sfxVolume"] as const) {
+            const nextVal = (privateInfoSaved as any)?.[key] ?? (prefsSaved as any)?.[key];
+            if (nextVal !== undefined) (syncPatch as any)[key] = nextVal;
+          }
+          if (Object.keys(syncPatch).length) {
+            patchActivePrivateInfo(syncPatch as any);
+            patchActivePrefs(syncPatch as any);
+          }
+        } catch {}
 
         await syncProfile({
           display_name: patch.nickname?.trim() || active.name || undefined,
@@ -1480,6 +1577,19 @@ React.useEffect(() => {
           privateInfo: {
             ...((p as any)?.privateInfo || {}),
             ...(p?.id === active.id ? { ...patch, password: "" } : {}),
+          },
+          preferences: {
+            ...((p as any)?.preferences || {}),
+            ...(p?.id === active.id
+              ? {
+                  appLang: patch.appLang,
+                  appTheme: patch.appTheme,
+                  favX01: patch.favX01,
+                  favDoubleOut: patch.favDoubleOut,
+                  ttsVoice: patch.ttsVoice,
+                  sfxVolume: patch.sfxVolume,
+                }
+              : {}),
           },
         }));
         await flushCloud("profile_save", { ...(store as any), profiles: nextProfilesNoPassword });
@@ -2154,22 +2264,8 @@ function ActiveProfileBlock({
     avatarUpdatedAt: (active as any)?.avatarUpdatedAt ?? null,
   });
 
-  // LOGS DEBUG (volontairement conservés)
-  React.useEffect(() => {
-    console.log("[ActiveProfileBlock] id =", active?.id);
-    console.log("[ActiveProfileBlock] avatarUrl =", (active as any)?.avatarUrl);
-    console.log(
-      "[ActiveProfileBlock] avatarDataUrl length =",
-      typeof (active as any)?.avatarDataUrl === "string"
-        ? String((active as any)?.avatarDataUrl).length
-        : 0
-    );
-    console.log(
-      "[ActiveProfileBlock] avatarUpdatedAt =",
-      (active as any)?.avatarUpdatedAt
-    );
-    console.log("[ActiveProfileBlock] avatarSrc =", avatarSrc);
-  }, [
+  // Logs debug avatar désactivés : les data URLs énormes faisaient exploser la console et la mémoire.
+  React.useEffect(() => {}, [
     active?.id,
     (active as any)?.avatarUrl,
     (active as any)?.avatarDataUrl,
@@ -2402,6 +2498,7 @@ function PrivateInfoBlock({
   // ✅ initial stable : dépend de l'id + des champs sources (évite reset à chaque render)
   const initial: PrivateInfo = React.useMemo(() => {
     const pi = ((active as any)?.privateInfo || {}) as PrivateInfo;
+    const prefs = (((active as any)?.preferences || {}) as Partial<PrivateInfo>);
     return {
       nickname: String(pi.nickname || ""),
       lastName: String(pi.lastName || ""),
@@ -2415,12 +2512,12 @@ function PrivateInfoBlock({
       onlineUserId: String((pi as any).onlineUserId || ""),
       onlineEmail: String((pi as any).onlineEmail || ""),
       onlineKey: pi.onlineKey, // 👈 legacy
-      appLang: pi.appLang,
-      appTheme: pi.appTheme,
-      favX01: (pi as any).favX01,
-      favDoubleOut: (pi as any).favDoubleOut,
-      ttsVoice: (pi as any).ttsVoice,
-      sfxVolume: (pi as any).sfxVolume,
+      appLang: (pi as any).appLang ?? (prefs as any).appLang,
+      appTheme: (pi as any).appTheme ?? (prefs as any).appTheme,
+      favX01: (pi as any).favX01 ?? (prefs as any).favX01,
+      favDoubleOut: (pi as any).favDoubleOut ?? (prefs as any).favDoubleOut,
+      ttsVoice: (pi as any).ttsVoice ?? (prefs as any).ttsVoice,
+      sfxVolume: (pi as any).sfxVolume ?? (prefs as any).sfxVolume,
     };
   }, [
     (active as any)?.id,
@@ -2442,6 +2539,12 @@ function PrivateInfoBlock({
     (active as any)?.privateInfo?.favDoubleOut,
     (active as any)?.privateInfo?.ttsVoice,
     (active as any)?.privateInfo?.sfxVolume,
+    (active as any)?.preferences?.appLang,
+    (active as any)?.preferences?.appTheme,
+    (active as any)?.preferences?.favX01,
+    (active as any)?.preferences?.favDoubleOut,
+    (active as any)?.preferences?.ttsVoice,
+    (active as any)?.preferences?.sfxVolume,
   ]);
 
   const [fields, setFields] = React.useState<PrivateInfo>(initial);
@@ -2451,22 +2554,16 @@ function PrivateInfoBlock({
   const [newPass2, setNewPass2] = React.useState("");
   const [passError, setPassError] = React.useState<string | null>(null);
 
-  // ✅ reset UNIQUEMENT quand on change de profil actif (id)
-  const lastIdRef = React.useRef<string>("");
+  // ✅ resynchronise le formulaire quand la source active change
+  // (important pour appareil B : les données online arrivent parfois APRES le premier render)
+  const initialSig = React.useMemo(() => JSON.stringify({ ...initial, password: "" }), [initial]);
 
   React.useEffect(() => {
-    const id = String((active as any)?.id || "");
-    if (!id) return;
-
-    if (lastIdRef.current !== id) {
-      lastIdRef.current = id;
-      setFields(initial);
-      setNewPass("");
-      setNewPass2("");
-      setPassError(null);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [(active as any)?.id]); // <-- seulement l'id
+    setFields(initial);
+    setNewPass("");
+    setNewPass2("");
+    setPassError(null);
+  }, [initialSig]);
 function handleChange<K extends keyof PrivateInfo>(key: K, value: string) {
     setFields((f) => ({ ...f, [key]: value }));
   }
@@ -2623,6 +2720,7 @@ function handleChange<K extends keyof PrivateInfo>(key: K, value: string) {
 
       <PlayerPrefsBlock
         active={active as any}
+        value={fields as any}
         onPatch={(patch: Partial<PlayerPrefs>) =>
           setFields((prev) => ({ ...prev, ...(patch as any) }))
         }
@@ -3683,9 +3781,9 @@ function LocalProfilesRefonte({
     const trimmedName = editName.trim();
     const trimmedCountry = editCountry.trim();
 
-    if (trimmedName) onRename(current.id, trimmedName);
-    onPatchPrivateInfo(current.id, { country: trimmedCountry || "" });
-    if (editFile) onAvatar(current.id, editFile);
+    if (trimmedName) await onRename(current.id, trimmedName);
+    await onPatchPrivateInfo(current.id, { country: trimmedCountry || "" });
+    if (editFile) await onAvatar(current.id, editFile);
 
     setIsEditing(false);
     setEditFile(null);
@@ -4296,7 +4394,6 @@ function AddLocalProfile({
     });
   
     if (!name.trim()) {
-      console.warn("[AddLocalProfile] blocked: name is empty");
       return;
     }
   

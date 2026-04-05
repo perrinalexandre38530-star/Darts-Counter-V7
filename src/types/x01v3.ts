@@ -96,7 +96,6 @@ export interface X01ConfigV3 {
     hitEnabled?: boolean;
     voiceEnabled?: boolean;
     voiceId?: string;
-    sfxVolume?: number;
   };
 }
 
