@@ -50,6 +50,7 @@ type TeamId = "gold" | "pink" | "blue" | "green";
 
 type Props = {
   profiles: Profile[];
+  activeProfileId?: string | null;
   onBack: () => void;
   onStart: (cfg: X01ConfigV3) => void;
   go?: (tab: any, params?: any) => void; // pour ouvrir "Créer BOT"
@@ -409,7 +410,7 @@ const PRO_BOTS: BotLite[] = [
   { id: "bot_pro_clayton", name: "The Ferret", botLevel: "Fort", avatarDataUrl: avatarTheFerret },
 ];
 
-export default function X01ConfigV3({ profiles, onBack, onStart, go }: Props) {
+export default function X01ConfigV3({ profiles, activeProfileId: activeProfileIdProp = null, onBack, onStart, go }: Props) {
   const { theme } = useTheme() as any;
   const { t } = useLang() as any;
 
@@ -430,7 +431,18 @@ export default function X01ConfigV3({ profiles, onBack, onStart, go }: Props) {
 
   const allProfiles: Profile[] = profiles ?? [];
   const currentProfile = useCurrentProfile<any>();
-  const activeProfileId = String(currentProfile?.id || "") || null;
+  const activeProfileId = React.useMemo(() => {
+    const fromProp = String(activeProfileIdProp || "").trim();
+    if (fromProp) return fromProp;
+    const fromContext = String(currentProfile?.id || "").trim();
+    if (fromContext) return fromContext;
+    try {
+      const fromWindow = String((window as any)?.__appStore?.store?.activeProfileId || "").trim();
+      return fromWindow || null;
+    } catch {
+      return null;
+    }
+  }, [activeProfileIdProp, currentProfile?.id]);
   const humanProfiles = React.useMemo(
     () => allProfiles.filter((p) => !(p as any).isBot),
     [allProfiles]
@@ -529,6 +541,7 @@ export default function X01ConfigV3({ profiles, onBack, onStart, go }: Props) {
 
   const startTouchedRef = React.useRef(false);
   const outTouchedRef = React.useRef(false);
+  const playersTouchedRef = React.useRef(false);
 
   const [startScore, setStartScore] = React.useState<301 | 501 | 701 | 901>(501);
   const [inMode, setInMode] = React.useState<InModeV3>("simple");
@@ -607,17 +620,21 @@ export default function X01ConfigV3({ profiles, onBack, onStart, go }: Props) {
     });
   }, [humanProfiles, botProfiles, preferredHumanProfiles, activeProfileId]);
 
+  React.useEffect(() => {
+    if (playersTouchedRef.current) return;
+    setSelectedIds(buildDefaultSelectedIds(preferredHumanProfiles, activeProfileId));
+  }, [preferredHumanProfiles, activeProfileId]);
+
   const prefProfile = React.useMemo(() => {
-    const firstHumanSelectedId =
-      selectedIds.find((id) => humanProfiles.some((p) => p.id === id)) ??
+    const forcedActiveId =
       activeProfileId ??
       preferredHumanProfiles[0]?.id ??
       humanProfiles[0]?.id ??
       null;
 
-    if (!firstHumanSelectedId) return null;
-    return humanProfiles.find((x) => x.id === firstHumanSelectedId) ?? null;
-  }, [selectedIds, humanProfiles, activeProfileId, preferredHumanProfiles]);
+    if (!forcedActiveId) return null;
+    return humanProfiles.find((x) => x.id === forcedActiveId) ?? null;
+  }, [humanProfiles, activeProfileId, preferredHumanProfiles]);
 
   const prefProfilePrefs = React.useMemo(
     () => extractProfilePrefs(prefProfile),
@@ -655,6 +672,7 @@ export default function X01ConfigV3({ profiles, onBack, onStart, go }: Props) {
 
   // ---- helpers sélection joueurs (humains + bots) ----
   function togglePlayer(id: string) {
+    playersTouchedRef.current = true;
     setSelectedIds((prev) => {
       const exists = prev.includes(id);
       const next = exists ? prev.filter((x) => x !== id) : [...prev, id];

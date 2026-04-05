@@ -138,6 +138,10 @@ function buildDedicatedAccountProfile(user: any, onlineProfile?: any, previous?:
     ...prevPI,
     ...buildPrivateInfoPatch(user, onlineProfile),
   };
+  const nextPrefs = {
+    ...((previous as any)?.preferences || {}),
+    ...(((onlineProfile as any)?.preferences || {}) as Record<string, any>),
+  };
 
   return writePrivateInfo(
     {
@@ -151,8 +155,9 @@ function buildDedicatedAccountProfile(user: any, onlineProfile?: any, previous?:
       city: onlineProfile?.city ?? previous?.city ?? prevPI?.city ?? "",
       phone: onlineProfile?.phone ?? previous?.phone ?? prevPI?.phone ?? "",
       country: onlineProfile?.country || previous?.country || prevPI?.country || "FR",
-      avatarDataUrl: avatar || previous?.avatarDataUrl || previous?.avatarUrl,
-      avatarUrl: avatar || previous?.avatarUrl || previous?.avatarDataUrl,
+      avatarDataUrl: previous?.avatarDataUrl || avatar || previous?.avatarUrl,
+      avatarUrl: previous?.avatarUrl || avatar || previous?.avatarDataUrl,
+      preferences: nextPrefs,
       createdAt: previous?.createdAt || Date.now(),
       updatedAt: Date.now(),
       stats: {

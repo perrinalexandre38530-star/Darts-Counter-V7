@@ -485,18 +485,10 @@ async function uploadLocalProfileAvatarToSupabase(
   profileId: string,
   dataUrl: string
 ): Promise<string | null> {
-  try {
-    const uploaded = await onlineApi.uploadAvatarImage({
-      dataUrl,
-      folder: `local/${userId}`,
-      updateProfile: false,
-    });
-    const publicUrl = String(uploaded?.publicUrl || "").trim();
-    if (publicUrl) return publicUrl;
-  } catch (e) {
-    console.warn("[avatars] onlineApi upload failed, fallback storage", e);
-  }
-
+  // IMPORTANT:
+  // - En mode NAS, onlineApi.uploadAvatarImage() passe par /profiles/avatar
+  // - Cet endpoint met à jour l'avatar DU COMPTE et mélange donc avatar compte / avatar profil local
+  // - Pour les profils locaux, on utilise uniquement un upload de stockage public dédié
   try {
     const blob = await dataUrlToBlob(dataUrl);
     const ext =
@@ -515,14 +507,14 @@ async function uploadLocalProfileAvatarToSupabase(
       .upload(path, blob, { upsert: true, contentType: blob.type || "image/png" });
 
     if (upErr) {
-      console.warn("[avatars] upload failed", upErr);
+      console.warn("[avatars] local profile storage upload failed", upErr);
       return null;
     }
 
     const { data } = supabase.storage.from("avatars").getPublicUrl(path);
     return data?.publicUrl || null;
   } catch (e) {
-    console.warn("[avatars] upload exception", e);
+    console.warn("[avatars] local profile upload exception", e);
     return null;
   }
 }
@@ -1486,7 +1478,7 @@ React.useEffect(() => {
       password: "",
     } as PrivateInfo;
 
-    // ✅ IMPORTANT: on persiste AUSSI en local
+    // ✅ IMPORTANT: on persiste AUSSI en local, immédiatement, avec un snapshot complet
     // + on prépare un seed complet pour le snapshot cloud (évite de flusher un store "ancien")
     const nextProfiles = (profiles || []).map((p: any) =>
       p?.id === active.id
@@ -1514,8 +1506,11 @@ React.useEffect(() => {
         : p
     );
 
-    patchActivePrivateInfo({ ...(localPatch as any) });
-    patchActivePrefs({ ...(localPatch as any) });
+    const nextStoreLocal = { ...(store as any), profiles: nextProfiles };
+    update(() => nextStoreLocal);
+    setProfilesSafe(() => nextProfiles as any);
+    try { await saveStore(nextStoreLocal as any); } catch {}
+    try { await flushCloud("profile_save_local", nextStoreLocal as any); } catch {}
 
     if (patch.nickname && patch.nickname.trim() && patch.nickname !== active.name) {
       renameProfile(active.id, patch.nickname.trim());
@@ -3238,30 +3233,28 @@ function UnifiedAuthBlock({
         }) || null;
     }
 
-    // 5) Aucun profil local -> on réutilise le premier, ou on en crée un
+    // 5) Aucun profil local déjà lié -> on crée TOUJOURS un profil compte dédié.
+    // On ne détourne plus le premier profil local existant, sinon on mélange avatars,
+    // préférences et données entre profil actif et profils locaux.
     if (!match) {
-      if (profiles.length > 0) {
-        match = profiles[0] as any;
-      } else {
-        let displayName = (emailNorm ? emailNorm.split("@")[0] : "Joueur");
-        try {
-          const session = await onlineApi.getCurrentSession();
-          displayName = session?.user.user_metadata?.full_name || session?.user.user_metadata?.name || session?.user.user_metadata?.nickname || session?.user.nickname || (session?.user.email ? String(session.user.email).split("@")[0] : "Joueur");
-        } catch (err) {
-          console.warn("[profiles] getCurrentSession after login error:", err);
-        }
-
-        const privateInfo: Partial<PrivateInfo> = {
-          email: emailNorm,
-          // ⚠️ on ne stocke PAS le mot de passe en local (sécurité)
-          password: "",
-          onlineUserId: uid,
-          onlineEmail: emailNorm,
-        };
-
-        onCreate(displayName, null, privateInfo);
-        return;
+      let displayName = (emailNorm ? emailNorm.split("@")[0] : "Joueur");
+      try {
+        const session = await onlineApi.getCurrentSession();
+        displayName = session?.user.user_metadata?.full_name || session?.user.user_metadata?.name || session?.user.user_metadata?.nickname || session?.user.nickname || (session?.user.email ? String(session.user.email).split("@")[0] : "Joueur");
+      } catch (err) {
+        console.warn("[profiles] getCurrentSession after login error:", err);
       }
+
+      const privateInfo: Partial<PrivateInfo> = {
+        email: emailNorm,
+        // ⚠️ on ne stocke PAS le mot de passe en local (sécurité)
+        password: "",
+        onlineUserId: uid,
+        onlineEmail: emailNorm,
+      };
+
+      onCreate(displayName, null, privateInfo);
+      return;
     }
 
     // 6) Patch liaison UID (et on nettoie le mot de passe local)

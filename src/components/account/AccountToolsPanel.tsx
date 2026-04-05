@@ -24,6 +24,34 @@ type Props = {
   go?: (tab: any, params?: any) => void;
 };
 
+const PRESERVED_AUTH_STORAGE_KEYS = [
+  "dc_nas_access_token_v1",
+  "dc_nas_refresh_token_v1",
+  "dc_online_auth_supabase_v1",
+  "supabase.auth.token",
+] as const;
+
+function snapshotPreservedAuthStorage() {
+  const out: Record<string, string> = {};
+  try {
+    for (const key of PRESERVED_AUTH_STORAGE_KEYS) {
+      const value = window.localStorage.getItem(key);
+      if (typeof value === "string" && value.length > 0) out[key] = value;
+    }
+  } catch {}
+  return out;
+}
+
+function restorePreservedAuthStorage(snapshot: Record<string, string>) {
+  try {
+    for (const [key, value] of Object.entries(snapshot || {})) {
+      if (typeof value === "string" && value.length > 0) {
+        window.localStorage.setItem(key, value);
+      }
+    }
+  } catch {}
+}
+
 type DiagState = {
   sessionStatus: "signed_in" | "signed_out" | "checking";
   email: string;
@@ -130,7 +158,9 @@ async function purgeLocalOnlyKeepSession() {
     if (typeof window === "undefined") return;
 
     try {
+      const preservedAuth = snapshotPreservedAuthStorage();
       window.localStorage.clear();
+      restorePreservedAuthStorage(preservedAuth);
       window.sessionStorage.clear();
     } catch {}
 

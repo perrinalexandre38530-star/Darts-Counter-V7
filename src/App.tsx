@@ -3265,6 +3265,7 @@ case "babyfoot_team_edit":
         page = (
           <X01ConfigV3
             profiles={store.profiles}
+            activeProfileId={store.activeProfileId ?? null}
             onBack={() => go("games")}
             onStart={(cfg) => {
               setX01ConfigV3(cfg);
