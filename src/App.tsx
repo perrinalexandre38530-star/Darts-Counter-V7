@@ -1480,7 +1480,21 @@ useEffect(() => {
       console.warn("[online→local] bridge failed", e);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [loading, cloudHydrated, online?.ready, online?.status, (online as any)?.user?.id, (online as any)?.profile?.nickname, (online as any)?.profile?.avatarUrl, tab]);
+  }, [
+    loading,
+    cloudHydrated,
+    online?.ready,
+    online?.status,
+    (online as any)?.user?.id,
+    (online as any)?.profile?.nickname,
+    (online as any)?.profile?.displayName,
+    (online as any)?.profile?.avatarUrl,
+    (online as any)?.profile?.country,
+    (online as any)?.profile?.updatedAt,
+    JSON.stringify(((online as any)?.profile?.preferences || {})),
+    JSON.stringify(((online as any)?.profile?.privateInfo || {})),
+    tab,
+  ]);
 
   // ✅ SPORT-AWARE : utilisé pour Home/Games (runtime-safe)
   const sportApi: any = useSport() as any;
@@ -2114,10 +2128,10 @@ useEffect(() => {
     if (!cloudHydrated) return;
     if (!online?.ready || online.status !== "signed_in") return;
 
-
-    if (cloudSyncOnRef.current) {
-      console.log("⚠️ fallback push autorisé malgré cloudSync actif");
-    }
+    // En mode normal, cloudSync gère déjà les pushes via emitCloudChange.
+    // On évite donc un deuxième push fallback qui duplique les requêtes,
+    // spamme la console et peut renvoyer des snapshots plus anciens.
+    if (cloudSyncOnRef.current) return;
 
     if (cloudPushTimerRef.current) {
       window.clearTimeout(cloudPushTimerRef.current);

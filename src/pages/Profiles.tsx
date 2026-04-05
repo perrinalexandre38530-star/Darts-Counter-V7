@@ -1092,12 +1092,11 @@ React.useEffect(() => {
       }
 
       try {
-        // folder par user (et sous-dossier locals) => évite collisions
-        const { publicUrl } = await onlineApi.uploadAvatarImage({
-          dataUrl,
-          folder: `${uid}/locals`,
-          updateProfile: false,
-        });
+        // IMPORTANT:
+        // - un avatar de profil local ne doit JAMAIS appeler l'endpoint avatar du compte NAS
+        // - sinon l'avatar du profil actif / du compte connecté se fait écraser
+        // - on passe donc toujours par un upload de stockage public dédié au profil local
+        const publicUrl = await uploadLocalProfileAvatarToSupabase(uid, pid, dataUrl);
 
         if (!publicUrl) {
           avatarUploadDoneRef.current.add(pid);
