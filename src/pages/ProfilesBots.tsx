@@ -7,7 +7,7 @@ import { nanoid } from "nanoid";
 import type { Store } from "../lib/types";
 import { useTheme } from "../contexts/ThemeContext";
 import { useLang } from "../contexts/LangContext";
-import { loadStoredBots, saveStoredBots, type StoredBot, type StoredBotLevel } from "../lib/bots";
+import { loadStoredBots, saveStoredBots, subscribeBotsChange, type StoredBot, type StoredBotLevel } from "../lib/bots";
 
 export type Bot = StoredBot;
 export type BotLevel = StoredBotLevel;
@@ -74,9 +74,13 @@ export default function ProfilesBots({ store, go }: Props) {
   const [selectedBotId, setSelectedBotId] = React.useState<string>("");
 
   React.useEffect(() => {
-    const loaded = loadBots();
-    setBots(loaded);
-    setSelectedBotId((prev) => prev || loaded[0]?.id || "");
+    const refresh = () => {
+      const loaded = loadBots();
+      setBots(loaded);
+      setSelectedBotId((prev) => (loaded.some((b) => b.id === prev) ? prev : loaded[0]?.id || ""));
+    };
+    refresh();
+    return subscribeBotsChange(refresh);
   }, []);
 
   function persist(next: Bot[]) {

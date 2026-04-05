@@ -769,32 +769,33 @@ export default function Profiles({
       appLang?: Lang;
       appTheme?: ThemeId;
     };
-    const prefs = (((p as any).preferences || {}) as {
-      appLang?: Lang;
-      appTheme?: ThemeId;
-    });
-    const nextLang = (pi.appLang ?? prefs.appLang) as Lang | undefined;
-    const nextTheme = (pi.appTheme ?? prefs.appTheme) as ThemeId | undefined;
 
-    if (nextLang) {
+    if (pi.appLang) {
       try {
-        setLang(nextLang);
+        setLang(pi.appLang);
       } catch {
         /* ignore */
       }
     }
-    if (nextTheme) {
+    if (pi.appTheme) {
       try {
-        setThemeId(nextTheme);
+        setThemeId(pi.appTheme);
       } catch {
         /* ignore */
       }
     }
   }
 
-  function renameProfile(id: string, name: string) {
+  async function renameProfile(id: string, name: string) {
+    let nextStoreSnapshot: any = null;
+    update((s: any) => {
+      const nextProfiles = (Array.isArray(s?.profiles) ? s.profiles : []).map((p: any) => (p.id === id ? { ...p, name } : p));
+      nextStoreSnapshot = { ...s, profiles: nextProfiles };
+      return nextStoreSnapshot;
+    });
     setProfilesSafe((arr) => arr.map((p) => (p.id === id ? { ...p, name } : p)));
-    try { (window as any).__flushCloudNow?.(); } catch {}
+    try { if (nextStoreSnapshot) await saveStore(nextStoreSnapshot); } catch {}
+    try { await (window as any).__flushCloudNow?.("profiles_rename", nextStoreSnapshot); } catch {}
   }
 
   function clearNasProfileOnboardingFlag(expectedUid?: string | null) {
@@ -1333,17 +1334,14 @@ React.useEffect(() => {
   React.useEffect(() => {
     if (!active) return;
     const pi = ((active as any).privateInfo || {}) as PrivateInfo;
-    const prefs = (((active as any).preferences || {}) as Partial<PrivateInfo>);
-    const nextLang = (pi.appLang ?? prefs.appLang) as Lang | undefined;
-    const nextTheme = (pi.appTheme ?? prefs.appTheme) as ThemeId | undefined;
-    if (nextLang && nextLang !== lang) {
+    if (pi.appLang && pi.appLang !== lang) {
       try {
-        setLang(nextLang);
+        setLang(pi.appLang);
       } catch {}
     }
-    if (nextTheme && nextTheme !== themeId) {
+    if (pi.appTheme && pi.appTheme !== themeId) {
       try {
-        setThemeId(nextTheme);
+        setThemeId(pi.appTheme);
       } catch {}
     }
   }, [active, lang, themeId, setLang, setThemeId]);
@@ -1398,7 +1396,17 @@ React.useEffect(() => {
   }, [go]);
 
   // ✅ helper générique : patcher privateInfo de n’importe quel profil
-  function patchProfilePrivateInfo(id: string, patch: Partial<PrivateInfo>) {
+  async function patchProfilePrivateInfo(id: string, patch: Partial<PrivateInfo>) {
+    let nextStoreSnapshot: any = null;
+    update((s: any) => {
+      const nextProfiles = (Array.isArray(s?.profiles) ? s.profiles : []).map((p: any) =>
+        p.id === id
+          ? { ...(p || {}), privateInfo: { ...((p as any)?.privateInfo || {}), ...patch } }
+          : p
+      );
+      nextStoreSnapshot = { ...s, profiles: nextProfiles };
+      return nextStoreSnapshot;
+    });
     setProfilesSafe((arr) =>
       arr.map((p) =>
         p.id === id
@@ -1412,6 +1420,8 @@ React.useEffect(() => {
           : p
       )
     );
+    try { if (nextStoreSnapshot) await saveStore(nextStoreSnapshot); } catch {}
+    try { await (window as any).__flushCloudNow?.("profiles_privateInfo", nextStoreSnapshot); } catch {}
   }
 
   function patchActivePrivateInfo(patch: Record<string, any>) {
@@ -1486,13 +1496,6 @@ React.useEffect(() => {
     if (patch.nickname && patch.nickname.trim() && patch.nickname !== active.name) {
       renameProfile(active.id, patch.nickname.trim());
     }
-
-    try {
-      if (patch.appLang) setLang(patch.appLang as Lang);
-    } catch {}
-    try {
-      if (patch.appTheme) setThemeId(patch.appTheme as ThemeId);
-    } catch {}
 
     if (auth.status === "signed_in") {
       try {
@@ -3778,9 +3781,9 @@ function LocalProfilesRefonte({
     const trimmedName = editName.trim();
     const trimmedCountry = editCountry.trim();
 
-    if (trimmedName) onRename(current.id, trimmedName);
-    onPatchPrivateInfo(current.id, { country: trimmedCountry || "" });
-    if (editFile) onAvatar(current.id, editFile);
+    if (trimmedName) await onRename(current.id, trimmedName);
+    await onPatchPrivateInfo(current.id, { country: trimmedCountry || "" });
+    if (editFile) await onAvatar(current.id, editFile);
 
     setIsEditing(false);
     setEditFile(null);

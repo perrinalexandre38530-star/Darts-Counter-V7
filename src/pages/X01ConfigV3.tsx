@@ -25,7 +25,6 @@ import {
 } from "../lib/dartSetsStore";
 import { x01EnsureAudioUnlocked, x01SfxV3Preload } from "../lib/x01SfxV3";
 import { SCORE_INPUT_LS_KEY, type ScoreInputMethod } from "../lib/scoreInput/types";
-import { useCurrentProfile } from "../hooks/useCurrentProfile";
 
 // 🔽 IMPORTS DE TOUS LES AVATARS BOTS PRO
 import avatarGreenMachine from "../assets/avatars/bots-pro/green-machine.png";
@@ -422,12 +421,9 @@ export default function X01ConfigV3({ profiles, onBack, onStart, go }: Props) {
   }, [allProfiles, botProfiles]);
 
   // ---- état local des paramètres ----
-  const [startScore, setStartScore] = React.useState<301 | 501 | 701 | 901>(() => {
-    const candidate = Number(currentPrefs?.favX01);
-    return START_SCORES.includes(candidate as any) ? (candidate as any) : 501;
-  });
+  const [startScore, setStartScore] = React.useState<301 | 501 | 701 | 901>(501);
   const [inMode, setInMode] = React.useState<InModeV3>("simple");
-  const [outMode, setOutMode] = React.useState<OutModeV3>(() => (currentPrefs?.favDoubleOut === false ? "simple" : "double"));
+  const [outMode, setOutMode] = React.useState<OutModeV3>("double");
   const [legsPerSet, setLegsPerSet] = React.useState<number>(3);
   const [setsToWin, setSetsToWin] = React.useState<number>(1);
   const [serveMode, setServeMode] = React.useState<ServiceModeV3>("alternate");
@@ -437,10 +433,7 @@ export default function X01ConfigV3({ profiles, onBack, onStart, go }: Props) {
   const [arcadeEnabled, setArcadeEnabled] = React.useState<boolean>(true);
   const [hitEnabled, setHitEnabled] = React.useState<boolean>(true);
   const [voiceEnabled, setVoiceEnabled] = React.useState<boolean>(true);
-  const [voiceId, setVoiceId] = React.useState<string>(() => {
-    const v = String(currentPrefs?.ttsVoice || "default").trim();
-    return VOICE_OPTIONS.some((x) => x.id === v) ? v : "default";
-  });
+  const [voiceId, setVoiceId] = React.useState<string>("default");
 
   // ---- NEW : COMPTAGE EXTERNE ----
   const [externalScoringEnabled, setExternalScoringEnabled] = React.useState<boolean>(false);
@@ -485,16 +478,6 @@ export default function X01ConfigV3({ profiles, onBack, onStart, go }: Props) {
 
   // évite d’écraser le choix manuel si on change de joueur sélectionné
   const voiceTouchedRef = React.useRef(false);
-
-  React.useEffect(() => {
-    const nextScore = Number(currentPrefs?.favX01);
-    if (START_SCORES.includes(nextScore as any)) setStartScore(nextScore as any);
-    setOutMode(currentPrefs?.favDoubleOut === false ? "simple" : "double");
-    const nextVoice = String(currentPrefs?.ttsVoice || "").trim();
-    if (!voiceTouchedRef.current && nextVoice && VOICE_OPTIONS.some((x) => x.id === nextVoice)) {
-      setVoiceId(nextVoice);
-    }
-  }, [currentPrefs?.favX01, currentPrefs?.favDoubleOut, currentPrefs?.ttsVoice]);
 
   const [selectedIds, setSelectedIds] = React.useState<string[]>(() => {
     if (humanProfiles.length >= 2) return [humanProfiles[0].id, humanProfiles[1].id];

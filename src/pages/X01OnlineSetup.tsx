@@ -16,6 +16,7 @@
 import React from "react";
 import type { Store } from "../lib/types";
 import { useOnlineRoom } from "../online/client/useOnlineRoom";
+import { useCurrentProfile } from "../hooks/useCurrentProfile";
 
 type StartScore = 301 | 501 | 701 | 901;
 
@@ -26,15 +27,13 @@ type Props = {
 };
 
 export default function X01OnlineSetup({ store, go, params }: Props) {
+  const currentProfile = useCurrentProfile() as any;
   // Profil actif (ou premier profil en fallback)
   const activeProfile =
+    currentProfile ||
     (store.profiles || []).find((p) => p.id === store.activeProfileId) ||
     (store.profiles || [])[0] ||
     null;
-  const activePrefs: any = {
-    ...(((activeProfile as any)?.preferences) || {}),
-    ...(((activeProfile as any)?.privateInfo) || {}),
-  };
 
   // Code salon reçu via params.lobbyCode
   const rawCode = (params?.lobbyCode || "").toString().trim().toUpperCase();
@@ -45,9 +44,10 @@ export default function X01OnlineSetup({ store, go, params }: Props) {
   // --------------------------------------------
   const allowedStarts: StartScore[] = [301, 501, 701, 901];
 
+  const prefs: any = { ...((activeProfile as any)?.preferences || {}), ...((activeProfile as any)?.privateInfo || {}) };
   const startRaw: number =
     (params?.start as number | undefined) ??
-    (activePrefs?.favX01 as number | undefined) ??
+    (Number(prefs?.favX01) as number | undefined) ??
     (store.settings?.defaultX01 as number | undefined) ??
     501;
 
@@ -57,7 +57,9 @@ export default function X01OnlineSetup({ store, go, params }: Props) {
 
   const defaultDoubleOut: boolean =
     (params?.doubleOut as boolean | undefined) ??
-    (typeof activePrefs?.favDoubleOut === "boolean" ? activePrefs.favDoubleOut : undefined) ??
+    (typeof prefs?.favDoubleOut === "string"
+      ? prefs.favDoubleOut.toLowerCase() === "true"
+      : (prefs?.favDoubleOut as boolean | undefined)) ??
     (store.settings?.doubleOut ?? true);
 
   // Hook WebSocket temps réel
