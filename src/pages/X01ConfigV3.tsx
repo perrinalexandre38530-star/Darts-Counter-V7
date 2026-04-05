@@ -64,6 +64,36 @@ const TEAM_LABELS: Record<TeamId, string> = {
   green: "Team Green",
 };
 
+
+function parseBoolLoose(v: any): boolean | undefined {
+  if (typeof v === "boolean") return v;
+  if (typeof v === "string") {
+    const s = v.trim().toLowerCase();
+    if (["true","1","yes","y","on"].includes(s)) return true;
+    if (["false","0","no","n","off"].includes(s)) return false;
+  }
+  return undefined;
+}
+
+function normalizeVoicePref(v: any): string | undefined {
+  const s = String(v ?? "").trim().toLowerCase();
+  if (!s) return undefined;
+  if (["default","defaut","défaut"].includes(s)) return "default";
+  if (["female","feminine","féminine","voix féminine","voix feminine"].includes(s)) return "female";
+  if (["male","masculine","voix masculine"].includes(s)) return "male";
+  if (["robot","ia","ai"].includes(s)) return "robot";
+  return undefined;
+}
+
+function extractPlayerPrefs(profile: any): { favX01?: 301|501|701|901; favDoubleOut?: boolean; ttsVoice?: string } {
+  const prefs = { ...(profile?.preferences || {}), ...(profile?.privateInfo || {}) };
+  const rawScore = Number(prefs?.favX01);
+  const favX01 = ([301,501,701,901].includes(rawScore) ? rawScore : undefined) as any;
+  const favDoubleOut = parseBoolLoose(prefs?.favDoubleOut);
+  const ttsVoice = normalizeVoicePref(prefs?.ttsVoice ?? profile?.ttsVoice ?? profile?.voiceId ?? profile?.voice ?? profile?.tts);
+  return { favX01, favDoubleOut, ttsVoice };
+}
+
 const TEAM_COLORS: Record<TeamId, string> = {
   gold: "#f7c85c",
   pink: "#ff4fa2",
@@ -501,6 +531,23 @@ export default function X01ConfigV3({ profiles, onBack, onStart, go }: Props) {
 
     const candidate: string | undefined = p.ttsVoice ?? p.voiceId ?? p.voice ?? p.tts ?? undefined;
     if (candidate && typeof candidate === "string") setVoiceId(candidate);
+  }, [selectedIds, humanProfiles]);
+
+  // ⚙️ pré-remplit score de départ / mode de sortie / voix depuis le 1er profil humain sélectionné
+  React.useEffect(() => {
+    const firstHumanSelectedId =
+      selectedIds.find((id) => humanProfiles.some((p) => p.id === id)) ??
+      humanProfiles[0]?.id ??
+      null;
+
+    if (!firstHumanSelectedId) return;
+    const p: any = humanProfiles.find((x) => x.id === firstHumanSelectedId);
+    if (!p) return;
+
+    const prefs = extractPlayerPrefs(p);
+    if (prefs.favX01) setStartScore(prefs.favX01);
+    if (typeof prefs.favDoubleOut === "boolean") setOutMode(prefs.favDoubleOut ? "double" : "simple");
+    if (!voiceTouchedRef.current && prefs.ttsVoice) setVoiceId(prefs.ttsVoice);
   }, [selectedIds, humanProfiles]);
 
   // playerId -> teamId
