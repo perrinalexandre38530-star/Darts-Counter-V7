@@ -90,24 +90,46 @@ function authHeaders(extra?: Record<string, string>): Record<string, string> {
   return headers;
 }
 
-async function apiFetch(path: string, init?: RequestInit): Promise<any> {
+type NasFetchInit = RequestInit & { timeoutMs?: number };
+
+async function apiFetch(path: string, init?: NasFetchInit): Promise<any> {
   if (!NAS_API_URL) {
     throw new Error("VITE_NAS_API_URL manquant.");
   }
 
   const url = `${NAS_API_URL}${path.startsWith("/") ? path : `/${path}`}`;
 
+  const timeoutMs = Math.max(0, Number((init as any)?.timeoutMs ?? 0) || 0);
+  const ctrl = timeoutMs > 0 ? new AbortController() : null;
+  const timer = ctrl
+    ? window.setTimeout(() => {
+        try {
+          ctrl.abort(new DOMException("timeout", "AbortError"));
+        } catch {
+          ctrl.abort();
+        }
+      }, timeoutMs)
+    : null;
+
   let res: Response;
   try {
     res = await fetch(url, {
       ...init,
+      signal: ctrl?.signal ?? init?.signal,
       headers: {
         ...authHeaders(),
         ...((init?.headers as Record<string, string> | undefined) || {}),
       },
     });
   } catch (e: any) {
+    const msg = String(e?.message || "");
+    const aborted = e?.name === "AbortError" || /abort|timeout/i.test(msg);
+    if (aborted && timeoutMs > 0) {
+      throw new Error(`Backend NAS trop lent (timeout ${timeoutMs}ms).`);
+    }
     throw new Error(e?.message || "Backend NAS injoignable.");
+  } finally {
+    if (timer) window.clearTimeout(timer);
   }
 
   const text = await res.text();
@@ -316,7 +338,7 @@ export async function nasSignup(payload: SignupPayload): Promise<AuthSession> {
   return session;
 }
 
-export async function nasRestoreSession(): Promise<AuthSession | null> {
+export async function nasRestoreSession(opts?: { timeoutMs?: number }): Promise<AuthSession | null> {
   const cached = readJson<AuthSession | null>(readLs(NAS_AUTH_SESSION_KEY), null);
 
   let token = authToken();
@@ -328,7 +350,7 @@ export async function nasRestoreSession(): Promise<AuthSession | null> {
   if (!token) return null;
 
   try {
-    const json = await apiFetch("/auth/me", { method: "GET" });
+    const json = await apiFetch("/auth/me", { method: "GET", timeoutMs: opts?.timeoutMs ?? 2200 });
     const probe = buildSessionFromResponse(json, json?.user?.email);
     const session = buildSessionFromResponse(
       {

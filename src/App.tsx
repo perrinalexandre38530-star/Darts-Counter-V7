@@ -92,7 +92,7 @@ import CrashCatcher from "./components/CrashCatcher";
 import MobileErrorOverlay from "./components/MobileErrorOverlay";
 
 // Persistance (IndexedDB via storage.ts)
-import { loadStore, saveStore, exportCloudSnapshot, importCloudSnapshot, installLocalStorageDcHook, setStorageUser } from "./lib/storage";
+import { loadStore, saveStore, exportCloudSnapshot, importCloudSnapshot, installLocalStorageDcHook, setStorageUser, getStorageUser } from "./lib/storage";
 import { setCrashContext } from "./lib/crashReporter";
 import { safeJsonParse, safeJsonStringify } from "./lib/safeJson";
 import { safeArray } from "./utils/safeArray";
@@ -1438,6 +1438,8 @@ useEffect(() => {
 
   const [routeParams, setRouteParams] = React.useState<any>(null);
   const [loading, setLoading] = React.useState(true);
+  const loadedStoreScopeRef = React.useRef<string | null>(null);
+  const bootStoreLoadedRef = React.useRef(false);
 
 
   // ✅ ONLINE→LOCAL BRIDGE (COMPTE UTILISATEUR UNIQUE)
@@ -1563,10 +1565,40 @@ useEffect(() => {
   React.useEffect(() => {
     ensurePersisted().catch(() => {});
     purgeLegacyLocalStorageIfNeeded();
-    try {
-      warmAggOnce();
-    } catch {}
   }, []);
+
+  React.useEffect(() => {
+    if (loading) return;
+    if (showSplash) return;
+
+    let cancelled = false;
+
+    const run = () => {
+      if (cancelled) return;
+      try {
+        warmAggOnce();
+      } catch {}
+    };
+
+    try {
+      const ric = (window as any).requestIdleCallback;
+      if (typeof ric === "function") {
+        const id = ric(() => run(), { timeout: 1800 });
+        return () => {
+          cancelled = true;
+          try {
+            (window as any).cancelIdleCallback?.(id);
+          } catch {}
+        };
+      }
+    } catch {}
+
+    const t = window.setTimeout(run, 350);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(t);
+    };
+  }, [loading, showSplash]);
 
   /* Restore online session (pour Supabase côté SDK) */
   React.useEffect(() => {
@@ -1717,13 +1749,22 @@ useEffect(() => {
   React.useEffect(() => {
     let cancelled = false;
 
+    if (loading) return;
     if (!online?.ready) return;
 
     const uid = String((online as any)?.user?.id || "").trim();
     if (cloudHydratedUserRef.current === uid) return;
-    cloudHydratedUserRef.current = uid;
 
-    try { setStorageUser(uid || null); } catch {}
+    const nextScope = uid || null;
+    if (bootStoreLoadedRef.current && loadedStoreScopeRef.current === nextScope) {
+      cloudHydratedUserRef.current = uid;
+      return;
+    }
+
+    cloudHydratedUserRef.current = uid;
+    loadedStoreScopeRef.current = nextScope;
+
+    try { setStorageUser(nextScope); } catch {}
     setCloudHydrated(false);
 
     (async () => {
@@ -1743,16 +1784,20 @@ useEffect(() => {
           : { ...initialStore };
 
         setStore(next);
+        bootStoreLoadedRef.current = true;
       } catch (e) {
         console.warn("[auth-store] reload failed", e);
-        if (!cancelled) setStore({ ...initialStore });
+        if (!cancelled) {
+          setStore({ ...initialStore });
+          bootStoreLoadedRef.current = true;
+        }
       }
     })();
 
     return () => {
       cancelled = true;
     };
-  }, [online?.ready, (online as any)?.user?.id]);
+  }, [loading, online?.ready, (online as any)?.user?.id]);
   React.useEffect(() => {
     try {
       (window as any).__appGo = go;
@@ -1767,6 +1812,8 @@ useEffect(() => {
   /* Load store from IDB at boot + gate */
   React.useEffect(() => {
     let mounted = true;
+    bootStoreLoadedRef.current = false;
+    loadedStoreScopeRef.current = getStorageUser();
     (async () => {
       try {
         const saved = await loadStore<Store>();
@@ -1820,6 +1867,7 @@ useEffect(() => {
           setTab("account_start");
         }
       } finally {
+        bootStoreLoadedRef.current = true;
         if (mounted) setLoading(false);
       }
     })();
@@ -2165,10 +2213,10 @@ useEffect(() => {
       }
     };
 
-    if (!loading) schedule();
+    if (!loading && !showSplash) schedule();
     window.addEventListener("dc-history-updated", schedule);
     return () => window.removeEventListener("dc-history-updated", schedule);
-  }, [loading]);
+  }, [loading, showSplash]);
 
   /* --------------------------------------------
       pushHistory (FIN DE PARTIE)
@@ -2685,13 +2733,17 @@ try {
     }
   }
 
+  const handleSplashFinish = React.useCallback(() => {
+    setShowSplash(false);
+  }, []);
+
   const historyForUI = React.useMemo(
     () => filterValidHistory(safeArray(store?.history)).map((r: any) => withAvatars(r, safeArray(store?.profiles))),
     [store?.history, store?.profiles]
   );
 
   if (showSplash) {
-    return <SplashScreen durationMs={6500} fadeOutMs={700} allowAudioOverflow={true} onFinish={() => setShowSplash(false)} />;
+    return <SplashScreen durationMs={6500} fadeOutMs={700} allowAudioOverflow={true} onFinish={handleSplashFinish} />;
   }
 
   /* --------------------------------------------

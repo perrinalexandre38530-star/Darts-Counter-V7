@@ -413,41 +413,51 @@ function isValidNasSession(session: AuthSession | null | undefined): session is 
   return !!session && !!String(session?.token || "").trim() && !!String(session?.user?.id || session?.userId || "").trim();
 }
 
-async function ensureNasSession(): Promise<AuthSession> {
-  if (__nasEnsureInFlight) return __nasEnsureInFlight;
+function refreshNasSessionInBackground(reason: string) {
+  if (__nasEnsureInFlight) return;
 
   __nasEnsureInFlight = (async () => {
-    const cached = loadAuthFromLS();
-    if (isValidNasSession(cached)) {
-      __nasLastGoodSession = cached;
-      const nowTs = Date.now();
-
-      if (nowTs - __nasLastRestoreAt < NAS_RESTORE_MIN_INTERVAL_MS) {
-        return cached;
+    try {
+      const refreshed = await nasRestoreSession({ timeoutMs: 2200 });
+      if (isValidNasSession(refreshed)) {
+        __nasLastGoodSession = refreshed;
+        saveAuthToLS(refreshed);
+        return refreshed;
       }
-
-      try {
-        __nasLastRestoreAt = nowTs;
-        const refreshed = await nasRestoreSession();
-        if (isValidNasSession(refreshed)) {
-          __nasLastGoodSession = refreshed;
-          saveAuthToLS(refreshed);
-          return refreshed;
-        }
-      } catch (e) {
-        console.warn("[onlineApi] NAS restore soft-failed, keep cached auth", e);
-      }
-
-      return cached;
+      return null;
+    } catch (e) {
+      console.warn(`[onlineApi] NAS background restore skipped (${reason})`, e);
+      return null;
+    } finally {
+      __nasEnsureInFlight = null;
     }
+  })() as Promise<any>;
+}
 
+async function ensureNasSession(): Promise<AuthSession> {
+  const cached = loadAuthFromLS();
+  if (isValidNasSession(cached)) {
+    __nasLastGoodSession = cached;
     const nowTs = Date.now();
-    if (nowTs - __nasLastRestoreAt < NAS_RESTORE_MIN_INTERVAL_MS && isValidNasSession(__nasLastGoodSession)) {
-      return __nasLastGoodSession!;
+
+    if (nowTs - __nasLastRestoreAt >= NAS_RESTORE_MIN_INTERVAL_MS) {
+      __nasLastRestoreAt = nowTs;
+      refreshNasSessionInBackground("cached-session");
     }
 
+    return cached;
+  }
+
+  if (__nasEnsureInFlight) return __nasEnsureInFlight;
+
+  const nowTs = Date.now();
+  if (nowTs - __nasLastRestoreAt < NAS_RESTORE_MIN_INTERVAL_MS && isValidNasSession(__nasLastGoodSession)) {
+    return __nasLastGoodSession!;
+  }
+
+  __nasEnsureInFlight = (async () => {
     __nasLastRestoreAt = nowTs;
-    const session = await nasRestoreSession();
+    const session = await nasRestoreSession({ timeoutMs: 2200 });
     const token = String(session?.token || "").trim();
     const userId = String(session?.user?.id || session?.userId || "").trim();
 

@@ -19,10 +19,15 @@ type Props = {
 
 export default function SplashScreen({ onFinish, durationMs = 6500, fadeOutMs = 700 }: Props) {
   const aliveRef = React.useRef(true);
+  const onFinishRef = React.useRef(onFinish);
 
   const [glitchOn, setGlitchOn] = React.useState(false);
   const [pixelSeed, setPixelSeed] = React.useState(0);
   const [leaving, setLeaving] = React.useState(false);
+
+  React.useEffect(() => {
+    onFinishRef.current = onFinish;
+  }, [onFinish]);
 
   React.useEffect(() => {
     aliveRef.current = true;
@@ -70,7 +75,7 @@ export default function SplashScreen({ onFinish, durationMs = 6500, fadeOutMs = 
 
     const tDone = window.setTimeout(() => {
       if (!aliveRef.current) return;
-      onFinish();
+      onFinishRef.current?.();
     }, total);
 
     return () => {
@@ -79,7 +84,7 @@ export default function SplashScreen({ onFinish, durationMs = 6500, fadeOutMs = 
       window.clearTimeout(tDone);
       // ✅ ON NE TOUCHE PAS à l'audio ici (il doit continuer sur Home/Connexion)
     };
-  }, [onFinish, durationMs, fadeOutMs]);
+  }, [durationMs, fadeOutMs]);
 
   // ✨ Particules “pixels”
   const pixels = React.useMemo(() => {
