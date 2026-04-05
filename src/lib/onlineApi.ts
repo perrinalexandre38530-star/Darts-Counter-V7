@@ -940,6 +940,8 @@ async function updateProfile(patch: UpdateProfilePayload): Promise<OnlineProfile
   if (patch.city !== undefined) dbPatch.city = patch.city;
   if (patch.email !== undefined) dbPatch.email = patch.email;
   if (patch.phone !== undefined) dbPatch.phone = patch.phone;
+  if (patch.preferences !== undefined) dbPatch.preferences = patch.preferences;
+  if (patch.privateInfo !== undefined) dbPatch.private_info = patch.privateInfo;
 
   const upsertPayload: any = { id: userId, user_id: userId, ...dbPatch };
 

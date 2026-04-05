@@ -364,6 +364,19 @@ function mergeProfilesSafe<T extends { id: string }>(base: T[], incoming: T[]) {
   const a = Array.isArray(base) ? base : [];
   const b = Array.isArray(incoming) ? incoming : [];
 
+  const mergeDefined = (prevObj: any, nextObj: any) => {
+    const out: Record<string, any> = { ...(prevObj || {}) };
+    for (const [k, v] of Object.entries(nextObj || {})) {
+      if (v !== undefined) out[k] = v;
+    }
+    return out;
+  };
+
+  const pickField = (prevObj: any, nextObj: any, key: string) =>
+    Object.prototype.hasOwnProperty.call(nextObj || {}, key) && (nextObj as any)[key] !== undefined
+      ? (nextObj as any)[key]
+      : (prevObj as any)?.[key];
+
   const map = new Map<string, T>();
   for (const p of a) {
     if (p && typeof p.id === "string") map.set(p.id, p);
@@ -381,10 +394,12 @@ function mergeProfilesSafe<T extends { id: string }>(base: T[], incoming: T[]) {
       {
         ...prev,
         ...next,
-        privateInfo: {
-          ...(prev?.privateInfo || {}),
-          ...(next?.privateInfo || {}),
-        },
+        privateInfo: mergeDefined(prev?.privateInfo, next?.privateInfo),
+        preferences: mergeDefined(prev?.preferences, next?.preferences),
+        avatarUrl: pickField(prev, next, "avatarUrl"),
+        avatarDataUrl: pickField(prev, next, "avatarDataUrl"),
+        avatarPath: pickField(prev, next, "avatarPath"),
+        avatarUpdatedAt: pickField(prev, next, "avatarUpdatedAt"),
       } as T
     );
   }

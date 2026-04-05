@@ -970,10 +970,11 @@ export default function Profiles({
       const nextProfiles = Array.isArray(s?.profiles) ? [...s.profiles, p] : [p];
   
       const shouldMakeActive = !!(privateInfo as any)?.onlineUserId;
+      const fallbackActiveId = s?.activeProfileId ?? (Array.isArray(s?.profiles) ? s.profiles[0]?.id ?? null : null);
       const nextStore = {
         ...s,
         profiles: nextProfiles,
-        activeProfileId: shouldMakeActive ? p.id : (s?.activeProfileId ?? p.id),
+        activeProfileId: shouldMakeActive ? p.id : fallbackActiveId,
       };
   
       nextStoreSnapshot = nextStore;
@@ -1439,6 +1440,24 @@ React.useEffect(() => {
       }
     }
     if (!Object.keys(prefsPatch).length) return;
+
+    let nextStoreSnapshot: any = null;
+    update((s: any) => {
+      const nextProfiles = (Array.isArray(s?.profiles) ? s.profiles : []).map((p: any) =>
+        p?.id === active.id
+          ? {
+              ...(p || {}),
+              preferences: {
+                ...((p as any)?.preferences || {}),
+                ...prefsPatch,
+              },
+            }
+          : p
+      );
+      nextStoreSnapshot = { ...s, profiles: nextProfiles };
+      return nextStoreSnapshot;
+    });
+
     setProfilesSafe((arr) =>
       arr.map((p: any) =>
         p?.id === active.id
@@ -1452,6 +1471,11 @@ React.useEffect(() => {
           : p
       )
     );
+
+    queueMicrotask(async () => {
+      try { if (nextStoreSnapshot) await saveStore(nextStoreSnapshot); } catch {}
+      try { await (window as any).__flushCloudNow?.("profiles_prefs", nextStoreSnapshot); } catch {}
+    });
   }
 
   async function handlePrivateInfoSave(patch: PrivateInfo) {

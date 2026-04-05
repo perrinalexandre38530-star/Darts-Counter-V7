@@ -40,6 +40,20 @@ function safeLower(s: any): string {
   return String(s || "").trim().toLowerCase();
 }
 
+function hasMeaningfulValue(v: any): boolean {
+  if (v === undefined || v === null) return false;
+  if (typeof v === "string") return v.trim().length > 0;
+  return true;
+}
+
+function withDefinedEntries<T extends Record<string, any>>(input: T): Partial<T> {
+  const out: Record<string, any> = {};
+  for (const [k, v] of Object.entries(input || {})) {
+    if (hasMeaningfulValue(v)) out[k] = v;
+  }
+  return out as Partial<T>;
+}
+
 function scoreProfileCompleteness(p: any): number {
   let s = 0;
   const keys = ["name", "country", "avatarUrl", "avatarDataUrl", "surname", "firstName", "birthDate", "city", "phone"];
@@ -81,24 +95,28 @@ function buildPrivateInfoPatch(user: any, onlineProfile?: any): PrivateInfoRaw {
   const prefs = (onlineProfile as any)?.preferences || {};
   const pi = ((onlineProfile as any)?.privateInfo || (onlineProfile as any)?.private_info || {}) as Record<string, any>;
 
-  return {
+  const patch = withDefinedEntries({
     ...pi,
     onlineUserId: String(user?.id || ""),
     onlineEmail: email || String(pi?.onlineEmail || pi?.email || "").trim().toLowerCase(),
-    nickname: getOnlineNickname(user, onlineProfile) || pi?.nickname || "",
-    firstName: onlineProfile?.firstName ?? onlineProfile?.first_name ?? pi?.firstName ?? "",
-    lastName: onlineProfile?.lastName ?? onlineProfile?.last_name ?? pi?.lastName ?? "",
-    birthDate: onlineProfile?.birthDate ?? onlineProfile?.birth_date ?? pi?.birthDate ?? "",
-    city: onlineProfile?.city ?? pi?.city ?? "",
-    country: onlineProfile?.country ?? pi?.country ?? "",
-    email: onlineProfile?.email ?? user?.email ?? pi?.email ?? "",
-    phone: onlineProfile?.phone ?? pi?.phone ?? "",
+    nickname: pi?.nickname ?? getOnlineNickname(user, onlineProfile),
+    firstName: onlineProfile?.firstName ?? onlineProfile?.first_name ?? pi?.firstName,
+    lastName: onlineProfile?.lastName ?? onlineProfile?.last_name ?? pi?.lastName,
+    birthDate: onlineProfile?.birthDate ?? onlineProfile?.birth_date ?? pi?.birthDate,
+    city: onlineProfile?.city ?? pi?.city,
+    country: onlineProfile?.country ?? pi?.country,
+    email: onlineProfile?.email ?? user?.email ?? pi?.email,
+    phone: onlineProfile?.phone ?? pi?.phone,
     appLang: prefs?.appLang ?? pi?.appLang,
     appTheme: prefs?.appTheme ?? pi?.appTheme,
     favX01: prefs?.favX01 ?? pi?.favX01,
     favDoubleOut: prefs?.favDoubleOut ?? pi?.favDoubleOut,
     ttsVoice: prefs?.ttsVoice ?? pi?.ttsVoice,
     sfxVolume: prefs?.sfxVolume ?? pi?.sfxVolume,
+  }) as PrivateInfoRaw;
+
+  return {
+    ...patch,
     // sécurité: ne jamais persister password
     password: "",
   };
