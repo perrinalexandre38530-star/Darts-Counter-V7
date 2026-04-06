@@ -90,13 +90,39 @@ function pickTickerImage<K extends keyof typeof TICKER_IMAGES>(
    Helpers
 ============================================================ */
 
+function normalizeProfileToken(value: any): string {
+  return String(value || "").trim().toLowerCase().replace(/[^a-z0-9]/g, "");
+}
+
+function looksLikeGenericProfileName(value: any): boolean {
+  const v = normalizeProfileToken(value);
+  return !v || v === "joueur" || v === "player" || v === "user" || v === "host" || v === "hote" || v === "moi";
+}
+
+function looksLikeEmailLocalName(value: any, email: any): boolean {
+  const cand = normalizeProfileToken(value);
+  const mail = String(email || "").trim().toLowerCase();
+  if (!cand || !mail.includes("@")) return false;
+  const local = normalizeProfileToken(mail.split("@")[0]);
+  if (!local) return false;
+  if (cand === local) return true;
+  return local.length >= 6 && cand.startsWith(local.slice(0, Math.min(local.length, 12)));
+}
+
+function getMeaningfulProfileName(profile: any): string {
+  if (!profile) return "";
+  const nickname = String(profile?.privateInfo?.nickname || "").trim();
+  if (!nickname) return "";
+  if (looksLikeGenericProfileName(nickname)) return "";
+  return nickname;
+}
+
 function getActiveProfile(store: Store): Profile | null {
   const anyStore = store as any;
   const profiles: Profile[] = anyStore.profiles ?? [];
   const activeProfileId: string | null = anyStore.activeProfileId ?? null;
   if (!profiles.length) return null;
-  if (!activeProfileId) return profiles[0];
-  return profiles.find((p) => p.id === activeProfileId) ?? profiles[0];
+  return (!activeProfileId ? profiles[0] : (profiles.find((p) => p.id === activeProfileId) ?? profiles[0])) as any;
 }
 
 function emptyActiveProfileStats(): ActiveProfileStats {

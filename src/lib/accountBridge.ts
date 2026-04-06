@@ -67,10 +67,10 @@ function scoreProfileCompleteness(p: any): number {
 
 function getOnlineNickname(user: any, onlineProfile?: any): string {
   const raw = String(
-    onlineProfile?.surname ||
+    onlineProfile?.privateInfo?.nickname ||
+      onlineProfile?.private_info?.nickname ||
+      onlineProfile?.surname ||
       onlineProfile?.nickname ||
-      onlineProfile?.displayName ||
-      onlineProfile?.display_name ||
       user?.nickname ||
       ""
   ).trim();
@@ -135,9 +135,9 @@ function buildDedicatedAccountProfile(user: any, onlineProfile?: any, previous?:
   const uid = String(user?.id || "");
   const prevPI = readPrivateInfo(previous);
   const nickname =
-    String(prevPI?.nickname || previous?.surname || previous?.name || "").trim() ||
+    String(prevPI?.nickname || previous?.surname || "").trim() ||
     getOnlineNickname(user, onlineProfile) ||
-    "Joueur";
+    "";
   const avatar = getOnlineAvatar(onlineProfile);
   const nextPI = {
     ...prevPI,
@@ -152,7 +152,7 @@ function buildDedicatedAccountProfile(user: any, onlineProfile?: any, previous?:
     {
       ...(previous || {}),
       id: uid,
-      name: nickname || previous?.name || "Joueur",
+      name: nickname || previous?.name || "",
       surname: onlineProfile?.surname ?? previous?.surname ?? nickname ?? "",
       firstName: onlineProfile?.firstName ?? onlineProfile?.first_name ?? previous?.firstName ?? prevPI?.firstName ?? "",
       lastName: onlineProfile?.lastName ?? onlineProfile?.last_name ?? previous?.lastName ?? prevPI?.lastName ?? "",
@@ -301,7 +301,7 @@ export function ensureLocalProfileForOnlineUser(store: any, user: any, onlinePro
     const next = writePrivateInfo(
       {
         ...byPI,
-        name: getOnlineNickname(user, onlineProfile) || byPI?.name || "Joueur",
+        name: String(byPI?.privateInfo?.nickname || byPI?.surname || getOnlineNickname(user, onlineProfile) || byPI?.name || "").trim(),
         surname: onlineProfile?.surname ?? byPI?.surname,
         firstName: onlineProfile?.firstName ?? onlineProfile?.first_name ?? byPI?.firstName,
         lastName: onlineProfile?.lastName ?? onlineProfile?.last_name ?? byPI?.lastName,

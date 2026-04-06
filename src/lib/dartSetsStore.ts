@@ -158,6 +158,25 @@ function loadAll(): DartSet[] {
   }
 }
 
+
+function normalizeOwnerToken(value: any): string {
+  return String(value || "").trim();
+}
+
+function collectSetOwnerIds(setLike: any): string[] {
+  const ids = new Set<string>();
+  const push = (v: any) => {
+    const s = normalizeOwnerToken(v);
+    if (s) ids.add(s);
+  };
+  push(setLike?.profileId);
+  push(setLike?.ownerUserId);
+  if (Array.isArray(setLike?.ownerAliases)) {
+    for (const id of setLike.ownerAliases) push(id);
+  }
+  return Array.from(ids);
+}
+
 // -------------------------------------------------------------
 // API publique
 // -------------------------------------------------------------
@@ -209,7 +228,12 @@ export function createDartSet(input: {
   const all = loadAll();
   const now = Date.now();
 
-  const alreadyForProfile = all.filter((s) => s.profileId === input.profileId);
+  const inputOwners = new Set<string>(collectSetOwnerIds({
+    profileId: input.profileId,
+    ownerUserId: input.ownerUserId,
+    ownerAliases: input.ownerAliases,
+  }));
+  const alreadyForProfile = all.filter((set) => collectSetOwnerIds(set).some((id) => inputOwners.has(id)));
 
   const newSet: DartSet = {
     id: `dartset_${now}_${Math.random().toString(16).slice(2)}`,

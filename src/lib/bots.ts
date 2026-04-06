@@ -7,6 +7,15 @@ export const LS_BOTS_KEY = "dc_bots_v1";
 export const LS_BOTS_AVATARS_KEY = "dc_bots_avatars_v1";
 const BOTS_STORAGE_VERSION = 2;
 const BOTS_CHANGED_EVENT = "dc:bots-changed";
+const MAX_INLINE_BOT_AVATAR_CHARS = 1_500_000;
+
+function sanitizeBotAvatarDataUrl(input: any): string | null {
+  if (!isNonEmptyString(input)) return null;
+  const value = String(input).trim();
+  if (!value.startsWith("data:image/")) return null;
+  if (value.length > MAX_INLINE_BOT_AVATAR_CHARS) return null;
+  return value;
+}
 
 export type BotLevel = "easy" | "medium" | "strong" | "pro" | "legend";
 
@@ -111,11 +120,7 @@ function byteSize(value: string): number {
 }
 
 function sanitizeAvatarDataUrl(input: any): string | null {
-  if (!isNonEmptyString(input)) return null;
-  const value = String(input).trim();
-  if (!value.startsWith("data:image/")) return null;
-  if (value.length > MAX_AVATAR_DATA_URL_CHARS) return null;
-  return value;
+  return sanitizeBotAvatarDataUrl(input) || (isNonEmptyString(input) ? String(input).trim() : null);
 }
 
 function compressAvatar(dataUrl: string): string {
@@ -223,9 +228,9 @@ export function normalizeBotLevel(input: any): BotLevel {
 export function normalizeBotRecord(input: any): BotRecord {
   const level = normalizeBotLevel(input?.level ?? input?.botLevel);
   const nowIso = new Date().toISOString();
-  const avatarDataUrl = sanitizeAvatarDataUrl(
-    input?.avatarDataUrl ?? input?.avatar ?? input?.avatarUrl ?? null
-  ) || (typeof input?.avatarDataUrl === "string" && input.avatarDataUrl.startsWith("data:image/") ? input.avatarDataUrl : null);
+  const avatarDataUrl =
+    sanitizeBotAvatarDataUrl(input?.avatarDataUrl ?? input?.avatar ?? input?.avatarUrl ?? null) ||
+    (typeof input?.avatarDataUrl === "string" && input.avatarDataUrl.startsWith("data:image/") ? input.avatarDataUrl : null);
 
   return {
     ...input,
@@ -303,8 +308,8 @@ export function loadBots(): BotRecord[] {
 
   const merged = metaBots.map((bot) => {
     const avatarDataUrl =
-      avatarsMap[bot.id] ??
-      sanitizeAvatarDataUrl(bot.avatarDataUrl ?? (bot as any)?.avatar ?? (bot as any)?.avatarUrl ?? null) ??
+      sanitizeBotAvatarDataUrl(avatarsMap[bot.id]) ??
+      sanitizeBotAvatarDataUrl(bot.avatarDataUrl ?? (bot as any)?.avatar ?? (bot as any)?.avatarUrl ?? null) ??
       (typeof (bot as any)?.avatarDataUrl === "string" && String((bot as any).avatarDataUrl).startsWith("data:image/") ? String((bot as any).avatarDataUrl) : null) ??
       null;
     return {
@@ -323,16 +328,20 @@ export function loadBots(): BotRecord[] {
 export function saveBots(list: any[]) {
   if (typeof window === "undefined") return;
 
-  const normalized = normalizeBotsList(Array.isArray(list) ? list : []);
+  const normalized = normalizeBotsList(Array.isArray(list) ? list : []).map((bot) => ({
+    ...bot,
+    avatarDataUrl: sanitizeBotAvatarDataUrl(bot.avatarDataUrl ?? (bot as any)?.avatar ?? (bot as any)?.avatarUrl ?? null),
+    avatar: sanitizeBotAvatarDataUrl(bot.avatarDataUrl ?? (bot as any)?.avatar ?? (bot as any)?.avatarUrl ?? null),
+    avatarUrl: sanitizeBotAvatarDataUrl(bot.avatarDataUrl ?? (bot as any)?.avatar ?? (bot as any)?.avatarUrl ?? null),
+  }));
   const metaPayload: BotsMetaPayload = {
     v: BOTS_STORAGE_VERSION,
-    items: normalized.map(packBotMeta),
+    items: normalized,
   };
 
   const metaSaved = safeLocalStorageSetJson(LS_BOTS_KEY, metaPayload, {
-    sanitizeImages: true,
-    imageMaxChars: MAX_AVATAR_DATA_URL_CHARS,
-    compressAboveChars: 4_000,
+    sanitizeImages: false,
+    compressAboveChars: 2_000,
   });
   if (!metaSaved) {
     console.warn("[bots] metadata save failed");

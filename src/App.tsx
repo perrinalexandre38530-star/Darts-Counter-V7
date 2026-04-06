@@ -3640,7 +3640,11 @@ case "babyfoot_team_edit":
             const next = bots.slice();
             const idx = next.findIndex((b) => b.id === targetBot.id);
 
-            const finalAvatar = safeAvatarDataUrl ?? targetBot.avatarDataUrl ?? null;
+            const finalAvatar =
+              safeAvatarDataUrl ||
+              (typeof pngDataUrl === "string" && pngDataUrl.startsWith("data:image/") ? pngDataUrl : null) ||
+              targetBot.avatarDataUrl ||
+              null;
 
             const updated: BotLS = {
               ...targetBot,

@@ -186,6 +186,49 @@ function looksLikeGenericPlayerName(candidate: any): boolean {
   const normalized = v.replace(/[^a-z0-9]/g, "");
   return normalized === "joueur" || normalized === "player" || normalized === "hote" || normalized === "host" || normalized === "moi" || normalized === "user";
 }
+
+function getLinkedProfileNameCandidates(profile: any): string[] {
+  try {
+    const profiles = Array.isArray((window as any)?.__appStore?.store?.profiles)
+      ? (window as any).__appStore.store.profiles
+      : [];
+    const ids = new Set<string>();
+    const push = (v: any) => {
+      const s = String(v || "").trim().toLowerCase();
+      if (s) ids.add(s);
+    };
+    push(profile?.id);
+    push(profile?.userId);
+    push(profile?.privateInfo?.onlineUserId);
+    push(profile?.privateInfo?.userId);
+    push(profile?.privateInfo?.accountUserId);
+    push(profile?.email);
+    push(profile?.privateInfo?.email);
+    push(profile?.privateInfo?.onlineEmail);
+
+    const out: string[] = [];
+    for (const p of profiles as any[]) {
+      const refs = [
+        p?.id,
+        p?.userId,
+        p?.privateInfo?.onlineUserId,
+        p?.privateInfo?.userId,
+        p?.privateInfo?.accountUserId,
+        p?.email,
+        p?.privateInfo?.email,
+        p?.privateInfo?.onlineEmail,
+      ].map((v) => String(v || "").trim().toLowerCase()).filter(Boolean);
+      if (!refs.some((r) => ids.has(r))) continue;
+      const names = [p?.privateInfo?.nickname, p?.surname, p?.displayName, p?.name]
+        .map((v) => String(v || "").trim())
+        .filter(Boolean);
+      out.push(...names);
+    }
+    return out;
+  } catch {
+    return [];
+  }
+}
 /* ============================================================
    Composant principal
 ============================================================ */
@@ -420,71 +463,17 @@ function ActiveProfileCard({
       ""
     ).trim().toLowerCase();
 
-  const profileCacheKey = React.useMemo(() => {
-    const raw =
-      String((profile as any)?.privateInfo?.onlineUserId || "").trim() ||
-      String((profile as any)?.userId || "").trim() ||
-      String((profile as any)?.id || "").trim();
-    return raw ? `dc_profile_name_cache:${raw}` : "";
-  }, [
-    (profile as any)?.id,
-    (profile as any)?.userId,
-    (profile as any)?.privateInfo?.onlineUserId,
-  ]);
-
-  const [stableProfileName, setStableProfileName] = React.useState("");
-
   const profileName = React.useMemo(() => {
-    const rawCandidates = [
-      (profile as any)?.privateInfo?.nickname,
-      (profile as any)?.surname,
-      (profile as any)?.displayName,
-      profile.name,
-    ]
-      .map((v) => String(v || "").trim())
-      .filter(Boolean);
-
-    const cached = (() => {
-      if (typeof window === "undefined" || !profileCacheKey) return "";
-      try {
-        return String(window.localStorage.getItem(profileCacheKey) || "").trim();
-      } catch {
-        return "";
-      }
-    })();
-
-    const meaningful = rawCandidates.find(
-      (v) => !looksLikeEmailLocalNickname(v, profileEmail) && !looksLikeGenericPlayerName(v)
-    ) || "";
-
-    const genericFallback = rawCandidates.find((v) => !looksLikeEmailLocalNickname(v, profileEmail)) || "";
-
-    return meaningful || stableProfileName || cached || genericFallback || t("home.noName", "Joueur");
+    const nickname = String((profile as any)?.privateInfo?.nickname || "").trim();
+    if (nickname && !looksLikeEmailLocalNickname(nickname, profileEmail) && !looksLikeGenericPlayerName(nickname)) {
+      return nickname;
+    }
+    return t("home.noName", "Joueur");
   }, [
     (profile as any)?.privateInfo?.nickname,
-    (profile as any)?.surname,
-    (profile as any)?.displayName,
-    profile.name,
     profileEmail,
-    profileCacheKey,
-    stableProfileName,
     t,
   ]);
-
-  React.useEffect(() => {
-    if (!profileName) return;
-    if (looksLikeEmailLocalNickname(profileName, profileEmail)) return;
-    if (looksLikeGenericPlayerName(profileName)) return;
-    setStableProfileName((prev) => (prev === profileName ? prev : profileName));
-  }, [profileName, profileEmail]);
-
-  React.useEffect(() => {
-    if (typeof window === "undefined" || !profileCacheKey) return;
-    if (!profileName || looksLikeEmailLocalNickname(profileName, profileEmail)) return;
-    try {
-      window.localStorage.setItem(profileCacheKey, profileName);
-    } catch {}
-  }, [profileCacheKey, profileEmail, profileName]);
 
   const handleNextSlide = () => {
     if (!slides.length || slides.length <= 1) return;
