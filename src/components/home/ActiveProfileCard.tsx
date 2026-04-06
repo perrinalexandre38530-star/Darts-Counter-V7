@@ -385,7 +385,13 @@ function ActiveProfileCard({
 
   const accent = (theme as any).accent ?? primary;
   const accentSoft = (theme as any).accent20 ?? `${primary}33`;
-  const profileName = profile.name?.trim() || t("home.noName", "Joueur");
+  const profileName =
+    String(
+      (profile as any)?.privateInfo?.nickname ||
+      (profile as any)?.surname ||
+      profile.name ||
+      ""
+    ).trim() || t("home.noName", "Joueur");
 
   const handleNextSlide = () => {
     if (!slides.length || slides.length <= 1) return;

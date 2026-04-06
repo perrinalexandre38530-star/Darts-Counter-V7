@@ -1299,7 +1299,6 @@ React.useEffect(() => {
         (auth.profile as any)?.surname ||
         (auth.profile as any)?.nickname ||
         auth.profile?.displayName ||
-        auth.user?.nickname ||
         "";
       if (nicknameOnline) {
         const nicknameLocal = pi.nickname || active.name || "";
@@ -1819,7 +1818,7 @@ React.useEffect(() => {
                 {/* 🔥 Panneau sets de fléchettes du profil actif */}
                 {isDarts && active && (
                   <div style={{ marginTop: 8, marginBottom: 8 }}>
-                    <DartSetsPanel profile={(meProfileForDarts as any) || active} />
+                    <DartSetsPanel profile={active} />
                   </div>
                 )}
 

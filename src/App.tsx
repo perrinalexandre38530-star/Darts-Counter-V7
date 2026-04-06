@@ -3647,7 +3647,11 @@ case "babyfoot_team_edit":
             else next.push(updated);
 
             saveBotsLS(next);
-            go(backTo);
+            try {
+              window.dispatchEvent(new Event("dc:bots-changed"));
+              (window as any).__flushCloudNow?.("bots_save");
+            } catch {}
+            go(backTo, { refreshTs: Date.now() } as any);
           }
 
           page = (

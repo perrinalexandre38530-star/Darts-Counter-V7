@@ -375,6 +375,25 @@ const createEmptyForm = (primary: string): FormState => ({
   photoDataUrl: null,
 });
 
+function getProfileOwnerIds(profile: any): string[] {
+  const ids = new Set<string>();
+  const push = (v: any) => {
+    const id = String(v || "").trim();
+    if (id) ids.add(id);
+  };
+  push(profile?.id);
+  push((profile as any)?.userId);
+  push((profile as any)?.privateInfo?.onlineUserId);
+  return Array.from(ids);
+}
+
+function getPrimaryOwnerId(profile: any): string {
+  return (
+    String((profile as any)?.privateInfo?.onlineUserId || "").trim() ||
+    String((profile as any)?.id || "").trim()
+  );
+}
+
 const DartSetsPanel: React.FC<Props> = ({ profile }) => {
   const { palette } = useTheme();
   const { lang } = useLang();
@@ -430,8 +449,12 @@ const DartSetsPanel: React.FC<Props> = ({ profile }) => {
   const loadSets = React.useCallback(async () => {
     if (!profile?.id) return;
     try {
-      const all = await Promise.resolve(getDartSetsForProfile(profile.id) as any);
-      const sorted = sortSets((all || []) as DartSet[]);
+      const ownerIds = getProfileOwnerIds(profile);
+      const allSets = await Promise.resolve(getAllDartSets() as any);
+      const visible = ((allSets || []) as DartSet[]).filter((set) =>
+        set?.scope === "public" || ownerIds.includes(String(set?.profileId || ""))
+      );
+      const sorted = sortSets(visible as DartSet[]);
       setSets(sorted);
       setActiveIndex((idx) => (sorted.length === 0 ? 0 : Math.min(idx, sorted.length - 1)));
 
@@ -528,7 +551,7 @@ const DartSetsPanel: React.FC<Props> = ({ profile }) => {
 
     try {
       const payload = {
-        profileId: profile.id,
+        profileId: getPrimaryOwnerId(profile),
         name,
         brand: brand || undefined,
         weightGrams,
@@ -662,7 +685,7 @@ const DartSetsPanel: React.FC<Props> = ({ profile }) => {
 
   const handleSetFavorite = (set: DartSet | null) => {
     if (!profile?.id || !set) return;
-    setFavoriteDartSet(profile.id, set.id);
+    setFavoriteDartSet(getPrimaryOwnerId(profile), set.id);
     reloadSets();
 
     // ✅ PATCH B

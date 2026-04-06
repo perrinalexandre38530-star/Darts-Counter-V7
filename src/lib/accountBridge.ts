@@ -131,9 +131,11 @@ function stripOnlineBinding(p: any): any {
 
 function buildDedicatedAccountProfile(user: any, onlineProfile?: any, previous?: any): any {
   const uid = String(user?.id || "");
-  const nickname = getOnlineNickname(user, onlineProfile);
-  const avatar = getOnlineAvatar(onlineProfile);
   const prevPI = readPrivateInfo(previous);
+  const nickname =
+    String(prevPI?.nickname || previous?.surname || previous?.name || "").trim() ||
+    getOnlineNickname(user, onlineProfile);
+  const avatar = getOnlineAvatar(onlineProfile);
   const nextPI = {
     ...prevPI,
     ...buildPrivateInfoPatch(user, onlineProfile),
