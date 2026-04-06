@@ -8,6 +8,7 @@ import React from "react";
 import { __SUPABASE_ENV__ } from "../lib/supabaseClient";
 import { onlineApi } from "../lib/onlineApi";
 import { hasMeaningfulRemoteSnapshotPayload, restoreRemoteSnapshotIntoLocalApp } from "../lib/remoteSnapshotRestore";
+import { setStorageUser } from "../lib/storage";
 import { getOnlineProviderLabel, isNasProviderEnabled } from "../lib/serverConfig";
 
 type Props = {
@@ -44,11 +45,19 @@ async function hasRemoteSnapshot(): Promise<boolean> {
   }
 }
 
-async function restoreRemoteSnapshotIntoLocalStore(): Promise<boolean> {
+async function restoreRemoteSnapshotIntoLocalStore(userId?: string | null): Promise<boolean> {
   try {
+    try { setStorageUser(String(userId || "").trim() || null); } catch {}
     const res: any = await onlineApi.pullStoreSnapshot();
     if (res?.status !== "ok") return false;
-    return await restoreRemoteSnapshotIntoLocalApp(res?.payload ?? null);
+    const restored = await restoreRemoteSnapshotIntoLocalApp(res?.payload ?? null);
+    if (restored) {
+      try {
+        const uid = String(userId || "").trim();
+        if (uid) localStorage.setItem("dc_cloud_restore_done_uid", uid);
+      } catch {}
+    }
+    return restored;
   } catch (e) {
     console.warn("[AuthV7Login] restoreRemoteSnapshotIntoLocalStore failed", e);
     return false;
@@ -182,7 +191,7 @@ URL actuelle: ${
 
       let restored = false;
       if (nasMode && uid) {
-        restored = await restoreRemoteSnapshotIntoLocalStore();
+        restored = await restoreRemoteSnapshotIntoLocalStore(uid);
       }
 
       const linked = hasLinkedLocalProfile(uid);

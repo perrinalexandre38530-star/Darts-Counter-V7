@@ -1007,6 +1007,36 @@ export async function exportAll(): Promise<any> {
   };
 }
 
+async function importIdbEntryRaw(rawKey: string, value: any): Promise<void> {
+  const key = String(rawKey || "").trim();
+  if (!key) return;
+
+  const isStoreLikeKey = key === STORE_KEY || key.startsWith(`${STORE_KEY}:`) || /(^|[:/])store$/.test(key);
+  const valueToPersist = isStoreLikeKey ? sanitizeStoreForPersistence(value as any) : value;
+  const json = safeJsonStringify(valueToPersist);
+  const payload = await compressGzip(json);
+
+  const targets = new Set<string>();
+  targets.add(key);
+
+  // ✅ Compat snapshots legacy/non-namespacés:
+  // si la clé importée n'est pas déjà scoped pour l'utilisateur courant,
+  // on écrit AUSSI la version scoped afin que loadStore()/getKV("store")
+  // relisent correctement le store après reconnexion.
+  const currentUid = getStorageUser();
+  if (currentUid) {
+    const alreadyScopedForCurrentUser = key === scopedStorageKey(STORE_KEY) || key.endsWith(`:${currentUid}`);
+    if (!alreadyScopedForCurrentUser) {
+      const scoped = scopedStorageKey(key);
+      if (scoped !== key) targets.add(scoped);
+    }
+  }
+
+  for (const target of targets) {
+    await idbSet(target, payload);
+  }
+}
+
 export async function importAll(dump: any): Promise<void> {
   if (!dump) return;
 
@@ -1017,12 +1047,15 @@ export async function importAll(dump: any): Promise<void> {
     const lsDump = dump.localStorage || {};
 
     // 1) restore KV (IDB kv)
+    // ⚠️ IMPORTANT: un exportAll() v2 contient déjà des clés IDB potentiellement namespacées
+    // (ex: "store:<uid>"). Il ne faut SURTOUT PAS repasser par setKV(), sinon la clé est
+    // re-scopée une 2e fois ("store:<uid>:<uid>") et le store redevient introuvable.
     for (const [k, v] of Object.entries(idbDump)) {
       try {
-        const key = String(k);
-        const value = key === scopedStorageKey(STORE_KEY) ? sanitizeStoreForPersistence(v as any) : v;
-        await setKV(key, value);
-      } catch {}
+        await importIdbEntryRaw(String(k), v);
+      } catch (e) {
+        console.warn("[storage] importAll idb entry failed", k, e);
+      }
     }
 
     // 2) restore localStorage (dc_* + dc-*)
@@ -1033,7 +1066,9 @@ export async function importAll(dump: any): Promise<void> {
       if (dump.history && dump.history._v === 1) {
         await importHistoryDump(dump.history, { replace: true });
       }
-    } catch {}
+    } catch (e) {
+      console.warn("[storage] importAll history restore failed", e);
+    }
 
     return;
   }
@@ -1042,8 +1077,10 @@ export async function importAll(dump: any): Promise<void> {
   if (typeof dump === "object") {
     for (const [k, v] of Object.entries(dump)) {
       try {
-        await setKV(String(k), v);
-      } catch {}
+        await importIdbEntryRaw(String(k), v);
+      } catch (e) {
+        console.warn("[storage] importAll legacy entry failed", k, e);
+      }
     }
   }
 }

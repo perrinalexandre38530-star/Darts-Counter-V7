@@ -1447,6 +1447,7 @@ useEffect(() => {
   // PROFILES V7: on désactive l'hydratation automatique du store depuis le cloud
   // (elle écrasait des données locales et créait des états impossibles à déboguer).
   const [cloudHydrated, setCloudHydrated] = React.useState(false);
+  const [cloudCanSync, setCloudCanSync] = React.useState(false);
 
   // (legacy) Référence conservée pour logs/diagnostic éventuels.
   const cloudHydratedUserRef = React.useRef<string>("");
@@ -1506,6 +1507,15 @@ useEffect(() => {
     if (!online?.ready) return;
     if (online.status !== "signed_in") return;
 
+    const hasMeaningfulLocalData =
+      (store?.profiles?.length || 0) > 0 ||
+      !!(store as any)?.activeProfileId ||
+      ((store as any)?.dartSets?.length || 0) > 0 ||
+      (store?.friends?.length || 0) > 0 ||
+      (store?.history?.length || 0) > 0;
+
+    if (!cloudCanSync && !hasMeaningfulLocalData) return;
+
     // ✅ V7 ACCOUNT CORE CLEAN:
     // On applique TOUJOURS le bridge vers un profil local stable id==uid.
     // Sinon, deux appareils peuvent chacun "lier" un profil local différent, ce qui casse la synchro.
@@ -1536,6 +1546,7 @@ useEffect(() => {
   }, [
     loading,
     cloudHydrated,
+    cloudCanSync,
     online?.ready,
     online?.status,
     (online as any)?.user?.id,
@@ -1546,6 +1557,9 @@ useEffect(() => {
     (online as any)?.profile?.updatedAt,
     JSON.stringify(((online as any)?.profile?.preferences || {})),
     JSON.stringify(((online as any)?.profile?.privateInfo || {})),
+    (store?.profiles?.length || 0),
+    (store as any)?.activeProfileId,
+    (((store as any)?.dartSets?.length) || 0),
     tab,
   ]);
 
@@ -1833,6 +1847,7 @@ useEffect(() => {
 
     try { setStorageUser(nextScope); } catch {}
     setCloudHydrated(false);
+    setCloudCanSync(false);
 
     (async () => {
       try {
@@ -1958,6 +1973,7 @@ useEffect(() => {
       try {
         if (loading) return;
         if (!cloudHydrated) return;
+        if (!cloudCanSync) return;
         if (!online?.ready || online.status !== "signed_in") return;
 
         const exported = await exportCloudSnapshot();
@@ -1973,7 +1989,7 @@ useEffect(() => {
     return () => {
       try { if ((window as any).__flushCloudNow === handler) delete (window as any).__flushCloudNow; } catch {}
     };
-  }, [loading, cloudHydrated, online?.ready, online?.status, store]);
+  }, [loading, cloudHydrated, cloudCanSync, online?.ready, online?.status, store]);
 
   // ============================================================
   // ✅ CLOUD HYDRATE (source unique)
@@ -1987,7 +2003,27 @@ useEffect(() => {
       if (online.status !== "signed_in") return;
       if (cloudHydrated) return;
 
+      const uid = String((online as any)?.user?.id || "").trim();
+      const hasLocalData =
+        (store?.profiles?.length || 0) > 0 ||
+        !!(store as any)?.activeProfileId ||
+        (store?.friends?.length || 0) > 0 ||
+        (store?.history?.length || 0) > 0 ||
+        ((store as any)?.dartSets?.length || 0) > 0;
+
       try {
+        // ✅ Si l'écran de login/signup vient déjà de restaurer le snapshot complet,
+        // on évite un 2e pull immédiat qui peut timeout/CORS et relancer un état partiel.
+        const restoredUid = String(localStorage.getItem("dc_cloud_restore_done_uid") || "").trim();
+        if (uid && restoredUid === uid && hasLocalData) {
+          if (!cancelled) {
+            setCloudCanSync(true);
+            setCloudHydrated(true);
+          }
+          try { localStorage.removeItem("dc_cloud_restore_done_uid"); } catch {}
+          return;
+        }
+
         const res: any = await onlineApi.pullStoreSnapshot();
 
         if (res?.status === "ok") {
@@ -2014,6 +2050,8 @@ useEffect(() => {
                   profiles: mergeProfilesSafe(prev.profiles ?? [], next.profiles ?? []),
                   activeProfileId: next.activeProfileId ?? prev.activeProfileId ?? null,
                 }));
+                setCloudCanSync(true);
+                setCloudHydrated(true);
               }
               return;
             } catch (e) {
@@ -2041,13 +2079,6 @@ useEffect(() => {
             }
           })();
 
-          const hasLocalData =
-            (store?.profiles?.length || 0) > 0 ||
-            !!(store as any)?.activeProfileId ||
-            (store?.friends?.length || 0) > 0 ||
-            (store?.history?.length || 0) > 0 ||
-            ((store as any)?.dartSets?.length || 0) > 0;
-
           if (isCloudEmpty && hasLocalData) {
             try {
               const cloudSeed = await exportCloudSnapshot();
@@ -2055,6 +2086,10 @@ useEffect(() => {
               console.log("[cloud] cloud empty -> seeded from local");
             } catch (e) {
               console.warn("[cloud] seed from local failed", e);
+            }
+            if (!cancelled) {
+              setCloudCanSync(true);
+              setCloudHydrated(true);
             }
             return; // ⛔ ne pas écraser le store local
           }
@@ -2107,28 +2142,49 @@ useEffect(() => {
                   setTab("gameSelect");
                 }
               }
-            }
-          }
-        } else if (res?.status === "not_found") {
-          const hasLocalData =
-            (store?.profiles?.length || 0) > 0 ||
-            !!(store as any)?.activeProfileId ||
-            (store?.friends?.length || 0) > 0 ||
-            (store?.history?.length || 0) > 0;
 
+              setCloudCanSync(true);
+              setCloudHydrated(true);
+            }
+            return;
+          }
+
+          if (!cancelled) {
+            setCloudCanSync(true);
+            setCloudHydrated(true);
+          }
+          return;
+        }
+
+        if (res?.status === "not_found") {
           if (hasLocalData) {
             const cloudSeed = await exportCloudSnapshot();
-              await onlineApi.pushStoreSnapshot(cloudSeed as any, (cloudSeed as any)?.v ?? 8);
+            await onlineApi.pushStoreSnapshot(cloudSeed as any, (cloudSeed as any)?.v ?? 8);
+            if (!cancelled) {
+              setCloudCanSync(true);
+              setCloudHydrated(true);
+            }
           } else {
             console.warn("[cloud] no snapshot yet + local empty -> skip seed (avoid wiping cloud by mistake)");
+            if (!cancelled) {
+              setCloudCanSync(true);
+              setCloudHydrated(true);
+            }
           }
-        } else {
-          console.warn("[cloud] hydrate error (skip seed)", res?.error || res);
+          return;
+        }
+
+        console.warn("[cloud] hydrate error (sync disabled)", res?.error || res);
+        if (!cancelled && hasLocalData) {
+          setCloudCanSync(false);
+          setCloudHydrated(true);
         }
       } catch (e) {
-        console.warn("[cloud] hydrate error", e);
-      } finally {
-        if (!cancelled) setCloudHydrated(true);
+        console.warn("[cloud] hydrate error (sync disabled)", e);
+        if (!cancelled && hasLocalData) {
+          setCloudCanSync(false);
+          setCloudHydrated(true);
+        }
       }
     };
 
@@ -2136,7 +2192,7 @@ useEffect(() => {
     return () => {
       cancelled = true;
     };
-  }, [loading, online?.ready, online?.status, cloudHydrated]);
+  }, [loading, online?.ready, online?.status, cloudHydrated, store]);
 
   // ============================================================
   // ✅ CLOUD SYNC (push-only via emitCloudChange)
@@ -2146,6 +2202,14 @@ useEffect(() => {
   React.useEffect(() => {
     if (loading) return;
     if (!cloudHydrated) return;
+    if (!cloudCanSync) {
+      clearCloudFallbackPushTimer();
+      if (cloudSyncOnRef.current) {
+        stopCloudSync();
+        cloudSyncOnRef.current = false;
+      }
+      return;
+    }
     if (!online?.ready || online.status !== "signed_in") {
       clearCloudFallbackPushTimer();
       if (cloudSyncOnRef.current) {
@@ -2177,7 +2241,7 @@ useEffect(() => {
         cloudSyncOnRef.current = false;
       }
     };
-  }, [loading, cloudHydrated, online?.ready, online?.status, clearCloudFallbackPushTimer]);
+  }, [loading, cloudHydrated, cloudCanSync, online?.ready, online?.status, clearCloudFallbackPushTimer]);
 
   // ============================================================
   // ✅ CLOUD PUSH (debounce)
@@ -2185,6 +2249,7 @@ useEffect(() => {
   React.useEffect(() => {
     if (loading) return;
     if (!cloudHydrated) return;
+    if (!cloudCanSync) return;
     if (!online?.ready || online.status !== "signed_in") return;
 
     // En mode normal, cloudSync gère déjà les pushes via emitCloudChange.
@@ -2215,7 +2280,7 @@ useEffect(() => {
     return () => {
       clearCloudFallbackPushTimer();
     };
-  }, [store, loading, cloudHydrated, online?.ready, online?.status, clearCloudFallbackPushTimer]);
+  }, [store, loading, cloudHydrated, cloudCanSync, online?.ready, online?.status, clearCloudFallbackPushTimer]);
 
   // ============================================================
   // ✅ DartSets bridge: localStorage dartSetsStore -> App store

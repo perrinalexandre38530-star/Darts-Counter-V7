@@ -172,24 +172,24 @@ function normalizeProfile(raw: any, user: UserAuth): OnlineProfile | null {
   if (!raw && !user?.id) return null;
   const statsRaw = raw?.stats || raw?.summaryStats || raw?.profileStats || {};
 
-  const nickname = String(
-    raw?.nickname ||
-      raw?.surname ||
-      raw?.displayName ||
-      raw?.display_name ||
-      raw?.name ||
-      raw?.username ||
-      user.nickname ||
-      "Player"
-  );
-
   const displayName = String(
     raw?.displayName ||
       raw?.display_name ||
       raw?.nickname ||
-      raw?.surname ||
       raw?.name ||
       raw?.username ||
+      raw?.surname ||
+      user.nickname ||
+      "Player"
+  );
+
+  const nickname = String(
+    raw?.nickname ||
+      raw?.displayName ||
+      raw?.display_name ||
+      raw?.name ||
+      raw?.username ||
+      raw?.surname ||
       user.nickname ||
       "Player"
   );
@@ -278,6 +278,19 @@ function buildSessionFromResponse(json: any, fallbackEmail?: string): AuthSessio
     user
   );
 
+  const resolvedUser: UserAuth = profile
+    ? {
+        ...user,
+        nickname:
+          String(
+            (profile as any)?.displayName ||
+              (profile as any)?.nickname ||
+              user.nickname ||
+              (user.email ? String(user.email).split("@")[0] : "Player")
+          ) || user.nickname,
+      }
+    : user;
+
   return {
     token,
     refreshToken,
@@ -289,8 +302,8 @@ function buildSessionFromResponse(json: any, fallbackEmail?: string): AuthSessio
           : json?.data?.expires_at
             ? Date.parse(json.data.expires_at)
             : null,
-    userId: user.id || null,
-    user,
+    userId: resolvedUser.id || null,
+    user: resolvedUser,
     profile,
   };
 }

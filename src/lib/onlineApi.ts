@@ -409,6 +409,15 @@ let __nasLastGoodSession: AuthSession | null = null;
 let __nasLastRestoreAt = 0;
 const NAS_RESTORE_MIN_INTERVAL_MS = 12_000;
 
+let __nasWarnAt = 0;
+function warnNasOnce(label: string, extra?: any) {
+  const nowTs = Date.now();
+  if (nowTs - __nasWarnAt < 15000) return;
+  __nasWarnAt = nowTs;
+  if (extra !== undefined) console.warn(label, extra);
+  else console.warn(label);
+}
+
 function isValidNasSession(session: AuthSession | null | undefined): session is AuthSession {
   return !!session && !!String(session?.token || "").trim() && !!String(session?.user?.id || session?.userId || "").trim();
 }
@@ -426,7 +435,7 @@ function refreshNasSessionInBackground(reason: string) {
       }
       return null;
     } catch (e) {
-      console.warn(`[onlineApi] NAS background restore skipped (${reason})`, e);
+      warnNasOnce(`[onlineApi] NAS background restore skipped (${reason})`, e);
       return null;
     } finally {
       __nasEnsureInFlight = null;
@@ -462,11 +471,14 @@ async function ensureNasSession(): Promise<AuthSession> {
     const userId = String(session?.user?.id || session?.userId || "").trim();
 
     if (!token || !userId) {
-      console.warn("[onlineApi] NAS session missing", {
-        hasToken: !!token,
-        hasUserId: !!userId,
-        lsAuth: loadAuthFromLS(),
-      });
+      const cachedAuth = loadAuthFromLS();
+      if (cachedAuth) {
+        warnNasOnce("[onlineApi] NAS session missing", {
+          hasToken: !!token,
+          hasUserId: !!userId,
+          lsAuth: cachedAuth,
+        });
+      }
       throw new Error("Token NAS manquant. Reconnecte-toi.");
     }
 
@@ -762,8 +774,8 @@ async function restoreSession(): Promise<AuthSession | null> {
     try {
       return await ensureNasSession();
     } catch (e) {
-      console.warn("[onlineApi] restoreSession(NAS) error", e);
       const cached = loadAuthFromLS();
+      if (cached?.token) warnNasOnce("[onlineApi] restoreSession(NAS) error", e);
       if (cached?.token && (cached?.user?.id || cached?.userId)) {
         return cached;
       }
