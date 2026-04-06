@@ -6,6 +6,7 @@
 // ============================================
 import React from "react";
 import { onlineApi } from "../lib/onlineApi";
+import { hasMeaningfulRemoteSnapshotPayload, restoreRemoteSnapshotIntoLocalApp } from "../lib/remoteSnapshotRestore";
 import { getOnlineProviderLabel, isNasProviderEnabled } from "../lib/serverConfig";
 
 type Props = {
@@ -36,15 +37,7 @@ async function hasRemoteSnapshot(): Promise<boolean> {
   try {
     const res: any = await onlineApi.pullStoreSnapshot();
     if (res?.status !== "ok") return false;
-    const payload = res?.payload ?? null;
-    const cloudStore = payload?.store ?? payload?.idb?.store ?? payload ?? null;
-    if (!cloudStore || typeof cloudStore !== "object") return false;
-    const hasProfiles = Array.isArray((cloudStore as any).profiles) && (cloudStore as any).profiles.length > 0;
-    const hasHistory = Array.isArray((cloudStore as any).history) && (cloudStore as any).history.length > 0;
-    const hasFriends = Array.isArray((cloudStore as any).friends) && (cloudStore as any).friends.length > 0;
-    const hasDartSets = Array.isArray((cloudStore as any).dartSets) && (cloudStore as any).dartSets.length > 0;
-    const hasActive = !!(cloudStore as any).activeProfileId;
-    return !!(hasProfiles || hasHistory || hasFriends || hasDartSets || hasActive);
+    return hasMeaningfulRemoteSnapshotPayload(res?.payload ?? null);
   } catch {
     return false;
   }
@@ -54,31 +47,7 @@ async function restoreRemoteSnapshotIntoLocalStore(): Promise<boolean> {
   try {
     const res: any = await onlineApi.pullStoreSnapshot();
     if (res?.status !== "ok") return false;
-
-    const payload = res?.payload ?? null;
-    const cloudStore = payload?.store ?? payload?.idb?.store ?? payload ?? null;
-    if (!cloudStore || typeof cloudStore !== "object") return false;
-
-    const appStore: any = (window as any).__appStore;
-    if (!appStore) return false;
-
-    if (typeof appStore.setState === "function") {
-      appStore.setState(cloudStore);
-    } else if (typeof appStore.update === "function") {
-      appStore.update(() => cloudStore);
-    } else {
-      return false;
-    }
-
-    try {
-      const profiles = Array.isArray((cloudStore as any).profiles) ? (cloudStore as any).profiles : [];
-      const activeProfileId = (cloudStore as any).activeProfileId || "";
-      if (profiles.length > 0 || activeProfileId) {
-        localStorage.setItem("dc_cloud_restore_done", "1");
-      }
-    } catch {}
-
-    return true;
+    return await restoreRemoteSnapshotIntoLocalApp(res?.payload ?? null);
   } catch (e) {
     console.warn("[AuthV7Signup] restoreRemoteSnapshotIntoLocalStore failed", e);
     return false;
