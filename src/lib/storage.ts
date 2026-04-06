@@ -316,6 +316,19 @@ const LS_EXCLUDE = new Set<string>([
   "dc_match_stats_cache_v1",
 ]);
 
+const LS_LARGE_PAYLOAD_KEYS = new Set<string>([
+  "dc_dart_sets_v1",
+  "dc-dartsets-v1",
+  "dc-dartSets-v1",
+  "dc_lite_dartsets_v1",
+  "dc-lite-dartsets-v1",
+  "dc_bots_avatars_v1",
+]);
+
+function maxLocalStorageExportLenForKey(key: string): number {
+  return LS_LARGE_PAYLOAD_KEYS.has(key) ? 2_500_000 : 250_000;
+}
+
 /**
  * ✅ HOOK GLOBAL localStorage -> emitCloudChange
  * Objectif: capturer les setItem/removeItem faits "directement" (ex: dartSetsStore)
@@ -534,7 +547,7 @@ function shouldExportLocalStorageDcKey(key: string, value: string | null): boole
   ) {
     return false;
   }
-  if (typeof value === "string" && value.length > 250_000) return false;
+  if (typeof value === "string" && value.length > maxLocalStorageExportLenForKey(key)) return false;
   return true;
 }
 
@@ -558,12 +571,24 @@ function importLocalStorageDc(map: Record<string, string>) {
   if (typeof window === "undefined") return;
   if (!map || typeof map !== "object") return;
 
+  let restoredDartSets = false;
+  let restoredBots = false;
+
   for (const [k, v] of Object.entries(map)) {
     if (!shouldExportLocalStorageDcKey(k, typeof v === "string" ? v : String(v ?? ""))) continue;
     try {
       window.localStorage.setItem(k, String(v ?? ""));
+      if (LS_DARTSETS_KEYS.includes(k as any) || LS_ACTIVE_DARTSET_KEYS.includes(k as any)) restoredDartSets = true;
+      if (k === "dc_bots_v1" || k === "dc_bots_avatars_v1") restoredBots = true;
     } catch {}
   }
+
+  try {
+    if (restoredDartSets) window.dispatchEvent(new Event("dc-dartsets-updated"));
+  } catch {}
+  try {
+    if (restoredBots) window.dispatchEvent(new Event("dc:bots-changed"));
+  } catch {}
 }
 
 // Utile en mode "replace" : évite de garder des dc_* / dc-* obsolètes
@@ -1090,7 +1115,7 @@ export async function importAll(dump: any): Promise<void> {
    Objectif : restaurer les dartSets EXACTEMENT là où l’UI lit
 ============================================================ */
 
-const LS_DARTSETS_KEYS = ["dc-dartsets-v1", "dc-dartSets-v1", "dc_lite_dartsets_v1", "dc-lite-dartsets-v1"];
+const LS_DARTSETS_KEYS = ["dc_dart_sets_v1", "dc-dartsets-v1", "dc-dartSets-v1", "dc_lite_dartsets_v1", "dc-lite-dartsets-v1"];
 
 const LS_ACTIVE_DARTSET_KEYS = ["dc-active-dartset-id", "dc-active-dartSet-id", "dc_dartset_active"];
 
@@ -1129,8 +1154,27 @@ function extractDartSetsFromSnapshot(snap: any) {
   if (!isRecord(snap)) return { dartSets: null as any, activeId: null as any };
 
   // formats possibles selon ton historique
-  const store = isRecord(snap.store) ? snap.store : null;
+  let store = isRecord(snap.store) ? snap.store : null;
   const data = isRecord(snap.data) ? snap.data : null;
+
+  // ✅ Full snapshot exportAll() v2 : le vrai store peut être dans idb["store"]
+  // ou idb["store:<uid>"] selon le scope utilisateur courant.
+  if (!store && isRecord((snap as any).idb)) {
+    const idb = (snap as any).idb as Record<string, any>;
+    const scoped = scopedStorageKey(STORE_KEY);
+    const candidateKeys = [
+      scoped,
+      STORE_KEY,
+      ...Object.keys(idb).filter((k) => k === STORE_KEY || /(^|[:/])store(?::[^:/]+)?$/.test(String(k))),
+    ];
+    for (const key of candidateKeys) {
+      const candidate = idb?.[key];
+      if (isRecord(candidate)) {
+        store = candidate;
+        break;
+      }
+    }
+  }
 
   const dartSets =
     pickFirst(store?.dartSets, store?.dartsets, data?.dartSets, data?.dartsets, snap.dartSets, snap.dartsets) ?? null;
