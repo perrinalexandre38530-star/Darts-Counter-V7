@@ -384,12 +384,16 @@ function getProfileOwnerIds(profile: any): string[] {
   push(profile?.id);
   push((profile as any)?.userId);
   push((profile as any)?.privateInfo?.onlineUserId);
+  push((profile as any)?.privateInfo?.userId);
+  push((profile as any)?.privateInfo?.accountUserId);
   return Array.from(ids);
 }
 
 function getPrimaryOwnerId(profile: any): string {
   return (
+    String((profile as any)?.userId || "").trim() ||
     String((profile as any)?.privateInfo?.onlineUserId || "").trim() ||
+    String((profile as any)?.privateInfo?.userId || "").trim() ||
     String((profile as any)?.id || "").trim()
   );
 }
@@ -451,9 +455,15 @@ const DartSetsPanel: React.FC<Props> = ({ profile }) => {
     try {
       const ownerIds = getProfileOwnerIds(profile);
       const allSets = await Promise.resolve(getAllDartSets() as any);
-      const visible = ((allSets || []) as DartSet[]).filter((set) =>
-        set?.scope === "public" || ownerIds.includes(String(set?.profileId || ""))
-      );
+      const visible = ((allSets || []) as DartSet[]).filter((set: any) => {
+        if (set?.scope === "public") return true;
+        const setOwners = new Set<string>([
+          String(set?.profileId || "").trim(),
+          String((set as any)?.ownerUserId || "").trim(),
+          ...((Array.isArray((set as any)?.ownerAliases) ? (set as any).ownerAliases : []).map((x: any) => String(x || "").trim())),
+        ].filter(Boolean));
+        return ownerIds.some((id) => setOwners.has(String(id || "").trim()));
+      });
       const sorted = sortSets(visible as DartSet[]);
       setSets(sorted);
       setActiveIndex((idx) => (sorted.length === 0 ? 0 : Math.min(idx, sorted.length - 1)));
@@ -552,6 +562,8 @@ const DartSetsPanel: React.FC<Props> = ({ profile }) => {
     try {
       const payload = {
         profileId: getPrimaryOwnerId(profile),
+        ownerUserId: String((profile as any)?.privateInfo?.onlineUserId || (profile as any)?.userId || "").trim() || undefined,
+        ownerAliases: getProfileOwnerIds(profile),
         name,
         brand: brand || undefined,
         weightGrams,

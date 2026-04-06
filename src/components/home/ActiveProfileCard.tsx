@@ -159,6 +159,25 @@ function useInjectStatsNameCss() {
   }, []);
 }
 
+
+function normalizeNickKey(value: any): string {
+  return String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, "");
+}
+
+function looksLikeEmailLocalNickname(candidate: any, email: any): boolean {
+  const cand = normalizeNickKey(candidate);
+  const mail = String(email || "").trim().toLowerCase();
+  if (!cand || !mail.includes("@")) return false;
+  const local = normalizeNickKey(mail.split("@")[0]);
+  if (!local) return false;
+  if (cand === local) return true;
+  if (cand.length >= 6 && local.startsWith(cand)) return true;
+  return local.length >= 6 && cand.startsWith(local.slice(0, Math.min(local.length, 12)))
+}
+
 /* ============================================================
    Composant principal
 ============================================================ */
@@ -385,13 +404,66 @@ function ActiveProfileCard({
 
   const accent = (theme as any).accent ?? primary;
   const accentSoft = (theme as any).accent20 ?? `${primary}33`;
-  const profileName =
+  const profileEmail =
     String(
-      (profile as any)?.privateInfo?.nickname ||
-      (profile as any)?.surname ||
-      profile.name ||
+      (profile as any)?.email ||
+      (profile as any)?.privateInfo?.email ||
+      (profile as any)?.privateInfo?.onlineEmail ||
       ""
-    ).trim() || t("home.noName", "Joueur");
+    ).trim().toLowerCase();
+
+  const profileCacheKey = React.useMemo(() => {
+    const raw =
+      String((profile as any)?.privateInfo?.onlineUserId || "").trim() ||
+      String((profile as any)?.userId || "").trim() ||
+      String((profile as any)?.id || "").trim();
+    return raw ? `dc_profile_name_cache:${raw}` : "";
+  }, [
+    (profile as any)?.id,
+    (profile as any)?.userId,
+    (profile as any)?.privateInfo?.onlineUserId,
+  ]);
+
+  const profileName = React.useMemo(() => {
+    const rawCandidates = [
+      (profile as any)?.privateInfo?.nickname,
+      (profile as any)?.surname,
+      (profile as any)?.displayName,
+      profile.name,
+    ]
+      .map((v) => String(v || "").trim())
+      .filter(Boolean);
+
+    const cached = (() => {
+      if (typeof window === "undefined" || !profileCacheKey) return "";
+      try {
+        return String(window.localStorage.getItem(profileCacheKey) || "").trim();
+      } catch {
+        return "";
+      }
+    })();
+
+    const explicit = rawCandidates.find((v) => !looksLikeEmailLocalNickname(v, profileEmail)) || "";
+    const fallback = rawCandidates[0] || "";
+
+    return explicit || cached || fallback || t("home.noName", "Joueur");
+  }, [
+    (profile as any)?.privateInfo?.nickname,
+    (profile as any)?.surname,
+    (profile as any)?.displayName,
+    profile.name,
+    profileEmail,
+    profileCacheKey,
+    t,
+  ]);
+
+  React.useEffect(() => {
+    if (typeof window === "undefined" || !profileCacheKey) return;
+    if (!profileName || looksLikeEmailLocalNickname(profileName, profileEmail)) return;
+    try {
+      window.localStorage.setItem(profileCacheKey, profileName);
+    } catch {}
+  }, [profileCacheKey, profileEmail, profileName]);
 
   const handleNextSlide = () => {
     if (!slides.length || slides.length <= 1) return;

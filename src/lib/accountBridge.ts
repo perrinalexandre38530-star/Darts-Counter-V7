@@ -73,7 +73,6 @@ function getOnlineNickname(user: any, onlineProfile?: any): string {
       onlineProfile?.displayName ||
       onlineProfile?.display_name ||
       user?.nickname ||
-      (email ? email.split("@")[0] : "Joueur") ||
       "Joueur"
   ).trim();
 }
@@ -343,7 +342,8 @@ export function ensureLocalProfileForOnlineUser(store: any, user: any, onlinePro
 
   // Default: DO NOT hijack the active local profile anymore.
   // Create a dedicated account profile id==uid and keep locals unchanged.
-  const dedicated = buildDedicatedAccountProfile(user, onlineProfile, undefined);
+  const seedProfile = active && String(active?.id || "") !== uid ? active : undefined;
+  const dedicated = buildDedicatedAccountProfile(user, onlineProfile, seedProfile as any);
   return {
     ...store,
     profiles: [...profiles, dedicated],
