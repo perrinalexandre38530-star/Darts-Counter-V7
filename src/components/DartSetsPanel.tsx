@@ -381,19 +381,54 @@ function getProfileOwnerIds(profile: any): string[] {
     const id = String(v || "").trim();
     if (id) ids.add(id);
   };
+
+  const baseOnlineId =
+    String((profile as any)?.privateInfo?.onlineUserId || "").trim() ||
+    String((profile as any)?.userId || "").trim() ||
+    String((profile as any)?.id || "").trim();
+
   push(profile?.id);
   push((profile as any)?.userId);
   push((profile as any)?.privateInfo?.onlineUserId);
   push((profile as any)?.privateInfo?.userId);
   push((profile as any)?.privateInfo?.accountUserId);
+
+  try {
+    const allProfiles = Array.isArray((window as any)?.__appStore?.store?.profiles)
+      ? (window as any).__appStore.store.profiles
+      : [];
+    for (const p of allProfiles as any[]) {
+      const pid = String((p as any)?.id || "").trim();
+      const onlineUserId = String((p as any)?.privateInfo?.onlineUserId || "").trim();
+      const userId = String((p as any)?.userId || "").trim();
+      const accountUserId = String((p as any)?.privateInfo?.accountUserId || "").trim();
+      const legacyUserId = String((p as any)?.privateInfo?.userId || "").trim();
+      if (
+        (baseOnlineId && (onlineUserId === baseOnlineId || userId === baseOnlineId || accountUserId === baseOnlineId || legacyUserId === baseOnlineId || pid === baseOnlineId)) ||
+        (pid && ids.has(pid)) ||
+        (onlineUserId && ids.has(onlineUserId)) ||
+        (userId && ids.has(userId)) ||
+        (accountUserId && ids.has(accountUserId)) ||
+        (legacyUserId && ids.has(legacyUserId))
+      ) {
+        push(pid);
+        push(onlineUserId);
+        push(userId);
+        push(accountUserId);
+        push(legacyUserId);
+      }
+    }
+  } catch {}
+
   return Array.from(ids);
 }
 
 function getPrimaryOwnerId(profile: any): string {
+  const ownerIds = getProfileOwnerIds(profile);
   return (
-    String((profile as any)?.userId || "").trim() ||
     String((profile as any)?.privateInfo?.onlineUserId || "").trim() ||
-    String((profile as any)?.privateInfo?.userId || "").trim() ||
+    String((profile as any)?.userId || "").trim() ||
+    ownerIds[0] ||
     String((profile as any)?.id || "").trim()
   );
 }
@@ -477,6 +512,16 @@ const DartSetsPanel: React.FC<Props> = ({ profile }) => {
 
   React.useEffect(() => {
     loadSets();
+  }, [loadSets]);
+
+  React.useEffect(() => {
+    const handler = () => { void loadSets(); };
+    window.addEventListener("dc-dartsets-updated", handler as any);
+    window.addEventListener("storage", handler as any);
+    return () => {
+      window.removeEventListener("dc-dartsets-updated", handler as any);
+      window.removeEventListener("storage", handler as any);
+    };
   }, [loadSets]);
 
   const reloadSets = React.useCallback(() => {
@@ -583,7 +628,7 @@ const DartSetsPanel: React.FC<Props> = ({ profile }) => {
         return;
       }
 
-      reloadSets();
+      await loadSets();
       setForm(createEmptyForm(primary));
       setIsCreating(false);
 

@@ -66,15 +66,18 @@ function scoreProfileCompleteness(p: any): number {
 }
 
 function getOnlineNickname(user: any, onlineProfile?: any): string {
-  const email = safeLower(user?.email);
-  return String(
+  const raw = String(
     onlineProfile?.surname ||
       onlineProfile?.nickname ||
       onlineProfile?.displayName ||
       onlineProfile?.display_name ||
       user?.nickname ||
-      "Joueur"
+      ""
   ).trim();
+  const lower = raw.toLowerCase();
+  if (!raw) return "";
+  if (lower === "joueur" || lower === "player" || lower === "user") return "";
+  return raw;
 }
 
 function getOnlineAvatar(onlineProfile?: any): string | undefined {
@@ -133,7 +136,8 @@ function buildDedicatedAccountProfile(user: any, onlineProfile?: any, previous?:
   const prevPI = readPrivateInfo(previous);
   const nickname =
     String(prevPI?.nickname || previous?.surname || previous?.name || "").trim() ||
-    getOnlineNickname(user, onlineProfile);
+    getOnlineNickname(user, onlineProfile) ||
+    "Joueur";
   const avatar = getOnlineAvatar(onlineProfile);
   const nextPI = {
     ...prevPI,
@@ -297,7 +301,7 @@ export function ensureLocalProfileForOnlineUser(store: any, user: any, onlinePro
     const next = writePrivateInfo(
       {
         ...byPI,
-        name: getOnlineNickname(user, onlineProfile) || byPI?.name,
+        name: getOnlineNickname(user, onlineProfile) || byPI?.name || "Joueur",
         surname: onlineProfile?.surname ?? byPI?.surname,
         firstName: onlineProfile?.firstName ?? onlineProfile?.first_name ?? byPI?.firstName,
         lastName: onlineProfile?.lastName ?? onlineProfile?.last_name ?? byPI?.lastName,

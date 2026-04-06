@@ -3632,21 +3632,32 @@ case "babyfoot_team_edit":
           async function handleSaveAvatarBot({ pngDataUrl, name }: { pngDataUrl: string; name: string }) {
             if (!targetBot) return go(backTo);
 
-            const safeAvatarDataUrl = await enforceSafeAvatarDataUrl(pngDataUrl).catch(() => null);
+            const safeAvatarDataUrl =
+              (await enforceSafeAvatarDataUrl(pngDataUrl).catch(() => null)) ||
+              sanitizeAvatarDataUrl(pngDataUrl) ||
+              (typeof pngDataUrl === "string" && pngDataUrl.startsWith("data:image/") ? pngDataUrl : null);
 
             const next = bots.slice();
             const idx = next.findIndex((b) => b.id === targetBot.id);
 
+            const finalAvatar = safeAvatarDataUrl ?? targetBot.avatarDataUrl ?? null;
+
             const updated: BotLS = {
               ...targetBot,
               name: name?.trim() || targetBot.name,
-              avatarDataUrl: safeAvatarDataUrl ?? targetBot.avatarDataUrl ?? null,
+              avatarDataUrl: finalAvatar,
+              avatar: finalAvatar,
+              avatarUrl: finalAvatar,
+              updatedAt: new Date().toISOString(),
             };
 
             if (idx >= 0) next[idx] = updated;
             else next.push(updated);
 
             saveBotsLS(next);
+            try {
+              (window as any).__appStore?.update?.((s: any) => ({ ...(s || {}) }));
+            } catch {}
             try {
               window.dispatchEvent(new Event("dc:bots-changed"));
               (window as any).__flushCloudNow?.("bots_save");

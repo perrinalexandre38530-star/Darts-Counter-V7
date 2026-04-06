@@ -178,6 +178,14 @@ function looksLikeEmailLocalNickname(candidate: any, email: any): boolean {
   return local.length >= 6 && cand.startsWith(local.slice(0, Math.min(local.length, 12)))
 }
 
+
+
+function looksLikeGenericPlayerName(candidate: any): boolean {
+  const v = String(candidate || "").trim().toLowerCase();
+  if (!v) return true;
+  const normalized = v.replace(/[^a-z0-9]/g, "");
+  return normalized === "joueur" || normalized === "player" || normalized === "hote" || normalized === "host" || normalized === "moi" || normalized === "user";
+}
 /* ============================================================
    Composant principal
 ============================================================ */
@@ -424,6 +432,8 @@ function ActiveProfileCard({
     (profile as any)?.privateInfo?.onlineUserId,
   ]);
 
+  const [stableProfileName, setStableProfileName] = React.useState("");
+
   const profileName = React.useMemo(() => {
     const rawCandidates = [
       (profile as any)?.privateInfo?.nickname,
@@ -443,10 +453,13 @@ function ActiveProfileCard({
       }
     })();
 
-    const explicit = rawCandidates.find((v) => !looksLikeEmailLocalNickname(v, profileEmail)) || "";
-    const fallback = rawCandidates[0] || "";
+    const meaningful = rawCandidates.find(
+      (v) => !looksLikeEmailLocalNickname(v, profileEmail) && !looksLikeGenericPlayerName(v)
+    ) || "";
 
-    return explicit || cached || fallback || t("home.noName", "Joueur");
+    const genericFallback = rawCandidates.find((v) => !looksLikeEmailLocalNickname(v, profileEmail)) || "";
+
+    return meaningful || stableProfileName || cached || genericFallback || t("home.noName", "Joueur");
   }, [
     (profile as any)?.privateInfo?.nickname,
     (profile as any)?.surname,
@@ -454,8 +467,16 @@ function ActiveProfileCard({
     profile.name,
     profileEmail,
     profileCacheKey,
+    stableProfileName,
     t,
   ]);
+
+  React.useEffect(() => {
+    if (!profileName) return;
+    if (looksLikeEmailLocalNickname(profileName, profileEmail)) return;
+    if (looksLikeGenericPlayerName(profileName)) return;
+    setStableProfileName((prev) => (prev === profileName ? prev : profileName));
+  }, [profileName, profileEmail]);
 
   React.useEffect(() => {
     if (typeof window === "undefined" || !profileCacheKey) return;

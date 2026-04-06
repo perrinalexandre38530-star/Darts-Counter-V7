@@ -225,7 +225,7 @@ export function normalizeBotRecord(input: any): BotRecord {
   const nowIso = new Date().toISOString();
   const avatarDataUrl = sanitizeAvatarDataUrl(
     input?.avatarDataUrl ?? input?.avatar ?? input?.avatarUrl ?? null
-  );
+  ) || (typeof input?.avatarDataUrl === "string" && input.avatarDataUrl.startsWith("data:image/") ? input.avatarDataUrl : null);
 
   return {
     ...input,
@@ -235,6 +235,8 @@ export function normalizeBotRecord(input: any): BotRecord {
     botLevel: String(input?.botLevel || level),
     avatarSeed: String(input?.avatarSeed || Math.random().toString(36).slice(2, 10)),
     avatarDataUrl,
+    avatar: avatarDataUrl,
+    avatarUrl: avatarDataUrl,
     createdAt: String(input?.createdAt || nowIso),
     updatedAt: String(input?.updatedAt || nowIso),
     isBot: true,
@@ -299,13 +301,19 @@ export function loadBots(): BotRecord[] {
   const metaBots = readBotsMeta();
   const avatarsMap = readAvatarsMap();
 
-  const merged = metaBots.map((bot) => ({
-    ...bot,
-    avatarDataUrl:
+  const merged = metaBots.map((bot) => {
+    const avatarDataUrl =
       avatarsMap[bot.id] ??
       sanitizeAvatarDataUrl(bot.avatarDataUrl ?? (bot as any)?.avatar ?? (bot as any)?.avatarUrl ?? null) ??
-      null,
-  }));
+      (typeof (bot as any)?.avatarDataUrl === "string" && String((bot as any).avatarDataUrl).startsWith("data:image/") ? String((bot as any).avatarDataUrl) : null) ??
+      null;
+    return {
+      ...bot,
+      avatarDataUrl,
+      avatar: avatarDataUrl,
+      avatarUrl: avatarDataUrl,
+    };
+  });
 
   if (merged.length > 0) return normalizeBotsList(merged);
 

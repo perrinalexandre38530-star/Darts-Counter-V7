@@ -1816,9 +1816,9 @@ React.useEffect(() => {
 </Card>
 
                 {/* 🔥 Panneau sets de fléchettes du profil actif */}
-                {isDarts && active && (
+                {isDarts && (meProfileForDarts || active) && (
                   <div style={{ marginTop: 8, marginBottom: 8 }}>
-                    <DartSetsPanel profile={active} />
+                    <DartSetsPanel profile={(meProfileForDarts || active) as any} />
                   </div>
                 )}
 
@@ -3768,6 +3768,7 @@ function LocalProfilesRefonte({
   );
 
   const [index, setIndex] = React.useState(0);
+  const prevLocalsCountRef = React.useRef(0);
   const [isEditing, setIsEditing] = React.useState(false);
   const [editName, setEditName] = React.useState("");
   const [editCountry, setEditCountry] = React.useState("");
@@ -3784,6 +3785,19 @@ function LocalProfilesRefonte({
     }
   }, [locals.length, index]);
 
+
+  React.useEffect(() => {
+    if (!Array.isArray(locals)) return;
+    const prev = prevLocalsCountRef.current;
+    if (locals.length > prev && locals.length > 0) {
+      setIndex(locals.length - 1);
+    } else if (locals.length === 0) {
+      setIndex(0);
+    } else if (index >= locals.length) {
+      setIndex(Math.max(0, locals.length - 1));
+    }
+    prevLocalsCountRef.current = locals.length;
+  }, [locals.length]);
   const current = locals[index] || null;
 
   // stats du profil courant
