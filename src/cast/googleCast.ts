@@ -212,9 +212,6 @@ function sanitizePlayerStats(player: any) {
     shieldTurns: sanitizeNumberLike(stats?.shieldTurns ?? 0),
     lives: sanitizeNumberLike(stats?.lives ?? 0),
     number: sanitizeNumberLike(stats?.number ?? 0),
-    autoHits: sanitizeNumberLike(stats?.autoHits ?? 0),
-    resurrectionsGiven: sanitizeNumberLike(stats?.resurrectionsGiven ?? 0),
-    resurrectionsReceived: sanitizeNumberLike(stats?.resurrectionsReceived ?? 0),
   };
 }
 

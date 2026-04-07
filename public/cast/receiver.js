@@ -404,172 +404,28 @@ function killerMetaChip(label, value, color) {
   `;
 }
 
-function parseMetaJson(value) {
-  if (!value) return null;
-  if (typeof value === "object") return value;
-  const raw = String(value || "").trim();
-  if (!raw) return null;
-  try {
-    return JSON.parse(raw);
-  } catch {
-    return null;
-  }
-}
-
-function killerStateMode(player) {
-  if (player?.eliminated) return "dead";
-  if (player?.resurrected) return "resurrected";
-  if (num(player?.shieldTurnsLeft ?? player?.stats?.shieldTurns, 0) > 0) return "shield";
-  if (player?.isKiller || String(player?.killerPhase || "").toUpperCase() === "ACTIVE") return "killer";
-  return "normal";
-}
-
-function killerStateColors(player, fallback) {
-  const mode = killerStateMode(player);
-  if (mode === "dead") {
-    return {
-      mode,
-      tone: "#ff9d9d",
-      border: "rgba(255,88,88,.46)",
-      softBorder: "rgba(255,88,88,.22)",
-      bg: "linear-gradient(180deg, rgba(88,14,18,.96), rgba(24,7,9,.98))",
-      shadow: "0 0 24px rgba(255,88,88,.18)",
-      heart: "#f05f80",
-      text: "#fff0f0",
-    };
-  }
-  if (mode === "resurrected") {
-    return {
-      mode,
-      tone: "#ffffff",
-      border: "rgba(255,255,255,.58)",
-      softBorder: "rgba(255,255,255,.24)",
-      bg: "linear-gradient(180deg, rgba(56,56,60,.96), rgba(16,16,18,.98))",
-      shadow: "0 0 24px rgba(255,255,255,.18)",
-      heart: "#f7f0f8",
-      text: "#ffffff",
-    };
-  }
-  if (mode === "shield") {
-    return {
-      mode,
-      tone: "#8aeaff",
-      border: "rgba(94,224,255,.50)",
-      softBorder: "rgba(94,224,255,.24)",
-      bg: "linear-gradient(180deg, rgba(14,33,46,.96), rgba(8,14,20,.98))",
-      shadow: "0 0 24px rgba(94,224,255,.18)",
-      heart: "#ce549c",
-      text: "#ecfcff",
-    };
-  }
-  if (mode === "killer") {
-    const tone = fallback || "#ffd55b";
-    return {
-      mode,
-      tone,
-      border: `${tone}77`,
-      softBorder: `${tone}33`,
-      bg: "linear-gradient(180deg, rgba(36,28,10,.94), rgba(16,12,8,.98))",
-      shadow: `0 0 24px ${tone}18`,
-      heart: "#ce549c",
-      text: "#fff8e6",
-    };
-  }
-  return {
-    mode,
-    tone: fallback || "#ffd55b",
-    border: "rgba(255,213,91,.36)",
-    softBorder: "rgba(255,213,91,.18)",
-    bg: "linear-gradient(180deg, rgba(32,34,40,.96), rgba(16,18,22,.98))",
-    shadow: "0 0 18px rgba(255,213,91,.08)",
-    heart: "#ce549c",
-    text: "#ffffff",
-  };
-}
-
-function killerRoleBadgeHtml(player, colors) {
-  const mode = killerStateMode(player);
-  if (mode === "dead") {
-    return `
-      <div class="killer-role-badge" style="background:rgba(255,90,90,.16);border-color:rgba(255,90,90,.42);color:${colors.tone};">
-        <span style="font-size:11px;line-height:1;">☠</span>
-      </div>
-    `;
-  }
-  if (mode === "killer") {
-    return `
-      <div class="killer-role-badge" style="background:rgba(255,213,91,.16);border-color:rgba(255,213,91,.38);color:${colors.tone};">
-        <span style="font-size:10px;font-weight:1000;letter-spacing:.08em;">K</span>
-      </div>
-    `;
-  }
-  if (mode === "resurrected") {
-    return `
-      <div class="killer-role-badge" style="background:rgba(255,255,255,.12);border-color:rgba(255,255,255,.42);color:${colors.tone};">
-        <span style="font-size:11px;line-height:1;">↺</span>
-      </div>
-    `;
-  }
-  return "";
-}
-
-function killerNumberKpiHtml(number, colors) {
-  const value = number > 0 ? number : "?";
-  return `
-    <div class="killer-mini-number" style="border-color:${colors.softBorder};color:${colors.tone};box-shadow:inset 0 1px 0 rgba(255,255,255,.03);">
-      <span>${esc(value)}</span>
-    </div>
-  `;
-}
-
-function killerShieldValueHtml(value, color, compact = false) {
-  const turns = Math.max(0, num(value, 0));
-  if (!turns) return "";
-  const size = compact ? 28 : 46;
-  const font = compact ? 12 : 18;
-  return `
-    <div class="killer-shield-wrap ${compact ? 'is-compact' : ''}" style="width:${size}px;height:${Math.round(size * 1.06)}px;filter:drop-shadow(0 0 14px ${color}22);">
-      <svg viewBox="0 0 56 60" class="killer-shield-svg" aria-hidden="true">
-        <path d="M28 4L46 10V25C46 38 37.8 48.7 28 55C18.2 48.7 10 38 10 25V10L28 4Z" fill="rgba(86,225,255,.94)" stroke="rgba(255,255,255,.58)" stroke-width="2.2"/>
-      </svg>
-      <span class="killer-shield-value" style="font-size:${font}px;">${esc(turns)}</span>
-    </div>
-  `;
-}
-
-function killerMiniLifeHtml(lives, colors, player) {
-  const heart = killerHeartValueHtml(lives, colors.heart, true);
-  const shieldTurns = Math.max(0, num(player?.shieldTurnsLeft ?? player?.stats?.shieldTurns, 0));
-  const shield = shieldTurns > 0 ? killerShieldValueHtml(shieldTurns, colors.tone, true) : "";
-  return `
-    <div class="killer-mini-life-row">
-      ${heart}
-      ${shield}
-    </div>
-  `;
-}
-
 function killerMiniPlayerCard(player, isActive, color) {
-  const colors = killerStateColors(player, color || "#53e7ff");
+  const tone = killerTone(player, color || "#53e7ff");
+  const shieldTurns = num(player?.shieldTurnsLeft ?? player?.stats?.shieldTurns, 0);
   const number = num(player?.number ?? player?.stats?.number, 0);
   const lives = num(player?.lives ?? player?.score, 0);
-  const botChip = player?.isBot
-    ? `<span class="killer-bot-chip">CPU</span>`
-    : "";
-  const activeRing = isActive ? `0 0 0 1px rgba(255,198,58,.22), 0 0 18px rgba(255,198,58,.16), ` : "";
+  const statusBits = [];
+  if (number > 0) statusBits.push(`N° ${number}`);
+  statusBits.push(killerPhaseLabel(player));
+  if (shieldTurns > 0) statusBits.push(`🛡 ${shieldTurns}`);
+  if (player?.isBot) statusBits.push("CPU");
 
   return `
-    <div class="mini-player-card ${isActive ? "is-active" : ""}" style="grid-template-columns:40px auto minmax(0,1fr) auto;border-color:${colors.border};background:${colors.bg};box-shadow:${activeRing}${colors.shadow}, inset 0 1px 0 rgba(255,255,255,.03);">
+    <div class="mini-player-card ${isActive ? "is-active" : ""}" style="border-color:${tone}55; box-shadow:${isActive ? `0 0 18px ${tone}22, inset 0 1px 0 rgba(255,255,255,.03)` : `inset 0 1px 0 rgba(255,255,255,.02)`};">
       ${avatarHtml(player, 36, true)}
-      ${killerNumberKpiHtml(number, colors)}
       <div class="mini-player-info">
-        <div class="mini-player-name" style="color:${colors.text};">${esc(player?.name || "Joueur")}</div>
-        <div class="killer-mini-status-row">
-          ${killerRoleBadgeHtml(player, colors)}
-          ${botChip}
-        </div>
+        <div class="mini-player-name" style="color:${tone};">${esc(player?.name || "Joueur")}</div>
+        <div style="font-size:10px;opacity:.82;font-weight:900;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${esc(statusBits.join(" • "))}</div>
       </div>
-      ${killerMiniLifeHtml(lives, colors, player)}
+      <div style="text-align:right;">
+        <div class="mini-player-score" style="color:${tone};">${esc(lives)}</div>
+        <div style="font-size:10px;opacity:.78;font-weight:900;">vies</div>
+      </div>
     </div>
   `;
 }
@@ -618,9 +474,6 @@ function pickKillerStats(active, payloadMeta) {
     livesTaken: num(s?.livesTaken, 0),
     livesLost: num(s?.livesLost ?? s?.bust, 0),
     totalThrows: num(s?.totalThrows, 0),
-    autoHits: num(s?.autoHits, 0),
-    resurrectionsGiven: num(s?.resurrectionsGiven, 0),
-    resurrectionsReceived: num(s?.resurrectionsReceived, 0),
     simple: num(s?.simple, 0),
     double_: num(s?.double, 0),
     triple: num(s?.triple, 0),
@@ -637,99 +490,33 @@ function killerOptionBadges(meta) {
   return raw.split(/\s+•\s+/).map((v) => String(v || "").trim()).filter(Boolean);
 }
 
-function killerOptionGroups(meta) {
-  const parsed = parseMetaJson(meta?.optionGroupsJson);
-  const groups = {
-    BULL: [],
-    DBULL: [],
-    MISS: [],
-    "Résurrection": [],
-    Multiplicateur: [],
-  };
-
-  const pushLine = (key, value) => {
-    const label = String(value || "").trim();
-    if (!label) return;
-    if (!groups[key].includes(label)) groups[key].push(label);
-  };
-
-  if (parsed && typeof parsed === "object") {
-    const mapping = {
-      bull: "BULL",
-      dbull: "DBULL",
-      miss: "MISS",
-      resurrection: "Résurrection",
-      multiplicateur: "Multiplicateur",
-      multiplier: "Multiplicateur",
-    };
-    Object.entries(parsed).forEach(([rawKey, rawValue]) => {
-      const normalized = mapping[String(rawKey || "").toLowerCase()] || null;
-      if (!normalized) return;
-      const values = Array.isArray(rawValue) ? rawValue : [rawValue];
-      values.forEach((item) => pushLine(normalized, item));
-    });
-  }
-
-  if (!Object.values(groups).some((arr) => arr.length)) {
-    killerOptionBadges(meta).forEach((badge) => {
-      const clean = String(badge || "").trim();
-      if (!clean) return;
-      if (/^DBULL/i.test(clean) || /DBULL/i.test(clean)) {
-        pushLine("DBULL", clean.replace(/^DBULL\s*=\s*/i, "").trim());
-        return;
-      }
-      if (/^BULL/i.test(clean) || /BULL/i.test(clean)) {
-        pushLine("BULL", clean.replace(/^BULL\s*=\s*/i, "").trim());
-        return;
-      }
-      if (/MISS/i.test(clean)) {
-        pushLine("MISS", clean.replace(/^MISS\s*=\s*/i, "").trim());
-        return;
-      }
-      if (/r[ée]surrection/i.test(clean)) {
-        pushLine("Résurrection", clean);
-      }
-    });
-  }
-
-  if (!groups.Multiplicateur.length) {
-    pushLine("Multiplicateur", `x${num(meta?.multiplier, 1)}`);
-  }
-
-  return groups;
-}
-
-function killerOptionsBoardHtml(meta, color) {
-  const groups = killerOptionGroups(meta);
-  const entries = Object.entries(groups);
+function killerOptionsBarHtml(meta, color) {
+  const badges = killerOptionBadges(meta);
+  if (!badges.length) return "";
   return `
-    <section class="panel killer-options-panel" style="padding:12px 12px 10px;flex:0 0 auto;border-color:${color}44;box-shadow:0 0 18px ${color}18, inset 0 1px 0 rgba(255,255,255,.03);">
-      <div class="panel-title" style="margin-bottom:10px;">Options actives</div>
-      <div class="killer-options-grid">
-        ${entries.map(([label, values]) => `
-          <div class="killer-option-card" style="border-color:${color}22;box-shadow:inset 0 1px 0 rgba(255,255,255,.03), 0 0 14px ${color}10;">
-            <div class="killer-option-title" style="color:${color};">${esc(label)}</div>
-            <div class="killer-option-lines">${(values.length ? values : ["Aucune"]).map((line) => `<div>${esc(line)}</div>`).join("")}</div>
-          </div>
-        `).join("")}
+    <section class="panel killer-options-panel" style="padding:10px 12px;flex:0 0 auto;border-color:${color}44;box-shadow:0 0 18px ${color}18, inset 0 1px 0 rgba(255,255,255,.03);">
+      <div class="panel-title-row" style="margin-bottom:8px;">
+        <div class="panel-title" style="margin-bottom:0;">Options actives</div>
+        <div class="panel-subtitle">Règles de la partie</div>
+      </div>
+      <div class="killer-options-bar">
+        ${badges.map((label) => `<div class="killer-option-chip" style="border-color:${color}44;color:${color};box-shadow:0 0 14px ${color}14 inset;">${esc(label)}</div>`).join("")}
       </div>
     </section>
   `;
 }
 
-function killerHeartValueHtml(value, color, compact = false) {
-  const width = compact ? 34 : 88;
-  const height = compact ? 31 : 80;
-  const font = compact ? 14 : 34;
+function killerHeartValueHtml(value, color) {
   return `
-    <div class="killer-heart-wrap ${compact ? 'is-compact' : ''}" style="width:${width}px;height:${height}px;filter:drop-shadow(0 0 ${compact ? 10 : 18}px ${color}22);">
+    <div class="killer-heart-wrap" style="filter:drop-shadow(0 0 18px ${color}22);">
       <svg viewBox="0 0 64 58" class="killer-heart-svg" aria-hidden="true">
         <path d="M32 54C29.6 52.1 5 36.6 5 19.8C5 11.2 11.7 5 19.9 5C25.2 5 29.5 7.4 32 11.4C34.5 7.4 38.8 5 44.1 5C52.3 5 59 11.2 59 19.8C59 36.6 34.4 52.1 32 54Z" fill="rgba(206,84,156,.95)" stroke="rgba(255,255,255,.55)" stroke-width="2.2"/>
       </svg>
-      <span class="killer-heart-value" style="font-size:${font}px;">${esc(value)}</span>
+      <span class="killer-heart-value">${esc(value)}</span>
     </div>
   `;
 }
+
 function renderKillerSnapshot(payload) {
   lastPayload = payload || {};
   try { document.body.classList.remove("is-home"); } catch {}
@@ -753,11 +540,11 @@ function renderKillerSnapshot(payload) {
   const rankMap = killerRankMap(players);
   const activeRank = rankMap.get(String(active?.id || active?.name || "")) || 1;
   const baseColor = colorById[String(active?.id || active?.name || "")] || "#53e7ff";
-  const activeColors = killerStateColors(active, baseColor);
-  const activeColor = activeColors.tone;
+  const activeColor = killerTone(active, baseColor);
   const ks = pickKillerStats(active, meta);
   const aliveCount = num(meta?.aliveCount, players.filter((p) => !p?.eliminated).length);
   const phaseLabel = killerPhaseLabel(active);
+  const assignLabel = String(meta?.assignDone || "") === "yes" ? "Terminée" : "En cours";
 
   try { document.body.style.setProperty("--theme-accent", activeColor); } catch {}
   if (statusEl) statusEl.textContent = payload?.title || payload?.game || "Partie en cours";
@@ -780,11 +567,8 @@ function renderKillerSnapshot(payload) {
                 <div class="active-avatar-wrap">
                   ${avatarHtml(active, 108)}
                 </div>
-                <div class="active-name" style="color:${activeColors.text};">${esc(active?.name || "Joueur")}</div>
-                <div style="margin-top:6px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
-                  ${killerRoleBadgeHtml(active, activeColors)}
-                  <div style="font-size:14px;font-weight:1000;opacity:.92;color:${activeColor};">${esc(phaseLabel)}</div>
-                </div>
+                <div class="active-name" style="color:${activeColor};">${esc(active?.name || "Joueur")}</div>
+                <div style="margin-top:6px;font-size:14px;font-weight:1000;opacity:.92;color:${activeColor};">${esc(phaseLabel)}</div>
               </div>
 
               <div class="killer-top-grid">
@@ -797,30 +581,42 @@ function renderKillerSnapshot(payload) {
                   <div class="score-rank">#${esc(activeRank)}</div>
                   <div class="score-label" style="color:${activeColor};">VIES</div>
                   <div class="killer-lives-box">
-                    ${killerHeartValueHtml(ks.lives, activeColors.heart)}
+                    ${killerHeartValueHtml(ks.lives, activeColor)}
                   </div>
                 </div>
               </div>
             </div>
 
             <div class="active-bottom">
-              ${killerOptionsBoardHtml(meta, activeColor)}
+              ${killerOptionsBarHtml(meta, activeColor)}
 
-              <section class="panel killer-stats-panel" style="padding:12px 12px 10px;flex:0 0 auto;margin-top:10px;border-color:${activeColor}44;box-shadow:0 0 18px ${activeColor}18, inset 0 1px 0 rgba(255,255,255,.03);">
-                <div class="panel-title" style="margin-bottom:10px;">Stats Killer</div>
-                <div class="stats-grid killer-stats-grid">
-                  ${killerMetaChip("Bouclier", ks.shieldTurns > 0 ? `${ks.shieldTurns}T` : "OFF", activeColor)}
-                  ${killerMetaChip("Survivants", `${aliveCount}/${players.length}`, activeColor)}
-                  ${killerMetaChip("Tour", num(meta?.turnCount, 0) || "—", activeColor)}
-                  ${killerMetaChip("Lancers", ks.totalThrows, activeColor)}
-                  ${killerMetaChip("Dégâts", ks.livesTaken, activeColor)}
-                  ${killerMetaChip("Kills", ks.kills, activeColor)}
-                  ${killerMetaChip("Auto-hit", ks.autoHits, activeColor)}
-                  ${killerMetaChip("Résurrection", ks.resurrectionsGiven, activeColor)}
-                </div>
-              </section>
+              <div class="stats-grid" style="margin-top:10px;">
+                ${killerMetaChip("Numéro", ks.number > 0 ? ks.number : "—", activeColor)}
+                ${killerMetaChip("Bouclier", ks.shieldTurns > 0 ? `${ks.shieldTurns} tour${ks.shieldTurns > 1 ? "s" : ""}` : "Aucun", activeColor)}
+                ${killerMetaChip("Vivants", `${aliveCount}/${players.length}`, activeColor)}
+                ${killerMetaChip("Fléchettes", num(meta?.dartsLeft, 0), activeColor)}
+                ${killerMetaChip("Multiplicateur", `x${num(meta?.multiplier, 1)}`, activeColor)}
+                ${killerMetaChip("Assignation", assignLabel, activeColor)}
+                ${killerMetaChip("Tour", num(meta?.turnCount, 0) || "—", activeColor)}
+                ${killerMetaChip("Rôle", phaseLabel, activeColor)}
+                ${killerMetaChip("Kills", ks.kills, activeColor)}
+                ${killerMetaChip("Touches Killer", ks.killerHits, activeColor)}
+              </div>
 
               ${killerVisitHtml(active, activeColor)}
+
+              <div class="stats-grid">
+                ${statCell("Touches utiles", ks.killerHits, activeColor)}
+                ${statCell("Touches inutiles", ks.uselessHits, activeColor)}
+                ${statCell("Vies prises", ks.livesTaken, activeColor)}
+                ${statCell("Vies perdues", ks.livesLost, activeColor)}
+                ${statCell("Lancers", ks.totalThrows, activeColor)}
+                ${statCell("Simple", ks.simple, activeColor)}
+                ${statCell("Double", ks.double_, activeColor)}
+                ${statCell("Triple", ks.triple, activeColor)}
+                ${statCell("Bull", ks.bull, activeColor)}
+                ${statCell("DBull", ks.dbull, activeColor)}
+              </div>
             </div>
           </section>
         </main>
