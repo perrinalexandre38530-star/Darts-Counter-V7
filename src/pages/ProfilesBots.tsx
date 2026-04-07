@@ -84,13 +84,21 @@ export default function ProfilesBots({ store, go }: Props) {
   }, []);
 
   function persist(next: Bot[]) {
+    const ok = saveBots(next);
+    if (!ok) {
+      const loaded = loadBots();
+      setBots(loaded);
+      setSelectedBotId((prev) => (loaded.some((b) => b.id === prev) ? prev : loaded[0]?.id || ""));
+      alert("Enregistrement BOT impossible (stockage plein ?)");
+      return false;
+    }
     setBots(next);
-    saveBots(next);
     try {
       (window as any).__flushCloudNow?.("bots_save");
     } catch (e) {
       console.warn("[bots] immediate cloud flush failed", e);
     }
+    return true;
   }
 
   function handleRandomSeed() {
@@ -115,9 +123,10 @@ export default function ProfilesBots({ store, go }: Props) {
           ? { ...b, name: name.trim(), level, botLevel: level, avatarSeed: seed.trim() || b.avatarSeed || Math.random().toString(36).slice(2, 10), updatedAt: now }
           : b
       );
-      persist(next);
-      setSelectedBotId(editingBotId);
-      handleResetForm();
+      if (persist(next)) {
+        setSelectedBotId(editingBotId);
+        handleResetForm();
+      }
       return;
     }
 
@@ -138,18 +147,20 @@ export default function ProfilesBots({ store, go }: Props) {
     };
 
     const next = [...bots, bot];
-    persist(next);
-    setSelectedBotId(bot.id);
-    go?.("avatar", { botId: bot.id, from: "profiles_bots", isBot: true });
-    handleResetForm();
+    if (persist(next)) {
+      setSelectedBotId(bot.id);
+      go?.("avatar", { botId: bot.id, from: "profiles_bots", isBot: true });
+      handleResetForm();
+    }
   }
 
   function handleDelete(id: string) {
     if (!window.confirm("Supprimer ce BOT ?")) return;
     const next = bots.filter((b) => b.id !== id);
-    persist(next);
-    if (selectedBotId === id) setSelectedBotId(next[0]?.id || "");
-    if (editingBotId === id) handleResetForm();
+    if (persist(next)) {
+      if (selectedBotId === id) setSelectedBotId(next[0]?.id || "");
+      if (editingBotId === id) handleResetForm();
+    }
   }
 
   function handleEdit(bot: Bot) {

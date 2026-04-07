@@ -1,7 +1,6 @@
 import { nanoid } from "nanoid";
 import LZString from "lz-string";
 import { MAX_AVATAR_DATA_URL_CHARS } from "./avatarSafe";
-import { saveStore } from "./storage";
 
 export const LS_BOTS_KEY = "dc_bots_v1";
 export const LS_BOTS_AVATARS_KEY = "dc_bots_avatars_v1";
@@ -311,8 +310,8 @@ export function loadBots(): BotRecord[] {
   return readLegacyInlineBots();
 }
 
-export function saveBots(list: any[]) {
-  if (typeof window === "undefined") return;
+export function saveBots(list: any[]): boolean {
+  if (typeof window === "undefined") return false;
 
   const normalized = normalizeBotsList(Array.isArray(list) ? list : []);
   const metaPayload: BotsMetaPayload = {
@@ -323,22 +322,20 @@ export function saveBots(list: any[]) {
   const metaSaved = safeSetItem(LS_BOTS_KEY, JSON.stringify(metaPayload));
   if (!metaSaved) {
     console.warn("[bots] metadata save failed");
-    dispatchBotsChanged();
-    return;
+    return false;
   }
 
   saveAvatarsWithPruning(normalized);
   dispatchBotsChanged();
   try {
     const w: any = window as any;
-    const appStore = w?.__appStore?.store ?? null;
-    if (appStore && typeof appStore === "object") {
-      const nextStore = { ...(appStore as any), bots: normalized };
-      Promise.resolve().then(() => saveStore(nextStore as any).catch(() => {}));
+    if (w?.__appStore?.update) {
+      w.__appStore.update((st: any) => ({ ...(st || {}), bots: normalized }));
     }
     window.dispatchEvent(new Event("dc-flush-cloud"));
     (window as any).__flushCloudNow?.("bots_save");
   } catch {}
+  return true;
 }
 
 export function toBotPlayerLite(input: any): BotPlayerLite {

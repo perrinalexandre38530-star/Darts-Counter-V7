@@ -1230,8 +1230,10 @@ function loadBotsLS(): BotLS[] {
 
 function saveBotsLS(list: BotLS[]) {
   try {
-    saveStoredBots(Array.isArray(list) ? list : []);
-  } catch {}
+    return !!saveStoredBots(Array.isArray(list) ? list : []);
+  } catch {
+    return false;
+  }
 }
 
 /* Service Worker banner */
@@ -3652,7 +3654,11 @@ case "babyfoot_team_edit":
             if (idx >= 0) next[idx] = updated;
             else next.push(updated);
 
-            saveBotsLS(next);
+            const saved = saveBotsLS(next);
+            if (!saved) {
+              alert("Enregistrement avatar BOT impossible (stockage plein ?)");
+              return;
+            }
             try {
               window.dispatchEvent(new Event("dc:bots-changed"));
             } catch {}

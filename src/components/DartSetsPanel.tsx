@@ -648,7 +648,12 @@ const DartSetsPanel: React.FC<Props> = ({ profile }) => {
   const handleDelete = (set: DartSet | null) => {
     if (!set) return;
     if (!window.confirm("Supprimer ce jeu de fléchettes ?")) return;
-    deleteDartSet(set.id);
+    const ok = deleteDartSet(set.id);
+    if (!ok) {
+      alert(lang === "fr" ? "Suppression impossible (stockage plein ?)" : "Delete failed (storage full?)");
+      reloadSets();
+      return;
+    }
     reloadSets();
 
     // ✅ PATCH B

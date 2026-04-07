@@ -1,5 +1,4 @@
 import { safeLocalStorageGetJson, safeLocalStorageSetJson } from "./imageStorageCodec";
-import { saveStore } from "./storage";
 
 // =============================================================
 // src/lib/dartSetsStore.ts
@@ -110,14 +109,22 @@ function safeParse(json: string | null): DartSet[] {
   }
 }
 
-function saveAll(list: DartSet[]) {
+function saveAll(list: DartSet[]): boolean {
   const sanitized = (Array.isArray(list) ? list : []).map((item) => sanitizeDartSetForStorage(item)) as DartSet[];
 
+  let saved = false;
   try {
-    safeLocalStorageSetJson(STORAGE_KEY, sanitized, { sanitizeImages: true, imageMaxChars: MAX_DARTSET_IMAGE_DATA_URL_CHARS, compressAboveChars: 12_000 });
+    saved = !!safeLocalStorageSetJson(STORAGE_KEY, sanitized, {
+      sanitizeImages: true,
+      imageMaxChars: MAX_DARTSET_IMAGE_DATA_URL_CHARS,
+      compressAboveChars: 12_000,
+    });
   } catch (err) {
     console.warn("[dartSetsStore] saveAll error", err);
+    saved = false;
+  }
 
+  if (!saved) {
     try {
       const stripped = sanitized.map((item: any) => {
         const next: any = { ...(item || {}) };
@@ -126,13 +133,30 @@ function saveAll(list: DartSet[]) {
         if (next.kind === "photo") next.kind = next.presetId ? "preset" : "plain";
         return next;
       });
-      safeLocalStorageSetJson(STORAGE_KEY, stripped, { sanitizeImages: true, imageMaxChars: MAX_DARTSET_IMAGE_DATA_URL_CHARS, compressAboveChars: 4_000 });
+      saved = !!safeLocalStorageSetJson(STORAGE_KEY, stripped, {
+        sanitizeImages: true,
+        imageMaxChars: MAX_DARTSET_IMAGE_DATA_URL_CHARS,
+        compressAboveChars: 4_000,
+      });
+      if (saved) {
+        for (let i = 0; i < sanitized.length; i += 1) {
+          const current = sanitized[i] as any;
+          const fallback = (stripped[i] || {}) as any;
+          if (current && fallback) {
+            current.mainImageUrl = fallback.mainImageUrl;
+            current.thumbImageUrl = fallback.thumbImageUrl;
+            current.kind = fallback.kind;
+          }
+        }
+      }
     } catch (fallbackErr) {
       console.warn("[dartSetsStore] fallback saveAll error", fallbackErr);
+      saved = false;
     }
   }
 
-  // ✅ notify app + listeners
+  if (!saved) return false;
+
   try {
     window.dispatchEvent(new Event("dc-dartsets-updated"));
     try {
@@ -143,13 +167,11 @@ function saveAll(list: DartSet[]) {
   try {
     const w: any = window as any;
     if (w?.__appStore?.update) {
-      w.__appStore.update((st: any) => {
-        const next = { ...(st || {}), dartSets: sanitized };
-        Promise.resolve().then(() => saveStore(next as any).catch(() => {}));
-        return next;
-      });
+      w.__appStore.update((st: any) => ({ ...(st || {}), dartSets: sanitized }));
     }
   } catch {}
+
+  return true;
 }
 
 function loadAll(): DartSet[] {
@@ -171,7 +193,7 @@ export function getAllDartSets(): DartSet[] {
 
 // ✅ Utilisé par la synchro cloud: remplace la liste entière (migration device → device)
 export function setAllDartSets(list: DartSet[]) {
-  saveAll(Array.isArray(list) ? list : []);
+  return saveAll(Array.isArray(list) ? list : []);
 }
 
 // 👇 Désormais : sets du profil + tous les sets publics
@@ -199,7 +221,7 @@ export function createDartSet(input: {
 
   // 👇 NOUVEAU : on laisse optionnel pour compat des appels existants
   scope?: "private" | "public";
-}): DartSet {
+} ): DartSet | undefined {
   const all = loadAll();
   const now = Date.now();
 
@@ -234,7 +256,7 @@ export function createDartSet(input: {
   };
 
   all.push(newSet);
-  saveAll(all);
+  if (!saveAll(all)) return undefined;
 
   return newSet;
 }
@@ -242,7 +264,7 @@ export function createDartSet(input: {
 export function updateDartSet(
   id: DartSetId,
   patch: Partial<Omit<DartSet, "id" | "profileId" | "createdAt">>
-): DartSet | undefined {
+ ): DartSet | undefined {
   const all = loadAll();
   const index = all.findIndex((s) => s.id === id);
   if (index === -1) return undefined;
@@ -254,13 +276,13 @@ export function updateDartSet(
   };
 
   all[index] = updated;
-  saveAll(all);
+  if (!saveAll(all)) return undefined;
   return updated;
 }
 
-export function deleteDartSet(id: DartSetId) {
+export function deleteDartSet(id: DartSetId): boolean {
   const filtered = loadAll().filter((s) => s.id !== id);
-  saveAll(filtered);
+  return saveAll(filtered);
 }
 
 export function setFavoriteDartSet(profileId: string, dartSetId: DartSetId) {
@@ -284,7 +306,8 @@ export function setFavoriteDartSet(profileId: string, dartSetId: DartSetId) {
     return s;
   });
 
-  if (changed) saveAll(updated);
+  if (changed) return saveAll(updated);
+  return true;
 }
 
 export function bumpDartSetUsage(dartSetId: DartSetId) {
@@ -302,7 +325,7 @@ export function bumpDartSetUsage(dartSetId: DartSetId) {
     updatedAt: now,
   };
 
-  saveAll(all);
+  return saveAll(all);
 }
 
 export function getFavoriteDartSetForProfile(profileId: string): DartSet | undefined {
@@ -326,5 +349,5 @@ export function getFavoriteDartSetForProfile(profileId: string): DartSet | undef
 
 // ✅ Replace full list (used when cloud hydrate wins)
 export function replaceAllDartSets(list: DartSet[]) {
-  saveAll(Array.isArray(list) ? list : []);
+  return saveAll(Array.isArray(list) ? list : []);
 }
