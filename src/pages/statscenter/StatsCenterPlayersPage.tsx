@@ -291,9 +291,9 @@ export default function StatsCenterPlayersPage({ go }: Props) {
   return (
     <div style={pageWrap}>
       <div style={topRow}>
-        <BackDot onClick={() => (go ? go("molkky_stats") : null)} />
+        <BackDot onClick={() => (go ? go("stats") : null)} />
         <div style={title}>{tr("stats.center", "CENTRE DE STATISTIQUES")}</div>
-        <InfoDot onClick={() => (go ? go("molkky_stats") : null)} />
+        <InfoDot onClick={() => (go ? go("stats") : null)} />
       </div>
 
       <div style={pill}>{tr("stats.dashboardGlobal", "DASHBOARD GLOBAL")}</div>

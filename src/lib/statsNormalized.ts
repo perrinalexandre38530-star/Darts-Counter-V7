@@ -113,56 +113,67 @@ function safeId(rec: any) {
 ========================= */
 
 export function detectNormalizedMode(rec: any): NormalizedMode {
-  const rawKind = S(rec?.kind || rec?.summary?.kind || rec?.payload?.kind || rec?.resume?.kind || rec?.resume?.summary?.kind || "");
-  const rawMode =
-    S(
-      rec?.resume?.game?.mode ||
-        rec?.resume?.mode ||
-        rec?.resume?.gameMode ||
-        rec?.game?.mode ||
-        rec?.mode ||
-        rec?.summary?.mode ||
-        rec?.payload?.mode ||
-        rec?.payload?.summary?.mode ||
-        ""
-    ).toLowerCase();
+  const payload = rec?.payload ?? null;
+  const nested = payload?.payload ?? null;
+  const summary = rec?.summary ?? payload?.summary ?? nested?.summary ?? rec?.resume?.summary ?? null;
 
-  const k = rawKind.toLowerCase();
+  const parts = [
+    rec?.kind,
+    rec?.mode,
+    rec?.variant,
+    rec?.sport,
+    rec?.game?.mode,
+    rec?.game,
+    rec?.resume?.kind,
+    rec?.resume?.mode,
+    rec?.resume?.gameMode,
+    rec?.resume?.game?.mode,
+    rec?.resume?.game?.game,
+    payload?.kind,
+    payload?.mode,
+    payload?.gameMode,
+    payload?.variant,
+    payload?.sport,
+    payload?.game,
+    nested?.kind,
+    nested?.mode,
+    nested?.gameMode,
+    nested?.variant,
+    nested?.sport,
+    nested?.game,
+    summary?.kind,
+    summary?.mode,
+    summary?.gameMode,
+    summary?.sport,
+    summary?.game?.mode,
+    summary?.game?.game,
+  ];
 
-  if (k.includes("x01") || rawMode.includes("x01")) return "x01";
-  if (k.includes("cricket") || rawMode.includes("cricket")) return "cricket";
-  if (k.includes("killer") || rawMode.includes("killer")) return "killer";
-  if (k.includes("shanghai") || rawMode.includes("shanghai")) return "shanghai";
-  if (k.includes("territ") || rawMode.includes("territ")) return "territories";
-  if (k.includes("golf") || rawMode.includes("golf")) return "golf";
-  if (k.includes("batard") || rawMode.includes("batard")) return "batard";
-  if (k.includes("baby") || rawMode.includes("baby")) return "babyfoot";
-  if (k.includes("ping") || rawMode.includes("ping")) return "pingpong";
-  if (k.includes("petanque") || rawMode.includes("petanque")) return "petanque";
-  if (k.includes("clock") || rawMode.includes("horloge") || rawMode.includes("clock")) return "clock";
-  if (k.includes("training") || rawMode.includes("training")) return "training";
+  const blob = parts
+    .filter((v) => v !== undefined && v !== null)
+    .map((v) => S(v).toLowerCase())
+    .join(' ')
+    .trim();
 
-  // fallback : certains anciens records ont kind "x01" sans mode
-  if (k === "x01") return "x01";
-  if (k === "cricket") return "cricket";
-  if (k === "killer") return "killer";
-  if (k === "shanghai") return "shanghai";
-  if (k === "territories") return "territories";
-  if (k === "golf") return "golf";
-  if (k === "batard") return "batard";
-  if (k === "babyfoot") return "babyfoot";
-  if (k === "pingpong") return "pingpong";
-  if (k === "petanque") return "petanque";
-  if (k === "clock") return "clock";
-  // Heuristics when legacy records missed kind/mode fields
+  if (blob.includes("x01") || blob.includes("301") || blob.includes("501") || blob.includes("701")) return "x01";
+  if (blob.includes("cricket")) return "cricket";
+  if (blob.includes("killer")) return "killer";
+  if (blob.includes("shanghai")) return "shanghai";
+  if (blob.includes("territ") || blob.includes("departement")) return "territories";
+  if (blob.includes("golf")) return "golf";
+  if (blob.includes("batard") || blob.includes("bastard")) return "batard";
+  if (blob.includes("baby")) return "babyfoot";
+  if (blob.includes("ping")) return "pingpong";
+  if (blob.includes("petanque")) return "petanque";
+  if (blob.includes("clock") || blob.includes("horloge") || blob.includes("tour") || blob.includes("five_lives") || blob.includes("five lives")) return "clock";
+  if (blob.includes("training")) return "training";
+
   const g: any = rec?.game || {};
-  const pld: any = rec?.payload || {};
-  // X01 family often carries a startScore / remaining / legs/sets / checkout info
+  const pld: any = payload || {};
   if (g?.startScore != null || pld?.startScore != null || pld?.remaining != null || pld?.checkout != null || pld?.checkoutSuggested != null) {
     return "x01";
   }
-  // X01 summaries sometimes stored under summary.avg3ByPlayer / bestCheckout
-  const sum: any = rec?.summary || pld?.summary || pld?.stats;
+  const sum: any = summary || pld?.stats;
   if (sum && (sum.avg3ByPlayer || sum.bestCheckout || sum.checkouts || sum.dartsThrown || sum.totalDarts)) {
     return "x01";
   }
@@ -175,14 +186,20 @@ export function detectNormalizedMode(rec: any): NormalizedMode {
 ========================= */
 
 function extractPlayers(rec: any): NormalizedPlayer[] {
+  const payload = rec?.payload ?? null;
+  const nested = payload?.payload ?? null;
+  const summary = rec?.summary ?? payload?.summary ?? nested?.summary ?? null;
+
   const fromTop = A<any>(rec?.players);
-  const fromPayload = A<any>(rec?.payload?.players);
-  const fromSummary = A<any>(rec?.summary?.players || rec?.summary?.perPlayer);
+  const fromPayload = A<any>(payload?.players || payload?.state?.players || payload?.stats?.players);
+  const fromNested = A<any>(nested?.players || nested?.state?.players || nested?.stats?.players);
+  const fromSummary = A<any>(summary?.players || summary?.perPlayer || summary?.rankings);
   const fromResume = A<any>(rec?.resume?.players || rec?.resume?.summary?.players || rec?.resume?.summary?.perPlayer);
   const fromResumeCfg = A<any>(rec?.resume?.config?.players || rec?.resume?.payload?.config?.players);
   const fromAny =
     fromTop.length ? fromTop :
     fromPayload.length ? fromPayload :
+    fromNested.length ? fromNested :
     fromSummary.length ? fromSummary :
     fromResume.length ? fromResume :
     fromResumeCfg;

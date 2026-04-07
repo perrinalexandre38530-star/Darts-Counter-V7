@@ -105,22 +105,22 @@ export default function StatsCenterShell({ go }: Props) {
 
       <div style={menuCard}>
         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-          <button style={btn} onClick={() => (go ? go("molkky_stats_players") : null)}>
+          <button style={btn} onClick={() => (go ? go("statsHub", { tab: "stats", mode: "active", initialStatsSubTab: "dashboard" }) : null)}>
             <span>{tr("stats.menu.players", "Joueurs")}</span>
             <span style={badge}>›</span>
           </button>
 
-          <button style={btn} onClick={() => (go ? go("molkky_stats_locals") : null)}>
+          <button style={btn} onClick={() => (go ? go("statsHub", { tab: "stats", mode: "locals", initialStatsSubTab: "dashboard" }) : null)}>
             <span>{tr("stats.menu.locals", "Profils locaux")}</span>
             <span style={badge}>›</span>
           </button>
 
-          <button style={btn} onClick={() => (go ? go("molkky_stats_leaderboards") : null)}>
+          <button style={btn} onClick={() => (go ? go("stats_leaderboards") : null)}>
             <span>{tr("stats.menu.rankings", "Classements")}</span>
             <span style={badge}>›</span>
           </button>
 
-          <button style={btn} onClick={() => (go ? go("molkky_stats_history") : null)}>
+          <button style={btn} onClick={() => (go ? go("statsHub", { tab: "history" }) : null)}>
             <span>{tr("stats.menu.history", "Historique")}</span>
             <span style={badge}>›</span>
           </button>

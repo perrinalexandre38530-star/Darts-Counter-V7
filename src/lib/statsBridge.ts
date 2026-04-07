@@ -397,27 +397,74 @@ function detectSource(rec: any): SourceKey {
 }
 
 function detectKindMode(rec: any, decoded: any | null) {
-  const k = safeLower(rec?.kind || rec?.variant || rec?.game || rec?.mode || rec?.resume?.kind || rec?.resume?.game || rec?.resume?.mode || "");
-  const sMode = safeLower(rec?.summary?.mode || rec?.summary?.gameMode || rec?.resume?.summary?.mode || rec?.resume?.summary?.gameMode || rec?.payload?.mode || rec?.payload?.gameMode || "");
-  const dMode = safeLower(decoded?.config?.mode || decoded?.game?.mode || decoded?.mode || decoded?.gameMode || "");
+  const payload = rec?.payload ?? null;
+  const nested = payload?.payload ?? null;
+  const summary = rec?.summary ?? payload?.summary ?? nested?.summary ?? rec?.resume?.summary ?? null;
+  const cfg = payload?.config ?? payload?.cfg ?? nested?.config ?? nested?.cfg ?? decoded?.config ?? null;
 
-  // ordre de priorité : kind/variant connus, puis summary/payload, puis decoded
-  let mode = dMode || sMode || k || "x01";
-  let kind = k || mode || "x01";
+  const parts = [
+    rec?.kind,
+    rec?.variant,
+    rec?.game,
+    rec?.mode,
+    rec?.sport,
+    rec?.resume?.kind,
+    rec?.resume?.game,
+    rec?.resume?.mode,
+    payload?.kind,
+    payload?.mode,
+    payload?.gameMode,
+    payload?.variant,
+    payload?.sport,
+    payload?.game,
+    nested?.kind,
+    nested?.mode,
+    nested?.gameMode,
+    nested?.variant,
+    nested?.sport,
+    nested?.game,
+    summary?.kind,
+    summary?.mode,
+    summary?.gameMode,
+    summary?.sport,
+    summary?.game?.mode,
+    summary?.game?.game,
+    cfg?.kind,
+    cfg?.mode,
+    cfg?.gameMode,
+    cfg?.variant,
+    decoded?.kind,
+    decoded?.mode,
+    decoded?.gameMode,
+    decoded?.sport,
+    decoded?.game?.mode,
+    decoded?.game?.game,
+  ];
 
-  // normalisations simples
-  if (kind === "leg") kind = "x01";
-  if (mode === "leg") mode = "x01";
+  const blob = parts
+    .filter((v) => v !== undefined && v !== null)
+    .map((v) => safeLower(v))
+    .join(' ')
+    .trim();
 
-  // si ça contient un mot clé
-  const blob = `${kind} ${mode} ${sMode} ${dMode}`;
+  if (!blob) return { kind: 'x01', mode: 'x01' };
+
+  if (blob.includes("molkky")) return { kind: "molkky", mode: "molkky" };
+  if (blob.includes("dice")) return { kind: "dicegame", mode: blob.includes("duel") ? "dice_duel" : "dicegame" };
   if (blob.includes("cricket")) return { kind: "cricket", mode: "cricket" };
   if (blob.includes("killer")) return { kind: "killer", mode: "killer" };
   if (blob.includes("shanghai")) return { kind: "shanghai", mode: "shanghai" };
-  if (blob.includes("x01")) return { kind: "x01", mode: "x01" };
+  if (blob.includes("golf")) return { kind: "golf", mode: "golf" };
+  if (blob.includes("territ") || blob.includes("departement")) return { kind: "territories", mode: "territories" };
   if (blob.includes("batard") || blob.includes("bastard")) return { kind: "batard", mode: "batard" };
+  if (blob.includes("battle") || blob.includes("royale")) return { kind: "battle_royale", mode: "battle_royale" };
+  if (blob.includes("clock") || blob.includes("horloge") || blob.includes("tour")) return { kind: "clock", mode: "clock" };
+  if (blob.includes("scram")) return { kind: "scram", mode: "scram" };
+  if (blob.includes("warfare")) return { kind: "warfare", mode: "warfare" };
+  if (blob.includes("five_lives") || blob.includes("five lives")) return { kind: "five_lives", mode: "five_lives" };
+  if (blob.includes("x01") || blob.includes("301") || blob.includes("501") || blob.includes("701")) return { kind: "x01", mode: "x01" };
 
-  return { kind, mode };
+  return { kind: blob.split(' ')[0] || 'unknown', mode: blob.split(' ')[0] || 'unknown' };
 }
 
 function detectStatus(rec: any, decoded: any | null): "finished" | "in_progress" {
@@ -458,23 +505,42 @@ function detectStatus(rec: any, decoded: any | null): "finished" | "in_progress"
 }
 
 function extractPlayers(rec: any, decoded: any | null): PlayerLite[] {
-  const arr =
-    (decoded?.config?.players && Array.isArray(decoded.config.players) ? decoded.config.players : null) ||
-    (decoded?.players && Array.isArray(decoded.players) ? decoded.players : null) ||
-    (rec?.players && Array.isArray(rec.players) ? rec.players : null) ||
-    (rec?.resume?.players && Array.isArray(rec.resume.players) ? rec.resume.players : null) ||
-    (rec?.resume?.config?.players && Array.isArray(rec.resume.config.players) ? rec.resume.config.players : null) ||
-    (rec?.summary?.players && Array.isArray(rec.summary.players) ? rec.summary.players : null) ||
-    (rec?.payload?.players && Array.isArray(rec.payload.players) ? rec.payload.players : null) ||
-    [];
+  const payload = rec?.payload ?? null;
+  const nested = payload?.payload ?? null;
+  const summary = rec?.summary ?? payload?.summary ?? nested?.summary ?? null;
+  const pools = [
+    decoded?.config?.players,
+    decoded?.state?.players,
+    decoded?.players,
+    decoded?.summary?.players,
+    decoded?.stats?.players,
+    rec?.players,
+    rec?.resume?.players,
+    rec?.resume?.config?.players,
+    rec?.resume?.summary?.players,
+    summary?.players,
+    summary?.rankings,
+    payload?.players,
+    payload?.state?.players,
+    payload?.stats?.players,
+    nested?.players,
+    nested?.state?.players,
+    nested?.stats?.players,
+  ];
+
+  const arr = pools.find((v) => Array.isArray(v) && v.length) || [];
 
   const out: PlayerLite[] = [];
   for (const p of arr) {
     const id = getId(p);
     if (!id) continue;
-    out.push({ id, name: getName(p), avatarDataUrl: p?.avatarDataUrl ?? null });
+    out.push({
+      id,
+      name: getName(p),
+      avatarDataUrl:
+        p?.avatarDataUrl ?? p?.avatar ?? p?.avatarUrl ?? p?.avatarURL ?? p?.dataUrl ?? p?.dataURL ?? null,
+    });
   }
-  // dédoublonne
   const seen = new Set<string>();
   return out.filter((p) => (seen.has(p.id) ? false : (seen.add(p.id), true)));
 }

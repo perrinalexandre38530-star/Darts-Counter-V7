@@ -178,9 +178,9 @@ export default function StatsCenterLeaderboardsPage({ go }: Props) {
   return (
     <div style={pageWrap}>
       <div style={topRow}>
-        <BackDot onClick={() => (go ? go("molkky_stats") : null)} />
+        <BackDot onClick={() => (go ? go("stats") : null)} />
         <div style={title}>{tr("stats.rankings", "CLASSEMENTS")}</div>
-        <InfoDot onClick={() => (go ? go("molkky_stats") : null)} />
+        <InfoDot onClick={() => (go ? go("stats") : null)} />
       </div>
 
       <div style={card}>

@@ -38,9 +38,14 @@ type LeaderboardMode =
   | "cricket"
   | "killer"
   | "shanghai"
+  | "golf"
+  | "batard"
   | "battle_royale"
   | "clock"
   | "territories"
+  | "scram"
+  | "warfare"
+  | "five_lives"
   | "dice_duel"
   | "molkky";
 
@@ -126,6 +131,8 @@ const MODE_DEFS: {
     ],
   },
   { id: "shanghai", label: "SHANGHAI", metrics: ["wins", "winRate", "matches"] },
+  { id: "golf", label: "GOLF", metrics: ["wins", "winRate", "matches", "bestVisit"] },
+  { id: "batard", label: "BÂTARD", metrics: ["avg3", "wins", "winRate", "matches", "bestVisit"] },
   { id: "battle_royale", label: "BATTLE ROYALE", metrics: ["wins", "winRate", "matches"] },
   { id: "clock", label: "TOUR DE L’HORLOGE", metrics: ["wins", "winRate", "matches"] },
   {
@@ -270,53 +277,85 @@ function inPeriod(rec: any, period: PeriodKey): boolean {
 function isRecordMatchingMode(rec: any, mode: LeaderboardMode, scope: Scope): boolean {
   void scope;
 
-  // ✅ Robust: certains records ont game/mode/variant au top-level (StatsHub normalise aussi)
-  const kind = rec?.kind ?? rec?.summary?.kind ?? rec?.payload?.kind;
-  const topMode = rec?.mode;
-  const topVariant = rec?.variant;
-  const payloadMode = rec?.payload?.mode;
-  const payloadVariant = rec?.payload?.variant;
+  const payload = rec?.payload ?? null;
+  const nested = payload?.payload ?? null;
+  const summary = rec?.summary ?? payload?.summary ?? nested?.summary ?? null;
+  const cfg = payload?.config ?? payload?.cfg ?? nested?.config ?? nested?.cfg ?? null;
 
-  const game =
-    rec?.game ??
-    rec?.payload?.game ??
-    rec?.summary?.game?.mode ??
-    rec?.summary?.game?.game;
+  const parts = [
+    rec?.kind,
+    rec?.mode,
+    rec?.variant,
+    rec?.game,
+    rec?.sport,
+    payload?.kind,
+    payload?.mode,
+    payload?.gameMode,
+    payload?.variant,
+    payload?.game,
+    payload?.sport,
+    nested?.kind,
+    nested?.mode,
+    nested?.gameMode,
+    nested?.variant,
+    nested?.game,
+    nested?.sport,
+    cfg?.kind,
+    cfg?.mode,
+    cfg?.gameMode,
+    cfg?.variant,
+    summary?.kind,
+    summary?.mode,
+    summary?.gameMode,
+    summary?.sport,
+    summary?.game?.mode,
+    summary?.game?.game,
+  ];
 
-  if (mode === "molkky") {
-    const k = safeStr(kind).toLowerCase();
-    const sp = safeStr(rec?.sport ?? rec?.payload?.sport).toLowerCase();
-    const gm = safeStr(game ?? payloadMode ?? topMode).toLowerCase();
-    return k.includes("molkky") || sp.includes("molkky") || gm.includes("molkky");
+  const tag = parts
+    .filter((v) => v !== undefined && v !== null)
+    .map((v) => safeStr(v).toLowerCase())
+    .join('|');
+
+  if (!tag) return false;
+
+  if (mode === "molkky") return tag.includes("molkky");
+
+  if (String(mode).startsWith("dice")) {
+    if (!tag.includes("dice")) return false;
+    if (mode === "dice_duel") return tag.includes("duel") || tag.includes("dice");
+    if (mode === "dice_games") return tag.includes("dice") && !tag.includes("duel");
+    if (mode === "dice_race") return tag.includes("race");
+    if (mode === "dice_10000") return tag.includes("10000") || tag.includes("tenk") || tag.includes("ten_k");
+    if (mode === "dice_poker") return tag.includes("poker");
+    if (mode === "dice_yams") return tag.includes("yams") || tag.includes("yam");
+    if (mode === "dice_421") return tag.includes("421");
+    if (mode === "dice_farkle") return tag.includes("farkle");
+    return true;
   }
-  if (mode === "dice_duel") {
-    const k = safeStr(kind).toLowerCase();
-    const sp = safeStr(rec?.sport ?? rec?.payload?.sport).toLowerCase();
-    const v = safeStr(topVariant ?? payloadVariant).toLowerCase();
-    // On accepte tout ce qui est Dice + (optionnel) duel
-    return (k.includes("dice") || sp.includes("dice")) && (!v || v.includes("duel") || true);
-  }
+
   const isX01 =
-    kind === "x01" ||
-    game === "x01" ||
-    rec?.summary?.game?.mode === "x01" ||
-    // compat variantes
-    payloadVariant === "x01_v3" ||
-    topVariant === "x01v3" ||
-    topVariant === "x01_v3" ||
-    // compat modes
-    payloadMode === "x01_multi" ||
-    payloadMode === "x01_teams" ||
-    topMode === "x01v3" ||
-    topMode === "x01_multi" ||
-    topMode === "x01_teams";
+    tag.includes("x01") ||
+    tag.includes("301") ||
+    tag.includes("501") ||
+    tag.includes("701") ||
+    tag.includes("x01_v3") ||
+    tag.includes("x01v3") ||
+    tag.includes("x01_multi") ||
+    tag.includes("x01_teams");
 
   if (mode === "x01_multi") return isX01;
-  if (mode === "cricket") return kind === "cricket" || game === "cricket";
-  if (mode === "killer") return kind === "killer" || game === "killer" || payloadMode === "killer";
-  if (mode === "shanghai") return kind === "shanghai" || game === "shanghai";
-  if (mode === "battle_royale") return kind === "battle_royale" || game === "battle_royale";
-  if (mode === "clock") return kind === "clock" || game === "clock";
+  if (mode === "cricket") return tag.includes("cricket");
+  if (mode === "killer") return tag.includes("killer");
+  if (mode === "shanghai") return tag.includes("shanghai");
+  if (mode === "golf") return tag.includes("golf");
+  if (mode === "batard") return tag.includes("batard") || tag.includes("bastard");
+  if (mode === "territories") return tag.includes("territ") || tag.includes("departement");
+  if (mode === "battle_royale") return tag.includes("battle") || tag.includes("royale");
+  if (mode === "clock") return tag.includes("clock") || tag.includes("horloge") || tag.includes("tour") || tag.includes("five_lives") || tag.includes("five lives");
+  if (mode === "scram") return tag.includes("scram");
+  if (mode === "warfare") return tag.includes("warfare");
+  if (mode === "five_lives") return tag.includes("five_lives") || tag.includes("five lives");
 
   return true;
 }
@@ -592,21 +631,8 @@ function computeRowsFromHistory(
       null;
 
     const summary = rec.summary || rec.payload?.summary || null;
-
-    // 🎲 DICE DUEL: pas de summary darts -> on lit payload.stats.players
-    const game =
-    rec?.game ??
-    rec?.payload?.game ??
-    rec?.summary?.game?.mode ??
-    rec?.summary?.game?.game;
-
-  if (mode === "molkky") {
-    const k = safeStr(kind).toLowerCase();
-    const sp = safeStr(rec?.sport ?? rec?.payload?.sport).toLowerCase();
-    const gm = safeStr(game ?? payloadMode ?? topMode).toLowerCase();
-    return k.includes("molkky") || sp.includes("molkky") || gm.includes("molkky");
-  }
-  if (mode === "dice_duel") {
+    // 🎲 DICE / variantes : pas de summary darts -> on lit payload.stats.players
+    if (String(mode).startsWith("dice")) {
       const ps: any[] =
         rec?.payload?.stats?.players || rec?.payload?.stats?.playersStats || rec?.payload?.players || [];
       const playersArr = Array.isArray(ps) ? ps : [];

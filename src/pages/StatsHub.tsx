@@ -845,7 +845,7 @@ function useHistoryAPI(): SavedMatch[] {
       const arr = toArr<SavedMatch>(list);
 
       // Keep fast: only hydrate records likely used by the dashboard.
-      const NEED = new Set(["x01", "cricket", "killer", "golf", "shanghai", "training", "batard", "scram", "warfare", "tour"]);
+      const NEED = new Set(["x01", "cricket", "killer", "golf", "shanghai", "training", "batard", "scram", "warfare", "clock", "tour", "battle_royale", "territories", "five_lives"]);
 
       const toHydrate: string[] = [];
       for (const r of arr) {
@@ -959,58 +959,132 @@ type SessionsByMode = Record<string, number>;
 function getGameMode(rec: any): string {
   // Normalise toutes les sources possibles, sans casser les anciens records
   try {
+    const pick = (...vals: any[]) => {
+      for (const v of vals) {
+        if (typeof v === "string" && v.trim()) return v.trim();
+      }
+      return "";
+    };
+
     const g = rec?.game;
     if (g && typeof g === "object") {
-      const m = g.mode ?? g.gameMode ?? g.variant ?? null;
-      if (typeof m === "string" && m.trim()) return m.trim();
+      const m = pick(g?.mode, g?.gameMode, g?.variant, g?.kind);
+      if (m) return m;
     }
-    if (typeof rec?.game === "string" && rec.game.trim()) return rec.game.trim();
-    if (typeof rec?.mode === "string" && rec.mode.trim()) return rec.mode.trim();
-    if (typeof rec?.variant === "string" && rec.variant.trim()) return rec.variant.trim();
 
-    const cfg = rec?.payload?.config ?? rec?.payload?.cfg ?? null;
-    const m2 = cfg?.mode ?? cfg?.gameMode ?? rec?.payload?.mode ?? null;
-    if (typeof m2 === "string" && m2.trim()) return m2.trim();
+    const payload = rec?.payload ?? null;
+    const nested = payload?.payload ?? null;
+    const summary = rec?.summary ?? payload?.summary ?? nested?.summary ?? null;
+    const cfg = payload?.config ?? payload?.cfg ?? nested?.config ?? nested?.cfg ?? null;
+    const resume = rec?.resume ?? payload?.resume ?? nested?.resume ?? null;
 
-    const isX01V3 = rec?.variant === "x01v3" || rec?.mode === "x01v3";
+    const direct = pick(
+      rec?.game,
+      rec?.mode,
+      rec?.variant,
+      rec?.kind,
+      payload?.game,
+      payload?.mode,
+      payload?.gameMode,
+      payload?.variant,
+      payload?.kind,
+      nested?.game,
+      nested?.mode,
+      nested?.gameMode,
+      nested?.variant,
+      nested?.kind,
+      cfg?.mode,
+      cfg?.gameMode,
+      cfg?.variant,
+      cfg?.kind,
+      summary?.mode,
+      summary?.gameMode,
+      summary?.kind,
+      summary?.game?.mode,
+      summary?.game?.game,
+      resume?.mode,
+      resume?.gameMode,
+      resume?.kind,
+      resume?.game?.mode,
+      resume?.game?.game,
+    );
+    if (direct) return direct;
+
+    const isX01V3 = rec?.variant === "x01v3" || rec?.mode === "x01v3" || payload?.variant === "x01v3";
     if (isX01V3) return "x01";
   } catch {}
   return "";
 }
 
 function classifyRecordMode(rec: SavedMatch): string {
-  // ⚠️ IMPORTANT: selon les générations de matches, `kind/mode/variant` peuvent être
-  // sur l'enveloppe OU dans le payload (ex: X01 v3/multi). On agrège tout pour classifier.
-  const payload: any = (rec as any)?.payload;
+  // ⚠️ IMPORTANT: selon les générations de matches, kind/mode/variant peuvent être
+  // au top-level, dans payload, payload.payload, summary ou config.
+  const payload: any = (rec as any)?.payload ?? null;
+  const nested: any = payload?.payload ?? null;
+  const summary: any = (rec as any)?.summary ?? payload?.summary ?? nested?.summary ?? null;
+  const cfg: any = payload?.config ?? payload?.cfg ?? nested?.config ?? nested?.cfg ?? null;
+  const resume: any = (rec as any)?.resume ?? payload?.resume ?? nested?.resume ?? null;
 
-  const kind = String((rec as any).kind ?? payload?.kind ?? payload?.mode ?? "").toLowerCase();
-  const game = String(getGameMode(rec) ?? payload?.game ?? payload?.gameMode ?? "").toLowerCase();
-  const mode = String((rec as any).mode ?? payload?.mode ?? payload?.config?.mode ?? "").toLowerCase();
-  const variant = String((rec as any).variant ?? payload?.variant ?? payload?.config?.variant ?? "").toLowerCase();
+  const parts = [
+    (rec as any)?.kind,
+    (rec as any)?.mode,
+    (rec as any)?.variant,
+    getGameMode(rec),
+    (rec as any)?.sport,
+    payload?.kind,
+    payload?.mode,
+    payload?.gameMode,
+    payload?.variant,
+    payload?.sport,
+    payload?.game,
+    nested?.kind,
+    nested?.mode,
+    nested?.gameMode,
+    nested?.variant,
+    nested?.sport,
+    nested?.game,
+    cfg?.kind,
+    cfg?.mode,
+    cfg?.gameMode,
+    cfg?.variant,
+    summary?.kind,
+    summary?.mode,
+    summary?.gameMode,
+    summary?.sport,
+    summary?.game?.mode,
+    summary?.game?.game,
+    resume?.kind,
+    resume?.mode,
+    resume?.gameMode,
+    resume?.game?.mode,
+    resume?.game?.game,
+  ];
 
-  const tag = `${kind}|${game}|${mode}|${variant}`;
+  const tag = parts
+    .filter((v) => v !== undefined && v !== null)
+    .map((v) => String(v).toLowerCase())
+    .join("|");
 
-  // X01 (inclut ton patch x01v3 => game="x01")
-  if (
-    tag.includes("x01") ||
-    tag.includes("301") ||
-    tag.includes("501") ||
-    tag.includes("701")
-  ) {
+  if (!tag) return "other";
+
+  if (tag.includes("molkky")) return "molkky";
+  if (tag.includes("dice")) return "dice";
+  if (tag.includes("cricket")) return "cricket";
+  if (tag.includes("killer")) return "killer";
+  if (tag.includes("shanghai")) return "shanghai";
+  if (tag.includes("golf")) return "golf";
+  if (tag.includes("territ") || tag.includes("departement")) return "territories";
+  if (tag.includes("batard") || tag.includes("bastard")) return "batard";
+  if (tag.includes("scram")) return "scram";
+  if (tag.includes("warfare")) return "warfare";
+  if (tag.includes("five_lives") || tag.includes("five lives")) return "five_lives";
+  if (tag.includes("clock") || tag.includes("horloge") || tag.includes("tour")) return "clock";
+  if (tag.includes("battle") || tag.includes("royale")) return "battle_royale";
+
+  // X01 (inclut les variantes x01v3 / 301 / 501 / 701)
+  if (tag.includes("x01") || tag.includes("301") || tag.includes("501") || tag.includes("701")) {
     return "x01";
   }
-
-  // Cricket
-  if (tag.includes("cricket")) return "cricket";
-
-  // Killer
-  if (tag.includes("killer")) return "killer";
-
-  // Golf
-  if (tag.includes("golf")) return "golf";
-
-  // Battle Royale (si tu l’utilises dans History)
-  if (tag.includes("battle") || tag.includes("royale")) return "battle_royale";
 
   return "other";
 }
