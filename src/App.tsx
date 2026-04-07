@@ -3630,23 +3630,29 @@ case "babyfoot_team_edit":
           const targetBot = bots.find((b) => b.id === botId) ?? null;
 
           async function handleSaveAvatarBot({ pngDataUrl, name }: { pngDataUrl: string; name: string }) {
-            if (!targetBot) return go(backTo);
+            const latestBots = loadBotsLS();
+            const latestTarget = latestBots.find((b) => b.id === botId) ?? targetBot ?? null;
+            if (!latestTarget) return go(backTo);
 
             const safeAvatarDataUrl = await enforceSafeAvatarDataUrl(pngDataUrl).catch(() => null);
 
-            const next = bots.slice();
-            const idx = next.findIndex((b) => b.id === targetBot.id);
+            const next = latestBots.slice();
+            const idx = next.findIndex((b) => b.id === latestTarget.id);
 
             const updated: BotLS = {
-              ...targetBot,
-              name: name?.trim() || targetBot.name,
-              avatarDataUrl: safeAvatarDataUrl ?? targetBot.avatarDataUrl ?? null,
+              ...latestTarget,
+              name: name?.trim() || latestTarget.name,
+              avatarDataUrl: safeAvatarDataUrl ?? latestTarget.avatarDataUrl ?? null,
+              updatedAt: new Date().toISOString(),
             };
 
             if (idx >= 0) next[idx] = updated;
             else next.push(updated);
 
             saveBotsLS(next);
+            try {
+              (window as any).__flushCloudNow?.("bots_avatar_save");
+            } catch {}
             go(backTo);
           }
 

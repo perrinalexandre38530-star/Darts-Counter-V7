@@ -139,9 +139,11 @@ function packBotMeta(bot: BotRecord) {
     ...rest
   } = bot as any;
 
+  const inlineAvatar = sanitizeAvatarDataUrl(avatarDataUrl ?? avatar ?? avatarUrl ?? null);
+
   return {
     ...rest,
-    avatarDataUrl: null,
+    avatarDataUrl: inlineAvatar,
   };
 }
 
@@ -326,6 +328,10 @@ export function saveBots(list: any[]) {
 
   saveAvatarsWithPruning(normalized);
   dispatchBotsChanged();
+  try {
+    window.dispatchEvent(new Event("dc-flush-cloud"));
+    (window as any).__flushCloudNow?.("bots_save");
+  } catch {}
 }
 
 export function toBotPlayerLite(input: any): BotPlayerLite {

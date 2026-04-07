@@ -73,19 +73,34 @@ export default function ProfilesBots({ store, go }: Props) {
   const [editingBotId, setEditingBotId] = React.useState<string | null>(null);
   const [selectedBotId, setSelectedBotId] = React.useState<string>("");
 
-  React.useEffect(() => {
-    const refresh = () => {
-      const loaded = loadBots();
-      setBots(loaded);
-      setSelectedBotId((prev) => (loaded.some((b) => b.id === prev) ? prev : loaded[0]?.id || ""));
-    };
-    refresh();
-    return subscribeBotsChange(refresh);
+  const refresh = React.useCallback((preferredId?: string | null) => {
+    const loaded = loadBots();
+    setBots(loaded);
+    setSelectedBotId((prev) => {
+      const target = preferredId ?? prev;
+      return loaded.some((b) => b.id === target) ? String(target || "") : loaded[0]?.id || "";
+    });
   }, []);
 
-  function persist(next: Bot[]) {
-    setBots(next);
+  React.useEffect(() => {
+    refresh();
+    const unsub = subscribeBotsChange(() => refresh());
+    const onFocus = () => refresh();
+    const onVisibility = () => {
+      if (document.visibilityState === "visible") refresh();
+    };
+    window.addEventListener("focus", onFocus);
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      unsub();
+      window.removeEventListener("focus", onFocus);
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
+  }, [refresh]);
+
+  function persist(next: Bot[], preferredId?: string | null) {
     saveBots(next);
+    refresh(preferredId);
     try {
       (window as any).__flushCloudNow?.("bots_save");
     } catch (e) {
@@ -115,7 +130,7 @@ export default function ProfilesBots({ store, go }: Props) {
           ? { ...b, name: name.trim(), level, botLevel: level, avatarSeed: seed.trim() || b.avatarSeed || Math.random().toString(36).slice(2, 10), updatedAt: now }
           : b
       );
-      persist(next);
+      persist(next, editingBotId);
       setSelectedBotId(editingBotId);
       handleResetForm();
       return;
@@ -138,7 +153,7 @@ export default function ProfilesBots({ store, go }: Props) {
     };
 
     const next = [...bots, bot];
-    persist(next);
+    persist(next, bot.id);
     setSelectedBotId(bot.id);
     go?.("avatar", { botId: bot.id, from: "profiles_bots", isBot: true });
     handleResetForm();
@@ -147,7 +162,7 @@ export default function ProfilesBots({ store, go }: Props) {
   function handleDelete(id: string) {
     if (!window.confirm("Supprimer ce BOT ?")) return;
     const next = bots.filter((b) => b.id !== id);
-    persist(next);
+    persist(next, selectedBotId === id ? next[0]?.id || "" : selectedBotId);
     if (selectedBotId === id) setSelectedBotId(next[0]?.id || "");
     if (editingBotId === id) handleResetForm();
   }

@@ -23,7 +23,6 @@ import DartSetScannerSheet from "./DartSetScannerSheet";
 import {
   type DartSet,
   getAllDartSets, // ✅ PATCH B
-  getDartSetsForProfile,
   createDartSet,
   deleteDartSet,
   setFavoriteDartSet,
@@ -426,14 +425,26 @@ const DartSetsPanel: React.FC<Props> = ({ profile }) => {
       });
   }
 
-  // ✅ loader tolérant (getDartSetsForProfile peut être sync OU async)
-  const loadSets = React.useCallback(async () => {
+  function getOwnedSets(profileId: string): DartSet[] {
+    return getAllDartSets().filter((s) => String((s as any)?.profileId || "") === String(profileId || ""));
+  }
+
+  // ✅ AUDIT FIX: le panneau de profil ne doit manipuler QUE les sets du profil courant.
+  // Les sets publics d'autres profils restent disponibles dans les sélecteurs de jeu,
+  // mais ne doivent plus polluer l'édition/suppression ici.
+  const loadSets = React.useCallback(async (focusId?: string | null) => {
     if (!profile?.id) return;
     try {
-      const all = await Promise.resolve(getDartSetsForProfile(profile.id) as any);
-      const sorted = sortSets((all || []) as DartSet[]);
+      const sorted = sortSets(getOwnedSets(profile.id));
       setSets(sorted);
-      setActiveIndex((idx) => (sorted.length === 0 ? 0 : Math.min(idx, sorted.length - 1)));
+      setActiveIndex((prev) => {
+        if (sorted.length === 0) return 0;
+        if (focusId) {
+          const idx = sorted.findIndex((item) => item.id === focusId);
+          if (idx >= 0) return idx;
+        }
+        return Math.min(prev, sorted.length - 1);
+      });
 
       // ✅ PATCH B — après refresh, pousse aussi au store global
       syncAllDartSetsToAppStore();
@@ -443,11 +454,28 @@ const DartSetsPanel: React.FC<Props> = ({ profile }) => {
   }, [profile?.id, syncAllDartSetsToAppStore]);
 
   React.useEffect(() => {
-    loadSets();
+    void loadSets();
   }, [loadSets]);
 
-  const reloadSets = React.useCallback(() => {
-    void loadSets();
+  React.useEffect(() => {
+    const refresh = () => { void loadSets(); };
+    window.addEventListener("dc-dartsets-updated", refresh as any);
+    window.addEventListener("storage", refresh as any);
+    window.addEventListener("focus", refresh as any);
+    const onVisibility = () => {
+      if (document.visibilityState === "visible") void loadSets();
+    };
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      window.removeEventListener("dc-dartsets-updated", refresh as any);
+      window.removeEventListener("storage", refresh as any);
+      window.removeEventListener("focus", refresh as any);
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
+  }, [loadSets]);
+
+  const reloadSets = React.useCallback((focusId?: string | null) => {
+    void loadSets(focusId);
   }, [loadSets]);
 
   const hasSets = sets.length > 0;
@@ -548,7 +576,7 @@ const DartSetsPanel: React.FC<Props> = ({ profile }) => {
         return;
       }
 
-      reloadSets();
+      await loadSets(created.id);
       setForm(createEmptyForm(primary));
       setIsCreating(false);
 
@@ -633,7 +661,7 @@ const DartSetsPanel: React.FC<Props> = ({ profile }) => {
         return;
       }
 
-      reloadSets();
+      await loadSets(editingId);
       setEditingId(null);
       setEditForm(null);
 
@@ -648,8 +676,9 @@ const DartSetsPanel: React.FC<Props> = ({ profile }) => {
   const handleDelete = (set: DartSet | null) => {
     if (!set) return;
     if (!window.confirm("Supprimer ce jeu de fléchettes ?")) return;
+    const nextOwned = sortSets(getOwnedSets(profile.id).filter((item) => item.id !== set.id));
     deleteDartSet(set.id);
-    reloadSets();
+    reloadSets(nextOwned[0]?.id || null);
 
     // ✅ PATCH B
     syncAllDartSetsToAppStore();
@@ -663,7 +692,7 @@ const DartSetsPanel: React.FC<Props> = ({ profile }) => {
   const handleSetFavorite = (set: DartSet | null) => {
     if (!profile?.id || !set) return;
     setFavoriteDartSet(profile.id, set.id);
-    reloadSets();
+    reloadSets(set.id);
 
     // ✅ PATCH B
     syncAllDartSetsToAppStore();

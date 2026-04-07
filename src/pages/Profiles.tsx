@@ -1818,7 +1818,7 @@ React.useEffect(() => {
                 {/* 🔥 Panneau sets de fléchettes du profil actif */}
                 {isDarts && active && (
                   <div style={{ marginTop: 8, marginBottom: 8 }}>
-                    <DartSetsPanel profile={active as any} />
+                    <DartSetsPanel profile={((meProfileForDarts as any) || (active as any))} />
                   </div>
                 )}
 
