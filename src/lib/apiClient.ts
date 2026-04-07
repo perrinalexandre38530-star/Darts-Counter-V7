@@ -11,6 +11,40 @@ function sanitizeApiUrl(raw: string | null | undefined): string {
   return value;
 }
 
+function safeReadLocalStorage(key: string): string {
+  if (typeof window === "undefined") return "";
+  try {
+    return window.localStorage.getItem(key) || "";
+  } catch {
+    return "";
+  }
+}
+
+function safeParseJson<T>(raw: string, fallback: T): T {
+  if (!raw) return fallback;
+  try {
+    return JSON.parse(raw) as T;
+  } catch {
+    return fallback;
+  }
+}
+
+function readNasAccessToken(): string {
+  const direct = safeReadLocalStorage("dc_nas_access_token_v1").trim();
+  if (direct) return direct;
+
+  const session = safeParseJson<any>(safeReadLocalStorage("dc_online_auth_supabase_v1"), null);
+  return String(
+    session?.token ||
+      session?.accessToken ||
+      session?.access_token ||
+      session?.session?.token ||
+      session?.session?.accessToken ||
+      session?.session?.access_token ||
+      ""
+  ).trim();
+}
+
 const envUrl = sanitizeApiUrl(getNasApiUrl());
 const localOverride = sanitizeApiUrl(
   typeof window !== "undefined" ? localStorage.getItem("dc_api_url") : ""
@@ -28,9 +62,23 @@ async function parseJsonSafe(res: Response) {
   }
 }
 
+function buildHeaders(init?: RequestInit): HeadersInit {
+  const token = readNasAccessToken();
+  const baseHeaders = new Headers(init?.headers || {});
+
+  if (token && !baseHeaders.has("Authorization")) {
+    baseHeaders.set("Authorization", `Bearer ${token}`);
+  }
+
+  return baseHeaders;
+}
+
 async function doFetch(path: string, init?: RequestInit) {
   const normalizedPath = path.startsWith("/") ? path : `/${path}`;
-  const res = await fetch(`${API_URL}${normalizedPath}`, init);
+  const res = await fetch(`${API_URL}${normalizedPath}`, {
+    ...init,
+    headers: buildHeaders(init),
+  });
 
   if (!res.ok) {
     throw new Error(`${init?.method || "GET"} ${normalizedPath} failed (${res.status})`);

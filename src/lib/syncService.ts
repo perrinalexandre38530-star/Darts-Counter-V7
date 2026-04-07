@@ -106,8 +106,6 @@ function stripHeavyAvatarFields(value: any, keepAvatars = false): any {
 function buildSlimBackupStore(store: any) {
   const base = JSON.parse(safeJsonStringify(store, "{}"));
 
-  // Conserve les avatars principaux mais supprime les doublons lourds
-  // dans l'historique / matches pour compatibilité anciens backups.
   if (Array.isArray(base?.history)) {
     base.history = stripHeavyAvatarFields(base.history, false);
   }
@@ -149,8 +147,6 @@ function base64ToUint8(base64: string) {
 
 function compressBackupPayload(payload: any): CompressedBackupPayload {
   const json = safeJsonStringify(payload, "{}");
-
-  // Nouveau format rapide : gzip via fflate
   const gz = gzipSync(strToU8(json));
   const base64 = uint8ToBase64(gz);
 
@@ -172,7 +168,6 @@ function decompressBackupPayload(payload: any): any {
     return payload;
   }
 
-  // Nouveau format NAS rapide
   if (
     payload._format === "gzip+store-v2" &&
     payload.compressed &&
@@ -183,7 +178,6 @@ function decompressBackupPayload(payload: any): any {
     return JSON.parse(json);
   }
 
-  // Compatibilité anciens backups NAS
   if (
     payload._format !== "lz-string+store-v1" ||
     !payload.compressed ||
@@ -197,7 +191,6 @@ function decompressBackupPayload(payload: any): any {
   if (payload.encoding === "base64") {
     json = LZString.decompressFromBase64(payload.data);
   } else if (payload.encoding === "utf16") {
-    // Compatibilité anciens backups NAS.
     json = LZString.decompressFromUTF16(payload.data);
   } else {
     throw new Error(
@@ -234,11 +227,26 @@ function isStructuredSnapshot(payload: any) {
   return !!payload && (payload?._v === 1 || payload?._v === 2) && !!payload?.idb;
 }
 
+async function pushViaModernSync(compressedPayload: CompressedBackupPayload, ownerId: string, deviceId: string) {
+  return apiPost("/sync/push", {
+    payload: compressedPayload,
+    version: 2,
+    ownerId,
+    deviceId,
+  });
+}
+
+async function pushViaLegacyBackup(compressedPayload: CompressedBackupPayload, ownerId: string, deviceId: string) {
+  return apiPost("/backup/full", {
+    id: crypto.randomUUID(),
+    ownerId,
+    deviceId,
+    version: 2,
+    payload: compressedPayload,
+  });
+}
+
 export async function pushFullBackupToNas() {
-  // NOUVEAU FLUX :
-  // on sauvegarde le snapshot complet exportAll()
-  // pour conserver 100% des données :
-  // profils, avatars, bots, dartSets, historique, stats, réglages, etc.
   let snapshot: any = null;
 
   try {
@@ -248,7 +256,6 @@ export async function pushFullBackupToNas() {
   }
 
   if (!snapshot) {
-    // Fallback sécurité si exportAll casse pour une raison quelconque.
     const store = await loadStore();
 
     if (!store) {
@@ -259,22 +266,36 @@ export async function pushFullBackupToNas() {
   }
 
   const ownerId = await getCurrentBackupOwnerId();
+  const deviceId = getOrCreateDeviceId();
   const compressedPayload = compressBackupPayload(snapshot);
 
-  const payload = {
-    id: crypto.randomUUID(),
-    ownerId,
-    deviceId: getOrCreateDeviceId(),
-    payload: compressedPayload,
-  };
-
-  return apiPost("/backup/full", payload);
+  try {
+    return await pushViaModernSync(compressedPayload, ownerId, deviceId);
+  } catch (e) {
+    console.warn("/sync/push a échoué, fallback legacy /backup/full", e);
+    return pushViaLegacyBackup(compressedPayload, ownerId, deviceId);
+  }
 }
-
 
 export async function listBackupsFromNas() {
   const ownerId = await getCurrentBackupOwnerId();
-  return apiGet(`/backup/list?ownerId=${encodeURIComponent(ownerId)}`);
+
+  try {
+    const data = await apiGet("/sync/pull");
+    if (!data?.payload) return [];
+    return [
+      {
+        id: `main:${ownerId}`,
+        ownerId,
+        version: data?.version ?? 2,
+        updatedAt: data?.updatedAt ?? null,
+        createdAt: data?.updatedAt ?? null,
+      },
+    ];
+  } catch (e) {
+    console.warn("/sync/pull indisponible pour list, fallback /backup/list", e);
+    return apiGet(`/backup/list?ownerId=${encodeURIComponent(ownerId)}`);
+  }
 }
 
 export async function deleteAllBackupsFromNas() {
@@ -283,7 +304,19 @@ export async function deleteAllBackupsFromNas() {
 }
 
 export async function restoreLatestBackupFromNas() {
-  const data = await apiGet("/backup/full/latest");
+  const ownerId = await getCurrentBackupOwnerId().catch(() => "");
+  let data: any = null;
+
+  try {
+    data = await apiGet("/sync/pull");
+  } catch (e) {
+    console.warn("/sync/pull a échoué, fallback legacy /backup/full/latest", e);
+  }
+
+  if (!data?.payload) {
+    const suffix = ownerId ? `?ownerId=${encodeURIComponent(ownerId)}` : "";
+    data = await apiGet(`/backup/full/latest${suffix}`);
+  }
 
   if (!data?.payload) {
     throw new Error("Aucun backup NAS disponible");
@@ -292,7 +325,6 @@ export async function restoreLatestBackupFromNas() {
   const payload = decompressBackupPayload(data.payload);
 
   if (isStructuredSnapshot(payload)) {
-    // NOUVEAU FLUX : restauration complète
     await importAll(payload);
 
     try {
@@ -306,7 +338,6 @@ export async function restoreLatestBackupFromNas() {
       console.warn("Refresh stats après importAll échoué", e);
     }
   } else {
-    // Compatibilité avec anciens backups NAS "slim"
     const currentStore = await loadStore();
     const merged = { ...(currentStore || {}), ...(payload || {}) };
 
@@ -315,7 +346,6 @@ export async function restoreLatestBackupFromNas() {
     try {
       const historyDump = buildHistoryDumpFromRawStore(payload);
       if (Object.keys(historyDump.rows).length > 0) {
-        // on n'écrase plus l'historique existant
         await importHistoryDump(historyDump, { replace: false });
       }
     } catch (e) {

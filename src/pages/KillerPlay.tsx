@@ -2617,10 +2617,6 @@ React.useEffect(() => {
     return Number.isFinite(v) && v >= 0 ? v : 0;
   });
 
-  const assignActive =
-    inNumberAssignRound && !assignDone && numberAssignMode === "throw";
-  const assignPlayer = assignActive ? (players[assignIndex] || players[0]) : null;
-
   const [pendingChoiceNumber, setPendingChoiceNumber] = React.useState<PendingChoiceNumber | null>(() => {
     return resumeState?.pendingChoiceNumber ?? null;
   });
@@ -2772,6 +2768,10 @@ React.useEffect(() => {
     });
   });
 
+  const assignActive =
+    inNumberAssignRound && !assignDone && numberAssignMode === "throw";
+  const assignPlayer = assignActive ? (players[assignIndex] || players[0]) : null;
+
   const [turnIndex, setTurnIndex] = React.useState<number>(() => {
     const v = Number(resumeState?.turnIndex);
     if (Number.isFinite(v) && v >= 0) return v;
@@ -2826,141 +2826,6 @@ React.useEffect(() => {
     1
   );
 
-  // ✅ Variantes robustes (déclarées tôt pour éviter le TDZ)
-  const selfPenaltyOn = truthy(
-  (config as any)?.selfHitWhileKiller ??
-    (config as any)?.selfPenalty ??
-    (config as any)?.self_penalty ??
-    (config as any)?.variants?.selfHitWhileKiller ??
-    (config as any)?.variants?.selfPenalty ??
-    (config as any)?.variants?.self_penalty ??
-    (config as any)?.options?.selfPenalty ??
-    (config as any)?.rules?.selfPenalty
-);
-
-  const selfPenaltyMultOn = truthy(
-  (config as any)?.selfHitUsesMultiplier ??
-    (config as any)?.selfPenaltyMultiplier ??
-    (config as any)?.self_penalty_multiplier ??
-    (config as any)?.variants?.selfHitUsesMultiplier ??
-    (config as any)?.variants?.selfPenaltyMultiplier ??
-    (config as any)?.options?.selfPenaltyMultiplier ??
-    (config as any)?.rules?.selfPenaltyMultiplier
-);
-
-  const lifeStealOn = truthy(
-  (config as any)?.lifeSteal ??
-    (config as any)?.life_steal ??
-    (config as any)?.variants?.lifeSteal ??
-    (config as any)?.variants?.life_steal ??
-    (config as any)?.options?.lifeSteal ??
-    (config as any)?.rules?.lifeSteal
-);
-
-  const bullSplashOn = truthy(
-  (config as any)?.bullSplash ??
-    (config as any)?.bull_splash ??
-    (config as any)?.variants?.bullSplash ??
-    (config as any)?.variants?.bull_splash ??
-    (config as any)?.options?.bullSplash ??
-    (config as any)?.rules?.bullSplash
-);
-
-  const bullHealOn = truthy(
-  (config as any)?.bullHeal ??
-    (config as any)?.bull_heal ??
-    (config as any)?.variants?.bullHeal ??
-    (config as any)?.variants?.bull_heal ??
-    (config as any)?.options?.bullHeal ??
-    (config as any)?.rules?.bullHeal
-);
-  const bullHealLives = clampInt(
-  (config as any)?.bullHealLives ??
-    (config as any)?.bull_heal_lives ??
-    (config as any)?.variants?.bullHealLives ??
-    (config as any)?.options?.bullHealLives ??
-    (config as any)?.rules?.bullHealLives ??
-    1,
-  1,
-  3,
-  1
-);
-
-  // ✅ BLIND KILLER (VRAI): masque les numéros pour TOUS les joueurs pendant la partie.
-  // Le joueur actif ne voit pas non plus son propre numéro.
-  // Les numéros réapparaissent uniquement à la fin (overlay de fin) / après victoire.
-  const blindKillerOn = truthy(
-  (config as any)?.blindKiller ??
-    (config as any)?.blind_killer ??
-    (config as any)?.blind ??
-    (config as any)?.variants?.blindKiller ??
-    (config as any)?.variants?.blind_killer ??
-    (config as any)?.options?.blindKiller ??
-    (config as any)?.options?.blind_killer ??
-    (config as any)?.rules?.blindKiller ??
-    (config as any)?.rules?.blind_killer
-);
-
-  // ✅ RÉSURRECTION (declared earlier)
-
-  const shieldOnDBull = truthy(
-  (config as any)?.shieldOnDBull ??
-    (config as any)?.shield_on_dbull ??
-    (config as any)?.variants?.shieldOnDBull ??
-    (config as any)?.options?.shieldOnDBull ??
-    (config as any)?.rules?.shieldOnDBull
-);
-
-  const shieldTurns = clampInt(
-  (config as any)?.shieldTurns ??
-    (config as any)?.shield_turns ??
-    (config as any)?.variants?.shieldTurns ??
-    (config as any)?.options?.shieldTurns ??
-    1,
-  1,
-  9,
-  1
-);
-
-  const disarmOnDBull = truthy(
-  (config as any)?.disarmOnDBull ??
-    (config as any)?.disarm_on_dbull ??
-    (config as any)?.variants?.disarmOnDBull ??
-    (config as any)?.options?.disarmOnDBull ??
-    (config as any)?.rules?.disarmOnDBull
-);
-
-  const selectBonusShieldOn = truthy(
-  (config as any)?.selectBonusShield ??
-    (config as any)?.select_bonus_shield ??
-    (config as any)?.variants?.selectBonusShield ??
-    (config as any)?.options?.selectBonusShield ??
-    (config as any)?.rules?.selectBonusShield
-);
-
-  const missAutoHitOn = truthy(
-  (config as any)?.missAutoHit ??
-    (config as any)?.miss_auto_hit ??
-    (config as any)?.variants?.missAutoHit ??
-    (config as any)?.options?.missAutoHit ??
-    (config as any)?.rules?.missAutoHit
-);
-
-  const bullRotateOn = truthy(
-  (config as any)?.bullRotate ??
-    (config as any)?.bull_rotate ??
-    (config as any)?.variants?.bullRotate ??
-    (config as any)?.options?.bullRotate ??
-    (config as any)?.rules?.bullRotate
-);
-
-  const dbullRotateOn = truthy(
-  (config as any)?.dbullRotate ??
-    (config as any)?.dbull_rotate ??
-    (config as any)?.variants?.dbullRotate ??
-    (config as any)?.options?.dbullRotate ??
-    (config as any)?.rules?.dbullRotate
-);
   const resumeConfig = React.useMemo(() => ({
     lives: clampInt((config as any)?.lives, 1, 9, 3),
     becomeRule: (config as any)?.becomeRule ?? "single",
@@ -3131,6 +2996,15 @@ React.useEffect(() => {
   React.useEffect(() => {
     if (!Array.isArray(players) || !players.length) return;
     try {
+      const eventList = Array.isArray(events) ? events : [];
+      const autoHitByActor = new Map<string, number>();
+      for (const evt of eventList) {
+        if (String((evt as any)?.type || "") !== "MISS_AUTO_HIT") continue;
+        const actorId = String((evt as any)?.actorId || "");
+        if (!actorId) continue;
+        autoHitByActor.set(actorId, Number(autoHitByActor.get(actorId) || 0) + 1);
+      }
+
       const castPlayers = players.map((p: any, idx: number) => {
         const rawAvatar = typeof (p?.avatarDataUrl ?? p?.avatarUrl ?? p?.avatar ?? p?.photoUrl) === "string"
           ? String(p?.avatarDataUrl ?? p?.avatarUrl ?? p?.avatar ?? p?.photoUrl)
@@ -3181,6 +3055,9 @@ React.useEffect(() => {
             shieldTurns: Number(p?.shieldTurnsLeft ?? 0),
             lives: Number(p?.lives ?? 0),
             number: Number(p?.number ?? 0),
+            autoHits: Number(autoHitByActor.get(String(p?.id ?? idx)) || 0),
+            resurrectionsGiven: Number(p?.resurrectionsGiven ?? 0),
+            resurrectionsReceived: Number(p?.resurrectionsReceived ?? 0),
           },
         };
       });
@@ -3235,16 +3112,47 @@ React.useEffect(() => {
         1
       );
       const castOptionBits: string[] = [];
-      if (castShieldOnDBull) castOptionBits.push(`DBULL = Bouclier (${castShieldTurns}T)`);
-      if (castDisarmOnDBull) castOptionBits.push("DBULL = Désarmement");
-      if (castDbullRotateOn) castOptionBits.push("Rotation DBULL");
-      if (castBullSplashOn) castOptionBits.push("BULL = Dégâts de zone");
-      if (castBullHealOn) castOptionBits.push(`BULL = Soin (+${castBullHealLives})`);
-      if (castBullRotateOn) castOptionBits.push("Rotation BULL");
+      const castOptionGroups: Record<string, string[]> = {
+        bull: [],
+        dbull: [],
+        miss: [],
+        resurrection: [],
+        multiplicateur: [`x${Number(multiplier || 1)}`],
+      };
+      if (castShieldOnDBull) {
+        castOptionBits.push(`DBULL = Bouclier (${castShieldTurns}T)`);
+        castOptionGroups.dbull.push(`Bouclier (${castShieldTurns}T)`);
+      }
+      if (castDisarmOnDBull) {
+        castOptionBits.push("DBULL = Désarmement");
+        castOptionGroups.dbull.push("Désarmement");
+      }
+      if (castDbullRotateOn) {
+        castOptionBits.push("Rotation DBULL");
+        castOptionGroups.dbull.push("Rotation DBULL");
+      }
+      if (castBullSplashOn) {
+        castOptionBits.push("BULL = Dégâts de zone");
+        castOptionGroups.bull.push("Dégâts de zone");
+      }
+      if (castBullHealOn) {
+        castOptionBits.push(`BULL = Soin (+${castBullHealLives})`);
+        castOptionGroups.bull.push(`Soin (+${castBullHealLives})`);
+      }
+      if (castBullRotateOn) {
+        castOptionBits.push("Rotation BULL");
+        castOptionGroups.bull.push("Rotation BULL");
+      }
       if (castSelectBonusShieldOn) castOptionBits.push("Choix = bonus bouclier");
-      if (castMissAutoHitOn) castOptionBits.push("Miss = Auto-hit");
+      if (castMissAutoHitOn) {
+        castOptionBits.push("Miss = Auto-hit");
+        castOptionGroups.miss.push("Auto-hit");
+      }
       if (castBlindKillerOn) castOptionBits.push("Killer aveugle");
-      if (castResurrectionMode !== "off") castOptionBits.push(`Résurrection (${castResurrectionLives} vie${castResurrectionLives > 1 ? "s" : ""})`);
+      if (castResurrectionMode !== "off") {
+        castOptionBits.push(`Résurrection (${castResurrectionLives} vie${castResurrectionLives > 1 ? "s" : ""})`);
+        castOptionGroups.resurrection.push(`${castResurrectionLives} vie${castResurrectionLives > 1 ? "s" : ""} rendue${castResurrectionLives > 1 ? "s" : ""}`);
+      }
 
       const snapshot = {
         screen: "game",
@@ -3264,6 +3172,7 @@ React.useEffect(() => {
           currentPhase: String(current?.killerPhase || ""),
           optionBadges: castOptionBits.join("||"),
           optionSummary: castOptionBits.join(" • "),
+          optionGroupsJson: JSON.stringify(castOptionGroups),
           shieldTurnsConfig: Number(castShieldTurns || 0),
         },
         updatedAt: Date.now(),
@@ -3284,7 +3193,7 @@ React.useEffect(() => {
     } catch (err) {
       appendGoogleCastDiag("killer_snapshot_build_failed", String(err));
     }
-  }, [players, turnIndex, current?.id, aliveCount, dartsLeft, multiplier, assignDone, finished, w, castStatusTick, turnCount, config]);
+  }, [players, turnIndex, current?.id, aliveCount, dartsLeft, multiplier, assignDone, finished, w, castStatusTick, turnCount, config, events]);
 
   const inputDisabledBase =
     finished || !!w || !current || current.eliminated || showEnd;
@@ -3689,6 +3598,141 @@ React.useEffect(() => {
     return rec as MatchRecord;
   }
 
+  // ✅ Variantes robustes (supporte plusieurs structures config)
+const selfPenaltyOn = truthy(
+  (config as any)?.selfHitWhileKiller ??
+    (config as any)?.selfPenalty ??
+    (config as any)?.self_penalty ??
+    (config as any)?.variants?.selfHitWhileKiller ??
+    (config as any)?.variants?.selfPenalty ??
+    (config as any)?.variants?.self_penalty ??
+    (config as any)?.options?.selfPenalty ??
+    (config as any)?.rules?.selfPenalty
+);
+
+const selfPenaltyMultOn = truthy(
+  (config as any)?.selfHitUsesMultiplier ??
+    (config as any)?.selfPenaltyMultiplier ??
+    (config as any)?.self_penalty_multiplier ??
+    (config as any)?.variants?.selfHitUsesMultiplier ??
+    (config as any)?.variants?.selfPenaltyMultiplier ??
+    (config as any)?.options?.selfPenaltyMultiplier ??
+    (config as any)?.rules?.selfPenaltyMultiplier
+);
+
+const lifeStealOn = truthy(
+  (config as any)?.lifeSteal ??
+    (config as any)?.life_steal ??
+    (config as any)?.variants?.lifeSteal ??
+    (config as any)?.variants?.life_steal ??
+    (config as any)?.options?.lifeSteal ??
+    (config as any)?.rules?.lifeSteal
+);
+
+const bullSplashOn = truthy(
+  (config as any)?.bullSplash ??
+    (config as any)?.bull_splash ??
+    (config as any)?.variants?.bullSplash ??
+    (config as any)?.variants?.bull_splash ??
+    (config as any)?.options?.bullSplash ??
+    (config as any)?.rules?.bullSplash
+);
+
+const bullHealOn = truthy(
+  (config as any)?.bullHeal ??
+    (config as any)?.bull_heal ??
+    (config as any)?.variants?.bullHeal ??
+    (config as any)?.variants?.bull_heal ??
+    (config as any)?.options?.bullHeal ??
+    (config as any)?.rules?.bullHeal
+);
+const bullHealLives = clampInt(
+  (config as any)?.bullHealLives ??
+    (config as any)?.bull_heal_lives ??
+    (config as any)?.variants?.bullHealLives ??
+    (config as any)?.options?.bullHealLives ??
+    (config as any)?.rules?.bullHealLives ??
+    1,
+  1,
+  3,
+  1
+);
+
+// ✅ BLIND KILLER (VRAI): masque les numéros pour TOUS les joueurs pendant la partie.
+// Le joueur actif ne voit pas non plus son propre numéro.
+// Les numéros réapparaissent uniquement à la fin (overlay de fin) / après victoire.
+const blindKillerOn = truthy(
+  (config as any)?.blindKiller ??
+    (config as any)?.blind_killer ??
+    (config as any)?.blind ??
+    (config as any)?.variants?.blindKiller ??
+    (config as any)?.variants?.blind_killer ??
+    (config as any)?.options?.blindKiller ??
+    (config as any)?.options?.blind_killer ??
+    (config as any)?.rules?.blindKiller ??
+    (config as any)?.rules?.blind_killer
+);
+
+// ✅ RÉSURRECTION (declared earlier)
+
+const shieldOnDBull = truthy(
+  (config as any)?.shieldOnDBull ??
+    (config as any)?.shield_on_dbull ??
+    (config as any)?.variants?.shieldOnDBull ??
+    (config as any)?.options?.shieldOnDBull ??
+    (config as any)?.rules?.shieldOnDBull
+);
+
+const shieldTurns = clampInt(
+  (config as any)?.shieldTurns ??
+    (config as any)?.shield_turns ??
+    (config as any)?.variants?.shieldTurns ??
+    (config as any)?.options?.shieldTurns ??
+    1,
+  1,
+  9,
+  1
+);
+
+const disarmOnDBull = truthy(
+  (config as any)?.disarmOnDBull ??
+    (config as any)?.disarm_on_dbull ??
+    (config as any)?.variants?.disarmOnDBull ??
+    (config as any)?.options?.disarmOnDBull ??
+    (config as any)?.rules?.disarmOnDBull
+);
+
+const selectBonusShieldOn = truthy(
+  (config as any)?.selectBonusShield ??
+    (config as any)?.select_bonus_shield ??
+    (config as any)?.variants?.selectBonusShield ??
+    (config as any)?.options?.selectBonusShield ??
+    (config as any)?.rules?.selectBonusShield
+);
+
+const missAutoHitOn = truthy(
+  (config as any)?.missAutoHit ??
+    (config as any)?.miss_auto_hit ??
+    (config as any)?.variants?.missAutoHit ??
+    (config as any)?.options?.missAutoHit ??
+    (config as any)?.rules?.missAutoHit
+);
+
+const bullRotateOn = truthy(
+  (config as any)?.bullRotate ??
+    (config as any)?.bull_rotate ??
+    (config as any)?.variants?.bullRotate ??
+    (config as any)?.options?.bullRotate ??
+    (config as any)?.rules?.bullRotate
+);
+
+const dbullRotateOn = truthy(
+  (config as any)?.dbullRotate ??
+    (config as any)?.dbull_rotate ??
+    (config as any)?.variants?.dbullRotate ??
+    (config as any)?.options?.dbullRotate ??
+    (config as any)?.rules?.dbullRotate
+);
 
 function pickRotatingFunction(keys: string[], rotationOn: boolean, idx: number): string | null {
   const active = keys.filter(Boolean);
