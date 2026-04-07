@@ -14,8 +14,6 @@ export type DartSetId = string;
 export interface DartSet {
   id: DartSetId; // id unique
   profileId: string; // profil auquel appartient ce jeu
-  ownerUserId?: string | null;
-  ownerAliases?: string[];
   name: string; // "Noir 22g Target"
   brand?: string; // "Target", "Winmau"...
   weightGrams?: number; // 18, 20, 22 etc.
@@ -158,25 +156,6 @@ function loadAll(): DartSet[] {
   }
 }
 
-
-function normalizeOwnerToken(value: any): string {
-  return String(value || "").trim();
-}
-
-function collectSetOwnerIds(setLike: any): string[] {
-  const ids = new Set<string>();
-  const push = (v: any) => {
-    const s = normalizeOwnerToken(v);
-    if (s) ids.add(s);
-  };
-  push(setLike?.profileId);
-  push(setLike?.ownerUserId);
-  if (Array.isArray(setLike?.ownerAliases)) {
-    for (const id of setLike.ownerAliases) push(id);
-  }
-  return Array.from(ids);
-}
-
 // -------------------------------------------------------------
 // API publique
 // -------------------------------------------------------------
@@ -192,14 +171,7 @@ export function setAllDartSets(list: DartSet[]) {
 
 // 👇 Désormais : sets du profil + tous les sets publics
 export function getDartSetsForProfile(profileId: string): DartSet[] {
-  const wanted = String(profileId || "").trim();
-  return loadAll().filter((s: any) => {
-    if ((s as any)?.scope === "public") return true;
-    if (String((s as any)?.profileId || "") === wanted) return true;
-    if (String((s as any)?.ownerUserId || "") === wanted) return true;
-    if (Array.isArray((s as any)?.ownerAliases) && (s as any).ownerAliases.map((x: any) => String(x || "")).includes(wanted)) return true;
-    return false;
-  });
+  return loadAll().filter((s) => s.scope === "public" || s.profileId === profileId);
 }
 
 export function getDartSetById(id: DartSetId): DartSet | undefined {
@@ -208,8 +180,6 @@ export function getDartSetById(id: DartSetId): DartSet | undefined {
 
 export function createDartSet(input: {
   profileId: string;
-  ownerUserId?: string | null;
-  ownerAliases?: string[];
   name: string;
   brand?: string;
   weightGrams?: number;
@@ -228,18 +198,11 @@ export function createDartSet(input: {
   const all = loadAll();
   const now = Date.now();
 
-  const inputOwners = new Set<string>(collectSetOwnerIds({
-    profileId: input.profileId,
-    ownerUserId: input.ownerUserId,
-    ownerAliases: input.ownerAliases,
-  }));
-  const alreadyForProfile = all.filter((set) => collectSetOwnerIds(set).some((id) => inputOwners.has(id)));
+  const alreadyForProfile = all.filter((s) => s.profileId === input.profileId);
 
   const newSet: DartSet = {
     id: `dartset_${now}_${Math.random().toString(16).slice(2)}`,
     profileId: input.profileId,
-    ownerUserId: input.ownerUserId || undefined,
-    ownerAliases: Array.isArray(input.ownerAliases) ? input.ownerAliases.filter(Boolean) : undefined,
     name: input.name.trim() || "Mes fléchettes",
     brand: input.brand?.trim() || undefined,
     weightGrams: input.weightGrams,

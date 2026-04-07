@@ -375,64 +375,6 @@ const createEmptyForm = (primary: string): FormState => ({
   photoDataUrl: null,
 });
 
-function getProfileOwnerIds(profile: any): string[] {
-  const ids = new Set<string>();
-  const push = (v: any) => {
-    const id = String(v || "").trim();
-    if (id) ids.add(id);
-  };
-
-  const baseOnlineId =
-    String((profile as any)?.privateInfo?.onlineUserId || "").trim() ||
-    String((profile as any)?.userId || "").trim() ||
-    String((profile as any)?.id || "").trim();
-
-  push(profile?.id);
-  push((profile as any)?.userId);
-  push((profile as any)?.privateInfo?.onlineUserId);
-  push((profile as any)?.privateInfo?.userId);
-  push((profile as any)?.privateInfo?.accountUserId);
-
-  try {
-    const allProfiles = Array.isArray((window as any)?.__appStore?.store?.profiles)
-      ? (window as any).__appStore.store.profiles
-      : [];
-    for (const p of allProfiles as any[]) {
-      const pid = String((p as any)?.id || "").trim();
-      const onlineUserId = String((p as any)?.privateInfo?.onlineUserId || "").trim();
-      const userId = String((p as any)?.userId || "").trim();
-      const accountUserId = String((p as any)?.privateInfo?.accountUserId || "").trim();
-      const legacyUserId = String((p as any)?.privateInfo?.userId || "").trim();
-      if (
-        (baseOnlineId && (onlineUserId === baseOnlineId || userId === baseOnlineId || accountUserId === baseOnlineId || legacyUserId === baseOnlineId || pid === baseOnlineId)) ||
-        (pid && ids.has(pid)) ||
-        (onlineUserId && ids.has(onlineUserId)) ||
-        (userId && ids.has(userId)) ||
-        (accountUserId && ids.has(accountUserId)) ||
-        (legacyUserId && ids.has(legacyUserId))
-      ) {
-        push(pid);
-        push(onlineUserId);
-        push(userId);
-        push(accountUserId);
-        push(legacyUserId);
-      }
-    }
-  } catch {}
-
-  return Array.from(ids);
-}
-
-function getPrimaryOwnerId(profile: any): string {
-  const ownerIds = getProfileOwnerIds(profile);
-  return (
-    String((profile as any)?.privateInfo?.onlineUserId || "").trim() ||
-    String((profile as any)?.userId || "").trim() ||
-    ownerIds[0] ||
-    String((profile as any)?.id || "").trim()
-  );
-}
-
 const DartSetsPanel: React.FC<Props> = ({ profile }) => {
   const { palette } = useTheme();
   const { lang } = useLang();
@@ -471,79 +413,37 @@ const DartSetsPanel: React.FC<Props> = ({ profile }) => {
     syncAllDartSetsToAppStore();
   }, [syncAllDartSetsToAppStore]);
 
-  function getSetOwnerIds(set: any): string[] {
-    return [
-      String((set as any)?.profileId || "").trim(),
-      String((set as any)?.ownerUserId || "").trim(),
-      ...((Array.isArray((set as any)?.ownerAliases) ? (set as any).ownerAliases : []).map((x: any) => String(x || "").trim())),
-    ].filter(Boolean);
-  }
-
-  function sortSets(list: DartSet[], ownerIds: string[] = []): DartSet[] {
-    const ownerSet = new Set(ownerIds.map((x) => String(x || "").trim()).filter(Boolean));
+  function sortSets(list: DartSet[]): DartSet[] {
     return list
       .slice()
       .sort((a, b) => {
-        const ownA = getSetOwnerIds(a).some((id) => ownerSet.has(id)) ? 1 : 0;
-        const ownB = getSetOwnerIds(b).some((id) => ownerSet.has(id)) ? 1 : 0;
-        if (ownA !== ownB) return ownB - ownA;
         const favA = a.isFavorite ? 1 : 0;
         const favB = b.isFavorite ? 1 : 0;
         if (favA !== favB) return favB - favA;
-        const tsA = Number((a as any).updatedAt || a.lastUsedAt || a.createdAt || 0) || 0;
-        const tsB = Number((b as any).updatedAt || b.lastUsedAt || b.createdAt || 0) || 0;
-        if (tsA !== tsB) return tsB - tsA;
-        return String(a.name || "").localeCompare(String(b.name || ""));
+        const luA = a.lastUsedAt || 0;
+        const luB = b.lastUsedAt || 0;
+        return luB - luA;
       });
   }
 
-  const resolveVisibleSets = React.useCallback((allSets: DartSet[], preferredId?: string | null) => {
-    const ownerIds = getProfileOwnerIds(profile);
-    const ownerSet = new Set(ownerIds.map((id) => String(id || "").trim()).filter(Boolean));
-    const visible = ((allSets || []) as DartSet[]).filter((set: any) => {
-      if (set?.scope === "public") return true;
-      return getSetOwnerIds(set).some((id) => ownerSet.has(String(id || "").trim()));
-    });
-    const sorted = sortSets(visible as DartSet[], ownerIds);
-    setSets(sorted);
-    setActiveIndex((idx) => {
-      if (!sorted.length) return 0;
-      if (preferredId) {
-        const nextIndex = sorted.findIndex((set) => String(set.id) === String(preferredId));
-        if (nextIndex >= 0) return nextIndex;
-      }
-      return Math.min(idx, sorted.length - 1);
-    });
-    syncAllDartSetsToAppStore();
-    return sorted;
-  }, [profile, syncAllDartSetsToAppStore]);
-
-  const ownerSignature = React.useMemo(() => getProfileOwnerIds(profile).join("|"), [profile]);
-
   // ✅ loader tolérant (getDartSetsForProfile peut être sync OU async)
-  const loadSets = React.useCallback(async (preferredId?: string | null) => {
-    if (!profile?.id) return [] as DartSet[];
+  const loadSets = React.useCallback(async () => {
+    if (!profile?.id) return;
     try {
-      const allSets = await Promise.resolve(getAllDartSets() as any);
-      return resolveVisibleSets(((allSets || []) as DartSet[]), preferredId || null);
+      const all = await Promise.resolve(getDartSetsForProfile(profile.id) as any);
+      const sorted = sortSets((all || []) as DartSet[]);
+      setSets(sorted);
+      setActiveIndex((idx) => (sorted.length === 0 ? 0 : Math.min(idx, sorted.length - 1)));
+
+      // ✅ PATCH B — après refresh, pousse aussi au store global
+      syncAllDartSetsToAppStore();
     } catch (err) {
       console.warn("[DartSetsPanel] load error", err);
-      return [] as DartSet[];
     }
-  }, [profile?.id, ownerSignature, resolveVisibleSets]);
+  }, [profile?.id, syncAllDartSetsToAppStore]);
 
   React.useEffect(() => {
-    void loadSets();
-  }, [loadSets]);
-
-  React.useEffect(() => {
-    const handler = () => { void loadSets(); };
-    window.addEventListener("dc-dartsets-updated", handler as any);
-    window.addEventListener("storage", handler as any);
-    return () => {
-      window.removeEventListener("dc-dartsets-updated", handler as any);
-      window.removeEventListener("storage", handler as any);
-    };
+    loadSets();
   }, [loadSets]);
 
   const reloadSets = React.useCallback(() => {
@@ -628,9 +528,7 @@ const DartSetsPanel: React.FC<Props> = ({ profile }) => {
 
     try {
       const payload = {
-        profileId: String(profile?.id || getPrimaryOwnerId(profile)),
-        ownerUserId: String((profile as any)?.privateInfo?.onlineUserId || (profile as any)?.userId || "").trim() || undefined,
-        ownerAliases: getProfileOwnerIds(profile),
+        profileId: profile.id,
         name,
         brand: brand || undefined,
         weightGrams,
@@ -650,7 +548,7 @@ const DartSetsPanel: React.FC<Props> = ({ profile }) => {
         return;
       }
 
-      await loadSets(created?.id || null);
+      reloadSets();
       setForm(createEmptyForm(primary));
       setIsCreating(false);
 
@@ -735,7 +633,7 @@ const DartSetsPanel: React.FC<Props> = ({ profile }) => {
         return;
       }
 
-      await loadSets(editingId);
+      reloadSets();
       setEditingId(null);
       setEditForm(null);
 
@@ -751,7 +649,7 @@ const DartSetsPanel: React.FC<Props> = ({ profile }) => {
     if (!set) return;
     if (!window.confirm("Supprimer ce jeu de fléchettes ?")) return;
     deleteDartSet(set.id);
-    void loadSets();
+    reloadSets();
 
     // ✅ PATCH B
     syncAllDartSetsToAppStore();
@@ -764,8 +662,8 @@ const DartSetsPanel: React.FC<Props> = ({ profile }) => {
 
   const handleSetFavorite = (set: DartSet | null) => {
     if (!profile?.id || !set) return;
-    setFavoriteDartSet(String(profile?.id || getPrimaryOwnerId(profile)), set.id);
-    void loadSets(set.id);
+    setFavoriteDartSet(profile.id, set.id);
+    reloadSets();
 
     // ✅ PATCH B
     syncAllDartSetsToAppStore();
