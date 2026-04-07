@@ -3635,6 +3635,7 @@ case "babyfoot_team_edit":
             if (!latestTarget) return go(backTo);
 
             const safeAvatarDataUrl = await enforceSafeAvatarDataUrl(pngDataUrl).catch(() => null);
+            const finalAvatarDataUrl = safeAvatarDataUrl || (typeof pngDataUrl === "string" && pngDataUrl.startsWith("data:image/") ? pngDataUrl : null);
 
             const next = latestBots.slice();
             const idx = next.findIndex((b) => b.id === latestTarget.id);
@@ -3642,7 +3643,9 @@ case "babyfoot_team_edit":
             const updated: BotLS = {
               ...latestTarget,
               name: name?.trim() || latestTarget.name,
-              avatarDataUrl: safeAvatarDataUrl ?? latestTarget.avatarDataUrl ?? null,
+              avatarDataUrl: finalAvatarDataUrl ?? latestTarget.avatarDataUrl ?? null,
+              avatar: finalAvatarDataUrl ?? latestTarget.avatarDataUrl ?? null,
+              avatarUrl: finalAvatarDataUrl ?? latestTarget.avatarDataUrl ?? null,
               updatedAt: new Date().toISOString(),
             };
 
@@ -3650,6 +3653,9 @@ case "babyfoot_team_edit":
             else next.push(updated);
 
             saveBotsLS(next);
+            try {
+              window.dispatchEvent(new Event("dc:bots-changed"));
+            } catch {}
             try {
               (window as any).__flushCloudNow?.("bots_avatar_save");
             } catch {}

@@ -463,14 +463,42 @@ function ActiveProfileCard({
       ""
     ).trim().toLowerCase();
 
+  const lastStableProfileNameRef = React.useRef<string>("");
+
   const profileName = React.useMemo(() => {
-    const nickname = String((profile as any)?.privateInfo?.nickname || "").trim();
-    if (nickname && !looksLikeEmailLocalNickname(nickname, profileEmail) && !looksLikeGenericPlayerName(nickname)) {
-      return nickname;
+    const candidates = [
+      (profile as any)?.privateInfo?.nickname,
+      (profile as any)?.name,
+      (profile as any)?.surname,
+      (profile as any)?.displayName,
+      ...getLinkedProfileNameCandidates(profile),
+    ]
+      .map((v) => String(v || "").trim())
+      .filter(Boolean);
+
+    const picked = candidates.find((value) => {
+      if (!value) return false;
+      if (looksLikeEmailLocalNickname(value, profileEmail)) return false;
+      if (looksLikeGenericPlayerName(value)) return false;
+      return true;
+    }) || "";
+
+    if (picked) {
+      lastStableProfileNameRef.current = picked;
+      return picked;
     }
+
+    if (lastStableProfileNameRef.current) {
+      return lastStableProfileNameRef.current;
+    }
+
     return t("home.noName", "Joueur");
   }, [
     (profile as any)?.privateInfo?.nickname,
+    (profile as any)?.name,
+    (profile as any)?.surname,
+    (profile as any)?.displayName,
+    (profile as any)?.id,
     profileEmail,
     t,
   ]);

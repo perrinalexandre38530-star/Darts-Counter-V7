@@ -1818,7 +1818,7 @@ React.useEffect(() => {
                 {/* 🔥 Panneau sets de fléchettes du profil actif */}
                 {isDarts && active && (
                   <div style={{ marginTop: 8, marginBottom: 8 }}>
-                    <DartSetsPanel profile={((meProfileForDarts as any) || (active as any))} />
+                    <DartSetsPanel key={`me-dartsets-${String((((meProfileForDarts as any) || (active as any))?.id || "none"))}`} profile={((meProfileForDarts as any) || (active as any))} />
                   </div>
                 )}
 
@@ -4189,7 +4189,7 @@ function LocalProfilesRefonte({
               {/* 🔥 NOUVEAU : Mes jeux de fléchettes pour ce profil local (DARTS ONLY) */}
               {isDarts && (
                 <div style={{ marginTop: 4, marginBottom: 10 }}>
-                  <DartSetsPanel profile={current} />
+                  <DartSetsPanel key={`local-dartsets-${String(current?.id || "none")}`} profile={current} />
                 </div>
               )}
 

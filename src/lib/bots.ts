@@ -1,6 +1,7 @@
 import { nanoid } from "nanoid";
 import LZString from "lz-string";
 import { MAX_AVATAR_DATA_URL_CHARS } from "./avatarSafe";
+import { saveStore } from "./storage";
 
 export const LS_BOTS_KEY = "dc_bots_v1";
 export const LS_BOTS_AVATARS_KEY = "dc_bots_avatars_v1";
@@ -329,6 +330,12 @@ export function saveBots(list: any[]) {
   saveAvatarsWithPruning(normalized);
   dispatchBotsChanged();
   try {
+    const w: any = window as any;
+    const appStore = w?.__appStore?.store ?? null;
+    if (appStore && typeof appStore === "object") {
+      const nextStore = { ...(appStore as any), bots: normalized };
+      Promise.resolve().then(() => saveStore(nextStore as any).catch(() => {}));
+    }
     window.dispatchEvent(new Event("dc-flush-cloud"));
     (window as any).__flushCloudNow?.("bots_save");
   } catch {}

@@ -1,4 +1,5 @@
 import { safeLocalStorageGetJson, safeLocalStorageSetJson } from "./imageStorageCodec";
+import { saveStore } from "./storage";
 
 // =============================================================
 // src/lib/dartSetsStore.ts
@@ -142,7 +143,11 @@ function saveAll(list: DartSet[]) {
   try {
     const w: any = window as any;
     if (w?.__appStore?.update) {
-      w.__appStore.update((st: any) => ({ ...(st || {}), dartSets: sanitized }));
+      w.__appStore.update((st: any) => {
+        const next = { ...(st || {}), dartSets: sanitized };
+        Promise.resolve().then(() => saveStore(next as any).catch(() => {}));
+        return next;
+      });
     }
   } catch {}
 }
