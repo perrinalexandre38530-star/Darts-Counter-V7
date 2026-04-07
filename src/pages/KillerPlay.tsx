@@ -2996,26 +2996,59 @@ React.useEffect(() => {
   React.useEffect(() => {
     if (!Array.isArray(players) || !players.length) return;
     try {
-      const castPlayers = players.map((p: any, idx: number) => ({
-        id: String(p?.id ?? idx),
-        name: String(p?.name || "Joueur"),
-        score: Number(p?.lives ?? 0),
-        active: idx === turnIndex,
-        avatarUrl: typeof (p?.avatarUrl ?? p?.avatar ?? p?.photoUrl) === "string" && /^(https?:|blob:|\/)/i.test(String(p?.avatarUrl ?? p?.avatar ?? p?.photoUrl)) ? String(p?.avatarUrl ?? p?.avatar ?? p?.photoUrl) : "",
-        stats: {
-          avg3d: Number(p?.kills ?? 0),
-          bestVisit: Number(p?.number ?? 0),
-          hits: Number(p?.killerHits ?? 0),
-          miss: Number(p?.uselessHits ?? 0),
-          simple: Number(p?.hitsBySegment?.S ?? 0),
-          double: Number(p?.hitsBySegment?.D ?? 0),
-          triple: Number(p?.hitsBySegment?.T ?? 0),
-          bull: Number(p?.hitsBySegment?.BULL ?? 0),
-          dbull: Number(p?.hitsBySegment?.DBULL ?? 0),
-          bust: Number(p?.livesLost ?? 0),
-          totalThrows: Number(p?.totalThrows ?? 0),
-        },
-      }));
+      const castPlayers = players.map((p: any, idx: number) => {
+        const rawAvatar = typeof (p?.avatarDataUrl ?? p?.avatarUrl ?? p?.avatar ?? p?.photoUrl) === "string"
+          ? String(p?.avatarDataUrl ?? p?.avatarUrl ?? p?.avatar ?? p?.photoUrl)
+          : "";
+        const isDataAvatar = /^data:image\//i.test(rawAvatar);
+        const isUrlAvatar = /^(https?:|blob:|\/)/i.test(rawAvatar);
+
+        return {
+          id: String(p?.id ?? idx),
+          name: String(p?.name || "Joueur"),
+          score: Number(p?.lives ?? 0),
+          lives: Number(p?.lives ?? 0),
+          active: idx === turnIndex,
+          avatarDataUrl: isDataAvatar ? rawAvatar : "",
+          avatarUrl: isUrlAvatar ? rawAvatar : "",
+          number: Number(p?.number ?? 0),
+          isKiller: !!p?.isKiller,
+          eliminated: !!p?.eliminated,
+          killerPhase: String(p?.killerPhase || ""),
+          shieldTurnsLeft: Number(p?.shieldTurnsLeft ?? 0),
+          shieldStrength: Number(p?.shieldStrength ?? 0),
+          resurrected: !!p?.resurrected,
+          resurrectShield: !!p?.resurrectShield,
+          isBot: !!p?.isBot,
+          lastVisit: Array.isArray(p?.lastVisit)
+            ? p.lastVisit.slice(0, 3).map((hit: any) => ({
+                target: Number(hit?.target ?? 0),
+                mult: String(hit?.mult || "S"),
+              }))
+            : [],
+          stats: {
+            avg3d: Number(p?.kills ?? 0),
+            bestVisit: Number(p?.number ?? 0),
+            hits: Number(p?.killerHits ?? 0),
+            miss: Number(p?.uselessHits ?? 0),
+            simple: Number(p?.hitsBySegment?.S ?? 0),
+            double: Number(p?.hitsBySegment?.D ?? 0),
+            triple: Number(p?.hitsBySegment?.T ?? 0),
+            bull: Number(p?.hitsBySegment?.BULL ?? 0),
+            dbull: Number(p?.hitsBySegment?.DBULL ?? 0),
+            bust: Number(p?.livesLost ?? 0),
+            totalThrows: Number(p?.totalThrows ?? 0),
+            kills: Number(p?.kills ?? 0),
+            livesTaken: Number(p?.livesTaken ?? 0),
+            livesLost: Number(p?.livesLost ?? 0),
+            killerHits: Number(p?.killerHits ?? 0),
+            uselessHits: Number(p?.uselessHits ?? 0),
+            shieldTurns: Number(p?.shieldTurnsLeft ?? 0),
+            lives: Number(p?.lives ?? 0),
+            number: Number(p?.number ?? 0),
+          },
+        };
+      });
 
       const snapshot = {
         screen: "game",
@@ -3030,6 +3063,9 @@ React.useEffect(() => {
           dartsLeft: Number(dartsLeft || 0),
           multiplier: Number(multiplier || 1),
           assignDone: assignDone ? "yes" : "no",
+          turnCount: Number(turnCount || 0),
+          currentNumber: Number(current?.number ?? 0),
+          currentPhase: String(current?.killerPhase || ""),
         },
         updatedAt: Date.now(),
       };

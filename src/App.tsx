@@ -1464,6 +1464,21 @@ useEffect(() => {
   }, []);
 
   const [store, setStore] = React.useState<Store>(initialStore);
+  const hasMeaningfulLocalCloudData = React.useMemo(() => {
+    return (
+      (store?.profiles?.length || 0) > 0 ||
+      !!(store as any)?.activeProfileId ||
+      (store?.friends?.length || 0) > 0 ||
+      (store?.history?.length || 0) > 0 ||
+      ((store as any)?.dartSets?.length || 0) > 0
+    );
+  }, [
+    (store?.profiles?.length || 0),
+    (store as any)?.activeProfileId,
+    (store?.friends?.length || 0),
+    (store?.history?.length || 0),
+    ((store as any)?.dartSets?.length || 0),
+  ]);
 
   // ============================================================
 
@@ -2006,12 +2021,7 @@ useEffect(() => {
       if (cloudHydrated) return;
 
       const uid = String((online as any)?.user?.id || "").trim();
-      const hasLocalData =
-        (store?.profiles?.length || 0) > 0 ||
-        !!(store as any)?.activeProfileId ||
-        (store?.friends?.length || 0) > 0 ||
-        (store?.history?.length || 0) > 0 ||
-        ((store as any)?.dartSets?.length || 0) > 0;
+      const hasLocalData = hasMeaningfulLocalCloudData;
 
       try {
         // ✅ Si l'écran de login/signup vient déjà de restaurer le snapshot complet,
@@ -2177,13 +2187,13 @@ useEffect(() => {
         }
 
         console.warn("[cloud] hydrate error (sync disabled)", res?.error || res);
-        if (!cancelled && hasLocalData) {
+        if (!cancelled) {
           setCloudCanSync(false);
           setCloudHydrated(true);
         }
       } catch (e) {
         console.warn("[cloud] hydrate error (sync disabled)", e);
-        if (!cancelled && hasLocalData) {
+        if (!cancelled) {
           setCloudCanSync(false);
           setCloudHydrated(true);
         }
@@ -2194,7 +2204,7 @@ useEffect(() => {
     return () => {
       cancelled = true;
     };
-  }, [loading, online?.ready, online?.status, cloudHydrated, store]);
+  }, [loading, online?.ready, online?.status, cloudHydrated, hasMeaningfulLocalCloudData]);
 
   // ============================================================
   // ✅ CLOUD SYNC (push-only via emitCloudChange)

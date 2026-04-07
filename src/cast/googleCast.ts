@@ -204,6 +204,40 @@ function sanitizePlayerStats(player: any) {
     dbull: sanitizeNumberLike(stats?.dbull ?? stats?.doubleBull ?? stats?.dbulls ?? 0),
     bust: sanitizeNumberLike(stats?.bust ?? stats?.busts ?? 0),
     totalThrows: sanitizeNumberLike(stats?.totalThrows ?? stats?.throws ?? stats?.attempts ?? 0),
+    kills: sanitizeNumberLike(stats?.kills ?? stats?.avg3d ?? 0),
+    livesTaken: sanitizeNumberLike(stats?.livesTaken ?? 0),
+    livesLost: sanitizeNumberLike(stats?.livesLost ?? stats?.bust ?? 0),
+    killerHits: sanitizeNumberLike(stats?.killerHits ?? stats?.hits ?? 0),
+    uselessHits: sanitizeNumberLike(stats?.uselessHits ?? stats?.miss ?? 0),
+    shieldTurns: sanitizeNumberLike(stats?.shieldTurns ?? 0),
+    lives: sanitizeNumberLike(stats?.lives ?? 0),
+    number: sanitizeNumberLike(stats?.number ?? 0),
+  };
+}
+
+function sanitizeKillerVisit(visit: any) {
+  if (!Array.isArray(visit)) return [];
+  return visit.slice(0, 3).map((item: any) => ({
+    target: sanitizeNumberLike(item?.target ?? 0),
+    mult: ["S", "D", "T"].includes(String(item?.mult || "").toUpperCase())
+      ? String(item?.mult || "").toUpperCase()
+      : "S",
+  }));
+}
+
+function sanitizeKillerPlayerExtras(player: any) {
+  return {
+    lives: sanitizeNumberLike(player?.lives ?? player?.score ?? 0),
+    number: sanitizeNumberLike(player?.number ?? 0),
+    isKiller: !!player?.isKiller,
+    eliminated: !!player?.eliminated,
+    killerPhase: safeString(player?.killerPhase || ""),
+    shieldTurnsLeft: sanitizeNumberLike(player?.shieldTurnsLeft ?? 0),
+    shieldStrength: sanitizeNumberLike(player?.shieldStrength ?? 0),
+    resurrected: !!player?.resurrected,
+    resurrectShield: !!player?.resurrectShield,
+    isBot: !!player?.isBot,
+    lastVisit: sanitizeKillerVisit(player?.lastVisit),
   };
 }
 
@@ -219,7 +253,7 @@ async function sanitizeSnapshot(snapshot: CastSnapshot) {
             const isActivePlayer = !!p?.active;
             const shouldSendAvatar = !!avatarSig && avatarSig !== lastSig && ((Array.isArray(snapshot?.players) ? snapshot.players.length : 0) <= MAX_PLAYERS_WITH_ALL_AVATARS || isActivePlayer);
             if (pid && avatarSig) lastSentAvatarByPlayer.set(pid, avatarSig);
-            return {
+            const basePlayer: any = {
               id: pid,
               name: String(p?.name ?? "Joueur"),
               score: sanitizeNumberLike(p?.score ?? 0),
@@ -228,6 +262,8 @@ async function sanitizeSnapshot(snapshot: CastSnapshot) {
               avatarUrl: shouldSendAvatar ? avatar.avatarUrl : "",
               stats: sanitizePlayerStats(p),
             };
+            if (snapshot?.game === "killer") Object.assign(basePlayer, sanitizeKillerPlayerExtras(p));
+            return basePlayer;
           })
         )
       : [];
@@ -599,10 +635,8 @@ export async function pingGoogleCastReceiver(force = false) {
   );
 }
 
-export async function sendCastSnapshot(snapshot: CastSnapshot | null): Promise<boolean> {
-  if (!snapshot) return false;
-  const payload = await sanitizeSnapshot(snapshot);
-  const signature = JSON.stringify({
+function buildSnapshotSignaturePayload(payload: any) {
+  return JSON.stringify({
     game: payload?.game || "",
     title: payload?.title || "",
     status: payload?.status || "",
@@ -614,9 +648,32 @@ export async function sendCastSnapshot(snapshot: CastSnapshot | null): Promise<b
           score: p?.score ?? 0,
           active: !!p?.active,
           stats: p?.stats || {},
+          ...(payload?.game === "killer"
+            ? {
+                lives: p?.lives ?? 0,
+                number: p?.number ?? 0,
+                isKiller: !!p?.isKiller,
+                eliminated: !!p?.eliminated,
+                killerPhase: p?.killerPhase || "",
+                shieldTurnsLeft: p?.shieldTurnsLeft ?? 0,
+                shieldStrength: p?.shieldStrength ?? 0,
+                resurrected: !!p?.resurrected,
+                resurrectShield: !!p?.resurrectShield,
+                isBot: !!p?.isBot,
+                lastVisit: Array.isArray(p?.lastVisit)
+                  ? p.lastVisit.map((item: any) => ({ target: item?.target ?? 0, mult: item?.mult || "" }))
+                  : [],
+              }
+            : {}),
         }))
       : [],
   });
+}
+
+export async function sendCastSnapshot(snapshot: CastSnapshot | null): Promise<boolean> {
+  if (!snapshot) return false;
+  const payload = await sanitizeSnapshot(snapshot);
+  const signature = buildSnapshotSignaturePayload(payload);
   lastSnapshotPayload = payload;
   lastSnapshotAt = Date.now();
   if (signature === lastSnapshotSignature) return true;

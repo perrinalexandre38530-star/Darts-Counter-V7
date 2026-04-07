@@ -308,11 +308,23 @@ function buildSessionFromResponse(json: any, fallbackEmail?: string): AuthSessio
   };
 }
 
-export function saveNasTokens(session: AuthSession | null) {
+export function saveNasTokens(session: AuthSession | null, opts?: { silent?: boolean }) {
+  const prevRaw = readLs(NAS_AUTH_SESSION_KEY);
+  const prev = readJson<AuthSession | null>(prevRaw, null);
+  const nextRaw = session ? JSON.stringify(session) : "";
+
   writeLs(NAS_TOKEN_KEY, session?.token || null);
   writeLs(NAS_REFRESH_KEY, session?.refreshToken || null);
-  writeLs(NAS_AUTH_SESSION_KEY, session ? JSON.stringify(session) : null);
-  dispatchAuthChanged();
+  writeLs(NAS_AUTH_SESSION_KEY, session ? nextRaw : null);
+
+  if (opts?.silent) return;
+
+  const prevToken = String(prev?.token || "");
+  const nextToken = String(session?.token || "");
+  const prevUserId = String(prev?.user?.id || prev?.userId || "");
+  const nextUserId = String(session?.user?.id || session?.userId || "");
+  const changed = prevRaw !== nextRaw || prevToken !== nextToken || prevUserId !== nextUserId;
+  if (changed) dispatchAuthChanged();
 }
 
 export async function nasLogin(payload: LoginPayload): Promise<AuthSession> {
@@ -374,7 +386,7 @@ export async function nasRestoreSession(opts?: { timeoutMs?: number }): Promise<
       json?.user?.email
     );
     if (!session.token) session.token = token;
-    saveNasTokens(session);
+    saveNasTokens(session, { silent: true });
     return session;
   } catch (e) {
     if (cached?.token) {
@@ -419,7 +431,7 @@ export async function nasGetProfile(): Promise<OnlineProfile | null> {
     },
     json?.user?.email
   );
-  if (session?.token) saveNasTokens(session);
+  if (session?.token) saveNasTokens(session, { silent: true });
   return session.profile;
 }
 
