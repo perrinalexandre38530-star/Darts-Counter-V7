@@ -325,6 +325,15 @@ function uniqueKillerNumbers(selected: Record<string, number>) {
   return out;
 }
 
+function sameStringArray(a: string[], b: string[]) {
+  if (a === b) return true;
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) {
+    if (a[i] !== b[i]) return false;
+  }
+  return true;
+}
+
 // ------------------ Variants incompat matrix ------------------
 
 type VariantKey = "selfHitWhileKiller" | "selfHitUsesMultiplier" | "lifeSteal" | "blindKiller" | "bullSplash" | "bullHeal" | "shieldOnDBull" | "disarmOnDBull" | "selectBonusShield" | "missAutoHit";
@@ -404,9 +413,18 @@ export default function KillerConfigPage(props: Props) {
   const textMain = theme?.text ?? "#f5f5ff";
   const cardBg = "rgba(10, 12, 24, 0.96)";
 
-  const profiles: Profile[] = ((store as any)?.profiles || []) as Profile[];
-  const humanProfiles = (profiles || []).filter((p: any) => !p?.isBot);
-  const storeBots = (profiles || []).filter((p: any) => !!p?.isBot);
+  const profiles: Profile[] = React.useMemo(
+    () => (Array.isArray((store as any)?.profiles) ? (((store as any).profiles as Profile[]) ?? []) : []),
+    [store]
+  );
+  const humanProfiles = React.useMemo(
+    () => (profiles || []).filter((p: any) => !p?.isBot),
+    [profiles]
+  );
+  const storeBots = React.useMemo(
+    () => (profiles || []).filter((p: any) => !!p?.isBot),
+    [profiles]
+  );
 
   const [botsFromLS, setBotsFromLS] = React.useState<BotLite[]>([]);
   React.useEffect(() => {
@@ -549,20 +567,37 @@ export default function KillerConfigPage(props: Props) {
   }, []);
 
 
-  const variantState: Record<VariantKey, boolean> = {
-    selfHitWhileKiller,
-    selfHitUsesMultiplier,
-    lifeSteal,
-    blindKiller,
-    bullSplash,
-    bullHeal,
-    shieldOnDBull,
-    disarmOnDBull,
-    bullRotate,
-    dbullRotate,
-    selectBonusShield,
-    missAutoHit,
-  };
+  const variantState = React.useMemo(
+    () =>
+      ({
+        selfHitWhileKiller,
+        selfHitUsesMultiplier,
+        lifeSteal,
+        blindKiller,
+        bullSplash,
+        bullHeal,
+        shieldOnDBull,
+        disarmOnDBull,
+        bullRotate,
+        dbullRotate,
+        selectBonusShield,
+        missAutoHit,
+      }) as Record<VariantKey, boolean> & Record<string, any>,
+    [
+      selfHitWhileKiller,
+      selfHitUsesMultiplier,
+      lifeSteal,
+      blindKiller,
+      bullSplash,
+      bullHeal,
+      shieldOnDBull,
+      disarmOnDBull,
+      bullRotate,
+      dbullRotate,
+      selectBonusShield,
+      missAutoHit,
+    ]
+  );
 
   function setVariant(k: VariantKey, v: boolean) {
     // OFF
@@ -649,13 +684,28 @@ export default function KillerConfigPage(props: Props) {
     if (numberAssignMode === "throw" && blindKiller) setBlindKiller(false);
   }, [numberAssignMode, blindKiller]);
 
-  const [selectedIds, setSelectedIds] = React.useState<string[]>(() => {
-    if (humanProfiles.length >= 2) return [humanProfiles[0].id, humanProfiles[1].id];
-    if (humanProfiles.length === 1) return [humanProfiles[0].id];
-    return [];
-  });
+  const [selectedIds, setSelectedIds] = React.useState<string[]>([]);
 
   const [killerNumberById, setKillerNumberById] = React.useState<Record<string, number>>({});
+
+  const selectableIdSet = React.useMemo(() => {
+    return new Set<string>([
+      ...humanProfiles.map((p: any) => String(p?.id || "")),
+      ...botProfiles.map((b: any) => String(b?.id || "")),
+    ]);
+  }, [humanProfiles, botProfiles]);
+
+  React.useEffect(() => {
+    setSelectedIds((prev) => {
+      const validPrev = prev.filter((id) => selectableIdSet.has(String(id || "")));
+      if (validPrev.length > 0) {
+        return sameStringArray(prev, validPrev) ? prev : validPrev;
+      }
+      if (humanProfiles.length >= 2) return [humanProfiles[0].id, humanProfiles[1].id];
+      if (humanProfiles.length === 1) return [humanProfiles[0].id];
+      return prev.length === 0 ? prev : [];
+    });
+  }, [humanProfiles, selectableIdSet]);
 
   React.useEffect(() => {
     setKillerNumberById((prev) => {
