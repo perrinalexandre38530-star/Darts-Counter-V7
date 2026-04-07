@@ -2826,6 +2826,141 @@ React.useEffect(() => {
     1
   );
 
+  // ✅ Variantes robustes (déclarées tôt pour éviter le TDZ)
+  const selfPenaltyOn = truthy(
+  (config as any)?.selfHitWhileKiller ??
+    (config as any)?.selfPenalty ??
+    (config as any)?.self_penalty ??
+    (config as any)?.variants?.selfHitWhileKiller ??
+    (config as any)?.variants?.selfPenalty ??
+    (config as any)?.variants?.self_penalty ??
+    (config as any)?.options?.selfPenalty ??
+    (config as any)?.rules?.selfPenalty
+);
+
+  const selfPenaltyMultOn = truthy(
+  (config as any)?.selfHitUsesMultiplier ??
+    (config as any)?.selfPenaltyMultiplier ??
+    (config as any)?.self_penalty_multiplier ??
+    (config as any)?.variants?.selfHitUsesMultiplier ??
+    (config as any)?.variants?.selfPenaltyMultiplier ??
+    (config as any)?.options?.selfPenaltyMultiplier ??
+    (config as any)?.rules?.selfPenaltyMultiplier
+);
+
+  const lifeStealOn = truthy(
+  (config as any)?.lifeSteal ??
+    (config as any)?.life_steal ??
+    (config as any)?.variants?.lifeSteal ??
+    (config as any)?.variants?.life_steal ??
+    (config as any)?.options?.lifeSteal ??
+    (config as any)?.rules?.lifeSteal
+);
+
+  const bullSplashOn = truthy(
+  (config as any)?.bullSplash ??
+    (config as any)?.bull_splash ??
+    (config as any)?.variants?.bullSplash ??
+    (config as any)?.variants?.bull_splash ??
+    (config as any)?.options?.bullSplash ??
+    (config as any)?.rules?.bullSplash
+);
+
+  const bullHealOn = truthy(
+  (config as any)?.bullHeal ??
+    (config as any)?.bull_heal ??
+    (config as any)?.variants?.bullHeal ??
+    (config as any)?.variants?.bull_heal ??
+    (config as any)?.options?.bullHeal ??
+    (config as any)?.rules?.bullHeal
+);
+  const bullHealLives = clampInt(
+  (config as any)?.bullHealLives ??
+    (config as any)?.bull_heal_lives ??
+    (config as any)?.variants?.bullHealLives ??
+    (config as any)?.options?.bullHealLives ??
+    (config as any)?.rules?.bullHealLives ??
+    1,
+  1,
+  3,
+  1
+);
+
+  // ✅ BLIND KILLER (VRAI): masque les numéros pour TOUS les joueurs pendant la partie.
+  // Le joueur actif ne voit pas non plus son propre numéro.
+  // Les numéros réapparaissent uniquement à la fin (overlay de fin) / après victoire.
+  const blindKillerOn = truthy(
+  (config as any)?.blindKiller ??
+    (config as any)?.blind_killer ??
+    (config as any)?.blind ??
+    (config as any)?.variants?.blindKiller ??
+    (config as any)?.variants?.blind_killer ??
+    (config as any)?.options?.blindKiller ??
+    (config as any)?.options?.blind_killer ??
+    (config as any)?.rules?.blindKiller ??
+    (config as any)?.rules?.blind_killer
+);
+
+  // ✅ RÉSURRECTION (declared earlier)
+
+  const shieldOnDBull = truthy(
+  (config as any)?.shieldOnDBull ??
+    (config as any)?.shield_on_dbull ??
+    (config as any)?.variants?.shieldOnDBull ??
+    (config as any)?.options?.shieldOnDBull ??
+    (config as any)?.rules?.shieldOnDBull
+);
+
+  const shieldTurns = clampInt(
+  (config as any)?.shieldTurns ??
+    (config as any)?.shield_turns ??
+    (config as any)?.variants?.shieldTurns ??
+    (config as any)?.options?.shieldTurns ??
+    1,
+  1,
+  9,
+  1
+);
+
+  const disarmOnDBull = truthy(
+  (config as any)?.disarmOnDBull ??
+    (config as any)?.disarm_on_dbull ??
+    (config as any)?.variants?.disarmOnDBull ??
+    (config as any)?.options?.disarmOnDBull ??
+    (config as any)?.rules?.disarmOnDBull
+);
+
+  const selectBonusShieldOn = truthy(
+  (config as any)?.selectBonusShield ??
+    (config as any)?.select_bonus_shield ??
+    (config as any)?.variants?.selectBonusShield ??
+    (config as any)?.options?.selectBonusShield ??
+    (config as any)?.rules?.selectBonusShield
+);
+
+  const missAutoHitOn = truthy(
+  (config as any)?.missAutoHit ??
+    (config as any)?.miss_auto_hit ??
+    (config as any)?.variants?.missAutoHit ??
+    (config as any)?.options?.missAutoHit ??
+    (config as any)?.rules?.missAutoHit
+);
+
+  const bullRotateOn = truthy(
+  (config as any)?.bullRotate ??
+    (config as any)?.bull_rotate ??
+    (config as any)?.variants?.bullRotate ??
+    (config as any)?.options?.bullRotate ??
+    (config as any)?.rules?.bullRotate
+);
+
+  const dbullRotateOn = truthy(
+  (config as any)?.dbullRotate ??
+    (config as any)?.dbull_rotate ??
+    (config as any)?.variants?.dbullRotate ??
+    (config as any)?.options?.dbullRotate ??
+    (config as any)?.rules?.dbullRotate
+);
   const resumeConfig = React.useMemo(() => ({
     lives: clampInt((config as any)?.lives, 1, 9, 3),
     becomeRule: (config as any)?.becomeRule ?? "single",
@@ -3554,141 +3689,6 @@ React.useEffect(() => {
     return rec as MatchRecord;
   }
 
-  // ✅ Variantes robustes (supporte plusieurs structures config)
-const selfPenaltyOn = truthy(
-  (config as any)?.selfHitWhileKiller ??
-    (config as any)?.selfPenalty ??
-    (config as any)?.self_penalty ??
-    (config as any)?.variants?.selfHitWhileKiller ??
-    (config as any)?.variants?.selfPenalty ??
-    (config as any)?.variants?.self_penalty ??
-    (config as any)?.options?.selfPenalty ??
-    (config as any)?.rules?.selfPenalty
-);
-
-const selfPenaltyMultOn = truthy(
-  (config as any)?.selfHitUsesMultiplier ??
-    (config as any)?.selfPenaltyMultiplier ??
-    (config as any)?.self_penalty_multiplier ??
-    (config as any)?.variants?.selfHitUsesMultiplier ??
-    (config as any)?.variants?.selfPenaltyMultiplier ??
-    (config as any)?.options?.selfPenaltyMultiplier ??
-    (config as any)?.rules?.selfPenaltyMultiplier
-);
-
-const lifeStealOn = truthy(
-  (config as any)?.lifeSteal ??
-    (config as any)?.life_steal ??
-    (config as any)?.variants?.lifeSteal ??
-    (config as any)?.variants?.life_steal ??
-    (config as any)?.options?.lifeSteal ??
-    (config as any)?.rules?.lifeSteal
-);
-
-const bullSplashOn = truthy(
-  (config as any)?.bullSplash ??
-    (config as any)?.bull_splash ??
-    (config as any)?.variants?.bullSplash ??
-    (config as any)?.variants?.bull_splash ??
-    (config as any)?.options?.bullSplash ??
-    (config as any)?.rules?.bullSplash
-);
-
-const bullHealOn = truthy(
-  (config as any)?.bullHeal ??
-    (config as any)?.bull_heal ??
-    (config as any)?.variants?.bullHeal ??
-    (config as any)?.variants?.bull_heal ??
-    (config as any)?.options?.bullHeal ??
-    (config as any)?.rules?.bullHeal
-);
-const bullHealLives = clampInt(
-  (config as any)?.bullHealLives ??
-    (config as any)?.bull_heal_lives ??
-    (config as any)?.variants?.bullHealLives ??
-    (config as any)?.options?.bullHealLives ??
-    (config as any)?.rules?.bullHealLives ??
-    1,
-  1,
-  3,
-  1
-);
-
-// ✅ BLIND KILLER (VRAI): masque les numéros pour TOUS les joueurs pendant la partie.
-// Le joueur actif ne voit pas non plus son propre numéro.
-// Les numéros réapparaissent uniquement à la fin (overlay de fin) / après victoire.
-const blindKillerOn = truthy(
-  (config as any)?.blindKiller ??
-    (config as any)?.blind_killer ??
-    (config as any)?.blind ??
-    (config as any)?.variants?.blindKiller ??
-    (config as any)?.variants?.blind_killer ??
-    (config as any)?.options?.blindKiller ??
-    (config as any)?.options?.blind_killer ??
-    (config as any)?.rules?.blindKiller ??
-    (config as any)?.rules?.blind_killer
-);
-
-// ✅ RÉSURRECTION (declared earlier)
-
-const shieldOnDBull = truthy(
-  (config as any)?.shieldOnDBull ??
-    (config as any)?.shield_on_dbull ??
-    (config as any)?.variants?.shieldOnDBull ??
-    (config as any)?.options?.shieldOnDBull ??
-    (config as any)?.rules?.shieldOnDBull
-);
-
-const shieldTurns = clampInt(
-  (config as any)?.shieldTurns ??
-    (config as any)?.shield_turns ??
-    (config as any)?.variants?.shieldTurns ??
-    (config as any)?.options?.shieldTurns ??
-    1,
-  1,
-  9,
-  1
-);
-
-const disarmOnDBull = truthy(
-  (config as any)?.disarmOnDBull ??
-    (config as any)?.disarm_on_dbull ??
-    (config as any)?.variants?.disarmOnDBull ??
-    (config as any)?.options?.disarmOnDBull ??
-    (config as any)?.rules?.disarmOnDBull
-);
-
-const selectBonusShieldOn = truthy(
-  (config as any)?.selectBonusShield ??
-    (config as any)?.select_bonus_shield ??
-    (config as any)?.variants?.selectBonusShield ??
-    (config as any)?.options?.selectBonusShield ??
-    (config as any)?.rules?.selectBonusShield
-);
-
-const missAutoHitOn = truthy(
-  (config as any)?.missAutoHit ??
-    (config as any)?.miss_auto_hit ??
-    (config as any)?.variants?.missAutoHit ??
-    (config as any)?.options?.missAutoHit ??
-    (config as any)?.rules?.missAutoHit
-);
-
-const bullRotateOn = truthy(
-  (config as any)?.bullRotate ??
-    (config as any)?.bull_rotate ??
-    (config as any)?.variants?.bullRotate ??
-    (config as any)?.options?.bullRotate ??
-    (config as any)?.rules?.bullRotate
-);
-
-const dbullRotateOn = truthy(
-  (config as any)?.dbullRotate ??
-    (config as any)?.dbull_rotate ??
-    (config as any)?.variants?.dbullRotate ??
-    (config as any)?.options?.dbullRotate ??
-    (config as any)?.rules?.dbullRotate
-);
 
 function pickRotatingFunction(keys: string[], rotationOn: boolean, idx: number): string | null {
   const active = keys.filter(Boolean);

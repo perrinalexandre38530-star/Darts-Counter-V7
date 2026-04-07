@@ -11,6 +11,8 @@ import type { Store, Profile } from "./types";
 import { emitCloudChange } from "./cloudEvents";
 import { exportHistoryDump, importHistoryDump } from "./historyCloud";
 import { sanitizeAvatarDataUrl, MAX_AVATAR_DATA_URL_CHARS } from "./avatarSafe";
+import { getAllDartSets, replaceAllDartSets } from "./dartSetsStore";
+import { loadBots as loadStoredBots, restoreBotsFromSnapshot } from "./bots";
 
 /* ---------- SAFE JSON ---------- */
 function safeJsonParse<T = any>(value: any, fallback: T): T {
@@ -610,6 +612,34 @@ function clearLocalStorageDc(): void {
   } catch {}
 }
 
+function findStoreDumpKey(idbDump: Record<string, any>): string | null {
+  const scoped = scopedStorageKey(STORE_KEY);
+  if (Object.prototype.hasOwnProperty.call(idbDump, scoped)) return scoped;
+  if (Object.prototype.hasOwnProperty.call(idbDump, STORE_KEY)) return STORE_KEY;
+  const keys = Object.keys(idbDump || {});
+  return keys.find((k) => k === STORE_KEY || /(^|[:/])store(?::[^:/]+)?$/.test(String(k))) || null;
+}
+
+function injectCollectionsIntoSnapshotStore(idbDump: Record<string, any>): Record<string, any> {
+  try {
+    const nextIdb = { ...(idbDump || {}) };
+    const storeKey = findStoreDumpKey(nextIdb) || scopedStorageKey(STORE_KEY);
+    const baseStore = isRecord(nextIdb[storeKey]) ? { ...(nextIdb[storeKey] as any) } : {};
+
+    const dartSets = getAllDartSets();
+    if (Array.isArray(dartSets)) baseStore.dartSets = dartSets;
+
+    const bots = loadStoredBots();
+    if (Array.isArray(bots)) baseStore.bots = bots;
+
+    nextIdb[storeKey] = sanitizeStoreForPersistence(baseStore as any);
+    return nextIdb;
+  } catch (err) {
+    console.warn("[storage] injectCollectionsIntoSnapshotStore failed", err);
+    return idbDump;
+  }
+}
+
 /* ============================================================
    ✅ NORMALISATION AVATARS (COMPAT)
 ============================================================ */
@@ -1022,10 +1052,11 @@ export async function exportAll(): Promise<any> {
   }
 
   const lsDump = exportLocalStorageDc();
+  const nextIdbDump = injectCollectionsIntoSnapshotStore(idbDump);
 
   return {
     _v: 2,
-    idb: idbDump,
+    idb: nextIdbDump,
     localStorage: lsDump,
     history: await exportHistoryDump().catch(() => ({ _v: 1, rows: {} })),
     exportedAt: new Date().toISOString(),
@@ -1147,18 +1178,12 @@ function writeActiveDartSetIdToLocalStorage(activeId: any) {
   }
 }
 
-/**
- * Extrait dartSets depuis un snapshot cloud (tolère plusieurs formats)
- */
-function extractDartSetsFromSnapshot(snap: any) {
-  if (!isRecord(snap)) return { dartSets: null as any, activeId: null as any };
+function extractStoreObjectFromSnapshot(snap: any) {
+  if (!isRecord(snap)) return { store: null as any, data: null as any };
 
-  // formats possibles selon ton historique
   let store = isRecord(snap.store) ? snap.store : null;
   const data = isRecord(snap.data) ? snap.data : null;
 
-  // ✅ Full snapshot exportAll() v2 : le vrai store peut être dans idb["store"]
-  // ou idb["store:<uid>"] selon le scope utilisateur courant.
   if (!store && isRecord((snap as any).idb)) {
     const idb = (snap as any).idb as Record<string, any>;
     const scoped = scopedStorageKey(STORE_KEY);
@@ -1176,6 +1201,17 @@ function extractDartSetsFromSnapshot(snap: any) {
     }
   }
 
+  return { store, data };
+}
+
+/**
+ * Extrait dartSets depuis un snapshot cloud (tolère plusieurs formats)
+ */
+function extractDartSetsFromSnapshot(snap: any) {
+  if (!isRecord(snap)) return { dartSets: null as any, activeId: null as any };
+
+  const { store, data } = extractStoreObjectFromSnapshot(snap);
+
   const dartSets =
     pickFirst(store?.dartSets, store?.dartsets, data?.dartSets, data?.dartsets, snap.dartSets, snap.dartsets) ?? null;
 
@@ -1189,6 +1225,23 @@ function extractDartSetsFromSnapshot(snap: any) {
     ) ?? null;
 
   return { dartSets, activeId };
+}
+
+function extractBotsFromSnapshot(snap: any) {
+  if (!isRecord(snap)) return { bots: null as any };
+
+  const { store, data } = extractStoreObjectFromSnapshot(snap);
+  const bots =
+    pickFirst(
+      store?.bots,
+      store?.botPlayers,
+      data?.bots,
+      data?.botPlayers,
+      (snap as any)?.bots,
+      (snap as any)?.botPlayers
+    ) ?? null;
+
+  return { bots };
 }
 
 /* ============================================================
@@ -1270,10 +1323,22 @@ export async function importCloudSnapshot(dump: CloudSnapshot, opts?: { mode?: "
     console.warn("[storage] normalizeLocalProfilesInStore failed", err);
   }
 
-  // ✅ CRITIQUE : restaurer les DartSets là où l’UI lit réellement
+  // ✅ CRITIQUE : restaurer les DartSets / Bots exactement là où l’UI lit réellement
   const { dartSets, activeId } = extractDartSetsFromSnapshot(dump);
-  if (dartSets) writeDartSetsToLocalStorage(dartSets);
+  if (dartSets) {
+    writeDartSetsToLocalStorage(dartSets);
+    try { replaceAllDartSets(Array.isArray(dartSets) ? dartSets : []); } catch {}
+  }
   if (activeId) writeActiveDartSetIdToLocalStorage(activeId);
+
+  const { bots } = extractBotsFromSnapshot(dump);
+  if (Array.isArray(bots)) {
+    try {
+      restoreBotsFromSnapshot(bots as any[]);
+    } catch (e) {
+      console.warn("[storage] restore bots from snapshot failed", e);
+    }
+  }
 }
 
 // ------------------------------------------------------------

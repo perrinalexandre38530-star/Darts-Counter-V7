@@ -310,7 +310,7 @@ export function loadBots(): BotRecord[] {
   return readLegacyInlineBots();
 }
 
-export function saveBots(list: any[]): boolean {
+function persistBots(list: any[], opts?: { triggerCloud?: boolean; updateAppStore?: boolean; dispatch?: boolean }): boolean {
   if (typeof window === "undefined") return false;
 
   const normalized = normalizeBotsList(Array.isArray(list) ? list : []);
@@ -326,16 +326,38 @@ export function saveBots(list: any[]): boolean {
   }
 
   saveAvatarsWithPruning(normalized);
-  dispatchBotsChanged();
+
+  if (opts?.dispatch !== false) {
+    dispatchBotsChanged();
+  }
+
   try {
     const w: any = window as any;
-    if (w?.__appStore?.update) {
+    if (opts?.updateAppStore !== false && w?.__appStore?.update) {
       w.__appStore.update((st: any) => ({ ...(st || {}), bots: normalized }));
     }
-    window.dispatchEvent(new Event("dc-flush-cloud"));
-    (window as any).__flushCloudNow?.("bots_save");
+    if (opts?.triggerCloud !== false) {
+      window.dispatchEvent(new Event("dc-flush-cloud"));
+      (window as any).__flushCloudNow?.("bots_save");
+    }
   } catch {}
   return true;
+}
+
+export function saveBots(list: any[]): boolean {
+  return persistBots(list, {
+    triggerCloud: true,
+    updateAppStore: true,
+    dispatch: true,
+  });
+}
+
+export function restoreBotsFromSnapshot(list: any[]): boolean {
+  return persistBots(list, {
+    triggerCloud: false,
+    updateAppStore: false,
+    dispatch: true,
+  });
 }
 
 export function toBotPlayerLite(input: any): BotPlayerLite {
@@ -387,4 +409,5 @@ export type StoredBotLevel = BotLevel;
 export type StoredBot = BotRecord;
 export const loadStoredBots = loadBots;
 export const saveStoredBots = saveBots;
+export const restoreStoredBots = restoreBotsFromSnapshot;
 export const loadBotsAsPlayers = loadBotPlayers;

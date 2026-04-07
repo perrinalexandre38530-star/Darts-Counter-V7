@@ -175,6 +175,7 @@ import { History } from "./lib/history";
 
 // ✅ DartSets localStorage store (synced into App store)
 import { getAllDartSets, replaceAllDartSets } from "./lib/dartSetsStore";
+import { loadBots as loadStoredBots, saveBots as saveStoredBots, restoreBotsFromSnapshot } from "./lib/bots";
 
 // ✅ NEW: rebuild stats cache when history changes (FAST STATS HUB)
 import { rebuildStatsForProfile } from "./lib/stats/rebuildStats";
@@ -330,7 +331,6 @@ import CastJoinPage from "./pages/cast/CastJoinPage";
 import CastHostPage from "./pages/cast/CastHostPage";
 import CastScreen from "./pages/cast/CastScreen";
 import { trackRender, trackRoute } from "./lib/diagnosticPro";
-import { loadBots as loadStoredBots, saveBots as saveStoredBots } from "./lib/bots";
 import { startCrashGuard, crashGuardTrackRender, crashGuardTrackRoute } from "./lib/crashGuard";
 
 if (import.meta.env.DEV) installHistoryProbe();
@@ -1155,6 +1155,7 @@ const initialStore: Store = {
   } as any,
   history: [],
   dartSets: getAllDartSets(),
+  bots: loadStoredBots(),
 } as any;
 
 /* --------------------------------------------
@@ -2053,6 +2054,7 @@ useEffect(() => {
                     friends: restored.friends ?? [],
                     history: restored.history ?? [],
                     dartSets: (restored as any).dartSets ?? getAllDartSets(),
+                    bots: (restored as any).bots ?? loadStoredBots(),
                   }
                 : { ...initialStore };
 
@@ -2114,6 +2116,7 @@ useEffect(() => {
               friends: (cloudStore as any).friends ?? [],
               history: (cloudStore as any).history ?? [],
               dartSets: (cloudStore as any).dartSets ?? getAllDartSets(),
+              bots: (cloudStore as any).bots ?? loadStoredBots(),
             };
 
             if (!cancelled) {
@@ -2140,6 +2143,9 @@ useEffect(() => {
 
                 try {
                   if ((mergedFinal as any).dartSets) replaceAllDartSets((mergedFinal as any).dartSets);
+                } catch {}
+                try {
+                  if (Array.isArray((mergedFinal as any).bots)) restoreBotsFromSnapshot((mergedFinal as any).bots);
                 } catch {}
 
                 const hasProfiles = (mergedFinal.profiles ?? []).length > 0;
