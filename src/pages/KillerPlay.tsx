@@ -5330,41 +5330,11 @@ if (!config || !config.players || config.players.length < 2) {
   );
 }
 
-// ✅ HARDENING TDZ / first-throw flow:
-// Quand l'assignation du numéro au 1er lancer est active,
-// on n'affiche PAS toute l'UI normale de jeu.
-// On rend uniquement un écran minimal d'assignation pour éviter
-// qu'un sous-arbre de rendu non nécessaire n'explose pendant cette phase.
-if (assignActive) {
-  return (
-    <div
-      style={{
-        position: "fixed",
-        inset: 0,
-        height: "100dvh",
-        overflow: "hidden",
-        background: pageBg,
-        color: "#fff",
-      }}
-    >
-      <AssignOverlay
-        open={true}
-        player={assignPlayer}
-        index={assignIndex}
-        total={players.length}
-        takenNumbers={takenNumbers}
-        selectBonusShieldOn={selectBonusShieldOn}
-        pendingChoiceNumber={pendingChoiceNumber}
-        onPickThrow={(thr) => {
-          applyThrow(thr);
-        }}
-        onPickFreeNumber={(n) => {
-          applyThrow({ target: n, mult: 1 });
-        }}
-      />
-    </div>
-  );
-}
+// ✅ HARDENING first-throw flow:
+// On conserve le mode d'assignation minimal, mais SANS return anticipé
+// avant les hooks suivants. Sinon React voit un ordre de hooks différent
+// entre assignation et jeu normal, ce qui déclenche l'erreur minifiée #310.
+const assignOnlyMode = assignActive;
 
 const currentThrow = toKeypadThrow(visit);
 const canValidateTurn =
@@ -5406,6 +5376,37 @@ const blindMask = !!blindKillerOn && !showEnd && !finished && !w;
 
 const isCurrentKillerActive =
   !!current && current.killerPhase === "ACTIVE" && !current.eliminated;
+
+if (assignOnlyMode) {
+  return (
+    <div
+      style={{
+        position: "fixed",
+        inset: 0,
+        height: "100dvh",
+        overflow: "hidden",
+        background: pageBg,
+        color: "#fff",
+      }}
+    >
+      <AssignOverlay
+        open={true}
+        player={assignPlayer}
+        index={assignIndex}
+        total={players.length}
+        takenNumbers={takenNumbers}
+        selectBonusShieldOn={selectBonusShieldOn}
+        pendingChoiceNumber={pendingChoiceNumber}
+        onPickThrow={(thr) => {
+          applyThrow(thr);
+        }}
+        onPickFreeNumber={(n) => {
+          applyThrow({ target: n, mult: 1 });
+        }}
+      />
+    </div>
+  );
+}
 
 return (
   <div
