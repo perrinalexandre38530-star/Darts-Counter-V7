@@ -483,6 +483,40 @@ function pickKillerStats(active, payloadMeta) {
   };
 }
 
+function killerOptionBadges(meta) {
+  const raw = String(meta?.optionBadges || meta?.optionSummary || "").trim();
+  if (!raw) return [];
+  if (raw.includes("||")) return raw.split("||").map((v) => String(v || "").trim()).filter(Boolean);
+  return raw.split(/\s+•\s+/).map((v) => String(v || "").trim()).filter(Boolean);
+}
+
+function killerOptionsBarHtml(meta, color) {
+  const badges = killerOptionBadges(meta);
+  if (!badges.length) return "";
+  return `
+    <section class="panel killer-options-panel" style="padding:10px 12px;flex:0 0 auto;border-color:${color}44;box-shadow:0 0 18px ${color}18, inset 0 1px 0 rgba(255,255,255,.03);">
+      <div class="panel-title-row" style="margin-bottom:8px;">
+        <div class="panel-title" style="margin-bottom:0;">Options actives</div>
+        <div class="panel-subtitle">Règles de la partie</div>
+      </div>
+      <div class="killer-options-bar">
+        ${badges.map((label) => `<div class="killer-option-chip" style="border-color:${color}44;color:${color};box-shadow:0 0 14px ${color}14 inset;">${esc(label)}</div>`).join("")}
+      </div>
+    </section>
+  `;
+}
+
+function killerHeartValueHtml(value, color) {
+  return `
+    <div class="killer-heart-wrap" style="filter:drop-shadow(0 0 18px ${color}22);">
+      <svg viewBox="0 0 64 58" class="killer-heart-svg" aria-hidden="true">
+        <path d="M32 54C29.6 52.1 5 36.6 5 19.8C5 11.2 11.7 5 19.9 5C25.2 5 29.5 7.4 32 11.4C34.5 7.4 38.8 5 44.1 5C52.3 5 59 11.2 59 19.8C59 36.6 34.4 52.1 32 54Z" fill="rgba(206,84,156,.95)" stroke="rgba(255,255,255,.55)" stroke-width="2.2"/>
+      </svg>
+      <span class="killer-heart-value">${esc(value)}</span>
+    </div>
+  `;
+}
+
 function renderKillerSnapshot(payload) {
   lastPayload = payload || {};
   try { document.body.classList.remove("is-home"); } catch {}
@@ -537,14 +571,25 @@ function renderKillerSnapshot(payload) {
                 <div style="margin-top:6px;font-size:14px;font-weight:1000;opacity:.92;color:${activeColor};">${esc(phaseLabel)}</div>
               </div>
 
-              <div class="score-card">
-                <div class="score-rank">#${esc(activeRank)}</div>
-                <div class="score-label" style="color:${activeColor};">VIES</div>
-                <div class="score-value" style="color:${activeColor};">${esc(ks.lives)}</div>
+              <div class="killer-top-grid">
+                <div class="score-card killer-split-card">
+                  <div class="score-label" style="color:${activeColor};">NUMÉRO</div>
+                  <div class="score-value" style="color:${activeColor};">${esc(ks.number > 0 ? ks.number : "—")}</div>
+                </div>
+
+                <div class="score-card killer-split-card">
+                  <div class="score-rank">#${esc(activeRank)}</div>
+                  <div class="score-label" style="color:${activeColor};">VIES</div>
+                  <div class="killer-lives-box">
+                    ${killerHeartValueHtml(ks.lives, activeColor)}
+                  </div>
+                </div>
               </div>
             </div>
 
             <div class="active-bottom">
+              ${killerOptionsBarHtml(meta, activeColor)}
+
               <div class="stats-grid" style="margin-top:10px;">
                 ${killerMetaChip("Numéro", ks.number > 0 ? ks.number : "—", activeColor)}
                 ${killerMetaChip("Bouclier", ks.shieldTurns > 0 ? `${ks.shieldTurns} tour${ks.shieldTurns > 1 ? "s" : ""}` : "Aucun", activeColor)}

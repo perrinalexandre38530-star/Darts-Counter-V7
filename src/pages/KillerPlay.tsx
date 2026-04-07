@@ -3050,6 +3050,67 @@ React.useEffect(() => {
         };
       });
 
+      const cfg = (config as any) || {};
+      const castBullSplashOn = truthy(
+        cfg?.bullSplash ?? cfg?.variants?.bullSplash ?? cfg?.options?.bullSplash ?? cfg?.rules?.bullSplash
+      );
+      const castBullHealOn = truthy(
+        cfg?.bullHeal ?? cfg?.variants?.bullHeal ?? cfg?.options?.bullHeal ?? cfg?.rules?.bullHeal
+      );
+      const castBullHealLives = clampInt(
+        cfg?.bullHealLives ?? cfg?.rules?.bullHealLives ?? cfg?.bull_heal_lives ?? 1,
+        1,
+        3,
+        1
+      );
+      const castShieldOnDBull = truthy(
+        cfg?.shieldOnDBull ?? cfg?.shield_on_dbull ?? cfg?.variants?.shieldOnDBull ?? cfg?.options?.shieldOnDBull ?? cfg?.rules?.shieldOnDBull
+      );
+      const castShieldTurns = clampInt(
+        cfg?.shieldTurns ?? cfg?.shield_turns ?? cfg?.variants?.shieldTurns ?? cfg?.options?.shieldTurns ?? 1,
+        1,
+        9,
+        1
+      );
+      const castDisarmOnDBull = truthy(
+        cfg?.disarmOnDBull ?? cfg?.disarm_on_dbull ?? cfg?.variants?.disarmOnDBull ?? cfg?.options?.disarmOnDBull ?? cfg?.rules?.disarmOnDBull
+      );
+      const castSelectBonusShieldOn = truthy(
+        cfg?.selectBonusShield ?? cfg?.select_bonus_shield ?? cfg?.variants?.selectBonusShield ?? cfg?.options?.selectBonusShield ?? cfg?.rules?.selectBonusShield
+      );
+      const castMissAutoHitOn = truthy(
+        cfg?.missAutoHit ?? cfg?.miss_auto_hit ?? cfg?.variants?.missAutoHit ?? cfg?.options?.missAutoHit ?? cfg?.rules?.missAutoHit
+      );
+      const castBullRotateOn = truthy(
+        cfg?.bullRotate ?? cfg?.bull_rotate ?? cfg?.variants?.bullRotate ?? cfg?.options?.bullRotate ?? cfg?.rules?.bullRotate
+      );
+      const castDbullRotateOn = truthy(
+        cfg?.dbullRotate ?? cfg?.dbull_rotate ?? cfg?.variants?.dbullRotate ?? cfg?.options?.dbullRotate ?? cfg?.rules?.dbullRotate
+      );
+      const castBlindKillerOn = truthy(
+        cfg?.blindKiller ?? cfg?.blind_killer ?? cfg?.blind ?? cfg?.variants?.blindKiller ?? cfg?.variants?.blind_killer ?? cfg?.options?.blindKiller ?? cfg?.options?.blind_killer ?? cfg?.rules?.blindKiller ?? cfg?.rules?.blind_killer
+      );
+      const castResurrectionMode = String(
+        cfg?.resurrectionMode ?? cfg?.resurrection_mode ?? cfg?.variants?.resurrectionMode ?? cfg?.options?.resurrectionMode ?? ((truthy(cfg?.resurrectionEnabled ?? cfg?.resurrection ?? cfg?.variants?.resurrection ?? cfg?.options?.resurrection)) ? "all" : "off")
+      );
+      const castResurrectionLives = clampInt(
+        cfg?.resurrectionLives ?? cfg?.resurrection_lives ?? cfg?.variants?.resurrectionLives ?? cfg?.options?.resurrectionLives ?? 1,
+        1,
+        9,
+        1
+      );
+      const castOptionBits: string[] = [];
+      if (castShieldOnDBull) castOptionBits.push(`DBULL = Bouclier (${castShieldTurns}T)`);
+      if (castDisarmOnDBull) castOptionBits.push("DBULL = Désarmement");
+      if (castDbullRotateOn) castOptionBits.push("Rotation DBULL");
+      if (castBullSplashOn) castOptionBits.push("BULL = Dégâts de zone");
+      if (castBullHealOn) castOptionBits.push(`BULL = Soin (+${castBullHealLives})`);
+      if (castBullRotateOn) castOptionBits.push("Rotation BULL");
+      if (castSelectBonusShieldOn) castOptionBits.push("Choix = bonus bouclier");
+      if (castMissAutoHitOn) castOptionBits.push("Miss = Auto-hit");
+      if (castBlindKillerOn) castOptionBits.push("Killer aveugle");
+      if (castResurrectionMode !== "off") castOptionBits.push(`Résurrection (${castResurrectionLives} vie${castResurrectionLives > 1 ? "s" : ""})`);
+
       const snapshot = {
         screen: "game",
         game: "killer",
@@ -3066,6 +3127,9 @@ React.useEffect(() => {
           turnCount: Number(turnCount || 0),
           currentNumber: Number(current?.number ?? 0),
           currentPhase: String(current?.killerPhase || ""),
+          optionBadges: castOptionBits.join("||"),
+          optionSummary: castOptionBits.join(" • "),
+          shieldTurnsConfig: Number(castShieldTurns || 0),
         },
         updatedAt: Date.now(),
       };
@@ -3085,7 +3149,7 @@ React.useEffect(() => {
     } catch (err) {
       appendGoogleCastDiag("killer_snapshot_build_failed", String(err));
     }
-  }, [players, turnIndex, current?.id, aliveCount, dartsLeft, multiplier, assignDone, finished, w, castStatusTick]);
+  }, [players, turnIndex, current?.id, aliveCount, dartsLeft, multiplier, assignDone, finished, w, castStatusTick, turnCount, config]);
 
   const inputDisabledBase =
     finished || !!w || !current || current.eliminated || showEnd;
