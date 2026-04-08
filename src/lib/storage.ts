@@ -170,6 +170,79 @@ function sanitizeBotLikeEntry(input: any) {
   return out;
 }
 
+function isObjectLike(value: any): value is Record<string, any> {
+  return !!value && typeof value === "object" && !Array.isArray(value);
+}
+
+function isHeavyImageDataUrl(value: any) {
+  return typeof value === "string" && value.startsWith("data:image/") && value.length > 256;
+}
+
+function stripHeavyInlineImagesDeep(value: any): any {
+  if (Array.isArray(value)) {
+    return value.map((item) => stripHeavyInlineImagesDeep(item));
+  }
+
+  if (!isObjectLike(value)) return value;
+
+  const out: Record<string, any> = {};
+  for (const [key, raw] of Object.entries(value)) {
+    const lower = String(key || "").toLowerCase();
+
+    if (
+      isHeavyImageDataUrl(raw) &&
+      (
+        lower.includes("avatar") ||
+        lower.includes("photo") ||
+        lower.includes("image") ||
+        lower.includes("thumbnail") ||
+        lower.includes("screenshot") ||
+        lower.includes("preview")
+      )
+    ) {
+      continue;
+    }
+
+    out[key] = stripHeavyInlineImagesDeep(raw);
+  }
+  return out;
+}
+
+function stripHeavyImagePayloads(target: any) {
+  if (!target || typeof target !== "object") return target;
+
+  const KEYS = [
+    "saved",
+    "matches",
+    "recentMatches",
+    "liveMatches",
+    "resumes",
+    "draftMatches",
+    "pendingMatches",
+  ] as const;
+
+  for (const key of KEYS) {
+    if (Array.isArray((target as any)[key])) {
+      (target as any)[key] = stripHeavyInlineImagesDeep((target as any)[key]);
+    }
+  }
+
+  return target;
+}
+
+function recordStoreMetric(kind: string, payload: Record<string, any>) {
+  try {
+    localStorage.setItem(
+      "dc_last_store_metric_v2",
+      safeJsonStringify({
+        kind,
+        at: Date.now(),
+        ...payload,
+      })
+    );
+  } catch {}
+}
+
 function cacheProfileAvatar(profile: any) {
   try {
     const profileId = String(profile?.id || "").trim();
@@ -275,6 +348,7 @@ function sanitizeStoreForPersistence<T extends Store>(store: T): T {
 
   stripStoreHeavyStatsFields(clone);
   stripStoreHistoryFields(clone);
+  stripHeavyImagePayloads(clone);
 
   // Profiles: on conserve au maximum l'avatar inline du profil actif.
   // Les autres avatars sont déplacés vers le cache partagé pour éviter
@@ -968,15 +1042,12 @@ export async function saveStore<T extends Store>(store: T, opts?: SaveOpts): Pro
     let persistedStore = guardStoreShape(sanitizeStoreForPersistence(normalized.store as T));
 
     const preTrimBytes = estimateObjectSizeBytes(persistedStore);
-    if (preTrimBytes > 2_000_000) {
-      const warnKey = "dc_last_store_pretrim_warn_v1";
-      const nowTs = Date.now();
-      const lastWarn = Number(sessionStorage.getItem(warnKey) || 0);
-      if (!lastWarn || nowTs - lastWarn > 20_000) {
-        console.warn("[storage] store trop volumineux, trimming préventif avant écriture.");
-        sessionStorage.setItem(warnKey, String(nowTs));
-      }
+    recordStoreMetric("before_trim", {
+      bytes: preTrimBytes,
+      mb: Math.round((preTrimBytes / 1024 / 1024) * 100) / 100,
+    });
 
+    if (preTrimBytes > 2_000_000) {
       const trimmed: any = { ...(persistedStore as any) };
       delete trimmed.stats;
       delete trimmed.statsByPlayer;
@@ -997,11 +1068,18 @@ export async function saveStore<T extends Store>(store: T, opts?: SaveOpts): Pro
       delete trimmed.cloudSnapshots;
       stripStoreHistoryFields(trimmed);
       stripStoreHeavyStatsFields(trimmed);
+      stripHeavyImagePayloads(trimmed);
       if (Array.isArray(trimmed.resumes)) trimmed.resumes = trimArrayTail(trimmed.resumes, 8);
       if (Array.isArray(trimmed.liveMatches)) trimmed.liveMatches = trimArrayTail(trimmed.liveMatches, 8);
       minimizeProfilesForPersistence(trimmed, true);
       persistedStore = guardStoreShape(trimmed as T);
     }
+
+    const finalBytesBeforeGuard = estimateObjectSizeBytes(persistedStore);
+    recordStoreMetric("after_trim", {
+      bytes: finalBytesBeforeGuard,
+      mb: Math.round((finalBytesBeforeGuard / 1024 / 1024) * 100) / 100,
+    });
 
     persistedStore = guardStoreSizeForMobile(persistedStore);
 
