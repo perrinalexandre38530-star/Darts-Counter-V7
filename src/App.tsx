@@ -1328,36 +1328,73 @@ function SWUpdateBanner() {
 /* --------------------------------------------
                 APP
 -------------------------------------------- */
+const BOOT_DIAG_KEY = "dc_boot_diag_v3";
+
+function isProbablyMobileDevice() {
+  try {
+    const ua = String((navigator as any)?.userAgent || "");
+    const coarse = typeof window !== "undefined" && typeof window.matchMedia === "function"
+      ? window.matchMedia("(pointer: coarse)").matches
+      : false;
+    return /Android|iPhone|iPad|iPod|Mobile/i.test(ua) || coarse;
+  } catch {
+    return false;
+  }
+}
+
+function pushBootDiag(step: string, extra?: any) {
+  try {
+    const raw = localStorage.getItem(BOOT_DIAG_KEY);
+    const list = Array.isArray(raw ? JSON.parse(raw) : null) ? JSON.parse(raw as any) : [];
+    list.push({ at: new Date().toISOString(), step, extra: extra ?? null });
+    localStorage.setItem(BOOT_DIAG_KEY, JSON.stringify(list.slice(-120)));
+  } catch {}
+}
+
 function App() {
 useEffect(() => {
   rehydrateSupabaseSession();
 }, []);
 
+const nasBootStartedRef = React.useRef(false);
+
 useEffect(() => {
   let cancelled = false;
+  let timer: number | null = null;
 
   const run = async () => {
     try {
       const hasNasToken = !!localStorage.getItem("dc_nas_access_token_v1");
       const hasCachedAuth = !!localStorage.getItem("dc_online_auth_supabase_v1");
+      const isMobile = isProbablyMobileDevice();
+      pushBootDiag("nas:boot:check", { hasNasToken, hasCachedAuth, isMobile, loading, showSplash });
 
       // IMPORTANT:
       // - ne tente PAS de restore/sync NAS avant qu'une session existe déjà
       // - sinon on parasite l'écran de login et on provoque de faux diagnostics réseau
       if (!hasNasToken && !hasCachedAuth) return;
+      if (loading || showSplash) return;
+      if (nasBootStartedRef.current) return;
+      nasBootStartedRef.current = true;
 
-      await bootstrapNasRestore().catch(() => {});
-      if (!cancelled) startNasBackgroundSync();
-    } catch {
-      // no-op
+      pushBootDiag("nas:boot:start", { isMobile });
+      await bootstrapNasRestore({ mobileDeferred: isMobile }).catch(() => {});
+      if (!cancelled) {
+        pushBootDiag("nas:bgsync:start", { isMobile });
+        startNasBackgroundSync({ initialDelayMs: isMobile ? 20000 : 4000, intervalMs: isMobile ? 120000 : 60000 });
+      }
+    } catch (e) {
+      pushBootDiag("nas:boot:error", { message: e instanceof Error ? e.message : String(e) });
     }
   };
 
-  run();
+  const delay = isProbablyMobileDevice() ? 3500 : 0;
+  timer = window.setTimeout(run, delay);
   return () => {
     cancelled = true;
+    if (timer != null) window.clearTimeout(timer);
   };
-}, []);
+}, [loading, showSplash]);
 
 // 🔒 Cloud stats (events + training) — OFF par défaut pour éviter l'explosion Supabase.
 // Activable via SyncCenter (toggle stocké dans localStorage: "cloudStatsEnabled" = "1").
@@ -1543,7 +1580,10 @@ useEffect(() => {
     try {
       setStore((prev) => {
         const next = ensureLocalProfileForOnlineUser(prev as any, user as any, (online as any)?.profile ?? null) as any;
-        queueMicrotask(() => saveStore(next));
+        queueMicrotask(() => {
+          pushBootDiag("online_local_bridge:save", { profileCount: (next?.profiles || []).length });
+          saveStore(next);
+        });
         return next;
       });
 
@@ -1675,6 +1715,7 @@ useEffect(() => {
     const run = () => {
       if (cancelled) return;
       try {
+        pushBootDiag("boot:warmAgg:start");
         warmAggOnce();
       } catch {}
     };
@@ -1869,6 +1910,7 @@ useEffect(() => {
 
     (async () => {
       try {
+        pushBootDiag("boot:loadStore:start", { scope: loadedStoreScopeRef.current || null });
         const saved = await loadStore<Store>();
         if (cancelled) return;
 
@@ -1916,6 +1958,7 @@ useEffect(() => {
     loadedStoreScopeRef.current = getStorageUser();
     (async () => {
       try {
+        pushBootDiag("boot:loadStore:start", { scope: loadedStoreScopeRef.current || null });
         const saved = await loadStore<Store>();
 
         let base: Store;
@@ -1933,6 +1976,11 @@ useEffect(() => {
         }
 
         if (mounted) {
+          pushBootDiag("boot:loadStore:done", {
+            profiles: (base.profiles ?? []).length,
+            history: (base.history ?? []).length,
+            friends: (base.friends ?? []).length,
+          });
           setStore((prev) => ({
             ...base,
             profiles: mergeProfilesSafe(prev.profiles ?? [], base.profiles ?? []),
@@ -1960,7 +2008,8 @@ useEffect(() => {
             }
           }
         }
-      } catch {
+      } catch (e) {
+        pushBootDiag("boot:loadStore:error", { message: e instanceof Error ? e.message : String(e) });
         if (mounted) {
           setStore(initialStore);
           setRouteParams(null);
@@ -1968,6 +2017,7 @@ useEffect(() => {
         }
       } finally {
         bootStoreLoadedRef.current = true;
+        pushBootDiag("boot:loadStore:finally", { mounted });
         if (mounted) setLoading(false);
       }
     })();
@@ -2316,14 +2366,46 @@ useEffect(() => {
   }, []);
 
   /* Save store each time it changes */
+  const persistTimerRef = React.useRef<number | null>(null);
+  const persistSigRef = React.useRef<string>("");
   React.useEffect(() => {
-    if (!loading) {
-      saveStore(store);
+    if (loading) return;
+
+    const summary = {
+      activeProfileId: (store as any)?.activeProfileId || null,
+      profiles: (store?.profiles?.length || 0),
+      history: (store?.history?.length || 0),
+      friends: (store?.friends?.length || 0),
+      dartSets: (((store as any)?.dartSets?.length) || 0),
+      bots: (((store as any)?.bots?.length) || 0),
+      tab,
+    };
+    const sig = JSON.stringify(summary);
+    if (persistSigRef.current === sig) {
+      try { window.dispatchEvent(new Event("dc-store-updated")); } catch {}
+      return;
+    }
+    persistSigRef.current = sig;
+
+    if (persistTimerRef.current != null) window.clearTimeout(persistTimerRef.current);
+    const delay = isProbablyMobileDevice() ? 900 : 200;
+    persistTimerRef.current = window.setTimeout(() => {
+      pushBootDiag("persist:start", summary);
+      saveStore(store)
+        .then(() => pushBootDiag("persist:done", summary))
+        .catch((e) => pushBootDiag("persist:error", { ...summary, message: e instanceof Error ? e.message : String(e) }));
       try {
         window.dispatchEvent(new Event("dc-store-updated"));
       } catch {}
-    }
-  }, [store, loading]);
+    }, delay);
+
+    return () => {
+      if (persistTimerRef.current != null) {
+        window.clearTimeout(persistTimerRef.current);
+        persistTimerRef.current = null;
+      }
+    };
+  }, [store, loading, tab]);
 
   /* Profiles mutator (✅ FIX: merge défensif) */
   function setProfiles(fn: (p: Profile[]) => Profile[]) {
