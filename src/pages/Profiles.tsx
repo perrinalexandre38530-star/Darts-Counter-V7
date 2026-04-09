@@ -615,7 +615,7 @@ export default function Profiles({
         const next = buildNext(prev);
         const merged = mergeProfilesSafe(prev, next);
   
-        console.log("[setProfilesSafe] prev -> next -> merged", {
+        if ((window as any).__DC_DEBUG_PROFILES__) console.log("[setProfilesSafe] prev -> next -> merged", {
           prevLen: prev.length,
           nextLen: next.length,
           mergedLen: merged.length,
@@ -671,6 +671,12 @@ export default function Profiles({
   const { theme, themeId, setThemeId } = useTheme() as any;
   const { t, setLang, lang } = useLang();
   const auth = useAuthOnline();
+  const isLikelyMobile = React.useMemo(() => {
+    if (typeof navigator === "undefined") return false;
+    const ua = String(navigator.userAgent || "").toLowerCase();
+    return /android|iphone|ipad|ipod|mobile/.test(ua);
+  }, []);
+  const passiveProfileHydrationSigRef = React.useRef<string>("");
 
   // ✅ Cohérence globale : si l'utilisateur est authentifié Supabase,
   // on ne laisse pas l'UI afficher "Hors ligne" par défaut.
@@ -681,6 +687,7 @@ export default function Profiles({
   }, [auth?.status, selfStatus, update]);
 
   React.useEffect(() => {
+    if (!(window as any).__DC_DEBUG_PROFILES__) return;
     console.log("[Profiles] RENDER WATCH profiles=", profiles.length, {
       activeProfileId,
       ids: profiles.map((p) => p.id),
@@ -1278,23 +1285,23 @@ React.useEffect(() => {
   }
 
     // 🔁 Hydrate les infos privées (email / pays / surnom) depuis le compte online
+    // Version adoucie :
+    // - évite les boucles de save/flush cloud passifs
+    // - n’exécute la fusion que si la signature a réellement changé
+    // - sur mobile, persiste localement sans pousser immédiatement au cloud
     React.useEffect(() => {
       if (!active) return;
       if (auth.status !== "signed_in") return;
-  
+
       const pi = ((active as any).privateInfo || {}) as PrivateInfo;
       const patch: Partial<PrivateInfo> = {};
-  
-      // Email online → privateInfo.email (si différent)
+
       const emailOnline = auth.user?.email?.trim().toLowerCase();
       if (emailOnline) {
         const emailLocal = (pi.email || "").trim().toLowerCase();
-        if (emailLocal !== emailOnline) {
-          patch.email = emailOnline;
-        }
+        if (emailLocal !== emailOnline) patch.email = emailOnline;
       }
-  
-      // Pseudo online → privateInfo.nickname (si différent)
+
       const nicknameOnline =
         (auth.profile as any)?.surname ||
         (auth.profile as any)?.nickname ||
@@ -1302,44 +1309,29 @@ React.useEffect(() => {
         "";
       if (nicknameOnline) {
         const nicknameLocal = pi.nickname || active.name || "";
-        if (nicknameLocal !== nicknameOnline) {
-          patch.nickname = nicknameOnline;
-        }
+        if (nicknameLocal !== nicknameOnline) patch.nickname = nicknameOnline;
       }
-  
-      // Pays online → privateInfo.country (si différent)
+
       const countryOnline = auth.profile?.country || "";
       if (countryOnline) {
         const countryLocal = pi.country || "";
-        if (countryLocal !== countryOnline) {
-          patch.country = countryOnline;
-        }
+        if (countryLocal !== countryOnline) patch.country = countryOnline;
       }
 
       const firstNameOnline = (auth.profile as any)?.firstName || "";
-      if (firstNameOnline && (pi.firstName || "") !== firstNameOnline) {
-        patch.firstName = firstNameOnline;
-      }
+      if (firstNameOnline && (pi.firstName || "") !== firstNameOnline) patch.firstName = firstNameOnline;
 
       const lastNameOnline = (auth.profile as any)?.lastName || "";
-      if (lastNameOnline && (pi.lastName || "") !== lastNameOnline) {
-        patch.lastName = lastNameOnline;
-      }
+      if (lastNameOnline && (pi.lastName || "") !== lastNameOnline) patch.lastName = lastNameOnline;
 
       const birthDateOnline = (auth.profile as any)?.birthDate || "";
-      if (birthDateOnline && (pi.birthDate || "") !== birthDateOnline) {
-        patch.birthDate = birthDateOnline;
-      }
+      if (birthDateOnline && (pi.birthDate || "") !== birthDateOnline) patch.birthDate = birthDateOnline;
 
       const cityOnline = (auth.profile as any)?.city || "";
-      if (cityOnline && (pi.city || "") !== cityOnline) {
-        patch.city = cityOnline;
-      }
+      if (cityOnline && (pi.city || "") !== cityOnline) patch.city = cityOnline;
 
       const phoneOnline = (auth.profile as any)?.phone || "";
-      if (phoneOnline && (pi.phone || "") !== phoneOnline) {
-        patch.phone = phoneOnline;
-      }
+      if (phoneOnline && (pi.phone || "") !== phoneOnline) patch.phone = phoneOnline;
 
       const prefsOnline = ((auth.profile as any)?.preferences || {}) as Partial<PrivateInfo>;
       const privateInfoOnline = ((auth.profile as any)?.privateInfo || {}) as Partial<PrivateInfo>;
@@ -1357,12 +1349,88 @@ React.useEffect(() => {
           (patch as any)[key] = nextVal;
         }
       }
-  
-      if (Object.keys(patch).length > 0) {
-        patchActivePrivateInfo(patch);
-        patchActivePrefs(patch);
-      }
-    }, [active?.id, auth.status, auth.profile, auth.user]);  
+
+      const patchKeys = Object.keys(patch);
+      if (!patchKeys.length) return;
+
+      const sig = JSON.stringify({
+        id: active.id,
+        email: auth.user?.email || "",
+        profile: {
+          surname: (auth.profile as any)?.surname || "",
+          nickname: (auth.profile as any)?.nickname || "",
+          displayName: (auth.profile as any)?.displayName || "",
+          country: auth.profile?.country || "",
+          firstName: (auth.profile as any)?.firstName || "",
+          lastName: (auth.profile as any)?.lastName || "",
+          birthDate: (auth.profile as any)?.birthDate || "",
+          city: (auth.profile as any)?.city || "",
+          phone: (auth.profile as any)?.phone || "",
+          preferences: prefsOnline,
+          privateInfo: privateInfoOnline,
+        },
+        patch,
+      });
+
+      if (passiveProfileHydrationSigRef.current === sig) return;
+      passiveProfileHydrationSigRef.current = sig;
+
+      let nextStoreSnapshot: any = null;
+      update((s: any) => {
+        const nextProfiles = (Array.isArray(s?.profiles) ? s.profiles : []).map((p: any) =>
+          p?.id === active.id
+            ? {
+                ...(p || {}),
+                privateInfo: {
+                  ...((p as any)?.privateInfo || {}),
+                  ...(patch as any),
+                },
+                preferences: {
+                  ...((p as any)?.preferences || {}),
+                  ...prefKeys.reduce((acc: Record<string, any>, key) => {
+                    if ((patch as any)[key] !== undefined) acc[key] = (patch as any)[key];
+                    return acc;
+                  }, {}),
+                },
+              }
+            : p
+        );
+        nextStoreSnapshot = { ...s, profiles: nextProfiles };
+        return nextStoreSnapshot;
+      });
+
+      setProfilesSafe((arr) =>
+        arr.map((p: any) =>
+          p?.id === active.id
+            ? {
+                ...(p || {}),
+                privateInfo: {
+                  ...((p as any)?.privateInfo || {}),
+                  ...(patch as any),
+                },
+                preferences: {
+                  ...((p as any)?.preferences || {}),
+                  ...prefKeys.reduce((acc: Record<string, any>, key) => {
+                    if ((patch as any)[key] !== undefined) acc[key] = (patch as any)[key];
+                    return acc;
+                  }, {}),
+                },
+              }
+            : p
+        )
+      );
+
+      queueMicrotask(async () => {
+        try {
+          if (nextStoreSnapshot) await saveStore(nextStoreSnapshot);
+        } catch {}
+        if (!isLikelyMobile) {
+          try {
+            await (window as any).__flushCloudNow?.("profiles_passive_online_hydrate", nextStoreSnapshot);
+          } catch {}
+        }
+      });
+    }, [active?.id, auth.status, auth.profile, auth.user, isLikelyMobile, setProfilesSafe, update]);
 
   // NEW : au chargement de la page, si un profil actif a des prefs app, on les applique
   React.useEffect(() => {
@@ -1398,8 +1466,8 @@ React.useEffect(() => {
 
   React.useEffect(() => {
     let stopped = false;
-    (async () => {
-      const ids = profiles.map((p) => p.id).slice(0, 48);
+    const ids = profiles.map((p) => p.id).slice(0, isLikelyMobile ? 8 : 24);
+    const run = async () => {
       for (const id of ids) {
         if (stopped) break;
         if (statsMap[id]) continue;
@@ -1407,13 +1475,18 @@ React.useEffect(() => {
           const s = await getBasicProfileStatsAsync(id);
           if (!stopped) setStatsMap((m) => (m[id] ? m : { ...m, [id]: s }));
         } catch {}
+        if (isLikelyMobile) {
+          await new Promise((resolve) => setTimeout(resolve, 0));
+        }
       }
-    })();
+    };
+    const timer = setTimeout(run, isLikelyMobile ? 250 : 0);
     return () => {
       stopped = true;
+      clearTimeout(timer);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [profiles]);
+  }, [profiles, isLikelyMobile]);
 
   const activeAvg3D = React.useMemo<number | null>(() => {
     if (!active?.id) return null;
@@ -2513,6 +2586,19 @@ function ActiveProfileBlock({
             </button>
             <button className="btn ok sm" onClick={handleSaveEdit}>
               Enregistrer
+            </button>
+            <button
+              className="btn sm"
+              onClick={() => {
+                try {
+                  onSync?.({ ...draft });
+                } catch {}
+              }}
+            >
+              Synchroniser
+            </button>
+            <button className="btn sm" onClick={() => onPull?.()}>
+              Récupérer
             </button>
           </div>
         )}
