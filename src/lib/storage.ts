@@ -605,6 +605,8 @@ function isDcKey(k: string) {
 const LS_EXCLUDE = new Set<string>([
   // auth online (ne jamais écraser)
   "dc_online_auth_supabase_v1",
+  "dc_profiles_nav_diag_v1",
+  "dc_profiles_nav_diag_v2",
   "sb-auth-token",
   "supabase.auth.token",
 

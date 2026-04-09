@@ -512,6 +512,24 @@ export async function nasUploadAvatarImage(opts: { dataUrl: string; folder?: str
   };
 }
 
+
+const NAS_PUSH_MIN_INTERVAL_MS = 8000;
+const NAS_PUSH_MAX_BACKOFF_MS = 120000;
+let nasPushInFlight = false;
+let nasPushLastAttemptAt = 0;
+let nasPushFailureCount = 0;
+let nasPushBlockedUntil = 0;
+let nasPushLastWarnAt = 0;
+
+function logNasPushSkip(kind: "blocked" | "inflight" | "throttled", extra?: Record<string, any>) {
+  const now = Date.now();
+  if (now - nasPushLastWarnAt < 5000) return;
+  nasPushLastWarnAt = now;
+  try {
+    console.warn(`[nasSync] push skipped (${kind})`, extra || {});
+  } catch {}
+}
+
 export async function nasPullStoreSnapshot(): Promise<{
   status: "ok" | "not_found" | "error";
   payload?: any;
@@ -540,13 +558,46 @@ export async function nasPullStoreSnapshot(): Promise<{
 }
 
 export async function nasPushStoreSnapshot(payload: any, version = 8): Promise<void> {
-  const session0 = await nasRestoreSession();
-  if (!session0?.token) throw new Error("Token NAS manquant. Reconnecte-toi.");
+  const now = Date.now();
 
-  await apiFetch("/sync/push", {
-    method: "POST",
-    body: JSON.stringify({ payload, version }),
-  });
+  if (nasPushBlockedUntil && now < nasPushBlockedUntil) {
+    logNasPushSkip("blocked", { waitMs: nasPushBlockedUntil - now, failures: nasPushFailureCount });
+    return;
+  }
+
+  if (nasPushInFlight) {
+    logNasPushSkip("inflight");
+    return;
+  }
+
+  const sinceLastAttempt = now - nasPushLastAttemptAt;
+  if (nasPushLastAttemptAt && sinceLastAttempt < NAS_PUSH_MIN_INTERVAL_MS) {
+    logNasPushSkip("throttled", { waitMs: NAS_PUSH_MIN_INTERVAL_MS - sinceLastAttempt });
+    return;
+  }
+
+  nasPushInFlight = true;
+  nasPushLastAttemptAt = now;
+  try {
+    const session0 = await nasRestoreSession();
+    if (!session0?.token) throw new Error("Token NAS manquant. Reconnecte-toi.");
+
+    await apiFetch("/sync/push", {
+      method: "POST",
+      body: JSON.stringify({ payload, version }),
+    });
+
+    nasPushFailureCount = 0;
+    nasPushBlockedUntil = 0;
+  } catch (e) {
+    nasPushFailureCount += 1;
+    const backoffMs = Math.min(NAS_PUSH_MAX_BACKOFF_MS, Math.max(NAS_PUSH_MIN_INTERVAL_MS, 5000 * (2 ** Math.max(0, nasPushFailureCount - 1))));
+    nasPushBlockedUntil = Date.now() + backoffMs;
+    console.warn("[nasSync] /sync/push failed -> backoff", { failures: nasPushFailureCount, backoffMs, error: e });
+    throw e;
+  } finally {
+    nasPushInFlight = false;
+  }
 }
 
 export const nasApi = {

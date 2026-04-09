@@ -1985,6 +1985,7 @@ useEffect(() => {
   // ============================================================
   // ✅ GLOBAL FLUSH NOW (used by Profiles / Bots / DartSets)
   // ============================================================
+  const flushNowStateRef = React.useRef<{ lastReason: string; lastAt: number }>({ lastReason: "", lastAt: 0 });
   React.useEffect(() => {
     const handler = async (_reason?: string, seedOverride?: any) => {
       try {
@@ -1993,11 +1994,21 @@ useEffect(() => {
         if (!cloudCanSync) return;
         if (!online?.ready || online.status !== "signed_in") return;
 
+        const reason = String(_reason || "manual");
+        const now = Date.now();
+        const state = flushNowStateRef.current;
+        if (state.lastReason === reason && now - state.lastAt < 15000) {
+          console.warn("[cloud] __flushCloudNow skipped (dedupe)", reason);
+          return;
+        }
+        state.lastReason = reason;
+        state.lastAt = now;
+
         const exported = await exportCloudSnapshot();
         const snapshot = mergeStoreIntoCloudSnapshot(exported, seedOverride);
 
         await onlineApi.pushStoreSnapshot(snapshot as any, (snapshot as any)?.v ?? 8);
-        console.log("[cloud] __flushCloudNow pushed", _reason || "manual");
+        console.log("[cloud] __flushCloudNow pushed", reason);
       } catch (e) {
         console.warn("[cloud] __flushCloudNow failed", e);
       }

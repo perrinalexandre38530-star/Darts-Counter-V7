@@ -594,7 +594,20 @@ async function uploadLocalProfileAvatarToSupabase(
   return null;
 }
 
+const __profilesFlushState = {
+  lastReason: "",
+  lastAt: 0,
+};
+
 async function flushCloud(reason: string, seedOverride?: any) {
+  const now = Date.now();
+  if (__profilesFlushState.lastReason === reason && now - __profilesFlushState.lastAt < 15000) {
+    try { console.warn("[Profiles] flushCloud skipped (dedupe)", { reason }); } catch {}
+    return;
+  }
+  __profilesFlushState.lastReason = reason;
+  __profilesFlushState.lastAt = now;
+
   const fn = (window as any).__flushCloudNow;
   if (typeof fn === "function") {
     try {
