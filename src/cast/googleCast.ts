@@ -16,8 +16,6 @@ let lastSnapshotSignature = "";
 const avatarThumbCache = new Map<string, string>();
 const avatarThumbPromiseCache = new Map<string, Promise<string>>();
 const lastSentAvatarByPlayer = new Map<string, string>();
-let lastAvatarCacheSessionId = "";
-let lastAvatarCacheRosterSignature = "";
 
 let resendLifecycleBound = false;
 function bindResendLifecycle() {
@@ -104,40 +102,30 @@ async function buildTinyAvatarDataUrl(src: string, opts?: { size?: number; maxBy
     try {
       if (typeof document === "undefined") return "";
       const img = await loadImageElement(src);
-      const targetSize = Math.max(40, Math.min(160, Number(opts?.size || 128)));
-      const maxBytes = Math.max(4000, Math.min(90000, Number(opts?.maxBytes || 82000)));
+      const size = Math.max(56, Math.min(160, Number(opts?.size || 128)));
+      const maxBytes = Math.max(18000, Math.min(90000, Number(opts?.maxBytes || 82000)));
       const canvas = document.createElement("canvas");
+      canvas.width = size;
+      canvas.height = size;
       const ctx = canvas.getContext("2d");
       if (!ctx) return "";
-      const sw = Number((img as any).naturalWidth || (img as any).width || targetSize);
-      const sh = Number((img as any).naturalHeight || (img as any).height || targetSize);
+      const sw = Number((img as any).naturalWidth || (img as any).width || size);
+      const sh = Number((img as any).naturalHeight || (img as any).height || size);
       const side = Math.max(1, Math.min(sw, sh));
       const sx = Math.max(0, Math.floor((sw - side) / 2));
       const sy = Math.max(0, Math.floor((sh - side) / 2));
+      ctx.clearRect(0, 0, size, size);
+      ctx.drawImage(img, sx, sy, side, side, 0, 0, size, size);
       let out = "";
-      const sizeSteps = Array.from(new Set([
-        targetSize,
-        Math.max(36, Math.round(targetSize * 0.85)),
-        Math.max(34, Math.round(targetSize * 0.72)),
-        Math.max(32, Math.round(targetSize * 0.60)),
-      ]));
-      for (const size of sizeSteps) {
-        canvas.width = size;
-        canvas.height = size;
-        ctx.clearRect(0, 0, size, size);
-        ctx.drawImage(img, sx, sy, side, side, 0, 0, size, size);
-        try {
-          out = canvas.toDataURL("image/webp", 0.78);
-          if (out.length <= maxBytes) break;
-        } catch {}
-        for (const q of [0.74, 0.68, 0.62, 0.56, 0.50, 0.44]) {
-          out = canvas.toDataURL("image/jpeg", q);
-          if (out.length <= maxBytes) break;
-        }
+      try {
+        out = canvas.toDataURL("image/webp", 0.82);
+      } catch {}
+      for (const q of [0.84, 0.78, 0.72, 0.66]) {
+        if (!out || out.length > maxBytes + 8000) out = canvas.toDataURL("image/jpeg", q);
         if (out.length <= maxBytes) break;
       }
-      if (out.length > maxBytes + 6000) {
-        pushDiag("sanitize_avatar_thumb_still_large", { size: out.length, maxBytes, targetSize });
+      if (out.length > maxBytes + 10000) {
+        pushDiag("sanitize_avatar_thumb_still_large", { size: out.length });
         out = "";
       }
       avatarThumbCache.set(src, out);
@@ -189,10 +177,10 @@ async function sanitizeAvatarFields(player: any, context?: { playerCount?: numbe
   }
 
   if (/^data:image\//i.test(src)) {
-    if (src.length <= 16_000 && (context?.playerCount || 0) <= 4) return { avatarDataUrl: src, avatarUrl: "" };
+    if (src.length <= 28_000 && (context?.playerCount || 0) <= 4) return { avatarDataUrl: src, avatarUrl: "" };
     const playerCount = Number(context?.playerCount || 0);
-    const thumbSize = playerCount >= 8 ? 42 : playerCount >= 6 ? 48 : playerCount >= 4 ? 72 : 104;
-    const maxBytes = playerCount >= 8 ? 7000 : playerCount >= 6 ? 9000 : playerCount >= 4 ? 18000 : 42000;
+    const thumbSize = playerCount >= 6 ? 72 : playerCount >= 4 ? 88 : 112;
+    const maxBytes = playerCount >= 6 ? 22000 : playerCount >= 4 ? 30000 : 52000;
     const tiny = await buildTinyAvatarDataUrl(src, { size: thumbSize, maxBytes });
     if (tiny) return { avatarDataUrl: tiny, avatarUrl: "" };
     pushDiag("sanitize_avatar_dropped_too_large", { size: src.length });
@@ -253,43 +241,8 @@ function sanitizeKillerPlayerExtras(player: any) {
   };
 }
 
-function resetAvatarSendCacheIfNeeded(snapshot: CastSnapshot | null | undefined) {
-  try {
-    const state = getGoogleCastState();
-    const sessionId = String(state?.sessionId || "");
-    const rosterSignature = Array.isArray(snapshot?.players)
-      ? snapshot.players.map((p: any, idx: number) => String(p?.id || p?.name || idx)).join("|")
-      : "";
-
-    if (sessionId !== lastAvatarCacheSessionId) {
-      if (lastAvatarCacheSessionId || sessionId) {
-        lastSentAvatarByPlayer.clear();
-        pushDiag("avatar_send_cache_reset_session", {
-          previousSessionId: lastAvatarCacheSessionId || "",
-          sessionId,
-        });
-      }
-      lastAvatarCacheSessionId = sessionId;
-    }
-
-    if (rosterSignature !== lastAvatarCacheRosterSignature) {
-      if (lastAvatarCacheRosterSignature || rosterSignature) {
-        lastSentAvatarByPlayer.clear();
-        pushDiag("avatar_send_cache_reset_roster", {
-          previousRoster: lastAvatarCacheRosterSignature,
-          rosterSignature,
-        });
-      }
-      lastAvatarCacheRosterSignature = rosterSignature;
-    }
-  } catch (err) {
-    pushDiag("avatar_send_cache_reset_failed", safeString(err));
-  }
-}
-
 async function sanitizeSnapshot(snapshot: CastSnapshot) {
   try {
-    resetAvatarSendCacheIfNeeded(snapshot);
     const players = Array.isArray(snapshot?.players)
       ? await Promise.all(
           snapshot.players.map(async (p: any) => {
@@ -694,9 +647,6 @@ function buildSnapshotSignaturePayload(payload: any) {
           id: p?.id || "",
           score: p?.score ?? 0,
           active: !!p?.active,
-          avatarUrl: p?.avatarUrl || "",
-          avatarDataLen: typeof p?.avatarDataUrl === "string" ? p.avatarDataUrl.length : 0,
-          avatarDataHead: typeof p?.avatarDataUrl === "string" ? p.avatarDataUrl.slice(0, 48) : "",
           stats: p?.stats || {},
           ...(payload?.game === "killer"
             ? {
@@ -757,15 +707,8 @@ export function subscribeGoogleCastStatus(cb: () => void) {
       try {
         const ss = (window as any).cast?.framework?.SessionState;
         if (e?.sessionState === ss?.SESSION_STARTED || e?.sessionState === ss?.SESSION_RESUMED) {
-          lastSentAvatarByPlayer.clear();
-          lastSnapshotSignature = "";
-          lastAvatarCacheSessionId = getGoogleCastState().sessionId || "";
           void pingGoogleCastReceiver(true);
           void resendLastSnapshot("session_state_changed");
-        }
-        if (e?.sessionState === ss?.SESSION_ENDED || e?.sessionState === ss?.SESSION_ENDING) {
-          lastSentAvatarByPlayer.clear();
-          lastAvatarCacheSessionId = "";
         }
       } catch {}
     });

@@ -17,37 +17,35 @@ type Props = {
   handicapB?: number;
 };
 
-function Medallion({ label, logoDataUrl, accent }: { label: string; logoDataUrl?: string | null; accent: string }) {
-  return (
+function TeamLogo({ label, logoDataUrl }: { label: string; logoDataUrl?: string | null }) {
+  return logoDataUrl ? (
+    <img
+      src={logoDataUrl}
+      alt={label}
+      style={{
+        width: 42,
+        height: 42,
+        objectFit: "cover",
+        borderRadius: 14,
+        border: "1px solid rgba(255,255,255,0.14)",
+        background: "rgba(255,255,255,0.05)",
+      }}
+    />
+  ) : (
     <div
       style={{
-        width: 64,
-        height: 64,
-        borderRadius: 999,
-        padding: 3,
-        background: `linear-gradient(180deg, ${accent}88, rgba(255,255,255,0.08))`,
-        boxShadow: `0 0 18px ${accent}33`,
-        flex: "0 0 auto",
+        width: 42,
+        height: 42,
+        borderRadius: 14,
+        border: "1px solid rgba(255,255,255,0.12)",
+        background: "rgba(255,255,255,0.06)",
+        display: "grid",
+        placeItems: "center",
+        fontSize: 18,
+        fontWeight: 1100,
       }}
     >
-      <div
-        style={{
-          width: "100%",
-          height: "100%",
-          borderRadius: 999,
-          overflow: "hidden",
-          border: "1px solid rgba(255,255,255,0.14)",
-          background: "linear-gradient(180deg, rgba(255,255,255,0.08), rgba(0,0,0,0.18))",
-          display: "grid",
-          placeItems: "center",
-        }}
-      >
-        {logoDataUrl ? (
-          <img src={logoDataUrl} alt={label} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
-        ) : (
-          <div style={{ fontSize: 28, fontWeight: 1100 }}>{label.trim().slice(0, 1).toUpperCase() || "?"}</div>
-        )}
-      </div>
+      {label.trim().slice(0, 1).toUpperCase() || "?"}
     </div>
   );
 }
@@ -68,132 +66,70 @@ export default function BabyFootDuelScoreCard({
   handicapA = 0,
   handicapB = 0,
 }: Props) {
-  const colorA = "#7cffc4";
-  const colorB = "#ff82b8";
-  const scoreFontSize = Math.max(40, scoreA > 99 || scoreB > 99 ? 44 : 54);
+  const labelColor = theme?.colors?.textSoft ?? "rgba(255,255,255,0.72)";
   const objectiveLabel = setsEnabled ? `Set en cours • objectif ${setTarget}` : `Match en cours • objectif ${target}`;
-  const underScoreLabel = setsEnabled ? `Sets ${setsA}–${setsB}` : "Score du match";
-  const textSoft = theme?.colors?.textSoft ?? "rgba(255,255,255,0.74)";
+  const detailLabel = setsEnabled ? `${setsA}–${setsB} sets` : "Score du match";
 
   return (
     <div
       style={{
         borderRadius: 22,
-        padding: 12,
+        padding: 14,
         border: "1px solid rgba(255,255,255,0.10)",
         background:
-          "radial-gradient(800px 240px at 0% 0%, rgba(124,255,196,0.10), transparent 42%), radial-gradient(800px 240px at 100% 0%, rgba(255,130,184,0.08), transparent 42%), linear-gradient(180deg, rgba(255,255,255,0.07), rgba(255,255,255,0.04))",
-        boxShadow: "0 16px 36px rgba(0,0,0,0.28)",
-        overflow: "hidden",
+          "radial-gradient(900px 260px at 50% 0%, rgba(124,255,196,0.10), transparent 46%), radial-gradient(900px 260px at 50% 100%, rgba(255,130,184,0.08), transparent 46%), linear-gradient(180deg, rgba(255,255,255,0.07), rgba(255,255,255,0.05))",
+        boxShadow: "0 20px 40px rgba(0,0,0,0.28)",
       }}
     >
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "minmax(0,1fr) auto minmax(0,1fr)",
-          gap: 8,
-          alignItems: "center",
-        }}
-      >
-        <div style={{ display: "grid", justifyItems: "center", gap: 6, minWidth: 0 }}>
-          <Medallion label={teamAName} logoDataUrl={teamALogoDataUrl} accent={colorA} />
-          <div style={{ fontSize: 10, fontWeight: 1000, letterSpacing: 1, color: colorA, opacity: 0.92 }}>ÉQUIPE A</div>
-          <div
-            style={{
-              fontSize: 16,
-              fontWeight: 1100,
-              lineHeight: 1.05,
-              textAlign: "center",
-              whiteSpace: "nowrap",
-              overflow: "hidden",
-              textOverflow: "ellipsis",
-              width: "100%",
-            }}
-            title={teamAName}
-          >
-            {teamAName}
+      <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) auto minmax(0,1fr)", gap: 10, alignItems: "center" }}>
+        <div style={{ minWidth: 0, display: "flex", alignItems: "center", gap: 10 }}>
+          <TeamLogo label={teamAName} logoDataUrl={teamALogoDataUrl} />
+          <div style={{ minWidth: 0 }}>
+            <div style={{ fontSize: 10, fontWeight: 1000, letterSpacing: 1, opacity: 0.62 }}>ÉQUIPE A</div>
+            <div style={{ marginTop: 4, fontSize: 16, fontWeight: 1100, lineHeight: 1.05, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              {teamAName}
+            </div>
+            {handicapA > 0 ? <div style={{ marginTop: 4, fontSize: 11, fontWeight: 1000, color: labelColor }}>+{handicapA}</div> : null}
           </div>
-          {handicapA > 0 ? <div style={{ fontSize: 11, fontWeight: 1000, color: textSoft }}>handicap +{handicapA}</div> : null}
         </div>
 
-        <div
-          style={{
-            minWidth: 132,
-            borderRadius: 18,
-            padding: "10px 12px",
-            border: `1px solid ${(theme?.colors?.primary ?? "#7cffc4") + "55"}`,
-            background: "linear-gradient(180deg, rgba(0,0,0,.16), rgba(0,0,0,.34))",
-            boxShadow: `0 0 22px ${(theme?.colors?.primary ?? "#7cffc4") + "22"}`,
-            display: "grid",
-            placeItems: "center",
-            gap: 6,
-          }}
-        >
-          <div style={{ fontSize: 10, fontWeight: 1000, letterSpacing: 1, opacity: 0.72, textTransform: "uppercase" }}>Score</div>
-          <div style={{ display: "flex", alignItems: "baseline", gap: 8, whiteSpace: "nowrap" }}>
-            <div
-              style={{
-                fontSize: scoreFontSize,
-                fontWeight: 1100,
-                color: colorA,
-                textShadow: `0 0 16px ${colorA}55`,
-                lineHeight: 0.95,
-                minWidth: 38,
-                textAlign: "right",
-              }}
-            >
-              {scoreA}
-            </div>
-            <div style={{ opacity: 0.6, fontWeight: 1000, fontSize: 20 }}>—</div>
-            <div
-              style={{
-                fontSize: scoreFontSize,
-                fontWeight: 1100,
-                color: colorB,
-                textShadow: `0 0 16px ${colorB}55`,
-                lineHeight: 0.95,
-                minWidth: 38,
-                textAlign: "left",
-              }}
-            >
-              {scoreB}
-            </div>
-          </div>
-          <div style={{ fontSize: 12, fontWeight: 1000, color: textSoft, textAlign: "center" }}>{underScoreLabel}</div>
-        </div>
-
-        <div style={{ display: "grid", justifyItems: "center", gap: 6, minWidth: 0 }}>
-          <Medallion label={teamBName} logoDataUrl={teamBLogoDataUrl} accent={colorB} />
-          <div style={{ fontSize: 10, fontWeight: 1000, letterSpacing: 1, color: colorB, opacity: 0.92 }}>ÉQUIPE B</div>
+        <div style={{ minWidth: 88, textAlign: "center" }}>
           <div
             style={{
-              fontSize: 16,
+              fontSize: 44,
               fontWeight: 1100,
-              lineHeight: 1.05,
-              textAlign: "center",
+              lineHeight: 0.95,
+              color: theme?.colors?.primary ?? "#7cffc4",
               whiteSpace: "nowrap",
-              overflow: "hidden",
-              textOverflow: "ellipsis",
-              width: "100%",
             }}
-            title={teamBName}
           >
-            {teamBName}
+            {scoreA}–{scoreB}
           </div>
-          {handicapB > 0 ? <div style={{ fontSize: 11, fontWeight: 1000, color: textSoft }}>handicap +{handicapB}</div> : null}
+          <div style={{ marginTop: 6, fontSize: 11, fontWeight: 1000, color: labelColor }}>{detailLabel}</div>
+        </div>
+
+        <div style={{ minWidth: 0, display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 10 }}>
+          <div style={{ minWidth: 0, textAlign: "right" }}>
+            <div style={{ fontSize: 10, fontWeight: 1000, letterSpacing: 1, opacity: 0.62 }}>ÉQUIPE B</div>
+            <div style={{ marginTop: 4, fontSize: 16, fontWeight: 1100, lineHeight: 1.05, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              {teamBName}
+            </div>
+            {handicapB > 0 ? <div style={{ marginTop: 4, fontSize: 11, fontWeight: 1000, color: labelColor }}>+{handicapB}</div> : null}
+          </div>
+          <TeamLogo label={teamBName} logoDataUrl={teamBLogoDataUrl} />
         </div>
       </div>
 
       <div
         style={{
-          marginTop: 10,
+          marginTop: 12,
           borderRadius: 14,
-          padding: "9px 12px",
+          padding: "10px 12px",
           border: "1px solid rgba(255,255,255,0.08)",
           background: "rgba(0,0,0,0.18)",
           fontSize: 12,
           fontWeight: 1000,
-          color: textSoft,
+          color: labelColor,
           textAlign: "center",
         }}
       >

@@ -274,7 +274,7 @@ export default function BabyFootPlay({ go, onFinish, params }: Props) {
     ? "Golden goal"
     : state.matchDurationSec
     ? `${state.matchDurationSec}s`
-    : `Target ${state.target}`;
+    : undefined;
 
   const liveContext = [
     state.setsEnabled ? `Sets ${state.setsA}–${state.setsB}` : `Leader ${leaderLabel}`,
@@ -423,7 +423,7 @@ export default function BabyFootPlay({ go, onFinish, params }: Props) {
         right={<InfoDot title={infoTitle} content={infoBody} glow={(theme?.colors?.primary ?? "#7cffc4") + "88"} />}
       />
 
-      <div style={{ padding: 10, paddingBottom: 138, display: "grid", gap: 10, overflowX: "hidden" }}>
+      <div style={{ padding: 10, paddingBottom: 124, display: "grid", gap: 10, overflowX: "hidden" }}>
         <BabyFootLiveHeader
           phaseLabel={phaseLabel}
           modeLabel={state.mode}
@@ -431,6 +431,17 @@ export default function BabyFootPlay({ go, onFinish, params }: Props) {
           targetLabel={targetLabel}
           secondaryLabel={secondaryLabel}
         />
+
+        {state.setsEnabled ? (
+          <BabyFootSetsBar
+            setsA={state.setsA || 0}
+            setsB={state.setsB || 0}
+            bestOf={state.setsBestOf || 3}
+            currentSet={state.setIndex || 1}
+            teamAName={state.teamA}
+            teamBName={state.teamB}
+          />
+        ) : null}
 
         <BabyFootDuelScoreCard
           theme={theme}
@@ -449,18 +460,7 @@ export default function BabyFootPlay({ go, onFinish, params }: Props) {
           handicapB={state.handicapB}
         />
 
-        {state.setsEnabled ? (
-          <BabyFootSetsBar
-            setsA={state.setsA || 0}
-            setsB={state.setsB || 0}
-            bestOf={state.setsBestOf || 3}
-            currentSet={state.setIndex || 1}
-            teamAName={state.teamA}
-            teamBName={state.teamB}
-          />
-        ) : null}
-
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0,1fr))", gap: 10 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr)", gap: 10 }}>
           <BabyFootTeamCard
             team="A"
             name={state.teamA}
@@ -472,7 +472,7 @@ export default function BabyFootPlay({ go, onFinish, params }: Props) {
             onAddGoal={() => addForTeam("A")}
             disabled={state.finished || state.phase === "penalties"}
             accent="green"
-            footerLabel={teamAIds.length > 1 ? "Choix du buteur" : "Validation directe"}
+            footerLabel={teamAIds.length > 1 ? "Choix du buteur avant validation" : "Validation directe du but"}
           />
 
           <BabyFootTeamCard
@@ -486,39 +486,28 @@ export default function BabyFootPlay({ go, onFinish, params }: Props) {
             onAddGoal={() => addForTeam("B")}
             disabled={state.finished || state.phase === "penalties"}
             accent="pink"
-            footerLabel={teamBIds.length > 1 ? "Choix du buteur" : "Validation directe"}
+            footerLabel={teamBIds.length > 1 ? "Choix du buteur avant validation" : "Validation directe du but"}
           />
         </div>
 
-        {state.phase === "penalties" ? (
-          <BabyFootPhasePanel
-            state={state}
-            lastGoalLabel={lastGoalLabel}
-            liveContext={liveContext}
-            onPenaltyShot={(team, scored) => setState(addPenaltyShot(team, scored))}
-          />
-        ) : (
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0,1fr))", gap: 10 }}>
-            <BabyFootPhasePanel
-              state={state}
-              lastGoalLabel={lastGoalLabel}
-              liveContext={liveContext}
-              onPenaltyShot={(team, scored) => setState(addPenaltyShot(team, scored))}
-            />
+        <BabyFootPhasePanel
+          state={state}
+          lastGoalLabel={lastGoalLabel}
+          liveContext={liveContext}
+          onPenaltyShot={(team, scored) => setState(addPenaltyShot(team, scored))}
+        />
 
-            <BabyFootLiveStatsCard
-              teamAName={state.teamA}
-              teamBName={state.teamB}
-              goalsA={goalCountA}
-              goalsB={goalCountB}
-              totalGoals={totalGoals}
-              durationLabel={fmt(durationMs)}
-              lastGoalLabel={lastGoalLabel}
-              momentumLabel={momentumLabel}
-              cadenceLabel={cadenceLabel}
-            />
-          </div>
-        )}
+        <BabyFootLiveStatsCard
+          teamAName={state.teamA}
+          teamBName={state.teamB}
+          goalsA={goalCountA}
+          goalsB={goalCountB}
+          totalGoals={totalGoals}
+          durationLabel={fmt(durationMs)}
+          lastGoalLabel={lastGoalLabel}
+          momentumLabel={momentumLabel}
+          cadenceLabel={cadenceLabel}
+        />
       </div>
 
       <div

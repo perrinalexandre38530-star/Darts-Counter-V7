@@ -47,9 +47,7 @@ type LeaderboardMode =
   | "warfare"
   | "five_lives"
   | "dice_duel"
-  | "molkky"
-  | "babyfoot"
-  | "pingpong";
+  | "molkky";
 
 type PeriodKey = "D" | "W" | "M" | "Y" | "ALL" | "TOUT";
 
@@ -136,12 +134,7 @@ const MODE_DEFS: {
   { id: "golf", label: "GOLF", metrics: ["wins", "winRate", "matches", "bestVisit"] },
   { id: "batard", label: "BÂTARD", metrics: ["avg3", "wins", "winRate", "matches", "bestVisit"] },
   { id: "battle_royale", label: "BATTLE ROYALE", metrics: ["wins", "winRate", "matches"] },
-  { id: "five_lives", label: "FIVE LIVES", metrics: ["wins", "winRate", "matches"] },
   { id: "clock", label: "TOUR DE L’HORLOGE", metrics: ["wins", "winRate", "matches"] },
-  { id: "scram", label: "SCRAM", metrics: ["wins", "winRate", "matches"] },
-  { id: "warfare", label: "WARFARE", metrics: ["wins", "winRate", "matches"] },
-  { id: "babyfoot", label: "BABY-FOOT", metrics: ["wins", "winRate", "matches", "avg3", "bestVisit"] },
-  { id: "pingpong", label: "PING-PONG", metrics: ["wins", "winRate", "matches", "avg3", "bestVisit"] },
   {
     id: "territories",
     label: "TERRITORIES",
@@ -301,8 +294,6 @@ function isRecordMatchingMode(rec: any, mode: LeaderboardMode, scope: Scope): bo
     payload?.variant,
     payload?.game,
     payload?.sport,
-    payload?.stats?.mode,
-    payload?.stats?.sport,
     nested?.kind,
     nested?.mode,
     nested?.gameMode,
@@ -329,8 +320,6 @@ function isRecordMatchingMode(rec: any, mode: LeaderboardMode, scope: Scope): bo
   if (!tag) return false;
 
   if (mode === "molkky") return tag.includes("molkky");
-  if (mode === "babyfoot") return tag.includes("babyfoot") || tag.includes("baby-foot") || tag.includes("baby_foot");
-  if (mode === "pingpong") return tag.includes("pingpong") || tag.includes("ping-pong") || tag.includes("ping_pong");
 
   if (String(mode).startsWith("dice")) {
     if (!tag.includes("dice")) return false;
@@ -363,7 +352,7 @@ function isRecordMatchingMode(rec: any, mode: LeaderboardMode, scope: Scope): bo
   if (mode === "batard") return tag.includes("batard") || tag.includes("bastard");
   if (mode === "territories") return tag.includes("territ") || tag.includes("departement");
   if (mode === "battle_royale") return tag.includes("battle") || tag.includes("royale");
-  if (mode === "clock") return tag.includes("clock") || tag.includes("horloge") || tag.includes("tour");
+  if (mode === "clock") return tag.includes("clock") || tag.includes("horloge") || tag.includes("tour") || tag.includes("five_lives") || tag.includes("five lives");
   if (mode === "scram") return tag.includes("scram");
   if (mode === "warfare") return tag.includes("warfare");
   if (mode === "five_lives") return tag.includes("five_lives") || tag.includes("five lives");
@@ -642,25 +631,18 @@ function computeRowsFromHistory(
       null;
 
     const summary = rec.summary || rec.payload?.summary || null;
-    const payloadStatsPlayers: any[] = Array.isArray(rec?.payload?.stats?.players)
-      ? rec.payload.stats.players
-      : Array.isArray(rec?.payload?.stats?.playersStats)
-      ? rec.payload.stats.playersStats
-      : Array.isArray(rec?.payload?.players)
-      ? rec.payload.players
-      : [];
-
-    // 🎲 / Mölkky / Baby-Foot / Ping-Pong : fallback principal via payload.stats.players
-    if ((String(mode).startsWith("dice") || mode === "molkky" || mode === "babyfoot" || mode === "pingpong") && payloadStatsPlayers.length) {
-      const playersArr = payloadStatsPlayers;
+    // 🎲 DICE / variantes : pas de summary darts -> on lit payload.stats.players
+    if (String(mode).startsWith("dice")) {
+      const ps: any[] =
+        rec?.payload?.stats?.players || rec?.payload?.stats?.playersStats || rec?.payload?.players || [];
+      const playersArr = Array.isArray(ps) ? ps : [];
       const winner =
         winnerId ||
-        playersArr.find((p: any) => !!p?.win)?.id ||
-        playersArr.slice().sort((a, b) => (b?.score ?? b?.special?.points ?? 0) - (a?.score ?? a?.special?.points ?? 0))[0]?.id ||
+        playersArr.slice().sort((a, b) => (b?.score ?? 0) - (a?.score ?? 0))[0]?.id ||
         null;
 
       for (const p of playersArr) {
-        const pid = String(p?.id || p?.profileId || "");
+        const pid = String(p?.id || "");
         if (!pid) continue;
         if (!aggByPlayer[pid]) {
           aggByPlayer[pid] = {
@@ -683,7 +665,7 @@ function computeRowsFromHistory(
           infoByPlayer[pid] = { name: safeStr(p?.name || ""), avatarDataUrl: null };
         }
 
-        const score = Number(p?.score ?? p?.special?.points ?? 0) || 0;
+        const score = Number(p?.score ?? 0) || 0;
         aggByPlayer[pid].matches += 1;
         if (winner && pid === String(winner)) aggByPlayer[pid].wins += 1;
         aggByPlayer[pid].avg3Sum += score;
@@ -1059,11 +1041,11 @@ function metricLabel(m: MetricKey, sport?: string) {
     case "matches":
       return "Matchs joués";
     case "avg3":
-      return sport === "molkky" || sport === "dicegame" || sport === "babyfoot" || sport === "pingpong" ? "Moy. score" : "Moy. 3 darts";
+      return sport === "molkky" ? "Moy. score" : sport === "dicegame" ? "Moy. score" : "Moy. 3 darts";
     case "bestVisit":
-      return sport === "molkky" || sport === "babyfoot" || sport === "pingpong" ? "Meilleur score" : "Best visit";
+      return sport === "molkky" ? "Meilleur score" : "Best visit";
     case "bestCheckout":
-      return sport === "molkky" || sport === "babyfoot" || sport === "pingpong" ? "Meilleur score" : "Best CO";
+      return sport === "molkky" ? "Meilleur score" : "Best CO";
     case "kills":
       return "Kills";
     case "favNumberHits":
@@ -1134,27 +1116,22 @@ export default function StatsLeaderboardsPage({ store, sportOverride }: Props) {
   const inferredHistorySport = React.useMemo(() => {
     const rows = Array.isArray((store as any)?.history) ? ((store as any).history as any[]) : [];
     if (!rows.length) return "";
-    const counts = { molkky: 0, dicegame: 0, babyfoot: 0, pingpong: 0, darts: 0 };
+    const counts = { molkky: 0, dicegame: 0, darts: 0 };
     for (const r of rows) {
       const sp = String(r?.sport ?? r?.payload?.sport ?? "").toLowerCase();
       const kind = String(r?.kind ?? r?.payload?.kind ?? r?.mode ?? "").toLowerCase();
-      const tag = `${sp}|${kind}`;
-      if (tag.includes("molkky")) counts.molkky += 1;
-      else if (tag.includes("dice")) counts.dicegame += 1;
-      else if (tag.includes("babyfoot") || tag.includes("baby-foot") || tag.includes("baby_foot")) counts.babyfoot += 1;
-      else if (tag.includes("pingpong") || tag.includes("ping-pong") || tag.includes("ping_pong")) counts.pingpong += 1;
+      if (sp.includes("molkky") || kind.includes("molkky")) counts.molkky += 1;
+      else if (sp.includes("dice") || kind.includes("dice")) counts.dicegame += 1;
       else counts.darts += 1;
     }
-    const best = Object.entries(counts).sort((a, b) => b[1] - a[1])[0];
-    if (!best || best[1] <= 0 || best[0] === "darts") return "";
-    return best[0];
+    if (counts.molkky > 0 && counts.molkky >= counts.darts && counts.molkky >= counts.dicegame) return "molkky";
+    if (counts.dicegame > 0 && counts.dicegame >= counts.darts) return "dicegame";
+    return "";
   }, [store]);
 
   const effectiveSport = String(sportOverride || inferredHistorySport || sport || "").toLowerCase();
   const isDiceSport = effectiveSport.includes("dice");
   const isMolkkySport = effectiveSport === "molkky";
-  const isBabyFootSport = effectiveSport === "babyfoot";
-  const isPingPongSport = effectiveSport === "pingpong";
 
   const { theme } = useTheme();
   const langAny: any = useLang();
@@ -1176,25 +1153,19 @@ export default function StatsLeaderboardsPage({ store, sportOverride }: Props) {
   );
 
   const [scope, setScope] = React.useState<Scope>("local");
-  const [mode, setMode] = React.useState<LeaderboardMode>(isMolkkySport ? "molkky" : isDiceSport ? "dice_duel" : isBabyFootSport ? "babyfoot" : isPingPongSport ? "pingpong" : "x01_multi");
+  const [mode, setMode] = React.useState<LeaderboardMode>(isMolkkySport ? "molkky" : isDiceSport ? "dice_duel" : "x01_multi");
   const [period, setPeriod] = React.useState<PeriodKey>("ALL");
 
   // ✅ NEW: toggle bots (par défaut ON)
   const [includeBots, setIncludeBots] = React.useState<boolean>(true);
   React.useEffect(() => {
-    setMode(isMolkkySport ? "molkky" : isDiceSport ? "dice_duel" : isBabyFootSport ? "babyfoot" : isPingPongSport ? "pingpong" : "x01_multi");
-  }, [isMolkkySport, isDiceSport, isBabyFootSport, isPingPongSport]);
+    setMode(isMolkkySport ? "molkky" : isDiceSport ? "dice_duel" : "x01_multi");
+  }, [isMolkkySport, isDiceSport]);
 
 
   const modeDefs = React.useMemo(() => {
     if (isMolkkySport) {
       return [{ id: "molkky", label: "MÖLKKY", metrics: ["matches", "wins", "winRate", "avg3", "bestVisit"] }] as any;
-    }
-    if (isBabyFootSport) {
-      return [{ id: "babyfoot", label: "BABY-FOOT", metrics: ["matches", "wins", "winRate", "avg3", "bestVisit"] }] as any;
-    }
-    if (isPingPongSport) {
-      return [{ id: "pingpong", label: "PING-PONG", metrics: ["matches", "wins", "winRate", "avg3", "bestVisit"] }] as any;
     }
     if (!isDiceSport) return MODE_DEFS as any;
 
@@ -1241,7 +1212,7 @@ export default function StatsLeaderboardsPage({ store, sportOverride }: Props) {
         metrics: ["avg3", "wins", "winRate", "matches", "bestVisit"],
       },
     ] as any;
-  }, [isDiceSport, isMolkkySport, isBabyFootSport, isPingPongSport]);
+  }, [isDiceSport, isMolkkySport]);
 
 
   // ✅ BATARD filters (derived from History payload.config)

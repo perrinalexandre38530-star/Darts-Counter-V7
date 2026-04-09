@@ -1,7 +1,7 @@
 import LZString from "lz-string";
 import { gzipSync, gunzipSync, strToU8, strFromU8 } from "fflate";
 import { apiGet, apiPost } from "./apiClient";
-import { exportAll, loadStore, saveStore, importCloudSnapshot } from "./storage";
+import { exportAll, loadStore, importAll, saveStore } from "./storage";
 import { cancelScheduledStatsIndexRefresh, scheduleStatsIndexRefresh } from "./stats/rebuildStatsFromHistory";
 import { importHistoryDump } from "./historyCloud";
 
@@ -325,23 +325,17 @@ export async function restoreLatestBackupFromNas() {
   const payload = decompressBackupPayload(data.payload);
 
   if (isStructuredSnapshot(payload)) {
-    // IMPORTANT:
-    // - importAll() restaure bien l'IDB + certaines clés localStorage dc_ / dc-
-    // - mais les dart sets et bots ont aussi une "source de vérité" dédiée
-    //   (dartSetsStore / bots localStorage compressé)
-    // - importCloudSnapshot() réinjecte ces collections dans les bons stores
-    //   et sécurise un vrai restore "device -> device"
-    await importCloudSnapshot(payload, { mode: "replace" });
+    await importAll(payload);
 
     try {
       cancelScheduledStatsIndexRefresh();
       await scheduleStatsIndexRefresh({
-        reason: "nas-restore-structured",
+        reason: "nas-restore-importall",
         debounceMs: 0,
         includeNonFinished: true,
       });
     } catch (e) {
-      console.warn("Refresh stats après importCloudSnapshot échoué", e);
+      console.warn("Refresh stats après importAll échoué", e);
     }
   } else {
     const currentStore = await loadStore();

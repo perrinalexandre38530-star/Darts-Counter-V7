@@ -3,31 +3,6 @@ import { useTheme } from "../contexts/ThemeContext";
 import { useSport } from "../contexts/SportContext";
 import GlobalCastButton from "./GlobalCastButton";
 
-const PROFILE_NAV_DIAG_KEY = "dc_profiles_nav_diag_v1";
-
-function pushProfilesNavDiag(step: string, extra?: Record<string, any>) {
-  if (typeof window === "undefined") return;
-  try {
-    const row = {
-      at: new Date().toISOString(),
-      step,
-      href: String(window.location.href || ""),
-      hash: String(window.location.hash || ""),
-      visibility: typeof document !== "undefined" ? document.visibilityState : "unknown",
-      ...(extra || {}),
-    };
-    const raw = window.localStorage.getItem(PROFILE_NAV_DIAG_KEY);
-    const arr = Array.isArray(raw ? JSON.parse(raw) : null) ? JSON.parse(raw) : [];
-    arr.push(row);
-    while (arr.length > 80) arr.shift();
-    window.localStorage.setItem(PROFILE_NAV_DIAG_KEY, JSON.stringify(arr));
-    try {
-      window.dispatchEvent(new CustomEvent("dc:profiles-nav-diag", { detail: row }));
-    } catch {}
-    console.log("[profiles-nav-diag]", row);
-  } catch {}
-}
-
 /**
  * BottomNav
  * - Le bouton "Stats" ouvre le menu StatsShell (puis accès au Hub).
@@ -220,26 +195,6 @@ export default function BottomNav({
   const textMain = theme.textMain ?? "#f9fafb";
   const accent = (theme as any)?.navAccent ?? theme.primary ?? textMain;
 
-  const [profilesDiagOpen, setProfilesDiagOpen] = React.useState(false);
-  const [profilesDiagRows, setProfilesDiagRows] = React.useState<any[]>([]);
-
-  React.useEffect(() => {
-    if (typeof window === "undefined") return;
-    const load = () => {
-      try {
-        const raw = window.localStorage.getItem(PROFILE_NAV_DIAG_KEY);
-        const arr = Array.isArray(raw ? JSON.parse(raw) : null) ? JSON.parse(raw) : [];
-        setProfilesDiagRows(arr.slice(-12));
-      } catch {
-        setProfilesDiagRows([]);
-      }
-    };
-    load();
-    const onDiag = () => load();
-    window.addEventListener("dc:profiles-nav-diag", onDiag as EventListener);
-    return () => window.removeEventListener("dc:profiles-nav-diag", onDiag as EventListener);
-  }, []);
-
   const tabs: NavItem[] = [
     { k: "home", label: "Accueil", icon: <Icon name="home" /> },
     { k: "profiles", label: "Profils", icon: <Icon name="profiles" /> },
@@ -254,27 +209,6 @@ export default function BottomNav({
 
   const tap = (k: NavItem["k"]) => {
     (navigator as any)?.vibrate?.(8);
-
-    if (k === "profiles") {
-      pushProfilesNavDiag("bottomnav:profiles:click", { value, sport });
-      setProfilesDiagOpen(true);
-      try {
-        window.setTimeout(() => pushProfilesNavDiag("bottomnav:profiles:before_onChange", { value, sport }), 0);
-        window.setTimeout(() => pushProfilesNavDiag("bottomnav:profiles:after_120ms", { value, sport }), 120);
-        window.setTimeout(() => pushProfilesNavDiag("bottomnav:profiles:after_600ms", { value, sport }), 600);
-        window.setTimeout(() => pushProfilesNavDiag("bottomnav:profiles:after_1500ms", { value, sport }), 1500);
-      } catch {}
-      window.setTimeout(() => {
-        try {
-          onChange("profiles");
-          pushProfilesNavDiag("bottomnav:profiles:onChange_called", { value, sport });
-        } catch (error: any) {
-          pushProfilesNavDiag("bottomnav:profiles:onChange_error", { message: String(error?.message || error || "unknown") });
-          throw error;
-        }
-      }, 60);
-      return;
-    }
 
     if (k === "stats") {
       onChange("stats");
@@ -350,57 +284,6 @@ export default function BottomNav({
       })}
       <GlobalCastButton accent={accent} textMain={textMain} textSoft={textSoft} />
       <div className="bn-safe" />
-      {profilesDiagOpen && (
-        <div
-          style={{
-            position: "fixed",
-            left: 10,
-            right: 10,
-            bottom: 86,
-            zIndex: 99999,
-            borderRadius: 16,
-            background: "rgba(5,8,18,0.96)",
-            border: `1px solid ${accent}`,
-            boxShadow: `0 0 0 1px ${accent}44, 0 10px 30px rgba(0,0,0,0.45)`,
-            padding: 12,
-            color: textMain,
-            maxHeight: "42vh",
-            overflow: "auto",
-          }}
-        >
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginBottom: 8 }}>
-            <div style={{ fontWeight: 900, fontSize: 14 }}>Diagnostic ouverture Profils</div>
-            <button
-              onClick={() => setProfilesDiagOpen(false)}
-              style={{
-                borderRadius: 999,
-                border: `1px solid ${accent}`,
-                background: "transparent",
-                color: textMain,
-                padding: "4px 10px",
-                fontWeight: 800,
-              }}
-            >
-              Fermer
-            </button>
-          </div>
-          <div style={{ fontSize: 12, opacity: 0.85, marginBottom: 8 }}>
-            Si ça gèle, prends une capture de cette boîte. Les traces sont aussi dans localStorage["dc_profiles_nav_diag_v1"].
-          </div>
-          <div style={{ display: "grid", gap: 6 }}>
-            {profilesDiagRows.length ? profilesDiagRows.slice().reverse().map((row, idx) => (
-              <div key={`${row.at || idx}-${idx}`} style={{ fontSize: 11, lineHeight: 1.35, border: "1px solid rgba(255,255,255,0.08)", borderRadius: 10, padding: 8 }}>
-                <div style={{ fontWeight: 800 }}>{String(row.step || "?")}</div>
-                <div style={{ opacity: 0.8 }}>{String(row.at || "")}</div>
-                {row.hash ? <div style={{ opacity: 0.75 }}>hash: {String(row.hash)}</div> : null}
-                {row.message ? <div style={{ color: "#ff9a9a" }}>{String(row.message)}</div> : null}
-              </div>
-            )) : (
-              <div style={{ fontSize: 12, opacity: 0.75 }}>Aucune trace pour le moment.</div>
-            )}
-          </div>
-        </div>
-      )}
     </nav>
   );
 }
