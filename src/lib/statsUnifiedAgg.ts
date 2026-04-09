@@ -65,6 +65,11 @@ function readUnifiedAvg3(raw: any, playerId: string): number {
     if (hits > 0 && thrown > 0) return (hits / thrown) * 3;
   }
 
+  // 5) Other non-darts score-based sports: use stored score as the generic average box
+  if (mode.includes("babyfoot") || mode.includes("pingpong") || mode.includes("petanque") || mode.includes("molkky") || mode.includes("dice")) {
+    if (score > 0) return score;
+  }
+
   return 0;
 }
 
@@ -97,6 +102,11 @@ function readUnifiedBestVisit(raw: any, playerId: string): number {
     if (Number.isFinite(kills) && kills > 0) return kills;
     const hits = Number(p?.darts?.hits ?? 0);
     if (Number.isFinite(hits) && hits > 0) return hits;
+  }
+
+  if (mode.includes("babyfoot") || mode.includes("pingpong") || mode.includes("petanque") || mode.includes("molkky") || mode.includes("dice")) {
+    const score = Number(p?.score ?? 0);
+    if (Number.isFinite(score) && score > 0) return score;
   }
 
   return 0;

@@ -325,7 +325,7 @@ export default function StatsShell({ store, go }: Props) {
             "Toutes tes parties et reprise des parties en cours."
           )}
           theme={theme}
-          onClick={() => go("statsHub", { tab: "history" })}
+          onClick={() => go("pingpong_stats_history")}
           onInfo={() => setInfoMode("history")}
         />
 

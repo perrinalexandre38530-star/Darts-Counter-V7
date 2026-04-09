@@ -28,6 +28,12 @@ export type NormalizedMode =
   | "babyfoot"
   | "pingpong"
   | "petanque"
+  | "molkky"
+  | "dicegame"
+  | "battle_royale"
+  | "five_lives"
+  | "scram"
+  | "warfare"
   | "clock"
   | "training"
   | "unknown";
@@ -135,6 +141,8 @@ export function detectNormalizedMode(rec: any): NormalizedMode {
     payload?.variant,
     payload?.sport,
     payload?.game,
+    payload?.stats?.mode,
+    payload?.stats?.sport,
     nested?.kind,
     nested?.mode,
     nested?.gameMode,
@@ -162,10 +170,16 @@ export function detectNormalizedMode(rec: any): NormalizedMode {
   if (blob.includes("territ") || blob.includes("departement")) return "territories";
   if (blob.includes("golf")) return "golf";
   if (blob.includes("batard") || blob.includes("bastard")) return "batard";
+  if (blob.includes("battle") || blob.includes("royale")) return "battle_royale";
+  if (blob.includes("five_lives") || blob.includes("five lives")) return "five_lives";
+  if (blob.includes("scram")) return "scram";
+  if (blob.includes("warfare")) return "warfare";
+  if (blob.includes("molkky")) return "molkky";
+  if (blob.includes("dice")) return "dicegame";
   if (blob.includes("baby")) return "babyfoot";
   if (blob.includes("ping")) return "pingpong";
-  if (blob.includes("petanque")) return "petanque";
-  if (blob.includes("clock") || blob.includes("horloge") || blob.includes("tour") || blob.includes("five_lives") || blob.includes("five lives")) return "clock";
+  if (blob.includes("petanque") || blob.includes("pétanque")) return "petanque";
+  if (blob.includes("clock") || blob.includes("horloge") || blob.includes("tour")) return "clock";
   if (blob.includes("training")) return "training";
 
   const g: any = rec?.game || {};

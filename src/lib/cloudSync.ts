@@ -25,6 +25,8 @@ let pullTimer: number | null = null;
 let lastPushAt = 0;
 let pushInFlight = false;
 let pushQueued = false;
+let pushFailureCount = 0;
+let pushBlockedUntil = 0;
 
 // ------------------------------------------------------------
 // Merge helpers (anti-perte)
@@ -252,6 +254,19 @@ async function throttledPush() {
   if (!running) return;
   const now = Date.now();
 
+  if (pushBlockedUntil && now < pushBlockedUntil) {
+    pushQueued = true;
+    const waitBlocked = Math.max(250, pushBlockedUntil - now);
+    window.setTimeout(() => {
+      if (!running) return;
+      if (pushQueued) {
+        pushQueued = false;
+        throttledPush().catch(() => {});
+      }
+    }, waitBlocked);
+    return;
+  }
+
   // Si un push est déjà en cours → on queue un push derrière
   if (pushInFlight) {
     pushQueued = true;
@@ -276,6 +291,13 @@ async function throttledPush() {
   try {
     await pushNow();
     lastPushAt = Date.now();
+    pushFailureCount = 0;
+    pushBlockedUntil = 0;
+  } catch (e) {
+    pushFailureCount += 1;
+    const backoffMs = Math.min(60_000, Math.max(MIN_PUSH_INTERVAL_MS, 5_000 * pushFailureCount));
+    pushBlockedUntil = Date.now() + backoffMs;
+    console.warn("[cloudSync] push failed, backoff", { failures: pushFailureCount, backoffMs, error: e });
   } finally {
     pushInFlight = false;
     if (pushQueued) {

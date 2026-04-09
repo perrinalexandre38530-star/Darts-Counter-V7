@@ -451,6 +451,9 @@ function detectKindMode(rec: any, decoded: any | null) {
 
   if (blob.includes("molkky")) return { kind: "molkky", mode: "molkky" };
   if (blob.includes("dice")) return { kind: "dicegame", mode: blob.includes("duel") ? "dice_duel" : "dicegame" };
+  if (blob.includes("babyfoot") || blob.includes("baby-foot") || blob.includes("baby_foot")) return { kind: "babyfoot", mode: "babyfoot" };
+  if (blob.includes("pingpong") || blob.includes("ping-pong") || blob.includes("ping_pong")) return { kind: "pingpong", mode: "pingpong" };
+  if (blob.includes("petanque") || blob.includes("pétanque")) return { kind: "petanque", mode: "petanque" };
   if (blob.includes("cricket")) return { kind: "cricket", mode: "cricket" };
   if (blob.includes("killer")) return { kind: "killer", mode: "killer" };
   if (blob.includes("shanghai")) return { kind: "shanghai", mode: "shanghai" };
@@ -458,10 +461,10 @@ function detectKindMode(rec: any, decoded: any | null) {
   if (blob.includes("territ") || blob.includes("departement")) return { kind: "territories", mode: "territories" };
   if (blob.includes("batard") || blob.includes("bastard")) return { kind: "batard", mode: "batard" };
   if (blob.includes("battle") || blob.includes("royale")) return { kind: "battle_royale", mode: "battle_royale" };
+  if (blob.includes("five_lives") || blob.includes("five lives")) return { kind: "five_lives", mode: "five_lives" };
   if (blob.includes("clock") || blob.includes("horloge") || blob.includes("tour")) return { kind: "clock", mode: "clock" };
   if (blob.includes("scram")) return { kind: "scram", mode: "scram" };
   if (blob.includes("warfare")) return { kind: "warfare", mode: "warfare" };
-  if (blob.includes("five_lives") || blob.includes("five lives")) return { kind: "five_lives", mode: "five_lives" };
   if (blob.includes("x01") || blob.includes("301") || blob.includes("501") || blob.includes("701")) return { kind: "x01", mode: "x01" };
 
   return { kind: blob.split(' ')[0] || 'unknown', mode: blob.split(' ')[0] || 'unknown' };

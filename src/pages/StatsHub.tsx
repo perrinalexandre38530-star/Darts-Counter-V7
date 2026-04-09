@@ -217,6 +217,7 @@ import TrainingProfileCard from "../components/profile/TrainingProfileCard";
 import { useCurrentProfile } from "../hooks/useCurrentProfile";
 import { useDevMode } from "../contexts/DevModeContext";
 import { computeKillerAggForPlayer } from "../lib/statsKillerAgg";
+import StatsDartSetsSection from "../components/StatsDartSetsSection";
 
 // ✅ LAZY-LOAD des modules lourds (gros gain bundle + parse)
 
@@ -261,9 +262,6 @@ const StatsLeaderboardsTab = React.lazy(
   () => import("../components/stats/StatsLeaderboardsTab")
 );
 const StatsKiller = React.lazy(() => import("./StatsKiller"));
-const StatsDartSetsSection = React.lazy(
-  () => import("../components/StatsDartSetsSection")
-);
 
 // ✅ TERRITORIES (stats locales)
 const StatsTerritoriesTab = React.lazy(() => import("./StatsTerritories"));
@@ -845,7 +843,7 @@ function useHistoryAPI(): SavedMatch[] {
       const arr = toArr<SavedMatch>(list);
 
       // Keep fast: only hydrate records likely used by the dashboard.
-      const NEED = new Set(["x01", "cricket", "killer", "golf", "shanghai", "training", "batard", "scram", "warfare", "clock", "tour", "battle_royale", "territories", "five_lives"]);
+      const NEED = new Set(["x01", "cricket", "killer", "golf", "shanghai", "training", "batard", "scram", "warfare", "tour", "clock", "battle_royale", "territories", "five_lives", "molkky", "dicegame", "babyfoot", "pingpong", "petanque"]);
 
       const toHydrate: string[] = [];
       for (const r of arr) {
@@ -1069,6 +1067,9 @@ function classifyRecordMode(rec: SavedMatch): string {
 
   if (tag.includes("molkky")) return "molkky";
   if (tag.includes("dice")) return "dice";
+  if (tag.includes("babyfoot") || tag.includes("baby-foot") || tag.includes("baby_foot")) return "babyfoot";
+  if (tag.includes("pingpong") || tag.includes("ping-pong") || tag.includes("ping_pong")) return "pingpong";
+  if (tag.includes("petanque") || tag.includes("pétanque")) return "petanque";
   if (tag.includes("cricket")) return "cricket";
   if (tag.includes("killer")) return "killer";
   if (tag.includes("shanghai")) return "shanghai";
@@ -1087,6 +1088,91 @@ function classifyRecordMode(rec: SavedMatch): string {
   }
 
   return "other";
+}
+
+function recordMatchesEffectiveSport(rec: any, sportName: string): boolean {
+  const sp = String(sportName || "").toLowerCase();
+  if (!sp) return true;
+
+  const mode = classifyRecordMode(rec as any);
+  const payload = (rec as any)?.payload ?? {};
+  const summary = (rec as any)?.summary ?? payload?.summary ?? {};
+  const tag = [
+    (rec as any)?.sport,
+    (rec as any)?.kind,
+    (rec as any)?.mode,
+    (rec as any)?.variant,
+    (rec as any)?.game,
+    payload?.sport,
+    payload?.kind,
+    payload?.mode,
+    payload?.variant,
+    payload?.game,
+    payload?.stats?.sport,
+    payload?.stats?.mode,
+    summary?.sport,
+    summary?.kind,
+    summary?.mode,
+    summary?.game?.mode,
+    summary?.game?.game,
+  ]
+    .filter((v) => v !== undefined && v !== null)
+    .map((v) => String(v).toLowerCase())
+    .join("|");
+
+  if (sp.includes("dice")) return mode === "dice" || tag.includes("dice");
+  if (sp === "molkky") return mode === "molkky" || tag.includes("molkky");
+  if (sp === "babyfoot") return mode === "babyfoot" || tag.includes("babyfoot") || tag.includes("baby-foot") || tag.includes("baby_foot");
+  if (sp === "pingpong") return mode === "pingpong" || tag.includes("pingpong") || tag.includes("ping-pong") || tag.includes("ping_pong");
+  if (sp === "petanque" || sp === "pétanque") return mode === "petanque" || tag.includes("petanque") || tag.includes("pétanque");
+  if (sp === "darts") {
+    return !["molkky", "dice", "babyfoot", "pingpong", "petanque"].includes(mode)
+      && !tag.includes("molkky")
+      && !tag.includes("dice")
+      && !tag.includes("babyfoot")
+      && !tag.includes("baby-foot")
+      && !tag.includes("baby_foot")
+      && !tag.includes("pingpong")
+      && !tag.includes("ping-pong")
+      && !tag.includes("ping_pong")
+      && !tag.includes("petanque")
+      && !tag.includes("pétanque");
+  }
+  return tag.includes(sp) || mode === sp;
+}
+
+function normalizedMatchMatchesEffectiveSport(m: any, sportName: string): boolean {
+  const sp = String(sportName || "").toLowerCase();
+  if (!sp) return true;
+
+  const mode = String(m?.mode ?? m?.kind ?? "").toLowerCase();
+  const rawTag = [
+    m?.mode,
+    m?.kind,
+    m?.raw?.sport,
+    m?.raw?.kind,
+    m?.raw?.mode,
+    m?.raw?.variant,
+    m?.raw?.game,
+    m?.raw?.payload?.sport,
+    m?.raw?.payload?.kind,
+    m?.raw?.payload?.mode,
+    m?.raw?.payload?.variant,
+    m?.raw?.payload?.game,
+    m?.raw?.payload?.stats?.sport,
+    m?.raw?.payload?.stats?.mode,
+  ]
+    .filter((v) => v !== undefined && v !== null)
+    .map((v) => String(v).toLowerCase())
+    .join("|");
+
+  if (sp.includes("dice")) return mode.includes("dice") || rawTag.includes("dice");
+  if (sp === "molkky") return mode === "molkky" || rawTag.includes("molkky");
+  if (sp === "babyfoot") return mode === "babyfoot" || rawTag.includes("babyfoot") || rawTag.includes("baby-foot") || rawTag.includes("baby_foot");
+  if (sp === "pingpong") return mode === "pingpong" || rawTag.includes("pingpong") || rawTag.includes("ping-pong") || rawTag.includes("ping_pong");
+  if (sp === "petanque" || sp === "pétanque") return mode === "petanque" || rawTag.includes("petanque") || rawTag.includes("pétanque");
+  if (sp === "darts") return !["molkky", "dicegame", "babyfoot", "pingpong", "petanque"].includes(mode);
+  return mode === sp || rawTag.includes(sp);
 }
 
 // Dashboard: certains records n'ont pas `players` au niveau racine (ils sont dans payload).
@@ -4184,6 +4270,8 @@ go,
   const effectiveSport = String(sportOverride || sport || "").toLowerCase();
   const isDiceSport = effectiveSport.includes("dice");
   const isMolkkySport = effectiveSport === "molkky";
+  const isBabyFootSport = effectiveSport === "babyfoot";
+  const isPingPongSport = effectiveSport === "pingpong";
 const { enabled: devModeEnabled } = useDevMode();
   const [showRuntimeDebug, setShowRuntimeDebug] = React.useState(false);
   const STATS_DEBUG = devModeEnabled && showRuntimeDebug;
@@ -4327,21 +4415,26 @@ const modeDefs = React.useMemo(
             { key: "leaderboards", label: "Classements" },
             { key: "history", label: "Historique" },
           ]
-        : [
-            { key: "dashboard", label: "Dashboard global" },
-            { key: "dartsets", label: "Mes fléchettes" },
-            { key: "x01_multi", label: "X01 multi" },
-            { key: "x01_compare", label: "Comparateur X01" },
-            { key: "cricket", label: "Cricket" },
-            { key: "shanghai", label: "Shanghai" },
-            { key: "killer", label: "Killer" },
-            { key: "golf", label: "Golf" },
-            { key: "batard", label: "BÂTARD" },
-            { key: "territories", label: "Territories" },
-            { key: "leaderboards", label: "Classements" },
-            { key: "history", label: "Historique" },
-          ],
-  [isDiceSport, isMolkkySport]
+        : (isBabyFootSport || isPingPongSport)
+          ? [
+              { key: "dashboard", label: "Dashboard global" },
+              { key: "leaderboards", label: "Classements" },
+            ]
+          : [
+              { key: "dashboard", label: "Dashboard global" },
+              { key: "dartsets", label: "Mes fléchettes" },
+              { key: "x01_multi", label: "X01 multi" },
+              { key: "x01_compare", label: "Comparateur X01" },
+              { key: "cricket", label: "Cricket" },
+              { key: "shanghai", label: "Shanghai" },
+              { key: "killer", label: "Killer" },
+              { key: "golf", label: "Golf" },
+              { key: "batard", label: "BÂTARD" },
+              { key: "territories", label: "Territories" },
+              { key: "leaderboards", label: "Classements" },
+              { key: "history", label: "Historique" },
+            ],
+  [isDiceSport, isMolkkySport, isBabyFootSport, isPingPongSport]
 );
 
 const totalModes = modeDefs.length;
@@ -4436,16 +4529,21 @@ const combinedHistory = React.useMemo(() => {
   );
 }, [memHistory, apiHistory, storeHistory]);
 
+const scopedCombinedHistory = React.useMemo(() => {
+  const arr = Array.isArray(combinedHistory) ? combinedHistory : [];
+  return arr.filter((r: any) => recordMatchesEffectiveSport(r, effectiveSport));
+}, [combinedHistory, effectiveSport]);
+
 // ✅ IMPORTANT : records DOIT TOUJOURS EXISTER (sinon écran noir)
 // Normalisation "records" pour les composants legacy qui attendent SavedMatch normalisé.
 const records = React.useMemo(() => {
   try {
-    const arr = Array.isArray(combinedHistory) ? combinedHistory : [];
+    const arr = Array.isArray(scopedCombinedHistory) ? scopedCombinedHistory : [];
     return arr.map((r) => normalizeRecordPlayers(r, storeProfiles));
   } catch {
     return [];
   }
-}, [combinedHistory, storeProfiles]);
+}, [scopedCombinedHistory, storeProfiles]);
 
 // ==========================
 // ✅ DEBUG + SOURCE UNIQUE pour toutes les stats
@@ -4524,6 +4622,11 @@ const diceRows = React.useMemo(() => {
   });
 }, [records?.length]);
 
+const normalizedMatchesScoped = React.useMemo(() => {
+  const arr = Array.isArray(normalizedMatchesClean) ? normalizedMatchesClean : [];
+  return arr.filter((m: any) => normalizedMatchMatchesEffectiveSport(m, effectiveSport));
+}, [normalizedMatchesClean, effectiveSport]);
+
 const nmFromRecordsFallback = React.useMemo(() => {
   const arr = Array.isArray(records) ? records : [];
   return arr.map(recordToNormalizedFallback).filter(Boolean);
@@ -4531,8 +4634,8 @@ const nmFromRecordsFallback = React.useMemo(() => {
 
 // 3) ✅ SOURCE UNIQUE utilisée PARTOUT dans StatsHub
 const nmEffective = React.useMemo(() => {
-  return normalizedMatchesClean.length ? normalizedMatchesClean : nmFromRecordsFallback;
-}, [normalizedMatchesClean, nmFromRecordsFallback]);
+  return normalizedMatchesScoped.length ? normalizedMatchesScoped : nmFromRecordsFallback;
+}, [normalizedMatchesScoped, nmFromRecordsFallback]);
 
 // -- 3bis) Liste unique de tous les joueurs vus (SOURCE UNIQUE nmEffective)
 // ✅ FIX CRITICAL : si l'historique normalisé ne remonte pas de players,
@@ -4951,7 +5054,7 @@ const computedDashboard = React.useMemo(() => {
 }, [selectedPlayer?.id, selectedPlayer?.name, nmEffective.length, applyX01AggToDashboard, isMolkkySport, records]);
 
 // ✅ Dashboard final à passer au composant (priorité: cache instant -> live recalcul -> memo)
-const dashboardToShow = ((isDiceSport || isMolkkySport)
+const dashboardToShow = ((isDiceSport || isMolkkySport || isBabyFootSport || isPingPongSport)
   ? (liveDashboard ?? computedDashboard)
   : (cachedDashboard ?? liveDashboard ?? computedDashboard)) as
   | PlayerDashboardStats

@@ -11,6 +11,7 @@ import type { Store, Profile } from "./types";
 import { emitCloudChange } from "./cloudEvents";
 import { exportHistoryDump, importHistoryDump } from "./historyCloud";
 import { sanitizeAvatarDataUrl, MAX_AVATAR_DATA_URL_CHARS } from "./avatarSafe";
+import { setAvatarCache as setAvatarCacheLib } from "./avatarCache";
 import { getAllDartSets, replaceAllDartSets } from "./dartSetsStore";
 import { loadBots as loadStoredBots, restoreBotsFromSnapshot } from "./bots";
 
@@ -69,6 +70,10 @@ function makeMinimalLegacyFallback<T extends Store>(store: T): Record<string, an
   };
 }
 
+const STORE_TOO_BIG_WARN_BYTES = 8 * 1024 * 1024;
+const STORE_SOFT_TARGET_BYTES = 7_500_000;
+const STORE_HARD_TARGET_BYTES = 6_500_000;
+
 function guardStoreSizeForMobile<T>(store: T): T {
   try {
     const bytes = estimateObjectSizeBytes(store);
@@ -85,7 +90,7 @@ function guardStoreSizeForMobile<T>(store: T): T {
       );
     } catch {}
 
-    if (bytes > 8 * 1024 * 1024) {
+    if (bytes > STORE_TOO_BIG_WARN_BYTES) {
       if (typeof window !== "undefined") {
         const k = "dc_last_store_too_big_warn_v1";
         const now = Date.now();
@@ -169,6 +174,323 @@ function sanitizeBotLikeEntry(input: any) {
   return out;
 }
 
+function isObjectLike(value: any): value is Record<string, any> {
+  return !!value && typeof value === "object" && !Array.isArray(value);
+}
+
+function isHeavyImageDataUrl(value: any) {
+  return typeof value === "string" && value.startsWith("data:image/") && value.length > 256;
+}
+
+function stripHeavyInlineImagesDeep(value: any): any {
+  if (Array.isArray(value)) {
+    return value.map((item) => stripHeavyInlineImagesDeep(item));
+  }
+
+  if (!isObjectLike(value)) return value;
+
+  const out: Record<string, any> = {};
+  for (const [key, raw] of Object.entries(value)) {
+    const lower = String(key || "").toLowerCase();
+
+    if (
+      isHeavyImageDataUrl(raw) &&
+      (
+        lower.includes("avatar") ||
+        lower.includes("photo") ||
+        lower.includes("image") ||
+        lower.includes("thumbnail") ||
+        lower.includes("screenshot") ||
+        lower.includes("preview")
+      )
+    ) {
+      continue;
+    }
+
+    out[key] = stripHeavyInlineImagesDeep(raw);
+  }
+  return out;
+}
+
+function stripHeavyImagePayloads(target: any) {
+  if (!target || typeof target !== "object") return target;
+
+  const KEYS = [
+    "saved",
+    "matches",
+    "recentMatches",
+    "liveMatches",
+    "resumes",
+    "draftMatches",
+    "pendingMatches",
+  ] as const;
+
+  for (const key of KEYS) {
+    if (Array.isArray((target as any)[key])) {
+      (target as any)[key] = stripHeavyInlineImagesDeep((target as any)[key]);
+    }
+  }
+
+  return target;
+}
+
+
+function getStoreTopLevelHotspots(target: any, limit = 12) {
+  try {
+    if (!target || typeof target !== "object") return [];
+    return Object.entries(target)
+      .map(([key, value]) => ({
+        key,
+        bytes: estimateObjectSizeBytes(value),
+      }))
+      .sort((a, b) => b.bytes - a.bytes)
+      .slice(0, limit)
+      .map((row) => ({
+        ...row,
+        mb: Math.round((row.bytes / 1024 / 1024) * 100) / 100,
+      }));
+  } catch {
+    return [];
+  }
+}
+
+function recordStoreHotspots(kind: string, target: any) {
+  try {
+    localStorage.setItem(
+      "dc_last_store_hotspots_v1",
+      safeJsonStringify({
+        kind,
+        at: Date.now(),
+        hotspots: getStoreTopLevelHotspots(target),
+      })
+    );
+  } catch {}
+}
+
+function trimStoreCollection(target: any, key: string, keep: number) {
+  if (!target || typeof target !== "object") return;
+  if (!Array.isArray((target as any)[key])) return;
+  (target as any)[key] = trimArrayTail((target as any)[key], keep);
+}
+
+function isEssentialStoreKey(key: string) {
+  const lower = String(key || "").toLowerCase();
+  return [
+    "profiles",
+    "activeprofileid",
+    "settings",
+    "dartsets",
+    "activedartsetid",
+    "bots",
+    "friends",
+    "friendinvites",
+    "lang",
+    "theme",
+    "preferences",
+    "version",
+    "updatedat",
+  ].includes(lower);
+}
+
+function isLikelyEphemeralStoreKey(key: string) {
+  const lower = String(key || "").toLowerCase();
+  if (!lower || isEssentialStoreKey(lower)) return false;
+  if (STORE_HISTORY_KEYS.some((item) => String(item).toLowerCase() === lower)) return true;
+  if (STORE_HEAVY_STATS_KEYS.some((item) => String(item).toLowerCase() === lower)) return true;
+
+  return (
+    lower.includes("cache") ||
+    lower.includes("snapshot") ||
+    lower.includes("debug") ||
+    lower.includes("diagnostic") ||
+    lower.includes("perf") ||
+    lower.includes("leaderboard") ||
+    lower.includes("summary") ||
+    lower.includes("ticker") ||
+    lower.includes("feed") ||
+    lower.includes("tipofday") ||
+    lower.includes("lastrecord") ||
+    lower.includes("lastmatch") ||
+    lower.includes("onlinelast") ||
+    lower.includes("onlineleader") ||
+    lower.includes("cloudsnapshot")
+  );
+}
+
+function compactStoreForMobile<T extends Store>(store: T, mode: "soft" | "hard" = "soft"): T {
+  let clone: any;
+  try {
+    clone = safeJsonParse(safeJsonStringify(store || {}), {});
+  } catch {
+    clone = { ...(store || {}) };
+  }
+
+  stripStoreHistoryFields(clone);
+  stripStoreHeavyStatsFields(clone);
+  stripHeavyImagePayloads(clone);
+
+  trimStoreCollection(clone, "resumes", mode === "hard" ? 4 : 8);
+  trimStoreCollection(clone, "liveMatches", mode === "hard" ? 4 : 8);
+  trimStoreCollection(clone, "recentMatches", mode === "hard" ? 4 : 8);
+  trimStoreCollection(clone, "matches", mode === "hard" ? 6 : 10);
+  trimStoreCollection(clone, "saved", mode === "hard" ? 6 : 10);
+  trimStoreCollection(clone, "draftMatches", mode === "hard" ? 2 : 4);
+  trimStoreCollection(clone, "pendingMatches", mode === "hard" ? 2 : 4);
+
+  minimizeProfilesForPersistence(clone, mode === "hard");
+
+  if (Array.isArray(clone.bots)) {
+    clone.bots = clone.bots.map((b: any) => sanitizeBotLikeEntry(b));
+  }
+
+  for (const [key, value] of Object.entries(clone)) {
+    const lower = String(key || "").toLowerCase();
+    if (isEssentialStoreKey(lower)) continue;
+
+    if (isLikelyEphemeralStoreKey(lower)) {
+      delete clone[key];
+      continue;
+    }
+
+    const bytes = estimateObjectSizeBytes(value);
+
+    if (Array.isArray(value) && bytes > (mode === "hard" ? 180_000 : 350_000)) {
+      clone[key] = trimArrayTail(value as any[], mode === "hard" ? 3 : 6);
+      continue;
+    }
+
+    if (
+      isObjectLike(value) &&
+      bytes > (mode === "hard" ? 220_000 : 450_000) &&
+      (
+        lower.includes("cache") ||
+        lower.includes("summary") ||
+        lower.includes("stats") ||
+        lower.includes("diagnostic") ||
+        lower.includes("debug") ||
+        lower.includes("snapshot")
+      )
+    ) {
+      delete clone[key];
+      continue;
+    }
+
+    if ((Array.isArray(value) || isObjectLike(value)) && bytes > (mode === "hard" ? 250_000 : 500_000)) {
+      clone[key] = stripHeavyInlineImagesDeep(value);
+    }
+  }
+
+  return guardStoreShape(clone as T);
+}
+
+function recordStoreMetric(kind: string, payload: Record<string, any>) {
+  try {
+    localStorage.setItem(
+      "dc_last_store_metric_v2",
+      safeJsonStringify({
+        kind,
+        at: Date.now(),
+        ...payload,
+      })
+    );
+  } catch {}
+}
+
+function cacheProfileAvatar(profile: any) {
+  try {
+    const profileId = String(profile?.id || "").trim();
+    if (!profileId) return;
+
+    const avatarDataUrl =
+      sanitizeAvatarFieldSync(profile?.avatarDataUrl) ||
+      sanitizeAvatarFieldSync(profile?.avatar) ||
+      sanitizeAvatarFieldSync(profile?.photoDataUrl);
+
+    const rawAvatarUrl =
+      typeof profile?.avatarUrl === "string" && !profile.avatarUrl.startsWith("data:image/")
+        ? profile.avatarUrl
+        : typeof profile?.avatar === "string" && !profile.avatar.startsWith("data:image/")
+          ? profile.avatar
+          : undefined;
+
+    if (!avatarDataUrl && !rawAvatarUrl) return;
+
+    setAvatarCacheLib({
+      profileId,
+      avatarDataUrl: avatarDataUrl || null,
+      avatarUrl: rawAvatarUrl || null,
+      avatarUpdatedAt: Number(profile?.avatarUpdatedAt || Date.now()),
+    });
+  } catch {}
+}
+
+function stripInlineProfileAvatar(profile: any) {
+  if (!profile || typeof profile !== "object") return profile;
+
+  cacheProfileAvatar(profile);
+
+  const out = { ...(profile || {}) };
+  delete out.avatarDataUrl;
+  delete out.photoDataUrl;
+
+  if (typeof out.avatar === "string") {
+    if (out.avatar.startsWith("data:image/") || out.avatar.length > MAX_AVATAR_DATA_URL_CHARS) {
+      delete out.avatar;
+    }
+  }
+
+  if (typeof out.avatarUrl === "string" && out.avatarUrl.startsWith("data:image/")) {
+    delete out.avatarUrl;
+  }
+
+  return out;
+}
+
+function minimizeProfilesForPersistence(target: any, aggressive = false) {
+  if (!target || typeof target !== "object" || !Array.isArray(target.profiles)) return target;
+
+  const activeProfileId = String(target.activeProfileId || "").trim();
+
+  target.profiles = target.profiles.map((p: any) => {
+    const out = { ...(p || {}) };
+    const profileId = String(out?.id || "").trim();
+    const keepInlineAvatar = !aggressive && !!activeProfileId && profileId === activeProfileId;
+
+    cacheProfileAvatar(out);
+
+    const safeAvatarDataUrl = sanitizeAvatarFieldSync(out.avatarDataUrl);
+    if (keepInlineAvatar && safeAvatarDataUrl) {
+      out.avatarDataUrl = safeAvatarDataUrl;
+    } else {
+      delete out.avatarDataUrl;
+    }
+
+    if (typeof out.avatar === "string") {
+      const isDataUrl = out.avatar.startsWith("data:image/");
+      if (isDataUrl || out.avatar.length > MAX_AVATAR_DATA_URL_CHARS || !keepInlineAvatar) {
+        delete out.avatar;
+      }
+    }
+
+    if (typeof out.photoDataUrl === "string") delete out.photoDataUrl;
+    if (typeof out.avatarUrl === "string" && out.avatarUrl.startsWith("data:image/")) delete out.avatarUrl;
+
+    try {
+      if (out.privateInfo && typeof out.privateInfo === "object") {
+        const pi = { ...(out.privateInfo as any) };
+        delete pi.password;
+        delete pi.passwordHash;
+        delete pi.confirmPassword;
+        out.privateInfo = pi;
+      }
+    } catch {}
+
+    return out;
+  });
+
+  return target;
+}
+
 function sanitizeStoreForPersistence<T extends Store>(store: T): T {
   let clone: any;
   try {
@@ -179,28 +501,12 @@ function sanitizeStoreForPersistence<T extends Store>(store: T): T {
 
   stripStoreHeavyStatsFields(clone);
   stripStoreHistoryFields(clone);
+  stripHeavyImagePayloads(clone);
 
-  // Profiles: un seul avatar compressé, aucune variante legacy énorme.
-  if (Array.isArray(clone.profiles)) {
-    clone.profiles = clone.profiles.map((p: any) => {
-      const out = { ...(p || {}) };
-      const avatarDataUrl = sanitizeAvatarFieldSync(out.avatarDataUrl);
-      if (!avatarDataUrl) {
-        delete out.avatarDataUrl;
-      } else {
-        out.avatarDataUrl = avatarDataUrl;
-      }
-
-      if (typeof out.avatar === "string" && out.avatar.length > MAX_AVATAR_DATA_URL_CHARS) {
-        delete out.avatar;
-      }
-      if (typeof out.photoDataUrl === "string" && out.photoDataUrl.length > MAX_AVATAR_DATA_URL_CHARS) {
-        delete out.photoDataUrl;
-      }
-
-      return out;
-    });
-  }
+  // Profiles: on conserve au maximum l'avatar inline du profil actif.
+  // Les autres avatars sont déplacés vers le cache partagé pour éviter
+  // d'exploser le store principal sur mobile.
+  minimizeProfilesForPersistence(clone, false);
 
   // Bots: même traitement que les profils, mais jamais de duplication d'history ici.
   if (Array.isArray(clone.bots)) {
@@ -889,26 +1195,61 @@ export async function saveStore<T extends Store>(store: T, opts?: SaveOpts): Pro
     let persistedStore = guardStoreShape(sanitizeStoreForPersistence(normalized.store as T));
 
     const preTrimBytes = estimateObjectSizeBytes(persistedStore);
+    recordStoreMetric("before_trim", {
+      bytes: preTrimBytes,
+      mb: Math.round((preTrimBytes / 1024 / 1024) * 100) / 100,
+    });
+
     if (preTrimBytes > 2_000_000) {
-      console.warn("[storage] store trop volumineux, trimming préventif avant écriture.");
       const trimmed: any = { ...(persistedStore as any) };
       delete trimmed.stats;
       delete trimmed.statsByPlayer;
       delete trimmed.statsByMode;
       delete trimmed.profileStats;
       delete trimmed.leaderboards;
+      delete trimmed.statsCache;
+      delete trimmed.statsCaches;
+      delete trimmed.statsSnapshots;
+      delete trimmed.statsBySport;
+      delete trimmed.matchStatsCache;
+      delete trimmed.diagnostics;
+      delete trimmed.diagnostic;
+      delete trimmed.debug;
+      delete trimmed.debugLogs;
+      delete trimmed.perf;
+      delete trimmed.cloudSnapshot;
+      delete trimmed.cloudSnapshots;
       stripStoreHistoryFields(trimmed);
-      if (Array.isArray(trimmed.profiles)) {
-        trimmed.profiles = trimmed.profiles.map((p: any) => {
-          const out = { ...(p || {}) };
-          delete out.avatarDataUrl;
-          delete out.avatar;
-          delete out.photoDataUrl;
-          return out;
-        });
-      }
+      stripStoreHeavyStatsFields(trimmed);
+      stripHeavyImagePayloads(trimmed);
+      if (Array.isArray(trimmed.resumes)) trimmed.resumes = trimArrayTail(trimmed.resumes, 8);
+      if (Array.isArray(trimmed.liveMatches)) trimmed.liveMatches = trimArrayTail(trimmed.liveMatches, 8);
+      minimizeProfilesForPersistence(trimmed, true);
       persistedStore = guardStoreShape(trimmed as T);
     }
+
+    const finalBytesBeforeGuard = estimateObjectSizeBytes(persistedStore);
+    recordStoreMetric("after_trim", {
+      bytes: finalBytesBeforeGuard,
+      mb: Math.round((finalBytesBeforeGuard / 1024 / 1024) * 100) / 100,
+    });
+    recordStoreHotspots("after_trim", persistedStore);
+
+    if (finalBytesBeforeGuard > STORE_SOFT_TARGET_BYTES) {
+      persistedStore = compactStoreForMobile(persistedStore, "soft");
+    }
+
+    let postCompactBytes = estimateObjectSizeBytes(persistedStore);
+    if (postCompactBytes > STORE_HARD_TARGET_BYTES) {
+      persistedStore = compactStoreForMobile(persistedStore, "hard");
+      postCompactBytes = estimateObjectSizeBytes(persistedStore);
+    }
+
+    recordStoreMetric("after_compact", {
+      bytes: postCompactBytes,
+      mb: Math.round((postCompactBytes / 1024 / 1024) * 100) / 100,
+    });
+    recordStoreHotspots("after_compact", persistedStore);
 
     persistedStore = guardStoreSizeForMobile(persistedStore);
 
@@ -921,17 +1262,7 @@ export async function saveStore<T extends Store>(store: T, opts?: SaveOpts): Pro
       if (projected > est.quota * 0.98) {
         console.warn("[storage] quota presque plein, réduction agressive du store avant écriture.");
 
-        const emergencyStore: any = sanitizeStoreForPersistence({ ...(persistedStore as any) });
-        if (Array.isArray(emergencyStore.profiles)) {
-          emergencyStore.profiles = emergencyStore.profiles.map((p: any) => {
-            const out = { ...(p || {}) };
-            delete out.avatarDataUrl;
-            delete out.avatar;
-            delete out.photoDataUrl;
-            return out;
-          });
-        }
-
+        const emergencyStore = compactStoreForMobile(persistedStore, "hard");
         persistedStore = guardStoreShape(emergencyStore as T);
         json = safeJsonStringify(persistedStore);
         payload = await compressGzip(json);

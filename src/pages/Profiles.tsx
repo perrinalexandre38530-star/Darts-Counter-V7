@@ -39,6 +39,87 @@ import { getAvatarCache as getAvatarCacheLib, setAvatarCache as setAvatarCacheLi
 
 import { useSport } from "../contexts/SportContext";
 
+const PROFILE_NAV_DIAG_KEY = "dc_profiles_nav_diag_v1";
+
+const PROFILES_VERBOSE_LOGS =
+  typeof window !== "undefined" && !!(window as any).__dcProfilesVerbose;
+
+function detectProfilesMobileMode() {
+  if (typeof window === "undefined") return false;
+  try {
+    const ua = String(window.navigator?.userAgent || "");
+    const coarse = typeof window.matchMedia === "function"
+      ? window.matchMedia("(pointer: coarse)").matches
+      : false;
+    return /Android|iPhone|iPad|iPod|Mobile/i.test(ua) || coarse;
+  } catch {
+    return false;
+  }
+}
+
+function useDeferredProfilesMedia(enabled: boolean, delayMs = 1600) {
+  const [ready, setReady] = React.useState(!enabled);
+
+  React.useEffect(() => {
+    if (!enabled) {
+      setReady(true);
+      return;
+    }
+
+    setReady(false);
+    let cancelled = false;
+    let timer: number | null = null;
+
+    const start = () => {
+      timer = window.setTimeout(() => {
+        if (!cancelled) setReady(true);
+      }, delayMs);
+    };
+
+    try {
+      const ric = (window as any).requestIdleCallback;
+      if (typeof ric === "function") {
+        ric(() => start(), { timeout: delayMs });
+      } else {
+        start();
+      }
+    } catch {
+      start();
+    }
+
+    return () => {
+      cancelled = true;
+      if (timer) window.clearTimeout(timer);
+    };
+  }, [enabled, delayMs]);
+
+  return ready;
+}
+
+
+function pushProfilesNavDiag(step: string, extra?: Record<string, any>) {
+  if (typeof window === "undefined") return;
+  try {
+    const row = {
+      at: new Date().toISOString(),
+      step,
+      href: String(window.location.href || ""),
+      hash: String(window.location.hash || ""),
+      visibility: typeof document !== "undefined" ? document.visibilityState : "unknown",
+      ...(extra || {}),
+    };
+    const raw = (window.sessionStorage || window.localStorage).getItem(PROFILE_NAV_DIAG_KEY);
+    const arr = Array.isArray(raw ? JSON.parse(raw) : null) ? JSON.parse(raw) : [];
+    arr.push(row);
+    while (arr.length > 80) arr.shift();
+    (window.sessionStorage || window.localStorage).setItem(PROFILE_NAV_DIAG_KEY, JSON.stringify(arr));
+    try {
+      window.dispatchEvent(new CustomEvent("dc:profiles-nav-diag", { detail: row }));
+    } catch {}
+    if (PROFILES_VERBOSE_LOGS) console.log("[profiles-nav-diag]", row);
+  } catch {}
+}
+
 // Effet "shimmer" du nom joueur (copié de StatsHub)
 const statsNameCss = `
 .dc-stats-name-wrapper {
@@ -540,7 +621,18 @@ export default function Profiles({
   params?: any;
 }) {
 
+  React.useEffect(() => {
+    pushProfilesNavDiag("profiles:mount:start");
+    try {
+      window.setTimeout(() => pushProfilesNavDiag("profiles:mount:after_120ms"), 120);
+      window.setTimeout(() => pushProfilesNavDiag("profiles:mount:after_600ms"), 600);
+      window.setTimeout(() => pushProfilesNavDiag("profiles:mount:after_1500ms"), 1500);
+    } catch {}
+    return () => pushProfilesNavDiag("profiles:unmount");
+  }, []);
+
   const [toast, setToast] = React.useState<null | { type: "success" | "error"; message: string }>(null);
+  const profilesLightMode = React.useMemo(() => detectProfilesMobileMode(), []);
 
   // 🔥 injection du CSS shimmer une seule fois
   useInjectStatsNameCss();
@@ -615,14 +707,16 @@ export default function Profiles({
         const next = buildNext(prev);
         const merged = mergeProfilesSafe(prev, next);
   
-        console.log("[setProfilesSafe] prev -> next -> merged", {
-          prevLen: prev.length,
-          nextLen: next.length,
-          mergedLen: merged.length,
-          prevIds: prev.map((p) => p.id),
-          nextIds: next.map((p) => p.id),
-          mergedIds: merged.map((p) => p.id),
-        });
+        if (PROFILES_VERBOSE_LOGS) {
+          console.log("[setProfilesSafe] prev -> next -> merged", {
+            prevLen: prev.length,
+            nextLen: next.length,
+            mergedLen: merged.length,
+            prevIds: prev.map((p) => p.id),
+            nextIds: next.map((p) => p.id),
+            mergedIds: merged.map((p) => p.id),
+          });
+        }
 
         // ✅ keep cache in sync (anti flash)
         writeProfilesCache(merged);
@@ -681,6 +775,7 @@ export default function Profiles({
   }, [auth?.status, selfStatus, update]);
 
   React.useEffect(() => {
+    if (!PROFILES_VERBOSE_LOGS) return;
     console.log("[Profiles] RENDER WATCH profiles=", profiles.length, {
       activeProfileId,
       ids: profiles.map((p) => p.id),
@@ -717,6 +812,22 @@ export default function Profiles({
       : "menu"
   );
 
+
+  const [forceHeavyProfileMedia, setForceHeavyProfileMedia] = React.useState(false);
+  const deferHeavyProfileMedia = profilesLightMode && view === "me" && !forceHeavyProfileMedia;
+  const heavyProfileMediaReady = useDeferredProfilesMedia(deferHeavyProfileMedia, 1800) || forceHeavyProfileMedia;
+
+  React.useEffect(() => {
+    if (!profilesLightMode) return;
+    const onForce = () => setForceHeavyProfileMedia(true);
+    window.addEventListener("dc:profiles-force-media", onForce as EventListener);
+    return () => window.removeEventListener("dc:profiles-force-media", onForce as EventListener);
+  }, [profilesLightMode]);
+
+  React.useEffect(() => {
+    if (view !== "me") setForceHeavyProfileMedia(false);
+  }, [view]);
+
     // ✅ FORCE auth UI (quand on vient de ONLINE / AuthStart / Account)
     // - params.forceAuth : explicite
     // - params.mode: signin/signup (compat)
@@ -741,6 +852,7 @@ export default function Profiles({
   const [statsMap, setStatsMap] = React.useState<
     Record<string, BasicProfileStats | undefined>
   >({});
+  const passiveOnlineHydrateDoneRef = React.useRef<string>("");
 
   function setActiveProfile(id: string | null) {
     // 1) on met à jour le store
@@ -1281,6 +1393,16 @@ React.useEffect(() => {
     React.useEffect(() => {
       if (!active) return;
       if (auth.status !== "signed_in") return;
+      if (profilesLightMode) {
+        pushProfilesNavDiag("profiles:passive_hydrate:skipped_mobile", { activeId: active.id });
+        return;
+      }
+      const passiveKey = [
+        String(active.id || ""),
+        String(auth.user?.email || ""),
+        String((auth.profile as any)?.updatedAt || (auth.profile as any)?.updated_at || ""),
+      ].join("|");
+      if (passiveOnlineHydrateDoneRef.current === passiveKey) return;
   
       const pi = ((active as any).privateInfo || {}) as PrivateInfo;
       const patch: Partial<PrivateInfo> = {};
@@ -1359,10 +1481,13 @@ React.useEffect(() => {
       }
   
       if (Object.keys(patch).length > 0) {
+        passiveOnlineHydrateDoneRef.current = passiveKey;
         patchActivePrivateInfo(patch);
         patchActivePrefs(patch);
+      } else {
+        passiveOnlineHydrateDoneRef.current = passiveKey;
       }
-    }, [active?.id, auth.status, auth.profile, auth.user]);  
+    }, [active?.id, auth.status, auth.profile, auth.user, profilesLightMode]);  
 
   // NEW : au chargement de la page, si un profil actif a des prefs app, on les applique
   React.useEffect(() => {
@@ -1382,24 +1507,35 @@ React.useEffect(() => {
 
   React.useEffect(() => {
     let cancelled = false;
-    (async () => {
+    let timer: number | null = null;
+    const run = async () => {
       const pid = active?.id;
       if (!pid || statsMap[pid]) return;
       try {
         const s = await getBasicProfileStatsAsync(pid);
         if (!cancelled) setStatsMap((m) => ({ ...m, [pid]: s }));
       } catch {}
-    })();
+    };
+    if (profilesLightMode) {
+      timer = window.setTimeout(() => { void run(); }, 350);
+    } else {
+      void run();
+    }
     return () => {
       cancelled = true;
+      if (timer) window.clearTimeout(timer);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [active?.id]);
+  }, [active?.id, profilesLightMode]);
 
   React.useEffect(() => {
+    if (profilesLightMode) {
+      pushProfilesNavDiag("profiles:stats_bulk_preload:skipped_mobile", { count: profiles.length });
+      return;
+    }
     let stopped = false;
     (async () => {
-      const ids = profiles.map((p) => p.id).slice(0, 48);
+      const ids = profiles.map((p) => p.id).slice(0, 12);
       for (const id of ids) {
         if (stopped) break;
         if (statsMap[id]) continue;
@@ -1413,7 +1549,7 @@ React.useEffect(() => {
       stopped = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [profiles]);
+  }, [profiles, profilesLightMode]);
 
   const activeAvg3D = React.useMemo<number | null>(() => {
     if (!active?.id) return null;
@@ -1455,7 +1591,9 @@ React.useEffect(() => {
       )
     );
     try { if (nextStoreSnapshot) await saveStore(nextStoreSnapshot); } catch {}
-    try { await (window as any).__flushCloudNow?.("profiles_privateInfo", nextStoreSnapshot); } catch {}
+    if (!detectProfilesMobileMode()) {
+      try { await (window as any).__flushCloudNow?.("profiles_privateInfo", nextStoreSnapshot); } catch {}
+    }
   }
 
   function patchActivePrivateInfo(patch: Record<string, any>) {
@@ -1507,7 +1645,9 @@ React.useEffect(() => {
 
     queueMicrotask(async () => {
       try { if (nextStoreSnapshot) await saveStore(nextStoreSnapshot); } catch {}
-      try { await (window as any).__flushCloudNow?.("profiles_prefs", nextStoreSnapshot); } catch {}
+      if (!detectProfilesMobileMode()) {
+        try { await (window as any).__flushCloudNow?.("profiles_prefs", nextStoreSnapshot); } catch {}
+      }
     });
   }
 
@@ -1800,6 +1940,7 @@ React.useEffect(() => {
         });
       }}
       onResetStats={resetActiveStats}
+      lightweightAvatar={deferHeavyProfileMedia && !heavyProfileMediaReady}
     />
   ) : (
     <UnifiedAuthBlock
@@ -1816,10 +1957,34 @@ React.useEffect(() => {
 </Card>
 
                 {/* 🔥 Panneau sets de fléchettes du profil actif */}
-                {isDarts && active && (
+                {isDarts && active && !profilesLightMode && (
                   <div style={{ marginTop: 8, marginBottom: 8 }}>
                     <DartSetsPanel key={`me-dartsets-${String((((meProfileForDarts as any) || (active as any))?.id || "none"))}`} profile={((meProfileForDarts as any) || (active as any))} />
                   </div>
+                )}
+
+                {isDarts && active && profilesLightMode && (
+                  <Card style={{ marginTop: 8, marginBottom: 8 }}>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                      <div className="subtitle" style={{ fontSize: 12, color: theme.textSoft }}>
+                        Les visuels des fléchettes sont différés sur mobile pour éviter le gel de la page.
+                      </div>
+                      {heavyProfileMediaReady ? (
+                        <DartSetsPanel key={`me-dartsets-mobile-${String((((meProfileForDarts as any) || (active as any))?.id || "none"))}`} profile={((meProfileForDarts as any) || (active as any))} />
+                      ) : (
+                        <button
+                          className="btn sm"
+                          type="button"
+                          onClick={() => {
+                            pushProfilesNavDiag("profiles:media:manual_load_requested");
+                            window.dispatchEvent(new CustomEvent("dc:profiles-force-media"));
+                          }}
+                        >
+                          Charger mes images
+                        </button>
+                      )}
+                    </div>
+                  </Card>
                 )}
 
                 <Card
@@ -2195,6 +2360,7 @@ function ActiveProfileBlock({
   onEdit,
   onOpenStats,
   onResetStats,
+  lightweightAvatar = false,
 }: {
   active: Profile;
   activeAvg3D: number | null;
@@ -2204,6 +2370,7 @@ function ActiveProfileBlock({
   onEdit: (name: string, avatar?: File | null) => void;
   onOpenStats?: () => void;
   onResetStats?: () => void;
+  lightweightAvatar?: boolean;
 }) {
   const { theme } = useTheme();
 
@@ -2428,12 +2595,33 @@ function ActiveProfileBlock({
           </div>
         )}
 
-        <ProfileAvatar
-          size={AVATAR}
-          dataUrl={avatarSrc}
-          label={displayName?.[0]?.toUpperCase() || "?"}
-          showStars={false}
-        />
+        {lightweightAvatar ? (
+          <div
+            aria-label="avatar-placeholder"
+            style={{
+              width: AVATAR,
+              height: AVATAR,
+              borderRadius: "50%",
+              display: "grid",
+              placeItems: "center",
+              background: "radial-gradient(circle at 30% 30%, rgba(255,255,255,.12), rgba(255,255,255,.04) 58%, rgba(0,0,0,.28) 100%)",
+              border: `1px solid ${primary}55`,
+              color: "#fff",
+              fontSize: 34,
+              fontWeight: 900,
+              letterSpacing: 1,
+            }}
+          >
+            {displayName?.[0]?.toUpperCase() || "?"}
+          </div>
+        ) : (
+          <ProfileAvatar
+            size={AVATAR}
+            dataUrl={avatarSrc}
+            label={displayName?.[0]?.toUpperCase() || "?"}
+            showStars={false}
+          />
+        )}
       </div>
 
       {/* TEXTE + ACTIONS */}
@@ -2476,7 +2664,13 @@ function ActiveProfileBlock({
           <span style={{ color: statusColor }}>{statusLabel}</span>
         </div>
 
-        {active?.id && (
+        {lightweightAvatar && (
+          <div style={{ marginTop: 8, fontSize: 11, color: "rgba(255,255,255,.72)", textAlign: "center" }}>
+            Chargement léger mobile actif. Les visuels arrivent après stabilisation.
+          </div>
+        )}
+
+        {active?.id && !lightweightAvatar && (
           <div style={{ marginTop: 8 }}>
             <GoldMiniStats profileId={active.id} />
           </div>
@@ -2513,19 +2707,6 @@ function ActiveProfileBlock({
             </button>
             <button className="btn ok sm" onClick={handleSaveEdit}>
               Enregistrer
-            </button>
-            <button
-              className="btn sm"
-              onClick={() => {
-                try {
-                  onSync?.({ ...draft });
-                } catch {}
-              }}
-            >
-              Synchroniser
-            </button>
-            <button className="btn sm" onClick={() => onPull?.()}>
-              Récupérer
             </button>
           </div>
         )}
