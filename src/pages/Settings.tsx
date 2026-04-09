@@ -1483,9 +1483,6 @@ export default function Settings({ go }: Props) {
   const { lang, setLang, t } = useLang();
 
   const [tab, setTab] = React.useState<SettingsTab>("menu");
-  const [nasBusy, setNasBusy] = React.useState<null | "backup" | "restore">(null);
-  const [nasStatus, setNasStatus] = React.useState<string>("");
-  const [nasLastInfo, setNasLastInfo] = React.useState<any>(null);
 
   React.useEffect(() => {
     injectSettingsAnimationsOnce();
@@ -1708,6 +1705,10 @@ export default function Settings({ go }: Props) {
   }
 
   function NasBackupSection() {
+    const [busy, setBusy] = React.useState<null | "backup" | "restore">(null);
+    const [status, setStatus] = React.useState<string>("");
+    const [lastInfo, setLastInfo] = React.useState<any>(null);
+
     const btnBase: React.CSSProperties = {
       borderRadius: 12,
       padding: "10px 12px",
@@ -1719,25 +1720,17 @@ export default function Settings({ go }: Props) {
     };
 
     async function handleBackup() {
-      setNasBusy("backup");
-      setNasStatus("⏳ Sauvegarde NAS en cours...");
-      setNasLastInfo(null);
+      setBusy("backup");
+      setStatus("");
       try {
         const res = await pushFullBackupToNas();
-        setNasLastInfo(res ?? null);
-        const updatedAt = res?.updatedAt ? new Date(res.updatedAt).toLocaleString() : null;
-        const msg = updatedAt
-          ? `✅ Backup NAS envoyé avec succès. Dernière mise à jour : ${updatedAt}`
-          : "✅ Backup NAS envoyé avec succès.";
-        setNasStatus(msg);
-        safeAlert(msg);
+        setLastInfo(res ?? null);
+        setStatus("✅ Backup NAS envoyé avec succès.");
       } catch (e) {
         const msg = e instanceof Error ? e.message : String(e);
-        const finalMsg = `❌ Backup NAS impossible : ${msg}`;
-        setNasStatus(finalMsg);
-        safeAlert(finalMsg);
+        setStatus(`❌ Backup NAS impossible : ${msg}`);
       } finally {
-        setNasBusy(null);
+        setBusy(null);
       }
     }
 
@@ -1749,22 +1742,17 @@ export default function Settings({ go }: Props) {
       );
       if (!ok) return;
 
-      setNasBusy("restore");
-      setNasStatus("⏳ Restauration NAS en cours...");
-      setNasLastInfo(null);
+      setBusy("restore");
+      setStatus("");
       try {
         const res = await restoreLatestBackupFromNas();
-        setNasLastInfo(res ?? null);
-        const msg = "✅ Restauration NAS terminée. Recharge l'application pour relire tout le store.";
-        setNasStatus(msg);
-        safeAlert(msg);
+        setLastInfo(res ?? null);
+        setStatus("✅ Restauration NAS terminée. Recharge l'application pour relire tout le store.");
       } catch (e) {
         const msg = e instanceof Error ? e.message : String(e);
-        const finalMsg = `❌ Restauration NAS impossible : ${msg}`;
-        setNasStatus(finalMsg);
-        safeAlert(finalMsg);
+        setStatus(`❌ Restauration NAS impossible : ${msg}`);
       } finally {
-        setNasBusy(null);
+        setBusy(null);
       }
     }
 
@@ -1818,36 +1806,36 @@ export default function Settings({ go }: Props) {
           <button
             type="button"
             onClick={handleBackup}
-            disabled={nasBusy !== null}
+            disabled={busy !== null}
             style={{
               ...btnBase,
               border: `1px solid ${theme.primary}`,
               background: "rgba(0,0,0,0.35)",
               color: theme.primary,
               boxShadow: `0 0 10px ${theme.primary}22`,
-              opacity: nasBusy ? 0.7 : 1,
+              opacity: busy ? 0.7 : 1,
             }}
           >
-            {nasBusy === "backup" ? "Sauvegarde..." : "Sauvegarder sur NAS"}
+            {busy === "backup" ? "Sauvegarde..." : "Sauvegarder sur NAS"}
           </button>
 
           <button
             type="button"
             onClick={handleRestore}
-            disabled={nasBusy !== null}
+            disabled={busy !== null}
             style={{
               ...btnBase,
               border: `1px solid ${theme.borderSoft}`,
               background: "rgba(255,255,255,0.04)",
               color: theme.text,
-              opacity: nasBusy ? 0.7 : 1,
+              opacity: busy ? 0.7 : 1,
             }}
           >
-            {nasBusy === "restore" ? "Restauration..." : "Restaurer depuis NAS"}
+            {busy === "restore" ? "Restauration..." : "Restaurer depuis NAS"}
           </button>
         </div>
 
-        {nasStatus ? (
+        {status ? (
           <div
             style={{
               marginTop: 12,
@@ -1860,11 +1848,11 @@ export default function Settings({ go }: Props) {
               lineHeight: 1.45,
             }}
           >
-            {nasStatus}
+            {status}
           </div>
         ) : null}
 
-        {nasLastInfo ? (
+        {lastInfo ? (
           <div
             style={{
               marginTop: 12,
@@ -1879,7 +1867,7 @@ export default function Settings({ go }: Props) {
             }}
           >
             <div><strong>Réponse API :</strong></div>
-            <div>{JSON.stringify(nasLastInfo)}</div>
+            <div>{JSON.stringify(lastInfo)}</div>
           </div>
         ) : null}
       </section>
