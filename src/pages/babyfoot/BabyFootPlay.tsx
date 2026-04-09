@@ -265,11 +265,11 @@ export default function BabyFootPlay({ go, onFinish, params }: Props) {
     state.phase === "penalties"
       ? "Séance en cours"
       : state.setsEnabled
-      ? `Set ${state.setIndex} • objectif ${state.setTarget || state.target}`
-      : `Objectif ${state.target}`;
+      ? `Set ${state.setIndex} • cible ${state.setTarget || state.target}`
+      : `Target ${state.target}`;
 
   const secondaryLabel = state.setsEnabled
-    ? `BO${state.setsBestOf || 3}`
+    ? `BO${state.setsBestOf || 3} • win ${neededSets}`
     : state.goldenGoal
     ? "Golden goal"
     : state.matchDurationSec
@@ -277,11 +277,12 @@ export default function BabyFootPlay({ go, onFinish, params }: Props) {
     : undefined;
 
   const liveContext = [
-    state.setsEnabled ? `Sets ${state.setsA}–${state.setsB}` : `Leader ${leaderLabel}`,
-    regularLimitMs != null ? `Temps ${fmt(regularLimitMs)}` : "Sans chrono fixe",
-    state.phase === "overtime" ? `OT ${fmt(otLimitMs ?? 0)}` : `Mode ${state.mode}`,
-    state.goldenGoal && state.phase === "play" ? "Golden goal" : null,
-    state.overtimeGoldenGoal && state.phase === "overtime" ? "Golden goal OT" : null,
+    state.setsEnabled ? `Sets ${state.setsA}–${state.setsB}` : `Leader • ${leaderLabel}`,
+    regularLimitMs != null ? `Temps réglementaire ${fmt(regularLimitMs)}` : "Sans chrono fixe",
+    state.phase === "overtime" ? `Prolongation ${fmt(otLimitMs ?? 0)}` : `Mode ${state.mode}`,
+    state.goldenGoal && state.phase === "play" ? "Golden goal active" : null,
+    state.overtimeGoldenGoal && state.phase === "overtime" ? "Golden goal OT active" : null,
+    (state.handicapA || state.handicapB) ? `${state.teamA} +${state.handicapA || 0} / ${state.teamB} +${state.handicapB || 0}` : null,
   ].filter((entry): entry is string => Boolean(entry));
 
   const infoTitle = "Baby-Foot";
@@ -423,7 +424,7 @@ export default function BabyFootPlay({ go, onFinish, params }: Props) {
         right={<InfoDot title={infoTitle} content={infoBody} glow={(theme?.colors?.primary ?? "#7cffc4") + "88"} />}
       />
 
-      <div style={{ padding: 10, paddingBottom: 124, display: "grid", gap: 10, overflowX: "hidden" }}>
+      <div style={{ padding: 12, paddingBottom: 180, display: "grid", gap: 12 }}>
         <BabyFootLiveHeader
           phaseLabel={phaseLabel}
           modeLabel={state.mode}
@@ -460,7 +461,7 @@ export default function BabyFootPlay({ go, onFinish, params }: Props) {
           handicapB={state.handicapB}
         />
 
-        <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr)", gap: 10 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
           <BabyFootTeamCard
             team="A"
             name={state.teamA}
@@ -516,7 +517,7 @@ export default function BabyFootPlay({ go, onFinish, params }: Props) {
           left: 0,
           right: 0,
           bottom: 0,
-          padding: "8px 10px calc(72px + env(safe-area-inset-bottom))",
+          padding: "10px 12px calc(12px + env(safe-area-inset-bottom))",
           backdropFilter: "blur(10px)",
           background:
             "linear-gradient(180deg, rgba(10,10,18,0.00) 0%, rgba(10,10,18,0.72) 18%, rgba(10,10,18,0.94) 100%)",
@@ -524,7 +525,7 @@ export default function BabyFootPlay({ go, onFinish, params }: Props) {
           zIndex: 50,
         }}
       >
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0,1fr))", gap: 8 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
           <DockButton
             label="UNDO"
             onClick={() => {
@@ -613,8 +614,8 @@ function DockButton({
       onClick={onClick}
       disabled={disabled}
       style={{
-        height: 44,
-        borderRadius: 14,
+        height: 54,
+        borderRadius: 18,
         border: "1px solid rgba(255,255,255,0.12)",
         background: disabled
           ? "rgba(255,255,255,0.05)"
@@ -623,8 +624,7 @@ function DockButton({
           : "rgba(255,255,255,0.06)",
         color: disabled ? "rgba(255,255,255,0.45)" : "#fff",
         fontWeight: 1100,
-        fontSize: 12,
-        letterSpacing: 0.4,
+        letterSpacing: 0.8,
         cursor: disabled ? "default" : "pointer",
       }}
     >
@@ -661,7 +661,7 @@ function Modal({
         style={{
           width: "100%",
           maxWidth: 520,
-          borderRadius: 14,
+          borderRadius: 18,
           border: "1px solid rgba(255,255,255,0.14)",
           background: "rgba(10,12,18,0.96)",
           padding: 16,

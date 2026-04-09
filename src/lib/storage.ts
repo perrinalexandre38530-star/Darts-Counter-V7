@@ -70,10 +70,6 @@ function makeMinimalLegacyFallback<T extends Store>(store: T): Record<string, an
   };
 }
 
-const STORE_TOO_BIG_WARN_BYTES = 8 * 1024 * 1024;
-const STORE_SOFT_TARGET_BYTES = 7_500_000;
-const STORE_HARD_TARGET_BYTES = 6_500_000;
-
 function guardStoreSizeForMobile<T>(store: T): T {
   try {
     const bytes = estimateObjectSizeBytes(store);
@@ -90,7 +86,7 @@ function guardStoreSizeForMobile<T>(store: T): T {
       );
     } catch {}
 
-    if (bytes > STORE_TOO_BIG_WARN_BYTES) {
+    if (bytes > 8 * 1024 * 1024) {
       if (typeof window !== "undefined") {
         const k = "dc_last_store_too_big_warn_v1";
         const now = Date.now();
@@ -232,155 +228,6 @@ function stripHeavyImagePayloads(target: any) {
   }
 
   return target;
-}
-
-
-function getStoreTopLevelHotspots(target: any, limit = 12) {
-  try {
-    if (!target || typeof target !== "object") return [];
-    return Object.entries(target)
-      .map(([key, value]) => ({
-        key,
-        bytes: estimateObjectSizeBytes(value),
-      }))
-      .sort((a, b) => b.bytes - a.bytes)
-      .slice(0, limit)
-      .map((row) => ({
-        ...row,
-        mb: Math.round((row.bytes / 1024 / 1024) * 100) / 100,
-      }));
-  } catch {
-    return [];
-  }
-}
-
-function recordStoreHotspots(kind: string, target: any) {
-  try {
-    localStorage.setItem(
-      "dc_last_store_hotspots_v1",
-      safeJsonStringify({
-        kind,
-        at: Date.now(),
-        hotspots: getStoreTopLevelHotspots(target),
-      })
-    );
-  } catch {}
-}
-
-function trimStoreCollection(target: any, key: string, keep: number) {
-  if (!target || typeof target !== "object") return;
-  if (!Array.isArray((target as any)[key])) return;
-  (target as any)[key] = trimArrayTail((target as any)[key], keep);
-}
-
-function isEssentialStoreKey(key: string) {
-  const lower = String(key || "").toLowerCase();
-  return [
-    "profiles",
-    "activeprofileid",
-    "settings",
-    "dartsets",
-    "activedartsetid",
-    "bots",
-    "friends",
-    "friendinvites",
-    "lang",
-    "theme",
-    "preferences",
-    "version",
-    "updatedat",
-  ].includes(lower);
-}
-
-function isLikelyEphemeralStoreKey(key: string) {
-  const lower = String(key || "").toLowerCase();
-  if (!lower || isEssentialStoreKey(lower)) return false;
-  if (STORE_HISTORY_KEYS.some((item) => String(item).toLowerCase() === lower)) return true;
-  if (STORE_HEAVY_STATS_KEYS.some((item) => String(item).toLowerCase() === lower)) return true;
-
-  return (
-    lower.includes("cache") ||
-    lower.includes("snapshot") ||
-    lower.includes("debug") ||
-    lower.includes("diagnostic") ||
-    lower.includes("perf") ||
-    lower.includes("leaderboard") ||
-    lower.includes("summary") ||
-    lower.includes("ticker") ||
-    lower.includes("feed") ||
-    lower.includes("tipofday") ||
-    lower.includes("lastrecord") ||
-    lower.includes("lastmatch") ||
-    lower.includes("onlinelast") ||
-    lower.includes("onlineleader") ||
-    lower.includes("cloudsnapshot")
-  );
-}
-
-function compactStoreForMobile<T extends Store>(store: T, mode: "soft" | "hard" = "soft"): T {
-  let clone: any;
-  try {
-    clone = safeJsonParse(safeJsonStringify(store || {}), {});
-  } catch {
-    clone = { ...(store || {}) };
-  }
-
-  stripStoreHistoryFields(clone);
-  stripStoreHeavyStatsFields(clone);
-  stripHeavyImagePayloads(clone);
-
-  trimStoreCollection(clone, "resumes", mode === "hard" ? 4 : 8);
-  trimStoreCollection(clone, "liveMatches", mode === "hard" ? 4 : 8);
-  trimStoreCollection(clone, "recentMatches", mode === "hard" ? 4 : 8);
-  trimStoreCollection(clone, "matches", mode === "hard" ? 6 : 10);
-  trimStoreCollection(clone, "saved", mode === "hard" ? 6 : 10);
-  trimStoreCollection(clone, "draftMatches", mode === "hard" ? 2 : 4);
-  trimStoreCollection(clone, "pendingMatches", mode === "hard" ? 2 : 4);
-
-  minimizeProfilesForPersistence(clone, mode === "hard");
-
-  if (Array.isArray(clone.bots)) {
-    clone.bots = clone.bots.map((b: any) => sanitizeBotLikeEntry(b));
-  }
-
-  for (const [key, value] of Object.entries(clone)) {
-    const lower = String(key || "").toLowerCase();
-    if (isEssentialStoreKey(lower)) continue;
-
-    if (isLikelyEphemeralStoreKey(lower)) {
-      delete clone[key];
-      continue;
-    }
-
-    const bytes = estimateObjectSizeBytes(value);
-
-    if (Array.isArray(value) && bytes > (mode === "hard" ? 180_000 : 350_000)) {
-      clone[key] = trimArrayTail(value as any[], mode === "hard" ? 3 : 6);
-      continue;
-    }
-
-    if (
-      isObjectLike(value) &&
-      bytes > (mode === "hard" ? 220_000 : 450_000) &&
-      (
-        lower.includes("cache") ||
-        lower.includes("summary") ||
-        lower.includes("stats") ||
-        lower.includes("diagnostic") ||
-        lower.includes("debug") ||
-        lower.includes("snapshot")
-      )
-    ) {
-      delete clone[key];
-      continue;
-    }
-
-    if ((Array.isArray(value) || isObjectLike(value)) && bytes > (mode === "hard" ? 250_000 : 500_000)) {
-      clone[key] = stripHeavyInlineImagesDeep(value);
-    }
-  }
-
-  return guardStoreShape(clone as T);
 }
 
 function recordStoreMetric(kind: string, payload: Record<string, any>) {
@@ -1233,25 +1080,17 @@ export async function saveStore<T extends Store>(store: T, opts?: SaveOpts): Pro
       bytes: finalBytesBeforeGuard,
       mb: Math.round((finalBytesBeforeGuard / 1024 / 1024) * 100) / 100,
     });
-    recordStoreHotspots("after_trim", persistedStore);
-
-    if (finalBytesBeforeGuard > STORE_SOFT_TARGET_BYTES) {
-      persistedStore = compactStoreForMobile(persistedStore, "soft");
-    }
-
-    let postCompactBytes = estimateObjectSizeBytes(persistedStore);
-    if (postCompactBytes > STORE_HARD_TARGET_BYTES) {
-      persistedStore = compactStoreForMobile(persistedStore, "hard");
-      postCompactBytes = estimateObjectSizeBytes(persistedStore);
-    }
-
-    recordStoreMetric("after_compact", {
-      bytes: postCompactBytes,
-      mb: Math.round((postCompactBytes / 1024 / 1024) * 100) / 100,
-    });
-    recordStoreHotspots("after_compact", persistedStore);
 
     persistedStore = guardStoreSizeForMobile(persistedStore);
+
+    const postGuardBytes = estimateObjectSizeBytes(persistedStore);
+    if (postGuardBytes > 8 * 1024 * 1024) {
+      const emergencyStore: any = sanitizeStoreForPersistence({ ...(persistedStore as any) });
+      minimizeProfilesForPersistence(emergencyStore, true);
+      stripStoreHistoryFields(emergencyStore);
+      stripStoreHeavyStatsFields(emergencyStore);
+      persistedStore = guardStoreShape(emergencyStore as T);
+    }
 
     let json = safeJsonStringify(persistedStore);
     let payload = await compressGzip(json);
@@ -1262,7 +1101,17 @@ export async function saveStore<T extends Store>(store: T, opts?: SaveOpts): Pro
       if (projected > est.quota * 0.98) {
         console.warn("[storage] quota presque plein, réduction agressive du store avant écriture.");
 
-        const emergencyStore = compactStoreForMobile(persistedStore, "hard");
+        const emergencyStore: any = sanitizeStoreForPersistence({ ...(persistedStore as any) });
+        if (Array.isArray(emergencyStore.profiles)) {
+          emergencyStore.profiles = emergencyStore.profiles.map((p: any) => {
+            const out = { ...(p || {}) };
+            delete out.avatarDataUrl;
+            delete out.avatar;
+            delete out.photoDataUrl;
+            return out;
+          });
+        }
+
         persistedStore = guardStoreShape(emergencyStore as T);
         json = safeJsonStringify(persistedStore);
         payload = await compressGzip(json);
