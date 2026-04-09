@@ -41,6 +41,23 @@ import { useSport } from "../contexts/SportContext";
 
 const PROFILE_NAV_DIAG_KEY = "dc_profiles_nav_diag_v1";
 
+const PROFILES_VERBOSE_LOGS =
+  typeof window !== "undefined" && !!(window as any).__dcProfilesVerbose;
+
+function detectProfilesMobileMode() {
+  if (typeof window === "undefined") return false;
+  try {
+    const ua = String(window.navigator?.userAgent || "");
+    const coarse = typeof window.matchMedia === "function"
+      ? window.matchMedia("(pointer: coarse)").matches
+      : false;
+    return /Android|iPhone|iPad|iPod|Mobile/i.test(ua) || coarse;
+  } catch {
+    return false;
+  }
+}
+
+
 function pushProfilesNavDiag(step: string, extra?: Record<string, any>) {
   if (typeof window === "undefined") return;
   try {
@@ -60,7 +77,7 @@ function pushProfilesNavDiag(step: string, extra?: Record<string, any>) {
     try {
       window.dispatchEvent(new CustomEvent("dc:profiles-nav-diag", { detail: row }));
     } catch {}
-    console.log("[profiles-nav-diag]", row);
+    if (PROFILES_VERBOSE_LOGS) console.log("[profiles-nav-diag]", row);
   } catch {}
 }
 
@@ -576,6 +593,7 @@ export default function Profiles({
   }, []);
 
   const [toast, setToast] = React.useState<null | { type: "success" | "error"; message: string }>(null);
+  const profilesLightMode = React.useMemo(() => detectProfilesMobileMode(), []);
 
   // 🔥 injection du CSS shimmer une seule fois
   useInjectStatsNameCss();
@@ -650,14 +668,16 @@ export default function Profiles({
         const next = buildNext(prev);
         const merged = mergeProfilesSafe(prev, next);
   
-        console.log("[setProfilesSafe] prev -> next -> merged", {
-          prevLen: prev.length,
-          nextLen: next.length,
-          mergedLen: merged.length,
-          prevIds: prev.map((p) => p.id),
-          nextIds: next.map((p) => p.id),
-          mergedIds: merged.map((p) => p.id),
-        });
+        if (PROFILES_VERBOSE_LOGS) {
+          console.log("[setProfilesSafe] prev -> next -> merged", {
+            prevLen: prev.length,
+            nextLen: next.length,
+            mergedLen: merged.length,
+            prevIds: prev.map((p) => p.id),
+            nextIds: next.map((p) => p.id),
+            mergedIds: merged.map((p) => p.id),
+          });
+        }
 
         // ✅ keep cache in sync (anti flash)
         writeProfilesCache(merged);
@@ -716,6 +736,7 @@ export default function Profiles({
   }, [auth?.status, selfStatus, update]);
 
   React.useEffect(() => {
+    if (!PROFILES_VERBOSE_LOGS) return;
     console.log("[Profiles] RENDER WATCH profiles=", profiles.length, {
       activeProfileId,
       ids: profiles.map((p) => p.id),
@@ -776,6 +797,7 @@ export default function Profiles({
   const [statsMap, setStatsMap] = React.useState<
     Record<string, BasicProfileStats | undefined>
   >({});
+  const passiveOnlineHydrateDoneRef = React.useRef<string>("");
 
   function setActiveProfile(id: string | null) {
     // 1) on met à jour le store
@@ -1316,6 +1338,16 @@ React.useEffect(() => {
     React.useEffect(() => {
       if (!active) return;
       if (auth.status !== "signed_in") return;
+      if (profilesLightMode) {
+        pushProfilesNavDiag("profiles:passive_hydrate:skipped_mobile", { activeId: active.id });
+        return;
+      }
+      const passiveKey = [
+        String(active.id || ""),
+        String(auth.user?.email || ""),
+        String((auth.profile as any)?.updatedAt || (auth.profile as any)?.updated_at || ""),
+      ].join("|");
+      if (passiveOnlineHydrateDoneRef.current === passiveKey) return;
   
       const pi = ((active as any).privateInfo || {}) as PrivateInfo;
       const patch: Partial<PrivateInfo> = {};
@@ -1394,10 +1426,13 @@ React.useEffect(() => {
       }
   
       if (Object.keys(patch).length > 0) {
+        passiveOnlineHydrateDoneRef.current = passiveKey;
         patchActivePrivateInfo(patch);
         patchActivePrefs(patch);
+      } else {
+        passiveOnlineHydrateDoneRef.current = passiveKey;
       }
-    }, [active?.id, auth.status, auth.profile, auth.user]);  
+    }, [active?.id, auth.status, auth.profile, auth.user, profilesLightMode]);  
 
   // NEW : au chargement de la page, si un profil actif a des prefs app, on les applique
   React.useEffect(() => {
@@ -1417,24 +1452,35 @@ React.useEffect(() => {
 
   React.useEffect(() => {
     let cancelled = false;
-    (async () => {
+    let timer: number | null = null;
+    const run = async () => {
       const pid = active?.id;
       if (!pid || statsMap[pid]) return;
       try {
         const s = await getBasicProfileStatsAsync(pid);
         if (!cancelled) setStatsMap((m) => ({ ...m, [pid]: s }));
       } catch {}
-    })();
+    };
+    if (profilesLightMode) {
+      timer = window.setTimeout(() => { void run(); }, 350);
+    } else {
+      void run();
+    }
     return () => {
       cancelled = true;
+      if (timer) window.clearTimeout(timer);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [active?.id]);
+  }, [active?.id, profilesLightMode]);
 
   React.useEffect(() => {
+    if (profilesLightMode) {
+      pushProfilesNavDiag("profiles:stats_bulk_preload:skipped_mobile", { count: profiles.length });
+      return;
+    }
     let stopped = false;
     (async () => {
-      const ids = profiles.map((p) => p.id).slice(0, 48);
+      const ids = profiles.map((p) => p.id).slice(0, 12);
       for (const id of ids) {
         if (stopped) break;
         if (statsMap[id]) continue;
@@ -1448,7 +1494,7 @@ React.useEffect(() => {
       stopped = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [profiles]);
+  }, [profiles, profilesLightMode]);
 
   const activeAvg3D = React.useMemo<number | null>(() => {
     if (!active?.id) return null;
@@ -1490,7 +1536,9 @@ React.useEffect(() => {
       )
     );
     try { if (nextStoreSnapshot) await saveStore(nextStoreSnapshot); } catch {}
-    try { await (window as any).__flushCloudNow?.("profiles_privateInfo", nextStoreSnapshot); } catch {}
+    if (!detectProfilesMobileMode()) {
+      try { await (window as any).__flushCloudNow?.("profiles_privateInfo", nextStoreSnapshot); } catch {}
+    }
   }
 
   function patchActivePrivateInfo(patch: Record<string, any>) {
@@ -1542,7 +1590,9 @@ React.useEffect(() => {
 
     queueMicrotask(async () => {
       try { if (nextStoreSnapshot) await saveStore(nextStoreSnapshot); } catch {}
-      try { await (window as any).__flushCloudNow?.("profiles_prefs", nextStoreSnapshot); } catch {}
+      if (!detectProfilesMobileMode()) {
+        try { await (window as any).__flushCloudNow?.("profiles_prefs", nextStoreSnapshot); } catch {}
+      }
     });
   }
 
