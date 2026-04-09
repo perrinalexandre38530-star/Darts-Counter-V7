@@ -2514,19 +2514,6 @@ function ActiveProfileBlock({
             <button className="btn ok sm" onClick={handleSaveEdit}>
               Enregistrer
             </button>
-            <button
-              className="btn sm"
-              onClick={() => {
-                try {
-                  onSync?.({ ...draft });
-                } catch {}
-              }}
-            >
-              Synchroniser
-            </button>
-            <button className="btn sm" onClick={() => onPull?.()}>
-              Récupérer
-            </button>
           </div>
         )}
       </div>
