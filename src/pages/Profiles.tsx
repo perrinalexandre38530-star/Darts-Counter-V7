@@ -57,6 +57,45 @@ function detectProfilesMobileMode() {
   }
 }
 
+function useDeferredProfilesMedia(enabled: boolean, delayMs = 1600) {
+  const [ready, setReady] = React.useState(!enabled);
+
+  React.useEffect(() => {
+    if (!enabled) {
+      setReady(true);
+      return;
+    }
+
+    setReady(false);
+    let cancelled = false;
+    let timer: number | null = null;
+
+    const start = () => {
+      timer = window.setTimeout(() => {
+        if (!cancelled) setReady(true);
+      }, delayMs);
+    };
+
+    try {
+      const ric = (window as any).requestIdleCallback;
+      if (typeof ric === "function") {
+        ric(() => start(), { timeout: delayMs });
+      } else {
+        start();
+      }
+    } catch {
+      start();
+    }
+
+    return () => {
+      cancelled = true;
+      if (timer) window.clearTimeout(timer);
+    };
+  }, [enabled, delayMs]);
+
+  return ready;
+}
+
 
 function pushProfilesNavDiag(step: string, extra?: Record<string, any>) {
   if (typeof window === "undefined") return;
@@ -772,6 +811,22 @@ export default function Profiles({
       ? "friends"
       : "menu"
   );
+
+
+  const [forceHeavyProfileMedia, setForceHeavyProfileMedia] = React.useState(false);
+  const deferHeavyProfileMedia = profilesLightMode && view === "me" && !forceHeavyProfileMedia;
+  const heavyProfileMediaReady = useDeferredProfilesMedia(deferHeavyProfileMedia, 1800) || forceHeavyProfileMedia;
+
+  React.useEffect(() => {
+    if (!profilesLightMode) return;
+    const onForce = () => setForceHeavyProfileMedia(true);
+    window.addEventListener("dc:profiles-force-media", onForce as EventListener);
+    return () => window.removeEventListener("dc:profiles-force-media", onForce as EventListener);
+  }, [profilesLightMode]);
+
+  React.useEffect(() => {
+    if (view !== "me") setForceHeavyProfileMedia(false);
+  }, [view]);
 
     // ✅ FORCE auth UI (quand on vient de ONLINE / AuthStart / Account)
     // - params.forceAuth : explicite
@@ -1885,6 +1940,7 @@ React.useEffect(() => {
         });
       }}
       onResetStats={resetActiveStats}
+      lightweightAvatar={deferHeavyProfileMedia && !heavyProfileMediaReady}
     />
   ) : (
     <UnifiedAuthBlock
@@ -1901,10 +1957,34 @@ React.useEffect(() => {
 </Card>
 
                 {/* 🔥 Panneau sets de fléchettes du profil actif */}
-                {isDarts && active && (
+                {isDarts && active && !profilesLightMode && (
                   <div style={{ marginTop: 8, marginBottom: 8 }}>
                     <DartSetsPanel key={`me-dartsets-${String((((meProfileForDarts as any) || (active as any))?.id || "none"))}`} profile={((meProfileForDarts as any) || (active as any))} />
                   </div>
+                )}
+
+                {isDarts && active && profilesLightMode && (
+                  <Card style={{ marginTop: 8, marginBottom: 8 }}>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                      <div className="subtitle" style={{ fontSize: 12, color: theme.textSoft }}>
+                        Les visuels des fléchettes sont différés sur mobile pour éviter le gel de la page.
+                      </div>
+                      {heavyProfileMediaReady ? (
+                        <DartSetsPanel key={`me-dartsets-mobile-${String((((meProfileForDarts as any) || (active as any))?.id || "none"))}`} profile={((meProfileForDarts as any) || (active as any))} />
+                      ) : (
+                        <button
+                          className="btn sm"
+                          type="button"
+                          onClick={() => {
+                            pushProfilesNavDiag("profiles:media:manual_load_requested");
+                            window.dispatchEvent(new CustomEvent("dc:profiles-force-media"));
+                          }}
+                        >
+                          Charger mes images
+                        </button>
+                      )}
+                    </div>
+                  </Card>
                 )}
 
                 <Card
@@ -2280,6 +2360,7 @@ function ActiveProfileBlock({
   onEdit,
   onOpenStats,
   onResetStats,
+  lightweightAvatar = false,
 }: {
   active: Profile;
   activeAvg3D: number | null;
@@ -2289,6 +2370,7 @@ function ActiveProfileBlock({
   onEdit: (name: string, avatar?: File | null) => void;
   onOpenStats?: () => void;
   onResetStats?: () => void;
+  lightweightAvatar?: boolean;
 }) {
   const { theme } = useTheme();
 
@@ -2513,12 +2595,33 @@ function ActiveProfileBlock({
           </div>
         )}
 
-        <ProfileAvatar
-          size={AVATAR}
-          dataUrl={avatarSrc}
-          label={displayName?.[0]?.toUpperCase() || "?"}
-          showStars={false}
-        />
+        {lightweightAvatar ? (
+          <div
+            aria-label="avatar-placeholder"
+            style={{
+              width: AVATAR,
+              height: AVATAR,
+              borderRadius: "50%",
+              display: "grid",
+              placeItems: "center",
+              background: "radial-gradient(circle at 30% 30%, rgba(255,255,255,.12), rgba(255,255,255,.04) 58%, rgba(0,0,0,.28) 100%)",
+              border: `1px solid ${primary}55`,
+              color: "#fff",
+              fontSize: 34,
+              fontWeight: 900,
+              letterSpacing: 1,
+            }}
+          >
+            {displayName?.[0]?.toUpperCase() || "?"}
+          </div>
+        ) : (
+          <ProfileAvatar
+            size={AVATAR}
+            dataUrl={avatarSrc}
+            label={displayName?.[0]?.toUpperCase() || "?"}
+            showStars={false}
+          />
+        )}
       </div>
 
       {/* TEXTE + ACTIONS */}
@@ -2561,7 +2664,13 @@ function ActiveProfileBlock({
           <span style={{ color: statusColor }}>{statusLabel}</span>
         </div>
 
-        {active?.id && (
+        {lightweightAvatar && (
+          <div style={{ marginTop: 8, fontSize: 11, color: "rgba(255,255,255,.72)", textAlign: "center" }}>
+            Chargement léger mobile actif. Les visuels arrivent après stabilisation.
+          </div>
+        )}
+
+        {active?.id && !lightweightAvatar && (
           <div style={{ marginTop: 8 }}>
             <GoldMiniStats profileId={active.id} />
           </div>
@@ -2598,19 +2707,6 @@ function ActiveProfileBlock({
             </button>
             <button className="btn ok sm" onClick={handleSaveEdit}>
               Enregistrer
-            </button>
-            <button
-              className="btn sm"
-              onClick={() => {
-                try {
-                  onSync?.({ ...draft });
-                } catch {}
-              }}
-            >
-              Synchroniser
-            </button>
-            <button className="btn sm" onClick={() => onPull?.()}>
-              Récupérer
             </button>
           </div>
         )}
