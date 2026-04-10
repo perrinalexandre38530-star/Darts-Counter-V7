@@ -2067,6 +2067,7 @@ React.useEffect(() => {
                   onOpenAvatarCreator={openAvatarCreator}
                   onboardingMode={nasProfileOnboarding}
                   autoFocusCreate={nasProfileOnboarding || autoCreateFlag}
+                  deferHeavyMedia={profilesLightMode}
                 />
               </Card>
             )}
@@ -3923,6 +3924,7 @@ function LocalProfilesRefonte({
   onOpenAvatarCreator,
   onboardingMode = false,
   autoFocusCreate = false,
+  deferHeavyMedia = false,
 }: {
   profiles: Profile[];
   activeProfileId: string | null;
@@ -3938,6 +3940,7 @@ function LocalProfilesRefonte({
   onOpenAvatarCreator?: () => void;
   onboardingMode?: boolean;
   autoFocusCreate?: boolean;
+  deferHeavyMedia?: boolean;
 }) {
   const { theme } = useTheme();
 
@@ -3969,6 +3972,8 @@ function LocalProfilesRefonte({
   const [editFile, setEditFile] = React.useState<File | null>(null);
   const [editPreview, setEditPreview] = React.useState<string | null>(null);
   const [actionsOpen, setActionsOpen] = React.useState(false);
+  const [forceLocalMedia, setForceLocalMedia] = React.useState(false);
+  const localDeferredMediaReady = useDeferredProfilesMedia(!!deferHeavyMedia && !forceLocalMedia, 1400) || forceLocalMedia || !deferHeavyMedia;
 
   React.useEffect(() => {
     if (index >= locals.length && locals.length > 0) {
@@ -4007,6 +4012,7 @@ function LocalProfilesRefonte({
     setEditFile(null);
     setEditPreview(null);
     setActionsOpen(false);
+    setForceLocalMedia(false);
     if (current) {
       const pi = ((current as any).privateInfo || {}) as { country?: string };
       setEditName(current.name || "");
@@ -4380,10 +4386,33 @@ function LocalProfilesRefonte({
                 />
               </div>
 
-              {/* 🔥 NOUVEAU : Mes jeux de fléchettes pour ce profil local (DARTS ONLY) */}
-              {isDarts && (
+              {/* Jeux de fléchettes du profil local — différés sur mobile pour fluidifier la navigation */}
+              {isDarts && !deferHeavyMedia && (
                 <div style={{ marginTop: 4, marginBottom: 10 }}>
                   <DartSetsPanel key={`local-dartsets-${String(current?.id || "none")}`} profile={current} />
+                </div>
+              )}
+
+              {isDarts && deferHeavyMedia && (
+                <div style={{ marginTop: 4, marginBottom: 10 }}>
+                  <Card>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                      <div className="subtitle" style={{ fontSize: 12, color: theme.textSoft }}>
+                        Les visuels des fléchettes sont différés sur mobile pour garder une navigation fluide.
+                      </div>
+                      {localDeferredMediaReady ? (
+                        <DartSetsPanel key={`local-dartsets-${String(current?.id || "none")}`} profile={current} />
+                      ) : (
+                        <button
+                          className="btn sm"
+                          type="button"
+                          onClick={() => setForceLocalMedia(true)}
+                        >
+                          Charger les visuels
+                        </button>
+                      )}
+                    </div>
+                  </Card>
                 </div>
               )}
 
