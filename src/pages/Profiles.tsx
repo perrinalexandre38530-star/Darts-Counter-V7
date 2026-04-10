@@ -97,8 +97,27 @@ function useDeferredProfilesMedia(enabled: boolean, delayMs = 1600) {
 }
 
 
-function pushProfilesNavDiag(_step: string, _extra?: Record<string, any>) {
-  // Diagnostic désactivé en production pour ne pas ralentir la navigation Profils.
+function pushProfilesNavDiag(step: string, extra?: Record<string, any>) {
+  if (typeof window === "undefined") return;
+  try {
+    const row = {
+      at: new Date().toISOString(),
+      step,
+      href: String(window.location.href || ""),
+      hash: String(window.location.hash || ""),
+      visibility: typeof document !== "undefined" ? document.visibilityState : "unknown",
+      ...(extra || {}),
+    };
+    const raw = (window.sessionStorage || window.localStorage).getItem(PROFILE_NAV_DIAG_KEY);
+    const arr = Array.isArray(raw ? JSON.parse(raw) : null) ? JSON.parse(raw) : [];
+    arr.push(row);
+    while (arr.length > 80) arr.shift();
+    (window.sessionStorage || window.localStorage).setItem(PROFILE_NAV_DIAG_KEY, JSON.stringify(arr));
+    try {
+      window.dispatchEvent(new CustomEvent("dc:profiles-nav-diag", { detail: row }));
+    } catch {}
+    if (PROFILES_VERBOSE_LOGS) console.log("[profiles-nav-diag]", row);
+  } catch {}
 }
 
 // Effet "shimmer" du nom joueur (copié de StatsHub)
@@ -616,7 +635,13 @@ export default function Profiles({
 }) {
 
   React.useEffect(() => {
-    return () => {};
+    pushProfilesNavDiag("profiles:mount:start");
+    try {
+      window.setTimeout(() => pushProfilesNavDiag("profiles:mount:after_120ms"), 120);
+      window.setTimeout(() => pushProfilesNavDiag("profiles:mount:after_600ms"), 600);
+      window.setTimeout(() => pushProfilesNavDiag("profiles:mount:after_1500ms"), 1500);
+    } catch {}
+    return () => pushProfilesNavDiag("profiles:unmount");
   }, []);
 
   const [toast, setToast] = React.useState<null | { type: "success" | "error"; message: string }>(null);
@@ -800,30 +825,6 @@ export default function Profiles({
       : "menu"
   );
 
-  const [viewReady, setViewReady] = React.useState<View | "menu">("menu");
-  React.useEffect(() => {
-    if (view === "menu") {
-      setViewReady("menu");
-      return;
-    }
-    setViewReady("menu");
-    let cancelled = false;
-    const start = () => {
-      window.setTimeout(() => {
-        if (!cancelled) setViewReady(view);
-      }, 90);
-    };
-    try {
-      const ric = (window as any).requestIdleCallback;
-      if (typeof ric === "function") ric(() => start(), { timeout: 180 });
-      else start();
-    } catch {
-      start();
-    }
-    return () => {
-      cancelled = true;
-    };
-  }, [view]);
 
   const [forceHeavyProfileMedia, setForceHeavyProfileMedia] = React.useState(false);
   const deferHeavyProfileMedia = profilesLightMode && view === "me" && !forceHeavyProfileMedia;
@@ -1405,9 +1406,10 @@ React.useEffect(() => {
     React.useEffect(() => {
       if (!active) return;
       if (auth.status !== "signed_in") return;
-      if (view !== "me") return;
-      // Hydratation passive désactivée pour éviter les save/flush automatiques au montage.
-      return;
+      if (profilesLightMode) {
+        pushProfilesNavDiag("profiles:passive_hydrate:skipped_mobile", { activeId: active.id });
+        return;
+      }
       const passiveKey = [
         String(active.id || ""),
         String(auth.user?.email || ""),
@@ -1517,7 +1519,6 @@ React.useEffect(() => {
   }, [active, lang, themeId, setLang, setThemeId]);
 
   React.useEffect(() => {
-    if (view !== "me" && view !== "locals") return;
     let cancelled = false;
     let timer: number | null = null;
     const run = async () => {
@@ -1528,17 +1529,39 @@ React.useEffect(() => {
         if (!cancelled) setStatsMap((m) => ({ ...m, [pid]: s }));
       } catch {}
     };
-    timer = window.setTimeout(() => { void run(); }, profilesLightMode ? 450 : 120);
+    if (profilesLightMode) {
+      timer = window.setTimeout(() => { void run(); }, 350);
+    } else {
+      void run();
+    }
     return () => {
       cancelled = true;
       if (timer) window.clearTimeout(timer);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [active?.id, profilesLightMode, view]);
+  }, [active?.id, profilesLightMode]);
 
   React.useEffect(() => {
-    // Préchargement bulk désactivé: trop coûteux pour la navigation Profils/Local.
-    return () => {};
+    if (profilesLightMode) {
+      pushProfilesNavDiag("profiles:stats_bulk_preload:skipped_mobile", { count: profiles.length });
+      return;
+    }
+    let stopped = false;
+    (async () => {
+      const ids = profiles.map((p) => p.id).slice(0, 12);
+      for (const id of ids) {
+        if (stopped) break;
+        if (statsMap[id]) continue;
+        try {
+          const s = await getBasicProfileStatsAsync(id);
+          if (!stopped) setStatsMap((m) => (m[id] ? m : { ...m, [id]: s }));
+        } catch {}
+      }
+    })();
+    return () => {
+      stopped = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [profiles, profilesLightMode]);
 
   const activeAvg3D = React.useMemo<number | null>(() => {
@@ -1892,15 +1915,7 @@ React.useEffect(() => {
               ← {t("profiles.menu.back", "Retour au menu Profils")}
             </button>
 
-            {view !== "menu" && viewReady === "menu" && (
-              <Card>
-                <div className="subtitle" style={{ fontSize: 12, color: theme.textSoft }}>
-                  Chargement de la vue…
-                </div>
-              </Card>
-            )}
-
-            {view === "me" && viewReady === "me" && (
+            {view === "me" && (
               <>
                 <Card>
   {active && !forceAuth ? (
@@ -2021,7 +2036,7 @@ React.useEffect(() => {
               </>
             )}
 
-            {view === "locals" && viewReady === "locals" && (
+            {view === "locals" && (
               <Card
                 title={nasProfileOnboarding ? t("profiles.locals.onboarding.title", "Créer ton profil actif") : `${t(
                   "profiles.locals.title",
@@ -2056,7 +2071,7 @@ React.useEffect(() => {
               </Card>
             )}
 
-            {view === "friends" && viewReady === "friends" && (
+            {view === "friends" && (
               <Card
                 title={t(
                   "profiles.section.friends",
@@ -3954,8 +3969,6 @@ function LocalProfilesRefonte({
   const [editFile, setEditFile] = React.useState<File | null>(null);
   const [editPreview, setEditPreview] = React.useState<string | null>(null);
   const [actionsOpen, setActionsOpen] = React.useState(false);
-  const localLightMode = React.useMemo(() => detectProfilesMobileMode(), []);
-  const [localHeavyReady, setLocalHeavyReady] = React.useState(!localLightMode);
 
   React.useEffect(() => {
     if (index >= locals.length && locals.length > 0) {
@@ -3966,22 +3979,6 @@ function LocalProfilesRefonte({
     }
   }, [locals.length, index]);
 
-
-  React.useEffect(() => {
-    if (!localLightMode) {
-      setLocalHeavyReady(true);
-      return;
-    }
-    setLocalHeavyReady(false);
-    let cancelled = false;
-    const timer = window.setTimeout(() => {
-      if (!cancelled) setLocalHeavyReady(true);
-    }, 900);
-    return () => {
-      cancelled = true;
-      window.clearTimeout(timer);
-    };
-  }, [current?.id, localLightMode]);
 
   React.useEffect(() => {
     if (!Array.isArray(locals)) return;
@@ -4384,16 +4381,9 @@ function LocalProfilesRefonte({
               </div>
 
               {/* 🔥 NOUVEAU : Mes jeux de fléchettes pour ce profil local (DARTS ONLY) */}
-              {isDarts && localHeavyReady && (
+              {isDarts && (
                 <div style={{ marginTop: 4, marginBottom: 10 }}>
                   <DartSetsPanel key={`local-dartsets-${String(current?.id || "none")}`} profile={current} />
-                </div>
-              )}
-              {isDarts && !localHeavyReady && (
-                <div style={{ marginTop: 4, marginBottom: 10 }}>
-                  <div className="subtitle" style={{ fontSize: 12, color: theme.textSoft }}>
-                    Chargement différé des visuels pour garder la navigation fluide.
-                  </div>
                 </div>
               )}
 
