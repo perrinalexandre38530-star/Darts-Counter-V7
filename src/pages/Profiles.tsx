@@ -121,6 +121,7 @@ function writeProfilesPerfRows(rows: Array<Record<string, any>>) {
 function pushProfilesNavDiag(step: string, extra?: Record<string, any>) {
   if (typeof window === "undefined") return;
   try {
+    if (!(window as any).__DC_PROFILES_DIAG__) return;
     const row = {
       at: Date.now(),
       step,
@@ -717,6 +718,35 @@ async function flushCloud(reason: string, seedOverride?: any) {
   }
 }
 
+
+function sameProfileLocalSignature(a: any, b: any) {
+  const aPi = (a?.privateInfo || {}) as any;
+  const bPi = (b?.privateInfo || {}) as any;
+  return (
+    String(a?.id || "") === String(b?.id || "") &&
+    String(a?.name || "") === String(b?.name || "") &&
+    String(aPi?.country || "") === String(bPi?.country || "") &&
+    Number(a?.avatarUpdatedAt || 0) === Number(b?.avatarUpdatedAt || 0) &&
+    String(a?.avatarUrl || "") === String(b?.avatarUrl || "") &&
+    String(a?.avatarPath || "") === String(b?.avatarPath || "") &&
+    String(a?.avatarDataUrl || "").length === String(b?.avatarDataUrl || "").length
+  );
+}
+
+function areLocalProfilesRefontePropsEqual(prev: any, next: any) {
+  if (prev?.activeProfileId !== next?.activeProfileId) return false;
+  if (!!prev?.onboardingMode !== !!next?.onboardingMode) return false;
+  if (!!prev?.autoFocusCreate !== !!next?.autoFocusCreate) return false;
+  if (!!prev?.deferHeavyMedia !== !!next?.deferHeavyMedia) return false;
+  const a = Array.isArray(prev?.profiles) ? prev.profiles : [];
+  const b = Array.isArray(next?.profiles) ? next.profiles : [];
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i += 1) {
+    if (!sameProfileLocalSignature(a[i], b[i])) return false;
+  }
+  return true;
+}
+
 export default function Profiles({
   store,
   update,
@@ -827,7 +857,7 @@ export default function Profiles({
   const { theme, themeId, setThemeId } = useTheme() as any;
   const { t, setLang, lang } = useLang();
   const auth = useAuthOnline();
-  const profilesPerf = useProfilesPerfOverlay(true);
+  const profilesPerf = useProfilesPerfOverlay(false);
 
   // ✅ Cohérence globale : si l'utilisateur est authentifié Supabase,
   // on ne laisse pas l'UI afficher "Hors ligne" par défaut.
@@ -1981,7 +2011,6 @@ React.useEffect(() => {
         className="container"
         style={{ maxWidth: 760, background: theme.bg, color: theme.text }}
       >
-        <ProfilesPerfInline />
         {view === "menu" ? (
   <ProfilesMenuView
     go={go}
@@ -2135,7 +2164,7 @@ React.useEffect(() => {
                   "Profils locaux"
                 )} (${profiles.filter((p: any) => p.id !== activeProfileId && !isMirrorProfile(p)).length})`}
               >
-                <LocalProfilesRefonte
+                <MemoLocalProfilesRefonte
                   profiles={profiles}
                   activeProfileId={activeProfileId}
                   onCreate={(name, file, privateInfo) => {
@@ -2186,103 +2215,6 @@ React.useEffect(() => {
     </>
   );
 }
-
-
-function ProfilesPerfInline() {
-  const [rows, setRows] = React.useState<Array<Record<string, any>>>(() => readProfilesPerfRows());
-
-  React.useEffect(() => {
-    if (typeof window === "undefined") return;
-    const sync = () => setRows(readProfilesPerfRows());
-    sync();
-    const onUpdate = () => sync();
-    window.addEventListener("dc:profiles-perf-updated", onUpdate as EventListener);
-    return () => window.removeEventListener("dc:profiles-perf-updated", onUpdate as EventListener);
-  }, []);
-
-  const latest = rows.slice(-10).reverse();
-
-  return (
-    <div
-      style={{
-        position: "sticky",
-        top: 8,
-        zIndex: 10020,
-        margin: "0 0 10px 0",
-        borderRadius: 14,
-        border: "2px solid #9acd32",
-        background: "rgba(5,8,18,.96)",
-        color: "#fff",
-        padding: 10,
-        boxShadow: "0 12px 28px rgba(0,0,0,.45)",
-      }}
-    >
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, marginBottom: 8 }}>
-        <strong style={{ fontSize: 13, letterSpacing: .4 }}>Diagnostic Profils visible</strong>
-        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-          <button
-            type="button"
-            className="btn sm"
-            onClick={() => {
-              try {
-                const raw = JSON.stringify(readProfilesPerfRows(), null, 2);
-                alert(raw || "[]");
-              } catch {
-                alert("[]");
-              }
-            }}
-          >
-            Voir brut
-          </button>
-          <button
-            type="button"
-            className="btn sm"
-            onClick={async () => {
-              try {
-                const raw = JSON.stringify(readProfilesPerfRows(), null, 2);
-                await navigator.clipboard.writeText(raw || "[]");
-              } catch {}
-            }}
-          >
-            Copier
-          </button>
-          <button
-            type="button"
-            className="btn sm"
-            onClick={() => {
-              writeProfilesPerfRows([]);
-              setRows([]);
-            }}
-          >
-            Vider
-          </button>
-        </div>
-      </div>
-
-      <div style={{ fontSize: 11, opacity: .82, marginBottom: 8 }}>
-        Lignes: {rows.length}
-      </div>
-
-      <div style={{ display: "flex", flexDirection: "column", gap: 6, maxHeight: "34vh", overflow: "auto" }}>
-        {latest.length === 0 ? (
-          <div style={{ fontSize: 12, opacity: .74 }}>Aucune mesure pour le moment.</div>
-        ) : latest.map((row, idx) => {
-          const { step, at, ...rest } = row || {};
-          return (
-            <div key={`${String(at)}-${idx}`} style={{ border: "1px solid rgba(255,255,255,.12)", borderRadius: 10, padding: 8 }}>
-              <div style={{ fontWeight: 800, fontSize: 11 }}>{String(step || "?")}</div>
-              <div style={{ fontSize: 10, opacity: .7, marginTop: 2 }}>{new Date(Number(at || Date.now())).toLocaleTimeString()}</div>
-              {Object.keys(rest).length ? (
-                <pre style={{ whiteSpace: "pre-wrap", wordBreak: "break-word", margin: "6px 0 0", fontSize: 10, opacity: .9 }}>{JSON.stringify(rest, null, 2)}</pre>
-              ) : null}
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
 
 /* ================================
    Vue MENU PROFILS
@@ -4843,6 +4775,9 @@ function LocalProfilesRefonte({
     </div>
   );
 }
+
+
+const MemoLocalProfilesRefonte = React.memo(LocalProfilesRefonte, areLocalProfilesRefontePropsEqual);
 
 /* ----- Formulaire d’ajout local (refondu) ----- */
 
