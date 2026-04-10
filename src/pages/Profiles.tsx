@@ -827,8 +827,35 @@ export default function Profiles({
 
 
   const [forceHeavyProfileMedia, setForceHeavyProfileMedia] = React.useState(false);
+  const [meStage, setMeStage] = React.useState<0 | 1 | 2>(0);
+  const [localsStage, setLocalsStage] = React.useState<0 | 1>(0);
   const deferHeavyProfileMedia = profilesLightMode && view === "me" && !forceHeavyProfileMedia;
   const heavyProfileMediaReady = useDeferredProfilesMedia(deferHeavyProfileMedia, 1800) || forceHeavyProfileMedia;
+
+
+  React.useEffect(() => {
+    if (view !== "me") {
+      setMeStage(0);
+      return;
+    }
+    setMeStage(0);
+    const t1 = window.setTimeout(() => setMeStage(1), 40);
+    const t2 = window.setTimeout(() => setMeStage(2), profilesLightMode ? 420 : 180);
+    return () => {
+      window.clearTimeout(t1);
+      window.clearTimeout(t2);
+    };
+  }, [view, profilesLightMode, active?.id]);
+
+  React.useEffect(() => {
+    if (view !== "locals") {
+      setLocalsStage(0);
+      return;
+    }
+    setLocalsStage(0);
+    const t1 = window.setTimeout(() => setLocalsStage(1), profilesLightMode ? 220 : 80);
+    return () => window.clearTimeout(t1);
+  }, [view, profilesLightMode, activeProfileId, profiles.length]);
 
   React.useEffect(() => {
     if (!profilesLightMode) return;
@@ -2000,13 +2027,14 @@ React.useEffect(() => {
                   </Card>
                 )}
 
+                {meStage >= 1 ? (
                 <Card
                   title={t(
                     "profiles.private.title",
                     "Informations personnelles"
                   )}
                 >
-                  {/* Bloc infos perso locales + sécurité */}
+                  {meStage >= 2 ? (
                   <PrivateInfoBlock
                     active={active}
                     onPatch={patchActivePrivateInfo}
@@ -2031,8 +2059,11 @@ React.useEffect(() => {
                       }
                     }}
                   />
-
+                  ) : (
+                    <div className="subtitle" style={{ fontSize: 12, color: theme.textSoft }}>Chargement du profil…</div>
+                  )}
                 </Card>
+                ) : null}
               </>
             )}
 
@@ -2043,6 +2074,7 @@ React.useEffect(() => {
                   "Profils locaux"
                 )} (${profiles.filter((p: any) => p.id !== activeProfileId && !isMirrorProfile(p)).length})`}
               >
+                {localsStage >= 1 ? (
                 <LocalProfilesRefonte
                   profiles={profiles}
                   activeProfileId={activeProfileId}
@@ -2068,6 +2100,9 @@ React.useEffect(() => {
                   onboardingMode={nasProfileOnboarding}
                   autoFocusCreate={nasProfileOnboarding || autoCreateFlag}
                 />
+                ) : (
+                  <div className="subtitle" style={{ fontSize: 12, color: theme.textSoft }}>Chargement des profils locaux…</div>
+                )}
               </Card>
             )}
 
