@@ -83,8 +83,37 @@ const STATS_KEY = "dc_stats_index_v2";
 const STATS_LEGACY_KEY = "dc-stats-index-v1";
 const STATS_VERSION = 2;
 const STATS_REFRESH_DEBOUNCE_MS = 900;
+const STATS_DIRTY_KEY = "dc_stats_index_dirty_v1";
 let __statsRefreshTimer: ReturnType<typeof setTimeout> | null = null;
 let __statsRefreshPromise: Promise<StatsIndex> | null = null;
+
+export function markStatsIndexDirty(reason = "unknown"): void {
+  try {
+    if (typeof localStorage !== "undefined") {
+      localStorage.setItem(STATS_DIRTY_KEY, JSON.stringify({ dirty: true, reason, at: Date.now() }));
+    }
+  } catch {}
+  try {
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(new CustomEvent("dc-stats-index-dirty", { detail: { reason, at: Date.now() } }));
+    }
+  } catch {}
+}
+
+export function clearStatsIndexDirty(): void {
+  try {
+    if (typeof localStorage !== "undefined") localStorage.removeItem(STATS_DIRTY_KEY);
+  } catch {}
+}
+
+export function isStatsIndexDirty(): boolean {
+  try {
+    if (typeof localStorage === "undefined") return false;
+    return !!localStorage.getItem(STATS_DIRTY_KEY);
+  } catch {
+    return false;
+  }
+}
 
 function dispatchStatsIndexUpdated(detail?: any) {
   try {
@@ -598,6 +627,7 @@ export async function refreshStatsIndexFromHistoryNow(options?: {
     persist: options?.persist,
   });
 
+  clearStatsIndexDirty();
   dispatchStatsIndexUpdated({
     reason: options?.reason || "refresh-now",
     rebuiltAt: idx?.rebuiltAt || Date.now(),
@@ -613,27 +643,15 @@ export function scheduleStatsIndexRefresh(options?: {
   debounceMs?: number;
   reason?: string;
 }): Promise<StatsIndex> {
-  const debounceMs = Math.max(80, Number(options?.debounceMs || STATS_REFRESH_DEBOUNCE_MS) || STATS_REFRESH_DEBOUNCE_MS);
+  const reason = options?.reason || "scheduled-refresh";
+  markStatsIndexDirty(reason);
 
-  if (__statsRefreshTimer) clearTimeout(__statsRefreshTimer);
-
-  __statsRefreshPromise = new Promise<StatsIndex>((resolve, reject) => {
-    __statsRefreshTimer = setTimeout(() => {
-      __statsRefreshTimer = null;
-      refreshStatsIndexFromHistoryNow({
-        includeNonFinished: options?.includeNonFinished,
-        persist: options?.persist,
-        reason: options?.reason || "scheduled-refresh",
-      })
-        .then(resolve)
-        .catch(reject)
-        .finally(() => {
-          __statsRefreshPromise = null;
-        });
-    }, debounceMs);
-  });
-
-  return __statsRefreshPromise;
+  // ✅ Perf: no more global/background rebuild here.
+  // We only mark the cache dirty. Actual rebuild happens on-demand
+  // when the user opens a stats screen or explicitly requests it.
+  const cachedPromise = loadStatsIndex().then((cached) => cached || createEmptyStatsIndex(!!options?.includeNonFinished));
+  __statsRefreshPromise = cachedPromise;
+  return cachedPromise;
 }
 
 export function cancelScheduledStatsIndexRefresh(): void {
@@ -648,7 +666,7 @@ export async function getOrRebuildStatsIndex(options?: {
   persist?: boolean;
   force?: boolean;
 }): Promise<StatsIndex> {
-  if (!options?.force) {
+  if (!options?.force && !isStatsIndexDirty()) {
     const cached = await loadStatsIndex();
     if (cached) return cached;
   }
@@ -710,5 +728,6 @@ export async function rebuildStatsFromHistory(options?: {
   }
 
   if (persist) await saveStatsIndex(idx);
+  clearStatsIndexDirty();
   return idx;
 }

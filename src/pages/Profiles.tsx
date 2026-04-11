@@ -611,6 +611,53 @@ export default function Profiles({
 
   const stableProfiles = useStableProfiles(profiles as any);
 
+  const persistTimerRef = React.useRef<number | null>(null);
+  const pendingPersistRef = React.useRef<{ reason: string; snapshot: any; cloud: boolean } | null>(null);
+  const persistInFlightRef = React.useRef(false);
+
+  const scheduleProfilesPersist = React.useCallback((reason: string, snapshot: any, options?: { cloud?: boolean; delayMs?: number }) => {
+    if (!snapshot) return;
+    pendingPersistRef.current = {
+      reason,
+      snapshot,
+      cloud: options?.cloud !== false,
+    };
+    const delayMs = Number(options?.delayMs ?? 1400);
+    profilesDiagLog("profiles-persist-scheduled", { reason, cloud: options?.cloud !== false, delayMs });
+    if (persistTimerRef.current != null && typeof window !== "undefined") {
+      window.clearTimeout(persistTimerRef.current);
+    }
+    if (typeof window === "undefined") return;
+    persistTimerRef.current = window.setTimeout(async () => {
+      if (persistInFlightRef.current) return;
+      const job = pendingPersistRef.current;
+      pendingPersistRef.current = null;
+      if (!job?.snapshot) return;
+      persistInFlightRef.current = true;
+      const t0 = typeof performance !== "undefined" ? performance.now() : Date.now();
+      try {
+        await saveStore(job.snapshot);
+        if (job.cloud) {
+          await flushCloud(job.reason, job.snapshot);
+        }
+      } catch (e) {
+        console.warn("[Profiles] deferred persist failed", job.reason, e);
+      } finally {
+        persistInFlightRef.current = false;
+        const dt = (typeof performance !== "undefined" ? performance.now() : Date.now()) - t0;
+        profilesDiagLog("profiles-persist-done", { reason: job.reason, cloud: job.cloud, durationMs: Math.round(dt * 10) / 10 });
+      }
+    }, delayMs);
+  }, []);
+
+  React.useEffect(() => {
+    return () => {
+      if (persistTimerRef.current != null && typeof window !== "undefined") {
+        window.clearTimeout(persistTimerRef.current);
+      }
+    };
+  }, []);
+
     // ✅ Anti-wipe global : si un rehydrate remet profiles=[] après ajout,
   // on restaure depuis un cache local.
   React.useEffect(() => {
@@ -864,8 +911,7 @@ export default function Profiles({
       return nextStoreSnapshot;
     });
     setProfilesSafe((arr) => arr.map((p) => (p.id === id ? { ...p, name } : p)));
-    try { if (nextStoreSnapshot) await saveStore(nextStoreSnapshot); } catch {}
-    try { await (window as any).__flushCloudNow?.("profiles_rename", nextStoreSnapshot); } catch {}
+    if (nextStoreSnapshot) scheduleProfilesPersist("profiles_rename", nextStoreSnapshot, { cloud: false, delayMs: 1600 });
   }
 
   function clearNasProfileOnboardingFlag(expectedUid?: string | null) {
@@ -957,7 +1003,7 @@ export default function Profiles({
 
     // 3) Profil local : on garde l’avatar local uniquement.
     //    Le snapshot cloud complet + le cache avatar gèrent la persistance.
-    await flushCloud("profiles_avatar");
+    scheduleProfilesPersist("profiles_avatar", { ...(store as any), profiles: (stableProfiles as any[]).map((p: any) => p?.id === id ? ({ ...(p || {}), avatarUrl: undefined, avatarPath: undefined, avatarDataUrl: dataUrl, avatarUpdatedAt: now }) : p) }, { cloud: false, delayMs: 2200 });
   }
 
   async function delProfile(id: string) {
@@ -986,13 +1032,9 @@ export default function Profiles({
       return nextStore;
     });
   
-    // 2) Persistance : on sauvegarde le snapshot store (la vraie source)
-    try {
-      if (nextStoreSnapshot) {
-        await saveStore(nextStoreSnapshot);
-      }
-    } catch (e) {
-      console.warn("[Profiles] saveStore after delete error", e);
+    // 2) Persistance différée : on batch les suppressions pour éviter les gels UI
+    if (nextStoreSnapshot) {
+      scheduleProfilesPersist("profiles_delete", nextStoreSnapshot, { cloud: false, delayMs: 1200 });
     }
   
     // 3) UI local state (si tu en as un séparé) : on aligne aussi, en mode removal autorisé
@@ -1013,8 +1055,7 @@ export default function Profiles({
       console.warn("[Profiles] Erreur purgeAllStatsForProfile", e);
     }
   
-    console.log("[Profiles] ✅ Profil supprimé (store + ui + persist)", id);
-    await flushCloud("profiles_delete", nextStoreSnapshot || undefined);
+    console.log("[Profiles] ✅ Profil supprimé (store + ui + persist différé)", id);
   }
   
 
@@ -1059,9 +1100,9 @@ export default function Profiles({
       return nextStore;
     });
   
-    // ✅ 2) Persistance : on sauvegarde LE snapshot qu’on vient de construire
+    // ✅ 2) Persistance différée
     if (nextStoreSnapshot) {
-      await saveStore(nextStoreSnapshot);
+      scheduleProfilesPersist("profiles_add", nextStoreSnapshot, { cloud: false, delayMs: 1200 });
     }
   
     // ✅ 3) Si tu as un state local "profiles", mets-le juste pour l’UI (SANS saveStore ici)
@@ -1072,11 +1113,6 @@ export default function Profiles({
   
     console.log("[Profiles] ✅ Profil local créé + persisté", p.id);
 
-    try {
-      await flushCloud("profiles_add", nextStoreSnapshot || undefined);
-    } catch (e) {
-      console.warn("[Profiles] flushCloud after add error", e);
-    }
 
     if ((privateInfo as any)?.onlineUserId) {
       clearNasProfileOnboardingFlag(String((privateInfo as any)?.onlineUserId || ""));
@@ -1538,8 +1574,7 @@ React.useEffect(() => {
           : p
       )
     );
-    try { if (nextStoreSnapshot) await saveStore(nextStoreSnapshot); } catch {}
-    try { await (window as any).__flushCloudNow?.("profiles_privateInfo", nextStoreSnapshot); } catch {}
+    if (nextStoreSnapshot) scheduleProfilesPersist("profiles_privateInfo", nextStoreSnapshot, { cloud: false, delayMs: 1600 });
   }
 
   function patchActivePrivateInfo(patch: Record<string, any>) {
@@ -1589,10 +1624,9 @@ React.useEffect(() => {
       )
     );
 
-    queueMicrotask(async () => {
-      try { if (nextStoreSnapshot) await saveStore(nextStoreSnapshot); } catch {}
-      try { await (window as any).__flushCloudNow?.("profiles_prefs", nextStoreSnapshot); } catch {}
-    });
+    if (nextStoreSnapshot) {
+      scheduleProfilesPersist("profiles_prefs", nextStoreSnapshot, { cloud: false, delayMs: 1800 });
+    }
   }
 
   async function handlePrivateInfoSave(patch: PrivateInfo) {
@@ -1634,8 +1668,7 @@ React.useEffect(() => {
     const nextStoreLocal = { ...(store as any), profiles: nextProfiles };
     update(() => nextStoreLocal);
     setProfilesSafe(() => nextProfiles as any);
-    try { await saveStore(nextStoreLocal as any); } catch {}
-    try { await flushCloud("profile_save_local", nextStoreLocal as any); } catch {}
+    scheduleProfilesPersist("profile_save_local", nextStoreLocal as any, { cloud: false, delayMs: 1800 });
 
     if (patch.nickname && patch.nickname.trim() && patch.nickname !== active.name) {
       renameProfile(active.id, patch.nickname.trim());
@@ -1736,7 +1769,7 @@ React.useEffect(() => {
               : {}),
           },
         }));
-        await flushCloud("profile_save", { ...(store as any), profiles: nextProfilesNoPassword });
+        scheduleProfilesPersist("profile_save", { ...(store as any), profiles: nextProfilesNoPassword }, { cloud: false, delayMs: 2200 });
       } catch (err) {
         console.warn("[profiles] updateProfile online error:", err);
         setToast({
@@ -4282,9 +4315,9 @@ function LocalProfilesRefonte({
                 <div style={{ marginTop: 4, marginBottom: 10 }}>
                   {deferHeavy ? (
                     <HeavySectionPlaceholder minHeight={132} />
-                  ) : (
-                    <DartSetsPanel key={`local-dartsets-${String(current?.id || "none")}`} profile={current} />
-                  )}
+                  ) : current ? (
+                    <DeferredLocalDartSets profile={current as any} />
+                  ) : null}
                 </div>
               )}
 
@@ -4499,6 +4532,14 @@ function LocalProfilesRefonte({
     </div>
   );
 }
+
+
+
+const DeferredLocalDartSets = React.memo(function DeferredLocalDartSets({ profile }: { profile: any }) {
+  const ready = useDeferredSectionReady(!!profile?.id, 220);
+  if (!ready) return <HeavySectionPlaceholder minHeight={132} />;
+  return <DartSetsPanel key={`local-dartsets-${String(profile?.id || "none")}`} profile={profile} />;
+});
 
 /* ----- Formulaire d’ajout local (refondu) ----- */
 

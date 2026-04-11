@@ -104,6 +104,7 @@ import { purgeLegacyLocalStorageIfNeeded } from "./lib/storageQuota";
 
 // 🚀 warmUp lite aggregator
 import { warmAggOnce } from "./boot/warmAgg";
+import { markStatsIndexDirty } from "./lib/stats/rebuildStatsFromHistory";
 
 // Mode Online
 import { onlineApi } from "./lib/onlineApi";
@@ -177,7 +178,6 @@ import { History } from "./lib/history";
 import { getAllDartSets, replaceAllDartSets } from "./lib/dartSetsStore";
 
 // ✅ NEW: rebuild stats cache when history changes (FAST STATS HUB)
-import { rebuildStatsForProfile } from "./lib/stats/rebuildStats";
 
 // Stats pages
 import StatsShell from "./pages/StatsShell";
@@ -2058,6 +2058,7 @@ useEffect(() => {
   // ✅ GLOBAL FLUSH NOW (used by Profiles / Bots / DartSets)
   // ============================================================
   const flushNowStateRef = React.useRef<{ lastReason: string; lastAt: number }>({ lastReason: "", lastAt: 0 });
+  const pendingCloudFlushRef = React.useRef<{ reason: string; seedOverride?: any } | null>(null);
   React.useEffect(() => {
     const handler = async (_reason?: string, seedOverride?: any) => {
       try {
@@ -2067,6 +2068,11 @@ useEffect(() => {
         if (!online?.ready || online.status !== "signed_in") return;
 
         const reason = String(_reason || "manual");
+        if (tab === "profiles") {
+          pendingCloudFlushRef.current = { reason, seedOverride };
+          console.warn("[cloud] __flushCloudNow queued (profiles active)", reason);
+          return;
+        }
         const now = Date.now();
         const state = flushNowStateRef.current;
         if (state.lastReason === reason && now - state.lastAt < 15000) {
@@ -2089,7 +2095,20 @@ useEffect(() => {
     return () => {
       try { if ((window as any).__flushCloudNow === handler) delete (window as any).__flushCloudNow; } catch {}
     };
-  }, [loading, cloudHydrated, cloudCanSync, online?.ready, online?.status, store]);
+  }, [loading, cloudHydrated, cloudCanSync, online?.ready, online?.status, store, tab]);
+
+  React.useEffect(() => {
+    if (tab === "profiles") return;
+    const pending = pendingCloudFlushRef.current;
+    if (!pending) return;
+    pendingCloudFlushRef.current = null;
+    const timer = window.setTimeout(() => {
+      try {
+        (window as any).__flushCloudNow?.(pending.reason, pending.seedOverride);
+      } catch {}
+    }, 1800);
+    return () => window.clearTimeout(timer);
+  }, [tab]);
 
   // ============================================================
   // ✅ CLOUD HYDRATE (source unique)
@@ -2422,38 +2441,15 @@ useEffect(() => {
   }
 
   // ============================================================
-  // ✅ FAST STATS HUB : rebuild cache stats au boot + après history update
+  // ✅ STATS PERF: no more global rebuild in App
+  // We only mark stats cache dirty and let stats pages rebuild on demand.
   // ============================================================
-  const __profilesRef = React.useRef<Profile[]>([]);
   React.useEffect(() => {
-    __profilesRef.current = (store.profiles ?? []) as any;
-  }, [store.profiles]);
-
-  const __rebuildLockRef = React.useRef(false);
-
-  React.useEffect(() => {
-    if (tab === "profiles") return;
     const schedule = () => {
-      if (__rebuildLockRef.current) return;
-      __rebuildLockRef.current = true;
-
-      const work = async () => {
-        try {
-          const profiles = (__profilesRef.current ?? []) as any[];
-          await Promise.allSettled(profiles.map((p) => rebuildStatsForProfile(String(p?.id))));
-        } catch (e) {
-          console.warn("[stats] rebuild error:", e);
-        } finally {
-          __rebuildLockRef.current = false;
-        }
-      };
-
       try {
-        const ric = (window as any).requestIdleCallback;
-        if (typeof ric === "function") ric(() => work(), { timeout: 2000 });
-        else setTimeout(() => work(), 50);
-      } catch {
-        setTimeout(() => work(), 50);
+        markStatsIndexDirty("history-updated");
+      } catch (e) {
+        console.warn("[stats] mark dirty error:", e);
       }
     };
 
