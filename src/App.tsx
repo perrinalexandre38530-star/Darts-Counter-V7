@@ -1469,24 +1469,6 @@ useEffect(() => {
   }, []);
 
   const [store, setStore] = React.useState<Store>(initialStore);
-  const storeRef = React.useRef<Store>(initialStore);
-  const saveStoreTimerRef = React.useRef<number | null>(null);
-  React.useEffect(() => {
-    storeRef.current = store;
-  }, [store]);
-
-  const schedulePersistStore = React.useCallback((nextStore?: Store | null) => {
-    if (typeof window === "undefined") return;
-    const snapshot = (nextStore || storeRef.current) as Store;
-    if (saveStoreTimerRef.current != null) window.clearTimeout(saveStoreTimerRef.current);
-    saveStoreTimerRef.current = window.setTimeout(() => {
-      saveStoreTimerRef.current = null;
-      try {
-        saveStore(snapshot);
-        window.dispatchEvent(new Event("dc-store-updated"));
-      } catch {}
-    }, 180);
-  }, []);
   const hasMeaningfulLocalCloudData = React.useMemo(() => {
     return (
       (store?.profiles?.length || 0) > 0 ||
@@ -1589,6 +1571,7 @@ useEffect(() => {
     try {
       setStore((prev) => {
         const next = ensureLocalProfileForOnlineUser(prev as any, user as any, (online as any)?.profile ?? null) as any;
+        scheduleStorePersist(next);
         return next;
       });
 
@@ -1625,6 +1608,48 @@ useEffect(() => {
     (((store as any)?.dartSets?.length) || 0),
     tab,
   ]);
+
+  const currentTabRef = React.useRef<Tab | string>(tab as any);
+  React.useEffect(() => {
+    currentTabRef.current = tab as any;
+  }, [tab]);
+
+  const storePersistTimerRef = React.useRef<number | null>(null);
+  const pendingStorePersistRef = React.useRef<Store | null>(null);
+  const scheduleStorePersist = React.useCallback((snapshot: Store) => {
+    pendingStorePersistRef.current = snapshot;
+    if (storePersistTimerRef.current != null) {
+      window.clearTimeout(storePersistTimerRef.current);
+      storePersistTimerRef.current = null;
+    }
+    const activeTab = String(currentTabRef.current || "");
+    const delay = activeTab === "profiles" ? 900 : 220;
+    storePersistTimerRef.current = window.setTimeout(() => {
+      storePersistTimerRef.current = null;
+      const latest = pendingStorePersistRef.current;
+      pendingStorePersistRef.current = null;
+      if (!latest) return;
+      try {
+        const ric = (window as any).requestIdleCallback;
+        if (typeof ric === "function") {
+          ric(() => {
+            try { saveStore(latest); } catch {}
+          }, { timeout: activeTab === "profiles" ? 2500 : 1200 });
+          return;
+        }
+      } catch {}
+      try { saveStore(latest); } catch {}
+    }, delay);
+  }, []);
+
+  React.useEffect(() => {
+    return () => {
+      if (storePersistTimerRef.current != null) {
+        window.clearTimeout(storePersistTimerRef.current);
+        storePersistTimerRef.current = null;
+      }
+    };
+  }, []);
 
   // ✅ SPORT-AWARE : utilisé pour Home/Games (runtime-safe)
   const sportApi: any = useSport() as any;
@@ -1742,7 +1767,7 @@ useEffect(() => {
       cancelled = true;
       window.clearTimeout(t);
     };
-  }, [loading, showSplash]);
+  }, [loading, showSplash, tab]);
 
   /* Restore online session (pour Supabase côté SDK) */
   React.useEffect(() => {
@@ -1831,7 +1856,7 @@ useEffect(() => {
   const [x01ConfigV3, setX01ConfigV3] = React.useState<X01ConfigV3Type | null>(null);
 
   /* Navigation */
-  const go = React.useCallback((next: Tab, params?: any) => {
+  function go(next: Tab, params?: any) {
     setRouteParams(params ?? null);
     profilesDiagLog("nav-go", { fromTab: tab, toTab: next, params: params ?? null });
     const nextRoute = String(window.location.hash || `#/go:${next}`);
@@ -1871,12 +1896,16 @@ useEffect(() => {
           window.location.hash = "#/";
       }
     } catch {}
-  }, [tab, routeParams]);
+  }
 
   /* centralized update */
-  const update = React.useCallback((mut: (s: Store) => Store) => {
-    setStore((s) => mut({ ...s }));
-  }, []);
+  function update(mut: (s: Store) => Store) {
+    setStore((s) => {
+      const next = mut({ ...s });
+      scheduleStorePersist(next);
+      return next;
+    });
+  }
 
   // ✅ IMPORTANT: expose go globalement + store “vivant”
 
@@ -2317,6 +2346,7 @@ useEffect(() => {
     if (!cloudHydrated) return;
     if (!cloudCanSync) return;
     if (!online?.ready || online.status !== "signed_in") return;
+    if (tab === "profiles") return;
 
     // En mode normal, cloudSync gère déjà les pushes via emitCloudChange.
     // On évite donc un deuxième push fallback qui duplique les requêtes,
@@ -2346,7 +2376,7 @@ useEffect(() => {
     return () => {
       clearCloudFallbackPushTimer();
     };
-  }, [store, loading, cloudHydrated, cloudCanSync, online?.ready, online?.status, clearCloudFallbackPushTimer]);
+  }, [store, loading, cloudHydrated, cloudCanSync, online?.ready, online?.status, clearCloudFallbackPushTimer, tab]);
 
   // ============================================================
   // ✅ DartSets bridge: localStorage dartSetsStore -> App store
@@ -2356,9 +2386,10 @@ useEffect(() => {
       try {
         const list = getAllDartSets();
         setStore((prev) => {
-          const prevList = Array.isArray((prev as any)?.dartSets) ? ((prev as any).dartSets as any[]) : [];
-          const same = prevList.length === list.length && prevList.every((item, i) => JSON.stringify(item) === JSON.stringify((list as any[])[i]));
-          if (same) return prev;
+          const prevList = Array.isArray((prev as any)?.dartSets) ? (prev as any).dartSets : [];
+          try {
+            if (JSON.stringify(prevList) === JSON.stringify(list)) return prev as any;
+          } catch {}
           return ({ ...(prev as any), dartSets: list } as any);
         });
       } catch {}
@@ -2368,26 +2399,27 @@ useEffect(() => {
     return () => window.removeEventListener("dc-dartsets-updated", sync as any);
   }, []);
 
-  /* Save store each time it changes (debounced to avoid UI stalls) */
+  /* Save store each time it changes */
   React.useEffect(() => {
-    if (!loading) schedulePersistStore(store);
-  }, [store, loading, schedulePersistStore]);
-
-  React.useEffect(() => {
-    return () => {
-      if (saveStoreTimerRef.current != null && typeof window !== "undefined") {
-        window.clearTimeout(saveStoreTimerRef.current);
-      }
-    };
-  }, []);
+    if (!loading) {
+      scheduleStorePersist(store);
+      try {
+        window.dispatchEvent(new Event("dc-store-updated"));
+      } catch {}
+    }
+  }, [store, loading, scheduleStorePersist]);
 
   /* Profiles mutator (✅ FIX: merge défensif) */
-  const setProfiles = React.useCallback((fn: (p: Profile[]) => Profile[]) => {
-    setStore((s) => ({
-      ...(s as any),
-      profiles: mergeProfilesSafe((s as any)?.profiles ?? [], fn((s as any)?.profiles ?? [])),
-    } as any));
-  }, []);
+  function setProfiles(fn: (p: Profile[]) => Profile[]) {
+    setStore((s) => {
+      const next = {
+        ...(s as any),
+        profiles: mergeProfilesSafe((s as any)?.profiles ?? [], fn((s as any)?.profiles ?? [])),
+      } as any;
+      scheduleStorePersist(next);
+      return next;
+    });
+  }
 
   // ============================================================
   // ✅ FAST STATS HUB : rebuild cache stats au boot + après history update
@@ -2400,6 +2432,7 @@ useEffect(() => {
   const __rebuildLockRef = React.useRef(false);
 
   React.useEffect(() => {
+    if (tab === "profiles") return;
     const schedule = () => {
       if (__rebuildLockRef.current) return;
       __rebuildLockRef.current = true;
@@ -2479,7 +2512,7 @@ useEffect(() => {
       if (i >= 0) list[i] = saved;
       else list.unshift(saved);
       const next = { ...(s as any), history: list } as any;
-      queueMicrotask(() => saveStore(next));
+      scheduleStorePersist(next);
       return next;
     });
 
@@ -2572,7 +2605,7 @@ useEffect(() => {
       if (i >= 0) list[i] = saved;
       else list.unshift(saved);
       const next = { ...(s as any), history: list } as any;
-      queueMicrotask(() => saveStore(next));
+      scheduleStorePersist(next);
       return next;
     });
 
@@ -2662,7 +2695,7 @@ try {
       if (i >= 0) list[i] = saved;
       else list.unshift(saved);
       const next = { ...(s as any), history: list } as any;
-      queueMicrotask(() => saveStore(next));
+      scheduleStorePersist(next);
       return next;
     });
 
@@ -2747,7 +2780,7 @@ try {
       if (i >= 0) list[i] = saved;
       else list.unshift(saved);
       const next = { ...(s as any), history: list } as any;
-      queueMicrotask(() => saveStore(next));
+      scheduleStorePersist(next);
       return next;
     });
 
@@ -2835,7 +2868,7 @@ try {
       if (i >= 0) list[i] = saved;
       else list.unshift(saved);
       const next = { ...(s as any), history: list } as any;
-      queueMicrotask(() => saveStore(next));
+      scheduleStorePersist(next);
       return next;
     });
 
@@ -2928,7 +2961,7 @@ try {
       if (i >= 0) list[i] = saved;
       else list.unshift(saved);
       const next = { ...(s as any), history: list } as any;
-      queueMicrotask(() => saveStore(next));
+      scheduleStorePersist(next);
       return next;
     });
 
@@ -2956,25 +2989,6 @@ try {
   if (showSplash) {
     return <SplashScreen durationMs={6500} fadeOutMs={700} allowAudioOverflow={true} onFinish={handleSplashFinish} />;
   }
-
-  const profilesStoreSlice = React.useMemo(() => ({
-    profiles: (store?.profiles ?? []) as any,
-    activeProfileId: (store as any)?.activeProfileId ?? null,
-    selfStatus: (store as any)?.selfStatus ?? "online",
-    friends: (store as any)?.friends ?? [],
-  }), [store?.profiles, (store as any)?.activeProfileId, (store as any)?.selfStatus, (store as any)?.friends]);
-
-  const profilesPage = React.useMemo(() => (
-    <Profiles
-      store={profilesStoreSlice as any}
-      update={update}
-      setProfiles={setProfiles}
-      go={go}
-      params={routeParams}
-      autoCreate={!!routeParams?.autoCreate}
-      sport={activeSport as any}
-    />
-  ), [profilesStoreSlice, update, setProfiles, go, routeParams, activeSport]);
 
   /* --------------------------------------------
         ROUTING SWITCH
@@ -3256,7 +3270,17 @@ case "babyfoot_team_edit":
         break;  
 
       case "profiles":
-        page = profilesPage;
+        page = (
+          <Profiles
+            store={store}
+            update={update}
+            setProfiles={setProfiles}
+            go={go}
+            params={routeParams}
+            autoCreate={!!routeParams?.autoCreate}
+            sport={activeSport as any} // ✅ runtime-safe
+          />
+        );
         break;
 
       case "profiles_bots":
