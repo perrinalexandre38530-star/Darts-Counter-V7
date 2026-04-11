@@ -17,6 +17,8 @@ import {
   getBasicProfileStatsAsync,
   type BasicProfileStats,
 } from "../lib/statsBridge";
+import { useDeferredViewReady } from "../hooks/useDeferredViewReady";
+import { primeBasicProfileViewStats, useBasicProfileViewStats } from "../hooks/useBasicProfileViewStats";
 import { purgeAllStatsForProfile } from "../lib/statsLiteIDB";
 import { useTheme } from "../contexts/ThemeContext";
 import { useLang, type Lang } from "../contexts/LangContext";
@@ -123,85 +125,6 @@ export type PrivateInfo = {
   ttsVoice?: string;
   sfxVolume?: number;
 };
-
-/* ===== Helper lecture instantanée (mini-cache IDB + quick-stats) ===== */
-function useBasicStats(playerId: string | undefined | null) {
-  const empty = React.useMemo(
-    () => ({
-      avg3: 0,
-      bestVisit: 0,
-      bestCheckout: 0,
-      wins: 0,
-      games: 0,
-      winRate: 0,
-      darts: 0,
-    }),
-    []
-  );
-
-  const [stats, setStats] = React.useState(empty);
-
-  React.useEffect(() => {
-    let cancelled = false;
-
-    const apply = (basic: any) => {
-      const games = Number((basic && basic.games) ?? 0);
-      const wins = Number((basic && basic.wins) ?? 0);
-      const darts = Number((basic && basic.darts) ?? 0);
-      const avg3 = Number((basic && basic.avg3) ?? 0);
-      const bestVisit = Number((basic && basic.bestVisit) ?? 0);
-      const bestCheckout = Number((basic && basic.bestCheckout) ?? 0);
-      const winRate = games > 0 ? Math.round((wins / games) * 100) : 0;
-      return {
-        avg3,
-        bestVisit,
-        bestCheckout,
-        wins,
-        games,
-        winRate,
-        darts,
-      };
-    };
-
-    const refresh = async () => {
-      if (!playerId) {
-        if (!cancelled) setStats(empty);
-        return;
-      }
-
-      try {
-        const syncStats = getBasicProfileStats(playerId);
-        if (!cancelled) setStats(apply(syncStats));
-      } catch {
-        if (!cancelled) setStats(empty);
-      }
-
-      try {
-        const asyncStats = await getBasicProfileStatsAsync(playerId);
-        if (!cancelled) setStats(apply(asyncStats));
-      } catch {}
-    };
-
-    refresh();
-
-    const onUpdated = () => {
-      refresh();
-    };
-
-    if (typeof window !== "undefined") {
-      window.addEventListener("dc-stats-index-updated", onUpdated as EventListener);
-    }
-
-    return () => {
-      cancelled = true;
-      if (typeof window !== "undefined") {
-        window.removeEventListener("dc-stats-index-updated", onUpdated as EventListener);
-      }
-    };
-  }, [playerId, empty]);
-
-  return playerId ? stats : empty;
-}
 
 /* ----------------- Types Friends ----------------- */
 
@@ -716,6 +639,14 @@ export default function Profiles({
       ? "friends"
       : "menu"
   );
+
+  const [, startViewTransition] = React.useTransition();
+  const setViewFast = React.useCallback((next: View) => {
+    startViewTransition(() => setView(next));
+  }, []);
+
+  const meViewReady = useDeferredViewReady(view === "me", 0);
+  const localsViewReady = useDeferredViewReady(view === "locals", 0);
 
     // ✅ FORCE auth UI (quand on vient de ONLINE / AuthStart / Account)
     // - params.forceAuth : explicite
@@ -1384,9 +1315,11 @@ React.useEffect(() => {
     let cancelled = false;
     (async () => {
       const pid = active?.id;
-      if (!pid || statsMap[pid]) return;
+      const shouldLoad = view === "me" || String(activeProfileId || "") === String(pid || "");
+      if (!pid || !shouldLoad || statsMap[pid]) return;
       try {
         const s = await getBasicProfileStatsAsync(pid);
+        primeBasicProfileViewStats(pid, s);
         if (!cancelled) setStatsMap((m) => ({ ...m, [pid]: s }));
       } catch {}
     })();
@@ -1394,26 +1327,7 @@ React.useEffect(() => {
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [active?.id]);
-
-  React.useEffect(() => {
-    let stopped = false;
-    (async () => {
-      const ids = profiles.map((p) => p.id).slice(0, 48);
-      for (const id of ids) {
-        if (stopped) break;
-        if (statsMap[id]) continue;
-        try {
-          const s = await getBasicProfileStatsAsync(id);
-          if (!stopped) setStatsMap((m) => (m[id] ? m : { ...m, [id]: s }));
-        } catch {}
-      }
-    })();
-    return () => {
-      stopped = true;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [profiles]);
+  }, [active?.id, view, activeProfileId]);
 
   const activeAvg3D = React.useMemo<number | null>(() => {
     if (!active?.id) return null;
@@ -1741,15 +1655,15 @@ React.useEffect(() => {
   <ProfilesMenuView
     go={go}
     sport={sportResolved}
-    onSelectMe={() => setView("me")}
-    onSelectLocals={() => setView("locals")}
-    onSelectFriends={() => setView("friends")}
+    onSelectMe={() => setViewFast("me")}
+    onSelectLocals={() => setViewFast("locals")}
+    onSelectFriends={() => setViewFast("friends")}
           />
         ) : (
           <>
             <button
               className="btn sm"
-              onClick={() => setView("menu")}
+              onClick={() => setViewFast("menu")}
               style={{
                 marginBottom: 10,
                 borderRadius: 999,
@@ -1816,7 +1730,7 @@ React.useEffect(() => {
 </Card>
 
                 {/* 🔥 Panneau sets de fléchettes du profil actif */}
-                {isDarts && active && (
+                {meViewReady && isDarts && active && (
                   <div style={{ marginTop: 8, marginBottom: 8 }}>
                     <DartSetsPanel key={`me-dartsets-${String((((meProfileForDarts as any) || (active as any))?.id || "none"))}`} profile={((meProfileForDarts as any) || (active as any))} />
                   </div>
@@ -1828,7 +1742,7 @@ React.useEffect(() => {
                     "Informations personnelles"
                   )}
                 >
-                  {/* Bloc infos perso locales + sécurité */}
+                  {meViewReady ? (
                   <PrivateInfoBlock
                     active={active}
                     onPatch={patchActivePrivateInfo}
@@ -1853,6 +1767,9 @@ React.useEffect(() => {
                       }
                     }}
                   />
+                  ) : (
+                    <div style={{ minHeight: 220 }} />
+                  )}
 
                 </Card>
               </>
@@ -1865,6 +1782,7 @@ React.useEffect(() => {
                   "Profils locaux"
                 )} (${profiles.filter((p: any) => p.id !== activeProfileId && !isMirrorProfile(p)).length})`}
               >
+                {localsViewReady ? (
                 <LocalProfilesRefonte
                   profiles={profiles}
                   activeProfileId={activeProfileId}
@@ -1890,6 +1808,9 @@ React.useEffect(() => {
                   onboardingMode={nasProfileOnboarding}
                   autoFocusCreate={nasProfileOnboarding || autoCreateFlag}
                 />
+                ) : (
+                  <div style={{ minHeight: 260 }} />
+                )}
               </Card>
             )}
 
@@ -3801,7 +3722,7 @@ function LocalProfilesRefonte({
   const current = locals[index] || null;
 
   // stats du profil courant
-  const bs = useBasicStats(current?.id);
+  const bs = useBasicProfileViewStats(current?.id, !!current?.id);
   const avg3 = Number.isFinite(bs.avg3) ? Number(bs.avg3) : 0;
   const bestVisit = Number(bs.bestVisit ?? 0);
   const bestCheckout = Number(bs.bestCheckout ?? 0);
@@ -4751,7 +4672,7 @@ function EditInline({
 /* ------ Gold mini-stats (lecture SYNC cache) ------ */
 
 function GoldMiniStats({ profileId }: { profileId: string }) {
-  const bs = useBasicStats(profileId);
+  const bs = useBasicProfileViewStats(profileId, !!profileId);
   const { theme } = useTheme();
 
   const { sport } = useSport();
