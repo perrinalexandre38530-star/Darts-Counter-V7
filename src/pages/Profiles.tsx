@@ -10,6 +10,7 @@
 import React from "react";
 import { SaveToast } from "../components/ui/SaveToast";
 import ProfileAvatar from "../components/ProfileAvatar";
+import AvatarLite from "../components/profiles/AvatarLite";
 import ProfileStarRing from "../components/ProfileStarRing";
 import type { Store, Profile } from "../lib/types";
 import {
@@ -39,6 +40,7 @@ import OnlineProfileForm from "../components/OnlineProfileForm";
 import { getAvatarCache as getAvatarCacheLib, setAvatarCache as setAvatarCacheLib } from "../lib/avatarCache";
 
 import { useSport } from "../contexts/SportContext";
+import { useStableProfiles } from "../hooks/useStableProfiles";
 
 // Effet "shimmer" du nom joueur (copié de StatsHub)
 const statsNameCss = `
@@ -607,11 +609,13 @@ export default function Profiles({
     selfStatus = "online",
   } = store;
 
+  const stableProfiles = useStableProfiles(profiles as any);
+
     // ✅ Anti-wipe global : si un rehydrate remet profiles=[] après ajout,
   // on restaure depuis un cache local.
   React.useEffect(() => {
-    if (profiles.length > 0) {
-      writeProfilesCache(profiles);
+    if (stableProfiles.length > 0) {
+      writeProfilesCache(stableProfiles);
       return;
     }
 
@@ -629,21 +633,21 @@ export default function Profiles({
       return cached;
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [profiles.length]);
+  }, [stableProfiles.length]);
 
   // ✅ STOP HÉMORRAGIE : dé-duplique réellement le store si le même profil
   // est injecté plusieurs fois (souvent après refresh / rehydrate / mirror).
   React.useEffect(() => {
-    if (!profiles || profiles.length < 2) return;
+    if (!stableProfiles || stableProfiles.length < 2) return;
 
     // mergeProfilesSafe fait maintenant un anti-doublons en sortie
-    const deduped = mergeProfilesSafe([], profiles, { allowRemoval: true });
+    const deduped = mergeProfilesSafe([], stableProfiles as any, { allowRemoval: true });
 
     // compare rapide (longueur + ids)
-    if (deduped.length === profiles.length) {
+    if (deduped.length === stableProfiles.length) {
       let same = true;
       for (let i = 0; i < deduped.length; i++) {
-        if (deduped[i]?.id !== profiles[i]?.id) {
+        if (deduped[i]?.id !== (stableProfiles as any)[i]?.id) {
           same = false;
           break;
         }
@@ -652,13 +656,13 @@ export default function Profiles({
     }
 
     console.warn("[Profiles] 🧹 DEDUPE profiles (stop doublons)", {
-      before: profiles.length,
+      before: stableProfiles.length,
       after: deduped.length,
     });
 
     setProfiles(() => deduped);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [profiles]);
+  }, [stableProfiles]);
 
   // ============================================
   // ✅ WRAPPERS SAFE (ANTI-WIPE)
@@ -885,7 +889,7 @@ export default function Profiles({
   async function changeAvatar(id: string, file: File) {
     const dataUrl = await fileToSafeAvatarDataUrl(file);
     const now = Date.now();
-    const targetProfile = (profiles || []).find((p: any) => String(p?.id || "") === String(id || "")) || null;
+    const targetProfile = (stableProfiles as any[] || []).find((p: any) => String(p?.id || "") === String(id || "")) || null;
     const isOnlineLinked = isLinkedOnlineProfile(targetProfile);
 
     // ✅ 0) Cache avatar unifié (anti-retour d’une vieille image)
@@ -1082,7 +1086,7 @@ export default function Profiles({
     }
   }
   
-  const active = profiles.find((p) => p.id === activeProfileId) || null;
+  const active = (stableProfiles as any[]).find((p: any) => p.id === activeProfileId) || null;
 
   // ------------------------------------------------------------
   // Online "Me" helpers (ne touche pas activeProfileId)
@@ -1108,7 +1112,7 @@ export default function Profiles({
     // ✅ UNIQUE ACCOUNT: pas de profil "mirror" online:<uid>
     // On réutilise le profil local lié à ce user_id (ou à défaut le profil actif).
     const owner =
-      (store?.profiles || []).find((p: any) => {
+      ((stableProfiles as any[]) || []).find((p: any) => {
         const pi = (p as any)?.privateInfo || {};
         const legacyUserId = String((pi as any)?.userId || "");
         const onlineUserId = String((pi as any)?.onlineUserId || "");
@@ -1128,7 +1132,7 @@ export default function Profiles({
       source: "online",
       isOnlineMirror: false,
     } as any;
-  }, [store?.profiles, auth.status, auth.user?.id, (auth as any)?.profile, (auth as any)?.onlineProfile, active?.id, active?.name]);
+  }, [stableProfiles, auth.status, auth.user?.id, (auth as any)?.profile, (auth as any)?.onlineProfile, active?.id, active?.name]);
 
   // Dans "Mon profil", on affiche STRICTEMENT le profil actif local.
   const activeForMeUi = React.useMemo(() => active || null, [active]);
@@ -1274,9 +1278,9 @@ React.useEffect(() => {
   // ✅ Réhydratation multi-profils depuis le cache avatar unifié
   // - utile après reset/reconnexion si le store restauré a perdu des dataUrl
   React.useEffect(() => {
-    if (!profiles || profiles.length === 0) return;
+    if (!(stableProfiles as any[]) || (stableProfiles as any[]).length === 0) return;
 
-    const needsRestore = (profiles || []).some((p: any) => {
+    const needsRestore = ((stableProfiles as any[]) || []).some((p: any) => {
       const hasAny =
         !!String((p as any)?.avatarUrl || "").trim() ||
         !!String((p as any)?.avatarDataUrl || "").trim();
@@ -1314,7 +1318,7 @@ React.useEffect(() => {
       return changed ? next : arr;
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [profiles]);
+  }, [stableProfiles]);
 
   async function resetActiveStats() {
     if (!active?.id) return;
@@ -1846,7 +1850,7 @@ React.useEffect(() => {
               <>
                 <Card>
   {active && !forceAuth ? (
-    <ActiveProfileBlock
+    <MemoActiveProfileBlock
       selfStatus={onlineStatusForUi}
       active={active}
       activeAvg3D={activeAvg3D}
@@ -1883,7 +1887,7 @@ React.useEffect(() => {
     />
   ) : (
     <UnifiedAuthBlock
-      profiles={profiles}
+      profiles={stableProfiles as any}
       onConnect={(id) => {
         setActiveProfile(id);
         if (returnTo?.tab && go) go(returnTo.tab, returnTo.params);
@@ -1913,7 +1917,7 @@ React.useEffect(() => {
                   )}
                 >
                   {meHeavyReady ? (
-                    <PrivateInfoBlock
+                    <MemoPrivateInfoBlock
                       active={active}
                       onPatch={patchActivePrivateInfo}
                       onSave={handlePrivateInfoSave}
@@ -1952,8 +1956,8 @@ React.useEffect(() => {
                   "Profils locaux"
                 )} (${profiles.filter((p: any) => p.id !== activeProfileId && !isMirrorProfile(p)).length})`}
               >
-                <LocalProfilesRefonte
-                  profiles={profiles}
+                <MemoLocalProfilesRefonte
+                  profiles={stableProfiles as any}
                   activeProfileId={activeProfileId}
                   onCreate={(name, file, privateInfo) => {
                     const shouldLinkOnline = nasProfileOnboarding && auth.status === "signed_in" && auth.user?.id;
@@ -2516,11 +2520,10 @@ function ActiveProfileBlock({
           </div>
         )}
 
-        <ProfileAvatar
+        <AvatarLite
           size={AVATAR}
-          dataUrl={avatarSrc}
+          src={avatarSrc}
           label={displayName?.[0]?.toUpperCase() || "?"}
-          showStars={false}
         />
       </div>
 
@@ -3048,15 +3051,14 @@ function FriendsMergedBlock({ friends }: { friends: FriendLike[] }) {
                         />
                       </div>
 
-                      <ProfileAvatar
+                      <AvatarLite
                         size={AVA}
-                        dataUrl={buildAvatarSrc({
+                        src={buildAvatarSrc({
                           avatarUrl: (f as any)?.avatarUrl || null,
                           avatarDataUrl: (f as any)?.avatarDataUrl || null,
                           avatarUpdatedAt: (f as any)?.avatarUpdatedAt ?? null,
                         })}
                         label={f.name?.[0]?.toUpperCase() || "?"}
-                        showStars={false}
                       />
                     </div>
 
@@ -4163,15 +4165,14 @@ function LocalProfilesRefonte({
                   </div>
 
                   {/* ✅ PATCH 5 — src propre + cache-bust via helper */}
-                  <ProfileAvatar
+                  <AvatarLite
                     size={AVATAR}
-                    dataUrl={buildAvatarSrc({
+                    src={buildAvatarSrc({
                       avatarUrl: (current as any)?.avatarUrl || null,
                       avatarDataUrl: (current as any)?.avatarDataUrl || null,
                       avatarUpdatedAt: (current as any)?.avatarUpdatedAt ?? null,
                     })}
                     label={current.name?.[0]?.toUpperCase() || "?"}
-                    showStars={false}
                   />
                 </div>
               </div>
@@ -5066,6 +5067,36 @@ function StatusDot({ kind }: { kind: "online" | "away" | "offline" }) {
     />
   );
 }
+
+const MemoActiveProfileBlock = React.memo(ActiveProfileBlock, (prev, next) => {
+  return (
+    prev.active?.id === next.active?.id &&
+    prev.active?.name === next.active?.name &&
+    (prev.active as any)?.avatarUpdatedAt === (next.active as any)?.avatarUpdatedAt &&
+    prev.selfStatus === next.selfStatus &&
+    prev.activeAvg3D === next.activeAvg3D
+  );
+});
+
+const MemoPrivateInfoBlock = React.memo(PrivateInfoBlock, (prev, next) => {
+  return (
+    prev.active?.id === next.active?.id &&
+    JSON.stringify((prev.active as any)?.privateInfo || {}) === JSON.stringify((next.active as any)?.privateInfo || {}) &&
+    JSON.stringify((prev.active as any)?.preferences || {}) === JSON.stringify((next.active as any)?.preferences || {})
+  );
+});
+
+const MemoLocalProfilesRefonte = React.memo(LocalProfilesRefonte, (prev, next) => {
+  const prevIds = (prev.profiles || []).map((p: any) => `${p?.id || ''}:${(p as any)?.avatarUpdatedAt || 0}:${p?.name || ''}`).join('|');
+  const nextIds = (next.profiles || []).map((p: any) => `${p?.id || ''}:${(p as any)?.avatarUpdatedAt || 0}:${p?.name || ''}`).join('|');
+  return (
+    prevIds === nextIds &&
+    prev.activeProfileId === next.activeProfileId &&
+    prev.onboardingMode === next.onboardingMode &&
+    prev.autoFocusCreate === next.autoFocusCreate &&
+    prev.deferHeavy === next.deferHeavy
+  );
+});
 
 /* ================================
    Utils
