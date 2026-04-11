@@ -17,8 +17,6 @@ import {
   getBasicProfileStatsAsync,
   type BasicProfileStats,
 } from "../lib/statsBridge";
-import { useDeferredViewReady } from "../hooks/useDeferredViewReady";
-import { primeBasicProfileViewStats, useBasicProfileViewStats } from "../hooks/useBasicProfileViewStats";
 import { purgeAllStatsForProfile } from "../lib/statsLiteIDB";
 import { useTheme } from "../contexts/ThemeContext";
 import { useLang, type Lang } from "../contexts/LangContext";
@@ -125,6 +123,134 @@ export type PrivateInfo = {
   ttsVoice?: string;
   sfxVolume?: number;
 };
+
+/* ===== Helper lecture instantanée (mini-cache IDB + quick-stats) ===== */
+function useBasicStats(playerId: string | undefined | null, enabled: boolean = true) {
+  const empty = React.useMemo(
+    () => ({
+      avg3: 0,
+      bestVisit: 0,
+      bestCheckout: 0,
+      wins: 0,
+      games: 0,
+      winRate: 0,
+      darts: 0,
+    }),
+    []
+  );
+
+  const [stats, setStats] = React.useState(empty);
+
+  React.useEffect(() => {
+    let cancelled = false;
+
+    const apply = (basic: any) => {
+      const games = Number((basic && basic.games) ?? 0);
+      const wins = Number((basic && basic.wins) ?? 0);
+      const darts = Number((basic && basic.darts) ?? 0);
+      const avg3 = Number((basic && basic.avg3) ?? 0);
+      const bestVisit = Number((basic && basic.bestVisit) ?? 0);
+      const bestCheckout = Number((basic && basic.bestCheckout) ?? 0);
+      const winRate = games > 0 ? Math.round((wins / games) * 100) : 0;
+      return {
+        avg3,
+        bestVisit,
+        bestCheckout,
+        wins,
+        games,
+        winRate,
+        darts,
+      };
+    };
+
+    const refresh = async () => {
+      if (!enabled || !playerId) {
+        if (!cancelled) setStats(empty);
+        return;
+      }
+
+      try {
+        const syncStats = getBasicProfileStats(playerId);
+        if (!cancelled) setStats(apply(syncStats));
+      } catch {
+        if (!cancelled) setStats(empty);
+      }
+
+      try {
+        const asyncStats = await getBasicProfileStatsAsync(playerId);
+        if (!cancelled) setStats(apply(asyncStats));
+      } catch {}
+    };
+
+    refresh();
+
+    const onUpdated = () => {
+      refresh();
+    };
+
+    if (typeof window !== "undefined") {
+      window.addEventListener("dc-stats-index-updated", onUpdated as EventListener);
+    }
+
+    return () => {
+      cancelled = true;
+      if (typeof window !== "undefined") {
+        window.removeEventListener("dc-stats-index-updated", onUpdated as EventListener);
+      }
+    };
+  }, [playerId, empty, enabled]);
+
+  return playerId ? stats : empty;
+}
+
+function useDeferredSectionReady(active: boolean, delay = 120) {
+  const [ready, setReady] = React.useState(active);
+
+  React.useEffect(() => {
+    if (!active) {
+      setReady(false);
+      return;
+    }
+
+    let cancelled = false;
+    let timeoutId: number | null = null;
+    const rafId = typeof window !== "undefined" && typeof window.requestAnimationFrame === "function"
+      ? window.requestAnimationFrame(() => {
+          timeoutId = window.setTimeout(() => {
+            if (!cancelled) setReady(true);
+          }, delay);
+        })
+      : null;
+
+    return () => {
+      cancelled = true;
+      if (rafId != null && typeof window !== "undefined" && typeof window.cancelAnimationFrame === "function") {
+        window.cancelAnimationFrame(rafId);
+      }
+      if (timeoutId != null && typeof window !== "undefined") {
+        window.clearTimeout(timeoutId);
+      }
+    };
+  }, [active, delay]);
+
+  return ready;
+}
+
+function HeavySectionPlaceholder({ minHeight = 180 }: { minHeight?: number }) {
+  const { theme } = useTheme();
+  return (
+    <div
+      style={{
+        minHeight,
+        borderRadius: 12,
+        border: `1px solid ${theme.borderSoft}`,
+        background: `linear-gradient(180deg, ${theme.bgSoft || theme.bg} 0%, ${theme.bg} 100%)`,
+        opacity: 0.9,
+      }}
+    />
+  );
+}
+
 
 /* ----------------- Types Friends ----------------- */
 
@@ -639,14 +765,12 @@ export default function Profiles({
       ? "friends"
       : "menu"
   );
-
   const [, startViewTransition] = React.useTransition();
-  const setViewFast = React.useCallback((next: View) => {
+  const openView = React.useCallback((next: View) => {
     startViewTransition(() => setView(next));
   }, []);
-
-  const meViewReady = useDeferredViewReady(view === "me", 0);
-  const localsViewReady = useDeferredViewReady(view === "locals", 0);
+  const meHeavyReady = useDeferredSectionReady(view === "me", 140);
+  const localsHeavyReady = useDeferredSectionReady(view === "locals", 140);
 
     // ✅ FORCE auth UI (quand on vient de ONLINE / AuthStart / Account)
     // - params.forceAuth : explicite
@@ -1315,11 +1439,9 @@ React.useEffect(() => {
     let cancelled = false;
     (async () => {
       const pid = active?.id;
-      const shouldLoad = view === "me" || String(activeProfileId || "") === String(pid || "");
-      if (!pid || !shouldLoad || statsMap[pid]) return;
+      if (!pid || statsMap[pid]) return;
       try {
         const s = await getBasicProfileStatsAsync(pid);
-        primeBasicProfileViewStats(pid, s);
         if (!cancelled) setStatsMap((m) => ({ ...m, [pid]: s }));
       } catch {}
     })();
@@ -1327,7 +1449,26 @@ React.useEffect(() => {
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [active?.id, view, activeProfileId]);
+  }, [active?.id]);
+
+  React.useEffect(() => {
+    let stopped = false;
+    (async () => {
+      const ids = profiles.map((p) => p.id).slice(0, 48);
+      for (const id of ids) {
+        if (stopped) break;
+        if (statsMap[id]) continue;
+        try {
+          const s = await getBasicProfileStatsAsync(id);
+          if (!stopped) setStatsMap((m) => (m[id] ? m : { ...m, [id]: s }));
+        } catch {}
+      }
+    })();
+    return () => {
+      stopped = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [profiles]);
 
   const activeAvg3D = React.useMemo<number | null>(() => {
     if (!active?.id) return null;
@@ -1655,15 +1796,15 @@ React.useEffect(() => {
   <ProfilesMenuView
     go={go}
     sport={sportResolved}
-    onSelectMe={() => setViewFast("me")}
-    onSelectLocals={() => setViewFast("locals")}
-    onSelectFriends={() => setViewFast("friends")}
+    onSelectMe={() => openView("me")}
+    onSelectLocals={() => openView("locals")}
+    onSelectFriends={() => openView("friends")}
           />
         ) : (
           <>
             <button
               className="btn sm"
-              onClick={() => setViewFast("menu")}
+              onClick={() => openView("menu")}
               style={{
                 marginBottom: 10,
                 borderRadius: 999,
@@ -1730,9 +1871,13 @@ React.useEffect(() => {
 </Card>
 
                 {/* 🔥 Panneau sets de fléchettes du profil actif */}
-                {meViewReady && isDarts && active && (
+                {isDarts && active && (
                   <div style={{ marginTop: 8, marginBottom: 8 }}>
-                    <DartSetsPanel key={`me-dartsets-${String((((meProfileForDarts as any) || (active as any))?.id || "none"))}`} profile={((meProfileForDarts as any) || (active as any))} />
+                    {meHeavyReady ? (
+                      <DartSetsPanel key={`me-dartsets-${String((((meProfileForDarts as any) || (active as any))?.id || "none"))}`} profile={((meProfileForDarts as any) || (active as any))} />
+                    ) : (
+                      <HeavySectionPlaceholder minHeight={132} />
+                    )}
                   </div>
                 )}
 
@@ -1742,33 +1887,33 @@ React.useEffect(() => {
                     "Informations personnelles"
                   )}
                 >
-                  {meViewReady ? (
-                  <PrivateInfoBlock
-                    active={active}
-                    onPatch={patchActivePrivateInfo}
-                    onSave={handlePrivateInfoSave}
-                    onSync={async (full) => {
-                      try {
-                        await handlePrivateInfoSave(full);
-                        setToast({ type: "success", message: "Synchronisation envoyée" });
-                      } catch {
-                        setToast({ type: "error", message: "Erreur de synchronisation" });
-                      }
-                    }}
-                    onPull={async () => {
-                      try {
-                        const cloud = await fetchCloudProfile();
-                        if (cloud?.private_info) {
-                          await handlePrivateInfoSave(cloud.private_info);
+                  {meHeavyReady ? (
+                    <PrivateInfoBlock
+                      active={active}
+                      onPatch={patchActivePrivateInfo}
+                      onSave={handlePrivateInfoSave}
+                      onSync={async (full) => {
+                        try {
+                          await handlePrivateInfoSave(full);
+                          setToast({ type: "success", message: "Synchronisation envoyée" });
+                        } catch {
+                          setToast({ type: "error", message: "Erreur de synchronisation" });
                         }
-                        setToast({ type: "success", message: "Données récupérées" });
-                      } catch {
-                        setToast({ type: "error", message: "Erreur de récupération" });
-                      }
-                    }}
-                  />
+                      }}
+                      onPull={async () => {
+                        try {
+                          const cloud = await fetchCloudProfile();
+                          if (cloud?.private_info) {
+                            await handlePrivateInfoSave(cloud.private_info);
+                          }
+                          setToast({ type: "success", message: "Données récupérées" });
+                        } catch {
+                          setToast({ type: "error", message: "Erreur de récupération" });
+                        }
+                      }}
+                    />
                   ) : (
-                    <div style={{ minHeight: 220 }} />
+                    <HeavySectionPlaceholder minHeight={540} />
                   )}
 
                 </Card>
@@ -1782,7 +1927,6 @@ React.useEffect(() => {
                   "Profils locaux"
                 )} (${profiles.filter((p: any) => p.id !== activeProfileId && !isMirrorProfile(p)).length})`}
               >
-                {localsViewReady ? (
                 <LocalProfilesRefonte
                   profiles={profiles}
                   activeProfileId={activeProfileId}
@@ -1807,10 +1951,8 @@ React.useEffect(() => {
                   onOpenAvatarCreator={openAvatarCreator}
                   onboardingMode={nasProfileOnboarding}
                   autoFocusCreate={nasProfileOnboarding || autoCreateFlag}
+                  deferHeavy={!localsHeavyReady}
                 />
-                ) : (
-                  <div style={{ minHeight: 260 }} />
-                )}
               </Card>
             )}
 
@@ -3650,6 +3792,7 @@ function LocalProfilesRefonte({
   onOpenAvatarCreator,
   onboardingMode = false,
   autoFocusCreate = false,
+  deferHeavy = false,
 }: {
   profiles: Profile[];
   activeProfileId: string | null;
@@ -3665,6 +3808,7 @@ function LocalProfilesRefonte({
   onOpenAvatarCreator?: () => void;
   onboardingMode?: boolean;
   autoFocusCreate?: boolean;
+  deferHeavy?: boolean;
 }) {
   const { theme } = useTheme();
 
@@ -3722,7 +3866,7 @@ function LocalProfilesRefonte({
   const current = locals[index] || null;
 
   // stats du profil courant
-  const bs = useBasicProfileViewStats(current?.id, !!current?.id);
+  const bs = useBasicStats(current?.id, !deferHeavy);
   const avg3 = Number.isFinite(bs.avg3) ? Number(bs.avg3) : 0;
   const bestVisit = Number(bs.bestVisit ?? 0);
   const bestCheckout = Number(bs.bestCheckout ?? 0);
@@ -4110,7 +4254,11 @@ function LocalProfilesRefonte({
               {/* 🔥 NOUVEAU : Mes jeux de fléchettes pour ce profil local (DARTS ONLY) */}
               {isDarts && (
                 <div style={{ marginTop: 4, marginBottom: 10 }}>
-                  <DartSetsPanel key={`local-dartsets-${String(current?.id || "none")}`} profile={current} />
+                  {deferHeavy ? (
+                    <HeavySectionPlaceholder minHeight={132} />
+                  ) : (
+                    <DartSetsPanel key={`local-dartsets-${String(current?.id || "none")}`} profile={current} />
+                  )}
                 </div>
               )}
 
@@ -4672,7 +4820,7 @@ function EditInline({
 /* ------ Gold mini-stats (lecture SYNC cache) ------ */
 
 function GoldMiniStats({ profileId }: { profileId: string }) {
-  const bs = useBasicProfileViewStats(profileId, !!profileId);
+  const bs = useBasicStats(profileId);
   const { theme } = useTheme();
 
   const { sport } = useSport();
