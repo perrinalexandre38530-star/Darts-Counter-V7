@@ -39,182 +39,6 @@ import { getAvatarCache as getAvatarCacheLib, setAvatarCache as setAvatarCacheLi
 
 import { useSport } from "../contexts/SportContext";
 
-const PROFILE_NAV_DIAG_KEY = "dc_profiles_nav_diag_v1";
-const PROFILES_PERF_DIAG_KEY = "dc_profiles_perf_diag_v1";
-const PROFILES_PERF_OVERLAY_KEY = "dc_profiles_perf_overlay_open_v1";
-const PROFILES_PERF_MAX_ROWS = 180;
-
-const PROFILES_VERBOSE_LOGS = false;
-
-function detectProfilesMobileMode() {
-  if (typeof window === "undefined") return false;
-  try {
-    const ua = String(window.navigator?.userAgent || "");
-    const coarse = typeof window.matchMedia === "function"
-      ? window.matchMedia("(pointer: coarse)").matches
-      : false;
-    return /Android|iPhone|iPad|iPod|Mobile/i.test(ua) || coarse;
-  } catch {
-    return false;
-  }
-}
-
-function useDeferredProfilesMedia(enabled: boolean, delayMs = 1600) {
-  const [ready, setReady] = React.useState(!enabled);
-
-  React.useEffect(() => {
-    if (!enabled) {
-      setReady(true);
-      return;
-    }
-
-    setReady(false);
-    let cancelled = false;
-    let timer: number | null = null;
-
-    const start = () => {
-      timer = window.setTimeout(() => {
-        if (!cancelled) setReady(true);
-      }, delayMs);
-    };
-
-    try {
-      const ric = (window as any).requestIdleCallback;
-      if (typeof ric === "function") {
-        ric(() => start(), { timeout: delayMs });
-      } else {
-        start();
-      }
-    } catch {
-      start();
-    }
-
-    return () => {
-      cancelled = true;
-      if (timer) window.clearTimeout(timer);
-    };
-  }, [enabled, delayMs]);
-
-  return ready;
-}
-
-
-function readProfilesPerfRows(): Array<Record<string, any>> {
-  if (typeof window === "undefined") return [];
-  try {
-    const raw = window.sessionStorage.getItem(PROFILES_PERF_DIAG_KEY);
-    const parsed = raw ? JSON.parse(raw) : [];
-    return Array.isArray(parsed) ? parsed : [];
-  } catch {
-    return [];
-  }
-}
-
-function writeProfilesPerfRows(rows: Array<Record<string, any>>) {
-  if (typeof window === "undefined") return;
-  try {
-    const trimmed = rows.slice(-PROFILES_PERF_MAX_ROWS);
-    window.sessionStorage.setItem(PROFILES_PERF_DIAG_KEY, JSON.stringify(trimmed));
-  } catch {}
-}
-
-function pushProfilesNavDiag(step: string, extra?: Record<string, any>) {
-  if (typeof window === "undefined") return;
-  try {
-    if (!(window as any).__DC_PROFILES_DIAG__) return;
-    const row = {
-      at: Date.now(),
-      step,
-      href: String(window.location?.href || ""),
-      ...((extra && typeof extra === "object") ? extra : {}),
-    };
-    const rows = readProfilesPerfRows();
-    rows.push(row);
-    writeProfilesPerfRows(rows);
-    try {
-      window.dispatchEvent(new CustomEvent("dc:profiles-perf-updated", { detail: row }));
-    } catch {}
-  } catch {}
-}
-
-function measureAvatarPayloadChars(profiles: any[]): number {
-  try {
-    return (Array.isArray(profiles) ? profiles : []).reduce((sum, p) => {
-      const raw = String((p as any)?.avatarDataUrl || (p as any)?.avatarUrl || "");
-      return sum + (raw.startsWith("data:image/") ? raw.length : 0);
-    }, 0);
-  } catch {
-    return 0;
-  }
-}
-
-function useProfilesPerfOverlay(enabled: boolean) {
-  const [rows, setRows] = React.useState<Array<Record<string, any>>>(() => readProfilesPerfRows());
-  const [open, setOpen] = React.useState<boolean>(() => {
-    if (typeof window === "undefined") return false;
-    try {
-      return window.sessionStorage.getItem(PROFILES_PERF_OVERLAY_KEY) === "1";
-    } catch {
-      return false;
-    }
-  });
-
-  React.useEffect(() => {
-    if (!enabled || typeof window === "undefined") return;
-    const sync = () => setRows(readProfilesPerfRows());
-    sync();
-    const onUpdate = () => sync();
-    window.addEventListener("dc:profiles-perf-updated", onUpdate as EventListener);
-    return () => window.removeEventListener("dc:profiles-perf-updated", onUpdate as EventListener);
-  }, [enabled]);
-
-  React.useEffect(() => {
-    if (typeof window === "undefined") return;
-    try {
-      window.sessionStorage.setItem(PROFILES_PERF_OVERLAY_KEY, open ? "1" : "0");
-    } catch {}
-  }, [open]);
-
-  const overlay = !enabled ? null : (
-    <div style={{ position: "fixed", right: 10, bottom: 84, zIndex: 10050, display: "flex", flexDirection: "column", gap: 8, alignItems: "flex-end" }}>
-      <button
-        type="button"
-        className="btn sm"
-        onClick={() => setOpen((v) => !v)}
-        style={{ boxShadow: "0 8px 24px rgba(0,0,0,.35)" }}
-      >
-        {open ? "Masquer diag Profils" : "Diag Profils"}
-      </button>
-      {open && (
-        <div style={{ width: 340, maxHeight: "52vh", overflow: "auto", borderRadius: 14, border: "1px solid rgba(255,255,255,.14)", background: "rgba(8,10,18,.94)", color: "#fff", padding: 10, boxShadow: "0 18px 42px rgba(0,0,0,.42)", backdropFilter: "blur(6px)" }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
-            <strong style={{ fontSize: 12, letterSpacing: .4 }}>Diagnostic Profils</strong>
-            <button type="button" className="btn sm" onClick={() => { writeProfilesPerfRows([]); setRows([]); }}>Vider</button>
-          </div>
-          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-            {rows.length === 0 ? (
-              <div style={{ fontSize: 12, opacity: .72 }}>Aucune mesure pour le moment.</div>
-            ) : rows.slice().reverse().map((row, idx) => {
-              const { step, at, ...rest } = row || {};
-              return (
-                <div key={`${String(at)}-${idx}`} style={{ borderRadius: 10, border: "1px solid rgba(255,255,255,.08)", padding: "7px 8px", fontSize: 11, lineHeight: 1.35 }}>
-                  <div style={{ fontWeight: 700 }}>{String(step || "?")}</div>
-                  <div style={{ opacity: .7, marginTop: 2 }}>{new Date(Number(at || Date.now())).toLocaleTimeString()}</div>
-                  {Object.keys(rest).length > 0 ? (
-                    <pre style={{ whiteSpace: "pre-wrap", wordBreak: "break-word", margin: "6px 0 0", fontSize: 10, opacity: .88 }}>{JSON.stringify(rest, null, 2)}</pre>
-                  ) : null}
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
-    </div>
-  );
-
-  return { overlay, push: pushProfilesNavDiag };
-}
-
 // Effet "shimmer" du nom joueur (copié de StatsHub)
 const statsNameCss = `
 .dc-stats-name-wrapper {
@@ -689,62 +513,15 @@ async function uploadLocalProfileAvatarToSupabase(
   return null;
 }
 
-const __profilesFlushState = {
-  lastReason: "",
-  lastAt: 0,
-};
-
 async function flushCloud(reason: string, seedOverride?: any) {
-  const startedAt = typeof performance !== "undefined" ? performance.now() : Date.now();
-  const now = Date.now();
-  if (__profilesFlushState.lastReason === reason && now - __profilesFlushState.lastAt < 15000) {
-    try { console.warn("[Profiles] flushCloud skipped (dedupe)", { reason }); } catch {}
-    return;
-  }
-  __profilesFlushState.lastReason = reason;
-  __profilesFlushState.lastAt = now;
-
   const fn = (window as any).__flushCloudNow;
   if (typeof fn === "function") {
     try {
       await fn(reason, seedOverride);
-      const endedAt = typeof performance !== "undefined" ? performance.now() : Date.now();
-      pushProfilesNavDiag("profiles:flushCloud:done", { reason, durationMs: Math.round(endedAt - startedAt) });
     } catch (e) {
-      const endedAt = typeof performance !== "undefined" ? performance.now() : Date.now();
-      pushProfilesNavDiag("profiles:flushCloud:error", { reason, durationMs: Math.round(endedAt - startedAt), message: (e as any)?.message || String(e) });
       console.warn("[cloud] flush failed", reason, e);
     }
   }
-}
-
-
-function sameProfileLocalSignature(a: any, b: any) {
-  const aPi = (a?.privateInfo || {}) as any;
-  const bPi = (b?.privateInfo || {}) as any;
-  return (
-    String(a?.id || "") === String(b?.id || "") &&
-    String(a?.name || "") === String(b?.name || "") &&
-    String(aPi?.country || "") === String(bPi?.country || "") &&
-    Number(a?.avatarUpdatedAt || 0) === Number(b?.avatarUpdatedAt || 0) &&
-    String(a?.avatarUrl || "") === String(b?.avatarUrl || "") &&
-    String(a?.avatarPath || "") === String(b?.avatarPath || "") &&
-    String(a?.avatarDataUrl || "").length === String(b?.avatarDataUrl || "").length
-  );
-}
-
-function areLocalProfilesRefontePropsEqual(prev: any, next: any) {
-  if (prev?.activeProfileId !== next?.activeProfileId) return false;
-  if (!!prev?.onboardingMode !== !!next?.onboardingMode) return false;
-  if (!!prev?.autoFocusCreate !== !!next?.autoFocusCreate) return false;
-  if (!!prev?.deferHeavyMedia !== !!next?.deferHeavyMedia) return false;
-  const a = Array.isArray(prev?.profiles) ? prev.profiles : [];
-  const b = Array.isArray(next?.profiles) ? next.profiles : [];
-  if (a.length !== b.length) return false;
-  for (let i = 0; i < a.length; i += 1) {
-    if (!sameProfileLocalSignature(a[i], b[i])) return false;
-  }
-  return true;
 }
 
 export default function Profiles({
@@ -763,12 +540,7 @@ export default function Profiles({
   params?: any;
 }) {
 
-  React.useEffect(() => {
-    return;
-  }, []);
-
   const [toast, setToast] = React.useState<null | { type: "success" | "error"; message: string }>(null);
-  const profilesLightMode = React.useMemo(() => detectProfilesMobileMode(), []);
 
   // 🔥 injection du CSS shimmer une seule fois
   useInjectStatsNameCss();
@@ -782,13 +554,54 @@ export default function Profiles({
     // ✅ Anti-wipe global : si un rehydrate remet profiles=[] après ajout,
   // on restaure depuis un cache local.
   React.useEffect(() => {
-    return;
+    if (profiles.length > 0) {
+      writeProfilesCache(profiles);
+      return;
+    }
+
+    const cached = readProfilesCache();
+    if (!cached || cached.length === 0) return;
+
+    console.warn("[Profiles] 🛟 PROFILES RESTORE from cache (anti-wipe)", {
+      cachedLen: cached.length,
+      cachedIds: cached.map((p) => p.id),
+    });
+
+    // restaure uniquement si store est vide
+    setProfiles((prev) => {
+      if (prev && prev.length > 0) return prev;
+      return cached;
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [profiles.length]);
 
   // ✅ STOP HÉMORRAGIE : dé-duplique réellement le store si le même profil
   // est injecté plusieurs fois (souvent après refresh / rehydrate / mirror).
   React.useEffect(() => {
-    return;
+    if (!profiles || profiles.length < 2) return;
+
+    // mergeProfilesSafe fait maintenant un anti-doublons en sortie
+    const deduped = mergeProfilesSafe([], profiles, { allowRemoval: true });
+
+    // compare rapide (longueur + ids)
+    if (deduped.length === profiles.length) {
+      let same = true;
+      for (let i = 0; i < deduped.length; i++) {
+        if (deduped[i]?.id !== profiles[i]?.id) {
+          same = false;
+          break;
+        }
+      }
+      if (same) return;
+    }
+
+    console.warn("[Profiles] 🧹 DEDUPE profiles (stop doublons)", {
+      before: profiles.length,
+      after: deduped.length,
+    });
+
+    setProfiles(() => deduped);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [profiles]);
 
   // ============================================
@@ -802,18 +615,18 @@ export default function Profiles({
         const next = buildNext(prev);
         const merged = mergeProfilesSafe(prev, next);
   
-        if (PROFILES_VERBOSE_LOGS) {
-          console.log("[setProfilesSafe] prev -> next -> merged", {
-            prevLen: prev.length,
-            nextLen: next.length,
-            mergedLen: merged.length,
-            prevIds: prev.map((p) => p.id),
-            nextIds: next.map((p) => p.id),
-            mergedIds: merged.map((p) => p.id),
-          });
-        }
+        console.log("[setProfilesSafe] prev -> next -> merged", {
+          prevLen: prev.length,
+          nextLen: next.length,
+          mergedLen: merged.length,
+          prevIds: prev.map((p) => p.id),
+          nextIds: next.map((p) => p.id),
+          mergedIds: merged.map((p) => p.id),
+        });
 
-
+        // ✅ keep cache in sync (anti flash)
+        writeProfilesCache(merged);
+  
         return merged;
       });
     },
@@ -825,6 +638,7 @@ export default function Profiles({
       setProfiles((prev: Profile[]) => {
         const next = buildNext(prev);
         const merged = mergeProfilesSafe(prev, next, { allowRemoval: true });
+        writeProfilesCache(merged);
         return merged;
       });
     },
@@ -857,7 +671,6 @@ export default function Profiles({
   const { theme, themeId, setThemeId } = useTheme() as any;
   const { t, setLang, lang } = useLang();
   const auth = useAuthOnline();
-  const profilesPerf = useProfilesPerfOverlay(false);
 
   // ✅ Cohérence globale : si l'utilisateur est authentifié Supabase,
   // on ne laisse pas l'UI afficher "Hors ligne" par défaut.
@@ -868,7 +681,6 @@ export default function Profiles({
   }, [auth?.status, selfStatus, update]);
 
   React.useEffect(() => {
-    if (!PROFILES_VERBOSE_LOGS) return;
     console.log("[Profiles] RENDER WATCH profiles=", profiles.length, {
       activeProfileId,
       ids: profiles.map((p) => p.id),
@@ -905,61 +717,6 @@ export default function Profiles({
       : "menu"
   );
 
-  const profilesMountAtRef = React.useRef<number>(typeof performance !== "undefined" ? performance.now() : Date.now());
-  React.useEffect(() => {
-    pushProfilesNavDiag("profiles:mount", {
-      profilesCount: Array.isArray(profiles) ? profiles.length : 0,
-      activeProfileId,
-      avatarPayloadChars: measureAvatarPayloadChars(Array.isArray(profiles) ? profiles : []),
-      view,
-      lightMode: profilesLightMode,
-    });
-  }, []);
-
-  React.useEffect(() => {
-    const now = typeof performance !== "undefined" ? performance.now() : Date.now();
-    pushProfilesNavDiag("profiles:view", {
-      view,
-      sinceMountMs: Math.round(now - profilesMountAtRef.current),
-      profilesCount: Array.isArray(profiles) ? profiles.length : 0,
-      avatarPayloadChars: measureAvatarPayloadChars(Array.isArray(profiles) ? profiles : []),
-    });
-  }, [view, profiles.length]);
-
-  React.useEffect(() => {
-    if (typeof window === "undefined" || typeof PerformanceObserver === "undefined") return;
-    let observer: PerformanceObserver | null = null;
-    try {
-      // @ts-ignore
-      observer = new PerformanceObserver((list) => {
-        for (const entry of list.getEntries()) {
-          pushProfilesNavDiag("profiles:longtask", { durationMs: Math.round(entry.duration), name: entry.name || "longtask" });
-        }
-      });
-      // @ts-ignore
-      observer.observe({ type: "longtask", buffered: true });
-    } catch {}
-    return () => {
-      try { observer?.disconnect(); } catch {}
-    };
-  }, []);
-
-
-  const [forceHeavyProfileMedia, setForceHeavyProfileMedia] = React.useState(false);
-  const deferHeavyProfileMedia = profilesLightMode && view === "me" && !forceHeavyProfileMedia;
-  const heavyProfileMediaReady = !!forceHeavyProfileMedia || !deferHeavyProfileMedia;
-
-  React.useEffect(() => {
-    if (!profilesLightMode) return;
-    const onForce = () => setForceHeavyProfileMedia(true);
-    window.addEventListener("dc:profiles-force-media", onForce as EventListener);
-    return () => window.removeEventListener("dc:profiles-force-media", onForce as EventListener);
-  }, [profilesLightMode]);
-
-  React.useEffect(() => {
-    if (view !== "me") setForceHeavyProfileMedia(false);
-  }, [view]);
-
     // ✅ FORCE auth UI (quand on vient de ONLINE / AuthStart / Account)
     // - params.forceAuth : explicite
     // - params.mode: signin/signup (compat)
@@ -984,7 +741,6 @@ export default function Profiles({
   const [statsMap, setStatsMap] = React.useState<
     Record<string, BasicProfileStats | undefined>
   >({});
-  const passiveOnlineHydrateDoneRef = React.useRef<string>("");
 
   function setActiveProfile(id: string | null) {
     // 1) on met à jour le store
@@ -1523,19 +1279,8 @@ React.useEffect(() => {
 
     // 🔁 Hydrate les infos privées (email / pays / surnom) depuis le compte online
     React.useEffect(() => {
-      return;
       if (!active) return;
       if (auth.status !== "signed_in") return;
-      if (profilesLightMode) {
-        pushProfilesNavDiag("profiles:passive_hydrate:skipped_mobile", { activeId: active.id });
-        return;
-      }
-      const passiveKey = [
-        String(active.id || ""),
-        String(auth.user?.email || ""),
-        String((auth.profile as any)?.updatedAt || (auth.profile as any)?.updated_at || ""),
-      ].join("|");
-      if (passiveOnlineHydrateDoneRef.current === passiveKey) return;
   
       const pi = ((active as any).privateInfo || {}) as PrivateInfo;
       const patch: Partial<PrivateInfo> = {};
@@ -1614,13 +1359,10 @@ React.useEffect(() => {
       }
   
       if (Object.keys(patch).length > 0) {
-        passiveOnlineHydrateDoneRef.current = passiveKey;
         patchActivePrivateInfo(patch);
         patchActivePrefs(patch);
-      } else {
-        passiveOnlineHydrateDoneRef.current = passiveKey;
       }
-    }, [active?.id, auth.status, auth.profile, auth.user, profilesLightMode]);  
+    }, [active?.id, auth.status, auth.profile, auth.user]);  
 
   // NEW : au chargement de la page, si un profil actif a des prefs app, on les applique
   React.useEffect(() => {
@@ -1640,36 +1382,24 @@ React.useEffect(() => {
 
   React.useEffect(() => {
     let cancelled = false;
-    let timer: number | null = null;
-    const run = async () => {
+    (async () => {
       const pid = active?.id;
       if (!pid || statsMap[pid]) return;
       try {
         const s = await getBasicProfileStatsAsync(pid);
         if (!cancelled) setStatsMap((m) => ({ ...m, [pid]: s }));
       } catch {}
-    };
-    if (profilesLightMode) {
-      timer = window.setTimeout(() => { void run(); }, 350);
-    } else {
-      void run();
-    }
+    })();
     return () => {
       cancelled = true;
-      if (timer) window.clearTimeout(timer);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [active?.id, profilesLightMode]);
+  }, [active?.id]);
 
   React.useEffect(() => {
-    return;
-    if (profilesLightMode) {
-      pushProfilesNavDiag("profiles:stats_bulk_preload:skipped_mobile", { count: profiles.length });
-      return;
-    }
     let stopped = false;
     (async () => {
-      const ids = profiles.map((p) => p.id).slice(0, 12);
+      const ids = profiles.map((p) => p.id).slice(0, 48);
       for (const id of ids) {
         if (stopped) break;
         if (statsMap[id]) continue;
@@ -1683,7 +1413,7 @@ React.useEffect(() => {
       stopped = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [profiles, profilesLightMode]);
+  }, [profiles]);
 
   const activeAvg3D = React.useMemo<number | null>(() => {
     if (!active?.id) return null;
@@ -1725,9 +1455,7 @@ React.useEffect(() => {
       )
     );
     try { if (nextStoreSnapshot) await saveStore(nextStoreSnapshot); } catch {}
-    if (!detectProfilesMobileMode()) {
-      try { await (window as any).__flushCloudNow?.("profiles_privateInfo", nextStoreSnapshot); } catch {}
-    }
+    try { await (window as any).__flushCloudNow?.("profiles_privateInfo", nextStoreSnapshot); } catch {}
   }
 
   function patchActivePrivateInfo(patch: Record<string, any>) {
@@ -1779,9 +1507,7 @@ React.useEffect(() => {
 
     queueMicrotask(async () => {
       try { if (nextStoreSnapshot) await saveStore(nextStoreSnapshot); } catch {}
-      if (!detectProfilesMobileMode()) {
-        try { await (window as any).__flushCloudNow?.("profiles_prefs", nextStoreSnapshot); } catch {}
-      }
+      try { await (window as any).__flushCloudNow?.("profiles_prefs", nextStoreSnapshot); } catch {}
     });
   }
 
@@ -2074,7 +1800,6 @@ React.useEffect(() => {
         });
       }}
       onResetStats={resetActiveStats}
-      lightweightAvatar={deferHeavyProfileMedia && !heavyProfileMediaReady}
     />
   ) : (
     <UnifiedAuthBlock
@@ -2091,34 +1816,10 @@ React.useEffect(() => {
 </Card>
 
                 {/* 🔥 Panneau sets de fléchettes du profil actif */}
-                {isDarts && active && !profilesLightMode && (
+                {isDarts && active && (
                   <div style={{ marginTop: 8, marginBottom: 8 }}>
                     <DartSetsPanel key={`me-dartsets-${String((((meProfileForDarts as any) || (active as any))?.id || "none"))}`} profile={((meProfileForDarts as any) || (active as any))} />
                   </div>
-                )}
-
-                {isDarts && active && profilesLightMode && (
-                  <Card style={{ marginTop: 8, marginBottom: 8 }}>
-                    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                      <div className="subtitle" style={{ fontSize: 12, color: theme.textSoft }}>
-                        Les visuels des fléchettes sont différés sur mobile pour éviter le gel de la page.
-                      </div>
-                      {heavyProfileMediaReady ? (
-                        <DartSetsPanel key={`me-dartsets-mobile-${String((((meProfileForDarts as any) || (active as any))?.id || "none"))}`} profile={((meProfileForDarts as any) || (active as any))} />
-                      ) : (
-                        <button
-                          className="btn sm"
-                          type="button"
-                          onClick={() => {
-                            pushProfilesNavDiag("profiles:media:manual_load_requested");
-                            window.dispatchEvent(new CustomEvent("dc:profiles-force-media"));
-                          }}
-                        >
-                          Charger mes images
-                        </button>
-                      )}
-                    </div>
-                  </Card>
                 )}
 
                 <Card
@@ -2164,7 +1865,7 @@ React.useEffect(() => {
                   "Profils locaux"
                 )} (${profiles.filter((p: any) => p.id !== activeProfileId && !isMirrorProfile(p)).length})`}
               >
-                <MemoLocalProfilesRefonte
+                <LocalProfilesRefonte
                   profiles={profiles}
                   activeProfileId={activeProfileId}
                   onCreate={(name, file, privateInfo) => {
@@ -2188,7 +1889,6 @@ React.useEffect(() => {
                   onOpenAvatarCreator={openAvatarCreator}
                   onboardingMode={nasProfileOnboarding}
                   autoFocusCreate={nasProfileOnboarding || autoCreateFlag}
-                  deferHeavyMedia={profilesLightMode}
                 />
               </Card>
             )}
@@ -2206,8 +1906,6 @@ React.useEffect(() => {
           </>
         )}
       </div>
-
-      {profilesPerf.overlay}
 
       {toast && (
         <SaveToast type={toast.type} message={toast.message} onClose={() => setToast(null)} />
@@ -2497,7 +2195,6 @@ function ActiveProfileBlock({
   onEdit,
   onOpenStats,
   onResetStats,
-  lightweightAvatar = false,
 }: {
   active: Profile;
   activeAvg3D: number | null;
@@ -2507,7 +2204,6 @@ function ActiveProfileBlock({
   onEdit: (name: string, avatar?: File | null) => void;
   onOpenStats?: () => void;
   onResetStats?: () => void;
-  lightweightAvatar?: boolean;
 }) {
   const { theme } = useTheme();
 
@@ -2732,33 +2428,12 @@ function ActiveProfileBlock({
           </div>
         )}
 
-        {lightweightAvatar ? (
-          <div
-            aria-label="avatar-placeholder"
-            style={{
-              width: AVATAR,
-              height: AVATAR,
-              borderRadius: "50%",
-              display: "grid",
-              placeItems: "center",
-              background: "radial-gradient(circle at 30% 30%, rgba(255,255,255,.12), rgba(255,255,255,.04) 58%, rgba(0,0,0,.28) 100%)",
-              border: `1px solid ${primary}55`,
-              color: "#fff",
-              fontSize: 34,
-              fontWeight: 900,
-              letterSpacing: 1,
-            }}
-          >
-            {displayName?.[0]?.toUpperCase() || "?"}
-          </div>
-        ) : (
-          <ProfileAvatar
-            size={AVATAR}
-            dataUrl={avatarSrc}
-            label={displayName?.[0]?.toUpperCase() || "?"}
-            showStars={false}
-          />
-        )}
+        <ProfileAvatar
+          size={AVATAR}
+          dataUrl={avatarSrc}
+          label={displayName?.[0]?.toUpperCase() || "?"}
+          showStars={false}
+        />
       </div>
 
       {/* TEXTE + ACTIONS */}
@@ -2801,13 +2476,7 @@ function ActiveProfileBlock({
           <span style={{ color: statusColor }}>{statusLabel}</span>
         </div>
 
-        {lightweightAvatar && (
-          <div style={{ marginTop: 8, fontSize: 11, color: "rgba(255,255,255,.72)", textAlign: "center" }}>
-            Chargement léger mobile actif. Les visuels arrivent après stabilisation.
-          </div>
-        )}
-
-        {active?.id && !lightweightAvatar && (
+        {active?.id && (
           <div style={{ marginTop: 8 }}>
             <GoldMiniStats profileId={active.id} />
           </div>
@@ -2844,6 +2513,19 @@ function ActiveProfileBlock({
             </button>
             <button className="btn ok sm" onClick={handleSaveEdit}>
               Enregistrer
+            </button>
+            <button
+              className="btn sm"
+              onClick={() => {
+                try {
+                  onSync?.({ ...draft });
+                } catch {}
+              }}
+            >
+              Synchroniser
+            </button>
+            <button className="btn sm" onClick={() => onPull?.()}>
+              Récupérer
             </button>
           </div>
         )}
@@ -4047,7 +3729,6 @@ function LocalProfilesRefonte({
   onOpenAvatarCreator,
   onboardingMode = false,
   autoFocusCreate = false,
-  deferHeavyMedia = false,
 }: {
   profiles: Profile[];
   activeProfileId: string | null;
@@ -4063,7 +3744,6 @@ function LocalProfilesRefonte({
   onOpenAvatarCreator?: () => void;
   onboardingMode?: boolean;
   autoFocusCreate?: boolean;
-  deferHeavyMedia?: boolean;
 }) {
   const { theme } = useTheme();
 
@@ -4076,24 +3756,16 @@ function LocalProfilesRefonte({
   // ✅ Profils locaux :
   // - on enlève le profil actif
   // - on exclut TOUS les mirrors "online:*" (sinon tu te retrouves avec 10 duplicates)
-  const locals = React.useMemo(() => {
-    const startedAt = typeof performance !== "undefined" ? performance.now() : Date.now();
-    const next = onboardingMode
-      ? []
-      : profiles.filter(
-          (p: any) =>
-            p.id !== activeProfileId && !isMirrorProfile(p)
-        );
-    const endedAt = typeof performance !== "undefined" ? performance.now() : Date.now();
-    pushProfilesNavDiag("profiles:locals:compute", {
-      durationMs: Math.round(endedAt - startedAt),
-      totalProfiles: Array.isArray(profiles) ? profiles.length : 0,
-      localsCount: next.length,
-      avatarPayloadChars: measureAvatarPayloadChars(next as any),
-      onboardingMode,
-    });
-    return next;
-  }, [profiles, activeProfileId, onboardingMode]);
+  const locals = React.useMemo(
+    () =>
+      onboardingMode
+        ? []
+        : profiles.filter(
+            (p: any) =>
+              p.id !== activeProfileId && !isMirrorProfile(p)
+          ),
+    [profiles, activeProfileId, onboardingMode]
+  );
 
   const [index, setIndex] = React.useState(0);
   const prevLocalsCountRef = React.useRef(0);
@@ -4103,9 +3775,6 @@ function LocalProfilesRefonte({
   const [editFile, setEditFile] = React.useState<File | null>(null);
   const [editPreview, setEditPreview] = React.useState<string | null>(null);
   const [actionsOpen, setActionsOpen] = React.useState(false);
-  const [forceLocalMedia, setForceLocalMedia] = React.useState(false);
-  const localLightMode = React.useMemo(() => detectProfilesMobileMode(), []);
-  const localDeferredMediaReady = !!forceLocalMedia;
 
   React.useEffect(() => {
     if (index >= locals.length && locals.length > 0) {
@@ -4131,18 +3800,6 @@ function LocalProfilesRefonte({
   }, [locals.length]);
   const current = locals[index] || null;
 
-  React.useEffect(() => {
-    pushProfilesNavDiag("profiles:locals:current", {
-      localsCount: locals.length,
-      index,
-      currentId: current?.id || null,
-      currentName: current?.name || null,
-      currentAvatarChars: String((current as any)?.avatarDataUrl || (current as any)?.avatarUrl || "").length,
-      deferHeavyMedia,
-      localLightMode,
-    });
-  }, [locals.length, index, current?.id, deferHeavyMedia, localLightMode]);
-
   // stats du profil courant
   const bs = useBasicStats(current?.id);
   const avg3 = Number.isFinite(bs.avg3) ? Number(bs.avg3) : 0;
@@ -4156,7 +3813,6 @@ function LocalProfilesRefonte({
     setEditFile(null);
     setEditPreview(null);
     setActionsOpen(false);
-    setForceLocalMedia(false);
     if (current) {
       const pi = ((current as any).privateInfo || {}) as { country?: string };
       setEditName(current.name || "");
@@ -4334,10 +3990,9 @@ function LocalProfilesRefonte({
           >
             <button
               className="btn sm"
-              onClick={() => {
-                pushProfilesNavDiag("profiles:locals:prev_click", { index, localsCount: locals.length });
-                setIndex((i) => (i <= 0 ? locals.length - 1 : i - 1));
-              }}
+              onClick={() =>
+                setIndex((i) => (i <= 0 ? locals.length - 1 : i - 1))
+              }
               disabled={locals.length <= 1}
               style={{ minWidth: 36, opacity: locals.length <= 1 ? 0.4 : 1 }}
             >
@@ -4364,10 +4019,9 @@ function LocalProfilesRefonte({
 
             <button
               className="btn sm"
-              onClick={() => {
-                pushProfilesNavDiag("profiles:locals:next_click", { index, localsCount: locals.length });
-                setIndex((i) => (i >= locals.length - 1 ? 0 : i + 1));
-              }}
+              onClick={() =>
+                setIndex((i) => (i >= locals.length - 1 ? 0 : i + 1))
+              }
               disabled={locals.length <= 1}
               style={{ minWidth: 36, opacity: locals.length <= 1 ? 0.4 : 1 }}
             >
@@ -4503,7 +4157,6 @@ function LocalProfilesRefonte({
               </div>
 
               {/* KPIs */}
-              {!localLightMode && (
               <div
                 style={{
                   display: "flex",
@@ -4532,35 +4185,11 @@ function LocalProfilesRefonte({
                   value={`${winPct}%`}
                 />
               </div>
-              )}
 
-              {/* Jeux de fléchettes du profil local — différés sur mobile pour fluidifier la navigation */}
-              {isDarts && !localLightMode && !deferHeavyMedia && (
+              {/* 🔥 NOUVEAU : Mes jeux de fléchettes pour ce profil local (DARTS ONLY) */}
+              {isDarts && (
                 <div style={{ marginTop: 4, marginBottom: 10 }}>
                   <DartSetsPanel key={`local-dartsets-${String(current?.id || "none")}`} profile={current} />
-                </div>
-              )}
-
-              {isDarts && (deferHeavyMedia || localLightMode) && (
-                <div style={{ marginTop: 4, marginBottom: 10 }}>
-                  <Card>
-                    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                      <div className="subtitle" style={{ fontSize: 12, color: theme.textSoft }}>
-                        Les visuels des fléchettes sont différés sur mobile pour garder une navigation fluide.
-                      </div>
-                      {localDeferredMediaReady ? (
-                        <DartSetsPanel key={`local-dartsets-${String(current?.id || "none")}`} profile={current} />
-                      ) : (
-                        <button
-                          className="btn sm"
-                          type="button"
-                          onClick={() => setForceLocalMedia(true)}
-                        >
-                          Charger les visuels
-                        </button>
-                      )}
-                    </div>
-                  </Card>
                 </div>
               )}
 
@@ -4775,9 +4404,6 @@ function LocalProfilesRefonte({
     </div>
   );
 }
-
-
-const MemoLocalProfilesRefonte = React.memo(LocalProfilesRefonte, areLocalProfilesRefontePropsEqual);
 
 /* ----- Formulaire d’ajout local (refondu) ----- */
 
