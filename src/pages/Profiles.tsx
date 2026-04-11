@@ -2,7 +2,7 @@
 // src/pages/Profiles.tsx
 // Espace Profils avec menu interne
 // - Vue MENU : "Créer avatar" / "Mon Profil" / "Amis" / "Profils locaux" / "BOAT"
-// - Vue "Mon Profil" : profil connecté + infos personnelles + Amis
+// - Vue "Mon Profil" : profil connecté + mini-stats + infos personnelles + Amis
 // - Vue "Profils locaux" : formulaire + carrousel stylé de profils locaux
 // - Thème via ThemeContext + textes via LangContext
 // ============================================
@@ -12,6 +12,12 @@ import { SaveToast } from "../components/ui/SaveToast";
 import ProfileAvatar from "../components/ProfileAvatar";
 import ProfileStarRing from "../components/ProfileStarRing";
 import type { Store, Profile } from "../lib/types";
+import {
+  getBasicProfileStats,
+  getBasicProfileStatsAsync,
+  type BasicProfileStats,
+} from "../lib/statsBridge";
+import { purgeAllStatsForProfile } from "../lib/statsLiteIDB";
 import { useTheme } from "../contexts/ThemeContext";
 import { useLang, type Lang } from "../contexts/LangContext";
 import { useAuthOnline } from "../hooks/useAuthOnline";
@@ -24,6 +30,7 @@ import { sha256 } from "../lib/crypto";
 import DartSetsPanel from "../components/DartSetsPanel";
 import { saveStore } from "../lib/storage";
 import { fileToSafeAvatarDataUrl, sanitizeAvatarDataUrl } from "../lib/avatarSafe";
+import { profilesDiagIncrement, profilesDiagLog, profilesDiagMark, profilesDiagMeasure, diffShallow } from "../lib/profilesDiag";
 
 // 🔥 nouveau : bloc préférences joueur
 import PlayerPrefsBlock, { type PlayerPrefs } from "../components/profile/PlayerPrefsBlock";
@@ -118,6 +125,85 @@ export type PrivateInfo = {
   sfxVolume?: number;
 };
 
+/* ===== Helper lecture instantanée (mini-cache IDB + quick-stats) ===== */
+function useBasicStats(playerId: string | undefined | null, enabled: boolean = true) {
+  const empty = React.useMemo(
+    () => ({
+      avg3: 0,
+      bestVisit: 0,
+      bestCheckout: 0,
+      wins: 0,
+      games: 0,
+      winRate: 0,
+      darts: 0,
+    }),
+    []
+  );
+
+  const [stats, setStats] = React.useState(empty);
+
+  React.useEffect(() => {
+    let cancelled = false;
+
+    const apply = (basic: any) => {
+      const games = Number((basic && basic.games) ?? 0);
+      const wins = Number((basic && basic.wins) ?? 0);
+      const darts = Number((basic && basic.darts) ?? 0);
+      const avg3 = Number((basic && basic.avg3) ?? 0);
+      const bestVisit = Number((basic && basic.bestVisit) ?? 0);
+      const bestCheckout = Number((basic && basic.bestCheckout) ?? 0);
+      const winRate = games > 0 ? Math.round((wins / games) * 100) : 0;
+      return {
+        avg3,
+        bestVisit,
+        bestCheckout,
+        wins,
+        games,
+        winRate,
+        darts,
+      };
+    };
+
+    const refresh = async () => {
+      if (!enabled || !playerId) {
+        if (!cancelled) setStats(empty);
+        return;
+      }
+
+      try {
+        const syncStats = getBasicProfileStats(playerId);
+        if (!cancelled) setStats(apply(syncStats));
+      } catch {
+        if (!cancelled) setStats(empty);
+      }
+
+      try {
+        const asyncStats = await getBasicProfileStatsAsync(playerId);
+        if (!cancelled) setStats(apply(asyncStats));
+      } catch {}
+    };
+
+    refresh();
+
+    const onUpdated = () => {
+      refresh();
+    };
+
+    if (typeof window !== "undefined") {
+      window.addEventListener("dc-stats-index-updated", onUpdated as EventListener);
+    }
+
+    return () => {
+      cancelled = true;
+      if (typeof window !== "undefined") {
+        window.removeEventListener("dc-stats-index-updated", onUpdated as EventListener);
+      }
+    };
+  }, [playerId, empty, enabled]);
+
+  return playerId ? stats : empty;
+}
+
 function useDeferredSectionReady(active: boolean, delay = 120) {
   const [ready, setReady] = React.useState(active);
 
@@ -166,6 +252,7 @@ function HeavySectionPlaceholder({ minHeight = 180 }: { minHeight?: number }) {
   );
 }
 
+
 /* ----------------- Types Friends ----------------- */
 
 type FriendLike = {
@@ -183,6 +270,7 @@ type FriendLike = {
     legs?: number;
   };
 };
+
 
 // ============================================
 // ✅ PROFILES CACHE (anti wipe store)
@@ -208,6 +296,7 @@ function writeProfilesCache(profiles: Profile[]) {
     // ignore
   }
 }
+
 
 // ============================================
 // ✅ AVATAR CACHE (anti overwrite store)
@@ -390,6 +479,7 @@ function buildAvatarSrc(opts: {
 return baseSrc;
 }
 
+
 function isMirrorProfile(p: any): boolean {
   if (!p) return true;
 
@@ -426,6 +516,7 @@ function isMirrorProfile(p: any): boolean {
 
   return false;
 }
+
 
 // ============================================
 // ✅ isOnlineMirrorProfile (SAFE LOCAL)
@@ -475,9 +566,15 @@ async function uploadLocalProfileAvatarToSupabase(
 async function flushCloud(reason: string, seedOverride?: any) {
   const fn = (window as any).__flushCloudNow;
   if (typeof fn === "function") {
+    const t0 = typeof performance !== "undefined" ? performance.now() : Date.now();
     try {
+      profilesDiagLog("profiles-flushCloud-start", { reason, hasSeedOverride: !!seedOverride });
       await fn(reason, seedOverride);
+      const dt = (typeof performance !== "undefined" ? performance.now() : Date.now()) - t0;
+      profilesDiagLog("profiles-flushCloud-done", { reason, durationMs: Math.round(dt * 10) / 10 });
     } catch (e) {
+      const dt = (typeof performance !== "undefined" ? performance.now() : Date.now()) - t0;
+      profilesDiagLog("profiles-flushCloud-error", { reason, durationMs: Math.round(dt * 10) / 10, error: String((e as any)?.message || e) });
       console.warn("[cloud] flush failed", reason, e);
     }
   }
@@ -574,13 +671,11 @@ export default function Profiles({
         const next = buildNext(prev);
         const merged = mergeProfilesSafe(prev, next);
   
-        console.log("[setProfilesSafe] prev -> next -> merged", {
+        profilesDiagLog("profiles-setProfilesSafe", {
           prevLen: prev.length,
           nextLen: next.length,
           mergedLen: merged.length,
-          prevIds: prev.map((p) => p.id),
-          nextIds: next.map((p) => p.id),
-          mergedIds: merged.map((p) => p.id),
+          changedIds: merged.filter((p, i) => p?.id !== prev?.[i]?.id).map((p) => p.id).slice(0, 12),
         });
 
         // ✅ keep cache in sync (anti flash)
@@ -639,12 +734,26 @@ export default function Profiles({
     }
   }, [auth?.status, selfStatus, update]);
 
+  const profilesDiagPrevRef = React.useRef<any>(null);
   React.useEffect(() => {
-    console.log("[Profiles] RENDER WATCH profiles=", profiles.length, {
-      activeProfileId,
-      ids: profiles.map((p) => p.id),
-    });
-  }, [profiles, activeProfileId]);
+    const next = {
+      view,
+      paramsView: params?.view ?? null,
+      profilesLen: Number(profiles?.length || 0),
+      activeProfileId: activeProfileId ?? null,
+      selfStatus: selfStatus ?? null,
+      themeId: String((themeId as any) || ""),
+      lang: String(lang || ""),
+      sport: String(sportResolved || ""),
+      localsLen: Number((profiles || []).filter((p: any) => p.id !== activeProfileId && !isMirrorProfile(p)).length || 0),
+    };
+    const prev = profilesDiagPrevRef.current;
+    const changed = diffShallow(prev || {}, next);
+    const count = profilesDiagIncrement("profiles_render");
+    profilesDiagLog("profiles-render", { count, changed, next });
+    profilesDiagPrevRef.current = next;
+  });
+
 
   // 🔥 Shimmer du nom "NINJA" (copie du Home)
   const primary = theme.primary ?? "#F6C256";
@@ -664,6 +773,7 @@ export default function Profiles({
   const isBabyFoot = sportKey.includes("babyfoot") || sportKey.includes("baby-foot") || sportKey.includes("baby_foot");
   const isDarts = sportKey.includes("darts");
 
+
   const [view, setView] = React.useState<View>(
     params?.view === "me"
       ? "me"
@@ -675,8 +785,15 @@ export default function Profiles({
   );
   const [, startViewTransition] = React.useTransition();
   const openView = React.useCallback((next: View) => {
+    profilesDiagMark(`profiles-open:${next}`);
+    profilesDiagLog("profiles-open-request", { fromView: view, toView: next });
     startViewTransition(() => setView(next));
-  }, []);
+  }, [view]);
+  React.useEffect(() => {
+    if (view === "menu") return;
+    const ms = profilesDiagMeasure(`profiles-open:${view}`);
+    profilesDiagLog("profiles-open-painted", { view, sinceRequestMs: ms });
+  }, [view]);
   const meHeavyReady = useDeferredSectionReady(view === "me", 140);
   const localsHeavyReady = useDeferredSectionReady(view === "locals", 140);
 
@@ -700,6 +817,10 @@ export default function Profiles({
       go("profiles_bots");
     }
   }, [params?.view, go]);
+
+  const [statsMap, setStatsMap] = React.useState<
+    Record<string, BasicProfileStats | undefined>
+  >({});
 
   function setActiveProfile(id: string | null) {
     // 1) on met à jour le store
@@ -872,6 +993,21 @@ export default function Profiles({
   
     // 3) UI local state (si tu en as un séparé) : on aligne aussi, en mode removal autorisé
     setProfilesReplace((arr) => (Array.isArray(arr) ? arr.filter((p) => p.id !== id) : []));
+  
+    // 4) Nettoie le mini-cache des stats côté UI
+    setStatsMap((m) => {
+      const c = { ...m };
+      delete c[id];
+      return c;
+    });
+  
+    // 5) Purge stats locales
+    try {
+      await purgeAllStatsForProfile(id);
+      console.log("[Profiles] Stats locales purgées pour le profil", id);
+    } catch (e) {
+      console.warn("[Profiles] Erreur purgeAllStatsForProfile", e);
+    }
   
     console.log("[Profiles] ✅ Profil supprimé (store + ui + persist)", id);
     await flushCloud("profiles_delete", nextStoreSnapshot || undefined);
@@ -1180,6 +1316,47 @@ React.useEffect(() => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [profiles]);
 
+  async function resetActiveStats() {
+    if (!active?.id) return;
+
+    const ok = window.confirm(
+      "Réinitialiser TOUTES les statistiques locales de ce profil ? (X01, Training, etc.)"
+    );
+    if (!ok) return;
+
+    try {
+      // 1) Purge StatsLite / caches internes pour ce profil
+      await purgeAllStatsForProfile(active.id);
+      console.log("[Profiles] StatsLite purgées pour", active.id);
+    } catch (e) {
+      console.warn("[Profiles] purgeAllStatsForProfile error", e);
+    }
+
+    try {
+      // 2) Purge entrée quick-stats locale (dc-quick-stats)
+      const QUICK_KEY = "dc-quick-stats";
+      const raw = localStorage.getItem(QUICK_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (parsed && typeof parsed === "object") {
+          delete parsed[active.id];
+          localStorage.setItem(QUICK_KEY, JSON.stringify(parsed));
+        }
+      }
+    } catch (e) {
+      console.warn("[Profiles] quick-stats reset error", e);
+    }
+
+    // 3) On force aussi le mini-cache UI à se vider pour ce profil
+    setStatsMap((m) => {
+      const copy = { ...m };
+      delete copy[active.id];
+      return copy;
+    });
+
+    alert("Statistiques locales de ce profil réinitialisées.");
+  }
+
     // 🔁 Hydrate les infos privées (email / pays / surnom) depuis le compte online
     React.useEffect(() => {
       if (!active) return;
@@ -1282,6 +1459,51 @@ React.useEffect(() => {
       } catch {}
     }
   }, [active, lang, themeId, setLang, setThemeId]);
+
+  React.useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const pid = active?.id;
+      if (!pid || statsMap[pid]) return;
+      try {
+        const s = await getBasicProfileStatsAsync(pid);
+        if (!cancelled) setStatsMap((m) => ({ ...m, [pid]: s }));
+      } catch {}
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [active?.id]);
+
+  React.useEffect(() => {
+    let stopped = false;
+    (async () => {
+      const ids = profiles.map((p) => p.id).slice(0, 48);
+      for (const id of ids) {
+        if (stopped) break;
+        if (statsMap[id]) continue;
+        try {
+          const s = await getBasicProfileStatsAsync(id);
+          if (!stopped) setStatsMap((m) => (m[id] ? m : { ...m, [id]: s }));
+        } catch {}
+      }
+    })();
+    return () => {
+      stopped = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [profiles]);
+
+  const activeAvg3D = React.useMemo<number | null>(() => {
+    if (!active?.id) return null;
+    const bs = getBasicProfileStats(active.id);
+    if (Number.isFinite(bs?.avg3)) return Number(bs.avg3);
+    const inMap = statsMap[active.id];
+    if (Number.isFinite((inMap as any)?.avg3d)) return Number((inMap as any).avg3d);
+    if (Number.isFinite((inMap as any)?.avg3)) return Number((inMap as any).avg3);
+    return null;
+  }, [active?.id, statsMap]);
 
   const openAvatarCreator = React.useCallback(() => {
     go?.("avatar");
@@ -1627,7 +1849,7 @@ React.useEffect(() => {
     <ActiveProfileBlock
       selfStatus={onlineStatusForUi}
       active={active}
-      activeAvg3D={null}
+      activeAvg3D={activeAvg3D}
       onToggleAway={() => {
         if (auth.status !== "signed_in") return;
         update((s) => ({
@@ -1657,6 +1879,7 @@ React.useEffect(() => {
           initialStatsSubTab: "dashboard",
         });
       }}
+      onResetStats={resetActiveStats}
     />
   ) : (
     <UnifiedAuthBlock
@@ -1931,7 +2154,7 @@ function ProfilesMenuView({
         title={t("profiles.menu.me.title", "MON PROFIL")}
         subtitle={t(
           "profiles.menu.me.subtitle",
-          "Profil connecté, statut et informations personnelles."
+          "Profil connecté, statut, mini-stats et informations personnelles."
         )}
         onClick={onSelectMe}
       />
@@ -2059,6 +2282,7 @@ function ActiveProfileBlock({
   onQuit, // gardé pour compat mais pas utilisé ici
   onEdit,
   onOpenStats,
+  onResetStats,
 }: {
   active: Profile;
   activeAvg3D: number | null;
@@ -2067,6 +2291,7 @@ function ActiveProfileBlock({
   onQuit: () => void;
   onEdit: (name: string, avatar?: File | null) => void;
   onOpenStats?: () => void;
+  onResetStats?: () => void;
 }) {
   const { theme } = useTheme();
 
@@ -2269,7 +2494,7 @@ function ActiveProfileBlock({
             gapPx={-2}
             starSize={STAR}
             stepDeg={10}
-            avg3d={0}
+            avg3d={activeAvg3D ?? 0}
           />
         </div>
 
@@ -2339,6 +2564,12 @@ function ActiveProfileBlock({
           <span style={{ color: statusColor }}>{statusLabel}</span>
         </div>
 
+        {active?.id && (
+          <div style={{ marginTop: 8 }}>
+            <GoldMiniStats profileId={active.id} />
+          </div>
+        )}
+
         <div className="row apb__actions" style={{ gap: 6, marginTop: 12 }}>
           <button
             className="btn sm"
@@ -2351,6 +2582,16 @@ function ActiveProfileBlock({
           <button className="btn sm" onClick={onToggleAway} style={pillBtnBase}>
             {selfStatus === "away" ? "EN LIGNE" : "ABSENT"}
           </button>
+
+          {onResetStats && (
+            <button
+              className="btn sm"
+              onClick={onResetStats}
+              style={pillBtnDanger}
+            >
+              RESET STATS
+            </button>
+          )}
         </div>
 
         {isEditing && (
@@ -2360,6 +2601,19 @@ function ActiveProfileBlock({
             </button>
             <button className="btn ok sm" onClick={handleSaveEdit}>
               Enregistrer
+            </button>
+            <button
+              className="btn sm"
+              onClick={() => {
+                try {
+                  onSync?.({ ...draft });
+                } catch {}
+              }}
+            >
+              Synchroniser
+            </button>
+            <button className="btn sm" onClick={() => onPull?.()}>
+              Récupérer
             </button>
           </div>
         )}
@@ -3621,6 +3875,7 @@ function LocalProfilesRefonte({
     }
   }, [locals.length, index]);
 
+
   React.useEffect(() => {
     if (!Array.isArray(locals)) return;
     const prev = prevLocalsCountRef.current;
@@ -3634,6 +3889,13 @@ function LocalProfilesRefonte({
     prevLocalsCountRef.current = locals.length;
   }, [locals.length]);
   const current = locals[index] || null;
+
+  // stats du profil courant
+  const bs = useBasicStats(current?.id, !deferHeavy);
+  const avg3 = Number.isFinite(bs.avg3) ? Number(bs.avg3) : 0;
+  const bestVisit = Number(bs.bestVisit ?? 0);
+  const bestCheckout = Number(bs.bestCheckout ?? 0);
+  const winPct = Math.round(Number(bs.winRate ?? 0));
 
   // reset édition quand on change de profil
   React.useEffect(() => {
@@ -3688,6 +3950,35 @@ function LocalProfilesRefonte({
     setIsEditing(false);
     setEditFile(null);
     setEditPreview(null);
+  }
+
+  async function handlePurgeStats() {
+    if (!current) return;
+    const ok = window.confirm(
+      t(
+        "profiles.locals.actions.purgeConfirm",
+        "Supprimer toutes les statistiques locales pour ce profil ? L’historique brut des parties restera conservé."
+      )
+    );
+    if (!ok) return;
+
+    try {
+      await purgeAllStatsForProfile(current.id);
+      alert(
+        t(
+          "profiles.locals.actions.purgeDone",
+          "Statistiques locales supprimées pour ce profil. L’historique des matchs reste disponible."
+        )
+      );
+    } catch (err) {
+      console.warn("[Profiles] purgeAllStatsForProfile error:", err);
+      alert(
+        t(
+          "profiles.locals.actions.purgeError",
+          "Une erreur est survenue pendant la suppression des statistiques."
+        )
+      );
+    }
   }
 
   function handleDeleteProfile() {
@@ -3862,7 +4153,7 @@ function LocalProfilesRefonte({
                   >
                     <ProfileStarRing
                       anchorSize={MEDALLION}
-                      avg3d={0}
+                      avg3d={avg3}
                       gapPx={-1}
                       starSize={STAR}
                       stepDeg={10}
@@ -3955,6 +4246,36 @@ function LocalProfilesRefonte({
                 </div>
               </div>
 
+              {/* KPIs */}
+              <div
+                style={{
+                  display: "flex",
+                  flexWrap: "nowrap",
+                  justifyContent: "space-between",
+                  gap: 6,
+                  marginBottom: 8,
+                  overflowX: "auto",
+                  paddingBottom: 2,
+                }}
+              >
+                <KpiPill
+                  label={t("home.stats.avg3", "Moy/3D")}
+                  value={(Math.round(avg3 * 10) / 10).toFixed(1)}
+                />
+                <KpiPill
+                  label={t("home.stats.best", "Best visit")}
+                  value={String(bestVisit)}
+                />
+                <KpiPill
+                  label={t("home.stats.co", "Best CO")}
+                  value={String(bestCheckout)}
+                />
+                <KpiPill
+                  label={t("home.stats.winPct", "Win %")}
+                  value={`${winPct}%`}
+                />
+              </div>
+
               {/* 🔥 NOUVEAU : Mes jeux de fléchettes pour ce profil local (DARTS ONLY) */}
               {isDarts && (
                 <div style={{ marginTop: 4, marginBottom: 10 }}>
@@ -4022,6 +4343,20 @@ function LocalProfilesRefonte({
                         gap: 6,
                       }}
                     >
+                      <button
+                        className="btn sm"
+                        type="button"
+                        onClick={() => {
+                          setActionsOpen(false);
+                          handlePurgeStats();
+                        }}
+                        style={{ justifyContent: "flex-start", fontSize: 11 }}
+                      >
+                        {t(
+                          "profiles.locals.actions.purgeStats",
+                          "Purger toutes les stats de ce profil"
+                        )}
+                      </button>
 
                       <button
                         className="btn danger sm"
@@ -4507,6 +4842,77 @@ function EditInline({
   );
 }
 
+/* ------ Gold mini-stats (lecture SYNC cache) ------ */
+
+function GoldMiniStats({ profileId }: { profileId: string }) {
+  const bs = useBasicStats(profileId);
+  const { theme } = useTheme();
+
+  const { sport } = useSport();
+  const sportResolved = sport;
+  const { t } = useLang();
+
+  const primary = theme.primary;
+
+  const avg3 = Number.isFinite(bs.avg3) ? bs.avg3 : 0;
+  const best = Number(bs.bestVisit ?? 0);
+  const co = Number(bs.bestCheckout ?? 0);
+  const winPct = Math.round(Number(bs.winRate ?? 0));
+
+  const pillW = "clamp(58px, 17vw, 78px)";
+
+  return (
+    <div
+      style={{
+        borderRadius: 10,
+        padding: "5px 6px",
+        boxSizing: "border-box",
+        background: `linear-gradient(180deg, ${primary}33, ${primary}11)`,
+        border: `1px solid ${primary}55`,
+        boxShadow:
+          "0 6px 16px rgba(0,0,0,.35), inset 0 0 0 1px rgba(0,0,0,.35)",
+        width: "100%",
+        maxWidth: "100%",
+        overflow: "hidden",
+      }}
+    >
+      <div
+        style={{
+          display: "flex",
+          flexWrap: "nowrap",
+          alignItems: "stretch",
+          gap: 0,
+          width: "100%",
+        }}
+      >
+        <GoldStatItem
+          label={t("home.stats.avg3", "Moy/3")}
+          value={(Math.round(avg3 * 10) / 10).toFixed(1)}
+          width={pillW}
+        />
+        <GoldSep />
+        <GoldStatItem
+          label={t("home.stats.best", "Best")}
+          value={String(best)}
+          width={pillW}
+        />
+        <GoldSep />
+        <GoldStatItem
+          label={t("home.stats.co", "CO")}
+          value={String(co)}
+          width={pillW}
+        />
+        <GoldSep />
+        <GoldStatItem
+          label={t("home.stats.winPct", "Win%")}
+          value={`${winPct}`}
+          width={pillW}
+        />
+      </div>
+    </div>
+  );
+}
+
 function GoldSep() {
   const { theme } = useTheme();
 
@@ -4581,6 +4987,57 @@ function GoldStatItem({
           fontSize: "clamp(9.5px, 2.4vw, 12px)",
           lineHeight: 1.05,
           whiteSpace: "nowrap",
+        }}
+      >
+        {value}
+      </span>
+    </div>
+  );
+}
+
+/* ------ Petit bouton KPI pour la refonte locals ------ */
+
+function KpiPill({ label, value }: { label: string; value: string }) {
+  const { theme } = useTheme();
+
+  const { sport } = useSport();
+  const sportResolved = sport;
+  const primary = theme.primary;
+  return (
+    <div
+      style={{
+        flex: 1,
+        minWidth: 0,
+        maxWidth: 110,
+        borderRadius: 999,
+        padding: "5px 8px",
+        fontSize: 10,
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        background: `linear-gradient(135deg, ${primary}22, ${primary}55)`,
+        border: `1px solid ${primary}99`,
+        boxShadow: "0 6px 14px rgba(0,0,0,.45)",
+        fontVariantNumeric: "tabular-nums",
+        whiteSpace: "nowrap",
+      }}
+    >
+      <span
+        style={{
+          textTransform: "uppercase",
+          letterSpacing: 0.7,
+          color: "rgba(255,255,255,.7)",
+        }}
+      >
+        {label}
+      </span>
+      <span
+        style={{
+          marginTop: 1,
+          fontWeight: 800,
+          fontSize: 13,
+          color: "#000",
+          textShadow: `0 0 6px ${primary}AA`,
         }}
       >
         {value}

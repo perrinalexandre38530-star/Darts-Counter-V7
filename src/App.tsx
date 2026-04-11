@@ -330,6 +330,7 @@ import CastJoinPage from "./pages/cast/CastJoinPage";
 import CastHostPage from "./pages/cast/CastHostPage";
 import CastScreen from "./pages/cast/CastScreen";
 import { trackRender, trackRoute } from "./lib/diagnosticPro";
+import { installProfilesDiag, profilesDiagIncrement, profilesDiagLog, diffShallow } from "./lib/profilesDiag";
 import { loadBots as loadStoredBots, saveBots as saveStoredBots } from "./lib/bots";
 import { startCrashGuard, crashGuardTrackRender, crashGuardTrackRoute } from "./lib/crashGuard";
 
@@ -1333,6 +1334,10 @@ useEffect(() => {
 }, []);
 
 useEffect(() => {
+  installProfilesDiag();
+}, []);
+
+useEffect(() => {
   let cancelled = false;
 
   const run = async () => {
@@ -1509,6 +1514,30 @@ useEffect(() => {
 
   const [routeParams, setRouteParams] = React.useState<any>(null);
   const [loading, setLoading] = React.useState(true);
+  const appDiagPrevRef = React.useRef<any>(null);
+  React.useEffect(() => {
+    const next = {
+      tab,
+      routeView: routeParams?.view ?? null,
+      profilesLen: Number(store?.profiles?.length || 0),
+      activeProfileId: (store as any)?.activeProfileId ?? null,
+      selfStatus: (store as any)?.selfStatus ?? null,
+      historyLen: Number(store?.history?.length || 0),
+      dartSetsLen: Number(((store as any)?.dartSets?.length) || 0),
+      cloudHydrated,
+      cloudCanSync,
+      loading,
+      showSplash,
+      activeSport: activeSport ?? null,
+    };
+    const prev = appDiagPrevRef.current;
+    const changed = diffShallow(prev || {}, next);
+    const count = profilesDiagIncrement("app_render");
+    if (next.tab === "profiles" || prev?.tab === "profiles") {
+      profilesDiagLog("app-render", { count, changed, next });
+    }
+    appDiagPrevRef.current = next;
+  });
   const loadedStoreScopeRef = React.useRef<string | null>(null);
   const bootStoreLoadedRef = React.useRef(false);
 
@@ -1787,6 +1816,7 @@ useEffect(() => {
   /* Navigation */
   function go(next: Tab, params?: any) {
     setRouteParams(params ?? null);
+    profilesDiagLog("nav-go", { fromTab: tab, toTab: next, params: params ?? null });
     const nextRoute = String(window.location.hash || `#/go:${next}`);
     trackRoute(nextRoute);
     crashGuardTrackRoute(nextRoute);
