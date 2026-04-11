@@ -10,7 +10,7 @@
 import React from "react";
 import { SaveToast } from "../components/ui/SaveToast";
 import ProfileAvatar from "../components/ProfileAvatar";
-import AvatarLite from "../components/profiles/AvatarLite";
+import AvatarLite from "../components/profile/AvatarLite";
 import ProfileStarRing from "../components/ProfileStarRing";
 import type { Store, Profile } from "../lib/types";
 import {
