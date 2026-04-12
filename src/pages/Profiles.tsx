@@ -22,7 +22,6 @@ import { useTheme } from "../contexts/ThemeContext";
 import { useLang, type Lang } from "../contexts/LangContext";
 import { useAuthOnline } from "../hooks/useAuthOnline";
 import { onlineApi } from "../lib/onlineApi";
-import { supabase } from "../lib/supabaseClient";
 import { syncProfile, fetchCloudProfile } from "../lib/sync/profileSync";
 import type { ThemeId } from "../theme/themePresets";
 
@@ -506,19 +505,11 @@ async function dataUrlToBlob(dataUrl: string): Promise<Blob> {
 }
 
 async function uploadLocalProfileAvatarToSupabase(
-  userId: string,
-  profileId: string,
+  uid: string,
+  pid: string,
   dataUrl: string
-): Promise<string | null> {
-  // ✅ PATCH CIBLÉ:
-  // Les profils locaux ne doivent plus dépendre d’un upload Supabase Storage.
-  // - ça spammait la console quand le storage n’était pas joignable
-  // - et ça compliquait la séparation profil local / profil actif
-  // La persistance passe désormais par le snapshot cloud complet + cache avatar local.
-  void userId;
-  void profileId;
-  void dataUrl;
-  return null;
+): Promise<string> {
+  return "";
 }
 
 async function flushCloud(reason: string, seedOverride?: any) {
@@ -1188,42 +1179,7 @@ React.useEffect(() => {
         // - un avatar de profil local ne doit JAMAIS appeler l'endpoint avatar du compte NAS
         // - sinon l'avatar du profil actif / du compte connecté se fait écraser
         // - on passe donc toujours par un upload de stockage public dédié au profil local
-        const publicUrl = await uploadLocalProfileAvatarToSupabase(uid, pid, dataUrl);
-
-        if (!publicUrl) {
-          avatarUploadDoneRef.current.add(pid);
-          continue;
-        }
-
-        // on extrait un path stable (utile si un jour tu veux le re-résoudre)
-        const avatarPath = (() => {
-          if (!publicUrl || typeof publicUrl !== "string") return undefined;
-          const marker = "/storage/v1/object/public/avatars/";
-          const i = publicUrl.indexOf(marker);
-          if (i === -1) return undefined;
-          return publicUrl.slice(i + marker.length);
-        })();
-
-        // update local store (URL only) => snapshot-friendly
-        setProfilesSafe((arr) =>
-          arr.map((pp) =>
-            pp.id === pid
-              ? ({
-                  ...(pp as any),
-                  avatarUrl: publicUrl,
-                  avatarPath,
-                  avatarUpdatedAt: Date.now(),
-                } as any)
-              : pp
-          )
-        );
-
         avatarUploadDoneRef.current.add(pid);
-
-        try {
-          // flush snapshot cloud si dispo
-          await (window as any).__flushCloudNow?.();
-        } catch {}
       } catch (e) {
         console.warn("[Profiles] auto-upload local avatar failed", pid, e);
         // on retentera plus tard
