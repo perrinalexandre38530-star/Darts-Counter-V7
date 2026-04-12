@@ -2,6 +2,7 @@ import { markNasSyncDirty, pushNasSyncDirtyReason } from "./manualNasSync";
 import { nanoid } from "nanoid";
 import LZString from "lz-string";
 import { MAX_AVATAR_DATA_URL_CHARS } from "./avatarSafe";
+import { safeLocalStorageGetJson, safeLocalStorageSetJson } from "./imageStorageCodec";
 
 export const LS_BOTS_KEY = "dc_bots_v1";
 export const LS_BOTS_AVATARS_KEY = "dc_bots_avatars_v1";
@@ -183,7 +184,11 @@ function trySaveAvatarsPayload(candidates: Array<{ id: string; compressed: strin
     v: BOTS_STORAGE_VERSION,
     items: Object.fromEntries(candidates.map((x) => [x.id, x.compressed])),
   };
-  return safeSetItem(LS_BOTS_AVATARS_KEY, JSON.stringify(payload));
+  return safeLocalStorageSetJson(LS_BOTS_AVATARS_KEY, payload, {
+    compressAboveChars: 2000,
+    imageMaxChars: 220000,
+    sanitizeImages: false,
+  });
 }
 
 function saveAvatarsWithPruning(list: BotRecord[]) {
@@ -272,8 +277,7 @@ function readLegacyInlineBots(): BotRecord[] {
 }
 
 function readBotsMeta(): BotRecord[] {
-  const raw = safeGetItem(LS_BOTS_KEY);
-  const parsed = safeParseJson<any>(raw, []);
+  const parsed = safeLocalStorageGetJson<any>(LS_BOTS_KEY, [] as any);
   if (Array.isArray(parsed)) {
     return normalizeBotsList(parsed);
   }
@@ -284,8 +288,7 @@ function readBotsMeta(): BotRecord[] {
 }
 
 function readAvatarsMap(): Record<string, string | null> {
-  const raw = safeGetItem(LS_BOTS_AVATARS_KEY);
-  const parsed = safeParseJson<any>(raw, null);
+  const parsed = safeLocalStorageGetJson<any>(LS_BOTS_AVATARS_KEY, null as any);
   if (!parsed || typeof parsed !== "object" || typeof parsed.items !== "object" || !parsed.items) {
     return {};
   }
@@ -326,11 +329,17 @@ function persistBots(list: any[], opts?: { triggerCloud?: boolean; updateAppStor
     items: normalized.map(packBotMeta),
   };
 
-  let metaSaved = safeSetItem(LS_BOTS_KEY, JSON.stringify(metaPayload));
+  let metaSaved = safeLocalStorageSetJson(LS_BOTS_KEY, metaPayload, {
+    compressAboveChars: 1500,
+    imageMaxChars: 120000,
+  });
   if (!metaSaved) {
     try {
       safeRemoveItem(LS_BOTS_AVATARS_KEY);
-      metaSaved = safeSetItem(LS_BOTS_KEY, JSON.stringify(metaPayload));
+      metaSaved = safeLocalStorageSetJson(LS_BOTS_KEY, metaPayload, {
+        compressAboveChars: 1500,
+        imageMaxChars: 120000,
+      });
     } catch {}
   }
   if (!metaSaved) {

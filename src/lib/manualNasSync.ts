@@ -59,6 +59,12 @@ export function pushNasSyncDirtyReason(reason: string) {
 }
 
 export async function pushNasAccountSnapshot() {
+  try {
+    const flush = (window as any)?.__flushLocalStoreNow;
+    if (typeof flush === "function") {
+      await flush("nas_push");
+    }
+  } catch {}
   const snapshot = await exportAll();
   const res = await onlineApi.pushStoreSnapshot(snapshot as any, (snapshot as any)?.v ?? 8);
   try { localStorage.setItem(LAST_PUSH_KEY, new Date().toISOString()); } catch {}

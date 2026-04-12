@@ -1601,21 +1601,24 @@ useEffect(() => {
   const pendingStorePersistRef = React.useRef<Store | null>(null);
   const persistStoreInFlightRef = React.useRef(false);
   const lastScheduledStoreRef = React.useRef<Store | null>(null);
+  const lastPersistAtRef = React.useRef<number>(0);
 
-  const flushPendingStorePersist = React.useCallback(async () => {
-    if (persistStoreInFlightRef.current) return;
-    const latest = pendingStorePersistRef.current;
+  const flushPendingStorePersist = React.useCallback(async (reason = "manual") => {
+    if (persistStoreInFlightRef.current) return false;
+    const latest = pendingStorePersistRef.current || lastScheduledStoreRef.current;
     pendingStorePersistRef.current = null;
-    if (!latest) return;
+    if (!latest) return false;
     persistStoreInFlightRef.current = true;
     const activeTab = String(currentTabRef.current || "");
     const t0 = typeof performance !== "undefined" ? performance.now() : Date.now();
     try {
       await saveStore(latest);
+      lastPersistAtRef.current = Date.now();
     } catch {}
     const dt = (typeof performance !== "undefined" ? performance.now() : Date.now()) - t0;
     const payload = {
       tab: activeTab,
+      reason,
       durationMs: Math.round(dt * 10) / 10,
       profiles: ((latest as any)?.profiles || []).length || 0,
       bots: ((latest as any)?.bots || []).length || 0,
@@ -1627,8 +1630,9 @@ useEffect(() => {
     }
     persistStoreInFlightRef.current = false;
     if (pendingStorePersistRef.current) {
-      try { window.setTimeout(() => { void flushPendingStorePersist(); }, 0); } catch {}
+      try { window.setTimeout(() => { void flushPendingStorePersist("chained"); }, 0); } catch {}
     }
+    return true;
   }, []);
 
   const scheduleStorePersist = React.useCallback((snapshot: Store) => {
@@ -1640,29 +1644,43 @@ useEffect(() => {
       storePersistTimerRef.current = null;
     }
     const activeTab = String(currentTabRef.current || "");
-    const delay = activeTab === "profiles" ? 1400 : 280;
+    const delay = activeTab === "profiles" || activeTab === "stats" ? 15000 : 8000;
     storePersistTimerRef.current = window.setTimeout(() => {
       storePersistTimerRef.current = null;
-      const runSave = () => { void flushPendingStorePersist(); };
+      const idleSave = () => { void flushPendingStorePersist("idle"); };
       try {
         const ric = (window as any).requestIdleCallback;
         if (typeof ric === "function") {
-          ric(() => runSave(), { timeout: activeTab === "profiles" ? 5000 : 1800 });
+          ric(() => idleSave(), { timeout: 20000 });
           return;
         }
       } catch {}
-      runSave();
+      idleSave();
     }, delay);
   }, [flushPendingStorePersist]);
 
   React.useEffect(() => {
+    const handleHidden = () => {
+      try {
+        if (document.visibilityState === "hidden") {
+          void flushPendingStorePersist("hidden");
+        }
+      } catch {}
+    };
+    const handlePageHide = () => { void flushPendingStorePersist("pagehide"); };
+    try { (window as any).__flushLocalStoreNow = (reason?: string) => flushPendingStorePersist(String(reason || "manual")); } catch {}
+    document.addEventListener("visibilitychange", handleHidden);
+    window.addEventListener("pagehide", handlePageHide);
     return () => {
       if (storePersistTimerRef.current != null) {
         window.clearTimeout(storePersistTimerRef.current);
         storePersistTimerRef.current = null;
       }
+      document.removeEventListener("visibilitychange", handleHidden);
+      window.removeEventListener("pagehide", handlePageHide);
+      try { delete (window as any).__flushLocalStoreNow; } catch {}
     };
-  }, []);
+  }, [flushPendingStorePersist]);
 
   // ✅ SPORT-AWARE : utilisé pour Home/Games (runtime-safe)
   const sportApi: any = useSport() as any;
@@ -2340,15 +2358,14 @@ useEffect(() => {
     return () => window.removeEventListener("dc-dartsets-updated", sync as any);
   }, []);
 
-  /* Save store each time it changes */
+  /* Broadcast live store changes, but do not force a full persisted snapshot on every render tick. */
   React.useEffect(() => {
     if (!loading) {
-      scheduleStorePersist(store);
       try {
         window.dispatchEvent(new Event("dc-store-updated"));
       } catch {}
     }
-  }, [store, loading, scheduleStorePersist]);
+  }, [store, loading]);
 
   /* Profiles mutator (✅ FIX: merge défensif) */
   function setProfiles(fn: (p: Profile[]) => Profile[]) {
