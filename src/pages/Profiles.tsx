@@ -782,20 +782,19 @@ export default function Profiles({
       ? "dartsets"
       : "menu"
   );
-  const [, startViewTransition] = React.useTransition();
   const openView = React.useCallback((next: View) => {
     profilesDiagMark(`profiles-open:${next}`);
     profilesDiagLog("profiles-open-request", { fromView: view, toView: next });
-    startViewTransition(() => setView(next));
+    setView(next);
   }, [view]);
   React.useEffect(() => {
     if (view === "menu") return;
     const ms = profilesDiagMeasure(`profiles-open:${view}`);
     profilesDiagLog("profiles-open-painted", { view, sinceRequestMs: ms });
   }, [view]);
-  const meHeavyReady = useDeferredSectionReady(view === "me", 900);
-  const localsHeavyReady = useDeferredSectionReady(view === "locals", 1200);
-  const dartsetsHeavyReady = useDeferredSectionReady(view === "dartsets", 700);
+  const meHeavyReady = useDeferredSectionReady(view === "me", 80);
+  const localsHeavyReady = useDeferredSectionReady(view === "locals", 120);
+  const dartsetsHeavyReady = useDeferredSectionReady(view === "dartsets", 80);
   const dartSetOwners = React.useMemo(() => {
     const list = (stableProfiles as any[] || []).filter((p: any) => !!p && !isMirrorProfile(p));
     const activeOne = list.find((p: any) => String(p?.id || "") === String(activeProfileId || ""));
@@ -4470,7 +4469,7 @@ function LocalProfilesRefonte({
 
 
 const DeferredLocalDartSets = React.memo(function DeferredLocalDartSets({ profile, busy = false }: { profile: any; busy?: boolean }) {
-  const ready = useDeferredSectionReady(!!profile?.id && !busy, 1800);
+  const ready = useDeferredSectionReady(!!profile?.id && !busy, 120);
   if (!ready) return <HeavySectionPlaceholder minHeight={132} />;
   return <DartSetsPanel key={`local-dartsets-${String(profile?.id || "none")}`} profile={profile} />;
 });

@@ -1,3 +1,4 @@
+import { markNasSyncDirty, pushNasSyncDirtyReason } from "./manualNasSync";
 import { nanoid } from "nanoid";
 import LZString from "lz-string";
 import { MAX_AVATAR_DATA_URL_CHARS } from "./avatarSafe";
@@ -325,7 +326,13 @@ function persistBots(list: any[], opts?: { triggerCloud?: boolean; updateAppStor
     items: normalized.map(packBotMeta),
   };
 
-  const metaSaved = safeSetItem(LS_BOTS_KEY, JSON.stringify(metaPayload));
+  let metaSaved = safeSetItem(LS_BOTS_KEY, JSON.stringify(metaPayload));
+  if (!metaSaved) {
+    try {
+      safeRemoveItem(LS_BOTS_AVATARS_KEY);
+      metaSaved = safeSetItem(LS_BOTS_KEY, JSON.stringify(metaPayload));
+    } catch {}
+  }
   if (!metaSaved) {
     console.warn("[bots] metadata save failed");
     return false;
@@ -343,14 +350,10 @@ function persistBots(list: any[], opts?: { triggerCloud?: boolean; updateAppStor
       w.__appStore.update((st: any) => ({ ...(st || {}), bots: normalized }));
     }
     if (opts?.triggerCloud !== false) {
-      window.dispatchEvent(new Event("dc-flush-cloud"));
       try {
-        window.setTimeout(() => {
-          try { (window as any).__flushCloudNow?.("bots_save"); } catch {}
-        }, 1200);
-      } catch {
-        try { (window as any).__flushCloudNow?.("bots_save"); } catch {}
-      }
+        markNasSyncDirty("bots_save");
+        pushNasSyncDirtyReason("bots_save");
+      } catch {}
     }
   } catch {}
   return true;

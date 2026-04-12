@@ -1599,10 +1599,40 @@ useEffect(() => {
 
   const storePersistTimerRef = React.useRef<number | null>(null);
   const pendingStorePersistRef = React.useRef<Store | null>(null);
+  const persistStoreInFlightRef = React.useRef(false);
   const lastScheduledStoreRef = React.useRef<Store | null>(null);
+
+  const flushPendingStorePersist = React.useCallback(async () => {
+    if (persistStoreInFlightRef.current) return;
+    const latest = pendingStorePersistRef.current;
+    pendingStorePersistRef.current = null;
+    if (!latest) return;
+    persistStoreInFlightRef.current = true;
+    const activeTab = String(currentTabRef.current || "");
+    const t0 = typeof performance !== "undefined" ? performance.now() : Date.now();
+    try {
+      await saveStore(latest);
+    } catch {}
+    const dt = (typeof performance !== "undefined" ? performance.now() : Date.now()) - t0;
+    const payload = {
+      tab: activeTab,
+      durationMs: Math.round(dt * 10) / 10,
+      profiles: ((latest as any)?.profiles || []).length || 0,
+      bots: ((latest as any)?.bots || []).length || 0,
+      dartSets: ((latest as any)?.dartSets || []).length || 0,
+    };
+    try { profilesDiagLog(dt >= 120 ? "store-persist-slow" : "store-persist", payload); } catch {}
+    if (dt >= 120) {
+      try { console.warn("[perf] saveStore slow", payload); } catch {}
+    }
+    persistStoreInFlightRef.current = false;
+    if (pendingStorePersistRef.current) {
+      try { window.setTimeout(() => { void flushPendingStorePersist(); }, 0); } catch {}
+    }
+  }, []);
+
   const scheduleStorePersist = React.useCallback((snapshot: Store) => {
     if (!snapshot) return;
-    if (pendingStorePersistRef.current === snapshot || lastScheduledStoreRef.current === snapshot) return;
     pendingStorePersistRef.current = snapshot;
     lastScheduledStoreRef.current = snapshot;
     if (storePersistTimerRef.current != null) {
@@ -1610,35 +1640,20 @@ useEffect(() => {
       storePersistTimerRef.current = null;
     }
     const activeTab = String(currentTabRef.current || "");
-    const delay = activeTab === "profiles" ? 900 : 220;
+    const delay = activeTab === "profiles" ? 1400 : 280;
     storePersistTimerRef.current = window.setTimeout(() => {
       storePersistTimerRef.current = null;
-      const latest = pendingStorePersistRef.current;
-      pendingStorePersistRef.current = null;
-      if (!latest) return;
-      const runSave = () => {
-        const t0 = typeof performance !== "undefined" ? performance.now() : Date.now();
-        try {
-          saveStore(latest);
-        } catch {}
-        const dt = (typeof performance !== "undefined" ? performance.now() : Date.now()) - t0;
-        if (dt >= 250) {
-          try {
-            profilesDiagLog("store-persist-slow", { tab: activeTab, durationMs: Math.round(dt * 10) / 10, profiles: ((latest as any)?.profiles || []).length || 0, bots: ((latest as any)?.bots || []).length || 0, dartSets: ((latest as any)?.dartSets || []).length || 0 });
-          } catch {}
-          try { console.warn("[perf] saveStore slow", { tab: activeTab, durationMs: Math.round(dt * 10) / 10 }); } catch {}
-        }
-      };
+      const runSave = () => { void flushPendingStorePersist(); };
       try {
         const ric = (window as any).requestIdleCallback;
         if (typeof ric === "function") {
-          ric(() => runSave(), { timeout: activeTab === "profiles" ? 2500 : 1200 });
+          ric(() => runSave(), { timeout: activeTab === "profiles" ? 5000 : 1800 });
           return;
         }
       } catch {}
       runSave();
     }, delay);
-  }, []);
+  }, [flushPendingStorePersist]);
 
   React.useEffect(() => {
     return () => {
