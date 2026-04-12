@@ -1,7 +1,6 @@
 import { importAll } from "./storage";
 import { onlineApi } from "./onlineApi";
 import { isNasDataSyncEnabled } from "./serverConfig";
-import { supabase } from "./supabaseClient";
 
 const APPLIED_KEY = "dc_nas_restore_last_applied_v1";
 const RELOADED_KEY = "dc_nas_restore_last_reloaded_v1";
@@ -26,9 +25,10 @@ function pushBootDiag(step: string, extra?: any) {
 
 export async function bootstrapNasRestore(options?: { mobileDeferred?: boolean }): Promise<{ restored: boolean; reason?: string }> {
   if (!isNasDataSyncEnabled()) return { restored: false, reason: "disabled" };
-  const { data: { session } } = await supabase.auth.getSession();
+  const restored = await onlineApi.restoreSession().catch(() => null);
+  const session = restored && (restored as any).user ? restored : null;
   if (!session) return { restored: false, reason: "no_session" };
-  pushBootDiag("nas:restore:session", { userId: session?.user?.id || null, mobileDeferred: !!options?.mobileDeferred });
+  pushBootDiag("nas:restore:session", { userId: (session as any)?.user?.id || null, mobileDeferred: !!options?.mobileDeferred });
 
   try {
     pushBootDiag("nas:restore:pull:start");

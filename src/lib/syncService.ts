@@ -28,19 +28,6 @@ function safeJsonParse<T = any>(value: any, fallback: T): T {
 }
 
 async function getCurrentBackupOwnerId(): Promise<string> {
-  try {
-    const raw = localStorage.getItem("dc_online_auth_supabase_v1");
-    const auth = safeJsonParse<any>(raw, null);
-
-    const onlineId =
-      auth?.user?.id ||
-      auth?.session?.user?.id ||
-      auth?.profile?.id ||
-      auth?.id ||
-      null;
-
-    if (onlineId) return String(onlineId);
-  } catch {}
 
   try {
     const store = await loadStore();
