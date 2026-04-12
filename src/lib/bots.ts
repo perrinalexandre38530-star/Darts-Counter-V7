@@ -139,11 +139,17 @@ function packBotMeta(bot: BotRecord) {
     ...rest
   } = bot as any;
 
-  const inlineAvatar = sanitizeAvatarDataUrl(avatarDataUrl ?? avatar ?? avatarUrl ?? null);
+  // IMPORTANT PERF: ne jamais dupliquer le base64 avatar dans la méta.
+  // Les avatars sont déjà stockés de manière séparée et compressée dans LS_BOTS_AVATARS_KEY.
+  void avatarDataUrl;
+  void avatar;
+  void avatarUrl;
 
   return {
     ...rest,
-    avatarDataUrl: inlineAvatar,
+    avatarDataUrl: null,
+    avatarUrl: null,
+    avatar: null,
   };
 }
 

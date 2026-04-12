@@ -30,6 +30,7 @@ import DartSetsPanel from "../components/DartSetsPanel";
 import { saveStore } from "../lib/storage";
 import { fileToSafeAvatarDataUrl, sanitizeAvatarDataUrl } from "../lib/avatarSafe";
 import { profilesDiagIncrement, profilesDiagLog, profilesDiagMark, profilesDiagMeasure, diffShallow } from "../lib/profilesDiag";
+import { markNasSyncDirty, pushNasSyncDirtyReason } from "../lib/manualNasSync";
 
 // 🔥 nouveau : bloc préférences joueur
 import PlayerPrefsBlock, { type PlayerPrefs } from "../components/profile/PlayerPrefsBlock";

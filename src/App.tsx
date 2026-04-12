@@ -1599,8 +1599,12 @@ useEffect(() => {
 
   const storePersistTimerRef = React.useRef<number | null>(null);
   const pendingStorePersistRef = React.useRef<Store | null>(null);
+  const lastScheduledStoreRef = React.useRef<Store | null>(null);
   const scheduleStorePersist = React.useCallback((snapshot: Store) => {
+    if (!snapshot) return;
+    if (pendingStorePersistRef.current === snapshot || lastScheduledStoreRef.current === snapshot) return;
     pendingStorePersistRef.current = snapshot;
+    lastScheduledStoreRef.current = snapshot;
     if (storePersistTimerRef.current != null) {
       window.clearTimeout(storePersistTimerRef.current);
       storePersistTimerRef.current = null;
@@ -1612,16 +1616,27 @@ useEffect(() => {
       const latest = pendingStorePersistRef.current;
       pendingStorePersistRef.current = null;
       if (!latest) return;
+      const runSave = () => {
+        const t0 = typeof performance !== "undefined" ? performance.now() : Date.now();
+        try {
+          saveStore(latest);
+        } catch {}
+        const dt = (typeof performance !== "undefined" ? performance.now() : Date.now()) - t0;
+        if (dt >= 250) {
+          try {
+            profilesDiagLog("store-persist-slow", { tab: activeTab, durationMs: Math.round(dt * 10) / 10, profiles: ((latest as any)?.profiles || []).length || 0, bots: ((latest as any)?.bots || []).length || 0, dartSets: ((latest as any)?.dartSets || []).length || 0 });
+          } catch {}
+          try { console.warn("[perf] saveStore slow", { tab: activeTab, durationMs: Math.round(dt * 10) / 10 }); } catch {}
+        }
+      };
       try {
         const ric = (window as any).requestIdleCallback;
         if (typeof ric === "function") {
-          ric(() => {
-            try { saveStore(latest); } catch {}
-          }, { timeout: activeTab === "profiles" ? 2500 : 1200 });
+          ric(() => runSave(), { timeout: activeTab === "profiles" ? 2500 : 1200 });
           return;
         }
       } catch {}
-      try { saveStore(latest); } catch {}
+      runSave();
     }, delay);
   }, []);
 
