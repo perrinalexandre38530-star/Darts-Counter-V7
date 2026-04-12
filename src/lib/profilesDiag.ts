@@ -9,9 +9,11 @@ declare global {
       events: DiagEvent[];
       counters: Record<string, number>;
       marks: Record<string, number>;
+      consoleEnabled?: boolean;
     };
     __dumpProfilesDiag?: () => any;
     __clearProfilesDiag?: () => void;
+    __setProfilesDiagConsole?: (enabled: boolean) => void;
   }
 }
 
@@ -25,9 +27,21 @@ function getStore() {
       events: [],
       counters: {},
       marks: {},
+      consoleEnabled: false,
     };
   }
   return window.__profilesDiag;
+}
+
+function isConsoleEnabled() {
+  try {
+    const s = getStore();
+    if (!s) return false;
+    if (typeof s.consoleEnabled === "boolean") return s.consoleEnabled;
+    return localStorage.getItem("dc_profiles_diag_console") === "1";
+  } catch {
+    return false;
+  }
 }
 
 export function profilesDiagIncrement(key: string) {
@@ -49,7 +63,7 @@ export function profilesDiagMeasure(key: string) {
   const s = getStore();
   const now = performance?.now?.() ?? Date.now();
   const start = s?.marks?.[key];
-  if (typeof start !== 'number') return null;
+  if (typeof start !== "number") return null;
   return Math.round((now - start) * 10) / 10;
 }
 
@@ -59,8 +73,9 @@ export function profilesDiagLog(channel: string, data?: any) {
   const evt = { at: Date.now(), channel, data };
   s.events.push(evt);
   if (s.events.length > MAX_EVENTS) s.events.splice(0, s.events.length - MAX_EVENTS);
+  if (!isConsoleEnabled()) return;
   try {
-    console.log(`[diag][${channel}]`, data ?? '');
+    console.log(`[diag][${channel}]`, data ?? "");
   } catch {}
 }
 
@@ -83,7 +98,7 @@ export function diffShallow(prev: any, next: any) {
 
 export function installProfilesDiag() {
   const s = getStore();
-  if (!s || s.installed || typeof window === 'undefined') return;
+  if (!s || s.installed || typeof window === "undefined") return;
   s.installed = true;
 
   window.__dumpProfilesDiag = () => ({
@@ -96,26 +111,32 @@ export function installProfilesDiag() {
     s.counters = {};
     s.marks = {};
   };
+  window.__setProfilesDiagConsole = (enabled: boolean) => {
+    s.consoleEnabled = !!enabled;
+    try {
+      localStorage.setItem("dc_profiles_diag_console", enabled ? "1" : "0");
+    } catch {}
+  };
 
   try {
-    if (typeof PerformanceObserver !== 'undefined') {
+    if (typeof PerformanceObserver !== "undefined") {
       const po = new PerformanceObserver((list) => {
         for (const entry of list.getEntries()) {
-          profilesDiagLog('longtask', {
+          profilesDiagLog("longtask", {
             name: entry.name,
             startTime: Math.round(entry.startTime),
             duration: Math.round(entry.duration * 10) / 10,
           });
         }
       });
-      po.observe({ type: 'longtask', buffered: true } as any);
+      po.observe({ type: "longtask", buffered: true } as any);
     }
   } catch (e) {
-    profilesDiagLog('diag-install-warning', { where: 'longtask', error: String((e as any)?.message || e) });
+    profilesDiagLog("diag-install-warning", { where: "longtask", error: String((e as any)?.message || e) });
   }
 
-  profilesDiagLog('diag-installed', {
-    href: String(window.location.href || ''),
-    ua: String(navigator.userAgent || '').slice(0, 120),
+  profilesDiagLog("diag-installed", {
+    href: String(window.location.href || ""),
+    ua: String(navigator.userAgent || "").slice(0, 120),
   });
 }

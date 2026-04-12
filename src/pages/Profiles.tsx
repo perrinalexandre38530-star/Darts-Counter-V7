@@ -7,7 +7,7 @@
 // - Thème via ThemeContext + textes via LangContext
 // ============================================
 
-import React from "react";
+import React, { useDeferredValue } from "react";
 import { SaveToast } from "../components/ui/SaveToast";
 import ProfileAvatar from "../components/ProfileAvatar";
 import AvatarLite from "../components/profile/AvatarLite";
@@ -3900,6 +3900,8 @@ function LocalProfilesRefonte({
   const [editFile, setEditFile] = React.useState<File | null>(null);
   const [editPreview, setEditPreview] = React.useState<string | null>(null);
   const [actionsOpen, setActionsOpen] = React.useState(false);
+  const [carouselBusy, setCarouselBusy] = React.useState(false);
+  const busyTimerRef = React.useRef<number | null>(null);
 
   React.useEffect(() => {
     if (index >= locals.length && locals.length > 0) {
@@ -3924,9 +3926,30 @@ function LocalProfilesRefonte({
     prevLocalsCountRef.current = locals.length;
   }, [locals.length]);
   const current = locals[index] || null;
+  const deferredCurrent = useDeferredValue(current);
+  const renderedCurrent = carouselBusy ? (deferredCurrent || current) : current;
+
+  React.useEffect(() => {
+    setCarouselBusy(true);
+    if (busyTimerRef.current != null && typeof window !== "undefined") {
+      window.clearTimeout(busyTimerRef.current);
+    }
+    if (typeof window !== "undefined") {
+      busyTimerRef.current = window.setTimeout(() => {
+        setCarouselBusy(false);
+        busyTimerRef.current = null;
+      }, 260);
+    }
+    return () => {
+      if (busyTimerRef.current != null && typeof window !== "undefined") {
+        window.clearTimeout(busyTimerRef.current);
+        busyTimerRef.current = null;
+      }
+    };
+  }, [index, current?.id]);
 
   // stats du profil courant
-  const bs = useBasicStats(current?.id, !deferHeavy);
+  const bs = useBasicStats(!deferHeavy && !carouselBusy ? current?.id : null, !deferHeavy && !carouselBusy);
   const avg3 = Number.isFinite(bs.avg3) ? Number(bs.avg3) : 0;
   const bestVisit = Number(bs.bestVisit ?? 0);
   const bestCheckout = Number(bs.bestCheckout ?? 0);
@@ -3939,7 +3962,7 @@ function LocalProfilesRefonte({
     setEditPreview(null);
     setActionsOpen(false);
     if (current) {
-      const pi = ((current as any).privateInfo || {}) as { country?: string };
+      const pi = ((renderedCurrent as any).privateInfo || {}) as { country?: string };
       setEditName(current.name || "");
       setEditCountry(pi.country || "");
     } else {
@@ -4154,7 +4177,7 @@ function LocalProfilesRefonte({
             </button>
           </div>
 
-          {current && (
+          {renderedCurrent && (
             <>
               {/* Médaillon central + StarRing alimenté par avg3 */}
               <div
@@ -4201,11 +4224,11 @@ function LocalProfilesRefonte({
                   <AvatarLite
                     size={AVATAR}
                     src={buildAvatarSrc({
-                      avatarUrl: (current as any)?.avatarUrl || null,
-                      avatarDataUrl: (current as any)?.avatarDataUrl || null,
-                      avatarUpdatedAt: (current as any)?.avatarUpdatedAt ?? null,
+                      avatarUrl: (renderedCurrent as any)?.avatarUrl || null,
+                      avatarDataUrl: (renderedCurrent as any)?.avatarDataUrl || null,
+                      avatarUpdatedAt: (renderedCurrent as any)?.avatarUpdatedAt ?? null,
                     })}
-                    label={current.name?.[0]?.toUpperCase() || "?"}
+                    label={renderedCurrent.name?.[0]?.toUpperCase() || "?"}
                   />
                 </div>
               </div>
@@ -4228,8 +4251,8 @@ function LocalProfilesRefonte({
                     "--dc-accent": primary,
                   }}
                 >
-                  <span className="dc-stats-name-base">{current.name || "—"}</span>
-                  <span className="dc-stats-name-shimmer">{current.name || "—"}</span>
+                  <span className="dc-stats-name-base">{renderedCurrent.name || "—"}</span>
+                  <span className="dc-stats-name-shimmer">{renderedCurrent.name || "—"}</span>
                 </span>
 
                 <div
@@ -4245,7 +4268,7 @@ function LocalProfilesRefonte({
                   }}
                 >
                   {(() => {
-                    const pi = ((current as any).privateInfo || {}) as {
+                    const pi = ((renderedCurrent as any).privateInfo || {}) as {
                       country?: string;
                     };
                     const country = pi.country || "";
@@ -4315,8 +4338,8 @@ function LocalProfilesRefonte({
                 <div style={{ marginTop: 4, marginBottom: 10 }}>
                   {deferHeavy ? (
                     <HeavySectionPlaceholder minHeight={132} />
-                  ) : current ? (
-                    <DeferredLocalDartSets profile={current as any} />
+                  ) : renderedCurrent ? (
+                    <DeferredLocalDartSets profile={renderedCurrent as any} busy={carouselBusy} />
                   ) : null}
                 </div>
               )}
@@ -4509,7 +4532,7 @@ function LocalProfilesRefonte({
                         setEditFile(null);
                         setEditPreview(null);
                         if (current) {
-                          const pi = ((current as any).privateInfo || {}) as {
+                          const pi = ((renderedCurrent as any).privateInfo || {}) as {
                             country?: string;
                           };
                           setEditName(current.name || "");
@@ -4535,8 +4558,8 @@ function LocalProfilesRefonte({
 
 
 
-const DeferredLocalDartSets = React.memo(function DeferredLocalDartSets({ profile }: { profile: any }) {
-  const ready = useDeferredSectionReady(!!profile?.id, 220);
+const DeferredLocalDartSets = React.memo(function DeferredLocalDartSets({ profile, busy = false }: { profile: any; busy?: boolean }) {
+  const ready = useDeferredSectionReady(!!profile?.id && !busy, 520);
   if (!ready) return <HeavySectionPlaceholder minHeight={132} />;
   return <DartSetsPanel key={`local-dartsets-${String(profile?.id || "none")}`} profile={profile} />;
 });
@@ -4595,7 +4618,7 @@ function AddLocalProfile({
   }
 
   function submit() {
-    console.log("[AddLocalProfile] submit() click", {
+    if ((window as any).__profilesDiag?.consoleEnabled) console.log("[AddLocalProfile] submit() click", {
       name,
       country,
       hasFile: !!file,
@@ -4610,7 +4633,7 @@ function AddLocalProfile({
     const privateInfo: { country?: string } = {};
     if (trimmedCountry) privateInfo.country = trimmedCountry;
   
-    console.log("[AddLocalProfile] calling onCreate()", {
+    if ((window as any).__profilesDiag?.consoleEnabled) console.log("[AddLocalProfile] calling onCreate()", {
       trimmedName,
       privateInfo,
     });

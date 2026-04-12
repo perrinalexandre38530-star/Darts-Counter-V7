@@ -12,6 +12,7 @@ import StatsPlayerDashboard, {
 } from "../components/StatsPlayerDashboard";
 import { useQuickStats } from "../hooks/useQuickStats";
 import { getOrRebuildStatsIndex } from "../lib/stats/rebuildStatsFromHistory";
+import StatsCricketDashboard from "../components/StatsCricketDashboard";
 import HistoryPage from "./HistoryPage";
 import MolkkyStatsHistoryPage from "./molkky/MolkkyStatsHistoryPage";
 
@@ -251,9 +252,6 @@ function lazyWithRetry<T extends React.ComponentType<any>>(loader: () => Promise
 
 
 const TrainingRadar = React.lazy(() => import("../components/TrainingRadar"));
-const StatsCricketDashboard = React.lazy(
-  () => import("../components/StatsCricketDashboard")
-);
 const StatsShanghaiDashboard = lazyWithRetry(() => import("../components/stats/StatsShanghaiDashboard"));
 const X01MultiStatsTabFull = React.lazy(
   () => import("../stats/X01MultiStatsTabFull")
@@ -4333,7 +4331,7 @@ React.useEffect(() => {
     const anyIDB: any = indexedDB as any;
     if (typeof anyIDB !== "undefined" && typeof anyIDB.databases === "function") {
       anyIDB.databases().then((dbs: any[]) => {
-        console.log("[IDB] databases =", dbs);
+        if (STATS_HUB_DEBUG) console.log("[IDB] databases =", dbs);
       });
     }
   } catch (e) {
@@ -4342,8 +4340,8 @@ React.useEffect(() => {
 
   History.list()
     .then((rows: any[]) => {
-      console.log("[DEBUG] History.list count =", rows?.length || 0);
-      console.log("[DEBUG] History.sample =", rows?.[0]);
+      if (STATS_HUB_DEBUG) console.log("[DEBUG] History.list count =", rows?.length || 0);
+      if (STATS_HUB_DEBUG) console.log("[DEBUG] History.sample =", rows?.[0]);
     })
     .catch((e: any) => {
       console.warn("[DEBUG] History.list error =", e);
@@ -4716,7 +4714,7 @@ const activeKeyId = String((profile as any)?.id ?? activePlayerIdRaw ?? "");
   // ✅ DEBUG (à coller ICI, juste après activePlayerId)
 React.useEffect(() => {
   // eslint-disable-next-line no-console
-  console.log("[StatsHub] activePlayerId =", activePlayerId, "mode =", mode);
+  if (STATS_HUB_DEBUG) console.log("[StatsHub] activePlayerId =", activePlayerId, "mode =", mode);
 }, [activePlayerId, mode]);
 
 // Liste de joueurs selon le mode : active / locals / all
@@ -5087,7 +5085,7 @@ const goNextPlayer = React.useCallback(() => {
 // ==========================
 React.useEffect(() => {
   // eslint-disable-next-line no-console
-  console.log("[StatsHub] sources:", {
+  if (STATS_HUB_DEBUG) console.log("[StatsHub] sources:", {
     normalizedMatches: normalizedMatches?.length ?? 0,
     normalizedMatchesClean: normalizedMatchesClean.length,
     records: records?.length ?? 0,
@@ -5098,7 +5096,7 @@ React.useEffect(() => {
 
   if (nmEffective.length) {
     // eslint-disable-next-line no-console
-    console.log("[StatsHub] nmEffective[0] =", nmEffective[0]);
+    if (STATS_HUB_DEBUG) console.log("[StatsHub] nmEffective[0] =", nmEffective[0]);
   }
 }, [
   normalizedMatches?.length,

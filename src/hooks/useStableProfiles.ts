@@ -1,11 +1,21 @@
 import React from "react";
 
+function profileSig(p: any) {
+  return [
+    p?.id || "",
+    p?.name || "",
+    p?.avatarUpdatedAt || 0,
+    p?.avatarUrl || "",
+    p?.avatarDataUrl ? "data" : "",
+    p?.country || "",
+    p?.privateInfo?.country || "",
+  ].join(":");
+}
+
 export function useStableProfiles<T extends Record<string, any>>(profiles: T[]): T[] {
   const previousRef = React.useRef<T[]>(profiles || []);
   const signature = React.useMemo(() => {
-    return (profiles || [])
-      .map((p) => `${p?.id || ""}:${p?.name || ""}:${p?.avatarUpdatedAt || 0}:${p?.country || ""}:${p?.privateInfo?.country || ""}`)
-      .join("|");
+    return (profiles || []).map(profileSig).join("|");
   }, [profiles]);
 
   return React.useMemo(() => {
@@ -19,7 +29,8 @@ export function useStableProfiles<T extends Record<string, any>>(profiles: T[]):
         old?.avatarUpdatedAt === profile?.avatarUpdatedAt &&
         old?.avatarUrl === profile?.avatarUrl &&
         old?.avatarDataUrl === profile?.avatarDataUrl &&
-        JSON.stringify(old?.privateInfo || {}) === JSON.stringify(profile?.privateInfo || {});
+        old?.country === profile?.country &&
+        old?.privateInfo?.country === profile?.privateInfo?.country;
       return same ? old : profile;
     }) as T[];
     previousRef.current = next;
