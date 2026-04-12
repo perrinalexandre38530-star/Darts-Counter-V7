@@ -1872,22 +1872,6 @@ React.useEffect(() => {
   )}
 </Card>
 
-                {/* 🔥 Panneau sets de fléchettes du profil actif */}
-                {isDarts && active && (
-                  <div style={{ marginTop: 8, marginBottom: 8 }}>
-                    <button
-                      type="button"
-                      onClick={() => { setDartsetsOwnerId(String(active.id || "")); openView("dartsets"); }}
-                      style={{ width: "100%", borderRadius: 16, padding: 14, border: `1px solid ${theme.borderSoft}`, background: theme.card, color: theme.text, textAlign: "left", boxShadow: "0 10px 24px rgba(0,0,0,.35)" }}
-                    >
-                      <div style={{ fontSize: 13, fontWeight: 800, color: theme.primary, letterSpacing: .8 }}>🎯 {t("profiles.menu.dartsets.title", "SETS DE FLÉCHETTES")}</div>
-                      <div className="subtitle" style={{ fontSize: 12, marginTop: 4 }}>
-                        {t("profiles.menu.dartsets.subtitle", "Ouvre le carrousel complet des sets dans une vue dédiée plus fluide.")}
-                      </div>
-                    </button>
-                  </div>
-                )}
-
                 <Card
                   title={t(
                     "profiles.private.title",
@@ -1966,24 +1950,12 @@ React.useEffect(() => {
             {view === "dartsets" && (
               <Card title={t("profiles.menu.dartsets.title", "SETS DE FLÉCHETTES")}>
                 <div style={{ display: "grid", gap: 10 }}>
-                  <div>
-                    <div className="subtitle" style={{ fontSize: 12, marginBottom: 6 }}>
-                      {t("profiles.dartsets.owner", "Joueur associé au set privé")}
-                    </div>
-                    <select
-                      value={dartsetsOwnerId}
-                      onChange={(e) => setDartsetsOwnerId(String(e.target.value || ""))}
-                      style={{ width: "100%", padding: "10px 12px", borderRadius: 10, border: `1px solid ${theme.borderSoft}`, background: theme.inputBg || "rgba(6,6,14,.96)", color: theme.text, fontSize: 13 }}
-                    >
-                      {dartSetOwners.map((p: any) => (
-                        <option key={String(p?.id || "")} value={String(p?.id || "")}>
-                          {String(p?.name || p?.displayName || p?.nickname || p?.id || "Profil")}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
                   {dartsetsHeavyReady && selectedDartsetsProfile ? (
-                    <DartSetsPanel profile={selectedDartsetsProfile as any} availableProfiles={dartSetOwners as any} />
+                    <DartSetsPanel
+                      profile={selectedDartsetsProfile as any}
+                      availableProfiles={dartSetOwners as any}
+                      showAllOwners
+                    />
                   ) : (
                     <HeavySectionPlaceholder minHeight={260} />
                   )}
@@ -4326,21 +4298,7 @@ function LocalProfilesRefonte({
                 />
               </div>
 
-              {/* Sets de fléchettes déplacés vers une vue dédiée pour alléger le carrousel */}
-              {isDarts && renderedCurrent && (
-                <div style={{ marginTop: 4, marginBottom: 10 }}>
-                  <button
-                    type="button"
-                    onClick={() => { setDartsetsOwnerId(String(renderedCurrent.id || "")); openView("dartsets"); }}
-                    style={{ width: "100%", borderRadius: 16, padding: 14, border: `1px solid ${theme.borderSoft}`, background: "linear-gradient(180deg, rgba(8,8,18,.98), rgba(8,12,24,.98))", color: theme.text, textAlign: "left", boxShadow: "0 10px 24px rgba(0,0,0,.35)" }}
-                  >
-                    <div style={{ fontSize: 13, fontWeight: 800, color: theme.primary, letterSpacing: .8 }}>🎯 {t("profiles.menu.dartsets.title", "SETS DE FLÉCHETTES")}</div>
-                    <div className="subtitle" style={{ fontSize: 12, marginTop: 4 }}>
-                      {t("profiles.locals.dartsets.shortcut", "Ouvre le carrousel complet des sets pour ce profil dans une vue dédiée.")}
-                    </div>
-                  </button>
-                </div>
-              )}
+              {/* Sets de fléchettes déplacés vers une vue dédiée dédiée du menu Profils */}
 
               {/* Boutons actions : EDITER / AVATAR / ACTIONS */}
               <div

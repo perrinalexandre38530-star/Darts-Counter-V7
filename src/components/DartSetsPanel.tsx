@@ -19,6 +19,7 @@ import { useTheme } from "../contexts/ThemeContext";
 import { useLang } from "../contexts/LangContext";
 
 import DartSetScannerSheet from "./DartSetScannerSheet";
+import AvatarLite from "./profile/AvatarLite";
 
 import {
   type DartSet,
@@ -35,6 +36,7 @@ import { dartPresets } from "../lib/dartPresets";
 type Props = {
   profile: Profile;
   availableProfiles?: Profile[];
+  showAllOwners?: boolean;
 };
 
 type FormState = {
@@ -378,7 +380,7 @@ const createEmptyForm = (primary: string, privateProfileId: string): FormState =
   photoDataUrl: null,
 });
 
-const DartSetsPanel: React.FC<Props> = ({ profile, availableProfiles = [] }) => {
+const DartSetsPanel: React.FC<Props> = ({ profile, availableProfiles = [], showAllOwners = false }) => {
   const { palette } = useTheme();
   const { lang } = useLang();
 
@@ -399,6 +401,17 @@ const DartSetsPanel: React.FC<Props> = ({ profile, availableProfiles = [] }) => 
   const [activeIndex, setActiveIndex] = React.useState(0);
   const lastSyncedSigRef = React.useRef("");
   const syncTimerRef = React.useRef<number | null>(null);
+
+  const ownersById = React.useMemo(() => {
+    const map = new Map<string, any>();
+    (availableProfiles || []).forEach((p: any) => {
+      if (!p) return;
+      map.set(String(p.id || ""), p);
+    });
+    if (profile?.id) map.set(String(profile.id), profile as any);
+    return map;
+  }, [availableProfiles, profile]);
+
 
   // ✅ PATCH B — helper: pousse TOUS les dartsets dans le store global (=> IDB => push cloud)
   const syncAllDartSetsToAppStore = React.useCallback((reason: string = "dartsets_mutation") => {
@@ -448,9 +461,11 @@ const DartSetsPanel: React.FC<Props> = ({ profile, availableProfiles = [] }) => 
 
   // ✅ loader tolérant (getDartSetsForProfile peut être sync OU async)
   const loadSets = React.useCallback(async () => {
-    if (!profile?.id) return;
+    if (!profile?.id && !showAllOwners) return;
     try {
-      const all = await Promise.resolve(getDartSetsForProfile(profile.id) as any);
+      const all = showAllOwners
+        ? await Promise.resolve(getAllDartSets() as any)
+        : await Promise.resolve(getDartSetsForProfile(profile.id) as any);
       const sorted = sortSets((all || []) as DartSet[]);
       setSets(sorted);
       setActiveIndex((idx) => (sorted.length === 0 ? 0 : Math.min(idx, sorted.length - 1)));
@@ -458,7 +473,7 @@ const DartSetsPanel: React.FC<Props> = ({ profile, availableProfiles = [] }) => 
     } catch (err) {
       console.warn("[DartSetsPanel] load error", err);
     }
-  }, [profile?.id, syncAllDartSetsToAppStore]);
+  }, [profile?.id, showAllOwners, syncAllDartSetsToAppStore]);
 
   React.useEffect(() => {
     loadSets();
@@ -1596,31 +1611,45 @@ const DartSetsPanel: React.FC<Props> = ({ profile, availableProfiles = [] }) => 
 
                       <span
                         style={{
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: 6,
                           padding: "2px 8px",
                           borderRadius: 999,
                           border: activeSet.scope === "public" ? "1px solid rgba(127,230,165,.8)" : "1px solid rgba(255,255,255,.25)",
                           background: activeSet.scope === "public" ? "rgba(127,230,165,.18)" : "rgba(255,255,255,.06)",
                           color: activeSet.scope === "public" ? "rgba(180,255,210,.98)" : "rgba(220,220,255,.9)",
-                          textTransform: "uppercase",
                           letterSpacing: 1,
                           fontSize: 10,
                         }}
                       >
-                        {activeSet.scope === "public"
-                          ? lang === "fr"
-                            ? "Public"
+                        <span style={{ textTransform: "uppercase" }}>
+                          {activeSet.scope === "public"
+                            ? lang === "fr"
+                              ? "Public"
+                              : lang === "es"
+                              ? "Público"
+                              : lang === "de"
+                              ? "Öffentlich"
+                              : "Public"
+                            : lang === "fr"
+                            ? "Privé"
                             : lang === "es"
-                            ? "Público"
+                            ? "Privado"
                             : lang === "de"
-                            ? "Öffentlich"
-                            : "Public"
-                          : lang === "fr"
-                          ? "Privé"
-                          : lang === "es"
-                          ? "Privado"
-                          : lang === "de"
-                          ? "Privat"
-                          : "Private"}
+                            ? "Privat"
+                            : "Private"}
+                        </span>
+                        {activeSet.scope === "private" && activeOwner ? (
+                          <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+                            <AvatarLite
+                              src={(activeOwner as any).avatarDataUrl || (activeOwner as any).avatarUrl || (activeOwner as any).avatar || null}
+                              size={18}
+                              label={ownerLabel(activeOwner).slice(0, 1)}
+                            />
+                            <span style={{ fontSize: 10, opacity: 0.95 }}>{ownerLabel(activeOwner)}</span>
+                          </span>
+                        ) : null}
                       </span>
                     </div>
                   </div>
