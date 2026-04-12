@@ -27,7 +27,7 @@ function getStore() {
       events: [],
       counters: {},
       marks: {},
-      consoleEnabled: false,
+      consoleEnabled: true,
     };
   }
   return window.__profilesDiag;
@@ -38,7 +38,8 @@ function isConsoleEnabled() {
     const s = getStore();
     if (!s) return false;
     if (typeof s.consoleEnabled === "boolean") return s.consoleEnabled;
-    return localStorage.getItem("dc_profiles_diag_console") === "1";
+    const raw = localStorage.getItem("dc_profiles_diag_console");
+    return raw == null ? true : raw === "1";
   } catch {
     return false;
   }
@@ -74,6 +75,9 @@ export function profilesDiagLog(channel: string, data?: any) {
   s.events.push(evt);
   if (s.events.length > MAX_EVENTS) s.events.splice(0, s.events.length - MAX_EVENTS);
   if (!isConsoleEnabled()) return;
+  const noisy = channel === "profiles-render" || channel === "app-render";
+  const count = (s.counters[channel] = Number(s.counters[channel] || 0) + 1);
+  if (noisy && count % 20 !== 1) return;
   try {
     console.log(`[diag][${channel}]`, data ?? "");
   } catch {}

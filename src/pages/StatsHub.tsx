@@ -2,6 +2,7 @@
 // src/pages/StatsHub.tsx — Stats + Historique + Training (v2 complet)
 // ============================================
 import React from "react";
+const STATS_HUB_DEBUG = false;
 import { useSport } from "../contexts/SportContext";
 import { History } from "../lib/history";
 import { loadStore } from "../lib/storage";

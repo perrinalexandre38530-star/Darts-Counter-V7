@@ -206,7 +206,7 @@ function useBasicStats(playerId: string | undefined | null, enabled: boolean = t
   return playerId ? stats : empty;
 }
 
-function useDeferredSectionReady(active: boolean, delay = 120) {
+function useDeferredSectionReady(active: boolean, delay = 420) {
   const [ready, setReady] = React.useState(active);
 
   React.useEffect(() => {
@@ -669,7 +669,7 @@ export default function Profiles({
     const cached = readProfilesCache();
     if (!cached || cached.length === 0) return;
 
-    console.warn("[Profiles] 🛟 PROFILES RESTORE from cache (anti-wipe)", {
+    profilesDiagLog("profiles-restore-cache", {
       cachedLen: cached.length,
       cachedIds: cached.map((p) => p.id),
     });
@@ -702,7 +702,7 @@ export default function Profiles({
       if (same) return;
     }
 
-    console.warn("[Profiles] 🧹 DEDUPE profiles (stop doublons)", {
+    profilesDiagLog("profiles-dedupe", {
       before: stableProfiles.length,
       after: deduped.length,
     });
@@ -845,8 +845,8 @@ export default function Profiles({
     const ms = profilesDiagMeasure(`profiles-open:${view}`);
     profilesDiagLog("profiles-open-painted", { view, sinceRequestMs: ms });
   }, [view]);
-  const meHeavyReady = useDeferredSectionReady(view === "me", 140);
-  const localsHeavyReady = useDeferredSectionReady(view === "locals", 140);
+  const meHeavyReady = useDeferredSectionReady(view === "me", 520);
+  const localsHeavyReady = useDeferredSectionReady(view === "locals", 620);
 
     // ✅ FORCE auth UI (quand on vient de ONLINE / AuthStart / Account)
     // - params.forceAuth : explicite
