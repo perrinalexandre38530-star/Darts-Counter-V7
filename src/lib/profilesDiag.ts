@@ -27,7 +27,7 @@ function getStore() {
       events: [],
       counters: {},
       marks: {},
-      consoleEnabled: true,
+      consoleEnabled: false,
     };
   }
   return window.__profilesDiag;
@@ -39,7 +39,7 @@ function isConsoleEnabled() {
     if (!s) return false;
     if (typeof s.consoleEnabled === "boolean") return s.consoleEnabled;
     const raw = localStorage.getItem("dc_profiles_diag_console");
-    return raw == null ? true : raw === "1";
+    return raw == null ? false : raw === "1";
   } catch {
     return false;
   }

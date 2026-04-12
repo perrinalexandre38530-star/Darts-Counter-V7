@@ -48,6 +48,13 @@ type VisualOpts = {
   noFrame?: boolean; // ✅ NEW : pas de bordure/fond (aucun disque)
 };
 
+function isDeadRemoteAvatar(src: string) {
+  const value = String(src || "").trim();
+  if (!value) return false;
+  if (!/^https?:\/\//i.test(value)) return false;
+  return /supabase\.(co|io)\/storage\/v1\/object\//i.test(value);
+}
+
 type Props =
   | (VisualOpts & {
       dataUrl?: any;
@@ -260,9 +267,9 @@ export default function ProfileAvatar(props: Props) {
   const rawImg = React.useMemo(() => {
     if (propDataUrl) return propDataUrl;
     if (avatarDataUrl) return avatarDataUrl; // ✅ la photo locale fraîche gagne
-    if (legacyAvatar) return legacyAvatar;
-    if (avatarUrl) return avatarUrl;
-    if (avatarPath) return avatarPath;
+    if (legacyAvatar && !isDeadRemoteAvatar(legacyAvatar)) return legacyAvatar;
+    if (avatarUrl && !isDeadRemoteAvatar(avatarUrl)) return avatarUrl;
+    if (avatarPath && !isDeadRemoteAvatar(avatarPath)) return avatarPath;
     return null;
   }, [propDataUrl, avatarDataUrl, legacyAvatar, avatarUrl, avatarPath]);
 

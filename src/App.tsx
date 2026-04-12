@@ -3679,22 +3679,18 @@ case "babyfoot_team_edit":
           const trimmedName = (name || "").trim();
           const now = Date.now();
 
-          const bucket = "avatars";
-          const uid = String((online as any)?.session?.user?.id || (online as any)?.user?.id || "");
-          const objectPath = `${uid || targetProfile.id}/avatar.png`;
-
           try {
-            const { publicUrl } = await uploadAvatarToSupabase({ bucket, objectPath, pngDataUrl });
-
             setProfiles((list) =>
               list.map((p) =>
                 p.id === targetProfile.id
                   ? {
                       ...p,
                       name: trimmedName || p.name,
-                      avatarUrl: publicUrl,
+                      avatarUrl: undefined,
+                      avatarPath: undefined,
                       avatarUpdatedAt: now,
-                      avatarDataUrl: null,
+                      avatarDataUrl: pngDataUrl,
+                      avatar: pngDataUrl,
                     }
                   : p
               )

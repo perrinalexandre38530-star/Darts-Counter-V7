@@ -570,12 +570,12 @@ export default function Profiles({
       cloud: options?.cloud !== false,
     };
     const delayMs = Number(options?.delayMs ?? 1400);
-    profilesDiagLog("profiles-persist-scheduled", { reason, cloud: options?.cloud !== false, delayMs });
+    profilesDiagLog("profiles-persist-scheduled", { reason, cloud: options?.cloud !== false, delayMs, mode: "dirty-only" });
     if (persistTimerRef.current != null && typeof window !== "undefined") {
       window.clearTimeout(persistTimerRef.current);
     }
     if (typeof window === "undefined") return;
-    persistTimerRef.current = window.setTimeout(async () => {
+    persistTimerRef.current = window.setTimeout(() => {
       if (persistInFlightRef.current) return;
       const job = pendingPersistRef.current;
       pendingPersistRef.current = null;
@@ -583,16 +583,14 @@ export default function Profiles({
       persistInFlightRef.current = true;
       const t0 = typeof performance !== "undefined" ? performance.now() : Date.now();
       try {
-        await saveStore(job.snapshot);
-        if (job.cloud) {
-          await flushCloud(job.reason, job.snapshot);
-        }
+        markNasSyncDirty(job.reason || "profiles_change");
+        try { pushNasSyncDirtyReason(job.reason || "profiles_change"); } catch {}
       } catch (e) {
-        console.warn("[Profiles] deferred persist failed", job.reason, e);
+        console.warn("[Profiles] deferred dirty mark failed", job.reason, e);
       } finally {
         persistInFlightRef.current = false;
         const dt = (typeof performance !== "undefined" ? performance.now() : Date.now()) - t0;
-        profilesDiagLog("profiles-persist-done", { reason: job.reason, cloud: job.cloud, durationMs: Math.round(dt * 10) / 10 });
+        profilesDiagLog("profiles-persist-done", { reason: job.reason, cloud: job.cloud, durationMs: Math.round(dt * 10) / 10, mode: "dirty-only" });
       }
     }, delayMs);
   }, []);
