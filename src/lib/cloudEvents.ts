@@ -1,18 +1,29 @@
 // ============================================
 // src/lib/cloudEvents.ts
-// NAS manual mode: local changes only mark the account as dirty.
+// Event bus ultra léger pour déclencher la sync cloud (debounced)
 // ============================================
 
-import { markNasSyncDirty, pushNasSyncDirtyReason } from "./manualNasSync";
+type CloudChangeListener = (reason: string) => void;
 
+const listeners = new Set<CloudChangeListener>();
+
+/**
+ * Émet un signal "quelque chose a changé localement" -> cloudSync va debouncer le push.
+ * reason = string debug (idb:store, ls:dc_dart_sets_v1, etc.)
+ */
 export function emitCloudChange(reason: string) {
   try {
-    const why = String(reason || "change");
-    markNasSyncDirty(why);
-    pushNasSyncDirtyReason(why);
+    for (const fn of listeners) fn(reason);
   } catch {}
 }
 
-export function onCloudChange(_fn: (reason: string) => void) {
-  return () => {};
+/**
+ * Abonne une fonction aux changements locaux.
+ * Retourne une fonction unsubscribe().
+ */
+export function onCloudChange(fn: CloudChangeListener) {
+  listeners.add(fn);
+  return () => {
+    listeners.delete(fn);
+  };
 }

@@ -31,7 +31,9 @@ import { useLang, type Lang } from "../contexts/LangContext";
 import { THEMES, type ThemeId, type AppTheme } from "../theme/themePresets";
 import { useAuthOnline } from "../hooks/useAuthOnline";
 import { AccountToolsPanel } from "../components/account/AccountToolsPanel";
-import { pushNasAccountSnapshot, pullNasAccountSnapshot, getNasSyncState, computeNasSyncSummary } from "../lib/manualNasSync";
+import { supabase } from "../lib/supabaseClient";
+import { mergeNow } from "../lib/cloudSync";
+import { pushFullBackupToNas, restoreLatestBackupFromNas } from "../lib/syncService";
 import { getApiUrl } from "../lib/apiClient";
 import { generateDiagnostic, exportDiagnostic } from "../lib/diagnosticPro";
 import { getCrashLog, getLastCrashReport } from "../lib/crashReporter";
@@ -1332,12 +1334,12 @@ function AccountPages({
                 setMessage(null);
                 setMerging(true);
                 try {
-                  await pushNasAccountSnapshot();
-                  setMergeMsg(t("settings.account.merge.ok", "Synchronisation NAS terminée"));
+                  await mergeNow({ source: "manual" } as any);
+                  setMergeMsg(t("settings.account.merge.ok", "Fusion terminée : local + cloud"));
                 } catch (e: any) {
                   setMergeMsg(null);
                   setError(e?.message ?? String(e));
-                  safeAlert(`Synchronisation NAS échouée : ${e?.message ?? e}`);
+                  safeAlert(`Fusion échouée : ${e?.message ?? e}`);
                 } finally {
                   setMerging(false);
                 }
@@ -1718,19 +1720,20 @@ export default function Settings({ go }: Props) {
 
     async function handleBackup() {
       setNasBusy("backup");
-      setNasStatus("⏳ Synchronisation NAS en cours...");
+      setNasStatus("⏳ Sauvegarde NAS en cours...");
       setNasLastInfo(null);
       try {
-        const res = await pushNasAccountSnapshot();
-        const summary = await computeNasSyncSummary();
-        setNasLastInfo({ ...(res ?? {}), summary });
-        const updatedAt = new Date().toLocaleString();
-        const msg = `✅ Synchronisation NAS terminée. ${updatedAt} — profils:${summary.profiles} bots:${summary.bots} dartsets:${summary.dartSets} historique:${summary.history}`;
+        const res = await pushFullBackupToNas();
+        setNasLastInfo(res ?? null);
+        const updatedAt = res?.updatedAt ? new Date(res.updatedAt).toLocaleString() : null;
+        const msg = updatedAt
+          ? `✅ Backup NAS envoyé avec succès. Dernière mise à jour : ${updatedAt}`
+          : "✅ Backup NAS envoyé avec succès.";
         setNasStatus(msg);
         safeAlert(msg);
       } catch (e) {
         const msg = e instanceof Error ? e.message : String(e);
-        const finalMsg = `❌ Synchronisation NAS impossible : ${msg}`;
+        const finalMsg = `❌ Backup NAS impossible : ${msg}`;
         setNasStatus(finalMsg);
         safeAlert(finalMsg);
       } finally {
@@ -1740,24 +1743,24 @@ export default function Settings({ go }: Props) {
 
     async function handleRestore() {
       const ok = window.confirm(
-        "Recharger le snapshot du NAS sur cet appareil ?\n\n" +
-          "Cette action remplace l’état local importé par le snapshot du compte."
+        "Restaurer le dernier backup NAS sur cet appareil ?\n\n" +
+          "Les données importées seront fusionnées via importAll().\n" +
+          "Si tu veux repartir totalement propre, fais d'abord une réinitialisation locale."
       );
       if (!ok) return;
 
       setNasBusy("restore");
-      setNasStatus("⏳ Rechargement NAS en cours...");
+      setNasStatus("⏳ Restauration NAS en cours...");
       setNasLastInfo(null);
       try {
-        const res = await pullNasAccountSnapshot();
-        const summary = await computeNasSyncSummary();
-        setNasLastInfo({ ...(res ?? {}), summary });
-        const msg = `✅ Rechargement NAS terminé — profils:${summary.profiles} bots:${summary.bots} dartsets:${summary.dartSets} historique:${summary.history}`;
+        const res = await restoreLatestBackupFromNas();
+        setNasLastInfo(res ?? null);
+        const msg = "✅ Restauration NAS terminée. Recharge l'application pour relire tout le store.";
         setNasStatus(msg);
         safeAlert(msg);
       } catch (e) {
         const msg = e instanceof Error ? e.message : String(e);
-        const finalMsg = `❌ Rechargement NAS impossible : ${msg}`;
+        const finalMsg = `❌ Restauration NAS impossible : ${msg}`;
         setNasStatus(finalMsg);
         safeAlert(finalMsg);
       } finally {
@@ -1785,13 +1788,13 @@ export default function Settings({ go }: Props) {
             letterSpacing: 1,
           }}
         >
-          {t("settings.nas.title", "Synchronisation NAS manuelle")}
+          {t("settings.nas.title", "Sauvegarde NAS")}
         </h2>
 
         <p style={{ fontSize: 11, color: theme.textSoft, marginBottom: 10, lineHeight: 1.45 }}>
           {t(
             "settings.nas.subtitle",
-            "Toutes les modifications restent locales pendant l’usage. Tu déclenches ici la synchro globale du compte vers le NAS, ou le rechargement depuis le NAS."
+            "Envoie un snapshot complet du store local vers ton NAS et permet de restaurer le dernier backup enregistré."
           )}
         </p>
 
@@ -1811,20 +1814,6 @@ export default function Settings({ go }: Props) {
           <div>{getApiUrl()}</div>
         </div>
 
-        <div
-          style={{
-            padding: 10,
-            borderRadius: 12,
-            border: `1px solid ${theme.borderSoft}`,
-            background: "rgba(255,255,255,0.03)",
-            marginBottom: 12,
-            fontSize: 11,
-            color: theme.text,
-          }}
-        >
-          {(() => { const s = getNasSyncState(); return s.dirty ? `⚠️ Modifications locales non synchronisées${s.reason ? ` (${s.reason})` : ""}` : "✅ Aucune modification locale en attente"; })()}
-        </div>
-
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
           <button
             type="button"
@@ -1839,7 +1828,7 @@ export default function Settings({ go }: Props) {
               opacity: nasBusy ? 0.7 : 1,
             }}
           >
-            {nasBusy === "backup" ? "Synchronisation..." : "Synchroniser le compte sur NAS"}
+            {nasBusy === "backup" ? "Sauvegarde..." : "Sauvegarder sur NAS"}
           </button>
 
           <button
@@ -1854,7 +1843,7 @@ export default function Settings({ go }: Props) {
               opacity: nasBusy ? 0.7 : 1,
             }}
           >
-            {nasBusy === "restore" ? "Rechargement..." : "Recharger depuis le NAS"}
+            {nasBusy === "restore" ? "Restauration..." : "Restaurer depuis NAS"}
           </button>
         </div>
 

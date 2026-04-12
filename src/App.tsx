@@ -70,8 +70,8 @@ import * as React from "react";
 const { useEffect, useMemo, useState, useRef, useCallback } = React;
 import { migrateLocalStorageToIndexedDB } from "./lib/storageMigration";
 import { rehydrateSupabaseSession } from "./lib/onlineSessionFix";
+import { startNasBackgroundSync } from "./lib/nasStartupSync";
 import { bootstrapNasRestore } from "./lib/nasBootstrapRestore";
-import { markNasSyncDirty, pushNasSyncDirtyReason } from "./lib/manualNasSync";
 import { enforceSafeAvatarDataUrl } from "./lib/avatarSafe";
 import BottomNav from "./components/BottomNav";
 
@@ -108,6 +108,9 @@ import { markStatsIndexDirty } from "./lib/stats/rebuildStatsFromHistory";
 
 // Mode Online
 import { onlineApi } from "./lib/onlineApi";
+import { startCloudSync, stopCloudSync } from "./lib/cloudSync";
+import { EventBuffer } from "./lib/sync/EventBuffer";
+import { importHistoryFromCloud } from "./lib/sync/EventImport";
 import { ensureLocalProfileForOnlineUser } from "./lib/accountBridge";
 
 // ✅ Supabase client
@@ -1421,11 +1424,25 @@ useEffect(() => {
     migrateLocalStorageToIndexedDB();
   }, []);
 
-  // Sync Supabase legacy désactivée : la synchro passe désormais par le NAS manuel.
-  useEffect(() => {}, [cloudStatsEnabled]);
+  // ✅ Multi-device: auto-sync des événements vers Supabase (best-effort)
+  useEffect(() => {
+    if (!cloudStatsEnabled) return;
 
-  // LOT20 legacy désactivé pour éviter toute écriture Supabase automatique.
-  useTrainingAutoSync(false);
+    const uninstall = EventBuffer.installAutoSync({ intervalMs: 45_000 });
+    EventBuffer.syncNow().catch(() => {});
+
+    // ✅ Multi-device: pull cloud -> history local (best-effort)
+    importHistoryFromCloud({ limit: 400 }).catch(() => {});
+    return () => {
+      try {
+        uninstall();
+      } catch {}
+    };
+  }, [cloudStatsEnabled]);
+
+
+  // LOT20: auto-sync training events (best-effort)
+  useTrainingAutoSync(!!cloudStatsEnabled);
 
   // ✅ Auto-backup léger (Recovery) — déclenché quand l'app passe en background
   useAutoBackup(!!autoBackupEnabled);
@@ -2031,39 +2048,67 @@ useEffect(() => {
   }, []);
 
   // ============================================================
-  // LocalStorage DC hook + marquage dirty NAS manuel
+  // ✅ LocalStorage DC hook (emitCloudChange sur dc_* / dc-*)
   // ============================================================
   React.useEffect(() => {
     installLocalStorageDcHook();
-    const markDirty = () => {
-      try {
-        markNasSyncDirty("local_change");
-      } catch {}
-    };
-    window.addEventListener("dc:nas-sync-dirty", markDirty as EventListener);
-    return () => {
-      window.removeEventListener("dc:nas-sync-dirty", markDirty as EventListener);
-    };
   }, []);
 
   // ============================================================
-  // GLOBAL MANUAL NAS MARKER (used by Profiles / Bots / DartSets)
+  // ✅ GLOBAL FLUSH NOW (used by Profiles / Bots / DartSets)
   // ============================================================
+  const flushNowStateRef = React.useRef<{ lastReason: string; lastAt: number }>({ lastReason: "", lastAt: 0 });
+  const pendingCloudFlushRef = React.useRef<{ reason: string; seedOverride?: any } | null>(null);
+  const deferCloudTabs = new Set(["profiles", "profiles_bots", "avatar", "stats", "statsHub", "local"]);
   React.useEffect(() => {
-    const handler = async (_reason?: string) => {
+    const handler = async (_reason?: string, seedOverride?: any) => {
       try {
+        if (loading) return;
+        if (!cloudHydrated) return;
+        if (!cloudCanSync) return;
+        if (!online?.ready || online.status !== "signed_in") return;
+
         const reason = String(_reason || "manual");
-        markNasSyncDirty(reason);
-        pushNasSyncDirtyReason(reason);
-        console.log("[nas-sync] manual dirty mark", { reason, tab });
+        if (deferCloudTabs.has(String(tab || ""))) {
+          pendingCloudFlushRef.current = { reason, seedOverride };
+          console.warn("[cloud] __flushCloudNow queued (deferred tab active)", { reason, tab });
+          return;
+        }
+        const now = Date.now();
+        const state = flushNowStateRef.current;
+        if (state.lastReason === reason && now - state.lastAt < 15000) {
+          console.warn("[cloud] __flushCloudNow skipped (dedupe)", reason);
+          return;
+        }
+        state.lastReason = reason;
+        state.lastAt = now;
+
+        const exported = await exportCloudSnapshot();
+        const snapshot = mergeStoreIntoCloudSnapshot(exported, seedOverride);
+
+        const pushDiag: any = await onlineApi.pushStoreSnapshot(snapshot as any, (snapshot as any)?.v ?? 8);
+        console.log("[cloud] __flushCloudNow pushed", { reason, tab, pushDiag });
       } catch (e) {
-        console.warn("[nas-sync] manual dirty mark failed", e);
+        console.warn("[cloud] __flushCloudNow failed", e);
       }
     };
     try { (window as any).__flushCloudNow = handler; } catch {}
     return () => {
       try { if ((window as any).__flushCloudNow === handler) delete (window as any).__flushCloudNow; } catch {}
     };
+  }, [loading, cloudHydrated, cloudCanSync, online?.ready, online?.status, store, tab]);
+
+  React.useEffect(() => {
+    if (deferCloudTabs.has(String(tab || ""))) return;
+    const pending = pendingCloudFlushRef.current;
+    if (!pending) return;
+    pendingCloudFlushRef.current = null;
+    const timer = window.setTimeout(() => {
+      try {
+        (window as any).__flushCloudNow?.(pending.reason, pending.seedOverride);
+      } catch {}
+    }, 1800);
+    return () => window.clearTimeout(timer);
   }, [tab]);
 
   // ============================================================
@@ -2265,23 +2310,62 @@ useEffect(() => {
   }, [loading, online?.ready, online?.status, cloudHydrated, hasMeaningfulLocalCloudData]);
 
   // ============================================================
-  // CLOUD AUTO-SYNC LEGACY DISABLED
-  // Toute modification reste locale et marque seulement l’état NAS comme dirty.
+  // ✅ CLOUD SYNC (push-only via emitCloudChange)
+  // - pousse une snapshot COMPLETE quand localStorage dc_* change
+  // - évite le "rien sur autre appareil" quand les données ne passent pas par store
   // ============================================================
   React.useEffect(() => {
-    clearCloudFallbackPushTimer();
-    cloudSyncOnRef.current = false;
-  }, [loading, cloudHydrated, cloudCanSync, online?.ready, online?.status, clearCloudFallbackPushTimer, tab]);
-
-  React.useEffect(() => {
-    clearCloudFallbackPushTimer();
-    if (!loading && cloudHydrated && cloudCanSync && online?.ready && online.status === "signed_in") {
-      markNasSyncDirty("store_change");
+    if (loading) return;
+    if (!cloudHydrated) return;
+    if (!cloudCanSync) {
+      clearCloudFallbackPushTimer();
+      if (cloudSyncOnRef.current) {
+        stopCloudSync();
+        cloudSyncOnRef.current = false;
+      }
+      return;
     }
-    return clearCloudFallbackPushTimer;
-  }, [store, loading, cloudHydrated, cloudCanSync, online?.ready, online?.status, clearCloudFallbackPushTimer, tab]);
+    if (!online?.ready || online.status !== "signed_in") {
+      clearCloudFallbackPushTimer();
+      if (cloudSyncOnRef.current) {
+        stopCloudSync();
+        cloudSyncOnRef.current = false;
+      }
+      return;
+    }
 
-  // ============================================================
+    if (tab === "profiles" || tab === "profiles_bots" || tab === "avatar" || tab === "stats" || tab === "statsHub") {
+      clearCloudFallbackPushTimer();
+      if (cloudSyncOnRef.current) {
+        stopCloudSync();
+        cloudSyncOnRef.current = false;
+      }
+      return;
+    }
+
+    if (!cloudSyncOnRef.current) {
+      const nasMode =
+        !!((import.meta as any)?.env?.VITE_ONLINE_PROVIDER || "")
+          && String((import.meta as any)?.env?.VITE_ONLINE_PROVIDER || "").toLowerCase() === "nas";
+
+      startCloudSync(
+        nasMode
+          ? { pullOnStart: false, disablePull: true }
+          : { pullOnStart: true, disablePull: false }
+      );
+      cloudSyncOnRef.current = true;
+      clearCloudFallbackPushTimer();
+      console.log(nasMode ? "[cloud] cloudSync started (push-only, nas)" : "[cloud] cloudSync started (push+pull)");
+    }
+
+    return () => {
+      clearCloudFallbackPushTimer();
+      if (cloudSyncOnRef.current) {
+        stopCloudSync();
+        cloudSyncOnRef.current = false;
+      }
+    };
+  }, [loading, cloudHydrated, cloudCanSync, online?.ready, online?.status, clearCloudFallbackPushTimer, tab]);
 
   // ============================================================
   // ✅ CLOUD PUSH (debounce)
