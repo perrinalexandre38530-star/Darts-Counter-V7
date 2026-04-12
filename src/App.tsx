@@ -2059,6 +2059,7 @@ useEffect(() => {
   // ============================================================
   const flushNowStateRef = React.useRef<{ lastReason: string; lastAt: number }>({ lastReason: "", lastAt: 0 });
   const pendingCloudFlushRef = React.useRef<{ reason: string; seedOverride?: any } | null>(null);
+  const deferCloudTabs = new Set(["profiles", "profiles_bots", "avatar", "stats", "statsHub", "local"]);
   React.useEffect(() => {
     const handler = async (_reason?: string, seedOverride?: any) => {
       try {
@@ -2068,9 +2069,9 @@ useEffect(() => {
         if (!online?.ready || online.status !== "signed_in") return;
 
         const reason = String(_reason || "manual");
-        if (tab === "profiles" || tab === "stats" || tab === "statsHub" || tab === "local") {
+        if (deferCloudTabs.has(String(tab || ""))) {
           pendingCloudFlushRef.current = { reason, seedOverride };
-          console.warn("[cloud] __flushCloudNow queued (profiles active)", reason);
+          console.warn("[cloud] __flushCloudNow queued (deferred tab active)", { reason, tab });
           return;
         }
         const now = Date.now();
@@ -2085,8 +2086,8 @@ useEffect(() => {
         const exported = await exportCloudSnapshot();
         const snapshot = mergeStoreIntoCloudSnapshot(exported, seedOverride);
 
-        await onlineApi.pushStoreSnapshot(snapshot as any, (snapshot as any)?.v ?? 8);
-        console.log("[cloud] __flushCloudNow pushed", reason);
+        const pushDiag: any = await onlineApi.pushStoreSnapshot(snapshot as any, (snapshot as any)?.v ?? 8);
+        console.log("[cloud] __flushCloudNow pushed", { reason, tab, pushDiag });
       } catch (e) {
         console.warn("[cloud] __flushCloudNow failed", e);
       }
@@ -2098,7 +2099,7 @@ useEffect(() => {
   }, [loading, cloudHydrated, cloudCanSync, online?.ready, online?.status, store, tab]);
 
   React.useEffect(() => {
-    if (tab === "profiles" || tab === "stats" || tab === "statsHub" || tab === "local") return;
+    if (deferCloudTabs.has(String(tab || ""))) return;
     const pending = pendingCloudFlushRef.current;
     if (!pending) return;
     pendingCloudFlushRef.current = null;
@@ -2333,7 +2334,7 @@ useEffect(() => {
       return;
     }
 
-    if (tab === "profiles" || tab === "stats" || tab === "statsHub") {
+    if (tab === "profiles" || tab === "profiles_bots" || tab === "avatar" || tab === "stats" || tab === "statsHub") {
       clearCloudFallbackPushTimer();
       if (cloudSyncOnRef.current) {
         stopCloudSync();
@@ -2374,7 +2375,7 @@ useEffect(() => {
     if (!cloudHydrated) return;
     if (!cloudCanSync) return;
     if (!online?.ready || online.status !== "signed_in") return;
-    if (tab === "profiles" || tab === "stats" || tab === "statsHub" || tab === "local") return;
+    if (deferCloudTabs.has(String(tab || ""))) return;
 
     // En mode normal, cloudSync gère déjà les pushes via emitCloudChange.
     // On évite donc un deuxième push fallback qui duplique les requêtes,

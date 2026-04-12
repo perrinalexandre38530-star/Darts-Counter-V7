@@ -521,6 +521,21 @@ let nasPushFailureCount = 0;
 let nasPushBlockedUntil = 0;
 let nasPushLastWarnAt = 0;
 
+
+function summarizeSnapshotForDiag(payload: any) {
+  try {
+    const root = payload && typeof payload === "object" ? payload : {};
+    const store = root.store && typeof root.store === "object" ? root.store : root;
+    const profiles = Array.isArray((store as any)?.profiles) ? (store as any).profiles.length : 0;
+    const bots = Array.isArray((store as any)?.bots) ? (store as any).bots.length : 0;
+    const dartSets = Array.isArray((store as any)?.dartSets) ? (store as any).dartSets.length : 0;
+    const history = Array.isArray((store as any)?.history) ? (store as any).history.length : 0;
+    return { profiles, bots, dartSets, history, keys: Object.keys(store || {}).slice(0, 12) };
+  } catch {
+    return { profiles: 0, bots: 0, dartSets: 0, history: 0, keys: [] as string[] };
+  }
+}
+
 function logNasPushSkip(kind: "blocked" | "inflight" | "throttled", extra?: Record<string, any>) {
   const now = Date.now();
   if (now - nasPushLastWarnAt < 5000) return;
@@ -544,20 +559,24 @@ export async function nasPullStoreSnapshot(): Promise<{
     const json = await apiFetch("/sync/pull", { method: "GET" });
     const payload = json?.payload ?? json?.storeSnapshot ?? json?.store ?? json?.data ?? null;
     if (payload == null) {
+      try { console.log("[nasSync] pull not_found", { updatedAt: json?.updatedAt || json?.updated_at || null, version: json?.version ?? null }); } catch {}
       return { status: "not_found", payload: null, updatedAt: null, version: null };
     }
-    return {
-      status: "ok",
+    const result = {
+      status: "ok" as const,
       payload,
       updatedAt: json?.updatedAt || json?.updated_at || null,
       version: Number(json?.version ?? 1),
     };
+    try { console.log("[nasSync] pull success", { updatedAt: result.updatedAt, version: result.version, summary: summarizeSnapshotForDiag(payload) }); } catch {}
+    return result;
   } catch (e) {
+    try { console.warn("[nasSync] pull failed", e); } catch {}
     return { status: "error", error: e };
   }
 }
 
-export async function nasPushStoreSnapshot(payload: any, version = 8): Promise<void> {
+export async function nasPushStoreSnapshot(payload: any, version = 8): Promise<{ ok: boolean; version: number; updatedAt?: string | null; verify?: { status: string; updatedAt?: string | null; version?: number | null; summary?: any } }> {
   const now = Date.now();
 
   if (nasPushBlockedUntil && now < nasPushBlockedUntil) {
@@ -582,13 +601,42 @@ export async function nasPushStoreSnapshot(payload: any, version = 8): Promise<v
     const session0 = await nasRestoreSession();
     if (!session0?.token) throw new Error("Token NAS manquant. Reconnecte-toi.");
 
-    await apiFetch("/sync/push", {
+    const pushRes = await apiFetch("/sync/push", {
       method: "POST",
       body: JSON.stringify({ payload, version }),
     });
 
     nasPushFailureCount = 0;
     nasPushBlockedUntil = 0;
+
+    let verify: any = null;
+    try {
+      const pulled = await apiFetch("/sync/pull", { method: "GET" });
+      const pulledPayload = pulled?.payload ?? pulled?.storeSnapshot ?? pulled?.store ?? pulled?.data ?? null;
+      verify = {
+        status: pulledPayload == null ? "not_found" : "ok",
+        updatedAt: pulled?.updatedAt || pulled?.updated_at || null,
+        version: Number(pulled?.version ?? version),
+        summary: summarizeSnapshotForDiag(pulledPayload),
+      };
+    } catch (verifyErr) {
+      verify = { status: "error", error: String((verifyErr as any)?.message || verifyErr) };
+    }
+
+    try {
+      console.log("[nasSync] push success", {
+        version,
+        updatedAt: pushRes?.updatedAt || pushRes?.updated_at || null,
+        summary: summarizeSnapshotForDiag(payload),
+        verify,
+      });
+    } catch {}
+    return {
+      ok: true,
+      version,
+      updatedAt: pushRes?.updatedAt || pushRes?.updated_at || null,
+      verify,
+    };
   } catch (e) {
     nasPushFailureCount += 1;
     const backoffMs = Math.min(NAS_PUSH_MAX_BACKOFF_MS, Math.max(NAS_PUSH_MIN_INTERVAL_MS, 5000 * (2 ** Math.max(0, nasPushFailureCount - 1))));

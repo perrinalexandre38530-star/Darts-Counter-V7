@@ -93,11 +93,6 @@ export default function ProfilesBots({ store, go }: Props) {
       return false;
     }
     setBots(next);
-    try {
-      (window as any).__flushCloudNow?.("bots_save");
-    } catch (e) {
-      console.warn("[bots] immediate cloud flush failed", e);
-    }
     return true;
   }
 

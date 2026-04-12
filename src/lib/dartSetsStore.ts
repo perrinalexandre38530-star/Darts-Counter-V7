@@ -161,7 +161,13 @@ function saveAll(list: DartSet[]): boolean {
     window.dispatchEvent(new Event("dc-dartsets-updated"));
     try {
       window.dispatchEvent(new Event("dc-flush-cloud"));
-      (window as any).__flushCloudNow?.();
+      try {
+        window.setTimeout(() => {
+          try { (window as any).__flushCloudNow?.("dartsets_save"); } catch {}
+        }, 1200);
+      } catch {
+        try { (window as any).__flushCloudNow?.("dartsets_save"); } catch {}
+      }
     } catch {}
   } catch {}
   try {

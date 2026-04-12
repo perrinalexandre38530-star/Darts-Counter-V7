@@ -338,7 +338,13 @@ function persistBots(list: any[], opts?: { triggerCloud?: boolean; updateAppStor
     }
     if (opts?.triggerCloud !== false) {
       window.dispatchEvent(new Event("dc-flush-cloud"));
-      (window as any).__flushCloudNow?.("bots_save");
+      try {
+        window.setTimeout(() => {
+          try { (window as any).__flushCloudNow?.("bots_save"); } catch {}
+        }, 1200);
+      } catch {
+        try { (window as any).__flushCloudNow?.("bots_save"); } catch {}
+      }
     }
   } catch {}
   return true;
