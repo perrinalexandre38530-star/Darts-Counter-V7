@@ -263,7 +263,7 @@ export function createDartSet(input: {
 
 export function updateDartSet(
   id: DartSetId,
-  patch: Partial<Omit<DartSet, "id" | "profileId" | "createdAt">>
+  patch: Partial<Omit<DartSet, "id" | "createdAt">>
  ): DartSet | undefined {
   const all = loadAll();
   const index = all.findIndex((s) => s.id === id);

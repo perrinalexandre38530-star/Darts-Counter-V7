@@ -2068,7 +2068,7 @@ useEffect(() => {
         if (!online?.ready || online.status !== "signed_in") return;
 
         const reason = String(_reason || "manual");
-        if (tab === "profiles") {
+        if (tab === "profiles" || tab === "stats" || tab === "statsHub" || tab === "local") {
           pendingCloudFlushRef.current = { reason, seedOverride };
           console.warn("[cloud] __flushCloudNow queued (profiles active)", reason);
           return;
@@ -2098,7 +2098,7 @@ useEffect(() => {
   }, [loading, cloudHydrated, cloudCanSync, online?.ready, online?.status, store, tab]);
 
   React.useEffect(() => {
-    if (tab === "profiles") return;
+    if (tab === "profiles" || tab === "stats" || tab === "statsHub" || tab === "local") return;
     const pending = pendingCloudFlushRef.current;
     if (!pending) return;
     pendingCloudFlushRef.current = null;
@@ -2333,6 +2333,15 @@ useEffect(() => {
       return;
     }
 
+    if (tab === "profiles" || tab === "stats" || tab === "statsHub") {
+      clearCloudFallbackPushTimer();
+      if (cloudSyncOnRef.current) {
+        stopCloudSync();
+        cloudSyncOnRef.current = false;
+      }
+      return;
+    }
+
     if (!cloudSyncOnRef.current) {
       const nasMode =
         !!((import.meta as any)?.env?.VITE_ONLINE_PROVIDER || "")
@@ -2355,7 +2364,7 @@ useEffect(() => {
         cloudSyncOnRef.current = false;
       }
     };
-  }, [loading, cloudHydrated, cloudCanSync, online?.ready, online?.status, clearCloudFallbackPushTimer]);
+  }, [loading, cloudHydrated, cloudCanSync, online?.ready, online?.status, clearCloudFallbackPushTimer, tab]);
 
   // ============================================================
   // ✅ CLOUD PUSH (debounce)
@@ -2365,7 +2374,7 @@ useEffect(() => {
     if (!cloudHydrated) return;
     if (!cloudCanSync) return;
     if (!online?.ready || online.status !== "signed_in") return;
-    if (tab === "profiles") return;
+    if (tab === "profiles" || tab === "stats" || tab === "statsHub" || tab === "local") return;
 
     // En mode normal, cloudSync gère déjà les pushes via emitCloudChange.
     // On évite donc un deuxième push fallback qui duplique les requêtes,

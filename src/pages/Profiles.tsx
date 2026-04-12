@@ -15,7 +15,6 @@ import ProfileStarRing from "../components/ProfileStarRing";
 import type { Store, Profile } from "../lib/types";
 import {
   getBasicProfileStats,
-  getBasicProfileStatsAsync,
   type BasicProfileStats,
 } from "../lib/statsBridge";
 import { purgeAllStatsForProfile } from "../lib/statsLiteIDB";
@@ -97,7 +96,7 @@ function useInjectStatsNameCss() {
   }, []);
 }
 
-type View = "menu" | "me" | "locals" | "friends";
+type View = "menu" | "me" | "locals" | "friends" | "dartsets";
 
 // ✅ TYPE UNIQUE (évite les collisions / erreurs TS et les patchs qui partent sur un mauvais type)
 export type PrivateInfo = {
@@ -142,68 +141,25 @@ function useBasicStats(playerId: string | undefined | null, enabled: boolean = t
     []
   );
 
-  const [stats, setStats] = React.useState(empty);
-
-  React.useEffect(() => {
-    let cancelled = false;
-
-    const apply = (basic: any) => {
-      const games = Number((basic && basic.games) ?? 0);
-      const wins = Number((basic && basic.wins) ?? 0);
-      const darts = Number((basic && basic.darts) ?? 0);
-      const avg3 = Number((basic && basic.avg3) ?? 0);
-      const bestVisit = Number((basic && basic.bestVisit) ?? 0);
-      const bestCheckout = Number((basic && basic.bestCheckout) ?? 0);
-      const winRate = games > 0 ? Math.round((wins / games) * 100) : 0;
+  return React.useMemo(() => {
+    if (!enabled || !playerId) return empty;
+    try {
+      const basic: any = getBasicProfileStats(playerId) || {};
+      const games = Number(basic.games ?? 0);
+      const wins = Number(basic.wins ?? 0);
       return {
-        avg3,
-        bestVisit,
-        bestCheckout,
+        avg3: Number(basic.avg3 ?? 0),
+        bestVisit: Number(basic.bestVisit ?? 0),
+        bestCheckout: Number(basic.bestCheckout ?? 0),
         wins,
         games,
-        winRate,
-        darts,
+        winRate: games > 0 ? Math.round((wins / games) * 100) : 0,
+        darts: Number(basic.darts ?? 0),
       };
-    };
-
-    const refresh = async () => {
-      if (!enabled || !playerId) {
-        if (!cancelled) setStats(empty);
-        return;
-      }
-
-      try {
-        const syncStats = getBasicProfileStats(playerId);
-        if (!cancelled) setStats(apply(syncStats));
-      } catch {
-        if (!cancelled) setStats(empty);
-      }
-
-      try {
-        const asyncStats = await getBasicProfileStatsAsync(playerId);
-        if (!cancelled) setStats(apply(asyncStats));
-      } catch {}
-    };
-
-    refresh();
-
-    const onUpdated = () => {
-      refresh();
-    };
-
-    if (typeof window !== "undefined") {
-      window.addEventListener("dc-stats-index-updated", onUpdated as EventListener);
+    } catch {
+      return empty;
     }
-
-    return () => {
-      cancelled = true;
-      if (typeof window !== "undefined") {
-        window.removeEventListener("dc-stats-index-updated", onUpdated as EventListener);
-      }
-    };
-  }, [playerId, empty, enabled]);
-
-  return playerId ? stats : empty;
+  }, [playerId, enabled, empty]);
 }
 
 function useDeferredSectionReady(active: boolean, delay = 420) {
@@ -801,7 +757,7 @@ export default function Profiles({
     const prev = profilesDiagPrevRef.current;
     const changed = diffShallow(prev || {}, next);
     const count = profilesDiagIncrement("profiles_render");
-    profilesDiagLog("profiles-render", { count, changed, next });
+    if (count <= 3 || count % 12 === 0) profilesDiagLog("profiles-render", { count, changed, next });
     profilesDiagPrevRef.current = next;
   });
 
@@ -832,6 +788,8 @@ export default function Profiles({
       ? "locals"
       : params?.view === "friends"
       ? "friends"
+      : params?.view === "dartsets"
+      ? "dartsets"
       : "menu"
   );
   const [, startViewTransition] = React.useTransition();
@@ -845,8 +803,24 @@ export default function Profiles({
     const ms = profilesDiagMeasure(`profiles-open:${view}`);
     profilesDiagLog("profiles-open-painted", { view, sinceRequestMs: ms });
   }, [view]);
-  const meHeavyReady = useDeferredSectionReady(view === "me", 520);
-  const localsHeavyReady = useDeferredSectionReady(view === "locals", 620);
+  const meHeavyReady = useDeferredSectionReady(view === "me", 900);
+  const localsHeavyReady = useDeferredSectionReady(view === "locals", 1200);
+  const dartsetsHeavyReady = useDeferredSectionReady(view === "dartsets", 700);
+  const dartSetOwners = React.useMemo(() => {
+    const list = (stableProfiles as any[] || []).filter((p: any) => !!p && !isMirrorProfile(p));
+    const activeOne = list.find((p: any) => String(p?.id || "") === String(activeProfileId || ""));
+    const locals = list.filter((p: any) => String(p?.id || "") !== String(activeProfileId || ""));
+    return activeOne ? [activeOne, ...locals] : locals;
+  }, [stableProfiles, activeProfileId]);
+  const [dartsetsOwnerId, setDartsetsOwnerId] = React.useState<string>(() => String(activeProfileId || ""));
+  React.useEffect(() => {
+    if (!dartSetOwners.length) return;
+    const exists = dartSetOwners.some((p: any) => String(p?.id || "") === String(dartsetsOwnerId || ""));
+    if (!exists) setDartsetsOwnerId(String((dartSetOwners[0] as any)?.id || ""));
+  }, [dartSetOwners, dartsetsOwnerId]);
+  const selectedDartsetsProfile = React.useMemo(() => {
+    return (dartSetOwners as any[]).find((p: any) => String(p?.id || "") === String(dartsetsOwnerId || "")) || (dartSetOwners[0] as any) || null;
+  }, [dartSetOwners, dartsetsOwnerId]);
 
     // ✅ FORCE auth UI (quand on vient de ONLINE / AuthStart / Account)
     // - params.forceAuth : explicite
@@ -1500,50 +1474,15 @@ React.useEffect(() => {
     }
   }, [active, lang, themeId, setLang, setThemeId]);
 
-  React.useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      const pid = active?.id;
-      if (!pid || statsMap[pid]) return;
-      try {
-        const s = await getBasicProfileStatsAsync(pid);
-        if (!cancelled) setStatsMap((m) => ({ ...m, [pid]: s }));
-      } catch {}
-    })();
-    return () => {
-      cancelled = true;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [active?.id]);
-
-  React.useEffect(() => {
-    let stopped = false;
-    (async () => {
-      const ids = profiles.map((p) => p.id).slice(0, 48);
-      for (const id of ids) {
-        if (stopped) break;
-        if (statsMap[id]) continue;
-        try {
-          const s = await getBasicProfileStatsAsync(id);
-          if (!stopped) setStatsMap((m) => (m[id] ? m : { ...m, [id]: s }));
-        } catch {}
-      }
-    })();
-    return () => {
-      stopped = true;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [profiles]);
-
   const activeAvg3D = React.useMemo<number | null>(() => {
     if (!active?.id) return null;
-    const bs = getBasicProfileStats(active.id);
-    if (Number.isFinite(bs?.avg3)) return Number(bs.avg3);
-    const inMap = statsMap[active.id];
-    if (Number.isFinite((inMap as any)?.avg3d)) return Number((inMap as any).avg3d);
-    if (Number.isFinite((inMap as any)?.avg3)) return Number((inMap as any).avg3);
-    return null;
-  }, [active?.id, statsMap]);
+    try {
+      const bs: any = getBasicProfileStats(active.id) || {};
+      return Number.isFinite(bs?.avg3) ? Number(bs.avg3) : 0;
+    } catch {
+      return 0;
+    }
+  }, [active?.id]);
 
   const openAvatarCreator = React.useCallback(() => {
     go?.("avatar");
@@ -1861,6 +1800,7 @@ React.useEffect(() => {
     onSelectMe={() => openView("me")}
     onSelectLocals={() => openView("locals")}
     onSelectFriends={() => openView("friends")}
+            onSelectDartSets={() => openView("dartsets")}
           />
         ) : (
           <>
@@ -1935,11 +1875,16 @@ React.useEffect(() => {
                 {/* 🔥 Panneau sets de fléchettes du profil actif */}
                 {isDarts && active && (
                   <div style={{ marginTop: 8, marginBottom: 8 }}>
-                    {meHeavyReady ? (
-                      <DartSetsPanel key={`me-dartsets-${String((((meProfileForDarts as any) || (active as any))?.id || "none"))}`} profile={((meProfileForDarts as any) || (active as any))} />
-                    ) : (
-                      <HeavySectionPlaceholder minHeight={132} />
-                    )}
+                    <button
+                      type="button"
+                      onClick={() => { setDartsetsOwnerId(String(active.id || "")); openView("dartsets"); }}
+                      style={{ width: "100%", borderRadius: 16, padding: 14, border: `1px solid ${theme.borderSoft}`, background: theme.card, color: theme.text, textAlign: "left", boxShadow: "0 10px 24px rgba(0,0,0,.35)" }}
+                    >
+                      <div style={{ fontSize: 13, fontWeight: 800, color: theme.primary, letterSpacing: .8 }}>🎯 {t("profiles.menu.dartsets.title", "SETS DE FLÉCHETTES")}</div>
+                      <div className="subtitle" style={{ fontSize: 12, marginTop: 4 }}>
+                        {t("profiles.menu.dartsets.subtitle", "Ouvre le carrousel complet des sets dans une vue dédiée plus fluide.")}
+                      </div>
+                    </button>
                   </div>
                 )}
 
@@ -2018,6 +1963,34 @@ React.useEffect(() => {
               </Card>
             )}
 
+            {view === "dartsets" && (
+              <Card title={t("profiles.menu.dartsets.title", "SETS DE FLÉCHETTES")}>
+                <div style={{ display: "grid", gap: 10 }}>
+                  <div>
+                    <div className="subtitle" style={{ fontSize: 12, marginBottom: 6 }}>
+                      {t("profiles.dartsets.owner", "Joueur associé au set privé")}
+                    </div>
+                    <select
+                      value={dartsetsOwnerId}
+                      onChange={(e) => setDartsetsOwnerId(String(e.target.value || ""))}
+                      style={{ width: "100%", padding: "10px 12px", borderRadius: 10, border: `1px solid ${theme.borderSoft}`, background: theme.inputBg || "rgba(6,6,14,.96)", color: theme.text, fontSize: 13 }}
+                    >
+                      {dartSetOwners.map((p: any) => (
+                        <option key={String(p?.id || "")} value={String(p?.id || "")}>
+                          {String(p?.name || p?.displayName || p?.nickname || p?.id || "Profil")}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  {dartsetsHeavyReady && selectedDartsetsProfile ? (
+                    <DartSetsPanel profile={selectedDartsetsProfile as any} availableProfiles={dartSetOwners as any} />
+                  ) : (
+                    <HeavySectionPlaceholder minHeight={260} />
+                  )}
+                </div>
+              </Card>
+            )}
+
             {view === "friends" && (
               <Card
                 title={t(
@@ -2049,12 +2022,14 @@ function ProfilesMenuView({
   onSelectMe,
   onSelectLocals,
   onSelectFriends,
+  onSelectDartSets,
 }: {
   go?: (tab: any, params?: any) => void;
   sport?: "darts" | "petanque" | string;
   onSelectMe: () => void;
   onSelectLocals: () => void;
   onSelectFriends: () => void;
+  onSelectDartSets: () => void;
 }) {
   const { theme } = useTheme();
 
@@ -2211,6 +2186,12 @@ function ProfilesMenuView({
         onClick={onSelectLocals}
       />
   
+      <CardBtn
+        title={t("profiles.menu.dartsets.title", "SETS DE FLÉCHETTES")}
+        subtitle={t("profiles.menu.dartsets.subtitle", "Gère tous les jeux de fléchettes dans une vue dédiée plus fluide.")}
+        onClick={onSelectDartSets}
+      />
+
       {/* ✅ Remplacement BOTS -> condition sport (robuste) */}
       {(() => {
         const key = String(sportResolved || "").toLowerCase();
@@ -3901,6 +3882,7 @@ function LocalProfilesRefonte({
   const [editPreview, setEditPreview] = React.useState<string | null>(null);
   const [actionsOpen, setActionsOpen] = React.useState(false);
   const [carouselBusy, setCarouselBusy] = React.useState(false);
+  const [settledProfileId, setSettledProfileId] = React.useState<string | null>(null);
   const busyTimerRef = React.useRef<number | null>(null);
 
   React.useEffect(() => {
@@ -3938,7 +3920,7 @@ function LocalProfilesRefonte({
       busyTimerRef.current = window.setTimeout(() => {
         setCarouselBusy(false);
         busyTimerRef.current = null;
-      }, 260);
+      }, 850);
     }
     return () => {
       if (busyTimerRef.current != null && typeof window !== "undefined") {
@@ -3948,8 +3930,19 @@ function LocalProfilesRefonte({
     };
   }, [index, current?.id]);
 
+  React.useEffect(() => {
+    if (!current?.id) {
+      setSettledProfileId(null);
+      return;
+    }
+    const timer = typeof window !== "undefined" ? window.setTimeout(() => setSettledProfileId(current.id), 1200) : null;
+    return () => {
+      if (timer != null && typeof window !== "undefined") window.clearTimeout(timer);
+    };
+  }, [current?.id]);
+
   // stats du profil courant
-  const bs = useBasicStats(!deferHeavy && !carouselBusy ? current?.id : null, !deferHeavy && !carouselBusy);
+  const bs = useBasicStats(!deferHeavy && !carouselBusy && settledProfileId === current?.id ? current?.id : null, !deferHeavy && !carouselBusy && settledProfileId === current?.id);
   const avg3 = Number.isFinite(bs.avg3) ? Number(bs.avg3) : 0;
   const bestVisit = Number(bs.bestVisit ?? 0);
   const bestCheckout = Number(bs.bestCheckout ?? 0);
@@ -4333,14 +4326,19 @@ function LocalProfilesRefonte({
                 />
               </div>
 
-              {/* 🔥 NOUVEAU : Mes jeux de fléchettes pour ce profil local (DARTS ONLY) */}
-              {isDarts && (
+              {/* Sets de fléchettes déplacés vers une vue dédiée pour alléger le carrousel */}
+              {isDarts && renderedCurrent && (
                 <div style={{ marginTop: 4, marginBottom: 10 }}>
-                  {deferHeavy ? (
-                    <HeavySectionPlaceholder minHeight={132} />
-                  ) : renderedCurrent ? (
-                    <DeferredLocalDartSets profile={renderedCurrent as any} busy={carouselBusy} />
-                  ) : null}
+                  <button
+                    type="button"
+                    onClick={() => { setDartsetsOwnerId(String(renderedCurrent.id || "")); openView("dartsets"); }}
+                    style={{ width: "100%", borderRadius: 16, padding: 14, border: `1px solid ${theme.borderSoft}`, background: "linear-gradient(180deg, rgba(8,8,18,.98), rgba(8,12,24,.98))", color: theme.text, textAlign: "left", boxShadow: "0 10px 24px rgba(0,0,0,.35)" }}
+                  >
+                    <div style={{ fontSize: 13, fontWeight: 800, color: theme.primary, letterSpacing: .8 }}>🎯 {t("profiles.menu.dartsets.title", "SETS DE FLÉCHETTES")}</div>
+                    <div className="subtitle" style={{ fontSize: 12, marginTop: 4 }}>
+                      {t("profiles.locals.dartsets.shortcut", "Ouvre le carrousel complet des sets pour ce profil dans une vue dédiée.")}
+                    </div>
+                  </button>
                 </div>
               )}
 
@@ -4559,7 +4557,7 @@ function LocalProfilesRefonte({
 
 
 const DeferredLocalDartSets = React.memo(function DeferredLocalDartSets({ profile, busy = false }: { profile: any; busy?: boolean }) {
-  const ready = useDeferredSectionReady(!!profile?.id && !busy, 520);
+  const ready = useDeferredSectionReady(!!profile?.id && !busy, 1800);
   if (!ready) return <HeavySectionPlaceholder minHeight={132} />;
   return <DartSetsPanel key={`local-dartsets-${String(profile?.id || "none")}`} profile={profile} />;
 });

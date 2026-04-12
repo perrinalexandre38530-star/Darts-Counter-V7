@@ -34,6 +34,7 @@ import { dartPresets } from "../lib/dartPresets";
 
 type Props = {
   profile: Profile;
+  availableProfiles?: Profile[];
 };
 
 type FormState = {
@@ -43,6 +44,7 @@ type FormState = {
   notes: string;
   bgColor: string;
   scope: "private" | "public";
+  privateProfileId: string;
 
   // Gestion du visuel
   kind: "plain" | "preset" | "photo";
@@ -363,26 +365,27 @@ const DartSetImageUploader: React.FC<DartSetImageUploaderProps> = ({
   );
 };
 
-const createEmptyForm = (primary: string): FormState => ({
+const createEmptyForm = (primary: string, privateProfileId: string): FormState => ({
   name: "",
   brand: "",
   weightGrams: "",
   notes: "",
   bgColor: primary || DEFAULT_BG,
   scope: "private",
+  privateProfileId,
   kind: "plain",
   presetId: null,
   photoDataUrl: null,
 });
 
-const DartSetsPanel: React.FC<Props> = ({ profile }) => {
+const DartSetsPanel: React.FC<Props> = ({ profile, availableProfiles = [] }) => {
   const { palette } = useTheme();
   const { lang } = useLang();
 
   const primary = palette?.primary || "#f5c35b";
 
   const [sets, setSets] = React.useState<DartSet[]>([]);
-  const [form, setForm] = React.useState<FormState>(createEmptyForm(primary));
+  const [form, setForm] = React.useState<FormState>(createEmptyForm(primary, String(profile?.id || "")));
   const [isCreating, setIsCreating] = React.useState(false);
 
   // Edition
@@ -394,24 +397,41 @@ const DartSetsPanel: React.FC<Props> = ({ profile }) => {
 
   // Carrousel
   const [activeIndex, setActiveIndex] = React.useState(0);
+  const lastSyncedSigRef = React.useRef("");
+  const syncTimerRef = React.useRef<number | null>(null);
 
   // ✅ PATCH B — helper: pousse TOUS les dartsets dans le store global (=> IDB => push cloud)
-  const syncAllDartSetsToAppStore = React.useCallback(() => {
+  const syncAllDartSetsToAppStore = React.useCallback((reason: string = "dartsets_mutation") => {
     try {
       const all = getAllDartSets();
-      const u = (window as any).__appStore?.update;
-      if (typeof u === "function") {
-        u((s: any) => ({ ...(s || {}), dartSets: all }));
+      const sig = JSON.stringify((all || []).map((s: any) => [s?.id, s?.profileId, s?.updatedAt || 0, s?.lastUsedAt || 0, !!s?.isFavorite]));
+      if (lastSyncedSigRef.current === sig) return;
+      lastSyncedSigRef.current = sig;
+      if (syncTimerRef.current != null && typeof window !== "undefined") {
+        window.clearTimeout(syncTimerRef.current);
       }
+      if (typeof window === "undefined") return;
+      syncTimerRef.current = window.setTimeout(() => {
+        syncTimerRef.current = null;
+        try {
+          const u = (window as any).__appStore?.update;
+          if (typeof u === "function") {
+            u((s: any) => {
+              const prev = Array.isArray((s || {}).dartSets) ? (s || {}).dartSets : [];
+              const prevSig = JSON.stringify(prev.map((x: any) => [x?.id, x?.profileId, x?.updatedAt || 0, x?.lastUsedAt || 0, !!x?.isFavorite]));
+              if (prevSig === sig) return s;
+              return { ...(s || {}), dartSets: all };
+            });
+          }
+        } catch (e) {
+          console.warn("[DartSetsPanel] syncAllDartSetsToAppStore error", e);
+        }
+      }, 1200);
     } catch (e) {
       console.warn("[DartSetsPanel] syncAllDartSetsToAppStore error", e);
     }
   }, []);
 
-  // ✅ PATCH B — au mount
-  React.useEffect(() => {
-    syncAllDartSetsToAppStore();
-  }, [syncAllDartSetsToAppStore]);
 
   function sortSets(list: DartSet[]): DartSet[] {
     return list
@@ -435,8 +455,6 @@ const DartSetsPanel: React.FC<Props> = ({ profile }) => {
       setSets(sorted);
       setActiveIndex((idx) => (sorted.length === 0 ? 0 : Math.min(idx, sorted.length - 1)));
 
-      // ✅ PATCH B — après refresh, pousse aussi au store global
-      syncAllDartSetsToAppStore();
     } catch (err) {
       console.warn("[DartSetsPanel] load error", err);
     }
@@ -445,6 +463,15 @@ const DartSetsPanel: React.FC<Props> = ({ profile }) => {
   React.useEffect(() => {
     loadSets();
   }, [loadSets]);
+
+  React.useEffect(() => {
+    return () => {
+      if (syncTimerRef.current != null && typeof window !== "undefined") {
+        window.clearTimeout(syncTimerRef.current);
+        syncTimerRef.current = null;
+      }
+    };
+  }, []);
 
   const reloadSets = React.useCallback(() => {
     void loadSets();
@@ -506,6 +533,7 @@ const DartSetsPanel: React.FC<Props> = ({ profile }) => {
     const weight = parseInt(form.weightGrams, 10);
     const weightGrams = Number.isFinite(weight) ? weight : undefined;
     const scope = form.scope;
+    const targetProfileId = scope === "private" ? String(form.privateProfileId || profile.id || "") : String(profile.id || "");
 
     const chosenPreset = form.presetId ? dartPresets.find((p) => p.id === form.presetId) : undefined;
 
@@ -549,7 +577,7 @@ const DartSetsPanel: React.FC<Props> = ({ profile }) => {
       }
 
       reloadSets();
-      setForm(createEmptyForm(primary));
+      setForm(createEmptyForm(primary, String(profile?.id || "")));
       setIsCreating(false);
 
       // ✅ PATCH B
@@ -600,6 +628,7 @@ const DartSetsPanel: React.FC<Props> = ({ profile }) => {
     const weight = parseInt(editForm.weightGrams, 10);
     const weightGrams = Number.isFinite(weight) ? weight : undefined;
     const scope = editForm.scope;
+    const nextOwnerProfileId = scope === "private" ? String(editForm.privateProfileId || profile.id || "") : String(profile.id || "");
 
     const chosenPreset = editForm.presetId ? dartPresets.find((p) => p.id === editForm.presetId) : undefined;
 
@@ -617,6 +646,7 @@ const DartSetsPanel: React.FC<Props> = ({ profile }) => {
           notes: notes || undefined,
           bgColor: editForm.bgColor || DEFAULT_BG,
           scope,
+          profileId: nextOwnerProfileId,
           ...(chosenPreset && kind === "preset"
             ? {
                 mainImageUrl: chosenPreset.imgUrlMain,
@@ -875,7 +905,7 @@ const DartSetsPanel: React.FC<Props> = ({ profile }) => {
           onClick={() => {
             setEditingId(null);
             setEditForm(null);
-            setForm(createEmptyForm(primary));
+            setForm(createEmptyForm(primary, String(profile?.id || "")));
             setIsCreating((x) => !x);
           }}
           style={{
@@ -1062,6 +1092,27 @@ const DartSetsPanel: React.FC<Props> = ({ profile }) => {
               </div>
             </div>
           </div>
+
+          {form.scope === "private" && availableProfiles.length > 0 && (
+            <div style={{ gridColumn: "1 / span 2", marginTop: 2, display: "flex", justifyContent: "center" }}>
+              <div style={{ width: "100%", maxWidth: 420 }}>
+                <div style={{ fontSize: 11, color: "rgba(255,255,255,.6)", marginBottom: 4, textAlign: "center" }}>
+                  {lang === "fr" ? "Set privé associé à" : "Private set assigned to"}
+                </div>
+                <select
+                  value={form.privateProfileId}
+                  onChange={handleChange("privateProfileId")}
+                  style={{ width: "100%", padding: "8px 10px", borderRadius: 8, border: "1px solid rgba(255,255,255,.12)", background: "rgba(6,6,14,.96)", color: "#fff", fontSize: 12 }}
+                >
+                  {availableProfiles.map((p: any) => (
+                    <option key={String((p as any).id)} value={String((p as any).id)}>
+                      {String((p as any).name || (p as any).displayName || (p as any).nickname || (p as any).id)}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+          )}
 
           {/* Couleur de fond (centré) */}
           <div style={{ gridColumn: "1 / span 2", marginTop: 4, display: "flex", justifyContent: "center" }}>
@@ -1319,6 +1370,25 @@ const DartSetsPanel: React.FC<Props> = ({ profile }) => {
               </button>
             </div>
           </div>
+
+          {editForm.scope === "private" && availableProfiles.length > 0 && (
+            <div style={{ gridColumn: "1 / span 2", marginTop: 4 }}>
+              <div style={{ fontSize: 11, color: "rgba(255,255,255,.6)", marginBottom: 4 }}>
+                {lang === "fr" ? "Set privé associé à" : "Private set assigned to"}
+              </div>
+              <select
+                value={editForm.privateProfileId}
+                onChange={handleEditChange("privateProfileId")}
+                style={{ width: "100%", padding: "8px 10px", borderRadius: 8, border: "1px solid rgba(255,255,255,.12)", background: "rgba(6,6,14,.96)", color: "#fff", fontSize: 12 }}
+              >
+                {availableProfiles.map((p: any) => (
+                  <option key={String((p as any).id)} value={String((p as any).id)}>
+                    {String((p as any).name || (p as any).displayName || (p as any).nickname || (p as any).id)}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
 
           <div>
             <label style={{ fontSize: 11, color: "rgba(255,255,255,.6)" }}>Couleur de fond</label>
