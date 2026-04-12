@@ -502,6 +502,18 @@ const DartSetsPanel: React.FC<Props> = ({ profile, availableProfiles = [], showA
     return ownersById.get(ownerId) || null;
   }, [activeSet, ownersById]);
 
+  const ownerLabel = React.useCallback((owner: any) => {
+    if (!owner) return lang === "fr" ? "Profil" : "Profile";
+    return String(
+      owner?.name ||
+      owner?.displayName ||
+      owner?.nickname ||
+      owner?.surname ||
+      owner?.id ||
+      (lang === "fr" ? "Profil" : "Profile")
+    );
+  }, [lang]);
+
   // ------------------------------------------------------------------
   // Handlers formulaires
   // ------------------------------------------------------------------
@@ -577,7 +589,7 @@ const DartSetsPanel: React.FC<Props> = ({ profile, availableProfiles = [], showA
 
     try {
       const payload = {
-        profileId: profile.id,
+        profileId: targetProfileId,
         name,
         brand: brand || undefined,
         weightGrams,
@@ -628,6 +640,7 @@ const DartSetsPanel: React.FC<Props> = ({ profile, availableProfiles = [], showA
       notes: set.notes || "",
       bgColor: set.bgColor || primary || DEFAULT_BG,
       scope: set.scope || "private",
+      privateProfileId: String((set as any).profileId || profile.id || ""),
       kind,
       presetId,
       photoDataUrl: null,
