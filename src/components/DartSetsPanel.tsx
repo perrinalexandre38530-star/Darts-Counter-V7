@@ -495,6 +495,12 @@ const DartSetsPanel: React.FC<Props> = ({ profile, availableProfiles = [], showA
   const hasSets = sets.length > 0;
   const activeSet: DartSet | null =
     hasSets && activeIndex >= 0 && activeIndex < sets.length ? sets[activeIndex] : null;
+  const activeOwner = React.useMemo(() => {
+    if (!activeSet || String(activeSet.scope || "private") !== "private") return null;
+    const ownerId = String((activeSet as any)?.profileId || "");
+    if (!ownerId) return null;
+    return ownersById.get(ownerId) || null;
+  }, [activeSet, ownersById]);
 
   // ------------------------------------------------------------------
   // Handlers formulaires
