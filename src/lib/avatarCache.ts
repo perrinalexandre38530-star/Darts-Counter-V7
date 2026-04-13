@@ -4,9 +4,12 @@ import { safeLocalStorageGetJson, safeLocalStorageSetJson } from "./imageStorage
 const KEY = "dc_avatar_cache_v1";
 const MAX_CACHE_ENTRIES = 80;
 
-type AvatarCacheEntry = {
+export type AvatarCacheEntry = {
   profileId: string;
   avatarDataUrl?: string | null;
+  avatarThumbDataUrl?: string | null;
+  avatarFullDataUrl?: string | null;
+  avatarCastDataUrl?: string | null;
   avatarUrl?: string | null;
   avatarUpdatedAt?: number;
 };
@@ -14,6 +17,9 @@ type AvatarCacheEntry = {
 function sanitizeEntry(entry: AvatarCacheEntry | null | undefined): AvatarCacheEntry | null {
   if (!entry?.profileId) return null;
   const avatarDataUrl = sanitizeAvatarDataUrl(entry.avatarDataUrl ?? null, 380_000);
+  const avatarThumbDataUrl = sanitizeAvatarDataUrl(entry.avatarThumbDataUrl ?? entry.avatarDataUrl ?? null, 140_000);
+  const avatarFullDataUrl = sanitizeAvatarDataUrl(entry.avatarFullDataUrl ?? entry.avatarDataUrl ?? null, 280_000);
+  const avatarCastDataUrl = sanitizeAvatarDataUrl(entry.avatarCastDataUrl ?? entry.avatarFullDataUrl ?? entry.avatarDataUrl ?? null, 380_000);
   const avatarUrl =
     typeof entry.avatarUrl === "string" && !entry.avatarUrl.startsWith("data:image/")
       ? entry.avatarUrl
@@ -22,6 +28,9 @@ function sanitizeEntry(entry: AvatarCacheEntry | null | undefined): AvatarCacheE
   return {
     profileId: String(entry.profileId),
     avatarDataUrl: avatarDataUrl || null,
+    avatarThumbDataUrl: avatarThumbDataUrl || null,
+    avatarFullDataUrl: avatarFullDataUrl || null,
+    avatarCastDataUrl: avatarCastDataUrl || null,
     avatarUrl,
     avatarUpdatedAt: Number(entry.avatarUpdatedAt || Date.now()),
   };

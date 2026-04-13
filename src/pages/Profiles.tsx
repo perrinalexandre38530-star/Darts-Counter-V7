@@ -28,7 +28,7 @@ import type { ThemeId } from "../theme/themePresets";
 import { sha256 } from "../lib/crypto";
 import DartSetsPanel from "../components/DartSetsPanel";
 import { saveStore } from "../lib/storage";
-import { fileToSafeAvatarDataUrl, sanitizeAvatarDataUrl } from "../lib/avatarSafe";
+import { fileToAvatarVariants, fileToSafeAvatarDataUrl, sanitizeAvatarDataUrl } from "../lib/avatarSafe";
 import { profilesDiagIncrement, profilesDiagLog, profilesDiagMark, profilesDiagMeasure, diffShallow } from "../lib/profilesDiag";
 import { markNasSyncDirty, pushNasSyncDirtyReason } from "../lib/manualNasSync";
 
@@ -295,6 +295,9 @@ function writeProfilesCache(profiles: Profile[]) {
 // ============================================
 type AvatarCacheEntry = {
   avatarDataUrl?: string | null;
+  avatarThumbDataUrl?: string | null;
+  avatarFullDataUrl?: string | null;
+  avatarCastDataUrl?: string | null;
   avatarUrl?: string | null;
   avatarPath?: string | null;
   avatarUpdatedAt?: number | null;
@@ -310,6 +313,9 @@ function writeAvatarCache(
     setAvatarCacheLib({
       profileId,
       avatarDataUrl: next.avatarDataUrl ?? null,
+      avatarThumbDataUrl: next.avatarThumbDataUrl ?? next.avatarDataUrl ?? null,
+      avatarFullDataUrl: next.avatarFullDataUrl ?? next.avatarDataUrl ?? null,
+      avatarCastDataUrl: next.avatarCastDataUrl ?? next.avatarFullDataUrl ?? next.avatarDataUrl ?? null,
       avatarUrl: next.avatarUrl ?? null,
       avatarUpdatedAt: Number(next.avatarUpdatedAt || Date.now()),
     });
@@ -414,6 +420,7 @@ function buildAvatarSrc(opts: {
   preview?: string | null;
   avatarUrl?: string | null;
   avatarDataUrl?: string | null;
+  avatarFullDataUrl?: string | null;
   avatarUpdatedAt?: number | null;
 }) {
   const cacheBust =
@@ -423,10 +430,12 @@ function buildAvatarSrc(opts: {
     typeof opts.preview === "string" && opts.preview.startsWith("data:image/")
       ? sanitizeAvatarDataUrl(opts.preview)
       : opts.preview && opts.preview.trim();
+  const safeFullDataUrl = sanitizeAvatarDataUrl(opts.avatarFullDataUrl ?? null, 280_000);
   const safeDataUrl = sanitizeAvatarDataUrl(opts.avatarDataUrl);
 
   const baseSrc =
     safePreview ||
+    safeFullDataUrl ||
     safeDataUrl ||
     (opts.avatarUrl && String(opts.avatarUrl).trim()) ||
     "";
@@ -906,20 +915,24 @@ export default function Profiles({
   }
 
   async function changeAvatar(id: string, file: File) {
-    const dataUrl = await fileToSafeAvatarDataUrl(file);
+    const variants = await fileToAvatarVariants(file);
+    const thumbDataUrl = variants.thumbDataUrl;
+    const fullDataUrl = variants.fullDataUrl;
+    const castDataUrl = variants.castDataUrl;
     const now = Date.now();
     const targetProfile = (stableProfiles as any[] || []).find((p: any) => String(p?.id || "") === String(id || "")) || null;
     const isOnlineLinked = isLinkedOnlineProfile(targetProfile);
 
-    // ✅ 0) Cache avatar unifié (anti-retour d’une vieille image)
     writeAvatarCache(id, {
       avatarUrl: undefined,
       avatarPath: undefined,
-      avatarDataUrl: dataUrl,
+      avatarDataUrl: thumbDataUrl,
+      avatarThumbDataUrl: thumbDataUrl,
+      avatarFullDataUrl: fullDataUrl,
+      avatarCastDataUrl: castDataUrl,
       avatarUpdatedAt: now,
     });
 
-    // 1) preview locale immédiate
     setProfilesSafe((arr) =>
       arr.map((p) =>
         p.id === id
@@ -927,19 +940,17 @@ export default function Profiles({
               ...p,
               avatarUrl: undefined,
               avatarPath: undefined,
-              avatarDataUrl: dataUrl,
+              avatarDataUrl: thumbDataUrl,
               avatarUpdatedAt: now,
             }
           : p
       )
     );
 
-    // 2) Profil lié au compte connecté : on met à jour l’avatar DU COMPTE
-    //    (pas le storage “local/…” utilisé auparavant pour les profils locaux)
     if (isOnlineLinked && auth.status === "signed_in") {
       try {
         const uploaded = await onlineApi.uploadAvatarImage({
-          dataUrl,
+          dataUrl: fullDataUrl,
           folder: String(auth.user?.id || id),
           updateProfile: true,
         });
@@ -953,7 +964,7 @@ export default function Profiles({
                     ...p,
                     avatarUrl: publicUrl,
                     avatarPath: String(uploaded?.path || "") || undefined,
-                    avatarDataUrl: undefined,
+                    avatarDataUrl: thumbDataUrl,
                     avatarUpdatedAt: now,
                   }
                 : p
@@ -962,7 +973,10 @@ export default function Profiles({
 
           writeAvatarCache(id, {
             avatarUrl: publicUrl,
-            avatarDataUrl: undefined,
+            avatarDataUrl: thumbDataUrl,
+            avatarThumbDataUrl: thumbDataUrl,
+            avatarFullDataUrl: fullDataUrl,
+            avatarCastDataUrl: castDataUrl,
             avatarPath: String(uploaded?.path || "") || undefined,
             avatarUpdatedAt: now,
           });
@@ -974,9 +988,7 @@ export default function Profiles({
       }
     }
 
-    // 3) Profil local : on garde l’avatar local uniquement.
-    //    Le snapshot cloud complet + le cache avatar gèrent la persistance.
-    scheduleProfilesPersist("profiles_avatar", { ...(store as any), profiles: (stableProfiles as any[]).map((p: any) => p?.id === id ? ({ ...(p || {}), avatarUrl: undefined, avatarPath: undefined, avatarDataUrl: dataUrl, avatarUpdatedAt: now }) : p) }, { cloud: false, delayMs: 6000 });
+    scheduleProfilesPersist("profiles_avatar", { ...(store as any), profiles: (stableProfiles as any[]).map((p: any) => p?.id === id ? ({ ...(p || {}), avatarUrl: undefined, avatarPath: undefined, avatarDataUrl: thumbDataUrl, avatarUpdatedAt: now }) : p) }, { cloud: false, delayMs: 6000 });
   }
 
   async function delProfile(id: string) {
@@ -1041,7 +1053,8 @@ export default function Profiles({
     if (!cleanName) return;
   
     const now = Date.now();
-    const avatarDataUrl = file ? await read(file) : null;
+    const avatarVariants = file ? await fileToAvatarVariants(file) : null;
+    const avatarDataUrl = avatarVariants?.thumbDataUrl || null;
   
     const p: Profile = {
       id:
@@ -1054,6 +1067,16 @@ export default function Profiles({
       privateInfo:
         privateInfo && Object.keys(privateInfo).length ? { ...privateInfo } : undefined,
     };
+
+    if (avatarVariants) {
+      writeAvatarCache(p.id, {
+        avatarDataUrl: avatarVariants.thumbDataUrl,
+        avatarThumbDataUrl: avatarVariants.thumbDataUrl,
+        avatarFullDataUrl: avatarVariants.fullDataUrl,
+        avatarCastDataUrl: avatarVariants.castDataUrl,
+        avatarUpdatedAt: now,
+      });
+    }
   
     // ✅ 1) Calcule un nextStore depuis la vraie source (s), PAS depuis "store" capturé
     let nextStoreSnapshot: any = null;
@@ -2359,10 +2382,12 @@ function ActiveProfileBlock({
   // priorité : preview > avatarDataUrl > avatarUrl
   // + cache-bust anti Supabase / SW / navigateur
   // =========================
+  const activeAvatarCache = getAvatarCacheLib(String((active as any)?.id || ""));
   const avatarSrc = buildAvatarSrc({
     preview: editPreview,
     avatarUrl: String((active as any)?.avatarUrl || ""),
     avatarDataUrl: String((active as any)?.avatarDataUrl || ""),
+    avatarFullDataUrl: String((activeAvatarCache as any)?.avatarFullDataUrl || ""),
     avatarUpdatedAt: (active as any)?.avatarUpdatedAt ?? null,
   });
 
@@ -4155,6 +4180,7 @@ function LocalProfilesRefonte({
                     src={buildAvatarSrc({
                       avatarUrl: (renderedCurrent as any)?.avatarUrl || null,
                       avatarDataUrl: (renderedCurrent as any)?.avatarDataUrl || null,
+                      avatarFullDataUrl: (getAvatarCacheLib(String((renderedCurrent as any)?.id || "")) as any)?.avatarFullDataUrl || null,
                       avatarUpdatedAt: (renderedCurrent as any)?.avatarUpdatedAt ?? null,
                     })}
                     label={renderedCurrent.name?.[0]?.toUpperCase() || "?"}

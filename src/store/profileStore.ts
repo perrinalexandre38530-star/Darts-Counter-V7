@@ -19,11 +19,17 @@ function sanitizeProfileForStorage(input: any | null) {
   if (!input || typeof input !== "object") return input;
   const next: any = { ...input };
 
-  const avatarDataUrl = sanitizeAvatarDataUrl(
-    next.avatarDataUrl ?? next.avatar ?? next.avatar_url ?? null
+  const avatarThumbDataUrl = sanitizeAvatarDataUrl(
+    next.avatarThumbDataUrl ?? next.avatarDataUrl ?? next.avatar ?? next.avatar_url ?? null,
+    140_000
   );
-  if (avatarDataUrl) next.avatarDataUrl = avatarDataUrl;
-  else delete next.avatarDataUrl;
+  if (avatarThumbDataUrl) {
+    next.avatarThumbDataUrl = avatarThumbDataUrl;
+    next.avatarDataUrl = avatarThumbDataUrl;
+  } else {
+    delete next.avatarThumbDataUrl;
+    delete next.avatarDataUrl;
+  }
 
   if (typeof next.avatar === "string" && next.avatar.startsWith("data:image/")) {
     delete next.avatar;
