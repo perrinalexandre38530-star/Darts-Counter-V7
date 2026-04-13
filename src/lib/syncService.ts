@@ -256,54 +256,34 @@ export async function pushFullBackupToNas() {
   const deviceId = getOrCreateDeviceId();
   const compressedPayload = compressBackupPayload(snapshot);
 
-  try {
-    return await pushViaModernSync(compressedPayload, ownerId, deviceId);
-  } catch (e) {
-    console.warn("/sync/push a échoué, fallback legacy /backup/full", e);
-    return pushViaLegacyBackup(compressedPayload, ownerId, deviceId);
-  }
+  return pushViaModernSync(compressedPayload, ownerId, deviceId);
 }
 
 export async function listBackupsFromNas() {
   const ownerId = await getCurrentBackupOwnerId();
 
-  try {
-    const data = await apiGet("/sync/pull");
-    if (!data?.payload) return [];
-    return [
-      {
-        id: `main:${ownerId}`,
-        ownerId,
-        version: data?.version ?? 2,
-        updatedAt: data?.updatedAt ?? null,
-        createdAt: data?.updatedAt ?? null,
-      },
-    ];
-  } catch (e) {
-    console.warn("/sync/pull indisponible pour list, fallback /backup/list", e);
-    return apiGet(`/backup/list?ownerId=${encodeURIComponent(ownerId)}`);
-  }
+  const data = await apiGet("/sync/pull");
+  if (!data?.payload) return [];
+  return [
+    {
+      id: `main:${ownerId}`,
+      ownerId,
+      version: data?.version ?? 2,
+      updatedAt: data?.updatedAt ?? null,
+      createdAt: data?.updatedAt ?? null,
+    },
+  ];
 }
 
 export async function deleteAllBackupsFromNas() {
-  const ownerId = await getCurrentBackupOwnerId();
-  return apiPost("/backup/deleteAll", { ownerId });
+  throw new Error("Legacy backup endpoints disabled; use /sync/pull and /sync/push only");
 }
 
 export async function restoreLatestBackupFromNas() {
   const ownerId = await getCurrentBackupOwnerId().catch(() => "");
   let data: any = null;
 
-  try {
-    data = await apiGet("/sync/pull");
-  } catch (e) {
-    console.warn("/sync/pull a échoué, fallback legacy /backup/full/latest", e);
-  }
-
-  if (!data?.payload) {
-    const suffix = ownerId ? `?ownerId=${encodeURIComponent(ownerId)}` : "";
-    data = await apiGet(`/backup/full/latest${suffix}`);
-  }
+  data = await apiGet("/sync/pull");
 
   if (!data?.payload) {
     throw new Error("Aucun backup NAS disponible");

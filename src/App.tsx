@@ -1629,9 +1629,6 @@ useEffect(() => {
       try { console.warn("[perf] saveStore slow", payload); } catch {}
     }
     persistStoreInFlightRef.current = false;
-    if (pendingStorePersistRef.current) {
-      try { window.setTimeout(() => { void flushPendingStorePersist("chained"); }, 0); } catch {}
-    }
     return true;
   }, []);
 
@@ -1643,21 +1640,16 @@ useEffect(() => {
       window.clearTimeout(storePersistTimerRef.current);
       storePersistTimerRef.current = null;
     }
-    const activeTab = String(currentTabRef.current || "");
-    const delay = activeTab === "profiles" || activeTab === "stats" ? 15000 : 8000;
-    storePersistTimerRef.current = window.setTimeout(() => {
-      storePersistTimerRef.current = null;
-      const idleSave = () => { void flushPendingStorePersist("idle"); };
-      try {
-        const ric = (window as any).requestIdleCallback;
-        if (typeof ric === "function") {
-          ric(() => idleSave(), { timeout: 20000 });
-          return;
-        }
-      } catch {}
-      idleSave();
-    }, delay);
-  }, [flushPendingStorePersist]);
+    try {
+      profilesDiagLog("store-persist-deferred", {
+        tab: String(currentTabRef.current || ""),
+        reason: "local_only_runtime",
+        profiles: ((snapshot as any)?.profiles || []).length || 0,
+        bots: ((snapshot as any)?.bots || []).length || 0,
+        dartSets: ((snapshot as any)?.dartSets || []).length || 0,
+      });
+    } catch {}
+  }, []);
 
   React.useEffect(() => {
     const handleHidden = () => {
