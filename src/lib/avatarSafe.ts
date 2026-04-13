@@ -4,8 +4,8 @@
 // Sécurisation import / affichage avatars
 // ============================================
 
-export const MAX_AVATAR_FILE_MB = 8;
-export const MAX_AVATAR_DATA_URL_CHARS = 500_000;
+export const MAX_AVATAR_FILE_MB = 6;
+export const MAX_AVATAR_DATA_URL_CHARS = 90_000;
 
 export function sanitizeAvatarDataUrl(input: any, maxChars = MAX_AVATAR_DATA_URL_CHARS): string | null {
   try {
@@ -72,11 +72,11 @@ export async function fileToSafeAvatarDataUrl(file: File): Promise<string> {
   const raw = await imageFileToDataUrl(file);
 
   const attempts: Array<{ max: number; quality: number }> = [
-    { max: 384, quality: 0.86 },
-    { max: 256, quality: 0.84 },
-    { max: 192, quality: 0.82 },
-    { max: 160, quality: 0.8 },
-    { max: 128, quality: 0.78 },
+    { max: 160, quality: 0.78 },
+    { max: 128, quality: 0.76 },
+    { max: 112, quality: 0.74 },
+    { max: 96, quality: 0.72 },
+    { max: 80, quality: 0.7 },
   ];
 
   for (const a of attempts) {
@@ -84,8 +84,8 @@ export async function fileToSafeAvatarDataUrl(file: File): Promise<string> {
     if (sanitizeAvatarDataUrl(out)) return out;
   }
 
-  const last = await drawResizedDataUrl(raw, 96, 0.74);
-  const safe = sanitizeAvatarDataUrl(last, 300_000);
+  const last = await drawResizedDataUrl(raw, 80, 0.7);
+  const safe = sanitizeAvatarDataUrl(last, MAX_AVATAR_DATA_URL_CHARS);
   if (safe) return safe;
 
   throw new Error("avatar_dataurl_too_large");
@@ -97,11 +97,11 @@ export async function enforceSafeAvatarDataUrl(dataUrl: string): Promise<string 
   if (typeof dataUrl !== "string" || !dataUrl.startsWith("data:image/")) return null;
 
   const attempts: Array<{ max: number; quality: number }> = [
-    { max: 384, quality: 0.86 },
-    { max: 256, quality: 0.84 },
-    { max: 192, quality: 0.82 },
-    { max: 160, quality: 0.8 },
-    { max: 128, quality: 0.78 },
+    { max: 160, quality: 0.78 },
+    { max: 128, quality: 0.76 },
+    { max: 112, quality: 0.74 },
+    { max: 96, quality: 0.72 },
+    { max: 80, quality: 0.7 },
   ];
 
   for (const a of attempts) {

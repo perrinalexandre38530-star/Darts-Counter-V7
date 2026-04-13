@@ -15,6 +15,23 @@ import { setAvatarCache as setAvatarCacheLib } from "./avatarCache";
 import { getAllDartSets, replaceAllDartSets } from "./dartSetsStore";
 import { loadBots as loadStoredBots, restoreBotsFromSnapshot } from "./bots";
 
+const STORAGE_DIAG_ENABLED = true;
+
+function storageNowMs() {
+  try {
+    return typeof performance !== "undefined" ? performance.now() : Date.now();
+  } catch {
+    return Date.now();
+  }
+}
+
+function storageDiag(event: string, payload?: Record<string, any>) {
+  try {
+    if (!STORAGE_DIAG_ENABLED) return;
+    console.warn(`[storage-diag] ${event}`, payload || {});
+  } catch {}
+}
+
 /* ---------- SAFE JSON ---------- */
 function safeJsonParse<T = any>(value: any, fallback: T): T {
   try {
@@ -78,41 +95,8 @@ function guardStoreSizeForMobile<T>(store: T): T {
   try {
     const bytes = estimateObjectSizeBytes(store);
     const mb = Math.round((bytes / 1024 / 1024) * 100) / 100;
-
-    try {
-      localStorage.setItem(
-        "dc_last_store_size_v1",
-        safeJsonStringify({
-          at: Date.now(),
-          bytes,
-          mb,
-        })
-      );
-    } catch {}
-
     if (bytes > STORE_TOO_BIG_WARN_BYTES) {
-      if (typeof window !== "undefined") {
-        const k = "dc_last_store_too_big_warn_v1";
-        const now = Date.now();
-        const last = Number(sessionStorage.getItem(k) || 0);
-        if (!last || now - last > 15000) {
-          console.warn("[storage] STORE TOO BIG FOR MOBILE:", mb, "MB");
-          sessionStorage.setItem(k, String(now));
-        }
-      } else {
-        console.warn("[storage] STORE TOO BIG FOR MOBILE:", mb, "MB");
-      }
-      try {
-        localStorage.setItem(
-          "dc_store_size_warning",
-          safeJsonStringify({
-            at: Date.now(),
-            bytes,
-            mb,
-            reason: "store_too_big_for_mobile",
-          })
-        );
-      } catch {}
+      storageDiag("store-too-big", { bytes, mb, reason: "store_too_big_for_mobile" });
     }
   } catch {}
   return store;
@@ -254,18 +238,7 @@ function getStoreTopLevelHotspots(target: any, limit = 12) {
   }
 }
 
-function recordStoreHotspots(kind: string, target: any) {
-  try {
-    localStorage.setItem(
-      "dc_last_store_hotspots_v1",
-      safeJsonStringify({
-        kind,
-        at: Date.now(),
-        hotspots: getStoreTopLevelHotspots(target),
-      })
-    );
-  } catch {}
-}
+function recordStoreHotspots(_kind: string, _target: any) {}
 
 function trimStoreCollection(target: any, key: string, keep: number) {
   if (!target || typeof target !== "object") return;
@@ -383,18 +356,7 @@ function compactStoreForMobile<T extends Store>(store: T, mode: "soft" | "hard" 
   return guardStoreShape(clone as T);
 }
 
-function recordStoreMetric(kind: string, payload: Record<string, any>) {
-  try {
-    localStorage.setItem(
-      "dc_last_store_metric_v2",
-      safeJsonStringify({
-        kind,
-        at: Date.now(),
-        ...payload,
-      })
-    );
-  } catch {}
-}
+function recordStoreMetric(_kind: string, _payload: Record<string, any>) {}
 
 function cacheProfileAvatar(profile: any) {
   try {
@@ -1185,93 +1147,79 @@ type SaveOpts = {
 
 export async function saveStore<T extends Store>(store: T, opts?: SaveOpts): Promise<void> {
   const guardedInput = guardStoreShape(store);
+  const startedAt = storageNowMs();
 
   try {
+    const tCompat0 = storageNowMs();
     const compat = normalizeStoreAvatarsCompatSync(guardedInput);
+    const tCompat1 = storageNowMs();
 
-    const normalized =
-      opts?.skipAsyncNormalize === true
-        ? { store: compat.store as T, changed: compat.changed }
-        : await normalizeStoreAll(compat.store as T);
-
-    let persistedStore = guardStoreShape(sanitizeStoreForPersistence(normalized.store as T));
-
-    const preTrimBytes = estimateObjectSizeBytes(persistedStore);
-    recordStoreMetric("before_trim", {
-      bytes: preTrimBytes,
-      mb: Math.round((preTrimBytes / 1024 / 1024) * 100) / 100,
-    });
-
-    if (preTrimBytes > 2_000_000) {
-      const trimmed: any = { ...(persistedStore as any) };
-      delete trimmed.stats;
-      delete trimmed.statsByPlayer;
-      delete trimmed.statsByMode;
-      delete trimmed.profileStats;
-      delete trimmed.leaderboards;
-      delete trimmed.statsCache;
-      delete trimmed.statsCaches;
-      delete trimmed.statsSnapshots;
-      delete trimmed.statsBySport;
-      delete trimmed.matchStatsCache;
-      delete trimmed.diagnostics;
-      delete trimmed.diagnostic;
-      delete trimmed.debug;
-      delete trimmed.debugLogs;
-      delete trimmed.perf;
-      delete trimmed.cloudSnapshot;
-      delete trimmed.cloudSnapshots;
-      stripStoreHistoryFields(trimmed);
-      stripStoreHeavyStatsFields(trimmed);
-      stripHeavyImagePayloads(trimmed);
-      if (Array.isArray(trimmed.resumes)) trimmed.resumes = trimArrayTail(trimmed.resumes, 8);
-      if (Array.isArray(trimmed.liveMatches)) trimmed.liveMatches = trimArrayTail(trimmed.liveMatches, 8);
-      minimizeProfilesForPersistence(trimmed, true);
-      persistedStore = guardStoreShape(trimmed as T);
-    }
-
-    const finalBytesBeforeGuard = estimateObjectSizeBytes(persistedStore);
-    recordStoreMetric("after_trim", {
-      bytes: finalBytesBeforeGuard,
-      mb: Math.round((finalBytesBeforeGuard / 1024 / 1024) * 100) / 100,
-    });
-    recordStoreHotspots("after_trim", persistedStore);
-
-    if (finalBytesBeforeGuard > STORE_SOFT_TARGET_BYTES) {
-      persistedStore = compactStoreForMobile(persistedStore, "soft");
-    }
-
-    let postCompactBytes = estimateObjectSizeBytes(persistedStore);
-    if (postCompactBytes > STORE_HARD_TARGET_BYTES) {
-      persistedStore = compactStoreForMobile(persistedStore, "hard");
-      postCompactBytes = estimateObjectSizeBytes(persistedStore);
-    }
-
-    recordStoreMetric("after_compact", {
-      bytes: postCompactBytes,
-      mb: Math.round((postCompactBytes / 1024 / 1024) * 100) / 100,
-    });
-    recordStoreHotspots("after_compact", persistedStore);
-
-    persistedStore = guardStoreSizeForMobile(persistedStore);
+    // IMPORTANT:
+    // We no longer re-run expensive async avatar downscaling on every global store save.
+    // Avatar compression must happen at import/edit time, not during routine navigation saves.
+    let persistedStore = guardStoreShape(sanitizeStoreForPersistence(compat.store as T));
+    const tSanitize1 = storageNowMs();
 
     let json = safeJsonStringify(persistedStore);
+    let bytes = json.length;
+
+    if (bytes > STORE_SOFT_TARGET_BYTES) {
+      persistedStore = compactStoreForMobile(persistedStore, "soft");
+      json = safeJsonStringify(persistedStore);
+      bytes = json.length;
+    }
+
+    if (bytes > STORE_HARD_TARGET_BYTES) {
+      persistedStore = compactStoreForMobile(persistedStore, "hard");
+      json = safeJsonStringify(persistedStore);
+      bytes = json.length;
+    }
+
+    persistedStore = guardStoreSizeForMobile(persistedStore);
+    const tCompact1 = storageNowMs();
+
     let payload = await compressGzip(json);
+    const tGzip1 = storageNowMs();
 
     const est = await storageEstimate();
     if (est.quota != null && est.usage != null && typeof payload !== "string") {
       const projected = est.usage + (payload as Uint8Array).byteLength;
       if (projected > est.quota * 0.98) {
-        console.warn("[storage] quota presque plein, réduction agressive du store avant écriture.");
-
+        storageDiag("quota-near-full", {
+          usage: est.usage,
+          quota: est.quota,
+          projected,
+          bytes,
+        });
         const emergencyStore = compactStoreForMobile(persistedStore, "hard");
         persistedStore = guardStoreShape(emergencyStore as T);
         json = safeJsonStringify(persistedStore);
         payload = await compressGzip(json);
+        bytes = json.length;
       }
     }
 
     await idbSet(scopedStorageKey(STORE_KEY), payload);
+    const endedAt = storageNowMs();
+    const totalMs = Math.round((endedAt - startedAt) * 10) / 10;
+    const payloadBytes = typeof payload === "string" ? payload.length : ((payload as Uint8Array)?.byteLength || 0);
+
+    if (STORAGE_DIAG_ENABLED) {
+      storageDiag(totalMs >= 120 ? "saveStore-slow" : "saveStore", {
+        totalMs,
+        compatMs: Math.round((tCompat1 - tCompat0) * 10) / 10,
+        sanitizeMs: Math.round((tSanitize1 - tCompat1) * 10) / 10,
+        compactMs: Math.round((tCompact1 - tSanitize1) * 10) / 10,
+        gzipMs: Math.round((tGzip1 - tCompact1) * 10) / 10,
+        jsonBytes: bytes,
+        payloadBytes,
+        profiles: Array.isArray((persistedStore as any)?.profiles) ? (persistedStore as any).profiles.length : 0,
+        bots: Array.isArray((persistedStore as any)?.bots) ? (persistedStore as any).bots.length : 0,
+        dartSets: Array.isArray((persistedStore as any)?.dartSets) ? (persistedStore as any).dartSets.length : 0,
+        skipAsyncNormalize: opts?.skipAsyncNormalize === true,
+        activeProfileId: (persistedStore as any)?.activeProfileId ?? null,
+      });
+    }
   } catch (err) {
     console.error("[storage] saveStore error:", err);
     try {

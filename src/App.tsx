@@ -1554,7 +1554,6 @@ useEffect(() => {
     try {
       setStore((prev) => {
         const next = ensureLocalProfileForOnlineUser(prev as any, user as any, (online as any)?.profile ?? null) as any;
-        scheduleStorePersist(next);
         return next;
       });
 
@@ -1925,7 +1924,6 @@ useEffect(() => {
   function update(mut: (s: Store) => Store) {
     setStore((s) => {
       const next = mut({ ...s });
-      scheduleStorePersist(next);
       return next;
     });
   }
@@ -2366,7 +2364,6 @@ useEffect(() => {
         ...(s as any),
         profiles: mergeProfilesSafe((s as any)?.profiles ?? [], fn((s as any)?.profiles ?? [])),
       } as any;
-      scheduleStorePersist(next);
       return next;
     });
   }

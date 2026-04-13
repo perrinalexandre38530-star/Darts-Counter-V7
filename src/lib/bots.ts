@@ -356,7 +356,11 @@ function persistBots(list: any[], opts?: { triggerCloud?: boolean; updateAppStor
   try {
     const w: any = window as any;
     if (opts?.updateAppStore !== false && w?.__appStore?.update) {
-      w.__appStore.update((st: any) => ({ ...(st || {}), bots: normalized }));
+      const liteForStore = normalized.map((bot: any) => ({
+        ...bot,
+        avatarDataUrl: null,
+      }));
+      w.__appStore.update((st: any) => ({ ...(st || {}), bots: liteForStore }));
     }
     if (opts?.triggerCloud !== false) {
       try {

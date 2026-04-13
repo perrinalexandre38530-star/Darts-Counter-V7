@@ -247,9 +247,41 @@ function readProfilesCache(): Profile[] {
   }
 }
 
+type LightweightCachedProfile = Partial<Profile> & { id: string; name?: string };
+
+let __profilesCacheWriteTimer: number | null = null;
+
+function toLightweightCachedProfiles(profiles: Profile[]): LightweightCachedProfile[] {
+  return (Array.isArray(profiles) ? profiles : []).map((p: any) => ({
+    id: String(p?.id || ""),
+    name: typeof p?.name === "string" ? p.name : "",
+    avatarUpdatedAt: Number(p?.avatarUpdatedAt || 0) || undefined,
+    avatarUrl: typeof p?.avatarUrl === "string" && !String(p.avatarUrl).startsWith("data:image/") ? p.avatarUrl : undefined,
+    avatarPath: typeof p?.avatarPath === "string" ? p.avatarPath : undefined,
+    country: typeof p?.country === "string" ? p.country : undefined,
+    lastPlayedAt: Number(p?.lastPlayedAt || 0) || undefined,
+    createdAt: Number(p?.createdAt || 0) || undefined,
+    updatedAt: Number(p?.updatedAt || 0) || undefined,
+    isBot: !!p?.isBot,
+    isLocal: p?.isLocal !== false,
+  })).filter((p) => p.id);
+}
+
 function writeProfilesCache(profiles: Profile[]) {
   try {
-    localStorage.setItem(PROFILES_CACHE_KEY, JSON.stringify(profiles || []));
+    const lightweight = toLightweightCachedProfiles(profiles || []);
+    if (__profilesCacheWriteTimer != null && typeof window !== "undefined") {
+      window.clearTimeout(__profilesCacheWriteTimer);
+    }
+    if (typeof window === "undefined") return;
+    __profilesCacheWriteTimer = window.setTimeout(() => {
+      try {
+        localStorage.setItem(PROFILES_CACHE_KEY, JSON.stringify(lightweight));
+      } catch {
+        // ignore
+      }
+      __profilesCacheWriteTimer = null;
+    }, 180);
   } catch {
     // ignore
   }
@@ -261,8 +293,6 @@ function writeProfilesCache(profiles: Profile[]) {
 // - sauve avatarDataUrl / avatarUrl / avatarPath / avatarUpdatedAt
 // - réhydrate si le store revient avec avatar vide
 // ============================================
-const AVATAR_CACHE_KEY = "dc-avatar-cache-v1";
-
 type AvatarCacheEntry = {
   avatarDataUrl?: string | null;
   avatarUrl?: string | null;
@@ -270,36 +300,19 @@ type AvatarCacheEntry = {
   avatarUpdatedAt?: number | null;
 };
 
-function readAvatarCache(): Record<string, AvatarCacheEntry> {
-  try {
-    const raw = localStorage.getItem(AVATAR_CACHE_KEY);
-    const obj = raw ? JSON.parse(raw) : {};
-    return obj && typeof obj === "object" ? obj : {};
-  } catch {
-    return {};
-  }
-}
-
 function writeAvatarCache(
   profileId: string,
   patch: AvatarCacheEntry
 ) {
   try {
-    const all = readAvatarCache();
-    const prev = all[profileId] || {};
-    const next = { ...prev, ...patch };
-    all[profileId] = next;
-    localStorage.setItem(AVATAR_CACHE_KEY, JSON.stringify(all));
-
-    // ✅ synchronise aussi le cache officiel partagé (dc_avatar_cache_v1)
-    try {
-      setAvatarCacheLib({
-        profileId,
-        avatarDataUrl: next.avatarDataUrl ?? null,
-        avatarUrl: next.avatarUrl ?? null,
-        avatarUpdatedAt: Number(next.avatarUpdatedAt || Date.now()),
-      });
-    } catch {}
+    const current = getAvatarCacheLib(profileId) || {};
+    const next = { ...current, ...patch } as any;
+    setAvatarCacheLib({
+      profileId,
+      avatarDataUrl: next.avatarDataUrl ?? null,
+      avatarUrl: next.avatarUrl ?? null,
+      avatarUpdatedAt: Number(next.avatarUpdatedAt || Date.now()),
+    });
   } catch {
     // ignore
   }
@@ -307,13 +320,10 @@ function writeAvatarCache(
 
 function getAvatarCache(profileId: string | null | undefined): AvatarCacheEntry | null {
   if (!profileId) return null;
-  const all = readAvatarCache();
-  const legacy = all[profileId] || null;
   const shared = getAvatarCacheLib(profileId);
-  if (!legacy && !shared) return null;
+  if (!shared) return null;
   return {
     ...(shared || {}),
-    ...(legacy || {}),
   };
 }
 
@@ -874,7 +884,7 @@ export default function Profiles({
       return nextStoreSnapshot;
     });
     setProfilesSafe((arr) => arr.map((p) => (p.id === id ? { ...p, name } : p)));
-    if (nextStoreSnapshot) scheduleProfilesPersist("profiles_rename", nextStoreSnapshot, { cloud: false, delayMs: 1600 });
+    if (nextStoreSnapshot) scheduleProfilesPersist("profiles_rename", nextStoreSnapshot, { cloud: false, delayMs: 5000 });
   }
 
   function clearNasProfileOnboardingFlag(expectedUid?: string | null) {
@@ -966,7 +976,7 @@ export default function Profiles({
 
     // 3) Profil local : on garde l’avatar local uniquement.
     //    Le snapshot cloud complet + le cache avatar gèrent la persistance.
-    scheduleProfilesPersist("profiles_avatar", { ...(store as any), profiles: (stableProfiles as any[]).map((p: any) => p?.id === id ? ({ ...(p || {}), avatarUrl: undefined, avatarPath: undefined, avatarDataUrl: dataUrl, avatarUpdatedAt: now }) : p) }, { cloud: false, delayMs: 2200 });
+    scheduleProfilesPersist("profiles_avatar", { ...(store as any), profiles: (stableProfiles as any[]).map((p: any) => p?.id === id ? ({ ...(p || {}), avatarUrl: undefined, avatarPath: undefined, avatarDataUrl: dataUrl, avatarUpdatedAt: now }) : p) }, { cloud: false, delayMs: 6000 });
   }
 
   async function delProfile(id: string) {
@@ -997,7 +1007,7 @@ export default function Profiles({
   
     // 2) Persistance différée : on batch les suppressions pour éviter les gels UI
     if (nextStoreSnapshot) {
-      scheduleProfilesPersist("profiles_delete", nextStoreSnapshot, { cloud: false, delayMs: 1200 });
+      scheduleProfilesPersist("profiles_delete", nextStoreSnapshot, { cloud: false, delayMs: 5000 });
     }
   
     // 3) UI local state (si tu en as un séparé) : on aligne aussi, en mode removal autorisé
@@ -1065,7 +1075,7 @@ export default function Profiles({
   
     // ✅ 2) Persistance différée
     if (nextStoreSnapshot) {
-      scheduleProfilesPersist("profiles_add", nextStoreSnapshot, { cloud: false, delayMs: 1200 });
+      scheduleProfilesPersist("profiles_add", nextStoreSnapshot, { cloud: false, delayMs: 5000 });
     }
   
     // ✅ 3) Si tu as un state local "profiles", mets-le juste pour l’UI (SANS saveStore ici)
@@ -1467,7 +1477,7 @@ React.useEffect(() => {
           : p
       )
     );
-    if (nextStoreSnapshot) scheduleProfilesPersist("profiles_privateInfo", nextStoreSnapshot, { cloud: false, delayMs: 1600 });
+    if (nextStoreSnapshot) scheduleProfilesPersist("profiles_privateInfo", nextStoreSnapshot, { cloud: false, delayMs: 5000 });
   }
 
   function patchActivePrivateInfo(patch: Record<string, any>) {
@@ -1518,7 +1528,7 @@ React.useEffect(() => {
     );
 
     if (nextStoreSnapshot) {
-      scheduleProfilesPersist("profiles_prefs", nextStoreSnapshot, { cloud: false, delayMs: 1800 });
+      scheduleProfilesPersist("profiles_prefs", nextStoreSnapshot, { cloud: false, delayMs: 5000 });
     }
   }
 
@@ -1561,7 +1571,7 @@ React.useEffect(() => {
     const nextStoreLocal = { ...(store as any), profiles: nextProfiles };
     update(() => nextStoreLocal);
     setProfilesSafe(() => nextProfiles as any);
-    scheduleProfilesPersist("profile_save_local", nextStoreLocal as any, { cloud: false, delayMs: 1800 });
+    scheduleProfilesPersist("profile_save_local", nextStoreLocal as any, { cloud: false, delayMs: 5000 });
 
     if (patch.nickname && patch.nickname.trim() && patch.nickname !== active.name) {
       renameProfile(active.id, patch.nickname.trim());
@@ -1662,7 +1672,7 @@ React.useEffect(() => {
               : {}),
           },
         }));
-        scheduleProfilesPersist("profile_save", { ...(store as any), profiles: nextProfilesNoPassword }, { cloud: false, delayMs: 2200 });
+        scheduleProfilesPersist("profile_save", { ...(store as any), profiles: nextProfilesNoPassword }, { cloud: false, delayMs: 6000 });
       } catch (err) {
         console.warn("[profiles] updateProfile online error:", err);
         setToast({
