@@ -14,6 +14,7 @@ import { sanitizeAvatarDataUrl, MAX_AVATAR_DATA_URL_CHARS } from "./avatarSafe";
 import { setAvatarCache as setAvatarCacheLib } from "./avatarCache";
 import { getAllDartSets, replaceAllDartSets } from "./dartSetsStore";
 import { loadBots as loadStoredBots, restoreBotsFromSnapshot } from "./bots";
+import { isNasProviderEnabled } from "./serverConfig";
 
 const STORAGE_DIAG_ENABLED = true;
 
@@ -1178,7 +1179,7 @@ export async function saveStore<T extends Store>(store: T, opts?: SaveOpts): Pro
     persistedStore = guardStoreSizeForMobile(persistedStore);
     const tCompact1 = storageNowMs();
 
-    let payload = await compressGzip(json);
+    let payload = isNasProviderEnabled() ? json : await compressGzip(json);
     const tGzip1 = storageNowMs();
 
     const est = await storageEstimate();
@@ -1194,7 +1195,7 @@ export async function saveStore<T extends Store>(store: T, opts?: SaveOpts): Pro
         const emergencyStore = compactStoreForMobile(persistedStore, "hard");
         persistedStore = guardStoreShape(emergencyStore as T);
         json = safeJsonStringify(persistedStore);
-        payload = await compressGzip(json);
+        payload = isNasProviderEnabled() ? json : await compressGzip(json);
         bytes = json.length;
       }
     }
@@ -1257,7 +1258,7 @@ export async function getKV<T = unknown>(key: string): Promise<T | null> {
 export async function setKV(key: string, value: any): Promise<void> {
   try {
     const json = safeJsonStringify(value);
-    const payload = await compressGzip(json);
+    const payload = isNasProviderEnabled() ? json : await compressGzip(json);
 
     await idbSet(scopedStorageKey(key), payload);
 
@@ -1351,7 +1352,7 @@ async function importIdbEntryRaw(rawKey: string, value: any): Promise<void> {
   const isStoreLikeKey = key === STORE_KEY || key.startsWith(`${STORE_KEY}:`) || /(^|[:/])store$/.test(key);
   const valueToPersist = isStoreLikeKey ? sanitizeStoreForPersistence(value as any) : value;
   const json = safeJsonStringify(valueToPersist);
-  const payload = await compressGzip(json);
+  const payload = isNasProviderEnabled() ? json : await compressGzip(json);
 
   const targets = new Set<string>();
   targets.add(key);

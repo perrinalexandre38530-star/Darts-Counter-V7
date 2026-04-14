@@ -223,14 +223,9 @@ async function pushViaModernSync(compressedPayload: CompressedBackupPayload, own
   });
 }
 
-async function pushViaLegacyBackup(compressedPayload: CompressedBackupPayload, ownerId: string, deviceId: string) {
-  return apiPost("/backup/full", {
-    id: crypto.randomUUID(),
-    ownerId,
-    deviceId,
-    version: 2,
-    payload: compressedPayload,
-  });
+// Legacy backup path intentionally disabled.
+async function pushViaLegacyBackup(_compressedPayload: CompressedBackupPayload, _ownerId: string, _deviceId: string) {
+  throw new Error("Legacy backup endpoints disabled; use /sync/push only");
 }
 
 export async function pushFullBackupToNas() {
