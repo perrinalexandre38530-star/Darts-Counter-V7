@@ -108,6 +108,7 @@ import { markStatsIndexDirty } from "./lib/stats/rebuildStatsFromHistory";
 
 // Mode Online
 import { onlineApi } from "./lib/onlineApi";
+import { isNasProviderEnabled } from "./lib/serverConfig";
 import { ensureLocalProfileForOnlineUser } from "./lib/accountBridge";
 
 // ✅ Supabase client
@@ -1327,7 +1328,9 @@ function SWUpdateBanner() {
 -------------------------------------------- */
 function App() {
 useEffect(() => {
-  rehydrateSupabaseSession();
+  if (!isNasProviderEnabled()) {
+    rehydrateSupabaseSession();
+  }
 }, []);
 
 useEffect(() => {
@@ -1348,7 +1351,7 @@ useEffect(() => {
       if (!hasNasToken && !hasCachedAuth) return;
 
       await bootstrapNasRestore().catch(() => {});
-      if (!cancelled) startNasBackgroundSync();
+      // background NAS sync volontairement désactivée : sync manuelle uniquement
     } catch {
       // no-op
     }

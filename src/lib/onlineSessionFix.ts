@@ -1,6 +1,8 @@
+import { isNasProviderEnabled } from "./serverConfig";
 import { supabase } from "./supabaseClient";
 
 export async function rehydrateSupabaseSession() {
+  if (isNasProviderEnabled()) return;
   try {
     const raw = localStorage.getItem("dc_online_auth_supabase_v1");
     if (!raw) return;

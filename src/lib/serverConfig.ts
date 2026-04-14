@@ -55,3 +55,8 @@ export function getOnlineProviderLabel(): string {
   if (isNasDataSyncEnabled()) return "nas";
   return "nas";
 }
+
+
+export function isSupabaseHardDisabledInNasMode(): boolean {
+  return ONLINE_PROVIDER === "nas";
+}
