@@ -124,9 +124,9 @@ import Home from "./pages/Home";
 import Games from "./pages/Games";
 import ModeNotReady from "./pages/ModeNotReady";
 import TournamentsHome from "./pages/TournamentsHome";
-import Profiles from "./pages/Profiles";
-import FriendsPage from "./pages/FriendsPage";
-import Settings from "./pages/Settings";
+const Profiles = React.lazy(() => import("./pages/Profiles"));
+const FriendsPage = React.lazy(() => import("./pages/FriendsPage"));
+const Settings = React.lazy(() => import("./pages/Settings"));
 import X01Setup from "./pages/X01Setup";
 import X01Play from "./pages/X01Play";
 import X01OnlineSetup from "./pages/X01OnlineSetup";
@@ -134,14 +134,14 @@ import CricketPlay from "./pages/CricketPlay";
 
 // ✅ KILLER (CONFIG + PLAY)
 import KillerConfig from "./pages/KillerConfig";
-import KillerPlay from "./pages/KillerPlay";
+const KillerPlay = React.lazy(() => import("./pages/KillerPlay"));
 import KillerSummaryPage from "./pages/KillerSummaryPage";
 
 // ✅ NEW: LES 5 VIES (CONFIG + PLAY)
 import FiveLivesConfig from "./pages/FiveLivesConfig";
-import FiveLivesPlay from "./pages/FiveLivesPlay";
+const FiveLivesPlay = React.lazy(() => import("./pages/FiveLivesPlay"));
 
-import ShanghaiPlay from "./pages/ShanghaiPlay";
+const ShanghaiPlay = React.lazy(() => import("./pages/ShanghaiPlay"));
 import LobbyPick from "./pages/LobbyPick";
 import X01End from "./pages/X01End";
 import AvatarCreator from "./pages/AvatarCreator";
@@ -151,7 +151,7 @@ import TrainingMenu from "./pages/TrainingMenu";
 import TrainingX01Config from "./pages/TrainingX01Config";
 import TrainingX01Play from "./pages/TrainingX01Play";
 import TrainingClock from "./pages/TrainingClock";
-import TrainingModePage from "./pages/TrainingModePage";
+const TrainingModePage = React.lazy(() => import("./pages/TrainingModePage"));
 import { useTrainingAutoSync } from "./training/sync/useTrainingAutoSync";
 import { useAutoBackup } from "./hooks/useAutoBackup";
 
@@ -167,7 +167,7 @@ import BattleRoyaleConfigPage from "./pages/BattleRoyaleConfig";
 import BattleRoyalePlay from "./pages/BattleRoyalePlay";
 
 // ✅ NEW: Spectator
-import SpectatorPage from "./pages/SpectatorPage";
+const SpectatorPage = React.lazy(() => import("./pages/SpectatorPage"));
 
 // Historique
 import { History } from "./lib/history";
@@ -178,27 +178,27 @@ import { getAllDartSets, replaceAllDartSets } from "./lib/dartSetsStore";
 // ✅ NEW: rebuild stats cache when history changes (FAST STATS HUB)
 
 // Stats pages
-import StatsShell from "./pages/StatsShell";
-import StatsHub from "./pages/StatsHub";
-import StatsOnline from "./pages/StatsOnline";
-import StatsCricket from "./pages/StatsCricket";
-import StatsLeaderboardsPage from "./pages/StatsLeaderboardsPage"; // ⭐ CLASSEMENTS
-import StatsDetail from "./pages/StatsDetail";
+const StatsShell = React.lazy(() => import("./pages/StatsShell"));
+const StatsHub = React.lazy(() => import("./pages/StatsHub"));
+const StatsOnline = React.lazy(() => import("./pages/StatsOnline"));
+const StatsCricket = React.lazy(() => import("./pages/StatsCricket"));
+const StatsLeaderboardsPage = React.lazy(() => import("./pages/StatsLeaderboardsPage")); // ⭐ CLASSEMENTS
+const StatsDetail = React.lazy(() => import("./pages/StatsDetail"));
 
 // TOURNOI
-import TournamentCreate from "./pages/TournamentCreate";
-import TournamentComposeTeams from "./pages/TournamentComposeTeams";
-import TournamentView from "./pages/TournamentView";
-import TournamentMatchPlay from "./pages/TournamentMatchPlay";
-import TournamentRoadmap from "./pages/TournamentRoadmap";
-import TournamentMatchResult from "./pages/TournamentMatchResult";
+const TournamentCreate = React.lazy(() => import("./pages/TournamentCreate"));
+const TournamentComposeTeams = React.lazy(() => import("./pages/TournamentComposeTeams"));
+const TournamentView = React.lazy(() => import("./pages/TournamentView"));
+const TournamentMatchPlay = React.lazy(() => import("./pages/TournamentMatchPlay"));
+const TournamentRoadmap = React.lazy(() => import("./pages/TournamentRoadmap"));
+const TournamentMatchResult = React.lazy(() => import("./pages/TournamentMatchResult"));
 
 // X01 V3
-import X01ConfigV3 from "./pages/X01ConfigV3";
-import X01PlayV3 from "./pages/X01PlayV3";
+const X01ConfigV3 = React.lazy(() => import("./pages/X01ConfigV3"));
+const X01PlayV3 = React.lazy(() => import("./pages/X01PlayV3"));
 
 // 🌟 Nouveau : SYNC / Partage stats locales
-import SyncCenter from "./pages/SyncCenter";
+const SyncCenter = React.lazy(() => import("./pages/SyncCenter"));
 
 // Contexts
 import { ThemeProvider } from "./contexts/ThemeContext";
@@ -210,23 +210,23 @@ import { DevModeProvider } from "./contexts/DevModeContext";
 
 // ✅ NEW: Sport context + Pétanque pages
 import { SportProvider, useSport } from "./contexts/SportContext";
-import PetanquePlay from "./pages/petanque/PetanquePlay";
+const PetanquePlay = React.lazy(() => import("./pages/petanque/PetanquePlay"));
 import PetanqueHome from "./pages/petanque/PetanqueHome";
 import PetanqueTeams from "./pages/petanque/PetanqueTeams";
 import PetanqueTeamEdit from "./pages/petanque/PetanqueTeamEdit";
 
 // ✅ NEW: Pétanque STATS — copie visuelle StatsShell (identique UI)
-import PetanqueStatsShell from "./pages/petanque/PetanqueStatsShell";
-import PetanqueStatsPlayersPage from "./pages/petanque/PetanqueStatsPlayersPage";
-import PetanqueStatsTeamsPage from "./pages/petanque/PetanqueStatsTeamsPage";
-import PetanqueStatsLeaderboardsPage from "./pages/petanque/PetanqueStatsLeaderboardsPage";
-import PetanqueStatsMatchesPage from "./pages/petanque/PetanqueStatsMatchesPage";
-import PetanqueStatsHistoryPage from "./pages/petanque/PetanqueStatsHistoryPage";
+const PetanqueStatsShell = React.lazy(() => import("./pages/petanque/PetanqueStatsShell"));
+const PetanqueStatsPlayersPage = React.lazy(() => import("./pages/petanque/PetanqueStatsPlayersPage"));
+const PetanqueStatsTeamsPage = React.lazy(() => import("./pages/petanque/PetanqueStatsTeamsPage"));
+const PetanqueStatsLeaderboardsPage = React.lazy(() => import("./pages/petanque/PetanqueStatsLeaderboardsPage"));
+const PetanqueStatsMatchesPage = React.lazy(() => import("./pages/petanque/PetanqueStatsMatchesPage"));
+const PetanqueStatsHistoryPage = React.lazy(() => import("./pages/petanque/PetanqueStatsHistoryPage"));
 
-import PetanqueTournamentsHome from "./pages/petanque/PetanqueTournamentsHome";
-import PetanqueTournamentCreate from "./pages/petanque/PetanqueTournamentCreate";
-import PetanqueTournamentView from "./pages/petanque/PetanqueTournamentView";
-import PetanqueTournamentMatchScore from "./pages/petanque/PetanqueTournamentMatchScore";
+const PetanqueTournamentsHome = React.lazy(() => import("./pages/petanque/PetanqueTournamentsHome"));
+const PetanqueTournamentCreate = React.lazy(() => import("./pages/petanque/PetanqueTournamentCreate"));
+const PetanqueTournamentView = React.lazy(() => import("./pages/petanque/PetanqueTournamentView"));
+const PetanqueTournamentMatchScore = React.lazy(() => import("./pages/petanque/PetanqueTournamentMatchScore"));
 
 // ✅ NEW: Pétanque flow (menu/config/play)
 import PetanqueMenuGames from "./pages/petanque/PetanqueMenuGames";
@@ -236,45 +236,45 @@ import PetanqueConfig from "./pages/petanque/PetanqueConfig";
 import BabyFootHome from "./pages/babyfoot/BabyFootHome";
 import BabyFootMenuGames from "./pages/babyfoot/BabyFootMenuGames";
 import BabyFootConfig from "./pages/babyfoot/BabyFootConfig";
-import BabyFootPlay from "./pages/babyfoot/BabyFootPlay";
+const BabyFootPlay = React.lazy(() => import("./pages/babyfoot/BabyFootPlay"));
 import BabyFootTeams from "./pages/babyfoot/BabyFootTeams";
 import BabyFootTeamEdit from "./pages/babyfoot/BabyFootTeamEdit";
-import BabyFootStatsShell from "./pages/babyfoot/BabyFootStatsShell";
-import BabyFootStatsHistoryPage from "./pages/babyfoot/BabyFootStatsHistoryPage";
-import BabyFootStatsCenterPage from "./pages/babyfoot/BabyFootStatsCenterPage";
+const BabyFootStatsShell = React.lazy(() => import("./pages/babyfoot/BabyFootStatsShell"));
+const BabyFootStatsHistoryPage = React.lazy(() => import("./pages/babyfoot/BabyFootStatsHistoryPage"));
+const BabyFootStatsCenterPage = React.lazy(() => import("./pages/babyfoot/BabyFootStatsCenterPage"));
 
 // ✅ NEW: Ping-Pong (LOCAL)
 import PingPongHome from "./pages/pingpong/PingPongHome";
 import PingPongMenuGames from "./pages/pingpong/PingPongMenuGames";
 import PingPongConfig from "./pages/pingpong/PingPongConfig";
-import PingPongPlay from "./pages/pingpong/PingPongPlay";
-import PingPongTraining from "./pages/pingpong/PingPongTraining";
-import PingPongStatsShell from "./pages/pingpong/PingPongStatsShell";
-import PingPongStatsHistoryPage from "./pages/pingpong/PingPongStatsHistoryPage";
-import PingPongMatchDetail from "./pages/pingpong/PingPongMatchDetail";
+const PingPongPlay = React.lazy(() => import("./pages/pingpong/PingPongPlay"));
+const PingPongTraining = React.lazy(() => import("./pages/pingpong/PingPongTraining"));
+const PingPongStatsShell = React.lazy(() => import("./pages/pingpong/PingPongStatsShell"));
+const PingPongStatsHistoryPage = React.lazy(() => import("./pages/pingpong/PingPongStatsHistoryPage"));
+const PingPongMatchDetail = React.lazy(() => import("./pages/pingpong/PingPongMatchDetail"));
 
 // ✅ NEW: Mölkky (LOCAL — sans bots)
 import MolkkyHome from "./pages/molkky/MolkkyHome";
 import MolkkyMenuGames from "./pages/molkky/MolkkyMenuGames";
 import MolkkyConfig from "./pages/molkky/MolkkyConfig";
-import MolkkyPlay from "./pages/molkky/MolkkyPlay";
-import MolkkyStatsShell from "./pages/molkky/MolkkyStatsShell";
-import MolkkyStatsHistoryPage from "./pages/molkky/MolkkyStatsHistoryPage";
-import MolkkyStatsLeaderboardsPage from "./pages/molkky/MolkkyStatsLeaderboardsPage";
-import MolkkyStatsPlayersPage from "./pages/molkky/MolkkyStatsPlayersPage";
-import MolkkyStatsLocalsPage from "./pages/molkky/MolkkyStatsLocalsPage";
+const MolkkyPlay = React.lazy(() => import("./pages/molkky/MolkkyPlay"));
+const MolkkyStatsShell = React.lazy(() => import("./pages/molkky/MolkkyStatsShell"));
+const MolkkyStatsHistoryPage = React.lazy(() => import("./pages/molkky/MolkkyStatsHistoryPage"));
+const MolkkyStatsLeaderboardsPage = React.lazy(() => import("./pages/molkky/MolkkyStatsLeaderboardsPage"));
+const MolkkyStatsPlayersPage = React.lazy(() => import("./pages/molkky/MolkkyStatsPlayersPage"));
+const MolkkyStatsLocalsPage = React.lazy(() => import("./pages/molkky/MolkkyStatsLocalsPage"));
 
 // ✅ NEW: DICE GAME flow (LOCAL)
 import DiceHome from "./pages/dice/DiceHome";
 import DiceMenuGames from "./pages/dice/DiceMenuGames";
 import DiceConfig from "./pages/dice/DiceConfig";
-import DicePlay from "./pages/dice/DicePlay";
+const DicePlay = React.lazy(() => import("./pages/dice/DicePlay"));
 import DiceYamsConfig from "./pages/dice/DiceYamsConfig";
-import DiceYamsPlay from "./pages/dice/DiceYamsPlay";
+const DiceYamsPlay = React.lazy(() => import("./pages/dice/DiceYamsPlay"));
 import DiceFarkleConfig from "./pages/dice/DiceFarkleConfig";
 import Dice421Config from "./pages/dice/Dice421Config";
 import DicePokerConfig from "./pages/dice/DicePokerConfig";
-import DiceSoonPlay from "./pages/dice/DiceSoonPlay";
+const DiceSoonPlay = React.lazy(() => import("./pages/dice/DiceSoonPlay"));
 
 // Dev helper
 import { installHistoryProbe } from "./dev/devHistoryProbe";
@@ -1338,29 +1338,10 @@ useEffect(() => {
 }, []);
 
 useEffect(() => {
-  let cancelled = false;
-
-  const run = async () => {
-    try {
-      const hasNasToken = !!localStorage.getItem("dc_nas_access_token_v1");
-      const hasCachedAuth = !!localStorage.getItem("dc_online_auth_supabase_v1");
-
-      // IMPORTANT:
-      // - ne tente PAS de restore/sync NAS avant qu'une session existe déjà
-      // - sinon on parasite l'écran de login et on provoque de faux diagnostics réseau
-      if (!hasNasToken && !hasCachedAuth) return;
-
-      await bootstrapNasRestore().catch(() => {});
-      // background NAS sync volontairement désactivée : sync manuelle uniquement
-    } catch {
-      // no-op
-    }
-  };
-
-  run();
-  return () => {
-    cancelled = true;
-  };
+  // Architecture simple et fluide:
+  // - compte utilisateur NAS via auth/profil dédié
+  // - snapshot complet restauré uniquement à la demande depuis le centre de sync
+  // => pas de bootstrapNasRestore automatique au démarrage
 }, []);
 
 // 🔒 Cloud stats (events + training) — OFF par défaut pour éviter l'explosion Supabase.
@@ -1428,10 +1409,10 @@ useEffect(() => {
   useEffect(() => {}, [cloudStatsEnabled]);
 
   // LOT20 legacy désactivé pour éviter toute écriture Supabase automatique.
-  useTrainingAutoSync(false);
+  useTrainingAutoSync(false); // hard-disabled for fluid local runtime
 
   // ✅ Auto-backup léger (Recovery) — déclenché quand l'app passe en background
-  useAutoBackup(!!autoBackupEnabled);
+  useAutoBackup(false); // disabled to avoid background persistence on mobile
 
   // ============================================================
   // ✅ CLOUD SNAPSHOT SYNC (source unique Supabase)
@@ -2917,6 +2898,12 @@ try {
     return <SplashScreen durationMs={6500} fadeOutMs={700} allowAudioOverflow={true} onFinish={handleSplashFinish} />;
   }
 
+  const routeFallback = (
+    <div className="container" style={{ padding: 20, textAlign: "center" }}>
+      Chargement de l'écran…
+    </div>
+  );
+
   /* --------------------------------------------
         ROUTING SWITCH
   -------------------------------------------- */
@@ -4003,7 +3990,7 @@ case "babyfoot_team_edit":
 
         <div className="container" style={{ paddingBottom: 88 }}>
           <AppGate go={go} tab={tab}>
-            {page}
+            <React.Suspense fallback={routeFallback}>{page}</React.Suspense>
           </AppGate>
         </div>
 
