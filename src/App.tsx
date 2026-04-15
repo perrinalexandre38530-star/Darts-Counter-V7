@@ -328,6 +328,7 @@ import CastJoinPage from "./pages/cast/CastJoinPage";
 import CastHostPage from "./pages/cast/CastHostPage";
 import CastScreen from "./pages/cast/CastScreen";
 import { trackRender, trackRoute } from "./lib/diagnosticPro";
+import { runtimeDiag, diagMarkStart, diagMarkEnd } from "./lib/runtimeDiag";
 import { installProfilesDiag, profilesDiagIncrement, profilesDiagLog, diffShallow } from "./lib/profilesDiag";
 import { loadBots as loadStoredBots, saveBots as saveStoredBots } from "./lib/bots";
 import { startCrashGuard, crashGuardTrackRender, crashGuardTrackRoute } from "./lib/crashGuard";
@@ -1328,6 +1329,15 @@ function SWUpdateBanner() {
 -------------------------------------------- */
 function App() {
 useEffect(() => {
+  diagMarkStart("boot:App");
+  runtimeDiag("boot:App:mounted");
+  const raf = requestAnimationFrame(() => {
+    diagMarkEnd("boot:App", { phase: "first_raf" }, 120);
+  });
+  return () => cancelAnimationFrame(raf);
+}, []);
+
+useEffect(() => {
   if (!isNasProviderEnabled()) {
     rehydrateSupabaseSession();
   }
@@ -1338,11 +1348,31 @@ useEffect(() => {
 }, []);
 
 useEffect(() => {
-  // NAS-first runtime:
-  // - aucun restore snapshot automatique au boot
-  // - aucune sync de fond
-  // Le gros snapshot doit être tiré/poussé uniquement manuellement.
-  return;
+  let cancelled = false;
+
+  const run = async () => {
+    try {
+      const hasNasToken = !!localStorage.getItem("dc_nas_access_token_v1");
+      const hasCachedAuth = !!localStorage.getItem("dc_online_auth_supabase_v1");
+      runtimeDiag("boot:auth-presence", { hasNasToken, hasCachedAuth });
+
+      // IMPORTANT:
+      // En mode NAS, on ne tente le restore boot QUE s'il y a un vrai token NAS.
+      if (!hasNasToken) return;
+
+      await bootstrapNasRestore().catch((e) => {
+        runtimeDiag("boot:bootstrapNasRestore:error", { message: String((e as any)?.message || e) });
+      });
+      // background NAS sync volontairement désactivée : sync manuelle uniquement
+    } catch {
+      // no-op
+    }
+  };
+
+  run();
+  return () => {
+    cancelled = true;
+  };
 }, []);
 
 // 🔒 Cloud stats (events + training) — OFF par défaut pour éviter l'explosion Supabase.
@@ -1581,6 +1611,11 @@ useEffect(() => {
     currentTabRef.current = tab as any;
   }, [tab]);
 
+  React.useEffect(() => {
+    const routeName = String(tab || "");
+    runtimeDiag("route:tab", { tab: routeName });
+  }, [tab]);
+
   const storePersistTimerRef = React.useRef<number | null>(null);
   const pendingStorePersistRef = React.useRef<Store | null>(null);
   const persistStoreInFlightRef = React.useRef(false);
@@ -1608,6 +1643,7 @@ useEffect(() => {
       bots: ((latest as any)?.bots || []).length || 0,
       dartSets: ((latest as any)?.dartSets || []).length || 0,
     };
+    if (payload.durationMs >= 50) runtimeDiag(payload.durationMs >= 120 ? "app:flushStore:slow" : "app:flushStore", payload);
     try { profilesDiagLog(dt >= 120 ? "store-persist-slow" : "store-persist", payload); } catch {}
     if (dt >= 120) {
       try { console.warn("[perf] saveStore slow", payload); } catch {}
@@ -1739,18 +1775,13 @@ useEffect(() => {
 
   /* Boot: persistance + nettoyage localStorage + warm-up (SANS SFX UI) */
   React.useEffect(() => {
-    try {
-      purgeLegacyLocalStorageIfNeeded();
-    } catch {}
-    if (!isNasProviderEnabled()) {
-      ensurePersisted().catch(() => {});
-    }
+    ensurePersisted().catch(() => {});
+    purgeLegacyLocalStorageIfNeeded();
   }, []);
 
   React.useEffect(() => {
     if (loading) return;
     if (showSplash) return;
-    if (isNasProviderEnabled()) return;
 
     let cancelled = false;
 
@@ -1783,7 +1814,6 @@ useEffect(() => {
 
   /* Restore online session (pour Supabase côté SDK) */
   React.useEffect(() => {
-    if (isNasProviderEnabled()) return;
     onlineApi.restoreSession().catch(() => {});
   }, []);
 

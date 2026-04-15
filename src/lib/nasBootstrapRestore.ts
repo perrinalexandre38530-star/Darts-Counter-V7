@@ -1,6 +1,7 @@
 import { importAll } from "./storage";
 import { onlineApi } from "./onlineApi";
 import { isNasDataSyncEnabled } from "./serverConfig";
+import { runtimeDiag, diagMarkStart, diagMarkEnd } from "./runtimeDiag";
 
 const APPLIED_KEY = "dc_nas_restore_last_applied_v1";
 const RELOADED_KEY = "dc_nas_restore_last_reloaded_v1";
@@ -25,9 +26,10 @@ function pushBootDiag(step: string, extra?: any) {
 
 export async function bootstrapNasRestore(options?: { mobileDeferred?: boolean }): Promise<{ restored: boolean; reason?: string }> {
   if (!isNasDataSyncEnabled()) return { restored: false, reason: "disabled" };
+  diagMarkStart("boot:nasRestore", { mobileDeferred: !!options?.mobileDeferred });
   const restored = await onlineApi.restoreSession().catch(() => null);
   const session = restored && (restored as any).user ? restored : null;
-  if (!session) return { restored: false, reason: "no_session" };
+  if (!session) { diagMarkEnd("boot:nasRestore", { reason: "no_session" }, 50); return { restored: false, reason: "no_session" }; }
   pushBootDiag("nas:restore:session", { userId: (session as any)?.user?.id || null, mobileDeferred: !!options?.mobileDeferred });
 
   try {
@@ -72,6 +74,7 @@ export async function bootstrapNasRestore(options?: { mobileDeferred?: boolean }
     }
 
     pushBootDiag("nas:restore:done");
+    diagMarkEnd("boot:nasRestore", { reason: "restored" }, 120);
     return { restored: true };
   } catch (err) {
     try {
@@ -83,7 +86,10 @@ export async function bootstrapNasRestore(options?: { mobileDeferred?: boolean }
         })
       );
     } catch {}
-    pushBootDiag("nas:restore:error", { message: err instanceof Error ? err.message : String(err) });
+    const message = err instanceof Error ? err.message : String(err);
+    pushBootDiag("nas:restore:error", { message });
+    runtimeDiag("boot:nasRestore:error", { message });
+    diagMarkEnd("boot:nasRestore", { reason: "error", message }, 50);
     return { restored: false, reason: "error" };
   }
 }

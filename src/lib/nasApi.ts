@@ -16,6 +16,7 @@
 import type { AuthSession, LoginPayload, SignupPayload, UpdateProfilePayload } from "./onlineApi";
 import type { OnlineProfile, UserAuth } from "./onlineTypes";
 import { NAS_API_URL } from "./serverConfig";
+import { runtimeDiag } from "./runtimeDiag";
 
 export function isNasSyncEnabled(): boolean {
   return !!NAS_API_URL;
@@ -136,7 +137,14 @@ async function apiFetch(path: string, init?: NasFetchInit): Promise<any> {
   const json = readJson<any>(text, {});
 
   if (!res.ok) {
-    throw new Error(json?.error || json?.message || text || `Erreur backend NAS (${res.status})`);
+    const message = json?.error || json?.message || text || `Erreur backend NAS (${res.status})`;
+    if (res.status === 401) {
+      runtimeDiag("nas:http401", { path, message });
+    }
+    const err: any = new Error(message);
+    err.status = res.status;
+    err.path = path;
+    throw err;
   }
 
   return json;
@@ -388,8 +396,17 @@ export async function nasRestoreSession(opts?: { timeoutMs?: number }): Promise<
     if (!session.token) session.token = token;
     saveNasTokens(session, { silent: true });
     return session;
-  } catch (e) {
+  } catch (e: any) {
+    const status = Number(e?.status || 0) || null;
+    const message = String(e?.message || e || "restoreSession failed");
+    runtimeDiag("nas:restoreSession:error", { status, message, hadCached: !!cached?.token });
+    if (status === 401 || /session invalide|token|unauthorized|401/i.test(message)) {
+      saveNasTokens(null, { silent: true });
+      runtimeDiag("nas:restoreSession:cleared_invalid_session", { message });
+      return null;
+    }
     if (cached?.token) {
+      runtimeDiag("nas:restoreSession:fallback_cached", { userId: cached.userId || cached.user?.id || null });
       const fallback: AuthSession = {
         ...cached,
         token,
@@ -572,6 +589,7 @@ export async function nasPullStoreSnapshot(): Promise<{
     return result;
   } catch (e) {
     try { console.warn("[nasSync] pull failed", e); } catch {}
+    runtimeDiag("nas:pull:error", { message: String((e as any)?.message || e), status: Number((e as any)?.status || 0) || null });
     return { status: "error", error: e };
   }
 }

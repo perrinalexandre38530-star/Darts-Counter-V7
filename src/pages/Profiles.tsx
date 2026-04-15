@@ -31,6 +31,7 @@ import { saveStore } from "../lib/storage";
 import { fileToAvatarVariants, fileToSafeAvatarDataUrl, sanitizeAvatarDataUrl } from "../lib/avatarSafe";
 import { profilesDiagIncrement, profilesDiagLog, profilesDiagMark, profilesDiagMeasure, diffShallow } from "../lib/profilesDiag";
 import { markNasSyncDirty, pushNasSyncDirtyReason } from "../lib/manualNasSync";
+import { runtimeDiag, diagMarkStart, diagMarkEnd } from "../lib/runtimeDiag";
 
 // 🔥 nouveau : bloc préférences joueur
 import PlayerPrefsBlock, { type PlayerPrefs } from "../components/profile/PlayerPrefsBlock";
@@ -804,12 +805,15 @@ export default function Profiles({
   const openView = React.useCallback((next: View) => {
     profilesDiagMark(`profiles-open:${next}`);
     profilesDiagLog("profiles-open-request", { fromView: view, toView: next });
+    diagMarkStart(`profiles:view:${next}`, { fromView: view, toView: next });
+    runtimeDiag("profiles:view:request", { fromView: view, toView: next });
     setView(next);
   }, [view]);
   React.useEffect(() => {
     if (view === "menu") return;
     const ms = profilesDiagMeasure(`profiles-open:${view}`);
     profilesDiagLog("profiles-open-painted", { view, sinceRequestMs: ms });
+    diagMarkEnd(`profiles:view:${view}`, { sinceRequestMs: ms }, 120);
   }, [view]);
   const meHeavyReady = useDeferredSectionReady(view === "me", 80);
   const localsHeavyReady = useDeferredSectionReady(view === "locals", 120);

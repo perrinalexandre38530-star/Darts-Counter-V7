@@ -11,10 +11,10 @@ import type { Store, Profile } from "./types";
 import { emitCloudChange } from "./cloudEvents";
 import { exportHistoryDump, importHistoryDump } from "./historyCloud";
 import { sanitizeAvatarDataUrl, MAX_AVATAR_DATA_URL_CHARS } from "./avatarSafe";
+import { runtimeDiag } from "./runtimeDiag";
 import { setAvatarCache as setAvatarCacheLib } from "./avatarCache";
 import { getAllDartSets, replaceAllDartSets } from "./dartSetsStore";
 import { loadBots as loadStoredBots, restoreBotsFromSnapshot } from "./bots";
-import { isNasProviderEnabled } from "./serverConfig";
 
 const STORAGE_DIAG_ENABLED = true;
 
@@ -1179,7 +1179,7 @@ export async function saveStore<T extends Store>(store: T, opts?: SaveOpts): Pro
     persistedStore = guardStoreSizeForMobile(persistedStore);
     const tCompact1 = storageNowMs();
 
-    let payload = isNasProviderEnabled() ? json : await compressGzip(json);
+    let payload = await compressGzip(json);
     const tGzip1 = storageNowMs();
 
     const est = await storageEstimate();
@@ -1195,7 +1195,7 @@ export async function saveStore<T extends Store>(store: T, opts?: SaveOpts): Pro
         const emergencyStore = compactStoreForMobile(persistedStore, "hard");
         persistedStore = guardStoreShape(emergencyStore as T);
         json = safeJsonStringify(persistedStore);
-        payload = isNasProviderEnabled() ? json : await compressGzip(json);
+        payload = await compressGzip(json);
         bytes = json.length;
       }
     }
@@ -1205,21 +1205,25 @@ export async function saveStore<T extends Store>(store: T, opts?: SaveOpts): Pro
     const totalMs = Math.round((endedAt - startedAt) * 10) / 10;
     const payloadBytes = typeof payload === "string" ? payload.length : ((payload as Uint8Array)?.byteLength || 0);
 
+    const diagPayload = {
+      totalMs,
+      compatMs: Math.round((tCompat1 - tCompat0) * 10) / 10,
+      sanitizeMs: Math.round((tSanitize1 - tCompat1) * 10) / 10,
+      compactMs: Math.round((tCompact1 - tSanitize1) * 10) / 10,
+      gzipMs: Math.round((tGzip1 - tCompact1) * 10) / 10,
+      jsonBytes: bytes,
+      payloadBytes,
+      profiles: Array.isArray((persistedStore as any)?.profiles) ? (persistedStore as any).profiles.length : 0,
+      bots: Array.isArray((persistedStore as any)?.bots) ? (persistedStore as any).bots.length : 0,
+      dartSets: Array.isArray((persistedStore as any)?.dartSets) ? (persistedStore as any).dartSets.length : 0,
+      skipAsyncNormalize: opts?.skipAsyncNormalize === true,
+      activeProfileId: (persistedStore as any)?.activeProfileId ?? null,
+    };
     if (STORAGE_DIAG_ENABLED) {
-      storageDiag(totalMs >= 120 ? "saveStore-slow" : "saveStore", {
-        totalMs,
-        compatMs: Math.round((tCompat1 - tCompat0) * 10) / 10,
-        sanitizeMs: Math.round((tSanitize1 - tCompat1) * 10) / 10,
-        compactMs: Math.round((tCompact1 - tSanitize1) * 10) / 10,
-        gzipMs: Math.round((tGzip1 - tCompact1) * 10) / 10,
-        jsonBytes: bytes,
-        payloadBytes,
-        profiles: Array.isArray((persistedStore as any)?.profiles) ? (persistedStore as any).profiles.length : 0,
-        bots: Array.isArray((persistedStore as any)?.bots) ? (persistedStore as any).bots.length : 0,
-        dartSets: Array.isArray((persistedStore as any)?.dartSets) ? (persistedStore as any).dartSets.length : 0,
-        skipAsyncNormalize: opts?.skipAsyncNormalize === true,
-        activeProfileId: (persistedStore as any)?.activeProfileId ?? null,
-      });
+      storageDiag(totalMs >= 120 ? "saveStore-slow" : "saveStore", diagPayload);
+    }
+    if (totalMs >= 50) {
+      runtimeDiag(totalMs >= 120 ? "storage:saveStore:slow" : "storage:saveStore", diagPayload);
     }
   } catch (err) {
     console.error("[storage] saveStore error:", err);
@@ -1258,7 +1262,7 @@ export async function getKV<T = unknown>(key: string): Promise<T | null> {
 export async function setKV(key: string, value: any): Promise<void> {
   try {
     const json = safeJsonStringify(value);
-    const payload = isNasProviderEnabled() ? json : await compressGzip(json);
+    const payload = await compressGzip(json);
 
     await idbSet(scopedStorageKey(key), payload);
 
@@ -1352,7 +1356,7 @@ async function importIdbEntryRaw(rawKey: string, value: any): Promise<void> {
   const isStoreLikeKey = key === STORE_KEY || key.startsWith(`${STORE_KEY}:`) || /(^|[:/])store$/.test(key);
   const valueToPersist = isStoreLikeKey ? sanitizeStoreForPersistence(value as any) : value;
   const json = safeJsonStringify(valueToPersist);
-  const payload = isNasProviderEnabled() ? json : await compressGzip(json);
+  const payload = await compressGzip(json);
 
   const targets = new Set<string>();
   targets.add(key);
