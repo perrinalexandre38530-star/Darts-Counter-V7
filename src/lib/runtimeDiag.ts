@@ -1,5 +1,18 @@
 // src/lib/runtimeDiag.ts
 
+const RUNTIME_DIAG_ENABLED = (() => {
+  try {
+    if (typeof window === "undefined") return false;
+    const forced = window.localStorage.getItem("dc_runtime_diag_enabled");
+    if (forced === "1") return true;
+    if (forced === "0") return false;
+    const host = String(window.location.hostname || "").toLowerCase();
+    return host === "localhost" || host === "127.0.0.1";
+  } catch {
+    return false;
+  }
+})();
+
 export type RuntimeDiagEvent = {
   at: string;
   type: string;
@@ -28,7 +41,7 @@ function currentRoute() {
 }
 
 function readEvents(): RuntimeDiagEvent[] {
-  if (!hasWindow()) return [];
+  if (!RUNTIME_DIAG_ENABLED || !hasWindow()) return [];
   try {
     const raw = window.localStorage.getItem(KEY);
     const parsed = raw ? JSON.parse(raw) : [];
@@ -39,22 +52,23 @@ function readEvents(): RuntimeDiagEvent[] {
 }
 
 function writeEvents(events: RuntimeDiagEvent[]) {
-  if (!hasWindow()) return;
+  if (!RUNTIME_DIAG_ENABLED || !hasWindow()) return;
   try {
     window.localStorage.setItem(KEY, JSON.stringify(events.slice(-MAX)));
   } catch {}
 }
 
 export function runtimeDiag(type: string, data?: any) {
+  if (!RUNTIME_DIAG_ENABLED) return;
   const evt: RuntimeDiagEvent = { at: nowIso(), type, route: currentRoute(), data: data ?? null };
-  try { console.warn('[runtime-diag]', type, evt.data ?? {}); } catch {}
+  try { console.warn("[runtime-diag]", type, evt.data ?? {}); } catch {}
   const events = readEvents();
   events.push(evt);
   writeEvents(events);
 }
 
 export function runtimeDiagClear() {
-  if (!hasWindow()) return;
+  if (!RUNTIME_DIAG_ENABLED || !hasWindow()) return;
   try { window.localStorage.removeItem(KEY); } catch {}
 }
 

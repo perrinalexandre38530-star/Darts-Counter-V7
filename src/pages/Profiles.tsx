@@ -22,16 +22,13 @@ import { useTheme } from "../contexts/ThemeContext";
 import { useLang, type Lang } from "../contexts/LangContext";
 import { useAuthOnline } from "../hooks/useAuthOnline";
 import { onlineApi } from "../lib/onlineApi";
-import { syncProfile, fetchCloudProfile } from "../lib/sync/profileSync";
 import type { ThemeId } from "../theme/themePresets";
 
 import { sha256 } from "../lib/crypto";
 import DartSetsPanel from "../components/DartSetsPanel";
-import { saveStore } from "../lib/storage";
 import { fileToAvatarVariants, fileToSafeAvatarDataUrl, sanitizeAvatarDataUrl } from "../lib/avatarSafe";
 import { profilesDiagIncrement, profilesDiagLog, profilesDiagMark, profilesDiagMeasure, diffShallow } from "../lib/profilesDiag";
 import { markNasSyncDirty, pushNasSyncDirtyReason } from "../lib/manualNasSync";
-import { runtimeDiag, diagMarkStart, diagMarkEnd } from "../lib/runtimeDiag";
 
 // 🔥 nouveau : bloc préférences joueur
 import PlayerPrefsBlock, { type PlayerPrefs } from "../components/profile/PlayerPrefsBlock";
@@ -767,9 +764,9 @@ export default function Profiles({
     const prev = profilesDiagPrevRef.current;
     const changed = diffShallow(prev || {}, next);
     const count = profilesDiagIncrement("profiles_render");
-    if (count <= 3 || count % 12 === 0) profilesDiagLog("profiles-render", { count, changed, next });
+    if (count <= 2) profilesDiagLog("profiles-render", { count, changed, next });
     profilesDiagPrevRef.current = next;
-  });
+  }, [view, params?.view, profiles, activeProfileId, selfStatus, themeId, lang, sportResolved]);
 
 
   // 🔥 Shimmer du nom "NINJA" (copie du Home)
@@ -805,15 +802,12 @@ export default function Profiles({
   const openView = React.useCallback((next: View) => {
     profilesDiagMark(`profiles-open:${next}`);
     profilesDiagLog("profiles-open-request", { fromView: view, toView: next });
-    diagMarkStart(`profiles:view:${next}`, { fromView: view, toView: next });
-    runtimeDiag("profiles:view:request", { fromView: view, toView: next });
     setView(next);
   }, [view]);
   React.useEffect(() => {
     if (view === "menu") return;
     const ms = profilesDiagMeasure(`profiles-open:${view}`);
     profilesDiagLog("profiles-open-painted", { view, sinceRequestMs: ms });
-    diagMarkEnd(`profiles:view:${view}`, { sinceRequestMs: ms }, 120);
   }, [view]);
   const meHeavyReady = useDeferredSectionReady(view === "me", 80);
   const localsHeavyReady = useDeferredSectionReady(view === "locals", 120);
@@ -1661,15 +1655,6 @@ React.useEffect(() => {
           }
         } catch {}
 
-        await syncProfile({
-          display_name: patch.nickname?.trim() || active.name || undefined,
-          avatar_url: (active as any)?.avatarUrl || (active as any)?.avatar_url || undefined,
-          private_info: {
-            ...patch,
-            password: "",
-          },
-        });
-
         setToast({
           type: "success",
           message: patch.password ? "Données et mot de passe sauvegardés" : "Données sauvegardées",
@@ -1883,15 +1868,7 @@ React.useEffect(() => {
                         }
                       }}
                       onPull={async () => {
-                        try {
-                          const cloud = await fetchCloudProfile();
-                          if (cloud?.private_info) {
-                            await handlePrivateInfoSave(cloud.private_info);
-                          }
-                          setToast({ type: "success", message: "Données récupérées" });
-                        } catch {
-                          setToast({ type: "error", message: "Erreur de récupération" });
-                        }
+                        setToast({ type: "success", message: "Les données locales sont déjà actives sur cet écran" });
                       }}
                     />
                   ) : (

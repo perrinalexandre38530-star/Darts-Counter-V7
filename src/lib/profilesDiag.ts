@@ -1,5 +1,18 @@
 // @ts-nocheck
 
+const PROFILES_DIAG_ENABLED = (() => {
+  try {
+    if (typeof window === "undefined") return false;
+    const forced = window.localStorage.getItem("dc_profiles_diag_enabled");
+    if (forced === "1") return true;
+    if (forced === "0") return false;
+    const host = String(window.location.hostname || "").toLowerCase();
+    return host === "localhost" || host === "127.0.0.1";
+  } catch {
+    return false;
+  }
+})();
+
 type DiagEvent = { at: number; channel: string; data?: any };
 
 declare global {
@@ -20,14 +33,14 @@ declare global {
 const MAX_EVENTS = 400;
 
 function getStore() {
-  if (typeof window === "undefined") return null as any;
+  if (!PROFILES_DIAG_ENABLED || typeof window === "undefined") return null as any;
   if (!window.__profilesDiag) {
     window.__profilesDiag = {
       installed: false,
       events: [],
       counters: {},
       marks: {},
-      consoleEnabled: true,
+      consoleEnabled: false,
     };
   }
   return window.__profilesDiag;
@@ -39,7 +52,7 @@ function isConsoleEnabled() {
     if (!s) return false;
     if (typeof s.consoleEnabled === "boolean") return s.consoleEnabled;
     const raw = localStorage.getItem("dc_profiles_diag_console");
-    return raw == null ? true : raw == "1";
+    return raw == null ? false : raw == "1";
   } catch {
     return false;
   }
@@ -101,6 +114,7 @@ export function diffShallow(prev: any, next: any) {
 }
 
 export function installProfilesDiag() {
+  if (!PROFILES_DIAG_ENABLED) return;
   const s = getStore();
   if (!s || s.installed || typeof window === "undefined") return;
   s.installed = true;
