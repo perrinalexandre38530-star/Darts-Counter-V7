@@ -605,7 +605,7 @@ export default function Profiles({
       window.clearTimeout(persistTimerRef.current);
     }
     if (typeof window === "undefined") return;
-    persistTimerRef.current = window.setTimeout(() => {
+    persistTimerRef.current = window.setTimeout(async () => {
       if (persistInFlightRef.current) return;
       const job = pendingPersistRef.current;
       pendingPersistRef.current = null;
@@ -771,24 +771,6 @@ export default function Profiles({
       : "menu"
   );
   const profilesDiagPrevRef = React.useRef<any>(null);
-  React.useEffect(() => {
-    const next = {
-      view,
-      paramsView: params?.view ?? null,
-      profilesLen: Number(profiles?.length || 0),
-      activeProfileId: activeProfileId ?? null,
-      selfStatus: selfStatus ?? null,
-      themeId: String((themeId as any) || ""),
-      lang: String(lang || ""),
-      sport: String(sportResolved || ""),
-      localsLen: Number((profiles || []).filter((p: any) => p.id !== activeProfileId && !isMirrorProfile(p)).length || 0),
-    };
-    const prev = profilesDiagPrevRef.current;
-    const changed = diffShallow(prev || {}, next);
-    const count = profilesDiagIncrement("profiles_render");
-    if (count <= 2) profilesDiagLog("profiles-render", { count, changed, next });
-    profilesDiagPrevRef.current = next;
-  }, [view, params?.view, profiles, activeProfileId, selfStatus, themeId, lang, sportResolved]);
 
 
   // 🔥 Shimmer du nom "NINJA" (copie du Home)
