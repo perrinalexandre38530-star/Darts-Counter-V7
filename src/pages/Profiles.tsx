@@ -21,14 +21,12 @@ import { purgeAllStatsForProfile } from "../lib/statsLiteIDB";
 import { useTheme } from "../contexts/ThemeContext";
 import { useLang, type Lang } from "../contexts/LangContext";
 import { useAuthOnline } from "../hooks/useAuthOnline";
-import { onlineApi } from "../lib/onlineApi";
 import type { ThemeId } from "../theme/themePresets";
 
 import { sha256 } from "../lib/crypto";
 import DartSetsPanel from "../components/DartSetsPanel";
 import { fileToAvatarVariants, fileToSafeAvatarDataUrl, sanitizeAvatarDataUrl } from "../lib/avatarSafe";
 import { profilesDiagIncrement, profilesDiagLog, profilesDiagMark, profilesDiagMeasure, diffShallow } from "../lib/profilesDiag";
-import { markNasSyncDirty, pushNasSyncDirtyReason } from "../lib/manualNasSync";
 
 // 🔥 nouveau : bloc préférences joueur
 import PlayerPrefsBlock, { type PlayerPrefs } from "../components/profile/PlayerPrefsBlock";
@@ -38,6 +36,20 @@ import { getAvatarCache as getAvatarCacheLib, setAvatarCache as setAvatarCacheLi
 
 import { useSport } from "../contexts/SportContext";
 import { useStableProfiles } from "../hooks/useStableProfiles";
+
+async function getOnlineApi() {
+  const mod = await import("../lib/onlineApi");
+  return mod.onlineApi;
+}
+
+async function markNasDirtySafe(reason: string) {
+  try {
+    const mod = await import("../lib/manualNasSync");
+    mod.markNasSyncDirty(reason);
+    try { mod.pushNasSyncDirtyReason(reason); } catch {}
+  } catch {}
+}
+
 
 // Effet "shimmer" du nom joueur (copié de StatsHub)
 const statsNameCss = `
@@ -601,8 +613,7 @@ export default function Profiles({
       persistInFlightRef.current = true;
       const t0 = typeof performance !== "undefined" ? performance.now() : Date.now();
       try {
-        markNasSyncDirty(job.reason || "profiles_change");
-        try { pushNasSyncDirtyReason(job.reason || "profiles_change"); } catch {}
+        await markNasDirtySafe(job.reason || "profiles_change");
       } catch (e) {
         console.warn("[Profiles] deferred dirty mark failed", job.reason, e);
       } finally {
@@ -947,7 +958,7 @@ export default function Profiles({
 
     if (isOnlineLinked && auth.status === "signed_in") {
       try {
-        const uploaded = await onlineApi.uploadAvatarImage({
+        const uploaded = await (await getOnlineApi()).uploadAvatarImage({
           dataUrl: fullDataUrl,
           folder: String(auth.user?.id || id),
           updateProfile: true,
@@ -1600,7 +1611,7 @@ React.useEffect(() => {
 
     if (auth.status === "signed_in") {
       try {
-        const savedProfile = await onlineApi.updateProfile({
+        const savedProfile = await (await getOnlineApi()).updateProfile({
           nickname: patch.nickname?.trim() || undefined,
           displayName: patch.nickname?.trim() || active.name || undefined,
           surname: patch.nickname?.trim() || undefined,
@@ -1638,7 +1649,7 @@ React.useEffect(() => {
         });
 
         if (patch.password && String(patch.password).trim()) {
-          await onlineApi.changePassword(String(patch.password));
+          await (await getOnlineApi()).changePassword(String(patch.password));
         }
 
         try {
@@ -3287,7 +3298,7 @@ function UnifiedAuthBlock({
     // 2) UID Supabase (source de vérité)
     let uid: string | null = null;
     try {
-      const sessionAny = await onlineApi.getCurrentSession();
+      const sessionAny = await (await getOnlineApi()).getCurrentSession();
       uid = String(sessionAny?.user?.id || "").trim() || null;
     } catch (err) {
       console.warn("[profiles] getCurrentSession after login error:", err);
@@ -3326,7 +3337,7 @@ function UnifiedAuthBlock({
     if (!match) {
       let displayName = (emailNorm ? emailNorm.split("@")[0] : "Joueur");
       try {
-        const session = await onlineApi.getCurrentSession();
+        const session = await (await getOnlineApi()).getCurrentSession();
         displayName = session?.user.user_metadata?.full_name || session?.user.user_metadata?.name || session?.user.user_metadata?.nickname || session?.user.nickname || (session?.user.email ? String(session.user.email).split("@")[0] : "Joueur");
       } catch (err) {
         console.warn("[profiles] getCurrentSession after login error:", err);
@@ -3411,7 +3422,7 @@ function UnifiedAuthBlock({
     let uid: string | null = null;
     try {
       await onlineSignup({ email: trimmedEmail, nickname: trimmedName, password: trimmedPass });
-      const sessionAny = await onlineApi.getCurrentSession();
+      const sessionAny = await (await getOnlineApi()).getCurrentSession();
       uid = String(sessionAny?.user?.id || "").trim() || null;
     } catch (err) {
       console.warn("[profiles] online signup error:", err);

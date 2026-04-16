@@ -1,5 +1,12 @@
-import { exportAll, importAll, loadStore } from "./storage";
-import { onlineApi } from "./onlineApi";
+async function getStorage() {
+  return await import("./storage");
+}
+
+async function getOnlineApi() {
+  const mod = await import("./onlineApi");
+  return mod.onlineApi;
+}
+
 
 const DIRTY_KEY = "dc_nas_sync_dirty_v1";
 const DIRTY_REASON_KEY = "dc_nas_sync_dirty_reason_v1";
@@ -65,18 +72,20 @@ export async function pushNasAccountSnapshot() {
       await flush("nas_push");
     }
   } catch {}
+  const { exportAll } = await getStorage();
   const snapshot = await exportAll();
-  const res = await onlineApi.pushStoreSnapshot(snapshot as any, (snapshot as any)?.v ?? 8);
+  const res = await (await getOnlineApi()).pushStoreSnapshot(snapshot as any, (snapshot as any)?.v ?? 8);
   try { localStorage.setItem(LAST_PUSH_KEY, new Date().toISOString()); } catch {}
   clearNasSyncDirty();
   return res;
 }
 
 export async function pullNasAccountSnapshot() {
-  const res: any = await onlineApi.pullStoreSnapshot();
+  const res: any = await (await getOnlineApi()).pullStoreSnapshot();
   if (!res || res.status !== "ok" || !res.payload) return res;
   setApplyingNasSnapshot(true);
   try {
+    const { importAll } = await getStorage();
     await importAll(res.payload);
     try { localStorage.setItem(LAST_PULL_KEY, new Date().toISOString()); } catch {}
     clearNasSyncDirty();
@@ -87,6 +96,7 @@ export async function pullNasAccountSnapshot() {
 }
 
 export async function computeNasSyncSummary() {
+  const { loadStore } = await getStorage();
   const store: any = await loadStore().catch(() => null);
   return {
     profiles: Array.isArray(store?.profiles) ? store.profiles.length : 0,
