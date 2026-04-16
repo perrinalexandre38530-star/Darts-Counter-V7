@@ -759,6 +759,17 @@ export default function Profiles({
     }
   }, [auth?.status, selfStatus, update]);
 
+  const [view, setView] = React.useState<View>(
+    params?.view === "me"
+      ? "me"
+      : params?.view === "locals"
+      ? "locals"
+      : params?.view === "friends"
+      ? "friends"
+      : params?.view === "dartsets"
+      ? "dartsets"
+      : "menu"
+  );
   const profilesDiagPrevRef = React.useRef<any>(null);
   React.useEffect(() => {
     const next = {
@@ -799,17 +810,6 @@ export default function Profiles({
   const isDarts = sportKey.includes("darts");
 
 
-  const [view, setView] = React.useState<View>(
-    params?.view === "me"
-      ? "me"
-      : params?.view === "locals"
-      ? "locals"
-      : params?.view === "friends"
-      ? "friends"
-      : params?.view === "dartsets"
-      ? "dartsets"
-      : "menu"
-  );
   const openView = React.useCallback((next: View) => {
     profilesDiagMark(`profiles-open:${next}`);
     profilesDiagLog("profiles-open-request", { fromView: view, toView: next });
