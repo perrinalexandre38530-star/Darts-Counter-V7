@@ -405,22 +405,8 @@ export async function nasRestoreSession(opts?: { timeoutMs?: number }): Promise<
       runtimeDiag("nas:restoreSession:cleared_invalid_session", { message });
       return null;
     }
-    if (cached?.token) {
-      runtimeDiag("nas:restoreSession:fallback_cached", { userId: cached.userId || cached.user?.id || null });
-      const fallback: AuthSession = {
-        ...cached,
-        token,
-        refreshToken: cached.refreshToken || readLs(NAS_REFRESH_KEY) || "",
-        userId: cached.userId || cached.user?.id || null,
-        user: cached.user || null,
-        profile: cached.profile || null,
-      };
-      writeLs(NAS_TOKEN_KEY, fallback.token || null);
-      writeLs(NAS_REFRESH_KEY, fallback.refreshToken || null);
-      writeLs(NAS_AUTH_SESSION_KEY, JSON.stringify(fallback));
-      return fallback;
-    }
-    console.warn("[nasApi] restoreSession failed with no cached session", e);
+    console.warn("[nasApi] restoreSession failed", e);
+    saveNasTokens(null, { silent: true });
     return null;
   }
 }

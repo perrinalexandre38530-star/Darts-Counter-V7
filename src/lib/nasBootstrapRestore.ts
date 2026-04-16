@@ -26,6 +26,12 @@ function pushBootDiag(step: string, extra?: any) {
 
 export async function bootstrapNasRestore(options?: { mobileDeferred?: boolean }): Promise<{ restored: boolean; reason?: string }> {
   if (!isNasDataSyncEnabled()) return { restored: false, reason: "disabled" };
+  try {
+    if (localStorage.getItem("dc_nas_boot_restore_enabled") !== "1") {
+      runtimeDiag("boot:nasRestore:manual_only");
+      return { restored: false, reason: "manual_only" };
+    }
+  } catch {}
   diagMarkStart("boot:nasRestore", { mobileDeferred: !!options?.mobileDeferred });
   const restored = await onlineApi.restoreSession().catch(() => null);
   const session = restored && (restored as any).user ? restored : null;

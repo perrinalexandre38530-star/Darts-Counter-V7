@@ -123,10 +123,6 @@ import GameSelect from "./pages/GameSelect";
 import Home from "./pages/Home";
 import Games from "./pages/Games";
 import ModeNotReady from "./pages/ModeNotReady";
-import TournamentsHome from "./pages/TournamentsHome";
-import Profiles from "./pages/Profiles";
-import FriendsPage from "./pages/FriendsPage";
-import Settings from "./pages/Settings";
 import X01Setup from "./pages/X01Setup";
 import X01Play from "./pages/X01Play";
 import X01OnlineSetup from "./pages/X01OnlineSetup";
@@ -145,7 +141,6 @@ import ShanghaiPlay from "./pages/ShanghaiPlay";
 import LobbyPick from "./pages/LobbyPick";
 import X01End from "./pages/X01End";
 import AvatarCreator from "./pages/AvatarCreator";
-import ProfilesBots from "./pages/ProfilesBots";
 
 import TrainingMenu from "./pages/TrainingMenu";
 import TrainingX01Config from "./pages/TrainingX01Config";
@@ -178,12 +173,19 @@ import { getAllDartSets, replaceAllDartSets } from "./lib/dartSetsStore";
 // ✅ NEW: rebuild stats cache when history changes (FAST STATS HUB)
 
 // Stats pages
-import StatsShell from "./pages/StatsShell";
-import StatsHub from "./pages/StatsHub";
-import StatsOnline from "./pages/StatsOnline";
-import StatsCricket from "./pages/StatsCricket";
-import StatsLeaderboardsPage from "./pages/StatsLeaderboardsPage"; // ⭐ CLASSEMENTS
 import StatsDetail from "./pages/StatsDetail";
+
+const Profiles = React.lazy(() => import("./pages/Profiles"));
+const ProfilesBots = React.lazy(() => import("./pages/ProfilesBots"));
+const FriendsPage = React.lazy(() => import("./pages/FriendsPage"));
+const Settings = React.lazy(() => import("./pages/Settings"));
+const StatsShell = React.lazy(() => import("./pages/StatsShell"));
+const StatsHub = React.lazy(() => import("./pages/StatsHub"));
+const StatsOnline = React.lazy(() => import("./pages/StatsOnline"));
+const StatsCricket = React.lazy(() => import("./pages/StatsCricket"));
+const StatsLeaderboardsPage = React.lazy(() => import("./pages/StatsLeaderboardsPage"));
+const SyncCenter = React.lazy(() => import("./pages/SyncCenter"));
+const TournamentsHome = React.lazy(() => import("./pages/TournamentsHome"));
 
 // TOURNOI
 import TournamentCreate from "./pages/TournamentCreate";
@@ -198,7 +200,6 @@ import X01ConfigV3 from "./pages/X01ConfigV3";
 import X01PlayV3 from "./pages/X01PlayV3";
 
 // 🌟 Nouveau : SYNC / Partage stats locales
-import SyncCenter from "./pages/SyncCenter";
 
 // Contexts
 import { ThemeProvider } from "./contexts/ThemeContext";
@@ -1354,11 +1355,12 @@ useEffect(() => {
     try {
       const hasNasToken = !!localStorage.getItem("dc_nas_access_token_v1");
       const hasCachedAuth = !!localStorage.getItem("dc_online_auth_supabase_v1");
-      runtimeDiag("boot:auth-presence", { hasNasToken, hasCachedAuth });
+      const bootRestoreEnabled = (() => {
+        try { return localStorage.getItem("dc_nas_boot_restore_enabled") === "1"; } catch { return false; }
+      })();
+      runtimeDiag("boot:auth-presence", { hasNasToken, hasCachedAuth, bootRestoreEnabled });
 
-      // IMPORTANT:
-      // En mode NAS, on ne tente le restore boot QUE s'il y a un vrai token NAS.
-      if (!hasNasToken) return;
+      if (!hasNasToken || !bootRestoreEnabled) return;
 
       await bootstrapNasRestore().catch((e) => {
         runtimeDiag("boot:bootstrapNasRestore:error", { message: String((e as any)?.message || e) });
@@ -1812,10 +1814,7 @@ useEffect(() => {
     };
   }, [loading, showSplash, tab]);
 
-  /* Restore online session (pour Supabase côté SDK) */
-  React.useEffect(() => {
-    onlineApi.restoreSession().catch(() => {});
-  }, []);
+  /* Restore online session automatique désactivé en mode NAS. */
 
   // ✅ NEW: détecte les liens email Supabase via hash (+ /online)
   React.useEffect(() => {
@@ -4021,7 +4020,9 @@ case "babyfoot_team_edit":
 
         <div className="container" style={{ paddingBottom: 88 }}>
           <AppGate go={go} tab={tab}>
-            {page}
+            <React.Suspense fallback={<div className="container" style={{ padding: 16, color: "#cfe48b" }}>Chargement…</div>}>
+              {page}
+            </React.Suspense>
           </AppGate>
         </div>
 
