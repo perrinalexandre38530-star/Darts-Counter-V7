@@ -7,7 +7,6 @@ async function getOnlineApi() {
   return mod.onlineApi;
 }
 
-
 const DIRTY_KEY = "dc_nas_sync_dirty_v1";
 const DIRTY_REASON_KEY = "dc_nas_sync_dirty_reason_v1";
 const LAST_PUSH_KEY = "dc_nas_sync_last_push_v1";
@@ -61,32 +60,28 @@ export function getNasSyncState() {
 
 export function pushNasSyncDirtyReason(reason: string) {
   try {
-    window.dispatchEvent(new CustomEvent("dc:nas-sync-dirty", { detail: { reason } }));
+    window.dispatchEvent(new CustomEvent("dc:nas-sync-dirty", { detail: { reason: String(reason || "change") } }));
   } catch {}
 }
 
 export async function pushNasAccountSnapshot() {
-  try {
-    const flush = (window as any)?.__flushLocalStoreNow;
-    if (typeof flush === "function") {
-      await flush("nas_push");
-    }
-  } catch {}
-  const { exportAll } = await getStorage();
-  const snapshot = await exportAll();
-  const res = await (await getOnlineApi()).pushStoreSnapshot(snapshot as any, (snapshot as any)?.v ?? 8);
+  const { exportCloudSnapshot } = await getStorage();
+  const payload = await exportCloudSnapshot();
+  const api = await getOnlineApi();
+  const res = await api.pushStoreSnapshot(payload as any, (payload as any)?.v ?? 1);
   try { localStorage.setItem(LAST_PUSH_KEY, new Date().toISOString()); } catch {}
   clearNasSyncDirty();
   return res;
 }
 
 export async function pullNasAccountSnapshot() {
-  const res: any = await (await getOnlineApi()).pullStoreSnapshot();
+  const api = await getOnlineApi();
+  const res: any = await api.pullStoreSnapshot();
   if (!res || res.status !== "ok" || !res.payload) return res;
+  const { importCloudSnapshot } = await getStorage();
   setApplyingNasSnapshot(true);
   try {
-    const { importAll } = await getStorage();
-    await importAll(res.payload);
+    await importCloudSnapshot(res.payload, { mode: "replace" });
     try { localStorage.setItem(LAST_PULL_KEY, new Date().toISOString()); } catch {}
     clearNasSyncDirty();
     return res;

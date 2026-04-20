@@ -17,6 +17,11 @@ import { getAllDartSets, replaceAllDartSets } from "./dartSetsStore";
 import { loadBots as loadStoredBots, restoreBotsFromSnapshot } from "./bots";
 
 const STORAGE_DIAG_ENABLED = true;
+const STORE_WRITE_MODE: "plain" | "gzip" = "plain";
+const QUOTA_ESTIMATE_TTL_MS = 15_000;
+let lastQuotaEstimateAt = 0;
+let lastQuotaEstimateValue: { quota: number | null; usage: number | null } = { quota: null, usage: null };
+let lastSavedStoreJsonByScope = new Map<string, string>();
 
 function storageNowMs() {
   try {
@@ -31,6 +36,27 @@ function storageDiag(event: string, payload?: Record<string, any>) {
     if (!STORAGE_DIAG_ENABLED) return;
     console.warn(`[storage-diag] ${event}`, payload || {});
   } catch {}
+}
+
+function getActiveStoreScopeKey() {
+  try {
+    return scopedStorageKey(STORE_KEY);
+  } catch {
+    return STORE_KEY;
+  }
+}
+
+async function getQuotaEstimateCached() {
+  const now = Date.now();
+  if (now - lastQuotaEstimateAt < QUOTA_ESTIMATE_TTL_MS) return lastQuotaEstimateValue;
+  lastQuotaEstimateValue = await storageEstimate();
+  lastQuotaEstimateAt = now;
+  return lastQuotaEstimateValue;
+}
+
+function persistPayloadForKey(key: string, json: string) {
+  if (key === scopedStorageKey(STORE_KEY) && STORE_WRITE_MODE === "plain") return json;
+  return compressGzip(json);
 }
 
 /* ---------- SAFE JSON ---------- */
@@ -1107,6 +1133,7 @@ export async function loadStore<T extends Store>(): Promise<T | null> {
         try {
           const payload = await compressGzip(safeJsonStringify(norm.store));
           await idbSet(scopedStorageKey(STORE_KEY), payload);
+    lastSavedStoreJsonByScope.set(scopedStorageKey(STORE_KEY), json);
 
     try {
       emitCloudChange(scopedCloudChangeReason("idb:set:store"));
@@ -1179,10 +1206,33 @@ export async function saveStore<T extends Store>(store: T, opts?: SaveOpts): Pro
     persistedStore = guardStoreSizeForMobile(persistedStore);
     const tCompact1 = storageNowMs();
 
-    let payload = await compressGzip(json);
+    let payload = await persistPayloadForKey(scopedStorageKey(STORE_KEY), json);
     const tGzip1 = storageNowMs();
 
-    const est = await storageEstimate();
+    const prevJson = lastSavedStoreJsonByScope.get(scopedStorageKey(STORE_KEY));
+    if (prevJson === json) {
+      const endedAt = storageNowMs();
+      const totalMs = Math.round((endedAt - startedAt) * 10) / 10;
+      const diagPayload = {
+        totalMs,
+        compatMs: Math.round((tCompat1 - tCompat0) * 10) / 10,
+        sanitizeMs: Math.round((tSanitize1 - tCompat1) * 10) / 10,
+        compactMs: Math.round((tCompact1 - tSanitize1) * 10) / 10,
+        gzipMs: Math.round((tGzip1 - tCompact1) * 10) / 10,
+        jsonBytes: bytes,
+        payloadBytes: typeof payload === "string" ? payload.length : ((payload as Uint8Array)?.byteLength || 0),
+        profiles: Array.isArray((persistedStore as any)?.profiles) ? (persistedStore as any).profiles.length : 0,
+        bots: Array.isArray((persistedStore as any)?.bots) ? (persistedStore as any).bots.length : 0,
+        dartSets: Array.isArray((persistedStore as any)?.dartSets) ? (persistedStore as any).dartSets.length : 0,
+        skippedWrite: true,
+        activeProfileId: (persistedStore as any)?.activeProfileId ?? null,
+      };
+      if (STORAGE_DIAG_ENABLED) storageDiag("saveStore-skipped", diagPayload);
+      if (totalMs >= 50) runtimeDiag("storage:saveStore:skipped", diagPayload);
+      return;
+    }
+
+    const est = await getQuotaEstimateCached();
     if (est.quota != null && est.usage != null && typeof payload !== "string") {
       const projected = est.usage + (payload as Uint8Array).byteLength;
       if (projected > est.quota * 0.98) {
@@ -1195,12 +1245,13 @@ export async function saveStore<T extends Store>(store: T, opts?: SaveOpts): Pro
         const emergencyStore = compactStoreForMobile(persistedStore, "hard");
         persistedStore = guardStoreShape(emergencyStore as T);
         json = safeJsonStringify(persistedStore);
-        payload = await compressGzip(json);
+        payload = await persistPayloadForKey(scopedStorageKey(STORE_KEY), json);
         bytes = json.length;
       }
     }
 
     await idbSet(scopedStorageKey(STORE_KEY), payload);
+    lastSavedStoreJsonByScope.set(scopedStorageKey(STORE_KEY), json);
     const endedAt = storageNowMs();
     const totalMs = Math.round((endedAt - startedAt) * 10) / 10;
     const payloadBytes = typeof payload === "string" ? payload.length : ((payload as Uint8Array)?.byteLength || 0);
@@ -1239,6 +1290,7 @@ export async function saveStore<T extends Store>(store: T, opts?: SaveOpts): Pro
 export async function clearStore(): Promise<void> {
   try {
     await idbDel(scopedStorageKey(STORE_KEY));
+    lastSavedStoreJsonByScope.delete(scopedStorageKey(STORE_KEY));
   } catch {}
   try {
     localStorage.removeItem(scopedLegacyStoreKey());
@@ -1356,7 +1408,7 @@ async function importIdbEntryRaw(rawKey: string, value: any): Promise<void> {
   const isStoreLikeKey = key === STORE_KEY || key.startsWith(`${STORE_KEY}:`) || /(^|[:/])store$/.test(key);
   const valueToPersist = isStoreLikeKey ? sanitizeStoreForPersistence(value as any) : value;
   const json = safeJsonStringify(valueToPersist);
-  const payload = await compressGzip(json);
+  const payload = await persistPayloadForKey(key, json);
 
   const targets = new Set<string>();
   targets.add(key);
@@ -1412,6 +1464,11 @@ export async function importAll(dump: any): Promise<void> {
       console.warn("[storage] importAll history restore failed", e);
     }
 
+    try {
+      const maybeStoreKey = scopedStorageKey(STORE_KEY);
+      const rawStore = await idbGet<any>(maybeStoreKey);
+      if (typeof rawStore === "string") lastSavedStoreJsonByScope.set(maybeStoreKey, rawStore);
+    } catch {}
     return;
   }
 
@@ -1738,6 +1795,29 @@ export async function wipeAllLocalData(): Promise<void> {
   } catch {}
 }
 
+/* ============================================================
+   Compat simple appSnapshot.ts (sync wrappers)
+============================================================ */
+export function exportAllLocalData(): any {
+  try {
+    return {
+      localStorage: exportLocalStorageDc(),
+      legacyStore: safeJsonParse(localStorage.getItem(scopedLegacyStoreKey()), null),
+    };
+  } catch {
+    return { localStorage: {}, legacyStore: null };
+  }
+}
+
+export function importAllLocalData(data: any): void {
+  try {
+    if (data?.localStorage) importLocalStorageDc(data.localStorage);
+  } catch {}
+  try {
+    if (data?.legacyStore != null) localStorage.setItem(scopedLegacyStoreKey(), safeJsonStringify(data.legacyStore));
+  } catch {}
+}
+
 /* ---------- Migration utilitaire ---------- */
 export async function migrateFromLocalStorage(keys: string[]) {
   for (const k of keys) {
@@ -1807,6 +1887,7 @@ export async function nukeAllKeepActiveProfile(): Promise<void> {
     try {
       const payload = await compressGzip(safeJsonStringify(newStore));
       await idbSet(scopedStorageKey(STORE_KEY), payload);
+    lastSavedStoreJsonByScope.set(scopedStorageKey(STORE_KEY), json);
     } catch (err) {
       console.warn("[storage] unable to write minimal store after reset", err);
     }

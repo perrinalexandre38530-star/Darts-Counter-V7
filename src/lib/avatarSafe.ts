@@ -1,16 +1,9 @@
-
-// ============================================
-// src/lib/avatarSafe.ts
-// Sécurisation import / affichage avatars
-// ============================================
-
-export const MAX_AVATAR_FILE_MB = 6;
-export const MAX_AVATAR_DATA_URL_CHARS = 180_000;
+export const MAX_AVATAR_FILE_MB = 8;
+export const MAX_AVATAR_DATA_URL_CHARS = 380_000;
 
 export function sanitizeAvatarDataUrl(input: any, maxChars = MAX_AVATAR_DATA_URL_CHARS): string | null {
   try {
-    if (typeof input !== "string") return null;
-    const s = input.trim();
+    const s = String(input || "").trim();
     if (!s) return null;
     if (!s.startsWith("data:image/")) return null;
     if (s.length > maxChars) return null;
@@ -20,77 +13,40 @@ export function sanitizeAvatarDataUrl(input: any, maxChars = MAX_AVATAR_DATA_URL
   }
 }
 
-async function imageFileToDataUrl(file: File): Promise<string> {
-  return await new Promise<string>((resolve, reject) => {
-    const r = new FileReader();
-    r.onerror = () => reject(new Error("read_failed"));
-    r.onload = () => resolve(String(r.result || ""));
-    r.readAsDataURL(file);
+async function fileToDataUrl(file: File): Promise<string> {
+  return await new Promise((resolve, reject) => {
+    const fr = new FileReader();
+    fr.onload = () => resolve(String(fr.result || ""));
+    fr.onerror = () => reject(fr.error || new Error("read_failed"));
+    fr.readAsDataURL(file);
   });
 }
 
-async function drawResizedDataUrl(dataUrl: string, maxSize: number, quality: number): Promise<string> {
-  return await new Promise<string>((resolve, reject) => {
-    try {
-      const img = new Image();
-      img.onload = () => {
-        try {
-          const w = img.naturalWidth || img.width || 1;
-          const h = img.naturalHeight || img.height || 1;
-          const scale = Math.min(1, maxSize / Math.max(w, h));
-          const tw = Math.max(1, Math.round(w * scale));
-          const th = Math.max(1, Math.round(h * scale));
-
-          const canvas = document.createElement("canvas");
-          canvas.width = tw;
-          canvas.height = th;
-          const ctx = canvas.getContext("2d");
-          if (!ctx) {
-            reject(new Error("canvas_unavailable"));
-            return;
-          }
-          ctx.drawImage(img, 0, 0, tw, th);
-          resolve(canvas.toDataURL("image/webp", quality));
-        } catch (e) {
-          reject(e);
-        }
-      };
-      img.onerror = () => reject(new Error("image_load_failed"));
-      img.src = dataUrl;
-    } catch (e) {
-      reject(e);
-    }
+async function loadImage(dataUrl: string): Promise<HTMLImageElement> {
+  return await new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = () => reject(new Error("image_load_failed"));
+    img.src = dataUrl;
   });
 }
 
-export async function fileToSafeAvatarDataUrl(file: File): Promise<string> {
-  const variants = await fileToAvatarVariants(file);
-  return variants.fullDataUrl;
+async function renderVariant(dataUrl: string, maxSide: number, quality: number): Promise<string> {
+  const img = await loadImage(dataUrl);
+  const w = img.naturalWidth || img.width || 1;
+  const h = img.naturalHeight || img.height || 1;
+  const scale = Math.min(1, maxSide / Math.max(w, h));
+  const tw = Math.max(1, Math.round(w * scale));
+  const th = Math.max(1, Math.round(h * scale));
+  const canvas = document.createElement("canvas");
+  canvas.width = tw;
+  canvas.height = th;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) throw new Error("canvas_unavailable");
+  ctx.drawImage(img, 0, 0, tw, th);
+  const webp = canvas.toDataURL("image/webp", quality);
+  return webp;
 }
-
-export async function enforceSafeAvatarDataUrl(dataUrl: string): Promise<string | null> {
-  const already = sanitizeAvatarDataUrl(dataUrl);
-  if (already) return already;
-  if (typeof dataUrl !== "string" || !dataUrl.startsWith("data:image/")) return null;
-
-  const attempts: Array<{ max: number; quality: number }> = [
-    { max: 160, quality: 0.78 },
-    { max: 128, quality: 0.76 },
-    { max: 112, quality: 0.74 },
-    { max: 96, quality: 0.72 },
-    { max: 80, quality: 0.7 },
-  ];
-
-  for (const a of attempts) {
-    try {
-      const out = await drawResizedDataUrl(dataUrl, a.max, a.quality);
-      const safe = sanitizeAvatarDataUrl(out);
-      if (safe) return safe;
-    } catch {}
-  }
-  return null;
-}
-
 
 export type AvatarVariants = {
   thumbDataUrl: string;
@@ -100,24 +56,35 @@ export type AvatarVariants = {
 
 export async function fileToAvatarVariants(file: File): Promise<AvatarVariants> {
   if (!file) throw new Error("missing_file");
-  if (file.size > MAX_AVATAR_FILE_MB * 1024 * 1024) {
-    throw new Error("avatar_file_too_big");
+  if (file.size > MAX_AVATAR_FILE_MB * 1024 * 1024) throw new Error("avatar_file_too_big");
+  const raw = await fileToDataUrl(file);
+  const thumbDataUrl = sanitizeAvatarDataUrl(await renderVariant(raw, 128, 0.82), 140_000);
+  const fullDataUrl = sanitizeAvatarDataUrl(await renderVariant(raw, 320, 0.88), 280_000);
+  const castDataUrl = sanitizeAvatarDataUrl(await renderVariant(raw, 512, 0.9), 380_000);
+  if (!thumbDataUrl || !fullDataUrl || !castDataUrl) throw new Error("avatar_variant_too_large");
+  return { thumbDataUrl, fullDataUrl, castDataUrl };
+}
+
+export async function fileToSafeAvatarDataUrl(file: File): Promise<string> {
+  return (await fileToAvatarVariants(file)).fullDataUrl;
+}
+
+export async function enforceSafeAvatarDataUrl(dataUrl: string): Promise<string | null> {
+  const direct = sanitizeAvatarDataUrl(dataUrl);
+  if (direct) return direct;
+  if (!String(dataUrl || "").startsWith("data:image/")) return null;
+  const variants = [
+    { maxSide: 320, quality: 0.88, limit: 280_000 },
+    { maxSide: 256, quality: 0.84, limit: 220_000 },
+    { maxSide: 192, quality: 0.82, limit: 180_000 },
+    { maxSide: 128, quality: 0.8, limit: 140_000 },
+  ];
+  for (const v of variants) {
+    try {
+      const next = await renderVariant(dataUrl, v.maxSide, v.quality);
+      const safe = sanitizeAvatarDataUrl(next, v.limit);
+      if (safe) return safe;
+    } catch {}
   }
-
-  const raw = await imageFileToDataUrl(file);
-  const thumb = await drawResizedDataUrl(raw, 128, 0.76);
-  const full = await drawResizedDataUrl(raw, 320, 0.84);
-  const cast = await drawResizedDataUrl(raw, 512, 0.88);
-
-  const thumbSafe = sanitizeAvatarDataUrl(thumb, 120_000);
-  const fullSafe = sanitizeAvatarDataUrl(full, 260_000) || sanitizeAvatarDataUrl(thumb, 120_000);
-  const castSafe = sanitizeAvatarDataUrl(cast, 380_000) || fullSafe || thumbSafe;
-
-  if (!thumbSafe || !fullSafe || !castSafe) throw new Error("avatar_dataurl_too_large");
-
-  return {
-    thumbDataUrl: thumbSafe,
-    fullDataUrl: fullSafe,
-    castDataUrl: castSafe,
-  };
+  return null;
 }
