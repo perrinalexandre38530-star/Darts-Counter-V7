@@ -140,6 +140,7 @@ async function apiFetch(path: string, init?: NasFetchInit): Promise<any> {
     const message = json?.error || json?.message || text || `Erreur backend NAS (${res.status})`;
     if (res.status === 401) {
       runtimeDiag("nas:http401", { path, message });
+      try { saveNasTokens(null, { silent: true }); } catch {}
     }
     const err: any = new Error(message);
     err.status = res.status;

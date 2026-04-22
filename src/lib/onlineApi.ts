@@ -771,14 +771,10 @@ async function maybeConsumeAuthRedirectFromHash(): Promise<void> {
 
 async function restoreSession(): Promise<AuthSession | null> {
   if (isNasProviderEnabled()) {
-    try {
-      return await ensureNasSession();
-    } catch (e) {
-      const cached = loadAuthFromLS();
-      if (cached?.token) warnNasOnce("[onlineApi] restoreSession(NAS) error", e);
-      try { saveAuthToLS(null); } catch {}
-      return null;
-    }
+    // LOT 2: pas de réseau NAS automatique dans restoreSession.
+    // On renvoie seulement la session locale en cache, si elle existe.
+    const cached = loadAuthFromLS();
+    return cached?.token ? cached : null;
   }
 
   try {

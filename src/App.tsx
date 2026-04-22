@@ -1349,32 +1349,10 @@ useEffect(() => {
 }, []);
 
 useEffect(() => {
-  let cancelled = false;
-
-  const run = async () => {
-    try {
-      const hasNasToken = !!localStorage.getItem("dc_nas_access_token_v1");
-      const hasCachedAuth = !!localStorage.getItem("dc_online_auth_supabase_v1");
-      const bootRestoreEnabled = (() => {
-        try { return localStorage.getItem("dc_nas_boot_restore_enabled") === "1"; } catch { return false; }
-      })();
-      runtimeDiag("boot:auth-presence", { hasNasToken, hasCachedAuth, bootRestoreEnabled });
-
-      if (!hasNasToken || !bootRestoreEnabled) return;
-
-      await bootstrapNasRestore().catch((e) => {
-        runtimeDiag("boot:bootstrapNasRestore:error", { message: String((e as any)?.message || e) });
-      });
-      // background NAS sync volontairement désactivée : sync manuelle uniquement
-    } catch {
-      // no-op
-    }
-  };
-
-  run();
-  return () => {
-    cancelled = true;
-  };
+  runtimeDiag("boot:nasRestore:disabled_lot2");
+  // LOT 2: aucun restore snapshot NAS automatique au démarrage.
+  // L'application charge le local d'abord; la synchro NAS reste manuelle.
+  return () => {};
 }, []);
 
 // 🔒 Cloud stats (events + training) — OFF par défaut pour éviter l'explosion Supabase.
