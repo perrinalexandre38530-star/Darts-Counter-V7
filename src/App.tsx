@@ -175,7 +175,7 @@ import { getAllDartSets, replaceAllDartSets } from "./lib/dartSetsStore";
 // Stats pages
 import StatsDetail from "./pages/StatsDetail";
 
-const Profiles = React.lazy(() => import("./pages/Profiles"));
+import Profiles from "./pages/Profiles";
 const ProfilesBots = React.lazy(() => import("./pages/ProfilesBots"));
 const FriendsPage = React.lazy(() => import("./pages/FriendsPage"));
 const Settings = React.lazy(() => import("./pages/Settings"));

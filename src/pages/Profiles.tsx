@@ -906,11 +906,19 @@ export default function Profiles({
   }
 
   async function changeAvatar(id: string, file: File) {
-    const variants = await fileToAvatarVariants(file);
-    const thumbDataUrl = variants.thumbDataUrl;
-    const fullDataUrl = variants.fullDataUrl;
-    const castDataUrl = variants.castDataUrl;
     const now = Date.now();
+    const objectUrl = URL.createObjectURL(file);
+    setProfilesSafe((arr) =>
+      arr.map((p) =>
+        p.id === id
+          ? { ...p, avatarUrl: undefined, avatarPath: undefined, avatarDataUrl: objectUrl, avatarUpdatedAt: now }
+          : p
+      )
+    );
+    const safeDataUrl = await fileToSafeAvatarDataUrl(file);
+    const thumbDataUrl = safeDataUrl;
+    const fullDataUrl = safeDataUrl;
+    const castDataUrl = safeDataUrl;
     const targetProfile = (stableProfiles as any[] || []).find((p: any) => String(p?.id || "") === String(id || "")) || null;
     const isOnlineLinked = isLinkedOnlineProfile(targetProfile);
 
@@ -980,6 +988,7 @@ export default function Profiles({
     }
 
     scheduleProfilesPersist("profiles_avatar", { ...(store as any), profiles: (stableProfiles as any[]).map((p: any) => p?.id === id ? ({ ...(p || {}), avatarUrl: undefined, avatarPath: undefined, avatarDataUrl: thumbDataUrl, avatarUpdatedAt: now }) : p) }, { cloud: false, delayMs: 6000 });
+    try { URL.revokeObjectURL(objectUrl); } catch {}
   }
 
   async function delProfile(id: string) {
@@ -1044,8 +1053,7 @@ export default function Profiles({
     if (!cleanName) return;
   
     const now = Date.now();
-    const avatarVariants = file ? await fileToAvatarVariants(file) : null;
-    const avatarDataUrl = avatarVariants?.thumbDataUrl || null;
+    const avatarDataUrl = file ? await fileToSafeAvatarDataUrl(file) : null;
   
     const p: Profile = {
       id:
@@ -1059,12 +1067,12 @@ export default function Profiles({
         privateInfo && Object.keys(privateInfo).length ? { ...privateInfo } : undefined,
     };
 
-    if (avatarVariants) {
+    if (avatarDataUrl) {
       writeAvatarCache(p.id, {
-        avatarDataUrl: avatarVariants.thumbDataUrl,
-        avatarThumbDataUrl: avatarVariants.thumbDataUrl,
-        avatarFullDataUrl: avatarVariants.fullDataUrl,
-        avatarCastDataUrl: avatarVariants.castDataUrl,
+        avatarDataUrl: avatarDataUrl,
+        avatarThumbDataUrl: avatarDataUrl,
+        avatarFullDataUrl: avatarDataUrl,
+        avatarCastDataUrl: avatarDataUrl,
         avatarUpdatedAt: now,
       });
     }
@@ -2307,27 +2315,14 @@ function ActiveProfileBlock({
   }, [active?.id]);
 
   React.useEffect(() => {
-    let alive = true;
-    (async () => {
-      if (!editFile) {
-        setEditPreview(null);
-        return;
-      }
-      try {
-        const safe = await fileToSafeAvatarDataUrl(editFile);
-        if (alive) setEditPreview(safe);
-      } catch (e) {
-        console.warn("[Profiles] avatar preview rejected, fallback to raw preview", e);
-        try {
-          const fallback = await read(editFile);
-          if (alive) setEditPreview(fallback);
-        } catch {
-          if (alive) setEditPreview(null);
-        }
-      }
-    })();
+    if (!editFile) {
+      setEditPreview(null);
+      return;
+    }
+    const objectUrl = URL.createObjectURL(editFile);
+    setEditPreview(objectUrl);
     return () => {
-      alive = false;
+      try { URL.revokeObjectURL(objectUrl); } catch {}
     };
   }, [editFile]);
 
@@ -3816,9 +3811,6 @@ function LocalProfilesRefonte({
   const [editFile, setEditFile] = React.useState<File | null>(null);
   const [editPreview, setEditPreview] = React.useState<string | null>(null);
   const [actionsOpen, setActionsOpen] = React.useState(false);
-  const [carouselBusy, setCarouselBusy] = React.useState(false);
-  const [settledProfileId, setSettledProfileId] = React.useState<string | null>(null);
-  const busyTimerRef = React.useRef<number | null>(null);
 
   React.useEffect(() => {
     if (index >= locals.length && locals.length > 0) {
@@ -3843,41 +3835,12 @@ function LocalProfilesRefonte({
     prevLocalsCountRef.current = locals.length;
   }, [locals.length]);
   const current = locals[index] || null;
-  const deferredCurrent = useDeferredValue(current);
-  const renderedCurrent = carouselBusy ? (deferredCurrent || current) : current;
+  const renderedCurrent = current;
 
-  React.useEffect(() => {
-    setCarouselBusy(true);
-    if (busyTimerRef.current != null && typeof window !== "undefined") {
-      window.clearTimeout(busyTimerRef.current);
-    }
-    if (typeof window !== "undefined") {
-      busyTimerRef.current = window.setTimeout(() => {
-        setCarouselBusy(false);
-        busyTimerRef.current = null;
-      }, 850);
-    }
-    return () => {
-      if (busyTimerRef.current != null && typeof window !== "undefined") {
-        window.clearTimeout(busyTimerRef.current);
-        busyTimerRef.current = null;
-      }
-    };
-  }, [index, current?.id]);
 
-  React.useEffect(() => {
-    if (!current?.id) {
-      setSettledProfileId(null);
-      return;
-    }
-    const timer = typeof window !== "undefined" ? window.setTimeout(() => setSettledProfileId(current.id), 1200) : null;
-    return () => {
-      if (timer != null && typeof window !== "undefined") window.clearTimeout(timer);
-    };
-  }, [current?.id]);
 
   // stats du profil courant
-  const bs = useBasicStats(!deferHeavy && !carouselBusy && settledProfileId === current?.id ? current?.id : null, !deferHeavy && !carouselBusy && settledProfileId === current?.id);
+  const bs = useBasicStats(!deferHeavy && current?.id ? current?.id : null, !deferHeavy && !!current?.id);
   const avg3 = Number.isFinite(bs.avg3) ? Number(bs.avg3) : 0;
   const bestVisit = Number(bs.bestVisit ?? 0);
   const bestCheckout = Number(bs.bestCheckout ?? 0);
@@ -3890,7 +3853,7 @@ function LocalProfilesRefonte({
     setEditPreview(null);
     setActionsOpen(false);
     if (current) {
-      const pi = ((renderedCurrent as any).privateInfo || {}) as { country?: string };
+      const pi = ((current as any)?.privateInfo || {}) as { country?: string };
       setEditName(current.name || "");
       setEditCountry(pi.country || "");
     } else {
@@ -3900,27 +3863,14 @@ function LocalProfilesRefonte({
   }, [current?.id]);
 
   React.useEffect(() => {
-    let alive = true;
-    (async () => {
-      if (!editFile) {
-        setEditPreview(null);
-        return;
-      }
-      try {
-        const safe = await fileToSafeAvatarDataUrl(editFile);
-        if (alive) setEditPreview(safe);
-      } catch (e) {
-        console.warn("[Profiles] avatar preview rejected, fallback to raw preview", e);
-        try {
-          const fallback = await read(editFile);
-          if (alive) setEditPreview(fallback);
-        } catch {
-          if (alive) setEditPreview(null);
-        }
-      }
-    })();
+    if (!editFile) {
+      setEditPreview(null);
+      return;
+    }
+    const objectUrl = URL.createObjectURL(editFile);
+    setEditPreview(objectUrl);
     return () => {
-      alive = false;
+      try { URL.revokeObjectURL(objectUrl); } catch {}
     };
   }, [editFile]);
 
