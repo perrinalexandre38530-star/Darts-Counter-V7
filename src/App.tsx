@@ -2384,6 +2384,31 @@ useEffect(() => {
     return () => window.removeEventListener("dc-history-updated", schedule);
   }, [loading, showSplash]);
 
+  React.useEffect(() => {
+    if (loading || showSplash) return;
+    let timer: number | null = null;
+    const preload = () => {
+      void import("./pages/Profiles");
+      void import("./pages/ProfilesBots");
+      void import("./pages/Settings");
+      void import("./pages/StatsShell");
+      void import("./pages/StatsHub");
+      void import("./pages/SyncCenter");
+      void import("./pages/TournamentsHome");
+    };
+    const ric: any = (window as any).requestIdleCallback;
+    if (typeof ric === "function") {
+      const id = ric(() => preload(), { timeout: 1200 });
+      return () => {
+        try { (window as any).cancelIdleCallback?.(id); } catch {}
+      };
+    }
+    timer = window.setTimeout(preload, 350);
+    return () => {
+      if (timer) window.clearTimeout(timer);
+    };
+  }, [loading, showSplash]);
+
   /* --------------------------------------------
       pushHistory (FIN DE PARTIE)
   -------------------------------------------- */
@@ -4020,18 +4045,23 @@ case "babyfoot_team_edit":
 function AppGate({ go, tab, children }: { go: (t: any, p?: any) => void; tab: any; children: React.ReactNode }) {
   const { status, ready } = useAuthOnline();
 
-  // pages qui nécessitent une session Supabase active
+  // pages qui nécessitent une session online active
   const needsSession = tab === "stats_online" || tab === "x01_online_setup" || tab === "online";
 
   // pendant les flows auth, on ne gate pas
   const isAuthFlow =
-  tab === "auth_reset" ||
-  tab === "auth_callback" ||
-  tab === "auth_forgot" ||
-  tab === "auth_start" ||
-  tab === "account_start" ||
-  tab === "auth_v7_login" ||
-  tab === "auth_v7_signup";
+    tab === "auth_reset" ||
+    tab === "auth_callback" ||
+    tab === "auth_forgot" ||
+    tab === "auth_start" ||
+    tab === "account_start" ||
+    tab === "auth_v7_login" ||
+    tab === "auth_v7_signup";
+
+  // ✅ Ne jamais bloquer les onglets locaux à cause du provider online.
+  if (!needsSession || isAuthFlow) {
+    return <>{children}</>;
+  }
 
   if (!ready) {
     return (
@@ -4042,12 +4072,12 @@ function AppGate({ go, tab, children }: { go: (t: any, p?: any) => void; tab: an
   }
 
   React.useEffect(() => {
-    if (!isAuthFlow && needsSession && status !== "signed_in") {
+    if (needsSession && status !== "signed_in") {
       go("auth_start");
     }
-  }, [isAuthFlow, needsSession, status, go]);
+  }, [needsSession, status, go]);
 
-  if (!isAuthFlow && needsSession && status !== "signed_in") {
+  if (needsSession && status !== "signed_in") {
     return (
       <div className="container" style={{ padding: 40, textAlign: "center" }}>
         Redirection vers la connexion…
