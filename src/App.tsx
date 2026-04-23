@@ -3768,11 +3768,25 @@ case "babyfoot_team_edit":
 
           try {
             let uploadRes: any = null;
+            const currentOnlineUserId = String((online as any)?.user?.id || "");
+            const targetId = String(targetProfile?.id || "");
+            const targetUserId = String((targetProfile as any)?.userId || "");
+            const looksOnlineMirror = !!((targetProfile as any)?.isOnlineMirror || (targetProfile as any)?.source === "online" || targetId.startsWith("online:"));
+            const isMainAccountProfile = !!currentOnlineUserId && (targetId === currentOnlineUserId || targetUserId === currentOnlineUserId || looksOnlineMirror);
             if ((online as any)?.status === "signed_in" && finalAvatarDataUrl) {
-              uploadRes = await onlineApi.uploadAvatarImage({
-                dataUrl: finalAvatarDataUrl,
-                updateProfile: true,
-              } as any);
+              if (isMainAccountProfile) {
+                uploadRes = await onlineApi.uploadAvatarImage({
+                  dataUrl: finalAvatarDataUrl,
+                  updateProfile: true,
+                } as any);
+              } else {
+                uploadRes = await onlineApi.uploadMediaAsset({
+                  dataUrl: finalAvatarDataUrl,
+                  kind: "local_profile_avatar",
+                  ownerId: targetId,
+                  variant: "full",
+                } as any);
+              }
             }
 
             try {
@@ -3810,15 +3824,22 @@ case "babyfoot_team_edit":
 
             if ((online as any)?.status === "signed_in") {
               try {
-                await onlineApi.updateProfile({
-                  displayName: trimmedName || targetProfile.name || undefined,
-                  avatarUrl: uploadRes?.publicUrl || undefined,
-                  avatarAssetId: uploadRes?.avatarAssetId || uploadRes?.assetId || undefined,
-                  avatarThumbAssetId: uploadRes?.avatarThumbAssetId || undefined,
-                  avatarFullAssetId: uploadRes?.avatarFullAssetId || undefined,
-                  avatarCastAssetId: uploadRes?.avatarCastAssetId || undefined,
-                } as any);
-                try { await (online as any)?.refresh?.(); } catch {}
+                const currentOnlineUserId = String((online as any)?.user?.id || "");
+                const targetId = String(targetProfile?.id || "");
+                const targetUserId = String((targetProfile as any)?.userId || "");
+                const looksOnlineMirror = !!((targetProfile as any)?.isOnlineMirror || (targetProfile as any)?.source === "online" || targetId.startsWith("online:"));
+                const isMainAccountProfile = !!currentOnlineUserId && (targetId === currentOnlineUserId || targetUserId === currentOnlineUserId || looksOnlineMirror);
+                if (isMainAccountProfile) {
+                  await onlineApi.updateProfile({
+                    displayName: trimmedName || targetProfile.name || undefined,
+                    avatarUrl: uploadRes?.publicUrl || undefined,
+                    avatarAssetId: uploadRes?.avatarAssetId || uploadRes?.assetId || undefined,
+                    avatarThumbAssetId: uploadRes?.avatarThumbAssetId || undefined,
+                    avatarFullAssetId: uploadRes?.avatarFullAssetId || undefined,
+                    avatarCastAssetId: uploadRes?.avatarCastAssetId || undefined,
+                  } as any);
+                  try { await (online as any)?.refresh?.(); } catch {}
+                }
               } catch (e) {
                 console.warn("[AvatarUpload] online updateProfile failed", e);
               }

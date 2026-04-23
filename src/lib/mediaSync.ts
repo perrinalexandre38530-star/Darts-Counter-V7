@@ -70,22 +70,22 @@ async function uploadProfileAvatar(profile: any) {
   const dataUrl = profile?.avatarDataUrl || profile?.avatar;
   if (!isDataImageUrl(dataUrl)) return profile;
   try {
-    const uploaded: any = await onlineApi.uploadAvatarImage({
+    const uploaded: any = await onlineApi.uploadMediaAsset({
       dataUrl,
-      updateProfile: false,
-      ownerId: String(profile?.id || ""),
       kind: "local_profile_avatar",
+      ownerId: String(profile?.id || ""),
       variant: "full",
     } as any);
     const publicUrl = asString(uploaded?.publicUrl || uploaded?.avatarUrl || uploaded?.path);
+    const assetId = uploaded?.assetId || uploaded?.id || profile?.avatarAssetId || null;
     const next = {
       ...(profile || {}),
       avatarUrl: publicUrl || profile?.avatarUrl || null,
       avatar: publicUrl || profile?.avatar || null,
-      avatarAssetId: uploaded?.avatarAssetId || uploaded?.assetId || profile?.avatarAssetId || null,
-      avatarThumbAssetId: uploaded?.avatarThumbAssetId || uploaded?.assetId || profile?.avatarThumbAssetId || null,
-      avatarFullAssetId: uploaded?.avatarFullAssetId || uploaded?.assetId || profile?.avatarFullAssetId || null,
-      avatarCastAssetId: uploaded?.avatarCastAssetId || uploaded?.assetId || profile?.avatarCastAssetId || null,
+      avatarAssetId: assetId,
+      avatarThumbAssetId: uploaded?.avatarThumbAssetId || assetId || profile?.avatarThumbAssetId || null,
+      avatarFullAssetId: uploaded?.avatarFullAssetId || assetId || profile?.avatarFullAssetId || null,
+      avatarCastAssetId: uploaded?.avatarCastAssetId || assetId || profile?.avatarCastAssetId || null,
       avatarUpdatedAt: uploaded?.avatarUpdatedAt || Date.now(),
       avatarDataUrl: profile?.avatarDataUrl || null,
     };
