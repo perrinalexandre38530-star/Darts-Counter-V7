@@ -67,6 +67,30 @@ function authToken(): string {
   return readLs(NAS_TOKEN_KEY);
 }
 
+
+export type NasMediaUploadPayload = {
+  dataUrl?: string;
+  base64?: string;
+  mimeType?: string;
+  kind: string;
+  ownerId?: string | null;
+  variant?: string | null;
+};
+
+export type NasMediaAsset = {
+  id: string;
+  assetId?: string;
+  kind?: string | null;
+  ownerId?: string | null;
+  variant?: string | null;
+  mimeType?: string | null;
+  byteSize?: number | null;
+  sha256?: string | null;
+  path?: string | null;
+  publicUrl?: string | null;
+  createdAt?: string | null;
+  updatedAt?: string | null;
+};
 async function apiFetchWithFallback(paths: string[], init?: RequestInit): Promise<any> {
   let lastError: any = null;
   for (const path of paths) {
@@ -502,17 +526,132 @@ export async function nasDeleteAccount(): Promise<void> {
   saveNasTokens(null);
 }
 
-export async function nasUploadAvatarImage(opts: { dataUrl: string; folder?: string; updateProfile?: boolean }): Promise<{ publicUrl: string; path: string }> {
+
+export async function nasUploadMediaAsset(payload: NasMediaUploadPayload): Promise<NasMediaAsset> {
   const session0 = await nasRestoreSession();
   if (!session0?.token) throw new Error("Token NAS manquant. Reconnecte-toi.");
 
-  const json = await apiFetch("/profiles/avatar", {
+  const json = await apiFetch("/media/upload", {
     method: "POST",
-    body: JSON.stringify({ dataUrl: opts.dataUrl }),
+    body: JSON.stringify({
+      dataUrl: payload.dataUrl,
+      base64: payload.base64,
+      mimeType: payload.mimeType,
+      kind: payload.kind,
+      ownerId: payload.ownerId ?? null,
+      variant: payload.variant ?? null,
+    }),
   });
+
   return {
-    publicUrl: String(json?.publicUrl || json?.avatarUrl || json?.avatar_data_url || ""),
-    path: String(json?.path || json?.profile?.id || "avatar-data-url"),
+    id: String(json?.id || json?.assetId || ""),
+    assetId: String(json?.assetId || json?.id || ""),
+    kind: json?.kind || payload.kind || null,
+    ownerId: json?.ownerId || payload.ownerId || null,
+    variant: json?.variant || payload.variant || null,
+    mimeType: json?.mimeType || payload.mimeType || null,
+    byteSize: Number(json?.byteSize || 0) || null,
+    sha256: json?.sha256 || null,
+    path: json?.path || null,
+    publicUrl: json?.publicUrl || null,
+    createdAt: json?.createdAt || null,
+    updatedAt: json?.updatedAt || null,
+  };
+}
+
+export async function nasBulkResolveMediaAssets(ids: string[]): Promise<NasMediaAsset[]> {
+  const cleanIds = (Array.isArray(ids) ? ids : []).map((v) => String(v || "").trim()).filter(Boolean);
+  if (!cleanIds.length) return [];
+
+  const session0 = await nasRestoreSession();
+  if (!session0?.token) throw new Error("Token NAS manquant. Reconnecte-toi.");
+
+  const json = await apiFetch("/media/bulk-resolve", {
+    method: "POST",
+    body: JSON.stringify({ ids: cleanIds }),
+  });
+
+  const assets = Array.isArray(json?.assets) ? json.assets : [];
+  return assets.map((row: any) => ({
+    id: String(row?.id || ""),
+    assetId: String(row?.assetId || row?.id || ""),
+    kind: row?.kind || null,
+    ownerId: row?.ownerId || null,
+    variant: row?.variant || null,
+    mimeType: row?.mimeType || null,
+    byteSize: Number(row?.byteSize || 0) || null,
+    sha256: row?.sha256 || null,
+    path: row?.path || null,
+    publicUrl: row?.publicUrl || null,
+    createdAt: row?.createdAt || null,
+    updatedAt: row?.updatedAt || null,
+  }));
+}
+
+export async function nasUploadAvatarImage(opts: {
+  dataUrl: string;
+  folder?: string;
+  updateProfile?: boolean;
+  ownerId?: string | null;
+  kind?: string;
+  variant?: string | null;
+  thumbDataUrl?: string | null;
+  fullDataUrl?: string | null;
+  castDataUrl?: string | null;
+}): Promise<{
+  publicUrl: string;
+  path: string;
+  assetId?: string;
+  avatarAssetId?: string | null;
+  avatarThumbAssetId?: string | null;
+  avatarFullAssetId?: string | null;
+  avatarCastAssetId?: string | null;
+  avatarVersion?: number | null;
+  avatarUpdatedAt?: string | null;
+}> {
+  const session0 = await nasRestoreSession();
+  if (!session0?.token) throw new Error("Token NAS manquant. Reconnecte-toi.");
+
+  if (opts.updateProfile !== false) {
+    const json = await apiFetch("/profiles/avatar", {
+      method: "POST",
+      body: JSON.stringify({
+        dataUrl: opts.dataUrl,
+        thumbDataUrl: opts.thumbDataUrl || null,
+        fullDataUrl: opts.fullDataUrl || null,
+        castDataUrl: opts.castDataUrl || null,
+      }),
+    });
+    return {
+      publicUrl: String(json?.publicUrl || json?.avatarUrl || json?.avatar_data_url || ""),
+      path: String(json?.path || `/media/${String(json?.assetId || json?.avatarAssetId || "")}` || "avatar-media"),
+      assetId: String(json?.assetId || json?.avatarAssetId || ""),
+      avatarAssetId: json?.avatarAssetId || json?.assetId || null,
+      avatarThumbAssetId: json?.avatarThumbAssetId || null,
+      avatarFullAssetId: json?.avatarFullAssetId || null,
+      avatarCastAssetId: json?.avatarCastAssetId || null,
+      avatarVersion: Number(json?.avatarVersion || 0) || null,
+      avatarUpdatedAt: json?.avatarUpdatedAt || null,
+    };
+  }
+
+  const uploaded = await nasUploadMediaAsset({
+    dataUrl: opts.dataUrl,
+    kind: opts.kind || "generic_avatar",
+    ownerId: opts.ownerId ?? null,
+    variant: opts.variant ?? null,
+  });
+
+  return {
+    publicUrl: String(uploaded.publicUrl || ""),
+    path: String(uploaded.path || `/media/${uploaded.id}`),
+    assetId: uploaded.id,
+    avatarAssetId: uploaded.id,
+    avatarThumbAssetId: null,
+    avatarFullAssetId: uploaded.id,
+    avatarCastAssetId: uploaded.id,
+    avatarVersion: null,
+    avatarUpdatedAt: null,
   };
 }
 
@@ -666,6 +805,8 @@ export const nasApi = {
   updateEmail: nasUpdateEmail,
   deleteAccount: nasDeleteAccount,
   uploadAvatarImage: nasUploadAvatarImage,
+  uploadMediaAsset: nasUploadMediaAsset,
+  bulkResolveMediaAssets: nasBulkResolveMediaAssets,
   pullStoreSnapshot: nasPullStoreSnapshot,
   pushStoreSnapshot: nasPushStoreSnapshot,
 };
