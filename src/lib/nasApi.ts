@@ -26,6 +26,12 @@ const NAS_TOKEN_KEY = "dc_nas_access_token_v1";
 const NAS_REFRESH_KEY = "dc_nas_refresh_token_v1";
 const NAS_AUTH_SESSION_KEY = "dc_online_auth_supabase_v1";
 
+const NAS_RESTORE_TIMEOUT_MS = 4500;
+const NAS_RESTORE_ERROR_BACKOFF_MS = 20000;
+let nasLastRestoreErrorAt = 0;
+let nasLastRestoreErrorKey = "";
+
+
 function now() {
   return Date.now();
 }
@@ -67,6 +73,14 @@ function authToken(): string {
   return readLs(NAS_TOKEN_KEY);
 }
 
+function isAuthFailureMessage(message: string): boolean {
+  return /session invalide|token|unauthorized|401|jwt|expired/i.test(String(message || ""));
+}
+
+function getCachedNasSession(): AuthSession | null {
+  const cached = readJson<AuthSession | null>(readLs(NAS_AUTH_SESSION_KEY), null);
+  return cached && String(cached?.token || "").trim() ? cached : null;
+}
 
 export type NasMediaUploadPayload = {
   dataUrl?: string;
@@ -396,8 +410,8 @@ export async function nasSignup(payload: SignupPayload): Promise<AuthSession> {
   return session;
 }
 
-export async function nasRestoreSession(opts?: { timeoutMs?: number }): Promise<AuthSession | null> {
-  const cached = readJson<AuthSession | null>(readLs(NAS_AUTH_SESSION_KEY), null);
+export async function nasRestoreSession(opts?: { timeoutMs?: number; force?: boolean }): Promise<AuthSession | null> {
+  const cached = getCachedNasSession();
 
   let token = authToken();
   if (!token && cached?.token) {
@@ -407,8 +421,18 @@ export async function nasRestoreSession(opts?: { timeoutMs?: number }): Promise<
   }
   if (!token) return null;
 
+  const timeoutMs = Math.max(1200, Number(opts?.timeoutMs ?? NAS_RESTORE_TIMEOUT_MS) || NAS_RESTORE_TIMEOUT_MS);
+  const nowTs = Date.now();
+  if (!opts?.force && cached?.token && nasLastRestoreErrorAt && nowTs - nasLastRestoreErrorAt < NAS_RESTORE_ERROR_BACKOFF_MS) {
+    runtimeDiag("nas:restoreSession:cached_during_backoff", {
+      waitMs: NAS_RESTORE_ERROR_BACKOFF_MS - (nowTs - nasLastRestoreErrorAt),
+      error: nasLastRestoreErrorKey,
+    });
+    return cached;
+  }
+
   try {
-    const json = await apiFetch("/auth/me", { method: "GET", timeoutMs: opts?.timeoutMs ?? 2200 });
+    const json = await apiFetch("/auth/me", { method: "GET", timeoutMs });
     const probe = buildSessionFromResponse(json, json?.user?.email);
     const session = buildSessionFromResponse(
       {
@@ -420,18 +444,31 @@ export async function nasRestoreSession(opts?: { timeoutMs?: number }): Promise<
     );
     if (!session.token) session.token = token;
     saveNasTokens(session, { silent: true });
+    nasLastRestoreErrorAt = 0;
+    nasLastRestoreErrorKey = "";
     return session;
   } catch (e: any) {
     const status = Number(e?.status || 0) || null;
     const message = String(e?.message || e || "restoreSession failed");
     runtimeDiag("nas:restoreSession:error", { status, message, hadCached: !!cached?.token });
-    if (status === 401 || /session invalide|token|unauthorized|401/i.test(message)) {
+    if (status === 401 || isAuthFailureMessage(message)) {
       saveNasTokens(null, { silent: true });
+      nasLastRestoreErrorAt = 0;
+      nasLastRestoreErrorKey = "auth";
       runtimeDiag("nas:restoreSession:cleared_invalid_session", { message });
       return null;
     }
-    console.warn("[nasApi] restoreSession failed", e);
-    saveNasTokens(null, { silent: true });
+
+    nasLastRestoreErrorAt = Date.now();
+    nasLastRestoreErrorKey = message.slice(0, 120);
+    console.warn("[nasApi] restoreSession soft-failed -> keep cached session", { status, message });
+    if (cached?.token) {
+      try {
+        writeLs(NAS_TOKEN_KEY, cached.token);
+        writeLs(NAS_REFRESH_KEY, cached.refreshToken || null);
+      } catch {}
+      return cached;
+    }
     return null;
   }
 }

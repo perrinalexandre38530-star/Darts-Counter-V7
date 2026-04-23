@@ -407,7 +407,7 @@ function mapLobbyRow(row: SupabaseLobbyRow): OnlineLobby {
 let __nasEnsureInFlight: Promise<AuthSession> | null = null;
 let __nasLastGoodSession: AuthSession | null = null;
 let __nasLastRestoreAt = 0;
-const NAS_RESTORE_MIN_INTERVAL_MS = 12_000;
+const NAS_RESTORE_MIN_INTERVAL_MS = 20_000;
 
 let __nasWarnAt = 0;
 function warnNasOnce(label: string, extra?: any) {
@@ -427,7 +427,7 @@ function refreshNasSessionInBackground(reason: string) {
 
   __nasEnsureInFlight = (async () => {
     try {
-      const refreshed = await nasRestoreSession({ timeoutMs: 2200 });
+      const refreshed = await nasRestoreSession({ timeoutMs: 4500 });
       if (isValidNasSession(refreshed)) {
         __nasLastGoodSession = refreshed;
         saveAuthToLS(refreshed);
@@ -466,18 +466,28 @@ async function ensureNasSession(): Promise<AuthSession> {
 
   __nasEnsureInFlight = (async () => {
     __nasLastRestoreAt = nowTs;
-    const session = await nasRestoreSession({ timeoutMs: 2200 });
+    const session = await nasRestoreSession({ timeoutMs: 4500 });
     const token = String(session?.token || "").trim();
     const userId = String(session?.user?.id || session?.userId || "").trim();
 
     if (!token || !userId) {
       const cachedAuth = loadAuthFromLS();
-      if (cachedAuth) {
-        warnNasOnce("[onlineApi] NAS session missing", {
+      if (isValidNasSession(cachedAuth)) {
+        __nasLastGoodSession = cachedAuth;
+        warnNasOnce("[onlineApi] NAS restore incomplete -> keep cached session", {
           hasToken: !!token,
           hasUserId: !!userId,
-          lsAuth: cachedAuth,
+          cachedUserId: cachedAuth?.user?.id || cachedAuth?.userId || null,
         });
+        return cachedAuth;
+      }
+      if (isValidNasSession(__nasLastGoodSession)) {
+        warnNasOnce("[onlineApi] NAS restore incomplete -> keep last good session", {
+          hasToken: !!token,
+          hasUserId: !!userId,
+          cachedUserId: __nasLastGoodSession?.user?.id || __nasLastGoodSession?.userId || null,
+        });
+        return __nasLastGoodSession!;
       }
       throw new Error("Token NAS manquant. Reconnecte-toi.");
     }

@@ -2,6 +2,10 @@ async function getStorage() {
   return await import("./storage");
 }
 
+async function getMediaSync() {
+  return await import("./mediaSync");
+}
+
 async function getOnlineApi() {
   const mod = await import("./onlineApi");
   return mod.onlineApi;
@@ -78,10 +82,18 @@ export async function pullNasAccountSnapshot() {
   const api = await getOnlineApi();
   const res: any = await api.pullStoreSnapshot();
   if (!res || res.status !== "ok" || !res.payload) return res;
-  const { importCloudSnapshot } = await getStorage();
+  const { importCloudSnapshot, loadStore, saveStore } = await getStorage();
+  const { hydrateStoreMediaUrls } = await getMediaSync();
   setApplyingNasSnapshot(true);
   try {
     await importCloudSnapshot(res.payload, { mode: "replace" });
+    try {
+      const restored: any = await loadStore().catch(() => null);
+      const hydrated = restored ? await hydrateStoreMediaUrls(restored).catch(() => restored) : null;
+      if (hydrated && hydrated !== restored) {
+        await saveStore(hydrated as any);
+      }
+    } catch {}
     try { localStorage.setItem(LAST_PULL_KEY, new Date().toISOString()); } catch {}
     clearNasSyncDirty();
     return res;
