@@ -42,10 +42,11 @@ function levelDescription(level: BotLevel, t: (k: string, f?: string) => string)
 
 function BotAvatar({ bot, color, size = 42 }: { bot: Bot | null; color: string; size?: number }) {
   const letter = (bot?.name || "?").trim().charAt(0).toUpperCase() || "?";
-  if (bot?.avatarDataUrl) {
+  const resolvedAvatarSrc = bot?.avatarDataUrl || (typeof (bot as any)?.avatarUrl === "string" ? (bot as any).avatarUrl : null);
+  if (resolvedAvatarSrc) {
     return (
       <div style={{ width: size, height: size, borderRadius: "50%", background: "#050714", border: `1px solid ${color}aa`, display: "flex", alignItems: "center", justifyContent: "center", position: "relative", boxShadow: `0 0 10px ${color}55`, flexShrink: 0, overflow: "hidden" }}>
-        <img src={bot.avatarDataUrl} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+        <img src={resolvedAvatarSrc} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
       </div>
     );
   }

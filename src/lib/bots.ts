@@ -18,6 +18,12 @@ export type BotRecord = {
   botLevel?: string | null;
   avatarSeed: string;
   avatarDataUrl?: string | null;
+  avatarUrl?: string | null;
+  avatarAssetId?: string | null;
+  avatarThumbAssetId?: string | null;
+  avatarFullAssetId?: string | null;
+  avatarCastAssetId?: string | null;
+  avatarUpdatedAt?: string | number | null;
   createdAt: string;
   updatedAt: string;
   isBot?: boolean;
@@ -150,7 +156,7 @@ function packBotMeta(bot: BotRecord) {
   return {
     ...rest,
     avatarDataUrl: null,
-    avatarUrl: null,
+    avatarUrl: typeof bot?.avatarUrl === "string" && !String(bot.avatarUrl).startsWith("data:image/") ? bot.avatarUrl : null,
     avatar: null,
   };
 }
@@ -242,6 +248,12 @@ export function normalizeBotRecord(input: any): BotRecord {
     botLevel: String(input?.botLevel || level),
     avatarSeed: String(input?.avatarSeed || Math.random().toString(36).slice(2, 10)),
     avatarDataUrl,
+    avatarUrl: typeof input?.avatarUrl === "string" && !String(input.avatarUrl).startsWith("data:image/") ? String(input.avatarUrl) : null,
+    avatarAssetId: input?.avatarAssetId || null,
+    avatarThumbAssetId: input?.avatarThumbAssetId || null,
+    avatarFullAssetId: input?.avatarFullAssetId || null,
+    avatarCastAssetId: input?.avatarCastAssetId || null,
+    avatarUpdatedAt: input?.avatarUpdatedAt || null,
     createdAt: String(input?.createdAt || nowIso),
     updatedAt: String(input?.updatedAt || nowIso),
     isBot: true,
@@ -311,8 +323,12 @@ export function loadBots(): BotRecord[] {
     ...bot,
     avatarDataUrl:
       avatarsMap[bot.id] ??
-      sanitizeAvatarDataUrl(bot.avatarDataUrl ?? (bot as any)?.avatar ?? (bot as any)?.avatarUrl ?? null) ??
+      sanitizeAvatarDataUrl(bot.avatarDataUrl ?? (bot as any)?.avatar ?? null) ??
       null,
+    avatarUrl:
+      typeof (bot as any)?.avatarUrl === "string" && !(bot as any).avatarUrl.startsWith("data:image/")
+        ? (bot as any).avatarUrl
+        : null,
   }));
 
   if (merged.length > 0) return normalizeBotsList(merged);

@@ -12,6 +12,10 @@ export type AvatarCacheEntry = {
   avatarCastDataUrl?: string | null;
   avatarUrl?: string | null;
   avatarUpdatedAt?: number;
+  avatarAssetId?: string | null;
+  avatarThumbAssetId?: string | null;
+  avatarFullAssetId?: string | null;
+  avatarCastAssetId?: string | null;
 };
 
 function sanitizeEntry(entry: AvatarCacheEntry | null | undefined): AvatarCacheEntry | null {
@@ -33,6 +37,10 @@ function sanitizeEntry(entry: AvatarCacheEntry | null | undefined): AvatarCacheE
     avatarCastDataUrl: avatarCastDataUrl || null,
     avatarUrl,
     avatarUpdatedAt: Number(entry.avatarUpdatedAt || Date.now()),
+    avatarAssetId: typeof entry.avatarAssetId === "string" ? entry.avatarAssetId : null,
+    avatarThumbAssetId: typeof entry.avatarThumbAssetId === "string" ? entry.avatarThumbAssetId : null,
+    avatarFullAssetId: typeof entry.avatarFullAssetId === "string" ? entry.avatarFullAssetId : null,
+    avatarCastAssetId: typeof entry.avatarCastAssetId === "string" ? entry.avatarCastAssetId : null,
   };
 }
 

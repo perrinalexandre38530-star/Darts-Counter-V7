@@ -1,111 +1,135 @@
-import { nasBulkResolveMediaAssets, nasUploadMediaAsset, type NasMediaAsset } from "./nasApi";
+import { onlineApi } from "./onlineApi";
+import { setAvatarCache } from "./avatarCache";
 
-export type MediaVariantMap = {
-  thumb?: string | null;
-  full?: string | null;
-  cast?: string | null;
-};
-
-export type UploadedAvatarRefs = {
-  avatarAssetId: string | null;
-  avatarThumbAssetId: string | null;
-  avatarFullAssetId: string | null;
-  avatarCastAssetId: string | null;
-  avatarUpdatedAt: string;
-  avatarVersionBump: number;
-};
-
-function cleanDataUrl(value: unknown): string | null {
-  const raw = String(value || "").trim();
-  return raw.startsWith("data:image/") ? raw : null;
+function asString(value: any): string {
+  return typeof value === "string" ? value.trim() : "";
 }
 
-export async function uploadAvatarVariantsToNas(opts: {
-  ownerId: string;
-  kind: "local_profile_avatar" | "bot_avatar" | "dartset_photo" | "profile_avatar";
-  variants: MediaVariantMap;
-}): Promise<UploadedAvatarRefs> {
-  const thumb = cleanDataUrl(opts.variants.thumb);
-  const full = cleanDataUrl(opts.variants.full) || thumb;
-  const cast = cleanDataUrl(opts.variants.cast) || full || thumb;
-  const main = full || thumb || cast;
+function pickPublicUrl(row: any): string | null {
+  const v = row?.publicUrl || row?.url || row?.avatarUrl || row?.path || null;
+  return typeof v === "string" && v.trim() ? String(v) : null;
+}
 
-  if (!main) {
-    throw new Error("Aucune image avatar valide à envoyer.");
+function pushIfString(set: Set<string>, value: any) {
+  const v = asString(value);
+  if (v) set.add(v);
+}
+
+export function collectStoreMediaAssetIds(store: any): string[] {
+  const ids = new Set<string>();
+
+  const profiles = Array.isArray(store?.profiles) ? store.profiles : [];
+  for (const p of profiles) {
+    pushIfString(ids, p?.avatarAssetId);
+    pushIfString(ids, p?.avatarThumbAssetId);
+    pushIfString(ids, p?.avatarFullAssetId);
+    pushIfString(ids, p?.avatarCastAssetId);
   }
 
-  const uploadedMain = await nasUploadMediaAsset({
-    dataUrl: main,
-    kind: opts.kind,
-    ownerId: opts.ownerId,
-    variant: "main",
-  });
+  const bots = Array.isArray(store?.bots) ? store.bots : [];
+  for (const b of bots) {
+    pushIfString(ids, b?.avatarAssetId);
+    pushIfString(ids, b?.avatarThumbAssetId);
+    pushIfString(ids, b?.avatarFullAssetId);
+    pushIfString(ids, b?.avatarCastAssetId);
+  }
 
-  const uploadedThumb = thumb
-    ? await nasUploadMediaAsset({
-        dataUrl: thumb,
-        kind: opts.kind,
-        ownerId: opts.ownerId,
-        variant: "thumb",
-      })
-    : null;
+  const dartSets = Array.isArray(store?.dartSets) ? store.dartSets : [];
+  for (const ds of dartSets) {
+    pushIfString(ids, ds?.mainImageAssetId);
+    pushIfString(ids, ds?.thumbImageAssetId);
+    pushIfString(ids, ds?.photoAssetId);
+  }
 
-  const uploadedFull = full
-    ? await nasUploadMediaAsset({
-        dataUrl: full,
-        kind: opts.kind,
-        ownerId: opts.ownerId,
-        variant: "full",
-      })
-    : null;
-
-  const uploadedCast = cast
-    ? await nasUploadMediaAsset({
-        dataUrl: cast,
-        kind: opts.kind,
-        ownerId: opts.ownerId,
-        variant: "cast",
-      })
-    : null;
-
-  return {
-    avatarAssetId: uploadedMain.id || null,
-    avatarThumbAssetId: uploadedThumb?.id || null,
-    avatarFullAssetId: uploadedFull?.id || uploadedMain.id || null,
-    avatarCastAssetId: uploadedCast?.id || uploadedFull?.id || uploadedMain.id || null,
-    avatarUpdatedAt: new Date().toISOString(),
-    avatarVersionBump: 1,
-  };
+  return Array.from(ids);
 }
 
-export async function resolveMediaAssetMap(ids: Array<string | null | undefined>): Promise<Record<string, NasMediaAsset>> {
-  const cleanIds = Array.from(new Set(ids.map((id) => String(id || "").trim()).filter(Boolean)));
+export async function resolveAssetPublicUrls(ids: string[]): Promise<Record<string, string>> {
+  const cleanIds = (Array.isArray(ids) ? ids : []).map((v) => String(v || "").trim()).filter(Boolean);
   if (!cleanIds.length) return {};
-  const assets = await nasBulkResolveMediaAssets(cleanIds);
-  return assets.reduce<Record<string, NasMediaAsset>>((acc, asset) => {
-    if (asset?.id) acc[String(asset.id)] = asset;
-    return acc;
-  }, {});
+  try {
+    const assets = await onlineApi.bulkResolveMediaAssets(cleanIds as any);
+    const out: Record<string, string> = {};
+    for (const row of Array.isArray(assets) ? assets : []) {
+      const id = asString((row as any)?.id || (row as any)?.assetId);
+      const url = pickPublicUrl(row);
+      if (id && url) out[id] = url;
+    }
+    return out;
+  } catch (err) {
+    console.warn("[mediaSync] resolveAssetPublicUrls failed", err);
+    return {};
+  }
 }
 
-export function pickBestMediaUrl(assetMap: Record<string, NasMediaAsset>, refs: {
-  avatarThumbAssetId?: string | null;
-  avatarFullAssetId?: string | null;
-  avatarCastAssetId?: string | null;
-  avatarAssetId?: string | null;
-}): string {
-  const candidates = [
-    refs.avatarThumbAssetId,
-    refs.avatarFullAssetId,
-    refs.avatarCastAssetId,
-    refs.avatarAssetId,
-  ];
-  for (const id of candidates) {
-    const key = String(id || "").trim();
-    if (!key) continue;
-    const asset = assetMap[key];
-    const url = String(asset?.publicUrl || asset?.path || "").trim();
-    if (url) return url;
+export async function hydrateStoreMediaUrls(store: any): Promise<any> {
+  const ids = collectStoreMediaAssetIds(store);
+  if (!ids.length) return store;
+  const urls = await resolveAssetPublicUrls(ids);
+  if (!Object.keys(urls).length) return store;
+
+  let changed = false;
+  const next: any = { ...(store || {}) };
+
+  if (Array.isArray(next.profiles)) {
+    next.profiles = next.profiles.map((p: any) => {
+      const out = { ...(p || {}) };
+      const assetId = asString(out.avatarAssetId || out.avatarFullAssetId || out.avatarThumbAssetId || out.avatarCastAssetId);
+      const url = assetId ? urls[assetId] : "";
+      if (url && out.avatarUrl !== url) {
+        out.avatarUrl = url;
+        out.avatar = url;
+        changed = true;
+      }
+      if (url) {
+        try {
+          setAvatarCache({
+            profileId: String(out.id || ""),
+            avatarUrl: url,
+            avatarUpdatedAt: Number(out.avatarUpdatedAt || Date.now()),
+            avatarAssetId: asString(out.avatarAssetId || null) || null,
+            avatarThumbAssetId: asString(out.avatarThumbAssetId || null) || null,
+            avatarFullAssetId: asString(out.avatarFullAssetId || null) || null,
+            avatarCastAssetId: asString(out.avatarCastAssetId || null) || null,
+          } as any);
+        } catch {}
+      }
+      return out;
+    });
   }
-  return "";
+
+  if (Array.isArray(next.bots)) {
+    next.bots = next.bots.map((b: any) => {
+      const out = { ...(b || {}) };
+      const assetId = asString(out.avatarAssetId || out.avatarFullAssetId || out.avatarThumbAssetId || out.avatarCastAssetId);
+      const url = assetId ? urls[assetId] : "";
+      if (url) {
+        if (out.avatarUrl !== url) changed = true;
+        out.avatarUrl = url;
+        out.avatar = url;
+      }
+      return out;
+    });
+  }
+
+  if (Array.isArray(next.dartSets)) {
+    next.dartSets = next.dartSets.map((ds: any) => {
+      const out = { ...(ds || {}) };
+      const mainId = asString(out.mainImageAssetId || out.photoAssetId);
+      const thumbId = asString(out.thumbImageAssetId || out.mainImageAssetId || out.photoAssetId);
+      const mainUrl = mainId ? urls[mainId] : "";
+      const thumbUrl = thumbId ? urls[thumbId] : "";
+      if (mainUrl && out.mainImageUrl !== mainUrl) {
+        out.mainImageUrl = mainUrl;
+        changed = true;
+      }
+      if (thumbUrl && out.thumbImageUrl !== thumbUrl) {
+        out.thumbImageUrl = thumbUrl;
+        changed = true;
+      }
+      return out;
+    });
+  }
+
+  return changed ? next : store;
 }

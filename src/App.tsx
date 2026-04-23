@@ -73,6 +73,8 @@ import { rehydrateSupabaseSession } from "./lib/onlineSessionFix";
 import { bootstrapNasRestore } from "./lib/nasBootstrapRestore";
 import { markNasSyncDirty, pushNasSyncDirtyReason } from "./lib/manualNasSync";
 import { enforceSafeAvatarDataUrl } from "./lib/avatarSafe";
+import { setAvatarCache } from "./lib/avatarCache";
+import { hydrateStoreMediaUrls } from "./lib/mediaSync";
 import BottomNav from "./components/BottomNav";
 
 import AuthStart from "./pages/AuthStart";
@@ -516,18 +518,19 @@ function sanitizeStoreForCloud(s: any) {
   if (Array.isArray(clone.profiles)) {
     clone.profiles = clone.profiles.map((p: any) => {
       const out = { ...(p || {}) };
-      const v = out.avatarDataUrl;
-      if (typeof v === "string" && v.startsWith("data:")) delete out.avatarDataUrl;
-
-      // 🔒 sécurité: ne JAMAIS pousser un mot de passe en cloud
+      delete out.avatarDataUrl;
+      delete out.photoDataUrl;
+      if (typeof out.avatar === "string" && out.avatar.startsWith("data:")) delete out.avatar;
+      if (typeof out.avatarUrl === "string" && out.avatarUrl.startsWith("data:")) delete out.avatarUrl;
       try {
         if (out.privateInfo && typeof out.privateInfo === "object") {
           const pi: any = { ...(out.privateInfo as any) };
           if (pi.password) delete pi.password;
+          if (pi.passwordHash) delete pi.passwordHash;
+          if (pi.confirmPassword) delete pi.confirmPassword;
           out.privateInfo = pi;
         }
       } catch {}
-
       return out;
     });
   }
@@ -535,42 +538,43 @@ function sanitizeStoreForCloud(s: any) {
   if (Array.isArray(clone.history)) {
     clone.history = clone.history.map((r: any) => {
       const rr = { ...(r || {}) };
-
       if (Array.isArray(rr.players)) {
         rr.players = rr.players.map((pl: any) => {
           const pp = { ...(pl || {}) };
-          const v = (pp as any).avatarDataUrl ?? (pp as any).avatarUrl;
-          if (typeof v === "string" && v.startsWith("data:")) {
-            if (typeof (pp as any).avatarDataUrl === "string" && (pp as any).avatarDataUrl.startsWith("data:")) delete (pp as any).avatarDataUrl;
-            if (typeof (pp as any).avatarUrl === "string" && (pp as any).avatarUrl.startsWith("data:")) delete (pp as any).avatarUrl;
-          }
+          if (typeof (pp as any).avatarDataUrl === "string" && (pp as any).avatarDataUrl.startsWith("data:")) delete (pp as any).avatarDataUrl;
+          if (typeof (pp as any).avatarUrl === "string" && (pp as any).avatarUrl.startsWith("data:")) delete (pp as any).avatarUrl;
           return pp;
         });
       }
-
       if (rr.payload && Array.isArray(rr.payload.players)) {
         rr.payload = { ...(rr.payload || {}) };
         rr.payload.players = rr.payload.players.map((pl: any) => {
           const pp = { ...(pl || {}) };
-          const v = (pp as any).avatarDataUrl ?? (pp as any).avatarUrl;
-          if (typeof v === "string" && v.startsWith("data:")) {
-            if (typeof (pp as any).avatarDataUrl === "string" && (pp as any).avatarDataUrl.startsWith("data:")) delete (pp as any).avatarDataUrl;
-            if (typeof (pp as any).avatarUrl === "string" && (pp as any).avatarUrl.startsWith("data:")) delete (pp as any).avatarUrl;
-          }
+          if (typeof (pp as any).avatarDataUrl === "string" && (pp as any).avatarDataUrl.startsWith("data:")) delete (pp as any).avatarDataUrl;
+          if (typeof (pp as any).avatarUrl === "string" && (pp as any).avatarUrl.startsWith("data:")) delete (pp as any).avatarUrl;
           return pp;
         });
       }
-
       return rr;
     });
   }
 
-  // ✅ DartSets : ne pas pousser de base64 (photoDataUrl) en cloud
+  if (Array.isArray((clone as any).bots)) {
+    (clone as any).bots = (clone as any).bots.map((b: any) => {
+      const bo = { ...(b || {}) };
+      delete bo.avatarDataUrl;
+      if (typeof bo.avatar === "string" && bo.avatar.startsWith("data:")) delete bo.avatar;
+      if (typeof bo.avatarUrl === "string" && bo.avatarUrl.startsWith("data:")) delete bo.avatarUrl;
+      return bo;
+    });
+  }
+
   if (Array.isArray((clone as any).dartSets)) {
     (clone as any).dartSets = (clone as any).dartSets.map((ds: any) => {
       const dso = { ...(ds || {}) };
-      const p = dso.photoDataUrl;
-      if (typeof p === "string" && p.startsWith("data:")) delete dso.photoDataUrl;
+      if (typeof dso.photoDataUrl === "string") delete dso.photoDataUrl;
+      if (typeof dso.mainImageUrl === "string" && dso.mainImageUrl.startsWith("data:")) dso.mainImageUrl = "";
+      if (typeof dso.thumbImageUrl === "string" && dso.thumbImageUrl.startsWith("data:")) delete dso.thumbImageUrl;
       return dso;
     });
   }
@@ -2139,14 +2143,15 @@ useEffect(() => {
             try {
               await importCloudSnapshot(payload as any, { mode: "replace" });
               const restored = await loadStore<Store>();
-              const next: Store = restored
+              const restoredWithMedia = restored ? await hydrateStoreMediaUrls(restored as any).catch(() => restored as any) : null;
+              const next: Store = restoredWithMedia
                 ? {
                     ...initialStore,
-                    ...restored,
-                    profiles: restored.profiles ?? [],
-                    friends: restored.friends ?? [],
-                    history: restored.history ?? [],
-                    dartSets: (restored as any).dartSets ?? getAllDartSets(),
+                    ...restoredWithMedia,
+                    profiles: (restoredWithMedia as any).profiles ?? [],
+                    friends: (restoredWithMedia as any).friends ?? [],
+                    history: (restoredWithMedia as any).history ?? [],
+                    dartSets: (restoredWithMedia as any).dartSets ?? getAllDartSets(),
                   }
                 : { ...initialStore };
 
@@ -2201,13 +2206,14 @@ useEffect(() => {
           }
 
           if (cloudStore && typeof cloudStore === "object") {
+            const mediaHydratedStore = await hydrateStoreMediaUrls(cloudStore as any).catch(() => cloudStore as any);
             const next: Store = {
               ...initialStore,
-              ...(cloudStore as any),
-              profiles: (cloudStore as any).profiles ?? [],
-              friends: (cloudStore as any).friends ?? [],
-              history: (cloudStore as any).history ?? [],
-              dartSets: (cloudStore as any).dartSets ?? getAllDartSets(),
+              ...(mediaHydratedStore as any),
+              profiles: (mediaHydratedStore as any).profiles ?? [],
+              friends: (mediaHydratedStore as any).friends ?? [],
+              history: (mediaHydratedStore as any).history ?? [],
+              dartSets: (mediaHydratedStore as any).dartSets ?? getAllDartSets(),
             };
 
             if (!cancelled) {
@@ -3686,6 +3692,22 @@ case "babyfoot_team_edit":
 
             const safeAvatarDataUrl = await enforceSafeAvatarDataUrl(pngDataUrl).catch(() => null);
             const finalAvatarDataUrl = safeAvatarDataUrl || (typeof pngDataUrl === "string" && pngDataUrl.startsWith("data:image/") ? pngDataUrl : null);
+            const nowIso = new Date().toISOString();
+
+            let uploadRes: any = null;
+            try {
+              if ((online as any)?.status === "signed_in" && finalAvatarDataUrl) {
+                uploadRes = await onlineApi.uploadAvatarImage({
+                  dataUrl: finalAvatarDataUrl,
+                  updateProfile: false,
+                  ownerId: latestTarget.id,
+                  kind: "bot_avatar",
+                  variant: "full",
+                } as any);
+              }
+            } catch (e) {
+              console.warn("[AvatarUpload] bot upload failed -> local cache only", e);
+            }
 
             const next = latestBots.slice();
             const idx = next.findIndex((b) => b.id === latestTarget.id);
@@ -3694,9 +3716,14 @@ case "babyfoot_team_edit":
               ...latestTarget,
               name: name?.trim() || latestTarget.name,
               avatarDataUrl: finalAvatarDataUrl ?? latestTarget.avatarDataUrl ?? null,
-              avatar: finalAvatarDataUrl ?? latestTarget.avatarDataUrl ?? null,
-              avatarUrl: finalAvatarDataUrl ?? latestTarget.avatarDataUrl ?? null,
-              updatedAt: new Date().toISOString(),
+              avatar: uploadRes?.publicUrl || latestTarget.avatar || null,
+              avatarUrl: uploadRes?.publicUrl || latestTarget.avatarUrl || null,
+              avatarAssetId: uploadRes?.avatarAssetId || uploadRes?.assetId || latestTarget.avatarAssetId || null,
+              avatarThumbAssetId: uploadRes?.avatarThumbAssetId || latestTarget.avatarThumbAssetId || null,
+              avatarFullAssetId: uploadRes?.avatarFullAssetId || uploadRes?.avatarAssetId || uploadRes?.assetId || latestTarget.avatarFullAssetId || null,
+              avatarCastAssetId: uploadRes?.avatarCastAssetId || latestTarget.avatarCastAssetId || null,
+              avatarUpdatedAt: uploadRes?.avatarUpdatedAt || nowIso,
+              updatedAt: nowIso,
             };
 
             if (idx >= 0) next[idx] = updated;
@@ -3707,11 +3734,10 @@ case "babyfoot_team_edit":
               alert("Enregistrement avatar BOT impossible (stockage plein ?)");
               return;
             }
+            try { window.dispatchEvent(new Event("dc:bots-changed")); } catch {}
             try {
-              window.dispatchEvent(new Event("dc:bots-changed"));
-            } catch {}
-            try {
-              (window as any).__flushCloudNow?.("bots_avatar_save");
+              const w: any = window as any;
+              if (typeof w?.__markNasSyncDirty === "function") w.__markNasSyncDirty("bots_avatar_save");
             } catch {}
             go(backTo);
           }
@@ -3737,46 +3763,73 @@ case "babyfoot_team_edit":
 
           const trimmedName = (name || "").trim();
           const now = Date.now();
+          const safeAvatarDataUrl = await enforceSafeAvatarDataUrl(pngDataUrl).catch(() => null);
+          const finalAvatarDataUrl = safeAvatarDataUrl || (typeof pngDataUrl === "string" && pngDataUrl.startsWith("data:image/") ? pngDataUrl : null);
 
           try {
+            let uploadRes: any = null;
+            if ((online as any)?.status === "signed_in" && finalAvatarDataUrl) {
+              uploadRes = await onlineApi.uploadAvatarImage({
+                dataUrl: finalAvatarDataUrl,
+                updateProfile: true,
+              } as any);
+            }
+
+            try {
+              setAvatarCache({
+                profileId: String(targetProfile.id),
+                avatarDataUrl: finalAvatarDataUrl || null,
+                avatarUrl: uploadRes?.publicUrl || null,
+                avatarUpdatedAt: now,
+                avatarAssetId: uploadRes?.avatarAssetId || uploadRes?.assetId || null,
+                avatarThumbAssetId: uploadRes?.avatarThumbAssetId || null,
+                avatarFullAssetId: uploadRes?.avatarFullAssetId || null,
+                avatarCastAssetId: uploadRes?.avatarCastAssetId || null,
+              } as any);
+            } catch {}
+
             setProfiles((list) =>
               list.map((p) =>
                 p.id === targetProfile.id
                   ? {
                       ...p,
                       name: trimmedName || p.name,
-                      avatarUrl: undefined,
-                      avatarPath: undefined,
-                      avatarUpdatedAt: now,
-                      avatarDataUrl: pngDataUrl,
-                      avatar: pngDataUrl,
+                      avatarUrl: uploadRes?.publicUrl || p.avatarUrl,
+                      avatarPath: uploadRes?.path || p.avatarPath,
+                      avatarUpdatedAt: uploadRes?.avatarUpdatedAt || now,
+                      avatarAssetId: uploadRes?.avatarAssetId || uploadRes?.assetId || p.avatarAssetId,
+                      avatarThumbAssetId: uploadRes?.avatarThumbAssetId || p.avatarThumbAssetId,
+                      avatarFullAssetId: uploadRes?.avatarFullAssetId || p.avatarFullAssetId,
+                      avatarCastAssetId: uploadRes?.avatarCastAssetId || p.avatarCastAssetId,
+                      avatarDataUrl: finalAvatarDataUrl || p.avatarDataUrl,
+                      avatar: uploadRes?.publicUrl || p.avatar,
                     }
                   : p
               )
             );
 
-            try {
-              if ((online as any)?.status === "signed_in") {
+            if ((online as any)?.status === "signed_in") {
+              try {
                 await onlineApi.updateProfile({
-                  avatarUrl: publicUrl,
                   displayName: trimmedName || targetProfile.name || undefined,
-                });
-                try {
-                  await (online as any)?.refresh?.();
-                } catch {}
+                  avatarUrl: uploadRes?.publicUrl || undefined,
+                  avatarAssetId: uploadRes?.avatarAssetId || uploadRes?.assetId || undefined,
+                  avatarThumbAssetId: uploadRes?.avatarThumbAssetId || undefined,
+                  avatarFullAssetId: uploadRes?.avatarFullAssetId || undefined,
+                  avatarCastAssetId: uploadRes?.avatarCastAssetId || undefined,
+                } as any);
+                try { await (online as any)?.refresh?.(); } catch {}
+              } catch (e) {
+                console.warn("[AvatarUpload] online updateProfile failed", e);
               }
-            } catch (e) {
-              console.warn("[AvatarUpload] online updateProfile failed", e);
             }
 
             go(backTo);
           } catch (e) {
             console.error("[AvatarUpload] upload failed -> fallback local avatarDataUrl", e);
-
             setProfiles((list) =>
-              list.map((p) => (p.id === targetProfile.id ? { ...p, name: trimmedName || p.name, avatarDataUrl: pngDataUrl } : p))
+              list.map((p) => (p.id === targetProfile.id ? { ...p, name: trimmedName || p.name, avatarDataUrl: finalAvatarDataUrl || pngDataUrl } : p))
             );
-
             go(backTo);
           }
         }

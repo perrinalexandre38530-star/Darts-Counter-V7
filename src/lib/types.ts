@@ -40,6 +40,11 @@ export type Profile = {
   id: ID;
   name: string;
   avatarDataUrl?: string;
+  avatarUrl?: string;
+  avatarAssetId?: string | null;
+  avatarThumbAssetId?: string | null;
+  avatarFullAssetId?: string | null;
+  avatarCastAssetId?: string | null;
   stats?: ProfileStats | any; // compat ancien code
 
   // 🔹 Favori : set de fléchettes préféré

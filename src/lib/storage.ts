@@ -1606,48 +1606,48 @@ function sanitizeStoreForCloud(store: any) {
     clone = { ...(store || {}) };
   }
 
-  // Profiles: keep lightweight avatarDataUrl so local avatars survive manual NAS sync
-  if (Array.isArray(clone.profiles)) {
-    clone.profiles = clone.profiles.map((p: any) => {
-      const out = { ...(p || {}) };
-      const v = out.avatarDataUrl;
-      if (typeof v === "string" && v.startsWith("data:") && v.length > 280_000) delete out.avatarDataUrl;
-
-      // never push any stored password
-      try {
-        if (out.privateInfo && typeof out.privateInfo === "object") {
-          const pi: any = { ...(out.privateInfo as any) };
-          if (pi.password) delete pi.password;
-          out.privateInfo = pi;
-        }
-      } catch {}
-
-      return out;
-    });
-  }
-
-  // History ne doit plus voyager dans le store principal cloud.
   stripStoreHistoryFields(clone);
   stripStoreHeavyStatsFields(clone);
 
-  // Dart sets: strip photoDataUrl (base64)
-  if (Array.isArray((clone as any).dartSets)) {
-    (clone as any).dartSets = (clone as any).dartSets.map((ds: any) => {
-      const dso: any = { ...(ds || {}) };
-      const p = dso.photoDataUrl;
-      if (typeof p === "string" && p.startsWith("data:") && p.length > 280_000) delete dso.photoDataUrl;
-      return dso;
+  if (Array.isArray(clone.profiles)) {
+    clone.profiles = clone.profiles.map((p: any) => {
+      const out = { ...(p || {}) };
+      cacheProfileAvatar(out);
+      delete out.avatarDataUrl;
+      delete out.photoDataUrl;
+      if (typeof out.avatar === "string" && out.avatar.startsWith("data:")) delete out.avatar;
+      if (typeof out.avatarUrl === "string" && out.avatarUrl.startsWith("data:")) delete out.avatarUrl;
+      try {
+        if (out.privateInfo && typeof out.privateInfo === "object") {
+          const pi: any = { ...(out.privateInfo as any) };
+          delete pi.password;
+          delete pi.passwordHash;
+          delete pi.confirmPassword;
+          out.privateInfo = pi;
+        }
+      } catch {}
+      return out;
     });
   }
 
   if (Array.isArray((clone as any).bots)) {
     (clone as any).bots = (clone as any).bots.map((b: any) => {
       const bo: any = { ...(b || {}) };
-      const av = bo.avatarDataUrl;
-      if (typeof av === "string" && av.startsWith("data:") && av.length > 280_000) delete bo.avatarDataUrl;
-      const photo = bo.photoDataUrl;
-      if (typeof photo === "string" && photo.startsWith("data:") && photo.length > 280_000) delete bo.photoDataUrl;
+      delete bo.avatarDataUrl;
+      delete bo.photoDataUrl;
+      if (typeof bo.avatar === "string" && bo.avatar.startsWith("data:")) delete bo.avatar;
+      if (typeof bo.avatarUrl === "string" && bo.avatarUrl.startsWith("data:")) delete bo.avatarUrl;
       return bo;
+    });
+  }
+
+  if (Array.isArray((clone as any).dartSets)) {
+    (clone as any).dartSets = (clone as any).dartSets.map((ds: any) => {
+      const dso: any = { ...(ds || {}) };
+      if (typeof dso.photoDataUrl === "string") delete dso.photoDataUrl;
+      if (typeof dso.mainImageUrl === "string" && dso.mainImageUrl.startsWith("data:")) dso.mainImageUrl = "";
+      if (typeof dso.thumbImageUrl === "string" && dso.thumbImageUrl.startsWith("data:")) delete dso.thumbImageUrl;
+      return dso;
     });
   }
 

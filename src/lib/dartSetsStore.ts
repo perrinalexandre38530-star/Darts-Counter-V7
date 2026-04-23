@@ -22,6 +22,9 @@ export interface DartSet {
   mainImageUrl: string; // image cartoon principale (fond uni)
   thumbImageUrl?: string; // miniature pour overlay avatar
   bgColor?: string; // fond du thumb si pas d'image
+  mainImageAssetId?: string | null;
+  thumbImageAssetId?: string | null;
+  photoAssetId?: string | null;
 
   // ✅ Visuel (optionnel, compat)
   kind?: "plain" | "preset" | "photo";
@@ -160,14 +163,8 @@ function saveAll(list: DartSet[]): boolean {
   try {
     window.dispatchEvent(new Event("dc-dartsets-updated"));
     try {
-      window.dispatchEvent(new Event("dc-flush-cloud"));
-      try {
-        window.setTimeout(() => {
-          try { (window as any).__flushCloudNow?.("dartsets_save"); } catch {}
-        }, 1200);
-      } catch {
-        try { (window as any).__flushCloudNow?.("dartsets_save"); } catch {}
-      }
+      const w: any = window as any;
+      if (typeof w?.__markNasSyncDirty === "function") w.__markNasSyncDirty("dartsets_save");
     } catch {}
   } catch {}
   try {
